@@ -1,4 +1,4 @@
-module github.com/smykla-labs/smyklot
+module github.com/smykla-skalski/smyklot
 
 go 1.25.5
 

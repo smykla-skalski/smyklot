@@ -9,8 +9,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/smykla-labs/smyklot/pkg/config"
-	"github.com/smykla-labs/smyklot/pkg/github"
+	"github.com/smykla-skalski/smyklot/pkg/config"
+	"github.com/smykla-skalski/smyklot/pkg/github"
 )
 
 var _ = Describe("Poll Pending CI [Unit]", func() {

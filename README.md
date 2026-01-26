@@ -389,7 +389,7 @@ Smyklot implements defense-in-depth security practices:
 
 ```bash
 # Clone repository
-git clone https://github.com/smykla-labs/smyklot.git
+git clone https://github.com/smykla-skalski/smyklot.git
 cd smyklot
 
 # Install tools

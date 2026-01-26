@@ -9,7 +9,7 @@ FROM scratch
 
 ARG TARGETPLATFORM
 
-LABEL org.opencontainers.image.source="https://github.com/smykla-labs/smyklot"
+LABEL org.opencontainers.image.source="https://github.com/smykla-skalski/smyklot"
 LABEL org.opencontainers.image.description="Automated PR approvals and merges based on CODEOWNERS"
 LABEL org.opencontainers.image.licenses="MIT"
 

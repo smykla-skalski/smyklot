@@ -9,7 +9,7 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/spf13/viper"
 
-	"github.com/smykla-labs/smyklot/pkg/config"
+	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
 func TestConfig(t *testing.T) {

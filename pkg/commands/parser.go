@@ -11,7 +11,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/smykla-labs/smyklot/pkg/config"
+	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
 var (

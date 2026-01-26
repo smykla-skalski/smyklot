@@ -206,7 +206,7 @@ jobs:
         with:
           app-id: ${{ vars.SMYKLOT_APP_ID }}
           private-key: ${{ secrets.SMYKLOT_APP_PRIVATE_KEY }}
-          owner: smykla-labs
+          owner: smykla-skalski
           repositories: .github
 
       - name: Trigger smyklot sync
@@ -219,4 +219,4 @@ jobs:
             --arg version "$VERSION" \
             --arg tag "$TAG" \
             '{event_type: "smyklot-release", client_payload: {version: $version, tag: $tag}}' \
-          | gh api repos/smykla-labs/.github/dispatches --input -
+          | gh api repos/smykla-skalski/.github/dispatches --input -
