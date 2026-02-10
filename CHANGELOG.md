@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.2](https://github.com/smykla-skalski/smyklot/compare/v1.11.1...v1.11.2) (2026-02-10)
+
+### Bug Fixes
+
+* **action:** update registry path after rename ([7913acc](https://github.com/smykla-skalski/smyklot/commit/7913acce17b68262dd573842974904c8d246ae50))
+
 ## [1.11.0](https://github.com/smykla-skalski/smyklot/compare/v1.10.4...v1.11.0) (2025-12-08)
 
 ### Features
