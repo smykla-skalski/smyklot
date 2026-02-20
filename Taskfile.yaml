@@ -97,10 +97,10 @@ tasks:
         fi
 
   lint:markdown:
-    desc: Lint Markdown files
+    desc: Lint Markdown files with markdownlint-cli2
     cmds:
       - echo "▶ Linting Markdown files"
-      - markdownlint '**/*.md' --ignore node_modules --ignore vendor --ignore tmp
+      - markdownlint-cli2 "**/*.md"
       - echo "✓ Markdown files pass linting"
 
   lint:mod:
