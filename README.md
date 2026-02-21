@@ -4,26 +4,26 @@
 
 ## Overview
 
-Smyklot is a GitHub App that automates pull request approvals and merges by validating permissions against your repository's CODEOWNERS file. Simply comment on a PR with commands or add emoji reactions, and Smyklot handles the rest.
+Smyklot is a GitHub App that automates pull request approvals and merges by validating permissions against your repository's CODEOWNERS file. Comment on a PR with commands or add emoji reactions, and Smyklot handles it.
 
 ## Features
 
-- **CODEOWNERS-based permissions** - Only repository owners defined in `.github/CODEOWNERS` can approve/merge
-- **Multiple command formats** - Supports slash commands (`/approve`), mentions (`@smyklot approve`), and bare commands (`lgtm`, `merge`)
-- **Merge method control** - Explicit `squash` and `rebase` commands with intelligent fallback for `merge`
-- **Reaction-based commands** - Use 👍 to approve, 🚀 to merge, or ❤️ to cleanup
-- **Cleanup command** - Remove all bot reactions, approvals, and comments with a single command
-- **Approval deduplication** - Prevents duplicate approvals with smart reaction handling
-- **Flexible configuration** - Configure via `SMYKLOT_CONFIG` JSON, individual variables, or environment variables
-- **Emoji feedback** - Get instant visual confirmation with ✅ (success), ❌ (error), or ⚠️ (warning)
-- **Comment edit/delete handling** - Reacts to command edits and removes reactions when commands are deleted
-- **Reaction removal tracking** - Automatically removes approvals/merges when reactions are removed
-- **Multi-command support** - Execute multiple commands in a single comment
-- **Security-first design** - Follows GitHub Actions best practices with minimal permissions
-- **Zero external dependencies** - Runs entirely on GitHub Actions
-- **TDD implementation** - 130+ passing tests
+- CODEOWNERS-based permissions - only repository owners in `.github/CODEOWNERS` can approve/merge
+- Multiple command formats - slash commands (`/approve`), mentions (`@smyklot approve`), and bare commands (`lgtm`, `merge`)
+- Merge method control - explicit `squash` and `rebase` commands with intelligent fallback for `merge`
+- Reaction-based commands - use 👍 to approve, 🚀 to merge, or ❤️ to cleanup
+- Cleanup command - removes all bot reactions, approvals, and comments with a single command
+- Approval deduplication - prevents duplicate approvals with smart reaction handling
+- Flexible configuration - configure via `SMYKLOT_CONFIG` JSON, individual variables, or environment variables
+- Emoji feedback - instant visual confirmation with ✅ (success), ❌ (error), or ⚠️ (warning)
+- Comment edit/delete handling - reacts to command edits and removes reactions when commands are deleted
+- Reaction removal tracking - automatically removes approvals/merges when reactions are removed
+- Multi-command support - execute multiple commands in a single comment
+- Minimal permissions - follows GitHub Actions best practices
+- Zero external dependencies - runs entirely on GitHub Actions
+- 130+ passing tests
 
-## Quick Start
+## Quick start
 
 ### Prerequisites
 
@@ -32,7 +32,7 @@ Smyklot is a GitHub App that automates pull request approvals and merges by vali
 
 ### Installation
 
-#### Option 1: GitHub App (Recommended)
+#### Option 1: GitHub App (recommended)
 
 1. Install the [Smyklot GitHub App](https://github.com/apps/smyklot) on your repository
 2. Create `.github/CODEOWNERS`:
@@ -43,7 +43,7 @@ Smyklot is a GitHub App that automates pull request approvals and merges by vali
 
 3. Comment on PRs with commands or add reactions
 
-#### Option 2: Manual Workflow
+#### Option 2: Manual workflow
 
 Copy the workflow file to your repository:
 
@@ -53,7 +53,7 @@ cp .github/workflows/pr-commands.yaml your-repo/.github/workflows/
 
 ## Usage
 
-### Comment Commands
+### Comment commands
 
 Smyklot responds to these commands in PR comments:
 
@@ -67,15 +67,15 @@ Smyklot responds to these commands in PR comments:
 | `cleanup`   | -                | `/cleanup`, `@smyklot cleanup`, `cleanup` | Remove all bot reactions, approvals, and comments |
 | `help`      | -                | `/help`, `@smyklot help`                  | Show help information                             |
 
-**Command Formats**:
+Command formats:
 
-- **Slash commands**: `/approve`, `/merge`, `/squash`, `/rebase`, `/unapprove`, `/cleanup`, `/help`
-- **Mention commands**: `@smyklot approve`, `@smyklot merge`, `@smyklot squash`, `@smyklot rebase`, `@smyklot unapprove`, `@smyklot cleanup`
-- **Bare commands**: `approve`, `accept`, `lgtm`, `merge`, `squash`, `rebase`, `cleanup` (exact match only)
+- Slash commands: `/approve`, `/merge`, `/squash`, `/rebase`, `/unapprove`, `/cleanup`, `/help`
+- Mention commands: `@smyklot approve`, `@smyklot merge`, `@smyklot squash`, `@smyklot rebase`, `@smyklot unapprove`, `@smyklot cleanup`
+- Bare commands: `approve`, `accept`, `lgtm`, `merge`, `squash`, `rebase`, `cleanup` (exact match only)
 
 All commands are case-insensitive.
 
-### Reaction Commands
+### Reaction commands
 
 | Reaction | Action                                                      |
 |----------|-------------------------------------------------------------|
@@ -83,9 +83,9 @@ All commands are case-insensitive.
 | 🚀       | Merge the pull request                                      |
 | ❤️       | Cleanup (remove all bot reactions, approvals, and comments) |
 
-**Note**: Reactions must be added to the PR description, not to comments. Removing a reaction will automatically undo the corresponding action (remove approval/merge labels).
+Reactions must be added to the PR description, not to comments. Removing a reaction automatically undoes the corresponding action (removes approval/merge labels).
 
-### Multiple Commands
+### Multiple commands
 
 You can use multiple non-contradicting commands in a single comment:
 
@@ -132,19 +132,19 @@ Merge with default method (with fallback to squash/rebase if merge commits disal
 
 Or add a 🚀 reaction to the PR description.
 
-#### Squash Merging
+#### Squash merging
 
 ```text
 /squash
 ```
 
-#### Rebase Merging
+#### Rebase merging
 
 ```text
 /rebase
 ```
 
-#### Removing Approval
+#### Removing approval
 
 ```text
 /unapprove
@@ -162,11 +162,11 @@ Remove all bot reactions, approvals, and comments:
 
 Or add a ❤️ reaction to the PR description.
 
-**Note**: Cleanup cannot be combined with other commands.
+Cleanup cannot be combined with other commands.
 
 ## Configuration
 
-### CODEOWNERS Setup
+### CODEOWNERS setup
 
 Create `.github/CODEOWNERS` in your repository:
 
@@ -177,13 +177,13 @@ Create `.github/CODEOWNERS` in your repository:
 
 Currently only global owners (`*` pattern) are supported. Path-specific owners will be added in Phase 2.
 
-### Bot Configuration
+### Bot configuration
 
 Smyklot can be configured via repository variables (Settings → Secrets and variables → Actions → Variables).
 
-**Configuration Precedence**: CLI flags > Environment variables > Repository variables > Defaults
+Config precedence: CLI flags > environment variables > repository variables > defaults
 
-#### Option 1: Full JSON Configuration (Recommended)
+#### Option 1: Full JSON configuration (recommended)
 
 Set a `SMYKLOT_CONFIG` repository variable with your complete configuration:
 
@@ -207,7 +207,7 @@ Set a `SMYKLOT_CONFIG` repository variable with your complete configuration:
 }
 ```
 
-#### Option 2: Individual Variables
+#### Option 2: Individual variables
 
 Configure individual settings via repository variables or environment variables with `SMYKLOT_` prefix:
 
@@ -227,9 +227,9 @@ Configure individual settings via repository variables or environment variables 
 | `SMYKLOT_ALLOW_SELF_APPROVAL`      | boolean | `false`        | Allow PR authors to approve their own PRs                                  |
 | `SMYKLOT_BOT_USERNAME`             | string  | `smyklot[bot]` | Bot username for cleanup operations (GitHub App format: `{app-slug}[bot]`) |
 
-#### Configuration Examples
+#### Configuration examples
 
-##### Example 1: Quiet Mode
+##### Example 1: Quiet mode
 
 Only show emoji reactions, no success comments:
 
@@ -241,7 +241,7 @@ env:
 
 Result: User sees only ✅ reaction, no "PR Approved" comment.
 
-##### Example 2: Custom Prefix
+##### Example 2: Custom prefix
 
 Use `!` instead of `/` for commands:
 
@@ -252,7 +252,7 @@ env:
 
 Users can now use `!approve` and `!merge`.
 
-##### Example 3: Command Aliases
+##### Example 3: Command aliases
 
 Create shortcuts for commands:
 
@@ -263,7 +263,7 @@ env:
 
 Users can use `/app`, `/a`, or `/m` as shortcuts.
 
-##### Example 4: Reactions Only
+##### Example 4: Reactions only
 
 Disable comment-based commands, only allow reactions:
 
@@ -277,7 +277,7 @@ Disable comment-based commands, only allow reactions:
 
 Only 👍 and 🚀 reactions will work.
 
-##### Example 5: Disable Reaction Tracking
+##### Example 5: Disable reaction tracking
 
 Don't remove approvals/merges when reactions are removed:
 
@@ -286,9 +286,9 @@ env:
   SMYKLOT_DISABLE_DELETED_COMMENTS: "true"
 ```
 
-##### Example 6: Allow Self-Approval
+##### Example 6: Allow self-approval
 
-**⚠️ Not recommended for production** - Allow PR authors to approve their own PRs:
+⚠️ Not recommended for production - allows PR authors to approve their own PRs:
 
 ```yaml
 env:
@@ -303,11 +303,11 @@ or via JSON:
 }
 ```
 
-**Security Note**: By default, Smyklot prevents self-approval to enforce separation of duties. Only enable this in development/testing environments.
+By default, Smyklot prevents self-approval to enforce separation of duties. Only enable this in development/testing environments.
 
 ## Architecture
 
-### How It Works
+### How it works
 
 1. User comments a command or adds a reaction on a PR
 2. GitHub triggers `issue_comment` webhook
@@ -324,9 +324,9 @@ or via JSON:
    - Posts reactions and feedback
 5. On comment edit/delete or reaction removal, updates accordingly
 
-### Permission System
+### Permission system
 
-**Phase 1 (Current)**:
+#### Phase 1 (current)
 
 - Only global owners (`* @username`) are supported
 - Global owners can approve/merge any PR
@@ -334,7 +334,7 @@ or via JSON:
 - Self-approval prevention (configurable, disabled by default)
 - Fail-closed CODEOWNERS parsing (returns error if file is corrupted)
 
-**Phase 2 (Planned)**:
+#### Phase 2 (planned)
 
 - Path-specific ownership patterns
 - Scoped permissions based on changed files
@@ -343,35 +343,35 @@ or via JSON:
 
 ### Security
 
-Smyklot implements defense-in-depth security practices:
+Smyklot implements defense-in-depth security practices.
 
-**Input Validation**:
+#### Input validation
 
 - Comment body length validation (max 10KB) - prevents DoS attacks
 - Repository owner/name format validation - prevents path traversal
 - All inputs passed via environment variables (no shell interpolation)
 
-**API Security**:
+#### API security
 
 - Parameterized GraphQL queries - prevents injection attacks
 - HTTP client timeout (30s) - prevents hung requests
 - Exponential backoff retry logic - handles rate limiting gracefully
 - Connection pooling - optimizes resource usage
 
-**Access Control**:
+#### Access control
 
 - CODEOWNERS-based authorization with fail-closed parsing
 - Self-approval prevention (configurable, disabled by default)
 - Minimal workflow permissions (contents: read, pull-requests: write)
 - Token-based authentication via GitHub App
 
-**Data Protection**:
+#### Data protection
 
 - Sensitive data sanitization in logs (tokens, keys, secrets redacted)
 - Maximum CODEOWNERS file size (1MB) - prevents memory exhaustion
 - No repository checkout required (CODEOWNERS fetched via API)
 
-**Supply Chain Security**:
+#### Supply chain security
 
 - Actions pinned by commit digest
 - Go dependencies verified (`go mod verify`)
@@ -402,7 +402,7 @@ go mod download
 task test
 ```
 
-### Project Structure
+### Project structure
 
 ```text
 smyklot/
@@ -422,7 +422,7 @@ smyklot/
 └── go.mod                   # Go module definition
 ```
 
-### Available Tasks
+### Available tasks
 
 ```bash
 task             # Show available tasks
@@ -469,7 +469,7 @@ Current test coverage: 130+ tests passing
 
 ## Roadmap
 
-### Phase 1: GitHub Actions Bot ✅
+### Phase 1: GitHub Actions bot
 
 - [x] Command parser (slash, mention, bare)
 - [x] Multi-command support
@@ -489,7 +489,7 @@ Current test coverage: 130+ tests passing
 - [x] Docker-based GitHub Action
 - [x] Documentation
 
-### Phase 2: Enhanced Permissions (Planned)
+### Phase 2: Enhanced permissions (planned)
 
 - [ ] Path-specific ownership patterns
 - [ ] Scoped approval requirements based on changed files
@@ -497,9 +497,9 @@ Current test coverage: 130+ tests passing
 - [x] Self-approval prevention (configurable)
 - [ ] Required approvals count
 
-### Phase 3: Kubernetes Deployment (Future)
+### Phase 3: Kubernetes deployment (future)
 
-**Prerequisites** (Security Hardening):
+#### Prerequisites (security hardening)
 
 - [x] GraphQL injection prevention
 - [x] HTTP client timeout and connection pooling
@@ -507,7 +507,7 @@ Current test coverage: 130+ tests passing
 - [x] Input validation
 - [x] Fail-closed CODEOWNERS parsing
 
-**Remaining Work**:
+#### Remaining work
 
 - [ ] Refactor global mutable state to request-scoped parameters
 - [ ] Add context.Context propagation throughout
@@ -518,9 +518,9 @@ Current test coverage: 130+ tests passing
 - [ ] Prometheus metrics
 - [ ] Migration strategy
 
-**Estimated Effort**: 18-30 days
+Estimated effort: 18-30 days
 
-### Phase 4: Discord Integration (Future)
+### Phase 4: Discord integration (future)
 
 - [ ] Discord bot
 - [ ] Unified command system

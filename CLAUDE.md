@@ -28,22 +28,21 @@ Go + Ginkgo/Gomega, deployed as Docker-based GitHub Action.
 
 ## Gotchas
 
-- CODEOWNERS parser is **fail-closed** — if parsing fails, no one has permissions (see `pkg/permissions/errors.go`)
-- Cleanup command **cannot** be combined with other commands — parser rejects the entire comment (`pkg/commands/parser.go`)
-- Success feedback is **reaction-only** (no comment); errors/warnings post both reaction AND comment
+- CODEOWNERS parser is **fail-closed** — if parsing fails, no one has permissions (`pkg/permissions/errors.go:18`)
+- Cleanup command **cannot** be combined with other commands — parser rejects the entire comment (`pkg/commands/parser.go:49`)
+- Success feedback is **reaction-only** (no comment); errors/warnings post both reaction AND comment (`pkg/feedback/feedback.go:15`)
 - Only global owners (`*` pattern) supported in Phase 1 — path-specific patterns are not implemented
-- Self-approval is disabled by default; enable with `allow_self_approval` config option
+- Self-approval is disabled by default; enable with `allow_self_approval` config option (`pkg/config/config.go:72`)
 - All GitHub Action inputs come via **environment variables**, not CLI args (security: no shell interpolation)
 - Workflow files use `.yaml` extension (not `.yml`) for consistency
 
 ## Code Style
 
 - Use `github.com/pkg/errors` for error wrapping (not `fmt.Errorf`)
-- Sentinel errors: `var ErrOpName = errors.New("msg")` — see `pkg/permissions/errors.go` for pattern
+- Sentinel errors: `var ( ErrX = errors.New("...") )` block pattern — see `pkg/permissions/errors.go:10`
 - Test tags: `[Unit]` or `[Integration]` in Describe block — e.g., `Describe("Parser [Unit]", ...)`
 - Ginkgo BDD structure: `Describe/Context/It` with table-driven `Entry` where appropriate
-- TDD workflow: write failing test first, implement minimum code, refactor
-- Use `httptest` for mocking GitHub API in tests (see `pkg/github/client_test.go`)
+- Use `httptest` for mocking GitHub API in tests (`pkg/github/client_test.go:16`)
 
 ## Git Workflow
 
@@ -81,6 +80,6 @@ See `pkg/config/` for all options and `README.md` for full configuration referen
 
 ## Phase Status
 
-- Phase 1 (GitHub Action): complete — 181 tests, 59.5% coverage
+- Phase 1 (GitHub Action): complete
 - Phase 2 (path-specific CODEOWNERS, teams): planned
 - Phase 3 (Kubernetes deployment): future — see `.claude/rules/roadmap.md`
