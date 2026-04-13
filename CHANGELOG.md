@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.12.0](https://github.com/smykla-skalski/smyklot/compare/v1.11.2...v1.12.0) (2026-04-13)
+
+### Features
+
+* **lint:** migrate to markdownlint-cli2 ([dbca17b](https://github.com/smykla-skalski/smyklot/commit/dbca17b7535f03178ee48b86029caf0f60006fd2))
+
+### Bug Fixes
+
+* **deps:** update ginkgo to v2.28.1 ([#57](https://github.com/smykla-skalski/smyklot/issues/57)) ([758ed1d](https://github.com/smykla-skalski/smyklot/commit/758ed1dfb912073a4c5410cbdce502e5b5ff5837))
+* **deps:** update module github.com/jferrl/go-githubauth/v2 to v2.0.1 ([#82](https://github.com/smykla-skalski/smyklot/issues/82)) ([805a892](https://github.com/smykla-skalski/smyklot/commit/805a892f9c6d6a21b637194fad60cb96fb3d0981))
+* **deps:** update module github.com/onsi/gomega to v1.39.0 ([#58](https://github.com/smykla-skalski/smyklot/issues/58)) ([6d3aa92](https://github.com/smykla-skalski/smyklot/commit/6d3aa928bd941b588361d2daa6e8500c2063cd9d))
+* **deps:** update module github.com/onsi/gomega to v1.39.1 ([#68](https://github.com/smykla-skalski/smyklot/issues/68)) ([354caf4](https://github.com/smykla-skalski/smyklot/commit/354caf44e18b5c3c88ae55337ea18a8e45cc0f5b))
+* **pkg:** use fmt.Fprintf, suppress G704 ([dfcb851](https://github.com/smykla-skalski/smyklot/commit/dfcb851e0b281b94fc7247fd1bdedeb7821d9e73))
+
+### Code Refactoring
+
+* **docs:** slim down CLAUDE.md ([29d09d4](https://github.com/smykla-skalski/smyklot/commit/29d09d46cb91bb638c060bb631764066bc7ad745))
+
 ## [1.11.2](https://github.com/smykla-skalski/smyklot/compare/v1.11.1...v1.11.2) (2026-02-10)
 
 ### Bug Fixes
