@@ -40,6 +40,8 @@ github.com/inconshreveable/mousetrap v1.1.0 h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2
 github.com/inconshreveable/mousetrap v1.1.0/go.mod h1:vpF70FUmC8bwa3OWnCshd2FqLfsEA9PFc4w1p2J65bw=
 github.com/jferrl/go-githubauth/v2 v2.0.0 h1:34GkEJ5cmXnazyRljZ9mzfTMQ6l5NjW8++oqjvy/EIc=
 github.com/jferrl/go-githubauth/v2 v2.0.0/go.mod h1:CWegJ0VNNWoqKsTxXCMFUHkxaL3/2+Wkl2am0O0zoyg=
+github.com/jferrl/go-githubauth/v2 v2.0.1 h1:9zunMT6o8P+wXS/icdlPiH+KDQkmp/t/yxBig0/PFcs=
+github.com/jferrl/go-githubauth/v2 v2.0.1/go.mod h1:2yioYoBdTgZBwJiAFGXMirzyFEw+WJW/CR9ykaGdmUw=
 github.com/joshdk/go-junit v1.0.0 h1:S86cUKIdwBHWwA6xCmFlf3RTLfVXYQfvanM5Uh+K6GE=
 github.com/joshdk/go-junit v1.0.0/go.mod h1:TiiV0PqkaNfFXjEiyjWM3XXrhVyCa1K4Zfga6W52ung=
 github.com/kr/pretty v0.3.1 h1:flRD4NNwYAUpkphVc1HcthR4KEIFJ65n8Mw5qdRn3LE=
