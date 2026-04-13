@@ -56,15 +56,15 @@ func (e *APIError) Error() string {
 	}
 
 	if e.StatusCode != 0 {
-		builder.WriteString(fmt.Sprintf(" (status: %d)", e.StatusCode))
+		fmt.Fprintf(&builder, " (status: %d)", e.StatusCode)
 	}
 
 	if e.Method != "" || e.Path != "" {
-		builder.WriteString(fmt.Sprintf(" [%s %s]", e.Method, e.Path))
+		fmt.Fprintf(&builder, " [%s %s]", e.Method, e.Path)
 	}
 
 	if e.Detail != "" {
-		builder.WriteString(fmt.Sprintf(": %s", e.Detail))
+		fmt.Fprintf(&builder, ": %s", e.Detail)
 	}
 
 	return builder.String()

@@ -579,7 +579,7 @@ func formatApproverList(approvers []string) string {
 
 	var builder strings.Builder
 	for _, approver := range approvers {
-		builder.WriteString(fmt.Sprintf("- `%s`\n", approver))
+		fmt.Fprintf(&builder, "- `%s`\n", approver)
 	}
 
 	return strings.TrimSuffix(builder.String(), "\n")

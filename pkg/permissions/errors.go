@@ -54,11 +54,11 @@ func (e *ParseError) Error() string {
 	}
 
 	if e.FilePath != "" {
-		builder.WriteString(fmt.Sprintf(" (file: %s)", e.FilePath))
+		fmt.Fprintf(&builder, " (file: %s)", e.FilePath)
 	}
 
 	if e.Detail != "" {
-		builder.WriteString(fmt.Sprintf(": %s", e.Detail))
+		fmt.Fprintf(&builder, ": %s", e.Detail)
 	}
 
 	return builder.String()
@@ -106,11 +106,11 @@ func (e *CheckerError) Error() string {
 	}
 
 	if e.RepoPath != "" {
-		builder.WriteString(fmt.Sprintf(" (repo: %s)", e.RepoPath))
+		fmt.Fprintf(&builder, " (repo: %s)", e.RepoPath)
 	}
 
 	if e.Detail != "" {
-		builder.WriteString(fmt.Sprintf(": %s", e.Detail))
+		fmt.Fprintf(&builder, ": %s", e.Detail)
 	}
 
 	return builder.String()

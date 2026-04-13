@@ -1149,7 +1149,7 @@ func (c *Client) makeRequest(ctx context.Context, method, path string, payload i
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.httpClient.Do(req) //nolint:gosec // URL is constructed from trusted baseURL config + internal path
 	if err != nil {
 		return nil, NewAPIError(ErrAPIRequest, 0, method, path, err)
 	}
