@@ -64,6 +64,7 @@ const (
 	errInvalidInstallID    = "invalid installation ID"
 	errCommentTooLong      = "comment body exceeds maximum length"
 	errInvalidRepoName     = "invalid repository owner or name"
+	selfApprovalNotAllowed = "(self-approval not allowed)"
 	maxCommentBodyLength   = 10000 // 10KB - matches github.maxCommentBodyLength
 	stepSummaryTemplate    = `## Smyklot Configuration
 
@@ -692,7 +693,7 @@ func executeApprove(ctx context.Context, client *github.Client, rc *RuntimeConfi
 	if !bc.AllowSelfApproval && info.Author == rc.CommentAuthor {
 		return feedback.NewUnauthorized(
 			rc.CommentAuthor,
-			[]string{"(self-approval not allowed)"},
+			[]string{selfApprovalNotAllowed},
 		), nil
 	}
 
@@ -914,7 +915,7 @@ func executePendingCIMerge(
 	if !bc.AllowSelfApproval && info.Author == rc.CommentAuthor {
 		return feedback.NewUnauthorized(
 			rc.CommentAuthor,
-			[]string{"(self-approval not allowed)"},
+			[]string{selfApprovalNotAllowed},
 		), nil
 	}
 
@@ -973,7 +974,7 @@ func executeImmediateMerge(
 	if !bc.AllowSelfApproval && info.Author == rc.CommentAuthor {
 		return feedback.NewUnauthorized(
 			rc.CommentAuthor,
-			[]string{"(self-approval not allowed)"},
+			[]string{selfApprovalNotAllowed},
 		), nil
 	}
 
@@ -1505,7 +1506,7 @@ func handleReactionApprove(
 
 	// Prevent self-approval unless explicitly allowed
 	if !bc.AllowSelfApproval && info.Author == approver {
-		fb := feedback.NewUnauthorized(approver, []string{"(self-approval not allowed)"})
+		fb := feedback.NewUnauthorized(approver, []string{selfApprovalNotAllowed})
 		return postFeedback(ctx, client, rc, prNum, commentID, fb.Message, github.ReactionError)
 	}
 
@@ -1577,7 +1578,7 @@ func handleReactionMerge(
 
 	// Prevent self-approval unless explicitly allowed (merge also approves)
 	if !bc.AllowSelfApproval && info.Author == author {
-		fb := feedback.NewUnauthorized(author, []string{"(self-approval not allowed)"})
+		fb := feedback.NewUnauthorized(author, []string{selfApprovalNotAllowed})
 		return postFeedback(ctx, client, rc, prNum, commentID, fb.Message, github.ReactionError)
 	}
 

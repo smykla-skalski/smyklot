@@ -9,6 +9,8 @@ import (
 	"strings"
 )
 
+const warningEmoji = "⚠️"
+
 // NewSuccess creates success feedback
 //
 //	uses only an emoji reaction (✅); no comment is posted
@@ -92,7 +94,7 @@ func NewAlreadyApproved(approver string) *Feedback {
 
 	return &Feedback{
 		Type:    Warning,
-		Emoji:   "⚠️",
+		Emoji:   warningEmoji,
 		Message: message,
 	}
 }
@@ -105,7 +107,7 @@ func NewAlreadyMerged() *Feedback {
 
 	return &Feedback{
 		Type:    Warning,
-		Emoji:   "⚠️",
+		Emoji:   warningEmoji,
 		Message: message,
 	}
 }
@@ -426,7 +428,7 @@ func NewCommentDeleted(author string, commentID int) *Feedback {
 
 	return &Feedback{
 		Type:    Warning,
-		Emoji:   "⚠️",
+		Emoji:   warningEmoji,
 		Message: message,
 	}
 }
@@ -440,7 +442,7 @@ func NewReactionMergeRemoved() *Feedback {
 
 	return &Feedback{
 		Type:    Warning,
-		Emoji:   "⚠️",
+		Emoji:   warningEmoji,
 		Message: message,
 	}
 }
