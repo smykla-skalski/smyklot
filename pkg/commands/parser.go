@@ -47,6 +47,22 @@ var (
 
 	// ErrCleanupWithOtherCommands indicates cleanup was used with other commands
 	ErrCleanupWithOtherCommands = errors.New("cleanup command cannot be combined with other commands")
+
+	// commandFillerWords are common words used alongside commands that don't affect meaning
+	commandFillerWords = map[string]bool{
+		"and": true, "please": true, "this": true, "the": true, "it": true,
+	}
+
+	// commandCIWords are CI-related terms that indicate command context
+	commandCIWords = map[string]bool{
+		"ci": true, "cd": true, "gha": true, "checks": true, "check": true,
+		"workflows": true, "workflow": true, "green": true,
+		"github": true, "actions": true, "action": true,
+		"after": true, "when": true, "once": true,
+		"pass": true, "passes": true, "passing": true,
+		"finish": true, "finishes": true, "complete": true, "completes": true,
+		"required": true,
+	}
 )
 
 // ParseCommand parses comment text and extracts a command if present
@@ -270,20 +286,8 @@ func looksLikeNaturalLanguage(line string) bool {
 
 // isCommandHeavyLine checks if a line is "command-heavy" (>66% commands/fillers/CI-terms)
 func isCommandHeavyLine(line string, cfg *config.Config) bool {
-	fillerWords := map[string]bool{
-		"and": true, "please": true, "this": true, "the": true, "it": true,
-	}
-
-	// CI-related technical terms that indicate command context
-	ciRelatedWords := map[string]bool{
-		"ci": true, "cd": true, "gha": true, "checks": true, "check": true,
-		"workflows": true, "workflow": true, "green": true,
-		"github": true, "actions": true, "action": true,
-		"after": true, "when": true, "once": true,
-		"pass": true, "passes": true, "passing": true,
-		"finish": true, "finishes": true, "complete": true, "completes": true,
-		"required": true,
-	}
+	fillerWords := commandFillerWords
+	ciRelatedWords := commandCIWords
 
 	words := strings.Fields(line)
 	if len(words) == 0 {
@@ -349,20 +353,8 @@ func extractCommandsFromLine(line string, cfg *config.Config, commandsFound map[
 
 // isLineOnlyCommandsAndFillers checks if line contains ONLY commands, fillers, and CI terms
 func isLineOnlyCommandsAndFillers(line string, cfg *config.Config) bool {
-	fillerWords := map[string]bool{
-		"and": true, "please": true, "this": true, "the": true, "it": true,
-	}
-
-	// CI-related technical terms
-	ciRelatedWords := map[string]bool{
-		"ci": true, "cd": true, "gha": true, "checks": true, "check": true,
-		"workflows": true, "workflow": true, "green": true,
-		"github": true, "actions": true, "action": true,
-		"after": true, "when": true, "once": true,
-		"pass": true, "passes": true, "passing": true,
-		"finish": true, "finishes": true, "complete": true, "completes": true,
-		"required": true,
-	}
+	fillerWords := commandFillerWords
+	ciRelatedWords := commandCIWords
 
 	words := strings.Fields(line)
 	for _, word := range words {
