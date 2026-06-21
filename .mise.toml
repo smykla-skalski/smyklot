@@ -5,7 +5,7 @@
 
 [tools]
 go = "1.26.4"                              # Go 1.25.4 (latest stable)
-node = "24.15.0"                           # Node.js for semantic-release
+node = "24.17.0"                           # Node.js for semantic-release
 task = "3.51.1"                            # Task runner
 "npm:markdownlint-cli2" = "0.22.1"         # Markdown linter
 "go:github.com/onsi/ginkgo/v2/ginkgo" = "2.31.0" # Ginkgo test runner
