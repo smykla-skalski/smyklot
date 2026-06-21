@@ -1,11 +1,11 @@
 module github.com/smykla-skalski/smyklot
 
-go 1.26.3
+go 1.26.4
 
 require (
 	github.com/jferrl/go-githubauth v1.6.0
-	github.com/onsi/ginkgo/v2 v2.29.0
-	github.com/onsi/gomega v1.41.0
+	github.com/onsi/ginkgo/v2 v2.31.0
+	github.com/onsi/gomega v1.42.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 )
