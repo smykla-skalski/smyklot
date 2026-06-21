@@ -4,6 +4,7 @@ go 1.26.4
 
 require (
 	github.com/jferrl/go-githubauth v1.6.0
+	github.com/jferrl/go-githubauth/v2 v2.0.1
 	github.com/onsi/ginkgo/v2 v2.31.0
 	github.com/onsi/gomega v1.42.0
 	github.com/spf13/cobra v1.10.2
