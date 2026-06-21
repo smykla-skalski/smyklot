@@ -4,7 +4,7 @@
 # Update mise: mise self-update
 
 [tools]
-go = "1.26.3"                              # Go 1.25.4 (latest stable)
+go = "1.26.4"                              # Go 1.25.4 (latest stable)
 node = "24.15.0"                           # Node.js for semantic-release
 task = "3.51.1"                            # Task runner
 "npm:markdownlint-cli2" = "0.22.1"         # Markdown linter
