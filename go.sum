@@ -35,6 +35,8 @@ github.com/jferrl/go-githubauth v1.5.1 h1:otHMf7Q6+Hw98fEznIUewsrhayXQqXinhNLc7u
 github.com/jferrl/go-githubauth v1.5.1/go.mod h1:/TwNj2nXg/u0wrTnz8+BjJDThDKaScqsczu7Ryj+v2s=
 github.com/jferrl/go-githubauth v1.6.0 h1:By+4kqdNPhvizKztD1uVbwk3cp2o9bNIVATZ9oIDYaw=
 github.com/jferrl/go-githubauth v1.6.0/go.mod h1:JfSoHpcaY93/UduD45AY15pLgkcE1LnsZfH+Gqf/TBI=
+github.com/jferrl/go-githubauth v1.7.0 h1:ksABJxA4ye8H8VSpW5hVsEOeYxrTG+NwJEWZ0X0BmyI=
+github.com/jferrl/go-githubauth v1.7.0/go.mod h1:JfSoHpcaY93/UduD45AY15pLgkcE1LnsZfH+Gqf/TBI=
 github.com/joshdk/go-junit v1.0.0 h1:S86cUKIdwBHWwA6xCmFlf3RTLfVXYQfvanM5Uh+K6GE=
 github.com/joshdk/go-junit v1.0.0/go.mod h1:TiiV0PqkaNfFXjEiyjWM3XXrhVyCa1K4Zfga6W52ung=
 github.com/kr/pretty v0.3.1 h1:flRD4NNwYAUpkphVc1HcthR4KEIFJ65n8Mw5qdRn3LE=
