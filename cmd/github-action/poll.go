@@ -95,7 +95,7 @@ func runPoll(cmd *cobra.Command, _ []string) error {
 	// repository that has moved to the service
 	bc, err = effectiveConfig(ctx, client, repoOwner, repoName, bc)
 	if err != nil {
-		return err
+		return reportUnusableRepoConfig(ctx, err)
 	}
 
 	// Decided before CODEOWNERS is read, the way the service's sweep decides

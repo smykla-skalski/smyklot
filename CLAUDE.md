@@ -45,6 +45,7 @@ Go + Ginkgo/Gomega, deployed as Docker-based GitHub Action.
 - Delivery dedupe keys on comment id + `updated_at`, **not** the delivery GUID — GitHub does not document whether the GUID survives a redelivery
 - The `runner` key in `.github/smyklot.yaml` decides who acts, and it defaults to **`service`** — the Action stands down unless a repo sets `runner: action`. Both entry points check it, at all four places work starts: `run`, `runPoll`, `handleIssueComment`, `sweepRepo` (`cmd/github-action/runner.go`)
 - Standing down is **silent on the PR** — the other entry point has already reacted. The Action's reason goes to the job summary instead
+- `repoConfigTTL` (30s) is deliberately far shorter than `codeownersTTL` (1h) and shorter than the sweep interval. CODEOWNERS decides who may approve; `.github/smyklot.yaml` decides whether the service acts at all, so a stale copy means a rolled-back repo gets answered by both (`cmd/github-action/server.go`)
 - An unparseable `.github/smyklot.yaml` is **fail-closed with feedback** — no command runs, and the bot says why. Never fall back to defaults: the file is where `allowed_commands` is narrowed
 - `dispatch` must never send on `s.jobs` directly — use `enqueue`, which holds `queueMu` for read. `Shutdown` abandons a running handler once its deadline passes, and a bare send on the closed queue panics rather than taking `default` (`cmd/github-action/server.go`)
 - Metrics live on the **admin listener**, never the webhook one — the webhook port faces the internet, and queue depth and failure reasons should not

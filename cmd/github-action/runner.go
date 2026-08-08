@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/smykla-skalski/smyklot/pkg/config"
@@ -47,6 +48,34 @@ func actionStandsDown(ctx context.Context, bc *config.Config) bool {
 	}
 
 	return true
+}
+
+// unusableConfigSummary is what a sweep leaves behind when the repository's
+// file cannot be read, since a sweep has no one comment to answer.
+const unusableConfigSummary = "\n## Smyklot\n\nStopped: `.github/smyklot.yaml` could not be used.\n\n```text\n%s\n```\n"
+
+// reportUnusableRepoConfig stops a sweep and says why where the run can be
+// read.
+//
+// A broken file stops the sweep rather than letting it fall back to defaults,
+// because the file is where a repository narrows what is allowed and carrying
+// on would restore commands it had turned off. The comment path answers the
+// pull request that asked for something; a sweep is looking at every open pull
+// request at once, so commenting on all of them to report one broken file would
+// be the wrong kind of loud. The job summary carries it instead, and the run
+// fails so a repository does not lose reaction commands quietly.
+func reportUnusableRepoConfig(ctx context.Context, cause error) error {
+	if !errors.Is(cause, ErrRepoConfigInvalid) {
+		return cause
+	}
+
+	if err := appendStepSummary(fmt.Sprintf(unusableConfigSummary, cause)); err != nil {
+		logging.From(ctx).Warn("failed to write step summary", "error", err)
+	}
+
+	logging.From(ctx).Error("stopping: repository configuration is unusable", "error", cause)
+
+	return cause
 }
 
 // serviceStandsDown reports whether the service should leave a repository to

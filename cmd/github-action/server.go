@@ -59,13 +59,29 @@ const (
 	// idleTimeout bounds how long a kept-alive connection may sit unused
 	idleTimeout = 60 * time.Second
 
-	// repoFileTTL is how long a repository's CODEOWNERS and .github/smyklot.yaml
-	// are trusted before they are read again.
+	// codeownersTTL is how long a repository's CODEOWNERS is trusted before it
+	// is read again.
 	//
 	// Comfortably longer than the sweep interval on purpose: at the same
 	// cadence every tick would land on a just-expired entry and the cache would
 	// buy nothing for the caller that reads these most
-	repoFileTTL = time.Hour
+	codeownersTTL = time.Hour
+
+	// repoConfigTTL is how long .github/smyklot.yaml is trusted. Far shorter
+	// than CODEOWNERS, because that file decides whether this process acts on
+	// the repository at all.
+	//
+	// A repository rolling back to the Action commits `runner: action`, and the
+	// Action reads that on its very next run because a workflow starts a fresh
+	// process every time. Anything cached here is how long this process keeps
+	// acting on a repository that has already moved, with both of them
+	// answering the same comment - the one thing the setting exists to stop.
+	//
+	// Shorter than the sweep interval, so the sweep re-reads the file every
+	// tick. That is one contents request per repository per tick against an
+	// installation's 5000 an hour, and it is worth it. Deliveries arriving
+	// together still share one read, which is the burst this ever protected
+	repoConfigTTL = 30 * time.Second
 
 	// maxDeliveryIDLength caps the unverified delivery identifier before it
 	// reaches a log line. GitHub's are UUIDs, well under this
@@ -156,11 +172,11 @@ func newServer(cfg *serveConfig) (*server, error) {
 		redactor: redactor,
 		registry: registry,
 		metrics:  metrics.New(registry),
-		configs: newRepoCache(repoFileTTL,
+		configs: newRepoCache(repoConfigTTL,
 			func(ctx context.Context, client *github.Client, owner, repo string) (*config.Config, error) {
 				return effectiveConfig(ctx, client, owner, repo, cfg.botConfig)
 			}),
-		owners:    newRepoCache(repoFileTTL, fetchCodeowners),
+		owners:    newRepoCache(codeownersTTL, fetchCodeowners),
 		readiness: newReadiness(),
 		failures:  newFailureLog(maxRecordedFailures),
 		deduper:   webhook.NewDeduper(webhook.DefaultTTL, webhook.DefaultMaxEntries, nil),

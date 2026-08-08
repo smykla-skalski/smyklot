@@ -275,7 +275,7 @@ Whichever entry point is not named stands down completely - no reaction, no comm
 
 Rolling back needs no code change and no redeploy.
 
-**One repository**: commit `runner: action` to its `.github/smyklot.yaml`. It is back on the Action as soon as that merges.
+**One repository**: commit `runner: action` to its `.github/smyklot.yaml`. The Action picks it up on its very next run, because a workflow starts a fresh process every time. The service caches that file for 30 seconds, so it stops within about half a minute of the merge.
 
 **Every repository**: set the organization variable `SMYKLOT_CONFIG` to include `"runner": "action"`, which every Action run reads, then scale the service to zero:
 

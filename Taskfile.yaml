@@ -121,6 +121,16 @@ tasks:
         helm lint charts/smyklot
         --set github.clientId=lint
         --set github.existingSecret=lint
+      # A chart that renders two replicas would reintroduce the double-acting
+      # this whole design exists to stop, so the refusal is worth a check of
+      # its own - a guard nothing exercises is a guard that quietly stops working
+      - |
+        if helm template charts/smyklot \
+          --set github.clientId=lint \
+          --set github.existingSecret=lint \
+          --set replicaCount=2 >/dev/null 2>&1; then
+          echo "✗ chart rendered more than one replica" && exit 1
+        fi
       - echo "✓ Helm chart passes linting"
 
   # ==========================================================================

@@ -5,6 +5,10 @@ metadata:
   labels:
     {{- include "smyklot.labels" . | nindent 4 }}
 spec:
+  {{- /* 0 parks the service, which is safe. Anything above 1 is not */}}
+  {{- if gt (int .Values.replicaCount) 1 }}
+  {{- fail "replicaCount cannot exceed 1: deliveries are de-duplicated in memory and the reaction sweep has no leader election, so a second process answers the same comment twice" }}
+  {{- end }}
   replicas: {{ .Values.replicaCount }}
   strategy:
     {{- toYaml .Values.strategy | nindent 4 }}

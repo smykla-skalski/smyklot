@@ -102,7 +102,7 @@ func (s *githubStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	case strings.Contains(r.URL.Path, "/contents/.github/smyklot."):
 		if strings.HasSuffix(r.URL.Path, ".yaml") {
-			s.writeFile(w, s.repoConfig)
+			s.writeFile(w, s.currentRepoConfig())
 
 			return
 		}
@@ -148,6 +148,24 @@ func (s *githubStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{}`))
 	}
+}
+
+// setRepoConfig changes the repository's file while the service is running, the
+// way a commit to the default branch does
+func (s *githubStub) setRepoConfig(content string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.repoConfig = content
+}
+
+// currentRepoConfig reads the file under the lock, because a spec can change it
+// while a worker is serving a delivery
+func (s *githubStub) currentRepoConfig() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.repoConfig
 }
 
 // writeFile answers the contents API, treating empty content as a missing file

@@ -424,6 +424,8 @@ Whichever entry point is not named stands down: no reaction, no comment, no appr
 
 This is also the rollback. A repository moves back to the Action with one commit and no redeploy, and the workflow files can stay in place throughout - a workflow whose repository is on the service just exits without doing anything.
 
+The Action reads the file on its very next run, since a workflow is a fresh process. The service caches it for 30 seconds, deliberately far shorter than the hour it caches CODEOWNERS for: that file only decides who is allowed to approve, while this one decides whether the service acts on the repository at all.
+
 `runner` defaults to `service`, so **a repository upgrading past the release that added it stops responding to the Action unless it sets `runner: action` or has a service running.** Set it before you upgrade if that repository has no service behind it.
 
 ## Architecture

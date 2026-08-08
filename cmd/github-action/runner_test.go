@@ -7,12 +7,16 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/spf13/cobra"
+
 	"github.com/smykla-skalski/smyklot/internal/githubtest"
 	"github.com/smykla-skalski/smyklot/pkg/config"
+	"github.com/smykla-skalski/smyklot/pkg/github"
 	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
 
@@ -96,12 +100,86 @@ var _ = Describe("Choosing an entry point [Unit]", func() {
 		})
 	})
 
+	// The cron sweep reads the repository's file for the first time in this
+	// change, so what it does with a file it cannot use is new behaviour
+	Describe("the Action's sweep", func() {
+		// runSweep drives runPoll end to end against a stub repository
+		runSweep := func(stub *githubStub, env map[string]string) error {
+			GinkgoHelper()
+
+			endpoint := httptest.NewServer(stub)
+			DeferCleanup(endpoint.Close)
+
+			for _, name := range runEnv {
+				GinkgoT().Setenv(name, "")
+			}
+
+			settings := map[string]string{
+				envGitHubToken: "test-token",
+				envAPIBaseURL:  endpoint.URL,
+				envRepoOwner:   "smykla-skalski",
+				envRepoName:    "smyklot",
+				envRunner:      string(config.RunnerAction),
+			}
+			for key, value := range env {
+				settings[key] = value
+			}
+
+			for key, value := range settings {
+				GinkgoT().Setenv(key, value)
+			}
+
+			cmd := &cobra.Command{}
+			cmd.Flags().StringP(flagPollRepo, "r", "", descPollRepo)
+			cmd.Flags().StringP(flagPollToken, "t", "", descPollToken)
+			cmd.SetContext(context.Background())
+
+			return runPoll(cmd, nil)
+		}
+
+		// Falling back to defaults would restore commands the repository had
+		// turned off, so the sweep stops. Failing rather than exiting quietly
+		// is what stops a repository losing reaction commands unnoticed
+		It("should stop on a file it cannot use", func() {
+			stub := newGitHubStub()
+			stub.repoConfig = "- a list, not a mapping\n"
+
+			Expect(runSweep(stub, nil)).To(MatchError(ErrRepoConfigInvalid))
+			Expect(stub.countCalls(http.MethodGet, codeownersPath)).To(BeZero())
+		})
+
+		It("should say why in the job summary", func() {
+			summary := filepath.Join(GinkgoT().TempDir(), "summary.md")
+
+			stub := newGitHubStub()
+			stub.repoConfig = "- a list, not a mapping\n"
+
+			Expect(runSweep(stub, map[string]string{envStepSummary: summary})).To(HaveOccurred())
+
+			written, err := os.ReadFile(summary) //nolint:gosec // path built by the spec
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(written)).To(ContainSubstring("smyklot.yaml"))
+		})
+
+		It("should sweep a repository whose file is fine", func() {
+			stub := newGitHubStub()
+
+			Expect(runSweep(stub, nil)).To(Succeed())
+			Expect(stub.countCalls(http.MethodGet, codeownersPath)).To(Equal(1))
+		})
+	})
+
 	Describe("the service", func() {
 		var (
 			stub    *githubStub
 			service *httptest.Server
 			srv     *server
 		)
+
+		// configTTL is how long the built service trusts a repository's file.
+		// A spec that changes the file mid-run shortens it, because the real
+		// value is measured in seconds and a spec cannot wait that long
+		configTTL := repoConfigTTL
 
 		start := func() {
 			GinkgoHelper()
@@ -124,6 +202,11 @@ var _ = Describe("Choosing an entry point [Unit]", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
+			srv.configs = newRepoCache(configTTL,
+				func(ctx context.Context, client *github.Client, owner, repo string) (*config.Config, error) {
+					return effectiveConfig(ctx, client, owner, repo, config.Default())
+				})
+
 			workers := srv.startWorkers()
 			DeferCleanup(func() {
 				srv.closeQueue()
@@ -136,6 +219,7 @@ var _ = Describe("Choosing an entry point [Unit]", func() {
 
 		BeforeEach(func() {
 			stub = newGitHubStub()
+			configTTL = repoConfigTTL
 		})
 
 		It("should leave a comment alone in a repository pinned to the Action", func() {
@@ -167,6 +251,49 @@ var _ = Describe("Choosing an entry point [Unit]", func() {
 			Eventually(func() int {
 				return stub.countCalls(http.MethodPost, approveReviews)
 			}, eventuallyWindow).Should(Equal(1))
+		})
+
+		// The rollback the documentation promises. The Action reads the file on
+		// its very next run, because a workflow is a fresh process; if this
+		// process kept serving a cached answer, both would act on the same
+		// comment for as long as the entry lived - the one thing the setting
+		// exists to stop
+		It("should stop acting once the repository rolls back to the Action", func() {
+			configTTL = time.Millisecond
+			start()
+
+			postDelivery(service, webhook.EventIssueComment, deliveryOne,
+				commandDelivery("/approve"), nil)
+
+			Eventually(func() int {
+				return stub.countCalls(http.MethodPost, approveReviews)
+			}, eventuallyWindow).Should(Equal(1))
+
+			stub.setRepoConfig("runner: action\n")
+
+			// A later updated_at, because the deduper keys on the comment and
+			// its revision rather than the delivery identifier. Sending the
+			// same comment again would be refused as a repeat and the spec
+			// would pass without the file ever being read a second time
+			edited := delivery("edited", "/approve", "User", "2026-01-01T00:00:01Z", true)
+
+			postDelivery(service, webhook.EventIssueComment, deliveryTwo, edited, nil)
+
+			Eventually(func() int {
+				return stub.countCalls(http.MethodGet, "/contents/.github/smyklot.yaml")
+			}, eventuallyWindow).Should(BeNumerically(">=", 2))
+
+			Consistently(func() int {
+				return stub.countCalls(http.MethodPost, approveReviews)
+			}).Should(Equal(1))
+		})
+
+		// Guards the constant rather than the mechanism. Reusing the
+		// CODEOWNERS lifetime here, as one shared value once did, is what put a
+		// rolled-back repository an hour behind the Action
+		It("should not trust the file for longer than a sweep", func() {
+			Expect(repoConfigTTL).To(BeNumerically("<", defaultPollInterval))
+			Expect(repoConfigTTL).To(BeNumerically("<", codeownersTTL))
 		})
 
 		// The sweep is the other half. A repository left on the Action would
