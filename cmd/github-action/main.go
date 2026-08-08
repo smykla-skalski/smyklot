@@ -284,6 +284,13 @@ func run(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
+	// The service handles this repository unless the file says otherwise, and
+	// two entry points acting on one comment is what that setting exists to
+	// stop
+	if actionStandsDown(ctx, bc) {
+		return nil
+	}
+
 	return executeComment(ctx, client, rc, bc)
 }
 
@@ -1848,6 +1855,31 @@ func getInstallationToken(rc *RuntimeConfig) (string, error) {
 	}
 
 	return token, nil
+}
+
+// appendStepSummary adds one note to the GitHub Actions step summary.
+//
+// Outside Actions there is no summary file, and nothing is written.
+func appendStepSummary(note string) error {
+	summaryFile := os.Getenv(envStepSummary)
+	if summaryFile == "" {
+		return nil
+	}
+
+	//nolint:gosec // summaryFile is from the trusted GitHub Actions environment
+	file, err := os.OpenFile(summaryFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return NewGitHubError(ErrStepSummary, err)
+	}
+	defer func() {
+		_ = file.Close()
+	}()
+
+	if _, err := file.WriteString(note); err != nil {
+		return NewGitHubError(ErrStepSummary, err)
+	}
+
+	return nil
 }
 
 // writeStepSummary writes the effective configuration to GitHub Actions step summary.

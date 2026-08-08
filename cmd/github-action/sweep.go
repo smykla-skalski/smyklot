@@ -180,6 +180,12 @@ func (s *server) sweepRepo(ctx context.Context, client *github.Client, repo gith
 		return err
 	}
 
+	// Checked before CODEOWNERS is read, so a repository left to the Action
+	// costs the sweep one request rather than two
+	if serviceStandsDown(logging.With(ctx, "repo", repoFullName(repo.Owner, repo.Name)), bc) {
+		return nil
+	}
+
 	codeowners, err := s.owners.Get(ctx, client, repo.Owner, repo.Name)
 	if err != nil {
 		return err

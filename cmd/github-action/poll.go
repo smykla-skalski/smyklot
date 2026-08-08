@@ -90,6 +90,19 @@ func runPoll(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
+	// Layer the repository's own configuration over the workflow's, the same
+	// way a comment does. A sweep that ignored the file would act on reactions
+	// with settings the repository had turned off, and would keep sweeping a
+	// repository that has moved to the service
+	bc, err = effectiveConfig(ctx, client, repoOwner, repoName, bc)
+	if err != nil {
+		return err
+	}
+
+	if actionStandsDown(ctx, bc) {
+		return nil
+	}
+
 	// Poll and process all open PRs
 	return pollAllPRs(ctx, client, checker, bc, repoOwner, repoName, rc.BotUsername)
 }

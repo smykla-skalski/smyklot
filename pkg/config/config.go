@@ -49,6 +49,9 @@ const (
 	// KeyAllowSelfApproval is the config key for allow_self_approval setting
 	KeyAllowSelfApproval = "allow_self_approval"
 
+	// KeyRunner is the config key for the runner setting
+	KeyRunner = "runner"
+
 	// EnvPrefix is the prefix for environment variables
 	EnvPrefix = "SMYKLOT"
 
@@ -71,6 +74,7 @@ func SetupViper(v *viper.Viper) {
 	v.SetDefault(KeyDisableReactions, false)
 	v.SetDefault(KeyDisableDeletedComments, false)
 	v.SetDefault(KeyAllowSelfApproval, false)
+	v.SetDefault(KeyRunner, string(DefaultRunner))
 
 	// Enable environment variable support
 	v.SetEnvPrefix(EnvPrefix)
@@ -92,7 +96,20 @@ func LoadFromViper(v *viper.Viper) *Config {
 		DisableReactions:       v.GetBool(KeyDisableReactions),
 		DisableDeletedComments: v.GetBool(KeyDisableDeletedComments),
 		AllowSelfApproval:      v.GetBool(KeyAllowSelfApproval),
+		Runner:                 Runner(v.GetString(KeyRunner)),
 	}
+}
+
+// Validate rejects settings that name something that does not exist.
+//
+// Viper reads whatever is written, so this is where a value that cannot mean
+// anything is caught. Both entry points call it before acting, which turns a
+// typo into a message on the pull request rather than a repository that quietly
+// stops responding.
+func (c *Config) Validate() error {
+	_, err := ParseRunner(string(c.Runner))
+
+	return err
 }
 
 // LoadRepoConfig layers a repository's own configuration file over base
@@ -134,7 +151,12 @@ func LoadRepoConfig(base *Config, content []byte) (*Config, error) {
 		return nil, err
 	}
 
-	return LoadFromViper(v), nil
+	merged := LoadFromViper(v)
+	if err := merged.Validate(); err != nil {
+		return nil, err
+	}
+
+	return merged, nil
 }
 
 // LoadJSONConfig reads and parses JSON configuration from SMYKLOT_CONFIG environment variable

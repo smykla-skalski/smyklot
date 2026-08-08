@@ -21,6 +21,9 @@ import (
 // envDisableDeletedComments is the viper-bound form of the disable flag
 const envDisableDeletedComments = "SMYKLOT_DISABLE_DELETED_COMMENTS"
 
+// envRunner is the viper-bound form of the runner setting
+const envRunner = "SMYKLOT_RUNNER"
+
 // runEnv lists every variable run() reads, so a spec starts from a known state
 // whatever the developer's shell or the CI job already exports
 var runEnv = []string{
@@ -40,6 +43,7 @@ var runEnv = []string{
 	envAPIBaseURL,
 	envStepSummary,
 	envDisableDeletedComments,
+	envRunner,
 	config.EnvConfig,
 }
 
@@ -164,6 +168,10 @@ func runCommentOn(
 		envRepoOwner:     "smykla-skalski",
 		envRepoName:      "smyklot",
 		envCommentAuthor: "someone",
+
+		// These specs exercise the Action, which stands down by default now
+		// that the service handles a repository that says nothing
+		envRunner: string(config.RunnerAction),
 	}
 	for key, value := range env {
 		settings[key] = value

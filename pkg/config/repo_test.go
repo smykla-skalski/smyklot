@@ -95,6 +95,7 @@ disable_unapprove: true
 disable_reactions: true
 disable_deleted_comments: true
 allow_self_approval: true
+runner: action
 `)
 
 			cfg, err := config.LoadRepoConfig(config.Default(), content)
@@ -113,7 +114,43 @@ allow_self_approval: true
 				DisableReactions:       true,
 				DisableDeletedComments: true,
 				AllowSelfApproval:      true,
+				Runner:                 config.RunnerAction,
 			}))
+		})
+	})
+
+	Context("the runner key", func() {
+		// A repository that says nothing is served by the service, because the
+		// App is already installed on it and no file has to be added to say so
+		It("should default to the service", func() {
+			cfg, err := config.LoadRepoConfig(config.Default(), []byte("quiet_success: true\n"))
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(cfg.RunBy(config.RunnerService)).To(BeTrue())
+			Expect(cfg.RunBy(config.RunnerAction)).To(BeFalse())
+		})
+
+		It("should let a repository fall back to the Action", func() {
+			cfg, err := config.LoadRepoConfig(config.Default(), []byte("runner: action\n"))
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(cfg.RunBy(config.RunnerAction)).To(BeTrue())
+			Expect(cfg.RunBy(config.RunnerService)).To(BeFalse())
+		})
+
+		// Left to compare equal to neither name, a typo would stand both entry
+		// points down and the repository would go silent with nothing to say why
+		It("should reject a runner it does not know", func() {
+			_, err := config.LoadRepoConfig(config.Default(), []byte("runner: workflow\n"))
+			Expect(err).To(MatchError(config.ErrUnknownRunner))
+			Expect(err).To(MatchError(ContainSubstring("workflow")))
+		})
+
+		// A Config built in code, as every caller that does not read a file
+		// builds one, must behave like a file that omits the key
+		It("should read an unset runner as the default", func() {
+			Expect((&config.Config{}).RunBy(config.RunnerService)).To(BeTrue())
+			Expect((&config.Config{}).RunBy(config.RunnerAction)).To(BeFalse())
 		})
 	})
 

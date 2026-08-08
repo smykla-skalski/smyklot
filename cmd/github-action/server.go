@@ -534,6 +534,12 @@ func (s *server) handleIssueComment(ctx context.Context, event *webhook.IssueCom
 		return err
 	}
 
+	// A repository that has rolled back to the Action is left to it, without
+	// the service being redeployed to learn that
+	if serviceStandsDown(ctx, bc) {
+		return nil
+	}
+
 	return executeComment(ctx, client, rc, bc)
 }
 
