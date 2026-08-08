@@ -1,6 +1,6 @@
 module github.com/smykla-skalski/smyklot
 
-go 1.26.4
+go 1.26.5
 
 require (
 	github.com/jferrl/go-githubauth v1.7.0
