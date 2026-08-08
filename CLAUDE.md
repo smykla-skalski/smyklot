@@ -42,6 +42,8 @@ Go + Ginkgo/Gomega, deployed as Docker-based GitHub Action.
 - Webhook signatures cover the **body only**; header values like `X-GitHub-Delivery` are unverified (`cmd/github-action/server.go:safeDeliveryID`)
 - Delivery dedupe keys on comment id + `updated_at`, **not** the delivery GUID — GitHub does not document whether the GUID survives a redelivery
 - A repo must not run both the Action workflow and the service, or both act on the same comment
+- An unparseable `.github/smyklot.yaml` is **fail-closed with feedback** — no command runs, and the bot says why. Never fall back to defaults: the file is where `allowed_commands` is narrowed
+- `dispatch` must never send on `s.jobs` directly — use `enqueue`, which holds `queueMu` for read. `Shutdown` abandons a running handler once its deadline passes, and a bare send on the closed queue panics rather than taking `default` (`cmd/github-action/server.go`)
 
 ## Code Style
 

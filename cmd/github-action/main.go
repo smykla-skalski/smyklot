@@ -8,6 +8,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -151,11 +152,9 @@ type stepSummaryData struct {
 	CommandAliases         map[string]string
 }
 
-var (
-	// githubNamePattern validates GitHub repository and owner names
-	// Allows: alphanumeric, hyphens, underscores, dots (e.g., .dotfiles, foo_bar, foo-bar)
-	githubNamePattern = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
-)
+// githubNamePattern validates GitHub repository and owner names
+// Allows: alphanumeric, hyphens, underscores, dots (e.g., .dotfiles, foo_bar, foo-bar)
+var githubNamePattern = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
 
 var rootCmd = &cobra.Command{
 	Use:   "smyklot",
@@ -267,8 +266,14 @@ func run(cmd *cobra.Command, _ []string) error {
 	//
 	// The service reads the same file, so a repository that checks one in gets
 	// the same treatment whichever entry point handles the comment
-	bc, err = effectiveConfig(ctx, client, rc.RepoOwner, rc.RepoName, bc)
+	base := bc
+
+	bc, err = effectiveConfig(ctx, client, rc.RepoOwner, rc.RepoName, base)
 	if err != nil {
+		if errors.Is(err, ErrRepoConfigInvalid) {
+			return reportInvalidRepoConfig(ctx, client, rc, base, err)
+		}
+
 		return err
 	}
 

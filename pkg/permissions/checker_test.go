@@ -66,12 +66,12 @@ var _ = Describe("Permission Checker [Unit]", func() {
 			BeforeEach(func() {
 				// Create .github/CODEOWNERS file
 				githubDir := filepath.Join(tempDir, ".github")
-				err := os.MkdirAll(githubDir, 0755)
+				err := os.MkdirAll(githubDir, 0o755)
 				Expect(err).NotTo(HaveOccurred())
 
 				content := `* @admin1 @admin2 @root-user`
 				codeownersPath := filepath.Join(githubDir, "CODEOWNERS")
-				err = os.WriteFile(codeownersPath, []byte(content), 0600)
+				err = os.WriteFile(codeownersPath, []byte(content), 0o600)
 				Expect(err).NotTo(HaveOccurred())
 
 				checker, err = permissions.NewChecker(tempDir, nil)
@@ -145,12 +145,12 @@ var _ = Describe("Permission Checker [Unit]", func() {
 			BeforeEach(func() {
 				// Create CODEOWNERS with no global owners
 				githubDir := filepath.Join(tempDir, ".github")
-				err := os.MkdirAll(githubDir, 0755)
+				err := os.MkdirAll(githubDir, 0o755)
 				Expect(err).NotTo(HaveOccurred())
 
 				content := `/docs/ @doc-team`
 				codeownersPath := filepath.Join(githubDir, "CODEOWNERS")
-				err = os.WriteFile(codeownersPath, []byte(content), 0600)
+				err = os.WriteFile(codeownersPath, []byte(content), 0o600)
 				Expect(err).NotTo(HaveOccurred())
 
 				checker, err = permissions.NewChecker(tempDir, nil)
@@ -168,12 +168,12 @@ var _ = Describe("Permission Checker [Unit]", func() {
 			BeforeEach(func() {
 				// Create CODEOWNERS file with multiple global owners
 				githubDir := filepath.Join(tempDir, ".github")
-				err := os.MkdirAll(githubDir, 0755)
+				err := os.MkdirAll(githubDir, 0o755)
 				Expect(err).NotTo(HaveOccurred())
 
 				content := `* @alice @bob @charlie`
 				codeownersPath := filepath.Join(githubDir, "CODEOWNERS")
-				err = os.WriteFile(codeownersPath, []byte(content), 0600)
+				err = os.WriteFile(codeownersPath, []byte(content), 0o600)
 				Expect(err).NotTo(HaveOccurred())
 
 				checker, err = permissions.NewChecker(tempDir, nil)
@@ -208,12 +208,12 @@ var _ = Describe("Permission Checker [Unit]", func() {
 		Context("when handling special characters in usernames", func() {
 			BeforeEach(func() {
 				githubDir := filepath.Join(tempDir, ".github")
-				err := os.MkdirAll(githubDir, 0755)
+				err := os.MkdirAll(githubDir, 0o755)
 				Expect(err).NotTo(HaveOccurred())
 
 				content := `* @user-with-dash @user_with_underscore @user123`
 				codeownersPath := filepath.Join(githubDir, "CODEOWNERS")
-				err = os.WriteFile(codeownersPath, []byte(content), 0600)
+				err = os.WriteFile(codeownersPath, []byte(content), 0o600)
 				Expect(err).NotTo(HaveOccurred())
 
 				checker, err = permissions.NewChecker(tempDir, nil)
@@ -242,12 +242,12 @@ var _ = Describe("Permission Checker [Unit]", func() {
 		Context("when CODEOWNERS contains team ownership", func() {
 			BeforeEach(func() {
 				githubDir := filepath.Join(tempDir, ".github")
-				err := os.MkdirAll(githubDir, 0755)
+				err := os.MkdirAll(githubDir, 0o755)
 				Expect(err).NotTo(HaveOccurred())
 
 				content := `* @test-org/test-team @individual-user`
 				codeownersPath := filepath.Join(githubDir, "CODEOWNERS")
-				err = os.WriteFile(codeownersPath, []byte(content), 0600)
+				err = os.WriteFile(codeownersPath, []byte(content), 0o600)
 				Expect(err).NotTo(HaveOccurred())
 			})
 
@@ -333,7 +333,7 @@ var _ = Describe("Permission Checker [Unit]", func() {
 				githubDir := filepath.Join(tempDir, ".github")
 				content := `* @org1/team1 @org2/team2 @individual-user`
 				codeownersPath := filepath.Join(githubDir, "CODEOWNERS")
-				err := os.WriteFile(codeownersPath, []byte(content), 0600)
+				err := os.WriteFile(codeownersPath, []byte(content), 0o600)
 				Expect(err).NotTo(HaveOccurred())
 
 				callCount := 0
@@ -364,12 +364,12 @@ var _ = Describe("Permission Checker [Unit]", func() {
 		Context("when CODEOWNERS file exists", func() {
 			BeforeEach(func() {
 				githubDir := filepath.Join(tempDir, ".github")
-				err := os.MkdirAll(githubDir, 0755)
+				err := os.MkdirAll(githubDir, 0o755)
 				Expect(err).NotTo(HaveOccurred())
 
 				content := `* @admin1 @admin2`
 				codeownersPath := filepath.Join(githubDir, "CODEOWNERS")
-				err = os.WriteFile(codeownersPath, []byte(content), 0600)
+				err = os.WriteFile(codeownersPath, []byte(content), 0o600)
 				Expect(err).NotTo(HaveOccurred())
 
 				checker, err = permissions.NewChecker(tempDir, nil)
@@ -398,12 +398,12 @@ var _ = Describe("Permission Checker [Unit]", func() {
 		Context("when CODEOWNERS file has no global owners", func() {
 			BeforeEach(func() {
 				githubDir := filepath.Join(tempDir, ".github")
-				err := os.MkdirAll(githubDir, 0755)
+				err := os.MkdirAll(githubDir, 0o755)
 				Expect(err).NotTo(HaveOccurred())
 
 				content := `/docs/ @doc-team`
 				codeownersPath := filepath.Join(githubDir, "CODEOWNERS")
-				err = os.WriteFile(codeownersPath, []byte(content), 0600)
+				err = os.WriteFile(codeownersPath, []byte(content), 0o600)
 				Expect(err).NotTo(HaveOccurred())
 
 				checker, err = permissions.NewChecker(tempDir, nil)

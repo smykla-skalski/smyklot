@@ -55,6 +55,7 @@ var _ = Describe("Webhook service [Unit]", func() {
 		stub     *githubStub
 		endpoint *httptest.Server
 		service  *httptest.Server
+		srv      *server
 	)
 
 	// start builds a service wired to the stub, with real workers but no
@@ -65,7 +66,9 @@ var _ = Describe("Webhook service [Unit]", func() {
 		endpoint = httptest.NewServer(stub)
 		DeferCleanup(endpoint.Close)
 
-		srv, err := newServer(&serveConfig{
+		var err error
+
+		srv, err = newServer(&serveConfig{
 			listenAddress: "127.0.0.1:0",
 			webhookPath:   defaultWebhookPath,
 			webhookSecret: []byte(testSecret),
@@ -79,7 +82,7 @@ var _ = Describe("Webhook service [Unit]", func() {
 
 		workers := srv.startWorkers()
 		DeferCleanup(func() {
-			close(srv.jobs)
+			srv.closeQueue()
 			workers.Wait()
 		})
 
@@ -358,6 +361,51 @@ var _ = Describe("Webhook service [Unit]", func() {
 			}, eventuallyWindow).Should(Equal(1))
 		})
 
+		// A broken file used to abort before any feedback, so the bot went
+		// silent for the whole repository with the reason visible only in the
+		// service's own logs
+		Context("when the file cannot be parsed", func() {
+			BeforeEach(func() {
+				stub.repoConfig = "- this is a list, not a mapping\n"
+			})
+
+			It("should say so on the pull request rather than go quiet", func() {
+				start(config.Default())
+
+				post(webhook.EventIssueComment, deliveryOne, commandDelivery("/approve"), nil)
+
+				Eventually(func() int {
+					return stub.countCalls(http.MethodPost, prCommentsPath)
+				}, eventuallyWindow).Should(Equal(1))
+			})
+
+			// Carrying on with defaults would restore commands the repository
+			// had deliberately turned off
+			It("should run no command", func() {
+				start(config.Default())
+
+				post(webhook.EventIssueComment, deliveryOne, commandDelivery("/approve"), nil)
+
+				Eventually(func() int {
+					return stub.countCalls(http.MethodPost, prCommentsPath)
+				}, eventuallyWindow).Should(Equal(1))
+
+				Expect(stub.countCalls(http.MethodPost, approveReviews)).To(BeZero())
+			})
+
+			// A broken file must not make the bot heckle every conversation in
+			// the repository
+			It("should stay silent on a comment that asked for nothing", func() {
+				start(config.Default())
+
+				post(webhook.EventIssueComment, deliveryOne, commandDelivery("just thinking out loud"), nil)
+
+				Consistently(func() int {
+					return stub.countCalls(http.MethodPost, prCommentsPath)
+				}, 300*time.Millisecond).Should(BeZero())
+			})
+		})
+
 		It("should fall back to the process-wide configuration", func() {
 			quiet := config.Default()
 			quiet.QuietSuccess = true
@@ -372,6 +420,36 @@ var _ = Describe("Webhook service [Unit]", func() {
 			Consistently(func() int {
 				return stub.countCalls(http.MethodPost, prCommentsPath)
 			}, 200*time.Millisecond).Should(BeZero())
+		})
+	})
+
+	// http.Server.Shutdown leaves a handler that is still running alone once its
+	// deadline passes, so a delivery can reach the queue after Run has closed
+	// it. A bare send would panic there, and the panic would skip the claim
+	// release, losing the command and blocking its redelivery for an hour
+	Describe("a delivery that arrives during shutdown", func() {
+		BeforeEach(func() {
+			start(config.Default())
+		})
+
+		It("should refuse it rather than panic, and leave it retryable", func() {
+			srv.closeQueue()
+
+			resp := post(webhook.EventIssueComment, deliveryOne, commandDelivery("/approve"), nil)
+			Expect(resp.StatusCode).To(Equal(http.StatusServiceUnavailable))
+
+			Consistently(stub.total, 200*time.Millisecond).Should(BeZero())
+
+			// The claim was released, so GitHub redelivering after the restart
+			// gets a fresh attempt rather than "already handled"
+			Expect(srv.deduper.Begin(
+				"issue_comment:created:smykla-skalski/smyklot:555:2026-08-08T10:00:00Z",
+			)).To(BeTrue())
+		})
+
+		It("should be safe to close the queue more than once", func() {
+			srv.closeQueue()
+			Expect(srv.closeQueue).NotTo(Panic())
 		})
 	})
 

@@ -46,6 +46,11 @@ var (
 	// ErrConfigLoad is returned when loading configuration fails
 	ErrConfigLoad = errors.New("failed to load configuration")
 
+	// ErrRepoConfigInvalid is returned when a repository's own configuration
+	// file exists but cannot be parsed. Unlike a failure to fetch it, retrying
+	// will not help, so the repository is told rather than left guessing
+	ErrRepoConfigInvalid = errors.New("repository configuration file is invalid")
+
 	// ErrGetPRs is returned when fetching open PRs from GitHub fails
 	ErrGetPRs = errors.New("failed to fetch open PRs from GitHub")
 
@@ -178,6 +183,20 @@ func (e *ConfigError) Unwrap() error {
 	}
 
 	return e.Op
+}
+
+// Is matches on the operation, since Unwrap walks to the cause instead.
+//
+// Without this a caller cannot tell one configuration failure from another -
+// errors.Is would follow Unwrap past Op and never see it. GitHubError and
+// InputError already do this.
+func (e *ConfigError) Is(target error) bool {
+	var configErr *ConfigError
+	if errors.As(target, &configErr) {
+		return true
+	}
+
+	return errors.Is(e.Op, target)
 }
 
 func (e *GitHubError) Is(target error) bool {

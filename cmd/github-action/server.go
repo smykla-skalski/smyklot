@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/pkg/config"
@@ -42,6 +43,17 @@ const (
 	// dribbles headers
 	readHeaderTimeout = 10 * time.Second
 
+	// readTimeout bounds the whole request, body included.
+	//
+	// Without it a client can trickle a body indefinitely, and it can do so
+	// unauthenticated: the signature is checked only after the body has been
+	// read in full. Such a request would outlive shutdownTimeout and leave a
+	// handler running after Shutdown has already given up on it
+	readTimeout = 30 * time.Second
+
+	// idleTimeout bounds how long a kept-alive connection may sit unused
+	idleTimeout = 60 * time.Second
+
 	// repoFileTTL is how long a repository's CODEOWNERS and .github/smyklot.yaml
 	// are trusted before they are read again.
 	//
@@ -68,6 +80,17 @@ type server struct {
 	deduper *webhook.Deduper
 
 	jobs chan job
+
+	// queueMu guards jobs against being closed while a handler is mid-send.
+	//
+	// http.Server.Shutdown leaves a handler that is still running alone once
+	// its deadline passes, so a handler can reach the send after Run has moved
+	// on to closing the queue. A send on a closed channel panics rather than
+	// taking the select's default branch, which would eat the delivery and
+	// strand its claim. Senders hold this for read, the close takes it for
+	// write, so the two cannot overlap
+	queueMu     sync.RWMutex
+	queueClosed bool
 
 	// jobCtx outlives the request that enqueued a job and survives shutdown
 	// being signalled, so a delivery already in the queue still completes
@@ -145,6 +168,8 @@ func (s *server) Run(ctx context.Context) error {
 		Addr:              s.cfg.listenAddress,
 		Handler:           s.handler(),
 		ReadHeaderTimeout: readHeaderTimeout,
+		ReadTimeout:       readTimeout,
+		IdleTimeout:       idleTimeout,
 	}
 
 	listenErr := make(chan error, 1)
@@ -171,10 +196,11 @@ func (s *server) Run(ctx context.Context) error {
 		shutdownErr = srv.Shutdown(shutdownCtx)
 	}
 
-	// Stop accepting first, then drain: closing the queue while the listener
-	// still runs would panic a handler mid-enqueue
+	// Stop accepting first, then drain. Shutdown abandons a handler that is
+	// still running once its deadline passes, so closeQueue rather than a bare
+	// close: a late handler must be refused, not met with a closed channel
 	stopSweep()
-	close(s.jobs)
+	s.closeQueue()
 	s.drain(workers)
 	<-sweepStopped
 
@@ -251,17 +277,51 @@ func (s *server) dispatch(w http.ResponseWriter, j job) {
 		return
 	}
 
-	select {
-	case s.jobs <- j:
+	if s.enqueue(j) {
 		w.WriteHeader(http.StatusAccepted)
 
-	default:
-		// Releasing the claim keeps the delivery retryable rather than
-		// dropping it silently
-		s.deduper.Abandon(j.key)
-		log.Printf("delivery %s from %s: queue full", j.deliveryID, j.event.Repository.FullName)
-		http.Error(w, "queue full", http.StatusServiceUnavailable)
+		return
 	}
+
+	// Releasing the claim keeps the delivery retryable rather than dropping it
+	// silently: GitHub records the refusal and a redelivery gets a fresh try
+	s.deduper.Abandon(j.key)
+	log.Printf("delivery %s from %s: not accepted", j.deliveryID, j.event.Repository.FullName)
+	http.Error(w, "not accepted", http.StatusServiceUnavailable)
+}
+
+// enqueue offers a delivery to the workers, reporting whether they took it.
+//
+// Refuses rather than blocks when the queue is full, and refuses rather than
+// panics when the queue has already been closed for shutdown.
+func (s *server) enqueue(j job) bool {
+	s.queueMu.RLock()
+	defer s.queueMu.RUnlock()
+
+	if s.queueClosed {
+		return false
+	}
+
+	select {
+	case s.jobs <- j:
+		return true
+
+	default:
+		return false
+	}
+}
+
+// closeQueue stops the workers once every in-flight send has finished.
+func (s *server) closeQueue() {
+	s.queueMu.Lock()
+	defer s.queueMu.Unlock()
+
+	if s.queueClosed {
+		return
+	}
+
+	s.queueClosed = true
+	close(s.jobs)
 }
 
 // execute runs one delivery, releasing its claim if the work did not take
@@ -296,6 +356,10 @@ func (s *server) handleIssueComment(ctx context.Context, event *webhook.IssueCom
 
 	bc, err := s.configs.Get(ctx, client, event.Repository.Owner.Login, event.Repository.Name)
 	if err != nil {
+		if errors.Is(err, ErrRepoConfigInvalid) {
+			return reportInvalidRepoConfig(ctx, client, rc, s.cfg.botConfig, err)
+		}
+
 		return err
 	}
 

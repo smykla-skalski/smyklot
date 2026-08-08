@@ -223,6 +223,10 @@ Settings the file omits keep whatever the workflow or the service was started wi
 
 This is the only per-repository configuration the [service](#running-as-a-service) can see - it has no access to a repository's Actions variables. The Action reads the same file, so a repository gets the same behaviour whichever one handles the comment.
 
+The file is read from the **default branch**, so a pull request cannot change how its own commands are handled.
+
+If it cannot be parsed, no command runs and the bot replies saying so. It does not fall back to defaults: this file is where a repository narrows `allowed_commands`, and ignoring a broken one would quietly restore commands the repository had turned off.
+
 #### Option 3: Individual variables
 
 Configure individual settings via repository variables or environment variables with `SMYKLOT_` prefix:

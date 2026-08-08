@@ -31,7 +31,7 @@ var _ = Describe("CODEOWNERS Parser [Unit]", func() {
 			It("should parse a basic CODEOWNERS file with global owners", func() {
 				content := `* @global-owner1 @global-owner2`
 				codeownersPath := filepath.Join(tempDir, "CODEOWNERS")
-				err := os.WriteFile(codeownersPath, []byte(content), 0600)
+				err := os.WriteFile(codeownersPath, []byte(content), 0o600)
 				Expect(err).NotTo(HaveOccurred())
 
 				codeowners, err := permissions.ParseCodeownersFile(codeownersPath)
@@ -45,7 +45,7 @@ var _ = Describe("CODEOWNERS Parser [Unit]", func() {
 /docs/ @doc-team
 *.js @js-team`
 				codeownersPath := filepath.Join(tempDir, "CODEOWNERS")
-				err := os.WriteFile(codeownersPath, []byte(content), 0600)
+				err := os.WriteFile(codeownersPath, []byte(content), 0o600)
 				Expect(err).NotTo(HaveOccurred())
 
 				codeowners, err := permissions.ParseCodeownersFile(codeownersPath)
@@ -62,7 +62,7 @@ var _ = Describe("CODEOWNERS Parser [Unit]", func() {
 # Another comment
 /docs/ @doc-team`
 				codeownersPath := filepath.Join(tempDir, "CODEOWNERS")
-				err := os.WriteFile(codeownersPath, []byte(content), 0600)
+				err := os.WriteFile(codeownersPath, []byte(content), 0o600)
 				Expect(err).NotTo(HaveOccurred())
 
 				codeowners, err := permissions.ParseCodeownersFile(codeownersPath)
@@ -73,7 +73,7 @@ var _ = Describe("CODEOWNERS Parser [Unit]", func() {
 			It("should handle lines without @ prefix", func() {
 				content := `* owner1 @owner2`
 				codeownersPath := filepath.Join(tempDir, "CODEOWNERS")
-				err := os.WriteFile(codeownersPath, []byte(content), 0600)
+				err := os.WriteFile(codeownersPath, []byte(content), 0o600)
 				Expect(err).NotTo(HaveOccurred())
 
 				codeowners, err := permissions.ParseCodeownersFile(codeownersPath)
@@ -85,7 +85,7 @@ var _ = Describe("CODEOWNERS Parser [Unit]", func() {
 			It("should handle empty CODEOWNERS file", func() {
 				content := ``
 				codeownersPath := filepath.Join(tempDir, "CODEOWNERS")
-				err := os.WriteFile(codeownersPath, []byte(content), 0600)
+				err := os.WriteFile(codeownersPath, []byte(content), 0o600)
 				Expect(err).NotTo(HaveOccurred())
 
 				codeowners, err := permissions.ParseCodeownersFile(codeownersPath)
@@ -116,7 +116,7 @@ var _ = Describe("CODEOWNERS Parser [Unit]", func() {
 /docs/ @owner2 @owner3
 *.js @owner1`
 			codeownersPath := filepath.Join(tempDir, "CODEOWNERS")
-			err := os.WriteFile(codeownersPath, []byte(content), 0600)
+			err := os.WriteFile(codeownersPath, []byte(content), 0o600)
 			Expect(err).NotTo(HaveOccurred())
 
 			codeowners, err := permissions.ParseCodeownersFile(codeownersPath)
@@ -129,7 +129,7 @@ var _ = Describe("CODEOWNERS Parser [Unit]", func() {
 		It("should return empty list for empty CODEOWNERS", func() {
 			content := ``
 			codeownersPath := filepath.Join(tempDir, "CODEOWNERS")
-			err := os.WriteFile(codeownersPath, []byte(content), 0600)
+			err := os.WriteFile(codeownersPath, []byte(content), 0o600)
 			Expect(err).NotTo(HaveOccurred())
 
 			codeowners, err := permissions.ParseCodeownersFile(codeownersPath)

@@ -260,4 +260,28 @@ var _ = Describe("Repository configuration [Unit]", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(recorder.posted()).To(HaveLen(1))
 	})
+
+	// A broken file used to abort before any feedback, leaving the reason
+	// visible only in the workflow log that PR authors do not read
+	Context("when the file cannot be parsed", func() {
+		It("should say so on the pull request", func() {
+			recorder := &commentRecorder{repoConfig: "- a list, not a mapping\n"}
+
+			_, err := runCommentOn(recorder, "created", "/approve", nil)
+			Expect(err).To(MatchError(ErrRepoConfigInvalid))
+
+			posted := recorder.posted()
+			Expect(posted).To(HaveLen(1))
+			Expect(posted[0].Body).To(ContainSubstring("Invalid Configuration File"))
+			Expect(posted[0].Body).To(ContainSubstring("smyklot.yaml"))
+		})
+
+		It("should stay silent on a comment that asked for nothing", func() {
+			recorder := &commentRecorder{repoConfig: "- a list, not a mapping\n"}
+
+			_, err := runCommentOn(recorder, "created", "just thinking out loud", nil)
+			Expect(err).To(MatchError(ErrRepoConfigInvalid))
+			Expect(recorder.posted()).To(BeEmpty())
+		})
+	})
 })

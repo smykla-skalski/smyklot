@@ -161,6 +161,29 @@ func NewNoCodeownersFile() *Feedback {
 	}
 }
 
+// NewRepoConfigInvalid creates error feedback for an unparseable repository
+// configuration file
+//
+// The bot refuses to act rather than falling back to defaults: the file is
+// where a repository narrows what commands are allowed, so ignoring it would
+// quietly restore commands the repository had turned off. Saying so on the pull
+// request is the only signal whoever owns the file will see.
+func NewRepoConfigInvalid(reason string) *Feedback {
+	message := fmt.Sprintf(
+		"❌ **Invalid Configuration File**\n\n"+
+			"`.github/smyklot.yaml` on the default branch could not be parsed, "+
+			"so no command will run in this repository until it is fixed.\n\n"+
+			"**Reason:** %s",
+		reason,
+	)
+
+	return &Feedback{
+		Type:    Error,
+		Emoji:   "❌",
+		Message: message,
+	}
+}
+
 // NewApprovalSuccess creates success feedback for a successful PR approval
 //
 // The message acknowledges the approver and indicates the approval was successful
