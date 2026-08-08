@@ -82,6 +82,7 @@ tasks:
       - lint:go
       - lint:markdown
       - lint:mod
+      - lint:helm
     cmd: echo "✅ All linters passed!"
 
   lint:go:
@@ -109,6 +110,18 @@ tasks:
       - echo "▶ Verifying Go modules"
       - go mod verify
       - echo "✓ Go modules verified"
+
+  lint:helm:
+    desc: Lint the Helm chart
+    cmds:
+      - echo "▶ Linting the Helm chart"
+      # Both are required and have no default, so linting without them would
+      # only ever exercise the failure the chart is meant to raise
+      - >-
+        helm lint charts/smyklot
+        --set github.clientId=lint
+        --set github.existingSecret=lint
+      - echo "✓ Helm chart passes linting"
 
   # ==========================================================================
   # Security

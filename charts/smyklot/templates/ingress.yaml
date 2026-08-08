@@ -1,0 +1,34 @@
+{{- if .Values.ingress.enabled }}
+{{- $fullName := include "smyklot.fullname" . -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fullName }}
+  labels:
+    {{- include "smyklot.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          # The webhook path and nothing else. /metrics, /failures and the
+          # probes stay on the admin port, which no rule here routes to
+          - path: {{ .Values.webhookPath }}
+            pathType: {{ .Values.ingress.pathType }}
+            backend:
+              service:
+                name: {{ $fullName }}
+                port:
+                  name: webhook
+{{- end }}

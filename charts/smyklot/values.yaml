@@ -1,0 +1,145 @@
+# Default values for smyklot.
+
+image:
+  repository: ghcr.io/smykla-skalski/smyklot
+  # tag defaults to the chart's appVersion, which is the release it was cut from
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+# One process, deliberately. Deliveries are de-duplicated in memory and the
+# reaction sweep has no leader election, so a second replica sweeps the same
+# repositories and can act on the same reaction twice
+replicaCount: 1
+
+# Recreate for the same reason. A rolling update would run two processes for as
+# long as the old one takes to drain, which is the state replicaCount avoids
+strategy:
+  type: Recreate
+
+github:
+  # clientId is the App's client ID, or its numeric app ID. Required
+  clientId: ""
+
+  # existingSecret names a Secret holding the webhook secret and the App
+  # private key. Required: neither value can be given to the chart, so neither
+  # can end up in a values file, in git, or in `helm get values` output
+  existingSecret: ""
+
+  # Keys within that Secret
+  webhookSecretKey: webhook-secret
+  privateKeyKey: private-key
+
+  # apiBaseURL points at a GitHub Enterprise instance. Empty uses public GitHub
+  apiBaseURL: ""
+
+  # botUsername is how the service recognises its own reviews and comments
+  botUsername: ""
+
+# Process-wide defaults, which each repository's .github/smyklot.yaml is
+# layered over. Rendered into SMYKLOT_CONFIG
+#
+# Anything set here applies to every repository the App is installed on, so
+# prefer the repository's own file for anything that is not organisation policy
+config: {}
+
+# webhookPath is the path GitHub delivers to. It must match the App's webhook
+# URL
+webhookPath: /webhook
+
+# pollInterval is how often reactions and pending-CI pull requests are swept.
+# 0 disables the sweep, and reaction commands stop working with it
+pollInterval: 5m
+
+logFormat: json
+logLevel: info
+
+service:
+  type: ClusterIP
+
+  # port carries webhook deliveries and is what an ingress points at
+  port: 8080
+
+  # adminPort carries /livez, /readyz, /metrics and /failures. It is on the
+  # Service so probes and Prometheus can reach it, and it must never be exposed
+  # through an ingress
+  adminPort: 9090
+
+  annotations: {}
+
+# The webhook path is the only thing that should ever be public. Everything an
+# operator reads lives on adminPort, which no rule here routes to
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: ""
+  pathType: Prefix
+  tls: []
+
+serviceMonitor:
+  enabled: false
+  interval: 30s
+  scrapeTimeout: ""
+  labels: {}
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# 60s covers the worst case the service allows itself: 15s to stop accepting
+# and 30s to finish deliveries already running
+terminationGracePeriodSeconds: 60
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
+
+livenessProbe:
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+# Readiness answers no while GitHub is unreachable, which takes the pod out of
+# the Service. Deliveries then fail at the ingress rather than being accepted
+# and dropped, and GitHub keeps them for redelivery
+readinessProbe:
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+extraEnv: []
+extraVolumes: []
+extraVolumeMounts: []

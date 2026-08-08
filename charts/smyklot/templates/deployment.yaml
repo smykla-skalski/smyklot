@@ -1,0 +1,125 @@
+{{- include "smyklot.validate" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "smyklot.fullname" . }}
+  labels:
+    {{- include "smyklot.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  strategy:
+    {{- toYaml .Values.strategy | nindent 4 }}
+  selector:
+    matchLabels:
+      {{- include "smyklot.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "smyklot.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "smyklot.serviceAccountName" . }}
+      # The service talks to GitHub, never to the Kubernetes API
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: smyklot
+          image: {{ include "smyklot.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - serve
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: webhook
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+            - name: admin
+              containerPort: {{ .Values.service.adminPort }}
+              protocol: TCP
+          env:
+            - name: SMYKLOT_LISTEN_ADDRESS
+              value: ":{{ .Values.service.port }}"
+            - name: SMYKLOT_ADMIN_ADDRESS
+              value: ":{{ .Values.service.adminPort }}"
+            - name: SMYKLOT_WEBHOOK_PATH
+              value: {{ .Values.webhookPath | quote }}
+            - name: SMYKLOT_POLL_INTERVAL
+              value: {{ .Values.pollInterval | quote }}
+            - name: SMYKLOT_LOG_FORMAT
+              value: {{ .Values.logFormat | quote }}
+            - name: SMYKLOT_LOG_LEVEL
+              value: {{ .Values.logLevel | quote }}
+            - name: GITHUB_APP_CLIENT_ID
+              value: {{ .Values.github.clientId | quote }}
+            {{- with .Values.github.apiBaseURL }}
+            - name: SMYKLOT_GITHUB_API_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.github.botUsername }}
+            - name: SMYKLOT_BOT_USERNAME
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.config }}
+            - name: SMYKLOT_CONFIG
+              value: {{ toJson . | quote }}
+            {{- end }}
+            # Neither of these is ever a chart value, so neither can be read
+            # back out of the release
+            - name: SMYKLOT_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.github.existingSecret }}
+                  key: {{ .Values.github.webhookSecretKey }}
+            - name: GITHUB_APP_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.github.existingSecret }}
+                  key: {{ .Values.github.privateKeyKey }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: admin
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: admin
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- with .Values.extraVolumeMounts }}
+          volumeMounts:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.extraVolumes }}
+      volumes:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

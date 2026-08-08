@@ -1,0 +1,30 @@
+{{ include "smyklot.fullname" . }} is installed.
+
+Point the App's webhook at:
+
+{{- if .Values.ingress.enabled }}
+
+  https://{{ .Values.ingress.host }}{{ .Values.webhookPath }}
+
+{{- else }}
+
+  No ingress is enabled, so nothing reaches the service from GitHub yet. Set
+  ingress.enabled and ingress.host, or route to port {{ .Values.service.port }}
+  another way.
+
+{{- end }}
+
+Watch it:
+
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "smyklot.fullname" . }} {{ .Values.service.adminPort }}
+  curl localhost:{{ .Values.service.adminPort }}/readyz
+  curl localhost:{{ .Values.service.adminPort }}/failures
+
+That port carries the probes, the metrics and the last failed deliveries. Keep
+it off any public route.
+
+Every repository the App is installed on is now served by this process. A
+repository that should stay on the Action puts this in its
+.github/smyklot.yaml:
+
+  runner: action

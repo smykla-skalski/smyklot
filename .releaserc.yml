@@ -56,12 +56,18 @@ plugins:
       changelogTitle: "# Changelog"
 
   - - "@semantic-release/exec"
-    - prepareCmd: perl -i -pe 's|smyklot:[0-9]+\.[0-9]+\.[0-9]+|smyklot:${nextRelease.version}|g' action.yml
+    # The chart is versioned with the binary it deploys, so `helm install
+    # --version X` and `smyklot:X` are always the same release
+    - prepareCmd: >-
+        perl -i -pe 's|smyklot:[0-9]+\.[0-9]+\.[0-9]+|smyklot:${nextRelease.version}|g' action.yml &&
+        perl -i -pe 's|^version: .*|version: ${nextRelease.version}|;
+        s|^appVersion: .*|appVersion: "${nextRelease.version}"|' charts/smyklot/Chart.yaml
 
   - - "@semantic-release/git"
     - assets:
         - CHANGELOG.md
         - action.yml
+        - charts/smyklot/Chart.yaml
       message: "chore(release): bump version to ${nextRelease.version}\n\n${nextRelease.notes}"
 
   - - "@semantic-release/github"

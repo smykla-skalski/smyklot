@@ -1,0 +1,21 @@
+apiVersion: v2
+name: smyklot
+description: Automated PR approvals and merges based on CODEOWNERS
+type: application
+
+# Both are rewritten at release time, so the chart and the image it deploys
+# always carry the same version
+version: 0.0.0
+appVersion: "0.0.0"
+
+home: https://github.com/smykla-skalski/smyklot
+sources:
+  - https://github.com/smykla-skalski/smyklot
+maintainers:
+  - name: Bart Smykla
+    url: https://github.com/bartsmykla
+keywords:
+  - github
+  - codeowners
+  - pull-request
+  - automation

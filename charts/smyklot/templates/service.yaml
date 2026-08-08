@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "smyklot.fullname" . }}
+  labels:
+    {{- include "smyklot.labels" . | nindent 4 }}
+  {{- with .Values.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - name: webhook
+      port: {{ .Values.service.port }}
+      targetPort: webhook
+      protocol: TCP
+    - name: admin
+      port: {{ .Values.service.adminPort }}
+      targetPort: admin
+      protocol: TCP
+  selector:
+    {{- include "smyklot.selectorLabels" . | nindent 4 }}
