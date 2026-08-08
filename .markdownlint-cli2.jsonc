@@ -9,8 +9,8 @@
     }
   },
   "ignores": [
-    "node_modules/",
-    "vendor/",
-    "tmp/"
+    "**/node_modules/**",
+    "**/vendor/**",
+    "**/tmp/**"
   ]
 }

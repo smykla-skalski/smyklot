@@ -126,31 +126,12 @@ func LoadRepoConfig(base *Config, content []byte) (*Config, error) {
 		return base, nil
 	}
 
-	if base == nil {
-		base = Default()
-	}
-
-	// Seed Viper from base through Config's own JSON tags, so a new setting
-	// cannot be forgotten here
-	seed, err := json.Marshal(base)
+	patch, err := ParsePatch(content)
 	if err != nil {
 		return nil, err
 	}
 
-	v := viper.New()
-	v.SetConfigType("json")
-
-	if err := v.ReadConfig(bytes.NewReader(seed)); err != nil {
-		return nil, err
-	}
-
-	v.SetConfigType("yaml")
-
-	if err := v.MergeConfig(bytes.NewReader(content)); err != nil {
-		return nil, err
-	}
-
-	return LoadFromViper(v)
+	return ApplyPatch(base, patch), nil
 }
 
 // LoadJSONConfig reads and parses JSON configuration from SMYKLOT_CONFIG environment variable

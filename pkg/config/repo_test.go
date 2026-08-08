@@ -65,7 +65,7 @@ var _ = Describe("LoadRepoConfig [Unit]", func() {
 
 			cfg, err := config.LoadRepoConfig(base, []byte("command_aliases:\n  ship: merge\n"))
 			Expect(err).NotTo(HaveOccurred())
-			Expect(cfg.CommandAliases).To(HaveKeyWithValue("ship", "merge"))
+			Expect(cfg.CommandAliases).To(Equal(map[string]string{"ship": "merge"}))
 		})
 
 		// A repository turning a service-wide restriction back off is the

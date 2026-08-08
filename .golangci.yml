@@ -97,6 +97,8 @@ linters:
 
   exclusions:
     generated: strict
+    paths:
+      - internal/panel/frontend/node_modules
     rules:
       # Exclude some linters from test files
       - path: _test\.go
