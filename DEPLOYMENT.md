@@ -338,11 +338,16 @@ fly secrets set \
 
 Secrets live encrypted in Fly and are injected as environment variables. Nothing sensitive belongs in `fly.toml`, which is committed.
 
-The private key must be PKCS#8, the format that starts `-----BEGIN PRIVATE KEY-----`. GitHub hands out PKCS#1 (`BEGIN RSA PRIVATE KEY`), so convert it first:
+The private key goes in exactly as GitHub hands it out. Both PEM encodings are read: PKCS#1, which starts `-----BEGIN RSA PRIVATE KEY-----` and is what the App download gives you, and PKCS#8, which starts `-----BEGIN PRIVATE KEY-----`. There is nothing to convert.
+
+Check which key you have before setting it, because the wrong one fails the same way a revoked one does - `Bad credentials`, with nothing to say the key simply belongs to something else:
 
 ```bash
-openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt -in github.pem -out key.pem
+JWT=$(...)   # minted from the key you are about to use
+curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $JWT" https://api.github.com/app
 ```
+
+200 means that key belongs to this App. 401 means it does not.
 
 ### 2. Deploy a Released Version
 
