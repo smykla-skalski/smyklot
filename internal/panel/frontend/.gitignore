@@ -1,0 +1,4 @@
+dist/
+node_modules/
+.harness-panel-install.lock/
+.harness-panel-install.lock.stale-*

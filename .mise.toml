@@ -18,3 +18,53 @@ helm = "4.2.3"                            # Packages and publishes the chart
 GO111MODULE = "on"
 GOFLAGS = "-mod=readonly"
 CGO_ENABLED = "0"
+
+[tasks.build]
+description = "Build all Smyklot binaries through the repository Taskfile"
+run = "task build"
+
+[tasks.test]
+description = "Run the complete Smyklot test suite through the repository Taskfile"
+run = "task test"
+
+[tasks."test:unit"]
+description = "Run Smyklot unit tests through the repository Taskfile"
+run = "task test:unit"
+
+[tasks.lint]
+description = "Run all Smyklot linters through the repository Taskfile"
+run = "task lint"
+
+[tasks."panel:frontend:install"]
+description = "Install the panel frontend's pinned dependencies"
+run = "./scripts/install-panel-frontend.sh"
+
+[tasks."panel:frontend:build"]
+description = "Build the panel frontend"
+depends = ["panel:frontend:install"]
+dir = "internal/panel/frontend"
+run = "npm run build"
+
+[tasks."panel:frontend:lint"]
+description = "Lint, format-check, and type-check the panel frontend"
+depends = ["panel:frontend:install"]
+dir = "internal/panel/frontend"
+run = "npm run lint"
+
+[tasks."panel:frontend:test"]
+description = "Run the panel frontend unit tests"
+depends = ["panel:frontend:install"]
+dir = "internal/panel/frontend"
+run = "npm test"
+
+[tasks."panel:dev"]
+description = "Serve the panel frontend against a real local backend"
+depends = ["panel:frontend:install"]
+dir = "internal/panel/frontend"
+run = "npm run dev"
+
+[tasks."panel:dev:mock"]
+description = "Serve the panel frontend with deterministic mock data"
+depends = ["panel:frontend:install"]
+dir = "internal/panel/frontend"
+run = "npm run dev:mock"
