@@ -45,7 +45,7 @@ Go + Ginkgo/Gomega, deployed as Docker-based GitHub Action.
 
 ## Code Style
 
-- Use `github.com/pkg/errors` for error wrapping (not `fmt.Errorf`)
+- Wrap errors with `fmt.Errorf` and `%w`, or with the typed constructors in `cmd/github-action/errors.go` (`NewGitHubError`, `NewInputError`, `NewConfigError`)
 - Sentinel errors: `var ( ErrX = errors.New("...") )` block pattern — see `pkg/permissions/errors.go:10`
 - Test tags: `[Unit]` or `[Integration]` in Describe block — e.g., `Describe("Parser [Unit]", ...)`
 - Ginkgo BDD structure: `Describe/Context/It` with table-driven `Entry` where appropriate

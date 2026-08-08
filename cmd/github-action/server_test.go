@@ -5,7 +5,6 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"time"
@@ -13,6 +12,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/smykla-skalski/smyklot/internal/githubtest"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
@@ -36,32 +36,18 @@ func signBody(secret string, body []byte) string {
 
 // delivery renders an issue_comment payload the way GitHub sends one
 func delivery(action, body, authorType, updatedAt string, isPR bool) []byte {
-	pullRequest := "null"
-	if isPR {
-		pullRequest = `{"url": "https://api.github.com/repos/smykla-skalski/smyklot/pulls/42"}`
-	}
-
-	return fmt.Appendf(nil, `{
-		"action": %q,
-		"comment": {
-			"id": 555,
-			"body": %q,
-			"updated_at": %q,
-			"user": {"login": "someone", "type": %q}
-		},
-		"issue": {"number": 42, "pull_request": %s},
-		"repository": {
-			"name": "smyklot",
-			"full_name": "smykla-skalski/smyklot",
-			"owner": {"login": "smykla-skalski"}
-		},
-		"installation": {"id": 987}
-	}`, action, body, updatedAt, authorType, pullRequest)
+	return githubtest.IssueCommentPayload(githubtest.IssueComment{
+		Action:        action,
+		Body:          body,
+		AuthorType:    authorType,
+		UpdatedAt:     updatedAt,
+		IsPullRequest: isPR,
+	})
 }
 
 // commandDelivery is the common case: a user commenting a command on a PR
 func commandDelivery(body string) []byte {
-	return delivery("created", body, "User", "2026-08-08T10:00:00Z", true)
+	return githubtest.Command(body)
 }
 
 var _ = Describe("Webhook service [Unit]", func() {
@@ -86,7 +72,7 @@ var _ = Describe("Webhook service [Unit]", func() {
 			apiBaseURL:    endpoint.URL,
 			botUsername:   defaultBotUsername,
 			appClientID:   "Iv1.test",
-			appPrivateKey: testAppPrivateKey(),
+			appPrivateKey: githubtest.AppPrivateKey(),
 			botConfig:     botConfig,
 		})
 		Expect(err).NotTo(HaveOccurred())

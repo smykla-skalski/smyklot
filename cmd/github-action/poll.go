@@ -186,20 +186,40 @@ func newPermissionChecker(
 	client *github.Client,
 	repoOwner, repoName string,
 ) (*permissions.Checker, error) {
-	// Fetch CODEOWNERS (returns empty string if not found)
-	codeownersContent, err := client.GetCodeowners(ctx, repoOwner, repoName)
+	codeownersContent, err := fetchCodeowners(ctx, client, repoOwner, repoName)
 	if err != nil {
-		return nil, NewGitHubError(ErrGetCodeowners, err)
+		return nil, err
+	}
+
+	return checkerFromCodeowners(codeownersContent, client)
+}
+
+// fetchCodeowners reads a repository's CODEOWNERS, or empty when it has none.
+func fetchCodeowners(
+	ctx context.Context,
+	client *github.Client,
+	repoOwner, repoName string,
+) (string, error) {
+	content, err := client.GetCodeowners(ctx, repoOwner, repoName)
+	if err != nil {
+		return "", NewGitHubError(ErrGetCodeowners, err)
 	}
 
 	// Log if CODEOWNERS is missing
-	if codeownersContent == "" {
+	if content == "" {
 		fmt.Printf("CODEOWNERS file not found in %s/%s, defaulting to repository admin permissions\n",
 			repoOwner, repoName)
 	}
 
-	// Initialize permission checker
-	checker, err := permissions.NewCheckerFromContent(codeownersContent, client)
+	return content, nil
+}
+
+// checkerFromCodeowners parses CODEOWNERS content into a permission checker.
+//
+// Kept separate from the fetch so the service can cache the content but still
+// bind each checker to the client holding the current installation token.
+func checkerFromCodeowners(content string, client *github.Client) (*permissions.Checker, error) {
+	checker, err := permissions.NewCheckerFromContent(content, client)
 	if err != nil {
 		return nil, NewGitHubError(ErrInitPermissions, err)
 	}
@@ -221,7 +241,7 @@ func pollAllPRs(
 	// Get all open PRs
 	prs, err := client.GetOpenPRs(ctx, repoOwner, repoName)
 	if err != nil {
-		return NewGitHubError(ErrGetCodeowners, err)
+		return NewGitHubError(ErrGetPRs, err)
 	}
 
 	if len(prs) == 0 {
@@ -549,4 +569,3 @@ func postPendingCIError(
 
 	return nil
 }
-

@@ -15,7 +15,6 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/jferrl/go-githubauth"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -23,6 +22,7 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/feedback"
 	"github.com/smykla-skalski/smyklot/pkg/github"
+	"github.com/smykla-skalski/smyklot/pkg/githubapp"
 	"github.com/smykla-skalski/smyklot/pkg/permissions"
 )
 
@@ -67,7 +67,7 @@ const (
 	errCommentTooLong      = "comment body exceeds maximum length"
 	errInvalidRepoName     = "invalid repository owner or name"
 	selfApprovalNotAllowed = "(self-approval not allowed)"
-	maxCommentBodyLength   = 10000 // 10KB - matches github.maxCommentBodyLength
+	maxCommentBodyLength   = 10000 // 10KB - cap on untrusted comment bodies
 	stepSummaryTemplate    = `## Smyklot Configuration
 
 ### Runtime Configuration
@@ -267,7 +267,7 @@ func run(cmd *cobra.Command, _ []string) error {
 	//
 	// The service reads the same file, so a repository that checks one in gets
 	// the same treatment whichever entry point handles the comment
-	bc, err = newRepoConfigCache(0).Effective(ctx, client, rc.RepoOwner, rc.RepoName, bc)
+	bc, err = effectiveConfig(ctx, client, rc.RepoOwner, rc.RepoName, bc)
 	if err != nil {
 		return err
 	}
@@ -1831,28 +1831,22 @@ func getInstallationToken(rc *RuntimeConfig) (string, error) {
 		return "", NewInputError(ErrInvalidInput, rc.InstallationID, errInvalidInstallID)
 	}
 
-	// Create GitHub App JWT token source
-	appTokenSource, err := githubauth.NewApplicationTokenSource(
-		clientID,
-		[]byte(rc.GitHubAppPrivateKey),
-	)
+	// Minting goes through the same store the service uses. Two implementations
+	// had already drifted once: this path never passed the API base URL, so a
+	// GitHub Enterprise install minted its token against public GitHub while
+	// every other call went to the enterprise host
+	tokens, err := githubapp.NewTokenStore(
+		clientID, []byte(rc.GitHubAppPrivateKey), rc.APIBaseURL, githubapp.DefaultMintTimeout)
 	if err != nil {
 		return "", NewGitHubError(ErrGitHubAppAuth, err)
 	}
 
-	// Create the installation token source
-	installationTokenSource := githubauth.NewInstallationTokenSource(
-		installationID,
-		appTokenSource,
-	)
-
-	// Get the installation token
-	token, err := installationTokenSource.Token()
+	token, err := tokens.InstallationToken(installationID)
 	if err != nil {
 		return "", NewGitHubError(ErrGitHubAppAuth, err)
 	}
 
-	return token.AccessToken, nil
+	return token, nil
 }
 
 // writeStepSummary writes the effective configuration to GitHub Actions step summary.

@@ -33,23 +33,12 @@ type Deduper struct {
 	seen map[string]time.Time
 }
 
-// DeduperOpt configures a Deduper.
-type DeduperOpt func(*Deduper)
-
-// WithClock overrides the clock a Deduper reads, so expiry can be tested
-// without waiting for it.
-func WithClock(now func() time.Time) DeduperOpt {
-	return func(d *Deduper) {
-		if now != nil {
-			d.now = now
-		}
-	}
-}
-
 // NewDeduper creates a Deduper.
 //
-// A non-positive ttl or maxEntries falls back to the package default.
-func NewDeduper(ttl time.Duration, maxEntries int, opts ...DeduperOpt) *Deduper {
+// A non-positive ttl or maxEntries falls back to the package default. A nil now
+// uses the wall clock; tests pass a fake one so expiry can be checked without
+// waiting for it.
+func NewDeduper(ttl time.Duration, maxEntries int, now func() time.Time) *Deduper {
 	if ttl <= 0 {
 		ttl = DefaultTTL
 	}
@@ -58,18 +47,16 @@ func NewDeduper(ttl time.Duration, maxEntries int, opts ...DeduperOpt) *Deduper 
 		maxEntries = DefaultMaxEntries
 	}
 
-	d := &Deduper{
+	if now == nil {
+		now = time.Now
+	}
+
+	return &Deduper{
 		ttl:  ttl,
 		max:  maxEntries,
-		now:  time.Now,
+		now:  now,
 		seen: make(map[string]time.Time),
 	}
-
-	for _, opt := range opts {
-		opt(d)
-	}
-
-	return d
 }
 
 // Begin claims a key, reporting whether the caller may proceed.

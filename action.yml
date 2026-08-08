@@ -6,6 +6,13 @@ branding:
   icon: 'zap'
   color: 'purple'
 
+# Every other setting arrives as an environment variable, deliberately: an
+# untrusted comment body must never reach a shell as an argument
+inputs:
+  args:
+    description: 'Subcommand to run instead of the default (for example, poll)'
+    required: false
+
 runs:
   using: 'docker'
   image: 'docker://ghcr.io/smykla-skalski/smyklot:1.12.2'

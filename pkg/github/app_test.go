@@ -2,7 +2,6 @@ package github_test
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -12,14 +11,9 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/smykla-skalski/smyklot/internal/githubtest"
 	"github.com/smykla-skalski/smyklot/pkg/github"
 )
-
-// contentsResponse renders the contents API payload for a file
-func contentsResponse(content string) string {
-	return fmt.Sprintf(`{"content":%q,"encoding":"base64"}`,
-		base64.StdEncoding.EncodeToString([]byte(content)))
-}
 
 var _ = Describe("GitHub App Client [Unit]", func() {
 	var server *httptest.Server
@@ -189,7 +183,7 @@ var _ = Describe("GitHub App Client [Unit]", func() {
 
 			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				requestedPaths = append(requestedPaths, r.URL.Path)
-				_, _ = w.Write([]byte(contentsResponse("quiet_success: true\n")))
+				_, _ = w.Write([]byte(githubtest.ContentsResponse("quiet_success: true\n")))
 			}))
 
 			client, err := github.NewClient("test-token", server.URL)
@@ -201,37 +195,14 @@ var _ = Describe("GitHub App Client [Unit]", func() {
 			Expect(requestedPaths).To(Equal([]string{"/repos/owner/repo/contents/.github/smyklot.yaml"}))
 		})
 
-		It("should fall back to the .yml spelling", func() {
+		// Most repositories have no config file, so the miss must not cost more
+		// than one request - a second spelling would double it every read
+		It("should spend one request on a repository without the file", func() {
 			var requestedPaths []string
 
 			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				requestedPaths = append(requestedPaths, r.URL.Path)
 
-				if strings.HasSuffix(r.URL.Path, ".yaml") {
-					w.WriteHeader(http.StatusNotFound)
-					_, _ = w.Write([]byte(`{"message": "Not Found"}`))
-
-					return
-				}
-
-				_, _ = w.Write([]byte(contentsResponse("command_prefix: '!'\n")))
-			}))
-
-			client, err := github.NewClient("test-token", server.URL)
-			Expect(err).NotTo(HaveOccurred())
-
-			content, err := client.GetRepoConfig(context.Background(), "owner", "repo")
-			Expect(err).NotTo(HaveOccurred())
-			Expect(string(content)).To(Equal("command_prefix: '!'\n"))
-			Expect(requestedPaths).To(Equal([]string{
-				"/repos/owner/repo/contents/.github/smyklot.yaml",
-				"/repos/owner/repo/contents/.github/smyklot.yml",
-			}))
-		})
-
-		// A repository without the file is the common case, not an error
-		It("should return nothing when neither spelling exists", func() {
-			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusNotFound)
 				_, _ = w.Write([]byte(`{"message": "Not Found"}`))
 			}))
@@ -242,11 +213,12 @@ var _ = Describe("GitHub App Client [Unit]", func() {
 			content, err := client.GetRepoConfig(context.Background(), "owner", "repo")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(content).To(BeNil())
+			Expect(requestedPaths).To(Equal([]string{"/repos/owner/repo/contents/.github/smyklot.yaml"}))
 		})
 
 		It("should reject a file above the size cap", func() {
 			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				_, _ = w.Write([]byte(contentsResponse(strings.Repeat("a", 64*1024+1))))
+				_, _ = w.Write([]byte(githubtest.ContentsResponse(strings.Repeat("a", 64*1024+1))))
 			}))
 
 			client, err := github.NewClient("test-token", server.URL)
@@ -276,7 +248,7 @@ var _ = Describe("GitHub App Client [Unit]", func() {
 		It("should decode the file", func() {
 			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				Expect(r.URL.Path).To(Equal("/repos/owner/repo/contents/.github/CODEOWNERS"))
-				_, _ = w.Write([]byte(contentsResponse("* @bartsmykla\n")))
+				_, _ = w.Write([]byte(githubtest.ContentsResponse("* @bartsmykla\n")))
 			}))
 
 			client, err := github.NewClient("test-token", server.URL)

@@ -8,11 +8,22 @@ package githubapp
 
 import (
 	"errors"
+	"net/http"
 	"sync"
+	"time"
 
 	"github.com/jferrl/go-githubauth"
 	"golang.org/x/oauth2"
 )
+
+// DefaultMintTimeout bounds one call to GitHub's installation token endpoint.
+//
+// go-githubauth mints with context.Background() and an http.Client that sets
+// only dial and TLS timeouts, so a connection that opens and then goes quiet
+// blocks forever. In a service that means one worker lost from the pool for
+// good, and a shutdown that waits out its whole drain timeout. Matches the
+// timeout the API client uses.
+const DefaultMintTimeout = 30 * time.Second
 
 // Sentinel errors for App authentication.
 var (
@@ -31,8 +42,9 @@ var (
 //
 // Safe for concurrent use.
 type TokenStore struct {
-	appSource oauth2.TokenSource
-	baseURL   string
+	appSource   oauth2.TokenSource
+	baseURL     string
+	mintTimeout time.Duration
 
 	mu      sync.Mutex
 	sources map[int64]oauth2.TokenSource
@@ -42,8 +54,14 @@ type TokenStore struct {
 //
 // clientID accepts either the App's client ID (which GitHub recommends) or its
 // numeric app ID. baseURL is optional and points token minting at a GitHub
-// Enterprise instance; empty uses public GitHub.
-func NewTokenStore(clientID string, privateKey []byte, baseURL string) (*TokenStore, error) {
+// Enterprise instance; empty uses public GitHub. A non-positive mintTimeout
+// falls back to DefaultMintTimeout.
+func NewTokenStore(
+	clientID string,
+	privateKey []byte,
+	baseURL string,
+	mintTimeout time.Duration,
+) (*TokenStore, error) {
 	if clientID == "" {
 		return nil, ErrNoAppID
 	}
@@ -52,15 +70,20 @@ func NewTokenStore(clientID string, privateKey []byte, baseURL string) (*TokenSt
 		return nil, ErrNoPrivateKey
 	}
 
+	if mintTimeout <= 0 {
+		mintTimeout = DefaultMintTimeout
+	}
+
 	appSource, err := githubauth.NewApplicationTokenSource(clientID, privateKey)
 	if err != nil {
 		return nil, err
 	}
 
 	return &TokenStore{
-		appSource: copyingTokenSource{src: appSource},
-		baseURL:   baseURL,
-		sources:   make(map[int64]oauth2.TokenSource),
+		appSource:   copyingTokenSource{src: appSource},
+		baseURL:     baseURL,
+		mintTimeout: mintTimeout,
+		sources:     make(map[int64]oauth2.TokenSource),
 	}, nil
 }
 
@@ -120,7 +143,10 @@ func (s *TokenStore) source(installationID int64) oauth2.TokenSource {
 		return src
 	}
 
-	var opts []githubauth.InstallationTokenSourceOpt
+	opts := []githubauth.InstallationTokenSourceOpt{
+		githubauth.WithHTTPClient(&http.Client{Timeout: s.mintTimeout}),
+	}
+
 	if s.baseURL != "" {
 		opts = append(opts, githubauth.WithBaseURL(s.baseURL))
 	}

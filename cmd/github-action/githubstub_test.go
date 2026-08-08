@@ -1,12 +1,6 @@
 package main
 
 import (
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/x509"
-	"encoding/base64"
-	"encoding/json"
-	"encoding/pem"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,8 +8,7 @@ import (
 	"sync"
 	"time"
 
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
+	"github.com/smykla-skalski/smyklot/internal/githubtest"
 )
 
 // githubStub is a stand-in GitHub API for the service specs.
@@ -150,10 +143,7 @@ func (s *githubStub) writeFile(w http.ResponseWriter, content string) {
 		return
 	}
 
-	payload, _ := json.Marshal(map[string]string{
-		"content": base64.StdEncoding.EncodeToString([]byte(content)),
-	})
-	_, _ = w.Write(payload)
+	_, _ = io.WriteString(w, githubtest.ContentsResponse(content))
 }
 
 // countCalls reports how many recorded calls match method and path suffix
@@ -178,27 +168,4 @@ func (s *githubStub) total() int {
 	defer s.mu.Unlock()
 
 	return len(s.calls)
-}
-
-var (
-	testKeyOnce sync.Once
-	testKeyPEM  []byte
-)
-
-// testAppPrivateKey generates the suite's App key once - RSA generation is slow
-// enough that doing it per spec would dominate the run
-func testAppPrivateKey() []byte {
-	GinkgoHelper()
-
-	testKeyOnce.Do(func() {
-		key, err := rsa.GenerateKey(rand.Reader, 2048)
-		Expect(err).NotTo(HaveOccurred())
-
-		testKeyPEM = pem.EncodeToMemory(&pem.Block{
-			Type:  "RSA PRIVATE KEY",
-			Bytes: x509.MarshalPKCS1PrivateKey(key),
-		})
-	})
-
-	return testKeyPEM
 }

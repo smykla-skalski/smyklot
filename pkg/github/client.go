@@ -18,16 +18,15 @@ import (
 )
 
 const (
-	defaultBaseURL       = "https://api.github.com"
-	userAgent            = "smyklot-github-app"
-	defaultTimeout       = 30 * time.Second
-	maxIdleConns         = 100
-	maxIdleConnsPerHost  = 10
-	idleConnTimeout      = 90 * time.Second
-	maxRetries           = 3
-	maxCodeownersSize    = 1024 * 1024 // 1MB
-	maxCommentBodyLength = 10000       // 10KB
-	maxRepoConfigSize    = 64 * 1024   // 64KB
+	defaultBaseURL      = "https://api.github.com"
+	userAgent           = "smyklot-github-app"
+	defaultTimeout      = 30 * time.Second
+	maxIdleConns        = 100
+	maxIdleConnsPerHost = 10
+	idleConnTimeout     = 90 * time.Second
+	maxRetries          = 3
+	maxCodeownersSize   = 1024 * 1024 // 1MB
+	maxRepoConfigSize   = 64 * 1024   // 64KB
 
 	// schemeToken authenticates as a user or an App installation
 	schemeToken = "token"
@@ -194,24 +193,13 @@ func (c *Client) ApprovePR(ctx context.Context, owner, repo string, prNumber int
 	return err
 }
 
-// DismissReview dismisses all approved reviews by the authenticated user.
-//
-// Deprecated: This method calls GetAuthenticatedUser which fails with GitHub App
-// installation tokens (403 "Resource not accessible by integration").
-// Use DismissReviewByUsername instead.
-func (c *Client) DismissReview(ctx context.Context, owner, repo string, prNumber int) error {
-	username, err := c.GetAuthenticatedUser(ctx)
-	if err != nil {
-		return err
-	}
-
-	return c.DismissReviewByUsername(ctx, owner, repo, prNumber, username)
-}
-
 // DismissReviewByUsername dismisses all approved reviews by the specified username
 //
 // This finds all APPROVED reviews by the specified user and dismisses them.
-// Recommended for GitHub App installations to avoid GET /user permission issues.
+//
+// The username is passed in rather than looked up: GET /user answers 403
+// "Resource not accessible by integration" for an App installation token, which
+// is the only kind of token this bot holds in practice.
 func (c *Client) DismissReviewByUsername(
 	ctx context.Context,
 	owner, repo string,
@@ -224,32 +212,6 @@ func (c *Client) DismissReviewByUsername(
 	}
 
 	return c.dismissApprovedReviews(ctx, owner, repo, prNumber, username, reviews)
-}
-
-// GetAuthenticatedUser retrieves the authenticated user's username.
-//
-// Deprecated: This method calls GET /user which fails with GitHub App installation
-// tokens (403 "Resource not accessible by integration"). Use the configured
-// bot username (RuntimeConfig.BotUsername) instead. For GitHub Apps, the username
-// format is "{app-slug}[bot]" (e.g., "smyklot[bot]").
-func (c *Client) GetAuthenticatedUser(ctx context.Context) (string, error) {
-	userPath := "/user"
-	userData, err := c.makeRequest(ctx, "GET", userPath, nil)
-	if err != nil {
-		return "", err
-	}
-
-	var user map[string]interface{}
-	if err := json.Unmarshal(userData, &user); err != nil {
-		return "", NewAPIError(ErrResponseParse, 0, "GET", userPath, err)
-	}
-
-	username, ok := user["login"].(string)
-	if !ok {
-		return "", NewAPIError(ErrResponseParse, 0, "GET", userPath, fmt.Errorf("unable to get username"))
-	}
-
-	return username, nil
 }
 
 // getPullRequestReviews retrieves all reviews for a pull request
@@ -538,21 +500,12 @@ func (c *Client) GetCodeowners(ctx context.Context, owner, repo string) (string,
 // GetRepoConfig retrieves the repository's Smyklot configuration file.
 //
 // Returns nil (not an error) when the repository has no configuration file.
-// The canonical name is .github/smyklot.yaml; .github/smyklot.yml is accepted
-// so a repository that already spells its YAML the other way keeps working.
+//
+// Only .github/smyklot.yaml is read. Most repositories have no such file, and
+// accepting a second spelling would make that common case cost two 404s on
+// every read rather than one.
 func (c *Client) GetRepoConfig(ctx context.Context, owner, repo string) ([]byte, error) {
-	for _, name := range repoConfigPaths {
-		content, err := c.getFileContent(ctx, owner, repo, name, maxRepoConfigSize)
-		if err != nil {
-			return nil, err
-		}
-
-		if content != nil {
-			return content, nil
-		}
-	}
-
-	return nil, nil
+	return c.getFileContent(ctx, owner, repo, repoConfigPath, maxRepoConfigSize)
 }
 
 // getFileContent reads a file through the contents API.
@@ -1273,7 +1226,16 @@ func (c *Client) makeRequestWithRetry(
 			if apiErr.StatusCode == 429 || (apiErr.StatusCode >= 500 && apiErr.StatusCode < 600) {
 				// Exponential backoff: 1s, 2s, 4s
 				backoff := time.Duration(1<<uint(attempt)) * time.Second
-				time.Sleep(backoff)
+
+				// A long-running service cancels this context on shutdown, and
+				// a sleep that ignored it would outlive the cancellation by up
+				// to the whole backoff
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-time.After(backoff):
+				}
+
 				continue
 			}
 		}

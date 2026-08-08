@@ -54,8 +54,6 @@ func (s *server) drain(workers *sync.WaitGroup) {
 // Sweeping in the loop rather than in a goroutine per tick means a sweep that
 // outruns the interval delays the next one instead of overlapping with it.
 func (s *server) pollLoop(ctx context.Context) {
-	defer close(s.done)
-
 	if s.cfg.pollInterval <= 0 {
 		log.Print("reaction polling disabled")
 
@@ -138,13 +136,24 @@ func (s *server) sweepInstallation(ctx context.Context, installation github.Inst
 }
 
 // sweepRepo polls one repository, using the same code the poll subcommand runs.
+//
+// Both files it needs are cached: a sweep would otherwise re-read every
+// repository's CODEOWNERS and config on every tick, forever, for content that
+// changes far less often than it is looked at.
 func (s *server) sweepRepo(ctx context.Context, client *github.Client, repo github.Repository) error {
-	bc, err := s.configs.Effective(ctx, client, repo.Owner, repo.Name, s.cfg.botConfig)
+	bc, err := s.configs.Get(ctx, client, repo.Owner, repo.Name)
 	if err != nil {
 		return err
 	}
 
-	checker, err := newPermissionChecker(ctx, client, repo.Owner, repo.Name)
+	codeowners, err := s.owners.Get(ctx, client, repo.Owner, repo.Name)
+	if err != nil {
+		return err
+	}
+
+	// The checker is built fresh rather than cached with the content, so it
+	// always holds the client carrying the current installation token
+	checker, err := checkerFromCodeowners(codeowners, client)
 	if err != nil {
 		return err
 	}

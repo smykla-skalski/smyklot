@@ -10,6 +10,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/smykla-skalski/smyklot/internal/githubtest"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
@@ -32,7 +33,7 @@ var _ = Describe("Reaction sweep [Unit]", func() {
 			apiBaseURL:    endpoint.URL,
 			botUsername:   defaultBotUsername,
 			appClientID:   "Iv1.test",
-			appPrivateKey: testAppPrivateKey(),
+			appPrivateKey: githubtest.AppPrivateKey(),
 			botConfig:     config.Default(),
 		})
 		Expect(err).NotTo(HaveOccurred())
@@ -103,6 +104,29 @@ var _ = Describe("Reaction sweep [Unit]", func() {
 			To(Equal(1))
 	})
 
+	// Without caching these two files, a sweep re-reads them for every
+	// repository on every tick, forever, for content that changes far less
+	// often than it is looked at
+	It("should read a repository's CODEOWNERS and config once across sweeps", func() {
+		stub.installations = `[{"id": 111, "account": {"login": "smykla-skalski"}}]`
+		stub.repos = `{
+			"total_count": 1,
+			"repositories": [{"name": "smyklot", "owner": {"login": "smykla-skalski"}}]
+		}`
+		start()
+
+		for range 3 {
+			Expect(service.sweep(GinkgoT().Context())).To(Succeed())
+		}
+
+		Expect(stub.countCalls(http.MethodGet, "/contents/.github/CODEOWNERS")).To(Equal(1))
+		Expect(stub.countCalls(http.MethodGet, "/contents/.github/smyklot.yaml")).To(Equal(1))
+
+		// The pull request list is what a sweep is actually for, so it is read
+		// every time
+		Expect(stub.countCalls(http.MethodGet, "/repos/smykla-skalski/smyklot/pulls")).To(Equal(3))
+	})
+
 	// One installation revoking access must not silence every other one
 	It("should keep sweeping after a repository fails", func() {
 		stub.installations = `[{"id": 111, "account": {"login": "smykla-skalski"}}]`
@@ -143,7 +167,7 @@ var _ = Describe("Reaction sweep [Unit]", func() {
 			apiBaseURL:    failing.URL,
 			botUsername:   defaultBotUsername,
 			appClientID:   "Iv1.test",
-			appPrivateKey: testAppPrivateKey(),
+			appPrivateKey: githubtest.AppPrivateKey(),
 			botConfig:     config.Default(),
 		})
 		Expect(err).NotTo(HaveOccurred())

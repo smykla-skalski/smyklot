@@ -1,38 +1,23 @@
 package webhook_test
 
 import (
-	"fmt"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/smykla-skalski/smyklot/internal/githubtest"
 	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
 
 // issueCommentPayload renders a delivery body shaped like GitHub's, trimmed to
 // the fields the parser reads
 func issueCommentPayload(action, body, authorType string, isPR bool, updatedAt string) []byte {
-	pullRequest := "null"
-	if isPR {
-		pullRequest = `{"url": "https://api.github.com/repos/smykla-skalski/smyklot/pulls/42"}`
-	}
-
-	return fmt.Appendf(nil, `{
-		"action": %q,
-		"comment": {
-			"id": 555,
-			"body": %q,
-			"updated_at": %q,
-			"user": {"login": "someone", "type": %q}
-		},
-		"issue": {"number": 42, "pull_request": %s},
-		"repository": {
-			"name": "smyklot",
-			"full_name": "smykla-skalski/smyklot",
-			"owner": {"login": "smykla-skalski"}
-		},
-		"installation": {"id": 987}
-	}`, action, body, updatedAt, authorType, pullRequest)
+	return githubtest.IssueCommentPayload(githubtest.IssueComment{
+		Action:        action,
+		Body:          body,
+		AuthorType:    authorType,
+		UpdatedAt:     updatedAt,
+		IsPullRequest: isPR,
+	})
 }
 
 var _ = Describe("ParseIssueComment [Unit]", func() {

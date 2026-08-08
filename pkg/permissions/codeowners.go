@@ -61,10 +61,11 @@ func parseEntries(scanner *bufio.Scanner) []CodeownersEntry {
 //   - Owners start with @ (e.g., @username, @org/team)
 //
 // Example:
-//   # Global owners
-//   * @global-owner1 @global-owner2
-//   /docs/ @doc-team
-//   *.js @js-team
+//
+//	# Global owners
+//	* @global-owner1 @global-owner2
+//	/docs/ @doc-team
+//	*.js @js-team
 //
 // For Phase 1, this parser focuses on global owners (pattern: *)
 // Path-specific ownership will be implemented in later phases
@@ -95,10 +96,11 @@ func ParseCodeownersContent(content string) (*CodeownersFile, error) {
 //   - Owners start with @ (e.g., @username, @org/team)
 //
 // Example:
-//   # Global owners
-//   * @global-owner1 @global-owner2
-//   /docs/ @doc-team
-//   *.js @js-team
+//
+//	# Global owners
+//	* @global-owner1 @global-owner2
+//	/docs/ @doc-team
+//	*.js @js-team
 //
 // For Phase 1, this parser focuses on global owners (pattern: *)
 // Path-specific ownership will be implemented in later phases

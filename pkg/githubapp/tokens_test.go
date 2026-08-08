@@ -1,10 +1,6 @@
 package githubapp_test
 
 import (
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/x509"
-	"encoding/pem"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -15,22 +11,9 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/smykla-skalski/smyklot/internal/githubtest"
 	"github.com/smykla-skalski/smyklot/pkg/githubapp"
 )
-
-// testPrivateKey is generated once for the suite - RSA key generation is slow
-// enough that doing it per spec dominates the run
-var testPrivateKey []byte
-
-var _ = BeforeSuite(func() {
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
-	Expect(err).NotTo(HaveOccurred())
-
-	testPrivateKey = pem.EncodeToMemory(&pem.Block{
-		Type:  "RSA PRIVATE KEY",
-		Bytes: x509.MarshalPKCS1PrivateKey(key),
-	})
-})
 
 // tokenServer stands in for GitHub's installation token endpoint, recording
 // which installations were asked for
@@ -72,24 +55,24 @@ var _ = Describe("TokenStore [Unit]", func() {
 
 	Describe("NewTokenStore", func() {
 		It("should reject a missing identifier", func() {
-			_, err := githubapp.NewTokenStore("", testPrivateKey, "")
+			_, err := githubapp.NewTokenStore("", githubtest.AppPrivateKey(), "", 0)
 			Expect(err).To(MatchError(githubapp.ErrNoAppID))
 		})
 
 		It("should reject a missing private key", func() {
-			_, err := githubapp.NewTokenStore("Iv1.test", nil, "")
+			_, err := githubapp.NewTokenStore("Iv1.test", nil, "", 0)
 			Expect(err).To(MatchError(githubapp.ErrNoPrivateKey))
 		})
 
 		It("should reject a private key that is not a key", func() {
-			_, err := githubapp.NewTokenStore("Iv1.test", []byte("not a key"), "")
+			_, err := githubapp.NewTokenStore("Iv1.test", []byte("not a key"), "", 0)
 			Expect(err).To(HaveOccurred())
 		})
 	})
 
 	Describe("AppToken", func() {
 		It("should return a JWT for the App itself", func() {
-			store, err := githubapp.NewTokenStore("Iv1.test", testPrivateKey, server.URL)
+			store, err := githubapp.NewTokenStore("Iv1.test", githubtest.AppPrivateKey(), server.URL, 0)
 			Expect(err).NotTo(HaveOccurred())
 
 			token, err := store.AppToken()
@@ -104,7 +87,7 @@ var _ = Describe("TokenStore [Unit]", func() {
 
 	Describe("InstallationToken", func() {
 		It("should mint a token for the installation it is asked about", func() {
-			store, err := githubapp.NewTokenStore("Iv1.test", testPrivateKey, server.URL)
+			store, err := githubapp.NewTokenStore("Iv1.test", githubtest.AppPrivateKey(), server.URL, 0)
 			Expect(err).NotTo(HaveOccurred())
 
 			token, err := store.InstallationToken(987)
@@ -115,7 +98,7 @@ var _ = Describe("TokenStore [Unit]", func() {
 		// One process serves many installations, so the store must key on the
 		// installation rather than hold a single token
 		It("should keep installations apart", func() {
-			store, err := githubapp.NewTokenStore("Iv1.test", testPrivateKey, server.URL)
+			store, err := githubapp.NewTokenStore("Iv1.test", githubtest.AppPrivateKey(), server.URL, 0)
 			Expect(err).NotTo(HaveOccurred())
 
 			first, err := store.InstallationToken(111)
@@ -134,7 +117,7 @@ var _ = Describe("TokenStore [Unit]", func() {
 		// Without caching, every webhook delivery would spend a round trip
 		// minting a token that is still valid
 		It("should reuse a token that has not expired", func() {
-			store, err := githubapp.NewTokenStore("Iv1.test", testPrivateKey, server.URL)
+			store, err := githubapp.NewTokenStore("Iv1.test", githubtest.AppPrivateKey(), server.URL, 0)
 			Expect(err).NotTo(HaveOccurred())
 
 			for range 5 {
@@ -152,15 +135,49 @@ var _ = Describe("TokenStore [Unit]", func() {
 			}))
 			DeferCleanup(failing.Close)
 
-			store, err := githubapp.NewTokenStore("Iv1.test", testPrivateKey, failing.URL)
+			store, err := githubapp.NewTokenStore("Iv1.test", githubtest.AppPrivateKey(), failing.URL, 0)
 			Expect(err).NotTo(HaveOccurred())
 
 			_, err = store.InstallationToken(987)
 			Expect(err).To(MatchError(ContainSubstring("404")))
 		})
 
+		// go-githubauth mints with context.Background() and no overall client
+		// timeout, so without one of ours a GitHub that accepts the connection
+		// and then goes quiet would hold this worker for good
+		It("should give up on a GitHub that never answers", func() {
+			blocked := make(chan struct{})
+
+			hanging := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+				select {
+				case <-blocked:
+				case <-r.Context().Done():
+				}
+			}))
+			DeferCleanup(func() {
+				close(blocked)
+				hanging.Close()
+			})
+
+			store, err := githubapp.NewTokenStore("Iv1.test", githubtest.AppPrivateKey(), hanging.URL, 200*time.Millisecond)
+			Expect(err).NotTo(HaveOccurred())
+
+			done := make(chan error, 1)
+
+			go func() {
+				defer GinkgoRecover()
+
+				_, err := store.InstallationToken(987)
+				done <- err
+			}()
+
+			// The bound is what matters, not its exact value; a store without
+			// one never sends here at all
+			Eventually(done, 5*time.Second).Should(Receive(HaveOccurred()))
+		})
+
 		It("should be safe to call concurrently", func() {
-			store, err := githubapp.NewTokenStore("Iv1.test", testPrivateKey, server.URL)
+			store, err := githubapp.NewTokenStore("Iv1.test", githubtest.AppPrivateKey(), server.URL, 0)
 			Expect(err).NotTo(HaveOccurred())
 
 			var wg sync.WaitGroup

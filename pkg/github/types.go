@@ -1,11 +1,7 @@
 package github
 
-// repoConfigPaths lists where a repository's Smyklot configuration may live,
-// in the order they are tried
-var repoConfigPaths = []string{
-	".github/smyklot.yaml",
-	".github/smyklot.yml",
-}
+// repoConfigPath is where a repository's own Smyklot configuration lives
+const repoConfigPath = ".github/smyklot.yaml"
 
 // Installation represents one installation of the GitHub App
 type Installation struct {

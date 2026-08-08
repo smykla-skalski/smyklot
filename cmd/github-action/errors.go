@@ -34,12 +34,6 @@ var (
 	// ErrMergePR is returned when merging a PR fails
 	ErrMergePR = errors.New("failed to merge PR")
 
-	// ErrDismissReview is returned when dismissing a review fails
-	ErrDismissReview = errors.New("failed to dismiss review")
-
-	// ErrGetWorkingDirectory is returned when getting working directory fails
-	ErrGetWorkingDirectory = errors.New("failed to get the working directory")
-
 	// ErrGetCodeowners is returned when fetching CODEOWNERS from GitHub fails
 	ErrGetCodeowners = errors.New("failed to fetch CODEOWNERS from GitHub")
 

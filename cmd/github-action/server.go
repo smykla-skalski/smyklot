@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/github"
 	"github.com/smykla-skalski/smyklot/pkg/githubapp"
 	"github.com/smykla-skalski/smyklot/pkg/webhook"
@@ -41,9 +42,13 @@ const (
 	// dribbles headers
 	readHeaderTimeout = 10 * time.Second
 
-	// repoConfigTTL is how long a repository's .github/smyklot.yaml is trusted
-	// before it is read again
-	repoConfigTTL = 5 * time.Minute
+	// repoFileTTL is how long a repository's CODEOWNERS and .github/smyklot.yaml
+	// are trusted before they are read again.
+	//
+	// Comfortably longer than the sweep interval on purpose: at the same
+	// cadence every tick would land on a just-expired entry and the cache would
+	// buy nothing for the caller that reads these most
+	repoFileTTL = time.Hour
 
 	// maxDeliveryIDLength caps the unverified delivery identifier before it
 	// reaches a log line. GitHub's are UUIDs, well under this
@@ -52,9 +57,14 @@ const (
 
 // server executes PR commands from GitHub webhook deliveries.
 type server struct {
-	cfg     *serveConfig
-	tokens  *githubapp.TokenStore
-	configs *repoConfigCache
+	cfg    *serveConfig
+	tokens *githubapp.TokenStore
+
+	// configs and owners hold the two files every repository is read for. The
+	// sweep touches both for every repository on every tick
+	configs *repoCache[*config.Config]
+	owners  *repoCache[string]
+
 	deduper *webhook.Deduper
 
 	jobs chan job
@@ -62,9 +72,6 @@ type server struct {
 	// jobCtx outlives the request that enqueued a job and survives shutdown
 	// being signalled, so a delivery already in the queue still completes
 	jobCtx context.Context
-
-	// done closes when the sweep loop has stopped
-	done chan struct{}
 }
 
 // job is one delivery waiting to be executed.
@@ -75,19 +82,23 @@ type job struct {
 }
 
 func newServer(cfg *serveConfig) (*server, error) {
-	tokens, err := githubapp.NewTokenStore(cfg.appClientID, cfg.appPrivateKey, cfg.apiBaseURL)
+	tokens, err := githubapp.NewTokenStore(
+		cfg.appClientID, cfg.appPrivateKey, cfg.apiBaseURL, githubapp.DefaultMintTimeout)
 	if err != nil {
 		return nil, NewGitHubError(ErrGitHubAppAuth, err)
 	}
 
 	return &server{
-		cfg:     cfg,
-		tokens:  tokens,
-		configs: newRepoConfigCache(repoConfigTTL),
-		deduper: webhook.NewDeduper(webhook.DefaultTTL, webhook.DefaultMaxEntries),
+		cfg:    cfg,
+		tokens: tokens,
+		configs: newRepoCache(repoFileTTL,
+			func(ctx context.Context, client *github.Client, owner, repo string) (*config.Config, error) {
+				return effectiveConfig(ctx, client, owner, repo, cfg.botConfig)
+			}),
+		owners:  newRepoCache(repoFileTTL, fetchCodeowners),
+		deduper: webhook.NewDeduper(webhook.DefaultTTL, webhook.DefaultMaxEntries, nil),
 		jobs:    make(chan job, queueDepth),
 		jobCtx:  context.Background(),
-		done:    make(chan struct{}),
 	}, nil
 }
 
@@ -122,7 +133,13 @@ func (s *server) Run(ctx context.Context) error {
 
 	workers := s.startWorkers()
 
-	go s.pollLoop(runCtx)
+	sweepStopped := make(chan struct{})
+
+	go func() {
+		defer close(sweepStopped)
+
+		s.pollLoop(runCtx)
+	}()
 
 	srv := &http.Server{
 		Addr:              s.cfg.listenAddress,
@@ -159,7 +176,7 @@ func (s *server) Run(ctx context.Context) error {
 	stopSweep()
 	close(s.jobs)
 	s.drain(workers)
-	<-s.done
+	<-sweepStopped
 
 	return shutdownErr
 }
@@ -277,13 +294,7 @@ func (s *server) handleIssueComment(ctx context.Context, event *webhook.IssueCom
 	rc := runtimeConfigFor(event, s.cfg)
 	rc.Token = token
 
-	bc, err := s.configs.Effective(
-		ctx,
-		client,
-		event.Repository.Owner.Login,
-		event.Repository.Name,
-		s.cfg.botConfig,
-	)
+	bc, err := s.configs.Get(ctx, client, event.Repository.Owner.Login, event.Repository.Name)
 	if err != nil {
 		return err
 	}

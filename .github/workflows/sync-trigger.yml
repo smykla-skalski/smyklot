@@ -119,15 +119,18 @@ jobs:
           echo "  settings=$sync_settings"
           echo "  smyklot=$sync_smyklot"
 
+          # The client_payload[...] keys are quoted whole: unquoted, the shell
+          # reads the brackets as a glob character range rather than passing
+          # them through to gh
           if ! gh api "repos/$REPO_OWNER/.github/dispatches" -X POST \
             -f event_type="sync-trigger" \
-            -F client_payload[repo]="$REPO_NAME" \
-            -F client_payload[full_name]="$REPO_FULL_NAME" \
-            -F client_payload[trigger]="$trigger_type" \
-            -F client_payload[sync_labels]="$sync_labels" \
-            -F client_payload[sync_files]="$sync_files" \
-            -F client_payload[sync_settings]="$sync_settings" \
-            -F client_payload[sync_smyklot]="$sync_smyklot"; then
+            -F "client_payload[repo]=$REPO_NAME" \
+            -F "client_payload[full_name]=$REPO_FULL_NAME" \
+            -F "client_payload[trigger]=$trigger_type" \
+            -F "client_payload[sync_labels]=$sync_labels" \
+            -F "client_payload[sync_files]=$sync_files" \
+            -F "client_payload[sync_settings]=$sync_settings" \
+            -F "client_payload[sync_smyklot]=$sync_smyklot"; then
             echo "::error::Failed to trigger sync dispatch"
             exit 1
           fi

@@ -188,18 +188,9 @@ func applyServeFlags(cmd *cobra.Command, cfg *serveConfig) error {
 		return err
 	}
 
-	cfg.pollInterval = interval
+	cfg.pollInterval, err = flagOrEnvDuration(cmd, flagPollInterval, interval, envPollInterval)
 
-	if raw := os.Getenv(envPollInterval); raw != "" && !cmd.Flags().Changed(flagPollInterval) {
-		parsed, err := time.ParseDuration(raw)
-		if err != nil {
-			return NewInputError(ErrInvalidPollInterval, raw, err.Error())
-		}
-
-		cfg.pollInterval = parsed
-	}
-
-	return nil
+	return err
 }
 
 // flagOrEnv resolves one setting, letting an explicit flag win over the
@@ -214,4 +205,28 @@ func flagOrEnv(cmd *cobra.Command, flagName, flagValue, envVar string) string {
 	}
 
 	return flagValue
+}
+
+// flagOrEnvDuration resolves a duration setting under flagOrEnv's precedence.
+func flagOrEnvDuration(
+	cmd *cobra.Command,
+	flagName string,
+	flagValue time.Duration,
+	envVar string,
+) (time.Duration, error) {
+	if cmd.Flags().Changed(flagName) {
+		return flagValue, nil
+	}
+
+	raw := os.Getenv(envVar)
+	if raw == "" {
+		return flagValue, nil
+	}
+
+	parsed, err := time.ParseDuration(raw)
+	if err != nil {
+		return 0, NewInputError(ErrInvalidPollInterval, raw, err.Error())
+	}
+
+	return parsed, nil
 }

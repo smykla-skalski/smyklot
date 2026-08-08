@@ -11,6 +11,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/smykla-skalski/smyklot/internal/githubtest"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
@@ -52,7 +53,7 @@ var _ = Describe("Service lifecycle [Unit]", func() {
 			apiBaseURL:    endpoint.URL,
 			botUsername:   defaultBotUsername,
 			appClientID:   "Iv1.test",
-			appPrivateKey: testAppPrivateKey(),
+			appPrivateKey: githubtest.AppPrivateKey(),
 			botConfig:     config.Default(),
 			// A sweep on every tick would race the spec's own assertions
 			pollInterval: time.Hour,
