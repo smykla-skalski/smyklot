@@ -342,14 +342,34 @@ Point the GitHub App's webhook at `https://your-host/webhook`, subscribe it to *
 | ------------------------ | ----------------- | ---------- | ---------------------------------------------------------------------------- |
 | `SMYKLOT_WEBHOOK_SECRET` | -                 | required   | Secret GitHub signs deliveries with; the process refuses to start without it |
 | `SMYKLOT_LISTEN_ADDRESS` | `--listen`        | `:8080`    | Address to listen on                                                         |
+| `SMYKLOT_ADMIN_ADDRESS`  | `--admin-listen`  | `:9090`    | Address for probes, metrics and recent failures                              |
 | `SMYKLOT_WEBHOOK_PATH`   | `--webhook-path`  | `/webhook` | Path GitHub delivers to                                                      |
 | `SMYKLOT_POLL_INTERVAL`  | `--poll-interval` | `5m`       | How often to sweep reactions and PRs waiting for CI; `0` disables            |
+| `SMYKLOT_LOG_FORMAT`     | `--log-format`    | `json`     | `json` or `text`                                                             |
+| `SMYKLOT_LOG_LEVEL`      | `--log-level`     | `info`     | `debug`, `info`, `warn` or `error`                                           |
 | `GITHUB_APP_PRIVATE_KEY` | -                 | required   | PEM-encoded App private key                                                  |
 | `GITHUB_APP_CLIENT_ID`   | -                 | required   | App client ID; `GITHUB_APP_ID` also works                                    |
 
 The webhook secret and private key have no flag on purpose - a flag would put them in the process table. An explicit flag beats the environment for everything else.
 
-`GET /healthz` answers a liveness probe and needs no signature.
+### Watching a running service
+
+The webhook port carries `GET /healthz` for an ingress or tunnel that needs one reachable path. Everything else is on the admin port, which is not meant to be public: queue depth, failure reasons and Go runtime detail describe the service to anyone who can read them.
+
+| Route       | Answers                                                                     |
+| ----------- | --------------------------------------------------------------------------- |
+| `/livez`    | 200 while the process is running                                            |
+| `/readyz`   | 200 while GitHub is reachable, 503 with a reason when it is not             |
+| `/metrics`  | Prometheus exposition format                                                |
+| `/failures` | The last 50 deliveries that were accepted and then failed, newest first     |
+
+Liveness and readiness are separate because a restart cannot fix GitHub being down. The service checks GitHub every 30 seconds and starts unready, so it takes no traffic until its credentials have been proven.
+
+Metrics are prefixed `smyklot_`: `webhook_requests_total{event,outcome}`, `deliveries_total{action,result}`, `delivery_duration_seconds`, `deliveries_in_flight`, `queue_depth`, `queue_capacity`, `sweeps_total{result}`, `sweep_duration_seconds` and `ready`. A rising `outcome="unsigned"` means a rotated secret or someone probing the port; a rising `outcome="refused"` means the queue is full.
+
+Every log line about a delivery carries its `delivery_id`, along with the repository, pull request and comment action, so one webhook's whole trail can be found by that identifier. A delivery is answered before its command runs, so GitHub's own log shows a success either way; `/failures` and the `result="failure"` counter are how a failure afterwards stays visible.
+
+The webhook secret and the App private key are replaced with `[REDACTED]` wherever they would reach a log line or the failures endpoint.
 
 ### How it differs from the Action
 

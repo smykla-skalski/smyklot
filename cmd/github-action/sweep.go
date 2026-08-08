@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
-	"log"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/pkg/github"
+	"github.com/smykla-skalski/smyklot/pkg/logging"
+	"github.com/smykla-skalski/smyklot/pkg/metrics"
 )
 
 // startWorkers launches the pool that executes queued deliveries.
@@ -41,7 +43,7 @@ func (s *server) drain(workers *sync.WaitGroup) {
 	select {
 	case <-drained:
 	case <-time.After(drainTimeout):
-		log.Print("gave up waiting for in-flight deliveries")
+		s.logger.Error("gave up waiting for in-flight deliveries", "timeout", drainTimeout.String())
 	}
 }
 
@@ -55,12 +57,12 @@ func (s *server) drain(workers *sync.WaitGroup) {
 // outruns the interval delays the next one instead of overlapping with it.
 func (s *server) pollLoop(ctx context.Context) {
 	if s.cfg.pollInterval <= 0 {
-		log.Print("reaction polling disabled")
+		logging.From(ctx).Info("reaction polling disabled")
 
 		return
 	}
 
-	log.Printf("sweeping reactions every %s", s.cfg.pollInterval)
+	logging.From(ctx).Info("sweeping reactions", "interval", s.cfg.pollInterval.String())
 
 	ticker := time.NewTicker(s.cfg.pollInterval)
 	defer ticker.Stop()
@@ -71,11 +73,33 @@ func (s *server) pollLoop(ctx context.Context) {
 			return
 
 		case <-ticker.C:
-			if err := s.sweep(ctx); err != nil {
-				log.Printf("sweep failed: %v", err)
-			}
+			s.runSweep(ctx)
 		}
 	}
+}
+
+// runSweep sweeps once and records how it went.
+//
+// The duration matters as much as the outcome: a sweep that grows past the
+// interval delays every one after it, and this is where that shows up before
+// reactions start arriving late.
+func (s *server) runSweep(ctx context.Context) {
+	started := time.Now()
+
+	err := s.sweep(ctx)
+	elapsed := time.Since(started)
+
+	s.metrics.SweepDuration.Observe(elapsed.Seconds())
+
+	if err != nil {
+		s.metrics.Sweeps.WithLabelValues(metrics.ResultFailure).Inc()
+		logging.From(ctx).Error("sweep failed", "error", err, "duration", elapsed.String())
+
+		return
+	}
+
+	s.metrics.Sweeps.WithLabelValues(metrics.ResultSuccess).Inc()
+	logging.From(ctx).Debug("sweep complete", "duration", elapsed.String())
 }
 
 // sweep polls every repository the App is installed on.
@@ -100,9 +124,12 @@ func (s *server) sweep(ctx context.Context) error {
 	}
 
 	for _, installation := range installations {
+		installCtx := logging.With(ctx,
+			"installation", installation.ID, "account", installation.Account)
+
 		// One installation losing access must not stop the rest of the sweep
-		if err := s.sweepInstallation(ctx, installation); err != nil {
-			log.Printf("installation %d (%s): %v", installation.ID, installation.Account, err)
+		if err := s.sweepInstallation(installCtx, installation); err != nil {
+			logging.From(installCtx).Error("installation sweep failed", "error", err)
 		}
 	}
 
@@ -127,8 +154,11 @@ func (s *server) sweepInstallation(ctx context.Context, installation github.Inst
 	}
 
 	for _, repo := range repos {
+		// The repository is named here rather than added to the context,
+		// because pollAllPRs adds it for the lines below that
 		if err := s.sweepRepo(ctx, client, repo); err != nil {
-			log.Printf("%s/%s: %v", repo.Owner, repo.Name, err)
+			logging.From(ctx).Error("repository sweep failed",
+				"repo", fmt.Sprintf("%s/%s", repo.Owner, repo.Name), "error", err)
 		}
 	}
 

@@ -40,17 +40,23 @@ type githubStub struct {
 	// one the App has lost access to
 	brokenRepo string
 
+	// rateLimitStatus is what GET /rate_limit answers, which is the one call
+	// the readiness probe makes. Set it before the service starts, never while
+	// it is running
+	rateLimitStatus int
+
 	mu    sync.Mutex
 	calls []string
 }
 
 func newGitHubStub() *githubStub {
 	return &githubStub{
-		codeowners:    "* @someone\n",
-		prAuthor:      "author",
-		installations: `[]`,
-		repos:         `{"total_count": 0, "repositories": []}`,
-		openPRs:       `[]`,
+		codeowners:      "* @someone\n",
+		prAuthor:        "author",
+		installations:   `[]`,
+		repos:           `{"total_count": 0, "repositories": []}`,
+		openPRs:         `[]`,
+		rateLimitStatus: http.StatusOK,
 	}
 }
 
@@ -63,6 +69,16 @@ func (s *githubStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case s.brokenRepo != "" && strings.Contains(r.URL.Path, "/"+s.brokenRepo+"/"):
 		w.WriteHeader(http.StatusForbidden)
 		_, _ = w.Write([]byte(`{"message": "Resource not accessible by integration"}`))
+
+	case r.URL.Path == "/rate_limit":
+		if s.rateLimitStatus != http.StatusOK {
+			w.WriteHeader(s.rateLimitStatus)
+			_, _ = w.Write([]byte(`{"message": "unavailable"}`))
+
+			return
+		}
+
+		_, _ = w.Write([]byte(`{"rate": {"limit": 5000, "remaining": 4999}}`))
 
 	case r.URL.Path == "/app/installations":
 		_, _ = io.WriteString(w, s.installations)

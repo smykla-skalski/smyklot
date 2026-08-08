@@ -565,6 +565,20 @@ func (c *Client) getFileContent(
 	return decoded, nil
 }
 
+// Ping reports whether the GitHub API answers and accepts these credentials.
+//
+// GET /rate_limit is the cheapest call that proves both. It is exempt from the
+// limit it reports, so a probe on a short interval costs nothing, and it still
+// fails on a token that has expired or been revoked.
+//
+// Sent without the retry every other call gets: a readiness probe wants the
+// current answer, not a patient one.
+func (c *Client) Ping(ctx context.Context) error {
+	_, err := c.makeRequest(ctx, http.MethodGet, "/rate_limit", nil)
+
+	return err
+}
+
 // ListInstallations retrieves every installation of the GitHub App.
 //
 // Requires a client created with NewAppClient - this endpoint accepts only a

@@ -13,6 +13,7 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/feedback"
 	"github.com/smykla-skalski/smyklot/pkg/github"
+	"github.com/smykla-skalski/smyklot/pkg/logging"
 	"github.com/smykla-skalski/smyklot/pkg/permissions"
 )
 
@@ -207,8 +208,8 @@ func fetchCodeowners(
 
 	// Log if CODEOWNERS is missing
 	if content == "" {
-		fmt.Printf("CODEOWNERS file not found in %s/%s, defaulting to repository admin permissions\n",
-			repoOwner, repoName)
+		logging.From(ctx).Warn("no CODEOWNERS, falling back to repository admin permissions",
+			"repo", fmt.Sprintf("%s/%s", repoOwner, repoName))
 	}
 
 	return content, nil
@@ -236,7 +237,11 @@ func pollAllPRs(
 	repoOwner, repoName string,
 	botUsername string,
 ) error {
-	fmt.Printf("Polling PR reactions in %s/%s\n", repoOwner, repoName)
+	// Named once, here, so every line below carries the repository without
+	// each of them having to say so
+	ctx = logging.With(ctx, "repo", fmt.Sprintf("%s/%s", repoOwner, repoName))
+
+	logging.From(ctx).Info("polling PR reactions")
 
 	// Get all open PRs
 	prs, err := client.GetOpenPRs(ctx, repoOwner, repoName)
@@ -245,25 +250,26 @@ func pollAllPRs(
 	}
 
 	if len(prs) == 0 {
-		fmt.Println("No open PRs found")
+		logging.From(ctx).Info("no open PRs")
+
 		return nil
 	}
 
-	fmt.Printf("Found %d open PR(s)\n", len(prs))
+	logging.From(ctx).Info("found open PRs", "count", len(prs))
 
 	// Process reactions on each PR
 	for _, pr := range prs {
 		if err := processPR(ctx, client, checker, bc, repoOwner, repoName, pr); err != nil {
-			fmt.Fprintf(os.Stderr, "  Warning: %v\n", err)
+			logging.From(ctx).Warn("failed to process PR reactions", "error", err)
 		}
 	}
 
 	// Process pending-ci PRs (waiting for CI to pass before merge)
 	if err := processPendingCIPRs(ctx, client, bc, repoOwner, repoName, prs, botUsername); err != nil {
-		fmt.Fprintf(os.Stderr, "  Warning: failed to process pending-ci PRs: %v\n", err)
+		logging.From(ctx).Warn("failed to process pending-CI PRs", "error", err)
 	}
 
-	fmt.Println("\nPolling complete")
+	logging.From(ctx).Info("polling complete")
 
 	return nil
 }
@@ -283,7 +289,9 @@ func processPR(
 	}
 	prNumber := int(prNumberFloat)
 
-	fmt.Printf("\nProcessing PR #%d\n", prNumber)
+	ctx = logging.With(ctx, "pr", prNumber)
+
+	logging.From(ctx).Debug("processing PR")
 
 	// Get PR author and title for RuntimeConfig
 	var author, title string
@@ -341,12 +349,12 @@ func processPendingCIPRs(
 		return nil
 	}
 
-	fmt.Printf("\nProcessing %d PR(s) waiting for CI\n", len(pendingPRs))
+	logging.From(ctx).Info("processing PRs waiting for CI", "count", len(pendingPRs))
 
 	for _, pr := range pendingPRs {
 		if err := processPendingCIPR(ctx, client, bc, repoOwner, repoName, pr, botUsername); err != nil {
-			prNum := extractPRNumber(pr.prData)
-			fmt.Fprintf(os.Stderr, "  Warning: failed to process pending-ci PR #%d: %v\n", prNum, err)
+			logging.From(ctx).Warn("failed to process pending-CI PR",
+				"pr", extractPRNumber(pr.prData), "error", err)
 		}
 	}
 
@@ -446,7 +454,9 @@ func processPendingCIPR(
 		return fmt.Errorf("invalid PR number")
 	}
 
-	fmt.Printf("  Checking CI status for PR #%d (method: %s)\n", prNumber, pr.method)
+	ctx = logging.With(ctx, "pr", prNumber)
+
+	logging.From(ctx).Debug("checking CI status", "merge_method", pr.method)
 
 	// Get PR head SHA for CI status check
 	headRef, err := client.GetPRHeadRef(ctx, repoOwner, repoName, prNumber)
@@ -487,7 +497,7 @@ func processPendingCIPR(
 
 	default:
 		// CI still pending, skip
-		fmt.Printf("    CI still pending: %s\n", checkStatus.Summary)
+		logging.From(ctx).Debug("CI still pending", "summary", checkStatus.Summary)
 
 		return nil
 	}
@@ -503,7 +513,7 @@ func handlePendingCIPassed(
 	pr pendingCIPR,
 	botUsername string,
 ) error {
-	fmt.Printf("    CI passed! Merging PR #%d\n", prNumber)
+	logging.From(ctx).Info("CI passed, merging")
 
 	// Merge the PR
 	if err := client.MergePR(ctx, repoOwner, repoName, prNumber, pr.method); err != nil {
@@ -547,7 +557,7 @@ func handlePendingCIFailed(
 	pr pendingCIPR,
 	summary string,
 ) error {
-	fmt.Printf("    CI failed: %s\n", summary)
+	logging.From(ctx).Info("CI failed", "summary", summary)
 
 	return postPendingCIError(ctx, client, repoOwner, repoName, prNumber, pr.label, summary)
 }

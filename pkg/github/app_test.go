@@ -300,4 +300,51 @@ var _ = Describe("GitHub App Client [Unit]", func() {
 			Expect(err).To(MatchError(ContainSubstring("no content field")))
 		})
 	})
+
+	Describe("Ping", func() {
+		It("should succeed when the API answers", func() {
+			var gotPath string
+
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotPath = r.URL.Path
+				_, _ = w.Write([]byte(`{"rate": {"limit": 5000, "remaining": 4999}}`))
+			}))
+
+			client, err := github.NewAppClient("test-jwt", server.URL)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(client.Ping(context.Background())).To(Succeed())
+			Expect(gotPath).To(Equal("/rate_limit"))
+		})
+
+		It("should fail when the credentials are rejected", func() {
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusUnauthorized)
+				_, _ = w.Write([]byte(`{"message": "Bad credentials"}`))
+			}))
+
+			client, err := github.NewAppClient("stale-jwt", server.URL)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(client.Ping(context.Background())).ToNot(Succeed())
+		})
+
+		// The retry every other call gets would make a probe wait through the
+		// backoff before reporting what it already knows
+		It("should not retry a server error", func() {
+			var attempts int
+
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				attempts++
+
+				w.WriteHeader(http.StatusInternalServerError)
+			}))
+
+			client, err := github.NewAppClient("test-jwt", server.URL)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(client.Ping(context.Background())).ToNot(Succeed())
+			Expect(attempts).To(Equal(1))
+		})
+	})
 })

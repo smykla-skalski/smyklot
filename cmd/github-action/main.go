@@ -9,7 +9,7 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
+	"log/slog"
 	"os"
 	"regexp"
 	"strconv"
@@ -24,6 +24,7 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/feedback"
 	"github.com/smykla-skalski/smyklot/pkg/github"
 	"github.com/smykla-skalski/smyklot/pkg/githubapp"
+	"github.com/smykla-skalski/smyklot/pkg/logging"
 	"github.com/smykla-skalski/smyklot/pkg/permissions"
 )
 
@@ -199,6 +200,11 @@ func registerRunFlags(cmd *cobra.Command) {
 }
 
 func main() {
+	// The Action and the poll sweep write into a workflow log a person reads,
+	// so plain text is the default. The service overrides it with JSON, which
+	// it carries on the context rather than setting here
+	slog.SetDefault(logging.New(os.Stdout, logging.FormatText, slog.LevelInfo, nil))
+
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
@@ -242,7 +248,7 @@ func run(cmd *cobra.Command, _ []string) error {
 	// Write a step summary with effective configuration
 	if err := writeStepSummary(rc, bc); err != nil {
 		// Don't fail if we can't write a summary, just log and continue
-		_, _ = fmt.Fprintf(os.Stderr, "Warning: failed to write step summary: %v\n", err)
+		logging.From(ctx).Warn("failed to write step summary", "error", err)
 	}
 
 	// Get GitHub App installation token if configured
@@ -697,11 +703,7 @@ func checkUserPermission(
 
 	// If CODEOWNERS has no approvers (empty file), check admin permissions
 	if len(checker.GetApprovers()) == 0 {
-		_, _ = fmt.Fprintf(
-			os.Stderr,
-			"WARNING: No CODEOWNERS found, falling back to admin permissions for %s\n",
-			username,
-		)
+		logging.From(ctx).Warn("no CODEOWNERS, falling back to admin permissions", "user", username)
 		hasWrite, err := client.HasWritePermission(ctx, owner, repo, username)
 		if err != nil {
 			return false, err
@@ -1482,11 +1484,7 @@ func handleRemovedReactions(
 			rc.BotUsername,
 		); err != nil {
 			// Don't fail, just log
-			_, _ = fmt.Fprintf(
-				os.Stderr,
-				"Warning: failed to dismiss review after reaction removal: %v\n",
-				err,
-			)
+			logging.From(ctx).Warn("failed to dismiss review after reaction removal", "error", err)
 		}
 
 		// Remove the label
@@ -1510,11 +1508,8 @@ func handleRemovedReactions(
 		)
 		if err != nil {
 			// Don't fail, just log
-			_, _ = fmt.Fprintf(
-				os.Stderr,
-				"Warning: failed to get PR info after reaction removal: %v\n",
-				err,
-			)
+			logging.From(ctx).Warn("failed to get PR info after reaction removal", "error", err)
+
 			return nil
 		}
 

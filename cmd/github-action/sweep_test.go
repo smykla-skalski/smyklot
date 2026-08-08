@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -35,6 +36,7 @@ var _ = Describe("Reaction sweep [Unit]", func() {
 			appClientID:   "Iv1.test",
 			appPrivateKey: githubtest.AppPrivateKey(),
 			botConfig:     config.Default(),
+			logWriter:     io.Discard,
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -169,6 +171,7 @@ var _ = Describe("Reaction sweep [Unit]", func() {
 			appClientID:   "Iv1.test",
 			appPrivateKey: githubtest.AppPrivateKey(),
 			botConfig:     config.Default(),
+			logWriter:     io.Discard,
 		})
 		Expect(err).NotTo(HaveOccurred())
 

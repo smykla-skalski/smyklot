@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"time"
@@ -77,6 +78,7 @@ var _ = Describe("Webhook service [Unit]", func() {
 			appClientID:   "Iv1.test",
 			appPrivateKey: githubtest.AppPrivateKey(),
 			botConfig:     botConfig,
+			logWriter:     io.Discard,
 		})
 		Expect(err).NotTo(HaveOccurred())
 

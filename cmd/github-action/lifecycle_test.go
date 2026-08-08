@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -31,9 +32,10 @@ func freePort() int {
 
 var _ = Describe("Service lifecycle [Unit]", func() {
 	var (
-		stub    *githubStub
-		address string
-		srv     *server
+		stub         *githubStub
+		address      string
+		adminAddress string
+		srv          *server
 	)
 
 	BeforeEach(func() {
@@ -43,11 +45,13 @@ var _ = Describe("Service lifecycle [Unit]", func() {
 		DeferCleanup(endpoint.Close)
 
 		address = fmt.Sprintf("127.0.0.1:%d", freePort())
+		adminAddress = fmt.Sprintf("127.0.0.1:%d", freePort())
 
 		var err error
 
 		srv, err = newServer(&serveConfig{
 			listenAddress: address,
+			adminAddress:  adminAddress,
 			webhookPath:   defaultWebhookPath,
 			webhookSecret: []byte(testSecret),
 			apiBaseURL:    endpoint.URL,
@@ -55,11 +59,23 @@ var _ = Describe("Service lifecycle [Unit]", func() {
 			appClientID:   "Iv1.test",
 			appPrivateKey: githubtest.AppPrivateKey(),
 			botConfig:     config.Default(),
+			logWriter:     io.Discard,
 			// A sweep on every tick would race the spec's own assertions
 			pollInterval: time.Hour,
 		})
 		Expect(err).NotTo(HaveOccurred())
 	})
+
+	// get fetches one path and reports the status, or 0 when nothing answered
+	get := func(base, path string) int {
+		resp, err := http.Get("http://" + base + path) //nolint:noctx // probe in a spec
+		if err != nil {
+			return 0
+		}
+		defer func() { _ = resp.Body.Close() }()
+
+		return resp.StatusCode
+	}
 
 	// A rolling update sends SIGTERM. Run must come back rather than hang, or
 	// the orchestrator kills the process with deliveries still in the queue
@@ -73,15 +89,40 @@ var _ = Describe("Service lifecycle [Unit]", func() {
 			result <- srv.Run(ctx)
 		}()
 
-		Eventually(func() int {
-			resp, err := http.Get("http://" + address + healthPath) //nolint:noctx // probe in a spec
-			if err != nil {
-				return 0
-			}
-			defer func() { _ = resp.Body.Close() }()
+		Eventually(func() int { return get(address, healthPath) }, 5*time.Second).
+			Should(Equal(http.StatusOK))
 
-			return resp.StatusCode
-		}, 5*time.Second).Should(Equal(http.StatusOK))
+		cancel()
+
+		Eventually(result, 5*time.Second).Should(Receive(BeNil()))
+	})
+
+	It("should serve the admin routes on their own port", func() {
+		ctx, cancel := context.WithCancel(GinkgoT().Context())
+		DeferCleanup(cancel)
+
+		result := make(chan error, 1)
+		go func() {
+			defer GinkgoRecover()
+
+			result <- srv.Run(ctx)
+		}()
+
+		Eventually(func() int { return get(adminAddress, livePath) }, 5*time.Second).
+			Should(Equal(http.StatusOK))
+
+		Expect(get(adminAddress, metricsPath)).To(Equal(http.StatusOK))
+		Expect(get(adminAddress, failuresPath)).To(Equal(http.StatusOK))
+
+		// The stub answers /rate_limit, so the first probe finds GitHub
+		// reachable and readiness turns from unready to ready
+		Eventually(func() int { return get(adminAddress, readyPath) }, 5*time.Second).
+			Should(Equal(http.StatusOK))
+
+		// None of it is on the port GitHub talks to
+		Expect(get(address, metricsPath)).To(Equal(http.StatusNotFound))
+		Expect(get(address, failuresPath)).To(Equal(http.StatusNotFound))
+		Expect(get(address, readyPath)).To(Equal(http.StatusNotFound))
 
 		cancel()
 
@@ -94,5 +135,16 @@ var _ = Describe("Service lifecycle [Unit]", func() {
 		DeferCleanup(func() { _ = blocker.Close() })
 
 		Expect(srv.Run(GinkgoT().Context())).To(HaveOccurred())
+	})
+
+	// One listener dying must take the other with it, or the service keeps
+	// accepting deliveries with nothing left to report how it is doing
+	It("should stop serving webhooks when the admin listener cannot bind", func() {
+		blocker, err := net.Listen("tcp", adminAddress)
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() { _ = blocker.Close() })
+
+		Expect(srv.Run(GinkgoT().Context())).To(HaveOccurred())
+		Expect(get(address, healthPath)).To(BeZero())
 	})
 })

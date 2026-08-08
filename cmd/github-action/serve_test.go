@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log/slog"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -9,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/smykla-skalski/smyklot/pkg/config"
+	"github.com/smykla-skalski/smyklot/pkg/logging"
 )
 
 // serveEnv lists every variable loadServeConfig reads, so a spec starts from a
@@ -16,8 +18,11 @@ import (
 var serveEnv = []string{
 	envWebhookSecret,
 	envListenAddress,
+	envAdminAddress,
 	envWebhookPath,
 	envPollInterval,
+	envLogFormat,
+	envLogLevel,
 	envAPIBaseURL,
 	envBotUsername,
 	envGitHubAppClientID,
@@ -45,8 +50,11 @@ func loadServe(env map[string]string, args ...string) (*serveConfig, error) {
 
 	cmd := &cobra.Command{}
 	cmd.Flags().String(flagListen, defaultListenAddress, descListen)
+	cmd.Flags().String(flagAdminListen, defaultAdminAddress, descAdminListen)
 	cmd.Flags().String(flagWebhookPath, defaultWebhookPath, descWebhookPath)
 	cmd.Flags().Duration(flagPollInterval, defaultPollInterval, descPollInterval)
+	cmd.Flags().String(flagLogFormat, defaultLogFormat, descLogFormat)
+	cmd.Flags().String(flagLogLevel, defaultLogLevel, descLogLevel)
 
 	if err := cmd.ParseFlags(args); err != nil {
 		return nil, err
@@ -73,18 +81,41 @@ var _ = Describe("Serve configuration [Unit]", func() {
 		Expect(cfg.botUsername).To(Equal(defaultBotUsername))
 	})
 
+	// Everything an operator reads belongs off the port GitHub talks to
+	It("should put the admin listener on its own port by default", func() {
+		cfg, err := loadServe(nil)
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(cfg.adminAddress).To(Equal(defaultAdminAddress))
+		Expect(cfg.adminAddress).ToNot(Equal(cfg.listenAddress))
+	})
+
+	It("should default to JSON at info level", func() {
+		cfg, err := loadServe(nil)
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(cfg.logFormat).To(Equal(logging.FormatJSON))
+		Expect(cfg.logLevel).To(Equal(slog.LevelInfo))
+	})
+
 	Context("precedence", func() {
 		It("should take settings from the environment", func() {
 			cfg, err := loadServe(map[string]string{
 				envListenAddress: "127.0.0.1:9000",
+				envAdminAddress:  "127.0.0.1:9001",
 				envWebhookPath:   "/hooks/smyklot",
 				envPollInterval:  "90s",
+				envLogFormat:     "text",
+				envLogLevel:      "debug",
 			})
 			Expect(err).NotTo(HaveOccurred())
 
 			Expect(cfg.listenAddress).To(Equal("127.0.0.1:9000"))
+			Expect(cfg.adminAddress).To(Equal("127.0.0.1:9001"))
 			Expect(cfg.webhookPath).To(Equal("/hooks/smyklot"))
 			Expect(cfg.pollInterval).To(Equal(90 * time.Second))
+			Expect(cfg.logFormat).To(Equal(logging.FormatText))
+			Expect(cfg.logLevel).To(Equal(slog.LevelDebug))
 		})
 
 		It("should let an explicit flag beat the environment", func() {
@@ -120,6 +151,26 @@ var _ = Describe("Serve configuration [Unit]", func() {
 			cfg, err := loadServe(map[string]string{envPollInterval: "0"})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(cfg.pollInterval).To(BeZero())
+		})
+
+		// Sharing the port would publish the metrics and failure reasons the
+		// admin listener exists to keep off the internet
+		It("should reject an admin address equal to the listen address", func() {
+			_, err := loadServe(map[string]string{
+				envListenAddress: "127.0.0.1:9000",
+				envAdminAddress:  "127.0.0.1:9000",
+			})
+			Expect(err).To(MatchError(ErrAddressConflict))
+		})
+
+		It("should reject an unknown log format", func() {
+			_, err := loadServe(map[string]string{envLogFormat: "logfmt"})
+			Expect(err).To(MatchError(logging.ErrUnknownLogFormat))
+		})
+
+		It("should reject an unknown log level", func() {
+			_, err := loadServe(map[string]string{envLogLevel: "chatty"})
+			Expect(err).To(MatchError(logging.ErrUnknownLogLevel))
 		})
 	})
 

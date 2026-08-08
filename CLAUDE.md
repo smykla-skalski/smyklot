@@ -26,6 +26,8 @@ Go + Ginkgo/Gomega, deployed as Docker-based GitHub Action.
 - `pkg/github/` — GitHub API client (REST + GraphQL); used by all handlers for approvals, merges, reactions, comments
 - `pkg/githubapp/` — mints and caches App JWTs and per-installation tokens; the service needs one token per installation
 - `pkg/webhook/` — parses `issue_comment` deliveries and de-duplicates them; re-exports signature verification from `go-githubauth/webhook`
+- `pkg/logging/` — builds the `slog` logger, carries it on the context, and redacts known secrets from every line
+- `pkg/metrics/` — the Prometheus collectors the service reports, on a registry it owns rather than the default one
 - Data flow (Action): env vars → `run()` → client → repo config → `executeComment`
 - Data flow (service): signed delivery → `handleDelivery` → dedupe → worker → installation token → client → repo config → `executeComment`
 
@@ -44,6 +46,10 @@ Go + Ginkgo/Gomega, deployed as Docker-based GitHub Action.
 - A repo must not run both the Action workflow and the service, or both act on the same comment
 - An unparseable `.github/smyklot.yaml` is **fail-closed with feedback** — no command runs, and the bot says why. Never fall back to defaults: the file is where `allowed_commands` is narrowed
 - `dispatch` must never send on `s.jobs` directly — use `enqueue`, which holds `queueMu` for read. `Shutdown` abandons a running handler once its deadline passes, and a bare send on the closed queue panics rather than taking `default` (`cmd/github-action/server.go`)
+- Metrics live on the **admin listener**, never the webhook one — the webhook port faces the internet, and queue depth and failure reasons should not
+- Never use a request header as a metric label — the signature does not cover headers, so an unbounded value mints a time series per request (`eventLabel` in `cmd/github-action/server.go`)
+- Log through `logging.From(ctx)` in shared code, not `log` or `fmt.Print` — that is what puts the delivery id on every line a webhook produces
+- Attach an attribute in **one** place. `pollAllPRs` owns `repo` and `processPR` owns `pr`; adding either again downstream prints it twice
 
 ## Code Style
 

@@ -2,6 +2,8 @@ package main
 
 import (
 	"errors"
+	"io"
+	"log/slog"
 	"os"
 	"os/signal"
 	"strings"
@@ -12,28 +14,46 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/smykla-skalski/smyklot/pkg/config"
+	"github.com/smykla-skalski/smyklot/pkg/logging"
 )
 
 const (
 	flagListen       = "listen"
+	flagAdminListen  = "admin-listen"
 	flagWebhookPath  = "webhook-path"
 	flagPollInterval = "poll-interval"
+	flagLogFormat    = "log-format"
+	flagLogLevel     = "log-level"
 
 	descListen       = "Address to listen on"
+	descAdminListen  = "Address to serve probes, metrics and recent failures on"
 	descWebhookPath  = "Path GitHub delivers webhooks to"
 	descPollInterval = "How often to sweep reactions and pending-CI PRs (0 disables)"
+	descLogFormat    = "Log format: json or text"
+	descLogLevel     = "Log level: debug, info, warn or error"
 
 	envListenAddress = "SMYKLOT_LISTEN_ADDRESS"
+	envAdminAddress  = "SMYKLOT_ADMIN_ADDRESS"
 	envWebhookPath   = "SMYKLOT_WEBHOOK_PATH"
 	envWebhookSecret = "SMYKLOT_WEBHOOK_SECRET" //nolint:gosec // Environment variable name, not a credential
 	envPollInterval  = "SMYKLOT_POLL_INTERVAL"
+	envLogFormat     = "SMYKLOT_LOG_FORMAT"
+	envLogLevel      = "SMYKLOT_LOG_LEVEL"
 
 	defaultListenAddress = ":8080"
+	defaultAdminAddress  = ":9090"
 	defaultWebhookPath   = "/webhook"
 	defaultPollInterval  = 5 * time.Minute
 
-	// healthPath answers liveness probes. Readiness, metrics, and structured
-	// logging are a separate concern and land with them
+	// defaultLogFormat is JSON because the service's lines are read by a query,
+	// not by a person. The Action keeps writing for a person to read
+	defaultLogFormat = string(logging.FormatJSON)
+
+	defaultLogLevel = "info"
+
+	// healthPath answers a liveness probe on the public listener, for an
+	// ingress or a tunnel that needs one path it can reach. Everything an
+	// operator reads is on the admin listener instead
 	healthPath = "/healthz"
 )
 
@@ -48,6 +68,11 @@ var (
 
 	// ErrInvalidPollInterval is returned when the poll interval is unparseable
 	ErrInvalidPollInterval = errors.New("invalid poll interval")
+
+	// ErrAddressConflict is returned when the admin listener would bind the
+	// same address as the webhook listener, which would publish everything the
+	// admin listener exists to keep private
+	ErrAddressConflict = errors.New("admin address must differ from the listen address")
 )
 
 var serveCmd = &cobra.Command{
@@ -64,6 +89,9 @@ GitHub sends no webhook when someone adds or removes a reaction, so reaction
 commands are still found by sweeping open pull requests on an interval. The
 same sweep merges pull requests that were waiting for CI.
 
+Probes, metrics and recent failures are served on a second port, which is not
+meant to be public: /livez, /readyz, /metrics and /failures.
+
 Requires GitHub App credentials and a webhook secret in the environment:
 GITHUB_APP_PRIVATE_KEY, GITHUB_APP_CLIENT_ID (or GITHUB_APP_ID), and
 SMYKLOT_WEBHOOK_SECRET.`,
@@ -72,8 +100,11 @@ SMYKLOT_WEBHOOK_SECRET.`,
 
 func init() {
 	serveCmd.Flags().String(flagListen, defaultListenAddress, descListen)
+	serveCmd.Flags().String(flagAdminListen, defaultAdminAddress, descAdminListen)
 	serveCmd.Flags().String(flagWebhookPath, defaultWebhookPath, descWebhookPath)
 	serveCmd.Flags().Duration(flagPollInterval, defaultPollInterval, descPollInterval)
+	serveCmd.Flags().String(flagLogFormat, defaultLogFormat, descLogFormat)
+	serveCmd.Flags().String(flagLogLevel, defaultLogLevel, descLogLevel)
 
 	rootCmd.AddCommand(serveCmd)
 }
@@ -84,6 +115,16 @@ type serveConfig struct {
 	webhookPath   string
 	webhookSecret []byte
 	pollInterval  time.Duration
+
+	// adminAddress carries the probes, metrics and recent failures, on its own
+	// port because the webhook port is reachable from the internet
+	adminAddress string
+
+	logFormat logging.Format
+	logLevel  slog.Level
+
+	// logWriter is where log lines go; nil means standard output
+	logWriter io.Writer
 
 	// apiBaseURL points at a GitHub Enterprise instance; empty uses public
 	// GitHub
@@ -173,6 +214,16 @@ func applyServeFlags(cmd *cobra.Command, cfg *serveConfig) error {
 
 	cfg.listenAddress = flagOrEnv(cmd, flagListen, listen, envListenAddress)
 
+	adminListen, err := cmd.Flags().GetString(flagAdminListen)
+	if err != nil {
+		return err
+	}
+
+	cfg.adminAddress = flagOrEnv(cmd, flagAdminListen, adminListen, envAdminAddress)
+	if cfg.adminAddress == cfg.listenAddress {
+		return ErrAddressConflict
+	}
+
 	webhookPath, err := cmd.Flags().GetString(flagWebhookPath)
 	if err != nil {
 		return err
@@ -189,8 +240,40 @@ func applyServeFlags(cmd *cobra.Command, cfg *serveConfig) error {
 	}
 
 	cfg.pollInterval, err = flagOrEnvDuration(cmd, flagPollInterval, interval, envPollInterval)
+	if err != nil {
+		return err
+	}
 
-	return err
+	return applyLogFlags(cmd, cfg)
+}
+
+// applyLogFlags resolves how the service writes its log lines.
+func applyLogFlags(cmd *cobra.Command, cfg *serveConfig) error {
+	format, err := cmd.Flags().GetString(flagLogFormat)
+	if err != nil {
+		return err
+	}
+
+	rawFormat := flagOrEnv(cmd, flagLogFormat, format, envLogFormat)
+
+	cfg.logFormat, err = logging.ParseFormat(rawFormat)
+	if err != nil {
+		return NewInputError(logging.ErrUnknownLogFormat, rawFormat, err.Error())
+	}
+
+	level, err := cmd.Flags().GetString(flagLogLevel)
+	if err != nil {
+		return err
+	}
+
+	rawLevel := flagOrEnv(cmd, flagLogLevel, level, envLogLevel)
+
+	cfg.logLevel, err = logging.ParseLevel(rawLevel)
+	if err != nil {
+		return NewInputError(logging.ErrUnknownLogLevel, rawLevel, err.Error())
+	}
+
+	return nil
 }
 
 // flagOrEnv resolves one setting, letting an explicit flag win over the
