@@ -19,9 +19,21 @@ All PNG, RGB, square.
 `master/robot-avatar-master-native-1254x1254.png` is the approved generated image and the only
 file with native detail. Use it wherever the platform accepts an arbitrary size.
 
-Everything else is derived from it. The 512, 768 and 1024 exports are downscales. The 2048 and
-4096 exports are Lanczos upscales kept for convenience - they are larger, not sharper, so reach
-for them only when something demands those dimensions.
+Everything else is derived from it, and measurably so: all 25 exports reproduce pixel for pixel
+as a Pillow Lanczos resample of the native, with zero differing subpixels. The 512, 768 and 1024
+files are downscales. The 2048 and 4096 files are upscales kept for convenience - larger, not
+sharper, carrying no detail the native does not already have. Reach for them only when something
+demands those exact dimensions.
+
+Regenerating any of them takes one line, and the pixels come back identical (the encoded PNG
+bytes may not - that depends on encoder settings):
+
+```sh
+python3 -c "from PIL import Image; im = Image.open('master/robot-avatar-master-native-1254x1254.png'); \
+im.resize((256, 256), Image.LANCZOS).save('png/robot-avatar-256x256.png')"
+```
+
+ImageMagick's Lanczos is a different kernel and will not reproduce these files.
 
 The `retina/` files are aliases, not separate renders. Ten of the twelve are byte-identical to a
 file in `png/` or `master/` (`256@2x` is the 512, `128@2x` is the 256, and so on). Only `48@3x`
