@@ -18,15 +18,31 @@ import (
 )
 
 const (
-	defaultBaseURL        = "https://api.github.com"
-	userAgent             = "smyklot-github-app"
-	defaultTimeout        = 30 * time.Second
-	maxIdleConns          = 100
-	maxIdleConnsPerHost   = 10
-	idleConnTimeout       = 90 * time.Second
-	maxRetries            = 3
-	maxCodeownersSize     = 1024 * 1024 // 1MB
-	maxCommentBodyLength  = 10000       // 10KB
+	defaultBaseURL       = "https://api.github.com"
+	userAgent            = "smyklot-github-app"
+	defaultTimeout       = 30 * time.Second
+	maxIdleConns         = 100
+	maxIdleConnsPerHost  = 10
+	idleConnTimeout      = 90 * time.Second
+	maxRetries           = 3
+	maxCodeownersSize    = 1024 * 1024 // 1MB
+	maxCommentBodyLength = 10000       // 10KB
+	maxRepoConfigSize    = 64 * 1024   // 64KB
+
+	// schemeToken authenticates as a user or an App installation
+	schemeToken = "token"
+
+	// schemeBearer authenticates as the App itself, with a JWT. GitHub rejects
+	// the "token" scheme on app-level endpoints such as GET /app/installations
+	schemeBearer = "Bearer"
+
+	// pageSize is the maximum GitHub allows on the paginated endpoints this
+	// client reads
+	pageSize = 100
+
+	// maxPages bounds a pagination loop so a misbehaving endpoint cannot spin
+	// forever. 100 pages of 100 items covers any realistic installation
+	maxPages = 100
 )
 
 // Client is a GitHub API client
@@ -34,6 +50,7 @@ type Client struct {
 	httpClient *http.Client
 	token      string
 	baseURL    string
+	authScheme string
 }
 
 // NewClient creates a new GitHub API client
@@ -41,6 +58,19 @@ type Client struct {
 // The token parameter is required and must not be empty. The baseURL parameter
 // is optional; if empty, the default GitHub API URL will be used.
 func NewClient(token, baseURL string) (*Client, error) {
+	return newClient(token, baseURL, schemeToken)
+}
+
+// NewAppClient creates a client authenticated as the GitHub App itself.
+//
+// The jwt parameter is a GitHub App JWT, not an installation token. Use this
+// only for app-level endpoints such as ListInstallations; every repository
+// operation needs an installation token and NewClient.
+func NewAppClient(jwt, baseURL string) (*Client, error) {
+	return newClient(jwt, baseURL, schemeBearer)
+}
+
+func newClient(token, baseURL, authScheme string) (*Client, error) {
 	if token == "" {
 		return nil, ErrEmptyToken
 	}
@@ -62,8 +92,9 @@ func NewClient(token, baseURL string) (*Client, error) {
 				IdleConnTimeout:     idleConnTimeout,
 			},
 		},
-		token:   token,
-		baseURL: baseURL,
+		token:      token,
+		baseURL:    baseURL,
+		authScheme: authScheme,
 	}, nil
 }
 
@@ -496,26 +527,63 @@ func (c *Client) GetLabels(ctx context.Context, owner, repo string, prNumber int
 // Returns the decoded content of .github/CODEOWNERS file.
 // Returns empty string (not error) if file doesn't exist (404).
 func (c *Client) GetCodeowners(ctx context.Context, owner, repo string) (string, error) {
-	path := fmt.Sprintf("/repos/%s/%s/contents/.github/CODEOWNERS", owner, repo)
+	decoded, err := c.getFileContent(ctx, owner, repo, ".github/CODEOWNERS", maxCodeownersSize)
+	if err != nil {
+		return "", err
+	}
+
+	return string(decoded), nil
+}
+
+// GetRepoConfig retrieves the repository's Smyklot configuration file.
+//
+// Returns nil (not an error) when the repository has no configuration file.
+// The canonical name is .github/smyklot.yaml; .github/smyklot.yml is accepted
+// so a repository that already spells its YAML the other way keeps working.
+func (c *Client) GetRepoConfig(ctx context.Context, owner, repo string) ([]byte, error) {
+	for _, name := range repoConfigPaths {
+		content, err := c.getFileContent(ctx, owner, repo, name, maxRepoConfigSize)
+		if err != nil {
+			return nil, err
+		}
+
+		if content != nil {
+			return content, nil
+		}
+	}
+
+	return nil, nil
+}
+
+// getFileContent reads a file through the contents API.
+//
+// Returns nil content (not an error) when the file does not exist, so callers
+// can treat "no such file" as "nothing configured".
+func (c *Client) getFileContent(
+	ctx context.Context,
+	owner, repo, filePath string,
+	maxSize int,
+) ([]byte, error) {
+	path := fmt.Sprintf("/repos/%s/%s/contents/%s", owner, repo, filePath)
 
 	data, err := c.makeRequestWithRetry(ctx, "GET", path, nil)
 	if err != nil {
-		// Return empty string if CODEOWNERS doesn't exist (404)
 		var apiErr *APIError
 		if errors.As(err, &apiErr) && apiErr.StatusCode == 404 {
-			return "", nil
+			return nil, nil
 		}
-		return "", err
+
+		return nil, err
 	}
 
 	var response map[string]interface{}
 	if err := json.Unmarshal(data, &response); err != nil {
-		return "", NewAPIError(ErrResponseParse, 0, "GET", path, err)
+		return nil, NewAPIError(ErrResponseParse, 0, "GET", path, err)
 	}
 
 	content, ok := response["content"].(string)
 	if !ok {
-		return "", NewAPIError(
+		return nil, NewAPIError(
 			ErrResponseParse,
 			0,
 			"GET",
@@ -527,21 +595,110 @@ func (c *Client) GetCodeowners(ctx context.Context, owner, repo string) (string,
 	// GitHub API returns base64-encoded content, decode it
 	decoded, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(content, "\n", ""))
 	if err != nil {
-		return "", NewAPIError(ErrResponseParse, 0, "GET", path, err)
+		return nil, NewAPIError(ErrResponseParse, 0, "GET", path, err)
 	}
 
 	// Validate decoded content size to prevent memory exhaustion
-	if len(decoded) > maxCodeownersSize {
-		return "", NewAPIError(
+	if len(decoded) > maxSize {
+		return nil, NewAPIError(
 			ErrResponseParse,
 			0,
 			"GET",
 			path,
-			fmt.Errorf("CODEOWNERS file too large: %d bytes (max: %d)", len(decoded), maxCodeownersSize),
+			fmt.Errorf("%s too large: %d bytes (max: %d)", filePath, len(decoded), maxSize),
 		)
 	}
 
-	return string(decoded), nil
+	return decoded, nil
+}
+
+// ListInstallations retrieves every installation of the GitHub App.
+//
+// Requires a client created with NewAppClient - this endpoint accepts only a
+// GitHub App JWT.
+func (c *Client) ListInstallations(ctx context.Context) ([]Installation, error) {
+	var installations []Installation
+
+	for page := 1; page <= maxPages; page++ {
+		path := fmt.Sprintf("/app/installations?per_page=%d&page=%d", pageSize, page)
+
+		data, err := c.makeRequestWithRetry(ctx, "GET", path, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		var response []struct {
+			ID      int64 `json:"id"`
+			Account struct {
+				Login string `json:"login"`
+			} `json:"account"`
+			SuspendedAt *string `json:"suspended_at"`
+		}
+		if err := json.Unmarshal(data, &response); err != nil {
+			return nil, NewAPIError(ErrResponseParse, 0, "GET", path, err)
+		}
+
+		for _, item := range response {
+			// A suspended installation cannot mint a token, so polling it only
+			// produces errors
+			if item.SuspendedAt != nil {
+				continue
+			}
+
+			installations = append(installations, Installation{
+				ID:      item.ID,
+				Account: item.Account.Login,
+			})
+		}
+
+		if len(response) < pageSize {
+			break
+		}
+	}
+
+	return installations, nil
+}
+
+// ListInstallationRepos retrieves every repository the installation can reach.
+//
+// Requires a client holding an installation token.
+func (c *Client) ListInstallationRepos(ctx context.Context) ([]Repository, error) {
+	var repos []Repository
+
+	for page := 1; page <= maxPages; page++ {
+		path := fmt.Sprintf("/installation/repositories?per_page=%d&page=%d", pageSize, page)
+
+		data, err := c.makeRequestWithRetry(ctx, "GET", path, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		// Unlike most list endpoints this one wraps its results in an object
+		var response struct {
+			Repositories []struct {
+				Name  string `json:"name"`
+				Owner struct {
+					Login string `json:"login"`
+				} `json:"owner"`
+			} `json:"repositories"`
+		}
+		if err := json.Unmarshal(data, &response); err != nil {
+			return nil, NewAPIError(ErrResponseParse, 0, "GET", path, err)
+		}
+
+		for _, item := range response.Repositories {
+			repos = append(repos, Repository{
+				Owner: item.Owner.Login,
+				Name:  item.Name,
+			})
+		}
+
+		if len(response.Repositories) < pageSize {
+			break
+		}
+	}
+
+	return repos, nil
 }
 
 // GetPRInfo retrieves information about a pull request
@@ -1146,7 +1303,12 @@ func (c *Client) makeRequest(ctx context.Context, method, path string, payload i
 		return nil, NewAPIError(ErrAPIRequest, 0, method, path, err)
 	}
 
-	req.Header.Set("Authorization", fmt.Sprintf("token %s", c.token))
+	scheme := c.authScheme
+	if scheme == "" {
+		scheme = schemeToken
+	}
+
+	req.Header.Set("Authorization", fmt.Sprintf("%s %s", scheme, c.token))
 	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
 	if payload != nil {

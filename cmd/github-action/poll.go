@@ -168,24 +168,43 @@ func setupPollClients(
 		return nil, nil, NewGitHubError(ErrGitHubClient, err)
 	}
 
+	checker, err := newPermissionChecker(ctx, client, repoOwner, repoName)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return client, checker, nil
+}
+
+// newPermissionChecker builds a permission checker for a repository from a
+// client that already exists.
+//
+// The service polls many repositories through one installation client, so it
+// needs the checker without a client to go with it.
+func newPermissionChecker(
+	ctx context.Context,
+	client *github.Client,
+	repoOwner, repoName string,
+) (*permissions.Checker, error) {
 	// Fetch CODEOWNERS (returns empty string if not found)
 	codeownersContent, err := client.GetCodeowners(ctx, repoOwner, repoName)
 	if err != nil {
-		return nil, nil, NewGitHubError(ErrGetCodeowners, err)
+		return nil, NewGitHubError(ErrGetCodeowners, err)
 	}
 
 	// Log if CODEOWNERS is missing
 	if codeownersContent == "" {
-		fmt.Println("CODEOWNERS file not found, defaulting to repository admin permissions")
+		fmt.Printf("CODEOWNERS file not found in %s/%s, defaulting to repository admin permissions\n",
+			repoOwner, repoName)
 	}
 
 	// Initialize permission checker
 	checker, err := permissions.NewCheckerFromContent(codeownersContent, client)
 	if err != nil {
-		return nil, nil, NewGitHubError(ErrInitPermissions, err)
+		return nil, NewGitHubError(ErrInitPermissions, err)
 	}
 
-	return client, checker, nil
+	return checker, nil
 }
 
 // pollAllPRs polls and processes reactions on all open PRs

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -51,6 +52,10 @@ type postedComment struct {
 // commentRecorder is a stand-in GitHub API that captures posted comments and
 // flags any other call, so a spec can assert on everything run() did
 type commentRecorder struct {
+	// repoConfig is the repository's .github/smyklot.yaml, or empty for a
+	// repository that has none
+	repoConfig string
+
 	mu       sync.Mutex
 	comments []postedComment
 	other    []string
@@ -72,6 +77,24 @@ func (r *commentRecorder) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write([]byte(`{"id":1}`))
+
+		return
+	}
+
+	// Both entry points look for the repository's own configuration before
+	// doing anything else, so this is expected traffic rather than a surprise
+	if strings.Contains(req.URL.Path, "/contents/.github/smyklot.") {
+		if r.repoConfig == "" || !strings.HasSuffix(req.URL.Path, ".yaml") {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"message":"Not Found"}`))
+
+			return
+		}
+
+		payload, _ := json.Marshal(map[string]string{
+			"content": base64.StdEncoding.EncodeToString([]byte(r.repoConfig)),
+		})
+		_, _ = w.Write(payload)
 
 		return
 	}
@@ -112,7 +135,18 @@ func runWithComment(commentAction, commentBody string, env map[string]string) []
 func runComment(commentAction, commentBody string, env map[string]string) (*commentRecorder, error) {
 	GinkgoHelper()
 
-	recorder := &commentRecorder{}
+	return runCommentOn(&commentRecorder{}, commentAction, commentBody, env)
+}
+
+// runCommentOn drives run() against a recorder the caller has set up, so a spec
+// can decide what the repository looks like
+func runCommentOn(
+	recorder *commentRecorder,
+	commentAction, commentBody string,
+	env map[string]string,
+) (*commentRecorder, error) {
+	GinkgoHelper()
+
 	server := httptest.NewServer(recorder)
 	DeferCleanup(server.Close)
 
@@ -194,5 +228,36 @@ var _ = Describe("Deleted comment handling [Unit]", func() {
 		})
 
 		Expect(posted).To(BeEmpty())
+	})
+})
+
+var _ = Describe("Repository configuration [Unit]", func() {
+	// The service reads this file because it cannot see a workflow's repository
+	// variables. The Action reads it too, or the same comment would get
+	// different treatment depending on which one handled it
+	It("should honour .github/smyklot.yaml", func() {
+		recorder := &commentRecorder{repoConfig: "disable_deleted_comments: true\n"}
+
+		_, err := runCommentOn(recorder, "deleted", "/approve", nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(recorder.posted()).To(BeEmpty())
+	})
+
+	It("should keep the environment's settings for anything the file omits", func() {
+		recorder := &commentRecorder{repoConfig: "quiet_success: true\n"}
+
+		_, err := runCommentOn(recorder, "deleted", "/approve", map[string]string{
+			envDisableDeletedComments: "true",
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(recorder.posted()).To(BeEmpty())
+	})
+
+	It("should act normally for a repository without the file", func() {
+		recorder := &commentRecorder{}
+
+		_, err := runCommentOn(recorder, "deleted", "/approve", nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(recorder.posted()).To(HaveLen(1))
 	})
 })

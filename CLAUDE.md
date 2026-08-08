@@ -18,13 +18,16 @@ Go + Ginkgo/Gomega, deployed as Docker-based GitHub Action.
 
 ## Architecture
 
-- `cmd/github-action/` — entrypoint; parses env vars, routes to command/reaction handlers, calls `pkg/` packages
+- `cmd/github-action/` — three entrypoints in one binary: the Action (`main.go`), the cron sweep (`poll.go`), and the webhook service (`serve.go`, `server.go`, `sweep.go`)
 - `pkg/commands/` — parses PR comments into `Command` structs; called by entrypoint handlers
 - `pkg/permissions/` — parses `.github/CODEOWNERS` (global `*` pattern only), checks if user is owner; called before approve/merge
 - `pkg/config/` — loads config via Viper (CLI flags > env vars > JSON > defaults); consumed by all handlers
 - `pkg/feedback/` — builds reaction/comment responses; called after each command execution
 - `pkg/github/` — GitHub API client (REST + GraphQL); used by all handlers for approvals, merges, reactions, comments
-- Data flow: webhook event → `cmd/github-action/main.go` → parse command/reaction → check permissions → execute via `pkg/github/` → send feedback
+- `pkg/githubapp/` — mints and caches App JWTs and per-installation tokens; the service needs one token per installation
+- `pkg/webhook/` — parses `issue_comment` deliveries and de-duplicates them; re-exports signature verification from `go-githubauth/webhook`
+- Data flow (Action): env vars → `run()` → client → repo config → `executeComment`
+- Data flow (service): signed delivery → `handleDelivery` → dedupe → worker → installation token → client → repo config → `executeComment`
 
 ## Gotchas
 
@@ -35,6 +38,10 @@ Go + Ginkgo/Gomega, deployed as Docker-based GitHub Action.
 - Self-approval is disabled by default; enable with `allow_self_approval` config option (`pkg/config/config.go:72`)
 - All GitHub Action inputs come via **environment variables**, not CLI args (security: no shell interpolation)
 - Workflow files use `.yaml` extension (not `.yml`) for consistency
+- `serve` **refuses to start** without `SMYKLOT_WEBHOOK_SECRET` — fail closed, or anyone reaching the port could drive the bot
+- Webhook signatures cover the **body only**; header values like `X-GitHub-Delivery` are unverified (`cmd/github-action/server.go:safeDeliveryID`)
+- Delivery dedupe keys on comment id + `updated_at`, **not** the delivery GUID — GitHub does not document whether the GUID survives a redelivery
+- A repo must not run both the Action workflow and the service, or both act on the same comment
 
 ## Code Style
 

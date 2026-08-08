@@ -54,6 +54,12 @@ var (
 
 	// ErrGetPRs is returned when fetching open PRs from GitHub fails
 	ErrGetPRs = errors.New("failed to fetch open PRs from GitHub")
+
+	// ErrListInstallations is returned when listing the App's installations fails
+	ErrListInstallations = errors.New("failed to list App installations")
+
+	// ErrListRepos is returned when listing an installation's repositories fails
+	ErrListRepos = errors.New("failed to list installation repositories")
 )
 
 // EnvVarError represents an error related to environment variable validation.

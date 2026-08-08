@@ -20,8 +20,8 @@ Smyklot is a GitHub App that automates pull request approvals and merges by vali
 - Reaction removal tracking - automatically removes approvals/merges when reactions are removed
 - Multi-command support - execute multiple commands in a single comment
 - Minimal permissions - follows GitHub Actions best practices
-- Zero external dependencies - runs entirely on GitHub Actions
-- 130+ passing tests
+- Runs either way - as a GitHub Action, or as a [webhook service](#running-as-a-service) covering every repository the App is installed on
+- 480+ passing tests
 
 ## Quick start
 
@@ -58,7 +58,7 @@ cp .github/workflows/pr-commands.yaml your-repo/.github/workflows/
 Smyklot responds to these commands in PR comments:
 
 | Command     | Aliases          | Format                                    | Description                                       |
-|-------------|------------------|-------------------------------------------|---------------------------------------------------|
+| ----------- | ---------------- | ----------------------------------------- | ------------------------------------------------- |
 | `approve`   | `lgtm`, `accept` | `/approve`, `@smyklot approve`, `approve` | Approve the pull request                          |
 | `merge`     | -                | `/merge`, `@smyklot merge`, `merge`       | Merge the pull request (with fallback)            |
 | `squash`    | -                | `/squash`, `@smyklot squash`, `squash`    | Squash merge the pull request                     |
@@ -78,7 +78,7 @@ All commands are case-insensitive.
 ### Reaction commands
 
 | Reaction | Action                                                      |
-|----------|-------------------------------------------------------------|
+| -------- | ----------------------------------------------------------- |
 | 👍       | Approve the pull request                                    |
 | 🚀       | Merge the pull request                                      |
 | ❤️       | Cleanup (remove all bot reactions, approvals, and comments) |
@@ -179,9 +179,9 @@ Currently only global owners (`*` pattern) are supported. Path-specific owners w
 
 ### Bot configuration
 
-Smyklot can be configured via repository variables (Settings → Secrets and variables → Actions → Variables).
+Smyklot can be configured via repository variables (Settings → Secrets and variables → Actions → Variables) or a config file checked into the repository.
 
-Config precedence: CLI flags > environment variables > repository variables > defaults
+Config precedence: `.github/smyklot.yaml` > CLI flags > environment variables > repository variables > defaults
 
 #### Option 1: Full JSON configuration (recommended)
 
@@ -207,12 +207,28 @@ Set a `SMYKLOT_CONFIG` repository variable with your complete configuration:
 }
 ```
 
-#### Option 2: Individual variables
+#### Option 2: Repository config file
+
+Check `.github/smyklot.yaml` into the repository:
+
+```yaml
+quiet_success: true
+command_prefix: "!"
+allowed_commands:
+  - approve
+  - merge
+```
+
+Settings the file omits keep whatever the workflow or the service was started with, so a file need only list what it changes.
+
+This is the only per-repository configuration the [service](#running-as-a-service) can see - it has no access to a repository's Actions variables. The Action reads the same file, so a repository gets the same behaviour whichever one handles the comment. `.github/smyklot.yml` also works.
+
+#### Option 3: Individual variables
 
 Configure individual settings via repository variables or environment variables with `SMYKLOT_` prefix:
 
 | Variable                           | Type    | Default        | Description                                                                |
-|------------------------------------|---------|----------------|----------------------------------------------------------------------------|
+| ---------------------------------- | ------- | -------------- | -------------------------------------------------------------------------- |
 | `SMYKLOT_QUIET_SUCCESS`            | boolean | `false`        | Disable success feedback comments                                          |
 | `SMYKLOT_QUIET_REACTIONS`          | boolean | `false`        | Disable reaction-based approval/merge comments                             |
 | `SMYKLOT_QUIET_PENDING`            | boolean | `false`        | Disable pending CI comments (reactions only for "merge after CI")          |
@@ -305,6 +321,47 @@ or via JSON:
 ```
 
 By default, Smyklot prevents self-approval to enforce separation of duties. Only enable this in development/testing environments.
+
+## Running as a service
+
+Smyklot can run as a long-running process instead of a per-comment workflow. One process serves every repository the App is installed on, so no repository needs a workflow file, and a command takes effect without a workflow run being queued first.
+
+```bash
+smyklot serve
+```
+
+Point the GitHub App's webhook at `https://your-host/webhook`, subscribe it to **Issue comment** events, and set the same secret the process reads.
+
+### Service configuration
+
+| Variable                 | Flag              | Default    | Description                                                                  |
+| ------------------------ | ----------------- | ---------- | ---------------------------------------------------------------------------- |
+| `SMYKLOT_WEBHOOK_SECRET` | -                 | required   | Secret GitHub signs deliveries with; the process refuses to start without it |
+| `SMYKLOT_LISTEN_ADDRESS` | `--listen`        | `:8080`    | Address to listen on                                                         |
+| `SMYKLOT_WEBHOOK_PATH`   | `--webhook-path`  | `/webhook` | Path GitHub delivers to                                                      |
+| `SMYKLOT_POLL_INTERVAL`  | `--poll-interval` | `5m`       | How often to sweep reactions and PRs waiting for CI; `0` disables            |
+| `GITHUB_APP_PRIVATE_KEY` | -                 | required   | PEM-encoded App private key                                                  |
+| `GITHUB_APP_CLIENT_ID`   | -                 | required   | App client ID; `GITHUB_APP_ID` also works                                    |
+
+The webhook secret and private key have no flag on purpose - a flag would put them in the process table. An explicit flag beats the environment for everything else.
+
+`GET /healthz` answers a liveness probe and needs no signature.
+
+### How it differs from the Action
+
+Each delivery names its own installation, so the process mints a token per installation as deliveries arrive. Installing the App on another repository needs no restart and no configuration.
+
+Behaviour per repository comes from [`.github/smyklot.yaml`](#option-2-repository-config-file); the process's own `SMYKLOT_CONFIG` is the default that file is layered over. Actions repository variables are invisible to a process running outside Actions.
+
+GitHub sends no webhook when someone adds or removes a reaction, so reaction commands are found by sweeping open pull requests on `--poll-interval`. The same sweep merges pull requests that were waiting for CI. This replaces the `poll-reactions.yaml` workflow.
+
+A delivery is answered before its command runs, because GitHub allows ten seconds and does not retry a delivery that times out. A redelivery of an event that already took effect is recognised and skipped.
+
+### Moving a repository off the Action
+
+Delete `pr-commands.yaml` and `poll-reactions.yaml` from the repository **before** the service starts handling it. Leaving them in place means both the workflow and the service see the same comment and both act on it.
+
+Rolling back is the reverse and needs no code change: restore the workflow files, then stop routing that installation's deliveries to the service.
 
 ## Architecture
 
@@ -408,13 +465,15 @@ task test
 ```text
 smyklot/
 ├── cmd/
-│   └── github-action/       # GitHub Actions entrypoint
+│   └── github-action/       # Entrypoints: Action (default), poll, serve
 ├── pkg/
 │   ├── commands/            # Command parser (slash, mention, bare)
 │   ├── config/              # Configuration management (Viper)
 │   ├── feedback/            # User feedback system (reactions, comments)
 │   ├── github/              # GitHub API client
-│   └── permissions/         # CODEOWNERS parser & permission checker
+│   ├── githubapp/           # App and installation token minting
+│   ├── permissions/         # CODEOWNERS parser & permission checker
+│   └── webhook/             # Delivery parsing and de-duplication
 ├── .github/workflows/       # GitHub Actions workflows
 ├── .goreleaser.yml          # GoReleaser config for releases
 ├── .mise.toml               # Tool versions
