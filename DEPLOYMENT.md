@@ -362,16 +362,36 @@ After a release, `.github/workflows/deploy.yaml` does this automatically. It nee
 ### 3. Point the Domain at It
 
 ```bash
-fly certs add hook.smyklot.com --app smyklot
+fly certs add smyklot.com --app smyklot
 ```
 
-That prints the DNS records to create. Add them at the registrar, then watch the certificate go from pending to ready:
+That prints the DNS records to create. A subdomain can be a single `CNAME` to the app, but an apex cannot, so `smyklot.com` needs both:
+
+```text
+A     smyklot.com  ->  <shared IPv4 from fly ips list>
+AAAA  smyklot.com  ->  <dedicated IPv6 from fly ips list>
+```
+
+Fly will not verify the certificate from the `A` record alone. Add the two records `fly certs setup` also prints, which prove the domain is yours without waiting on traffic:
+
+```text
+CNAME  _acme-challenge.smyklot.com  ->  smyklot.com.<app>.flydns.net.
+TXT    _fly-ownership.smyklot.com   ->  app-<app>
+```
+
+Watch it go from pending to ready with `fly certs check`, not `fly certs list` - the list column says `Issued` as soon as the certificate exists, minutes before the edge will serve it. Until then TLS fails outright rather than serving a wrong certificate:
 
 ```bash
-fly certs show hook.smyklot.com --app smyklot
+fly certs check smyklot.com --app smyklot
+curl -sS -o /dev/null -w '%{http_code}\n' https://smyklot.com/healthz
 ```
 
-Set the App's webhook URL to `https://hook.smyklot.com/webhook` once the certificate is issued, not before - GitHub validates the endpoint when you save it.
+Set the App's webhook URL to `https://smyklot.com/webhook` once that returns 200, not before - GitHub validates the endpoint when you save it. Confirm the endpoint end to end by redelivering a past delivery rather than waiting for a real comment:
+
+```bash
+curl -X POST -H "Authorization: Bearer $JWT" \
+  https://api.github.com/app/hook/deliveries/<id>/attempts
+```
 
 ### 4. Watch It
 
