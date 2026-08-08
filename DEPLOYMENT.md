@@ -21,8 +21,7 @@ Create `.github/CODEOWNERS` in your repository root:
 * @yourusername @teammate1 @teammate2
 ```
 
-**Note**: Only global owners (`* @username`) are supported in Phase 1.
-Path-specific patterns will be supported in Phase 2.
+**Note**: Only global owners (`* @username`) are supported in Phase 1. Path-specific patterns will be supported in Phase 2.
 
 ### 2. Create Workflow File
 
@@ -31,11 +30,9 @@ Create `.github/workflows/pr-commands.yaml`:
 Smyklot supports two ways to pass parameters:
 
 - **Inputs** (recommended): Cleaner syntax using action inputs
-- **Environment variables**: Alternative approach, useful for
-  compatibility
+- **Environment variables**: Alternative approach, useful for compatibility
 
-Both approaches support automatic fallback to environment variables when
-inputs are not provided.
+Both approaches support automatic fallback to environment variables when inputs are not provided.
 
 #### Option A: Using GITHUB_TOKEN (simpler, comments from workflow user)
 
@@ -166,8 +163,7 @@ Using environment variables:
 
 **Only needed if using Option B workflow above.**
 
-To have comments appear from the GitHub App instead of the default
-`GITHUB_TOKEN` user:
+To have comments appear from the GitHub App instead of the default `GITHUB_TOKEN` user:
 
 1. **Create or use existing GitHub App**:
    - Go to Settings → Developer settings → GitHub Apps
@@ -188,9 +184,7 @@ To have comments appear from the GitHub App instead of the default
    gh secret set APP_PRIVATE_KEY < pkcs8-key.pem
    ```
 
-**Note**: The `actions/create-github-app-token` action automatically
-detects the installation ID, so you don't need to configure it
-separately.
+**Note**: The `actions/create-github-app-token` action automatically detects the installation ID, so you don't need to configure it separately.
 
 ### 4. Commit and Push
 
@@ -215,6 +209,112 @@ Create a test pull request and try the commands:
 3. **Test unauthorized user** (optional):
    - Have a non-CODEOWNER comment `/approve`
    - Expected: ❌ reaction + explanation comment
+
+## Deploying as a Service
+
+Everything above deploys the Action, which runs once per comment. The alternative is one long-running process that serves every repository the App is installed on, with no workflow file in any of them.
+
+### 1. Configure the App's Webhook
+
+In the App's settings:
+
+- **Webhook URL**: `https://your-host/webhook`
+- **Webhook secret**: generate one and keep it
+- **Subscribe to events**: Issue comment
+
+The App needs no new permissions. It already has the ones the Action uses.
+
+### 2. Create the Secret
+
+The chart never takes either credential as a value, only the name of a Secret holding both, so neither can end up in a values file, in git, or in `helm get values` output:
+
+```bash
+kubectl create secret generic smyklot-credentials \
+  --from-literal=webhook-secret="$WEBHOOK_SECRET" \
+  --from-file=private-key=key.pem
+```
+
+Any secret manager that produces a Kubernetes Secret works the same way - External Secrets, SOPS, Vault. The chart only reads it.
+
+### 3. Install the Chart
+
+```bash
+helm install smyklot oci://ghcr.io/smykla-skalski/charts/smyklot \
+  --version 1.13.0 \
+  --namespace smyklot --create-namespace \
+  --set github.clientId=Iv23liExample \
+  --set github.existingSecret=smyklot-credentials \
+  --set ingress.enabled=true \
+  --set ingress.host=smyklot.example.com
+```
+
+The chart and the image carry the same version, so `--version` picks both.
+
+Check it came up:
+
+```bash
+kubectl -n smyklot port-forward svc/smyklot 9090
+curl localhost:9090/readyz
+```
+
+`/readyz` answers 200 once the App credentials have been proven against GitHub. Until then the pod takes no traffic.
+
+### 4. Move a Repository Across
+
+The service handles every repository the App is installed on, so there is nothing to do per repository. The workflow files can stay: a workflow whose repository is on the service exits without acting, and says so in the job summary.
+
+A repository that should **stay** on the Action says so in its own `.github/smyklot.yaml`, on the default branch:
+
+```yaml
+runner: action
+```
+
+Whichever entry point is not named stands down completely - no reaction, no comment, no approval. This is what stops both of them acting on the same comment.
+
+### 5. Roll Back
+
+Rolling back needs no code change and no redeploy.
+
+**One repository**: commit `runner: action` to its `.github/smyklot.yaml`. It is back on the Action as soon as that merges.
+
+**Every repository**: set the organization variable `SMYKLOT_CONFIG` to include `"runner": "action"`, which every Action run reads, then scale the service to zero:
+
+```bash
+kubectl -n smyklot scale deployment/smyklot --replicas=0
+```
+
+Order matters. Put the repositories back on the Action first, then stop the service, or commands go unanswered in between.
+
+### Operating It
+
+| Route       | Answers                                                     |
+|-------------|-------------------------------------------------------------|
+| `/livez`    | 200 while the process is running                            |
+| `/readyz`   | 200 while GitHub is reachable, 503 with a reason otherwise  |
+| `/metrics`  | Prometheus exposition format                                |
+| `/failures` | The last 50 deliveries that were accepted and then failed   |
+
+These are on the admin port, which the chart routes no ingress to. Queue depth, failure reasons and Go runtime detail describe the service to anyone who can read them.
+
+Set `serviceMonitor.enabled=true` on a cluster running the Prometheus Operator.
+
+### What the Chart Assumes
+
+**One replica.** Deliveries are de-duplicated in memory and the reaction sweep has no leader election, so a second process sweeps the same repositories and can act on the same reaction twice.
+
+**`Recreate` updates**, for the same reason. A rolling update would run two processes for as long as the old one takes to drain. The cost is a few seconds of refused deliveries, which GitHub records and an operator can redeliver from the App's Advanced tab.
+
+**A 60 second grace period**, which covers the worst case the service allows itself: 15 seconds to stop accepting and 30 to finish deliveries already running.
+
+### Service Troubleshooting
+
+**`/readyz` answers 503**: read the `reason` it returns. Bad credentials and an unreachable GitHub look different there.
+
+**Deliveries never arrive**: check the App's Advanced tab. A 401 there means the webhook secret in the Secret and the one in the App settings have drifted apart.
+
+**A command did nothing**: check `/failures` first, then the log line carrying that delivery's `delivery_id`. If neither shows it, the repository is probably on `runner: action`.
+
+**Two of everything**: a repository is being handled twice. Check its `.github/smyklot.yaml` on the **default branch** - that is the copy both entry points read.
 
 ## Command Reference
 
@@ -302,8 +402,7 @@ The workflow uses the built-in `GITHUB_TOKEN` which:
 
 ### Input Validation
 
-All user inputs are passed via environment variables (not shell
-interpolation) to prevent injection attacks:
+All user inputs are passed via environment variables (not shell interpolation) to prevent injection attacks:
 
 ```yaml
 env:

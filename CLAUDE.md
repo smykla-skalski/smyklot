@@ -43,7 +43,8 @@ Go + Ginkgo/Gomega, deployed as Docker-based GitHub Action.
 - `serve` **refuses to start** without `SMYKLOT_WEBHOOK_SECRET` — fail closed, or anyone reaching the port could drive the bot
 - Webhook signatures cover the **body only**; header values like `X-GitHub-Delivery` are unverified (`cmd/github-action/server.go:safeDeliveryID`)
 - Delivery dedupe keys on comment id + `updated_at`, **not** the delivery GUID — GitHub does not document whether the GUID survives a redelivery
-- A repo must not run both the Action workflow and the service, or both act on the same comment
+- The `runner` key in `.github/smyklot.yaml` decides who acts, and it defaults to **`service`** — the Action stands down unless a repo sets `runner: action`. Both entry points check it, at all four places work starts: `run`, `runPoll`, `handleIssueComment`, `sweepRepo` (`cmd/github-action/runner.go`)
+- Standing down is **silent on the PR** — the other entry point has already reacted. The Action's reason goes to the job summary instead
 - An unparseable `.github/smyklot.yaml` is **fail-closed with feedback** — no command runs, and the bot says why. Never fall back to defaults: the file is where `allowed_commands` is narrowed
 - `dispatch` must never send on `s.jobs` directly — use `enqueue`, which holds `queueMu` for read. `Shutdown` abandons a running handler once its deadline passes, and a bare send on the closed queue panics rather than taking `default` (`cmd/github-action/server.go`)
 - Metrics live on the **admin listener**, never the webhook one — the webhook port faces the internet, and queue depth and failure reasons should not
@@ -51,6 +52,9 @@ Go + Ginkgo/Gomega, deployed as Docker-based GitHub Action.
 - Log through `logging.From(ctx)` where the work carries per-item attributes (a delivery, a repo, a PR); use `s.logger` in background loops that carry none (`probe`, `pollLoop`, `drain`). Never `log` or `fmt.Print`
 - Whoever **starts** an attribute chain seeds it — `sweep` does `logging.Into(ctx, s.logger)` itself rather than trusting its caller, so a direct call still logs where it should
 - Attach an attribute in **one** place. `pollAllPRs` owns `repo` and `processPR` owns `pr`; adding either again downstream prints it twice
+- The chart runs **one replica** with `Recreate` — dedupe is in-memory and the sweep has no leader election, so a second process double-acts on reactions (`charts/smyklot/values.yaml`)
+- The webhook secret and private key are **never chart values**, only `github.existingSecret` — a value would land in a values file and in `helm get values`
+- Chart version and `appVersion` are rewritten by semantic-release, so `helm install --version X` and `smyklot:X` are always one release (`.releaserc.yml`)
 
 ## Code Style
 

@@ -217,6 +217,9 @@ command_prefix: "!"
 allowed_commands:
   - approve
   - merge
+
+# Which entry point handles this repository, if not the service
+runner: action
 ```
 
 Settings the file omits keep whatever the workflow or the service was started with, so a file need only list what it changes.
@@ -245,6 +248,7 @@ Configure individual settings via repository variables or environment variables 
 | `SMYKLOT_DISABLE_REACTIONS`        | boolean | `false`        | Disable reaction-based approvals/merges                                    |
 | `SMYKLOT_DISABLE_DELETED_COMMENTS` | boolean | `false`        | Disable the notice posted when a command comment is deleted                |
 | `SMYKLOT_ALLOW_SELF_APPROVAL`      | boolean | `false`        | Allow PR authors to approve their own PRs                                  |
+| `SMYKLOT_RUNNER`                   | string  | `service`      | Which entry point acts: `service` or `action`; the other stands down       |
 | `SMYKLOT_BOT_USERNAME`             | string  | `smyklot[bot]` | Bot username for cleanup operations (GitHub App format: `{app-slug}[bot]`) |
 | `SMYKLOT_GITHUB_API_URL`           | string  | public API     | REST API base URL for a proxy or mirror (Enterprise is not supported)      |
 
@@ -381,11 +385,46 @@ GitHub sends no webhook when someone adds or removes a reaction, so reaction com
 
 A delivery is answered before its command runs, because GitHub allows ten seconds and does not retry a delivery that times out. A redelivery of an event that already took effect is recognised and skipped.
 
-### Moving a repository off the Action
+### Deploying to Kubernetes
 
-Delete `pr-commands.yaml` and `poll-reactions.yaml` from the repository **before** the service starts handling it. Leaving them in place means both the workflow and the service see the same comment and both act on it.
+The chart is published alongside the image, at the same version:
 
-Rolling back is the reverse and needs no code change: restore the workflow files, then stop routing that installation's deliveries to the service.
+```bash
+kubectl create secret generic smyklot-credentials \
+  --from-literal=webhook-secret="$WEBHOOK_SECRET" \
+  --from-file=private-key=key.pem
+
+helm install smyklot oci://ghcr.io/smykla-skalski/charts/smyklot \
+  --version 1.13.0 \
+  --set github.clientId=Iv23liExample \
+  --set github.existingSecret=smyklot-credentials \
+  --set ingress.enabled=true \
+  --set ingress.host=smyklot.example.com
+```
+
+The webhook secret and the private key are never chart values, only the name of a Secret holding them, so neither can end up in a values file or in `helm get values` output. Both settings are required and the chart refuses to render without them.
+
+The ingress routes the webhook path and nothing else. Probes, metrics and the failures endpoint stay on the admin port, which the chart puts on the Service for probes and Prometheus but on no public route.
+
+The chart runs one replica and updates with `Recreate`. Deliveries are de-duplicated in memory and the reaction sweep has no leader election, so a second process sweeps the same repositories and can act on the same reaction twice. A restart costs a few seconds of refused deliveries, which GitHub records and can redeliver; deliveries already running are given up to 45 seconds to finish, which is what `terminationGracePeriodSeconds` covers.
+
+Readiness answers no while GitHub is unreachable, which takes the pod out of the Service. Deliveries then fail at the ingress instead of being accepted and dropped, and GitHub keeps them for redelivery.
+
+Set `serviceMonitor.enabled` for a Prometheus Operator cluster. `helm show values oci://ghcr.io/smykla-skalski/charts/smyklot` lists everything else.
+
+### Choosing which one handles a repository
+
+The service handles every repository the App is installed on. A repository that should stay on the Action says so in its own [`.github/smyklot.yaml`](#option-2-repository-config-file):
+
+```yaml
+runner: action
+```
+
+Whichever entry point is not named stands down: no reaction, no comment, no approval. The Action leaves its reason in the job summary, since the pull request is where the service is already replying.
+
+This is also the rollback. A repository moves back to the Action with one commit and no redeploy, and the workflow files can stay in place throughout - a workflow whose repository is on the service just exits without doing anything.
+
+`runner` defaults to `service`, so **a repository upgrading past the release that added it stops responding to the Action unless it sets `runner: action` or has a service running.** Set it before you upgrade if that repository has no service behind it.
 
 ## Architecture
 
