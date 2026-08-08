@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net"
 	"os"
 	"os/signal"
 	"strings"
@@ -220,7 +221,7 @@ func applyServeFlags(cmd *cobra.Command, cfg *serveConfig) error {
 	}
 
 	cfg.adminAddress = flagOrEnv(cmd, flagAdminListen, adminListen, envAdminAddress)
-	if cfg.adminAddress == cfg.listenAddress {
+	if addressesConflict(cfg.adminAddress, cfg.listenAddress) {
 		return ErrAddressConflict
 	}
 
@@ -274,6 +275,51 @@ func applyLogFlags(cmd *cobra.Command, cfg *serveConfig) error {
 	}
 
 	return nil
+}
+
+// addressesConflict reports whether two listen addresses want the same socket.
+//
+// Comparing the two strings would miss the several ways one address is written:
+// ":8080", "0.0.0.0:8080" and "[::]:8080" all take every interface. Getting it
+// wrong costs a bind failure at startup rather than a leak, but a service that
+// explains the misconfiguration beats one that reports "address already in use"
+// and leaves the operator to work out which of its two listeners lost.
+//
+// Nothing is resolved here. This runs while flags are being read, and a name
+// lookup would make starting up depend on the network.
+func addressesConflict(a, b string) bool {
+	hostA, portA, errA := net.SplitHostPort(a)
+	hostB, portB, errB := net.SplitHostPort(b)
+
+	// Not addresses this can reason about, so the text is all there is to go on
+	if errA != nil || errB != nil {
+		return a == b
+	}
+
+	// Port zero asks the kernel for whatever is free, and it hands out a
+	// different port to each caller
+	if portA == "0" || portB == "0" {
+		return false
+	}
+
+	if portA != portB {
+		return false
+	}
+
+	// A wildcard host takes every interface, so it collides with anything else
+	// sharing its port
+	return hostA == hostB || wildcardHost(hostA) || wildcardHost(hostB)
+}
+
+// wildcardHost reports whether a host binds every interface.
+func wildcardHost(host string) bool {
+	switch host {
+	case "", "0.0.0.0", "::":
+		return true
+
+	default:
+		return false
+	}
 }
 
 // flagOrEnv resolves one setting, letting an explicit flag win over the

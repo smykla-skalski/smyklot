@@ -60,11 +60,16 @@ type readinessState struct {
 //
 // The caller logs only on a change, so a service that has been unreachable for
 // an hour says so once rather than a hundred and twenty times.
+//
+// An answer that had gone stale counts as a change even when the result is the
+// same as before. A process paused past the staleness window and then resumed
+// went from not-ready to ready as far as every reader is concerned, and a
+// recovery nothing logged is one nobody can correlate with the dip.
 func (r *readiness) set(reason string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	changed := reason != r.reason
+	changed := reason != r.reason || r.stale()
 
 	r.reason = reason
 	r.checkedAt = time.Now()
@@ -77,7 +82,7 @@ func (r *readiness) state() readinessState {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	if !r.checkedAt.IsZero() && time.Since(r.checkedAt) > readyStaleAfter {
+	if r.stale() {
 		return readinessState{Reason: reasonStale, CheckedAt: r.checkedAt}
 	}
 
@@ -86,6 +91,13 @@ func (r *readiness) state() readinessState {
 		Reason:    r.reason,
 		CheckedAt: r.checkedAt,
 	}
+}
+
+// stale reports whether the last answer is too old to stand for.
+//
+// Callers hold the lock.
+func (r *readiness) stale() bool {
+	return !r.checkedAt.IsZero() && time.Since(r.checkedAt) > readyStaleAfter
 }
 
 // probeLoop keeps the readiness answer current until ctx is cancelled.

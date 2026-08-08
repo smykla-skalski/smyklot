@@ -163,6 +163,32 @@ var _ = Describe("Serve configuration [Unit]", func() {
 			Expect(err).To(MatchError(ErrAddressConflict))
 		})
 
+		// Both listeners would fail to bind anyway. Saying which two settings
+		// clash beats leaving the operator to work it out from "address
+		// already in use"
+		DescribeTable("should recognise the same socket written another way",
+			func(listen, admin string, conflicts bool) {
+				_, err := loadServe(map[string]string{
+					envListenAddress: listen,
+					envAdminAddress:  admin,
+				})
+
+				if conflicts {
+					Expect(err).To(MatchError(ErrAddressConflict))
+
+					return
+				}
+
+				Expect(err).NotTo(HaveOccurred())
+			},
+			Entry("a bare port against the IPv4 wildcard", ":8080", "0.0.0.0:8080", true),
+			Entry("a bare port against the IPv6 wildcard", ":8080", "[::]:8080", true),
+			Entry("a wildcard against one interface", "0.0.0.0:8080", "127.0.0.1:8080", true),
+			Entry("two ports on one interface", "127.0.0.1:8080", "127.0.0.1:9090", false),
+			Entry("one port on two interfaces", "127.0.0.1:8080", "192.168.1.5:8080", false),
+			Entry("two kernel-assigned ports", "127.0.0.1:0", "127.0.0.1:0", false),
+		)
+
 		It("should reject an unknown log format", func() {
 			_, err := loadServe(map[string]string{envLogFormat: "logfmt"})
 			Expect(err).To(MatchError(logging.ErrUnknownLogFormat))

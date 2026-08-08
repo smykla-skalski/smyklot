@@ -248,6 +248,22 @@ var _ = Describe("Service observability [Unit]", func() {
 			Expect(srv.readiness.state().Ready).To(BeFalse())
 			Expect(srv.readiness.state().Reason).To(Equal(reasonStale))
 		})
+
+		// A process paused past the staleness window and then resumed went from
+		// not-ready to ready as far as every reader is concerned, even though
+		// GitHub never stopped answering. A recovery nothing logged is one
+		// nobody can line up against the dip in the metric
+		It("should announce a recovery from staleness even when the result is unchanged", func() {
+			start()
+
+			Expect(srv.readiness.set("")).To(BeTrue())
+			Expect(srv.readiness.set("")).To(BeFalse())
+
+			srv.readiness.checkedAt = time.Now().Add(-readyStaleAfter - time.Second)
+
+			Expect(srv.readiness.set("")).To(BeTrue())
+			Expect(srv.readiness.state().Ready).To(BeTrue())
+		})
 	})
 
 	Describe("metrics", func() {
