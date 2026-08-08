@@ -114,7 +114,7 @@ var _ = Describe("Service lifecycle [Unit]", func() {
 		Expect(get(adminAddress, metricsPath)).To(Equal(http.StatusOK))
 		Expect(get(adminAddress, failuresPath)).To(Equal(http.StatusOK))
 
-		// The stub answers /rate_limit, so the first probe finds GitHub
+		// The stub answers /app, so the first probe finds GitHub
 		// reachable and readiness turns from unready to ready
 		Eventually(func() int { return get(adminAddress, readyPath) }, 5*time.Second).
 			Should(Equal(http.StatusOK))

@@ -576,14 +576,19 @@ func (c *Client) getFileContent(
 
 // Ping reports whether the GitHub API answers and accepts these credentials.
 //
-// GET /rate_limit is the cheapest call that proves both. It is exempt from the
-// limit it reports, so a probe on a short interval costs nothing, and it still
-// fails on a token that has expired or been revoked.
+// Requires a client created with NewAppClient. GET /app is the cheapest call
+// that proves both: it returns the App this JWT belongs to, and it fails on a
+// key that has been revoked or a clock that has drifted too far.
+//
+// GET /rate_limit would look like the better choice, being exempt from the
+// limit it reports, and it is what this used to send. GitHub answers it 401 for
+// an App JWT, whatever the key - only an installation or user token gets a
+// reading. A probe built on it can never report ready.
 //
 // Sent without the retry every other call gets: a readiness probe wants the
 // current answer, not a patient one.
 func (c *Client) Ping(ctx context.Context) error {
-	_, err := c.makeRequest(ctx, http.MethodGet, "/rate_limit", nil)
+	_, err := c.makeRequest(ctx, http.MethodGet, "/app", nil)
 
 	return err
 }

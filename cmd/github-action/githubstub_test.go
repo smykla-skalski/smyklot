@@ -40,10 +40,9 @@ type githubStub struct {
 	// one the App has lost access to
 	brokenRepo string
 
-	// rateLimitStatus is what GET /rate_limit answers, which is the one call
-	// the readiness probe makes. Set it before the service starts, never while
-	// it is running
-	rateLimitStatus int
+	// probeStatus is what GET /app answers, which is the one call the readiness
+	// probe makes. Set it before the service starts, never while it is running
+	probeStatus int
 
 	mu    sync.Mutex
 	calls []string
@@ -51,12 +50,12 @@ type githubStub struct {
 
 func newGitHubStub() *githubStub {
 	return &githubStub{
-		codeowners:      "* @someone\n",
-		prAuthor:        "author",
-		installations:   `[]`,
-		repos:           `{"total_count": 0, "repositories": []}`,
-		openPRs:         `[]`,
-		rateLimitStatus: http.StatusOK,
+		codeowners:    "* @someone\n",
+		prAuthor:      "author",
+		installations: `[]`,
+		repos:         `{"total_count": 0, "repositories": []}`,
+		openPRs:       `[]`,
+		probeStatus:   http.StatusOK,
 	}
 }
 
@@ -70,18 +69,26 @@ func (s *githubStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 		_, _ = w.Write([]byte(`{"message": "Resource not accessible by integration"}`))
 
-	case r.URL.Path == "/rate_limit":
-		if s.rateLimitStatus != http.StatusOK {
-			w.WriteHeader(s.rateLimitStatus)
+	case r.URL.Path == "/app/installations":
+		_, _ = io.WriteString(w, s.installations)
+
+	// The readiness probe's endpoint. It must be matched after
+	// /app/installations, which would otherwise never be reached
+	case r.URL.Path == "/app":
+		if s.probeStatus != http.StatusOK {
+			w.WriteHeader(s.probeStatus)
 			_, _ = w.Write([]byte(`{"message": "unavailable"}`))
 
 			return
 		}
 
-		_, _ = w.Write([]byte(`{"rate": {"limit": 5000, "remaining": 4999}}`))
+		_, _ = w.Write([]byte(`{"id": 1197525, "slug": "smyklot"}`))
 
-	case r.URL.Path == "/app/installations":
-		_, _ = io.WriteString(w, s.installations)
+	// GitHub answers this 401 for an App JWT, which is what the probe carries.
+	// The stub answering it too would hide a probe pointed back at it
+	case r.URL.Path == "/rate_limit":
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"message": "Bad credentials"}`))
 
 	case r.URL.Path == "/installation/repositories":
 		_, _ = io.WriteString(w, s.repos)

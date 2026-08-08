@@ -302,19 +302,32 @@ var _ = Describe("GitHub App Client [Unit]", func() {
 	})
 
 	Describe("Ping", func() {
-		It("should succeed when the API answers", func() {
-			var gotPath string
+		// GitHub answers /rate_limit 401 for an App JWT, whatever the key, so a
+		// probe pointed there can never report ready. Only /app accepts the
+		// credentials this client carries
+		It("should ask the one endpoint an App JWT is accepted on", func() {
+			var gotPath, gotAuth string
 
 			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				gotPath = r.URL.Path
-				_, _ = w.Write([]byte(`{"rate": {"limit": 5000, "remaining": 4999}}`))
+				gotAuth = r.Header.Get("Authorization")
+
+				if r.URL.Path != "/app" {
+					w.WriteHeader(http.StatusUnauthorized)
+					_, _ = w.Write([]byte(`{"message": "Bad credentials"}`))
+
+					return
+				}
+
+				_, _ = w.Write([]byte(`{"id": 1197525, "slug": "smyklot"}`))
 			}))
 
 			client, err := github.NewAppClient("test-jwt", server.URL)
 			Expect(err).NotTo(HaveOccurred())
 
 			Expect(client.Ping(context.Background())).To(Succeed())
-			Expect(gotPath).To(Equal("/rate_limit"))
+			Expect(gotPath).To(Equal("/app"))
+			Expect(gotAuth).To(Equal("Bearer test-jwt"))
 		})
 
 		It("should fail when the credentials are rejected", func() {

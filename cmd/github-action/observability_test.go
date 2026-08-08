@@ -212,7 +212,7 @@ var _ = Describe("Service observability [Unit]", func() {
 		// A restart cannot fix GitHub being down, so liveness must keep passing
 		// while readiness fails
 		It("should stay alive but report unready when GitHub cannot be reached", func() {
-			stub.rateLimitStatus = http.StatusInternalServerError
+			stub.probeStatus = http.StatusInternalServerError
 			start()
 
 			srv.probe(GinkgoT().Context())
@@ -226,7 +226,7 @@ var _ = Describe("Service observability [Unit]", func() {
 		})
 
 		It("should say so once rather than on every check", func() {
-			stub.rateLimitStatus = http.StatusInternalServerError
+			stub.probeStatus = http.StatusInternalServerError
 			start()
 
 			srv.probe(GinkgoT().Context())

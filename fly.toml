@@ -13,6 +13,11 @@
 app = "smyklot"
 primary_region = "fra"
 
+# The image's entrypoint is the bare binary, whose root command is the Action.
+# Without this the machine prints the help text and exits 1
+[processes]
+  app = "serve"
+
 # There is no build section on purpose. The binary is built and published by
 # the release pipeline, and `fly deploy --image` names which one to run.
 
@@ -41,6 +46,7 @@ primary_region = "fra"
 [http_service]
   internal_port = 8080
   force_https = true
+  processes = ["app"]
 
   # The sweep is what makes reaction commands work, and a stopped machine runs
   # no timers. This is why the service cannot scale to zero
