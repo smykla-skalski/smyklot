@@ -83,6 +83,17 @@ var _ = Describe("Choosing an entry point [Unit]", func() {
 			Expect(recorder.posted()).To(HaveLen(1))
 			Expect(recorder.posted()[0].Body).To(ContainSubstring("smyklot.yaml"))
 		})
+
+		// The environment is the other way a runner is set, and a repository
+		// without the file never reaches the code that reads one
+		It("should refuse to start on a runner the environment does not name", func() {
+			_, err := runComment("deleted", "/approve", map[string]string{
+				envRunner: "workflow",
+			})
+
+			Expect(err).To(MatchError(ErrConfigLoad))
+			Expect(err).To(MatchError(ContainSubstring("workflow")))
+		})
 	})
 
 	Describe("the service", func() {

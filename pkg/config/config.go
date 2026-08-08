@@ -82,7 +82,18 @@ func SetupViper(v *viper.Viper) {
 }
 
 // LoadFromViper creates a Config from Viper settings
-func LoadFromViper(v *viper.Viper) *Config {
+//
+// Every path that builds a Config from settings comes through here - the
+// process-wide environment, the JSON blob, and a repository's own file - so
+// this is where a value that cannot mean anything is rejected. A setting
+// validated anywhere else would be validated on one of those paths and not the
+// others.
+func LoadFromViper(v *viper.Viper) (*Config, error) {
+	runner, err := ParseRunner(v.GetString(KeyRunner))
+	if err != nil {
+		return nil, err
+	}
+
 	return &Config{
 		QuietSuccess:           v.GetBool(KeyQuietSuccess),
 		QuietReactions:         v.GetBool(KeyQuietReactions),
@@ -96,20 +107,8 @@ func LoadFromViper(v *viper.Viper) *Config {
 		DisableReactions:       v.GetBool(KeyDisableReactions),
 		DisableDeletedComments: v.GetBool(KeyDisableDeletedComments),
 		AllowSelfApproval:      v.GetBool(KeyAllowSelfApproval),
-		Runner:                 Runner(v.GetString(KeyRunner)),
-	}
-}
-
-// Validate rejects settings that name something that does not exist.
-//
-// Viper reads whatever is written, so this is where a value that cannot mean
-// anything is caught. Both entry points call it before acting, which turns a
-// typo into a message on the pull request rather than a repository that quietly
-// stops responding.
-func (c *Config) Validate() error {
-	_, err := ParseRunner(string(c.Runner))
-
-	return err
+		Runner:                 runner,
+	}, nil
 }
 
 // LoadRepoConfig layers a repository's own configuration file over base
@@ -151,12 +150,7 @@ func LoadRepoConfig(base *Config, content []byte) (*Config, error) {
 		return nil, err
 	}
 
-	merged := LoadFromViper(v)
-	if err := merged.Validate(); err != nil {
-		return nil, err
-	}
-
-	return merged, nil
+	return LoadFromViper(v)
 }
 
 // LoadJSONConfig reads and parses JSON configuration from SMYKLOT_CONFIG environment variable

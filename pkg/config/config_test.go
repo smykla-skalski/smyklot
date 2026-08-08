@@ -62,8 +62,26 @@ var _ = Describe("Config [Unit]", func() {
 			config.SetupViper(v)
 		})
 
+		// Every path that builds a Config comes through here - the environment,
+		// the JSON blob, and a repository's file - so a value rejected anywhere
+		// else would be rejected on one path and let through on the others
+		It("should reject a runner it does not know", func() {
+			v.Set(config.KeyRunner, "workflow")
+
+			_, err := config.LoadFromViper(v)
+			Expect(err).To(MatchError(config.ErrUnknownRunner))
+			Expect(err).To(MatchError(ContainSubstring("workflow")))
+		})
+
+		It("should default the runner to the service", func() {
+			cfg, err := config.LoadFromViper(v)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.Runner).To(Equal(config.RunnerService))
+		})
+
 		It("should load default values", func() {
-			cfg := config.LoadFromViper(v)
+			cfg, err := config.LoadFromViper(v)
+			Expect(err).NotTo(HaveOccurred())
 
 			Expect(cfg.QuietSuccess).To(BeFalse())
 			Expect(cfg.AllowedCommands).To(BeEmpty())
@@ -81,7 +99,8 @@ var _ = Describe("Config [Unit]", func() {
 			v.Set(config.KeyDisableMentions, true)
 			v.Set(config.KeyDisableBareCommands, true)
 
-			cfg := config.LoadFromViper(v)
+			cfg, err := config.LoadFromViper(v)
+			Expect(err).NotTo(HaveOccurred())
 
 			Expect(cfg.QuietSuccess).To(BeTrue())
 			Expect(cfg.AllowedCommands).To(ConsistOf("approve", "merge"))
@@ -108,7 +127,8 @@ var _ = Describe("Config [Unit]", func() {
 			v = viper.New()
 			config.SetupViper(v)
 
-			cfg := config.LoadFromViper(v)
+			cfg, err := config.LoadFromViper(v)
+			Expect(err).NotTo(HaveOccurred())
 
 			Expect(cfg.QuietSuccess).To(BeTrue())
 			Expect(cfg.CommandPrefix).To(Equal("!"))
@@ -131,7 +151,8 @@ var _ = Describe("Config [Unit]", func() {
 			err := v.ReadConfig(bytes.NewReader([]byte(jsonConfig)))
 			Expect(err).NotTo(HaveOccurred())
 
-			cfg := config.LoadFromViper(v)
+			cfg, err := config.LoadFromViper(v)
+			Expect(err).NotTo(HaveOccurred())
 
 			Expect(cfg.QuietSuccess).To(BeTrue())
 			Expect(cfg.AllowedCommands).To(ConsistOf("approve", "merge"))
@@ -175,7 +196,8 @@ var _ = Describe("Config [Unit]", func() {
 			// Set an explicit value (should override everything)
 			v.Set(config.KeyQuietSuccess, true)
 
-			cfg := config.LoadFromViper(v)
+			cfg, err := config.LoadFromViper(v)
+			Expect(err).NotTo(HaveOccurred())
 
 			// Explicit overrides env and config
 			Expect(cfg.QuietSuccess).To(BeTrue())
@@ -219,7 +241,8 @@ var _ = Describe("Config [Unit]", func() {
 			err := config.LoadJSONConfig(v)
 			Expect(err).NotTo(HaveOccurred())
 
-			cfg := config.LoadFromViper(v)
+			cfg, err := config.LoadFromViper(v)
+			Expect(err).NotTo(HaveOccurred())
 			Expect(cfg.QuietSuccess).To(BeTrue())
 			Expect(cfg.AllowedCommands).To(ConsistOf("approve", "merge"))
 			Expect(cfg.CommandAliases).To(HaveKeyWithValue("app", "approve"))
@@ -240,7 +263,8 @@ var _ = Describe("Config [Unit]", func() {
 			err := config.LoadJSONConfig(v)
 			Expect(err).NotTo(HaveOccurred())
 
-			cfg := config.LoadFromViper(v)
+			cfg, err := config.LoadFromViper(v)
+			Expect(err).NotTo(HaveOccurred())
 			// Should use defaults
 			Expect(cfg.QuietSuccess).To(BeFalse())
 			Expect(cfg.CommandPrefix).To(Equal("/"))
@@ -257,7 +281,8 @@ var _ = Describe("Config [Unit]", func() {
 			err := config.LoadJSONConfig(v)
 			Expect(err).NotTo(HaveOccurred())
 
-			cfg := config.LoadFromViper(v)
+			cfg, err := config.LoadFromViper(v)
+			Expect(err).NotTo(HaveOccurred())
 			// Both values should be present
 			Expect(cfg.QuietSuccess).To(BeTrue())
 			Expect(cfg.DisableBareCommands).To(BeTrue())

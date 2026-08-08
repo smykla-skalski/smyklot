@@ -529,7 +529,12 @@ func loadBotConfig(v *viper.Viper) (*config.Config, error) {
 	}
 
 	// Load bot configuration from Viper
-	return config.LoadFromViper(v), nil
+	bc, err := config.LoadFromViper(v)
+	if err != nil {
+		return nil, NewConfigError(ErrConfigLoad, err)
+	}
+
+	return bc, nil
 }
 
 // loadEnvIfEmpty loads environment variable into target if target is empty
@@ -1859,10 +1864,12 @@ func getInstallationToken(rc *RuntimeConfig) (string, error) {
 
 // appendStepSummary adds one note to the GitHub Actions step summary.
 //
-// Outside Actions there is no summary file, and nothing is written.
+// This is the only place the summary file is opened. Outside Actions there is
+// no such file, and nothing is written.
 func appendStepSummary(note string) error {
 	summaryFile := os.Getenv(envStepSummary)
 	if summaryFile == "" {
+		// Not running in GitHub Actions, skip
 		return nil
 	}
 
@@ -1884,20 +1891,9 @@ func appendStepSummary(note string) error {
 
 // writeStepSummary writes the effective configuration to GitHub Actions step summary.
 func writeStepSummary(rc *RuntimeConfig, bc *config.Config) error {
-	summaryFile := os.Getenv(envStepSummary)
-	if summaryFile == "" {
-		// Not running in GitHub Actions, skip
-		return nil
-	}
-
-	//nolint:gosec // summaryFile is from the trusted GitHub Actions environment
-	file, err := os.OpenFile(summaryFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-	if err != nil {
-		return NewGitHubError(ErrStepSummary, err)
-	}
-	defer func() {
-		_ = file.Close()
-	}()
+	// Rendered before anything is opened, so appendStepSummary stays the one
+	// place that knows how to write to the summary
+	var rendered strings.Builder
 
 	tmpl, err := template.New(summaryTemplateName).Parse(stepSummaryTemplate)
 	if err != nil {
@@ -1932,9 +1928,9 @@ func writeStepSummary(rc *RuntimeConfig, bc *config.Config) error {
 		CommandAliases:         bc.CommandAliases,
 	}
 
-	if err := tmpl.Execute(file, data); err != nil {
+	if err := tmpl.Execute(&rendered, data); err != nil {
 		return NewGitHubError(ErrStepSummary, err)
 	}
 
-	return nil
+	return appendStepSummary(rendered.String())
 }

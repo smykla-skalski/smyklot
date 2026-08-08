@@ -84,10 +84,9 @@ func runPoll(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	// Setup GitHub client and permission checker
-	client, checker, err := setupPollClients(ctx, token, rc.APIBaseURL, repoOwner, repoName)
+	client, err := github.NewClient(token, rc.APIBaseURL)
 	if err != nil {
-		return err
+		return NewGitHubError(ErrGitHubClient, err)
 	}
 
 	// Layer the repository's own configuration over the workflow's, the same
@@ -99,8 +98,16 @@ func runPoll(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
+	// Decided before CODEOWNERS is read, the way the service's sweep decides
+	// it. A repository on the service runs this workflow every five minutes,
+	// and reading a file it will not use is the whole cost of that tick
 	if actionStandsDown(ctx, bc) {
 		return nil
+	}
+
+	checker, err := newPermissionChecker(ctx, client, repoOwner, repoName)
+	if err != nil {
+		return err
 	}
 
 	// Poll and process all open PRs
@@ -115,7 +122,12 @@ func loadPollBotConfig(v *viper.Viper) (*config.Config, error) {
 	}
 
 	// Load bot configuration from Viper
-	return config.LoadFromViper(v), nil
+	bc, err := config.LoadFromViper(v)
+	if err != nil {
+		return nil, NewConfigError(ErrConfigLoad, err)
+	}
+
+	return bc, nil
 }
 
 // getPollConfig retrieves repo and token from flags or environment
@@ -175,25 +187,6 @@ func parseRepo(repo string) (string, string, error) {
 		return "", "", fmt.Errorf("invalid repository format (expected owner/name, got %q)", repo)
 	}
 	return parts[0], parts[1], nil
-}
-
-// setupPollClients creates GitHub client and permission checker
-func setupPollClients(
-	ctx context.Context,
-	token, baseURL, repoOwner, repoName string,
-) (*github.Client, *permissions.Checker, error) {
-	// Create GitHub client
-	client, err := github.NewClient(token, baseURL)
-	if err != nil {
-		return nil, nil, NewGitHubError(ErrGitHubClient, err)
-	}
-
-	checker, err := newPermissionChecker(ctx, client, repoOwner, repoName)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return client, checker, nil
 }
 
 // newPermissionChecker builds a permission checker for a repository from a

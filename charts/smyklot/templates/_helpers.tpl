@@ -48,20 +48,12 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 
 {{/*
-Fail at template time rather than at CrashLoopBackOff.
+The Secret holding the webhook secret and the App private key.
 
-Both of these are required and neither has a sensible default: without App
-credentials there is nothing to act as, and without a webhook secret anyone who
-can reach the port could drive the bot.
+Required, and named rather than valued: a chart that took either credential
+would put it in a values file and in `helm get values` output. Failing here
+beats failing at CrashLoopBackOff.
 */}}
-{{- define "smyklot.validate" -}}
-{{- if not .Values.github.clientId -}}
-{{- fail "github.clientId is required: set it to the App's client ID (or its numeric app ID)" -}}
-{{- end -}}
-{{- if not .Values.github.existingSecret -}}
-{{- fail "github.existingSecret is required: create a Secret with the webhook secret and the App private key, then name it here" -}}
-{{- end -}}
-{{- if and .Values.ingress.enabled (not .Values.ingress.host) -}}
-{{- fail "ingress.host is required when ingress.enabled is true" -}}
-{{- end -}}
+{{- define "smyklot.secretName" -}}
+{{- required "github.existingSecret is required: create a Secret with the webhook secret and the App private key, then name it here" .Values.github.existingSecret -}}
 {{- end -}}
