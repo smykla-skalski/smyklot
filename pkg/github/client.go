@@ -49,6 +49,10 @@ func NewClient(token, baseURL string) (*Client, error) {
 		baseURL = defaultBaseURL
 	}
 
+	// Every path this client builds starts with a slash, so a trailing one
+	// would produce a double slash in the request URL
+	baseURL = strings.TrimSuffix(baseURL, "/")
+
 	return &Client{
 		httpClient: &http.Client{
 			Timeout: defaultTimeout,

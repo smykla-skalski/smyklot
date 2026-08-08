@@ -59,6 +59,7 @@ func runPoll(cmd *cobra.Command, _ []string) error {
 	loadEnvIfEmpty(&rc.GitHubAppID, envGitHubAppID)
 	loadEnvIfEmpty(&rc.InstallationID, envInstallationID)
 	loadEnvIfEmpty(&rc.BotUsername, envBotUsername)
+	loadEnvIfEmpty(&rc.APIBaseURL, envAPIBaseURL)
 
 	if rc.BotUsername == "" {
 		rc.BotUsername = defaultBotUsername
@@ -83,7 +84,7 @@ func runPoll(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Setup GitHub client and permission checker
-	client, checker, err := setupPollClients(ctx, token, repoOwner, repoName)
+	client, checker, err := setupPollClients(ctx, token, rc.APIBaseURL, repoOwner, repoName)
 	if err != nil {
 		return err
 	}
@@ -159,10 +160,10 @@ func parseRepo(repo string) (string, string, error) {
 // setupPollClients creates GitHub client and permission checker
 func setupPollClients(
 	ctx context.Context,
-	token, repoOwner, repoName string,
+	token, baseURL, repoOwner, repoName string,
 ) (*github.Client, *permissions.Checker, error) {
 	// Create GitHub client
-	client, err := github.NewClient(token, emptyBaseURL)
+	client, err := github.NewClient(token, baseURL)
 	if err != nil {
 		return nil, nil, NewGitHubError(ErrGitHubClient, err)
 	}

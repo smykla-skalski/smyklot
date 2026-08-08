@@ -40,11 +40,11 @@ const (
 	envGitHubAppID         = "GITHUB_APP_ID"          //nolint:gosec // Environment variable name, not a credential
 	envInstallationID      = "GITHUB_INSTALLATION_ID"
 	envBotUsername         = "SMYKLOT_BOT_USERNAME"
+	envAPIBaseURL          = "SMYKLOT_GITHUB_API_URL"
 	envStepSummary         = "GITHUB_STEP_SUMMARY"
 	commentActionCreated   = "created"
 	commentActionDeleted   = "deleted"
 	rootPath               = "/"
-	emptyBaseURL           = ""
 	summaryTemplateName    = "summary"
 	defaultBotUsername     = "smyklot[bot]" // Default GitHub App bot username
 	flagToken              = "token"
@@ -124,6 +124,7 @@ type RuntimeConfig struct {
 	GitHubAppID         string
 	InstallationID      string
 	BotUsername         string // Bot username for identifying bot's own comments/reviews
+	APIBaseURL          string // GitHub API base URL; empty uses the public API
 }
 
 // stepSummaryData holds data for the step summary template.
@@ -169,27 +170,33 @@ on user permissions.`,
 }
 
 func init() {
+	registerRunFlags(rootCmd)
+}
+
+// registerRunFlags defines run()'s flags, split out of init so tests can build
+// an equivalent command
+func registerRunFlags(cmd *cobra.Command) {
 	// Define CLI flags for runtime configuration
-	rootCmd.Flags().String(flagToken, "", descToken)
-	rootCmd.Flags().String(flagCommentBody, "", descCommentBody)
-	rootCmd.Flags().String(flagCommentID, "", descCommentID)
-	rootCmd.Flags().String(flagPRNumber, "", descPRNumber)
-	rootCmd.Flags().String(flagRepoOwner, "", descRepoOwner)
-	rootCmd.Flags().String(flagRepoName, "", descRepoName)
-	rootCmd.Flags().String(flagCommentAuthor, "", descCommentAuthor)
+	cmd.Flags().String(flagToken, "", descToken)
+	cmd.Flags().String(flagCommentBody, "", descCommentBody)
+	cmd.Flags().String(flagCommentID, "", descCommentID)
+	cmd.Flags().String(flagPRNumber, "", descPRNumber)
+	cmd.Flags().String(flagRepoOwner, "", descRepoOwner)
+	cmd.Flags().String(flagRepoName, "", descRepoName)
+	cmd.Flags().String(flagCommentAuthor, "", descCommentAuthor)
 
 	// Define CLI flags for bot configuration
-	rootCmd.Flags().Bool(config.KeyQuietSuccess, false, "Disable success comments (emoji only)")
-	rootCmd.Flags().StringSlice(config.KeyAllowedCommands, []string{}, "Allowed commands (empty = all)")
-	rootCmd.Flags().StringToString(config.KeyCommandAliases, map[string]string{}, "Command aliases (JSON)")
-	rootCmd.Flags().String(config.KeyCommandPrefix, config.DefaultCommandPrefix, "Command prefix")
-	rootCmd.Flags().Bool(config.KeyDisableMentions, false, "Disable mention-style commands")
-	rootCmd.Flags().Bool(config.KeyDisableBareCommands, false, "Disable bare commands")
-	rootCmd.Flags().Bool(config.KeyDisableUnapprove, false, "Disable unapprove commands")
-	rootCmd.Flags().Bool(config.KeyQuietReactions, false, "Disable reaction-based approval/merge comments")
-	rootCmd.Flags().Bool(config.KeyDisableReactions, false, "Disable reaction-based approvals/merges")
-	rootCmd.Flags().Bool(config.KeyDisableDeletedComments, false, "Disable comments about deleted commands")
-	rootCmd.Flags().Bool(config.KeyAllowSelfApproval, false, "Allow PR authors to approve their own PRs")
+	cmd.Flags().Bool(config.KeyQuietSuccess, false, "Disable success comments (emoji only)")
+	cmd.Flags().StringSlice(config.KeyAllowedCommands, []string{}, "Allowed commands (empty = all)")
+	cmd.Flags().StringToString(config.KeyCommandAliases, map[string]string{}, "Command aliases (JSON)")
+	cmd.Flags().String(config.KeyCommandPrefix, config.DefaultCommandPrefix, "Command prefix")
+	cmd.Flags().Bool(config.KeyDisableMentions, false, "Disable mention-style commands")
+	cmd.Flags().Bool(config.KeyDisableBareCommands, false, "Disable bare commands")
+	cmd.Flags().Bool(config.KeyDisableUnapprove, false, "Disable unapprove commands")
+	cmd.Flags().Bool(config.KeyQuietReactions, false, "Disable reaction-based approval/merge comments")
+	cmd.Flags().Bool(config.KeyDisableReactions, false, "Disable reaction-based approvals/merges")
+	cmd.Flags().Bool(config.KeyDisableDeletedComments, false, "Disable comments about deleted commands")
+	cmd.Flags().Bool(config.KeyAllowSelfApproval, false, "Allow PR authors to approve their own PRs")
 }
 
 func main() {
@@ -279,7 +286,7 @@ func run(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Create a GitHub client
-	client, err := github.NewClient(token, emptyBaseURL)
+	client, err := github.NewClient(token, rc.APIBaseURL)
 	if err != nil {
 		return NewGitHubError(ErrGitHubClient, err)
 	}
@@ -459,6 +466,7 @@ func loadRuntimeConfig(cmd *cobra.Command) *RuntimeConfig {
 	loadEnvIfEmpty(&rc.GitHubAppClientID, envGitHubAppClientID)
 	loadEnvIfEmpty(&rc.GitHubAppID, envGitHubAppID)
 	loadEnvIfEmpty(&rc.InstallationID, envInstallationID)
+	loadEnvIfEmpty(&rc.APIBaseURL, envAPIBaseURL)
 
 	// Load bot username with default for GitHub App
 	loadEnvIfEmpty(&rc.BotUsername, envBotUsername)
@@ -1243,7 +1251,7 @@ func handleDeletedComment(ctx context.Context, rc *RuntimeConfig, deletedCommand
 	}
 
 	// Create a GitHub client
-	client, err := github.NewClient(token, emptyBaseURL)
+	client, err := github.NewClient(token, rc.APIBaseURL)
 	if err != nil {
 		return NewGitHubError(ErrGitHubClient, err)
 	}
