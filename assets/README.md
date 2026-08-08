@@ -4,15 +4,27 @@ Source images for the smyklot GitHub App. Kept here so they don't only live on o
 
 ## Files
 
-| File | Size | Contents |
-| --- | --- | --- |
-| `smyklot-avatar.png` | 1024x1024 | Robot only. This is the image currently set as the GitHub App avatar. |
-| `smyklot-avatar-768.png` | 768x768 | Same image, downscaled. |
-| `smyklot-logo.png` | 1024x1024 | Robot plus the SMYKLOT wordmark. |
-| `smyklot-logo-768.png` | 768x768 | Same image, downscaled. |
+Two images, each at four sizes.
 
-The 768px files are exact downscales of their 1024px masters, so either one works as a
-starting point.
+| Image  | Master               | Downscales             | Contents                                                              |
+| ------ | -------------------- | ---------------------- | --------------------------------------------------------------------- |
+| Avatar | `smyklot-avatar.png` | `-768`, `-512`, `-256` | Robot only. This is the image currently set as the GitHub App avatar. |
+| Logo   | `smyklot-logo.png`   | `-768`, `-512`, `-256` | Robot plus the SMYKLOT wordmark.                                      |
+
+Masters are 1024x1024. Every smaller file is a plain ImageMagick resize of its master, so
+pick whichever size fits and don't worry about which one is canonical. The wordmark stays
+legible down to 256px.
+
+The 512 and 256 files were generated with the PNG timestamp chunk excluded, which makes them
+reproducible - rerun this and you get the committed file back byte for byte:
+
+```sh
+magick smyklot-avatar.png -resize 256x256 \
+  -define png:exclude-chunk=date,time smyklot-avatar-256.png
+```
+
+Drop that `-define` and the pixels still match, but PNG stamps the encode time into the file
+and the bytes come out different on every run. The 768s predate this and carry a timestamp.
 
 ## Which one is live
 
