@@ -214,6 +214,10 @@ Create a test pull request and try the commands:
 
 Everything above deploys the Action, which runs once per comment. The alternative is one long-running process that serves every repository the App is installed on, with no workflow file in any of them.
 
+There are two supported ways to run it. [Fly.io](#deploying-to-flyio) is what this project actually runs on and is the shorter path. The Helm chart below is for anyone who already has a cluster.
+
+Whichever you pick, the service must stay running. Reaction commands (👍) are found by sweeping open pull requests on a timer, because GitHub sends no webhook when someone adds a reaction, and a stopped process runs no timers. That rules out scale-to-zero.
+
 ### 1. Configure the App's Webhook
 
 In the App's settings:
@@ -315,6 +319,81 @@ Set `serviceMonitor.enabled=true` on a cluster running the Prometheus Operator.
 **A command did nothing**: check `/failures` first, then the log line carrying that delivery's `delivery_id`. If neither shows it, the repository is probably on `runner: action`.
 
 **Two of everything**: a repository is being handled twice. Check its `.github/smyklot.yaml` on the **default branch** - that is the copy both entry points read.
+
+## Deploying to Fly.io
+
+`fly.toml` in the repository root is the live deployment. It runs the released image, so what is deployed and what the release notes describe are the same build.
+
+### 1. Create the App and Set the Secrets
+
+```bash
+fly apps create smyklot --org personal
+
+fly secrets set \
+  SMYKLOT_WEBHOOK_SECRET="$(openssl rand -hex 32)" \
+  GITHUB_APP_PRIVATE_KEY="$(cat key.pem)" \
+  GITHUB_APP_CLIENT_ID="Iv23liExample" \
+  --app smyklot
+```
+
+Secrets live encrypted in Fly and are injected as environment variables. Nothing sensitive belongs in `fly.toml`, which is committed.
+
+The private key must be PKCS#8, the format that starts `-----BEGIN PRIVATE KEY-----`. GitHub hands out PKCS#1 (`BEGIN RSA PRIVATE KEY`), so convert it first:
+
+```bash
+openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt -in github.pem -out key.pem
+```
+
+### 2. Deploy a Released Version
+
+```bash
+fly deploy --image ghcr.io/smykla-skalski/smyklot:1.13.0
+```
+
+Always name a version. `latest` makes it impossible to tell what is running from the outside.
+
+After a release, `.github/workflows/deploy.yaml` does this automatically. It needs `FLY_API_TOKEN` as a repository secret, from `fly tokens create deploy -a smyklot`. The same workflow can be dispatched by hand with a version, which is how you roll back.
+
+### 3. Point the Domain at It
+
+```bash
+fly certs add hook.smyklot.com --app smyklot
+```
+
+That prints the DNS records to create. Add them at the registrar, then watch the certificate go from pending to ready:
+
+```bash
+fly certs show hook.smyklot.com --app smyklot
+```
+
+Set the App's webhook URL to `https://hook.smyklot.com/webhook` once the certificate is issued, not before - GitHub validates the endpoint when you save it.
+
+### 4. Watch It
+
+The admin port is not published. `fly.toml` exposes 8080 and nothing else, so the probes, metrics and recent failures on 9090 are reachable only over Fly's private network:
+
+```bash
+fly proxy 9090 --app smyklot
+curl localhost:9090/readyz
+curl localhost:9090/failures
+curl localhost:9090/metrics
+```
+
+Logs, which carry a `delivery_id` on every line about a delivery:
+
+```bash
+fly logs --app smyklot
+```
+
+### What This Costs
+
+One `shared-cpu-1x` machine with 256MB, running continuously, is roughly $2 a month. There is no plan fee. The measured service uses about 17MB idle and 23MB under a burst, so 256MB is the smallest size Fly offers rather than a size this needs.
+
+### Why One Machine
+
+`min_machines_running = 1` with auto-stop disabled, and `strategy = "rolling"` rather than bluegreen or canary. Deliveries are de-duplicated in memory and the reaction sweep has no leader election, so two machines answer the same comment twice. Rolling replaces the one machine in place; the others start a second one first.
+
+The cost is a few seconds of refused deliveries per deploy. GitHub records those and they can be redelivered from the App's Advanced tab.
 
 ## Command Reference
 
