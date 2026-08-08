@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"sync"
 	"time"
@@ -118,7 +117,7 @@ func (c *repoCache[T]) Get(
 	client *github.Client,
 	owner, repo string,
 ) (T, error) {
-	key := fmt.Sprintf("%s/%s", owner, repo)
+	key := repoFullName(owner, repo)
 
 	if value, ok := c.lookup(key); ok {
 		return value, nil

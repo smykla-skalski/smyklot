@@ -64,8 +64,15 @@ var _ = Describe("Metrics [Unit]", func() {
 		Expect(scrape()).To(ContainSubstring(`smyklot_delivery_duration_seconds_bucket{action="created",le="0.4"} 1`))
 	})
 
-	It("reports readiness as a gauge", func() {
-		met.Ready.Set(1)
+	// Read at scrape time so the metric cannot drift from the endpoint that
+	// serves the same fact
+	It("reads readiness at scrape time", func() {
+		ready := false
+		metrics.RegisterReadiness(reg, func() bool { return ready })
+
+		Expect(scrape()).To(ContainSubstring("smyklot_ready 0"))
+
+		ready = true
 
 		Expect(scrape()).To(ContainSubstring("smyklot_ready 1"))
 	})

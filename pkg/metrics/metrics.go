@@ -71,9 +71,6 @@ type Metrics struct {
 	// SweepDuration measures how long one sweep took. A sweep that outgrows
 	// the interval delays the next one, and this is where that shows
 	SweepDuration prometheus.Histogram
-
-	// Ready is 1 while the service can reach the GitHub API, 0 otherwise
-	Ready prometheus.Gauge
 }
 
 // New builds the metrics and registers them.
@@ -121,13 +118,25 @@ func New(reg prometheus.Registerer) *Metrics {
 			Help:      "Time spent on one reaction sweep.",
 			Buckets:   prometheus.ExponentialBuckets(0.5, 2, 10),
 		}),
-
-		Ready: factory.NewGauge(prometheus.GaugeOpts{
-			Namespace: namespace,
-			Name:      "ready",
-			Help:      "1 while the GitHub API is reachable, 0 otherwise.",
-		}),
 	}
+}
+
+// RegisterReadiness reports whether the service can reach GitHub.
+//
+// Read at scrape time from whatever already knows the answer, so the metric
+// cannot drift from the endpoint that serves the same fact.
+func RegisterReadiness(reg prometheus.Registerer, ready func() bool) {
+	promauto.With(reg).NewGaugeFunc(prometheus.GaugeOpts{
+		Namespace: namespace,
+		Name:      "ready",
+		Help:      "1 while the GitHub API is reachable, 0 otherwise.",
+	}, func() float64 {
+		if ready() {
+			return 1
+		}
+
+		return 0
+	})
 }
 
 // RegisterQueue reports the work waiting for a worker.

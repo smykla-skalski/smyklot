@@ -144,10 +144,15 @@ func newServer(cfg *serveConfig) (*server, error) {
 
 	registry := metrics.NewRegistry()
 
+	out := cfg.logWriter
+	if out == nil {
+		out = os.Stdout
+	}
+
 	srv := &server{
 		cfg:      cfg,
 		tokens:   tokens,
-		logger:   logging.New(cfg.logDestination(), cfg.logFormat, cfg.logLevel, redactor),
+		logger:   logging.New(out, cfg.logFormat, cfg.logLevel, redactor),
 		redactor: redactor,
 		registry: registry,
 		metrics:  metrics.New(registry),
@@ -164,6 +169,7 @@ func newServer(cfg *serveConfig) (*server, error) {
 	}
 
 	metrics.RegisterQueue(registry, func() float64 { return float64(len(srv.jobs)) }, queueDepth)
+	metrics.RegisterReadiness(registry, func() bool { return srv.readiness.state().Ready })
 
 	return srv, nil
 }
@@ -194,7 +200,7 @@ func (s *server) handler() http.Handler {
 func (s *server) rejectUnsigned(w http.ResponseWriter, r *http.Request, err error) {
 	event := eventLabel(r.Header.Get(webhook.EventHeader))
 
-	s.metrics.WebhookRequests.WithLabelValues(event, metrics.OutcomeUnsigned).Inc()
+	s.count(event, metrics.OutcomeUnsigned)
 	s.logger.Warn("rejected delivery with bad signature",
 		"delivery_id", safeDeliveryID(r.Header.Get(webhook.DeliveryHeader)),
 		"event", event,
@@ -207,11 +213,11 @@ func (s *server) rejectUnsigned(w http.ResponseWriter, r *http.Request, err erro
 func (s *server) Run(ctx context.Context) error {
 	// Work already accepted must survive the shutdown signal, or a rolling
 	// update leaves a pull request approved but never merged
-	s.jobCtx = logging.Into(context.WithoutCancel(ctx), s.logger)
+	s.jobCtx = context.WithoutCancel(ctx)
 
 	// A listener that dies must stop the sweep and the probe too, not leave
 	// them running on behalf of a service that is no longer serving
-	runCtx, stopBackground := context.WithCancel(logging.Into(ctx, s.logger))
+	runCtx, stopBackground := context.WithCancel(ctx)
 	defer stopBackground()
 
 	workers := s.startWorkers()
@@ -325,12 +331,8 @@ func (s *server) startBackground(ctx context.Context) <-chan struct{} {
 // not retry one that times out, so executing inline would lose commands
 // whenever a merge took longer than that.
 func (s *server) handleDelivery(w http.ResponseWriter, r *http.Request) {
-	deliveryID := safeDeliveryID(r.Header.Get(webhook.DeliveryHeader))
 	eventName := r.Header.Get(webhook.EventHeader)
 	event := eventLabel(eventName)
-
-	// Attached once, here, so every later line about this delivery carries it
-	ctx := logging.With(logging.Into(r.Context(), s.logger), "delivery_id", deliveryID, "event", event)
 
 	// GitHub sends a ping when the webhook is first configured, and expects an
 	// answer before it will send anything else
@@ -347,6 +349,11 @@ func (s *server) handleDelivery(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+
+	deliveryID := safeDeliveryID(r.Header.Get(webhook.DeliveryHeader))
+
+	// Attached once, here, so every later line about this delivery carries it
+	ctx := logging.With(logging.Into(r.Context(), s.logger), "delivery_id", deliveryID, "event", event)
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -387,13 +394,13 @@ func (s *server) handleDelivery(w http.ResponseWriter, r *http.Request) {
 
 // ignore answers a delivery that carried nothing to execute.
 func (s *server) ignore(w http.ResponseWriter, event string, status int) {
-	s.metrics.WebhookRequests.WithLabelValues(event, metrics.OutcomeIgnored).Inc()
+	s.count(event, metrics.OutcomeIgnored)
 	w.WriteHeader(status)
 }
 
 // reject answers a delivery that could not be read or used.
 func (s *server) reject(ctx context.Context, w http.ResponseWriter, event, message string, cause error) {
-	s.metrics.WebhookRequests.WithLabelValues(event, metrics.OutcomeInvalid).Inc()
+	s.count(event, metrics.OutcomeInvalid)
 	logging.From(ctx).Error(message, "error", cause)
 	http.Error(w, message, http.StatusBadRequest)
 }
@@ -403,7 +410,7 @@ func (s *server) dispatch(ctx context.Context, w http.ResponseWriter, j job) {
 	// Claiming before queueing is what makes a redelivery harmless: the second
 	// copy never reaches a worker
 	if !s.deduper.Begin(j.key) {
-		s.metrics.WebhookRequests.WithLabelValues(webhook.EventIssueComment, metrics.OutcomeDuplicate).Inc()
+		s.count(webhook.EventIssueComment, metrics.OutcomeDuplicate)
 		logging.From(ctx).Info("delivery already handled")
 		w.WriteHeader(http.StatusOK)
 
@@ -411,7 +418,7 @@ func (s *server) dispatch(ctx context.Context, w http.ResponseWriter, j job) {
 	}
 
 	if s.enqueue(j) {
-		s.metrics.WebhookRequests.WithLabelValues(webhook.EventIssueComment, metrics.OutcomeAccepted).Inc()
+		s.count(webhook.EventIssueComment, metrics.OutcomeAccepted)
 		w.WriteHeader(http.StatusAccepted)
 
 		return
@@ -420,7 +427,7 @@ func (s *server) dispatch(ctx context.Context, w http.ResponseWriter, j job) {
 	// Releasing the claim keeps the delivery retryable rather than dropping it
 	// silently: GitHub records the refusal and a redelivery gets a fresh try
 	s.deduper.Abandon(j.key)
-	s.metrics.WebhookRequests.WithLabelValues(webhook.EventIssueComment, metrics.OutcomeRefused).Inc()
+	s.count(webhook.EventIssueComment, metrics.OutcomeRefused)
 	logging.From(ctx).Error("delivery not accepted, queue is full")
 	http.Error(w, "not accepted", http.StatusServiceUnavailable)
 }
@@ -572,6 +579,11 @@ func safeDeliveryID(id string) string {
 	return clean
 }
 
+// count records what became of one webhook request.
+func (s *server) count(event, outcome string) {
+	s.metrics.WebhookRequests.WithLabelValues(event, outcome).Inc()
+}
+
 // runtimeConfigFor translates a delivery into what the executor expects.
 //
 // The Action fills the same struct from environment variables a workflow set.
@@ -587,15 +599,4 @@ func runtimeConfigFor(event *webhook.IssueCommentEvent, cfg *serveConfig) *Runti
 		BotUsername:   cfg.botUsername,
 		APIBaseURL:    cfg.apiBaseURL,
 	}
-}
-
-// logDestination is where log lines go, defaulting to standard output.
-//
-// A test points this at a buffer to read what the service said.
-func (c *serveConfig) logDestination() io.Writer {
-	if c.logWriter != nil {
-		return c.logWriter
-	}
-
-	return os.Stdout
 }

@@ -118,28 +118,10 @@ var _ = Describe("Service observability [Unit]", func() {
 		DeferCleanup(admin.Close)
 	}
 
-	// post sends a signed delivery unless the spec supplied its own signature
 	post := func(event, deliveryID string, body []byte, signature *string) *http.Response {
 		GinkgoHelper()
 
-		req, err := http.NewRequestWithContext(
-			GinkgoT().Context(), http.MethodPost, service.URL+defaultWebhookPath, bytes.NewReader(body))
-		Expect(err).NotTo(HaveOccurred())
-
-		req.Header.Set(webhook.EventHeader, event)
-		req.Header.Set(webhook.DeliveryHeader, deliveryID)
-
-		if signature != nil {
-			req.Header.Set(webhook.SignatureHeader, *signature)
-		} else {
-			req.Header.Set(webhook.SignatureHeader, signBody(testSecret, body))
-		}
-
-		resp, err := http.DefaultClient.Do(req)
-		Expect(err).NotTo(HaveOccurred())
-		DeferCleanup(resp.Body.Close)
-
-		return resp
+		return postDelivery(service, event, deliveryID, body, signature)
 	}
 
 	// read fetches an admin route and returns its status and body

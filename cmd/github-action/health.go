@@ -122,8 +122,6 @@ func (s *server) probe(parent context.Context) {
 	}
 
 	if err != nil {
-		s.metrics.Ready.Set(0)
-
 		// Logged only on a change, so a service that has been unreachable for
 		// an hour says so once rather than a hundred and twenty times
 		if s.readiness.set(s.redactor.Error(err)) {
@@ -132,8 +130,6 @@ func (s *server) probe(parent context.Context) {
 
 		return
 	}
-
-	s.metrics.Ready.Set(1)
 
 	if s.readiness.set("") {
 		s.logger.Info("ready")

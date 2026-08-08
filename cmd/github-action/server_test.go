@@ -51,6 +51,40 @@ func commandDelivery(body string) []byte {
 	return githubtest.Command(body)
 }
 
+// postDelivery sends a delivery to a running service, signing it unless the
+// spec supplied a signature of its own
+func postDelivery(
+	service *httptest.Server,
+	event, deliveryID string,
+	body []byte,
+	signature *string,
+) *http.Response {
+	GinkgoHelper()
+
+	req, err := http.NewRequestWithContext(
+		GinkgoT().Context(),
+		http.MethodPost,
+		service.URL+defaultWebhookPath,
+		bytes.NewReader(body),
+	)
+	Expect(err).NotTo(HaveOccurred())
+
+	req.Header.Set(webhook.EventHeader, event)
+	req.Header.Set(webhook.DeliveryHeader, deliveryID)
+
+	if signature != nil {
+		req.Header.Set(webhook.SignatureHeader, *signature)
+	} else {
+		req.Header.Set(webhook.SignatureHeader, signBody(testSecret, body))
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	Expect(err).NotTo(HaveOccurred())
+	DeferCleanup(resp.Body.Close)
+
+	return resp
+}
+
 var _ = Describe("Webhook service [Unit]", func() {
 	var (
 		stub     *githubStub
@@ -92,33 +126,10 @@ var _ = Describe("Webhook service [Unit]", func() {
 		DeferCleanup(service.Close)
 	}
 
-	// post sends a delivery, signing it unless the spec supplied its own
-	// signature
 	post := func(event, deliveryID string, body []byte, signature *string) *http.Response {
 		GinkgoHelper()
 
-		req, err := http.NewRequestWithContext(
-			GinkgoT().Context(),
-			http.MethodPost,
-			service.URL+defaultWebhookPath,
-			bytes.NewReader(body),
-		)
-		Expect(err).NotTo(HaveOccurred())
-
-		req.Header.Set(webhook.EventHeader, event)
-		req.Header.Set(webhook.DeliveryHeader, deliveryID)
-
-		if signature != nil {
-			req.Header.Set(webhook.SignatureHeader, *signature)
-		} else {
-			req.Header.Set(webhook.SignatureHeader, signBody(testSecret, body))
-		}
-
-		resp, err := http.DefaultClient.Do(req)
-		Expect(err).NotTo(HaveOccurred())
-		DeferCleanup(resp.Body.Close)
-
-		return resp
+		return postDelivery(service, event, deliveryID, body, signature)
 	}
 
 	BeforeEach(func() {

@@ -124,7 +124,7 @@ func getPollConfig(cmd *cobra.Command, rc *RuntimeConfig) (string, string, error
 		if owner == "" || name == "" {
 			return "", "", fmt.Errorf("repository not specified (use --repo or REPO_OWNER/REPO_NAME env vars)")
 		}
-		repo = fmt.Sprintf("%s/%s", owner, name)
+		repo = repoFullName(owner, name)
 	}
 
 	// Get token from environment if not provided via flag
@@ -147,6 +147,12 @@ func getPollConfig(cmd *cobra.Command, rc *RuntimeConfig) (string, string, error
 	}
 
 	return repo, token, nil
+}
+
+// repoFullName is how a repository is named everywhere it is spoken about: in
+// a log line, in a cache key, and in the string parseRepo reads back.
+func repoFullName(owner, name string) string {
+	return fmt.Sprintf("%s/%s", owner, name)
 }
 
 // parseRepo parses owner and name from repo string
@@ -209,7 +215,7 @@ func fetchCodeowners(
 	// Log if CODEOWNERS is missing
 	if content == "" {
 		logging.From(ctx).Warn("no CODEOWNERS, falling back to repository admin permissions",
-			"repo", fmt.Sprintf("%s/%s", repoOwner, repoName))
+			"repo", repoFullName(repoOwner, repoName))
 	}
 
 	return content, nil
@@ -239,7 +245,7 @@ func pollAllPRs(
 ) error {
 	// Named once, here, so every line below carries the repository without
 	// each of them having to say so
-	ctx = logging.With(ctx, "repo", fmt.Sprintf("%s/%s", repoOwner, repoName))
+	ctx = logging.With(ctx, "repo", repoFullName(repoOwner, repoName))
 
 	logging.From(ctx).Info("polling PR reactions")
 

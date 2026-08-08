@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
@@ -57,12 +56,12 @@ func (s *server) drain(workers *sync.WaitGroup) {
 // outruns the interval delays the next one instead of overlapping with it.
 func (s *server) pollLoop(ctx context.Context) {
 	if s.cfg.pollInterval <= 0 {
-		logging.From(ctx).Info("reaction polling disabled")
+		s.logger.Info("reaction polling disabled")
 
 		return
 	}
 
-	logging.From(ctx).Info("sweeping reactions", "interval", s.cfg.pollInterval.String())
+	s.logger.Info("sweeping reactions", "interval", s.cfg.pollInterval.String())
 
 	ticker := time.NewTicker(s.cfg.pollInterval)
 	defer ticker.Stop()
@@ -93,13 +92,13 @@ func (s *server) runSweep(ctx context.Context) {
 
 	if err != nil {
 		s.metrics.Sweeps.WithLabelValues(metrics.ResultFailure).Inc()
-		logging.From(ctx).Error("sweep failed", "error", err, "duration", elapsed.String())
+		s.logger.Error("sweep failed", "error", err, "duration", elapsed.String())
 
 		return
 	}
 
 	s.metrics.Sweeps.WithLabelValues(metrics.ResultSuccess).Inc()
-	logging.From(ctx).Debug("sweep complete", "duration", elapsed.String())
+	s.logger.Debug("sweep complete", "duration", elapsed.String())
 }
 
 // sweep polls every repository the App is installed on.
@@ -108,6 +107,11 @@ func (s *server) runSweep(ctx context.Context) {
 // repository installed while the process runs is swept on the next tick without
 // a restart.
 func (s *server) sweep(ctx context.Context) error {
+	// A sweep is where a chain of per-installation and per-repository
+	// attributes starts, so it seeds that chain itself rather than trusting
+	// whoever called it to have done so
+	ctx = logging.Into(ctx, s.logger)
+
 	appToken, err := s.tokens.AppToken()
 	if err != nil {
 		return NewGitHubError(ErrGitHubAppAuth, err)
@@ -158,7 +162,7 @@ func (s *server) sweepInstallation(ctx context.Context, installation github.Inst
 		// because pollAllPRs adds it for the lines below that
 		if err := s.sweepRepo(ctx, client, repo); err != nil {
 			logging.From(ctx).Error("repository sweep failed",
-				"repo", fmt.Sprintf("%s/%s", repo.Owner, repo.Name), "error", err)
+				"repo", repoFullName(repo.Owner, repo.Name), "error", err)
 		}
 	}
 

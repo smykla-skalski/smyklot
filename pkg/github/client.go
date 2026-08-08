@@ -44,6 +44,19 @@ const (
 	maxPages = 100
 )
 
+// sharedTransport is the connection pool every client draws on.
+//
+// A Transport is safe for concurrent use and owns the keep-alive pool, so one
+// per process means a client built for a single call reuses a connection
+// somebody else opened. A Transport per client would hand every short-lived
+// client an empty pool to fill and then abandon, and the abandoned one holds
+// its idle connections until they time out on their own.
+var sharedTransport = &http.Transport{
+	MaxIdleConns:        maxIdleConns,
+	MaxIdleConnsPerHost: maxIdleConnsPerHost,
+	IdleConnTimeout:     idleConnTimeout,
+}
+
 // Client is a GitHub API client
 type Client struct {
 	httpClient *http.Client
@@ -84,12 +97,8 @@ func newClient(token, baseURL, authScheme string) (*Client, error) {
 
 	return &Client{
 		httpClient: &http.Client{
-			Timeout: defaultTimeout,
-			Transport: &http.Transport{
-				MaxIdleConns:        maxIdleConns,
-				MaxIdleConnsPerHost: maxIdleConnsPerHost,
-				IdleConnTimeout:     idleConnTimeout,
-			},
+			Timeout:   defaultTimeout,
+			Transport: sharedTransport,
 		},
 		token:      token,
 		baseURL:    baseURL,
