@@ -11,6 +11,7 @@ task = "3.52.0"                            # Task runner
 "go:github.com/onsi/ginkgo/v2/ginkgo" = "2.32.0" # Ginkgo test runner
 actionlint = "1.7.12"                       # GitHub Actions linter
 ginkgo = "2.32.0"                          # Ginkgo test runner
+golangci-lint = "2.12.2"                   # Go linter; keep in step with test.yaml
 
 [env]
 GO111MODULE = "on"

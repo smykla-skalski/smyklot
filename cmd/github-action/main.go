@@ -48,6 +48,7 @@ const (
 	commentActionDeleted   = "deleted"
 	rootPath               = "/"
 	summaryTemplateName    = "summary"
+	appName                = "smyklot"      // The binary's own name, in usage output
 	defaultBotUsername     = "smyklot[bot]" // Default GitHub App bot username
 	flagToken              = "token"
 	flagCommentBody        = "comment-body"
@@ -158,7 +159,7 @@ type stepSummaryData struct {
 var githubNamePattern = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
 
 var rootCmd = &cobra.Command{
-	Use:   "smyklot",
+	Use:   appName,
 	Short: "GitHub Actions bot for automated PR approvals and merges",
 	Long: `Smyklot is a GitHub Actions bot that enables automated PR approvals
 and merges based on CODEOWNERS permissions.
