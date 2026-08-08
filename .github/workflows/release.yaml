@@ -15,6 +15,13 @@ on:
 permissions:
   contents: read
 
+# Releases must enter semantic-release and image publication in order. Merely
+# serializing the final deploy would let a slower older image arrive after a
+# newer one and roll production backward.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   # Check if workflow should proceed
   check:
@@ -108,11 +115,39 @@ jobs:
       - name: Verify go.mod
         run: task lint:mod
 
+  # The panel ships inside the Go binary, so its independent TypeScript,
+  # Svelte and production-build gates must pass before semantic-release can
+  # publish an image containing it.
+  panel-frontend:
+    needs: check
+    name: Panel Frontend
+    runs-on: ubuntu-24.04
+    env:
+      MISE_ENV: ci
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install mise
+        uses: jdx/mise-action@7e36c90d9ab29c415a2384db3006f3ec8a8cc654 # v4.2.4
+        with:
+          cache: true
+
+      - name: Lint and type-check
+        run: mise run panel:frontend:lint
+
+      - name: Test
+        run: mise run panel:frontend:test
+
+      - name: Build
+        run: mise run panel:frontend:build
+
   # Determine if a release should be created
   release:
     name: Semantic Release
     runs-on: ubuntu-24.04
-    needs: [test, golangci-lint, markdownlint, go-mod-verify]
+    needs: [test, golangci-lint, markdownlint, go-mod-verify, panel-frontend]
     permissions:
       contents: write
       issues: write
@@ -191,6 +226,15 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  deploy-fly:
+    name: Deploy to Fly
+    needs: [release, goreleaser]
+    if: needs.goreleaser.result == 'success'
+    uses: ./.github/workflows/deploy.yaml
+    with:
+      version: ${{ needs.release.outputs.new_release_version }}
+    secrets: inherit
 
   # Package and publish the Helm chart
   #

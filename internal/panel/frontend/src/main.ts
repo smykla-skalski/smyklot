@@ -3,7 +3,7 @@ import { mount } from 'svelte';
 import App from './App.svelte';
 import './app.css';
 import { createPanelApi } from './lib/api';
-import { MONITOR_ICON_PATH, panelUrl, readBasePath, readPanelBuild } from './lib/base';
+import { PANEL_ICON_PATH, panelUrl, readBasePath, readPanelBuild } from './lib/base';
 
 const target = document.querySelector('#app');
 
@@ -20,7 +20,7 @@ try {
     target,
     props: {
       api,
-      iconUrl: panelUrl(base, MONITOR_ICON_PATH),
+      iconUrl: panelUrl(base, PANEL_ICON_PATH),
       build: readPanelBuild(document),
     },
   });

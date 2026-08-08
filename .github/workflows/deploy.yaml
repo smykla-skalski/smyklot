@@ -1,14 +1,21 @@
 # Rolls the running service onto a released image.
 #
-# Runs after a release publishes, so the service and the release notes always
-# describe the same build. Can also be dispatched with an explicit version to
-# roll back without waiting for another release.
+# Runs after the release image publishes, so the service, image, and release
+# notes always describe the same build. It can also be dispatched with an
+# explicit version to roll back without waiting for another release.
 
 name: Deploy
 
 on:
-  release:
-    types: [published]
+  workflow_call:
+    inputs:
+      version:
+        description: 'Version to deploy, without the leading v'
+        required: true
+        type: string
+    secrets:
+      FLY_API_TOKEN:
+        required: true
   workflow_dispatch:
     inputs:
       version:
@@ -38,29 +45,89 @@ jobs:
       - name: Install flyctl
         uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # v1.6
 
-      - name: Resolve version
-        id: version
+      - name: Verify the single SQLite writer topology
         env:
-          EVENT: ${{ github.event_name }}
-          TAG: ${{ github.event.release.tag_name }}
-          INPUT: ${{ inputs.version }}
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
-          if [ "$EVENT" = "release" ]; then
-            echo "value=${TAG#v}" >> "$GITHUB_OUTPUT"
-          else
-            echo "value=${INPUT}" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          machines="$(flyctl machines list --app smyklot --json)"
+          machine_count="$(jq '[.[] | select(.config.env.FLY_PROCESS_GROUP == "app")] | length' <<<"$machines")"
+          if [[ "$machine_count" -gt 1 ]]; then
+            echo "expected at most one app machine, found $machine_count; reconcile machines and volumes manually" >&2
+            exit 1
+          fi
+          machine_id="$(jq -r '.[] | select(.config.env.FLY_PROCESS_GROUP == "app") | .id' <<<"$machines")"
+
+          volumes="$(flyctl volumes list --app smyklot --json)"
+          volume_count="$(jq '[.[] | select(.name == "smyklot_data")] | length' <<<"$volumes")"
+          if [[ "$volume_count" -ne 1 ]]; then
+            echo "expected exactly one smyklot_data volume, found $volume_count" >&2
+            exit 1
+          fi
+          attached_machine="$(jq -r '.[] | select(.name == "smyklot_data") | .attached_machine_id // ""' <<<"$volumes")"
+          if [[ -n "$attached_machine" && "$attached_machine" != "$machine_id" ]]; then
+            echo "smyklot_data is attached to unexpected machine $attached_machine" >&2
+            exit 1
           fi
 
       - name: Deploy
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-          VERSION: ${{ steps.version.outputs.value }}
+          VERSION: ${{ inputs.version }}
         run: |
           flyctl deploy \
+            --app smyklot \
+            --ha=false \
             --image "ghcr.io/smykla-skalski/smyklot:${VERSION}" \
             --wait-timeout 300
 
-      - name: Verify it came back
+      - name: Verify the service and panel
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: flyctl status --app smyklot
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          flyctl status --app smyklot
+          machines="$(flyctl machines list --app smyklot --json)"
+          machine_count="$(jq '[.[] | select(.config.env.FLY_PROCESS_GROUP == "app")] | length' <<<"$machines")"
+          if [[ "$machine_count" -ne 1 ]]; then
+            echo "deploy left $machine_count app machines; refusing to accept multiple SQLite writers" >&2
+            exit 1
+          fi
+          machine_id="$(jq -r '.[] | select(.config.env.FLY_PROCESS_GROUP == "app") | .id' <<<"$machines")"
+          expected_image="ghcr.io/smykla-skalski/smyklot:${VERSION}"
+          deployed_image="$(jq -r '.[] | select(.config.env.FLY_PROCESS_GROUP == "app") | .config.image' <<<"$machines")"
+          if [[ "$deployed_image" != "$expected_image" ]]; then
+            echo "expected image $expected_image, found $deployed_image" >&2
+            exit 1
+          fi
+
+          volumes="$(flyctl volumes list --app smyklot --json)"
+          volume_count="$(jq '[.[] | select(.name == "smyklot_data")] | length' <<<"$volumes")"
+          if [[ "$volume_count" -ne 1 ]]; then
+            echo "deploy left $volume_count smyklot_data volumes" >&2
+            exit 1
+          fi
+          attached_machine="$(jq -r '.[] | select(.name == "smyklot_data") | .attached_machine_id // ""' <<<"$volumes")"
+          if [[ "$attached_machine" != "$machine_id" ]]; then
+            echo "smyklot_data is not attached to the sole app machine $machine_id" >&2
+            exit 1
+          fi
+          flyctl proxy 19090:9090 --app smyklot --quiet >fly-proxy.log 2>&1 &
+          proxy_pid=$!
+          trap 'kill "$proxy_pid" 2>/dev/null || true' EXIT
+          curl --fail --show-error --silent --retry 12 --retry-all-errors \
+            --retry-delay 5 http://127.0.0.1:19090/readyz >/dev/null
+          curl --fail --show-error --silent --retry 12 --retry-all-errors \
+            --retry-delay 5 https://smyklot.com/healthz >/dev/null
+          curl --fail --show-error --silent --retry 12 --retry-all-errors \
+            --retry-delay 5 https://smyklot.com/ >/dev/null
+          location="$(curl --show-error --silent --output /dev/null \
+            --write-out '%{redirect_url}' https://smyklot.com/auth/github/start)"
+          case "$location" in
+            https://github.com/login/oauth/authorize*) ;;
+            *)
+              echo "panel sign-in did not redirect to GitHub: $location" >&2
+              exit 1
+              ;;
+          esac

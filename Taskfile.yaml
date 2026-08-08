@@ -166,8 +166,11 @@ tasks:
 
   build:github-action:
     desc: Build GitHub Actions entrypoint
+    deps:
+      - panel:assets
     sources:
       - cmd/github-action/**/*.go
+      - internal/**/*.go
       - pkg/**/*.go
     generates:
       - bin/smyklot-github-action
@@ -175,6 +178,11 @@ tasks:
       - echo "▶ Building github-action binary"
       - go build -o bin/smyklot-github-action ./cmd/github-action
       - echo "✓ Built bin/smyklot-github-action"
+
+  panel:assets:
+    desc: Build and package the embedded panel frontend
+    cmds:
+      - mise run panel:assets:generate
 
   # ==========================================================================
   # Dependencies

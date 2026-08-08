@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   formatCountdown,
+  formatDateTime,
   formatRelative,
   formatTimestamp,
   relativeBucket,
@@ -21,6 +22,25 @@ describe('formatTimestamp', () => {
 
   it('renders a parseable timestamp in the reader zone', () => {
     expect(formatTimestamp('2026-07-26T14:01:01Z')).not.toBe('2026-07-26T14:01:01Z');
+  });
+});
+
+describe('formatDateTime', () => {
+  it('shows a value the browser cannot parse verbatim', () => {
+    expect(formatDateTime('not a timestamp')).toBe('not a timestamp');
+  });
+
+  it('renders a compact local date and time', () => {
+    const stamp = '2026-07-26T14:01:01Z';
+    expect(formatDateTime(stamp)).toBe(
+      new Date(Date.parse(stamp)).toLocaleString(undefined, {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      }),
+    );
   });
 });
 

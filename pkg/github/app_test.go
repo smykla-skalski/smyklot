@@ -57,8 +57,8 @@ var _ = Describe("GitHub App Client [Unit]", func() {
 				Expect(r.URL.Query().Get("per_page")).To(Equal("100"))
 
 				_, _ = w.Write([]byte(`[
-					{"id": 111, "account": {"login": "smykla-skalski"}},
-					{"id": 222, "account": {"login": "someone-else"}}
+					{"id": 111, "account": {"id": 7, "login": "smykla-skalski", "type": "Organization", "avatar_url": "https://avatars.example/7"}},
+					{"id": 222, "account": {"id": 8, "login": "someone-else", "type": "User", "avatar_url": "https://avatars.example/8"}}
 				]`))
 			}))
 
@@ -68,8 +68,8 @@ var _ = Describe("GitHub App Client [Unit]", func() {
 			installations, err := client.ListInstallations(context.Background())
 			Expect(err).NotTo(HaveOccurred())
 			Expect(installations).To(Equal([]github.Installation{
-				{ID: 111, Account: "smykla-skalski"},
-				{ID: 222, Account: "someone-else"},
+				{ID: 111, AccountID: 7, Account: "smykla-skalski", AccountType: "Organization", AvatarURL: "https://avatars.example/7"},
+				{ID: 222, AccountID: 8, Account: "someone-else", AccountType: "User", AvatarURL: "https://avatars.example/8"},
 			}))
 		})
 
@@ -121,6 +121,36 @@ var _ = Describe("GitHub App Client [Unit]", func() {
 			Expect(installations[100]).To(Equal(github.Installation{ID: 999, Account: "last"}))
 		})
 
+		It("should not truncate more than ten thousand installations", func() {
+			const installationCount = 10_001
+			requestedPages := 0
+
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requestedPages++
+				page := 0
+				_, err := fmt.Sscanf(r.URL.Query().Get("page"), "%d", &page)
+				Expect(err).NotTo(HaveOccurred())
+				start := (page - 1) * 100
+				end := min(start+100, installationCount)
+				items := make([]map[string]any, 0, end-start)
+				for index := start; index < end; index++ {
+					items = append(items, map[string]any{
+						"id":      index + 1,
+						"account": map[string]any{"login": fmt.Sprintf("org-%d", index+1)},
+					})
+				}
+				Expect(json.NewEncoder(w).Encode(items)).To(Succeed())
+			}))
+
+			client, err := github.NewAppClient("test-jwt", server.URL)
+			Expect(err).NotTo(HaveOccurred())
+
+			installations, err := client.ListInstallations(context.Background())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(installations).To(HaveLen(installationCount))
+			Expect(requestedPages).To(Equal(101))
+		})
+
 		It("should return an error when the API fails", func() {
 			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusUnauthorized)
@@ -146,8 +176,8 @@ var _ = Describe("GitHub App Client [Unit]", func() {
 				_, _ = w.Write([]byte(`{
 					"total_count": 2,
 					"repositories": [
-						{"name": "smyklot", "owner": {"login": "smykla-skalski"}},
-						{"name": "sai", "owner": {"login": "smykla-skalski"}}
+						{"id": 31, "name": "smyklot", "full_name": "smykla-skalski/smyklot", "private": true, "owner": {"login": "smykla-skalski"}},
+						{"id": 32, "name": "sai", "full_name": "smykla-skalski/sai", "private": false, "owner": {"login": "smykla-skalski"}}
 					]
 				}`))
 			}))
@@ -158,8 +188,8 @@ var _ = Describe("GitHub App Client [Unit]", func() {
 			repos, err := client.ListInstallationRepos(context.Background())
 			Expect(err).NotTo(HaveOccurred())
 			Expect(repos).To(Equal([]github.Repository{
-				{Owner: "smykla-skalski", Name: "smyklot"},
-				{Owner: "smykla-skalski", Name: "sai"},
+				{ID: 31, Owner: "smykla-skalski", Name: "smyklot", FullName: "smykla-skalski/smyklot", Private: true},
+				{ID: 32, Owner: "smykla-skalski", Name: "sai", FullName: "smykla-skalski/sai"},
 			}))
 		})
 
@@ -174,6 +204,54 @@ var _ = Describe("GitHub App Client [Unit]", func() {
 			repos, err := client.ListInstallationRepos(context.Background())
 			Expect(err).NotTo(HaveOccurred())
 			Expect(repos).To(BeEmpty())
+		})
+
+		It("should not truncate more than ten thousand repositories", func() {
+			const repositoryCount = 10_001
+			requestedPages := 0
+
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requestedPages++
+				page := 0
+				_, err := fmt.Sscanf(r.URL.Query().Get("page"), "%d", &page)
+				Expect(err).NotTo(HaveOccurred())
+				start := (page - 1) * 100
+				end := min(start+100, repositoryCount)
+				items := make([]map[string]any, 0, end-start)
+				for index := start; index < end; index++ {
+					name := fmt.Sprintf("repo-%d", index+1)
+					items = append(items, map[string]any{
+						"id":        index + 1,
+						"name":      name,
+						"full_name": "smykla-skalski/" + name,
+						"owner":     map[string]any{"login": "smykla-skalski"},
+					})
+				}
+				Expect(json.NewEncoder(w).Encode(map[string]any{
+					"total_count":  repositoryCount,
+					"repositories": items,
+				})).To(Succeed())
+			}))
+
+			client, err := github.NewClient("install-token", server.URL)
+			Expect(err).NotTo(HaveOccurred())
+
+			repositories, err := client.ListInstallationRepos(context.Background())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(repositories).To(HaveLen(repositoryCount))
+			Expect(requestedPages).To(Equal(101))
+		})
+
+		It("should reject a repository snapshot GitHub reports as incomplete", func() {
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(`{"total_count": 1, "repositories": []}`))
+			}))
+
+			client, err := github.NewClient("install-token", server.URL)
+			Expect(err).NotTo(HaveOccurred())
+
+			_, err = client.ListInstallationRepos(context.Background())
+			Expect(err).To(MatchError(ContainSubstring("incomplete GitHub API pagination")))
 		})
 	})
 

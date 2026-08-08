@@ -1,60 +1,50 @@
-/**
- * A local mock backend for the panel, used only in development.
- *
- * The real panel is a Rust binary that fronts the daemon, GitHub OAuth, and a
- * panel-to-daemon token. Standing any of that up to move a control is
- * unreasonable, so this serves canned data for the panel's own HTTP routes and
- * the live-update socket, letting the whole Svelte app be driven by hand.
- *
- * It is a Vite plugin that no-ops unless `HARNESS_PANEL_DEV_MOCK` is `1`, so the
- * default dev server, the build, and the tests are untouched. All state lives in
- * memory for the lifetime of one server process: restarting resets it, which is
- * the point of a fixture.
- *
- * The shapes returned here match what `src/lib/types.ts` declares and what the
- * Rust handlers in `src/http.rs` emit, so the app cannot tell it apart from the
- * real backend by its answers - only by how forgettable it was to start.
- */
-
-import { randomUUID } from 'node:crypto';
 import type { Server as HttpServer, IncomingMessage, ServerResponse } from 'node:http';
-import { WebSocket, WebSocketServer } from 'ws';
 import type { Connect, Plugin } from 'vite';
 
-/**
- * Vite types its HTTP server as a union that also admits HTTP/2 variants. Its
- * dev and preview servers are always plain `node:http` servers, so this narrows
- * the union at the one place that needs the `upgrade` event and the socket the
- * WebSocket upgrade hands back, both of which are HTTP/1-only.
- */
+import type {
+  AuditEntry,
+  ConfigKey,
+  ConfigPatch,
+  ConfigSources,
+  ConfigValues,
+  DeliveryFailure,
+  Page,
+  PanelAccount,
+  PanelTarget,
+  RepositoryDetail,
+  RepositorySettingsInput,
+  RepositorySummary,
+  TargetSettingsInput,
+} from '../src/lib/types';
+
 type DevHttpServer = HttpServer;
-
-/**
- * The root the mock matches routes against. When the mock is enabled the panel
- * is the whole dev server: the plugin overrides Vite's `base` to `/` and
- * rewrites the `harness-panel-base` meta tag to match, so the app builds its
- * API URLs at `/api/...` and the sentinel never appears.
- */
 const BASE = '';
+const DEFAULT_PAGE_SIZE = 20;
 
-/** How long a minted link stays claimable. Short enough to watch the gauge drain. */
-const LINK_TTL_MS = 10 * 60_000;
+const DEFAULT_CONFIG: ConfigValues = {
+  quiet_success: false,
+  quiet_reactions: false,
+  quiet_pending: false,
+  allowed_commands: [],
+  command_aliases: {},
+  command_prefix: '/',
+  disable_mentions: false,
+  disable_bare_commands: false,
+  disable_unapprove: false,
+  disable_reactions: false,
+  disable_deleted_comments: false,
+  allow_self_approval: false,
+};
 
-/** Whether the mock should take over the dev server. */
-function enabled(): boolean {
-  return process.env.HARNESS_PANEL_DEV_MOCK === '1';
-}
+const VIEWER: PanelAccount = {
+  id: '1001',
+  provider: 'github:https://api.github.com',
+  subject_id: '1001',
+  login: 'bart',
+  display_name: 'Bart Smykla',
+  avatar_url: null,
+};
 
-/**
- * A failure the browser is allowed to see, mirroring `ApiError` in `error.rs`.
- *
- * Every variant the real backend exposes carries a stable machine-readable code,
- * so the app can tell authentication and sign-in failures from an internal one
- * without matching on prose. The mock answers the two a developer is likely to
- * reach by typing a bad id: a missing account is a `404 not_found`, and a
- * pairing the viewer cannot reach is a `403 forbidden` - the same answer the
- * real backend gives, so the page shows its sentence rather than a stack trace.
- */
 class MockApiError extends Error {
   constructor(
     readonly status: number,
@@ -66,487 +56,696 @@ class MockApiError extends Error {
   }
 }
 
-/** The in-memory state one server process owns. Restarting drops all of it. */
+interface MockRepository {
+  detail: RepositoryDetail;
+  filePatch: ConfigPatch;
+}
+
+interface MockTarget {
+  value: PanelTarget;
+  repositories: MockRepository[];
+  audit: AuditEntry[];
+  failures: DeliveryFailure[];
+}
+
 interface MockState {
   signedIn: boolean;
-  /** Which account the current session is signed in as. Drives `/api/me`. */
-  viewerId: string;
-  accounts: Account[];
-  pairings: Pairing[];
-  sockets: Set<WebSocket>;
+  forceFailure: boolean;
+  targets: MockTarget[];
+  streams: Set<ServerResponse>;
 }
 
-/** Only the fields the app reads. Mirrors `PanelAccount` in `types.ts`. */
-interface Account {
-  id: string;
-  provider: string;
-  subject_id: string;
-  login: string;
-  display_name: string;
-  avatar_url: string | null;
-  first_seen_at: string;
-  last_seen_at: string;
-  can_pair: boolean;
+function enabled(): boolean {
+  return process.env.SMYKLOT_PANEL_DEV_MOCK === '1';
 }
-
-/** Mirrors `PairLink` in `types.ts`. */
-interface PairLink {
-  pairing_id: string;
-  role: string;
-  scopes: string[];
-  expires_at: string;
-  pairing_url: string;
-}
-
-/** Only the required fields plus the ones a canned row carries. Mirrors `PanelPairing`. */
-interface Pairing {
-  pairing_id: string;
-  state: string;
-  role: string;
-  created_at: string;
-  expires_at: string;
-  claimed_at?: string;
-  revoked_at?: string;
-  device?: { client_id: string; display_name: string; platform: string; last_seen_at?: string };
-  account_id?: string;
-}
-
-/** The owner, who sees the roster and can approve others. */
-const OWNER_ID = 'acc_owner';
 
 function seed(): MockState {
   const now = Date.now();
   const iso = (offsetMs: number): string => new Date(now + offsetMs).toISOString();
-  const owner: Account = {
-    id: OWNER_ID,
-    provider: 'github',
-    subject_id: '1001',
-    login: 'ada',
-    display_name: 'Ada Lovelace',
-    avatar_url: null,
-    first_seen_at: iso(-86_400_000),
-    last_seen_at: iso(-3_600_000),
-    can_pair: true,
-  };
-  const approvedPeer: Account = {
-    id: 'acc_grace',
-    provider: 'github',
-    subject_id: '1002',
-    login: 'grace',
-    display_name: 'Grace Hopper',
-    avatar_url: null,
-    first_seen_at: iso(-43_200_000),
-    last_seen_at: iso(-7_200_000),
-    can_pair: true,
-  };
-  const pendingPeer: Account = {
-    id: 'acc_alan',
-    provider: 'github',
-    subject_id: '1003',
-    login: 'alan',
-    display_name: 'Alan Turing',
-    avatar_url: null,
-    first_seen_at: iso(-21_600_000),
-    last_seen_at: iso(-1_800_000),
-    can_pair: false,
-  };
-  const pairings: Pairing[] = [
+  const organization = targetSeed({
+    id: '2001',
+    installationId: '3001',
+    login: 'smykla-skalski',
+    displayName: 'Smykla Skalski',
+    type: 'Organization',
+    repositoryDefaultEnabled: false,
+    targetPatch: { quiet_success: true, command_aliases: { ship: 'merge' } },
+  });
+  organization.repositories = [
+    repositorySeed(organization.value, {
+      id: '4001',
+      name: 'smyklot',
+      enabledOverride: true,
+      filePatch: { command_prefix: '/smyklot ', allowed_commands: ['approve', 'merge', 'squash'] },
+      panelPatch: { quiet_success: false, allow_self_approval: true },
+      updatedAt: iso(-12 * 60_000),
+    }),
+    repositorySeed(organization.value, {
+      id: '4002',
+      name: 'platform-infra',
+      enabledOverride: null,
+      filePatch: {},
+      panelPatch: {},
+      updatedAt: iso(-3 * 3_600_000),
+    }),
+    repositorySeed(organization.value, {
+      id: '4003',
+      name: 'legacy-service',
+      enabledOverride: true,
+      filePatch: {},
+      fileError: 'line 7: command_aliases must be a mapping',
+      panelPatch: { disable_reactions: true },
+      updatedAt: iso(-27 * 3_600_000),
+    }),
+    repositorySeed(organization.value, {
+      id: '4004',
+      name: 'migration-demo',
+      enabledOverride: null,
+      filePatch: { quiet_pending: true },
+      panelPatch: {},
+      bypass: true,
+      updatedAt: iso(-2 * 86_400_000),
+    }),
+  ];
+  organization.audit = [
+    auditSeed(
+      'audit-1',
+      'repository.enabled',
+      'enabled repository',
+      'smykla-skalski/smyklot',
+      iso(-12 * 60_000),
+    ),
+    auditSeed(
+      'audit-2',
+      'repository.config.updated',
+      'updated two repository settings for',
+      'smykla-skalski/smyklot',
+      iso(-18 * 60_000),
+    ),
+    auditSeed(
+      'audit-3',
+      'repository.file.bypassed',
+      'bypassed repository configuration for',
+      'smykla-skalski/migration-demo',
+      iso(-2 * 86_400_000),
+    ),
+  ];
+  organization.failures = [
     {
-      pairing_id: 'pair_active_owner',
-      state: 'active',
-      role: 'operator',
-      created_at: iso(-172_800_000),
-      expires_at: iso(86_400_000),
-      claimed_at: iso(-170_000_000),
-      account_id: OWNER_ID,
-      device: {
-        client_id: 'dev_laptop',
-        display_name: 'Ada’s MacBook Pro',
-        platform: 'macOS',
-        last_seen_at: iso(-600_000),
-      },
+      id: 'failure-1',
+      delivery_id: 'b63fb9b0-4014-48fc-8108-f4cb6b2674ab',
+      repository_full_name: 'smykla-skalski/legacy-service',
+      event: 'issue_comment',
+      stage: 'config',
+      reason: 'repository configuration is invalid',
+      retryable: false,
+      occurred_at: iso(-42 * 60_000),
     },
     {
-      pairing_id: 'pair_claimed_grace',
-      state: 'claimed',
-      role: 'operator',
-      created_at: iso(-86_400_000),
-      expires_at: iso(86_400_000),
-      claimed_at: iso(-80_000_000),
-      account_id: 'acc_grace',
-      device: {
-        client_id: 'dev_grace_workstation',
-        display_name: 'Grace’s workstation',
-        platform: 'linux',
-      },
-    },
-    {
-      pairing_id: 'pair_expired_owner',
-      state: 'expired',
-      role: 'operator',
-      created_at: iso(-345_600_000),
-      expires_at: iso(-285_600_000),
-      account_id: OWNER_ID,
-    },
-    {
-      pairing_id: 'pair_revoked_alan',
-      state: 'revoked',
-      role: 'operator',
-      created_at: iso(-259_200_000),
-      expires_at: iso(-199_200_000),
-      revoked_at: iso(-200_000_000),
-      account_id: 'acc_alan',
+      id: 'failure-2',
+      delivery_id: 'df36b61f-0ef7-4d39-9529-7ddcad49fbc0',
+      repository_full_name: 'smykla-skalski/smyklot',
+      event: 'pull_request',
+      stage: 'github',
+      reason: 'GitHub request timed out after credentials were refreshed',
+      retryable: true,
+      occurred_at: iso(-4 * 3_600_000),
     },
   ];
+  const auditActions = [
+    ['repository.enabled', 'enabled repository'],
+    ['repository.disabled', 'disabled repository'],
+    ['repository.settings.updated', 'updated repository settings for'],
+    ['target.settings.updated', 'updated account defaults'],
+  ] as const;
+  for (let index = 0; index < 34; index += 1) {
+    const [action, summary] = cycled(auditActions, index);
+    const repository =
+      index % 4 === 3
+        ? undefined
+        : cycled(organization.repositories, index).detail.repository.full_name;
+    organization.audit.push(
+      auditSeed(
+        `audit-seed-${index + 4}`,
+        action,
+        summary,
+        repository,
+        iso(-(6 * 60 + index * 37) * 60_000),
+      ),
+    );
+  }
+  const failureReasons = [
+    'repository configuration is invalid',
+    'GitHub request timed out after credentials were refreshed',
+    'installation no longer has access to this repository',
+    'command could not be applied to the pull request state',
+  ] as const;
+  for (let index = 0; index < 27; index += 1) {
+    const repository = cycled(organization.repositories, index);
+    const deliveryPrefix = (index + 3).toString(16).padStart(8, '0');
+    organization.failures.push({
+      id: `failure-seed-${index + 3}`,
+      delivery_id: `${deliveryPrefix}-0000-4000-8000-${String(index + 3).padStart(12, '0')}`,
+      repository_full_name: repository.detail.repository.full_name,
+      event: index % 2 === 0 ? 'issue_comment' : 'pull_request',
+      stage: index % 3 === 0 ? 'config' : 'github',
+      reason: cycled(failureReasons, index),
+      retryable: index % 3 === 1,
+      occurred_at: iso(-(8 * 60 + index * 53) * 60_000),
+    });
+  }
+  recomputeTarget(organization);
+
+  const personal = targetSeed({
+    id: '1001',
+    installationId: '3002',
+    login: 'bart',
+    displayName: 'Bart Smykla',
+    type: 'User',
+    repositoryDefaultEnabled: true,
+    targetPatch: { disable_bare_commands: true },
+  });
+  personal.repositories = [
+    repositorySeed(personal.value, {
+      id: '5001',
+      name: 'playground',
+      enabledOverride: null,
+      filePatch: {},
+      panelPatch: {},
+      private: true,
+      updatedAt: iso(-20 * 60_000),
+    }),
+  ];
+  recomputeTarget(personal);
+
   return {
     signedIn: true,
-    viewerId: OWNER_ID,
-    accounts: [owner, approvedPeer, pendingPeer],
-    pairings,
-    sockets: new Set(),
+    forceFailure: false,
+    targets: [organization, personal],
+    streams: new Set(),
   };
 }
 
-/** The signed-in viewer, packaged as the app expects. */
-function viewer(state: MockState): { account: Account; is_owner: boolean } {
-  const account = state.accounts.find((entry) => entry.id === state.viewerId);
-  if (account === undefined) {
-    throw new Error(`mock viewer account ${state.viewerId} is missing from the seed`);
+function targetSeed(input: {
+  id: string;
+  installationId: string;
+  login: string;
+  displayName: string;
+  type: 'Organization' | 'User';
+  repositoryDefaultEnabled: boolean;
+  targetPatch: ConfigPatch;
+}): MockTarget {
+  const account: PanelAccount = {
+    id: input.id,
+    provider: 'github:https://api.github.com',
+    subject_id: input.id,
+    login: input.login,
+    display_name: input.displayName,
+    avatar_url: null,
+  };
+  const resolved = resolveConfig(input.targetPatch, {}, {}, false);
+  return {
+    value: {
+      id: input.id,
+      installation_id: input.installationId,
+      type: input.type,
+      account,
+      repository_default_enabled: input.repositoryDefaultEnabled,
+      config_patch: input.targetPatch,
+      inherited_config: structuredClone(DEFAULT_CONFIG),
+      effective_config: resolved.values,
+      config_sources: resolved.sources,
+      revision: 1,
+      repository_counts: { total: 0, enabled: 0, disabled: 0 },
+    },
+    repositories: [],
+    audit: [],
+    failures: [],
+  };
+}
+
+function repositorySeed(
+  target: PanelTarget,
+  input: {
+    id: string;
+    name: string;
+    enabledOverride: boolean | null;
+    filePatch: ConfigPatch;
+    panelPatch: ConfigPatch;
+    fileError?: string;
+    bypass?: boolean;
+    private?: boolean;
+    updatedAt: string;
+  },
+): MockRepository {
+  const bypass = input.bypass ?? false;
+  const inherited = resolveConfig(target.config_patch, input.filePatch, {}, bypass);
+  const resolved = resolveConfig(target.config_patch, input.filePatch, input.panelPatch, bypass);
+  const status = bypass
+    ? 'bypassed'
+    : input.fileError !== undefined
+      ? 'invalid'
+      : Object.keys(input.filePatch).length === 0
+        ? 'missing'
+        : 'valid';
+  const summary: RepositorySummary = {
+    id: input.id,
+    name: input.name,
+    full_name: `${target.account.login}/${input.name}`,
+    private: input.private ?? false,
+    available: true,
+    enabled_override: input.enabledOverride,
+    effective_enabled: input.enabledOverride ?? target.repository_default_enabled,
+    enabled_source: input.enabledOverride === null ? 'target' : 'repository',
+    config_override_count: Object.keys(input.panelPatch).length,
+    config_file_status: status,
+    updated_at: input.updatedAt,
+  };
+  return {
+    filePatch: input.filePatch,
+    detail: {
+      repository: summary,
+      config_patch: input.panelPatch,
+      inherited_config: inherited.values,
+      effective_config: resolved.values,
+      config_sources: resolved.sources,
+      config_file_patch: input.filePatch,
+      config_file_error: input.fileError,
+      ignore_repository_file: bypass,
+      revision: 1,
+    },
+  };
+}
+
+function auditSeed(
+  id: string,
+  action: string,
+  summary: string,
+  repositoryFullName: string | undefined,
+  createdAt: string,
+): AuditEntry {
+  return {
+    id,
+    actor: VIEWER,
+    action,
+    summary,
+    repository_full_name: repositoryFullName,
+    created_at: createdAt,
+  };
+}
+
+function resolveConfig(
+  targetPatch: ConfigPatch,
+  filePatch: ConfigPatch,
+  panelPatch: ConfigPatch,
+  bypass: boolean,
+): { values: ConfigValues; sources: ConfigSources } {
+  const values = structuredClone(DEFAULT_CONFIG);
+  const sources = Object.fromEntries(
+    Object.keys(DEFAULT_CONFIG).map((key) => [key, 'process']),
+  ) as ConfigSources;
+  applyPatch(values, sources, targetPatch, 'target');
+  if (!bypass) applyPatch(values, sources, filePatch, 'repository_file');
+  applyPatch(values, sources, panelPatch, 'repository_panel');
+  return { values, sources };
+}
+
+function applyPatch(
+  values: ConfigValues,
+  sources: ConfigSources,
+  patch: ConfigPatch,
+  source: ConfigSources[ConfigKey],
+): void {
+  for (const key of Object.keys(patch) as ConfigKey[]) {
+    const value = patch[key];
+    if (value === undefined) continue;
+    Object.assign(values, { [key]: structuredClone(value) });
+    sources[key] = source;
   }
-  return { account, is_owner: state.viewerId === OWNER_ID };
 }
 
-/** Send a pairing change to every connected socket, matching the frame `events.ts` reads. */
-function broadcast(state: MockState, change: string, pairing: Pairing): void {
-  const frame = JSON.stringify({ type: 'pairing', change, pairing });
-  for (const socket of state.sockets) {
-    if (socket.readyState === WebSocket.OPEN) {
-      socket.send(frame);
-    }
-  }
+function recomputeTarget(target: MockTarget): void {
+  const targetResolved = resolveConfig(target.value.config_patch, {}, {}, false);
+  target.value.inherited_config = structuredClone(DEFAULT_CONFIG);
+  target.value.effective_config = targetResolved.values;
+  target.value.config_sources = targetResolved.sources;
+  for (const repository of target.repositories) recomputeRepository(target, repository);
+  const enabled = target.repositories.filter(
+    (entry) => entry.detail.repository.effective_enabled,
+  ).length;
+  target.value.repository_counts = {
+    total: target.repositories.length,
+    enabled,
+    disabled: target.repositories.length - enabled,
+  };
 }
 
-/** A stable base path prefix so route matching reads like the Rust table in `http.rs`. */
-function route(path: string): string {
-  return `${BASE}${path}`;
+function recomputeRepository(target: MockTarget, repository: MockRepository): void {
+  const detail = repository.detail;
+  const inherited = resolveConfig(
+    target.value.config_patch,
+    repository.filePatch,
+    {},
+    detail.ignore_repository_file,
+  );
+  const resolved = resolveConfig(
+    target.value.config_patch,
+    repository.filePatch,
+    detail.config_patch,
+    detail.ignore_repository_file,
+  );
+  detail.inherited_config = inherited.values;
+  detail.effective_config = resolved.values;
+  detail.config_sources = resolved.sources;
+  detail.repository.effective_enabled =
+    detail.repository.enabled_override ?? target.value.repository_default_enabled;
+  detail.repository.enabled_source =
+    detail.repository.enabled_override === null ? 'target' : 'repository';
+  detail.repository.config_override_count = Object.keys(detail.config_patch).length;
+  if (detail.ignore_repository_file) detail.repository.config_file_status = 'bypassed';
 }
 
-/**
- * The Vite plugin. Overrides the base and opens the browser when enabled, and
- * installs the mock middleware and the socket upgrade handler on the server.
- */
 export function mockServer(): Plugin {
   return {
-    name: 'harness-panel-mock-server',
+    name: 'smyklot-panel-mock-server',
     config() {
-      if (!enabled()) {
-        return;
-      }
-      // The panel is the whole dev server when the mock is on, so it mounts at
-      // the root: the sentinel `base` is dropped, the dev URL is just the host,
-      // and the browser opens there on start.
-      return {
-        base: '/',
-        server: { open: '/' },
-      };
+      if (!enabled()) return;
+      return { base: '/', server: { open: '/' } };
     },
     transformIndexHtml(html) {
-      if (!enabled()) {
-        return html;
-      }
-      // The app reads its mount point from this meta tag, so it has to agree
-      // with the root `base` above or every API URL would still carry the
-      // sentinel and miss the mock's routes.
-      return html.replace(
-        /name="harness-panel-base" content="\/__harness_panel_base__"/,
-        'name="harness-panel-base" content="/"',
-      );
+      if (!enabled()) return html;
+      return html
+        .replaceAll('/__smyklot_panel_base__', '')
+        .replaceAll('__smyklot_panel_version__', 'dev')
+        .replaceAll('__smyklot_panel_service__', 'local mock service');
     },
     configureServer(server) {
-      if (!enabled()) {
-        return;
-      }
-      install(server.httpServer as DevHttpServer, server.middlewares);
+      if (enabled()) install(server.httpServer as DevHttpServer, server.middlewares);
     },
     configurePreviewServer(server) {
-      if (!enabled()) {
-        return;
-      }
-      install(server.httpServer as DevHttpServer, server.middlewares);
+      if (enabled()) install(server.httpServer as DevHttpServer, server.middlewares);
     },
   };
 }
 
-/**
- * Attach the mock to one HTTP server.
- *
- * The middleware answers the panel's own routes and lets everything else fall
- * through to Vite. The upgrade handler claims only the panel socket path, so
- * Vite's own HMR socket is left alone.
- */
 function install(httpServer: DevHttpServer | undefined, middlewares: Connect.Server): void {
-  if (httpServer === undefined) {
-    throw new Error('the mock needs the dev server HTTP server, which was not provided');
-  }
+  if (httpServer === undefined) throw new Error('the mock dev server has no HTTP server');
   const state = seed();
-  const wss = new WebSocketServer({ noServer: true });
-
-  httpServer.on('upgrade', (request, socket, head) => {
-    if (request.url !== route('/api/ws')) {
-      return;
-    }
-    wss.handleUpgrade(request, socket, head, (ws) => {
-      const typed = ws as WebSocket;
-      state.sockets.add(typed);
-      // Nothing is sent on connect, matching the real backend: it opens the
-      // socket and waits for changes. `events.ts` re-reads on the open event
-      // itself, so the page refreshes its list the way it would against the
-      // panel, without a frame the panel never sends.
-      typed.on('close', () => {
-        state.sockets.delete(typed);
-      });
-    });
-  });
-
-  middlewares.use((req, res, next) => handle(state, req, res, next));
+  middlewares.use((req, res, next) => void handle(state, req, res, next));
 }
 
-/**
- * Route one request, or hand it back to Vite.
- *
- * Paths are matched against the panel base, matching what the app asks for. The
- * real panel answers these in `src/http.rs`; this returns the same shapes so the
- * app renders every state without a backend.
- */
-function handle(
+async function handle(
   state: MockState,
   req: IncomingMessage,
   res: ServerResponse,
   next: Connect.NextFunction,
-): void {
-  const url = req.url ?? '';
+): Promise<void> {
+  const parsed = new URL(req.url ?? '/', 'http://localhost');
+  const path = parsed.pathname;
   const method = req.method ?? 'GET';
 
-  // The sentinel is not a real path when the mock is on - the panel mounts at
-  // root - so refuse it rather than letting Vite's SPA fallback serve the app
-  // there too. A developer who has it bookmarked from the old setup sees a 404
-  // instead of a page whose API calls all miss the mock's root-level routes.
-  if (url.startsWith('/__harness_panel_base__')) {
-    respond(res, 404, {
-      error: { code: 'not_found', message: 'the panel is mounted at / in dev mock mode' },
-    });
+  if (path === '/' && method === 'GET') {
+    applyScenario(state, parsed.searchParams.get('scenario'));
+    next();
     return;
   }
-
-  // Auth: the mock pretends GitHub already said yes. The start route accepts an
-  // optional `?as=<login>` so a developer can sign in as a non-owner to exercise
-  // the awaiting-approval state, and redirects straight to the callback, which
-  // redirects back to the app root.
-  if (url.startsWith(route('/auth/github/start')) && method === 'GET') {
-    const as = new URL(url, 'http://localhost').searchParams.get('as') ?? '';
-    const query = as === '' ? '' : `?${new URLSearchParams({ as })}`;
-    res.writeHead(302, { Location: `${route('/auth/github/callback')}${query}` });
+  if (path.startsWith('/__smyklot_panel_base__')) {
+    respond(res, 404, { error: { code: 'not_found', message: 'the mock panel is mounted at /' } });
+    return;
+  }
+  if (path === route('/auth/github/start') && method === 'GET') {
+    res.writeHead(302, { Location: route('/auth/github/callback') });
     res.end();
     return;
   }
-  if (url.startsWith(route('/auth/github/callback')) && method === 'GET') {
-    const as = new URL(url, 'http://localhost').searchParams.get('as') ?? '';
-    const account = as === '' ? undefined : state.accounts.find((entry) => entry.login === as);
-    state.viewerId = account?.id ?? OWNER_ID;
+  if (path === route('/auth/github/callback') && method === 'GET') {
     state.signedIn = true;
-    res.writeHead(302, { Location: `${BASE}/` });
+    res.writeHead(302, { Location: '/' });
     res.end();
     return;
   }
-  if (url === route('/auth/signout') && method === 'POST') {
+  if (path === route('/api/v1/sign-out') && method === 'POST') {
     state.signedIn = false;
     respond(res, 204, null);
     return;
   }
-
-  // Everything below is session-authenticated. A signed-out viewer gets the
-  // same `401` the real backend returns - code `unauthenticated` and the panel's
-  // own sentence - which the app reads as "show the sign-in page".
   if (!state.signedIn) {
-    respond(res, 401, {
-      error: { code: 'unauthenticated', message: 'sign in to use the panel' },
-    });
+    respond(res, 401, { error: { code: 'unauthenticated', message: 'sign in to use the panel' } });
+    return;
+  }
+  if (state.forceFailure && path.startsWith('/api/')) {
+    respond(res, 503, { error: { code: 'unavailable', message: 'mock storage is unavailable' } });
     return;
   }
 
-  // Every authenticated route below can throw `MockApiError` - a missing
-  // record, a non-owner reaching an owner-only route, or an account that
-  // cannot pair. The real backend answers each with a JSON envelope, so the
-  // throw is caught here rather than let loose on Vite as an HTML 500.
   try {
-    if (url === route('/api/me') && method === 'GET') {
-      respond(res, 200, viewer(state));
+    if (path === route('/api/v1/session') && method === 'GET') {
+      respond(res, 200, { account: VIEWER, target_count: state.targets.length });
       return;
     }
-    if (url === route('/api/accounts') && method === 'GET') {
-      requireOwner(state);
-      respond(res, 200, { accounts: state.accounts });
+    if (path === route('/api/v1/targets') && method === 'GET') {
+      respond(res, 200, { targets: state.targets.map((target) => target.value) });
       return;
     }
-    if (url === route('/api/pairings') && method === 'GET') {
-      const current = viewer(state);
-      const visible = state.pairings.filter(
-        (pairing) => current.is_owner || pairing.account_id === current.account.id,
-      );
-      respond(res, 200, { pairings: visible, daemon_version: 'harness-daemon dev-mock' });
-      return;
-    }
-    if (url === route('/api/pair-links') && method === 'POST') {
-      const link = mint(state);
-      respond(res, 200, link);
+    if (path === route('/api/v1/events') && method === 'GET') {
+      res.writeHead(200, {
+        'Cache-Control': 'no-store',
+        Connection: 'keep-alive',
+        'Content-Type': 'text/event-stream',
+      });
+      res.write('event: ready\ndata: {}\n\n');
+      state.streams.add(res);
+      req.once('close', () => state.streams.delete(res));
       return;
     }
 
-    const approve = url.match(paramRoute('/api/accounts', 'approve'));
-    const revokeAccount = url.match(paramRoute('/api/accounts', 'revoke'));
-    const revokePairing = url.match(paramRoute('/api/pairings', 'revoke'));
-    if (approve && method === 'POST') {
-      requireOwner(state);
-      const account = setCanPair(state, approve.groups?.id ?? '', true);
-      respond(res, 200, account);
+    const targetSettings = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/settings$/);
+    const repositories = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/repositories$/);
+    const repository = path.match(
+      /^\/api\/v1\/targets\/(?<target>[^/]+)\/repositories\/(?<repository>[^/]+)$/,
+    );
+    const repositorySettings = path.match(
+      /^\/api\/v1\/targets\/(?<target>[^/]+)\/repositories\/(?<repository>[^/]+)\/settings$/,
+    );
+    const audit = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/audit$/);
+    const failures = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/failures$/);
+
+    if (targetSettings && method === 'PUT') {
+      const target = findTarget(state, targetSettings.groups?.target ?? '');
+      const input = await readBody<TargetSettingsInput>(req);
+      requireRevision(target.value.revision, input.expected_revision);
+      target.value.repository_default_enabled = input.repository_default_enabled;
+      target.value.config_patch = structuredClone(input.config_patch);
+      target.value.revision += 1;
+      recomputeTarget(target);
+      addAudit(target, 'target.settings.updated', 'updated account defaults');
+      broadcast(state, { type: 'target', target_id: target.value.id });
+      respond(res, 200, target.value);
       return;
     }
-    if (revokeAccount && method === 'POST') {
-      requireOwner(state);
-      const account = setCanPair(state, revokeAccount.groups?.id ?? '', false);
-      respond(res, 200, account);
+    if (repositories && method === 'GET') {
+      const target = findTarget(state, repositories.groups?.target ?? '');
+      respond(res, 200, {
+        repositories: target.repositories.map((entry) => entry.detail.repository),
+      });
       return;
     }
-    if (revokePairing && method === 'POST') {
-      const outcome = revoke(state, revokePairing.groups?.id ?? '');
-      respond(res, 200, outcome);
+    if (repository && method === 'GET') {
+      const target = findTarget(state, repository.groups?.target ?? '');
+      respond(res, 200, findRepository(target, repository.groups?.repository ?? '').detail);
+      return;
+    }
+    if (repositorySettings && method === 'PUT') {
+      const target = findTarget(state, repositorySettings.groups?.target ?? '');
+      const stored = findRepository(target, repositorySettings.groups?.repository ?? '');
+      const input = await readBody<RepositorySettingsInput>(req);
+      requireRevision(stored.detail.revision, input.expected_revision);
+      stored.detail.repository.enabled_override = input.enabled_override;
+      stored.detail.config_patch = structuredClone(input.config_patch);
+      stored.detail.ignore_repository_file = input.ignore_repository_file;
+      stored.detail.revision += 1;
+      stored.detail.repository.updated_at = new Date().toISOString();
+      recomputeTarget(target);
+      addAudit(
+        target,
+        'repository.settings.updated',
+        'updated repository settings for',
+        stored.detail.repository.full_name,
+      );
+      broadcast(state, {
+        type: 'repository',
+        target_id: target.value.id,
+        repository_id: stored.detail.repository.id,
+      });
+      respond(res, 200, stored.detail);
+      return;
+    }
+    if (audit && method === 'GET') {
+      const target = findTarget(state, audit.groups?.target ?? '');
+      const scope = parsed.searchParams.get('scope') ?? 'all';
+      respond(
+        res,
+        200,
+        historyPage(
+          target.audit,
+          parsed.searchParams,
+          (entry) => entry.created_at,
+          (entry, query) =>
+            [
+              entry.actor.display_name,
+              entry.actor.login,
+              entry.action,
+              entry.summary,
+              entry.repository_full_name ?? '',
+            ].some((value) => value.toLocaleLowerCase().includes(query)),
+          (entry) =>
+            scope === 'all' ||
+            (scope === 'account' && entry.repository_full_name === undefined) ||
+            (scope === 'repositories' && entry.repository_full_name !== undefined),
+        ),
+      );
+      return;
+    }
+    if (failures && method === 'GET') {
+      const target = findTarget(state, failures.groups?.target ?? '');
+      const kind = parsed.searchParams.get('kind') ?? 'all';
+      respond(
+        res,
+        200,
+        historyPage(
+          target.failures,
+          parsed.searchParams,
+          (failure) => failure.occurred_at,
+          (failure, query) =>
+            [
+              failure.delivery_id,
+              failure.repository_full_name,
+              failure.event,
+              failure.stage,
+              failure.reason,
+            ].some((value) => value.toLocaleLowerCase().includes(query)),
+          (failure) =>
+            kind === 'all' ||
+            (kind === 'retryable' && failure.retryable) ||
+            (kind === 'permanent' && !failure.retryable),
+        ),
+      );
       return;
     }
   } catch (error) {
     if (error instanceof MockApiError) {
-      respond(res, error.status, {
-        error: { code: error.code, message: error.message },
-      });
+      respond(res, error.status, { error: { code: error.code, message: error.message } });
       return;
     }
-    // A throw the mock did not expect is its own bug. The real backend answers
-    // `internal` and logs the cause; the mock does the same, and the cause lands
-    // in the terminal rather than only in the browser.
-    console.error('panel mock handler threw:', error);
-    respond(res, 500, {
-      error: { code: 'internal', message: 'the panel could not complete this request' },
-    });
+    console.error('Smyklot panel mock failed:', error);
+    respond(res, 500, { error: { code: 'internal', message: 'the mock request failed' } });
     return;
   }
-
   next();
 }
 
-/**
- * Match a parameterised route under the panel base, capturing the id segment.
- *
- * The base is escaped so its slashes are literal, and the id segment refuses a
- * slash so it cannot reach past the route's own level - the same reason the app's
- * `pathSegment` encodes dots before joining a path.
- */
-function paramRoute(path: string, action: string): RegExp {
-  const escaped = route(path).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`^${escaped}/(?<id>[^/]+)/${action}$`);
+function applyScenario(state: MockState, scenario: string | null): void {
+  state.forceFailure = scenario === 'error';
+  state.signedIn = scenario !== 'signed-out';
+  if (scenario === 'empty') state.targets = [];
 }
 
-/** Mint a link for the signed-in account and announce it to every watcher. */
-function mint(state: MockState): PairLink {
-  const current = viewer(state);
-  if (!current.account.can_pair) {
+function findTarget(state: MockState, encodedId: string): MockTarget {
+  const id = decodeURIComponent(encodedId);
+  const target = state.targets.find((entry) => entry.value.id === id);
+  if (target === undefined)
+    throw new MockApiError(404, 'not_found', 'installation target not found');
+  return target;
+}
+
+function findRepository(target: MockTarget, encodedId: string): MockRepository {
+  const id = decodeURIComponent(encodedId);
+  const repository = target.repositories.find((entry) => entry.detail.repository.id === id);
+  if (repository === undefined) throw new MockApiError(404, 'not_found', 'repository not found');
+  return repository;
+}
+
+function requireRevision(current: number, expected: number): void {
+  if (current !== expected) {
     throw new MockApiError(
-      403,
-      'forbidden',
-      'the panel owner has not allowed this account to generate pairing links',
+      409,
+      'conflict',
+      'settings changed in another session; latest values were reloaded',
     );
   }
-  const now = Date.now();
-  const pairingId = `pair_${randomUUID()}`;
-  const expiresAt = new Date(now + LINK_TTL_MS).toISOString();
-  const pairing: Pairing = {
-    pairing_id: pairingId,
-    state: 'pending',
-    role: 'operator',
-    created_at: new Date(now).toISOString(),
-    expires_at: expiresAt,
-    account_id: current.account.id,
-  };
-  state.pairings.push(pairing);
-  broadcast(state, 'minted', pairing);
+}
+
+function addAudit(target: MockTarget, action: string, summary: string, repository?: string): void {
+  target.audit.unshift({
+    id: `audit-${Date.now()}`,
+    actor: VIEWER,
+    action,
+    summary,
+    repository_full_name: repository,
+    created_at: new Date().toISOString(),
+  });
+}
+
+function historyPage<T>(
+  items: T[],
+  parameters: URLSearchParams,
+  timestamp: (item: T) => string,
+  matches: (item: T, query: string) => boolean,
+  visible: (item: T) => boolean,
+): Page<T> {
+  const requestedLimit = Number.parseInt(parameters.get('limit') ?? '', 10);
+  const limit =
+    Number.isFinite(requestedLimit) && requestedLimit > 0
+      ? Math.min(requestedLimit, 100)
+      : DEFAULT_PAGE_SIZE;
+  const query = (parameters.get('q') ?? '').trim().toLocaleLowerCase();
+  const ordered = items
+    .filter((item) => visible(item) && (query === '' || matches(item, query)))
+    .sort((left, right) => timestamp(left).localeCompare(timestamp(right)));
+  if (parameters.get('sort') !== 'oldest') ordered.reverse();
+
+  const offset = Number.parseInt(parameters.get('cursor') ?? '', 10);
+  const safeOffset = Number.isFinite(offset) && offset >= 0 ? offset : 0;
+  const next = safeOffset + limit;
   return {
-    pairing_id: pairingId,
-    role: pairing.role,
-    scopes: ['pair:device'],
-    expires_at: expiresAt,
-    pairing_url: `harness://pair?payload=${pairingId}`,
+    items: ordered.slice(safeOffset, next),
+    next_cursor: next < ordered.length ? String(next) : null,
+    total: ordered.length,
   };
 }
 
-/** Refuse the call when the viewer is not the owner, matching the real backend. */
-function requireOwner(state: MockState): void {
-  if (state.viewerId !== OWNER_ID) {
-    throw new MockApiError(403, 'forbidden', 'only the panel owner can do that');
+function cycled<T>(items: readonly T[], index: number): T {
+  const item = items[index % items.length];
+  if (item === undefined) throw new Error('cannot cycle through an empty collection');
+
+  return item;
+}
+
+function broadcast(state: MockState, event: Record<string, string>): void {
+  const frame = JSON.stringify(event);
+  for (const stream of state.streams) stream.write(`data: ${frame}\n\n`);
+}
+
+function route(path: string): string {
+  return `${BASE}${path}`;
+}
+
+async function readBody<T>(req: IncomingMessage): Promise<T> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString('utf8')) as T;
+  } catch {
+    throw new MockApiError(400, 'invalid_request', 'request body must be valid JSON');
   }
 }
 
-/** Toggle an account's ability to pair and return the updated record. */
-function setCanPair(state: MockState, id: string, granted: boolean): Account {
-  const account = state.accounts.find((entry) => entry.id === id);
-  if (account === undefined) {
-    throw new MockApiError(404, 'not_found', 'no such account');
-  }
-  account.can_pair = granted;
-  return account;
-}
-
-/** Mark a pairing revoked and announce it. Non-owners may only revoke their own. */
-function revoke(
-  state: MockState,
-  id: string,
-): { pairing_id: string; outcome: string; revoked_at: string } {
-  const current = viewer(state);
-  const pairing = state.pairings.find((entry) => entry.pairing_id === id);
-  if (pairing === undefined) {
-    throw new MockApiError(
-      403,
-      'forbidden',
-      'no pairing with that id is available to this account',
-    );
-  }
-  if (!current.is_owner && pairing.account_id !== current.account.id) {
-    throw new MockApiError(
-      403,
-      'forbidden',
-      'no pairing with that id is available to this account',
-    );
-  }
-  pairing.state = 'revoked';
-  pairing.revoked_at = new Date().toISOString();
-  broadcast(state, 'revoked', pairing);
-  return {
-    pairing_id: id,
-    outcome: pairing.claimed_at === undefined ? 'link_withdrawn' : 'device_revoked',
-    revoked_at: pairing.revoked_at,
-  };
-}
-
-/**
- * Write a response.
- *
- * A `null` body is a no-content response; an object is JSON. The status is set
- * on the response so `writeHead` is only used for redirects, which carry headers.
- */
 function respond(res: ServerResponse, status: number, body: unknown): void {
+  res.statusCode = status;
   if (body === null) {
-    res.statusCode = status;
     res.end();
     return;
   }
-  res.statusCode = status;
   res.setHeader('Content-Type', 'application/json');
   res.end(JSON.stringify(body));
 }

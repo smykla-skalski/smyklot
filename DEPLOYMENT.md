@@ -333,6 +333,7 @@ fly secrets set \
   SMYKLOT_WEBHOOK_SECRET="$(openssl rand -hex 32)" \
   GITHUB_APP_PRIVATE_KEY="$(cat key.pem)" \
   GITHUB_APP_CLIENT_ID="Iv23liExample" \
+  GITHUB_APP_CLIENT_SECRET="your-github-app-client-secret" \
   --app smyklot
 ```
 
@@ -349,13 +350,53 @@ curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $JWT" https:/
 
 200 means that key belongs to this App. 401 means it does not.
 
-### 2. Deploy a Released Version
+The committed Fly configuration serves the panel at `https://smyklot.com/`,
+binds ownership to the immutable GitHub identity first verified as
+`bartsmykla`, and stores SQLite at `/data/panel.sqlite3`. Its `smyklot_data`
+mount is one GB with 14 days of snapshots. Confirm the volume exists before
+deploying the panel build:
 
 ```bash
-fly deploy --image ghcr.io/smykla-skalski/smyklot:1.13.0
+fly volumes create smyklot_data --app smyklot --region fra --size 1 \
+  --scheduled-snapshots --snapshot-retention 14 --yes
+fly volumes list --app smyklot
+```
+
+Run `volumes create` exactly once, only when `volumes list` shows no
+`smyklot_data` volume. Fly encrypts volume contents by default.
+
+In the GitHub App settings, add the exact callback URL
+`https://smyklot.com/auth/github/callback`. It is separate from the webhook URL
+and must match the redirect URI byte for byte.
+
+### 2. Deploy a Released Version
+
+SQLite has one canonical volume and cannot tolerate competing writers. Before a
+manual deployment, require at most one app machine and exactly one
+`smyklot_data` volume. Zero machines is valid for the first deployment because
+`--ha=false` creates one. If there are multiple machines or volumes, stop and
+reconcile them by identity; never auto-scale an unknown replica away.
+
+```bash
+machines="$(fly machines list --app smyklot --json)"
+test "$(jq '[.[] | select(.config.env.FLY_PROCESS_GROUP == "app")] | length' \
+  <<<"$machines")" -le 1
+test "$(fly volumes list --app smyklot --json | \
+  jq '[.[] | select(.name == "smyklot_data")] | length')" -eq 1
+
+fly deploy --app smyklot --ha=false \
+  --image ghcr.io/smykla-skalski/smyklot:1.13.0
 ```
 
 Always name a version. `latest` makes it impossible to tell what is running from the outside.
+
+After deployment, verify that the sole `smyklot_data` volume is attached to the
+sole app machine before accepting traffic or changing settings:
+
+```bash
+fly machines list --app smyklot
+fly volumes list --app smyklot
+```
 
 After a release, `.github/workflows/deploy.yaml` does this automatically. It needs `FLY_API_TOKEN` as a repository secret, from `fly tokens create deploy -a smyklot`. The same workflow can be dispatched by hand with a version, which is how you roll back.
 
@@ -384,7 +425,13 @@ Watch it go from pending to ready with `fly certs check`, not `fly certs list` -
 ```bash
 fly certs check smyklot.com --app smyklot
 curl -sS -o /dev/null -w '%{http_code}\n' https://smyklot.com/healthz
+curl -sS -o /dev/null -w '%{http_code}\n' https://smyklot.com/
+curl -sS -o /dev/null -w '%{http_code}\n' https://smyklot.com/auth/github/start
 ```
+
+The expected results are 200 for health and the panel, then 302 to GitHub for
+the sign-in start. Complete one sign-in as `bartsmykla` and verify that a reload
+preserves the selected installation and settings before enabling repositories.
 
 Set the App's webhook URL to `https://smyklot.com/webhook` once that returns 200, not before - GitHub validates the endpoint when you save it. Confirm the endpoint end to end by redelivering a past delivery rather than waiting for a real comment:
 

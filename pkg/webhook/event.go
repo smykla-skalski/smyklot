@@ -71,6 +71,7 @@ type IssueCommentEvent struct {
 	} `json:"issue"`
 
 	Repository struct {
+		ID       int64  `json:"id"`
 		Name     string `json:"name"`
 		FullName string `json:"full_name"`
 		Owner    struct {
@@ -96,8 +97,11 @@ func ParseIssueComment(body []byte) (*IssueCommentEvent, error) {
 		return nil, ErrNoInstallation
 	}
 
-	if event.Repository.Owner.Login == "" || event.Repository.Name == "" {
+	if event.Repository.ID == 0 || event.Repository.Owner.Login == "" || event.Repository.Name == "" {
 		return nil, ErrNoRepository
+	}
+	if event.Repository.FullName == "" {
+		event.Repository.FullName = event.Repository.Owner.Login + "/" + event.Repository.Name
 	}
 
 	return &event, nil

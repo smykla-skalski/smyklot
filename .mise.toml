@@ -31,9 +31,21 @@ run = "task test"
 description = "Run Smyklot unit tests through the repository Taskfile"
 run = "task test:unit"
 
+[tasks."test:storage"]
+description = "Run the storage adapter unit suite"
+run = "ginkgo --focus Unit ./internal/storage/sqlite"
+
 [tasks.lint]
 description = "Run all Smyklot linters through the repository Taskfile"
 run = "task lint"
+
+[tasks.fmt]
+description = "Format Smyklot Go sources through the repository Taskfile"
+run = "task fmt"
+
+[tasks."deps:tidy"]
+description = "Tidy Smyklot Go module metadata through the repository Taskfile"
+run = "task deps:tidy"
 
 [tasks."panel:frontend:install"]
 description = "Install the panel frontend's pinned dependencies"
@@ -51,14 +63,25 @@ depends = ["panel:frontend:install"]
 dir = "internal/panel/frontend"
 run = "npm run lint"
 
+[tasks."panel:frontend:format"]
+description = "Format the panel frontend with its pinned Prettier configuration"
+depends = ["panel:frontend:install"]
+dir = "internal/panel/frontend"
+run = "npm run format"
+
 [tasks."panel:frontend:test"]
 description = "Run the panel frontend unit tests"
 depends = ["panel:frontend:install"]
 dir = "internal/panel/frontend"
 run = "npm test"
 
+[tasks."panel:assets:generate"]
+description = "Build and package the panel frontend for Go embedding"
+depends = ["panel:frontend:build"]
+run = "go run ./internal/panelassets/cmd/generate"
+
 [tasks."panel:dev"]
-description = "Serve the panel frontend against a real local backend"
+description = "Serve the panel frontend without a mock API"
 depends = ["panel:frontend:install"]
 dir = "internal/panel/frontend"
 run = "npm run dev"

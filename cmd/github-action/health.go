@@ -126,6 +126,9 @@ func (s *server) probe(parent context.Context) {
 	defer cancel()
 
 	err := s.pingGitHub(ctx)
+	if err == nil && s.store != nil {
+		err = s.store.Ping(ctx)
+	}
 
 	// A check cut short by shutdown says nothing about GitHub, so it must not
 	// be the last word on record

@@ -152,15 +152,15 @@ func (s *server) sweepInstallation(ctx context.Context, installation github.Inst
 		return NewGitHubError(ErrGitHubClient, err)
 	}
 
-	repos, err := client.ListInstallationRepos(ctx)
+	repos, err := s.reconcileSweepInstallation(ctx, client, installation)
 	if err != nil {
-		return NewGitHubError(ErrListRepos, err)
+		return err
 	}
 
 	for _, repo := range repos {
 		// The repository is named here rather than added to the context,
 		// because pollAllPRs adds it for the lines below that
-		if err := s.sweepRepo(ctx, client, repo); err != nil {
+		if err := s.sweepRepo(ctx, client, installationStorageID(installation.ID), repo); err != nil {
 			logging.From(ctx).Error("repository sweep failed",
 				"repo", repoFullName(repo.Owner, repo.Name), "error", err)
 		}
@@ -169,13 +169,80 @@ func (s *server) sweepInstallation(ctx context.Context, installation github.Inst
 	return nil
 }
 
+func (s *server) reconcileSweepInstallation(
+	ctx context.Context,
+	client *github.Client,
+	installation github.Installation,
+) ([]github.Repository, error) {
+	s.catalogMu.Lock()
+	defer s.catalogMu.Unlock()
+
+	repos, err := client.ListInstallationRepos(ctx)
+	if err != nil {
+		return nil, NewGitHubError(ErrListRepos, err)
+	}
+	if s.store == nil {
+		return repos, nil
+	}
+	snapshot, err := installationSnapshot(
+		s.cfg.apiBaseURL,
+		installation,
+		repos,
+		time.Now().UTC(),
+	)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.store.ReconcileInstallation(ctx, snapshot); err != nil {
+		return nil, err
+	}
+	if s.panel != nil {
+		if err := s.store.GrantOwnerAccess(ctx, snapshot.TargetID, time.Now().UTC()); err != nil {
+			return nil, err
+		}
+		s.panel.Announce(snapshot.TargetID, "")
+	}
+
+	return repos, nil
+}
+
 // sweepRepo polls one repository, using the same code the poll subcommand runs.
 //
 // Both files it needs are cached: a sweep would otherwise re-read every
 // repository's CODEOWNERS and config on every tick, forever, for content that
 // changes far less often than it is looked at.
-func (s *server) sweepRepo(ctx context.Context, client *github.Client, repo github.Repository) error {
-	bc, err := s.configs.Get(ctx, client, repo.Owner, repo.Name)
+func (s *server) sweepRepo(
+	ctx context.Context,
+	client *github.Client,
+	targetID string,
+	repo github.Repository,
+) error {
+	if s.store != nil {
+		target, repository, err := s.repositoryControls(
+			ctx,
+			targetID,
+			repositoryStorageID(repo.ID),
+		)
+		if err != nil {
+			return err
+		}
+		enabled := target.RepositoryDefaultEnabled
+		if repository.EnabledOverride != nil {
+			enabled = *repository.EnabledOverride
+		}
+		if !enabled {
+			return nil
+		}
+	}
+
+	bc, err := s.serviceConfig(
+		ctx,
+		client,
+		targetID,
+		repositoryStorageID(repo.ID),
+		repo.Owner,
+		repo.Name,
+	)
 	if err != nil {
 		return err
 	}

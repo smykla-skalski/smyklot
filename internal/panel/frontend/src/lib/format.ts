@@ -27,6 +27,21 @@ export function formatTimestamp(value: string): string {
   return new Date(parsed).toLocaleString();
 }
 
+/** Render a compact local date and time without machine-oriented seconds. */
+export function formatDateTime(value: string): string {
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) {
+    return value;
+  }
+  return new Date(parsed).toLocaleString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
 /** How far in the past a timestamp is, in the coarsest unit that still says it. */
 export type RelativeBucket =
   | { kind: 'just-now' }

@@ -6,8 +6,8 @@
 
 <Plate label="Sign in" tone="lead">
   <p>
-    Sign in with GitHub to get a pairing link for a new device. An administrator decides who can
-    generate one
+    Sign in with GitHub to manage organizations you own and repositories from personal
+    installations. Smyklot verifies ownership again before every change
   </p>
   <a class="btn btn-signal" {href} rel="nofollow">Sign in with GitHub</a>
 </Plate>

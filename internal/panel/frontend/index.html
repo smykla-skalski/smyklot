@@ -3,35 +3,33 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- The serving binary rewrites every occurrence of the sentinel below to the
-         configured --base-path, so the bundle, the icons, and the API client agree
-         on the mount point without a rebuild. Vite rewrites the icon hrefs to the
-         same sentinel at build time, which is what makes them mount-independent. -->
-    <meta name="harness-panel-base" content="/__harness_panel_base__" />
-    <!-- Substituted the same way, so the footer can name the build and the daemon
-         it fronts without a route to ask and without waiting for a session. -->
-    <meta name="harness-panel-version" content="__harness_panel_version__" />
-    <meta name="harness-panel-daemon" content="__harness_panel_daemon__" />
+    <meta name="smyklot-panel-base" content="/__smyklot_panel_base__" />
+    <meta name="smyklot-panel-version" content="__smyklot_panel_version__" />
+    <meta name="smyklot-panel-service" content="__smyklot_panel_service__" />
 
-    <title>Harness Panel</title>
-    <meta name="description" content="Sign in to get a pairing link for a Harness device." />
-
-    <!-- The panel is one person's access control, published on the daemon's public
-         address. It has nothing to offer a crawler and no reason to hand its
-         address to anywhere a link leads. -->
+    <title>Smyklot Panel</title>
+    <meta
+      name="description"
+      content="Configure Smyklot for GitHub organizations and repositories"
+    />
     <meta name="robots" content="noindex, nofollow, noarchive, noimageindex" />
     <meta name="referrer" content="no-referrer" />
 
     <meta name="color-scheme" content="dark light" />
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0d1122" />
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#e9ecf4" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#081827" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#edf5f8" />
 
-    <!-- Harness Monitor's own icon: the panel exists to pair that app, so the tab
-         it lives in should be recognisable beside it. -->
-    <link rel="icon" type="image/png" sizes="32x32" href="/harness-monitor-32.png" />
-    <link rel="icon" type="image/png" sizes="128x128" href="/harness-monitor.png" />
-    <link rel="apple-touch-icon" href="/harness-monitor.png" />
-    <meta name="apple-mobile-web-app-title" content="Harness" />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="256x256"
+      href="/__smyklot_panel_base__/smyklot-avatar.png?v=__smyklot_panel_version__"
+    />
+    <link
+      rel="apple-touch-icon"
+      href="/__smyklot_panel_base__/smyklot-avatar.png?v=__smyklot_panel_version__"
+    />
+    <meta name="apple-mobile-web-app-title" content="Smyklot" />
   </head>
   <body>
     <div id="app"></div>

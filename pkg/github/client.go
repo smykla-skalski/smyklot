@@ -40,8 +40,10 @@ const (
 	pageSize = 100
 
 	// maxPages bounds a pagination loop so a misbehaving endpoint cannot spin
-	// forever. 100 pages of 100 items covers any realistic installation
-	maxPages = 100
+	// forever. At 100 items per page this covers GitHub's documented
+	// 100,000-repository organization and account limit. Reaching the bound
+	// without proving the snapshot complete returns an error.
+	maxPages = 1000
 )
 
 // sharedTransport is the connection pool every client draws on.
@@ -611,7 +613,10 @@ func (c *Client) ListInstallations(ctx context.Context) ([]Installation, error) 
 		var response []struct {
 			ID      int64 `json:"id"`
 			Account struct {
-				Login string `json:"login"`
+				ID        int64  `json:"id"`
+				Login     string `json:"login"`
+				Type      string `json:"type"`
+				AvatarURL string `json:"avatar_url"`
 			} `json:"account"`
 			SuspendedAt *string `json:"suspended_at"`
 		}
@@ -627,13 +632,25 @@ func (c *Client) ListInstallations(ctx context.Context) ([]Installation, error) 
 			}
 
 			installations = append(installations, Installation{
-				ID:      item.ID,
-				Account: item.Account.Login,
+				ID:          item.ID,
+				AccountID:   item.Account.ID,
+				Account:     item.Account.Login,
+				AccountType: item.Account.Type,
+				AvatarURL:   item.Account.AvatarURL,
 			})
 		}
 
 		if len(response) < pageSize {
-			break
+			return installations, nil
+		}
+		if page == maxPages {
+			return nil, NewAPIError(
+				ErrIncompletePagination,
+				0,
+				"GET",
+				path,
+				fmt.Errorf("installation list still has a full page after %d items", len(installations)),
+			)
 		}
 	}
 
@@ -656,9 +673,13 @@ func (c *Client) ListInstallationRepos(ctx context.Context) ([]Repository, error
 
 		// Unlike most list endpoints this one wraps its results in an object
 		var response struct {
+			TotalCount   *int `json:"total_count"`
 			Repositories []struct {
-				Name  string `json:"name"`
-				Owner struct {
+				ID       int64  `json:"id"`
+				Name     string `json:"name"`
+				FullName string `json:"full_name"`
+				Private  bool   `json:"private"`
+				Owner    struct {
 					Login string `json:"login"`
 				} `json:"owner"`
 			} `json:"repositories"`
@@ -669,13 +690,39 @@ func (c *Client) ListInstallationRepos(ctx context.Context) ([]Repository, error
 
 		for _, item := range response.Repositories {
 			repos = append(repos, Repository{
-				Owner: item.Owner.Login,
-				Name:  item.Name,
+				ID:       item.ID,
+				Owner:    item.Owner.Login,
+				Name:     item.Name,
+				FullName: item.FullName,
+				Private:  item.Private,
 			})
 		}
 
 		if len(response.Repositories) < pageSize {
-			break
+			if response.TotalCount != nil && len(repos) < *response.TotalCount {
+				return nil, NewAPIError(
+					ErrIncompletePagination,
+					0,
+					"GET",
+					path,
+					fmt.Errorf("received %d of %d repositories", len(repos), *response.TotalCount),
+				)
+			}
+
+			return repos, nil
+		}
+		if page == maxPages {
+			if response.TotalCount != nil && len(repos) >= *response.TotalCount {
+				return repos, nil
+			}
+
+			return nil, NewAPIError(
+				ErrIncompletePagination,
+				0,
+				"GET",
+				path,
+				fmt.Errorf("repository list still incomplete after %d items", len(repos)),
+			)
 		}
 	}
 

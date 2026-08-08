@@ -1,85 +1,79 @@
-/*
- * The panel decides who may pair and hands out a single-use permission that
- * expires on its own. Harness Monitor's icon is a control tower over a prism fan,
- * so the page is built from that palette and laid out like the strips a tower
- * works from. The words on screen stay the product's own, though: an account is
- * approved or awaiting approval, matching the control that changes it.
- *
- * Nothing here is outlined. Surfaces separate by fill value, and the only edges
- * are solid tabs and internal dividers, because a page of 1px-bordered cards on
- * a dark ground is the look every other dark panel already has.
- *
- * Every colour pair a reader has to resolve is measured, not assumed; the tints
- * are pre-composited so each ratio is a fixed number.
- *
- * Primitives shared by more than one component live here rather than in scoped
- * blocks, because a class assembled from a prop (`chip-${tone}`) is invisible to
- * Svelte's scoped-CSS pruning and gets dropped as unused.
- */
-
 :root {
   color-scheme: light dark;
 
-  --ink: #e9ecf4;
+  /* Neutral surfaces carry hierarchy. Hue is reserved for interaction,
+     secondary landmarks, and semantic state. */
+  --ink: #eef1f5;
   --strip: #ffffff;
-  --strip-lift: #eef1f8;
-  --well: #eaeef7;
-  --rule: #d8def0;
-  --text: #101632;
-  --dim: #525b7b;
+  --strip-lift: #f0f3f7;
+  --well: #f7f8fa;
+  --rule: #d6dbe3;
+  --control-border: #d6dbe3;
+  --control-surface: #e8ecf2;
+  --input-surface: #ffffff;
+  --text: #171a21;
+  --dim: #566173;
 
-  --signal: #7a4e04;
+  --signal: #2b66c3;
   --on-signal: #ffffff;
-  --clear: #0a6148;
-  --stop: #992f1c;
-
-  /* Pre-composited rather than mixed at paint time, so every ratio in the design
-     is a fixed number that can be measured instead of inferred from an alpha. */
-  --clear-tint: #e2ece9;
-  --signal-tint: #eee8de;
-  --stop-tint: #f3e6e4;
-
-  /* The fan behind the tower in the app icon, quoted once. */
-  --beam: linear-gradient(90deg, #d1892a, #1f8f62, #2f7fc4, #6f4bc4, #bd3a80);
-
-  /* Laid over whatever a pressed control's own background is. A brightness
-     filter would have nothing to act on for the transparent variant, and each
-     variant would have to name its own pressed colour. */
-  --press: rgb(0 0 0 / 12%);
+  --signal-tint: #e1ebfa;
+  --accent: #936500;
+  --accent-tint: #fbf6ec;
+  --admin: #936500;
+  --on-admin: #ffffff;
+  --clear: #176b43;
+  --clear-tint: #dff1e7;
+  --warning: #805100;
+  --warning-tint: #f9eacb;
+  --stop: #9e3039;
+  --stop-tint: #f7e1e3;
+  --brand: #2b66c3;
+  --spectrum: linear-gradient(90deg, #d1892a, #1f8f62, #2f7fc4, #6f4bc4, #bd3a80);
+  --spectrum-vertical: linear-gradient(0deg, #d1892a, #1f8f62, #2f7fc4, #6f4bc4, #bd3a80);
+  --press: rgb(23 26 33 / 12%);
+  --shadow: rgb(23 26 33 / 10%);
 
   --mono: ui-monospace, sfmono-regular, 'SF Mono', menlo, consolas, 'Liberation Mono', monospace;
   --sans: system-ui, -apple-system, 'Segoe UI', roboto, sans-serif;
-
   --r-strip: 10px;
   --r-ctl: 7px;
   --r-well: 8px;
-  --r-chip: 3px;
+  --r-chip: 4px;
+  --control-height: 34px;
+  --control-inset: 2px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --ink: #0d1122;
-    --strip: #161c33;
-    --strip-lift: #1e2542;
-    --well: #090d1a;
-    --rule: #262e4d;
-    --text: #e8ebf7;
-    --dim: #98a1c2;
+    --ink: #0d0f13;
+    --strip: #171a20;
+    --strip-lift: #22262f;
+    --well: #111419;
+    --rule: #2e333d;
+    --control-border: #2e333d;
+    --control-surface: #252a33;
+    --input-surface: #111419;
+    --text: #f4f6f8;
+    --dim: #aab2bf;
 
-    --signal: #eda43c;
-    --on-signal: #1a1204;
-    --clear: #4fc08d;
-    --stop: #ef8b7b;
-
-    --clear-tint: #1f3641;
-    --signal-tint: #3d3435;
-    --stop-tint: #392e3f;
-
-    --beam: linear-gradient(90deg, #f0a63c, #4fc08d, #3d8fd4, #8b62d9, #d9539b);
-
-    /* Deeper than in light, because the same veil over an already dark control
-       moves it by almost nothing. */
-    --press: rgb(0 0 0 / 26%);
+    --signal: #78b7ff;
+    --on-signal: #0d1622;
+    --signal-tint: #1b314d;
+    --accent: #d4a64d;
+    --accent-tint: #3b2c14;
+    --admin: #d4a64d;
+    --on-admin: #1b1407;
+    --clear: #72dda0;
+    --clear-tint: #193b2b;
+    --warning: #f4c76b;
+    --warning-tint: #3d311d;
+    --stop: #ff9a9f;
+    --stop-tint: #46292f;
+    --brand: #78b7ff;
+    --spectrum: linear-gradient(90deg, #f0a63c, #4fc08d, #3d8fd4, #8b62d9, #d9539b);
+    --spectrum-vertical: linear-gradient(0deg, #f0a63c, #4fc08d, #3d8fd4, #8b62d9, #d9539b);
+    --press: rgb(0 0 0 / 30%);
+    --shadow: rgb(0 0 0 / 32%);
   }
 }
 
@@ -90,23 +84,19 @@
 }
 
 body {
-  margin: 0;
-  padding: 1.5rem 1rem 2.5rem;
   background: var(--ink);
   color: var(--text);
   font: 0.9375rem/1.55 var(--sans);
+  margin: 0;
+  padding: 1.5rem 1rem 2.5rem;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Text rather than the accent, because the accent is also what fills the primary
-   control, and an amber ring around an amber button shows nothing. */
 :focus-visible {
-  outline: 2px solid var(--text);
+  outline: 2px solid var(--brand);
   outline-offset: 2px;
 }
 
-/* The pressed state still changes colour, so a control asked to hold still is
-   still visibly taking the press; only the travel and the easing go. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -124,12 +114,11 @@ body {
 
 .shell {
   margin: 0 auto;
-  max-width: 44rem;
+  max-width: 72rem;
 }
 
-/* Equipment marking: the strip's own name, set as a label rather than a title. */
 .eyebrow {
-  color: var(--dim);
+  color: var(--accent);
   font: 600 0.75rem/1 var(--mono);
   letter-spacing: 0.13em;
   margin: 0;
@@ -154,29 +143,25 @@ body {
   width: 1px;
 }
 
-/* The fan behind the tower in the app icon. The one ornament on the page, and
-   the only thing tying it to the app it hands credentials to. Global because the
-   masthead opens with it and the footer closes on it. */
-.beam {
-  background: var(--beam);
+.brand-rule {
+  background: var(--spectrum);
   border-radius: 1px;
   height: 2px;
 }
 
-/* The same fan mirrored and thinned: an echo of the opening rule rather than a
-   second statement of it. */
-.beam-close {
+.brand-rule-close {
   height: 1px;
+  opacity: 0.7;
   transform: scaleX(-1);
 }
 
-/* A flight strip: one flat slab per subject, told apart from the ground by fill
-   rather than by an outline. The one the page exists for carries a solid tab. */
 .plate {
   background: var(--strip);
+  border: 1px solid var(--rule);
   border-radius: var(--r-strip);
+  box-shadow: 0 4px 16px var(--shadow);
   margin-bottom: 1rem;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .plate-lead {
@@ -198,6 +183,11 @@ body {
   padding: 0.5rem 1.125rem;
 }
 
+.plate-header-only .plate-head {
+  border-bottom: 0;
+  min-height: 4rem;
+}
+
 .plate-body {
   padding: 1.125rem;
 }
@@ -214,67 +204,69 @@ body {
   margin: 0 0 0.875rem;
 }
 
+button,
+input,
+select {
+  font: inherit;
+}
+
 button {
   cursor: pointer;
-  font: inherit;
 }
 
 .btn {
   align-items: center;
   background: var(--strip-lift);
-  border: 0;
+  border: 1px solid var(--control-border);
   border-radius: var(--r-ctl);
   color: var(--text);
   display: inline-flex;
   font: 500 0.875rem/1 var(--sans);
   gap: 0.4rem;
+  height: var(--control-height);
   justify-content: center;
-  min-height: 2.25rem;
   padding: 0 0.875rem;
   text-decoration: none;
   transition:
     transform 90ms ease-out,
     box-shadow 90ms ease-out;
   white-space: nowrap;
-  /* The grey flash a tap paints on top of the press state below, which on a
-     touch screen is the only one of the two anybody sees. */
   -webkit-tap-highlight-color: transparent;
 }
 
 .btn:hover:not(:disabled) {
-  filter: brightness(1.12);
+  filter: brightness(1.1);
 }
 
-/* The control takes the press: it sinks a pixel and darkens. Anchors get it too,
-   because the one that hands the link to the app is a link, and it should not be
-   the only control on the page that feels dead under the finger. */
 .btn:active:not(:disabled) {
   box-shadow: inset 0 0 0 100vmax var(--press);
-  /* The pointer is still hovering, and the hover brightening would cancel most
-     of the veil out, leaving the press to read as a one-pixel twitch. */
   filter: none;
   transform: translateY(1px);
 }
 
-.btn:disabled {
+.btn:disabled,
+input:disabled,
+select:disabled {
   cursor: default;
-  opacity: 0.4;
+  opacity: 0.5;
 }
 
-/* The controls that mint a credential nobody can recall, or hand one to an app. */
 .btn-signal {
-  background: var(--signal);
-  color: var(--on-signal);
-  font-weight: 600;
+  background: var(--admin);
+  border-color: var(--admin);
+  color: var(--on-admin);
+  font-weight: 650;
 }
 
 .btn-stop {
   background: var(--stop-tint);
+  border-color: var(--stop);
   color: var(--stop);
 }
 
 .btn-quiet {
   background: transparent;
+  border-color: transparent;
   color: var(--dim);
   padding: 0 0.5rem;
 }
@@ -285,35 +277,40 @@ button {
   filter: none;
 }
 
-/* Row-sized. A control that repeats down a list sets that list's row height, and
-   at the full size it made every device twice as tall as the line it labels. */
 .btn-row {
   font-size: 0.8125rem;
   min-height: 1.75rem;
   padding: 0 0.625rem;
 }
 
-/* Trimmed to the cap band before the padding is applied, so the tint sits
-   evenly around the letters instead of around a line box that carries descender
-   space this all-caps label never uses. Without it every chip reads a fraction
-   low against whatever it sits beside. */
 .chip {
   align-items: center;
   border-radius: var(--r-chip);
   display: inline-flex;
   font: 600 0.6875rem/1 var(--mono);
   gap: 0.35rem;
-  letter-spacing: 0.08em;
-  padding: 0.3rem 0.45rem;
-  text-box: trim-both cap alphabetic;
+  min-height: 1.625rem;
+  padding: 0 0.5rem;
   text-transform: uppercase;
   white-space: nowrap;
 }
 
 .chip-small {
   font-size: 0.5625rem;
+  min-height: 1.3rem;
+  padding: 0 0.375rem;
+}
+
+.chip-label {
+  letter-spacing: 0.08em;
+  line-height: 1;
+  padding-left: 0.08em;
+  transform: translateY(0.06em);
+}
+
+.chip-small .chip-label {
   letter-spacing: 0.1em;
-  padding: 0.2rem 0.3rem;
+  padding-left: 0.1em;
 }
 
 .chip-dot {
@@ -350,6 +347,24 @@ button {
   background: var(--signal);
 }
 
+.chip-accent {
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+
+.chip-accent .chip-dot {
+  background: var(--accent);
+}
+
+.chip-warning {
+  background: var(--warning-tint);
+  color: var(--warning);
+}
+
+.chip-warning .chip-dot {
+  background: var(--warning);
+}
+
 .chip-stop {
   background: var(--stop-tint);
   color: var(--stop);
@@ -374,11 +389,80 @@ button {
   display: inline-flex;
   font: 600 calc(var(--avatar-size) * 0.36) / 1 var(--sans);
   justify-content: center;
-  letter-spacing: 0.02em;
 }
 
-/* Inline-block so a command that does not fit moves to the next line whole,
-   instead of leaving its tinted background torn across two. */
+.text-input,
+.select-input {
+  background-color: var(--control-surface);
+  border: 1px solid var(--control-border);
+  border-radius: var(--r-ctl);
+  color: var(--text);
+  height: var(--control-height);
+  padding: 0 0.625rem;
+}
+
+.select-input {
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--dim) 50%),
+    linear-gradient(135deg, var(--dim) 50%, transparent 50%);
+  background-position:
+    calc(100% - 0.9rem) 50%,
+    calc(100% - 0.6rem) 50%;
+  background-repeat: no-repeat;
+  background-size: 0.3rem 0.3rem;
+  line-height: 1.2;
+  padding-right: 2rem;
+}
+
+.text-input::placeholder {
+  color: var(--dim);
+}
+
+.switch {
+  cursor: pointer;
+  display: inline-flex;
+}
+
+.switch input {
+  height: 1px;
+  opacity: 0;
+  position: absolute;
+  width: 1px;
+}
+
+.switch > span {
+  background: var(--rule);
+  border-radius: 999px;
+  display: inline-flex;
+  height: 1.25rem;
+  padding: 2px;
+  transition: background 120ms ease-out;
+  width: 2.25rem;
+}
+
+.switch > span::after {
+  background: var(--strip);
+  border-radius: 50%;
+  content: '';
+  height: 1rem;
+  transition: transform 120ms ease-out;
+  width: 1rem;
+}
+
+.switch input:checked + span {
+  background: var(--clear);
+}
+
+.switch input:checked + span::after {
+  transform: translateX(1rem);
+}
+
+.switch input:focus-visible + span {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
 code {
   background: var(--well);
   border-radius: 4px;
@@ -386,4 +470,20 @@ code {
   font: 0.8125rem/1.4 var(--mono);
   max-width: 100%;
   padding: 0.1rem 0.3rem;
+}
+
+.form-error {
+  color: var(--stop);
+}
+
+@media (max-width: 38rem) {
+  body {
+    padding: 1rem 0.625rem 2rem;
+  }
+
+  .plate-head,
+  .plate-body {
+    padding-left: 0.875rem;
+    padding-right: 0.875rem;
+  }
 }

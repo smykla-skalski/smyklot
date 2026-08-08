@@ -19,6 +19,10 @@ var (
 
 	// ErrResponseParse is returned when parsing a response fails
 	ErrResponseParse = errors.New("failed to parse GitHub API response")
+
+	// ErrIncompletePagination is returned instead of treating a partial list as
+	// an authoritative GitHub snapshot.
+	ErrIncompletePagination = errors.New("incomplete GitHub API pagination")
 )
 
 // APIError represents an error from the GitHub API

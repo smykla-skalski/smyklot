@@ -14,18 +14,20 @@
     tone?: PlateTone;
     /** Right-hand side of the header: the plate's current state, if it has one. */
     status?: Snippet;
-    children: Snippet;
+    children?: Snippet;
   } = $props();
 </script>
 
-<section class="plate plate-{tone}">
+<section class="plate plate-{tone}" class:plate-header-only={children === undefined}>
   <header class="plate-head">
     <h2 class="eyebrow">{label}</h2>
     {#if status !== undefined}
       {@render status()}
     {/if}
   </header>
-  <div class="plate-body">
-    {@render children()}
-  </div>
+  {#if children !== undefined}
+    <div class="plate-body">
+      {@render children()}
+    </div>
+  {/if}
 </section>

@@ -3,6 +3,7 @@ version: 2
 before:
   hooks:
     - go mod tidy
+    - mise run panel:assets:generate
 
 builds:
   - id: smyklot

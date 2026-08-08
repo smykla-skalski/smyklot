@@ -5,12 +5,12 @@ import { mockServer } from './dev/mock-server';
 
 // The panel's mount point is a runtime flag (`--base-path`), but Vite bakes
 // `base` into the emitted asset URLs at build time. Building against a sentinel
-// and having the Rust asset handler substitute the configured prefix into
+// and having the Go asset handler substitute the configured prefix into
 // `index.html` keeps one build correct under any mount point. Nothing outside
 // `index.html` is rewritten, so the sentinel must not appear in the bundles.
 export default defineConfig({
-  base: '/__harness_panel_base__/',
-  // The mock no-ops unless `HARNESS_PANEL_DEV_MOCK=1`, so the build and the
+  base: '/__smyklot_panel_base__/',
+  // The mock no-ops unless `SMYKLOT_PANEL_DEV_MOCK=1`, so the build and the
   // default dev server are unaffected by it being listed here.
   plugins: [svelte(), mockServer()],
   build: {

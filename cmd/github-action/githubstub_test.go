@@ -44,6 +44,10 @@ type githubStub struct {
 	// probe makes. Set it before the service starts, never while it is running
 	probeStatus int
 
+	installationsStarted chan struct{}
+	installationsRelease chan struct{}
+	installationsBlock   sync.Once
+
 	mu    sync.Mutex
 	calls []string
 }
@@ -70,7 +74,16 @@ func (s *githubStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"message": "Resource not accessible by integration"}`))
 
 	case r.URL.Path == "/app/installations":
-		_, _ = io.WriteString(w, s.installations)
+		s.mu.Lock()
+		installations := s.installations
+		s.mu.Unlock()
+		if s.installationsStarted != nil {
+			s.installationsBlock.Do(func() {
+				close(s.installationsStarted)
+				<-s.installationsRelease
+			})
+		}
+		_, _ = io.WriteString(w, installations)
 
 	// The readiness probe's endpoint. It must be matched after
 	// /app/installations, which would otherwise never be reached
@@ -155,6 +168,13 @@ func (s *githubStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{}`))
 	}
+}
+
+func (s *githubStub) setInstallations(value string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.installations = value
 }
 
 // setRepoConfig changes the repository's file while the service is running, the

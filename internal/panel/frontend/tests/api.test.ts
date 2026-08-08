@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { PanelApiError, createPanelApi } from '../src/lib/api';
+import type { ConfigSources, ConfigValues, PanelTarget, RepositoryDetail } from '../src/lib/types';
 
 interface RecordedCall {
   url: string;
@@ -15,12 +16,10 @@ function stubFetch(responses: Response[]): {
   const queue = [...responses];
   return {
     calls,
-    fetch: (url: string, init?: RequestInit) => {
+    fetch: (url, init) => {
       calls.push({ url, init });
       const next = queue.shift();
-      if (next === undefined) {
-        throw new Error(`unexpected request to ${url}`);
-      }
+      if (next === undefined) throw new Error(`unexpected request to ${url}`);
       return Promise.resolve(next);
     },
   };
@@ -33,331 +32,207 @@ function jsonResponse(status: number, body: unknown): Response {
   });
 }
 
+const CONFIG: ConfigValues = {
+  quiet_success: false,
+  quiet_reactions: false,
+  quiet_pending: false,
+  allowed_commands: [],
+  command_aliases: {},
+  command_prefix: '/',
+  disable_mentions: false,
+  disable_bare_commands: false,
+  disable_unapprove: false,
+  disable_reactions: false,
+  disable_deleted_comments: false,
+  allow_self_approval: false,
+};
+
+const SOURCES = Object.fromEntries(
+  Object.keys(CONFIG).map((key) => [key, 'process']),
+) as ConfigSources;
+
 const VIEWER = {
   account: {
-    id: 'acc_1',
-    provider: 'github',
-    subject_id: '4242',
+    id: '1001',
+    provider: 'github:https://api.github.com',
+    subject_id: '1001',
     login: 'ada',
     display_name: 'Ada Lovelace',
     avatar_url: null,
-    first_seen_at: '2026-07-25T10:00:00Z',
-    last_seen_at: '2026-07-25T11:00:00Z',
-    can_pair: false,
   },
-  is_owner: false,
+  target_count: 1,
 };
 
-describe('fetchViewer', () => {
-  it('returns the signed-in account', async () => {
+const TARGET: PanelTarget = {
+  id: '2001',
+  installation_id: '3001',
+  type: 'Organization',
+  account: { ...VIEWER.account, id: '2001', subject_id: '2001', login: 'example' },
+  repository_default_enabled: false,
+  config_patch: {},
+  inherited_config: CONFIG,
+  effective_config: CONFIG,
+  config_sources: SOURCES,
+  revision: 1,
+  repository_counts: { total: 1, enabled: 0, disabled: 1 },
+};
+
+const REPOSITORY = {
+  id: '4001',
+  name: 'api',
+  full_name: 'example/api',
+  private: false,
+  available: true,
+  enabled_override: null,
+  effective_enabled: false,
+  enabled_source: 'target' as const,
+  config_override_count: 0,
+  config_file_status: 'missing' as const,
+  updated_at: '2026-08-08T10:00:00Z',
+};
+
+const DETAIL: RepositoryDetail = {
+  repository: REPOSITORY,
+  config_patch: {},
+  inherited_config: CONFIG,
+  effective_config: CONFIG,
+  config_sources: SOURCES,
+  config_file_patch: {},
+  ignore_repository_file: false,
+  revision: 1,
+};
+
+describe('session', () => {
+  it('returns the signed-in owner with same-origin credentials', async () => {
     const stub = stubFetch([jsonResponse(200, VIEWER)]);
     const api = createPanelApi('/panel', stub.fetch);
 
     await expect(api.fetchViewer()).resolves.toEqual(VIEWER);
-    expect(stub.calls[0]?.url).toBe('/panel/api/me');
-    expect(stub.calls[0]?.init?.credentials).toBe('same-origin');
+    expect(stub.calls[0]).toMatchObject({
+      url: '/panel/api/v1/session',
+      init: { credentials: 'same-origin' },
+    });
   });
 
-  // Arriving without a session is the ordinary first visit, so it must not
-  // reach the page as an error banner.
-  it('reports no session rather than failing', async () => {
+  it('treats an absent session as the signed-out state', async () => {
     const stub = stubFetch([
       jsonResponse(401, { error: { code: 'unauthenticated', message: 'sign in first' } }),
     ]);
-    const api = createPanelApi('/panel', stub.fetch);
-
-    await expect(api.fetchViewer()).resolves.toBeNull();
+    await expect(createPanelApi('/panel', stub.fetch).fetchViewer()).resolves.toBeNull();
   });
 
-  it('surfaces any other failure with the panel error code', async () => {
+  it('preserves a structured server error', async () => {
     const stub = stubFetch([
-      jsonResponse(500, { error: { code: 'storage', message: 'account store is unavailable' } }),
+      jsonResponse(503, { error: { code: 'storage', message: 'storage is unavailable' } }),
     ]);
-    const api = createPanelApi('/panel', stub.fetch);
-
-    await expect(api.fetchViewer()).rejects.toMatchObject({
-      status: 500,
+    await expect(createPanelApi('/panel', stub.fetch).fetchViewer()).rejects.toMatchObject({
+      status: 503,
       code: 'storage',
-      message: 'account store is unavailable',
+      message: 'storage is unavailable',
     });
   });
 });
 
-describe('fetchAccounts', () => {
-  it('unwraps the account list', async () => {
-    const stub = stubFetch([jsonResponse(200, { accounts: [VIEWER.account] })]);
-    const api = createPanelApi('/panel', stub.fetch);
-
-    await expect(api.fetchAccounts()).resolves.toEqual([VIEWER.account]);
-    expect(stub.calls[0]?.url).toBe('/panel/api/accounts');
-  });
-
-  it('rejects when the viewer is not the owner', async () => {
+describe('targets and repositories', () => {
+  it('unwraps target and repository collections', async () => {
     const stub = stubFetch([
-      jsonResponse(403, { error: { code: 'forbidden', message: 'owner only' } }),
+      jsonResponse(200, { targets: [TARGET] }),
+      jsonResponse(200, { repositories: [REPOSITORY] }),
+      jsonResponse(200, DETAIL),
     ]);
     const api = createPanelApi('/panel', stub.fetch);
 
-    await expect(api.fetchAccounts()).rejects.toBeInstanceOf(PanelApiError);
+    await expect(api.fetchTargets()).resolves.toEqual([TARGET]);
+    await expect(api.fetchRepositories('2001')).resolves.toEqual([REPOSITORY]);
+    await expect(api.fetchRepository('2001', '4001')).resolves.toEqual(DETAIL);
+    expect(stub.calls.map((call) => call.url)).toEqual([
+      '/panel/api/v1/targets',
+      '/panel/api/v1/targets/2001/repositories',
+      '/panel/api/v1/targets/2001/repositories/4001',
+    ]);
+  });
+
+  it('uses full replacement PUTs with optimistic revisions', async () => {
+    const updatedTarget = { ...TARGET, repository_default_enabled: true, revision: 2 };
+    const updatedDetail = { ...DETAIL, revision: 2 };
+    const stub = stubFetch([jsonResponse(200, updatedTarget), jsonResponse(200, updatedDetail)]);
+    const api = createPanelApi('/panel', stub.fetch);
+
+    await api.updateTargetSettings('2001', {
+      repository_default_enabled: true,
+      config_patch: { quiet_success: true },
+      expected_revision: 1,
+    });
+    await api.updateRepositorySettings('2001', '4001', {
+      enabled_override: true,
+      config_patch: { allowed_commands: [] },
+      ignore_repository_file: false,
+      expected_revision: 1,
+    });
+
+    expect(stub.calls[0]?.init?.method).toBe('PUT');
+    expect(stub.calls[0]?.init?.headers).toEqual({ 'Content-Type': 'application/json' });
+    expect(JSON.parse(String(stub.calls[0]?.init?.body))).toMatchObject({ expected_revision: 1 });
+    expect(stub.calls[1]?.url).toBe('/panel/api/v1/targets/2001/repositories/4001/settings');
+  });
+
+  it('encodes slashes and traversal segments as path data', async () => {
+    const stub = stubFetch([jsonResponse(200, DETAIL)]);
+    const api = createPanelApi('/panel', stub.fetch);
+
+    await api.fetchRepository('a/b', '..');
+
+    expect(stub.calls[0]?.url).toBe('/panel/api/v1/targets/a%2Fb/repositories/%2E%2E');
   });
 });
 
-describe('signOut', () => {
-  it('posts to the sign-out route', async () => {
+describe('history and authentication routes', () => {
+  it('encodes history cursors and exposes both histories', async () => {
+    const emptyPage = { items: [], next_cursor: null, total: 0 };
+    const stub = stubFetch([jsonResponse(200, emptyPage), jsonResponse(200, emptyPage)]);
+    const api = createPanelApi('/panel', stub.fetch);
+
+    await api.fetchAudit('2001', {
+      cursor: 'next/page',
+      query: 'repository settings',
+      sort: 'oldest',
+      limit: 25,
+      scope: 'repositories',
+    });
+    await api.fetchFailures('2001', {
+      query: '',
+      sort: 'newest',
+      limit: 50,
+      kind: 'retryable',
+    });
+
+    expect(stub.calls.map((call) => call.url)).toEqual([
+      '/panel/api/v1/targets/2001/audit?cursor=next%2Fpage&q=repository+settings&sort=oldest&limit=25&scope=repositories',
+      '/panel/api/v1/targets/2001/failures?sort=newest&limit=50&kind=retryable',
+    ]);
+  });
+
+  it('uses the mounted sign-in and sign-out routes', async () => {
     const stub = stubFetch([new Response(null, { status: 204 })]);
     const api = createPanelApi('/panel', stub.fetch);
 
+    expect(api.signInUrl()).toBe('/panel/auth/github/start');
     await api.signOut();
-
-    expect(stub.calls[0]?.url).toBe('/panel/auth/signout');
-    expect(stub.calls[0]?.init?.method).toBe('POST');
+    expect(stub.calls[0]).toMatchObject({
+      url: '/panel/api/v1/sign-out',
+      init: { method: 'POST', credentials: 'same-origin' },
+    });
   });
-});
 
-// Every route behind the client is session-authenticated, so a request that
-// went out without the cookie would read as being signed out rather than as a
-// mistake.
-describe('credentials', () => {
-  it('are sent on every request the client makes', async () => {
-    const stub = stubFetch([
-      jsonResponse(200, VIEWER),
-      jsonResponse(200, { accounts: [] }),
-      new Response(null, { status: 204 }),
-    ]);
-    const api = createPanelApi('/panel', stub.fetch);
+  it('falls back to the HTTP status for a non-envelope failure', async () => {
+    const stub = stubFetch([new Response('<html>bad gateway</html>', { status: 502 })]);
 
-    await api.fetchViewer();
-    await api.fetchAccounts();
-    await api.signOut();
-
-    expect(stub.calls).toHaveLength(3);
-    for (const call of stub.calls) {
-      expect(call.init?.credentials).toBe('same-origin');
-    }
-  });
-});
-
-describe('signInUrl', () => {
-  it('points at the start route under the mount point', () => {
-    expect(createPanelApi('/pairing', stubFetch([]).fetch).signInUrl()).toBe(
-      '/pairing/auth/github/start',
+    await expect(createPanelApi('', stub.fetch).fetchTargets()).rejects.toEqual(
+      expect.objectContaining<Partial<PanelApiError>>({
+        status: 502,
+        code: 'unknown',
+        message: 'panel request failed with status 502',
+      }),
     );
-  });
-});
-
-// A reverse proxy or a crashed process can answer with something that is not
-// the panel's envelope; the reader still needs to see that the call failed.
-describe('non-envelope failures', () => {
-  it('falls back to the status line', async () => {
-    const stub = stubFetch([new Response('<html>502</html>', { status: 502 })]);
-    const api = createPanelApi('/panel', stub.fetch);
-
-    await expect(api.fetchAccounts()).rejects.toMatchObject({
-      status: 502,
-      code: 'unknown',
-      message: 'panel request failed with status 502',
-    });
-  });
-});
-
-describe('setCanPair', () => {
-  it('posts to approve or revoke and returns the updated account', async () => {
-    const approved = { ...VIEWER.account, can_pair: true };
-    const stub = stubFetch([jsonResponse(200, approved), jsonResponse(200, VIEWER.account)]);
-    const api = createPanelApi('/panel', stub.fetch);
-
-    await expect(api.setCanPair('acc_1', true)).resolves.toEqual(approved);
-    expect(stub.calls[0]?.url).toBe('/panel/api/accounts/acc_1/approve');
-    expect(stub.calls[0]?.init?.method).toBe('POST');
-
-    await api.setCanPair('acc_1', false);
-    expect(stub.calls[1]?.url).toBe('/panel/api/accounts/acc_1/revoke');
-  });
-
-  // An id is server-generated, but building a path by concatenation is how a
-  // future id containing a slash would silently address another route.
-  it('escapes the account id into the path', async () => {
-    const stub = stubFetch([jsonResponse(200, VIEWER.account)]);
-    const api = createPanelApi('/panel', stub.fetch);
-
-    await api.setCanPair('a/b', true);
-
-    expect(stub.calls[0]?.url).toBe('/panel/api/accounts/a%2Fb/approve');
-  });
-
-  // `encodeURIComponent` leaves the dot alone, so this is the one that would
-  // survive as a segment and get resolved away into the route above.
-  it('escapes a dotted account id so it cannot climb a level', async () => {
-    const stub = stubFetch([jsonResponse(200, VIEWER.account)]);
-    const api = createPanelApi('/panel', stub.fetch);
-
-    await api.setCanPair('..', true);
-
-    expect(stub.calls[0]?.url).toBe('/panel/api/accounts/%2E%2E/approve');
-  });
-
-  it('surfaces a refusal', async () => {
-    const stub = stubFetch([
-      jsonResponse(403, { error: { code: 'forbidden', message: 'owner only' } }),
-    ]);
-    const api = createPanelApi('/panel', stub.fetch);
-
-    await expect(api.setCanPair('acc_1', true)).rejects.toMatchObject({
-      status: 403,
-      code: 'forbidden',
-    });
-  });
-});
-
-describe('createPairLink', () => {
-  it('returns the link the daemon minted', async () => {
-    const link = {
-      pairing_id: 'pair-1',
-      role: 'operator',
-      scopes: ['read', 'write'],
-      expires_at: '2026-07-25T10:10:00Z',
-      pairing_url: 'harness://pair?payload=abc',
-    };
-    const stub = stubFetch([jsonResponse(200, link)]);
-    const api = createPanelApi('/panel', stub.fetch);
-
-    await expect(api.createPairLink()).resolves.toEqual(link);
-    expect(stub.calls[0]?.url).toBe('/panel/api/pair-links');
-    expect(stub.calls[0]?.init?.method).toBe('POST');
-  });
-
-  // An account the owner has not approved gets a 403, and the page has to show
-  // the panel's own sentence rather than a generic failure.
-  it('surfaces the reason an unapproved account is refused', async () => {
-    const stub = stubFetch([
-      jsonResponse(403, {
-        error: { code: 'forbidden', message: 'the panel owner has not allowed this account' },
-      }),
-    ]);
-    const api = createPanelApi('/panel', stub.fetch);
-
-    await expect(api.createPairLink()).rejects.toMatchObject({
-      status: 403,
-      message: 'the panel owner has not allowed this account',
-    });
-  });
-
-  it('surfaces a panel that has not paired with the daemon', async () => {
-    const stub = stubFetch([
-      jsonResponse(503, {
-        error: { code: 'unavailable', message: 'the panel has not paired with the daemon yet' },
-      }),
-    ]);
-    const api = createPanelApi('/panel', stub.fetch);
-
-    await expect(api.createPairLink()).rejects.toMatchObject({
-      status: 503,
-      code: 'unavailable',
-    });
-  });
-});
-
-describe('fetchPairings', () => {
-  const pairing = {
-    pairing_id: 'pair-1',
-    state: 'active',
-    role: 'operator',
-    created_at: '2026-07-26T10:00:00Z',
-    expires_at: '2026-07-26T10:10:00Z',
-    account_id: 'acc_1',
-  };
-
-  it('returns the pairing list and the daemon that answered', async () => {
-    const stub = stubFetch([jsonResponse(200, { daemon_version: '52.0.0', pairings: [pairing] })]);
-    const api = createPanelApi('/panel', stub.fetch);
-
-    await expect(api.fetchPairings()).resolves.toEqual({
-      daemon_version: '52.0.0',
-      pairings: [pairing],
-    });
-    expect(stub.calls[0]?.url).toBe('/panel/api/pairings');
-  });
-
-  // A daemon older than the field answers the route without it, and the
-  // pairings are the point of the call.
-  it('reads a list from a daemon that reports no version', async () => {
-    const stub = stubFetch([jsonResponse(200, { pairings: [pairing] })]);
-    const api = createPanelApi('/panel', stub.fetch);
-
-    await expect(api.fetchPairings()).resolves.toEqual({ pairings: [pairing] });
-  });
-
-  it('surfaces a daemon the panel cannot reach', async () => {
-    const stub = stubFetch([
-      jsonResponse(503, {
-        error: { code: 'unavailable', message: 'the panel has not paired with the daemon yet' },
-      }),
-    ]);
-    const api = createPanelApi('/panel', stub.fetch);
-
-    await expect(api.fetchPairings()).rejects.toMatchObject({ status: 503 });
-  });
-});
-
-describe('revokePairing', () => {
-  it('posts to the revoke route and returns what it did', async () => {
-    const revoked = {
-      pairing_id: 'pair-1',
-      outcome: 'device_revoked',
-      revoked_at: '2026-07-26T11:00:00Z',
-    };
-    const stub = stubFetch([jsonResponse(200, revoked)]);
-    const api = createPanelApi('/panel', stub.fetch);
-
-    await expect(api.revokePairing('pair-1')).resolves.toEqual(revoked);
-    expect(stub.calls[0]?.url).toBe('/panel/api/pairings/pair-1/revoke');
-    expect(stub.calls[0]?.init?.method).toBe('POST');
-  });
-
-  // The id is the daemon's, but building a path by concatenation is how one
-  // containing a slash would silently address another route.
-  it('escapes the pairing id into the path', async () => {
-    const stub = stubFetch([
-      jsonResponse(200, { pairing_id: 'a/b', outcome: 'link_withdrawn', revoked_at: 'now' }),
-    ]);
-    const api = createPanelApi('/panel', stub.fetch);
-
-    await api.revokePairing('a/b');
-
-    expect(stub.calls[0]?.url).toBe('/panel/api/pairings/a%2Fb/revoke');
-  });
-
-  // The dot is the one `encodeURIComponent` passes through, so `..` would reach
-  // the request as a real segment and be resolved away, sending a revoke to
-  // whatever sits one level up. The Rust client escapes it for the same reason.
-  it('escapes a dotted pairing id so it cannot climb a level', async () => {
-    const stub = stubFetch([
-      jsonResponse(200, { pairing_id: '..', outcome: 'link_withdrawn', revoked_at: 'now' }),
-    ]);
-    const api = createPanelApi('/panel', stub.fetch);
-
-    await api.revokePairing('..');
-
-    expect(stub.calls[0]?.url).toBe('/panel/api/pairings/%2E%2E/revoke');
-  });
-
-  // The panel answers this for a pairing that belongs to somebody else and for
-  // one that does not exist, deliberately alike, and the page shows its
-  // sentence rather than guessing which it was.
-  it('surfaces a pairing that is not the viewer to withdraw', async () => {
-    const stub = stubFetch([
-      jsonResponse(403, {
-        error: {
-          code: 'forbidden',
-          message: 'no pairing with that id is available to this account',
-        },
-      }),
-    ]);
-    const api = createPanelApi('/panel', stub.fetch);
-
-    await expect(api.revokePairing('pair-1')).rejects.toMatchObject({
-      status: 403,
-      message: 'no pairing with that id is available to this account',
-    });
   });
 });

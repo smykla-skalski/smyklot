@@ -16,7 +16,6 @@ import (
 
 	"github.com/smykla-skalski/smyklot/internal/githubtest"
 	"github.com/smykla-skalski/smyklot/pkg/config"
-	"github.com/smykla-skalski/smyklot/pkg/github"
 	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
 
@@ -202,10 +201,7 @@ var _ = Describe("Choosing an entry point [Unit]", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			srv.configs = newRepoCache(configTTL,
-				func(ctx context.Context, client *github.Client, owner, repo string) (*config.Config, error) {
-					return effectiveConfig(ctx, client, owner, repo, config.Default())
-				})
+			srv.configs = newRepoCache(configTTL, fetchRepositoryConfig)
 
 			workers := srv.startWorkers()
 			DeferCleanup(func() {

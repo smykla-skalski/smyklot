@@ -23,6 +23,14 @@ var serveEnv = []string{
 	envPollInterval,
 	envLogFormat,
 	envLogLevel,
+	envPanelOrigin,
+	envPanelBase,
+	envPanelState,
+	envPanelOwner,
+	envPanelTTL,
+	envAppSecret,
+	envGitHubAuthURL,
+	envGitHubTokenURL,
 	envAPIBaseURL,
 	envBotUsername,
 	envGitHubAppClientID,
@@ -55,6 +63,11 @@ func loadServe(env map[string]string, args ...string) (*serveConfig, error) {
 	cmd.Flags().Duration(flagPollInterval, defaultPollInterval, descPollInterval)
 	cmd.Flags().String(flagLogFormat, defaultLogFormat, descLogFormat)
 	cmd.Flags().String(flagLogLevel, defaultLogLevel, descLogLevel)
+	cmd.Flags().String(flagPanelOrigin, "", descPanelOrigin)
+	cmd.Flags().String(flagPanelBase, defaultPanelBase, descPanelBase)
+	cmd.Flags().String(flagPanelState, defaultPanelState, descPanelState)
+	cmd.Flags().String(flagPanelOwner, "", descPanelOwner)
+	cmd.Flags().Duration(flagPanelTTL, defaultPanelTTL, descPanelTTL)
 
 	if err := cmd.ParseFlags(args); err != nil {
 		return nil, err
@@ -235,5 +248,112 @@ var _ = Describe("Serve configuration [Unit]", func() {
 
 		Expect(cfg.botConfig.QuietSuccess).To(BeTrue())
 		Expect(cfg.botConfig.CommandPrefix).To(Equal("!"))
+	})
+
+	Describe("Panel configuration", func() {
+		var enabledPanel = map[string]string{
+			envPanelOrigin:       "https://smyklot.example",
+			envPanelOwner:        "smykla-skalski",
+			envGitHubAppClientID: "Iv1.panel",
+			envAppSecret:         "oauth-secret",
+		}
+
+		It("should remain disabled without a public origin", func() {
+			cfg, err := loadServe(nil)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.panel).To(BeNil())
+		})
+
+		It("should apply safe defaults when enabled", func() {
+			cfg, err := loadServe(enabledPanel)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(cfg.panel).To(Equal(&panelServeConfig{
+				publicOrigin: "https://smyklot.example",
+				basePath:     defaultPanelBase,
+				statePath:    defaultPanelState,
+				ownerLogin:   "smykla-skalski",
+				clientID:     "Iv1.panel",
+				clientSecret: "oauth-secret",
+				authorizeURL: defaultGitHubAuthURL,
+				tokenURL:     defaultGitHubTokenURL,
+				sessionTTL:   defaultPanelTTL,
+			}))
+		})
+
+		It("should allow the panel to own the public root", func() {
+			env := map[string]string{
+				envPanelOrigin:       "https://smyklot.com",
+				envPanelBase:         "/",
+				envPanelOwner:        "bartsmykla",
+				envGitHubAppClientID: "Iv1.panel",
+				envAppSecret:         "oauth-secret",
+			}
+
+			cfg, err := loadServe(env)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.panel.basePath).To(BeEmpty())
+		})
+
+		It("should let explicit flags override panel environment values", func() {
+			env := map[string]string{
+				envPanelOrigin:       "https://old.example",
+				envPanelBase:         "/old",
+				envPanelState:        "/tmp/old.sqlite3",
+				envPanelOwner:        "old-owner",
+				envPanelTTL:          "24h",
+				envGitHubAppClientID: "Iv1.panel",
+				envAppSecret:         "oauth-secret",
+			}
+
+			cfg, err := loadServe(env,
+				"--panel-public-origin", "https://new.example",
+				"--panel-base-path", "/admin",
+				"--panel-state-path", "/tmp/new.sqlite3",
+				"--panel-owner", "new-owner",
+				"--panel-session-ttl", "2h",
+			)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(cfg.panel.publicOrigin).To(Equal("https://new.example"))
+			Expect(cfg.panel.basePath).To(Equal("/admin"))
+			Expect(cfg.panel.statePath).To(Equal("/tmp/new.sqlite3"))
+			Expect(cfg.panel.ownerLogin).To(Equal("new-owner"))
+			Expect(cfg.panel.sessionTTL).To(Equal(2 * time.Hour))
+		})
+
+		DescribeTable("should reject incomplete enabled panel configuration",
+			func(name string) {
+				env := map[string]string{
+					envPanelOrigin:       "https://smyklot.example",
+					envPanelOwner:        "smykla-skalski",
+					envGitHubAppClientID: "Iv1.panel",
+					envAppSecret:         "oauth-secret",
+				}
+				env[name] = ""
+
+				_, err := loadServe(env)
+				Expect(err).To(MatchError(ErrPanelConfig))
+			},
+			Entry("without an owner", envPanelOwner),
+			Entry("without an OAuth client ID", envGitHubAppClientID),
+			Entry("without an OAuth secret", envAppSecret),
+		)
+
+		DescribeTable("should reject unsafe panel settings",
+			func(env map[string]string) {
+				for name, value := range enabledPanel {
+					if _, present := env[name]; !present {
+						env[name] = value
+					}
+				}
+
+				_, err := loadServe(env)
+				Expect(err).To(MatchError(ContainSubstring(ErrPanelConfig.Error())))
+			},
+			Entry("with a non-positive session TTL", map[string]string{envPanelTTL: "0"}),
+			Entry("at the webhook route", map[string]string{envPanelBase: defaultWebhookPath}),
+			Entry("at the health route", map[string]string{envPanelBase: healthPath}),
+		)
 	})
 })

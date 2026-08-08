@@ -33,6 +33,7 @@ var _ = Describe("ParseIssueComment [Unit]", func() {
 		Expect(event.Comment.User.Login).To(Equal("someone"))
 		Expect(event.Issue.Number).To(Equal(42))
 		Expect(event.Repository.Owner.Login).To(Equal("smykla-skalski"))
+		Expect(event.Repository.ID).To(Equal(int64(githubtest.DefaultRepoID)))
 		Expect(event.Repository.Name).To(Equal("smyklot"))
 		Expect(event.Installation.ID).To(Equal(int64(987)))
 	})

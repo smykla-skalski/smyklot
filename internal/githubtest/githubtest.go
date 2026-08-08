@@ -61,6 +61,7 @@ const (
 	DefaultPRNumber      = 42
 	DefaultRepoOwner     = "smykla-skalski"
 	DefaultRepoName      = "smyklot"
+	DefaultRepoID        = 123456
 	DefaultAuthor        = "someone"
 	DefaultInstallation  = 987
 	DefaultUpdatedAt     = "2026-08-08T10:00:00Z"
@@ -96,6 +97,7 @@ func IssueCommentPayload(event IssueComment) []byte {
 		},
 		"issue": {"number": %d, "pull_request": %s},
 		"repository": {
+			"id": %d,
 			"name": %q,
 			"full_name": "%s/%s",
 			"owner": {"login": %q}
@@ -106,7 +108,7 @@ func IssueCommentPayload(event IssueComment) []byte {
 		DefaultCommentID, event.Body, event.UpdatedAt,
 		DefaultAuthor, event.AuthorType,
 		DefaultPRNumber, pullRequest,
-		DefaultRepoName, DefaultRepoOwner, DefaultRepoName, DefaultRepoOwner,
+		DefaultRepoID, DefaultRepoName, DefaultRepoOwner, DefaultRepoName, DefaultRepoOwner,
 		DefaultInstallation,
 	)
 }

@@ -1,4 +1,4 @@
 dist/
 node_modules/
-.harness-panel-install.lock/
-.harness-panel-install.lock.stale-*
+.smyklot-panel-install.lock/
+.smyklot-panel-install.lock.stale-*

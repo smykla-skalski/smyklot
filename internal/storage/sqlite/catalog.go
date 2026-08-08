@@ -1,0 +1,584 @@
+package sqlite
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"time"
+
+	"github.com/smykla-skalski/smyklot/internal/storage"
+)
+
+const targetSelect = `
+SELECT
+    t.id,
+    t.installation_id,
+    t.kind,
+    t.available,
+    t.repository_default_enabled,
+    t.config_patch,
+    t.revision,
+    t.settings_updated_at,
+    a.id,
+    a.provider,
+    a.subject_id,
+    a.login,
+    a.display_name,
+    a.avatar_url,
+    a.updated_at,
+    COALESCE(SUM(CASE WHEN r.available = 1 THEN 1 ELSE 0 END), 0),
+    COALESCE(SUM(CASE
+        WHEN r.available = 1
+         AND COALESCE(r.enabled_override, t.repository_default_enabled) = 1
+        THEN 1 ELSE 0 END), 0)
+FROM targets t
+JOIN accounts a ON a.id = t.account_id
+LEFT JOIN repositories r ON r.target_id = t.id`
+
+// ReconcileInstallation replaces GitHub-owned catalog state while preserving
+// every panel-owned control and revision.
+func (s *Store) ReconcileInstallation(
+	ctx context.Context,
+	snapshot storage.InstallationSnapshot,
+) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin installation reconcile: %w", err)
+	}
+
+	defer func() { _ = tx.Rollback() }()
+
+	if err := reconcileInstallation(ctx, tx, snapshot); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit installation reconcile: %w", err)
+	}
+
+	return nil
+}
+
+// ReconcileCatalog replaces the complete available installation catalog in a
+// single transaction. A target omitted by GitHub becomes unavailable without
+// losing panel-owned settings if the App is installed again later.
+func (s *Store) ReconcileCatalog(
+	ctx context.Context,
+	snapshots []storage.InstallationSnapshot,
+) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin catalog reconcile: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, "UPDATE targets SET available = 0"); err != nil {
+		return fmt.Errorf("mark installation targets unavailable: %w", err)
+	}
+	for _, snapshot := range snapshots {
+		if err := reconcileInstallation(ctx, tx, snapshot); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit catalog reconcile: %w", err)
+	}
+
+	return nil
+}
+
+func reconcileInstallation(
+	ctx context.Context,
+	tx *sql.Tx,
+	snapshot storage.InstallationSnapshot,
+) error {
+	if err := upsertCatalogAccount(ctx, tx, snapshot.Account); err != nil {
+		return fmt.Errorf("reconcile installation account: %w", err)
+	}
+	if err := upsertTarget(ctx, tx, snapshot); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(
+		ctx,
+		"UPDATE repositories SET available = 0 WHERE target_id = ?",
+		snapshot.TargetID,
+	); err != nil {
+		return fmt.Errorf("mark installation repositories unavailable: %w", err)
+	}
+	for _, repository := range snapshot.Repositories {
+		if err := upsertRepository(ctx, tx, snapshot.TargetID, repository, snapshot.SyncedAt); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func upsertCatalogAccount(
+	ctx context.Context,
+	tx *sql.Tx,
+	account storage.Account,
+) error {
+	_, err := tx.ExecContext(ctx, `
+INSERT INTO accounts (id, provider, subject_id, login, display_name, avatar_url, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+    provider = excluded.provider,
+    subject_id = excluded.subject_id,
+    login = excluded.login,
+    display_name = CASE
+        WHEN excluded.display_name = excluded.login THEN accounts.display_name
+        ELSE excluded.display_name
+    END,
+    avatar_url = COALESCE(excluded.avatar_url, accounts.avatar_url),
+    updated_at = excluded.updated_at`,
+		account.ID,
+		account.Provider,
+		account.SubjectID,
+		account.Login,
+		account.DisplayName,
+		account.AvatarURL,
+		formatTime(account.UpdatedAt),
+	)
+	if err != nil {
+		return fmt.Errorf("upsert installation account: %w", err)
+	}
+
+	return nil
+}
+
+// ReplaceAccountAccess atomically replaces the targets a recently verified
+// account may administer.
+func (s *Store) ReplaceAccountAccess(
+	ctx context.Context,
+	accountID string,
+	targetIDs []string,
+	verifiedAt time.Time,
+) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin target access replace: %w", err)
+	}
+
+	defer func() { _ = tx.Rollback() }()
+	if err := replaceAccountAccess(ctx, tx, accountID, targetIDs, verifiedAt); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit target access replace: %w", err)
+	}
+
+	return nil
+}
+
+// ReplaceOwnerAccess keeps an already authenticated panel owner's target list
+// current when maintenance discovers installation changes. Before the first
+// owner signs in there is deliberately nothing to grant.
+func (s *Store) ReplaceOwnerAccess(
+	ctx context.Context,
+	targetIDs []string,
+	verifiedAt time.Time,
+) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin owner target access replace: %w", err)
+	}
+
+	defer func() { _ = tx.Rollback() }()
+
+	accountID, found, err := panelOwnerAccountID(ctx, tx)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return nil
+	}
+	if err := replaceAccountAccess(ctx, tx, accountID, targetIDs, verifiedAt); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit owner target access replace: %w", err)
+	}
+
+	return nil
+}
+
+// GrantOwnerAccess adds one newly discovered installation to the existing
+// panel owner's catalog without revoking access to installations that another
+// sweep iteration could not refresh. Before the first sign-in it is a no-op.
+func (s *Store) GrantOwnerAccess(
+	ctx context.Context,
+	targetID string,
+	verifiedAt time.Time,
+) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin owner target access grant: %w", err)
+	}
+
+	defer func() { _ = tx.Rollback() }()
+	accountID, found, err := panelOwnerAccountID(ctx, tx)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return nil
+	}
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO target_access (account_id, target_id, verified_at)
+VALUES (?, ?, ?)
+ON CONFLICT(account_id, target_id) DO UPDATE SET
+    verified_at = excluded.verified_at`, accountID, targetID, formatTime(verifiedAt)); err != nil {
+		return fmt.Errorf("grant owner target access: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit owner target access grant: %w", err)
+	}
+
+	return nil
+}
+
+func panelOwnerAccountID(ctx context.Context, tx *sql.Tx) (string, bool, error) {
+	var accountID string
+	if err := tx.QueryRowContext(ctx, `
+SELECT account_id FROM panel_owner WHERE singleton = 1`).Scan(&accountID); err != nil {
+		if err == sql.ErrNoRows {
+			return "", false, nil
+		}
+
+		return "", false, fmt.Errorf("read panel owner for target access: %w", err)
+	}
+
+	return accountID, true, nil
+}
+
+func replaceAccountAccess(
+	ctx context.Context,
+	tx *sql.Tx,
+	accountID string,
+	targetIDs []string,
+	verifiedAt time.Time,
+) error {
+	if _, err := tx.ExecContext(ctx, "DELETE FROM target_access WHERE account_id = ?", accountID); err != nil {
+		return fmt.Errorf("clear target access: %w", err)
+	}
+
+	seen := make(map[string]struct{}, len(targetIDs))
+	for _, targetID := range targetIDs {
+		if _, exists := seen[targetID]; exists {
+			continue
+		}
+
+		seen[targetID] = struct{}{}
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO target_access (account_id, target_id, verified_at)
+VALUES (?, ?, ?)`, accountID, targetID, formatTime(verifiedAt)); err != nil {
+			return fmt.Errorf("grant target access: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// ListTargets returns available installations an account may administer.
+func (s *Store) ListTargets(ctx context.Context, accountID string) ([]storage.Target, error) {
+	rows, err := s.db.QueryContext(ctx, targetSelect+`
+JOIN target_access ta ON ta.target_id = t.id
+WHERE ta.account_id = ? AND t.available = 1
+GROUP BY t.id, a.id
+ORDER BY a.login`, accountID)
+	if err != nil {
+		return nil, fmt.Errorf("list targets: %w", err)
+	}
+
+	targets, err := collectRows(rows, scanTarget)
+	if err != nil {
+		return nil, fmt.Errorf("read targets: %w", err)
+	}
+
+	return targets, nil
+}
+
+// CanAccessTarget reports whether a recently verified account may administer
+// the target. Unavailable installations are never accessible.
+func (s *Store) CanAccessTarget(
+	ctx context.Context,
+	accountID, targetID string,
+) (bool, error) {
+	var allowed int
+	if err := s.db.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM target_access ta
+JOIN targets t ON t.id = ta.target_id
+WHERE ta.account_id = ? AND ta.target_id = ? AND t.available = 1`,
+		accountID,
+		targetID,
+	).Scan(&allowed); err != nil {
+		return false, fmt.Errorf("check target access: %w", err)
+	}
+
+	return allowed == 1, nil
+}
+
+// GetTarget returns one installation regardless of viewer access.
+func (s *Store) GetTarget(ctx context.Context, targetID string) (storage.Target, error) {
+	target, err := getTarget(ctx, s.db, targetID)
+	if err != nil {
+		return storage.Target{}, fmt.Errorf("get target: %w", noRows(err))
+	}
+
+	return target, nil
+}
+
+// ListRepositories returns currently available repositories for a target.
+func (s *Store) ListRepositories(
+	ctx context.Context,
+	targetID string,
+) ([]storage.Repository, error) {
+	rows, err := s.db.QueryContext(ctx, repositorySelect+`
+WHERE target_id = ? AND available = 1
+ORDER BY full_name`, targetID)
+	if err != nil {
+		return nil, fmt.Errorf("list repositories: %w", err)
+	}
+
+	repositories, err := collectRows(rows, scanRepository)
+	if err != nil {
+		return nil, fmt.Errorf("read repositories: %w", err)
+	}
+
+	return repositories, nil
+}
+
+// GetRepository returns one repository belonging to the given target.
+func (s *Store) GetRepository(
+	ctx context.Context,
+	targetID, repositoryID string,
+) (storage.Repository, error) {
+	repository, err := getRepository(ctx, s.db, targetID, repositoryID)
+	if err != nil {
+		return storage.Repository{}, fmt.Errorf("get repository: %w", noRows(err))
+	}
+
+	return repository, nil
+}
+
+func upsertTarget(
+	ctx context.Context,
+	tx *sql.Tx,
+	snapshot storage.InstallationSnapshot,
+) error {
+	_, err := tx.ExecContext(ctx, `
+INSERT INTO targets (
+    id, installation_id, kind, account_id, available,
+    repository_default_enabled, config_patch, revision,
+    settings_updated_at, synced_at
+)
+VALUES (?, ?, ?, ?, 1, 0, '{}', 1, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+    installation_id = excluded.installation_id,
+    kind = excluded.kind,
+    account_id = excluded.account_id,
+    available = 1,
+    synced_at = excluded.synced_at`,
+		snapshot.TargetID,
+		snapshot.InstallationID,
+		snapshot.Kind,
+		snapshot.Account.ID,
+		formatTime(snapshot.SyncedAt),
+		formatTime(snapshot.SyncedAt),
+	)
+	if err != nil {
+		return fmt.Errorf("upsert installation target: %w", err)
+	}
+
+	return nil
+}
+
+func upsertRepository(
+	ctx context.Context,
+	tx *sql.Tx,
+	targetID string,
+	repository storage.RepositorySnapshot,
+	syncedAt time.Time,
+) error {
+	_, err := tx.ExecContext(ctx, `
+INSERT INTO repositories (
+    id, target_id, name, full_name, private, available,
+    enabled_override, config_patch, ignore_repository_file,
+    config_file_status, config_file_patch, revision,
+    settings_updated_at, synced_at
+)
+VALUES (?, ?, ?, ?, ?, 1, NULL, '{}', 0, 'missing', '{}', 1, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+    target_id = excluded.target_id,
+    name = excluded.name,
+    full_name = excluded.full_name,
+    private = excluded.private,
+    available = 1,
+    synced_at = excluded.synced_at`,
+		repository.ID,
+		targetID,
+		repository.Name,
+		repository.FullName,
+		repository.Private,
+		formatTime(syncedAt),
+		formatTime(syncedAt),
+	)
+	if err != nil {
+		return fmt.Errorf("upsert installation repository: %w", err)
+	}
+
+	return nil
+}
+
+func getTarget(
+	ctx context.Context,
+	queryer rowQuerier,
+	targetID string,
+) (storage.Target, error) {
+	return scanTarget(queryer.QueryRowContext(ctx, targetSelect+`
+WHERE t.id = ?
+GROUP BY t.id, a.id`, targetID))
+}
+
+func scanTarget(scanner rowScanner) (storage.Target, error) {
+	var target storage.Target
+	var avatarURL sql.NullString
+	var targetPatch, targetUpdatedAt, accountUpdatedAt string
+	var enabled int
+
+	err := scanner.Scan(
+		&target.ID,
+		&target.InstallationID,
+		&target.Kind,
+		&target.Available,
+		&target.RepositoryDefaultEnabled,
+		&targetPatch,
+		&target.Revision,
+		&targetUpdatedAt,
+		&target.Account.ID,
+		&target.Account.Provider,
+		&target.Account.SubjectID,
+		&target.Account.Login,
+		&target.Account.DisplayName,
+		&avatarURL,
+		&accountUpdatedAt,
+		&target.RepositoryCounts.Total,
+		&enabled,
+	)
+	if err != nil {
+		return storage.Target{}, err
+	}
+
+	target.Account.AvatarURL = stringPointer(avatarURL)
+	target.RepositoryCounts.Enabled = enabled
+	target.RepositoryCounts.Disabled = target.RepositoryCounts.Total - enabled
+
+	return finishTarget(target, targetPatch, targetUpdatedAt, accountUpdatedAt)
+}
+
+func finishTarget(
+	target storage.Target,
+	patch, targetUpdatedAt, accountUpdatedAt string,
+) (storage.Target, error) {
+	var err error
+	target.ConfigPatch, err = unmarshalPatch(patch)
+	if err != nil {
+		return storage.Target{}, err
+	}
+
+	target.UpdatedAt, err = parseTime(targetUpdatedAt)
+	if err != nil {
+		return storage.Target{}, err
+	}
+
+	target.Account.UpdatedAt, err = parseTime(accountUpdatedAt)
+
+	return target, err
+}
+
+const repositorySelect = `
+SELECT
+    id,
+    target_id,
+    name,
+    full_name,
+    private,
+    available,
+    enabled_override,
+    config_patch,
+    ignore_repository_file,
+    config_file_status,
+    config_file_patch,
+    config_file_error,
+    revision,
+    settings_updated_at
+FROM repositories
+`
+
+func getRepository(
+	ctx context.Context,
+	queryer rowQuerier,
+	targetID, repositoryID string,
+) (storage.Repository, error) {
+	return scanRepository(queryer.QueryRowContext(ctx, repositorySelect+`
+WHERE target_id = ? AND id = ?`, targetID, repositoryID))
+}
+
+func scanRepository(scanner rowScanner) (storage.Repository, error) {
+	var repository storage.Repository
+	var enabledOverride sql.NullBool
+	var fileError sql.NullString
+	var panelPatch, filePatch, updatedAt string
+
+	err := scanner.Scan(
+		&repository.ID,
+		&repository.TargetID,
+		&repository.Name,
+		&repository.FullName,
+		&repository.Private,
+		&repository.Available,
+		&enabledOverride,
+		&panelPatch,
+		&repository.IgnoreRepositoryFile,
+		&repository.ConfigFileStatus,
+		&filePatch,
+		&fileError,
+		&repository.Revision,
+		&updatedAt,
+	)
+	if err != nil {
+		return storage.Repository{}, err
+	}
+
+	repository.EnabledOverride = boolPointer(enabledOverride)
+	repository.ConfigFileError = stringPointer(fileError)
+	if repository.IgnoreRepositoryFile {
+		repository.ConfigFileStatus = storage.RepositoryFileBypassed
+	}
+
+	return finishRepository(repository, panelPatch, filePatch, updatedAt)
+}
+
+func finishRepository(
+	repository storage.Repository,
+	panelPatch, filePatch, updatedAt string,
+) (storage.Repository, error) {
+	var err error
+	repository.ConfigPatch, err = unmarshalPatch(panelPatch)
+	if err != nil {
+		return storage.Repository{}, err
+	}
+
+	repository.ConfigFilePatch, err = unmarshalPatch(filePatch)
+	if err != nil {
+		return storage.Repository{}, err
+	}
+
+	repository.UpdatedAt, err = parseTime(updatedAt)
+
+	return repository, err
+}

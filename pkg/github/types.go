@@ -9,17 +9,35 @@ type Installation struct {
 	// minted for
 	ID int64
 
+	// AccountID is the immutable GitHub id of the installation owner.
+	AccountID int64
+
 	// Account is the login of the user or organization that installed the App
 	Account string
+
+	// AccountType is either Organization or User.
+	AccountType string
+
+	// AvatarURL is the public avatar of the installation owner.
+	AvatarURL string
 }
 
 // Repository identifies a repository an installation can reach
 type Repository struct {
+	// ID is the immutable GitHub repository id.
+	ID int64
+
 	// Owner is the repository owner's login
 	Owner string
 
 	// Name is the repository name
 	Name string
+
+	// FullName is GitHub's canonical owner/name spelling.
+	FullName string
+
+	// Private reports whether repository contents require authentication.
+	Private bool
 }
 
 // MergeableState represents the merge state of a PR from GitHub REST API

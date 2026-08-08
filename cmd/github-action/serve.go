@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -25,6 +26,11 @@ const (
 	flagPollInterval = "poll-interval"
 	flagLogFormat    = "log-format"
 	flagLogLevel     = "log-level"
+	flagPanelOrigin  = "panel-public-origin"
+	flagPanelBase    = "panel-base-path"
+	flagPanelState   = "panel-state-path"
+	flagPanelOwner   = "panel-owner"
+	flagPanelTTL     = "panel-session-ttl"
 
 	descListen       = "Address to listen on"
 	descAdminListen  = "Address to serve probes, metrics and recent failures on"
@@ -32,14 +38,27 @@ const (
 	descPollInterval = "How often to sweep reactions and pending-CI PRs (0 disables)"
 	descLogFormat    = "Log format: json or text"
 	descLogLevel     = "Log level: debug, info, warn or error"
+	descPanelOrigin  = "Public origin for the panel (empty disables it)"
+	descPanelBase    = "Path subtree that serves the panel"
+	descPanelState   = "Path to the panel SQLite database"
+	descPanelOwner   = "GitHub login allowed to claim panel ownership"
+	descPanelTTL     = "How long a signed-in panel session remains valid"
 
-	envListenAddress = "SMYKLOT_LISTEN_ADDRESS"
-	envAdminAddress  = "SMYKLOT_ADMIN_ADDRESS"
-	envWebhookPath   = "SMYKLOT_WEBHOOK_PATH"
-	envWebhookSecret = "SMYKLOT_WEBHOOK_SECRET" //nolint:gosec // Environment variable name, not a credential
-	envPollInterval  = "SMYKLOT_POLL_INTERVAL"
-	envLogFormat     = "SMYKLOT_LOG_FORMAT"
-	envLogLevel      = "SMYKLOT_LOG_LEVEL"
+	envListenAddress  = "SMYKLOT_LISTEN_ADDRESS"
+	envAdminAddress   = "SMYKLOT_ADMIN_ADDRESS"
+	envWebhookPath    = "SMYKLOT_WEBHOOK_PATH"
+	envWebhookSecret  = "SMYKLOT_WEBHOOK_SECRET" //nolint:gosec // Environment variable name, not a credential
+	envPollInterval   = "SMYKLOT_POLL_INTERVAL"
+	envLogFormat      = "SMYKLOT_LOG_FORMAT"
+	envLogLevel       = "SMYKLOT_LOG_LEVEL"
+	envPanelOrigin    = "SMYKLOT_PANEL_PUBLIC_ORIGIN"
+	envPanelBase      = "SMYKLOT_PANEL_BASE_PATH"
+	envPanelState     = "SMYKLOT_PANEL_STATE_PATH"
+	envPanelOwner     = "SMYKLOT_PANEL_OWNER"
+	envPanelTTL       = "SMYKLOT_PANEL_SESSION_TTL"
+	envAppSecret      = "GITHUB_APP_CLIENT_SECRET" //nolint:gosec // Environment variable name, not a credential
+	envGitHubAuthURL  = "SMYKLOT_GITHUB_AUTHORIZE_URL"
+	envGitHubTokenURL = "SMYKLOT_GITHUB_TOKEN_URL" //nolint:gosec // Environment variable name, not a credential
 
 	defaultListenAddress = ":8080"
 	defaultAdminAddress  = ":9090"
@@ -50,7 +69,13 @@ const (
 	// not by a person. The Action keeps writing for a person to read
 	defaultLogFormat = string(logging.FormatJSON)
 
-	defaultLogLevel = "info"
+	defaultLogLevel       = "info"
+	defaultPanelBase      = "/panel"
+	defaultPanelState     = "/var/lib/smyklot/panel.sqlite3"
+	defaultPanelTTL       = 12 * time.Hour
+	defaultGitHubAPIURL   = "https://api.github.com"
+	defaultGitHubAuthURL  = "https://github.com/login/oauth/authorize"
+	defaultGitHubTokenURL = "https://github.com/login/oauth/access_token" //nolint:gosec // Public OAuth endpoint, not a credential
 
 	// healthPath answers a liveness probe on the public listener, for an
 	// ingress or a tunnel that needs one path it can reach. Everything an
@@ -60,6 +85,8 @@ const (
 
 // Sentinel errors for service configuration.
 var (
+	version = "dev"
+
 	// ErrNoWebhookSecret is returned when no webhook secret is configured.
 	// Without one, any caller that can reach the port could drive the bot
 	ErrNoWebhookSecret = errors.New("no webhook secret configured")
@@ -74,6 +101,10 @@ var (
 	// same address as the webhook listener, which would publish everything the
 	// admin listener exists to keep private
 	ErrAddressConflict = errors.New("admin address must differ from the listen address")
+
+	// ErrPanelConfig is returned when the enabled panel lacks a required
+	// public URL, owner, state path, or OAuth credential.
+	ErrPanelConfig = errors.New("invalid panel configuration")
 )
 
 var serveCmd = &cobra.Command{
@@ -94,8 +125,8 @@ Probes, metrics and recent failures are served on a second port, which is not
 meant to be public: /livez, /readyz, /metrics and /failures.
 
 Requires GitHub App credentials and a webhook secret in the environment:
-GITHUB_APP_PRIVATE_KEY, GITHUB_APP_CLIENT_ID (or GITHUB_APP_ID), and
-SMYKLOT_WEBHOOK_SECRET.`,
+GITHUB_APP_PRIVATE_KEY, GITHUB_APP_CLIENT_ID (or GITHUB_APP_ID for service-only
+JWT authentication), and SMYKLOT_WEBHOOK_SECRET.`,
 	RunE: runServe,
 }
 
@@ -106,6 +137,11 @@ func init() {
 	serveCmd.Flags().Duration(flagPollInterval, defaultPollInterval, descPollInterval)
 	serveCmd.Flags().String(flagLogFormat, defaultLogFormat, descLogFormat)
 	serveCmd.Flags().String(flagLogLevel, defaultLogLevel, descLogLevel)
+	serveCmd.Flags().String(flagPanelOrigin, "", descPanelOrigin)
+	serveCmd.Flags().String(flagPanelBase, defaultPanelBase, descPanelBase)
+	serveCmd.Flags().String(flagPanelState, defaultPanelState, descPanelState)
+	serveCmd.Flags().String(flagPanelOwner, "", descPanelOwner)
+	serveCmd.Flags().Duration(flagPanelTTL, defaultPanelTTL, descPanelTTL)
 
 	rootCmd.AddCommand(serveCmd)
 }
@@ -143,9 +179,23 @@ type serveConfig struct {
 	// botConfig is the process-wide default, which each repository's
 	// .github/smyklot.yaml is layered over
 	botConfig *config.Config
+
+	panel *panelServeConfig
 }
 
-func runServe(cmd *cobra.Command, _ []string) error {
+type panelServeConfig struct {
+	publicOrigin string
+	basePath     string
+	statePath    string
+	ownerLogin   string
+	clientID     string
+	clientSecret string
+	authorizeURL string
+	tokenURL     string
+	sessionTTL   time.Duration
+}
+
+func runServe(cmd *cobra.Command, _ []string) (runErr error) {
 	cfg, err := loadServeConfig(cmd)
 	if err != nil {
 		return err
@@ -155,6 +205,9 @@ func runServe(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+	defer func() {
+		runErr = errors.Join(runErr, server.Close())
+	}()
 
 	// A rolling update sends SIGTERM, and dropping a delivery that is already
 	// executing would leave the pull request half-handled
@@ -202,8 +255,82 @@ func loadServeConfig(cmd *cobra.Command) (*serveConfig, error) {
 	if err := applyServeFlags(cmd, cfg); err != nil {
 		return nil, err
 	}
+	if err := applyPanelFlags(cmd, cfg); err != nil {
+		return nil, err
+	}
 
 	return cfg, nil
+}
+
+func applyPanelFlags(cmd *cobra.Command, cfg *serveConfig) error {
+	origin, err := cmd.Flags().GetString(flagPanelOrigin)
+	if err != nil {
+		return err
+	}
+	origin = flagOrEnv(cmd, flagPanelOrigin, origin, envPanelOrigin)
+	if strings.TrimSpace(origin) == "" {
+		return nil
+	}
+	basePath, err := cmd.Flags().GetString(flagPanelBase)
+	if err != nil {
+		return err
+	}
+	statePath, err := cmd.Flags().GetString(flagPanelState)
+	if err != nil {
+		return err
+	}
+	owner, err := cmd.Flags().GetString(flagPanelOwner)
+	if err != nil {
+		return err
+	}
+	ttl, err := cmd.Flags().GetDuration(flagPanelTTL)
+	if err != nil {
+		return err
+	}
+	ttl, err = flagOrEnvDuration(cmd, flagPanelTTL, ttl, envPanelTTL)
+	if err != nil {
+		return fmt.Errorf("%w: invalid session TTL", ErrPanelConfig)
+	}
+
+	cfg.panel = &panelServeConfig{
+		publicOrigin: origin,
+		basePath:     normalizePanelBasePath(flagOrEnv(cmd, flagPanelBase, basePath, envPanelBase)),
+		statePath:    flagOrEnv(cmd, flagPanelState, statePath, envPanelState),
+		ownerLogin:   flagOrEnv(cmd, flagPanelOwner, owner, envPanelOwner),
+		clientID:     strings.TrimSpace(os.Getenv(envGitHubAppClientID)),
+		clientSecret: os.Getenv(envAppSecret),
+		authorizeURL: envOrDefault(envGitHubAuthURL, defaultGitHubAuthURL),
+		tokenURL:     envOrDefault(envGitHubTokenURL, defaultGitHubTokenURL),
+		sessionTTL:   ttl,
+	}
+	if strings.TrimSpace(cfg.panel.statePath) == "" ||
+		strings.TrimSpace(cfg.panel.ownerLogin) == "" ||
+		cfg.panel.clientID == "" ||
+		strings.TrimSpace(cfg.panel.clientSecret) == "" || ttl <= 0 {
+		return ErrPanelConfig
+	}
+	if cfg.panel.basePath == cfg.webhookPath || cfg.panel.basePath == healthPath {
+		return fmt.Errorf("%w: panel base path conflicts with a public service route", ErrPanelConfig)
+	}
+
+	return nil
+}
+
+func normalizePanelBasePath(basePath string) string {
+	basePath = strings.TrimSpace(basePath)
+	if basePath == "/" {
+		return ""
+	}
+
+	return basePath
+}
+
+func envOrDefault(name, fallback string) string {
+	if value := strings.TrimSpace(os.Getenv(name)); value != "" {
+		return value
+	}
+
+	return fallback
 }
 
 // applyServeFlags layers flags and their environment fallbacks onto cfg.

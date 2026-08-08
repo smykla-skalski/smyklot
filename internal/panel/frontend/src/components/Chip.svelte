@@ -1,11 +1,8 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
 
-  /**
-   * Tones name what a state means rather than which state it is, so the pairing
-   * states arriving with the inventory view map onto these without new colours.
-   */
-  export type ChipTone = 'neutral' | 'clear' | 'signal' | 'stop';
+  /** Tones name what a state means rather than which domain state it represents. */
+  export type ChipTone = 'neutral' | 'clear' | 'signal' | 'accent' | 'warning' | 'stop';
 
   const {
     tone = 'neutral',
@@ -28,5 +25,5 @@
          announce the empty element as a blank item of its own. -->
     <span class="chip-dot" aria-hidden="true"></span>
   {/if}
-  {@render children()}
+  <span class="chip-label">{@render children()}</span>
 </span>

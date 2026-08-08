@@ -14,7 +14,8 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/smykla-skalski/smyklot/pkg/config"
+	adminpanel "github.com/smykla-skalski/smyklot/internal/panel"
+	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/github"
 	"github.com/smykla-skalski/smyklot/pkg/githubapp"
 	"github.com/smykla-skalski/smyklot/pkg/logging"
@@ -36,6 +37,10 @@ const (
 	// jobTimeout caps one delivery's execution. Well beyond the handful of API
 	// calls a command makes, even with retries
 	jobTimeout = 5 * time.Minute
+
+	// deliveryFinalizationTimeout gives the durable claim a short, independent
+	// window to record the outcome after execution itself times out
+	deliveryFinalizationTimeout = 5 * time.Second
 
 	// shutdownTimeout caps how long in-flight requests get to finish
 	shutdownTimeout = 15 * time.Second
@@ -97,6 +102,8 @@ const (
 type server struct {
 	cfg    *serveConfig
 	tokens *githubapp.TokenStore
+	store  storage.Store
+	panel  *adminpanel.Server
 
 	logger   *slog.Logger
 	redactor *logging.Redactor
@@ -113,7 +120,7 @@ type server struct {
 
 	// configs and owners hold the two files every repository is read for. The
 	// sweep touches both for every repository on every tick
-	configs *repoCache[*config.Config]
+	configs *repoCache[repositoryConfigFile]
 	owners  *repoCache[string]
 
 	deduper *webhook.Deduper
@@ -131,9 +138,22 @@ type server struct {
 	queueMu     sync.RWMutex
 	queueClosed bool
 
+	// catalogMu orders complete GitHub catalog snapshots and the per-installation
+	// snapshots discovered by the sweep. Network reads are covered too, so an
+	// older read can never commit after a newer one.
+	catalogMu sync.Mutex
+
 	// jobCtx outlives the request that enqueued a job and survives shutdown
 	// being signalled, so a delivery already in the queue still completes
 	jobCtx context.Context
+
+	// deliveryRetryCtx owns outcome writes that outlive their worker attempt.
+	// The mutex prevents Close from racing a new retry into the WaitGroup.
+	deliveryRetryCtx    context.Context
+	cancelDeliveryRetry context.CancelFunc
+	deliveryRetryMu     sync.Mutex
+	deliveryRetryClosed bool
+	deliveryRetries     sync.WaitGroup
 }
 
 // job is one delivery waiting to be executed.
@@ -141,6 +161,7 @@ type job struct {
 	event      *webhook.IssueCommentEvent
 	key        string
 	deliveryID string
+	claimID    int64
 
 	// logger already carries this delivery's identifiers, so every line the
 	// work produces can be traced back to the delivery that caused it
@@ -156,7 +177,11 @@ func newServer(cfg *serveConfig) (*server, error) {
 
 	// The two values that must never reach a log line or the failures
 	// endpoint, taught to the one place that can catch them
-	redactor := logging.NewRedactor(cfg.webhookSecret, cfg.appPrivateKey)
+	secrets := [][]byte{cfg.webhookSecret, cfg.appPrivateKey}
+	if cfg.panel != nil {
+		secrets = append(secrets, []byte(cfg.panel.clientSecret))
+	}
+	redactor := logging.NewRedactor(secrets...)
 
 	registry := metrics.NewRegistry()
 
@@ -165,29 +190,43 @@ func newServer(cfg *serveConfig) (*server, error) {
 		out = os.Stdout
 	}
 
+	deliveryRetryCtx, cancelDeliveryRetry := context.WithCancel(context.Background())
 	srv := &server{
-		cfg:      cfg,
-		tokens:   tokens,
-		logger:   logging.New(out, cfg.logFormat, cfg.logLevel, redactor),
-		redactor: redactor,
-		registry: registry,
-		metrics:  metrics.New(registry),
-		configs: newRepoCache(repoConfigTTL,
-			func(ctx context.Context, client *github.Client, owner, repo string) (*config.Config, error) {
-				return effectiveConfig(ctx, client, owner, repo, cfg.botConfig)
-			}),
-		owners:    newRepoCache(codeownersTTL, fetchCodeowners),
-		readiness: newReadiness(),
-		failures:  newFailureLog(maxRecordedFailures),
-		deduper:   webhook.NewDeduper(webhook.DefaultTTL, webhook.DefaultMaxEntries, nil),
-		jobs:      make(chan job, queueDepth),
-		jobCtx:    context.Background(),
+		cfg:                 cfg,
+		tokens:              tokens,
+		logger:              logging.New(out, cfg.logFormat, cfg.logLevel, redactor),
+		redactor:            redactor,
+		registry:            registry,
+		metrics:             metrics.New(registry),
+		configs:             newRepoCache(repoConfigTTL, fetchRepositoryConfig),
+		owners:              newRepoCache(codeownersTTL, fetchCodeowners),
+		readiness:           newReadiness(),
+		failures:            newFailureLog(maxRecordedFailures),
+		deduper:             webhook.NewDeduper(webhook.DefaultTTL, webhook.DefaultMaxEntries, nil),
+		jobs:                make(chan job, queueDepth),
+		jobCtx:              context.Background(),
+		deliveryRetryCtx:    deliveryRetryCtx,
+		cancelDeliveryRetry: cancelDeliveryRetry,
 	}
 
 	metrics.RegisterQueue(registry, func() float64 { return float64(len(srv.jobs)) }, queueDepth)
 	metrics.RegisterReadiness(registry, func() bool { return srv.readiness.state().Ready })
+	if err := srv.initPanel(context.Background()); err != nil {
+		cancelDeliveryRetry()
+		return nil, err
+	}
 
 	return srv, nil
+}
+
+// Close releases optional durable service resources.
+func (s *server) Close() error {
+	s.stopDeliveryFinalizationRetries()
+	if s.store != nil {
+		return s.store.Close()
+	}
+
+	return nil
 }
 
 // handler builds the service's public routes.
@@ -204,6 +243,14 @@ func (s *server) handler() http.Handler {
 
 	verify := webhook.Middleware(s.cfg.webhookSecret, webhook.WithErrorHandler(s.rejectUnsigned))
 	mux.Handle("POST "+s.cfg.webhookPath, verify(http.HandlerFunc(s.handleDelivery)))
+	if s.panel != nil {
+		if s.cfg.panel.basePath == "" {
+			mux.Handle("/", s.panel.Handler())
+		} else {
+			mux.Handle(s.cfg.panel.basePath, s.panel.Handler())
+			mux.Handle(s.cfg.panel.basePath+"/", s.panel.Handler())
+		}
+	}
 
 	return mux
 }
@@ -331,6 +378,16 @@ func (s *server) startBackground(ctx context.Context) <-chan struct{} {
 		s.probeLoop(ctx)
 	}()
 
+	if s.store != nil {
+		running.Add(1)
+
+		go func() {
+			defer running.Done()
+
+			s.panelMaintenanceLoop(ctx)
+		}()
+	}
+
 	stopped := make(chan struct{})
 
 	go func() {
@@ -399,7 +456,6 @@ func (s *server) handleDelivery(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
-
 	s.dispatch(ctx, w, job{
 		event:      e,
 		key:        e.IdempotencyKey(),
@@ -425,7 +481,22 @@ func (s *server) reject(ctx context.Context, w http.ResponseWriter, event, messa
 func (s *server) dispatch(ctx context.Context, w http.ResponseWriter, j job) {
 	// Claiming before queueing is what makes a redelivery harmless: the second
 	// copy never reaches a worker
-	if !s.deduper.Begin(j.key) {
+	claim, err := s.beginDelivery(ctx, &j)
+	if err != nil {
+		s.count(webhook.EventIssueComment, metrics.OutcomeRefused)
+		logging.From(ctx).Error("delivery claim failed", "error", err)
+		http.Error(w, "not accepted", http.StatusServiceUnavailable)
+
+		return
+	}
+	if claim == storage.DeliveryClaimInProgress {
+		s.count(webhook.EventIssueComment, metrics.OutcomeRefused)
+		logging.From(ctx).Info("delivery is still being processed")
+		http.Error(w, "not accepted", http.StatusServiceUnavailable)
+
+		return
+	}
+	if claim == storage.DeliveryClaimRetained {
 		s.count(webhook.EventIssueComment, metrics.OutcomeDuplicate)
 		logging.From(ctx).Info("delivery already handled")
 		w.WriteHeader(http.StatusOK)
@@ -442,7 +513,16 @@ func (s *server) dispatch(ctx context.Context, w http.ResponseWriter, j job) {
 
 	// Releasing the claim keeps the delivery retryable rather than dropping it
 	// silently: GitHub records the refusal and a redelivery gets a fresh try
-	s.deduper.Abandon(j.key)
+	finalize := func(finalizationCtx context.Context) error {
+		return s.abandonDelivery(finalizationCtx, j)
+	}
+	finalizationCtx, cancelFinalization := deliveryFinalizationContext(ctx)
+	releaseErr := finalize(finalizationCtx)
+	cancelFinalization()
+	if releaseErr != nil {
+		logging.From(ctx).Error("delivery claim could not be released", "error", releaseErr)
+		s.retryDeliveryFinalization(j, "abandonment", finalize)
+	}
 	s.count(webhook.EventIssueComment, metrics.OutcomeRefused)
 	logging.From(ctx).Error("delivery not accepted, queue is full")
 	http.Error(w, "not accepted", http.StatusServiceUnavailable)
@@ -492,13 +572,29 @@ func (s *server) execute(j job) {
 	defer s.metrics.DeliveriesInFlight.Dec()
 
 	started := time.Now()
-	err := s.handleIssueComment(ctx, j.event)
+	executed := true
+	var err error
+	if s.store != nil {
+		executed, err = s.repositoryEnabled(ctx, j.event)
+	}
+	if err == nil && executed {
+		err = s.handleIssueComment(ctx, j.event)
+	}
 	elapsed := time.Since(started)
 
 	s.metrics.DeliveryDuration.WithLabelValues(j.event.Action).Observe(elapsed.Seconds())
 
 	if err != nil {
-		s.deduper.Abandon(j.key)
+		finalize := func(finalizationCtx context.Context) error {
+			return s.failDelivery(finalizationCtx, j, err)
+		}
+		finalizationCtx, cancelFinalization := deliveryFinalizationContext(ctx)
+		finishErr := finalize(finalizationCtx)
+		cancelFinalization()
+		if finishErr != nil {
+			logging.From(ctx).Error("delivery failure could not be persisted", "error", finishErr)
+			s.retryDeliveryFinalization(j, "failure", finalize)
+		}
 		s.metrics.Deliveries.WithLabelValues(j.event.Action, metrics.ResultFailure).Inc()
 		s.recordFailure(j, err)
 		logging.From(ctx).Error("delivery failed", "error", err, "duration", elapsed.String())
@@ -506,8 +602,22 @@ func (s *server) execute(j job) {
 		return
 	}
 
+	finalize := func(finalizationCtx context.Context) error {
+		return s.completeDelivery(finalizationCtx, j)
+	}
+	finalizationCtx, cancelFinalization := deliveryFinalizationContext(ctx)
+	finishErr := finalize(finalizationCtx)
+	cancelFinalization()
+	if finishErr != nil {
+		logging.From(ctx).Error("delivery completion could not be persisted", "error", finishErr)
+		s.retryDeliveryFinalization(j, "success", finalize)
+	}
 	s.metrics.Deliveries.WithLabelValues(j.event.Action, metrics.ResultSuccess).Inc()
-	logging.From(ctx).Info("delivery executed", "duration", elapsed.String())
+	if executed {
+		logging.From(ctx).Info("delivery executed", "duration", elapsed.String())
+	} else {
+		logging.From(ctx).Info("delivery ignored: repository is disabled", "duration", elapsed.String())
+	}
 }
 
 // recordFailure keeps a failed delivery readable after the log line scrolls
@@ -541,7 +651,14 @@ func (s *server) handleIssueComment(ctx context.Context, event *webhook.IssueCom
 	rc := runtimeConfigFor(event, s.cfg)
 	rc.Token = token
 
-	bc, err := s.configs.Get(ctx, client, event.Repository.Owner.Login, event.Repository.Name)
+	bc, err := s.serviceConfig(
+		ctx,
+		client,
+		installationStorageID(event.Installation.ID),
+		repositoryStorageID(event.Repository.ID),
+		event.Repository.Owner.Login,
+		event.Repository.Name,
+	)
 	if err != nil {
 		if errors.Is(err, ErrRepoConfigInvalid) {
 			return reportInvalidRepoConfig(ctx, client, rc, s.cfg.botConfig, err)
