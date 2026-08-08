@@ -41,6 +41,8 @@ const (
 	envInstallationID      = "GITHUB_INSTALLATION_ID"
 	envBotUsername         = "SMYKLOT_BOT_USERNAME"
 	envStepSummary         = "GITHUB_STEP_SUMMARY"
+	commentActionCreated   = "created"
+	commentActionDeleted   = "deleted"
 	rootPath               = "/"
 	emptyBaseURL           = ""
 	summaryTemplateName    = "summary"
@@ -237,14 +239,25 @@ func run(cmd *cobra.Command, _ []string) error {
 		_, _ = fmt.Fprintf(os.Stderr, "Warning: failed to write step summary: %v\n", err)
 	}
 
+	// Parse the command from the comment
+	//
+	// A parse error still yields the commands the comment asked for, which the
+	// deleted-comment branch below reports on
+	parsedCmd, parseErr := commands.ParseCommand(rc.CommentBody, bc)
+
 	// Handle deleted comments
-	if rc.CommentAction == "deleted" && !bc.DisableDeletedComments {
-		return handleDeletedComment(ctx, rc)
+	//
+	// A deleted comment is never executed, so this branch always returns
+	if rc.CommentAction == commentActionDeleted {
+		deletedCommands := deletedCommandsToReport(bc, parsedCmd)
+		if len(deletedCommands) == 0 {
+			return nil
+		}
+
+		return handleDeletedComment(ctx, rc, deletedCommands)
 	}
 
-	// Parse the command from the comment
-	parsedCmd, err := commands.ParseCommand(rc.CommentBody, bc)
-	if err != nil {
+	if parseErr != nil {
 		// Not a valid command, ignore silently
 		return nil
 	}
@@ -350,7 +363,7 @@ func run(cmd *cobra.Command, _ []string) error {
 
 	// Execute all commands and collect feedback
 	var feedbacks []*feedback.Feedback
-	isNewComment := rc.CommentAction == "created" || rc.CommentAction == ""
+	isNewComment := rc.CommentAction == commentActionCreated || rc.CommentAction == ""
 
 	for _, cmdType := range parsedCmd.Commands {
 		var fb *feedback.Feedback
@@ -1199,8 +1212,25 @@ func postCombinedFeedback(ctx context.Context, client *github.Client, rc *Runtim
 	return nil
 }
 
+// deletedCommandsToReport returns the commands from a deleted comment that are
+// worth a notification, or nil when the deletion should pass unremarked.
+//
+// Only commands that change the PR's approval or merge state qualify. Regular
+// discussion comments get deleted routinely and are none of the bot's business,
+// and /cleanup deletes its own triggering comment.
+//
+// A comment rejected by validation still reports - /approve /unapprove asked
+// for an approval and its deletion is worth the same record as a clean one.
+func deletedCommandsToReport(bc *config.Config, parsedCmd commands.Command) []commands.CommandType {
+	if bc.DisableDeletedComments {
+		return nil
+	}
+
+	return parsedCmd.StateChangingCommands()
+}
+
 // handleDeletedComment posts a notification that a command comment was deleted.
-func handleDeletedComment(ctx context.Context, rc *RuntimeConfig) error {
+func handleDeletedComment(ctx context.Context, rc *RuntimeConfig, deletedCommands []commands.CommandType) error {
 	// Get GitHub App installation token if configured
 	token := rc.Token
 	installationToken, err := getInstallationToken(rc)
@@ -1230,7 +1260,7 @@ func handleDeletedComment(ctx context.Context, rc *RuntimeConfig) error {
 	}
 
 	// Post feedback about deleted comment
-	fb := feedback.NewCommentDeleted(rc.CommentAuthor, commentIDNum)
+	fb := feedback.NewCommentDeleted(rc.CommentAuthor, commentIDNum, commandNames(deletedCommands))
 
 	return client.PostComment(
 		ctx,
@@ -1239,6 +1269,16 @@ func handleDeletedComment(ctx context.Context, rc *RuntimeConfig) error {
 		prNum,
 		fb.Message,
 	)
+}
+
+// commandNames converts command types to their string names for feedback
+func commandNames(cmdTypes []commands.CommandType) []string {
+	names := make([]string, 0, len(cmdTypes))
+	for _, cmdType := range cmdTypes {
+		names = append(names, string(cmdType))
+	}
+
+	return names
 }
 
 // handleHelp handles the /help command.

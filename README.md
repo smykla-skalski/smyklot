@@ -16,7 +16,7 @@ Smyklot is a GitHub App that automates pull request approvals and merges by vali
 - Approval deduplication - prevents duplicate approvals with smart reaction handling
 - Flexible configuration - configure via `SMYKLOT_CONFIG` JSON, individual variables, or environment variables
 - Emoji feedback - instant visual confirmation with ✅ (success), ❌ (error), or ⚠️ (warning)
-- Comment edit/delete handling - reacts to command edits and removes reactions when commands are deleted
+- Comment edit/delete handling - reacts to command edits and posts a notice when an approve/merge command comment is deleted
 - Reaction removal tracking - automatically removes approvals/merges when reactions are removed
 - Multi-command support - execute multiple commands in a single comment
 - Minimal permissions - follows GitHub Actions best practices
@@ -223,7 +223,7 @@ Configure individual settings via repository variables or environment variables 
 | `SMYKLOT_DISABLE_BARE_COMMANDS`    | boolean | `false`        | Disable bare commands                                                      |
 | `SMYKLOT_DISABLE_UNAPPROVE`        | boolean | `false`        | Disable unapprove command                                                  |
 | `SMYKLOT_DISABLE_REACTIONS`        | boolean | `false`        | Disable reaction-based approvals/merges                                    |
-| `SMYKLOT_DISABLE_DELETED_COMMENTS` | boolean | `false`        | Disable handling of deleted comments                                       |
+| `SMYKLOT_DISABLE_DELETED_COMMENTS` | boolean | `false`        | Disable the notice posted when a command comment is deleted                |
 | `SMYKLOT_ALLOW_SELF_APPROVAL`      | boolean | `false`        | Allow PR authors to approve their own PRs                                  |
 | `SMYKLOT_BOT_USERNAME`             | string  | `smyklot[bot]` | Bot username for cleanup operations (GitHub App format: `{app-slug}[bot]`) |
 

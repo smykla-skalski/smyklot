@@ -416,14 +416,18 @@ func NewReactionMergeSuccess(author string, quietReactions bool) *Feedback {
 
 // NewCommentDeleted creates feedback for when a command comment was deleted
 //
-// The message informs that the user deleted the comment that triggered actions
-func NewCommentDeleted(author string, commentID int) *Feedback {
+// The message lists the commands the deleted comment carried. It says
+// "contained" rather than "triggered" because the bot may never have acted on
+// them - an unauthorized author or a merge still waiting on CI both leave a
+// command comment that changed nothing.
+func NewCommentDeleted(author string, commentID int, deletedCommands []string) *Feedback {
 	message := fmt.Sprintf(
 		"⚠️ **Command Comment Deleted**\n\n"+
-			"User `%s` deleted comment #%d that triggered bot actions.\n\n"+
+			"User `%s` deleted comment #%d, which contained: %s\n\n"+
 			"If this was unintentional, you can re-post the command.",
 		author,
 		commentID,
+		formatCommandList(deletedCommands),
 	)
 
 	return &Feedback{
@@ -585,6 +589,17 @@ func formatApproverList(approvers []string) string {
 	}
 
 	return strings.TrimSuffix(builder.String(), "\n")
+}
+
+// formatCommandList formats command names as an inline, comma-separated list
+// of code spans (e.g. "`approve`, `merge`")
+func formatCommandList(commandNames []string) string {
+	quoted := make([]string, 0, len(commandNames))
+	for _, name := range commandNames {
+		quoted = append(quoted, fmt.Sprintf("`%s`", name))
+	}
+
+	return strings.Join(quoted, ", ")
 }
 
 // CombineFeedback combines multiple feedback items into a single feedback

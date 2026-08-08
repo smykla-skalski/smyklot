@@ -409,4 +409,25 @@ var _ = Describe("Feedback System [Unit]", func() {
 			}
 		})
 	})
+
+	Describe("NewCommentDeleted", func() {
+		It("should create warning feedback with author and comment ID", func() {
+			fb := feedback.NewCommentDeleted("alice", 12345, []string{"approve"})
+			Expect(fb.Type).To(Equal(feedback.Warning))
+			Expect(fb.Emoji).To(Equal("⚠️"))
+			Expect(fb.Message).To(ContainSubstring("Command Comment Deleted"))
+			Expect(fb.Message).To(ContainSubstring("alice"))
+			Expect(fb.Message).To(ContainSubstring("#12345"))
+		})
+
+		It("should list the commands the deleted comment carried", func() {
+			fb := feedback.NewCommentDeleted("bob", 1, []string{"approve", "squash"})
+			Expect(fb.Message).To(ContainSubstring("`approve`, `squash`"))
+		})
+
+		It("should suggest re-posting the command", func() {
+			fb := feedback.NewCommentDeleted("bob", 1, []string{"merge"})
+			Expect(fb.Message).To(ContainSubstring("re-post"))
+		})
+	})
 })

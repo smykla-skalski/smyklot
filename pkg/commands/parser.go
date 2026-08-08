@@ -120,6 +120,10 @@ func ParseCommand(commentBody string, cfg *config.Config) (Command, error) {
 	// Convert map to slice (deduplicated and ordered)
 	commands := buildCommandList(commandsFound)
 
+	// Record what the comment asked for before validation can reject it, so
+	// callers reporting on a comment can still name its commands
+	cmd.Detected = commands
+
 	// Check for contradicting commands
 	if hasContradictingCommands(commands) {
 		cmd.Error = ErrContradictingCommands.Error()
@@ -479,6 +483,39 @@ func detectRequiredChecksModifier(text string) bool {
 // isMergeCommand checks if a command type is a merge-related command
 func isMergeCommand(cmdType CommandType) bool {
 	return cmdType == CommandMerge || cmdType == CommandSquash || cmdType == CommandRebase
+}
+
+// isStateChangingCommand checks if a command type changes the pull request's
+// approval or merge state
+//
+// Stated as an exclusion so a command added later qualifies by default: help
+// only prints usage, and cleanup deletes its own triggering comment
+func isStateChangingCommand(cmdType CommandType) bool {
+	switch cmdType {
+	case CommandHelp, CommandCleanup, CommandUnknown:
+		return false
+	default:
+		return true
+	}
+}
+
+// StateChangingCommands returns the detected commands that change the pull
+// request's approval or merge state
+//
+// Reads Detected rather than Commands, so a comment rejected by validation
+// still reports what it asked for. Returns nil when the comment carries no such
+// command, which is the case for plain discussion comments as well as for
+// /help and /cleanup
+func (c Command) StateChangingCommands() []CommandType {
+	var stateChanging []CommandType
+
+	for _, cmdType := range c.Detected {
+		if isStateChangingCommand(cmdType) {
+			stateChanging = append(stateChanging, cmdType)
+		}
+	}
+
+	return stateChanging
 }
 
 // hasMergeCommand checks if any merge-related command is present

@@ -1369,4 +1369,74 @@ when checks pass`
 			})
 		})
 	})
+
+	Describe("StateChangingCommands", func() {
+		DescribeTable("state-changing detection",
+			func(commentBody string, expected []commands.CommandType) {
+				cmd, err := commands.ParseCommand(commentBody, nil)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(cmd.StateChangingCommands()).To(Equal(expected))
+			},
+			Entry("approve command", "/approve", []commands.CommandType{commands.CommandApprove}),
+			Entry("merge command", "/merge", []commands.CommandType{commands.CommandMerge}),
+			Entry("squash command", "/squash", []commands.CommandType{commands.CommandSquash}),
+			Entry("rebase command", "/rebase", []commands.CommandType{commands.CommandRebase}),
+			Entry("unapprove command", "/unapprove", []commands.CommandType{commands.CommandUnapprove}),
+			Entry("multiple commands", "/approve /squash", []commands.CommandType{
+				commands.CommandApprove,
+				commands.CommandSquash,
+			}),
+			Entry("help dropped from the list", "/approve /help", []commands.CommandType{commands.CommandApprove}),
+			Entry("help command", "/help", nil),
+			Entry("cleanup command", "/cleanup", nil),
+			Entry("plain comment", "This looks good to me, I will check it later", nil),
+			Entry("comment mentioning merge in a sentence", "I think we should wait before we merge this one", nil),
+			Entry("empty comment", "", nil),
+		)
+
+		DescribeTable("commands rejected by validation still report",
+			func(commentBody string, expected []commands.CommandType) {
+				cmd, err := commands.ParseCommand(commentBody, nil)
+				Expect(err).To(HaveOccurred())
+				Expect(cmd.IsValid).To(BeFalse())
+				Expect(cmd.Commands).To(BeEmpty())
+				Expect(cmd.StateChangingCommands()).To(Equal(expected))
+			},
+			Entry("contradicting commands", "/approve /unapprove", []commands.CommandType{
+				commands.CommandApprove,
+				commands.CommandUnapprove,
+			}),
+			Entry("cleanup combined with approve", "/approve /cleanup", []commands.CommandType{
+				commands.CommandApprove,
+			}),
+			Entry("cleanup combined with merge", "/cleanup /merge", []commands.CommandType{
+				commands.CommandMerge,
+			}),
+			Entry("cleanup combined with help only", "/cleanup /help", nil),
+		)
+	})
+
+	Describe("Detected", func() {
+		It("should match Commands when parsing succeeded", func() {
+			cmd, err := commands.ParseCommand("/approve /squash", nil)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cmd.Detected).To(Equal(cmd.Commands))
+		})
+
+		It("should hold the rejected combination when parsing failed", func() {
+			cmd, err := commands.ParseCommand("/approve /unapprove", nil)
+			Expect(err).To(MatchError(commands.ErrContradictingCommands))
+			Expect(cmd.Commands).To(BeEmpty())
+			Expect(cmd.Detected).To(Equal([]commands.CommandType{
+				commands.CommandApprove,
+				commands.CommandUnapprove,
+			}))
+		})
+
+		It("should be empty for a comment without commands", func() {
+			cmd, err := commands.ParseCommand("just a regular comment", nil)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cmd.Detected).To(BeEmpty())
+		})
+	})
 })

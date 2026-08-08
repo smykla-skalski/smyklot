@@ -260,7 +260,7 @@ func processPR(
 	rc := &RuntimeConfig{
 		CommentBody:   title, // Use PR title as body
 		CommentID:     strconv.Itoa(prNumber),
-		CommentAction: "created",
+		CommentAction: commentActionCreated,
 		PRNumber:      strconv.Itoa(prNumber),
 		RepoOwner:     repoOwner,
 		RepoName:      repoName,

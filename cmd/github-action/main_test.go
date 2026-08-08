@@ -4,6 +4,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/smykla-skalski/smyklot/pkg/commands"
+	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/github"
 )
 
@@ -126,6 +128,46 @@ var _ = Describe("Main Pending CI Functions [Unit]", func() {
 		It("should return false for other errors", func() {
 			err := NewGitHubError(ErrMergePR, githubError("some other error"))
 			Expect(shouldEnableAutoMerge(err)).To(BeFalse())
+		})
+	})
+
+	Describe("deletedCommandsToReport", func() {
+		It("should report the state-changing commands the comment carried", func() {
+			bc := config.Default()
+
+			parsedCmd, err := commands.ParseCommand("/approve", bc)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(deletedCommandsToReport(bc, parsedCmd)).To(Equal([]commands.CommandType{
+				commands.CommandApprove,
+			}))
+		})
+
+		It("should report nothing for a comment without commands", func() {
+			bc := config.Default()
+
+			parsedCmd, err := commands.ParseCommand("I am not sure this is the right approach here", bc)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(deletedCommandsToReport(bc, parsedCmd)).To(BeEmpty())
+		})
+
+		It("should report a comment that failed validation", func() {
+			bc := config.Default()
+
+			parsedCmd, err := commands.ParseCommand("/approve /unapprove", bc)
+			Expect(err).To(HaveOccurred())
+			Expect(deletedCommandsToReport(bc, parsedCmd)).To(Equal([]commands.CommandType{
+				commands.CommandApprove,
+				commands.CommandUnapprove,
+			}))
+		})
+
+		It("should report nothing when deleted comment handling is disabled", func() {
+			bc := config.Default()
+			bc.DisableDeletedComments = true
+
+			parsedCmd, err := commands.ParseCommand("/approve", bc)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(deletedCommandsToReport(bc, parsedCmd)).To(BeEmpty())
 		})
 	})
 })

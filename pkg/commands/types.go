@@ -37,7 +37,17 @@ type Command struct {
 	Type CommandType
 
 	// Commands is the list of parsed command types
+	//
+	// Empty when parsing failed - nothing here is ever executed
 	Commands []CommandType
+
+	// Detected is every command found in the comment, including combinations
+	// rejected by validation (contradicting commands, cleanup mixed with
+	// others). Identical to Commands when parsing succeeded
+	//
+	// Use this to report on what a comment asked for; use Commands to decide
+	// what to execute
+	Detected []CommandType
 
 	// Raw is the original comment text
 	Raw string
