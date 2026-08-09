@@ -40,6 +40,14 @@ type Repository struct {
 	Private bool
 }
 
+// User is one immutable GitHub identity resolved by login.
+type User struct {
+	ID        int64
+	Login     string
+	Name      *string
+	AvatarURL *string
+}
+
 // MergeableState represents the merge state of a PR from GitHub REST API
 type MergeableState string
 

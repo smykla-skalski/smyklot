@@ -20,10 +20,15 @@ type catalogSyncer interface {
 	SyncCatalog(context.Context) ([]string, error)
 }
 
+type userResolver interface {
+	ResolveUser(context.Context, string, string) (storage.Account, error)
+}
+
 // Dependencies are the service capabilities used by panel handlers.
 type Dependencies struct {
 	Store   storage.Store
 	Catalog catalogSyncer
+	Users   userResolver
 	SignIn  signInProvider
 	Random  io.Reader
 	Now     func() time.Time
@@ -34,6 +39,7 @@ type Server struct {
 	cfg     Config
 	store   storage.Store
 	catalog catalogSyncer
+	users   userResolver
 	signIn  signInProvider
 	random  io.Reader
 	now     func() time.Time
@@ -47,8 +53,11 @@ func New(cfg Config, deps Dependencies) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	if deps.Store == nil || deps.Catalog == nil {
-		return nil, fmt.Errorf("%w: storage and catalog sync are required", errInvalidConfig)
+	if deps.Store == nil || deps.Catalog == nil || deps.Users == nil {
+		return nil, fmt.Errorf(
+			"%w: storage, catalog sync, and user lookup are required",
+			errInvalidConfig,
+		)
 	}
 	if deps.SignIn == nil {
 		deps.SignIn, err = newGitHubSignIn(validated)
@@ -71,6 +80,7 @@ func New(cfg Config, deps Dependencies) (*Server, error) {
 		cfg:     validated,
 		store:   deps.Store,
 		catalog: deps.Catalog,
+		users:   deps.Users,
 		signIn:  deps.SignIn,
 		random:  deps.Random,
 		now:     deps.Now,
@@ -89,7 +99,16 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST "+base+"/api/v1/sign-out", s.signOut)
 	mux.HandleFunc("GET "+base+"/api/v1/session", s.getSession)
 	mux.HandleFunc("GET "+base+"/api/v1/targets", s.getTargets)
+	mux.HandleFunc("GET "+base+"/api/v1/users", s.getUsers)
+	mux.HandleFunc("POST "+base+"/api/v1/users", s.postUser)
+	mux.HandleFunc("PUT "+base+"/api/v1/users/{account}", s.putUser)
 	mux.HandleFunc("PUT "+base+"/api/v1/targets/{target}/settings", s.putTargetSettings)
+	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/users", s.getTargetUsers)
+	mux.HandleFunc("POST "+base+"/api/v1/targets/{target}/users", s.postTargetUser)
+	mux.HandleFunc(
+		"PUT "+base+"/api/v1/targets/{target}/users/{account}",
+		s.putTargetUser,
+	)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/repositories", s.getRepositories)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/repositories/{repository}", s.getRepository)
 	mux.HandleFunc(

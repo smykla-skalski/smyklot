@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -593,6 +594,32 @@ func (c *Client) Ping(ctx context.Context) error {
 	_, err := c.makeRequest(ctx, http.MethodGet, "/app", nil)
 
 	return err
+}
+
+// GetUser resolves a GitHub login to its stable numeric identity.
+func (c *Client) GetUser(ctx context.Context, login string) (User, error) {
+	login = strings.TrimSpace(login)
+	if login == "" {
+		return User{}, errors.New("GitHub login must not be empty")
+	}
+	path := "/users/" + url.PathEscape(login)
+	data, err := c.makeRequestWithRetry(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return User{}, err
+	}
+	var response struct {
+		ID        int64   `json:"id"`
+		Login     string  `json:"login"`
+		Name      *string `json:"name"`
+		AvatarURL *string `json:"avatar_url"`
+	}
+	if err := json.Unmarshal(data, &response); err != nil {
+		return User{}, NewAPIError(ErrResponseParse, 0, http.MethodGet, path, err)
+	}
+
+	return User{
+		ID: response.ID, Login: response.Login, Name: response.Name, AvatarURL: response.AvatarURL,
+	}, nil
 }
 
 // ListInstallations retrieves every installation of the GitHub App.

@@ -58,7 +58,7 @@ func (s *server) initPanel(ctx context.Context) error {
 		SessionTTL:    s.cfg.panel.sessionTTL,
 		ProcessConfig: s.cfg.botConfig,
 		Assets:        assets,
-	}, adminpanel.Dependencies{Store: store, Catalog: s})
+	}, adminpanel.Dependencies{Store: store, Catalog: s, Users: s})
 	if err != nil {
 		_ = store.Close()
 
@@ -69,6 +69,55 @@ func (s *server) initPanel(ctx context.Context) error {
 	s.panel = panelServer
 
 	return nil
+}
+
+// ResolveUser resolves a login through one selected GitHub App installation.
+func (s *server) ResolveUser(
+	ctx context.Context,
+	targetID, login string,
+) (storage.Account, error) {
+	target, err := s.store.GetTarget(ctx, targetID)
+	if err != nil {
+		return storage.Account{}, fmt.Errorf("read user lookup installation: %w", err)
+	}
+	if !target.Available {
+		return storage.Account{}, fmt.Errorf("user lookup installation %q is unavailable", targetID)
+	}
+	installationID, err := strconv.ParseInt(target.InstallationID, 10, 64)
+	if err != nil {
+		return storage.Account{}, fmt.Errorf("parse user lookup installation id: %w", err)
+	}
+	if installationID <= 0 {
+		return storage.Account{}, fmt.Errorf(
+			"user lookup installation id %q must be positive",
+			target.InstallationID,
+		)
+	}
+	token, err := s.tokens.InstallationToken(installationID)
+	if err != nil {
+		return storage.Account{}, NewGitHubError(ErrGitHubAppAuth, err)
+	}
+	client, err := github.NewClient(token, s.cfg.apiBaseURL)
+	if err != nil {
+		return storage.Account{}, NewGitHubError(ErrGitHubClient, err)
+	}
+	user, err := client.GetUser(ctx, login)
+	if err != nil {
+		return storage.Account{}, fmt.Errorf("resolve GitHub user: %w", err)
+	}
+	apiURL := s.cfg.apiBaseURL
+	if apiURL == "" {
+		apiURL = defaultGitHubAPIURL
+	}
+
+	return adminpanel.NewGitHubAccount(
+		apiURL,
+		user.ID,
+		user.Login,
+		user.Name,
+		user.AvatarURL,
+		time.Now().UTC(),
+	)
 }
 
 // SyncCatalog refreshes the complete GitHub App installation catalog for an

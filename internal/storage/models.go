@@ -60,6 +60,24 @@ type PanelUserCreate struct {
 	ChangedAt      time.Time
 }
 
+// PanelUserChange atomically replaces one user's global role and lifecycle.
+type PanelUserChange struct {
+	AccountID        string
+	ActorAccountID   string
+	GlobalRole       PanelRole
+	Status           PanelUserStatus
+	BanReason        *string
+	ExpectedRevision int64
+	ChangedAt        time.Time
+}
+
+// TargetPanelUser combines global identity with one installation policy.
+type TargetPanelUser struct {
+	User     PanelUser
+	Override *TargetAccessOverride
+	Access   TargetAccess
+}
+
 // AccessSource identifies which policy decided an installation role.
 type AccessSource string
 

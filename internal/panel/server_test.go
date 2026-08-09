@@ -40,6 +40,18 @@ type fakeCatalog struct {
 	snapshot storage.InstallationSnapshot
 }
 
+type fakeUserResolver struct {
+	account storage.Account
+}
+
+func (f fakeUserResolver) ResolveUser(
+	context.Context,
+	string,
+	string,
+) (storage.Account, error) {
+	return f.account, nil
+}
+
 func (f fakeCatalog) SyncCatalog(ctx context.Context) ([]string, error) {
 	if err := f.store.ReconcileInstallation(ctx, f.snapshot); err != nil {
 		return nil, err
@@ -111,6 +123,7 @@ func newPanelHarness(t *testing.T, login string) *panelHarness {
 	}, Dependencies{
 		Store:   store,
 		Catalog: fakeCatalog{store: store, snapshot: snapshot},
+		Users:   fakeUserResolver{account: viewer},
 		SignIn:  fakeSignIn{account: viewer},
 		Random:  random,
 		Now:     func() time.Time { return now },
@@ -434,6 +447,93 @@ func TestPanelAuthorizesActiveUserWithOnlyTargetAccess(t *testing.T) {
 	}
 	if !authorized {
 		t.Fatal("active user with installation access was not authorized")
+	}
+}
+
+func TestPanelManagesUsersAndRevokesBannedSessions(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+	ownerSession := harness.signIn(t)
+	managed := storage.Account{
+		ID:          "github:test:user:managed",
+		Provider:    "github:test",
+		SubjectID:   "managed",
+		Login:       "managed",
+		DisplayName: "Managed User",
+		UpdatedAt:   harness.now,
+	}
+	harness.server.users = fakeUserResolver{account: managed}
+	added := harness.request(
+		t,
+		http.MethodPost,
+		"/panel/api/v1/users",
+		strings.NewReader(`{"login":"managed","role":"editor","target_id":"github:installation:10"}`),
+		ownerSession,
+	)
+	if added.Code != http.StatusCreated ||
+		!strings.Contains(added.Body.String(), `"global_role":"editor"`) {
+		t.Fatalf("add user = %d %s", added.Code, added.Body.String())
+	}
+	listed := harness.request(t, http.MethodGet, "/panel/api/v1/users", nil, ownerSession)
+	if listed.Code != http.StatusOK || !strings.Contains(listed.Body.String(), `"login":"managed"`) {
+		t.Fatalf("list users = %d %s", listed.Code, listed.Body.String())
+	}
+
+	const managedToken = "managed-session"
+	if err := harness.store.CreateSession(t.Context(), storage.Session{
+		TokenHash: tokenHash(managedToken), AccountID: managed.ID, CreatedAt: harness.now,
+		ExpiresAt: harness.now.Add(time.Hour),
+	}, 1); err != nil {
+		t.Fatal(err)
+	}
+	ban := harness.request(
+		t,
+		http.MethodPut,
+		"/panel/api/v1/users/"+url.PathEscape(managed.ID),
+		strings.NewReader(`{"global_role":"editor","status":"banned","ban_reason":"security review","expected_revision":1}`),
+		ownerSession,
+	)
+	if ban.Code != http.StatusOK || !strings.Contains(ban.Body.String(), `"status":"banned"`) {
+		t.Fatalf("ban user = %d %s", ban.Code, ban.Body.String())
+	}
+	managedSession := &http.Cookie{Name: sessionCookieName, Value: managedToken}
+	revoked := harness.request(t, http.MethodGet, "/panel/api/v1/session", nil, managedSession)
+	if revoked.Code != http.StatusUnauthorized ||
+		!strings.Contains(revoked.Body.String(), `"code":"session_revoked"`) ||
+		!strings.Contains(revoked.Body.String(), "security review") {
+		t.Fatalf("revoked session = %d %s", revoked.Code, revoked.Body.String())
+	}
+
+	unbanned := harness.request(
+		t,
+		http.MethodPut,
+		"/panel/api/v1/users/"+url.PathEscape(managed.ID),
+		strings.NewReader(`{"global_role":"none","status":"active","expected_revision":2}`),
+		ownerSession,
+	)
+	if unbanned.Code != http.StatusOK {
+		t.Fatalf("unban user = %d %s", unbanned.Code, unbanned.Body.String())
+	}
+	assigned := harness.request(
+		t,
+		http.MethodPost,
+		"/panel/api/v1/targets/github:installation:10/users",
+		strings.NewReader(`{"login":"managed","role":"viewer"}`),
+		ownerSession,
+	)
+	if assigned.Code != http.StatusCreated ||
+		!strings.Contains(assigned.Body.String(), `"effective_role":"viewer"`) {
+		t.Fatalf("assign target user = %d %s", assigned.Code, assigned.Body.String())
+	}
+	suspended := harness.request(
+		t,
+		http.MethodPut,
+		"/panel/api/v1/targets/github:installation:10/users/"+url.PathEscape(managed.ID),
+		strings.NewReader(`{"role":"viewer","suspended":true,"suspension_reason":"incident review","expected_revision":1}`),
+		ownerSession,
+	)
+	if suspended.Code != http.StatusOK ||
+		!strings.Contains(suspended.Body.String(), `"source":"suspended"`) {
+		t.Fatalf("suspend target user = %d %s", suspended.Code, suspended.Body.String())
 	}
 }
 

@@ -396,6 +396,92 @@ var _ = Describe("SQLite store [Unit]", func() {
 		Expect(access.SuspensionReason).To(HaveValue(Equal(reason)))
 	})
 
+	It("lists, bans, removes, and re-adds panel users without losing identity", func() {
+		owner, target := seedInstallation(ctx, store, now)
+		Expect(store.UpsertAccount(ctx, owner)).To(Succeed())
+		claimed, err := store.ClaimOwner(ctx, owner.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(claimed).To(BeTrue())
+
+		viewer := owner
+		viewer.ID = "github:user:managed"
+		viewer.SubjectID = "managed"
+		viewer.Login = "managed-user"
+		Expect(store.UpsertAccount(ctx, viewer)).To(Succeed())
+		managed, err := store.CreatePanelUser(ctx, storage.PanelUserCreate{
+			AccountID:      viewer.ID,
+			GlobalRole:     storage.PanelRoleViewer,
+			ActorAccountID: owner.ID,
+			ChangedAt:      now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		_, err = store.SetTargetAccess(ctx, storage.TargetAccessChange{
+			TargetID:         target.TargetID,
+			SubjectAccountID: viewer.ID,
+			ActorAccountID:   owner.ID,
+			Role:             rolePointer(storage.PanelRoleEditor),
+			ExpectedRevision: 0,
+			ChangedAt:        now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		users, err := store.ListPanelUsers(ctx)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(users).To(HaveLen(2))
+		targetUsers, err := store.ListTargetPanelUsers(ctx, target.TargetID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(targetUsers).To(HaveLen(2))
+		managedTarget := targetUserByID(targetUsers, viewer.ID)
+		Expect(managedTarget.Override).NotTo(BeNil())
+		Expect(managedTarget.Access.Role).To(Equal(storage.PanelRoleEditor))
+
+		reason := "credential review"
+		managed, err = store.UpdatePanelUser(ctx, storage.PanelUserChange{
+			AccountID:        viewer.ID,
+			ActorAccountID:   owner.ID,
+			GlobalRole:       storage.PanelRoleViewer,
+			Status:           storage.PanelUserBanned,
+			BanReason:        &reason,
+			ExpectedRevision: managed.Revision,
+			ChangedAt:        now.Add(time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(managed.Status).To(Equal(storage.PanelUserBanned))
+		Expect(managed.BanReason).To(HaveValue(Equal(reason)))
+
+		managed, err = store.UpdatePanelUser(ctx, storage.PanelUserChange{
+			AccountID:        viewer.ID,
+			ActorAccountID:   owner.ID,
+			GlobalRole:       storage.PanelRoleViewer,
+			Status:           storage.PanelUserRemoved,
+			ExpectedRevision: managed.Revision,
+			ChangedAt:        now.Add(2 * time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(managed.Status).To(Equal(storage.PanelUserRemoved))
+		Expect(managed.GlobalRole).To(Equal(storage.PanelRoleNone))
+		users, err = store.ListPanelUsers(ctx)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(users).To(HaveLen(1))
+
+		managed, err = store.CreatePanelUser(ctx, storage.PanelUserCreate{
+			AccountID:      viewer.ID,
+			GlobalRole:     storage.PanelRoleAdmin,
+			ActorAccountID: owner.ID,
+			ChangedAt:      now.Add(3 * time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(managed.Status).To(Equal(storage.PanelUserActive))
+		Expect(managed.GlobalRole).To(Equal(storage.PanelRoleAdmin))
+		Expect(managed.Revision).To(Equal(int64(4)))
+		targetUsers, err = store.ListTargetPanelUsers(ctx, target.TargetID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(targetUsers).To(HaveLen(2))
+		managedTarget = targetUserByID(targetUsers, viewer.ID)
+		Expect(managedTarget.Override).To(BeNil())
+		Expect(managedTarget.Access.Role).To(Equal(storage.PanelRoleAdmin))
+	})
+
 	It("discovers a recreated repository that reuses an unavailable repository name", func() {
 		account := testAccount(now)
 		initial := testInstallation(account, now, []storage.RepositorySnapshot{
@@ -767,6 +853,16 @@ func testRepository(id, fullName string, private bool) storage.RepositorySnapsho
 
 func rolePointer(role storage.PanelRole) *storage.PanelRole {
 	return &role
+}
+
+func targetUserByID(users []storage.TargetPanelUser, accountID string) storage.TargetPanelUser {
+	for _, user := range users {
+		if user.User.Account.ID == accountID {
+			return user
+		}
+	}
+
+	return storage.TargetPanelUser{}
 }
 
 func seedInstallation(

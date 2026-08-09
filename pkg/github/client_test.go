@@ -45,6 +45,30 @@ var _ = Describe("GitHub Client [Unit]", func() {
 		})
 	})
 
+	Describe("GetUser", func() {
+		It("resolves the canonical login and stable identity", func() {
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				Expect(r.Method).To(Equal(http.MethodGet))
+				Expect(r.URL.Path).To(Equal("/users/SomeUser"))
+				Expect(r.Header.Get("Authorization")).To(Equal("token test-token"))
+				name := "Some User"
+				avatar := "https://avatars.example/42"
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"id": 42, "login": "someuser", "name": name, "avatar_url": avatar,
+				})
+			}))
+			client, err := github.NewClient("test-token", server.URL)
+			Expect(err).NotTo(HaveOccurred())
+
+			user, err := client.GetUser(context.Background(), " SomeUser ")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(user.ID).To(Equal(int64(42)))
+			Expect(user.Login).To(Equal("someuser"))
+			Expect(user.Name).To(HaveValue(Equal("Some User")))
+			Expect(user.AvatarURL).To(HaveValue(Equal("https://avatars.example/42")))
+		})
+	})
+
 	Describe("AddReaction", func() {
 		Context("when adding reaction to a comment", func() {
 			It("should add success reaction", func() {

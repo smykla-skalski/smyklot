@@ -57,16 +57,51 @@ func (s *Store) CreatePanelUser(
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if _, err := tx.ExecContext(ctx, `
+	var previousStatus storage.PanelUserStatus
+	previousErr := tx.QueryRowContext(
+		ctx,
+		"SELECT status FROM panel_users WHERE account_id = ?",
+		change.AccountID,
+	).Scan(&previousStatus)
+	if previousErr != nil && !errors.Is(previousErr, sql.ErrNoRows) {
+		return storage.PanelUser{}, fmt.Errorf("read existing panel user: %w", previousErr)
+	}
+	if previousErr == nil && previousStatus != storage.PanelUserRemoved {
+		return storage.PanelUser{}, storage.ErrConflict
+	}
+	result, err := tx.ExecContext(ctx, `
 INSERT INTO panel_users (
     account_id, root, status, global_role, revision, created_at, updated_at
-) VALUES (?, 0, 'active', ?, 1, ?, ?)`,
+) VALUES (?, 0, 'active', ?, 1, ?, ?)
+ON CONFLICT(account_id) DO UPDATE SET
+    status = 'active',
+    global_role = excluded.global_role,
+    ban_reason = NULL,
+    banned_at = NULL,
+    removed_at = NULL,
+    revision = panel_users.revision + 1,
+    updated_at = excluded.updated_at
+WHERE panel_users.root = 0 AND panel_users.status = 'removed'`,
 		change.AccountID,
 		change.GlobalRole,
 		formatTime(change.ChangedAt),
 		formatTime(change.ChangedAt),
-	); err != nil {
+	)
+	if err != nil {
 		return storage.PanelUser{}, fmt.Errorf("insert panel user: %w", conflictConstraint(err))
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return storage.PanelUser{}, fmt.Errorf("read panel user create result: %w", err)
+	}
+	if changed != 1 {
+		return storage.PanelUser{}, storage.ErrConflict
+	}
+	action := "user.created"
+	summary := fmt.Sprintf("added user as %s", change.GlobalRole)
+	if previousErr == nil {
+		action = "user.readded"
+		summary = fmt.Sprintf("re-added user as %s", change.GlobalRole)
 	}
 	if err := insertAccessAudit(
 		ctx,
@@ -74,8 +109,8 @@ INSERT INTO panel_users (
 		nil,
 		change.ActorAccountID,
 		change.AccountID,
-		"user.created",
-		fmt.Sprintf("added user as %s", change.GlobalRole),
+		action,
+		summary,
 		change.ChangedAt,
 	); err != nil {
 		return storage.PanelUser{}, err
@@ -145,6 +180,22 @@ func (s *Store) SetTargetAccess(
 	}
 	if err := tx.Commit(); err != nil {
 		return storage.TargetAccessOverride{}, fmt.Errorf("commit target access change: %w", err)
+	}
+
+	return override, nil
+}
+
+// GetTargetAccessOverride returns one persisted installation-specific policy.
+func (s *Store) GetTargetAccessOverride(
+	ctx context.Context,
+	accountID, targetID string,
+) (storage.TargetAccessOverride, error) {
+	override, err := getTargetAccessOverride(ctx, s.db, accountID, targetID)
+	if err != nil {
+		return storage.TargetAccessOverride{}, fmt.Errorf(
+			"get target access override: %w",
+			noRows(err),
+		)
 	}
 
 	return override, nil
@@ -359,10 +410,18 @@ func getPanelUser(
 	queryer rowQuerier,
 	accountID string,
 ) (storage.PanelUser, error) {
+	return scanPanelUser(queryer.QueryRowContext(
+		ctx,
+		panelUserSelect+" WHERE pu.account_id = ?",
+		accountID,
+	))
+}
+
+func scanPanelUser(scanner rowScanner) (storage.PanelUser, error) {
 	var user storage.PanelUser
 	var avatar, banReason, bannedAt, removedAt, lastLoginAt sql.NullString
 	var accountUpdatedAt, createdAt, updatedAt string
-	err := queryer.QueryRowContext(ctx, panelUserSelect+" WHERE pu.account_id = ?", accountID).Scan(
+	err := scanner.Scan(
 		&user.Account.ID,
 		&user.Account.Provider,
 		&user.Account.SubjectID,

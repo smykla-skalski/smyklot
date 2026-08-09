@@ -23,7 +23,11 @@ type AuthStore interface {
 // AccessStore owns panel-user roles and resolves installation permissions.
 type AccessStore interface {
 	GetPanelUser(context.Context, string) (PanelUser, error)
+	ListPanelUsers(context.Context) ([]PanelUser, error)
+	ListTargetPanelUsers(context.Context, string) ([]TargetPanelUser, error)
 	CreatePanelUser(context.Context, PanelUserCreate) (PanelUser, error)
+	UpdatePanelUser(context.Context, PanelUserChange) (PanelUser, error)
+	GetTargetAccessOverride(context.Context, string, string) (TargetAccessOverride, error)
 	SetTargetAccess(context.Context, TargetAccessChange) (TargetAccessOverride, error)
 	ResolveTargetAccess(context.Context, string, string) (TargetAccess, error)
 	ListTargets(context.Context, string) ([]Target, error)

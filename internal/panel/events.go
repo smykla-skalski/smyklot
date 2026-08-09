@@ -19,6 +19,7 @@ const (
 	panelEventHeartbeat      = 25 * time.Second
 	panelSessionRevokedCode  = websocket.StatusCode(4001)
 	panelEventSessionRevoked = "session.revoked"
+	panelEventAccessChanged  = "access.changed"
 )
 
 type panelEvent struct {
@@ -86,6 +87,21 @@ func (h *eventHub) announce(event panelEvent) {
 }
 
 func (h *eventHub) revokeSession(sessionHash, code, reason string) {
+	h.revokeWhere(func(subscriber *eventSubscriber) bool {
+		return subscriber.sessionHash == sessionHash
+	}, code, reason)
+}
+
+func (h *eventHub) revokeAccount(accountID, code, reason string) {
+	h.revokeWhere(func(subscriber *eventSubscriber) bool {
+		return subscriber.accountID == accountID
+	}, code, reason)
+}
+
+func (h *eventHub) revokeWhere(
+	matches func(*eventSubscriber) bool,
+	code, reason string,
+) {
 	event := panelEvent{
 		Version: panelEventVersion,
 		Type:    panelEventSessionRevoked,
@@ -95,7 +111,7 @@ func (h *eventHub) revokeSession(sessionHash, code, reason string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for subscriber := range h.subscribers {
-		if subscriber.sessionHash != sessionHash {
+		if !matches(subscriber) {
 			continue
 		}
 		delete(h.subscribers, subscriber)

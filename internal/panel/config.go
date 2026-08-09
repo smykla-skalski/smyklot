@@ -19,6 +19,8 @@ const (
 	DefaultPageSize   = 20
 	MaxPageSize       = 100
 	MaxSessions       = 5
+	httpScheme        = "http"
+	httpsScheme       = "https"
 )
 
 var errInvalidConfig = errors.New("invalid panel configuration")
@@ -119,7 +121,7 @@ func normalizeOrigin(raw string) (string, error) {
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 		return "", fmt.Errorf("%w: public origin must be an absolute URL", errInvalidConfig)
 	}
-	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+	if parsed.Scheme != httpScheme && parsed.Scheme != httpsScheme {
 		return "", fmt.Errorf("%w: public origin must use HTTP or HTTPS", errInvalidConfig)
 	}
 	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" ||

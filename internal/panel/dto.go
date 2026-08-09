@@ -41,6 +41,31 @@ type capabilityResponse struct {
 	ManageOwners      bool `json:"manage_owners"`
 }
 
+type panelUserResponse struct {
+	Account      accountResponse         `json:"account"`
+	Root         bool                    `json:"root"`
+	Status       storage.PanelUserStatus `json:"status"`
+	GlobalRole   storage.PanelRole       `json:"global_role"`
+	BanReason    *string                 `json:"ban_reason,omitempty"`
+	BannedAt     *time.Time              `json:"banned_at,omitempty"`
+	LastLoginAt  *time.Time              `json:"last_login_at,omitempty"`
+	Revision     int64                   `json:"revision"`
+	CreatedAt    time.Time               `json:"created_at"`
+	UpdatedAt    time.Time               `json:"updated_at"`
+	Manageable   bool                    `json:"manageable"`
+	TargetAccess *targetUserAccess       `json:"target_access,omitempty"`
+}
+
+type targetUserAccess struct {
+	Role             *storage.PanelRole   `json:"role"`
+	Suspended        bool                 `json:"suspended"`
+	SuspensionReason *string              `json:"suspension_reason,omitempty"`
+	Revision         int64                `json:"revision"`
+	EffectiveRole    storage.PanelRole    `json:"effective_role"`
+	Source           storage.AccessSource `json:"source"`
+	Capabilities     capabilityResponse   `json:"capabilities"`
+}
+
 type targetResponse struct {
 	ID                       string                   `json:"id"`
 	InstallationID           string                   `json:"installation_id"`
@@ -131,6 +156,33 @@ func viewerDTO(user storage.PanelUser, targetCount int) viewerResponse {
 		Capabilities: capabilitiesDTO(storage.EffectiveCapabilities(user.GlobalRole, user.Root)),
 		TargetCount:  targetCount,
 	}
+}
+
+func panelUserDTO(user storage.PanelUser, manageable bool) panelUserResponse {
+	return panelUserResponse{
+		Account: accountDTO(user.Account), Root: user.Root, Status: user.Status,
+		GlobalRole: user.GlobalRole, BanReason: user.BanReason, BannedAt: user.BannedAt,
+		LastLoginAt: user.LastLoginAt, Revision: user.Revision, CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt, Manageable: manageable,
+	}
+}
+
+func targetPanelUserDTO(user storage.TargetPanelUser, manageable bool) panelUserResponse {
+	response := panelUserDTO(user.User, manageable)
+	access := targetUserAccess{
+		EffectiveRole: user.Access.Role,
+		Source:        user.Access.Source,
+		Capabilities:  capabilitiesDTO(user.Access.Capabilities),
+	}
+	if user.Override != nil {
+		access.Role = user.Override.Role
+		access.Suspended = user.Override.Suspended
+		access.SuspensionReason = user.Override.SuspensionReason
+		access.Revision = user.Override.Revision
+	}
+	response.TargetAccess = &access
+
+	return response
 }
 
 func capabilitiesDTO(capabilities storage.AccessCapabilities) capabilityResponse {

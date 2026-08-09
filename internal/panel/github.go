@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 	"unicode"
 
 	"golang.org/x/oauth2"
@@ -106,6 +107,18 @@ func (g *githubSignIn) account(
 	login string,
 	name, avatarURL *string,
 ) (storage.Account, error) {
+	return NewGitHubAccount(g.apiURL, subjectID, login, name, avatarURL, time.Time{})
+}
+
+// NewGitHubAccount validates one provider profile and builds its stable
+// storage identity. OAuth sign-in and administrator lookup share this path.
+func NewGitHubAccount(
+	apiURL string,
+	subjectID int64,
+	login string,
+	name, avatarURL *string,
+	updatedAt time.Time,
+) (storage.Account, error) {
 	if subjectID <= 0 {
 		return storage.Account{}, errors.New("GitHub profile has no stable subject id")
 	}
@@ -125,14 +138,20 @@ func (g *githubSignIn) account(
 		return storage.Account{}, err
 	}
 	subject := fmt.Sprint(subjectID)
+	api, err := url.Parse(apiURL)
+	if err != nil || (api.Scheme != httpScheme && api.Scheme != httpsScheme) || api.Host == "" {
+		return storage.Account{}, errors.New("GitHub API URL must use HTTP or HTTPS")
+	}
+	provider := "github:" + api.Scheme + "://" + api.Host + strings.TrimRight(api.Path, "/")
 
 	return storage.Account{
-		ID:          g.provider + ":user:" + subject,
-		Provider:    g.provider,
+		ID:          provider + ":user:" + subject,
+		Provider:    provider,
 		SubjectID:   subject,
 		Login:       login,
 		DisplayName: displayName,
 		AvatarURL:   avatar,
+		UpdatedAt:   updatedAt,
 	}, nil
 }
 
