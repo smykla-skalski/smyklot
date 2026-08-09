@@ -495,80 +495,48 @@ func TestPanelRepositoryPaginationFilteringAndSorting(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	filtered := harness.request(
+	filteredPage := getRepositoryPage(
 		t,
-		http.MethodGet,
+		harness,
 		"/panel/api/v1/targets/"+targetID+
 			"/repositories?q=service&sort=newest&state=enabled&file=invalid&setting=quiet_success&limit=1",
-		nil,
 		session,
 	)
-	if filtered.Code != http.StatusOK {
-		t.Fatalf("filtered repositories = %d %s", filtered.Code, filtered.Body.String())
-	}
-	var filteredPage pageResponse[repositorySummaryResponse]
-	if err := json.Unmarshal(filtered.Body.Bytes(), &filteredPage); err != nil {
-		t.Fatal(err)
-	}
 	if filteredPage.Total != 1 || len(filteredPage.Items) != 1 ||
 		filteredPage.Items[0].Name != "beta-service" || filteredPage.NextCursor != nil {
 		t.Fatalf("unexpected filtered repositories: %#v", filteredPage)
 	}
 
-	multiple := harness.request(
+	multiplePage := getRepositoryPage(
 		t,
-		http.MethodGet,
+		harness,
 		"/panel/api/v1/targets/"+targetID+
 			"/repositories?file=missing&file=invalid&setting=quiet_success&setting=command_prefix&limit=10",
-		nil,
 		session,
 	)
-	if multiple.Code != http.StatusOK {
-		t.Fatalf("multi-filtered repositories = %d %s", multiple.Code, multiple.Body.String())
-	}
-	var multiplePage pageResponse[repositorySummaryResponse]
-	if err := json.Unmarshal(multiple.Body.Bytes(), &multiplePage); err != nil {
-		t.Fatal(err)
-	}
 	if multiplePage.Total != 1 || len(multiplePage.Items) != 1 ||
 		multiplePage.Items[0].Name != "beta-service" {
 		t.Fatalf("unexpected multi-filtered repositories: %#v", multiplePage)
 	}
 
-	first := harness.request(
+	firstPage := getRepositoryPage(
 		t,
-		http.MethodGet,
+		harness,
 		"/panel/api/v1/targets/"+targetID+"/repositories?sort=name_desc&limit=1",
-		nil,
 		session,
 	)
-	var firstPage pageResponse[repositorySummaryResponse]
-	if first.Code != http.StatusOK {
-		t.Fatalf("first repository page = %d %s", first.Code, first.Body.String())
-	}
-	if err := json.Unmarshal(first.Body.Bytes(), &firstPage); err != nil {
-		t.Fatal(err)
-	}
 	if firstPage.Total != 3 || len(firstPage.Items) != 1 || firstPage.NextCursor == nil ||
 		firstPage.Items[0].Name != "smyklot" {
 		t.Fatalf("unexpected first repository page: %#v", firstPage)
 	}
 
-	second := harness.request(
+	secondPage := getRepositoryPage(
 		t,
-		http.MethodGet,
+		harness,
 		"/panel/api/v1/targets/"+targetID+"/repositories?sort=name_desc&limit=1&cursor="+
 			url.QueryEscape(*firstPage.NextCursor),
-		nil,
 		session,
 	)
-	var secondPage pageResponse[repositorySummaryResponse]
-	if second.Code != http.StatusOK {
-		t.Fatalf("second repository page = %d %s", second.Code, second.Body.String())
-	}
-	if err := json.Unmarshal(second.Body.Bytes(), &secondPage); err != nil {
-		t.Fatal(err)
-	}
 	if secondPage.Total != 3 || len(secondPage.Items) != 1 ||
 		secondPage.Items[0].Name != "beta-service" {
 		t.Fatalf("unexpected second repository page: %#v", secondPage)
@@ -602,6 +570,26 @@ func TestPanelRepositoryPaginationFilteringAndSorting(t *testing.T) {
 			mixedPreset.Body.String(),
 		)
 	}
+}
+
+func getRepositoryPage(
+	t *testing.T,
+	harness *panelHarness,
+	path string,
+	session *http.Cookie,
+) pageResponse[repositorySummaryResponse] {
+	t.Helper()
+	response := harness.request(t, http.MethodGet, path, nil, session)
+	if response.Code != http.StatusOK {
+		t.Fatalf("repository page = %d %s", response.Code, response.Body.String())
+	}
+
+	var page pageResponse[repositorySummaryResponse]
+	if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil {
+		t.Fatal(err)
+	}
+
+	return page
 }
 
 func seedFailure(

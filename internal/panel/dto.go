@@ -352,28 +352,36 @@ func parseRepositoryPage(values url.Values) (storage.RepositoryPageRequest, erro
 	}
 	page.FileStatuses = fileStatuses
 
-	settings := values["setting"]
-	if len(settings) == 1 && settings[0] == "custom" {
-		value := true
-		page.HasConfigOverrides = &value
-	} else if len(settings) == 1 && settings[0] == "none" {
-		value := false
-		page.HasConfigOverrides = &value
-	} else {
-		for _, setting := range settings {
-			if setting == allFilter && len(settings) == 1 {
-				continue
-			}
-			if !panelConfigKey(setting) {
-				return storage.RepositoryPageRequest{}, fmt.Errorf("invalid repository setting")
-			}
-			if !slices.Contains(page.ConfigOverrideKeys, setting) {
-				page.ConfigOverrideKeys = append(page.ConfigOverrideKeys, setting)
-			}
+	hasOverrides, overrideKeys, err := parseRepositorySettings(values["setting"])
+	if err != nil {
+		return storage.RepositoryPageRequest{}, err
+	}
+	page.HasConfigOverrides = hasOverrides
+	page.ConfigOverrideKeys = overrideKeys
+
+	return page, nil
+}
+
+func parseRepositorySettings(values []string) (*bool, []string, error) {
+	if len(values) == 1 && (values[0] == "custom" || values[0] == "none") {
+		value := values[0] == "custom"
+		return &value, nil, nil
+	}
+
+	keys := make([]string, 0, len(values))
+	for _, setting := range values {
+		if setting == allFilter && len(values) == 1 {
+			continue
+		}
+		if !panelConfigKey(setting) {
+			return nil, nil, fmt.Errorf("invalid repository setting")
+		}
+		if !slices.Contains(keys, setting) {
+			keys = append(keys, setting)
 		}
 	}
 
-	return page, nil
+	return nil, keys, nil
 }
 
 func parseRepositoryFileStatuses(values []string) ([]storage.RepositoryFileStatus, error) {
