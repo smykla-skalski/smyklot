@@ -165,6 +165,13 @@ const (
 )
 
 // RepositoryPageRequest selects one filtered page of available repositories.
+//
+// Offset counts rows from the start of the ordered result instead of seeking
+// from a row boundary, because the panel renders numbered pages and a keyset
+// cursor cannot answer "jump to page 7". The cost is drift: rows written
+// between two page fetches shift the window, so a later page can repeat a row
+// already shown or skip one. Nothing is lost from storage, only from that one
+// paginated view. FailurePageRequest and HistoryPageRequest page the same way.
 type RepositoryPageRequest struct {
 	Offset             int
 	Limit              int
@@ -246,7 +253,9 @@ const (
 	HistoryOldest HistoryOrder = "oldest"
 )
 
-// HistoryPageRequest is an offset-based page request.
+// HistoryPageRequest is an offset-based page request. See
+// RepositoryPageRequest for why the panel pages by offset and what drifts as a
+// result.
 type HistoryPageRequest struct {
 	Offset int
 	Limit  int
