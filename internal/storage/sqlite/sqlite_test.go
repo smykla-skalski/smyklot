@@ -586,6 +586,45 @@ var _ = Describe("SQLite store [Unit]", func() {
 		Expect(listed[0].Status).To(Equal(storage.InvitationDeclined))
 	})
 
+	It("orders invitation pages by invitee name descending", func() {
+		owner, _ := seedInstallation(ctx, store, now)
+		Expect(store.UpsertAccount(ctx, owner)).To(Succeed())
+
+		alpha := owner
+		alpha.ID = "github:user:alpha"
+		alpha.SubjectID = "alpha"
+		alpha.Login = "alpha"
+		alpha.DisplayName = "Alpha User"
+		zulu := owner
+		zulu.ID = "github:user:zulu"
+		zulu.SubjectID = "zulu"
+		zulu.Login = "zulu"
+		zulu.DisplayName = "Zulu User"
+		Expect(store.UpsertAccount(ctx, alpha)).To(Succeed())
+		Expect(store.UpsertAccount(ctx, zulu)).To(Succeed())
+
+		for id, account := range map[string]storage.Account{
+			"invitation-alpha": alpha,
+			"invitation-zulu":  zulu,
+		} {
+			_, err := store.CreateInvitation(ctx, storage.InvitationCreate{
+				ID: id, TokenHash: id, AccountID: account.ID,
+				Role: storage.PanelRoleViewer, ExpiresAt: now.Add(24 * time.Hour),
+				CreatedByAccount: owner.ID, CreatedAt: now,
+			})
+			Expect(err).NotTo(HaveOccurred())
+		}
+
+		page, err := store.ListInvitationPage(ctx, nil, now, storage.InvitationPageRequest{
+			Limit: 10,
+			Order: storage.InvitationNameDescending,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(page.Items).To(HaveLen(2))
+		Expect(page.Items[0].Account.DisplayName).To(Equal("Zulu User"))
+		Expect(page.Items[1].Account.DisplayName).To(Equal("Alpha User"))
+	})
+
 	It("discovers a recreated repository that reuses an unavailable repository name", func() {
 		account := testAccount(now)
 		initial := testInstallation(account, now, []storage.RepositorySnapshot{

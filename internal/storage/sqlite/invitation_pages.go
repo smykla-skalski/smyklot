@@ -115,6 +115,8 @@ func invitationPageOrder(order storage.InvitationOrder) (string, error) {
 		return "ui.expires_at DESC, ui.id DESC", nil
 	case storage.InvitationNameAscending:
 		return "lower(invited.display_name) ASC, lower(invited.login) ASC, ui.id ASC", nil
+	case storage.InvitationNameDescending:
+		return "lower(invited.display_name) DESC, lower(invited.login) DESC, ui.id DESC", nil
 	default:
 		return "", fmt.Errorf("unsupported invitation order %q", order)
 	}

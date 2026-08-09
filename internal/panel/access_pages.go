@@ -88,7 +88,8 @@ func parseInvitationPage(values url.Values) (storage.InvitationPageRequest, erro
 	case storage.InvitationCreatedOldest,
 		storage.InvitationExpirySoonest,
 		storage.InvitationExpiryLatest,
-		storage.InvitationNameAscending:
+		storage.InvitationNameAscending,
+		storage.InvitationNameDescending:
 		page.Order = order
 	default:
 		return storage.InvitationPageRequest{}, fmt.Errorf("invalid invitation sort order")

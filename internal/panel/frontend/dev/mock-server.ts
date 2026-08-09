@@ -1540,6 +1540,11 @@ function invitationPage(
         left.account.display_name.localeCompare(right.account.display_name),
       );
       break;
+    case 'name_desc':
+      ordered.sort((left, right) =>
+        right.account.display_name.localeCompare(left.account.display_name),
+      );
+      break;
     default:
       ordered.sort((left, right) => right.created_at.localeCompare(left.created_at));
   }

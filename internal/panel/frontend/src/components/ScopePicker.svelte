@@ -37,6 +37,10 @@
       query,
     ),
   );
+  const organizationCandidates = $derived(
+    candidates.filter((target) => target.type === 'Organization'),
+  );
+  const personalCandidates = $derived(candidates.filter((target) => target.type === 'User'));
   const globalMatches = $derived(
     fuzzyCandidates(
       [{ id: 'global', label: 'Global', keywords: ['all installations', 'all organizations'] }],
@@ -88,6 +92,30 @@
 
 <svelte:document onpointerdown={outside} onkeydown={escape} />
 
+{#snippet scopeOption(target: PanelTarget)}
+  {@const selected = !global && target.id === targetId}
+  <button
+    class="scope-option"
+    class:selected
+    type="button"
+    role="option"
+    aria-selected={selected}
+    onclick={() => choose(target.id)}
+    onkeydown={move}
+  >
+    <Avatar account={target.account} size={26} />
+    <span class="option-copy">
+      <strong>{target.account.display_name}</strong>
+      <span
+        >@{target.account.login} · {target.type === 'Organization'
+          ? 'Organization'
+          : 'Personal'}</span
+      >
+    </span>
+    <span class="option-check" aria-hidden="true">{selected ? '✓' : ''}</span>
+  </button>
+{/snippet}
+
 <details
   class="scope-picker"
   class:scope-field={variant === 'field'}
@@ -95,7 +123,6 @@
   ontoggle={toggled}
 >
   <summary bind:this={trigger} aria-label={label}>
-    {#if variant === 'toolbar'}<span class="scope-kicker">Scope</span>{/if}
     {#if global}
       <span class="global-mark" aria-hidden="true"></span>
       <span class="scope-copy">
@@ -119,7 +146,7 @@
       <input
         class="text-input"
         type="search"
-        placeholder="Search organizations"
+        placeholder="Search installations"
         bind:this={searchInput}
         bind:value={query}
       />
@@ -146,35 +173,23 @@
         <div class="scope-separator" aria-hidden="true"></div>
       {/if}
 
-      {#if candidates.length > 0}
+      {#if organizationCandidates.length > 0}
         <p class="scope-group-label" aria-hidden="true">Organizations</p>
+        {#each organizationCandidates as target (target.id)}
+          {@render scopeOption(target)}
+        {/each}
       {/if}
 
-      {#each candidates as target (target.id)}
-        {@const selected = !global && target.id === targetId}
-        <button
-          class="scope-option"
-          class:selected
-          type="button"
-          role="option"
-          aria-selected={selected}
-          onclick={() => choose(target.id)}
-          onkeydown={move}
-        >
-          <Avatar account={target.account} size={26} />
-          <span class="option-copy">
-            <strong>{target.account.display_name}</strong>
-            <span
-              >@{target.account.login} · {target.type === 'Organization'
-                ? 'Organization'
-                : 'Personal'}</span
-            >
-          </span>
-          <span class="option-check" aria-hidden="true">{selected ? '✓' : ''}</span>
-        </button>
-      {:else}
-        <p class="scope-empty">No organizations match “{query.trim()}”</p>
-      {/each}
+      {#if personalCandidates.length > 0}
+        <p class="scope-group-label" aria-hidden="true">Personal installations</p>
+        {#each personalCandidates as target (target.id)}
+          {@render scopeOption(target)}
+        {/each}
+      {/if}
+
+      {#if candidates.length === 0}
+        <p class="scope-empty">No installations match “{query.trim()}”</p>
+      {/if}
     </div>
   </div>
 </details>
@@ -230,15 +245,6 @@
   .scope-field summary {
     height: 2.75rem;
     max-width: none;
-  }
-
-  .scope-kicker {
-    border-right: 1px solid var(--rule);
-    color: var(--dim);
-    font: 600 0.5625rem/1 var(--mono);
-    letter-spacing: 0.08em;
-    padding-right: 0.625rem;
-    text-transform: uppercase;
   }
 
   .scope-copy {

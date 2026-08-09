@@ -1,105 +1,109 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { formatDateTime, formatRelative, formatTimestamp } from '../lib/format';
   import type { AccessDecision } from '../lib/types';
   import Avatar from './Avatar.svelte';
+  import Modal from './Modal.svelte';
 
   const {
+    open,
     label,
+    scopeLabel,
+    status,
     reason,
     decidedAt,
+    returnFocus = null,
     fetchDecisions,
+    onClose,
   }: {
+    open: boolean;
     label: string;
+    scopeLabel: string;
+    status: string;
     reason?: string;
     decidedAt?: string;
+    returnFocus?: HTMLElement | null;
     fetchDecisions: () => Promise<AccessDecision[]>;
+    onClose: () => void;
   } = $props();
 
-  let details = $state<HTMLDetailsElement | null>(null);
-  let trigger = $state<HTMLElement | null>(null);
-  let decisions = $state<AccessDecision[] | null>(null);
+  let decisions = $state.raw<AccessDecision[] | null>(null);
   let loading = $state(false);
   let failure = $state<string | null>(null);
   const now = Date.now();
 
-  $effect(() => {
-    function outside(event: PointerEvent): void {
-      if (
-        details?.open === true &&
-        event.target instanceof Node &&
-        !details.contains(event.target)
-      ) {
-        close(false);
-      }
-    }
-    function escape(event: KeyboardEvent): void {
-      if (event.key !== 'Escape' || details?.open !== true) return;
-      event.preventDefault();
-      close(true);
-    }
-    document.addEventListener('pointerdown', outside);
-    document.addEventListener('keydown', escape);
+  onMount(() => {
+    let active = true;
+    loading = true;
+    void fetchDecisions()
+      .then((listed) => {
+        if (active) decisions = listed;
+      })
+      .catch((error: unknown) => {
+        if (active) failure = error instanceof Error ? error.message : String(error);
+      })
+      .finally(() => {
+        if (active) loading = false;
+      });
     return () => {
-      document.removeEventListener('pointerdown', outside);
-      document.removeEventListener('keydown', escape);
+      active = false;
     };
   });
 
-  function toggled(): void {
-    if (details?.open === true && decisions === null && !loading) void load();
-  }
-
-  async function load(): Promise<void> {
-    loading = true;
-    failure = null;
-    try {
-      decisions = await fetchDecisions();
-    } catch (error) {
-      failure = error instanceof Error ? error.message : String(error);
-    } finally {
-      loading = false;
-    }
-  }
-
-  function close(restoreFocus: boolean): void {
-    if (details !== null) details.open = false;
-    if (restoreFocus) trigger?.focus();
+  function close(): void {
+    onClose();
   }
 </script>
 
-<details class="decision-history" bind:this={details} ontoggle={toggled}>
-  <summary bind:this={trigger} aria-label={label} title={label}>
-    <span class="history-icon" aria-hidden="true"></span>
-  </summary>
-  <div class="decision-popover">
-    <header>
-      <div>
-        <strong>{label}</strong>
+<Modal
+  id="decision-history"
+  {open}
+  title={label}
+  description="Review the current access state and earlier administrator decisions"
+  {returnFocus}
+  onClose={close}
+>
+  <dl class="current-decision">
+    <div>
+      <dt>Status</dt>
+      <dd>{status}</dd>
+    </div>
+    <div>
+      <dt>Scope</dt>
+      <dd>{scopeLabel}</dd>
+    </div>
+    <div>
+      <dt>Decided</dt>
+      <dd>
         {#if decidedAt !== undefined}
           <time datetime={decidedAt} title={formatTimestamp(decidedAt)}>
             {formatDateTime(decidedAt)}
           </time>
+        {:else}
+          <span class="dim">Unknown</span>
         {/if}
-      </div>
-      <button type="button" aria-label="Close access history" onclick={() => close(true)}>×</button>
-    </header>
+      </dd>
+    </div>
+  </dl>
 
-    {#if reason !== undefined && reason.trim() !== ''}
-      <div class="current-reason">
-        <span class="mono">Reason</span>
-        <p>{reason}</p>
-      </div>
-    {/if}
+  {#if reason !== undefined && reason.trim() !== ''}
+    <section class="current-reason" aria-labelledby="decision-reason-heading">
+      <h3 id="decision-reason-heading">Reason</h3>
+      <p>{reason}</p>
+    </section>
+  {/if}
 
+  <section class="history-section" aria-labelledby="decision-history-heading">
+    <h3 id="decision-history-heading">Decision history</h3>
     <div class="decision-list" aria-live="polite">
       {#if loading}
         <p class="state dim">Loading decisions…</p>
       {:else if failure !== null}
-        <p class="state form-error">{failure}</p>
+        <p class="state form-error" role="alert">{failure}</p>
       {:else}
         {#each decisions ?? [] as decision (decision.id)}
           <article>
-            <Avatar account={decision.actor} size={24} />
+            <Avatar account={decision.actor} size={28} />
             <div>
               <strong>{decision.summary}</strong>
               <span>
@@ -116,146 +120,95 @@
         {/each}
       {/if}
     </div>
-  </div>
-</details>
+  </section>
+
+  {#snippet footer()}
+    <button class="btn" type="button" data-modal-focus onclick={close}>Close</button>
+  {/snippet}
+</Modal>
 
 <style>
-  .decision-history {
-    flex: none;
-    position: relative;
-  }
-
-  .decision-history[open] {
-    z-index: 34;
-  }
-
-  summary {
-    align-items: center;
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 50%;
-    display: flex;
-    height: 1.625rem;
-    justify-content: center;
-    width: 1.625rem;
-  }
-
-  summary::-webkit-details-marker {
-    display: none;
-  }
-
-  summary::marker {
-    content: '';
-  }
-
-  summary:hover,
-  .decision-history[open] summary {
-    background: var(--strip-lift);
-    border-color: var(--control-border);
-  }
-
-  .history-icon {
-    border: 1.5px solid var(--dim);
-    border-radius: 50%;
-    height: 0.8rem;
-    position: relative;
-    width: 0.8rem;
-  }
-
-  .history-icon::before,
-  .history-icon::after {
-    background: var(--dim);
-    content: '';
-    left: 0.34rem;
-    position: absolute;
-    top: 0.16rem;
-    transform-origin: bottom;
-  }
-
-  .history-icon::before {
-    height: 0.27rem;
-    width: 1px;
-  }
-
-  .history-icon::after {
-    height: 1px;
-    top: 0.42rem;
-    transform: rotate(28deg);
-    width: 0.23rem;
-  }
-
-  .decision-popover {
-    background: var(--strip);
+  .current-decision {
+    background: var(--well);
     border: 1px solid var(--rule);
-    border-radius: var(--r-ctl);
-    box-shadow: 0 16px 40px var(--shadow);
-    overflow: hidden;
-    position: absolute;
-    right: 0;
-    top: calc(100% + 0.35rem);
-    width: min(25rem, calc(100vw - 2rem));
-    z-index: 34;
+    border-radius: var(--r-well);
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin: 0;
   }
 
-  header {
-    align-items: flex-start;
-    border-bottom: 1px solid var(--rule);
-    display: flex;
-    justify-content: space-between;
+  .current-decision > div {
+    min-width: 0;
     padding: 0.75rem;
   }
 
-  header > div {
+  .current-decision > div + div {
+    border-inline-start: 1px solid var(--rule);
+  }
+
+  dt,
+  h3 {
+    color: var(--dim);
+    font: 600 0.5625rem/1 var(--mono);
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+  }
+
+  dd {
+    align-items: center;
     display: flex;
-    flex-direction: column;
-  }
-
-  header strong {
     font-size: 0.75rem;
+    font-weight: 600;
+    gap: 0.4rem;
+    margin: 0.4rem 0 0;
+    min-width: 0;
   }
 
-  header time {
-    color: var(--dim);
-    font: 0.625rem/1.4 var(--mono);
-  }
-
-  header button {
-    background: transparent;
-    border: 0;
-    color: var(--dim);
-    font-size: 1.1rem;
-    line-height: 1;
+  dd time {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .current-reason {
     background: var(--warning-tint);
-    border-bottom: 1px solid color-mix(in srgb, var(--warning) 35%, transparent);
-    padding: 0.625rem 0.75rem;
+    border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent);
+    border-radius: var(--r-well);
+    margin-top: 0.75rem;
+    padding: 0.75rem;
   }
 
-  .current-reason span {
+  h3 {
+    margin: 0;
+  }
+
+  .current-reason h3 {
     color: var(--warning);
-    font-size: 0.5625rem;
-    text-transform: uppercase;
   }
 
   .current-reason p {
     font-size: 0.75rem;
-    line-height: 1.4;
-    margin: 0.2rem 0 0;
+    line-height: 1.45;
+    margin: 0.3rem 0 0;
+  }
+
+  .history-section {
+    margin-top: 1rem;
   }
 
   .decision-list {
-    max-height: min(22rem, 52vh);
+    border: 1px solid var(--rule);
+    border-radius: var(--r-well);
+    margin-top: 0.5rem;
+    max-height: min(21rem, 42vh);
     overflow: auto;
-    padding: 0.35rem;
   }
 
   article {
     display: grid;
     gap: 0.625rem;
     grid-template-columns: auto minmax(0, 1fr);
-    padding: 0.55rem;
+    padding: 0.7rem;
   }
 
   article + article {
@@ -266,6 +219,7 @@
     align-items: flex-start;
     display: flex;
     flex-direction: column;
+    min-width: 0;
   }
 
   article strong {
@@ -287,7 +241,18 @@
   .state {
     font-size: 0.75rem;
     margin: 0;
-    padding: 0.75rem;
+    padding: 1rem;
     text-align: center;
+  }
+
+  @media (max-width: 32rem) {
+    .current-decision {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .current-decision > div + div {
+      border-inline-start: 0;
+      border-top: 1px solid var(--rule);
+    }
   }
 </style>

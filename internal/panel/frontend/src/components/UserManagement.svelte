@@ -35,6 +35,9 @@
 
   type UserScope = 'global' | 'target';
   type ManagementSection = 'users' | 'invitations';
+  type SortDirection = 'ascending' | 'descending';
+  type UserSortColumn = 'name' | 'last_login';
+  type InvitationSortColumn = 'name' | 'expires';
   type UserAction = 'ban' | 'remove' | 'suspend' | 'restore' | 'unban' | 'remove_access';
   type TargetRole = Exclude<PanelRole, 'owner'>;
   type GrantedTargetRole = Exclude<TargetRole, 'none'>;
@@ -159,7 +162,7 @@
 
   let invitationSearch = $state('');
   let invitationQuery = $state('');
-  let invitationSort = $state<InvitationSort>('created_newest');
+  let invitationSort = $state<InvitationSort>('name_asc');
   let invitationRoles = $state<Exclude<PanelRole, 'none'>[]>([]);
   let invitationStatuses = $state<InvitationStatus[]>([]);
   let invitationLimit = $state(20);
@@ -183,6 +186,8 @@
   let pendingInvitation = $state<PanelInvitation | null>(null);
   let invitationBusy = $state<string | null>(null);
   let savingAccount = $state<string | null>(null);
+  let historyUser = $state<PanelUser | null>(null);
+  let historyTrigger = $state<HTMLElement | null>(null);
 
   let userLoadVersion = 0;
   let invitationLoadVersion = 0;
@@ -564,6 +569,86 @@
     tab?.focus();
   }
 
+  function selectUserSort(column: UserSortColumn): void {
+    userSort =
+      column === 'name'
+        ? userSort === 'name_asc'
+          ? 'name_desc'
+          : 'name_asc'
+        : userSort === 'login_newest'
+          ? 'login_oldest'
+          : 'login_newest';
+  }
+
+  function selectInvitationSort(column: InvitationSortColumn): void {
+    invitationSort =
+      column === 'name'
+        ? invitationSort === 'name_asc'
+          ? 'name_desc'
+          : 'name_asc'
+        : invitationSort === 'expiry_soonest'
+          ? 'expiry_latest'
+          : 'expiry_soonest';
+  }
+
+  function userSortDirection(column: UserSortColumn): SortDirection | undefined {
+    if (column === 'name') {
+      if (userSort === 'name_asc') return 'ascending';
+      if (userSort === 'name_desc') return 'descending';
+      return undefined;
+    }
+    if (userSort === 'login_oldest') return 'ascending';
+    if (userSort === 'login_newest') return 'descending';
+    return undefined;
+  }
+
+  function invitationSortDirection(column: InvitationSortColumn): SortDirection | undefined {
+    if (column === 'name') {
+      if (invitationSort === 'name_asc') return 'ascending';
+      if (invitationSort === 'name_desc') return 'descending';
+      return undefined;
+    }
+    if (invitationSort === 'expiry_soonest') return 'ascending';
+    if (invitationSort === 'expiry_latest') return 'descending';
+    return undefined;
+  }
+
+  function sortGlyph(direction: SortDirection | undefined): string {
+    if (direction === 'ascending') return '▲';
+    if (direction === 'descending') return '▼';
+    return '◇';
+  }
+
+  function hasDecisionHistory(user: PanelUser): boolean {
+    return user.status === 'banned' || user.target_access?.suspended === true;
+  }
+
+  function openHistory(user: PanelUser, trigger: HTMLElement): void {
+    if (!hasDecisionHistory(user)) return;
+    historyUser = user;
+    historyTrigger = trigger;
+  }
+
+  function clickHistoryRow(event: MouseEvent, user: PanelUser): void {
+    if (!hasDecisionHistory(user)) return;
+    if (
+      event.target instanceof Element &&
+      event.target.closest('button, select, input, textarea, a, summary') !== null
+    )
+      return;
+    openHistory(user, event.currentTarget as HTMLElement);
+  }
+
+  function keyHistoryRow(event: KeyboardEvent, user: PanelUser): void {
+    if (event.target !== event.currentTarget || !['Enter', ' '].includes(event.key)) return;
+    event.preventDefault();
+    openHistory(user, event.currentTarget as HTMLElement);
+  }
+
+  function closeHistory(): void {
+    historyUser = null;
+  }
+
   function selectScope(nextTarget: string | null): void {
     onScope(nextTarget);
   }
@@ -728,6 +813,10 @@
     return role[0]?.toLocaleUpperCase() + role.slice(1);
   }
 
+  function roleLevel(role: PanelRole): number {
+    return ['none', 'viewer', 'editor', 'admin', 'owner'].indexOf(role);
+  }
+
   function selectedSummary(values: readonly string[], fallback: string): string {
     if (values.length === 0) return fallback;
     if (values.length === 1) return roleLabel(values[0] as PanelRole);
@@ -784,53 +873,81 @@
   }
 </script>
 
+{#snippet sortButton(label: string, direction: SortDirection | undefined, onSelect: () => void)}
+  <button class="sort-button" type="button" onclick={onSelect}>
+    <span>{label}</span>
+    <span class="sort-indicator" aria-hidden="true">{sortGlyph(direction)}</span>
+  </button>
+{/snippet}
+
+{#snippet roleBadge(role: PanelRole)}
+  <span class="role-badge role-{role}">
+    <span class="role-level" aria-hidden="true">
+      {#each [0, 1, 2, 3] as level (level)}
+        <span class:filled={level < roleLevel(role)}></span>
+      {/each}
+    </span>
+    <span>{roleLabel(role)}</span>
+  </span>
+{/snippet}
+
 {#snippet headerActions()}
   <div class="header-actions">
-    <button class="btn btn-signal" type="button" bind:this={addButton} onclick={openAddModal}>
-      <span class="add-icon" aria-hidden="true"></span>
-      Add user
-    </button>
-    <ScopePicker
-      global={scope === 'global'}
-      {targetId}
-      {targets}
-      canSelectGlobal={canManageGlobal}
-      onSelect={selectScope}
-    />
+    <div class="scope-control">
+      <span class="scope-label">Scope</span>
+      <ScopePicker
+        global={scope === 'global'}
+        {targetId}
+        {targets}
+        canSelectGlobal={canManageGlobal}
+        onSelect={selectScope}
+      />
+    </div>
   </div>
 {/snippet}
 
 <Plate label="Users" status={headerActions}>
-  <div class="list-tabs" role="tablist" aria-label="User management lists">
+  <div class="list-tabs">
+    <div class="tab-options" role="tablist" aria-label="User management lists">
+      <button
+        id="users-list-tab"
+        class="list-tab"
+        class:selected={activeSection === 'users'}
+        type="button"
+        role="tab"
+        aria-selected={activeSection === 'users'}
+        aria-controls="users-list-panel"
+        tabindex={activeSection === 'users' ? 0 : -1}
+        onclick={() => selectSection('users')}
+        onkeydown={moveSection}
+      >
+        <span>Users</span>
+        <span class="tab-count mono">{userPage?.total ?? '—'}</span>
+      </button>
+      <button
+        id="invitations-list-tab"
+        class="list-tab"
+        class:selected={activeSection === 'invitations'}
+        type="button"
+        role="tab"
+        aria-selected={activeSection === 'invitations'}
+        aria-controls="invitations-list-panel"
+        tabindex={activeSection === 'invitations' ? 0 : -1}
+        onclick={() => selectSection('invitations')}
+        onkeydown={moveSection}
+      >
+        <span>Invitations</span>
+        <span class="tab-count mono">{invitationPage?.total ?? '—'}</span>
+      </button>
+    </div>
     <button
-      id="users-list-tab"
-      class="list-tab"
-      class:selected={activeSection === 'users'}
+      class="btn btn-signal tab-add"
       type="button"
-      role="tab"
-      aria-selected={activeSection === 'users'}
-      aria-controls="users-list-panel"
-      tabindex={activeSection === 'users' ? 0 : -1}
-      onclick={() => selectSection('users')}
-      onkeydown={moveSection}
+      bind:this={addButton}
+      onclick={openAddModal}
     >
-      <span>Users</span>
-      <span class="tab-count mono">{userPage?.total ?? '—'}</span>
-    </button>
-    <button
-      id="invitations-list-tab"
-      class="list-tab"
-      class:selected={activeSection === 'invitations'}
-      type="button"
-      role="tab"
-      aria-selected={activeSection === 'invitations'}
-      aria-controls="invitations-list-panel"
-      tabindex={activeSection === 'invitations' ? 0 : -1}
-      onclick={() => selectSection('invitations')}
-      onkeydown={moveSection}
-    >
-      <span>Invitations</span>
-      <span class="tab-count mono">{invitationPage?.total ?? '—'}</span>
+      <span class="add-icon" aria-hidden="true"></span>
+      Add user
     </button>
   </div>
 
@@ -868,17 +985,6 @@
           multiple
           onChange={(values) => (userStatuses = values as PanelUserListStatus[])}
         />
-        <label class="sort-field">
-          <span class="visually-hidden">User sort order</span>
-          <select class="select-input" bind:value={userSort} aria-label="User sort order">
-            <option value="name_asc">Name A–Z</option>
-            <option value="name_desc">Name Z–A</option>
-            <option value="login_newest">Last login newest</option>
-            <option value="login_oldest">Last login oldest</option>
-            <option value="updated_newest">Recently changed</option>
-            <option value="updated_oldest">Oldest changed</option>
-          </select>
-        </label>
         <PageSizeSelect
           value={userLimit}
           label="Users per page above results"
@@ -899,24 +1005,45 @@
           <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
           <div class="user-table-wrap" role="region" aria-label="Panel users" tabindex="0">
             <table class="user-table">
+              <caption class="visually-hidden">
+                Panel users. Select a sortable column header to change the sort order.
+              </caption>
               <thead>
                 <tr>
-                  <th>User</th>
+                  <th aria-sort={userSortDirection('name')}>
+                    {@render sortButton('User', userSortDirection('name'), () =>
+                      selectUserSort('name'),
+                    )}
+                  </th>
                   <th>Role</th>
                   <th>Status</th>
-                  <th>Last login</th>
+                  <th aria-sort={userSortDirection('last_login')}>
+                    {@render sortButton('Last login', userSortDirection('last_login'), () =>
+                      selectUserSort('last_login'),
+                    )}
+                  </th>
                   <th><span class="visually-hidden">Actions</span></th>
                 </tr>
               </thead>
               <tbody>
                 {#each users as user (user.account.id)}
-                  <tr>
+                  <tr
+                    class:history-row={hasDecisionHistory(user)}
+                    tabindex={hasDecisionHistory(user) ? 0 : undefined}
+                    onclick={(event) => clickHistoryRow(event, user)}
+                    onkeydown={(event) => keyHistoryRow(event, user)}
+                  >
                     <th scope="row">
                       <span class="user-identity">
                         <Avatar account={user.account} size={32} />
                         <span>
                           <strong>{user.account.display_name}</strong>
                           <span class="user-login mono">@{user.account.login}</span>
+                          {#if hasDecisionHistory(user)}
+                            <span class="visually-hidden">
+                              Select this row to review access decision history
+                            </span>
+                          {/if}
                         </span>
                       </span>
                     </th>
@@ -940,27 +1067,11 @@
                           {/if}
                         </select>
                       {:else}
-                        <Chip tone={user.root ? 'accent' : 'signal'}
-                          >{roleLabel(shownRole(user))}</Chip
-                        >
+                        {@render roleBadge(shownRole(user))}
                       {/if}
                     </td>
                     <td>
-                      <span class="status-cell">
-                        <Chip tone={statusTone(user)} dot>{statusLabel(user)}</Chip>
-                        {#if user.status === 'banned' || user.target_access?.suspended === true}
-                          <DecisionHistory
-                            label={`Access decision history for @${user.account.login}`}
-                            reason={currentReason(user)}
-                            decidedAt={currentDecisionAt(user)}
-                            fetchDecisions={() =>
-                              fetchUserDecisions(
-                                user.account.id,
-                                scope === 'target' ? targetId : undefined,
-                              )}
-                          />
-                        {/if}
-                      </span>
+                      <Chip tone={statusTone(user)} dot>{statusLabel(user)}</Chip>
                     </td>
                     <td class="last-login">
                       {#if user.last_login_at === undefined}
@@ -1041,20 +1152,6 @@
           multiple
           onChange={(values) => (invitationStatuses = values as InvitationStatus[])}
         />
-        <label class="sort-field">
-          <span class="visually-hidden">Invitation sort order</span>
-          <select
-            class="select-input"
-            bind:value={invitationSort}
-            aria-label="Invitation sort order"
-          >
-            <option value="created_newest">Newest first</option>
-            <option value="created_oldest">Oldest first</option>
-            <option value="expiry_soonest">Expires soonest</option>
-            <option value="expiry_latest">Expires latest</option>
-            <option value="name_asc">Name A–Z</option>
-          </select>
-        </label>
         <PageSizeSelect
           value={invitationLimit}
           label="Invitations per page above results"
@@ -1081,12 +1178,23 @@
           <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
           <div class="user-table-wrap" role="region" aria-label="Panel invitations" tabindex="0">
             <table class="user-table invitation-table">
+              <caption class="visually-hidden">
+                Panel invitations. Select a sortable column header to change the sort order.
+              </caption>
               <thead>
                 <tr>
-                  <th>User</th>
+                  <th aria-sort={invitationSortDirection('name')}>
+                    {@render sortButton('User', invitationSortDirection('name'), () =>
+                      selectInvitationSort('name'),
+                    )}
+                  </th>
                   <th>Role</th>
                   <th>Status</th>
-                  <th>Expires</th>
+                  <th aria-sort={invitationSortDirection('expires')}>
+                    {@render sortButton('Expires', invitationSortDirection('expires'), () =>
+                      selectInvitationSort('expires'),
+                    )}
+                  </th>
                   <th><span class="visually-hidden">Actions</span></th>
                 </tr>
               </thead>
@@ -1102,7 +1210,7 @@
                         </span>
                       </span>
                     </th>
-                    <td><Chip tone="signal">{roleLabel(invitation.role)}</Chip></td>
+                    <td>{@render roleBadge(invitation.role)}</td>
                     <td
                       ><Chip tone={invitationTone(invitation.status)} dot>{invitation.status}</Chip
                       ></td
@@ -1154,6 +1262,21 @@
   {/if}
 </Plate>
 
+{#if historyUser !== null}
+  <DecisionHistory
+    open
+    label={`Access details for @${historyUser.account.login}`}
+    scopeLabel={scope === 'global' ? 'Global' : targetName}
+    status={statusLabel(historyUser)}
+    reason={currentReason(historyUser)}
+    decidedAt={currentDecisionAt(historyUser)}
+    returnFocus={historyTrigger}
+    fetchDecisions={() =>
+      fetchUserDecisions(historyUser!.account.id, scope === 'target' ? targetId : undefined)}
+    onClose={closeHistory}
+  />
+{/if}
+
 <Modal
   id="add-user"
   open={addModalOpen}
@@ -1175,7 +1298,7 @@
           label="Access scope"
           onSelect={selectAddScope}
         />
-        <small>Choose global access or one organization</small>
+        <small>Choose global access or one installation</small>
       </div>
 
       <fieldset class="method-picker">
@@ -1200,24 +1323,18 @@
         </div>
       </fieldset>
 
-      <label class="form-field">
-        <span>GitHub login</span>
-        <input
-          class="text-input"
-          autocomplete="off"
-          placeholder="octocat"
-          bind:value={login}
-          required
-          data-modal-focus
-        />
-        <small>
-          {accessMethod === 'invite'
-            ? 'The invitation only works for this GitHub identity'
-            : 'GitHub login identifies the account to add'}
-        </small>
-      </label>
-
-      <div class="form-grid">
+      <div class="identity-grid" class:with-expiry={accessMethod === 'invite'}>
+        <label class="form-field login-field">
+          <span>GitHub login</span>
+          <input
+            class="text-input"
+            autocomplete="off"
+            placeholder="octocat"
+            bind:value={login}
+            required
+            data-modal-focus
+          />
+        </label>
         <label class="form-field">
           <span>Role</span>
           <select class="select-input" bind:value={addRole} aria-label="Role">
@@ -1237,6 +1354,11 @@
           </label>
         {/if}
       </div>
+      <small class="identity-help">
+        {accessMethod === 'invite'
+          ? 'The invitation only works for this GitHub identity'
+          : 'GitHub login identifies the account to add'}
+      </small>
     {:else}
       <div class="invitation-created" aria-live="polite">
         <span class="success-mark" aria-hidden="true">✓</span>
@@ -1356,8 +1478,7 @@
   .header-actions,
   .management-toolbar,
   .pagination-footer,
-  .pagination-actions,
-  .status-cell {
+  .pagination-actions {
     align-items: center;
     display: flex;
   }
@@ -1367,12 +1488,35 @@
     margin-left: auto;
   }
 
+  .scope-control {
+    align-items: center;
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .scope-label {
+    color: var(--dim);
+    font: 600 0.5625rem/1 var(--mono);
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+  }
+
   .list-tabs {
+    align-items: stretch;
     border-bottom: 1px solid var(--rule);
     display: flex;
-    gap: 0.25rem;
     margin: -1.125rem -1.125rem 0;
     padding: 0 1.125rem;
+  }
+
+  .tab-options {
+    display: flex;
+    gap: 0.25rem;
+  }
+
+  .tab-add {
+    height: 1.875rem;
+    margin: auto 0 auto auto;
   }
 
   .list-tab {
@@ -1384,7 +1528,7 @@
     display: inline-flex;
     font-size: 0.75rem;
     font-weight: 650;
-    gap: 0.45rem;
+    gap: 0.5rem;
     min-height: 2.75rem;
     padding: 0 0.625rem;
     transition:
@@ -1410,11 +1554,14 @@
     border-radius: 999px;
     color: var(--dim);
     display: inline-flex;
+    box-sizing: border-box;
     font-size: 0.5625rem;
-    height: 1.125rem;
+    font-weight: 650;
+    height: 1.25rem;
     justify-content: center;
-    min-width: 1.125rem;
-    padding: 0 0.3rem;
+    line-height: 1;
+    min-width: 1.5rem;
+    padding: 0 0.375rem;
   }
 
   .list-tab.selected .tab-count {
@@ -1450,6 +1597,7 @@
   }
 
   .management-toolbar {
+    --page-size-control-height: 1.875rem;
     --repository-control-height: 1.875rem;
     flex-wrap: wrap;
     gap: 0.5rem;
@@ -1486,11 +1634,6 @@
     top: 0.48rem;
     transform: rotate(45deg);
     width: 0.35rem;
-  }
-
-  .sort-field .select-input {
-    font-size: 0.6875rem;
-    height: var(--repository-control-height);
   }
 
   .result-summary {
@@ -1561,6 +1704,41 @@
     text-transform: uppercase;
   }
 
+  .user-table thead th:has(.sort-button) {
+    padding: 0;
+  }
+
+  .sort-button {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    color: inherit;
+    display: flex;
+    font: inherit;
+    gap: 0.45rem;
+    justify-content: flex-start;
+    letter-spacing: inherit;
+    padding: 0.7rem 0.75rem;
+    text-align: left;
+    text-transform: inherit;
+    transition:
+      background-color 120ms ease-out,
+      color 120ms ease-out;
+    width: 100%;
+  }
+
+  .sort-button:hover,
+  .sort-button:focus-visible {
+    background: var(--well);
+    color: var(--text);
+  }
+
+  .sort-indicator {
+    color: var(--signal);
+    font-size: 0.55rem;
+    letter-spacing: 0;
+  }
+
   .user-table tbody tr:last-child th,
   .user-table tbody tr:last-child td {
     border-bottom: 0;
@@ -1568,6 +1746,19 @@
 
   .user-table tbody tr:hover {
     background: var(--well);
+  }
+
+  .user-table tbody tr.history-row {
+    cursor: pointer;
+  }
+
+  .user-table tbody tr.history-row:hover {
+    background: var(--strip-lift);
+  }
+
+  .user-table tbody tr.history-row:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: -2px;
   }
 
   .user-identity {
@@ -1602,12 +1793,64 @@
     font-size: 0.75rem;
   }
 
-  .status-cell {
-    gap: 0.25rem;
+  .role-select {
+    font: 600 0.625rem/1 var(--sans);
+    height: 1.625rem;
+    min-width: 7.5rem;
+    padding-left: 0.55rem;
+    padding-right: 1.65rem;
   }
 
-  .role-select {
-    min-width: 8.5rem;
+  .role-badge {
+    align-items: center;
+    background: var(--well);
+    border: 1px solid var(--rule);
+    border-radius: var(--r-ctl);
+    color: var(--text);
+    display: inline-flex;
+    font: 650 0.625rem/1 var(--mono);
+    gap: 0.45rem;
+    min-height: 1.625rem;
+    padding: 0 0.55rem;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .role-owner {
+    background: var(--accent-tint);
+    border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+    color: var(--accent);
+  }
+
+  .role-level {
+    align-items: end;
+    display: inline-grid;
+    flex: none;
+    gap: 1px;
+    grid-template-columns: repeat(4, 2px);
+    height: 0.625rem;
+  }
+
+  .role-level > span {
+    background: var(--rule);
+    border-radius: 1px;
+    height: 0.25rem;
+  }
+
+  .role-level > span:nth-child(2) {
+    height: 0.375rem;
+  }
+
+  .role-level > span:nth-child(3) {
+    height: 0.5rem;
+  }
+
+  .role-level > span:nth-child(4) {
+    height: 0.625rem;
+  }
+
+  .role-level > span.filled {
+    background: currentColor;
   }
 
   .row-actions {
@@ -1803,6 +2046,22 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .identity-grid {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: minmax(0, 1.75fr) minmax(7.5rem, 0.8fr);
+  }
+
+  .identity-grid.with-expiry {
+    grid-template-columns: minmax(0, 1.55fr) minmax(6.75rem, 0.72fr) minmax(7.5rem, 0.8fr);
+  }
+
+  .identity-help {
+    color: var(--dim);
+    font-size: 0.6875rem;
+    margin-top: -0.5rem;
+  }
+
   .reason-textarea {
     background: var(--control-surface);
     border: 1px solid var(--control-border);
@@ -1878,12 +2137,38 @@
     .header-actions :global(.scope-picker summary) {
       max-width: none;
     }
+
+    .identity-grid.with-expiry {
+      grid-template-columns: minmax(0, 1.35fr) repeat(2, minmax(6.5rem, 0.75fr));
+    }
   }
 
   @media (max-width: 36rem) {
     .header-actions {
       align-items: stretch;
-      flex-direction: column-reverse;
+    }
+
+    .scope-control {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      width: 100%;
+    }
+
+    .scope-control :global(.scope-picker) {
+      min-width: 0;
+      width: 100%;
+    }
+
+    .list-tabs {
+      padding-right: 0.75rem;
+    }
+
+    .list-tab {
+      padding-inline: 0.45rem;
+    }
+
+    .tab-add {
+      padding-inline: 0.625rem;
     }
 
     .pagination-footer {
@@ -1896,7 +2181,9 @@
       width: 100%;
     }
 
-    .form-grid {
+    .form-grid,
+    .identity-grid,
+    .identity-grid.with-expiry {
       grid-template-columns: minmax(0, 1fr);
     }
 

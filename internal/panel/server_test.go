@@ -652,7 +652,7 @@ func TestPanelInvitesNamedGitHubUserThroughOAuth(t *testing.T) {
 	listed := harness.request(
 		t,
 		http.MethodGet,
-		"/panel/api/v1/invitations?q=invited&role=editor&status=pending&sort=name_asc&limit=1",
+		"/panel/api/v1/invitations?q=invited&role=editor&status=pending&sort=name_desc&limit=1",
 		nil,
 		ownerSession,
 	)

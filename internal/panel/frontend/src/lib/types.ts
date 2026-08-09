@@ -144,7 +144,12 @@ export interface PanelInvitation {
 }
 
 export type InvitationSort =
-  'created_newest' | 'created_oldest' | 'expiry_soonest' | 'expiry_latest' | 'name_asc';
+  | 'created_newest'
+  | 'created_oldest'
+  | 'expiry_soonest'
+  | 'expiry_latest'
+  | 'name_asc'
+  | 'name_desc';
 
 export interface InvitationPageRequest {
   cursor?: string;

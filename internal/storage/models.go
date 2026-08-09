@@ -132,11 +132,12 @@ const (
 type InvitationOrder string
 
 const (
-	InvitationCreatedNewest InvitationOrder = "created_newest"
-	InvitationCreatedOldest InvitationOrder = "created_oldest"
-	InvitationExpirySoonest InvitationOrder = "expiry_soonest"
-	InvitationExpiryLatest  InvitationOrder = "expiry_latest"
-	InvitationNameAscending InvitationOrder = "name_asc"
+	InvitationCreatedNewest  InvitationOrder = "created_newest"
+	InvitationCreatedOldest  InvitationOrder = "created_oldest"
+	InvitationExpirySoonest  InvitationOrder = "expiry_soonest"
+	InvitationExpiryLatest   InvitationOrder = "expiry_latest"
+	InvitationNameAscending  InvitationOrder = "name_asc"
+	InvitationNameDescending InvitationOrder = "name_desc"
 )
 
 // InvitationPageRequest selects one filtered invitation-management page.
