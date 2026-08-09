@@ -690,10 +690,10 @@
     background: var(--well);
     border-top: 1px solid var(--rule);
     display: grid;
-    gap: 0.75rem;
+    gap: 0.5rem;
     grid-template-columns: 1fr auto 1fr;
     min-height: 3.75rem;
-    padding: 0.625rem 1.125rem;
+    padding: 0.625rem;
   }
 
   .range {
@@ -718,7 +718,8 @@
     justify-content: flex-end;
   }
 
-  .toolbar-rows {
+  .toolbar-rows,
+  .footer-rows {
     --page-size-control-height: var(--history-control-height);
   }
 
