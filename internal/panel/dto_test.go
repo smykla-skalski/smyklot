@@ -59,3 +59,17 @@ func TestConfigurationDTOsExposeInheritedValues(t *testing.T) {
 		)
 	}
 }
+
+func TestConfigurationDTOsExposeEmptyAllowedCommandsAsArray(t *testing.T) {
+	emptyCommands := []string{}
+	response := targetDTO(config.Default(), storage.Target{
+		ConfigPatch: config.Patch{AllowedCommands: &emptyCommands},
+	})
+
+	if response.InheritedConfig.AllowedCommands == nil {
+		t.Fatal("target inherited commands are nil; the panel requires an empty array")
+	}
+	if response.EffectiveConfig.AllowedCommands == nil {
+		t.Fatal("target effective commands are nil; the panel requires an empty array")
+	}
+}

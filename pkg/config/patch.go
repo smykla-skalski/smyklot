@@ -99,7 +99,7 @@ func cloneConfig(base *Config) *Config {
 	}
 
 	result := *base
-	result.AllowedCommands = append([]string(nil), base.AllowedCommands...)
+	result.AllowedCommands = append([]string{}, base.AllowedCommands...)
 	result.CommandAliases = cloneAliases(base.CommandAliases)
 
 	return &result
@@ -174,7 +174,7 @@ func setSlice(
 		return
 	}
 
-	*target = append([]string(nil), (*value)...)
+	*target = append([]string{}, (*value)...)
 	setSource(sources, key, source)
 }
 
