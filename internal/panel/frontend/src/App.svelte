@@ -7,37 +7,46 @@
   import RepositoryList from './components/RepositoryList.svelte';
   import SignedOut from './components/SignedOut.svelte';
   import TargetSettings from './components/TargetSettings.svelte';
-  import ViewTabs, { type PanelView } from './components/ViewTabs.svelte';
+  import ViewTabs from './components/ViewTabs.svelte';
   import type { PanelApi } from './lib/api';
   import type { PanelBuild } from './lib/base';
   import { LatestRequest } from './lib/latest-request';
+  import { readLastInstallation, writeLastInstallation } from './lib/preferences';
+  import {
+    resolvePanelRoute,
+    type PanelRoute,
+    type PanelRouter,
+    type PanelView,
+  } from './lib/routes';
   import type {
     PanelTarget,
     PanelViewer,
     RepositoryDetail,
+    RepositoryPageRequest,
     RepositorySettingsInput,
-    RepositorySummary,
     TargetSettingsInput,
   } from './lib/types';
 
-  type FailureSource = 'load' | 'repositories' | 'sign-out' | 'stream';
+  type FailureSource = 'load' | 'sign-out' | 'stream';
   type PanelFailure = { message: string; source: FailureSource };
 
-  const { api, iconUrl, build }: { api: PanelApi; iconUrl: string; build: PanelBuild } = $props();
+  const {
+    api,
+    iconUrl,
+    build,
+    router,
+  }: { api: PanelApi; iconUrl: string; build: PanelBuild; router: PanelRouter } = $props();
 
   let loading = $state(true);
-  let repositoriesLoading = $state(false);
   let viewer = $state<PanelViewer | null>(null);
   let targets = $state<PanelTarget[]>([]);
   let selectedId = $state<string | null>(null);
-  let repositories = $state<RepositorySummary[]>([]);
   let failure = $state<PanelFailure | null>(null);
   let historyVersion = $state(0);
   let repositoryDetailsVersion = $state(0);
   let view = $state<PanelView>('settings');
   let streamReady = $state(false);
   const targetReads = new LatestRequest();
-  const repositoryReads = new LatestRequest();
   const streamRefreshes = new LatestRequest();
 
   const selectedTarget = $derived(
@@ -54,11 +63,10 @@
       if (viewer === null) {
         targets = [];
         selectedId = null;
-        repositories = [];
         return;
       }
       if (!(await refreshTargets())) return;
-      if (selectedId !== null) await loadRepositories(selectedId);
+      await activateRoute(router.current(), 'replace');
       historyVersion += 1;
       streamReady = true;
     } catch (error) {
@@ -79,48 +87,92 @@
     }
     if (!targetReads.isCurrent(read)) return false;
     targets = listed;
-    if (selectedId === null || !listed.some((target) => target.id === selectedId)) {
-      const nextSelectedId = listed[0]?.id ?? null;
-      if (selectedId !== nextSelectedId) {
-        selectedId = nextSelectedId;
-        repositories = [];
-        repositoryReads.invalidate();
-      }
+    if (selectedId !== null && !listed.some((target) => target.id === selectedId)) {
+      selectedId = null;
     }
 
     return true;
   }
 
   async function selectTarget(targetId: string): Promise<void> {
-    if (selectedId === targetId) return;
-    selectedId = targetId;
-    repositories = [];
+    const target = targets.find((entry) => entry.id === targetId);
+    if (target === undefined || selectedId === targetId) return;
+    if (view === 'help') {
+      selectedId = target.id;
+      writeLastInstallation(target.account.login);
+      failure = null;
+      repositoryDetailsVersion += 1;
+      historyVersion += 1;
+      return;
+    }
+    await activateRoute(routeFor(target, view), 'push');
+  }
+
+  function selectView(nextView: PanelView): void {
+    const target = selectedTarget;
+    if (target === null || view === nextView) return;
+    view = nextView;
+    router.push(routeFor(target, nextView));
+  }
+
+  async function activateRoute(
+    requested: PanelRoute | null,
+    navigation: 'none' | 'push' | 'replace',
+  ): Promise<void> {
+    const resolved = resolvePanelRoute(
+      targets.map((target) => target.account.login),
+      requested,
+      readLastInstallation(),
+    );
+    if (resolved === null) {
+      selectedId = null;
+      return;
+    }
+
+    const target = targetForAccount(resolved.account);
+    if (target === undefined) return;
+
+    const targetChanged = selectedId !== target.id;
+    selectedId = target.id;
+    view = resolved.view;
+    writeLastInstallation(target.account.login);
+    const canonical = routeFor(target, resolved.view);
+
+    if (navigation === 'push') {
+      router.push(canonical);
+    } else if (navigation === 'replace' || !sameRoute(requested, canonical)) {
+      router.replace(canonical);
+    }
+
+    if (!targetChanged) return;
     failure = null;
-    await loadRepositories(targetId);
+    repositoryDetailsVersion += 1;
     historyVersion += 1;
   }
 
-  async function loadRepositories(
-    targetId: string,
-    isRelevant: () => boolean = () => true,
-  ): Promise<boolean> {
-    const read = repositoryReads.begin();
-    repositoriesLoading = true;
-    try {
-      const listed = await api.fetchRepositories(targetId);
-      if (repositoryReads.isCurrent(read) && selectedId === targetId && isRelevant()) {
-        repositories = listed;
-        repositoryDetailsVersion += 1;
-        clearFailure('repositories');
-        return true;
-      }
-    } catch (error) {
-      if (repositoryReads.isCurrent(read) && isRelevant()) setFailure('repositories', error);
-    } finally {
-      if (repositoryReads.isCurrent(read)) repositoriesLoading = false;
-    }
+  function targetForAccount(account: string): PanelTarget | undefined {
+    const folded = account.toLowerCase();
+    return targets.find((target) => target.account.login.toLowerCase() === folded);
+  }
 
-    return false;
+  function routeFor(target: PanelTarget, nextView: PanelView): PanelRoute {
+    if (nextView === 'help') return { view: 'help' };
+    return { account: target.account.login, view: nextView };
+  }
+
+  function targetHref(target: PanelTarget): string {
+    return router.path(routeFor(target, view));
+  }
+
+  function viewHref(nextView: PanelView): string {
+    const target = selectedTarget;
+    return target === null ? '#' : router.path(routeFor(target, nextView));
+  }
+
+  function sameRoute(left: PanelRoute | null, right: PanelRoute): boolean {
+    if (left === null || left.view !== right.view) return false;
+    if (left.view === 'help' || right.view === 'help') return true;
+    return left.account === right.account;
   }
 
   async function updateTarget(input: TargetSettingsInput): Promise<void> {
@@ -129,8 +181,16 @@
     const updated = await api.updateTargetSettings(target.id, input);
     targetReads.invalidate();
     targets = targets.map((entry) => (entry.id === updated.id ? updated : entry));
-    if (selectedId !== null) await loadRepositories(selectedId);
+    repositoryDetailsVersion += 1;
     historyVersion += 1;
+  }
+
+  function fetchRepositories(
+    request: RepositoryPageRequest,
+  ): ReturnType<PanelApi['fetchRepositories']> {
+    const target = selectedTarget;
+    if (target === null) throw new Error('select an installation first');
+    return api.fetchRepositories(target.id, request);
   }
 
   function loadRepository(repositoryId: string): Promise<RepositoryDetail> {
@@ -148,13 +208,9 @@
     return api.updateRepositorySettings(target.id, repositoryId, input);
   }
 
-  function repositoryChanged(targetId: string, detail: RepositoryDetail): void {
+  function repositoryChanged(targetId: string): void {
     if (viewer === null) return;
-    if (selectedId === targetId) {
-      repositories = repositories.map((entry) =>
-        entry.id === detail.repository.id ? detail.repository : entry,
-      );
-    }
+    if (selectedId === targetId) repositoryDetailsVersion += 1;
     historyVersion += 1;
     refreshFromStreamSafely();
   }
@@ -163,12 +219,14 @@
     const refresh = streamRefreshes.begin();
     try {
       if (!(await refreshTargets()) || !streamRefreshes.isCurrent(refresh)) return;
+      if (selectedId === null) {
+        await activateRoute(router.current(), 'replace');
+      } else if (selectedTarget !== null) {
+        writeLastInstallation(selectedTarget.account.login);
+        router.replace(routeFor(selectedTarget, view));
+      }
       if (selectedId !== null) {
-        if (
-          !(await loadRepositories(selectedId, () => streamRefreshes.isCurrent(refresh))) ||
-          !streamRefreshes.isCurrent(refresh)
-        )
-          return;
+        repositoryDetailsVersion += 1;
         historyVersion += 1;
       }
       clearFailure('stream');
@@ -189,6 +247,12 @@
     });
   });
 
+  $effect(() =>
+    router.subscribe((route) => {
+      if (viewer !== null && !loading) void activateRoute(route, 'none');
+    }),
+  );
+
   async function signOut(): Promise<void> {
     loading = true;
     failure = null;
@@ -196,12 +260,9 @@
       await api.signOut();
       viewer = null;
       targets = [];
-      repositories = [];
       selectedId = null;
-      view = 'settings';
       streamReady = false;
       targetReads.invalidate();
-      repositoryReads.invalidate();
       streamRefreshes.invalidate();
       await load();
     } catch (error) {
@@ -231,6 +292,7 @@
     {iconUrl}
     {targets}
     {selectedId}
+    {targetHref}
     onSelectTarget={(targetId) => void selectTarget(targetId)}
     onSignOut={signOut}
   />
@@ -250,7 +312,7 @@
     {#if failure === null}<SignedOut href={api.signInUrl()} />{/if}
   {:else}
     {#if selectedTarget !== null}
-      <ViewTabs value={view} onSelect={(nextView) => (view = nextView)} />
+      <ViewTabs value={view} hrefFor={viewHref} onSelect={selectView} />
 
       {#if view === 'settings'}
         <div id="settings-panel" role="tabpanel" aria-labelledby="settings-tab">
@@ -260,21 +322,16 @@
         </div>
       {:else if view === 'repositories'}
         <div id="repositories-panel" role="tabpanel" aria-labelledby="repositories-tab">
-          {#if repositoriesLoading && repositories.length === 0}
-            <Plate label="Installed repositories">
-              <p class="dim">Reading repositories…</p>
-            </Plate>
-          {:else}
-            {#key selectedTarget.id}
-              <RepositoryList
-                {repositories}
-                refreshVersion={repositoryDetailsVersion}
-                onLoad={loadRepository}
-                onUpdate={updateRepository}
-                onChanged={(detail) => repositoryChanged(selectedTarget.id, detail)}
-              />
-            {/key}
-          {/if}
+          {#key selectedTarget.id}
+            <RepositoryList
+              targetId={selectedTarget.id}
+              refreshVersion={repositoryDetailsVersion}
+              fetchPage={fetchRepositories}
+              onLoad={loadRepository}
+              onUpdate={updateRepository}
+              onChanged={() => repositoryChanged(selectedTarget.id)}
+            />
+          {/key}
         </div>
       {:else if view === 'history'}
         <div id="history-panel" role="tabpanel" aria-labelledby="history-tab">

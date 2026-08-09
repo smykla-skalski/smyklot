@@ -30,6 +30,7 @@ type CatalogStore interface {
 	CanAccessTarget(context.Context, string, string) (bool, error)
 	GetTarget(context.Context, string) (Target, error)
 	ListRepositories(context.Context, string) ([]Repository, error)
+	ListRepositoryPage(context.Context, string, RepositoryPageRequest) (RepositoryPage, error)
 	GetRepository(context.Context, string, string) (Repository, error)
 }
 

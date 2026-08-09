@@ -3,6 +3,7 @@ export type TimeDisplay = 'relative' | 'absolute';
 export const DEFAULT_TIME_DISPLAY: TimeDisplay = 'relative';
 
 const TIME_DISPLAY_KEY = 'smyklot.panel.history.time-display';
+const LAST_INSTALLATION_KEY = 'smyklot.panel.last-installation';
 
 type PreferenceReader = Pick<Storage, 'getItem'>;
 type PreferenceWriter = Pick<Storage, 'setItem'>;
@@ -40,6 +41,32 @@ export function writeTimeDisplay(
 
   try {
     storage.setItem(TIME_DISPLAY_KEY, value);
+  } catch {
+    // Browser preferences are best-effort and must never block the panel
+  }
+}
+
+export function readLastInstallation(
+  storage: PreferenceReader | null = browserStorage(),
+): string | null {
+  if (storage === null) return null;
+
+  try {
+    const value = storage.getItem(LAST_INSTALLATION_KEY)?.trim();
+    return value === undefined || value === '' ? null : value;
+  } catch {
+    return null;
+  }
+}
+
+export function writeLastInstallation(
+  account: string,
+  storage: PreferenceWriter | null = browserStorage(),
+): void {
+  if (storage === null) return;
+
+  try {
+    storage.setItem(LAST_INSTALLATION_KEY, account);
   } catch {
     // Browser preferences are best-effort and must never block the panel
   }

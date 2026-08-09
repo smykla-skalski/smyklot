@@ -8,6 +8,7 @@
     iconUrl,
     targets,
     selectedId,
+    targetHref,
     onSelectTarget,
     onSignOut,
   }: {
@@ -15,6 +16,7 @@
     iconUrl: string;
     targets: PanelTarget[];
     selectedId: string | null;
+    targetHref: (target: PanelTarget) => string;
     onSelectTarget: (targetId: string) => void;
     onSignOut: () => void | Promise<void>;
   } = $props();
@@ -60,7 +62,10 @@
     await onSignOut();
   }
 
-  function selectTarget(targetId: string): void {
+  function selectTarget(event: MouseEvent, targetId: string): void {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
+      return;
+    event.preventDefault();
     if (accountMenu !== null) accountMenu.open = false;
     onSelectTarget(targetId);
   }
@@ -77,7 +82,7 @@
     <details class="account-menu" bind:this={accountMenu}>
       <summary class="who" bind:this={accountTrigger}>
         <span class="visually-hidden">Admin</span>
-        <Avatar account={viewer.account} size={30} />
+        <Avatar account={selectedTarget?.account ?? viewer.account} size={30} />
         <span class="who-text">
           <span class="who-name">{viewer.account.display_name}</span>
           <span class="who-context mono">
@@ -100,11 +105,12 @@
           {:else}
             <div class="target-options">
               {#each targets as target (target.id)}
-                <button
+                <a
+                  href={targetHref(target)}
                   class="target-option"
                   class:current={target.id === selectedId}
                   aria-current={target.id === selectedId ? 'true' : undefined}
-                  onclick={() => selectTarget(target.id)}
+                  onclick={(event) => selectTarget(event, target.id)}
                 >
                   <Avatar account={target.account} size={26} />
                   <span class="option-copy">
@@ -118,7 +124,7 @@
                   <span class="option-check" aria-hidden="true">
                     {target.id === selectedId ? '✓' : ''}
                   </span>
-                </button>
+                </a>
               {/each}
             </div>
           {/if}
@@ -334,6 +340,7 @@
     min-height: 2.75rem;
     padding: 0.35rem 0.4rem;
     text-align: left;
+    text-decoration: none;
     width: 100%;
   }
 

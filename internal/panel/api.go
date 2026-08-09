@@ -121,16 +121,18 @@ func (s *Server) getRepositories(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	repositories, err := s.store.ListRepositories(r.Context(), target.ID)
+	page, err := parseRepositoryPage(r.URL.Query())
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid_repository_query", err.Error())
+		return
+	}
+	repositories, err := s.store.ListRepositoryPage(r.Context(), target.ID, page)
 	if err != nil {
 		s.writeInternal(w, err)
 		return
 	}
-	response := make([]repositorySummaryResponse, 0, len(repositories))
-	for _, repository := range repositories {
-		response = append(response, repositorySummaryDTO(target, repository))
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"repositories": response})
+	target.RepositoryDefaultEnabled = repositories.RepositoryDefaultEnabled
+	writeJSON(w, http.StatusOK, repositoryPageDTO(target, repositories))
 }
 
 func (s *Server) getRepository(w http.ResponseWriter, r *http.Request) {
@@ -251,7 +253,7 @@ func (s *Server) getFailures(w http.ResponseWriter, r *http.Request) {
 	}
 	var retryable *bool
 	switch r.URL.Query().Get("kind") {
-	case "", "all":
+	case "", allFilter:
 	case "retryable":
 		value := true
 		retryable = &value

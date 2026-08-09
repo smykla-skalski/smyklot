@@ -448,6 +448,122 @@ func TestPanelHistoryPaginationFilteringAndSorting(t *testing.T) {
 	}
 }
 
+func TestPanelRepositoryPaginationFilteringAndSorting(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+	session := harness.signIn(t)
+	targetID := "github:installation:10"
+	target, err := harness.store.GetTarget(t.Context(), targetID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := harness.store.ReconcileInstallation(t.Context(), storage.InstallationSnapshot{
+		TargetID:       target.ID,
+		InstallationID: target.InstallationID,
+		Kind:           target.Kind,
+		Account:        target.Account,
+		Repositories: []storage.RepositorySnapshot{
+			{ID: "repository-20", Name: "smyklot", FullName: "smykla-skalski/smyklot"},
+			{ID: "repository-21", Name: "alpha", FullName: "smykla-skalski/alpha"},
+			{ID: "repository-22", Name: "beta-service", FullName: "smykla-skalski/beta-service"},
+		},
+		SyncedAt: harness.now.Add(time.Minute),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	enabled := true
+	if _, err := harness.store.UpdateRepositorySettings(t.Context(), storage.RepositorySettingsChange{
+		TargetID:             targetID,
+		RepositoryID:         "repository-22",
+		ActorAccountID:       target.Account.ID,
+		EnabledOverride:      &enabled,
+		ConfigPatch:          config.Patch{QuietSuccess: &enabled},
+		IgnoreRepositoryFile: false,
+		ExpectedRevision:     1,
+		ChangedAt:            harness.now.Add(2 * time.Minute),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := harness.store.UpdateRepositoryFileState(t.Context(), storage.RepositoryFileState{
+		TargetID:     targetID,
+		RepositoryID: "repository-22",
+		Status:       storage.RepositoryFileInvalid,
+		ObservedAt:   harness.now.Add(3 * time.Minute),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	filtered := harness.request(
+		t,
+		http.MethodGet,
+		"/panel/api/v1/targets/"+targetID+
+			"/repositories?q=service&sort=newest&state=enabled&file=invalid&setting=quiet_success&limit=1",
+		nil,
+		session,
+	)
+	if filtered.Code != http.StatusOK {
+		t.Fatalf("filtered repositories = %d %s", filtered.Code, filtered.Body.String())
+	}
+	var filteredPage pageResponse[repositorySummaryResponse]
+	if err := json.Unmarshal(filtered.Body.Bytes(), &filteredPage); err != nil {
+		t.Fatal(err)
+	}
+	if filteredPage.Total != 1 || len(filteredPage.Items) != 1 ||
+		filteredPage.Items[0].Name != "beta-service" || filteredPage.NextCursor != nil {
+		t.Fatalf("unexpected filtered repositories: %#v", filteredPage)
+	}
+
+	first := harness.request(
+		t,
+		http.MethodGet,
+		"/panel/api/v1/targets/"+targetID+"/repositories?sort=name_desc&limit=1",
+		nil,
+		session,
+	)
+	var firstPage pageResponse[repositorySummaryResponse]
+	if first.Code != http.StatusOK {
+		t.Fatalf("first repository page = %d %s", first.Code, first.Body.String())
+	}
+	if err := json.Unmarshal(first.Body.Bytes(), &firstPage); err != nil {
+		t.Fatal(err)
+	}
+	if firstPage.Total != 3 || len(firstPage.Items) != 1 || firstPage.NextCursor == nil ||
+		firstPage.Items[0].Name != "smyklot" {
+		t.Fatalf("unexpected first repository page: %#v", firstPage)
+	}
+
+	second := harness.request(
+		t,
+		http.MethodGet,
+		"/panel/api/v1/targets/"+targetID+"/repositories?sort=name_desc&limit=1&cursor="+
+			url.QueryEscape(*firstPage.NextCursor),
+		nil,
+		session,
+	)
+	var secondPage pageResponse[repositorySummaryResponse]
+	if second.Code != http.StatusOK {
+		t.Fatalf("second repository page = %d %s", second.Code, second.Body.String())
+	}
+	if err := json.Unmarshal(second.Body.Bytes(), &secondPage); err != nil {
+		t.Fatal(err)
+	}
+	if secondPage.Total != 3 || len(secondPage.Items) != 1 ||
+		secondPage.Items[0].Name != "beta-service" {
+		t.Fatalf("unexpected second repository page: %#v", secondPage)
+	}
+
+	invalid := harness.request(
+		t,
+		http.MethodGet,
+		"/panel/api/v1/targets/"+targetID+"/repositories?setting=runner",
+		nil,
+		session,
+	)
+	if invalid.Code != http.StatusBadRequest ||
+		!strings.Contains(invalid.Body.String(), `"code":"invalid_repository_query"`) {
+		t.Fatalf("invalid repository query = %d %s", invalid.Code, invalid.Body.String())
+	}
+}
+
 func seedFailure(
 	t *testing.T,
 	harness *panelHarness,
@@ -507,7 +623,12 @@ func TestPanelRejectsAnotherOwnerAndCrossOriginWrites(t *testing.T) {
 
 func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
-	for _, path := range []string{"/panel/", "/panel/repositories"} {
+	for _, path := range []string{
+		"/panel/",
+		"/panel/@smykla-skalski/repositories",
+		"/panel/@auth/settings",
+		"/panel/help",
+	} {
 		response := harness.request(t, http.MethodGet, path, nil, nil)
 		body := response.Body.String()
 		if response.Code != http.StatusOK ||
@@ -520,6 +641,19 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 	asset := harness.request(t, http.MethodGet, "/panel/assets/app.js", nil, nil)
 	if asset.Code != http.StatusOK || asset.Header().Get("Cache-Control") != "public, max-age=31536000, immutable" {
 		t.Fatalf("asset response = %d %#v", asset.Code, asset.Header())
+	}
+	for _, path := range []string{
+		"/panel/smykla-skalski/repositories",
+		"/panel/auth/settings",
+		"/panel/webhook/history",
+		"/panel/@smykla-skalski/help",
+		"/panel/@smykla-skalski/unknown",
+		"/panel/assets/missing.js",
+	} {
+		response := harness.request(t, http.MethodGet, path, nil, nil)
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("unknown panel route %s = %d %s", path, response.Code, response.Body.String())
+		}
 	}
 }
 

@@ -137,19 +137,49 @@ describe('targets and repositories', () => {
   it('unwraps target and repository collections', async () => {
     const stub = stubFetch([
       jsonResponse(200, { targets: [TARGET] }),
-      jsonResponse(200, { repositories: [REPOSITORY] }),
+      jsonResponse(200, { items: [REPOSITORY], next_cursor: null, total: 1 }),
       jsonResponse(200, DETAIL),
     ]);
     const api = createPanelApi('/panel', stub.fetch);
 
     await expect(api.fetchTargets()).resolves.toEqual([TARGET]);
-    await expect(api.fetchRepositories('2001')).resolves.toEqual([REPOSITORY]);
+    await expect(
+      api.fetchRepositories('2001', {
+        query: '',
+        sort: 'name_asc',
+        limit: 20,
+        state: 'all',
+        file: 'all',
+        setting: 'all',
+      }),
+    ).resolves.toEqual({ items: [REPOSITORY], next_cursor: null, total: 1 });
     await expect(api.fetchRepository('2001', '4001')).resolves.toEqual(DETAIL);
     expect(stub.calls.map((call) => call.url)).toEqual([
       '/panel/api/v1/targets',
-      '/panel/api/v1/targets/2001/repositories',
+      '/panel/api/v1/targets/2001/repositories?sort=name_asc&limit=20&state=all&file=all&setting=all',
       '/panel/api/v1/targets/2001/repositories/4001',
     ]);
+  });
+
+  it('encodes repository pagination, search, sorting, and filters', async () => {
+    const stub = stubFetch([
+      jsonResponse(200, { items: [REPOSITORY], next_cursor: '40', total: 62 }),
+    ]);
+    const api = createPanelApi('/panel', stub.fetch);
+
+    await api.fetchRepositories('2001', {
+      cursor: '20',
+      query: 'service api',
+      sort: 'newest',
+      limit: 20,
+      state: 'enabled',
+      file: 'invalid',
+      setting: 'quiet_success',
+    });
+
+    expect(stub.calls[0]?.url).toBe(
+      '/panel/api/v1/targets/2001/repositories?cursor=20&q=service+api&sort=newest&limit=20&state=enabled&file=invalid&setting=quiet_success',
+    );
   });
 
   it('uses full replacement PUTs with optimistic revisions', async () => {

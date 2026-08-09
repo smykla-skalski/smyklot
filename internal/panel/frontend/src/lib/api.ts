@@ -11,6 +11,7 @@ import type {
   PanelTarget,
   PanelViewer,
   RepositoryDetail,
+  RepositoryPageRequest,
   RepositorySettingsInput,
   RepositorySummary,
   TargetSettingsInput,
@@ -31,7 +32,10 @@ export interface PanelApi {
   fetchViewer(): Promise<PanelViewer | null>;
   fetchTargets(): Promise<PanelTarget[]>;
   updateTargetSettings(targetId: string, input: TargetSettingsInput): Promise<PanelTarget>;
-  fetchRepositories(targetId: string): Promise<RepositorySummary[]>;
+  fetchRepositories(
+    targetId: string,
+    request: RepositoryPageRequest,
+  ): Promise<Page<RepositorySummary>>;
   fetchRepository(targetId: string, repositoryId: string): Promise<RepositoryDetail>;
   updateRepositorySettings(
     targetId: string,
@@ -100,11 +104,16 @@ export function createPanelApi(
       return putJson(`/api/v1/targets/${pathSegment(targetId)}/settings`, input);
     },
 
-    async fetchRepositories(targetId: string): Promise<RepositorySummary[]> {
-      const body = await jsonRequest<{ repositories: RepositorySummary[] }>(
-        `/api/v1/targets/${pathSegment(targetId)}/repositories`,
+    fetchRepositories(
+      targetId: string,
+      repositoryPage: RepositoryPageRequest,
+    ): Promise<Page<RepositorySummary>> {
+      return jsonRequest(
+        withRepositoryQuery(
+          `/api/v1/targets/${pathSegment(targetId)}/repositories`,
+          repositoryPage,
+        ),
       );
-      return body.repositories;
     },
 
     fetchRepository(targetId: string, repositoryId: string): Promise<RepositoryDetail> {
@@ -172,6 +181,19 @@ function withHistoryQuery(
   parameters.set('sort', history.sort);
   parameters.set('limit', String(history.limit));
   for (const [name, value] of Object.entries(filter)) parameters.set(name, value);
+
+  return `${path}?${parameters.toString()}`;
+}
+
+function withRepositoryQuery(path: string, page: RepositoryPageRequest): string {
+  const parameters = new URLSearchParams();
+  if (page.cursor !== undefined) parameters.set('cursor', page.cursor);
+  if (page.query !== '') parameters.set('q', page.query);
+  parameters.set('sort', page.sort);
+  parameters.set('limit', String(page.limit));
+  parameters.set('state', page.state);
+  parameters.set('file', page.file);
+  parameters.set('setting', page.setting);
 
   return `${path}?${parameters.toString()}`;
 }

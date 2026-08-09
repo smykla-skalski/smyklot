@@ -12,6 +12,8 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
+const allFilter = "all"
+
 type accountResponse struct {
 	ID          string  `json:"id"`
 	Provider    string  `json:"provider"`
@@ -183,6 +185,20 @@ func repositoryDetailDTO(
 	}
 }
 
+func repositoryPageDTO(
+	target storage.Target,
+	page storage.RepositoryPage,
+) pageResponse[repositorySummaryResponse] {
+	items := make([]repositorySummaryResponse, 0, len(page.Items))
+	for _, repository := range page.Items {
+		items = append(items, repositorySummaryDTO(target, repository))
+	}
+
+	return pageResponse[repositorySummaryResponse]{
+		Items: items, NextCursor: offsetCursor(page.NextOffset), Total: page.Total,
+	}
+}
+
 func auditPageDTO(page storage.AuditPage) pageResponse[auditResponse] {
 	items := make([]auditResponse, 0, len(page.Items))
 	for _, entry := range page.Items {
@@ -226,6 +242,15 @@ func cursor(value int64) *string {
 		return nil
 	}
 	formatted := strconv.FormatInt(value, 10)
+
+	return &formatted
+}
+
+func offsetCursor(value int) *string {
+	if value == 0 {
+		return nil
+	}
+	formatted := strconv.Itoa(value)
 
 	return &formatted
 }
@@ -286,4 +311,93 @@ func parseHistoryPage(values url.Values) (storage.HistoryPageRequest, error) {
 	}
 
 	return page, nil
+}
+
+func parseRepositoryPage(values url.Values) (storage.RepositoryPageRequest, error) {
+	page := storage.RepositoryPageRequest{
+		Limit: DefaultPageSize,
+		Order: storage.RepositoryNameAscending,
+		Query: strings.TrimSpace(values.Get("q")),
+	}
+	if len(page.Query) > 200 || strings.ContainsFunc(page.Query, unicode.IsControl) {
+		return storage.RepositoryPageRequest{}, fmt.Errorf("invalid repository search")
+	}
+	if raw := values.Get("cursor"); raw != "" {
+		offset, err := strconv.Atoi(raw)
+		if err != nil || offset <= 0 {
+			return storage.RepositoryPageRequest{}, fmt.Errorf("invalid repository cursor")
+		}
+		page.Offset = offset
+	}
+	if raw := values.Get("limit"); raw != "" {
+		limit, err := strconv.Atoi(raw)
+		if err != nil || limit <= 0 || limit > MaxPageSize {
+			return storage.RepositoryPageRequest{}, fmt.Errorf("invalid repository page size")
+		}
+		page.Limit = limit
+	}
+	switch order := storage.RepositoryOrder(values.Get("sort")); order {
+	case "", storage.RepositoryNameAscending:
+	case storage.RepositoryNameDescending, storage.RepositoryNewest, storage.RepositoryOldest:
+		page.Order = order
+	default:
+		return storage.RepositoryPageRequest{}, fmt.Errorf("invalid repository sort order")
+	}
+	switch values.Get("state") {
+	case "", allFilter:
+	case "enabled":
+		value := true
+		page.EffectiveEnabled = &value
+	case "disabled":
+		value := false
+		page.EffectiveEnabled = &value
+	default:
+		return storage.RepositoryPageRequest{}, fmt.Errorf("invalid repository state")
+	}
+	switch status := storage.RepositoryFileStatus(values.Get("file")); status {
+	case "", allFilter:
+	case storage.RepositoryFileMissing,
+		storage.RepositoryFileValid,
+		storage.RepositoryFileInvalid,
+		storage.RepositoryFileBypassed:
+		page.FileStatus = &status
+	default:
+		return storage.RepositoryPageRequest{}, fmt.Errorf("invalid repository file status")
+	}
+	switch setting := values.Get("setting"); setting {
+	case "", allFilter:
+	case "custom":
+		value := true
+		page.HasConfigOverrides = &value
+	case "none":
+		value := false
+		page.HasConfigOverrides = &value
+	default:
+		if !panelConfigKey(setting) {
+			return storage.RepositoryPageRequest{}, fmt.Errorf("invalid repository setting")
+		}
+		page.ConfigOverrideKey = setting
+	}
+
+	return page, nil
+}
+
+func panelConfigKey(key string) bool {
+	switch key {
+	case config.KeyQuietSuccess,
+		config.KeyQuietReactions,
+		config.KeyQuietPending,
+		config.KeyAllowedCommands,
+		config.KeyCommandAliases,
+		config.KeyCommandPrefix,
+		config.KeyDisableMentions,
+		config.KeyDisableBareCommands,
+		config.KeyDisableUnapprove,
+		config.KeyDisableReactions,
+		config.KeyDisableDeletedComments,
+		config.KeyAllowSelfApproval:
+		return true
+	default:
+		return false
+	}
 }

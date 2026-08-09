@@ -4,9 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/storage"
+	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
 const targetSelect = `
@@ -352,6 +354,164 @@ ORDER BY full_name`, targetID)
 	return repositories, nil
 }
 
+// ListRepositoryPage returns one filtered page of currently available repositories.
+func (s *Store) ListRepositoryPage(
+	ctx context.Context,
+	targetID string,
+	page storage.RepositoryPageRequest,
+) (storage.RepositoryPage, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return storage.RepositoryPage{}, fmt.Errorf("begin repository page: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	limit := pageLimit(page.Limit)
+	clauses, arguments, err := repositoryPageFilters(targetID, page)
+	if err != nil {
+		return storage.RepositoryPage{}, err
+	}
+
+	var total int
+	countQuery := `
+SELECT COUNT(*)
+FROM repositories r
+JOIN targets t ON t.id = r.target_id
+WHERE ` + strings.Join(clauses, " AND ")
+	if err := tx.QueryRowContext(ctx, countQuery, arguments...).Scan(&total); err != nil {
+		return storage.RepositoryPage{}, fmt.Errorf("count repositories: %w", err)
+	}
+	var repositoryDefaultEnabled bool
+	if err := tx.QueryRowContext(
+		ctx,
+		"SELECT repository_default_enabled FROM targets WHERE id = ?",
+		targetID,
+	).Scan(&repositoryDefaultEnabled); err != nil {
+		return storage.RepositoryPage{}, fmt.Errorf("read repository default: %w", noRows(err))
+	}
+
+	order, err := repositoryPageOrder(page.Order)
+	if err != nil {
+		return storage.RepositoryPage{}, err
+	}
+	queryArguments := append(append([]any{}, arguments...), limit+1, max(page.Offset, 0))
+	// #nosec G202 -- clauses and order come only from fixed internal constants;
+	// every request value remains a bound parameter.
+	query := repositoryPageSelect + " WHERE " + strings.Join(clauses, " AND ") +
+		" ORDER BY " + order + " LIMIT ? OFFSET ?"
+	rows, err := tx.QueryContext(ctx, query, queryArguments...)
+	if err != nil {
+		return storage.RepositoryPage{}, fmt.Errorf("list repository page: %w", err)
+	}
+	repositories, err := collectRows(rows, scanRepository)
+	if err != nil {
+		return storage.RepositoryPage{}, fmt.Errorf("read repository page: %w", err)
+	}
+
+	result := storage.RepositoryPage{
+		Items:                    repositories,
+		Total:                    total,
+		RepositoryDefaultEnabled: repositoryDefaultEnabled,
+	}
+	if len(result.Items) > limit {
+		result.Items = result.Items[:limit]
+		result.NextOffset = max(page.Offset, 0) + limit
+	}
+
+	if err := tx.Commit(); err != nil {
+		return storage.RepositoryPage{}, fmt.Errorf("commit repository page: %w", err)
+	}
+
+	return result, nil
+}
+
+func repositoryPageFilters(
+	targetID string,
+	page storage.RepositoryPageRequest,
+) ([]string, []any, error) {
+	clauses := []string{"r.target_id = ?", "r.available = 1"}
+	arguments := []any{targetID}
+	if page.Query != "" {
+		clauses = append(clauses, "instr(lower(r.full_name), lower(?)) > 0")
+		arguments = append(arguments, page.Query)
+	}
+	if page.EffectiveEnabled != nil {
+		clauses = append(clauses, "COALESCE(r.enabled_override, t.repository_default_enabled) = ?")
+		arguments = append(arguments, *page.EffectiveEnabled)
+	}
+	if page.FileStatus != nil {
+		switch *page.FileStatus {
+		case storage.RepositoryFileBypassed:
+			clauses = append(clauses, "r.ignore_repository_file = 1")
+		case storage.RepositoryFileMissing,
+			storage.RepositoryFileValid,
+			storage.RepositoryFileInvalid:
+			clauses = append(
+				clauses,
+				"r.ignore_repository_file = 0",
+				"r.config_file_status = ?",
+			)
+			arguments = append(arguments, *page.FileStatus)
+		default:
+			return nil, nil, fmt.Errorf("unsupported repository file status %q", *page.FileStatus)
+		}
+	}
+	if page.HasConfigOverrides != nil {
+		expression := "EXISTS (SELECT 1 FROM json_each(r.config_patch))"
+		if !*page.HasConfigOverrides {
+			expression = "NOT " + expression
+		}
+		clauses = append(clauses, expression)
+	}
+	if page.ConfigOverrideKey != "" {
+		if !supportedConfigOverride(page.ConfigOverrideKey) {
+			return nil, nil, fmt.Errorf(
+				"unsupported repository config override %q",
+				page.ConfigOverrideKey,
+			)
+		}
+		clauses = append(clauses, "json_type(r.config_patch, ?) IS NOT NULL")
+		arguments = append(arguments, "$."+page.ConfigOverrideKey)
+	}
+
+	return clauses, arguments, nil
+}
+
+func supportedConfigOverride(key string) bool {
+	switch key {
+	case config.KeyQuietSuccess,
+		config.KeyQuietReactions,
+		config.KeyQuietPending,
+		config.KeyAllowedCommands,
+		config.KeyCommandAliases,
+		config.KeyCommandPrefix,
+		config.KeyDisableMentions,
+		config.KeyDisableBareCommands,
+		config.KeyDisableUnapprove,
+		config.KeyDisableReactions,
+		config.KeyDisableDeletedComments,
+		config.KeyAllowSelfApproval:
+		return true
+	default:
+		return false
+	}
+}
+
+func repositoryPageOrder(order storage.RepositoryOrder) (string, error) {
+	switch order {
+	case "", storage.RepositoryNameAscending:
+		return "r.full_name COLLATE NOCASE ASC, r.id ASC", nil
+	case storage.RepositoryNameDescending:
+		return "r.full_name COLLATE NOCASE DESC, r.id DESC", nil
+	case storage.RepositoryNewest:
+		return "r.settings_updated_at DESC, r.id DESC", nil
+	case storage.RepositoryOldest:
+		return "r.settings_updated_at ASC, r.id ASC", nil
+	default:
+		return "", fmt.Errorf("unsupported repository order %q", order)
+	}
+}
+
 // GetRepository returns one repository belonging to the given target.
 func (s *Store) GetRepository(
 	ctx context.Context,
@@ -500,23 +660,29 @@ func finishTarget(
 	return target, err
 }
 
-const repositorySelect = `
+const repositoryColumns = `
 SELECT
-    id,
-    target_id,
-    name,
-    full_name,
-    private,
-    available,
-    enabled_override,
-    config_patch,
-    ignore_repository_file,
-    config_file_status,
-    config_file_patch,
-    config_file_error,
-    revision,
-    settings_updated_at
-FROM repositories
+    r.id,
+    r.target_id,
+    r.name,
+    r.full_name,
+    r.private,
+    r.available,
+    r.enabled_override,
+    r.config_patch,
+    r.ignore_repository_file,
+    r.config_file_status,
+    r.config_file_patch,
+    r.config_file_error,
+    r.revision,
+    r.settings_updated_at
+`
+
+const repositorySelect = repositoryColumns + "FROM repositories r\n"
+
+const repositoryPageSelect = repositoryColumns + `
+FROM repositories r
+JOIN targets t ON t.id = r.target_id
 `
 
 func getRepository(
@@ -525,7 +691,7 @@ func getRepository(
 	targetID, repositoryID string,
 ) (storage.Repository, error) {
 	return scanRepository(queryer.QueryRowContext(ctx, repositorySelect+`
-WHERE target_id = ? AND id = ?`, targetID, repositoryID))
+WHERE r.target_id = ? AND r.id = ?`, targetID, repositoryID))
 }
 
 func scanRepository(scanner rowScanner) (storage.Repository, error) {

@@ -154,6 +154,36 @@ type RepositoryFileState struct {
 	ObservedAt   time.Time
 }
 
+// RepositoryOrder controls how repository catalog pages are ordered.
+type RepositoryOrder string
+
+const (
+	RepositoryNameAscending  RepositoryOrder = "name_asc"
+	RepositoryNameDescending RepositoryOrder = "name_desc"
+	RepositoryNewest         RepositoryOrder = "newest"
+	RepositoryOldest         RepositoryOrder = "oldest"
+)
+
+// RepositoryPageRequest selects one filtered page of available repositories.
+type RepositoryPageRequest struct {
+	Offset             int
+	Limit              int
+	Order              RepositoryOrder
+	Query              string
+	EffectiveEnabled   *bool
+	FileStatus         *RepositoryFileStatus
+	HasConfigOverrides *bool
+	ConfigOverrideKey  string
+}
+
+// RepositoryPage is one page of the repository catalog.
+type RepositoryPage struct {
+	Items                    []Repository
+	NextOffset               int
+	Total                    int
+	RepositoryDefaultEnabled bool
+}
+
 // AuditEntry is one immutable panel mutation.
 type AuditEntry struct {
 	ID                 int64

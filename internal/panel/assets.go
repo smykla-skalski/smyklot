@@ -46,7 +46,11 @@ func (s *Server) serveAsset(w http.ResponseWriter, r *http.Request) {
 	}
 	content, err := fs.ReadFile(s.assets.files, relative)
 	if err != nil {
-		s.writeIndex(w)
+		if isPanelNavigationPath(relative) {
+			s.writeIndex(w)
+		} else {
+			s.writeError(w, http.StatusNotFound, "not_found", "panel route not found")
+		}
 		return
 	}
 	contentType := mime.TypeByExtension(path.Ext(relative))
@@ -61,6 +65,25 @@ func (s *Server) serveAsset(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(content) //nolint:gosec // Content comes only from the generated embedded bundle.
+}
+
+func isPanelNavigationPath(relative string) bool {
+	trimmed := strings.Trim(relative, "/")
+	if trimmed == "help" {
+		return true
+	}
+
+	parts := strings.Split(trimmed, "/")
+	if len(parts) != 2 || len(parts[0]) < 2 || parts[0][0] != '@' {
+		return false
+	}
+
+	switch parts[1] {
+	case "settings", "repositories", "history":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *Server) writeIndex(w http.ResponseWriter) {

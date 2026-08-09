@@ -127,6 +127,47 @@ function seed(): MockState {
       updatedAt: iso(-2 * 86_400_000),
     }),
   ];
+  const demoNames = [
+    'api-gateway',
+    'auth-service',
+    'billing-worker',
+    'cli-tools',
+    'customer-portal',
+    'data-pipeline',
+    'deployment-config',
+    'design-system',
+    'docs-site',
+    'edge-proxy',
+    'event-consumer',
+    'feature-flags',
+    'identity-provider',
+    'internal-tools',
+    'mobile-api',
+    'notification-service',
+    'observability',
+    'payments-api',
+    'release-automation',
+    'runtime-images',
+    'search-indexer',
+    'security-policies',
+    'support-tools',
+    'web-frontend',
+  ] as const;
+  for (const [index, name] of demoNames.entries()) {
+    organization.repositories.push(
+      repositorySeed(organization.value, {
+        id: `40${String(index + 5).padStart(2, '0')}`,
+        name,
+        enabledOverride: index % 3 === 0 ? true : index % 3 === 1 ? false : null,
+        filePatch: index % 4 === 0 ? { command_prefix: `/${name} ` } : {},
+        fileError: index % 7 === 0 ? 'line 4: unknown setting' : undefined,
+        panelPatch: index % 5 === 0 ? { quiet_success: index % 2 === 0 } : {},
+        bypass: index % 11 === 0,
+        private: index % 4 === 1,
+        updatedAt: iso(-(index + 3) * 47 * 60_000),
+      }),
+    );
+  }
   organization.audit = [
     auditSeed(
       'audit-1',
@@ -545,9 +586,7 @@ async function handle(
     }
     if (repositories && method === 'GET') {
       const target = findTarget(state, repositories.groups?.target ?? '');
-      respond(res, 200, {
-        repositories: target.repositories.map((entry) => entry.detail.repository),
-      });
+      respond(res, 200, repositoryPage(target.repositories, parsed.searchParams));
       return;
     }
     if (repository && method === 'GET') {
@@ -703,6 +742,61 @@ function historyPage<T>(
     .filter((item) => visible(item) && (query === '' || matches(item, query)))
     .sort((left, right) => timestamp(left).localeCompare(timestamp(right)));
   if (parameters.get('sort') !== 'oldest') ordered.reverse();
+
+  const offset = Number.parseInt(parameters.get('cursor') ?? '', 10);
+  const safeOffset = Number.isFinite(offset) && offset >= 0 ? offset : 0;
+  const next = safeOffset + limit;
+  return {
+    items: ordered.slice(safeOffset, next),
+    next_cursor: next < ordered.length ? String(next) : null,
+    total: ordered.length,
+  };
+}
+
+function repositoryPage(
+  repositories: MockRepository[],
+  parameters: URLSearchParams,
+): Page<RepositorySummary> {
+  const requestedLimit = Number.parseInt(parameters.get('limit') ?? '', 10);
+  const limit =
+    Number.isFinite(requestedLimit) && requestedLimit > 0
+      ? Math.min(requestedLimit, 100)
+      : DEFAULT_PAGE_SIZE;
+  const query = (parameters.get('q') ?? '').trim().toLocaleLowerCase();
+  const state = parameters.get('state') ?? 'all';
+  const file = parameters.get('file') ?? 'all';
+  const setting = parameters.get('setting') ?? 'all';
+  const ordered = repositories
+    .filter((entry) => {
+      const repository = entry.detail.repository;
+      const settingKeys = Object.keys(entry.detail.config_patch);
+      return (
+        (query === '' || repository.full_name.toLocaleLowerCase().includes(query)) &&
+        (state === 'all' ||
+          (state === 'enabled' && repository.effective_enabled) ||
+          (state === 'disabled' && !repository.effective_enabled)) &&
+        (file === 'all' || repository.config_file_status === file) &&
+        (setting === 'all' ||
+          (setting === 'custom' && settingKeys.length > 0) ||
+          (setting === 'none' && settingKeys.length === 0) ||
+          settingKeys.includes(setting))
+      );
+    })
+    .map((entry) => entry.detail.repository);
+
+  switch (parameters.get('sort')) {
+    case 'name_desc':
+      ordered.sort((left, right) => right.full_name.localeCompare(left.full_name));
+      break;
+    case 'newest':
+      ordered.sort((left, right) => right.updated_at.localeCompare(left.updated_at));
+      break;
+    case 'oldest':
+      ordered.sort((left, right) => left.updated_at.localeCompare(right.updated_at));
+      break;
+    default:
+      ordered.sort((left, right) => left.full_name.localeCompare(right.full_name));
+  }
 
   const offset = Number.parseInt(parameters.get('cursor') ?? '', 10);
   const safeOffset = Number.isFinite(offset) && offset >= 0 ? offset : 0;

@@ -1,32 +1,39 @@
 <script lang="ts">
-  export type PanelView = 'settings' | 'repositories' | 'history' | 'help';
-
-  const VIEW_ORDER: readonly PanelView[] = ['settings', 'repositories', 'history', 'help'];
+  import { PANEL_VIEWS, type PanelView } from '../lib/routes';
 
   const {
     value,
+    hrefFor,
     onSelect,
   }: {
     value: PanelView;
+    hrefFor: (view: PanelView) => string;
     onSelect: (view: PanelView) => void;
   } = $props();
 
-  let settingsButton = $state<HTMLButtonElement | null>(null);
-  let repositoriesButton = $state<HTMLButtonElement | null>(null);
-  let historyButton = $state<HTMLButtonElement | null>(null);
-  let helpButton = $state<HTMLButtonElement | null>(null);
+  let settingsButton = $state<HTMLAnchorElement | null>(null);
+  let repositoriesButton = $state<HTMLAnchorElement | null>(null);
+  let historyButton = $state<HTMLAnchorElement | null>(null);
+  let helpButton = $state<HTMLAnchorElement | null>(null);
+
+  function selectFromClick(event: MouseEvent, next: PanelView): void {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
+      return;
+    event.preventDefault();
+    onSelect(next);
+  }
 
   function moveFromKeyboard(event: KeyboardEvent): void {
     let next: PanelView | null = null;
     switch (event.key) {
       case 'ArrowLeft': {
-        const index = VIEW_ORDER.indexOf(value);
-        next = VIEW_ORDER[(index - 1 + VIEW_ORDER.length) % VIEW_ORDER.length] ?? null;
+        const index = PANEL_VIEWS.indexOf(value);
+        next = PANEL_VIEWS[(index - 1 + PANEL_VIEWS.length) % PANEL_VIEWS.length] ?? null;
         break;
       }
       case 'ArrowRight': {
-        const index = VIEW_ORDER.indexOf(value);
-        next = VIEW_ORDER[(index + 1) % VIEW_ORDER.length] ?? null;
+        const index = PANEL_VIEWS.indexOf(value);
+        next = PANEL_VIEWS[(index + 1) % PANEL_VIEWS.length] ?? null;
         break;
       }
       case 'Home':
@@ -59,7 +66,8 @@
 
 <nav aria-label="Panel view">
   <div class="view-tabs" role="tablist" aria-orientation="horizontal">
-    <button
+    <a
+      href={hrefFor('settings')}
       id="settings-tab"
       bind:this={settingsButton}
       class:active={value === 'settings'}
@@ -68,7 +76,7 @@
       aria-controls="settings-panel"
       tabindex={value === 'settings' ? 0 : -1}
       onkeydown={moveFromKeyboard}
-      onclick={() => onSelect('settings')}
+      onclick={(event) => selectFromClick(event, 'settings')}
     >
       <svg class="tab-icon" viewBox="0 0 20 20" aria-hidden="true">
         <path d="M3 5h5M12 5h5M3 10h9M16 10h1M3 15h2M9 15h8"></path>
@@ -77,8 +85,9 @@
         <circle cx="7" cy="15" r="1.5"></circle>
       </svg>
       Settings
-    </button>
-    <button
+    </a>
+    <a
+      href={hrefFor('repositories')}
       id="repositories-tab"
       bind:this={repositoriesButton}
       class:active={value === 'repositories'}
@@ -87,15 +96,16 @@
       aria-controls="repositories-panel"
       tabindex={value === 'repositories' ? 0 : -1}
       onkeydown={moveFromKeyboard}
-      onclick={() => onSelect('repositories')}
+      onclick={(event) => selectFromClick(event, 'repositories')}
     >
       <svg class="tab-icon" viewBox="0 0 20 20" aria-hidden="true">
         <path d="M5 3.5h10.5v13H6a2.5 2.5 0 0 1-2.5-2.5V5A1.5 1.5 0 0 1 5 3.5Z"></path>
         <path d="M6.5 3.5v13M6.5 13.5h9"></path>
       </svg>
       Repositories
-    </button>
-    <button
+    </a>
+    <a
+      href={hrefFor('history')}
       id="history-tab"
       bind:this={historyButton}
       class:active={value === 'history'}
@@ -104,15 +114,16 @@
       aria-controls="history-panel"
       tabindex={value === 'history' ? 0 : -1}
       onkeydown={moveFromKeyboard}
-      onclick={() => onSelect('history')}
+      onclick={(event) => selectFromClick(event, 'history')}
     >
       <svg class="tab-icon" viewBox="0 0 20 20" aria-hidden="true">
         <circle cx="10" cy="10" r="7"></circle>
         <path d="M10 6v4l3 2"></path>
       </svg>
       History
-    </button>
-    <button
+    </a>
+    <a
+      href={hrefFor('help')}
       id="help-tab"
       bind:this={helpButton}
       class="help-tab"
@@ -122,7 +133,7 @@
       aria-controls="help-panel"
       tabindex={value === 'help' ? 0 : -1}
       onkeydown={moveFromKeyboard}
-      onclick={() => onSelect('help')}
+      onclick={(event) => selectFromClick(event, 'help')}
     >
       <svg class="tab-icon" viewBox="0 0 20 20" aria-hidden="true">
         <circle cx="10" cy="10" r="7"></circle>
@@ -130,7 +141,7 @@
         <path d="m5 5 3.2 3.2M11.8 11.8 15 15M15 5l-3.2 3.2M8.2 11.8 5 15"></path>
       </svg>
       Help
-    </button>
+    </a>
   </div>
 </nav>
 
@@ -145,7 +156,7 @@
     scrollbar-width: thin;
   }
 
-  button {
+  a {
     align-items: center;
     background: transparent;
     border: 0;
@@ -158,16 +169,17 @@
     height: 2.75rem;
     margin-bottom: -1px;
     padding: 0 1rem;
+    text-decoration: none;
     transition:
       border-color 140ms ease-out,
       color 140ms ease-out;
   }
 
-  button:hover {
+  a:hover {
     color: var(--text);
   }
 
-  button.active {
+  a.active {
     border-bottom-color: var(--accent);
     color: var(--text);
   }
@@ -183,7 +195,7 @@
     width: 1rem;
   }
 
-  button.active .tab-icon {
+  a.active .tab-icon {
     color: var(--accent);
   }
 
