@@ -197,9 +197,6 @@ func (s *server) reconcileSweepInstallation(
 		return nil, err
 	}
 	if s.panel != nil {
-		if err := s.store.GrantOwnerAccess(ctx, snapshot.TargetID, time.Now().UTC()); err != nil {
-			return nil, err
-		}
 		s.panel.Announce(snapshot.TargetID, "")
 	}
 

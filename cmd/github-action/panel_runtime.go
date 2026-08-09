@@ -86,9 +86,6 @@ func (s *server) syncPanelCatalogLocked(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := s.store.ReplaceOwnerAccess(ctx, targetIDs, time.Now().UTC()); err != nil {
-		return nil, err
-	}
 	s.panel.AnnounceCatalog()
 
 	return targetIDs, nil

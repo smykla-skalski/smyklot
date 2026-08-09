@@ -47,6 +47,14 @@ const VIEWER: PanelAccount = {
   avatar_url: null,
 };
 
+const OWNER_CAPABILITIES = {
+  read: true,
+  write: true,
+  manage_target_users: true,
+  manage_global_users: true,
+  manage_owners: true,
+};
+
 class MockApiError extends Error {
   constructor(
     readonly status: number,
@@ -320,6 +328,9 @@ function targetSeed(input: {
       config_sources: resolved.sources,
       revision: 1,
       repository_counts: { total: 0, enabled: 0, disabled: 0 },
+      effective_role: 'owner',
+      access_source: 'root',
+      capabilities: OWNER_CAPABILITIES,
     },
     repositories: [],
     audit: [],
@@ -590,7 +601,14 @@ async function handle(
 
   try {
     if (path === route('/api/v1/session') && method === 'GET') {
-      respond(res, 200, { account: VIEWER, target_count: state.targets.length });
+      respond(res, 200, {
+        account: VIEWER,
+        root: true,
+        status: 'active',
+        global_role: 'owner',
+        capabilities: OWNER_CAPABILITIES,
+        target_count: state.targets.length,
+      });
       return;
     }
     if (path === route('/api/v1/targets') && method === 'GET') {

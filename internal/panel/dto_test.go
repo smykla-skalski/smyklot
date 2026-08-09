@@ -25,7 +25,7 @@ func TestConfigurationDTOsExposeInheritedValues(t *testing.T) {
 		},
 	}
 
-	targetResponse := targetDTO(config.Default(), target)
+	targetResponse := targetDTO(config.Default(), target, testOwnerAccess())
 	if targetResponse.InheritedConfig.CommandPrefix != config.DefaultCommandPrefix {
 		t.Fatalf("target inherited prefix = %q", targetResponse.InheritedConfig.CommandPrefix)
 	}
@@ -64,12 +64,21 @@ func TestConfigurationDTOsExposeEmptyAllowedCommandsAsArray(t *testing.T) {
 	emptyCommands := []string{}
 	response := targetDTO(config.Default(), storage.Target{
 		ConfigPatch: config.Patch{AllowedCommands: &emptyCommands},
-	})
+	}, testOwnerAccess())
 
 	if response.InheritedConfig.AllowedCommands == nil {
 		t.Fatal("target inherited commands are nil; the panel requires an empty array")
 	}
 	if response.EffectiveConfig.AllowedCommands == nil {
 		t.Fatal("target effective commands are nil; the panel requires an empty array")
+	}
+}
+
+func testOwnerAccess() storage.TargetAccess {
+	return storage.TargetAccess{
+		Role:         storage.PanelRoleOwner,
+		Source:       storage.AccessSourceRoot,
+		Root:         true,
+		Capabilities: storage.EffectiveCapabilities(storage.PanelRoleOwner, true),
 	}
 }

@@ -66,13 +66,13 @@ func (s *Server) finishSignIn(w http.ResponseWriter, r *http.Request) {
 		s.writeInternal(w, err)
 		return
 	}
-	owner, err := s.authorizeOwner(r, account)
+	authorized, err := s.authorizeAccount(r, account)
 	if err != nil {
 		s.writeInternal(w, err)
 		return
 	}
-	if !owner {
-		s.writeError(w, http.StatusForbidden, "forbidden", "this GitHub account does not own the panel")
+	if !authorized {
+		s.writeError(w, http.StatusForbidden, "forbidden", "this GitHub account cannot access the panel")
 		return
 	}
 	_, err = s.catalog.SyncCatalog(r.Context())
@@ -89,16 +89,26 @@ func (s *Server) finishSignIn(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, s.cfg.landingPath(), http.StatusFound)
 }
 
-func (s *Server) authorizeOwner(r *http.Request, account storage.Account) (bool, error) {
+func (s *Server) authorizeAccount(r *http.Request, account storage.Account) (bool, error) {
 	owner, err := s.store.IsOwner(r.Context(), account.ID)
 	if err != nil || owner {
 		return owner, err
 	}
-	if !strings.EqualFold(account.Login, s.cfg.OwnerLogin) {
+	if strings.EqualFold(account.Login, s.cfg.OwnerLogin) {
+		claimed, claimErr := s.store.ClaimOwner(r.Context(), account.ID)
+		if claimErr != nil || claimed {
+			return claimed, claimErr
+		}
+	}
+	user, err := s.store.GetPanelUser(r.Context(), account.ID)
+	if errors.Is(err, storage.ErrNotFound) {
 		return false, nil
 	}
+	if err != nil {
+		return false, err
+	}
 
-	return s.store.ClaimOwner(r.Context(), account.ID)
+	return user.Status == storage.PanelUserActive, nil
 }
 
 func (s *Server) createSession(r *http.Request, accountID string) (string, error) {

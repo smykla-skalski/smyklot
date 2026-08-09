@@ -148,8 +148,24 @@ func (s *Server) viewer(r *http.Request) (storage.Account, string, error) {
 		return storage.Account{}, "", err
 	}
 	account, err := s.store.GetAccount(r.Context(), session.AccountID)
+	if err != nil {
+		return storage.Account{}, "", err
+	}
+	user, err := s.store.GetPanelUser(r.Context(), session.AccountID)
+	if err != nil {
+		return storage.Account{}, "", err
+	}
+	if user.Status != storage.PanelUserActive {
+		reason := "Your panel access was revoked"
+		if user.BanReason != nil {
+			reason = *user.BanReason
+		}
+		return storage.Account{}, "", storage.SessionRevokedError{
+			Code: string(user.Status), Reason: reason,
+		}
+	}
 
-	return account, hash, err
+	return account, hash, nil
 }
 
 func (s *Server) requireViewer(w http.ResponseWriter, r *http.Request) (storage.Account, bool) {
@@ -157,6 +173,8 @@ func (s *Server) requireViewer(w http.ResponseWriter, r *http.Request) (storage.
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) || errors.Is(err, storage.ErrExpired) {
 			s.writeError(w, http.StatusUnauthorized, "unauthenticated", "sign in to use the panel")
+		} else if errors.Is(err, storage.ErrRevoked) {
+			s.writeError(w, http.StatusUnauthorized, "session_revoked", err.Error())
 		} else {
 			s.writeInternal(w, err)
 		}
@@ -170,28 +188,33 @@ func (s *Server) requireViewer(w http.ResponseWriter, r *http.Request) (storage.
 func (s *Server) requireTarget(
 	w http.ResponseWriter,
 	r *http.Request,
-) (storage.Account, storage.Target, bool) {
+	write bool,
+) (storage.Account, storage.Target, storage.TargetAccess, bool) {
 	account, ok := s.requireViewer(w, r)
 	if !ok {
-		return storage.Account{}, storage.Target{}, false
+		return storage.Account{}, storage.Target{}, storage.TargetAccess{}, false
 	}
 	targetID := r.PathValue("target")
-	allowed, err := s.store.CanAccessTarget(r.Context(), account.ID, targetID)
+	access, err := s.store.ResolveTargetAccess(r.Context(), account.ID, targetID)
 	if err != nil {
-		s.writeInternal(w, err)
-		return storage.Account{}, storage.Target{}, false
+		if errors.Is(err, storage.ErrNotFound) {
+			s.writeError(w, http.StatusNotFound, "not_found", "installation target not found")
+		} else {
+			s.writeInternal(w, err)
+		}
+		return storage.Account{}, storage.Target{}, storage.TargetAccess{}, false
 	}
-	if !allowed {
+	if !access.Capabilities.Read || write && !access.Capabilities.Write {
 		s.writeError(w, http.StatusNotFound, "not_found", "installation target not found")
-		return storage.Account{}, storage.Target{}, false
+		return storage.Account{}, storage.Target{}, storage.TargetAccess{}, false
 	}
 	target, err := s.store.GetTarget(r.Context(), targetID)
 	if err != nil {
 		s.writeStorageError(w, err)
-		return storage.Account{}, storage.Target{}, false
+		return storage.Account{}, storage.Target{}, storage.TargetAccess{}, false
 	}
 
-	return account, target, true
+	return account, target, access, true
 }
 
 func (s *Server) requireSameOrigin(w http.ResponseWriter, r *http.Request) bool {

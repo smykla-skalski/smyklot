@@ -17,12 +17,135 @@ type Account struct {
 	UpdatedAt   time.Time
 }
 
+// PanelRole is a user's default or installation-specific authorization level.
+type PanelRole string
+
+const (
+	PanelRoleNone   PanelRole = "none"
+	PanelRoleViewer PanelRole = "viewer"
+	PanelRoleEditor PanelRole = "editor"
+	PanelRoleAdmin  PanelRole = "admin"
+	PanelRoleOwner  PanelRole = "owner"
+)
+
+// PanelUserStatus is the account-wide lifecycle of a panel user.
+type PanelUserStatus string
+
+const (
+	PanelUserActive  PanelUserStatus = "active"
+	PanelUserBanned  PanelUserStatus = "banned"
+	PanelUserRemoved PanelUserStatus = "removed"
+)
+
+// PanelUser is one persisted panel identity and its global access policy.
+type PanelUser struct {
+	Account     Account
+	Root        bool
+	Status      PanelUserStatus
+	GlobalRole  PanelRole
+	BanReason   *string
+	BannedAt    *time.Time
+	RemovedAt   *time.Time
+	LastLoginAt *time.Time
+	Revision    int64
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+// PanelUserCreate activates a known provider identity and records its actor.
+type PanelUserCreate struct {
+	AccountID      string
+	GlobalRole     PanelRole
+	ActorAccountID string
+	ChangedAt      time.Time
+}
+
+// AccessSource identifies which policy decided an installation role.
+type AccessSource string
+
+const (
+	AccessSourceRoot      AccessSource = "root"
+	AccessSourceGlobal    AccessSource = "global"
+	AccessSourceTarget    AccessSource = "target"
+	AccessSourceSuspended AccessSource = "suspended"
+	AccessSourceDenied    AccessSource = "denied"
+)
+
+// AccessCapabilities contains server-authoritative actions for one role.
+type AccessCapabilities struct {
+	Read              bool
+	Write             bool
+	ManageTargetUsers bool
+	ManageGlobalUsers bool
+	ManageOwners      bool
+}
+
+// EffectiveCapabilities returns the fixed capability set for a resolved role.
+func EffectiveCapabilities(role PanelRole, root bool) AccessCapabilities {
+	capabilities := AccessCapabilities{ManageOwners: root}
+	switch role {
+	case PanelRoleOwner:
+		capabilities.Read = true
+		capabilities.Write = true
+		capabilities.ManageTargetUsers = true
+		capabilities.ManageGlobalUsers = true
+	case PanelRoleAdmin:
+		capabilities.Read = true
+		capabilities.Write = true
+		capabilities.ManageTargetUsers = true
+	case PanelRoleEditor:
+		capabilities.Read = true
+		capabilities.Write = true
+	case PanelRoleViewer:
+		capabilities.Read = true
+	}
+
+	return capabilities
+}
+
+// TargetAccess is the effective authorization for one user and installation.
+type TargetAccess struct {
+	Role             PanelRole
+	Source           AccessSource
+	Root             bool
+	SuspensionReason *string
+	Capabilities     AccessCapabilities
+}
+
+// TargetAccessOverride is a persisted replacement for a user's global role.
+// A nil Role means inherit the global role. Suspension remains an independent
+// overlay so unbanning restores the previous role.
+type TargetAccessOverride struct {
+	TargetID         string
+	AccountID        string
+	Role             *PanelRole
+	Suspended        bool
+	SuspensionReason *string
+	Revision         int64
+	UpdatedAt        time.Time
+}
+
+// TargetAccessChange atomically replaces one installation override and audit.
+type TargetAccessChange struct {
+	TargetID         string
+	SubjectAccountID string
+	ActorAccountID   string
+	Role             *PanelRole
+	Suspended        bool
+	SuspensionReason *string
+	ExpectedRevision int64
+	ChangedAt        time.Time
+}
+
 // Session is a panel session. TokenHash is a digest of the cookie token.
 type Session struct {
-	TokenHash string
-	AccountID string
-	CreatedAt time.Time
-	ExpiresAt time.Time
+	TokenHash    string
+	AccountID    string
+	CreatedAt    time.Time
+	ExpiresAt    time.Time
+	RevokedAt    *time.Time
+	RevokeCode   *string
+	RevokeReason *string
 }
 
 // DeliveryClaimDisposition explains whether a delivery was accepted, is still

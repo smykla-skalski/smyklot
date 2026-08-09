@@ -65,6 +65,18 @@ var _ = Describe("SQLite store [Unit]", func() {
 		live, err := store.GetSession(ctx, second.TokenHash, now)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(live).To(Equal(second))
+		revoked, err := store.RevokeAccountSessions(
+			ctx,
+			account.ID,
+			"banned",
+			"policy breach",
+			now.Add(2*time.Second),
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(revoked).To(Equal([]string{second.TokenHash}))
+		stored, err := store.GetSession(ctx, second.TokenHash, now.Add(3*time.Second))
+		Expect(errors.Is(err, storage.ErrRevoked)).To(BeTrue())
+		Expect(stored.RevokeReason).To(HaveValue(Equal("policy breach")))
 
 		expired := second
 		expired.TokenHash = "expired-token-hash"
@@ -100,9 +112,13 @@ var _ = Describe("SQLite store [Unit]", func() {
 		allowed, err = store.IsOwner(ctx, other.ID)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(allowed).To(BeFalse())
+		panelUser, err := store.GetPanelUser(ctx, owner.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(panelUser.Root).To(BeTrue())
+		Expect(panelUser.GlobalRole).To(Equal(storage.PanelRoleOwner))
 	})
 
-	It("grants a newly discovered installation to the existing owner", func() {
+	It("makes newly discovered installations visible to the root owner", func() {
 		owner := testAccount(now)
 		Expect(store.UpsertAccount(ctx, owner)).To(Succeed())
 		claimed, err := store.ClaimOwner(ctx, owner.ID)
@@ -117,9 +133,7 @@ var _ = Describe("SQLite store [Unit]", func() {
 		firstTarget, err := store.GetTarget(ctx, first.TargetID)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(firstTarget.RepositoryDefaultEnabled).To(BeFalse())
-		Expect(store.GrantOwnerAccess(ctx, first.TargetID, now)).To(Succeed())
 		Expect(store.ReconcileInstallation(ctx, second)).To(Succeed())
-		Expect(store.GrantOwnerAccess(ctx, second.TargetID, now.Add(time.Minute))).To(Succeed())
 
 		targets, err := store.ListTargets(ctx, owner.ID)
 		Expect(err).NotTo(HaveOccurred())
@@ -152,14 +166,16 @@ var _ = Describe("SQLite store [Unit]", func() {
 			testRepository("repo-1", "smykla-skalski/smyklot", false),
 			testRepository("repo-2", "smykla-skalski/platform-infra", true),
 		})
+		Expect(store.UpsertAccount(ctx, account)).To(Succeed())
+		claimed, err := store.ClaimOwner(ctx, account.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(claimed).To(BeTrue())
 		Expect(store.ReconcileInstallation(ctx, initial)).To(Succeed())
-		Expect(store.ReplaceAccountAccess(ctx, account.ID, []string{initial.TargetID}, now)).To(Succeed())
-		allowed, err := store.CanAccessTarget(ctx, account.ID, initial.TargetID)
+		access, err := store.ResolveTargetAccess(ctx, account.ID, initial.TargetID)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(allowed).To(BeTrue())
-		allowed, err = store.CanAccessTarget(ctx, account.ID, "missing-target")
-		Expect(err).NotTo(HaveOccurred())
-		Expect(allowed).To(BeFalse())
+		Expect(access.Role).To(Equal(storage.PanelRoleOwner))
+		_, err = store.ResolveTargetAccess(ctx, account.ID, "missing-target")
+		Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
 
 		targets, err := store.ListTargets(ctx, account.ID)
 		Expect(err).NotTo(HaveOccurred())
@@ -303,21 +319,81 @@ var _ = Describe("SQLite store [Unit]", func() {
 		second.Repositories = []storage.RepositorySnapshot{
 			testRepository("repo-2", "smykla-skalski/other", false),
 		}
+		Expect(store.UpsertAccount(ctx, account)).To(Succeed())
+		claimed, err := store.ClaimOwner(ctx, account.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(claimed).To(BeTrue())
 		Expect(store.ReconcileCatalog(ctx, []storage.InstallationSnapshot{first, second})).To(Succeed())
-		Expect(store.ReplaceAccountAccess(
-			ctx,
-			account.ID,
-			[]string{first.TargetID, second.TargetID},
-			now,
-		)).To(Succeed())
 
 		Expect(store.ReconcileCatalog(ctx, []storage.InstallationSnapshot{second})).To(Succeed())
-		allowed, err := store.CanAccessTarget(ctx, account.ID, first.TargetID)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(allowed).To(BeFalse())
+		_, err = store.ResolveTargetAccess(ctx, account.ID, first.TargetID)
+		Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
 		target, err := store.GetTarget(ctx, first.TargetID)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(target.Available).To(BeFalse())
+	})
+
+	It("resolves global roles, target overrides, and local suspension in order", func() {
+		owner, target := seedInstallation(ctx, store, now)
+		Expect(store.UpsertAccount(ctx, owner)).To(Succeed())
+		claimed, err := store.ClaimOwner(ctx, owner.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(claimed).To(BeTrue())
+
+		viewer := owner
+		viewer.ID = "github:viewer"
+		viewer.SubjectID = "viewer"
+		viewer.Login = "viewer"
+		Expect(store.UpsertAccount(ctx, viewer)).To(Succeed())
+		created, err := store.CreatePanelUser(ctx, storage.PanelUserCreate{
+			AccountID:      viewer.ID,
+			GlobalRole:     storage.PanelRoleViewer,
+			ActorAccountID: owner.ID,
+			ChangedAt:      now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(created.GlobalRole).To(Equal(storage.PanelRoleViewer))
+
+		access, err := store.ResolveTargetAccess(ctx, viewer.ID, target.TargetID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(access.Role).To(Equal(storage.PanelRoleViewer))
+		Expect(access.Source).To(Equal(storage.AccessSourceGlobal))
+		Expect(access.Capabilities.Read).To(BeTrue())
+		Expect(access.Capabilities.Write).To(BeFalse())
+
+		override, err := store.SetTargetAccess(ctx, storage.TargetAccessChange{
+			TargetID:         target.TargetID,
+			SubjectAccountID: viewer.ID,
+			ActorAccountID:   owner.ID,
+			Role:             rolePointer(storage.PanelRoleEditor),
+			ExpectedRevision: 0,
+			ChangedAt:        now.Add(time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(override.Revision).To(Equal(int64(1)))
+		access, err = store.ResolveTargetAccess(ctx, viewer.ID, target.TargetID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(access.Role).To(Equal(storage.PanelRoleEditor))
+		Expect(access.Source).To(Equal(storage.AccessSourceTarget))
+		Expect(access.Capabilities.Write).To(BeTrue())
+
+		reason := "security review"
+		_, err = store.SetTargetAccess(ctx, storage.TargetAccessChange{
+			TargetID:         target.TargetID,
+			SubjectAccountID: viewer.ID,
+			ActorAccountID:   owner.ID,
+			Role:             rolePointer(storage.PanelRoleEditor),
+			Suspended:        true,
+			SuspensionReason: &reason,
+			ExpectedRevision: override.Revision,
+			ChangedAt:        now.Add(2 * time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		access, err = store.ResolveTargetAccess(ctx, viewer.ID, target.TargetID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(access.Role).To(Equal(storage.PanelRoleNone))
+		Expect(access.Source).To(Equal(storage.AccessSourceSuspended))
+		Expect(access.SuspensionReason).To(HaveValue(Equal(reason)))
 	})
 
 	It("discovers a recreated repository that reuses an unavailable repository name", func() {
@@ -687,6 +763,10 @@ func testRepository(id, fullName string, private bool) storage.RepositorySnapsho
 	}
 
 	return storage.RepositorySnapshot{ID: id, Name: name, FullName: fullName, Private: private}
+}
+
+func rolePointer(role storage.PanelRole) *storage.PanelRole {
+	return &role
 }
 
 func seedInstallation(

@@ -46,6 +46,7 @@
   let repositoryDetailsVersion = $state(0);
   let view = $state<PanelView>('settings');
   let streamReady = $state(false);
+  let revokedReason = $state<string | null>(null);
   const targetReads = new LatestRequest();
   const streamRefreshes = new LatestRequest();
 
@@ -239,11 +240,22 @@
     void refreshFromStream();
   }
 
+  function revokeAccess(reason: string): void {
+    revokedReason = reason;
+    viewer = null;
+    targets = [];
+    selectedId = null;
+    streamReady = false;
+    targetReads.invalidate();
+    streamRefreshes.invalidate();
+  }
+
   $effect(() => {
     if (viewer === null || !streamReady) return;
     return api.openStream({
       onResync: refreshFromStreamSafely,
       onChange: refreshFromStreamSafely,
+      onRevoked: (event) => revokeAccess(event.reason),
     });
   });
 
@@ -309,7 +321,14 @@
       <p class="dim">Reading the panel…</p>
     </Plate>
   {:else if viewer === null}
-    {#if failure === null}<SignedOut href={api.signInUrl()} />{/if}
+    {#if revokedReason !== null}
+      <Plate label="Access revoked" tone="alarm">
+        <p>{revokedReason}</p>
+        <a class="btn" href={api.signInUrl()}>Sign in</a>
+      </Plate>
+    {:else if failure === null}
+      <SignedOut href={api.signInUrl()} />
+    {/if}
   {:else}
     {#if selectedTarget !== null}
       <ViewTabs value={view} hrefFor={viewHref} onSelect={selectView} />
@@ -317,7 +336,11 @@
       {#if view === 'settings'}
         <div id="settings-panel" role="tabpanel" aria-labelledby="settings-tab">
           {#key selectedTarget.id}
-            <TargetSettings target={selectedTarget} onUpdate={updateTarget} />
+            <TargetSettings
+              target={selectedTarget}
+              readOnly={!selectedTarget.capabilities.write}
+              onUpdate={updateTarget}
+            />
           {/key}
         </div>
       {:else if view === 'repositories'}
@@ -330,6 +353,7 @@
               onLoad={loadRepository}
               onUpdate={updateRepository}
               onChanged={() => repositoryChanged(selectedTarget.id)}
+              readOnly={!selectedTarget.capabilities.write}
             />
           {/key}
         </div>

@@ -41,8 +41,23 @@ export interface PanelAccount {
   avatar_url: string | null;
 }
 
+export type PanelRole = 'none' | 'viewer' | 'editor' | 'admin' | 'owner';
+export type AccessSource = 'root' | 'global' | 'target' | 'suspended' | 'denied';
+
+export interface PanelCapabilities {
+  read: boolean;
+  write: boolean;
+  manage_target_users: boolean;
+  manage_global_users: boolean;
+  manage_owners: boolean;
+}
+
 export interface PanelViewer {
   account: PanelAccount;
+  root: boolean;
+  status: 'active' | 'banned' | 'removed';
+  global_role: PanelRole;
+  capabilities: PanelCapabilities;
   target_count: number;
 }
 
@@ -64,6 +79,10 @@ export interface PanelTarget {
   config_sources: ConfigSources;
   revision: number;
   repository_counts: RepositoryCounts;
+  effective_role: PanelRole;
+  access_source: AccessSource;
+  capabilities: PanelCapabilities;
+  suspension_reason?: string;
 }
 
 export type RepositoryFileStatus = 'missing' | 'valid' | 'invalid' | 'bypassed';

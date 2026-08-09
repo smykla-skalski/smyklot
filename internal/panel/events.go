@@ -144,6 +144,8 @@ func (s *Server) eventViewer(
 	}
 	if errors.Is(err, storage.ErrNotFound) || errors.Is(err, storage.ErrExpired) {
 		s.writeError(w, http.StatusUnauthorized, "unauthenticated", "sign in to use the panel")
+	} else if errors.Is(err, storage.ErrRevoked) {
+		s.writeError(w, http.StatusUnauthorized, "session_revoked", err.Error())
 	} else {
 		s.writeInternal(w, err)
 	}

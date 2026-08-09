@@ -16,18 +16,23 @@ type AuthStore interface {
 	CreateSession(context.Context, Session, int) error
 	GetSession(context.Context, string, time.Time) (Session, error)
 	DeleteSession(context.Context, string) error
+	RevokeAccountSessions(context.Context, string, string, string, time.Time) ([]string, error)
 	DeleteExpiredAuth(context.Context, time.Time) error
+}
+
+// AccessStore owns panel-user roles and resolves installation permissions.
+type AccessStore interface {
+	GetPanelUser(context.Context, string) (PanelUser, error)
+	CreatePanelUser(context.Context, PanelUserCreate) (PanelUser, error)
+	SetTargetAccess(context.Context, TargetAccessChange) (TargetAccessOverride, error)
+	ResolveTargetAccess(context.Context, string, string) (TargetAccess, error)
+	ListTargets(context.Context, string) ([]Target, error)
 }
 
 // CatalogStore persists GitHub-owned installation and repository snapshots.
 type CatalogStore interface {
 	ReconcileCatalog(context.Context, []InstallationSnapshot) error
 	ReconcileInstallation(context.Context, InstallationSnapshot) error
-	ReplaceAccountAccess(context.Context, string, []string, time.Time) error
-	ReplaceOwnerAccess(context.Context, []string, time.Time) error
-	GrantOwnerAccess(context.Context, string, time.Time) error
-	ListTargets(context.Context, string) ([]Target, error)
-	CanAccessTarget(context.Context, string, string) (bool, error)
 	GetTarget(context.Context, string) (Target, error)
 	ListRepositories(context.Context, string) ([]Repository, error)
 	ListRepositoryPage(context.Context, string, RepositoryPageRequest) (RepositoryPage, error)
@@ -61,6 +66,7 @@ type AuditReader interface {
 // not expose SQL handles or transactions to callers.
 type Store interface {
 	AuthStore
+	AccessStore
 	CatalogStore
 	ConfigStore
 	DeliveryStore

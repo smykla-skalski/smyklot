@@ -126,6 +126,7 @@
     onLoad,
     onUpdate,
     onChanged,
+    readOnly = false,
   }: {
     targetId: string;
     refreshVersion: number;
@@ -133,6 +134,7 @@
     onLoad: (repositoryId: string) => Promise<RepositoryDetail>;
     onUpdate: (repositoryId: string, input: RepositorySettingsInput) => Promise<RepositoryDetail>;
     onChanged: (detail: RepositoryDetail) => void;
+    readOnly?: boolean;
   } = $props();
 
   let search = $state('');
@@ -635,7 +637,7 @@
                   label="Enablement for {repository.full_name}"
                   options={REPOSITORY_ENABLEMENT_OPTIONS}
                   value={pendingEnablement[repository.id] ?? enabledValue(repository)}
-                  disabled={working.has(repository.id) || !repository.available}
+                  disabled={readOnly || working.has(repository.id) || !repository.available}
                   align="end"
                   onSelect={(value) => void setEnabled(repository, value)}
                 />
@@ -667,7 +669,7 @@
                       <input
                         type="checkbox"
                         checked={detail.ignore_repository_file}
-                        disabled={working.has(repository.id)}
+                        disabled={readOnly || working.has(repository.id)}
                         onchange={(event) => setBypass(repository.id, event.currentTarget.checked)}
                       />
                       <span aria-hidden="true"></span>
@@ -692,7 +694,7 @@
                     inherited={detail.inherited_config}
                     scope="repository"
                     idPrefix={repository.id}
-                    disabled={working.has(repository.id)}
+                    disabled={readOnly || working.has(repository.id)}
                     onSave={(patch) => setConfig(repository.id, patch)}
                   />
                 {/if}

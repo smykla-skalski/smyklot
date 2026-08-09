@@ -44,9 +44,6 @@ func (f fakeCatalog) SyncCatalog(ctx context.Context) ([]string, error) {
 	if err := f.store.ReconcileInstallation(ctx, f.snapshot); err != nil {
 		return nil, err
 	}
-	if err := f.store.ReplaceOwnerAccess(ctx, []string{f.snapshot.TargetID}, f.snapshot.SyncedAt); err != nil {
-		return nil, err
-	}
 
 	return []string{f.snapshot.TargetID}, nil
 }
@@ -294,6 +291,149 @@ func TestPanelWebSocketEvents(t *testing.T) {
 	}
 	if revoked.Type != "session.revoked" || revoked.Code != "signed_out" {
 		t.Fatalf("revoked event = %#v", revoked)
+	}
+}
+
+func TestPanelEnforcesResolvedRoleCapabilities(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+	_ = harness.signIn(t)
+	viewer := storage.Account{
+		ID:          "github:test:user:viewer",
+		Provider:    "github:test",
+		SubjectID:   "viewer",
+		Login:       "viewer",
+		DisplayName: "Panel Viewer",
+		UpdatedAt:   harness.now,
+	}
+	if err := harness.store.UpsertAccount(t.Context(), viewer); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := harness.store.CreatePanelUser(t.Context(), storage.PanelUserCreate{
+		AccountID:      viewer.ID,
+		GlobalRole:     storage.PanelRoleViewer,
+		ActorAccountID: "github:test:user:1",
+		ChangedAt:      harness.now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	const viewerToken = "viewer-session"
+	if err := harness.store.CreateSession(t.Context(), storage.Session{
+		TokenHash: tokenHash(viewerToken),
+		AccountID: viewer.ID,
+		CreatedAt: harness.now,
+		ExpiresAt: harness.now.Add(time.Hour),
+	}, 1); err != nil {
+		t.Fatal(err)
+	}
+	viewerSession := &http.Cookie{Name: sessionCookieName, Value: viewerToken}
+
+	targets := harness.request(t, http.MethodGet, "/panel/api/v1/targets", nil, viewerSession)
+	if targets.Code != http.StatusOK ||
+		!strings.Contains(targets.Body.String(), `"effective_role":"viewer"`) ||
+		!strings.Contains(targets.Body.String(), `"write":false`) {
+		t.Fatalf("viewer targets = %d %s", targets.Code, targets.Body.String())
+	}
+	input := `{"repository_default_enabled":true,"config_patch":{},"expected_revision":1}`
+	denied := harness.request(
+		t,
+		http.MethodPut,
+		"/panel/api/v1/targets/github:installation:10/settings",
+		strings.NewReader(input),
+		viewerSession,
+	)
+	if denied.Code != http.StatusNotFound {
+		t.Fatalf("viewer write = %d %s", denied.Code, denied.Body.String())
+	}
+
+	editor := storage.PanelRoleEditor
+	override, err := harness.store.SetTargetAccess(t.Context(), storage.TargetAccessChange{
+		TargetID:         "github:installation:10",
+		SubjectAccountID: viewer.ID,
+		ActorAccountID:   "github:test:user:1",
+		Role:             &editor,
+		ExpectedRevision: 0,
+		ChangedAt:        harness.now.Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated := harness.request(
+		t,
+		http.MethodPut,
+		"/panel/api/v1/targets/github:installation:10/settings",
+		strings.NewReader(input),
+		viewerSession,
+	)
+	if updated.Code != http.StatusOK {
+		t.Fatalf("editor write = %d %s", updated.Code, updated.Body.String())
+	}
+
+	noAccess := storage.PanelRoleNone
+	if _, err := harness.store.SetTargetAccess(t.Context(), storage.TargetAccessChange{
+		TargetID:         "github:installation:10",
+		SubjectAccountID: viewer.ID,
+		ActorAccountID:   "github:test:user:1",
+		Role:             &noAccess,
+		ExpectedRevision: override.Revision,
+		ChangedAt:        harness.now.Add(2 * time.Minute),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	missing := harness.request(
+		t,
+		http.MethodGet,
+		"/panel/api/v1/targets/github:installation:10/repositories",
+		nil,
+		viewerSession,
+	)
+	if missing.Code != http.StatusNotFound {
+		t.Fatalf("no-access read = %d %s", missing.Code, missing.Body.String())
+	}
+}
+
+func TestPanelAuthorizesActiveUserWithOnlyTargetAccess(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+	_ = harness.signIn(t)
+	viewer := storage.Account{
+		ID:          "github:test:user:target-only",
+		Provider:    "github:test",
+		SubjectID:   "target-only",
+		Login:       "target-only",
+		DisplayName: "Target Only",
+		UpdatedAt:   harness.now,
+	}
+	if err := harness.store.UpsertAccount(t.Context(), viewer); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := harness.store.CreatePanelUser(t.Context(), storage.PanelUserCreate{
+		AccountID:      viewer.ID,
+		GlobalRole:     storage.PanelRoleNone,
+		ActorAccountID: "github:test:user:1",
+		ChangedAt:      harness.now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	role := storage.PanelRoleViewer
+	if _, err := harness.store.SetTargetAccess(t.Context(), storage.TargetAccessChange{
+		TargetID:         "github:installation:10",
+		SubjectAccountID: viewer.ID,
+		ActorAccountID:   "github:test:user:1",
+		Role:             &role,
+		ExpectedRevision: 0,
+		ChangedAt:        harness.now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	authorized, err := harness.server.authorizeAccount(
+		httptest.NewRequest(http.MethodGet, "/panel/auth/callback", nil),
+		viewer,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !authorized {
+		t.Fatal("active user with installation access was not authorized")
 	}
 }
 

@@ -57,10 +57,12 @@ func (s *Server) getSession(w http.ResponseWriter, r *http.Request) {
 		s.writeInternal(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, viewerResponse{
-		Account:     accountDTO(account),
-		TargetCount: len(targets),
-	})
+	user, err := s.store.GetPanelUser(r.Context(), account.ID)
+	if err != nil {
+		s.writeInternal(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, viewerDTO(user, len(targets)))
 }
 
 func (s *Server) getTargets(w http.ResponseWriter, r *http.Request) {
@@ -75,7 +77,12 @@ func (s *Server) getTargets(w http.ResponseWriter, r *http.Request) {
 	}
 	response := make([]targetResponse, 0, len(targets))
 	for _, target := range targets {
-		response = append(response, targetDTO(s.cfg.ProcessConfig, target))
+		access, accessErr := s.store.ResolveTargetAccess(r.Context(), account.ID, target.ID)
+		if accessErr != nil {
+			s.writeInternal(w, accessErr)
+			return
+		}
+		response = append(response, targetDTO(s.cfg.ProcessConfig, target, access))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"targets": response})
 }
@@ -84,7 +91,7 @@ func (s *Server) putTargetSettings(w http.ResponseWriter, r *http.Request) {
 	if !s.requireSameOrigin(w, r) {
 		return
 	}
-	account, _, ok := s.requireTarget(w, r)
+	account, _, access, ok := s.requireTarget(w, r, true)
 	if !ok {
 		return
 	}
@@ -113,11 +120,11 @@ func (s *Server) putTargetSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.Announce(updated.ID, "")
-	writeJSON(w, http.StatusOK, targetDTO(s.cfg.ProcessConfig, updated))
+	writeJSON(w, http.StatusOK, targetDTO(s.cfg.ProcessConfig, updated, access))
 }
 
 func (s *Server) getRepositories(w http.ResponseWriter, r *http.Request) {
-	_, target, ok := s.requireTarget(w, r)
+	_, target, _, ok := s.requireTarget(w, r, false)
 	if !ok {
 		return
 	}
@@ -136,7 +143,7 @@ func (s *Server) getRepositories(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getRepository(w http.ResponseWriter, r *http.Request) {
-	_, target, ok := s.requireTarget(w, r)
+	_, target, _, ok := s.requireTarget(w, r, false)
 	if !ok {
 		return
 	}
@@ -151,7 +158,7 @@ func (s *Server) putRepositorySettings(w http.ResponseWriter, r *http.Request) {
 	if !s.requireSameOrigin(w, r) {
 		return
 	}
-	account, target, ok := s.requireTarget(w, r)
+	account, target, _, ok := s.requireTarget(w, r, true)
 	if !ok {
 		return
 	}
@@ -279,7 +286,7 @@ func (s *Server) historyTarget(
 	w http.ResponseWriter,
 	r *http.Request,
 ) (storage.Target, bool) {
-	_, target, ok := s.requireTarget(w, r)
+	_, target, _, ok := s.requireTarget(w, r, false)
 	if !ok {
 		return storage.Target{}, false
 	}

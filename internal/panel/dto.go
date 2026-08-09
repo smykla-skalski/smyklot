@@ -25,8 +25,20 @@ type accountResponse struct {
 }
 
 type viewerResponse struct {
-	Account     accountResponse `json:"account"`
-	TargetCount int             `json:"target_count"`
+	Account      accountResponse         `json:"account"`
+	Root         bool                    `json:"root"`
+	Status       storage.PanelUserStatus `json:"status"`
+	GlobalRole   storage.PanelRole       `json:"global_role"`
+	Capabilities capabilityResponse      `json:"capabilities"`
+	TargetCount  int                     `json:"target_count"`
+}
+
+type capabilityResponse struct {
+	Read              bool `json:"read"`
+	Write             bool `json:"write"`
+	ManageTargetUsers bool `json:"manage_target_users"`
+	ManageGlobalUsers bool `json:"manage_global_users"`
+	ManageOwners      bool `json:"manage_owners"`
 }
 
 type targetResponse struct {
@@ -41,6 +53,10 @@ type targetResponse struct {
 	ConfigSources            map[string]config.Source `json:"config_sources"`
 	Revision                 int64                    `json:"revision"`
 	RepositoryCounts         storage.RepositoryCounts `json:"repository_counts"`
+	EffectiveRole            storage.PanelRole        `json:"effective_role"`
+	AccessSource             storage.AccessSource     `json:"access_source"`
+	Capabilities             capabilityResponse       `json:"capabilities"`
+	SuspensionReason         *string                  `json:"suspension_reason,omitempty"`
 }
 
 type repositorySummaryResponse struct {
@@ -106,7 +122,32 @@ func accountDTO(account storage.Account) accountResponse {
 	}
 }
 
-func targetDTO(process *config.Config, target storage.Target) targetResponse {
+func viewerDTO(user storage.PanelUser, targetCount int) viewerResponse {
+	return viewerResponse{
+		Account:      accountDTO(user.Account),
+		Root:         user.Root,
+		Status:       user.Status,
+		GlobalRole:   user.GlobalRole,
+		Capabilities: capabilitiesDTO(storage.EffectiveCapabilities(user.GlobalRole, user.Root)),
+		TargetCount:  targetCount,
+	}
+}
+
+func capabilitiesDTO(capabilities storage.AccessCapabilities) capabilityResponse {
+	return capabilityResponse{
+		Read:              capabilities.Read,
+		Write:             capabilities.Write,
+		ManageTargetUsers: capabilities.ManageTargetUsers,
+		ManageGlobalUsers: capabilities.ManageGlobalUsers,
+		ManageOwners:      capabilities.ManageOwners,
+	}
+}
+
+func targetDTO(
+	process *config.Config,
+	target storage.Target,
+	access storage.TargetAccess,
+) targetResponse {
 	inherited := config.Resolve(process)
 	resolved := config.Resolve(process, config.Layer{
 		Source: config.SourceTarget,
@@ -125,6 +166,10 @@ func targetDTO(process *config.Config, target storage.Target) targetResponse {
 		ConfigSources:            resolved.Sources,
 		Revision:                 target.Revision,
 		RepositoryCounts:         target.RepositoryCounts,
+		EffectiveRole:            access.Role,
+		AccessSource:             access.Source,
+		Capabilities:             capabilitiesDTO(access.Capabilities),
+		SuspensionReason:         access.SuspensionReason,
 	}
 }
 

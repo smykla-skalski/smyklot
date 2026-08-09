@@ -52,6 +52,21 @@ ON CONFLICT(singleton) DO NOTHING`, accountID); err != nil {
 		Scan(&ownerID); err != nil {
 		return false, fmt.Errorf("read panel owner claim: %w", err)
 	}
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO panel_users (
+    account_id, root, status, global_role, revision, created_at, updated_at
+)
+SELECT id, 1, 'active', 'owner', 1, updated_at, updated_at
+FROM accounts WHERE id = ?
+ON CONFLICT(account_id) DO UPDATE SET
+    root = 1,
+    status = 'active',
+    global_role = 'owner',
+    ban_reason = NULL,
+    banned_at = NULL,
+    removed_at = NULL`, ownerID); err != nil {
+		return false, fmt.Errorf("activate panel root: %w", err)
+	}
 
 	if err := tx.Commit(); err != nil {
 		return false, fmt.Errorf("commit panel owner claim: %w", err)
@@ -99,6 +114,14 @@ VALUES (?, ?, ?, ?)`,
 	); err != nil {
 		return fmt.Errorf("insert session: %w", err)
 	}
+	if _, err := tx.ExecContext(ctx, `
+UPDATE panel_users SET last_login_at = ?, updated_at = ? WHERE account_id = ?`,
+		formatTime(session.CreatedAt),
+		formatTime(session.CreatedAt),
+		session.AccountID,
+	); err != nil {
+		return fmt.Errorf("record panel login: %w", err)
+	}
 
 	if _, err := tx.ExecContext(ctx, `
 DELETE FROM sessions
@@ -136,6 +159,12 @@ func (s *Store) GetSession(
 
 		return storage.Session{}, storage.ErrExpired
 	}
+	if session.RevokedAt != nil {
+		return session, storage.SessionRevokedError{
+			Code:   valueOr(session.RevokeCode, "revoked"),
+			Reason: valueOr(session.RevokeReason, "Your session was revoked"),
+		}
+	}
 
 	return session, nil
 }
@@ -147,6 +176,53 @@ func (s *Store) DeleteSession(ctx context.Context, tokenHash string) error {
 	}
 
 	return nil
+}
+
+// RevokeAccountSessions preserves a safe reason until each session expires.
+func (s *Store) RevokeAccountSessions(
+	ctx context.Context,
+	accountID, code, reason string,
+	revokedAt time.Time,
+) ([]string, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin account session revocation: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	rows, err := tx.QueryContext(ctx, `
+SELECT token_hash FROM sessions
+WHERE account_id = ? AND revoked_at IS NULL AND expires_at > ?
+ORDER BY token_hash`, accountID, formatTime(revokedAt))
+	if err != nil {
+		return nil, fmt.Errorf("list account sessions for revocation: %w", err)
+	}
+	hashes, err := collectRows(rows, func(scanner rowScanner) (string, error) {
+		var hash string
+		scanErr := scanner.Scan(&hash)
+
+		return hash, scanErr
+	})
+	if err != nil {
+		return nil, fmt.Errorf("read account sessions for revocation: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+UPDATE sessions
+SET revoked_at = ?, revoke_code = ?, revoke_reason = ?
+WHERE account_id = ? AND revoked_at IS NULL AND expires_at > ?`,
+		formatTime(revokedAt),
+		code,
+		reason,
+		accountID,
+		formatTime(revokedAt),
+	); err != nil {
+		return nil, fmt.Errorf("revoke account sessions: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit account session revocation: %w", err)
+	}
+
+	return hashes, nil
 }
 
 // DeleteExpiredAuth removes expired sessions.
@@ -218,11 +294,15 @@ func readSession(
 ) (storage.Session, error) {
 	var session storage.Session
 
+	var revokedAt, revokeCode, revokeReason sql.NullString
 	times, err := scanTimeRange(queryer.QueryRowContext(ctx, `
-SELECT token_hash, account_id, created_at, expires_at
+SELECT token_hash, account_id, revoked_at, revoke_code, revoke_reason, created_at, expires_at
 FROM sessions WHERE token_hash = ?`, tokenHash),
 		&session.TokenHash,
 		&session.AccountID,
+		&revokedAt,
+		&revokeCode,
+		&revokeReason,
 	)
 	if err != nil {
 		return storage.Session{}, err
@@ -230,6 +310,20 @@ FROM sessions WHERE token_hash = ?`, tokenHash),
 
 	session.CreatedAt = times.createdAt
 	session.ExpiresAt = times.expiresAt
+	session.RevokedAt, err = nullableTime(revokedAt)
+	if err != nil {
+		return storage.Session{}, err
+	}
+	session.RevokeCode = stringPointer(revokeCode)
+	session.RevokeReason = stringPointer(revokeReason)
 
 	return session, nil
+}
+
+func valueOr(value *string, fallback string) string {
+	if value == nil || *value == "" {
+		return fallback
+	}
+
+	return *value
 }

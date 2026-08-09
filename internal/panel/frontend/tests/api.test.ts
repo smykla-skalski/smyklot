@@ -60,6 +60,16 @@ const VIEWER = {
     display_name: 'Ada Lovelace',
     avatar_url: null,
   },
+  root: true,
+  status: 'active' as const,
+  global_role: 'owner' as const,
+  capabilities: {
+    read: true,
+    write: true,
+    manage_target_users: true,
+    manage_global_users: true,
+    manage_owners: true,
+  },
   target_count: 1,
 };
 
@@ -75,6 +85,9 @@ const TARGET: PanelTarget = {
   config_sources: SOURCES,
   revision: 1,
   repository_counts: { total: 1, enabled: 0, disabled: 1 },
+  effective_role: 'owner',
+  access_source: 'root',
+  capabilities: VIEWER.capabilities,
 };
 
 const REPOSITORY = {

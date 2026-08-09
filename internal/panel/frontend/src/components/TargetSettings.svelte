@@ -14,9 +14,11 @@
 
   const {
     target,
+    readOnly = false,
     onUpdate,
   }: {
     target: PanelTarget;
+    readOnly?: boolean;
     onUpdate: (input: TargetSettingsInput) => Promise<void>;
   } = $props();
 
@@ -67,7 +69,7 @@
         options={REPOSITORY_DEFAULT_OPTIONS}
         value={defaultEnabled ? 'enabled' : 'disabled'}
         onSelect={(selection) => void updateDefault(selection === 'enabled')}
-        disabled={savingDefault}
+        disabled={savingDefault || readOnly}
       />
       <HelpTip
         id="repository-policy-help"
@@ -99,6 +101,7 @@
     inherited={target.inherited_config}
     scope="target"
     idPrefix={target.id}
+    disabled={readOnly}
     onSave={updateConfig}
   />
 </Plate>

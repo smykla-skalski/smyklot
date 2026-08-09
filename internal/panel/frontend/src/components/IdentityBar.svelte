@@ -30,6 +30,9 @@
   const selectedTarget = $derived(
     selectedId === null ? null : (targets.find((target) => target.id === selectedId) ?? null),
   );
+  const roleLabel = $derived(
+    (selectedTarget?.effective_role ?? viewer?.global_role ?? 'none').toUpperCase(),
+  );
 
   $effect(() => {
     function closeFromOutside(event: PointerEvent): void {
@@ -79,9 +82,9 @@
   </h1>
 
   {#if viewer !== null && handle !== null}
-    <details class="account-menu" bind:this={accountMenu}>
+    <details class="account-menu" data-role={roleLabel} bind:this={accountMenu}>
       <summary class="who" bind:this={accountTrigger}>
-        <span class="visually-hidden">Admin</span>
+        <span class="visually-hidden">{roleLabel}</span>
         <Avatar account={selectedTarget?.account ?? viewer.account} size={30} />
         <span class="who-text">
           <span class="who-name">{viewer.account.display_name}</span>
@@ -201,7 +204,7 @@
 
   .account-menu::after {
     color: var(--on-admin);
-    content: 'ADMIN';
+    content: attr(data-role);
     font: 900 0.5625rem/1 var(--sans);
     left: calc(-0.5rem + 1px);
     letter-spacing: 0.1em;
