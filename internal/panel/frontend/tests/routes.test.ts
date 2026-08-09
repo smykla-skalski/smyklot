@@ -35,15 +35,15 @@ function fakeBrowser(initialPath: string) {
 }
 
 describe('panel routes', () => {
-  it('reads sigil-prefixed account routes at the public root', () => {
-    expect(parsePanelRoute('', '/@smykla-skalski/repositories')).toEqual({
+  it('reads installation routes at the public root', () => {
+    expect(parsePanelRoute('', '/i/smykla-skalski/repositories')).toEqual({
       account: 'smykla-skalski',
       view: 'repositories',
     });
   });
 
   it('reads routes below a configured panel mount', () => {
-    expect(parsePanelRoute('/panel', '/panel/@bartsmykla/history/')).toEqual({
+    expect(parsePanelRoute('/panel', '/panel/i/bartsmykla/history/')).toEqual({
       account: 'bartsmykla',
       view: 'history',
     });
@@ -52,7 +52,7 @@ describe('panel routes', () => {
   it('keeps help global', () => {
     expect(parsePanelRoute('', '/help')).toEqual({ view: 'help' });
     expect(parsePanelRoute('/panel', '/panel/help/')).toEqual({ view: 'help' });
-    expect(parsePanelRoute('', '/@smykla-skalski/help')).toBeNull();
+    expect(parsePanelRoute('', '/i/smykla-skalski/help')).toBeNull();
   });
 
   it('treats the panel root as an unresolved destination', () => {
@@ -61,20 +61,21 @@ describe('panel routes', () => {
   });
 
   it('rejects unknown tabs and paths outside the panel mount', () => {
-    expect(parsePanelRoute('', '/@smykla-skalski/billing')).toBeNull();
+    expect(parsePanelRoute('', '/i/smykla-skalski/billing')).toBeNull();
     expect(parsePanelRoute('', '/smykla-skalski/settings')).toBeNull();
     expect(parsePanelRoute('', '/auth/settings')).toBeNull();
     expect(parsePanelRoute('', '/webhook/history')).toBeNull();
-    expect(parsePanelRoute('/panel', '/@smykla-skalski/settings')).toBeNull();
+    expect(parsePanelRoute('', '/@smykla-skalski/settings')).toBeNull();
+    expect(parsePanelRoute('/panel', '/i/smykla-skalski/settings')).toBeNull();
     expect(parsePanelRoute('/panel', '/panel/too/many/parts')).toBeNull();
   });
 
   it('encodes account slugs when building links', () => {
     expect(panelRoutePath('', { account: 'smykla skalski', view: 'history' })).toBe(
-      '/@smykla%20skalski/history',
+      '/i/smykla%20skalski/history',
     );
     expect(panelRoutePath('/panel/', { account: 'bartsmykla', view: 'settings' })).toBe(
-      '/panel/@bartsmykla/settings',
+      '/panel/i/bartsmykla/settings',
     );
     expect(panelRoutePath('/panel', { view: 'help' })).toBe('/panel/help');
   });
@@ -126,22 +127,22 @@ describe('resolvePanelRoute', () => {
 
 describe('browser panel router', () => {
   it('writes canonical links and reports browser history navigation', () => {
-    const fixture = fakeBrowser('/panel/@bartsmykla/settings');
+    const fixture = fakeBrowser('/panel/i/bartsmykla/settings');
     const router = createPanelRouter('/panel', fixture.browser);
     const visited: Array<PanelRoute | null> = [];
     const unsubscribe = router.subscribe((route) => visited.push(route));
 
     router.push({ account: 'smykla-skalski', view: 'repositories' });
-    expect(fixture.browser.location.pathname).toBe('/panel/@smykla-skalski/repositories');
+    expect(fixture.browser.location.pathname).toBe('/panel/i/smykla-skalski/repositories');
 
-    fixture.navigateFromHistory('/panel/@bartsmykla/history');
+    fixture.navigateFromHistory('/panel/i/bartsmykla/history');
     expect(visited).toEqual([{ account: 'bartsmykla', view: 'history' }]);
 
     router.push({ view: 'help' });
     expect(fixture.browser.location.pathname).toBe('/panel/help');
 
     unsubscribe();
-    fixture.navigateFromHistory('/panel/@smykla-skalski/repositories');
+    fixture.navigateFromHistory('/panel/i/smykla-skalski/repositories');
     expect(visited).toHaveLength(1);
   });
 });

@@ -37,13 +37,13 @@ export function parsePanelRoute(basePath: string, pathname: string): PanelRoute 
   if (relative === 'help') return { view: 'help' };
 
   const parts = relative.split('/');
-  if (parts.length !== 2) return null;
+  if (parts.length !== 3) return null;
 
-  const [encodedAccount, rawView] = parts;
+  const [namespace, encodedAccount, rawView] = parts;
   if (
+    namespace !== 'i' ||
     encodedAccount === undefined ||
-    !encodedAccount.startsWith('@') ||
-    encodedAccount.length === 1 ||
+    encodedAccount.length === 0 ||
     rawView === undefined ||
     !isScopedPanelView(rawView)
   )
@@ -51,7 +51,7 @@ export function parsePanelRoute(basePath: string, pathname: string): PanelRoute 
 
   let account: string;
   try {
-    account = decodeURIComponent(encodedAccount.slice(1));
+    account = decodeURIComponent(encodedAccount);
   } catch {
     return null;
   }
@@ -62,7 +62,7 @@ export function parsePanelRoute(basePath: string, pathname: string): PanelRoute 
 export function panelRoutePath(basePath: string, route: PanelRoute): string {
   const base = normalizeBasePath(basePath);
   if (route.view === 'help') return `${base}/help`;
-  return `${base}/@${encodeURIComponent(route.account)}/${route.view}`;
+  return `${base}/i/${encodeURIComponent(route.account)}/${route.view}`;
 }
 
 export function resolvePanelRoute(

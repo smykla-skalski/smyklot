@@ -74,11 +74,11 @@ func isPanelNavigationPath(relative string) bool {
 	}
 
 	parts := strings.Split(trimmed, "/")
-	if len(parts) != 2 || len(parts[0]) < 2 || parts[0][0] != '@' {
+	if len(parts) != 3 || parts[0] != "i" || parts[1] == "" {
 		return false
 	}
 
-	switch parts[1] {
+	switch parts[2] {
 	case "settings", "repositories", "history":
 		return true
 	default:

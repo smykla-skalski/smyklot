@@ -653,8 +653,8 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	for _, path := range []string{
 		"/panel/",
-		"/panel/@smykla-skalski/repositories",
-		"/panel/@auth/settings",
+		"/panel/i/smykla-skalski/repositories",
+		"/panel/i/auth/settings",
 		"/panel/help",
 	} {
 		response := harness.request(t, http.MethodGet, path, nil, nil)
@@ -674,8 +674,9 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 		"/panel/smykla-skalski/repositories",
 		"/panel/auth/settings",
 		"/panel/webhook/history",
-		"/panel/@smykla-skalski/help",
-		"/panel/@smykla-skalski/unknown",
+		"/panel/i/smykla-skalski/help",
+		"/panel/i/smykla-skalski/unknown",
+		"/panel/@smykla-skalski/repositories",
 		"/panel/assets/missing.js",
 	} {
 		response := harness.request(t, http.MethodGet, path, nil, nil)
