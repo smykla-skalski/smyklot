@@ -67,6 +67,7 @@ export interface TargetUserAccess {
   suspended: boolean;
   suspension_reason?: string;
   revision: number;
+  updated_at?: string;
   effective_role: PanelRole;
   source: AccessSource;
   capabilities: PanelCapabilities;
@@ -85,6 +86,19 @@ export interface PanelUser {
   updated_at: string;
   manageable: boolean;
   target_access?: TargetUserAccess;
+}
+
+export type PanelUserSort =
+  'name_asc' | 'name_desc' | 'updated_newest' | 'updated_oldest' | 'login_newest' | 'login_oldest';
+export type PanelUserListStatus = 'active' | 'banned' | 'suspended';
+
+export interface PanelUserPageRequest {
+  cursor?: string;
+  query: string;
+  sort: PanelUserSort;
+  limit: number;
+  roles: PanelRole[];
+  statuses: PanelUserListStatus[];
 }
 
 export interface AddGlobalUserInput {
@@ -127,6 +141,26 @@ export interface PanelInvitation {
   created_at: string;
   responded_at?: string;
   invite_url?: string;
+}
+
+export type InvitationSort =
+  'created_newest' | 'created_oldest' | 'expiry_soonest' | 'expiry_latest' | 'name_asc';
+
+export interface InvitationPageRequest {
+  cursor?: string;
+  query: string;
+  sort: InvitationSort;
+  limit: number;
+  roles: Exclude<PanelRole, 'none'>[];
+  statuses: InvitationStatus[];
+}
+
+export interface AccessDecision {
+  id: string;
+  actor: PanelAccount;
+  action: string;
+  summary: string;
+  created_at: string;
 }
 
 export interface AddGlobalInvitationInput {

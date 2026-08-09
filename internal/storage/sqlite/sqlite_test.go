@@ -480,6 +480,31 @@ var _ = Describe("SQLite store [Unit]", func() {
 		managedTarget = targetUserByID(targetUsers, viewer.ID)
 		Expect(managedTarget.Override).To(BeNil())
 		Expect(managedTarget.Access.Role).To(Equal(storage.PanelRoleAdmin))
+
+		page, err := store.ListPanelUserPage(ctx, storage.PanelUserPageRequest{
+			Limit: 1, Query: "MANAGED", Roles: []storage.PanelRole{storage.PanelRoleAdmin},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(page.Total).To(Equal(1))
+		Expect(page.Items).To(HaveLen(1))
+		Expect(page.Items[0].Account.ID).To(Equal(viewer.ID))
+
+		targetPage, err := store.ListTargetPanelUserPage(ctx, target.TargetID, storage.PanelUserPageRequest{
+			Limit: 1, Roles: []storage.PanelRole{storage.PanelRoleAdmin},
+			States: []storage.PanelUserListState{storage.PanelUserListActive},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(targetPage.Total).To(Equal(1))
+		Expect(targetPage.Items[0].User.Account.ID).To(Equal(viewer.ID))
+
+		decisions, err := store.ListAccessDecisions(ctx, viewer.ID, nil, 10)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(decisions).NotTo(BeEmpty())
+		Expect(decisions[0].Action).To(Equal("user.readded"))
+		Expect(decisions).To(ContainElement(And(
+			HaveField("Action", "user.banned"),
+			HaveField("Summary", ContainSubstring(reason)),
+		)))
 	})
 
 	It("creates, reissues, expires, and atomically responds to named invitations", func() {
@@ -502,6 +527,14 @@ var _ = Describe("SQLite store [Unit]", func() {
 		})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(invitation.Status).To(Equal(storage.InvitationPending))
+		page, err := store.ListInvitationPage(ctx, nil, now, storage.InvitationPageRequest{
+			Limit: 10, Query: "INVITEE", Roles: []storage.PanelRole{storage.PanelRoleViewer},
+			Statuses: []storage.InvitationStatus{storage.InvitationPending},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(page.Total).To(Equal(1))
+		Expect(page.Items).To(HaveLen(1))
+		Expect(page.Items[0].ID).To(Equal(invitation.ID))
 
 		invitation, err = store.ReissueInvitation(ctx, storage.InvitationReissue{
 			ID: invitation.ID, TokenHash: "token-2", ExpiresAt: now.Add(24 * time.Hour),

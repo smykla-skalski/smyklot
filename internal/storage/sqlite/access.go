@@ -147,6 +147,16 @@ func (s *Store) SetTargetAccess(
 	if currentRevision != change.ExpectedRevision {
 		return storage.TargetAccessOverride{}, storage.ErrConflict
 	}
+	previouslySuspended := false
+	if found {
+		current, readErr := getTargetAccessOverride(
+			ctx, tx, change.SubjectAccountID, change.TargetID,
+		)
+		if readErr != nil {
+			return storage.TargetAccessOverride{}, fmt.Errorf("read current target access: %w", readErr)
+		}
+		previouslySuspended = current.Suspended
+	}
 	nextRevision := currentRevision + 1
 	if !found {
 		err = insertTargetAccess(ctx, tx, change, nextRevision)
@@ -160,7 +170,10 @@ func (s *Store) SetTargetAccess(
 	summary := "updated installation access"
 	if change.Suspended {
 		action = "target.access.suspended"
-		summary = "suspended installation access"
+		summary = "suspended installation access" + accessReasonSuffix(change.SuspensionReason)
+	} else if previouslySuspended {
+		action = "target.access.restored"
+		summary = "restored installation access"
 	}
 	if err := insertAccessAudit(
 		ctx,
@@ -183,6 +196,18 @@ func (s *Store) SetTargetAccess(
 	}
 
 	return override, nil
+}
+
+func accessReasonSuffix(value *string) string {
+	if value == nil {
+		return ""
+	}
+	reason := strings.TrimSpace(*value)
+	if reason == "" {
+		return ""
+	}
+
+	return ": " + reason
 }
 
 // GetTargetAccessOverride returns one persisted installation-specific policy.

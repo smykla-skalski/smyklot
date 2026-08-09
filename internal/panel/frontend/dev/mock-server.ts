@@ -5,6 +5,7 @@ import type { Connect, Plugin } from 'vite';
 
 import type {
   AuditEntry,
+  AccessDecision,
   AddGlobalInvitationInput,
   AddGlobalUserInput,
   AddTargetInvitationInput,
@@ -28,6 +29,7 @@ import type {
   UpdateGlobalUserInput,
   UpdateTargetUserInput,
   InvitationDays,
+  InvitationStatus,
 } from '../src/lib/types';
 
 type DevHttpServer = HttpServer;
@@ -324,6 +326,7 @@ function seed(): MockState {
     suspended: true,
     suspension_reason: 'On leave',
     revision: 2,
+    updated_at: iso(-3 * 86_400_000),
     effective_role: 'none',
     source: 'suspended',
     capabilities: capabilitiesFor('none'),
@@ -331,7 +334,21 @@ function seed(): MockState {
   return {
     signedIn: true,
     forceFailure: false,
-    targets: [organization, personal],
+    targets: [
+      organization,
+      personal,
+      ...Array.from({ length: 24 }, (_, index) =>
+        targetSeed({
+          id: `mock-organization-${index + 1}`,
+          installationId: `mock-installation-${index + 1}`,
+          login: `team-${String(index + 1).padStart(2, '0')}`,
+          displayName: `Engineering Team ${String(index + 1).padStart(2, '0')}`,
+          type: 'Organization',
+          repositoryDefaultEnabled: false,
+          targetPatch: {},
+        }),
+      ),
+    ],
     users,
     targetAccess: new Map([[organization.value.id, organizationAccess]]),
     invitations,
@@ -353,7 +370,7 @@ function invitationSeeds(
     display_name: displayName,
     avatar_url: null,
   });
-  return [
+  const invitations: MockInvitation[] = [
     {
       id: 'mock-invitation-global-pending',
       token: 'p'.repeat(43),
@@ -388,6 +405,30 @@ function invitationSeeds(
       created_at: iso(-8 * 86_400_000),
     },
   ];
+  const statuses: InvitationStatus[] = ['pending', 'accepted', 'declined', 'revoked', 'expired'];
+  const roles: Array<Exclude<PanelRole, 'none'>> = ['viewer', 'editor', 'admin'];
+  for (let index = 0; index < 25; index += 1) {
+    const status = cycled(statuses, index);
+    invitations.push({
+      id: `mock-invitation-seed-${index + 1}`,
+      token: `${String(index + 1).padStart(43, '0')}`,
+      account: invited(
+        `invitee-${index + 1}`,
+        `invitee-${String(index + 1).padStart(2, '0')}`,
+        `Invited User ${String(index + 1).padStart(2, '0')}`,
+      ),
+      ...(index % 2 === 0
+        ? {}
+        : { target_id: target.id, target_name: target.account.display_name }),
+      role: cycled(roles, index),
+      status,
+      expires_at: iso((index - 8) * 86_400_000),
+      created_by: creator,
+      created_at: iso(-(index + 3) * 3_600_000),
+      ...(status === 'pending' ? {} : { responded_at: iso(-(index + 1) * 3_600_000) }),
+    });
+  }
+  return invitations;
 }
 
 function capabilitiesFor(role: PanelRole) {
@@ -470,13 +511,26 @@ function userSeeds(iso: (offsetMs: number) => string): PanelUser[] {
   banned.ban_reason = 'Repeated unauthorized access attempts';
   banned.banned_at = iso(-2 * 86_400_000);
 
-  return [
+  const users = [
     root,
     user('1002', 'ada', 'Ada Lovelace', 'admin', -42 * 60_000),
     user('1003', 'grace', 'Grace Hopper', 'editor', -4 * 3_600_000),
     user('1004', 'margaret', 'Margaret Hamilton', 'viewer', -2 * 86_400_000),
     banned,
   ];
+  const roles: PanelRole[] = ['viewer', 'editor', 'admin', 'none'];
+  for (let index = 0; index < 31; index += 1) {
+    users.push(
+      user(
+        `seed-user-${index + 1}`,
+        `panel-user-${String(index + 1).padStart(2, '0')}`,
+        `Panel User ${String(index + 1).padStart(2, '0')}`,
+        cycled(roles, index),
+        -(index + 4) * 95 * 60_000,
+      ),
+    );
+  }
+  return users;
 }
 
 function targetSeed(input: {
@@ -835,17 +889,26 @@ async function handle(
       return;
     }
     if (path === route('/api/v1/users') && method === 'GET') {
-      respond(res, 200, {
-        users: state.users.filter((user) => user.status !== 'removed'),
-      });
+      respond(
+        res,
+        200,
+        userPage(
+          state.users.filter((user) => user.status !== 'removed'),
+          parsed.searchParams,
+          false,
+        ),
+      );
       return;
     }
     if (path === route('/api/v1/invitations') && method === 'GET') {
-      respond(res, 200, {
-        invitations: state.invitations
-          .filter((invitation) => invitation.target_id === undefined)
-          .map(publicInvitationValue),
-      });
+      respond(
+        res,
+        200,
+        invitationPage(
+          state.invitations.filter((invitation) => invitation.target_id === undefined),
+          parsed.searchParams,
+        ),
+      );
       return;
     }
     if (path === route('/api/v1/invitations') && method === 'POST') {
@@ -888,9 +951,13 @@ async function handle(
 
     const targetSettings = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/settings$/);
     const globalUser = path.match(/^\/api\/v1\/users\/(?<account>[^/]+)$/);
+    const globalUserDecisions = path.match(/^\/api\/v1\/users\/(?<account>[^/]+)\/decisions$/);
     const scopedUsers = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/users$/);
     const scopedUser = path.match(
       /^\/api\/v1\/targets\/(?<target>[^/]+)\/users\/(?<account>[^/]+)$/,
+    );
+    const scopedUserDecisions = path.match(
+      /^\/api\/v1\/targets\/(?<target>[^/]+)\/users\/(?<account>[^/]+)\/decisions$/,
     );
     const scopedInvitations = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/invitations$/);
     const reissueInvitation = path.match(/^\/api\/v1\/invitations\/(?<invitation>[^/]+)\/reissue$/);
@@ -904,6 +971,22 @@ async function handle(
     );
     const audit = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/audit$/);
     const failures = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/failures$/);
+
+    if (globalUserDecisions && method === 'GET') {
+      const user = findUser(state, globalUserDecisions.groups?.account ?? '');
+      respond(res, 200, { decisions: mockDecisions(user) });
+      return;
+    }
+    if (scopedUserDecisions && method === 'GET') {
+      const target = findTarget(state, scopedUserDecisions.groups?.target ?? '');
+      const accountId = decodeURIComponent(scopedUserDecisions.groups?.account ?? '');
+      const user = targetUsers(state, target.value.id).find(
+        (entry) => entry.account.id === accountId,
+      );
+      if (user === undefined) throw new MockApiError(404, 'not_found', 'panel user not found');
+      respond(res, 200, { decisions: mockDecisions(user, target.value) });
+      return;
+    }
 
     if (globalUser && method === 'PUT') {
       const user = findUser(state, globalUser.groups?.account ?? '');
@@ -930,11 +1013,14 @@ async function handle(
     }
     if (scopedInvitations && method === 'GET') {
       const target = findTarget(state, scopedInvitations.groups?.target ?? '');
-      respond(res, 200, {
-        invitations: state.invitations
-          .filter((entry) => entry.target_id === target.value.id)
-          .map(publicInvitationValue),
-      });
+      respond(
+        res,
+        200,
+        invitationPage(
+          state.invitations.filter((entry) => entry.target_id === target.value.id),
+          parsed.searchParams,
+        ),
+      );
       return;
     }
     if (scopedInvitations && method === 'POST') {
@@ -967,7 +1053,7 @@ async function handle(
     }
     if (scopedUsers && method === 'GET') {
       const target = findTarget(state, scopedUsers.groups?.target ?? '');
-      respond(res, 200, { users: targetUsers(state, target.value.id) });
+      respond(res, 200, userPage(targetUsers(state, target.value.id), parsed.searchParams, true));
       return;
     }
     if (scopedUsers && method === 'POST') {
@@ -1271,6 +1357,7 @@ function targetAccess(
     suspended,
     ...(reason === undefined || reason.trim() === '' ? {} : { suspension_reason: reason.trim() }),
     revision,
+    updated_at: new Date().toISOString(),
     effective_role: effectiveRole,
     source: suspended ? 'suspended' : role === null ? 'global' : 'target',
     capabilities: capabilitiesFor(effectiveRole),
@@ -1309,6 +1396,170 @@ function addAudit(target: MockTarget, action: string, summary: string, repositor
     repository_full_name: repository,
     created_at: new Date().toISOString(),
   });
+}
+
+function mockDecisions(user: PanelUser, target?: PanelTarget): AccessDecision[] {
+  const now = Date.now();
+  const current =
+    target === undefined
+      ? user.status === 'banned'
+        ? {
+            action: 'user.banned',
+            summary: `banned user${user.ban_reason === undefined ? '' : `: ${user.ban_reason}`}`,
+            created_at: user.banned_at ?? new Date(now - 2 * 86_400_000).toISOString(),
+          }
+        : { action: 'user.role.updated', summary: `changed global role to ${user.global_role}` }
+      : user.target_access?.suspended === true
+        ? {
+            action: 'target.access.suspended',
+            summary: `suspended installation access${user.target_access.suspension_reason === undefined ? '' : `: ${user.target_access.suspension_reason}`}`,
+            created_at:
+              user.target_access.updated_at ?? new Date(now - 3 * 86_400_000).toISOString(),
+          }
+        : {
+            action: 'target.access.updated',
+            summary: `updated access to ${target.account.display_name}`,
+          };
+  return [
+    {
+      id: `${user.account.id}-decision-3`,
+      actor: VIEWER,
+      ...current,
+      created_at: current.created_at ?? new Date(now - 2 * 3_600_000).toISOString(),
+    },
+    {
+      id: `${user.account.id}-decision-2`,
+      actor: VIEWER,
+      action: target === undefined ? 'user.role.updated' : 'target.access.updated',
+      summary:
+        target === undefined ? 'changed global role to viewer' : 'updated installation access',
+      created_at: new Date(now - 18 * 86_400_000).toISOString(),
+    },
+    {
+      id: `${user.account.id}-decision-1`,
+      actor: VIEWER,
+      action: 'user.created',
+      summary: 'added user as viewer',
+      created_at: new Date(now - 45 * 86_400_000).toISOString(),
+    },
+  ];
+}
+
+function userPage(
+  users: PanelUser[],
+  parameters: URLSearchParams,
+  scoped: boolean,
+): Page<PanelUser> {
+  const query = (parameters.get('q') ?? '').trim().toLocaleLowerCase();
+  const roles = parameters.getAll('role');
+  const statuses = parameters.getAll('status');
+  const ordered = users
+    .filter((user) => {
+      const role = scoped ? user.target_access?.effective_role : user.global_role;
+      const status =
+        scoped && user.status === 'active' && user.target_access?.suspended === true
+          ? 'suspended'
+          : user.status;
+      return (
+        (query === '' ||
+          user.account.login.toLocaleLowerCase().includes(query) ||
+          user.account.display_name.toLocaleLowerCase().includes(query)) &&
+        (roles.length === 0 || (role !== undefined && roles.includes(role))) &&
+        (statuses.length === 0 || statuses.includes(status))
+      );
+    })
+    .map((user) => structuredClone(user));
+
+  switch (parameters.get('sort')) {
+    case 'name_desc':
+      ordered.sort((left, right) =>
+        right.account.display_name.localeCompare(left.account.display_name),
+      );
+      break;
+    case 'updated_newest':
+      ordered.sort((left, right) => right.updated_at.localeCompare(left.updated_at));
+      break;
+    case 'updated_oldest':
+      ordered.sort((left, right) => left.updated_at.localeCompare(right.updated_at));
+      break;
+    case 'login_newest':
+      ordered.sort((left, right) =>
+        (right.last_login_at ?? '').localeCompare(left.last_login_at ?? ''),
+      );
+      break;
+    case 'login_oldest':
+      ordered.sort((left, right) =>
+        (left.last_login_at ?? 'z').localeCompare(right.last_login_at ?? 'z'),
+      );
+      break;
+    default:
+      ordered.sort((left, right) =>
+        left.account.display_name.localeCompare(right.account.display_name),
+      );
+  }
+  return offsetPage(ordered, parameters);
+}
+
+function invitationPage(
+  invitations: MockInvitation[],
+  parameters: URLSearchParams,
+): Page<PanelInvitation> {
+  const query = (parameters.get('q') ?? '').trim().toLocaleLowerCase();
+  const roles = parameters.getAll('role');
+  const statuses = parameters.getAll('status');
+  const now = Date.now();
+  const ordered = invitations
+    .map((invitation) => {
+      const value = publicInvitationValue(invitation);
+      if (value.status === 'pending' && Date.parse(value.expires_at) <= now)
+        value.status = 'expired';
+      return value;
+    })
+    .filter(
+      (invitation) =>
+        (query === '' ||
+          invitation.account.login.toLocaleLowerCase().includes(query) ||
+          invitation.account.display_name.toLocaleLowerCase().includes(query) ||
+          invitation.created_by.login.toLocaleLowerCase().includes(query)) &&
+        (roles.length === 0 || roles.includes(invitation.role)) &&
+        (statuses.length === 0 || statuses.includes(invitation.status)),
+    );
+
+  switch (parameters.get('sort')) {
+    case 'created_oldest':
+      ordered.sort((left, right) => left.created_at.localeCompare(right.created_at));
+      break;
+    case 'expiry_soonest':
+      ordered.sort((left, right) => left.expires_at.localeCompare(right.expires_at));
+      break;
+    case 'expiry_latest':
+      ordered.sort((left, right) => right.expires_at.localeCompare(left.expires_at));
+      break;
+    case 'name_asc':
+      ordered.sort((left, right) =>
+        left.account.display_name.localeCompare(right.account.display_name),
+      );
+      break;
+    default:
+      ordered.sort((left, right) => right.created_at.localeCompare(left.created_at));
+  }
+  return offsetPage(ordered, parameters);
+}
+
+function offsetPage<T>(items: T[], parameters: URLSearchParams): Page<T> {
+  const requestedLimit = Number.parseInt(parameters.get('limit') ?? '', 10);
+  const limit =
+    Number.isFinite(requestedLimit) && requestedLimit > 0
+      ? Math.min(requestedLimit, 100)
+      : DEFAULT_PAGE_SIZE;
+  const requestedOffset = Number.parseInt(parameters.get('cursor') ?? '', 10);
+  const offset = Number.isFinite(requestedOffset) && requestedOffset >= 0 ? requestedOffset : 0;
+  const next = offset + limit;
+  return {
+    items: items.slice(offset, next),
+    next_cursor: next < items.length ? String(next) : null,
+    total: items.length,
+  };
 }
 
 function historyPage<T>(

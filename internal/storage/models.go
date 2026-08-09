@@ -37,6 +37,52 @@ const (
 	PanelUserRemoved PanelUserStatus = "removed"
 )
 
+// PanelUserOrder controls how user-management pages are ordered.
+type PanelUserOrder string
+
+const (
+	PanelUserNameAscending  PanelUserOrder = "name_asc"
+	PanelUserNameDescending PanelUserOrder = "name_desc"
+	PanelUserUpdatedNewest  PanelUserOrder = "updated_newest"
+	PanelUserUpdatedOldest  PanelUserOrder = "updated_oldest"
+	PanelUserLoginNewest    PanelUserOrder = "login_newest"
+	PanelUserLoginOldest    PanelUserOrder = "login_oldest"
+)
+
+// PanelUserListState includes the installation-only suspended state alongside
+// account-wide lifecycle states used by user-management filters.
+type PanelUserListState string
+
+const (
+	PanelUserListActive    PanelUserListState = "active"
+	PanelUserListBanned    PanelUserListState = "banned"
+	PanelUserListSuspended PanelUserListState = "suspended"
+)
+
+// PanelUserPageRequest selects one filtered, numbered user-management page.
+type PanelUserPageRequest struct {
+	Offset int
+	Limit  int
+	Order  PanelUserOrder
+	Query  string
+	Roles  []PanelRole
+	States []PanelUserListState
+}
+
+// PanelUserPage is one account-wide user page.
+type PanelUserPage struct {
+	Items      []PanelUser
+	NextOffset int
+	Total      int
+}
+
+// TargetPanelUserPage is one installation-scoped user page.
+type TargetPanelUserPage struct {
+	Items      []TargetPanelUser
+	NextOffset int
+	Total      int
+}
+
 // PanelUser is one persisted panel identity and its global access policy.
 type PanelUser struct {
 	Account     Account
@@ -81,6 +127,45 @@ const (
 	InvitationRevoked  InvitationStatus = "revoked"
 	InvitationExpired  InvitationStatus = "expired"
 )
+
+// InvitationOrder controls invitation-management page ordering.
+type InvitationOrder string
+
+const (
+	InvitationCreatedNewest InvitationOrder = "created_newest"
+	InvitationCreatedOldest InvitationOrder = "created_oldest"
+	InvitationExpirySoonest InvitationOrder = "expiry_soonest"
+	InvitationExpiryLatest  InvitationOrder = "expiry_latest"
+	InvitationNameAscending InvitationOrder = "name_asc"
+)
+
+// InvitationPageRequest selects one filtered invitation-management page.
+type InvitationPageRequest struct {
+	Offset   int
+	Limit    int
+	Order    InvitationOrder
+	Query    string
+	Roles    []PanelRole
+	Statuses []InvitationStatus
+}
+
+// InvitationPage is one page of identity-locked invitations.
+type InvitationPage struct {
+	Items      []Invitation
+	NextOffset int
+	Total      int
+}
+
+// AccessDecision is one immutable role, lifecycle, or invitation decision for
+// a panel identity in exactly one global or installation scope.
+type AccessDecision struct {
+	ID        int64
+	TargetID  *string
+	Actor     Account
+	Action    string
+	Summary   string
+	CreatedAt time.Time
+}
 
 // Invitation is an identity-locked offer of global or installation access.
 type Invitation struct {

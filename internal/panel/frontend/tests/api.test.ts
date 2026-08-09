@@ -242,37 +242,48 @@ describe('user management', () => {
       manageable: true,
     };
     const stub = stubFetch([
-      jsonResponse(200, { users: [user] }),
+      jsonResponse(200, { items: [user], next_cursor: null, total: 1 }),
       jsonResponse(201, user),
       jsonResponse(200, user),
-      jsonResponse(200, { users: [user] }),
+      jsonResponse(200, { items: [user], next_cursor: null, total: 1 }),
       jsonResponse(201, user),
       jsonResponse(200, user),
+      jsonResponse(200, { decisions: [] }),
     ]);
     const api = createPanelApi('/panel', stub.fetch);
 
-    await api.fetchUsers();
+    const page = {
+      query: 'ada user',
+      sort: 'name_asc' as const,
+      limit: 20,
+      roles: ['editor' as const],
+      statuses: ['active' as const],
+    };
+
+    await api.fetchUsers(page);
     await api.addUser({ login: 'ada', role: 'editor', target_id: 'target.1' });
     await api.updateUser('github:user:1', {
       global_role: 'viewer',
       status: 'active',
       expected_revision: 1,
     });
-    await api.fetchTargetUsers('target.1');
+    await api.fetchTargetUsers('target.1', { ...page, cursor: '20' });
     await api.addTargetUser('target.1', { login: 'ada', role: 'viewer' });
     await api.updateTargetUser('target.1', 'github:user:1', {
       role: null,
       suspended: false,
       expected_revision: 1,
     });
+    await api.fetchUserDecisions('github:user:1', 'target.1');
 
     expect(stub.calls.map((call) => call.url)).toEqual([
-      '/panel/api/v1/users',
+      '/panel/api/v1/users?q=ada+user&sort=name_asc&limit=20&role=editor&status=active',
       '/panel/api/v1/users',
       '/panel/api/v1/users/github%3Auser%3A1',
-      '/panel/api/v1/targets/target%2E1/users',
+      '/panel/api/v1/targets/target%2E1/users?cursor=20&q=ada+user&sort=name_asc&limit=20&role=editor&status=active',
       '/panel/api/v1/targets/target%2E1/users',
       '/panel/api/v1/targets/target%2E1/users/github%3Auser%3A1',
+      '/panel/api/v1/targets/target%2E1/users/github%3Auser%3A1/decisions',
     ]);
     expect(JSON.parse(String(stub.calls[5]?.init?.body))).toMatchObject({ role: null });
   });
@@ -289,9 +300,9 @@ describe('user management', () => {
       invite_url: 'https://example.test/panel/invite/token',
     };
     const stub = stubFetch([
-      jsonResponse(200, { invitations: [invitation] }),
+      jsonResponse(200, { items: [invitation], next_cursor: null, total: 1 }),
       jsonResponse(201, invitation),
-      jsonResponse(200, { invitations: [invitation] }),
+      jsonResponse(200, { items: [invitation], next_cursor: null, total: 1 }),
       jsonResponse(201, invitation),
       jsonResponse(200, invitation),
       jsonResponse(200, invitation),
@@ -299,14 +310,22 @@ describe('user management', () => {
     ]);
     const api = createPanelApi('/panel', stub.fetch);
 
-    await api.fetchInvitations();
+    const page = {
+      query: 'ada',
+      sort: 'expiry_soonest' as const,
+      limit: 10,
+      roles: ['viewer' as const],
+      statuses: ['pending' as const, 'expired' as const],
+    };
+
+    await api.fetchInvitations(page);
     await api.createInvitation({
       login: 'ada',
       role: 'viewer',
       target_id: 'target.1',
       expires_in_days: 7,
     });
-    await api.fetchTargetInvitations('target.1');
+    await api.fetchTargetInvitations('target.1', page);
     await api.createTargetInvitation('target.1', {
       login: 'ada',
       role: 'viewer',
@@ -317,9 +336,9 @@ describe('user management', () => {
     await api.revokeInvitation('invite.1');
 
     expect(stub.calls.map((call) => call.url)).toEqual([
+      '/panel/api/v1/invitations?q=ada&sort=expiry_soonest&limit=10&role=viewer&status=pending&status=expired',
       '/panel/api/v1/invitations',
-      '/panel/api/v1/invitations',
-      '/panel/api/v1/targets/target%2E1/invitations',
+      '/panel/api/v1/targets/target%2E1/invitations?q=ada&sort=expiry_soonest&limit=10&role=viewer&status=pending&status=expired',
       '/panel/api/v1/targets/target%2E1/invitations',
       '/panel/api/v1/invites/token%2Fvalue',
       '/panel/api/v1/invitations/invite%2E1/reissue',

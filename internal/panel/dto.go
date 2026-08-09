@@ -61,6 +61,7 @@ type targetUserAccess struct {
 	Suspended        bool                 `json:"suspended"`
 	SuspensionReason *string              `json:"suspension_reason,omitempty"`
 	Revision         int64                `json:"revision"`
+	UpdatedAt        *time.Time           `json:"updated_at,omitempty"`
 	EffectiveRole    storage.PanelRole    `json:"effective_role"`
 	Source           storage.AccessSource `json:"source"`
 	Capabilities     capabilityResponse   `json:"capabilities"`
@@ -179,6 +180,7 @@ func targetPanelUserDTO(user storage.TargetPanelUser, manageable bool) panelUser
 		access.Suspended = user.Override.Suspended
 		access.SuspensionReason = user.Override.SuspensionReason
 		access.Revision = user.Override.Revision
+		access.UpdatedAt = &user.Override.UpdatedAt
 	}
 	response.TargetAccess = &access
 

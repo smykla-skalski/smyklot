@@ -4,16 +4,14 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/storage"
 )
 
-const (
-	invitationResource = "invitations"
-	defaultInviteDays  = 7
-)
+const defaultInviteDays = 7
 
 type createInvitationRequest struct {
 	Login         string             `json:"login"`
@@ -56,16 +54,21 @@ func (s *Server) getTargetInvitations(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listInvitations(w http.ResponseWriter, r *http.Request, targetID *string) {
-	invitations, err := s.store.ListInvitations(r.Context(), targetID, s.now().UTC())
+	page, err := parseInvitationPage(r.URL.Query())
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	if targetID != nil && slices.Contains(page.Roles, storage.PanelRoleOwner) {
+		s.writeError(w, http.StatusBadRequest, "invalid_request", "owner is not a target invitation role")
+		return
+	}
+	invitations, err := s.store.ListInvitationPage(r.Context(), targetID, s.now().UTC(), page)
 	if err != nil {
 		s.writeInternal(w, err)
 		return
 	}
-	items := make([]invitationResponse, 0, len(invitations))
-	for _, invitation := range invitations {
-		items = append(items, invitationDTO(invitation, ""))
-	}
-	writeJSON(w, http.StatusOK, map[string]any{invitationResource: items})
+	writeJSON(w, http.StatusOK, invitationPageDTO(invitations))
 }
 
 func (s *Server) postInvitation(w http.ResponseWriter, r *http.Request) {

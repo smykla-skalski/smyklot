@@ -101,6 +101,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET "+base+"/api/v1/targets", s.getTargets)
 	mux.HandleFunc("GET "+base+"/api/v1/users", s.getUsers)
 	mux.HandleFunc("POST "+base+"/api/v1/users", s.postUser)
+	mux.HandleFunc("GET "+base+"/api/v1/users/{account}/decisions", s.getUserDecisions)
 	mux.HandleFunc("PUT "+base+"/api/v1/users/{account}", s.putUser)
 	mux.HandleFunc("GET "+base+"/api/v1/invitations", s.getInvitations)
 	mux.HandleFunc("POST "+base+"/api/v1/invitations", s.postInvitation)
@@ -110,6 +111,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT "+base+"/api/v1/targets/{target}/settings", s.putTargetSettings)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/users", s.getTargetUsers)
 	mux.HandleFunc("POST "+base+"/api/v1/targets/{target}/users", s.postTargetUser)
+	mux.HandleFunc(
+		"GET "+base+"/api/v1/targets/{target}/users/{account}/decisions",
+		s.getTargetUserDecisions,
+	)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/invitations", s.getTargetInvitations)
 	mux.HandleFunc("POST "+base+"/api/v1/targets/{target}/invitations", s.postTargetInvitation)
 	mux.HandleFunc(

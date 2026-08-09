@@ -24,7 +24,10 @@ type AuthStore interface {
 type AccessStore interface {
 	GetPanelUser(context.Context, string) (PanelUser, error)
 	ListPanelUsers(context.Context) ([]PanelUser, error)
+	ListPanelUserPage(context.Context, PanelUserPageRequest) (PanelUserPage, error)
 	ListTargetPanelUsers(context.Context, string) ([]TargetPanelUser, error)
+	ListTargetPanelUserPage(context.Context, string, PanelUserPageRequest) (TargetPanelUserPage, error)
+	ListAccessDecisions(context.Context, string, *string, int) ([]AccessDecision, error)
 	CreatePanelUser(context.Context, PanelUserCreate) (PanelUser, error)
 	UpdatePanelUser(context.Context, PanelUserChange) (PanelUser, error)
 	GetTargetAccessOverride(context.Context, string, string) (TargetAccessOverride, error)
@@ -36,6 +39,7 @@ type AccessStore interface {
 // InvitationStore owns identity-locked panel invitations and acceptance.
 type InvitationStore interface {
 	ListInvitations(context.Context, *string, time.Time) ([]Invitation, error)
+	ListInvitationPage(context.Context, *string, time.Time, InvitationPageRequest) (InvitationPage, error)
 	GetInvitation(context.Context, string, time.Time) (Invitation, error)
 	GetInvitationByToken(context.Context, string, time.Time) (Invitation, error)
 	CreateInvitation(context.Context, InvitationCreate) (Invitation, error)

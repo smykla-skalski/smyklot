@@ -62,19 +62,19 @@ func (s *Server) getUsers(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	users, err := s.store.ListPanelUsers(r.Context())
+	page, err := parsePanelUserPage(r.URL.Query())
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	users, err := s.store.ListPanelUserPage(r.Context(), page)
 	if err != nil {
 		s.writeInternal(w, err)
 		return
 	}
-	items := make([]panelUserResponse, 0, len(users))
-	for _, user := range users {
-		items = append(items, panelUserDTO(
-			user,
-			canManageGlobalUser(actor, actorUser, user, user.GlobalRole),
-		))
-	}
-	writeJSON(w, http.StatusOK, map[string]any{panelUsersResource: items})
+	writeJSON(w, http.StatusOK, panelUserPageDTO(users, func(user storage.PanelUser) bool {
+		return canManageGlobalUser(actor, actorUser, user, user.GlobalRole)
+	}))
 }
 
 func (s *Server) postUser(w http.ResponseWriter, r *http.Request) {
@@ -171,19 +171,51 @@ func (s *Server) getTargetUsers(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	users, err := s.store.ListTargetPanelUsers(r.Context(), r.PathValue("target"))
+	page, err := parsePanelUserPage(r.URL.Query())
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	users, err := s.store.ListTargetPanelUserPage(r.Context(), r.PathValue("target"), page)
 	if err != nil {
 		s.writeStorageError(w, err)
 		return
 	}
-	items := make([]panelUserResponse, 0, len(users))
-	for _, user := range users {
-		items = append(items, targetPanelUserDTO(
-			user,
-			canManageTargetUser(actor, actorUser, actorAccess, user.User, user.Access, user.Access.Role),
-		))
+	writeJSON(w, http.StatusOK, targetPanelUserPageDTO(users, func(user storage.TargetPanelUser) bool {
+		return canManageTargetUser(
+			actor, actorUser, actorAccess, user.User, user.Access, user.Access.Role,
+		)
+	}))
+}
+
+func (s *Server) getUserDecisions(w http.ResponseWriter, r *http.Request) {
+	if _, _, ok := s.requireGlobalUserManager(w, r); !ok {
+		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{panelUsersResource: items})
+	s.listUserDecisions(w, r, nil)
+}
+
+func (s *Server) getTargetUserDecisions(w http.ResponseWriter, r *http.Request) {
+	if _, _, _, ok := s.requireTargetUserManager(w, r); !ok {
+		return
+	}
+	targetID := r.PathValue("target")
+	s.listUserDecisions(w, r, &targetID)
+}
+
+func (s *Server) listUserDecisions(w http.ResponseWriter, r *http.Request, targetID *string) {
+	if _, err := s.store.GetPanelUser(r.Context(), r.PathValue("account")); err != nil {
+		s.writeStorageError(w, err)
+		return
+	}
+	items, err := s.store.ListAccessDecisions(
+		r.Context(), r.PathValue("account"), targetID, MaxPageSize,
+	)
+	if err != nil {
+		s.writeInternal(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"decisions": accessDecisionsDTO(items)})
 }
 
 func (s *Server) postTargetUser(w http.ResponseWriter, r *http.Request) {

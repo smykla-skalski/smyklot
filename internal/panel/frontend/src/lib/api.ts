@@ -8,13 +8,16 @@ import type {
   AddGlobalInvitationInput,
   AddTargetInvitationInput,
   AddTargetUserInput,
+  AccessDecision,
   DeliveryFailure,
   FailureHistoryRequest,
   Page,
   PanelErrorBody,
   PanelTarget,
   PanelInvitation,
+  InvitationPageRequest,
   PanelUser,
+  PanelUserPageRequest,
   PanelViewer,
   RepositoryDetail,
   RepositoryPageRequest,
@@ -41,19 +44,22 @@ export class PanelApiError extends Error {
 export interface PanelApi {
   fetchViewer(): Promise<PanelViewer | null>;
   fetchTargets(): Promise<PanelTarget[]>;
-  fetchUsers(): Promise<PanelUser[]>;
+  fetchUsers(request: PanelUserPageRequest): Promise<Page<PanelUser>>;
   addUser(input: AddGlobalUserInput): Promise<PanelUser>;
   updateUser(accountId: string, input: UpdateGlobalUserInput): Promise<PanelUser>;
-  fetchTargetUsers(targetId: string): Promise<PanelUser[]>;
+  fetchTargetUsers(targetId: string, request: PanelUserPageRequest): Promise<Page<PanelUser>>;
   addTargetUser(targetId: string, input: AddTargetUserInput): Promise<PanelUser>;
   updateTargetUser(
     targetId: string,
     accountId: string,
     input: UpdateTargetUserInput,
   ): Promise<PanelUser>;
-  fetchInvitations(): Promise<PanelInvitation[]>;
+  fetchInvitations(request: InvitationPageRequest): Promise<Page<PanelInvitation>>;
   createInvitation(input: AddGlobalInvitationInput): Promise<PanelInvitation>;
-  fetchTargetInvitations(targetId: string): Promise<PanelInvitation[]>;
+  fetchTargetInvitations(
+    targetId: string,
+    request: InvitationPageRequest,
+  ): Promise<Page<PanelInvitation>>;
   createTargetInvitation(
     targetId: string,
     input: AddTargetInvitationInput,
@@ -61,6 +67,7 @@ export interface PanelApi {
   fetchInvitation(token: string): Promise<PanelInvitation>;
   reissueInvitation(invitationId: string, expiresInDays: InvitationDays): Promise<PanelInvitation>;
   revokeInvitation(invitationId: string): Promise<PanelInvitation>;
+  fetchUserDecisions(accountId: string, targetId?: string): Promise<AccessDecision[]>;
   updateTargetSettings(targetId: string, input: TargetSettingsInput): Promise<PanelTarget>;
   fetchRepositories(
     targetId: string,
@@ -143,9 +150,8 @@ export function createPanelApi(
       return body.targets;
     },
 
-    async fetchUsers(): Promise<PanelUser[]> {
-      const body = await jsonRequest<{ users: PanelUser[] }>('/api/v1/users');
-      return body.users;
+    fetchUsers(userPage: PanelUserPageRequest): Promise<Page<PanelUser>> {
+      return jsonRequest(withAccessPageQuery('/api/v1/users', userPage));
     },
 
     addUser(input: AddGlobalUserInput): Promise<PanelUser> {
@@ -156,11 +162,10 @@ export function createPanelApi(
       return putJson(`/api/v1/users/${pathSegment(accountId)}`, input);
     },
 
-    async fetchTargetUsers(targetId: string): Promise<PanelUser[]> {
-      const body = await jsonRequest<{ users: PanelUser[] }>(
-        `/api/v1/targets/${pathSegment(targetId)}/users`,
+    fetchTargetUsers(targetId: string, userPage: PanelUserPageRequest): Promise<Page<PanelUser>> {
+      return jsonRequest(
+        withAccessPageQuery(`/api/v1/targets/${pathSegment(targetId)}/users`, userPage),
       );
-      return body.users;
     },
 
     addTargetUser(targetId: string, input: AddTargetUserInput): Promise<PanelUser> {
@@ -178,20 +183,21 @@ export function createPanelApi(
       );
     },
 
-    async fetchInvitations(): Promise<PanelInvitation[]> {
-      const body = await jsonRequest<{ invitations: PanelInvitation[] }>('/api/v1/invitations');
-      return body.invitations;
+    fetchInvitations(invitationPage: InvitationPageRequest): Promise<Page<PanelInvitation>> {
+      return jsonRequest(withAccessPageQuery('/api/v1/invitations', invitationPage));
     },
 
     createInvitation(input: AddGlobalInvitationInput): Promise<PanelInvitation> {
       return postJson('/api/v1/invitations', input);
     },
 
-    async fetchTargetInvitations(targetId: string): Promise<PanelInvitation[]> {
-      const body = await jsonRequest<{ invitations: PanelInvitation[] }>(
-        `/api/v1/targets/${pathSegment(targetId)}/invitations`,
+    fetchTargetInvitations(
+      targetId: string,
+      invitationPage: InvitationPageRequest,
+    ): Promise<Page<PanelInvitation>> {
+      return jsonRequest(
+        withAccessPageQuery(`/api/v1/targets/${pathSegment(targetId)}/invitations`, invitationPage),
       );
-      return body.invitations;
     },
 
     createTargetInvitation(
@@ -218,6 +224,15 @@ export function createPanelApi(
       return jsonRequest(`/api/v1/invitations/${pathSegment(invitationId)}`, {
         method: 'DELETE',
       });
+    },
+
+    async fetchUserDecisions(accountId: string, targetId?: string): Promise<AccessDecision[]> {
+      const path =
+        targetId === undefined
+          ? `/api/v1/users/${pathSegment(accountId)}/decisions`
+          : `/api/v1/targets/${pathSegment(targetId)}/users/${pathSegment(accountId)}/decisions`;
+      const body = await jsonRequest<{ decisions: AccessDecision[] }>(path);
+      return body.decisions;
     },
 
     updateTargetSettings(targetId: string, input: TargetSettingsInput): Promise<PanelTarget> {
@@ -320,6 +335,28 @@ function withRepositoryQuery(path: string, page: RepositoryPageRequest): string 
   } else if (page.setting.mode !== 'all') {
     parameters.set('setting', page.setting.mode);
   }
+
+  return `${path}?${parameters.toString()}`;
+}
+
+function withAccessPageQuery(
+  path: string,
+  page: {
+    cursor?: string;
+    query: string;
+    sort: string;
+    limit: number;
+    roles: readonly string[];
+    statuses: readonly string[];
+  },
+): string {
+  const parameters = new URLSearchParams();
+  if (page.cursor !== undefined) parameters.set('cursor', page.cursor);
+  if (page.query !== '') parameters.set('q', page.query);
+  parameters.set('sort', page.sort);
+  parameters.set('limit', String(page.limit));
+  for (const role of page.roles) parameters.append('role', role);
+  for (const status of page.statuses) parameters.append('status', status);
 
   return `${path}?${parameters.toString()}`;
 }

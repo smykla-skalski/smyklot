@@ -184,6 +184,24 @@ func responseCookie(t *testing.T, response *httptest.ResponseRecorder, name stri
 	return nil
 }
 
+func requireResponse(
+	t *testing.T,
+	response *httptest.ResponseRecorder,
+	label string,
+	status int,
+	fragments ...string,
+) {
+	t.Helper()
+	if response.Code != status {
+		t.Fatalf("%s = %d %s", label, response.Code, response.Body.String())
+	}
+	for _, fragment := range fragments {
+		if !strings.Contains(response.Body.String(), fragment) {
+			t.Fatalf("%s is missing %q: %s", label, fragment, response.Body.String())
+		}
+	}
+}
+
 func (h *panelHarness) request(
 	t *testing.T,
 	method, path string,
@@ -490,9 +508,24 @@ func TestPanelManagesUsersAndRevokesBannedSessions(t *testing.T) {
 		t.Fatalf("add user = %d %s", added.Code, added.Body.String())
 	}
 	listed := harness.request(t, http.MethodGet, "/panel/api/v1/users", nil, ownerSession)
-	if listed.Code != http.StatusOK || !strings.Contains(listed.Body.String(), `"login":"managed"`) {
-		t.Fatalf("list users = %d %s", listed.Code, listed.Body.String())
-	}
+	requireResponse(
+		t, listed, "list users", http.StatusOK,
+		`"items"`, `"login":"managed"`, `"total":2`,
+	)
+	filtered := harness.request(
+		t,
+		http.MethodGet,
+		"/panel/api/v1/users?q=managed&role=editor&status=active&sort=updated_newest&limit=1",
+		nil,
+		ownerSession,
+	)
+	requireResponse(
+		t, filtered, "filter users", http.StatusOK, `"login":"managed"`, `"total":1`,
+	)
+	invalidPage := harness.request(
+		t, http.MethodGet, "/panel/api/v1/users?limit=0", nil, ownerSession,
+	)
+	requireResponse(t, invalidPage, "invalid user page", http.StatusBadRequest)
 
 	const managedToken = "managed-session"
 	if err := harness.store.CreateSession(t.Context(), storage.Session{
@@ -511,6 +544,17 @@ func TestPanelManagesUsersAndRevokesBannedSessions(t *testing.T) {
 	if ban.Code != http.StatusOK || !strings.Contains(ban.Body.String(), `"status":"banned"`) {
 		t.Fatalf("ban user = %d %s", ban.Code, ban.Body.String())
 	}
+	decisions := harness.request(
+		t,
+		http.MethodGet,
+		"/panel/api/v1/users/"+url.PathEscape(managed.ID)+"/decisions",
+		nil,
+		ownerSession,
+	)
+	requireResponse(
+		t, decisions, "list global access decisions", http.StatusOK,
+		`"action":"user.banned"`, `"summary":"banned user: security review"`,
+	)
 	managedSession := &http.Cookie{Name: sessionCookieName, Value: managedToken}
 	revoked := harness.request(t, http.MethodGet, "/panel/api/v1/session", nil, managedSession)
 	if revoked.Code != http.StatusUnauthorized ||
@@ -565,6 +609,19 @@ func TestPanelManagesUsersAndRevokesBannedSessions(t *testing.T) {
 		!strings.Contains(suspended.Body.String(), `"source":"suspended"`) {
 		t.Fatalf("suspend target user = %d %s", suspended.Code, suspended.Body.String())
 	}
+	targetDecisions := harness.request(
+		t,
+		http.MethodGet,
+		"/panel/api/v1/targets/github:installation:10/users/"+
+			url.PathEscape(managed.ID)+"/decisions",
+		nil,
+		ownerSession,
+	)
+	requireResponse(
+		t, targetDecisions, "list target access decisions", http.StatusOK,
+		`"action":"target.access.suspended"`,
+		`"summary":"suspended installation access: incident review"`,
+	)
 }
 
 func TestPanelInvitesNamedGitHubUserThroughOAuth(t *testing.T) {
@@ -592,6 +649,16 @@ func TestPanelInvitesNamedGitHubUserThroughOAuth(t *testing.T) {
 	if err := json.Unmarshal(created.Body.Bytes(), &invitation); err != nil {
 		t.Fatal(err)
 	}
+	listed := harness.request(
+		t,
+		http.MethodGet,
+		"/panel/api/v1/invitations?q=invited&role=editor&status=pending&sort=name_asc&limit=1",
+		nil,
+		ownerSession,
+	)
+	requireResponse(
+		t, listed, "list invitations", http.StatusOK, `"login":"invited"`, `"total":1`,
+	)
 	inviteURL, err := url.Parse(invitation.InviteURL)
 	if err != nil {
 		t.Fatal(err)
@@ -669,6 +736,16 @@ func TestPanelInvitesNamedGitHubUserThroughOAuth(t *testing.T) {
 	if targetCreated.Code != http.StatusCreated {
 		t.Fatalf("create target invitation = %d %s", targetCreated.Code, targetCreated.Body.String())
 	}
+	invalidTargetRole := harness.request(
+		t,
+		http.MethodGet,
+		"/panel/api/v1/targets/github:installation:10/invitations?role=owner",
+		nil,
+		ownerSession,
+	)
+	requireResponse(
+		t, invalidTargetRole, "invalid target invitation role", http.StatusBadRequest,
+	)
 	var targetInvitation struct {
 		ID        string `json:"id"`
 		InviteURL string `json:"invite_url"`
