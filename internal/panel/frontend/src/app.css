@@ -47,55 +47,56 @@
 :root {
   color-scheme: light dark;
 
-  /* Primitive palette. Indigo is interaction; semantic hues never act as brand. */
-  --primitive-light-canvas: #f8fafc;
+  /* Primitive palette. Graphite carries structure; petrol marks interaction. */
+  --primitive-light-canvas: #f5f7f6;
   --primitive-light-surface: #ffffff;
-  --primitive-light-raised: #ffffff;
-  --primitive-light-inset: #f1f5f9;
-  --primitive-light-control: #ffffff;
-  --primitive-light-rule: #e2e8f0;
-  --primitive-light-control-border: #7c8a9e;
-  --primitive-light-text: #0f172a;
-  --primitive-light-secondary: #475569;
-  --primitive-light-muted: #5f6b7a;
-  --primitive-dark-canvas: #080b12;
-  --primitive-dark-surface: #111827;
-  --primitive-dark-raised: #182235;
-  --primitive-dark-inset: #1e293b;
-  --primitive-dark-control: #182235;
-  --primitive-dark-rule: #334155;
-  --primitive-dark-control-border: #64748b;
-  --primitive-dark-text: #f8fafc;
-  --primitive-dark-secondary: #cbd5e1;
-  --primitive-dark-muted: #94a3b8;
-  --primitive-sidebar: #0b1220;
-  --primitive-sidebar-hover: #182235;
-  --primitive-sidebar-pressed: #1e293b;
-  --primitive-sidebar-active: #1e1b4b;
-  --primitive-sidebar-text: #f8fafc;
-  --primitive-sidebar-muted: #94a3b8;
-  --primitive-indigo-700: #4338ca;
-  --primitive-indigo-600: #4f46e5;
-  --primitive-indigo-400: #818cf8;
-  --primitive-indigo-200: #c7d2fe;
-  --primitive-indigo-50: #eef2ff;
-  --primitive-indigo-950: #1e1b4b;
-  --primitive-info-light: #075985;
-  --primitive-info-light-tint: #f0f9ff;
-  --primitive-info-dark: #7dd3fc;
-  --primitive-info-dark-tint: #0c4a6e;
-  --primitive-success-light: #047857;
-  --primitive-success-light-tint: #ecfdf5;
-  --primitive-success-dark: #86efac;
-  --primitive-success-dark-tint: #052e16;
-  --primitive-warning-light: #92400e;
-  --primitive-warning-light-tint: #fffbeb;
-  --primitive-warning-dark: #fde68a;
-  --primitive-warning-dark-tint: #451a03;
-  --primitive-danger-light: #b91c1c;
-  --primitive-danger-light-tint: #fef2f2;
-  --primitive-danger-dark: #fca5a5;
-  --primitive-danger-dark-tint: #450a0a;
+  --primitive-light-raised: #fafbfa;
+  --primitive-light-inset: #f0f3f2;
+  --primitive-light-control: #f8faf9;
+  --primitive-light-rule: #e3e8e6;
+  --primitive-light-control-border: #c4cec9;
+  --primitive-light-text: #18211f;
+  --primitive-light-secondary: #4c5b57;
+  --primitive-light-muted: #63716c;
+  --primitive-dark-canvas: #0e1116;
+  --primitive-dark-surface: #151a21;
+  --primitive-dark-raised: #1b222b;
+  --primitive-dark-inset: #202833;
+  --primitive-dark-control: #1a2029;
+  --primitive-dark-rule: #2a323d;
+  --primitive-dark-control-border: #3a4653;
+  --primitive-dark-text: #f3f6f7;
+  --primitive-dark-secondary: #c4cdd4;
+  --primitive-dark-muted: #95a1ab;
+  --primitive-sidebar: #10151b;
+  --primitive-sidebar-hover: #19232b;
+  --primitive-sidebar-pressed: #202d36;
+  --primitive-sidebar-active: #153638;
+  --primitive-sidebar-text: #f3f6f7;
+  --primitive-sidebar-muted: #9ba8b1;
+  --primitive-petrol-800: #115e59;
+  --primitive-petrol-700: #0f766e;
+  --primitive-petrol-600: #0d9488;
+  --primitive-petrol-400: #2dd4bf;
+  --primitive-petrol-200: #99f6e4;
+  --primitive-petrol-50: #e7f5f2;
+  --primitive-petrol-950: #103634;
+  --primitive-info-light: #526b7a;
+  --primitive-info-light-tint: #edf2f4;
+  --primitive-info-dark: #b6c5d1;
+  --primitive-info-dark-tint: #26323b;
+  --primitive-success-light: #0f766e;
+  --primitive-success-light-tint: #e7f5f2;
+  --primitive-success-dark: #71cabc;
+  --primitive-success-dark-tint: #173633;
+  --primitive-warning-light: #8a5d17;
+  --primitive-warning-light-tint: #f8f0de;
+  --primitive-warning-dark: #e8c07a;
+  --primitive-warning-dark-tint: #382f20;
+  --primitive-danger-light: #a33a45;
+  --primitive-danger-light-tint: #faecee;
+  --primitive-danger-dark: #f0a0a6;
+  --primitive-danger-dark-tint: #3a2429;
 
   /* Semantic palette. Neutral surfaces establish hierarchy; hue communicates
      brand, focus, or real state. */
@@ -109,13 +110,13 @@
   --text-primary: var(--primitive-light-text);
   --text-secondary: var(--primitive-light-secondary);
   --text-muted: var(--primitive-light-muted);
-  --brand-action: var(--primitive-indigo-600);
-  --brand-action-hover: var(--primitive-indigo-700);
-  --brand-action-pressed: #3730a3;
-  --brand-action-tint: var(--primitive-indigo-50);
-  --brand-action-text: #3730a3;
+  --brand-action: var(--primitive-petrol-700);
+  --brand-action-hover: var(--primitive-petrol-800);
+  --brand-action-pressed: #134e4a;
+  --brand-action-tint: var(--primitive-petrol-50);
+  --brand-action-text: #0f625b;
   --on-brand-action: #ffffff;
-  --focus: var(--primitive-indigo-600);
+  --focus: var(--primitive-petrol-700);
   --info: var(--primitive-info-light);
   --info-tint: var(--primitive-info-light-tint);
   --on-info: #ffffff;
@@ -126,10 +127,10 @@
   --danger: var(--primitive-danger-light);
   --danger-tint: var(--primitive-danger-light-tint);
   --neutral-tint: var(--primitive-light-inset);
-  --interactive-hover: #f8fafc;
-  --interactive-pressed: rgb(15 23 42 / 10%);
-  --scrim: rgb(2 6 23 / 55%);
-  --shadow-color: rgb(15 23 42 / 10%);
+  --interactive-hover: #f1f5f3;
+  --interactive-pressed: rgb(24 33 31 / 10%);
+  --scrim: rgb(14 17 22 / 56%);
+  --shadow-color: rgb(24 33 31 / 10%);
 
   /* Component tokens. */
   --sidebar-bg: var(--primitive-sidebar);
@@ -139,13 +140,14 @@
   --sidebar-item-hover: var(--primitive-sidebar-hover);
   --sidebar-item-pressed: var(--primitive-sidebar-pressed);
   --sidebar-item-active: var(--primitive-sidebar-active);
-  --sidebar-item-active-text: var(--primitive-indigo-200);
+  --sidebar-item-active-text: #b4e8df;
   --identity-bg: var(--primitive-sidebar-hover);
   --identity-hover-bg: var(--primitive-sidebar-pressed);
   --identity-border: var(--primitive-dark-rule);
   --control-bg: var(--surface-control);
   --control-bg-hover: var(--surface-raised);
   --control-border: var(--border-control);
+  --control-border-hover: #99a7a1;
   --input-bg: var(--surface-inset);
   --popover-bg: var(--surface-base);
   --popover-border: var(--border-subtle);
@@ -248,16 +250,16 @@
     --text-primary: var(--primitive-dark-text);
     --text-secondary: var(--primitive-dark-secondary);
     --text-muted: var(--primitive-dark-muted);
-    --brand-action: var(--primitive-indigo-600);
-    --brand-action-hover: var(--primitive-indigo-700);
-    --brand-action-pressed: #3730a3;
-    --brand-action-tint: var(--primitive-indigo-950);
-    --brand-action-text: var(--primitive-indigo-200);
-    --on-brand-action: #ffffff;
-    --focus: var(--primitive-indigo-400);
+    --brand-action: var(--primitive-petrol-400);
+    --brand-action-hover: #5eead4;
+    --brand-action-pressed: #14b8a6;
+    --brand-action-tint: var(--primitive-petrol-950);
+    --brand-action-text: var(--primitive-petrol-200);
+    --on-brand-action: #062c2a;
+    --focus: var(--primitive-petrol-400);
     --info: var(--primitive-info-dark);
     --info-tint: var(--primitive-info-dark-tint);
-    --on-info: #0f172a;
+    --on-info: #0e1116;
     --success: var(--primitive-success-dark);
     --success-tint: var(--primitive-success-dark-tint);
     --warning: var(--primitive-warning-dark);
@@ -275,6 +277,7 @@
     --sidebar-item-active: var(--primitive-sidebar-active);
     --identity-bg: var(--primitive-sidebar-hover);
     --identity-hover-bg: var(--primitive-sidebar-pressed);
+    --control-border-hover: #536170;
     --spectrum: var(--brand-action);
     --spectrum-vertical: var(--brand-action);
   }
@@ -513,7 +516,7 @@ input[type='radio']:not(:disabled) {
   gap: var(--space-2);
   height: var(--control-height);
   justify-content: center;
-  padding: 0 0.875rem;
+  padding: 1px 0.875rem 0;
   text-decoration: none;
   transition:
     background-color var(--duration-fast) var(--ease-out),
@@ -527,7 +530,7 @@ input[type='radio']:not(:disabled) {
 
 .btn:hover:not(:disabled) {
   background: var(--interactive-hover);
-  border-color: var(--text-muted);
+  border-color: var(--control-border-hover);
 }
 
 .btn:active:not(:disabled) {
@@ -699,7 +702,8 @@ select:disabled {
   border-radius: var(--r-ctl);
   color: var(--text);
   height: var(--control-height);
-  padding: 0 0.625rem;
+  line-height: 1;
+  padding: 1px 0.625rem 0;
   transition:
     background-color var(--duration-fast) var(--ease-out),
     border-color var(--duration-fast) var(--ease-out);
@@ -736,12 +740,12 @@ summary:focus-visible {
 
 .text-input:hover:not(:disabled),
 .select-input:hover:not(:disabled) {
-  border-color: var(--text-muted);
+  border-color: var(--control-border-hover);
 }
 
 .select-input:hover:not(:disabled) {
   background-color: var(--interactive-hover);
-  border-color: var(--text-muted);
+  border-color: var(--control-border-hover);
 }
 
 .text-input::placeholder {

@@ -50,5 +50,7 @@
     place-items: center;
     pointer-events: none;
     position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
   }
 </style>

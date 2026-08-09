@@ -155,7 +155,8 @@
 
   fieldset.compact .segment-label {
     font-size: var(--font-size-micro);
-    padding-inline: 0.4rem;
+    min-width: 2.25rem;
+    padding: 1px 8px 0;
   }
 
   legend {
@@ -216,9 +217,12 @@
     font-weight: 600;
     height: 100%;
     justify-content: center;
-    padding: 0 0.5rem;
+    line-height: 1;
+    padding: 1px 0.5rem 0;
     position: relative;
-    transition: color 180ms ease-out;
+    transition:
+      color 180ms ease-out,
+      transform var(--duration-press) var(--ease-standard);
     z-index: 3;
   }
 
@@ -236,6 +240,10 @@
 
   label:hover input:not(:checked):not(:disabled) ~ .segment-label {
     color: var(--text);
+  }
+
+  label:active input:not(:disabled) ~ .segment-label {
+    transform: scale(0.97);
   }
 
   .segment-fill {

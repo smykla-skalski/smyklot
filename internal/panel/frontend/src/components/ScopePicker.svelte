@@ -217,9 +217,10 @@
     display: flex;
     gap: 0.5rem;
     height: var(--control-height);
+    line-height: 1;
     max-width: 18rem;
     min-width: 11rem;
-    padding: 0 0.625rem;
+    padding: 1px 0.625rem 0;
     transition:
       background-color var(--duration-fast) var(--ease-out),
       border-color var(--duration-fast) var(--ease-out),
@@ -238,7 +239,7 @@
   summary:hover,
   .scope-picker[open] summary {
     background: var(--control-bg-hover);
-    border-color: color-mix(in srgb, var(--dim) 56%, transparent);
+    border-color: var(--control-border-hover);
   }
 
   summary:active {

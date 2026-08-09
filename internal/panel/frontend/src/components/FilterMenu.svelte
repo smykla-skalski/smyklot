@@ -184,7 +184,8 @@
     font-size: var(--font-size-body);
     gap: 0.4rem;
     height: var(--local-control-height, var(--control-height));
-    padding: 0 0.625rem;
+    line-height: 1;
+    padding: 1px 0.625rem 0;
     transition:
       background-color var(--duration-fast) var(--ease-out),
       border-color var(--duration-fast) var(--ease-out);
@@ -202,7 +203,7 @@
   summary:hover,
   .filter-menu[open] summary {
     background: var(--control-bg-hover);
-    border-color: color-mix(in srgb, var(--dim) 56%, transparent);
+    border-color: var(--control-border-hover);
   }
 
   .summary-copy {
@@ -217,13 +218,14 @@
     background: var(--signal-tint);
     border-radius: 999px;
     color: var(--signal);
-    display: inline-flex;
+    display: inline-grid;
     font-size: 0.5625rem;
     font-weight: 700;
     height: 1rem;
-    justify-content: center;
+    line-height: 1;
     min-width: 1rem;
     padding: 0 0.2rem;
+    place-items: center;
   }
 
   .menu-chevron {

@@ -622,7 +622,7 @@
         <table class="repositories">
           <thead>
             <tr>
-              <th aria-sort={sortDirection('name')}>
+              <th class="sortable-heading" aria-sort={sortDirection('name')}>
                 <button class="sort-heading" onclick={toggleNameSort}>
                   Repository
                   <span class="sort-indicator" aria-hidden="true"
@@ -634,8 +634,7 @@
               <th>Default branch</th>
               <th>File state</th>
               <th class="numeric-heading">Overrides</th>
-              <th>Enablement</th>
-              <th aria-sort={sortDirection('updated')}>
+              <th class="sortable-heading" aria-sort={sortDirection('updated')}>
                 <button class="sort-heading" onclick={toggleUpdatedSort}>
                   Updated
                   <span class="sort-indicator" aria-hidden="true"
@@ -643,6 +642,7 @@
                   >
                 </button>
               </th>
+              <th>Enablement</th>
             </tr>
           </thead>
           <tbody>
@@ -688,6 +688,15 @@
                 <td class="numeric-cell mono" data-label="Overrides"
                   >{repository.config_override_count}</td
                 >
+                <td data-label="Updated">
+                  <time
+                    class="updated"
+                    datetime={repository.updated_at}
+                    title={formatTimestamp(repository.updated_at)}
+                  >
+                    {formatRelative(repository.updated_at, now)}
+                  </time>
+                </td>
                 <td data-label="Enablement">
                   {#if !repository.available}
                     <Chip small>Unavailable</Chip>
@@ -703,15 +712,6 @@
                       onSelect={(value) => void setEnabled(repository, value)}
                     />
                   {/if}
-                </td>
-                <td data-label="Updated">
-                  <time
-                    class="updated"
-                    datetime={repository.updated_at}
-                    title={formatTimestamp(repository.updated_at)}
-                  >
-                    {formatRelative(repository.updated_at, now)}
-                  </time>
                 </td>
               </tr>
 
@@ -888,21 +888,24 @@
 
   .repository-tools {
     align-items: center;
-    background: var(--surface-base);
-    border: 1px solid var(--rule);
-    border-bottom: 0;
-    border-radius: var(--radius-surface) var(--radius-surface) 0 0;
+    background: transparent;
     display: grid;
-    gap: var(--space-3);
-    grid-template-columns: minmax(16rem, 1fr) 7rem 7.5rem 11.5rem;
-    padding: var(--space-3) var(--space-4);
+    gap: var(--space-2);
+    grid-template-columns: minmax(16rem, 1fr) 7rem 7.5rem 10.5rem;
+    padding: 0 0 var(--space-3);
   }
 
   .repository-results {
     background: var(--surface-base);
-    border-left: 1px solid var(--border-subtle);
-    border-right: 1px solid var(--border-subtle);
+    border: 1px solid var(--border-subtle);
+    border-bottom: 0;
+    border-radius: var(--radius-surface) var(--radius-surface) 0 0;
     transition: opacity 120ms ease-out;
+  }
+
+  .repository-panel :global(.pagination-bar) {
+    border: 1px solid var(--border-subtle);
+    border-radius: 0 0 var(--radius-surface) var(--radius-surface);
   }
 
   .repository-results.loading {
@@ -992,7 +995,7 @@
   }
 
   th:first-child {
-    width: 24%;
+    width: 23%;
   }
 
   th:nth-child(2) {
@@ -1004,19 +1007,29 @@
   }
 
   th:nth-child(4) {
-    width: 11%;
+    width: 12%;
   }
 
   th:nth-child(5) {
-    width: 8%;
+    width: 9%;
   }
 
   th:nth-child(6) {
-    width: 22%;
+    width: 14%;
   }
 
   th:nth-child(7) {
-    width: 13%;
+    width: 20%;
+  }
+
+  th:first-child,
+  td:first-child {
+    padding-left: var(--space-4);
+  }
+
+  th:last-child,
+  td:last-child {
+    padding-right: var(--space-4);
   }
 
   .numeric-heading,
@@ -1024,18 +1037,32 @@
     text-align: center;
   }
 
+  .sortable-heading {
+    padding: 0;
+  }
+
+  .sortable-heading:first-child {
+    padding-left: 0;
+  }
+
   .sort-heading {
     align-items: center;
     background: transparent;
     border: 0;
     color: inherit;
-    display: inline-flex;
+    display: flex;
     font: inherit;
     gap: var(--space-2);
+    height: 2.75rem;
     letter-spacing: inherit;
-    margin: calc(var(--space-2) * -1);
-    padding: var(--space-2);
+    margin: 0;
+    padding: 1px var(--space-3) 0;
     text-transform: inherit;
+    width: 100%;
+  }
+
+  .sortable-heading:first-child .sort-heading {
+    padding-left: var(--space-4);
   }
 
   .sort-heading:hover,
@@ -1089,9 +1116,13 @@
   }
 
   .expand:focus-visible {
+    background: transparent;
+    outline: 0;
+  }
+
+  .expand:focus-visible .caret-control {
     background: var(--brand-action-tint);
-    outline: 2px solid var(--focus);
-    outline-offset: 1px;
+    box-shadow: inset 0 0 0 2px var(--focus);
   }
 
   .caret-control {
@@ -1117,11 +1148,15 @@
   .repo-copy {
     display: flex;
     flex-direction: column;
+    height: var(--control-height-compact);
+    justify-content: center;
     min-width: 0;
   }
 
   .repo-copy strong {
+    line-height: 1;
     overflow: hidden;
+    padding-top: 1px;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -1129,10 +1164,14 @@
   .visibility {
     align-items: center;
     color: var(--info);
-    display: inline-flex;
+    display: flex;
     font-size: var(--font-size-meta);
     font-weight: 550;
     gap: var(--space-1);
+    height: var(--control-height-compact);
+    line-height: 1;
+    padding-top: 1px;
+    width: max-content;
   }
 
   .visibility.public {
@@ -1147,9 +1186,18 @@
   }
 
   .updated {
+    align-items: center;
     color: var(--text-muted);
+    display: flex;
     font-size: var(--font-size-meta);
+    height: var(--control-height-compact);
+    line-height: 1;
+    padding-top: 1px;
     white-space: nowrap;
+  }
+
+  td:last-child :global(fieldset) {
+    margin-left: auto;
   }
 
   .repository-message-row td {
@@ -1216,16 +1264,16 @@
   }
 
   .detail-count {
-    align-items: center;
-    background: var(--surface-raised);
+    background: color-mix(in srgb, var(--surface-raised) 82%, var(--brand-action-tint));
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-chip);
-    display: inline-flex;
-    font: 600 var(--font-size-micro) / 1 var(--mono);
-    height: 1.25rem;
-    justify-content: center;
-    min-width: 1.25rem;
-    padding: 0 var(--space-1);
+    display: inline-grid;
+    font: 650 var(--font-size-micro) / 1 var(--sans);
+    font-variant-numeric: tabular-nums;
+    height: 1.5rem;
+    min-width: 1.5rem;
+    padding: 1px 0.375rem 0;
+    place-items: center;
   }
 
   .problem-count {

@@ -4,7 +4,7 @@
   import type { PanelView } from '../lib/routes';
   import type { PanelTarget, PanelViewer } from '../lib/types';
   import Avatar from './Avatar.svelte';
-  import Icon, { type IconName } from './Icon.svelte';
+  import Icon from './Icon.svelte';
   import ViewTabs from './ViewTabs.svelte';
 
   const {
@@ -57,12 +57,6 @@
     (selectedTarget?.effective_role ?? viewer?.global_role ?? 'none').toUpperCase(),
   );
   const privilegedIdentity = $derived(roleLabel === 'ADMIN' || roleLabel === 'OWNER');
-  const roleIcon = $derived.by((): IconName => {
-    if (roleLabel === 'OWNER') return 'owner';
-    if (roleLabel === 'ADMIN') return 'admin';
-    if (roleLabel === 'NONE') return 'no-access';
-    return 'viewer';
-  });
   const targetCandidates = $derived(
     fuzzyCandidates(
       targets.map((target) => ({
@@ -170,7 +164,7 @@
       <img class="mark-icon" src={iconUrl} alt="" width="32" height="32" decoding="async" />
       <span class="mark-copy">
         <span class="mark-name">Smyklot</span>
-        <span class="mark-part">GitHub App</span>
+        <span class="mark-part">Panel</span>
       </span>
     </h1>
 
@@ -288,10 +282,13 @@
       ontoggle={(event) => toggleDetails(event, accountMenu)}
     >
       <summary
-        class="who"
+        class={['who', privilegedIdentity && 'privileged']}
         bind:this={accountTrigger}
         aria-label={`Account menu for ${viewer.account.display_name}, ${selectedTarget?.account.display_name ?? handleLabel(handle)}`}
       >
+        {#if privilegedIdentity}
+          <span class="identity-role-strip" aria-hidden="true"><span>{roleLabel}</span></span>
+        {/if}
         <Avatar account={viewer.account} size={34} />
         <span class="who-text">
           <span class="who-name">{viewer.account.display_name}</span>
@@ -299,9 +296,6 @@
             <span class="who-context">
               {selectedTarget?.account.display_name ?? handleLabel(handle)}
             </span>
-            {#if privilegedIdentity}
-              <span class="who-role"><Icon name={roleIcon} size={13} />{roleLabel}</span>
-            {/if}
           </span>
         </span>
         <span class="menu-chevron" aria-hidden="true"><Icon name="chevron-down" size={16} /></span>
@@ -379,11 +373,21 @@
     color: var(--sidebar-text-muted);
     display: flex;
     flex: none;
-    height: var(--control-height);
+    height: 1.75rem;
     justify-content: center;
     padding: 0;
-    position: relative;
-    width: var(--control-height);
+    width: 1.75rem;
+  }
+
+  .sidebar-collapse-trigger {
+    background: var(--sidebar-bg);
+    border-color: var(--sidebar-border);
+    border-radius: 50%;
+    box-shadow: 0 2px 8px rgb(0 0 0 / 18%);
+    position: absolute;
+    right: -0.875rem;
+    top: 1.625rem;
+    z-index: 2;
   }
 
   .sidebar-collapse-trigger:hover,
@@ -402,11 +406,12 @@
   .collapse-icon {
     display: grid;
     place-items: center;
+    transform: rotate(180deg);
     transition: transform var(--duration-fast) var(--ease-standard);
   }
 
   .collapse-icon.collapsed {
-    transform: rotate(180deg);
+    transform: rotate(0);
   }
 
   .mobile-navigation-trigger {
@@ -471,7 +476,7 @@
   .who:hover,
   .account-menu[open] .who {
     background: var(--identity-hover-bg);
-    border-color: color-mix(in srgb, var(--primitive-indigo-400) 46%, var(--identity-border));
+    border-color: color-mix(in srgb, var(--focus) 40%, var(--identity-border));
   }
 
   .target-trigger:active,
@@ -680,6 +685,32 @@
     border-radius: 0;
     min-height: 4.5rem;
     padding: var(--space-3) var(--space-4);
+    overflow: hidden;
+  }
+
+  .who.privileged {
+    padding-left: calc(var(--space-4) + 1rem);
+  }
+
+  .identity-role-strip {
+    align-items: center;
+    background: var(--brand-action);
+    bottom: 0;
+    color: var(--on-brand-action);
+    display: flex;
+    justify-content: center;
+    left: 0;
+    position: absolute;
+    top: 0;
+    width: 1rem;
+  }
+
+  .identity-role-strip span {
+    font-size: 0.5rem;
+    font-weight: 750;
+    letter-spacing: 0.12em;
+    line-height: 1;
+    transform: rotate(-90deg);
   }
 
   .who-meta {
@@ -691,22 +722,6 @@
 
   .who-context {
     min-width: 0;
-  }
-
-  .who-role {
-    align-items: center;
-    background: var(--primitive-indigo-950);
-    border: 1px solid color-mix(in srgb, var(--primitive-indigo-400) 40%, transparent);
-    border-radius: var(--radius-chip);
-    color: var(--primitive-indigo-200);
-    display: inline-flex;
-    flex: none;
-    font-size: 0.625rem;
-    font-weight: 700;
-    gap: 0.2rem;
-    letter-spacing: 0.055em;
-    line-height: 1;
-    padding: 0.25rem 0.4rem;
   }
 
   .menu-separator {
@@ -772,7 +787,6 @@
 
   .collapsed {
     align-items: stretch;
-    gap: var(--space-3);
     padding-left: var(--space-2);
     padding-right: var(--space-2);
   }
@@ -783,8 +797,7 @@
   }
 
   .collapsed .brand-row {
-    flex-direction: column;
-    gap: var(--space-2);
+    min-height: 2.5rem;
   }
 
   .collapsed .mark-copy,
@@ -807,7 +820,7 @@
   }
 
   .collapsed .who {
-    padding: var(--space-2);
+    padding: var(--space-2) var(--space-2) var(--space-2) calc(var(--space-2) + 1rem);
   }
 
   .collapsed .target-popover,

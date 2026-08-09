@@ -92,13 +92,13 @@ describe.each([
     expect(ratio).toBeLessThan(2);
   });
 
-  it('keeps interactive control boundaries perceivable', () => {
-    expect(
-      contrast(color(palette, 'control-border'), color(palette, 'control-bg')),
-    ).toBeGreaterThanOrEqual(3);
-    expect(
-      contrast(color(palette, 'control-border'), color(palette, 'input-bg')),
-    ).toBeGreaterThanOrEqual(3);
+  it('keeps resting control boundaries quiet but visible', () => {
+    const controlRatio = contrast(color(palette, 'control-border'), color(palette, 'control-bg'));
+    const inputRatio = contrast(color(palette, 'control-border'), color(palette, 'input-bg'));
+    expect(controlRatio).toBeGreaterThanOrEqual(1.5);
+    expect(controlRatio).toBeLessThan(2.25);
+    expect(inputRatio).toBeGreaterThanOrEqual(1.4);
+    expect(inputRatio).toBeLessThan(2.25);
   });
 
   it.each(['canvas', 'surface-base', 'surface-control', 'input-bg'])(

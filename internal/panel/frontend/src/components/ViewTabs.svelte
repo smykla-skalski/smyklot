@@ -82,8 +82,9 @@
     font-size: var(--font-size-control);
     font-weight: 600;
     gap: var(--space-3);
+    line-height: 1;
     min-height: 2.75rem;
-    padding: 0 var(--space-3);
+    padding: 1px var(--space-3) 0;
     position: relative;
     text-decoration: none;
     transition:
@@ -111,6 +112,12 @@
     display: inline-flex;
     flex: none;
     justify-content: center;
+  }
+
+  .navigation-label {
+    align-items: center;
+    display: inline-flex;
+    height: 1.25rem;
   }
 
   a.active .navigation-icon {

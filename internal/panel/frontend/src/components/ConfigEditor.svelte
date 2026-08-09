@@ -395,7 +395,8 @@
 
   .boolean-grid,
   .command-fields {
-    background: var(--rule);
+    background: color-mix(in srgb, var(--rule) 58%, transparent);
+    border: 1px solid color-mix(in srgb, var(--rule) 72%, transparent);
     border-radius: var(--r-well);
     display: grid;
     gap: 1px;
@@ -414,11 +415,11 @@
     gap: 0.4rem 0.75rem;
     grid-template-columns: minmax(0, 1fr) auto;
     min-height: 3.5rem;
-    padding: 0.45rem 0.75rem;
+    padding: var(--space-2);
   }
 
   .boolean-row {
-    column-gap: 2px;
+    column-gap: var(--space-2);
     grid-template-columns: minmax(0, 1fr) auto auto;
     min-height: 3.5rem;
   }
