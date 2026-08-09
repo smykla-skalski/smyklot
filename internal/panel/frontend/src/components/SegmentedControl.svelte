@@ -1,5 +1,5 @@
 <script lang="ts">
-  type SegmentTone = 'default' | 'on' | 'off';
+  type SegmentTone = 'default' | 'accent' | 'on' | 'off';
 
   interface SegmentOption {
     value: string;
@@ -115,7 +115,11 @@
 >
   <legend>{label}</legend>
   {#each options as option (option.value)}
-    <label class:segment-on={option.tone === 'on'} class:segment-off={option.tone === 'off'}>
+    <label
+      class:segment-accent={option.tone === 'accent'}
+      class:segment-on={option.tone === 'on'}
+      class:segment-off={option.tone === 'off'}
+    >
       <input
         type="radio"
         {name}
@@ -156,7 +160,7 @@
   fieldset.compact .segment-label {
     font-size: var(--font-size-micro);
     min-width: 2.25rem;
-    padding: 1px 8px 0;
+    padding: 0 8px;
   }
 
   legend {
@@ -218,7 +222,7 @@
     height: 100%;
     justify-content: center;
     line-height: 1;
-    padding: 1px 0.5rem 0;
+    padding: 0 0.5rem;
     position: relative;
     transition:
       color 180ms ease-out,
@@ -228,6 +232,10 @@
 
   input:checked ~ .segment-label {
     color: var(--signal);
+  }
+
+  .segment-accent input:checked ~ .segment-label {
+    color: var(--brand-action-text);
   }
 
   .segment-on input:checked ~ .segment-label {
@@ -256,6 +264,10 @@
     transform-origin: left center;
     will-change: transform;
     z-index: 2;
+  }
+
+  .segment-accent .segment-fill {
+    background: var(--brand-action-tint);
   }
 
   .segment-on .segment-fill {

@@ -60,7 +60,7 @@
   {open}
   title={label}
   description="Review the current access state and earlier administrator decisions"
-  variant="inspector"
+  variant="wide"
   {returnFocus}
   onClose={close}
 >
@@ -105,16 +105,14 @@
         {#each decisions ?? [] as decision (decision.id)}
           <article>
             <Avatar account={decision.actor} size={28} />
-            <div>
-              <strong>{decision.summary}</strong>
-              <span>
-                {decision.actor.display_name} ·
-                <time datetime={decision.created_at} title={formatTimestamp(decision.created_at)}>
-                  {formatRelative(decision.created_at, now)}
-                </time>
-              </span>
-              <code>{decision.action}</code>
-            </div>
+            <strong title={decision.summary}>{decision.summary}</strong>
+            <span class="decision-meta">
+              {decision.actor.display_name} ·
+              <time datetime={decision.created_at} title={formatTimestamp(decision.created_at)}>
+                {formatRelative(decision.created_at, now)}
+              </time>
+            </span>
+            <code>{decision.action}</code>
           </article>
         {:else}
           <p class="state dim">No earlier decisions in this scope</p>
@@ -205,9 +203,10 @@
   }
 
   article {
+    align-items: center;
     display: grid;
     gap: 0.625rem;
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: auto minmax(10rem, 1fr) max-content max-content;
     padding: 0.7rem;
   }
 
@@ -215,27 +214,25 @@
     border-top: 1px solid var(--rule);
   }
 
-  article > div {
-    align-items: flex-start;
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-  }
-
   article strong {
     font-size: 0.75rem;
-    line-height: 1.35;
+    line-height: 1.3;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  article span {
+  .decision-meta {
     color: var(--dim);
     font-size: 0.6875rem;
-    line-height: 1.4;
+    line-height: 1.3;
+    white-space: nowrap;
   }
 
   article code {
     font-size: 0.5625rem;
-    margin-top: 0.25rem;
+    white-space: nowrap;
   }
 
   .state {
@@ -253,6 +250,21 @@
     .current-decision > div + div {
       border-inline-start: 0;
       border-top: 1px solid var(--rule);
+    }
+
+    article {
+      align-items: start;
+      grid-template-columns: auto minmax(0, 1fr);
+    }
+
+    article strong,
+    .decision-meta,
+    article code {
+      grid-column: 2;
+    }
+
+    .decision-meta {
+      white-space: normal;
     }
   }
 </style>

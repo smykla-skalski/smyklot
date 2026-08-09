@@ -20,7 +20,7 @@
     title: string;
     description?: string;
     closeLabel?: string;
-    variant?: 'dialog' | 'inspector';
+    variant?: 'dialog' | 'inspector' | 'wide';
     returnFocus?: HTMLElement | null;
     onClose: () => void;
     children: Snippet;
@@ -69,6 +69,7 @@
 
 <dialog
   class:inspector={variant === 'inspector'}
+  class:wide={variant === 'wide'}
   bind:this={dialog}
   aria-labelledby={elementIds.title}
   aria-describedby={description === undefined ? undefined : elementIds.description}
@@ -152,6 +153,10 @@
     top: 0;
     transform: none;
     width: min(40rem, 92vw);
+  }
+
+  .wide .modal-panel {
+    max-width: 68rem;
   }
 
   header {

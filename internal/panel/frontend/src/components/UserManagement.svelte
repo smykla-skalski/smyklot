@@ -14,7 +14,6 @@
     Page,
     PanelInvitation,
     PanelRole,
-    PanelTarget,
     PanelUser,
     PanelUserListStatus,
     PanelUserPageRequest,
@@ -31,8 +30,9 @@
   import Modal from './Modal.svelte';
   import PaginationBar from './PaginationBar.svelte';
   import PanelHeader from './PanelHeader.svelte';
+  import RolePicker, { type RolePickerOption } from './RolePicker.svelte';
   import SearchField from './SearchField.svelte';
-  import ScopePicker from './ScopePicker.svelte';
+  import SegmentedControl from './SegmentedControl.svelte';
 
   type UserScope = 'global' | 'target';
   type ManagementSection = 'users' | 'invitations';
@@ -90,7 +90,6 @@
     scope,
     targetId,
     targetName,
-    targets,
     actorTargetRole,
     canManageGlobal,
     canManageOwners,
@@ -113,7 +112,6 @@
     scope: UserScope;
     targetId: string;
     targetName: string;
-    targets: readonly PanelTarget[];
     actorTargetRole: PanelRole;
     canManageGlobal: boolean;
     canManageOwners: boolean;
@@ -208,10 +206,12 @@
   const failure = $derived(
     actionFailure ?? (activeSection === 'users' ? userFailure : invitationFailure),
   );
-  const addScopeTarget = $derived(
-    addScopeTargetId === null
-      ? undefined
-      : targets.find((target) => target.id === addScopeTargetId),
+  const scopeOptions = $derived([
+    { value: 'global', label: 'Global', tone: 'accent' as const },
+    { value: 'target', label: targetName, tone: 'accent' as const },
+  ]);
+  const addRoleOptions = $derived(
+    addRoles().map((role) => ({ value: role, label: roleLabel(role), icon: roleIcon(role) })),
   );
   const userRequestKey = $derived(
     JSON.stringify([
@@ -366,10 +366,7 @@
     adding = true;
     actionFailure = null;
     const selectedTargetId = addScopeTargetId;
-    const destination =
-      selectedTargetId === null
-        ? 'global access'
-        : (addScopeTarget?.account.display_name ?? 'the selected organization');
+    const destination = selectedTargetId === null ? 'global access' : targetName;
     try {
       if (accessMethod === 'invite') {
         const created =
@@ -566,12 +563,6 @@
     login = '';
   }
 
-  function selectAddScope(nextTarget: string | null): void {
-    addScopeTargetId = nextTarget;
-    const roles = addRoles(nextTarget);
-    if (!roles.includes(addRole)) addRole = roles[0] ?? 'viewer';
-  }
-
   function addScopeMatchesCurrent(): boolean {
     return addScopeTargetId === null
       ? scope === 'global'
@@ -587,10 +578,15 @@
     event.preventDefault();
     const next = event.key === 'ArrowLeft' || event.key === 'Home' ? 'users' : 'invitations';
     activeSection = next;
-    const tab = (event.currentTarget as HTMLElement)
-      .closest<HTMLElement>('[role="tablist"]')
-      ?.querySelector<HTMLButtonElement>(`#${next}-list-tab`);
-    tab?.focus();
+    queueMicrotask(() => document.querySelector<HTMLButtonElement>(`#${next}-list-tab`)?.focus());
+  }
+
+  function selectScopeMode(value: string): void {
+    if (value === 'global') {
+      onScope(null);
+    } else if (value === 'target') {
+      onScope(targetId);
+    }
   }
 
   function selectUserSort(column: UserSortColumn): void {
@@ -667,10 +663,6 @@
     historyUser = null;
   }
 
-  function selectScope(nextTarget: string | null): void {
-    onScope(nextTarget);
-  }
-
   function selectUserPage(index: number): void {
     if (loadingUsers || index === userPageIndex) return;
     userPageIndex = Math.min(userPageCount - 1, Math.max(0, index));
@@ -688,15 +680,22 @@
     if (scope === 'global') {
       return [
         user.status === 'banned'
-          ? { id: 'unban', label: 'Unban user', description: 'Restore global access' }
+          ? {
+              id: 'unban',
+              icon: 'success',
+              label: 'Unban user',
+              description: 'Restore global access',
+            }
           : {
               id: 'ban',
+              icon: 'ban',
               label: 'Ban user',
               description: 'Suspend all panel access',
               tone: 'danger',
             },
         {
           id: 'remove',
+          icon: 'trash',
           label: 'Remove user',
           description: 'Revoke roles and active invitations',
           tone: 'danger',
@@ -705,15 +704,22 @@
     }
     return [
       user.target_access?.suspended === true
-        ? { id: 'restore', label: 'Restore access', description: `Allow access to ${targetName}` }
+        ? {
+            id: 'restore',
+            icon: 'success',
+            label: 'Restore access',
+            description: `Allow access to ${targetName}`,
+          }
         : {
             id: 'suspend',
+            icon: 'ban',
             label: 'Suspend access',
             description: `Block access to ${targetName}`,
             tone: 'danger',
           },
       {
         id: 'remove_access',
+        icon: 'no-access',
         label: 'Remove access',
         description: 'Set the installation role to No access',
         tone: 'danger',
@@ -724,9 +730,15 @@
   function invitationActionItems(invitation: PanelInvitation): ActionMenuItem[] {
     if (invitation.status !== 'pending' && invitation.status !== 'expired') return [];
     return [
-      { id: 'reissue', label: 'Reissue invitation', description: 'Create a new 7-day link' },
+      {
+        id: 'reissue',
+        icon: 'refresh',
+        label: 'Reissue invitation',
+        description: 'Create a new 7-day link',
+      },
       {
         id: 'revoke',
+        icon: 'ban',
         label: 'Revoke invitation',
         description: 'Invalidate this invitation',
         tone: 'danger',
@@ -759,10 +771,7 @@
         ? ['viewer', 'editor', 'admin', 'owner']
         : ['viewer', 'editor', 'admin'];
     }
-    const target = targets.find((candidate) => candidate.id === selectedTargetId);
-    return target?.effective_role === 'owner'
-      ? ['viewer', 'editor', 'admin']
-      : ['viewer', 'editor'];
+    return actorTargetRole === 'owner' ? ['viewer', 'editor', 'admin'] : ['viewer', 'editor'];
   }
 
   function targetRoleOptions(): Array<{ value: string; label: string }> {
@@ -785,6 +794,22 @@
     ];
     if (canManageOwners) options.push({ value: 'owner', label: 'Owner' });
     return options;
+  }
+
+  function selectableRoleOptions(user: PanelUser): RolePickerOption[] {
+    if (scope === 'global') {
+      return globalRoleOptions().map((option) => ({
+        ...option,
+        icon: roleIcon(option.value),
+      }));
+    }
+    return targetRoleOptions().map((option) => ({
+      ...option,
+      icon:
+        option.value === 'inherit'
+          ? roleIcon(user.global_role)
+          : roleIcon(option.value as PanelRole),
+    }));
   }
 
   function selectedRole(user: PanelUser): string {
@@ -936,18 +961,25 @@
 {/snippet}
 
 {#snippet headerActions()}
-  <div class="header-actions">
-    <div class="scope-control">
-      <span class="scope-label">Scope</span>
-      <ScopePicker
-        global={scope === 'global'}
-        {targetId}
-        {targets}
-        canSelectGlobal={canManageGlobal}
-        onSelect={selectScope}
+  {#if canManageGlobal}
+    <div class="scope-mode">
+      <span>Access scope</span>
+      <SegmentedControl
+        name="user-access-scope"
+        label="Access scope"
+        options={scopeOptions}
+        value={scope}
+        align="end"
+        compact
+        onSelect={selectScopeMode}
       />
     </div>
-  </div>
+  {:else}
+    <span class="scope-context">
+      <Icon name="organization" size={16} />
+      <span>{targetName}</span>
+    </span>
+  {/if}
 {/snippet}
 
 <section class="plate user-management" aria-labelledby="user-management-heading">
@@ -959,11 +991,11 @@
   />
 
   <div class="user-management-body">
-    <div class="list-tabs">
-      <div class="tab-options" role="tablist" aria-label="User management lists">
+    <div class="management-navigation">
+      <div class="section-tabs" role="tablist" aria-label="User management lists">
         <button
           id="users-list-tab"
-          class="list-tab"
+          class="section-tab"
           class:selected={activeSection === 'users'}
           type="button"
           role="tab"
@@ -974,11 +1006,11 @@
           onkeydown={moveSection}
         >
           <span>Users</span>
-          <span class="tab-count">{userPage?.total ?? '…'}</span>
+          <span class="section-count">{userPage?.total ?? '…'}</span>
         </button>
         <button
           id="invitations-list-tab"
-          class="list-tab"
+          class="section-tab"
           class:selected={activeSection === 'invitations'}
           type="button"
           role="tab"
@@ -989,7 +1021,7 @@
           onkeydown={moveSection}
         >
           <span>Invitations</span>
-          <span class="tab-count">{invitationPage?.total ?? '…'}</span>
+          <span class="section-count">{invitationPage?.total ?? '…'}</span>
         </button>
       </div>
       <div class="stable-feedback" aria-live="polite">{feedback}</div>
@@ -1000,7 +1032,7 @@
         onclick={openAddModal}
       >
         <Icon name="user-plus" size={17} />
-        Add user
+        <span class="button-label">Add user</span>
       </button>
     </div>
 
@@ -1098,26 +1130,13 @@
                       </th>
                       <td data-label="Role">
                         {#if user.manageable}
-                          <span class="role-control">
-                            <Icon name={roleIcon(shownRole(user))} size={14} />
-                            <select
-                              class="select-input role-select"
-                              aria-label="Role for {user.account.login}"
-                              value={selectedRole(user)}
-                              disabled={savingAccount === user.account.id}
-                              onchange={(event) => void changeRole(user, event.currentTarget.value)}
-                            >
-                              {#if scope === 'global'}
-                                {#each globalRoleOptions() as role (role.value)}
-                                  <option value={role.value}>{role.label}</option>
-                                {/each}
-                              {:else}
-                                {#each targetRoleOptions() as role (role.value)}
-                                  <option value={role.value}>{role.label}</option>
-                                {/each}
-                              {/if}
-                            </select>
-                          </span>
+                          <RolePicker
+                            label="Role for {user.account.login}"
+                            value={selectedRole(user)}
+                            options={selectableRoleOptions(user)}
+                            disabled={savingAccount === user.account.id}
+                            onSelect={(value) => void changeRole(user, value)}
+                          />
                         {:else}
                           {@render roleBadge(shownRole(user))}
                         {/if}
@@ -1328,18 +1347,15 @@
 >
   <form id="add-user-form" class="add-user-form" onsubmit={submitAdd}>
     {#if generatedLink === ''}
-      <div class="form-field">
-        <span>Scope</span>
-        <ScopePicker
-          global={addScopeTargetId === null}
-          targetId={addScopeTargetId ?? targetId}
-          {targets}
-          canSelectGlobal={canManageGlobal}
-          variant="field"
-          label="Access scope"
-          onSelect={selectAddScope}
-        />
-        <small>Choose global access or one installation</small>
+      <div class="add-scope-summary">
+        <span class="add-scope-icon" aria-hidden="true">
+          <Icon name={addScopeTargetId === null ? 'globe' : 'organization'} size={18} />
+        </span>
+        <span>
+          <small>Access scope</small>
+          <strong>{addScopeTargetId === null ? 'Global' : targetName}</strong>
+        </span>
+        <small>Scope follows the Users page</small>
       </div>
 
       <fieldset class="method-picker">
@@ -1378,14 +1394,16 @@
             data-modal-focus
           />
         </label>
-        <label class="form-field">
+        <div class="form-field">
           <span>Role</span>
-          <select class="select-input" bind:value={addRole} aria-label="Role">
-            {#each addRoles() as role (role)}
-              <option value={role}>{roleLabel(role)}</option>
-            {/each}
-          </select>
-        </label>
+          <RolePicker
+            label="Role"
+            value={addRole}
+            options={addRoleOptions}
+            variant="field"
+            onSelect={(value) => (addRole = value as PanelRole)}
+          />
+        </div>
         {#if accessMethod === 'invite'}
           <label class="form-field">
             <span>Expires after</span>
@@ -1519,7 +1537,6 @@
 </Modal>
 
 <style>
-  .header-actions,
   .management-toolbar {
     align-items: center;
     display: flex;
@@ -1537,110 +1554,116 @@
   }
 
   .user-management-body {
-    background: var(--surface-base);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-surface);
+    background: transparent;
+    border: 0;
+    border-radius: 0;
     min-width: 0;
-    overflow: hidden;
+    overflow: visible;
   }
 
-  .header-actions {
-    gap: 0.5rem;
-    margin-left: auto;
-  }
-
-  .scope-control {
+  .scope-mode {
     align-items: center;
     display: flex;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 
-  .scope-label {
-    color: var(--text-secondary);
+  .scope-mode > span {
+    color: var(--text-muted);
     font: 600 var(--font-size-compact) / 1 var(--sans);
   }
 
-  .list-tabs {
-    align-items: stretch;
-    border-bottom: 1px solid var(--rule);
-    display: flex;
-    min-height: 3.25rem;
-    padding: 0 var(--space-4);
+  .scope-context {
+    align-items: center;
+    background: var(--surface-inset);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-control);
+    color: var(--text-secondary);
+    display: inline-flex;
+    font: 600 var(--font-size-compact) / 1 var(--sans);
+    gap: var(--space-2);
+    height: var(--control-height-compact);
+    padding: 0 var(--space-3);
   }
 
-  .tab-options {
+  .management-navigation {
+    align-items: center;
+    border-bottom: 1px solid var(--border-subtle);
+    display: flex;
+    gap: var(--space-3);
+    margin-bottom: var(--space-3);
+    min-height: var(--control-height);
+  }
+
+  .section-tabs {
+    align-self: stretch;
     display: flex;
     gap: var(--space-1);
   }
 
-  .tab-add {
-    height: var(--control-height-compact);
-    margin: auto 0 auto auto;
-  }
-
-  .list-tab {
+  .section-tab {
     align-items: center;
     background: transparent;
     border: 0;
     border-bottom: 2px solid transparent;
-    color: var(--dim);
+    color: var(--text-muted);
     display: inline-flex;
-    font-size: var(--font-size-body);
-    font-weight: 650;
+    font: 650 var(--font-size-body) / 1 var(--sans);
     gap: var(--space-2);
-    min-height: 3.25rem;
+    min-width: 0;
     padding: 0 var(--space-3);
     transition:
-      background-color 120ms ease-out,
-      border-color 120ms ease-out,
-      color 120ms ease-out;
+      background-color var(--duration-fast) var(--ease-out),
+      border-color var(--duration-fast) var(--ease-out),
+      color var(--duration-fast) var(--ease-out);
   }
 
-  .list-tab:hover {
-    background: var(--well);
-    color: var(--text);
+  .section-tab:hover {
+    background: var(--interactive-hover);
+    color: var(--text-primary);
   }
 
-  .list-tab.selected {
+  .section-tab.selected {
     border-bottom-color: var(--brand-action);
-    color: var(--text);
+    color: var(--text-primary);
   }
 
-  .list-tab:focus-visible {
-    border-radius: var(--radius-control) var(--radius-control) 0 0;
+  .section-tab:focus-visible {
     box-shadow: inset 0 0 0 2px var(--focus);
     outline: 0;
   }
 
-  .tab-count {
-    align-items: center;
-    background: var(--well);
-    border: 1px solid var(--rule);
-    border-radius: 999px;
-    color: var(--dim);
-    display: inline-flex;
-    box-sizing: border-box;
-    font-size: var(--font-size-micro);
-    font-weight: 650;
-    height: 1.375rem;
-    justify-content: center;
-    line-height: 1;
-    min-width: 1.625rem;
-    padding: 0 var(--space-2);
+  .section-tab.selected:focus-visible {
+    border-bottom-color: transparent;
   }
 
-  .list-tab.selected .tab-count {
-    background: var(--brand-action-tint);
-    border-color: color-mix(in srgb, var(--brand-action) 35%, transparent);
+  .section-count {
+    color: var(--text-muted);
+    font: 600 var(--font-size-compact) / 1 var(--mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .section-tab.selected .section-count {
     color: var(--brand-action-text);
   }
 
+  .tab-add {
+    height: var(--control-height-compact);
+    margin-left: 0;
+  }
+
+  .button-label {
+    align-items: center;
+    display: inline-flex;
+    height: 100%;
+    line-height: 1;
+  }
+
   .management-toolbar {
-    background: var(--surface-base);
-    border-bottom: 1px solid var(--rule);
+    background: transparent;
+    border: 0;
     flex-wrap: wrap;
     gap: var(--space-2);
-    padding: var(--space-3) var(--space-4);
+    padding: 0 0 var(--space-3);
   }
 
   .management-toolbar :global(.search-field) {
@@ -1650,7 +1673,7 @@
   .stable-feedback {
     color: var(--clear);
     font-size: var(--font-size-meta);
-    margin: auto var(--space-3) auto auto;
+    margin-left: auto;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1660,11 +1683,22 @@
   .form-error {
     font-size: var(--font-size-meta);
     margin: 0;
-    padding: var(--space-2) var(--space-4);
+    padding: 0 0 var(--space-3);
   }
 
-  .user-results {
+  .user-results,
+  .invitation-results {
+    background: var(--surface-base);
+    border: 1px solid var(--border-subtle);
+    border-bottom: 0;
+    border-radius: var(--radius-surface) var(--radius-surface) 0 0;
     margin-top: 0;
+    overflow: hidden;
+  }
+
+  .user-management :global(.pagination-bar) {
+    border: 1px solid var(--border-subtle);
+    border-radius: 0 0 var(--radius-surface) var(--radius-surface);
   }
 
   .user-results.loading,
@@ -1857,39 +1891,14 @@
     font-size: 0.75rem;
   }
 
-  .role-select {
-    background-color: transparent;
-    border: 0;
-    border-radius: 0;
-    font: 600 0.625rem/1 var(--sans);
-    height: 1.875rem;
-    min-width: 6.25rem;
-    padding-left: 0;
-    padding-right: 1.65rem;
-  }
-
-  .role-control {
+  .last-login > time,
+  .last-login > span {
     align-items: center;
-    background: var(--control-surface);
-    border: 1px solid var(--control-border);
-    border-radius: var(--r-ctl);
-    color: var(--text);
     display: inline-flex;
-    gap: 0.4rem;
-    height: 1.875rem;
-    padding-left: 0.55rem;
-  }
-
-  .role-control:focus-within {
-    border-color: var(--focus);
-    box-shadow: inset 0 0 0 1px var(--focus);
-    outline: 0;
-  }
-
-  .role-control .role-select:focus,
-  .role-control .role-select:focus-visible {
-    background-color: transparent;
-    outline: 0;
+    height: var(--control-height-compact);
+    line-height: 1;
+    transform: translateY(-1px);
+    vertical-align: middle;
   }
 
   .role-badge {
@@ -1921,10 +1930,6 @@
     display: inline-block;
   }
 
-  .invitation-results {
-    margin-top: 0;
-  }
-
   .invitation-table {
     min-width: 44rem;
   }
@@ -1932,6 +1937,42 @@
   .add-user-form {
     display: grid;
     gap: 0.875rem;
+  }
+
+  .add-scope-summary {
+    align-items: center;
+    background: var(--surface-inset);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-surface);
+    display: grid;
+    gap: var(--space-3);
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    padding: var(--space-3);
+  }
+
+  .add-scope-icon {
+    align-items: center;
+    background: var(--brand-action-tint);
+    border-radius: 50%;
+    color: var(--brand-action-text);
+    display: inline-flex;
+    height: 2rem;
+    justify-content: center;
+    width: 2rem;
+  }
+
+  .add-scope-summary > span:nth-child(2) {
+    display: grid;
+    gap: var(--space-1);
+  }
+
+  .add-scope-summary small {
+    color: var(--text-muted);
+    font-size: var(--font-size-compact);
+  }
+
+  .add-scope-summary strong {
+    font-size: var(--font-size-body);
   }
 
   .method-picker {
@@ -2162,16 +2203,12 @@
   }
 
   @media (max-width: 48rem) {
-    .header-actions {
+    .scope-mode {
       width: 100%;
     }
 
-    .header-actions :global(.scope-picker) {
+    .scope-mode :global(fieldset) {
       flex: 1;
-    }
-
-    .header-actions :global(.scope-picker summary) {
-      max-width: none;
     }
 
     .identity-grid.with-expiry {
@@ -2278,28 +2315,12 @@
   }
 
   @media (max-width: 36rem) {
-    .header-actions {
-      align-items: stretch;
+    .management-navigation {
+      gap: var(--space-1);
     }
 
-    .scope-control {
-      display: grid;
-      grid-template-columns: auto minmax(0, 1fr);
-      width: 100%;
-    }
-
-    .scope-control :global(.scope-picker) {
-      min-width: 0;
-      width: 100%;
-    }
-
-    .list-tabs {
-      align-items: center;
-      padding-right: 0.75rem;
-    }
-
-    .list-tab {
-      padding-inline: 0.45rem;
+    .section-tab {
+      padding-inline: var(--space-2);
     }
 
     .tab-add {
@@ -2308,9 +2329,12 @@
       padding-inline: 0.625rem;
     }
 
-    .tab-add .add-icon {
-      height: 0.875rem;
-      width: 0.875rem;
+    .add-scope-summary {
+      grid-template-columns: auto minmax(0, 1fr);
+    }
+
+    .add-scope-summary > small:last-child {
+      grid-column: 2;
     }
 
     .form-grid,

@@ -1,8 +1,9 @@
 <script lang="ts">
-  import Icon from './Icon.svelte';
+  import Icon, { type IconName } from './Icon.svelte';
 
   export interface ActionMenuItem {
     id: string;
+    icon: IconName;
     label: string;
     description?: string;
     tone?: 'default' | 'danger';
@@ -82,8 +83,11 @@
         onclick={() => choose(item)}
         onkeydown={move}
       >
-        <strong>{item.label}</strong>
-        {#if item.description !== undefined}<span>{item.description}</span>{/if}
+        <span class="action-icon" aria-hidden="true"><Icon name={item.icon} size={16} /></span>
+        <span class="action-copy">
+          <strong>{item.label}</strong>
+          {#if item.description !== undefined}<span>{item.description}</span>{/if}
+        </span>
       </button>
     {/each}
   </div>
@@ -145,15 +149,29 @@
   }
 
   .action-item {
+    align-items: center;
     background: transparent;
     border: 0;
     border-radius: calc(var(--r-ctl) - 2px);
     color: var(--text);
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    gap: var(--space-2);
+    grid-template-columns: 1rem minmax(0, 1fr);
     padding: 0.55rem 0.625rem;
     text-align: left;
     width: 100%;
+  }
+
+  .action-icon {
+    color: var(--text-muted);
+    display: grid;
+    place-items: center;
+  }
+
+  .action-copy {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
   }
 
   .action-item:hover:not(:disabled),
@@ -165,13 +183,17 @@
     font-size: 0.75rem;
   }
 
-  .action-item span {
+  .action-copy > span {
     color: var(--dim);
     font-size: 0.6875rem;
     margin-top: 0.15rem;
   }
 
   .action-item.danger strong {
+    color: var(--stop);
+  }
+
+  .action-item.danger .action-icon {
     color: var(--stop);
   }
 </style>

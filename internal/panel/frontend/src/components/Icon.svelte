@@ -1,6 +1,7 @@
 <script module lang="ts">
   export type IconName =
     | 'admin'
+    | 'ban'
     | 'branch'
     | 'chevron-down'
     | 'chevron-left'
@@ -20,15 +21,19 @@
     | 'info'
     | 'lock'
     | 'more'
+    | 'minus-circle'
     | 'no-access'
     | 'organization'
     | 'owner'
     | 'pending'
     | 'plus'
     | 'repositories'
+    | 'refresh'
     | 'search'
     | 'settings'
+    | 'shield-slash'
     | 'sidebar'
+    | 'sign-out'
     | 'sort'
     | 'success'
     | 'trash'
@@ -118,6 +123,22 @@
     <circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" />
   {:else if name === 'trash'}
     <path d="M4 7h16M9 3h6l1 4H8zM6.5 7l.8 14h9.4l.8-14M10 11v6M14 11v6" />
+  {:else if name === 'ban'}
+    <circle cx="12" cy="12" r="9" />
+    <path d="m6 6 12 12" />
+  {:else if name === 'minus-circle'}
+    <circle cx="12" cy="12" r="9" />
+    <path d="M8 12h8" />
+  {:else if name === 'refresh'}
+    <path d="M20 7v5h-5M4 17v-5h5" />
+    <path d="M6.1 8.2A7 7 0 0 1 18.6 7L20 12M4 12l1.4 5A7 7 0 0 0 17.9 15.8" />
+  {:else if name === 'shield-slash'}
+    <path
+      d="M12 3 19 6v5c0 2.1-.6 4-1.7 5.6M14.8 19.3c-.8.7-1.8 1.2-2.8 1.7-4.2-1.8-7-5.3-7-10V6l3.1-1.3"
+    />
+    <path d="M3.5 3.5 20.5 20.5" />
+  {:else if name === 'sign-out'}
+    <path d="M10 5H5v14h5M14 8l4 4-4 4M8 12h10" />
   {:else if name === 'success'}
     <circle cx="12" cy="12" r="9" />
     <path d="m8 12 2.5 2.5L16.5 9" />

@@ -107,11 +107,7 @@
     <Avatar account={target.account} size={26} />
     <span class="option-copy">
       <strong>{target.account.display_name}</strong>
-      <span
-        >@{target.account.login} · {target.type === 'Organization'
-          ? 'Organization'
-          : 'Personal'}</span
-      >
+      <span>@{target.account.login}</span>
     </span>
     <span class="option-check" aria-hidden="true">
       {#if selected}<Icon name="success" size={16} />{/if}
@@ -186,7 +182,7 @@
       {/if}
 
       {#if personalCandidates.length > 0}
-        <p class="scope-group-label" aria-hidden="true">Personal installations</p>
+        <p class="scope-group-label" aria-hidden="true">Personal</p>
         {#each personalCandidates as target (target.id)}
           {@render scopeOption(target)}
         {/each}
@@ -216,11 +212,11 @@
     border-radius: var(--r-ctl);
     display: flex;
     gap: 0.5rem;
-    height: var(--control-height);
+    height: var(--local-control-height, var(--control-height));
     line-height: 1;
     max-width: 18rem;
     min-width: 11rem;
-    padding: 1px 0.625rem 0;
+    padding: 0 0.625rem;
     transition:
       background-color var(--duration-fast) var(--ease-out),
       border-color var(--duration-fast) var(--ease-out),
@@ -422,12 +418,16 @@
   }
 
   .scope-group-label {
+    background: var(--popover-bg);
     color: var(--dim);
     font: 650 var(--font-size-compact) / 1 var(--sans);
     letter-spacing: 0.04em;
     margin: 0;
     padding: 0.45rem 0.55rem 0.25rem;
+    position: sticky;
+    top: -0.3rem;
     text-transform: uppercase;
+    z-index: 1;
   }
 
   .scope-empty {

@@ -516,7 +516,7 @@ input[type='radio']:not(:disabled) {
   gap: var(--space-2);
   height: var(--control-height);
   justify-content: center;
-  padding: 1px 0.875rem 0;
+  padding: 0 0.875rem;
   text-decoration: none;
   transition:
     background-color var(--duration-fast) var(--ease-out),
@@ -594,22 +594,24 @@ select:disabled {
   display: inline-flex;
   font: 600 var(--font-size-compact) / 1 var(--sans);
   gap: 0.35rem;
-  min-height: 1.75rem;
+  height: 1.75rem;
   padding: 0 0.625rem;
   white-space: nowrap;
 }
 
 .chip-small {
   font-size: var(--font-size-micro);
-  min-height: 1.5rem;
+  height: 1.5rem;
   padding: 0 0.5rem;
 }
 
 .chip-label {
+  align-items: center;
+  display: inline-flex;
+  height: 100%;
   letter-spacing: 0;
   line-height: 1;
-  padding-left: 0.08em;
-  transform: translateY(0.06em);
+  transform: translateY(-1px);
 }
 
 .chip-small .chip-label {
@@ -703,7 +705,7 @@ select:disabled {
   color: var(--text);
   height: var(--control-height);
   line-height: 1;
-  padding: 1px 0.625rem 0;
+  padding: 0 0.625rem;
   transition:
     background-color var(--duration-fast) var(--ease-out),
     border-color var(--duration-fast) var(--ease-out);

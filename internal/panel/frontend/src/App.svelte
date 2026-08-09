@@ -61,9 +61,6 @@
   const selectedTarget = $derived(
     selectedId === null ? null : (targets.find((target) => target.id === selectedId) ?? null),
   );
-  const manageableUserTargets = $derived(
-    targets.filter((target) => target.capabilities.manage_target_users),
-  );
 
   async function load(): Promise<void> {
     loading = viewer === null;
@@ -442,7 +439,6 @@
                   scope={globalUsers ? 'global' : 'target'}
                   targetId={selectedTarget.id}
                   targetName={selectedTarget.account.display_name}
-                  targets={manageableUserTargets}
                   actorTargetRole={selectedTarget.effective_role}
                   canManageGlobal={viewer.capabilities.manage_global_users}
                   canManageOwners={viewer.capabilities.manage_owners}

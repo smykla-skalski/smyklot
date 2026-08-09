@@ -28,8 +28,8 @@
   type HistoryType = 'audit' | 'failures';
 
   const HISTORY_TYPES = [
-    { value: 'audit', label: 'Audit' },
-    { value: 'failures', label: 'Failures' },
+    { value: 'audit', label: 'Audit', tone: 'accent' },
+    { value: 'failures', label: 'Failures', tone: 'accent' },
   ] as const;
 
   const AUDIT_SCOPE_FILTERS = [
@@ -527,14 +527,13 @@
 
   .history-tools {
     align-items: center;
-    background: var(--surface-base);
-    border: 1px solid var(--rule);
-    border-bottom: 0;
-    border-radius: var(--radius-surface) var(--radius-surface) 0 0;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
     display: grid;
     gap: var(--space-2);
     grid-template-columns: minmax(12rem, 1fr) max-content auto;
-    padding: var(--space-3) var(--space-4);
+    padding: 0 0 var(--space-3);
   }
 
   .filter-field {
@@ -556,9 +555,11 @@
 
   .history-results {
     background: var(--surface-base);
-    border-left: 1px solid var(--border-subtle);
-    border-right: 1px solid var(--border-subtle);
+    border: 1px solid var(--border-subtle);
+    border-bottom: 0;
+    border-radius: var(--radius-surface) var(--radius-surface) 0 0;
     min-height: 5rem;
+    overflow: hidden;
     transition: opacity 120ms ease-out;
   }
 
@@ -704,9 +705,15 @@
   }
 
   .table-time {
+    align-items: center;
     color: var(--dim);
+    display: inline-flex;
     font-family: var(--mono);
     font-size: 0.625rem;
+    height: var(--control-height-compact);
+    line-height: 1;
+    transform: translateY(-1px);
+    vertical-align: middle;
     white-space: nowrap;
   }
 

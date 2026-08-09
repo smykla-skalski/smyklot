@@ -164,7 +164,7 @@
       <img class="mark-icon" src={iconUrl} alt="" width="32" height="32" decoding="async" />
       <span class="mark-copy">
         <span class="mark-name">Smyklot</span>
-        <span class="mark-part">Panel</span>
+        <span class="mark-part">PANEL</span>
       </span>
     </h1>
 
@@ -176,7 +176,7 @@
         aria-expanded={!collapsed}
         onclick={onToggleCollapsed}
       >
-        <span class="collapse-icon" class:collapsed><Icon name="sidebar" size={20} /></span>
+        <Icon name={collapsed ? 'chevron-right' : 'chevron-left'} size={14} strokeWidth={2} />
         <span class="sidebar-tooltip">{collapsed ? 'Expand sidebar' : 'Collapse sidebar'}</span>
       </button>
 
@@ -235,11 +235,7 @@
               <Avatar account={target.account} size={28} />
               <span class="option-copy">
                 <strong>{target.account.display_name}</strong>
-                <span class="mono">
-                  @{target.account.login} · {target.type === 'Organization'
-                    ? 'Organization'
-                    : 'Personal'}
-                </span>
+                <span class="mono">@{target.account.login}</span>
               </span>
               <span class="option-check" aria-hidden="true">
                 {#if target.id === selectedId}<Icon name="success" size={16} />{/if}
@@ -255,7 +251,7 @@
           {/if}
 
           {#if personalTargets.length > 0}
-            <p class="target-group-label">Personal installations</p>
+            <p class="target-group-label">Personal</p>
             {#each personalTargets as target (target.id)}
               {@render targetOption(target)}
             {/each}
@@ -302,9 +298,10 @@
         <span class="sidebar-tooltip">Account menu</span>
       </summary>
       <div class="account-popover">
-        <p class="signed-in">Signed in as <span class="mono">{handleLabel(handle)}</span></p>
-        <div class="menu-separator" aria-hidden="true"></div>
-        <button class="account-action" onclick={signOut}>Sign out</button>
+        <button class="account-action" onclick={signOut}>
+          <Icon name="sign-out" size={16} />
+          <span>Sign out</span>
+        </button>
       </div>
     </details>
   {/if}
@@ -362,6 +359,7 @@
   .mark-part {
     color: var(--sidebar-text-muted);
     font: 500 var(--font-size-micro) / 1 var(--sans);
+    letter-spacing: 0.08em;
   }
 
   .sidebar-collapse-trigger,
@@ -380,14 +378,24 @@
   }
 
   .sidebar-collapse-trigger {
-    background: var(--sidebar-bg);
-    border-color: var(--sidebar-border);
-    border-radius: 50%;
-    box-shadow: 0 2px 8px rgb(0 0 0 / 18%);
-    position: absolute;
-    right: -0.875rem;
-    top: 1.625rem;
+    background: transparent;
+    color: var(--sidebar-text-muted);
+    cursor: pointer;
+    opacity: 0;
+    pointer-events: none;
+    position: static;
+    transition:
+      background-color var(--duration-fast) var(--ease-standard),
+      color var(--duration-fast) var(--ease-standard),
+      opacity var(--duration-fast) var(--ease-standard),
+      transform var(--duration-press) var(--ease-standard);
     z-index: 2;
+  }
+
+  .panel-sidebar:hover .sidebar-collapse-trigger,
+  .panel-sidebar:focus-within .sidebar-collapse-trigger {
+    opacity: 1;
+    pointer-events: auto;
   }
 
   .sidebar-collapse-trigger:hover,
@@ -401,17 +409,7 @@
   .sidebar-collapse-trigger:active,
   .mobile-navigation-trigger:active {
     background: var(--sidebar-item-pressed);
-  }
-
-  .collapse-icon {
-    display: grid;
-    place-items: center;
-    transform: rotate(180deg);
-    transition: transform var(--duration-fast) var(--ease-standard);
-  }
-
-  .collapse-icon.collapsed {
-    transform: rotate(0);
+    transform: translateY(1px);
   }
 
   .mobile-navigation-trigger {
@@ -536,23 +534,19 @@
     overflow: hidden;
     padding: var(--space-2);
     position: absolute;
-    width: min(22rem, calc(100vw - 2rem));
     z-index: var(--layer-popover);
   }
 
   .target-popover {
     top: calc(100% + var(--space-2));
+    width: min(19rem, calc(100vw - 2rem));
   }
 
   .account-popover {
     bottom: calc(100% + var(--space-2));
-  }
-
-  .signed-in {
-    color: var(--text-muted);
-    font-size: var(--font-size-micro);
-    margin: 0;
-    padding: var(--space-2);
+    left: auto;
+    right: var(--space-2);
+    width: min(11rem, calc(100vw - 2rem));
   }
 
   .target-options {
@@ -564,10 +558,12 @@
   }
 
   .target-search {
+    background: var(--popover-bg);
     border-bottom: 1px solid var(--border-subtle);
     display: block;
     padding: var(--space-2);
     position: relative;
+    z-index: 2;
   }
 
   .target-search input {
@@ -595,13 +591,17 @@
   }
 
   .target-group-label {
+    background: var(--popover-bg);
     color: var(--text-muted);
     font-size: var(--font-size-compact);
     font-weight: 650;
     letter-spacing: 0.04em;
     margin: 0;
     padding: var(--space-2) var(--space-2) var(--space-1);
+    position: sticky;
+    top: 0;
     text-transform: uppercase;
+    z-index: 1;
   }
 
   .target-empty {
@@ -724,18 +724,15 @@
     min-width: 0;
   }
 
-  .menu-separator {
-    border-top: 1px solid var(--border-subtle);
-    margin: var(--space-2) 0;
-  }
-
   .account-action {
+    align-items: center;
     background: transparent;
     border: 0;
     border-radius: var(--radius-control);
     color: var(--text-primary);
-    display: block;
-    font-size: var(--font-size-body);
+    display: flex;
+    font-size: var(--font-size-meta);
+    gap: var(--space-2);
     height: var(--control-height);
     padding: 0 var(--space-3);
     text-align: left;
@@ -800,6 +797,16 @@
     min-height: 2.5rem;
   }
 
+  .collapsed .sidebar-collapse-trigger {
+    background: var(--sidebar-bg);
+    border-color: var(--sidebar-border);
+    border-radius: 50%;
+    box-shadow: 0 3px 10px rgb(0 0 0 / 18%);
+    position: absolute;
+    right: -0.875rem;
+    top: calc(var(--space-5) + 0.375rem);
+  }
+
   .collapsed .mark-copy,
   .collapsed .target-trigger-copy,
   .collapsed .menu-chevron,
@@ -834,6 +841,8 @@
 
   .collapsed .account-popover {
     bottom: 0;
+    left: calc(100% + var(--space-2));
+    right: auto;
   }
 
   @media (max-width: 64rem) {

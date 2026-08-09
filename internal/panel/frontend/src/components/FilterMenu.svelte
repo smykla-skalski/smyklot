@@ -185,7 +185,7 @@
     gap: 0.4rem;
     height: var(--local-control-height, var(--control-height));
     line-height: 1;
-    padding: 1px 0.625rem 0;
+    padding: 0 0.625rem;
     transition:
       background-color var(--duration-fast) var(--ease-out),
       border-color var(--duration-fast) var(--ease-out);

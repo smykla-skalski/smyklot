@@ -13,7 +13,18 @@
   } = $props();
 
   const label = $derived(`Repository file status: ${status}`);
-  const icon = $derived(`file-${status}` as IconName);
+  const icon = $derived.by<IconName>(() => {
+    switch (status) {
+      case 'valid':
+        return 'success';
+      case 'missing':
+        return 'minus-circle';
+      case 'invalid':
+        return 'failure';
+      case 'bypassed':
+        return 'shield-slash';
+    }
+  });
   const message = $derived.by(() => {
     switch (status) {
       case 'valid':
@@ -43,13 +54,19 @@
     align-items: center;
     color: var(--dim);
     display: inline-flex;
+    height: var(--control-height-compact);
     position: relative;
   }
 
   .status-label {
+    align-items: center;
     color: currentColor;
+    display: inline-flex;
     font-size: var(--font-size-meta);
     font-weight: 500;
+    height: 100%;
+    line-height: 1;
+    transform: translateY(-1px);
   }
 
   .status-valid {

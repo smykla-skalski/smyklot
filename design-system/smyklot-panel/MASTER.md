@@ -110,6 +110,8 @@ dividers instead of nested cards.
 - Selected navigation uses a petrol-tinted fill, stronger text, and icon
 - Do not add a second rail, edge strip, or decorative marker
 - Privileged roles use one narrow full-height strip on the account area
+- The collapse control sits beside the brand when expanded and straddles the
+  sidebar edge when collapsed; it appears only on sidebar hover or focus-within
 - Mobile uses a top bar and labelled navigation with no more than five items
 
 ### Buttons and controls
@@ -121,11 +123,13 @@ dividers instead of nested cards.
 - Focus replaces the normal control boundary with one two-pixel indicator
 - Press feedback uses stable color/elevation and at most `scale(.98)`
 
-### Tabs
+### Tabs and view switches
 
-- Use text tabs with a two-pixel petrol underline
-- Count badges are neutral and compact
-- Do not render top-level tabs as filled pills
+- Use text tabs with a two-pixel petrol underline for page-level navigation
+- Use one compact segmented switch for mutually exclusive views within a page
+- Users/Invitations are dataset tabs with plain counts; Audit/Failures is a
+  compact view switch
+- Do not add count badges to a segmented view switch
 
 ### Dialogs and inspectors
 
@@ -134,8 +138,9 @@ dividers instead of nested cards.
 - Use clear header, scrollable body, and sticky action footer
 - Preserve Escape, outside click, focus trap, and focus restoration
 - Confirm before dismissing unsaved work
-- Repository and user details use a right inspector on wide screens, an overlay
-  sheet on medium screens, and a full-screen detail surface on mobile
+- Repository settings and user access history use centered wide modals with a
+  blurred scrim; repository sections use a left tab rail on wide screens and a
+  horizontal tab rail on narrow screens
 
 ### Tables
 
@@ -151,6 +156,18 @@ dividers instead of nested cards.
 - More-actions controls keep at least a 40px desktop hit area
 - User and invitation tables become structured list rows below 768px
 - History becomes a compact activity list on narrow screens
+- The sidebar is the only organization picker. User access scope chooses only
+  Global or the currently selected installation
+- Users/Invitations and Add user share one tab row above the standalone search
+  and filter toolbar; the Add dialog inherits and summarizes the page scope
+- Table role changes use a custom top-layer listbox so menus are never clipped
+  by the table or rendered with browser-native styling
+- Search and filters never share the table's border
+- Repository names use a descender-safe line box and optical vertical alignment;
+  the first and last row controls keep equal visual outer insets
+- Repository detail navigation uses plain semantic count text, not count pills
+- Installation and account menus are content-sized, keep search visible while
+  options scroll, and omit type labels already stated by their group heading
 
 ## Icon vocabulary
 
@@ -172,6 +189,10 @@ Use SVG symbols from one Phosphor-style outline system.
 | Remove | Trash |
 | Success / pending / warning / failure | CheckCircle / Clock / Warning / XCircle |
 | Information | Info |
+
+Repository file state uses CheckCircle for valid, MinusCircle for missing,
+XCircle for invalid, and ShieldSlash for bypassed. The shapes communicate the
+state directly instead of forcing every state into a document outline.
 
 Icon sizes are 16px inline, 18px in controls, 20px in navigation, and 24px in
 empty states. Icon-only actions always have an accessible name and a hit target

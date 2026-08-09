@@ -30,6 +30,7 @@
   import FilterMenu from './FilterMenu.svelte';
   import HelpTip from './HelpTip.svelte';
   import Icon from './Icon.svelte';
+  import Modal from './Modal.svelte';
   import PaginationBar from './PaginationBar.svelte';
   import PanelHeader from './PanelHeader.svelte';
   import SearchField from './SearchField.svelte';
@@ -144,7 +145,9 @@
   let failures = $state<Record<string, RepositoryFailure>>({});
   let pendingEnablement = $state<Record<string, RepositoryEnablement>>({});
   let detailSections = $state<Record<string, RepositoryDetailSection>>({});
-  const opened = new SvelteSet<string>();
+  let activeRepository = $state<RepositorySummary | null>(null);
+  let repositoryReturnFocus = $state<HTMLElement | null>(null);
+  const visibleDetails = new SvelteSet<string>();
   const working = new SvelteSet<string>();
   const pendingRefreshes = new SvelteSet<string>();
   let now = $state(Date.now());
@@ -223,7 +226,7 @@
     observedRefreshVersion = version;
     untrack(() => {
       void loadPage(pageIndex, filterKey);
-      refreshExpandedRepositories(version);
+      refreshVisibleRepository(version);
     });
   });
 
@@ -297,17 +300,35 @@
     settingFilter = { mode: 'all' };
   }
 
-  function refreshExpandedRepositories(version: number): void {
+  function refreshVisibleRepository(version: number): void {
     if (!Number.isSafeInteger(version)) return;
     untrack(() => {
-      for (const repositoryId of opened) requestRefresh(repositoryId);
+      for (const repositoryId of visibleDetails) requestRefresh(repositoryId);
     });
   }
 
-  async function toggle(repositoryId: string): Promise<void> {
-    if (opened.delete(repositoryId)) return;
-    opened.add(repositoryId);
-    if (details[repositoryId] === undefined) await refresh(repositoryId);
+  async function openRepository(
+    repository: RepositorySummary,
+    trigger: HTMLElement,
+  ): Promise<void> {
+    activeRepository = repository;
+    repositoryReturnFocus = trigger;
+    visibleDetails.clear();
+    visibleDetails.add(repository.id);
+    if (details[repository.id] === undefined) {
+      await refresh(repository.id);
+      if (activeRepository?.id !== repository.id) return;
+      await tick();
+      const section = detailSection(repository);
+      document
+        .querySelector<HTMLButtonElement>(`#repository-${repository.id}-${section}-tab`)
+        ?.focus();
+    }
+  }
+
+  function closeRepository(): void {
+    if (activeRepository !== null) visibleDetails.delete(activeRepository.id);
+    activeRepository = null;
   }
 
   function detailSection(repository: RepositorySummary): RepositoryDetailSection {
@@ -319,6 +340,35 @@
 
   function selectDetailSection(repositoryId: string, section: RepositoryDetailSection): void {
     detailSections = { ...detailSections, [repositoryId]: section };
+  }
+
+  function moveDetailSection(
+    event: KeyboardEvent,
+    repositoryId: string,
+    section: RepositoryDetailSection,
+  ): void {
+    if (!['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key))
+      return;
+    event.preventDefault();
+    const sections: readonly RepositoryDetailSection[] = ['file', 'behavior', 'commands'];
+    const current = sections.indexOf(section);
+    let next = current;
+    if (event.key === 'Home') next = 0;
+    if (event.key === 'End') next = sections.length - 1;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
+      next = (current + 1) % sections.length;
+    }
+    if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
+      next = (current - 1 + sections.length) % sections.length;
+    }
+    const selected = sections[next];
+    if (selected === undefined) return;
+    selectDetailSection(repositoryId, selected);
+    queueMicrotask(() =>
+      document
+        .querySelector<HTMLButtonElement>(`#repository-${repositoryId}-${selected}-tab`)
+        ?.focus(),
+    );
   }
 
   function configSectionCount(detail: RepositoryDetail, section: 'behavior' | 'commands'): number {
@@ -538,7 +588,7 @@
   <HelpTip
     id="repository-controls-help"
     label="About repository controls"
-    text="On and Off filter the effective state. Default follows Enable repositories by default in Settings. Expand a repository to configure repository-specific settings"
+    text="On and Off filter the effective state. Default follows Enable repositories by default in Settings. Open a repository to configure repository-specific settings"
   />
 {/snippet}
 
@@ -647,22 +697,17 @@
           </thead>
           <tbody>
             {#each repositories as repository (repository.id)}
-              {@const isOpen = opened.has(repository.id)}
-              {@const detail = details[repository.id]}
               {@const repositoryFailure = failures[repository.id]}
-              {@const activeSection = detailSection(repository)}
-              <tr class={['repository-row', isOpen && 'open']}>
+              <tr class="repository-row">
                 <td>
                   <button
                     class="expand"
-                    aria-expanded={isOpen}
-                    aria-controls="repository-{repository.id}"
-                    onclick={() => toggle(repository.id)}
+                    aria-haspopup="dialog"
+                    aria-label={`Configure ${repository.full_name}`}
+                    onclick={(event) => void openRepository(repository, event.currentTarget)}
                   >
                     <span class="caret-control" aria-hidden="true">
-                      <span class={['caret', isOpen && 'caret-open']}
-                        ><Icon name="chevron-right" size={16} /></span
-                      >
+                      <Icon name="settings" size={15} />
                     </span>
                     <span class="repo-copy">
                       <strong>{repository.name}</strong>
@@ -685,9 +730,9 @@
                     showLabel
                   />
                 </td>
-                <td class="numeric-cell mono" data-label="Overrides"
-                  >{repository.config_override_count}</td
-                >
+                <td class="numeric-cell mono" data-label="Overrides">
+                  <span class="numeric-value">{repository.config_override_count}</span>
+                </td>
                 <td data-label="Updated">
                   <time
                     class="updated"
@@ -715,142 +760,11 @@
                 </td>
               </tr>
 
-              {#if repositoryFailure !== undefined}
+              {#if repositoryFailure !== undefined && activeRepository?.id !== repository.id}
                 <tr class="repository-message-row">
                   <td colspan="7"
                     ><p class="form-error" role="alert">{repositoryFailure.message}</p></td
                   >
-                </tr>
-              {/if}
-
-              {#if isOpen}
-                <tr class="repository-detail-row">
-                  <td colspan="7">
-                    <div class="repository-detail" id="repository-{repository.id}">
-                      {#if detail === undefined}
-                        <p class="detail-loading dim">Reading repository settings…</p>
-                      {:else}
-                        <nav
-                          class="repository-detail-navigation"
-                          aria-label="Settings for {repository.name}"
-                        >
-                          <button
-                            class:active={activeSection === 'file'}
-                            aria-current={activeSection === 'file' ? 'page' : undefined}
-                            onclick={() => selectDetailSection(repository.id, 'file')}
-                          >
-                            <span>Repository file</span>
-                            {#if detail.config_file_error !== undefined}
-                              <span class="detail-count problem-count" aria-label="1 file error"
-                                >1</span
-                              >
-                            {/if}
-                          </button>
-                          <button
-                            class:active={activeSection === 'behavior'}
-                            aria-current={activeSection === 'behavior' ? 'page' : undefined}
-                            onclick={() => selectDetailSection(repository.id, 'behavior')}
-                          >
-                            <span>Behavior</span>
-                            <span class="detail-count"
-                              >{configSectionCount(detail, 'behavior')}</span
-                            >
-                          </button>
-                          <button
-                            class:active={activeSection === 'commands'}
-                            aria-current={activeSection === 'commands' ? 'page' : undefined}
-                            onclick={() => selectDetailSection(repository.id, 'commands')}
-                          >
-                            <span>Commands</span>
-                            <span class="detail-count"
-                              >{configSectionCount(detail, 'commands')}</span
-                            >
-                          </button>
-                        </nav>
-
-                        <div class="repository-detail-content">
-                          {#if activeSection === 'file'}
-                            <section
-                              class="file-pane"
-                              aria-labelledby="repository-{repository.id}-file-heading"
-                            >
-                              <header class="detail-pane-heading">
-                                <div>
-                                  <h3 id="repository-{repository.id}-file-heading">
-                                    Repository file
-                                  </h3>
-                                  <p>
-                                    Observe or bypass the configuration stored in the repository
-                                  </p>
-                                </div>
-                                <FileStatusIndicator
-                                  id="file-status-detail-{repository.id}"
-                                  status={detail.repository.config_file_status}
-                                  showLabel
-                                />
-                              </header>
-                              <div
-                                class={[
-                                  'file-status',
-                                  detail.config_file_error !== undefined && 'file-problem',
-                                ]}
-                              >
-                                <div class="file-copy">
-                                  <strong>Configuration path</strong>
-                                  <code>.github/smyklot.yaml</code>
-                                  {#if detail.config_file_error !== undefined}
-                                    <p>{detail.config_file_error}</p>
-                                  {/if}
-                                </div>
-                                <label class="switch switch-labelled">
-                                  <strong>Bypass file</strong>
-                                  <input
-                                    type="checkbox"
-                                    checked={detail.ignore_repository_file}
-                                    disabled={readOnly || working.has(repository.id)}
-                                    onchange={(event) =>
-                                      setBypass(repository.id, event.currentTarget.checked)}
-                                  />
-                                  <span aria-hidden="true"></span>
-                                </label>
-                              </div>
-                              {#if detail.ignore_repository_file}
-                                <p class="warning" role="status">
-                                  Repository-file settings are ignored and the exception is recorded
-                                  in Audit
-                                </p>
-                              {/if}
-                            </section>
-                          {:else}
-                            <div class="override-heading">
-                              <div>
-                                <strong
-                                  >{activeSection === 'behavior'
-                                    ? 'Behavior overrides'
-                                    : 'Command overrides'}</strong
-                                >
-                                <p>Only values changed here override inherited configuration</p>
-                              </div>
-                              <HelpTip
-                                id="repository-overrides-{repository.id}-{activeSection}"
-                                label="About repository overrides"
-                                text="Only settings changed here override configuration defaults from Settings and repository-file settings"
-                              />
-                            </div>
-                            <ConfigEditor
-                              patch={detail.config_patch}
-                              inherited={detail.inherited_config}
-                              scope="repository"
-                              idPrefix={repository.id}
-                              section={activeSection}
-                              disabled={readOnly || working.has(repository.id)}
-                              onSave={(patch) => setConfig(repository.id, patch)}
-                            />
-                          {/if}
-                        </div>
-                      {/if}
-                    </div>
-                  </td>
                 </tr>
               {/if}
             {/each}
@@ -874,6 +788,168 @@
     />
   {/if}
 </section>
+
+{#if activeRepository !== null}
+  {@const repository = activeRepository}
+  {@const detail = details[repository.id]}
+  {@const repositoryFailure = failures[repository.id]}
+  {@const activeSection = detailSection(repository)}
+  <Modal
+    id="repository-settings"
+    open
+    title={repository.name}
+    description="Repository settings override installation defaults and repository-file values"
+    variant="wide"
+    returnFocus={repositoryReturnFocus}
+    onClose={closeRepository}
+  >
+    {#if repositoryFailure !== undefined}
+      <p class="form-error repository-modal-error" role="alert">{repositoryFailure.message}</p>
+    {/if}
+
+    <div class="repository-detail">
+      {#if detail === undefined}
+        <p class="detail-loading dim">Reading repository settings…</p>
+      {:else}
+        {@const behaviorCount = configSectionCount(detail, 'behavior')}
+        {@const commandCount = configSectionCount(detail, 'commands')}
+        <div
+          class="repository-detail-navigation"
+          aria-label="Settings for {repository.name}"
+          role="tablist"
+          aria-orientation="vertical"
+        >
+          <button
+            id="repository-{repository.id}-file-tab"
+            class:active={activeSection === 'file'}
+            type="button"
+            role="tab"
+            aria-selected={activeSection === 'file'}
+            aria-controls="repository-{repository.id}-detail-panel"
+            tabindex={activeSection === 'file' ? 0 : -1}
+            data-modal-focus
+            onclick={() => selectDetailSection(repository.id, 'file')}
+            onkeydown={(event) => moveDetailSection(event, repository.id, 'file')}
+          >
+            <span>Repository file</span>
+            {#if detail.config_file_error !== undefined}
+              <span class="detail-count problem-count" aria-label="1 file error">1</span>
+            {/if}
+          </button>
+          <button
+            id="repository-{repository.id}-behavior-tab"
+            class:active={activeSection === 'behavior'}
+            type="button"
+            role="tab"
+            aria-selected={activeSection === 'behavior'}
+            aria-controls="repository-{repository.id}-detail-panel"
+            tabindex={activeSection === 'behavior' ? 0 : -1}
+            onclick={() => selectDetailSection(repository.id, 'behavior')}
+            onkeydown={(event) => moveDetailSection(event, repository.id, 'behavior')}
+          >
+            <span>Behavior</span>
+            <span class={['detail-count', behaviorCount === 0 && 'zero-count']}
+              >{behaviorCount}</span
+            >
+          </button>
+          <button
+            id="repository-{repository.id}-commands-tab"
+            class:active={activeSection === 'commands'}
+            type="button"
+            role="tab"
+            aria-selected={activeSection === 'commands'}
+            aria-controls="repository-{repository.id}-detail-panel"
+            tabindex={activeSection === 'commands' ? 0 : -1}
+            onclick={() => selectDetailSection(repository.id, 'commands')}
+            onkeydown={(event) => moveDetailSection(event, repository.id, 'commands')}
+          >
+            <span>Commands</span>
+            <span class={['detail-count', commandCount === 0 && 'zero-count']}>{commandCount}</span>
+          </button>
+        </div>
+
+        <div
+          class="repository-detail-content"
+          id="repository-{repository.id}-detail-panel"
+          role="tabpanel"
+          aria-labelledby="repository-{repository.id}-{activeSection}-tab"
+          tabindex="0"
+        >
+          {#if activeSection === 'file'}
+            <section class="file-pane" aria-labelledby="repository-{repository.id}-file-heading">
+              <header class="detail-pane-heading">
+                <div>
+                  <h3 id="repository-{repository.id}-file-heading">Repository file</h3>
+                  <p>Observe or bypass the configuration stored in the repository</p>
+                </div>
+                <FileStatusIndicator
+                  id="file-status-detail-{repository.id}"
+                  status={detail.repository.config_file_status}
+                  showLabel
+                />
+              </header>
+              <div
+                class={['file-status', detail.config_file_error !== undefined && 'file-problem']}
+              >
+                <div class="file-copy">
+                  <strong>Configuration path</strong>
+                  <code>.github/smyklot.yaml</code>
+                  {#if detail.config_file_error !== undefined}
+                    <p>{detail.config_file_error}</p>
+                  {/if}
+                </div>
+                <label class="switch switch-labelled">
+                  <strong>Bypass file</strong>
+                  <input
+                    type="checkbox"
+                    checked={detail.ignore_repository_file}
+                    disabled={readOnly || working.has(repository.id)}
+                    onchange={(event) => setBypass(repository.id, event.currentTarget.checked)}
+                  />
+                  <span aria-hidden="true"></span>
+                </label>
+              </div>
+              {#if detail.ignore_repository_file}
+                <p class="warning" role="status">
+                  Repository-file settings are ignored and the exception is recorded in Audit
+                </p>
+              {/if}
+            </section>
+          {:else}
+            <div class="override-heading">
+              <div>
+                <strong
+                  >{activeSection === 'behavior'
+                    ? 'Behavior overrides'
+                    : 'Command overrides'}</strong
+                >
+                <p>Only values changed here override inherited configuration</p>
+              </div>
+              <HelpTip
+                id="repository-overrides-{repository.id}-{activeSection}"
+                label="About repository overrides"
+                text="Only settings changed here override configuration defaults from Settings and repository-file settings"
+              />
+            </div>
+            <ConfigEditor
+              patch={detail.config_patch}
+              inherited={detail.inherited_config}
+              scope="repository"
+              idPrefix={repository.id}
+              section={activeSection}
+              disabled={readOnly || working.has(repository.id)}
+              onSave={(patch) => setConfig(repository.id, patch)}
+            />
+          {/if}
+        </div>
+      {/if}
+    </div>
+
+    {#snippet footer()}
+      <button class="btn" type="button" onclick={closeRepository}>Close</button>
+    {/snippet}
+  </Modal>
+{/if}
 
 <style>
   .repository-panel {
@@ -995,7 +1071,7 @@
   }
 
   th:first-child {
-    width: 23%;
+    width: 25%;
   }
 
   th:nth-child(2) {
@@ -1019,17 +1095,21 @@
   }
 
   th:nth-child(7) {
-    width: 20%;
+    width: 18%;
   }
 
-  th:first-child,
+  th:first-child {
+    padding-left: var(--space-1);
+  }
+
   td:first-child {
-    padding-left: var(--space-4);
+    padding-left: 0;
   }
 
   th:last-child,
   td:last-child {
     padding-right: var(--space-4);
+    text-align: right;
   }
 
   .numeric-heading,
@@ -1056,13 +1136,13 @@
     height: 2.75rem;
     letter-spacing: inherit;
     margin: 0;
-    padding: 1px var(--space-3) 0;
+    padding: 0 var(--space-3);
     text-transform: inherit;
     width: 100%;
   }
 
   .sortable-heading:first-child .sort-heading {
-    padding-left: var(--space-4);
+    padding-left: var(--space-1);
   }
 
   .sort-heading:hover,
@@ -1090,8 +1170,7 @@
     transition: background-color var(--duration-fast) var(--ease-standard);
   }
 
-  .repository-row:hover,
-  .repository-row.open {
+  .repository-row:hover {
     background: var(--table-row-hover);
   }
 
@@ -1102,8 +1181,8 @@
     border-radius: var(--radius-control);
     color: var(--text-primary);
     display: grid;
-    gap: var(--space-2);
-    grid-template-columns: 1.5rem minmax(0, 1fr);
+    gap: var(--space-1);
+    grid-template-columns: 1.75rem minmax(0, 1fr);
     margin: calc(var(--space-2) * -1);
     min-width: 0;
     padding: var(--space-2);
@@ -1131,18 +1210,7 @@
     display: inline-flex;
     height: var(--control-height-compact);
     justify-content: center;
-    width: var(--control-height-compact);
-  }
-
-  .caret {
-    display: grid;
-    justify-self: center;
-    place-items: center;
-    transition: transform var(--duration-fast) var(--ease-standard);
-  }
-
-  .caret-open {
-    transform: rotate(90deg);
+    width: 1.75rem;
   }
 
   .repo-copy {
@@ -1154,10 +1222,11 @@
   }
 
   .repo-copy strong {
-    line-height: 1;
+    display: block;
+    line-height: 1.25;
     overflow: hidden;
-    padding-top: 1px;
     text-overflow: ellipsis;
+    transform: translateY(-2px);
     white-space: nowrap;
   }
 
@@ -1170,7 +1239,6 @@
     gap: var(--space-1);
     height: var(--control-height-compact);
     line-height: 1;
-    padding-top: 1px;
     width: max-content;
   }
 
@@ -1183,6 +1251,14 @@
     border: 1px solid var(--border-subtle);
     color: var(--text-primary);
     font-size: var(--font-size-compact);
+    transform: translateY(-1px);
+  }
+
+  .numeric-value {
+    align-items: center;
+    display: inline-flex;
+    height: var(--control-height-compact);
+    line-height: 1;
   }
 
   .updated {
@@ -1192,12 +1268,12 @@
     font-size: var(--font-size-meta);
     height: var(--control-height-compact);
     line-height: 1;
-    padding-top: 1px;
+    transform: translateY(-1px);
     white-space: nowrap;
   }
 
   td:last-child :global(fieldset) {
-    margin-left: auto;
+    margin-left: 0;
   }
 
   .repository-message-row td {
@@ -1208,16 +1284,18 @@
     margin: 0;
   }
 
-  .repository-detail-row > td {
-    background: var(--surface-base);
-    padding: 0;
-  }
-
   .repository-detail {
     background: var(--surface-base);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-surface);
     display: grid;
     grid-template-columns: 10.5rem minmax(0, 1fr);
-    min-height: 15rem;
+    min-height: min(32rem, 62vh);
+    overflow: hidden;
+  }
+
+  .repository-modal-error {
+    margin: 0 0 var(--space-3);
   }
 
   .detail-loading {
@@ -1231,8 +1309,8 @@
     border-right: 1px solid var(--border-subtle);
     display: flex;
     flex-direction: column;
-    gap: var(--space-2);
-    padding: var(--space-4);
+    gap: var(--space-1);
+    padding: var(--space-3);
   }
 
   .repository-detail-navigation button {
@@ -1247,8 +1325,9 @@
     gap: var(--space-2);
     height: var(--control-height);
     justify-content: space-between;
-    padding: 0 var(--space-3);
+    padding: 0 var(--space-2);
     text-align: left;
+    white-space: nowrap;
   }
 
   .repository-detail-navigation button:hover,
@@ -1264,27 +1343,25 @@
   }
 
   .detail-count {
-    background: color-mix(in srgb, var(--surface-raised) 82%, var(--brand-action-tint));
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-chip);
+    color: var(--brand-action-text);
     display: inline-grid;
-    font: 650 var(--font-size-micro) / 1 var(--sans);
+    font: 650 var(--font-size-micro) / 1 var(--mono);
     font-variant-numeric: tabular-nums;
-    height: 1.5rem;
-    min-width: 1.5rem;
-    padding: 1px 0.375rem 0;
+    min-width: 1ch;
     place-items: center;
   }
 
+  .zero-count {
+    color: var(--text-muted);
+  }
+
   .problem-count {
-    background: var(--danger-tint);
-    border-color: color-mix(in srgb, var(--danger) 32%, var(--border-subtle));
     color: var(--danger);
   }
 
   .repository-detail-content {
-    border-top: 1px solid var(--border-subtle);
     min-width: 0;
+    outline: 0;
     padding: var(--space-4) var(--space-6);
   }
 
@@ -1407,9 +1484,7 @@
     .repository-row,
     .repository-row td,
     .repository-message-row,
-    .repository-message-row td,
-    .repository-detail-row,
-    .repository-detail-row > td {
+    .repository-message-row td {
       display: block;
       width: 100%;
     }
@@ -1446,10 +1521,6 @@
 
     .expand {
       width: calc(100% + var(--space-4));
-    }
-
-    .repository-detail-row > td {
-      border-bottom: 1px solid var(--border-subtle);
     }
 
     .repository-detail {
