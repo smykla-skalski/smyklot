@@ -14,8 +14,11 @@
   import {
     readLastInstallation,
     readSidebarDisplay,
+    readThemeDisplay,
+    type ThemeDisplay,
     writeLastInstallation,
     writeSidebarDisplay,
+    writeThemeDisplay,
   } from './lib/preferences';
   import {
     resolvePanelRoute,
@@ -55,6 +58,7 @@
   let streamReady = $state(false);
   let revokedReason = $state<string | null>(null);
   let sidebarCollapsed = $state(readSidebarDisplay() === 'collapsed');
+  let theme = $state<ThemeDisplay>(readThemeDisplay());
   const targetReads = new LatestRequest();
   const streamRefreshes = new LatestRequest();
 
@@ -352,6 +356,12 @@
     writeSidebarDisplay(sidebarCollapsed ? 'collapsed' : 'expanded');
   }
 
+  function selectTheme(nextTheme: ThemeDisplay): void {
+    theme = nextTheme;
+    document.documentElement.dataset.theme = nextTheme;
+    writeThemeDisplay(nextTheme);
+  }
+
   void load();
 </script>
 
@@ -374,6 +384,8 @@
     showNavigation={viewer !== null && selectedTarget !== null}
     collapsed={sidebarCollapsed}
     onToggleCollapsed={toggleSidebar}
+    {theme}
+    onSelectTheme={selectTheme}
   />
 
   <div class="workspace">

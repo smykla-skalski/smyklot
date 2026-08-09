@@ -1,13 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
-  DEFAULT_TIME_DISPLAY,
   DEFAULT_SIDEBAR_DISPLAY,
+  DEFAULT_THEME_DISPLAY,
+  DEFAULT_TIME_DISPLAY,
   readLastInstallation,
   readSidebarDisplay,
+  readThemeDisplay,
   readTimeDisplay,
   writeLastInstallation,
   writeSidebarDisplay,
+  writeThemeDisplay,
   writeTimeDisplay,
 } from '../src/lib/preferences';
 
@@ -119,6 +122,51 @@ describe('sidebar display preference', () => {
 
     expect(() =>
       writeSidebarDisplay('collapsed', {
+        setItem: () => {
+          throw new DOMException('Storage is full', 'QuotaExceededError');
+        },
+      }),
+    ).not.toThrow();
+  });
+});
+
+describe('theme preference', () => {
+  it('uses the supplied system preference when no stored preference exists', () => {
+    expect(readThemeDisplay({ getItem: () => null }, 'dark')).toBe('dark');
+  });
+
+  it.each(['light', 'dark'] as const)('restores the %s preference', (value) => {
+    expect(readThemeDisplay({ getItem: () => value })).toBe(value);
+  });
+
+  it('ignores unsupported stored values', () => {
+    expect(readThemeDisplay({ getItem: () => 'system' }, DEFAULT_THEME_DISPLAY)).toBe(
+      DEFAULT_THEME_DISPLAY,
+    );
+  });
+
+  it('writes the selected theme', () => {
+    const setItem = vi.fn();
+
+    writeThemeDisplay('dark', { setItem });
+
+    expect(setItem).toHaveBeenCalledWith('smyklot.panel.theme', 'dark');
+  });
+
+  it('continues when browser storage is unavailable', () => {
+    expect(
+      readThemeDisplay(
+        {
+          getItem: () => {
+            throw new DOMException('Storage is unavailable', 'SecurityError');
+          },
+        },
+        'dark',
+      ),
+    ).toBe('dark');
+
+    expect(() =>
+      writeThemeDisplay('light', {
         setItem: () => {
           throw new DOMException('Storage is full', 'QuotaExceededError');
         },

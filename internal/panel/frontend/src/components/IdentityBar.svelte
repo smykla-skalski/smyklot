@@ -1,6 +1,7 @@
 <script lang="ts">
   import { fuzzyCandidates } from '../lib/fuzzy';
   import { handleLabel, readHandle } from '../lib/identity';
+  import type { ThemeDisplay } from '../lib/preferences';
   import type { PanelView } from '../lib/routes';
   import type { PanelTarget, PanelViewer } from '../lib/types';
   import Avatar from './Avatar.svelte';
@@ -22,6 +23,8 @@
     showNavigation,
     collapsed,
     onToggleCollapsed,
+    theme,
+    onSelectTheme,
   }: {
     viewer: PanelViewer | null;
     iconUrl: string;
@@ -37,6 +40,8 @@
     showNavigation: boolean;
     collapsed: boolean;
     onToggleCollapsed: () => void;
+    theme: ThemeDisplay;
+    onSelectTheme: (theme: ThemeDisplay) => void;
   } = $props();
 
   let accountMenu = $state<HTMLDetailsElement | null>(null);
@@ -298,7 +303,30 @@
         <span class="sidebar-tooltip">Account menu</span>
       </summary>
       <div class="account-popover">
-        <button class="account-action" onclick={signOut}>
+        <div class="theme-setting">
+          <span class="theme-label">Theme</span>
+          <div class="theme-options" role="group" aria-label="Theme">
+            <button
+              type="button"
+              class:selected={theme === 'light'}
+              aria-pressed={theme === 'light'}
+              onclick={() => onSelectTheme('light')}
+            >
+              <Icon name="sun" size={15} />
+              <span>Light</span>
+            </button>
+            <button
+              type="button"
+              class:selected={theme === 'dark'}
+              aria-pressed={theme === 'dark'}
+              onclick={() => onSelectTheme('dark')}
+            >
+              <Icon name="moon" size={15} />
+              <span>Dark</span>
+            </button>
+          </div>
+        </div>
+        <button class="account-action" type="button" onclick={signOut}>
           <Icon name="sign-out" size={16} />
           <span>Sign out</span>
         </button>
@@ -546,7 +574,7 @@
     bottom: calc(100% + var(--space-2));
     left: auto;
     right: var(--space-2);
-    width: min(11rem, calc(100vw - 2rem));
+    width: min(13rem, calc(100vw - 2rem));
   }
 
   .target-options {
@@ -737,6 +765,59 @@
     padding: 0 var(--space-3);
     text-align: left;
     width: 100%;
+  }
+
+  .theme-setting {
+    border-bottom: 1px solid var(--border-subtle);
+    display: grid;
+    gap: var(--space-2);
+    margin-bottom: var(--space-1);
+    padding: var(--space-2) var(--space-1) var(--space-3);
+  }
+
+  .theme-label {
+    color: var(--text-muted);
+    font: 600 var(--font-size-compact) / 1 var(--sans);
+    padding-inline: var(--space-1);
+  }
+
+  .theme-options {
+    background: var(--surface-inset);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-control);
+    display: grid;
+    gap: var(--control-inset);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: var(--control-inset);
+  }
+
+  .theme-options button {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-radius: calc(var(--radius-control) - var(--control-inset));
+    color: var(--text-muted);
+    display: inline-flex;
+    font: 600 var(--font-size-compact) / 1 var(--sans);
+    gap: var(--space-1);
+    height: var(--control-height-compact);
+    justify-content: center;
+    padding: 0 var(--space-2);
+  }
+
+  .theme-options button:hover {
+    background: var(--interactive-hover);
+    color: var(--text-primary);
+  }
+
+  .theme-options button.selected {
+    background: var(--surface-base);
+    box-shadow: 0 1px 2px var(--shadow-color);
+    color: var(--brand-action-text);
+  }
+
+  .theme-options button:active {
+    background: var(--interactive-pressed);
   }
 
   .account-action:hover,

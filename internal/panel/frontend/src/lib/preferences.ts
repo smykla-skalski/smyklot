@@ -1,12 +1,15 @@
 export type TimeDisplay = 'relative' | 'absolute';
 export type SidebarDisplay = 'expanded' | 'collapsed';
+export type ThemeDisplay = 'light' | 'dark';
 
 export const DEFAULT_TIME_DISPLAY: TimeDisplay = 'relative';
 export const DEFAULT_SIDEBAR_DISPLAY: SidebarDisplay = 'expanded';
+export const DEFAULT_THEME_DISPLAY: ThemeDisplay = 'light';
 
 const TIME_DISPLAY_KEY = 'smyklot.panel.history.time-display';
 const LAST_INSTALLATION_KEY = 'smyklot.panel.last-installation';
 const SIDEBAR_DISPLAY_KEY = 'smyklot.panel.sidebar.display';
+const THEME_DISPLAY_KEY = 'smyklot.panel.theme';
 
 type PreferenceReader = Pick<Storage, 'getItem'>;
 type PreferenceWriter = Pick<Storage, 'setItem'>;
@@ -27,6 +30,18 @@ function isTimeDisplay(value: string | null): value is TimeDisplay {
 
 function isSidebarDisplay(value: string | null): value is SidebarDisplay {
   return value === 'expanded' || value === 'collapsed';
+}
+
+function isThemeDisplay(value: string | null): value is ThemeDisplay {
+  return value === 'light' || value === 'dark';
+}
+
+export function preferredThemeDisplay(): ThemeDisplay {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return DEFAULT_THEME_DISPLAY;
+  }
+
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
 export function readTimeDisplay(storage: PreferenceReader | null = browserStorage()): TimeDisplay {
@@ -100,6 +115,33 @@ export function writeSidebarDisplay(
 
   try {
     storage.setItem(SIDEBAR_DISPLAY_KEY, value);
+  } catch {
+    // Browser preferences are best-effort and must never block the panel
+  }
+}
+
+export function readThemeDisplay(
+  storage: PreferenceReader | null = browserStorage(),
+  fallback: ThemeDisplay = preferredThemeDisplay(),
+): ThemeDisplay {
+  if (storage === null) return fallback;
+
+  try {
+    const value = storage.getItem(THEME_DISPLAY_KEY);
+    return isThemeDisplay(value) ? value : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+export function writeThemeDisplay(
+  value: ThemeDisplay,
+  storage: PreferenceWriter | null = browserStorage(),
+): void {
+  if (storage === null) return;
+
+  try {
+    storage.setItem(THEME_DISPLAY_KEY, value);
   } catch {
     // Browser preferences are best-effort and must never block the panel
   }

@@ -5,9 +5,13 @@ import InvitationPage from './components/InvitationPage.svelte';
 import './app.css';
 import { createPanelApi } from './lib/api';
 import { PANEL_ICON_PATH, panelUrl, readBasePath, readPanelBuild } from './lib/base';
+import { readThemeDisplay } from './lib/preferences';
 import { createPanelRouter, parseInvitationToken } from './lib/routes';
 
 const target = document.querySelector('#app');
+const theme = readThemeDisplay();
+
+document.documentElement.dataset.theme = theme;
 
 if (target === null) {
   throw new Error('the panel page is missing its #app mount point');

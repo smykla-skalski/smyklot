@@ -21,6 +21,7 @@
     | 'info'
     | 'lock'
     | 'more'
+    | 'moon'
     | 'minus-circle'
     | 'no-access'
     | 'organization'
@@ -36,6 +37,7 @@
     | 'sign-out'
     | 'sort'
     | 'success'
+    | 'sun'
     | 'trash'
     | 'user'
     | 'user-plus'
@@ -139,6 +141,13 @@
     <path d="M3.5 3.5 20.5 20.5" />
   {:else if name === 'sign-out'}
     <path d="M10 5H5v14h5M14 8l4 4-4 4M8 12h10" />
+  {:else if name === 'sun'}
+    <circle cx="12" cy="12" r="3.5" />
+    <path
+      d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M18.7 5.3l-1.4 1.4M6.7 17.3l-1.4 1.4"
+    />
+  {:else if name === 'moon'}
+    <path d="M20 15.2A8 8 0 0 1 8.8 4a8.1 8.1 0 1 0 11.2 11.2Z" />
   {:else if name === 'success'}
     <circle cx="12" cy="12" r="9" />
     <path d="m8 12 2.5 2.5L16.5 9" />

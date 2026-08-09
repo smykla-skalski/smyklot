@@ -45,7 +45,7 @@
 }
 
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
 
   /* Primitive palette. Graphite carries structure; petrol marks interaction. */
   --primitive-light-canvas: #f5f7f6;
@@ -238,49 +238,49 @@
   --shadow-dialog: 0 24px 72px color-mix(in srgb, var(--shadow-color) 82%, black);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --canvas: var(--primitive-dark-canvas);
-    --surface-base: var(--primitive-dark-surface);
-    --surface-raised: var(--primitive-dark-raised);
-    --surface-inset: var(--primitive-dark-inset);
-    --surface-control: var(--primitive-dark-control);
-    --border-subtle: var(--primitive-dark-rule);
-    --border-control: var(--primitive-dark-control-border);
-    --text-primary: var(--primitive-dark-text);
-    --text-secondary: var(--primitive-dark-secondary);
-    --text-muted: var(--primitive-dark-muted);
-    --brand-action: var(--primitive-petrol-400);
-    --brand-action-hover: #5eead4;
-    --brand-action-pressed: #14b8a6;
-    --brand-action-tint: var(--primitive-petrol-950);
-    --brand-action-text: var(--primitive-petrol-200);
-    --on-brand-action: #062c2a;
-    --focus: var(--primitive-petrol-400);
-    --info: var(--primitive-info-dark);
-    --info-tint: var(--primitive-info-dark-tint);
-    --on-info: #0e1116;
-    --success: var(--primitive-success-dark);
-    --success-tint: var(--primitive-success-dark-tint);
-    --warning: var(--primitive-warning-dark);
-    --warning-tint: var(--primitive-warning-dark-tint);
-    --danger: var(--primitive-danger-dark);
-    --danger-tint: var(--primitive-danger-dark-tint);
-    --neutral-tint: var(--primitive-dark-inset);
-    --interactive-hover: var(--primitive-dark-raised);
-    --interactive-pressed: rgb(0 0 0 / 30%);
-    --scrim: rgb(0 0 0 / 62%);
-    --shadow-color: rgb(0 0 0 / 32%);
-    --sidebar-bg: var(--primitive-sidebar);
-    --sidebar-item-hover: var(--primitive-sidebar-hover);
-    --sidebar-item-pressed: var(--primitive-sidebar-pressed);
-    --sidebar-item-active: var(--primitive-sidebar-active);
-    --identity-bg: var(--primitive-sidebar-hover);
-    --identity-hover-bg: var(--primitive-sidebar-pressed);
-    --control-border-hover: #536170;
-    --spectrum: var(--brand-action);
-    --spectrum-vertical: var(--brand-action);
-  }
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --canvas: var(--primitive-dark-canvas);
+  --surface-base: var(--primitive-dark-surface);
+  --surface-raised: var(--primitive-dark-raised);
+  --surface-inset: var(--primitive-dark-inset);
+  --surface-control: var(--primitive-dark-control);
+  --border-subtle: var(--primitive-dark-rule);
+  --border-control: var(--primitive-dark-control-border);
+  --text-primary: var(--primitive-dark-text);
+  --text-secondary: var(--primitive-dark-secondary);
+  --text-muted: var(--primitive-dark-muted);
+  --brand-action: var(--primitive-petrol-400);
+  --brand-action-hover: #5eead4;
+  --brand-action-pressed: #14b8a6;
+  --brand-action-tint: var(--primitive-petrol-950);
+  --brand-action-text: var(--primitive-petrol-200);
+  --on-brand-action: #062c2a;
+  --focus: var(--primitive-petrol-400);
+  --info: var(--primitive-info-dark);
+  --info-tint: var(--primitive-info-dark-tint);
+  --on-info: #0e1116;
+  --success: var(--primitive-success-dark);
+  --success-tint: var(--primitive-success-dark-tint);
+  --warning: var(--primitive-warning-dark);
+  --warning-tint: var(--primitive-warning-dark-tint);
+  --danger: var(--primitive-danger-dark);
+  --danger-tint: var(--primitive-danger-dark-tint);
+  --neutral-tint: var(--primitive-dark-inset);
+  --interactive-hover: var(--primitive-dark-raised);
+  --interactive-pressed: rgb(0 0 0 / 30%);
+  --scrim: rgb(0 0 0 / 62%);
+  --shadow-color: rgb(0 0 0 / 32%);
+  --sidebar-bg: var(--primitive-sidebar);
+  --sidebar-item-hover: var(--primitive-sidebar-hover);
+  --sidebar-item-pressed: var(--primitive-sidebar-pressed);
+  --sidebar-item-active: var(--primitive-sidebar-active);
+  --identity-bg: var(--primitive-sidebar-hover);
+  --identity-hover-bg: var(--primitive-sidebar-pressed);
+  --control-border-hover: #536170;
+  --spectrum: var(--brand-action);
+  --spectrum-vertical: var(--brand-action);
 }
 
 *,

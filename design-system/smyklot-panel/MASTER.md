@@ -168,6 +168,10 @@ dividers instead of nested cards.
 - Repository detail navigation uses plain semantic count text, not count pills
 - Installation and account menus are content-sized, keep search visible while
   options scroll, and omit type labels already stated by their group heading
+- Light and dark share identical geometry. The compact account menu owns the
+  explicit theme selector, and the choice persists as a browser-local preference
+- Right-edge filter menus align their right edge to the trigger so their content
+  opens toward available space instead of being clipped by the viewport
 
 ## Icon vocabulary
 

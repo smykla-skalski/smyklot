@@ -1054,6 +1054,7 @@
             sections={userFilterSections}
             selected={[...userRoles, ...userStatuses]}
             multiple
+            align="end"
             wide
             showIcon
             onChange={selectUserFilters}
@@ -1202,6 +1203,7 @@
             sections={[...INVITATION_ROLE_FILTERS, ...INVITATION_STATUS_FILTERS]}
             selected={[...invitationRoles, ...invitationStatuses]}
             multiple
+            align="end"
             wide
             showIcon
             onChange={selectInvitationFilters}
