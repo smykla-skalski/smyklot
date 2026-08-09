@@ -90,6 +90,7 @@ type repositorySummaryResponse struct {
 	Name                string                       `json:"name"`
 	FullName            string                       `json:"full_name"`
 	Private             bool                         `json:"private"`
+	DefaultBranch       string                       `json:"default_branch"`
 	Available           bool                         `json:"available"`
 	EnabledOverride     *bool                        `json:"enabled_override"`
 	EffectiveEnabled    bool                         `json:"effective_enabled"`
@@ -243,6 +244,7 @@ func repositorySummaryDTO(
 		Name:                repository.Name,
 		FullName:            repository.FullName,
 		Private:             repository.Private,
+		DefaultBranch:       repository.DefaultBranch,
 		Available:           repository.Available,
 		EnabledOverride:     repository.EnabledOverride,
 		EffectiveEnabled:    enabled,

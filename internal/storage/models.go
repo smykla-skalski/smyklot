@@ -378,6 +378,7 @@ type Repository struct {
 	Name                 string
 	FullName             string
 	Private              bool
+	DefaultBranch        string
 	Available            bool
 	EnabledOverride      *bool
 	ConfigPatch          config.Patch
@@ -392,10 +393,11 @@ type Repository struct {
 // RepositorySnapshot is GitHub-owned catalog state. Reconciliation must not
 // overwrite any local control omitted here.
 type RepositorySnapshot struct {
-	ID       string
-	Name     string
-	FullName string
-	Private  bool
+	ID            string
+	Name          string
+	FullName      string
+	Private       bool
+	DefaultBranch string
 }
 
 // InstallationSnapshot is a complete view of one installation's currently

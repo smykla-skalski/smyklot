@@ -395,17 +395,18 @@ func upsertRepository(
 ) error {
 	_, err := tx.ExecContext(ctx, `
 INSERT INTO repositories (
-    id, target_id, name, full_name, private, available,
+    id, target_id, name, full_name, private, default_branch, available,
     enabled_override, config_patch, ignore_repository_file,
     config_file_status, config_file_patch, revision,
     settings_updated_at, synced_at
 )
-VALUES (?, ?, ?, ?, ?, 1, NULL, '{}', 0, 'missing', '{}', 1, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, 1, NULL, '{}', 0, 'missing', '{}', 1, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
     target_id = excluded.target_id,
     name = excluded.name,
     full_name = excluded.full_name,
     private = excluded.private,
+    default_branch = excluded.default_branch,
     available = 1,
     synced_at = excluded.synced_at`,
 		repository.ID,
@@ -413,6 +414,7 @@ ON CONFLICT(id) DO UPDATE SET
 		repository.Name,
 		repository.FullName,
 		repository.Private,
+		repository.DefaultBranch,
 		formatTime(syncedAt),
 		formatTime(syncedAt),
 	)
@@ -496,6 +498,7 @@ SELECT
     r.name,
     r.full_name,
     r.private,
+    r.default_branch,
     r.available,
     r.enabled_override,
     r.config_patch,
@@ -535,6 +538,7 @@ func scanRepository(scanner rowScanner) (storage.Repository, error) {
 		&repository.Name,
 		&repository.FullName,
 		&repository.Private,
+		&repository.DefaultBranch,
 		&repository.Available,
 		&enabledOverride,
 		&panelPatch,

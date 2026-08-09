@@ -233,6 +233,7 @@ var _ = Describe("SQLite store [Unit]", func() {
 		Expect(repositories[0].FullName).To(Equal("smykla-skalski/new-repository"))
 		Expect(repositories[1].FullName).To(Equal("smykla-skalski/smyklot-renamed"))
 		Expect(repositories[1].Private).To(BeTrue())
+		Expect(repositories[1].DefaultBranch).To(Equal("main"))
 		Expect(repositories[1].EnabledOverride).To(HaveValue(BeFalse()))
 		Expect(repositories[1].ConfigPatch.CommandAliases).To(HaveValue(BeEmpty()))
 
@@ -991,7 +992,9 @@ func testRepository(id, fullName string, private bool) storage.RepositorySnapsho
 		}
 	}
 
-	return storage.RepositorySnapshot{ID: id, Name: name, FullName: fullName, Private: private}
+	return storage.RepositorySnapshot{
+		ID: id, Name: name, FullName: fullName, Private: private, DefaultBranch: "main",
+	}
 }
 
 func rolePointer(role storage.PanelRole) *storage.PanelRole {

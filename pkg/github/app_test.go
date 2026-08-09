@@ -176,8 +176,8 @@ var _ = Describe("GitHub App Client [Unit]", func() {
 				_, _ = w.Write([]byte(`{
 					"total_count": 2,
 					"repositories": [
-						{"id": 31, "name": "smyklot", "full_name": "smykla-skalski/smyklot", "private": true, "owner": {"login": "smykla-skalski"}},
-						{"id": 32, "name": "sai", "full_name": "smykla-skalski/sai", "private": false, "owner": {"login": "smykla-skalski"}}
+						{"id": 31, "name": "smyklot", "full_name": "smykla-skalski/smyklot", "private": true, "default_branch": "main", "owner": {"login": "smykla-skalski"}},
+						{"id": 32, "name": "sai", "full_name": "smykla-skalski/sai", "private": false, "default_branch": "trunk", "owner": {"login": "smykla-skalski"}}
 					]
 				}`))
 			}))
@@ -188,8 +188,8 @@ var _ = Describe("GitHub App Client [Unit]", func() {
 			repos, err := client.ListInstallationRepos(context.Background())
 			Expect(err).NotTo(HaveOccurred())
 			Expect(repos).To(Equal([]github.Repository{
-				{ID: 31, Owner: "smykla-skalski", Name: "smyklot", FullName: "smykla-skalski/smyklot", Private: true},
-				{ID: 32, Owner: "smykla-skalski", Name: "sai", FullName: "smykla-skalski/sai"},
+				{ID: 31, Owner: "smykla-skalski", Name: "smyklot", FullName: "smykla-skalski/smyklot", Private: true, DefaultBranch: "main"},
+				{ID: 32, Owner: "smykla-skalski", Name: "sai", FullName: "smykla-skalski/sai", DefaultBranch: "trunk"},
 			}))
 		})
 

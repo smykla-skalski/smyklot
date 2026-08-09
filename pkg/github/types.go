@@ -38,6 +38,9 @@ type Repository struct {
 
 	// Private reports whether repository contents require authentication.
 	Private bool
+
+	// DefaultBranch is the branch GitHub treats as the repository default.
+	DefaultBranch string
 }
 
 // User is one immutable GitHub identity resolved by login.

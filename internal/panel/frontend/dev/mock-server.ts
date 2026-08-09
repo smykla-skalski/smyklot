@@ -603,6 +603,7 @@ function repositorySeed(
     name: input.name,
     full_name: `${target.account.login}/${input.name}`,
     private: input.private ?? false,
+    default_branch: Number(input.id.replace(/\D/g, '')) % 5 === 0 ? 'develop' : 'main',
     available: true,
     enabled_override: input.enabledOverride,
     effective_enabled: input.enabledOverride ?? target.repository_default_enabled,

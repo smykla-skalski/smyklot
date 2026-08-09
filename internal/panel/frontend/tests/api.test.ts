@@ -95,6 +95,7 @@ const REPOSITORY = {
   name: 'api',
   full_name: 'example/api',
   private: false,
+  default_branch: 'main',
   available: true,
   enabled_override: null,
   effective_enabled: false,

@@ -237,10 +237,11 @@ func installationSnapshot(
 			fullName = repoFullName(repository.Owner, repository.Name)
 		}
 		snapshot.Repositories = append(snapshot.Repositories, storage.RepositorySnapshot{
-			ID:       repositoryStorageID(repository.ID),
-			Name:     repository.Name,
-			FullName: fullName,
-			Private:  repository.Private,
+			ID:            repositoryStorageID(repository.ID),
+			Name:          repository.Name,
+			FullName:      fullName,
+			Private:       repository.Private,
+			DefaultBranch: repository.DefaultBranch,
 		})
 	}
 

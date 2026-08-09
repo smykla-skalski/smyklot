@@ -702,11 +702,12 @@ func (c *Client) ListInstallationRepos(ctx context.Context) ([]Repository, error
 		var response struct {
 			TotalCount   *int `json:"total_count"`
 			Repositories []struct {
-				ID       int64  `json:"id"`
-				Name     string `json:"name"`
-				FullName string `json:"full_name"`
-				Private  bool   `json:"private"`
-				Owner    struct {
+				ID            int64  `json:"id"`
+				Name          string `json:"name"`
+				FullName      string `json:"full_name"`
+				Private       bool   `json:"private"`
+				DefaultBranch string `json:"default_branch"`
+				Owner         struct {
 					Login string `json:"login"`
 				} `json:"owner"`
 			} `json:"repositories"`
@@ -717,11 +718,12 @@ func (c *Client) ListInstallationRepos(ctx context.Context) ([]Repository, error
 
 		for _, item := range response.Repositories {
 			repos = append(repos, Repository{
-				ID:       item.ID,
-				Owner:    item.Owner.Login,
-				Name:     item.Name,
-				FullName: item.FullName,
-				Private:  item.Private,
+				ID:            item.ID,
+				Owner:         item.Owner.Login,
+				Name:          item.Name,
+				FullName:      item.FullName,
+				Private:       item.Private,
+				DefaultBranch: item.DefaultBranch,
 			})
 		}
 

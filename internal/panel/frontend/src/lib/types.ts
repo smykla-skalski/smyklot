@@ -218,6 +218,7 @@ export interface RepositorySummary {
   name: string;
   full_name: string;
   private: boolean;
+  default_branch: string;
   available: boolean;
   enabled_override: boolean | null;
   effective_enabled: boolean;
