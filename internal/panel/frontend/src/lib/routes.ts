@@ -59,6 +59,20 @@ export function parsePanelRoute(basePath: string, pathname: string): PanelRoute 
   return account.trim() === '' ? null : { account, view: rawView };
 }
 
+export function parseInvitationToken(basePath: string, pathname: string): string | null {
+  const base = normalizeBasePath(basePath);
+  if (base !== '' && !pathname.startsWith(`${base}/`)) return null;
+  const relative = pathname.slice(base.length).replace(/^\/+|\/+$/g, '');
+  const parts = relative.split('/');
+  if (parts.length !== 2 || parts[0] !== 'invite' || parts[1] === undefined) return null;
+  try {
+    const token = decodeURIComponent(parts[1]);
+    return token.trim() === '' ? null : token;
+  } catch {
+    return null;
+  }
+}
+
 export function panelRoutePath(basePath: string, route: PanelRoute): string {
   const base = normalizeBasePath(basePath);
   if (!('account' in route)) return `${base}/${route.view}`;

@@ -74,6 +74,9 @@ func isPanelNavigationPath(relative string) bool {
 	}
 
 	parts := strings.Split(trimmed, "/")
+	if len(parts) == 2 && parts[0] == "invite" && validInvitationToken(parts[1]) {
+		return true
+	}
 	if len(parts) != 3 || parts[0] != "i" || parts[1] == "" {
 		return false
 	}
@@ -84,6 +87,13 @@ func isPanelNavigationPath(relative string) bool {
 	default:
 		return false
 	}
+}
+
+func validInvitationToken(token string) bool {
+	return len(token) == 43 && !strings.ContainsFunc(token, func(r rune) bool {
+		return r != '-' && r != '_' && (r < '0' || r > '9') &&
+			(r < 'A' || r > 'Z') && (r < 'a' || r > 'z')
+	})
 }
 
 func (s *Server) writeIndex(w http.ResponseWriter) {

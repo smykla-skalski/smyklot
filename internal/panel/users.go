@@ -425,7 +425,8 @@ func canManageTargetUser(
 	subjectAccess storage.TargetAccess,
 	desiredRole storage.PanelRole,
 ) bool {
-	if actor.ID == subject.Account.ID || subject.Root || subject.GlobalRole == storage.PanelRoleOwner {
+	if actor.ID == subject.Account.ID || subject.Status != storage.PanelUserActive || subject.Root ||
+		subject.GlobalRole == storage.PanelRoleOwner {
 		return false
 	}
 	if actorAccess.Role == storage.PanelRoleOwner || actorUser.Root {

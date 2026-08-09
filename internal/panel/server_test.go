@@ -106,7 +106,11 @@ func newPanelHarness(t *testing.T, login string) *panelHarness {
 		"index.html":    &fstest.MapFile{Data: []byte(`<!doctype html><meta name="smyklot-panel-base" content="/__smyklot_panel_base__"><meta name="smyklot-panel-version" content="__smyklot_panel_version__"><meta name="smyklot-panel-service" content="__smyklot_panel_service__"><link rel="icon" href="/__smyklot_panel_base__/smyklot-avatar.png?v=__smyklot_panel_version__">`)},
 		"assets/app.js": &fstest.MapFile{Data: []byte("export {}")},
 	}
-	random := bytes.NewReader(bytes.Repeat([]byte{0x42}, tokenBytes*4))
+	randomBytes := make([]byte, 0, tokenBytes*32)
+	for index := range 32 {
+		randomBytes = append(randomBytes, bytes.Repeat([]byte{byte(index + 1)}, tokenBytes)...)
+	}
+	random := bytes.NewReader(randomBytes)
 	server, err := New(Config{
 		BasePath:      "/panel",
 		PublicOrigin:  "https://smyklot.example",
@@ -142,7 +146,7 @@ func (h *panelHarness) signIn(t *testing.T) *http.Cookie {
 	if start.Code != http.StatusFound {
 		t.Fatalf("start status = %d, body = %s", start.Code, start.Body.String())
 	}
-	stateCookie := start.Result().Cookies()[0]
+	stateCookie := responseCookie(t, start, stateCookieName)
 	location, err := url.Parse(start.Header().Get("Location"))
 	if err != nil {
 		t.Fatal(err)
@@ -164,6 +168,18 @@ func (h *panelHarness) signIn(t *testing.T) *http.Cookie {
 		}
 	}
 	t.Fatal("callback did not issue a session cookie")
+
+	return nil
+}
+
+func responseCookie(t *testing.T, response *httptest.ResponseRecorder, name string) *http.Cookie {
+	t.Helper()
+	for _, cookie := range response.Result().Cookies() {
+		if cookie.Name == name && cookie.MaxAge > 0 {
+			return cookie
+		}
+	}
+	t.Fatalf("response did not issue the %s cookie", name)
 
 	return nil
 }
@@ -502,6 +518,20 @@ func TestPanelManagesUsersAndRevokesBannedSessions(t *testing.T) {
 		!strings.Contains(revoked.Body.String(), "security review") {
 		t.Fatalf("revoked session = %d %s", revoked.Code, revoked.Body.String())
 	}
+	blockedTargetChange := harness.request(
+		t,
+		http.MethodPut,
+		"/panel/api/v1/targets/github:installation:10/users/"+url.PathEscape(managed.ID),
+		strings.NewReader(`{"role":"viewer","suspended":true,"expected_revision":0}`),
+		ownerSession,
+	)
+	if blockedTargetChange.Code != http.StatusForbidden {
+		t.Fatalf(
+			"target change for globally banned user = %d %s",
+			blockedTargetChange.Code,
+			blockedTargetChange.Body.String(),
+		)
+	}
 
 	unbanned := harness.request(
 		t,
@@ -537,6 +567,137 @@ func TestPanelManagesUsersAndRevokesBannedSessions(t *testing.T) {
 	}
 }
 
+func TestPanelInvitesNamedGitHubUserThroughOAuth(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+	ownerSession := harness.signIn(t)
+	invitee := storage.Account{
+		ID: "github:test:user:invited", Provider: "github:test", SubjectID: "invited",
+		Login: "invited", DisplayName: "Invited User", UpdatedAt: harness.now,
+	}
+	harness.server.users = fakeUserResolver{account: invitee}
+	created := harness.request(
+		t,
+		http.MethodPost,
+		"/panel/api/v1/invitations",
+		strings.NewReader(`{"login":"invited","role":"editor","target_id":"github:installation:10","expires_in_days":7}`),
+		ownerSession,
+	)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create invitation = %d %s", created.Code, created.Body.String())
+	}
+	var invitation struct {
+		ID        string `json:"id"`
+		InviteURL string `json:"invite_url"`
+	}
+	if err := json.Unmarshal(created.Body.Bytes(), &invitation); err != nil {
+		t.Fatal(err)
+	}
+	inviteURL, err := url.Parse(invitation.InviteURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := strings.TrimPrefix(inviteURL.Path, "/panel/invite/")
+	review := harness.request(
+		t,
+		http.MethodGet,
+		"/panel/api/v1/invites/"+token,
+		nil,
+		nil,
+	)
+	if review.Code != http.StatusOK ||
+		!strings.Contains(review.Body.String(), `"login":"invited"`) ||
+		!strings.Contains(review.Body.String(), `"status":"pending"`) {
+		t.Fatalf("review invitation = %d %s", review.Code, review.Body.String())
+	}
+
+	harness.server.signIn = fakeSignIn{account: invitee}
+	start := httptest.NewRecorder()
+	harness.handler.ServeHTTP(
+		start,
+		httptest.NewRequest(
+			http.MethodGet,
+			"/panel/auth/github/start?invite="+url.QueryEscape(token)+"&action=accept",
+			nil,
+		),
+	)
+	if start.Code != http.StatusFound {
+		t.Fatalf("start invited sign-in = %d %#v", start.Code, start.Result().Cookies())
+	}
+	location, err := url.Parse(start.Header().Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	callback := httptest.NewRequest(
+		http.MethodGet,
+		"/panel/auth/github/callback?code=code&state="+
+			url.QueryEscape(location.Query().Get("state")),
+		nil,
+	)
+	callback.AddCookie(responseCookie(t, start, stateCookieName))
+	callback.AddCookie(responseCookie(t, start, inviteCookieName))
+	finished := httptest.NewRecorder()
+	harness.handler.ServeHTTP(finished, callback)
+	if finished.Code != http.StatusFound {
+		t.Fatalf("accept invitation = %d %s", finished.Code, finished.Body.String())
+	}
+	var invitedSession *http.Cookie
+	for _, cookie := range finished.Result().Cookies() {
+		if cookie.Name == sessionCookieName {
+			invitedSession = cookie
+		}
+	}
+	if invitedSession == nil {
+		t.Fatal("accepted invitation did not issue a session")
+	}
+	viewer := harness.request(t, http.MethodGet, "/panel/api/v1/session", nil, invitedSession)
+	if viewer.Code != http.StatusOK || !strings.Contains(viewer.Body.String(), `"global_role":"editor"`) {
+		t.Fatalf("invited viewer = %d %s", viewer.Code, viewer.Body.String())
+	}
+
+	harness.server.signIn = fakeSignIn{account: storage.Account{
+		ID: "github:test:user:target-invite", Provider: "github:test", SubjectID: "target-invite",
+		Login: "target-invite", DisplayName: "Target Invite", UpdatedAt: harness.now,
+	}}
+	harness.server.users = fakeUserResolver{account: harness.server.signIn.(fakeSignIn).account}
+	targetCreated := harness.request(
+		t,
+		http.MethodPost,
+		"/panel/api/v1/targets/github:installation:10/invitations",
+		strings.NewReader(`{"login":"target-invite","role":"viewer","expires_in_days":1}`),
+		ownerSession,
+	)
+	if targetCreated.Code != http.StatusCreated {
+		t.Fatalf("create target invitation = %d %s", targetCreated.Code, targetCreated.Body.String())
+	}
+	var targetInvitation struct {
+		ID        string `json:"id"`
+		InviteURL string `json:"invite_url"`
+	}
+	if err := json.Unmarshal(targetCreated.Body.Bytes(), &targetInvitation); err != nil {
+		t.Fatal(err)
+	}
+	reissued := harness.request(
+		t,
+		http.MethodPost,
+		"/panel/api/v1/invitations/"+targetInvitation.ID+"/reissue",
+		strings.NewReader(`{"expires_in_days":7}`),
+		ownerSession,
+	)
+	if reissued.Code != http.StatusOK || strings.Contains(reissued.Body.String(), targetInvitation.InviteURL) {
+		t.Fatalf("reissue invitation = %d %s", reissued.Code, reissued.Body.String())
+	}
+	revoked := harness.request(
+		t,
+		http.MethodDelete,
+		"/panel/api/v1/invitations/"+targetInvitation.ID,
+		nil,
+		ownerSession,
+	)
+	if revoked.Code != http.StatusOK || !strings.Contains(revoked.Body.String(), `"status":"revoked"`) {
+		t.Fatalf("revoke invitation = %d %s", revoked.Code, revoked.Body.String())
+	}
+}
+
 func TestPanelOAuthStateIsBrowserBound(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	const starts = 65
@@ -567,7 +728,7 @@ func TestPanelOAuthStateIsBrowserBound(t *testing.T) {
 			t.Fatal(err)
 		}
 		pending = append(pending, pendingSignIn{
-			cookie: response.Result().Cookies()[0],
+			cookie: responseCookie(t, response, stateCookieName),
 			state:  location.Query().Get("state"),
 		})
 	}
@@ -944,7 +1105,7 @@ func TestPanelRejectsAnotherOwnerAndCrossOriginWrites(t *testing.T) {
 	nonOwner := newPanelHarness(t, "someone-else")
 	start := httptest.NewRecorder()
 	nonOwner.handler.ServeHTTP(start, httptest.NewRequest(http.MethodGet, "/panel/auth/github/start", nil))
-	stateCookie := start.Result().Cookies()[0]
+	stateCookie := responseCookie(t, start, stateCookieName)
 	location, _ := url.Parse(start.Header().Get("Location"))
 	callback := httptest.NewRequest(http.MethodGet, "/panel/auth/github/callback?code=x&state="+url.QueryEscape(location.Query().Get("state")), nil)
 	callback.AddCookie(stateCookie)
@@ -971,6 +1132,7 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 	for _, path := range []string{
 		"/panel/",
 		"/panel/users",
+		"/panel/invite/abcdefghijklmnopqrstuvwxyzABCDEFGH_01234567",
 		"/panel/i/smykla-skalski/repositories",
 		"/panel/i/smykla-skalski/users",
 		"/panel/i/auth/settings",
@@ -996,6 +1158,9 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 		"/panel/i/smykla-skalski/help",
 		"/panel/i/smykla-skalski/unknown",
 		"/panel/@smykla-skalski/repositories",
+		"/panel/invite/too-short",
+		"/panel/invite/abcdefghijklmnopqrstuvwxyzABCDEFGH.01234567",
+		"/panel/invite/abcdefghijklmnopqrstuvwxyzABCDEFGH_01234567/extra",
 		"/panel/assets/missing.js",
 	} {
 		response := harness.request(t, http.MethodGet, path, nil, nil)

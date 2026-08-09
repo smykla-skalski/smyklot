@@ -5,7 +5,9 @@ import type { Connect, Plugin } from 'vite';
 
 import type {
   AuditEntry,
+  AddGlobalInvitationInput,
   AddGlobalUserInput,
+  AddTargetInvitationInput,
   AddTargetUserInput,
   ConfigKey,
   ConfigPatch,
@@ -14,6 +16,7 @@ import type {
   DeliveryFailure,
   Page,
   PanelAccount,
+  PanelInvitation,
   PanelTarget,
   PanelUser,
   PanelRole,
@@ -24,6 +27,7 @@ import type {
   TargetSettingsInput,
   UpdateGlobalUserInput,
   UpdateTargetUserInput,
+  InvitationDays,
 } from '../src/lib/types';
 
 type DevHttpServer = HttpServer;
@@ -85,12 +89,18 @@ interface MockTarget {
   failures: DeliveryFailure[];
 }
 
+interface MockInvitation extends PanelInvitation {
+  token: string;
+}
+
 interface MockState {
   signedIn: boolean;
   forceFailure: boolean;
   targets: MockTarget[];
   users: PanelUser[];
   targetAccess: Map<string, Map<string, TargetUserAccess>>;
+  invitations: MockInvitation[];
+  invitationCounter: number;
   streams: Set<Duplex>;
 }
 
@@ -299,6 +309,7 @@ function seed(): MockState {
   recomputeTarget(personal);
 
   const users = userSeeds(iso);
+  const invitations = invitationSeeds(iso, users[0]?.account ?? VIEWER, organization.value);
   const organizationAccess = new Map<string, TargetUserAccess>();
   organizationAccess.set('1003', {
     role: 'admin',
@@ -323,8 +334,60 @@ function seed(): MockState {
     targets: [organization, personal],
     users,
     targetAccess: new Map([[organization.value.id, organizationAccess]]),
+    invitations,
+    invitationCounter: invitations.length + 1,
     streams: new Set(),
   };
+}
+
+function invitationSeeds(
+  iso: (offsetMs: number) => string,
+  creator: PanelAccount,
+  target: PanelTarget,
+): MockInvitation[] {
+  const invited = (id: string, login: string, displayName: string): PanelAccount => ({
+    id,
+    provider: VIEWER.provider,
+    subject_id: id,
+    login,
+    display_name: displayName,
+    avatar_url: null,
+  });
+  return [
+    {
+      id: 'mock-invitation-global-pending',
+      token: 'p'.repeat(43),
+      account: invited('1101', 'katherine', 'Katherine Johnson'),
+      role: 'editor',
+      status: 'pending',
+      expires_at: iso(7 * 86_400_000),
+      created_by: creator,
+      created_at: iso(-20 * 60_000),
+    },
+    {
+      id: 'mock-invitation-global-accepted',
+      token: 'a'.repeat(43),
+      account: invited('1102', 'dorothy', 'Dorothy Vaughan'),
+      role: 'viewer',
+      status: 'accepted',
+      expires_at: iso(6 * 86_400_000),
+      created_by: creator,
+      created_at: iso(-2 * 86_400_000),
+      responded_at: iso(-86_400_000),
+    },
+    {
+      id: 'mock-invitation-target-expired',
+      token: 'e'.repeat(43),
+      account: invited('1103', 'mary', 'Mary Jackson'),
+      target_id: target.id,
+      target_name: target.account.display_name,
+      role: 'viewer',
+      status: 'expired',
+      expires_at: iso(-86_400_000),
+      created_by: creator,
+      created_at: iso(-8 * 86_400_000),
+    },
+  ];
 }
 
 function capabilitiesFor(role: PanelRole) {
@@ -344,13 +407,20 @@ function targetUsers(state: MockState, targetId: string): PanelUser[] {
     .filter((user) => user.global_role !== 'none' || overrides.has(user.account.id))
     .map((user) => {
       const override = overrides.get(user.account.id);
-      if (override !== undefined)
-        return { ...structuredClone(user), target_access: structuredClone(override) };
+      const manageable = user.manageable && user.status === 'active';
+      if (override !== undefined) {
+        return {
+          ...structuredClone(user),
+          manageable,
+          target_access: structuredClone(override),
+        };
+      }
       const effectiveRole = user.status === 'active' ? user.global_role : 'none';
       const source: TargetUserAccess['source'] =
         user.status === 'active' ? (user.root ? 'root' : 'global') : 'denied';
       return {
         ...structuredClone(user),
+        manageable,
         target_access: {
           role: null,
           suspended: false,
@@ -683,7 +753,40 @@ async function handle(
     respond(res, 404, { error: { code: 'not_found', message: 'the mock panel is mounted at /' } });
     return;
   }
+  const publicInvitation = path.match(/^\/api\/v1\/invites\/(?<token>[^/]+)$/);
+  if (publicInvitation && method === 'GET') {
+    try {
+      const invitation = findInvitationByToken(state, publicInvitation.groups?.token ?? '');
+      respond(res, 200, publicInvitationValue(invitation));
+    } catch (error) {
+      if (error instanceof MockApiError) {
+        respond(res, error.status, { error: { code: error.code, message: error.message } });
+      } else {
+        respond(res, 500, { error: { code: 'internal', message: 'the mock request failed' } });
+      }
+    }
+    return;
+  }
   if (path === route('/auth/github/start') && method === 'GET') {
+    const token = parsed.searchParams.get('invite');
+    const action = parsed.searchParams.get('action');
+    if (token !== null && (action === 'accept' || action === 'decline')) {
+      const invitation = findInvitationByToken(state, token);
+      if (invitation.status !== 'pending') {
+        respond(res, 409, {
+          error: { code: 'invitation_used', message: 'invitation is not pending' },
+        });
+        return;
+      }
+      invitation.status = action === 'accept' ? 'accepted' : 'declined';
+      invitation.responded_at = new Date().toISOString();
+      state.signedIn = action === 'accept';
+      res.writeHead(302, {
+        Location: action === 'accept' ? '/' : `/invite/${encodeURIComponent(token)}?declined=1`,
+      });
+      res.end();
+      return;
+    }
     res.writeHead(302, { Location: route('/auth/github/callback') });
     res.end();
     return;
@@ -700,6 +803,10 @@ async function handle(
     state.streams.clear();
     state.signedIn = false;
     respond(res, 204, null);
+    return;
+  }
+  if (!path.startsWith('/api/') && !path.startsWith('/auth/')) {
+    next();
     return;
   }
   if (!state.signedIn) {
@@ -731,6 +838,21 @@ async function handle(
       respond(res, 200, {
         users: state.users.filter((user) => user.status !== 'removed'),
       });
+      return;
+    }
+    if (path === route('/api/v1/invitations') && method === 'GET') {
+      respond(res, 200, {
+        invitations: state.invitations
+          .filter((invitation) => invitation.target_id === undefined)
+          .map(publicInvitationValue),
+      });
+      return;
+    }
+    if (path === route('/api/v1/invitations') && method === 'POST') {
+      const input = await readBody<AddGlobalInvitationInput>(req);
+      const invitation = createMockInvitation(state, input, undefined);
+      broadcast(state, { type: 'resync' });
+      respond(res, 201, invitationValue(invitation));
       return;
     }
     if (path === route('/api/v1/users') && method === 'POST') {
@@ -770,6 +892,9 @@ async function handle(
     const scopedUser = path.match(
       /^\/api\/v1\/targets\/(?<target>[^/]+)\/users\/(?<account>[^/]+)$/,
     );
+    const scopedInvitations = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/invitations$/);
+    const reissueInvitation = path.match(/^\/api\/v1\/invitations\/(?<invitation>[^/]+)\/reissue$/);
+    const invitation = path.match(/^\/api\/v1\/invitations\/(?<invitation>[^/]+)$/);
     const repositories = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/repositories$/);
     const repository = path.match(
       /^\/api\/v1\/targets\/(?<target>[^/]+)\/repositories\/(?<repository>[^/]+)$/,
@@ -792,9 +917,52 @@ async function handle(
       user.updated_at = new Date().toISOString();
       if (input.status === 'removed') {
         for (const access of state.targetAccess.values()) access.delete(user.account.id);
+        for (const invitation of state.invitations) {
+          if (invitation.account.id === user.account.id && invitation.status === 'pending') {
+            invitation.status = 'revoked';
+            invitation.responded_at = new Date().toISOString();
+          }
+        }
       }
       broadcast(state, { type: 'resync' });
       respond(res, 200, user);
+      return;
+    }
+    if (scopedInvitations && method === 'GET') {
+      const target = findTarget(state, scopedInvitations.groups?.target ?? '');
+      respond(res, 200, {
+        invitations: state.invitations
+          .filter((entry) => entry.target_id === target.value.id)
+          .map(publicInvitationValue),
+      });
+      return;
+    }
+    if (scopedInvitations && method === 'POST') {
+      const target = findTarget(state, scopedInvitations.groups?.target ?? '');
+      const input = await readBody<AddTargetInvitationInput>(req);
+      const created = createMockInvitation(state, input, target.value);
+      broadcast(state, { type: 'invitation.changed', target_id: target.value.id });
+      respond(res, 201, invitationValue(created));
+      return;
+    }
+    if (reissueInvitation && method === 'POST') {
+      const current = findInvitation(state, reissueInvitation.groups?.invitation ?? '');
+      const input = await readBody<{ expires_in_days: InvitationDays }>(req);
+      current.token = mockInvitationToken(state.invitationCounter++);
+      current.status = 'pending';
+      current.expires_at = new Date(Date.now() + input.expires_in_days * 86_400_000).toISOString();
+      current.created_at = new Date().toISOString();
+      current.responded_at = undefined;
+      broadcastInvitation(state, current);
+      respond(res, 200, invitationValue(current));
+      return;
+    }
+    if (invitation && method === 'DELETE') {
+      const current = findInvitation(state, invitation.groups?.invitation ?? '');
+      current.status = 'revoked';
+      current.responded_at = new Date().toISOString();
+      broadcastInvitation(state, current);
+      respond(res, 200, publicInvitationValue(current));
       return;
     }
     if (scopedUsers && method === 'GET') {
@@ -974,6 +1142,89 @@ function findUser(state: MockState, encodedId: string): PanelUser {
   const user = state.users.find((entry) => entry.account.id === id);
   if (user === undefined) throw new MockApiError(404, 'not_found', 'panel user not found');
   return user;
+}
+
+function findInvitation(state: MockState, encodedId: string): MockInvitation {
+  const id = decodeURIComponent(encodedId);
+  const invitation = state.invitations.find((entry) => entry.id === id);
+  if (invitation === undefined) throw new MockApiError(404, 'not_found', 'invitation not found');
+  return invitation;
+}
+
+function findInvitationByToken(state: MockState, encodedToken: string): MockInvitation {
+  const token = decodeURIComponent(encodedToken);
+  const invitation = state.invitations.find((entry) => entry.token === token);
+  if (invitation === undefined) throw new MockApiError(404, 'not_found', 'invitation not found');
+  return invitation;
+}
+
+function createMockInvitation(
+  state: MockState,
+  input: AddGlobalInvitationInput | AddTargetInvitationInput,
+  target: PanelTarget | undefined,
+): MockInvitation {
+  const now = new Date();
+  const account = mockUser(input.login, 'none').account;
+  for (const invitation of state.invitations) {
+    if (
+      invitation.account.login.toLowerCase() === input.login.toLowerCase() &&
+      invitation.target_id === target?.id &&
+      invitation.status === 'pending'
+    ) {
+      invitation.status = 'revoked';
+      invitation.responded_at = now.toISOString();
+    }
+  }
+  const counter = state.invitationCounter++;
+  const invitation: MockInvitation = {
+    id: `mock-invitation-${counter}`,
+    token: mockInvitationToken(counter),
+    account,
+    ...(target === undefined
+      ? {}
+      : { target_id: target.id, target_name: target.account.display_name }),
+    role: input.role,
+    status: 'pending',
+    expires_at: new Date(now.getTime() + input.expires_in_days * 86_400_000).toISOString(),
+    created_by: VIEWER,
+    created_at: now.toISOString(),
+  };
+  state.invitations.unshift(invitation);
+  return invitation;
+}
+
+function mockInvitationToken(counter: number): string {
+  return `mock-${String(counter).padStart(38, '0')}`;
+}
+
+function publicInvitationValue(invitation: MockInvitation): PanelInvitation {
+  return structuredClone({
+    id: invitation.id,
+    account: invitation.account,
+    ...(invitation.target_id === undefined ? {} : { target_id: invitation.target_id }),
+    ...(invitation.target_name === undefined ? {} : { target_name: invitation.target_name }),
+    role: invitation.role,
+    status: invitation.status,
+    expires_at: invitation.expires_at,
+    created_by: invitation.created_by,
+    created_at: invitation.created_at,
+    ...(invitation.responded_at === undefined ? {} : { responded_at: invitation.responded_at }),
+  });
+}
+
+function invitationValue(invitation: MockInvitation): PanelInvitation {
+  return {
+    ...publicInvitationValue(invitation),
+    invite_url: `http://localhost:5175/invite/${encodeURIComponent(invitation.token)}`,
+  };
+}
+
+function broadcastInvitation(state: MockState, invitation: MockInvitation): void {
+  if (invitation.target_id === undefined) {
+    broadcast(state, { type: 'resync' });
+  } else {
+    broadcast(state, { type: 'invitation.changed', target_id: invitation.target_id });
+  }
 }
 
 function mockUser(login: string, role: PanelRole): PanelUser {

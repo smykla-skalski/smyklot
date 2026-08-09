@@ -126,6 +126,14 @@ WHERE account_id = ? AND revision = ?`,
 		return storage.PanelUser{}, storage.ErrConflict
 	}
 	if change.Status == storage.PanelUserRemoved {
+		if _, err := tx.ExecContext(ctx, `
+UPDATE user_invitations
+SET status = 'revoked', responded_at = ?
+WHERE account_id = ? AND status = 'pending'`,
+			formatTime(change.ChangedAt), change.AccountID,
+		); err != nil {
+			return storage.PanelUser{}, fmt.Errorf("revoke removed user invitations: %w", err)
+		}
 		if _, err := tx.ExecContext(ctx, "DELETE FROM target_roles WHERE account_id = ?", change.AccountID); err != nil {
 			return storage.PanelUser{}, fmt.Errorf("delete removed user target roles: %w", err)
 		}

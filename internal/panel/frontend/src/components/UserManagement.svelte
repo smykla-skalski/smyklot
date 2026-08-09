@@ -1,8 +1,12 @@
 <script lang="ts">
-  import { formatRelative, formatTimestamp } from '../lib/format';
+  import { formatDateTime, formatRelative, formatTimestamp } from '../lib/format';
   import type {
+    AddGlobalInvitationInput,
     AddGlobalUserInput,
+    AddTargetInvitationInput,
     AddTargetUserInput,
+    InvitationDays,
+    PanelInvitation,
     PanelRole,
     PanelUser,
     UpdateGlobalUserInput,
@@ -31,6 +35,12 @@
     fetchTargetUsers,
     addTargetUser,
     updateTargetUser,
+    fetchInvitations,
+    createInvitation,
+    fetchTargetInvitations,
+    createTargetInvitation,
+    reissueInvitation,
+    revokeInvitation,
   }: {
     scope: UserScope;
     targetId: string;
@@ -49,15 +59,32 @@
       accountId: string,
       input: UpdateTargetUserInput,
     ) => Promise<PanelUser>;
+    fetchInvitations: () => Promise<PanelInvitation[]>;
+    createInvitation: (input: AddGlobalInvitationInput) => Promise<PanelInvitation>;
+    fetchTargetInvitations: (targetId: string) => Promise<PanelInvitation[]>;
+    createTargetInvitation: (
+      targetId: string,
+      input: AddTargetInvitationInput,
+    ) => Promise<PanelInvitation>;
+    reissueInvitation: (
+      invitationId: string,
+      expiresInDays: InvitationDays,
+    ) => Promise<PanelInvitation>;
+    revokeInvitation: (invitationId: string) => Promise<PanelInvitation>;
   } = $props();
 
   let users = $state<PanelUser[]>([]);
+  let invitations = $state<PanelInvitation[]>([]);
   let loading = $state(true);
   let failure = $state<string | null>(null);
   let feedback = $state('');
   let query = $state('');
   let login = $state('');
   let addRole = $state<PanelRole>('viewer');
+  let accessMethod = $state<'add' | 'invite'>('add');
+  let expiresInDays = $state<InvitationDays>(7);
+  let generatedLink = $state('');
+  let invitationBusy = $state<string | null>(null);
   let adding = $state(false);
   let savingAccount = $state<string | null>(null);
   let pendingAccount = $state<string | null>(null);
@@ -93,10 +120,13 @@
     loading = true;
     failure = null;
     try {
-      const listed =
-        requestedScope === 'global' ? await fetchUsers() : await fetchTargetUsers(requestedTarget);
+      const [listed, listedInvitations] = await Promise.all([
+        requestedScope === 'global' ? fetchUsers() : fetchTargetUsers(requestedTarget),
+        requestedScope === 'global' ? fetchInvitations() : fetchTargetInvitations(requestedTarget),
+      ]);
       if (version !== loadVersion) return;
       users = listed;
+      invitations = listedInvitations;
     } catch (error) {
       if (version === loadVersion) failure = errorMessage(error);
     } finally {
@@ -111,15 +141,32 @@
     adding = true;
     failure = null;
     try {
-      if (scope === 'global') {
+      if (accessMethod === 'invite') {
+        const created =
+          scope === 'global'
+            ? await createInvitation({
+                login: normalizedLogin,
+                role: addRole as AddGlobalInvitationInput['role'],
+                target_id: targetId,
+                expires_in_days: expiresInDays,
+              })
+            : await createTargetInvitation(targetId, {
+                login: normalizedLogin,
+                role: addRole as AddTargetInvitationInput['role'],
+                expires_in_days: expiresInDays,
+              });
+        generatedLink = created.invite_url ?? '';
+        feedback = `Invited @${normalizedLogin}`;
+      } else if (scope === 'global') {
         await addUser({ login: normalizedLogin, role: addRole, target_id: targetId });
+        feedback = `Added @${normalizedLogin}`;
       } else {
         await addTargetUser(targetId, {
           login: normalizedLogin,
           role: addRole as GrantedTargetRole,
         });
+        feedback = `Added @${normalizedLogin}`;
       }
-      feedback = `Added @${normalizedLogin}`;
       login = '';
       await load();
     } catch (error) {
@@ -231,6 +278,45 @@
     }
   }
 
+  async function reissue(invitation: PanelInvitation): Promise<void> {
+    invitationBusy = invitation.id;
+    failure = null;
+    try {
+      const updated = await reissueInvitation(invitation.id, expiresInDays);
+      generatedLink = updated.invite_url ?? '';
+      feedback = `Reissued invitation for @${invitation.account.login}`;
+      await load();
+    } catch (error) {
+      failure = errorMessage(error);
+    } finally {
+      invitationBusy = null;
+    }
+  }
+
+  async function revoke(invitation: PanelInvitation): Promise<void> {
+    invitationBusy = invitation.id;
+    failure = null;
+    try {
+      await revokeInvitation(invitation.id);
+      feedback = `Revoked invitation for @${invitation.account.login}`;
+      await load();
+    } catch (error) {
+      failure = errorMessage(error);
+    } finally {
+      invitationBusy = null;
+    }
+  }
+
+  async function copyGeneratedLink(): Promise<void> {
+    if (generatedLink === '') return;
+    try {
+      await navigator.clipboard.writeText(generatedLink);
+      feedback = 'Copied invitation link';
+    } catch {
+      failure = 'The invitation link could not be copied';
+    }
+  }
+
   function requiredTargetAccess(user: PanelUser): NonNullable<PanelUser['target_access']> {
     const access = user.target_access;
     if (access === undefined) throw new Error('installation access is missing');
@@ -289,6 +375,13 @@
     return user.status === 'banned' || user.target_access?.suspended === true ? 'stop' : 'clear';
   }
 
+  function invitationTone(status: PanelInvitation['status']): ChipTone {
+    if (status === 'pending') return 'signal';
+    if (status === 'accepted') return 'clear';
+    if (status === 'expired') return 'warning';
+    return 'stop';
+  }
+
   function roleLabel(role: PanelRole): string {
     if (role === 'none') return 'No access';
     return role[0]?.toLocaleUpperCase() + role.slice(1);
@@ -320,7 +413,25 @@
       <span class="visually-hidden">Search users</span>
       <input class="text-input" type="search" placeholder="Search users" bind:value={query} />
     </label>
-    <form class="add-user" aria-label="Add GitHub user" onsubmit={submitAdd}>
+    <div class="access-method" role="group" aria-label="Access method">
+      <button
+        class="scope-button"
+        class:active={accessMethod === 'add'}
+        aria-pressed={accessMethod === 'add'}
+        onclick={() => (accessMethod = 'add')}>Add</button
+      >
+      <button
+        class="scope-button"
+        class:active={accessMethod === 'invite'}
+        aria-pressed={accessMethod === 'invite'}
+        onclick={() => (accessMethod = 'invite')}>Invite</button
+      >
+    </div>
+    <form
+      class="add-user"
+      aria-label={accessMethod === 'invite' ? 'Invite GitHub user' : 'Add GitHub user'}
+      onsubmit={submitAdd}
+    >
       <label>
         <span class="visually-hidden">GitHub login</span>
         <input
@@ -339,11 +450,37 @@
           {/each}
         </select>
       </label>
+      {#if accessMethod === 'invite'}
+        <label>
+          <span class="visually-hidden">Invitation expiry</span>
+          <select class="select-input" bind:value={expiresInDays} aria-label="Invitation expiry">
+            <option value={1}>1 day</option>
+            <option value={7}>7 days</option>
+            <option value={30}>30 days</option>
+          </select>
+        </label>
+      {/if}
       <button class="btn btn-signal" type="submit" disabled={adding || login.trim() === ''}>
-        {adding ? 'Adding…' : 'Add'}
+        {adding
+          ? accessMethod === 'invite'
+            ? 'Inviting…'
+            : 'Adding…'
+          : accessMethod === 'invite'
+            ? 'Invite'
+            : 'Add'}
       </button>
     </form>
   </div>
+
+  {#if generatedLink !== ''}
+    <div class="generated-link">
+      <label>
+        <span>Invitation link</span>
+        <input class="text-input mono" readonly value={generatedLink} />
+      </label>
+      <button class="btn copy-button" onclick={() => void copyGeneratedLink()}>Copy</button>
+    </div>
+  {/if}
 
   <div class="stable-feedback" aria-live="polite">{feedback}</div>
   {#if failure !== null}
@@ -484,6 +621,73 @@
       </table>
     </div>
   {/if}
+
+  <section class="invitations" aria-labelledby="invitations-heading">
+    <div class="section-heading">
+      <h3 id="invitations-heading">Invitations</h3>
+      <span class="dim">{invitations.length}</span>
+    </div>
+    {#if loading}
+      <p class="dim">Reading invitations…</p>
+    {:else if invitations.length === 0}
+      <p class="dim">No invitations in this scope</p>
+    {:else}
+      <div class="user-table-wrap" role="region" aria-label="Panel invitations">
+        <table class="user-table invitation-table">
+          <thead>
+            <tr>
+              <th>User</th>
+              <th>Role</th>
+              <th>Status</th>
+              <th>Expires</th>
+              <th><span class="visually-hidden">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each invitations as invitation (invitation.id)}
+              <tr>
+                <th scope="row">
+                  <span class="user-identity">
+                    <Avatar account={invitation.account} size={32} />
+                    <span>
+                      <strong>{invitation.account.display_name}</strong>
+                      <span class="user-login">@{invitation.account.login}</span>
+                    </span>
+                  </span>
+                </th>
+                <td><Chip tone="signal">{roleLabel(invitation.role)}</Chip></td>
+                <td
+                  ><Chip tone={invitationTone(invitation.status)} dot>{invitation.status}</Chip></td
+                >
+                <td class="last-login">
+                  <time
+                    datetime={invitation.expires_at}
+                    title={formatTimestamp(invitation.expires_at)}
+                  >
+                    {formatDateTime(invitation.expires_at)}
+                  </time>
+                </td>
+                <td class="row-actions">
+                  {#if invitation.status === 'pending' || invitation.status === 'expired'}
+                    <button
+                      class="btn btn-row"
+                      disabled={invitationBusy === invitation.id}
+                      onclick={() => void reissue(invitation)}>Reissue</button
+                    >
+                    <button
+                      class="btn btn-row btn-stop"
+                      disabled={invitationBusy === invitation.id}
+                      onclick={() => void revoke(invitation)}>Revoke</button
+                    >
+                  {/if}
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    {/if}
+  </section>
 </Plate>
 
 <style>
@@ -510,7 +714,8 @@
   }
 
   .management-toolbar,
-  .add-user {
+  .add-user,
+  .access-method {
     align-items: center;
     display: flex;
     gap: 0.5rem;
@@ -520,6 +725,10 @@
     flex-wrap: wrap;
     justify-content: space-between;
     margin-bottom: 0.5rem;
+  }
+
+  .access-method {
+    border-bottom: 1px solid var(--rule);
   }
 
   .search-field {
@@ -538,6 +747,60 @@
   .stable-feedback {
     color: var(--clear);
     min-height: 1.4rem;
+  }
+
+  .generated-link {
+    align-items: end;
+    background: var(--well);
+    border: 1px solid var(--rule);
+    border-radius: var(--r-well);
+    display: grid;
+    gap: 0.5rem;
+    grid-template-columns: minmax(0, 1fr) auto;
+    margin: 0.25rem 0 0.75rem;
+    padding: 0.75rem;
+  }
+
+  .generated-link label {
+    display: grid;
+    gap: 0.35rem;
+  }
+
+  .generated-link label > span,
+  .section-heading h3 {
+    color: var(--dim);
+    font: 600 0.6875rem/1.2 var(--mono);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .generated-link .text-input {
+    width: 100%;
+  }
+
+  .copy-button {
+    min-width: 4.75rem;
+  }
+
+  .invitations {
+    border-top: 1px solid var(--rule);
+    margin-top: 1rem;
+    padding-top: 1rem;
+  }
+
+  .section-heading {
+    align-items: baseline;
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .section-heading h3 {
+    margin: 0;
+  }
+
+  .invitation-table {
+    min-width: 44rem;
   }
 
   .form-error {
@@ -640,7 +903,8 @@
 
   @media (max-width: 48rem) {
     .management-toolbar,
-    .add-user {
+    .add-user,
+    .access-method {
       align-items: stretch;
     }
 
@@ -665,6 +929,11 @@
 
     .add-user label:first-child {
       flex-basis: 100%;
+    }
+
+    .generated-link {
+      align-items: stretch;
+      grid-template-columns: minmax(0, 1fr);
     }
   }
 </style>

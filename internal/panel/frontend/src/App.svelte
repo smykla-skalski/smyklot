@@ -417,6 +417,12 @@
               fetchTargetUsers={api.fetchTargetUsers}
               addTargetUser={api.addTargetUser}
               updateTargetUser={api.updateTargetUser}
+              fetchInvitations={api.fetchInvitations}
+              createInvitation={api.createInvitation}
+              fetchTargetInvitations={api.fetchTargetInvitations}
+              createTargetInvitation={api.createTargetInvitation}
+              reissueInvitation={api.reissueInvitation}
+              revokeInvitation={api.revokeInvitation}
             />
           {/key}
         </div>

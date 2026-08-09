@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createPanelRouter,
   panelRoutePath,
+  parseInvitationToken,
   parsePanelRoute,
   resolvePanelRoute,
   type PanelRoute,
@@ -73,6 +74,13 @@ describe('panel routes', () => {
     expect(parsePanelRoute('', '/@smykla-skalski/settings')).toBeNull();
     expect(parsePanelRoute('/panel', '/i/smykla-skalski/settings')).toBeNull();
     expect(parsePanelRoute('/panel', '/panel/too/many/parts')).toBeNull();
+  });
+
+  it('recognizes only exact invitation review routes', () => {
+    expect(parseInvitationToken('', '/invite/single-use-token')).toBe('single-use-token');
+    expect(parseInvitationToken('/panel', '/panel/invite/token%5F1')).toBe('token_1');
+    expect(parseInvitationToken('/panel', '/invite/token')).toBeNull();
+    expect(parseInvitationToken('', '/invite/token/more')).toBeNull();
   });
 
   it('encodes account slugs when building links', () => {

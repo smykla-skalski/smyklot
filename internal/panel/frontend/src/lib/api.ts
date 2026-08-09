@@ -5,12 +5,15 @@ import type {
   AuditEntry,
   AuditHistoryRequest,
   AddGlobalUserInput,
+  AddGlobalInvitationInput,
+  AddTargetInvitationInput,
   AddTargetUserInput,
   DeliveryFailure,
   FailureHistoryRequest,
   Page,
   PanelErrorBody,
   PanelTarget,
+  PanelInvitation,
   PanelUser,
   PanelViewer,
   RepositoryDetail,
@@ -18,6 +21,8 @@ import type {
   RepositorySettingsInput,
   RepositorySummary,
   TargetSettingsInput,
+  InvitationDays,
+  InvitationSignIn,
   UpdateGlobalUserInput,
   UpdateTargetUserInput,
 } from './types';
@@ -46,6 +51,16 @@ export interface PanelApi {
     accountId: string,
     input: UpdateTargetUserInput,
   ): Promise<PanelUser>;
+  fetchInvitations(): Promise<PanelInvitation[]>;
+  createInvitation(input: AddGlobalInvitationInput): Promise<PanelInvitation>;
+  fetchTargetInvitations(targetId: string): Promise<PanelInvitation[]>;
+  createTargetInvitation(
+    targetId: string,
+    input: AddTargetInvitationInput,
+  ): Promise<PanelInvitation>;
+  fetchInvitation(token: string): Promise<PanelInvitation>;
+  reissueInvitation(invitationId: string, expiresInDays: InvitationDays): Promise<PanelInvitation>;
+  revokeInvitation(invitationId: string): Promise<PanelInvitation>;
   updateTargetSettings(targetId: string, input: TargetSettingsInput): Promise<PanelTarget>;
   fetchRepositories(
     targetId: string,
@@ -60,7 +75,7 @@ export interface PanelApi {
   fetchAudit(targetId: string, request: AuditHistoryRequest): Promise<Page<AuditEntry>>;
   fetchFailures(targetId: string, request: FailureHistoryRequest): Promise<Page<DeliveryFailure>>;
   signOut(): Promise<void>;
-  signInUrl(): string;
+  signInUrl(invitation?: InvitationSignIn): string;
   openStream(handlers: PanelStreamHandlers): () => void;
 }
 
@@ -163,6 +178,48 @@ export function createPanelApi(
       );
     },
 
+    async fetchInvitations(): Promise<PanelInvitation[]> {
+      const body = await jsonRequest<{ invitations: PanelInvitation[] }>('/api/v1/invitations');
+      return body.invitations;
+    },
+
+    createInvitation(input: AddGlobalInvitationInput): Promise<PanelInvitation> {
+      return postJson('/api/v1/invitations', input);
+    },
+
+    async fetchTargetInvitations(targetId: string): Promise<PanelInvitation[]> {
+      const body = await jsonRequest<{ invitations: PanelInvitation[] }>(
+        `/api/v1/targets/${pathSegment(targetId)}/invitations`,
+      );
+      return body.invitations;
+    },
+
+    createTargetInvitation(
+      targetId: string,
+      input: AddTargetInvitationInput,
+    ): Promise<PanelInvitation> {
+      return postJson(`/api/v1/targets/${pathSegment(targetId)}/invitations`, input);
+    },
+
+    fetchInvitation(token: string): Promise<PanelInvitation> {
+      return jsonRequest(`/api/v1/invites/${pathSegment(token)}`);
+    },
+
+    reissueInvitation(
+      invitationId: string,
+      expiresInDays: InvitationDays,
+    ): Promise<PanelInvitation> {
+      return postJson(`/api/v1/invitations/${pathSegment(invitationId)}/reissue`, {
+        expires_in_days: expiresInDays,
+      });
+    },
+
+    revokeInvitation(invitationId: string): Promise<PanelInvitation> {
+      return jsonRequest(`/api/v1/invitations/${pathSegment(invitationId)}`, {
+        method: 'DELETE',
+      });
+    },
+
     updateTargetSettings(targetId: string, input: TargetSettingsInput): Promise<PanelTarget> {
       return putJson(`/api/v1/targets/${pathSegment(targetId)}/settings`, input);
     },
@@ -219,8 +276,14 @@ export function createPanelApi(
       await request('/api/v1/sign-out', { method: 'POST' });
     },
 
-    signInUrl(): string {
-      return panelUrl(base, '/auth/github/start');
+    signInUrl(invitation?: InvitationSignIn): string {
+      const path = panelUrl(base, '/auth/github/start');
+      if (invitation === undefined) return path;
+      const query = new URLSearchParams({
+        invite: invitation.token,
+        action: invitation.action,
+      });
+      return `${path}?${query.toString()}`;
     },
 
     openStream(handlers: PanelStreamHandlers): () => void {

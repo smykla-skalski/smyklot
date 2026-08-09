@@ -14,6 +14,9 @@ var (
 
 	// ErrRevoked means an authentication record was explicitly revoked.
 	ErrRevoked = errors.New("storage record revoked")
+
+	// ErrIdentityMismatch means a named invitation was opened by another identity.
+	ErrIdentityMismatch = errors.New("storage identity mismatch")
 )
 
 // SessionRevokedError preserves the safe reason shown to the affected user.

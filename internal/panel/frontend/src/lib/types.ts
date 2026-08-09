@@ -112,6 +112,41 @@ export interface UpdateTargetUserInput {
   expected_revision: number;
 }
 
+export type InvitationStatus = 'pending' | 'accepted' | 'declined' | 'revoked' | 'expired';
+export type InvitationDays = 1 | 7 | 30;
+
+export interface PanelInvitation {
+  id: string;
+  account: PanelAccount;
+  target_id?: string;
+  target_name?: string;
+  role: Exclude<PanelRole, 'none'>;
+  status: InvitationStatus;
+  expires_at: string;
+  created_by: PanelAccount;
+  created_at: string;
+  responded_at?: string;
+  invite_url?: string;
+}
+
+export interface AddGlobalInvitationInput {
+  login: string;
+  role: Exclude<PanelRole, 'none'>;
+  target_id: string;
+  expires_in_days: InvitationDays;
+}
+
+export interface AddTargetInvitationInput {
+  login: string;
+  role: Exclude<PanelRole, 'none' | 'owner'>;
+  expires_in_days: InvitationDays;
+}
+
+export interface InvitationSignIn {
+  token: string;
+  action: 'accept' | 'decline';
+}
+
 export interface RepositoryCounts {
   total: number;
   enabled: number;

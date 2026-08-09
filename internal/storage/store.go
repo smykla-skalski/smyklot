@@ -33,6 +33,17 @@ type AccessStore interface {
 	ListTargets(context.Context, string) ([]Target, error)
 }
 
+// InvitationStore owns identity-locked panel invitations and acceptance.
+type InvitationStore interface {
+	ListInvitations(context.Context, *string, time.Time) ([]Invitation, error)
+	GetInvitation(context.Context, string, time.Time) (Invitation, error)
+	GetInvitationByToken(context.Context, string, time.Time) (Invitation, error)
+	CreateInvitation(context.Context, InvitationCreate) (Invitation, error)
+	ReissueInvitation(context.Context, InvitationReissue) (Invitation, error)
+	RevokeInvitation(context.Context, InvitationRevoke) (Invitation, error)
+	RespondToInvitation(context.Context, InvitationResponse) (Invitation, error)
+}
+
 // CatalogStore persists GitHub-owned installation and repository snapshots.
 type CatalogStore interface {
 	ReconcileCatalog(context.Context, []InstallationSnapshot) error
@@ -71,6 +82,7 @@ type AuditReader interface {
 type Store interface {
 	AuthStore
 	AccessStore
+	InvitationStore
 	CatalogStore
 	ConfigStore
 	DeliveryStore

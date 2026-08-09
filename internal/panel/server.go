@@ -102,9 +102,16 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET "+base+"/api/v1/users", s.getUsers)
 	mux.HandleFunc("POST "+base+"/api/v1/users", s.postUser)
 	mux.HandleFunc("PUT "+base+"/api/v1/users/{account}", s.putUser)
+	mux.HandleFunc("GET "+base+"/api/v1/invitations", s.getInvitations)
+	mux.HandleFunc("POST "+base+"/api/v1/invitations", s.postInvitation)
+	mux.HandleFunc("GET "+base+"/api/v1/invites/{token}", s.reviewInvitation)
+	mux.HandleFunc("POST "+base+"/api/v1/invitations/{invitation}/reissue", s.reissueInvitation)
+	mux.HandleFunc("DELETE "+base+"/api/v1/invitations/{invitation}", s.deleteInvitation)
 	mux.HandleFunc("PUT "+base+"/api/v1/targets/{target}/settings", s.putTargetSettings)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/users", s.getTargetUsers)
 	mux.HandleFunc("POST "+base+"/api/v1/targets/{target}/users", s.postTargetUser)
+	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/invitations", s.getTargetInvitations)
+	mux.HandleFunc("POST "+base+"/api/v1/targets/{target}/invitations", s.postTargetInvitation)
 	mux.HandleFunc(
 		"PUT "+base+"/api/v1/targets/{target}/users/{account}",
 		s.putTargetUser,

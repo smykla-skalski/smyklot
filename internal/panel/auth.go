@@ -20,12 +20,47 @@ import (
 const (
 	sessionCookieName = "smyklot_panel_session"
 	stateCookieName   = "smyklot_panel_oauth_state"
+	inviteCookieName  = "smyklot_panel_invitation"
 	tokenBytes        = 32
 	oauthStateVersion = byte(1)
 	oauthStateContext = "smyklot-panel-oauth-state"
+	inviteContext     = "smyklot-panel-invitation"
+)
+
+type invitationAction string
+
+const (
+	invitationAccept  invitationAction = "accept"
+	invitationDecline invitationAction = "decline"
 )
 
 func (s *Server) startSignIn(w http.ResponseWriter, r *http.Request) {
+	s.clearCookie(w, inviteCookieName)
+	if token := r.URL.Query().Get("invite"); token != "" {
+		action := invitationAction(r.URL.Query().Get("action"))
+		if !validInvitationToken(token) ||
+			(action != invitationAccept && action != invitationDecline) {
+			s.writeError(w, http.StatusBadRequest, "invalid_invitation", "invitation action is invalid")
+			return
+		}
+		invitation, inviteErr := s.store.GetInvitationByToken(
+			r.Context(), tokenHash(token), s.now().UTC(),
+		)
+		if inviteErr != nil || invitation.Status != storage.InvitationPending {
+			status, code, message := invitationErrorStatus(inviteErr)
+			if inviteErr == nil {
+				status, code, message = http.StatusConflict, "invitation_used", "this invitation is no longer pending"
+			}
+			s.writeError(w, status, code, message)
+			return
+		}
+		s.setCookie(
+			w,
+			inviteCookieName,
+			signedInvitationIntent(action, token, s.cfg.ClientSecret),
+			s.cfg.StateTTL,
+		)
+	}
 	state, err := newOAuthState(s.random, s.now().UTC(), s.cfg.ClientSecret)
 	if err != nil {
 		s.writeInternal(w, err)
@@ -37,6 +72,7 @@ func (s *Server) startSignIn(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) finishSignIn(w http.ResponseWriter, r *http.Request) {
 	s.clearCookie(w, stateCookieName)
+	s.clearCookie(w, inviteCookieName)
 	query := r.URL.Query()
 	if query.Get("error") != "" {
 		s.writeError(w, http.StatusUnauthorized, "sign_in_failed", "GitHub sign-in was not completed")
@@ -66,7 +102,14 @@ func (s *Server) finishSignIn(w http.ResponseWriter, r *http.Request) {
 		s.writeInternal(w, err)
 		return
 	}
-	authorized, err := s.authorizeAccount(r, account)
+	invited, handled := s.respondToInvitation(w, r, account)
+	if handled {
+		return
+	}
+	authorized := invited
+	if !authorized {
+		authorized, err = s.authorizeAccount(r, account)
+	}
 	if err != nil {
 		s.writeInternal(w, err)
 		return
@@ -87,6 +130,42 @@ func (s *Server) finishSignIn(w http.ResponseWriter, r *http.Request) {
 	}
 	s.setCookie(w, sessionCookieName, session, s.cfg.SessionTTL)
 	http.Redirect(w, r, s.cfg.landingPath(), http.StatusFound)
+}
+
+// respondToInvitation applies the browser-bound invitation intent, when one is
+// present. handled means the helper already wrote a terminal response.
+func (s *Server) respondToInvitation(
+	w http.ResponseWriter,
+	r *http.Request,
+	account storage.Account,
+) (invited, handled bool) {
+	intent, hasInvitation, err := readInvitationIntent(r, s.cfg.ClientSecret)
+	if err != nil {
+		s.writeError(w, http.StatusUnauthorized, "invalid_invitation", "invitation response belongs to another browser")
+
+		return false, true
+	}
+	if !hasInvitation {
+		return false, false
+	}
+	invitation, err := s.store.RespondToInvitation(r.Context(), storage.InvitationResponse{
+		TokenHash: tokenHash(intent.token), AccountID: account.ID,
+		Accept: intent.action == invitationAccept, At: s.now().UTC(),
+	})
+	if err != nil {
+		status, code, message := invitationErrorStatus(err)
+		s.writeError(w, status, code, message)
+
+		return false, true
+	}
+	s.announceInvitation(invitation)
+	if intent.action == invitationDecline {
+		http.Redirect(w, r, s.invitationURL(intent.token)+"?declined=1", http.StatusFound)
+
+		return false, true
+	}
+
+	return true, false
 }
 
 func (s *Server) authorizeAccount(r *http.Request, account storage.Account) (bool, error) {
@@ -225,4 +304,45 @@ func tokenHash(token string) string {
 	hash := sha256.Sum256([]byte(token))
 
 	return hex.EncodeToString(hash[:])
+}
+
+type invitationIntent struct {
+	action invitationAction
+	token  string
+}
+
+func signedInvitationIntent(action invitationAction, token, secret string) string {
+	payload := string(action) + "." + token
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write([]byte(inviteContext))
+	_, _ = mac.Write([]byte{0})
+	_, _ = mac.Write([]byte(payload))
+
+	return payload + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+
+func readInvitationIntent(r *http.Request, secret string) (invitationIntent, bool, error) {
+	cookie, err := r.Cookie(inviteCookieName)
+	if errors.Is(err, http.ErrNoCookie) {
+		return invitationIntent{}, false, nil
+	}
+	if err != nil {
+		return invitationIntent{}, false, err
+	}
+	parts := strings.Split(cookie.Value, ".")
+	if len(parts) != 3 {
+		return invitationIntent{}, false, errors.New("invalid invitation intent")
+	}
+	action := invitationAction(parts[0])
+	token := parts[1]
+	if !validInvitationToken(token) ||
+		(action != invitationAccept && action != invitationDecline) {
+		return invitationIntent{}, false, errors.New("invalid invitation intent")
+	}
+	expected := signedInvitationIntent(action, token, secret)
+	if subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(expected)) != 1 {
+		return invitationIntent{}, false, errors.New("invalid invitation intent")
+	}
+
+	return invitationIntent{action: action, token: token}, true, nil
 }

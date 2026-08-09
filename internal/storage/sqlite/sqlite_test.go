@@ -482,6 +482,77 @@ var _ = Describe("SQLite store [Unit]", func() {
 		Expect(managedTarget.Access.Role).To(Equal(storage.PanelRoleAdmin))
 	})
 
+	It("creates, reissues, expires, and atomically responds to named invitations", func() {
+		owner, target := seedInstallation(ctx, store, now)
+		Expect(store.UpsertAccount(ctx, owner)).To(Succeed())
+		claimed, err := store.ClaimOwner(ctx, owner.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(claimed).To(BeTrue())
+
+		invitee := owner
+		invitee.ID = "github:user:invitee"
+		invitee.SubjectID = "invitee"
+		invitee.Login = "invitee"
+		Expect(store.UpsertAccount(ctx, invitee)).To(Succeed())
+
+		invitation, err := store.CreateInvitation(ctx, storage.InvitationCreate{
+			ID: "invitation-1", TokenHash: "token-1", AccountID: invitee.ID,
+			Role: storage.PanelRoleViewer, ExpiresAt: now.Add(7 * 24 * time.Hour),
+			CreatedByAccount: owner.ID, CreatedAt: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(invitation.Status).To(Equal(storage.InvitationPending))
+
+		invitation, err = store.ReissueInvitation(ctx, storage.InvitationReissue{
+			ID: invitation.ID, TokenHash: "token-2", ExpiresAt: now.Add(24 * time.Hour),
+			CreatedByAccount: owner.ID, CreatedAt: now.Add(time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		_, err = store.GetInvitationByToken(ctx, "token-1", now)
+		Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
+
+		_, err = store.RespondToInvitation(ctx, storage.InvitationResponse{
+			TokenHash: "token-2", AccountID: owner.ID, Accept: true, At: now.Add(2 * time.Minute),
+		})
+		Expect(errors.Is(err, storage.ErrIdentityMismatch)).To(BeTrue())
+		accepted, err := store.RespondToInvitation(ctx, storage.InvitationResponse{
+			TokenHash: "token-2", AccountID: invitee.ID, Accept: true, At: now.Add(2 * time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(accepted.Status).To(Equal(storage.InvitationAccepted))
+		user, err := store.GetPanelUser(ctx, invitee.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(user.GlobalRole).To(Equal(storage.PanelRoleViewer))
+		_, err = store.RespondToInvitation(ctx, storage.InvitationResponse{
+			TokenHash: "token-2", AccountID: invitee.ID, Accept: true, At: now.Add(3 * time.Minute),
+		})
+		Expect(errors.Is(err, storage.ErrConflict)).To(BeTrue())
+
+		targetInvitation, err := store.CreateInvitation(ctx, storage.InvitationCreate{
+			ID: "invitation-2", TokenHash: "token-3", AccountID: invitee.ID,
+			TargetID: &target.TargetID, Role: storage.PanelRoleEditor,
+			ExpiresAt: now.Add(time.Hour), CreatedByAccount: owner.ID, CreatedAt: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		_, err = store.GetInvitationByToken(ctx, "token-3", now.Add(2*time.Hour))
+		Expect(errors.Is(err, storage.ErrExpired)).To(BeTrue())
+		targetInvitation, err = store.ReissueInvitation(ctx, storage.InvitationReissue{
+			ID: targetInvitation.ID, TokenHash: "token-4", ExpiresAt: now.Add(24 * time.Hour),
+			CreatedByAccount: owner.ID, CreatedAt: now.Add(3 * time.Hour),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		declined, err := store.RespondToInvitation(ctx, storage.InvitationResponse{
+			TokenHash: "token-4", AccountID: invitee.ID, Accept: false, At: now.Add(4 * time.Hour),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(declined.Status).To(Equal(storage.InvitationDeclined))
+
+		listed, err := store.ListInvitations(ctx, &target.TargetID, now.Add(4*time.Hour))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(listed).To(HaveLen(1))
+		Expect(listed[0].Status).To(Equal(storage.InvitationDeclined))
+	})
+
 	It("discovers a recreated repository that reuses an unavailable repository name", func() {
 		account := testAccount(now)
 		initial := testInstallation(account, now, []storage.RepositorySnapshot{

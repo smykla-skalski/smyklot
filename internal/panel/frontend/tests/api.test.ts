@@ -276,6 +276,57 @@ describe('user management', () => {
     ]);
     expect(JSON.parse(String(stub.calls[5]?.init?.body))).toMatchObject({ role: null });
   });
+
+  it('creates, reviews, reissues, and revokes identity-locked invitations', async () => {
+    const invitation = {
+      id: 'invite.1',
+      account: VIEWER.account,
+      role: 'viewer' as const,
+      status: 'pending' as const,
+      expires_at: '2026-08-15T10:00:00Z',
+      created_by: VIEWER.account,
+      created_at: '2026-08-08T10:00:00Z',
+      invite_url: 'https://example.test/panel/invite/token',
+    };
+    const stub = stubFetch([
+      jsonResponse(200, { invitations: [invitation] }),
+      jsonResponse(201, invitation),
+      jsonResponse(200, { invitations: [invitation] }),
+      jsonResponse(201, invitation),
+      jsonResponse(200, invitation),
+      jsonResponse(200, invitation),
+      jsonResponse(200, invitation),
+    ]);
+    const api = createPanelApi('/panel', stub.fetch);
+
+    await api.fetchInvitations();
+    await api.createInvitation({
+      login: 'ada',
+      role: 'viewer',
+      target_id: 'target.1',
+      expires_in_days: 7,
+    });
+    await api.fetchTargetInvitations('target.1');
+    await api.createTargetInvitation('target.1', {
+      login: 'ada',
+      role: 'viewer',
+      expires_in_days: 1,
+    });
+    await api.fetchInvitation('token/value');
+    await api.reissueInvitation('invite.1', 30);
+    await api.revokeInvitation('invite.1');
+
+    expect(stub.calls.map((call) => call.url)).toEqual([
+      '/panel/api/v1/invitations',
+      '/panel/api/v1/invitations',
+      '/panel/api/v1/targets/target%2E1/invitations',
+      '/panel/api/v1/targets/target%2E1/invitations',
+      '/panel/api/v1/invites/token%2Fvalue',
+      '/panel/api/v1/invitations/invite%2E1/reissue',
+      '/panel/api/v1/invitations/invite%2E1',
+    ]);
+    expect(stub.calls[6]?.init?.method).toBe('DELETE');
+  });
 });
 
 describe('history and authentication routes', () => {
@@ -309,6 +360,9 @@ describe('history and authentication routes', () => {
     const api = createPanelApi('/panel', stub.fetch);
 
     expect(api.signInUrl()).toBe('/panel/auth/github/start');
+    expect(api.signInUrl({ token: 'one token', action: 'accept' })).toBe(
+      '/panel/auth/github/start?invite=one+token&action=accept',
+    );
     await api.signOut();
     expect(stub.calls[0]).toMatchObject({
       url: '/panel/api/v1/sign-out',

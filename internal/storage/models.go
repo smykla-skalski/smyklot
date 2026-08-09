@@ -71,6 +71,68 @@ type PanelUserChange struct {
 	ChangedAt        time.Time
 }
 
+// InvitationStatus is the lifecycle of one single-use access invitation.
+type InvitationStatus string
+
+const (
+	InvitationPending  InvitationStatus = "pending"
+	InvitationAccepted InvitationStatus = "accepted"
+	InvitationDeclined InvitationStatus = "declined"
+	InvitationRevoked  InvitationStatus = "revoked"
+	InvitationExpired  InvitationStatus = "expired"
+)
+
+// Invitation is an identity-locked offer of global or installation access.
+type Invitation struct {
+	ID          string
+	Account     Account
+	TargetID    *string
+	TargetName  *string
+	Role        PanelRole
+	Status      InvitationStatus
+	ExpiresAt   time.Time
+	CreatedBy   Account
+	CreatedAt   time.Time
+	RespondedAt *time.Time
+}
+
+// InvitationCreate creates a new token and invalidates earlier pending offers
+// for the same identity and scope.
+type InvitationCreate struct {
+	ID               string
+	TokenHash        string
+	AccountID        string
+	TargetID         *string
+	Role             PanelRole
+	ExpiresAt        time.Time
+	CreatedByAccount string
+	CreatedAt        time.Time
+}
+
+// InvitationReissue replaces a pending or expired invitation token.
+type InvitationReissue struct {
+	ID               string
+	TokenHash        string
+	ExpiresAt        time.Time
+	CreatedByAccount string
+	CreatedAt        time.Time
+}
+
+// InvitationRevoke invalidates an invitation without deleting its audit trail.
+type InvitationRevoke struct {
+	ID             string
+	ActorAccountID string
+	RevokedAt      time.Time
+}
+
+// InvitationResponse accepts or declines an invitation as its named identity.
+type InvitationResponse struct {
+	TokenHash string
+	AccountID string
+	Accept    bool
+	At        time.Time
+}
+
 // TargetPanelUser combines global identity with one installation policy.
 type TargetPanelUser struct {
 	User     PanelUser
