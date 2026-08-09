@@ -16,6 +16,8 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	storagesqlite "github.com/smykla-skalski/smyklot/internal/storage/sqlite"
 	"github.com/smykla-skalski/smyklot/pkg/config"
@@ -217,6 +219,81 @@ func TestPanelSignInAndSettings(t *testing.T) {
 	)
 	if audit.Code != http.StatusOK || !strings.Contains(audit.Body.String(), "target.settings.updated") {
 		t.Fatalf("audit response = %d %s", audit.Code, audit.Body.String())
+	}
+}
+
+func TestPanelWebSocketEvents(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+	session := harness.signIn(t)
+	endpoint := httptest.NewServer(harness.handler)
+	t.Cleanup(endpoint.Close)
+	streamURL := "ws" + strings.TrimPrefix(endpoint.URL, "http") + "/panel/api/v1/events"
+
+	unauthenticated, response, err := websocket.Dial(t.Context(), streamURL, nil)
+	if unauthenticated != nil {
+		_ = unauthenticated.CloseNow()
+	}
+	if err == nil || response == nil || response.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated WebSocket = response %#v, error %v", response, err)
+	}
+
+	headers := http.Header{}
+	headers.Set("Cookie", session.String())
+	headers.Set("Origin", "https://untrusted.example")
+	untrusted, response, err := websocket.Dial(t.Context(), streamURL, &websocket.DialOptions{
+		HTTPHeader: headers,
+	})
+	if untrusted != nil {
+		_ = untrusted.CloseNow()
+	}
+	if err == nil || response == nil || response.StatusCode != http.StatusForbidden {
+		t.Fatalf("cross-origin WebSocket = response %#v, error %v", response, err)
+	}
+
+	headers.Set("Origin", "https://smyklot.example")
+	connection, response, err := websocket.Dial(t.Context(), streamURL, &websocket.DialOptions{
+		HTTPHeader: headers,
+	})
+	if err != nil {
+		t.Fatalf("dial WebSocket: response %#v, error %v", response, err)
+	}
+	t.Cleanup(func() { _ = connection.CloseNow() })
+
+	var ready panelEvent
+	if err := wsjson.Read(t.Context(), connection, &ready); err != nil {
+		t.Fatal(err)
+	}
+	if ready.Version != panelEventVersion || ready.Type != "ready" {
+		t.Fatalf("ready event = %#v", ready)
+	}
+
+	harness.server.Announce("github:installation:10", "repository-20")
+	var changed panelEvent
+	if err := wsjson.Read(t.Context(), connection, &changed); err != nil {
+		t.Fatal(err)
+	}
+	if changed.Type != "repository.changed" ||
+		changed.TargetID != "github:installation:10" ||
+		changed.RepositoryID != "repository-20" {
+		t.Fatalf("changed event = %#v", changed)
+	}
+
+	signedOut := harness.request(
+		t,
+		http.MethodPost,
+		"/panel/api/v1/sign-out",
+		nil,
+		session,
+	)
+	if signedOut.Code != http.StatusNoContent {
+		t.Fatalf("sign out = %d %s", signedOut.Code, signedOut.Body.String())
+	}
+	var revoked panelEvent
+	if err := wsjson.Read(t.Context(), connection, &revoked); err != nil {
+		t.Fatal(err)
+	}
+	if revoked.Type != "session.revoked" || revoked.Code != "signed_out" {
+		t.Fatalf("revoked event = %#v", revoked)
 	}
 }
 

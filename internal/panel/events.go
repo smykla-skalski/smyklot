@@ -1,86 +1,216 @@
 package panel
 
 import (
-	"encoding/json"
-	"fmt"
+	"context"
+	"errors"
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
+	"github.com/smykla-skalski/smyklot/internal/storage"
+)
+
+const (
+	panelEventVersion        = 1
+	panelEventQueueSize      = 16
+	panelEventWriteTimeout   = 5 * time.Second
+	panelEventHeartbeat      = 25 * time.Second
+	panelSessionRevokedCode  = websocket.StatusCode(4001)
+	panelEventSessionRevoked = "session.revoked"
 )
 
 type panelEvent struct {
+	Version      int    `json:"version"`
 	Type         string `json:"type"`
 	TargetID     string `json:"target_id,omitempty"`
 	RepositoryID string `json:"repository_id,omitempty"`
+	Code         string `json:"code,omitempty"`
+	Reason       string `json:"reason,omitempty"`
+}
+
+type eventSubscriber struct {
+	accountID    string
+	sessionHash  string
+	events       chan panelEvent
+	terminal     chan panelEvent
+	overflow     chan struct{}
+	overflowOnce sync.Once
+}
+
+func (s *eventSubscriber) disconnectSlowConsumer() {
+	s.overflowOnce.Do(func() { close(s.overflow) })
 }
 
 type eventHub struct {
 	mu          sync.Mutex
-	subscribers map[chan panelEvent]struct{}
+	subscribers map[*eventSubscriber]struct{}
 }
 
 func newEventHub() *eventHub {
-	return &eventHub{subscribers: make(map[chan panelEvent]struct{})}
+	return &eventHub{subscribers: make(map[*eventSubscriber]struct{})}
 }
 
-func (h *eventHub) subscribe() (<-chan panelEvent, func()) {
-	channel := make(chan panelEvent, 16)
+func (h *eventHub) subscribe(accountID, sessionHash string) (*eventSubscriber, func()) {
+	subscriber := &eventSubscriber{
+		accountID:   accountID,
+		sessionHash: sessionHash,
+		events:      make(chan panelEvent, panelEventQueueSize),
+		terminal:    make(chan panelEvent, 1),
+		overflow:    make(chan struct{}),
+	}
 	h.mu.Lock()
-	h.subscribers[channel] = struct{}{}
+	h.subscribers[subscriber] = struct{}{}
 	h.mu.Unlock()
 
-	return channel, func() {
+	return subscriber, func() {
 		h.mu.Lock()
-		delete(h.subscribers, channel)
+		delete(h.subscribers, subscriber)
 		h.mu.Unlock()
 	}
 }
 
 func (h *eventHub) announce(event panelEvent) {
+	event.Version = panelEventVersion
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for subscriber := range h.subscribers {
 		select {
-		case subscriber <- event:
+		case subscriber.events <- event:
 		default:
+			delete(h.subscribers, subscriber)
+			subscriber.disconnectSlowConsumer()
 		}
 	}
 }
 
+func (h *eventHub) revokeSession(sessionHash, code, reason string) {
+	event := panelEvent{
+		Version: panelEventVersion,
+		Type:    panelEventSessionRevoked,
+		Code:    code,
+		Reason:  reason,
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for subscriber := range h.subscribers {
+		if subscriber.sessionHash != sessionHash {
+			continue
+		}
+		delete(h.subscribers, subscriber)
+		subscriber.terminal <- event
+	}
+}
+
 func (s *Server) streamEvents(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireViewer(w, r); !ok {
+	account, sessionHash, ok := s.eventViewer(w, r)
+	if !ok {
 		return
 	}
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("Connection", "keep-alive")
+	if r.Header.Get("Origin") != s.cfg.PublicOrigin {
+		s.writeError(w, http.StatusForbidden, "forbidden", "request origin is not allowed")
+		return
+	}
 
-	events, unsubscribe := s.events.subscribe()
+	connection, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+		InsecureSkipVerify: true, // The exact configured origin was checked above.
+		CompressionMode:    websocket.CompressionDisabled,
+	})
+	if err != nil {
+		return
+	}
+	defer func() { _ = connection.CloseNow() }()
+
+	connectionContext := connection.CloseRead(context.Background())
+	subscriber, unsubscribe := s.events.subscribe(account.ID, sessionHash)
 	defer unsubscribe()
-	heartbeat := time.NewTicker(25 * time.Second)
-	defer heartbeat.Stop()
-	controller := http.NewResponseController(w)
-	_, _ = fmt.Fprint(w, "event: ready\ndata: {}\n\n")
-	_ = controller.Flush()
+	if err := writePanelEvent(connectionContext, connection, panelEvent{
+		Version: panelEventVersion,
+		Type:    "ready",
+	}); err != nil {
+		return
+	}
+	s.servePanelEvents(connectionContext, connection, subscriber, sessionHash)
+}
 
+func (s *Server) eventViewer(
+	w http.ResponseWriter,
+	r *http.Request,
+) (storage.Account, string, bool) {
+	account, sessionHash, err := s.viewer(r)
+	if err == nil {
+		return account, sessionHash, true
+	}
+	if errors.Is(err, storage.ErrNotFound) || errors.Is(err, storage.ErrExpired) {
+		s.writeError(w, http.StatusUnauthorized, "unauthenticated", "sign in to use the panel")
+	} else {
+		s.writeInternal(w, err)
+	}
+
+	return storage.Account{}, "", false
+}
+
+func (s *Server) servePanelEvents(
+	ctx context.Context,
+	connection *websocket.Conn,
+	subscriber *eventSubscriber,
+	sessionHash string,
+) {
+	heartbeat := time.NewTicker(panelEventHeartbeat)
+	defer heartbeat.Stop()
 	for {
 		select {
-		case <-r.Context().Done():
+		case <-ctx.Done():
 			return
-		case event := <-events:
-			body, err := json.Marshal(event)
-			if err != nil {
+		case event := <-subscriber.events:
+			if err := writePanelEvent(ctx, connection, event); err != nil {
 				return
 			}
-			_, _ = fmt.Fprintf(w, "data: %s\n\n", body)
-			if err := controller.Flush(); err != nil {
+		case event := <-subscriber.terminal:
+			if err := writePanelEvent(ctx, connection, event); err != nil {
 				return
 			}
+			_ = connection.Close(panelSessionRevokedCode, "session revoked")
+			return
+		case <-subscriber.overflow:
+			_ = connection.Close(websocket.StatusTryAgainLater, "event queue overflow")
+			return
 		case <-heartbeat.C:
-			_, _ = fmt.Fprint(w, ": keepalive\n\n")
-			if err := controller.Flush(); err != nil {
+			if !s.heartbeatPanelEvents(ctx, connection, sessionHash) {
 				return
 			}
 		}
 	}
+}
+
+func (s *Server) heartbeatPanelEvents(
+	ctx context.Context,
+	connection *websocket.Conn,
+	sessionHash string,
+) bool {
+	if _, err := s.store.GetSession(ctx, sessionHash, s.now()); err != nil {
+		revoked := panelEvent{
+			Version: panelEventVersion,
+			Type:    panelEventSessionRevoked,
+			Code:    "session_expired",
+			Reason:  "Your session expired",
+		}
+		_ = writePanelEvent(ctx, connection, revoked)
+		_ = connection.Close(panelSessionRevokedCode, "session revoked")
+
+		return false
+	}
+	pingContext, cancel := context.WithTimeout(ctx, panelEventWriteTimeout)
+	err := connection.Ping(pingContext)
+	cancel()
+
+	return err == nil
+}
+
+func writePanelEvent(ctx context.Context, connection *websocket.Conn, event panelEvent) error {
+	writeContext, cancel := context.WithTimeout(ctx, panelEventWriteTimeout)
+	defer cancel()
+
+	return wsjson.Write(writeContext, connection, event)
 }

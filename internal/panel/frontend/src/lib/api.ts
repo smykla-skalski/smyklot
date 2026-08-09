@@ -1,5 +1,5 @@
 import { panelUrl } from './base';
-import type { PanelEventSourceFactory, PanelStreamHandlers } from './events';
+import type { PanelStreamHandlers, PanelWebSocketFactory } from './events';
 import { openPanelStream, panelStreamUrl } from './events';
 import type {
   AuditEntry,
@@ -51,12 +51,18 @@ export interface PanelApi {
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
-const browserEventSource: PanelEventSourceFactory = (url) => new EventSource(url);
+const browserWebSocket: PanelWebSocketFactory = (url) => {
+  const socket = new WebSocket(url);
+  return {
+    addEventListener: (type, listener) => socket.addEventListener(type, (event) => listener(event)),
+    close: (code, reason) => socket.close(code, reason),
+  };
+};
 
 export function createPanelApi(
   base: string,
   fetchImpl: FetchLike,
-  createEventSource: PanelEventSourceFactory = browserEventSource,
+  createWebSocket: PanelWebSocketFactory = browserWebSocket,
 ): PanelApi {
   const request = async (path: string, init?: RequestInit): Promise<Response> => {
     const response = await fetchImpl(panelUrl(base, path), {
@@ -161,11 +167,7 @@ export function createPanelApi(
     },
 
     openStream(handlers: PanelStreamHandlers): () => void {
-      return openPanelStream(
-        panelStreamUrl(base, window.location.href),
-        handlers,
-        createEventSource,
-      );
+      return openPanelStream(panelStreamUrl(base, window.location.href), handlers, createWebSocket);
     },
   };
 }

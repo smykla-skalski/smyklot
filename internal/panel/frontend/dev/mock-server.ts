@@ -1,4 +1,6 @@
+import { createHash } from 'node:crypto';
 import type { Server as HttpServer, IncomingMessage, ServerResponse } from 'node:http';
+import type { Duplex } from 'node:stream';
 import type { Connect, Plugin } from 'vite';
 
 import type {
@@ -72,7 +74,7 @@ interface MockState {
   signedIn: boolean;
   forceFailure: boolean;
   targets: MockTarget[];
-  streams: Set<ServerResponse>;
+  streams: Set<Duplex>;
 }
 
 function enabled(): boolean {
@@ -492,7 +494,51 @@ export function mockServer(): Plugin {
 function install(httpServer: DevHttpServer | undefined, middlewares: Connect.Server): void {
   if (httpServer === undefined) throw new Error('the mock dev server has no HTTP server');
   const state = seed();
+  httpServer.on('upgrade', (request, socket) => handleUpgrade(state, request, socket));
   middlewares.use((req, res, next) => void handle(state, req, res, next));
+}
+
+function handleUpgrade(state: MockState, request: IncomingMessage, socket: Duplex): void {
+  const path = new URL(request.url ?? '/', 'http://localhost').pathname;
+  if (path !== route('/api/v1/events')) return;
+  if (!state.signedIn) {
+    rejectUpgrade(socket, 401, 'Unauthorized');
+    return;
+  }
+  if (state.forceFailure) {
+    rejectUpgrade(socket, 503, 'Service Unavailable');
+    return;
+  }
+  const key = request.headers['sec-websocket-key'];
+  if (typeof key !== 'string') {
+    rejectUpgrade(socket, 400, 'Bad Request');
+    return;
+  }
+  const accept = createHash('sha1')
+    .update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`)
+    .digest('base64');
+  socket.write(
+    [
+      'HTTP/1.1 101 Switching Protocols',
+      'Upgrade: websocket',
+      'Connection: Upgrade',
+      `Sec-WebSocket-Accept: ${accept}`,
+      '',
+      '',
+    ].join('\r\n'),
+  );
+  state.streams.add(socket);
+  const remove = (): void => {
+    state.streams.delete(socket);
+  };
+  socket.once('close', remove);
+  socket.once('error', remove);
+  socket.once('data', () => socket.end());
+  writeWebSocket(socket, { version: 1, type: 'ready' });
+}
+
+function rejectUpgrade(socket: Duplex, status: number, reason: string): void {
+  socket.end(`HTTP/1.1 ${status} ${reason}\r\nConnection: close\r\n\r\n`);
 }
 
 async function handle(
@@ -526,6 +572,9 @@ async function handle(
     return;
   }
   if (path === route('/api/v1/sign-out') && method === 'POST') {
+    broadcast(state, { type: 'session.revoked', code: 'signed_out', reason: 'You signed out' });
+    for (const stream of state.streams) stream.end();
+    state.streams.clear();
     state.signedIn = false;
     respond(res, 204, null);
     return;
@@ -549,14 +598,7 @@ async function handle(
       return;
     }
     if (path === route('/api/v1/events') && method === 'GET') {
-      res.writeHead(200, {
-        'Cache-Control': 'no-store',
-        Connection: 'keep-alive',
-        'Content-Type': 'text/event-stream',
-      });
-      res.write('event: ready\ndata: {}\n\n');
-      state.streams.add(res);
-      req.once('close', () => state.streams.delete(res));
+      respond(res, 426, { error: { code: 'upgrade_required', message: 'WebSocket required' } });
       return;
     }
 
@@ -580,7 +622,7 @@ async function handle(
       target.value.revision += 1;
       recomputeTarget(target);
       addAudit(target, 'target.settings.updated', 'updated account defaults');
-      broadcast(state, { type: 'target', target_id: target.value.id });
+      broadcast(state, { type: 'target.changed', target_id: target.value.id });
       respond(res, 200, target.value);
       return;
     }
@@ -612,7 +654,7 @@ async function handle(
         stored.detail.repository.full_name,
       );
       broadcast(state, {
-        type: 'repository',
+        type: 'repository.changed',
         target_id: target.value.id,
         repository_id: stored.detail.repository.id,
       });
@@ -816,8 +858,23 @@ function cycled<T>(items: readonly T[], index: number): T {
 }
 
 function broadcast(state: MockState, event: Record<string, string>): void {
-  const frame = JSON.stringify(event);
-  for (const stream of state.streams) stream.write(`data: ${frame}\n\n`);
+  for (const stream of state.streams) writeWebSocket(stream, { version: 1, ...event });
+}
+
+function writeWebSocket(socket: Duplex, event: Record<string, string | number>): void {
+  const payload = Buffer.from(JSON.stringify(event));
+  let header: Buffer;
+  if (payload.length < 126) {
+    header = Buffer.from([0x81, payload.length]);
+  } else if (payload.length <= 0xffff) {
+    header = Buffer.alloc(4);
+    header[0] = 0x81;
+    header[1] = 126;
+    header.writeUInt16BE(payload.length, 2);
+  } else {
+    throw new Error('mock WebSocket frame is too large');
+  }
+  socket.write(Buffer.concat([header, payload]));
 }
 
 function route(path: string): string {

@@ -3,6 +3,7 @@ module github.com/smykla-skalski/smyklot
 go 1.26.5
 
 require (
+	github.com/coder/websocket v1.8.15
 	github.com/jferrl/go-githubauth v1.7.0
 	github.com/onsi/ginkgo/v2 v2.32.0
 	github.com/onsi/gomega v1.42.1

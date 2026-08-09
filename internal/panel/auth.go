@@ -129,6 +129,7 @@ func (s *Server) signOut(w http.ResponseWriter, r *http.Request) {
 			s.writeInternal(w, err)
 			return
 		}
+		s.events.revokeSession(hash, "signed_out", "You signed out")
 	} else if !errors.Is(err, storage.ErrNotFound) && !errors.Is(err, storage.ErrExpired) {
 		s.writeInternal(w, err)
 		return

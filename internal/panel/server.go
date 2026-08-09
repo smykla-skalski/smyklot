@@ -112,9 +112,9 @@ func (s *Server) Handler() http.Handler {
 
 // Announce tells connected browsers which catalog or setting scope changed.
 func (s *Server) Announce(targetID, repositoryID string) {
-	event := panelEvent{Type: "target", TargetID: targetID}
+	event := panelEvent{Type: "target.changed", TargetID: targetID}
 	if repositoryID != "" {
-		event.Type = "repository"
+		event.Type = "repository.changed"
 		event.RepositoryID = repositoryID
 	}
 	s.events.announce(event)

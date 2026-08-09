@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -14,6 +13,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -35,6 +36,13 @@ type transientAbandonStore struct {
 	attempts     atomic.Int32
 	retryStarted chan struct{}
 	retryRelease chan struct{}
+}
+
+type runtimePanelEvent struct {
+	Version      int    `json:"version"`
+	Type         string `json:"type"`
+	TargetID     string `json:"target_id"`
+	RepositoryID string `json:"repository_id"`
 }
 
 func (s *transientAbandonStore) AbandonDelivery(ctx context.Context, claimID int64) error {
@@ -284,31 +292,35 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 
 		panelEndpoint := httptest.NewServer(service.panel.Handler())
 		DeferCleanup(panelEndpoint.Close)
-		streamContext, cancelStream := context.WithCancel(GinkgoT().Context())
-		DeferCleanup(cancelStream)
-		request, err := http.NewRequestWithContext(
-			streamContext,
-			http.MethodGet,
-			panelEndpoint.URL+"/panel/api/v1/events",
-			nil,
+		headers := http.Header{}
+		headers.Set("Cookie", (&http.Cookie{
+			Name:  "smyklot_panel_session",
+			Value: sessionToken,
+		}).String())
+		headers.Set("Origin", "https://smyklot.example")
+		connection, response, err := websocket.Dial(
+			GinkgoT().Context(),
+			"ws"+strings.TrimPrefix(panelEndpoint.URL, "http")+"/panel/api/v1/events",
+			&websocket.DialOptions{HTTPHeader: headers},
 		)
 		Expect(err).NotTo(HaveOccurred())
-		request.AddCookie(&http.Cookie{Name: "smyklot_panel_session", Value: sessionToken})
-		response, err := panelEndpoint.Client().Do(request)
-		Expect(err).NotTo(HaveOccurred())
-		DeferCleanup(response.Body.Close)
-		Expect(response.StatusCode).To(Equal(http.StatusOK))
+		Expect(response.StatusCode).To(Equal(http.StatusSwitchingProtocols))
+		DeferCleanup(connection.CloseNow)
 
-		events := make(chan string, 4)
+		events := make(chan runtimePanelEvent, 4)
 		go func() {
-			scanner := bufio.NewScanner(response.Body)
-			for scanner.Scan() {
-				if event, found := strings.CutPrefix(scanner.Text(), "data: "); found {
-					events <- event
+			for {
+				var event runtimePanelEvent
+				if err := wsjson.Read(GinkgoT().Context(), connection, &event); err != nil {
+					return
 				}
+				events <- event
 			}
 		}()
-		Eventually(events).Should(Receive(Equal("{}")))
+		var event runtimePanelEvent
+		Eventually(events).Should(Receive(&event))
+		Expect(event.Version).To(Equal(1))
+		Expect(event.Type).To(Equal("ready"))
 
 		stub.installations = `[
 			{"id":111,"account":{"id":7,"login":"smykla-skalski","type":"Organization"}},
@@ -331,7 +343,8 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 
 		close(blockedStore.release)
 		Eventually(maintenanceDone).Should(BeClosed())
-		Eventually(events).Should(Receive(Equal(`{"type":"resync"}`)))
+		Eventually(events).Should(Receive(&event))
+		Expect(event.Type).To(Equal("resync"))
 
 		targets, err := service.store.ListTargets(GinkgoT().Context(), owner.ID)
 		Expect(err).NotTo(HaveOccurred())
@@ -349,9 +362,10 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 			"smyklot",
 		)
 		Expect(err).NotTo(HaveOccurred())
-		Eventually(events).Should(Receive(Equal(
-			`{"type":"repository","target_id":"github:installation:222","repository_id":"github:repository:31"}`,
-		)))
+		Eventually(events).Should(Receive(&event))
+		Expect(event.Type).To(Equal("repository.changed"))
+		Expect(event.TargetID).To(Equal("github:installation:222"))
+		Expect(event.RepositoryID).To(Equal("github:repository:31"))
 		_, err = service.serviceConfig(
 			GinkgoT().Context(),
 			client,
@@ -367,7 +381,8 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 		stub.installations = `[]`
 		_, err = service.SyncCatalog(GinkgoT().Context())
 		Expect(err).NotTo(HaveOccurred())
-		Eventually(events).Should(Receive(Equal(`{"type":"resync"}`)))
+		Eventually(events).Should(Receive(&event))
+		Expect(event.Type).To(Equal("resync"))
 		targets, err = service.store.ListTargets(GinkgoT().Context(), owner.ID)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(targets).To(BeEmpty())
