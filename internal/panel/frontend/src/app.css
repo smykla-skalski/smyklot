@@ -169,11 +169,11 @@ body {
 }
 
 .plate-lead {
-  border-left: 3px solid var(--signal);
+  border-color: color-mix(in srgb, var(--signal) 38%, var(--rule));
 }
 
 .plate-alarm {
-  border-left: 3px solid var(--stop);
+  border-color: color-mix(in srgb, var(--stop) 42%, var(--rule));
 }
 
 .plate-head {
@@ -215,6 +215,13 @@ select {
 }
 
 button {
+  cursor: pointer;
+}
+
+summary,
+select:not(:disabled),
+input[type='checkbox']:not(:disabled),
+input[type='radio']:not(:disabled) {
   cursor: pointer;
 }
 
@@ -417,6 +424,14 @@ select:disabled {
   background-size: 0.3rem 0.3rem;
   line-height: 1.2;
   padding-right: 2rem;
+  transition:
+    background-color 120ms ease-out,
+    border-color 120ms ease-out;
+}
+
+.select-input:hover:not(:disabled) {
+  background-color: var(--strip-lift);
+  border-color: color-mix(in srgb, var(--dim) 56%, transparent);
 }
 
 .text-input::placeholder {

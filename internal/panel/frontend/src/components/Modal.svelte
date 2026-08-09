@@ -108,7 +108,7 @@
 
   .modal-panel {
     background: var(--strip);
-    border: 1px solid color-mix(in srgb, var(--rule) 75%, var(--accent));
+    border: 1px solid var(--control-border);
     border-radius: var(--r-strip);
     box-shadow: 0 24px 64px color-mix(in srgb, var(--shadow) 85%, black);
     left: 50%;
@@ -123,11 +123,10 @@
 
   header {
     align-items: flex-start;
-    border-bottom: 1px solid var(--rule);
     display: flex;
     gap: 1rem;
     justify-content: space-between;
-    padding: 1.125rem 1.25rem 1rem;
+    padding: 1.25rem 1.25rem 0.5rem;
   }
 
   h2 {
@@ -179,17 +178,15 @@
   }
 
   .modal-content {
-    padding: 1.125rem 1.25rem;
+    padding: 0.75rem 1.25rem 1.25rem;
   }
 
   footer {
     align-items: center;
-    background: var(--well);
-    border-top: 1px solid var(--rule);
     display: flex;
     gap: 0.625rem;
     justify-content: flex-end;
-    padding: 0.75rem 1.25rem;
+    padding: 0 1.25rem 1.25rem;
   }
 
   @media (prefers-reduced-motion: no-preference) {

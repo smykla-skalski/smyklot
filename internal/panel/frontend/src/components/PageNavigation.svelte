@@ -34,7 +34,7 @@
         <button
           class="page-number"
           class:current={item === currentPage}
-          {disabled}
+          disabled={disabled || item === currentPage}
           aria-label={`Page ${item}`}
           aria-current={item === currentPage ? 'page' : undefined}
           onclick={() => onSelect(item - 1)}

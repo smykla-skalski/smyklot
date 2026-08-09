@@ -8,12 +8,16 @@
     targetId,
     targets,
     canSelectGlobal,
+    variant = 'toolbar',
+    label = 'User scope',
     onSelect,
   }: {
     global: boolean;
     targetId: string;
     targets: readonly PanelTarget[];
     canSelectGlobal: boolean;
+    variant?: 'toolbar' | 'field';
+    label?: string;
     onSelect: (targetId: string | null) => void;
   } = $props();
 
@@ -33,25 +37,24 @@
       query,
     ),
   );
+  const globalMatches = $derived(
+    fuzzyCandidates(
+      [{ id: 'global', label: 'Global', keywords: ['all installations', 'all organizations'] }],
+      query,
+    ).length > 0,
+  );
 
-  $effect(() => {
-    function outside(event: PointerEvent): void {
-      if (picker?.open === true && event.target instanceof Node && !picker.contains(event.target)) {
-        close(false);
-      }
+  function outside(event: PointerEvent): void {
+    if (picker?.open === true && event.target instanceof Node && !picker.contains(event.target)) {
+      close(false);
     }
-    function escape(event: KeyboardEvent): void {
-      if (event.key !== 'Escape' || picker?.open !== true) return;
-      event.preventDefault();
-      close(true);
-    }
-    document.addEventListener('pointerdown', outside);
-    document.addEventListener('keydown', escape);
-    return () => {
-      document.removeEventListener('pointerdown', outside);
-      document.removeEventListener('keydown', escape);
-    };
-  });
+  }
+
+  function escape(event: KeyboardEvent): void {
+    if (event.key !== 'Escape' || picker?.open !== true) return;
+    event.preventDefault();
+    close(true);
+  }
 
   function toggled(): void {
     if (picker?.open !== true) return;
@@ -83,16 +86,27 @@
   }
 </script>
 
-<details class="scope-picker" bind:this={picker} ontoggle={toggled}>
-  <summary bind:this={trigger} aria-label="User scope">
+<svelte:document onpointerdown={outside} onkeydown={escape} />
+
+<details
+  class="scope-picker"
+  class:scope-field={variant === 'field'}
+  bind:this={picker}
+  ontoggle={toggled}
+>
+  <summary bind:this={trigger} aria-label={label}>
+    {#if variant === 'toolbar'}<span class="scope-kicker">Scope</span>{/if}
     {#if global}
-      <span class="global-mark" aria-hidden="true">G</span>
-      <span class="scope-copy"><strong>Global</strong><small>All installations</small></span>
+      <span class="global-mark" aria-hidden="true"></span>
+      <span class="scope-copy">
+        <strong>Global</strong>
+        {#if variant === 'field'}<small>All installations</small>{/if}
+      </span>
     {:else if selectedTarget !== undefined}
       <Avatar account={selectedTarget.account} size={22} />
       <span class="scope-copy">
         <strong>{selectedTarget.account.display_name}</strong>
-        <small>@{selectedTarget.account.login}</small>
+        {#if variant === 'field'}<small>@{selectedTarget.account.login}</small>{/if}
       </span>
     {/if}
     <span class="scope-chevron" aria-hidden="true"></span>
@@ -112,9 +126,7 @@
     </label>
 
     <div class="scope-options" role="listbox" aria-label="User scope">
-      {#if canSelectGlobal && (query.trim() === '' || 'global all installations'.includes(query
-              .trim()
-              .toLocaleLowerCase()))}
+      {#if canSelectGlobal && globalMatches}
         <button
           class="scope-option global-option"
           class:selected={global}
@@ -124,7 +136,7 @@
           onclick={() => choose(null)}
           onkeydown={move}
         >
-          <span class="global-mark" aria-hidden="true">G</span>
+          <span class="global-mark" aria-hidden="true"></span>
           <span class="option-copy">
             <strong>Global</strong>
             <span>Access across all installations</span>
@@ -132,6 +144,10 @@
           <span class="option-check" aria-hidden="true">{global ? '✓' : ''}</span>
         </button>
         <div class="scope-separator" aria-hidden="true"></div>
+      {/if}
+
+      {#if candidates.length > 0}
+        <p class="scope-group-label" aria-hidden="true">Organizations</p>
       {/if}
 
       {#each candidates as target (target.id)}
@@ -178,9 +194,14 @@
     display: flex;
     gap: 0.5rem;
     height: var(--control-height);
-    max-width: 17rem;
-    min-width: 10rem;
+    max-width: 18rem;
+    min-width: 11rem;
     padding: 0 0.625rem;
+    transition:
+      background-color 120ms ease-out,
+      border-color 120ms ease-out,
+      transform 80ms ease-out;
+    user-select: none;
   }
 
   summary::-webkit-details-marker {
@@ -195,6 +216,29 @@
   .scope-picker[open] summary {
     background: var(--strip-lift);
     border-color: color-mix(in srgb, var(--dim) 56%, transparent);
+  }
+
+  summary:active {
+    transform: translateY(1px);
+  }
+
+  .scope-field,
+  .scope-field summary {
+    width: 100%;
+  }
+
+  .scope-field summary {
+    height: 2.75rem;
+    max-width: none;
+  }
+
+  .scope-kicker {
+    border-right: 1px solid var(--rule);
+    color: var(--dim);
+    font: 600 0.5625rem/1 var(--mono);
+    letter-spacing: 0.08em;
+    padding-right: 0.625rem;
+    text-transform: uppercase;
   }
 
   .scope-copy {
@@ -227,10 +271,28 @@
     color: var(--accent);
     display: inline-flex;
     flex: none;
-    font: 700 0.625rem/1 var(--mono);
     height: 1.375rem;
     justify-content: center;
+    position: relative;
     width: 1.375rem;
+  }
+
+  .global-mark::before {
+    border: 1px solid currentColor;
+    border-radius: 50%;
+    content: '';
+    height: 0.62rem;
+    position: absolute;
+    width: 0.62rem;
+  }
+
+  .global-mark::after {
+    border-bottom: 1px solid currentColor;
+    border-top: 1px solid currentColor;
+    content: '';
+    height: 0.22rem;
+    position: absolute;
+    width: 0.62rem;
   }
 
   .scope-chevron {
@@ -259,6 +321,12 @@
     top: calc(100% + 0.35rem);
     width: min(22rem, calc(100vw - 2rem));
     z-index: 35;
+  }
+
+  .scope-field .scope-popover {
+    left: 0;
+    right: 0;
+    width: 100%;
   }
 
   .scope-search {
@@ -301,6 +369,10 @@
     padding: 0.3rem;
   }
 
+  .scope-field .scope-options {
+    max-height: min(17rem, 38vh);
+  }
+
   .scope-option {
     align-items: center;
     background: transparent;
@@ -312,6 +384,9 @@
     min-height: 2.75rem;
     padding: 0.45rem 0.55rem;
     text-align: left;
+    transition:
+      background-color 120ms ease-out,
+      transform 80ms ease-out;
     width: 100%;
   }
 
@@ -319,6 +394,11 @@
   .scope-option:focus-visible,
   .scope-option.selected {
     background: var(--strip-lift);
+  }
+
+  .scope-option:active {
+    box-shadow: inset 0 0 0 100vmax var(--press);
+    transform: translateY(1px);
   }
 
   .global-option {
@@ -357,11 +437,27 @@
     margin: 0.25rem 0.4rem;
   }
 
+  .scope-group-label {
+    color: var(--dim);
+    font: 600 0.5625rem/1 var(--mono);
+    letter-spacing: 0.1em;
+    margin: 0;
+    padding: 0.45rem 0.55rem 0.25rem;
+    text-transform: uppercase;
+  }
+
   .scope-empty {
     color: var(--dim);
     font-size: 0.75rem;
     margin: 0;
     padding: 0.875rem;
     text-align: center;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    summary:active,
+    .scope-option:active {
+      transform: none;
+    }
   }
 </style>

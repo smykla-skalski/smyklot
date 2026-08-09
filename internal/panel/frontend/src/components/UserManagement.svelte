@@ -32,16 +32,16 @@
   import PageSizeSelect from './PageSizeSelect.svelte';
   import Plate from './Plate.svelte';
   import ScopePicker from './ScopePicker.svelte';
-  import SegmentedControl from './SegmentedControl.svelte';
 
   type UserScope = 'global' | 'target';
+  type ManagementSection = 'users' | 'invitations';
   type UserAction = 'ban' | 'remove' | 'suspend' | 'restore' | 'unban' | 'remove_access';
   type TargetRole = Exclude<PanelRole, 'owner'>;
   type GrantedTargetRole = Exclude<TargetRole, 'none'>;
 
   const ACCESS_METHODS = [
-    { value: 'add', label: 'Add directly' },
-    { value: 'invite', label: 'Send invitation' },
+    { value: 'add', label: 'Add directly', description: 'Grant access immediately' },
+    { value: 'invite', label: 'Send invitation', description: 'Create a single-use link' },
   ] as const;
 
   const ROLE_FILTERS: FilterSection[] = [
@@ -164,9 +164,11 @@
   let invitationStatuses = $state<InvitationStatus[]>([]);
   let invitationLimit = $state(20);
   let invitationPageIndex = $state(0);
+  let activeSection = $state<ManagementSection>('users');
 
   let addModalOpen = $state(false);
   let addButton = $state<HTMLButtonElement | null>(null);
+  let addScopeTargetId = $state<string | null>(null);
   let login = $state('');
   let addRole = $state<PanelRole>('viewer');
   let accessMethod = $state<'add' | 'invite'>('add');
@@ -192,7 +194,14 @@
   const invitationPageCount = $derived(
     Math.max(1, Math.ceil((invitationPage?.total ?? 0) / invitationLimit)),
   );
-  const failure = $derived(actionFailure ?? userFailure ?? invitationFailure);
+  const failure = $derived(
+    actionFailure ?? (activeSection === 'users' ? userFailure : invitationFailure),
+  );
+  const addScopeTarget = $derived(
+    addScopeTargetId === null
+      ? undefined
+      : targets.find((target) => target.id === addScopeTargetId),
+  );
   const userRequestKey = $derived(
     JSON.stringify([
       scope,
@@ -329,37 +338,42 @@
     if (normalizedLogin === '') return;
     adding = true;
     actionFailure = null;
+    const selectedTargetId = addScopeTargetId;
+    const destination =
+      selectedTargetId === null
+        ? 'global access'
+        : (addScopeTarget?.account.display_name ?? 'the selected organization');
     try {
       if (accessMethod === 'invite') {
         const created =
-          scope === 'global'
+          selectedTargetId === null
             ? await createInvitation({
                 login: normalizedLogin,
                 role: addRole as AddGlobalInvitationInput['role'],
                 target_id: targetId,
                 expires_in_days: expiresInDays,
               })
-            : await createTargetInvitation(targetId, {
+            : await createTargetInvitation(selectedTargetId, {
                 login: normalizedLogin,
                 role: addRole as AddTargetInvitationInput['role'],
                 expires_in_days: expiresInDays,
               });
         generatedLink = created.invite_url ?? '';
-        feedback = `Invited @${normalizedLogin}`;
-        await loadInvitations(0);
-      } else if (scope === 'global') {
+        feedback = `Invited @${normalizedLogin} to ${destination}`;
+        if (addScopeMatchesCurrent()) await loadInvitations(0);
+      } else if (selectedTargetId === null) {
         await addUser({ login: normalizedLogin, role: addRole, target_id: targetId });
-        feedback = `Added @${normalizedLogin}`;
+        feedback = `Added @${normalizedLogin} to global access`;
         closeAddModal();
-        await loadUsers(0);
+        if (scope === 'global') await loadUsers(0);
       } else {
-        await addTargetUser(targetId, {
+        await addTargetUser(selectedTargetId, {
           login: normalizedLogin,
           role: addRole as GrantedTargetRole,
         });
-        feedback = `Added @${normalizedLogin}`;
+        feedback = `Added @${normalizedLogin} to ${destination}`;
         closeAddModal();
-        await loadUsers(0);
+        if (scope === 'target' && selectedTargetId === targetId) await loadUsers(0);
       }
       login = '';
     } catch (error) {
@@ -471,6 +485,7 @@
       const updated = await reissueInvitation(invitation.id, 7);
       generatedLink = updated.invite_url ?? '';
       accessMethod = 'invite';
+      addScopeTargetId = scope === 'global' ? null : targetId;
       addModalOpen = true;
       feedback = `Reissued invitation for @${invitation.account.login}`;
       await loadInvitations(invitationPageIndex);
@@ -510,6 +525,9 @@
 
   function openAddModal(): void {
     generatedLink = '';
+    addScopeTargetId = scope === 'global' ? null : targetId;
+    addRole = 'viewer';
+    accessMethod = 'add';
     addModalOpen = true;
   }
 
@@ -517,6 +535,33 @@
     addModalOpen = false;
     generatedLink = '';
     login = '';
+  }
+
+  function selectAddScope(nextTarget: string | null): void {
+    addScopeTargetId = nextTarget;
+    const roles = addRoles(nextTarget);
+    if (!roles.includes(addRole)) addRole = roles[0] ?? 'viewer';
+  }
+
+  function addScopeMatchesCurrent(): boolean {
+    return addScopeTargetId === null
+      ? scope === 'global'
+      : scope === 'target' && addScopeTargetId === targetId;
+  }
+
+  function selectSection(section: ManagementSection): void {
+    activeSection = section;
+  }
+
+  function moveSection(event: KeyboardEvent): void {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const next = event.key === 'ArrowLeft' || event.key === 'Home' ? 'users' : 'invitations';
+    activeSection = next;
+    const tab = (event.currentTarget as HTMLElement)
+      .closest<HTMLElement>('[role="tablist"]')
+      ?.querySelector<HTMLButtonElement>(`#${next}-list-tab`);
+    tab?.focus();
   }
 
   function selectScope(nextTarget: string | null): void {
@@ -600,13 +645,16 @@
     return access;
   }
 
-  function addRoles(): PanelRole[] {
-    if (scope === 'global') {
+  function addRoles(selectedTargetId = addScopeTargetId): PanelRole[] {
+    if (selectedTargetId === null) {
       return canManageOwners
         ? ['viewer', 'editor', 'admin', 'owner']
         : ['viewer', 'editor', 'admin'];
     }
-    return actorTargetRole === 'owner' ? ['viewer', 'editor', 'admin'] : ['viewer', 'editor'];
+    const target = targets.find((candidate) => candidate.id === selectedTargetId);
+    return target?.effective_role === 'owner'
+      ? ['viewer', 'editor', 'admin']
+      : ['viewer', 'editor'];
   }
 
   function targetRoleOptions(): Array<{ value: string; label: string }> {
@@ -753,340 +801,405 @@
 {/snippet}
 
 <Plate label="Users" status={headerActions}>
-  <div class="management-toolbar" aria-label="User list controls">
-    <label class="search-field">
-      <span class="visually-hidden">Search users</span>
-      <span class="search-icon" aria-hidden="true"></span>
-      <input class="text-input" type="search" placeholder="Search users" bind:value={userSearch} />
-    </label>
-    <FilterMenu
-      label="Roles"
-      summary={selectedSummary(userRoles, 'All roles')}
-      hint="Show users with any selected role"
-      sections={ROLE_FILTERS}
-      selected={userRoles}
-      multiple
-      onChange={(values) => (userRoles = values as PanelRole[])}
-    />
-    <FilterMenu
-      label="Status"
-      summary={userStatuses.length === 0 ? 'All statuses' : `${userStatuses.length} selected`}
-      hint="Show users with any selected status"
-      sections={userStatusFilters}
-      selected={userStatuses}
-      multiple
-      onChange={(values) => (userStatuses = values as PanelUserListStatus[])}
-    />
-    <label class="sort-field">
-      <span class="visually-hidden">User sort order</span>
-      <select class="select-input" bind:value={userSort} aria-label="User sort order">
-        <option value="name_asc">Name A–Z</option>
-        <option value="name_desc">Name Z–A</option>
-        <option value="login_newest">Last login newest</option>
-        <option value="login_oldest">Last login oldest</option>
-        <option value="updated_newest">Recently changed</option>
-        <option value="updated_oldest">Oldest changed</option>
-      </select>
-    </label>
-    <span class="result-summary mono">{resultSummary(userPage, userPageIndex, userLimit)}</span>
-    <PageSizeSelect
-      value={userLimit}
-      label="Users per page"
-      onSelect={(value) => (userLimit = value)}
-    />
+  <div class="list-tabs" role="tablist" aria-label="User management lists">
+    <button
+      id="users-list-tab"
+      class="list-tab"
+      class:selected={activeSection === 'users'}
+      type="button"
+      role="tab"
+      aria-selected={activeSection === 'users'}
+      aria-controls="users-list-panel"
+      tabindex={activeSection === 'users' ? 0 : -1}
+      onclick={() => selectSection('users')}
+      onkeydown={moveSection}
+    >
+      <span>Users</span>
+      <span class="tab-count mono">{userPage?.total ?? '—'}</span>
+    </button>
+    <button
+      id="invitations-list-tab"
+      class="list-tab"
+      class:selected={activeSection === 'invitations'}
+      type="button"
+      role="tab"
+      aria-selected={activeSection === 'invitations'}
+      aria-controls="invitations-list-panel"
+      tabindex={activeSection === 'invitations' ? 0 : -1}
+      onclick={() => selectSection('invitations')}
+      onkeydown={moveSection}
+    >
+      <span>Invitations</span>
+      <span class="tab-count mono">{invitationPage?.total ?? '—'}</span>
+    </button>
   </div>
 
   <div class="stable-feedback" aria-live="polite">{feedback}</div>
   {#if failure !== null}<p class="form-error" role="alert">{failure}</p>{/if}
 
-  <div class:loading={loadingUsers} class="user-results" aria-busy={loadingUsers}>
-    {#if loadingUsers && userPage === null}
-      <p class="result-state dim">Reading users…</p>
-    {:else if users.length === 0}
-      <p class="result-state dim">
-        {userQuery === '' && userRoles.length === 0 && userStatuses.length === 0
-          ? 'No users in this scope'
-          : 'No users match these filters'}
-      </p>
-    {:else}
-      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-      <div class="user-table-wrap" role="region" aria-label="Panel users" tabindex="0">
-        <table class="user-table">
-          <thead>
-            <tr>
-              <th>User</th>
-              <th>Role</th>
-              <th>Status</th>
-              <th>Last login</th>
-              <th><span class="visually-hidden">Actions</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each users as user (user.account.id)}
-              <tr>
-                <th scope="row">
-                  <span class="user-identity">
-                    <Avatar account={user.account} size={32} />
-                    <span>
-                      <strong>{user.account.display_name}</strong>
-                      <span class="user-login mono">@{user.account.login}</span>
-                    </span>
-                  </span>
-                </th>
-                <td>
-                  {#if user.manageable}
-                    <select
-                      class="select-input role-select"
-                      aria-label="Role for {user.account.login}"
-                      value={selectedRole(user)}
-                      disabled={savingAccount === user.account.id}
-                      onchange={(event) => void changeRole(user, event.currentTarget.value)}
-                    >
-                      {#if scope === 'global'}
-                        {#each globalRoleOptions() as role (role.value)}
-                          <option value={role.value}>{role.label}</option>
-                        {/each}
-                      {:else}
-                        {#each targetRoleOptions() as role (role.value)}
-                          <option value={role.value}>{role.label}</option>
-                        {/each}
-                      {/if}
-                    </select>
-                  {:else}
-                    <Chip tone={user.root ? 'accent' : 'signal'}>{roleLabel(shownRole(user))}</Chip>
-                  {/if}
-                </td>
-                <td>
-                  <span class="status-cell">
-                    <Chip tone={statusTone(user)} dot>{statusLabel(user)}</Chip>
-                    {#if user.status === 'banned' || user.target_access?.suspended === true}
-                      <DecisionHistory
-                        label={`Access decision history for @${user.account.login}`}
-                        reason={currentReason(user)}
-                        decidedAt={currentDecisionAt(user)}
-                        fetchDecisions={() =>
-                          fetchUserDecisions(
-                            user.account.id,
-                            scope === 'target' ? targetId : undefined,
-                          )}
-                      />
-                    {/if}
-                  </span>
-                </td>
-                <td class="last-login">
-                  {#if user.last_login_at === undefined}
-                    <span class="dim">Never</span>
-                  {:else}
-                    <time datetime={user.last_login_at} title={formatTimestamp(user.last_login_at)}>
-                      {formatRelative(user.last_login_at, now)}
-                    </time>
-                  {/if}
-                </td>
-                <td class="row-actions">
-                  {#if user.manageable}
-                    <ActionMenu
-                      label={`Actions for @${user.account.login}`}
-                      items={userActionItems(user)}
-                      onSelect={(action) => beginAction(user, action as UserAction)}
-                    />
-                  {/if}
-                </td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
-    {/if}
-  </div>
-
-  <div class="pagination-footer">
-    <span class="result-summary mono">{resultSummary(userPage, userPageIndex, userLimit)}</span>
-    <div class="pagination-actions">
-      <PageSizeSelect
-        value={userLimit}
-        label="Users per page below results"
-        onSelect={(value) => (userLimit = value)}
-      />
-      <PageNavigation
-        pageIndex={userPageIndex}
-        pageCount={userPageCount}
-        disabled={loadingUsers}
-        onSelect={selectUserPage}
-      />
-    </div>
-  </div>
-
-  <section class="invitations" aria-labelledby="invitations-heading">
-    <div class="section-heading">
-      <div>
-        <h3 id="invitations-heading">Invitations</h3>
-        <p>Pending and previous identity-locked access offers</p>
-      </div>
-    </div>
-
-    <div class="management-toolbar invitation-toolbar" aria-label="Invitation list controls">
-      <label class="search-field">
-        <span class="visually-hidden">Search invitations</span>
-        <span class="search-icon" aria-hidden="true"></span>
-        <input
-          class="text-input"
-          type="search"
-          placeholder="Search invitations"
-          bind:value={invitationSearch}
+  {#if activeSection === 'users'}
+    <div id="users-list-panel" role="tabpanel" aria-labelledby="users-list-tab">
+      <div class="management-toolbar" aria-label="User list controls">
+        <label class="search-field">
+          <span class="visually-hidden">Search users</span>
+          <span class="search-icon" aria-hidden="true"></span>
+          <input
+            class="text-input"
+            type="search"
+            placeholder="Search users"
+            bind:value={userSearch}
+          />
+        </label>
+        <FilterMenu
+          label="Roles"
+          summary={selectedSummary(userRoles, 'All roles')}
+          hint="Show users with any selected role"
+          sections={ROLE_FILTERS}
+          selected={userRoles}
+          multiple
+          onChange={(values) => (userRoles = values as PanelRole[])}
         />
-      </label>
-      <FilterMenu
-        label="Invitation roles"
-        summary={selectedSummary(invitationRoles, 'All roles')}
-        hint="Show invitations with any selected role"
-        sections={INVITATION_ROLE_FILTERS}
-        selected={invitationRoles}
-        multiple
-        onChange={(values) => (invitationRoles = values as Exclude<PanelRole, 'none'>[])}
-      />
-      <FilterMenu
-        label="Invitation status"
-        summary={invitationStatuses.length === 0
-          ? 'All statuses'
-          : `${invitationStatuses.length} selected`}
-        hint="Show invitations with any selected status"
-        sections={INVITATION_STATUS_FILTERS}
-        selected={invitationStatuses}
-        multiple
-        onChange={(values) => (invitationStatuses = values as InvitationStatus[])}
-      />
-      <label class="sort-field">
-        <span class="visually-hidden">Invitation sort order</span>
-        <select class="select-input" bind:value={invitationSort} aria-label="Invitation sort order">
-          <option value="created_newest">Newest first</option>
-          <option value="created_oldest">Oldest first</option>
-          <option value="expiry_soonest">Expires soonest</option>
-          <option value="expiry_latest">Expires latest</option>
-          <option value="name_asc">Name A–Z</option>
-        </select>
-      </label>
-      <span class="result-summary mono">
-        {resultSummary(invitationPage, invitationPageIndex, invitationLimit)}
-      </span>
-      <PageSizeSelect
-        value={invitationLimit}
-        label="Invitations per page"
-        onSelect={(value) => (invitationLimit = value)}
-      />
-    </div>
+        <FilterMenu
+          label="Status"
+          summary={userStatuses.length === 0 ? 'All statuses' : `${userStatuses.length} selected`}
+          hint="Show users with any selected status"
+          sections={userStatusFilters}
+          selected={userStatuses}
+          multiple
+          onChange={(values) => (userStatuses = values as PanelUserListStatus[])}
+        />
+        <label class="sort-field">
+          <span class="visually-hidden">User sort order</span>
+          <select class="select-input" bind:value={userSort} aria-label="User sort order">
+            <option value="name_asc">Name A–Z</option>
+            <option value="name_desc">Name Z–A</option>
+            <option value="login_newest">Last login newest</option>
+            <option value="login_oldest">Last login oldest</option>
+            <option value="updated_newest">Recently changed</option>
+            <option value="updated_oldest">Oldest changed</option>
+          </select>
+        </label>
+        <PageSizeSelect
+          value={userLimit}
+          label="Users per page above results"
+          onSelect={(value) => (userLimit = value)}
+        />
+      </div>
 
-    <div
-      class:loading={loadingInvitations}
-      class="invitation-results"
-      aria-busy={loadingInvitations}
-    >
-      {#if loadingInvitations && invitationPage === null}
-        <p class="result-state dim">Reading invitations…</p>
-      {:else if invitations.length === 0}
-        <p class="result-state dim">
-          {invitationQuery === '' && invitationRoles.length === 0 && invitationStatuses.length === 0
-            ? 'No invitations in this scope'
-            : 'No invitations match these filters'}
-        </p>
-      {:else}
-        <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-        <div class="user-table-wrap" role="region" aria-label="Panel invitations" tabindex="0">
-          <table class="user-table invitation-table">
-            <thead>
-              <tr>
-                <th>User</th>
-                <th>Role</th>
-                <th>Status</th>
-                <th>Expires</th>
-                <th><span class="visually-hidden">Actions</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              {#each invitations as invitation (invitation.id)}
+      <div class:loading={loadingUsers} class="user-results" aria-busy={loadingUsers}>
+        {#if loadingUsers && userPage === null}
+          <p class="result-state dim">Reading users…</p>
+        {:else if users.length === 0}
+          <p class="result-state dim">
+            {userQuery === '' && userRoles.length === 0 && userStatuses.length === 0
+              ? 'No users in this scope'
+              : 'No users match these filters'}
+          </p>
+        {:else}
+          <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+          <div class="user-table-wrap" role="region" aria-label="Panel users" tabindex="0">
+            <table class="user-table">
+              <thead>
                 <tr>
-                  <th scope="row">
-                    <span class="user-identity">
-                      <Avatar account={invitation.account} size={32} />
-                      <span>
-                        <strong>{invitation.account.display_name}</strong>
-                        <span class="user-login mono">@{invitation.account.login}</span>
-                      </span>
-                    </span>
-                  </th>
-                  <td><Chip tone="signal">{roleLabel(invitation.role)}</Chip></td>
-                  <td
-                    ><Chip tone={invitationTone(invitation.status)} dot>{invitation.status}</Chip
-                    ></td
-                  >
-                  <td class="last-login">
-                    <time
-                      datetime={invitation.expires_at}
-                      title={formatTimestamp(invitation.expires_at)}
-                    >
-                      {formatDateTime(invitation.expires_at)}
-                    </time>
-                  </td>
-                  <td class="row-actions">
-                    {#if invitationActionItems(invitation).length > 0}
-                      <ActionMenu
-                        label={`Actions for @${invitation.account.login} invitation`}
-                        items={invitationActionItems(invitation)}
-                        onSelect={(action) => chooseInvitationAction(invitation, action)}
-                      />
-                    {/if}
-                  </td>
+                  <th>User</th>
+                  <th>Role</th>
+                  <th>Status</th>
+                  <th>Last login</th>
+                  <th><span class="visually-hidden">Actions</span></th>
                 </tr>
-              {/each}
-            </tbody>
-          </table>
-        </div>
-      {/if}
-    </div>
+              </thead>
+              <tbody>
+                {#each users as user (user.account.id)}
+                  <tr>
+                    <th scope="row">
+                      <span class="user-identity">
+                        <Avatar account={user.account} size={32} />
+                        <span>
+                          <strong>{user.account.display_name}</strong>
+                          <span class="user-login mono">@{user.account.login}</span>
+                        </span>
+                      </span>
+                    </th>
+                    <td>
+                      {#if user.manageable}
+                        <select
+                          class="select-input role-select"
+                          aria-label="Role for {user.account.login}"
+                          value={selectedRole(user)}
+                          disabled={savingAccount === user.account.id}
+                          onchange={(event) => void changeRole(user, event.currentTarget.value)}
+                        >
+                          {#if scope === 'global'}
+                            {#each globalRoleOptions() as role (role.value)}
+                              <option value={role.value}>{role.label}</option>
+                            {/each}
+                          {:else}
+                            {#each targetRoleOptions() as role (role.value)}
+                              <option value={role.value}>{role.label}</option>
+                            {/each}
+                          {/if}
+                        </select>
+                      {:else}
+                        <Chip tone={user.root ? 'accent' : 'signal'}
+                          >{roleLabel(shownRole(user))}</Chip
+                        >
+                      {/if}
+                    </td>
+                    <td>
+                      <span class="status-cell">
+                        <Chip tone={statusTone(user)} dot>{statusLabel(user)}</Chip>
+                        {#if user.status === 'banned' || user.target_access?.suspended === true}
+                          <DecisionHistory
+                            label={`Access decision history for @${user.account.login}`}
+                            reason={currentReason(user)}
+                            decidedAt={currentDecisionAt(user)}
+                            fetchDecisions={() =>
+                              fetchUserDecisions(
+                                user.account.id,
+                                scope === 'target' ? targetId : undefined,
+                              )}
+                          />
+                        {/if}
+                      </span>
+                    </td>
+                    <td class="last-login">
+                      {#if user.last_login_at === undefined}
+                        <span class="dim">Never</span>
+                      {:else}
+                        <time
+                          datetime={user.last_login_at}
+                          title={formatTimestamp(user.last_login_at)}
+                        >
+                          {formatRelative(user.last_login_at, now)}
+                        </time>
+                      {/if}
+                    </td>
+                    <td class="row-actions">
+                      {#if user.manageable}
+                        <ActionMenu
+                          label={`Actions for @${user.account.login}`}
+                          items={userActionItems(user)}
+                          onSelect={(action) => beginAction(user, action as UserAction)}
+                        />
+                      {/if}
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        {/if}
+      </div>
 
-    <div class="pagination-footer">
-      <span class="result-summary mono">
-        {resultSummary(invitationPage, invitationPageIndex, invitationLimit)}
-      </span>
-      <div class="pagination-actions">
+      <div class="pagination-footer">
+        <span class="result-summary mono">{resultSummary(userPage, userPageIndex, userLimit)}</span>
+        <div class="pagination-actions">
+          <PageNavigation
+            pageIndex={userPageIndex}
+            pageCount={userPageCount}
+            disabled={loadingUsers}
+            onSelect={selectUserPage}
+          />
+          <PageSizeSelect
+            value={userLimit}
+            label="Users per page below results"
+            onSelect={(value) => (userLimit = value)}
+          />
+        </div>
+      </div>
+    </div>
+  {:else}
+    <div id="invitations-list-panel" role="tabpanel" aria-labelledby="invitations-list-tab">
+      <div class="management-toolbar" aria-label="Invitation list controls">
+        <label class="search-field">
+          <span class="visually-hidden">Search invitations</span>
+          <span class="search-icon" aria-hidden="true"></span>
+          <input
+            class="text-input"
+            type="search"
+            placeholder="Search invitations"
+            bind:value={invitationSearch}
+          />
+        </label>
+        <FilterMenu
+          label="Invitation roles"
+          summary={selectedSummary(invitationRoles, 'All roles')}
+          hint="Show invitations with any selected role"
+          sections={INVITATION_ROLE_FILTERS}
+          selected={invitationRoles}
+          multiple
+          onChange={(values) => (invitationRoles = values as Exclude<PanelRole, 'none'>[])}
+        />
+        <FilterMenu
+          label="Invitation status"
+          summary={invitationStatuses.length === 0
+            ? 'All statuses'
+            : `${invitationStatuses.length} selected`}
+          hint="Show invitations with any selected status"
+          sections={INVITATION_STATUS_FILTERS}
+          selected={invitationStatuses}
+          multiple
+          onChange={(values) => (invitationStatuses = values as InvitationStatus[])}
+        />
+        <label class="sort-field">
+          <span class="visually-hidden">Invitation sort order</span>
+          <select
+            class="select-input"
+            bind:value={invitationSort}
+            aria-label="Invitation sort order"
+          >
+            <option value="created_newest">Newest first</option>
+            <option value="created_oldest">Oldest first</option>
+            <option value="expiry_soonest">Expires soonest</option>
+            <option value="expiry_latest">Expires latest</option>
+            <option value="name_asc">Name A–Z</option>
+          </select>
+        </label>
         <PageSizeSelect
           value={invitationLimit}
-          label="Invitations per page below results"
+          label="Invitations per page above results"
           onSelect={(value) => (invitationLimit = value)}
         />
-        <PageNavigation
-          pageIndex={invitationPageIndex}
-          pageCount={invitationPageCount}
-          disabled={loadingInvitations}
-          onSelect={selectInvitationPage}
-        />
+      </div>
+
+      <div
+        class:loading={loadingInvitations}
+        class="invitation-results"
+        aria-busy={loadingInvitations}
+      >
+        {#if loadingInvitations && invitationPage === null}
+          <p class="result-state dim">Reading invitations…</p>
+        {:else if invitations.length === 0}
+          <p class="result-state dim">
+            {invitationQuery === '' &&
+            invitationRoles.length === 0 &&
+            invitationStatuses.length === 0
+              ? 'No invitations in this scope'
+              : 'No invitations match these filters'}
+          </p>
+        {:else}
+          <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+          <div class="user-table-wrap" role="region" aria-label="Panel invitations" tabindex="0">
+            <table class="user-table invitation-table">
+              <thead>
+                <tr>
+                  <th>User</th>
+                  <th>Role</th>
+                  <th>Status</th>
+                  <th>Expires</th>
+                  <th><span class="visually-hidden">Actions</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each invitations as invitation (invitation.id)}
+                  <tr>
+                    <th scope="row">
+                      <span class="user-identity">
+                        <Avatar account={invitation.account} size={32} />
+                        <span>
+                          <strong>{invitation.account.display_name}</strong>
+                          <span class="user-login mono">@{invitation.account.login}</span>
+                        </span>
+                      </span>
+                    </th>
+                    <td><Chip tone="signal">{roleLabel(invitation.role)}</Chip></td>
+                    <td
+                      ><Chip tone={invitationTone(invitation.status)} dot>{invitation.status}</Chip
+                      ></td
+                    >
+                    <td class="last-login">
+                      <time
+                        datetime={invitation.expires_at}
+                        title={formatTimestamp(invitation.expires_at)}
+                      >
+                        {formatDateTime(invitation.expires_at)}
+                      </time>
+                    </td>
+                    <td class="row-actions">
+                      {#if invitationActionItems(invitation).length > 0}
+                        <ActionMenu
+                          label={`Actions for @${invitation.account.login} invitation`}
+                          items={invitationActionItems(invitation)}
+                          onSelect={(action) => chooseInvitationAction(invitation, action)}
+                        />
+                      {/if}
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        {/if}
+      </div>
+
+      <div class="pagination-footer">
+        <span class="result-summary mono">
+          {resultSummary(invitationPage, invitationPageIndex, invitationLimit)}
+        </span>
+        <div class="pagination-actions">
+          <PageNavigation
+            pageIndex={invitationPageIndex}
+            pageCount={invitationPageCount}
+            disabled={loadingInvitations}
+            onSelect={selectInvitationPage}
+          />
+          <PageSizeSelect
+            value={invitationLimit}
+            label="Invitations per page below results"
+            onSelect={(value) => (invitationLimit = value)}
+          />
+        </div>
       </div>
     </div>
-  </section>
+  {/if}
 </Plate>
 
 <Modal
   id="add-user"
   open={addModalOpen}
-  title={scope === 'global' ? 'Add a global user' : `Add a user to ${targetName}`}
-  description={scope === 'global'
-    ? 'Grant direct access or create a secure invitation for a GitHub identity'
-    : `Grant access only to ${targetName} or create a secure invitation`}
+  title="Add user"
+  description="Grant access now or send a secure invitation"
   returnFocus={addButton}
   onClose={closeAddModal}
 >
   <form id="add-user-form" class="add-user-form" onsubmit={submitAdd}>
-    <SegmentedControl
-      name="access-method"
-      label="Access method"
-      options={ACCESS_METHODS}
-      value={accessMethod}
-      onSelect={(value) => {
-        accessMethod = value as 'add' | 'invite';
-        generatedLink = '';
-      }}
-    />
-
     {#if generatedLink === ''}
+      <div class="form-field">
+        <span>Scope</span>
+        <ScopePicker
+          global={addScopeTargetId === null}
+          targetId={addScopeTargetId ?? targetId}
+          {targets}
+          canSelectGlobal={canManageGlobal}
+          variant="field"
+          label="Access scope"
+          onSelect={selectAddScope}
+        />
+        <small>Choose global access or one organization</small>
+      </div>
+
+      <fieldset class="method-picker">
+        <legend>Access method</legend>
+        <div class="method-options">
+          {#each ACCESS_METHODS as method (method.value)}
+            <label class="method-option" class:selected={accessMethod === method.value}>
+              <input
+                type="radio"
+                name="access-method"
+                value={method.value}
+                bind:group={accessMethod}
+              />
+              <span class="method-icon method-{method.value}" aria-hidden="true"></span>
+              <span class="method-copy">
+                <strong>{method.label}</strong>
+                <small>{method.description}</small>
+              </span>
+              <span class="method-check" aria-hidden="true"></span>
+            </label>
+          {/each}
+        </div>
+      </fieldset>
+
       <label class="form-field">
         <span>GitHub login</span>
         <input
@@ -1097,7 +1210,11 @@
           required
           data-modal-focus
         />
-        <small>The invitation is locked to this GitHub identity</small>
+        <small>
+          {accessMethod === 'invite'
+            ? 'The invitation only works for this GitHub identity'
+            : 'GitHub login identifies the account to add'}
+        </small>
       </label>
 
       <div class="form-grid">
@@ -1250,6 +1367,62 @@
     margin-left: auto;
   }
 
+  .list-tabs {
+    border-bottom: 1px solid var(--rule);
+    display: flex;
+    gap: 0.25rem;
+    margin: -1.125rem -1.125rem 0;
+    padding: 0 1.125rem;
+  }
+
+  .list-tab {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    color: var(--dim);
+    display: inline-flex;
+    font-size: 0.75rem;
+    font-weight: 650;
+    gap: 0.45rem;
+    min-height: 2.75rem;
+    padding: 0 0.625rem;
+    transition:
+      background-color 120ms ease-out,
+      border-color 120ms ease-out,
+      color 120ms ease-out;
+  }
+
+  .list-tab:hover {
+    background: var(--well);
+    color: var(--text);
+  }
+
+  .list-tab.selected {
+    border-bottom-color: var(--accent);
+    color: var(--text);
+  }
+
+  .tab-count {
+    align-items: center;
+    background: var(--well);
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    color: var(--dim);
+    display: inline-flex;
+    font-size: 0.5625rem;
+    height: 1.125rem;
+    justify-content: center;
+    min-width: 1.125rem;
+    padding: 0 0.3rem;
+  }
+
+  .list-tab.selected .tab-count {
+    background: var(--accent-tint);
+    border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+    color: var(--accent);
+  }
+
   .add-icon {
     height: 0.75rem;
     position: relative;
@@ -1339,7 +1512,7 @@
   }
 
   .user-results {
-    margin-top: 0;
+    margin-top: 1.125rem;
   }
 
   .user-results.loading,
@@ -1461,30 +1634,6 @@
     gap: 0.625rem;
   }
 
-  .invitations {
-    border-top: 1px solid var(--rule);
-    margin-top: 1rem;
-    padding-top: 1rem;
-  }
-
-  .section-heading {
-    margin-bottom: 0.75rem;
-  }
-
-  .section-heading h3 {
-    color: var(--accent);
-    font: 600 0.6875rem/1.2 var(--mono);
-    letter-spacing: 0.1em;
-    margin: 0;
-    text-transform: uppercase;
-  }
-
-  .section-heading p {
-    color: var(--dim);
-    font-size: 0.75rem;
-    margin: 0.25rem 0 0;
-  }
-
   .invitation-results {
     margin-top: 1.125rem;
   }
@@ -1495,7 +1644,132 @@
 
   .add-user-form {
     display: grid;
-    gap: 1rem;
+    gap: 0.875rem;
+  }
+
+  .method-picker {
+    border: 0;
+    margin: 0;
+    min-width: 0;
+    padding: 0;
+  }
+
+  .method-picker legend {
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-bottom: 0.4rem;
+    padding: 0;
+  }
+
+  .method-options {
+    display: grid;
+    gap: 0.625rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .method-option {
+    align-items: center;
+    background: var(--well);
+    border: 1px solid var(--control-border);
+    border-radius: var(--r-ctl);
+    cursor: pointer;
+    display: grid;
+    gap: 0.625rem;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    min-height: 3.5rem;
+    padding: 0.625rem;
+    transition:
+      background-color 120ms ease-out,
+      border-color 120ms ease-out,
+      transform 80ms ease-out;
+  }
+
+  .method-option:hover {
+    background: var(--strip-lift);
+    border-color: color-mix(in srgb, var(--dim) 56%, transparent);
+  }
+
+  .method-option:active {
+    transform: translateY(1px);
+  }
+
+  .method-option.selected {
+    background: var(--signal-tint);
+    border-color: color-mix(in srgb, var(--signal) 60%, transparent);
+  }
+
+  .method-option:has(input:focus-visible) {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+
+  .method-option input {
+    height: 1px;
+    opacity: 0;
+    position: absolute;
+    width: 1px;
+  }
+
+  .method-icon {
+    align-items: center;
+    background: var(--strip-lift);
+    border-radius: 50%;
+    color: var(--dim);
+    display: inline-flex;
+    font: 700 0.875rem/1 var(--mono);
+    height: 1.75rem;
+    justify-content: center;
+    width: 1.75rem;
+  }
+
+  .method-icon::before {
+    content: '+';
+  }
+
+  .method-invite::before {
+    content: '↗';
+  }
+
+  .method-option.selected .method-icon {
+    background: color-mix(in srgb, var(--signal) 18%, transparent);
+    color: var(--signal);
+  }
+
+  .method-copy {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .method-copy strong {
+    font-size: 0.75rem;
+    line-height: 1.3;
+  }
+
+  .method-copy small {
+    color: var(--dim);
+    font-size: 0.625rem;
+    line-height: 1.35;
+  }
+
+  .method-check {
+    border: 1px solid var(--control-border);
+    border-radius: 50%;
+    height: 0.875rem;
+    position: relative;
+    width: 0.875rem;
+  }
+
+  .method-option.selected .method-check {
+    border-color: var(--signal);
+  }
+
+  .method-option.selected .method-check::after {
+    background: var(--signal);
+    border-radius: 50%;
+    content: '';
+    inset: 2px;
+    position: absolute;
   }
 
   .form-field {
@@ -1604,10 +1878,6 @@
     .header-actions :global(.scope-picker summary) {
       max-width: none;
     }
-
-    .management-toolbar > .result-summary {
-      display: none;
-    }
   }
 
   @media (max-width: 36rem) {
@@ -1628,6 +1898,16 @@
 
     .form-grid {
       grid-template-columns: minmax(0, 1fr);
+    }
+
+    .method-options {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .method-option:active {
+      transform: none;
     }
   }
 </style>
