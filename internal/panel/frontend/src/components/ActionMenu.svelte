@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Icon from './Icon.svelte';
+
   export interface ActionMenuItem {
     id: string;
     label: string;
@@ -14,7 +16,7 @@
   }: {
     label: string;
     items: readonly ActionMenuItem[];
-    onSelect: (id: string) => void;
+    onSelect: (id: string, trigger: HTMLElement | null) => void;
   } = $props();
 
   let menu = $state<HTMLDetailsElement | null>(null);
@@ -42,7 +44,7 @@
   function choose(item: ActionMenuItem): void {
     if (item.disabled === true) return;
     close(true);
-    onSelect(item.id);
+    onSelect(item.id, trigger);
   }
 
   function close(restoreFocus: boolean): void {
@@ -67,7 +69,7 @@
 
 <details class="action-menu" bind:this={menu}>
   <summary bind:this={trigger} aria-label={label} title={label}>
-    <span aria-hidden="true"><i></i><i></i><i></i></span>
+    <Icon name="more" size={18} />
   </summary>
   <div class="action-popover" role="menu" aria-label={label}>
     {#each items as item (item.id)}
@@ -94,7 +96,7 @@
   }
 
   .action-menu[open] {
-    z-index: 35;
+    z-index: var(--layer-popover);
   }
 
   summary {
@@ -105,6 +107,7 @@
     display: flex;
     height: 1.875rem;
     justify-content: center;
+    position: relative;
     width: 1.875rem;
   }
 
@@ -116,35 +119,29 @@
     content: '';
   }
 
+  summary::before {
+    content: '';
+    inset: -0.3125rem;
+    position: absolute;
+  }
+
   summary:hover,
   .action-menu[open] summary {
     background: var(--strip-lift);
     border-color: var(--control-border);
   }
 
-  summary > span {
-    display: flex;
-    gap: 0.15rem;
-  }
-
-  i {
-    background: var(--dim);
-    border-radius: 50%;
-    height: 0.2rem;
-    width: 0.2rem;
-  }
-
   .action-popover {
-    background: var(--strip);
-    border: 1px solid var(--rule);
-    border-radius: var(--r-ctl);
-    box-shadow: 0 12px 32px var(--shadow);
+    background: var(--popover-bg);
+    border: 1px solid var(--popover-border);
+    border-radius: var(--radius-popover);
+    box-shadow: var(--shadow-popover);
     min-width: 14rem;
     padding: 0.3rem;
     position: absolute;
     right: 0;
     top: calc(100% + 0.3rem);
-    z-index: 35;
+    z-index: var(--layer-popover);
   }
 
   .action-item {
@@ -161,7 +158,7 @@
 
   .action-item:hover:not(:disabled),
   .action-item:focus-visible {
-    background: var(--strip-lift);
+    background: var(--interactive-hover);
   }
 
   .action-item strong {

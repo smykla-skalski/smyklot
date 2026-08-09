@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { TimeDisplay } from '../lib/preferences';
+  import Icon from './Icon.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
 
   const TIME_OPTIONS = [
@@ -47,12 +48,8 @@
 
 <details class="display-menu" bind:this={menu}>
   <summary bind:this={trigger} aria-label="Display options" title="Display options">
-    <span class="display-icon" aria-hidden="true">
-      <span></span>
-      <span></span>
-      <span></span>
-    </span>
-    <span class="menu-chevron" aria-hidden="true"></span>
+    <span class="display-icon" aria-hidden="true"><Icon name="settings" size={18} /></span>
+    <span class="menu-chevron" aria-hidden="true"><Icon name="chevron-down" size={15} /></span>
   </summary>
 
   <div class="display-popover">
@@ -78,13 +75,13 @@
 
   summary {
     align-items: center;
-    background: var(--control-surface);
+    background: var(--control-bg);
     border: 1px solid var(--control-border);
     border-radius: var(--r-ctl);
     cursor: pointer;
     display: flex;
     gap: 0.4rem;
-    height: var(--history-control-height, var(--control-height));
+    height: var(--local-control-height, var(--control-height));
     justify-content: center;
     padding: 0 0.5rem;
     user-select: none;
@@ -100,63 +97,32 @@
 
   summary:hover,
   .display-menu[open] summary {
-    background: var(--strip-lift);
+    background: var(--control-bg-hover);
   }
 
   .display-icon {
+    color: var(--text-muted);
     display: grid;
-    gap: 0.18rem;
-    width: 0.8rem;
-  }
-
-  .display-icon > span {
-    background: var(--dim);
-    height: 1px;
-    position: relative;
-  }
-
-  .display-icon > span::after {
-    background: var(--control-surface);
-    border: 1px solid var(--dim);
-    border-radius: 50%;
-    content: '';
-    height: 0.22rem;
-    position: absolute;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 0.22rem;
-  }
-
-  .display-icon > span:nth-child(1)::after,
-  .display-icon > span:nth-child(3)::after {
-    left: 0.12rem;
-  }
-
-  .display-icon > span:nth-child(2)::after {
-    right: 0.12rem;
+    place-items: center;
   }
 
   .menu-chevron {
-    border-bottom: 1.5px solid var(--dim);
-    border-right: 1.5px solid var(--dim);
-    height: 0.38rem;
-    margin: 0 0.1rem 0.2rem 0.15rem;
-    transform: rotate(45deg);
-    transition: transform 120ms ease-out;
-    width: 0.38rem;
+    color: var(--text-muted);
+    display: grid;
+    place-items: center;
+    transition: transform var(--duration-fast) var(--ease-out);
   }
 
   .display-menu[open] .menu-chevron {
-    margin-bottom: -0.2rem;
-    transform: rotate(225deg);
+    transform: rotate(180deg);
   }
 
   .display-popover {
     align-items: center;
-    background: var(--strip);
-    border: 1px solid var(--rule);
-    border-radius: var(--r-ctl);
-    box-shadow: 0 8px 24px var(--shadow);
+    background: var(--popover-bg);
+    border: 1px solid var(--popover-border);
+    border-radius: var(--radius-popover);
+    box-shadow: var(--shadow-popover);
     display: grid;
     gap: 0.75rem;
     grid-template-columns: minmax(0, 1fr) auto;
@@ -165,7 +131,7 @@
     right: 0;
     top: calc(100% + 0.35rem);
     width: min(22rem, calc(100vw - 2rem));
-    z-index: 15;
+    z-index: var(--layer-menu);
   }
 
   .option-copy {

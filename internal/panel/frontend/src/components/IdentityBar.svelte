@@ -1,7 +1,11 @@
 <script lang="ts">
+  import { fuzzyCandidates } from '../lib/fuzzy';
   import { handleLabel, readHandle } from '../lib/identity';
+  import type { PanelView } from '../lib/routes';
   import type { PanelTarget, PanelViewer } from '../lib/types';
   import Avatar from './Avatar.svelte';
+  import Icon, { type IconName } from './Icon.svelte';
+  import ViewTabs from './ViewTabs.svelte';
 
   const {
     viewer,
@@ -11,6 +15,13 @@
     targetHref,
     onSelectTarget,
     onSignOut,
+    view,
+    viewHref,
+    onSelectView,
+    showUsers,
+    showNavigation,
+    collapsed,
+    onToggleCollapsed,
   }: {
     viewer: PanelViewer | null;
     iconUrl: string;
@@ -19,10 +30,22 @@
     targetHref: (target: PanelTarget) => string;
     onSelectTarget: (targetId: string) => void;
     onSignOut: () => void | Promise<void>;
+    view: PanelView;
+    viewHref: (view: PanelView) => string;
+    onSelectView: (view: PanelView) => void;
+    showUsers: boolean;
+    showNavigation: boolean;
+    collapsed: boolean;
+    onToggleCollapsed: () => void;
   } = $props();
 
   let accountMenu = $state<HTMLDetailsElement | null>(null);
   let accountTrigger = $state<HTMLElement | null>(null);
+  let targetMenu = $state<HTMLDetailsElement | null>(null);
+  let targetTrigger = $state<HTMLElement | null>(null);
+  let targetSearchInput = $state<HTMLInputElement | null>(null);
+  let targetQuery = $state('');
+  let mobileNavigationOpen = $state(false);
 
   const handle = $derived(
     viewer === null ? null : readHandle(viewer.account.provider, viewer.account.login),
@@ -33,35 +56,74 @@
   const roleLabel = $derived(
     (selectedTarget?.effective_role ?? viewer?.global_role ?? 'none').toUpperCase(),
   );
-
-  $effect(() => {
-    function closeFromOutside(event: PointerEvent): void {
-      if (
-        accountMenu?.open === true &&
-        event.target instanceof Node &&
-        !accountMenu.contains(event.target)
-      ) {
-        accountMenu.open = false;
-      }
-    }
-
-    document.addEventListener('pointerdown', closeFromOutside);
-    document.addEventListener('keydown', closeFromKeyboard);
-    return () => {
-      document.removeEventListener('pointerdown', closeFromOutside);
-      document.removeEventListener('keydown', closeFromKeyboard);
-    };
+  const privilegedIdentity = $derived(roleLabel === 'ADMIN' || roleLabel === 'OWNER');
+  const roleIcon = $derived.by((): IconName => {
+    if (roleLabel === 'OWNER') return 'owner';
+    if (roleLabel === 'ADMIN') return 'admin';
+    if (roleLabel === 'NONE') return 'no-access';
+    return 'viewer';
   });
+  const targetCandidates = $derived(
+    fuzzyCandidates(
+      targets.map((target) => ({
+        ...target,
+        label: target.account.display_name,
+        keywords: [target.account.login, target.type],
+      })),
+      targetQuery,
+    ),
+  );
+  const organizationTargets = $derived(
+    targetCandidates.filter((target) => target.type === 'Organization'),
+  );
+  const personalTargets = $derived(targetCandidates.filter((target) => target.type === 'User'));
+
+  function closeMenus(except?: HTMLDetailsElement): void {
+    if (accountMenu !== null && accountMenu !== except) accountMenu.open = false;
+    if (targetMenu !== null && targetMenu !== except) {
+      targetMenu.open = false;
+      targetQuery = '';
+    }
+  }
+
+  function closeFromOutside(event: PointerEvent): void {
+    if (!(event.target instanceof Node)) return;
+    if (accountMenu?.open === true && !accountMenu.contains(event.target)) accountMenu.open = false;
+    if (targetMenu?.open === true && !targetMenu.contains(event.target)) {
+      targetMenu.open = false;
+      targetQuery = '';
+    }
+    const sidebar = document.querySelector('.panel-sidebar');
+    if (mobileNavigationOpen && sidebar !== null && !sidebar.contains(event.target)) {
+      mobileNavigationOpen = false;
+    }
+  }
 
   function closeFromKeyboard(event: KeyboardEvent): void {
-    if (event.key !== 'Escape' || accountMenu?.open !== true) return;
-    event.preventDefault();
-    accountMenu.open = false;
-    accountTrigger?.focus();
+    if (event.key !== 'Escape') return;
+    if (accountMenu?.open === true) {
+      event.preventDefault();
+      accountMenu.open = false;
+      accountTrigger?.focus();
+      return;
+    }
+    if (targetMenu?.open === true) {
+      event.preventDefault();
+      targetMenu.open = false;
+      targetQuery = '';
+      targetTrigger?.focus();
+      return;
+    }
+    if (mobileNavigationOpen) {
+      event.preventDefault();
+      mobileNavigationOpen = false;
+      document.querySelector<HTMLElement>('.mobile-navigation-trigger')?.focus();
+    }
   }
 
   async function signOut(): Promise<void> {
-    if (accountMenu !== null) accountMenu.open = false;
+    closeMenus();
+    mobileNavigationOpen = false;
     await onSignOut();
   }
 
@@ -69,288 +131,508 @@
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
       return;
     event.preventDefault();
-    if (accountMenu !== null) accountMenu.open = false;
+    closeMenus();
+    targetQuery = '';
+    mobileNavigationOpen = false;
     onSelectTarget(targetId);
+  }
+
+  function selectView(next: PanelView): void {
+    mobileNavigationOpen = false;
+    onSelectView(next);
+  }
+
+  function toggleDetails(event: Event, menu: HTMLDetailsElement | null): void {
+    if (!(event.currentTarget instanceof HTMLDetailsElement) || menu === null) return;
+    if (event.currentTarget.open) closeMenus(menu);
+  }
+
+  function toggleTargetDetails(event: Event): void {
+    toggleDetails(event, targetMenu);
+    if (!(event.currentTarget instanceof HTMLDetailsElement)) return;
+    targetQuery = '';
+    if (event.currentTarget.open) queueMicrotask(() => targetSearchInput?.focus());
   }
 </script>
 
-<header class="bar">
-  <h1 class="mark">
-    <img class="mark-icon" src={iconUrl} alt="" width="30" height="30" decoding="async" />
-    <span class="mark-name">Smyklot</span>
-    <span class="mark-part">Panel</span>
-  </h1>
+<svelte:window onkeydown={closeFromKeyboard} />
+<svelte:document onpointerdown={closeFromOutside} />
+
+<aside
+  class={[
+    'panel-sidebar',
+    mobileNavigationOpen && 'mobile-navigation-open',
+    collapsed && 'collapsed',
+  ]}
+>
+  <div class="brand-row">
+    <h1 class="mark">
+      <img class="mark-icon" src={iconUrl} alt="" width="32" height="32" decoding="async" />
+      <span class="mark-copy">
+        <span class="mark-name">Smyklot</span>
+        <span class="mark-part">GitHub App</span>
+      </span>
+    </h1>
+
+    {#if showNavigation}
+      <button
+        class="sidebar-collapse-trigger"
+        type="button"
+        aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        aria-expanded={!collapsed}
+        onclick={onToggleCollapsed}
+      >
+        <span class="collapse-icon" class:collapsed><Icon name="sidebar" size={20} /></span>
+        <span class="sidebar-tooltip">{collapsed ? 'Expand sidebar' : 'Collapse sidebar'}</span>
+      </button>
+
+      <button
+        class="mobile-navigation-trigger"
+        type="button"
+        aria-label="Toggle panel navigation"
+        aria-expanded={mobileNavigationOpen}
+        aria-controls="panel-navigation-drawer"
+        onclick={() => (mobileNavigationOpen = !mobileNavigationOpen)}
+      >
+        <span aria-hidden="true"></span>
+        <span aria-hidden="true"></span>
+        <span aria-hidden="true"></span>
+        <span>Menu</span>
+      </button>
+    {/if}
+  </div>
+
+  {#if showNavigation && selectedTarget !== null}
+    <details class="target-menu" bind:this={targetMenu} ontoggle={toggleTargetDetails}>
+      <summary
+        class="target-trigger"
+        bind:this={targetTrigger}
+        aria-label={`Switch installation, currently ${selectedTarget.account.display_name}`}
+      >
+        <Avatar account={selectedTarget.account} size={28} />
+        <span class="target-trigger-copy">
+          <strong>{selectedTarget.account.display_name}</strong>
+          <span class="mono">@{selectedTarget.account.login}</span>
+        </span>
+        <span class="menu-chevron" aria-hidden="true"><Icon name="chevron-down" size={16} /></span>
+        <span class="sidebar-tooltip">Switch installation</span>
+      </summary>
+
+      <div class="target-popover">
+        <label class="target-search">
+          <span class="visually-hidden">Search installations</span>
+          <span class="target-search-icon" aria-hidden="true"><Icon name="search" size={18} /></span
+          >
+          <input
+            type="search"
+            placeholder="Search installations"
+            bind:this={targetSearchInput}
+            bind:value={targetQuery}
+          />
+        </label>
+        <div class="target-options">
+          {#snippet targetOption(target: PanelTarget)}
+            <a
+              href={targetHref(target)}
+              class={['target-option', target.id === selectedId && 'current']}
+              aria-current={target.id === selectedId ? 'page' : undefined}
+              onclick={(event) => selectTarget(event, target.id)}
+            >
+              <Avatar account={target.account} size={28} />
+              <span class="option-copy">
+                <strong>{target.account.display_name}</strong>
+                <span class="mono">
+                  @{target.account.login} · {target.type === 'Organization'
+                    ? 'Organization'
+                    : 'Personal'}
+                </span>
+              </span>
+              <span class="option-check" aria-hidden="true">
+                {#if target.id === selectedId}<Icon name="success" size={16} />{/if}
+              </span>
+            </a>
+          {/snippet}
+
+          {#if organizationTargets.length > 0}
+            <p class="target-group-label">Organizations</p>
+            {#each organizationTargets as target (target.id)}
+              {@render targetOption(target)}
+            {/each}
+          {/if}
+
+          {#if personalTargets.length > 0}
+            <p class="target-group-label">Personal installations</p>
+            {#each personalTargets as target (target.id)}
+              {@render targetOption(target)}
+            {/each}
+          {/if}
+
+          {#if targetCandidates.length === 0}
+            <p class="target-empty">No installations match “{targetQuery.trim()}”</p>
+          {/if}
+        </div>
+      </div>
+    </details>
+  {/if}
+
+  {#if showNavigation}
+    <div id="panel-navigation-drawer" class="navigation-shell">
+      <ViewTabs value={view} hrefFor={viewHref} onSelect={selectView} {showUsers} {collapsed} />
+    </div>
+  {/if}
 
   {#if viewer !== null && handle !== null}
-    <details class="account-menu" data-role={roleLabel} bind:this={accountMenu}>
-      <summary class="who" bind:this={accountTrigger}>
-        <span class="visually-hidden">{roleLabel}</span>
-        <Avatar account={selectedTarget?.account ?? viewer.account} size={30} />
+    <details
+      class="account-menu"
+      bind:this={accountMenu}
+      ontoggle={(event) => toggleDetails(event, accountMenu)}
+    >
+      <summary
+        class="who"
+        bind:this={accountTrigger}
+        aria-label={`Account menu for ${viewer.account.display_name}, ${selectedTarget?.account.display_name ?? handleLabel(handle)}`}
+      >
+        <Avatar account={viewer.account} size={34} />
         <span class="who-text">
           <span class="who-name">{viewer.account.display_name}</span>
-          <span class="who-context mono">
-            {#if selectedTarget === null}
-              {handleLabel(handle)}
-            {:else}
-              {selectedTarget.account.display_name}
+          <span class="who-meta">
+            <span class="who-context">
+              {selectedTarget?.account.display_name ?? handleLabel(handle)}
+            </span>
+            {#if privilegedIdentity}
+              <span class="who-role"><Icon name={roleIcon} size={13} />{roleLabel}</span>
             {/if}
           </span>
         </span>
-        <span class="menu-chevron" aria-hidden="true"></span>
+        <span class="menu-chevron" aria-hidden="true"><Icon name="chevron-down" size={16} /></span>
+        <span class="sidebar-tooltip">Account menu</span>
       </summary>
       <div class="account-popover">
-        <p class="signed-in mono">Signed in as {handleLabel(handle)}</p>
-
-        <div class="menu-section">
-          <p class="menu-label mono">Installations</p>
-          {#if targets.length === 0}
-            <p class="empty-target dim">No installation is available</p>
-          {:else}
-            <div class="target-options">
-              {#each targets as target (target.id)}
-                <a
-                  href={targetHref(target)}
-                  class="target-option"
-                  class:current={target.id === selectedId}
-                  aria-current={target.id === selectedId ? 'true' : undefined}
-                  onclick={(event) => selectTarget(event, target.id)}
-                >
-                  <Avatar account={target.account} size={26} />
-                  <span class="option-copy">
-                    <strong>{target.account.display_name}</strong>
-                    <span class="mono">
-                      @{target.account.login} · {target.type === 'Organization'
-                        ? 'Organization'
-                        : 'Personal'}
-                    </span>
-                  </span>
-                  <span class="option-check" aria-hidden="true">
-                    {target.id === selectedId ? '✓' : ''}
-                  </span>
-                </a>
-              {/each}
-            </div>
-          {/if}
-        </div>
-
+        <p class="signed-in">Signed in as <span class="mono">{handleLabel(handle)}</span></p>
         <div class="menu-separator" aria-hidden="true"></div>
         <button class="account-action" onclick={signOut}>Sign out</button>
       </div>
     </details>
   {/if}
-</header>
-
-<div class="brand-rule bar-rule" aria-hidden="true"></div>
+</aside>
 
 <style>
-  .bar {
+  .panel-sidebar {
+    background: var(--sidebar-bg);
+    border-right: 1px solid var(--sidebar-border);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+    height: 100dvh;
+    min-height: 36rem;
+    padding: var(--space-5) var(--space-4) 0;
+    position: sticky;
+    top: 0;
+    transition: padding var(--duration-normal) var(--ease-standard);
+    z-index: var(--layer-sticky);
+  }
+
+  .brand-row {
     align-items: center;
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.75rem 1rem;
     justify-content: space-between;
-    margin: 0 0 0.75rem;
-    padding: 0 0.125rem;
+    min-height: 2.5rem;
   }
 
   .mark {
     align-items: center;
     display: flex;
-    gap: 0.5rem;
+    gap: var(--space-2);
     margin: 0;
+    min-width: 0;
   }
 
   .mark-icon {
-    border-radius: 7px;
     flex: none;
+    object-fit: contain;
   }
 
-  .mark-name,
-  .mark-part {
-    font: 600 0.8125rem/1 var(--mono);
-    letter-spacing: 0.2em;
+  .mark-copy {
+    display: grid;
+    gap: 0.2rem;
+    min-width: 0;
+  }
+
+  .mark-name {
+    color: var(--sidebar-text);
+    font: 700 var(--font-size-body) / 1 var(--sans);
+    letter-spacing: 0.12em;
     text-transform: uppercase;
   }
 
   .mark-part {
-    color: var(--dim);
-    font-weight: 500;
+    color: var(--sidebar-text-muted);
+    font: 500 var(--font-size-micro) / 1 var(--sans);
   }
 
-  .bar-rule {
-    margin-bottom: 1.25rem;
+  .sidebar-collapse-trigger,
+  .mobile-navigation-trigger {
+    align-items: center;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-control);
+    color: var(--sidebar-text-muted);
+    display: flex;
+    flex: none;
+    height: var(--control-height);
+    justify-content: center;
+    padding: 0;
+    position: relative;
+    width: var(--control-height);
   }
 
+  .sidebar-collapse-trigger:hover,
+  .sidebar-collapse-trigger:focus-visible,
+  .mobile-navigation-trigger:hover,
+  .mobile-navigation-trigger:focus-visible {
+    background: var(--sidebar-item-hover);
+    color: var(--sidebar-text);
+  }
+
+  .sidebar-collapse-trigger:active,
+  .mobile-navigation-trigger:active {
+    background: var(--sidebar-item-pressed);
+  }
+
+  .collapse-icon {
+    display: grid;
+    place-items: center;
+    transition: transform var(--duration-fast) var(--ease-standard);
+  }
+
+  .collapse-icon.collapsed {
+    transform: rotate(180deg);
+  }
+
+  .mobile-navigation-trigger {
+    display: none;
+  }
+
+  .mobile-navigation-trigger > span[aria-hidden='true'] {
+    background: currentColor;
+    display: block;
+    height: 1px;
+    position: absolute;
+    width: 0.875rem;
+  }
+
+  .mobile-navigation-trigger > span[aria-hidden='true']:first-child {
+    transform: translateY(-4px);
+  }
+
+  .mobile-navigation-trigger > span[aria-hidden='true']:nth-child(3) {
+    transform: translateY(4px);
+  }
+
+  .mobile-navigation-trigger > span:last-child {
+    margin-left: 1.25rem;
+  }
+
+  .target-menu,
   .account-menu {
     isolation: isolate;
-    margin-left: 1rem;
     position: relative;
-    z-index: 40;
+    z-index: var(--layer-popover);
   }
 
-  .account-menu::before {
-    background: var(--admin);
-    border-radius: var(--r-ctl);
-    bottom: 0;
-    content: '';
-    left: -1rem;
-    pointer-events: none;
-    position: absolute;
-    right: 1rem;
-    top: 0;
-    transition: filter 120ms ease-out;
-    z-index: 0;
-  }
-
-  .account-menu::after {
-    color: var(--on-admin);
-    content: attr(data-role);
-    font: 900 0.5625rem/1 var(--sans);
-    left: calc(-0.5rem + 1px);
-    letter-spacing: 0.1em;
-    pointer-events: none;
-    position: absolute;
-    top: 50%;
-    transform: translate(-50%, -50%) rotate(-90deg);
-    white-space: nowrap;
-    z-index: 2;
-  }
-
+  .target-trigger,
   .who {
     align-items: center;
-    background: var(--well);
-    border: 1px solid var(--admin);
-    border-radius: var(--r-ctl);
+    background: var(--identity-bg);
+    border: 1px solid var(--identity-border);
+    border-radius: var(--radius-control);
     cursor: pointer;
-    display: flex;
-    gap: 0.625rem;
-    min-height: 2.75rem;
-    padding: 0.375rem 0.625rem;
+    display: grid;
+    gap: var(--space-2);
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    min-height: 3.75rem;
+    padding: var(--space-2) var(--space-3);
     position: relative;
     user-select: none;
-    z-index: 1;
   }
 
+  .target-trigger::-webkit-details-marker,
   .who::-webkit-details-marker {
     display: none;
   }
 
+  .target-trigger::marker,
   .who::marker {
     content: '';
   }
 
+  .target-trigger:hover,
+  .target-menu[open] .target-trigger,
   .who:hover,
   .account-menu[open] .who {
-    background: var(--strip-lift);
+    background: var(--identity-hover-bg);
+    border-color: color-mix(in srgb, var(--primitive-indigo-400) 46%, var(--identity-border));
   }
 
-  .account-menu:has(.who:hover)::before,
-  .account-menu[open]::before {
-    filter: brightness(1.08);
+  .target-trigger:active,
+  .who:active {
+    background: var(--sidebar-item-pressed);
   }
 
+  .target-trigger-copy,
   .who-text {
     display: flex;
     flex-direction: column;
-    gap: 0.15rem;
+    gap: 0.18rem;
     min-width: 0;
     text-align: left;
   }
 
+  .target-trigger-copy strong,
   .who-name {
-    font-size: 0.875rem;
+    color: var(--sidebar-text);
+    font-size: var(--font-size-body);
     font-weight: 600;
     line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
+  .target-trigger-copy span,
   .who-context {
-    color: var(--dim);
-    font-size: 0.6875rem;
+    color: var(--sidebar-text-muted);
+    font-size: var(--font-size-compact);
     line-height: 1.2;
-    max-width: 15rem;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   .menu-chevron {
-    border-bottom: 1.5px solid var(--dim);
-    border-right: 1.5px solid var(--dim);
-    height: 0.45rem;
-    margin: 0 0.2rem 0.2rem 0.25rem;
-    transform: rotate(45deg);
-    transition: transform 120ms ease-out;
-    width: 0.45rem;
+    color: var(--sidebar-text-muted);
+    display: grid;
+    place-items: center;
+    transition: transform var(--duration-fast) var(--ease-standard);
   }
 
-  .account-menu[open] .menu-chevron {
-    margin-bottom: -0.2rem;
-    transform: rotate(225deg);
+  details[open] > summary .menu-chevron {
+    transform: rotate(180deg);
+  }
+
+  .target-popover,
+  .account-popover {
+    background: var(--popover-bg);
+    border: 1px solid var(--popover-border);
+    border-radius: var(--radius-popover);
+    box-shadow: var(--shadow-popover);
+    left: 0;
+    max-height: min(32rem, calc(100dvh - 2rem));
+    overflow: hidden;
+    padding: var(--space-2);
+    position: absolute;
+    width: min(22rem, calc(100vw - 2rem));
+    z-index: var(--layer-popover);
+  }
+
+  .target-popover {
+    top: calc(100% + var(--space-2));
   }
 
   .account-popover {
-    background: var(--strip);
-    border: 1px solid var(--rule);
-    border-radius: var(--r-ctl);
-    box-shadow: 0 8px 24px var(--shadow);
-    max-width: calc(100vw - 2rem);
-    padding: 0.375rem;
-    position: absolute;
-    right: 0;
-    top: calc(100% + 0.35rem);
-    width: 21rem;
-    z-index: 20;
-  }
-
-  .signed-in,
-  .menu-label {
-    color: var(--dim);
-    font-size: 0.625rem;
-    margin: 0;
+    bottom: calc(100% + var(--space-2));
   }
 
   .signed-in {
-    padding: 0.4rem 0.5rem 0.5rem;
-  }
-
-  .menu-section {
-    background: var(--well);
-    border: 1px solid var(--rule);
-    border-radius: calc(var(--r-ctl) - 2px);
-    padding: 0.25rem;
-  }
-
-  .menu-label {
-    letter-spacing: 0.1em;
-    padding: 0.35rem 0.4rem 0.45rem;
-    text-transform: uppercase;
+    color: var(--text-muted);
+    font-size: var(--font-size-micro);
+    margin: 0;
+    padding: var(--space-2);
   }
 
   .target-options {
     display: grid;
-    gap: 0.15rem;
+    gap: 2px;
+    max-height: min(24rem, calc(100dvh - 10rem));
+    overflow: auto;
+    padding-top: var(--space-1);
+  }
+
+  .target-search {
+    border-bottom: 1px solid var(--border-subtle);
+    display: block;
+    padding: var(--space-2);
+    position: relative;
+  }
+
+  .target-search input {
+    background: var(--input-bg);
+    border: 1px solid var(--control-border);
+    border-radius: var(--radius-control);
+    color: var(--text-primary);
+    font: 500 var(--font-size-meta) / 1 var(--sans);
+    height: var(--control-height);
+    padding: 0 var(--space-3) 0 2.25rem;
+    width: 100%;
+  }
+
+  .target-search input::placeholder {
+    color: var(--text-muted);
+  }
+
+  .target-search-icon {
+    color: var(--text-muted);
+    display: grid;
+    left: 1.125rem;
+    place-items: center;
+    position: absolute;
+    top: 1.15rem;
+  }
+
+  .target-group-label {
+    color: var(--text-muted);
+    font-size: var(--font-size-compact);
+    font-weight: 650;
+    letter-spacing: 0.04em;
+    margin: 0;
+    padding: var(--space-2) var(--space-2) var(--space-1);
+    text-transform: uppercase;
+  }
+
+  .target-empty {
+    color: var(--text-muted);
+    font-size: var(--font-size-meta);
+    margin: 0;
+    padding: var(--space-5) var(--space-3);
+    text-align: center;
   }
 
   .target-option {
     align-items: center;
     background: transparent;
-    border: 0;
-    border-radius: calc(var(--r-ctl) - 4px);
-    color: var(--text);
+    border-radius: calc(var(--radius-control) - 2px);
+    color: var(--text-primary);
     display: grid;
-    gap: 0.5rem;
+    gap: var(--space-2);
     grid-template-columns: auto minmax(0, 1fr) 1rem;
     min-height: 2.75rem;
-    padding: 0.35rem 0.4rem;
+    padding: var(--space-2);
     text-align: left;
     text-decoration: none;
-    width: 100%;
   }
 
   .target-option:hover,
-  .target-option:focus-visible,
+  .target-option:focus-visible {
+    background: var(--interactive-hover);
+  }
+
   .target-option.current {
-    background: var(--strip-lift);
+    background: var(--brand-action-tint);
+    color: var(--brand-action-text);
+  }
+
+  .target-option:active {
+    background: var(--sidebar-item-pressed);
   }
 
   .option-copy {
@@ -367,57 +649,271 @@
   }
 
   .option-copy strong {
-    font-size: 0.75rem;
+    font-size: var(--font-size-meta);
   }
 
   .option-copy span,
-  .option-check,
-  .empty-target {
-    color: var(--dim);
-    font-size: 0.625rem;
+  .option-check {
+    color: var(--text-muted);
+    font-size: var(--font-size-micro);
   }
 
   .option-check {
-    color: var(--signal);
+    color: var(--success);
     font-weight: 700;
     text-align: center;
   }
 
-  .empty-target {
-    margin: 0;
-    padding: 0.5rem;
+  .navigation-shell {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .account-menu {
+    border-top: 1px solid var(--sidebar-border);
+    margin: auto calc(var(--space-4) * -1) 0;
+  }
+
+  .who {
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    min-height: 4.5rem;
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .who-meta {
+    align-items: center;
+    display: flex;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .who-context {
+    min-width: 0;
+  }
+
+  .who-role {
+    align-items: center;
+    background: var(--primitive-indigo-950);
+    border: 1px solid color-mix(in srgb, var(--primitive-indigo-400) 40%, transparent);
+    border-radius: var(--radius-chip);
+    color: var(--primitive-indigo-200);
+    display: inline-flex;
+    flex: none;
+    font-size: 0.625rem;
+    font-weight: 700;
+    gap: 0.2rem;
+    letter-spacing: 0.055em;
+    line-height: 1;
+    padding: 0.25rem 0.4rem;
   }
 
   .menu-separator {
-    border-top: 1px solid var(--rule);
-    margin: 0.375rem 0;
+    border-top: 1px solid var(--border-subtle);
+    margin: var(--space-2) 0;
   }
 
   .account-action {
     background: transparent;
     border: 0;
-    border-radius: calc(var(--r-ctl) - 2px);
-    color: var(--text);
+    border-radius: var(--radius-control);
+    color: var(--text-primary);
     display: block;
-    font-size: 0.8125rem;
+    font-size: var(--font-size-body);
     height: var(--control-height);
-    padding: 0 0.75rem;
+    padding: 0 var(--space-3);
     text-align: left;
     width: 100%;
   }
 
   .account-action:hover,
   .account-action:focus-visible {
-    background: var(--strip-lift);
+    background: var(--interactive-hover);
   }
 
-  @media (max-width: 30rem) {
-    .mark-part {
+  .account-action:active {
+    background: var(--interactive-pressed);
+  }
+
+  .sidebar-tooltip {
+    background: var(--popover-bg);
+    border: 1px solid var(--popover-border);
+    border-radius: var(--radius-control);
+    box-shadow: var(--shadow-popover);
+    color: var(--text-primary);
+    font-size: var(--font-size-meta);
+    font-weight: 500;
+    left: calc(100% + var(--space-2));
+    opacity: 0;
+    padding: var(--space-2) var(--space-3);
+    pointer-events: none;
+    position: absolute;
+    top: 50%;
+    transform: translate(-4px, -50%);
+    transition:
+      opacity var(--duration-fast) var(--ease-standard),
+      transform var(--duration-fast) var(--ease-standard);
+    visibility: hidden;
+    white-space: nowrap;
+    z-index: var(--layer-popover);
+  }
+
+  .collapsed .sidebar-collapse-trigger:hover .sidebar-tooltip,
+  .collapsed .sidebar-collapse-trigger:focus-visible .sidebar-tooltip,
+  .collapsed .target-trigger:hover .sidebar-tooltip,
+  .collapsed .target-trigger:focus-visible .sidebar-tooltip,
+  .collapsed .who:hover .sidebar-tooltip,
+  .collapsed .who:focus-visible .sidebar-tooltip {
+    opacity: 1;
+    transform: translate(0, -50%);
+    visibility: visible;
+  }
+
+  .collapsed {
+    align-items: stretch;
+    gap: var(--space-3);
+    padding-left: var(--space-2);
+    padding-right: var(--space-2);
+  }
+
+  .collapsed .brand-row,
+  .collapsed .mark {
+    justify-content: center;
+  }
+
+  .collapsed .brand-row {
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .collapsed .mark-copy,
+  .collapsed .target-trigger-copy,
+  .collapsed .menu-chevron,
+  .collapsed .who-text {
+    display: none;
+  }
+
+  .collapsed .target-trigger,
+  .collapsed .who {
+    display: flex;
+    justify-content: center;
+    padding: var(--space-2);
+  }
+
+  .collapsed .account-menu {
+    margin-left: calc(var(--space-2) * -1);
+    margin-right: calc(var(--space-2) * -1);
+  }
+
+  .collapsed .who {
+    padding: var(--space-2);
+  }
+
+  .collapsed .target-popover,
+  .collapsed .account-popover {
+    left: calc(100% + var(--space-2));
+  }
+
+  .collapsed .target-popover {
+    top: 0;
+  }
+
+  .collapsed .account-popover {
+    bottom: 0;
+  }
+
+  @media (max-width: 64rem) {
+    .panel-sidebar,
+    .panel-sidebar.collapsed {
+      border-bottom: 1px solid var(--sidebar-border);
+      border-right: 0;
+      display: block;
+      height: auto;
+      min-height: 0;
+      padding: 0;
+    }
+
+    .sidebar-collapse-trigger,
+    .target-menu {
       display: none;
     }
 
-    .who-context {
-      max-width: 10rem;
+    .brand-row,
+    .collapsed .brand-row {
+      flex-direction: row;
+      height: 3.75rem;
+      justify-content: space-between;
+      padding: 0 var(--space-4);
+    }
+
+    .collapsed .mark-copy {
+      display: grid;
+    }
+
+    .mobile-navigation-trigger {
+      display: flex;
+      margin: 0;
+      position: absolute;
+      right: 5rem;
+      top: 0.8125rem;
+    }
+
+    .navigation-shell {
+      background: var(--sidebar-bg);
+      border-bottom: 1px solid var(--sidebar-border);
+      box-shadow: var(--shadow-popover);
+      display: none;
+      left: 0;
+      max-height: calc(100dvh - 3.75rem);
+      overflow: auto;
+      padding: var(--space-3);
+      position: absolute;
+      right: 0;
+      top: 100%;
+    }
+
+    .mobile-navigation-open .navigation-shell {
+      display: block;
+    }
+
+    .account-menu,
+    .collapsed .account-menu {
+      border: 0;
+      margin: 0;
+      position: absolute;
+      right: var(--space-4);
+      top: 0.8125rem;
+    }
+
+    .who,
+    .collapsed .who {
+      background: transparent;
+      border: 0;
+      display: flex;
+      min-height: 2.125rem;
+      padding: 0;
+    }
+
+    .who-text,
+    .menu-chevron,
+    .sidebar-tooltip {
+      display: none;
+    }
+
+    .account-popover,
+    .collapsed .account-popover {
+      bottom: auto;
+      left: auto;
+      right: 0;
+      top: calc(100% + var(--space-2));
+    }
+  }
+
+  @media (max-width: 30rem) {
+    .mark-part,
+    .mobile-navigation-trigger > span:last-child {
+      display: none;
     }
   }
 </style>

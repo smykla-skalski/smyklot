@@ -1,15 +1,19 @@
 <script lang="ts">
   import type { RepositoryFileStatus } from '../lib/types';
+  import Icon, { type IconName } from './Icon.svelte';
 
   const {
     id,
     status,
+    showLabel = false,
   }: {
     id: string;
     status: RepositoryFileStatus;
+    showLabel?: boolean;
   } = $props();
 
   const label = $derived(`Repository file status: ${status}`);
+  const icon = $derived(`file-${status}` as IconName);
   const message = $derived.by(() => {
     switch (status) {
       case 'valid':
@@ -26,29 +30,26 @@
 
 <span class="file-indicator status-{status}">
   <button type="button" class="symbol" aria-label={label} aria-describedby={id}>
-    <svg viewBox="0 0 20 20" aria-hidden="true">
-      <path d="M6 2.75h5l3 3v11.5H6z"></path>
-      <path d="M11 2.75v3h3"></path>
-      {#if status === 'valid'}
-        <path d="m7.5 11.5 1.65 1.65 3.35-3.6"></path>
-      {:else if status === 'missing'}
-        <path d="M7.5 11.5h5"></path>
-      {:else if status === 'invalid'}
-        <path d="M10 8.75v3"></path>
-        <path d="M10 14v.01"></path>
-      {:else}
-        <path d="m7.5 9 5 5"></path>
-      {/if}
-    </svg>
+    <Icon name={icon} size={18} />
   </button>
+  {#if showLabel}
+    <span class="status-label">{status.slice(0, 1).toUpperCase() + status.slice(1)}</span>
+  {/if}
   <span class="tooltip" {id} role="tooltip">{message}</span>
 </span>
 
 <style>
   .file-indicator {
+    align-items: center;
     color: var(--dim);
     display: inline-flex;
     position: relative;
+  }
+
+  .status-label {
+    color: currentColor;
+    font-size: var(--font-size-meta);
+    font-weight: 500;
   }
 
   .status-valid {
@@ -71,42 +72,33 @@
     color: inherit;
     cursor: help;
     display: inline-flex;
-    height: var(--control-height);
+    height: 1.875rem;
     justify-content: center;
     outline: none;
     padding: 0;
     transition:
       background-color 120ms ease-out,
       color 120ms ease-out;
-    width: 1.75rem;
+    width: 1.875rem;
+  }
+
+  .symbol::before {
+    content: '';
+    inset: -0.3125rem;
+    position: absolute;
   }
 
   .symbol:hover,
   .symbol:focus-visible {
-    background: var(--well);
-    filter: brightness(1.15);
-  }
-
-  .symbol:focus-visible {
-    box-shadow: inset 0 0 0 2px var(--brand);
-  }
-
-  svg {
-    fill: none;
-    height: 1rem;
-    stroke: currentColor;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    stroke-width: 1.5;
-    width: 1rem;
+    background: var(--interactive-hover);
   }
 
   .tooltip {
-    background: var(--strip-lift);
-    border: 1px solid var(--rule);
-    border-radius: var(--r-ctl);
+    background: var(--popover-bg);
+    border: 1px solid var(--popover-border);
+    border-radius: var(--radius-popover);
     bottom: calc(100% + 0.4rem);
-    box-shadow: 0 8px 24px var(--shadow);
+    box-shadow: var(--shadow-popover);
     color: var(--text);
     font: 500 0.75rem/1.4 var(--sans);
     max-width: calc(100vw - 3rem);
@@ -122,7 +114,7 @@
     visibility: hidden;
     white-space: normal;
     width: max-content;
-    z-index: 30;
+    z-index: var(--layer-popover);
   }
 
   .file-indicator:hover .tooltip,

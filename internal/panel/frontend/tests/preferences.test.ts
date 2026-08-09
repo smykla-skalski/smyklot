@@ -2,9 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   DEFAULT_TIME_DISPLAY,
+  DEFAULT_SIDEBAR_DISPLAY,
   readLastInstallation,
+  readSidebarDisplay,
   readTimeDisplay,
   writeLastInstallation,
+  writeSidebarDisplay,
   writeTimeDisplay,
 } from '../src/lib/preferences';
 
@@ -76,6 +79,46 @@ describe('last installation preference', () => {
 
     expect(() =>
       writeLastInstallation('bartsmykla', {
+        setItem: () => {
+          throw new DOMException('Storage is full', 'QuotaExceededError');
+        },
+      }),
+    ).not.toThrow();
+  });
+});
+
+describe('sidebar display preference', () => {
+  it('uses the expanded default when no stored preference exists', () => {
+    expect(readSidebarDisplay({ getItem: () => null })).toBe(DEFAULT_SIDEBAR_DISPLAY);
+  });
+
+  it.each(['expanded', 'collapsed'] as const)('restores the %s preference', (value) => {
+    expect(readSidebarDisplay({ getItem: () => value })).toBe(value);
+  });
+
+  it('ignores unsupported stored values', () => {
+    expect(readSidebarDisplay({ getItem: () => 'hidden' })).toBe(DEFAULT_SIDEBAR_DISPLAY);
+  });
+
+  it('writes the selected sidebar display', () => {
+    const setItem = vi.fn();
+
+    writeSidebarDisplay('collapsed', { setItem });
+
+    expect(setItem).toHaveBeenCalledWith('smyklot.panel.sidebar.display', 'collapsed');
+  });
+
+  it('continues when browser storage is unavailable', () => {
+    expect(
+      readSidebarDisplay({
+        getItem: () => {
+          throw new DOMException('Storage is unavailable', 'SecurityError');
+        },
+      }),
+    ).toBe(DEFAULT_SIDEBAR_DISPLAY);
+
+    expect(() =>
+      writeSidebarDisplay('collapsed', {
         setItem: () => {
           throw new DOMException('Storage is full', 'QuotaExceededError');
         },

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { tick, type Snippet } from 'svelte';
   import { initialModalFocus, modalElementIds } from '../lib/modal';
+  import Icon from './Icon.svelte';
 
   const {
     id,
@@ -8,6 +9,7 @@
     title,
     description,
     closeLabel = 'Close dialog',
+    variant = 'dialog',
     returnFocus = null,
     onClose,
     children,
@@ -18,6 +20,7 @@
     title: string;
     description?: string;
     closeLabel?: string;
+    variant?: 'dialog' | 'inspector';
     returnFocus?: HTMLElement | null;
     onClose: () => void;
     children: Snippet;
@@ -53,17 +56,25 @@
     requestClose();
   }
 
+  function keydown(event: KeyboardEvent): void {
+    if (event.key !== 'Escape' || event.defaultPrevented) return;
+    event.preventDefault();
+    requestClose();
+  }
+
   function outside(event: MouseEvent): void {
     if (event.target === dialog) requestClose();
   }
 </script>
 
 <dialog
+  class:inspector={variant === 'inspector'}
   bind:this={dialog}
   aria-labelledby={elementIds.title}
   aria-describedby={description === undefined ? undefined : elementIds.description}
   oncancel={cancel}
   onclick={outside}
+  onkeydown={keydown}
 >
   <section class="modal-panel">
     <header>
@@ -74,7 +85,7 @@
         {/if}
       </div>
       <button class="modal-close" type="button" aria-label={closeLabel} onclick={requestClose}>
-        <span aria-hidden="true"></span>
+        <Icon name="close" size={18} />
       </button>
     </header>
 
@@ -99,26 +110,48 @@
     max-width: none;
     padding: 1rem;
     width: 100%;
+    z-index: var(--layer-dialog);
   }
 
   dialog::backdrop {
-    background: color-mix(in srgb, var(--bg) 68%, transparent);
-    backdrop-filter: blur(8px) saturate(0.72);
+    background: var(--scrim);
+    backdrop-filter: blur(8px);
   }
 
   .modal-panel {
-    background: var(--strip);
-    border: 1px solid var(--control-border);
-    border-radius: var(--r-strip);
-    box-shadow: 0 24px 64px color-mix(in srgb, var(--shadow) 85%, black);
+    background: var(--dialog-bg);
+    border: 1px solid var(--dialog-border);
+    border-radius: var(--radius-dialog);
+    box-shadow: var(--shadow-dialog);
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
     left: 50%;
-    max-height: calc(100vh - 2rem);
-    max-width: 34rem;
-    overflow: auto;
+    max-height: calc(100dvh - 2rem);
+    max-width: 36rem;
+    overflow: hidden;
     position: absolute;
     top: 50%;
     transform: translate(-50%, -50%);
     width: calc(100% - 2rem);
+  }
+
+  dialog.inspector {
+    padding: 0;
+  }
+
+  .inspector .modal-panel {
+    border-block: 0;
+    border-radius: 0;
+    border-right: 0;
+    bottom: 0;
+    height: 100dvh;
+    left: auto;
+    max-height: none;
+    max-width: 40rem;
+    right: 0;
+    top: 0;
+    transform: none;
+    width: min(40rem, 92vw);
   }
 
   header {
@@ -126,11 +159,13 @@
     display: flex;
     gap: 1rem;
     justify-content: space-between;
-    padding: 1.25rem 1.25rem 0.5rem;
+    padding: var(--space-6) var(--space-6) var(--space-3);
   }
 
   h2 {
-    font-size: 1rem;
+    font-size: 1.25rem;
+    font-weight: 700;
+    letter-spacing: -0.015em;
     line-height: 1.25;
     margin: 0;
   }
@@ -147,10 +182,11 @@
     border: 1px solid transparent;
     border-radius: var(--r-ctl);
     flex: none;
-    height: 1.875rem;
+    color: var(--text-secondary);
+    height: var(--control-height);
     padding: 0;
     position: relative;
-    width: 1.875rem;
+    width: var(--control-height);
   }
 
   .modal-close:hover {
@@ -158,46 +194,66 @@
     border-color: var(--control-border);
   }
 
-  .modal-close span::before,
-  .modal-close span::after {
-    background: var(--dim);
-    content: '';
-    height: 1px;
-    left: 0.45rem;
-    position: absolute;
-    top: 0.9rem;
-    width: 0.875rem;
-  }
-
-  .modal-close span::before {
-    transform: rotate(45deg);
-  }
-
-  .modal-close span::after {
-    transform: rotate(-45deg);
-  }
-
   .modal-content {
-    padding: 0.75rem 1.25rem 1.25rem;
+    min-height: 0;
+    overflow-y: auto;
+    padding: var(--space-3) var(--space-6) var(--space-6);
   }
 
   footer {
     align-items: center;
+    background: var(--dialog-bg);
     display: flex;
     gap: 0.625rem;
     justify-content: flex-end;
-    padding: 0 1.25rem 1.25rem;
+    border-top: 1px solid var(--border-subtle);
+    padding: var(--space-4) var(--space-6);
+  }
+
+  @media (max-width: 38rem) {
+    dialog {
+      padding: var(--space-2);
+    }
+
+    .modal-panel {
+      max-height: calc(100dvh - var(--space-4));
+      width: calc(100% - var(--space-4));
+    }
+
+    .inspector .modal-panel {
+      height: 100dvh;
+      max-height: none;
+      width: 100%;
+    }
+
+    header,
+    .modal-content,
+    footer {
+      padding-left: var(--space-4);
+      padding-right: var(--space-4);
+    }
   }
 
   @media (prefers-reduced-motion: no-preference) {
     dialog[open] .modal-panel {
-      animation: modal-in 140ms ease-out;
+      animation: modal-in var(--duration-normal) var(--ease-out);
+    }
+
+    dialog[open].inspector .modal-panel {
+      animation: inspector-in var(--duration-normal) var(--ease-out);
     }
 
     @keyframes modal-in {
       from {
         opacity: 0;
         transform: translate(-50%, calc(-50% + 0.5rem));
+      }
+    }
+
+    @keyframes inspector-in {
+      from {
+        opacity: 0;
+        transform: translateX(1rem);
       }
     }
   }

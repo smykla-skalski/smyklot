@@ -60,9 +60,8 @@
 
   dt {
     color: var(--dim);
-    font: 600 0.625rem/1.4 var(--mono);
-    letter-spacing: 0.13em;
-    text-transform: uppercase;
+    font: 600 var(--font-size-compact) / 1.4 var(--sans);
+    letter-spacing: 0.02em;
   }
 
   dd,

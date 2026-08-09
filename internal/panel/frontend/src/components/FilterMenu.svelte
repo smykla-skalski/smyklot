@@ -1,6 +1,7 @@
 <script lang="ts">
   import { updateFilterSelection } from '../lib/filter-menu';
   import type { FilterOption, FilterSection } from '../lib/filter-menu';
+  import Icon from './Icon.svelte';
 
   const {
     label,
@@ -12,6 +13,7 @@
     fallbackValue,
     align = 'start',
     wide = false,
+    showIcon = false,
     onChange,
   }: {
     label: string;
@@ -23,6 +25,7 @@
     fallbackValue?: string;
     align?: 'start' | 'end';
     wide?: boolean;
+    showIcon?: boolean;
     onChange: (values: string[]) => void;
   } = $props();
 
@@ -91,11 +94,12 @@
 
 <details class="filter-menu" class:align-end={align === 'end'} class:wide bind:this={menu}>
   <summary bind:this={trigger} aria-label={`${label}: ${summary}`}>
+    {#if showIcon}<Icon name="filter" size={16} />{/if}
     <span class="summary-copy">{summary}</span>
     {#if multiple && selectedCount > 1}
-      <span class="selection-count mono" aria-hidden="true">{selectedCount}</span>
+      <span class="selection-count" aria-hidden="true">{selectedCount}</span>
     {/if}
-    <span class="menu-chevron" aria-hidden="true"></span>
+    <span class="menu-chevron" aria-hidden="true"><Icon name="chevron-down" size={16} /></span>
   </summary>
 
   <div class="filter-popover">
@@ -117,7 +121,7 @@
           aria-label={section.label === undefined ? undefined : section.label}
         >
           {#if section.label !== undefined}
-            <p class="section-label mono">{section.label}</p>
+            <p class="section-label">{section.label}</p>
           {/if}
           {#each section.options as option (option.value)}
             {@const isSelected = selected.includes(option.value)}
@@ -166,24 +170,24 @@
   }
 
   .filter-menu[open] {
-    z-index: 25;
+    z-index: var(--layer-menu);
   }
 
   summary {
     align-items: center;
-    background: var(--control-surface);
+    background: var(--control-bg);
     border: 1px solid var(--control-border);
     border-radius: var(--r-ctl);
     color: var(--text);
     cursor: pointer;
     display: flex;
-    font-size: 0.6875rem;
+    font-size: var(--font-size-body);
     gap: 0.4rem;
-    height: var(--repository-control-height, var(--control-height));
+    height: var(--local-control-height, var(--control-height));
     padding: 0 0.625rem;
     transition:
-      background-color 120ms ease-out,
-      border-color 120ms ease-out;
+      background-color var(--duration-fast) var(--ease-out),
+      border-color var(--duration-fast) var(--ease-out);
     user-select: none;
   }
 
@@ -197,13 +201,8 @@
 
   summary:hover,
   .filter-menu[open] summary {
-    background: var(--strip-lift);
+    background: var(--control-bg-hover);
     border-color: color-mix(in srgb, var(--dim) 56%, transparent);
-  }
-
-  summary:focus-visible {
-    box-shadow: 0 0 0 2px var(--brand);
-    outline: none;
   }
 
   .summary-copy {
@@ -228,32 +227,29 @@
   }
 
   .menu-chevron {
-    border-bottom: 1.5px solid var(--dim);
-    border-right: 1.5px solid var(--dim);
+    color: var(--text-muted);
+    display: grid;
     flex: none;
-    height: 0.35rem;
-    margin: -0.2rem 0.05rem 0 auto;
-    transform: rotate(45deg);
-    transition: transform 120ms ease-out;
-    width: 0.35rem;
+    margin-left: auto;
+    place-items: center;
+    transition: transform var(--duration-fast) var(--ease-out);
   }
 
   .filter-menu[open] .menu-chevron {
-    margin-top: 0.2rem;
-    transform: rotate(225deg);
+    transform: rotate(180deg);
   }
 
   .filter-popover {
-    background: var(--strip);
-    border: 1px solid var(--rule);
-    border-radius: var(--r-ctl);
-    box-shadow: 0 12px 32px var(--shadow);
+    background: var(--popover-bg);
+    border: 1px solid var(--popover-border);
+    border-radius: var(--radius-popover);
+    box-shadow: var(--shadow-popover);
     left: 0;
     overflow: hidden;
     position: absolute;
     top: calc(100% + 0.35rem);
     width: min(17rem, calc(100vw - 2rem));
-    z-index: 25;
+    z-index: var(--layer-menu);
   }
 
   .align-end .filter-popover {
@@ -322,8 +318,11 @@
 
   .filter-option:hover,
   .filter-option:focus-visible {
-    background: var(--strip-lift);
-    outline: none;
+    background: var(--interactive-hover);
+  }
+
+  .filter-option:focus-visible {
+    outline-offset: -1px;
   }
 
   .filter-option:active {
@@ -345,12 +344,12 @@
   }
 
   .filter-option.selected .selection-mark {
-    background: var(--signal-tint);
-    border-color: var(--signal);
+    background: var(--brand-action-tint);
+    border-color: var(--brand-action);
   }
 
   .selection-mark span {
-    background: var(--signal);
+    background: var(--brand-action);
     border-radius: 50%;
     height: 0.35rem;
     width: 0.35rem;
@@ -358,8 +357,8 @@
 
   .selection-mark.multiple span {
     background: transparent;
-    border-bottom: 1.5px solid var(--signal);
-    border-right: 1.5px solid var(--signal);
+    border-bottom: 1.5px solid var(--brand-action);
+    border-right: 1.5px solid var(--brand-action);
     border-radius: 0;
     height: 0.42rem;
     transform: rotate(45deg) translate(-0.05rem, -0.05rem);
@@ -445,7 +444,7 @@
   }
 
   .done-button:hover {
-    filter: brightness(1.08);
+    background: color-mix(in srgb, var(--admin) 88%, var(--strip));
   }
 
   @media (prefers-reduced-motion: reduce) {

@@ -15,6 +15,7 @@
     value,
     disabled = false,
     align = 'start',
+    compact = false,
     onSelect,
   }: {
     name: string;
@@ -24,6 +25,7 @@
     value: string;
     disabled?: boolean;
     align?: 'start' | 'end';
+    compact?: boolean;
     onSelect: (value: string) => void;
   } = $props();
 
@@ -106,7 +108,7 @@
 </script>
 
 <fieldset
-  class:align-end={align === 'end'}
+  class={[align === 'end' && 'align-end', compact && 'compact']}
   aria-describedby={descriptionId}
   use:animateSelection={value}
   {disabled}
@@ -145,6 +147,15 @@
 
   fieldset.align-end {
     justify-self: end;
+  }
+
+  fieldset.compact {
+    height: var(--control-height-compact);
+  }
+
+  fieldset.compact .segment-label {
+    font-size: var(--font-size-micro);
+    padding-inline: 0.4rem;
   }
 
   legend {

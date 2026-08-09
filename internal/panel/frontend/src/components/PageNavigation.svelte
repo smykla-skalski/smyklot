@@ -1,5 +1,6 @@
 <script lang="ts">
   import { paginationItems } from '../lib/pagination';
+  import Icon from './Icon.svelte';
 
   const {
     pageIndex,
@@ -24,7 +25,7 @@
     aria-label="Previous page"
     onclick={() => onSelect(pageIndex - 1)}
   >
-    <span aria-hidden="true">←</span>
+    <Icon name="chevron-left" size={16} />
     <span class="step-label">Previous</span>
   </button>
 
@@ -54,7 +55,7 @@
     onclick={() => onSelect(pageIndex + 1)}
   >
     <span class="step-label">Next</span>
-    <span aria-hidden="true">→</span>
+    <Icon name="chevron-right" size={16} />
   </button>
 </div>
 
@@ -77,9 +78,9 @@
     background: transparent;
     border: 1px solid transparent;
     color: var(--dim);
-    font-size: 0.6875rem;
+    font-size: var(--font-size-compact);
     font-weight: 600;
-    height: 1.875rem;
+    height: var(--local-control-height, var(--control-height-compact));
     transition:
       background-color 120ms ease-out,
       border-color 120ms ease-out,
@@ -115,14 +116,14 @@
 
   .page-number {
     border-radius: 6px;
-    min-width: 1.875rem;
+    min-width: var(--local-control-height, var(--control-height-compact));
     padding: 0 0.3rem;
   }
 
   .page-number.current {
-    background: var(--signal-tint);
-    border-color: color-mix(in srgb, var(--signal) 48%, transparent);
-    color: var(--signal);
+    background: var(--brand-action);
+    border-color: var(--brand-action);
+    color: var(--on-brand-action);
     cursor: default;
     opacity: 1;
   }
@@ -130,8 +131,8 @@
   .ellipsis {
     color: var(--dim);
     display: grid;
-    font: 600 0.6875rem/1 var(--mono);
-    height: 1.875rem;
+    font: 600 var(--font-size-compact) / 1 var(--sans);
+    height: var(--local-control-height, var(--control-height-compact));
     min-width: 1.25rem;
     place-items: center;
   }
@@ -142,7 +143,7 @@
     }
 
     .page-step {
-      min-width: 1.875rem;
+      min-width: var(--local-control-height, var(--control-height-compact));
       padding: 0;
     }
   }

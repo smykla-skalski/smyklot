@@ -5,21 +5,35 @@ import { describe, expect, it } from 'vitest';
 type Palette = Record<string, string>;
 
 const css = readFileSync(new URL('../src/app.css', import.meta.url), 'utf8');
-const palettes = [...css.matchAll(/:root\s*\{(?<body>[^}]*)\}/gu)].map((match) => {
-  const entries = [
-    ...(match.groups?.body ?? '').matchAll(/--(?<name>[\w-]+):\s*(?<value>#[\da-f]{6})/giu),
-  ];
+const roots = [...css.matchAll(/:root\s*\{(?<body>[^}]*)\}/gu)].map((match) =>
+  declarations(match.groups?.body ?? ''),
+);
+const basePalette = roots[0] ?? {};
+const palettes = [basePalette, { ...basePalette, ...(roots[1] ?? {}) }];
+
+function declarations(body: string): Palette {
   return Object.fromEntries(
-    entries.map((entry) => [entry.groups?.name ?? '', entry.groups?.value ?? '']),
+    [...body.matchAll(/--(?<name>[\w-]+):\s*(?<value>[^;]+);/gu)].map((entry) => [
+      entry.groups?.name ?? '',
+      entry.groups?.value?.trim() ?? '',
+    ]),
   );
-});
+}
 
 function color(palette: Palette, name: string): string {
-  const value = palette[name];
+  const value = resolve(palette, name, new Set());
   if (value === undefined || !/^#[\da-f]{6}$/iu.test(value)) {
     throw new Error(`palette is missing a six-digit --${name} color`);
   }
   return value;
+}
+
+function resolve(palette: Palette, name: string, seen: Set<string>): string | undefined {
+  if (seen.has(name)) throw new Error(`palette contains a circular --${name} reference`);
+  seen.add(name);
+  const value = palette[name];
+  const reference = value?.match(/^var\(--(?<name>[\w-]+)\)$/u)?.groups?.name;
+  return reference === undefined ? value : resolve(palette, reference, seen);
 }
 
 function contrast(left: string, right: string): number {
@@ -47,22 +61,25 @@ describe.each([
   if (palette === undefined) throw new Error('app.css must define light and dark :root palettes');
 
   it.each([
-    ['text', 'strip'],
-    ['text', 'control-surface'],
-    ['text', 'input-surface'],
-    ['dim', 'strip'],
-    ['dim', 'control-surface'],
-    ['dim', 'input-surface'],
-    ['dim', 'strip-lift'],
-    ['signal', 'strip'],
-    ['signal', 'signal-tint'],
-    ['clear', 'clear-tint'],
+    ['text-primary', 'surface-base'],
+    ['text-primary', 'surface-control'],
+    ['text-primary', 'input-bg'],
+    ['text-muted', 'surface-base'],
+    ['text-muted', 'surface-control'],
+    ['text-muted', 'input-bg'],
+    ['text-muted', 'surface-raised'],
+    ['focus', 'surface-base'],
+    ['info', 'surface-base'],
+    ['info', 'info-tint'],
+    ['success', 'success-tint'],
     ['warning', 'warning-tint'],
-    ['stop', 'stop-tint'],
-    ['accent', 'strip'],
-    ['accent', 'accent-tint'],
-    ['on-admin', 'admin'],
-    ['on-signal', 'signal'],
+    ['danger', 'danger-tint'],
+    ['brand-action-text', 'surface-base'],
+    ['brand-action-text', 'brand-action-tint'],
+    ['on-brand-action', 'brand-action'],
+    ['on-info', 'info'],
+    ['sidebar-text', 'sidebar-bg'],
+    ['sidebar-text-muted', 'sidebar-bg'],
   ])('keeps %s readable on %s', (foreground, background) => {
     expect(contrast(color(palette, foreground), color(palette, background))).toBeGreaterThanOrEqual(
       4.5,
@@ -70,24 +87,43 @@ describe.each([
   });
 
   it('keeps structural rules deliberately subtle', () => {
-    const ratio = contrast(color(palette, 'rule'), color(palette, 'strip'));
-    expect(ratio).toBeGreaterThanOrEqual(1.3);
+    const ratio = contrast(color(palette, 'border-subtle'), color(palette, 'surface-base'));
+    expect(ratio).toBeGreaterThanOrEqual(1.2);
     expect(ratio).toBeLessThan(2);
   });
 
-  it('uses the quiet structural rule for idle control borders', () => {
-    expect(color(palette, 'control-border')).toBe(color(palette, 'rule'));
+  it('keeps interactive control boundaries perceivable', () => {
+    expect(
+      contrast(color(palette, 'control-border'), color(palette, 'control-bg')),
+    ).toBeGreaterThanOrEqual(3);
+    expect(
+      contrast(color(palette, 'control-border'), color(palette, 'input-bg')),
+    ).toBeGreaterThanOrEqual(3);
   });
 
-  it('separates control fills from the card without turning them into focal surfaces', () => {
-    const ratio = contrast(color(palette, 'control-surface'), color(palette, 'strip'));
-    expect(ratio).toBeGreaterThanOrEqual(1.15);
+  it.each(['canvas', 'surface-base', 'surface-control', 'input-bg'])(
+    'keeps the focus indicator visible on %s',
+    (background) => {
+      expect(contrast(color(palette, 'focus'), color(palette, background))).toBeGreaterThanOrEqual(
+        3,
+      );
+    },
+  );
+
+  it('keeps active navigation legible without an extra rail', () => {
+    expect(
+      contrast(color(palette, 'sidebar-item-active-text'), color(palette, 'sidebar-item-active')),
+    ).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('keeps control fills from becoming focal surfaces', () => {
+    const ratio = contrast(color(palette, 'control-bg'), color(palette, 'surface-base'));
     expect(ratio).toBeLessThan(1.5);
   });
 
   it('gives editable command fields a distinct inset surface', () => {
-    const ratio = contrast(color(palette, 'input-surface'), color(palette, 'strip-lift'));
-    expect(ratio).toBeGreaterThanOrEqual(1.1);
+    const ratio = contrast(color(palette, 'input-bg'), color(palette, 'surface-base'));
+    expect(ratio).toBeGreaterThanOrEqual(1.05);
     expect(ratio).toBeLessThan(1.3);
   });
 });

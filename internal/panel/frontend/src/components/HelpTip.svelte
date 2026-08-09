@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Icon from './Icon.svelte';
+
   const {
     id,
     label,
@@ -40,11 +42,7 @@
     onpointerenter={placeTooltip}
     onfocus={placeTooltip}
   >
-    <svg viewBox="0 0 20 20" aria-hidden="true">
-      <circle cx="10" cy="10" r="7.5"></circle>
-      <path d="M10 9v5"></path>
-      <circle class="info-dot" cx="10" cy="6.2" r="0.8"></circle>
-    </svg>
+    <Icon name="info" size={17} />
   </button>
   <span
     bind:this={tooltip}
@@ -73,7 +71,7 @@
     height: var(--control-height);
     justify-content: flex-end;
     padding: 0;
-    width: 1.75rem;
+    width: var(--control-height);
   }
 
   button:hover,
@@ -92,25 +90,11 @@
     right: auto;
   }
 
-  svg {
-    fill: none;
-    height: 1rem;
-    stroke: currentColor;
-    stroke-linecap: round;
-    stroke-width: 1.5;
-    width: 1rem;
-  }
-
-  .info-dot {
-    fill: currentColor;
-    stroke: none;
-  }
-
   .tooltip {
-    background: var(--strip-lift);
-    border: 1px solid var(--rule);
-    border-radius: var(--r-ctl);
-    box-shadow: 0 8px 24px var(--shadow);
+    background: var(--popover-bg);
+    border: 1px solid var(--popover-border);
+    border-radius: var(--radius-popover);
+    box-shadow: var(--shadow-popover);
     color: var(--text);
     font: 500 0.75rem/1.4 var(--sans);
     max-width: calc(100vw - 3rem);
@@ -127,7 +111,7 @@
     visibility: hidden;
     white-space: normal;
     width: 20rem;
-    z-index: 30;
+    z-index: var(--layer-popover);
   }
 
   .align-start .tooltip {

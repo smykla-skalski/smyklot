@@ -8,11 +8,15 @@
   import SignedOut from './components/SignedOut.svelte';
   import TargetSettings from './components/TargetSettings.svelte';
   import UserManagement from './components/UserManagement.svelte';
-  import ViewTabs from './components/ViewTabs.svelte';
   import type { PanelApi } from './lib/api';
   import type { PanelBuild } from './lib/base';
   import { LatestRequest } from './lib/latest-request';
-  import { readLastInstallation, writeLastInstallation } from './lib/preferences';
+  import {
+    readLastInstallation,
+    readSidebarDisplay,
+    writeLastInstallation,
+    writeSidebarDisplay,
+  } from './lib/preferences';
   import {
     resolvePanelRoute,
     type PanelRoute,
@@ -50,6 +54,7 @@
   let globalUsers = $state(false);
   let streamReady = $state(false);
   let revokedReason = $state<string | null>(null);
+  let sidebarCollapsed = $state(readSidebarDisplay() === 'collapsed');
   const targetReads = new LatestRequest();
   const streamRefreshes = new LatestRequest();
 
@@ -345,10 +350,17 @@
     return error instanceof Error ? error.message : String(error);
   }
 
+  function toggleSidebar(): void {
+    sidebarCollapsed = !sidebarCollapsed;
+    writeSidebarDisplay(sidebarCollapsed ? 'collapsed' : 'expanded');
+  }
+
   void load();
 </script>
 
-<main class="shell">
+<a class="skip-link" href="#panel-content">Skip to panel content</a>
+
+<main class="app-shell" class:sidebar-collapsed={sidebarCollapsed}>
   <IdentityBar
     {viewer}
     {iconUrl}
@@ -357,109 +369,218 @@
     {targetHref}
     onSelectTarget={(targetId) => void selectTarget(targetId)}
     onSignOut={signOut}
+    {view}
+    {viewHref}
+    onSelectView={selectView}
+    showUsers={viewer?.capabilities.manage_global_users === true ||
+      selectedTarget?.capabilities.manage_target_users === true}
+    showNavigation={viewer !== null && selectedTarget !== null}
+    collapsed={sidebarCollapsed}
+    onToggleCollapsed={toggleSidebar}
   />
 
-  {#if failure !== null}
-    <Plate label="Problem" tone="alarm">
-      <p>{failure.message}</p>
-      <button class="btn" onclick={load}>Try again</button>
-    </Plate>
-  {/if}
-
-  {#if loading}
-    <Plate label="Panel">
-      <p class="dim">Reading the panel…</p>
-    </Plate>
-  {:else if viewer === null}
-    {#if revokedReason !== null}
-      <Plate label="Access revoked" tone="alarm">
-        <p>{revokedReason}</p>
-        <a class="btn" href={api.signInUrl()}>Sign in</a>
-      </Plate>
-    {:else if failure === null}
-      <SignedOut href={api.signInUrl()} />
-    {/if}
-  {:else}
-    {#if selectedTarget !== null}
-      <ViewTabs
-        value={view}
-        hrefFor={viewHref}
-        onSelect={selectView}
-        showUsers={viewer.capabilities.manage_global_users ||
-          selectedTarget.capabilities.manage_target_users}
-      />
-
-      {#if view === 'settings'}
-        <div id="settings-panel" role="tabpanel" aria-labelledby="settings-tab">
-          {#key selectedTarget.id}
-            <TargetSettings
-              target={selectedTarget}
-              readOnly={!selectedTarget.capabilities.write}
-              onUpdate={updateTarget}
-            />
-          {/key}
-        </div>
-      {:else if view === 'repositories'}
-        <div id="repositories-panel" role="tabpanel" aria-labelledby="repositories-tab">
-          {#key selectedTarget.id}
-            <RepositoryList
-              targetId={selectedTarget.id}
-              refreshVersion={repositoryDetailsVersion}
-              fetchPage={fetchRepositories}
-              onLoad={loadRepository}
-              onUpdate={updateRepository}
-              onChanged={() => repositoryChanged(selectedTarget.id)}
-              readOnly={!selectedTarget.capabilities.write}
-            />
-          {/key}
-        </div>
-      {:else if view === 'users'}
-        <div id="users-panel" role="tabpanel" aria-labelledby="users-tab">
-          {#key `${selectedTarget.id}:${globalUsers}`}
-            <UserManagement
-              scope={globalUsers ? 'global' : 'target'}
-              targetId={selectedTarget.id}
-              targetName={selectedTarget.account.display_name}
-              targets={manageableUserTargets}
-              actorTargetRole={selectedTarget.effective_role}
-              canManageGlobal={viewer.capabilities.manage_global_users}
-              canManageOwners={viewer.capabilities.manage_owners}
-              refreshVersion={userVersion}
-              onScope={selectUserScope}
-              fetchUsers={api.fetchUsers}
-              addUser={api.addUser}
-              updateUser={api.updateUser}
-              fetchTargetUsers={api.fetchTargetUsers}
-              addTargetUser={api.addTargetUser}
-              updateTargetUser={api.updateTargetUser}
-              fetchInvitations={api.fetchInvitations}
-              createInvitation={api.createInvitation}
-              fetchTargetInvitations={api.fetchTargetInvitations}
-              createTargetInvitation={api.createTargetInvitation}
-              reissueInvitation={api.reissueInvitation}
-              revokeInvitation={api.revokeInvitation}
-              fetchUserDecisions={api.fetchUserDecisions}
-            />
-          {/key}
-        </div>
-      {:else if view === 'history'}
-        <div id="history-panel" role="tabpanel" aria-labelledby="history-tab">
-          {#key selectedTarget.id}
-            <HistoryPanel
-              targetId={selectedTarget.id}
-              refreshVersion={historyVersion}
-              fetchAudit={(request) => api.fetchAudit(selectedTarget.id, request)}
-              fetchFailures={(request) => api.fetchFailures(selectedTarget.id, request)}
-            />
-          {/key}
-        </div>
-      {:else}
-        <div id="help-panel" role="tabpanel" aria-labelledby="help-tab">
-          <HelpPanel />
-        </div>
+  <div class="workspace">
+    <div id="panel-content" class="workspace-content" tabindex="-1">
+      {#if failure !== null}
+        <Plate label="Problem" tone="alarm">
+          <p>{failure.message}</p>
+          <button class="btn" onclick={load}>Try again</button>
+        </Plate>
       {/if}
-    {/if}
-  {/if}
 
-  <PageFooter {build} />
+      {#if loading}
+        <Plate label="Panel">
+          <div class="panel-skeleton" aria-hidden="true">
+            <span class="skeleton-line skeleton-title"></span>
+            <span class="skeleton-line skeleton-copy"></span>
+            <span class="skeleton-line skeleton-control"></span>
+            <span class="skeleton-line skeleton-row"></span>
+            <span class="skeleton-line skeleton-row"></span>
+            <span class="skeleton-line skeleton-row"></span>
+          </div>
+          <p class="visually-hidden" role="status">Loading panel</p>
+        </Plate>
+      {:else if viewer === null}
+        {#if revokedReason !== null}
+          <Plate label="Access revoked" tone="alarm">
+            <p>{revokedReason}</p>
+            <a class="btn" href={api.signInUrl()}>Sign in</a>
+          </Plate>
+        {:else if failure === null}
+          <SignedOut href={api.signInUrl()} />
+        {/if}
+      {:else}
+        {#if selectedTarget !== null}
+          {#if view === 'settings'}
+            <div id="settings-panel" aria-labelledby="settings-navigation">
+              {#key selectedTarget.id}
+                <TargetSettings
+                  target={selectedTarget}
+                  readOnly={!selectedTarget.capabilities.write}
+                  onUpdate={updateTarget}
+                />
+              {/key}
+            </div>
+          {:else if view === 'repositories'}
+            <div id="repositories-panel" aria-labelledby="repositories-navigation">
+              {#key selectedTarget.id}
+                <RepositoryList
+                  targetId={selectedTarget.id}
+                  refreshVersion={repositoryDetailsVersion}
+                  fetchPage={fetchRepositories}
+                  onLoad={loadRepository}
+                  onUpdate={updateRepository}
+                  onChanged={() => repositoryChanged(selectedTarget.id)}
+                  readOnly={!selectedTarget.capabilities.write}
+                />
+              {/key}
+            </div>
+          {:else if view === 'users'}
+            <div id="users-panel" aria-labelledby="users-navigation">
+              {#key `${selectedTarget.id}:${globalUsers}`}
+                <UserManagement
+                  scope={globalUsers ? 'global' : 'target'}
+                  targetId={selectedTarget.id}
+                  targetName={selectedTarget.account.display_name}
+                  targets={manageableUserTargets}
+                  actorTargetRole={selectedTarget.effective_role}
+                  canManageGlobal={viewer.capabilities.manage_global_users}
+                  canManageOwners={viewer.capabilities.manage_owners}
+                  refreshVersion={userVersion}
+                  onScope={selectUserScope}
+                  fetchUsers={api.fetchUsers}
+                  addUser={api.addUser}
+                  updateUser={api.updateUser}
+                  fetchTargetUsers={api.fetchTargetUsers}
+                  addTargetUser={api.addTargetUser}
+                  updateTargetUser={api.updateTargetUser}
+                  fetchInvitations={api.fetchInvitations}
+                  createInvitation={api.createInvitation}
+                  fetchTargetInvitations={api.fetchTargetInvitations}
+                  createTargetInvitation={api.createTargetInvitation}
+                  reissueInvitation={api.reissueInvitation}
+                  revokeInvitation={api.revokeInvitation}
+                  fetchUserDecisions={api.fetchUserDecisions}
+                />
+              {/key}
+            </div>
+          {:else if view === 'history'}
+            <div id="history-panel" aria-labelledby="history-navigation">
+              {#key selectedTarget.id}
+                <HistoryPanel
+                  targetId={selectedTarget.id}
+                  refreshVersion={historyVersion}
+                  fetchAudit={(request) => api.fetchAudit(selectedTarget.id, request)}
+                  fetchFailures={(request) => api.fetchFailures(selectedTarget.id, request)}
+                />
+              {/key}
+            </div>
+          {:else}
+            <div id="help-panel" aria-labelledby="help-navigation">
+              <HelpPanel />
+            </div>
+          {/if}
+        {:else if failure === null}
+          <Plate label="No installations">
+            <div class="empty-panel-state">
+              <span class="empty-panel-mark" aria-hidden="true">+</span>
+              <div>
+                <strong>Install Smyklot to begin</strong>
+                <p class="dim">
+                  Install the Smyklot GitHub App on an organization or personal account, then reload
+                  this panel
+                </p>
+              </div>
+              <button class="btn btn-signal" type="button" onclick={load}>Reload panel</button>
+            </div>
+          </Plate>
+        {/if}
+      {/if}
+    </div>
+
+    <PageFooter {build} />
+  </div>
 </main>
+
+<style>
+  .panel-skeleton {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .skeleton-line {
+    animation: skeleton-pulse 1.35s ease-in-out infinite alternate;
+    background: var(--surface-inset);
+    border-radius: var(--radius-control);
+    display: block;
+    height: 2.75rem;
+  }
+
+  .skeleton-title {
+    height: 1.25rem;
+    width: min(14rem, 48%);
+  }
+
+  .skeleton-copy {
+    height: 0.75rem;
+    width: min(28rem, 76%);
+  }
+
+  .skeleton-control {
+    height: var(--control-height);
+    margin-top: var(--space-2);
+    width: min(22rem, 100%);
+  }
+
+  .skeleton-row {
+    height: 3.25rem;
+  }
+
+  .empty-panel-state {
+    align-items: center;
+    display: grid;
+    gap: var(--space-4);
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    min-height: 7rem;
+  }
+
+  .empty-panel-state p {
+    margin: var(--space-1) 0 0;
+    max-width: 42rem;
+  }
+
+  .empty-panel-mark {
+    align-items: center;
+    background: var(--accent-tint);
+    border: 1px solid color-mix(in srgb, var(--accent) 34%, transparent);
+    border-radius: var(--radius-control);
+    color: var(--accent);
+    display: inline-flex;
+    font: 650 1.25rem/1 var(--sans);
+    height: 2.5rem;
+    justify-content: center;
+    width: 2.5rem;
+  }
+
+  @keyframes skeleton-pulse {
+    from {
+      opacity: 0.52;
+    }
+
+    to {
+      opacity: 0.9;
+    }
+  }
+
+  @media (max-width: 36rem) {
+    .empty-panel-state {
+      align-items: start;
+      grid-template-columns: auto minmax(0, 1fr);
+    }
+
+    .empty-panel-state .btn {
+      grid-column: 1 / -1;
+      justify-self: start;
+    }
+  }
+</style>

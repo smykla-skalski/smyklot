@@ -31,3 +31,13 @@
     </div>
   {/if}
 </section>
+
+<style>
+  h2 {
+    color: var(--text-primary);
+    font-size: var(--font-size-body);
+    font-weight: 650;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+</style>

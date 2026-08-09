@@ -1,9 +1,12 @@
 export type TimeDisplay = 'relative' | 'absolute';
+export type SidebarDisplay = 'expanded' | 'collapsed';
 
 export const DEFAULT_TIME_DISPLAY: TimeDisplay = 'relative';
+export const DEFAULT_SIDEBAR_DISPLAY: SidebarDisplay = 'expanded';
 
 const TIME_DISPLAY_KEY = 'smyklot.panel.history.time-display';
 const LAST_INSTALLATION_KEY = 'smyklot.panel.last-installation';
+const SIDEBAR_DISPLAY_KEY = 'smyklot.panel.sidebar.display';
 
 type PreferenceReader = Pick<Storage, 'getItem'>;
 type PreferenceWriter = Pick<Storage, 'setItem'>;
@@ -20,6 +23,10 @@ function browserStorage(): Storage | null {
 
 function isTimeDisplay(value: string | null): value is TimeDisplay {
   return value === 'relative' || value === 'absolute';
+}
+
+function isSidebarDisplay(value: string | null): value is SidebarDisplay {
+  return value === 'expanded' || value === 'collapsed';
 }
 
 export function readTimeDisplay(storage: PreferenceReader | null = browserStorage()): TimeDisplay {
@@ -67,6 +74,32 @@ export function writeLastInstallation(
 
   try {
     storage.setItem(LAST_INSTALLATION_KEY, account);
+  } catch {
+    // Browser preferences are best-effort and must never block the panel
+  }
+}
+
+export function readSidebarDisplay(
+  storage: PreferenceReader | null = browserStorage(),
+): SidebarDisplay {
+  if (storage === null) return DEFAULT_SIDEBAR_DISPLAY;
+
+  try {
+    const value = storage.getItem(SIDEBAR_DISPLAY_KEY);
+    return isSidebarDisplay(value) ? value : DEFAULT_SIDEBAR_DISPLAY;
+  } catch {
+    return DEFAULT_SIDEBAR_DISPLAY;
+  }
+}
+
+export function writeSidebarDisplay(
+  value: SidebarDisplay,
+  storage: PreferenceWriter | null = browserStorage(),
+): void {
+  if (storage === null) return;
+
+  try {
+    storage.setItem(SIDEBAR_DISPLAY_KEY, value);
   } catch {
     // Browser preferences are best-effort and must never block the panel
   }

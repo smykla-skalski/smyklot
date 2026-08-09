@@ -25,8 +25,9 @@
 
 <style>
   .page-size {
-    font-size: 0.75rem;
-    height: var(--page-size-control-height, var(--control-height));
-    width: 4.25rem;
+    font-size: var(--font-size-meta);
+    height: var(--local-control-height, var(--control-height));
+    min-width: 4rem;
+    width: 4rem;
   }
 </style>
