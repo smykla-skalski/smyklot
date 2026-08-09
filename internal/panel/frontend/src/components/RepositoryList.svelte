@@ -347,18 +347,17 @@
     repositoryId: string,
     section: RepositoryDetailSection,
   ): void {
-    if (!['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key))
-      return;
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
     event.preventDefault();
     const sections: readonly RepositoryDetailSection[] = ['file', 'behavior', 'commands'];
     const current = sections.indexOf(section);
     let next = current;
     if (event.key === 'Home') next = 0;
     if (event.key === 'End') next = sections.length - 1;
-    if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
+    if (event.key === 'ArrowRight') {
       next = (current + 1) % sections.length;
     }
-    if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
+    if (event.key === 'ArrowLeft') {
       next = (current - 1 + sections.length) % sections.length;
     }
     const selected = sections[next];
@@ -817,7 +816,7 @@
           class="repository-detail-navigation"
           aria-label="Settings for {repository.name}"
           role="tablist"
-          aria-orientation="vertical"
+          aria-orientation="horizontal"
         >
           <button
             id="repository-{repository.id}-file-tab"
@@ -976,6 +975,7 @@
     border: 1px solid var(--border-subtle);
     border-bottom: 0;
     border-radius: var(--radius-surface) var(--radius-surface) 0 0;
+    overflow: hidden;
     transition: opacity 120ms ease-out;
   }
 
@@ -1098,12 +1098,9 @@
     width: 18%;
   }
 
-  th:first-child {
-    padding-left: var(--space-1);
-  }
-
+  th:first-child,
   td:first-child {
-    padding-left: 0;
+    padding-left: var(--space-4);
   }
 
   th:last-child,
@@ -1142,7 +1139,7 @@
   }
 
   .sortable-heading:first-child .sort-heading {
-    padding-left: var(--space-1);
+    padding-left: var(--space-4);
   }
 
   .sort-heading:hover,
@@ -1183,11 +1180,11 @@
     display: grid;
     gap: var(--space-1);
     grid-template-columns: 1.75rem minmax(0, 1fr);
-    margin: calc(var(--space-2) * -1);
+    margin: calc(var(--space-1) * -1) 0;
     min-width: 0;
-    padding: var(--space-2);
+    padding: var(--space-1) 0;
     text-align: left;
-    width: calc(100% + var(--space-4));
+    width: 100%;
   }
 
   .expand:hover {
@@ -1288,8 +1285,8 @@
     background: var(--surface-base);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-surface);
-    display: grid;
-    grid-template-columns: 10.5rem minmax(0, 1fr);
+    display: flex;
+    flex-direction: column;
     min-height: min(32rem, 62vh);
     overflow: hidden;
   }
@@ -1299,33 +1296,35 @@
   }
 
   .detail-loading {
-    grid-column: 1 / -1;
     margin: 0;
     padding: var(--space-4);
   }
 
   .repository-detail-navigation {
     background: var(--surface-inset);
-    border-right: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--border-subtle);
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     gap: var(--space-1);
-    padding: var(--space-3);
+    overflow-x: auto;
+    padding: 0 var(--space-3);
   }
 
   .repository-detail-navigation button {
     align-items: center;
     background: transparent;
     border: 0;
-    border-radius: var(--radius-control);
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
     color: var(--text-muted);
     display: flex;
     font-size: var(--font-size-meta);
     font-weight: 550;
     gap: var(--space-2);
-    height: var(--control-height);
-    justify-content: space-between;
-    padding: 0 var(--space-2);
+    flex: 0 0 auto;
+    height: 2.75rem;
+    justify-content: center;
+    padding: 0 var(--space-3);
     text-align: left;
     white-space: nowrap;
   }
@@ -1337,7 +1336,8 @@
   }
 
   .repository-detail-navigation button.active {
-    background: var(--brand-action-tint);
+    background: transparent;
+    border-bottom-color: var(--brand-action);
     color: var(--brand-action-text);
     font-weight: 650;
   }
@@ -1517,25 +1517,6 @@
 
     .numeric-cell {
       text-align: right;
-    }
-
-    .expand {
-      width: calc(100% + var(--space-4));
-    }
-
-    .repository-detail {
-      grid-template-columns: 1fr;
-    }
-
-    .repository-detail-navigation {
-      border-bottom: 1px solid var(--border-subtle);
-      border-right: 0;
-      flex-direction: row;
-      overflow-x: auto;
-    }
-
-    .repository-detail-navigation button {
-      flex: 1 0 auto;
     }
 
     .file-status {

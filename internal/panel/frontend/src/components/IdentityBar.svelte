@@ -58,10 +58,6 @@
   const selectedTarget = $derived(
     selectedId === null ? null : (targets.find((target) => target.id === selectedId) ?? null),
   );
-  const roleLabel = $derived(
-    (selectedTarget?.effective_role ?? viewer?.global_role ?? 'none').toUpperCase(),
-  );
-  const privilegedIdentity = $derived(roleLabel === 'ADMIN' || roleLabel === 'OWNER');
   const targetCandidates = $derived(
     fuzzyCandidates(
       targets.map((target) => ({
@@ -283,13 +279,10 @@
       ontoggle={(event) => toggleDetails(event, accountMenu)}
     >
       <summary
-        class={['who', privilegedIdentity && 'privileged']}
+        class="who"
         bind:this={accountTrigger}
         aria-label={`Account menu for ${viewer.account.display_name}, ${selectedTarget?.account.display_name ?? handleLabel(handle)}`}
       >
-        {#if privilegedIdentity}
-          <span class="identity-role-strip" aria-hidden="true"><span>{roleLabel}</span></span>
-        {/if}
         <Avatar account={viewer.account} size={34} />
         <span class="who-text">
           <span class="who-name">{viewer.account.display_name}</span>
@@ -716,31 +709,6 @@
     overflow: hidden;
   }
 
-  .who.privileged {
-    padding-left: calc(var(--space-4) + 1rem);
-  }
-
-  .identity-role-strip {
-    align-items: center;
-    background: var(--brand-action);
-    bottom: 0;
-    color: var(--on-brand-action);
-    display: flex;
-    justify-content: center;
-    left: 0;
-    position: absolute;
-    top: 0;
-    width: 1rem;
-  }
-
-  .identity-role-strip span {
-    font-size: 0.5rem;
-    font-weight: 750;
-    letter-spacing: 0.12em;
-    line-height: 1;
-    transform: rotate(-90deg);
-  }
-
   .who-meta {
     align-items: center;
     display: flex;
@@ -881,7 +849,7 @@
   .collapsed .sidebar-collapse-trigger {
     background: var(--sidebar-bg);
     border-color: var(--sidebar-border);
-    border-radius: 50%;
+    border-radius: var(--radius-control);
     box-shadow: 0 3px 10px rgb(0 0 0 / 18%);
     position: absolute;
     right: -0.875rem;
@@ -905,10 +873,6 @@
   .collapsed .account-menu {
     margin-left: calc(var(--space-2) * -1);
     margin-right: calc(var(--space-2) * -1);
-  }
-
-  .collapsed .who {
-    padding: var(--space-2) var(--space-2) var(--space-2) calc(var(--space-2) + 1rem);
   }
 
   .collapsed .target-popover,

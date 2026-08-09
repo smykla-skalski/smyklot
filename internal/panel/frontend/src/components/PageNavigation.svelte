@@ -75,12 +75,19 @@
   }
 
   button {
+    align-items: center;
     background: transparent;
     border: 1px solid transparent;
+    box-sizing: border-box;
     color: var(--dim);
+    display: inline-flex;
     font-size: var(--font-size-compact);
     font-weight: 600;
     height: var(--local-control-height, var(--control-height-compact));
+    justify-content: center;
+    line-height: 1;
+    max-height: var(--local-control-height, var(--control-height-compact));
+    min-height: var(--local-control-height, var(--control-height-compact));
     transition:
       background-color 120ms ease-out,
       border-color 120ms ease-out,
@@ -115,6 +122,8 @@
   }
 
   .page-number {
+    background: var(--control-bg);
+    border-color: var(--control-border);
     border-radius: 6px;
     min-width: var(--local-control-height, var(--control-height-compact));
     padding: 0 0.3rem;

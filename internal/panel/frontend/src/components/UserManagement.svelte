@@ -1589,7 +1589,6 @@
 
   .management-navigation {
     align-items: center;
-    border-bottom: 1px solid var(--border-subtle);
     display: flex;
     gap: var(--space-3);
     margin-bottom: var(--space-3);
@@ -1597,20 +1596,25 @@
   }
 
   .section-tabs {
-    align-self: stretch;
+    align-items: center;
+    background: var(--surface-inset);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-control);
     display: flex;
-    gap: var(--space-1);
+    gap: var(--control-inset);
+    padding: var(--control-inset);
   }
 
   .section-tab {
     align-items: center;
     background: transparent;
     border: 0;
-    border-bottom: 2px solid transparent;
+    border-radius: calc(var(--radius-control) - var(--control-inset));
     color: var(--text-muted);
     display: inline-flex;
     font: 650 var(--font-size-body) / 1 var(--sans);
     gap: var(--space-2);
+    height: var(--control-height-compact);
     min-width: 0;
     padding: 0 var(--space-3);
     transition:
@@ -1625,17 +1629,14 @@
   }
 
   .section-tab.selected {
-    border-bottom-color: var(--brand-action);
+    background: var(--surface-base);
+    box-shadow: 0 1px 2px var(--shadow-color);
     color: var(--text-primary);
   }
 
   .section-tab:focus-visible {
     box-shadow: inset 0 0 0 2px var(--focus);
     outline: 0;
-  }
-
-  .section-tab.selected:focus-visible {
-    border-bottom-color: transparent;
   }
 
   .section-count {

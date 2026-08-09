@@ -27,7 +27,7 @@ Smyklot avatar may retain its own colors.
 | Role | Light | Dark |
 | --- | --- | --- |
 | Canvas | `#F5F7F6` | `#0E1116` |
-| Sidebar | `#10151B` | `#10151B` |
+| Sidebar | `#EEF2F0` | `#10151B` |
 | Surface | `#FFFFFF` | `#151A21` |
 | Elevated surface | `#FAFBFA` | `#1B222B` |
 | Subdued surface | `#F0F3F2` | `#202833` |
@@ -38,8 +38,8 @@ Smyklot avatar may retain its own colors.
 | Secondary text | `#4C5B57` | `#C4CDD4` |
 | Muted text | `#66756F` | `#95A1AB` |
 
-The sidebar stays midnight in both themes so navigation remains a stable visual
-anchor.
+The sidebar follows the selected theme while retaining stronger surface
+separation than the workspace canvas.
 
 ### Brand and interaction
 
@@ -106,10 +106,10 @@ dividers instead of nested cards.
 
 ### Navigation
 
-- Sidebar is midnight in both themes
+- Sidebar uses a light neutral surface in light mode and midnight in dark mode
 - Selected navigation uses a petrol-tinted fill, stronger text, and icon
 - Do not add a second rail, edge strip, or decorative marker
-- Privileged roles use one narrow full-height strip on the account area
+- The bottom account area stays visually quiet and does not add a custom role strip
 - The collapse control sits beside the brand when expanded and straddles the
   sidebar edge when collapsed; it appears only on sidebar hover or focus-within
 - Mobile uses a top bar and labelled navigation with no more than five items
@@ -127,8 +127,8 @@ dividers instead of nested cards.
 
 - Use text tabs with a two-pixel petrol underline for page-level navigation
 - Use one compact segmented switch for mutually exclusive views within a page
-- Users/Invitations are dataset tabs with plain counts; Audit/Failures is a
-  compact view switch
+- Users/Invitations use a contained dataset tab group with plain counts;
+  Audit/Failures is a compact view switch
 - Do not add count badges to a segmented view switch
 
 ### Dialogs and inspectors
@@ -139,8 +139,7 @@ dividers instead of nested cards.
 - Preserve Escape, outside click, focus trap, and focus restoration
 - Confirm before dismissing unsaved work
 - Repository settings and user access history use centered wide modals with a
-  blurred scrim; repository sections use a left tab rail on wide screens and a
-  horizontal tab rail on narrow screens
+  blurred scrim; repository sections use one horizontal tab row at every width
 
 ### Tables
 
@@ -164,7 +163,8 @@ dividers instead of nested cards.
   by the table or rendered with browser-native styling
 - Search and filters never share the table's border
 - Repository names use a descender-safe line box and optical vertical alignment;
-  the first and last row controls keep equal visual outer insets
+  the first and last row controls keep equal 16px visual outer insets
+- Every numbered pagination control has the same visual and computed height
 - Repository detail navigation uses plain semantic count text, not count pills
 - Installation and account menus are content-sized, keep search visible while
   options scroll, and omit type labels already stated by their group heading
