@@ -393,6 +393,9 @@ func TestPanelHistoryPaginationFilteringAndSorting(t *testing.T) {
 	if firstPage.Total != 2 || len(firstPage.Items) != 1 || firstPage.NextCursor == nil {
 		t.Fatalf("unexpected first audit page: %#v", firstPage)
 	}
+	if *firstPage.NextCursor != "1" {
+		t.Fatalf("first audit cursor = %q, want offset 1", *firstPage.NextCursor)
+	}
 
 	second := harness.request(
 		t,

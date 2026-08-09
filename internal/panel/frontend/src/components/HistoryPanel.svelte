@@ -15,6 +15,7 @@
   import Avatar from './Avatar.svelte';
   import Chip from './Chip.svelte';
   import HistoryDisplayMenu from './HistoryDisplayMenu.svelte';
+  import PageNavigation from './PageNavigation.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
 
   type HistoryType = 'audit' | 'failures';
@@ -47,7 +48,6 @@
   let limit = $state<number>(20);
   let auditPage = $state<Page<AuditEntry> | null>(null);
   let failurePage = $state<Page<DeliveryFailure> | null>(null);
-  let cursors = $state<Array<string | undefined>>([undefined]);
   let pageIndex = $state(0);
   let loading = $state(false);
   let problem = $state<string | null>(null);
@@ -131,15 +131,15 @@
   }
 
   async function resetAndLoad(key: string): Promise<void> {
-    cursors = [undefined];
     pageIndex = 0;
-    await loadPage(undefined, key);
+    await loadPage(0, key);
   }
 
-  async function loadPage(cursor: string | undefined, key: string): Promise<void> {
+  async function loadPage(index: number, key: string): Promise<void> {
     const sequence = ++requestSequence;
     loading = true;
     problem = null;
+    const cursor = index === 0 ? undefined : String(index * limit);
     try {
       if (historyType === 'audit') {
         const page = await fetchAudit({
@@ -149,7 +149,13 @@
           limit,
           scope: auditScope,
         });
-        if (sequence === requestSequence && key === requestKey) auditPage = page;
+        if (sequence === requestSequence && key === requestKey) {
+          if (index > 0 && page.total <= index * limit) {
+            await resetAndLoad(key);
+            return;
+          }
+          auditPage = page;
+        }
       } else {
         const page = await fetchFailures({
           cursor,
@@ -158,7 +164,13 @@
           limit,
           kind: failureKind,
         });
-        if (sequence === requestSequence && key === requestKey) failurePage = page;
+        if (sequence === requestSequence && key === requestKey) {
+          if (index > 0 && page.total <= index * limit) {
+            await resetAndLoad(key);
+            return;
+          }
+          failurePage = page;
+        }
       }
     } catch (error) {
       if (sequence === requestSequence && key === requestKey) {
@@ -169,24 +181,15 @@
     }
   }
 
-  async function nextPage(): Promise<void> {
-    const cursor = currentPage?.next_cursor;
-    if (cursor === null || cursor === undefined || loading) return;
-    const nextIndex = pageIndex + 1;
-    cursors = [...cursors.slice(0, nextIndex), cursor];
-    pageIndex = nextIndex;
-    await loadPage(cursor, requestKey);
-  }
-
-  async function previousPage(): Promise<void> {
-    if (pageIndex === 0 || loading) return;
-    const previousIndex = pageIndex - 1;
-    pageIndex = previousIndex;
-    await loadPage(cursors[previousIndex], requestKey);
+  async function selectPage(nextIndex: number): Promise<void> {
+    const bounded = Math.min(pageCount - 1, Math.max(0, nextIndex));
+    if (bounded === pageIndex || loading) return;
+    pageIndex = bounded;
+    await loadPage(bounded, requestKey);
   }
 
   function retry(): void {
-    void loadPage(cursors[pageIndex], requestKey);
+    void loadPage(pageIndex, requestKey);
   }
 </script>
 
@@ -397,23 +400,12 @@
       </p>
 
       <div class="page-actions">
-        <button
-          class="btn page-button"
-          disabled={pageIndex === 0 || loading}
-          onclick={previousPage}
-        >
-          <span aria-hidden="true">←</span>
-          Previous
-        </button>
-        <span class="page-number mono">Page {pageIndex + 1} of {pageCount}</span>
-        <button
-          class="btn page-button"
-          disabled={currentPage?.next_cursor === null || loading}
-          onclick={nextPage}
-        >
-          Next
-          <span aria-hidden="true">→</span>
-        </button>
+        <PageNavigation
+          {pageIndex}
+          {pageCount}
+          disabled={loading}
+          onSelect={(nextIndex) => void selectPage(nextIndex)}
+        />
       </div>
 
       <label class="rows-field">
@@ -681,8 +673,7 @@
     padding: 0.625rem 1.125rem;
   }
 
-  .range,
-  .page-number {
+  .range {
     color: var(--dim);
     font-size: 0.625rem;
     margin: 0;
@@ -695,15 +686,7 @@
   }
 
   .page-actions {
-    align-items: center;
-    display: flex;
-    gap: 0.5rem;
-  }
-
-  .page-button {
-    background: var(--strip-lift);
-    font-size: 0.75rem;
-    padding: 0 0.625rem;
+    min-width: 0;
   }
 
   .rows-field {

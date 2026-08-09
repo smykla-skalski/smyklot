@@ -43,16 +43,16 @@ func (s *Store) ListAudit(
 	if err != nil {
 		return storage.AuditPage{}, fmt.Errorf("count audit entries: %w", err)
 	}
-	clauses, arguments = addHistoryCursor("ae.id", clauses, arguments, page.HistoryPageRequest)
 	direction, err := historyDirection(page.Order)
 	if err != nil {
 		return storage.AuditPage{}, err
 	}
-	arguments = append(arguments, limit+1)
+	offset := max(page.Offset, 0)
+	arguments = append(arguments, limit+1, offset)
 	// #nosec G202 -- clauses and direction come only from fixed internal constants;
 	// every request value remains a bound parameter.
 	query := auditSelect + " WHERE " + strings.Join(clauses, " AND ") +
-		" ORDER BY ae.id " + direction + " LIMIT ?"
+		" ORDER BY ae.id " + direction + " LIMIT ? OFFSET ?"
 	rows, err := s.db.QueryContext(ctx, query, arguments...)
 	if err != nil {
 		return storage.AuditPage{}, fmt.Errorf("list audit entries: %w", err)
@@ -63,7 +63,7 @@ func (s *Store) ListAudit(
 		return storage.AuditPage{}, fmt.Errorf("read audit entries: %w", err)
 	}
 
-	return auditPage(items, limit, total), nil
+	return auditPage(items, limit, total, offset), nil
 }
 
 func auditFilters(
@@ -134,14 +134,14 @@ func scanAuditEntry(scanner rowScanner) (storage.AuditEntry, error) {
 	return entry, err
 }
 
-func auditPage(items []storage.AuditEntry, limit, total int) storage.AuditPage {
+func auditPage(items []storage.AuditEntry, limit, total, offset int) storage.AuditPage {
 	page := storage.AuditPage{Items: items, Total: total}
 	if len(items) <= limit {
 		return page
 	}
 
 	page.Items = items[:limit]
-	page.NextCursor = page.Items[len(page.Items)-1].ID
+	page.NextOffset = offset + limit
 
 	return page
 }

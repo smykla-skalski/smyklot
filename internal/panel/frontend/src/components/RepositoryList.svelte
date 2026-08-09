@@ -26,6 +26,7 @@
   import ConfigEditor from './ConfigEditor.svelte';
   import FileStatusIndicator from './FileStatusIndicator.svelte';
   import HelpTip from './HelpTip.svelte';
+  import PageNavigation from './PageNavigation.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
 
   type RepositoryEnablement = 'inherit' | 'enabled' | 'disabled';
@@ -62,7 +63,6 @@
   let settingFilter = $state<RepositorySettingFilter>('all');
   let limit = $state<number>(20);
   let page = $state<Page<RepositorySummary> | null>(null);
-  let cursors = $state<Array<string | undefined>>([undefined]);
   let pageIndex = $state(0);
   let loading = $state(false);
   let problem = $state<string | null>(null);
@@ -117,25 +117,24 @@
     if (version === observedRefreshVersion) return;
     observedRefreshVersion = version;
     untrack(() => {
-      void loadPage(cursors[pageIndex], filterKey);
+      void loadPage(pageIndex, filterKey);
       refreshExpandedRepositories(version);
     });
   });
 
   async function resetAndLoad(key: string): Promise<void> {
-    cursors = [undefined];
     pageIndex = 0;
     page = null;
-    await loadPage(undefined, key);
+    await loadPage(0, key);
   }
 
-  async function loadPage(cursor: string | undefined, key: string): Promise<void> {
+  async function loadPage(index: number, key: string): Promise<void> {
     const sequence = ++requestSequence;
     loading = true;
     problem = null;
     try {
       const loaded = await fetchPage({
-        cursor,
+        cursor: index === 0 ? undefined : String(index * limit),
         query: appliedQuery,
         sort,
         limit,
@@ -144,7 +143,7 @@
         setting: settingFilter,
       });
       if (sequence !== requestSequence || key !== filterKey) return;
-      if (pageIndex > 0 && loaded.total <= pageIndex * limit) {
+      if (index > 0 && loaded.total <= index * limit) {
         await resetAndLoad(key);
         return;
       }
@@ -158,24 +157,15 @@
     }
   }
 
-  async function nextPage(): Promise<void> {
-    const cursor = page?.next_cursor;
-    if (cursor === null || cursor === undefined || loading) return;
-    const nextIndex = pageIndex + 1;
-    cursors = [...cursors.slice(0, nextIndex), cursor];
-    pageIndex = nextIndex;
-    await loadPage(cursor, filterKey);
-  }
-
-  async function previousPage(): Promise<void> {
-    if (pageIndex === 0 || loading) return;
-    const previousIndex = pageIndex - 1;
-    pageIndex = previousIndex;
-    await loadPage(cursors[previousIndex], filterKey);
+  async function selectPage(nextIndex: number): Promise<void> {
+    const bounded = Math.min(pageCount - 1, Math.max(0, nextIndex));
+    if (bounded === pageIndex || loading) return;
+    pageIndex = bounded;
+    await loadPage(bounded, filterKey);
   }
 
   function retry(): void {
-    void loadPage(cursors[pageIndex], filterKey);
+    void loadPage(pageIndex, filterKey);
   }
 
   function refreshExpandedRepositories(version: number): void {
@@ -544,23 +534,12 @@
       </p>
 
       <div class="page-actions">
-        <button
-          class="btn page-button"
-          disabled={pageIndex === 0 || loading}
-          onclick={previousPage}
-        >
-          <span aria-hidden="true">←</span>
-          Previous
-        </button>
-        <span class="page-number mono">Page {pageIndex + 1} of {pageCount}</span>
-        <button
-          class="btn page-button"
-          disabled={page?.next_cursor === null || loading}
-          onclick={nextPage}
-        >
-          Next
-          <span aria-hidden="true">→</span>
-        </button>
+        <PageNavigation
+          {pageIndex}
+          {pageCount}
+          disabled={loading}
+          onSelect={(nextIndex) => void selectPage(nextIndex)}
+        />
       </div>
 
       <label class="rows-field">
@@ -664,7 +643,6 @@
   }
 
   .repository-results {
-    min-height: 5rem;
     transition: opacity 120ms ease-out;
   }
 
@@ -777,8 +755,7 @@
     padding: 0.625rem 1.125rem;
   }
 
-  .range,
-  .page-number {
+  .range {
     color: var(--dim);
     font-size: 0.625rem;
     margin: 0;
@@ -791,15 +768,7 @@
   }
 
   .page-actions {
-    align-items: center;
-    display: flex;
-    gap: 0.5rem;
-  }
-
-  .page-button {
-    background: var(--strip-lift);
-    font-size: 0.75rem;
-    padding: 0 0.625rem;
+    min-width: 0;
   }
 
   .rows-field {

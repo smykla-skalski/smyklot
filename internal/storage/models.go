@@ -246,13 +246,12 @@ const (
 	HistoryOldest HistoryOrder = "oldest"
 )
 
-// HistoryPageRequest is an ID-based page request. CursorID zero starts at the
-// selected end of history; later cursors continue in the selected order.
+// HistoryPageRequest is an offset-based page request.
 type HistoryPageRequest struct {
-	CursorID int64
-	Limit    int
-	Order    HistoryOrder
-	Query    string
+	Offset int
+	Limit  int
+	Order  HistoryOrder
+	Query  string
 }
 
 // AuditScope limits audit history to account-wide or repository changes.
@@ -279,13 +278,13 @@ type FailurePageRequest struct {
 // AuditPage is one page of immutable audit entries.
 type AuditPage struct {
 	Items      []AuditEntry
-	NextCursor int64
+	NextOffset int
 	Total      int
 }
 
 // FailurePage is one page of delivery failures.
 type FailurePage struct {
 	Items      []DeliveryFailure
-	NextCursor int64
+	NextOffset int
 	Total      int
 }

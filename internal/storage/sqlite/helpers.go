@@ -100,23 +100,6 @@ func historyDirection(order storage.HistoryOrder) (string, error) {
 	}
 }
 
-func addHistoryCursor(
-	column string,
-	clauses []string,
-	arguments []any,
-	page storage.HistoryPageRequest,
-) ([]string, []any) {
-	if page.CursorID == 0 {
-		return clauses, arguments
-	}
-	operator := "<"
-	if page.Order == storage.HistoryOldest {
-		operator = ">"
-	}
-
-	return append(clauses, column+" "+operator+" ?"), append(arguments, page.CursorID)
-}
-
 func countHistory(
 	ctx context.Context,
 	queryer rowQuerier,

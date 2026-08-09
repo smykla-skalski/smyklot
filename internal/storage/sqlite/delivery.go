@@ -201,16 +201,16 @@ func (s *Store) ListFailures(
 	if err != nil {
 		return storage.FailurePage{}, fmt.Errorf("count delivery failures: %w", err)
 	}
-	clauses, arguments = addHistoryCursor("id", clauses, arguments, page.HistoryPageRequest)
 	direction, err := historyDirection(page.Order)
 	if err != nil {
 		return storage.FailurePage{}, err
 	}
-	arguments = append(arguments, limit+1)
+	offset := max(page.Offset, 0)
+	arguments = append(arguments, limit+1, offset)
 	// #nosec G202 -- clauses and direction come only from fixed internal constants;
 	// every request value remains a bound parameter.
 	query := failureSelect + " WHERE " + strings.Join(clauses, " AND ") +
-		" ORDER BY id " + direction + " LIMIT ?"
+		" ORDER BY id " + direction + " LIMIT ? OFFSET ?"
 	rows, err := s.db.QueryContext(ctx, query, arguments...)
 	if err != nil {
 		return storage.FailurePage{}, fmt.Errorf("list delivery failures: %w", err)
@@ -221,7 +221,7 @@ func (s *Store) ListFailures(
 		return storage.FailurePage{}, fmt.Errorf("read delivery failures: %w", err)
 	}
 
-	return failurePage(items, limit, total), nil
+	return failurePage(items, limit, total, offset), nil
 }
 
 func failureFilters(
@@ -315,14 +315,14 @@ func scanDeliveryFailure(scanner rowScanner) (storage.DeliveryFailure, error) {
 	return failure, nil
 }
 
-func failurePage(items []storage.DeliveryFailure, limit, total int) storage.FailurePage {
+func failurePage(items []storage.DeliveryFailure, limit, total, offset int) storage.FailurePage {
 	page := storage.FailurePage{Items: items, Total: total}
 	if len(items) <= limit {
 		return page
 	}
 
 	page.Items = items[:limit]
-	page.NextCursor = page.Items[len(page.Items)-1].ID
+	page.NextOffset = offset + limit
 
 	return page
 }

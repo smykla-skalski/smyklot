@@ -569,12 +569,12 @@ var _ = Describe("SQLite store [Unit]", func() {
 		Expect(page.Items).To(HaveLen(1))
 		Expect(page.Total).To(Equal(2))
 		Expect(page.Items[0].DeliveryID).To(Equal(second.DeliveryID))
-		Expect(page.NextCursor).NotTo(BeZero())
+		Expect(page.NextOffset).To(Equal(1))
 
 		older, err := store.ListFailures(ctx, target.TargetID, storage.FailurePageRequest{
 			HistoryPageRequest: storage.HistoryPageRequest{
-				CursorID: page.NextCursor,
-				Limit:    1,
+				Offset: page.NextOffset,
+				Limit:  1,
 			},
 		})
 		Expect(err).NotTo(HaveOccurred())

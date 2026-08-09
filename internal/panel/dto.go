@@ -213,7 +213,7 @@ func auditPageDTO(page storage.AuditPage) pageResponse[auditResponse] {
 	}
 
 	return pageResponse[auditResponse]{
-		Items: items, NextCursor: cursor(page.NextCursor), Total: page.Total,
+		Items: items, NextCursor: offsetCursor(page.NextOffset), Total: page.Total,
 	}
 }
 
@@ -233,17 +233,8 @@ func failurePageDTO(page storage.FailurePage) pageResponse[failureResponse] {
 	}
 
 	return pageResponse[failureResponse]{
-		Items: items, NextCursor: cursor(page.NextCursor), Total: page.Total,
+		Items: items, NextCursor: offsetCursor(page.NextOffset), Total: page.Total,
 	}
-}
-
-func cursor(value int64) *string {
-	if value == 0 {
-		return nil
-	}
-	formatted := strconv.FormatInt(value, 10)
-
-	return &formatted
 }
 
 func offsetCursor(value int) *string {
@@ -289,11 +280,11 @@ func parseHistoryPage(values url.Values) (storage.HistoryPageRequest, error) {
 		return storage.HistoryPageRequest{}, fmt.Errorf("invalid history query")
 	}
 	if raw := values.Get("cursor"); raw != "" {
-		cursorID, err := strconv.ParseInt(raw, 10, 64)
-		if err != nil || cursorID <= 0 {
+		offset, err := strconv.Atoi(raw)
+		if err != nil || offset <= 0 {
 			return storage.HistoryPageRequest{}, fmt.Errorf("invalid history cursor")
 		}
-		page.CursorID = cursorID
+		page.Offset = offset
 	}
 	if raw := values.Get("limit"); raw != "" {
 		limit, err := strconv.Atoi(raw)
