@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { PanelApi } from '../lib/api';
   import type { PanelBuild } from '../lib/base';
+  import { formatDateTime } from '../lib/format';
   import type { PanelInvitation } from '../lib/types';
   import Avatar from './Avatar.svelte';
   import Chip, { type ChipTone } from './Chip.svelte';
@@ -50,14 +51,20 @@
   <header class="invitation-brand">
     <img src={iconUrl} width="42" height="42" alt="" />
     <div>
-      <span>SMYKLOT</span>
-      <strong>PANEL INVITATION</strong>
+      <strong>Smyklot</strong>
+      <span>Panel invitation</span>
     </div>
   </header>
 
   {#if loading}
     <Plate label="Invitation" tone="lead">
-      <p class="dim">Reading the invitation…</p>
+      <div class="invitation-skeleton" aria-hidden="true">
+        <span class="skeleton-person"></span>
+        <span></span>
+        <span></span>
+        <span class="skeleton-action"></span>
+      </div>
+      <p class="visually-hidden" role="status">Loading invitation</p>
     </Plate>
   {:else if failure !== null}
     <Plate label="Invitation unavailable" tone="alarm">
@@ -72,28 +79,28 @@
           <strong>{invitation.account.display_name}</strong>
           <span class="mono dim">@{invitation.account.login}</span>
         </div>
-        <Chip tone={statusTone(invitation.status)}>{invitation.status.toUpperCase()}</Chip>
+        <Chip tone={statusTone(invitation.status)}
+          >{invitation.status.slice(0, 1).toUpperCase() + invitation.status.slice(1)}</Chip
+        >
       </div>
 
       <dl class="invitation-details">
         <div>
-          <dt>ACCESS</dt>
+          <dt>Access</dt>
           <dd>{roleLabel(invitation.role)}</dd>
         </div>
         <div>
-          <dt>SCOPE</dt>
+          <dt>Scope</dt>
           <dd>{invitation.target_name ?? 'All installations'}</dd>
         </div>
         <div>
-          <dt>EXPIRES</dt>
+          <dt>Expires</dt>
           <dd>
-            <time datetime={invitation.expires_at}
-              >{new Date(invitation.expires_at).toLocaleString()}</time
-            >
+            <time datetime={invitation.expires_at}>{formatDateTime(invitation.expires_at)}</time>
           </dd>
         </div>
         <div>
-          <dt>INVITED BY</dt>
+          <dt>Invited by</dt>
           <dd>@{invitation.created_by.login}</dd>
         </div>
       </dl>
@@ -125,7 +132,7 @@
       {:else if invitation.status === 'declined'}
         <p>This invitation was declined</p>
       {:else if invitation.status === 'expired'}
-        <p>This invitation expired — ask the sender to reissue it</p>
+        <p>This invitation expired. Ask the sender to reissue it</p>
       {:else}
         <p>This invitation was revoked</p>
       {/if}
@@ -137,7 +144,11 @@
 
 <style>
   .invitation-shell {
-    max-width: 44rem;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    max-width: 42rem;
+    min-height: 100dvh;
+    padding-block: clamp(var(--space-6), 7vh, 4.5rem) var(--space-6);
   }
 
   .invitation-brand {
@@ -148,7 +159,7 @@
   }
 
   .invitation-brand img {
-    border-radius: var(--radius-control);
+    border-radius: var(--r-ctl);
   }
 
   .invitation-brand div {
@@ -156,19 +167,29 @@
     gap: 0.05rem;
   }
 
-  .invitation-brand span,
-  .invitation-brand strong {
-    font-family: var(--mono);
-    letter-spacing: 0.1em;
-  }
-
   .invitation-brand span {
     color: var(--dim);
-    font-size: 0.625rem;
+    font-size: var(--font-size-meta);
   }
 
   .invitation-brand strong {
-    font-size: 0.875rem;
+    font-size: var(--font-size-title);
+    font-weight: 700;
+  }
+
+  .invitation-shell :global(.plate) {
+    align-self: center;
+    border-color: var(--dialog-border);
+    box-shadow: var(--shadow-plate);
+    margin-block: var(--space-6);
+  }
+
+  .invitation-shell :global(.plate-head) {
+    min-height: 3.25rem;
+  }
+
+  .invitation-shell :global(.plate-body) {
+    padding: var(--space-5);
   }
 
   .invited-user {
@@ -192,7 +213,7 @@
   }
 
   .invitation-details div {
-    border-top: 1px solid var(--line);
+    border-top: 1px solid var(--rule);
     display: grid;
     gap: 0.25rem;
     padding-top: 0.625rem;
@@ -200,8 +221,8 @@
 
   dt {
     color: var(--dim);
-    font: 600 0.625rem/1.3 var(--mono);
-    letter-spacing: 0.11em;
+    font: 650 var(--font-size-compact) / 1.3 var(--sans);
+    letter-spacing: 0.02em;
   }
 
   dd {
@@ -212,6 +233,41 @@
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
+  }
+
+  .invitation-skeleton {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .invitation-skeleton span {
+    animation: invitation-skeleton-pulse 1.35s ease-in-out infinite alternate;
+    background: var(--surface-inset);
+    border-radius: var(--radius-control);
+    display: block;
+    height: 0.875rem;
+    width: 72%;
+  }
+
+  .invitation-skeleton .skeleton-person {
+    height: 3rem;
+    width: 100%;
+  }
+
+  .invitation-skeleton .skeleton-action {
+    height: var(--control-height);
+    margin-top: var(--space-2);
+    width: 9rem;
+  }
+
+  @keyframes invitation-skeleton-pulse {
+    from {
+      opacity: 0.5;
+    }
+
+    to {
+      opacity: 0.9;
+    }
   }
 
   @media (max-width: 36rem) {

@@ -60,6 +60,7 @@
   {open}
   title={label}
   description="Review the current access state and earlier administrator decisions"
+  variant="inspector"
   {returnFocus}
   onClose={close}
 >
@@ -148,10 +149,9 @@
 
   dt,
   h3 {
-    color: var(--dim);
-    font: 600 0.5625rem/1 var(--mono);
-    letter-spacing: 0.09em;
-    text-transform: uppercase;
+    color: var(--text-secondary);
+    font: 650 var(--font-size-compact) / 1.2 var(--sans);
+    letter-spacing: 0.02em;
   }
 
   dd {

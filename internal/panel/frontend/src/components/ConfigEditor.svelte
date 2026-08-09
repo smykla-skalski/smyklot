@@ -15,6 +15,7 @@
   import { COMMANDS } from '../lib/types';
   import type { ConfigKey, ConfigPatch, ConfigValues } from '../lib/types';
   import HelpTip from './HelpTip.svelte';
+  import Icon from './Icon.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
 
   const BOOLEAN_OPTIONS = [
@@ -34,6 +35,7 @@
     scope,
     idPrefix,
     disabled = false,
+    section = 'all',
     onSave,
   }: {
     patch: ConfigPatch;
@@ -41,6 +43,7 @@
     scope: 'target' | 'repository';
     idPrefix: string;
     disabled?: boolean;
+    section?: 'all' | 'behavior' | 'commands';
     onSave: (next: ConfigPatch) => Promise<void>;
   } = $props();
 
@@ -136,214 +139,223 @@
 </script>
 
 <div class="config-editor">
-  <section class="editor-section" aria-labelledby="config-{scope}-behavior">
-    <header class="group-heading">
-      <h4 id="config-{scope}-behavior">Behavior</h4>
-      <p>Comments, mentions, reactions, and approval safeguards</p>
-    </header>
+  {#if section === 'all' || section === 'behavior'}
+    <section class="editor-section" aria-labelledby="config-{scope}-{idPrefix}-behavior">
+      {#if section === 'all'}
+        <header class="group-heading">
+          <h4 id="config-{scope}-{idPrefix}-behavior">Behavior</h4>
+          <p>Comments, mentions, reactions, and approval safeguards</p>
+        </header>
+      {:else}
+        <h4 class="visually-hidden" id="config-{scope}-{idPrefix}-behavior">Behavior</h4>
+      {/if}
 
-    <div class="boolean-grid">
-      {#each BOOLEAN_FIELDS as field (field.key)}
-        {@const overridden = hasOverride(field.key)}
-        {@const value = effectiveValue(draft, inherited, field.key)}
-        <div class="boolean-row">
-          <div class="config-copy">
-            <span class="field-label">{field.label}</span>
-            <span class="visually-hidden" id="config-{scope}-{idPrefix}-{field.key}-help">
-              {field.help}
-            </span>
-          </div>
-          <HelpTip
-            id="config-{scope}-{idPrefix}-{field.key}-tooltip"
-            label="About {field.label.toLowerCase()}"
-            text={field.help}
-            compact
-          />
-          <SegmentedControl
-            name="config-{scope}-{idPrefix}-{field.key}"
-            label={field.label}
-            descriptionId="config-{scope}-{idPrefix}-{field.key}-help"
-            options={BOOLEAN_OPTIONS}
-            value={overridden ? (value ? 'on' : 'off') : 'default'}
-            onSelect={(selection) => selectBoolean(field.key, selection)}
-            disabled={editorDisabled}
-          />
-        </div>
-      {/each}
-    </div>
-  </section>
-
-  <section class="editor-section" aria-labelledby="config-{scope}-commands">
-    <header class="group-heading">
-      <h4 id="config-{scope}-commands">Commands</h4>
-      <p>Invocation syntax, available actions, and aliases</p>
-    </header>
-
-    <div class="command-fields">
-      <div class="config-row">
-        <div class="config-copy">
-          <label for="config-{scope}-{idPrefix}-prefix">Prefix</label>
-        </div>
-        <div class="config-value">
-          <HelpTip
-            id="config-{scope}-{idPrefix}-prefix-tooltip"
-            label="About command prefix"
-            text="Characters required before a command when prefix invocation is used. Editing the inherited value creates a custom setting"
-            compact
-          />
-          <input
-            id="config-{scope}-{idPrefix}-prefix"
-            class="text-input mono short-input"
-            class:inherited-value={!hasOverride('command_prefix')}
-            value={effectiveValue(draft, inherited, 'command_prefix')}
-            disabled={editorDisabled}
-            oninput={(event) => setPrefix(event.currentTarget.value)}
-          />
-          <SegmentedControl
-            name="config-{scope}-{idPrefix}-prefix-mode"
-            label="Command prefix source"
-            options={MODE_OPTIONS}
-            value={hasOverride('command_prefix') ? 'custom' : 'default'}
-            onSelect={(selection) =>
-              selection === 'custom' ? useCustom('command_prefix') : useDefault('command_prefix')}
-            disabled={editorDisabled}
-          />
-        </div>
-      </div>
-
-      <div class="config-row config-stack">
-        <div class="config-copy">
-          <span class="field-label">Allowed</span>
-        </div>
-        <HelpTip
-          id="config-{scope}-{idPrefix}-commands-tooltip"
-          label="About allowed commands"
-          text="Choose which canonical commands Smyklot accepts. All commands are enabled by default, and at least one must remain enabled. Editing the inherited selection creates a custom setting"
-          compact
-        />
-        <SegmentedControl
-          name="config-{scope}-{idPrefix}-commands-mode"
-          label="Allowed commands source"
-          options={MODE_OPTIONS}
-          value={hasOverride('allowed_commands') ? 'custom' : 'default'}
-          align="end"
-          onSelect={(selection) =>
-            selection === 'custom' ? useCustom('allowed_commands') : useDefault('allowed_commands')}
-          disabled={editorDisabled}
-        />
-        <div class="command-grid" class:inherited-value={!hasOverride('allowed_commands')}>
-          {#each COMMANDS as command (command)}
-            <label class="check-option">
-              <input
-                type="checkbox"
-                checked={commandIsAllowed(
-                  effectiveValue(draft, inherited, 'allowed_commands'),
-                  command,
-                )}
-                disabled={editorDisabled}
-                onchange={() => toggleCommand(command)}
-              />
-              <span class="check-box" aria-hidden="true"></span>
-              <code>{command}</code>
-            </label>
-          {/each}
-        </div>
-      </div>
-
-      <div class="config-row config-stack">
-        <div class="config-copy">
-          <span class="field-label" id="config-{scope}-{idPrefix}-aliases-heading">Aliases</span>
-        </div>
-        <HelpTip
-          id="config-{scope}-{idPrefix}-aliases-tooltip"
-          label="About command aliases"
-          text="Map additional command words to canonical Smyklot commands. Adding, changing, or deleting an inherited alias creates a custom setting"
-          compact
-        />
-        <SegmentedControl
-          name="config-{scope}-{idPrefix}-aliases-mode"
-          label="Command aliases source"
-          options={MODE_OPTIONS}
-          value={hasOverride('command_aliases') ? 'custom' : 'default'}
-          align="end"
-          onSelect={(selection) =>
-            selection === 'custom' ? useCustom('command_aliases') : useDefault('command_aliases')}
-          disabled={editorDisabled}
-        />
-
-        <div
-          class="alias-table"
-          class:inherited-value={!hasOverride('command_aliases')}
-          role="group"
-          aria-labelledby="config-{scope}-{idPrefix}-aliases-heading"
-        >
-          {#each aliasEntries as [name, command] (name)}
-            <div class="alias-row">
-              <code>{name}</code>
-              <span class="alias-arrow" aria-hidden="true">→</span>
-              <code>{command}</code>
-              <button
-                class="alias-delete"
-                aria-label="Delete alias {name}"
-                title="Delete alias {name}"
-                disabled={editorDisabled}
-                onclick={() => removeAlias(name)}
-              >
-                <svg viewBox="0 0 20 20" aria-hidden="true">
-                  <path d="M4.5 5.5h11M8 5.5V3.75h4v1.75m2 0-.5 10.75h-7L6 5.5"></path>
-                  <path d="M8.5 8v5.75M11.5 8v5.75"></path>
-                </svg>
-              </button>
+      <div class="boolean-grid">
+        {#each BOOLEAN_FIELDS as field (field.key)}
+          {@const overridden = hasOverride(field.key)}
+          {@const value = effectiveValue(draft, inherited, field.key)}
+          <div class="boolean-row">
+            <div class="config-copy">
+              <span class="field-label">{field.label}</span>
+              <span class="visually-hidden" id="config-{scope}-{idPrefix}-{field.key}-help">
+                {field.help}
+              </span>
             </div>
-          {:else}
-            <p class="alias-empty">No aliases configured</p>
-          {/each}
-
-          <form
-            class="alias-create"
-            aria-label="Add command alias"
-            onsubmit={(event) => {
-              event.preventDefault();
-              addAlias();
-            }}
-          >
-            <label class="visually-hidden" for="config-{scope}-{idPrefix}-alias">Alias</label>
-            <input
-              id="config-{scope}-{idPrefix}-alias"
-              class="text-input mono"
-              placeholder="Alias"
-              bind:value={aliasName}
+            <HelpTip
+              id="config-{scope}-{idPrefix}-{field.key}-tooltip"
+              label="About {field.label.toLowerCase()}"
+              text={field.help}
+              compact
+            />
+            <SegmentedControl
+              name="config-{scope}-{idPrefix}-{field.key}"
+              label={field.label}
+              descriptionId="config-{scope}-{idPrefix}-{field.key}-help"
+              options={BOOLEAN_OPTIONS}
+              value={overridden ? (value ? 'on' : 'off') : 'default'}
+              onSelect={(selection) => selectBoolean(field.key, selection)}
               disabled={editorDisabled}
             />
-            <span class="alias-arrow" aria-hidden="true">→</span>
-            <label class="visually-hidden" for="config-{scope}-{idPrefix}-alias-command"
-              >Command</label
-            >
-            <select
-              id="config-{scope}-{idPrefix}-alias-command"
-              class="select-input mono"
-              bind:value={aliasCommand}
+          </div>
+        {/each}
+      </div>
+    </section>
+  {/if}
+
+  {#if section === 'all' || section === 'commands'}
+    <section class="editor-section" aria-labelledby="config-{scope}-{idPrefix}-commands">
+      {#if section === 'all'}
+        <header class="group-heading">
+          <h4 id="config-{scope}-{idPrefix}-commands">Commands</h4>
+          <p>Invocation syntax, available actions, and aliases</p>
+        </header>
+      {:else}
+        <h4 class="visually-hidden" id="config-{scope}-{idPrefix}-commands">Commands</h4>
+      {/if}
+
+      <div class="command-fields">
+        <div class="config-row">
+          <div class="config-copy">
+            <label for="config-{scope}-{idPrefix}-prefix">Prefix</label>
+          </div>
+          <div class="config-value">
+            <HelpTip
+              id="config-{scope}-{idPrefix}-prefix-tooltip"
+              label="About command prefix"
+              text="Characters required before a command when prefix invocation is used. Editing the inherited value creates a custom setting"
+              compact
+            />
+            <input
+              id="config-{scope}-{idPrefix}-prefix"
+              class="text-input mono short-input"
+              class:inherited-value={!hasOverride('command_prefix')}
+              value={effectiveValue(draft, inherited, 'command_prefix')}
               disabled={editorDisabled}
+              oninput={(event) => setPrefix(event.currentTarget.value)}
+            />
+            <SegmentedControl
+              name="config-{scope}-{idPrefix}-prefix-mode"
+              label="Command prefix source"
+              options={MODE_OPTIONS}
+              value={hasOverride('command_prefix') ? 'custom' : 'default'}
+              onSelect={(selection) =>
+                selection === 'custom' ? useCustom('command_prefix') : useDefault('command_prefix')}
+              disabled={editorDisabled}
+            />
+          </div>
+        </div>
+
+        <div class="config-row config-stack">
+          <div class="config-copy">
+            <span class="field-label">Allowed</span>
+          </div>
+          <HelpTip
+            id="config-{scope}-{idPrefix}-commands-tooltip"
+            label="About allowed commands"
+            text="Choose which canonical commands Smyklot accepts. All commands are enabled by default, and at least one must remain enabled. Editing the inherited selection creates a custom setting"
+            compact
+          />
+          <SegmentedControl
+            name="config-{scope}-{idPrefix}-commands-mode"
+            label="Allowed commands source"
+            options={MODE_OPTIONS}
+            value={hasOverride('allowed_commands') ? 'custom' : 'default'}
+            align="end"
+            onSelect={(selection) =>
+              selection === 'custom'
+                ? useCustom('allowed_commands')
+                : useDefault('allowed_commands')}
+            disabled={editorDisabled}
+          />
+          <div class="command-grid" class:inherited-value={!hasOverride('allowed_commands')}>
+            {#each COMMANDS as command (command)}
+              <label class="check-option">
+                <input
+                  type="checkbox"
+                  checked={commandIsAllowed(
+                    effectiveValue(draft, inherited, 'allowed_commands'),
+                    command,
+                  )}
+                  disabled={editorDisabled}
+                  onchange={() => toggleCommand(command)}
+                />
+                <span class="check-box" aria-hidden="true"></span>
+                <code>{command}</code>
+              </label>
+            {/each}
+          </div>
+        </div>
+
+        <div class="config-row config-stack">
+          <div class="config-copy">
+            <span class="field-label" id="config-{scope}-{idPrefix}-aliases-heading">Aliases</span>
+          </div>
+          <HelpTip
+            id="config-{scope}-{idPrefix}-aliases-tooltip"
+            label="About command aliases"
+            text="Map additional command words to canonical Smyklot commands. Adding, changing, or deleting an inherited alias creates a custom setting"
+            compact
+          />
+          <SegmentedControl
+            name="config-{scope}-{idPrefix}-aliases-mode"
+            label="Command aliases source"
+            options={MODE_OPTIONS}
+            value={hasOverride('command_aliases') ? 'custom' : 'default'}
+            align="end"
+            onSelect={(selection) =>
+              selection === 'custom' ? useCustom('command_aliases') : useDefault('command_aliases')}
+            disabled={editorDisabled}
+          />
+
+          <div
+            class="alias-table"
+            class:inherited-value={!hasOverride('command_aliases')}
+            role="group"
+            aria-labelledby="config-{scope}-{idPrefix}-aliases-heading"
+          >
+            {#each aliasEntries as [name, command] (name)}
+              <div class="alias-row">
+                <code>{name}</code>
+                <span class="alias-arrow" aria-hidden="true">→</span>
+                <code>{command}</code>
+                <button
+                  class="alias-delete"
+                  aria-label="Delete alias {name}"
+                  title="Delete alias {name}"
+                  disabled={editorDisabled}
+                  onclick={() => removeAlias(name)}
+                >
+                  <Icon name="trash" size={16} />
+                </button>
+              </div>
+            {:else}
+              <p class="alias-empty">No aliases configured</p>
+            {/each}
+
+            <form
+              class="alias-create"
+              aria-label="Add command alias"
+              onsubmit={(event) => {
+                event.preventDefault();
+                addAlias();
+              }}
             >
-              {#each COMMANDS as command (command)}
-                <option value={command}>{command}</option>
-              {/each}
-            </select>
-            <button
-              type="submit"
-              class="btn btn-signal alias-add"
-              disabled={editorDisabled || aliasName.trim() === ''}
-            >
-              <svg viewBox="0 0 16 16" aria-hidden="true">
-                <path d="M8 3v10M3 8h10"></path>
-              </svg>
-              <span>Add</span>
-            </button>
-          </form>
+              <label class="visually-hidden" for="config-{scope}-{idPrefix}-alias">Alias</label>
+              <input
+                id="config-{scope}-{idPrefix}-alias"
+                class="text-input mono"
+                placeholder="Alias"
+                bind:value={aliasName}
+                disabled={editorDisabled}
+              />
+              <span class="alias-arrow" aria-hidden="true">→</span>
+              <label class="visually-hidden" for="config-{scope}-{idPrefix}-alias-command"
+                >Command</label
+              >
+              <select
+                id="config-{scope}-{idPrefix}-alias-command"
+                class="select-input mono"
+                bind:value={aliasCommand}
+                disabled={editorDisabled}
+              >
+                {#each COMMANDS as command (command)}
+                  <option value={command}>{command}</option>
+                {/each}
+              </select>
+              <button
+                type="submit"
+                class="btn btn-signal alias-add"
+                disabled={editorDisabled || aliasName.trim() === ''}
+              >
+                <Icon name="plus" size={15} />
+                <span>Add</span>
+              </button>
+            </form>
+          </div>
         </div>
       </div>
-    </div>
-  </section>
+    </section>
+  {/if}
 
   <div class="config-actions">
     <button class="btn btn-signal" disabled={editorDisabled || !dirty} onclick={save}>
@@ -420,8 +432,9 @@
   }
 
   .inherited-value {
-    opacity: 0.5;
-    transition: opacity 120ms ease-out;
+    color: var(--text-muted);
+    opacity: 1;
+    transition: color 120ms ease-out;
   }
 
   .config-value {
@@ -503,7 +516,7 @@
 
   .check-option input:focus-visible + .check-box {
     outline: 2px solid var(--brand);
-    outline-offset: 2px;
+    outline-offset: 0;
   }
 
   .check-option input:disabled + .check-box,
@@ -594,16 +607,6 @@
     opacity: 0.5;
   }
 
-  .alias-delete svg {
-    fill: none;
-    height: 1rem;
-    stroke: currentColor;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    stroke-width: 1.5;
-    width: 1rem;
-  }
-
   .alias-empty {
     color: var(--dim);
     font-size: 0.75rem;
@@ -647,15 +650,6 @@
     height: 1.875rem;
     min-width: 4.5rem;
     padding-inline: 0.625rem;
-  }
-
-  .alias-add svg {
-    fill: none;
-    height: 0.75rem;
-    stroke: currentColor;
-    stroke-linecap: round;
-    stroke-width: 1.75;
-    width: 0.75rem;
   }
 
   .short-input {

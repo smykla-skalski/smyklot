@@ -178,8 +178,8 @@
                     {/if}
                   </div>
                 </th>
-                <td>{command.summary}</td>
-                <td class="command-example-cell">
+                <td data-label="Action">{command.summary}</td>
+                <td class="command-example-cell" data-label="Example">
                   <button
                     class="command-example mono"
                     type="button"
@@ -375,7 +375,8 @@
 <style>
   .help-page {
     display: grid;
-    gap: 0.75rem;
+    gap: var(--space-4);
+    min-width: 0;
   }
 
   .help-hero,
@@ -383,12 +384,13 @@
     background: var(--strip);
     border: 1px solid var(--rule);
     border-radius: var(--r-strip);
-    box-shadow: 0 4px 16px var(--shadow);
+    box-shadow: none;
   }
 
   .help-hero-shell {
     isolation: isolate;
     margin-top: 0.25rem;
+    min-width: 0;
     position: relative;
   }
 
@@ -511,6 +513,7 @@
   }
 
   .help-section {
+    min-width: 0;
     padding: 1.25rem;
     scroll-margin-top: 1rem;
   }
@@ -621,7 +624,7 @@
 
   .invocation-card.recommended {
     background: var(--strip-lift);
-    box-shadow: inset 3px 0 var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 42%, var(--rule));
   }
 
   .invocation-card code {
@@ -673,6 +676,7 @@
   .command-table-wrap {
     border: 1px solid var(--rule);
     border-radius: var(--r-well);
+    min-width: 0;
     overflow-x: auto;
   }
 
@@ -946,17 +950,8 @@
     border-radius: 0 0 calc(var(--r-well) - 1px) calc(var(--r-well) - 1px);
   }
 
-  .precedence li.highest::before {
-    background: var(--spectrum-vertical);
-    border-radius: 0 0 0 var(--r-well);
-    bottom: 0;
-    content: '';
-    left: -0.25rem;
-    pointer-events: none;
-    position: absolute;
-    top: 0;
-    width: 0.5rem;
-    z-index: 0;
+  .precedence li.highest .precedence-row {
+    background: var(--accent-tint);
   }
 
   .precedence-number {
@@ -1115,6 +1110,77 @@
 
     .hero-example {
       min-width: 0;
+    }
+
+    .command-table-wrap {
+      border: 0;
+      overflow: visible;
+    }
+
+    .command-table,
+    .command-table tbody,
+    .command-table tr,
+    .command-table th,
+    .command-table td {
+      display: block;
+      width: 100%;
+    }
+
+    .command-table {
+      min-width: 0;
+    }
+
+    .command-table colgroup,
+    .command-table thead {
+      display: none;
+    }
+
+    .command-table tbody {
+      display: grid;
+      gap: var(--space-2);
+    }
+
+    .command-table tbody tr {
+      background: var(--strip-lift);
+      border: 1px solid var(--rule);
+      border-radius: var(--r-well);
+      display: grid;
+      gap: var(--space-2);
+      padding: var(--space-3);
+    }
+
+    .command-table tbody th,
+    .command-table tbody td {
+      background: transparent;
+      border: 0;
+      padding: 0;
+    }
+
+    .command-table tbody td[data-label]::before {
+      color: var(--dim);
+      content: attr(data-label);
+      display: block;
+      font: 650 0.5625rem/1 var(--mono);
+      letter-spacing: 0.1em;
+      margin-bottom: var(--space-1);
+      text-transform: uppercase;
+    }
+
+    .command-table .command-example-cell {
+      text-align: left;
+      white-space: normal;
+    }
+
+    .command-example {
+      justify-content: flex-start;
+      max-width: 100%;
+      width: 100%;
+    }
+
+    .command-example code {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .ci-callout {

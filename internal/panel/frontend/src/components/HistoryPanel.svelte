@@ -2,6 +2,7 @@
   import { tick } from 'svelte';
 
   import { formatDateTime, formatRelative, formatTimestamp } from '../lib/format';
+  import type { FilterSection } from '../lib/filter-menu';
   import { readTimeDisplay, writeTimeDisplay } from '../lib/preferences';
   import type { TimeDisplay } from '../lib/preferences';
   import type {
@@ -16,9 +17,12 @@
   } from '../lib/types';
   import Avatar from './Avatar.svelte';
   import Chip from './Chip.svelte';
+  import FilterMenu from './FilterMenu.svelte';
   import HistoryDisplayMenu from './HistoryDisplayMenu.svelte';
-  import PageNavigation from './PageNavigation.svelte';
-  import PageSizeSelect from './PageSizeSelect.svelte';
+  import Icon from './Icon.svelte';
+  import PaginationBar from './PaginationBar.svelte';
+  import PanelHeader from './PanelHeader.svelte';
+  import SearchField from './SearchField.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
 
   type HistoryType = 'audit' | 'failures';
@@ -27,6 +31,26 @@
     { value: 'audit', label: 'Audit' },
     { value: 'failures', label: 'Failures' },
   ] as const;
+
+  const AUDIT_SCOPE_FILTERS = [
+    {
+      options: [
+        { value: 'all', label: 'All changes' },
+        { value: 'account', label: 'Account changes' },
+        { value: 'repositories', label: 'Repository changes' },
+      ],
+    },
+  ] satisfies readonly FilterSection[];
+
+  const FAILURE_KIND_FILTERS = [
+    {
+      options: [
+        { value: 'all', label: 'All failures' },
+        { value: 'permanent', label: 'Permanent' },
+        { value: 'retryable', label: 'Retryable' },
+      ],
+    },
+  ] satisfies readonly FilterSection[];
 
   const {
     targetId,
@@ -61,9 +85,10 @@
   const currentPage = $derived(historyType === 'audit' ? auditPage : failurePage);
   const itemCount = $derived(currentPage?.items.length ?? 0);
   const total = $derived(currentPage?.total ?? 0);
-  const rangeStart = $derived(total === 0 ? 0 : pageIndex * limit + 1);
-  const rangeEnd = $derived(total === 0 ? 0 : rangeStart + itemCount - 1);
   const pageCount = $derived(Math.max(1, Math.ceil(total / limit)));
+  const hasFilters = $derived(
+    appliedQuery !== '' || (historyType === 'audit' ? auditScope !== 'all' : failureKind !== 'all'),
+  );
   const description = $derived(
     historyType === 'audit'
       ? 'Account and repository configuration changes'
@@ -108,6 +133,32 @@
   function selectTimeDisplay(value: TimeDisplay): void {
     timeDisplay = value;
     writeTimeDisplay(value);
+  }
+
+  function toggleSort(): void {
+    sort = sort === 'newest' ? 'oldest' : 'newest';
+  }
+
+  function selectAuditScope(values: string[]): void {
+    const value = values[0];
+    if (value === 'all' || value === 'account' || value === 'repositories') auditScope = value;
+  }
+
+  function selectFailureKind(values: string[]): void {
+    const value = values[0];
+    if (value === 'all' || value === 'permanent' || value === 'retryable') failureKind = value;
+  }
+
+  function auditScopeLabel(): string {
+    return (
+      AUDIT_SCOPE_FILTERS[0]?.options.find((option) => option.value === auditScope)?.label ?? ''
+    );
+  }
+
+  function failureKindLabel(): string {
+    return (
+      FAILURE_KIND_FILTERS[0]?.options.find((option) => option.value === failureKind)?.label ?? ''
+    );
   }
 
   function shortDelivery(deliveryId: string): string {
@@ -211,68 +262,66 @@
   function retry(): void {
     void loadPage(pageIndex, requestKey);
   }
+
+  function clearFilters(): void {
+    search = '';
+    appliedQuery = '';
+    auditScope = 'all';
+    failureKind = 'all';
+  }
 </script>
+
+{#snippet headerActions()}
+  <SegmentedControl
+    name="history-type"
+    label="History type"
+    options={HISTORY_TYPES}
+    value={historyType}
+    align="end"
+    onSelect={selectHistoryType}
+  />
+{/snippet}
 
 <section
   class="plate history-panel"
   class:absolute-time={timeDisplay === 'absolute'}
-  aria-labelledby="activity-heading"
+  aria-labelledby="history-heading"
 >
-  <header class="history-header">
-    <div class="history-heading">
-      <h2 id="activity-heading">Activity</h2>
-      <p>{description}</p>
-    </div>
-    <SegmentedControl
-      name="history-type"
-      label="History type"
-      options={HISTORY_TYPES}
-      value={historyType}
-      align="end"
-      onSelect={selectHistoryType}
-    />
-  </header>
+  <PanelHeader id="history-heading" title="History" {description} actions={headerActions} />
 
   <div class="history-tools" bind:this={historyTools}>
-    <label class="search-field">
-      <span class="visually-hidden">Search history</span>
-      <span class="search-icon" aria-hidden="true"></span>
-      <input
-        class="text-input"
-        type="search"
-        placeholder={historyType === 'audit' ? 'Search changes' : 'Search failures'}
-        bind:value={search}
-      />
-    </label>
+    <SearchField
+      label="Search history"
+      placeholder={historyType === 'audit' ? 'Search changes' : 'Search failures'}
+      value={search}
+      onInput={(value) => (search = value)}
+    />
 
-    <label class="filter-field scope-field">
+    <div class="filter-field scope-field">
       {#if historyType === 'audit'}
-        <select class="select-input" bind:value={auditScope} aria-label="Audit scope">
-          <option value="all">All changes</option>
-          <option value="account">Account changes</option>
-          <option value="repositories">Repository changes</option>
-        </select>
+        <FilterMenu
+          label="Audit scope"
+          summary={auditScopeLabel()}
+          hint="Choose which configuration changes to show"
+          sections={AUDIT_SCOPE_FILTERS}
+          selected={[auditScope]}
+          showIcon
+          onChange={selectAuditScope}
+        />
       {:else}
-        <select class="select-input" bind:value={failureKind} aria-label="Failure kind">
-          <option value="all">All failures</option>
-          <option value="permanent">Permanent</option>
-          <option value="retryable">Retryable</option>
-        </select>
+        <FilterMenu
+          label="Failure kind"
+          summary={failureKindLabel()}
+          hint="Choose which delivery failures to show"
+          sections={FAILURE_KIND_FILTERS}
+          selected={[failureKind]}
+          showIcon
+          onChange={selectFailureKind}
+        />
       {/if}
-    </label>
-
-    <label class="filter-field order-field">
-      <select class="select-input" bind:value={sort} aria-label="History sort order">
-        <option value="newest">Newest first</option>
-        <option value="oldest">Oldest first</option>
-      </select>
-    </label>
+    </div>
 
     <HistoryDisplayMenu value={timeDisplay} onSelect={selectTimeDisplay} />
-
-    <div class="toolbar-rows">
-      <PageSizeSelect value={limit} label="Rows per page above history" onSelect={selectPageSize} />
-    </div>
   </div>
 
   <div class:loading class="history-results" aria-busy={loading}>
@@ -283,7 +332,12 @@
         <button class="btn" onclick={retry}>Try again</button>
       </div>
     {:else if loading && currentPage === null}
-      <div class="result-state dim">Loading activity…</div>
+      <div class="table-skeleton" aria-hidden="true">
+        {#each [0, 1, 2, 3, 4, 5] as index (index)}
+          <span></span>
+        {/each}
+      </div>
+      <p class="visually-hidden" role="status">Loading history</p>
     {:else if historyType === 'audit'}
       <!-- Keyboard focus lets users scroll columns that overflow the viewport. -->
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -301,23 +355,34 @@
               <th scope="col">Actor</th>
               <th scope="col">Change</th>
               <th scope="col">Target</th>
-              <th scope="col">When</th>
+              <th scope="col" aria-sort={sort === 'newest' ? 'descending' : 'ascending'}>
+                <button class="sort-button" type="button" onclick={toggleSort}>
+                  <span>When</span>
+                  <span
+                    class:descending={sort === 'newest'}
+                    class="sort-indicator"
+                    aria-hidden="true"
+                  >
+                    <Icon name="sort" size={14} />
+                  </span>
+                </button>
+              </th>
             </tr>
           </thead>
           <tbody>
             {#each auditPage?.items ?? [] as entry (entry.id)}
               <tr>
-                <td>
+                <td data-label="Actor">
                   <span class="actor">
                     <Avatar account={entry.actor} size={24} />
                     <strong>{entry.actor.display_name}</strong>
                   </span>
                 </td>
-                <td>
+                <td data-label="Change">
                   <span class="cell-primary">{auditSummary(entry.summary)}</span>
                   <span class="cell-meta mono">{entry.action}</span>
                 </td>
-                <td>
+                <td data-label="Target">
                   {#if entry.repository_full_name !== undefined}
                     <code title={entry.repository_full_name}>
                       {repositoryName(entry.repository_full_name)}
@@ -326,7 +391,7 @@
                     <span class="dim">Account</span>
                   {/if}
                 </td>
-                <td>
+                <td data-label="When">
                   <time
                     class="table-time"
                     datetime={entry.created_at}
@@ -339,7 +404,10 @@
             {:else}
               <tr>
                 <td class="empty-cell dim" colspan="4">
-                  No configuration changes match these filters
+                  <strong>No configuration changes found</strong>
+                  {#if hasFilters}
+                    <button class="btn" type="button" onclick={clearFilters}>Clear filters</button>
+                  {/if}
                 </td>
               </tr>
             {/each}
@@ -368,23 +436,34 @@
               <th scope="col">Status</th>
               <th scope="col">Repository</th>
               <th scope="col">Failure</th>
-              <th scope="col">When</th>
+              <th scope="col" aria-sort={sort === 'newest' ? 'descending' : 'ascending'}>
+                <button class="sort-button" type="button" onclick={toggleSort}>
+                  <span>When</span>
+                  <span
+                    class:descending={sort === 'newest'}
+                    class="sort-indicator"
+                    aria-hidden="true"
+                  >
+                    <Icon name="sort" size={14} />
+                  </span>
+                </button>
+              </th>
             </tr>
           </thead>
           <tbody>
             {#each failurePage?.items ?? [] as failure (failure.id)}
               <tr class="failure-row">
-                <td>
+                <td data-label="Status">
                   <Chip tone={failure.retryable ? 'warning' : 'stop'} dot>
                     {failure.retryable ? 'Retryable' : 'Failed'}
                   </Chip>
                 </td>
-                <td>
+                <td data-label="Repository">
                   <code title={failure.repository_full_name}>
                     {repositoryName(failure.repository_full_name)}
                   </code>
                 </td>
-                <td>
+                <td data-label="Failure">
                   <span class="cell-primary">{sentenceCase(failure.reason)}</span>
                   <span class="cell-meta mono">
                     {failure.event} · {failure.stage} ·
@@ -393,7 +472,7 @@
                     </span>
                   </span>
                 </td>
-                <td>
+                <td data-label="When">
                   <time
                     class="table-time"
                     datetime={failure.occurred_at}
@@ -406,7 +485,10 @@
             {:else}
               <tr>
                 <td class="empty-cell dim" colspan="4">
-                  No delivery failures match these filters
+                  <strong>No delivery failures found</strong>
+                  {#if hasFilters}
+                    <button class="btn" type="button" onclick={clearFilters}>Clear filters</button>
+                  {/if}
                 </td>
               </tr>
             {/each}
@@ -417,136 +499,65 @@
   </div>
 
   {#if problem === null && !(loading && currentPage === null)}
-    <footer class="pagination" aria-label="History pagination">
-      <p class="range mono">
-        <strong>{rangeStart}–{rangeEnd}</strong>
-        of {total}
-      </p>
-
-      <div class="page-actions">
-        <PageNavigation
-          {pageIndex}
-          {pageCount}
-          disabled={loading}
-          onSelect={(nextIndex) => void selectPage(nextIndex)}
-        />
-      </div>
-
-      <div class="footer-rows">
-        <PageSizeSelect
-          value={limit}
-          label="Rows per page below history"
-          onSelect={selectPageSize}
-        />
-      </div>
-    </footer>
+    <PaginationBar
+      label="History rows"
+      {pageIndex}
+      {pageCount}
+      pageSize={limit}
+      {itemCount}
+      {total}
+      disabled={loading}
+      onPageSelect={(nextIndex) => void selectPage(nextIndex)}
+      onPageSizeSelect={selectPageSize}
+    />
   {/if}
 </section>
 
 <style>
   .history-panel {
-    --history-control-height: 30px;
+    --local-control-height: var(--control-height-compact);
 
-    overflow: hidden;
-  }
-
-  .history-header {
-    align-items: center;
-    border-bottom: 1px solid var(--rule);
-    display: flex;
-    gap: 1rem;
-    justify-content: space-between;
-    min-height: 4rem;
-    padding: 0.625rem 1.125rem;
-  }
-
-  .history-heading {
-    min-width: 0;
-  }
-
-  .history-heading h2 {
-    font-size: 0.9375rem;
-    line-height: 1.2;
-    margin: 0;
-  }
-
-  .history-heading p {
-    color: var(--dim);
-    font-size: 0.75rem;
-    line-height: 1.35;
-    margin: 0.15rem 0 0;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    margin-bottom: 0;
+    overflow: visible;
   }
 
   .history-tools {
     align-items: center;
-    background: var(--well);
-    border-bottom: 1px solid var(--rule);
+    background: var(--surface-base);
+    border: 1px solid var(--rule);
+    border-bottom: 0;
+    border-radius: var(--radius-surface) var(--radius-surface) 0 0;
     display: grid;
-    gap: 0.5rem;
-    grid-template-columns: minmax(12rem, 1fr) max-content max-content auto auto;
-    padding: 0.625rem;
+    gap: var(--space-2);
+    grid-template-columns: minmax(12rem, 1fr) max-content auto;
+    padding: var(--space-3) var(--space-4);
   }
 
-  .search-field,
   .filter-field {
     min-width: 0;
-  }
-
-  .search-field {
-    align-items: center;
-    display: flex;
-    position: relative;
-  }
-
-  .search-field input {
-    font-size: 0.6875rem;
-    height: var(--history-control-height);
-    padding-left: 2rem;
-    width: 100%;
-  }
-
-  .search-icon {
-    border: 1.5px solid var(--dim);
-    border-radius: 50%;
-    height: 0.65rem;
-    left: 0.75rem;
-    opacity: 0.8;
-    pointer-events: none;
-    position: absolute;
-    width: 0.65rem;
-  }
-
-  .search-icon::after {
-    background: var(--dim);
-    content: '';
-    height: 1.5px;
-    position: absolute;
-    right: -0.3rem;
-    top: 0.5rem;
-    transform: rotate(45deg);
-    width: 0.35rem;
   }
 
   .filter-field {
     display: block;
   }
 
-  .filter-field select {
-    font-size: 0.6875rem;
-    height: var(--history-control-height);
-    min-width: 0;
-    width: 100%;
-  }
-
   .scope-field {
     width: 9.75rem;
   }
 
-  .order-field {
-    width: 7.5rem;
+  .scope-field :global(.filter-menu),
+  .scope-field :global(summary) {
+    width: 100%;
   }
 
   .history-results {
+    background: var(--surface-base);
+    border-left: 1px solid var(--border-subtle);
+    border-right: 1px solid var(--border-subtle);
     min-height: 5rem;
     transition: opacity 120ms ease-out;
   }
@@ -581,11 +592,10 @@
   }
 
   .history-table th {
-    background: var(--well);
+    background: var(--table-header-bg);
     color: var(--dim);
-    font: 600 0.5625rem/1 var(--mono);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+    font: 650 var(--font-size-compact) / 1.2 var(--sans);
+    letter-spacing: 0.02em;
   }
 
   .history-table tbody tr {
@@ -594,7 +604,43 @@
   }
 
   .history-table tbody tr:hover {
-    background: var(--strip-lift);
+    background: var(--table-row-hover);
+  }
+
+  .history-table th:has(.sort-button) {
+    padding: 0;
+  }
+
+  .sort-button {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    color: inherit;
+    display: flex;
+    font: inherit;
+    gap: var(--space-2);
+    justify-content: flex-end;
+    letter-spacing: inherit;
+    padding: 0.625rem 0.75rem;
+    text-align: right;
+    text-transform: inherit;
+    width: 100%;
+  }
+
+  .sort-button:hover,
+  .sort-button:focus-visible {
+    background: var(--interactive-hover);
+    color: var(--text-primary);
+  }
+
+  .sort-indicator {
+    color: var(--brand-action-text);
+    display: grid;
+    place-items: center;
+  }
+
+  .sort-indicator.descending {
+    transform: rotate(180deg);
   }
 
   .history-table code {
@@ -669,6 +715,51 @@
     text-align: center !important;
   }
 
+  .empty-cell strong {
+    color: var(--text);
+    display: block;
+    margin-bottom: var(--space-2);
+  }
+
+  .table-skeleton {
+    display: grid;
+  }
+
+  .table-skeleton span {
+    animation: history-skeleton-pulse 1.35s ease-in-out infinite alternate;
+    border-bottom: 1px solid var(--rule);
+    display: block;
+    height: 3.25rem;
+    position: relative;
+  }
+
+  .table-skeleton span::before,
+  .table-skeleton span::after {
+    background: var(--surface-inset);
+    border-radius: var(--radius-control);
+    content: '';
+    height: 0.75rem;
+    left: var(--space-4);
+    position: absolute;
+    top: 1rem;
+    width: min(12rem, 26%);
+  }
+
+  .table-skeleton span::after {
+    left: 46%;
+    width: min(16rem, 32%);
+  }
+
+  @keyframes history-skeleton-pulse {
+    from {
+      opacity: 0.48;
+    }
+
+    to {
+      opacity: 0.88;
+    }
+  }
+
   .result-state {
     align-items: center;
     display: flex;
@@ -685,91 +776,137 @@
     font-size: 0.75rem;
   }
 
-  .pagination {
-    align-items: center;
-    background: var(--well);
-    border-top: 1px solid var(--rule);
-    display: grid;
-    gap: 0.5rem;
-    grid-template-columns: 1fr auto 1fr;
-    min-height: 3.75rem;
-    padding: 0.625rem;
+  .history-panel :global(.pagination-bar) {
+    border: 1px solid var(--border-subtle);
+    border-radius: 0 0 var(--radius-surface) var(--radius-surface);
   }
 
-  .range {
-    color: var(--dim);
-    font-size: 0.625rem;
-    margin: 0;
-    white-space: nowrap;
-  }
+  @media (max-width: 48rem) {
+    .table-scroll {
+      overflow: visible;
+      padding: var(--space-3);
+    }
 
-  .range strong {
-    color: var(--text);
-    font-weight: 600;
-  }
+    .history-table {
+      display: block;
+      min-width: 0;
+    }
 
-  .page-actions {
-    min-width: 0;
-  }
+    .history-table colgroup {
+      clip-path: inset(50%);
+      height: 1px;
+      overflow: hidden;
+      position: absolute;
+      white-space: nowrap;
+      width: 1px;
+    }
 
-  .toolbar-rows,
-  .footer-rows {
-    display: flex;
-    justify-content: flex-end;
-  }
+    .history-table thead {
+      display: block;
+    }
 
-  .toolbar-rows,
-  .footer-rows {
-    --page-size-control-height: var(--history-control-height);
+    .history-table thead tr {
+      border: 0;
+      display: flex;
+      justify-content: flex-end;
+      padding: 0 0 var(--space-3);
+    }
+
+    .history-table thead th {
+      padding: 0;
+    }
+
+    .history-table thead th:not(:has(.sort-button)) {
+      clip-path: inset(50%);
+      height: 1px;
+      overflow: hidden;
+      position: absolute;
+      white-space: nowrap;
+      width: 1px;
+    }
+
+    .history-table thead .sort-button {
+      background: var(--control-bg);
+      border: 1px solid var(--control-border);
+      border-radius: var(--radius-control);
+      color: var(--dim);
+      height: var(--control-height-compact);
+      padding: 0 var(--space-3);
+    }
+
+    .history-table thead .sort-button:hover,
+    .history-table thead .sort-button:focus-visible {
+      background: var(--control-bg-hover);
+      color: var(--text);
+    }
+
+    .history-table tbody {
+      display: grid;
+      gap: var(--space-2);
+    }
+
+    .history-table tbody tr {
+      background: var(--surface-raised);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-control);
+      display: grid;
+      gap: var(--space-3);
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      padding: var(--space-3);
+    }
+
+    .history-table td {
+      display: grid;
+      gap: var(--space-1);
+      padding: 0;
+      text-align: left !important;
+    }
+
+    .history-table td::before {
+      color: var(--text-muted);
+      content: attr(data-label);
+      font: 650 var(--font-size-compact) / 1 var(--sans);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .history-table .empty-cell {
+      display: block;
+      grid-column: 1 / -1;
+      height: auto;
+      padding: var(--space-5);
+    }
+
+    .history-table .empty-cell::before {
+      display: none;
+    }
   }
 
   @media (max-width: 36rem) {
-    .history-header {
-      align-items: stretch;
-      flex-direction: column;
-    }
-
     .history-tools {
       grid-template-columns: 1fr 1fr;
     }
 
-    .search-field {
+    .history-tools :global(.search-field) {
       grid-column: 1 / -1;
     }
 
-    .scope-field,
-    .order-field {
+    .scope-field {
       width: 100%;
-    }
-
-    .pagination {
-      grid-template-columns: 1fr auto;
-    }
-
-    .page-actions {
-      grid-column: 1 / -1;
-      grid-row: 1;
-      justify-content: space-between;
-    }
-
-    .range {
-      grid-column: 1;
-      grid-row: 2;
-    }
-
-    .footer-rows {
-      grid-column: 2;
-      grid-row: 2;
     }
   }
 
-  @media (max-width: 26rem) {
+  @media (max-width: 22rem) {
     .history-tools {
       grid-template-columns: 1fr;
     }
 
-    .search-field {
+    .history-tools :global(.search-field) {
       grid-column: auto;
+    }
+
+    .history-table tbody tr {
+      grid-template-columns: minmax(0, 1fr);
     }
   }
 </style>
