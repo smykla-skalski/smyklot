@@ -848,7 +848,7 @@
   }
 
   .repository {
-    padding: 0.75rem 1.125rem;
+    padding: 0.75rem;
   }
 
   .repository + .repository {
