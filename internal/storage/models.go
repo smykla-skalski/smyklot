@@ -171,9 +171,9 @@ type RepositoryPageRequest struct {
 	Order              RepositoryOrder
 	Query              string
 	EffectiveEnabled   *bool
-	FileStatus         *RepositoryFileStatus
+	FileStatuses       []RepositoryFileStatus
 	HasConfigOverrides *bool
-	ConfigOverrideKey  string
+	ConfigOverrideKeys []string
 }
 
 // RepositoryPage is one page of the repository catalog.

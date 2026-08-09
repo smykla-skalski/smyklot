@@ -3,6 +3,7 @@
   import { SvelteSet } from 'svelte/reactivity';
 
   import { BOOLEAN_FIELDS } from '../lib/config';
+  import type { FilterSection } from '../lib/filter-menu';
   import { formatRelative, formatTimestamp } from '../lib/format';
   import {
     shouldClearFailureAfterAutomaticRefresh,
@@ -12,9 +13,10 @@
   import type { RepositoryFailureSource } from '../lib/repository';
   import type {
     ConfigPatch,
+    ConfigKey,
     Page,
     RepositoryDetail,
-    RepositoryFileFilter,
+    RepositoryFileStatus,
     RepositoryPageRequest,
     RepositorySettingsInput,
     RepositorySettingFilter,
@@ -25,6 +27,7 @@
   import Chip from './Chip.svelte';
   import ConfigEditor from './ConfigEditor.svelte';
   import FileStatusIndicator from './FileStatusIndicator.svelte';
+  import FilterMenu from './FilterMenu.svelte';
   import HelpTip from './HelpTip.svelte';
   import PageNavigation from './PageNavigation.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
@@ -38,6 +41,83 @@
     { value: 'disabled', label: 'Off', tone: 'off' },
   ] as const;
   const PAGE_SIZES = [10, 20, 50] as const;
+  const FILE_STATUSES = ['valid', 'missing', 'invalid', 'bypassed'] as const;
+  const CONFIG_FILTER_KEYS: readonly ConfigKey[] = [
+    ...BOOLEAN_FIELDS.map((field) => field.key),
+    'command_prefix',
+    'allowed_commands',
+    'command_aliases',
+  ];
+  const STATE_FILTER_SECTIONS = [
+    {
+      options: [
+        { value: 'all', label: 'All states', description: 'Show every repository' },
+        {
+          value: 'enabled',
+          label: 'On',
+          description: 'Smyklot handles the repository',
+          tone: 'on',
+        },
+        {
+          value: 'disabled',
+          label: 'Off',
+          description: 'Smyklot ignores the repository',
+          tone: 'off',
+        },
+      ],
+    },
+  ] as const satisfies readonly FilterSection[];
+  const FILE_FILTER_SECTIONS = [
+    {
+      options: [
+        { value: 'valid', label: 'Valid', tone: 'valid' },
+        { value: 'missing', label: 'Missing', tone: 'missing' },
+        { value: 'invalid', label: 'Invalid', tone: 'invalid' },
+        { value: 'bypassed', label: 'Bypassed', tone: 'bypassed' },
+      ],
+    },
+  ] as const satisfies readonly FilterSection[];
+  const SETTING_FILTER_SECTIONS = [
+    {
+      options: [
+        { value: 'all', label: 'All settings', exclusive: true },
+        {
+          value: 'custom',
+          label: 'Any custom setting',
+          description: 'At least one repository override',
+          exclusive: true,
+        },
+        {
+          value: 'none',
+          label: 'No custom settings',
+          description: 'Uses account and repository-file values',
+          exclusive: true,
+        },
+      ],
+    },
+    {
+      label: 'Behavior',
+      options: BOOLEAN_FIELDS.map((field) => ({ value: field.key, label: field.label })),
+    },
+    {
+      label: 'Commands',
+      options: [
+        { value: 'command_prefix', label: 'Prefix' },
+        { value: 'allowed_commands', label: 'Allowed' },
+        { value: 'command_aliases', label: 'Aliases' },
+      ],
+    },
+  ] as const satisfies readonly FilterSection[];
+  const SORT_SECTIONS = [
+    {
+      options: [
+        { value: 'name_asc', label: 'Name A–Z' },
+        { value: 'name_desc', label: 'Name Z–A' },
+        { value: 'newest', label: 'Recently updated' },
+        { value: 'oldest', label: 'Least recently updated' },
+      ],
+    },
+  ] as const satisfies readonly FilterSection[];
 
   const {
     targetId,
@@ -59,8 +139,8 @@
   let appliedQuery = $state('');
   let sort = $state<RepositorySort>('name_asc');
   let stateFilter = $state<RepositoryStateFilter>('all');
-  let fileFilter = $state<RepositoryFileFilter>('all');
-  let settingFilter = $state<RepositorySettingFilter>('all');
+  let fileFilters = $state<RepositoryFileStatus[]>([]);
+  let settingFilter = $state<RepositorySettingFilter>({ mode: 'all' });
   let limit = $state<number>(20);
   let page = $state<Page<RepositorySummary> | null>(null);
   let pageIndex = $state(0);
@@ -82,11 +162,42 @@
   const rangeStart = $derived(total === 0 ? 0 : pageIndex * limit + 1);
   const rangeEnd = $derived(total === 0 ? 0 : rangeStart + itemCount - 1);
   const pageCount = $derived(Math.max(1, Math.ceil(total / limit)));
+  const settingSelection = $derived(
+    settingFilter.mode === 'keys' ? settingFilter.keys : [settingFilter.mode],
+  );
+  const stateSummary = $derived(optionLabel(STATE_FILTER_SECTIONS, stateFilter));
+  const fileSummary = $derived(
+    fileFilters.length === 0
+      ? 'All files'
+      : fileFilters.length === 1
+        ? optionLabel(FILE_FILTER_SECTIONS, fileFilters[0] ?? '')
+        : `${fileFilters.length} file states`,
+  );
+  const settingSummary = $derived(
+    settingFilter.mode === 'keys'
+      ? settingFilter.keys.length === 1
+        ? optionLabel(SETTING_FILTER_SECTIONS, settingFilter.keys[0] ?? '')
+        : `${settingFilter.keys.length} overrides`
+      : optionLabel(SETTING_FILTER_SECTIONS, settingFilter.mode),
+  );
+  const sortSummary = $derived(optionLabel(SORT_SECTIONS, sort));
   const hasFilters = $derived(
-    appliedQuery !== '' || stateFilter !== 'all' || fileFilter !== 'all' || settingFilter !== 'all',
+    appliedQuery !== '' ||
+      stateFilter !== 'all' ||
+      fileFilters.length > 0 ||
+      settingFilter.mode !== 'all',
   );
   const filterKey = $derived(
-    [targetId, appliedQuery, sort, stateFilter, fileFilter, settingFilter, limit].join(':'),
+    [
+      targetId,
+      appliedQuery,
+      sort,
+      stateFilter,
+      fileFilters.join(','),
+      settingFilter.mode,
+      settingFilter.mode === 'keys' ? settingFilter.keys.join(',') : '',
+      limit,
+    ].join(':'),
   );
 
   $effect(() => {
@@ -139,7 +250,7 @@
         sort,
         limit,
         state: stateFilter,
-        file: fileFilter,
+        files: fileFilters,
         setting: settingFilter,
       });
       if (sequence !== requestSequence || key !== filterKey) return;
@@ -332,6 +443,50 @@
   function overrideLabel(count: number): string {
     return `${count} ${count === 1 ? 'override' : 'overrides'}`;
   }
+
+  function optionLabel(sections: readonly FilterSection[], value: string): string {
+    return (
+      sections.flatMap((section) => section.options).find((option) => option.value === value)
+        ?.label ?? value
+    );
+  }
+
+  function selectStateFilter(values: string[]): void {
+    const value = values[0];
+    if (value === 'all' || value === 'enabled' || value === 'disabled') stateFilter = value;
+  }
+
+  function selectFileFilters(values: string[]): void {
+    fileFilters = values.filter(isRepositoryFileStatus);
+  }
+
+  function selectSettingFilter(values: string[]): void {
+    if (values.length === 1) {
+      const value = values[0];
+      if (value === 'all' || value === 'custom' || value === 'none') {
+        settingFilter = { mode: value };
+        return;
+      }
+    }
+
+    const keys = values.filter(isConfigKey);
+    settingFilter = keys.length === 0 ? { mode: 'all' } : { mode: 'keys', keys };
+  }
+
+  function selectSort(values: string[]): void {
+    const value = values[0];
+    if (value === 'name_asc' || value === 'name_desc' || value === 'newest' || value === 'oldest') {
+      sort = value;
+    }
+  }
+
+  function isRepositoryFileStatus(value: string): value is RepositoryFileStatus {
+    return FILE_STATUSES.some((status) => status === value);
+  }
+
+  function isConfigKey(value: string): value is ConfigKey {
+    return CONFIG_FILTER_KEYS.some((key) => key === value);
+  }
 </script>
 
 <section class="plate repository-panel" aria-labelledby="repositories-heading">
@@ -359,50 +514,47 @@
       />
     </label>
 
-    <label class="filter-field state-field">
-      <select class="select-input" bind:value={stateFilter} aria-label="Repository state">
-        <option value="all">All states</option>
-        <option value="enabled">On</option>
-        <option value="disabled">Off</option>
-      </select>
-    </label>
+    <FilterMenu
+      label="Repository state"
+      summary={stateSummary}
+      hint="Filter by Smyklot's effective state"
+      sections={STATE_FILTER_SECTIONS}
+      selected={[stateFilter]}
+      onChange={selectStateFilter}
+    />
 
-    <label class="filter-field file-field">
-      <select class="select-input" bind:value={fileFilter} aria-label="Repository file status">
-        <option value="all">All files</option>
-        <option value="valid">Valid</option>
-        <option value="missing">Missing</option>
-        <option value="invalid">Invalid</option>
-        <option value="bypassed">Bypassed</option>
-      </select>
-    </label>
+    <FilterMenu
+      label="Repository files"
+      summary={fileSummary}
+      hint="Select one or more file states"
+      sections={FILE_FILTER_SECTIONS}
+      selected={fileFilters}
+      multiple
+      onChange={selectFileFilters}
+    />
 
-    <label class="filter-field setting-field">
-      <select class="select-input" bind:value={settingFilter} aria-label="Custom setting">
-        <option value="all">All settings</option>
-        <option value="custom">Any custom setting</option>
-        <option value="none">No custom settings</option>
-        <optgroup label="Behavior">
-          {#each BOOLEAN_FIELDS as field (field.key)}
-            <option value={field.key}>{field.label}</option>
-          {/each}
-        </optgroup>
-        <optgroup label="Commands">
-          <option value="command_prefix">Prefix</option>
-          <option value="allowed_commands">Allowed</option>
-          <option value="command_aliases">Aliases</option>
-        </optgroup>
-      </select>
-    </label>
+    <FilterMenu
+      label="Custom settings"
+      summary={settingSummary}
+      hint="Match any selected repository override"
+      sections={SETTING_FILTER_SECTIONS}
+      selected={settingSelection}
+      multiple
+      fallbackValue="all"
+      align="end"
+      wide
+      onChange={selectSettingFilter}
+    />
 
-    <label class="filter-field order-field">
-      <select class="select-input" bind:value={sort} aria-label="Repository sort order">
-        <option value="name_asc">Name A–Z</option>
-        <option value="name_desc">Name Z–A</option>
-        <option value="newest">Recently updated</option>
-        <option value="oldest">Least recently updated</option>
-      </select>
-    </label>
+    <FilterMenu
+      label="Sort repositories"
+      summary={sortSummary}
+      hint="Choose the order of the results"
+      sections={SORT_SECTIONS}
+      selected={[sort]}
+      align="end"
+      onChange={selectSort}
+    />
   </div>
 
   <div class:loading class="repository-results" aria-busy={loading}>
@@ -598,8 +750,7 @@
     padding: 0.625rem 1.125rem;
   }
 
-  .search-field,
-  .filter-field {
+  .search-field {
     min-width: 0;
   }
 
@@ -609,8 +760,7 @@
     position: relative;
   }
 
-  .search-field input,
-  .filter-field select {
+  .search-field input {
     font-size: 0.6875rem;
     height: var(--repository-control-height);
     width: 100%;

@@ -439,22 +439,25 @@ func repositoryPageFilters(
 		clauses = append(clauses, "COALESCE(r.enabled_override, t.repository_default_enabled) = ?")
 		arguments = append(arguments, *page.EffectiveEnabled)
 	}
-	if page.FileStatus != nil {
-		switch *page.FileStatus {
-		case storage.RepositoryFileBypassed:
-			clauses = append(clauses, "r.ignore_repository_file = 1")
-		case storage.RepositoryFileMissing,
-			storage.RepositoryFileValid,
-			storage.RepositoryFileInvalid:
-			clauses = append(
-				clauses,
-				"r.ignore_repository_file = 0",
-				"r.config_file_status = ?",
-			)
-			arguments = append(arguments, *page.FileStatus)
-		default:
-			return nil, nil, fmt.Errorf("unsupported repository file status %q", *page.FileStatus)
+	if len(page.FileStatuses) > 0 {
+		fileClauses := make([]string, 0, len(page.FileStatuses))
+		for _, status := range page.FileStatuses {
+			switch status {
+			case storage.RepositoryFileBypassed:
+				fileClauses = append(fileClauses, "r.ignore_repository_file = 1")
+			case storage.RepositoryFileMissing,
+				storage.RepositoryFileValid,
+				storage.RepositoryFileInvalid:
+				fileClauses = append(
+					fileClauses,
+					"(r.ignore_repository_file = 0 AND r.config_file_status = ?)",
+				)
+				arguments = append(arguments, status)
+			default:
+				return nil, nil, fmt.Errorf("unsupported repository file status %q", status)
+			}
 		}
+		clauses = append(clauses, "("+strings.Join(fileClauses, " OR ")+")")
 	}
 	if page.HasConfigOverrides != nil {
 		expression := "EXISTS (SELECT 1 FROM json_each(r.config_patch))"
@@ -463,15 +466,16 @@ func repositoryPageFilters(
 		}
 		clauses = append(clauses, expression)
 	}
-	if page.ConfigOverrideKey != "" {
-		if !supportedConfigOverride(page.ConfigOverrideKey) {
-			return nil, nil, fmt.Errorf(
-				"unsupported repository config override %q",
-				page.ConfigOverrideKey,
-			)
+	if len(page.ConfigOverrideKeys) > 0 {
+		keyClauses := make([]string, 0, len(page.ConfigOverrideKeys))
+		for _, key := range page.ConfigOverrideKeys {
+			if !supportedConfigOverride(key) {
+				return nil, nil, fmt.Errorf("unsupported repository config override %q", key)
+			}
+			keyClauses = append(keyClauses, "json_type(r.config_patch, ?) IS NOT NULL")
+			arguments = append(arguments, "$."+key)
 		}
-		clauses = append(clauses, "json_type(r.config_patch, ?) IS NOT NULL")
-		arguments = append(arguments, "$."+page.ConfigOverrideKey)
+		clauses = append(clauses, "("+strings.Join(keyClauses, " OR ")+")")
 	}
 
 	return clauses, arguments, nil

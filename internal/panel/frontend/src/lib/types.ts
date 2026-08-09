@@ -97,8 +97,8 @@ export interface RepositoryDetail {
 
 export type RepositorySort = 'name_asc' | 'name_desc' | 'newest' | 'oldest';
 export type RepositoryStateFilter = 'all' | 'enabled' | 'disabled';
-export type RepositoryFileFilter = 'all' | RepositoryFileStatus;
-export type RepositorySettingFilter = 'all' | 'custom' | 'none' | ConfigKey;
+export type RepositorySettingFilter =
+  { mode: 'all' | 'custom' | 'none' } | { mode: 'keys'; keys: ConfigKey[] };
 
 export interface RepositoryPageRequest {
   cursor?: string;
@@ -106,7 +106,7 @@ export interface RepositoryPageRequest {
   sort: RepositorySort;
   limit: number;
   state: RepositoryStateFilter;
-  file: RepositoryFileFilter;
+  files: RepositoryFileStatus[];
   setting: RepositorySettingFilter;
 }
 

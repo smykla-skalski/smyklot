@@ -3,6 +3,7 @@ package panel
 import (
 	"fmt"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -345,32 +346,57 @@ func parseRepositoryPage(values url.Values) (storage.RepositoryPageRequest, erro
 	default:
 		return storage.RepositoryPageRequest{}, fmt.Errorf("invalid repository state")
 	}
-	switch status := storage.RepositoryFileStatus(values.Get("file")); status {
-	case "", allFilter:
-	case storage.RepositoryFileMissing,
-		storage.RepositoryFileValid,
-		storage.RepositoryFileInvalid,
-		storage.RepositoryFileBypassed:
-		page.FileStatus = &status
-	default:
-		return storage.RepositoryPageRequest{}, fmt.Errorf("invalid repository file status")
+	fileStatuses, err := parseRepositoryFileStatuses(values["file"])
+	if err != nil {
+		return storage.RepositoryPageRequest{}, err
 	}
-	switch setting := values.Get("setting"); setting {
-	case "", allFilter:
-	case "custom":
+	page.FileStatuses = fileStatuses
+
+	settings := values["setting"]
+	if len(settings) == 1 && settings[0] == "custom" {
 		value := true
 		page.HasConfigOverrides = &value
-	case "none":
+	} else if len(settings) == 1 && settings[0] == "none" {
 		value := false
 		page.HasConfigOverrides = &value
-	default:
-		if !panelConfigKey(setting) {
-			return storage.RepositoryPageRequest{}, fmt.Errorf("invalid repository setting")
+	} else {
+		for _, setting := range settings {
+			if setting == allFilter && len(settings) == 1 {
+				continue
+			}
+			if !panelConfigKey(setting) {
+				return storage.RepositoryPageRequest{}, fmt.Errorf("invalid repository setting")
+			}
+			if !slices.Contains(page.ConfigOverrideKeys, setting) {
+				page.ConfigOverrideKeys = append(page.ConfigOverrideKeys, setting)
+			}
 		}
-		page.ConfigOverrideKey = setting
 	}
 
 	return page, nil
+}
+
+func parseRepositoryFileStatuses(values []string) ([]storage.RepositoryFileStatus, error) {
+	statuses := make([]storage.RepositoryFileStatus, 0, len(values))
+	for _, value := range values {
+		if value == allFilter && len(values) == 1 {
+			continue
+		}
+		status := storage.RepositoryFileStatus(value)
+		switch status {
+		case storage.RepositoryFileMissing,
+			storage.RepositoryFileValid,
+			storage.RepositoryFileInvalid,
+			storage.RepositoryFileBypassed:
+		default:
+			return nil, fmt.Errorf("invalid repository file status")
+		}
+		if !slices.Contains(statuses, status) {
+			statuses = append(statuses, status)
+		}
+	}
+
+	return statuses, nil
 }
 
 func panelConfigKey(key string) bool {

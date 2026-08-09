@@ -764,8 +764,8 @@ function repositoryPage(
       : DEFAULT_PAGE_SIZE;
   const query = (parameters.get('q') ?? '').trim().toLocaleLowerCase();
   const state = parameters.get('state') ?? 'all';
-  const file = parameters.get('file') ?? 'all';
-  const setting = parameters.get('setting') ?? 'all';
+  const files = parameters.getAll('file').filter((value) => value !== 'all');
+  const settings = parameters.getAll('setting').filter((value) => value !== 'all');
   const ordered = repositories
     .filter((entry) => {
       const repository = entry.detail.repository;
@@ -775,11 +775,11 @@ function repositoryPage(
         (state === 'all' ||
           (state === 'enabled' && repository.effective_enabled) ||
           (state === 'disabled' && !repository.effective_enabled)) &&
-        (file === 'all' || repository.config_file_status === file) &&
-        (setting === 'all' ||
-          (setting === 'custom' && settingKeys.length > 0) ||
-          (setting === 'none' && settingKeys.length === 0) ||
-          settingKeys.includes(setting))
+        (files.length === 0 || files.includes(repository.config_file_status)) &&
+        (settings.length === 0 ||
+          (settings.length === 1 && settings[0] === 'custom' && settingKeys.length > 0) ||
+          (settings.length === 1 && settings[0] === 'none' && settingKeys.length === 0) ||
+          settings.some((setting) => settingKeys.includes(setting)))
       );
     })
     .map((entry) => entry.detail.repository);

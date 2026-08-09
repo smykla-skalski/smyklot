@@ -192,8 +192,12 @@ function withRepositoryQuery(path: string, page: RepositoryPageRequest): string 
   parameters.set('sort', page.sort);
   parameters.set('limit', String(page.limit));
   parameters.set('state', page.state);
-  parameters.set('file', page.file);
-  parameters.set('setting', page.setting);
+  for (const file of page.files) parameters.append('file', file);
+  if (page.setting.mode === 'keys') {
+    for (const key of page.setting.keys) parameters.append('setting', key);
+  } else if (page.setting.mode !== 'all') {
+    parameters.set('setting', page.setting.mode);
+  }
 
   return `${path}?${parameters.toString()}`;
 }

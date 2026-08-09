@@ -515,6 +515,26 @@ func TestPanelRepositoryPaginationFilteringAndSorting(t *testing.T) {
 		t.Fatalf("unexpected filtered repositories: %#v", filteredPage)
 	}
 
+	multiple := harness.request(
+		t,
+		http.MethodGet,
+		"/panel/api/v1/targets/"+targetID+
+			"/repositories?file=missing&file=invalid&setting=quiet_success&setting=command_prefix&limit=10",
+		nil,
+		session,
+	)
+	if multiple.Code != http.StatusOK {
+		t.Fatalf("multi-filtered repositories = %d %s", multiple.Code, multiple.Body.String())
+	}
+	var multiplePage pageResponse[repositorySummaryResponse]
+	if err := json.Unmarshal(multiple.Body.Bytes(), &multiplePage); err != nil {
+		t.Fatal(err)
+	}
+	if multiplePage.Total != 1 || len(multiplePage.Items) != 1 ||
+		multiplePage.Items[0].Name != "beta-service" {
+		t.Fatalf("unexpected multi-filtered repositories: %#v", multiplePage)
+	}
+
 	first := harness.request(
 		t,
 		http.MethodGet,
@@ -564,6 +584,23 @@ func TestPanelRepositoryPaginationFilteringAndSorting(t *testing.T) {
 	if invalid.Code != http.StatusBadRequest ||
 		!strings.Contains(invalid.Body.String(), `"code":"invalid_repository_query"`) {
 		t.Fatalf("invalid repository query = %d %s", invalid.Code, invalid.Body.String())
+	}
+
+	mixedPreset := harness.request(
+		t,
+		http.MethodGet,
+		"/panel/api/v1/targets/"+targetID+
+			"/repositories?setting=custom&setting=quiet_success",
+		nil,
+		session,
+	)
+	if mixedPreset.Code != http.StatusBadRequest ||
+		!strings.Contains(mixedPreset.Body.String(), `"code":"invalid_repository_query"`) {
+		t.Fatalf(
+			"mixed repository setting preset = %d %s",
+			mixedPreset.Code,
+			mixedPreset.Body.String(),
+		)
 	}
 }
 

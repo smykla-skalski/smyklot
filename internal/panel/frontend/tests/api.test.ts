@@ -149,14 +149,14 @@ describe('targets and repositories', () => {
         sort: 'name_asc',
         limit: 20,
         state: 'all',
-        file: 'all',
-        setting: 'all',
+        files: [],
+        setting: { mode: 'all' },
       }),
     ).resolves.toEqual({ items: [REPOSITORY], next_cursor: null, total: 1 });
     await expect(api.fetchRepository('2001', '4001')).resolves.toEqual(DETAIL);
     expect(stub.calls.map((call) => call.url)).toEqual([
       '/panel/api/v1/targets',
-      '/panel/api/v1/targets/2001/repositories?sort=name_asc&limit=20&state=all&file=all&setting=all',
+      '/panel/api/v1/targets/2001/repositories?sort=name_asc&limit=20&state=all',
       '/panel/api/v1/targets/2001/repositories/4001',
     ]);
   });
@@ -173,12 +173,12 @@ describe('targets and repositories', () => {
       sort: 'newest',
       limit: 20,
       state: 'enabled',
-      file: 'invalid',
-      setting: 'quiet_success',
+      files: ['invalid', 'missing'],
+      setting: { mode: 'keys', keys: ['quiet_success', 'command_prefix'] },
     });
 
     expect(stub.calls[0]?.url).toBe(
-      '/panel/api/v1/targets/2001/repositories?cursor=20&q=service+api&sort=newest&limit=20&state=enabled&file=invalid&setting=quiet_success',
+      '/panel/api/v1/targets/2001/repositories?cursor=20&q=service+api&sort=newest&limit=20&state=enabled&file=invalid&file=missing&setting=quiet_success&setting=command_prefix',
     );
   });
 
