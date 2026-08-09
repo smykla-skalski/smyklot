@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tick } from 'svelte';
+
   import { formatDateTime, formatRelative, formatTimestamp } from '../lib/format';
   import { readTimeDisplay, writeTimeDisplay } from '../lib/preferences';
   import type { TimeDisplay } from '../lib/preferences';
@@ -16,11 +18,11 @@
   import Chip from './Chip.svelte';
   import HistoryDisplayMenu from './HistoryDisplayMenu.svelte';
   import PageNavigation from './PageNavigation.svelte';
+  import PageSizeSelect from './PageSizeSelect.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
 
   type HistoryType = 'audit' | 'failures';
 
-  const PAGE_SIZES = [10, 20, 50] as const;
   const HISTORY_TYPES = [
     { value: 'audit', label: 'Audit' },
     { value: 'failures', label: 'Failures' },
@@ -53,6 +55,8 @@
   let problem = $state<string | null>(null);
   let now = $state(Date.now());
   let requestSequence = 0;
+  let historyTools: HTMLDivElement;
+  let scrollAfterPageSizeChange = false;
 
   const currentPage = $derived(historyType === 'audit' ? auditPage : failurePage);
   const itemCount = $derived(currentPage?.items.length ?? 0);
@@ -177,8 +181,24 @@
         problem = error instanceof Error ? error.message : String(error);
       }
     } finally {
-      if (sequence === requestSequence && key === requestKey) loading = false;
+      if (sequence === requestSequence && key === requestKey) {
+        loading = false;
+        await scrollToResultsAfterPageSizeChange();
+      }
     }
+  }
+
+  function selectPageSize(nextLimit: number): void {
+    if (nextLimit === limit) return;
+    scrollAfterPageSizeChange = true;
+    limit = nextLimit;
+  }
+
+  async function scrollToResultsAfterPageSizeChange(): Promise<void> {
+    if (!scrollAfterPageSizeChange) return;
+    scrollAfterPageSizeChange = false;
+    await tick();
+    historyTools.scrollIntoView({ block: 'start' });
   }
 
   async function selectPage(nextIndex: number): Promise<void> {
@@ -213,7 +233,7 @@
     />
   </header>
 
-  <div class="history-tools">
+  <div class="history-tools" bind:this={historyTools}>
     <label class="search-field">
       <span class="visually-hidden">Search history</span>
       <span class="search-icon" aria-hidden="true"></span>
@@ -249,6 +269,10 @@
     </label>
 
     <HistoryDisplayMenu value={timeDisplay} onSelect={selectTimeDisplay} />
+
+    <div class="toolbar-rows">
+      <PageSizeSelect value={limit} label="Rows per page above history" onSelect={selectPageSize} />
+    </div>
   </div>
 
   <div class:loading class="history-results" aria-busy={loading}>
@@ -408,14 +432,13 @@
         />
       </div>
 
-      <label class="rows-field">
-        <span>Rows</span>
-        <select class="select-input" bind:value={limit} aria-label="Rows per page">
-          {#each PAGE_SIZES as size (size)}
-            <option value={size}>{size}</option>
-          {/each}
-        </select>
-      </label>
+      <div class="footer-rows">
+        <PageSizeSelect
+          value={limit}
+          label="Rows per page below history"
+          onSelect={selectPageSize}
+        />
+      </div>
     </footer>
   {/if}
 </section>
@@ -460,8 +483,8 @@
     border-bottom: 1px solid var(--rule);
     display: grid;
     gap: 0.5rem;
-    grid-template-columns: minmax(12rem, 1fr) max-content max-content auto;
-    padding: 0.625rem 1.125rem;
+    grid-template-columns: minmax(12rem, 1fr) max-content max-content auto auto;
+    padding: 0.625rem;
   }
 
   .search-field,
@@ -689,23 +712,14 @@
     min-width: 0;
   }
 
-  .rows-field {
-    align-items: center;
+  .toolbar-rows,
+  .footer-rows {
     display: flex;
-    gap: 0.5rem;
-    justify-self: end;
+    justify-content: flex-end;
   }
 
-  .rows-field > span {
-    color: var(--dim);
-    font: 600 0.5625rem/1 var(--mono);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-
-  .rows-field select {
-    font-size: 0.75rem;
-    width: 4.25rem;
+  .toolbar-rows {
+    --page-size-control-height: var(--history-control-height);
   }
 
   @media (max-width: 36rem) {
@@ -715,7 +729,7 @@
     }
 
     .history-tools {
-      grid-template-columns: 1fr 1fr auto;
+      grid-template-columns: 1fr 1fr;
     }
 
     .search-field {
@@ -742,7 +756,7 @@
       grid-row: 2;
     }
 
-    .rows-field {
+    .footer-rows {
       grid-column: 2;
       grid-row: 2;
     }

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { untrack } from 'svelte';
+  import { tick, untrack } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
 
   import { BOOLEAN_FIELDS } from '../lib/config';
@@ -30,6 +30,7 @@
   import FilterMenu from './FilterMenu.svelte';
   import HelpTip from './HelpTip.svelte';
   import PageNavigation from './PageNavigation.svelte';
+  import PageSizeSelect from './PageSizeSelect.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
 
   type RepositoryEnablement = 'inherit' | 'enabled' | 'disabled';
@@ -40,7 +41,6 @@
     { value: 'enabled', label: 'On', tone: 'on' },
     { value: 'disabled', label: 'Off', tone: 'off' },
   ] as const;
-  const PAGE_SIZES = [10, 20, 50] as const;
   const FILE_STATUSES = ['valid', 'missing', 'invalid', 'bypassed'] as const;
   const CONFIG_FILTER_KEYS: readonly ConfigKey[] = [
     ...BOOLEAN_FIELDS.map((field) => field.key),
@@ -155,6 +155,8 @@
   let now = $state(Date.now());
   let requestSequence = 0;
   let observedRefreshVersion: number | undefined;
+  let repositoryTools: HTMLDivElement;
+  let scrollAfterPageSizeChange = false;
 
   const repositories = $derived(page?.items ?? []);
   const total = $derived(page?.total ?? 0);
@@ -264,8 +266,24 @@
         problem = error instanceof Error ? error.message : String(error);
       }
     } finally {
-      if (sequence === requestSequence && key === filterKey) loading = false;
+      if (sequence === requestSequence && key === filterKey) {
+        loading = false;
+        await scrollToResultsAfterPageSizeChange();
+      }
     }
+  }
+
+  function selectPageSize(nextLimit: number): void {
+    if (nextLimit === limit) return;
+    scrollAfterPageSizeChange = true;
+    limit = nextLimit;
+  }
+
+  async function scrollToResultsAfterPageSizeChange(): Promise<void> {
+    if (!scrollAfterPageSizeChange) return;
+    scrollAfterPageSizeChange = false;
+    await tick();
+    repositoryTools.scrollIntoView({ block: 'start' });
   }
 
   async function selectPage(nextIndex: number): Promise<void> {
@@ -502,7 +520,7 @@
     />
   </header>
 
-  <div class="repository-tools">
+  <div class="repository-tools" bind:this={repositoryTools}>
     <label class="search-field">
       <span class="visually-hidden">Search repositories</span>
       <span class="search-icon" aria-hidden="true"></span>
@@ -555,6 +573,14 @@
       align="end"
       onChange={selectSort}
     />
+
+    <div class="toolbar-rows">
+      <PageSizeSelect
+        value={limit}
+        label="Repositories per page above results"
+        onSelect={selectPageSize}
+      />
+    </div>
   </div>
 
   <div class:loading class="repository-results" aria-busy={loading}>
@@ -694,14 +720,13 @@
         />
       </div>
 
-      <label class="rows-field">
-        <span>Rows</span>
-        <select class="select-input" bind:value={limit} aria-label="Repositories per page">
-          {#each PAGE_SIZES as size (size)}
-            <option value={size}>{size}</option>
-          {/each}
-        </select>
-      </label>
+      <div class="footer-rows">
+        <PageSizeSelect
+          value={limit}
+          label="Repositories per page below results"
+          onSelect={selectPageSize}
+        />
+      </div>
     </footer>
   {/if}
 </section>
@@ -746,8 +771,8 @@
     border-bottom: 1px solid var(--rule);
     display: grid;
     gap: 0.5rem;
-    grid-template-columns: minmax(12rem, 1fr) 7rem 7.5rem 11.5rem 10.5rem;
-    padding: 0.625rem 1.125rem;
+    grid-template-columns: minmax(12rem, 1fr) 7rem 7.5rem 11.5rem 10.5rem auto;
+    padding: 0.625rem;
   }
 
   .search-field {
@@ -921,23 +946,14 @@
     min-width: 0;
   }
 
-  .rows-field {
-    align-items: center;
+  .toolbar-rows,
+  .footer-rows {
     display: flex;
-    gap: 0.5rem;
-    justify-self: end;
+    justify-content: flex-end;
   }
 
-  .rows-field > span {
-    color: var(--dim);
-    font: 600 0.5625rem/1 var(--mono);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-
-  .rows-field select {
-    font-size: 0.75rem;
-    width: 4.25rem;
+  .toolbar-rows {
+    --page-size-control-height: var(--repository-control-height);
   }
 
   .repository-actions {
@@ -1020,6 +1036,10 @@
     .search-field {
       grid-column: 1 / -1;
     }
+
+    .toolbar-rows {
+      grid-column: 2;
+    }
   }
 
   @media (max-width: 36rem) {
@@ -1038,7 +1058,7 @@
       grid-row: 2;
     }
 
-    .rows-field {
+    .footer-rows {
       grid-column: 2;
       grid-row: 2;
     }
@@ -1054,6 +1074,10 @@
     }
 
     .search-field {
+      grid-column: 1;
+    }
+
+    .toolbar-rows {
       grid-column: 1;
     }
 
