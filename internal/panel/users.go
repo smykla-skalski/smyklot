@@ -11,7 +11,10 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/storage"
 )
 
-const maxAccessReasonLength = 500
+const (
+	maxAccessReasonLength = 500
+	panelUsersResource    = "users"
+)
 
 type addUserRequest struct {
 	Login    string             `json:"login"`
@@ -71,7 +74,7 @@ func (s *Server) getUsers(w http.ResponseWriter, r *http.Request) {
 			canManageGlobalUser(actor, actorUser, user, user.GlobalRole),
 		))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"users": items})
+	writeJSON(w, http.StatusOK, map[string]any{panelUsersResource: items})
 }
 
 func (s *Server) postUser(w http.ResponseWriter, r *http.Request) {
@@ -112,7 +115,7 @@ func (s *Server) postUser(w http.ResponseWriter, r *http.Request) {
 		s.writeStorageError(w, err)
 		return
 	}
-	s.events.announce(panelEvent{Type: panelEventAccessChanged})
+	s.events.announce(panelEvent{Type: panelEventResync})
 	writeJSON(w, http.StatusCreated, panelUserDTO(created, true))
 }
 
@@ -158,7 +161,7 @@ func (s *Server) putUser(w http.ResponseWriter, r *http.Request) {
 	if updated.Status == storage.PanelUserBanned || updated.Status == storage.PanelUserRemoved {
 		s.revokePanelUser(r, updated)
 	} else {
-		s.events.announce(panelEvent{Type: panelEventAccessChanged})
+		s.events.announce(panelEvent{Type: panelEventResync})
 	}
 	writeJSON(w, http.StatusOK, panelUserDTO(updated, true))
 }
@@ -180,7 +183,7 @@ func (s *Server) getTargetUsers(w http.ResponseWriter, r *http.Request) {
 			canManageTargetUser(actor, actorUser, actorAccess, user.User, user.Access, user.Access.Role),
 		))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"users": items})
+	writeJSON(w, http.StatusOK, map[string]any{panelUsersResource: items})
 }
 
 func (s *Server) postTargetUser(w http.ResponseWriter, r *http.Request) {
@@ -397,7 +400,7 @@ func (s *Server) revokePanelUser(r *http.Request, user storage.PanelUser) {
 		r.Context(), user.Account.ID, string(user.Status), reason, s.now().UTC(),
 	)
 	s.events.revokeAccount(user.Account.ID, string(user.Status), reason)
-	s.events.announce(panelEvent{Type: panelEventAccessChanged})
+	s.events.announce(panelEvent{Type: panelEventResync})
 }
 
 func canManageGlobalUser(

@@ -143,7 +143,7 @@ func (s *Server) Announce(targetID, repositoryID string) {
 // committed. It emits even when the new snapshot is empty, so removing the
 // final installation cannot leave an open panel displaying stale targets.
 func (s *Server) AnnounceCatalog() {
-	s.events.announce(panelEvent{Type: "resync"})
+	s.events.announce(panelEvent{Type: panelEventResync})
 }
 
 func (s *Server) secureHeaders(next http.Handler) http.Handler {

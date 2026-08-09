@@ -5,6 +5,8 @@ import type { Connect, Plugin } from 'vite';
 
 import type {
   AuditEntry,
+  AddGlobalUserInput,
+  AddTargetUserInput,
   ConfigKey,
   ConfigPatch,
   ConfigSources,
@@ -13,10 +15,15 @@ import type {
   Page,
   PanelAccount,
   PanelTarget,
+  PanelUser,
+  PanelRole,
+  TargetUserAccess,
   RepositoryDetail,
   RepositorySettingsInput,
   RepositorySummary,
   TargetSettingsInput,
+  UpdateGlobalUserInput,
+  UpdateTargetUserInput,
 } from '../src/lib/types';
 
 type DevHttpServer = HttpServer;
@@ -82,6 +89,8 @@ interface MockState {
   signedIn: boolean;
   forceFailure: boolean;
   targets: MockTarget[];
+  users: PanelUser[];
+  targetAccess: Map<string, Map<string, TargetUserAccess>>;
   streams: Set<Duplex>;
 }
 
@@ -289,12 +298,115 @@ function seed(): MockState {
   ];
   recomputeTarget(personal);
 
+  const users = userSeeds(iso);
+  const organizationAccess = new Map<string, TargetUserAccess>();
+  organizationAccess.set('1003', {
+    role: 'admin',
+    suspended: false,
+    revision: 1,
+    effective_role: 'admin',
+    source: 'target',
+    capabilities: capabilitiesFor('admin'),
+  });
+  organizationAccess.set('1004', {
+    role: 'viewer',
+    suspended: true,
+    suspension_reason: 'On leave',
+    revision: 2,
+    effective_role: 'none',
+    source: 'suspended',
+    capabilities: capabilitiesFor('none'),
+  });
   return {
     signedIn: true,
     forceFailure: false,
     targets: [organization, personal],
+    users,
+    targetAccess: new Map([[organization.value.id, organizationAccess]]),
     streams: new Set(),
   };
+}
+
+function capabilitiesFor(role: PanelRole) {
+  return {
+    read: role !== 'none',
+    write: role === 'owner' || role === 'admin' || role === 'editor',
+    manage_target_users: role === 'owner' || role === 'admin',
+    manage_global_users: role === 'owner',
+    manage_owners: role === 'owner',
+  };
+}
+
+function targetUsers(state: MockState, targetId: string): PanelUser[] {
+  const overrides = state.targetAccess.get(targetId) ?? new Map<string, TargetUserAccess>();
+  return state.users
+    .filter((user) => user.status !== 'removed')
+    .filter((user) => user.global_role !== 'none' || overrides.has(user.account.id))
+    .map((user) => {
+      const override = overrides.get(user.account.id);
+      if (override !== undefined)
+        return { ...structuredClone(user), target_access: structuredClone(override) };
+      const effectiveRole = user.status === 'active' ? user.global_role : 'none';
+      const source: TargetUserAccess['source'] =
+        user.status === 'active' ? (user.root ? 'root' : 'global') : 'denied';
+      return {
+        ...structuredClone(user),
+        target_access: {
+          role: null,
+          suspended: false,
+          revision: 0,
+          effective_role: effectiveRole,
+          source,
+          capabilities: capabilitiesFor(effectiveRole),
+        },
+      };
+    });
+}
+
+function userSeeds(iso: (offsetMs: number) => string): PanelUser[] {
+  const account = (id: string, login: string, displayName: string): PanelAccount => ({
+    id,
+    provider: VIEWER.provider,
+    subject_id: id,
+    login,
+    display_name: displayName,
+    avatar_url: null,
+  });
+  const user = (
+    id: string,
+    login: string,
+    displayName: string,
+    role: PanelRole,
+    offsetMs: number,
+  ): PanelUser => ({
+    account: account(id, login, displayName),
+    root: false,
+    status: 'active',
+    global_role: role,
+    revision: 1,
+    created_at: iso(-30 * 86_400_000),
+    updated_at: iso(offsetMs),
+    last_login_at: iso(offsetMs),
+    manageable: true,
+  });
+  const root: PanelUser = {
+    ...user(VIEWER.id, VIEWER.login, VIEWER.display_name, 'owner', -5 * 60_000),
+    account: VIEWER,
+    root: true,
+    manageable: false,
+  };
+  const banned = user('1005', 'lin', 'Lin Chen', 'viewer', -9 * 86_400_000);
+  banned.status = 'banned';
+  banned.ban_reason = 'Repeated unauthorized access attempts';
+  banned.banned_at = iso(-2 * 86_400_000);
+
+  return [
+    root,
+    user('1002', 'ada', 'Ada Lovelace', 'admin', -42 * 60_000),
+    user('1003', 'grace', 'Grace Hopper', 'editor', -4 * 3_600_000),
+    user('1004', 'margaret', 'Margaret Hamilton', 'viewer', -2 * 86_400_000),
+    banned,
+  ];
 }
 
 function targetSeed(input: {
@@ -615,12 +727,49 @@ async function handle(
       respond(res, 200, { targets: state.targets.map((target) => target.value) });
       return;
     }
+    if (path === route('/api/v1/users') && method === 'GET') {
+      respond(res, 200, {
+        users: state.users.filter((user) => user.status !== 'removed'),
+      });
+      return;
+    }
+    if (path === route('/api/v1/users') && method === 'POST') {
+      const input = await readBody<AddGlobalUserInput>(req);
+      if (
+        state.users.some(
+          (user) =>
+            user.account.login.toLowerCase() === input.login.toLowerCase() &&
+            user.status !== 'removed',
+        )
+      ) {
+        throw new MockApiError(409, 'conflict', 'this GitHub user already has panel access');
+      }
+      const existing = state.users.find(
+        (user) => user.account.login.toLowerCase() === input.login.toLowerCase(),
+      );
+      const added = existing ?? mockUser(input.login, input.role);
+      added.status = 'active';
+      added.global_role = input.role;
+      added.ban_reason = undefined;
+      added.banned_at = undefined;
+      added.revision += existing === undefined ? 0 : 1;
+      added.updated_at = new Date().toISOString();
+      if (existing === undefined) state.users.push(added);
+      broadcast(state, { type: 'resync' });
+      respond(res, 201, added);
+      return;
+    }
     if (path === route('/api/v1/events') && method === 'GET') {
       respond(res, 426, { error: { code: 'upgrade_required', message: 'WebSocket required' } });
       return;
     }
 
     const targetSettings = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/settings$/);
+    const globalUser = path.match(/^\/api\/v1\/users\/(?<account>[^/]+)$/);
+    const scopedUsers = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/users$/);
+    const scopedUser = path.match(
+      /^\/api\/v1\/targets\/(?<target>[^/]+)\/users\/(?<account>[^/]+)$/,
+    );
     const repositories = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/repositories$/);
     const repository = path.match(
       /^\/api\/v1\/targets\/(?<target>[^/]+)\/repositories\/(?<repository>[^/]+)$/,
@@ -630,6 +779,69 @@ async function handle(
     );
     const audit = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/audit$/);
     const failures = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/failures$/);
+
+    if (globalUser && method === 'PUT') {
+      const user = findUser(state, globalUser.groups?.account ?? '');
+      const input = await readBody<UpdateGlobalUserInput>(req);
+      requireRevision(user.revision, input.expected_revision);
+      user.global_role = input.status === 'removed' ? 'none' : input.global_role;
+      user.status = input.status;
+      user.ban_reason = input.status === 'banned' ? input.ban_reason : undefined;
+      user.banned_at = input.status === 'banned' ? new Date().toISOString() : undefined;
+      user.revision += 1;
+      user.updated_at = new Date().toISOString();
+      if (input.status === 'removed') {
+        for (const access of state.targetAccess.values()) access.delete(user.account.id);
+      }
+      broadcast(state, { type: 'resync' });
+      respond(res, 200, user);
+      return;
+    }
+    if (scopedUsers && method === 'GET') {
+      const target = findTarget(state, scopedUsers.groups?.target ?? '');
+      respond(res, 200, { users: targetUsers(state, target.value.id) });
+      return;
+    }
+    if (scopedUsers && method === 'POST') {
+      const target = findTarget(state, scopedUsers.groups?.target ?? '');
+      const input = await readBody<AddTargetUserInput>(req);
+      let user = state.users.find(
+        (entry) => entry.account.login.toLowerCase() === input.login.toLowerCase(),
+      );
+      if (user === undefined) {
+        user = mockUser(input.login, 'none');
+        state.users.push(user);
+      }
+      const access = targetAccessFor(state, target.value.id);
+      if (access.has(user.account.id)) {
+        throw new MockApiError(409, 'conflict', 'this user already has installation access');
+      }
+      access.set(user.account.id, targetAccess(input.role, false, 1));
+      broadcast(state, { type: 'access.changed', target_id: target.value.id });
+      respond(res, 201, scopedUserValue(state, target.value.id, user));
+      return;
+    }
+    if (scopedUser && method === 'PUT') {
+      const target = findTarget(state, scopedUser.groups?.target ?? '');
+      const user = findUser(state, scopedUser.groups?.account ?? '');
+      const input = await readBody<UpdateTargetUserInput>(req);
+      const access = targetAccessFor(state, target.value.id);
+      const current = access.get(user.account.id);
+      requireRevision(current?.revision ?? 0, input.expected_revision);
+      access.set(
+        user.account.id,
+        targetAccess(
+          input.role,
+          input.suspended,
+          (current?.revision ?? 0) + 1,
+          input.suspension_reason,
+          user.global_role,
+        ),
+      );
+      broadcast(state, { type: 'access.changed', target_id: target.value.id });
+      respond(res, 200, scopedUserValue(state, target.value.id, user));
+      return;
+    }
 
     if (targetSettings && method === 'PUT') {
       const target = findTarget(state, targetSettings.groups?.target ?? '');
@@ -755,6 +967,69 @@ function findTarget(state: MockState, encodedId: string): MockTarget {
   if (target === undefined)
     throw new MockApiError(404, 'not_found', 'installation target not found');
   return target;
+}
+
+function findUser(state: MockState, encodedId: string): PanelUser {
+  const id = decodeURIComponent(encodedId);
+  const user = state.users.find((entry) => entry.account.id === id);
+  if (user === undefined) throw new MockApiError(404, 'not_found', 'panel user not found');
+  return user;
+}
+
+function mockUser(login: string, role: PanelRole): PanelUser {
+  const normalized = login.trim();
+  const now = new Date().toISOString();
+  return {
+    account: {
+      id: `github:mock:user:${normalized.toLowerCase()}`,
+      provider: VIEWER.provider,
+      subject_id: normalized.toLowerCase(),
+      login: normalized,
+      display_name: normalized,
+      avatar_url: null,
+    },
+    root: false,
+    status: 'active',
+    global_role: role,
+    revision: 1,
+    created_at: now,
+    updated_at: now,
+    manageable: true,
+  };
+}
+
+function targetAccessFor(state: MockState, targetId: string): Map<string, TargetUserAccess> {
+  let access = state.targetAccess.get(targetId);
+  if (access === undefined) {
+    access = new Map();
+    state.targetAccess.set(targetId, access);
+  }
+  return access;
+}
+
+function targetAccess(
+  role: TargetUserAccess['role'],
+  suspended: boolean,
+  revision: number,
+  reason?: string,
+  globalRole: PanelRole = 'none',
+): TargetUserAccess {
+  const effectiveRole = suspended ? 'none' : (role ?? globalRole);
+  return {
+    role,
+    suspended,
+    ...(reason === undefined || reason.trim() === '' ? {} : { suspension_reason: reason.trim() }),
+    revision,
+    effective_role: effectiveRole,
+    source: suspended ? 'suspended' : role === null ? 'global' : 'target',
+    capabilities: capabilitiesFor(effectiveRole),
+  };
+}
+
+function scopedUserValue(state: MockState, targetId: string, user: PanelUser): PanelUser {
+  const access = targetAccessFor(state, targetId).get(user.account.id);
+  if (access === undefined) throw new MockApiError(404, 'not_found', 'installation role not found');
+  return { ...structuredClone(user), target_access: structuredClone(access) };
 }
 
 function findRepository(target: MockTarget, encodedId: string): MockRepository {

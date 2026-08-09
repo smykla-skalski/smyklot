@@ -970,7 +970,9 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	for _, path := range []string{
 		"/panel/",
+		"/panel/users",
 		"/panel/i/smykla-skalski/repositories",
+		"/panel/i/smykla-skalski/users",
 		"/panel/i/auth/settings",
 		"/panel/help",
 	} {

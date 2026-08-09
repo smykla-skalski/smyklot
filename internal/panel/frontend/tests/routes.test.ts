@@ -49,10 +49,15 @@ describe('panel routes', () => {
     });
   });
 
-  it('keeps help global', () => {
+  it('keeps help and global users outside installation routes', () => {
     expect(parsePanelRoute('', '/help')).toEqual({ view: 'help' });
     expect(parsePanelRoute('/panel', '/panel/help/')).toEqual({ view: 'help' });
     expect(parsePanelRoute('', '/i/smykla-skalski/help')).toBeNull();
+    expect(parsePanelRoute('', '/users')).toEqual({ view: 'users' });
+    expect(parsePanelRoute('', '/i/smykla-skalski/users')).toEqual({
+      account: 'smykla-skalski',
+      view: 'users',
+    });
   });
 
   it('treats the panel root as an unresolved destination', () => {
@@ -78,6 +83,10 @@ describe('panel routes', () => {
       '/panel/i/bartsmykla/settings',
     );
     expect(panelRoutePath('/panel', { view: 'help' })).toBe('/panel/help');
+    expect(panelRoutePath('/panel', { view: 'users' })).toBe('/panel/users');
+    expect(panelRoutePath('/panel', { account: 'bartsmykla', view: 'users' })).toBe(
+      '/panel/i/bartsmykla/users',
+    );
   });
 });
 

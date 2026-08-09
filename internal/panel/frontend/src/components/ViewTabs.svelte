@@ -5,16 +5,20 @@
     value,
     hrefFor,
     onSelect,
+    showUsers,
   }: {
     value: PanelView;
     hrefFor: (view: PanelView) => string;
     onSelect: (view: PanelView) => void;
+    showUsers: boolean;
   } = $props();
 
   let settingsButton = $state<HTMLAnchorElement | null>(null);
   let repositoriesButton = $state<HTMLAnchorElement | null>(null);
   let historyButton = $state<HTMLAnchorElement | null>(null);
+  let usersButton = $state<HTMLAnchorElement | null>(null);
   let helpButton = $state<HTMLAnchorElement | null>(null);
+  const visibleViews = $derived(PANEL_VIEWS.filter((view) => view !== 'users' || showUsers));
 
   function selectFromClick(event: MouseEvent, next: PanelView): void {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
@@ -27,13 +31,13 @@
     let next: PanelView | null = null;
     switch (event.key) {
       case 'ArrowLeft': {
-        const index = PANEL_VIEWS.indexOf(value);
-        next = PANEL_VIEWS[(index - 1 + PANEL_VIEWS.length) % PANEL_VIEWS.length] ?? null;
+        const index = visibleViews.indexOf(value);
+        next = visibleViews[(index - 1 + visibleViews.length) % visibleViews.length] ?? null;
         break;
       }
       case 'ArrowRight': {
-        const index = PANEL_VIEWS.indexOf(value);
-        next = PANEL_VIEWS[(index + 1) % PANEL_VIEWS.length] ?? null;
+        const index = visibleViews.indexOf(value);
+        next = visibleViews[(index + 1) % visibleViews.length] ?? null;
         break;
       }
       case 'Home':
@@ -56,6 +60,9 @@
         break;
       case 'history':
         historyButton?.focus();
+        break;
+      case 'users':
+        usersButton?.focus();
         break;
       case 'help':
         helpButton?.focus();
@@ -104,6 +111,27 @@
       </svg>
       Repositories
     </a>
+    {#if showUsers}
+      <a
+        href={hrefFor('users')}
+        id="users-tab"
+        bind:this={usersButton}
+        class:active={value === 'users'}
+        role="tab"
+        aria-selected={value === 'users'}
+        aria-controls="users-panel"
+        tabindex={value === 'users' ? 0 : -1}
+        onkeydown={moveFromKeyboard}
+        onclick={(event) => selectFromClick(event, 'users')}
+      >
+        <svg class="tab-icon" viewBox="0 0 20 20" aria-hidden="true">
+          <circle cx="7" cy="7" r="2.5"></circle>
+          <circle cx="14" cy="8" r="2"></circle>
+          <path d="M2.5 16c.3-3 2-4.5 4.5-4.5s4.2 1.5 4.5 4.5M11 12.5c2.8-.8 5.2.5 5.8 3.5"></path>
+        </svg>
+        Users
+      </a>
+    {/if}
     <a
       href={hrefFor('history')}
       id="history-tab"

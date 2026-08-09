@@ -4,17 +4,22 @@ import { openPanelStream, panelStreamUrl } from './events';
 import type {
   AuditEntry,
   AuditHistoryRequest,
+  AddGlobalUserInput,
+  AddTargetUserInput,
   DeliveryFailure,
   FailureHistoryRequest,
   Page,
   PanelErrorBody,
   PanelTarget,
+  PanelUser,
   PanelViewer,
   RepositoryDetail,
   RepositoryPageRequest,
   RepositorySettingsInput,
   RepositorySummary,
   TargetSettingsInput,
+  UpdateGlobalUserInput,
+  UpdateTargetUserInput,
 } from './types';
 
 export class PanelApiError extends Error {
@@ -31,6 +36,16 @@ export class PanelApiError extends Error {
 export interface PanelApi {
   fetchViewer(): Promise<PanelViewer | null>;
   fetchTargets(): Promise<PanelTarget[]>;
+  fetchUsers(): Promise<PanelUser[]>;
+  addUser(input: AddGlobalUserInput): Promise<PanelUser>;
+  updateUser(accountId: string, input: UpdateGlobalUserInput): Promise<PanelUser>;
+  fetchTargetUsers(targetId: string): Promise<PanelUser[]>;
+  addTargetUser(targetId: string, input: AddTargetUserInput): Promise<PanelUser>;
+  updateTargetUser(
+    targetId: string,
+    accountId: string,
+    input: UpdateTargetUserInput,
+  ): Promise<PanelUser>;
   updateTargetSettings(targetId: string, input: TargetSettingsInput): Promise<PanelTarget>;
   fetchRepositories(
     targetId: string,
@@ -87,6 +102,13 @@ export function createPanelApi(
       body: JSON.stringify(body),
     });
 
+  const postJson = <T>(path: string, body: unknown): Promise<T> =>
+    jsonRequest<T>(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
   return {
     async fetchViewer(): Promise<PanelViewer | null> {
       const response = await fetchImpl(panelUrl(base, '/api/v1/session'), {
@@ -104,6 +126,41 @@ export function createPanelApi(
     async fetchTargets(): Promise<PanelTarget[]> {
       const body = await jsonRequest<{ targets: PanelTarget[] }>('/api/v1/targets');
       return body.targets;
+    },
+
+    async fetchUsers(): Promise<PanelUser[]> {
+      const body = await jsonRequest<{ users: PanelUser[] }>('/api/v1/users');
+      return body.users;
+    },
+
+    addUser(input: AddGlobalUserInput): Promise<PanelUser> {
+      return postJson('/api/v1/users', input);
+    },
+
+    updateUser(accountId: string, input: UpdateGlobalUserInput): Promise<PanelUser> {
+      return putJson(`/api/v1/users/${pathSegment(accountId)}`, input);
+    },
+
+    async fetchTargetUsers(targetId: string): Promise<PanelUser[]> {
+      const body = await jsonRequest<{ users: PanelUser[] }>(
+        `/api/v1/targets/${pathSegment(targetId)}/users`,
+      );
+      return body.users;
+    },
+
+    addTargetUser(targetId: string, input: AddTargetUserInput): Promise<PanelUser> {
+      return postJson(`/api/v1/targets/${pathSegment(targetId)}/users`, input);
+    },
+
+    updateTargetUser(
+      targetId: string,
+      accountId: string,
+      input: UpdateTargetUserInput,
+    ): Promise<PanelUser> {
+      return putJson(
+        `/api/v1/targets/${pathSegment(targetId)}/users/${pathSegment(accountId)}`,
+        input,
+      );
     },
 
     updateTargetSettings(targetId: string, input: TargetSettingsInput): Promise<PanelTarget> {

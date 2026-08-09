@@ -42,6 +42,7 @@ export interface PanelAccount {
 }
 
 export type PanelRole = 'none' | 'viewer' | 'editor' | 'admin' | 'owner';
+export type PanelUserStatus = 'active' | 'banned' | 'removed';
 export type AccessSource = 'root' | 'global' | 'target' | 'suspended' | 'denied';
 
 export interface PanelCapabilities {
@@ -55,10 +56,60 @@ export interface PanelCapabilities {
 export interface PanelViewer {
   account: PanelAccount;
   root: boolean;
-  status: 'active' | 'banned' | 'removed';
+  status: PanelUserStatus;
   global_role: PanelRole;
   capabilities: PanelCapabilities;
   target_count: number;
+}
+
+export interface TargetUserAccess {
+  role: Exclude<PanelRole, 'owner'> | null;
+  suspended: boolean;
+  suspension_reason?: string;
+  revision: number;
+  effective_role: PanelRole;
+  source: AccessSource;
+  capabilities: PanelCapabilities;
+}
+
+export interface PanelUser {
+  account: PanelAccount;
+  root: boolean;
+  status: PanelUserStatus;
+  global_role: PanelRole;
+  ban_reason?: string;
+  banned_at?: string;
+  last_login_at?: string;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+  manageable: boolean;
+  target_access?: TargetUserAccess;
+}
+
+export interface AddGlobalUserInput {
+  login: string;
+  role: PanelRole;
+  target_id: string;
+}
+
+export interface UpdateGlobalUserInput {
+  global_role: PanelRole;
+  status: PanelUserStatus;
+  ban_reason?: string;
+  expected_revision: number;
+}
+
+export interface AddTargetUserInput {
+  login: string;
+  role: Exclude<PanelRole, 'none' | 'owner'>;
+}
+
+export interface UpdateTargetUserInput {
+  role: Exclude<PanelRole, 'owner'> | null;
+  suspended: boolean;
+  suspension_reason?: string;
+  expected_revision: number;
 }
 
 export interface RepositoryCounts {

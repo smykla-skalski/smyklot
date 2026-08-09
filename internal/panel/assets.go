@@ -69,7 +69,7 @@ func (s *Server) serveAsset(w http.ResponseWriter, r *http.Request) {
 
 func isPanelNavigationPath(relative string) bool {
 	trimmed := strings.Trim(relative, "/")
-	if trimmed == "help" {
+	if trimmed == "help" || trimmed == panelUsersResource {
 		return true
 	}
 
@@ -79,7 +79,7 @@ func isPanelNavigationPath(relative string) bool {
 	}
 
 	switch parts[2] {
-	case "settings", "repositories", "history":
+	case "settings", "repositories", panelUsersResource, "history":
 		return true
 	default:
 		return false

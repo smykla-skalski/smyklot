@@ -20,6 +20,7 @@ const (
 	panelSessionRevokedCode  = websocket.StatusCode(4001)
 	panelEventSessionRevoked = "session.revoked"
 	panelEventAccessChanged  = "access.changed"
+	panelEventResync         = "resync"
 )
 
 type panelEvent struct {

@@ -229,6 +229,55 @@ describe('targets and repositories', () => {
   });
 });
 
+describe('user management', () => {
+  it('uses scoped user endpoints and preserves nullable inheritance', async () => {
+    const user = {
+      account: VIEWER.account,
+      root: false,
+      status: 'active' as const,
+      global_role: 'editor' as const,
+      revision: 1,
+      created_at: '2026-08-08T10:00:00Z',
+      updated_at: '2026-08-08T10:00:00Z',
+      manageable: true,
+    };
+    const stub = stubFetch([
+      jsonResponse(200, { users: [user] }),
+      jsonResponse(201, user),
+      jsonResponse(200, user),
+      jsonResponse(200, { users: [user] }),
+      jsonResponse(201, user),
+      jsonResponse(200, user),
+    ]);
+    const api = createPanelApi('/panel', stub.fetch);
+
+    await api.fetchUsers();
+    await api.addUser({ login: 'ada', role: 'editor', target_id: 'target.1' });
+    await api.updateUser('github:user:1', {
+      global_role: 'viewer',
+      status: 'active',
+      expected_revision: 1,
+    });
+    await api.fetchTargetUsers('target.1');
+    await api.addTargetUser('target.1', { login: 'ada', role: 'viewer' });
+    await api.updateTargetUser('target.1', 'github:user:1', {
+      role: null,
+      suspended: false,
+      expected_revision: 1,
+    });
+
+    expect(stub.calls.map((call) => call.url)).toEqual([
+      '/panel/api/v1/users',
+      '/panel/api/v1/users',
+      '/panel/api/v1/users/github%3Auser%3A1',
+      '/panel/api/v1/targets/target%2E1/users',
+      '/panel/api/v1/targets/target%2E1/users',
+      '/panel/api/v1/targets/target%2E1/users/github%3Auser%3A1',
+    ]);
+    expect(JSON.parse(String(stub.calls[5]?.init?.body))).toMatchObject({ role: null });
+  });
+});
+
 describe('history and authentication routes', () => {
   it('encodes history cursors and exposes both histories', async () => {
     const emptyPage = { items: [], next_cursor: null, total: 0 };
