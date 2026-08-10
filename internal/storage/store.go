@@ -11,8 +11,7 @@ import (
 type AuthStore interface {
 	UpsertAccount(context.Context, Account) error
 	GetAccount(context.Context, string) (Account, error)
-	ClaimOwner(context.Context, string) (bool, error)
-	IsOwner(context.Context, string) (bool, error)
+	ReconcileSuperRoot(context.Context, string, time.Time) error
 	CreateSession(context.Context, Session, int) error
 	GetSession(context.Context, string, time.Time) (Session, error)
 	DeleteSession(context.Context, string) error

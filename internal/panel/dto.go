@@ -26,7 +26,7 @@ type accountResponse struct {
 
 type viewerResponse struct {
 	Account      accountResponse         `json:"account"`
-	Root         bool                    `json:"root"`
+	SystemRole   storage.SystemRole      `json:"system_role"`
 	Status       storage.PanelUserStatus `json:"status"`
 	GlobalRole   storage.PanelRole       `json:"global_role"`
 	Capabilities capabilityResponse      `json:"capabilities"`
@@ -43,7 +43,7 @@ type capabilityResponse struct {
 
 type panelUserResponse struct {
 	Account      accountResponse         `json:"account"`
-	Root         bool                    `json:"root"`
+	SystemRole   storage.SystemRole      `json:"system_role"`
 	Status       storage.PanelUserStatus `json:"status"`
 	GlobalRole   storage.PanelRole       `json:"global_role"`
 	BanReason    *string                 `json:"ban_reason,omitempty"`
@@ -152,17 +152,17 @@ func accountDTO(account storage.Account) accountResponse {
 func viewerDTO(user storage.PanelUser, targetCount int) viewerResponse {
 	return viewerResponse{
 		Account:      accountDTO(user.Account),
-		Root:         user.Root,
+		SystemRole:   user.SystemRole,
 		Status:       user.Status,
 		GlobalRole:   user.GlobalRole,
-		Capabilities: capabilitiesDTO(storage.EffectiveCapabilities(user.GlobalRole, user.Root)),
+		Capabilities: capabilitiesDTO(storage.EffectiveCapabilities(user.GlobalRole, user.SystemRole)),
 		TargetCount:  targetCount,
 	}
 }
 
 func panelUserDTO(user storage.PanelUser, manageable bool) panelUserResponse {
 	return panelUserResponse{
-		Account: accountDTO(user.Account), Root: user.Root, Status: user.Status,
+		Account: accountDTO(user.Account), SystemRole: user.SystemRole, Status: user.Status,
 		GlobalRole: user.GlobalRole, BanReason: user.BanReason, BannedAt: user.BannedAt,
 		LastLoginAt: user.LastLoginAt, Revision: user.Revision, CreatedAt: user.CreatedAt,
 		UpdatedAt: user.UpdatedAt, Manageable: manageable,

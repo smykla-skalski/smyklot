@@ -42,6 +42,7 @@ export interface PanelAccount {
 }
 
 export type PanelRole = 'none' | 'viewer' | 'editor' | 'admin' | 'owner';
+export type SystemRole = 'none' | 'root' | 'super_root';
 export type PanelUserStatus = 'active' | 'banned' | 'removed';
 export type AccessSource = 'root' | 'global' | 'target' | 'suspended' | 'denied';
 
@@ -55,7 +56,7 @@ export interface PanelCapabilities {
 
 export interface PanelViewer {
   account: PanelAccount;
-  root: boolean;
+  system_role: SystemRole;
   status: PanelUserStatus;
   global_role: PanelRole;
   capabilities: PanelCapabilities;
@@ -75,7 +76,7 @@ export interface TargetUserAccess {
 
 export interface PanelUser {
   account: PanelAccount;
-  root: boolean;
+  system_role: SystemRole;
   status: PanelUserStatus;
   global_role: PanelRole;
   ban_reason?: string;

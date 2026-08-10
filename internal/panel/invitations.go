@@ -86,7 +86,7 @@ func (s *Server) postInvitation(w http.ResponseWriter, r *http.Request) {
 	if !validCreateInvitation(w, input, true) {
 		return
 	}
-	if *input.Role == storage.PanelRoleOwner && !actorUser.Root {
+	if *input.Role == storage.PanelRoleOwner && !actorUser.SystemRole.IsRoot() {
 		s.writeError(w, http.StatusForbidden, "forbidden", "only the root owner can invite owners")
 		return
 	}
@@ -228,7 +228,7 @@ func (s *Server) requireInvitationManager(
 	}
 	if invitation.TargetID == nil {
 		actor, actorUser, ok := s.requireGlobalUserManager(w, r)
-		if !ok || invitation.Role == storage.PanelRoleOwner && !actorUser.Root ||
+		if !ok || invitation.Role == storage.PanelRoleOwner && !actorUser.SystemRole.IsRoot() ||
 			actor.ID == invitation.Account.ID {
 			if ok {
 				s.writeError(w, http.StatusForbidden, "forbidden", "you cannot manage this invitation")
@@ -262,10 +262,10 @@ func (s *Server) canInviteToTarget(
 	}
 	subject, err := s.store.GetPanelUser(r.Context(), subjectAccount.ID)
 	if errors.Is(err, storage.ErrNotFound) {
-		return actorAccess.Role == storage.PanelRoleOwner || actorUser.Root ||
+		return actorAccess.Role == storage.PanelRoleOwner || actorUser.SystemRole.IsRoot() ||
 			actorAccess.Role == storage.PanelRoleAdmin && desired != storage.PanelRoleAdmin
 	}
-	if err != nil || subject.Status == storage.PanelUserBanned || subject.Root ||
+	if err != nil || subject.Status == storage.PanelUserBanned || subject.SystemRole.IsRoot() ||
 		subject.GlobalRole == storage.PanelRoleOwner {
 		return false
 	}

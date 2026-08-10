@@ -90,7 +90,7 @@ var _ = Describe("SQLite store [Unit]", func() {
 		Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
 	})
 
-	It("binds panel ownership to one immutable account", func() {
+	It("reassigns the singleton Super Root and demotes the former one", func() {
 		owner := testAccount(now)
 		other := owner
 		other.ID = "github:2"
@@ -99,31 +99,29 @@ var _ = Describe("SQLite store [Unit]", func() {
 		Expect(store.UpsertAccount(ctx, owner)).To(Succeed())
 		Expect(store.UpsertAccount(ctx, other)).To(Succeed())
 
-		claimed, err := store.ClaimOwner(ctx, owner.ID)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(claimed).To(BeTrue())
-		claimed, err = store.ClaimOwner(ctx, other.ID)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(claimed).To(BeFalse())
-
-		allowed, err := store.IsOwner(ctx, owner.ID)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(allowed).To(BeTrue())
-		allowed, err = store.IsOwner(ctx, other.ID)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(allowed).To(BeFalse())
+		Expect(store.ReconcileSuperRoot(ctx, owner.ID, now)).To(Succeed())
 		panelUser, err := store.GetPanelUser(ctx, owner.ID)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(panelUser.Root).To(BeTrue())
+		Expect(panelUser.SystemRole).To(Equal(storage.SystemRoleSuperRoot))
 		Expect(panelUser.GlobalRole).To(Equal(storage.PanelRoleOwner))
+		Expect(store.ReconcileSuperRoot(ctx, owner.ID, now.Add(time.Second))).To(Succeed())
+		unchanged, err := store.GetPanelUser(ctx, owner.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(unchanged.Revision).To(Equal(panelUser.Revision))
+
+		Expect(store.ReconcileSuperRoot(ctx, other.ID, now.Add(time.Minute))).To(Succeed())
+		former, err := store.GetPanelUser(ctx, owner.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(former.SystemRole).To(Equal(storage.SystemRoleRoot))
+		current, err := store.GetPanelUser(ctx, other.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(current.SystemRole).To(Equal(storage.SystemRoleSuperRoot))
 	})
 
 	It("makes newly discovered installations visible to the root owner", func() {
 		owner := testAccount(now)
 		Expect(store.UpsertAccount(ctx, owner)).To(Succeed())
-		claimed, err := store.ClaimOwner(ctx, owner.ID)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(claimed).To(BeTrue())
+		Expect(store.ReconcileSuperRoot(ctx, owner.ID, now)).To(Succeed())
 
 		first := testInstallation(owner, now, nil)
 		second := first
@@ -167,9 +165,7 @@ var _ = Describe("SQLite store [Unit]", func() {
 			testRepository("repo-2", "smykla-skalski/platform-infra", true),
 		})
 		Expect(store.UpsertAccount(ctx, account)).To(Succeed())
-		claimed, err := store.ClaimOwner(ctx, account.ID)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(claimed).To(BeTrue())
+		Expect(store.ReconcileSuperRoot(ctx, account.ID, now)).To(Succeed())
 		Expect(store.ReconcileInstallation(ctx, initial)).To(Succeed())
 		access, err := store.ResolveTargetAccess(ctx, account.ID, initial.TargetID)
 		Expect(err).NotTo(HaveOccurred())
@@ -321,13 +317,11 @@ var _ = Describe("SQLite store [Unit]", func() {
 			testRepository("repo-2", "smykla-skalski/other", false),
 		}
 		Expect(store.UpsertAccount(ctx, account)).To(Succeed())
-		claimed, err := store.ClaimOwner(ctx, account.ID)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(claimed).To(BeTrue())
+		Expect(store.ReconcileSuperRoot(ctx, account.ID, now)).To(Succeed())
 		Expect(store.ReconcileCatalog(ctx, []storage.InstallationSnapshot{first, second})).To(Succeed())
 
 		Expect(store.ReconcileCatalog(ctx, []storage.InstallationSnapshot{second})).To(Succeed())
-		_, err = store.ResolveTargetAccess(ctx, account.ID, first.TargetID)
+		_, err := store.ResolveTargetAccess(ctx, account.ID, first.TargetID)
 		Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
 		target, err := store.GetTarget(ctx, first.TargetID)
 		Expect(err).NotTo(HaveOccurred())
@@ -337,9 +331,7 @@ var _ = Describe("SQLite store [Unit]", func() {
 	It("resolves global roles, target overrides, and local suspension in order", func() {
 		owner, target := seedInstallation(ctx, store, now)
 		Expect(store.UpsertAccount(ctx, owner)).To(Succeed())
-		claimed, err := store.ClaimOwner(ctx, owner.ID)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(claimed).To(BeTrue())
+		Expect(store.ReconcileSuperRoot(ctx, owner.ID, now)).To(Succeed())
 
 		viewer := owner
 		viewer.ID = "github:viewer"
@@ -400,9 +392,7 @@ var _ = Describe("SQLite store [Unit]", func() {
 	It("lists, bans, removes, and re-adds panel users without losing identity", func() {
 		owner, target := seedInstallation(ctx, store, now)
 		Expect(store.UpsertAccount(ctx, owner)).To(Succeed())
-		claimed, err := store.ClaimOwner(ctx, owner.ID)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(claimed).To(BeTrue())
+		Expect(store.ReconcileSuperRoot(ctx, owner.ID, now)).To(Succeed())
 
 		viewer := owner
 		viewer.ID = "github:user:managed"
@@ -529,9 +519,7 @@ var _ = Describe("SQLite store [Unit]", func() {
 	It("creates, reissues, expires, and atomically responds to named invitations", func() {
 		owner, target := seedInstallation(ctx, store, now)
 		Expect(store.UpsertAccount(ctx, owner)).To(Succeed())
-		claimed, err := store.ClaimOwner(ctx, owner.ID)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(claimed).To(BeTrue())
+		Expect(store.ReconcileSuperRoot(ctx, owner.ID, now)).To(Succeed())
 
 		invitee := owner
 		invitee.ID = "github:user:invitee"

@@ -26,7 +26,7 @@ var serveEnv = []string{
 	envPanelOrigin,
 	envPanelBase,
 	envPanelState,
-	envPanelOwner,
+	envPanelSuperRootID,
 	envPanelTTL,
 	envAppSecret,
 	envGitHubAuthURL,
@@ -66,7 +66,7 @@ func loadServe(env map[string]string, args ...string) (*serveConfig, error) {
 	cmd.Flags().String(flagPanelOrigin, "", descPanelOrigin)
 	cmd.Flags().String(flagPanelBase, defaultPanelBase, descPanelBase)
 	cmd.Flags().String(flagPanelState, defaultPanelState, descPanelState)
-	cmd.Flags().String(flagPanelOwner, "", descPanelOwner)
+	cmd.Flags().Int64(flagPanelSuperRootID, 0, descPanelSuperRootID)
 	cmd.Flags().Duration(flagPanelTTL, defaultPanelTTL, descPanelTTL)
 
 	if err := cmd.ParseFlags(args); err != nil {
@@ -253,7 +253,7 @@ var _ = Describe("Serve configuration [Unit]", func() {
 	Describe("Panel configuration", func() {
 		var enabledPanel = map[string]string{
 			envPanelOrigin:       "https://smyklot.example",
-			envPanelOwner:        "smykla-skalski",
+			envPanelSuperRootID:  "42",
 			envGitHubAppClientID: "Iv1.panel",
 			envAppSecret:         "oauth-secret",
 		}
@@ -272,7 +272,7 @@ var _ = Describe("Serve configuration [Unit]", func() {
 				publicOrigin: "https://smyklot.example",
 				basePath:     defaultPanelBase,
 				statePath:    defaultPanelState,
-				ownerLogin:   "smykla-skalski",
+				superRootID:  42,
 				clientID:     "Iv1.panel",
 				clientSecret: "oauth-secret",
 				authorizeURL: defaultGitHubAuthURL,
@@ -285,7 +285,7 @@ var _ = Describe("Serve configuration [Unit]", func() {
 			env := map[string]string{
 				envPanelOrigin:       "https://smyklot.com",
 				envPanelBase:         "/",
-				envPanelOwner:        "bartsmykla",
+				envPanelSuperRootID:  "42",
 				envGitHubAppClientID: "Iv1.panel",
 				envAppSecret:         "oauth-secret",
 			}
@@ -300,7 +300,7 @@ var _ = Describe("Serve configuration [Unit]", func() {
 				envPanelOrigin:       "https://old.example",
 				envPanelBase:         "/old",
 				envPanelState:        "/tmp/old.sqlite3",
-				envPanelOwner:        "old-owner",
+				envPanelSuperRootID:  "42",
 				envPanelTTL:          "24h",
 				envGitHubAppClientID: "Iv1.panel",
 				envAppSecret:         "oauth-secret",
@@ -310,7 +310,7 @@ var _ = Describe("Serve configuration [Unit]", func() {
 				"--panel-public-origin", "https://new.example",
 				"--panel-base-path", "/admin",
 				"--panel-state-path", "/tmp/new.sqlite3",
-				"--panel-owner", "new-owner",
+				"--panel-super-root-id", "84",
 				"--panel-session-ttl", "2h",
 			)
 			Expect(err).NotTo(HaveOccurred())
@@ -318,7 +318,7 @@ var _ = Describe("Serve configuration [Unit]", func() {
 			Expect(cfg.panel.publicOrigin).To(Equal("https://new.example"))
 			Expect(cfg.panel.basePath).To(Equal("/admin"))
 			Expect(cfg.panel.statePath).To(Equal("/tmp/new.sqlite3"))
-			Expect(cfg.panel.ownerLogin).To(Equal("new-owner"))
+			Expect(cfg.panel.superRootID).To(Equal(int64(84)))
 			Expect(cfg.panel.sessionTTL).To(Equal(2 * time.Hour))
 		})
 
@@ -326,7 +326,7 @@ var _ = Describe("Serve configuration [Unit]", func() {
 			func(name string) {
 				env := map[string]string{
 					envPanelOrigin:       "https://smyklot.example",
-					envPanelOwner:        "smykla-skalski",
+					envPanelSuperRootID:  "42",
 					envGitHubAppClientID: "Iv1.panel",
 					envAppSecret:         "oauth-secret",
 				}
@@ -335,7 +335,7 @@ var _ = Describe("Serve configuration [Unit]", func() {
 				_, err := loadServe(env)
 				Expect(err).To(MatchError(ErrPanelConfig))
 			},
-			Entry("without an owner", envPanelOwner),
+			Entry("without a Super Root ID", envPanelSuperRootID),
 			Entry("without an OAuth client ID", envGitHubAppClientID),
 			Entry("without an OAuth secret", envAppSecret),
 		)
@@ -352,6 +352,8 @@ var _ = Describe("Serve configuration [Unit]", func() {
 				Expect(err).To(MatchError(ContainSubstring(ErrPanelConfig.Error())))
 			},
 			Entry("with a non-positive session TTL", map[string]string{envPanelTTL: "0"}),
+			Entry("with a non-positive Super Root ID", map[string]string{envPanelSuperRootID: "-1"}),
+			Entry("with a non-numeric Super Root ID", map[string]string{envPanelSuperRootID: "root"}),
 			Entry("at the webhook route", map[string]string{envPanelBase: defaultWebhookPath}),
 			Entry("at the health route", map[string]string{envPanelBase: healthPath}),
 		)

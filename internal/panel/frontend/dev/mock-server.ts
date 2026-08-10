@@ -458,7 +458,7 @@ function targetUsers(state: MockState, targetId: string): PanelUser[] {
       }
       const effectiveRole = user.status === 'active' ? user.global_role : 'none';
       const source: TargetUserAccess['source'] =
-        user.status === 'active' ? (user.root ? 'root' : 'global') : 'denied';
+        user.status === 'active' ? (user.system_role !== 'none' ? 'root' : 'global') : 'denied';
       return {
         ...structuredClone(user),
         manageable,
@@ -491,7 +491,7 @@ function userSeeds(iso: (offsetMs: number) => string): PanelUser[] {
     offsetMs: number,
   ): PanelUser => ({
     account: account(id, login, displayName),
-    root: false,
+    system_role: 'none',
     status: 'active',
     global_role: role,
     revision: 1,
@@ -503,7 +503,7 @@ function userSeeds(iso: (offsetMs: number) => string): PanelUser[] {
   const root: PanelUser = {
     ...user(VIEWER.id, VIEWER.login, VIEWER.display_name, 'owner', -5 * 60_000),
     account: VIEWER,
-    root: true,
+    system_role: 'super_root',
     manageable: false,
   };
   const banned = user('1005', 'lin', 'Lin Chen', 'viewer', -9 * 86_400_000);
@@ -877,7 +877,7 @@ async function handle(
     if (path === route('/api/v1/session') && method === 'GET') {
       respond(res, 200, {
         account: VIEWER,
-        root: true,
+        system_role: 'super_root',
         status: 'active',
         global_role: 'owner',
         capabilities: OWNER_CAPABILITIES,
@@ -1353,7 +1353,7 @@ function mockUser(login: string, role: PanelRole): PanelUser {
       display_name: normalized,
       avatar_url: null,
     },
-    root: false,
+    system_role: 'none',
     status: 'active',
     global_role: role,
     revision: 1,

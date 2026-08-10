@@ -94,7 +94,7 @@ func (s *Server) postUser(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, "invalid_request", "login, role, and installation are required")
 		return
 	}
-	if *input.Role == storage.PanelRoleOwner && !actorUser.Root {
+	if *input.Role == storage.PanelRoleOwner && !actorUser.SystemRole.IsRoot() {
 		s.writeError(w, http.StatusForbidden, "forbidden", "only the root owner can appoint owners")
 		return
 	}
@@ -353,7 +353,7 @@ func (s *Server) requireGlobalUserManager(
 		s.writeInternal(w, err)
 		return storage.Account{}, storage.PanelUser{}, false
 	}
-	if !storage.EffectiveCapabilities(user.GlobalRole, user.Root).ManageGlobalUsers {
+	if !storage.EffectiveCapabilities(user.GlobalRole, user.SystemRole).ManageGlobalUsers {
 		s.writeError(w, http.StatusForbidden, "forbidden", "global user management requires Owner access")
 		return storage.Account{}, storage.PanelUser{}, false
 	}
@@ -440,10 +440,10 @@ func canManageGlobalUser(
 	actorUser, subject storage.PanelUser,
 	desiredRole storage.PanelRole,
 ) bool {
-	if actor.ID == subject.Account.ID || subject.Root {
+	if actor.ID == subject.Account.ID || subject.SystemRole.IsRoot() {
 		return false
 	}
-	if actorUser.Root {
+	if actorUser.SystemRole.IsRoot() {
 		return true
 	}
 	return subject.GlobalRole != storage.PanelRoleOwner && desiredRole != storage.PanelRoleOwner
@@ -457,11 +457,12 @@ func canManageTargetUser(
 	subjectAccess storage.TargetAccess,
 	desiredRole storage.PanelRole,
 ) bool {
-	if actor.ID == subject.Account.ID || subject.Status != storage.PanelUserActive || subject.Root ||
+	if actor.ID == subject.Account.ID || subject.Status != storage.PanelUserActive ||
+		subject.SystemRole.IsRoot() ||
 		subject.GlobalRole == storage.PanelRoleOwner {
 		return false
 	}
-	if actorAccess.Role == storage.PanelRoleOwner || actorUser.Root {
+	if actorAccess.Role == storage.PanelRoleOwner || actorUser.SystemRole.IsRoot() {
 		return desiredRole != storage.PanelRoleOwner
 	}
 	if actorAccess.Role != storage.PanelRoleAdmin ||

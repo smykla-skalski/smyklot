@@ -60,7 +60,7 @@ const VIEWER = {
     display_name: 'Ada Lovelace',
     avatar_url: null,
   },
-  root: true,
+  system_role: 'super_root' as const,
   status: 'active' as const,
   global_role: 'owner' as const,
   capabilities: {
@@ -234,7 +234,7 @@ describe('user management', () => {
   it('uses scoped user endpoints and preserves nullable inheritance', async () => {
     const user = {
       account: VIEWER.account,
-      root: false,
+      system_role: 'none' as const,
       status: 'active' as const,
       global_role: 'editor' as const,
       revision: 1,

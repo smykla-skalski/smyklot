@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -20,45 +21,45 @@ import (
 )
 
 const (
-	flagListen       = "listen"
-	flagAdminListen  = "admin-listen"
-	flagWebhookPath  = "webhook-path"
-	flagPollInterval = "poll-interval"
-	flagLogFormat    = "log-format"
-	flagLogLevel     = "log-level"
-	flagPanelOrigin  = "panel-public-origin"
-	flagPanelBase    = "panel-base-path"
-	flagPanelState   = "panel-state-path"
-	flagPanelOwner   = "panel-owner"
-	flagPanelTTL     = "panel-session-ttl"
+	flagListen           = "listen"
+	flagAdminListen      = "admin-listen"
+	flagWebhookPath      = "webhook-path"
+	flagPollInterval     = "poll-interval"
+	flagLogFormat        = "log-format"
+	flagLogLevel         = "log-level"
+	flagPanelOrigin      = "panel-public-origin"
+	flagPanelBase        = "panel-base-path"
+	flagPanelState       = "panel-state-path"
+	flagPanelSuperRootID = "panel-super-root-id"
+	flagPanelTTL         = "panel-session-ttl"
 
-	descListen       = "Address to listen on"
-	descAdminListen  = "Address to serve probes, metrics and recent failures on"
-	descWebhookPath  = "Path GitHub delivers webhooks to"
-	descPollInterval = "How often to sweep reactions and pending-CI PRs (0 disables)"
-	descLogFormat    = "Log format: json or text"
-	descLogLevel     = "Log level: debug, info, warn or error"
-	descPanelOrigin  = "Public origin for the panel (empty disables it)"
-	descPanelBase    = "Path subtree that serves the panel"
-	descPanelState   = "Path to the panel SQLite database"
-	descPanelOwner   = "GitHub login allowed to claim panel ownership"
-	descPanelTTL     = "How long a signed-in panel session remains valid"
+	descListen           = "Address to listen on"
+	descAdminListen      = "Address to serve probes, metrics and recent failures on"
+	descWebhookPath      = "Path GitHub delivers webhooks to"
+	descPollInterval     = "How often to sweep reactions and pending-CI PRs (0 disables)"
+	descLogFormat        = "Log format: json or text"
+	descLogLevel         = "Log level: debug, info, warn or error"
+	descPanelOrigin      = "Public origin for the panel (empty disables it)"
+	descPanelBase        = "Path subtree that serves the panel"
+	descPanelState       = "Path to the panel SQLite database"
+	descPanelSuperRootID = "Numeric GitHub user ID assigned as the panel Super Root"
+	descPanelTTL         = "How long a signed-in panel session remains valid"
 
-	envListenAddress  = "SMYKLOT_LISTEN_ADDRESS"
-	envAdminAddress   = "SMYKLOT_ADMIN_ADDRESS"
-	envWebhookPath    = "SMYKLOT_WEBHOOK_PATH"
-	envWebhookSecret  = "SMYKLOT_WEBHOOK_SECRET" //nolint:gosec // Environment variable name, not a credential
-	envPollInterval   = "SMYKLOT_POLL_INTERVAL"
-	envLogFormat      = "SMYKLOT_LOG_FORMAT"
-	envLogLevel       = "SMYKLOT_LOG_LEVEL"
-	envPanelOrigin    = "SMYKLOT_PANEL_PUBLIC_ORIGIN"
-	envPanelBase      = "SMYKLOT_PANEL_BASE_PATH"
-	envPanelState     = "SMYKLOT_PANEL_STATE_PATH"
-	envPanelOwner     = "SMYKLOT_PANEL_OWNER"
-	envPanelTTL       = "SMYKLOT_PANEL_SESSION_TTL"
-	envAppSecret      = "GITHUB_APP_CLIENT_SECRET" //nolint:gosec // Environment variable name, not a credential
-	envGitHubAuthURL  = "SMYKLOT_GITHUB_AUTHORIZE_URL"
-	envGitHubTokenURL = "SMYKLOT_GITHUB_TOKEN_URL" //nolint:gosec // Environment variable name, not a credential
+	envListenAddress    = "SMYKLOT_LISTEN_ADDRESS"
+	envAdminAddress     = "SMYKLOT_ADMIN_ADDRESS"
+	envWebhookPath      = "SMYKLOT_WEBHOOK_PATH"
+	envWebhookSecret    = "SMYKLOT_WEBHOOK_SECRET" //nolint:gosec // Environment variable name, not a credential
+	envPollInterval     = "SMYKLOT_POLL_INTERVAL"
+	envLogFormat        = "SMYKLOT_LOG_FORMAT"
+	envLogLevel         = "SMYKLOT_LOG_LEVEL"
+	envPanelOrigin      = "SMYKLOT_PANEL_PUBLIC_ORIGIN"
+	envPanelBase        = "SMYKLOT_PANEL_BASE_PATH"
+	envPanelState       = "SMYKLOT_PANEL_STATE_PATH"
+	envPanelSuperRootID = "SMYKLOT_PANEL_SUPER_ROOT_ID"
+	envPanelTTL         = "SMYKLOT_PANEL_SESSION_TTL"
+	envAppSecret        = "GITHUB_APP_CLIENT_SECRET" //nolint:gosec // Environment variable name, not a credential
+	envGitHubAuthURL    = "SMYKLOT_GITHUB_AUTHORIZE_URL"
+	envGitHubTokenURL   = "SMYKLOT_GITHUB_TOKEN_URL" //nolint:gosec // Environment variable name, not a credential
 
 	defaultListenAddress = ":8080"
 	defaultAdminAddress  = ":9090"
@@ -102,8 +103,8 @@ var (
 	// admin listener exists to keep private
 	ErrAddressConflict = errors.New("admin address must differ from the listen address")
 
-	// ErrPanelConfig is returned when the enabled panel lacks a required
-	// public URL, owner, state path, or OAuth credential.
+	// ErrPanelConfig is returned when the enabled panel lacks a required public
+	// URL, Super Root identity, state path, or OAuth credential.
 	ErrPanelConfig = errors.New("invalid panel configuration")
 )
 
@@ -140,7 +141,7 @@ func init() {
 	serveCmd.Flags().String(flagPanelOrigin, "", descPanelOrigin)
 	serveCmd.Flags().String(flagPanelBase, defaultPanelBase, descPanelBase)
 	serveCmd.Flags().String(flagPanelState, defaultPanelState, descPanelState)
-	serveCmd.Flags().String(flagPanelOwner, "", descPanelOwner)
+	serveCmd.Flags().Int64(flagPanelSuperRootID, 0, descPanelSuperRootID)
 	serveCmd.Flags().Duration(flagPanelTTL, defaultPanelTTL, descPanelTTL)
 
 	rootCmd.AddCommand(serveCmd)
@@ -187,7 +188,7 @@ type panelServeConfig struct {
 	publicOrigin string
 	basePath     string
 	statePath    string
-	ownerLogin   string
+	superRootID  int64
 	clientID     string
 	clientSecret string
 	authorizeURL string
@@ -279,9 +280,15 @@ func applyPanelFlags(cmd *cobra.Command, cfg *serveConfig) error {
 	if err != nil {
 		return err
 	}
-	owner, err := cmd.Flags().GetString(flagPanelOwner)
+	superRootID, err := cmd.Flags().GetInt64(flagPanelSuperRootID)
 	if err != nil {
 		return err
+	}
+	superRootID, err = flagOrEnvInt64(
+		cmd, flagPanelSuperRootID, superRootID, envPanelSuperRootID,
+	)
+	if err != nil {
+		return fmt.Errorf("%w: invalid Super Root ID", ErrPanelConfig)
 	}
 	ttl, err := cmd.Flags().GetDuration(flagPanelTTL)
 	if err != nil {
@@ -296,7 +303,7 @@ func applyPanelFlags(cmd *cobra.Command, cfg *serveConfig) error {
 		publicOrigin: origin,
 		basePath:     normalizePanelBasePath(flagOrEnv(cmd, flagPanelBase, basePath, envPanelBase)),
 		statePath:    flagOrEnv(cmd, flagPanelState, statePath, envPanelState),
-		ownerLogin:   flagOrEnv(cmd, flagPanelOwner, owner, envPanelOwner),
+		superRootID:  superRootID,
 		clientID:     strings.TrimSpace(os.Getenv(envGitHubAppClientID)),
 		clientSecret: os.Getenv(envAppSecret),
 		authorizeURL: envOrDefault(envGitHubAuthURL, defaultGitHubAuthURL),
@@ -304,7 +311,7 @@ func applyPanelFlags(cmd *cobra.Command, cfg *serveConfig) error {
 		sessionTTL:   ttl,
 	}
 	if strings.TrimSpace(cfg.panel.statePath) == "" ||
-		strings.TrimSpace(cfg.panel.ownerLogin) == "" ||
+		cfg.panel.superRootID <= 0 ||
 		cfg.panel.clientID == "" ||
 		strings.TrimSpace(cfg.panel.clientSecret) == "" || ttl <= 0 {
 		return ErrPanelConfig
@@ -485,4 +492,23 @@ func flagOrEnvDuration(
 	}
 
 	return parsed, nil
+}
+
+// flagOrEnvInt64 resolves an integer setting under flagOrEnv's precedence.
+func flagOrEnvInt64(
+	cmd *cobra.Command,
+	flagName string,
+	flagValue int64,
+	envVar string,
+) (int64, error) {
+	if cmd.Flags().Changed(flagName) {
+		return flagValue, nil
+	}
+
+	raw := strings.TrimSpace(os.Getenv(envVar))
+	if raw == "" {
+		return flagValue, nil
+	}
+
+	return strconv.ParseInt(raw, 10, 64)
 }

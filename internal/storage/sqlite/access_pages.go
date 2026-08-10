@@ -339,11 +339,13 @@ func targetPanelUser(
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return storage.TargetPanelUser{}, err
 	}
-	access := resolvedTargetAccess(user.Root, user.Status, user.GlobalRole, targetRole, suspended)
+	access := resolvedTargetAccess(
+		user.SystemRole.IsRoot(), user.Status, user.GlobalRole, targetRole, suspended,
+	)
 	if overridePointer != nil {
 		access.SuspensionReason = overridePointer.SuspensionReason
 	}
-	access.Capabilities = storage.EffectiveCapabilities(access.Role, user.Root)
+	access.Capabilities = storage.EffectiveCapabilities(access.Role, user.SystemRole)
 
 	return storage.TargetPanelUser{User: user, Override: overridePointer, Access: access}, nil
 }

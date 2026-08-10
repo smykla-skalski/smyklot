@@ -83,7 +83,7 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 				publicOrigin: "https://smyklot.example",
 				basePath:     defaultPanelBase,
 				statePath:    GinkgoT().TempDir() + "/panel.sqlite3",
-				ownerLogin:   "smykla-skalski",
+				superRootID:  42,
 				clientID:     "Iv1.test",
 				clientSecret: "oauth-secret",
 				authorizeURL: endpoint.URL + "/authorize",
@@ -119,7 +119,7 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 				publicOrigin: "https://smyklot.com",
 				basePath:     "",
 				statePath:    GinkgoT().TempDir() + "/panel.sqlite3",
-				ownerLogin:   "bartsmykla",
+				superRootID:  42,
 				clientID:     "Iv1.test",
 				clientSecret: "oauth-secret",
 				authorizeURL: endpoint.URL + "/authorize",
@@ -213,9 +213,7 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 			UpdatedAt:   now,
 		}
 		Expect(service.store.UpsertAccount(GinkgoT().Context(), owner)).To(Succeed())
-		claimed, err := service.store.ClaimOwner(GinkgoT().Context(), owner.ID)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(claimed).To(BeTrue())
+		Expect(service.store.ReconcileSuperRoot(GinkgoT().Context(), owner.ID, now)).To(Succeed())
 		stub.installations = `[
 			{"id":111,"account":{"id":7,"login":"smykla-skalski","type":"Organization"}},
 			{"id":222,"account":{"id":8,"login":"another-org","type":"Organization"}}
@@ -243,9 +241,7 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 			UpdatedAt:   now,
 		}
 		Expect(service.store.UpsertAccount(GinkgoT().Context(), owner)).To(Succeed())
-		claimed, err := service.store.ClaimOwner(GinkgoT().Context(), owner.ID)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(claimed).To(BeTrue())
+		Expect(service.store.ReconcileSuperRoot(GinkgoT().Context(), owner.ID, now)).To(Succeed())
 		const sessionToken = "catalog-event-session"
 		digest := sha256.Sum256([]byte(sessionToken))
 		Expect(service.store.CreateSession(GinkgoT().Context(), storage.Session{

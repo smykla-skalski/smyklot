@@ -68,6 +68,10 @@ type panelHarness struct {
 }
 
 func newPanelHarness(t *testing.T, login string) *panelHarness {
+	return newPanelHarnessForSubject(t, login, "1")
+}
+
+func newPanelHarnessForSubject(t *testing.T, login, subjectID string) *panelHarness {
 	t.Helper()
 	now := time.Date(2026, time.August, 8, 12, 0, 0, 0, time.UTC)
 	store, err := storagesqlite.Open(t.Context(), filepath.Join(t.TempDir(), "panel.db"))
@@ -76,9 +80,9 @@ func newPanelHarness(t *testing.T, login string) *panelHarness {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	viewer := storage.Account{
-		ID:          "github:test:user:1",
+		ID:          "github:test:user:" + subjectID,
 		Provider:    "github:test",
-		SubjectID:   "1",
+		SubjectID:   subjectID,
 		Login:       login,
 		DisplayName: "Panel Owner",
 	}
@@ -114,7 +118,7 @@ func newPanelHarness(t *testing.T, login string) *panelHarness {
 	server, err := New(Config{
 		BasePath:      "/panel",
 		PublicOrigin:  "https://smyklot.example",
-		OwnerLogin:    "owner",
+		SuperRootID:   1,
 		ClientID:      "client-id",
 		ClientSecret:  "client-secret",
 		AuthorizeURL:  "https://github.example/authorize",
@@ -228,7 +232,9 @@ func TestPanelSignInAndSettings(t *testing.T) {
 	session := harness.signIn(t)
 
 	viewer := harness.request(t, http.MethodGet, "/panel/api/v1/session", nil, session)
-	if viewer.Code != http.StatusOK || !strings.Contains(viewer.Body.String(), `"target_count":1`) {
+	if viewer.Code != http.StatusOK ||
+		!strings.Contains(viewer.Body.String(), `"target_count":1`) ||
+		!strings.Contains(viewer.Body.String(), `"system_role":"super_root"`) {
 		t.Fatalf("viewer response = %d %s", viewer.Code, viewer.Body.String())
 	}
 
@@ -1275,7 +1281,7 @@ func seedFailure(
 }
 
 func TestPanelRejectsAnotherOwnerAndCrossOriginWrites(t *testing.T) {
-	nonOwner := newPanelHarness(t, "someone-else")
+	nonOwner := newPanelHarnessForSubject(t, "someone-else", "99")
 	start := httptest.NewRecorder()
 	nonOwner.handler.ServeHTTP(start, httptest.NewRequest(http.MethodGet, "/panel/auth/github/start", nil))
 	stateCookie := responseCookie(t, start, stateCookieName)

@@ -39,7 +39,7 @@ primary_region = "fra"
   SMYKLOT_PANEL_PUBLIC_ORIGIN = "https://smyklot.com"
   SMYKLOT_PANEL_BASE_PATH = "/"
   SMYKLOT_PANEL_STATE_PATH = "/data/panel.sqlite3"
-  SMYKLOT_PANEL_OWNER = "bartsmykla"
+  SMYKLOT_PANEL_SUPER_ROOT_ID = "11655498"
 
   # The Go runtime cannot see the machine's memory limit, so it is told.
   # Measured idle is ~17MB and ~23MB under a burst, so 200MiB leaves the

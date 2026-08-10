@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -106,14 +107,12 @@ func (s *Server) finishSignIn(w http.ResponseWriter, r *http.Request) {
 	if handled {
 		return
 	}
-	authorized := invited
-	if !authorized {
-		authorized, err = s.authorizeAccount(r, account)
-	}
+	authorized, err := s.authorizeAccount(r, account)
 	if err != nil {
 		s.writeInternal(w, err)
 		return
 	}
+	authorized = authorized || invited
 	if !authorized {
 		s.writeError(w, http.StatusForbidden, "forbidden", "this GitHub account cannot access the panel")
 		return
@@ -169,15 +168,12 @@ func (s *Server) respondToInvitation(
 }
 
 func (s *Server) authorizeAccount(r *http.Request, account storage.Account) (bool, error) {
-	owner, err := s.store.IsOwner(r.Context(), account.ID)
-	if err != nil || owner {
-		return owner, err
-	}
-	if strings.EqualFold(account.Login, s.cfg.OwnerLogin) {
-		claimed, claimErr := s.store.ClaimOwner(r.Context(), account.ID)
-		if claimErr != nil || claimed {
-			return claimed, claimErr
+	if account.SubjectID == strconv.FormatInt(s.cfg.SuperRootID, 10) {
+		if err := s.store.ReconcileSuperRoot(r.Context(), account.ID, s.now().UTC()); err != nil {
+			return false, err
 		}
+
+		return true, nil
 	}
 	user, err := s.store.GetPanelUser(r.Context(), account.ID)
 	if errors.Is(err, storage.ErrNotFound) {

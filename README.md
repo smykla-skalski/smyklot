@@ -357,7 +357,7 @@ Point the GitHub App's webhook at `https://your-host/webhook`, subscribe it to *
 | `SMYKLOT_PANEL_PUBLIC_ORIGIN`  | `--panel-public-origin` | disabled                            | Browser-visible scheme and host; setting it enables the panel                |
 | `SMYKLOT_PANEL_BASE_PATH`      | `--panel-base-path`     | `/panel`                            | Public path subtree for the panel                                            |
 | `SMYKLOT_PANEL_STATE_PATH`     | `--panel-state-path`    | `/var/lib/smyklot/panel.sqlite3`    | Writable SQLite database path                                                |
-| `SMYKLOT_PANEL_OWNER`          | `--panel-owner`         | required when panel is enabled      | GitHub login allowed to claim immutable panel ownership                      |
+| `SMYKLOT_PANEL_SUPER_ROOT_ID`  | `--panel-super-root-id` | required when panel is enabled      | Numeric GitHub user ID assigned as the singleton Super Root                  |
 | `SMYKLOT_PANEL_SESSION_TTL`    | `--panel-session-ttl`   | `12h`                               | Signed-in panel session lifetime                                             |
 | `GITHUB_APP_CLIENT_SECRET`     | -                       | required when panel is enabled      | GitHub App OAuth client secret                                               |
 
@@ -365,7 +365,7 @@ The webhook secret, private key and OAuth client secret have no flag on purpose 
 
 ### Administration panel
 
-Set `SMYKLOT_PANEL_PUBLIC_ORIGIN` to enable the panel, then add `<public origin>/panel/auth/github/callback` as the GitHub App callback URL. The first successful sign-in matching `SMYKLOT_PANEL_OWNER` binds ownership to that GitHub account's immutable ID; later login renames do not transfer ownership.
+Set `SMYKLOT_PANEL_PUBLIC_ORIGIN` to enable the panel, then add `<public origin>/panel/auth/github/callback` as the GitHub App callback URL. The configured numeric `SMYKLOT_PANEL_SUPER_ROOT_ID` is matched against GitHub's immutable user ID on sign-in. Changing it promotes the new identity and demotes the former Super Root to Root when the new identity next signs in.
 
 The panel synchronizes every installation and repository visible to the App. New installations default to **Off**, so the service only handles repositories an administrator enables deliberately. Account settings act as defaults, and the effective order is process configuration → account panel settings → `.github/smyklot.yaml` → repository panel settings. A repository may explicitly bypass an invalid file; that exception is visible and audited.
 

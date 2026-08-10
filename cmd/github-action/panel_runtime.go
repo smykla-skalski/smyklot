@@ -47,7 +47,7 @@ func (s *server) initPanel(ctx context.Context) error {
 	panelServer, err := adminpanel.New(adminpanel.Config{
 		BasePath:      s.cfg.panel.basePath,
 		PublicOrigin:  s.cfg.panel.publicOrigin,
-		OwnerLogin:    s.cfg.panel.ownerLogin,
+		SuperRootID:   s.cfg.panel.superRootID,
 		ClientID:      s.cfg.panel.clientID,
 		ClientSecret:  s.cfg.panel.clientSecret,
 		AuthorizeURL:  s.cfg.panel.authorizeURL,

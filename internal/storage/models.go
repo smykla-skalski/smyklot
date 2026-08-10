@@ -17,6 +17,21 @@ type Account struct {
 	UpdatedAt   time.Time
 }
 
+// SystemRole is an account-wide Smyklot administration role, modeled
+// separately from installation access.
+type SystemRole string
+
+const (
+	SystemRoleNone      SystemRole = "none"
+	SystemRoleRoot      SystemRole = "root"
+	SystemRoleSuperRoot SystemRole = "super_root"
+)
+
+// IsRoot reports whether the role can enter Root administration.
+func (role SystemRole) IsRoot() bool {
+	return role == SystemRoleRoot || role == SystemRoleSuperRoot
+}
+
 // PanelRole is a user's default or installation-specific authorization level.
 type PanelRole string
 
@@ -88,7 +103,7 @@ type TargetPanelUserPage struct {
 // PanelUser is one persisted panel identity and its global access policy.
 type PanelUser struct {
 	Account     Account
-	Root        bool
+	SystemRole  SystemRole
 	Status      PanelUserStatus
 	GlobalRole  PanelRole
 	BanReason   *string
@@ -251,8 +266,8 @@ type AccessCapabilities struct {
 }
 
 // EffectiveCapabilities returns the fixed capability set for a resolved role.
-func EffectiveCapabilities(role PanelRole, root bool) AccessCapabilities {
-	capabilities := AccessCapabilities{ManageOwners: root}
+func EffectiveCapabilities(role PanelRole, systemRole SystemRole) AccessCapabilities {
+	capabilities := AccessCapabilities{ManageOwners: systemRole.IsRoot()}
 	switch role {
 	case PanelRoleOwner:
 		capabilities.Read = true

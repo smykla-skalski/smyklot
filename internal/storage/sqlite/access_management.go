@@ -92,7 +92,7 @@ func (s *Store) UpdatePanelUser(
 	if current.Revision != change.ExpectedRevision {
 		return storage.PanelUser{}, storage.ErrConflict
 	}
-	if current.Root && (change.Status != storage.PanelUserActive ||
+	if current.SystemRole.IsRoot() && (change.Status != storage.PanelUserActive ||
 		change.GlobalRole != storage.PanelRoleOwner) {
 		return storage.PanelUser{}, storage.ErrConflict
 	}

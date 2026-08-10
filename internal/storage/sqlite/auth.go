@@ -30,64 +30,96 @@ func (s *Store) GetAccount(ctx context.Context, id string) (storage.Account, err
 	return account, nil
 }
 
-// ClaimOwner binds the panel to the first approved account. The binding is
-// immutable: later calls return whether the supplied account already owns it.
-func (s *Store) ClaimOwner(ctx context.Context, accountID string) (bool, error) {
+// ReconcileSuperRoot makes accountID the singleton Super Root. Reassigning the
+// configured identity demotes the former Super Root to Root atomically.
+func (s *Store) ReconcileSuperRoot(
+	ctx context.Context,
+	accountID string,
+	changedAt time.Time,
+) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return false, fmt.Errorf("begin panel owner claim: %w", err)
+		return fmt.Errorf("begin Super Root reconciliation: %w", err)
 	}
 
 	defer func() { _ = tx.Rollback() }()
 
-	if _, err := tx.ExecContext(ctx, `
-INSERT INTO panel_owner (singleton, account_id)
-VALUES (1, ?)
-ON CONFLICT(singleton) DO NOTHING`, accountID); err != nil {
-		return false, fmt.Errorf("claim panel owner: %w", err)
+	var previousID string
+	var previousStatus storage.PanelUserStatus
+	previousErr := tx.QueryRowContext(ctx, `
+SELECT account_id, status FROM panel_users WHERE system_role = 'super_root'`).
+		Scan(&previousID, &previousStatus)
+	if previousErr != nil && !errors.Is(previousErr, sql.ErrNoRows) {
+		return fmt.Errorf("read current Super Root: %w", previousErr)
+	}
+	if previousID == accountID && previousStatus == storage.PanelUserActive {
+		return nil
 	}
 
-	var ownerID string
-	if err := tx.QueryRowContext(ctx, "SELECT account_id FROM panel_owner WHERE singleton = 1").
-		Scan(&ownerID); err != nil {
-		return false, fmt.Errorf("read panel owner claim: %w", err)
+	if previousErr == nil && previousID != accountID {
+		if _, err := tx.ExecContext(ctx, `
+UPDATE panel_users
+SET system_role = 'root', revision = revision + 1, updated_at = ?
+WHERE account_id = ?`, formatTime(changedAt), previousID); err != nil {
+			return fmt.Errorf("demote former Super Root: %w", err)
+		}
+		if err := insertAccessAudit(
+			ctx, tx, nil, accountID, previousID, "system_role.changed",
+			"changed system role to root", changedAt,
+		); err != nil {
+			return err
+		}
 	}
-	if _, err := tx.ExecContext(ctx, `
+
+	result, err := tx.ExecContext(ctx, `
 INSERT INTO panel_users (
-    account_id, root, status, global_role, revision, created_at, updated_at
+    account_id, root, status, global_role, revision, created_at, updated_at, system_role
 )
-SELECT id, 1, 'active', 'owner', 1, updated_at, updated_at
+SELECT id, 1, 'active', 'owner', 1, ?, ?, 'super_root'
 FROM accounts WHERE id = ?
 ON CONFLICT(account_id) DO UPDATE SET
     root = 1,
     status = 'active',
     global_role = 'owner',
+    system_role = 'super_root',
     ban_reason = NULL,
     banned_at = NULL,
-    removed_at = NULL`, ownerID); err != nil {
-		return false, fmt.Errorf("activate panel root: %w", err)
+    removed_at = NULL,
+    revision = panel_users.revision + 1,
+    updated_at = excluded.updated_at`,
+		formatTime(changedAt),
+		formatTime(changedAt),
+		accountID,
+	)
+	if err != nil {
+		return fmt.Errorf("promote configured Super Root: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read Super Root reconciliation result: %w", err)
+	}
+	if changed != 1 {
+		return fmt.Errorf("promote configured Super Root: %w", storage.ErrNotFound)
+	}
+	if previousID != accountID {
+		if err := insertAccessAudit(
+			ctx, tx, nil, accountID, accountID, "system_role.changed",
+			"changed system role to super_root", changedAt,
+		); err != nil {
+			return err
+		}
+	} else if err := insertAccessAudit(
+		ctx, tx, nil, accountID, accountID, "system_role.restored",
+		"restored configured Super Root", changedAt,
+	); err != nil {
+		return err
 	}
 
 	if err := tx.Commit(); err != nil {
-		return false, fmt.Errorf("commit panel owner claim: %w", err)
+		return fmt.Errorf("commit Super Root reconciliation: %w", err)
 	}
 
-	return ownerID == accountID, nil
-}
-
-// IsOwner reports whether the immutable panel owner binding names accountID.
-func (s *Store) IsOwner(ctx context.Context, accountID string) (bool, error) {
-	var ownerID string
-	err := s.db.QueryRowContext(ctx, "SELECT account_id FROM panel_owner WHERE singleton = 1").
-		Scan(&ownerID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
-	}
-	if err != nil {
-		return false, fmt.Errorf("read panel owner: %w", err)
-	}
-
-	return ownerID == accountID, nil
+	return nil
 }
 
 // CreateSession adds a session and keeps only the newest maxActive sessions

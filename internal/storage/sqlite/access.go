@@ -20,7 +20,7 @@ SELECT
     a.display_name,
     a.avatar_url,
     a.updated_at,
-    pu.root,
+    pu.system_role,
     pu.status,
     pu.global_role,
     pu.ban_reason,
@@ -226,23 +226,24 @@ func (s *Store) GetTargetAccessOverride(
 	return override, nil
 }
 
-// ResolveTargetAccess applies account status, root, suspension, override, and
+// ResolveTargetAccess applies account status, system role, suspension, override, and
 // global role precedence to one available installation.
 func (s *Store) ResolveTargetAccess(
 	ctx context.Context,
 	accountID, targetID string,
 ) (storage.TargetAccess, error) {
-	var root, suspended bool
+	var systemRole storage.SystemRole
+	var suspended bool
 	var status storage.PanelUserStatus
 	var globalRole storage.PanelRole
 	var targetRole, suspensionReason sql.NullString
 	err := s.db.QueryRowContext(ctx, `
-SELECT pu.root, pu.status, pu.global_role, tr.role, COALESCE(tr.suspended, 0), tr.suspension_reason
+SELECT pu.system_role, pu.status, pu.global_role, tr.role, COALESCE(tr.suspended, 0), tr.suspension_reason
 FROM panel_users pu
 JOIN targets t ON t.id = ? AND t.available = 1
 LEFT JOIN target_roles tr ON tr.account_id = pu.account_id AND tr.target_id = t.id
 WHERE pu.account_id = ?`, targetID, accountID).Scan(
-		&root,
+		&systemRole,
 		&status,
 		&globalRole,
 		&targetRole,
@@ -253,9 +254,10 @@ WHERE pu.account_id = ?`, targetID, accountID).Scan(
 		return storage.TargetAccess{}, fmt.Errorf("resolve target access: %w", noRows(err))
 	}
 
+	root := systemRole.IsRoot()
 	access := resolvedTargetAccess(root, status, globalRole, targetRole, suspended)
 	access.SuspensionReason = stringPointer(suspensionReason)
-	access.Capabilities = storage.EffectiveCapabilities(access.Role, root)
+	access.Capabilities = storage.EffectiveCapabilities(access.Role, systemRole)
 
 	return access, nil
 }
@@ -268,7 +270,7 @@ LEFT JOIN target_roles tr ON tr.account_id = pu.account_id AND tr.target_id = t.
 WHERE t.available = 1
   AND pu.status = 'active'
   AND (
-      pu.root = 1
+      pu.system_role IN ('root', 'super_root')
       OR pu.global_role = 'owner'
       OR (
           COALESCE(tr.suspended, 0) = 0
@@ -454,7 +456,7 @@ func scanPanelUser(scanner rowScanner) (storage.PanelUser, error) {
 		&user.Account.DisplayName,
 		&avatar,
 		&accountUpdatedAt,
-		&user.Root,
+		&user.SystemRole,
 		&user.Status,
 		&user.GlobalRole,
 		&banReason,

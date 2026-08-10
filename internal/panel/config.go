@@ -29,7 +29,7 @@ var errInvalidConfig = errors.New("invalid panel configuration")
 type Config struct {
 	BasePath      string
 	PublicOrigin  string
-	OwnerLogin    string
+	SuperRootID   int64
 	ClientID      string
 	ClientSecret  string
 	AuthorizeURL  string
@@ -56,13 +56,15 @@ func (c Config) validated() (Config, error) {
 	}
 
 	for label, value := range map[string]string{
-		"owner login":   c.OwnerLogin,
 		"client id":     c.ClientID,
 		"client secret": c.ClientSecret,
 	} {
 		if strings.TrimSpace(value) == "" {
 			return Config{}, fmt.Errorf("%w: %s must not be blank", errInvalidConfig, label)
 		}
+	}
+	if c.SuperRootID <= 0 {
+		return Config{}, fmt.Errorf("%w: Super Root ID must be positive", errInvalidConfig)
 	}
 
 	if c.SessionTTL == 0 {
