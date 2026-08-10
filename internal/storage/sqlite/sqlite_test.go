@@ -330,7 +330,6 @@ END`)
 		panelUser, err := store.GetPanelUser(ctx, owner.ID)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(panelUser.SystemRole).To(Equal(storage.SystemRoleSuperRoot))
-		Expect(panelUser.GlobalRole).To(Equal(storage.PanelRoleOwner))
 		Expect(store.ReconcileSuperRoot(ctx, owner.ID, now.Add(time.Second))).To(Succeed())
 		unchanged, err := store.GetPanelUser(ctx, owner.ID)
 		Expect(err).NotTo(HaveOccurred())
@@ -375,11 +374,10 @@ END`)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(user.Status).To(Equal(storage.PanelUserActive))
 		Expect(user.SystemRole).To(Equal(storage.SystemRoleNone))
-		Expect(user.GlobalRole).To(Equal(storage.PanelRoleNone))
 
 		removed, err := store.UpdatePanelUser(ctx, storage.PanelUserChange{
 			AccountID: owner.ID, ActorAccountID: owner.ID,
-			GlobalRole: storage.PanelRoleNone, Status: storage.PanelUserRemoved,
+			Status:           storage.PanelUserRemoved,
 			ExpectedRevision: user.Revision, ChangedAt: now.Add(time.Minute),
 		})
 		Expect(err).NotTo(HaveOccurred())
@@ -421,7 +419,7 @@ END`)
 		Expect(store.ReconcileInstallation(ctx, initial)).To(Succeed())
 		access, err := store.ResolveTargetAccess(ctx, account.ID, initial.TargetID, now)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(access.Role).To(Equal(storage.PanelRoleOwner))
+		Expect(access.Role).To(Equal(storage.InstallationRoleOwner))
 		_, err = store.ResolveTargetAccess(ctx, account.ID, "missing-target", now)
 		Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
 
@@ -580,7 +578,7 @@ END`)
 		Expect(target.Available).To(BeFalse())
 	})
 
-	It("ignores global roles and resolves target roles and suspension in order", func() {
+	It("resolves installation roles and suspension in order", func() {
 		owner, target := seedInstallation(ctx, store, now)
 		Expect(store.UpsertAccount(ctx, owner)).To(Succeed())
 		Expect(store.ReconcileSuperRoot(ctx, owner.ID, now)).To(Succeed())
@@ -592,16 +590,15 @@ END`)
 		Expect(store.UpsertAccount(ctx, viewer)).To(Succeed())
 		created, err := store.CreatePanelUser(ctx, storage.PanelUserCreate{
 			AccountID:      viewer.ID,
-			GlobalRole:     storage.PanelRoleViewer,
 			ActorAccountID: owner.ID,
 			ChangedAt:      now,
 		})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(created.GlobalRole).To(Equal(storage.PanelRoleViewer))
+		Expect(created.Status).To(Equal(storage.PanelUserActive))
 
 		access, err := store.ResolveTargetAccess(ctx, viewer.ID, target.TargetID, now)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(access.Role).To(Equal(storage.PanelRoleNone))
+		Expect(access.Role).To(Equal(storage.InstallationRoleNone))
 		Expect(access.Source).To(Equal(storage.AccessSourceDenied))
 		Expect(access.Capabilities.Read).To(BeFalse())
 		Expect(access.Capabilities.Write).To(BeFalse())
@@ -610,7 +607,7 @@ END`)
 			TargetID:         target.TargetID,
 			SubjectAccountID: viewer.ID,
 			ActorAccountID:   owner.ID,
-			Role:             rolePointer(storage.PanelRoleEditor),
+			Role:             rolePointer(storage.InstallationRoleEditor),
 			ExpectedRevision: 0,
 			ChangedAt:        now.Add(time.Minute),
 		})
@@ -618,7 +615,7 @@ END`)
 		Expect(override.Revision).To(Equal(int64(1)))
 		access, err = store.ResolveTargetAccess(ctx, viewer.ID, target.TargetID, now.Add(time.Minute))
 		Expect(err).NotTo(HaveOccurred())
-		Expect(access.Role).To(Equal(storage.PanelRoleEditor))
+		Expect(access.Role).To(Equal(storage.InstallationRoleEditor))
 		Expect(access.Source).To(Equal(storage.AccessSourceTarget))
 		Expect(access.Capabilities.Write).To(BeTrue())
 
@@ -627,7 +624,7 @@ END`)
 			TargetID:         target.TargetID,
 			SubjectAccountID: viewer.ID,
 			ActorAccountID:   owner.ID,
-			Role:             rolePointer(storage.PanelRoleEditor),
+			Role:             rolePointer(storage.InstallationRoleEditor),
 			Suspended:        true,
 			SuspensionReason: &reason,
 			ExpectedRevision: override.Revision,
@@ -636,7 +633,7 @@ END`)
 		Expect(err).NotTo(HaveOccurred())
 		access, err = store.ResolveTargetAccess(ctx, viewer.ID, target.TargetID, now.Add(2*time.Minute))
 		Expect(err).NotTo(HaveOccurred())
-		Expect(access.Role).To(Equal(storage.PanelRoleNone))
+		Expect(access.Role).To(Equal(storage.InstallationRoleNone))
 		Expect(access.Source).To(Equal(storage.AccessSourceSuspended))
 		Expect(access.SuspensionReason).To(HaveValue(Equal(reason)))
 	})
@@ -664,7 +661,7 @@ END`)
 			ctx, owner.ID, target.TargetID, now.Add(storage.OwnershipFreshFor),
 		)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(access.Role).To(Equal(storage.PanelRoleOwner))
+		Expect(access.Role).To(Equal(storage.InstallationRoleOwner))
 
 		staleAt := now.Add(storage.OwnershipFreshFor + time.Second)
 		targets, err = store.ListTargets(ctx, owner.ID, staleAt)
@@ -672,7 +669,7 @@ END`)
 		Expect(targets).To(BeEmpty())
 		access, err = store.ResolveTargetAccess(ctx, owner.ID, target.TargetID, staleAt)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(access.Role).To(Equal(storage.PanelRoleNone))
+		Expect(access.Role).To(Equal(storage.InstallationRoleNone))
 		Expect(access.Source).To(Equal(storage.AccessSourceDenied))
 
 		detail := "organization Members read permission requires installation approval"
@@ -690,7 +687,7 @@ END`)
 		Expect(diagnostic.Ownership.Status).To(Equal(storage.OwnershipStatusPermissionPending))
 		access, err = store.ResolveTargetAccess(ctx, owner.ID, target.TargetID, staleAt)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(access.Role).To(Equal(storage.PanelRoleNone))
+		Expect(access.Role).To(Equal(storage.InstallationRoleNone))
 	})
 
 	It("lists, bans, removes, and re-adds panel users without losing identity", func() {
@@ -705,7 +702,6 @@ END`)
 		Expect(store.UpsertAccount(ctx, viewer)).To(Succeed())
 		managed, err := store.CreatePanelUser(ctx, storage.PanelUserCreate{
 			AccountID:      viewer.ID,
-			GlobalRole:     storage.PanelRoleViewer,
 			ActorAccountID: owner.ID,
 			ChangedAt:      now,
 		})
@@ -714,7 +710,7 @@ END`)
 			TargetID:         target.TargetID,
 			SubjectAccountID: viewer.ID,
 			ActorAccountID:   owner.ID,
-			Role:             rolePointer(storage.PanelRoleEditor),
+			Role:             rolePointer(storage.InstallationRoleEditor),
 			ExpectedRevision: 0,
 			ChangedAt:        now,
 		})
@@ -728,13 +724,12 @@ END`)
 		Expect(targetUsers).To(HaveLen(2))
 		managedTarget := targetUserByID(targetUsers, viewer.ID)
 		Expect(managedTarget.Override).NotTo(BeNil())
-		Expect(managedTarget.Access.Role).To(Equal(storage.PanelRoleEditor))
+		Expect(managedTarget.Access.Role).To(Equal(storage.InstallationRoleEditor))
 
 		reason := "credential review"
 		managed, err = store.UpdatePanelUser(ctx, storage.PanelUserChange{
 			AccountID:        viewer.ID,
 			ActorAccountID:   owner.ID,
-			GlobalRole:       storage.PanelRoleViewer,
 			Status:           storage.PanelUserBanned,
 			BanReason:        &reason,
 			ExpectedRevision: managed.Revision,
@@ -747,31 +742,27 @@ END`)
 		managed, err = store.UpdatePanelUser(ctx, storage.PanelUserChange{
 			AccountID:        viewer.ID,
 			ActorAccountID:   owner.ID,
-			GlobalRole:       storage.PanelRoleViewer,
 			Status:           storage.PanelUserRemoved,
 			ExpectedRevision: managed.Revision,
 			ChangedAt:        now.Add(2 * time.Minute),
 		})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(managed.Status).To(Equal(storage.PanelUserRemoved))
-		Expect(managed.GlobalRole).To(Equal(storage.PanelRoleNone))
 		users, err = store.ListPanelUsers(ctx)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(users).To(HaveLen(1))
 
 		managed, err = store.CreatePanelUser(ctx, storage.PanelUserCreate{
 			AccountID:      viewer.ID,
-			GlobalRole:     storage.PanelRoleAdmin,
 			ActorAccountID: owner.ID,
 			ChangedAt:      now.Add(3 * time.Minute),
 		})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(managed.Status).To(Equal(storage.PanelUserActive))
-		Expect(managed.GlobalRole).To(Equal(storage.PanelRoleAdmin))
 		Expect(managed.Revision).To(Equal(int64(4)))
 		_, err = store.SetTargetAccess(ctx, storage.TargetAccessChange{
 			TargetID: target.TargetID, SubjectAccountID: viewer.ID, ActorAccountID: owner.ID,
-			Role: rolePointer(storage.PanelRoleAdmin), ExpectedRevision: 0,
+			Role: rolePointer(storage.InstallationRoleAdmin), ExpectedRevision: 0,
 			ChangedAt: now.Add(3 * time.Minute),
 		})
 		Expect(err).NotTo(HaveOccurred())
@@ -780,32 +771,16 @@ END`)
 		Expect(targetUsers).To(HaveLen(2))
 		managedTarget = targetUserByID(targetUsers, viewer.ID)
 		Expect(managedTarget.Override).NotTo(BeNil())
-		Expect(managedTarget.Override.Role).To(HaveValue(Equal(storage.PanelRoleAdmin)))
-		Expect(managedTarget.Access.Role).To(Equal(storage.PanelRoleAdmin))
-
-		page, err := store.ListPanelUserPage(ctx, storage.PanelUserPageRequest{
-			Limit: 1, Query: "MANAGED", Roles: []storage.PanelRole{storage.PanelRoleAdmin},
-		})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(page.Total).To(Equal(1))
-		Expect(page.Items).To(HaveLen(1))
-		Expect(page.Items[0].Account.ID).To(Equal(viewer.ID))
+		Expect(managedTarget.Override.Role).To(HaveValue(Equal(storage.InstallationRoleAdmin)))
+		Expect(managedTarget.Access.Role).To(Equal(storage.InstallationRoleAdmin))
 
 		targetPage, err := store.ListTargetPanelUserPage(ctx, target.TargetID, now, storage.PanelUserPageRequest{
-			Limit: 1, Roles: []storage.PanelRole{storage.PanelRoleAdmin},
+			Limit: 1, Roles: []storage.InstallationRole{storage.InstallationRoleAdmin},
 			States: []storage.PanelUserListState{storage.PanelUserListActive},
 		})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(targetPage.Total).To(Equal(1))
 		Expect(targetPage.Items[0].User.Account.ID).To(Equal(viewer.ID))
-
-		roleAscending, err := store.ListPanelUserPage(ctx, storage.PanelUserPageRequest{
-			Limit: 10, Order: storage.PanelUserRoleAscending,
-		})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(roleAscending.Items).To(HaveLen(2))
-		Expect(roleAscending.Items[0].Account.ID).To(Equal(viewer.ID))
-		Expect(roleAscending.Items[1].Account.ID).To(Equal(owner.ID))
 
 		roleDescending, err := store.ListTargetPanelUserPage(
 			ctx,
@@ -838,13 +813,13 @@ END`)
 		viewer.DisplayName = "Root Page User"
 		Expect(store.UpsertAccount(ctx, viewer)).To(Succeed())
 		_, err := store.CreatePanelUser(ctx, storage.PanelUserCreate{
-			AccountID: viewer.ID, GlobalRole: storage.PanelRoleNone,
+			AccountID:      viewer.ID,
 			ActorAccountID: root.ID, ChangedAt: now,
 		})
 		Expect(err).NotTo(HaveOccurred())
 		_, err = store.SetTargetAccess(ctx, storage.TargetAccessChange{
 			TargetID: target.TargetID, SubjectAccountID: viewer.ID, ActorAccountID: root.ID,
-			Role: rolePointer(storage.PanelRoleEditor), ChangedAt: now,
+			Role: rolePointer(storage.InstallationRoleEditor), ChangedAt: now,
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -876,7 +851,7 @@ END`)
 		subject.Login = "root-role-user"
 		Expect(store.UpsertAccount(ctx, subject)).To(Succeed())
 		created, err := store.CreatePanelUser(ctx, storage.PanelUserCreate{
-			AccountID: subject.ID, GlobalRole: storage.PanelRoleNone,
+			AccountID:      subject.ID,
 			ActorAccountID: root.ID, ChangedAt: now,
 		})
 		Expect(err).NotTo(HaveOccurred())
@@ -924,7 +899,7 @@ END`)
 		role := storage.SystemRoleRoot
 		invitation, err := store.CreateInvitation(ctx, storage.InvitationCreate{
 			ID: "root-invitation", TokenHash: "root-invitation-token", AccountID: invitee.ID,
-			Role: storage.PanelRoleOwner, SystemRole: &role, ExpiresAt: now.Add(7 * 24 * time.Hour),
+			SystemRole: &role, ExpiresAt: now.Add(7 * 24 * time.Hour),
 			CreatedByAccount: root.ID, CreatedAt: now,
 		})
 		Expect(err).NotTo(HaveOccurred())
@@ -954,7 +929,7 @@ END`)
 		Expect(user.Status).To(Equal(storage.PanelUserActive))
 	})
 
-	It("creates, reissues, expires, and atomically responds to named invitations", func() {
+	It("creates, reissues, expires, and atomically responds to installation invitations", func() {
 		owner, target := seedInstallation(ctx, store, now)
 		Expect(store.UpsertAccount(ctx, owner)).To(Succeed())
 		Expect(store.ReconcileSuperRoot(ctx, owner.ID, now)).To(Succeed())
@@ -967,13 +942,14 @@ END`)
 
 		invitation, err := store.CreateInvitation(ctx, storage.InvitationCreate{
 			ID: "invitation-1", TokenHash: "token-1", AccountID: invitee.ID,
-			Role: storage.PanelRoleViewer, ExpiresAt: now.Add(7 * 24 * time.Hour),
+			TargetID: &target.TargetID, Role: rolePointer(storage.InstallationRoleViewer),
+			ExpiresAt:        now.Add(7 * 24 * time.Hour),
 			CreatedByAccount: owner.ID, CreatedAt: now,
 		})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(invitation.Status).To(Equal(storage.InvitationPending))
-		page, err := store.ListInvitationPage(ctx, nil, now, storage.InvitationPageRequest{
-			Limit: 10, Query: "INVITEE", Roles: []storage.PanelRole{storage.PanelRoleViewer},
+		page, err := store.ListInvitationPage(ctx, &target.TargetID, now, storage.InvitationPageRequest{
+			Limit: 10, Query: "INVITEE", Roles: []storage.InstallationRole{storage.InstallationRoleViewer},
 			Statuses: []storage.InvitationStatus{storage.InvitationPending},
 		})
 		Expect(err).NotTo(HaveOccurred())
@@ -1000,7 +976,7 @@ END`)
 		Expect(accepted.Status).To(Equal(storage.InvitationAccepted))
 		user, err := store.GetPanelUser(ctx, invitee.ID)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(user.GlobalRole).To(Equal(storage.PanelRoleViewer))
+		Expect(user.Status).To(Equal(storage.PanelUserActive))
 		_, err = store.RespondToInvitation(ctx, storage.InvitationResponse{
 			TokenHash: "token-2", AccountID: invitee.ID, Accept: true, At: now.Add(3 * time.Minute),
 		})
@@ -1008,7 +984,7 @@ END`)
 
 		targetInvitation, err := store.CreateInvitation(ctx, storage.InvitationCreate{
 			ID: "invitation-2", TokenHash: "token-3", AccountID: invitee.ID,
-			TargetID: &target.TargetID, Role: storage.PanelRoleEditor,
+			TargetID: &target.TargetID, Role: rolePointer(storage.InstallationRoleEditor),
 			ExpiresAt: now.Add(time.Hour), CreatedByAccount: owner.ID, CreatedAt: now,
 		})
 		Expect(err).NotTo(HaveOccurred())
@@ -1027,12 +1003,13 @@ END`)
 
 		listed, err := store.ListInvitations(ctx, &target.TargetID, now.Add(4*time.Hour))
 		Expect(err).NotTo(HaveOccurred())
-		Expect(listed).To(HaveLen(1))
+		Expect(listed).To(HaveLen(2))
 		Expect(listed[0].Status).To(Equal(storage.InvitationDeclined))
+		Expect(listed[1].Status).To(Equal(storage.InvitationAccepted))
 	})
 
 	It("orders invitation pages by invitee name descending", func() {
-		owner, _ := seedInstallation(ctx, store, now)
+		owner, target := seedInstallation(ctx, store, now)
 		Expect(store.UpsertAccount(ctx, owner)).To(Succeed())
 
 		alpha := owner
@@ -1054,16 +1031,16 @@ END`)
 		} {
 			_, err := store.CreateInvitation(ctx, storage.InvitationCreate{
 				ID: id, TokenHash: id, AccountID: account.ID,
-				Role: map[string]storage.PanelRole{
-					"invitation-alpha": storage.PanelRoleViewer,
-					"invitation-zulu":  storage.PanelRoleAdmin,
-				}[id], ExpiresAt: now.Add(24 * time.Hour),
+				TargetID: &target.TargetID, Role: rolePointer(map[string]storage.InstallationRole{
+					"invitation-alpha": storage.InstallationRoleViewer,
+					"invitation-zulu":  storage.InstallationRoleAdmin,
+				}[id]), ExpiresAt: now.Add(24 * time.Hour),
 				CreatedByAccount: owner.ID, CreatedAt: now,
 			})
 			Expect(err).NotTo(HaveOccurred())
 		}
 
-		page, err := store.ListInvitationPage(ctx, nil, now, storage.InvitationPageRequest{
+		page, err := store.ListInvitationPage(ctx, &target.TargetID, now, storage.InvitationPageRequest{
 			Limit: 10,
 			Order: storage.InvitationNameDescending,
 		})
@@ -1072,14 +1049,14 @@ END`)
 		Expect(page.Items[0].Account.DisplayName).To(Equal("Zulu User"))
 		Expect(page.Items[1].Account.DisplayName).To(Equal("Alpha User"))
 
-		page, err = store.ListInvitationPage(ctx, nil, now, storage.InvitationPageRequest{
+		page, err = store.ListInvitationPage(ctx, &target.TargetID, now, storage.InvitationPageRequest{
 			Limit: 10,
 			Order: storage.InvitationRoleDescending,
 		})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(page.Items).To(HaveLen(2))
-		Expect(page.Items[0].Role).To(Equal(storage.PanelRoleAdmin))
-		Expect(page.Items[1].Role).To(Equal(storage.PanelRoleViewer))
+		Expect(page.Items[0].Role).To(HaveValue(Equal(storage.InstallationRoleAdmin)))
+		Expect(page.Items[1].Role).To(HaveValue(Equal(storage.InstallationRoleViewer)))
 	})
 
 	It("discovers a recreated repository that reuses an unavailable repository name", func() {
@@ -1459,7 +1436,7 @@ func testRepository(id, fullName string, private bool) storage.RepositorySnapsho
 	}
 }
 
-func rolePointer(role storage.PanelRole) *storage.PanelRole {
+func rolePointer(role storage.InstallationRole) *storage.InstallationRole {
 	return &role
 }
 

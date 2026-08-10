@@ -32,15 +32,15 @@ func (role SystemRole) IsRoot() bool {
 	return role == SystemRoleRoot || role == SystemRoleSuperRoot
 }
 
-// PanelRole is a user's default or installation-specific authorization level.
-type PanelRole string
+// InstallationRole is a user's authorization level within one installation.
+type InstallationRole string
 
 const (
-	PanelRoleNone   PanelRole = "none"
-	PanelRoleViewer PanelRole = "viewer"
-	PanelRoleEditor PanelRole = "editor"
-	PanelRoleAdmin  PanelRole = "admin"
-	PanelRoleOwner  PanelRole = "owner"
+	InstallationRoleNone   InstallationRole = "none"
+	InstallationRoleViewer InstallationRole = "viewer"
+	InstallationRoleEditor InstallationRole = "editor"
+	InstallationRoleAdmin  InstallationRole = "admin"
+	InstallationRoleOwner  InstallationRole = "owner"
 )
 
 // PanelUserStatus is the account-wide lifecycle of a panel user.
@@ -82,15 +82,8 @@ type PanelUserPageRequest struct {
 	Limit  int
 	Order  PanelUserOrder
 	Query  string
-	Roles  []PanelRole
+	Roles  []InstallationRole
 	States []PanelUserListState
-}
-
-// PanelUserPage is one account-wide user page.
-type PanelUserPage struct {
-	Items      []PanelUser
-	NextOffset int
-	Total      int
 }
 
 // TargetPanelUserPage is one installation-scoped user page.
@@ -100,12 +93,11 @@ type TargetPanelUserPage struct {
 	Total      int
 }
 
-// PanelUser is one persisted panel identity and its global access policy.
+// PanelUser is one persisted panel identity and its account-wide lifecycle.
 type PanelUser struct {
 	Account     Account
 	SystemRole  SystemRole
 	Status      PanelUserStatus
-	GlobalRole  PanelRole
 	BanReason   *string
 	BannedAt    *time.Time
 	RemovedAt   *time.Time
@@ -118,16 +110,14 @@ type PanelUser struct {
 // PanelUserCreate activates a known provider identity and records its actor.
 type PanelUserCreate struct {
 	AccountID      string
-	GlobalRole     PanelRole
 	ActorAccountID string
 	ChangedAt      time.Time
 }
 
-// PanelUserChange atomically replaces one user's global role and lifecycle.
+// PanelUserChange atomically replaces one user's account-wide lifecycle.
 type PanelUserChange struct {
 	AccountID        string
 	ActorAccountID   string
-	GlobalRole       PanelRole
 	Status           PanelUserStatus
 	BanReason        *string
 	ExpectedRevision int64
@@ -165,7 +155,7 @@ type InvitationPageRequest struct {
 	Limit    int
 	Order    InvitationOrder
 	Query    string
-	Roles    []PanelRole
+	Roles    []InstallationRole
 	Statuses []InvitationStatus
 }
 
@@ -176,8 +166,7 @@ type InvitationPage struct {
 	Total      int
 }
 
-// AccessDecision is one immutable role, lifecycle, or invitation decision for
-// a panel identity in exactly one global or installation scope.
+// AccessDecision is one immutable role, lifecycle, or invitation decision.
 type AccessDecision struct {
 	ID        int64
 	TargetID  *string
@@ -187,13 +176,13 @@ type AccessDecision struct {
 	CreatedAt time.Time
 }
 
-// Invitation is an identity-locked offer of global or installation access.
+// Invitation is an identity-locked offer of a system or installation role.
 type Invitation struct {
 	ID          string
 	Account     Account
 	TargetID    *string
 	TargetName  *string
-	Role        PanelRole
+	Role        *InstallationRole
 	SystemRole  *SystemRole
 	Status      InvitationStatus
 	ExpiresAt   time.Time
@@ -209,7 +198,7 @@ type InvitationCreate struct {
 	TokenHash        string
 	AccountID        string
 	TargetID         *string
-	Role             PanelRole
+	Role             *InstallationRole
 	SystemRole       *SystemRole
 	ExpiresAt        time.Time
 	CreatedByAccount string
@@ -240,7 +229,7 @@ type InvitationResponse struct {
 	At        time.Time
 }
 
-// TargetPanelUser combines global identity with one installation policy.
+// TargetPanelUser combines an account identity with one installation policy.
 type TargetPanelUser struct {
 	User     PanelUser
 	Override *TargetAccessOverride
@@ -264,29 +253,24 @@ type AccessCapabilities struct {
 	Read              bool
 	Write             bool
 	ManageTargetUsers bool
-	ManageGlobalUsers bool
-	ManageOwners      bool
 }
 
 // EffectiveCapabilities returns the fixed capability set for a resolved role.
-func EffectiveCapabilities(role PanelRole, systemRole SystemRole) AccessCapabilities {
-	capabilities := AccessCapabilities{
-		ManageGlobalUsers: systemRole.IsRoot(),
-		ManageOwners:      systemRole == SystemRoleSuperRoot,
-	}
+func EffectiveCapabilities(role InstallationRole) AccessCapabilities {
+	capabilities := AccessCapabilities{}
 	switch role {
-	case PanelRoleOwner:
+	case InstallationRoleOwner:
 		capabilities.Read = true
 		capabilities.Write = true
 		capabilities.ManageTargetUsers = true
-	case PanelRoleAdmin:
+	case InstallationRoleAdmin:
 		capabilities.Read = true
 		capabilities.Write = true
 		capabilities.ManageTargetUsers = true
-	case PanelRoleEditor:
+	case InstallationRoleEditor:
 		capabilities.Read = true
 		capabilities.Write = true
-	case PanelRoleViewer:
+	case InstallationRoleViewer:
 		capabilities.Read = true
 	}
 
@@ -295,7 +279,7 @@ func EffectiveCapabilities(role PanelRole, systemRole SystemRole) AccessCapabili
 
 // TargetAccess is the effective authorization for one user and installation.
 type TargetAccess struct {
-	Role             PanelRole
+	Role             InstallationRole
 	Source           AccessSource
 	Root             bool
 	SuspensionReason *string
@@ -308,7 +292,7 @@ type TargetAccess struct {
 type TargetAccessOverride struct {
 	TargetID         string
 	AccountID        string
-	Role             *PanelRole
+	Role             *InstallationRole
 	Suspended        bool
 	SuspensionReason *string
 	Revision         int64
@@ -320,7 +304,7 @@ type TargetAccessChange struct {
 	TargetID         string
 	SubjectAccountID string
 	ActorAccountID   string
-	Role             *PanelRole
+	Role             *InstallationRole
 	Suspended        bool
 	SuspensionReason *string
 	ExpectedRevision int64

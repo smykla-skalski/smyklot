@@ -24,7 +24,6 @@ type AuthStore interface {
 type AccessStore interface {
 	GetPanelUser(context.Context, string) (PanelUser, error)
 	ListPanelUsers(context.Context) ([]PanelUser, error)
-	ListPanelUserPage(context.Context, PanelUserPageRequest) (PanelUserPage, error)
 	ListRootPanelUserPage(context.Context, RootPanelUserPageRequest) (RootPanelUserPage, error)
 	UpdateSystemRole(context.Context, SystemRoleChange) (PanelUser, error)
 	ListTargetPanelUsers(context.Context, string, time.Time) ([]TargetPanelUser, error)

@@ -94,7 +94,7 @@ func (s *Server) postRootInvitation(w http.ResponseWriter, r *http.Request) {
 	}
 	role := storage.SystemRoleRoot
 	s.createInvitation(
-		w, r, actor.ID, account.ID, nil, storage.PanelRoleOwner, &role, input.ExpiresInDays,
+		w, r, actor.ID, account.ID, nil, nil, &role, input.ExpiresInDays,
 	)
 }
 
@@ -229,8 +229,8 @@ func (s *Server) changeRootUserStatus(
 		return
 	}
 	_, err := s.store.UpdatePanelUser(r.Context(), storage.PanelUserChange{
-		AccountID: subject.Account.ID, ActorAccountID: actor.ID, GlobalRole: storage.PanelRoleNone,
-		Status: status, BanReason: reason, ExpectedRevision: *input.ExpectedRevision,
+		AccountID: subject.Account.ID, ActorAccountID: actor.ID, Status: status,
+		BanReason: reason, ExpectedRevision: *input.ExpectedRevision,
 		ChangedAt: s.now().UTC(),
 	})
 	if err != nil {

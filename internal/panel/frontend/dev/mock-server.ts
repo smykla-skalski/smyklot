@@ -19,7 +19,7 @@ import type {
   PanelInvitation,
   PanelTarget,
   PanelUser,
-  PanelRole,
+  InstallationRole,
   TargetUserAccess,
   RepositoryDetail,
   RepositorySettingsInput,
@@ -71,16 +71,12 @@ const OWNER_CAPABILITIES = {
   read: true,
   write: true,
   manage_target_users: true,
-  manage_global_users: true,
-  manage_owners: true,
 };
 
 const ROOT_READ_CAPABILITIES = {
   read: true,
   write: false,
   manage_target_users: false,
-  manage_global_users: false,
-  manage_owners: false,
 };
 
 class MockApiError extends Error {
@@ -346,8 +342,9 @@ function seed(): MockState {
   );
   const organizationAccess = new Map<string, TargetUserAccess>();
   for (const user of users) {
-    if (user.global_role !== 'none' && user.global_role !== 'owner') {
-      organizationAccess.set(user.account.id, targetAccess(user.global_role, false, 1));
+    const role = user.target_access?.role;
+    if (role !== undefined && role !== null) {
+      organizationAccess.set(user.account.id, targetAccess(role, false, 1));
     }
   }
   organizationAccess.set('1004', {
@@ -411,9 +408,11 @@ function invitationSeeds(
   });
   const invitations: MockInvitation[] = [
     {
-      id: 'mock-invitation-global-pending',
+      id: 'mock-invitation-target-pending',
       token: 'p'.repeat(43),
       account: invited('1101', 'katherine', 'Katherine Johnson'),
+      target_id: target.id,
+      target_name: target.account.display_name,
       role: 'editor',
       status: 'pending',
       expires_at: iso(7 * 86_400_000),
@@ -421,9 +420,11 @@ function invitationSeeds(
       created_at: iso(-20 * 60_000),
     },
     {
-      id: 'mock-invitation-global-accepted',
+      id: 'mock-invitation-target-accepted',
       token: 'a'.repeat(43),
       account: invited('1102', 'dorothy', 'Dorothy Vaughan'),
+      target_id: target.id,
+      target_name: target.account.display_name,
       role: 'viewer',
       status: 'accepted',
       expires_at: iso(6 * 86_400_000),
@@ -445,7 +446,7 @@ function invitationSeeds(
     },
   ];
   const statuses: InvitationStatus[] = ['pending', 'accepted', 'declined', 'revoked', 'expired'];
-  const roles: Array<Exclude<PanelRole, 'none'>> = ['viewer', 'editor', 'admin'];
+  const roles: Array<Exclude<InstallationRole, 'none'>> = ['viewer', 'editor', 'admin'];
   for (let index = 0; index < 25; index += 1) {
     const status = cycled(statuses, index);
     invitations.push({
@@ -456,9 +457,8 @@ function invitationSeeds(
         `invitee-${String(index + 1).padStart(2, '0')}`,
         `Invited User ${String(index + 1).padStart(2, '0')}`,
       ),
-      ...(index % 2 === 0
-        ? {}
-        : { target_id: target.id, target_name: target.account.display_name }),
+      target_id: target.id,
+      target_name: target.account.display_name,
       role: cycled(roles, index),
       status,
       expires_at: iso((index - 8) * 86_400_000),
@@ -510,13 +510,11 @@ function securityNotificationSeeds(
   ];
 }
 
-function capabilitiesFor(role: PanelRole) {
+function capabilitiesFor(role: InstallationRole) {
   return {
     read: role !== 'none',
     write: role === 'owner' || role === 'admin' || role === 'editor',
     manage_target_users: role === 'owner' || role === 'admin',
-    manage_global_users: role === 'owner',
-    manage_owners: role === 'owner',
   };
 }
 
@@ -524,7 +522,7 @@ function targetUsers(state: MockState, targetId: string): PanelUser[] {
   const overrides = state.targetAccess.get(targetId) ?? new Map<string, TargetUserAccess>();
   return state.users
     .filter((user) => user.status !== 'removed')
-    .filter((user) => user.global_role === 'owner' || overrides.has(user.account.id))
+    .filter((user) => user.account.id === VIEWER.id || overrides.has(user.account.id))
     .map((user) => {
       const override = overrides.get(user.account.id);
       const manageable = user.manageable && user.status === 'active';
@@ -571,13 +569,13 @@ function userSeeds(iso: (offsetMs: number) => string): PanelUser[] {
     id: string,
     login: string,
     displayName: string,
-    role: PanelRole,
+    role: InstallationRole,
     offsetMs: number,
   ): PanelUser => ({
     account: account(id, login, displayName),
     system_role: 'none',
     status: 'active',
-    global_role: role,
+    ...(role === 'none' || role === 'owner' ? {} : { target_access: targetAccess(role, false, 1) }),
     revision: 1,
     created_at: iso(-30 * 86_400_000),
     updated_at: iso(offsetMs),
@@ -602,7 +600,7 @@ function userSeeds(iso: (offsetMs: number) => string): PanelUser[] {
     user('1004', 'margaret', 'Margaret Hamilton', 'viewer', -2 * 86_400_000),
     banned,
   ];
-  const roles: PanelRole[] = ['viewer', 'editor', 'admin', 'none'];
+  const roles: InstallationRole[] = ['viewer', 'editor', 'admin', 'none'];
   for (let index = 0; index < 31; index += 1) {
     users.push(
       user(
@@ -963,8 +961,6 @@ async function handle(
         account: VIEWER,
         system_role: 'super_root',
         status: 'active',
-        global_role: 'owner',
-        capabilities: OWNER_CAPABILITIES,
         target_count: state.targets.filter((target) => mockRootOwns(target)).length,
       });
       return;
@@ -1132,7 +1128,6 @@ async function handle(
       }
       if ('system_role' in input) {
         user.system_role = input.system_role;
-        user.global_role = input.system_role === 'root' ? 'owner' : 'none';
       } else {
         user.status = input.status;
         user.ban_reason = input.reason;
@@ -1420,7 +1415,7 @@ async function handle(
     }
     if (scopedUsers && method === 'GET') {
       const target = findTarget(state, scopedUsers.groups?.target ?? '');
-      respond(res, 200, userPage(targetUsers(state, target.value.id), parsed.searchParams, true));
+      respond(res, 200, userPage(targetUsers(state, target.value.id), parsed.searchParams));
       return;
     }
     if (scopedUsers && method === 'POST') {
@@ -1430,7 +1425,7 @@ async function handle(
         (entry) => entry.account.login.toLowerCase() === input.login.toLowerCase(),
       );
       if (user === undefined) {
-        user = mockUser(input.login, 'none');
+        user = mockUser(input.login);
         state.users.push(user);
       }
       const access = targetAccessFor(state, target.value.id);
@@ -1886,7 +1881,7 @@ function createMockInvitation(
   target: PanelTarget,
 ): MockInvitation {
   const now = new Date();
-  const account = mockUser(input.login, 'none').account;
+  const account = mockUser(input.login).account;
   for (const invitation of state.invitations) {
     if (
       invitation.account.login.toLowerCase() === input.login.toLowerCase() &&
@@ -1916,7 +1911,7 @@ function createMockInvitation(
 
 function createRootMockInvitation(state: MockState, input: AddRootInvitationInput): MockInvitation {
   const now = new Date();
-  const account = mockUser(input.login, 'none').account;
+  const account = mockUser(input.login).account;
   for (const invitation of state.invitations) {
     if (
       invitation.account.login.toLowerCase() === input.login.toLowerCase() &&
@@ -1932,7 +1927,6 @@ function createRootMockInvitation(state: MockState, input: AddRootInvitationInpu
     id: `mock-root-invitation-${counter}`,
     token: mockInvitationToken(counter),
     account,
-    role: 'owner',
     system_role: 'root',
     status: 'pending',
     expires_at: new Date(now.getTime() + input.expires_in_days * 86_400_000).toISOString(),
@@ -1978,7 +1972,7 @@ function broadcastInvitation(state: MockState, invitation: MockInvitation): void
   }
 }
 
-function mockUser(login: string, role: PanelRole): PanelUser {
+function mockUser(login: string): PanelUser {
   const normalized = login.trim();
   const now = new Date().toISOString();
   return {
@@ -1992,7 +1986,6 @@ function mockUser(login: string, role: PanelRole): PanelUser {
     },
     system_role: 'none',
     status: 'active',
-    global_role: role,
     revision: 1,
     created_at: now,
     updated_at: now,
@@ -2062,28 +2055,19 @@ function addAudit(target: MockTarget, action: string, summary: string, repositor
   });
 }
 
-function mockDecisions(user: PanelUser, target?: PanelTarget): AccessDecision[] {
+function mockDecisions(user: PanelUser, target: PanelTarget): AccessDecision[] {
   const now = Date.now();
   const current =
-    target === undefined
-      ? user.status === 'banned'
-        ? {
-            action: 'user.banned',
-            summary: `banned user${user.ban_reason === undefined ? '' : `: ${user.ban_reason}`}`,
-            created_at: user.banned_at ?? new Date(now - 2 * 86_400_000).toISOString(),
-          }
-        : { action: 'user.role.updated', summary: `changed global role to ${user.global_role}` }
-      : user.target_access?.suspended === true
-        ? {
-            action: 'target.access.suspended',
-            summary: `suspended installation access${user.target_access.suspension_reason === undefined ? '' : `: ${user.target_access.suspension_reason}`}`,
-            created_at:
-              user.target_access.updated_at ?? new Date(now - 3 * 86_400_000).toISOString(),
-          }
-        : {
-            action: 'target.access.updated',
-            summary: `updated access to ${target.account.display_name}`,
-          };
+    user.target_access?.suspended === true
+      ? {
+          action: 'target.access.suspended',
+          summary: `suspended installation access${user.target_access.suspension_reason === undefined ? '' : `: ${user.target_access.suspension_reason}`}`,
+          created_at: user.target_access.updated_at ?? new Date(now - 3 * 86_400_000).toISOString(),
+        }
+      : {
+          action: 'target.access.updated',
+          summary: `updated access to ${target.account.display_name}`,
+        };
   return [
     {
       id: `${user.account.id}-decision-3`,
@@ -2094,9 +2078,8 @@ function mockDecisions(user: PanelUser, target?: PanelTarget): AccessDecision[] 
     {
       id: `${user.account.id}-decision-2`,
       actor: VIEWER,
-      action: target === undefined ? 'user.role.updated' : 'target.access.updated',
-      summary:
-        target === undefined ? 'changed global role to viewer' : 'updated installation access',
+      action: 'target.access.updated',
+      summary: 'updated installation access',
       created_at: new Date(now - 18 * 86_400_000).toISOString(),
     },
     {
@@ -2109,19 +2092,15 @@ function mockDecisions(user: PanelUser, target?: PanelTarget): AccessDecision[] 
   ];
 }
 
-function userPage(
-  users: PanelUser[],
-  parameters: URLSearchParams,
-  scoped: boolean,
-): Page<PanelUser> {
+function userPage(users: PanelUser[], parameters: URLSearchParams): Page<PanelUser> {
   const query = (parameters.get('q') ?? '').trim().toLocaleLowerCase();
   const roles = parameters.getAll('role');
   const statuses = parameters.getAll('status');
   const ordered = users
     .filter((user) => {
-      const role = scoped ? user.target_access?.effective_role : user.global_role;
+      const role = user.target_access?.effective_role;
       const status =
-        scoped && user.status === 'active' && user.target_access?.suspended === true
+        user.status === 'active' && user.target_access?.suspended === true
           ? 'suspended'
           : user.status;
       return (
@@ -2135,7 +2114,7 @@ function userPage(
     .map((user) => structuredClone(user));
 
   const roleLevel = (user: PanelUser): number => {
-    const role = scoped ? (user.target_access?.effective_role ?? 'none') : user.global_role;
+    const role = user.target_access?.effective_role ?? 'none';
     return ['none', 'viewer', 'editor', 'admin', 'owner'].indexOf(role);
   };
 
@@ -2191,6 +2170,10 @@ function invitationPage(
   const roles = parameters.getAll('role');
   const statuses = parameters.getAll('status');
   const now = Date.now();
+  const roleLevel = (invitation: PanelInvitation): number =>
+    invitation.system_role === 'root'
+      ? 4
+      : ['viewer', 'editor', 'admin'].indexOf(invitation.role ?? '');
   const ordered = invitations
     .map((invitation) => {
       const value = publicInvitationValue(invitation);
@@ -2204,7 +2187,7 @@ function invitationPage(
           invitation.account.login.toLocaleLowerCase().includes(query) ||
           invitation.account.display_name.toLocaleLowerCase().includes(query) ||
           invitation.created_by.login.toLocaleLowerCase().includes(query)) &&
-        (roles.length === 0 || roles.includes(invitation.role)) &&
+        (roles.length === 0 || roles.includes(invitation.role ?? '')) &&
         (statuses.length === 0 || statuses.includes(invitation.status)),
     );
 
@@ -2231,16 +2214,14 @@ function invitationPage(
     case 'role_asc':
       ordered.sort(
         (left, right) =>
-          ['viewer', 'editor', 'admin', 'owner'].indexOf(left.role) -
-            ['viewer', 'editor', 'admin', 'owner'].indexOf(right.role) ||
+          roleLevel(left) - roleLevel(right) ||
           left.account.display_name.localeCompare(right.account.display_name),
       );
       break;
     case 'role_desc':
       ordered.sort(
         (left, right) =>
-          ['viewer', 'editor', 'admin', 'owner'].indexOf(right.role) -
-            ['viewer', 'editor', 'admin', 'owner'].indexOf(left.role) ||
+          roleLevel(right) - roleLevel(left) ||
           left.account.display_name.localeCompare(right.account.display_name),
       );
       break;

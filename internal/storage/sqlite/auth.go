@@ -73,14 +73,12 @@ WHERE account_id = ?`, formatTime(changedAt), previousID); err != nil {
 
 	result, err := tx.ExecContext(ctx, `
 INSERT INTO panel_users (
-    account_id, root, status, global_role, revision, created_at, updated_at, system_role
+    account_id, status, revision, created_at, updated_at, system_role
 )
-SELECT id, 1, 'active', 'owner', 1, ?, ?, 'super_root'
+SELECT id, 'active', 1, ?, ?, 'super_root'
 FROM accounts WHERE id = ?
 ON CONFLICT(account_id) DO UPDATE SET
-    root = 1,
     status = 'active',
-    global_role = 'owner',
     system_role = 'super_root',
     ban_reason = NULL,
     banned_at = NULL,
@@ -166,8 +164,8 @@ SELECT EXISTS(
 	}
 	_, err = tx.ExecContext(ctx, `
 INSERT INTO panel_users (
-    account_id, root, status, global_role, revision, created_at, updated_at, system_role
-) VALUES (?, 0, 'active', 'none', 1, ?, ?, 'none')`,
+    account_id, status, revision, created_at, updated_at, system_role
+) VALUES (?, 'active', 1, ?, ?, 'none')`,
 		accountID, formatTime(changedAt), formatTime(changedAt),
 	)
 	if err != nil {

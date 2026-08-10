@@ -104,7 +104,7 @@ OR instr(lower(creator.login), lower(?)) > 0)`)
 	if len(page.Roles) > 0 {
 		parts := make([]string, 0, len(page.Roles))
 		for _, role := range page.Roles {
-			if !validInvitationRole(role, targetID) {
+			if targetID == nil || !validTargetRole(role) || role == storage.InstallationRoleNone {
 				return nil, nil, fmt.Errorf("unsupported invitation role %q", role)
 			}
 			parts = append(parts, "ui.role = ?")

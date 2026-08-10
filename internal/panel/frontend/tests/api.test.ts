@@ -66,15 +66,13 @@ const VIEWER = {
   },
   system_role: 'super_root' as const,
   status: 'active' as const,
-  global_role: 'owner' as const,
-  capabilities: {
-    read: true,
-    write: true,
-    manage_target_users: true,
-    manage_global_users: true,
-    manage_owners: true,
-  },
   target_count: 1,
+};
+
+const OWNER_CAPABILITIES = {
+  read: true,
+  write: true,
+  manage_target_users: true,
 };
 
 const TARGET: PanelTarget = {
@@ -91,7 +89,7 @@ const TARGET: PanelTarget = {
   repository_counts: { total: 1, enabled: 0, disabled: 1 },
   effective_role: 'owner',
   access_source: 'owner',
-  capabilities: VIEWER.capabilities,
+  capabilities: OWNER_CAPABILITIES,
 };
 
 const REPOSITORY = {
@@ -366,7 +364,6 @@ describe('Root invitations', () => {
     const invitation = {
       id: 'root.invite.1',
       account: { ...VIEWER.account, id: 'root.2', subject_id: 'root.2', login: 'grace' },
-      role: 'owner' as const,
       system_role: 'root' as const,
       status: 'pending' as const,
       expires_at: '2026-08-17T10:00:00Z',
@@ -516,7 +513,6 @@ describe('user management', () => {
       account: VIEWER.account,
       system_role: 'none' as const,
       status: 'active' as const,
-      global_role: 'editor' as const,
       revision: 1,
       created_at: '2026-08-08T10:00:00Z',
       updated_at: '2026-08-08T10:00:00Z',

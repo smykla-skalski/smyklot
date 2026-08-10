@@ -502,7 +502,6 @@ func TestPanelEnforcesResolvedRoleCapabilities(t *testing.T) {
 	}
 	if _, err := harness.store.CreatePanelUser(t.Context(), storage.PanelUserCreate{
 		AccountID:      viewer.ID,
-		GlobalRole:     storage.PanelRoleViewer,
 		ActorAccountID: "github:test:user:1",
 		ChangedAt:      harness.now,
 	}); err != nil {
@@ -521,9 +520,9 @@ func TestPanelEnforcesResolvedRoleCapabilities(t *testing.T) {
 
 	targets := harness.request(t, http.MethodGet, "/panel/api/v1/targets", nil, viewerSession)
 	if targets.Code != http.StatusOK || targets.Body.String() != `{"targets":[]}`+"\n" {
-		t.Fatalf("global viewer targets = %d %s", targets.Code, targets.Body.String())
+		t.Fatalf("unassigned viewer targets = %d %s", targets.Code, targets.Body.String())
 	}
-	viewerRole := storage.PanelRoleViewer
+	viewerRole := storage.InstallationRoleViewer
 	viewerOverride, err := harness.store.SetTargetAccess(t.Context(), storage.TargetAccessChange{
 		TargetID:         "github:installation:10",
 		SubjectAccountID: viewer.ID,
@@ -553,7 +552,7 @@ func TestPanelEnforcesResolvedRoleCapabilities(t *testing.T) {
 		t.Fatalf("viewer write = %d %s", denied.Code, denied.Body.String())
 	}
 
-	editor := storage.PanelRoleEditor
+	editor := storage.InstallationRoleEditor
 	override, err := harness.store.SetTargetAccess(t.Context(), storage.TargetAccessChange{
 		TargetID:         "github:installation:10",
 		SubjectAccountID: viewer.ID,
@@ -576,7 +575,7 @@ func TestPanelEnforcesResolvedRoleCapabilities(t *testing.T) {
 		t.Fatalf("editor write = %d %s", updated.Code, updated.Body.String())
 	}
 
-	noAccess := storage.PanelRoleNone
+	noAccess := storage.InstallationRoleNone
 	if _, err := harness.store.SetTargetAccess(t.Context(), storage.TargetAccessChange{
 		TargetID:         "github:installation:10",
 		SubjectAccountID: viewer.ID,
@@ -615,13 +614,12 @@ func TestPanelAuthorizesActiveUserWithOnlyTargetAccess(t *testing.T) {
 	}
 	if _, err := harness.store.CreatePanelUser(t.Context(), storage.PanelUserCreate{
 		AccountID:      viewer.ID,
-		GlobalRole:     storage.PanelRoleNone,
 		ActorAccountID: "github:test:user:1",
 		ChangedAt:      harness.now,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	role := storage.PanelRoleViewer
+	role := storage.InstallationRoleViewer
 	if _, err := harness.store.SetTargetAccess(t.Context(), storage.TargetAccessChange{
 		TargetID:         "github:installation:10",
 		SubjectAccountID: viewer.ID,
@@ -685,7 +683,7 @@ func TestPanelActivatesFreshDerivedOwnerOnSignIn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if user.SystemRole != storage.SystemRoleNone || user.GlobalRole != storage.PanelRoleNone {
+	if user.SystemRole != storage.SystemRoleNone {
 		t.Fatalf("derived Owner policy = %#v", user)
 	}
 }
@@ -787,7 +785,7 @@ func TestPanelSeparatesRootAndInstallationAccessRoutes(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := harness.store.CreatePanelUser(t.Context(), storage.PanelUserCreate{
-		AccountID: ordinary.ID, GlobalRole: storage.PanelRoleNone,
+		AccountID:      ordinary.ID,
 		ActorAccountID: "github:test:user:1", ChangedAt: harness.now,
 	}); err != nil {
 		t.Fatal(err)
@@ -971,7 +969,7 @@ func TestPanelManagesRootUsers(t *testing.T) {
 		t.Fatal(err)
 	}
 	created, err := harness.store.CreatePanelUser(t.Context(), storage.PanelUserCreate{
-		AccountID: ordinary.ID, GlobalRole: storage.PanelRoleNone,
+		AccountID:      ordinary.ID,
 		ActorAccountID: "github:test:user:1", ChangedAt: harness.now,
 	})
 	if err != nil {

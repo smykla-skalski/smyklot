@@ -30,16 +30,10 @@ func (s *Store) UpdateSystemRole(
 		current.Status != storage.PanelUserActive {
 		return storage.PanelUser{}, storage.ErrConflict
 	}
-	legacyRoot := 0
-	legacyRole := storage.PanelRoleNone
-	if change.SystemRole == storage.SystemRoleRoot {
-		legacyRoot = 1
-		legacyRole = storage.PanelRoleOwner
-	}
 	result, err := tx.ExecContext(ctx, `
 UPDATE panel_users
-SET root = ?, global_role = ?, system_role = ?, revision = revision + 1, updated_at = ?
-WHERE account_id = ? AND revision = ?`, legacyRoot, legacyRole, change.SystemRole,
+SET system_role = ?, revision = revision + 1, updated_at = ?
+WHERE account_id = ? AND revision = ?`, change.SystemRole,
 		formatTime(change.ChangedAt), change.AccountID, change.ExpectedRevision)
 	if err != nil {
 		return storage.PanelUser{}, fmt.Errorf("update system role: %w", err)

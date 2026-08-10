@@ -48,7 +48,7 @@ func parsePanelUserPage(values url.Values) (storage.PanelUserPageRequest, error)
 		return storage.PanelUserPageRequest{}, fmt.Errorf("invalid user sort order")
 	}
 	for _, raw := range values["role"] {
-		role := storage.PanelRole(raw)
+		role := storage.InstallationRole(raw)
 		if !validTargetUserFilterRole(role) || slices.Contains(page.Roles, role) {
 			if slices.Contains(page.Roles, role) {
 				continue
@@ -99,7 +99,7 @@ func parseInvitationPage(values url.Values) (storage.InvitationPageRequest, erro
 		return storage.InvitationPageRequest{}, fmt.Errorf("invalid invitation sort order")
 	}
 	for _, raw := range values["role"] {
-		role := storage.PanelRole(raw)
+		role := storage.InstallationRole(raw)
 		if !validGrantedTargetRole(role) {
 			return storage.InvitationPageRequest{}, fmt.Errorf("invalid invitation role")
 		}

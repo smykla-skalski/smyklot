@@ -22,7 +22,6 @@ SELECT
     a.updated_at,
     pu.system_role,
     pu.status,
-    pu.global_role,
     pu.ban_reason,
     pu.banned_at,
     pu.removed_at,
@@ -33,7 +32,7 @@ SELECT
 FROM panel_users pu
 JOIN accounts a ON a.id = pu.account_id`
 
-// GetPanelUser returns one persisted panel identity and global policy.
+// GetPanelUser returns one persisted panel identity and lifecycle.
 func (s *Store) GetPanelUser(ctx context.Context, accountID string) (storage.PanelUser, error) {
 	user, err := getPanelUser(ctx, s.db, accountID)
 	if err != nil {
@@ -48,9 +47,6 @@ func (s *Store) CreatePanelUser(
 	ctx context.Context,
 	change storage.PanelUserCreate,
 ) (storage.PanelUser, error) {
-	if !validGlobalRole(change.GlobalRole) {
-		return storage.PanelUser{}, fmt.Errorf("unsupported global role %q", change.GlobalRole)
-	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return storage.PanelUser{}, fmt.Errorf("begin panel user create: %w", err)
@@ -71,19 +67,17 @@ func (s *Store) CreatePanelUser(
 	}
 	result, err := tx.ExecContext(ctx, `
 INSERT INTO panel_users (
-    account_id, root, status, global_role, revision, created_at, updated_at
-) VALUES (?, 0, 'active', ?, 1, ?, ?)
+    account_id, status, system_role, revision, created_at, updated_at
+) VALUES (?, 'active', 'none', 1, ?, ?)
 ON CONFLICT(account_id) DO UPDATE SET
     status = 'active',
-    global_role = excluded.global_role,
     ban_reason = NULL,
     banned_at = NULL,
     removed_at = NULL,
     revision = panel_users.revision + 1,
     updated_at = excluded.updated_at
-WHERE panel_users.root = 0 AND panel_users.status = 'removed'`,
+WHERE panel_users.system_role = 'none' AND panel_users.status = 'removed'`,
 		change.AccountID,
-		change.GlobalRole,
 		formatTime(change.ChangedAt),
 		formatTime(change.ChangedAt),
 	)
@@ -98,10 +92,10 @@ WHERE panel_users.root = 0 AND panel_users.status = 'removed'`,
 		return storage.PanelUser{}, storage.ErrConflict
 	}
 	action := "user.created"
-	summary := fmt.Sprintf("added user as %s", change.GlobalRole)
+	summary := "added user"
 	if previousErr == nil {
 		action = "user.readded"
-		summary = fmt.Sprintf("re-added user as %s", change.GlobalRole)
+		summary = "re-added user"
 	}
 	if err := insertAccessAudit(
 		ctx,
@@ -272,7 +266,7 @@ WHERE pu.account_id = ?`, targetID, accountID).Scan(
 	fresh := freshOwnership(ownershipStatus, ownershipSyncedAt, ownerCount, now)
 	access := resolvedTargetAccess(systemRole, status, targetRole, suspended, owned, fresh)
 	access.SuspensionReason = stringPointer(suspensionReason)
-	access.Capabilities = storage.EffectiveCapabilities(access.Role, systemRole)
+	access.Capabilities = storage.EffectiveCapabilities(access.Role)
 
 	return access, nil
 }
@@ -325,30 +319,30 @@ func resolvedTargetAccess(
 ) storage.TargetAccess {
 	root := systemRole.IsRoot()
 	if status != storage.PanelUserActive || !ownershipFresh {
-		return storage.TargetAccess{Role: storage.PanelRoleNone, Source: storage.AccessSourceDenied}
+		return storage.TargetAccess{Role: storage.InstallationRoleNone, Source: storage.AccessSourceDenied}
 	}
 	if owned {
 		return storage.TargetAccess{
-			Role: storage.PanelRoleOwner, Source: storage.AccessSourceOwner, Root: root,
+			Role: storage.InstallationRoleOwner, Source: storage.AccessSourceOwner, Root: root,
 		}
 	}
 	if root {
 		return storage.TargetAccess{
-			Role: storage.PanelRoleNone, Source: storage.AccessSourceDenied, Root: true,
+			Role: storage.InstallationRoleNone, Source: storage.AccessSourceDenied, Root: true,
 		}
 	}
 	if suspended {
 		return storage.TargetAccess{
-			Role: storage.PanelRoleNone, Source: storage.AccessSourceSuspended, Root: root,
+			Role: storage.InstallationRoleNone, Source: storage.AccessSourceSuspended, Root: root,
 		}
 	}
-	if targetRole.Valid && storage.PanelRole(targetRole.String) != storage.PanelRoleNone {
+	if targetRole.Valid && storage.InstallationRole(targetRole.String) != storage.InstallationRoleNone {
 		return storage.TargetAccess{
-			Role: storage.PanelRole(targetRole.String), Source: storage.AccessSourceTarget, Root: root,
+			Role: storage.InstallationRole(targetRole.String), Source: storage.AccessSourceTarget, Root: root,
 		}
 	}
 
-	return storage.TargetAccess{Role: storage.PanelRoleNone, Source: storage.AccessSourceDenied}
+	return storage.TargetAccess{Role: storage.InstallationRoleNone, Source: storage.AccessSourceDenied}
 }
 
 func freshOwnership(
@@ -465,7 +459,7 @@ FROM target_roles WHERE account_id = ? AND target_id = ?`, accountID, targetID).
 		return storage.TargetAccessOverride{}, err
 	}
 	if role.Valid {
-		parsed := storage.PanelRole(role.String)
+		parsed := storage.InstallationRole(role.String)
 		override.Role = &parsed
 	}
 	override.SuspensionReason = stringPointer(reason)
@@ -500,7 +494,6 @@ func scanPanelUser(scanner rowScanner) (storage.PanelUser, error) {
 		&accountUpdatedAt,
 		&user.SystemRole,
 		&user.Status,
-		&user.GlobalRole,
 		&banReason,
 		&bannedAt,
 		&removedAt,
@@ -593,21 +586,21 @@ INSERT INTO access_audit_entries (
 	return nil
 }
 
-func validGlobalRole(role storage.PanelRole) bool {
+func validInstallationRole(role storage.InstallationRole) bool {
 	switch role {
-	case storage.PanelRoleNone,
-		storage.PanelRoleViewer,
-		storage.PanelRoleEditor,
-		storage.PanelRoleAdmin,
-		storage.PanelRoleOwner:
+	case storage.InstallationRoleNone,
+		storage.InstallationRoleViewer,
+		storage.InstallationRoleEditor,
+		storage.InstallationRoleAdmin,
+		storage.InstallationRoleOwner:
 		return true
 	default:
 		return false
 	}
 }
 
-func validTargetRole(role storage.PanelRole) bool {
-	return validGlobalRole(role) && role != storage.PanelRoleOwner
+func validTargetRole(role storage.InstallationRole) bool {
+	return validInstallationRole(role) && role != storage.InstallationRoleOwner
 }
 
 func conflictConstraint(err error) error {

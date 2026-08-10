@@ -76,11 +76,9 @@ func TestConfigurationDTOsExposeEmptyAllowedCommandsAsArray(t *testing.T) {
 
 func testOwnerAccess() storage.TargetAccess {
 	return storage.TargetAccess{
-		Role:   storage.PanelRoleOwner,
-		Source: storage.AccessSourceOwner,
-		Root:   true,
-		Capabilities: storage.EffectiveCapabilities(
-			storage.PanelRoleOwner, storage.SystemRoleSuperRoot,
-		),
+		Role:         storage.InstallationRoleOwner,
+		Source:       storage.AccessSourceOwner,
+		Root:         true,
+		Capabilities: storage.EffectiveCapabilities(storage.InstallationRoleOwner),
 	}
 }

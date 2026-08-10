@@ -42,7 +42,9 @@
     return 'stop';
   }
 
-  function roleLabel(role: PanelInvitation['role']): string {
+  function roleLabel(value: PanelInvitation): string {
+    if (value.system_role === 'root') return 'Root';
+    const role = value.role ?? 'viewer';
     return role.slice(0, 1).toUpperCase() + role.slice(1);
   }
 </script>
@@ -87,11 +89,11 @@
       <dl class="invitation-details">
         <div>
           <dt>Access</dt>
-          <dd>{roleLabel(invitation.role)}</dd>
+          <dd>{roleLabel(invitation)}</dd>
         </div>
         <div>
           <dt>Scope</dt>
-          <dd>{invitation.target_name ?? 'All installations'}</dd>
+          <dd>{invitation.target_name ?? 'Smyklot application'}</dd>
         </div>
         <div>
           <dt>Expires</dt>

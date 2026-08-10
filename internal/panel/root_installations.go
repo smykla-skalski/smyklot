@@ -154,7 +154,7 @@ func (s *Server) requireRootTarget(
 			s.writeStorageError(w, accessErr)
 			return rootTargetContext{}, false
 		}
-		if access.Role == storage.PanelRoleOwner {
+		if access.Role == storage.InstallationRoleOwner {
 			context.Access = access
 			return context, true
 		}
@@ -206,7 +206,7 @@ func (s *Server) attachActiveElevation(r *http.Request, context *rootTargetConte
 
 func rootReadAccess() storage.TargetAccess {
 	return storage.TargetAccess{
-		Role: storage.PanelRoleNone, Source: storage.AccessSourceRoot, Root: true,
+		Role: storage.InstallationRoleNone, Source: storage.AccessSourceRoot, Root: true,
 		Capabilities: storage.AccessCapabilities{Read: true},
 	}
 }

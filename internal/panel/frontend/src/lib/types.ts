@@ -41,7 +41,7 @@ export interface PanelAccount {
   avatar_url: string | null;
 }
 
-export type PanelRole = 'none' | 'viewer' | 'editor' | 'admin' | 'owner';
+export type InstallationRole = 'none' | 'viewer' | 'editor' | 'admin' | 'owner';
 export type SystemRole = 'none' | 'root' | 'super_root';
 export type PanelUserStatus = 'active' | 'banned' | 'removed';
 export type AccessSource = 'owner' | 'target' | 'suspended' | 'root' | 'elevation' | 'denied';
@@ -50,26 +50,22 @@ export interface PanelCapabilities {
   read: boolean;
   write: boolean;
   manage_target_users: boolean;
-  manage_global_users: boolean;
-  manage_owners: boolean;
 }
 
 export interface PanelViewer {
   account: PanelAccount;
   system_role: SystemRole;
   status: PanelUserStatus;
-  global_role: PanelRole;
-  capabilities: PanelCapabilities;
   target_count: number;
 }
 
 export interface TargetUserAccess {
-  role: Exclude<PanelRole, 'owner'> | null;
+  role: Exclude<InstallationRole, 'owner'> | null;
   suspended: boolean;
   suspension_reason?: string;
   revision: number;
   updated_at?: string;
-  effective_role: PanelRole;
+  effective_role: InstallationRole;
   source: AccessSource;
   capabilities: PanelCapabilities;
 }
@@ -78,7 +74,6 @@ export interface PanelUser {
   account: PanelAccount;
   system_role: SystemRole;
   status: PanelUserStatus;
-  global_role: PanelRole;
   ban_reason?: string;
   banned_at?: string;
   last_login_at?: string;
@@ -105,7 +100,7 @@ export interface PanelUserPageRequest {
   query: string;
   sort: PanelUserSort;
   limit: number;
-  roles: PanelRole[];
+  roles: InstallationRole[];
   statuses: PanelUserListStatus[];
 }
 
@@ -149,11 +144,11 @@ export type UpdateRootUserInput =
 
 export interface AddTargetUserInput {
   login: string;
-  role: Exclude<PanelRole, 'none' | 'owner'>;
+  role: Exclude<InstallationRole, 'none' | 'owner'>;
 }
 
 export interface UpdateTargetUserInput {
-  role: Exclude<PanelRole, 'owner'> | null;
+  role: Exclude<InstallationRole, 'owner'> | null;
   suspended: boolean;
   suspension_reason?: string;
   expected_revision: number;
@@ -167,7 +162,7 @@ export interface PanelInvitation {
   account: PanelAccount;
   target_id?: string;
   target_name?: string;
-  role: Exclude<PanelRole, 'none'>;
+  role?: Exclude<InstallationRole, 'none'>;
   system_role?: Exclude<SystemRole, 'none' | 'super_root'>;
   status: InvitationStatus;
   expires_at: string;
@@ -197,7 +192,7 @@ export interface InvitationPageRequest {
   query: string;
   sort: InvitationSort;
   limit: number;
-  roles: Exclude<PanelRole, 'none'>[];
+  roles: Exclude<InstallationRole, 'none'>[];
   statuses: InvitationStatus[];
 }
 
@@ -211,7 +206,7 @@ export interface AccessDecision {
 
 export interface AddTargetInvitationInput {
   login: string;
-  role: Exclude<PanelRole, 'none' | 'owner'>;
+  role: Exclude<InstallationRole, 'none' | 'owner'>;
   expires_in_days: InvitationDays;
 }
 
@@ -238,7 +233,7 @@ export interface PanelTarget {
   config_sources: ConfigSources;
   revision: number;
   repository_counts: RepositoryCounts;
-  effective_role: PanelRole;
+  effective_role: InstallationRole;
   access_source: AccessSource;
   capabilities: PanelCapabilities;
   suspension_reason?: string;

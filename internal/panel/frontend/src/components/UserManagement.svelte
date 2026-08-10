@@ -24,7 +24,7 @@
     InvitationStatus,
     Page,
     PanelInvitation,
-    PanelRole,
+    InstallationRole,
     PanelUser,
     PanelUserListStatus,
     PanelUserPageRequest,
@@ -50,7 +50,7 @@
   type UserSortColumn = 'name' | 'role' | 'last_login';
   type InvitationSortColumn = 'name' | 'role' | 'expires';
   type UserAction = 'suspend' | 'restore' | 'remove_access';
-  type TargetRole = Exclude<PanelRole, 'owner'>;
+  type TargetRole = Exclude<InstallationRole, 'owner'>;
   type GrantedTargetRole = Exclude<TargetRole, 'none'>;
 
   const ACCESS_METHODS = [
@@ -145,7 +145,7 @@
     section: ManagementSection;
     targetId: string;
     targetName: string;
-    actorTargetRole: PanelRole;
+    actorTargetRole: InstallationRole;
     refreshVersion?: number;
     onSection: (section: ManagementSection) => void;
     fetchTargetUsers: (targetId: string, request: PanelUserPageRequest) => Promise<Page<PanelUser>>;
@@ -186,14 +186,14 @@
   let userSearch = $state('');
   let userQuery = $state('');
   let userSort = $state<PanelUserSort>('name_asc');
-  let userRoles = $state<PanelRole[]>([]);
+  let userRoles = $state<InstallationRole[]>([]);
   let userStatuses = $state<PanelUserListStatus[]>([]);
   const userLimit = 20;
 
   let invitationSearch = $state('');
   let invitationQuery = $state('');
   let invitationSort = $state<InvitationSort>('name_asc');
-  let invitationRoles = $state<Exclude<PanelRole, 'none'>[]>([]);
+  let invitationRoles = $state<Exclude<InstallationRole, 'none'>[]>([]);
   let invitationStatuses = $state<InvitationStatus[]>([]);
   const invitationLimit = 20;
 
@@ -201,7 +201,7 @@
   let addButton = $state<HTMLButtonElement | null>(null);
   let addReturnFocus = $state<HTMLElement | null>(null);
   let login = $state('');
-  let addRole = $state<PanelRole>('viewer');
+  let addRole = $state<InstallationRole>('viewer');
   let accessMethod = $state<'add' | 'invite'>('add');
   let expiresInDays = $state<InvitationDays>(7);
   let generatedLink = $state('');
@@ -912,7 +912,7 @@
     return access;
   }
 
-  function addRoles(): PanelRole[] {
+  function addRoles(): InstallationRole[] {
     return actorTargetRole === 'owner' ? ['viewer', 'editor', 'admin'] : ['viewer', 'editor'];
   }
 
@@ -929,7 +929,7 @@
   function selectableRoleOptions(): RolePickerOption[] {
     return targetRoleOptions().map((option) => ({
       ...option,
-      icon: roleIcon(option.value as PanelRole),
+      icon: roleIcon(option.value as InstallationRole),
     }));
   }
 
@@ -937,7 +937,7 @@
     return user.target_access?.role ?? 'none';
   }
 
-  function shownRole(user: PanelUser): PanelRole {
+  function shownRole(user: PanelUser): InstallationRole {
     return user.target_access?.effective_role ?? 'none';
   }
 
@@ -978,12 +978,12 @@
     return status.charAt(0).toUpperCase() + status.slice(1);
   }
 
-  function roleLabel(role: PanelRole): string {
+  function roleLabel(role: InstallationRole): string {
     if (role === 'none') return 'No access';
     return role[0]?.toLocaleUpperCase() + role.slice(1);
   }
 
-  function roleIcon(role: PanelRole): IconName {
+  function roleIcon(role: InstallationRole): IconName {
     if (role === 'owner') return 'owner';
     if (role === 'admin') return 'admin';
     if (role === 'editor') return 'editor';
@@ -998,7 +998,7 @@
 
   function selectUserFilters(values: string[]): void {
     scrollResultsToTop(userResults);
-    userRoles = values.filter((value): value is PanelRole =>
+    userRoles = values.filter((value): value is InstallationRole =>
       ['owner', 'admin', 'editor', 'viewer', 'none'].includes(value),
     );
     userStatuses = values.filter((value): value is PanelUserListStatus =>
@@ -1008,7 +1008,7 @@
 
   function selectInvitationFilters(values: string[]): void {
     scrollResultsToTop(invitationResults);
-    invitationRoles = values.filter((value): value is Exclude<PanelRole, 'none'> =>
+    invitationRoles = values.filter((value): value is Exclude<InstallationRole, 'none'> =>
       ['admin', 'editor', 'viewer'].includes(value),
     );
     invitationStatuses = values.filter((value): value is InvitationStatus =>
@@ -1062,14 +1062,14 @@
   </button>
 {/snippet}
 
-{#snippet roleBadge(role: PanelRole)}
+{#snippet roleBadge(role: InstallationRole)}
   <span class="role-badge role-{role}">
     <Icon name={roleIcon(role)} size={14} />
     <span>{roleLabel(role)}</span>
   </span>
 {/snippet}
 
-{#snippet roleValue(role: PanelRole)}
+{#snippet roleValue(role: InstallationRole)}
   <span class="role-value role-{role}">
     <span class="role-value-icon" aria-hidden="true"><Icon name={roleIcon(role)} size={14} /></span>
     <span>{roleLabel(role)}</span>
@@ -1436,7 +1436,7 @@
                           </span>
                         </span>
                       </th>
-                      <td data-label="Role">{@render roleValue(invitation.role)}</td>
+                      <td data-label="Role">{@render roleValue(invitation.role ?? 'none')}</td>
                       <td data-label="Status"
                         ><Chip tone={invitationTone(invitation.status)} dot
                           >{invitationStatusLabel(invitation.status)}</Chip
@@ -1564,7 +1564,7 @@
             value={addRole}
             options={addRoleOptions}
             variant="field"
-            onSelect={(value) => (addRole = value as PanelRole)}
+            onSelect={(value) => (addRole = value as InstallationRole)}
           />
         </div>
         {#if accessMethod === 'invite'}

@@ -17,23 +17,23 @@ const (
 )
 
 type addUserRequest struct {
-	Login string             `json:"login"`
-	Role  *storage.PanelRole `json:"role"`
+	Login string                    `json:"login"`
+	Role  *storage.InstallationRole `json:"role"`
 }
 
-type nullablePanelRole struct {
-	Value   *storage.PanelRole
+type nullableInstallationRole struct {
+	Value   *storage.InstallationRole
 	Present bool
 }
 
-func (value *nullablePanelRole) UnmarshalJSON(data []byte) error {
+func (value *nullableInstallationRole) UnmarshalJSON(data []byte) error {
 	value.Present = true
 	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
 		value.Value = nil
 
 		return nil
 	}
-	var role storage.PanelRole
+	var role storage.InstallationRole
 	if err := json.Unmarshal(data, &role); err != nil {
 		return err
 	}
@@ -43,10 +43,10 @@ func (value *nullablePanelRole) UnmarshalJSON(data []byte) error {
 }
 
 type updateTargetUserRequest struct {
-	Role             nullablePanelRole `json:"role"`
-	Suspended        *bool             `json:"suspended"`
-	SuspensionReason *string           `json:"suspension_reason"`
-	ExpectedRevision *int64            `json:"expected_revision"`
+	Role             nullableInstallationRole `json:"role"`
+	Suspended        *bool                    `json:"suspended"`
+	SuspensionReason *string                  `json:"suspension_reason"`
+	ExpectedRevision *int64                   `json:"expected_revision"`
 }
 
 func (s *Server) getTargetUsers(w http.ResponseWriter, r *http.Request) {
@@ -172,7 +172,7 @@ func (s *Server) putTargetUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !input.Role.Present || input.Suspended == nil || input.ExpectedRevision == nil ||
-		(input.Role.Value != nil && !validTargetPanelRole(*input.Role.Value)) {
+		(input.Role.Value != nil && !validTargetInstallationRole(*input.Role.Value)) {
 		s.writeError(w, http.StatusBadRequest, "invalid_request", "installation user policy is incomplete")
 		return
 	}
@@ -193,12 +193,12 @@ func (s *Server) putTargetUser(w http.ResponseWriter, r *http.Request) {
 		s.writeStorageError(w, err)
 		return
 	}
-	desired := storage.PanelRoleNone
+	desired := storage.InstallationRoleNone
 	if input.Role.Value != nil {
 		desired = *input.Role.Value
 	}
 	if *input.Suspended {
-		desired = storage.PanelRoleNone
+		desired = storage.InstallationRoleNone
 	}
 	if !canManageTargetUser(actor, actorUser, actorAccess, subject, current, desired) {
 		s.writeError(w, http.StatusForbidden, "forbidden", "you cannot change this user's installation access")
@@ -280,8 +280,7 @@ func (s *Server) ensurePanelUser(
 	}
 
 	return s.store.CreatePanelUser(r.Context(), storage.PanelUserCreate{
-		AccountID: account.ID, GlobalRole: storage.PanelRoleNone,
-		ActorAccountID: actorID, ChangedAt: s.now().UTC(),
+		AccountID: account.ID, ActorAccountID: actorID, ChangedAt: s.now().UTC(),
 	})
 }
 
@@ -291,20 +290,20 @@ func canManageTargetUser(
 	actorAccess storage.TargetAccess,
 	subject storage.PanelUser,
 	subjectAccess storage.TargetAccess,
-	desiredRole storage.PanelRole,
+	desiredRole storage.InstallationRole,
 ) bool {
 	if actor.ID == subject.Account.ID || subject.Status != storage.PanelUserActive ||
 		subject.SystemRole.IsRoot() {
 		return false
 	}
-	if actorAccess.Role == storage.PanelRoleOwner || actorUser.SystemRole.IsRoot() {
-		return desiredRole != storage.PanelRoleOwner
+	if actorAccess.Role == storage.InstallationRoleOwner || actorUser.SystemRole.IsRoot() {
+		return desiredRole != storage.InstallationRoleOwner
 	}
-	if actorAccess.Role != storage.PanelRoleAdmin || subjectAccess.Role == storage.PanelRoleAdmin {
+	if actorAccess.Role != storage.InstallationRoleAdmin || subjectAccess.Role == storage.InstallationRoleAdmin {
 		return false
 	}
-	return desiredRole == storage.PanelRoleNone || desiredRole == storage.PanelRoleViewer ||
-		desiredRole == storage.PanelRoleEditor
+	return desiredRole == storage.InstallationRoleNone || desiredRole == storage.InstallationRoleViewer ||
+		desiredRole == storage.InstallationRoleEditor
 }
 
 func validAccessReason(w http.ResponseWriter, raw *string) (*string, bool) {
@@ -323,16 +322,16 @@ func validAccessReason(w http.ResponseWriter, raw *string) (*string, bool) {
 	return &value, true
 }
 
-func validTargetPanelRole(role storage.PanelRole) bool {
-	return role == storage.PanelRoleNone || role == storage.PanelRoleViewer ||
-		role == storage.PanelRoleEditor || role == storage.PanelRoleAdmin
+func validTargetInstallationRole(role storage.InstallationRole) bool {
+	return role == storage.InstallationRoleNone || role == storage.InstallationRoleViewer ||
+		role == storage.InstallationRoleEditor || role == storage.InstallationRoleAdmin
 }
 
-func validTargetUserFilterRole(role storage.PanelRole) bool {
-	return validTargetPanelRole(role) || role == storage.PanelRoleOwner
+func validTargetUserFilterRole(role storage.InstallationRole) bool {
+	return validTargetInstallationRole(role) || role == storage.InstallationRoleOwner
 }
 
-func validGrantedTargetRole(role storage.PanelRole) bool {
-	return role == storage.PanelRoleViewer || role == storage.PanelRoleEditor ||
-		role == storage.PanelRoleAdmin
+func validGrantedTargetRole(role storage.InstallationRole) bool {
+	return role == storage.InstallationRoleViewer || role == storage.InstallationRoleEditor ||
+		role == storage.InstallationRoleAdmin
 }

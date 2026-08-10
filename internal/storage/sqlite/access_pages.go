@@ -28,35 +28,6 @@ SELECT
 FROM access_audit_entries aa
 JOIN accounts actor ON actor.id = aa.actor_account_id`
 
-// ListPanelUserPage returns one filtered account-wide user page.
-func (s *Store) ListPanelUserPage(
-	ctx context.Context,
-	page storage.PanelUserPageRequest,
-) (storage.PanelUserPage, error) {
-	clauses, arguments, err := panelUserPageFilters(page, false)
-	if err != nil {
-		return storage.PanelUserPage{}, err
-	}
-	total, err := countPanelUsers(ctx, s.db, "", clauses, arguments)
-	if err != nil {
-		return storage.PanelUserPage{}, fmt.Errorf("count panel users: %w", err)
-	}
-	ids, nextOffset, err := listPanelUserIDs(ctx, s.db, "", clauses, arguments, page, false)
-	if err != nil {
-		return storage.PanelUserPage{}, err
-	}
-	items := make([]storage.PanelUser, 0, len(ids))
-	for _, id := range ids {
-		user, readErr := getPanelUser(ctx, s.db, id)
-		if readErr != nil {
-			return storage.PanelUserPage{}, fmt.Errorf("read panel user page item: %w", readErr)
-		}
-		items = append(items, user)
-	}
-
-	return storage.PanelUserPage{Items: items, NextOffset: nextOffset, Total: total}, nil
-}
-
 // ListTargetPanelUserPage returns one filtered installation-scoped user page.
 func (s *Store) ListTargetPanelUserPage(
 	ctx context.Context,
@@ -76,7 +47,7 @@ func (s *Store) ListTargetPanelUserPage(
 		return storage.TargetPanelUserPage{}, fmt.Errorf("read target user page target: %w", storage.ErrNotFound)
 	}
 
-	clauses, arguments, err := panelUserPageFilters(page, true)
+	clauses, arguments, err := panelUserPageFilters(page)
 	if err != nil {
 		return storage.TargetPanelUserPage{}, err
 	}
@@ -89,7 +60,7 @@ LEFT JOIN target_owners target_owner
 	if err != nil {
 		return storage.TargetPanelUserPage{}, fmt.Errorf("count target panel users: %w", err)
 	}
-	ids, nextOffset, err := listPanelUserIDs(ctx, s.db, join, clauses, arguments, page, true)
+	ids, nextOffset, err := listPanelUserIDs(ctx, s.db, join, clauses, arguments, page)
 	if err != nil {
 		return storage.TargetPanelUserPage{}, err
 	}
@@ -131,23 +102,19 @@ LIMIT ?`, accountID, targetID, targetID, pageLimit(limit))
 
 func panelUserPageFilters(
 	page storage.PanelUserPageRequest,
-	target bool,
 ) ([]string, []any, error) {
-	clauses := []string{"pu.status <> 'removed'"}
-	arguments := make([]any, 0)
-	if target {
-		clauses = append(
-			clauses,
-			"(target_owner.account_id IS NOT NULL OR tr.account_id IS NOT NULL)",
-		)
+	clauses := []string{
+		"pu.status <> 'removed'",
+		"(target_owner.account_id IS NOT NULL OR tr.account_id IS NOT NULL)",
 	}
+	arguments := make([]any, 0)
 	if page.Query != "" {
 		clauses = append(clauses, `(instr(lower(a.login), lower(?)) > 0
 OR instr(lower(a.display_name), lower(?)) > 0)`)
 		arguments = append(arguments, page.Query, page.Query)
 	}
 	if len(page.Roles) > 0 {
-		roleClauses, roleArguments, err := panelUserRoleFilters(page.Roles, target)
+		roleClauses, roleArguments, err := panelUserRoleFilters(page.Roles)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -155,7 +122,7 @@ OR instr(lower(a.display_name), lower(?)) > 0)`)
 		arguments = append(arguments, roleArguments...)
 	}
 	if len(page.States) > 0 {
-		stateClauses, err := panelUserStateFilters(page.States, target)
+		stateClauses, err := panelUserStateFilters(page.States)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -169,15 +136,12 @@ OR instr(lower(a.display_name), lower(?)) > 0)`)
 	return clauses, arguments, nil
 }
 
-func panelUserRoleFilters(roles []storage.PanelRole, target bool) ([]string, []any, error) {
-	expression := "pu.global_role"
-	if target {
-		expression = targetEffectiveRoleSQL()
-	}
+func panelUserRoleFilters(roles []storage.InstallationRole) ([]string, []any, error) {
+	expression := targetEffectiveRoleSQL()
 	clauses := make([]string, 0, len(roles))
 	arguments := make([]any, 0, len(roles))
 	for _, role := range roles {
-		if !validGlobalRole(role) {
+		if !validInstallationRole(role) {
 			return nil, nil, fmt.Errorf("unsupported panel user role %q", role)
 		}
 		clauses = append(clauses, expression+" = ?")
@@ -187,10 +151,10 @@ func panelUserRoleFilters(roles []storage.PanelRole, target bool) ([]string, []a
 	return clauses, arguments, nil
 }
 
-func panelUserStateFilters(states []storage.PanelUserListState, target bool) ([]string, error) {
+func panelUserStateFilters(states []storage.PanelUserListState) ([]string, error) {
 	clauses := make([]string, 0, len(states))
 	for _, state := range states {
-		clause, err := panelUserStateFilter(state, target)
+		clause, err := panelUserStateFilter(state)
 		if err != nil {
 			return nil, err
 		}
@@ -202,20 +166,14 @@ func panelUserStateFilters(states []storage.PanelUserListState, target bool) ([]
 	return clauses, nil
 }
 
-func panelUserStateFilter(state storage.PanelUserListState, target bool) (string, error) {
+func panelUserStateFilter(state storage.PanelUserListState) (string, error) {
 	switch state {
 	case storage.PanelUserListActive:
-		if target {
-			return "(pu.status = 'active' AND COALESCE(tr.suspended, 0) = 0)", nil
-		}
-		return "pu.status = 'active'", nil
+		return "(pu.status = 'active' AND COALESCE(tr.suspended, 0) = 0)", nil
 	case storage.PanelUserListBanned:
 		return "pu.status = 'banned'", nil
 	case storage.PanelUserListSuspended:
-		if target {
-			return "(pu.status = 'active' AND tr.suspended = 1)", nil
-		}
-		return "", nil
+		return "(pu.status = 'active' AND tr.suspended = 1)", nil
 	default:
 		return "", fmt.Errorf("unsupported panel user state %q", state)
 	}
@@ -254,9 +212,8 @@ func listPanelUserIDs(
 	clauses []string,
 	arguments []any,
 	page storage.PanelUserPageRequest,
-	target bool,
 ) ([]string, int, error) {
-	order, err := panelUserOrder(page.Order, target)
+	order, err := panelUserOrder(page.Order)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -291,11 +248,8 @@ LIMIT ? OFFSET ?`, queryArguments...)
 	return ids, nextOffset, nil
 }
 
-func panelUserOrder(order storage.PanelUserOrder, target bool) (string, error) {
-	role := "pu.global_role"
-	if target {
-		role = targetEffectiveRoleSQL()
-	}
+func panelUserOrder(order storage.PanelUserOrder) (string, error) {
+	role := targetEffectiveRoleSQL()
 	roleLevel := `(CASE ` + role + `
 WHEN 'none' THEN 0
 WHEN 'viewer' THEN 1

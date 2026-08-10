@@ -14,9 +14,9 @@ import (
 const defaultInviteDays = 7
 
 type createInvitationRequest struct {
-	Login         string             `json:"login"`
-	Role          *storage.PanelRole `json:"role"`
-	ExpiresInDays int                `json:"expires_in_days"`
+	Login         string                    `json:"login"`
+	Role          *storage.InstallationRole `json:"role"`
+	ExpiresInDays int                       `json:"expires_in_days"`
 }
 
 type reissueInvitationRequest struct {
@@ -24,18 +24,18 @@ type reissueInvitationRequest struct {
 }
 
 type invitationResponse struct {
-	ID          string                   `json:"id"`
-	Account     accountResponse          `json:"account"`
-	TargetID    *string                  `json:"target_id,omitempty"`
-	TargetName  *string                  `json:"target_name,omitempty"`
-	Role        storage.PanelRole        `json:"role"`
-	SystemRole  *storage.SystemRole      `json:"system_role,omitempty"`
-	Status      storage.InvitationStatus `json:"status"`
-	ExpiresAt   time.Time                `json:"expires_at"`
-	CreatedBy   accountResponse          `json:"created_by"`
-	CreatedAt   time.Time                `json:"created_at"`
-	RespondedAt *time.Time               `json:"responded_at,omitempty"`
-	InviteURL   string                   `json:"invite_url,omitempty"`
+	ID          string                    `json:"id"`
+	Account     accountResponse           `json:"account"`
+	TargetID    *string                   `json:"target_id,omitempty"`
+	TargetName  *string                   `json:"target_name,omitempty"`
+	Role        *storage.InstallationRole `json:"role,omitempty"`
+	SystemRole  *storage.SystemRole       `json:"system_role,omitempty"`
+	Status      storage.InvitationStatus  `json:"status"`
+	ExpiresAt   time.Time                 `json:"expires_at"`
+	CreatedBy   accountResponse           `json:"created_by"`
+	CreatedAt   time.Time                 `json:"created_at"`
+	RespondedAt *time.Time                `json:"responded_at,omitempty"`
+	InviteURL   string                    `json:"invite_url,omitempty"`
 }
 
 func (s *Server) getTargetInvitations(w http.ResponseWriter, r *http.Request) {
@@ -52,7 +52,7 @@ func (s *Server) listInvitations(w http.ResponseWriter, r *http.Request, targetI
 		s.writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
-	if targetID != nil && slices.Contains(page.Roles, storage.PanelRoleOwner) {
+	if targetID != nil && slices.Contains(page.Roles, storage.InstallationRoleOwner) {
 		s.writeError(w, http.StatusBadRequest, "invalid_request", "owner is not a target invitation role")
 		return
 	}
@@ -89,7 +89,7 @@ func (s *Server) postTargetInvitation(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusForbidden, "forbidden", "you cannot grant this invitation role")
 		return
 	}
-	s.createInvitation(w, r, actor.ID, account.ID, &targetID, *input.Role, nil, input.ExpiresInDays)
+	s.createInvitation(w, r, actor.ID, account.ID, &targetID, input.Role, nil, input.ExpiresInDays)
 }
 
 func (s *Server) createInvitation(
@@ -97,7 +97,7 @@ func (s *Server) createInvitation(
 	r *http.Request,
 	actorID, accountID string,
 	targetID *string,
-	role storage.PanelRole,
+	role *storage.InstallationRole,
 	systemRole *storage.SystemRole,
 	days int,
 ) {
@@ -214,7 +214,8 @@ func (s *Server) requireInvitationManager(
 		return storage.Invitation{}, storage.Account{}, false
 	}
 	actor, actorUser, access, ok := s.requireTargetUserManager(w, r)
-	if !ok || !s.canInviteToTarget(r, actor, actorUser, access, invitation.Account, invitation.Role) {
+	if !ok || invitation.Role == nil ||
+		!s.canInviteToTarget(r, actor, actorUser, access, invitation.Account, *invitation.Role) {
 		if ok {
 			s.writeError(w, http.StatusForbidden, "forbidden", "you cannot manage this invitation")
 		}
@@ -230,15 +231,15 @@ func (s *Server) canInviteToTarget(
 	actorUser storage.PanelUser,
 	actorAccess storage.TargetAccess,
 	subjectAccount storage.Account,
-	desired storage.PanelRole,
+	desired storage.InstallationRole,
 ) bool {
 	if actor.ID == subjectAccount.ID || !validGrantedTargetRole(desired) {
 		return false
 	}
 	subject, err := s.store.GetPanelUser(r.Context(), subjectAccount.ID)
 	if errors.Is(err, storage.ErrNotFound) {
-		return actorAccess.Role == storage.PanelRoleOwner || actorUser.SystemRole.IsRoot() ||
-			actorAccess.Role == storage.PanelRoleAdmin && desired != storage.PanelRoleAdmin
+		return actorAccess.Role == storage.InstallationRoleOwner || actorUser.SystemRole.IsRoot() ||
+			actorAccess.Role == storage.InstallationRoleAdmin && desired != storage.InstallationRoleAdmin
 	}
 	if err != nil || subject.Status == storage.PanelUserBanned || subject.SystemRole.IsRoot() {
 		return false
