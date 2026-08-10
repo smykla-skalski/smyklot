@@ -87,6 +87,10 @@ OR instr(lower(COALESCE(event.elevation_id, '')), lower(?)) > 0)`)
 		}
 		clauses = append(clauses, "event.category IN ("+strings.Join(placeholders, ",")+")")
 	}
+	if page.TargetID != nil {
+		clauses = append(clauses, "event.target_id = ?")
+		arguments = append(arguments, *page.TargetID)
+	}
 
 	return clauses, arguments, nil
 }

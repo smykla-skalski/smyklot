@@ -74,7 +74,6 @@
     {
       label: 'Roles',
       options: [
-        { value: 'owner', label: 'Owner' },
         { value: 'admin', label: 'Admin' },
         { value: 'editor', label: 'Editor' },
         { value: 'viewer', label: 'Viewer' },
@@ -132,6 +131,7 @@
     targetName,
     actorTargetRole,
     refreshVersion = 0,
+    readOnly = false,
     onSection,
     fetchTargetUsers,
     addTargetUser,
@@ -147,6 +147,7 @@
     targetName: string;
     actorTargetRole: InstallationRole;
     refreshVersion?: number;
+    readOnly?: boolean;
     onSection: (section: ManagementSection) => void;
     fetchTargetUsers: (targetId: string, request: PanelUserPageRequest) => Promise<Page<PanelUser>>;
     addTargetUser: (targetId: string, input: AddTargetUserInput) => Promise<PanelUser>;
@@ -848,7 +849,7 @@
   }
 
   function userActionItems(user: PanelUser): ActionMenuItem[] {
-    if (!user.manageable) return [];
+    if (readOnly || !user.manageable) return [];
     return [
       user.target_access?.suspended === true
         ? {
@@ -875,7 +876,7 @@
   }
 
   function invitationActionItems(invitation: PanelInvitation): ActionMenuItem[] {
-    if (invitation.status !== 'pending' && invitation.status !== 'expired') return [];
+    if (readOnly || (invitation.status !== 'pending' && invitation.status !== 'expired')) return [];
     return [
       {
         id: 'reissue',
@@ -1102,15 +1103,17 @@
         onSelect={selectSection}
       />
       <div class="stable-feedback" aria-live="polite">{feedback}</div>
-      <button
-        class="btn btn-signal tab-add"
-        type="button"
-        bind:this={addButton}
-        onclick={openAddModal}
-      >
-        <Icon name="user-plus" size={17} />
-        <span class="button-label">Add user</span>
-      </button>
+      {#if !readOnly}
+        <button
+          class="btn btn-signal tab-add"
+          type="button"
+          bind:this={addButton}
+          onclick={openAddModal}
+        >
+          <Icon name="user-plus" size={17} />
+          <span class="button-label">Add user</span>
+        </button>
+      {/if}
     </div>
 
     {#if failure !== null}<p class="form-error" role="alert">{failure}</p>{/if}
@@ -1250,7 +1253,7 @@
                         </span>
                       </th>
                       <td data-label="Role">
-                        {#if user.manageable}
+                        {#if user.manageable && !readOnly}
                           <RolePicker
                             label="Role for {user.account.login}"
                             value={selectedRole(user)}
@@ -1278,7 +1281,7 @@
                         {/if}
                       </td>
                       <td class="row-actions" data-label="Actions">
-                        {#if user.manageable}
+                        {#if user.manageable && !readOnly}
                           <ActionMenu
                             label={`Actions for @${user.account.login}`}
                             items={userActionItems(user)}

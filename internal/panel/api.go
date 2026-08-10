@@ -241,6 +241,10 @@ func (s *Server) getAudit(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	s.getInstallationAuditPage(w, r, target.ID)
+}
+
+func (s *Server) getInstallationAuditPage(w http.ResponseWriter, r *http.Request, targetID string) {
 	page, err := parseHistoryPage(r.URL.Query(), auditHistoryOrders...)
 	if err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid_history_query", err.Error())
@@ -264,7 +268,7 @@ func (s *Server) getAudit(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, "invalid_history_query", "invalid audit change")
 		return
 	}
-	result, err := s.store.ListAudit(r.Context(), target.ID, storage.AuditPageRequest{
+	result, err := s.store.ListAudit(r.Context(), targetID, storage.AuditPageRequest{
 		HistoryPageRequest: page,
 		Scope:              scope,
 		Change:             change,
@@ -281,6 +285,10 @@ func (s *Server) getFailures(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	s.getInstallationFailurePage(w, r, target.ID)
+}
+
+func (s *Server) getInstallationFailurePage(w http.ResponseWriter, r *http.Request, targetID string) {
 	page, err := parseHistoryPage(r.URL.Query(), failureHistoryOrders...)
 	if err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid_history_query", err.Error())
@@ -299,7 +307,7 @@ func (s *Server) getFailures(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, "invalid_history_query", "invalid failure kind")
 		return
 	}
-	result, err := s.store.ListFailures(r.Context(), target.ID, storage.FailurePageRequest{
+	result, err := s.store.ListFailures(r.Context(), targetID, storage.FailurePageRequest{
 		HistoryPageRequest: page,
 		Retryable:          retryable,
 	})

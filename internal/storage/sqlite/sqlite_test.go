@@ -233,6 +233,75 @@ var _ = Describe("SQLite store [Unit]", func() {
 		Expect(ended.EndReason).To(HaveValue(Equal(storage.ElevationExpired)))
 	})
 
+	It("records elevated access and invitation writes with Owner notifications", func() {
+		root, owner, target, session := seedElevationScenario(ctx, store, now)
+		elevation, err := store.BeginElevation(ctx, storage.ElevationGrant{
+			ID: "elevation-access", SessionTokenHash: session.TokenHash,
+			RootAccountID: root.ID, TargetID: target.TargetID, StartedAt: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		subject := owner
+		subject.ID = "github:member"
+		subject.SubjectID = "member"
+		subject.Login = "member"
+		subject.DisplayName = "Installation Member"
+		Expect(store.UpsertAccount(ctx, subject)).To(Succeed())
+		_, err = store.CreatePanelUser(ctx, storage.PanelUserCreate{
+			AccountID: subject.ID, ActorAccountID: root.ID, ChangedAt: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		role := storage.InstallationRoleEditor
+		_, err = store.SetTargetAccess(ctx, storage.TargetAccessChange{
+			TargetID: target.TargetID, SubjectAccountID: subject.ID, ActorAccountID: root.ID,
+			ElevationID: &elevation.ID, SessionTokenHash: session.TokenHash,
+			Role: &role, ChangedAt: now.Add(time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		invitee := subject
+		invitee.ID = "github:invitee"
+		invitee.SubjectID = "invitee"
+		invitee.Login = "invitee"
+		invitee.DisplayName = "Invited Member"
+		Expect(store.UpsertAccount(ctx, invitee)).To(Succeed())
+		viewer := storage.InstallationRoleViewer
+		_, err = store.CreateInvitation(ctx, storage.InvitationCreate{
+			ID: "elevated-invitation", TokenHash: "elevated-invitation-token",
+			AccountID: invitee.ID, TargetID: &target.TargetID, Role: &viewer,
+			ElevationID: &elevation.ID, SessionTokenHash: session.TokenHash,
+			ExpiresAt: now.Add(24 * time.Hour), CreatedByAccount: root.ID,
+			CreatedAt: now.Add(2 * time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		notifications, err := store.ListSecurityNotifications(
+			ctx, owner.ID, storage.NotificationPageRequest{Limit: 10},
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(notifications.Total).To(Equal(2))
+		Expect(notifications.Items).To(ConsistOf(
+			HaveField("Action", "target.access.updated"),
+			HaveField("Action", "invitation.created"),
+		))
+		for _, notification := range notifications.Items {
+			Expect(notification.ElevationID).To(Equal(elevation.ID))
+		}
+
+		audit, err := store.ListRootAudit(ctx, storage.RootAuditPageRequest{
+			HistoryPageRequest: storage.HistoryPageRequest{Limit: 20},
+			Categories:         []storage.AuditCategory{storage.AuditCategoryAccess},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		for _, action := range []string{"target.access.updated", "invitation.created"} {
+			Expect(audit.Items).To(ContainElement(And(
+				HaveField("Action", action),
+				HaveField("ElevationID", HaveValue(Equal(elevation.ID))),
+			)))
+		}
+	})
+
 	It("summarizes Root operational state", func() {
 		root, _, target, session := seedElevationScenario(ctx, store, now)
 		_, err := store.BeginElevation(ctx, storage.ElevationGrant{

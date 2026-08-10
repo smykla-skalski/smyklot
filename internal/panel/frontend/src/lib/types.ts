@@ -257,6 +257,7 @@ export interface RootInstallation {
   type: 'Organization' | 'User';
   account: PanelAccount;
   available: boolean;
+  owned_by_viewer: boolean;
   repository_counts: RepositoryCounts;
   ownership: OwnershipState;
 }

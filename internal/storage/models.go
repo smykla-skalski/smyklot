@@ -200,6 +200,8 @@ type InvitationCreate struct {
 	TargetID         *string
 	Role             *InstallationRole
 	SystemRole       *SystemRole
+	ElevationID      *string
+	SessionTokenHash string
 	ExpiresAt        time.Time
 	CreatedByAccount string
 	CreatedAt        time.Time
@@ -209,6 +211,8 @@ type InvitationCreate struct {
 type InvitationReissue struct {
 	ID               string
 	TokenHash        string
+	ElevationID      *string
+	SessionTokenHash string
 	ExpiresAt        time.Time
 	CreatedByAccount string
 	CreatedAt        time.Time
@@ -216,9 +220,11 @@ type InvitationReissue struct {
 
 // InvitationRevoke invalidates an invitation without deleting its audit trail.
 type InvitationRevoke struct {
-	ID             string
-	ActorAccountID string
-	RevokedAt      time.Time
+	ID               string
+	ActorAccountID   string
+	ElevationID      *string
+	SessionTokenHash string
+	RevokedAt        time.Time
 }
 
 // InvitationResponse accepts or declines an invitation as its named identity.
@@ -304,6 +310,8 @@ type TargetAccessChange struct {
 	TargetID         string
 	SubjectAccountID string
 	ActorAccountID   string
+	ElevationID      *string
+	SessionTokenHash string
 	Role             *InstallationRole
 	Suspended        bool
 	SuspensionReason *string

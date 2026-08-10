@@ -12,9 +12,11 @@
     TargetSettingsInput,
   } from '../lib/types';
   import Icon from './Icon.svelte';
+  import HistoryPanel from './HistoryPanel.svelte';
   import Modal from './Modal.svelte';
   import RepositoryList from './RepositoryList.svelte';
   import TargetSettings from './TargetSettings.svelte';
+  import UserManagement from './UserManagement.svelte';
 
   const {
     installation,
@@ -88,6 +90,10 @@
     if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey) return;
     event.preventDefault();
     onNavigate(installation.account.login, next);
+  }
+
+  function selectAccessSection(section: 'users' | 'invitations'): void {
+    onNavigate(installation.account.login, section);
   }
 
   function returnToList(event: MouseEvent): void {
@@ -303,14 +309,35 @@
       onChanged={() => (repositoryVersion += 1)}
       readOnly={!canWrite}
     />
+  {:else if target !== null && (view === 'users' || view === 'invitations')}
+    <UserManagement
+      section={view}
+      targetId={installation.id}
+      targetName={installation.account.display_name}
+      actorTargetRole={canWrite ? 'owner' : 'none'}
+      refreshVersion={repositoryVersion}
+      readOnly={!canWrite}
+      onSection={selectAccessSection}
+      fetchTargetUsers={api.fetchRootTargetUsers}
+      addTargetUser={api.addRootTargetUser}
+      updateTargetUser={api.updateRootTargetUser}
+      fetchTargetInvitations={api.fetchRootTargetInvitations}
+      createTargetInvitation={api.createRootTargetInvitation}
+      reissueInvitation={api.reissueRootTargetInvitation}
+      revokeInvitation={api.revokeRootTargetInvitation}
+      fetchUserDecisions={api.fetchRootTargetUserDecisions}
+    />
+  {:else if target !== null && view === 'history'}
+    <HistoryPanel
+      targetId={installation.id}
+      refreshVersion={repositoryVersion}
+      fetchAudit={(request) => api.fetchRootTargetAudit(installation.id, request)}
+      fetchFailures={(request) => api.fetchRootTargetFailures(installation.id, request)}
+    />
   {:else}
     <div class="root-loading">
-      <strong
-        >{view === 'history'
-          ? 'Application-wide history is being connected'
-          : 'Root access management is being connected'}</strong
-      >
-      <p>This installation remains read-only while its dedicated Root endpoint is completed.</p>
+      <strong>This installation view is unavailable</strong>
+      <p>Return to the installation catalog and choose a supported destination.</p>
     </div>
   {/if}
 </section>

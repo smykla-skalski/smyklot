@@ -24,6 +24,7 @@ type rootInstallationResponse struct {
 	Type             storage.TargetKind       `json:"type"`
 	Account          accountResponse          `json:"account"`
 	Available        bool                     `json:"available"`
+	OwnedByViewer    bool                     `json:"owned_by_viewer"`
 	RepositoryCounts storage.RepositoryCounts `json:"repository_counts"`
 	Ownership        ownershipResponse        `json:"ownership"`
 }
@@ -118,10 +119,15 @@ type rootPanelUserResponse struct {
 	CanManageSystemRole   bool                    `json:"can_manage_system_role"`
 }
 
-func rootInstallationDTO(target storage.Target, now time.Time) rootInstallationResponse {
+func rootInstallationDTO(
+	target storage.Target,
+	now time.Time,
+	ownedByViewer bool,
+) rootInstallationResponse {
 	return rootInstallationResponse{
 		ID: target.ID, InstallationID: target.InstallationID, Type: target.Kind,
 		Account: accountDTO(target.Account), Available: target.Available,
+		OwnedByViewer:    ownedByViewer,
 		RepositoryCounts: target.RepositoryCounts,
 		Ownership: ownershipResponse{
 			Source: target.Ownership.Source, Status: target.Ownership.Status,

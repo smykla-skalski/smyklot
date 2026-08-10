@@ -1082,6 +1082,15 @@ func TestPanelRootElevationAndOwnerNotifications(t *testing.T) {
 		t, blockedWrite, "Root write without elevation", http.StatusForbidden,
 		`"code":"elevation_required"`,
 	)
+	blockedAccessWrite := harness.request(
+		t, http.MethodPost,
+		"/panel/api/v1/root/installations/"+target.TargetID+"/users",
+		strings.NewReader(`{"login":"support-user","role":"viewer"}`), rootSession,
+	)
+	requireResponse(
+		t, blockedAccessWrite, "Root access write without elevation", http.StatusForbidden,
+		`"code":"elevation_required"`,
+	)
 	missingAcknowledgment := harness.request(
 		t, http.MethodPost,
 		"/panel/api/v1/root/installations/"+target.TargetID+"/elevation",
@@ -1132,14 +1141,90 @@ func TestPanelRootElevationAndOwnerNotifications(t *testing.T) {
 	requireResponse(
 		t, repositoryWrite, "elevated Root repository write", http.StatusOK, `"revision":2`,
 	)
+
+	subject := storage.Account{
+		ID: "github:test:user:support", Provider: "github:test", SubjectID: "support",
+		Login: "support-user", DisplayName: "Support User", UpdatedAt: harness.now,
+	}
+	harness.server.users = fakeUserResolver{account: subject}
+	rootAccessBase := "/panel/api/v1/root/installations/" + target.TargetID
+	added := harness.request(
+		t, http.MethodPost, rootAccessBase+"/users",
+		strings.NewReader(`{"login":"support-user","role":"viewer"}`), rootSession,
+	)
+	requireResponse(
+		t, added, "elevated Root user add", http.StatusCreated,
+		`"login":"support-user"`, `"effective_role":"viewer"`,
+	)
+	listedUsers := harness.request(
+		t, http.MethodGet, rootAccessBase+"/users?role=viewer&limit=10", nil, rootSession,
+	)
+	requireResponse(t, listedUsers, "Root installation users", http.StatusOK, `"login":"support-user"`)
+	updatedUser := harness.request(
+		t, http.MethodPut, rootAccessBase+"/users/"+subject.ID,
+		strings.NewReader(`{"role":"editor","suspended":false,"expected_revision":1}`),
+		rootSession,
+	)
+	requireResponse(
+		t, updatedUser, "elevated Root user update", http.StatusOK,
+		`"effective_role":"editor"`, `"revision":2`,
+	)
+	decisions := harness.request(
+		t, http.MethodGet, rootAccessBase+"/users/"+subject.ID+"/decisions", nil, rootSession,
+	)
+	requireResponse(t, decisions, "Root installation decisions", http.StatusOK, `"target.access.updated"`)
+
+	createdInvitation := harness.request(
+		t, http.MethodPost, rootAccessBase+"/invitations",
+		strings.NewReader(`{"login":"support-user","role":"viewer","expires_in_days":7}`),
+		rootSession,
+	)
+	requireResponse(
+		t, createdInvitation, "elevated Root invitation", http.StatusCreated,
+		`"login":"support-user"`, `"role":"viewer"`,
+	)
+	var invitation invitationResponse
+	if err := json.Unmarshal(createdInvitation.Body.Bytes(), &invitation); err != nil {
+		t.Fatal(err)
+	}
+	listedInvitations := harness.request(
+		t, http.MethodGet, rootAccessBase+"/invitations?status=pending&limit=10", nil, rootSession,
+	)
+	requireResponse(
+		t, listedInvitations, "Root installation invitations", http.StatusOK, invitation.ID,
+	)
+	reissuedInvitation := harness.request(
+		t, http.MethodPost, rootAccessBase+"/invitations/"+invitation.ID+"/reissue",
+		strings.NewReader(`{"expires_in_days":7}`), rootSession,
+	)
+	requireResponse(t, reissuedInvitation, "Root invitation reissue", http.StatusOK, `"invite_url":`)
+	revokedInvitation := harness.request(
+		t, http.MethodDelete, rootAccessBase+"/invitations/"+invitation.ID, nil, rootSession,
+	)
+	requireResponse(
+		t, revokedInvitation, "Root invitation revoke", http.StatusOK, `"status":"revoked"`,
+	)
+	installationAudit := harness.request(
+		t, http.MethodGet, rootAccessBase+"/audit?sort=oldest&limit=20", nil, rootSession,
+	)
+	requireResponse(
+		t, installationAudit, "Root installation audit", http.StatusOK,
+		`"target.access.updated"`, `"invitation.created"`,
+	)
+	installationFailures := harness.request(
+		t, http.MethodGet, rootAccessBase+"/failures?limit=20", nil, rootSession,
+	)
+	requireResponse(t, installationFailures, "Root installation failures", http.StatusOK, `"total":0`)
+
 	ownerSession := activateOwnerSession(t, harness, owner)
 	notifications := harness.request(
 		t, http.MethodGet, "/panel/api/v1/notifications", nil, ownerSession,
 	)
 	requireResponse(
 		t, notifications, "Owner notifications", http.StatusOK,
-		`"unread":2`, `"elevation_id":"`+elevation.ID+`"`,
+		`"unread":7`, `"elevation_id":"`+elevation.ID+`"`,
 		`"action":"target.settings.updated"`, `"action":"repository.settings.updated"`,
+		`"action":"target.access.updated"`, `"action":"invitation.created"`,
 	)
 	var page notificationPageResponse
 	if err := json.Unmarshal(notifications.Body.Bytes(), &page); err != nil {

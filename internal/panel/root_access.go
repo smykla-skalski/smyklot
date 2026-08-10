@@ -94,7 +94,7 @@ func (s *Server) postRootInvitation(w http.ResponseWriter, r *http.Request) {
 	}
 	role := storage.SystemRoleRoot
 	s.createInvitation(
-		w, r, actor.ID, account.ID, nil, nil, &role, input.ExpiresInDays,
+		w, r, actor.ID, account.ID, nil, nil, &role, input.ExpiresInDays, nil, "",
 	)
 }
 
@@ -104,7 +104,7 @@ func (s *Server) reissueRootInvitation(w http.ResponseWriter, r *http.Request) {
 	}
 	invitation, actor, ok := s.requireRootInvitationManager(w, r)
 	if ok {
-		s.reissueManagedInvitation(w, r, invitation, actor)
+		s.reissueManagedInvitation(w, r, invitation, actor, nil, "")
 	}
 }
 
@@ -114,7 +114,7 @@ func (s *Server) deleteRootInvitation(w http.ResponseWriter, r *http.Request) {
 	}
 	invitation, actor, ok := s.requireRootInvitationManager(w, r)
 	if ok {
-		s.revokeManagedInvitation(w, r, invitation, actor)
+		s.revokeManagedInvitation(w, r, invitation, actor, nil, "")
 	}
 }
 

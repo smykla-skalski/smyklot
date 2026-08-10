@@ -31,6 +31,7 @@ type AppAuditEvent struct {
 type RootAuditPageRequest struct {
 	HistoryPageRequest
 	Categories []AuditCategory
+	TargetID   *string
 }
 
 // RootAuditPage is one page of normalized app-wide audit events.

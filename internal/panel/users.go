@@ -49,26 +49,46 @@ type updateTargetUserRequest struct {
 	ExpectedRevision *int64                   `json:"expected_revision"`
 }
 
+type installationUserManager struct {
+	Actor            storage.Account
+	ActorUser        storage.PanelUser
+	Access           storage.TargetAccess
+	TargetID         string
+	ElevationID      *string
+	SessionTokenHash string
+	RootWrite        bool
+}
+
 func (s *Server) getTargetUsers(w http.ResponseWriter, r *http.Request) {
 	actor, actorUser, actorAccess, ok := s.requireTargetUserManager(w, r)
 	if !ok {
 		return
 	}
+	s.listInstallationUsers(w, r, installationUserManager{
+		Actor: actor, ActorUser: actorUser, Access: actorAccess, TargetID: r.PathValue("target"),
+	})
+}
+
+func (s *Server) listInstallationUsers(
+	w http.ResponseWriter,
+	r *http.Request,
+	manager installationUserManager,
+) {
 	page, err := parsePanelUserPage(r.URL.Query())
 	if err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
 	users, err := s.store.ListTargetPanelUserPage(
-		r.Context(), r.PathValue("target"), s.now().UTC(), page,
+		r.Context(), manager.TargetID, s.now().UTC(), page,
 	)
 	if err != nil {
-		s.writeStorageError(w, err)
+		s.writeInstallationMutationError(w, manager, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, targetPanelUserPageDTO(users, func(user storage.TargetPanelUser) bool {
 		return canManageTargetUser(
-			actor, actorUser, actorAccess, user.User, user.Access, user.Access.Role,
+			manager.Actor, manager.ActorUser, manager.Access, user.User, user.Access, user.Access.Role,
 		)
 	}))
 }
@@ -77,7 +97,14 @@ func (s *Server) getTargetUserDecisions(w http.ResponseWriter, r *http.Request) 
 	if _, _, _, ok := s.requireTargetUserManager(w, r); !ok {
 		return
 	}
-	targetID := r.PathValue("target")
+	s.listInstallationUserDecisions(w, r, r.PathValue("target"))
+}
+
+func (s *Server) listInstallationUserDecisions(
+	w http.ResponseWriter,
+	r *http.Request,
+	targetID string,
+) {
 	s.listUserDecisions(w, r, &targetID)
 }
 
@@ -104,6 +131,16 @@ func (s *Server) postTargetUser(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	s.addInstallationUser(w, r, installationUserManager{
+		Actor: actor, ActorUser: actorUser, Access: actorAccess, TargetID: r.PathValue("target"),
+	})
+}
+
+func (s *Server) addInstallationUser(
+	w http.ResponseWriter,
+	r *http.Request,
+	manager installationUserManager,
+) {
 	var input addUserRequest
 	if !decodeJSON(w, r, &input) {
 		return
@@ -112,19 +149,19 @@ func (s *Server) postTargetUser(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, "invalid_request", "login and target role are required")
 		return
 	}
-	targetID := r.PathValue("target")
+	targetID := manager.TargetID
 	account, err := s.resolvePanelUser(r, targetID, input.Login)
 	if err != nil {
 		s.writeError(w, http.StatusBadGateway, "github_user_unavailable", "GitHub user could not be resolved")
 		return
 	}
-	if account.ID == actor.ID {
+	if account.ID == manager.Actor.ID {
 		s.writeError(w, http.StatusForbidden, "forbidden", "you cannot change your own access")
 		return
 	}
-	subject, err := s.ensurePanelUser(r, account, actor.ID)
+	subject, err := s.ensurePanelUser(r, account, manager.Actor.ID)
 	if err != nil {
-		s.writeStorageError(w, err)
+		s.writeInstallationMutationError(w, manager, err)
 		return
 	}
 	current, err := s.store.ResolveTargetAccess(
@@ -134,16 +171,19 @@ func (s *Server) postTargetUser(w http.ResponseWriter, r *http.Request) {
 		s.writeStorageError(w, err)
 		return
 	}
-	if !canManageTargetUser(actor, actorUser, actorAccess, subject, current, *input.Role) {
+	if !canManageTargetUser(
+		manager.Actor, manager.ActorUser, manager.Access, subject, current, *input.Role,
+	) {
 		s.writeError(w, http.StatusForbidden, "forbidden", "you cannot grant this installation role")
 		return
 	}
 	override, err := s.store.SetTargetAccess(r.Context(), storage.TargetAccessChange{
-		TargetID: targetID, SubjectAccountID: subject.Account.ID, ActorAccountID: actor.ID,
+		TargetID: targetID, SubjectAccountID: subject.Account.ID, ActorAccountID: manager.Actor.ID,
+		ElevationID: manager.ElevationID, SessionTokenHash: manager.SessionTokenHash,
 		Role: input.Role, ExpectedRevision: 0, ChangedAt: s.now().UTC(),
 	})
 	if err != nil {
-		s.writeStorageError(w, err)
+		s.writeInstallationMutationError(w, manager, err)
 		return
 	}
 	access, err := s.store.ResolveTargetAccess(
@@ -159,6 +199,18 @@ func (s *Server) postTargetUser(w http.ResponseWriter, r *http.Request) {
 	}, true))
 }
 
+func (s *Server) writeInstallationMutationError(
+	w http.ResponseWriter,
+	manager installationUserManager,
+	err error,
+) {
+	if manager.RootWrite {
+		s.writeRootWriteError(w, err)
+		return
+	}
+	s.writeStorageError(w, err)
+}
+
 func (s *Server) putTargetUser(w http.ResponseWriter, r *http.Request) {
 	if !s.requireSameOrigin(w, r) {
 		return
@@ -167,6 +219,16 @@ func (s *Server) putTargetUser(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	s.updateInstallationUser(w, r, installationUserManager{
+		Actor: actor, ActorUser: actorUser, Access: actorAccess, TargetID: r.PathValue("target"),
+	})
+}
+
+func (s *Server) updateInstallationUser(
+	w http.ResponseWriter,
+	r *http.Request,
+	manager installationUserManager,
+) {
 	var input updateTargetUserRequest
 	if !decodeJSON(w, r, &input) {
 		return
@@ -180,7 +242,7 @@ func (s *Server) putTargetUser(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	targetID := r.PathValue("target")
+	targetID := manager.TargetID
 	subject, err := s.store.GetPanelUser(r.Context(), r.PathValue("account"))
 	if err != nil {
 		s.writeStorageError(w, err)
@@ -200,17 +262,20 @@ func (s *Server) putTargetUser(w http.ResponseWriter, r *http.Request) {
 	if *input.Suspended {
 		desired = storage.InstallationRoleNone
 	}
-	if !canManageTargetUser(actor, actorUser, actorAccess, subject, current, desired) {
+	if !canManageTargetUser(
+		manager.Actor, manager.ActorUser, manager.Access, subject, current, desired,
+	) {
 		s.writeError(w, http.StatusForbidden, "forbidden", "you cannot change this user's installation access")
 		return
 	}
 	override, err := s.store.SetTargetAccess(r.Context(), storage.TargetAccessChange{
-		TargetID: targetID, SubjectAccountID: subject.Account.ID, ActorAccountID: actor.ID,
+		TargetID: targetID, SubjectAccountID: subject.Account.ID, ActorAccountID: manager.Actor.ID,
+		ElevationID: manager.ElevationID, SessionTokenHash: manager.SessionTokenHash,
 		Role: input.Role.Value, Suspended: *input.Suspended, SuspensionReason: reason,
 		ExpectedRevision: *input.ExpectedRevision, ChangedAt: s.now().UTC(),
 	})
 	if err != nil {
-		s.writeStorageError(w, err)
+		s.writeInstallationMutationError(w, manager, err)
 		return
 	}
 	access, err := s.store.ResolveTargetAccess(

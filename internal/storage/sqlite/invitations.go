@@ -109,6 +109,18 @@ func (s *Store) CreateInvitation(
 		return storage.Invitation{}, fmt.Errorf("begin invitation create: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	elevation, err := elevatedInvitationWrite(
+		ctx,
+		tx,
+		change.TargetID,
+		change.ElevationID,
+		change.SessionTokenHash,
+		change.CreatedByAccount,
+		change.CreatedAt,
+	)
+	if err != nil {
+		return storage.Invitation{}, err
+	}
 
 	if change.TargetID == nil {
 		var status storage.PanelUserStatus
@@ -150,7 +162,7 @@ INSERT INTO user_invitations (
 	); err != nil {
 		return storage.Invitation{}, fmt.Errorf("insert invitation: %w", conflictConstraint(err))
 	}
-	if err = insertAccessAudit(
+	auditEventID, err := insertAccessAuditEvent(
 		ctx,
 		tx,
 		change.TargetID,
@@ -159,8 +171,17 @@ INSERT INTO user_invitations (
 		"invitation.created",
 		invitationRoleSummary(change.Role, change.SystemRole),
 		change.CreatedAt,
-	); err != nil {
+		change.ElevationID,
+	)
+	if err != nil {
 		return storage.Invitation{}, err
+	}
+	if elevation != nil {
+		if err := insertElevatedNotifications(
+			ctx, tx, *elevation, auditEventID, "invitation.created", formatTime(change.CreatedAt),
+		); err != nil {
+			return storage.Invitation{}, err
+		}
 	}
 	invitation, err := getInvitation(ctx, tx, "ui.id = ?", change.ID, change.CreatedAt)
 	if err != nil {
@@ -193,6 +214,18 @@ func (s *Store) ReissueInvitation(
 	if current.Status != storage.InvitationPending && current.Status != storage.InvitationExpired {
 		return storage.Invitation{}, storage.ErrConflict
 	}
+	elevation, err := elevatedInvitationWrite(
+		ctx,
+		tx,
+		current.TargetID,
+		change.ElevationID,
+		change.SessionTokenHash,
+		change.CreatedByAccount,
+		change.CreatedAt,
+	)
+	if err != nil {
+		return storage.Invitation{}, err
+	}
 	result, err := tx.ExecContext(ctx, `
 UPDATE user_invitations
 SET token_hash = ?, status = 'pending', expires_at = ?, created_by = ?, created_at = ?,
@@ -210,7 +243,7 @@ WHERE id = ? AND status = 'pending'`,
 	if !oneRowChanged(result) {
 		return storage.Invitation{}, storage.ErrConflict
 	}
-	if err = insertAccessAudit(
+	auditEventID, err := insertAccessAuditEvent(
 		ctx,
 		tx,
 		current.TargetID,
@@ -219,8 +252,17 @@ WHERE id = ? AND status = 'pending'`,
 		"invitation.reissued",
 		"reissued invitation",
 		change.CreatedAt,
-	); err != nil {
+		change.ElevationID,
+	)
+	if err != nil {
 		return storage.Invitation{}, err
+	}
+	if elevation != nil {
+		if err := insertElevatedNotifications(
+			ctx, tx, *elevation, auditEventID, "invitation.reissued", formatTime(change.CreatedAt),
+		); err != nil {
+			return storage.Invitation{}, err
+		}
 	}
 	updated, err := getInvitation(ctx, tx, "ui.id = ?", change.ID, change.CreatedAt)
 	if err != nil {
@@ -250,6 +292,18 @@ func (s *Store) RevokeInvitation(
 	if current.Status != storage.InvitationPending && current.Status != storage.InvitationExpired {
 		return storage.Invitation{}, storage.ErrConflict
 	}
+	elevation, err := elevatedInvitationWrite(
+		ctx,
+		tx,
+		current.TargetID,
+		change.ElevationID,
+		change.SessionTokenHash,
+		change.ActorAccountID,
+		change.RevokedAt,
+	)
+	if err != nil {
+		return storage.Invitation{}, err
+	}
 	result, err := tx.ExecContext(ctx, `
 UPDATE user_invitations SET status = 'revoked', responded_at = ?
 WHERE id = ? AND status = 'pending'`, formatTime(change.RevokedAt), change.ID)
@@ -259,7 +313,7 @@ WHERE id = ? AND status = 'pending'`, formatTime(change.RevokedAt), change.ID)
 	if !oneRowChanged(result) {
 		return storage.Invitation{}, storage.ErrConflict
 	}
-	if err = insertAccessAudit(
+	auditEventID, err := insertAccessAuditEvent(
 		ctx,
 		tx,
 		current.TargetID,
@@ -268,8 +322,17 @@ WHERE id = ? AND status = 'pending'`, formatTime(change.RevokedAt), change.ID)
 		"invitation.revoked",
 		"revoked invitation",
 		change.RevokedAt,
-	); err != nil {
+		change.ElevationID,
+	)
+	if err != nil {
 		return storage.Invitation{}, err
+	}
+	if elevation != nil {
+		if err := insertElevatedNotifications(
+			ctx, tx, *elevation, auditEventID, "invitation.revoked", formatTime(change.RevokedAt),
+		); err != nil {
+			return storage.Invitation{}, err
+		}
 	}
 	updated, err := getInvitation(ctx, tx, "ui.id = ?", change.ID, change.RevokedAt)
 	if err != nil {
@@ -280,6 +343,25 @@ WHERE id = ? AND status = 'pending'`, formatTime(change.RevokedAt), change.ID)
 	}
 
 	return updated, nil
+}
+
+func elevatedInvitationWrite(
+	ctx context.Context,
+	tx *sql.Tx,
+	targetID, elevationID *string,
+	sessionTokenHash, actorAccountID string,
+	changedAt time.Time,
+) (*storage.Elevation, error) {
+	if targetID == nil {
+		if elevationID != nil {
+			return nil, storage.ErrConflict
+		}
+		return nil, nil
+	}
+
+	return elevatedWrite(
+		ctx, tx, elevationID, sessionTokenHash, actorAccountID, *targetID, changedAt,
+	)
 }
 
 // RespondToInvitation verifies the named identity and grants or declines the

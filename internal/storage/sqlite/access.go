@@ -134,6 +134,19 @@ func (s *Store) SetTargetAccess(
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	elevation, err := elevatedWrite(
+		ctx,
+		tx,
+		change.ElevationID,
+		change.SessionTokenHash,
+		change.ActorAccountID,
+		change.TargetID,
+		change.ChangedAt,
+	)
+	if err != nil {
+		return storage.TargetAccessOverride{}, err
+	}
+
 	currentRevision, found, err := targetAccessRevision(ctx, tx, change)
 	if err != nil {
 		return storage.TargetAccessOverride{}, err
@@ -169,7 +182,7 @@ func (s *Store) SetTargetAccess(
 		action = "target.access.restored"
 		summary = "restored installation access"
 	}
-	if err := insertAccessAudit(
+	auditEventID, err := insertAccessAuditEvent(
 		ctx,
 		tx,
 		&change.TargetID,
@@ -178,8 +191,17 @@ func (s *Store) SetTargetAccess(
 		action,
 		summary,
 		change.ChangedAt,
-	); err != nil {
+		change.ElevationID,
+	)
+	if err != nil {
 		return storage.TargetAccessOverride{}, err
+	}
+	if elevation != nil {
+		if err := insertElevatedNotifications(
+			ctx, tx, *elevation, auditEventID, action, formatTime(change.ChangedAt),
+		); err != nil {
+			return storage.TargetAccessOverride{}, err
+		}
 	}
 	override, err := getTargetAccessOverride(ctx, tx, change.SubjectAccountID, change.TargetID)
 	if err != nil {
@@ -549,6 +571,22 @@ func insertAccessAudit(
 	actorAccountID, subjectAccountID, action, summary string,
 	changedAt time.Time,
 ) error {
+	_, err := insertAccessAuditEvent(
+		ctx, executor, targetID, actorAccountID, subjectAccountID,
+		action, summary, changedAt, nil,
+	)
+
+	return err
+}
+
+func insertAccessAuditEvent(
+	ctx context.Context,
+	executor accountExecutor,
+	targetID *string,
+	actorAccountID, subjectAccountID, action, summary string,
+	changedAt time.Time,
+	elevationID *string,
+) (int64, error) {
 	result, err := executor.ExecContext(ctx, `
 INSERT INTO access_audit_entries (
     target_id, actor_account_id, subject_account_id, action, summary, created_at
@@ -561,29 +599,30 @@ INSERT INTO access_audit_entries (
 		formatTime(changedAt),
 	)
 	if err != nil {
-		return fmt.Errorf("insert access audit: %w", err)
+		return 0, fmt.Errorf("insert access audit: %w", err)
 	}
 	sourceID, err := result.LastInsertId()
 	if err != nil {
-		return fmt.Errorf("read access audit ID: %w", err)
+		return 0, fmt.Errorf("read access audit ID: %w", err)
 	}
 	sourceKind := "access"
-	_, err = insertAppAudit(ctx, executor, appAuditInsert{
+	auditEventID, err := insertAppAudit(ctx, executor, appAuditInsert{
 		Category:         "access",
 		SourceKind:       &sourceKind,
 		SourceID:         &sourceID,
 		TargetID:         targetID,
 		ActorAccountID:   actorAccountID,
 		SubjectAccountID: &subjectAccountID,
+		ElevationID:      elevationID,
 		Action:           action,
 		Summary:          summary,
 		CreatedAt:        formatTime(changedAt),
 	})
 	if err != nil {
-		return err
+		return 0, err
 	}
 
-	return nil
+	return auditEventID, nil
 }
 
 func validInstallationRole(role storage.InstallationRole) bool {

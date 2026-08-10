@@ -1078,6 +1078,7 @@ async function handle(
     const rootElevationEnd = path.match(/^\/api\/v1\/root\/elevations\/(?<elevation>[^/]+)$/);
     const notificationRead = path.match(/^\/api\/v1\/notifications\/(?<notification>[^/]+)\/read$/);
     const scopedUsers = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/users$/);
+    const rootScopedUsers = path.match(/^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/users$/);
     const rootUser = path.match(/^\/api\/v1\/root\/access\/users\/(?<account>[^/]+)$/);
     const rootInvitationReissue = path.match(
       /^\/api\/v1\/root\/access\/invitations\/(?<invitation>[^/]+)\/reissue$/,
@@ -1088,15 +1089,30 @@ async function handle(
     const scopedUser = path.match(
       /^\/api\/v1\/targets\/(?<target>[^/]+)\/users\/(?<account>[^/]+)$/,
     );
+    const rootScopedUser = path.match(
+      /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/users\/(?<account>[^/]+)$/,
+    );
     const scopedUserDecisions = path.match(
       /^\/api\/v1\/targets\/(?<target>[^/]+)\/users\/(?<account>[^/]+)\/decisions$/,
     );
+    const rootScopedUserDecisions = path.match(
+      /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/users\/(?<account>[^/]+)\/decisions$/,
+    );
     const scopedInvitations = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/invitations$/);
+    const rootScopedInvitations = path.match(
+      /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/invitations$/,
+    );
     const reissueInvitation = path.match(
       /^\/api\/v1\/targets\/(?<target>[^/]+)\/invitations\/(?<invitation>[^/]+)\/reissue$/,
     );
+    const rootScopedInvitationReissue = path.match(
+      /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/invitations\/(?<invitation>[^/]+)\/reissue$/,
+    );
     const invitation = path.match(
       /^\/api\/v1\/targets\/(?<target>[^/]+)\/invitations\/(?<invitation>[^/]+)$/,
+    );
+    const rootScopedInvitation = path.match(
+      /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/invitations\/(?<invitation>[^/]+)$/,
     );
     const repositories = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/repositories$/);
     const rootRepositories = path.match(
@@ -1116,7 +1132,19 @@ async function handle(
     );
     const audit = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/audit$/);
     const failures = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/failures$/);
+    const rootTargetAudit = path.match(/^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/audit$/);
+    const rootTargetFailures = path.match(
+      /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/failures$/,
+    );
     const rootHistory = path.match(/^\/api\/v1\/root\/history\/(?<history>audit|failures)$/);
+    const installationUsers = scopedUsers ?? rootScopedUsers;
+    const installationUser = scopedUser ?? rootScopedUser;
+    const installationUserDecisions = scopedUserDecisions ?? rootScopedUserDecisions;
+    const installationInvitations = scopedInvitations ?? rootScopedInvitations;
+    const installationInvitationReissue = reissueInvitation ?? rootScopedInvitationReissue;
+    const installationInvitation = invitation ?? rootScopedInvitation;
+    const installationAudit = audit ?? rootTargetAudit;
+    const installationFailures = failures ?? rootTargetFailures;
 
     if (rootUser && method === 'PUT') {
       const accountID = decodeURIComponent(rootUser.groups?.account ?? '');
@@ -1354,9 +1382,9 @@ async function handle(
       return;
     }
 
-    if (scopedUserDecisions && method === 'GET') {
-      const target = findTarget(state, scopedUserDecisions.groups?.target ?? '');
-      const accountId = decodeURIComponent(scopedUserDecisions.groups?.account ?? '');
+    if (installationUserDecisions && method === 'GET') {
+      const target = findTarget(state, installationUserDecisions.groups?.target ?? '');
+      const accountId = decodeURIComponent(installationUserDecisions.groups?.account ?? '');
       const user = targetUsers(state, target.value.id).find(
         (entry) => entry.account.id === accountId,
       );
@@ -1365,8 +1393,8 @@ async function handle(
       return;
     }
 
-    if (scopedInvitations && method === 'GET') {
-      const target = findTarget(state, scopedInvitations.groups?.target ?? '');
+    if (installationInvitations && method === 'GET') {
+      const target = findTarget(state, installationInvitations.groups?.target ?? '');
       respond(
         res,
         200,
@@ -1377,17 +1405,19 @@ async function handle(
       );
       return;
     }
-    if (scopedInvitations && method === 'POST') {
-      const target = findTarget(state, scopedInvitations.groups?.target ?? '');
+    if (installationInvitations && method === 'POST') {
+      const target = findTarget(state, installationInvitations.groups?.target ?? '');
+      if (rootScopedInvitations !== null) requireRootWrite(state, target);
       const input = await readBody<AddTargetInvitationInput>(req);
       const created = createMockInvitation(state, input, target.value);
       broadcast(state, { type: 'invitation.changed', target_id: target.value.id });
       respond(res, 201, invitationValue(created));
       return;
     }
-    if (reissueInvitation && method === 'POST') {
-      const target = findTarget(state, reissueInvitation.groups?.target ?? '');
-      const current = findInvitation(state, reissueInvitation.groups?.invitation ?? '');
+    if (installationInvitationReissue && method === 'POST') {
+      const target = findTarget(state, installationInvitationReissue.groups?.target ?? '');
+      if (rootScopedInvitationReissue !== null) requireRootWrite(state, target);
+      const current = findInvitation(state, installationInvitationReissue.groups?.invitation ?? '');
       if (current.target_id !== target.value.id) {
         throw new MockApiError(404, 'not_found', 'installation invitation not found');
       }
@@ -1401,9 +1431,10 @@ async function handle(
       respond(res, 200, invitationValue(current));
       return;
     }
-    if (invitation && method === 'DELETE') {
-      const target = findTarget(state, invitation.groups?.target ?? '');
-      const current = findInvitation(state, invitation.groups?.invitation ?? '');
+    if (installationInvitation && method === 'DELETE') {
+      const target = findTarget(state, installationInvitation.groups?.target ?? '');
+      if (rootScopedInvitation !== null) requireRootWrite(state, target);
+      const current = findInvitation(state, installationInvitation.groups?.invitation ?? '');
       if (current.target_id !== target.value.id) {
         throw new MockApiError(404, 'not_found', 'installation invitation not found');
       }
@@ -1413,13 +1444,14 @@ async function handle(
       respond(res, 200, publicInvitationValue(current));
       return;
     }
-    if (scopedUsers && method === 'GET') {
-      const target = findTarget(state, scopedUsers.groups?.target ?? '');
+    if (installationUsers && method === 'GET') {
+      const target = findTarget(state, installationUsers.groups?.target ?? '');
       respond(res, 200, userPage(targetUsers(state, target.value.id), parsed.searchParams));
       return;
     }
-    if (scopedUsers && method === 'POST') {
-      const target = findTarget(state, scopedUsers.groups?.target ?? '');
+    if (installationUsers && method === 'POST') {
+      const target = findTarget(state, installationUsers.groups?.target ?? '');
+      if (rootScopedUsers !== null) requireRootWrite(state, target);
       const input = await readBody<AddTargetUserInput>(req);
       let user = state.users.find(
         (entry) => entry.account.login.toLowerCase() === input.login.toLowerCase(),
@@ -1427,6 +1459,10 @@ async function handle(
       if (user === undefined) {
         user = mockUser(input.login);
         state.users.push(user);
+      } else if (user.status === 'removed') {
+        user.status = 'active';
+        user.revision += 1;
+        user.updated_at = new Date().toISOString();
       }
       const access = targetAccessFor(state, target.value.id);
       if (access.has(user.account.id)) {
@@ -1437,9 +1473,10 @@ async function handle(
       respond(res, 201, scopedUserValue(state, target.value.id, user));
       return;
     }
-    if (scopedUser && method === 'PUT') {
-      const target = findTarget(state, scopedUser.groups?.target ?? '');
-      const user = findUser(state, scopedUser.groups?.account ?? '');
+    if (installationUser && method === 'PUT') {
+      const target = findTarget(state, installationUser.groups?.target ?? '');
+      if (rootScopedUser !== null) requireRootWrite(state, target);
+      const user = findUser(state, installationUser.groups?.account ?? '');
       const input = await readBody<UpdateTargetUserInput>(req);
       const access = targetAccessFor(state, target.value.id);
       const current = access.get(user.account.id);
@@ -1506,8 +1543,8 @@ async function handle(
       respond(res, 200, stored.detail);
       return;
     }
-    if (audit && method === 'GET') {
-      const target = findTarget(state, audit.groups?.target ?? '');
+    if (installationAudit && method === 'GET') {
+      const target = findTarget(state, installationAudit.groups?.target ?? '');
       const scope = parsed.searchParams.get('scope') ?? 'all';
       const change = parsed.searchParams.get('change') ?? 'all';
       respond(
@@ -1552,8 +1589,8 @@ async function handle(
       );
       return;
     }
-    if (failures && method === 'GET') {
-      const target = findTarget(state, failures.groups?.target ?? '');
+    if (installationFailures && method === 'GET') {
+      const target = findTarget(state, installationFailures.groups?.target ?? '');
       const kind = parsed.searchParams.get('kind') ?? 'all';
       respond(
         res,
@@ -1631,6 +1668,7 @@ function rootInstallationValue(target: MockTarget, index: number): RootInstallat
     type: target.value.type,
     account: target.value.account,
     available,
+    owned_by_viewer: mockRootOwns(target),
     repository_counts: target.value.repository_counts,
     ownership: {
       source: target.value.type === 'User' ? 'personal' : 'organization_admin',

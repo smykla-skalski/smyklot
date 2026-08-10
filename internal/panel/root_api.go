@@ -49,13 +49,14 @@ func (s *Server) getRootHistory(w http.ResponseWriter, r *http.Request) {
 		s.getRootFailurePage(w, r, page)
 		return
 	}
-	s.getRootAuditPage(w, r, page)
+	s.getRootAuditPage(w, r, page, nil)
 }
 
 func (s *Server) getRootAuditPage(
 	w http.ResponseWriter,
 	r *http.Request,
 	page storage.HistoryPageRequest,
+	targetID *string,
 ) {
 	categories, err := parseRootAuditCategories(r)
 	if err != nil {
@@ -63,7 +64,7 @@ func (s *Server) getRootAuditPage(
 		return
 	}
 	result, err := s.store.ListRootAudit(r.Context(), storage.RootAuditPageRequest{
-		HistoryPageRequest: page, Categories: categories,
+		HistoryPageRequest: page, Categories: categories, TargetID: targetID,
 	})
 	if err != nil {
 		s.writeInternal(w, err)
@@ -146,7 +147,8 @@ func parseRootFailureKind(r *http.Request) (*bool, error) {
 }
 
 func (s *Server) getRootInstallations(w http.ResponseWriter, r *http.Request) {
-	if _, _, ok := s.requireRoot(w, r); !ok {
+	account, _, ok := s.requireRoot(w, r)
+	if !ok {
 		return
 	}
 	targets, err := s.store.ListRootTargets(r.Context())
@@ -157,7 +159,16 @@ func (s *Server) getRootInstallations(w http.ResponseWriter, r *http.Request) {
 	now := s.now().UTC()
 	items := make([]rootInstallationResponse, 0, len(targets))
 	for _, target := range targets {
-		items = append(items, rootInstallationDTO(target, now))
+		owned := false
+		if target.Available {
+			access, accessErr := s.store.ResolveTargetAccess(r.Context(), account.ID, target.ID, now)
+			if accessErr != nil {
+				s.writeInternal(w, accessErr)
+				return
+			}
+			owned = access.Role == storage.InstallationRoleOwner
+		}
+		items = append(items, rootInstallationDTO(target, now, owned))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{panelInstallationsResource: items})
 }

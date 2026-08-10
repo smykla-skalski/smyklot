@@ -247,6 +247,7 @@ describe('Root installation access', () => {
       type: 'Organization' as const,
       account: TARGET.account,
       available: true,
+      owned_by_viewer: true,
       repository_counts: TARGET.repository_counts,
       ownership: {
         source: 'organization_admin' as const,
@@ -356,6 +357,98 @@ describe('Root installation access', () => {
       system_role: 'root',
       expected_revision: 2,
     });
+  });
+
+  it('uses installation-scoped Root access and history endpoints', async () => {
+    const user = {
+      account: VIEWER.account,
+      system_role: 'none' as const,
+      status: 'active' as const,
+      revision: 1,
+      created_at: '2026-08-08T10:00:00Z',
+      updated_at: '2026-08-08T10:00:00Z',
+      manageable: true,
+    };
+    const invitation = {
+      id: 'invite.1',
+      account: VIEWER.account,
+      role: 'viewer' as const,
+      status: 'pending' as const,
+      expires_at: '2026-08-15T10:00:00Z',
+      created_by: VIEWER.account,
+      created_at: '2026-08-08T10:00:00Z',
+    };
+    const emptyPage = { items: [], next_cursor: null, total: 0 };
+    const stub = stubFetch([
+      jsonResponse(200, { items: [user], next_cursor: null, total: 1 }),
+      jsonResponse(201, user),
+      jsonResponse(200, user),
+      jsonResponse(200, { decisions: [] }),
+      jsonResponse(200, { items: [invitation], next_cursor: null, total: 1 }),
+      jsonResponse(201, invitation),
+      jsonResponse(200, invitation),
+      jsonResponse(200, { ...invitation, status: 'revoked' }),
+      jsonResponse(200, emptyPage),
+      jsonResponse(200, emptyPage),
+    ]);
+    const api = createPanelApi('/panel', stub.fetch);
+    const userPage = {
+      query: 'ada',
+      sort: 'role_desc' as const,
+      limit: 20,
+      roles: ['editor' as const],
+      statuses: ['active' as const],
+    };
+    const invitationPage = {
+      query: 'ada',
+      sort: 'expiry_soonest' as const,
+      limit: 20,
+      roles: ['viewer' as const],
+      statuses: ['pending' as const],
+    };
+
+    await api.fetchRootTargetUsers('target.1', userPage);
+    await api.addRootTargetUser('target.1', { login: 'ada', role: 'viewer' });
+    await api.updateRootTargetUser('target.1', 'github:user:1', {
+      role: 'editor',
+      suspended: false,
+      expected_revision: 1,
+    });
+    await api.fetchRootTargetUserDecisions('github:user:1', 'target.1');
+    await api.fetchRootTargetInvitations('target.1', invitationPage);
+    await api.createRootTargetInvitation('target.1', {
+      login: 'ada',
+      role: 'viewer',
+      expires_in_days: 7,
+    });
+    await api.reissueRootTargetInvitation('target.1', 'invite.1', 30);
+    await api.revokeRootTargetInvitation('target.1', 'invite.1');
+    await api.fetchRootTargetAudit('target.1', {
+      query: '',
+      sort: 'newest',
+      limit: 20,
+      scope: 'all',
+      change: 'all',
+    });
+    await api.fetchRootTargetFailures('target.1', {
+      query: '',
+      sort: 'newest',
+      limit: 20,
+      kind: 'all',
+    });
+
+    expect(stub.calls.map((call) => call.url)).toEqual([
+      '/panel/api/v1/root/installations/target%2E1/users?q=ada&sort=role_desc&limit=20&role=editor&status=active',
+      '/panel/api/v1/root/installations/target%2E1/users',
+      '/panel/api/v1/root/installations/target%2E1/users/github%3Auser%3A1',
+      '/panel/api/v1/root/installations/target%2E1/users/github%3Auser%3A1/decisions',
+      '/panel/api/v1/root/installations/target%2E1/invitations?q=ada&sort=expiry_soonest&limit=20&role=viewer&status=pending',
+      '/panel/api/v1/root/installations/target%2E1/invitations',
+      '/panel/api/v1/root/installations/target%2E1/invitations/invite%2E1/reissue',
+      '/panel/api/v1/root/installations/target%2E1/invitations/invite%2E1',
+      '/panel/api/v1/root/installations/target%2E1/audit?sort=newest&limit=20&scope=all&change=all',
+      '/panel/api/v1/root/installations/target%2E1/failures?sort=newest&limit=20&kind=all',
+    ]);
   });
 });
 

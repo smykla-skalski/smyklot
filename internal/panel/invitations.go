@@ -89,7 +89,9 @@ func (s *Server) postTargetInvitation(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusForbidden, "forbidden", "you cannot grant this invitation role")
 		return
 	}
-	s.createInvitation(w, r, actor.ID, account.ID, &targetID, input.Role, nil, input.ExpiresInDays)
+	s.createInvitation(
+		w, r, actor.ID, account.ID, &targetID, input.Role, nil, input.ExpiresInDays, nil, "",
+	)
 }
 
 func (s *Server) createInvitation(
@@ -100,6 +102,8 @@ func (s *Server) createInvitation(
 	role *storage.InstallationRole,
 	systemRole *storage.SystemRole,
 	days int,
+	elevationID *string,
+	sessionTokenHash string,
 ) {
 	id, token, err := s.newInvitationSecrets()
 	if err != nil {
@@ -109,12 +113,13 @@ func (s *Server) createInvitation(
 	now := s.now().UTC()
 	invitation, err := s.store.CreateInvitation(r.Context(), storage.InvitationCreate{
 		ID: id, TokenHash: tokenHash(token), AccountID: accountID, TargetID: targetID,
-		Role: role, SystemRole: systemRole,
+		Role: role, SystemRole: systemRole, ElevationID: elevationID,
+		SessionTokenHash: sessionTokenHash,
 		ExpiresAt:        now.Add(time.Duration(days) * 24 * time.Hour),
 		CreatedByAccount: actorID, CreatedAt: now,
 	})
 	if err != nil {
-		s.writeStorageError(w, err)
+		s.writeInvitationMutationError(w, elevationID, err)
 		return
 	}
 	s.announceInvitation(invitation)
@@ -139,7 +144,7 @@ func (s *Server) reissueInvitation(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s.reissueManagedInvitation(w, r, invitation, actor)
+	s.reissueManagedInvitation(w, r, invitation, actor, nil, "")
 }
 
 func (s *Server) reissueManagedInvitation(
@@ -147,6 +152,8 @@ func (s *Server) reissueManagedInvitation(
 	r *http.Request,
 	invitation storage.Invitation,
 	actor storage.Account,
+	elevationID *string,
+	sessionTokenHash string,
 ) {
 	var input reissueInvitationRequest
 	if !decodeJSON(w, r, &input) || !validInviteDays(w, input.ExpiresInDays) {
@@ -160,11 +167,12 @@ func (s *Server) reissueManagedInvitation(
 	now := s.now().UTC()
 	updated, err := s.store.ReissueInvitation(r.Context(), storage.InvitationReissue{
 		ID: invitation.ID, TokenHash: tokenHash(token),
+		ElevationID: elevationID, SessionTokenHash: sessionTokenHash,
 		ExpiresAt:        now.Add(time.Duration(input.ExpiresInDays) * 24 * time.Hour),
 		CreatedByAccount: actor.ID, CreatedAt: now,
 	})
 	if err != nil {
-		s.writeStorageError(w, err)
+		s.writeInvitationMutationError(w, elevationID, err)
 		return
 	}
 	s.announceInvitation(updated)
@@ -179,7 +187,7 @@ func (s *Server) deleteInvitation(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s.revokeManagedInvitation(w, r, invitation, actor)
+	s.revokeManagedInvitation(w, r, invitation, actor, nil, "")
 }
 
 func (s *Server) revokeManagedInvitation(
@@ -187,16 +195,31 @@ func (s *Server) revokeManagedInvitation(
 	r *http.Request,
 	invitation storage.Invitation,
 	actor storage.Account,
+	elevationID *string,
+	sessionTokenHash string,
 ) {
 	updated, err := s.store.RevokeInvitation(r.Context(), storage.InvitationRevoke{
-		ID: invitation.ID, ActorAccountID: actor.ID, RevokedAt: s.now().UTC(),
+		ID: invitation.ID, ActorAccountID: actor.ID, ElevationID: elevationID,
+		SessionTokenHash: sessionTokenHash, RevokedAt: s.now().UTC(),
 	})
 	if err != nil {
-		s.writeStorageError(w, err)
+		s.writeInvitationMutationError(w, elevationID, err)
 		return
 	}
 	s.announceInvitation(updated)
 	writeJSON(w, http.StatusOK, invitationDTO(updated, ""))
+}
+
+func (s *Server) writeInvitationMutationError(
+	w http.ResponseWriter,
+	elevationID *string,
+	err error,
+) {
+	if elevationID != nil {
+		s.writeRootWriteError(w, err)
+		return
+	}
+	s.writeStorageError(w, err)
 }
 
 func (s *Server) requireInvitationManager(

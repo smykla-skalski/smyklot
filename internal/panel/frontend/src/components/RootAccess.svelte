@@ -3,14 +3,18 @@
   import type { FilterSection } from '../lib/filter-menu';
   import type {
     Page,
+    AddTargetUserInput,
     AddRootInvitationInput,
     InvitationDays,
     InvitationPageRequest,
     PanelInvitation,
+    PanelUser,
     PanelUserStatus,
     RootPanelUser,
     RootPanelUserPageRequest,
     RootPanelUserSort,
+    RootInstallation,
+    InstallationRole,
     SystemRole,
     UpdateRootUserInput,
   } from '../lib/types';
@@ -63,6 +67,9 @@
     reissueInvitation,
     revokeInvitation,
     canManageInvitations,
+    fetchInstallations,
+    addInstallationUser,
+    onOpenInstallationAccess,
   }: {
     section: AccessSection;
     onSection: (section: AccessSection) => void;
@@ -76,6 +83,9 @@
     ) => Promise<PanelInvitation>;
     revokeInvitation: (invitationId: string) => Promise<PanelInvitation>;
     canManageInvitations: boolean;
+    fetchInstallations: () => Promise<RootInstallation[]>;
+    addInstallationUser: (targetId: string, input: AddTargetUserInput) => Promise<PanelUser>;
+    onOpenInstallationAccess: (account: string) => void;
   } = $props();
 
   let page = $state<Page<RootPanelUser> | null>(null);
@@ -93,12 +103,35 @@
   let reason = $state('');
   let saving = $state(false);
   let actionProblem = $state<string | null>(null);
+  let addOpen = $state(false);
+  let addTrigger = $state<HTMLButtonElement | null>(null);
+  let addLogin = $state('');
+  let addRole = $state<Exclude<InstallationRole, 'none' | 'owner'>>('viewer');
+  let installationQuery = $state('');
+  let installations = $state<RootInstallation[]>([]);
+  let selectedInstallationID = $state('');
+  let installationsLoading = $state(false);
+  let addSaving = $state(false);
+  let addProblem = $state<string | null>(null);
+  let feedback = $state('');
   let sequence = 0;
   const limit = 20;
   const now = Date.now();
   const requestKey = $derived(JSON.stringify([query, sort, systemRoles, statuses, limit]));
   const users = $derived(page?.items ?? []);
   const hasFilters = $derived(query !== '' || systemRoles.length > 0 || statuses.length > 0);
+  const selectedInstallation = $derived(
+    installations.find((installation) => installation.id === selectedInstallationID) ?? null,
+  );
+  const filteredInstallations = $derived.by(() => {
+    const needle = installationQuery.trim().toLocaleLowerCase();
+    if (needle === '') return installations;
+    return installations.filter((installation) =>
+      [installation.account.display_name, installation.account.login].some((value) =>
+        value.toLocaleLowerCase().includes(needle),
+      ),
+    );
+  });
 
   $effect(() => {
     const next = search.trim();
@@ -189,6 +222,56 @@
     query = '';
     systemRoles = [];
     statuses = [];
+  }
+
+  async function openAddUser(): Promise<void> {
+    addOpen = true;
+    addLogin = '';
+    addRole = 'viewer';
+    installationQuery = '';
+    selectedInstallationID = '';
+    addProblem = null;
+    installationsLoading = true;
+    try {
+      installations = await fetchInstallations();
+      selectedInstallationID =
+        installations.find((installation) => installation.available)?.id ?? '';
+    } catch (error) {
+      addProblem = error instanceof Error ? error.message : String(error);
+    } finally {
+      installationsLoading = false;
+    }
+  }
+
+  function closeAddUser(): void {
+    if (addSaving) return;
+    addOpen = false;
+    addProblem = null;
+  }
+
+  async function submitAddUser(): Promise<void> {
+    const installation = selectedInstallation;
+    if (installation === null || !installation.available) return;
+    if (!installation.owned_by_viewer) {
+      addOpen = false;
+      onOpenInstallationAccess(installation.account.login);
+      return;
+    }
+    const login = addLogin.trim();
+    if (login === '') return;
+    addSaving = true;
+    addProblem = null;
+    try {
+      await addInstallationUser(installation.id, { login, role: addRole });
+      feedback = `Added @${login} to ${installation.account.display_name}`;
+      addOpen = false;
+      page = null;
+      await loadPage(undefined, false);
+    } catch (error) {
+      addProblem = error instanceof Error ? error.message : String(error);
+    } finally {
+      addSaving = false;
+    }
   }
 
   function systemRoleLabel(role: SystemRole): string {
@@ -369,6 +452,15 @@
         value={search}
         onInput={(value) => (search = value)}
       />
+      <span class="stable-feedback" aria-live="polite">{feedback}</span>
+      <button
+        class="btn btn-signal"
+        type="button"
+        bind:this={addTrigger}
+        onclick={() => void openAddUser()}
+      >
+        <Icon name="user-plus" size={17} /> Add user
+      </button>
     </div>
 
     <div class:loading class="user-results" aria-busy={loading}>
@@ -586,6 +678,121 @@
   {/snippet}
 </Modal>
 
+<Modal
+  id="root-add-installation-user"
+  open={addOpen}
+  title="Add installation user"
+  description="Choose the installation before assigning a Viewer, Editor, or Admin role."
+  returnFocus={addTrigger}
+  onClose={closeAddUser}
+>
+  <form
+    id="root-add-installation-user-form"
+    class="add-user-form"
+    onsubmit={(event) => {
+      event.preventDefault();
+      void submitAddUser();
+    }}
+  >
+    <label>
+      <span>GitHub login</span>
+      <input
+        class="text-input"
+        type="text"
+        autocomplete="off"
+        placeholder="octocat"
+        bind:value={addLogin}
+        data-modal-focus
+      />
+    </label>
+
+    <fieldset class="installation-fieldset">
+      <legend>Installation</legend>
+      <SearchField
+        label="Filter installations"
+        placeholder="Find an installation"
+        value={installationQuery}
+        onInput={(value) => (installationQuery = value)}
+      />
+      {#if installationsLoading}
+        <div class="installation-state" role="status">Loading installations…</div>
+      {:else if filteredInstallations.length === 0}
+        <div class="installation-state">No installations match this search.</div>
+      {:else}
+        <div class="installation-options" role="radiogroup" aria-label="Installation">
+          {#each filteredInstallations as installation (installation.id)}
+            <label class:unavailable={!installation.available}>
+              <input
+                type="radio"
+                name="root-installation"
+                value={installation.id}
+                disabled={!installation.available}
+                bind:group={selectedInstallationID}
+              />
+              <span class="installation-option-copy">
+                <strong>{installation.account.display_name}</strong>
+                <span class="mono">@{installation.account.login}</span>
+              </span>
+              <Chip
+                tone={installation.owned_by_viewer
+                  ? 'clear'
+                  : installation.available
+                    ? 'warning'
+                    : 'stop'}
+              >
+                {installation.owned_by_viewer
+                  ? 'Owned'
+                  : installation.available
+                    ? 'Elevation required'
+                    : 'Unavailable'}
+              </Chip>
+            </label>
+          {/each}
+        </div>
+      {/if}
+    </fieldset>
+
+    <label>
+      <span>Installation role</span>
+      <select class="text-input" bind:value={addRole}>
+        <option value="viewer">Viewer</option>
+        <option value="editor">Editor</option>
+        <option value="admin">Admin</option>
+      </select>
+    </label>
+
+    {#if selectedInstallation !== null && !selectedInstallation.owned_by_viewer}
+      <div class="elevation-note">
+        <Icon name="warning" size={18} />
+        <span>
+          This installation is not yours. Continue to its Access view to acknowledge and start the
+          audited 15-minute elevation before adding the user.
+        </span>
+      </div>
+    {/if}
+    {#if addProblem !== null}<p class="action-error" role="alert">{addProblem}</p>{/if}
+  </form>
+
+  {#snippet footer()}
+    <button class="btn" type="button" disabled={addSaving} onclick={closeAddUser}>Cancel</button>
+    <button
+      class="btn btn-signal"
+      type="submit"
+      form="root-add-installation-user-form"
+      disabled={addSaving ||
+        selectedInstallation === null ||
+        !selectedInstallation.available ||
+        (selectedInstallation.owned_by_viewer && addLogin.trim() === '')}
+    >
+      {addSaving
+        ? 'Adding…'
+        : selectedInstallation?.owned_by_viewer === false
+          ? 'Open audited access'
+          : 'Add user'}
+    </button>
+  {/snippet}
+</Modal>
+
 <style>
   .root-access {
     display: flex;
@@ -608,7 +815,121 @@
   }
 
   .access-tools {
+    align-items: center;
+    display: grid;
+    gap: var(--space-3);
+    grid-template-columns: minmax(0, 1fr) auto auto;
     padding-bottom: var(--space-3);
+  }
+
+  .stable-feedback {
+    color: var(--text-secondary);
+    font-size: var(--font-size-compact);
+    min-width: 8rem;
+    text-align: right;
+  }
+
+  .add-user-form,
+  .add-user-form > label {
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .add-user-form {
+    gap: var(--space-4);
+  }
+
+  .add-user-form > label > span,
+  .installation-fieldset legend {
+    color: var(--text-secondary);
+    font-size: var(--font-size-compact);
+    font-weight: 650;
+  }
+
+  .installation-fieldset {
+    border: 0;
+    display: grid;
+    gap: var(--space-2);
+    margin: 0;
+    min-width: 0;
+    padding: 0;
+  }
+
+  .installation-fieldset legend {
+    margin-bottom: var(--space-2);
+  }
+
+  .installation-options {
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-control);
+    display: grid;
+    max-height: 14rem;
+    overflow-y: auto;
+  }
+
+  .installation-options > label {
+    align-items: center;
+    border-bottom: 1px solid var(--rule);
+    cursor: pointer;
+    display: grid;
+    gap: var(--space-3);
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    min-height: 3.5rem;
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .installation-options > label:last-child {
+    border-bottom: 0;
+  }
+
+  .installation-options > label:hover:not(.unavailable) {
+    background: var(--interactive-hover);
+  }
+
+  .installation-options > label:has(input:checked) {
+    background: var(--brand-action-tint);
+  }
+
+  .installation-options > label.unavailable {
+    cursor: not-allowed;
+    opacity: 0.64;
+  }
+
+  .installation-option-copy {
+    display: grid;
+    min-width: 0;
+  }
+
+  .installation-option-copy strong,
+  .installation-option-copy span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .installation-option-copy span,
+  .installation-state {
+    color: var(--text-muted);
+    font-size: var(--font-size-compact);
+  }
+
+  .installation-state {
+    border: 1px dashed var(--border-subtle);
+    border-radius: var(--radius-control);
+    padding: var(--space-4);
+    text-align: center;
+  }
+
+  .elevation-note {
+    align-items: flex-start;
+    background: var(--warning-tint);
+    border: 1px solid color-mix(in srgb, var(--warning) 30%, var(--warning-tint));
+    border-radius: var(--radius-control);
+    color: var(--text-secondary);
+    display: flex;
+    font-size: var(--font-size-compact);
+    gap: var(--space-2);
+    padding: var(--space-3);
   }
 
   .user-results {
@@ -932,6 +1253,17 @@
       align-items: start;
       flex-direction: column;
       gap: var(--space-2);
+    }
+
+    .access-tools {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .stable-feedback {
+      grid-column: 1 / -1;
+      grid-row: 2;
+      min-width: 0;
+      text-align: left;
     }
 
     table {

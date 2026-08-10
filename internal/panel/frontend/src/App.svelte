@@ -636,6 +636,9 @@
               reissueInvitation={api.reissueRootInvitation}
               revokeInvitation={api.revokeRootInvitation}
               canManageInvitations={viewer.system_role === 'super_root'}
+              fetchInstallations={api.fetchRootInstallations}
+              addInstallationUser={api.addRootTargetUser}
+              onOpenInstallationAccess={(account) => selectRootInstallation(account, 'users')}
             />
           {:else}
             <RootSettings

@@ -226,6 +226,46 @@ func (s *Server) registerRootRoutes(mux *http.ServeMux, base string) {
 		"PUT "+base+"/api/v1/root/installations/{target}/repositories/{repository}/settings",
 		s.putRootRepositorySettings,
 	)
+	mux.HandleFunc(
+		"GET "+base+"/api/v1/root/installations/{target}/users",
+		s.getRootTargetUsers,
+	)
+	mux.HandleFunc(
+		"POST "+base+"/api/v1/root/installations/{target}/users",
+		s.postRootTargetUser,
+	)
+	mux.HandleFunc(
+		"PUT "+base+"/api/v1/root/installations/{target}/users/{account}",
+		s.putRootTargetUser,
+	)
+	mux.HandleFunc(
+		"GET "+base+"/api/v1/root/installations/{target}/users/{account}/decisions",
+		s.getRootTargetUserDecisions,
+	)
+	mux.HandleFunc(
+		"GET "+base+"/api/v1/root/installations/{target}/invitations",
+		s.getRootTargetInvitations,
+	)
+	mux.HandleFunc(
+		"POST "+base+"/api/v1/root/installations/{target}/invitations",
+		s.postRootTargetInvitation,
+	)
+	mux.HandleFunc(
+		"POST "+base+"/api/v1/root/installations/{target}/invitations/{invitation}/reissue",
+		s.reissueRootTargetInvitation,
+	)
+	mux.HandleFunc(
+		"DELETE "+base+"/api/v1/root/installations/{target}/invitations/{invitation}",
+		s.deleteRootTargetInvitation,
+	)
+	mux.HandleFunc(
+		"GET "+base+"/api/v1/root/installations/{target}/audit",
+		s.getRootTargetAudit,
+	)
+	mux.HandleFunc(
+		"GET "+base+"/api/v1/root/installations/{target}/failures",
+		s.getRootTargetFailures,
+	)
 }
 
 // Announce tells connected browsers which catalog or setting scope changed.
