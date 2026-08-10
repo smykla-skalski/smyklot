@@ -313,10 +313,11 @@ func recordOwnershipAudit(
 	}
 	action := "ownership.synced"
 	summary := fmt.Sprintf("Synchronized %d installation Owners", len(ownership.Owners))
-	if ownership.Status == storage.OwnershipStatusPermissionPending {
+	switch ownership.Status {
+	case storage.OwnershipStatusPermissionPending:
 		action = "ownership.permission_pending"
 		summary = "Owner synchronization awaits GitHub permission approval"
-	} else if ownership.Status == storage.OwnershipStatusError {
+	case storage.OwnershipStatusError:
 		action = "ownership.failed"
 		summary = "Owner synchronization failed"
 	}
