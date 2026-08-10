@@ -30,6 +30,8 @@ import type {
   RootOverview,
   RootPanelUser,
   RootPanelUserPageRequest,
+  RootRuntimeSettings,
+  RootRuntimeSettingsInput,
   SecurityNotification,
   TargetSettingsInput,
   InvitationDays,
@@ -63,6 +65,8 @@ export interface PanelApi {
     expiresInDays: InvitationDays,
   ): Promise<PanelInvitation>;
   revokeRootInvitation(invitationId: string): Promise<PanelInvitation>;
+  fetchRootRuntimeSettings(): Promise<RootRuntimeSettings>;
+  updateRootRuntimeSettings(input: RootRuntimeSettingsInput): Promise<RootRuntimeSettings>;
   fetchRootAudit(request: AuditHistoryRequest): Promise<Page<AuditEntry>>;
   fetchRootFailures(request: FailureHistoryRequest): Promise<Page<DeliveryFailure>>;
   fetchRootTargetSettings(targetId: string): Promise<PanelTarget>;
@@ -231,6 +235,14 @@ export function createPanelApi(
       return jsonRequest(`/api/v1/root/access/invitations/${pathSegment(invitationId)}`, {
         method: 'DELETE',
       });
+    },
+
+    fetchRootRuntimeSettings(): Promise<RootRuntimeSettings> {
+      return jsonRequest('/api/v1/root/settings');
+    },
+
+    updateRootRuntimeSettings(input: RootRuntimeSettingsInput): Promise<RootRuntimeSettings> {
+      return putJson('/api/v1/root/settings', input);
     },
 
     fetchRootAudit(history: AuditHistoryRequest): Promise<Page<AuditEntry>> {

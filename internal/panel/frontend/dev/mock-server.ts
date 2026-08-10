@@ -29,6 +29,8 @@ import type {
   RootInstallation,
   RootOverview,
   RootPanelUser,
+  RootRuntimeSettings,
+  RootRuntimeSettingsInput,
   SecurityNotification,
   TargetSettingsInput,
   UpdateTargetUserInput,
@@ -119,6 +121,15 @@ interface MockState {
   elevationCounter: number;
   elevations: Map<string, RootElevation>;
   notifications: SecurityNotification[];
+  runtime: {
+    behaviorOverride: ConfigValues | null;
+    logLevelOverride: string | null;
+    sessionTTLOverride: number | null;
+    revision: number;
+    updatedAt?: string;
+    updatedBy?: PanelAccount;
+    startedAt: number;
+  };
   streams: Set<Duplex>;
 }
 
@@ -374,6 +385,13 @@ function seed(): MockState {
     elevationCounter: 1,
     elevations: new Map(),
     notifications,
+    runtime: {
+      behaviorOverride: null,
+      logLevelOverride: null,
+      sessionTTLOverride: null,
+      revision: 0,
+      startedAt: now,
+    },
     streams: new Set(),
   };
 }
@@ -967,6 +985,26 @@ async function handle(
     }
     if (path === route('/api/v1/root/overview') && method === 'GET') {
       respond(res, 200, rootOverviewValue(state));
+      return;
+    }
+    if (path === route('/api/v1/root/settings') && method === 'GET') {
+      respond(res, 200, rootRuntimeSettingsValue(state));
+      return;
+    }
+    if (path === route('/api/v1/root/settings') && method === 'PUT') {
+      const input = await readBody<RootRuntimeSettingsInput>(req);
+      if (input.expected_revision !== state.runtime.revision) {
+        throw new MockApiError(409, 'conflict', 'runtime settings changed; reload and try again');
+      }
+      state.runtime.behaviorOverride = copyOptionalConfig(input.bot_config);
+      state.runtime.logLevelOverride = input.log_level;
+      state.runtime.sessionTTLOverride = input.session_ttl_seconds;
+      state.runtime.revision += 1;
+      state.runtime.updatedAt = new Date().toISOString();
+      state.runtime.updatedBy = VIEWER;
+      const value = rootRuntimeSettingsValue(state);
+      broadcast(state, { type: 'resync' });
+      respond(res, 200, value);
       return;
     }
     if (path === route('/api/v1/root/access/users') && method === 'GET') {
@@ -1607,6 +1645,55 @@ function rootInstallationValue(target: MockTarget, index: number): RootInstallat
       owner_count: available ? (target.value.type === 'User' ? 1 : 2) : 0,
       stale: permissionPending,
     },
+  };
+}
+
+function rootRuntimeSettingsValue(state: MockState): RootRuntimeSettings {
+  const behaviorOverride = copyOptionalConfig(state.runtime.behaviorOverride);
+  return {
+    behavior_defaults: {
+      deployment: copyConfig(DEFAULT_CONFIG),
+      override: behaviorOverride,
+      effective: behaviorOverride ?? copyConfig(DEFAULT_CONFIG),
+    },
+    log_level: {
+      deployment: 'info',
+      override: state.runtime.logLevelOverride,
+      effective: state.runtime.logLevelOverride ?? 'info',
+    },
+    session_lifetime: {
+      deployment_seconds: 86_400,
+      override_seconds: state.runtime.sessionTTLOverride,
+      effective_seconds: state.runtime.sessionTTLOverride ?? 86_400,
+    },
+    revision: state.runtime.revision,
+    ...(state.runtime.updatedAt === undefined ? {} : { updated_at: state.runtime.updatedAt }),
+    ...(state.runtime.updatedBy === undefined ? {} : { updated_by: state.runtime.updatedBy }),
+    service: {
+      version: 'dev',
+      uptime_seconds: Math.max(0, Math.floor((Date.now() - state.runtime.startedAt) / 1_000)),
+      storage: 'healthy',
+      listeners: { public: ':8080', admin: '127.0.0.1:8081' },
+      public_paths: { panel: '/', webhook: '/webhook' },
+      provider_endpoints: {
+        api: 'https://api.github.com',
+        authorize: 'https://github.com/login/oauth/authorize',
+        token: 'https://github.com/login/oauth/access_token',
+      },
+      credential_presence: { webhook: true, app: true, oauth: true },
+    },
+  };
+}
+
+function copyOptionalConfig(value: ConfigValues | null): ConfigValues | null {
+  return value === null ? null : copyConfig(value);
+}
+
+function copyConfig(value: ConfigValues): ConfigValues {
+  return {
+    ...value,
+    allowed_commands: [...value.allowed_commands],
+    command_aliases: { ...value.command_aliases },
   };
 }
 

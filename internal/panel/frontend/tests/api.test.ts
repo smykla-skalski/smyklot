@@ -414,6 +414,68 @@ describe('Root invitations', () => {
   });
 });
 
+describe('Root runtime settings', () => {
+  it('reads and replaces live runtime overrides through the Root route', async () => {
+    const runtime = {
+      behavior_defaults: { deployment: CONFIG, override: null, effective: CONFIG },
+      log_level: { deployment: 'info', override: null, effective: 'info' },
+      session_lifetime: {
+        deployment_seconds: 86_400,
+        override_seconds: null,
+        effective_seconds: 86_400,
+      },
+      revision: 3,
+      service: {
+        version: '1.0.0',
+        uptime_seconds: 120,
+        storage: 'healthy',
+        listeners: { public: ':8080', admin: '127.0.0.1:8081' },
+        public_paths: { panel: '/', webhook: '/webhook' },
+        provider_endpoints: {
+          api: 'https://api.github.com',
+          authorize: 'https://github.com/login/oauth/authorize',
+          token: 'https://github.com/login/oauth/access_token',
+        },
+        credential_presence: { webhook: true, app: true, oauth: true },
+      },
+    };
+    const updated = {
+      ...runtime,
+      log_level: { ...runtime.log_level, override: 'debug', effective: 'debug' },
+      session_lifetime: {
+        ...runtime.session_lifetime,
+        override_seconds: 3_600,
+        effective_seconds: 3_600,
+      },
+      revision: 4,
+    };
+    const stub = stubFetch([jsonResponse(200, runtime), jsonResponse(200, updated)]);
+    const api = createPanelApi('/panel', stub.fetch);
+
+    await expect(api.fetchRootRuntimeSettings()).resolves.toEqual(runtime);
+    await expect(
+      api.updateRootRuntimeSettings({
+        bot_config: null,
+        log_level: 'debug',
+        session_ttl_seconds: 3_600,
+        expected_revision: 3,
+      }),
+    ).resolves.toEqual(updated);
+
+    expect(stub.calls.map((call) => call.url)).toEqual([
+      '/panel/api/v1/root/settings',
+      '/panel/api/v1/root/settings',
+    ]);
+    expect(stub.calls[1]?.init?.method).toBe('PUT');
+    expect(JSON.parse(String(stub.calls[1]?.init?.body))).toEqual({
+      bot_config: null,
+      log_level: 'debug',
+      session_ttl_seconds: 3_600,
+      expected_revision: 3,
+    });
+  });
+});
+
 describe('security notifications', () => {
   it('pages the Owner inbox and marks notifications read', async () => {
     const notification = {

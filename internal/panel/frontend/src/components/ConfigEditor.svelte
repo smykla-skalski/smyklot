@@ -44,7 +44,7 @@
   }: {
     patch: ConfigPatch;
     inherited: ConfigValues;
-    scope: 'target' | 'repository';
+    scope: 'target' | 'repository' | 'runtime';
     idPrefix: string;
     disabled?: boolean;
     section?: 'all' | 'behavior' | 'commands';

@@ -7,6 +7,7 @@
   import RootAccess from './components/RootAccess.svelte';
   import RootInstallations from './components/RootInstallations.svelte';
   import RootOverview from './components/RootOverview.svelte';
+  import RootSettings from './components/RootSettings.svelte';
   import SignedOut from './components/SignedOut.svelte';
   import TargetSettings from './components/TargetSettings.svelte';
   import UserManagement from './components/UserManagement.svelte';
@@ -62,6 +63,7 @@
   let repositoryDetailsVersion = $state(0);
   let userVersion = $state(0);
   let notificationVersion = $state(0);
+  let runtimeSettingsVersion = $state(0);
   let view = $state<PanelView>('settings');
   let rootMode = $state(false);
   let activeRootRoute = $state<RootRoute>({ rootView: 'overview' });
@@ -421,6 +423,7 @@
       }
       clearFailure('stream');
       notificationVersion += 1;
+      runtimeSettingsVersion += 1;
     } catch (error) {
       if (streamRefreshes.isCurrent(refresh)) setFailure('stream', error);
     }
@@ -635,19 +638,11 @@
               canManageInvitations={viewer.system_role === 'super_root'}
             />
           {:else}
-            <div class="root-foundation" role="status">
-              <span class="root-foundation-mark" aria-hidden="true"></span>
-              <div>
-                <strong
-                  >{rootPageTitle(activeRootRoute)} is isolated from installation access</strong
-                >
-                <p>
-                  Root data and actions use dedicated server-authorized routes. Installation writes
-                  stay blocked unless the current Root owns that installation or starts an audited
-                  elevation.
-                </p>
-              </div>
-            </div>
+            <RootSettings
+              refreshVersion={runtimeSettingsVersion}
+              fetchSettings={api.fetchRootRuntimeSettings}
+              updateSettings={api.updateRootRuntimeSettings}
+            />
           {/if}
         </section>
       {:else}
@@ -850,32 +845,6 @@
     color: color-mix(in srgb, #6d54bd 82%, var(--text-primary));
     padding: var(--space-2) var(--space-3);
     white-space: nowrap;
-  }
-
-  .root-foundation {
-    align-items: start;
-    background: var(--surface-base);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-surface);
-    box-shadow: var(--shadow-plate);
-    display: grid;
-    gap: var(--space-4);
-    grid-template-columns: auto minmax(0, 1fr);
-    min-height: 8rem;
-    padding: var(--space-6);
-  }
-
-  .root-foundation p {
-    color: var(--text-secondary);
-    margin: var(--space-2) 0 0;
-    max-width: 58rem;
-  }
-
-  .root-foundation-mark {
-    background: var(--footer-spectrum);
-    border-radius: 3px;
-    height: 2.5rem;
-    width: 0.3rem;
   }
 
   :global(:root[data-theme='dark']) .root-eyebrow,

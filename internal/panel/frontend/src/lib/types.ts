@@ -309,6 +309,43 @@ export interface RootElevationInput {
   reason?: string;
 }
 
+export interface RootRuntimeSettings {
+  behavior_defaults: {
+    deployment: ConfigValues;
+    override: ConfigValues | null;
+    effective: ConfigValues;
+  };
+  log_level: {
+    deployment: string;
+    override: string | null;
+    effective: string;
+  };
+  session_lifetime: {
+    deployment_seconds: number;
+    override_seconds: number | null;
+    effective_seconds: number;
+  };
+  revision: number;
+  updated_at?: string;
+  updated_by?: PanelAccount;
+  service: {
+    version: string;
+    uptime_seconds: number;
+    storage: string;
+    listeners: { public: string; admin: string };
+    public_paths: { panel: string; webhook: string };
+    provider_endpoints: { api: string; authorize: string; token: string };
+    credential_presence: { webhook: boolean; app: boolean; oauth: boolean };
+  };
+}
+
+export interface RootRuntimeSettingsInput {
+  bot_config: ConfigValues | null;
+  log_level: string | null;
+  session_ttl_seconds: number | null;
+  expected_revision: number;
+}
+
 export interface SecurityNotification {
   id: string;
   installation: PanelAccount;
