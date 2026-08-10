@@ -158,12 +158,9 @@ func (s *server) SyncCatalog(ctx context.Context) ([]string, error) {
 
 func (s *server) syncPanelCatalogLocked(ctx context.Context) ([]string, error) {
 	targetIDs, err := s.syncCatalog(ctx)
-	if err != nil {
-		return nil, err
-	}
 	s.panel.AnnounceCatalog()
 
-	return targetIDs, nil
+	return targetIDs, err
 }
 
 func (s *server) syncCatalog(ctx context.Context) ([]string, error) {

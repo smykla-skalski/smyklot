@@ -101,7 +101,6 @@ func (s *Server) postRootInstallationSync(w http.ResponseWriter, r *http.Request
 		s.writeInternal(w, err)
 		return
 	}
-	s.AnnounceCatalog()
 	writeJSON(w, http.StatusOK, map[string]any{"target_ids": targetIDs})
 }
 

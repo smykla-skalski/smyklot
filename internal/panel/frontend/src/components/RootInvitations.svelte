@@ -37,12 +37,14 @@
 
   const {
     fetchPage,
+    refreshVersion,
     create,
     reissue,
     revoke,
     canManage,
   }: {
     fetchPage: (request: InvitationPageRequest) => Promise<Page<PanelInvitation>>;
+    refreshVersion: number;
     create: (input: AddRootInvitationInput) => Promise<PanelInvitation>;
     reissue: (invitationId: string, expiresInDays: InvitationDays) => Promise<PanelInvitation>;
     revoke: (invitationId: string) => Promise<PanelInvitation>;
@@ -75,7 +77,7 @@
   let actionProblem = $state<string | null>(null);
 
   const limit = 20;
-  const requestKey = $derived(JSON.stringify([query, sort, statuses, limit]));
+  const requestKey = $derived(JSON.stringify([query, sort, statuses, limit, refreshVersion]));
   const invitations = $derived(page?.items ?? []);
   const hasFilters = $derived(query !== '' || statuses.length > 0);
 

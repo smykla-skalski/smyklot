@@ -55,6 +55,7 @@ export interface PanelApi {
   fetchViewer(): Promise<PanelViewer | null>;
   fetchTargets(): Promise<PanelTarget[]>;
   fetchRootInstallations(): Promise<RootInstallation[]>;
+  syncRootInstallations(): Promise<string[]>;
   fetchRootOverview(): Promise<RootOverview>;
   fetchRootUsers(request: RootPanelUserPageRequest): Promise<Page<RootPanelUser>>;
   updateRootUser(accountId: string, input: UpdateRootUserInput): Promise<void>;
@@ -223,6 +224,14 @@ export function createPanelApi(
         '/api/v1/root/installations',
       );
       return body.installations;
+    },
+
+    async syncRootInstallations(): Promise<string[]> {
+      const body = await postJson<{ target_ids: string[] }>(
+        '/api/v1/root/installations/sync',
+        undefined,
+      );
+      return body.target_ids;
     },
 
     fetchRootOverview(): Promise<RootOverview> {

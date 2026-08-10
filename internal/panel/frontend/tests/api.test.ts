@@ -233,6 +233,15 @@ describe('targets and repositories', () => {
 });
 
 describe('Root installation access', () => {
+  it('runs the Root catalog synchronization endpoint', async () => {
+    const stub = stubFetch([jsonResponse(200, { target_ids: ['target.1', 'target.2'] })]);
+    const api = createPanelApi('/panel', stub.fetch);
+
+    await expect(api.syncRootInstallations()).resolves.toEqual(['target.1', 'target.2']);
+    expect(stub.calls[0]?.url).toBe('/panel/api/v1/root/installations/sync');
+    expect(stub.calls[0]?.init?.method).toBe('POST');
+  });
+
   it('uses dedicated Root reads, writes, and elevation routes', async () => {
     const elevation = {
       id: 'elevation.1',
@@ -249,6 +258,7 @@ describe('Root installation access', () => {
       available: true,
       owned_by_viewer: true,
       repository_counts: TARGET.repository_counts,
+      delivery_health: { failed: 0 },
       ownership: {
         source: 'organization_admin' as const,
         status: 'fresh' as const,

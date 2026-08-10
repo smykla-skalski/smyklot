@@ -26,7 +26,13 @@ type rootInstallationResponse struct {
 	Available        bool                     `json:"available"`
 	OwnedByViewer    bool                     `json:"owned_by_viewer"`
 	RepositoryCounts storage.RepositoryCounts `json:"repository_counts"`
+	DeliveryHealth   deliveryHealthResponse   `json:"delivery_health"`
 	Ownership        ownershipResponse        `json:"ownership"`
+}
+
+type deliveryHealthResponse struct {
+	Failed        int        `json:"failed"`
+	LastFailureAt *time.Time `json:"last_failure_at,omitempty"`
 }
 
 type elevationResponse struct {
@@ -129,6 +135,9 @@ func rootInstallationDTO(
 		Account: accountDTO(target.Account), Available: target.Available,
 		OwnedByViewer:    ownedByViewer,
 		RepositoryCounts: target.RepositoryCounts,
+		DeliveryHealth: deliveryHealthResponse{
+			Failed: target.DeliveryHealth.Failed, LastFailureAt: target.DeliveryHealth.LastFailureAt,
+		},
 		Ownership: ownershipResponse{
 			Source: target.Ownership.Source, Status: target.Ownership.Status,
 			Detail: target.Ownership.Detail, SyncedAt: target.Ownership.SyncedAt,

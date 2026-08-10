@@ -979,6 +979,11 @@ async function handle(
       });
       return;
     }
+    if (path === route('/api/v1/root/installations/sync') && method === 'POST') {
+      broadcast(state, { type: 'resync' });
+      respond(res, 200, { target_ids: state.targets.map((target) => target.value.id) });
+      return;
+    }
     if (path === route('/api/v1/root/overview') && method === 'GET') {
       respond(res, 200, rootOverviewValue(state));
       return;
@@ -1670,6 +1675,10 @@ function rootInstallationValue(target: MockTarget, index: number): RootInstallat
     available,
     owned_by_viewer: mockRootOwns(target),
     repository_counts: target.value.repository_counts,
+    delivery_health: {
+      failed: index === 0 ? 1 : 0,
+      ...(index === 0 ? { last_failure_at: new Date(Date.now() - 18 * 60_000).toISOString() } : {}),
+    },
     ownership: {
       source: target.value.type === 'User' ? 'personal' : 'organization_admin',
       status: permissionPending ? 'permission_pending' : syncError ? 'error' : 'fresh',

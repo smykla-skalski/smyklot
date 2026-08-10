@@ -22,6 +22,7 @@
     installation,
     view,
     api,
+    refreshVersion,
     listHref,
     hrefFor,
     onList,
@@ -30,6 +31,7 @@
     installation: RootInstallation;
     view: ScopedPanelView;
     api: PanelApi;
+    refreshVersion: number;
     listHref: string;
     hrefFor: (account: string, view: ScopedPanelView) => string;
     onList: () => void;
@@ -48,6 +50,7 @@
   let elevationTrigger = $state<HTMLButtonElement | null>(null);
   let now = $state(Date.now());
   let repositoryVersion = $state(0);
+  let loadSequence = 0;
 
   const remainingSeconds = $derived(
     elevation === null
@@ -63,17 +66,22 @@
   const ownsInstallation = $derived(target?.access_source === 'owner');
   const canWrite = $derived(target?.capabilities.write === true);
 
-  async function load(): Promise<void> {
+  async function load(version = refreshVersion): Promise<void> {
+    const current = ++loadSequence;
     loading = true;
     failure = null;
     try {
       const currentTarget = await api.fetchRootTargetSettings(installation.id);
+      const currentElevation = await loadElevation();
+      if (current !== loadSequence || version !== refreshVersion) return;
       target = currentTarget;
-      elevation = await loadElevation();
+      elevation = currentElevation;
+      repositoryVersion += 1;
     } catch (error) {
+      if (current !== loadSequence || version !== refreshVersion) return;
       failure = message(error);
     } finally {
-      loading = false;
+      if (current === loadSequence) loading = false;
     }
   }
 
@@ -190,7 +198,7 @@
   }
 
   $effect(() => {
-    void load();
+    void load(refreshVersion);
   });
 
   $effect(() => {
@@ -295,7 +303,7 @@
     <div class="root-loading problem" role="alert">
       <strong>Could not load this installation</strong>
       <p>{failure}</p>
-      <button class="btn" type="button" onclick={load}>Try again</button>
+      <button class="btn" type="button" onclick={() => void load(refreshVersion)}>Try again</button>
     </div>
   {:else if target !== null && view === 'settings'}
     <TargetSettings {target} readOnly={!canWrite} onUpdate={updateTarget} />

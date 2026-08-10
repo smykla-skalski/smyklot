@@ -59,6 +59,7 @@
 
   const {
     section,
+    refreshVersion,
     onSection,
     fetchUsers,
     updateUser,
@@ -72,6 +73,7 @@
     onOpenInstallationAccess,
   }: {
     section: AccessSection;
+    refreshVersion: number;
     onSection: (section: AccessSection) => void;
     fetchUsers: (request: RootPanelUserPageRequest) => Promise<Page<RootPanelUser>>;
     updateUser: (accountId: string, input: UpdateRootUserInput) => Promise<void>;
@@ -117,7 +119,9 @@
   let sequence = 0;
   const limit = 20;
   const now = Date.now();
-  const requestKey = $derived(JSON.stringify([query, sort, systemRoles, statuses, limit]));
+  const requestKey = $derived(
+    JSON.stringify([query, sort, systemRoles, statuses, limit, refreshVersion]),
+  );
   const users = $derived(page?.items ?? []);
   const hasFilters = $derived(query !== '' || systemRoles.length > 0 || statuses.length > 0);
   const selectedInstallation = $derived(
@@ -438,6 +442,7 @@
 
   {#if section === 'invitations'}
     <RootInvitations
+      {refreshVersion}
       fetchPage={fetchInvitations}
       create={createInvitation}
       reissue={reissueInvitation}

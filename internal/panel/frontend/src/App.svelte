@@ -64,6 +64,7 @@
   let userVersion = $state(0);
   let notificationVersion = $state(0);
   let runtimeSettingsVersion = $state(0);
+  let rootDataVersion = $state(0);
   let view = $state<PanelView>('settings');
   let rootMode = $state(false);
   let activeRootRoute = $state<RootRoute>({ rootView: 'overview' });
@@ -424,6 +425,7 @@
       clearFailure('stream');
       notificationVersion += 1;
       runtimeSettingsVersion += 1;
+      rootDataVersion += 1;
     } catch (error) {
       if (streamRefreshes.isCurrent(refresh)) setFailure('stream', error);
     }
@@ -603,6 +605,7 @@
           {#if rootValue === 'overview'}
             <RootOverview
               {api}
+              refreshVersion={rootDataVersion}
               installationsHref={rootInstallationsHref()}
               failuresHref={rootFailuresHref()}
             />
@@ -610,6 +613,7 @@
             <RootInstallations
               route={activeRootRoute}
               {api}
+              refreshVersion={rootDataVersion}
               listHref={rootInstallationsHref()}
               hrefFor={rootInstallationHref}
               onList={selectRootInstallations}
@@ -621,13 +625,14 @@
               targetId="root"
               section={activeRootRoute.rootView === 'history-failures' ? 'failures' : 'audit'}
               onSection={selectRootHistorySection}
-              refreshVersion={historyVersion}
+              refreshVersion={rootDataVersion}
               fetchAudit={api.fetchRootAudit}
               fetchFailures={api.fetchRootFailures}
             />
           {:else if rootValue === 'access'}
             <RootAccess
               section={activeRootRoute.rootView === 'access-invitations' ? 'invitations' : 'users'}
+              refreshVersion={rootDataVersion}
               onSection={selectRootAccessSection}
               fetchUsers={api.fetchRootUsers}
               updateUser={api.updateRootUser}

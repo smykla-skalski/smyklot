@@ -259,6 +259,10 @@ export interface RootInstallation {
   available: boolean;
   owned_by_viewer: boolean;
   repository_counts: RepositoryCounts;
+  delivery_health: {
+    failed: number;
+    last_failure_at?: string;
+  };
   ownership: OwnershipState;
 }
 

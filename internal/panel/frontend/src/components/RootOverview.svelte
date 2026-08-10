@@ -1,6 +1,4 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-
   import type { PanelApi } from '../lib/api';
   import { formatRelative, formatTimestamp } from '../lib/format';
   import type { RootOverview } from '../lib/types';
@@ -8,10 +6,12 @@
 
   const {
     api,
+    refreshVersion,
     installationsHref,
     failuresHref,
   }: {
     api: PanelApi;
+    refreshVersion: number;
     installationsHref: string;
     failuresHref: string;
   } = $props();
@@ -20,6 +20,7 @@
   let loading = $state(true);
   let failure = $state<string | null>(null);
   let now = $state(Date.now());
+  let sequence = 0;
 
   const ownershipTotal = $derived(
     overview === null
@@ -35,16 +36,20 @@
       : overview.ownership.stale + overview.ownership.permission_pending + overview.ownership.error,
   );
 
-  async function load(): Promise<void> {
+  async function load(version = refreshVersion): Promise<void> {
+    const current = ++sequence;
     loading = true;
     failure = null;
     try {
-      overview = await api.fetchRootOverview();
+      const loaded = await api.fetchRootOverview();
+      if (current !== sequence || version !== refreshVersion) return;
+      overview = loaded;
       now = Date.now();
     } catch (error) {
+      if (current !== sequence || version !== refreshVersion) return;
       failure = error instanceof Error ? error.message : String(error);
     } finally {
-      loading = false;
+      if (current === sequence) loading = false;
     }
   }
 
@@ -61,18 +66,15 @@
     return ownershipTotal === 0 ? 0 : (value / ownershipTotal) * 100;
   }
 
-  onMount(() => {
-    void load();
+  $effect(() => {
+    void load(refreshVersion);
   });
 </script>
 
 <section class="overview" aria-label="Root operational overview">
   <div class="overview-actions">
     <p>Live service, catalog, ownership, and security state</p>
-    <button class="btn btn-row" type="button" disabled={loading} onclick={load}>
-      <Icon name="refresh" size={15} />
-      {loading ? 'Refreshing…' : 'Refresh'}
-    </button>
+    <span class="live-state"><span aria-hidden="true"></span> WebSocket live</span>
   </div>
 
   {#if failure !== null}
@@ -82,7 +84,7 @@
         <strong>Operational state is unavailable</strong>
         <p>{failure}</p>
       </div>
-      <button class="btn" type="button" onclick={load}>Try again</button>
+      <button class="btn" type="button" onclick={() => void load(refreshVersion)}>Try again</button>
     </div>
   {:else if loading && overview === null}
     <div class="overview-loading" role="status">
@@ -267,6 +269,23 @@
 
   .overview-actions {
     justify-content: space-between;
+  }
+
+  .live-state {
+    align-items: center;
+    color: var(--admin);
+    display: inline-flex;
+    font-size: var(--font-size-compact);
+    font-weight: 650;
+    gap: var(--space-2);
+  }
+
+  .live-state > span {
+    background: currentColor;
+    border-radius: 50%;
+    box-shadow: 0 0 0 0.22rem color-mix(in srgb, currentColor 13%, transparent);
+    height: 0.45rem;
+    width: 0.45rem;
   }
 
   .overview-actions p,

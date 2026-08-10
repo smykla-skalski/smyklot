@@ -486,6 +486,50 @@ func TestPanelWebSocketEvents(t *testing.T) {
 	}
 }
 
+func TestPanelBroadcastsRootSecurityChanges(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+	session := harness.signIn(t)
+	_, elevatedTarget := seedNonOwnedInstallation(t, harness)
+	subscriber, unsubscribe := harness.server.events.subscribe("root-live-test")
+	t.Cleanup(unsubscribe)
+
+	started := harness.request(
+		t,
+		http.MethodPost,
+		"/panel/api/v1/root/installations/"+elevatedTarget.TargetID+"/elevation",
+		strings.NewReader(`{"acknowledged":true,"reason":"live event proof"}`),
+		session,
+	)
+	requireResponse(t, started, "live elevation start", http.StatusCreated)
+	requirePanelEvent(t, subscriber.events, panelEventResync)
+
+	var elevation elevationResponse
+	if err := json.Unmarshal(started.Body.Bytes(), &elevation); err != nil {
+		t.Fatal(err)
+	}
+	ended := harness.request(
+		t,
+		http.MethodDelete,
+		"/panel/api/v1/root/elevations/"+elevation.ID,
+		nil,
+		session,
+	)
+	requireResponse(t, ended, "live elevation end", http.StatusOK)
+	requirePanelEvent(t, subscriber.events, panelEventResync)
+}
+
+func requirePanelEvent(t *testing.T, events <-chan panelEvent, eventType string) {
+	t.Helper()
+	select {
+	case event := <-events:
+		if event.Type != eventType {
+			t.Fatalf("panel event = %#v, want type %q", event, eventType)
+		}
+	case <-time.After(time.Second):
+		t.Fatalf("timed out waiting for panel event %q", eventType)
+	}
+}
+
 func TestPanelEnforcesResolvedRoleCapabilities(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	_ = harness.signIn(t)
@@ -1067,6 +1111,7 @@ func TestPanelRootElevationAndOwnerNotifications(t *testing.T) {
 	requireResponse(
 		t, installations, "Root installations", http.StatusOK,
 		`"id":"github:installation:20"`, `"owner_count":1`,
+		`"delivery_health":{"failed":0}`,
 	)
 	rootSettingsPath := "/panel/api/v1/root/installations/" + target.TargetID + "/settings"
 	settings := harness.request(t, http.MethodGet, rootSettingsPath, nil, rootSession)

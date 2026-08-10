@@ -362,6 +362,12 @@ type RepositoryCounts struct {
 	Disabled int
 }
 
+// DeliveryHealth summarizes retained webhook failures for one installation.
+type DeliveryHealth struct {
+	Failed        int
+	LastFailureAt *time.Time
+}
+
 // Target is one GitHub App installation and its panel-owned settings.
 type Target struct {
 	ID                       string
@@ -374,6 +380,7 @@ type Target struct {
 	Revision                 int64
 	UpdatedAt                time.Time
 	RepositoryCounts         RepositoryCounts
+	DeliveryHealth           DeliveryHealth
 	Ownership                TargetOwnership
 }
 

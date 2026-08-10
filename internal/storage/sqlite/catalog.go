@@ -37,7 +37,11 @@ SELECT
     COALESCE(o.status, 'error'),
     CASE WHEN o.target_id IS NULL THEN 'ownership has not been synchronized' ELSE o.detail END,
     COALESCE(o.synced_at, t.synced_at),
-    (SELECT COUNT(*) FROM target_owners owners WHERE owners.target_id = t.id)
+    (SELECT COUNT(*) FROM target_owners owners WHERE owners.target_id = t.id),
+    (SELECT COUNT(*) FROM deliveries delivery
+        WHERE delivery.target_id = t.id AND delivery.status = 'failed'),
+    (SELECT MAX(delivery.finished_at) FROM deliveries delivery
+        WHERE delivery.target_id = t.id AND delivery.status = 'failed')
 FROM targets t
 JOIN accounts a ON a.id = t.account_id
 LEFT JOIN target_ownership o ON o.target_id = t.id
@@ -536,7 +540,7 @@ GROUP BY t.id, a.id`, targetID))
 
 func scanTarget(scanner rowScanner) (storage.Target, error) {
 	var target storage.Target
-	var avatarURL, ownershipDetail sql.NullString
+	var avatarURL, ownershipDetail, lastFailureAt sql.NullString
 	var targetPatch, targetUpdatedAt, accountUpdatedAt, ownershipSyncedAt string
 	var enabled int
 
@@ -563,6 +567,8 @@ func scanTarget(scanner rowScanner) (storage.Target, error) {
 		&ownershipDetail,
 		&ownershipSyncedAt,
 		&target.Ownership.OwnerCount,
+		&target.DeliveryHealth.Failed,
+		&lastFailureAt,
 	)
 	if err != nil {
 		return storage.Target{}, err
@@ -572,6 +578,13 @@ func scanTarget(scanner rowScanner) (storage.Target, error) {
 	target.RepositoryCounts.Enabled = enabled
 	target.RepositoryCounts.Disabled = target.RepositoryCounts.Total - enabled
 	target.Ownership.Detail = stringPointer(ownershipDetail)
+	if lastFailureAt.Valid {
+		failedAt, parseErr := parseTime(lastFailureAt.String)
+		if parseErr != nil {
+			return storage.Target{}, parseErr
+		}
+		target.DeliveryHealth.LastFailureAt = &failedAt
+	}
 	target.Ownership.SyncedAt, err = parseTime(ownershipSyncedAt)
 	if err != nil {
 		return storage.Target{}, err

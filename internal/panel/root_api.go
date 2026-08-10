@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/storage"
 )
@@ -206,6 +207,8 @@ func (s *Server) postRootElevation(w http.ResponseWriter, r *http.Request) {
 		s.writeElevationError(w, err)
 		return
 	}
+	s.events.announce(panelEvent{Type: panelEventResync})
+	s.announceElevationExpiry(elevation.ExpiresAt)
 	writeJSON(w, http.StatusCreated, elevationDTO(elevation))
 }
 
@@ -240,6 +243,7 @@ func (s *Server) deleteRootElevation(w http.ResponseWriter, r *http.Request) {
 		s.writeElevationError(w, err)
 		return
 	}
+	s.events.announce(panelEvent{Type: panelEventResync})
 	writeJSON(w, http.StatusOK, elevationDTO(elevation))
 }
 
@@ -281,7 +285,19 @@ func (s *Server) putSecurityNotificationRead(w http.ResponseWriter, r *http.Requ
 		s.writeStorageError(w, err)
 		return
 	}
+	s.events.announce(panelEvent{Type: panelEventResync})
 	writeJSON(w, http.StatusOK, securityNotificationDTO(notification))
+}
+
+func (s *Server) announceElevationExpiry(expiresAt time.Time) {
+	delay := expiresAt.Sub(s.now().UTC())
+	if delay <= 0 {
+		s.events.announce(panelEvent{Type: panelEventResync})
+		return
+	}
+	time.AfterFunc(delay, func() {
+		s.events.announce(panelEvent{Type: panelEventResync})
+	})
 }
 
 func parseNotificationPage(r *http.Request) (storage.NotificationPageRequest, error) {

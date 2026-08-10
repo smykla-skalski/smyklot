@@ -332,6 +332,13 @@ var _ = Describe("SQLite store [Unit]", func() {
 		Expect(overview.RecentFailures).To(HaveLen(1))
 		Expect(overview.RecentFailures[0].Failure.DeliveryID).To(Equal("overview-failure"))
 		Expect(overview.RecentFailures[0].Target.Login).To(Equal(target.Account.Login))
+		targets, err := store.ListRootTargets(ctx)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(targets).To(HaveLen(1))
+		Expect(targets[0].DeliveryHealth.Failed).To(Equal(1))
+		Expect(targets[0].DeliveryHealth.LastFailureAt).To(
+			HaveValue(Equal(now.Add(time.Minute))),
+		)
 
 		audit, err := store.ListRootAudit(ctx, storage.RootAuditPageRequest{
 			HistoryPageRequest: storage.HistoryPageRequest{Limit: 10},
