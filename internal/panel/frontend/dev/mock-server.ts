@@ -6,6 +6,7 @@ import type { Connect, Plugin } from 'vite';
 import type {
   AuditEntry,
   AccessDecision,
+  AddRootInvitationInput,
   AddTargetInvitationInput,
   AddTargetUserInput,
   ConfigKey,
@@ -996,6 +997,24 @@ async function handle(
       );
       return;
     }
+    if (path === route('/api/v1/root/access/invitations') && method === 'GET') {
+      respond(
+        res,
+        200,
+        invitationPage(
+          state.invitations.filter((entry) => entry.system_role === 'root'),
+          parsed.searchParams,
+        ),
+      );
+      return;
+    }
+    if (path === route('/api/v1/root/access/invitations') && method === 'POST') {
+      const input = await readBody<AddRootInvitationInput>(req);
+      const created = createRootMockInvitation(state, input);
+      broadcastInvitation(state, created);
+      respond(res, 201, invitationValue(created));
+      return;
+    }
     if (path === route('/api/v1/notifications') && method === 'GET') {
       const offset = Math.max(0, Number(parsed.searchParams.get('cursor') ?? '0'));
       const limit = Math.min(100, Math.max(1, Number(parsed.searchParams.get('limit') ?? '20')));
@@ -1026,6 +1045,12 @@ async function handle(
     const notificationRead = path.match(/^\/api\/v1\/notifications\/(?<notification>[^/]+)\/read$/);
     const scopedUsers = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/users$/);
     const rootUser = path.match(/^\/api\/v1\/root\/access\/users\/(?<account>[^/]+)$/);
+    const rootInvitationReissue = path.match(
+      /^\/api\/v1\/root\/access\/invitations\/(?<invitation>[^/]+)\/reissue$/,
+    );
+    const rootInvitation = path.match(
+      /^\/api\/v1\/root\/access\/invitations\/(?<invitation>[^/]+)$/,
+    );
     const scopedUser = path.match(
       /^\/api\/v1\/targets\/(?<target>[^/]+)\/users\/(?<account>[^/]+)$/,
     );
@@ -1078,6 +1103,35 @@ async function handle(
       user.revision += 1;
       user.updated_at = new Date().toISOString();
       respond(res, 204, null);
+      return;
+    }
+
+    if (rootInvitationReissue && method === 'POST') {
+      const current = findInvitation(state, rootInvitationReissue.groups?.invitation ?? '');
+      if (current.system_role !== 'root') {
+        throw new MockApiError(404, 'not_found', 'Root invitation not found');
+      }
+      const input = await readBody<{ expires_in_days: InvitationDays }>(req);
+      current.token = mockInvitationToken(state.invitationCounter++);
+      current.status = 'pending';
+      current.expires_at = new Date(Date.now() + input.expires_in_days * 86_400_000).toISOString();
+      current.created_at = new Date().toISOString();
+      current.created_by = VIEWER;
+      current.responded_at = undefined;
+      broadcastInvitation(state, current);
+      respond(res, 200, invitationValue(current));
+      return;
+    }
+
+    if (rootInvitation && method === 'DELETE') {
+      const current = findInvitation(state, rootInvitation.groups?.invitation ?? '');
+      if (current.system_role !== 'root') {
+        throw new MockApiError(404, 'not_found', 'Root invitation not found');
+      }
+      current.status = 'revoked';
+      current.responded_at = new Date().toISOString();
+      broadcastInvitation(state, current);
+      respond(res, 200, publicInvitationValue(current));
       return;
     }
 
@@ -1773,6 +1827,35 @@ function createMockInvitation(
   return invitation;
 }
 
+function createRootMockInvitation(state: MockState, input: AddRootInvitationInput): MockInvitation {
+  const now = new Date();
+  const account = mockUser(input.login, 'none').account;
+  for (const invitation of state.invitations) {
+    if (
+      invitation.account.login.toLowerCase() === input.login.toLowerCase() &&
+      invitation.system_role === 'root' &&
+      invitation.status === 'pending'
+    ) {
+      invitation.status = 'revoked';
+      invitation.responded_at = now.toISOString();
+    }
+  }
+  const counter = state.invitationCounter++;
+  const invitation: MockInvitation = {
+    id: `mock-root-invitation-${counter}`,
+    token: mockInvitationToken(counter),
+    account,
+    role: 'owner',
+    system_role: 'root',
+    status: 'pending',
+    expires_at: new Date(now.getTime() + input.expires_in_days * 86_400_000).toISOString(),
+    created_by: VIEWER,
+    created_at: now.toISOString(),
+  };
+  state.invitations.unshift(invitation);
+  return invitation;
+}
+
 function mockInvitationToken(counter: number): string {
   return `mock-${String(counter).padStart(38, '0')}`;
 }
@@ -1784,6 +1867,7 @@ function publicInvitationValue(invitation: MockInvitation): PanelInvitation {
     ...(invitation.target_id === undefined ? {} : { target_id: invitation.target_id }),
     ...(invitation.target_name === undefined ? {} : { target_name: invitation.target_name }),
     role: invitation.role,
+    ...(invitation.system_role === undefined ? {} : { system_role: invitation.system_role }),
     status: invitation.status,
     expires_at: invitation.expires_at,
     created_by: invitation.created_by,

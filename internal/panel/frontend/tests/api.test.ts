@@ -361,6 +361,59 @@ describe('Root installation access', () => {
   });
 });
 
+describe('Root invitations', () => {
+  it('lists and manages system-role invitations through Root routes', async () => {
+    const invitation = {
+      id: 'root.invite.1',
+      account: { ...VIEWER.account, id: 'root.2', subject_id: 'root.2', login: 'grace' },
+      role: 'owner' as const,
+      system_role: 'root' as const,
+      status: 'pending' as const,
+      expires_at: '2026-08-17T10:00:00Z',
+      created_by: VIEWER.account,
+      created_at: '2026-08-10T10:00:00Z',
+      invite_url: 'https://smyklot.example/invite/root-token',
+    };
+    const stub = stubFetch([
+      jsonResponse(200, { items: [invitation], next_cursor: null, total: 1 }),
+      jsonResponse(201, invitation),
+      jsonResponse(200, invitation),
+      jsonResponse(200, { ...invitation, status: 'revoked' }),
+    ]);
+    const api = createPanelApi('/panel', stub.fetch);
+
+    await api.fetchRootInvitations({
+      cursor: '20',
+      query: 'grace',
+      sort: 'expiry_soonest',
+      limit: 10,
+      roles: [],
+      statuses: ['pending', 'expired'],
+    });
+    await api.createRootInvitation({ login: 'grace', expires_in_days: 7 });
+    await api.reissueRootInvitation('root.invite.1', 30);
+    await api.revokeRootInvitation('root.invite.1');
+
+    expect(stub.calls.map((call) => call.url)).toEqual([
+      '/panel/api/v1/root/access/invitations?cursor=20&q=grace&sort=expiry_soonest&limit=10&status=pending&status=expired',
+      '/panel/api/v1/root/access/invitations',
+      '/panel/api/v1/root/access/invitations/root%2Einvite%2E1/reissue',
+      '/panel/api/v1/root/access/invitations/root%2Einvite%2E1',
+    ]);
+    expect(stub.calls.map((call) => call.init?.method)).toEqual([
+      undefined,
+      'POST',
+      'POST',
+      'DELETE',
+    ]);
+    expect(JSON.parse(String(stub.calls[1]?.init?.body))).toEqual({
+      login: 'grace',
+      expires_in_days: 7,
+    });
+    expect(JSON.parse(String(stub.calls[2]?.init?.body))).toEqual({ expires_in_days: 30 });
+  });
+});
+
 describe('security notifications', () => {
   it('pages the Owner inbox and marks notifications read', async () => {
     const notification = {

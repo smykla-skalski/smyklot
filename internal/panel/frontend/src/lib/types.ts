@@ -168,12 +168,18 @@ export interface PanelInvitation {
   target_id?: string;
   target_name?: string;
   role: Exclude<PanelRole, 'none'>;
+  system_role?: Exclude<SystemRole, 'none' | 'super_root'>;
   status: InvitationStatus;
   expires_at: string;
   created_by: PanelAccount;
   created_at: string;
   responded_at?: string;
   invite_url?: string;
+}
+
+export interface AddRootInvitationInput {
+  login: string;
+  expires_in_days: InvitationDays;
 }
 
 export type InvitationSort =

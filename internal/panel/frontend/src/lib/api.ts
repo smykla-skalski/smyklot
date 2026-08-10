@@ -5,6 +5,7 @@ import type {
   AuditEntry,
   AuditHistoryRequest,
   AddTargetInvitationInput,
+  AddRootInvitationInput,
   AddTargetUserInput,
   AccessDecision,
   DeliveryFailure,
@@ -55,6 +56,13 @@ export interface PanelApi {
   fetchRootOverview(): Promise<RootOverview>;
   fetchRootUsers(request: RootPanelUserPageRequest): Promise<Page<RootPanelUser>>;
   updateRootUser(accountId: string, input: UpdateRootUserInput): Promise<void>;
+  fetchRootInvitations(request: InvitationPageRequest): Promise<Page<PanelInvitation>>;
+  createRootInvitation(input: AddRootInvitationInput): Promise<PanelInvitation>;
+  reissueRootInvitation(
+    invitationId: string,
+    expiresInDays: InvitationDays,
+  ): Promise<PanelInvitation>;
+  revokeRootInvitation(invitationId: string): Promise<PanelInvitation>;
   fetchRootAudit(request: AuditHistoryRequest): Promise<Page<AuditEntry>>;
   fetchRootFailures(request: FailureHistoryRequest): Promise<Page<DeliveryFailure>>;
   fetchRootTargetSettings(targetId: string): Promise<PanelTarget>;
@@ -199,6 +207,29 @@ export function createPanelApi(
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(input),
+      });
+    },
+
+    fetchRootInvitations(invitationPage: InvitationPageRequest): Promise<Page<PanelInvitation>> {
+      return jsonRequest(withAccessPageQuery('/api/v1/root/access/invitations', invitationPage));
+    },
+
+    createRootInvitation(input: AddRootInvitationInput): Promise<PanelInvitation> {
+      return postJson('/api/v1/root/access/invitations', input);
+    },
+
+    reissueRootInvitation(
+      invitationId: string,
+      expiresInDays: InvitationDays,
+    ): Promise<PanelInvitation> {
+      return postJson(`/api/v1/root/access/invitations/${pathSegment(invitationId)}/reissue`, {
+        expires_in_days: expiresInDays,
+      });
+    },
+
+    revokeRootInvitation(invitationId: string): Promise<PanelInvitation> {
+      return jsonRequest(`/api/v1/root/access/invitations/${pathSegment(invitationId)}`, {
+        method: 'DELETE',
       });
     },
 

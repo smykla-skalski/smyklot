@@ -3,6 +3,10 @@
   import type { FilterSection } from '../lib/filter-menu';
   import type {
     Page,
+    AddRootInvitationInput,
+    InvitationDays,
+    InvitationPageRequest,
+    PanelInvitation,
     PanelUserStatus,
     RootPanelUser,
     RootPanelUserPageRequest,
@@ -17,6 +21,7 @@
   import Icon from './Icon.svelte';
   import InfiniteLoadSentinel from './InfiniteLoadSentinel.svelte';
   import Modal from './Modal.svelte';
+  import RootInvitations from './RootInvitations.svelte';
   import SearchField from './SearchField.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
   import TableEmptyState from './TableEmptyState.svelte';
@@ -53,11 +58,24 @@
     onSection,
     fetchUsers,
     updateUser,
+    fetchInvitations,
+    createInvitation,
+    reissueInvitation,
+    revokeInvitation,
+    canManageInvitations,
   }: {
     section: AccessSection;
     onSection: (section: AccessSection) => void;
     fetchUsers: (request: RootPanelUserPageRequest) => Promise<Page<RootPanelUser>>;
     updateUser: (accountId: string, input: UpdateRootUserInput) => Promise<void>;
+    fetchInvitations: (request: InvitationPageRequest) => Promise<Page<PanelInvitation>>;
+    createInvitation: (input: AddRootInvitationInput) => Promise<PanelInvitation>;
+    reissueInvitation: (
+      invitationId: string,
+      expiresInDays: InvitationDays,
+    ) => Promise<PanelInvitation>;
+    revokeInvitation: (invitationId: string) => Promise<PanelInvitation>;
+    canManageInvitations: boolean;
   } = $props();
 
   let page = $state<Page<RootPanelUser> | null>(null);
@@ -336,12 +354,13 @@
   </div>
 
   {#if section === 'invitations'}
-    <div class="invitation-foundation">
-      <TableEmptyState
-        title="No Root invitations"
-        description="System-role invitations will appear here after the guarded invitation workflow is enabled"
-      />
-    </div>
+    <RootInvitations
+      fetchPage={fetchInvitations}
+      create={createInvitation}
+      reissue={reissueInvitation}
+      revoke={revokeInvitation}
+      canManage={canManageInvitations}
+    />
   {:else}
     <div class="access-tools">
       <SearchField
@@ -592,8 +611,7 @@
     padding-bottom: var(--space-3);
   }
 
-  .user-results,
-  .invitation-foundation {
+  .user-results {
     background: var(--table-filler-bg);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-surface);
@@ -603,12 +621,6 @@
     min-height: 8rem;
     overflow: hidden;
     position: relative;
-  }
-
-  .invitation-foundation {
-    align-items: center;
-    justify-content: center;
-    padding: var(--space-8);
   }
 
   .table-scroll {

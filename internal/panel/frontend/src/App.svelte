@@ -628,6 +628,11 @@
               onSection={selectRootAccessSection}
               fetchUsers={api.fetchRootUsers}
               updateUser={api.updateRootUser}
+              fetchInvitations={api.fetchRootInvitations}
+              createInvitation={api.createRootInvitation}
+              reissueInvitation={api.reissueRootInvitation}
+              revokeInvitation={api.revokeRootInvitation}
+              canManageInvitations={viewer.system_role === 'super_root'}
             />
           {:else}
             <div class="root-foundation" role="status">
