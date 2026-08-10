@@ -110,12 +110,10 @@ var _ = Describe("SQLite store [Unit]", func() {
 
 		botConfig := config.Default()
 		botConfig.QuietSuccess = true
-		pollInterval := 90 * time.Second
 		logLevel := "debug"
 		sessionTTL := 2 * time.Hour
 		updated, err := store.UpdateRuntimeSettings(ctx, storage.RuntimeSettingsChange{
 			BotConfig:           botConfig,
-			PollInterval:        &pollInterval,
 			LogLevel:            &logLevel,
 			SessionTTL:          &sessionTTL,
 			EffectiveSessionTTL: sessionTTL,
@@ -127,7 +125,6 @@ var _ = Describe("SQLite store [Unit]", func() {
 		Expect(updated.Revision).To(Equal(int64(1)))
 		Expect(updated.BotConfig).NotTo(BeNil())
 		Expect(updated.BotConfig.QuietSuccess).To(BeTrue())
-		Expect(updated.PollInterval).To(HaveValue(Equal(pollInterval)))
 		Expect(updated.LogLevel).To(HaveValue(Equal(logLevel)))
 		Expect(updated.SessionTTL).To(HaveValue(Equal(sessionTTL)))
 		Expect(updated.UpdatedBy.ID).To(Equal(account.ID))
@@ -167,7 +164,6 @@ var _ = Describe("SQLite store [Unit]", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(reset.Revision).To(Equal(int64(3)))
 		Expect(reset.BotConfig).To(BeNil())
-		Expect(reset.PollInterval).To(BeNil())
 		Expect(reset.LogLevel).To(BeNil())
 		Expect(reset.SessionTTL).To(BeNil())
 		shortest, err := store.GetSession(ctx, session.TokenHash, now.Add(3*time.Minute))

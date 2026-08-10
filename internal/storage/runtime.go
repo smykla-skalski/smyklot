@@ -9,20 +9,18 @@ import (
 // RuntimeSettings contains the persisted overrides layered over deployment
 // defaults. Nil fields keep the corresponding deployment value.
 type RuntimeSettings struct {
-	BotConfig    *config.Config
-	PollInterval *time.Duration
-	LogLevel     *string
-	SessionTTL   *time.Duration
-	Revision     int64
-	UpdatedAt    *time.Time
-	UpdatedBy    *Account
+	BotConfig  *config.Config
+	LogLevel   *string
+	SessionTTL *time.Duration
+	Revision   int64
+	UpdatedAt  *time.Time
+	UpdatedBy  *Account
 }
 
 // RuntimeSettingsChange atomically replaces every persisted runtime override
 // and appends its application-wide audit event.
 type RuntimeSettingsChange struct {
 	BotConfig           *config.Config
-	PollInterval        *time.Duration
 	LogLevel            *string
 	SessionTTL          *time.Duration
 	EffectiveSessionTTL time.Duration

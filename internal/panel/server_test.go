@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -45,6 +46,14 @@ type fakeUserResolver struct {
 	account storage.Account
 }
 
+type fakeRuntimeController struct {
+	values RuntimeValues
+}
+
+func (f *fakeRuntimeController) ApplyRuntimeSettings(values RuntimeValues) {
+	f.values = values
+}
+
 func (f fakeUserResolver) ResolveUser(
 	context.Context,
 	string,
@@ -70,6 +79,7 @@ type panelHarness struct {
 	store   storage.Store
 	handler http.Handler
 	now     time.Time
+	runtime *fakeRuntimeController
 }
 
 func newPanelHarness(t *testing.T, login string) *panelHarness {
@@ -126,19 +136,28 @@ func newPanelHarnessForSubject(t *testing.T, login, subjectID string) *panelHarn
 		randomBytes = append(randomBytes, bytes.Repeat([]byte{byte(index + 1)}, tokenBytes)...)
 	}
 	random := bytes.NewReader(randomBytes)
+	runtime := &fakeRuntimeController{}
 	server, err := New(Config{
-		BasePath:      "/panel",
-		PublicOrigin:  "https://smyklot.example",
-		SuperRootID:   1,
-		ClientID:      "client-id",
-		ClientSecret:  "client-secret",
-		AuthorizeURL:  "https://github.example/authorize",
-		TokenURL:      "https://github.example/token",
-		APIURL:        "https://api.github.example",
-		Version:       "1.0.0",
-		ServiceHost:   "smyklot.example",
-		ProcessConfig: config.Default(),
-		Assets:        assets,
+		BasePath:                 "/panel",
+		PublicOrigin:             "https://smyklot.example",
+		SuperRootID:              1,
+		ClientID:                 "client-id",
+		ClientSecret:             "client-secret",
+		AuthorizeURL:             "https://github.example/authorize",
+		TokenURL:                 "https://github.example/token",
+		APIURL:                   "https://api.github.example",
+		Version:                  "1.0.0",
+		ServiceHost:              "smyklot.example",
+		ListenAddress:            ":8080",
+		AdminAddress:             ":9090",
+		WebhookPath:              "/webhook",
+		LogLevel:                 slog.LevelInfo,
+		SessionTTL:               12 * time.Hour,
+		ProcessConfig:            config.Default(),
+		WebhookCredentialPresent: true,
+		AppCredentialPresent:     true,
+		OAuthCredentialPresent:   true,
+		Assets:                   assets,
 	}, Dependencies{
 		Store:   store,
 		Catalog: fakeCatalog{store: store, snapshot: snapshot},
@@ -146,12 +165,15 @@ func newPanelHarnessForSubject(t *testing.T, login, subjectID string) *panelHarn
 		SignIn:  fakeSignIn{account: viewer},
 		Random:  random,
 		Now:     func() time.Time { return now },
+		Runtime: runtime,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	return &panelHarness{server: server, store: store, handler: server.Handler(), now: now}
+	return &panelHarness{
+		server: server, store: store, handler: server.Handler(), now: now, runtime: runtime,
+	}
 }
 
 func seedNonOwnedInstallation(
@@ -431,6 +453,18 @@ func TestPanelWebSocketEvents(t *testing.T) {
 		changed.TargetID != "github:installation:10" ||
 		changed.RepositoryID != "repository-20" {
 		t.Fatalf("changed event = %#v", changed)
+	}
+	runtimeUpdate := harness.request(
+		t, http.MethodPut, "/panel/api/v1/root/settings",
+		strings.NewReader(`{"expected_revision":0}`), session,
+	)
+	requireResponse(t, runtimeUpdate, "runtime WebSocket update", http.StatusOK, `"revision":1`)
+	var resync panelEvent
+	if err := wsjson.Read(t.Context(), connection, &resync); err != nil {
+		t.Fatal(err)
+	}
+	if resync.Type != panelEventResync {
+		t.Fatalf("runtime resync event = %#v", resync)
 	}
 
 	signedOut := harness.request(
@@ -838,6 +872,92 @@ func TestPanelRootOverview(t *testing.T) {
 		t, http.MethodGet, "/panel/api/v1/root/access/users?system_role=owner", nil, rootSession,
 	)
 	requireResponse(t, invalidUsers, "invalid Root user role", http.StatusBadRequest)
+}
+
+func TestPanelRootRuntimeSettings(t *testing.T) {
+	harness := newPanelHarness(t, "root")
+	rootSession := harness.signIn(t)
+
+	current := harness.request(
+		t, http.MethodGet, "/panel/api/v1/root/settings", nil, rootSession,
+	)
+	requireResponse(
+		t, current, "Root runtime settings", http.StatusOK,
+		`"effective_seconds":43200`,
+		`"deployment":"info"`, `"public":":8080"`,
+		`"webhook":true`, `"revision":0`,
+	)
+
+	behavior := config.Default()
+	behavior.QuietSuccess = true
+	content, err := json.Marshal(map[string]any{
+		"bot_config":          behavior,
+		"log_level":           "debug",
+		"session_ttl_seconds": 3600,
+		"expected_revision":   0,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated := harness.request(
+		t, http.MethodPut, "/panel/api/v1/root/settings", bytes.NewReader(content), rootSession,
+	)
+	requireResponse(
+		t, updated, "update Root runtime settings", http.StatusOK,
+		`"quiet_success":true`, `"override":"debug"`,
+		`"override_seconds":3600`, `"revision":1`,
+	)
+	if !harness.runtime.values.BotConfig.QuietSuccess ||
+		harness.runtime.values.LogLevel != slog.LevelDebug ||
+		harness.runtime.values.SessionTTL != time.Hour {
+		t.Fatalf("applied runtime values = %#v", harness.runtime.values)
+	}
+	shortened, err := harness.store.GetSession(
+		t.Context(), tokenHash(rootSession.Value), harness.now,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := harness.now.Add(time.Hour); !shortened.ExpiresAt.Equal(want) {
+		t.Fatalf("session expiry = %s, want %s", shortened.ExpiresAt, want)
+	}
+
+	reset := harness.request(
+		t, http.MethodPut, "/panel/api/v1/root/settings",
+		strings.NewReader(`{
+            "bot_config":null,
+            "log_level":null,
+            "session_ttl_seconds":null,
+            "expected_revision":1
+        }`),
+		rootSession,
+	)
+	requireResponse(
+		t, reset, "reset Root runtime settings", http.StatusOK,
+		`"override":null`, `"override_seconds":null`, `"revision":2`,
+	)
+	if harness.runtime.values.BotConfig.QuietSuccess ||
+		harness.runtime.values.LogLevel != slog.LevelInfo ||
+		harness.runtime.values.SessionTTL != 12*time.Hour {
+		t.Fatalf("reset runtime values = %#v", harness.runtime.values)
+	}
+	unchanged, err := harness.store.GetSession(
+		t.Context(), tokenHash(rootSession.Value), harness.now,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !unchanged.ExpiresAt.Equal(shortened.ExpiresAt) {
+		t.Fatalf("session was extended from %s to %s", shortened.ExpiresAt, unchanged.ExpiresAt)
+	}
+
+	audit := harness.request(
+		t, http.MethodGet, "/panel/api/v1/root/history/audit?category=runtime", nil, rootSession,
+	)
+	requireResponse(
+		t, audit, "Root runtime audit", http.StatusOK,
+		`"category":"runtime"`, `"action":"runtime.settings.updated"`,
+	)
 }
 
 func TestPanelManagesRootUsers(t *testing.T) {

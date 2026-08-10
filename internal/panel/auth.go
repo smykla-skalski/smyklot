@@ -127,7 +127,7 @@ func (s *Server) finishSignIn(w http.ResponseWriter, r *http.Request) {
 		s.writeInternal(w, err)
 		return
 	}
-	s.setCookie(w, sessionCookieName, session, s.cfg.SessionTTL)
+	s.setCookie(w, sessionCookieName, session, s.sessionTTL())
 	http.Redirect(w, r, s.cfg.landingPath(), http.StatusFound)
 }
 
@@ -196,7 +196,7 @@ func (s *Server) createSession(r *http.Request, accountID string) (string, error
 		TokenHash: tokenHash(token),
 		AccountID: accountID,
 		CreatedAt: now,
-		ExpiresAt: now.Add(s.cfg.SessionTTL),
+		ExpiresAt: now.Add(s.sessionTTL()),
 	}, MaxSessions); err != nil {
 		return "", err
 	}

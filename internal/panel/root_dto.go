@@ -7,6 +7,8 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/storage"
 )
 
+const rootServiceHealthy = "healthy"
+
 type ownershipResponse struct {
 	Source     storage.OwnershipSource `json:"source"`
 	Status     storage.OwnershipStatus `json:"status"`
@@ -175,8 +177,8 @@ func rootOverviewDTO(
 
 	return rootOverviewResponse{
 		Service: rootServiceResponse{
-			Status: "healthy", Version: cfg.Version, ServiceHost: cfg.ServiceHost,
-			UptimeSeconds: uptime, Storage: "healthy",
+			Status: rootServiceHealthy, Version: cfg.Version, ServiceHost: cfg.ServiceHost,
+			UptimeSeconds: uptime, Storage: rootServiceHealthy,
 		},
 		Catalog: rootCatalogResponse{
 			Installations: overview.InstallationCount, Repositories: overview.RepositoryCount,

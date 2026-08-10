@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/storage"
@@ -25,6 +26,13 @@ type userResolver interface {
 	ResolveRootUser(context.Context, string) (storage.Account, error)
 }
 
+// RuntimeController applies validated effective values to the long-running
+// service. The operation is infallible because every rejected value is stopped
+// before persistence.
+type RuntimeController interface {
+	ApplyRuntimeSettings(RuntimeValues)
+}
+
 // Dependencies are the service capabilities used by panel handlers.
 type Dependencies struct {
 	Store   storage.Store
@@ -33,20 +41,24 @@ type Dependencies struct {
 	SignIn  signInProvider
 	Random  io.Reader
 	Now     func() time.Time
+	Runtime RuntimeController
 }
 
 // Server owns the panel routes and their authenticated runtime state.
 type Server struct {
-	cfg       Config
-	store     storage.Store
-	catalog   catalogSyncer
-	users     userResolver
-	signIn    signInProvider
-	random    io.Reader
-	now       func() time.Time
-	startedAt time.Time
-	assets    *assetBundle
-	events    *eventHub
+	cfg        Config
+	store      storage.Store
+	catalog    catalogSyncer
+	users      userResolver
+	signIn     signInProvider
+	random     io.Reader
+	now        func() time.Time
+	startedAt  time.Time
+	assets     *assetBundle
+	events     *eventHub
+	runtimeMu  sync.RWMutex
+	runtime    RuntimeValues
+	controller RuntimeController
 }
 
 // New creates a production panel server.
@@ -78,17 +90,31 @@ func New(cfg Config, deps Dependencies) (*Server, error) {
 		return nil, err
 	}
 
+	persisted, err := deps.Store.GetRuntimeSettings(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("load runtime settings: %w", err)
+	}
+	runtime, err := resolveRuntimeValues(validated, persisted)
+	if err != nil {
+		return nil, fmt.Errorf("resolve runtime settings: %w", err)
+	}
+	if deps.Runtime != nil {
+		deps.Runtime.ApplyRuntimeSettings(runtime)
+	}
+
 	return &Server{
-		cfg:       validated,
-		store:     deps.Store,
-		catalog:   deps.Catalog,
-		users:     deps.Users,
-		signIn:    deps.SignIn,
-		random:    deps.Random,
-		now:       deps.Now,
-		startedAt: deps.Now().UTC(),
-		assets:    assets,
-		events:    newEventHub(),
+		cfg:        validated,
+		store:      deps.Store,
+		catalog:    deps.Catalog,
+		users:      deps.Users,
+		signIn:     deps.SignIn,
+		random:     deps.Random,
+		now:        deps.Now,
+		startedAt:  deps.Now().UTC(),
+		assets:     assets,
+		events:     newEventHub(),
+		runtime:    runtime,
+		controller: deps.Runtime,
 	}, nil
 }
 
@@ -108,8 +134,53 @@ func (s *Server) Handler() http.Handler {
 		s.putSecurityNotificationRead,
 	)
 	mux.HandleFunc("GET "+base+"/api/v1/invites/{token}", s.reviewInvitation)
+	s.registerRootRoutes(mux, base)
+	mux.HandleFunc("PUT "+base+"/api/v1/targets/{target}/settings", s.putTargetSettings)
+	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/users", s.getTargetUsers)
+	mux.HandleFunc("POST "+base+"/api/v1/targets/{target}/users", s.postTargetUser)
+	mux.HandleFunc(
+		"GET "+base+"/api/v1/targets/{target}/users/{account}/decisions",
+		s.getTargetUserDecisions,
+	)
+	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/invitations", s.getTargetInvitations)
+	mux.HandleFunc("POST "+base+"/api/v1/targets/{target}/invitations", s.postTargetInvitation)
+	mux.HandleFunc(
+		"POST "+base+"/api/v1/targets/{target}/invitations/{invitation}/reissue",
+		s.reissueInvitation,
+	)
+	mux.HandleFunc(
+		"DELETE "+base+"/api/v1/targets/{target}/invitations/{invitation}",
+		s.deleteInvitation,
+	)
+	mux.HandleFunc(
+		"PUT "+base+"/api/v1/targets/{target}/users/{account}",
+		s.putTargetUser,
+	)
+	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/repositories", s.getRepositories)
+	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/repositories/{repository}", s.getRepository)
+	mux.HandleFunc(
+		"PUT "+base+"/api/v1/targets/{target}/repositories/{repository}/settings",
+		s.putRepositorySettings,
+	)
+	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/audit", s.getAudit)
+	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/failures", s.getFailures)
+	mux.HandleFunc("GET "+base+"/api/v1/events", s.streamEvents)
+
+	if base != "" {
+		mux.HandleFunc("GET "+base, func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, base+"/", http.StatusPermanentRedirect)
+		})
+	}
+	mux.HandleFunc("GET "+base+"/", s.serveAsset)
+
+	return s.secureHeaders(mux)
+}
+
+func (s *Server) registerRootRoutes(mux *http.ServeMux, base string) {
 	mux.HandleFunc("GET "+base+"/api/v1/root/installations", s.getRootInstallations)
 	mux.HandleFunc("GET "+base+"/api/v1/root/overview", s.getRootOverview)
+	mux.HandleFunc("GET "+base+"/api/v1/root/settings", s.getRootRuntimeSettings)
+	mux.HandleFunc("PUT "+base+"/api/v1/root/settings", s.putRootRuntimeSettings)
 	mux.HandleFunc("GET "+base+"/api/v1/root/history/{history}", s.getRootHistory)
 	mux.HandleFunc("GET "+base+"/api/v1/root/access/{access}", s.getRootAccess)
 	mux.HandleFunc("PUT "+base+"/api/v1/root/access/users/{account}", s.putRootUser)
@@ -155,45 +226,6 @@ func (s *Server) Handler() http.Handler {
 		"PUT "+base+"/api/v1/root/installations/{target}/repositories/{repository}/settings",
 		s.putRootRepositorySettings,
 	)
-	mux.HandleFunc("PUT "+base+"/api/v1/targets/{target}/settings", s.putTargetSettings)
-	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/users", s.getTargetUsers)
-	mux.HandleFunc("POST "+base+"/api/v1/targets/{target}/users", s.postTargetUser)
-	mux.HandleFunc(
-		"GET "+base+"/api/v1/targets/{target}/users/{account}/decisions",
-		s.getTargetUserDecisions,
-	)
-	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/invitations", s.getTargetInvitations)
-	mux.HandleFunc("POST "+base+"/api/v1/targets/{target}/invitations", s.postTargetInvitation)
-	mux.HandleFunc(
-		"POST "+base+"/api/v1/targets/{target}/invitations/{invitation}/reissue",
-		s.reissueInvitation,
-	)
-	mux.HandleFunc(
-		"DELETE "+base+"/api/v1/targets/{target}/invitations/{invitation}",
-		s.deleteInvitation,
-	)
-	mux.HandleFunc(
-		"PUT "+base+"/api/v1/targets/{target}/users/{account}",
-		s.putTargetUser,
-	)
-	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/repositories", s.getRepositories)
-	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/repositories/{repository}", s.getRepository)
-	mux.HandleFunc(
-		"PUT "+base+"/api/v1/targets/{target}/repositories/{repository}/settings",
-		s.putRepositorySettings,
-	)
-	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/audit", s.getAudit)
-	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/failures", s.getFailures)
-	mux.HandleFunc("GET "+base+"/api/v1/events", s.streamEvents)
-
-	if base != "" {
-		mux.HandleFunc("GET "+base, func(w http.ResponseWriter, r *http.Request) {
-			http.Redirect(w, r, base+"/", http.StatusPermanentRedirect)
-		})
-	}
-	mux.HandleFunc("GET "+base+"/", s.serveAsset)
-
-	return s.secureHeaders(mux)
 }
 
 // Announce tells connected browsers which catalog or setting scope changed.

@@ -16,6 +16,7 @@ import (
 
 	adminpanel "github.com/smykla-skalski/smyklot/internal/panel"
 	"github.com/smykla-skalski/smyklot/internal/storage"
+	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/github"
 	"github.com/smykla-skalski/smyklot/pkg/githubapp"
 	"github.com/smykla-skalski/smyklot/pkg/logging"
@@ -106,7 +107,11 @@ type server struct {
 	panel  *adminpanel.Server
 
 	logger   *slog.Logger
+	logLevel *slog.LevelVar
 	redactor *logging.Redactor
+
+	runtimeMu        sync.RWMutex
+	runtimeBotConfig *config.Config
 
 	registry *prometheus.Registry
 	metrics  *metrics.Metrics
@@ -191,11 +196,16 @@ func newServer(cfg *serveConfig) (*server, error) {
 	}
 
 	deliveryRetryCtx, cancelDeliveryRetry := context.WithCancel(context.Background())
+	level := &slog.LevelVar{}
+	level.Set(cfg.logLevel)
+	resolvedConfig := config.Resolve(cfg.botConfig)
 	srv := &server{
 		cfg:                 cfg,
 		tokens:              tokens,
-		logger:              logging.New(out, cfg.logFormat, cfg.logLevel, redactor),
+		logger:              logging.New(out, cfg.logFormat, level, redactor),
+		logLevel:            level,
 		redactor:            redactor,
+		runtimeBotConfig:    &resolvedConfig.Values,
 		registry:            registry,
 		metrics:             metrics.New(registry),
 		configs:             newRepoCache(repoConfigTTL, fetchRepositoryConfig),
@@ -661,7 +671,7 @@ func (s *server) handleIssueComment(ctx context.Context, event *webhook.IssueCom
 	)
 	if err != nil {
 		if errors.Is(err, ErrRepoConfigInvalid) {
-			return reportInvalidRepoConfig(ctx, client, rc, s.cfg.botConfig, err)
+			return reportInvalidRepoConfig(ctx, client, rc, s.botConfig(), err)
 		}
 
 		return err

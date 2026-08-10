@@ -56,7 +56,7 @@ func ParseLevel(name string) (slog.Level, error) {
 // would appear in a line. That is a backstop, not a licence to log credentials:
 // the code above never passes one deliberately, and this catches the case where
 // an error message quotes what it was given.
-func New(w io.Writer, format Format, level slog.Level, redactor *Redactor) *slog.Logger {
+func New(w io.Writer, format Format, level slog.Leveler, redactor *Redactor) *slog.Logger {
 	opts := &slog.HandlerOptions{Level: level}
 
 	var handler slog.Handler

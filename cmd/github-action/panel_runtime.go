@@ -47,20 +47,27 @@ func (s *server) initPanel(ctx context.Context) error {
 		return fmt.Errorf("parse panel public origin: %w", err)
 	}
 	panelServer, err := adminpanel.New(adminpanel.Config{
-		BasePath:      s.cfg.panel.basePath,
-		PublicOrigin:  s.cfg.panel.publicOrigin,
-		SuperRootID:   s.cfg.panel.superRootID,
-		ClientID:      s.cfg.panel.clientID,
-		ClientSecret:  s.cfg.panel.clientSecret,
-		AuthorizeURL:  s.cfg.panel.authorizeURL,
-		TokenURL:      s.cfg.panel.tokenURL,
-		APIURL:        apiURL,
-		Version:       version,
-		ServiceHost:   publicOrigin.Host,
-		SessionTTL:    s.cfg.panel.sessionTTL,
-		ProcessConfig: s.cfg.botConfig,
-		Assets:        assets,
-	}, adminpanel.Dependencies{Store: store, Catalog: s, Users: s})
+		BasePath:                 s.cfg.panel.basePath,
+		PublicOrigin:             s.cfg.panel.publicOrigin,
+		SuperRootID:              s.cfg.panel.superRootID,
+		ClientID:                 s.cfg.panel.clientID,
+		ClientSecret:             s.cfg.panel.clientSecret,
+		AuthorizeURL:             s.cfg.panel.authorizeURL,
+		TokenURL:                 s.cfg.panel.tokenURL,
+		APIURL:                   apiURL,
+		Version:                  version,
+		ServiceHost:              publicOrigin.Host,
+		ListenAddress:            s.cfg.listenAddress,
+		AdminAddress:             s.cfg.adminAddress,
+		WebhookPath:              s.cfg.webhookPath,
+		LogLevel:                 s.cfg.logLevel,
+		SessionTTL:               s.cfg.panel.sessionTTL,
+		ProcessConfig:            s.cfg.botConfig,
+		WebhookCredentialPresent: len(s.cfg.webhookSecret) > 0,
+		AppCredentialPresent:     len(s.cfg.appPrivateKey) > 0,
+		OAuthCredentialPresent:   s.cfg.panel.clientSecret != "",
+		Assets:                   assets,
+	}, adminpanel.Dependencies{Store: store, Catalog: s, Users: s, Runtime: s})
 	if err != nil {
 		_ = store.Close()
 

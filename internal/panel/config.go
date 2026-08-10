@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"net/url"
 	"strings"
 	"time"
@@ -27,20 +28,27 @@ var errInvalidConfig = errors.New("invalid panel configuration")
 
 // Config contains validated runtime settings for the panel HTTP surface.
 type Config struct {
-	BasePath      string
-	PublicOrigin  string
-	SuperRootID   int64
-	ClientID      string
-	ClientSecret  string
-	AuthorizeURL  string
-	TokenURL      string
-	APIURL        string
-	Version       string
-	ServiceHost   string
-	SessionTTL    time.Duration
-	StateTTL      time.Duration
-	ProcessConfig *config.Config
-	Assets        fs.FS
+	BasePath                 string
+	PublicOrigin             string
+	SuperRootID              int64
+	ClientID                 string
+	ClientSecret             string
+	AuthorizeURL             string
+	TokenURL                 string
+	APIURL                   string
+	Version                  string
+	ServiceHost              string
+	ListenAddress            string
+	AdminAddress             string
+	WebhookPath              string
+	LogLevel                 slog.Level
+	SessionTTL               time.Duration
+	StateTTL                 time.Duration
+	ProcessConfig            *config.Config
+	WebhookCredentialPresent bool
+	AppCredentialPresent     bool
+	OAuthCredentialPresent   bool
+	Assets                   fs.FS
 }
 
 func (c Config) validated() (Config, error) {

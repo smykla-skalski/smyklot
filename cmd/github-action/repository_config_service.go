@@ -136,7 +136,7 @@ func (s *server) serviceConfig(
 			return nil, file.err
 		}
 
-		return config.ApplyPatch(s.cfg.botConfig, file.patch), nil
+		return config.ApplyPatch(s.botConfig(), file.patch), nil
 	}
 
 	target, repository, err := s.repositoryControls(ctx, targetID, repositoryID)
@@ -177,7 +177,7 @@ func (s *server) serviceConfig(
 		Source: config.SourceRepositoryPanel,
 		Patch:  repository.ConfigPatch,
 	})
-	resolved := config.Resolve(s.cfg.botConfig, layers...)
+	resolved := config.Resolve(s.botConfig(), layers...)
 
 	return &resolved.Values, nil
 }

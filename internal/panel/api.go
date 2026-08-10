@@ -84,7 +84,7 @@ func (s *Server) getTargets(w http.ResponseWriter, r *http.Request) {
 			s.writeInternal(w, accessErr)
 			return
 		}
-		response = append(response, targetDTO(s.cfg.ProcessConfig, target, access))
+		response = append(response, targetDTO(s.processConfig(), target, access))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"targets": response})
 }
@@ -138,7 +138,7 @@ func (s *Server) putTargetSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.Announce(updated.ID, "")
-	writeJSON(w, http.StatusOK, targetDTO(s.cfg.ProcessConfig, updated, access))
+	writeJSON(w, http.StatusOK, targetDTO(s.processConfig(), updated, access))
 }
 
 func (s *Server) getRepositories(w http.ResponseWriter, r *http.Request) {
@@ -169,7 +169,7 @@ func (s *Server) getRepository(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, repositoryDetailDTO(s.cfg.ProcessConfig, target, repository))
+	writeJSON(w, http.StatusOK, repositoryDetailDTO(s.processConfig(), target, repository))
 }
 
 func (s *Server) putRepositorySettings(w http.ResponseWriter, r *http.Request) {
@@ -211,7 +211,7 @@ func (s *Server) putRepositorySettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.Announce(target.ID, updated.ID)
-	writeJSON(w, http.StatusOK, repositoryDetailDTO(s.cfg.ProcessConfig, target, updated))
+	writeJSON(w, http.StatusOK, repositoryDetailDTO(s.processConfig(), target, updated))
 }
 
 func (s *Server) repository(

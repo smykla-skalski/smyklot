@@ -58,11 +58,10 @@ func (s *Store) UpdateRuntimeSettings(
 	if current.Revision == 0 {
 		_, err = tx.ExecContext(ctx, `
 INSERT INTO runtime_settings (
-    singleton, bot_config, poll_interval_seconds, log_level,
+    singleton, bot_config, log_level,
     session_ttl_seconds, revision, updated_at, updated_by_account_id
-) VALUES (1, ?, ?, ?, ?, 1, ?, ?)`,
+) VALUES (1, ?, ?, ?, 1, ?, ?)`,
 			botConfig,
-			durationSeconds(change.PollInterval),
 			change.LogLevel,
 			durationSeconds(change.SessionTTL),
 			formatTime(change.ChangedAt),
@@ -71,11 +70,10 @@ INSERT INTO runtime_settings (
 	} else {
 		_, err = tx.ExecContext(ctx, `
 UPDATE runtime_settings SET
-    bot_config = ?, poll_interval_seconds = ?, log_level = ?, session_ttl_seconds = ?,
+    bot_config = ?, log_level = ?, session_ttl_seconds = ?,
     revision = revision + 1, updated_at = ?, updated_by_account_id = ?
 WHERE singleton = 1 AND revision = ?`,
 			botConfig,
-			durationSeconds(change.PollInterval),
 			change.LogLevel,
 			durationSeconds(change.SessionTTL),
 			formatTime(change.ChangedAt),
@@ -114,9 +112,6 @@ func validateRuntimeSettingsChange(change storage.RuntimeSettingsChange) (*strin
 	if change.ExpectedRevision < 0 || strings.TrimSpace(change.ActorAccountID) == "" {
 		return nil, errors.New("runtime settings identity and revision are required")
 	}
-	if change.PollInterval != nil && *change.PollInterval < 0 {
-		return nil, errors.New("poll interval must not be negative")
-	}
 	if change.SessionTTL != nil && *change.SessionTTL < time.Minute {
 		return nil, errors.New("session lifetime must be at least one minute")
 	}
@@ -144,14 +139,13 @@ func getRuntimeSettings(
 ) (storage.RuntimeSettings, error) {
 	var settings storage.RuntimeSettings
 	var botConfig, logLevel sql.NullString
-	var pollSeconds, sessionSeconds sql.NullInt64
+	var sessionSeconds sql.NullInt64
 	var updatedAt, updatedByID string
 	err := queryer.QueryRowContext(ctx, `
-SELECT bot_config, poll_interval_seconds, log_level, session_ttl_seconds,
+SELECT bot_config, log_level, session_ttl_seconds,
        revision, updated_at, updated_by_account_id
 FROM runtime_settings WHERE singleton = 1`).Scan(
 		&botConfig,
-		&pollSeconds,
 		&logLevel,
 		&sessionSeconds,
 		&settings.Revision,
@@ -168,7 +162,6 @@ FROM runtime_settings WHERE singleton = 1`).Scan(
 		}
 		settings.BotConfig = &value
 	}
-	settings.PollInterval = durationPointer(pollSeconds)
 	settings.LogLevel = stringPointer(logLevel)
 	settings.SessionTTL = durationPointer(sessionSeconds)
 	parsed, err := parseTime(updatedAt)
