@@ -38,6 +38,7 @@ import type {
   InvitationDays,
   InvitationStatus,
 } from '../src/lib/types';
+import { canonicalStringify, PREF_DEFAULTS } from '../src/lib/preferences-sync';
 
 type DevHttpServer = HttpServer;
 const BASE = '';
@@ -128,6 +129,7 @@ interface MockState {
     startedAt: number;
   };
   streams: Set<Duplex>;
+  prefs: { values: Record<string, unknown>; rev: number };
 }
 
 function enabled(): boolean {
@@ -392,6 +394,7 @@ function seed(): MockState {
       startedAt: now,
     },
     streams: new Set(),
+    prefs: { values: {}, rev: 0 },
   };
 }
 
@@ -865,8 +868,132 @@ function handleUpgrade(state: MockState, request: IncomingMessage, socket: Duple
   };
   socket.once('close', remove);
   socket.once('error', remove);
-  socket.once('data', () => socket.end());
-  writeWebSocket(socket, { version: 1, type: 'ready' });
+  attachWebSocketReader(state, socket);
+
+  const query = new URL(request.url ?? '/', 'http://localhost').searchParams;
+  const sum = prefsSum(state);
+  const matches =
+    query.get('prefs_rev') === String(state.prefs.rev) && query.get('prefs_sum') === sum;
+  const prefsInfo: Record<string, unknown> = { rev: state.prefs.rev, sum };
+  if (!matches) prefsInfo.values = state.prefs.values;
+  writeWebSocket(socket, { version: 1, type: 'ready', prefs: prefsInfo });
+}
+
+function prefsSum(state: MockState): string {
+  return createHash('sha256')
+    .update(canonicalStringify(state.prefs.values))
+    .digest('hex')
+    .slice(0, 16);
+}
+
+// attachWebSocketReader parses masked client frames. Unfragmented frames up
+// to 64 KiB only — all the panel client ever sends.
+function attachWebSocketReader(state: MockState, socket: Duplex): void {
+  let buffered = Buffer.alloc(0);
+  socket.on('data', (chunk: Buffer) => {
+    buffered = Buffer.concat([buffered, chunk]);
+    for (;;) {
+      let frame: ClientFrame | null;
+      try {
+        frame = readClientFrame(buffered);
+      } catch {
+        socket.end();
+        return;
+      }
+      if (frame === null) return;
+      buffered = buffered.subarray(frame.consumed);
+      if (frame.opcode === 0x8) {
+        writeControlFrame(socket, 0x8, frame.payload);
+        socket.end();
+        return;
+      }
+      if (frame.opcode === 0x9) {
+        writeControlFrame(socket, 0xa, frame.payload);
+        continue;
+      }
+      if (frame.opcode === 0x1) handleClientFrame(state, socket, frame.payload);
+    }
+  });
+}
+
+interface ClientFrame {
+  opcode: number;
+  payload: Buffer;
+  consumed: number;
+}
+
+function readClientFrame(buffered: Buffer): ClientFrame | null {
+  if (buffered.length < 2) return null;
+  const opcode = (buffered[0] ?? 0) & 0x0f;
+  const second = buffered[1] ?? 0;
+  if ((second & 0x80) === 0) throw new Error('client frames must be masked');
+  let length = second & 0x7f;
+  let offset = 2;
+  if (length === 127) throw new Error('the mock WebSocket cannot read 64-bit frames');
+  if (length === 126) {
+    if (buffered.length < 4) return null;
+    length = buffered.readUInt16BE(2);
+    offset = 4;
+  }
+  if (buffered.length < offset + 4 + length) return null;
+  const mask = buffered.subarray(offset, offset + 4);
+  const payload = Buffer.from(buffered.subarray(offset + 4, offset + 4 + length));
+  for (let index = 0; index < payload.length; index += 1) {
+    payload[index] = (payload[index] ?? 0) ^ (mask[index % 4] ?? 0);
+  }
+
+  return { opcode, payload, consumed: offset + 4 + length };
+}
+
+function writeControlFrame(socket: Duplex, opcode: number, payload: Buffer): void {
+  if (payload.length > 125) throw new Error('the mock WebSocket control payload is too large');
+  socket.write(Buffer.concat([Buffer.from([0x80 | opcode, payload.length]), payload]));
+}
+
+function handleClientFrame(state: MockState, socket: Duplex, payload: Buffer): void {
+  let frame: { version?: number; type?: string; changes?: Record<string, unknown> };
+  try {
+    frame = JSON.parse(payload.toString('utf8')) as typeof frame;
+  } catch {
+    return;
+  }
+  if (frame.version !== 1 || frame.type !== 'prefs.patch') return;
+
+  const accepted: Record<string, unknown> = {};
+  const rejected: string[] = [];
+  for (const [key, value] of Object.entries(frame.changes ?? {})) {
+    const valid =
+      value === null ||
+      typeof value === 'string' ||
+      (Array.isArray(value) && value.every((element) => typeof element === 'string'));
+    if (!Object.hasOwn(PREF_DEFAULTS, key) || !valid) {
+      rejected.push(key);
+      continue;
+    }
+    accepted[key] = value;
+  }
+
+  if (Object.keys(accepted).length > 0) {
+    for (const [key, value] of Object.entries(accepted)) {
+      if (value === null) {
+        delete state.prefs.values[key];
+      } else {
+        state.prefs.values[key] = value;
+      }
+    }
+    state.prefs.rev += 1;
+    for (const stream of state.streams) {
+      writeWebSocket(stream, {
+        version: 1,
+        type: 'prefs.changed',
+        rev: state.prefs.rev,
+        changes: accepted,
+      });
+    }
+  }
+  if (rejected.length > 0) {
+    writeWebSocket(socket, { version: 1, type: 'prefs.rejected', keys: rejected.sort() });
+  }
 }
 
 function rejectUpgrade(socket: Duplex, status: number, reason: string): void {
@@ -2426,7 +2553,7 @@ function broadcast(state: MockState, event: Record<string, string>): void {
   for (const stream of state.streams) writeWebSocket(stream, { version: 1, ...event });
 }
 
-function writeWebSocket(socket: Duplex, event: Record<string, string | number>): void {
+function writeWebSocket(socket: Duplex, event: Record<string, unknown>): void {
   const payload = Buffer.from(JSON.stringify(event));
   let header: Buffer;
   if (payload.length < 126) {
