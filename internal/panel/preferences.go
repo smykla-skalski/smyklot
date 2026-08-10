@@ -31,16 +31,44 @@ const (
 // form: a string, or a sorted, deduplicated []string.
 type prefValidator func(value any) (any, bool)
 
+// Wire names of the syncable preference keys. The frontend duplicates them
+// literally in PREF_DEFAULTS; renaming one orphans every stored value.
+const (
+	prefKeyTheme                = "theme"
+	prefKeySidebar              = "sidebar"
+	prefKeyTimeDisplay          = "history.time_display"
+	prefKeyLastInstallation     = "last_installation"
+	prefKeyRepositoriesSort     = "table.repositories.sort"
+	prefKeyRepositoriesState    = "table.repositories.state"
+	prefKeyRepositoriesFiles    = "table.repositories.files"
+	prefKeyRepositoriesSettings = "table.repositories.settings"
+	prefKeyRepositoriesSearch   = "table.repositories.search"
+	prefKeyHistoryType          = "table.history.type"
+	prefKeyHistorySort          = "table.history.sort"
+	prefKeyHistoryScope         = "table.history.scope"
+	prefKeyHistoryChange        = "table.history.change"
+	prefKeyHistoryFailureKind   = "table.history.failure_kind"
+	prefKeyHistorySearch        = "table.history.search"
+	prefKeyUsersSort            = "table.users.sort"
+	prefKeyUsersRoles           = "table.users.roles"
+	prefKeyUsersStatuses        = "table.users.statuses"
+	prefKeyUsersSearch          = "table.users.search"
+	prefKeyInvitationsSort      = "table.invitations.sort"
+	prefKeyInvitationsRoles     = "table.invitations.roles"
+	prefKeyInvitationsStatuses  = "table.invitations.statuses"
+	prefKeyInvitationsSearch    = "table.invitations.search"
+)
+
 // prefRegistry is the closed set of syncable preference keys. Unknown keys
 // are rejected so the stored documents only ever hold values every shipped
 // panel build can interpret.
 var prefRegistry = map[string]prefValidator{
-	"theme":                oneOf("system", "light", "dark"),
-	"sidebar":              oneOf("expanded", "collapsed"),
-	"history.time_display": oneOf("relative", "absolute"),
-	"last_installation":    freeText(),
+	prefKeyTheme:            oneOf("system", "light", "dark"),
+	prefKeySidebar:          oneOf("expanded", "collapsed"),
+	prefKeyTimeDisplay:      oneOf("relative", "absolute"),
+	prefKeyLastInstallation: freeText(),
 
-	"table.repositories.sort": oneOf(
+	prefKeyRepositoriesSort: oneOf(
 		string(storage.RepositoryNameAscending),
 		string(storage.RepositoryNameDescending),
 		string(storage.RepositoryFileAscending),
@@ -50,18 +78,18 @@ var prefRegistry = map[string]prefValidator{
 		string(storage.RepositoryNewest),
 		string(storage.RepositoryOldest),
 	),
-	"table.repositories.state": oneOf("all", "enabled", "disabled"),
-	"table.repositories.files": setOf(
+	prefKeyRepositoriesState: oneOf("all", "enabled", "disabled"),
+	prefKeyRepositoriesFiles: setOf(
 		string(storage.RepositoryFileMissing),
 		string(storage.RepositoryFileValid),
 		string(storage.RepositoryFileInvalid),
 		string(storage.RepositoryFileBypassed),
 	),
-	"table.repositories.settings": settingFilter(),
-	"table.repositories.search":   freeText(),
+	prefKeyRepositoriesSettings: settingFilter(),
+	prefKeyRepositoriesSearch:   freeText(),
 
-	"table.history.type": oneOf("audit", "failures"),
-	"table.history.sort": oneOf(
+	prefKeyHistoryType: oneOf("audit", "failures"),
+	prefKeyHistorySort: oneOf(
 		string(storage.HistoryNewest),
 		string(storage.HistoryOldest),
 		string(storage.HistoryActorAscending),
@@ -75,21 +103,21 @@ var prefRegistry = map[string]prefValidator{
 		string(storage.HistoryRepositoryAscending),
 		string(storage.HistoryRepositoryDescending),
 	),
-	"table.history.scope": oneOf(
+	prefKeyHistoryScope: oneOf(
 		string(storage.AuditAll),
 		string(storage.AuditAccount),
 		string(storage.AuditRepositories),
 	),
-	"table.history.change": oneOf(
+	prefKeyHistoryChange: oneOf(
 		string(storage.AuditChangeAll),
 		string(storage.AuditChangeEnablement),
 		string(storage.AuditChangeRepository),
 		string(storage.AuditChangeAccount),
 	),
-	"table.history.failure_kind": oneOf("all", "retryable", "permanent"),
-	"table.history.search":       freeText(),
+	prefKeyHistoryFailureKind: oneOf("all", "retryable", "permanent"),
+	prefKeyHistorySearch:      freeText(),
 
-	"table.users.sort": oneOf(
+	prefKeyUsersSort: oneOf(
 		string(storage.PanelUserNameAscending),
 		string(storage.PanelUserNameDescending),
 		string(storage.PanelUserRoleAscending),
@@ -99,20 +127,20 @@ var prefRegistry = map[string]prefValidator{
 		string(storage.PanelUserLoginNewest),
 		string(storage.PanelUserLoginOldest),
 	),
-	"table.users.roles": setOf(
+	prefKeyUsersRoles: setOf(
 		string(storage.InstallationRoleNone),
 		string(storage.InstallationRoleViewer),
 		string(storage.InstallationRoleEditor),
 		string(storage.InstallationRoleAdmin),
 	),
-	"table.users.statuses": setOf(
+	prefKeyUsersStatuses: setOf(
 		string(storage.PanelUserListActive),
 		string(storage.PanelUserListBanned),
 		string(storage.PanelUserListSuspended),
 	),
-	"table.users.search": freeText(),
+	prefKeyUsersSearch: freeText(),
 
-	"table.invitations.sort": oneOf(
+	prefKeyInvitationsSort: oneOf(
 		string(storage.InvitationCreatedNewest),
 		string(storage.InvitationCreatedOldest),
 		string(storage.InvitationExpirySoonest),
@@ -122,19 +150,19 @@ var prefRegistry = map[string]prefValidator{
 		string(storage.InvitationRoleAscending),
 		string(storage.InvitationRoleDescending),
 	),
-	"table.invitations.roles": setOf(
+	prefKeyInvitationsRoles: setOf(
 		string(storage.InstallationRoleViewer),
 		string(storage.InstallationRoleEditor),
 		string(storage.InstallationRoleAdmin),
 	),
-	"table.invitations.statuses": setOf(
+	prefKeyInvitationsStatuses: setOf(
 		string(storage.InvitationPending),
 		string(storage.InvitationAccepted),
 		string(storage.InvitationDeclined),
 		string(storage.InvitationRevoked),
 		string(storage.InvitationExpired),
 	),
-	"table.invitations.search": freeText(),
+	prefKeyInvitationsSearch: freeText(),
 }
 
 // validatePrefChanges splits one patch into canonically re-encoded accepted

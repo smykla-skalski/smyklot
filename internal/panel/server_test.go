@@ -598,9 +598,9 @@ func TestPanelWebSocketPreferences(t *testing.T) {
 		"version": panelEventVersion,
 		"type":    panelInboundPrefsPatch,
 		"changes": map[string]any{
-			"theme":             "dark",
-			"table.users.roles": []string{"viewer", "admin"},
-			"bogus":             "x",
+			prefKeyTheme:      "dark",
+			prefKeyUsersRoles: []string{"viewer", "admin"},
+			"bogus":           "x",
 		},
 	}
 	if err := wsjson.Write(t.Context(), editor, patch); err != nil {
@@ -649,7 +649,7 @@ func TestPanelWebSocketPreferences(t *testing.T) {
 	deletion := map[string]any{
 		"version": panelEventVersion,
 		"type":    panelInboundPrefsPatch,
-		"changes": map[string]any{"theme": nil},
+		"changes": map[string]any{prefKeyTheme: nil},
 	}
 	if err := wsjson.Write(t.Context(), editor, deletion); err != nil {
 		t.Fatal(err)

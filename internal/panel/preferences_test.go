@@ -22,7 +22,7 @@ var prefsChecksumVectors = []struct {
 	{
 		name: "single string",
 		values: map[string]json.RawMessage{
-			"theme": json.RawMessage(`"dark"`),
+			prefKeyTheme: json.RawMessage(`"dark"`),
 		},
 		canonical: `{"theme":"dark"}`,
 		checksum:  "0f4f87db4567232a",
@@ -30,9 +30,9 @@ var prefsChecksumVectors = []struct {
 	{
 		name: "sorted keys with every value shape",
 		values: map[string]json.RawMessage{
-			"theme":             json.RawMessage(`"system"`),
-			"table.users.roles": json.RawMessage(`["viewer","admin"]`),
-			"last_installation": json.RawMessage(`"smykla-skalski"`),
+			prefKeyTheme:            json.RawMessage(`"system"`),
+			prefKeyUsersRoles:       json.RawMessage(`["viewer","admin"]`),
+			prefKeyLastInstallation: json.RawMessage(`"smykla-skalski"`),
 		},
 		canonical: `{"last_installation":"smykla-skalski","table.users.roles":["viewer","admin"],"theme":"system"}`,
 		checksum:  "7f918baa90c14181",
@@ -40,8 +40,8 @@ var prefsChecksumVectors = []struct {
 	{
 		name: "JSON.stringify escaping",
 		values: map[string]json.RawMessage{
-			"table.history.search": json.RawMessage("\"he said \\\"hi\\\" \\\\ <&> \\t tab \\u0001 low\""),
-			"table.users.search":   json.RawMessage(`"π🙂 emoji"`),
+			prefKeyHistorySearch: json.RawMessage("\"he said \\\"hi\\\" \\\\ <&> \\t tab \\u0001 low\""),
+			prefKeyUsersSearch:   json.RawMessage(`"π🙂 emoji"`),
 		},
 		canonical: `{"table.history.search":"he said \"hi\" \\ <&> \t tab \u0001 low","table.users.search":"π🙂 emoji"}`,
 		checksum:  "44161ee8b69d82a4",
@@ -67,7 +67,7 @@ func TestPrefsChecksumGoldenVectors(t *testing.T) {
 
 func TestPrefsChecksumRejectsUnsupportedShapes(t *testing.T) {
 	values := map[string]json.RawMessage{
-		"theme": json.RawMessage(`42`),
+		prefKeyTheme: json.RawMessage(`42`),
 	}
 	if _, err := canonicalPrefs(values); err == nil {
 		t.Fatal("expected an error for a numeric value")
@@ -189,7 +189,7 @@ func TestValidatePrefChangesEdges(t *testing.T) {
 
 	t.Run("null deletes without value validation", func(t *testing.T) {
 		accepted, rejected := validatePrefChanges(map[string]json.RawMessage{
-			"theme": json.RawMessage(`null`),
+			prefKeyTheme: json.RawMessage(`null`),
 		})
 		if len(rejected) != 0 {
 			t.Fatalf("rejected %v, want none", rejected)
@@ -207,7 +207,7 @@ func TestValidatePrefChangesEdges(t *testing.T) {
 		}
 		huge[0], huge[len(huge)-1] = '"', '"'
 		_, rejected := validatePrefChanges(map[string]json.RawMessage{
-			"table.users.search": json.RawMessage(huge),
+			prefKeyUsersSearch: json.RawMessage(huge),
 		})
 		if len(rejected) != 1 {
 			t.Fatalf("rejected %v, want the oversized key", rejected)
@@ -216,9 +216,9 @@ func TestValidatePrefChangesEdges(t *testing.T) {
 
 	t.Run("mixed patch splits accepted and rejected", func(t *testing.T) {
 		accepted, rejected := validatePrefChanges(map[string]json.RawMessage{
-			"theme":   json.RawMessage(`"dark"`),
-			"bogus":   json.RawMessage(`"x"`),
-			"sidebar": json.RawMessage(`"nope"`),
+			prefKeyTheme:   json.RawMessage(`"dark"`),
+			"bogus":        json.RawMessage(`"x"`),
+			prefKeySidebar: json.RawMessage(`"nope"`),
 		})
 		if len(accepted) != 1 || string(accepted["theme"]) != `"dark"` {
 			t.Fatalf("accepted %v, want only theme", accepted)
