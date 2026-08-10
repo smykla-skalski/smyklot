@@ -9,6 +9,7 @@
   } from '@tanstack/svelte-table';
   import type { ColumnFiltersState, SortingState, Updater } from '@tanstack/svelte-table';
   import { createVirtualizer } from '@tanstack/svelte-virtual';
+  import { MediaQuery } from 'svelte/reactivity';
   import { get } from 'svelte/store';
 
   import { formatDateTime, formatRelative, formatTimestamp } from '../lib/format';
@@ -31,6 +32,7 @@
   import FilterMenu from './FilterMenu.svelte';
   import HistoryDisplayMenu from './HistoryDisplayMenu.svelte';
   import Icon from './Icon.svelte';
+  import InfiniteLoadSentinel from './InfiniteLoadSentinel.svelte';
   import PanelHeader from './PanelHeader.svelte';
   import SearchField from './SearchField.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
@@ -207,18 +209,41 @@
   });
   const auditTableRows = $derived(auditTable.getRowModel().rows);
   const failureTableRows = $derived(failureTable.getRowModel().rows);
+  const desktopTableLayout = new MediaQuery('min-width: 64.001rem', true);
   const auditVirtualizer = createVirtualizer<HTMLTableSectionElement, HTMLTableRowElement>({
     count: 0,
-    estimateSize: () => 53,
+    estimateSize: () => 65,
     getScrollElement: () => auditScroll ?? null,
     overscan: 6,
   });
   const failureVirtualizer = createVirtualizer<HTMLTableSectionElement, HTMLTableRowElement>({
     count: 0,
-    estimateSize: () => 53,
+    estimateSize: () => 65,
     getScrollElement: () => failureScroll ?? null,
     overscan: 6,
   });
+  const auditRenderRows = $derived.by(() =>
+    desktopTableLayout.current
+      ? $auditVirtualizer.getVirtualItems().map((row) => ({ ...row, virtual: true as const }))
+      : auditTableRows.map((row, index) => ({
+          index,
+          key: row.id,
+          size: 0,
+          start: 0,
+          virtual: false as const,
+        })),
+  );
+  const failureRenderRows = $derived.by(() =>
+    desktopTableLayout.current
+      ? $failureVirtualizer.getVirtualItems().map((row) => ({ ...row, virtual: true as const }))
+      : failureTableRows.map((row, index) => ({
+          index,
+          key: row.id,
+          size: 0,
+          start: 0,
+          virtual: false as const,
+        })),
+  );
 
   $effect(() => {
     const nextQuery = search.trim();
@@ -254,7 +279,7 @@
   $effect(() => {
     const rows = auditTableRows;
     get(auditVirtualizer).setOptions({
-      count: rows.length,
+      count: desktopTableLayout.current ? rows.length : 0,
       getScrollElement: () => auditScroll ?? null,
       getItemKey: (index) => rows[index]?.id ?? index,
     });
@@ -263,13 +288,14 @@
   $effect(() => {
     const rows = failureTableRows;
     get(failureVirtualizer).setOptions({
-      count: rows.length,
+      count: desktopTableLayout.current ? rows.length : 0,
       getScrollElement: () => failureScroll ?? null,
       getItemKey: (index) => rows[index]?.id ?? index,
     });
   });
 
   $effect(() => {
+    if (!desktopTableLayout.current) return;
     const rows = historyType === 'audit' ? auditTableRows : failureTableRows;
     const items =
       historyType === 'audit'
@@ -679,17 +705,21 @@
             </tr>
           </thead>
           <tbody bind:this={auditScroll} data-panel-scroll>
-            <tr
-              class="virtual-spacer"
-              aria-hidden="true"
-              style:height={`${$auditVirtualizer.getTotalSize()}px`}><td colspan="4"></td></tr
-            >
-            {#each $auditVirtualizer.getVirtualItems() as virtualRow (virtualRow.key)}
+            {#if desktopTableLayout.current}
+              <tr
+                class="virtual-spacer"
+                aria-hidden="true"
+                style:height={`${$auditVirtualizer.getTotalSize()}px`}><td colspan="4"></td></tr
+              >
+            {/if}
+            {#each auditRenderRows as virtualRow (virtualRow.key)}
               {@const entry = auditEntryAt(virtualRow.index)}
               <tr
-                class="virtual-row"
-                style:height={`${virtualRow.size}px`}
-                style:transform={`translateY(${virtualRow.start}px)`}
+                class:virtual-row={virtualRow.virtual}
+                style:height={virtualRow.virtual ? `${virtualRow.size}px` : undefined}
+                style:transform={virtualRow.virtual
+                  ? `translateY(${virtualRow.start}px)`
+                  : undefined}
               >
                 <td data-label="Actor">
                   <span class="actor">
@@ -827,17 +857,21 @@
             </tr>
           </thead>
           <tbody bind:this={failureScroll} data-panel-scroll>
-            <tr
-              class="virtual-spacer"
-              aria-hidden="true"
-              style:height={`${$failureVirtualizer.getTotalSize()}px`}><td colspan="4"></td></tr
-            >
-            {#each $failureVirtualizer.getVirtualItems() as virtualRow (virtualRow.key)}
+            {#if desktopTableLayout.current}
+              <tr
+                class="virtual-spacer"
+                aria-hidden="true"
+                style:height={`${$failureVirtualizer.getTotalSize()}px`}><td colspan="4"></td></tr
+              >
+            {/if}
+            {#each failureRenderRows as virtualRow (virtualRow.key)}
               {@const failure = failureAt(virtualRow.index)}
               <tr
-                class="failure-row virtual-row"
-                style:height={`${virtualRow.size}px`}
-                style:transform={`translateY(${virtualRow.start}px)`}
+                class={['failure-row', virtualRow.virtual && 'virtual-row']}
+                style:height={virtualRow.virtual ? `${virtualRow.size}px` : undefined}
+                style:transform={virtualRow.virtual
+                  ? `translateY(${virtualRow.start}px)`
+                  : undefined}
               >
                 <td data-label="Status">
                   <Chip tone={failure.retryable ? 'warning' : 'stop'} dot>
@@ -886,6 +920,11 @@
         </table>
       </div>
     {/if}
+    <InfiniteLoadSentinel
+      active={!desktopTableLayout.current && !loading && currentPage?.next_cursor != null}
+      cursor={currentPage?.next_cursor}
+      onVisible={() => void loadNextPage()}
+    />
     {#if loadMoreProblem !== null}
       <div class="load-more-alert" role="alert">
         <span>{loadMoreProblem}</span>
@@ -976,6 +1015,7 @@
 
   .history-table th,
   .history-table td {
+    border-bottom: 1px solid var(--rule);
     padding: 0.625rem 0.75rem;
     text-align: left;
     vertical-align: middle;
@@ -1001,16 +1041,11 @@
   }
 
   .history-table tbody tr {
-    border-top: 1px solid var(--rule);
     transition: background-color 100ms ease-out;
   }
 
   .history-table tbody tr:hover {
     background: var(--table-row-hover);
-  }
-
-  .history-table tbody tr:last-child {
-    border-bottom: 1px solid var(--rule);
   }
 
   @media (min-width: 64.001rem) {
@@ -1399,6 +1434,7 @@
     }
 
     .history-table td {
+      border: 0;
       display: grid;
       gap: var(--space-1);
       padding: 0;

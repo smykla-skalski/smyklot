@@ -8,6 +8,7 @@ import {
   readSidebarDisplay,
   readThemeDisplay,
   readTimeDisplay,
+  resolveThemeDisplay,
   writeLastInstallation,
   writeSidebarDisplay,
   writeThemeDisplay,
@@ -131,26 +132,32 @@ describe('sidebar display preference', () => {
 });
 
 describe('theme preference', () => {
-  it('uses the supplied system preference when no stored preference exists', () => {
-    expect(readThemeDisplay({ getItem: () => null }, 'dark')).toBe('dark');
+  it('uses System when no stored preference exists', () => {
+    expect(readThemeDisplay({ getItem: () => null })).toBe('system');
   });
 
-  it.each(['light', 'dark'] as const)('restores the %s preference', (value) => {
+  it.each(['system', 'light', 'dark'] as const)('restores the %s preference', (value) => {
     expect(readThemeDisplay({ getItem: () => value })).toBe(value);
   });
 
   it('ignores unsupported stored values', () => {
-    expect(readThemeDisplay({ getItem: () => 'system' }, DEFAULT_THEME_DISPLAY)).toBe(
+    expect(readThemeDisplay({ getItem: () => 'sepia' }, DEFAULT_THEME_DISPLAY)).toBe(
       DEFAULT_THEME_DISPLAY,
     );
+  });
+
+  it('resolves System from the current operating-system preference', () => {
+    expect(resolveThemeDisplay('system', 'dark')).toBe('dark');
+    expect(resolveThemeDisplay('system', 'light')).toBe('light');
+    expect(resolveThemeDisplay('dark', 'light')).toBe('dark');
   });
 
   it('writes the selected theme', () => {
     const setItem = vi.fn();
 
-    writeThemeDisplay('dark', { setItem });
+    writeThemeDisplay('system', { setItem });
 
-    expect(setItem).toHaveBeenCalledWith('smyklot.panel.theme', 'dark');
+    expect(setItem).toHaveBeenCalledWith('smyklot.panel.theme', 'system');
   });
 
   it('continues when browser storage is unavailable', () => {

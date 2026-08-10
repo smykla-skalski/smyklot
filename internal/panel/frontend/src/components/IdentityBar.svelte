@@ -301,6 +301,15 @@
           <div class="theme-options" role="group" aria-label="Theme">
             <button
               type="button"
+              class:selected={theme === 'system'}
+              aria-pressed={theme === 'system'}
+              onclick={() => onSelectTheme('system')}
+            >
+              <Icon name="system" size={15} />
+              <span>System</span>
+            </button>
+            <button
+              type="button"
               class:selected={theme === 'light'}
               aria-pressed={theme === 'light'}
               onclick={() => onSelectTheme('light')}
@@ -550,7 +559,7 @@
     border: 1px solid var(--popover-border);
     border-radius: var(--radius-popover);
     box-shadow: var(--shadow-popover);
-    left: 0;
+    left: var(--space-2);
     max-height: min(32rem, calc(100dvh - 2rem));
     overflow: hidden;
     padding: var(--space-2);
@@ -565,9 +574,9 @@
 
   .account-popover {
     bottom: calc(100% + var(--space-2));
-    left: auto;
-    right: var(--space-2);
-    width: min(13rem, calc(100vw - 2rem));
+    left: 0;
+    right: auto;
+    width: min(17rem, calc(100vw - 2rem));
   }
 
   .target-options {
@@ -760,7 +769,7 @@
     border-radius: var(--radius-control);
     display: grid;
     gap: var(--control-inset);
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     padding: var(--control-inset);
   }
 
@@ -775,7 +784,7 @@
     gap: var(--space-1);
     height: var(--control-height-compact);
     justify-content: center;
-    padding: 0 var(--space-2);
+    padding: 0 var(--space-1);
   }
 
   .theme-options button:hover {

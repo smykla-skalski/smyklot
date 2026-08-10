@@ -1,10 +1,11 @@
 export type TimeDisplay = 'relative' | 'absolute';
 export type SidebarDisplay = 'expanded' | 'collapsed';
-export type ThemeDisplay = 'light' | 'dark';
+export type ThemeDisplay = 'system' | 'light' | 'dark';
+export type ResolvedTheme = Exclude<ThemeDisplay, 'system'>;
 
 export const DEFAULT_TIME_DISPLAY: TimeDisplay = 'relative';
 export const DEFAULT_SIDEBAR_DISPLAY: SidebarDisplay = 'expanded';
-export const DEFAULT_THEME_DISPLAY: ThemeDisplay = 'light';
+export const DEFAULT_THEME_DISPLAY: ThemeDisplay = 'system';
 
 const TIME_DISPLAY_KEY = 'smyklot.panel.history.time-display';
 const LAST_INSTALLATION_KEY = 'smyklot.panel.last-installation';
@@ -33,15 +34,22 @@ function isSidebarDisplay(value: string | null): value is SidebarDisplay {
 }
 
 function isThemeDisplay(value: string | null): value is ThemeDisplay {
-  return value === 'light' || value === 'dark';
+  return value === 'system' || value === 'light' || value === 'dark';
 }
 
-export function preferredThemeDisplay(): ThemeDisplay {
+export function systemThemeDisplay(): ResolvedTheme {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
-    return DEFAULT_THEME_DISPLAY;
+    return 'light';
   }
 
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+export function resolveThemeDisplay(
+  value: ThemeDisplay,
+  systemTheme: ResolvedTheme = systemThemeDisplay(),
+): ResolvedTheme {
+  return value === 'system' ? systemTheme : value;
 }
 
 export function readTimeDisplay(storage: PreferenceReader | null = browserStorage()): TimeDisplay {
@@ -122,7 +130,7 @@ export function writeSidebarDisplay(
 
 export function readThemeDisplay(
   storage: PreferenceReader | null = browserStorage(),
-  fallback: ThemeDisplay = preferredThemeDisplay(),
+  fallback: ThemeDisplay = DEFAULT_THEME_DISPLAY,
 ): ThemeDisplay {
   if (storage === null) return fallback;
 

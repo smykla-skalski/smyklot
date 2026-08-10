@@ -50,9 +50,9 @@ describe('panel routes', () => {
     });
   });
 
-  it('keeps help and global access datasets outside installation routes', () => {
-    expect(parsePanelRoute('', '/help')).toEqual({ view: 'help' });
-    expect(parsePanelRoute('/panel', '/panel/help/')).toEqual({ view: 'help' });
+  it('keeps global access datasets outside installation routes', () => {
+    expect(parsePanelRoute('', '/help')).toBeNull();
+    expect(parsePanelRoute('/panel', '/panel/help/')).toBeNull();
     expect(parsePanelRoute('', '/i/smykla-skalski/help')).toBeNull();
     expect(parsePanelRoute('', '/users')).toEqual({ view: 'users' });
     expect(parsePanelRoute('', '/invitations')).toEqual({ view: 'invitations' });
@@ -95,7 +95,6 @@ describe('panel routes', () => {
     expect(panelRoutePath('/panel/', { account: 'bartsmykla', view: 'settings' })).toBe(
       '/panel/i/bartsmykla/settings',
     );
-    expect(panelRoutePath('/panel', { view: 'help' })).toBe('/panel/help');
     expect(panelRoutePath('/panel', { view: 'users' })).toBe('/panel/users');
     expect(panelRoutePath('/panel', { view: 'invitations' })).toBe('/panel/invitations');
     expect(panelRoutePath('/panel', { account: 'bartsmykla', view: 'users' })).toBe(
@@ -123,13 +122,6 @@ describe('resolvePanelRoute', () => {
     expect(resolvePanelRoute(accounts, null, 'smykla-skalski')).toEqual({
       account: 'smykla-skalski',
       view: 'settings',
-    });
-  });
-
-  it('opens global help with the remembered installation selected', () => {
-    expect(resolvePanelRoute(accounts, { view: 'help' }, 'smykla-skalski')).toEqual({
-      account: 'smykla-skalski',
-      view: 'help',
     });
   });
 
@@ -164,8 +156,8 @@ describe('browser panel router', () => {
     fixture.navigateFromHistory('/panel/i/bartsmykla/history');
     expect(visited).toEqual([{ account: 'bartsmykla', view: 'history' }]);
 
-    router.push({ view: 'help' });
-    expect(fixture.browser.location.pathname).toBe('/panel/help');
+    router.push({ view: 'users' });
+    expect(fixture.browser.location.pathname).toBe('/panel/users');
 
     unsubscribe();
     fixture.navigateFromHistory('/panel/i/smykla-skalski/repositories');

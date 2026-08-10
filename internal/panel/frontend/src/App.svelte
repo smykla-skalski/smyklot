@@ -1,6 +1,5 @@
 <script lang="ts">
   import HistoryPanel from './components/HistoryPanel.svelte';
-  import HelpPanel from './components/HelpPanel.svelte';
   import IdentityBar from './components/IdentityBar.svelte';
   import PageFooter from './components/PageFooter.svelte';
   import Plate from './components/Plate.svelte';
@@ -34,6 +33,7 @@
     RepositorySettingsInput,
     TargetSettingsInput,
   } from './lib/types';
+  import { MediaQuery } from 'svelte/reactivity';
 
   type FailureSource = 'load' | 'sign-out' | 'stream';
   type PanelFailure = { message: string; source: FailureSource };
@@ -59,6 +59,10 @@
   let revokedReason = $state<string | null>(null);
   let sidebarCollapsed = $state(readSidebarDisplay() === 'collapsed');
   let theme = $state<ThemeDisplay>(readThemeDisplay());
+  const systemDarkTheme = new MediaQuery('prefers-color-scheme: dark');
+  const resolvedTheme = $derived(
+    theme === 'system' && systemDarkTheme.current ? 'dark' : theme === 'system' ? 'light' : theme,
+  );
   const targetReads = new LatestRequest();
   const streamRefreshes = new LatestRequest();
 
@@ -146,7 +150,7 @@
   async function selectTarget(targetId: string): Promise<void> {
     const target = targets.find((entry) => entry.id === targetId);
     if (target === undefined || selectedId === targetId) return;
-    if (view === 'help' || (isAccessView(view) && globalUsers)) {
+    if (isAccessView(view) && globalUsers) {
       selectedId = target.id;
       writeLastInstallation(target.account.login);
       failure = null;
@@ -213,7 +217,6 @@
   }
 
   function routeFor(target: PanelTarget, nextView: PanelView): PanelRoute {
-    if (nextView === 'help') return { view: 'help' };
     if (isAccessView(nextView) && globalUsers) return { view: nextView };
     return { account: target.account.login, view: nextView };
   }
@@ -405,9 +408,12 @@
 
   function selectTheme(nextTheme: ThemeDisplay): void {
     theme = nextTheme;
-    document.documentElement.dataset.theme = nextTheme;
     writeThemeDisplay(nextTheme);
   }
+
+  $effect(() => {
+    document.documentElement.dataset.theme = resolvedTheme;
+  });
 
   void load();
 </script>
@@ -531,10 +537,6 @@
                   fetchFailures={(request) => api.fetchFailures(selectedTarget.id, request)}
                 />
               {/key}
-            </div>
-          {:else}
-            <div id="help-panel" aria-labelledby="help-navigation">
-              <HelpPanel />
             </div>
           {/if}
         {:else if failure === null}

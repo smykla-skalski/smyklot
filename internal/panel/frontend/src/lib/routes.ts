@@ -1,20 +1,13 @@
 import { normalizeBasePath } from './base';
 
-export const PANEL_VIEWS = [
-  'settings',
-  'repositories',
-  'users',
-  'invitations',
-  'history',
-  'help',
-] as const;
+export const PANEL_VIEWS = ['settings', 'repositories', 'users', 'invitations', 'history'] as const;
 const SCOPED_PANEL_VIEWS = ['settings', 'repositories', 'users', 'invitations', 'history'] as const;
 
 export type PanelView = (typeof PANEL_VIEWS)[number];
 export type ScopedPanelView = (typeof SCOPED_PANEL_VIEWS)[number];
 
 export type PanelRoute =
-  { account: string; view: ScopedPanelView } | { view: 'help' | 'users' | 'invitations' };
+  { account: string; view: ScopedPanelView } | { view: 'users' | 'invitations' };
 
 export interface ResolvedPanelRoute {
   account: string;
@@ -42,8 +35,7 @@ export function parsePanelRoute(basePath: string, pathname: string): PanelRoute 
 
   const relative = pathname.slice(base.length).replace(/^\/+|\/+$/g, '');
   if (relative === '') return null;
-  if (relative === 'help' || relative === 'users' || relative === 'invitations')
-    return { view: relative };
+  if (relative === 'users' || relative === 'invitations') return { view: relative };
 
   const parts = relative.split('/');
   if (parts.length !== 3) return null;

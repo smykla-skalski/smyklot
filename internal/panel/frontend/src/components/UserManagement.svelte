@@ -9,6 +9,7 @@
   } from '@tanstack/svelte-table';
   import type { ColumnFiltersState, SortingState, Updater } from '@tanstack/svelte-table';
   import { createVirtualizer } from '@tanstack/svelte-virtual';
+  import { MediaQuery } from 'svelte/reactivity';
   import { get } from 'svelte/store';
 
   import { formatDateTime, formatRelative, formatTimestamp } from '../lib/format';
@@ -39,6 +40,7 @@
   import DecisionHistory from './DecisionHistory.svelte';
   import FilterMenu from './FilterMenu.svelte';
   import Icon, { type IconName } from './Icon.svelte';
+  import InfiniteLoadSentinel from './InfiniteLoadSentinel.svelte';
   import Modal from './Modal.svelte';
   import PanelHeader from './PanelHeader.svelte';
   import RolePicker, { type RolePickerOption } from './RolePicker.svelte';
@@ -261,13 +263,11 @@
       value: 'users',
       label: 'Users',
       tone: 'accent' as const,
-      badge: userPage?.total ?? '…',
     },
     {
       value: 'invitations',
       label: 'Invitations',
       tone: 'accent' as const,
-      badge: invitationPage?.total ?? '…',
     },
   ]);
   const addRoleOptions = $derived(
@@ -350,18 +350,41 @@
   });
   const userTableRows = $derived(userTable.getRowModel().rows);
   const invitationTableRows = $derived(invitationTable.getRowModel().rows);
+  const desktopTableLayout = new MediaQuery('min-width: 64.001rem', true);
   const userVirtualizer = createVirtualizer<HTMLTableSectionElement, HTMLTableRowElement>({
     count: 0,
-    estimateSize: () => 59,
+    estimateSize: () => 65,
     getScrollElement: () => userScroll ?? null,
     overscan: 6,
   });
   const invitationVirtualizer = createVirtualizer<HTMLTableSectionElement, HTMLTableRowElement>({
     count: 0,
-    estimateSize: () => 59,
+    estimateSize: () => 65,
     getScrollElement: () => invitationScroll ?? null,
     overscan: 6,
   });
+  const userRenderRows = $derived.by(() =>
+    desktopTableLayout.current
+      ? $userVirtualizer.getVirtualItems().map((row) => ({ ...row, virtual: true as const }))
+      : userTableRows.map((row, index) => ({
+          index,
+          key: row.id,
+          size: 0,
+          start: 0,
+          virtual: false as const,
+        })),
+  );
+  const invitationRenderRows = $derived.by(() =>
+    desktopTableLayout.current
+      ? $invitationVirtualizer.getVirtualItems().map((row) => ({ ...row, virtual: true as const }))
+      : invitationTableRows.map((row, index) => ({
+          index,
+          key: row.id,
+          size: 0,
+          start: 0,
+          virtual: false as const,
+        })),
+  );
 
   $effect(() => {
     const value = userSearch;
@@ -398,7 +421,7 @@
   $effect(() => {
     const rows = userTableRows;
     get(userVirtualizer).setOptions({
-      count: rows.length,
+      count: desktopTableLayout.current ? rows.length : 0,
       getScrollElement: () => userScroll ?? null,
       getItemKey: (index) => rows[index]?.id ?? index,
     });
@@ -407,13 +430,14 @@
   $effect(() => {
     const rows = invitationTableRows;
     get(invitationVirtualizer).setOptions({
-      count: rows.length,
+      count: desktopTableLayout.current ? rows.length : 0,
       getScrollElement: () => invitationScroll ?? null,
       getItemKey: (index) => rows[index]?.id ?? index,
     });
   });
 
   $effect(() => {
+    if (!desktopTableLayout.current) return;
     const rows = activeSection === 'users' ? userTableRows : invitationTableRows;
     const items =
       activeSection === 'users'
@@ -1372,18 +1396,23 @@
                   </tr>
                 </thead>
                 <tbody bind:this={userScroll} data-panel-scroll>
-                  <tr
-                    class="virtual-spacer"
-                    aria-hidden="true"
-                    style:height={`${$userVirtualizer.getTotalSize()}px`}><td colspan="5"></td></tr
-                  >
-                  {#each $userVirtualizer.getVirtualItems() as virtualRow (virtualRow.key)}
+                  {#if desktopTableLayout.current}
+                    <tr
+                      class="virtual-spacer"
+                      aria-hidden="true"
+                      style:height={`${$userVirtualizer.getTotalSize()}px`}
+                      ><td colspan="5"></td></tr
+                    >
+                  {/if}
+                  {#each userRenderRows as virtualRow (virtualRow.key)}
                     {@const user = userAt(virtualRow.index)}
                     <tr
-                      class="virtual-row"
+                      class:virtual-row={virtualRow.virtual}
                       class:history-row={hasDecisionHistory(user)}
-                      style:height={`${virtualRow.size}px`}
-                      style:transform={`translateY(${virtualRow.start}px)`}
+                      style:height={virtualRow.virtual ? `${virtualRow.size}px` : undefined}
+                      style:transform={virtualRow.virtual
+                        ? `translateY(${virtualRow.start}px)`
+                        : undefined}
                       tabindex={hasDecisionHistory(user) ? 0 : undefined}
                       onclick={(event) => clickHistoryRow(event, user)}
                       onkeydown={(event) => keyHistoryRow(event, user)}
@@ -1446,6 +1475,11 @@
               </table>
             </div>
           {/if}
+          <InfiniteLoadSentinel
+            active={!desktopTableLayout.current && !loadingUsers && userPage?.next_cursor != null}
+            cursor={userPage?.next_cursor}
+            onVisible={() => void loadNextUsers()}
+          />
           {#if userLoadMoreFailure !== null}
             <div class="load-more-alert" role="alert">
               <span>{userLoadMoreFailure}</span>
@@ -1558,18 +1592,22 @@
                   </tr>
                 </thead>
                 <tbody bind:this={invitationScroll} data-panel-scroll>
-                  <tr
-                    class="virtual-spacer"
-                    aria-hidden="true"
-                    style:height={`${$invitationVirtualizer.getTotalSize()}px`}
-                    ><td colspan="5"></td></tr
-                  >
-                  {#each $invitationVirtualizer.getVirtualItems() as virtualRow (virtualRow.key)}
+                  {#if desktopTableLayout.current}
+                    <tr
+                      class="virtual-spacer"
+                      aria-hidden="true"
+                      style:height={`${$invitationVirtualizer.getTotalSize()}px`}
+                      ><td colspan="5"></td></tr
+                    >
+                  {/if}
+                  {#each invitationRenderRows as virtualRow (virtualRow.key)}
                     {@const invitation = invitationAt(virtualRow.index)}
                     <tr
-                      class="virtual-row"
-                      style:height={`${virtualRow.size}px`}
-                      style:transform={`translateY(${virtualRow.start}px)`}
+                      class:virtual-row={virtualRow.virtual}
+                      style:height={virtualRow.virtual ? `${virtualRow.size}px` : undefined}
+                      style:transform={virtualRow.virtual
+                        ? `translateY(${virtualRow.start}px)`
+                        : undefined}
                     >
                       <th scope="row">
                         <span class="user-identity">
@@ -1610,6 +1648,13 @@
               </table>
             </div>
           {/if}
+          <InfiniteLoadSentinel
+            active={!desktopTableLayout.current &&
+              !loadingInvitations &&
+              invitationPage?.next_cursor != null}
+            cursor={invitationPage?.next_cursor}
+            onVisible={() => void loadNextInvitations()}
+          />
           {#if invitationLoadMoreFailure !== null}
             <div class="load-more-alert" role="alert">
               <span>{invitationLoadMoreFailure}</span>

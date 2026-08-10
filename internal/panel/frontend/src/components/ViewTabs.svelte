@@ -21,7 +21,6 @@
     'repositories',
     'users',
     'history',
-    'help',
   ] as const satisfies readonly PanelView[];
 
   const visibleViews = $derived(NAVIGATION_VIEWS.filter((view) => view !== 'users' || showUsers));
@@ -51,7 +50,7 @@
     if (view === 'repositories') return 'repositories';
     if (view === 'users' || view === 'invitations') return 'users';
     if (view === 'history') return 'history';
-    return 'help';
+    return 'history';
   }
 </script>
 
@@ -61,7 +60,7 @@
       <a
         href={hrefFor(destination(item))}
         id={`${item}-navigation`}
-        class={[isActive(item) && 'active', item === 'help' && 'help-link']}
+        class={isActive(item) ? 'active' : undefined}
         aria-label={collapsed ? label(item) : undefined}
         aria-current={isActive(item) ? 'page' : undefined}
         onclick={(event) => selectFromClick(event, destination(item))}
@@ -150,10 +149,6 @@
     color: var(--sidebar-item-active-text);
   }
 
-  .help-link {
-    margin-top: auto;
-  }
-
   .navigation-tooltip {
     display: none;
   }
@@ -205,13 +200,6 @@
 
     a {
       min-height: 2.75rem;
-    }
-
-    .help-link {
-      border-top: 1px solid var(--border-subtle);
-      border-radius: 0;
-      margin-top: var(--space-2);
-      padding-top: var(--space-2);
     }
 
     .collapsed a {

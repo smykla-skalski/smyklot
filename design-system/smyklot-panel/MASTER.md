@@ -159,6 +159,8 @@ dividers instead of nested cards.
 - Desktop tables keep the header outside the native vertical body scroller, with no
   custom scrollbar skin or permanently reserved scrollbar gutter
 - Use neutral dividers instead of zebra striping
+- Desktop virtualized table rows share a 65px track and every data cell draws the
+  same bottom divider, so content cannot overlap or hide row boundaries
 - Hover is neutral; selected rows use the petrol selected surface
 - Status uses semantic icon-plus-label badges
 - Roles use neutral outline icons and text, not multiple semantic colors
@@ -197,7 +199,6 @@ Use SVG symbols from one Phosphor-style outline system.
 | Repositories | GithubLogo or GitBranch |
 | Users | Users |
 | History | ClockCounterClockwise |
-| Help | Lifebuoy |
 | Search | MagnifyingGlass |
 | Filters | Funnel |
 | Global / organization / personal | Globe / Buildings / UserCircle |

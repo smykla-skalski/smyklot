@@ -12,7 +12,7 @@
   import type { ColumnFiltersState, SortingState, Updater } from '@tanstack/svelte-table';
   import { createVirtualizer } from '@tanstack/svelte-virtual';
   import { tick, untrack } from 'svelte';
-  import { SvelteSet } from 'svelte/reactivity';
+  import { MediaQuery, SvelteSet } from 'svelte/reactivity';
   import { get } from 'svelte/store';
 
   import { BOOLEAN_FIELDS } from '../lib/config';
@@ -43,6 +43,7 @@
   import FilterMenu from './FilterMenu.svelte';
   import HelpTip from './HelpTip.svelte';
   import Icon from './Icon.svelte';
+  import InfiniteLoadSentinel from './InfiniteLoadSentinel.svelte';
   import Modal from './Modal.svelte';
   import PanelHeader from './PanelHeader.svelte';
   import SearchField from './SearchField.svelte';
@@ -260,12 +261,24 @@
     onColumnFiltersChange: selectRepositoryColumnFilters,
   });
   const repositoryRows = $derived(repositoryTable.getRowModel().rows);
+  const desktopTableLayout = new MediaQuery('min-width: 64.001rem', true);
   const repositoryVirtualizer = createVirtualizer<HTMLTableSectionElement, HTMLTableRowElement>({
     count: 0,
-    estimateSize: () => 59,
+    estimateSize: () => 65,
     getScrollElement: () => repositoryScroll ?? null,
     overscan: 6,
   });
+  const repositoryRenderRows = $derived.by(() =>
+    desktopTableLayout.current
+      ? $repositoryVirtualizer.getVirtualItems().map((row) => ({ ...row, virtual: true as const }))
+      : repositoryRows.map((row, index) => ({
+          index,
+          key: row.id,
+          size: 0,
+          start: 0,
+          virtual: false as const,
+        })),
+  );
 
   $effect(() => {
     const nextQuery = search.trim();
@@ -282,13 +295,14 @@
   $effect(() => {
     const rows = repositoryRows;
     get(repositoryVirtualizer).setOptions({
-      count: rows.length,
+      count: desktopTableLayout.current ? rows.length : 0,
       getScrollElement: () => repositoryScroll ?? null,
       getItemKey: (index) => rows[index]?.id ?? index,
     });
   });
 
   $effect(() => {
+    if (!desktopTableLayout.current) return;
     const rows = repositoryRows;
     const last = $repositoryVirtualizer.getVirtualItems().at(-1);
     if (last !== undefined && last.index >= rows.length - 5) void loadNextPage();
@@ -879,18 +893,23 @@
             </tr>
           </thead>
           <tbody bind:this={repositoryScroll} data-panel-scroll>
-            <tr
-              class="virtual-spacer"
-              aria-hidden="true"
-              style:height={`${$repositoryVirtualizer.getTotalSize()}px`}><td colspan="7"></td></tr
-            >
-            {#each $repositoryVirtualizer.getVirtualItems() as virtualRow (virtualRow.key)}
+            {#if desktopTableLayout.current}
+              <tr
+                class="virtual-spacer"
+                aria-hidden="true"
+                style:height={`${$repositoryVirtualizer.getTotalSize()}px`}
+                ><td colspan="7"></td></tr
+              >
+            {/if}
+            {#each repositoryRenderRows as virtualRow (virtualRow.key)}
               {@const repository = repositoryAt(virtualRow.index)}
               {@const repositoryFailure = failures[repository.id]}
               <tr
-                class="repository-row virtual-row"
-                style:height={`${virtualRow.size}px`}
-                style:transform={`translateY(${virtualRow.start}px)`}
+                class={['repository-row', virtualRow.virtual && 'virtual-row']}
+                style:height={virtualRow.virtual ? `${virtualRow.size}px` : undefined}
+                style:transform={virtualRow.virtual
+                  ? `translateY(${virtualRow.start}px)`
+                  : undefined}
               >
                 <td>
                   <button
@@ -962,6 +981,11 @@
           </tbody>
         </table>
       </div>
+      <InfiniteLoadSentinel
+        active={!desktopTableLayout.current && !loading && page?.next_cursor != null}
+        cursor={page?.next_cursor}
+        onVisible={() => void loadNextPage()}
+      />
     {/if}
     {#if loadMoreProblem !== null}
       <div class="load-more-alert" role="alert">

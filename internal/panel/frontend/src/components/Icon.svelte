@@ -16,7 +16,6 @@
     | 'file-valid'
     | 'filter'
     | 'globe'
-    | 'help'
     | 'history'
     | 'info'
     | 'lock'
@@ -38,6 +37,7 @@
     | 'sort'
     | 'success'
     | 'sun'
+    | 'system'
     | 'trash'
     | 'user'
     | 'user-plus'
@@ -88,10 +88,9 @@
     <path d="M4 5v5h5" />
     <path d="M5.4 15.5A8 8 0 1 0 6 7.2L4 10" />
     <path d="M12 8v4l2.75 1.75" />
-  {:else if name === 'help'}
-    <circle cx="12" cy="12" r="9" />
-    <circle cx="12" cy="12" r="4" />
-    <path d="m5.6 5.6 3.55 3.55M14.85 14.85l3.55 3.55M18.4 5.6l-3.55 3.55M9.15 14.85 5.6 18.4" />
+  {:else if name === 'system'}
+    <rect x="3" y="4" width="18" height="13" rx="2" />
+    <path d="M8 21h8M12 17v4" />
   {:else if name === 'search'}
     <circle cx="10.5" cy="10.5" r="6.5" />
     <path d="m15.5 15.5 4.5 4.5" />
@@ -120,9 +119,9 @@
     <circle cx="9" cy="8" r="3" />
     <path d="M3.5 19c.5-3.2 2.4-5 5.5-5 2.2 0 3.8.9 4.7 2.4M18 8v6M15 11h6" />
   {:else if name === 'more'}
-    <circle cx="5" cy="12" r="1.65" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="5" r="1.65" fill="currentColor" stroke="none" />
     <circle cx="12" cy="12" r="1.65" fill="currentColor" stroke="none" />
-    <circle cx="19" cy="12" r="1.65" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="19" r="1.65" fill="currentColor" stroke="none" />
   {:else if name === 'trash'}
     <path d="M4 7h16M9 3h6l1 4H8zM6.5 7l.8 14h9.4l.8-14M10 11v6M14 11v6" />
   {:else if name === 'ban'}

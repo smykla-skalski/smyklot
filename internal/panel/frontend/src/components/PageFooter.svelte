@@ -54,11 +54,11 @@
 
   @keyframes footer-spectrum-flow {
     from {
-      transform: translateX(0);
+      transform: translateX(-50%);
     }
 
     to {
-      transform: translateX(-50%);
+      transform: translateX(0);
     }
   }
 
