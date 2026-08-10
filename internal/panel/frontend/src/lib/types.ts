@@ -109,6 +109,33 @@ export interface PanelUserPageRequest {
   statuses: PanelUserListStatus[];
 }
 
+export interface RootPanelUser {
+  account: PanelAccount;
+  system_role: SystemRole;
+  status: PanelUserStatus;
+  ban_reason?: string;
+  banned_at?: string;
+  removed_at?: string;
+  last_login_at?: string;
+  revision: number;
+  owned_installations: number;
+  assigned_installations: number;
+  manageable: boolean;
+  can_manage_system_role: boolean;
+}
+
+export type RootPanelUserSort =
+  'name_asc' | 'name_desc' | 'role_asc' | 'role_desc' | 'login_newest' | 'login_oldest';
+
+export interface RootPanelUserPageRequest {
+  cursor?: string;
+  query: string;
+  sort: RootPanelUserSort;
+  limit: number;
+  systemRoles: SystemRole[];
+  statuses: PanelUserStatus[];
+}
+
 export interface AddTargetUserInput {
   login: string;
   role: Exclude<PanelRole, 'none' | 'owner'>;

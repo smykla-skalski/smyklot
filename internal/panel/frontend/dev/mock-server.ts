@@ -27,6 +27,7 @@ import type {
   RootElevationInput,
   RootInstallation,
   RootOverview,
+  RootPanelUser,
   SecurityNotification,
   TargetSettingsInput,
   UpdateTargetUserInput,
@@ -966,6 +967,34 @@ async function handle(
       respond(res, 200, rootOverviewValue(state));
       return;
     }
+    if (path === route('/api/v1/root/access/users') && method === 'GET') {
+      const systemRoles = parsed.searchParams.getAll('system_role');
+      const statuses = parsed.searchParams.getAll('status');
+      respond(
+        res,
+        200,
+        historyPage(
+          rootPanelUsers(state),
+          parsed.searchParams,
+          (user) => user.last_login_at ?? '',
+          (user, sort) => {
+            if (sort.startsWith('role_')) {
+              return ['none', 'root', 'super_root'].indexOf(user.system_role);
+            }
+            if (sort.startsWith('login_')) return user.last_login_at ?? '';
+            return user.account.display_name.toLocaleLowerCase();
+          },
+          (user, query) =>
+            [user.account.display_name, user.account.login].some((value) =>
+              value.toLocaleLowerCase().includes(query),
+            ),
+          (user) =>
+            (systemRoles.length === 0 || systemRoles.includes(user.system_role)) &&
+            (statuses.length === 0 || statuses.includes(user.status)),
+        ),
+      );
+      return;
+    }
     if (path === route('/api/v1/notifications') && method === 'GET') {
       const offset = Math.max(0, Number(parsed.searchParams.get('cursor') ?? '0'));
       const limit = Math.min(100, Math.max(1, Number(parsed.searchParams.get('limit') ?? '20')));
@@ -1618,6 +1647,27 @@ function rootAuditEntries(state: MockState): AuditEntry[] {
   return [...installationEvents, ...systemEvents].sort(
     (left, right) => Date.parse(right.created_at) - Date.parse(left.created_at),
   );
+}
+
+function rootPanelUsers(state: MockState): RootPanelUser[] {
+  return state.users.map((user) => ({
+    account: user.account,
+    system_role: user.system_role,
+    status: user.status,
+    ...(user.ban_reason === undefined ? {} : { ban_reason: user.ban_reason }),
+    ...(user.banned_at === undefined ? {} : { banned_at: user.banned_at }),
+    ...(user.last_login_at === undefined ? {} : { last_login_at: user.last_login_at }),
+    revision: user.revision,
+    owned_installations:
+      user.account.id === VIEWER.id
+        ? state.targets.filter((target) => mockRootOwns(target)).length
+        : 0,
+    assigned_installations: state.targets.filter((target) =>
+      state.targetAccess.get(target.value.id)?.has(user.account.id),
+    ).length,
+    manageable: user.account.id !== VIEWER.id && user.system_role === 'none',
+    can_manage_system_role: user.account.id !== VIEWER.id && user.system_role !== 'super_root',
+  }));
 }
 
 function activeMockElevation(state: MockState, targetId: string): RootElevation | undefined {

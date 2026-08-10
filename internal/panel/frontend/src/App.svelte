@@ -4,6 +4,7 @@
   import PageFooter from './components/PageFooter.svelte';
   import Plate from './components/Plate.svelte';
   import RepositoryList from './components/RepositoryList.svelte';
+  import RootAccess from './components/RootAccess.svelte';
   import RootInstallations from './components/RootInstallations.svelte';
   import RootOverview from './components/RootOverview.svelte';
   import SignedOut from './components/SignedOut.svelte';
@@ -82,7 +83,7 @@
   const returnTarget = $derived(selectedTarget ?? targets[0] ?? null);
   const tableScrollView = $derived(
     rootMode
-      ? rootValue === 'history'
+      ? rootValue === 'history' || rootValue === 'access'
       : selectedTarget !== null &&
           ['repositories', 'users', 'invitations', 'history'].includes(view),
   );
@@ -298,6 +299,15 @@
   function selectRootHistorySection(section: 'audit' | 'failures'): void {
     const route: RootRoute = {
       rootView: section === 'audit' ? 'history-audit' : 'history-failures',
+    };
+    if (activeRootRoute.rootView === route.rootView) return;
+    activeRootRoute = route;
+    router.push(route);
+  }
+
+  function selectRootAccessSection(section: 'users' | 'invitations'): void {
+    const route: RootRoute = {
+      rootView: section === 'users' ? 'access-users' : 'access-invitations',
     };
     if (activeRootRoute.rootView === route.rootView) return;
     activeRootRoute = route;
@@ -573,7 +583,7 @@
       {:else if rootMode}
         <section
           class="root-workspace"
-          class:root-table-view={rootValue === 'history'}
+          class:root-table-view={rootValue === 'history' || rootValue === 'access'}
           aria-labelledby="root-page-heading"
         >
           <header class="root-page-header">
@@ -611,6 +621,12 @@
               refreshVersion={historyVersion}
               fetchAudit={api.fetchRootAudit}
               fetchFailures={api.fetchRootFailures}
+            />
+          {:else if rootValue === 'access'}
+            <RootAccess
+              section={activeRootRoute.rootView === 'access-invitations' ? 'invitations' : 'users'}
+              onSection={selectRootAccessSection}
+              fetchUsers={api.fetchRootUsers}
             />
           {:else}
             <div class="root-foundation" role="status">

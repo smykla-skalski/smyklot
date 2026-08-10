@@ -27,6 +27,8 @@ import type {
   RootElevationInput,
   RootInstallation,
   RootOverview,
+  RootPanelUser,
+  RootPanelUserPageRequest,
   SecurityNotification,
   TargetSettingsInput,
   InvitationDays,
@@ -50,6 +52,7 @@ export interface PanelApi {
   fetchTargets(): Promise<PanelTarget[]>;
   fetchRootInstallations(): Promise<RootInstallation[]>;
   fetchRootOverview(): Promise<RootOverview>;
+  fetchRootUsers(request: RootPanelUserPageRequest): Promise<Page<RootPanelUser>>;
   fetchRootAudit(request: AuditHistoryRequest): Promise<Page<AuditEntry>>;
   fetchRootFailures(request: FailureHistoryRequest): Promise<Page<DeliveryFailure>>;
   fetchRootTargetSettings(targetId: string): Promise<PanelTarget>;
@@ -183,6 +186,10 @@ export function createPanelApi(
 
     fetchRootOverview(): Promise<RootOverview> {
       return jsonRequest('/api/v1/root/overview');
+    },
+
+    fetchRootUsers(userPage: RootPanelUserPageRequest): Promise<Page<RootPanelUser>> {
+      return jsonRequest(withRootUserPageQuery('/api/v1/root/access/users', userPage));
     },
 
     fetchRootAudit(history: AuditHistoryRequest): Promise<Page<AuditEntry>> {
@@ -463,6 +470,18 @@ function withAccessPageQuery(
   parameters.set('sort', page.sort);
   parameters.set('limit', String(page.limit));
   for (const role of page.roles) parameters.append('role', role);
+  for (const status of page.statuses) parameters.append('status', status);
+
+  return `${path}?${parameters.toString()}`;
+}
+
+function withRootUserPageQuery(path: string, page: RootPanelUserPageRequest): string {
+  const parameters = new URLSearchParams();
+  if (page.cursor !== undefined) parameters.set('cursor', page.cursor);
+  if (page.query !== '') parameters.set('q', page.query);
+  parameters.set('sort', page.sort);
+  parameters.set('limit', String(page.limit));
+  for (const role of page.systemRoles) parameters.append('system_role', role);
   for (const status of page.statuses) parameters.append('status', status);
 
   return `${path}?${parameters.toString()}`;

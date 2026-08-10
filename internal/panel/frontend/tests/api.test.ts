@@ -278,6 +278,7 @@ describe('Root installation access', () => {
       jsonResponse(404, { error: { code: 'not_found', message: 'not active' } }),
       jsonResponse(201, elevation),
       jsonResponse(200, { ...elevation, ended_at: '2026-08-10T10:05:00Z' }),
+      jsonResponse(200, { items: [], next_cursor: null, total: 0 }),
     ]);
     const api = createPanelApi('/panel', stub.fetch);
     const repositoryPage = {
@@ -317,6 +318,14 @@ describe('Root installation access', () => {
       reason: 'Investigating a failed delivery',
     });
     await api.endRootElevation('elevation.1');
+    await api.fetchRootUsers({
+      cursor: '20',
+      query: 'ada',
+      sort: 'role_desc',
+      limit: 20,
+      systemRoles: ['root', 'super_root'],
+      statuses: ['active', 'banned'],
+    });
 
     expect(stub.calls.map((call) => call.url)).toEqual([
       '/panel/api/v1/root/overview',
@@ -329,6 +338,7 @@ describe('Root installation access', () => {
       '/panel/api/v1/root/installations/target%2E1/elevation',
       '/panel/api/v1/root/installations/target%2E1/elevation',
       '/panel/api/v1/root/elevations/elevation%2E1',
+      '/panel/api/v1/root/access/users?cursor=20&q=ada&sort=role_desc&limit=20&system_role=root&system_role=super_root&status=active&status=banned',
     ]);
     expect(stub.calls[8]?.init?.method).toBe('POST');
     expect(JSON.parse(String(stub.calls[8]?.init?.body))).toEqual({
