@@ -136,6 +136,17 @@ export interface RootPanelUserPageRequest {
   statuses: PanelUserStatus[];
 }
 
+export type UpdateRootUserInput =
+  | {
+      system_role: Exclude<SystemRole, 'super_root'>;
+      expected_revision: number;
+    }
+  | {
+      status: PanelUserStatus;
+      reason?: string;
+      expected_revision: number;
+    };
+
 export interface AddTargetUserInput {
   login: string;
   role: Exclude<PanelRole, 'none' | 'owner'>;

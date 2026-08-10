@@ -34,6 +34,7 @@ import type {
   InvitationDays,
   InvitationSignIn,
   UpdateTargetUserInput,
+  UpdateRootUserInput,
 } from './types';
 
 export class PanelApiError extends Error {
@@ -53,6 +54,7 @@ export interface PanelApi {
   fetchRootInstallations(): Promise<RootInstallation[]>;
   fetchRootOverview(): Promise<RootOverview>;
   fetchRootUsers(request: RootPanelUserPageRequest): Promise<Page<RootPanelUser>>;
+  updateRootUser(accountId: string, input: UpdateRootUserInput): Promise<void>;
   fetchRootAudit(request: AuditHistoryRequest): Promise<Page<AuditEntry>>;
   fetchRootFailures(request: FailureHistoryRequest): Promise<Page<DeliveryFailure>>;
   fetchRootTargetSettings(targetId: string): Promise<PanelTarget>;
@@ -190,6 +192,14 @@ export function createPanelApi(
 
     fetchRootUsers(userPage: RootPanelUserPageRequest): Promise<Page<RootPanelUser>> {
       return jsonRequest(withRootUserPageQuery('/api/v1/root/access/users', userPage));
+    },
+
+    async updateRootUser(accountId: string, input: UpdateRootUserInput): Promise<void> {
+      await request(`/api/v1/root/access/users/${pathSegment(accountId)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      });
     },
 
     fetchRootAudit(history: AuditHistoryRequest): Promise<Page<AuditEntry>> {

@@ -246,7 +246,7 @@ func rootPanelUserPageDTO(
 			AssignedInstallations: item.AssignedInstallationCount,
 			Manageable:            otherAccount && user.SystemRole == storage.SystemRoleNone,
 			CanManageSystemRole: otherAccount && actorRole == storage.SystemRoleSuperRoot &&
-				user.SystemRole != storage.SystemRoleSuperRoot,
+				user.SystemRole != storage.SystemRoleSuperRoot && user.Status == storage.PanelUserActive,
 		})
 	}
 

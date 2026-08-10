@@ -8,18 +8,22 @@
     RootPanelUserPageRequest,
     RootPanelUserSort,
     SystemRole,
+    UpdateRootUserInput,
   } from '../lib/types';
+  import ActionMenu, { type ActionMenuItem } from './ActionMenu.svelte';
   import Avatar from './Avatar.svelte';
   import Chip, { type ChipTone } from './Chip.svelte';
   import FilterMenu from './FilterMenu.svelte';
   import Icon from './Icon.svelte';
   import InfiniteLoadSentinel from './InfiniteLoadSentinel.svelte';
+  import Modal from './Modal.svelte';
   import SearchField from './SearchField.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
   import TableEmptyState from './TableEmptyState.svelte';
 
   type AccessSection = 'users' | 'invitations';
   type SortColumn = 'name' | 'role' | 'last_login';
+  type UserAction = 'promote_root' | 'demote_root' | 'restore' | 'ban' | 'remove';
 
   const SECTIONS = [
     { value: 'users', label: 'Users', tone: 'accent' },
@@ -48,10 +52,12 @@
     section,
     onSection,
     fetchUsers,
+    updateUser,
   }: {
     section: AccessSection;
     onSection: (section: AccessSection) => void;
     fetchUsers: (request: RootPanelUserPageRequest) => Promise<Page<RootPanelUser>>;
+    updateUser: (accountId: string, input: UpdateRootUserInput) => Promise<void>;
   } = $props();
 
   let page = $state<Page<RootPanelUser> | null>(null);
@@ -63,6 +69,12 @@
   let loading = $state(false);
   let problem = $state<string | null>(null);
   let loadMoreProblem = $state<string | null>(null);
+  let actionUser = $state<RootPanelUser | null>(null);
+  let pendingAction = $state<UserAction | null>(null);
+  let actionTrigger = $state<HTMLElement | null>(null);
+  let reason = $state('');
+  let saving = $state(false);
+  let actionProblem = $state<string | null>(null);
   let sequence = 0;
   const limit = 20;
   const now = Date.now();
@@ -187,6 +199,127 @@
     const relationships = user.owned_installations + user.assigned_installations;
     return `${relationships} installation${relationships === 1 ? '' : 's'}`;
   }
+
+  function userActions(user: RootPanelUser): ActionMenuItem[] {
+    const items: ActionMenuItem[] = [];
+    if (user.can_manage_system_role) {
+      items.push(
+        user.system_role === 'root'
+          ? {
+              id: 'demote_root',
+              icon: 'shield-slash',
+              label: 'Remove Root role',
+              description: 'Remove application-wide administration',
+              tone: 'danger',
+            }
+          : {
+              id: 'promote_root',
+              icon: 'admin',
+              label: 'Make Root',
+              description: 'Grant application-wide administration',
+            },
+      );
+    }
+    if (!user.manageable || user.status === 'removed') return items;
+    if (user.status === 'banned') {
+      items.push({
+        id: 'restore',
+        icon: 'refresh',
+        label: 'Restore account',
+        description: 'Allow this account to sign in again',
+      });
+    } else {
+      items.push({
+        id: 'ban',
+        icon: 'ban',
+        label: 'Ban account',
+        description: 'Revoke sessions and block sign-in',
+        tone: 'danger',
+      });
+    }
+    items.push({
+      id: 'remove',
+      icon: 'trash',
+      label: 'Remove account',
+      description: 'Revoke sessions, access, and invitations',
+      tone: 'danger',
+    });
+    return items;
+  }
+
+  function chooseUserAction(
+    user: RootPanelUser,
+    action: string,
+    trigger: HTMLElement | null,
+  ): void {
+    if (!['promote_root', 'demote_root', 'restore', 'ban', 'remove'].includes(action)) return;
+    actionUser = user;
+    pendingAction = action as UserAction;
+    actionTrigger = trigger;
+    reason = '';
+    actionProblem = null;
+  }
+
+  function closeUserAction(): void {
+    if (saving) return;
+    actionUser = null;
+    pendingAction = null;
+    actionProblem = null;
+  }
+
+  function actionTitle(): string {
+    const name = actionUser?.account.display_name ?? 'this account';
+    if (pendingAction === 'promote_root') return `Make ${name} a Root?`;
+    if (pendingAction === 'demote_root') return `Remove Root access from ${name}?`;
+    if (pendingAction === 'restore') return `Restore ${name}?`;
+    if (pendingAction === 'ban') return `Ban ${name}?`;
+    return `Remove ${name}?`;
+  }
+
+  function actionDescription(): string {
+    if (pendingAction === 'promote_root') {
+      return 'Root can read application-wide data and use audited installation elevation.';
+    }
+    if (pendingAction === 'demote_root') {
+      return 'Their installation ownership and explicit assignments remain unchanged.';
+    }
+    if (pendingAction === 'restore') return 'The account can sign in again with retained access.';
+    if (pendingAction === 'ban') return 'Every active session is revoked immediately.';
+    return 'Sessions, assignments, and invitations are revoked. Audit identity is retained.';
+  }
+
+  async function confirmUserAction(): Promise<void> {
+    if (actionUser === null || pendingAction === null || saving) return;
+    saving = true;
+    actionProblem = null;
+    const input: UpdateRootUserInput =
+      pendingAction === 'promote_root' || pendingAction === 'demote_root'
+        ? {
+            system_role: pendingAction === 'promote_root' ? 'root' : 'none',
+            expected_revision: actionUser.revision,
+          }
+        : {
+            status:
+              pendingAction === 'restore'
+                ? 'active'
+                : pendingAction === 'ban'
+                  ? 'banned'
+                  : 'removed',
+            ...(reason.trim() === '' ? {} : { reason: reason.trim() }),
+            expected_revision: actionUser.revision,
+          };
+    try {
+      await updateUser(actionUser.account.id, input);
+      actionUser = null;
+      pendingAction = null;
+      page = null;
+      await loadPage(undefined, false);
+    } catch (error) {
+      actionProblem = error instanceof Error ? error.message : String(error);
+    } finally {
+      saving = false;
+    }
+  }
 </script>
 
 <section class="root-access" aria-labelledby="root-page-heading">
@@ -305,6 +438,7 @@
                     <span>Last login</span><Icon name="sort" size={14} />
                   </button>
                 </th>
+                <th scope="col"><span class="visually-hidden">Actions</span></th>
               </tr>
             </thead>
             <tbody data-panel-scroll onscroll={loadFromScroll}>
@@ -345,10 +479,19 @@
                       >
                     {:else}<span class="dim">Never</span>{/if}
                   </td>
+                  <td class="row-actions" data-label="Actions">
+                    {#if userActions(user).length > 0}
+                      <ActionMenu
+                        label={`Actions for @${user.account.login}`}
+                        items={userActions(user)}
+                        onSelect={(action, trigger) => chooseUserAction(user, action, trigger)}
+                      />
+                    {/if}
+                  </td>
                 </tr>
               {:else}
                 <tr class="empty-row">
-                  <td colspan="5">
+                  <td colspan="6">
                     <TableEmptyState
                       title="No accounts found"
                       description={hasFilters
@@ -379,6 +522,50 @@
     </div>
   {/if}
 </section>
+
+<Modal
+  id="root-user-action"
+  open={actionUser !== null && pendingAction !== null}
+  title={actionTitle()}
+  description={actionDescription()}
+  returnFocus={actionTrigger}
+  onClose={closeUserAction}
+>
+  {#if pendingAction === 'ban' || pendingAction === 'remove'}
+    <label class="reason-field">
+      <span>Reason <small>Optional</small></span>
+      <textarea
+        placeholder="Add context to the immutable audit record"
+        maxlength="500"
+        rows="4"
+        bind:value={reason}
+        data-modal-focus></textarea>
+      <small>{reason.length}/500 characters</small>
+    </label>
+  {:else}
+    <div class="confirmation-note" data-modal-focus tabindex="-1">
+      <Icon name={pendingAction === 'promote_root' ? 'warning' : 'info'} size={20} />
+      <span>Review the account and effect before confirming.</span>
+    </div>
+  {/if}
+  {#if actionProblem !== null}<p class="action-error" role="alert">{actionProblem}</p>{/if}
+
+  {#snippet footer()}
+    <button class="btn" type="button" data-modal-focus onclick={closeUserAction}>Cancel</button>
+    <button
+      class="btn"
+      class:btn-stop={pendingAction === 'ban' ||
+        pendingAction === 'remove' ||
+        pendingAction === 'demote_root'}
+      class:btn-signal={pendingAction === 'promote_root' || pendingAction === 'restore'}
+      type="button"
+      disabled={saving}
+      onclick={() => void confirmUserAction()}
+    >
+      {saving ? 'Saving…' : 'Confirm'}
+    </button>
+  {/snippet}
+</Modal>
 
 <style>
   .root-access {
@@ -484,10 +671,16 @@
     width: 24%;
   }
 
+  th:nth-child(5),
+  td:nth-child(5) {
+    text-align: right;
+    width: 16%;
+  }
+
   th:last-child,
   td:last-child {
-    text-align: right;
-    width: 19%;
+    text-align: center;
+    width: 3rem;
   }
 
   .table-sort-button,
@@ -574,6 +767,51 @@
 
   time {
     white-space: nowrap;
+  }
+
+  .row-actions {
+    padding-inline: var(--space-1);
+  }
+
+  .reason-field {
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .reason-field > span {
+    font-weight: 650;
+  }
+
+  .reason-field small {
+    color: var(--text-muted);
+    font-size: var(--font-size-meta);
+  }
+
+  .reason-field textarea {
+    background: var(--input-bg);
+    border: 1px solid var(--control-border);
+    border-radius: var(--radius-control);
+    color: var(--text);
+    font: inherit;
+    padding: var(--space-3);
+    resize: vertical;
+  }
+
+  .confirmation-note {
+    align-items: center;
+    background: var(--interactive-hover);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-control);
+    color: var(--text-secondary);
+    display: flex;
+    gap: var(--space-3);
+    padding: var(--space-3);
+  }
+
+  .action-error {
+    color: var(--danger);
+    font-size: var(--font-size-meta);
+    margin: var(--space-3) 0 0;
   }
 
   .empty-row td {

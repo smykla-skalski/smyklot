@@ -31,6 +31,7 @@ import type {
   SecurityNotification,
   TargetSettingsInput,
   UpdateTargetUserInput,
+  UpdateRootUserInput,
   InvitationDays,
   InvitationStatus,
 } from '../src/lib/types';
@@ -1024,6 +1025,7 @@ async function handle(
     const rootElevationEnd = path.match(/^\/api\/v1\/root\/elevations\/(?<elevation>[^/]+)$/);
     const notificationRead = path.match(/^\/api\/v1\/notifications\/(?<notification>[^/]+)\/read$/);
     const scopedUsers = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/users$/);
+    const rootUser = path.match(/^\/api\/v1\/root\/access\/users\/(?<account>[^/]+)$/);
     const scopedUser = path.match(
       /^\/api\/v1\/targets\/(?<target>[^/]+)\/users\/(?<account>[^/]+)$/,
     );
@@ -1056,6 +1058,28 @@ async function handle(
     const audit = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/audit$/);
     const failures = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/failures$/);
     const rootHistory = path.match(/^\/api\/v1\/root\/history\/(?<history>audit|failures)$/);
+
+    if (rootUser && method === 'PUT') {
+      const accountID = decodeURIComponent(rootUser.groups?.account ?? '');
+      const user = state.users.find((candidate) => candidate.account.id === accountID);
+      if (user === undefined) throw new MockApiError(404, 'not_found', 'account not found');
+      const input = await readBody<UpdateRootUserInput>(req);
+      if (input.expected_revision !== user.revision) {
+        throw new MockApiError(409, 'conflict', 'account changed; reload and try again');
+      }
+      if ('system_role' in input) {
+        user.system_role = input.system_role;
+        user.global_role = input.system_role === 'root' ? 'owner' : 'none';
+      } else {
+        user.status = input.status;
+        user.ban_reason = input.reason;
+        user.banned_at = input.status === 'banned' ? new Date().toISOString() : undefined;
+      }
+      user.revision += 1;
+      user.updated_at = new Date().toISOString();
+      respond(res, 204, null);
+      return;
+    }
 
     if (rootHistory && method === 'GET') {
       if (rootHistory.groups?.history === 'audit') {

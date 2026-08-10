@@ -32,6 +32,10 @@ function jsonResponse(status: number, body: unknown): Response {
   });
 }
 
+function emptyResponse(status: number): Response {
+  return new Response(null, { status });
+}
+
 const CONFIG: ConfigValues = {
   quiet_success: false,
   quiet_reactions: false,
@@ -279,6 +283,7 @@ describe('Root installation access', () => {
       jsonResponse(201, elevation),
       jsonResponse(200, { ...elevation, ended_at: '2026-08-10T10:05:00Z' }),
       jsonResponse(200, { items: [], next_cursor: null, total: 0 }),
+      emptyResponse(204),
     ]);
     const api = createPanelApi('/panel', stub.fetch);
     const repositoryPage = {
@@ -326,6 +331,7 @@ describe('Root installation access', () => {
       systemRoles: ['root', 'super_root'],
       statuses: ['active', 'banned'],
     });
+    await api.updateRootUser('account.1', { system_role: 'root', expected_revision: 2 });
 
     expect(stub.calls.map((call) => call.url)).toEqual([
       '/panel/api/v1/root/overview',
@@ -339,6 +345,7 @@ describe('Root installation access', () => {
       '/panel/api/v1/root/installations/target%2E1/elevation',
       '/panel/api/v1/root/elevations/elevation%2E1',
       '/panel/api/v1/root/access/users?cursor=20&q=ada&sort=role_desc&limit=20&system_role=root&system_role=super_root&status=active&status=banned',
+      '/panel/api/v1/root/access/users/account%2E1',
     ]);
     expect(stub.calls[8]?.init?.method).toBe('POST');
     expect(JSON.parse(String(stub.calls[8]?.init?.body))).toEqual({
@@ -346,6 +353,11 @@ describe('Root installation access', () => {
       reason: 'Investigating a failed delivery',
     });
     expect(stub.calls[9]?.init?.method).toBe('DELETE');
+    expect(stub.calls[11]?.init?.method).toBe('PUT');
+    expect(JSON.parse(String(stub.calls[11]?.init?.body))).toEqual({
+      system_role: 'root',
+      expected_revision: 2,
+    });
   });
 });
 

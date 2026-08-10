@@ -627,6 +627,7 @@
               section={activeRootRoute.rootView === 'access-invitations' ? 'invitations' : 'users'}
               onSection={selectRootAccessSection}
               fetchUsers={api.fetchRootUsers}
+              updateUser={api.updateRootUser}
             />
           {:else}
             <div class="root-foundation" role="status">
