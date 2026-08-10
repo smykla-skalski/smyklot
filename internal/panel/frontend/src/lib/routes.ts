@@ -5,8 +5,14 @@ const SCOPED_PANEL_VIEWS = ['settings', 'repositories', 'users', 'invitations', 
 
 export type PanelView = (typeof PANEL_VIEWS)[number];
 export type ScopedPanelView = (typeof SCOPED_PANEL_VIEWS)[number];
+export type RootSection = 'overview' | 'installations' | 'access' | 'history' | 'settings';
+export type RootRoute =
+  | { rootView: 'overview' | 'installations' | 'access-users' | 'access-invitations' }
+  | { rootView: 'history-audit' | 'history-failures' | 'settings' }
+  | { rootView: 'installation'; account: string; view: ScopedPanelView };
 
-export type PanelRoute = { account: string; view: ScopedPanelView };
+export type InstallationRoute = { account: string; view: ScopedPanelView };
+export type PanelRoute = InstallationRoute | RootRoute;
 
 export interface ResolvedPanelRoute {
   account: string;
@@ -36,6 +42,7 @@ export function parsePanelRoute(basePath: string, pathname: string): PanelRoute 
   if (relative === '') return null;
 
   const parts = relative.split('/');
+  if (parts[0] === 'root') return parseRootRoute(parts);
   if (parts.length !== 3) return null;
 
   const [namespace, encodedAccount, rawView] = parts;
@@ -74,12 +81,13 @@ export function parseInvitationToken(basePath: string, pathname: string): string
 
 export function panelRoutePath(basePath: string, route: PanelRoute): string {
   const base = normalizeBasePath(basePath);
+  if ('rootView' in route) return `${base}${rootRoutePath(route)}`;
   return `${base}/i/${encodeURIComponent(route.account)}/${route.view}`;
 }
 
 export function resolvePanelRoute(
   availableAccounts: readonly string[],
-  requested: PanelRoute | null,
+  requested: InstallationRoute | null,
   preferredAccount: string | null,
 ): ResolvedPanelRoute | null {
   const requestedAccount = findAccount(availableAccounts, requested?.account ?? null);
@@ -88,6 +96,19 @@ export function resolvePanelRoute(
   if (account === undefined) return null;
 
   return { account, view: requested?.view ?? 'settings' };
+}
+
+export function rootSection(route: RootRoute): RootSection {
+  if (route.rootView === 'access-users' || route.rootView === 'access-invitations') return 'access';
+  if (route.rootView === 'history-audit' || route.rootView === 'history-failures') return 'history';
+  if (route.rootView === 'installation') return 'installations';
+  return route.rootView;
+}
+
+export function rootSectionRoute(section: RootSection): RootRoute {
+  if (section === 'access') return { rootView: 'access-users' };
+  if (section === 'history') return { rootView: 'history-audit' };
+  return { rootView: section };
 }
 
 export function createPanelRouter(basePath: string, browser: BrowserNavigation): PanelRouter {
@@ -118,6 +139,45 @@ export function createPanelRouter(basePath: string, browser: BrowserNavigation):
 
 function isScopedPanelView(value: string): value is ScopedPanelView {
   return SCOPED_PANEL_VIEWS.some((view) => view === value);
+}
+
+function parseRootRoute(parts: string[]): RootRoute | null {
+  if (parts.length === 1) return { rootView: 'overview' };
+  if (parts.length === 2 && parts[1] === 'installations') return { rootView: 'installations' };
+  if (parts.length === 2 && parts[1] === 'settings') return { rootView: 'settings' };
+  if (parts.length === 3 && parts[1] === 'access') {
+    if (parts[2] === 'users') return { rootView: 'access-users' };
+    if (parts[2] === 'invitations') return { rootView: 'access-invitations' };
+  }
+  if (parts.length === 3 && parts[1] === 'history') {
+    if (parts[2] === 'audit') return { rootView: 'history-audit' };
+    if (parts[2] === 'failures') return { rootView: 'history-failures' };
+  }
+  if (parts.length !== 4 || parts[1] !== 'installations' || !isScopedPanelView(parts[3] ?? '')) {
+    return null;
+  }
+
+  let account: string;
+  try {
+    account = decodeURIComponent(parts[2] ?? '');
+  } catch {
+    return null;
+  }
+  return account.trim() === ''
+    ? null
+    : { rootView: 'installation', account, view: parts[3] as ScopedPanelView };
+}
+
+function rootRoutePath(route: RootRoute): string {
+  if (route.rootView === 'installation')
+    return `/root/installations/${encodeURIComponent(route.account)}/${route.view}`;
+  if (route.rootView === 'overview') return '/root';
+  if (route.rootView === 'installations') return '/root/installations';
+  if (route.rootView === 'access-users') return '/root/access/users';
+  if (route.rootView === 'access-invitations') return '/root/access/invitations';
+  if (route.rootView === 'history-audit') return '/root/history/audit';
+  if (route.rootView === 'history-failures') return '/root/history/failures';
+  return '/root/settings';
 }
 
 function findAccount(accounts: readonly string[], requested: string | null): string | undefined {

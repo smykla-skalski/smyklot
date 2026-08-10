@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { PanelView } from '../lib/routes';
+  import type { PanelView, RootSection } from '../lib/routes';
   import Icon, { type IconName } from './Icon.svelte';
 
   const {
@@ -8,12 +8,30 @@
     onSelect,
     showUsers,
     collapsed,
+    rootMode,
+    rootEnabled,
+    rootValue,
+    rootHrefFor,
+    onSelectRoot,
+    rootDashboardHref,
+    onEnterRoot,
+    returnHref,
+    onReturnToPanel,
   }: {
     value: PanelView;
     hrefFor: (view: PanelView) => string;
     onSelect: (view: PanelView) => void;
     showUsers: boolean;
     collapsed: boolean;
+    rootMode: boolean;
+    rootEnabled: boolean;
+    rootValue: RootSection;
+    rootHrefFor: (section: RootSection) => string;
+    onSelectRoot: (section: RootSection) => void;
+    rootDashboardHref: string;
+    onEnterRoot: () => void;
+    returnHref: string;
+    onReturnToPanel: () => void;
   } = $props();
 
   const NAVIGATION_VIEWS = [
@@ -24,6 +42,13 @@
   ] as const satisfies readonly PanelView[];
 
   const visibleViews = $derived(NAVIGATION_VIEWS.filter((view) => view !== 'users' || showUsers));
+  const ROOT_SECTIONS = [
+    'overview',
+    'installations',
+    'access',
+    'history',
+    'settings',
+  ] as const satisfies readonly RootSection[];
 
   function isActive(item: PanelView): boolean {
     return value === item || (item === 'users' && value === 'invitations');
@@ -40,6 +65,34 @@
     onSelect(next);
   }
 
+  function selectRootFromClick(event: MouseEvent, next: RootSection): void {
+    if (!plainClick(event)) return;
+    event.preventDefault();
+    onSelectRoot(next);
+  }
+
+  function enterRootFromClick(event: MouseEvent): void {
+    if (!plainClick(event)) return;
+    event.preventDefault();
+    onEnterRoot();
+  }
+
+  function returnFromClick(event: MouseEvent): void {
+    if (!plainClick(event) || returnHref === '#') return;
+    event.preventDefault();
+    onReturnToPanel();
+  }
+
+  function plainClick(event: MouseEvent): boolean {
+    return !(
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    );
+  }
+
   function label(view: PanelView): string {
     if (view === 'users' || view === 'invitations') return 'Access';
     return view.slice(0, 1).toUpperCase() + view.slice(1);
@@ -52,24 +105,76 @@
     if (view === 'history') return 'history';
     return 'history';
   }
+
+  function rootLabel(section: RootSection): string {
+    return section.slice(0, 1).toUpperCase() + section.slice(1);
+  }
+
+  function rootIcon(section: RootSection): IconName {
+    if (section === 'overview') return 'system';
+    if (section === 'installations') return 'organization';
+    if (section === 'access') return 'users';
+    if (section === 'history') return 'history';
+    return 'settings';
+  }
 </script>
 
 <nav class={['panel-navigation', collapsed && 'collapsed']} aria-label="Panel navigation">
   <div class="view-links">
-    {#each visibleViews as item (item)}
+    {#if rootMode}
+      {#each ROOT_SECTIONS as section (section)}
+        <a
+          href={rootHrefFor(section)}
+          class:active={rootValue === section}
+          aria-label={collapsed ? rootLabel(section) : undefined}
+          aria-current={rootValue === section ? 'page' : undefined}
+          onclick={(event) => selectRootFromClick(event, section)}
+        >
+          <span class="navigation-icon"><Icon name={rootIcon(section)} size={20} /></span>
+          <span class="navigation-label">{rootLabel(section)}</span>
+          <span class="navigation-tooltip">{rootLabel(section)}</span>
+        </a>
+      {/each}
       <a
-        href={hrefFor(destination(item))}
-        id={`${item}-navigation`}
-        class={isActive(item) ? 'active' : undefined}
-        aria-label={collapsed ? label(item) : undefined}
-        aria-current={isActive(item) ? 'page' : undefined}
-        onclick={(event) => selectFromClick(event, destination(item))}
+        class="return-entry"
+        class:disabled={returnHref === '#'}
+        href={returnHref}
+        aria-label={collapsed ? 'Return to panel' : undefined}
+        aria-disabled={returnHref === '#' ? 'true' : undefined}
+        onclick={returnFromClick}
       >
-        <span class="navigation-icon"><Icon name={icon(item)} size={20} /></span>
-        <span class="navigation-label">{label(item)}</span>
-        <span class="navigation-tooltip">{label(item)}</span>
+        <span class="navigation-icon"><Icon name="chevron-left" size={20} /></span>
+        <span class="navigation-label">Return to panel</span>
+        <span class="navigation-tooltip">Return to panel</span>
       </a>
-    {/each}
+    {:else}
+      {#if rootEnabled}
+        <a
+          class="root-entry"
+          href={rootDashboardHref}
+          aria-label={collapsed ? 'Root dashboard' : undefined}
+          onclick={enterRootFromClick}
+        >
+          <span class="navigation-icon"><Icon name="admin" size={20} strokeWidth={2} /></span>
+          <span class="navigation-label">Root dashboard</span>
+          <span class="navigation-tooltip">Root dashboard</span>
+        </a>
+      {/if}
+      {#each visibleViews as item (item)}
+        <a
+          href={hrefFor(destination(item))}
+          id={`${item}-navigation`}
+          class={isActive(item) ? 'active' : undefined}
+          aria-label={collapsed ? label(item) : undefined}
+          aria-current={isActive(item) ? 'page' : undefined}
+          onclick={(event) => selectFromClick(event, destination(item))}
+        >
+          <span class="navigation-icon"><Icon name={icon(item)} size={20} /></span>
+          <span class="navigation-label">{label(item)}</span>
+          <span class="navigation-tooltip">{label(item)}</span>
+        </a>
+      {/each}
+    {/if}
   </div>
 </nav>
 
@@ -130,6 +235,40 @@
 
   a.active:active {
     background-color: var(--interactive-selected-pressed);
+  }
+
+  .root-entry {
+    background:
+      linear-gradient(var(--sidebar-bg), var(--sidebar-bg)) padding-box,
+      var(--footer-spectrum) border-box;
+    border: 2px solid transparent;
+    color: var(--sidebar-text);
+    font-weight: 700;
+    margin-bottom: var(--space-2);
+  }
+
+  .root-entry:hover {
+    background:
+      linear-gradient(var(--sidebar-item-hover), var(--sidebar-item-hover)) padding-box,
+      var(--footer-spectrum) border-box;
+  }
+
+  .root-entry:active {
+    background:
+      linear-gradient(var(--sidebar-item-pressed), var(--sidebar-item-pressed)) padding-box,
+      var(--footer-spectrum) border-box;
+  }
+
+  .return-entry {
+    border-top: 1px solid var(--sidebar-border);
+    border-radius: 0;
+    margin-top: auto;
+    padding-top: var(--space-3);
+  }
+
+  .return-entry.disabled {
+    cursor: default;
+    opacity: 0.45;
   }
 
   .navigation-icon {

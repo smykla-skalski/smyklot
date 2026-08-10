@@ -2,7 +2,7 @@
   import { fuzzyCandidates } from '../lib/fuzzy';
   import { handleLabel, readHandle } from '../lib/identity';
   import type { ThemeDisplay } from '../lib/preferences';
-  import type { PanelView } from '../lib/routes';
+  import type { PanelView, RootSection } from '../lib/routes';
   import type { PanelTarget, PanelViewer } from '../lib/types';
   import Avatar from './Avatar.svelte';
   import Icon from './Icon.svelte';
@@ -25,6 +25,14 @@
     onToggleCollapsed,
     theme,
     onSelectTheme,
+    rootMode,
+    rootValue,
+    rootHrefFor,
+    onSelectRoot,
+    rootDashboardHref,
+    onEnterRoot,
+    returnHref,
+    onReturnToPanel,
   }: {
     viewer: PanelViewer | null;
     iconUrl: string;
@@ -42,6 +50,14 @@
     onToggleCollapsed: () => void;
     theme: ThemeDisplay;
     onSelectTheme: (theme: ThemeDisplay) => void;
+    rootMode: boolean;
+    rootValue: RootSection;
+    rootHrefFor: (section: RootSection) => string;
+    onSelectRoot: (section: RootSection) => void;
+    rootDashboardHref: string;
+    onEnterRoot: () => void;
+    returnHref: string;
+    onReturnToPanel: () => void;
   } = $props();
 
   let accountMenu = $state<HTMLDetailsElement | null>(null);
@@ -72,6 +88,16 @@
     targetCandidates.filter((target) => target.type === 'Organization'),
   );
   const personalTargets = $derived(targetCandidates.filter((target) => target.type === 'User'));
+  const rootEnabled = $derived(
+    viewer?.system_role === 'root' || viewer?.system_role === 'super_root',
+  );
+  const systemRoleLabel = $derived(
+    viewer?.system_role === 'super_root'
+      ? 'Super Root'
+      : viewer?.system_role === 'root'
+        ? 'Root'
+        : '',
+  );
 
   function closeMenus(except?: HTMLDetailsElement): void {
     if (accountMenu !== null && accountMenu !== except) accountMenu.open = false;
@@ -137,6 +163,21 @@
     onSelectView(next);
   }
 
+  function selectRoot(next: RootSection): void {
+    mobileNavigationOpen = false;
+    onSelectRoot(next);
+  }
+
+  function enterRoot(): void {
+    mobileNavigationOpen = false;
+    onEnterRoot();
+  }
+
+  function returnToPanel(): void {
+    mobileNavigationOpen = false;
+    onReturnToPanel();
+  }
+
   function toggleDetails(event: Event, menu: HTMLDetailsElement | null): void {
     if (!(event.currentTarget instanceof HTMLDetailsElement) || menu === null) return;
     if (event.currentTarget.open) closeMenus(menu);
@@ -158,6 +199,7 @@
     'panel-sidebar',
     mobileNavigationOpen && 'mobile-navigation-open',
     collapsed && 'collapsed',
+    rootMode && 'root-mode',
   ]}
 >
   <div class="brand-row">
@@ -165,7 +207,7 @@
       <img class="mark-icon" src={iconUrl} alt="" width="32" height="32" decoding="async" />
       <span class="mark-copy">
         <span class="mark-name">Smyklot</span>
-        <span class="mark-part">PANEL</span>
+        <span class="mark-part">{rootMode ? 'ROOT MODE' : 'PANEL'}</span>
       </span>
     </h1>
 
@@ -197,143 +239,203 @@
     {/if}
   </div>
 
-  {#if showNavigation && selectedTarget !== null}
-    <details class="target-menu" bind:this={targetMenu} ontoggle={toggleTargetDetails}>
-      <summary
-        class="target-trigger"
-        bind:this={targetTrigger}
-        aria-label={`Switch installation, currently ${selectedTarget.account.display_name}`}
-      >
-        <Avatar account={selectedTarget.account} size={28} />
-        <span class="target-trigger-copy">
-          <strong>{selectedTarget.account.display_name}</strong>
-          <span class="mono">@{selectedTarget.account.login}</span>
-        </span>
-        <span class="menu-chevron" aria-hidden="true"><Icon name="chevron-down" size={16} /></span>
-        <span class="sidebar-tooltip">Switch installation</span>
-      </summary>
-
-      <div class="target-popover">
-        <label class="target-search">
-          <span class="visually-hidden">Search installations</span>
-          <span class="target-search-icon" aria-hidden="true"><Icon name="search" size={18} /></span
-          >
-          <input
-            type="search"
-            placeholder="Search installations"
-            bind:this={targetSearchInput}
-            bind:value={targetQuery}
-          />
-        </label>
-        <div class="target-options">
-          {#snippet targetOption(target: PanelTarget)}
-            <a
-              href={targetHref(target)}
-              class={['target-option', target.id === selectedId && 'current']}
-              aria-current={target.id === selectedId ? 'page' : undefined}
-              onclick={(event) => selectTarget(event, target.id)}
-            >
-              <Avatar account={target.account} size={28} />
-              <span class="option-copy">
-                <strong>{target.account.display_name}</strong>
-                <span class="mono">@{target.account.login}</span>
-              </span>
-              <span class="option-check" aria-hidden="true">
-                {#if target.id === selectedId}<Icon name="success" size={16} />{/if}
-              </span>
-            </a>
-          {/snippet}
-
-          {#if organizationTargets.length > 0}
-            <p class="target-group-label">Organizations</p>
-            {#each organizationTargets as target (target.id)}
-              {@render targetOption(target)}
-            {/each}
-          {/if}
-
-          {#if personalTargets.length > 0}
-            <p class="target-group-label">Personal</p>
-            {#each personalTargets as target (target.id)}
-              {@render targetOption(target)}
-            {/each}
-          {/if}
-
-          {#if targetCandidates.length === 0}
-            <p class="target-empty">No installations match “{targetQuery.trim()}”</p>
-          {/if}
-        </div>
-      </div>
-    </details>
-  {/if}
-
   {#if showNavigation}
     <div id="panel-navigation-drawer" class="navigation-shell">
-      <ViewTabs value={view} hrefFor={viewHref} onSelect={selectView} {showUsers} {collapsed} />
+      <ViewTabs
+        value={view}
+        hrefFor={viewHref}
+        onSelect={selectView}
+        {showUsers}
+        {collapsed}
+        {rootMode}
+        {rootEnabled}
+        {rootValue}
+        {rootHrefFor}
+        onSelectRoot={selectRoot}
+        {rootDashboardHref}
+        onEnterRoot={enterRoot}
+        {returnHref}
+        onReturnToPanel={returnToPanel}
+      />
     </div>
   {/if}
 
   {#if viewer !== null && handle !== null}
-    <details
-      class="account-menu"
-      bind:this={accountMenu}
-      ontoggle={(event) => toggleDetails(event, accountMenu)}
-    >
-      <summary
-        class="who"
-        bind:this={accountTrigger}
-        aria-label={`Account menu for ${viewer.account.display_name}, ${selectedTarget?.account.display_name ?? handleLabel(handle)}`}
-      >
-        <Avatar account={viewer.account} size={34} />
-        <span class="who-text">
-          <span class="who-name">{viewer.account.display_name}</span>
-          <span class="who-meta">
-            <span class="who-context">
-              {selectedTarget?.account.display_name ?? handleLabel(handle)}
-            </span>
+    {#if !rootMode && selectedTarget !== null}
+      <details class="target-menu" bind:this={targetMenu} ontoggle={toggleTargetDetails}>
+        <summary
+          class="target-trigger"
+          bind:this={targetTrigger}
+          aria-label={`Switch installation, currently ${selectedTarget.account.display_name}`}
+        >
+          <Avatar account={selectedTarget.account} size={34} />
+          <span class="target-trigger-copy">
+            <strong>{selectedTarget.account.display_name}</strong>
+            <span class="mono">@{selectedTarget.account.login}</span>
           </span>
-        </span>
-        <span class="menu-chevron" aria-hidden="true"><Icon name="chevron-down" size={16} /></span>
-        <span class="sidebar-tooltip">Account menu</span>
-      </summary>
-      <div class="account-popover">
-        <div class="theme-setting">
-          <span class="theme-label">Theme</span>
-          <div class="theme-options" role="group" aria-label="Theme">
-            <button
-              type="button"
-              class:selected={theme === 'system'}
-              aria-pressed={theme === 'system'}
-              onclick={() => onSelectTheme('system')}
+          <span class="menu-chevron" aria-hidden="true"><Icon name="chevron-down" size={16} /></span
+          >
+          <span class="sidebar-tooltip">Switch installation</span>
+        </summary>
+
+        <div class="target-popover">
+          <label class="target-search">
+            <span class="visually-hidden">Search installations</span>
+            <span class="target-search-icon" aria-hidden="true"
+              ><Icon name="search" size={18} /></span
             >
-              <Icon name="system" size={15} />
-              <span>System</span>
-            </button>
-            <button
-              type="button"
-              class:selected={theme === 'light'}
-              aria-pressed={theme === 'light'}
-              onclick={() => onSelectTheme('light')}
-            >
-              <Icon name="sun" size={15} />
-              <span>Light</span>
-            </button>
-            <button
-              type="button"
-              class:selected={theme === 'dark'}
-              aria-pressed={theme === 'dark'}
-              onclick={() => onSelectTheme('dark')}
-            >
-              <Icon name="moon" size={15} />
-              <span>Dark</span>
-            </button>
+            <input
+              type="search"
+              placeholder="Search installations"
+              bind:this={targetSearchInput}
+              bind:value={targetQuery}
+            />
+          </label>
+          <div class="target-options">
+            {#snippet targetOption(target: PanelTarget)}
+              <a
+                href={targetHref(target)}
+                class={['target-option', target.id === selectedId && 'current']}
+                aria-current={target.id === selectedId ? 'page' : undefined}
+                onclick={(event) => selectTarget(event, target.id)}
+              >
+                <Avatar account={target.account} size={28} />
+                <span class="option-copy">
+                  <strong>{target.account.display_name}</strong>
+                  <span class="mono">@{target.account.login}</span>
+                </span>
+                <span class="option-check" aria-hidden="true">
+                  {#if target.id === selectedId}<Icon name="success" size={16} />{/if}
+                </span>
+              </a>
+            {/snippet}
+
+            {#if organizationTargets.length > 0}
+              <p class="target-group-label">Organizations</p>
+              {#each organizationTargets as target (target.id)}
+                {@render targetOption(target)}
+              {/each}
+            {/if}
+
+            {#if personalTargets.length > 0}
+              <p class="target-group-label">Personal</p>
+              {#each personalTargets as target (target.id)}
+                {@render targetOption(target)}
+              {/each}
+            {/if}
+
+            {#if targetCandidates.length === 0}
+              <p class="target-empty">No installations match “{targetQuery.trim()}”</p>
+            {/if}
           </div>
+          <div class="signed-in-account">
+            <Avatar account={viewer.account} size={28} />
+            <span>
+              <strong>{viewer.account.display_name}</strong>
+              <small>{handleLabel(handle)}</small>
+            </span>
+          </div>
+          <div class="theme-setting">
+            <span class="theme-label">Theme</span>
+            <div class="theme-options" role="group" aria-label="Theme">
+              <button
+                type="button"
+                class:selected={theme === 'system'}
+                aria-pressed={theme === 'system'}
+                onclick={() => onSelectTheme('system')}
+              >
+                <Icon name="system" size={15} /><span>System</span>
+              </button>
+              <button
+                type="button"
+                class:selected={theme === 'light'}
+                aria-pressed={theme === 'light'}
+                onclick={() => onSelectTheme('light')}
+              >
+                <Icon name="sun" size={15} /><span>Light</span>
+              </button>
+              <button
+                type="button"
+                class:selected={theme === 'dark'}
+                aria-pressed={theme === 'dark'}
+                onclick={() => onSelectTheme('dark')}
+              >
+                <Icon name="moon" size={15} /><span>Dark</span>
+              </button>
+            </div>
+          </div>
+          <button class="account-action" type="button" onclick={signOut}>
+            <Icon name="sign-out" size={16} /><span>Sign out</span>
+          </button>
         </div>
-        <button class="account-action" type="button" onclick={signOut}>
-          <Icon name="sign-out" size={16} />
-          <span>Sign out</span>
-        </button>
-      </div>
-    </details>
+      </details>
+    {:else}
+      <details
+        class="account-menu"
+        bind:this={accountMenu}
+        ontoggle={(event) => toggleDetails(event, accountMenu)}
+      >
+        <summary
+          class="who"
+          bind:this={accountTrigger}
+          aria-label={`Account menu for ${viewer.account.display_name}, ${systemRoleLabel}`}
+        >
+          <Avatar account={viewer.account} size={34} />
+          <span class="who-text">
+            <span class="who-name">{viewer.account.display_name}</span>
+            <span class="who-meta"><span class="who-context">{systemRoleLabel}</span></span>
+          </span>
+          <span class="menu-chevron" aria-hidden="true"><Icon name="chevron-down" size={16} /></span
+          >
+          <span class="sidebar-tooltip">Account menu</span>
+        </summary>
+        <div class="account-popover">
+          <div class="signed-in-account">
+            <Avatar account={viewer.account} size={28} />
+            <span>
+              <strong>{viewer.account.display_name}</strong>
+              <small>{handleLabel(handle)}</small>
+            </span>
+          </div>
+          <div class="theme-setting">
+            <span class="theme-label">Theme</span>
+            <div class="theme-options" role="group" aria-label="Theme">
+              <button
+                type="button"
+                class:selected={theme === 'system'}
+                aria-pressed={theme === 'system'}
+                onclick={() => onSelectTheme('system')}
+              >
+                <Icon name="system" size={15} />
+                <span>System</span>
+              </button>
+              <button
+                type="button"
+                class:selected={theme === 'light'}
+                aria-pressed={theme === 'light'}
+                onclick={() => onSelectTheme('light')}
+              >
+                <Icon name="sun" size={15} />
+                <span>Light</span>
+              </button>
+              <button
+                type="button"
+                class:selected={theme === 'dark'}
+                aria-pressed={theme === 'dark'}
+                onclick={() => onSelectTheme('dark')}
+              >
+                <Icon name="moon" size={15} />
+                <span>Dark</span>
+              </button>
+            </div>
+          </div>
+          <button class="account-action" type="button" onclick={signOut}>
+            <Icon name="sign-out" size={16} />
+            <span>Sign out</span>
+          </button>
+        </div>
+      </details>
+    {/if}
   {/if}
 </aside>
 
@@ -351,6 +453,16 @@
     top: 0;
     transition: padding var(--duration-normal) var(--ease-standard);
     z-index: var(--layer-sticky);
+  }
+
+  .panel-sidebar.root-mode::after {
+    background: var(--footer-spectrum);
+    bottom: 0;
+    content: '';
+    position: absolute;
+    right: -1px;
+    top: 0;
+    width: 2px;
   }
 
   .brand-row {
@@ -568,7 +680,11 @@
   }
 
   .target-popover {
-    top: calc(100% + var(--space-2));
+    bottom: calc(100% + var(--space-2));
+    display: grid;
+    grid-template-rows: auto minmax(8rem, 1fr) auto auto auto;
+    left: 0;
+    max-height: min(38rem, calc(100dvh - 2rem));
     width: min(19rem, calc(100vw - 2rem));
   }
 
@@ -582,7 +698,8 @@
   .target-options {
     display: grid;
     gap: 2px;
-    max-height: min(24rem, calc(100dvh - 10rem));
+    max-height: none;
+    min-height: 0;
     overflow: auto;
   }
 
@@ -709,17 +826,12 @@
     min-height: 0;
   }
 
+  .target-menu,
   .account-menu {
-    border-top: 1px solid var(--sidebar-border);
-    margin: auto calc(var(--space-4) * -1) 0;
+    margin-top: auto;
   }
 
   .who {
-    background: transparent;
-    border: 0;
-    border-radius: 0;
-    min-height: 4.5rem;
-    padding: var(--space-3) var(--space-4);
     overflow: hidden;
   }
 
@@ -747,6 +859,37 @@
     padding: 0 var(--space-3);
     text-align: left;
     width: 100%;
+  }
+
+  .signed-in-account {
+    align-items: center;
+    border-bottom: 1px solid var(--border-subtle);
+    display: grid;
+    gap: var(--space-2);
+    grid-template-columns: auto minmax(0, 1fr);
+    margin-bottom: var(--space-1);
+    padding: var(--space-2) var(--space-2) var(--space-3);
+  }
+
+  .signed-in-account > span {
+    display: grid;
+    min-width: 0;
+  }
+
+  .signed-in-account strong,
+  .signed-in-account small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .signed-in-account strong {
+    font-size: var(--font-size-meta);
+  }
+
+  .signed-in-account small {
+    color: var(--text-muted);
+    font: 500 var(--font-size-compact) / 1.35 var(--mono);
   }
 
   .theme-setting {
@@ -884,11 +1027,6 @@
     padding: var(--space-2);
   }
 
-  .collapsed .account-menu {
-    margin-left: calc(var(--space-2) * -1);
-    margin-right: calc(var(--space-2) * -1);
-  }
-
   .collapsed .target-popover,
   .collapsed .account-popover {
     left: calc(100% + var(--space-2));
@@ -915,8 +1053,7 @@
       padding: 0;
     }
 
-    .sidebar-collapse-trigger,
-    .target-menu {
+    .sidebar-collapse-trigger {
       display: none;
     }
 
@@ -959,7 +1096,9 @@
     }
 
     .account-menu,
-    .collapsed .account-menu {
+    .target-menu,
+    .collapsed .account-menu,
+    .collapsed .target-menu {
       border: 0;
       margin: 0;
       position: absolute;
@@ -968,6 +1107,7 @@
     }
 
     .who,
+    .target-trigger,
     .collapsed .who {
       background: transparent;
       border: 0;
@@ -977,17 +1117,25 @@
     }
 
     .who-text,
+    .target-trigger-copy,
     .menu-chevron,
     .sidebar-tooltip {
       display: none;
     }
 
     .account-popover,
-    .collapsed .account-popover {
+    .target-popover,
+    .collapsed .account-popover,
+    .collapsed .target-popover {
       bottom: auto;
       left: auto;
       right: 0;
       top: calc(100% + var(--space-2));
+    }
+
+    .target-popover {
+      right: 0;
+      width: min(19rem, calc(100vw - 2rem));
     }
   }
 

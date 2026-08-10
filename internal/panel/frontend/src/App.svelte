@@ -21,9 +21,13 @@
   } from './lib/preferences';
   import {
     resolvePanelRoute,
+    rootSection,
+    rootSectionRoute,
     type PanelRoute,
     type PanelRouter,
     type PanelView,
+    type RootRoute,
+    type RootSection,
   } from './lib/routes';
   import type {
     PanelTarget,
@@ -54,6 +58,8 @@
   let repositoryDetailsVersion = $state(0);
   let userVersion = $state(0);
   let view = $state<PanelView>('settings');
+  let rootMode = $state(false);
+  let activeRootRoute = $state<RootRoute>({ rootView: 'overview' });
   let streamReady = $state(false);
   let revokedReason = $state<string | null>(null);
   let sidebarCollapsed = $state(readSidebarDisplay() === 'collapsed');
@@ -68,8 +74,12 @@
   const selectedTarget = $derived(
     selectedId === null ? null : (targets.find((target) => target.id === selectedId) ?? null),
   );
+  const rootValue = $derived(rootSection(activeRootRoute));
+  const returnTarget = $derived(selectedTarget ?? targets[0] ?? null);
   const tableScrollView = $derived(
-    selectedTarget !== null && ['repositories', 'users', 'invitations', 'history'].includes(view),
+    !rootMode &&
+      selectedTarget !== null &&
+      ['repositories', 'users', 'invitations', 'history'].includes(view),
   );
 
   function forwardTableWheel(event: WheelEvent): void {
@@ -163,9 +173,21 @@
     requested: PanelRoute | null,
     navigation: 'none' | 'push' | 'replace',
   ): Promise<void> {
+    if (requested !== null && 'rootView' in requested && viewer?.system_role !== 'none') {
+      rootMode = true;
+      activeRootRoute = requested;
+      if (navigation === 'push') {
+        router.push(requested);
+      } else if (navigation === 'replace') {
+        router.replace(requested);
+      }
+      return;
+    }
+
+    const installationRoute = requested !== null && !('rootView' in requested) ? requested : null;
     const resolved = resolvePanelRoute(
       targets.map((target) => target.account.login),
-      requested,
+      installationRoute,
       readLastInstallation(),
     );
     if (resolved === null) {
@@ -177,6 +199,7 @@
     if (target === undefined) return;
 
     const targetChanged = selectedId !== target.id;
+    rootMode = false;
     selectedId = target.id;
     view = resolved.view;
     writeLastInstallation(target.account.login);
@@ -184,7 +207,7 @@
 
     if (navigation === 'push') {
       router.push(canonical);
-    } else if (navigation === 'replace' || !sameRoute(requested, canonical)) {
+    } else if (navigation === 'replace' || !sameRoute(installationRoute, canonical)) {
       router.replace(canonical);
     }
 
@@ -213,9 +236,64 @@
     return target === null ? '#' : router.path(routeFor(target, nextView));
   }
 
+  function rootHrefFor(section: RootSection): string {
+    return router.path(rootSectionRoute(section));
+  }
+
+  function rootDashboardHref(): string {
+    return router.path({ rootView: 'overview' });
+  }
+
+  function returnHref(): string {
+    return returnTarget === null ? '#' : router.path(routeFor(returnTarget, view));
+  }
+
   function sameRoute(left: PanelRoute | null, right: PanelRoute): boolean {
-    if (left === null || left.view !== right.view) return false;
-    return left.account === right.account;
+    return left !== null && router.path(left) === router.path(right);
+  }
+
+  function selectRootSection(section: RootSection): void {
+    if (!rootMode || rootValue === section) return;
+    const route = rootSectionRoute(section);
+    activeRootRoute = route;
+    router.push(route);
+  }
+
+  function enterRoot(): void {
+    if (viewer?.system_role === 'none') return;
+    const route: RootRoute = { rootView: 'overview' };
+    rootMode = true;
+    activeRootRoute = route;
+    router.push(route);
+  }
+
+  function returnToPanel(): void {
+    const target = returnTarget;
+    if (target === null) return;
+    void activateRoute(routeFor(target, view), 'push');
+  }
+
+  function rootPageTitle(route: RootRoute): string {
+    if (route.rootView === 'overview') return 'Overview';
+    if (route.rootView === 'installations' || route.rootView === 'installation')
+      return 'Installations';
+    if (route.rootView === 'access-users' || route.rootView === 'access-invitations')
+      return 'Access';
+    if (route.rootView === 'history-audit' || route.rootView === 'history-failures')
+      return 'History';
+    return 'Settings';
+  }
+
+  function rootPageDescription(route: RootRoute): string {
+    if (route.rootView === 'overview')
+      return 'Application health, ownership, and security activity';
+    if (route.rootView === 'installations' || route.rootView === 'installation')
+      return 'Every GitHub installation connected to Smyklot';
+    if (route.rootView === 'access-users' || route.rootView === 'access-invitations')
+      return 'Application accounts, invitations, and system roles';
+    if (route.rootView === 'history-audit' || route.rootView === 'history-failures')
+      return 'Application-wide audit events and failures';
+    return 'Runtime behavior and deployment-backed defaults';
   }
 
   async function updateTarget(input: TargetSettingsInput): Promise<void> {
@@ -272,7 +350,9 @@
         viewer = currentViewer;
       }
       if (!(await refreshTargets()) || !streamRefreshes.isCurrent(refresh)) return;
-      if (selectedId === null) {
+      if (rootMode) {
+        router.replace(activeRootRoute);
+      } else if (selectedId === null) {
         await activateRoute(router.current(), 'replace');
       } else if (selectedTarget !== null) {
         writeLastInstallation(selectedTarget.account.login);
@@ -382,7 +462,7 @@
 
 <a class="skip-link" href="#panel-content">Skip to panel content</a>
 
-<main class="app-shell" class:sidebar-collapsed={sidebarCollapsed}>
+<main class="app-shell" class:sidebar-collapsed={sidebarCollapsed} class:root-mode={rootMode}>
   <IdentityBar
     {viewer}
     {iconUrl}
@@ -395,11 +475,19 @@
     {viewHref}
     onSelectView={selectView}
     showUsers={selectedTarget?.capabilities.manage_target_users === true}
-    showNavigation={viewer !== null && selectedTarget !== null}
+    showNavigation={viewer !== null && (rootMode || selectedTarget !== null)}
     collapsed={sidebarCollapsed}
     onToggleCollapsed={toggleSidebar}
     {theme}
     onSelectTheme={selectTheme}
+    {rootMode}
+    {rootValue}
+    {rootHrefFor}
+    onSelectRoot={selectRootSection}
+    rootDashboardHref={rootDashboardHref()}
+    onEnterRoot={enterRoot}
+    returnHref={returnHref()}
+    onReturnToPanel={returnToPanel}
   />
 
   <div class="workspace" class:table-scroll-view={tableScrollView} onwheel={forwardTableWheel}>
@@ -432,6 +520,31 @@
         {:else if failure === null}
           <SignedOut href={api.signInUrl()} />
         {/if}
+      {:else if rootMode}
+        <section class="root-workspace" aria-labelledby="root-page-heading">
+          <header class="root-page-header">
+            <div>
+              <p class="root-eyebrow">
+                Root mode · {viewer.system_role === 'super_root' ? 'Super Root' : 'Root'}
+              </p>
+              <h2 id="root-page-heading">{rootPageTitle(activeRootRoute)}</h2>
+              <p>{rootPageDescription(activeRootRoute)}</p>
+            </div>
+            <span class="root-boundary">Application scope</span>
+          </header>
+
+          <div class="root-foundation" role="status">
+            <span class="root-foundation-mark" aria-hidden="true"></span>
+            <div>
+              <strong>{rootPageTitle(activeRootRoute)} is isolated from installation access</strong>
+              <p>
+                Root data and actions use dedicated server-authorized routes. Installation writes
+                stay blocked unless the current Root owns that installation or starts an audited
+                elevation.
+              </p>
+            </div>
+          </div>
+        </section>
       {:else}
         {#if selectedTarget !== null}
           {#if view === 'settings'}
@@ -582,6 +695,82 @@
     width: 2.5rem;
   }
 
+  .root-workspace {
+    display: grid;
+    gap: var(--space-6);
+  }
+
+  .root-page-header {
+    align-items: end;
+    display: flex;
+    gap: var(--space-6);
+    justify-content: space-between;
+  }
+
+  .root-page-header h2 {
+    font-size: clamp(1.55rem, 2.4vw, 2rem);
+    letter-spacing: -0.035em;
+    line-height: 1.05;
+    margin: 0;
+  }
+
+  .root-page-header p:not(.root-eyebrow) {
+    color: var(--text-secondary);
+    margin: var(--space-2) 0 0;
+  }
+
+  .root-eyebrow,
+  .root-boundary {
+    color: #6d54bd;
+    font: 700 var(--font-size-compact) / 1 var(--sans);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .root-eyebrow {
+    margin: 0 0 var(--space-3);
+  }
+
+  .root-boundary {
+    background: color-mix(in srgb, #8b5cf6 10%, var(--surface-base));
+    border: 1px solid color-mix(in srgb, #8b5cf6 28%, var(--border-subtle));
+    border-radius: var(--radius-control);
+    color: color-mix(in srgb, #6d54bd 82%, var(--text-primary));
+    padding: var(--space-2) var(--space-3);
+    white-space: nowrap;
+  }
+
+  .root-foundation {
+    align-items: start;
+    background: var(--surface-base);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-surface);
+    box-shadow: var(--shadow-plate);
+    display: grid;
+    gap: var(--space-4);
+    grid-template-columns: auto minmax(0, 1fr);
+    min-height: 8rem;
+    padding: var(--space-6);
+  }
+
+  .root-foundation p {
+    color: var(--text-secondary);
+    margin: var(--space-2) 0 0;
+    max-width: 58rem;
+  }
+
+  .root-foundation-mark {
+    background: var(--footer-spectrum);
+    border-radius: 3px;
+    height: 2.5rem;
+    width: 0.3rem;
+  }
+
+  :global(:root[data-theme='dark']) .root-eyebrow,
+  :global(:root[data-theme='dark']) .root-boundary {
+    color: #c4b5fd;
+  }
+
   @keyframes skeleton-pulse {
     from {
       opacity: 0.52;
@@ -601,6 +790,12 @@
     .empty-panel-state .btn {
       grid-column: 1 / -1;
       justify-self: start;
+    }
+
+    .root-page-header {
+      align-items: start;
+      flex-direction: column;
+      gap: var(--space-3);
     }
   }
 </style>

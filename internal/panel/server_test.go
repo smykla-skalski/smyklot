@@ -1375,6 +1375,14 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 		"/panel/i/smykla-skalski/users",
 		"/panel/i/smykla-skalski/invitations",
 		"/panel/i/auth/settings",
+		"/panel/root",
+		"/panel/root/installations",
+		"/panel/root/installations/smykla-skalski/repositories",
+		"/panel/root/access/users",
+		"/panel/root/access/invitations",
+		"/panel/root/history/audit",
+		"/panel/root/history/failures",
+		"/panel/root/settings",
 	} {
 		response := harness.request(t, http.MethodGet, path, nil, nil)
 		body := response.Body.String()
@@ -1398,6 +1406,10 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 		"/panel/webhook/history",
 		"/panel/i/smykla-skalski/help",
 		"/panel/i/smykla-skalski/unknown",
+		"/panel/root/unknown",
+		"/panel/root/access/owners",
+		"/panel/root/history/unknown",
+		"/panel/root/installations/smykla-skalski/unknown",
 		"/panel/@smykla-skalski/repositories",
 		"/panel/invite/too-short",
 		"/panel/invite/abcdefghijklmnopqrstuvwxyzABCDEFGH.01234567",
