@@ -43,7 +43,7 @@ func (s *Store) ListAudit(
 	if err != nil {
 		return storage.AuditPage{}, fmt.Errorf("count audit entries: %w", err)
 	}
-	direction, err := historyDirection(page.Order)
+	order, err := auditPageOrder(page.Order)
 	if err != nil {
 		return storage.AuditPage{}, err
 	}
@@ -52,7 +52,7 @@ func (s *Store) ListAudit(
 	// #nosec G202 -- clauses and direction come only from fixed internal constants;
 	// every request value remains a bound parameter.
 	query := auditSelect + " WHERE " + strings.Join(clauses, " AND ") +
-		" ORDER BY ae.id " + direction + " LIMIT ? OFFSET ?"
+		" ORDER BY " + order + " LIMIT ? OFFSET ?"
 	rows, err := s.db.QueryContext(ctx, query, arguments...)
 	if err != nil {
 		return storage.AuditPage{}, fmt.Errorf("list audit entries: %w", err)
@@ -64,6 +64,29 @@ func (s *Store) ListAudit(
 	}
 
 	return auditPage(items, limit, total, offset), nil
+}
+
+func auditPageOrder(order storage.HistoryOrder) (string, error) {
+	switch order {
+	case "", storage.HistoryNewest:
+		return "ae.id DESC", nil
+	case storage.HistoryOldest:
+		return "ae.id ASC", nil
+	case storage.HistoryActorAscending:
+		return "lower(a.display_name) ASC, lower(a.login) ASC, ae.id DESC", nil
+	case storage.HistoryActorDescending:
+		return "lower(a.display_name) DESC, lower(a.login) DESC, ae.id DESC", nil
+	case storage.HistoryTargetAscending:
+		return "lower(COALESCE(ae.repository_full_name, 'Account')) ASC, ae.id DESC", nil
+	case storage.HistoryTargetDescending:
+		return "lower(COALESCE(ae.repository_full_name, 'Account')) DESC, ae.id DESC", nil
+	case storage.HistoryChangeAscending:
+		return "lower(ae.summary) ASC, lower(ae.action) ASC, ae.id DESC", nil
+	case storage.HistoryChangeDescending:
+		return "lower(ae.summary) DESC, lower(ae.action) DESC, ae.id DESC", nil
+	default:
+		return "", fmt.Errorf("unsupported audit order %q", order)
+	}
 }
 
 func auditFilters(
@@ -90,6 +113,17 @@ OR instr(lower(a.display_name), lower(?)) > 0)`)
 		clauses = append(clauses, "ae.repository_id IS NOT NULL")
 	default:
 		return nil, nil, fmt.Errorf("unsupported audit scope %q", page.Scope)
+	}
+	switch page.Change {
+	case "", storage.AuditChangeAll:
+	case storage.AuditChangeEnablement:
+		clauses = append(clauses, "ae.action IN ('repository.enabled', 'repository.disabled')")
+	case storage.AuditChangeRepository:
+		clauses = append(clauses, "ae.action LIKE 'repository.%' AND ae.action NOT IN ('repository.enabled', 'repository.disabled')")
+	case storage.AuditChangeAccount:
+		clauses = append(clauses, "ae.action LIKE 'target.%'")
+	default:
+		return nil, nil, fmt.Errorf("unsupported audit change %q", page.Change)
 	}
 
 	return clauses, arguments, nil

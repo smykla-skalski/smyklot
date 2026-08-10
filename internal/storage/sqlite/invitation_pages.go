@@ -104,6 +104,13 @@ OR instr(lower(creator.login), lower(?)) > 0)`)
 }
 
 func invitationPageOrder(order storage.InvitationOrder) (string, error) {
+	roleLevel := `(CASE ui.role
+WHEN 'viewer' THEN 1
+WHEN 'editor' THEN 2
+WHEN 'admin' THEN 3
+WHEN 'owner' THEN 4
+ELSE 0
+END)`
 	switch order {
 	case "", storage.InvitationCreatedNewest:
 		return "ui.created_at DESC, ui.id DESC", nil
@@ -117,6 +124,10 @@ func invitationPageOrder(order storage.InvitationOrder) (string, error) {
 		return "lower(invited.display_name) ASC, lower(invited.login) ASC, ui.id ASC", nil
 	case storage.InvitationNameDescending:
 		return "lower(invited.display_name) DESC, lower(invited.login) DESC, ui.id DESC", nil
+	case storage.InvitationRoleAscending:
+		return roleLevel + " ASC, lower(invited.display_name) ASC, ui.id ASC", nil
+	case storage.InvitationRoleDescending:
+		return roleLevel + " DESC, lower(invited.display_name) ASC, ui.id ASC", nil
 	default:
 		return "", fmt.Errorf("unsupported invitation order %q", order)
 	}

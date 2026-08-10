@@ -43,6 +43,8 @@ type PanelUserOrder string
 const (
 	PanelUserNameAscending  PanelUserOrder = "name_asc"
 	PanelUserNameDescending PanelUserOrder = "name_desc"
+	PanelUserRoleAscending  PanelUserOrder = "role_asc"
+	PanelUserRoleDescending PanelUserOrder = "role_desc"
 	PanelUserUpdatedNewest  PanelUserOrder = "updated_newest"
 	PanelUserUpdatedOldest  PanelUserOrder = "updated_oldest"
 	PanelUserLoginNewest    PanelUserOrder = "login_newest"
@@ -138,6 +140,8 @@ const (
 	InvitationExpiryLatest   InvitationOrder = "expiry_latest"
 	InvitationNameAscending  InvitationOrder = "name_asc"
 	InvitationNameDescending InvitationOrder = "name_desc"
+	InvitationRoleAscending  InvitationOrder = "role_asc"
+	InvitationRoleDescending InvitationOrder = "role_desc"
 )
 
 // InvitationPageRequest selects one filtered invitation-management page.
@@ -449,20 +453,24 @@ type RepositoryFileState struct {
 type RepositoryOrder string
 
 const (
-	RepositoryNameAscending  RepositoryOrder = "name_asc"
-	RepositoryNameDescending RepositoryOrder = "name_desc"
-	RepositoryNewest         RepositoryOrder = "newest"
-	RepositoryOldest         RepositoryOrder = "oldest"
+	RepositoryNameAscending       RepositoryOrder = "name_asc"
+	RepositoryNameDescending      RepositoryOrder = "name_desc"
+	RepositoryFileAscending       RepositoryOrder = "file_asc"
+	RepositoryFileDescending      RepositoryOrder = "file_desc"
+	RepositoryOverridesAscending  RepositoryOrder = "overrides_asc"
+	RepositoryOverridesDescending RepositoryOrder = "overrides_desc"
+	RepositoryNewest              RepositoryOrder = "newest"
+	RepositoryOldest              RepositoryOrder = "oldest"
 )
 
 // RepositoryPageRequest selects one filtered page of available repositories.
 //
 // Offset counts rows from the start of the ordered result instead of seeking
-// from a row boundary, because the panel renders numbered pages and a keyset
-// cursor cannot answer "jump to page 7". The cost is drift: rows written
-// between two page fetches shift the window, so a later page can repeat a row
-// already shown or skip one. Nothing is lost from storage, only from that one
-// paginated view. FailurePageRequest and HistoryPageRequest page the same way.
+// from a row boundary, because the panel loads consecutive windows into one
+// virtualized list. The cost is drift: rows written between two fetches shift
+// the window, so a later window can repeat a row already shown or skip one.
+// Nothing is lost from storage, only from that one rendered list.
+// FailurePageRequest and HistoryPageRequest page the same way.
 type RepositoryPageRequest struct {
 	Offset             int
 	Limit              int
@@ -540,8 +548,18 @@ type DeliveryFailure struct {
 type HistoryOrder string
 
 const (
-	HistoryNewest HistoryOrder = "newest"
-	HistoryOldest HistoryOrder = "oldest"
+	HistoryNewest               HistoryOrder = "newest"
+	HistoryOldest               HistoryOrder = "oldest"
+	HistoryActorAscending       HistoryOrder = "actor_asc"
+	HistoryActorDescending      HistoryOrder = "actor_desc"
+	HistoryTargetAscending      HistoryOrder = "target_asc"
+	HistoryTargetDescending     HistoryOrder = "target_desc"
+	HistoryChangeAscending      HistoryOrder = "change_asc"
+	HistoryChangeDescending     HistoryOrder = "change_desc"
+	HistoryStatusAscending      HistoryOrder = "status_asc"
+	HistoryStatusDescending     HistoryOrder = "status_desc"
+	HistoryRepositoryAscending  HistoryOrder = "repository_asc"
+	HistoryRepositoryDescending HistoryOrder = "repository_desc"
 )
 
 // HistoryPageRequest is an offset-based page request. See
@@ -563,10 +581,21 @@ const (
 	AuditRepositories AuditScope = "repositories"
 )
 
+// AuditChange limits audit history by the kind of configuration mutation.
+type AuditChange string
+
+const (
+	AuditChangeAll        AuditChange = "all"
+	AuditChangeEnablement AuditChange = "enablement"
+	AuditChangeRepository AuditChange = "repository"
+	AuditChangeAccount    AuditChange = "account"
+)
+
 // AuditPageRequest adds mutation scope to common history controls.
 type AuditPageRequest struct {
 	HistoryPageRequest
-	Scope AuditScope
+	Scope  AuditScope
+	Change AuditChange
 }
 
 // FailurePageRequest adds retryability filtering to common history controls.

@@ -1149,6 +1149,7 @@ async function handle(
     if (audit && method === 'GET') {
       const target = findTarget(state, audit.groups?.target ?? '');
       const scope = parsed.searchParams.get('scope') ?? 'all';
+      const change = parsed.searchParams.get('change') ?? 'all';
       respond(
         res,
         200,
@@ -1156,6 +1157,14 @@ async function handle(
           target.audit,
           parsed.searchParams,
           (entry) => entry.created_at,
+          (entry, sort) => {
+            if (sort.startsWith('actor_')) return entry.actor.display_name.toLocaleLowerCase();
+            if (sort.startsWith('target_')) {
+              return (entry.repository_full_name ?? 'Account').toLocaleLowerCase();
+            }
+            if (sort.startsWith('change_')) return entry.summary.toLocaleLowerCase();
+            return entry.created_at;
+          },
           (entry, query) =>
             [
               entry.actor.display_name,
@@ -1164,10 +1173,21 @@ async function handle(
               entry.summary,
               entry.repository_full_name ?? '',
             ].some((value) => value.toLocaleLowerCase().includes(query)),
-          (entry) =>
-            scope === 'all' ||
-            (scope === 'account' && entry.repository_full_name === undefined) ||
-            (scope === 'repositories' && entry.repository_full_name !== undefined),
+          (entry) => {
+            const matchesScope =
+              scope === 'all' ||
+              (scope === 'account' && entry.repository_full_name === undefined) ||
+              (scope === 'repositories' && entry.repository_full_name !== undefined);
+            const matchesChange =
+              change === 'all' ||
+              (change === 'enablement' &&
+                ['repository.enabled', 'repository.disabled'].includes(entry.action)) ||
+              (change === 'repository' &&
+                entry.action.startsWith('repository.') &&
+                !['repository.enabled', 'repository.disabled'].includes(entry.action)) ||
+              (change === 'account' && entry.action.startsWith('target.'));
+            return matchesScope && matchesChange;
+          },
         ),
       );
       return;
@@ -1182,6 +1202,13 @@ async function handle(
           target.failures,
           parsed.searchParams,
           (failure) => failure.occurred_at,
+          (failure, sort) => {
+            if (sort.startsWith('status_')) return failure.retryable ? 1 : 0;
+            if (sort.startsWith('repository_')) {
+              return failure.repository_full_name.toLocaleLowerCase();
+            }
+            return failure.occurred_at;
+          },
           (failure, query) =>
             [
               failure.delivery_id,
@@ -1471,10 +1498,31 @@ function userPage(
     })
     .map((user) => structuredClone(user));
 
+  const roleLevel = (user: PanelUser): number => {
+    const role = scoped
+      ? (user.target_access?.effective_role ?? user.global_role)
+      : user.global_role;
+    return ['none', 'viewer', 'editor', 'admin', 'owner'].indexOf(role);
+  };
+
   switch (parameters.get('sort')) {
     case 'name_desc':
       ordered.sort((left, right) =>
         right.account.display_name.localeCompare(left.account.display_name),
+      );
+      break;
+    case 'role_asc':
+      ordered.sort(
+        (left, right) =>
+          roleLevel(left) - roleLevel(right) ||
+          left.account.display_name.localeCompare(right.account.display_name),
+      );
+      break;
+    case 'role_desc':
+      ordered.sort(
+        (left, right) =>
+          roleLevel(right) - roleLevel(left) ||
+          left.account.display_name.localeCompare(right.account.display_name),
       );
       break;
     case 'updated_newest':
@@ -1546,6 +1594,22 @@ function invitationPage(
         right.account.display_name.localeCompare(left.account.display_name),
       );
       break;
+    case 'role_asc':
+      ordered.sort(
+        (left, right) =>
+          ['viewer', 'editor', 'admin', 'owner'].indexOf(left.role) -
+            ['viewer', 'editor', 'admin', 'owner'].indexOf(right.role) ||
+          left.account.display_name.localeCompare(right.account.display_name),
+      );
+      break;
+    case 'role_desc':
+      ordered.sort(
+        (left, right) =>
+          ['viewer', 'editor', 'admin', 'owner'].indexOf(right.role) -
+            ['viewer', 'editor', 'admin', 'owner'].indexOf(left.role) ||
+          left.account.display_name.localeCompare(right.account.display_name),
+      );
+      break;
     default:
       ordered.sort((left, right) => right.created_at.localeCompare(left.created_at));
   }
@@ -1572,6 +1636,7 @@ function historyPage<T>(
   items: T[],
   parameters: URLSearchParams,
   timestamp: (item: T) => string,
+  sortValue: (item: T, sort: string) => string | number,
   matches: (item: T, query: string) => boolean,
   visible: (item: T) => boolean,
 ): Page<T> {
@@ -1581,10 +1646,19 @@ function historyPage<T>(
       ? Math.min(requestedLimit, 100)
       : DEFAULT_PAGE_SIZE;
   const query = (parameters.get('q') ?? '').trim().toLocaleLowerCase();
+  const sort = parameters.get('sort') ?? 'newest';
+  const direction = sort === 'newest' || sort.endsWith('_desc') ? -1 : 1;
   const ordered = items
     .filter((item) => visible(item) && (query === '' || matches(item, query)))
-    .sort((left, right) => timestamp(left).localeCompare(timestamp(right)));
-  if (parameters.get('sort') !== 'oldest') ordered.reverse();
+    .sort((left, right) => {
+      const leftValue = sortValue(left, sort);
+      const rightValue = sortValue(right, sort);
+      const comparison =
+        typeof leftValue === 'number' && typeof rightValue === 'number'
+          ? leftValue - rightValue
+          : String(leftValue).localeCompare(String(rightValue));
+      return comparison * direction || timestamp(right).localeCompare(timestamp(left));
+    });
 
   const offset = Number.parseInt(parameters.get('cursor') ?? '', 10);
   const safeOffset = Number.isFinite(offset) && offset >= 0 ? offset : 0;
@@ -1631,6 +1705,26 @@ function repositoryPage(
     case 'name_desc':
       ordered.sort((left, right) => right.full_name.localeCompare(left.full_name));
       break;
+    case 'file_asc':
+    case 'file_desc': {
+      const direction = parameters.get('sort') === 'file_desc' ? -1 : 1;
+      ordered.sort(
+        (left, right) =>
+          left.config_file_status.localeCompare(right.config_file_status) * direction ||
+          left.full_name.localeCompare(right.full_name),
+      );
+      break;
+    }
+    case 'overrides_asc':
+    case 'overrides_desc': {
+      const direction = parameters.get('sort') === 'overrides_desc' ? -1 : 1;
+      ordered.sort(
+        (left, right) =>
+          (left.config_override_count - right.config_override_count) * direction ||
+          left.full_name.localeCompare(right.full_name),
+      );
+      break;
+    }
     case 'newest':
       ordered.sort((left, right) => right.updated_at.localeCompare(left.updated_at));
       break;

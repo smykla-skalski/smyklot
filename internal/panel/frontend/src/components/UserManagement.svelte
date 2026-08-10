@@ -1,4 +1,16 @@
 <script lang="ts">
+  import {
+    columnFilteringFeature,
+    createColumnHelper,
+    createTable,
+    filterFn_includesString,
+    rowSortingFeature,
+    tableFeatures,
+  } from '@tanstack/svelte-table';
+  import type { ColumnFiltersState, SortingState, Updater } from '@tanstack/svelte-table';
+  import { createVirtualizer } from '@tanstack/svelte-virtual';
+  import { get } from 'svelte/store';
+
   import { formatDateTime, formatRelative, formatTimestamp } from '../lib/format';
   import type { FilterSection } from '../lib/filter-menu';
   import type {
@@ -28,17 +40,17 @@
   import FilterMenu from './FilterMenu.svelte';
   import Icon, { type IconName } from './Icon.svelte';
   import Modal from './Modal.svelte';
-  import PaginationBar from './PaginationBar.svelte';
   import PanelHeader from './PanelHeader.svelte';
   import RolePicker, { type RolePickerOption } from './RolePicker.svelte';
   import SearchField from './SearchField.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
+  import TableEmptyState from './TableEmptyState.svelte';
 
   type UserScope = 'global' | 'target';
   type ManagementSection = 'users' | 'invitations';
   type SortDirection = 'ascending' | 'descending';
-  type UserSortColumn = 'name' | 'last_login';
-  type InvitationSortColumn = 'name' | 'expires';
+  type UserSortColumn = 'name' | 'role' | 'last_login';
+  type InvitationSortColumn = 'name' | 'role' | 'expires';
   type UserAction = 'ban' | 'remove' | 'suspend' | 'restore' | 'unban' | 'remove_access';
   type TargetRole = Exclude<PanelRole, 'owner'>;
   type GrantedTargetRole = Exclude<TargetRole, 'none'>;
@@ -85,8 +97,40 @@
       ],
     },
   ];
+  const ACCESS_TABLE_FEATURES = tableFeatures({
+    columnFilteringFeature,
+    filterFns: { includesString: filterFn_includesString },
+    rowSortingFeature,
+  });
+  const userColumn = createColumnHelper<typeof ACCESS_TABLE_FEATURES, PanelUser>();
+  const USER_COLUMNS = userColumn.columns([
+    userColumn.accessor((user) => user.account.display_name, {
+      id: 'name',
+      enableColumnFilter: false,
+    }),
+    userColumn.accessor((user) => user.target_access?.effective_role ?? user.global_role, {
+      id: 'role',
+    }),
+    userColumn.accessor('status', { id: 'status', enableSorting: false }),
+    userColumn.accessor('last_login_at', { id: 'last_login', enableColumnFilter: false }),
+    userColumn.accessor('updated_at', { id: 'updated', enableColumnFilter: false }),
+    userColumn.display({ id: 'actions', enableColumnFilter: false, enableSorting: false }),
+  ]);
+  const invitationColumn = createColumnHelper<typeof ACCESS_TABLE_FEATURES, PanelInvitation>();
+  const INVITATION_COLUMNS = invitationColumn.columns([
+    invitationColumn.accessor((invitation) => invitation.account.display_name, {
+      id: 'name',
+      enableColumnFilter: false,
+    }),
+    invitationColumn.accessor('role', { id: 'role' }),
+    invitationColumn.accessor('status', { id: 'status', enableSorting: false }),
+    invitationColumn.accessor('expires_at', { id: 'expires', enableColumnFilter: false }),
+    invitationColumn.accessor('created_at', { id: 'created', enableColumnFilter: false }),
+    invitationColumn.display({ id: 'actions', enableColumnFilter: false, enableSorting: false }),
+  ]);
 
   const {
+    section: activeSection,
     scope,
     targetId,
     targetName,
@@ -95,6 +139,7 @@
     canManageOwners,
     refreshVersion = 0,
     onScope,
+    onSection,
     fetchUsers,
     addUser,
     updateUser,
@@ -109,6 +154,7 @@
     revokeInvitation,
     fetchUserDecisions,
   }: {
+    section: ManagementSection;
     scope: UserScope;
     targetId: string;
     targetName: string;
@@ -117,6 +163,7 @@
     canManageOwners: boolean;
     refreshVersion?: number;
     onScope: (targetId: string | null) => void;
+    onSection: (section: ManagementSection) => void;
     fetchUsers: (request: PanelUserPageRequest) => Promise<Page<PanelUser>>;
     addUser: (input: AddGlobalUserInput) => Promise<PanelUser>;
     updateUser: (accountId: string, input: UpdateGlobalUserInput) => Promise<PanelUser>;
@@ -151,6 +198,8 @@
   let loadingInvitations = $state(true);
   let userFailure = $state<string | null>(null);
   let invitationFailure = $state<string | null>(null);
+  let userLoadMoreFailure = $state<string | null>(null);
+  let invitationLoadMoreFailure = $state<string | null>(null);
   let actionFailure = $state<string | null>(null);
   let feedback = $state('');
 
@@ -159,17 +208,14 @@
   let userSort = $state<PanelUserSort>('name_asc');
   let userRoles = $state<PanelRole[]>([]);
   let userStatuses = $state<PanelUserListStatus[]>([]);
-  let userLimit = $state(20);
-  let userPageIndex = $state(0);
+  const userLimit = 20;
 
   let invitationSearch = $state('');
   let invitationQuery = $state('');
   let invitationSort = $state<InvitationSort>('name_asc');
   let invitationRoles = $state<Exclude<PanelRole, 'none'>[]>([]);
   let invitationStatuses = $state<InvitationStatus[]>([]);
-  let invitationLimit = $state(20);
-  let invitationPageIndex = $state(0);
-  let activeSection = $state<ManagementSection>('users');
+  const invitationLimit = 20;
 
   let addModalOpen = $state(false);
   let addButton = $state<HTMLButtonElement | null>(null);
@@ -194,6 +240,8 @@
   let historyTrigger = $state<HTMLElement | null>(null);
   let userResults = $state<HTMLDivElement>();
   let invitationResults = $state<HTMLDivElement>();
+  let userScroll = $state<HTMLTableSectionElement>();
+  let invitationScroll = $state<HTMLTableSectionElement>();
 
   let userLoadVersion = 0;
   let invitationLoadVersion = 0;
@@ -201,16 +249,26 @@
 
   const users = $derived(userPage?.items ?? []);
   const invitations = $derived(invitationPage?.items ?? []);
-  const userPageCount = $derived(Math.max(1, Math.ceil((userPage?.total ?? 0) / userLimit)));
-  const invitationPageCount = $derived(
-    Math.max(1, Math.ceil((invitationPage?.total ?? 0) / invitationLimit)),
-  );
   const failure = $derived(
     actionFailure ?? (activeSection === 'users' ? userFailure : invitationFailure),
   );
   const scopeOptions = $derived([
     { value: 'global', label: 'Global', tone: 'accent' as const },
     { value: 'target', label: targetName, tone: 'accent' as const },
+  ]);
+  const sectionOptions = $derived([
+    {
+      value: 'users',
+      label: 'Users',
+      tone: 'accent' as const,
+      badge: userPage?.total ?? '…',
+    },
+    {
+      value: 'invitations',
+      label: 'Invitations',
+      tone: 'accent' as const,
+      badge: invitationPage?.total ?? '…',
+    },
   ]);
   const addRoleOptions = $derived(
     addRoles().map((role) => ({ value: role, label: roleLabel(role), icon: roleIcon(role) })),
@@ -239,10 +297,8 @@
       refreshVersion,
     ]),
   );
-  const userFilterSections = $derived<FilterSection[]>([
-    ...ROLE_FILTERS,
+  const userStatusFilterSections = $derived<FilterSection[]>([
     {
-      label: 'Status',
       options: [
         { value: 'active', label: 'Active', tone: 'valid' },
         { value: 'banned', label: 'Banned', tone: 'invalid' },
@@ -252,6 +308,60 @@
       ],
     },
   ]);
+  const userTable = createTable({
+    features: ACCESS_TABLE_FEATURES,
+    columns: USER_COLUMNS,
+    get data() {
+      return users;
+    },
+    getRowId: (user) => user.account.id,
+    manualFiltering: true,
+    manualSorting: true,
+    state: {
+      get sorting() {
+        return userSortingState();
+      },
+      get columnFilters() {
+        return userColumnFilters();
+      },
+    },
+    onSortingChange: selectUserSorting,
+    onColumnFiltersChange: selectUserColumnFilters,
+  });
+  const invitationTable = createTable({
+    features: ACCESS_TABLE_FEATURES,
+    columns: INVITATION_COLUMNS,
+    get data() {
+      return invitations;
+    },
+    getRowId: (invitation) => invitation.id,
+    manualFiltering: true,
+    manualSorting: true,
+    state: {
+      get sorting() {
+        return invitationSortingState();
+      },
+      get columnFilters() {
+        return invitationColumnFilters();
+      },
+    },
+    onSortingChange: selectInvitationSorting,
+    onColumnFiltersChange: selectInvitationColumnFilters,
+  });
+  const userTableRows = $derived(userTable.getRowModel().rows);
+  const invitationTableRows = $derived(invitationTable.getRowModel().rows);
+  const userVirtualizer = createVirtualizer<HTMLTableSectionElement, HTMLTableRowElement>({
+    count: 0,
+    estimateSize: () => 59,
+    getScrollElement: () => userScroll ?? null,
+    overscan: 6,
+  });
+  const invitationVirtualizer = createVirtualizer<HTMLTableSectionElement, HTMLTableRowElement>({
+    count: 0,
+    estimateSize: () => 59,
+    getScrollElement: () => invitationScroll ?? null,
+    overscan: 6,
+  });
 
   $effect(() => {
     const value = userSearch;
@@ -273,25 +383,62 @@
 
   $effect(() => {
     const requestKey = userRequestKey;
-    userPageIndex = 0;
-    void loadUsers(0, requestKey);
+    userLoadMoreFailure = null;
+    scrollResultsToTop(userResults);
+    void loadUsers(undefined, false, requestKey);
   });
 
   $effect(() => {
     const requestKey = invitationRequestKey;
-    invitationPageIndex = 0;
-    void loadInvitations(0, requestKey);
+    invitationLoadMoreFailure = null;
+    scrollResultsToTop(invitationResults);
+    void loadInvitations(undefined, false, requestKey);
   });
 
-  async function loadUsers(index: number, _requestKey = userRequestKey): Promise<void> {
+  $effect(() => {
+    const rows = userTableRows;
+    get(userVirtualizer).setOptions({
+      count: rows.length,
+      getScrollElement: () => userScroll ?? null,
+      getItemKey: (index) => rows[index]?.id ?? index,
+    });
+  });
+
+  $effect(() => {
+    const rows = invitationTableRows;
+    get(invitationVirtualizer).setOptions({
+      count: rows.length,
+      getScrollElement: () => invitationScroll ?? null,
+      getItemKey: (index) => rows[index]?.id ?? index,
+    });
+  });
+
+  $effect(() => {
+    const rows = activeSection === 'users' ? userTableRows : invitationTableRows;
+    const items =
+      activeSection === 'users'
+        ? $userVirtualizer.getVirtualItems()
+        : $invitationVirtualizer.getVirtualItems();
+    const last = items.at(-1);
+    if (last === undefined || last.index < rows.length - 5) return;
+    if (activeSection === 'users') void loadNextUsers();
+    else void loadNextInvitations();
+  });
+
+  async function loadUsers(
+    cursor: string | undefined,
+    append: boolean,
+    _requestKey = userRequestKey,
+  ): Promise<void> {
     if (_requestKey !== userRequestKey) return;
     const version = ++userLoadVersion;
     const requestedScope = scope;
     const requestedTarget = targetId;
     loadingUsers = true;
-    userFailure = null;
+    if (!append) userFailure = null;
+    else userLoadMoreFailure = null;
     const request: PanelUserPageRequest = {
-      ...(index === 0 ? {} : { cursor: String(index * userLimit) }),
+      ...(cursor === undefined ? {} : { cursor }),
       query: userQuery,
       sort: userSort,
       limit: userLimit,
@@ -304,29 +451,34 @@
           ? await fetchUsers(request)
           : await fetchTargetUsers(requestedTarget, request);
       if (version !== userLoadVersion) return;
-      const lastIndex = Math.max(0, Math.ceil(listed.total / userLimit) - 1);
-      if (index > lastIndex) {
-        await loadUsers(lastIndex, _requestKey);
-        return;
-      }
-      userPage = listed;
-      userPageIndex = index;
+      userPage =
+        append && userPage !== null
+          ? { ...listed, items: [...userPage.items, ...listed.items] }
+          : listed;
     } catch (error) {
-      if (version === userLoadVersion) userFailure = errorMessage(error);
+      if (version === userLoadVersion) {
+        if (append) userLoadMoreFailure = errorMessage(error);
+        else userFailure = errorMessage(error);
+      }
     } finally {
       if (version === userLoadVersion) loadingUsers = false;
     }
   }
 
-  async function loadInvitations(index: number, _requestKey = invitationRequestKey): Promise<void> {
+  async function loadInvitations(
+    cursor: string | undefined,
+    append: boolean,
+    _requestKey = invitationRequestKey,
+  ): Promise<void> {
     if (_requestKey !== invitationRequestKey) return;
     const version = ++invitationLoadVersion;
     const requestedScope = scope;
     const requestedTarget = targetId;
     loadingInvitations = true;
-    invitationFailure = null;
+    if (!append) invitationFailure = null;
+    else invitationLoadMoreFailure = null;
     const request: InvitationPageRequest = {
-      ...(index === 0 ? {} : { cursor: String(index * invitationLimit) }),
+      ...(cursor === undefined ? {} : { cursor }),
       query: invitationQuery,
       sort: invitationSort,
       limit: invitationLimit,
@@ -339,18 +491,42 @@
           ? await fetchInvitations(request)
           : await fetchTargetInvitations(requestedTarget, request);
       if (version !== invitationLoadVersion) return;
-      const lastIndex = Math.max(0, Math.ceil(listed.total / invitationLimit) - 1);
-      if (index > lastIndex) {
-        await loadInvitations(lastIndex, _requestKey);
-        return;
-      }
-      invitationPage = listed;
-      invitationPageIndex = index;
+      invitationPage =
+        append && invitationPage !== null
+          ? { ...listed, items: [...invitationPage.items, ...listed.items] }
+          : listed;
     } catch (error) {
-      if (version === invitationLoadVersion) invitationFailure = errorMessage(error);
+      if (version === invitationLoadVersion) {
+        if (append) invitationLoadMoreFailure = errorMessage(error);
+        else invitationFailure = errorMessage(error);
+      }
     } finally {
       if (version === invitationLoadVersion) loadingInvitations = false;
     }
+  }
+
+  async function loadNextUsers(): Promise<void> {
+    const cursor = userPage?.next_cursor;
+    if (loadingUsers || cursor === null || cursor === undefined) return;
+    await loadUsers(cursor, true);
+  }
+
+  async function loadNextInvitations(): Promise<void> {
+    const cursor = invitationPage?.next_cursor;
+    if (loadingInvitations || cursor === null || cursor === undefined) return;
+    await loadInvitations(cursor, true);
+  }
+
+  async function reloadUsers(): Promise<void> {
+    userPage = null;
+    scrollResultsToTop(userResults);
+    await loadUsers(undefined, false);
+  }
+
+  async function reloadInvitations(): Promise<void> {
+    invitationPage = null;
+    scrollResultsToTop(invitationResults);
+    await loadInvitations(undefined, false);
   }
 
   function clearUserFilters(): void {
@@ -394,12 +570,12 @@
               });
         generatedLink = created.invite_url ?? '';
         feedback = `Invited @${normalizedLogin} to ${destination}`;
-        if (addScopeMatchesCurrent()) await loadInvitations(0);
+        if (addScopeMatchesCurrent()) await reloadInvitations();
       } else if (selectedTargetId === null) {
         await addUser({ login: normalizedLogin, role: addRole, target_id: targetId });
         feedback = `Added @${normalizedLogin} to global access`;
         closeAddModal();
-        if (scope === 'global') await loadUsers(0);
+        if (scope === 'global') await reloadUsers();
       } else {
         await addTargetUser(selectedTargetId, {
           login: normalizedLogin,
@@ -407,7 +583,7 @@
         });
         feedback = `Added @${normalizedLogin} to ${destination}`;
         closeAddModal();
-        if (scope === 'target' && selectedTargetId === targetId) await loadUsers(0);
+        if (scope === 'target' && selectedTargetId === targetId) await reloadUsers();
       }
       login = '';
     } catch (error) {
@@ -503,9 +679,9 @@
     try {
       await operation();
       cancelAction();
-      await Promise.all([loadUsers(userPageIndex), loadInvitations(invitationPageIndex)]);
+      await Promise.all([reloadUsers(), reloadInvitations()]);
     } catch (error) {
-      await loadUsers(userPageIndex);
+      await reloadUsers();
       actionFailure = errorMessage(error);
     } finally {
       savingAccount = null;
@@ -523,7 +699,7 @@
       addReturnFocus = trigger;
       addModalOpen = true;
       feedback = `Reissued invitation for @${invitation.account.login}`;
-      await loadInvitations(invitationPageIndex);
+      await reloadInvitations();
     } catch (error) {
       actionFailure = errorMessage(error);
     } finally {
@@ -540,7 +716,7 @@
       await revokeInvitation(invitation.id);
       feedback = `Revoked invitation for @${invitation.account.login}`;
       pendingInvitation = null;
-      await loadInvitations(invitationPageIndex);
+      await reloadInvitations();
     } catch (error) {
       actionFailure = errorMessage(error);
     } finally {
@@ -579,16 +755,8 @@
       : scope === 'target' && addScopeTargetId === targetId;
   }
 
-  function selectSection(section: ManagementSection): void {
-    activeSection = section;
-  }
-
-  function moveSection(event: KeyboardEvent): void {
-    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-    event.preventDefault();
-    const next = event.key === 'ArrowLeft' || event.key === 'Home' ? 'users' : 'invitations';
-    activeSection = next;
-    queueMicrotask(() => document.querySelector<HTMLButtonElement>(`#${next}-list-tab`)?.focus());
+  function selectSection(section: string): void {
+    if (section === 'users' || section === 'invitations') onSection(section);
   }
 
   function selectScopeMode(value: string): void {
@@ -601,48 +769,124 @@
 
   function selectUserSort(column: UserSortColumn): void {
     scrollResultsToTop(userResults);
-    userSort =
-      column === 'name'
-        ? userSort === 'name_asc'
-          ? 'name_desc'
-          : 'name_asc'
-        : userSort === 'login_newest'
-          ? 'login_oldest'
-          : 'login_newest';
+    const target = userTable.getColumn(column);
+    target?.toggleSorting(target.getIsSorted() === 'asc');
   }
 
   function selectInvitationSort(column: InvitationSortColumn): void {
     scrollResultsToTop(invitationResults);
-    invitationSort =
-      column === 'name'
-        ? invitationSort === 'name_asc'
-          ? 'name_desc'
-          : 'name_asc'
-        : invitationSort === 'expiry_soonest'
-          ? 'expiry_latest'
-          : 'expiry_soonest';
+    const target = invitationTable.getColumn(column);
+    target?.toggleSorting(target.getIsSorted() === 'asc');
   }
 
   function userSortDirection(column: UserSortColumn): SortDirection | undefined {
-    if (column === 'name') {
-      if (userSort === 'name_asc') return 'ascending';
-      if (userSort === 'name_desc') return 'descending';
-      return undefined;
-    }
-    if (userSort === 'login_oldest') return 'ascending';
-    if (userSort === 'login_newest') return 'descending';
-    return undefined;
+    const direction = userTable.getColumn(column)?.getIsSorted();
+    return direction === 'asc' ? 'ascending' : direction === 'desc' ? 'descending' : undefined;
   }
 
   function invitationSortDirection(column: InvitationSortColumn): SortDirection | undefined {
-    if (column === 'name') {
-      if (invitationSort === 'name_asc') return 'ascending';
-      if (invitationSort === 'name_desc') return 'descending';
-      return undefined;
-    }
-    if (invitationSort === 'expiry_soonest') return 'ascending';
-    if (invitationSort === 'expiry_latest') return 'descending';
-    return undefined;
+    const direction = invitationTable.getColumn(column)?.getIsSorted();
+    return direction === 'asc' ? 'ascending' : direction === 'desc' ? 'descending' : undefined;
+  }
+
+  function userSortingState(): SortingState {
+    const mapping: Record<PanelUserSort, { id: string; desc: boolean }> = {
+      name_asc: { id: 'name', desc: false },
+      name_desc: { id: 'name', desc: true },
+      role_asc: { id: 'role', desc: false },
+      role_desc: { id: 'role', desc: true },
+      login_newest: { id: 'last_login', desc: true },
+      login_oldest: { id: 'last_login', desc: false },
+      updated_newest: { id: 'updated', desc: true },
+      updated_oldest: { id: 'updated', desc: false },
+    };
+    return [mapping[userSort]];
+  }
+
+  function invitationSortingState(): SortingState {
+    const mapping: Record<InvitationSort, { id: string; desc: boolean }> = {
+      name_asc: { id: 'name', desc: false },
+      name_desc: { id: 'name', desc: true },
+      role_asc: { id: 'role', desc: false },
+      role_desc: { id: 'role', desc: true },
+      expiry_soonest: { id: 'expires', desc: false },
+      expiry_latest: { id: 'expires', desc: true },
+      created_newest: { id: 'created', desc: true },
+      created_oldest: { id: 'created', desc: false },
+    };
+    return [mapping[invitationSort]];
+  }
+
+  function userColumnFilters(): ColumnFiltersState {
+    return [
+      { id: 'role', value: userRoles },
+      { id: 'status', value: userStatuses },
+    ];
+  }
+
+  function invitationColumnFilters(): ColumnFiltersState {
+    return [
+      { id: 'role', value: invitationRoles },
+      { id: 'status', value: invitationStatuses },
+    ];
+  }
+
+  function selectUserSorting(next: Updater<SortingState>): void {
+    const resolved = typeof next === 'function' ? next(userSortingState()) : next;
+    const selected = resolved[0];
+    if (selected === undefined) return;
+    const mapping: Record<string, readonly [PanelUserSort, PanelUserSort]> = {
+      name: ['name_asc', 'name_desc'],
+      role: ['role_asc', 'role_desc'],
+      last_login: ['login_oldest', 'login_newest'],
+      updated: ['updated_oldest', 'updated_newest'],
+    };
+    const options = mapping[selected.id];
+    if (options !== undefined) userSort = options[selected.desc ? 1 : 0];
+  }
+
+  function selectInvitationSorting(next: Updater<SortingState>): void {
+    const resolved = typeof next === 'function' ? next(invitationSortingState()) : next;
+    const selected = resolved[0];
+    if (selected === undefined) return;
+    const mapping: Record<string, readonly [InvitationSort, InvitationSort]> = {
+      name: ['name_asc', 'name_desc'],
+      role: ['role_asc', 'role_desc'],
+      expires: ['expiry_soonest', 'expiry_latest'],
+      created: ['created_oldest', 'created_newest'],
+    };
+    const options = mapping[selected.id];
+    if (options !== undefined) invitationSort = options[selected.desc ? 1 : 0];
+  }
+
+  function selectUserColumnFilters(next: Updater<ColumnFiltersState>): void {
+    const resolved = typeof next === 'function' ? next(userColumnFilters()) : next;
+    const selected = (id: string): string[] => {
+      const value = resolved.find((filter) => filter.id === id)?.value;
+      return Array.isArray(value) ? value.map(String) : [];
+    };
+    selectUserFilters([...selected('role'), ...selected('status')]);
+  }
+
+  function selectInvitationColumnFilters(next: Updater<ColumnFiltersState>): void {
+    const resolved = typeof next === 'function' ? next(invitationColumnFilters()) : next;
+    const selected = (id: string): string[] => {
+      const value = resolved.find((filter) => filter.id === id)?.value;
+      return Array.isArray(value) ? value.map(String) : [];
+    };
+    selectInvitationFilters([...selected('role'), ...selected('status')]);
+  }
+
+  function userAt(index: number): PanelUser {
+    const row = userTableRows[index];
+    if (row === undefined) throw new Error(`missing virtual user row ${index}`);
+    return row.original;
+  }
+
+  function invitationAt(index: number): PanelInvitation {
+    const row = invitationTableRows[index];
+    if (row === undefined) throw new Error(`missing virtual invitation row ${index}`);
+    return row.original;
   }
 
   function hasDecisionHistory(user: PanelUser): boolean {
@@ -675,34 +919,10 @@
     historyUser = null;
   }
 
-  function selectUserPage(index: number): void {
-    if (loadingUsers || index === userPageIndex) return;
-    userPageIndex = Math.min(userPageCount - 1, Math.max(0, index));
-    scrollResultsToTop(userResults);
-    void loadUsers(userPageIndex);
-  }
-
-  function selectInvitationPage(index: number): void {
-    if (loadingInvitations || index === invitationPageIndex) return;
-    invitationPageIndex = Math.min(invitationPageCount - 1, Math.max(0, index));
-    scrollResultsToTop(invitationResults);
-    void loadInvitations(invitationPageIndex);
-  }
-
-  function selectUserPageSize(value: number): void {
-    if (value === userLimit) return;
-    scrollResultsToTop(userResults);
-    userLimit = value;
-  }
-
-  function selectInvitationPageSize(value: number): void {
-    if (value === invitationLimit) return;
-    scrollResultsToTop(invitationResults);
-    invitationLimit = value;
-  }
-
   function scrollResultsToTop(results: HTMLDivElement | undefined): void {
-    if (window.matchMedia('(min-width: 64.001rem)').matches) results?.scrollTo({ top: 0 });
+    if (window.matchMedia('(min-width: 64.001rem)').matches) {
+      results?.querySelector<HTMLElement>('[data-panel-scroll]')?.scrollTo({ top: 0 });
+    }
   }
 
   function userActionItems(user: PanelUser): ActionMenuItem[] {
@@ -972,7 +1192,7 @@
 </script>
 
 {#snippet sortButton(label: string, direction: SortDirection | undefined, onSelect: () => void)}
-  <button class="sort-button" type="button" onclick={onSelect}>
+  <button class="sort-button table-sort-button" type="button" onclick={onSelect}>
     <span>{label}</span>
     <span
       class:ascending={direction === 'ascending'}
@@ -988,6 +1208,13 @@
 {#snippet roleBadge(role: PanelRole)}
   <span class="role-badge role-{role}">
     <Icon name={roleIcon(role)} size={14} />
+    <span>{roleLabel(role)}</span>
+  </span>
+{/snippet}
+
+{#snippet roleValue(role: PanelRole)}
+  <span class="role-value role-{role}">
+    <span class="role-value-icon" aria-hidden="true"><Icon name={roleIcon(role)} size={14} /></span>
     <span>{roleLabel(role)}</span>
   </span>
 {/snippet}
@@ -1017,45 +1244,21 @@
 <section class="plate user-management" aria-labelledby="user-management-heading">
   <PanelHeader
     id="user-management-heading"
-    title="Users"
+    title="Access"
     description="Manage roles, invitations, and access decisions"
     actions={headerActions}
   />
 
   <div class="user-management-body">
     <div class="management-navigation">
-      <div class="section-tabs" role="tablist" aria-label="User management lists">
-        <button
-          id="users-list-tab"
-          class="section-tab"
-          class:selected={activeSection === 'users'}
-          type="button"
-          role="tab"
-          aria-selected={activeSection === 'users'}
-          aria-controls="users-list-panel"
-          tabindex={activeSection === 'users' ? 0 : -1}
-          onclick={() => selectSection('users')}
-          onkeydown={moveSection}
-        >
-          <span>Users</span>
-          <span class="section-count">{userPage?.total ?? '…'}</span>
-        </button>
-        <button
-          id="invitations-list-tab"
-          class="section-tab"
-          class:selected={activeSection === 'invitations'}
-          type="button"
-          role="tab"
-          aria-selected={activeSection === 'invitations'}
-          aria-controls="invitations-list-panel"
-          tabindex={activeSection === 'invitations' ? 0 : -1}
-          onclick={() => selectSection('invitations')}
-          onkeydown={moveSection}
-        >
-          <span>Invitations</span>
-          <span class="section-count">{invitationPage?.total ?? '…'}</span>
-        </button>
-      </div>
+      <SegmentedControl
+        name="user-management-list"
+        label="User management lists"
+        options={sectionOptions}
+        value={activeSection}
+        variant="navigation"
+        onSelect={selectSection}
+      />
       <div class="stable-feedback" aria-live="polite">{feedback}</div>
       <button
         class="btn btn-signal tab-add"
@@ -1071,7 +1274,7 @@
     {#if failure !== null}<p class="form-error" role="alert">{failure}</p>{/if}
 
     {#if activeSection === 'users'}
-      <div id="users-list-panel" role="tabpanel" aria-labelledby="users-list-tab">
+      <div id="users-list-panel" aria-label="Users">
         <div class="management-toolbar" aria-label="User list controls">
           <SearchField
             label="Search users"
@@ -1079,25 +1282,12 @@
             value={userSearch}
             onInput={(value) => (userSearch = value)}
           />
-          <FilterMenu
-            label="User filters"
-            summary={filterSummary(userRoles.length + userStatuses.length)}
-            hint="Filter by role or access status"
-            sections={userFilterSections}
-            selected={[...userRoles, ...userStatuses]}
-            multiple
-            align="end"
-            wide
-            showIcon
-            onChange={selectUserFilters}
-          />
         </div>
 
         <div
           class:loading={loadingUsers}
           class="user-results"
           bind:this={userResults}
-          data-panel-scroll
           aria-busy={loadingUsers}
         >
           {#if loadingUsers && userPage === null}
@@ -1110,16 +1300,15 @@
           {:else if users.length === 0}
             {@const hasUserFilters =
               userQuery !== '' || userRoles.length > 0 || userStatuses.length > 0}
-            <div class="result-state dim">
-              <strong>{hasUserFilters ? 'No users match' : 'No users in this scope'}</strong>
-              <span>
-                {hasUserFilters
-                  ? 'Try another search or clear the current filters'
+            <div class="result-state table-empty">
+              <TableEmptyState
+                title={hasUserFilters ? 'No users match' : 'No users in this scope'}
+                description={hasUserFilters
+                  ? 'Try another search or clear the active filters'
                   : 'Added users will appear here'}
-              </span>
-              {#if hasUserFilters}
-                <button class="btn" type="button" onclick={clearUserFilters}>Clear filters</button>
-              {/if}
+                actionLabel={hasUserFilters ? 'Clear filters' : undefined}
+                onAction={hasUserFilters ? clearUserFilters : undefined}
+              />
             </div>
           {:else}
             <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -1135,8 +1324,45 @@
                         selectUserSort('name'),
                       )}
                     </th>
-                    <th>Role</th>
-                    <th>Status</th>
+                    <th aria-sort={userSortDirection('role')}>
+                      <div class="table-heading-layout">
+                        {@render sortButton('Role', userSortDirection('role'), () =>
+                          selectUserSort('role'),
+                        )}
+                        <FilterMenu
+                          label="Role"
+                          summary={filterSummary(userRoles.length)}
+                          hint="Filter by permission level"
+                          sections={ROLE_FILTERS}
+                          selected={userRoles}
+                          multiple
+                          align="end"
+                          showIcon
+                          iconOnly
+                          placement="header"
+                          onChange={(values) => userTable.getColumn('role')?.setFilterValue(values)}
+                        />
+                      </div>
+                    </th>
+                    <th class="filterable-heading">
+                      <div class="table-heading-layout">
+                        <span>Status</span>
+                        <FilterMenu
+                          label="Status"
+                          summary={filterSummary(userStatuses.length)}
+                          hint="Filter by access status"
+                          sections={userStatusFilterSections}
+                          selected={userStatuses}
+                          multiple
+                          align="end"
+                          showIcon
+                          iconOnly
+                          placement="header"
+                          onChange={(values) =>
+                            userTable.getColumn('status')?.setFilterValue(values)}
+                        />
+                      </div>
+                    </th>
                     <th aria-sort={userSortDirection('last_login')}>
                       {@render sortButton('Last login', userSortDirection('last_login'), () =>
                         selectUserSort('last_login'),
@@ -1145,10 +1371,19 @@
                     <th><span class="visually-hidden">Actions</span></th>
                   </tr>
                 </thead>
-                <tbody>
-                  {#each users as user (user.account.id)}
+                <tbody bind:this={userScroll} data-panel-scroll>
+                  <tr
+                    class="virtual-spacer"
+                    aria-hidden="true"
+                    style:height={`${$userVirtualizer.getTotalSize()}px`}><td colspan="5"></td></tr
+                  >
+                  {#each $userVirtualizer.getVirtualItems() as virtualRow (virtualRow.key)}
+                    {@const user = userAt(virtualRow.index)}
                     <tr
+                      class="virtual-row"
                       class:history-row={hasDecisionHistory(user)}
+                      style:height={`${virtualRow.size}px`}
+                      style:transform={`translateY(${virtualRow.start}px)`}
                       tabindex={hasDecisionHistory(user) ? 0 : undefined}
                       onclick={(event) => clickHistoryRow(event, user)}
                       onkeydown={(event) => keyHistoryRow(event, user)}
@@ -1211,22 +1446,18 @@
               </table>
             </div>
           {/if}
+          {#if userLoadMoreFailure !== null}
+            <div class="load-more-alert" role="alert">
+              <span>{userLoadMoreFailure}</span>
+              <button class="btn" type="button" onclick={() => void loadNextUsers()}
+                >Try again</button
+              >
+            </div>
+          {/if}
         </div>
-
-        <PaginationBar
-          label="Users"
-          pageIndex={userPageIndex}
-          pageCount={userPageCount}
-          pageSize={userLimit}
-          itemCount={users.length}
-          total={userPage?.total ?? 0}
-          disabled={loadingUsers}
-          onPageSelect={selectUserPage}
-          onPageSizeSelect={selectUserPageSize}
-        />
       </div>
     {:else}
-      <div id="invitations-list-panel" role="tabpanel" aria-labelledby="invitations-list-tab">
+      <div id="invitations-list-panel" aria-label="Invitations">
         <div class="management-toolbar" aria-label="Invitation list controls">
           <SearchField
             label="Search invitations"
@@ -1234,25 +1465,12 @@
             value={invitationSearch}
             onInput={(value) => (invitationSearch = value)}
           />
-          <FilterMenu
-            label="Invitation filters"
-            summary={filterSummary(invitationRoles.length + invitationStatuses.length)}
-            hint="Filter by role or invitation status"
-            sections={[...INVITATION_ROLE_FILTERS, ...INVITATION_STATUS_FILTERS]}
-            selected={[...invitationRoles, ...invitationStatuses]}
-            multiple
-            align="end"
-            wide
-            showIcon
-            onChange={selectInvitationFilters}
-          />
         </div>
 
         <div
           class:loading={loadingInvitations}
           class="invitation-results"
           bind:this={invitationResults}
-          data-panel-scroll
           aria-busy={loadingInvitations}
         >
           {#if loadingInvitations && invitationPage === null}
@@ -1265,20 +1483,17 @@
           {:else if invitations.length === 0}
             {@const hasInvitationFilters =
               invitationQuery !== '' || invitationRoles.length > 0 || invitationStatuses.length > 0}
-            <div class="result-state dim">
-              <strong>
-                {hasInvitationFilters ? 'No invitations match' : 'No invitations in this scope'}
-              </strong>
-              <span>
-                {hasInvitationFilters
-                  ? 'Try another search or clear the current filters'
+            <div class="result-state table-empty">
+              <TableEmptyState
+                title={hasInvitationFilters
+                  ? 'No invitations match'
+                  : 'No invitations in this scope'}
+                description={hasInvitationFilters
+                  ? 'Try another search or clear the active filters'
                   : 'New invitations will appear here'}
-              </span>
-              {#if hasInvitationFilters}
-                <button class="btn" type="button" onclick={clearInvitationFilters}
-                  >Clear filters</button
-                >
-              {/if}
+                actionLabel={hasInvitationFilters ? 'Clear filters' : undefined}
+                onAction={hasInvitationFilters ? clearInvitationFilters : undefined}
+              />
             </div>
           {:else}
             <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -1294,8 +1509,46 @@
                         selectInvitationSort('name'),
                       )}
                     </th>
-                    <th>Role</th>
-                    <th>Status</th>
+                    <th aria-sort={invitationSortDirection('role')}>
+                      <div class="table-heading-layout">
+                        {@render sortButton('Role', invitationSortDirection('role'), () =>
+                          selectInvitationSort('role'),
+                        )}
+                        <FilterMenu
+                          label="Role"
+                          summary={filterSummary(invitationRoles.length)}
+                          hint="Filter by invited permission level"
+                          sections={INVITATION_ROLE_FILTERS}
+                          selected={invitationRoles}
+                          multiple
+                          align="end"
+                          showIcon
+                          iconOnly
+                          placement="header"
+                          onChange={(values) =>
+                            invitationTable.getColumn('role')?.setFilterValue(values)}
+                        />
+                      </div>
+                    </th>
+                    <th class="filterable-heading">
+                      <div class="table-heading-layout">
+                        <span>Status</span>
+                        <FilterMenu
+                          label="Status"
+                          summary={filterSummary(invitationStatuses.length)}
+                          hint="Filter by invitation status"
+                          sections={INVITATION_STATUS_FILTERS}
+                          selected={invitationStatuses}
+                          multiple
+                          align="end"
+                          showIcon
+                          iconOnly
+                          placement="header"
+                          onChange={(values) =>
+                            invitationTable.getColumn('status')?.setFilterValue(values)}
+                        />
+                      </div>
+                    </th>
                     <th aria-sort={invitationSortDirection('expires')}>
                       {@render sortButton('Expires', invitationSortDirection('expires'), () =>
                         selectInvitationSort('expires'),
@@ -1304,9 +1557,20 @@
                     <th><span class="visually-hidden">Actions</span></th>
                   </tr>
                 </thead>
-                <tbody>
-                  {#each invitations as invitation (invitation.id)}
-                    <tr>
+                <tbody bind:this={invitationScroll} data-panel-scroll>
+                  <tr
+                    class="virtual-spacer"
+                    aria-hidden="true"
+                    style:height={`${$invitationVirtualizer.getTotalSize()}px`}
+                    ><td colspan="5"></td></tr
+                  >
+                  {#each $invitationVirtualizer.getVirtualItems() as virtualRow (virtualRow.key)}
+                    {@const invitation = invitationAt(virtualRow.index)}
+                    <tr
+                      class="virtual-row"
+                      style:height={`${virtualRow.size}px`}
+                      style:transform={`translateY(${virtualRow.start}px)`}
+                    >
                       <th scope="row">
                         <span class="user-identity">
                           <Avatar account={invitation.account} size={32} />
@@ -1316,7 +1580,7 @@
                           </span>
                         </span>
                       </th>
-                      <td data-label="Role">{@render roleBadge(invitation.role)}</td>
+                      <td data-label="Role">{@render roleValue(invitation.role)}</td>
                       <td data-label="Status"
                         ><Chip tone={invitationTone(invitation.status)} dot
                           >{invitationStatusLabel(invitation.status)}</Chip
@@ -1346,19 +1610,15 @@
               </table>
             </div>
           {/if}
+          {#if invitationLoadMoreFailure !== null}
+            <div class="load-more-alert" role="alert">
+              <span>{invitationLoadMoreFailure}</span>
+              <button class="btn" type="button" onclick={() => void loadNextInvitations()}
+                >Try again</button
+              >
+            </div>
+          {/if}
         </div>
-
-        <PaginationBar
-          label="Invitations"
-          pageIndex={invitationPageIndex}
-          pageCount={invitationPageCount}
-          pageSize={invitationLimit}
-          itemCount={invitations.length}
-          total={invitationPage?.total ?? 0}
-          disabled={loadingInvitations}
-          onPageSelect={selectInvitationPage}
-          onPageSizeSelect={selectInvitationPageSize}
-        />
       </div>
     {/if}
   </div>
@@ -1651,60 +1911,6 @@
     min-height: var(--control-height);
   }
 
-  .section-tabs {
-    align-items: center;
-    background: var(--surface-inset);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-control);
-    display: flex;
-    gap: var(--control-inset);
-    padding: var(--control-inset);
-  }
-
-  .section-tab {
-    align-items: center;
-    background: transparent;
-    border: 0;
-    border-radius: calc(var(--radius-control) - var(--control-inset));
-    color: var(--text-muted);
-    display: inline-flex;
-    font: 650 var(--font-size-body) / 1 var(--sans);
-    gap: var(--space-2);
-    height: var(--control-height-compact);
-    min-width: 0;
-    padding: 0 var(--space-3);
-    transition:
-      background-color var(--duration-fast) var(--ease-out),
-      border-color var(--duration-fast) var(--ease-out),
-      color var(--duration-fast) var(--ease-out);
-  }
-
-  .section-tab:hover {
-    background: var(--interactive-hover);
-    color: var(--text-primary);
-  }
-
-  .section-tab.selected {
-    background: var(--surface-inset);
-    box-shadow: 0 1px 2px var(--shadow-color);
-    color: var(--text-primary);
-  }
-
-  .section-tab:focus-visible {
-    box-shadow: inset 0 0 0 2px var(--focus);
-    outline: 0;
-  }
-
-  .section-count {
-    color: var(--text-muted);
-    font: 600 var(--font-size-compact) / 1 var(--mono);
-    font-variant-numeric: tabular-nums;
-  }
-
-  .section-tab.selected .section-count {
-    color: var(--brand-action-text);
-  }
-
   .tab-add {
     height: var(--control-height-compact);
     margin-left: 0;
@@ -1747,19 +1953,16 @@
 
   .user-results,
   .invitation-results {
-    background: var(--surface-inset);
+    background: var(--table-filler-bg);
     border: 1px solid var(--border-subtle);
-    border-bottom: 0;
-    border-radius: var(--radius-surface) var(--radius-surface) 0 0;
+    border-radius: var(--radius-surface);
+    display: flex;
+    flex-direction: column;
     flex: 1;
     margin-top: 0;
     min-height: 0;
     overflow: hidden;
-  }
-
-  .user-management :global(.pagination-bar) {
-    border: 1px solid var(--border-subtle);
-    border-radius: 0 0 var(--radius-surface) var(--radius-surface);
+    position: relative;
   }
 
   .user-results.loading,
@@ -1781,8 +1984,11 @@
     text-align: center;
   }
 
-  .result-state strong {
-    color: var(--text);
+  .result-state.table-empty {
+    border: 0;
+    flex: 1;
+    margin: 0;
+    min-height: 12rem;
   }
 
   .table-skeleton {
@@ -1826,6 +2032,9 @@
 
   .user-table-wrap {
     background: var(--surface-base);
+    display: flex;
+    flex: 1;
+    min-height: 0;
     overflow-x: auto;
   }
 
@@ -1838,6 +2047,7 @@
     background: var(--surface-base);
     border-collapse: collapse;
     min-width: 50rem;
+    table-layout: fixed;
     width: 100%;
   }
 
@@ -1856,8 +2066,29 @@
     letter-spacing: 0.02em;
   }
 
+  .user-table thead th[aria-sort='ascending'],
+  .user-table thead th[aria-sort='descending'] {
+    background: var(--table-sorted-bg);
+  }
+
   .user-table thead th:has(.sort-button) {
     padding: 0;
+  }
+
+  .filterable-heading {
+    padding-block: 0 !important;
+  }
+
+  .table-heading-layout {
+    align-items: center;
+    display: flex;
+    height: 100%;
+    justify-content: space-between;
+    min-width: 0;
+  }
+
+  .table-heading-layout :global(.header-filter) {
+    margin-inline: var(--space-1);
   }
 
   .sort-button {
@@ -1868,6 +2099,7 @@
     display: flex;
     font: inherit;
     gap: 0.45rem;
+    height: 100%;
     justify-content: flex-start;
     letter-spacing: inherit;
     padding: var(--space-3);
@@ -1876,13 +2108,10 @@
     transition:
       background-color 120ms ease-out,
       color 120ms ease-out;
-    width: 100%;
-  }
-
-  .sort-button:hover,
-  .sort-button:focus-visible {
-    background: var(--interactive-hover);
-    color: var(--text);
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    width: auto;
   }
 
   .sort-indicator {
@@ -1920,19 +2149,70 @@
   @media (min-width: 64.001rem) {
     .user-results,
     .invitation-results {
-      overflow: auto;
-      overscroll-behavior: contain;
-      scrollbar-gutter: stable;
+      overflow: hidden;
     }
 
-    .user-table-wrap {
-      overflow: visible;
+    .user-table {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      min-height: 0;
     }
 
     .user-table thead {
-      position: sticky;
+      display: block;
+      flex: none;
+    }
+
+    .user-table tbody {
+      background: var(--table-filler-bg);
+      display: block;
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      position: relative;
+    }
+
+    .user-table thead tr,
+    .user-table tbody tr {
+      display: grid;
+      grid-template-columns:
+        minmax(16rem, 1.55fr) minmax(10rem, 1fr) minmax(8rem, 0.8fr) minmax(9rem, 0.9fr)
+        2.75rem;
+      width: 100%;
+    }
+
+    .user-table tbody tr:not(.virtual-spacer) {
+      background: var(--surface-base);
+    }
+
+    .user-table tbody tr:not(.virtual-spacer) > th,
+    .user-table tbody tr:not(.virtual-spacer) > td {
+      align-items: center;
+      display: flex;
+    }
+
+    .user-table tbody .row-actions {
+      justify-content: flex-end;
+    }
+
+    .user-table tbody .virtual-row {
+      left: 0;
+      position: absolute;
       top: 0;
-      z-index: 1;
+    }
+
+    .user-table tbody .virtual-spacer {
+      background: transparent;
+      border: 0;
+      display: block;
+      pointer-events: none;
+      width: 1px;
+    }
+
+    .virtual-spacer td {
+      display: none;
     }
   }
 
@@ -1974,7 +2254,6 @@
     display: inline-flex;
     height: var(--control-height-compact);
     line-height: 1;
-    transform: translateY(-1px);
     vertical-align: middle;
   }
 
@@ -1990,6 +2269,24 @@
     min-height: 1.875rem;
     padding: 0 0.55rem;
     white-space: nowrap;
+  }
+
+  .role-value {
+    align-items: center;
+    color: var(--text-secondary);
+    display: inline-flex;
+    font: 600 var(--font-size-compact) / 1 var(--sans);
+    gap: var(--space-2);
+    min-height: var(--control-height-compact);
+    white-space: nowrap;
+  }
+
+  .role-value-icon {
+    color: var(--text-muted);
+    display: grid;
+    flex: 0 0 1rem;
+    place-items: center;
+    width: 1rem;
   }
 
   .role-owner {
@@ -2394,10 +2691,6 @@
   @media (max-width: 36rem) {
     .management-navigation {
       gap: var(--space-1);
-    }
-
-    .section-tab {
-      padding-inline: var(--space-2);
     }
 
     .tab-add {

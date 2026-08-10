@@ -14,6 +14,8 @@
     align = 'start',
     wide = false,
     showIcon = false,
+    iconOnly = false,
+    placement = 'toolbar',
     onChange,
   }: {
     label: string;
@@ -26,6 +28,8 @@
     align?: 'start' | 'end';
     wide?: boolean;
     showIcon?: boolean;
+    iconOnly?: boolean;
+    placement?: 'toolbar' | 'header';
     onChange: (values: string[]) => void;
   } = $props();
 
@@ -92,11 +96,18 @@
   }
 </script>
 
-<details class="filter-menu" class:align-end={align === 'end'} class:wide bind:this={menu}>
-  <summary bind:this={trigger} aria-label={`${label}: ${summary}`}>
+<details
+  class="filter-menu"
+  class:align-end={align === 'end'}
+  class:wide
+  class:header-filter={placement === 'header'}
+  class:filtered={canClear}
+  bind:this={menu}
+>
+  <summary class:icon-only={iconOnly} bind:this={trigger} aria-label={`${label}: ${summary}`}>
     {#if showIcon}<Icon name="filter" size={16} />{/if}
     <span class="summary-copy">{summary}</span>
-    {#if multiple && selectedCount > 1}
+    {#if multiple && selectedCount > 0}
       <span class="selection-count" aria-hidden="true">{selectedCount}</span>
     {/if}
     <span class="menu-chevron" aria-hidden="true"><Icon name="chevron-down" size={16} /></span>
@@ -188,8 +199,84 @@
     padding: 0 0.625rem;
     transition:
       background-color var(--duration-fast) var(--ease-out),
-      border-color var(--duration-fast) var(--ease-out);
+      border-color var(--duration-fast) var(--ease-out),
+      color var(--duration-fast) var(--ease-out),
+      transform var(--duration-press) var(--ease-standard);
     user-select: none;
+  }
+
+  summary.icon-only {
+    flex: none;
+    justify-content: space-between;
+    padding: 0 0.625rem;
+    position: relative;
+    width: 3.75rem;
+  }
+
+  .header-filter {
+    flex: none;
+  }
+
+  .header-filter summary {
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-control);
+    color: var(--text-muted);
+    height: 1.75rem;
+    justify-content: center;
+    padding: 0;
+    width: 1.75rem;
+  }
+
+  .header-filter summary.icon-only {
+    width: 1.75rem;
+  }
+
+  .header-filter summary .menu-chevron,
+  .header-filter summary .selection-count {
+    display: none;
+  }
+
+  .header-filter.filtered summary {
+    background: var(--brand-action);
+    color: var(--on-brand-action);
+  }
+
+  .header-filter summary:hover,
+  .header-filter[open] summary {
+    background: var(--interactive-hover);
+    border-color: transparent;
+    color: var(--text-primary);
+  }
+
+  .header-filter.filtered summary:hover,
+  .header-filter.filtered[open] summary {
+    background: var(--brand-action-hover);
+    color: var(--on-brand-action);
+  }
+
+  .header-filter.filtered summary:active {
+    background: var(--brand-action-pressed);
+    color: var(--on-brand-action);
+  }
+
+  .header-filter summary:active {
+    background: var(--interactive-pressed-bg);
+    color: var(--text-primary);
+    transform: scale(0.9);
+  }
+
+  summary.icon-only .summary-copy {
+    display: none;
+  }
+
+  summary.icon-only .selection-count {
+    height: 0.875rem;
+    min-width: 0.875rem;
+    padding: 0 0.15rem;
+    position: absolute;
+    right: 1px;
+    top: 1px;
   }
 
   summary::-webkit-details-marker {
@@ -204,6 +291,12 @@
   .filter-menu[open] summary {
     background: var(--control-bg-hover);
     border-color: var(--control-border-hover);
+  }
+
+  summary:active {
+    background: var(--interactive-pressed-bg);
+    border-color: var(--control-border-hover);
+    transform: translateY(1px) scale(0.98);
   }
 
   .summary-copy {

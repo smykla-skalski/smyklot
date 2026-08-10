@@ -498,6 +498,24 @@ var _ = Describe("SQLite store [Unit]", func() {
 		Expect(targetPage.Total).To(Equal(1))
 		Expect(targetPage.Items[0].User.Account.ID).To(Equal(viewer.ID))
 
+		roleAscending, err := store.ListPanelUserPage(ctx, storage.PanelUserPageRequest{
+			Limit: 10, Order: storage.PanelUserRoleAscending,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(roleAscending.Items).To(HaveLen(2))
+		Expect(roleAscending.Items[0].Account.ID).To(Equal(viewer.ID))
+		Expect(roleAscending.Items[1].Account.ID).To(Equal(owner.ID))
+
+		roleDescending, err := store.ListTargetPanelUserPage(
+			ctx,
+			target.TargetID,
+			storage.PanelUserPageRequest{Limit: 10, Order: storage.PanelUserRoleDescending},
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(roleDescending.Items).To(HaveLen(2))
+		Expect(roleDescending.Items[0].User.Account.ID).To(Equal(owner.ID))
+		Expect(roleDescending.Items[1].User.Account.ID).To(Equal(viewer.ID))
+
 		decisions, err := store.ListAccessDecisions(ctx, viewer.ID, nil, 10)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(decisions).NotTo(BeEmpty())
@@ -610,7 +628,10 @@ var _ = Describe("SQLite store [Unit]", func() {
 		} {
 			_, err := store.CreateInvitation(ctx, storage.InvitationCreate{
 				ID: id, TokenHash: id, AccountID: account.ID,
-				Role: storage.PanelRoleViewer, ExpiresAt: now.Add(24 * time.Hour),
+				Role: map[string]storage.PanelRole{
+					"invitation-alpha": storage.PanelRoleViewer,
+					"invitation-zulu":  storage.PanelRoleAdmin,
+				}[id], ExpiresAt: now.Add(24 * time.Hour),
 				CreatedByAccount: owner.ID, CreatedAt: now,
 			})
 			Expect(err).NotTo(HaveOccurred())
@@ -624,6 +645,15 @@ var _ = Describe("SQLite store [Unit]", func() {
 		Expect(page.Items).To(HaveLen(2))
 		Expect(page.Items[0].Account.DisplayName).To(Equal("Zulu User"))
 		Expect(page.Items[1].Account.DisplayName).To(Equal("Alpha User"))
+
+		page, err = store.ListInvitationPage(ctx, nil, now, storage.InvitationPageRequest{
+			Limit: 10,
+			Order: storage.InvitationRoleDescending,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(page.Items).To(HaveLen(2))
+		Expect(page.Items[0].Role).To(Equal(storage.PanelRoleAdmin))
+		Expect(page.Items[1].Role).To(Equal(storage.PanelRoleViewer))
 	})
 
 	It("discovers a recreated repository that reuses an unavailable repository name", func() {

@@ -89,17 +89,6 @@ func pageLimit(value int) int {
 	return min(value, 100)
 }
 
-func historyDirection(order storage.HistoryOrder) (string, error) {
-	switch order {
-	case "", storage.HistoryNewest:
-		return "DESC", nil
-	case storage.HistoryOldest:
-		return "ASC", nil
-	default:
-		return "", fmt.Errorf("unsupported history order %q", order)
-	}
-}
-
 func countHistory(
 	ctx context.Context,
 	queryer rowQuerier,

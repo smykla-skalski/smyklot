@@ -5,6 +5,7 @@
     value: string;
     label: string;
     tone?: SegmentTone;
+    badge?: string | number;
   }
 
   const {
@@ -16,6 +17,7 @@
     disabled = false,
     align = 'start',
     compact = false,
+    variant = 'default',
     onSelect,
   }: {
     name: string;
@@ -26,100 +28,64 @@
     disabled?: boolean;
     align?: 'start' | 'end';
     compact?: boolean;
+    variant?: 'default' | 'navigation';
     onSelect: (value: string) => void;
   } = $props();
 
-  function animateSelection(node: HTMLFieldSetElement, selection: string) {
-    let activeAnimation: Animation | undefined;
-    let activeFill: HTMLElement | undefined;
+  const selectedTone = $derived(
+    options.find((option) => option.value === value)?.tone ?? 'default',
+  );
+
+  function positionSelection(node: HTMLFieldSetElement, selection: string) {
     let frame: number | undefined;
     let currentSelection = selection;
 
-    function selectedFill(): HTMLElement | null {
-      const option = node.querySelector<HTMLInputElement>('input:checked')?.closest('label');
-      return option?.querySelector<HTMLElement>('.segment-fill') ?? null;
-    }
-
-    function moveSelection(animate: boolean): void {
-      const nextFill = selectedFill();
-      if (nextFill === null) return;
-
-      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      if (!animate || activeFill === undefined || reduceMotion) {
-        activeAnimation?.cancel();
-        activeAnimation = undefined;
-        activeFill = nextFill;
-        return;
-      }
-
-      const currentRect = activeFill.getBoundingClientRect();
-      const currentColor = getComputedStyle(activeFill).backgroundColor;
-      activeAnimation?.cancel();
-
-      const targetRect = nextFill.getBoundingClientRect();
-      const targetColor = getComputedStyle(nextFill).backgroundColor;
-      const translateX = currentRect.left - targetRect.left;
-      const scaleX = currentRect.width / targetRect.width;
-      const animation = nextFill.animate(
-        [
-          {
-            backgroundColor: currentColor,
-            transform: `translate3d(${translateX}px, 0, 0) scaleX(${scaleX})`,
-          },
-          {
-            backgroundColor: targetColor,
-            transform: 'translate3d(0, 0, 0) scaleX(1)',
-          },
-        ],
-        {
-          duration: 240,
-          easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
-        },
-      );
-      activeAnimation = animation;
-      activeFill = nextFill;
-      animation.onfinish = () => {
-        if (activeAnimation === animation) activeAnimation = undefined;
-      };
-    }
-
-    function scheduleMove(animate: boolean): void {
+    function scheduleMove(): void {
       if (frame !== undefined) cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
-        frame = undefined;
-        moveSelection(animate);
+        frame = requestAnimationFrame(() => {
+          frame = undefined;
+          const option = node.querySelector<HTMLInputElement>('input:checked')?.closest('label');
+          if (option === null || option === undefined) return;
+          node.style.setProperty('--segment-left', `${option.offsetLeft}px`);
+          node.style.setProperty('--segment-width', `${option.offsetWidth}px`);
+          node.classList.add('selection-ready');
+        });
       });
     }
 
-    scheduleMove(false);
+    scheduleMove();
 
     return {
       update(nextSelection: string) {
         if (nextSelection === currentSelection) return;
         currentSelection = nextSelection;
-        scheduleMove(true);
+        scheduleMove();
       },
       destroy() {
         if (frame !== undefined) cancelAnimationFrame(frame);
-        activeAnimation?.cancel();
       },
     };
   }
 </script>
 
 <fieldset
-  class={[align === 'end' && 'align-end', compact && 'compact']}
+  class={[
+    align === 'end' && 'align-end',
+    compact && 'compact',
+    variant === 'navigation' && 'navigation',
+  ]}
+  class:selected-accent={selectedTone === 'accent'}
+  class:selected-on={selectedTone === 'on'}
+  class:selected-off={selectedTone === 'off'}
   aria-describedby={descriptionId}
-  use:animateSelection={value}
+  use:positionSelection={value}
   {disabled}
 >
   <legend>{label}</legend>
+  <span class="selection-indicator" aria-hidden="true"></span>
   {#each options as option (option.value)}
-    <label
-      class:segment-accent={option.tone === 'accent'}
-      class:segment-on={option.tone === 'on'}
-      class:segment-off={option.tone === 'off'}
-    >
+    <label>
       <input
         type="radio"
         {name}
@@ -127,14 +93,21 @@
         checked={value === option.value}
         onchange={(event) => onSelect(event.currentTarget.value)}
       />
-      <span class="segment-fill" aria-hidden="true"></span>
-      <span class="segment-label">{option.label}</span>
+      <span class="segment-label">
+        <span>{option.label}</span>
+        {#if option.badge !== undefined}
+          <sup class="segment-badge"><span>{option.badge}</span></sup>
+        {/if}
+      </span>
     </label>
   {/each}
 </fieldset>
 
 <style>
   fieldset {
+    --selected-bg: var(--surface-base);
+    --selected-stroke: color-mix(in srgb, var(--text-secondary) 20%, var(--surface-base));
+    --selected-text: var(--text-secondary);
     background: var(--well);
     border: 1px solid var(--rule);
     border-radius: var(--r-ctl);
@@ -149,6 +122,24 @@
     position: relative;
   }
 
+  fieldset.selected-accent {
+    --selected-bg: var(--brand-action-tint);
+    --selected-stroke: color-mix(in srgb, var(--brand-action-text) 20%, var(--brand-action-tint));
+    --selected-text: var(--brand-action-text);
+  }
+
+  fieldset.selected-on {
+    --selected-bg: var(--success-tint);
+    --selected-stroke: color-mix(in srgb, var(--success) 20%, var(--success-tint));
+    --selected-text: var(--success);
+  }
+
+  fieldset.selected-off {
+    --selected-bg: var(--danger-tint);
+    --selected-stroke: color-mix(in srgb, var(--danger) 20%, var(--danger-tint));
+    --selected-text: var(--danger);
+  }
+
   fieldset.align-end {
     justify-self: end;
   }
@@ -161,6 +152,13 @@
     font-size: var(--font-size-micro);
     min-width: 2.25rem;
     padding: 0 8px;
+  }
+
+  fieldset.navigation .segment-label {
+    font-size: var(--font-size-body);
+    gap: var(--space-2);
+    min-width: 0;
+    padding: 0 var(--space-3);
   }
 
   legend {
@@ -215,7 +213,7 @@
   .segment-label {
     align-items: center;
     border-radius: calc(var(--r-ctl) - 3px);
-    color: var(--dim);
+    color: var(--text-secondary);
     display: flex;
     font-size: 0.6875rem;
     font-weight: 600;
@@ -230,20 +228,41 @@
     z-index: 3;
   }
 
-  input:checked ~ .segment-label {
-    color: var(--signal);
+  .segment-badge {
+    align-items: center;
+    background: var(--surface-raised);
+    border: 1px solid var(--border-subtle);
+    border-radius: 0.25rem;
+    color: var(--text-muted);
+    display: inline-grid;
+    font: 700 0.5625rem / 1 var(--mono);
+    font-variant-numeric: tabular-nums;
+    height: 1rem;
+    justify-content: center;
+    min-width: 1.125rem;
+    padding: 0 0.25rem;
+    place-items: center;
+    position: relative;
+    top: -0.38rem;
+    vertical-align: super;
   }
 
-  .segment-accent input:checked ~ .segment-label {
+  .segment-badge > span {
+    display: grid;
+    height: 100%;
+    line-height: 1;
+    place-items: center;
+    width: 100%;
+  }
+
+  input:checked ~ .segment-label .segment-badge {
+    background: var(--brand-action-tint);
+    border-color: color-mix(in srgb, var(--brand-action-text) 20%, var(--brand-action-tint));
     color: var(--brand-action-text);
   }
 
-  .segment-on input:checked ~ .segment-label {
-    color: var(--clear);
-  }
-
-  .segment-off input:checked ~ .segment-label {
-    color: var(--stop);
+  input:checked ~ .segment-label {
+    color: var(--selected-text);
   }
 
   label:hover input:not(:checked):not(:disabled) ~ .segment-label {
@@ -254,32 +273,34 @@
     transform: scale(0.97);
   }
 
-  .segment-fill {
-    background: var(--signal-tint);
+  .selection-indicator {
+    background: var(--selected-bg);
     border-radius: calc(var(--r-ctl) - 3px);
-    inset: 0;
-    opacity: 0;
+    box-shadow: inset 0 0 0 1px var(--selected-stroke);
+    bottom: var(--control-inset);
+    left: var(--segment-left, var(--control-inset));
     pointer-events: none;
     position: absolute;
-    transform-origin: left center;
-    will-change: transform;
+    top: var(--control-inset);
+    transition:
+      left 240ms cubic-bezier(0.22, 1, 0.36, 1),
+      width 240ms cubic-bezier(0.22, 1, 0.36, 1),
+      background-color var(--duration-fast) var(--ease-standard),
+      box-shadow var(--duration-fast) var(--ease-standard);
+    width: var(--segment-width, 0);
     z-index: 2;
   }
 
-  .segment-accent .segment-fill {
-    background: var(--brand-action-tint);
+  fieldset:not(.selection-ready) .selection-indicator {
+    transition: none;
   }
 
-  .segment-on .segment-fill {
-    background: var(--clear-tint);
+  fieldset:has(label:hover input:checked:not(:disabled)) .selection-indicator {
+    background: color-mix(in srgb, var(--selected-text) 8%, var(--selected-bg));
   }
 
-  .segment-off .segment-fill {
-    background: var(--stop-tint);
-  }
-
-  input:checked ~ .segment-fill {
-    opacity: 1;
+  fieldset:has(label:active input:checked:not(:disabled)) .selection-indicator {
+    background: color-mix(in srgb, var(--selected-text) 16%, var(--selected-bg));
   }
 
   input:focus-visible ~ .segment-label {
@@ -288,11 +309,17 @@
   }
 
   input:disabled ~ .segment-label,
-  input:checked:disabled ~ .segment-fill {
+  fieldset:disabled .selection-indicator {
     opacity: 0.45;
   }
 
   fieldset:disabled label {
     cursor: default;
+  }
+
+  @media (max-width: 36rem) {
+    fieldset.navigation .segment-label {
+      padding-inline: var(--space-2);
+    }
   }
 </style>

@@ -361,6 +361,7 @@ describe('history and authentication routes', () => {
       sort: 'oldest',
       limit: 25,
       scope: 'repositories',
+      change: 'repository',
     });
     await api.fetchFailures('2001', {
       query: '',
@@ -370,7 +371,7 @@ describe('history and authentication routes', () => {
     });
 
     expect(stub.calls.map((call) => call.url)).toEqual([
-      '/panel/api/v1/targets/2001/audit?cursor=next%2Fpage&q=repository+settings&sort=oldest&limit=25&scope=repositories',
+      '/panel/api/v1/targets/2001/audit?cursor=next%2Fpage&q=repository+settings&sort=oldest&limit=25&scope=repositories&change=repository',
       '/panel/api/v1/targets/2001/failures?sort=newest&limit=50&kind=retryable',
     ]);
   });

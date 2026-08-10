@@ -120,9 +120,9 @@
     <circle cx="9" cy="8" r="3" />
     <path d="M3.5 19c.5-3.2 2.4-5 5.5-5 2.2 0 3.8.9 4.7 2.4M18 8v6M15 11h6" />
   {:else if name === 'more'}
-    <circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" />
-    <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
-    <circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" />
+    <circle cx="5" cy="12" r="1.65" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="12" r="1.65" fill="currentColor" stroke="none" />
+    <circle cx="19" cy="12" r="1.65" fill="currentColor" stroke="none" />
   {:else if name === 'trash'}
     <path d="M4 7h16M9 3h6l1 4H8zM6.5 7l.8 14h9.4l.8-14M10 11v6M14 11v6" />
   {:else if name === 'ban'}

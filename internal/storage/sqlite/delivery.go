@@ -201,7 +201,7 @@ func (s *Store) ListFailures(
 	if err != nil {
 		return storage.FailurePage{}, fmt.Errorf("count delivery failures: %w", err)
 	}
-	direction, err := historyDirection(page.Order)
+	order, err := failurePageOrder(page.Order)
 	if err != nil {
 		return storage.FailurePage{}, err
 	}
@@ -210,7 +210,7 @@ func (s *Store) ListFailures(
 	// #nosec G202 -- clauses and direction come only from fixed internal constants;
 	// every request value remains a bound parameter.
 	query := failureSelect + " WHERE " + strings.Join(clauses, " AND ") +
-		" ORDER BY id " + direction + " LIMIT ? OFFSET ?"
+		" ORDER BY " + order + " LIMIT ? OFFSET ?"
 	rows, err := s.db.QueryContext(ctx, query, arguments...)
 	if err != nil {
 		return storage.FailurePage{}, fmt.Errorf("list delivery failures: %w", err)
@@ -222,6 +222,25 @@ func (s *Store) ListFailures(
 	}
 
 	return failurePage(items, limit, total, offset), nil
+}
+
+func failurePageOrder(order storage.HistoryOrder) (string, error) {
+	switch order {
+	case "", storage.HistoryNewest:
+		return "id DESC", nil
+	case storage.HistoryOldest:
+		return "id ASC", nil
+	case storage.HistoryStatusAscending:
+		return "retryable ASC, id DESC", nil
+	case storage.HistoryStatusDescending:
+		return "retryable DESC, id DESC", nil
+	case storage.HistoryRepositoryAscending:
+		return "repository_full_name COLLATE NOCASE ASC, id DESC", nil
+	case storage.HistoryRepositoryDescending:
+		return "repository_full_name COLLATE NOCASE DESC, id DESC", nil
+	default:
+		return "", fmt.Errorf("unsupported failure order %q", order)
+	}
 }
 
 func failureFilters(

@@ -18,7 +18,9 @@ explicitly documented.
 
 Gold, gradients, glows, glass surfaces, decorative motion, left-edge content
 accents, and mixed icon families are not part of the panel system. The official
-Smyklot avatar may retain its own colors.
+Smyklot avatar and the three-pixel closing rule above the app footer may retain the
+brand rainbow. The closing rule moves its seamless, full-hue repeated spectrum
+slowly to the right, with reduced-motion preferences disabling the movement.
 
 ## Color tokens
 
@@ -127,9 +129,10 @@ dividers instead of nested cards.
 
 - Use text tabs with a two-pixel petrol underline for page-level navigation
 - Use one compact segmented switch for mutually exclusive views within a page
-- Users/Invitations use a contained dataset tab group with plain counts;
-  Audit/Failures is a compact view switch
-- Do not add count badges to a segmented view switch
+- Users/Invitations and Audit/Failures use the shared segmented-control primitive
+  so hover, press, focus, and sliding-selection motion stay identical
+- Users/Invitations may add compact superscript count rectangles; ordinary
+  segmented switches omit count badges
 
 ### Dialogs and inspectors
 
@@ -143,18 +146,30 @@ dividers instead of nested cards.
 
 ### Tables
 
-- Toolbar contains search, one filter affordance, relevant scope, and one
-  primary action
-- Active filters appear as removable chips
+- Toolbar contains search, relevant scope, and one primary action; column filters
+  live beside their column labels
+- Active column filters keep a visible selected treatment on their header affordance
 - Sorting lives in column-header buttons with `aria-sort`
-- Page-size control appears in bottom pagination
+- Large datasets use cursor-backed infinite loading with TanStack Table state and
+  TanStack Virtual rendering; there is no page-size or numbered-page control
+- Filter and sort requests keep current rows mounted, mark the table busy, and
+  replace rows in place when the latest request completes
+- Infinite tables have no footer; incremental-load failures use a temporary inline
+  recovery prompt without reducing the body viewport
+- Desktop tables keep the header outside the native vertical body scroller, with no
+  custom scrollbar skin or permanently reserved scrollbar gutter
 - Use neutral dividers instead of zebra striping
 - Hover is neutral; selected rows use the petrol selected surface
 - Status uses semantic icon-plus-label badges
 - Roles use neutral outline icons and text, not multiple semantic colors
-- More-actions controls keep at least a 40px desktop hit area
+- More-actions controls use a heavy DotsThree glyph in a borderless ghost target
+  with at least a 40px desktop hit area
 - User and invitation tables become structured list rows below 768px
 - History becomes a compact activity list on narrow screens
+- Audit history orders columns as Actor, Target, Change, When; actor identity uses
+  the same name and handle typography as Access
+- Filtered empty results use a centered icon, explanation, and recovery action in
+  the full table-body viewport
 - The sidebar is the only organization picker. User access scope chooses only
   Global or the currently selected installation
 - Users/Invitations and Add user share one tab row above the standalone search
@@ -164,7 +179,6 @@ dividers instead of nested cards.
 - Search and filters never share the table's border
 - Repository names use a descender-safe line box and optical vertical alignment;
   the first and last row controls keep equal 16px visual outer insets
-- Every numbered pagination control has the same visual and computed height
 - Repository detail navigation uses plain semantic count text, not count pills
 - Installation and account menus are content-sized, keep search visible while
   options scroll, and omit type labels already stated by their group heading

@@ -66,7 +66,7 @@
     selectedId === null ? null : (targets.find((target) => target.id === selectedId) ?? null),
   );
   const tableScrollView = $derived(
-    selectedTarget !== null && ['repositories', 'users', 'history'].includes(view),
+    selectedTarget !== null && ['repositories', 'users', 'invitations', 'history'].includes(view),
   );
 
   function forwardTableWheel(event: WheelEvent): void {
@@ -146,7 +146,7 @@
   async function selectTarget(targetId: string): Promise<void> {
     const target = targets.find((entry) => entry.id === targetId);
     if (target === undefined || selectedId === targetId) return;
-    if (view === 'help' || (view === 'users' && globalUsers)) {
+    if (view === 'help' || (isAccessView(view) && globalUsers)) {
       selectedId = target.id;
       writeLastInstallation(target.account.login);
       failure = null;
@@ -187,7 +187,8 @@
     selectedId = target.id;
     view = resolved.view;
     globalUsers =
-      requested?.view === 'users' &&
+      requested !== null &&
+      isAccessView(requested.view) &&
       !('account' in requested) &&
       viewer?.capabilities.manage_global_users === true;
     writeLastInstallation(target.account.login);
@@ -213,7 +214,7 @@
 
   function routeFor(target: PanelTarget, nextView: PanelView): PanelRoute {
     if (nextView === 'help') return { view: 'help' };
-    if (nextView === 'users' && globalUsers) return { view: 'users' };
+    if (isAccessView(nextView) && globalUsers) return { view: nextView };
     return { account: target.account.login, view: nextView };
   }
 
@@ -314,11 +315,11 @@
   }
 
   function selectUserScope(targetId: string | null): void {
-    if (view !== 'users') return;
+    if (!isAccessView(view)) return;
     if (targetId === null) {
       if (viewer?.capabilities.manage_global_users !== true || selectedTarget === null) return;
       globalUsers = true;
-      router.push({ view: 'users' });
+      router.push({ view });
       userVersion += 1;
       return;
     }
@@ -327,8 +328,18 @@
     globalUsers = false;
     selectedId = target.id;
     writeLastInstallation(target.account.login);
-    router.push({ account: target.account.login, view: 'users' });
+    router.push({ account: target.account.login, view });
     userVersion += 1;
+  }
+
+  function selectUserSection(section: 'users' | 'invitations'): void {
+    if (!isAccessView(view) || view === section || selectedTarget === null) return;
+    view = section;
+    router.push(routeFor(selectedTarget, section));
+  }
+
+  function isAccessView(candidate: PanelView): candidate is 'users' | 'invitations' {
+    return candidate === 'users' || candidate === 'invitations';
   }
 
   function revokeAccess(reason: string): void {
@@ -480,10 +491,11 @@
                 />
               {/key}
             </div>
-          {:else if view === 'users'}
-            <div id="users-panel" aria-labelledby="users-navigation">
-              {#key `${selectedTarget.id}:${globalUsers}`}
+          {:else if isAccessView(view)}
+            <div id="access-panel" aria-labelledby="users-navigation">
+              {#key selectedTarget.id}
                 <UserManagement
+                  section={view}
                   scope={globalUsers ? 'global' : 'target'}
                   targetId={selectedTarget.id}
                   targetName={selectedTarget.account.display_name}
@@ -492,6 +504,7 @@
                   canManageOwners={viewer.capabilities.manage_owners}
                   refreshVersion={userVersion}
                   onScope={selectUserScope}
+                  onSection={selectUserSection}
                   fetchUsers={api.fetchUsers}
                   addUser={api.addUser}
                   updateUser={api.updateUser}
@@ -548,7 +561,7 @@
 
 <style>
   #repositories-panel,
-  #users-panel,
+  #access-panel,
   #history-panel {
     display: flex;
     flex: 1;

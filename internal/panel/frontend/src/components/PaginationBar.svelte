@@ -52,7 +52,7 @@
     --local-control-height: var(--control-height-compact);
 
     align-items: center;
-    background: var(--surface-inset);
+    background: var(--table-footer-bg);
     border-top: 1px solid var(--rule);
     display: grid;
     gap: var(--space-2);

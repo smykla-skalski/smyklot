@@ -372,7 +372,30 @@ func patchSize(patch config.Patch) int {
 	return count
 }
 
-func parseHistoryPage(values url.Values) (storage.HistoryPageRequest, error) {
+var auditHistoryOrders = []storage.HistoryOrder{
+	storage.HistoryNewest,
+	storage.HistoryOldest,
+	storage.HistoryActorAscending,
+	storage.HistoryActorDescending,
+	storage.HistoryTargetAscending,
+	storage.HistoryTargetDescending,
+	storage.HistoryChangeAscending,
+	storage.HistoryChangeDescending,
+}
+
+var failureHistoryOrders = []storage.HistoryOrder{
+	storage.HistoryNewest,
+	storage.HistoryOldest,
+	storage.HistoryStatusAscending,
+	storage.HistoryStatusDescending,
+	storage.HistoryRepositoryAscending,
+	storage.HistoryRepositoryDescending,
+}
+
+func parseHistoryPage(
+	values url.Values,
+	allowedOrders ...storage.HistoryOrder,
+) (storage.HistoryPageRequest, error) {
 	page := storage.HistoryPageRequest{
 		Limit: DefaultPageSize,
 		Order: storage.HistoryNewest,
@@ -395,13 +418,14 @@ func parseHistoryPage(values url.Values) (storage.HistoryPageRequest, error) {
 		}
 		page.Limit = limit
 	}
-	switch raw := values.Get("sort"); raw {
-	case "", string(storage.HistoryNewest):
-	case string(storage.HistoryOldest):
-		page.Order = storage.HistoryOldest
-	default:
+	order := storage.HistoryOrder(values.Get("sort"))
+	if order == "" {
+		order = storage.HistoryNewest
+	}
+	if !slices.Contains(allowedOrders, order) {
 		return storage.HistoryPageRequest{}, fmt.Errorf("invalid history sort order")
 	}
+	page.Order = order
 
 	return page, nil
 }
@@ -431,7 +455,13 @@ func parseRepositoryPage(values url.Values) (storage.RepositoryPageRequest, erro
 	}
 	switch order := storage.RepositoryOrder(values.Get("sort")); order {
 	case "", storage.RepositoryNameAscending:
-	case storage.RepositoryNameDescending, storage.RepositoryNewest, storage.RepositoryOldest:
+	case storage.RepositoryNameDescending,
+		storage.RepositoryFileAscending,
+		storage.RepositoryFileDescending,
+		storage.RepositoryOverridesAscending,
+		storage.RepositoryOverridesDescending,
+		storage.RepositoryNewest,
+		storage.RepositoryOldest:
 		page.Order = order
 	default:
 		return storage.RepositoryPageRequest{}, fmt.Errorf("invalid repository sort order")

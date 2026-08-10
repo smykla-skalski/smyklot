@@ -35,6 +35,33 @@
     margin-top: 1.75rem;
   }
 
+  .brand-rule {
+    background: none;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .brand-rule::before {
+    animation: footer-spectrum-flow 44s linear infinite;
+    background: var(--footer-spectrum);
+    content: '';
+    inset: 0 auto 0 0;
+    position: absolute;
+    transform: translateX(0);
+    width: 200%;
+    will-change: transform;
+  }
+
+  @keyframes footer-spectrum-flow {
+    from {
+      transform: translateX(0);
+    }
+
+    to {
+      transform: translateX(-50%);
+    }
+  }
+
   .marks {
     display: flex;
     flex-wrap: wrap;

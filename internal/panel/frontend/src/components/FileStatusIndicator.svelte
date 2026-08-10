@@ -54,6 +54,7 @@
     align-items: center;
     color: var(--dim);
     display: inline-flex;
+    gap: var(--space-2);
     height: var(--control-height-compact);
     position: relative;
   }
@@ -66,7 +67,6 @@
     font-weight: 500;
     height: 100%;
     line-height: 1;
-    transform: translateY(-1px);
   }
 
   .status-valid {
@@ -93,10 +93,11 @@
     justify-content: center;
     outline: none;
     padding: 0;
+    position: relative;
     transition:
       background-color 120ms ease-out,
       color 120ms ease-out;
-    width: 1.875rem;
+    width: 1.125rem;
   }
 
   .symbol::before {

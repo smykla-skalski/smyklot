@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tick } from 'svelte';
+
   import Icon, { type IconName } from './Icon.svelte';
 
   export interface ActionMenuItem {
@@ -20,43 +22,40 @@
     onSelect: (id: string, trigger: HTMLElement | null) => void;
   } = $props();
 
-  let menu = $state<HTMLDetailsElement | null>(null);
-  let trigger = $state<HTMLElement | null>(null);
+  let popover = $state<HTMLDivElement | null>(null);
+  let trigger = $state<HTMLButtonElement | null>(null);
+  let left = $state(0);
+  let top = $state(0);
 
-  $effect(() => {
-    function outside(event: PointerEvent): void {
-      if (menu?.open === true && event.target instanceof Node && !menu.contains(event.target)) {
-        close(false);
-      }
+  async function open(): Promise<void> {
+    if (trigger === null || popover === null) return;
+    if (popover.matches(':popover-open')) {
+      popover.hidePopover();
+      return;
     }
-    function escape(event: KeyboardEvent): void {
-      if (event.key !== 'Escape' || menu?.open !== true) return;
-      event.preventDefault();
-      close(true);
+    const rect = trigger.getBoundingClientRect();
+    left = Math.max(8, Math.min(rect.right - 224, window.innerWidth - 232));
+    top = rect.bottom + 6;
+    popover.showPopover();
+    await tick();
+    const menuRect = popover.getBoundingClientRect();
+    if (menuRect.bottom > window.innerHeight - 8) {
+      top = Math.max(8, rect.top - menuRect.height - 6);
+      await tick();
     }
-    document.addEventListener('pointerdown', outside);
-    document.addEventListener('keydown', escape);
-    return () => {
-      document.removeEventListener('pointerdown', outside);
-      document.removeEventListener('keydown', escape);
-    };
-  });
+    popover.querySelector<HTMLButtonElement>('.action-item:not(:disabled)')?.focus();
+  }
 
   function choose(item: ActionMenuItem): void {
     if (item.disabled === true) return;
-    close(true);
+    popover?.hidePopover();
     onSelect(item.id, trigger);
-  }
-
-  function close(restoreFocus: boolean): void {
-    if (menu !== null) menu.open = false;
-    if (restoreFocus) trigger?.focus();
   }
 
   function move(event: KeyboardEvent): void {
     if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
     const buttons = Array.from(
-      menu?.querySelectorAll<HTMLButtonElement>('.action-item:not(:disabled)') ?? [],
+      popover?.querySelectorAll<HTMLButtonElement>('.action-item:not(:disabled)') ?? [],
     );
     if (buttons.length === 0) return;
     event.preventDefault();
@@ -66,73 +65,80 @@
     if (event.key === 'ArrowUp') next = (current - 1 + buttons.length) % buttons.length;
     buttons[next]?.focus();
   }
+
+  function restoreFocus(): void {
+    trigger?.focus();
+  }
 </script>
 
-<details class="action-menu" bind:this={menu}>
-  <summary bind:this={trigger} aria-label={label} title={label}>
-    <Icon name="more" size={18} />
-  </summary>
-  <div class="action-popover" role="menu" aria-label={label}>
-    {#each items as item (item.id)}
-      <button
-        class="action-item"
-        class:danger={item.tone === 'danger'}
-        type="button"
-        role="menuitem"
-        disabled={item.disabled}
-        onclick={() => choose(item)}
-        onkeydown={move}
-      >
-        <span class="action-icon" aria-hidden="true"><Icon name={item.icon} size={16} /></span>
-        <span class="action-copy">
-          <strong>{item.label}</strong>
-          {#if item.description !== undefined}<span>{item.description}</span>{/if}
-        </span>
-      </button>
-    {/each}
-  </div>
-</details>
+<span class="action-menu">
+  <button
+    class="action-trigger"
+    type="button"
+    bind:this={trigger}
+    aria-label={label}
+    title={label}
+    onclick={open}
+  >
+    <Icon name="more" size={22} />
+  </button>
+</span>
+
+<div
+  class="action-popover"
+  bind:this={popover}
+  popover="auto"
+  role="menu"
+  aria-label={label}
+  style:left={`${left}px`}
+  style:top={`${top}px`}
+  onbeforetoggle={(event) => {
+    if (event.newState === 'closed') restoreFocus();
+  }}
+>
+  {#each items as item (item.id)}
+    <button
+      class="action-item"
+      class:danger={item.tone === 'danger'}
+      type="button"
+      role="menuitem"
+      disabled={item.disabled}
+      onclick={() => choose(item)}
+      onkeydown={move}
+    >
+      <span class="action-icon" aria-hidden="true"><Icon name={item.icon} size={16} /></span>
+      <span class="action-copy">
+        <strong>{item.label}</strong>
+        {#if item.description !== undefined}<span>{item.description}</span>{/if}
+      </span>
+    </button>
+  {/each}
+</div>
 
 <style>
   .action-menu {
-    flex: none;
-    position: relative;
+    display: inline-flex;
   }
 
-  .action-menu[open] {
-    z-index: var(--layer-popover);
-  }
-
-  summary {
+  .action-trigger {
     align-items: center;
     background: transparent;
-    border: 1px solid transparent;
-    border-radius: var(--r-ctl);
+    border: 0;
+    border-radius: var(--radius-control);
+    color: var(--text-primary);
     display: flex;
-    height: 1.875rem;
+    height: 2.5rem;
     justify-content: center;
-    position: relative;
-    width: 1.875rem;
+    width: 2.5rem;
   }
 
-  summary::-webkit-details-marker {
-    display: none;
+  .action-trigger:hover {
+    background: var(--interactive-hover);
+    color: var(--text-primary);
   }
 
-  summary::marker {
-    content: '';
-  }
-
-  summary::before {
-    content: '';
-    inset: -0.3125rem;
-    position: absolute;
-  }
-
-  summary:hover,
-  .action-menu[open] summary {
-    background: var(--strip-lift);
-    border-color: var(--control-border);
+  .action-trigger:active {
+    background: var(--interactive-pressed-bg);
   }
 
   .action-popover {
@@ -140,12 +146,10 @@
     border: 1px solid var(--popover-border);
     border-radius: var(--radius-popover);
     box-shadow: var(--shadow-popover);
+    margin: 0;
     min-width: 14rem;
     padding: 0.3rem;
-    position: absolute;
-    right: 0;
-    top: calc(100% + 0.3rem);
-    z-index: var(--layer-popover);
+    position: fixed;
   }
 
   .action-item {
@@ -189,10 +193,7 @@
     margin-top: 0.15rem;
   }
 
-  .action-item.danger strong {
-    color: var(--stop);
-  }
-
+  .action-item.danger strong,
   .action-item.danger .action-icon {
     color: var(--stop);
   }

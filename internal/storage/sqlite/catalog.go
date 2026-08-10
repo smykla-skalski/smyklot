@@ -332,6 +332,20 @@ func repositoryPageOrder(order storage.RepositoryOrder) (string, error) {
 		return "r.full_name COLLATE NOCASE ASC, r.id ASC", nil
 	case storage.RepositoryNameDescending:
 		return "r.full_name COLLATE NOCASE DESC, r.id DESC", nil
+	case storage.RepositoryFileAscending:
+		return `(CASE WHEN r.ignore_repository_file = 1
+            THEN 'bypassed' ELSE r.config_file_status END) COLLATE NOCASE ASC,
+            r.full_name COLLATE NOCASE ASC, r.id ASC`, nil
+	case storage.RepositoryFileDescending:
+		return `(CASE WHEN r.ignore_repository_file = 1
+            THEN 'bypassed' ELSE r.config_file_status END) COLLATE NOCASE DESC,
+            r.full_name COLLATE NOCASE ASC, r.id ASC`, nil
+	case storage.RepositoryOverridesAscending:
+		return `(SELECT COUNT(*) FROM json_each(r.config_patch)) ASC,
+            r.full_name COLLATE NOCASE ASC, r.id ASC`, nil
+	case storage.RepositoryOverridesDescending:
+		return `(SELECT COUNT(*) FROM json_each(r.config_patch)) DESC,
+            r.full_name COLLATE NOCASE ASC, r.id ASC`, nil
 	case storage.RepositoryNewest:
 		return "r.settings_updated_at DESC, r.id DESC", nil
 	case storage.RepositoryOldest:

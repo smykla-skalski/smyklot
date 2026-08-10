@@ -575,14 +575,13 @@
     gap: 2px;
     max-height: min(24rem, calc(100dvh - 10rem));
     overflow: auto;
-    padding-top: var(--space-1);
   }
 
   .target-search {
     background: var(--popover-bg);
     border-bottom: 1px solid var(--border-subtle);
     display: block;
-    padding: var(--space-2);
+    padding: 0 0 var(--space-2);
     position: relative;
     z-index: 2;
   }
@@ -598,6 +597,12 @@
     width: 100%;
   }
 
+  .target-search input:focus-visible {
+    border-color: var(--focus);
+    box-shadow: inset 0 0 0 1px var(--focus);
+    outline: 0;
+  }
+
   .target-search input::placeholder {
     color: var(--text-muted);
   }
@@ -605,10 +610,10 @@
   .target-search-icon {
     color: var(--text-muted);
     display: grid;
-    left: 1.125rem;
+    left: 0.625rem;
     place-items: center;
     position: absolute;
-    top: 1.15rem;
+    top: 0.6875rem;
   }
 
   .target-group-label {
@@ -618,7 +623,7 @@
     font-weight: 650;
     letter-spacing: 0.04em;
     margin: 0;
-    padding: var(--space-2) var(--space-2) var(--space-1);
+    padding: var(--space-1) var(--space-2);
     position: sticky;
     top: 0;
     text-transform: uppercase;

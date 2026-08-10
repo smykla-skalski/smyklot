@@ -84,6 +84,10 @@
     height: var(--local-control-height, var(--control-height));
     justify-content: center;
     padding: 0 0.5rem;
+    transition:
+      background-color var(--duration-fast) var(--ease-standard),
+      border-color var(--duration-fast) var(--ease-standard),
+      transform var(--duration-press) var(--ease-standard);
     user-select: none;
   }
 
@@ -98,6 +102,12 @@
   summary:hover,
   .display-menu[open] summary {
     background: var(--control-bg-hover);
+  }
+
+  summary:active {
+    background: var(--interactive-pressed-bg);
+    border-color: var(--control-border-hover);
+    transform: translateY(1px) scale(0.98);
   }
 
   .display-icon {

@@ -40,7 +40,7 @@ func (s *Store) ListPanelUserPage(
 	if err != nil {
 		return storage.PanelUserPage{}, fmt.Errorf("count panel users: %w", err)
 	}
-	ids, nextOffset, err := listPanelUserIDs(ctx, s.db, "", clauses, arguments, page)
+	ids, nextOffset, err := listPanelUserIDs(ctx, s.db, "", clauses, arguments, page, false)
 	if err != nil {
 		return storage.PanelUserPage{}, err
 	}
@@ -84,7 +84,7 @@ func (s *Store) ListTargetPanelUserPage(
 	if err != nil {
 		return storage.TargetPanelUserPage{}, fmt.Errorf("count target panel users: %w", err)
 	}
-	ids, nextOffset, err := listPanelUserIDs(ctx, s.db, join, clauses, arguments, page)
+	ids, nextOffset, err := listPanelUserIDs(ctx, s.db, join, clauses, arguments, page, true)
 	if err != nil {
 		return storage.TargetPanelUserPage{}, err
 	}
@@ -245,8 +245,9 @@ func listPanelUserIDs(
 	clauses []string,
 	arguments []any,
 	page storage.PanelUserPageRequest,
+	target bool,
 ) ([]string, int, error) {
-	order, err := panelUserOrder(page.Order)
+	order, err := panelUserOrder(page.Order, target)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -281,12 +282,28 @@ LIMIT ? OFFSET ?`, queryArguments...)
 	return ids, nextOffset, nil
 }
 
-func panelUserOrder(order storage.PanelUserOrder) (string, error) {
+func panelUserOrder(order storage.PanelUserOrder, target bool) (string, error) {
+	role := "pu.global_role"
+	if target {
+		role = targetEffectiveRoleSQL()
+	}
+	roleLevel := `(CASE ` + role + `
+WHEN 'none' THEN 0
+WHEN 'viewer' THEN 1
+WHEN 'editor' THEN 2
+WHEN 'admin' THEN 3
+WHEN 'owner' THEN 4
+ELSE -1
+END)`
 	switch order {
 	case "", storage.PanelUserNameAscending:
 		return "lower(a.display_name) ASC, lower(a.login) ASC, a.id ASC", nil
 	case storage.PanelUserNameDescending:
 		return "lower(a.display_name) DESC, lower(a.login) DESC, a.id DESC", nil
+	case storage.PanelUserRoleAscending:
+		return roleLevel + " ASC, lower(a.display_name) ASC, a.id ASC", nil
+	case storage.PanelUserRoleDescending:
+		return roleLevel + " DESC, lower(a.display_name) ASC, a.id ASC", nil
 	case storage.PanelUserUpdatedNewest:
 		return "pu.updated_at DESC, a.id DESC", nil
 	case storage.PanelUserUpdatedOldest:

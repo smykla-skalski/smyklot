@@ -37,6 +37,8 @@ func parsePanelUserPage(values url.Values) (storage.PanelUserPageRequest, error)
 	switch order := storage.PanelUserOrder(values.Get("sort")); order {
 	case "", storage.PanelUserNameAscending:
 	case storage.PanelUserNameDescending,
+		storage.PanelUserRoleAscending,
+		storage.PanelUserRoleDescending,
 		storage.PanelUserUpdatedNewest,
 		storage.PanelUserUpdatedOldest,
 		storage.PanelUserLoginNewest,
@@ -89,7 +91,9 @@ func parseInvitationPage(values url.Values) (storage.InvitationPageRequest, erro
 		storage.InvitationExpirySoonest,
 		storage.InvitationExpiryLatest,
 		storage.InvitationNameAscending,
-		storage.InvitationNameDescending:
+		storage.InvitationNameDescending,
+		storage.InvitationRoleAscending,
+		storage.InvitationRoleDescending:
 		page.Order = order
 	default:
 		return storage.InvitationPageRequest{}, fmt.Errorf("invalid invitation sort order")

@@ -126,4 +126,32 @@ describe.each([
     expect(ratio).toBeGreaterThanOrEqual(1.05);
     expect(ratio).toBeLessThan(1.3);
   });
+
+  it('keeps table filler subtly distinct from rows and table chrome', () => {
+    const filler = color(palette, 'table-filler-bg');
+    const rowRatio = contrast(filler, color(palette, 'surface-base'));
+    const chromeRatio = contrast(filler, color(palette, 'table-header-bg'));
+
+    expect(rowRatio).toBeGreaterThan(1.02);
+    expect(rowRatio).toBeLessThan(1.3);
+    expect(chromeRatio).toBeGreaterThan(1.02);
+    expect(chromeRatio).toBeLessThan(1.3);
+  });
+
+  it('keeps active header filters distinct from table chrome', () => {
+    expect(
+      contrast(color(palette, 'brand-action'), color(palette, 'table-header-bg')),
+    ).toBeGreaterThanOrEqual(3);
+  });
+
+  it('keeps segmented-control labels readable and selected fills restrained', () => {
+    expect(
+      contrast(color(palette, 'text-secondary'), color(palette, 'surface-inset')),
+    ).toBeGreaterThanOrEqual(4.5);
+    for (const fill of ['surface-base', 'brand-action-tint', 'success-tint', 'danger-tint']) {
+      const ratio = contrast(color(palette, fill), color(palette, 'surface-inset'));
+      expect(ratio).toBeGreaterThan(1);
+      expect(ratio).toBeLessThan(1.5);
+    }
+  });
 });

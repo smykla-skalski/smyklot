@@ -89,7 +89,14 @@ export interface PanelUser {
 }
 
 export type PanelUserSort =
-  'name_asc' | 'name_desc' | 'updated_newest' | 'updated_oldest' | 'login_newest' | 'login_oldest';
+  | 'name_asc'
+  | 'name_desc'
+  | 'role_asc'
+  | 'role_desc'
+  | 'updated_newest'
+  | 'updated_oldest'
+  | 'login_newest'
+  | 'login_oldest';
 export type PanelUserListStatus = 'active' | 'banned' | 'suspended';
 
 export interface PanelUserPageRequest {
@@ -149,7 +156,9 @@ export type InvitationSort =
   | 'expiry_soonest'
   | 'expiry_latest'
   | 'name_asc'
-  | 'name_desc';
+  | 'name_desc'
+  | 'role_asc'
+  | 'role_desc';
 
 export interface InvitationPageRequest {
   cursor?: string;
@@ -240,7 +249,15 @@ export interface RepositoryDetail {
   revision: number;
 }
 
-export type RepositorySort = 'name_asc' | 'name_desc' | 'newest' | 'oldest';
+export type RepositorySort =
+  | 'name_asc'
+  | 'name_desc'
+  | 'file_asc'
+  | 'file_desc'
+  | 'overrides_asc'
+  | 'overrides_desc'
+  | 'newest'
+  | 'oldest';
 export type RepositoryStateFilter = 'all' | 'enabled' | 'disabled';
 export type RepositorySettingFilter =
   { mode: 'all' | 'custom' | 'none' } | { mode: 'keys'; keys: ConfigKey[] };
@@ -288,8 +305,21 @@ export interface DeliveryFailure {
   occurred_at: string;
 }
 
-export type HistorySort = 'newest' | 'oldest';
+export type HistorySort =
+  | 'newest'
+  | 'oldest'
+  | 'actor_asc'
+  | 'actor_desc'
+  | 'target_asc'
+  | 'target_desc'
+  | 'change_asc'
+  | 'change_desc'
+  | 'status_asc'
+  | 'status_desc'
+  | 'repository_asc'
+  | 'repository_desc';
 export type AuditScope = 'all' | 'account' | 'repositories';
+export type AuditChange = 'all' | 'enablement' | 'repository' | 'account';
 export type FailureKind = 'all' | 'retryable' | 'permanent';
 
 export interface HistoryRequest {
@@ -301,6 +331,7 @@ export interface HistoryRequest {
 
 export interface AuditHistoryRequest extends HistoryRequest {
   scope: AuditScope;
+  change: AuditChange;
 }
 
 export interface FailureHistoryRequest extends HistoryRequest {

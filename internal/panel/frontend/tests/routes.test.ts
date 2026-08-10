@@ -50,14 +50,19 @@ describe('panel routes', () => {
     });
   });
 
-  it('keeps help and global users outside installation routes', () => {
+  it('keeps help and global access datasets outside installation routes', () => {
     expect(parsePanelRoute('', '/help')).toEqual({ view: 'help' });
     expect(parsePanelRoute('/panel', '/panel/help/')).toEqual({ view: 'help' });
     expect(parsePanelRoute('', '/i/smykla-skalski/help')).toBeNull();
     expect(parsePanelRoute('', '/users')).toEqual({ view: 'users' });
+    expect(parsePanelRoute('', '/invitations')).toEqual({ view: 'invitations' });
     expect(parsePanelRoute('', '/i/smykla-skalski/users')).toEqual({
       account: 'smykla-skalski',
       view: 'users',
+    });
+    expect(parsePanelRoute('', '/i/smykla-skalski/invitations')).toEqual({
+      account: 'smykla-skalski',
+      view: 'invitations',
     });
   });
 
@@ -92,8 +97,12 @@ describe('panel routes', () => {
     );
     expect(panelRoutePath('/panel', { view: 'help' })).toBe('/panel/help');
     expect(panelRoutePath('/panel', { view: 'users' })).toBe('/panel/users');
+    expect(panelRoutePath('/panel', { view: 'invitations' })).toBe('/panel/invitations');
     expect(panelRoutePath('/panel', { account: 'bartsmykla', view: 'users' })).toBe(
       '/panel/i/bartsmykla/users',
+    );
+    expect(panelRoutePath('/panel', { account: 'bartsmykla', view: 'invitations' })).toBe(
+      '/panel/i/bartsmykla/invitations',
     );
   });
 });

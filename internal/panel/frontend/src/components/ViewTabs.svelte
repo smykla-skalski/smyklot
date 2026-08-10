@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { PANEL_VIEWS, type PanelView } from '../lib/routes';
+  import type { PanelView } from '../lib/routes';
   import Icon, { type IconName } from './Icon.svelte';
 
   const {
@@ -16,7 +16,23 @@
     collapsed: boolean;
   } = $props();
 
-  const visibleViews = $derived(PANEL_VIEWS.filter((view) => view !== 'users' || showUsers));
+  const NAVIGATION_VIEWS = [
+    'settings',
+    'repositories',
+    'users',
+    'history',
+    'help',
+  ] as const satisfies readonly PanelView[];
+
+  const visibleViews = $derived(NAVIGATION_VIEWS.filter((view) => view !== 'users' || showUsers));
+
+  function isActive(item: PanelView): boolean {
+    return value === item || (item === 'users' && value === 'invitations');
+  }
+
+  function destination(item: PanelView): PanelView {
+    return item === 'users' && value === 'invitations' ? 'invitations' : item;
+  }
 
   function selectFromClick(event: MouseEvent, next: PanelView): void {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
@@ -26,13 +42,14 @@
   }
 
   function label(view: PanelView): string {
+    if (view === 'users' || view === 'invitations') return 'Access';
     return view.slice(0, 1).toUpperCase() + view.slice(1);
   }
 
   function icon(view: PanelView): IconName {
     if (view === 'settings') return 'settings';
     if (view === 'repositories') return 'repositories';
-    if (view === 'users') return 'users';
+    if (view === 'users' || view === 'invitations') return 'users';
     if (view === 'history') return 'history';
     return 'help';
   }
@@ -42,12 +59,12 @@
   <div class="view-links">
     {#each visibleViews as item (item)}
       <a
-        href={hrefFor(item)}
+        href={hrefFor(destination(item))}
         id={`${item}-navigation`}
-        class={[value === item && 'active', item === 'help' && 'help-link']}
+        class={[isActive(item) && 'active', item === 'help' && 'help-link']}
         aria-label={collapsed ? label(item) : undefined}
-        aria-current={value === item ? 'page' : undefined}
-        onclick={(event) => selectFromClick(event, item)}
+        aria-current={isActive(item) ? 'page' : undefined}
+        onclick={(event) => selectFromClick(event, destination(item))}
       >
         <span class="navigation-icon"><Icon name={icon(item)} size={20} /></span>
         <span class="navigation-label">{label(item)}</span>
@@ -105,6 +122,15 @@
     background: var(--sidebar-item-active);
     color: var(--sidebar-item-active-text);
     font-weight: 700;
+  }
+
+  a.active:hover {
+    background-color: var(--interactive-selected-hover);
+    color: var(--sidebar-item-active-text);
+  }
+
+  a.active:active {
+    background-color: var(--interactive-selected-pressed);
   }
 
   .navigation-icon {

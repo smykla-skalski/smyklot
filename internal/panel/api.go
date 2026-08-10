@@ -223,7 +223,7 @@ func (s *Server) getAudit(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	page, err := parseHistoryPage(r.URL.Query())
+	page, err := parseHistoryPage(r.URL.Query(), auditHistoryOrders...)
 	if err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid_history_query", err.Error())
 		return
@@ -237,9 +237,19 @@ func (s *Server) getAudit(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, "invalid_history_query", "invalid audit scope")
 		return
 	}
+	change := storage.AuditChange(r.URL.Query().Get("change"))
+	if change == "" {
+		change = storage.AuditChangeAll
+	}
+	if change != storage.AuditChangeAll && change != storage.AuditChangeEnablement &&
+		change != storage.AuditChangeRepository && change != storage.AuditChangeAccount {
+		s.writeError(w, http.StatusBadRequest, "invalid_history_query", "invalid audit change")
+		return
+	}
 	result, err := s.store.ListAudit(r.Context(), target.ID, storage.AuditPageRequest{
 		HistoryPageRequest: page,
 		Scope:              scope,
+		Change:             change,
 	})
 	if err != nil {
 		s.writeInternal(w, err)
@@ -253,7 +263,7 @@ func (s *Server) getFailures(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	page, err := parseHistoryPage(r.URL.Query())
+	page, err := parseHistoryPage(r.URL.Query(), failureHistoryOrders...)
 	if err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid_history_query", err.Error())
 		return
