@@ -65,6 +65,42 @@
   const selectedTarget = $derived(
     selectedId === null ? null : (targets.find((target) => target.id === selectedId) ?? null),
   );
+  const tableScrollView = $derived(
+    selectedTarget !== null && ['repositories', 'users', 'history'].includes(view),
+  );
+
+  function forwardTableWheel(event: WheelEvent): void {
+    if (
+      !tableScrollView ||
+      !window.matchMedia('(min-width: 64.001rem)').matches ||
+      event.defaultPrevented ||
+      event.ctrlKey ||
+      event.deltaY === 0 ||
+      Math.abs(event.deltaX) > Math.abs(event.deltaY)
+    )
+      return;
+
+    const target = event.target;
+    if (
+      target instanceof Element &&
+      target.closest('[data-panel-scroll], [role="dialog"], [role="menu"]') !== null
+    )
+      return;
+
+    const workspace = event.currentTarget as HTMLDivElement;
+    const scroller = workspace.querySelector<HTMLElement>('[data-panel-scroll]');
+    if (scroller === null || scroller.scrollHeight <= scroller.clientHeight) return;
+
+    const previous = scroller.scrollTop;
+    const delta =
+      event.deltaMode === 1
+        ? event.deltaY * 16
+        : event.deltaMode === 2
+          ? event.deltaY * scroller.clientHeight
+          : event.deltaY;
+    scroller.scrollTop += delta;
+    if (scroller.scrollTop !== previous) event.preventDefault();
+  }
 
   async function load(): Promise<void> {
     loading = viewer === null;
@@ -388,7 +424,7 @@
     onSelectTheme={selectTheme}
   />
 
-  <div class="workspace">
+  <div class="workspace" class:table-scroll-view={tableScrollView} onwheel={forwardTableWheel}>
     <div id="panel-content" class="workspace-content" tabindex="-1">
       {#if failure !== null}
         <Plate label="Problem" tone="alarm">
@@ -511,6 +547,15 @@
 </main>
 
 <style>
+  #repositories-panel,
+  #users-panel,
+  #history-panel {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+  }
+
   .panel-skeleton {
     display: grid;
     gap: var(--space-3);

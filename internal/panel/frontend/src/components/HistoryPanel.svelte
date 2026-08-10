@@ -80,6 +80,7 @@
   let now = $state(Date.now());
   let requestSequence = 0;
   let historyTools: HTMLDivElement;
+  let historyResults = $state<HTMLDivElement>();
   let scrollAfterPageSizeChange = false;
 
   const currentPage = $derived(historyType === 'audit' ? auditPage : failurePage);
@@ -187,6 +188,7 @@
 
   async function resetAndLoad(key: string): Promise<void> {
     pageIndex = 0;
+    scrollResultsToTop();
     await loadPage(0, key);
   }
 
@@ -249,14 +251,27 @@
     if (!scrollAfterPageSizeChange) return;
     scrollAfterPageSizeChange = false;
     await tick();
-    historyTools.scrollIntoView({ block: 'start' });
+    if (isDesktopTableLayout()) {
+      scrollResultsToTop();
+    } else {
+      historyTools.scrollIntoView({ block: 'start' });
+    }
   }
 
   async function selectPage(nextIndex: number): Promise<void> {
     const bounded = Math.min(pageCount - 1, Math.max(0, nextIndex));
     if (bounded === pageIndex || loading) return;
     pageIndex = bounded;
+    scrollResultsToTop();
     await loadPage(bounded, requestKey);
+  }
+
+  function scrollResultsToTop(): void {
+    if (isDesktopTableLayout()) historyResults?.scrollTo({ top: 0 });
+  }
+
+  function isDesktopTableLayout(): boolean {
+    return window.matchMedia('(min-width: 64.001rem)').matches;
   }
 
   function retry(): void {
@@ -324,7 +339,13 @@
     <HistoryDisplayMenu value={timeDisplay} onSelect={selectTimeDisplay} />
   </div>
 
-  <div class:loading class="history-results" aria-busy={loading}>
+  <div
+    class:loading
+    class="history-results"
+    bind:this={historyResults}
+    data-panel-scroll
+    aria-busy={loading}
+  >
     {#if problem !== null}
       <div class="result-state" role="alert">
         <strong>History could not be loaded</strong>
@@ -521,7 +542,11 @@
     border: 0;
     border-radius: 0;
     box-shadow: none;
+    display: flex;
+    flex: 1;
+    flex-direction: column;
     margin-bottom: 0;
+    min-height: 0;
     overflow: visible;
   }
 
@@ -554,10 +579,11 @@
   }
 
   .history-results {
-    background: var(--surface-base);
+    background: var(--surface-inset);
     border: 1px solid var(--border-subtle);
     border-bottom: 0;
     border-radius: var(--radius-surface) var(--radius-surface) 0 0;
+    flex: 1;
     min-height: 5rem;
     overflow: hidden;
     transition: opacity 120ms ease-out;
@@ -568,11 +594,13 @@
   }
 
   .table-scroll {
+    background: var(--surface-base);
     max-width: 100%;
     overflow-x: auto;
   }
 
   .history-table {
+    background: var(--surface-base);
     border-collapse: collapse;
     font-size: 0.75rem;
     min-width: 40rem;
@@ -606,6 +634,29 @@
 
   .history-table tbody tr:hover {
     background: var(--table-row-hover);
+  }
+
+  .history-table tbody tr:last-child {
+    border-bottom: 1px solid var(--rule);
+  }
+
+  @media (min-width: 64.001rem) {
+    .history-results {
+      min-height: 0;
+      overflow: auto;
+      overscroll-behavior: contain;
+      scrollbar-gutter: stable;
+    }
+
+    .table-scroll {
+      overflow: visible;
+    }
+
+    .history-table thead {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
   }
 
   .history-table th:has(.sort-button) {

@@ -192,6 +192,8 @@
   let savingAccount = $state<string | null>(null);
   let historyUser = $state<PanelUser | null>(null);
   let historyTrigger = $state<HTMLElement | null>(null);
+  let userResults = $state<HTMLDivElement>();
+  let invitationResults = $state<HTMLDivElement>();
 
   let userLoadVersion = 0;
   let invitationLoadVersion = 0;
@@ -253,13 +255,19 @@
 
   $effect(() => {
     const value = userSearch;
-    const timeout = window.setTimeout(() => (userQuery = value.trim()), 180);
+    const timeout = window.setTimeout(() => {
+      userQuery = value.trim();
+      scrollResultsToTop(userResults);
+    }, 180);
     return () => window.clearTimeout(timeout);
   });
 
   $effect(() => {
     const value = invitationSearch;
-    const timeout = window.setTimeout(() => (invitationQuery = value.trim()), 180);
+    const timeout = window.setTimeout(() => {
+      invitationQuery = value.trim();
+      scrollResultsToTop(invitationResults);
+    }, 180);
     return () => window.clearTimeout(timeout);
   });
 
@@ -346,6 +354,7 @@
   }
 
   function clearUserFilters(): void {
+    scrollResultsToTop(userResults);
     userSearch = '';
     userQuery = '';
     userRoles = [];
@@ -353,6 +362,7 @@
   }
 
   function clearInvitationFilters(): void {
+    scrollResultsToTop(invitationResults);
     invitationSearch = '';
     invitationQuery = '';
     invitationRoles = [];
@@ -590,6 +600,7 @@
   }
 
   function selectUserSort(column: UserSortColumn): void {
+    scrollResultsToTop(userResults);
     userSort =
       column === 'name'
         ? userSort === 'name_asc'
@@ -601,6 +612,7 @@
   }
 
   function selectInvitationSort(column: InvitationSortColumn): void {
+    scrollResultsToTop(invitationResults);
     invitationSort =
       column === 'name'
         ? invitationSort === 'name_asc'
@@ -666,13 +678,31 @@
   function selectUserPage(index: number): void {
     if (loadingUsers || index === userPageIndex) return;
     userPageIndex = Math.min(userPageCount - 1, Math.max(0, index));
+    scrollResultsToTop(userResults);
     void loadUsers(userPageIndex);
   }
 
   function selectInvitationPage(index: number): void {
     if (loadingInvitations || index === invitationPageIndex) return;
     invitationPageIndex = Math.min(invitationPageCount - 1, Math.max(0, index));
+    scrollResultsToTop(invitationResults);
     void loadInvitations(invitationPageIndex);
+  }
+
+  function selectUserPageSize(value: number): void {
+    if (value === userLimit) return;
+    scrollResultsToTop(userResults);
+    userLimit = value;
+  }
+
+  function selectInvitationPageSize(value: number): void {
+    if (value === invitationLimit) return;
+    scrollResultsToTop(invitationResults);
+    invitationLimit = value;
+  }
+
+  function scrollResultsToTop(results: HTMLDivElement | undefined): void {
+    if (window.matchMedia('(min-width: 64.001rem)').matches) results?.scrollTo({ top: 0 });
   }
 
   function userActionItems(user: PanelUser): ActionMenuItem[] {
@@ -879,6 +909,7 @@
   }
 
   function selectUserFilters(values: string[]): void {
+    scrollResultsToTop(userResults);
     userRoles = values.filter((value): value is PanelRole =>
       ['owner', 'admin', 'editor', 'viewer', 'none'].includes(value),
     );
@@ -888,6 +919,7 @@
   }
 
   function selectInvitationFilters(values: string[]): void {
+    scrollResultsToTop(invitationResults);
     invitationRoles = values.filter((value): value is Exclude<PanelRole, 'none'> =>
       ['owner', 'admin', 'editor', 'viewer'].includes(value),
     );
@@ -1061,7 +1093,13 @@
           />
         </div>
 
-        <div class:loading={loadingUsers} class="user-results" aria-busy={loadingUsers}>
+        <div
+          class:loading={loadingUsers}
+          class="user-results"
+          bind:this={userResults}
+          data-panel-scroll
+          aria-busy={loadingUsers}
+        >
           {#if loadingUsers && userPage === null}
             <div class="table-skeleton" aria-hidden="true">
               {#each [0, 1, 2, 3, 4, 5] as index (index)}
@@ -1184,7 +1222,7 @@
           total={userPage?.total ?? 0}
           disabled={loadingUsers}
           onPageSelect={selectUserPage}
-          onPageSizeSelect={(value) => (userLimit = value)}
+          onPageSizeSelect={selectUserPageSize}
         />
       </div>
     {:else}
@@ -1213,6 +1251,8 @@
         <div
           class:loading={loadingInvitations}
           class="invitation-results"
+          bind:this={invitationResults}
+          data-panel-scroll
           aria-busy={loadingInvitations}
         >
           {#if loadingInvitations && invitationPage === null}
@@ -1317,7 +1357,7 @@
           total={invitationPage?.total ?? 0}
           disabled={loadingInvitations}
           onPageSelect={selectInvitationPage}
-          onPageSizeSelect={(value) => (invitationLimit = value)}
+          onPageSizeSelect={selectInvitationPageSize}
         />
       </div>
     {/if}
@@ -1551,7 +1591,11 @@
     border: 0;
     border-radius: 0;
     box-shadow: none;
+    display: flex;
+    flex: 1;
+    flex-direction: column;
     margin-bottom: 0;
+    min-height: 0;
     overflow: visible;
   }
 
@@ -1559,8 +1603,20 @@
     background: transparent;
     border: 0;
     border-radius: 0;
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
     min-width: 0;
     overflow: visible;
+  }
+
+  #users-list-panel,
+  #invitations-list-panel {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
   }
 
   .scope-mode {
@@ -1629,7 +1685,7 @@
   }
 
   .section-tab.selected {
-    background: var(--surface-base);
+    background: var(--surface-inset);
     box-shadow: 0 1px 2px var(--shadow-color);
     color: var(--text-primary);
   }
@@ -1691,11 +1747,13 @@
 
   .user-results,
   .invitation-results {
-    background: var(--surface-base);
+    background: var(--surface-inset);
     border: 1px solid var(--border-subtle);
     border-bottom: 0;
     border-radius: var(--radius-surface) var(--radius-surface) 0 0;
+    flex: 1;
     margin-top: 0;
+    min-height: 0;
     overflow: hidden;
   }
 
@@ -1767,6 +1825,7 @@
   }
 
   .user-table-wrap {
+    background: var(--surface-base);
     overflow-x: auto;
   }
 
@@ -1776,6 +1835,7 @@
   }
 
   .user-table {
+    background: var(--surface-base);
     border-collapse: collapse;
     min-width: 50rem;
     width: 100%;
@@ -1840,11 +1900,6 @@
     transform: rotate(180deg);
   }
 
-  .user-table tbody tr:last-child th,
-  .user-table tbody tr:last-child td {
-    border-bottom: 0;
-  }
-
   .user-table tbody tr:hover {
     background: var(--table-row-hover);
   }
@@ -1860,6 +1915,25 @@
   .user-table tbody tr.history-row:focus-visible {
     outline: 2px solid var(--focus);
     outline-offset: -2px;
+  }
+
+  @media (min-width: 64.001rem) {
+    .user-results,
+    .invitation-results {
+      overflow: auto;
+      overscroll-behavior: contain;
+      scrollbar-gutter: stable;
+    }
+
+    .user-table-wrap {
+      overflow: visible;
+    }
+
+    .user-table thead {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
   }
 
   .user-identity {

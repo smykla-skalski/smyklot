@@ -225,7 +225,7 @@
   --sidebar-width-collapsed: 4.5rem;
   --content-max: 100rem;
   --panel-header-height: 5rem;
-  --pagination-height: 4rem;
+  --pagination-height: 2.75rem;
   --duration-press: 100ms;
   --duration-fast: 160ms;
   --duration-normal: 220ms;
@@ -355,6 +355,10 @@ body {
 }
 
 .workspace {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
   min-width: 0;
   padding: var(--space-6) clamp(var(--space-4), 2.4vw, var(--space-8)) var(--space-8);
 }
@@ -363,6 +367,26 @@ body {
 .workspace > .foot {
   margin-inline: auto;
   max-width: var(--content-max);
+  width: 100%;
+}
+
+.workspace-content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+
+@media (min-width: 64.001rem) {
+  .workspace.table-scroll-view {
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .workspace.table-scroll-view .workspace-content {
+    min-height: 0;
+    overflow: hidden;
+  }
 }
 
 .workspace-content:focus {
@@ -832,6 +856,7 @@ code {
   }
 
   .workspace {
+    min-height: calc(100dvh - 3.75rem);
     padding-top: var(--space-4);
   }
 }

@@ -56,14 +56,15 @@
     border-top: 1px solid var(--rule);
     display: grid;
     gap: var(--space-2);
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
     min-height: var(--pagination-height);
-    padding: var(--space-3) var(--space-4);
+    padding: var(--space-1) var(--space-4);
   }
 
   .pagination-range {
     color: var(--dim);
     font-size: var(--font-size-micro);
+    justify-self: start;
     margin: 0;
     white-space: nowrap;
   }
@@ -74,16 +75,19 @@
   }
 
   .pagination-pages {
+    justify-self: center;
     min-width: 0;
   }
 
   .pagination-size {
     display: flex;
+    justify-self: end;
   }
 
   @media (max-width: 36rem) {
     .pagination-bar {
       grid-template-columns: 1fr auto;
+      padding-block: var(--space-2);
     }
 
     .pagination-pages {

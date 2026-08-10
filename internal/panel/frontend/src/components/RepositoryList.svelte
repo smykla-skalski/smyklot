@@ -154,6 +154,7 @@
   let requestSequence = 0;
   let observedRefreshVersion: number | undefined;
   let repositoryTools: HTMLDivElement;
+  let repositoryResults = $state<HTMLDivElement>();
   let scrollAfterPageSizeChange = false;
 
   const repositories = $derived(page?.items ?? []);
@@ -233,6 +234,7 @@
   async function resetAndLoad(key: string): Promise<void> {
     pageIndex = 0;
     page = null;
+    scrollResultsToTop();
     await loadPage(0, key);
   }
 
@@ -278,14 +280,27 @@
     if (!scrollAfterPageSizeChange) return;
     scrollAfterPageSizeChange = false;
     await tick();
-    repositoryTools.scrollIntoView({ block: 'start' });
+    if (isDesktopTableLayout()) {
+      scrollResultsToTop();
+    } else {
+      repositoryTools.scrollIntoView({ block: 'start' });
+    }
   }
 
   async function selectPage(nextIndex: number): Promise<void> {
     const bounded = Math.min(pageCount - 1, Math.max(0, nextIndex));
     if (bounded === pageIndex || loading) return;
     pageIndex = bounded;
+    scrollResultsToTop();
     await loadPage(bounded, filterKey);
+  }
+
+  function scrollResultsToTop(): void {
+    if (isDesktopTableLayout()) repositoryResults?.scrollTo({ top: 0 });
+  }
+
+  function isDesktopTableLayout(): boolean {
+    return window.matchMedia('(min-width: 64.001rem)').matches;
   }
 
   function retry(): void {
@@ -640,7 +655,12 @@
     />
   </div>
 
-  <div class={['repository-results', loading && 'loading']} aria-busy={loading}>
+  <div
+    class={['repository-results', loading && 'loading']}
+    bind:this={repositoryResults}
+    data-panel-scroll
+    aria-busy={loading}
+  >
     {#if problem !== null}
       <div class="result-state" role="alert">
         <strong>Repositories could not be loaded</strong>
@@ -957,7 +977,11 @@
     border: 0;
     border-radius: 0;
     box-shadow: none;
+    display: flex;
+    flex: 1;
+    flex-direction: column;
     margin-bottom: 0;
+    min-height: 0;
     overflow: visible;
   }
 
@@ -971,10 +995,12 @@
   }
 
   .repository-results {
-    background: var(--surface-base);
+    background: var(--surface-inset);
     border: 1px solid var(--border-subtle);
     border-bottom: 0;
     border-radius: var(--radius-surface) var(--radius-surface) 0 0;
+    flex: 1;
+    min-height: 0;
     overflow: hidden;
     transition: opacity 120ms ease-out;
   }
@@ -1044,10 +1070,12 @@
   }
 
   .repository-table-scroll {
+    background: var(--surface-base);
     overflow-x: auto;
   }
 
   .repositories {
+    background: var(--surface-base);
     border-collapse: collapse;
     min-width: 58rem;
     table-layout: fixed;
@@ -1165,6 +1193,24 @@
 
   .repository-row {
     transition: background-color var(--duration-fast) var(--ease-standard);
+  }
+
+  @media (min-width: 64.001rem) {
+    .repository-results {
+      overflow: auto;
+      overscroll-behavior: contain;
+      scrollbar-gutter: stable;
+    }
+
+    .repository-table-scroll {
+      overflow: visible;
+    }
+
+    .repositories thead {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
   }
 
   .repository-row:hover {
