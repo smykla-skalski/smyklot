@@ -12,6 +12,7 @@ type AuthStore interface {
 	UpsertAccount(context.Context, Account) error
 	GetAccount(context.Context, string) (Account, error)
 	ReconcileSuperRoot(context.Context, string, time.Time) error
+	ActivateDerivedOwner(context.Context, string, time.Time) (bool, error)
 	CreateSession(context.Context, Session, int) error
 	GetSession(context.Context, string, time.Time) (Session, error)
 	DeleteSession(context.Context, string) error
@@ -24,15 +25,15 @@ type AccessStore interface {
 	GetPanelUser(context.Context, string) (PanelUser, error)
 	ListPanelUsers(context.Context) ([]PanelUser, error)
 	ListPanelUserPage(context.Context, PanelUserPageRequest) (PanelUserPage, error)
-	ListTargetPanelUsers(context.Context, string) ([]TargetPanelUser, error)
-	ListTargetPanelUserPage(context.Context, string, PanelUserPageRequest) (TargetPanelUserPage, error)
+	ListTargetPanelUsers(context.Context, string, time.Time) ([]TargetPanelUser, error)
+	ListTargetPanelUserPage(context.Context, string, time.Time, PanelUserPageRequest) (TargetPanelUserPage, error)
 	ListAccessDecisions(context.Context, string, *string, int) ([]AccessDecision, error)
 	CreatePanelUser(context.Context, PanelUserCreate) (PanelUser, error)
 	UpdatePanelUser(context.Context, PanelUserChange) (PanelUser, error)
 	GetTargetAccessOverride(context.Context, string, string) (TargetAccessOverride, error)
 	SetTargetAccess(context.Context, TargetAccessChange) (TargetAccessOverride, error)
-	ResolveTargetAccess(context.Context, string, string) (TargetAccess, error)
-	ListTargets(context.Context, string) ([]Target, error)
+	ResolveTargetAccess(context.Context, string, string, time.Time) (TargetAccess, error)
+	ListTargets(context.Context, string, time.Time) ([]Target, error)
 }
 
 // InvitationStore owns identity-locked panel invitations and acceptance.

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/storage"
 )
@@ -60,6 +61,7 @@ func (s *Store) ListPanelUserPage(
 func (s *Store) ListTargetPanelUserPage(
 	ctx context.Context,
 	targetID string,
+	now time.Time,
 	page storage.PanelUserPageRequest,
 ) (storage.TargetPanelUserPage, error) {
 	var available bool
@@ -78,8 +80,11 @@ func (s *Store) ListTargetPanelUserPage(
 	if err != nil {
 		return storage.TargetPanelUserPage{}, err
 	}
-	join := " LEFT JOIN target_roles tr ON tr.account_id = pu.account_id AND tr.target_id = ?"
-	arguments = append([]any{targetID}, arguments...)
+	join := `
+LEFT JOIN target_roles tr ON tr.account_id = pu.account_id AND tr.target_id = ?
+LEFT JOIN target_owners target_owner
+  ON target_owner.account_id = pu.account_id AND target_owner.target_id = ?`
+	arguments = append([]any{targetID, targetID}, arguments...)
 	total, err := countPanelUsers(ctx, s.db, join, clauses, arguments)
 	if err != nil {
 		return storage.TargetPanelUserPage{}, fmt.Errorf("count target panel users: %w", err)
@@ -90,7 +95,7 @@ func (s *Store) ListTargetPanelUserPage(
 	}
 	items := make([]storage.TargetPanelUser, 0, len(ids))
 	for _, id := range ids {
-		item, readErr := targetPanelUser(ctx, s.db, id, targetID)
+		item, readErr := s.targetPanelUser(ctx, id, targetID, now)
 		if readErr != nil {
 			return storage.TargetPanelUserPage{}, fmt.Errorf("read target user page item: %w", readErr)
 		}
@@ -131,7 +136,10 @@ func panelUserPageFilters(
 	clauses := []string{"pu.status <> 'removed'"}
 	arguments := make([]any, 0)
 	if target {
-		clauses = append(clauses, "(pu.root = 1 OR pu.global_role <> 'none' OR tr.account_id IS NOT NULL)")
+		clauses = append(
+			clauses,
+			"(target_owner.account_id IS NOT NULL OR tr.account_id IS NOT NULL)",
+		)
 	}
 	if page.Query != "" {
 		clauses = append(clauses, `(instr(lower(a.login), lower(?)) > 0
@@ -216,8 +224,9 @@ func panelUserStateFilter(state storage.PanelUserListState, target bool) (string
 func targetEffectiveRoleSQL() string {
 	return `(CASE
 WHEN pu.status <> 'active' OR COALESCE(tr.suspended, 0) = 1 THEN 'none'
-WHEN pu.root = 1 OR pu.global_role = 'owner' THEN 'owner'
-ELSE COALESCE(tr.role, pu.global_role)
+WHEN target_owner.account_id IS NOT NULL THEN 'owner'
+WHEN pu.system_role IN ('root', 'super_root') THEN 'none'
+ELSE COALESCE(tr.role, 'none')
 END)`
 }
 
@@ -317,35 +326,26 @@ END)`
 	}
 }
 
-func targetPanelUser(
+func (s *Store) targetPanelUser(
 	ctx context.Context,
-	queryer rowQuerier,
 	accountID, targetID string,
+	now time.Time,
 ) (storage.TargetPanelUser, error) {
-	user, err := getPanelUser(ctx, queryer, accountID)
+	user, err := getPanelUser(ctx, s.db, accountID)
 	if err != nil {
 		return storage.TargetPanelUser{}, err
 	}
-	override, err := getTargetAccessOverride(ctx, queryer, accountID, targetID)
+	override, err := getTargetAccessOverride(ctx, s.db, accountID, targetID)
 	var overridePointer *storage.TargetAccessOverride
-	var targetRole sql.NullString
-	var suspended bool
 	if err == nil {
 		overridePointer = &override
-		suspended = override.Suspended
-		if override.Role != nil {
-			targetRole = sql.NullString{String: string(*override.Role), Valid: true}
-		}
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return storage.TargetPanelUser{}, err
 	}
-	access := resolvedTargetAccess(
-		user.SystemRole.IsRoot(), user.Status, user.GlobalRole, targetRole, suspended,
-	)
-	if overridePointer != nil {
-		access.SuspensionReason = overridePointer.SuspensionReason
+	access, err := s.ResolveTargetAccess(ctx, accountID, targetID, now)
+	if err != nil {
+		return storage.TargetPanelUser{}, err
 	}
-	access.Capabilities = storage.EffectiveCapabilities(access.Role, user.SystemRole)
 
 	return storage.TargetPanelUser{User: user, Override: overridePointer, Access: access}, nil
 }

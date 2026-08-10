@@ -226,36 +226,51 @@ func (s *Store) GetTargetAccessOverride(
 	return override, nil
 }
 
-// ResolveTargetAccess applies account status, system role, suspension, override, and
-// global role precedence to one available installation.
+// ResolveTargetAccess applies account status, fresh ownership, system role,
+// suspension, and explicit installation role precedence.
 func (s *Store) ResolveTargetAccess(
 	ctx context.Context,
 	accountID, targetID string,
+	now time.Time,
 ) (storage.TargetAccess, error) {
 	var systemRole storage.SystemRole
 	var suspended bool
 	var status storage.PanelUserStatus
-	var globalRole storage.PanelRole
-	var targetRole, suspensionReason sql.NullString
+	var targetRole, suspensionReason, ownershipStatus, ownershipSyncedAt sql.NullString
+	var ownerCount int
+	var owned bool
 	err := s.db.QueryRowContext(ctx, `
-SELECT pu.system_role, pu.status, pu.global_role, tr.role, COALESCE(tr.suspended, 0), tr.suspension_reason
+SELECT
+    pu.system_role,
+    pu.status,
+    tr.role,
+    COALESCE(tr.suspended, 0),
+    tr.suspension_reason,
+    ownership.status,
+    ownership.synced_at,
+    (SELECT COUNT(*) FROM target_owners owners WHERE owners.target_id = t.id),
+    EXISTS(SELECT 1 FROM target_owners owners WHERE owners.target_id = t.id AND owners.account_id = pu.account_id)
 FROM panel_users pu
 JOIN targets t ON t.id = ? AND t.available = 1
 LEFT JOIN target_roles tr ON tr.account_id = pu.account_id AND tr.target_id = t.id
+LEFT JOIN target_ownership ownership ON ownership.target_id = t.id
 WHERE pu.account_id = ?`, targetID, accountID).Scan(
 		&systemRole,
 		&status,
-		&globalRole,
 		&targetRole,
 		&suspended,
 		&suspensionReason,
+		&ownershipStatus,
+		&ownershipSyncedAt,
+		&ownerCount,
+		&owned,
 	)
 	if err != nil {
 		return storage.TargetAccess{}, fmt.Errorf("resolve target access: %w", noRows(err))
 	}
 
-	root := systemRole.IsRoot()
-	access := resolvedTargetAccess(root, status, globalRole, targetRole, suspended)
+	fresh := freshOwnership(ownershipStatus, ownershipSyncedAt, ownerCount, now)
+	access := resolvedTargetAccess(systemRole, status, targetRole, suspended, owned, fresh)
 	access.SuspensionReason = stringPointer(suspensionReason)
 	access.Capabilities = storage.EffectiveCapabilities(access.Role, systemRole)
 
@@ -263,22 +278,31 @@ WHERE pu.account_id = ?`, targetID, accountID).Scan(
 }
 
 // ListTargets returns installations permitted by the current access policy.
-func (s *Store) ListTargets(ctx context.Context, accountID string) ([]storage.Target, error) {
+func (s *Store) ListTargets(
+	ctx context.Context,
+	accountID string,
+	now time.Time,
+) ([]storage.Target, error) {
 	rows, err := s.db.QueryContext(ctx, targetSelect+`
 JOIN panel_users pu ON pu.account_id = ?
+LEFT JOIN target_owners current_owner
+  ON current_owner.account_id = pu.account_id AND current_owner.target_id = t.id
 LEFT JOIN target_roles tr ON tr.account_id = pu.account_id AND tr.target_id = t.id
 WHERE t.available = 1
   AND pu.status = 'active'
+  AND o.status = 'fresh'
+  AND julianday(o.synced_at) >= julianday(?)
+  AND EXISTS(SELECT 1 FROM target_owners owners WHERE owners.target_id = t.id)
   AND (
-      pu.system_role IN ('root', 'super_root')
-      OR pu.global_role = 'owner'
+      current_owner.account_id IS NOT NULL
       OR (
-          COALESCE(tr.suspended, 0) = 0
-          AND COALESCE(tr.role, pu.global_role) IN ('viewer', 'editor', 'admin')
+          pu.system_role = 'none'
+          AND COALESCE(tr.suspended, 0) = 0
+          AND tr.role IN ('viewer', 'editor', 'admin')
       )
   )
 GROUP BY t.id, a.id
-ORDER BY a.login`, accountID)
+ORDER BY a.login`, accountID, formatTime(now.Add(-storage.OwnershipFreshFor)))
 	if err != nil {
 		return nil, fmt.Errorf("list targets: %w", err)
 	}
@@ -292,38 +316,56 @@ ORDER BY a.login`, accountID)
 }
 
 func resolvedTargetAccess(
-	root bool,
+	systemRole storage.SystemRole,
 	status storage.PanelUserStatus,
-	globalRole storage.PanelRole,
 	targetRole sql.NullString,
 	suspended bool,
+	owned bool,
+	ownershipFresh bool,
 ) storage.TargetAccess {
-	if status != storage.PanelUserActive {
+	root := systemRole.IsRoot()
+	if status != storage.PanelUserActive || !ownershipFresh {
 		return storage.TargetAccess{Role: storage.PanelRoleNone, Source: storage.AccessSourceDenied}
 	}
-	if root || globalRole == storage.PanelRoleOwner {
-		return storage.TargetAccess{Role: storage.PanelRoleOwner, Source: rootSource(root), Root: root}
+	if owned {
+		return storage.TargetAccess{
+			Role: storage.PanelRoleOwner, Source: storage.AccessSourceOwner, Root: root,
+		}
+	}
+	if root {
+		return storage.TargetAccess{
+			Role: storage.PanelRoleNone, Source: storage.AccessSourceDenied, Root: true,
+		}
 	}
 	if suspended {
 		return storage.TargetAccess{
 			Role: storage.PanelRoleNone, Source: storage.AccessSourceSuspended, Root: root,
 		}
 	}
-	if targetRole.Valid {
+	if targetRole.Valid && storage.PanelRole(targetRole.String) != storage.PanelRoleNone {
 		return storage.TargetAccess{
 			Role: storage.PanelRole(targetRole.String), Source: storage.AccessSourceTarget, Root: root,
 		}
 	}
 
-	return storage.TargetAccess{Role: globalRole, Source: storage.AccessSourceGlobal, Root: root}
+	return storage.TargetAccess{Role: storage.PanelRoleNone, Source: storage.AccessSourceDenied}
 }
 
-func rootSource(root bool) storage.AccessSource {
-	if root {
-		return storage.AccessSourceRoot
+func freshOwnership(
+	status, syncedAt sql.NullString,
+	ownerCount int,
+	now time.Time,
+) bool {
+	if !status.Valid || storage.OwnershipStatus(status.String) != storage.OwnershipStatusFresh ||
+		!syncedAt.Valid || ownerCount == 0 {
+		return false
+	}
+	parsed, err := parseTime(syncedAt.String)
+	if err != nil {
+		return false
 	}
 
-	return storage.AccessSourceGlobal
+	return !parsed.Before(now.Add(-storage.OwnershipFreshFor))
 }
 
 func targetAccessRevision(

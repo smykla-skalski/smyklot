@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/storage"
 )
@@ -31,6 +32,7 @@ ORDER BY lower(a.login), a.id`)
 func (s *Store) ListTargetPanelUsers(
 	ctx context.Context,
 	targetID string,
+	now time.Time,
 ) ([]storage.TargetPanelUser, error) {
 	var available bool
 	err := s.db.QueryRowContext(ctx, "SELECT available FROM targets WHERE id = ?", targetID).
@@ -54,12 +56,11 @@ func (s *Store) ListTargetPanelUsers(
 		} else if !errors.Is(overrideErr, sql.ErrNoRows) {
 			return nil, fmt.Errorf("read target user override: %w", overrideErr)
 		}
-		access, accessErr := s.ResolveTargetAccess(ctx, user.Account.ID, targetID)
+		access, accessErr := s.ResolveTargetAccess(ctx, user.Account.ID, targetID, now)
 		if accessErr != nil {
 			return nil, accessErr
 		}
-		if user.GlobalRole == storage.PanelRoleNone && overridePointer == nil &&
-			access.Role == storage.PanelRoleNone {
+		if overridePointer == nil && access.Role == storage.PanelRoleNone {
 			continue
 		}
 		result = append(result, storage.TargetPanelUser{

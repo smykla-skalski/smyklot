@@ -269,7 +269,9 @@ func (s *Server) canInviteToTarget(
 		subject.GlobalRole == storage.PanelRoleOwner {
 		return false
 	}
-	subjectAccess, err := s.store.ResolveTargetAccess(r.Context(), subjectAccount.ID, actorAccessTarget(r))
+	subjectAccess, err := s.store.ResolveTargetAccess(
+		r.Context(), subjectAccount.ID, actorAccessTarget(r), s.now().UTC(),
+	)
 	if err != nil {
 		return false
 	}

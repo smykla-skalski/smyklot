@@ -52,7 +52,7 @@ func (s *Server) getSession(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	targets, err := s.store.ListTargets(r.Context(), account.ID)
+	targets, err := s.store.ListTargets(r.Context(), account.ID, s.now().UTC())
 	if err != nil {
 		s.writeInternal(w, err)
 		return
@@ -70,14 +70,16 @@ func (s *Server) getTargets(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	targets, err := s.store.ListTargets(r.Context(), account.ID)
+	targets, err := s.store.ListTargets(r.Context(), account.ID, s.now().UTC())
 	if err != nil {
 		s.writeInternal(w, err)
 		return
 	}
 	response := make([]targetResponse, 0, len(targets))
 	for _, target := range targets {
-		access, accessErr := s.store.ResolveTargetAccess(r.Context(), account.ID, target.ID)
+		access, accessErr := s.store.ResolveTargetAccess(
+			r.Context(), account.ID, target.ID, s.now().UTC(),
+		)
 		if accessErr != nil {
 			s.writeInternal(w, accessErr)
 			return

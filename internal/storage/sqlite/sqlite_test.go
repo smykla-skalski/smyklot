@@ -133,9 +133,33 @@ var _ = Describe("SQLite store [Unit]", func() {
 		Expect(firstTarget.RepositoryDefaultEnabled).To(BeFalse())
 		Expect(store.ReconcileInstallation(ctx, second)).To(Succeed())
 
-		targets, err := store.ListTargets(ctx, owner.ID)
+		targets, err := store.ListTargets(ctx, owner.ID, now)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(targets).To(HaveLen(2))
+	})
+
+	It("activates fresh derived Owners without bypassing soft removal", func() {
+		owner := testAccount(now)
+		Expect(store.ReconcileInstallation(ctx, testInstallation(owner, now, nil))).To(Succeed())
+		activated, err := store.ActivateDerivedOwner(ctx, owner.ID, now)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(activated).To(BeTrue())
+		user, err := store.GetPanelUser(ctx, owner.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(user.Status).To(Equal(storage.PanelUserActive))
+		Expect(user.SystemRole).To(Equal(storage.SystemRoleNone))
+		Expect(user.GlobalRole).To(Equal(storage.PanelRoleNone))
+
+		removed, err := store.UpdatePanelUser(ctx, storage.PanelUserChange{
+			AccountID: owner.ID, ActorAccountID: owner.ID,
+			GlobalRole: storage.PanelRoleNone, Status: storage.PanelUserRemoved,
+			ExpectedRevision: user.Revision, ChangedAt: now.Add(time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(removed.Status).To(Equal(storage.PanelUserRemoved))
+		activated, err = store.ActivateDerivedOwner(ctx, owner.ID, now.Add(2*time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(activated).To(BeFalse())
 	})
 
 	It("preserves an OAuth profile when catalog data is less detailed", func() {
@@ -149,6 +173,7 @@ var _ = Describe("SQLite store [Unit]", func() {
 		catalogAccount.UpdatedAt = now.Add(time.Minute)
 		installation := testInstallation(catalogAccount, now.Add(time.Minute), nil)
 		installation.Kind = storage.TargetUser
+		installation.Ownership = storage.OwnershipSnapshot{}
 		Expect(store.ReconcileInstallation(ctx, installation)).To(Succeed())
 
 		target, err := store.GetTarget(ctx, installation.TargetID)
@@ -167,13 +192,13 @@ var _ = Describe("SQLite store [Unit]", func() {
 		Expect(store.UpsertAccount(ctx, account)).To(Succeed())
 		Expect(store.ReconcileSuperRoot(ctx, account.ID, now)).To(Succeed())
 		Expect(store.ReconcileInstallation(ctx, initial)).To(Succeed())
-		access, err := store.ResolveTargetAccess(ctx, account.ID, initial.TargetID)
+		access, err := store.ResolveTargetAccess(ctx, account.ID, initial.TargetID, now)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(access.Role).To(Equal(storage.PanelRoleOwner))
-		_, err = store.ResolveTargetAccess(ctx, account.ID, "missing-target")
+		_, err = store.ResolveTargetAccess(ctx, account.ID, "missing-target", now)
 		Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
 
-		targets, err := store.ListTargets(ctx, account.ID)
+		targets, err := store.ListTargets(ctx, account.ID, now)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(targets).To(HaveLen(1))
 		Expect(targets[0].RepositoryCounts).To(Equal(storage.RepositoryCounts{
@@ -321,14 +346,14 @@ var _ = Describe("SQLite store [Unit]", func() {
 		Expect(store.ReconcileCatalog(ctx, []storage.InstallationSnapshot{first, second})).To(Succeed())
 
 		Expect(store.ReconcileCatalog(ctx, []storage.InstallationSnapshot{second})).To(Succeed())
-		_, err := store.ResolveTargetAccess(ctx, account.ID, first.TargetID)
+		_, err := store.ResolveTargetAccess(ctx, account.ID, first.TargetID, now)
 		Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
 		target, err := store.GetTarget(ctx, first.TargetID)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(target.Available).To(BeFalse())
 	})
 
-	It("resolves global roles, target overrides, and local suspension in order", func() {
+	It("ignores global roles and resolves target roles and suspension in order", func() {
 		owner, target := seedInstallation(ctx, store, now)
 		Expect(store.UpsertAccount(ctx, owner)).To(Succeed())
 		Expect(store.ReconcileSuperRoot(ctx, owner.ID, now)).To(Succeed())
@@ -347,11 +372,11 @@ var _ = Describe("SQLite store [Unit]", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(created.GlobalRole).To(Equal(storage.PanelRoleViewer))
 
-		access, err := store.ResolveTargetAccess(ctx, viewer.ID, target.TargetID)
+		access, err := store.ResolveTargetAccess(ctx, viewer.ID, target.TargetID, now)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(access.Role).To(Equal(storage.PanelRoleViewer))
-		Expect(access.Source).To(Equal(storage.AccessSourceGlobal))
-		Expect(access.Capabilities.Read).To(BeTrue())
+		Expect(access.Role).To(Equal(storage.PanelRoleNone))
+		Expect(access.Source).To(Equal(storage.AccessSourceDenied))
+		Expect(access.Capabilities.Read).To(BeFalse())
 		Expect(access.Capabilities.Write).To(BeFalse())
 
 		override, err := store.SetTargetAccess(ctx, storage.TargetAccessChange{
@@ -364,7 +389,7 @@ var _ = Describe("SQLite store [Unit]", func() {
 		})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(override.Revision).To(Equal(int64(1)))
-		access, err = store.ResolveTargetAccess(ctx, viewer.ID, target.TargetID)
+		access, err = store.ResolveTargetAccess(ctx, viewer.ID, target.TargetID, now.Add(time.Minute))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(access.Role).To(Equal(storage.PanelRoleEditor))
 		Expect(access.Source).To(Equal(storage.AccessSourceTarget))
@@ -382,11 +407,63 @@ var _ = Describe("SQLite store [Unit]", func() {
 			ChangedAt:        now.Add(2 * time.Minute),
 		})
 		Expect(err).NotTo(HaveOccurred())
-		access, err = store.ResolveTargetAccess(ctx, viewer.ID, target.TargetID)
+		access, err = store.ResolveTargetAccess(ctx, viewer.ID, target.TargetID, now.Add(2*time.Minute))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(access.Role).To(Equal(storage.PanelRoleNone))
 		Expect(access.Source).To(Equal(storage.AccessSourceSuspended))
 		Expect(access.SuspensionReason).To(HaveValue(Equal(reason)))
+	})
+
+	It("fails regular access closed when ownership is stale or unavailable", func() {
+		owner, target := seedInstallation(ctx, store, now)
+		Expect(store.UpsertAccount(ctx, owner)).To(Succeed())
+		Expect(store.ReconcileSuperRoot(ctx, owner.ID, now)).To(Succeed())
+
+		other := owner
+		other.ID = "github:user:other-owner"
+		other.SubjectID = "other-owner"
+		other.Login = "other-owner"
+		nonOwned := target
+		nonOwned.TargetID = "github:installation:non-owned"
+		nonOwned.InstallationID = "200"
+		nonOwned.Ownership.Owners = []storage.Account{other}
+		Expect(store.ReconcileInstallation(ctx, nonOwned)).To(Succeed())
+
+		targets, err := store.ListTargets(ctx, owner.ID, now.Add(storage.OwnershipFreshFor))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(targets).To(HaveLen(1))
+		Expect(targets[0].ID).To(Equal(target.TargetID))
+		access, err := store.ResolveTargetAccess(
+			ctx, owner.ID, target.TargetID, now.Add(storage.OwnershipFreshFor),
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(access.Role).To(Equal(storage.PanelRoleOwner))
+
+		staleAt := now.Add(storage.OwnershipFreshFor + time.Second)
+		targets, err = store.ListTargets(ctx, owner.ID, staleAt)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(targets).To(BeEmpty())
+		access, err = store.ResolveTargetAccess(ctx, owner.ID, target.TargetID, staleAt)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(access.Role).To(Equal(storage.PanelRoleNone))
+		Expect(access.Source).To(Equal(storage.AccessSourceDenied))
+
+		detail := "organization Members read permission requires installation approval"
+		target.Ownership = storage.OwnershipSnapshot{
+			Source:   storage.OwnershipSourceOrganizationAdmin,
+			Status:   storage.OwnershipStatusPermissionPending,
+			Detail:   &detail,
+			SyncedAt: staleAt,
+		}
+		target.SyncedAt = staleAt
+		Expect(store.ReconcileInstallation(ctx, target)).To(Succeed())
+		diagnostic, err := store.GetTarget(ctx, target.TargetID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(diagnostic.Available).To(BeTrue())
+		Expect(diagnostic.Ownership.Status).To(Equal(storage.OwnershipStatusPermissionPending))
+		access, err = store.ResolveTargetAccess(ctx, owner.ID, target.TargetID, staleAt)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(access.Role).To(Equal(storage.PanelRoleNone))
 	})
 
 	It("lists, bans, removes, and re-adds panel users without losing identity", func() {
@@ -419,7 +496,7 @@ var _ = Describe("SQLite store [Unit]", func() {
 		users, err := store.ListPanelUsers(ctx)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(users).To(HaveLen(2))
-		targetUsers, err := store.ListTargetPanelUsers(ctx, target.TargetID)
+		targetUsers, err := store.ListTargetPanelUsers(ctx, target.TargetID, now)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(targetUsers).To(HaveLen(2))
 		managedTarget := targetUserByID(targetUsers, viewer.ID)
@@ -465,11 +542,18 @@ var _ = Describe("SQLite store [Unit]", func() {
 		Expect(managed.Status).To(Equal(storage.PanelUserActive))
 		Expect(managed.GlobalRole).To(Equal(storage.PanelRoleAdmin))
 		Expect(managed.Revision).To(Equal(int64(4)))
-		targetUsers, err = store.ListTargetPanelUsers(ctx, target.TargetID)
+		_, err = store.SetTargetAccess(ctx, storage.TargetAccessChange{
+			TargetID: target.TargetID, SubjectAccountID: viewer.ID, ActorAccountID: owner.ID,
+			Role: rolePointer(storage.PanelRoleAdmin), ExpectedRevision: 0,
+			ChangedAt: now.Add(3 * time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		targetUsers, err = store.ListTargetPanelUsers(ctx, target.TargetID, now.Add(3*time.Minute))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(targetUsers).To(HaveLen(2))
 		managedTarget = targetUserByID(targetUsers, viewer.ID)
-		Expect(managedTarget.Override).To(BeNil())
+		Expect(managedTarget.Override).NotTo(BeNil())
+		Expect(managedTarget.Override.Role).To(HaveValue(Equal(storage.PanelRoleAdmin)))
 		Expect(managedTarget.Access.Role).To(Equal(storage.PanelRoleAdmin))
 
 		page, err := store.ListPanelUserPage(ctx, storage.PanelUserPageRequest{
@@ -480,7 +564,7 @@ var _ = Describe("SQLite store [Unit]", func() {
 		Expect(page.Items).To(HaveLen(1))
 		Expect(page.Items[0].Account.ID).To(Equal(viewer.ID))
 
-		targetPage, err := store.ListTargetPanelUserPage(ctx, target.TargetID, storage.PanelUserPageRequest{
+		targetPage, err := store.ListTargetPanelUserPage(ctx, target.TargetID, now, storage.PanelUserPageRequest{
 			Limit: 1, Roles: []storage.PanelRole{storage.PanelRoleAdmin},
 			States: []storage.PanelUserListState{storage.PanelUserListActive},
 		})
@@ -499,6 +583,7 @@ var _ = Describe("SQLite store [Unit]", func() {
 		roleDescending, err := store.ListTargetPanelUserPage(
 			ctx,
 			target.TargetID,
+			now,
 			storage.PanelUserPageRequest{Limit: 10, Order: storage.PanelUserRoleDescending},
 		)
 		Expect(err).NotTo(HaveOccurred())
@@ -997,7 +1082,13 @@ func testInstallation(
 		Kind:           storage.TargetOrganization,
 		Account:        account,
 		Repositories:   repositories,
-		SyncedAt:       now,
+		Ownership: storage.OwnershipSnapshot{
+			Source:   storage.OwnershipSourceOrganizationAdmin,
+			Status:   storage.OwnershipStatusFresh,
+			Owners:   []storage.Account{account},
+			SyncedAt: now,
+		},
+		SyncedAt: now,
 	}
 }
 

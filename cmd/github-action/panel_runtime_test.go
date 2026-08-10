@@ -200,13 +200,14 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 	It("shows the root owner installations discovered after sign-in", func() {
 		stub.installations = `[{"id":111,"account":{"id":7,"login":"smykla-skalski","type":"Organization"}}]`
 		stub.repos = `{"repositories":[{"id":31,"name":"smyklot","full_name":"smykla-skalski/smyklot","owner":{"login":"smykla-skalski"}}]}`
+		stub.members = `[{"id":42,"login":"smykla-skalski"}]`
 		_, err := service.SyncCatalog(GinkgoT().Context())
 		Expect(err).NotTo(HaveOccurred())
 
 		now := time.Now().UTC()
 		owner := storage.Account{
-			ID:          "github:test:user:42",
-			Provider:    "github:test",
+			ID:          githubProvider(endpoint.URL) + ":user:42",
+			Provider:    githubProvider(endpoint.URL),
 			SubjectID:   "42",
 			Login:       "smykla-skalski",
 			DisplayName: "Smykla Skalski",
@@ -220,7 +221,7 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 		]`
 		service.maintainPanel(GinkgoT().Context())
 
-		targets, err := service.store.ListTargets(GinkgoT().Context(), owner.ID)
+		targets, err := service.store.ListTargets(GinkgoT().Context(), owner.ID, time.Now().UTC())
 		Expect(err).NotTo(HaveOccurred())
 		Expect(targets).To(HaveLen(2))
 	})
@@ -258,13 +259,14 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 	It("announces catalog changes after the catalog commits", func() {
 		stub.installations = `[{"id":111,"account":{"id":7,"login":"smykla-skalski","type":"Organization"}}]`
 		stub.repos = `{"repositories":[{"id":31,"name":"smyklot","full_name":"smykla-skalski/smyklot","owner":{"login":"smykla-skalski"}}]}`
+		stub.members = `[{"id":42,"login":"smykla-skalski"}]`
 		_, err := service.SyncCatalog(GinkgoT().Context())
 		Expect(err).NotTo(HaveOccurred())
 
 		now := time.Now().UTC()
 		owner := storage.Account{
-			ID:          "github:test:user:42",
-			Provider:    "github:test",
+			ID:          githubProvider(endpoint.URL) + ":user:42",
+			Provider:    githubProvider(endpoint.URL),
 			SubjectID:   "42",
 			Login:       "smykla-skalski",
 			DisplayName: "Smykla Skalski",
@@ -321,7 +323,7 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 		Eventually(events).Should(Receive(&event))
 		Expect(event.Type).To(Equal("resync"))
 
-		targets, err := service.store.ListTargets(GinkgoT().Context(), owner.ID)
+		targets, err := service.store.ListTargets(GinkgoT().Context(), owner.ID, time.Now().UTC())
 		Expect(err).NotTo(HaveOccurred())
 		Expect(targets).To(HaveLen(2))
 
@@ -357,7 +359,7 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Eventually(events).Should(Receive(&event))
 		Expect(event.Type).To(Equal("resync"))
-		targets, err = service.store.ListTargets(GinkgoT().Context(), owner.ID)
+		targets, err = service.store.ListTargets(GinkgoT().Context(), owner.ID, time.Now().UTC())
 		Expect(err).NotTo(HaveOccurred())
 		Expect(targets).To(BeEmpty())
 	})

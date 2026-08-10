@@ -177,7 +177,7 @@ func (s *Server) authorizeAccount(r *http.Request, account storage.Account) (boo
 	}
 	user, err := s.store.GetPanelUser(r.Context(), account.ID)
 	if errors.Is(err, storage.ErrNotFound) {
-		return false, nil
+		return s.store.ActivateDerivedOwner(r.Context(), account.ID, s.now().UTC())
 	}
 	if err != nil {
 		return false, err

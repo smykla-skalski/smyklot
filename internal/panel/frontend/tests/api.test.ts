@@ -86,7 +86,7 @@ const TARGET: PanelTarget = {
   revision: 1,
   repository_counts: { total: 1, enabled: 0, disabled: 1 },
   effective_role: 'owner',
-  access_source: 'root',
+  access_source: 'owner',
   capabilities: VIEWER.capabilities,
 };
 

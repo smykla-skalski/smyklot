@@ -249,8 +249,7 @@ type TargetPanelUser struct {
 type AccessSource string
 
 const (
-	AccessSourceRoot      AccessSource = "root"
-	AccessSourceGlobal    AccessSource = "global"
+	AccessSourceOwner     AccessSource = "owner"
 	AccessSourceTarget    AccessSource = "target"
 	AccessSourceSuspended AccessSource = "suspended"
 	AccessSourceDenied    AccessSource = "denied"
@@ -267,13 +266,15 @@ type AccessCapabilities struct {
 
 // EffectiveCapabilities returns the fixed capability set for a resolved role.
 func EffectiveCapabilities(role PanelRole, systemRole SystemRole) AccessCapabilities {
-	capabilities := AccessCapabilities{ManageOwners: systemRole.IsRoot()}
+	capabilities := AccessCapabilities{
+		ManageGlobalUsers: systemRole.IsRoot(),
+		ManageOwners:      systemRole == SystemRoleSuperRoot,
+	}
 	switch role {
 	case PanelRoleOwner:
 		capabilities.Read = true
 		capabilities.Write = true
 		capabilities.ManageTargetUsers = true
-		capabilities.ManageGlobalUsers = true
 	case PanelRoleAdmin:
 		capabilities.Read = true
 		capabilities.Write = true
@@ -297,9 +298,9 @@ type TargetAccess struct {
 	Capabilities     AccessCapabilities
 }
 
-// TargetAccessOverride is a persisted replacement for a user's global role.
-// A nil Role means inherit the global role. Suspension remains an independent
-// overlay so unbanning restores the previous role.
+// TargetAccessOverride is one persisted installation role and suspension.
+// A nil Role means no explicit access. Suspension remains an independent
+// overlay so restoring access retains the previous role.
 type TargetAccessOverride struct {
 	TargetID         string
 	AccountID        string

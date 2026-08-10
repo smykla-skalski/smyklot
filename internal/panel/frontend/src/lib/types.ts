@@ -44,7 +44,7 @@ export interface PanelAccount {
 export type PanelRole = 'none' | 'viewer' | 'editor' | 'admin' | 'owner';
 export type SystemRole = 'none' | 'root' | 'super_root';
 export type PanelUserStatus = 'active' | 'banned' | 'removed';
-export type AccessSource = 'root' | 'global' | 'target' | 'suspended' | 'denied';
+export type AccessSource = 'owner' | 'target' | 'suspended' | 'denied';
 
 export interface PanelCapabilities {
   read: boolean;

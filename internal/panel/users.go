@@ -176,7 +176,9 @@ func (s *Server) getTargetUsers(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
-	users, err := s.store.ListTargetPanelUserPage(r.Context(), r.PathValue("target"), page)
+	users, err := s.store.ListTargetPanelUserPage(
+		r.Context(), r.PathValue("target"), s.now().UTC(), page,
+	)
 	if err != nil {
 		s.writeStorageError(w, err)
 		return
@@ -249,7 +251,9 @@ func (s *Server) postTargetUser(w http.ResponseWriter, r *http.Request) {
 		s.writeStorageError(w, err)
 		return
 	}
-	current, err := s.store.ResolveTargetAccess(r.Context(), subject.Account.ID, targetID)
+	current, err := s.store.ResolveTargetAccess(
+		r.Context(), subject.Account.ID, targetID, s.now().UTC(),
+	)
 	if err != nil {
 		s.writeStorageError(w, err)
 		return
@@ -266,7 +270,9 @@ func (s *Server) postTargetUser(w http.ResponseWriter, r *http.Request) {
 		s.writeStorageError(w, err)
 		return
 	}
-	access, err := s.store.ResolveTargetAccess(r.Context(), subject.Account.ID, targetID)
+	access, err := s.store.ResolveTargetAccess(
+		r.Context(), subject.Account.ID, targetID, s.now().UTC(),
+	)
 	if err != nil {
 		s.writeInternal(w, err)
 		return
@@ -304,7 +310,9 @@ func (s *Server) putTargetUser(w http.ResponseWriter, r *http.Request) {
 		s.writeStorageError(w, err)
 		return
 	}
-	current, err := s.store.ResolveTargetAccess(r.Context(), subject.Account.ID, targetID)
+	current, err := s.store.ResolveTargetAccess(
+		r.Context(), subject.Account.ID, targetID, s.now().UTC(),
+	)
 	if err != nil {
 		s.writeStorageError(w, err)
 		return
@@ -329,7 +337,9 @@ func (s *Server) putTargetUser(w http.ResponseWriter, r *http.Request) {
 		s.writeStorageError(w, err)
 		return
 	}
-	access, err := s.store.ResolveTargetAccess(r.Context(), subject.Account.ID, targetID)
+	access, err := s.store.ResolveTargetAccess(
+		r.Context(), subject.Account.ID, targetID, s.now().UTC(),
+	)
 	if err != nil {
 		s.writeInternal(w, err)
 		return

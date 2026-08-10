@@ -104,6 +104,12 @@ func newPanelHarnessForSubject(t *testing.T, login, subjectID string) *panelHarn
 			Name:     "smyklot",
 			FullName: "smykla-skalski/smyklot",
 		}},
+		Ownership: storage.OwnershipSnapshot{
+			Source:   storage.OwnershipSourceOrganizationAdmin,
+			Status:   storage.OwnershipStatusFresh,
+			Owners:   []storage.Account{viewer},
+			SyncedAt: now,
+		},
 		SyncedAt: now,
 	}
 	assets := fstest.MapFS{
@@ -381,6 +387,22 @@ func TestPanelEnforcesResolvedRoleCapabilities(t *testing.T) {
 	viewerSession := &http.Cookie{Name: sessionCookieName, Value: viewerToken}
 
 	targets := harness.request(t, http.MethodGet, "/panel/api/v1/targets", nil, viewerSession)
+	if targets.Code != http.StatusOK || targets.Body.String() != `{"targets":[]}`+"\n" {
+		t.Fatalf("global viewer targets = %d %s", targets.Code, targets.Body.String())
+	}
+	viewerRole := storage.PanelRoleViewer
+	viewerOverride, err := harness.store.SetTargetAccess(t.Context(), storage.TargetAccessChange{
+		TargetID:         "github:installation:10",
+		SubjectAccountID: viewer.ID,
+		ActorAccountID:   "github:test:user:1",
+		Role:             &viewerRole,
+		ExpectedRevision: 0,
+		ChangedAt:        harness.now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	targets = harness.request(t, http.MethodGet, "/panel/api/v1/targets", nil, viewerSession)
 	if targets.Code != http.StatusOK ||
 		!strings.Contains(targets.Body.String(), `"effective_role":"viewer"`) ||
 		!strings.Contains(targets.Body.String(), `"write":false`) {
@@ -404,7 +426,7 @@ func TestPanelEnforcesResolvedRoleCapabilities(t *testing.T) {
 		SubjectAccountID: viewer.ID,
 		ActorAccountID:   "github:test:user:1",
 		Role:             &editor,
-		ExpectedRevision: 0,
+		ExpectedRevision: viewerOverride.Revision,
 		ChangedAt:        harness.now.Add(time.Minute),
 	})
 	if err != nil {
@@ -487,6 +509,51 @@ func TestPanelAuthorizesActiveUserWithOnlyTargetAccess(t *testing.T) {
 	}
 	if !authorized {
 		t.Fatal("active user with installation access was not authorized")
+	}
+}
+
+func TestPanelActivatesFreshDerivedOwnerOnSignIn(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+	_ = harness.signIn(t)
+	derived := storage.Account{
+		ID: "github:test:user:99", Provider: "github:test", SubjectID: "99",
+		Login: "derived-owner", DisplayName: "Derived Owner", UpdatedAt: harness.now,
+	}
+	if err := harness.store.UpsertAccount(t.Context(), derived); err != nil {
+		t.Fatal(err)
+	}
+	target, err := harness.store.GetTarget(t.Context(), "github:installation:10")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := harness.store.ReconcileInstallation(t.Context(), storage.InstallationSnapshot{
+		TargetID: target.ID, InstallationID: target.InstallationID,
+		Kind: target.Kind, Account: target.Account,
+		Ownership: storage.OwnershipSnapshot{
+			Source:   storage.OwnershipSourceOrganizationAdmin,
+			Status:   storage.OwnershipStatusFresh,
+			Owners:   []storage.Account{derived},
+			SyncedAt: harness.now,
+		},
+		SyncedAt: harness.now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	authorized, err := harness.server.authorizeAccount(
+		httptest.NewRequest(http.MethodGet, "/panel/auth/callback", nil), derived,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !authorized {
+		t.Fatal("fresh GitHub-derived Owner was not activated")
+	}
+	user, err := harness.store.GetPanelUser(t.Context(), derived.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if user.SystemRole != storage.SystemRoleNone || user.GlobalRole != storage.PanelRoleNone {
+		t.Fatalf("derived Owner policy = %#v", user)
 	}
 }
 
@@ -1105,6 +1172,15 @@ func TestPanelRepositoryPaginationFilteringAndSorting(t *testing.T) {
 			{ID: "repository-20", Name: "smyklot", FullName: "smykla-skalski/smyklot"},
 			{ID: "repository-21", Name: "alpha", FullName: "smykla-skalski/alpha"},
 			{ID: "repository-22", Name: "beta-service", FullName: "smykla-skalski/beta-service"},
+		},
+		Ownership: storage.OwnershipSnapshot{
+			Source: storage.OwnershipSourceOrganizationAdmin,
+			Status: storage.OwnershipStatusFresh,
+			Owners: []storage.Account{{
+				ID: "github:test:user:1", Provider: "github:test", SubjectID: "1",
+				Login: "owner", DisplayName: "Panel Owner", UpdatedAt: harness.now.Add(time.Minute),
+			}},
+			SyncedAt: harness.now.Add(time.Minute),
 		},
 		SyncedAt: harness.now.Add(time.Minute),
 	}); err != nil {

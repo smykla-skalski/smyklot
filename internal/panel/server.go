@@ -226,7 +226,7 @@ func (s *Server) requireTarget(
 		return storage.Account{}, storage.Target{}, storage.TargetAccess{}, false
 	}
 	targetID := r.PathValue("target")
-	access, err := s.store.ResolveTargetAccess(r.Context(), account.ID, targetID)
+	access, err := s.store.ResolveTargetAccess(r.Context(), account.ID, targetID, s.now().UTC())
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			s.writeError(w, http.StatusNotFound, "not_found", "installation target not found")

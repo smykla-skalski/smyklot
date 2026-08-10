@@ -458,7 +458,7 @@ function targetUsers(state: MockState, targetId: string): PanelUser[] {
       }
       const effectiveRole = user.status === 'active' ? user.global_role : 'none';
       const source: TargetUserAccess['source'] =
-        user.status === 'active' ? (user.system_role !== 'none' ? 'root' : 'global') : 'denied';
+        user.status === 'active' && effectiveRole === 'owner' ? 'owner' : 'denied';
       return {
         ...structuredClone(user),
         manageable,
@@ -565,7 +565,7 @@ function targetSeed(input: {
       revision: 1,
       repository_counts: { total: 0, enabled: 0, disabled: 0 },
       effective_role: 'owner',
-      access_source: 'root',
+      access_source: 'owner',
       capabilities: OWNER_CAPABILITIES,
     },
     repositories: [],
@@ -1387,7 +1387,13 @@ function targetAccess(
     revision,
     updated_at: new Date().toISOString(),
     effective_role: effectiveRole,
-    source: suspended ? 'suspended' : role === null ? 'global' : 'target',
+    source: suspended
+      ? 'suspended'
+      : effectiveRole === 'owner'
+        ? 'owner'
+        : role === null
+          ? 'denied'
+          : 'target',
     capabilities: capabilitiesFor(effectiveRole),
   };
 }

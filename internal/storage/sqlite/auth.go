@@ -122,6 +122,70 @@ ON CONFLICT(account_id) DO UPDATE SET
 	return nil
 }
 
+// ActivateDerivedOwner creates the regular panel identity for an account that
+// has a fresh GitHub-derived Owner record. An existing lifecycle decision is
+// never changed, so a ban or soft removal continues to override ownership.
+func (s *Store) ActivateDerivedOwner(
+	ctx context.Context,
+	accountID string,
+	changedAt time.Time,
+) (bool, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("begin derived Owner activation: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var status storage.PanelUserStatus
+	err = tx.QueryRowContext(
+		ctx, "SELECT status FROM panel_users WHERE account_id = ?", accountID,
+	).Scan(&status)
+	if err == nil {
+		return status == storage.PanelUserActive, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return false, fmt.Errorf("read derived Owner identity: %w", err)
+	}
+	var owned int
+	err = tx.QueryRowContext(ctx, `
+SELECT EXISTS(
+    SELECT 1
+    FROM target_owners owner
+    JOIN targets t ON t.id = owner.target_id AND t.available = 1
+    JOIN target_ownership ownership
+      ON ownership.target_id = t.id AND ownership.status = 'fresh'
+    WHERE owner.account_id = ?
+      AND julianday(ownership.synced_at) >= julianday(?)
+      AND EXISTS(SELECT 1 FROM target_owners any_owner WHERE any_owner.target_id = t.id)
+)`, accountID, formatTime(changedAt.Add(-storage.OwnershipFreshFor))).Scan(&owned)
+	if err != nil {
+		return false, fmt.Errorf("resolve derived Owner identity: %w", err)
+	}
+	if owned == 0 {
+		return false, nil
+	}
+	_, err = tx.ExecContext(ctx, `
+INSERT INTO panel_users (
+    account_id, root, status, global_role, revision, created_at, updated_at, system_role
+) VALUES (?, 0, 'active', 'none', 1, ?, ?, 'none')`,
+		accountID, formatTime(changedAt), formatTime(changedAt),
+	)
+	if err != nil {
+		return false, fmt.Errorf("activate derived Owner: %w", conflictConstraint(err))
+	}
+	if err := insertAccessAudit(
+		ctx, tx, nil, accountID, accountID, "owner.access.activated",
+		"activated GitHub-derived Owner access", changedAt,
+	); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("commit derived Owner activation: %w", err)
+	}
+
+	return true, nil
+}
+
 // CreateSession adds a session and keeps only the newest maxActive sessions
 // for its account.
 func (s *Store) CreateSession(ctx context.Context, session storage.Session, maxActive int) error {
