@@ -99,6 +99,12 @@ type SecurityStore interface {
 	MarkSecurityNotificationRead(context.Context, string, int64, time.Time) (SecurityNotification, error)
 }
 
+// PreferenceStore owns per-account synced panel preferences.
+type PreferenceStore interface {
+	GetPreferences(context.Context, string) (Preferences, error)
+	ApplyPreferences(context.Context, PreferenceChange) (Preferences, error)
+}
+
 // Store is the complete persistence capability needed by the service. It does
 // not expose SQL handles or transactions to callers.
 type Store interface {
@@ -110,6 +116,7 @@ type Store interface {
 	DeliveryStore
 	AuditReader
 	SecurityStore
+	PreferenceStore
 
 	Ping(context.Context) error
 	Close() error

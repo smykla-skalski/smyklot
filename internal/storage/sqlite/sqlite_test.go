@@ -3,6 +3,7 @@ package sqlite_test
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -1541,6 +1542,93 @@ END`)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(remaining.Items).To(HaveLen(1))
 		Expect(remaining.Items[0].DeliveryID).To(Equal(second.DeliveryID))
+	})
+
+	It("treats missing preferences as an empty document at revision zero", func() {
+		account := testAccount(now)
+		Expect(store.UpsertAccount(ctx, account)).To(Succeed())
+
+		preferences, err := store.GetPreferences(ctx, account.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(preferences.AccountID).To(Equal(account.ID))
+		Expect(preferences.Revision).To(BeZero())
+		Expect(preferences.Values).To(BeEmpty())
+	})
+
+	It("merges preference changes per key with last-write-wins", func() {
+		account := testAccount(now)
+		Expect(store.UpsertAccount(ctx, account)).To(Succeed())
+
+		first, err := store.ApplyPreferences(ctx, storage.PreferenceChange{
+			AccountID: account.ID,
+			Changes: map[string]json.RawMessage{
+				"theme":   json.RawMessage(`"dark"`),
+				"sidebar": json.RawMessage(`"collapsed"`),
+			},
+			ChangedAt: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(first.Revision).To(Equal(int64(1)))
+		Expect(first.Values).To(HaveLen(2))
+		Expect(first.UpdatedAt).To(Equal(now))
+
+		second, err := store.ApplyPreferences(ctx, storage.PreferenceChange{
+			AccountID: account.ID,
+			Changes:   map[string]json.RawMessage{"theme": json.RawMessage(`"light"`)},
+			ChangedAt: now.Add(time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(second.Revision).To(Equal(int64(2)))
+		Expect(string(second.Values["theme"])).To(Equal(`"light"`))
+		Expect(string(second.Values["sidebar"])).To(Equal(`"collapsed"`))
+
+		stored, err := store.GetPreferences(ctx, account.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(stored).To(Equal(second))
+	})
+
+	It("deletes preference keys on null and skips revision bumps for no-ops", func() {
+		account := testAccount(now)
+		Expect(store.UpsertAccount(ctx, account)).To(Succeed())
+
+		seeded, err := store.ApplyPreferences(ctx, storage.PreferenceChange{
+			AccountID: account.ID,
+			Changes: map[string]json.RawMessage{
+				"theme":   json.RawMessage(`"dark"`),
+				"sidebar": json.RawMessage(`"collapsed"`),
+			},
+			ChangedAt: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(seeded.Revision).To(Equal(int64(1)))
+
+		deleted, err := store.ApplyPreferences(ctx, storage.PreferenceChange{
+			AccountID: account.ID,
+			Changes:   map[string]json.RawMessage{"sidebar": json.RawMessage(`null`)},
+			ChangedAt: now.Add(time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(deleted.Revision).To(Equal(int64(2)))
+		Expect(deleted.Values).To(HaveKey("theme"))
+		Expect(deleted.Values).NotTo(HaveKey("sidebar"))
+
+		unchanged, err := store.ApplyPreferences(ctx, storage.PreferenceChange{
+			AccountID: account.ID,
+			Changes: map[string]json.RawMessage{
+				"theme":   json.RawMessage(`"dark"`),
+				"sidebar": nil,
+			},
+			ChangedAt: now.Add(2 * time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(unchanged).To(Equal(deleted))
+
+		empty, err := store.ApplyPreferences(ctx, storage.PreferenceChange{
+			AccountID: account.ID,
+			ChangedAt: now.Add(3 * time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(empty).To(Equal(deleted))
 	})
 })
 

@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/pkg/config"
@@ -641,4 +642,21 @@ type FailurePage struct {
 	Items      []DeliveryFailure
 	NextOffset int
 	Total      int
+}
+
+// Preferences is one account's synced panel preference document. Revision 0
+// with an empty Values map is the first-class "never stored" state.
+type Preferences struct {
+	AccountID string
+	Values    map[string]json.RawMessage
+	Revision  int64
+	UpdatedAt time.Time
+}
+
+// PreferenceChange merges per-key preference values into an account's
+// document. A JSON null (or nil) value deletes the key.
+type PreferenceChange struct {
+	AccountID string
+	Changes   map[string]json.RawMessage
+	ChangedAt time.Time
 }
