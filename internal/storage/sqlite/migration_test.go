@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/smykla-skalski/smyklot/internal/storage"
 )
 
 func TestRemoveGlobalAccessMigration(t *testing.T) {
@@ -84,8 +86,16 @@ SELECT account_id, system_role FROM panel_users ORDER BY account_id`)
 		t.Fatalf("iterate migrated system roles: %v", err)
 	}
 	if roles["legacy-super"] != "super_root" || roles["legacy-owner"] != "root" ||
-		roles["legacy-editor"] != "none" {
+		roles["legacy-banned-owner"] != "none" || roles["legacy-editor"] != "none" {
 		t.Fatalf("migrated system roles = %#v", roles)
+	}
+	restored, err := store.UpdatePanelUser(ctx, storage.PanelUserChange{
+		AccountID: "legacy-banned-owner", ActorAccountID: "legacy-super",
+		Status: storage.PanelUserActive, ExpectedRevision: 1,
+		ChangedAt: time.Date(2026, time.August, 10, 12, 1, 0, 0, time.UTC),
+	})
+	if err != nil || restored.Status != storage.PanelUserActive {
+		t.Fatalf("restore migrated banned Owner: status = %q, err = %v", restored.Status, err)
 	}
 
 	assertInvitationState(t, ctx, store.db, "global-invitation", "revoked")
@@ -111,13 +121,15 @@ func seedLegacySystemRoles(t *testing.T, ctx context.Context, path string) {
 		`INSERT INTO accounts (id, provider, subject_id, login, display_name, updated_at) VALUES
 ('legacy-super', 'github', '1', 'super', 'Legacy Super', '` + now + `'),
 ('legacy-owner', 'github', '2', 'owner', 'Legacy Owner', '` + now + `'),
-('legacy-editor', 'github', '3', 'editor', 'Legacy Editor', '` + now + `')`,
+('legacy-editor', 'github', '3', 'editor', 'Legacy Editor', '` + now + `'),
+('legacy-banned-owner', 'github', '4', 'banned-owner', 'Legacy Banned Owner', '` + now + `')`,
 		`INSERT INTO panel_users (
 account_id, root, status, global_role, revision, created_at, updated_at
 ) VALUES
 ('legacy-super', 1, 'active', 'owner', 1, '` + now + `', '` + now + `'),
 ('legacy-owner', 0, 'active', 'owner', 1, '` + now + `', '` + now + `'),
-('legacy-editor', 0, 'active', 'editor', 1, '` + now + `', '` + now + `')`,
+('legacy-editor', 0, 'active', 'editor', 1, '` + now + `', '` + now + `'),
+('legacy-banned-owner', 0, 'banned', 'owner', 1, '` + now + `', '` + now + `')`,
 		`INSERT INTO targets (
 id, installation_id, kind, account_id, available, repository_default_enabled,
 config_patch, revision, settings_updated_at, synced_at
