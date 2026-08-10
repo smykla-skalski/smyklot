@@ -37,9 +37,13 @@
   let trigger = $state<HTMLElement | null>(null);
 
   const options = $derived(sections.flatMap((section) => section.options));
+  // The fallback ("all") is the unfiltered state, not a selection worth counting.
   const selectedCount = $derived(
-    selected.filter((value) => options.find((option) => option.value === value)?.exclusive !== true)
-      .length,
+    selected.filter(
+      (value) =>
+        value !== fallbackValue &&
+        options.find((option) => option.value === value)?.exclusive !== true,
+    ).length,
   );
   const canClear = $derived(
     fallbackValue === undefined
@@ -107,7 +111,7 @@
   <summary class:icon-only={iconOnly} bind:this={trigger} aria-label={`${label}: ${summary}`}>
     {#if showIcon}<Icon name="filter" size={16} />{/if}
     <span class="summary-copy">{summary}</span>
-    {#if multiple && selectedCount > 0}
+    {#if (multiple || placement === 'header') && selectedCount > 0}
       <span class="selection-count" aria-hidden="true">{selectedCount}</span>
     {/if}
     <span class="menu-chevron" aria-hidden="true"><Icon name="chevron-down" size={16} /></span>
@@ -225,6 +229,7 @@
     height: 1.75rem;
     justify-content: center;
     padding: 0;
+    position: relative;
     width: 1.75rem;
   }
 
@@ -232,9 +237,25 @@
     width: 1.75rem;
   }
 
-  .header-filter summary .menu-chevron,
-  .header-filter summary .selection-count {
+  .header-filter summary .menu-chevron {
     display: none;
+  }
+
+  /* The count rides the funnel's corner so an active filter says how many
+     values it holds without reclaiming header width. Specificity beats the
+     icon-only in-button placement below. */
+  .filter-menu.header-filter summary .selection-count {
+    background: var(--surface-base);
+    border-radius: var(--radius-chip);
+    box-shadow: 0 0 0 1px var(--border-subtle);
+    color: var(--brand-action-text);
+    font: 700 0.5625rem / 1 var(--sans);
+    margin: 0;
+    min-width: 0;
+    padding: 2px 4px;
+    position: absolute;
+    right: -4px;
+    top: -4px;
   }
 
   .header-filter.filtered summary {
@@ -244,7 +265,7 @@
 
   .header-filter summary:hover,
   .header-filter[open] summary {
-    background: var(--interactive-hover);
+    background: color-mix(in srgb, var(--text-primary) 8%, transparent);
     border-color: transparent;
     color: var(--text-primary);
   }
@@ -261,7 +282,7 @@
   }
 
   .header-filter summary:active {
-    background: var(--interactive-pressed-bg);
+    background: color-mix(in srgb, var(--text-primary) 14%, transparent);
     color: var(--text-primary);
     transform: scale(0.9);
   }

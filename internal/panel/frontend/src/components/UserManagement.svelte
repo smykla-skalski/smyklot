@@ -12,7 +12,7 @@
   import { MediaQuery } from 'svelte/reactivity';
   import { get } from 'svelte/store';
 
-  import { formatDateTime, formatRelative, formatTimestamp } from '../lib/format';
+  import { formatDateTime, formatRelative, formatTimestamp, formatUntil } from '../lib/format';
   import type { FilterSection } from '../lib/filter-menu';
   import {
     EPHEMERAL_PREFS,
@@ -95,7 +95,7 @@
         { value: 'pending', label: 'Pending', tone: 'default' },
         { value: 'accepted', label: 'Accepted', tone: 'valid' },
         { value: 'expired', label: 'Expired', tone: 'bypassed' },
-        { value: 'declined', label: 'Declined', tone: 'invalid' },
+        { value: 'declined', label: 'Declined', tone: 'default' },
         { value: 'revoked', label: 'Revoked', tone: 'invalid' },
       ],
     },
@@ -292,12 +292,23 @@
 
   let userLoadVersion = 0;
   let invitationLoadVersion = 0;
-  const now = Date.now();
+  // Ticks so "5 minutes ago" keeps aging in a long session; a captured
+  // timestamp would freeze every relative time at first render.
+  let now = $state(Date.now());
 
   const users = $derived(userPage?.items ?? []);
   const invitations = $derived(invitationPage?.items ?? []);
+  // Initial-load failures render inside the table region with a retry; the
+  // toolbar line is for action failures and refresh failures over live data.
   const failure = $derived(
-    actionFailure ?? (activeSection === 'users' ? userFailure : invitationFailure),
+    actionFailure ??
+      (activeSection === 'users'
+        ? userPage === null
+          ? null
+          : userFailure
+        : invitationPage === null
+          ? null
+          : invitationFailure),
   );
   const sectionOptions = $derived([
     {
@@ -390,13 +401,13 @@
   const desktopTableLayout = new MediaQuery('min-width: 64.001rem', true);
   const userVirtualizer = createVirtualizer<HTMLTableSectionElement, HTMLTableRowElement>({
     count: 0,
-    estimateSize: () => 65,
+    estimateSize: () => 56,
     getScrollElement: () => userScroll ?? null,
     overscan: 6,
   });
   const invitationVirtualizer = createVirtualizer<HTMLTableSectionElement, HTMLTableRowElement>({
     count: 0,
-    estimateSize: () => 65,
+    estimateSize: () => 56,
     getScrollElement: () => invitationScroll ?? null,
     overscan: 6,
   });
@@ -422,6 +433,13 @@
           virtual: false as const,
         })),
   );
+
+  $effect(() => {
+    const tick = setInterval(() => {
+      now = Date.now();
+    }, 30_000);
+    return () => clearInterval(tick);
+  });
 
   $effect(() => {
     const value = userSearch;
@@ -1016,7 +1034,12 @@
   }
 
   function statusTone(user: PanelUser): ChipTone {
-    return user.status === 'banned' || user.target_access?.suspended === true ? 'stop' : 'clear';
+    // Banned is permanent (red); suspended is a pause an administrator can
+    // lift (amber). They carried identical chips once, and nobody could tell
+    // the two states apart at a glance.
+    if (user.status === 'banned') return 'stop';
+    if (user.target_access?.suspended === true) return 'warning';
+    return 'clear';
   }
 
   function currentReason(user: PanelUser): string | undefined {
@@ -1039,6 +1062,9 @@
     if (status === 'pending') return 'signal';
     if (status === 'accepted') return 'clear';
     if (status === 'expired') return 'warning';
+    // Declined is the invitee's own answer, not a failure; revoked is an
+    // administrator veto and keeps the alarm color.
+    if (status === 'declined') return 'neutral';
     return 'stop';
   }
 
@@ -1130,13 +1156,6 @@
   </button>
 {/snippet}
 
-{#snippet roleBadge(role: InstallationRole)}
-  <span class="role-badge role-{role}">
-    <Icon name={roleIcon(role)} size={14} />
-    <span>{roleLabel(role)}</span>
-  </span>
-{/snippet}
-
 {#snippet roleValue(role: InstallationRole)}
   <span class="role-value role-{role}">
     <span class="role-value-icon" aria-hidden="true"><Icon name={roleIcon(role)} size={14} /></span>
@@ -1209,18 +1228,12 @@
               {/each}
             </div>
             <p class="visually-hidden" role="status">Loading users</p>
-          {:else if users.length === 0}
-            {@const hasUserFilters =
-              userQuery !== '' || userRoles.length > 0 || userStatuses.length > 0}
-            <div class="result-state table-empty">
-              <TableEmptyState
-                title={hasUserFilters ? 'No users match' : 'No users for this installation'}
-                description={hasUserFilters
-                  ? 'Try another search or clear the active filters'
-                  : 'Added users will appear here'}
-                actionLabel={hasUserFilters ? 'Clear filters' : undefined}
-                onAction={hasUserFilters ? clearUserFilters : undefined}
-              />
+          {:else if userFailure !== null && userPage === null}
+            <div class="result-state" role="alert">
+              <strong>Users could not be loaded</strong>
+              <span>{userFailure}</span>
+              <button class="btn" onclick={() => void loadUsers(undefined, false)}>Try again</button
+              >
             </div>
           {:else}
             <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -1284,6 +1297,24 @@
                   </tr>
                 </thead>
                 <tbody bind:this={userScroll} data-panel-scroll>
+                  {#if users.length === 0}
+                    {@const hasUserFilters =
+                      userQuery !== '' || userRoles.length > 0 || userStatuses.length > 0}
+                    <tr class="empty-row">
+                      <td colspan="5">
+                        <TableEmptyState
+                          title={hasUserFilters
+                            ? 'No users match'
+                            : 'No users for this installation'}
+                          description={hasUserFilters
+                            ? 'Try another search or clear the active filters'
+                            : 'Added users will appear here'}
+                          actionLabel={hasUserFilters ? 'Clear filters' : undefined}
+                          onAction={hasUserFilters ? clearUserFilters : undefined}
+                        />
+                      </td>
+                    </tr>
+                  {/if}
                   {#if desktopTableLayout.current}
                     <tr
                       class="virtual-spacer"
@@ -1329,7 +1360,7 @@
                             onSelect={(value) => void changeRole(user, value)}
                           />
                         {:else}
-                          {@render roleBadge(shownRole(user))}
+                          {@render roleValue(shownRole(user))}
                         {/if}
                       </td>
                       <td data-label="Status">
@@ -1348,6 +1379,11 @@
                         {/if}
                       </td>
                       <td class="row-actions" data-label="Actions">
+                        {#if hasDecisionHistory(user)}
+                          <span class="row-go" aria-hidden="true">
+                            <Icon name="chevron-right" size={14} />
+                          </span>
+                        {/if}
                         {#if user.manageable && !readOnly}
                           <ActionMenu
                             label={`Actions for @${user.account.login}`}
@@ -1355,6 +1391,14 @@
                             onSelect={(action, trigger) =>
                               beginAction(user, action as UserAction, trigger ?? undefined)}
                           />
+                        {:else}
+                          <span
+                            class="action-slot-empty"
+                            title="No actions available"
+                            aria-hidden="true"
+                          >
+                            <Icon name="more" size={22} />
+                          </span>
                         {/if}
                       </td>
                     </tr>
@@ -1402,20 +1446,13 @@
               {/each}
             </div>
             <p class="visually-hidden" role="status">Loading invitations</p>
-          {:else if invitations.length === 0}
-            {@const hasInvitationFilters =
-              invitationQuery !== '' || invitationRoles.length > 0 || invitationStatuses.length > 0}
-            <div class="result-state table-empty">
-              <TableEmptyState
-                title={hasInvitationFilters
-                  ? 'No invitations match'
-                  : 'No invitations for this installation'}
-                description={hasInvitationFilters
-                  ? 'Try another search or clear the active filters'
-                  : 'New invitations will appear here'}
-                actionLabel={hasInvitationFilters ? 'Clear filters' : undefined}
-                onAction={hasInvitationFilters ? clearInvitationFilters : undefined}
-              />
+          {:else if invitationFailure !== null && invitationPage === null}
+            <div class="result-state" role="alert">
+              <strong>Invitations could not be loaded</strong>
+              <span>{invitationFailure}</span>
+              <button class="btn" onclick={() => void loadInvitations(undefined, false)}>
+                Try again
+              </button>
             </div>
           {:else}
             <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -1427,7 +1464,7 @@
                 <thead>
                   <tr>
                     <th aria-sort={invitationSortDirection('name')}>
-                      {@render sortButton('User', invitationSortDirection('name'), () =>
+                      {@render sortButton('Invitee', invitationSortDirection('name'), () =>
                         selectInvitationSort('name'),
                       )}
                     </th>
@@ -1471,6 +1508,9 @@
                         />
                       </div>
                     </th>
+                    <th class="sent-heading">
+                      <div class="table-heading-layout"><span>Sent</span></div>
+                    </th>
                     <th aria-sort={invitationSortDirection('expires')}>
                       {@render sortButton('Expires', invitationSortDirection('expires'), () =>
                         selectInvitationSort('expires'),
@@ -1480,12 +1520,32 @@
                   </tr>
                 </thead>
                 <tbody bind:this={invitationScroll} data-panel-scroll>
+                  {#if invitations.length === 0}
+                    {@const hasInvitationFilters =
+                      invitationQuery !== '' ||
+                      invitationRoles.length > 0 ||
+                      invitationStatuses.length > 0}
+                    <tr class="empty-row">
+                      <td colspan="6">
+                        <TableEmptyState
+                          title={hasInvitationFilters
+                            ? 'No invitations match'
+                            : 'No invitations for this installation'}
+                          description={hasInvitationFilters
+                            ? 'Try another search or clear the active filters'
+                            : 'New invitations will appear here'}
+                          actionLabel={hasInvitationFilters ? 'Clear filters' : undefined}
+                          onAction={hasInvitationFilters ? clearInvitationFilters : undefined}
+                        />
+                      </td>
+                    </tr>
+                  {/if}
                   {#if desktopTableLayout.current}
                     <tr
                       class="virtual-spacer"
                       aria-hidden="true"
                       style:height={`${$invitationVirtualizer.getTotalSize()}px`}
-                      ><td colspan="5"></td></tr
+                      ><td colspan="6"></td></tr
                     >
                   {/if}
                   {#each invitationRenderRows as virtualRow (virtualRow.key)}
@@ -1512,13 +1572,34 @@
                           >{invitationStatusLabel(invitation.status)}</Chip
                         ></td
                       >
-                      <td class="last-login" data-label="Expires">
+                      <td class="last-login" data-label="Sent">
                         <time
-                          datetime={invitation.expires_at}
-                          title={formatTimestamp(invitation.expires_at)}
+                          datetime={invitation.created_at}
+                          title={formatTimestamp(invitation.created_at)}
                         >
-                          {formatDateTime(invitation.expires_at)}
+                          {formatRelative(invitation.created_at, now)}
                         </time>
+                      </td>
+                      <td class="last-login" data-label="Expires">
+                        {#if invitation.status === 'pending'}
+                          <time
+                            class="expires-soon"
+                            datetime={invitation.expires_at}
+                            title={formatTimestamp(invitation.expires_at)}
+                          >
+                            {formatUntil(invitation.expires_at, now)}
+                          </time>
+                        {:else if invitation.status === 'expired'}
+                          <time
+                            datetime={invitation.expires_at}
+                            title={formatTimestamp(invitation.expires_at)}
+                          >
+                            {formatDateTime(invitation.expires_at)}
+                          </time>
+                        {:else}
+                          <!-- Expiry stops meaning anything once the invitation is resolved. -->
+                          <span class="cell-dash" aria-hidden="true">—</span>
+                        {/if}
                       </td>
                       <td class="row-actions" data-label="Actions">
                         {#if invitationActionItems(invitation).length > 0}
@@ -1528,6 +1609,14 @@
                             onSelect={(action, trigger) =>
                               chooseInvitationAction(invitation, action, trigger)}
                           />
+                        {:else}
+                          <span
+                            class="action-slot-empty"
+                            title="No actions available"
+                            aria-hidden="true"
+                          >
+                            <Icon name="more" size={22} />
+                          </span>
                         {/if}
                       </td>
                     </tr>
@@ -1892,23 +1981,27 @@
 
   .result-state {
     align-items: center;
-    border: 1px dashed var(--rule);
-    border-radius: var(--r-well);
     display: flex;
     flex-direction: column;
-    font-size: 0.8125rem;
-    gap: var(--space-2);
+    gap: 0.4rem;
     justify-content: center;
-    margin: var(--space-4);
+    min-height: 9rem;
     padding: 1.5rem;
     text-align: center;
   }
 
-  .result-state.table-empty {
-    border: 0;
-    flex: 1;
-    margin: 0;
-    min-height: 12rem;
+  .result-state span {
+    color: var(--dim);
+    font-size: var(--font-size-meta);
+  }
+
+  .empty-row td {
+    border-bottom: 0;
+    height: 12rem;
+  }
+
+  .empty-row td :global(.table-empty-state) {
+    margin-inline: auto;
   }
 
   .table-skeleton {
@@ -1919,7 +2012,7 @@
     animation: user-skeleton-pulse 1.35s ease-in-out infinite alternate;
     border-bottom: 1px solid var(--rule);
     display: block;
-    height: 3.625rem;
+    height: 3.5rem;
     position: relative;
   }
 
@@ -1974,25 +2067,35 @@
   .user-table th,
   .user-table td {
     border-bottom: 1px solid var(--rule);
-    padding: var(--space-3);
+    padding: var(--space-2) var(--space-3);
     text-align: left;
     vertical-align: middle;
+  }
+
+  .user-table th:first-child,
+  .user-table td:first-child {
+    padding-left: var(--space-4);
+  }
+
+  .user-table th:last-child,
+  .user-table td:last-child {
+    padding-right: var(--space-4);
   }
 
   .user-table thead th {
     background: var(--table-header-bg);
     color: var(--dim);
     font: 650 var(--font-size-compact) / 1.2 var(--sans);
+    height: 2.5rem;
     letter-spacing: 0.02em;
-  }
-
-  .user-table thead th[aria-sort='ascending'],
-  .user-table thead th[aria-sort='descending'] {
-    background: var(--table-sorted-bg);
   }
 
   .user-table thead th:has(.sort-button) {
     padding: 0;
+  }
+
+  .user-table thead th:first-child .sort-button {
+    padding-left: var(--space-4);
   }
 
   .filterable-heading {
@@ -2022,27 +2125,43 @@
     height: 100%;
     justify-content: flex-start;
     letter-spacing: inherit;
-    padding: var(--space-3);
+    padding: var(--space-2) var(--space-3);
     text-align: left;
     text-transform: inherit;
     transition:
       background-color 120ms ease-out,
       color 120ms ease-out;
-    flex: 1;
     min-width: 0;
     overflow: hidden;
+    width: 100%;
+  }
+
+  .table-heading-layout .sort-button {
+    flex: 1;
     width: auto;
+  }
+
+  .sent-heading {
+    padding-block: 0 !important;
   }
 
   .sort-indicator {
     color: var(--text-muted);
     display: grid;
+    opacity: 0;
     place-items: center;
+    transition: opacity 120ms ease-out;
+  }
+
+  .sort-button:hover .sort-indicator,
+  .sort-button:focus-visible .sort-indicator {
+    opacity: 0.55;
   }
 
   .sort-indicator.ascending,
   .sort-indicator.descending {
     color: var(--brand-action-text);
+    opacity: 1;
   }
 
   .sort-indicator.descending {
@@ -2055,10 +2174,6 @@
 
   .user-table tbody tr.history-row {
     cursor: pointer;
-  }
-
-  .user-table tbody tr.history-row:hover {
-    background: var(--strip-lift);
   }
 
   .user-table tbody tr.history-row:focus-visible {
@@ -2099,12 +2214,30 @@
       display: grid;
       grid-template-columns:
         minmax(16rem, 1.55fr) minmax(10rem, 1fr) minmax(8rem, 0.8fr) minmax(9rem, 0.9fr)
-        2.75rem;
+        4.25rem;
       width: 100%;
+    }
+
+    .invitation-table thead tr,
+    .invitation-table tbody tr {
+      grid-template-columns:
+        minmax(13rem, 1.4fr) minmax(7.5rem, 0.9fr) minmax(7.5rem, 0.8fr) minmax(6.5rem, 0.7fr)
+        minmax(7.5rem, 0.8fr) 4.25rem;
+    }
+
+    .user-table tbody tr.empty-row {
+      align-content: center;
+      grid-template-columns: minmax(0, 1fr);
+      inset: 0;
+      position: absolute;
     }
 
     .user-table tbody tr:not(.virtual-spacer) {
       background: var(--surface-base);
+      /* Pin the grid track to the row's fixed height: auto-sizing would take
+         the tallest cell's border-box, push the bottom border one pixel past
+         the virtual row, and let the next row paint over every separator. */
+      grid-template-rows: 100%;
     }
 
     .user-table tbody tr:not(.virtual-spacer) > th,
@@ -2177,18 +2310,30 @@
     vertical-align: middle;
   }
 
-  .role-badge {
-    align-items: center;
-    background: var(--surface-inset);
-    border: 1px solid var(--rule);
-    border-radius: var(--r-ctl);
-    color: var(--text);
-    display: inline-flex;
-    font: 600 var(--font-size-compact) / 1 var(--sans);
-    gap: 0.45rem;
-    min-height: 1.875rem;
-    padding: 0 0.55rem;
-    white-space: nowrap;
+  .user-table tbody :global(.role-trigger) {
+    background: transparent;
+    border-color: transparent;
+    /* Pull the trigger's padding and border back so its icon sits at the
+       same x as the fixed-role rows below and above it. */
+    margin-left: calc(-0.5rem - 1px);
+  }
+
+  .user-table tbody :global(.role-trigger .role-chevron) {
+    opacity: 0;
+    transition: opacity var(--duration-fast) var(--ease-standard);
+  }
+
+  .user-table tbody tr:hover :global(.role-trigger:not(:disabled)),
+  .user-table tbody :global(.role-trigger:focus-visible),
+  .user-table tbody :global(.role-trigger[aria-expanded='true']) {
+    background: var(--control-surface);
+    border-color: var(--control-border);
+  }
+
+  .user-table tbody tr:hover :global(.role-trigger .role-chevron),
+  .user-table tbody :global(.role-trigger:focus-visible .role-chevron),
+  .user-table tbody :global(.role-trigger[aria-expanded='true'] .role-chevron) {
+    opacity: 1;
   }
 
   .role-value {
@@ -2204,24 +2349,55 @@
   .role-value-icon {
     color: var(--text-muted);
     display: grid;
-    flex: 0 0 1rem;
+    flex: 0 0 1.125rem;
     place-items: center;
-    width: 1rem;
-  }
-
-  .role-owner {
-    background: var(--surface-inset);
-    border-color: var(--rule);
-    color: var(--text);
+    width: 1.125rem;
   }
 
   .row-actions {
+    gap: var(--space-1);
     text-align: right !important;
-    width: 2.75rem;
+    width: 4.25rem;
   }
 
   .row-actions :global(.action-menu) {
     display: inline-block;
+  }
+
+  .row-go {
+    color: var(--text-muted);
+    display: inline-grid;
+    opacity: 0;
+    place-items: center;
+    transition:
+      opacity var(--duration-fast) var(--ease-standard),
+      transform var(--duration-fast) var(--ease-standard);
+  }
+
+  tr.history-row:hover .row-go,
+  tr.history-row:focus-visible .row-go {
+    opacity: 1;
+    transform: translateX(2px);
+  }
+
+  .action-slot-empty {
+    align-items: center;
+    color: var(--text-muted);
+    display: inline-flex;
+    height: 2.5rem;
+    justify-content: center;
+    opacity: 0.3;
+    width: 2.5rem;
+  }
+
+  .cell-dash {
+    color: var(--text-muted);
+    opacity: 0.6;
+  }
+
+  .expires-soon {
+    color: var(--text-secondary);
+    font-weight: 600;
   }
 
   .invitation-table {

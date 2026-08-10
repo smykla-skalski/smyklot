@@ -99,6 +99,39 @@ export function formatRelative(value: string, nowMs: number): string {
 }
 
 /**
+ * Say how soon a deadline arrives, or give the date once "in N hours" stops
+ * helping. The future mirror of {@link formatRelative}: a deadline already
+ * behind the reader's clock reads "now" rather than counting up.
+ */
+export function formatUntil(value: string, nowMs: number): string {
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) {
+    return value;
+  }
+  const left = parsed - nowMs;
+  if (left < PRESENT_MS) {
+    return 'now';
+  }
+  if (left < HOUR) {
+    const minutes = Math.max(1, Math.floor(left / MINUTE));
+    return `in ${minutes} ${plural(minutes, 'minute')}`;
+  }
+  if (left < DAY) {
+    const hours = Math.floor(left / HOUR);
+    return `in ${hours} ${plural(hours, 'hour')}`;
+  }
+  if (left < 14 * DAY) {
+    const days = Math.floor(left / DAY);
+    return `in ${days} ${plural(days, 'day')}`;
+  }
+  return new Date(parsed).toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+/**
  * How long is left before a deadline, or `null` for one that cannot be read. A
  * passed deadline is zero rather than negative: every caller treats "no time
  * left" the same and none of them count up.

@@ -1,8 +1,11 @@
 <script lang="ts">
   import type { PanelApi } from '../lib/api';
+  import { formatDateTime } from '../lib/format';
   import { fuzzyCandidates } from '../lib/fuzzy';
   import type { RootRoute, ScopedPanelView } from '../lib/routes';
   import type { RootInstallation } from '../lib/types';
+  import ActionMenu, { type ActionMenuItem } from './ActionMenu.svelte';
+  import Chip from './Chip.svelte';
   import Icon from './Icon.svelte';
   import RootInstallationView from './RootInstallationView.svelte';
   import SearchField from './SearchField.svelte';
@@ -86,6 +89,13 @@
     }
   }
 
+  const INSTALLATION_VIEWS: readonly ActionMenuItem[] = [
+    { id: 'settings', icon: 'settings', label: 'Settings' },
+    { id: 'repositories', icon: 'repositories', label: 'Repositories' },
+    { id: 'users', icon: 'users', label: 'Access' },
+    { id: 'history', icon: 'history', label: 'History' },
+  ];
+
   function navigate(
     event: MouseEvent,
     installation: RootInstallation,
@@ -96,6 +106,31 @@
     onNavigate(installation.account.login, view);
   }
 
+  function clickRow(event: MouseEvent, installation: RootInstallation): void {
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest('button, a, summary, input') !== null) return;
+    navigate(event, installation, 'settings');
+  }
+
+  function keyRow(event: KeyboardEvent, installation: RootInstallation): void {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest('button, a, summary, input') !== null) return;
+    event.preventDefault();
+    onNavigate(installation.account.login, 'settings');
+  }
+
+  function chooseView(installation: RootInstallation, view: string): void {
+    if (view === 'settings' || view === 'repositories' || view === 'users' || view === 'history') {
+      onNavigate(installation.account.login, view);
+    }
+  }
+
+  function deliveryTitle(installation: RootInstallation): string | undefined {
+    const latest = installation.delivery_health.last_failure_at;
+    return latest === undefined ? undefined : `Latest failure ${formatDateTime(latest)}`;
+  }
+
   function ownershipLabel(installation: RootInstallation): string {
     if (installation.ownership.status === 'permission_pending') return 'Approval needed';
     if (installation.ownership.status === 'error') return 'Sync failed';
@@ -103,11 +138,12 @@
     return 'Fresh';
   }
 
-  function ownershipTone(installation: RootInstallation): 'fresh' | 'warning' | 'error' {
-    if (installation.ownership.status === 'error') return 'error';
-    if (installation.ownership.stale || installation.ownership.status === 'permission_pending')
-      return 'warning';
-    return 'fresh';
+  function ownershipTone(installation: RootInstallation): 'clear' | 'neutral' | 'warning' | 'stop' {
+    if (installation.ownership.status === 'error') return 'stop';
+    if (installation.ownership.status === 'permission_pending') return 'warning';
+    // Stale is drift, not danger: a quiet state until a sync runs.
+    if (installation.ownership.stale) return 'neutral';
+    return 'clear';
   }
 
   $effect(() => {
@@ -160,21 +196,35 @@
       onInput={(value) => (query = value)}
     />
 
-    <div class="installation-table-shell">
+    <!-- Keyboard focus lets users scroll columns that overflow the viewport. -->
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+    <div
+      class="installation-table-shell"
+      role="region"
+      tabindex="0"
+      aria-label="Installation catalog table"
+    >
       <table>
+        <caption class="visually-hidden">Installation catalog</caption>
         <thead>
           <tr>
             <th scope="col">Installation</th>
-            <th scope="col">Repositories</th>
-            <th scope="col">Delivery health</th>
+            <th scope="col" class="count-heading">Repositories</th>
+            <th scope="col">Delivery</th>
+            <th scope="col">Ownership</th>
             <th scope="col">Owners</th>
-            <th scope="col">Ownership sync</th>
             <th scope="col"><span class="visually-hidden">Installation views</span></th>
           </tr>
         </thead>
         <tbody>
           {#each visibleInstallations as installation (installation.id)}
-            <tr class:unavailable={!installation.available}>
+            <tr
+              class="installation-row"
+              class:unavailable={!installation.available}
+              tabindex="0"
+              onclick={(event) => clickRow(event, installation)}
+              onkeydown={(event) => keyRow(event, installation)}
+            >
               <th scope="row">
                 <span class="installation-identity">
                   <span class="installation-icon">
@@ -184,84 +234,84 @@
                     />
                   </span>
                   <span>
-                    <strong>{installation.account.display_name}</strong>
+                    <a
+                      class="installation-link"
+                      href={hrefFor(installation.account.login, 'settings')}
+                      onclick={(event) => navigate(event, installation, 'settings')}
+                    >
+                      {installation.account.display_name}
+                    </a>
                     <small>@{installation.account.login} · #{installation.installation_id}</small>
                   </span>
                 </span>
               </th>
-              <td>
-                <strong>{installation.repository_counts.total}</strong>
-                <small>
-                  {installation.repository_counts.enabled} enabled ·
-                  {installation.repository_counts.disabled} disabled
-                </small>
-              </td>
-              <td>
-                <span
-                  class="sync-state"
-                  class:fresh={installation.delivery_health.failed === 0}
-                  class:error={installation.delivery_health.failed > 0}
-                >
-                  <span aria-hidden="true"></span>
-                  {installation.delivery_health.failed === 0
-                    ? 'Healthy'
-                    : `${installation.delivery_health.failed} retained failure${installation.delivery_health.failed === 1 ? '' : 's'}`}
-                </span>
-                {#if installation.delivery_health.last_failure_at !== undefined}
-                  <small>Latest {installation.delivery_health.last_failure_at.slice(0, 10)}</small>
+              <td class="count-cell">
+                {#if installation.repository_counts.total === 0}
+                  <span class="cell-dash" aria-label="No repositories">—</span>
+                {:else}
+                  <span class="count-stack">
+                    <strong>{installation.repository_counts.total}</strong>
+                    <small>
+                      {installation.repository_counts.enabled} on ·
+                      {installation.repository_counts.disabled} off
+                    </small>
+                  </span>
                 {/if}
               </td>
               <td>
-                <strong>{installation.ownership.owner_count}</strong>
-                <small
-                  >{installation.ownership.source === 'personal'
-                    ? 'Account owner'
-                    : 'Org admins'}</small
-                >
+                <span title={deliveryTitle(installation)}>
+                  <Chip
+                    tone={installation.delivery_health.failed === 0 ? 'clear' : 'stop'}
+                    small
+                    dot
+                  >
+                    {installation.delivery_health.failed === 0
+                      ? 'Healthy'
+                      : `${installation.delivery_health.failed} failure${installation.delivery_health.failed === 1 ? '' : 's'}`}
+                  </Chip>
+                </span>
               </td>
               <td>
-                <span class="sync-state {ownershipTone(installation)}">
-                  <span aria-hidden="true"></span>
-                  {ownershipLabel(installation)}
+                <span class="chip-stack">
+                  <Chip tone={ownershipTone(installation)} small dot>
+                    {ownershipLabel(installation)}
+                  </Chip>
+                  {#if installation.ownership.detail !== undefined}
+                    <small>{installation.ownership.detail}</small>
+                  {/if}
                 </span>
-                {#if installation.ownership.detail !== undefined}
-                  <small>{installation.ownership.detail}</small>
-                {/if}
               </td>
-              <td class="section-links">
-                <a
-                  class="btn btn-row"
-                  href={hrefFor(installation.account.login, 'settings')}
-                  onclick={(event) => navigate(event, installation, 'settings')}
-                >
-                  Settings
-                </a>
-                <a
-                  class="btn btn-row"
-                  href={hrefFor(installation.account.login, 'repositories')}
-                  onclick={(event) => navigate(event, installation, 'repositories')}>Repositories</a
-                >
-                <a
-                  class="btn btn-row"
-                  href={hrefFor(installation.account.login, 'users')}
-                  onclick={(event) => navigate(event, installation, 'users')}>Access</a
-                >
-                <a
-                  class="btn btn-row"
-                  href={hrefFor(installation.account.login, 'history')}
-                  onclick={(event) => navigate(event, installation, 'history')}>History</a
-                >
+              <td>
+                <span class="owners-line">
+                  {installation.ownership.owner_count} ·
+                  {installation.ownership.source === 'personal' ? 'Account owner' : 'Org admins'}
+                </span>
+              </td>
+              <td class="row-actions">
+                <span class="row-go" aria-hidden="true">
+                  <Icon name="chevron-right" size={14} />
+                </span>
+                <ActionMenu
+                  label={`Views for ${installation.account.display_name}`}
+                  items={INSTALLATION_VIEWS}
+                  onSelect={(view) => chooseView(installation, view)}
+                />
               </td>
             </tr>
           {:else}
-            <tr>
+            <tr class="state-row">
               <td colspan="6" class="empty-cell">
                 {#if loading}
                   Loading installation catalog…
                 {:else if failure !== null}
                   <span role="alert">{failure}</span>
                 {:else}
-                  No installations match “{query.trim()}”
+                  <TableEmptyState
+                    title="No installations match"
+                    description={`Nothing in the catalog matches “${query.trim()}”`}
+                    actionLabel="Clear search"
+                    onAction={() => (query = '')}
+                  />
                 {/if}
               </td>
             </tr>
@@ -326,23 +376,34 @@
 
   table {
     border-collapse: collapse;
-    min-width: 70rem;
+    min-width: 52rem;
     width: 100%;
   }
 
   th,
   td {
-    border-bottom: 1px solid var(--border-subtle);
-    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--rule);
+    padding: var(--space-2) var(--space-3);
     text-align: left;
     vertical-align: middle;
   }
 
+  th:first-child,
+  td:first-child {
+    padding-left: var(--space-4);
+  }
+
+  th:last-child,
+  td:last-child {
+    padding-right: var(--space-4);
+  }
+
   thead th {
     background: var(--table-header-bg);
-    color: var(--text-secondary);
-    font-size: var(--font-size-compact);
-    font-weight: 650;
+    color: var(--dim);
+    font: 650 var(--font-size-compact) / 1.2 var(--sans);
+    letter-spacing: 0.02em;
+    padding-block: var(--space-3);
   }
 
   tbody th {
@@ -353,20 +414,90 @@
     border-bottom: 0;
   }
 
+  .installation-row {
+    cursor: pointer;
+    transition: background-color var(--duration-fast) var(--ease-standard);
+  }
+
+  .installation-row:hover {
+    background: var(--table-row-hover);
+  }
+
+  .installation-row:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: -2px;
+  }
+
   tbody tr.unavailable {
     background: color-mix(in srgb, var(--warning) 3%, var(--surface-base));
   }
 
-  td > strong,
-  td > small {
-    display: block;
+  .count-heading,
+  .count-cell {
+    text-align: right;
   }
 
-  td > small,
+  .count-stack {
+    display: inline-grid;
+    gap: 2px;
+    justify-items: end;
+  }
+
+  .count-stack small,
+  .chip-stack small,
   .installation-identity small {
     color: var(--text-secondary);
+    font-size: var(--font-size-micro);
+  }
+
+  .chip-stack {
+    display: inline-grid;
+    gap: 0.25rem;
+    justify-items: start;
+  }
+
+  /* The tooltip wrapper is inline by default, and its line box would ride
+     2px below the cell center. */
+  td > span[title] {
+    display: inline-flex;
+  }
+
+  .owners-line {
+    color: var(--text-secondary);
     font-size: var(--font-size-compact);
-    margin-top: var(--space-1);
+  }
+
+  .cell-dash {
+    color: var(--text-muted);
+    opacity: 0.6;
+  }
+
+  .row-actions {
+    text-align: right;
+    white-space: nowrap;
+    width: 4.5rem;
+  }
+
+  .row-actions :global(.action-menu) {
+    display: inline-block;
+    vertical-align: middle;
+  }
+
+  .row-go {
+    color: var(--text-muted);
+    display: inline-grid;
+    opacity: 0;
+    place-items: center;
+    transition:
+      opacity var(--duration-fast) var(--ease-standard),
+      transform var(--duration-fast) var(--ease-standard);
+    vertical-align: middle;
+  }
+
+  .installation-row:hover .row-go,
+  .installation-row:focus-visible .row-go {
+    opacity: 1;
+    transform: translateX(2px);
   }
 
   .installation-identity {
@@ -375,69 +506,47 @@
     gap: var(--space-3);
   }
 
-  .installation-identity strong,
   .installation-identity small {
     display: block;
+    margin-top: 1px;
   }
 
+  .installation-link {
+    color: var(--text-primary);
+    display: block;
+    font-weight: 650;
+    text-decoration: none;
+  }
+
+  .installation-link:hover {
+    text-decoration: underline;
+  }
+
+  /* The shell tokens carry the violet in Root context, so no literals here. */
   .installation-icon {
     align-items: center;
-    background: color-mix(in srgb, #8b5cf6 10%, var(--surface-inset));
+    background: var(--brand-action-tint);
     border-radius: var(--radius-control);
-    color: #7357bd;
+    color: var(--brand-action-text);
     display: inline-flex;
+    flex: none;
     height: 2.25rem;
     justify-content: center;
     width: 2.25rem;
   }
 
-  .sync-state {
-    align-items: center;
-    display: inline-flex;
-    font-size: var(--font-size-compact);
-    font-weight: 650;
-    gap: var(--space-2);
-  }
-
-  .sync-state > span {
-    background: currentColor;
-    border-radius: 50%;
-    height: 0.45rem;
-    width: 0.45rem;
-  }
-
-  .sync-state.fresh {
-    color: var(--admin);
-  }
-
-  .sync-state.warning {
-    color: var(--warning);
-  }
-
-  .sync-state.error {
-    color: var(--stop);
-  }
-
-  td:last-child {
-    text-align: right;
-  }
-
-  .section-links {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-1);
-    justify-content: flex-end;
-  }
-
-  .section-links .btn {
-    min-height: 2rem;
-    padding: var(--space-1) var(--space-2);
-  }
-
   .empty-cell {
     color: var(--text-secondary);
-    height: 10rem;
+    height: 12rem;
     text-align: center;
+  }
+
+  .empty-cell :global(.table-empty-state) {
+    margin-inline: auto;
+  }
+
+  .state-row:hover {
+    background: transparent;
   }
 
   @media (max-width: 42rem) {

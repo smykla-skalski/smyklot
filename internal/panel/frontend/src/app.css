@@ -449,6 +449,44 @@ body {
   --interactive-selected-hover: #3a3150;
   --interactive-selected-pressed: #46395f;
   --focus: #6d54bd;
+  /* Actions follow the shell: teal controls inside the violet Root context
+     read as another product. */
+  --brand-action: #6d54bd;
+  --brand-action-hover: #5c46a8;
+  --brand-action-pressed: #4f3c91;
+  --brand-action-tint: #ede9fa;
+  --brand-action-text: #5c46a8;
+  --on-brand-action: #ffffff;
+  --table-sorted-bg: #ede9fa;
+  --table-row-hover: #f5f2fa;
+  /* Aliases substitute where they are declared, so the :root copies were
+     computed against panel values and inherit here already resolved.
+     Re-declaring them on the shell makes them re-resolve against the Root
+     palette (and, via the cascade, against the dark Root block below). */
+  --rule: var(--border-subtle);
+  --well: var(--surface-inset);
+  --strip: var(--surface-base);
+  --strip-lift: var(--surface-raised);
+  --neutral-tint: var(--surface-inset);
+  --accent: var(--brand-action);
+  --accent-tint: var(--brand-action-tint);
+  --admin: var(--brand-action);
+  --on-admin: var(--on-brand-action);
+  --brand: var(--focus);
+  --table-header-bg: var(--surface-inset);
+  --table-footer-bg: var(--surface-inset);
+  --table-filler-bg: var(--surface-raised);
+  --input-bg: var(--surface-inset);
+  --control-bg: var(--surface-control);
+  --control-bg-hover: var(--surface-raised);
+  --control-border: var(--border-control);
+  --control-surface: var(--control-bg);
+  --input-surface: var(--input-bg);
+  --segment-track: var(--surface-inset);
+  --popover-bg: var(--surface-base);
+  --popover-border: var(--border-subtle);
+  --dialog-bg: var(--surface-base);
+  --dialog-border: var(--border-subtle);
   --sidebar-bg: #15121d;
   --sidebar-border: #322b40;
   --sidebar-text: #f5f2fa;
@@ -495,6 +533,14 @@ body {
   --interactive-hover: #211c2a;
   --interactive-pressed-bg: #2b2436;
   --focus: #b9a4ff;
+  --brand-action: #a78bfa;
+  --brand-action-hover: #b9a4ff;
+  --brand-action-pressed: #8b6ff2;
+  --brand-action-tint: #2e2544;
+  --brand-action-text: #c4b5fd;
+  --on-brand-action: #1c1329;
+  --table-sorted-bg: #2e2544;
+  --table-row-hover: #1d1828;
 }
 
 .workspace {
@@ -705,35 +751,36 @@ a[href]:active {
   transform: scale(0.98);
 }
 
+/* Hover mixes from ink rather than using --interactive-hover: that token is
+   near-identical to the header background it would sit on. */
 .table-sort-button:hover {
-  background-color: var(--interactive-hover);
+  background-color: color-mix(in srgb, var(--text-primary) 7%, transparent);
   color: var(--text-primary);
 }
 
+/* The sorted column is carried by the label and its direction arrow alone.
+   A tinted header slab would jump between columns, fail contrast at 12px in
+   light mode, and stay petrol inside the violet Root shell. */
 th[aria-sort='ascending'] .table-sort-button,
 th[aria-sort='descending'] .table-sort-button {
   background-color: transparent;
   color: var(--brand-action-text);
-}
-
-th[aria-sort='ascending'],
-th[aria-sort='descending'] {
-  background-color: var(--table-sorted-bg);
+  font-weight: 700;
 }
 
 th[aria-sort='ascending'] .table-sort-button:hover,
 th[aria-sort='descending'] .table-sort-button:hover {
-  background-color: var(--interactive-selected-hover);
+  background-color: color-mix(in srgb, var(--brand-action-text) 10%, transparent);
 }
 
 .table-sort-button:active {
-  background-color: var(--interactive-pressed-bg);
+  background-color: color-mix(in srgb, var(--text-primary) 12%, transparent);
   transform: translateY(1px) scale(0.995);
 }
 
 th[aria-sort='ascending'] .table-sort-button:active,
 th[aria-sort='descending'] .table-sort-button:active {
-  background-color: var(--interactive-selected-pressed);
+  background-color: color-mix(in srgb, var(--brand-action-text) 16%, transparent);
 }
 
 .table-sort-button:focus-visible {

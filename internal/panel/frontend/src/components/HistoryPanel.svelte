@@ -292,13 +292,13 @@
   const desktopTableLayout = new MediaQuery('min-width: 64.001rem', true);
   const auditVirtualizer = createVirtualizer<HTMLTableSectionElement, HTMLTableRowElement>({
     count: 0,
-    estimateSize: () => 65,
+    estimateSize: () => 48,
     getScrollElement: () => auditScroll ?? null,
     overscan: 6,
   });
   const failureVirtualizer = createVirtualizer<HTMLTableSectionElement, HTMLTableRowElement>({
     count: 0,
-    estimateSize: () => 65,
+    estimateSize: () => 48,
     getScrollElement: () => failureScroll ?? null,
     overscan: 6,
   });
@@ -333,7 +333,15 @@
     return () => window.clearTimeout(timer);
   });
 
+  // Follow the prop only when it actually changes. Comparing it against the
+  // local state instead would fight the toggle: a caller that never updates
+  // `section` (the installation views pass none) would snap every local
+  // switch straight back to its constant default.
+  // svelte-ignore state_referenced_locally
+  let observedSection = section;
   $effect(() => {
+    if (section === observedSection) return;
+    observedSection = section;
     if (section !== undefined && section !== historyType) {
       historyType = section;
       sort = 'newest';
@@ -578,10 +586,6 @@
     );
   }
 
-  function shortDelivery(deliveryId: string): string {
-    return deliveryId.length > 12 ? deliveryId.slice(0, 8) : deliveryId;
-  }
-
   function displayTime(value: string): string {
     return timeDisplay === 'relative' ? formatRelative(value, now) : formatDateTime(value);
   }
@@ -595,6 +599,18 @@
     if (text === '') return text;
 
     return text.charAt(0).toLocaleUpperCase() + text.slice(1);
+  }
+
+  function auditDetail(entry: AuditEntry): string {
+    const parts = [entry.category, entry.action].filter(
+      (part): part is string => part !== undefined,
+    );
+    if (entry.subject !== undefined) parts.push(`@${entry.subject.login}`);
+    return parts.join(' \u00b7 ');
+  }
+
+  function failureDetail(failure: DeliveryFailure): string {
+    return `${failure.event} \u00b7 ${failure.stage} \u00b7 delivery ${failure.delivery_id}`;
   }
 
   function repositoryName(fullName: string): string {
@@ -896,33 +912,32 @@
               >
                 <td data-label="Actor">
                   <span class="actor">
-                    <Avatar account={entry.actor} size={32} />
-                    <span class="actor-copy">
-                      <strong>{entry.actor.display_name}</strong>
-                      <span class="actor-login mono">@{entry.actor.login}</span>
-                    </span>
+                    <Avatar account={entry.actor} size={24} />
+                    <strong>{entry.actor.display_name}</strong>
+                    <span class="actor-login mono">@{entry.actor.login}</span>
                   </span>
                 </td>
                 <td data-label="Target">
                   {#if context === 'root' && entry.installation !== undefined}
-                    <span class="cell-primary">{entry.installation.display_name}</span>
-                    <span class="cell-meta mono">@{entry.installation.login}</span>
+                    <span class="cell-primary" title={`@${entry.installation.login}`}>
+                      {entry.installation.display_name}
+                    </span>
                   {:else if context === 'root'}
-                    <span class="dim">Smyklot</span>
+                    <Chip small>Smyklot</Chip>
                   {:else if entry.repository_full_name !== undefined}
                     <code title={entry.repository_full_name}>
                       {repositoryName(entry.repository_full_name)}
                     </code>
                   {:else}
-                    <span class="dim">Account</span>
+                    <Chip small>Account</Chip>
                   {/if}
                 </td>
-                <td data-label="Change">
-                  <span class="cell-primary">{auditSummary(entry.summary)}</span>
-                  <span class="cell-meta mono">
-                    {#if entry.category !== undefined}{entry.category} ·
-                    {/if}{entry.action}{#if entry.subject !== undefined}
-                      · @{entry.subject.login}{/if}
+                <td data-label="Change" title={auditDetail(entry)}>
+                  <span class="change-line">
+                    {#if entry.category !== undefined}
+                      <span class="category-tag" aria-hidden="true">{entry.category}</span>
+                    {/if}
+                    <span class="cell-primary">{auditSummary(entry.summary)}</span>
                   </span>
                 </td>
                 <td data-label="When">
@@ -1019,7 +1034,9 @@
                   </span>
                 </button>
               </th>
-              <th scope="col">Failure</th>
+              <th scope="col">
+                <div class="table-heading-layout"><span>Failure</span></div>
+              </th>
               <th scope="col" aria-sort={sortDirection('when')}>
                 <button
                   class="sort-button table-sort-button"
@@ -1056,26 +1073,24 @@
                   : undefined}
               >
                 <td data-label="Status">
-                  <Chip tone={failure.retryable ? 'warning' : 'stop'} dot>
-                    {failure.retryable ? 'Retryable' : 'Failed'}
-                  </Chip>
+                  <span class={['failure-kind', failure.retryable ? 'retryable' : 'permanent']}>
+                    <span class="cell-symbol" aria-hidden="true">
+                      <Icon name={failure.retryable ? 'refresh' : 'failure'} size={18} />
+                    </span>
+                    {failure.retryable ? 'Retryable' : 'Permanent'}
+                  </span>
                 </td>
                 <td data-label="Repository">
-                  <code title={failure.repository_full_name}>
+                  <code
+                    title={failure.installation === undefined
+                      ? failure.repository_full_name
+                      : `${failure.repository_full_name} \u00b7 @${failure.installation.login}`}
+                  >
                     {repositoryName(failure.repository_full_name)}
                   </code>
-                  {#if failure.installation !== undefined}
-                    <span class="cell-meta mono">@{failure.installation.login}</span>
-                  {/if}
                 </td>
-                <td data-label="Failure">
+                <td data-label="Failure" title={failureDetail(failure)}>
                   <span class="cell-primary">{sentenceCase(failure.reason)}</span>
-                  <span class="cell-meta mono">
-                    {failure.event} · {failure.stage} ·
-                    <span title={`Delivery ${failure.delivery_id}`}>
-                      delivery {shortDelivery(failure.delivery_id)}
-                    </span>
-                  </span>
                 </td>
                 <td data-label="When">
                   <time
@@ -1221,6 +1236,20 @@
     vertical-align: middle;
   }
 
+  .history-table th:first-child,
+  .history-table td:first-child {
+    padding-left: var(--space-4);
+  }
+
+  .history-table th:last-child,
+  .history-table td:last-child {
+    padding-right: var(--space-4);
+  }
+
+  .history-table thead th:first-child .sort-button {
+    padding-left: var(--space-4);
+  }
+
   .failure-table th:last-child,
   .failure-table td:last-child,
   .audit-table th:last-child,
@@ -1232,16 +1261,12 @@
     background: var(--table-header-bg);
     color: var(--dim);
     font: 650 var(--font-size-compact) / 1.2 var(--sans);
+    height: 2.5rem;
     letter-spacing: 0.02em;
   }
 
-  .history-table th[aria-sort='ascending'],
-  .history-table th[aria-sort='descending'] {
-    background: var(--table-sorted-bg);
-  }
-
   .history-table tbody tr {
-    transition: background-color 100ms ease-out;
+    transition: background-color var(--duration-fast) var(--ease-standard);
   }
 
   .history-table tbody tr:hover {
@@ -1296,6 +1321,10 @@
 
     .history-table tbody tr:not(.virtual-spacer) {
       background: var(--surface-base);
+      /* Pin the grid track to the row's fixed height: auto-sizing would take
+         the tallest cell's border-box, push the bottom border one pixel past
+         the virtual row, and let the next row paint over every separator. */
+      grid-template-rows: 100%;
     }
 
     .history-table tbody tr:not(.virtual-spacer) td {
@@ -1344,19 +1373,19 @@
     }
 
     .audit-table {
-      --history-columns: 12rem 11rem minmax(0, 1fr) 7.5rem;
+      --history-columns: minmax(13rem, 1.1fr) minmax(9rem, 0.8fr) minmax(0, 2.2fr) 7.5rem;
     }
 
     .failure-table {
-      --history-columns: 7rem 11rem minmax(0, 1fr) 7.5rem;
+      --history-columns: 8rem minmax(9rem, 0.9fr) minmax(0, 2.4fr) 7.5rem;
     }
 
     .absolute-time .audit-table {
-      --history-columns: 12rem 11rem minmax(0, 1fr) 9.5rem;
+      --history-columns: minmax(13rem, 1.1fr) minmax(9rem, 0.8fr) minmax(0, 2.2fr) 9.5rem;
     }
 
     .absolute-time .failure-table {
-      --history-columns: 7rem 11rem minmax(0, 1fr) 9.5rem;
+      --history-columns: 8rem minmax(9rem, 0.9fr) minmax(0, 2.4fr) 9.5rem;
     }
   }
 
@@ -1390,16 +1419,37 @@
     padding: 0.625rem 0.75rem;
     text-align: left;
     text-transform: inherit;
-    flex: 1;
     min-width: 0;
     overflow: hidden;
+    width: 100%;
+  }
+
+  .table-heading-layout .sort-button {
+    flex: 1;
     width: auto;
   }
 
+  .history-table th:last-child .sort-button {
+    justify-content: flex-end;
+  }
+
   .sort-indicator {
-    color: var(--brand-action-text);
+    color: var(--text-muted);
     display: grid;
+    opacity: 0;
     place-items: center;
+    transition: opacity var(--duration-fast) var(--ease-standard);
+  }
+
+  .sort-button:hover .sort-indicator,
+  .sort-button:focus-visible .sort-indicator {
+    opacity: 0.55;
+  }
+
+  th[aria-sort='ascending'] .sort-indicator,
+  th[aria-sort='descending'] .sort-indicator {
+    color: var(--brand-action-text);
+    opacity: 1;
   }
 
   .sort-indicator.descending {
@@ -1415,10 +1465,6 @@
     vertical-align: middle;
     white-space: nowrap;
     width: max-content;
-  }
-
-  .history-table td > .cell-meta {
-    justify-self: start;
   }
 
   .actor-column {
@@ -1443,22 +1489,23 @@
   }
 
   .actor {
-    align-items: center;
+    align-items: baseline;
     display: flex;
     gap: 0.5rem;
     min-width: 0;
   }
 
-  .actor-copy {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
+  .actor :global(.avatar),
+  .actor :global(.avatar-fallback) {
+    align-self: center;
   }
 
   .actor strong {
-    font-size: var(--font-size-body);
-    font-weight: 600;
+    flex: none;
+    font-size: var(--font-size-meta);
+    font-weight: 650;
     line-height: 1.2;
+    max-width: 60%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1466,30 +1513,70 @@
 
   .actor-login {
     color: var(--text-muted);
-    font-size: var(--font-size-compact);
-    line-height: 1.2;
-    margin-top: 0.125rem;
+    font-size: var(--font-size-micro);
+    line-height: 1.35;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .cell-primary,
-  .cell-meta {
+  .failure-kind {
+    align-items: center;
+    display: inline-flex;
+    font-size: var(--font-size-meta);
+    font-weight: 500;
+    gap: var(--space-2);
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .failure-kind.retryable {
+    color: var(--warning);
+  }
+
+  .failure-kind.permanent {
+    color: var(--stop);
+  }
+
+  .cell-symbol {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 1.125rem;
+  }
+
+  .change-line {
+    align-items: center;
+    display: flex;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+
+  /* The event category rides along as a quiet tag; the raw event code lives
+     in the row tooltip rather than repeating under every line. */
+  .category-tag {
+    background: var(--neutral-tint);
+    border-radius: 5px;
+    color: var(--text-soft);
+    flex: none;
+    font: 650 0.65rem / 1 var(--sans);
+    letter-spacing: 0.04em;
+    padding: 0.2rem 0.35rem;
+    text-transform: uppercase;
+  }
+
+  .cell-primary {
     display: block;
     overflow-wrap: anywhere;
   }
 
   .cell-primary {
-    font-size: var(--font-size-body);
+    font-size: var(--font-size-meta);
     line-height: 1.25;
-  }
-
-  .cell-meta {
-    color: var(--dim);
-    font-size: var(--font-size-compact);
-    line-height: 1.25;
-    margin-top: 0.15rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .table-time {
@@ -1497,7 +1584,6 @@
     color: var(--dim);
     display: inline-flex;
     font-size: var(--font-size-compact);
-    height: var(--control-height-compact);
     line-height: 1;
     vertical-align: middle;
     white-space: nowrap;
@@ -1516,7 +1602,7 @@
     animation: history-skeleton-pulse 1.35s ease-in-out infinite alternate;
     border-bottom: 1px solid var(--rule);
     display: block;
-    height: 3.25rem;
+    height: 3rem;
     position: relative;
   }
 

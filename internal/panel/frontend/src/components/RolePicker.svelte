@@ -104,7 +104,7 @@
     onkeydown={openFromKeyboard}
   >
     {#if selected !== undefined}
-      <Icon name={selected.icon} size={14} />
+      <span class="role-icon" aria-hidden="true"><Icon name={selected.icon} size={14} /></span>
       <span>{selected.label}</span>
     {/if}
     <span class="role-chevron" aria-hidden="true"><Icon name="chevron-down" size={14} /></span>
@@ -150,7 +150,7 @@
     color: var(--text);
     display: inline-flex;
     font: 600 var(--font-size-compact) / 1 var(--sans);
-    gap: 0.4rem;
+    gap: var(--space-2);
     height: 1.875rem;
     min-width: 7.25rem;
     padding: 0 0.5rem;
@@ -187,7 +187,15 @@
     outline: 0;
   }
 
-  .role-trigger > span:not(.role-chevron) {
+  .role-icon {
+    color: var(--text-muted);
+    display: grid;
+    flex: 0 0 1.125rem;
+    place-items: center;
+    width: 1.125rem;
+  }
+
+  .role-trigger > span:not(.role-chevron, .role-icon) {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

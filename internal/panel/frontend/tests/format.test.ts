@@ -5,6 +5,7 @@ import {
   formatDateTime,
   formatRelative,
   formatTimestamp,
+  formatUntil,
   relativeBucket,
   remainingFraction,
   remainingMs,
@@ -118,6 +119,43 @@ describe('formatRelative', () => {
     const stamp = '2026-07-01T09:00:00Z';
     const rendered = formatRelative(stamp, now);
     expect(rendered).not.toMatch(/ago$/);
+    expect(rendered).toBe(
+      new Date(Date.parse(stamp)).toLocaleDateString(undefined, {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      }),
+    );
+  });
+});
+
+describe('formatUntil', () => {
+  const now = Date.parse('2026-07-26T14:00:00Z');
+
+  it('shows a value the browser cannot parse verbatim', () => {
+    expect(formatUntil('not a timestamp', now)).toBe('not a timestamp');
+  });
+
+  it('treats a passed or imminent deadline as now', () => {
+    expect(formatUntil('2026-07-26T13:00:00Z', now)).toBe('now');
+    expect(formatUntil('2026-07-26T14:00:30Z', now)).toBe('now');
+  });
+
+  it('counts minutes, hours, and days with singular forms', () => {
+    expect(formatUntil('2026-07-26T14:01:30Z', now)).toBe('in 1 minute');
+    expect(formatUntil('2026-07-26T14:45:00Z', now)).toBe('in 45 minutes');
+    expect(formatUntil('2026-07-26T15:30:00Z', now)).toBe('in 1 hour');
+    expect(formatUntil('2026-07-26T19:00:00Z', now)).toBe('in 5 hours');
+    expect(formatUntil('2026-07-27T15:00:00Z', now)).toBe('in 1 day');
+    expect(formatUntil('2026-08-01T14:00:00Z', now)).toBe('in 6 days');
+  });
+
+  // Same rationale as formatRelative's date fallback: assert via the API,
+  // not a literal rendering.
+  it('drops to a date two weeks out or more', () => {
+    const stamp = '2026-08-20T14:00:00Z';
+    const rendered = formatUntil(stamp, now);
+    expect(rendered).not.toMatch(/^in /);
     expect(rendered).toBe(
       new Date(Date.parse(stamp)).toLocaleDateString(undefined, {
         day: 'numeric',

@@ -52,7 +52,7 @@
       options: [
         { value: 'active', label: 'Active', tone: 'valid' },
         { value: 'banned', label: 'Banned', tone: 'invalid' },
-        { value: 'removed', label: 'Removed', tone: 'bypassed' },
+        { value: 'removed', label: 'Removed', tone: 'default' },
       ],
     },
   ] satisfies readonly FilterSection[];
@@ -118,7 +118,8 @@
   let feedback = $state('');
   let sequence = 0;
   const limit = 20;
-  const now = Date.now();
+  // Ticks so relative login times keep aging in a long Root session.
+  let now = $state(Date.now());
   const requestKey = $derived(
     JSON.stringify([query, sort, systemRoles, statuses, limit, refreshVersion]),
   );
@@ -135,6 +136,13 @@
         value.toLocaleLowerCase().includes(needle),
       ),
     );
+  });
+
+  $effect(() => {
+    const tick = setInterval(() => {
+      now = Date.now();
+    }, 30_000);
+    return () => clearInterval(tick);
   });
 
   $effect(() => {
@@ -973,16 +981,21 @@
     vertical-align: middle;
   }
 
+  th:first-child,
+  td:first-child {
+    padding-left: var(--space-4);
+  }
+
+  thead th:first-child .table-sort-button {
+    padding-left: var(--space-4);
+  }
+
   th {
     background: var(--table-header-bg);
     color: var(--dim);
     font: 650 var(--font-size-compact) / 1.2 var(--sans);
+    height: 2.5rem;
     letter-spacing: 0.02em;
-  }
-
-  th[aria-sort='ascending'],
-  th[aria-sort='descending'] {
-    background: var(--table-sorted-bg);
   }
 
   th:has(.table-sort-button) {
@@ -1015,6 +1028,10 @@
     width: 16%;
   }
 
+  th:nth-child(5) .table-sort-button {
+    justify-content: flex-end;
+  }
+
   th:last-child,
   td:last-child {
     text-align: center;
@@ -1039,6 +1056,27 @@
     width: 100%;
   }
 
+  .table-sort-button :global(svg) {
+    opacity: 0;
+    transition:
+      opacity var(--duration-fast) var(--ease-standard),
+      transform var(--duration-fast) var(--ease-standard);
+  }
+
+  .table-sort-button:hover :global(svg),
+  .table-sort-button:focus-visible :global(svg) {
+    opacity: 0.55;
+  }
+
+  th[aria-sort='ascending'] .table-sort-button :global(svg),
+  th[aria-sort='descending'] .table-sort-button :global(svg) {
+    opacity: 1;
+  }
+
+  th[aria-sort='descending'] .table-sort-button :global(svg) {
+    transform: rotate(180deg);
+  }
+
   .heading-layout {
     justify-content: space-between;
   }
@@ -1054,7 +1092,7 @@
   }
 
   .heading-label {
-    padding-left: 0.75rem;
+    padding-left: 0;
   }
 
   .identity {
@@ -1187,22 +1225,7 @@
   .table-skeleton span {
     animation: root-access-pulse 1.35s ease-in-out infinite alternate;
     border-bottom: 1px solid var(--rule);
-    height: 3.25rem;
-  }
-
-  .load-more-alert {
-    align-items: center;
-    background: var(--popover-bg);
-    border: 1px solid var(--popover-border);
-    border-radius: var(--radius-control);
-    bottom: var(--space-3);
-    box-shadow: var(--shadow-popover);
-    display: flex;
-    gap: var(--space-3);
-    left: 50%;
-    padding: var(--space-2) var(--space-3);
-    position: absolute;
-    transform: translateX(-50%);
+    height: 3.5rem;
   }
 
   @keyframes root-access-pulse {
@@ -1246,6 +1269,11 @@
 
     tbody tr {
       background: var(--surface-base);
+      transition: background-color var(--duration-fast) var(--ease-standard);
+    }
+
+    tbody tr:not(.empty-row):hover {
+      background: var(--table-row-hover);
     }
 
     tbody tr:last-child td {

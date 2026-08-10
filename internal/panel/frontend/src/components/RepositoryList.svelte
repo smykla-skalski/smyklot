@@ -310,7 +310,7 @@
   const desktopTableLayout = new MediaQuery('min-width: 64.001rem', true);
   const repositoryVirtualizer = createVirtualizer<HTMLTableSectionElement, HTMLTableRowElement>({
     count: 0,
-    estimateSize: () => 65,
+    estimateSize: () => 56,
     getScrollElement: () => repositoryScroll ?? null,
     overscan: 6,
   });
@@ -588,10 +588,6 @@
     toggleColumnSort('file');
   }
 
-  function toggleOverridesSort(): void {
-    toggleColumnSort('overrides');
-  }
-
   function toggleColumnSort(columnId: string): void {
     const column = repositoryTable.getColumn(columnId);
     column?.toggleSorting(column.getIsSorted() === 'asc');
@@ -834,32 +830,43 @@
         {/each}
       </div>
       <p class="visually-hidden" role="status">Loading repositories</p>
-    {:else if repositories.length === 0}
-      <div class="result-state table-empty">
-        <TableEmptyState
-          title={hasFilters ? 'No repositories match' : 'No repositories installed'}
-          description={hasFilters
-            ? 'Try another search or clear the active filters'
-            : 'Repositories will appear after the installation catalog is refreshed'}
-          actionLabel={hasFilters ? 'Clear filters' : undefined}
-          onAction={hasFilters ? clearFilters : undefined}
-        />
-      </div>
     {:else}
       <div class="repository-table-scroll">
         <table class="repositories">
           <thead>
             <tr>
               <th class="sortable-heading" aria-sort={sortDirection('name')}>
-                <button class="sort-heading table-sort-button" onclick={toggleNameSort}>
-                  Repository
-                  <span class="sort-indicator" aria-hidden="true"
-                    ><Icon name="sort" size={14} /></span
-                  >
-                </button>
+                <div class="table-heading-layout">
+                  <button class="sort-heading table-sort-button" onclick={toggleNameSort}>
+                    Repository
+                    <span class="sort-indicator" aria-hidden="true"
+                      ><Icon name="sort" size={14} /></span
+                    >
+                  </button>
+                  <FilterMenu
+                    label="Overrides"
+                    summary={settingSummary}
+                    hint="Match any selected repository override"
+                    sections={SETTING_FILTER_SECTIONS}
+                    selected={settingSelection}
+                    multiple
+                    fallbackValue="all"
+                    align="start"
+                    wide
+                    showIcon
+                    iconOnly
+                    placement="header"
+                    onChange={(values) =>
+                      repositoryTable.getColumn('overrides')?.setFilterValue(values)}
+                  />
+                </div>
               </th>
-              <th>Visibility</th>
-              <th>Default branch</th>
+              <th class="plain-heading">
+                <div class="table-heading-layout"><span>Visibility</span></div>
+              </th>
+              <th class="plain-heading">
+                <div class="table-heading-layout"><span>Branch</span></div>
+              </th>
               <th class="sortable-heading" aria-sort={sortDirection('file')}>
                 <div class="table-heading-layout">
                   <button class="sort-heading table-sort-button" onclick={toggleFileSort}>
@@ -880,32 +887,6 @@
                     iconOnly
                     placement="header"
                     onChange={(values) => repositoryTable.getColumn('file')?.setFilterValue(values)}
-                  />
-                </div>
-              </th>
-              <th class="numeric-heading sortable-heading" aria-sort={sortDirection('overrides')}>
-                <div class="table-heading-layout">
-                  <button class="sort-heading table-sort-button" onclick={toggleOverridesSort}>
-                    Overrides
-                    <span class="sort-indicator" aria-hidden="true"
-                      ><Icon name="sort" size={14} /></span
-                    >
-                  </button>
-                  <FilterMenu
-                    label="Overrides"
-                    summary={settingSummary}
-                    hint="Match any selected repository override"
-                    sections={SETTING_FILTER_SECTIONS}
-                    selected={settingSelection}
-                    multiple
-                    fallbackValue="all"
-                    align="end"
-                    wide
-                    showIcon
-                    iconOnly
-                    placement="header"
-                    onChange={(values) =>
-                      repositoryTable.getColumn('overrides')?.setFilterValue(values)}
                   />
                 </div>
               </th>
@@ -939,12 +920,26 @@
             </tr>
           </thead>
           <tbody bind:this={repositoryScroll} data-panel-scroll>
+            {#if repositories.length === 0}
+              <tr class="empty-row">
+                <td colspan="6">
+                  <TableEmptyState
+                    title={hasFilters ? 'No repositories match' : 'No repositories installed'}
+                    description={hasFilters
+                      ? 'Try another search or clear the active filters'
+                      : 'Repositories will appear after the installation catalog is refreshed'}
+                    actionLabel={hasFilters ? 'Clear filters' : undefined}
+                    onAction={hasFilters ? clearFilters : undefined}
+                  />
+                </td>
+              </tr>
+            {/if}
             {#if desktopTableLayout.current}
               <tr
                 class="virtual-spacer"
                 aria-hidden="true"
                 style:height={`${$repositoryVirtualizer.getTotalSize()}px`}
-                ><td colspan="7"></td></tr
+                ><td colspan="6"></td></tr
               >
             {/if}
             {#each repositoryRenderRows as virtualRow (virtualRow.key)}
@@ -969,16 +964,24 @@
                     </span>
                     <span class="repo-copy">
                       <strong>{repository.name}</strong>
+                      {#if repository.config_override_count > 0}
+                        <span class="override-chip">
+                          {repository.config_override_count}
+                          {repository.config_override_count === 1 ? 'override' : 'overrides'}
+                        </span>
+                      {/if}
                     </span>
                   </button>
                 </td>
                 <td data-label="Visibility">
                   <span class={['visibility', repository.private ? 'private' : 'public']}>
-                    <Icon name={repository.private ? 'lock' : 'globe'} size={15} />
+                    <span class="cell-symbol" aria-hidden="true">
+                      <Icon name={repository.private ? 'lock' : 'globe'} size={15} />
+                    </span>
                     {repository.private ? 'Private' : 'Public'}
                   </span>
                 </td>
-                <td data-label="Default branch"
+                <td data-label="Branch"
                   ><code class="branch">{repository.default_branch || 'Not reported'}</code></td
                 >
                 <td data-label="File state">
@@ -987,9 +990,6 @@
                     status={repository.config_file_status}
                     showLabel
                   />
-                </td>
-                <td class="numeric-cell mono" data-label="Overrides">
-                  <span class="numeric-value">{repository.config_override_count}</span>
                 </td>
                 <td data-label="Updated">
                   <time
@@ -1020,7 +1020,7 @@
 
               {#if repositoryFailure !== undefined && activeRepository?.id !== repository.id}
                 <tr class="visually-hidden">
-                  <td colspan="7"><span role="alert">{repositoryFailure.message}</span></td>
+                  <td colspan="6"><span role="alert">{repositoryFailure.message}</span></td>
                 </tr>
               {/if}
             {/each}
@@ -1255,11 +1255,13 @@
     text-align: center;
   }
 
-  .result-state.table-empty {
-    border: 0;
-    flex: 1;
-    margin: 0;
-    min-height: 12rem;
+  .empty-row td {
+    border-bottom: 0;
+    height: 12rem;
+  }
+
+  .empty-row td :global(.table-empty-state) {
+    margin-inline: auto;
   }
 
   .result-state span {
@@ -1275,7 +1277,7 @@
     animation: repository-skeleton-pulse 1.35s ease-in-out infinite alternate;
     border-bottom: 1px solid var(--rule);
     display: block;
-    height: 3.375rem;
+    height: 3.5rem;
     position: relative;
   }
 
@@ -1314,7 +1316,7 @@
   .repositories {
     background: var(--surface-base);
     border-collapse: collapse;
-    min-width: 58rem;
+    min-width: 52rem;
     table-layout: fixed;
     width: 100%;
   }
@@ -1322,7 +1324,7 @@
   th,
   td {
     border-bottom: 1px solid var(--border-subtle);
-    padding: var(--space-3);
+    padding: var(--space-2) var(--space-3);
     text-align: left;
     vertical-align: middle;
   }
@@ -1336,19 +1338,19 @@
   }
 
   th:first-child {
-    width: 23%;
+    width: 27%;
   }
 
   th:nth-child(2) {
-    width: 10%;
-  }
-
-  th:nth-child(3) {
     width: 11%;
   }
 
+  th:nth-child(3) {
+    width: 12%;
+  }
+
   th:nth-child(4) {
-    width: 13%;
+    width: 14%;
   }
 
   th:nth-child(5) {
@@ -1356,11 +1358,7 @@
   }
 
   th:nth-child(6) {
-    width: 12%;
-  }
-
-  th:nth-child(7) {
-    width: 18%;
+    width: 23%;
   }
 
   th:first-child,
@@ -1374,27 +1372,19 @@
     text-align: right;
   }
 
-  .numeric-heading,
-  .numeric-cell {
-    text-align: center;
-  }
-
-  .numeric-heading .sort-heading {
-    justify-content: center;
-  }
-
   .sortable-heading {
     padding: 0;
   }
 
-  .filterable-heading {
+  .filterable-heading,
+  .plain-heading {
     padding-block: 0;
   }
 
   .table-heading-layout {
     align-items: center;
     display: flex;
-    height: 2.75rem;
+    height: 2.5rem;
     justify-content: space-between;
     min-width: 0;
   }
@@ -1419,7 +1409,7 @@
     display: flex;
     font: inherit;
     gap: var(--space-2);
-    height: 2.75rem;
+    height: 2.5rem;
     letter-spacing: inherit;
     margin: 0;
     padding: 0 var(--space-3);
@@ -1427,7 +1417,8 @@
     flex: 1;
     min-width: 0;
     overflow: hidden;
-    width: auto;
+    white-space: nowrap;
+    width: 100%;
   }
 
   .sortable-heading:first-child .sort-heading {
@@ -1437,7 +1428,19 @@
   .sort-indicator {
     color: var(--text-muted);
     display: grid;
+    opacity: 0;
     place-items: center;
+    transition: opacity var(--duration-fast) var(--ease-standard);
+  }
+
+  .sort-heading:hover .sort-indicator,
+  .sort-heading:focus-visible .sort-indicator {
+    opacity: 0.55;
+  }
+
+  th[aria-sort='ascending'] .sort-indicator,
+  th[aria-sort='descending'] .sort-indicator {
+    opacity: 1;
   }
 
   th[aria-sort='ascending'] .sort-indicator {
@@ -1490,7 +1493,7 @@
     .repositories thead tr,
     .repositories tbody tr {
       display: grid;
-      grid-template-columns: 23% 10% 11% 13% 13% 12% 18%;
+      grid-template-columns: 27% 11% 12% 14% 13% 23%;
       width: 100%;
     }
 
@@ -1500,6 +1503,10 @@
 
     .repositories tbody tr:not(.virtual-spacer) {
       background: var(--surface-base);
+      /* Pin the grid track to the row's fixed height: auto-sizing would take
+         the tallest cell's border-box, push the bottom border one pixel past
+         the virtual row, and let the next row paint over every separator. */
+      grid-template-rows: 100%;
     }
 
     .repositories tbody tr:not(.virtual-spacer) td {
@@ -1507,12 +1514,15 @@
       display: flex;
     }
 
-    .repositories tbody .numeric-cell {
-      justify-content: center;
-    }
-
     .repositories tbody td:last-child {
       justify-content: flex-end;
+    }
+
+    .repositories tbody tr.empty-row {
+      align-content: center;
+      grid-template-columns: minmax(0, 1fr);
+      inset: 0;
+      position: absolute;
     }
 
     .repositories tbody .virtual-row {
@@ -1579,18 +1589,27 @@
   }
 
   .repo-copy {
-    display: flex;
-    flex-direction: column;
-    height: var(--control-height-compact);
-    justify-content: center;
     min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .repo-copy strong {
-    display: block;
     line-height: 1.25;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  }
+
+  /* Overrides are exceptional, so they ride along with the name instead of
+     owning a column: the same "N overrides" language the Settings page uses. */
+  .override-chip {
+    background: var(--neutral-tint);
+    border-radius: var(--radius-chip);
+    color: var(--text-soft);
+    display: inline-block;
+    font: 600 var(--font-size-micro) / 1 var(--sans);
+    margin-left: var(--space-2);
+    padding: 0.28rem 0.5rem;
+    vertical-align: baseline;
     white-space: nowrap;
   }
 
@@ -1600,10 +1619,17 @@
     display: flex;
     font-size: var(--font-size-meta);
     font-weight: 550;
-    gap: var(--space-1);
+    gap: var(--space-2);
     height: var(--control-height-compact);
     line-height: 1;
     width: max-content;
+  }
+
+  .cell-symbol {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 1.125rem;
   }
 
   .visibility.public {
@@ -1617,13 +1643,6 @@
     font-size: var(--font-size-compact);
     justify-self: start;
     width: max-content;
-  }
-
-  .numeric-value {
-    align-items: center;
-    display: inline-flex;
-    height: var(--control-height-compact);
-    line-height: 1;
   }
 
   .updated {
@@ -1865,10 +1884,6 @@
       font-weight: 650;
       letter-spacing: 0.08em;
       text-transform: uppercase;
-    }
-
-    .numeric-cell {
-      text-align: right;
     }
 
     .file-status {

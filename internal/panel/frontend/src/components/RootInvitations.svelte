@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { formatDateTime, formatTimestamp } from '../lib/format';
+  import { formatDateTime, formatRelative, formatTimestamp, formatUntil } from '../lib/format';
   import type { FilterSection } from '../lib/filter-menu';
   import type {
     AddRootInvitationInput,
@@ -26,9 +26,9 @@
   const STATUS_FILTERS = [
     {
       options: [
-        { value: 'pending', label: 'Pending', tone: 'bypassed' },
+        { value: 'pending', label: 'Pending', tone: 'default' },
         { value: 'accepted', label: 'Accepted', tone: 'valid' },
-        { value: 'declined', label: 'Declined', tone: 'bypassed' },
+        { value: 'declined', label: 'Declined', tone: 'default' },
         { value: 'revoked', label: 'Revoked', tone: 'invalid' },
         { value: 'expired', label: 'Expired', tone: 'bypassed' },
       ],
@@ -52,6 +52,8 @@
   } = $props();
 
   let page = $state<Page<PanelInvitation> | null>(null);
+  // Ticks so the pending countdown and relative Created column keep aging.
+  let now = $state(Date.now());
   let search = $state('');
   let query = $state('');
   let sort = $state<InvitationSort>('created_newest');
@@ -80,6 +82,13 @@
   const requestKey = $derived(JSON.stringify([query, sort, statuses, limit, refreshVersion]));
   const invitations = $derived(page?.items ?? []);
   const hasFilters = $derived(query !== '' || statuses.length > 0);
+
+  $effect(() => {
+    const tick = setInterval(() => {
+      now = Date.now();
+    }, 30_000);
+    return () => clearInterval(tick);
+  });
 
   $effect(() => {
     const next = search.trim();
@@ -176,6 +185,7 @@
     if (status === 'accepted') return 'clear';
     if (status === 'pending') return 'signal';
     if (status === 'revoked') return 'stop';
+    if (status === 'expired') return 'warning';
     return 'neutral';
   }
 
@@ -317,7 +327,7 @@
             <tr>
               <th scope="col" aria-sort={sortDirection('name')}>
                 <button class="table-sort-button" type="button" onclick={() => toggleSort('name')}>
-                  <span>User</span><Icon name="sort" size={14} />
+                  <span>Invitee</span><Icon name="sort" size={14} />
                 </button>
               </th>
               <th scope="col">System role</th>
@@ -375,22 +385,37 @@
                 </td>
                 <td data-label="System role"><Chip tone="signal">Root</Chip></td>
                 <td data-label="Status">
-                  <Chip tone={statusTone(invitation.status)}>{statusLabel(invitation.status)}</Chip>
+                  <Chip tone={statusTone(invitation.status)} dot
+                    >{statusLabel(invitation.status)}</Chip
+                  >
                 </td>
                 <td data-label="Expires">
-                  <time
-                    datetime={invitation.expires_at}
-                    title={formatTimestamp(invitation.expires_at)}
-                  >
-                    {formatDateTime(invitation.expires_at)}
-                  </time>
+                  {#if invitation.status === 'pending'}
+                    <time
+                      class="expires-soon"
+                      datetime={invitation.expires_at}
+                      title={formatTimestamp(invitation.expires_at)}
+                    >
+                      {formatUntil(invitation.expires_at, now)}
+                    </time>
+                  {:else if invitation.status === 'expired'}
+                    <time
+                      datetime={invitation.expires_at}
+                      title={formatTimestamp(invitation.expires_at)}
+                    >
+                      {formatDateTime(invitation.expires_at)}
+                    </time>
+                  {:else}
+                    <!-- Expiry stops meaning anything once the invitation is resolved. -->
+                    <span class="cell-dash" aria-hidden="true">—</span>
+                  {/if}
                 </td>
                 <td data-label="Created">
                   <time
                     datetime={invitation.created_at}
                     title={formatTimestamp(invitation.created_at)}
                   >
-                    {formatDateTime(invitation.created_at)}
+                    {formatRelative(invitation.created_at, now)}
                   </time>
                 </td>
                 <td class="row-actions" data-label="Actions">
@@ -591,16 +616,21 @@
     vertical-align: middle;
   }
 
+  th:first-child,
+  td:first-child {
+    padding-left: var(--space-4);
+  }
+
+  thead th:first-child .table-sort-button {
+    padding-left: var(--space-4);
+  }
+
   th {
     background: var(--table-header-bg);
     color: var(--dim);
     font: 650 var(--font-size-compact) / 1.2 var(--sans);
+    height: 2.5rem;
     letter-spacing: 0.02em;
-  }
-
-  th[aria-sort='ascending'],
-  th[aria-sort='descending'] {
-    background: var(--table-sorted-bg);
   }
 
   th:has(.table-sort-button) {
@@ -650,9 +680,29 @@
     width: 100%;
   }
 
+  .table-sort-button :global(svg) {
+    opacity: 0;
+    transition:
+      opacity var(--duration-fast) var(--ease-standard),
+      transform var(--duration-fast) var(--ease-standard);
+  }
+
+  .table-sort-button:hover :global(svg),
+  .table-sort-button:focus-visible :global(svg) {
+    opacity: 0.55;
+  }
+
+  th[aria-sort='ascending'] .table-sort-button :global(svg),
+  th[aria-sort='descending'] .table-sort-button :global(svg) {
+    opacity: 1;
+  }
+
+  th[aria-sort='descending'] .table-sort-button :global(svg) {
+    transform: rotate(180deg);
+  }
+
   .heading-layout {
     justify-content: space-between;
-    padding-left: 0.75rem;
   }
 
   .heading-layout :global(.header-filter) {
@@ -679,10 +729,30 @@
     white-space: nowrap;
   }
 
+  .identity strong {
+    font-size: var(--font-size-body);
+    line-height: 1.2;
+  }
+
   .identity .mono,
   time {
     color: var(--text-muted);
     font-size: var(--font-size-compact);
+    line-height: 1.25;
+  }
+
+  time {
+    white-space: nowrap;
+  }
+
+  .cell-dash {
+    color: var(--text-muted);
+    opacity: 0.6;
+  }
+
+  .expires-soon {
+    color: var(--text-secondary);
+    font-weight: 600;
   }
 
   .row-actions {
@@ -691,6 +761,10 @@
 
   .empty-row td {
     height: 10rem;
+  }
+
+  .empty-row td :global(.table-empty-state) {
+    margin-inline: auto;
   }
 
   .result-state,
@@ -715,19 +789,7 @@
   .table-skeleton span {
     animation: root-invitation-pulse 1.35s ease-in-out infinite alternate;
     border-bottom: 1px solid var(--rule);
-    height: 3.25rem;
-  }
-
-  .load-more-alert {
-    background: var(--popover-bg);
-    border: 1px solid var(--popover-border);
-    border-radius: var(--radius-control);
-    bottom: var(--space-3);
-    box-shadow: var(--shadow-popover);
-    left: 50%;
-    padding: var(--space-2) var(--space-3);
-    position: absolute;
-    transform: translateX(-50%);
+    height: 3.5rem;
   }
 
   .invitation-form {
@@ -820,6 +882,11 @@
 
     tbody tr {
       background: var(--surface-base);
+      transition: background-color var(--duration-fast) var(--ease-standard);
+    }
+
+    tbody tr:not(.empty-row):hover {
+      background: var(--table-row-hover);
     }
 
     tbody tr:last-child td {
