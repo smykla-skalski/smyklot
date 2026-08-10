@@ -441,8 +441,11 @@ func TestPanelWebSocketEvents(t *testing.T) {
 	if err := wsjson.Read(t.Context(), connection, &ready); err != nil {
 		t.Fatal(err)
 	}
-	if ready.Version != panelEventVersion || ready.Type != "ready" {
+	if ready.Version != panelEventVersion || ready.Type != panelEventReady {
 		t.Fatalf("ready event = %#v", ready)
+	}
+	if ready.Prefs == nil || ready.Prefs.Rev != 0 || string(ready.Prefs.Values) != "{}" {
+		t.Fatalf("ready prefs = %#v", ready.Prefs)
 	}
 
 	harness.server.Announce("github:installation:10", "repository-20")
@@ -491,7 +494,7 @@ func TestPanelBroadcastsRootSecurityChanges(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	session := harness.signIn(t)
 	_, elevatedTarget := seedNonOwnedInstallation(t, harness)
-	subscriber, unsubscribe := harness.server.events.subscribe("root-live-test")
+	subscriber, unsubscribe := harness.server.events.subscribe("", "root-live-test")
 	t.Cleanup(unsubscribe)
 
 	started := harness.request(
@@ -528,6 +531,244 @@ func requirePanelEvent(t *testing.T, events <-chan panelEvent, eventType string)
 		}
 	case <-time.After(time.Second):
 		t.Fatalf("timed out waiting for panel event %q", eventType)
+	}
+}
+
+func dialPanelStream(
+	t *testing.T,
+	streamURL string,
+	session *http.Cookie,
+) *websocket.Conn {
+	t.Helper()
+	headers := http.Header{}
+	headers.Set("Cookie", session.String())
+	headers.Set("Origin", "https://smyklot.example")
+	connection, response, err := websocket.Dial(t.Context(), streamURL, &websocket.DialOptions{
+		HTTPHeader: headers,
+	})
+	if err != nil {
+		t.Fatalf("dial WebSocket: response %#v, error %v", response, err)
+	}
+	t.Cleanup(func() { _ = connection.CloseNow() })
+
+	return connection
+}
+
+func readPanelReady(t *testing.T, connection *websocket.Conn) panelEvent {
+	t.Helper()
+	var ready panelEvent
+	if err := wsjson.Read(t.Context(), connection, &ready); err != nil {
+		t.Fatal(err)
+	}
+	if ready.Type != panelEventReady || ready.Prefs == nil {
+		t.Fatalf("ready event = %#v", ready)
+	}
+
+	return ready
+}
+
+func TestPanelWebSocketPreferences(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+	firstSession := harness.signIn(t)
+	secondSession := harness.signIn(t)
+	endpoint := httptest.NewServer(harness.handler)
+	t.Cleanup(endpoint.Close)
+	streamURL := "ws" + strings.TrimPrefix(endpoint.URL, "http") + "/panel/api/v1/events"
+	emptySum := prefsChecksum(map[string]json.RawMessage{})
+
+	// A dial without handshake parameters gets the full (empty) snapshot.
+	observer := dialPanelStream(t, streamURL, firstSession)
+	observerReady := readPanelReady(t, observer)
+	if observerReady.Prefs.Rev != 0 ||
+		observerReady.Prefs.Sum != emptySum ||
+		string(observerReady.Prefs.Values) != "{}" {
+		t.Fatalf("observer ready prefs = %#v", observerReady.Prefs)
+	}
+
+	// A dial with matching revision and checksum gets no snapshot.
+	editor := dialPanelStream(
+		t,
+		streamURL+"?prefs_rev=0&prefs_sum="+emptySum,
+		secondSession,
+	)
+	editorReady := readPanelReady(t, editor)
+	if editorReady.Prefs.Rev != 0 || len(editorReady.Prefs.Values) != 0 {
+		t.Fatalf("editor ready prefs = %#v", editorReady.Prefs)
+	}
+
+	// A patch mixing valid and invalid keys applies the valid ones, fans the
+	// change out to every connection of the account, and reports the rejected
+	// keys only to the originator.
+	patch := map[string]any{
+		"version": panelEventVersion,
+		"type":    panelInboundPrefsPatch,
+		"changes": map[string]any{
+			"theme":             "dark",
+			"table.users.roles": []string{"viewer", "admin"},
+			"bogus":             "x",
+		},
+	}
+	if err := wsjson.Write(t.Context(), editor, patch); err != nil {
+		t.Fatal(err)
+	}
+
+	observed := readPrefsChanged(t, observer, 1)
+	if string(observed.Changes["theme"]) != `"dark"` ||
+		string(observed.Changes["table.users.roles"]) != `["admin","viewer"]` {
+		t.Fatalf("observed changes = %#v", observed.Changes)
+	}
+	if _, present := observed.Changes["bogus"]; present {
+		t.Fatalf("rejected key leaked into fan-out: %#v", observed.Changes)
+	}
+
+	readPrefsChanged(t, editor, 1)
+	var rejected panelEvent
+	if err := wsjson.Read(t.Context(), editor, &rejected); err != nil {
+		t.Fatal(err)
+	}
+	if rejected.Type != panelEventPrefsRejected ||
+		len(rejected.Keys) != 1 || rejected.Keys[0] != "bogus" {
+		t.Fatalf("rejected event = %#v", rejected)
+	}
+
+	stored, err := harness.store.GetPreferences(t.Context(), "github:test:user:1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Revision != 1 || len(stored.Values) != 2 {
+		t.Fatalf("stored preferences = %#v", stored)
+	}
+
+	// A re-dial with the updated revision and checksum matches: no snapshot.
+	rejoined := dialPanelStream(
+		t,
+		streamURL+"?prefs_rev=1&prefs_sum="+prefsChecksum(stored.Values),
+		firstSession,
+	)
+	rejoinedReady := readPanelReady(t, rejoined)
+	if rejoinedReady.Prefs.Rev != 1 || len(rejoinedReady.Prefs.Values) != 0 {
+		t.Fatalf("rejoined ready prefs = %#v", rejoinedReady.Prefs)
+	}
+
+	// A deletion patch drops the key and bumps the revision for everyone.
+	deletion := map[string]any{
+		"version": panelEventVersion,
+		"type":    panelInboundPrefsPatch,
+		"changes": map[string]any{"theme": nil},
+	}
+	if err := wsjson.Write(t.Context(), editor, deletion); err != nil {
+		t.Fatal(err)
+	}
+	deleted := readPrefsChanged(t, observer, 2)
+	if string(deleted.Changes["theme"]) != "null" {
+		t.Fatalf("deleted event = %#v", deleted)
+	}
+}
+
+func readPrefsChanged(t *testing.T, connection *websocket.Conn, rev int64) panelEvent {
+	t.Helper()
+	var event panelEvent
+	if err := wsjson.Read(t.Context(), connection, &event); err != nil {
+		t.Fatal(err)
+	}
+	if event.Type != panelEventPrefsChanged || event.Rev != rev {
+		t.Fatalf("prefs.changed event = %#v", event)
+	}
+
+	return event
+}
+
+func TestPanelWebSocketPreferencesInboundLimits(t *testing.T) {
+	t.Run("oversized frame closes the connection", func(t *testing.T) {
+		harness := newPanelHarness(t, "owner")
+		session := harness.signIn(t)
+		endpoint := httptest.NewServer(harness.handler)
+		t.Cleanup(endpoint.Close)
+		streamURL := "ws" + strings.TrimPrefix(endpoint.URL, "http") + "/panel/api/v1/events"
+
+		connection := dialPanelStream(t, streamURL, session)
+		readPanelReady(t, connection)
+
+		huge := bytes.Repeat([]byte("a"), panelInboundReadLimit+1)
+		if err := connection.Write(t.Context(), websocket.MessageText, huge); err != nil {
+			t.Fatal(err)
+		}
+		var next panelEvent
+		if err := wsjson.Read(t.Context(), connection, &next); err == nil {
+			t.Fatalf("expected the connection to close, read %#v", next)
+		}
+	})
+
+	t.Run("rapid frames trip the rate limit", func(t *testing.T) {
+		harness := newPanelHarness(t, "owner")
+		session := harness.signIn(t)
+		endpoint := httptest.NewServer(harness.handler)
+		t.Cleanup(endpoint.Close)
+		streamURL := "ws" + strings.TrimPrefix(endpoint.URL, "http") + "/panel/api/v1/events"
+
+		connection := dialPanelStream(t, streamURL, session)
+		readPanelReady(t, connection)
+
+		// The harness clock is frozen, so the bucket never refills: the frame
+		// after the burst allowance must close the connection.
+		noise := map[string]any{"version": panelEventVersion, "type": "noop"}
+		for range panelInboundBurst + 1 {
+			if err := wsjson.Write(t.Context(), connection, noise); err != nil {
+				break
+			}
+		}
+		var next panelEvent
+		err := wsjson.Read(t.Context(), connection, &next)
+		if err == nil {
+			t.Fatalf("expected the connection to close, read %#v", next)
+		}
+		if websocket.CloseStatus(err) != websocket.StatusPolicyViolation {
+			t.Fatalf("close status = %v, want policy violation", err)
+		}
+	})
+}
+
+func TestEventHubAnnounceAccount(t *testing.T) {
+	hub := newEventHub()
+	mine, unsubscribeMine := hub.subscribe("account-1", "session-a")
+	defer unsubscribeMine()
+	sibling, unsubscribeSibling := hub.subscribe("account-1", "session-b")
+	defer unsubscribeSibling()
+	other, unsubscribeOther := hub.subscribe("account-2", "session-c")
+	defer unsubscribeOther()
+
+	hub.announceAccount("account-1", panelEvent{Type: panelEventPrefsChanged, Rev: 7})
+
+	for _, subscriber := range []*eventSubscriber{mine, sibling} {
+		select {
+		case event := <-subscriber.events:
+			if event.Type != panelEventPrefsChanged || event.Rev != 7 ||
+				event.Version != panelEventVersion {
+				t.Fatalf("account event = %#v", event)
+			}
+		default:
+			t.Fatal("expected an event for the account's subscriber")
+		}
+	}
+	select {
+	case event := <-other.events:
+		t.Fatalf("unexpected event for another account: %#v", event)
+	default:
+	}
+
+	hub.deliver(mine, panelEvent{Type: panelEventPrefsRejected, Keys: []string{"bogus"}})
+	select {
+	case event := <-mine.events:
+		if event.Type != panelEventPrefsRejected || len(event.Keys) != 1 {
+			t.Fatalf("delivered event = %#v", event)
+		}
+	default:
+		t.Fatal("expected a delivered event")
+	}
+	select {
+	case event := <-sibling.events:
+		t.Fatalf("deliver leaked to a sibling connection: %#v", event)
+	default:
 	}
 }
 
@@ -1055,7 +1296,9 @@ func TestPanelManagesRootUsers(t *testing.T) {
 	}, 1); err != nil {
 		t.Fatal(err)
 	}
-	subscriber, unsubscribe := harness.server.events.subscribe(tokenHash(ordinaryToken))
+	subscriber, unsubscribe := harness.server.events.subscribe(
+		ordinary.ID, tokenHash(ordinaryToken),
+	)
 	t.Cleanup(unsubscribe)
 
 	promoted := harness.request(

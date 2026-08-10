@@ -2,6 +2,7 @@ package panel
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"sync"
@@ -18,21 +19,59 @@ const (
 	panelEventWriteTimeout   = 5 * time.Second
 	panelEventHeartbeat      = 25 * time.Second
 	panelSessionRevokedCode  = websocket.StatusCode(4001)
+	panelEventReady          = "ready"
 	panelEventSessionRevoked = "session.revoked"
 	panelEventAccessChanged  = "access.changed"
 	panelEventResync         = "resync"
+	panelEventPrefsChanged   = "prefs.changed"
+	panelEventPrefsRejected  = "prefs.rejected"
+
+	panelInboundPrefsPatch = "prefs.patch"
+	// panelInboundReadLimit bounds one client frame; a full preference patch
+	// is far below this.
+	panelInboundReadLimit = 8 << 10
+	// panelInboundBurst and panelInboundRefillInterval shape the per-connection
+	// token bucket: room for a burst of coalesced patches, then two per second
+	// sustained — well above what the client's trailing debounce can produce.
+	panelInboundBurst          = 20
+	panelInboundRefillInterval = 500 * time.Millisecond
+	// panelInboundMaxPatchKeys bounds keys in one patch; a coalescing client
+	// never sends more than the registry holds.
+	panelInboundMaxPatchKeys = 32
 )
 
 type panelEvent struct {
-	Version      int    `json:"version"`
-	Type         string `json:"type"`
-	TargetID     string `json:"target_id,omitempty"`
-	RepositoryID string `json:"repository_id,omitempty"`
-	Code         string `json:"code,omitempty"`
-	Reason       string `json:"reason,omitempty"`
+	Version      int                        `json:"version"`
+	Type         string                     `json:"type"`
+	TargetID     string                     `json:"target_id,omitempty"`
+	RepositoryID string                     `json:"repository_id,omitempty"`
+	Code         string                     `json:"code,omitempty"`
+	Reason       string                     `json:"reason,omitempty"`
+	Rev          int64                      `json:"rev,omitempty"`
+	Changes      map[string]json.RawMessage `json:"changes,omitempty"`
+	Keys         []string                   `json:"keys,omitempty"`
+	Prefs        *panelPrefsInfo            `json:"prefs,omitempty"`
+}
+
+// panelPrefsInfo rides the ready frame: revision and checksum always, the
+// canonical document only when the client's handshake did not match. Values
+// serializes as "{}" for an empty snapshot, so presence alone signals it.
+type panelPrefsInfo struct {
+	Rev    int64           `json:"rev"`
+	Sum    string          `json:"sum"`
+	Values json.RawMessage `json:"values,omitempty"`
+}
+
+// panelInboundFrame is the one client-to-server message shape. Unknown types
+// are ignored so older servers tolerate newer clients.
+type panelInboundFrame struct {
+	Version int                        `json:"version"`
+	Type    string                     `json:"type"`
+	Changes map[string]json.RawMessage `json:"changes"`
 }
 
 type eventSubscriber struct {
+	accountID    string
 	sessionHash  string
 	events       chan panelEvent
 	terminal     chan panelEvent
@@ -53,8 +92,9 @@ func newEventHub() *eventHub {
 	return &eventHub{subscribers: make(map[*eventSubscriber]struct{})}
 }
 
-func (h *eventHub) subscribe(sessionHash string) (*eventSubscriber, func()) {
+func (h *eventHub) subscribe(accountID, sessionHash string) (*eventSubscriber, func()) {
 	subscriber := &eventSubscriber{
+		accountID:   accountID,
 		sessionHash: sessionHash,
 		events:      make(chan panelEvent, panelEventQueueSize),
 		terminal:    make(chan panelEvent, 1),
@@ -82,6 +122,42 @@ func (h *eventHub) announce(event panelEvent) {
 			delete(h.subscribers, subscriber)
 			subscriber.disconnectSlowConsumer()
 		}
+	}
+}
+
+// announceAccount fans an event out to every connection of one account,
+// with the same overflow eviction as announce.
+func (h *eventHub) announceAccount(accountID string, event panelEvent) {
+	event.Version = panelEventVersion
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for subscriber := range h.subscribers {
+		if subscriber.accountID != accountID {
+			continue
+		}
+		select {
+		case subscriber.events <- event:
+		default:
+			delete(h.subscribers, subscriber)
+			subscriber.disconnectSlowConsumer()
+		}
+	}
+}
+
+// deliver queues an event for one subscriber. Routing through the subscriber
+// channel keeps the serve loop the only socket writer.
+func (h *eventHub) deliver(subscriber *eventSubscriber, event panelEvent) {
+	event.Version = panelEventVersion
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if _, subscribed := h.subscribers[subscriber]; !subscribed {
+		return
+	}
+	select {
+	case subscriber.events <- event:
+	default:
+		delete(h.subscribers, subscriber)
+		subscriber.disconnectSlowConsumer()
 	}
 }
 
@@ -113,7 +189,7 @@ func (h *eventHub) revokeWhere(
 }
 
 func (s *Server) streamEvents(w http.ResponseWriter, r *http.Request) {
-	_, sessionHash, ok := s.eventViewer(w, r)
+	account, sessionHash, ok := s.eventViewer(w, r)
 	if !ok {
 		return
 	}
@@ -130,17 +206,106 @@ func (s *Server) streamEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { _ = connection.CloseNow() }()
+	connection.SetReadLimit(panelInboundReadLimit)
 
-	connectionContext := connection.CloseRead(context.Background())
-	subscriber, unsubscribe := s.events.subscribe(sessionHash)
+	// Background instead of the request context: the connection is hijacked,
+	// and this cancel — shared with the read loop — is what ends both loops.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Subscribe before reading preferences: a patch landing in between is
+	// then either in the snapshot (its later event is ignored by revision)
+	// or queued behind it — never lost.
+	subscriber, unsubscribe := s.events.subscribe(account.ID, sessionHash)
 	defer unsubscribe()
-	if err := writePanelEvent(connectionContext, connection, panelEvent{
+
+	prefs, err := s.store.GetPreferences(ctx, account.ID)
+	if err != nil {
+		return
+	}
+	if err := writePanelEvent(ctx, connection, panelEvent{
 		Version: panelEventVersion,
-		Type:    "ready",
+		Type:    panelEventReady,
+		Prefs:   prefsReadyInfo(r.URL.Query(), prefs),
 	}); err != nil {
 		return
 	}
-	s.servePanelEvents(connectionContext, connection, subscriber, sessionHash)
+
+	go s.readPanelFrames(ctx, cancel, connection, account.ID, subscriber)
+	s.servePanelEvents(ctx, connection, subscriber, sessionHash)
+}
+
+// readPanelFrames owns the inbound half of the stream. Any read error —
+// close, oversized frame, malformed JSON — cancels the shared context and
+// with it the serve loop.
+func (s *Server) readPanelFrames(
+	ctx context.Context,
+	cancel context.CancelFunc,
+	connection *websocket.Conn,
+	accountID string,
+	subscriber *eventSubscriber,
+) {
+	defer cancel()
+	tokens := panelInboundBurst
+	refilled := s.now()
+	for {
+		var frame panelInboundFrame
+		if err := wsjson.Read(ctx, connection, &frame); err != nil {
+			return
+		}
+
+		now := s.now()
+		if refill := int(now.Sub(refilled) / panelInboundRefillInterval); refill > 0 {
+			tokens = min(panelInboundBurst, tokens+refill)
+			refilled = refilled.Add(time.Duration(refill) * panelInboundRefillInterval)
+		}
+		if tokens == 0 {
+			_ = connection.Close(websocket.StatusPolicyViolation, "too many messages")
+			return
+		}
+		tokens--
+
+		if frame.Version != panelEventVersion || frame.Type != panelInboundPrefsPatch {
+			continue
+		}
+		if !s.handlePrefsPatch(ctx, connection, accountID, subscriber, frame) {
+			return
+		}
+	}
+}
+
+// handlePrefsPatch validates and applies one inbound patch, reporting
+// whether the connection should stay open.
+func (s *Server) handlePrefsPatch(
+	ctx context.Context,
+	connection *websocket.Conn,
+	accountID string,
+	subscriber *eventSubscriber,
+	frame panelInboundFrame,
+) bool {
+	if len(frame.Changes) == 0 {
+		return true
+	}
+	if len(frame.Changes) > panelInboundMaxPatchKeys {
+		_ = connection.Close(websocket.StatusPolicyViolation, "preference patch too large")
+		return false
+	}
+
+	accepted, rejected := validatePrefChanges(frame.Changes)
+	if len(accepted) > 0 {
+		if err := s.applyPrefsPatch(ctx, accountID, accepted); err != nil {
+			_ = connection.Close(websocket.StatusInternalError, "preferences update failed")
+			return false
+		}
+	}
+	if len(rejected) > 0 {
+		s.events.deliver(subscriber, panelEvent{
+			Type: panelEventPrefsRejected,
+			Keys: rejected,
+		})
+	}
+
+	return true
 }
 
 func (s *Server) eventViewer(

@@ -1,12 +1,15 @@
 package panel
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -97,11 +100,10 @@ var prefRegistry = map[string]prefValidator{
 		string(storage.PanelUserLoginOldest),
 	),
 	"table.users.roles": setOf(
-		string(storage.PanelRoleNone),
-		string(storage.PanelRoleViewer),
-		string(storage.PanelRoleEditor),
-		string(storage.PanelRoleAdmin),
-		string(storage.PanelRoleOwner),
+		string(storage.InstallationRoleNone),
+		string(storage.InstallationRoleViewer),
+		string(storage.InstallationRoleEditor),
+		string(storage.InstallationRoleAdmin),
 	),
 	"table.users.statuses": setOf(
 		string(storage.PanelUserListActive),
@@ -121,10 +123,9 @@ var prefRegistry = map[string]prefValidator{
 		string(storage.InvitationRoleDescending),
 	),
 	"table.invitations.roles": setOf(
-		string(storage.PanelRoleViewer),
-		string(storage.PanelRoleEditor),
-		string(storage.PanelRoleAdmin),
-		string(storage.PanelRoleOwner),
+		string(storage.InstallationRoleViewer),
+		string(storage.InstallationRoleEditor),
+		string(storage.InstallationRoleAdmin),
 	),
 	"table.invitations.statuses": setOf(
 		string(storage.InvitationPending),
@@ -186,6 +187,60 @@ func validatePrefChanges(
 	sort.Strings(rejected)
 
 	return accepted, rejected
+}
+
+// prefsReadyInfo builds the handshake payload for the ready frame: revision
+// and checksum always, the canonical document only when the client's dial
+// parameters did not match the stored state.
+func prefsReadyInfo(query url.Values, prefs storage.Preferences) *panelPrefsInfo {
+	sum := prefsChecksum(prefs.Values)
+	info := &panelPrefsInfo{Rev: prefs.Revision, Sum: sum}
+
+	clientRev, err := strconv.ParseInt(query.Get("prefs_rev"), 10, 64)
+	if err == nil && clientRev == prefs.Revision && sum != "" && query.Get("prefs_sum") == sum {
+		return info
+	}
+
+	snapshot, err := canonicalPrefs(prefs.Values)
+	if err != nil {
+		// The stored document cannot be serialized; reset the client to
+		// empty and let its pending changes rebuild it.
+		snapshot = []byte("{}")
+	}
+	info.Values = json.RawMessage(snapshot)
+
+	return info
+}
+
+// applyPrefsPatch commits validated changes and fans them out to every
+// connection of the account, the originator included — its echo doubles as
+// the acknowledgement. The mutex makes fan-out order match commit order;
+// without it two concurrent patches could announce revisions out of order
+// and the clients' monotonic-revision rule would drop one.
+func (s *Server) applyPrefsPatch(
+	ctx context.Context,
+	accountID string,
+	accepted map[string]json.RawMessage,
+) error {
+	s.prefsMu.Lock()
+	defer s.prefsMu.Unlock()
+
+	updated, err := s.store.ApplyPreferences(ctx, storage.PreferenceChange{
+		AccountID: accountID,
+		Changes:   accepted,
+		ChangedAt: s.now(),
+	})
+	if err != nil {
+		return err
+	}
+
+	s.events.announceAccount(accountID, panelEvent{
+		Type:    panelEventPrefsChanged,
+		Rev:     updated.Revision,
+		Changes: accepted,
+	})
+
+	return nil
 }
 
 // prefsChecksum digests a preference document for the connect handshake. A

@@ -59,6 +59,9 @@ type Server struct {
 	runtimeMu  sync.RWMutex
 	runtime    RuntimeValues
 	controller RuntimeController
+	// prefsMu spans each preference commit and its fan-out so announce order
+	// matches commit order (see applyPrefsPatch).
+	prefsMu sync.Mutex
 }
 
 // New creates a production panel server.
