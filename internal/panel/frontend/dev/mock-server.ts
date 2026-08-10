@@ -23,6 +23,9 @@ import type {
   RepositoryDetail,
   RepositorySettingsInput,
   RepositorySummary,
+  RootElevation,
+  RootElevationInput,
+  RootInstallation,
   TargetSettingsInput,
   UpdateTargetUserInput,
   InvitationDays,
@@ -65,6 +68,14 @@ const OWNER_CAPABILITIES = {
   manage_owners: true,
 };
 
+const ROOT_READ_CAPABILITIES = {
+  read: true,
+  write: false,
+  manage_target_users: false,
+  manage_global_users: false,
+  manage_owners: false,
+};
+
 class MockApiError extends Error {
   constructor(
     readonly status: number,
@@ -100,6 +111,8 @@ interface MockState {
   targetAccess: Map<string, Map<string, TargetUserAccess>>;
   invitations: MockInvitation[];
   invitationCounter: number;
+  elevationCounter: number;
+  elevations: Map<string, RootElevation>;
   streams: Set<Duplex>;
 }
 
@@ -347,6 +360,8 @@ function seed(): MockState {
     targetAccess: new Map([[organization.value.id, organizationAccess]]),
     invitations,
     invitationCounter: invitations.length + 1,
+    elevationCounter: 1,
+    elevations: new Map(),
     streams: new Set(),
   };
 }
@@ -880,12 +895,22 @@ async function handle(
         status: 'active',
         global_role: 'owner',
         capabilities: OWNER_CAPABILITIES,
-        target_count: state.targets.length,
+        target_count: state.targets.filter((target) => mockRootOwns(target)).length,
       });
       return;
     }
     if (path === route('/api/v1/targets') && method === 'GET') {
-      respond(res, 200, { targets: state.targets.map((target) => target.value) });
+      respond(res, 200, {
+        targets: state.targets
+          .filter((target) => mockRootOwns(target))
+          .map((target) => target.value),
+      });
+      return;
+    }
+    if (path === route('/api/v1/root/installations') && method === 'GET') {
+      respond(res, 200, {
+        installations: state.targets.map((target, index) => rootInstallationValue(target, index)),
+      });
       return;
     }
     if (path === route('/api/v1/events') && method === 'GET') {
@@ -894,6 +919,13 @@ async function handle(
     }
 
     const targetSettings = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/settings$/);
+    const rootTargetSettings = path.match(
+      /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/settings$/,
+    );
+    const rootElevation = path.match(
+      /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/elevation$/,
+    );
+    const rootElevationEnd = path.match(/^\/api\/v1\/root\/elevations\/(?<elevation>[^/]+)$/);
     const scopedUsers = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/users$/);
     const scopedUser = path.match(
       /^\/api\/v1\/targets\/(?<target>[^/]+)\/users\/(?<account>[^/]+)$/,
@@ -909,14 +941,119 @@ async function handle(
       /^\/api\/v1\/targets\/(?<target>[^/]+)\/invitations\/(?<invitation>[^/]+)$/,
     );
     const repositories = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/repositories$/);
+    const rootRepositories = path.match(
+      /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/repositories$/,
+    );
     const repository = path.match(
       /^\/api\/v1\/targets\/(?<target>[^/]+)\/repositories\/(?<repository>[^/]+)$/,
+    );
+    const rootRepository = path.match(
+      /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/repositories\/(?<repository>[^/]+)$/,
     );
     const repositorySettings = path.match(
       /^\/api\/v1\/targets\/(?<target>[^/]+)\/repositories\/(?<repository>[^/]+)\/settings$/,
     );
+    const rootRepositorySettings = path.match(
+      /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/repositories\/(?<repository>[^/]+)\/settings$/,
+    );
     const audit = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/audit$/);
     const failures = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/failures$/);
+
+    if (rootElevation && method === 'GET') {
+      const target = findTarget(state, rootElevation.groups?.target ?? '');
+      const elevation = activeMockElevation(state, target.value.id);
+      if (elevation === undefined)
+        throw new MockApiError(404, 'not_found', 'elevated installation access was not found');
+      respond(res, 200, elevation);
+      return;
+    }
+    if (rootElevation && method === 'POST') {
+      const target = findTarget(state, rootElevation.groups?.target ?? '');
+      const input = await readBody<RootElevationInput>(req);
+      if (input.acknowledged !== true)
+        throw new MockApiError(
+          400,
+          'acknowledgment_required',
+          'confirm the elevated access warning',
+        );
+      if (mockRootOwns(target))
+        throw new MockApiError(409, 'conflict', 'you already own this installation');
+      const targetIndex = state.targets.indexOf(target);
+      if (!rootInstallationValue(target, targetIndex).available)
+        throw new MockApiError(409, 'conflict', 'fresh Owners are required');
+      const started = new Date();
+      const elevation: RootElevation = {
+        id: `mock-elevation-${state.elevationCounter++}`,
+        target_id: target.value.id,
+        ...(input.reason === undefined ? {} : { reason: input.reason }),
+        started_at: started.toISOString(),
+        expires_at: new Date(started.getTime() + 15 * 60_000).toISOString(),
+      };
+      state.elevations.set(target.value.id, elevation);
+      respond(res, 201, elevation);
+      return;
+    }
+    if (rootElevationEnd && method === 'DELETE') {
+      const id = decodeURIComponent(rootElevationEnd.groups?.elevation ?? '');
+      const entry = [...state.elevations.entries()].find(([, elevation]) => elevation.id === id);
+      if (entry === undefined)
+        throw new MockApiError(404, 'not_found', 'elevated installation access was not found');
+      const [targetId, elevation] = entry;
+      const ended = { ...elevation, ended_at: new Date().toISOString() };
+      state.elevations.delete(targetId);
+      respond(res, 200, ended);
+      return;
+    }
+
+    if (rootTargetSettings && method === 'GET') {
+      const target = findTarget(state, rootTargetSettings.groups?.target ?? '');
+      respond(res, 200, rootTargetValue(state, target));
+      return;
+    }
+    if (rootTargetSettings && method === 'PUT') {
+      const target = findTarget(state, rootTargetSettings.groups?.target ?? '');
+      requireRootWrite(state, target);
+      const input = await readBody<TargetSettingsInput>(req);
+      requireRevision(target.value.revision, input.expected_revision);
+      target.value.repository_default_enabled = input.repository_default_enabled;
+      target.value.config_patch = structuredClone(input.config_patch);
+      target.value.revision += 1;
+      recomputeTarget(target);
+      addAudit(target, 'target.settings.updated', 'updated account defaults');
+      respond(res, 200, rootTargetValue(state, target));
+      return;
+    }
+    if (rootRepositories && method === 'GET') {
+      const target = findTarget(state, rootRepositories.groups?.target ?? '');
+      respond(res, 200, repositoryPage(target.repositories, parsed.searchParams));
+      return;
+    }
+    if (rootRepository && method === 'GET') {
+      const target = findTarget(state, rootRepository.groups?.target ?? '');
+      respond(res, 200, findRepository(target, rootRepository.groups?.repository ?? '').detail);
+      return;
+    }
+    if (rootRepositorySettings && method === 'PUT') {
+      const target = findTarget(state, rootRepositorySettings.groups?.target ?? '');
+      requireRootWrite(state, target);
+      const stored = findRepository(target, rootRepositorySettings.groups?.repository ?? '');
+      const input = await readBody<RepositorySettingsInput>(req);
+      requireRevision(stored.detail.revision, input.expected_revision);
+      stored.detail.repository.enabled_override = input.enabled_override;
+      stored.detail.config_patch = structuredClone(input.config_patch);
+      stored.detail.ignore_repository_file = input.ignore_repository_file;
+      stored.detail.revision += 1;
+      stored.detail.repository.updated_at = new Date().toISOString();
+      recomputeTarget(target);
+      addAudit(
+        target,
+        'repository.settings.updated',
+        'updated repository settings for',
+        stored.detail.repository.full_name,
+      );
+      respond(res, 200, stored.detail);
+      return;
+    }
 
     if (scopedUserDecisions && method === 'GET') {
       const target = findTarget(state, scopedUserDecisions.groups?.target ?? '');
@@ -1173,6 +1310,62 @@ function findTarget(state: MockState, encodedId: string): MockTarget {
   if (target === undefined)
     throw new MockApiError(404, 'not_found', 'installation target not found');
   return target;
+}
+
+function mockRootOwns(target: MockTarget): boolean {
+  return target.value.id === '2001' || target.value.id === '1001';
+}
+
+function rootInstallationValue(target: MockTarget, index: number): RootInstallation {
+  const permissionPending = index === 2;
+  const syncError = index === 3;
+  const available = !permissionPending && !syncError;
+  const detail = permissionPending
+    ? 'Approve the GitHub App Members permission'
+    : syncError
+      ? 'GitHub owner synchronization failed'
+      : undefined;
+
+  return {
+    id: target.value.id,
+    installation_id: target.value.installation_id,
+    type: target.value.type,
+    account: target.value.account,
+    available,
+    repository_counts: target.value.repository_counts,
+    ownership: {
+      source: target.value.type === 'User' ? 'personal' : 'organization_admin',
+      status: permissionPending ? 'permission_pending' : syncError ? 'error' : 'fresh',
+      ...(detail === undefined ? {} : { detail }),
+      synced_at: new Date(Date.now() - (available ? 3 : 19) * 60_000).toISOString(),
+      owner_count: available ? (target.value.type === 'User' ? 1 : 2) : 0,
+      stale: permissionPending,
+    },
+  };
+}
+
+function activeMockElevation(state: MockState, targetId: string): RootElevation | undefined {
+  const elevation = state.elevations.get(targetId);
+  if (elevation === undefined) return undefined;
+  if (Date.parse(elevation.expires_at) > Date.now()) return elevation;
+  state.elevations.delete(targetId);
+  return undefined;
+}
+
+function rootTargetValue(state: MockState, target: MockTarget): PanelTarget {
+  if (mockRootOwns(target)) return structuredClone(target.value);
+  const elevated = activeMockElevation(state, target.value.id) !== undefined;
+  return {
+    ...structuredClone(target.value),
+    effective_role: 'none',
+    access_source: elevated ? 'elevation' : 'root',
+    capabilities: { ...ROOT_READ_CAPABILITIES, write: elevated },
+  };
+}
+
+function requireRootWrite(state: MockState, target: MockTarget): void {
+  if (mockRootOwns(target) || activeMockElevation(state, target.value.id) !== undefined) return;
+  throw new MockApiError(403, 'elevation_required', 'start elevated access for this installation');
 }
 
 function findUser(state: MockState, encodedId: string): PanelUser {

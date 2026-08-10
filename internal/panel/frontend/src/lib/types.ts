@@ -44,7 +44,7 @@ export interface PanelAccount {
 export type PanelRole = 'none' | 'viewer' | 'editor' | 'admin' | 'owner';
 export type SystemRole = 'none' | 'root' | 'super_root';
 export type PanelUserStatus = 'active' | 'banned' | 'removed';
-export type AccessSource = 'owner' | 'target' | 'suspended' | 'denied';
+export type AccessSource = 'owner' | 'target' | 'suspended' | 'root' | 'elevation' | 'denied';
 
 export interface PanelCapabilities {
   read: boolean;
@@ -198,6 +198,42 @@ export interface PanelTarget {
   access_source: AccessSource;
   capabilities: PanelCapabilities;
   suspension_reason?: string;
+}
+
+export type OwnershipSource = 'personal' | 'organization_admin';
+export type OwnershipStatus = 'fresh' | 'permission_pending' | 'error';
+
+export interface OwnershipState {
+  source: OwnershipSource;
+  status: OwnershipStatus;
+  detail?: string;
+  synced_at: string;
+  owner_count: number;
+  stale: boolean;
+}
+
+export interface RootInstallation {
+  id: string;
+  installation_id: string;
+  type: 'Organization' | 'User';
+  account: PanelAccount;
+  available: boolean;
+  repository_counts: RepositoryCounts;
+  ownership: OwnershipState;
+}
+
+export interface RootElevation {
+  id: string;
+  target_id: string;
+  reason?: string;
+  started_at: string;
+  expires_at: string;
+  ended_at?: string;
+}
+
+export interface RootElevationInput {
+  acknowledged: true;
+  reason?: string;
 }
 
 export type RepositoryFileStatus = 'missing' | 'valid' | 'invalid' | 'bypassed';

@@ -21,6 +21,9 @@ import type {
   RepositoryPageRequest,
   RepositorySettingsInput,
   RepositorySummary,
+  RootElevation,
+  RootElevationInput,
+  RootInstallation,
   TargetSettingsInput,
   InvitationDays,
   InvitationSignIn,
@@ -41,6 +44,22 @@ export class PanelApiError extends Error {
 export interface PanelApi {
   fetchViewer(): Promise<PanelViewer | null>;
   fetchTargets(): Promise<PanelTarget[]>;
+  fetchRootInstallations(): Promise<RootInstallation[]>;
+  fetchRootTargetSettings(targetId: string): Promise<PanelTarget>;
+  updateRootTargetSettings(targetId: string, input: TargetSettingsInput): Promise<PanelTarget>;
+  fetchRootRepositories(
+    targetId: string,
+    request: RepositoryPageRequest,
+  ): Promise<Page<RepositorySummary>>;
+  fetchRootRepository(targetId: string, repositoryId: string): Promise<RepositoryDetail>;
+  updateRootRepositorySettings(
+    targetId: string,
+    repositoryId: string,
+    input: RepositorySettingsInput,
+  ): Promise<RepositoryDetail>;
+  fetchRootElevation(targetId: string): Promise<RootElevation>;
+  beginRootElevation(targetId: string, input: RootElevationInput): Promise<RootElevation>;
+  endRootElevation(elevationId: string): Promise<RootElevation>;
   fetchTargetUsers(targetId: string, request: PanelUserPageRequest): Promise<Page<PanelUser>>;
   addTargetUser(targetId: string, input: AddTargetUserInput): Promise<PanelUser>;
   updateTargetUser(
@@ -144,6 +163,64 @@ export function createPanelApi(
     async fetchTargets(): Promise<PanelTarget[]> {
       const body = await jsonRequest<{ targets: PanelTarget[] }>('/api/v1/targets');
       return body.targets;
+    },
+
+    async fetchRootInstallations(): Promise<RootInstallation[]> {
+      const body = await jsonRequest<{ installations: RootInstallation[] }>(
+        '/api/v1/root/installations',
+      );
+      return body.installations;
+    },
+
+    fetchRootTargetSettings(targetId: string): Promise<PanelTarget> {
+      return jsonRequest(`/api/v1/root/installations/${pathSegment(targetId)}/settings`);
+    },
+
+    updateRootTargetSettings(targetId: string, input: TargetSettingsInput): Promise<PanelTarget> {
+      return putJson(`/api/v1/root/installations/${pathSegment(targetId)}/settings`, input);
+    },
+
+    fetchRootRepositories(
+      targetId: string,
+      repositoryPage: RepositoryPageRequest,
+    ): Promise<Page<RepositorySummary>> {
+      return jsonRequest(
+        withRepositoryQuery(
+          `/api/v1/root/installations/${pathSegment(targetId)}/repositories`,
+          repositoryPage,
+        ),
+      );
+    },
+
+    fetchRootRepository(targetId: string, repositoryId: string): Promise<RepositoryDetail> {
+      return jsonRequest(
+        `/api/v1/root/installations/${pathSegment(targetId)}/repositories/${pathSegment(repositoryId)}`,
+      );
+    },
+
+    updateRootRepositorySettings(
+      targetId: string,
+      repositoryId: string,
+      input: RepositorySettingsInput,
+    ): Promise<RepositoryDetail> {
+      return putJson(
+        `/api/v1/root/installations/${pathSegment(targetId)}/repositories/${pathSegment(repositoryId)}/settings`,
+        input,
+      );
+    },
+
+    fetchRootElevation(targetId: string): Promise<RootElevation> {
+      return jsonRequest(`/api/v1/root/installations/${pathSegment(targetId)}/elevation`);
+    },
+
+    beginRootElevation(targetId: string, input: RootElevationInput): Promise<RootElevation> {
+      return postJson(`/api/v1/root/installations/${pathSegment(targetId)}/elevation`, input);
+    },
+
+    endRootElevation(elevationId: string): Promise<RootElevation> {
+      return jsonRequest(`/api/v1/root/elevations/${pathSegment(elevationId)}`, {
+        method: 'DELETE',
+      });
     },
 
     fetchTargetUsers(targetId: string, userPage: PanelUserPageRequest): Promise<Page<PanelUser>> {

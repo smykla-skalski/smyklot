@@ -4,6 +4,7 @@
   import PageFooter from './components/PageFooter.svelte';
   import Plate from './components/Plate.svelte';
   import RepositoryList from './components/RepositoryList.svelte';
+  import RootInstallations from './components/RootInstallations.svelte';
   import SignedOut from './components/SignedOut.svelte';
   import TargetSettings from './components/TargetSettings.svelte';
   import UserManagement from './components/UserManagement.svelte';
@@ -28,6 +29,7 @@
     type PanelView,
     type RootRoute,
     type RootSection,
+    type ScopedPanelView,
   } from './lib/routes';
   import type {
     PanelTarget,
@@ -244,6 +246,32 @@
     return router.path({ rootView: 'overview' });
   }
 
+  function rootInstallationsHref(): string {
+    return router.path({ rootView: 'installations' });
+  }
+
+  function rootInstallationHref(account: string, nextView: ScopedPanelView): string {
+    return router.path({ rootView: 'installation', account, view: nextView });
+  }
+
+  function selectRootInstallation(account: string, nextView: ScopedPanelView): void {
+    const route: RootRoute = { rootView: 'installation', account, view: nextView };
+    activeRootRoute = route;
+    router.push(route);
+    resetPageScroll();
+  }
+
+  function selectRootInstallations(): void {
+    const route: RootRoute = { rootView: 'installations' };
+    activeRootRoute = route;
+    router.push(route);
+    resetPageScroll();
+  }
+
+  function resetPageScroll(): void {
+    queueMicrotask(() => window.scrollTo({ top: 0, left: 0 }));
+  }
+
   function returnHref(): string {
     return returnTarget === null ? '#' : router.path(routeFor(returnTarget, view));
   }
@@ -257,6 +285,7 @@
     const route = rootSectionRoute(section);
     activeRootRoute = route;
     router.push(route);
+    resetPageScroll();
   }
 
   function enterRoot(): void {
@@ -265,6 +294,7 @@
     rootMode = true;
     activeRootRoute = route;
     router.push(route);
+    resetPageScroll();
   }
 
   function returnToPanel(): void {
@@ -533,17 +563,30 @@
             <span class="root-boundary">Application scope</span>
           </header>
 
-          <div class="root-foundation" role="status">
-            <span class="root-foundation-mark" aria-hidden="true"></span>
-            <div>
-              <strong>{rootPageTitle(activeRootRoute)} is isolated from installation access</strong>
-              <p>
-                Root data and actions use dedicated server-authorized routes. Installation writes
-                stay blocked unless the current Root owns that installation or starts an audited
-                elevation.
-              </p>
+          {#if rootValue === 'installations'}
+            <RootInstallations
+              route={activeRootRoute}
+              {api}
+              listHref={rootInstallationsHref()}
+              hrefFor={rootInstallationHref}
+              onList={selectRootInstallations}
+              onNavigate={selectRootInstallation}
+            />
+          {:else}
+            <div class="root-foundation" role="status">
+              <span class="root-foundation-mark" aria-hidden="true"></span>
+              <div>
+                <strong
+                  >{rootPageTitle(activeRootRoute)} is isolated from installation access</strong
+                >
+                <p>
+                  Root data and actions use dedicated server-authorized routes. Installation writes
+                  stay blocked unless the current Root owns that installation or starts an audited
+                  elevation.
+                </p>
+              </div>
             </div>
-          </div>
+          {/if}
         </section>
       {:else}
         {#if selectedTarget !== null}

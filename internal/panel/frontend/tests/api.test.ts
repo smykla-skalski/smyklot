@@ -230,6 +230,96 @@ describe('targets and repositories', () => {
   });
 });
 
+describe('Root installation access', () => {
+  it('uses dedicated Root reads, writes, and elevation routes', async () => {
+    const elevation = {
+      id: 'elevation.1',
+      target_id: 'target.1',
+      reason: 'Investigating a failed delivery',
+      started_at: '2026-08-10T10:00:00Z',
+      expires_at: '2026-08-10T10:15:00Z',
+    };
+    const installation = {
+      id: 'target.1',
+      installation_id: '3001',
+      type: 'Organization' as const,
+      account: TARGET.account,
+      available: true,
+      repository_counts: TARGET.repository_counts,
+      ownership: {
+        source: 'organization_admin' as const,
+        status: 'fresh' as const,
+        synced_at: '2026-08-10T10:00:00Z',
+        owner_count: 1,
+        stale: false,
+      },
+    };
+    const stub = stubFetch([
+      jsonResponse(200, { installations: [installation] }),
+      jsonResponse(200, TARGET),
+      jsonResponse(200, { items: [REPOSITORY], next_cursor: null, total: 1 }),
+      jsonResponse(200, DETAIL),
+      jsonResponse(200, TARGET),
+      jsonResponse(200, DETAIL),
+      jsonResponse(404, { error: { code: 'not_found', message: 'not active' } }),
+      jsonResponse(201, elevation),
+      jsonResponse(200, { ...elevation, ended_at: '2026-08-10T10:05:00Z' }),
+    ]);
+    const api = createPanelApi('/panel', stub.fetch);
+    const repositoryPage = {
+      query: '',
+      sort: 'name_asc' as const,
+      limit: 20,
+      state: 'all' as const,
+      files: [],
+      setting: { mode: 'all' as const },
+    };
+
+    await expect(api.fetchRootInstallations()).resolves.toEqual([installation]);
+    await api.fetchRootTargetSettings('target.1');
+    await api.fetchRootRepositories('target.1', repositoryPage);
+    await api.fetchRootRepository('target.1', 'repo.1');
+    await api.updateRootTargetSettings('target.1', {
+      repository_default_enabled: true,
+      config_patch: {},
+      expected_revision: 1,
+    });
+    await api.updateRootRepositorySettings('target.1', 'repo.1', {
+      enabled_override: true,
+      config_patch: {},
+      ignore_repository_file: false,
+      expected_revision: 1,
+    });
+    await expect(api.fetchRootElevation('target.1')).rejects.toMatchObject({
+      status: 404,
+      code: 'not_found',
+    });
+    await api.beginRootElevation('target.1', {
+      acknowledged: true,
+      reason: 'Investigating a failed delivery',
+    });
+    await api.endRootElevation('elevation.1');
+
+    expect(stub.calls.map((call) => call.url)).toEqual([
+      '/panel/api/v1/root/installations',
+      '/panel/api/v1/root/installations/target%2E1/settings',
+      '/panel/api/v1/root/installations/target%2E1/repositories?sort=name_asc&limit=20&state=all',
+      '/panel/api/v1/root/installations/target%2E1/repositories/repo%2E1',
+      '/panel/api/v1/root/installations/target%2E1/settings',
+      '/panel/api/v1/root/installations/target%2E1/repositories/repo%2E1/settings',
+      '/panel/api/v1/root/installations/target%2E1/elevation',
+      '/panel/api/v1/root/installations/target%2E1/elevation',
+      '/panel/api/v1/root/elevations/elevation%2E1',
+    ]);
+    expect(stub.calls[7]?.init?.method).toBe('POST');
+    expect(JSON.parse(String(stub.calls[7]?.init?.body))).toEqual({
+      acknowledged: true,
+      reason: 'Investigating a failed delivery',
+    });
+    expect(stub.calls[8]?.init?.method).toBe('DELETE');
+  });
+});
+
 describe('user management', () => {
   it('uses scoped user endpoints and preserves nullable inheritance', async () => {
     const user = {
