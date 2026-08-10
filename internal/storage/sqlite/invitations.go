@@ -23,6 +23,7 @@ SELECT
     ui.target_id,
     target_account.display_name,
     ui.role,
+    ui.system_role,
     ui.status,
     ui.expires_at,
     creator.id,
@@ -99,7 +100,7 @@ func (s *Store) CreateInvitation(
 	ctx context.Context,
 	change storage.InvitationCreate,
 ) (storage.Invitation, error) {
-	if !validInvitationRole(change.Role, change.TargetID) ||
+	if !validInvitationPolicy(change.Role, change.SystemRole, change.TargetID) ||
 		!change.CreatedAt.Before(change.ExpiresAt) {
 		return storage.Invitation{}, errors.New("unsupported invitation policy")
 	}
@@ -134,13 +135,15 @@ WHERE account_id = ? AND status = 'pending'
 	}
 	if _, err = tx.ExecContext(ctx, `
 INSERT INTO user_invitations (
-    id, token_hash, account_id, target_id, role, status, expires_at, created_by, created_at
-) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
+    id, token_hash, account_id, target_id, role, system_role, status,
+    expires_at, created_by, created_at
+) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
 		change.ID,
 		change.TokenHash,
 		change.AccountID,
 		change.TargetID,
 		change.Role,
+		change.SystemRole,
 		formatTime(change.ExpiresAt),
 		change.CreatedByAccount,
 		formatTime(change.CreatedAt),
@@ -154,7 +157,7 @@ INSERT INTO user_invitations (
 		change.CreatedByAccount,
 		change.AccountID,
 		"invitation.created",
-		fmt.Sprintf("invited user as %s", change.Role),
+		invitationRoleSummary(change.Role, change.SystemRole),
 		change.CreatedAt,
 	); err != nil {
 		return storage.Invitation{}, err
@@ -312,7 +315,7 @@ func (s *Store) RespondToInvitation(
 		}
 		status = storage.InvitationAccepted
 		action = "invitation.accepted"
-		summary = fmt.Sprintf("accepted invitation as %s", invitation.Role)
+		summary = invitationRoleSummary(invitation.Role, invitation.SystemRole)
 	}
 	result, err := tx.ExecContext(ctx, `
 UPDATE user_invitations SET status = ?, responded_at = ?
@@ -353,6 +356,9 @@ func acceptInvitation(
 	at time.Time,
 ) error {
 	if invitation.TargetID == nil {
+		if invitation.SystemRole != nil {
+			return activateInvitedRoot(ctx, tx, invitation.Account.ID, *invitation.SystemRole, at)
+		}
 		return activateInvitedPanelUser(ctx, tx, invitation.Account.ID, invitation.Role, at, false)
 	}
 	if err := activateInvitedPanelUser(
@@ -429,6 +435,47 @@ WHERE account_id = ? AND root = 0`, role, formatTime(at), accountID)
 	return nil
 }
 
+func activateInvitedRoot(
+	ctx context.Context,
+	tx *sql.Tx,
+	accountID string,
+	role storage.SystemRole,
+	at time.Time,
+) error {
+	if role != storage.SystemRoleRoot {
+		return errors.New("unsupported invited system role")
+	}
+	var status storage.PanelUserStatus
+	err := tx.QueryRowContext(
+		ctx,
+		"SELECT status FROM panel_users WHERE account_id = ?",
+		accountID,
+	).Scan(&status)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		_, err = tx.ExecContext(ctx, `
+INSERT INTO panel_users (
+    account_id, root, status, global_role, system_role, revision, created_at, updated_at
+) VALUES (?, 1, 'active', 'owner', 'root', 1, ?, ?)`, accountID, formatTime(at), formatTime(at))
+	case err != nil:
+		return fmt.Errorf("read invited Root state: %w", err)
+	case status == storage.PanelUserRemoved:
+		_, err = tx.ExecContext(ctx, `
+UPDATE panel_users
+SET root = 1, status = 'active', global_role = 'owner', system_role = 'root',
+    ban_reason = NULL, banned_at = NULL, removed_at = NULL,
+    revision = revision + 1, updated_at = ?
+WHERE account_id = ? AND system_role <> 'super_root'`, formatTime(at), accountID)
+	default:
+		return storage.ErrConflict
+	}
+	if err != nil {
+		return fmt.Errorf("activate invited Root: %w", err)
+	}
+
+	return nil
+}
+
 func getInvitation(
 	ctx context.Context,
 	queryer rowQuerier,
@@ -441,7 +488,7 @@ func getInvitation(
 
 func scanInvitation(scanner rowScanner, now time.Time) (storage.Invitation, error) {
 	var invitation storage.Invitation
-	var invitedAvatar, targetID, targetName, creatorAvatar, respondedAt sql.NullString
+	var invitedAvatar, targetID, targetName, systemRole, creatorAvatar, respondedAt sql.NullString
 	var invitedUpdatedAt, creatorUpdatedAt, expiresAt, createdAt string
 	err := scanner.Scan(
 		&invitation.ID,
@@ -455,6 +502,7 @@ func scanInvitation(scanner rowScanner, now time.Time) (storage.Invitation, erro
 		&targetID,
 		&targetName,
 		&invitation.Role,
+		&systemRole,
 		&invitation.Status,
 		&expiresAt,
 		&invitation.CreatedBy.ID,
@@ -474,6 +522,10 @@ func scanInvitation(scanner rowScanner, now time.Time) (storage.Invitation, erro
 	invitation.CreatedBy.AvatarURL = stringPointer(creatorAvatar)
 	invitation.TargetID = stringPointer(targetID)
 	invitation.TargetName = stringPointer(targetName)
+	if systemRole.Valid {
+		role := storage.SystemRole(systemRole.String)
+		invitation.SystemRole = &role
+	}
 	if invitation.Account.UpdatedAt, err = parseTime(invitedUpdatedAt); err != nil {
 		return storage.Invitation{}, err
 	}
@@ -504,6 +556,26 @@ func validInvitationRole(role storage.PanelRole, targetID *string) bool {
 
 	return role == storage.PanelRoleViewer || role == storage.PanelRoleEditor ||
 		role == storage.PanelRoleAdmin
+}
+
+func validInvitationPolicy(
+	role storage.PanelRole,
+	systemRole *storage.SystemRole,
+	targetID *string,
+) bool {
+	if systemRole != nil {
+		return targetID == nil && role == storage.PanelRoleOwner && *systemRole == storage.SystemRoleRoot
+	}
+
+	return validInvitationRole(role, targetID)
+}
+
+func invitationRoleSummary(role storage.PanelRole, systemRole *storage.SystemRole) string {
+	if systemRole != nil {
+		return fmt.Sprintf("invited user as %s", *systemRole)
+	}
+
+	return fmt.Sprintf("invited user as %s", role)
 }
 
 func oneRowChanged(result sql.Result) bool {

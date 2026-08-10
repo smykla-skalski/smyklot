@@ -29,6 +29,7 @@ type invitationResponse struct {
 	TargetID    *string                  `json:"target_id,omitempty"`
 	TargetName  *string                  `json:"target_name,omitempty"`
 	Role        storage.PanelRole        `json:"role"`
+	SystemRole  *storage.SystemRole      `json:"system_role,omitempty"`
 	Status      storage.InvitationStatus `json:"status"`
 	ExpiresAt   time.Time                `json:"expires_at"`
 	CreatedBy   accountResponse          `json:"created_by"`
@@ -88,7 +89,7 @@ func (s *Server) postTargetInvitation(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusForbidden, "forbidden", "you cannot grant this invitation role")
 		return
 	}
-	s.createInvitation(w, r, actor.ID, account.ID, &targetID, *input.Role, input.ExpiresInDays)
+	s.createInvitation(w, r, actor.ID, account.ID, &targetID, *input.Role, nil, input.ExpiresInDays)
 }
 
 func (s *Server) createInvitation(
@@ -97,6 +98,7 @@ func (s *Server) createInvitation(
 	actorID, accountID string,
 	targetID *string,
 	role storage.PanelRole,
+	systemRole *storage.SystemRole,
 	days int,
 ) {
 	id, token, err := s.newInvitationSecrets()
@@ -107,7 +109,8 @@ func (s *Server) createInvitation(
 	now := s.now().UTC()
 	invitation, err := s.store.CreateInvitation(r.Context(), storage.InvitationCreate{
 		ID: id, TokenHash: tokenHash(token), AccountID: accountID, TargetID: targetID,
-		Role: role, ExpiresAt: now.Add(time.Duration(days) * 24 * time.Hour),
+		Role: role, SystemRole: systemRole,
+		ExpiresAt:        now.Add(time.Duration(days) * 24 * time.Hour),
 		CreatedByAccount: actorID, CreatedAt: now,
 	})
 	if err != nil {
@@ -136,6 +139,15 @@ func (s *Server) reissueInvitation(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	s.reissueManagedInvitation(w, r, invitation, actor)
+}
+
+func (s *Server) reissueManagedInvitation(
+	w http.ResponseWriter,
+	r *http.Request,
+	invitation storage.Invitation,
+	actor storage.Account,
+) {
 	var input reissueInvitationRequest
 	if !decodeJSON(w, r, &input) || !validInviteDays(w, input.ExpiresInDays) {
 		return
@@ -167,6 +179,15 @@ func (s *Server) deleteInvitation(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	s.revokeManagedInvitation(w, r, invitation, actor)
+}
+
+func (s *Server) revokeManagedInvitation(
+	w http.ResponseWriter,
+	r *http.Request,
+	invitation storage.Invitation,
+	actor storage.Account,
+) {
 	updated, err := s.store.RevokeInvitation(r.Context(), storage.InvitationRevoke{
 		ID: invitation.ID, ActorAccountID: actor.ID, RevokedAt: s.now().UTC(),
 	})
@@ -261,7 +282,8 @@ func (s *Server) announceInvitation(invitation storage.Invitation) {
 func invitationDTO(invitation storage.Invitation, inviteURL string) invitationResponse {
 	return invitationResponse{
 		ID: invitation.ID, Account: accountDTO(invitation.Account), TargetID: invitation.TargetID,
-		TargetName: invitation.TargetName, Role: invitation.Role, Status: invitation.Status,
+		TargetName: invitation.TargetName, Role: invitation.Role, SystemRole: invitation.SystemRole,
+		Status:    invitation.Status,
 		ExpiresAt: invitation.ExpiresAt, CreatedBy: accountDTO(invitation.CreatedBy),
 		CreatedAt: invitation.CreatedAt, RespondedAt: invitation.RespondedAt, InviteURL: inviteURL,
 	}

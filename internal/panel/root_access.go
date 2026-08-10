@@ -12,6 +12,13 @@ import (
 
 const rootAccessUsersPath = "users"
 
+const rootAccessInvitationsPath = "invitations"
+
+type createRootInvitationRequest struct {
+	Login         string `json:"login"`
+	ExpiresInDays int    `json:"expires_in_days"`
+}
+
 type updateRootUserRequest struct {
 	SystemRole       *storage.SystemRole      `json:"system_role"`
 	Status           *storage.PanelUserStatus `json:"status"`
@@ -20,12 +27,16 @@ type updateRootUserRequest struct {
 }
 
 func (s *Server) getRootAccess(w http.ResponseWriter, r *http.Request) {
-	if r.PathValue("access") != rootAccessUsersPath {
-		s.writeError(w, http.StatusNotFound, "not_found", "Root access view was not found")
-		return
-	}
 	actor, actorUser, ok := s.requireRoot(w, r)
 	if !ok {
+		return
+	}
+	if r.PathValue("access") == rootAccessInvitationsPath {
+		s.listRootInvitations(w, r)
+		return
+	}
+	if r.PathValue("access") != rootAccessUsersPath {
+		s.writeError(w, http.StatusNotFound, "not_found", "Root access view was not found")
 		return
 	}
 	page, err := parseRootPanelUserPage(r.URL.Query())
@@ -39,6 +50,110 @@ func (s *Server) getRootAccess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, rootPanelUserPageDTO(users, actor, actorUser.SystemRole))
+}
+
+func (s *Server) listRootInvitations(w http.ResponseWriter, r *http.Request) {
+	page, err := parseInvitationPage(r.URL.Query())
+	if err != nil || len(page.Roles) > 0 {
+		s.writeError(w, http.StatusBadRequest, "invalid_request", "invalid Root invitation page")
+		return
+	}
+	invitations, err := s.store.ListRootInvitationPage(r.Context(), s.now().UTC(), page)
+	if err != nil {
+		s.writeInternal(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, invitationPageDTO(invitations))
+}
+
+func (s *Server) postRootInvitation(w http.ResponseWriter, r *http.Request) {
+	if !s.requireSameOrigin(w, r) {
+		return
+	}
+	actor, ok := s.requireSuperRoot(w, r)
+	if !ok {
+		return
+	}
+	var input createRootInvitationRequest
+	if !decodeJSON(w, r, &input) || strings.TrimSpace(input.Login) == "" ||
+		!validInviteDays(w, input.ExpiresInDays) {
+		return
+	}
+	account, err := s.users.ResolveRootUser(r.Context(), strings.TrimSpace(input.Login))
+	if err != nil {
+		s.writeError(w, http.StatusBadGateway, "github_user_unavailable", "GitHub user could not be resolved")
+		return
+	}
+	if account.ID == actor.ID {
+		s.writeError(w, http.StatusForbidden, "forbidden", "you cannot invite yourself")
+		return
+	}
+	if err := s.store.UpsertAccount(r.Context(), account); err != nil {
+		s.writeInternal(w, err)
+		return
+	}
+	role := storage.SystemRoleRoot
+	s.createInvitation(
+		w, r, actor.ID, account.ID, nil, storage.PanelRoleOwner, &role, input.ExpiresInDays,
+	)
+}
+
+func (s *Server) reissueRootInvitation(w http.ResponseWriter, r *http.Request) {
+	if !s.requireSameOrigin(w, r) {
+		return
+	}
+	invitation, actor, ok := s.requireRootInvitationManager(w, r)
+	if ok {
+		s.reissueManagedInvitation(w, r, invitation, actor)
+	}
+}
+
+func (s *Server) deleteRootInvitation(w http.ResponseWriter, r *http.Request) {
+	if !s.requireSameOrigin(w, r) {
+		return
+	}
+	invitation, actor, ok := s.requireRootInvitationManager(w, r)
+	if ok {
+		s.revokeManagedInvitation(w, r, invitation, actor)
+	}
+}
+
+func (s *Server) requireRootInvitationManager(
+	w http.ResponseWriter,
+	r *http.Request,
+) (storage.Invitation, storage.Account, bool) {
+	actor, ok := s.requireSuperRoot(w, r)
+	if !ok {
+		return storage.Invitation{}, storage.Account{}, false
+	}
+	invitation, err := s.store.GetInvitation(r.Context(), r.PathValue("invitation"), s.now().UTC())
+	if err != nil {
+		s.writeStorageError(w, err)
+		return storage.Invitation{}, storage.Account{}, false
+	}
+	if invitation.TargetID != nil || invitation.SystemRole == nil ||
+		*invitation.SystemRole != storage.SystemRoleRoot {
+		s.writeError(w, http.StatusNotFound, "not_found", "Root invitation not found")
+		return storage.Invitation{}, storage.Account{}, false
+	}
+
+	return invitation, actor, true
+}
+
+func (s *Server) requireSuperRoot(
+	w http.ResponseWriter,
+	r *http.Request,
+) (storage.Account, bool) {
+	actor, actorUser, ok := s.requireRoot(w, r)
+	if !ok {
+		return storage.Account{}, false
+	}
+	if actorUser.SystemRole != storage.SystemRoleSuperRoot {
+		s.writeError(w, http.StatusForbidden, "forbidden", "Super Root access is required")
+		return storage.Account{}, false
+	}
+
+	return actor, true
 }
 
 func (s *Server) putRootUser(w http.ResponseWriter, r *http.Request) {

@@ -122,6 +122,23 @@ func (s *server) ResolveUser(
 	)
 }
 
+// ResolveRootUser resolves a login through the first available installation.
+// This keeps user lookup independent of regular-panel ownership while using
+// the same least-privilege installation authentication as scoped invitations.
+func (s *server) ResolveRootUser(ctx context.Context, login string) (storage.Account, error) {
+	targets, err := s.store.ListRootTargets(ctx)
+	if err != nil {
+		return storage.Account{}, fmt.Errorf("list Root user lookup installations: %w", err)
+	}
+	for _, target := range targets {
+		if target.Available {
+			return s.ResolveUser(ctx, target.ID, login)
+		}
+	}
+
+	return storage.Account{}, errors.New("no available installation can resolve the GitHub user")
+}
+
 // SyncCatalog refreshes the complete GitHub App installation catalog for an
 // authenticated panel session. It commits only after every installation was
 // read successfully, so a transient GitHub failure cannot hide valid targets.

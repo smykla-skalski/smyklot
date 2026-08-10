@@ -194,6 +194,7 @@ type Invitation struct {
 	TargetID    *string
 	TargetName  *string
 	Role        PanelRole
+	SystemRole  *SystemRole
 	Status      InvitationStatus
 	ExpiresAt   time.Time
 	CreatedBy   Account
@@ -209,6 +210,7 @@ type InvitationCreate struct {
 	AccountID        string
 	TargetID         *string
 	Role             PanelRole
+	SystemRole       *SystemRole
 	ExpiresAt        time.Time
 	CreatedByAccount string
 	CreatedAt        time.Time

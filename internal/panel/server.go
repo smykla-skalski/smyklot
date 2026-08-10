@@ -22,6 +22,7 @@ type catalogSyncer interface {
 
 type userResolver interface {
 	ResolveUser(context.Context, string, string) (storage.Account, error)
+	ResolveRootUser(context.Context, string) (storage.Account, error)
 }
 
 // Dependencies are the service capabilities used by panel handlers.
@@ -112,6 +113,15 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET "+base+"/api/v1/root/history/{history}", s.getRootHistory)
 	mux.HandleFunc("GET "+base+"/api/v1/root/access/{access}", s.getRootAccess)
 	mux.HandleFunc("PUT "+base+"/api/v1/root/access/users/{account}", s.putRootUser)
+	mux.HandleFunc("POST "+base+"/api/v1/root/access/invitations", s.postRootInvitation)
+	mux.HandleFunc(
+		"POST "+base+"/api/v1/root/access/invitations/{invitation}/reissue",
+		s.reissueRootInvitation,
+	)
+	mux.HandleFunc(
+		"DELETE "+base+"/api/v1/root/access/invitations/{invitation}",
+		s.deleteRootInvitation,
+	)
 	mux.HandleFunc("POST "+base+"/api/v1/root/installations/sync", s.postRootInstallationSync)
 	mux.HandleFunc(
 		"GET "+base+"/api/v1/root/installations/{target}/elevation",

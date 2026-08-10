@@ -53,6 +53,10 @@ func (f fakeUserResolver) ResolveUser(
 	return f.account, nil
 }
 
+func (f fakeUserResolver) ResolveRootUser(context.Context, string) (storage.Account, error) {
+	return f.account, nil
+}
+
 func (f fakeCatalog) SyncCatalog(ctx context.Context) ([]string, error) {
 	if err := f.store.ReconcileInstallation(ctx, f.snapshot); err != nil {
 		return nil, err
@@ -894,6 +898,44 @@ func TestPanelManagesRootUsers(t *testing.T) {
 		strings.NewReader(`{"system_role":"root","expected_revision":1}`), rootSession,
 	)
 	requireResponse(t, selfChange, "change Super Root", http.StatusForbidden)
+}
+
+func TestPanelManagesRootInvitations(t *testing.T) {
+	harness := newPanelHarness(t, "root")
+	rootSession := harness.signIn(t)
+	invitee := storage.Account{
+		ID: "github:test:user:invited-root", Provider: "github:test", SubjectID: "invited-root",
+		Login: "invited-root", DisplayName: "Invited Root", UpdatedAt: harness.now,
+	}
+	harness.server.users = fakeUserResolver{account: invitee}
+	created := harness.request(
+		t, http.MethodPost, "/panel/api/v1/root/access/invitations",
+		strings.NewReader(`{"login":"invited-root","expires_in_days":7}`), rootSession,
+	)
+	requireResponse(
+		t, created, "create Root invitation", http.StatusCreated,
+		`"system_role":"root"`, `"login":"invited-root"`, `"invite_url":`,
+	)
+	var invitation invitationResponse
+	if err := json.Unmarshal(created.Body.Bytes(), &invitation); err != nil {
+		t.Fatal(err)
+	}
+	listed := harness.request(
+		t, http.MethodGet, "/panel/api/v1/root/access/invitations?status=pending&limit=10",
+		nil, rootSession,
+	)
+	requireResponse(t, listed, "list Root invitations", http.StatusOK, invitation.ID)
+	reissued := harness.request(
+		t, http.MethodPost,
+		"/panel/api/v1/root/access/invitations/"+invitation.ID+"/reissue",
+		strings.NewReader(`{"expires_in_days":7}`), rootSession,
+	)
+	requireResponse(t, reissued, "reissue Root invitation", http.StatusOK, `"invite_url":`)
+	revoked := harness.request(
+		t, http.MethodDelete, "/panel/api/v1/root/access/invitations/"+invitation.ID,
+		nil, rootSession,
+	)
+	requireResponse(t, revoked, "revoke Root invitation", http.StatusOK, `"status":"revoked"`)
 }
 
 func TestPanelRootElevationAndOwnerNotifications(t *testing.T) {

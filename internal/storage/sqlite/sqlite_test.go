@@ -826,6 +826,48 @@ END`)
 		Expect(errors.Is(err, storage.ErrConflict)).To(BeTrue())
 	})
 
+	It("creates and accepts Root invitations separately from installation access", func() {
+		root, _ := seedInstallation(ctx, store, now)
+		Expect(store.ReconcileSuperRoot(ctx, root.ID, now)).To(Succeed())
+		invitee := root
+		invitee.ID = "github:user:invited-root"
+		invitee.SubjectID = "invited-root"
+		invitee.Login = "invited-root"
+		invitee.DisplayName = "Invited Root"
+		Expect(store.UpsertAccount(ctx, invitee)).To(Succeed())
+		role := storage.SystemRoleRoot
+		invitation, err := store.CreateInvitation(ctx, storage.InvitationCreate{
+			ID: "root-invitation", TokenHash: "root-invitation-token", AccountID: invitee.ID,
+			Role: storage.PanelRoleOwner, SystemRole: &role, ExpiresAt: now.Add(7 * 24 * time.Hour),
+			CreatedByAccount: root.ID, CreatedAt: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(invitation.SystemRole).NotTo(BeNil())
+		Expect(*invitation.SystemRole).To(Equal(storage.SystemRoleRoot))
+
+		rootPage, err := store.ListRootInvitationPage(ctx, now, storage.InvitationPageRequest{
+			Limit: 10, Order: storage.InvitationCreatedNewest,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(rootPage.Total).To(Equal(1))
+		regularPage, err := store.ListInvitationPage(ctx, nil, now, storage.InvitationPageRequest{
+			Limit: 10, Order: storage.InvitationCreatedNewest,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(regularPage.Total).To(Equal(0))
+
+		accepted, err := store.RespondToInvitation(ctx, storage.InvitationResponse{
+			TokenHash: "root-invitation-token", AccountID: invitee.ID, Accept: true,
+			At: now.Add(time.Hour),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(accepted.Status).To(Equal(storage.InvitationAccepted))
+		user, err := store.GetPanelUser(ctx, invitee.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(user.SystemRole).To(Equal(storage.SystemRoleRoot))
+		Expect(user.Status).To(Equal(storage.PanelUserActive))
+	})
+
 	It("creates, reissues, expires, and atomically responds to named invitations", func() {
 		owner, target := seedInstallation(ctx, store, now)
 		Expect(store.UpsertAccount(ctx, owner)).To(Succeed())
