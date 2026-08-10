@@ -1,5 +1,5 @@
 import { panelUrl } from './base';
-import type { PanelStreamHandlers, PanelWebSocketFactory } from './events';
+import type { PanelStreamHandle, PanelStreamHandlers, PanelWebSocketFactory } from './events';
 import { openPanelStream, panelStreamUrl } from './events';
 import type {
   AuditEntry,
@@ -152,7 +152,7 @@ export interface PanelApi {
   fetchFailures(targetId: string, request: FailureHistoryRequest): Promise<Page<DeliveryFailure>>;
   signOut(): Promise<void>;
   signInUrl(invitation?: InvitationSignIn): string;
-  openStream(handlers: PanelStreamHandlers): () => void;
+  openStream(handlers: PanelStreamHandlers, dialQuery?: () => string): PanelStreamHandle;
 }
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
@@ -162,6 +162,7 @@ const browserWebSocket: PanelWebSocketFactory = (url) => {
   return {
     addEventListener: (type, listener) => socket.addEventListener(type, (event) => listener(event)),
     close: (code, reason) => socket.close(code, reason),
+    send: (data) => socket.send(data),
   };
 };
 
@@ -592,8 +593,18 @@ export function createPanelApi(
       return `${path}?${query.toString()}`;
     },
 
-    openStream(handlers: PanelStreamHandlers): () => void {
-      return openPanelStream(panelStreamUrl(base, window.location.href), handlers, createWebSocket);
+    openStream(handlers: PanelStreamHandlers, dialQuery?: () => string): PanelStreamHandle {
+      // The URL is rebuilt per connect attempt so reconnect handshakes carry
+      // the current preference revision and checksum.
+      return openPanelStream(
+        () => {
+          const url = panelStreamUrl(base, window.location.href);
+          const query = dialQuery?.();
+          return query === undefined || query === '' ? url : `${url}?${query}`;
+        },
+        handlers,
+        createWebSocket,
+      );
     },
   };
 }

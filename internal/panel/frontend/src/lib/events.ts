@@ -11,28 +11,53 @@ export type PanelChangeType =
   | 'invitation.changed'
   | 'access.changed';
 
+// PanelPrefsInfo rides the ready frame: the stored preference revision and
+// checksum always, the full document only when the client's dial parameters
+// did not match the server state.
+export interface PanelPrefsInfo {
+  rev: number;
+  sum: string;
+  values?: Record<string, unknown>;
+}
+
 export type PanelStreamEvent =
-  | { version: 1; type: 'ready' | 'resync' }
+  | { version: 1; type: 'ready'; prefs?: PanelPrefsInfo }
+  | { version: 1; type: 'resync' }
   | {
       version: 1;
       type: PanelChangeType;
       target_id: string;
       repository_id?: string;
     }
-  | { version: 1; type: 'session.revoked'; code: string; reason: string };
+  | { version: 1; type: 'session.revoked'; code: string; reason: string }
+  | { version: 1; type: 'prefs.changed'; rev: number; changes: Record<string, unknown> }
+  | { version: 1; type: 'prefs.rejected'; keys: string[] };
 
 type PanelChangeEvent = Extract<PanelStreamEvent, { target_id: string }>;
 type PanelRevokedEvent = Extract<PanelStreamEvent, { type: 'session.revoked' }>;
+type PanelPrefsChangedEvent = Extract<PanelStreamEvent, { type: 'prefs.changed' }>;
 
 export interface PanelStreamHandlers {
   onResync: () => void;
   onChange: (event: PanelChangeEvent) => void;
   onRevoked?: (event: Omit<PanelRevokedEvent, 'version' | 'type'>) => void;
+  onPrefsReady?: (prefs: PanelPrefsInfo) => void;
+  onPrefsChanged?: (event: Omit<PanelPrefsChangedEvent, 'version' | 'type'>) => void;
+  onPrefsRejected?: (keys: string[]) => void;
 }
 
 export interface PanelWebSocket {
   addEventListener(type: string, listener: (event: unknown) => void): void;
   close(code?: number, reason?: string): void;
+  send(data: string): void;
+}
+
+// PanelStreamHandle controls one open stream: stop tears it down, send ships
+// a frame when the stream has completed its handshake and reports whether it
+// was accepted.
+export interface PanelStreamHandle {
+  stop(): void;
+  send(data: string): boolean;
 }
 
 export type PanelWebSocketFactory = (url: string) => PanelWebSocket;
@@ -54,21 +79,25 @@ export function panelStreamUrl(base: string, href: string): string {
 }
 
 export function openPanelStream(
-  url: string,
+  url: () => string,
   handlers: PanelStreamHandlers,
   createSocket: PanelWebSocketFactory,
   clock: PanelStreamClock = browserClock,
-): () => void {
+): PanelStreamHandle {
   let socket: PanelWebSocket | null = null;
   let retryHandle: unknown;
   let retryAttempt = 0;
   let stopped = false;
   let revoked = false;
+  // The stream is sendable once the current socket has delivered its ready
+  // frame — a received frame proves the connection is open, and the server
+  // ignores nothing sent before its handshake reply anyway.
+  let sendable = false;
 
   const connect = (): void => {
     if (stopped || revoked) return;
     retryHandle = undefined;
-    const opened = createSocket(url);
+    const opened = createSocket(url());
     socket = opened;
     opened.addEventListener('message', (message) => {
       const data = readMessageData(message);
@@ -76,7 +105,9 @@ export function openPanelStream(
       if (event === null) return;
       if (event.type === 'ready') {
         retryAttempt = 0;
+        sendable = true;
         handlers.onResync();
+        if (event.prefs !== undefined) handlers.onPrefsReady?.(event.prefs);
         return;
       }
       if (event.type === 'resync') {
@@ -89,11 +120,22 @@ export function openPanelStream(
         opened.close(4001, 'session revoked');
         return;
       }
+      if (event.type === 'prefs.changed') {
+        handlers.onPrefsChanged?.({ rev: event.rev, changes: event.changes });
+        return;
+      }
+      if (event.type === 'prefs.rejected') {
+        handlers.onPrefsRejected?.(event.keys);
+        return;
+      }
       if ('target_id' in event) handlers.onChange(event);
     });
     opened.addEventListener('error', () => {});
     opened.addEventListener('close', () => {
-      if (socket === opened) socket = null;
+      if (socket === opened) {
+        socket = null;
+        sendable = false;
+      }
       if (stopped || revoked || retryHandle !== undefined) return;
       const delay = Math.min(1_000 * 2 ** retryAttempt, 30_000);
       retryAttempt += 1;
@@ -103,11 +145,23 @@ export function openPanelStream(
 
   connect();
 
-  return () => {
-    stopped = true;
-    if (retryHandle !== undefined) clock.clearTimeout(retryHandle);
-    socket?.close(1000, 'panel closed');
-    socket = null;
+  return {
+    stop: () => {
+      stopped = true;
+      if (retryHandle !== undefined) clock.clearTimeout(retryHandle);
+      socket?.close(1000, 'panel closed');
+      socket = null;
+      sendable = false;
+    },
+    send: (data: string): boolean => {
+      if (socket === null || !sendable) return false;
+      try {
+        socket.send(data);
+        return true;
+      } catch {
+        return false;
+      }
+    },
   };
 }
 
@@ -127,8 +181,31 @@ export function readEvent(data: unknown): PanelStreamEvent | null {
   if (typeof parsed !== 'object' || parsed === null) return null;
   const frame = parsed as Record<string, unknown>;
   if (frame.version !== PANEL_STREAM_VERSION || typeof frame.type !== 'string') return null;
-  if (frame.type === 'ready' || frame.type === 'resync') {
+  if (frame.type === 'ready') {
+    const prefs = readPrefsInfo(frame.prefs);
+    return {
+      version: PANEL_STREAM_VERSION,
+      type: frame.type,
+      ...(prefs === null ? {} : { prefs }),
+    };
+  }
+  if (frame.type === 'resync') {
     return { version: PANEL_STREAM_VERSION, type: frame.type };
+  }
+  if (frame.type === 'prefs.changed') {
+    if (!isRevision(frame.rev) || !isPlainObject(frame.changes)) return null;
+    return {
+      version: PANEL_STREAM_VERSION,
+      type: frame.type,
+      rev: frame.rev,
+      changes: frame.changes,
+    };
+  }
+  if (frame.type === 'prefs.rejected') {
+    if (!Array.isArray(frame.keys) || !frame.keys.every((key) => typeof key === 'string')) {
+      return null;
+    }
+    return { version: PANEL_STREAM_VERSION, type: frame.type, keys: frame.keys };
   }
   if (frame.type === 'session.revoked') {
     if (typeof frame.code !== 'string' || typeof frame.reason !== 'string') return null;
@@ -146,6 +223,28 @@ export function readEvent(data: unknown): PanelStreamEvent | null {
     type: frame.type as PanelChangeType,
     target_id: frame.target_id,
     ...(frame.repository_id === undefined ? {} : { repository_id: frame.repository_id }),
+  };
+}
+
+function isRevision(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+// readPrefsInfo validates the optional prefs payload on a ready frame; a
+// malformed payload is dropped rather than failing the whole frame.
+function readPrefsInfo(value: unknown): PanelPrefsInfo | null {
+  if (!isPlainObject(value)) return null;
+  if (!isRevision(value.rev) || typeof value.sum !== 'string') return null;
+  if (value.values !== undefined && !isPlainObject(value.values)) return null;
+
+  return {
+    rev: value.rev,
+    sum: value.sum,
+    ...(value.values === undefined ? {} : { values: value.values }),
   };
 }
 

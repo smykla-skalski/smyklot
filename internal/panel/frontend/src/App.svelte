@@ -460,12 +460,13 @@
 
   $effect(() => {
     if (!streamReady) return;
-    return api.openStream({
+    const stream = api.openStream({
       onResync: refreshAccessFromStream,
       onChange: (event) =>
         event.type === 'access.changed' ? refreshAccessFromStream() : refreshFromStreamSafely(),
       onRevoked: (event) => revokeAccess(event.reason),
     });
+    return () => stream.stop();
   });
 
   $effect(() =>

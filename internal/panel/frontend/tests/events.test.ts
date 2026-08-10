@@ -13,6 +13,7 @@ type Listener = (event: never) => void;
 class FakeWebSocket implements PanelWebSocket {
   readonly listeners = new Map<string, Listener[]>();
   readonly closes: Array<{ code?: number; reason?: string }> = [];
+  readonly sent: string[] = [];
 
   addEventListener(type: string, listener: Listener): void {
     const listeners = this.listeners.get(type) ?? [];
@@ -22,6 +23,10 @@ class FakeWebSocket implements PanelWebSocket {
 
   close(code?: number, reason?: string): void {
     this.closes.push({ code, reason });
+  }
+
+  send(data: string): void {
+    this.sent.push(data);
   }
 
   emit(type: string, event?: unknown): void {
@@ -42,29 +47,38 @@ interface ScheduledCall {
 
 interface StreamFixture {
   sockets: FakeWebSocket[];
+  urls: string[];
   scheduled: ScheduledCall[];
   cancelled: unknown[];
   resyncs: number;
   revoked: Array<{ code: string; reason: string }>;
   changes: Array<Extract<PanelStreamEvent, { target_id: string }>>;
+  prefsReady: Array<{ rev: number; sum: string; values?: Record<string, unknown> }>;
+  prefsChanged: Array<{ rev: number; changes: Record<string, unknown> }>;
+  prefsRejected: string[][];
   handlers: PanelStreamHandlers;
   clock: PanelStreamClock;
-  createSocket: () => PanelWebSocket;
+  createSocket: (url: string) => PanelWebSocket;
 }
 
 function streamFixture(): StreamFixture {
   const state: StreamFixture = {
     sockets: [],
+    urls: [],
     scheduled: [],
     cancelled: [],
     resyncs: 0,
     revoked: [],
     changes: [],
+    prefsReady: [],
+    prefsChanged: [],
+    prefsRejected: [],
     handlers: {} as PanelStreamHandlers,
     clock: {} as PanelStreamClock,
-    createSocket: () => {
+    createSocket: (url) => {
       const socket = new FakeWebSocket();
       state.sockets.push(socket);
+      state.urls.push(url);
       return socket;
     },
   };
@@ -74,6 +88,9 @@ function streamFixture(): StreamFixture {
     },
     onChange: (event) => state.changes.push(event),
     onRevoked: (event) => state.revoked.push(event),
+    onPrefsReady: (prefs) => state.prefsReady.push(prefs),
+    onPrefsChanged: (event) => state.prefsChanged.push(event),
+    onPrefsRejected: (keys) => state.prefsRejected.push(keys),
   };
   state.clock = {
     setTimeout: (handler, delay) => {
@@ -118,6 +135,41 @@ describe('readEvent', () => {
     });
   });
 
+  it('accepts preference frames and drops malformed prefs payloads', () => {
+    expect(readEvent('{"version":1,"type":"ready","prefs":{"rev":1,"sum":"abc"}}')).toEqual({
+      version: 1,
+      type: 'ready',
+      prefs: { rev: 1, sum: 'abc' },
+    });
+    expect(
+      readEvent('{"version":1,"type":"ready","prefs":{"rev":1,"sum":"abc","values":{"a":"b"}}}'),
+    ).toEqual({
+      version: 1,
+      type: 'ready',
+      prefs: { rev: 1, sum: 'abc', values: { a: 'b' } },
+    });
+    expect(readEvent('{"version":1,"type":"ready","prefs":{"rev":"broken"}}')).toEqual({
+      version: 1,
+      type: 'ready',
+    });
+    expect(
+      readEvent('{"version":1,"type":"prefs.changed","rev":2,"changes":{"theme":"dark"}}'),
+    ).toEqual({
+      version: 1,
+      type: 'prefs.changed',
+      rev: 2,
+      changes: { theme: 'dark' },
+    });
+    expect(readEvent('{"version":1,"type":"prefs.changed","rev":-1,"changes":{}}')).toBeNull();
+    expect(readEvent('{"version":1,"type":"prefs.changed","rev":2}')).toBeNull();
+    expect(readEvent('{"version":1,"type":"prefs.rejected","keys":["bogus"]}')).toEqual({
+      version: 1,
+      type: 'prefs.rejected',
+      keys: ['bogus'],
+    });
+    expect(readEvent('{"version":1,"type":"prefs.rejected","keys":[7]}')).toBeNull();
+  });
+
   it('rejects malformed, unversioned, and future frames without throwing', () => {
     for (const frame of [
       'not json',
@@ -136,8 +188,8 @@ describe('readEvent', () => {
 describe('openPanelStream', () => {
   it('resyncs on ready, delivers changes, and reconnects with bounded backoff', () => {
     const state = streamFixture();
-    const stop = openPanelStream(
-      'wss://example.com/api/v1/events',
+    const stream = openPanelStream(
+      () => 'wss://example.com/api/v1/events',
       state.handlers,
       state.createSocket,
       state.clock,
@@ -162,14 +214,14 @@ describe('openPanelStream', () => {
     second.deliver({ version: 1, type: 'ready' });
     expect(state.resyncs).toBe(2);
 
-    stop();
+    stream.stop();
     expect(second.closes).toEqual([{ code: 1000, reason: 'panel closed' }]);
   });
 
   it('stops reconnecting after the server revokes the session', () => {
     const state = streamFixture();
     openPanelStream(
-      'wss://example.com/api/v1/events',
+      () => 'wss://example.com/api/v1/events',
       state.handlers,
       state.createSocket,
       state.clock,
@@ -188,5 +240,64 @@ describe('openPanelStream', () => {
     expect(state.revoked).toEqual([{ code: 'banned', reason: 'policy breach' }]);
     expect(socket.closes).toEqual([{ code: 4001, reason: 'session revoked' }]);
     expect(state.scheduled).toHaveLength(0);
+  });
+
+  it('rebuilds the dial URL for every connect attempt', () => {
+    const state = streamFixture();
+    let revision = 0;
+    openPanelStream(
+      () => `wss://example.com/api/v1/events?prefs_rev=${String(revision)}`,
+      state.handlers,
+      state.createSocket,
+      state.clock,
+    );
+    revision = 3;
+    state.sockets[0]?.emit('close');
+    state.scheduled[0]?.handler();
+
+    expect(state.urls).toEqual([
+      'wss://example.com/api/v1/events?prefs_rev=0',
+      'wss://example.com/api/v1/events?prefs_rev=3',
+    ]);
+  });
+
+  it('dispatches preference frames to their handlers', () => {
+    const state = streamFixture();
+    openPanelStream(
+      () => 'wss://example.com/api/v1/events',
+      state.handlers,
+      state.createSocket,
+      state.clock,
+    );
+    const socket = state.sockets[0];
+    if (socket === undefined) throw new Error('WebSocket was not opened');
+
+    socket.deliver({ version: 1, type: 'ready', prefs: { rev: 2, sum: 'abc', values: {} } });
+    socket.deliver({ version: 1, type: 'prefs.changed', rev: 3, changes: { theme: 'dark' } });
+    socket.deliver({ version: 1, type: 'prefs.rejected', keys: ['bogus'] });
+
+    expect(state.prefsReady).toEqual([{ rev: 2, sum: 'abc', values: {} }]);
+    expect(state.prefsChanged).toEqual([{ rev: 3, changes: { theme: 'dark' } }]);
+    expect(state.prefsRejected).toEqual([['bogus']]);
+  });
+
+  it('sends only after the handshake and drops frames while disconnected', () => {
+    const state = streamFixture();
+    const stream = openPanelStream(
+      () => 'wss://example.com/api/v1/events',
+      state.handlers,
+      state.createSocket,
+      state.clock,
+    );
+    const socket = state.sockets[0];
+    if (socket === undefined) throw new Error('WebSocket was not opened');
+
+    expect(stream.send('early')).toBe(false);
+    socket.deliver({ version: 1, type: 'ready' });
+    expect(stream.send('patch')).toBe(true);
+    socket.emit('close');
+    expect(stream.send('late')).toBe(false);
+
+    expect(socket.sent).toEqual(['patch']);
   });
 });

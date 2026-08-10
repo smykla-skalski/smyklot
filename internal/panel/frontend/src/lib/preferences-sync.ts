@@ -244,3 +244,237 @@ export function migrateLegacyPreferences(storage: PreferenceStore | null = brows
     // Browser preferences are best-effort and must never block the panel
   }
 }
+
+export interface PrefsSyncClock {
+  setTimeout(handler: () => void, delay: number): unknown;
+  clearTimeout(handle: unknown): void;
+}
+
+// PrefsSnapshot and PrefsChange mirror the stream payload shapes in
+// events.ts without importing them, keeping this module transport-free.
+export interface PrefsSnapshot {
+  rev: number;
+  sum: string;
+  values?: Record<string, unknown>;
+}
+
+export interface PrefsChange {
+  rev: number;
+  changes: Record<string, unknown>;
+}
+
+export interface PrefsSync {
+  get(key: PrefKey): PrefValue | null;
+  set(key: PrefKey, value: PrefValue | null): void;
+  subscribe(listener: (keys: string[]) => void): () => void;
+  adoptAccount(accountId: string): void;
+  dialQuery(): string;
+  attach(send: (frame: string) => boolean): void;
+  detach(): void;
+  onPrefsReady(prefs: PrefsSnapshot): void;
+  onPrefsChanged(change: PrefsChange): void;
+  onPrefsRejected(keys: string[]): void;
+}
+
+export interface PrefsSyncOptions {
+  storage?: PreferenceStore | null;
+  clock?: PrefsSyncClock;
+  debounceMs?: number;
+}
+
+const DEFAULT_FLUSH_DEBOUNCE_MS = 300;
+
+const globalPrefsClock: PrefsSyncClock = {
+  setTimeout: (handler, delay) => setTimeout(handler, delay),
+  clearTimeout: (handle) => clearTimeout(handle as number),
+};
+
+// createPrefsSync owns the synced preference document: reads resolve through
+// the pending overlay, writes coalesce into debounced prefs.patch frames, and
+// the three stream callbacks reconcile server state. Every mutation re-reads
+// the document so concurrent tabs converge through the server fan-out.
+export function createPrefsSync(options: PrefsSyncOptions = {}): PrefsSync {
+  const storage = options.storage === undefined ? browserStorage() : options.storage;
+  const clock = options.clock ?? globalPrefsClock;
+  const debounceMs = options.debounceMs ?? DEFAULT_FLUSH_DEBOUNCE_MS;
+  const listeners = new Set<(keys: string[]) => void>();
+  let sendFrame: ((frame: string) => boolean) | null = null;
+  let flushHandle: unknown;
+  let hashChain: Promise<void> = Promise.resolve();
+
+  const notifyChanged = (before: PrefValues, after: PrefValues): void => {
+    const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+    const changed = [...keys].filter((key) => !samePrefValue(before[key], after[key]));
+    if (changed.length === 0) return;
+    for (const listener of [...listeners]) listener(changed);
+  };
+
+  const flushNow = (): void => {
+    if (flushHandle !== undefined) {
+      clock.clearTimeout(flushHandle);
+      flushHandle = undefined;
+    }
+    if (sendFrame === null) return;
+    const doc = readPrefsDoc(storage);
+    if (Object.keys(doc.pending).length === 0) return;
+    // Pending survives until its echo confirms it; a dropped frame is
+    // retried by the next flush or the next connect handshake.
+    sendFrame(JSON.stringify({ version: 1, type: 'prefs.patch', changes: doc.pending }));
+  };
+
+  const scheduleFlush = (): void => {
+    if (sendFrame === null) return;
+    if (flushHandle !== undefined) clock.clearTimeout(flushHandle);
+    flushHandle = clock.setTimeout(() => {
+      flushHandle = undefined;
+      flushNow();
+    }, debounceMs);
+  };
+
+  // dropAcknowledgedPending removes pending entries the shadow now satisfies
+  // — the echo of our own patch, or an equal change from another session.
+  const dropAcknowledgedPending = (doc: PrefsDoc): void => {
+    for (const [key, value] of Object.entries(doc.pending)) {
+      const shadow = doc.shadow[key];
+      const satisfied = value === null ? shadow === undefined : samePrefValue(shadow, value);
+      if (satisfied) delete doc.pending[key];
+    }
+  };
+
+  // recomputeSum refreshes the stored checksum after an incremental shadow
+  // change. Chained so writes stay ordered; abandoned when the revision moved
+  // on, leaving the blank checksum to force a snapshot on the next connect.
+  const recomputeSum = (rev: number): void => {
+    hashChain = hashChain.then(async () => {
+      const doc = readPrefsDoc(storage);
+      if (doc.rev !== rev) return;
+      const sum = await prefsChecksum(doc.shadow);
+      const current = readPrefsDoc(storage);
+      if (current.rev !== rev) return;
+      current.sum = sum;
+      writePrefsDoc(current, storage);
+    });
+  };
+
+  const sanitizeValue = (value: PrefValue): PrefValue =>
+    typeof value === 'string' ? sanitizePrefString(value) : value.map(sanitizePrefString);
+
+  return {
+    get: (key) => effectivePref(readPrefsDoc(storage), key),
+
+    set: (key, value) => {
+      const sanitized = value === null ? null : sanitizeValue(value);
+      // Values equal to their default sync as deletions to keep docs small.
+      const target = samePrefValue(sanitized, PREF_DEFAULTS[key]) ? null : sanitized;
+      const doc = readPrefsDoc(storage);
+      const shadowSatisfied =
+        target === null ? doc.shadow[key] === undefined : samePrefValue(doc.shadow[key], target);
+      if (shadowSatisfied) {
+        if (key in doc.pending) {
+          delete doc.pending[key];
+          writePrefsDoc(doc, storage);
+        }
+        return;
+      }
+      if (key in doc.pending && samePrefValue(doc.pending[key], target)) return;
+      doc.pending[key] = target;
+      writePrefsDoc(doc, storage);
+      scheduleFlush();
+    },
+
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+
+    adoptAccount: (accountId) => {
+      const doc = readPrefsDoc(storage);
+      if (doc.account === accountId) return;
+      if (doc.account === null) {
+        doc.account = accountId;
+        writePrefsDoc(doc, storage);
+        return;
+      }
+      // A different account signed in on this browser: their preferences
+      // must not leak across, so the local document starts over.
+      const before = effectivePrefs(doc);
+      const fresh = emptyPrefsDoc(accountId);
+      writePrefsDoc(fresh, storage);
+      notifyChanged(before, effectivePrefs(fresh));
+    },
+
+    dialQuery: () => {
+      const doc = readPrefsDoc(storage);
+      return `prefs_rev=${String(doc.rev)}&prefs_sum=${encodeURIComponent(doc.sum)}`;
+    },
+
+    attach: (send) => {
+      sendFrame = send;
+    },
+
+    detach: () => {
+      sendFrame = null;
+      if (flushHandle !== undefined) {
+        clock.clearTimeout(flushHandle);
+        flushHandle = undefined;
+      }
+    },
+
+    onPrefsReady: (prefs) => {
+      const doc = readPrefsDoc(storage);
+      const before = effectivePrefs(doc);
+      if (prefs.values !== undefined) {
+        const shadow: PrefValues = {};
+        for (const [key, value] of Object.entries(prefs.values)) {
+          if (isPrefValue(value)) shadow[key] = value;
+        }
+        doc.shadow = shadow;
+      }
+      doc.rev = prefs.rev;
+      doc.sum = prefs.sum;
+      dropAcknowledgedPending(doc);
+      writePrefsDoc(doc, storage);
+      notifyChanged(before, effectivePrefs(doc));
+      // Surviving pending entries are the user's latest intent: they win
+      // over the snapshot and go straight back to the server.
+      flushNow();
+    },
+
+    onPrefsChanged: ({ rev, changes }) => {
+      const doc = readPrefsDoc(storage);
+      if (rev <= doc.rev) return;
+      const before = effectivePrefs(doc);
+      let applied = true;
+      for (const [key, value] of Object.entries(changes)) {
+        if (value === null) {
+          delete doc.shadow[key];
+        } else if (isPrefValue(value)) {
+          doc.shadow[key] = value;
+        } else {
+          applied = false;
+        }
+      }
+      const gap = rev > doc.rev + 1;
+      doc.rev = rev;
+      // Blank until recomputed; if this connection drops first, the blank
+      // checksum forces a snapshot on the next connect.
+      doc.sum = '';
+      dropAcknowledgedPending(doc);
+      writePrefsDoc(doc, storage);
+      notifyChanged(before, effectivePrefs(doc));
+      if (!gap && applied) recomputeSum(rev);
+    },
+
+    onPrefsRejected: (keys) => {
+      const doc = readPrefsDoc(storage);
+      let changed = false;
+      for (const key of keys) {
+        if (key in doc.pending) {
+          delete doc.pending[key];
+          changed = true;
+        }
+      }
+      if (changed) writePrefsDoc(doc, storage);
+    },
+  };
+}
