@@ -437,15 +437,10 @@ func TestPanelWebSocketEvents(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = connection.CloseNow() })
 
-	var ready panelEvent
-	if err := wsjson.Read(t.Context(), connection, &ready); err != nil {
-		t.Fatal(err)
-	}
-	if ready.Version != panelEventVersion || ready.Type != panelEventReady {
+	ready := readPanelReady(t, connection)
+	if ready.Version != panelEventVersion ||
+		ready.Prefs.Rev != 0 || string(ready.Prefs.Values) != "{}" {
 		t.Fatalf("ready event = %#v", ready)
-	}
-	if ready.Prefs == nil || ready.Prefs.Rev != 0 || string(ready.Prefs.Values) != "{}" {
-		t.Fatalf("ready prefs = %#v", ready.Prefs)
 	}
 
 	harness.server.Announce("github:installation:10", "repository-20")
