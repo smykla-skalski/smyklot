@@ -99,8 +99,26 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST "+base+"/api/v1/sign-out", s.signOut)
 	mux.HandleFunc("GET "+base+"/api/v1/session", s.getSession)
 	mux.HandleFunc("GET "+base+"/api/v1/targets", s.getTargets)
+	mux.HandleFunc("GET "+base+"/api/v1/notifications", s.getSecurityNotifications)
+	mux.HandleFunc(
+		"PUT "+base+"/api/v1/notifications/{notification}/read",
+		s.putSecurityNotificationRead,
+	)
 	mux.HandleFunc("GET "+base+"/api/v1/invites/{token}", s.reviewInvitation)
+	mux.HandleFunc("GET "+base+"/api/v1/root/installations", s.getRootInstallations)
 	mux.HandleFunc("POST "+base+"/api/v1/root/installations/sync", s.postRootInstallationSync)
+	mux.HandleFunc(
+		"GET "+base+"/api/v1/root/installations/{target}/elevation",
+		s.getRootElevation,
+	)
+	mux.HandleFunc(
+		"POST "+base+"/api/v1/root/installations/{target}/elevation",
+		s.postRootElevation,
+	)
+	mux.HandleFunc(
+		"DELETE "+base+"/api/v1/root/elevations/{elevation}",
+		s.deleteRootElevation,
+	)
 	mux.HandleFunc("PUT "+base+"/api/v1/targets/{target}/settings", s.putTargetSettings)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/users", s.getTargetUsers)
 	mux.HandleFunc("POST "+base+"/api/v1/targets/{target}/users", s.postTargetUser)
@@ -201,7 +219,16 @@ func (s *Server) viewer(r *http.Request) (storage.Account, string, error) {
 }
 
 func (s *Server) requireViewer(w http.ResponseWriter, r *http.Request) (storage.Account, bool) {
-	account, _, err := s.viewer(r)
+	account, _, ok := s.requireViewerSession(w, r)
+
+	return account, ok
+}
+
+func (s *Server) requireViewerSession(
+	w http.ResponseWriter,
+	r *http.Request,
+) (storage.Account, string, bool) {
+	account, sessionHash, err := s.viewer(r)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) || errors.Is(err, storage.ErrExpired) {
 			s.writeError(w, http.StatusUnauthorized, "unauthenticated", "sign in to use the panel")
@@ -211,31 +238,40 @@ func (s *Server) requireViewer(w http.ResponseWriter, r *http.Request) (storage.
 			s.writeInternal(w, err)
 		}
 
-		return storage.Account{}, false
+		return storage.Account{}, "", false
 	}
 
-	return account, true
+	return account, sessionHash, true
 }
 
 func (s *Server) requireRoot(
 	w http.ResponseWriter,
 	r *http.Request,
 ) (storage.Account, storage.PanelUser, bool) {
-	account, ok := s.requireViewer(w, r)
+	account, user, _, ok := s.requireRootSession(w, r)
+
+	return account, user, ok
+}
+
+func (s *Server) requireRootSession(
+	w http.ResponseWriter,
+	r *http.Request,
+) (storage.Account, storage.PanelUser, string, bool) {
+	account, sessionHash, ok := s.requireViewerSession(w, r)
 	if !ok {
-		return storage.Account{}, storage.PanelUser{}, false
+		return storage.Account{}, storage.PanelUser{}, "", false
 	}
 	user, err := s.store.GetPanelUser(r.Context(), account.ID)
 	if err != nil {
 		s.writeInternal(w, err)
-		return storage.Account{}, storage.PanelUser{}, false
+		return storage.Account{}, storage.PanelUser{}, "", false
 	}
 	if !user.SystemRole.IsRoot() {
 		s.writeError(w, http.StatusForbidden, "forbidden", "Root access is required")
-		return storage.Account{}, storage.PanelUser{}, false
+		return storage.Account{}, storage.PanelUser{}, "", false
 	}
 
-	return account, user, true
+	return account, user, sessionHash, true
 }
 
 func (s *Server) requireTarget(

@@ -15,7 +15,7 @@ type AuthStore interface {
 	ActivateDerivedOwner(context.Context, string, time.Time) (bool, error)
 	CreateSession(context.Context, Session, int) error
 	GetSession(context.Context, string, time.Time) (Session, error)
-	DeleteSession(context.Context, string) error
+	DeleteSession(context.Context, string, ElevationEndReason, time.Time) error
 	RevokeAccountSessions(context.Context, string, string, string, time.Time) ([]string, error)
 	DeleteExpiredAuth(context.Context, time.Time) error
 }
@@ -53,6 +53,7 @@ type CatalogStore interface {
 	ReconcileCatalog(context.Context, []InstallationSnapshot) error
 	ReconcileInstallation(context.Context, InstallationSnapshot) error
 	GetTarget(context.Context, string) (Target, error)
+	ListRootTargets(context.Context) ([]Target, error)
 	ListRepositories(context.Context, string) ([]Repository, error)
 	ListRepositoryPage(context.Context, string, RepositoryPageRequest) (RepositoryPage, error)
 	GetRepository(context.Context, string, string) (Repository, error)

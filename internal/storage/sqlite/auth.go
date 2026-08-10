@@ -249,7 +249,7 @@ func (s *Store) GetSession(
 	}
 
 	if !now.Before(session.ExpiresAt) {
-		if err := s.DeleteSession(ctx, tokenHash); err != nil {
+		if err := s.DeleteSession(ctx, tokenHash, storage.ElevationExpired, now); err != nil {
 			return storage.Session{}, err
 		}
 
@@ -265,10 +265,26 @@ func (s *Store) GetSession(
 	return session, nil
 }
 
-// DeleteSession revokes one session. It is idempotent.
-func (s *Store) DeleteSession(ctx context.Context, tokenHash string) error {
-	if _, err := s.db.ExecContext(ctx, "DELETE FROM sessions WHERE token_hash = ?", tokenHash); err != nil {
+// DeleteSession removes one session and terminates its Root elevation atomically.
+func (s *Store) DeleteSession(
+	ctx context.Context,
+	tokenHash string,
+	reason storage.ElevationEndReason,
+	deletedAt time.Time,
+) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin session delete: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := endSessionElevations(ctx, tx, tokenHash, reason, deletedAt); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM sessions WHERE token_hash = ?", tokenHash); err != nil {
 		return fmt.Errorf("delete session: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit session delete: %w", err)
 	}
 
 	return nil
@@ -302,6 +318,11 @@ ORDER BY token_hash`, accountID, formatTime(revokedAt))
 	if err != nil {
 		return nil, fmt.Errorf("read account sessions for revocation: %w", err)
 	}
+	for _, hash := range hashes {
+		if err := endSessionElevations(ctx, tx, hash, storage.ElevationRevoked, revokedAt); err != nil {
+			return nil, err
+		}
+	}
 	if _, err := tx.ExecContext(ctx, `
 UPDATE sessions
 SET revoked_at = ?, revoke_code = ?, revoke_reason = ?
@@ -321,10 +342,36 @@ WHERE account_id = ? AND revoked_at IS NULL AND expires_at > ?`,
 	return hashes, nil
 }
 
-// DeleteExpiredAuth removes expired sessions.
+// DeleteExpiredAuth removes expired sessions and terminates their elevations.
 func (s *Store) DeleteExpiredAuth(ctx context.Context, now time.Time) error {
-	if _, err := s.db.ExecContext(ctx, "DELETE FROM sessions WHERE expires_at <= ?", formatTime(now)); err != nil {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin expired auth delete: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	rows, err := tx.QueryContext(ctx, "SELECT token_hash FROM sessions WHERE expires_at <= ?", formatTime(now))
+	if err != nil {
+		return fmt.Errorf("list expired sessions: %w", err)
+	}
+	hashes, err := collectRows(rows, func(scanner rowScanner) (string, error) {
+		var hash string
+		scanErr := scanner.Scan(&hash)
+
+		return hash, scanErr
+	})
+	if err != nil {
+		return fmt.Errorf("read expired sessions: %w", err)
+	}
+	for _, hash := range hashes {
+		if err := endSessionElevations(ctx, tx, hash, storage.ElevationExpired, now); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM sessions WHERE expires_at <= ?", formatTime(now)); err != nil {
 		return fmt.Errorf("delete expired sessions: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit expired auth delete: %w", err)
 	}
 
 	return nil

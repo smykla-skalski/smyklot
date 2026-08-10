@@ -149,6 +149,56 @@ func newPanelHarnessForSubject(t *testing.T, login, subjectID string) *panelHarn
 	return &panelHarness{server: server, store: store, handler: server.Handler(), now: now}
 }
 
+func seedNonOwnedInstallation(
+	t *testing.T,
+	harness *panelHarness,
+) (storage.Account, storage.InstallationSnapshot) {
+	t.Helper()
+	owner := storage.Account{
+		ID: "github:test:user:owner-2", Provider: "github:test", SubjectID: "owner-2",
+		Login: "installation-owner", DisplayName: "Installation Owner", UpdatedAt: harness.now,
+	}
+	targetAccount := storage.Account{
+		ID: "github:test:account:20", Provider: "github:test", SubjectID: "20",
+		Login: "other-installation", DisplayName: "Other Installation", UpdatedAt: harness.now,
+	}
+	target := storage.InstallationSnapshot{
+		TargetID: "github:installation:20", InstallationID: "20",
+		Kind: storage.TargetOrganization, Account: targetAccount,
+		Ownership: storage.OwnershipSnapshot{
+			Source: storage.OwnershipSourceOrganizationAdmin, Status: storage.OwnershipStatusFresh,
+			Owners: []storage.Account{owner}, SyncedAt: harness.now,
+		},
+		SyncedAt: harness.now,
+	}
+	if err := harness.store.ReconcileInstallation(t.Context(), target); err != nil {
+		t.Fatal(err)
+	}
+
+	return owner, target
+}
+
+func activateOwnerSession(
+	t *testing.T,
+	harness *panelHarness,
+	owner storage.Account,
+) *http.Cookie {
+	t.Helper()
+	active, err := harness.store.ActivateDerivedOwner(t.Context(), owner.ID, harness.now)
+	if err != nil || !active {
+		t.Fatalf("activate Owner = %v, error %v", active, err)
+	}
+	const token = "installation-owner-session"
+	if err := harness.store.CreateSession(t.Context(), storage.Session{
+		TokenHash: tokenHash(token), AccountID: owner.ID,
+		CreatedAt: harness.now, ExpiresAt: harness.now.Add(time.Hour),
+	}, 1); err != nil {
+		t.Fatal(err)
+	}
+
+	return &http.Cookie{Name: sessionCookieName, Value: token}
+}
+
 func (h *panelHarness) signIn(t *testing.T) *http.Cookie {
 	t.Helper()
 	start := httptest.NewRecorder()
@@ -711,6 +761,90 @@ func TestPanelSeparatesRootAndInstallationAccessRoutes(t *testing.T) {
 		&http.Cookie{Name: sessionCookieName, Value: ordinaryToken},
 	)
 	requireResponse(t, blocked, "ordinary installation sync", http.StatusForbidden)
+	blockedElevation := harness.request(
+		t, http.MethodPost,
+		"/panel/api/v1/root/installations/github:installation:10/elevation",
+		strings.NewReader(`{"acknowledged":true}`),
+		&http.Cookie{Name: sessionCookieName, Value: ordinaryToken},
+	)
+	requireResponse(t, blockedElevation, "ordinary Root elevation", http.StatusForbidden)
+}
+
+func TestPanelRootElevationAndOwnerNotifications(t *testing.T) {
+	harness := newPanelHarness(t, "root")
+	rootSession := harness.signIn(t)
+	owner, target := seedNonOwnedInstallation(t, harness)
+
+	installations := harness.request(
+		t, http.MethodGet, "/panel/api/v1/root/installations", nil, rootSession,
+	)
+	requireResponse(
+		t, installations, "Root installations", http.StatusOK,
+		`"id":"github:installation:20"`, `"owner_count":1`,
+	)
+	missingAcknowledgment := harness.request(
+		t, http.MethodPost,
+		"/panel/api/v1/root/installations/"+target.TargetID+"/elevation",
+		strings.NewReader(`{"acknowledged":false}`), rootSession,
+	)
+	requireResponse(
+		t, missingAcknowledgment, "Root elevation acknowledgment",
+		http.StatusBadRequest, `"code":"acknowledgment_required"`,
+	)
+
+	reason := "investigate an installation incident"
+	started := harness.request(
+		t, http.MethodPost,
+		"/panel/api/v1/root/installations/"+target.TargetID+"/elevation",
+		strings.NewReader(`{"acknowledged":true,"reason":"`+reason+`"}`), rootSession,
+	)
+	requireResponse(t, started, "start Root elevation", http.StatusCreated, `"reason":"`+reason+`"`)
+	var elevation elevationResponse
+	if err := json.Unmarshal(started.Body.Bytes(), &elevation); err != nil {
+		t.Fatal(err)
+	}
+	current := harness.request(
+		t, http.MethodGet,
+		"/panel/api/v1/root/installations/"+target.TargetID+"/elevation", nil, rootSession,
+	)
+	requireResponse(t, current, "current Root elevation", http.StatusOK, elevation.ID)
+
+	rootID := "github:test:user:1"
+	rootHash := tokenHash(rootSession.Value)
+	if _, err := harness.store.UpdateTargetSettings(t.Context(), storage.TargetSettingsChange{
+		TargetID: target.TargetID, ActorAccountID: rootID,
+		ElevationID: &elevation.ID, SessionTokenHash: rootHash,
+		RepositoryDefaultEnabled: true, ExpectedRevision: 1, ChangedAt: harness.now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ownerSession := activateOwnerSession(t, harness, owner)
+	notifications := harness.request(
+		t, http.MethodGet, "/panel/api/v1/notifications", nil, ownerSession,
+	)
+	requireResponse(
+		t, notifications, "Owner notifications", http.StatusOK,
+		`"unread":1`, `"elevation_id":"`+elevation.ID+`"`, `"action":"target.settings.updated"`,
+	)
+	var page notificationPageResponse
+	if err := json.Unmarshal(notifications.Body.Bytes(), &page); err != nil {
+		t.Fatal(err)
+	}
+	read := harness.request(
+		t, http.MethodPut, "/panel/api/v1/notifications/"+page.Items[0].ID+"/read", nil, ownerSession,
+	)
+	requireResponse(t, read, "read Owner notification", http.StatusOK, `"read_at":`)
+
+	signedOut := harness.request(t, http.MethodPost, "/panel/api/v1/sign-out", nil, rootSession)
+	if signedOut.Code != http.StatusNoContent {
+		t.Fatalf("Root sign out = %d %s", signedOut.Code, signedOut.Body.String())
+	}
+	ended, err := harness.store.EndElevation(
+		t.Context(), elevation.ID, rootHash, storage.ElevationEnded, harness.now,
+	)
+	if err != nil || ended.EndReason == nil || *ended.EndReason != storage.ElevationRevoked {
+		t.Fatalf("ended elevation = %#v, error %v", ended, err)
+	}
 }
 
 func TestPanelInvitesNamedGitHubUserThroughOAuth(t *testing.T) {

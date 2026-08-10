@@ -95,6 +95,23 @@ func (s *Store) ReconcileCatalog(
 	return nil
 }
 
+// ListRootTargets returns the complete retained installation catalog. Root
+// diagnostics include unavailable installations and unhealthy ownership.
+func (s *Store) ListRootTargets(ctx context.Context) ([]storage.Target, error) {
+	rows, err := s.db.QueryContext(ctx, targetSelect+`
+GROUP BY t.id, a.id
+ORDER BY lower(a.login), t.id`)
+	if err != nil {
+		return nil, fmt.Errorf("list Root installation targets: %w", err)
+	}
+	targets, err := collectRows(rows, scanTarget)
+	if err != nil {
+		return nil, fmt.Errorf("read Root installation targets: %w", err)
+	}
+
+	return targets, nil
+}
+
 func reconcileInstallation(
 	ctx context.Context,
 	tx *sql.Tx,

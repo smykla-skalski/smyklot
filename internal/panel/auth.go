@@ -210,7 +210,9 @@ func (s *Server) signOut(w http.ResponseWriter, r *http.Request) {
 	}
 	_, hash, err := s.viewer(r)
 	if err == nil {
-		if err := s.store.DeleteSession(r.Context(), hash); err != nil {
+		if err := s.store.DeleteSession(
+			r.Context(), hash, storage.ElevationRevoked, s.now().UTC(),
+		); err != nil {
 			s.writeInternal(w, err)
 			return
 		}

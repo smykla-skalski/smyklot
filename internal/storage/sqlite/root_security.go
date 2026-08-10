@@ -154,6 +154,23 @@ func (s *Store) EndSessionElevations(
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	if err := endSessionElevations(ctx, tx, sessionTokenHash, reason, endedAt); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit session elevation end: %w", err)
+	}
+
+	return nil
+}
+
+func endSessionElevations(
+	ctx context.Context,
+	tx *sql.Tx,
+	sessionTokenHash string,
+	reason storage.ElevationEndReason,
+	endedAt time.Time,
+) error {
 	elevations, err := listOpenSessionElevations(ctx, tx, sessionTokenHash)
 	if err != nil {
 		return err
@@ -162,9 +179,6 @@ func (s *Store) EndSessionElevations(
 		if err := endElevation(ctx, tx, &elevations[index], reason, endedAt); err != nil {
 			return err
 		}
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit session elevation end: %w", err)
 	}
 
 	return nil

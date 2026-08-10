@@ -11,13 +11,14 @@ import (
 )
 
 const (
-	basePathSentinel      = "/__smyklot_panel_base__"
-	versionSentinel       = "__smyklot_panel_version__"
-	serviceSentinel       = "__smyklot_panel_service__"
-	panelHistoryPath      = "history"
-	panelInvitationsPath  = "invitations"
-	panelRepositoriesPath = "repositories"
-	panelSettingsPath     = "settings"
+	basePathSentinel           = "/__smyklot_panel_base__"
+	versionSentinel            = "__smyklot_panel_version__"
+	serviceSentinel            = "__smyklot_panel_service__"
+	panelHistoryPath           = "history"
+	panelInvitationsPath       = "invitations"
+	panelInstallationsResource = "installations"
+	panelRepositoriesPath      = "repositories"
+	panelSettingsPath          = "settings"
 )
 
 type assetBundle struct {
@@ -100,13 +101,13 @@ func isRootNavigationPath(parts []string) bool {
 		return false
 	}
 	if len(parts) == 2 {
-		return parts[1] == "installations" || parts[1] == panelSettingsPath
+		return parts[1] == panelInstallationsResource || parts[1] == panelSettingsPath
 	}
 	if len(parts) == 3 {
 		return parts[1] == "access" && (parts[2] == panelUsersResource || parts[2] == panelInvitationsPath) ||
 			parts[1] == panelHistoryPath && (parts[2] == "audit" || parts[2] == "failures")
 	}
-	if len(parts) != 4 || parts[1] != "installations" || parts[2] == "" {
+	if len(parts) != 4 || parts[1] != panelInstallationsResource || parts[2] == "" {
 		return false
 	}
 	switch parts[3] {
