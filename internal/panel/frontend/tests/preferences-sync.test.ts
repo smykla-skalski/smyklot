@@ -174,6 +174,11 @@ describe('preference string sanitizer', () => {
     expect(sanitizePrefString('x'.repeat(300))).toHaveLength(256);
   });
 
+  it('caps by code point so the cut never splits a surrogate pair', () => {
+    expect(sanitizePrefString('🙂'.repeat(300))).toBe('🙂'.repeat(256));
+    expect(sanitizePrefString('a'.repeat(255) + '🙂' + 'tail')).toBe('a'.repeat(255) + '🙂');
+  });
+
   it('keeps ordinary unicode', () => {
     expect(sanitizePrefString('π🙂 emoji')).toBe('π🙂 emoji');
   });

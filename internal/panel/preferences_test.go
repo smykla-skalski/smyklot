@@ -134,11 +134,16 @@ func TestValidatePrefChanges(t *testing.T) {
 		{
 			name:     "setting filter keys mode canonicalized",
 			key:      "table.repositories.settings",
-			value:    `["keys","runner","allowed_commands"]`,
-			accepted: `["keys","allowed_commands","runner"]`,
+			value:    `["keys","quiet_success","allowed_commands"]`,
+			accepted: `["keys","allowed_commands","quiet_success"]`,
 		},
 		{name: "setting filter keys mode needs keys", key: "table.repositories.settings", value: `["keys"]`},
 		{name: "setting filter unknown key", key: "table.repositories.settings", value: `["keys","favourite"]`},
+		{
+			name:  "setting filter rejects keys the panel cannot decode",
+			key:   "table.repositories.settings",
+			value: `["keys","runner"]`,
+		},
 		{name: "setting filter plain mode rejects keys", key: "table.repositories.settings", value: `["all","runner"]`},
 		{name: "setting filter empty", key: "table.repositories.settings", value: `[]`},
 		{name: "search text", key: "table.users.search", value: `"bots"`, accepted: `"bots"`},

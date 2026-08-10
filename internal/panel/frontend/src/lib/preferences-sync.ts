@@ -210,8 +210,11 @@ export function sanitizePrefString(value: string): string {
   // toWellFormed is ES2024; fall back to the raw value where it is missing.
   const candidate = value as string & { toWellFormed?: () => string };
   const wellFormed = candidate.toWellFormed?.() ?? value;
+  const stripped = wellFormed.replace(PREF_STRING_STRIP, '');
 
-  return wellFormed.replace(PREF_STRING_STRIP, '').slice(0, MAX_PREF_STRING_LENGTH);
+  // Cap by code point, not UTF-16 units: the server counts runes, and a
+  // unit-based slice could land inside a surrogate pair.
+  return Array.from(stripped).slice(0, MAX_PREF_STRING_LENGTH).join('');
 }
 
 // migrateLegacyPreferences moves the four standalone localStorage keys into

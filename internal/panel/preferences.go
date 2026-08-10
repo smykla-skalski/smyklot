@@ -443,6 +443,10 @@ func freeText() prefValidator {
 
 // settingFilter accepts the flat encoding of the repository setting filter:
 // a mode in the first element, config keys after it when the mode is "keys".
+// The key list must stay identical to the frontend's CONFIG_KEYS: a key only
+// one side knows would be stored here but silently collapse the filter to
+// "all" in decodeRepositorySettingFilter. `runner` stays out until the panel
+// models it.
 func settingFilter() prefValidator {
 	configKeys := []string{
 		config.KeyQuietSuccess,
@@ -457,7 +461,6 @@ func settingFilter() prefValidator {
 		config.KeyDisableReactions,
 		config.KeyDisableDeletedComments,
 		config.KeyAllowSelfApproval,
-		config.KeyRunner,
 	}
 
 	return func(value any) (any, bool) {
