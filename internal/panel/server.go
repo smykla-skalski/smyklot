@@ -119,6 +119,26 @@ func (s *Server) Handler() http.Handler {
 		"DELETE "+base+"/api/v1/root/elevations/{elevation}",
 		s.deleteRootElevation,
 	)
+	mux.HandleFunc(
+		"GET "+base+"/api/v1/root/installations/{target}/settings",
+		s.getRootTargetSettings,
+	)
+	mux.HandleFunc(
+		"PUT "+base+"/api/v1/root/installations/{target}/settings",
+		s.putRootTargetSettings,
+	)
+	mux.HandleFunc(
+		"GET "+base+"/api/v1/root/installations/{target}/repositories",
+		s.getRootRepositories,
+	)
+	mux.HandleFunc(
+		"GET "+base+"/api/v1/root/installations/{target}/repositories/{repository}",
+		s.getRootRepository,
+	)
+	mux.HandleFunc(
+		"PUT "+base+"/api/v1/root/installations/{target}/repositories/{repository}/settings",
+		s.putRootRepositorySettings,
+	)
 	mux.HandleFunc("PUT "+base+"/api/v1/targets/{target}/settings", s.putTargetSettings)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/users", s.getTargetUsers)
 	mux.HandleFunc("POST "+base+"/api/v1/targets/{target}/users", s.postTargetUser)

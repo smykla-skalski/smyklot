@@ -252,6 +252,8 @@ const (
 	AccessSourceOwner     AccessSource = "owner"
 	AccessSourceTarget    AccessSource = "target"
 	AccessSourceSuspended AccessSource = "suspended"
+	AccessSourceRoot      AccessSource = "root"
+	AccessSourceElevation AccessSource = "elevation"
 	AccessSourceDenied    AccessSource = "denied"
 )
 

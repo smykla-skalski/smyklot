@@ -165,6 +165,10 @@ func seedNonOwnedInstallation(
 	target := storage.InstallationSnapshot{
 		TargetID: "github:installation:20", InstallationID: "20",
 		Kind: storage.TargetOrganization, Account: targetAccount,
+		Repositories: []storage.RepositorySnapshot{{
+			ID: "repository-30", Name: "other", FullName: "other-installation/other",
+			DefaultBranch: "main",
+		}},
 		Ownership: storage.OwnershipSnapshot{
 			Source: storage.OwnershipSourceOrganizationAdmin, Status: storage.OwnershipStatusFresh,
 			Owners: []storage.Account{owner}, SyncedAt: harness.now,
@@ -782,6 +786,20 @@ func TestPanelRootElevationAndOwnerNotifications(t *testing.T) {
 		t, installations, "Root installations", http.StatusOK,
 		`"id":"github:installation:20"`, `"owner_count":1`,
 	)
+	rootSettingsPath := "/panel/api/v1/root/installations/" + target.TargetID + "/settings"
+	settings := harness.request(t, http.MethodGet, rootSettingsPath, nil, rootSession)
+	requireResponse(
+		t, settings, "Root installation settings", http.StatusOK,
+		`"access_source":"root"`, `"write":false`,
+	)
+	settingsInput := `{"repository_default_enabled":true,"config_patch":{},"expected_revision":1}`
+	blockedWrite := harness.request(
+		t, http.MethodPut, rootSettingsPath, strings.NewReader(settingsInput), rootSession,
+	)
+	requireResponse(
+		t, blockedWrite, "Root write without elevation", http.StatusForbidden,
+		`"code":"elevation_required"`,
+	)
 	missingAcknowledgment := harness.request(
 		t, http.MethodPost,
 		"/panel/api/v1/root/installations/"+target.TargetID+"/elevation",
@@ -809,22 +827,37 @@ func TestPanelRootElevationAndOwnerNotifications(t *testing.T) {
 	)
 	requireResponse(t, current, "current Root elevation", http.StatusOK, elevation.ID)
 
-	rootID := "github:test:user:1"
 	rootHash := tokenHash(rootSession.Value)
-	if _, err := harness.store.UpdateTargetSettings(t.Context(), storage.TargetSettingsChange{
-		TargetID: target.TargetID, ActorAccountID: rootID,
-		ElevationID: &elevation.ID, SessionTokenHash: rootHash,
-		RepositoryDefaultEnabled: true, ExpectedRevision: 1, ChangedAt: harness.now,
-	}); err != nil {
-		t.Fatal(err)
-	}
+	regularWrite := harness.request(
+		t, http.MethodPut, "/panel/api/v1/targets/"+target.TargetID+"/settings",
+		strings.NewReader(settingsInput), rootSession,
+	)
+	requireResponse(t, regularWrite, "elevated regular-route write", http.StatusNotFound)
+	elevatedWrite := harness.request(
+		t, http.MethodPut, rootSettingsPath, strings.NewReader(settingsInput), rootSession,
+	)
+	requireResponse(
+		t, elevatedWrite, "elevated Root write", http.StatusOK,
+		`"access_source":"elevation"`, `"revision":2`,
+	)
+	repositoryWrite := harness.request(
+		t, http.MethodPut,
+		"/panel/api/v1/root/installations/"+target.TargetID+
+			"/repositories/repository-30/settings",
+		strings.NewReader(`{"enabled_override":true,"config_patch":{},"ignore_repository_file":false,"expected_revision":1}`),
+		rootSession,
+	)
+	requireResponse(
+		t, repositoryWrite, "elevated Root repository write", http.StatusOK, `"revision":2`,
+	)
 	ownerSession := activateOwnerSession(t, harness, owner)
 	notifications := harness.request(
 		t, http.MethodGet, "/panel/api/v1/notifications", nil, ownerSession,
 	)
 	requireResponse(
 		t, notifications, "Owner notifications", http.StatusOK,
-		`"unread":1`, `"elevation_id":"`+elevation.ID+`"`, `"action":"target.settings.updated"`,
+		`"unread":2`, `"elevation_id":"`+elevation.ID+`"`,
+		`"action":"target.settings.updated"`, `"action":"repository.settings.updated"`,
 	)
 	var page notificationPageResponse
 	if err := json.Unmarshal(notifications.Body.Bytes(), &page); err != nil {
