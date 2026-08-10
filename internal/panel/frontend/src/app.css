@@ -267,6 +267,19 @@
   --shadow-plate: 0 1px 2px var(--shadow-color);
   --shadow-popover: 0 16px 42px var(--shadow-color);
   --shadow-dialog: 0 24px 72px color-mix(in srgb, var(--shadow-color) 82%, black);
+
+  /* Segmented controls: a raised thumb on a slightly darker track. */
+  --segment-track: var(--surface-inset);
+  --segment-thumb: #ffffff;
+  --segment-shadow: 0 1px 3px rgb(0 0 0 / 14%), 0 0 0 0.5px rgb(0 0 0 / 4%);
+
+  /* Input and checkbox boundaries at ~3:1 against the surface. */
+  --border-strong: #9aa89f;
+
+  /* Pending (unsaved) state. Info-slate so it never reads as an error. */
+  --pending: var(--primitive-info-light);
+  --pending-tint: #f4f8fa;
+  --pending-inverse: #a9bfcc;
 }
 
 :root[data-theme='dark'] {
@@ -324,6 +337,16 @@
   --table-sorted-bg: #153638;
   --spectrum: var(--brand-action);
   --spectrum-vertical: var(--brand-action);
+
+  --segment-track: var(--primitive-dark-sidebar);
+  --segment-thumb: #2b3541;
+  --segment-shadow: 0 1px 3px rgb(0 0 0 / 40%), 0 0 0 0.5px rgb(0 0 0 / 20%);
+
+  --border-strong: #5b6a78;
+
+  --pending: var(--primitive-info-dark);
+  --pending-tint: var(--primitive-info-dark-tint);
+  --pending-inverse: #526b7a;
 }
 
 *,

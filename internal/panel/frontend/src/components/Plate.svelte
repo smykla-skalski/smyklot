@@ -40,4 +40,10 @@
     letter-spacing: 0;
     text-transform: none;
   }
+
+  /* A plate with a body is a full card: its title earns a size step up. */
+  section:not(.plate-header-only) h2 {
+    font-size: 1.0625rem;
+    font-weight: 700;
+  }
 </style>

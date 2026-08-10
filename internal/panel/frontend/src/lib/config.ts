@@ -1,56 +1,83 @@
 import type { ConfigKey, ConfigPatch, ConfigValues } from './types';
 
-export const BOOLEAN_FIELDS: ReadonlyArray<{
+export interface BooleanField {
   key: Exclude<ConfigKey, 'allowed_commands' | 'command_aliases' | 'command_prefix'>;
   label: string;
   help: string;
-}> = [
+  /**
+   * Whether the raw config value already means "the feature is active". The
+   * quiet_* and disable_* keys store suppression, so their display value is
+   * the inverse of the stored boolean.
+   */
+  positive: boolean;
+}
+
+export const BOOLEAN_FIELDS: ReadonlyArray<BooleanField> = [
   {
     key: 'quiet_success',
-    label: 'Quiet successful commands',
-    help: 'When On, successful comment commands finish silently instead of posting a success response. Errors are still reported',
+    label: 'Success replies',
+    help: 'When enabled, successful commands get a reply comment. When disabled, only the emoji reaction is posted. Errors always post comments',
+    positive: false,
   },
   {
     key: 'quiet_reactions',
-    label: 'Quiet reaction commands',
-    help: 'When On, successful reaction commands finish silently instead of posting a success response. Errors are still reported',
+    label: 'Reaction-command replies',
+    help: 'When enabled, commands invoked by emoji reactions get a confirmation comment',
+    positive: false,
   },
   {
     key: 'quiet_pending',
-    label: 'Quiet pending checks',
-    help: 'When On, Smyklot does not post a message while required checks are still pending',
+    label: 'Pending-check notices',
+    help: 'When enabled, Smyklot posts a notice when a merge is waiting on required checks',
+    positive: false,
   },
   {
     key: 'disable_mentions',
-    label: 'Disable mentions',
-    help: 'When On, @smyklot mentions do not invoke commands. Use the configured command prefix instead',
+    label: 'Mention commands',
+    help: 'When enabled, @smyklot mentions invoke commands. When disabled, only the command prefix works',
+    positive: false,
   },
   {
     key: 'disable_bare_commands',
-    label: 'Disable bare commands',
-    help: 'When On, bare command words are ignored. Commands must begin with the configured prefix or an enabled mention',
+    label: 'Bare commands',
+    help: 'When enabled, a bare command word like "approve" works on its own, without prefix or mention',
+    positive: false,
   },
   {
     key: 'disable_unapprove',
-    label: 'Disable unapprove',
-    help: 'When On, unapprove and disapprove commands are ignored even when those commands are otherwise allowed',
+    label: 'Unapprove command',
+    help: 'When disabled, unapprove (and its synonym disapprove) is ignored even when the command is otherwise allowed',
+    positive: false,
   },
   {
     key: 'disable_reactions',
-    label: 'Disable reactions',
-    help: 'When On, emoji reactions cannot invoke Smyklot actions. Comment commands continue to work',
+    label: 'Reaction triggers',
+    help: 'When enabled, emoji reactions can invoke Smyklot actions. Comment commands always work',
+    positive: false,
   },
   {
     key: 'disable_deleted_comments',
-    label: 'Disable deletion notices',
-    help: 'When On, Smyklot does not announce that a previously processed command comment was deleted',
+    label: 'Deletion notices',
+    help: 'When enabled, Smyklot announces when a processed command comment is deleted',
+    positive: false,
   },
   {
     key: 'allow_self_approval',
-    label: 'Allow self-approval',
-    help: 'When On, pull request authors may use Smyklot to approve their own changes',
+    label: 'Self-approval',
+    help: 'When enabled, pull request authors may approve their own changes through Smyklot',
+    positive: true,
   },
 ];
+
+/** Whether the feature a field describes is active for a given raw config value. */
+export function fieldEnabled(field: BooleanField, raw: boolean): boolean {
+  return field.positive ? raw : !raw;
+}
+
+/** The raw config value that makes a field's feature enabled or disabled. */
+export function fieldRawValue(field: BooleanField, enabled: boolean): boolean {
+  return field.positive ? enabled : !enabled;
+}
 
 export function clonePatch(patch: ConfigPatch): ConfigPatch {
   return JSON.parse(JSON.stringify(patch)) as ConfigPatch;

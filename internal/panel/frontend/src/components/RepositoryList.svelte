@@ -56,8 +56,8 @@
 
   const REPOSITORY_ENABLEMENT_OPTIONS = [
     { value: 'inherit', label: 'Default' },
-    { value: 'enabled', label: 'On', tone: 'on' },
-    { value: 'disabled', label: 'Off', tone: 'off' },
+    { value: 'enabled', label: 'Enabled', tone: 'on' },
+    { value: 'disabled', label: 'Disabled', tone: 'off' },
   ] as const;
   const FILE_STATUSES = ['valid', 'missing', 'invalid', 'bypassed'] as const;
   const CONFIG_FILTER_KEYS: readonly ConfigKey[] = [
@@ -72,13 +72,13 @@
         { value: 'all', label: 'All states', description: 'Show every repository' },
         {
           value: 'enabled',
-          label: 'On',
+          label: 'Enabled',
           description: 'Smyklot handles the repository',
           tone: 'on',
         },
         {
           value: 'disabled',
-          label: 'Off',
+          label: 'Disabled',
           description: 'Smyklot ignores the repository',
           tone: 'off',
         },

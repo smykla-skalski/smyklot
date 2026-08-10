@@ -23,7 +23,7 @@
   function placeTooltip(): void {
     if (!compact) return;
     const bounds = trigger.getBoundingClientRect();
-    const width = Math.min(320, window.innerWidth - 32);
+    const width = Math.min(272, window.innerWidth - 32);
     const height = tooltip.getBoundingClientRect().height;
     const desiredLeft = align === 'start' ? bounds.left : bounds.right - width;
     tooltipLeft = Math.max(16, Math.min(desiredLeft, window.innerWidth - width - 16));
@@ -95,11 +95,11 @@
     border: 1px solid var(--popover-border);
     border-radius: var(--radius-popover);
     box-shadow: var(--shadow-popover);
-    color: var(--text);
-    font: 500 0.75rem/1.4 var(--sans);
+    color: var(--text-secondary);
+    font: 400 var(--font-size-meta) / 1.45 var(--sans);
     max-width: calc(100vw - 3rem);
     opacity: 0;
-    padding: 0.5rem 0.625rem;
+    padding: 0.625rem 0.75rem;
     pointer-events: none;
     position: absolute;
     right: 0;
@@ -110,7 +110,7 @@
       transform 120ms ease-out;
     visibility: hidden;
     white-space: normal;
-    width: 20rem;
+    width: 17rem;
     z-index: var(--layer-popover);
   }
 

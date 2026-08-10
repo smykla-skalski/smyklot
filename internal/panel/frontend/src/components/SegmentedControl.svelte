@@ -6,6 +6,8 @@
     label: string;
     tone?: SegmentTone;
     badge?: string | number;
+    /** Resolved-value suffix rendered after the label, e.g. "· Enabled". */
+    detail?: { text: string; tone: 'on' | 'off' };
   }
 
   const {
@@ -95,6 +97,9 @@
       />
       <span class="segment-label">
         <span>{option.label}</span>
+        {#if option.detail !== undefined}
+          <span class="segment-detail detail-{option.detail.tone}">· {option.detail.text}</span>
+        {/if}
         {#if option.badge !== undefined}
           <sup class="segment-badge"><span>{option.badge}</span></sup>
         {/if}
@@ -105,10 +110,9 @@
 
 <style>
   fieldset {
-    --selected-bg: var(--surface-base);
-    --selected-stroke: color-mix(in srgb, var(--text-secondary) 20%, var(--surface-base));
-    --selected-text: var(--text-secondary);
-    background: var(--well);
+    --selected-bg: var(--segment-thumb);
+    --selected-text: var(--text-primary);
+    background: var(--segment-track);
     border: 1px solid var(--rule);
     border-radius: var(--r-ctl);
     display: inline-flex;
@@ -123,21 +127,16 @@
   }
 
   fieldset.selected-accent {
-    --selected-bg: var(--brand-action-tint);
-    --selected-stroke: color-mix(in srgb, var(--brand-action-text) 20%, var(--brand-action-tint));
     --selected-text: var(--brand-action-text);
   }
 
   fieldset.selected-on {
-    --selected-bg: var(--success-tint);
-    --selected-stroke: color-mix(in srgb, var(--success) 20%, var(--success-tint));
     --selected-text: var(--success);
   }
 
+  /* Off is a safe state, not an error: the thumb stays neutral. */
   fieldset.selected-off {
-    --selected-bg: var(--danger-tint);
-    --selected-stroke: color-mix(in srgb, var(--danger) 20%, var(--danger-tint));
-    --selected-text: var(--danger);
+    --selected-text: var(--text-primary);
   }
 
   fieldset.align-end {
@@ -149,9 +148,9 @@
   }
 
   fieldset.compact .segment-label {
-    font-size: var(--font-size-micro);
+    font-size: var(--font-size-compact);
     min-width: 2.25rem;
-    padding: 0 8px;
+    padding: 0 0.625rem;
   }
 
   fieldset.navigation .segment-label {
@@ -213,19 +212,40 @@
   .segment-label {
     align-items: center;
     border-radius: calc(var(--r-ctl) - 3px);
-    color: var(--text-secondary);
+    color: var(--text-muted);
     display: flex;
-    font-size: 0.6875rem;
+    font-size: var(--font-size-compact);
     font-weight: 600;
+    gap: 0.25rem;
     height: 100%;
     justify-content: center;
     line-height: 1;
-    padding: 0 0.5rem;
+    padding: 0 0.75rem;
     position: relative;
     transition:
       color 180ms ease-out,
       transform var(--duration-press) var(--ease-standard);
     z-index: 3;
+  }
+
+  /* Trim label text to glyph bounds so it centers visually in the segment. */
+  .segment-label > span:first-child,
+  .segment-detail {
+    text-box: trim-both cap alphabetic;
+  }
+
+  .segment-detail {
+    color: var(--dim);
+    font-weight: 500;
+  }
+
+  .segment-detail.detail-on {
+    color: var(--success);
+    font-weight: 600;
+  }
+
+  input:checked ~ .segment-label .segment-detail.detail-off {
+    color: var(--text-secondary);
   }
 
   .segment-badge {
@@ -263,6 +283,7 @@
 
   input:checked ~ .segment-label {
     color: var(--selected-text);
+    font-weight: 700;
   }
 
   label:hover input:not(:checked):not(:disabled) ~ .segment-label {
@@ -276,7 +297,7 @@
   .selection-indicator {
     background: var(--selected-bg);
     border-radius: calc(var(--r-ctl) - 3px);
-    box-shadow: inset 0 0 0 1px var(--selected-stroke);
+    box-shadow: var(--segment-shadow);
     bottom: var(--control-inset);
     left: var(--segment-left, var(--control-inset));
     pointer-events: none;
