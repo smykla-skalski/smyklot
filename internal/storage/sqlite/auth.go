@@ -340,13 +340,24 @@ WHERE account_id = ? AND revoked_at IS NULL AND expires_at > ?`,
 	return hashes, nil
 }
 
-// DeleteExpiredAuth removes expired sessions and terminates their elevations.
+// DeleteExpiredAuth records expired elevations and removes expired sessions.
 func (s *Store) DeleteExpiredAuth(ctx context.Context, now time.Time) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin expired auth delete: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	expiredElevations, err := listExpiredElevations(ctx, tx, now)
+	if err != nil {
+		return err
+	}
+	for index := range expiredElevations {
+		if err := endElevation(
+			ctx, tx, &expiredElevations[index], storage.ElevationExpired, now,
+		); err != nil {
+			return err
+		}
+	}
 	rows, err := tx.QueryContext(ctx, "SELECT token_hash FROM sessions WHERE expires_at <= ?", formatTime(now))
 	if err != nil {
 		return fmt.Errorf("list expired sessions: %w", err)

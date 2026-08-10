@@ -59,6 +59,13 @@ WHERE session_token_hash = ? AND ended_at IS NULL AND expires_at > ?`,
 	if owned {
 		return storage.Elevation{}, storage.ErrConflict
 	}
+	ownership, err := readTargetOwnership(ctx, tx, grant.TargetID)
+	if err != nil {
+		return storage.Elevation{}, err
+	}
+	if !ownership.FreshAt(grant.StartedAt) {
+		return storage.Elevation{}, storage.ErrConflict
+	}
 
 	elevation := storage.Elevation{
 		ID: grant.ID, SessionTokenHash: grant.SessionTokenHash,

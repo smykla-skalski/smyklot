@@ -34,7 +34,7 @@ func getElevationBySessionTarget(
 	sessionTokenHash, targetID string,
 ) (storage.Elevation, error) {
 	return scanElevation(queryer.QueryRowContext(ctx, elevationSelect+`
-WHERE session_token_hash = ? AND target_id = ? AND ended_at IS NULL
+WHERE session_token_hash = ? AND target_id = ?
 ORDER BY started_at DESC LIMIT 1`, sessionTokenHash, targetID))
 }
 
@@ -54,6 +54,27 @@ ORDER BY started_at`, sessionTokenHash)
 	elevations, err := collectRows(rows, scanElevation)
 	if err != nil {
 		return nil, fmt.Errorf("read open session elevations: %w", err)
+	}
+
+	return elevations, nil
+}
+
+func listExpiredElevations(
+	ctx context.Context,
+	queryer interface {
+		QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	},
+	now time.Time,
+) ([]storage.Elevation, error) {
+	rows, err := queryer.QueryContext(ctx, elevationSelect+`
+WHERE ended_at IS NULL AND expires_at <= ?
+ORDER BY expires_at`, formatTime(now))
+	if err != nil {
+		return nil, fmt.Errorf("list expired elevations: %w", err)
+	}
+	elevations, err := collectRows(rows, scanElevation)
+	if err != nil {
+		return nil, fmt.Errorf("read expired elevations: %w", err)
 	}
 
 	return elevations, nil

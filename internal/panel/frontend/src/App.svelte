@@ -409,7 +409,10 @@
         viewer = currentViewer;
       }
       if (!(await refreshTargets()) || !streamRefreshes.isCurrent(refresh)) return;
-      if (rootMode) {
+      if (rootMode && viewer?.system_role === 'none') {
+        rootMode = false;
+        await activateRoute(null, 'replace');
+      } else if (rootMode) {
         router.replace(activeRootRoute);
       } else if (selectedId === null) {
         await activateRoute(router.current(), 'replace');

@@ -179,6 +179,10 @@ func (s *Server) requireRootTarget(
 		}
 		return rootTargetContext{}, false
 	}
+	if !target.Ownership.FreshAt(s.now().UTC()) {
+		s.writeError(w, http.StatusConflict, "owner_snapshot_unavailable", "fresh Owners are required for elevated writes")
+		return rootTargetContext{}, false
+	}
 	context.Elevation = &elevation
 	context.Access.Source = storage.AccessSourceElevation
 	context.Access.Capabilities.Write = true
@@ -199,7 +203,7 @@ func (s *Server) attachActiveElevation(r *http.Request, context *rootTargetConte
 	}
 	context.Elevation = &elevation
 	context.Access.Source = storage.AccessSourceElevation
-	context.Access.Capabilities.Write = true
+	context.Access.Capabilities.Write = context.Target.Ownership.FreshAt(s.now().UTC())
 
 	return nil
 }

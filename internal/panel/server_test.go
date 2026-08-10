@@ -1055,6 +1055,8 @@ func TestPanelManagesRootUsers(t *testing.T) {
 	}, 1); err != nil {
 		t.Fatal(err)
 	}
+	subscriber, unsubscribe := harness.server.events.subscribe(tokenHash(ordinaryToken))
+	t.Cleanup(unsubscribe)
 
 	promoted := harness.request(
 		t, http.MethodPut, "/panel/api/v1/root/access/users/"+ordinary.ID,
@@ -1082,6 +1084,14 @@ func TestPanelManagesRootUsers(t *testing.T) {
 		t.Context(), tokenHash(ordinaryToken), harness.now,
 	); !errors.Is(err, storage.ErrRevoked) {
 		t.Fatalf("managed session error = %v", err)
+	}
+	select {
+	case event := <-subscriber.terminal:
+		if event.Type != panelEventSessionRevoked || event.Code != "account_banned" {
+			t.Fatalf("managed session event = %#v", event)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for managed session revocation")
 	}
 
 	selfChange := harness.request(
@@ -1284,6 +1294,15 @@ func TestPanelRootElevationAndOwnerNotifications(t *testing.T) {
 	requireResponse(
 		t, installationAudit, "Root installation audit", http.StatusOK,
 		`"target.access.updated"`, `"invitation.created"`,
+	)
+	notificationAudit := harness.request(
+		t, http.MethodGet,
+		"/panel/api/v1/root/history/audit?category=notification&limit=20", nil, rootSession,
+	)
+	requireResponse(
+		t, notificationAudit, "Root notification audit", http.StatusOK,
+		`"category":"notification"`, `"action":"owner.notification.created"`,
+		`"elevation_id":"`+elevation.ID+`"`,
 	)
 	installationFailures := harness.request(
 		t, http.MethodGet, rootAccessBase+"/failures?limit=20", nil, rootSession,

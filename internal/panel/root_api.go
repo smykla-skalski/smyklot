@@ -1,6 +1,7 @@
 package panel
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -208,7 +209,7 @@ func (s *Server) postRootElevation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.events.announce(panelEvent{Type: panelEventResync})
-	s.announceElevationExpiry(elevation.ExpiresAt)
+	s.announceElevationExpiry(elevation)
 	writeJSON(w, http.StatusCreated, elevationDTO(elevation))
 }
 
@@ -289,13 +290,21 @@ func (s *Server) putSecurityNotificationRead(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusOK, securityNotificationDTO(notification))
 }
 
-func (s *Server) announceElevationExpiry(expiresAt time.Time) {
-	delay := expiresAt.Sub(s.now().UTC())
+func (s *Server) announceElevationExpiry(elevation storage.Elevation) {
+	delay := elevation.ExpiresAt.Sub(s.now().UTC())
 	if delay <= 0 {
+		_, _ = s.store.EndElevation(
+			context.Background(), elevation.ID, elevation.SessionTokenHash,
+			storage.ElevationExpired, s.now().UTC(),
+		)
 		s.events.announce(panelEvent{Type: panelEventResync})
 		return
 	}
 	time.AfterFunc(delay, func() {
+		_, _ = s.store.EndElevation(
+			context.Background(), elevation.ID, elevation.SessionTokenHash,
+			storage.ElevationExpired, s.now().UTC(),
+		)
 		s.events.announce(panelEvent{Type: panelEventResync})
 	})
 }

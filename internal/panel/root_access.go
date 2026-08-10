@@ -243,11 +243,15 @@ func (s *Server) changeRootUserStatus(
 		if status == storage.PanelUserRemoved {
 			code, message = "account_removed", "Your Smyklot account was removed"
 		}
-		if _, err := s.store.RevokeAccountSessions(
+		hashes, err := s.store.RevokeAccountSessions(
 			r.Context(), subject.Account.ID, code, message, s.now().UTC(),
-		); err != nil {
+		)
+		if err != nil {
 			s.writeInternal(w, err)
 			return
+		}
+		for _, hash := range hashes {
+			s.events.revokeSession(hash, code, message)
 		}
 	}
 	s.events.announce(panelEvent{Type: panelEventResync})

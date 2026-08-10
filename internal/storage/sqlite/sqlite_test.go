@@ -232,13 +232,36 @@ var _ = Describe("SQLite store [Unit]", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(notifications.Unread).To(BeZero())
 
+		Expect(store.DeleteExpiredAuth(ctx, now.Add(16*time.Minute))).To(Succeed())
 		_, err = store.GetElevation(ctx, session.TokenHash, target.TargetID, now.Add(16*time.Minute))
 		Expect(errors.Is(err, storage.ErrExpired)).To(BeTrue())
+		expiryAudit, err := store.ListRootAudit(ctx, storage.RootAuditPageRequest{
+			HistoryPageRequest: storage.HistoryPageRequest{Limit: 10},
+			Categories:         []storage.AuditCategory{storage.AuditCategoryElevation},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(expiryAudit.Items).To(ContainElement(And(
+			HaveField("Action", "elevation.expired"),
+			HaveField("ElevationID", HaveValue(Equal(elevation.ID))),
+		)))
 		ended, err := store.EndElevation(
 			ctx, elevation.ID, session.TokenHash, storage.ElevationEnded, now.Add(17*time.Minute),
 		)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(ended.EndReason).To(HaveValue(Equal(storage.ElevationExpired)))
+	})
+
+	It("rejects elevation when installation Owners are stale", func() {
+		root, _, target, session := seedElevationScenario(ctx, store, now)
+		target.Ownership.SyncedAt = now.Add(-storage.OwnershipFreshFor - time.Second)
+		target.SyncedAt = target.Ownership.SyncedAt
+		Expect(store.ReconcileInstallation(ctx, target)).To(Succeed())
+
+		_, err := store.BeginElevation(ctx, storage.ElevationGrant{
+			ID: "stale-elevation", SessionTokenHash: session.TokenHash,
+			RootAccountID: root.ID, TargetID: target.TargetID, StartedAt: now,
+		})
+		Expect(errors.Is(err, storage.ErrConflict)).To(BeTrue())
 	})
 
 	It("records elevated access and invitation writes with Owner notifications", func() {
@@ -307,6 +330,18 @@ var _ = Describe("SQLite store [Unit]", func() {
 				HaveField("Action", action),
 				HaveField("ElevationID", HaveValue(Equal(elevation.ID))),
 			)))
+		}
+		notificationAudit, err := store.ListRootAudit(ctx, storage.RootAuditPageRequest{
+			HistoryPageRequest: storage.HistoryPageRequest{Limit: 20},
+			Categories:         []storage.AuditCategory{storage.AuditCategoryNotification},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(notificationAudit.Items).To(HaveLen(2))
+		for _, event := range notificationAudit.Items {
+			Expect(event.Action).To(Equal("owner.notification.created"))
+			Expect(event.Subject).NotTo(BeNil())
+			Expect(event.Subject.ID).To(Equal(owner.ID))
+			Expect(event.ElevationID).To(HaveValue(Equal(elevation.ID)))
 		}
 	})
 
