@@ -10,6 +10,14 @@ import { mockServer } from './dev/mock-server';
 // `index.html` is rewritten, so the sentinel must not appear in the bundles.
 export default defineConfig({
   base: '/__smyklot_panel_base__/',
+  experimental: {
+    // Assets referenced from JS and CSS resolve relative to their importer
+    // instead of the baked base, so the sentinel stays out of the bundles.
+    // index.html keeps the default handling: the Go server rewrites it.
+    renderBuiltUrl(_filename, { hostType }) {
+      return hostType === 'html' ? undefined : { relative: true };
+    },
+  },
   // The mock no-ops unless `SMYKLOT_PANEL_DEV_MOCK=1`, so the build and the
   // default dev server are unaffected by it being listed here.
   plugins: [svelte(), mockServer()],
