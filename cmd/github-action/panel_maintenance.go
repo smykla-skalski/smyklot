@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	panelMaintenanceInterval = time.Hour
+	panelMaintenanceInterval = 5 * time.Minute
 	deliveryRetention        = 30 * 24 * time.Hour
 )
 

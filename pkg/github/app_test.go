@@ -3,6 +3,7 @@ package github_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -252,6 +253,62 @@ var _ = Describe("GitHub App Client [Unit]", func() {
 
 			_, err = client.ListInstallationRepos(context.Background())
 			Expect(err).To(MatchError(ContainSubstring("incomplete GitHub API pagination")))
+		})
+	})
+
+	Describe("ListOrganizationAdmins", func() {
+		It("requests only admins and follows every page", func() {
+			var requestedPages []string
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				Expect(r.URL.Path).To(Equal("/orgs/smykla-skalski/members"))
+				Expect(r.URL.Query().Get("role")).To(Equal("admin"))
+				Expect(r.URL.Query().Get("per_page")).To(Equal("100"))
+				page := r.URL.Query().Get("page")
+				requestedPages = append(requestedPages, page)
+				if page == "1" {
+					items := make([]map[string]any, 100)
+					for index := range items {
+						items[index] = map[string]any{
+							"id": index + 1, "login": fmt.Sprintf("admin-%d", index+1),
+						}
+					}
+					Expect(json.NewEncoder(w).Encode(items)).To(Succeed())
+
+					return
+				}
+				_, _ = w.Write([]byte(`[{"id": 101, "login": "last", "avatar_url": "https://avatars.example/101"}]`))
+			}))
+
+			client, err := github.NewClient("install-token", server.URL)
+			Expect(err).NotTo(HaveOccurred())
+			admins, err := client.ListOrganizationAdmins(context.Background(), "smykla-skalski")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(requestedPages).To(Equal([]string{"1", "2"}))
+			Expect(admins).To(HaveLen(101))
+			avatarURL := "https://avatars.example/101"
+			Expect(admins[100]).To(Equal(github.User{
+				ID: 101, Login: "last", AvatarURL: &avatarURL,
+			}))
+		})
+
+		It("preserves the permission response status", func() {
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusForbidden)
+				_, _ = w.Write([]byte(`{"message":"Resource not accessible by integration"}`))
+			}))
+			client, err := github.NewClient("install-token", server.URL)
+			Expect(err).NotTo(HaveOccurred())
+			_, err = client.ListOrganizationAdmins(context.Background(), "smykla-skalski")
+			var apiErr *github.APIError
+			Expect(errors.As(err, &apiErr)).To(BeTrue())
+			Expect(apiErr.StatusCode).To(Equal(http.StatusForbidden))
+		})
+
+		It("rejects an empty organization", func() {
+			client, err := github.NewClient("install-token", "")
+			Expect(err).NotTo(HaveOccurred())
+			_, err = client.ListOrganizationAdmins(context.Background(), " ")
+			Expect(err).To(MatchError("GitHub organization must not be empty"))
 		})
 	})
 

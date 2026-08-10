@@ -32,9 +32,15 @@ SELECT
     COALESCE(SUM(CASE
         WHEN r.available = 1
          AND COALESCE(r.enabled_override, t.repository_default_enabled) = 1
-        THEN 1 ELSE 0 END), 0)
+        THEN 1 ELSE 0 END), 0),
+    COALESCE(o.source, CASE WHEN t.kind = 'User' THEN 'personal' ELSE 'organization_admin' END),
+    COALESCE(o.status, 'error'),
+    CASE WHEN o.target_id IS NULL THEN 'ownership has not been synchronized' ELSE o.detail END,
+    COALESCE(o.synced_at, t.synced_at),
+    (SELECT COUNT(*) FROM target_owners owners WHERE owners.target_id = t.id)
 FROM targets t
 JOIN accounts a ON a.id = t.account_id
+LEFT JOIN target_ownership o ON o.target_id = t.id
 LEFT JOIN repositories r ON r.target_id = t.id`
 
 // ReconcileInstallation replaces GitHub-owned catalog state while preserving
@@ -100,6 +106,9 @@ func reconcileInstallation(
 	if err := upsertTarget(ctx, tx, snapshot); err != nil {
 		return err
 	}
+	if err := reconcileOwnership(ctx, tx, snapshot); err != nil {
+		return err
+	}
 	if _, err := tx.ExecContext(
 		ctx,
 		"UPDATE repositories SET available = 0 WHERE target_id = ?",
@@ -110,6 +119,65 @@ func reconcileInstallation(
 	for _, repository := range snapshot.Repositories {
 		if err := upsertRepository(ctx, tx, snapshot.TargetID, repository, snapshot.SyncedAt); err != nil {
 			return err
+		}
+	}
+
+	return nil
+}
+
+func reconcileOwnership(
+	ctx context.Context,
+	tx *sql.Tx,
+	snapshot storage.InstallationSnapshot,
+) error {
+	ownership := snapshot.Ownership
+	if ownership.Source == "" {
+		if snapshot.Kind == storage.TargetUser {
+			ownership = storage.OwnershipSnapshot{
+				Source: storage.OwnershipSourcePersonal, Status: storage.OwnershipStatusFresh,
+				Owners: []storage.Account{snapshot.Account}, SyncedAt: snapshot.SyncedAt,
+			}
+		} else {
+			detail := "ownership has not been synchronized"
+			ownership = storage.OwnershipSnapshot{
+				Source: storage.OwnershipSourceOrganizationAdmin,
+				Status: storage.OwnershipStatusError, Detail: &detail, SyncedAt: snapshot.SyncedAt,
+			}
+		}
+	}
+	for _, owner := range ownership.Owners {
+		if err := upsertCatalogAccount(ctx, tx, owner); err != nil {
+			return fmt.Errorf("reconcile installation owner: %w", err)
+		}
+	}
+	_, err := tx.ExecContext(ctx, `
+INSERT INTO target_ownership (target_id, source, status, detail, synced_at)
+VALUES (?, ?, ?, ?, ?)
+ON CONFLICT(target_id) DO UPDATE SET
+    source = excluded.source,
+    status = excluded.status,
+    detail = excluded.detail,
+    synced_at = excluded.synced_at`,
+		snapshot.TargetID,
+		ownership.Source,
+		ownership.Status,
+		ownership.Detail,
+		formatTime(ownership.SyncedAt),
+	)
+	if err != nil {
+		return fmt.Errorf("upsert installation ownership: %w", err)
+	}
+	if _, err := tx.ExecContext(
+		ctx, "DELETE FROM target_owners WHERE target_id = ?", snapshot.TargetID,
+	); err != nil {
+		return fmt.Errorf("replace installation owners: %w", err)
+	}
+	for _, owner := range ownership.Owners {
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO target_owners (target_id, account_id, synced_at) VALUES (?, ?, ?)`,
+			snapshot.TargetID, owner.ID, formatTime(ownership.SyncedAt),
+		); err != nil {
+			return fmt.Errorf("insert installation owner: %w", err)
 		}
 	}
 
@@ -451,8 +519,8 @@ GROUP BY t.id, a.id`, targetID))
 
 func scanTarget(scanner rowScanner) (storage.Target, error) {
 	var target storage.Target
-	var avatarURL sql.NullString
-	var targetPatch, targetUpdatedAt, accountUpdatedAt string
+	var avatarURL, ownershipDetail sql.NullString
+	var targetPatch, targetUpdatedAt, accountUpdatedAt, ownershipSyncedAt string
 	var enabled int
 
 	err := scanner.Scan(
@@ -473,6 +541,11 @@ func scanTarget(scanner rowScanner) (storage.Target, error) {
 		&accountUpdatedAt,
 		&target.RepositoryCounts.Total,
 		&enabled,
+		&target.Ownership.Source,
+		&target.Ownership.Status,
+		&ownershipDetail,
+		&ownershipSyncedAt,
+		&target.Ownership.OwnerCount,
 	)
 	if err != nil {
 		return storage.Target{}, err
@@ -481,6 +554,11 @@ func scanTarget(scanner rowScanner) (storage.Target, error) {
 	target.Account.AvatarURL = stringPointer(avatarURL)
 	target.RepositoryCounts.Enabled = enabled
 	target.RepositoryCounts.Disabled = target.RepositoryCounts.Total - enabled
+	target.Ownership.Detail = stringPointer(ownershipDetail)
+	target.Ownership.SyncedAt, err = parseTime(ownershipSyncedAt)
+	if err != nil {
+		return storage.Target{}, err
+	}
 
 	return finishTarget(target, targetPatch, targetUpdatedAt, accountUpdatedAt)
 }

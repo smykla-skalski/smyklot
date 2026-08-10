@@ -377,6 +377,7 @@ type Target struct {
 	Revision                 int64
 	UpdatedAt                time.Time
 	RepositoryCounts         RepositoryCounts
+	Ownership                TargetOwnership
 }
 
 // RepositoryFileStatus is the most recently observed state of the repository
@@ -427,6 +428,7 @@ type InstallationSnapshot struct {
 	Kind           TargetKind
 	Account        Account
 	Repositories   []RepositorySnapshot
+	Ownership      OwnershipSnapshot
 	SyncedAt       time.Time
 }
 

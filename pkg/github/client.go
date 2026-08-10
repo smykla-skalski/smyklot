@@ -758,6 +758,65 @@ func (c *Client) ListInstallationRepos(ctx context.Context) ([]Repository, error
 	return repos, nil
 }
 
+// ListOrganizationAdmins retrieves every organization member with the admin
+// role. Requires an installation token with read-only organization Members
+// permission.
+func (c *Client) ListOrganizationAdmins(ctx context.Context, organization string) ([]User, error) {
+	organization = strings.TrimSpace(organization)
+	if organization == "" {
+		return nil, errors.New("GitHub organization must not be empty")
+	}
+
+	var admins []User
+	for page := 1; page <= maxPages; page++ {
+		path := fmt.Sprintf(
+			"/orgs/%s/members?role=admin&per_page=%d&page=%d",
+			url.PathEscape(organization),
+			pageSize,
+			page,
+		)
+		data, err := c.makeRequestWithRetry(ctx, http.MethodGet, path, nil)
+		if err != nil {
+			return nil, err
+		}
+		var response []struct {
+			ID        int64  `json:"id"`
+			Login     string `json:"login"`
+			AvatarURL string `json:"avatar_url"`
+		}
+		if err := json.Unmarshal(data, &response); err != nil {
+			return nil, NewAPIError(ErrResponseParse, 0, http.MethodGet, path, err)
+		}
+		for _, item := range response {
+			admins = append(admins, User{
+				ID: item.ID, Login: item.Login, AvatarURL: stringPointer(item.AvatarURL),
+			})
+		}
+		if len(response) < pageSize {
+			return admins, nil
+		}
+		if page == maxPages {
+			return nil, NewAPIError(
+				ErrIncompletePagination,
+				0,
+				http.MethodGet,
+				path,
+				fmt.Errorf("organization admin list still has a full page after %d items", len(admins)),
+			)
+		}
+	}
+
+	return admins, nil
+}
+
+func stringPointer(value string) *string {
+	if value == "" {
+		return nil
+	}
+
+	return &value
+}
+
 // GetPRInfo retrieves information about a pull request
 //
 // Returns a PRInfo struct with details about the PR including number, state,

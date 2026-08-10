@@ -225,6 +225,36 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 		Expect(targets).To(HaveLen(2))
 	})
 
+	It("persists every GitHub organization admin as an installation Owner", func() {
+		stub.installations = `[{"id":111,"account":{"id":7,"login":"smykla-skalski","type":"Organization"}}]`
+		stub.members = `[
+			{"id":42,"login":"bart","avatar_url":"https://avatars.example/42"},
+			{"id":43,"login":"ada"}
+		]`
+		targetIDs, err := service.SyncCatalog(GinkgoT().Context())
+		Expect(err).NotTo(HaveOccurred())
+		target, err := service.store.GetTarget(GinkgoT().Context(), targetIDs[0])
+		Expect(err).NotTo(HaveOccurred())
+		Expect(target.Ownership.Source).To(Equal(storage.OwnershipSourceOrganizationAdmin))
+		Expect(target.Ownership.Status).To(Equal(storage.OwnershipStatusFresh))
+		Expect(target.Ownership.OwnerCount).To(Equal(2))
+		Expect(target.Ownership.Detail).To(BeNil())
+	})
+
+	It("records installation permission approval without hiding catalog diagnostics", func() {
+		stub.installations = `[{"id":111,"account":{"id":7,"login":"smykla-skalski","type":"Organization"}}]`
+		stub.membersStatus = http.StatusForbidden
+		stub.members = `{"message":"Resource not accessible by integration"}`
+		targetIDs, err := service.SyncCatalog(GinkgoT().Context())
+		Expect(err).NotTo(HaveOccurred())
+		target, err := service.store.GetTarget(GinkgoT().Context(), targetIDs[0])
+		Expect(err).NotTo(HaveOccurred())
+		Expect(target.Available).To(BeTrue())
+		Expect(target.Ownership.Status).To(Equal(storage.OwnershipStatusPermissionPending))
+		Expect(target.Ownership.OwnerCount).To(BeZero())
+		Expect(target.Ownership.Detail).To(HaveValue(ContainSubstring("permission")))
+	})
+
 	It("announces catalog changes after the catalog commits", func() {
 		stub.installations = `[{"id":111,"account":{"id":7,"login":"smykla-skalski","type":"Organization"}}]`
 		stub.repos = `{"repositories":[{"id":31,"name":"smyklot","full_name":"smykla-skalski/smyklot","owner":{"login":"smykla-skalski"}}]}`

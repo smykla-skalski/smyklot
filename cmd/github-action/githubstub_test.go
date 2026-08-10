@@ -32,6 +32,8 @@ type githubStub struct {
 	// each installation can reach. Both are empty unless a spec sweeps
 	installations string
 	repos         string
+	members       string
+	membersStatus int
 
 	// openPRs is what a repository's pull request list reports
 	openPRs string
@@ -58,6 +60,8 @@ func newGitHubStub() *githubStub {
 		prAuthor:      "author",
 		installations: `[]`,
 		repos:         `{"total_count": 0, "repositories": []}`,
+		members:       `[]`,
+		membersStatus: http.StatusOK,
 		openPRs:       `[]`,
 		probeStatus:   http.StatusOK,
 	}
@@ -105,6 +109,12 @@ func (s *githubStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	case r.URL.Path == "/installation/repositories":
 		_, _ = io.WriteString(w, s.repos)
+
+	case strings.HasPrefix(r.URL.Path, "/orgs/") && strings.HasSuffix(r.URL.Path, "/members"):
+		if s.membersStatus != http.StatusOK {
+			w.WriteHeader(s.membersStatus)
+		}
+		_, _ = io.WriteString(w, s.members)
 
 	case strings.HasSuffix(r.URL.Path, "/pulls"):
 		_, _ = io.WriteString(w, s.openPRs)

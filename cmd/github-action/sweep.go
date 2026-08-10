@@ -184,8 +184,10 @@ func (s *server) reconcileSweepInstallation(
 	if s.store == nil {
 		return repos, nil
 	}
-	snapshot, err := installationSnapshot(
+	snapshot, err := completeInstallationSnapshot(
+		ctx,
 		s.cfg.apiBaseURL,
+		client,
 		installation,
 		repos,
 		time.Now().UTC(),

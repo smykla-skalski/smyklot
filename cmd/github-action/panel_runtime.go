@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -190,7 +192,74 @@ func (s *server) loadInstallationSnapshot(
 		return storage.InstallationSnapshot{}, NewGitHubError(ErrListRepos, err)
 	}
 
-	return installationSnapshot(s.cfg.apiBaseURL, installation, repositories, syncedAt)
+	return completeInstallationSnapshot(
+		ctx, s.cfg.apiBaseURL, client, installation, repositories, syncedAt,
+	)
+}
+
+func completeInstallationSnapshot(
+	ctx context.Context,
+	apiURL string,
+	client *github.Client,
+	installation github.Installation,
+	repositories []github.Repository,
+	syncedAt time.Time,
+) (storage.InstallationSnapshot, error) {
+	snapshot, err := installationSnapshot(apiURL, installation, repositories, syncedAt)
+	if err != nil {
+		return storage.InstallationSnapshot{}, err
+	}
+	snapshot.Ownership = installationOwnership(ctx, apiURL, client, snapshot)
+
+	return snapshot, nil
+}
+
+func installationOwnership(
+	ctx context.Context,
+	apiURL string,
+	client *github.Client,
+	snapshot storage.InstallationSnapshot,
+) storage.OwnershipSnapshot {
+	if snapshot.Kind == storage.TargetUser {
+		return storage.OwnershipSnapshot{
+			Source: storage.OwnershipSourcePersonal, Status: storage.OwnershipStatusFresh,
+			Owners: []storage.Account{snapshot.Account}, SyncedAt: snapshot.SyncedAt,
+		}
+	}
+	ownership := storage.OwnershipSnapshot{
+		Source:   storage.OwnershipSourceOrganizationAdmin,
+		Status:   storage.OwnershipStatusFresh,
+		SyncedAt: snapshot.SyncedAt,
+	}
+	admins, err := client.ListOrganizationAdmins(ctx, snapshot.Account.Login)
+	if err != nil {
+		var apiErr *github.APIError
+		detail := "organization owner synchronization failed"
+		ownership.Status = storage.OwnershipStatusError
+		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusForbidden {
+			detail = "organization Members read permission requires installation approval"
+			ownership.Status = storage.OwnershipStatusPermissionPending
+		}
+		ownership.Detail = &detail
+
+		return ownership
+	}
+	for _, admin := range admins {
+		account, accountErr := adminpanel.NewGitHubAccount(
+			apiURL, admin.ID, admin.Login, admin.Name, admin.AvatarURL, snapshot.SyncedAt,
+		)
+		if accountErr != nil {
+			detail := "organization owner synchronization returned an invalid identity"
+			ownership.Status = storage.OwnershipStatusError
+			ownership.Detail = &detail
+			ownership.Owners = nil
+
+			return ownership
+		}
+		ownership.Owners = append(ownership.Owners, account)
+	}
+
+	return ownership
 }
 
 func installationSnapshot(
