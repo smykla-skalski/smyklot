@@ -742,6 +742,45 @@ END`)
 		)))
 	})
 
+	It("lists Root accounts with system roles and installation counts", func() {
+		root, target := seedInstallation(ctx, store, now)
+		Expect(store.ReconcileSuperRoot(ctx, root.ID, now)).To(Succeed())
+		viewer := root
+		viewer.ID = "github:user:root-page"
+		viewer.SubjectID = "root-page"
+		viewer.Login = "root-page-user"
+		viewer.DisplayName = "Root Page User"
+		Expect(store.UpsertAccount(ctx, viewer)).To(Succeed())
+		_, err := store.CreatePanelUser(ctx, storage.PanelUserCreate{
+			AccountID: viewer.ID, GlobalRole: storage.PanelRoleNone,
+			ActorAccountID: root.ID, ChangedAt: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		_, err = store.SetTargetAccess(ctx, storage.TargetAccessChange{
+			TargetID: target.TargetID, SubjectAccountID: viewer.ID, ActorAccountID: root.ID,
+			Role: rolePointer(storage.PanelRoleEditor), ChangedAt: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		page, err := store.ListRootPanelUserPage(ctx, storage.RootPanelUserPageRequest{
+			Limit: 10, Order: storage.RootPanelUserRoleDescending,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(page.Total).To(Equal(2))
+		Expect(page.Items).To(HaveLen(2))
+		Expect(page.Items[0].User.SystemRole).To(Equal(storage.SystemRoleSuperRoot))
+		Expect(page.Items[0].OwnedInstallationCount).To(Equal(1))
+		Expect(page.Items[1].AssignedInstallationCount).To(Equal(1))
+
+		filtered, err := store.ListRootPanelUserPage(ctx, storage.RootPanelUserPageRequest{
+			Limit: 10, Query: "PAGE", SystemRoles: []storage.SystemRole{storage.SystemRoleNone},
+			Statuses: []storage.PanelUserStatus{storage.PanelUserActive},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(filtered.Total).To(Equal(1))
+		Expect(filtered.Items[0].User.Account.ID).To(Equal(viewer.ID))
+	})
+
 	It("creates, reissues, expires, and atomically responds to named invitations", func() {
 		owner, target := seedInstallation(ctx, store, now)
 		Expect(store.UpsertAccount(ctx, owner)).To(Succeed())

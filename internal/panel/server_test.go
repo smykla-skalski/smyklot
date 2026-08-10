@@ -818,6 +818,21 @@ func TestPanelRootOverview(t *testing.T) {
 		t, http.MethodGet, "/panel/api/v1/root/history/audit?category=unknown", nil, rootSession,
 	)
 	requireResponse(t, invalid, "invalid Root audit category", http.StatusBadRequest)
+
+	rootUsers := harness.request(
+		t, http.MethodGet,
+		"/panel/api/v1/root/access/users?system_role=super_root&status=active&sort=role_desc&limit=10",
+		nil, rootSession,
+	)
+	requireResponse(
+		t, rootUsers, "Root users", http.StatusOK,
+		`"system_role":"super_root"`, `"owned_installations":1`,
+		`"assigned_installations":0`, `"can_manage_system_role":false`,
+	)
+	invalidUsers := harness.request(
+		t, http.MethodGet, "/panel/api/v1/root/access/users?system_role=owner", nil, rootSession,
+	)
+	requireResponse(t, invalidUsers, "invalid Root user role", http.StatusBadRequest)
 }
 
 func TestPanelRootElevationAndOwnerNotifications(t *testing.T) {

@@ -25,6 +25,7 @@ type AccessStore interface {
 	GetPanelUser(context.Context, string) (PanelUser, error)
 	ListPanelUsers(context.Context) ([]PanelUser, error)
 	ListPanelUserPage(context.Context, PanelUserPageRequest) (PanelUserPage, error)
+	ListRootPanelUserPage(context.Context, RootPanelUserPageRequest) (RootPanelUserPage, error)
 	ListTargetPanelUsers(context.Context, string, time.Time) ([]TargetPanelUser, error)
 	ListTargetPanelUserPage(context.Context, string, time.Time, PanelUserPageRequest) (TargetPanelUserPage, error)
 	ListAccessDecisions(context.Context, string, *string, int) ([]AccessDecision, error)

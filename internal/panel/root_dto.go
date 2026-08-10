@@ -101,6 +101,21 @@ type rootAuditResponse struct {
 	CreatedAt    time.Time             `json:"created_at"`
 }
 
+type rootPanelUserResponse struct {
+	Account               accountResponse         `json:"account"`
+	SystemRole            storage.SystemRole      `json:"system_role"`
+	Status                storage.PanelUserStatus `json:"status"`
+	BanReason             *string                 `json:"ban_reason,omitempty"`
+	BannedAt              *time.Time              `json:"banned_at,omitempty"`
+	RemovedAt             *time.Time              `json:"removed_at,omitempty"`
+	LastLoginAt           *time.Time              `json:"last_login_at,omitempty"`
+	Revision              int64                   `json:"revision"`
+	OwnedInstallations    int                     `json:"owned_installations"`
+	AssignedInstallations int                     `json:"assigned_installations"`
+	Manageable            bool                    `json:"manageable"`
+	CanManageSystemRole   bool                    `json:"can_manage_system_role"`
+}
+
 func rootInstallationDTO(target storage.Target, now time.Time) rootInstallationResponse {
 	return rootInstallationResponse{
 		ID: target.ID, InstallationID: target.InstallationID, Type: target.Kind,
@@ -210,6 +225,32 @@ func rootFailurePageDTO(page storage.RootFailurePage) pageResponse[rootFailureRe
 	}
 
 	return pageResponse[rootFailureResponse]{
+		Items: items, NextCursor: offsetCursor(page.NextOffset), Total: page.Total,
+	}
+}
+
+func rootPanelUserPageDTO(
+	page storage.RootPanelUserPage,
+	actor storage.Account,
+	actorRole storage.SystemRole,
+) pageResponse[rootPanelUserResponse] {
+	items := make([]rootPanelUserResponse, 0, len(page.Items))
+	for _, item := range page.Items {
+		user := item.User
+		otherAccount := actor.ID != user.Account.ID
+		items = append(items, rootPanelUserResponse{
+			Account: accountDTO(user.Account), SystemRole: user.SystemRole, Status: user.Status,
+			BanReason: user.BanReason, BannedAt: user.BannedAt, RemovedAt: user.RemovedAt,
+			LastLoginAt: user.LastLoginAt, Revision: user.Revision,
+			OwnedInstallations:    item.OwnedInstallationCount,
+			AssignedInstallations: item.AssignedInstallationCount,
+			Manageable:            otherAccount && user.SystemRole == storage.SystemRoleNone,
+			CanManageSystemRole: otherAccount && actorRole == storage.SystemRoleSuperRoot &&
+				user.SystemRole != storage.SystemRoleSuperRoot,
+		})
+	}
+
+	return pageResponse[rootPanelUserResponse]{
 		Items: items, NextCursor: offsetCursor(page.NextOffset), Total: page.Total,
 	}
 }
