@@ -14,8 +14,13 @@
 
   import { formatDateTime, formatRelative, formatTimestamp } from '../lib/format';
   import type { FilterSection } from '../lib/filter-menu';
-  import { readTimeDisplay, writeTimeDisplay } from '../lib/preferences';
   import type { TimeDisplay } from '../lib/preferences';
+  import {
+    EPHEMERAL_PREFS,
+    prefOption,
+    prefText,
+    type PrefsAccessor,
+  } from '../lib/preferences-sync';
   import type {
     AuditEntry,
     AuditCategory,
@@ -126,8 +131,9 @@
     fetchAudit,
     fetchFailures,
     context = 'installation',
-    section = 'audit',
+    section,
     onSection,
+    prefs = EPHEMERAL_PREFS,
   }: {
     targetId: string;
     refreshVersion: number;
@@ -136,17 +142,61 @@
     context?: HistoryContext;
     section?: HistoryType;
     onSection?: (section: HistoryType) => void;
+    prefs?: PrefsAccessor;
   } = $props();
 
-  let historyType = $state<HistoryType>('audit');
-  let search = $state('');
-  let appliedQuery = $state('');
-  let sort = $state<HistorySort>('newest');
-  let auditScope = $state<AuditScope>('all');
-  let auditChange = $state<AuditChange>('all');
+  // Table state deliberately captures the preferences at mount; remote
+  // changes apply on the next remount instead of mid-interaction.
+  // svelte-ignore state_referenced_locally
+  const initialPrefs = prefs;
+  // svelte-ignore state_referenced_locally
+  const initialSection = section;
+
+  const HISTORY_SORTS: readonly HistorySort[] = [
+    'newest',
+    'oldest',
+    'actor_asc',
+    'actor_desc',
+    'target_asc',
+    'target_desc',
+    'change_asc',
+    'change_desc',
+    'status_asc',
+    'status_desc',
+    'repository_asc',
+    'repository_desc',
+  ];
+
+  let historyType = $state<HistoryType>(
+    initialSection ??
+      prefOption(initialPrefs.get('table.history.type'), ['audit', 'failures'], 'audit'),
+  );
+  let search = $state(prefText(initialPrefs.get('table.history.search')));
+  let appliedQuery = $state(prefText(initialPrefs.get('table.history.search')));
+  let sort = $state<HistorySort>(
+    prefOption(initialPrefs.get('table.history.sort'), HISTORY_SORTS, 'newest'),
+  );
+  let auditScope = $state<AuditScope>(
+    prefOption(initialPrefs.get('table.history.scope'), ['all', 'account', 'repositories'], 'all'),
+  );
+  let auditChange = $state<AuditChange>(
+    prefOption(
+      initialPrefs.get('table.history.change'),
+      ['all', 'enablement', 'repository', 'account'],
+      'all',
+    ),
+  );
   let auditCategories = $state<AuditCategory[]>([]);
-  let failureKind = $state<FailureKind>('all');
-  let timeDisplay = $state<TimeDisplay>(readTimeDisplay());
+  let failureKind = $state<FailureKind>(
+    prefOption(
+      initialPrefs.get('table.history.failure_kind'),
+      ['all', 'retryable', 'permanent'],
+      'all',
+    ),
+  );
+  let timeDisplay = $state<TimeDisplay>(
+    prefOption(initialPrefs.get('history.time_display'), ['relative', 'absolute'], 'relative'),
+  );
   const limit = 20;
   let auditPage = $state<Page<AuditEntry> | null>(null);
   let failurePage = $state<Page<DeliveryFailure> | null>(null);
@@ -284,7 +334,7 @@
   });
 
   $effect(() => {
-    if (section !== historyType) {
+    if (section !== undefined && section !== historyType) {
       historyType = section;
       sort = 'newest';
     }
@@ -359,8 +409,20 @@
 
   function selectTimeDisplay(value: TimeDisplay): void {
     timeDisplay = value;
-    writeTimeDisplay(value);
   }
+
+  // One persistence effect instead of a write at every mutation site: any
+  // change to the tracked state syncs, and the initial run is a no-op because
+  // the state was just read from the same preferences.
+  $effect(() => {
+    prefs.set('table.history.type', historyType);
+    prefs.set('table.history.sort', sort);
+    prefs.set('table.history.scope', auditScope);
+    prefs.set('table.history.change', auditChange);
+    prefs.set('table.history.failure_kind', failureKind);
+    prefs.set('table.history.search', appliedQuery);
+    prefs.set('history.time_display', timeDisplay);
+  });
 
   function toggleSort(
     column: 'actor' | 'target' | 'change' | 'status' | 'repository' | 'when',

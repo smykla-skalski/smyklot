@@ -5,11 +5,21 @@ import InvitationPage from './components/InvitationPage.svelte';
 import './app.css';
 import { createPanelApi } from './lib/api';
 import { PANEL_ICON_PATH, panelUrl, readBasePath, readPanelBuild } from './lib/base';
-import { readThemeDisplay, resolveThemeDisplay } from './lib/preferences';
+import { DEFAULT_THEME_DISPLAY, isThemeDisplay, resolveThemeDisplay } from './lib/preferences';
+import { effectivePref, migrateLegacyPreferences, readPrefsDoc } from './lib/preferences-sync';
 import { createPanelRouter, parseInvitationToken } from './lib/routes';
 
+migrateLegacyPreferences();
+
 const target = document.querySelector('#app');
-const theme = resolveThemeDisplay(readThemeDisplay());
+// The synced document is read before mount — regardless of which account it
+// belongs to — so the first paint carries no theme flash.
+const storedTheme = effectivePref(readPrefsDoc(), 'theme');
+const theme = resolveThemeDisplay(
+  typeof storedTheme === 'string' && isThemeDisplay(storedTheme)
+    ? storedTheme
+    : DEFAULT_THEME_DISPLAY,
+);
 
 document.documentElement.dataset.theme = theme;
 

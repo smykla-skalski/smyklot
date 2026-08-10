@@ -14,6 +14,13 @@
 
   import { formatDateTime, formatRelative, formatTimestamp } from '../lib/format';
   import type { FilterSection } from '../lib/filter-menu';
+  import {
+    EPHEMERAL_PREFS,
+    prefList,
+    prefOption,
+    prefText,
+    type PrefsAccessor,
+  } from '../lib/preferences-sync';
   import type {
     AccessDecision,
     AddTargetInvitationInput,
@@ -127,6 +134,7 @@
 
   const {
     section: activeSection,
+    prefs = EPHEMERAL_PREFS,
     targetId,
     targetName,
     actorTargetRole,
@@ -143,6 +151,7 @@
     fetchUserDecisions,
   }: {
     section: ManagementSection;
+    prefs?: PrefsAccessor;
     targetId: string;
     targetName: string;
     actorTargetRole: InstallationRole;
@@ -173,6 +182,11 @@
     fetchUserDecisions: (accountId: string, targetId: string) => Promise<AccessDecision[]>;
   } = $props();
 
+  // Table state deliberately captures the preferences at mount; remote
+  // changes apply on the next remount instead of mid-interaction.
+  // svelte-ignore state_referenced_locally
+  const initialPrefs = prefs;
+
   let userPage = $state<Page<PanelUser> | null>(null);
   let invitationPage = $state<Page<PanelInvitation> | null>(null);
   let loadingUsers = $state(true);
@@ -184,18 +198,71 @@
   let actionFailure = $state<string | null>(null);
   let feedback = $state('');
 
-  let userSearch = $state('');
-  let userQuery = $state('');
-  let userSort = $state<PanelUserSort>('name_asc');
-  let userRoles = $state<InstallationRole[]>([]);
-  let userStatuses = $state<PanelUserListStatus[]>([]);
+  const USER_SORTS: readonly PanelUserSort[] = [
+    'name_asc',
+    'name_desc',
+    'role_asc',
+    'role_desc',
+    'updated_newest',
+    'updated_oldest',
+    'login_newest',
+    'login_oldest',
+  ];
+  const INVITATION_SORTS: readonly InvitationSort[] = [
+    'created_newest',
+    'created_oldest',
+    'expiry_soonest',
+    'expiry_latest',
+    'name_asc',
+    'name_desc',
+    'role_asc',
+    'role_desc',
+  ];
+
+  let userSearch = $state(prefText(initialPrefs.get('table.users.search')));
+  let userQuery = $state(prefText(initialPrefs.get('table.users.search')));
+  let userSort = $state<PanelUserSort>(
+    prefOption(initialPrefs.get('table.users.sort'), USER_SORTS, 'name_asc'),
+  );
+  let userRoles = $state<InstallationRole[]>(
+    prefList(initialPrefs.get('table.users.roles'), ['none', 'viewer', 'editor', 'admin']),
+  );
+  let userStatuses = $state<PanelUserListStatus[]>(
+    prefList(initialPrefs.get('table.users.statuses'), ['active', 'banned', 'suspended']),
+  );
   const userLimit = 20;
 
-  let invitationSearch = $state('');
-  let invitationQuery = $state('');
-  let invitationSort = $state<InvitationSort>('name_asc');
-  let invitationRoles = $state<Exclude<InstallationRole, 'none'>[]>([]);
-  let invitationStatuses = $state<InvitationStatus[]>([]);
+  let invitationSearch = $state(prefText(initialPrefs.get('table.invitations.search')));
+  let invitationQuery = $state(prefText(initialPrefs.get('table.invitations.search')));
+  let invitationSort = $state<InvitationSort>(
+    prefOption(initialPrefs.get('table.invitations.sort'), INVITATION_SORTS, 'name_asc'),
+  );
+  let invitationRoles = $state<Exclude<InstallationRole, 'none'>[]>(
+    prefList(initialPrefs.get('table.invitations.roles'), ['viewer', 'editor', 'admin']),
+  );
+  let invitationStatuses = $state<InvitationStatus[]>(
+    prefList(initialPrefs.get('table.invitations.statuses'), [
+      'pending',
+      'accepted',
+      'declined',
+      'revoked',
+      'expired',
+    ]),
+  );
+
+  // One persistence effect instead of a write at every mutation site: any
+  // change to the tracked state syncs, and the initial run is a no-op because
+  // the state was just read from the same preferences.
+  $effect(() => {
+    prefs.set('table.users.sort', userSort);
+    prefs.set('table.users.roles', [...userRoles]);
+    prefs.set('table.users.statuses', [...userStatuses]);
+    prefs.set('table.users.search', userQuery);
+    prefs.set('table.invitations.sort', invitationSort);
+    prefs.set('table.invitations.roles', [...invitationRoles]);
+    prefs.set('table.invitations.statuses', [...invitationStatuses]);
+    prefs.set('table.invitations.search', invitationQuery);
+  });
   const invitationLimit = 20;
 
   let addModalOpen = $state(false);

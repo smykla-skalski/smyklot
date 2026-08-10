@@ -13,7 +13,6 @@ const SIDEBAR_DISPLAY_KEY = 'smyklot.panel.sidebar.display';
 const THEME_DISPLAY_KEY = 'smyklot.panel.theme';
 
 type PreferenceReader = Pick<Storage, 'getItem'>;
-type PreferenceWriter = Pick<Storage, 'setItem'>;
 
 function browserStorage(): Storage | null {
   if (typeof window === 'undefined') return null;
@@ -25,15 +24,15 @@ function browserStorage(): Storage | null {
   }
 }
 
-function isTimeDisplay(value: string | null): value is TimeDisplay {
+export function isTimeDisplay(value: string | null): value is TimeDisplay {
   return value === 'relative' || value === 'absolute';
 }
 
-function isSidebarDisplay(value: string | null): value is SidebarDisplay {
+export function isSidebarDisplay(value: string | null): value is SidebarDisplay {
   return value === 'expanded' || value === 'collapsed';
 }
 
-function isThemeDisplay(value: string | null): value is ThemeDisplay {
+export function isThemeDisplay(value: string | null): value is ThemeDisplay {
   return value === 'system' || value === 'light' || value === 'dark';
 }
 
@@ -63,19 +62,6 @@ export function readTimeDisplay(storage: PreferenceReader | null = browserStorag
   }
 }
 
-export function writeTimeDisplay(
-  value: TimeDisplay,
-  storage: PreferenceWriter | null = browserStorage(),
-): void {
-  if (storage === null) return;
-
-  try {
-    storage.setItem(TIME_DISPLAY_KEY, value);
-  } catch {
-    // Browser preferences are best-effort and must never block the panel
-  }
-}
-
 export function readLastInstallation(
   storage: PreferenceReader | null = browserStorage(),
 ): string | null {
@@ -86,19 +72,6 @@ export function readLastInstallation(
     return value === undefined || value === '' ? null : value;
   } catch {
     return null;
-  }
-}
-
-export function writeLastInstallation(
-  account: string,
-  storage: PreferenceWriter | null = browserStorage(),
-): void {
-  if (storage === null) return;
-
-  try {
-    storage.setItem(LAST_INSTALLATION_KEY, account);
-  } catch {
-    // Browser preferences are best-effort and must never block the panel
   }
 }
 
@@ -115,19 +88,6 @@ export function readSidebarDisplay(
   }
 }
 
-export function writeSidebarDisplay(
-  value: SidebarDisplay,
-  storage: PreferenceWriter | null = browserStorage(),
-): void {
-  if (storage === null) return;
-
-  try {
-    storage.setItem(SIDEBAR_DISPLAY_KEY, value);
-  } catch {
-    // Browser preferences are best-effort and must never block the panel
-  }
-}
-
 export function readThemeDisplay(
   storage: PreferenceReader | null = browserStorage(),
   fallback: ThemeDisplay = DEFAULT_THEME_DISPLAY,
@@ -139,18 +99,5 @@ export function readThemeDisplay(
     return isThemeDisplay(value) ? value : fallback;
   } catch {
     return fallback;
-  }
-}
-
-export function writeThemeDisplay(
-  value: ThemeDisplay,
-  storage: PreferenceWriter | null = browserStorage(),
-): void {
-  if (storage === null) return;
-
-  try {
-    storage.setItem(THEME_DISPLAY_KEY, value);
-  } catch {
-    // Browser preferences are best-effort and must never block the panel
   }
 }

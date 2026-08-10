@@ -14,15 +14,8 @@
   import type { PanelApi } from './lib/api';
   import type { PanelBuild } from './lib/base';
   import { LatestRequest } from './lib/latest-request';
-  import {
-    readLastInstallation,
-    readSidebarDisplay,
-    readThemeDisplay,
-    type ThemeDisplay,
-    writeLastInstallation,
-    writeSidebarDisplay,
-    writeThemeDisplay,
-  } from './lib/preferences';
+  import { DEFAULT_THEME_DISPLAY, isThemeDisplay, type ThemeDisplay } from './lib/preferences';
+  import { createPrefsSync, prefText } from './lib/preferences-sync';
   import {
     resolvePanelRoute,
     rootSection,
@@ -66,8 +59,15 @@
   let activeRootRoute = $state<RootRoute>({ rootView: 'overview' });
   let streamReady = $state(false);
   let revokedReason = $state<string | null>(null);
-  let sidebarCollapsed = $state(readSidebarDisplay() === 'collapsed');
-  let theme = $state<ThemeDisplay>(readThemeDisplay());
+  const prefs = createPrefsSync();
+
+  function storedTheme(): ThemeDisplay {
+    const value = prefs.get('theme');
+    return typeof value === 'string' && isThemeDisplay(value) ? value : DEFAULT_THEME_DISPLAY;
+  }
+
+  let sidebarCollapsed = $state(prefs.get('sidebar') === 'collapsed');
+  let theme = $state<ThemeDisplay>(storedTheme());
   const systemDarkTheme = new MediaQuery('prefers-color-scheme: dark');
   const resolvedTheme = $derived(
     theme === 'system' && systemDarkTheme.current ? 'dark' : theme === 'system' ? 'light' : theme,
@@ -132,6 +132,7 @@
         selectedId = null;
         return;
       }
+      prefs.adoptAccount(viewer.account.id);
       if (!(await refreshTargets())) return;
       await activateRoute(router.current(), 'replace');
       historyVersion += 1;
@@ -190,10 +191,11 @@
     }
 
     const installationRoute = requested !== null && !('rootView' in requested) ? requested : null;
+    const lastInstallation = prefText(prefs.get('last_installation'));
     const resolved = resolvePanelRoute(
       targets.map((target) => target.account.login),
       installationRoute,
-      readLastInstallation(),
+      lastInstallation === '' ? null : lastInstallation,
     );
     if (resolved === null) {
       selectedId = null;
@@ -207,7 +209,7 @@
     rootMode = false;
     selectedId = target.id;
     view = resolved.view;
-    writeLastInstallation(target.account.login);
+    prefs.set('last_installation', target.account.login);
     const canonical = routeFor(target, resolved.view);
 
     if (navigation === 'push') {
@@ -413,7 +415,7 @@
       } else if (selectedId === null) {
         await activateRoute(router.current(), 'replace');
       } else if (selectedTarget !== null) {
-        writeLastInstallation(selectedTarget.account.login);
+        prefs.set('last_installation', selectedTarget.account.login);
         router.replace(routeFor(selectedTarget, view));
       }
       if (selectedId !== null) {
@@ -460,14 +462,34 @@
 
   $effect(() => {
     if (!streamReady) return;
-    const stream = api.openStream({
-      onResync: refreshAccessFromStream,
-      onChange: (event) =>
-        event.type === 'access.changed' ? refreshAccessFromStream() : refreshFromStreamSafely(),
-      onRevoked: (event) => revokeAccess(event.reason),
-    });
-    return () => stream.stop();
+    const stream = api.openStream(
+      {
+        onResync: refreshAccessFromStream,
+        onChange: (event) =>
+          event.type === 'access.changed' ? refreshAccessFromStream() : refreshFromStreamSafely(),
+        onRevoked: (event) => revokeAccess(event.reason),
+        onPrefsReady: (info) => prefs.onPrefsReady(info),
+        onPrefsChanged: (event) => prefs.onPrefsChanged(event),
+        onPrefsRejected: (keys) => prefs.onPrefsRejected(keys),
+      },
+      prefs.dialQuery,
+    );
+    prefs.attach(stream.send);
+    return () => {
+      prefs.detach();
+      stream.stop();
+    };
   });
+
+  // Preference changes from the user's other sessions apply live to the
+  // app-level controls; table state is read at mount instead, so remote
+  // changes there land on the next remount rather than mid-interaction.
+  $effect(() =>
+    prefs.subscribe((keys) => {
+      if (keys.includes('theme')) theme = storedTheme();
+      if (keys.includes('sidebar')) sidebarCollapsed = prefs.get('sidebar') === 'collapsed';
+    }),
+  );
 
   $effect(() =>
     router.subscribe((route) => {
@@ -507,12 +529,12 @@
 
   function toggleSidebar(): void {
     sidebarCollapsed = !sidebarCollapsed;
-    writeSidebarDisplay(sidebarCollapsed ? 'collapsed' : 'expanded');
+    prefs.set('sidebar', sidebarCollapsed ? 'collapsed' : 'expanded');
   }
 
   function selectTheme(nextTheme: ThemeDisplay): void {
     theme = nextTheme;
-    writeThemeDisplay(nextTheme);
+    prefs.set('theme', nextTheme);
   }
 
   $effect(() => {
@@ -675,6 +697,7 @@
                   onUpdate={updateRepository}
                   onChanged={() => repositoryChanged(selectedTarget.id)}
                   readOnly={!selectedTarget.capabilities.write}
+                  {prefs}
                 />
               {/key}
             </div>
@@ -683,6 +706,7 @@
               {#key selectedTarget.id}
                 <UserManagement
                   section={view}
+                  {prefs}
                   targetId={selectedTarget.id}
                   targetName={selectedTarget.account.display_name}
                   actorTargetRole={selectedTarget.effective_role}
@@ -707,6 +731,7 @@
                   refreshVersion={historyVersion}
                   fetchAudit={(request) => api.fetchAudit(selectedTarget.id, request)}
                   fetchFailures={(request) => api.fetchFailures(selectedTarget.id, request)}
+                  {prefs}
                 />
               {/key}
             </div>

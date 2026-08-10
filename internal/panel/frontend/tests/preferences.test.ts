@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import {
   DEFAULT_SIDEBAR_DISPLAY,
@@ -9,10 +9,6 @@ import {
   readThemeDisplay,
   readTimeDisplay,
   resolveThemeDisplay,
-  writeLastInstallation,
-  writeSidebarDisplay,
-  writeThemeDisplay,
-  writeTimeDisplay,
 } from '../src/lib/preferences';
 
 describe('history display preference', () => {
@@ -28,15 +24,7 @@ describe('history display preference', () => {
     expect(readTimeDisplay({ getItem: () => 'calendar' })).toBe(DEFAULT_TIME_DISPLAY);
   });
 
-  it('writes the selected display mode', () => {
-    const setItem = vi.fn();
-
-    writeTimeDisplay('absolute', { setItem });
-
-    expect(setItem).toHaveBeenCalledWith('smyklot.panel.history.time-display', 'absolute');
-  });
-
-  it('continues when browser storage cannot be read or written', () => {
+  it('continues when browser storage cannot be read', () => {
     expect(
       readTimeDisplay({
         getItem: () => {
@@ -44,14 +32,6 @@ describe('history display preference', () => {
         },
       }),
     ).toBe(DEFAULT_TIME_DISPLAY);
-
-    expect(() =>
-      writeTimeDisplay('absolute', {
-        setItem: () => {
-          throw new DOMException('Storage is full', 'QuotaExceededError');
-        },
-      }),
-    ).not.toThrow();
   });
 });
 
@@ -64,14 +44,6 @@ describe('last installation preference', () => {
     expect(readLastInstallation({ getItem: () => '   ' })).toBeNull();
   });
 
-  it('writes the selected account slug', () => {
-    const setItem = vi.fn();
-
-    writeLastInstallation('smykla-skalski', { setItem });
-
-    expect(setItem).toHaveBeenCalledWith('smyklot.panel.last-installation', 'smykla-skalski');
-  });
-
   it('continues when browser storage is unavailable', () => {
     expect(
       readLastInstallation({
@@ -80,14 +52,6 @@ describe('last installation preference', () => {
         },
       }),
     ).toBeNull();
-
-    expect(() =>
-      writeLastInstallation('bartsmykla', {
-        setItem: () => {
-          throw new DOMException('Storage is full', 'QuotaExceededError');
-        },
-      }),
-    ).not.toThrow();
   });
 });
 
@@ -104,14 +68,6 @@ describe('sidebar display preference', () => {
     expect(readSidebarDisplay({ getItem: () => 'hidden' })).toBe(DEFAULT_SIDEBAR_DISPLAY);
   });
 
-  it('writes the selected sidebar display', () => {
-    const setItem = vi.fn();
-
-    writeSidebarDisplay('collapsed', { setItem });
-
-    expect(setItem).toHaveBeenCalledWith('smyklot.panel.sidebar.display', 'collapsed');
-  });
-
   it('continues when browser storage is unavailable', () => {
     expect(
       readSidebarDisplay({
@@ -120,14 +76,6 @@ describe('sidebar display preference', () => {
         },
       }),
     ).toBe(DEFAULT_SIDEBAR_DISPLAY);
-
-    expect(() =>
-      writeSidebarDisplay('collapsed', {
-        setItem: () => {
-          throw new DOMException('Storage is full', 'QuotaExceededError');
-        },
-      }),
-    ).not.toThrow();
   });
 });
 
@@ -152,14 +100,6 @@ describe('theme preference', () => {
     expect(resolveThemeDisplay('dark', 'light')).toBe('dark');
   });
 
-  it('writes the selected theme', () => {
-    const setItem = vi.fn();
-
-    writeThemeDisplay('system', { setItem });
-
-    expect(setItem).toHaveBeenCalledWith('smyklot.panel.theme', 'system');
-  });
-
   it('continues when browser storage is unavailable', () => {
     expect(
       readThemeDisplay(
@@ -171,13 +111,5 @@ describe('theme preference', () => {
         'dark',
       ),
     ).toBe('dark');
-
-    expect(() =>
-      writeThemeDisplay('light', {
-        setItem: () => {
-          throw new DOMException('Storage is full', 'QuotaExceededError');
-        },
-      }),
-    ).not.toThrow();
   });
 });

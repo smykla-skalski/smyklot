@@ -19,6 +19,15 @@
   import type { FilterSection } from '../lib/filter-menu';
   import { formatRelative, formatTimestamp } from '../lib/format';
   import {
+    decodeRepositorySettingFilter,
+    encodeRepositorySettingFilter,
+    EPHEMERAL_PREFS,
+    prefList,
+    prefOption,
+    prefText,
+    type PrefsAccessor,
+  } from '../lib/preferences-sync';
+  import {
     shouldClearFailureAfterAutomaticRefresh,
     shouldReloadRepositoryAfterSaveFailure,
     shouldReplaceFailureWithReadError,
@@ -167,6 +176,7 @@
     onUpdate,
     onChanged,
     readOnly = false,
+    prefs = EPHEMERAL_PREFS,
   }: {
     targetId: string;
     refreshVersion: number;
@@ -175,14 +185,50 @@
     onUpdate: (repositoryId: string, input: RepositorySettingsInput) => Promise<RepositoryDetail>;
     onChanged: (detail: RepositoryDetail) => void;
     readOnly?: boolean;
+    prefs?: PrefsAccessor;
   } = $props();
 
-  let search = $state('');
-  let appliedQuery = $state('');
-  let sort = $state<RepositorySort>('name_asc');
-  let stateFilter = $state<RepositoryStateFilter>('all');
-  let fileFilters = $state<RepositoryFileStatus[]>([]);
-  let settingFilter = $state<RepositorySettingFilter>({ mode: 'all' });
+  // Table state deliberately captures the preferences at mount; remote
+  // changes apply on the next remount instead of mid-interaction.
+  // svelte-ignore state_referenced_locally
+  const initialPrefs = prefs;
+
+  const REPOSITORY_SORTS: readonly RepositorySort[] = [
+    'name_asc',
+    'name_desc',
+    'file_asc',
+    'file_desc',
+    'overrides_asc',
+    'overrides_desc',
+    'newest',
+    'oldest',
+  ];
+
+  let search = $state(prefText(initialPrefs.get('table.repositories.search')));
+  let appliedQuery = $state(prefText(initialPrefs.get('table.repositories.search')));
+  let sort = $state<RepositorySort>(
+    prefOption(initialPrefs.get('table.repositories.sort'), REPOSITORY_SORTS, 'name_asc'),
+  );
+  let stateFilter = $state<RepositoryStateFilter>(
+    prefOption(initialPrefs.get('table.repositories.state'), ['all', 'enabled', 'disabled'], 'all'),
+  );
+  let fileFilters = $state<RepositoryFileStatus[]>(
+    prefList(initialPrefs.get('table.repositories.files'), FILE_STATUSES),
+  );
+  let settingFilter = $state<RepositorySettingFilter>(
+    decodeRepositorySettingFilter(initialPrefs.get('table.repositories.settings')),
+  );
+
+  // One persistence effect instead of a write at every mutation site: any
+  // change to the tracked state syncs, and the initial run is a no-op because
+  // the state was just read from the same preferences.
+  $effect(() => {
+    prefs.set('table.repositories.sort', sort);
+    prefs.set('table.repositories.state', stateFilter);
+    prefs.set('table.repositories.files', [...fileFilters]);
+    prefs.set('table.repositories.settings', encodeRepositorySettingFilter(settingFilter));
+    prefs.set('table.repositories.search', appliedQuery);
+  });
   const limit = 20;
   let page = $state<Page<RepositorySummary> | null>(null);
   let loading = $state(false);

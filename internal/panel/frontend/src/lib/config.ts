@@ -79,6 +79,23 @@ export function fieldRawValue(field: BooleanField, enabled: boolean): boolean {
   return field.positive ? enabled : !enabled;
 }
 
+// CONFIG_KEYS is the runtime list of every configurable key, for validating
+// values that arrive as plain strings.
+export const CONFIG_KEYS: readonly ConfigKey[] = [
+  'quiet_success',
+  'quiet_reactions',
+  'quiet_pending',
+  'allowed_commands',
+  'command_aliases',
+  'command_prefix',
+  'disable_mentions',
+  'disable_bare_commands',
+  'disable_unapprove',
+  'disable_reactions',
+  'disable_deleted_comments',
+  'allow_self_approval',
+];
+
 export function clonePatch(patch: ConfigPatch): ConfigPatch {
   return JSON.parse(JSON.stringify(patch)) as ConfigPatch;
 }

@@ -1,9 +1,11 @@
+import { CONFIG_KEYS } from './config';
 import {
   readLastInstallation,
   readSidebarDisplay,
   readThemeDisplay,
   readTimeDisplay,
 } from './preferences';
+import type { ConfigKey, RepositorySettingFilter } from './types';
 
 export type PrefValue = string | string[];
 export type PrefValues = Record<string, PrefValue>;
@@ -477,4 +479,61 @@ export function createPrefsSync(options: PrefsSyncOptions = {}): PrefsSync {
       if (changed) writePrefsDoc(doc, storage);
     },
   };
+}
+
+// PrefsAccessor is the narrow read/write surface components receive as a
+// prop; the stream lifecycle stays with the owner in App.svelte.
+export type PrefsAccessor = Pick<PrefsSync, 'get' | 'set'>;
+
+// EPHEMERAL_PREFS backs table components rendered outside the synced panel
+// shell (Root administration): reads fall through to defaults and writes are
+// dropped, so that state stays local to the mount.
+export const EPHEMERAL_PREFS: PrefsAccessor = {
+  get: () => null,
+  set: () => {},
+};
+
+// prefOption narrows a stored value to one of a component's known options,
+// falling back when the value is missing or from a newer panel build.
+export function prefOption<T extends string>(
+  value: PrefValue | null,
+  options: readonly T[],
+  fallback: T,
+): T {
+  return typeof value === 'string' && (options as readonly string[]).includes(value)
+    ? (value as T)
+    : fallback;
+}
+
+// prefList narrows a stored array to a component's known options, dropping
+// anything unknown.
+export function prefList<T extends string>(value: PrefValue | null, options: readonly T[]): T[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.filter((element): element is T => (options as readonly string[]).includes(element));
+}
+
+export function prefText(value: PrefValue | null): string {
+  return typeof value === 'string' ? value : '';
+}
+
+// The repository setting filter is an object in the UI but syncs as a flat
+// string array — mode first, config keys after it when the mode is "keys" —
+// because preference values are limited to strings and string arrays.
+export function encodeRepositorySettingFilter(filter: RepositorySettingFilter): string[] {
+  return filter.mode === 'keys' ? ['keys', ...filter.keys] : [filter.mode];
+}
+
+export function decodeRepositorySettingFilter(value: PrefValue | null): RepositorySettingFilter {
+  if (!Array.isArray(value)) return { mode: 'all' };
+  const [mode, ...rest] = value;
+  if (mode === 'custom' || mode === 'none') return { mode };
+  if (mode === 'keys') {
+    const keys = rest.filter((key): key is ConfigKey =>
+      (CONFIG_KEYS as readonly string[]).includes(key),
+    );
+    if (keys.length > 0) return { mode: 'keys', keys };
+  }
+
+  return { mode: 'all' };
 }
