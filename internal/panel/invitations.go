@@ -16,7 +16,6 @@ const defaultInviteDays = 7
 type createInvitationRequest struct {
 	Login         string             `json:"login"`
 	Role          *storage.PanelRole `json:"role"`
-	TargetID      string             `json:"target_id"`
 	ExpiresInDays int                `json:"expires_in_days"`
 }
 
@@ -36,13 +35,6 @@ type invitationResponse struct {
 	CreatedAt   time.Time                `json:"created_at"`
 	RespondedAt *time.Time               `json:"responded_at,omitempty"`
 	InviteURL   string                   `json:"invite_url,omitempty"`
-}
-
-func (s *Server) getInvitations(w http.ResponseWriter, r *http.Request) {
-	if _, _, ok := s.requireGlobalUserManager(w, r); !ok {
-		return
-	}
-	s.listInvitations(w, r, nil)
 }
 
 func (s *Server) getTargetInvitations(w http.ResponseWriter, r *http.Request) {
@@ -71,37 +63,6 @@ func (s *Server) listInvitations(w http.ResponseWriter, r *http.Request, targetI
 	writeJSON(w, http.StatusOK, invitationPageDTO(invitations))
 }
 
-func (s *Server) postInvitation(w http.ResponseWriter, r *http.Request) {
-	if !s.requireSameOrigin(w, r) {
-		return
-	}
-	actor, actorUser, ok := s.requireGlobalUserManager(w, r)
-	if !ok {
-		return
-	}
-	var input createInvitationRequest
-	if !decodeJSON(w, r, &input) {
-		return
-	}
-	if !validCreateInvitation(w, input, true) {
-		return
-	}
-	if *input.Role == storage.PanelRoleOwner && !actorUser.SystemRole.IsRoot() {
-		s.writeError(w, http.StatusForbidden, "forbidden", "only the root owner can invite owners")
-		return
-	}
-	account, err := s.resolvePanelUser(r, input.TargetID, input.Login)
-	if err != nil {
-		s.writeError(w, http.StatusBadGateway, "github_user_unavailable", "GitHub user could not be resolved")
-		return
-	}
-	if account.ID == actor.ID {
-		s.writeError(w, http.StatusForbidden, "forbidden", "you cannot invite yourself")
-		return
-	}
-	s.createInvitation(w, r, actor.ID, account.ID, nil, *input.Role, input.ExpiresInDays)
-}
-
 func (s *Server) postTargetInvitation(w http.ResponseWriter, r *http.Request) {
 	if !s.requireSameOrigin(w, r) {
 		return
@@ -114,7 +75,7 @@ func (s *Server) postTargetInvitation(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	if !validCreateInvitation(w, input, false) {
+	if !validCreateInvitation(w, input) {
 		return
 	}
 	targetID := r.PathValue("target")
@@ -226,18 +187,11 @@ func (s *Server) requireInvitationManager(
 		s.writeStorageError(w, err)
 		return storage.Invitation{}, storage.Account{}, false
 	}
-	if invitation.TargetID == nil {
-		actor, actorUser, ok := s.requireGlobalUserManager(w, r)
-		if !ok || invitation.Role == storage.PanelRoleOwner && !actorUser.SystemRole.IsRoot() ||
-			actor.ID == invitation.Account.ID {
-			if ok {
-				s.writeError(w, http.StatusForbidden, "forbidden", "you cannot manage this invitation")
-			}
-			return storage.Invitation{}, storage.Account{}, false
-		}
-		return invitation, actor, true
+	targetID := r.PathValue("target")
+	if invitation.TargetID == nil || *invitation.TargetID != targetID {
+		s.writeError(w, http.StatusNotFound, "not_found", "installation invitation not found")
+		return storage.Invitation{}, storage.Account{}, false
 	}
-	r.SetPathValue("target", *invitation.TargetID)
 	actor, actorUser, access, ok := s.requireTargetUserManager(w, r)
 	if !ok || !s.canInviteToTarget(r, actor, actorUser, access, invitation.Account, invitation.Role) {
 		if ok {
@@ -265,8 +219,7 @@ func (s *Server) canInviteToTarget(
 		return actorAccess.Role == storage.PanelRoleOwner || actorUser.SystemRole.IsRoot() ||
 			actorAccess.Role == storage.PanelRoleAdmin && desired != storage.PanelRoleAdmin
 	}
-	if err != nil || subject.Status == storage.PanelUserBanned || subject.SystemRole.IsRoot() ||
-		subject.GlobalRole == storage.PanelRoleOwner {
+	if err != nil || subject.Status == storage.PanelUserBanned || subject.SystemRole.IsRoot() {
 		return false
 	}
 	subjectAccess, err := s.store.ResolveTargetAccess(
@@ -314,13 +267,9 @@ func invitationDTO(invitation storage.Invitation, inviteURL string) invitationRe
 	}
 }
 
-func validCreateInvitation(w http.ResponseWriter, input createInvitationRequest, global bool) bool {
+func validCreateInvitation(w http.ResponseWriter, input createInvitationRequest) bool {
 	validRole := input.Role != nil && validGrantedTargetRole(*input.Role)
-	if global && input.Role != nil {
-		validRole = validGlobalPanelRole(*input.Role) && *input.Role != storage.PanelRoleNone
-	}
-	validTarget := !global || strings.TrimSpace(input.TargetID) != ""
-	if strings.TrimSpace(input.Login) == "" || !validRole || !validTarget ||
+	if strings.TrimSpace(input.Login) == "" || !validRole ||
 		!validInviteDays(w, input.ExpiresInDays) {
 		if input.ExpiresInDays == 1 || input.ExpiresInDays == 7 || input.ExpiresInDays == 30 {
 			writeError(w, http.StatusBadRequest, "invalid_request", "invitation policy is incomplete")

@@ -16,8 +16,6 @@
   import type { FilterSection } from '../lib/filter-menu';
   import type {
     AccessDecision,
-    AddGlobalInvitationInput,
-    AddGlobalUserInput,
     AddTargetInvitationInput,
     AddTargetUserInput,
     InvitationDays,
@@ -31,7 +29,6 @@
     PanelUserListStatus,
     PanelUserPageRequest,
     PanelUserSort,
-    UpdateGlobalUserInput,
     UpdateTargetUserInput,
   } from '../lib/types';
   import ActionMenu, { type ActionMenuItem } from './ActionMenu.svelte';
@@ -48,12 +45,11 @@
   import SegmentedControl from './SegmentedControl.svelte';
   import TableEmptyState from './TableEmptyState.svelte';
 
-  type UserScope = 'global' | 'target';
   type ManagementSection = 'users' | 'invitations';
   type SortDirection = 'ascending' | 'descending';
   type UserSortColumn = 'name' | 'role' | 'last_login';
   type InvitationSortColumn = 'name' | 'role' | 'expires';
-  type UserAction = 'ban' | 'remove' | 'suspend' | 'restore' | 'unban' | 'remove_access';
+  type UserAction = 'suspend' | 'restore' | 'remove_access';
   type TargetRole = Exclude<PanelRole, 'owner'>;
   type GrantedTargetRole = Exclude<TargetRole, 'none'>;
 
@@ -66,7 +62,6 @@
     {
       label: 'Roles',
       options: [
-        { value: 'owner', label: 'Owner' },
         { value: 'admin', label: 'Admin' },
         { value: 'editor', label: 'Editor' },
         { value: 'viewer', label: 'Viewer' },
@@ -110,7 +105,7 @@
       id: 'name',
       enableColumnFilter: false,
     }),
-    userColumn.accessor((user) => user.target_access?.effective_role ?? user.global_role, {
+    userColumn.accessor((user) => user.target_access?.effective_role ?? 'none', {
       id: 'role',
     }),
     userColumn.accessor('status', { id: 'status', enableSorting: false }),
@@ -133,23 +128,14 @@
 
   const {
     section: activeSection,
-    scope,
     targetId,
     targetName,
     actorTargetRole,
-    canManageGlobal,
-    canManageOwners,
     refreshVersion = 0,
-    onScope,
     onSection,
-    fetchUsers,
-    addUser,
-    updateUser,
     fetchTargetUsers,
     addTargetUser,
     updateTargetUser,
-    fetchInvitations,
-    createInvitation,
     fetchTargetInvitations,
     createTargetInvitation,
     reissueInvitation,
@@ -157,18 +143,11 @@
     fetchUserDecisions,
   }: {
     section: ManagementSection;
-    scope: UserScope;
     targetId: string;
     targetName: string;
     actorTargetRole: PanelRole;
-    canManageGlobal: boolean;
-    canManageOwners: boolean;
     refreshVersion?: number;
-    onScope: (targetId: string | null) => void;
     onSection: (section: ManagementSection) => void;
-    fetchUsers: (request: PanelUserPageRequest) => Promise<Page<PanelUser>>;
-    addUser: (input: AddGlobalUserInput) => Promise<PanelUser>;
-    updateUser: (accountId: string, input: UpdateGlobalUserInput) => Promise<PanelUser>;
     fetchTargetUsers: (targetId: string, request: PanelUserPageRequest) => Promise<Page<PanelUser>>;
     addTargetUser: (targetId: string, input: AddTargetUserInput) => Promise<PanelUser>;
     updateTargetUser: (
@@ -176,8 +155,6 @@
       accountId: string,
       input: UpdateTargetUserInput,
     ) => Promise<PanelUser>;
-    fetchInvitations: (request: InvitationPageRequest) => Promise<Page<PanelInvitation>>;
-    createInvitation: (input: AddGlobalInvitationInput) => Promise<PanelInvitation>;
     fetchTargetInvitations: (
       targetId: string,
       request: InvitationPageRequest,
@@ -187,11 +164,12 @@
       input: AddTargetInvitationInput,
     ) => Promise<PanelInvitation>;
     reissueInvitation: (
+      targetId: string,
       invitationId: string,
       expiresInDays: InvitationDays,
     ) => Promise<PanelInvitation>;
-    revokeInvitation: (invitationId: string) => Promise<PanelInvitation>;
-    fetchUserDecisions: (accountId: string, targetId?: string) => Promise<AccessDecision[]>;
+    revokeInvitation: (targetId: string, invitationId: string) => Promise<PanelInvitation>;
+    fetchUserDecisions: (accountId: string, targetId: string) => Promise<AccessDecision[]>;
   } = $props();
 
   let userPage = $state<Page<PanelUser> | null>(null);
@@ -222,7 +200,6 @@
   let addModalOpen = $state(false);
   let addButton = $state<HTMLButtonElement | null>(null);
   let addReturnFocus = $state<HTMLElement | null>(null);
-  let addScopeTargetId = $state<string | null>(null);
   let login = $state('');
   let addRole = $state<PanelRole>('viewer');
   let accessMethod = $state<'add' | 'invite'>('add');
@@ -254,10 +231,6 @@
   const failure = $derived(
     actionFailure ?? (activeSection === 'users' ? userFailure : invitationFailure),
   );
-  const scopeOptions = $derived([
-    { value: 'global', label: 'Global', tone: 'accent' as const },
-    { value: 'target', label: targetName, tone: 'accent' as const },
-  ]);
   const sectionOptions = $derived([
     {
       value: 'users',
@@ -275,7 +248,6 @@
   );
   const userRequestKey = $derived(
     JSON.stringify([
-      scope,
       targetId,
       userQuery,
       userSort,
@@ -287,7 +259,6 @@
   );
   const invitationRequestKey = $derived(
     JSON.stringify([
-      scope,
       targetId,
       invitationQuery,
       invitationSort,
@@ -302,9 +273,7 @@
       options: [
         { value: 'active', label: 'Active', tone: 'valid' },
         { value: 'banned', label: 'Banned', tone: 'invalid' },
-        ...(scope === 'target'
-          ? [{ value: 'suspended', label: 'Suspended', tone: 'bypassed' as const }]
-          : []),
+        { value: 'suspended', label: 'Suspended', tone: 'bypassed' as const },
       ],
     },
   ]);
@@ -456,7 +425,6 @@
   ): Promise<void> {
     if (_requestKey !== userRequestKey) return;
     const version = ++userLoadVersion;
-    const requestedScope = scope;
     const requestedTarget = targetId;
     loadingUsers = true;
     if (!append) userFailure = null;
@@ -470,10 +438,7 @@
       statuses: [...userStatuses],
     };
     try {
-      const listed =
-        requestedScope === 'global'
-          ? await fetchUsers(request)
-          : await fetchTargetUsers(requestedTarget, request);
+      const listed = await fetchTargetUsers(requestedTarget, request);
       if (version !== userLoadVersion) return;
       userPage =
         append && userPage !== null
@@ -496,7 +461,6 @@
   ): Promise<void> {
     if (_requestKey !== invitationRequestKey) return;
     const version = ++invitationLoadVersion;
-    const requestedScope = scope;
     const requestedTarget = targetId;
     loadingInvitations = true;
     if (!append) invitationFailure = null;
@@ -510,10 +474,7 @@
       statuses: [...invitationStatuses],
     };
     try {
-      const listed =
-        requestedScope === 'global'
-          ? await fetchInvitations(request)
-          : await fetchTargetInvitations(requestedTarget, request);
+      const listed = await fetchTargetInvitations(requestedTarget, request);
       if (version !== invitationLoadVersion) return;
       invitationPage =
         append && invitationPage !== null
@@ -575,39 +536,25 @@
     if (normalizedLogin === '') return;
     adding = true;
     actionFailure = null;
-    const selectedTargetId = addScopeTargetId;
-    const destination = selectedTargetId === null ? 'global access' : targetName;
+    const destination = targetName;
     try {
       if (accessMethod === 'invite') {
-        const created =
-          selectedTargetId === null
-            ? await createInvitation({
-                login: normalizedLogin,
-                role: addRole as AddGlobalInvitationInput['role'],
-                target_id: targetId,
-                expires_in_days: expiresInDays,
-              })
-            : await createTargetInvitation(selectedTargetId, {
-                login: normalizedLogin,
-                role: addRole as AddTargetInvitationInput['role'],
-                expires_in_days: expiresInDays,
-              });
+        const created = await createTargetInvitation(targetId, {
+          login: normalizedLogin,
+          role: addRole as AddTargetInvitationInput['role'],
+          expires_in_days: expiresInDays,
+        });
         generatedLink = created.invite_url ?? '';
         feedback = `Invited @${normalizedLogin} to ${destination}`;
-        if (addScopeMatchesCurrent()) await reloadInvitations();
-      } else if (selectedTargetId === null) {
-        await addUser({ login: normalizedLogin, role: addRole, target_id: targetId });
-        feedback = `Added @${normalizedLogin} to global access`;
-        closeAddModal();
-        if (scope === 'global') await reloadUsers();
+        await reloadInvitations();
       } else {
-        await addTargetUser(selectedTargetId, {
+        await addTargetUser(targetId, {
           login: normalizedLogin,
           role: addRole as GrantedTargetRole,
         });
         feedback = `Added @${normalizedLogin} to ${destination}`;
         closeAddModal();
-        if (scope === 'target' && selectedTargetId === targetId) await reloadUsers();
+        await reloadUsers();
       }
       login = '';
     } catch (error) {
@@ -619,22 +566,13 @@
 
   async function changeRole(user: PanelUser, value: string): Promise<void> {
     await mutate(user, async () => {
-      if (scope === 'global') {
-        await updateUser(user.account.id, {
-          global_role: value as PanelRole,
-          status: user.status,
-          ban_reason: user.ban_reason,
-          expected_revision: user.revision,
-        });
-      } else {
-        const targetAccess = requiredTargetAccess(user);
-        await updateTargetUser(targetId, user.account.id, {
-          role: value === 'inherit' ? null : (value as TargetRole),
-          suspended: targetAccess.suspended,
-          suspension_reason: targetAccess.suspension_reason,
-          expected_revision: targetAccess.revision,
-        });
-      }
+      const targetAccess = requiredTargetAccess(user);
+      await updateTargetUser(targetId, user.account.id, {
+        role: value as TargetRole,
+        suspended: targetAccess.suspended,
+        suspension_reason: targetAccess.suspension_reason,
+        expected_revision: targetAccess.revision,
+      });
       feedback = `Updated @${user.account.login}`;
     });
   }
@@ -657,43 +595,19 @@
     const action = pendingAction;
     if (user === null || action === null) return;
     await mutate(user, async () => {
-      if (action === 'ban') {
-        await updateUser(user.account.id, {
-          global_role: user.global_role,
-          status: 'banned',
-          ban_reason: reason.trim() || undefined,
-          expected_revision: user.revision,
-        });
-        feedback = `Banned @${user.account.login}`;
-      } else if (action === 'remove') {
-        await updateUser(user.account.id, {
-          global_role: user.global_role,
-          status: 'removed',
-          expected_revision: user.revision,
-        });
-        feedback = `Removed @${user.account.login}`;
-      } else if (action === 'unban') {
-        await updateUser(user.account.id, {
-          global_role: user.global_role,
-          status: 'active',
-          expected_revision: user.revision,
-        });
-        feedback = `Unbanned @${user.account.login}`;
-      } else {
-        const targetAccess = requiredTargetAccess(user);
-        await updateTargetUser(targetId, user.account.id, {
-          role: action === 'remove_access' ? 'none' : targetAccess.role,
-          suspended: action === 'suspend',
-          suspension_reason: action === 'suspend' ? reason.trim() || undefined : undefined,
-          expected_revision: targetAccess.revision,
-        });
-        feedback =
-          action === 'suspend'
-            ? `Suspended @${user.account.login} for ${targetName}`
-            : action === 'restore'
-              ? `Restored @${user.account.login} for ${targetName}`
-              : `Removed @${user.account.login} from ${targetName}`;
-      }
+      const targetAccess = requiredTargetAccess(user);
+      await updateTargetUser(targetId, user.account.id, {
+        role: action === 'remove_access' ? 'none' : targetAccess.role,
+        suspended: action === 'suspend',
+        suspension_reason: action === 'suspend' ? reason.trim() || undefined : undefined,
+        expected_revision: targetAccess.revision,
+      });
+      feedback =
+        action === 'suspend'
+          ? `Suspended @${user.account.login} for ${targetName}`
+          : action === 'restore'
+            ? `Restored @${user.account.login} for ${targetName}`
+            : `Removed @${user.account.login} from ${targetName}`;
     });
   }
 
@@ -716,10 +630,9 @@
     invitationBusy = invitation.id;
     actionFailure = null;
     try {
-      const updated = await reissueInvitation(invitation.id, 7);
+      const updated = await reissueInvitation(targetId, invitation.id, 7);
       generatedLink = updated.invite_url ?? '';
       accessMethod = 'invite';
-      addScopeTargetId = scope === 'global' ? null : targetId;
       addReturnFocus = trigger;
       addModalOpen = true;
       feedback = `Reissued invitation for @${invitation.account.login}`;
@@ -737,7 +650,7 @@
     invitationBusy = invitation.id;
     actionFailure = null;
     try {
-      await revokeInvitation(invitation.id);
+      await revokeInvitation(targetId, invitation.id);
       feedback = `Revoked invitation for @${invitation.account.login}`;
       pendingInvitation = null;
       await reloadInvitations();
@@ -760,7 +673,6 @@
 
   function openAddModal(): void {
     generatedLink = '';
-    addScopeTargetId = scope === 'global' ? null : targetId;
     addRole = 'viewer';
     accessMethod = 'add';
     addReturnFocus = addButton;
@@ -773,22 +685,8 @@
     login = '';
   }
 
-  function addScopeMatchesCurrent(): boolean {
-    return addScopeTargetId === null
-      ? scope === 'global'
-      : scope === 'target' && addScopeTargetId === targetId;
-  }
-
   function selectSection(section: string): void {
     if (section === 'users' || section === 'invitations') onSection(section);
-  }
-
-  function selectScopeMode(value: string): void {
-    if (value === 'global') {
-      onScope(null);
-    } else if (value === 'target') {
-      onScope(targetId);
-    }
   }
 
   function selectUserSort(column: UserSortColumn): void {
@@ -951,31 +849,6 @@
 
   function userActionItems(user: PanelUser): ActionMenuItem[] {
     if (!user.manageable) return [];
-    if (scope === 'global') {
-      return [
-        user.status === 'banned'
-          ? {
-              id: 'unban',
-              icon: 'success',
-              label: 'Unban user',
-              description: 'Restore global access',
-            }
-          : {
-              id: 'ban',
-              icon: 'ban',
-              label: 'Ban user',
-              description: 'Suspend all panel access',
-              tone: 'danger',
-            },
-        {
-          id: 'remove',
-          icon: 'trash',
-          label: 'Remove user',
-          description: 'Revoke roles and active invitations',
-          tone: 'danger',
-        },
-      ];
-    }
     return [
       user.target_access?.suspended === true
         ? {
@@ -1039,18 +912,12 @@
     return access;
   }
 
-  function addRoles(selectedTargetId = addScopeTargetId): PanelRole[] {
-    if (selectedTargetId === null) {
-      return canManageOwners
-        ? ['viewer', 'editor', 'admin', 'owner']
-        : ['viewer', 'editor', 'admin'];
-    }
+  function addRoles(): PanelRole[] {
     return actorTargetRole === 'owner' ? ['viewer', 'editor', 'admin'] : ['viewer', 'editor'];
   }
 
   function targetRoleOptions(): Array<{ value: string; label: string }> {
     const options = [
-      { value: 'inherit', label: 'Inherit global' },
       { value: 'none', label: 'No access' },
       { value: 'viewer', label: 'Viewer' },
       { value: 'editor', label: 'Editor' },
@@ -1059,47 +926,24 @@
     return options;
   }
 
-  function globalRoleOptions(): Array<{ value: PanelRole; label: string }> {
-    const options: Array<{ value: PanelRole; label: string }> = [
-      { value: 'none', label: 'No access' },
-      { value: 'viewer', label: 'Viewer' },
-      { value: 'editor', label: 'Editor' },
-      { value: 'admin', label: 'Admin' },
-    ];
-    if (canManageOwners) options.push({ value: 'owner', label: 'Owner' });
-    return options;
-  }
-
-  function selectableRoleOptions(user: PanelUser): RolePickerOption[] {
-    if (scope === 'global') {
-      return globalRoleOptions().map((option) => ({
-        ...option,
-        icon: roleIcon(option.value),
-      }));
-    }
+  function selectableRoleOptions(): RolePickerOption[] {
     return targetRoleOptions().map((option) => ({
       ...option,
-      icon:
-        option.value === 'inherit'
-          ? roleIcon(user.global_role)
-          : roleIcon(option.value as PanelRole),
+      icon: roleIcon(option.value as PanelRole),
     }));
   }
 
   function selectedRole(user: PanelUser): string {
-    if (scope === 'global') return user.global_role;
-    return user.target_access?.role ?? 'inherit';
+    return user.target_access?.role ?? 'none';
   }
 
   function shownRole(user: PanelUser): PanelRole {
-    return scope === 'global'
-      ? user.global_role
-      : (user.target_access?.effective_role ?? user.global_role);
+    return user.target_access?.effective_role ?? 'none';
   }
 
   function statusLabel(user: PanelUser): string {
     if (user.status === 'banned') return 'Banned';
-    if (scope === 'target' && user.target_access?.suspended === true) return 'Suspended';
+    if (user.target_access?.suspended === true) return 'Suspended';
     return 'Active';
   }
 
@@ -1165,7 +1009,7 @@
   function selectInvitationFilters(values: string[]): void {
     scrollResultsToTop(invitationResults);
     invitationRoles = values.filter((value): value is Exclude<PanelRole, 'none'> =>
-      ['owner', 'admin', 'editor', 'viewer'].includes(value),
+      ['admin', 'editor', 'viewer'].includes(value),
     );
     invitationStatuses = values.filter((value): value is InvitationStatus =>
       ['pending', 'accepted', 'expired', 'declined', 'revoked'].includes(value),
@@ -1175,16 +1019,10 @@
   function actionTitle(): string {
     const login = actionUser?.account.login ?? '';
     switch (pendingAction) {
-      case 'ban':
-        return `Ban @${login}`;
-      case 'remove':
-        return `Remove @${login}`;
       case 'suspend':
         return `Suspend @${login}`;
       case 'restore':
         return `Restore @${login}`;
-      case 'unban':
-        return `Unban @${login}`;
       case 'remove_access':
         return `Remove @${login} from ${targetName}`;
       default:
@@ -1194,14 +1032,9 @@
 
   function actionDescription(): string {
     switch (pendingAction) {
-      case 'ban':
-        return 'This immediately revokes every active session and blocks panel access';
-      case 'remove':
-        return 'This removes all roles, installation overrides, and pending invitations';
       case 'suspend':
         return `This blocks access to ${targetName} until an administrator restores it`;
       case 'restore':
-      case 'unban':
         return 'This restores access using the user’s current role';
       case 'remove_access':
         return 'This keeps the user account but sets this installation to No access';
@@ -1244,25 +1077,10 @@
 {/snippet}
 
 {#snippet headerActions()}
-  {#if canManageGlobal}
-    <div class="scope-mode">
-      <span>Access scope</span>
-      <SegmentedControl
-        name="user-access-scope"
-        label="Access scope"
-        options={scopeOptions}
-        value={scope}
-        align="end"
-        compact
-        onSelect={selectScopeMode}
-      />
-    </div>
-  {:else}
-    <span class="scope-context">
-      <Icon name="organization" size={16} />
-      <span>{targetName}</span>
-    </span>
-  {/if}
+  <span class="scope-context">
+    <Icon name="organization" size={16} />
+    <span>{targetName}</span>
+  </span>
 {/snippet}
 
 <section class="plate user-management" aria-labelledby="user-management-heading">
@@ -1326,7 +1144,7 @@
               userQuery !== '' || userRoles.length > 0 || userStatuses.length > 0}
             <div class="result-state table-empty">
               <TableEmptyState
-                title={hasUserFilters ? 'No users match' : 'No users in this scope'}
+                title={hasUserFilters ? 'No users match' : 'No users for this installation'}
                 description={hasUserFilters
                   ? 'Try another search or clear the active filters'
                   : 'Added users will appear here'}
@@ -1436,7 +1254,7 @@
                           <RolePicker
                             label="Role for {user.account.login}"
                             value={selectedRole(user)}
-                            options={selectableRoleOptions(user)}
+                            options={selectableRoleOptions()}
                             disabled={savingAccount === user.account.id}
                             onSelect={(value) => void changeRole(user, value)}
                           />
@@ -1521,7 +1339,7 @@
               <TableEmptyState
                 title={hasInvitationFilters
                   ? 'No invitations match'
-                  : 'No invitations in this scope'}
+                  : 'No invitations for this installation'}
                 description={hasInvitationFilters
                   ? 'Try another search or clear the active filters'
                   : 'New invitations will appear here'}
@@ -1673,13 +1491,12 @@
   <DecisionHistory
     open
     label={`Access details for @${historyUser.account.login}`}
-    scopeLabel={scope === 'global' ? 'Global' : targetName}
+    scopeLabel={targetName}
     status={statusLabel(historyUser)}
     reason={currentReason(historyUser)}
     decidedAt={currentDecisionAt(historyUser)}
     returnFocus={historyTrigger}
-    fetchDecisions={() =>
-      fetchUserDecisions(historyUser!.account.id, scope === 'target' ? targetId : undefined)}
+    fetchDecisions={() => fetchUserDecisions(historyUser!.account.id, targetId)}
     onClose={closeHistory}
   />
 {/if}
@@ -1696,13 +1513,12 @@
     {#if generatedLink === ''}
       <div class="add-scope-summary">
         <span class="add-scope-icon" aria-hidden="true">
-          <Icon name={addScopeTargetId === null ? 'globe' : 'organization'} size={18} />
+          <Icon name="organization" size={18} />
         </span>
         <span>
-          <small>Access scope</small>
-          <strong>{addScopeTargetId === null ? 'Global' : targetName}</strong>
+          <small>Installation</small>
+          <strong>{targetName}</strong>
         </span>
-        <small>Scope follows the Users page</small>
       </div>
 
       <fieldset class="method-picker">
@@ -1821,7 +1637,7 @@
   returnFocus={actionTrigger}
   onClose={cancelAction}
 >
-  {#if pendingAction === 'ban' || pendingAction === 'suspend'}
+  {#if pendingAction === 'suspend'}
     <label class="form-field">
       <span>Reason <small>Optional</small></span>
       <textarea
@@ -1844,8 +1660,8 @@
     <button class="btn" type="button" data-modal-focus onclick={cancelAction}>Cancel</button>
     <button
       class="btn"
-      class:btn-stop={pendingAction !== 'restore' && pendingAction !== 'unban'}
-      class:btn-signal={pendingAction === 'restore' || pendingAction === 'unban'}
+      class:btn-stop={pendingAction !== 'restore'}
+      class:btn-signal={pendingAction === 'restore'}
       type="button"
       disabled={savingAccount !== null}
       onclick={() => void confirmAction()}
@@ -1922,17 +1738,6 @@
     flex: 1;
     flex-direction: column;
     min-height: 0;
-  }
-
-  .scope-mode {
-    align-items: center;
-    display: flex;
-    gap: var(--space-2);
-  }
-
-  .scope-mode > span {
-    color: var(--text-muted);
-    font: 600 var(--font-size-compact) / 1 var(--sans);
   }
 
   .scope-context {
@@ -2622,14 +2427,6 @@
   }
 
   @media (max-width: 48rem) {
-    .scope-mode {
-      width: 100%;
-    }
-
-    .scope-mode :global(fieldset) {
-      flex: 1;
-    }
-
     .identity-grid.with-expiry {
       grid-template-columns: minmax(0, 1.35fr) repeat(2, minmax(6.5rem, 0.75fr));
     }
@@ -2746,10 +2543,6 @@
 
     .add-scope-summary {
       grid-template-columns: auto minmax(0, 1fr);
-    }
-
-    .add-scope-summary > small:last-child {
-      grid-column: 2;
     }
 
     .form-grid,

@@ -17,16 +17,8 @@ const (
 )
 
 type addUserRequest struct {
-	Login    string             `json:"login"`
-	Role     *storage.PanelRole `json:"role"`
-	TargetID string             `json:"target_id"`
-}
-
-type updateUserRequest struct {
-	GlobalRole       *storage.PanelRole       `json:"global_role"`
-	Status           *storage.PanelUserStatus `json:"status"`
-	BanReason        *string                  `json:"ban_reason"`
-	ExpectedRevision *int64                   `json:"expected_revision"`
+	Login string             `json:"login"`
+	Role  *storage.PanelRole `json:"role"`
 }
 
 type nullablePanelRole struct {
@@ -57,115 +49,6 @@ type updateTargetUserRequest struct {
 	ExpectedRevision *int64            `json:"expected_revision"`
 }
 
-func (s *Server) getUsers(w http.ResponseWriter, r *http.Request) {
-	actor, actorUser, ok := s.requireGlobalUserManager(w, r)
-	if !ok {
-		return
-	}
-	page, err := parsePanelUserPage(r.URL.Query())
-	if err != nil {
-		s.writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
-		return
-	}
-	users, err := s.store.ListPanelUserPage(r.Context(), page)
-	if err != nil {
-		s.writeInternal(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, panelUserPageDTO(users, func(user storage.PanelUser) bool {
-		return canManageGlobalUser(actor, actorUser, user, user.GlobalRole)
-	}))
-}
-
-func (s *Server) postUser(w http.ResponseWriter, r *http.Request) {
-	if !s.requireSameOrigin(w, r) {
-		return
-	}
-	actor, actorUser, ok := s.requireGlobalUserManager(w, r)
-	if !ok {
-		return
-	}
-	var input addUserRequest
-	if !decodeJSON(w, r, &input) {
-		return
-	}
-	if input.Role == nil || !validGlobalPanelRole(*input.Role) ||
-		strings.TrimSpace(input.Login) == "" || strings.TrimSpace(input.TargetID) == "" {
-		s.writeError(w, http.StatusBadRequest, "invalid_request", "login, role, and installation are required")
-		return
-	}
-	if *input.Role == storage.PanelRoleOwner && !actorUser.SystemRole.IsRoot() {
-		s.writeError(w, http.StatusForbidden, "forbidden", "only the root owner can appoint owners")
-		return
-	}
-	account, err := s.resolvePanelUser(r, input.TargetID, input.Login)
-	if err != nil {
-		s.writeError(w, http.StatusBadGateway, "github_user_unavailable", "GitHub user could not be resolved")
-		return
-	}
-	if account.ID == actor.ID {
-		s.writeError(w, http.StatusForbidden, "forbidden", "you cannot change your own access")
-		return
-	}
-	created, err := s.store.CreatePanelUser(r.Context(), storage.PanelUserCreate{
-		AccountID: account.ID, GlobalRole: *input.Role, ActorAccountID: actor.ID,
-		ChangedAt: s.now().UTC(),
-	})
-	if err != nil {
-		s.writeStorageError(w, err)
-		return
-	}
-	s.events.announce(panelEvent{Type: panelEventResync})
-	writeJSON(w, http.StatusCreated, panelUserDTO(created, true))
-}
-
-func (s *Server) putUser(w http.ResponseWriter, r *http.Request) {
-	if !s.requireSameOrigin(w, r) {
-		return
-	}
-	actor, actorUser, ok := s.requireGlobalUserManager(w, r)
-	if !ok {
-		return
-	}
-	var input updateUserRequest
-	if !decodeJSON(w, r, &input) {
-		return
-	}
-	if input.GlobalRole == nil || input.Status == nil || input.ExpectedRevision == nil ||
-		!validGlobalPanelRole(*input.GlobalRole) || !validPanelUserStatus(*input.Status) {
-		s.writeError(w, http.StatusBadRequest, "invalid_request", "user policy is incomplete")
-		return
-	}
-	reason, ok := validAccessReason(w, input.BanReason)
-	if !ok {
-		return
-	}
-	subject, err := s.store.GetPanelUser(r.Context(), r.PathValue("account"))
-	if err != nil {
-		s.writeStorageError(w, err)
-		return
-	}
-	if !canManageGlobalUser(actor, actorUser, subject, *input.GlobalRole) {
-		s.writeError(w, http.StatusForbidden, "forbidden", "you cannot change this user's access")
-		return
-	}
-	updated, err := s.store.UpdatePanelUser(r.Context(), storage.PanelUserChange{
-		AccountID: subject.Account.ID, ActorAccountID: actor.ID,
-		GlobalRole: *input.GlobalRole, Status: *input.Status, BanReason: reason,
-		ExpectedRevision: *input.ExpectedRevision, ChangedAt: s.now().UTC(),
-	})
-	if err != nil {
-		s.writeStorageError(w, err)
-		return
-	}
-	if updated.Status == storage.PanelUserBanned || updated.Status == storage.PanelUserRemoved {
-		s.revokePanelUser(r, updated)
-	} else {
-		s.events.announce(panelEvent{Type: panelEventResync})
-	}
-	writeJSON(w, http.StatusOK, panelUserDTO(updated, true))
-}
-
 func (s *Server) getTargetUsers(w http.ResponseWriter, r *http.Request) {
 	actor, actorUser, actorAccess, ok := s.requireTargetUserManager(w, r)
 	if !ok {
@@ -188,13 +71,6 @@ func (s *Server) getTargetUsers(w http.ResponseWriter, r *http.Request) {
 			actor, actorUser, actorAccess, user.User, user.Access, user.Access.Role,
 		)
 	}))
-}
-
-func (s *Server) getUserDecisions(w http.ResponseWriter, r *http.Request) {
-	if _, _, ok := s.requireGlobalUserManager(w, r); !ok {
-		return
-	}
-	s.listUserDecisions(w, r, nil)
 }
 
 func (s *Server) getTargetUserDecisions(w http.ResponseWriter, r *http.Request) {
@@ -317,7 +193,7 @@ func (s *Server) putTargetUser(w http.ResponseWriter, r *http.Request) {
 		s.writeStorageError(w, err)
 		return
 	}
-	desired := subject.GlobalRole
+	desired := storage.PanelRoleNone
 	if input.Role.Value != nil {
 		desired = *input.Role.Value
 	}
@@ -348,27 +224,6 @@ func (s *Server) putTargetUser(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, targetPanelUserDTO(storage.TargetPanelUser{
 		User: subject, Override: &override, Access: access,
 	}, true))
-}
-
-func (s *Server) requireGlobalUserManager(
-	w http.ResponseWriter,
-	r *http.Request,
-) (storage.Account, storage.PanelUser, bool) {
-	account, ok := s.requireViewer(w, r)
-	if !ok {
-		return storage.Account{}, storage.PanelUser{}, false
-	}
-	user, err := s.store.GetPanelUser(r.Context(), account.ID)
-	if err != nil {
-		s.writeInternal(w, err)
-		return storage.Account{}, storage.PanelUser{}, false
-	}
-	if !storage.EffectiveCapabilities(user.GlobalRole, user.SystemRole).ManageGlobalUsers {
-		s.writeError(w, http.StatusForbidden, "forbidden", "global user management requires Owner access")
-		return storage.Account{}, storage.PanelUser{}, false
-	}
-
-	return account, user, true
 }
 
 func (s *Server) requireTargetUserManager(
@@ -430,35 +285,6 @@ func (s *Server) ensurePanelUser(
 	})
 }
 
-func (s *Server) revokePanelUser(r *http.Request, user storage.PanelUser) {
-	reason := "Your panel access was revoked"
-	if user.Status == storage.PanelUserBanned {
-		reason = "Your panel access was suspended"
-		if user.BanReason != nil {
-			reason = *user.BanReason
-		}
-	}
-	_, _ = s.store.RevokeAccountSessions(
-		r.Context(), user.Account.ID, string(user.Status), reason, s.now().UTC(),
-	)
-	s.events.revokeAccount(user.Account.ID, string(user.Status), reason)
-	s.events.announce(panelEvent{Type: panelEventResync})
-}
-
-func canManageGlobalUser(
-	actor storage.Account,
-	actorUser, subject storage.PanelUser,
-	desiredRole storage.PanelRole,
-) bool {
-	if actor.ID == subject.Account.ID || subject.SystemRole.IsRoot() {
-		return false
-	}
-	if actorUser.SystemRole.IsRoot() {
-		return true
-	}
-	return subject.GlobalRole != storage.PanelRoleOwner && desiredRole != storage.PanelRoleOwner
-}
-
 func canManageTargetUser(
 	actor storage.Account,
 	actorUser storage.PanelUser,
@@ -468,16 +294,13 @@ func canManageTargetUser(
 	desiredRole storage.PanelRole,
 ) bool {
 	if actor.ID == subject.Account.ID || subject.Status != storage.PanelUserActive ||
-		subject.SystemRole.IsRoot() ||
-		subject.GlobalRole == storage.PanelRoleOwner {
+		subject.SystemRole.IsRoot() {
 		return false
 	}
 	if actorAccess.Role == storage.PanelRoleOwner || actorUser.SystemRole.IsRoot() {
 		return desiredRole != storage.PanelRoleOwner
 	}
-	if actorAccess.Role != storage.PanelRoleAdmin ||
-		subject.GlobalRole == storage.PanelRoleAdmin ||
-		subjectAccess.Role == storage.PanelRoleAdmin {
+	if actorAccess.Role != storage.PanelRoleAdmin || subjectAccess.Role == storage.PanelRoleAdmin {
 		return false
 	}
 	return desiredRole == storage.PanelRoleNone || desiredRole == storage.PanelRoleViewer ||
@@ -500,21 +323,16 @@ func validAccessReason(w http.ResponseWriter, raw *string) (*string, bool) {
 	return &value, true
 }
 
-func validGlobalPanelRole(role storage.PanelRole) bool {
-	return validTargetPanelRole(role) || role == storage.PanelRoleOwner
-}
-
 func validTargetPanelRole(role storage.PanelRole) bool {
 	return role == storage.PanelRoleNone || role == storage.PanelRoleViewer ||
 		role == storage.PanelRoleEditor || role == storage.PanelRoleAdmin
 }
 
+func validTargetUserFilterRole(role storage.PanelRole) bool {
+	return validTargetPanelRole(role) || role == storage.PanelRoleOwner
+}
+
 func validGrantedTargetRole(role storage.PanelRole) bool {
 	return role == storage.PanelRoleViewer || role == storage.PanelRoleEditor ||
 		role == storage.PanelRoleAdmin
-}
-
-func validPanelUserStatus(status storage.PanelUserStatus) bool {
-	return status == storage.PanelUserActive || status == storage.PanelUserBanned ||
-		status == storage.PanelUserRemoved
 }

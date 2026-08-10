@@ -109,19 +109,6 @@ export interface PanelUserPageRequest {
   statuses: PanelUserListStatus[];
 }
 
-export interface AddGlobalUserInput {
-  login: string;
-  role: PanelRole;
-  target_id: string;
-}
-
-export interface UpdateGlobalUserInput {
-  global_role: PanelRole;
-  status: PanelUserStatus;
-  ban_reason?: string;
-  expected_revision: number;
-}
-
 export interface AddTargetUserInput {
   login: string;
   role: Exclude<PanelRole, 'none' | 'owner'>;
@@ -176,13 +163,6 @@ export interface AccessDecision {
   action: string;
   summary: string;
   created_at: string;
-}
-
-export interface AddGlobalInvitationInput {
-  login: string;
-  role: Exclude<PanelRole, 'none'>;
-  target_id: string;
-  expires_in_days: InvitationDays;
 }
 
 export interface AddTargetInvitationInput {

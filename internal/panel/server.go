@@ -99,15 +99,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST "+base+"/api/v1/sign-out", s.signOut)
 	mux.HandleFunc("GET "+base+"/api/v1/session", s.getSession)
 	mux.HandleFunc("GET "+base+"/api/v1/targets", s.getTargets)
-	mux.HandleFunc("GET "+base+"/api/v1/users", s.getUsers)
-	mux.HandleFunc("POST "+base+"/api/v1/users", s.postUser)
-	mux.HandleFunc("GET "+base+"/api/v1/users/{account}/decisions", s.getUserDecisions)
-	mux.HandleFunc("PUT "+base+"/api/v1/users/{account}", s.putUser)
-	mux.HandleFunc("GET "+base+"/api/v1/invitations", s.getInvitations)
-	mux.HandleFunc("POST "+base+"/api/v1/invitations", s.postInvitation)
 	mux.HandleFunc("GET "+base+"/api/v1/invites/{token}", s.reviewInvitation)
-	mux.HandleFunc("POST "+base+"/api/v1/invitations/{invitation}/reissue", s.reissueInvitation)
-	mux.HandleFunc("DELETE "+base+"/api/v1/invitations/{invitation}", s.deleteInvitation)
+	mux.HandleFunc("POST "+base+"/api/v1/root/installations/sync", s.postRootInstallationSync)
 	mux.HandleFunc("PUT "+base+"/api/v1/targets/{target}/settings", s.putTargetSettings)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/users", s.getTargetUsers)
 	mux.HandleFunc("POST "+base+"/api/v1/targets/{target}/users", s.postTargetUser)
@@ -117,6 +110,14 @@ func (s *Server) Handler() http.Handler {
 	)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/invitations", s.getTargetInvitations)
 	mux.HandleFunc("POST "+base+"/api/v1/targets/{target}/invitations", s.postTargetInvitation)
+	mux.HandleFunc(
+		"POST "+base+"/api/v1/targets/{target}/invitations/{invitation}/reissue",
+		s.reissueInvitation,
+	)
+	mux.HandleFunc(
+		"DELETE "+base+"/api/v1/targets/{target}/invitations/{invitation}",
+		s.deleteInvitation,
+	)
 	mux.HandleFunc(
 		"PUT "+base+"/api/v1/targets/{target}/users/{account}",
 		s.putTargetUser,
@@ -214,6 +215,27 @@ func (s *Server) requireViewer(w http.ResponseWriter, r *http.Request) (storage.
 	}
 
 	return account, true
+}
+
+func (s *Server) requireRoot(
+	w http.ResponseWriter,
+	r *http.Request,
+) (storage.Account, storage.PanelUser, bool) {
+	account, ok := s.requireViewer(w, r)
+	if !ok {
+		return storage.Account{}, storage.PanelUser{}, false
+	}
+	user, err := s.store.GetPanelUser(r.Context(), account.ID)
+	if err != nil {
+		s.writeInternal(w, err)
+		return storage.Account{}, storage.PanelUser{}, false
+	}
+	if !user.SystemRole.IsRoot() {
+		s.writeError(w, http.StatusForbidden, "forbidden", "Root access is required")
+		return storage.Account{}, storage.PanelUser{}, false
+	}
+
+	return account, user, true
 }
 
 func (s *Server) requireTarget(

@@ -6,8 +6,7 @@ const SCOPED_PANEL_VIEWS = ['settings', 'repositories', 'users', 'invitations', 
 export type PanelView = (typeof PANEL_VIEWS)[number];
 export type ScopedPanelView = (typeof SCOPED_PANEL_VIEWS)[number];
 
-export type PanelRoute =
-  { account: string; view: ScopedPanelView } | { view: 'users' | 'invitations' };
+export type PanelRoute = { account: string; view: ScopedPanelView };
 
 export interface ResolvedPanelRoute {
   account: string;
@@ -35,7 +34,6 @@ export function parsePanelRoute(basePath: string, pathname: string): PanelRoute 
 
   const relative = pathname.slice(base.length).replace(/^\/+|\/+$/g, '');
   if (relative === '') return null;
-  if (relative === 'users' || relative === 'invitations') return { view: relative };
 
   const parts = relative.split('/');
   if (parts.length !== 3) return null;
@@ -76,7 +74,6 @@ export function parseInvitationToken(basePath: string, pathname: string): string
 
 export function panelRoutePath(basePath: string, route: PanelRoute): string {
   const base = normalizeBasePath(basePath);
-  if (!('account' in route)) return `${base}/${route.view}`;
   return `${base}/i/${encodeURIComponent(route.account)}/${route.view}`;
 }
 
@@ -85,10 +82,7 @@ export function resolvePanelRoute(
   requested: PanelRoute | null,
   preferredAccount: string | null,
 ): ResolvedPanelRoute | null {
-  const requestedAccount = findAccount(
-    availableAccounts,
-    requested !== null && 'account' in requested ? requested.account : null,
-  );
+  const requestedAccount = findAccount(availableAccounts, requested?.account ?? null);
   const account =
     requestedAccount ?? findAccount(availableAccounts, preferredAccount) ?? availableAccounts[0];
   if (account === undefined) return null;

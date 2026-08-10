@@ -69,10 +69,6 @@ func (s *Server) serveAsset(w http.ResponseWriter, r *http.Request) {
 
 func isPanelNavigationPath(relative string) bool {
 	trimmed := strings.Trim(relative, "/")
-	if trimmed == "help" || trimmed == panelUsersResource {
-		return true
-	}
-
 	parts := strings.Split(trimmed, "/")
 	if len(parts) == 2 && parts[0] == "invite" && validInvitationToken(parts[1]) {
 		return true
@@ -82,7 +78,7 @@ func isPanelNavigationPath(relative string) bool {
 	}
 
 	switch parts[2] {
-	case "settings", "repositories", panelUsersResource, "history":
+	case "settings", "repositories", panelUsersResource, "invitations", "history":
 		return true
 	default:
 		return false

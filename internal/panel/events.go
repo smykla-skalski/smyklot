@@ -33,7 +33,6 @@ type panelEvent struct {
 }
 
 type eventSubscriber struct {
-	accountID    string
 	sessionHash  string
 	events       chan panelEvent
 	terminal     chan panelEvent
@@ -54,9 +53,8 @@ func newEventHub() *eventHub {
 	return &eventHub{subscribers: make(map[*eventSubscriber]struct{})}
 }
 
-func (h *eventHub) subscribe(accountID, sessionHash string) (*eventSubscriber, func()) {
+func (h *eventHub) subscribe(sessionHash string) (*eventSubscriber, func()) {
 	subscriber := &eventSubscriber{
-		accountID:   accountID,
 		sessionHash: sessionHash,
 		events:      make(chan panelEvent, panelEventQueueSize),
 		terminal:    make(chan panelEvent, 1),
@@ -93,12 +91,6 @@ func (h *eventHub) revokeSession(sessionHash, code, reason string) {
 	}, code, reason)
 }
 
-func (h *eventHub) revokeAccount(accountID, code, reason string) {
-	h.revokeWhere(func(subscriber *eventSubscriber) bool {
-		return subscriber.accountID == accountID
-	}, code, reason)
-}
-
 func (h *eventHub) revokeWhere(
 	matches func(*eventSubscriber) bool,
 	code, reason string,
@@ -121,7 +113,7 @@ func (h *eventHub) revokeWhere(
 }
 
 func (s *Server) streamEvents(w http.ResponseWriter, r *http.Request) {
-	account, sessionHash, ok := s.eventViewer(w, r)
+	_, sessionHash, ok := s.eventViewer(w, r)
 	if !ok {
 		return
 	}
@@ -140,7 +132,7 @@ func (s *Server) streamEvents(w http.ResponseWriter, r *http.Request) {
 	defer func() { _ = connection.CloseNow() }()
 
 	connectionContext := connection.CloseRead(context.Background())
-	subscriber, unsubscribe := s.events.subscribe(account.ID, sessionHash)
+	subscriber, unsubscribe := s.events.subscribe(sessionHash)
 	defer unsubscribe()
 	if err := writePanelEvent(connectionContext, connection, panelEvent{
 		Version: panelEventVersion,

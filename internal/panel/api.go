@@ -89,6 +89,22 @@ func (s *Server) getTargets(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"targets": response})
 }
 
+func (s *Server) postRootInstallationSync(w http.ResponseWriter, r *http.Request) {
+	if !s.requireSameOrigin(w, r) {
+		return
+	}
+	if _, _, ok := s.requireRoot(w, r); !ok {
+		return
+	}
+	targetIDs, err := s.catalog.SyncCatalog(r.Context())
+	if err != nil {
+		s.writeInternal(w, err)
+		return
+	}
+	s.AnnounceCatalog()
+	writeJSON(w, http.StatusOK, map[string]any{"target_ids": targetIDs})
+}
+
 func (s *Server) putTargetSettings(w http.ResponseWriter, r *http.Request) {
 	if !s.requireSameOrigin(w, r) {
 		return

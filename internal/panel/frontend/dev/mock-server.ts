@@ -6,8 +6,6 @@ import type { Connect, Plugin } from 'vite';
 import type {
   AuditEntry,
   AccessDecision,
-  AddGlobalInvitationInput,
-  AddGlobalUserInput,
   AddTargetInvitationInput,
   AddTargetUserInput,
   ConfigKey,
@@ -26,7 +24,6 @@ import type {
   RepositorySettingsInput,
   RepositorySummary,
   TargetSettingsInput,
-  UpdateGlobalUserInput,
   UpdateTargetUserInput,
   InvitationDays,
   InvitationStatus,
@@ -313,14 +310,11 @@ function seed(): MockState {
   const users = userSeeds(iso);
   const invitations = invitationSeeds(iso, users[0]?.account ?? VIEWER, organization.value);
   const organizationAccess = new Map<string, TargetUserAccess>();
-  organizationAccess.set('1003', {
-    role: 'admin',
-    suspended: false,
-    revision: 1,
-    effective_role: 'admin',
-    source: 'target',
-    capabilities: capabilitiesFor('admin'),
-  });
+  for (const user of users) {
+    if (user.global_role !== 'none' && user.global_role !== 'owner') {
+      organizationAccess.set(user.account.id, targetAccess(user.global_role, false, 1));
+    }
+  }
   organizationAccess.set('1004', {
     role: 'viewer',
     suspended: true,
@@ -445,20 +439,25 @@ function targetUsers(state: MockState, targetId: string): PanelUser[] {
   const overrides = state.targetAccess.get(targetId) ?? new Map<string, TargetUserAccess>();
   return state.users
     .filter((user) => user.status !== 'removed')
-    .filter((user) => user.global_role !== 'none' || overrides.has(user.account.id))
+    .filter((user) => user.global_role === 'owner' || overrides.has(user.account.id))
     .map((user) => {
       const override = overrides.get(user.account.id);
       const manageable = user.manageable && user.status === 'active';
       if (override !== undefined) {
+        const access = structuredClone(override);
+        if (user.status !== 'active') {
+          access.effective_role = 'none';
+          access.source = 'denied';
+          access.capabilities = capabilitiesFor('none');
+        }
         return {
           ...structuredClone(user),
           manageable,
-          target_access: structuredClone(override),
+          target_access: access,
         };
       }
-      const effectiveRole = user.status === 'active' ? user.global_role : 'none';
-      const source: TargetUserAccess['source'] =
-        user.status === 'active' && effectiveRole === 'owner' ? 'owner' : 'denied';
+      const effectiveRole = user.status === 'active' ? 'owner' : 'none';
+      const source: TargetUserAccess['source'] = user.status === 'active' ? 'owner' : 'denied';
       return {
         ...structuredClone(user),
         manageable,
@@ -889,70 +888,12 @@ async function handle(
       respond(res, 200, { targets: state.targets.map((target) => target.value) });
       return;
     }
-    if (path === route('/api/v1/users') && method === 'GET') {
-      respond(
-        res,
-        200,
-        userPage(
-          state.users.filter((user) => user.status !== 'removed'),
-          parsed.searchParams,
-          false,
-        ),
-      );
-      return;
-    }
-    if (path === route('/api/v1/invitations') && method === 'GET') {
-      respond(
-        res,
-        200,
-        invitationPage(
-          state.invitations.filter((invitation) => invitation.target_id === undefined),
-          parsed.searchParams,
-        ),
-      );
-      return;
-    }
-    if (path === route('/api/v1/invitations') && method === 'POST') {
-      const input = await readBody<AddGlobalInvitationInput>(req);
-      const invitation = createMockInvitation(state, input, undefined);
-      broadcast(state, { type: 'resync' });
-      respond(res, 201, invitationValue(invitation));
-      return;
-    }
-    if (path === route('/api/v1/users') && method === 'POST') {
-      const input = await readBody<AddGlobalUserInput>(req);
-      if (
-        state.users.some(
-          (user) =>
-            user.account.login.toLowerCase() === input.login.toLowerCase() &&
-            user.status !== 'removed',
-        )
-      ) {
-        throw new MockApiError(409, 'conflict', 'this GitHub user already has panel access');
-      }
-      const existing = state.users.find(
-        (user) => user.account.login.toLowerCase() === input.login.toLowerCase(),
-      );
-      const added = existing ?? mockUser(input.login, input.role);
-      added.status = 'active';
-      added.global_role = input.role;
-      added.ban_reason = undefined;
-      added.banned_at = undefined;
-      added.revision += existing === undefined ? 0 : 1;
-      added.updated_at = new Date().toISOString();
-      if (existing === undefined) state.users.push(added);
-      broadcast(state, { type: 'resync' });
-      respond(res, 201, added);
-      return;
-    }
     if (path === route('/api/v1/events') && method === 'GET') {
       respond(res, 426, { error: { code: 'upgrade_required', message: 'WebSocket required' } });
       return;
     }
 
     const targetSettings = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/settings$/);
-    const globalUser = path.match(/^\/api\/v1\/users\/(?<account>[^/]+)$/);
-    const globalUserDecisions = path.match(/^\/api\/v1\/users\/(?<account>[^/]+)\/decisions$/);
     const scopedUsers = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/users$/);
     const scopedUser = path.match(
       /^\/api\/v1\/targets\/(?<target>[^/]+)\/users\/(?<account>[^/]+)$/,
@@ -961,8 +902,12 @@ async function handle(
       /^\/api\/v1\/targets\/(?<target>[^/]+)\/users\/(?<account>[^/]+)\/decisions$/,
     );
     const scopedInvitations = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/invitations$/);
-    const reissueInvitation = path.match(/^\/api\/v1\/invitations\/(?<invitation>[^/]+)\/reissue$/);
-    const invitation = path.match(/^\/api\/v1\/invitations\/(?<invitation>[^/]+)$/);
+    const reissueInvitation = path.match(
+      /^\/api\/v1\/targets\/(?<target>[^/]+)\/invitations\/(?<invitation>[^/]+)\/reissue$/,
+    );
+    const invitation = path.match(
+      /^\/api\/v1\/targets\/(?<target>[^/]+)\/invitations\/(?<invitation>[^/]+)$/,
+    );
     const repositories = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/repositories$/);
     const repository = path.match(
       /^\/api\/v1\/targets\/(?<target>[^/]+)\/repositories\/(?<repository>[^/]+)$/,
@@ -973,11 +918,6 @@ async function handle(
     const audit = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/audit$/);
     const failures = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/failures$/);
 
-    if (globalUserDecisions && method === 'GET') {
-      const user = findUser(state, globalUserDecisions.groups?.account ?? '');
-      respond(res, 200, { decisions: mockDecisions(user) });
-      return;
-    }
     if (scopedUserDecisions && method === 'GET') {
       const target = findTarget(state, scopedUserDecisions.groups?.target ?? '');
       const accountId = decodeURIComponent(scopedUserDecisions.groups?.account ?? '');
@@ -989,29 +929,6 @@ async function handle(
       return;
     }
 
-    if (globalUser && method === 'PUT') {
-      const user = findUser(state, globalUser.groups?.account ?? '');
-      const input = await readBody<UpdateGlobalUserInput>(req);
-      requireRevision(user.revision, input.expected_revision);
-      user.global_role = input.status === 'removed' ? 'none' : input.global_role;
-      user.status = input.status;
-      user.ban_reason = input.status === 'banned' ? input.ban_reason : undefined;
-      user.banned_at = input.status === 'banned' ? new Date().toISOString() : undefined;
-      user.revision += 1;
-      user.updated_at = new Date().toISOString();
-      if (input.status === 'removed') {
-        for (const access of state.targetAccess.values()) access.delete(user.account.id);
-        for (const invitation of state.invitations) {
-          if (invitation.account.id === user.account.id && invitation.status === 'pending') {
-            invitation.status = 'revoked';
-            invitation.responded_at = new Date().toISOString();
-          }
-        }
-      }
-      broadcast(state, { type: 'resync' });
-      respond(res, 200, user);
-      return;
-    }
     if (scopedInvitations && method === 'GET') {
       const target = findTarget(state, scopedInvitations.groups?.target ?? '');
       respond(
@@ -1033,7 +950,11 @@ async function handle(
       return;
     }
     if (reissueInvitation && method === 'POST') {
+      const target = findTarget(state, reissueInvitation.groups?.target ?? '');
       const current = findInvitation(state, reissueInvitation.groups?.invitation ?? '');
+      if (current.target_id !== target.value.id) {
+        throw new MockApiError(404, 'not_found', 'installation invitation not found');
+      }
       const input = await readBody<{ expires_in_days: InvitationDays }>(req);
       current.token = mockInvitationToken(state.invitationCounter++);
       current.status = 'pending';
@@ -1045,7 +966,11 @@ async function handle(
       return;
     }
     if (invitation && method === 'DELETE') {
+      const target = findTarget(state, invitation.groups?.target ?? '');
       const current = findInvitation(state, invitation.groups?.invitation ?? '');
+      if (current.target_id !== target.value.id) {
+        throw new MockApiError(404, 'not_found', 'installation invitation not found');
+      }
       current.status = 'revoked';
       current.responded_at = new Date().toISOString();
       broadcastInvitation(state, current);
@@ -1090,7 +1015,6 @@ async function handle(
           input.suspended,
           (current?.revision ?? 0) + 1,
           input.suspension_reason,
-          user.global_role,
         ),
       );
       broadcast(state, { type: 'access.changed', target_id: target.value.id });
@@ -1274,8 +1198,8 @@ function findInvitationByToken(state: MockState, encodedToken: string): MockInvi
 
 function createMockInvitation(
   state: MockState,
-  input: AddGlobalInvitationInput | AddTargetInvitationInput,
-  target: PanelTarget | undefined,
+  input: AddTargetInvitationInput,
+  target: PanelTarget,
 ): MockInvitation {
   const now = new Date();
   const account = mockUser(input.login, 'none').account;
@@ -1294,9 +1218,8 @@ function createMockInvitation(
     id: `mock-invitation-${counter}`,
     token: mockInvitationToken(counter),
     account,
-    ...(target === undefined
-      ? {}
-      : { target_id: target.id, target_name: target.account.display_name }),
+    target_id: target.id,
+    target_name: target.account.display_name,
     role: input.role,
     status: 'pending',
     expires_at: new Date(now.getTime() + input.expires_in_days * 86_400_000).toISOString(),
@@ -1377,9 +1300,8 @@ function targetAccess(
   suspended: boolean,
   revision: number,
   reason?: string,
-  globalRole: PanelRole = 'none',
 ): TargetUserAccess {
-  const effectiveRole = suspended ? 'none' : (role ?? globalRole);
+  const effectiveRole = suspended ? 'none' : (role ?? 'none');
   return {
     role,
     suspended,
@@ -1387,13 +1309,7 @@ function targetAccess(
     revision,
     updated_at: new Date().toISOString(),
     effective_role: effectiveRole,
-    source: suspended
-      ? 'suspended'
-      : effectiveRole === 'owner'
-        ? 'owner'
-        : role === null
-          ? 'denied'
-          : 'target',
+    source: suspended ? 'suspended' : role === null ? 'denied' : 'target',
     capabilities: capabilitiesFor(effectiveRole),
   };
 }
@@ -1505,9 +1421,7 @@ function userPage(
     .map((user) => structuredClone(user));
 
   const roleLevel = (user: PanelUser): number => {
-    const role = scoped
-      ? (user.target_access?.effective_role ?? user.global_role)
-      : user.global_role;
+    const role = scoped ? (user.target_access?.effective_role ?? 'none') : user.global_role;
     return ['none', 'viewer', 'editor', 'admin', 'owner'].indexOf(role);
   };
 

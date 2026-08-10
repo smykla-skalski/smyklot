@@ -4,8 +4,6 @@ import { openPanelStream, panelStreamUrl } from './events';
 import type {
   AuditEntry,
   AuditHistoryRequest,
-  AddGlobalUserInput,
-  AddGlobalInvitationInput,
   AddTargetInvitationInput,
   AddTargetUserInput,
   AccessDecision,
@@ -26,7 +24,6 @@ import type {
   TargetSettingsInput,
   InvitationDays,
   InvitationSignIn,
-  UpdateGlobalUserInput,
   UpdateTargetUserInput,
 } from './types';
 
@@ -44,9 +41,6 @@ export class PanelApiError extends Error {
 export interface PanelApi {
   fetchViewer(): Promise<PanelViewer | null>;
   fetchTargets(): Promise<PanelTarget[]>;
-  fetchUsers(request: PanelUserPageRequest): Promise<Page<PanelUser>>;
-  addUser(input: AddGlobalUserInput): Promise<PanelUser>;
-  updateUser(accountId: string, input: UpdateGlobalUserInput): Promise<PanelUser>;
   fetchTargetUsers(targetId: string, request: PanelUserPageRequest): Promise<Page<PanelUser>>;
   addTargetUser(targetId: string, input: AddTargetUserInput): Promise<PanelUser>;
   updateTargetUser(
@@ -54,8 +48,6 @@ export interface PanelApi {
     accountId: string,
     input: UpdateTargetUserInput,
   ): Promise<PanelUser>;
-  fetchInvitations(request: InvitationPageRequest): Promise<Page<PanelInvitation>>;
-  createInvitation(input: AddGlobalInvitationInput): Promise<PanelInvitation>;
   fetchTargetInvitations(
     targetId: string,
     request: InvitationPageRequest,
@@ -65,9 +57,13 @@ export interface PanelApi {
     input: AddTargetInvitationInput,
   ): Promise<PanelInvitation>;
   fetchInvitation(token: string): Promise<PanelInvitation>;
-  reissueInvitation(invitationId: string, expiresInDays: InvitationDays): Promise<PanelInvitation>;
-  revokeInvitation(invitationId: string): Promise<PanelInvitation>;
-  fetchUserDecisions(accountId: string, targetId?: string): Promise<AccessDecision[]>;
+  reissueTargetInvitation(
+    targetId: string,
+    invitationId: string,
+    expiresInDays: InvitationDays,
+  ): Promise<PanelInvitation>;
+  revokeTargetInvitation(targetId: string, invitationId: string): Promise<PanelInvitation>;
+  fetchUserDecisions(accountId: string, targetId: string): Promise<AccessDecision[]>;
   updateTargetSettings(targetId: string, input: TargetSettingsInput): Promise<PanelTarget>;
   fetchRepositories(
     targetId: string,
@@ -150,18 +146,6 @@ export function createPanelApi(
       return body.targets;
     },
 
-    fetchUsers(userPage: PanelUserPageRequest): Promise<Page<PanelUser>> {
-      return jsonRequest(withAccessPageQuery('/api/v1/users', userPage));
-    },
-
-    addUser(input: AddGlobalUserInput): Promise<PanelUser> {
-      return postJson('/api/v1/users', input);
-    },
-
-    updateUser(accountId: string, input: UpdateGlobalUserInput): Promise<PanelUser> {
-      return putJson(`/api/v1/users/${pathSegment(accountId)}`, input);
-    },
-
     fetchTargetUsers(targetId: string, userPage: PanelUserPageRequest): Promise<Page<PanelUser>> {
       return jsonRequest(
         withAccessPageQuery(`/api/v1/targets/${pathSegment(targetId)}/users`, userPage),
@@ -181,14 +165,6 @@ export function createPanelApi(
         `/api/v1/targets/${pathSegment(targetId)}/users/${pathSegment(accountId)}`,
         input,
       );
-    },
-
-    fetchInvitations(invitationPage: InvitationPageRequest): Promise<Page<PanelInvitation>> {
-      return jsonRequest(withAccessPageQuery('/api/v1/invitations', invitationPage));
-    },
-
-    createInvitation(input: AddGlobalInvitationInput): Promise<PanelInvitation> {
-      return postJson('/api/v1/invitations', input);
     },
 
     fetchTargetInvitations(
@@ -211,26 +187,26 @@ export function createPanelApi(
       return jsonRequest(`/api/v1/invites/${pathSegment(token)}`);
     },
 
-    reissueInvitation(
+    reissueTargetInvitation(
+      targetId: string,
       invitationId: string,
       expiresInDays: InvitationDays,
     ): Promise<PanelInvitation> {
-      return postJson(`/api/v1/invitations/${pathSegment(invitationId)}/reissue`, {
-        expires_in_days: expiresInDays,
-      });
+      return postJson(
+        `/api/v1/targets/${pathSegment(targetId)}/invitations/${pathSegment(invitationId)}/reissue`,
+        { expires_in_days: expiresInDays },
+      );
     },
 
-    revokeInvitation(invitationId: string): Promise<PanelInvitation> {
-      return jsonRequest(`/api/v1/invitations/${pathSegment(invitationId)}`, {
-        method: 'DELETE',
-      });
+    revokeTargetInvitation(targetId: string, invitationId: string): Promise<PanelInvitation> {
+      return jsonRequest(
+        `/api/v1/targets/${pathSegment(targetId)}/invitations/${pathSegment(invitationId)}`,
+        { method: 'DELETE' },
+      );
     },
 
-    async fetchUserDecisions(accountId: string, targetId?: string): Promise<AccessDecision[]> {
-      const path =
-        targetId === undefined
-          ? `/api/v1/users/${pathSegment(accountId)}/decisions`
-          : `/api/v1/targets/${pathSegment(targetId)}/users/${pathSegment(accountId)}/decisions`;
+    async fetchUserDecisions(accountId: string, targetId: string): Promise<AccessDecision[]> {
+      const path = `/api/v1/targets/${pathSegment(targetId)}/users/${pathSegment(accountId)}/decisions`;
       const body = await jsonRequest<{ decisions: AccessDecision[] }>(path);
       return body.decisions;
     },

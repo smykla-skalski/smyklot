@@ -50,12 +50,12 @@ describe('panel routes', () => {
     });
   });
 
-  it('keeps global access datasets outside installation routes', () => {
+  it('keeps access datasets inside installation routes', () => {
     expect(parsePanelRoute('', '/help')).toBeNull();
     expect(parsePanelRoute('/panel', '/panel/help/')).toBeNull();
     expect(parsePanelRoute('', '/i/smykla-skalski/help')).toBeNull();
-    expect(parsePanelRoute('', '/users')).toEqual({ view: 'users' });
-    expect(parsePanelRoute('', '/invitations')).toEqual({ view: 'invitations' });
+    expect(parsePanelRoute('', '/users')).toBeNull();
+    expect(parsePanelRoute('', '/invitations')).toBeNull();
     expect(parsePanelRoute('', '/i/smykla-skalski/users')).toEqual({
       account: 'smykla-skalski',
       view: 'users',
@@ -95,8 +95,6 @@ describe('panel routes', () => {
     expect(panelRoutePath('/panel/', { account: 'bartsmykla', view: 'settings' })).toBe(
       '/panel/i/bartsmykla/settings',
     );
-    expect(panelRoutePath('/panel', { view: 'users' })).toBe('/panel/users');
-    expect(panelRoutePath('/panel', { view: 'invitations' })).toBe('/panel/invitations');
     expect(panelRoutePath('/panel', { account: 'bartsmykla', view: 'users' })).toBe(
       '/panel/i/bartsmykla/users',
     );
@@ -155,9 +153,6 @@ describe('browser panel router', () => {
 
     fixture.navigateFromHistory('/panel/i/bartsmykla/history');
     expect(visited).toEqual([{ account: 'bartsmykla', view: 'history' }]);
-
-    router.push({ view: 'users' });
-    expect(fixture.browser.location.pathname).toBe('/panel/users');
 
     unsubscribe();
     fixture.navigateFromHistory('/panel/i/smykla-skalski/repositories');

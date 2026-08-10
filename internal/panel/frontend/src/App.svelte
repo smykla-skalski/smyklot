@@ -54,7 +54,6 @@
   let repositoryDetailsVersion = $state(0);
   let userVersion = $state(0);
   let view = $state<PanelView>('settings');
-  let globalUsers = $state(false);
   let streamReady = $state(false);
   let revokedReason = $state<string | null>(null);
   let sidebarCollapsed = $state(readSidebarDisplay() === 'collapsed');
@@ -150,15 +149,6 @@
   async function selectTarget(targetId: string): Promise<void> {
     const target = targets.find((entry) => entry.id === targetId);
     if (target === undefined || selectedId === targetId) return;
-    if (isAccessView(view) && globalUsers) {
-      selectedId = target.id;
-      writeLastInstallation(target.account.login);
-      failure = null;
-      repositoryDetailsVersion += 1;
-      historyVersion += 1;
-      userVersion += 1;
-      return;
-    }
     await activateRoute(routeFor(target, view), 'push');
   }
 
@@ -166,7 +156,6 @@
     const target = selectedTarget;
     if (target === null || view === nextView) return;
     view = nextView;
-    if (nextView === 'users') globalUsers = viewer?.capabilities.manage_global_users === true;
     router.push(routeFor(target, nextView));
   }
 
@@ -190,11 +179,6 @@
     const targetChanged = selectedId !== target.id;
     selectedId = target.id;
     view = resolved.view;
-    globalUsers =
-      requested !== null &&
-      isAccessView(requested.view) &&
-      !('account' in requested) &&
-      viewer?.capabilities.manage_global_users === true;
     writeLastInstallation(target.account.login);
     const canonical = routeFor(target, resolved.view);
 
@@ -217,7 +201,6 @@
   }
 
   function routeFor(target: PanelTarget, nextView: PanelView): PanelRoute {
-    if (isAccessView(nextView) && globalUsers) return { view: nextView };
     return { account: target.account.login, view: nextView };
   }
 
@@ -232,9 +215,6 @@
 
   function sameRoute(left: PanelRoute | null, right: PanelRoute): boolean {
     if (left === null || left.view !== right.view) return false;
-    if (!('account' in left) || !('account' in right)) {
-      return !('account' in left) && !('account' in right);
-    }
     return left.account === right.account;
   }
 
@@ -315,24 +295,6 @@
 
   function refreshAccessFromStream(): void {
     void refreshFromStream(true);
-  }
-
-  function selectUserScope(targetId: string | null): void {
-    if (!isAccessView(view)) return;
-    if (targetId === null) {
-      if (viewer?.capabilities.manage_global_users !== true || selectedTarget === null) return;
-      globalUsers = true;
-      router.push({ view });
-      userVersion += 1;
-      return;
-    }
-    const target = targets.find((entry) => entry.id === targetId);
-    if (target === undefined || !target.capabilities.manage_target_users) return;
-    globalUsers = false;
-    selectedId = target.id;
-    writeLastInstallation(target.account.login);
-    router.push({ account: target.account.login, view });
-    userVersion += 1;
   }
 
   function selectUserSection(section: 'users' | 'invitations'): void {
@@ -432,8 +394,7 @@
     {view}
     {viewHref}
     onSelectView={selectView}
-    showUsers={viewer?.capabilities.manage_global_users === true ||
-      selectedTarget?.capabilities.manage_target_users === true}
+    showUsers={selectedTarget?.capabilities.manage_target_users === true}
     showNavigation={viewer !== null && selectedTarget !== null}
     collapsed={sidebarCollapsed}
     onToggleCollapsed={toggleSidebar}
@@ -502,27 +463,18 @@
               {#key selectedTarget.id}
                 <UserManagement
                   section={view}
-                  scope={globalUsers ? 'global' : 'target'}
                   targetId={selectedTarget.id}
                   targetName={selectedTarget.account.display_name}
                   actorTargetRole={selectedTarget.effective_role}
-                  canManageGlobal={viewer.capabilities.manage_global_users}
-                  canManageOwners={viewer.capabilities.manage_owners}
                   refreshVersion={userVersion}
-                  onScope={selectUserScope}
                   onSection={selectUserSection}
-                  fetchUsers={api.fetchUsers}
-                  addUser={api.addUser}
-                  updateUser={api.updateUser}
                   fetchTargetUsers={api.fetchTargetUsers}
                   addTargetUser={api.addTargetUser}
                   updateTargetUser={api.updateTargetUser}
-                  fetchInvitations={api.fetchInvitations}
-                  createInvitation={api.createInvitation}
                   fetchTargetInvitations={api.fetchTargetInvitations}
                   createTargetInvitation={api.createTargetInvitation}
-                  reissueInvitation={api.reissueInvitation}
-                  revokeInvitation={api.revokeInvitation}
+                  reissueInvitation={api.reissueTargetInvitation}
+                  revokeInvitation={api.revokeTargetInvitation}
                   fetchUserDecisions={api.fetchUserDecisions}
                 />
               {/key}

@@ -246,9 +246,6 @@ describe('user management', () => {
       jsonResponse(200, { items: [user], next_cursor: null, total: 1 }),
       jsonResponse(201, user),
       jsonResponse(200, user),
-      jsonResponse(200, { items: [user], next_cursor: null, total: 1 }),
-      jsonResponse(201, user),
-      jsonResponse(200, user),
       jsonResponse(200, { decisions: [] }),
     ]);
     const api = createPanelApi('/panel', stub.fetch);
@@ -261,13 +258,6 @@ describe('user management', () => {
       statuses: ['active' as const],
     };
 
-    await api.fetchUsers(page);
-    await api.addUser({ login: 'ada', role: 'editor', target_id: 'target.1' });
-    await api.updateUser('github:user:1', {
-      global_role: 'viewer',
-      status: 'active',
-      expected_revision: 1,
-    });
     await api.fetchTargetUsers('target.1', { ...page, cursor: '20' });
     await api.addTargetUser('target.1', { login: 'ada', role: 'viewer' });
     await api.updateTargetUser('target.1', 'github:user:1', {
@@ -278,15 +268,12 @@ describe('user management', () => {
     await api.fetchUserDecisions('github:user:1', 'target.1');
 
     expect(stub.calls.map((call) => call.url)).toEqual([
-      '/panel/api/v1/users?q=ada+user&sort=name_asc&limit=20&role=editor&status=active',
-      '/panel/api/v1/users',
-      '/panel/api/v1/users/github%3Auser%3A1',
       '/panel/api/v1/targets/target%2E1/users?cursor=20&q=ada+user&sort=name_asc&limit=20&role=editor&status=active',
       '/panel/api/v1/targets/target%2E1/users',
       '/panel/api/v1/targets/target%2E1/users/github%3Auser%3A1',
       '/panel/api/v1/targets/target%2E1/users/github%3Auser%3A1/decisions',
     ]);
-    expect(JSON.parse(String(stub.calls[5]?.init?.body))).toMatchObject({ role: null });
+    expect(JSON.parse(String(stub.calls[2]?.init?.body))).toMatchObject({ role: null });
   });
 
   it('creates, reviews, reissues, and revokes identity-locked invitations', async () => {
@@ -303,8 +290,6 @@ describe('user management', () => {
     const stub = stubFetch([
       jsonResponse(200, { items: [invitation], next_cursor: null, total: 1 }),
       jsonResponse(201, invitation),
-      jsonResponse(200, { items: [invitation], next_cursor: null, total: 1 }),
-      jsonResponse(201, invitation),
       jsonResponse(200, invitation),
       jsonResponse(200, invitation),
       jsonResponse(200, invitation),
@@ -319,13 +304,6 @@ describe('user management', () => {
       statuses: ['pending' as const, 'expired' as const],
     };
 
-    await api.fetchInvitations(page);
-    await api.createInvitation({
-      login: 'ada',
-      role: 'viewer',
-      target_id: 'target.1',
-      expires_in_days: 7,
-    });
     await api.fetchTargetInvitations('target.1', page);
     await api.createTargetInvitation('target.1', {
       login: 'ada',
@@ -333,19 +311,17 @@ describe('user management', () => {
       expires_in_days: 1,
     });
     await api.fetchInvitation('token/value');
-    await api.reissueInvitation('invite.1', 30);
-    await api.revokeInvitation('invite.1');
+    await api.reissueTargetInvitation('target.1', 'invite.1', 30);
+    await api.revokeTargetInvitation('target.1', 'invite.1');
 
     expect(stub.calls.map((call) => call.url)).toEqual([
-      '/panel/api/v1/invitations?q=ada&sort=expiry_soonest&limit=10&role=viewer&status=pending&status=expired',
-      '/panel/api/v1/invitations',
       '/panel/api/v1/targets/target%2E1/invitations?q=ada&sort=expiry_soonest&limit=10&role=viewer&status=pending&status=expired',
       '/panel/api/v1/targets/target%2E1/invitations',
       '/panel/api/v1/invites/token%2Fvalue',
-      '/panel/api/v1/invitations/invite%2E1/reissue',
-      '/panel/api/v1/invitations/invite%2E1',
+      '/panel/api/v1/targets/target%2E1/invitations/invite%2E1/reissue',
+      '/panel/api/v1/targets/target%2E1/invitations/invite%2E1',
     ]);
-    expect(stub.calls[6]?.init?.method).toBe('DELETE');
+    expect(stub.calls[4]?.init?.method).toBe('DELETE');
   });
 });
 
