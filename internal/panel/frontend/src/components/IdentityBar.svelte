@@ -1,4 +1,5 @@
 <script lang="ts">
+  import haloUrl from '../assets/smyklot-halo.svg';
   import type { PanelApi } from '../lib/api';
   import { fuzzyCandidates } from '../lib/fuzzy';
   import { handleLabel, readHandle } from '../lib/identity';
@@ -12,7 +13,6 @@
 
   const {
     viewer,
-    iconUrl,
     targets,
     selectedId,
     targetHref,
@@ -40,7 +40,6 @@
     notificationVersion,
   }: {
     viewer: PanelViewer | null;
-    iconUrl: string;
     targets: PanelTarget[];
     selectedId: string | null;
     targetHref: (target: PanelTarget) => string;
@@ -75,6 +74,7 @@
   let targetSearchInput = $state<HTMLInputElement | null>(null);
   let targetQuery = $state('');
   let mobileNavigationOpen = $state(false);
+  let unreadCount = $state(0);
 
   const handle = $derived(
     viewer === null ? null : readHandle(viewer.account.provider, viewer.account.login),
@@ -96,9 +96,6 @@
     targetCandidates.filter((target) => target.type === 'Organization'),
   );
   const personalTargets = $derived(targetCandidates.filter((target) => target.type === 'User'));
-  const rootEnabled = $derived(
-    viewer?.system_role === 'root' || viewer?.system_role === 'super_root',
-  );
   const systemRoleLabel = $derived(
     viewer?.system_role === 'super_root'
       ? 'Super Root'
@@ -212,7 +209,7 @@
 >
   <div class="brand-row">
     <h1 class="mark">
-      <img class="mark-icon" src={iconUrl} alt="" width="32" height="32" decoding="async" />
+      <img class="mark-icon" src={haloUrl} alt="" width="34" height="34" decoding="async" />
       <span class="mark-copy">
         <span class="mark-name">Smyklot</span>
         <span class="mark-part">{rootMode ? 'ROOT MODE' : 'PANEL'}</span>
@@ -247,6 +244,77 @@
     {/if}
   </div>
 
+  {#if !rootMode && selectedTarget !== null}
+    <details class="target-menu" bind:this={targetMenu} ontoggle={toggleTargetDetails}>
+      <summary
+        class="target-trigger"
+        bind:this={targetTrigger}
+        aria-label={`Switch workspace, currently ${selectedTarget.account.display_name}`}
+      >
+        <Avatar account={selectedTarget.account} size={28} />
+        <span class="target-trigger-copy">
+          <span class="target-kicker">Workspace</span>
+          <strong>{selectedTarget.account.display_name}</strong>
+        </span>
+        <span class="menu-chevron" aria-hidden="true">
+          <Icon name="chevrons-up-down" size={14} strokeWidth={2} />
+        </span>
+        <span class="sidebar-tooltip">Switch workspace</span>
+      </summary>
+
+      <div class="target-popover">
+        <label class="target-search">
+          <span class="visually-hidden">Search workspaces</span>
+          <span class="target-search-icon" aria-hidden="true"><Icon name="search" size={18} /></span
+          >
+          <input
+            type="search"
+            placeholder="Search workspaces"
+            bind:this={targetSearchInput}
+            bind:value={targetQuery}
+          />
+        </label>
+        <div class="target-options">
+          {#snippet targetOption(target: PanelTarget)}
+            <a
+              href={targetHref(target)}
+              class={['target-option', target.id === selectedId && 'current']}
+              aria-current={target.id === selectedId ? 'page' : undefined}
+              onclick={(event) => selectTarget(event, target.id)}
+            >
+              <Avatar account={target.account} size={28} />
+              <span class="option-copy">
+                <strong>{target.account.display_name}</strong>
+                <span class="mono">@{target.account.login}</span>
+              </span>
+              <span class="option-check" aria-hidden="true">
+                {#if target.id === selectedId}<Icon name="success" size={16} />{/if}
+              </span>
+            </a>
+          {/snippet}
+
+          {#if organizationTargets.length > 0}
+            <p class="target-group-label">Organizations</p>
+            {#each organizationTargets as target (target.id)}
+              {@render targetOption(target)}
+            {/each}
+          {/if}
+
+          {#if personalTargets.length > 0}
+            <p class="target-group-label">Personal</p>
+            {#each personalTargets as target (target.id)}
+              {@render targetOption(target)}
+            {/each}
+          {/if}
+
+          {#if targetCandidates.length === 0}
+            <p class="target-empty">No workspaces match “{targetQuery.trim()}”</p>
+          {/if}
+        </div>
+      </div>
+    </details>
+  {/if}
+
   {#if showNavigation}
     <div id="panel-navigation-drawer" class="navigation-shell">
       <ViewTabs
@@ -256,7 +324,7 @@
         {showUsers}
         {collapsed}
         {rootMode}
-        {rootEnabled}
+        rootEnabled={systemRoleLabel !== ''}
         {rootValue}
         {rootHrefFor}
         onSelectRoot={selectRoot}
@@ -269,231 +337,130 @@
   {/if}
 
   {#if viewer !== null && handle !== null}
-    {#if !rootMode && selectedTarget !== null}
-      <details class="target-menu" bind:this={targetMenu} ontoggle={toggleTargetDetails}>
-        <summary
-          class="target-trigger"
-          bind:this={targetTrigger}
-          aria-label={`Switch installation, currently ${selectedTarget.account.display_name}`}
-        >
-          <Avatar account={selectedTarget.account} size={34} />
-          <span class="target-trigger-copy">
-            <strong>{selectedTarget.account.display_name}</strong>
-            <span class="mono">@{selectedTarget.account.login}</span>
-          </span>
-          <span class="menu-chevron" aria-hidden="true"><Icon name="chevron-down" size={16} /></span
-          >
-          <span class="sidebar-tooltip">Switch installation</span>
-        </summary>
-
-        <div class="target-popover">
-          <label class="target-search">
-            <span class="visually-hidden">Search installations</span>
-            <span class="target-search-icon" aria-hidden="true"
-              ><Icon name="search" size={18} /></span
-            >
-            <input
-              type="search"
-              placeholder="Search installations"
-              bind:this={targetSearchInput}
-              bind:value={targetQuery}
-            />
-          </label>
-          <div class="target-options">
-            {#snippet targetOption(target: PanelTarget)}
-              <a
-                href={targetHref(target)}
-                class={['target-option', target.id === selectedId && 'current']}
-                aria-current={target.id === selectedId ? 'page' : undefined}
-                onclick={(event) => selectTarget(event, target.id)}
-              >
-                <Avatar account={target.account} size={28} />
-                <span class="option-copy">
-                  <strong>{target.account.display_name}</strong>
-                  <span class="mono">@{target.account.login}</span>
-                </span>
-                <span class="option-check" aria-hidden="true">
-                  {#if target.id === selectedId}<Icon name="success" size={16} />{/if}
-                </span>
-              </a>
-            {/snippet}
-
-            {#if organizationTargets.length > 0}
-              <p class="target-group-label">Organizations</p>
-              {#each organizationTargets as target (target.id)}
-                {@render targetOption(target)}
-              {/each}
-            {/if}
-
-            {#if personalTargets.length > 0}
-              <p class="target-group-label">Personal</p>
-              {#each personalTargets as target (target.id)}
-                {@render targetOption(target)}
-              {/each}
-            {/if}
-
-            {#if targetCandidates.length === 0}
-              <p class="target-empty">No installations match “{targetQuery.trim()}”</p>
-            {/if}
-          </div>
-          <div class="signed-in-account">
-            <Avatar account={viewer.account} size={28} />
-            <span>
-              <strong>{viewer.account.display_name}</strong>
-              <small>{handleLabel(handle)}</small>
-            </span>
-          </div>
-          <NotificationInbox
-            fetchPage={fetchNotifications}
-            markRead={markNotificationRead}
-            refreshVersion={notificationVersion}
-          />
-          <div class="theme-setting">
-            <span class="theme-label">Theme</span>
-            <div class="theme-options" role="group" aria-label="Theme">
-              <button
-                type="button"
-                class:selected={theme === 'system'}
-                aria-pressed={theme === 'system'}
-                onclick={() => onSelectTheme('system')}
-              >
-                <Icon name="system" size={15} /><span>System</span>
-              </button>
-              <button
-                type="button"
-                class:selected={theme === 'light'}
-                aria-pressed={theme === 'light'}
-                onclick={() => onSelectTheme('light')}
-              >
-                <Icon name="sun" size={15} /><span>Light</span>
-              </button>
-              <button
-                type="button"
-                class:selected={theme === 'dark'}
-                aria-pressed={theme === 'dark'}
-                onclick={() => onSelectTheme('dark')}
-              >
-                <Icon name="moon" size={15} /><span>Dark</span>
-              </button>
-            </div>
-          </div>
-          <button class="account-action" type="button" onclick={signOut}>
-            <Icon name="sign-out" size={16} /><span>Sign out</span>
-          </button>
-        </div>
-      </details>
-    {:else}
-      <details
-        class="account-menu"
-        bind:this={accountMenu}
-        ontoggle={(event) => toggleDetails(event, accountMenu)}
+    <details
+      class="account-menu"
+      bind:this={accountMenu}
+      ontoggle={(event) => toggleDetails(event, accountMenu)}
+    >
+      <summary
+        class="who"
+        bind:this={accountTrigger}
+        aria-label={unreadCount === 0
+          ? `Account menu for ${viewer.account.display_name}`
+          : `Account menu for ${viewer.account.display_name}, ${unreadCount} unread notifications`}
       >
-        <summary
-          class="who"
-          bind:this={accountTrigger}
-          aria-label={`Account menu for ${viewer.account.display_name}, ${systemRoleLabel}`}
-        >
-          <Avatar account={viewer.account} size={34} />
-          <span class="who-text">
-            <span class="who-name">{viewer.account.display_name}</span>
-            <span class="who-meta"><span class="who-context">{systemRoleLabel}</span></span>
-          </span>
-          <span class="menu-chevron" aria-hidden="true"><Icon name="chevron-down" size={16} /></span
-          >
-          <span class="sidebar-tooltip">Account menu</span>
-        </summary>
-        <div class="account-popover">
-          <div class="signed-in-account">
-            <Avatar account={viewer.account} size={28} />
-            <span>
+        <span class="who-avatar">
+          <Avatar account={viewer.account} size={32} />
+          {#if unreadCount > 0}<span class="unread-dot" aria-hidden="true"></span>{/if}
+        </span>
+        <span class="who-text">
+          <span class="who-name">{viewer.account.display_name}</span>
+          <span class="who-handle mono">{handle.handle}</span>
+        </span>
+        <span class="menu-chevron" aria-hidden="true">
+          <Icon name="chevron-up" size={14} strokeWidth={2} />
+        </span>
+        <span class="sidebar-tooltip">Account</span>
+      </summary>
+      <div class="account-popover">
+        <div class="account-header">
+          <Avatar account={viewer.account} size={36} />
+          <span class="account-header-copy">
+            <span class="account-name-row">
               <strong>{viewer.account.display_name}</strong>
-              <small>{handleLabel(handle)}</small>
+              {#if systemRoleLabel !== ''}
+                <span class="role-chip">{systemRoleLabel}</span>
+              {/if}
             </span>
-          </div>
-          <NotificationInbox
-            fetchPage={fetchNotifications}
-            markRead={markNotificationRead}
-            refreshVersion={notificationVersion}
-          />
-          <div class="theme-setting">
-            <span class="theme-label">Theme</span>
-            <div class="theme-options" role="group" aria-label="Theme">
-              <button
-                type="button"
-                class:selected={theme === 'system'}
-                aria-pressed={theme === 'system'}
-                onclick={() => onSelectTheme('system')}
-              >
-                <Icon name="system" size={15} />
-                <span>System</span>
-              </button>
-              <button
-                type="button"
-                class:selected={theme === 'light'}
-                aria-pressed={theme === 'light'}
-                onclick={() => onSelectTheme('light')}
-              >
-                <Icon name="sun" size={15} />
-                <span>Light</span>
-              </button>
-              <button
-                type="button"
-                class:selected={theme === 'dark'}
-                aria-pressed={theme === 'dark'}
-                onclick={() => onSelectTheme('dark')}
-              >
-                <Icon name="moon" size={15} />
-                <span>Dark</span>
-              </button>
-            </div>
-          </div>
-          <button class="account-action" type="button" onclick={signOut}>
-            <Icon name="sign-out" size={16} />
-            <span>Sign out</span>
-          </button>
+            <small class="mono">{handleLabel(handle)}</small>
+          </span>
         </div>
-      </details>
-    {/if}
+        <hr class="menu-divider" />
+        <NotificationInbox
+          fetchPage={fetchNotifications}
+          markRead={markNotificationRead}
+          refreshVersion={notificationVersion}
+          onUnread={(next) => (unreadCount = next)}
+        />
+        <hr class="menu-divider" />
+        <div class="theme-row">
+          <span class="theme-icon" aria-hidden="true"><Icon name="sun-moon" size={15} /></span>
+          <span class="theme-label">Theme</span>
+          <div class="theme-options" role="group" aria-label="Theme">
+            <button
+              type="button"
+              class:selected={theme === 'system'}
+              aria-pressed={theme === 'system'}
+              aria-label="System theme"
+              title="System theme"
+              onclick={() => onSelectTheme('system')}
+            >
+              <Icon name="system" size={14} />
+            </button>
+            <button
+              type="button"
+              class:selected={theme === 'light'}
+              aria-pressed={theme === 'light'}
+              aria-label="Light theme"
+              title="Light theme"
+              onclick={() => onSelectTheme('light')}
+            >
+              <Icon name="sun" size={14} />
+            </button>
+            <button
+              type="button"
+              class:selected={theme === 'dark'}
+              aria-pressed={theme === 'dark'}
+              aria-label="Dark theme"
+              title="Dark theme"
+              onclick={() => onSelectTheme('dark')}
+            >
+              <Icon name="moon" size={14} />
+            </button>
+          </div>
+        </div>
+        <hr class="menu-divider" />
+        <button class="account-action" type="button" onclick={signOut}>
+          <span class="action-icon"><Icon name="sign-out" size={16} /></span>
+          <span class="action-text">Sign out</span>
+        </button>
+      </div>
+    </details>
   {/if}
 </aside>
 
 <style>
+  /* Spacing is per-element rather than a flex gap: the bottom zone must keep
+     one rhythm (divider, 8px, admin entry, 8px, divider, 8px, user card), and
+     a container gap would stack onto those margins. */
   .panel-sidebar {
     background: var(--sidebar-bg);
     border-right: 1px solid var(--sidebar-border);
     display: flex;
     flex-direction: column;
-    gap: var(--space-5);
     height: 100dvh;
     min-height: 36rem;
-    padding: var(--space-5) var(--space-4) 0;
+    padding: var(--space-4) var(--space-3) var(--space-3);
     position: sticky;
     top: 0;
     transition: padding var(--duration-normal) var(--ease-standard);
     z-index: var(--layer-sticky);
   }
 
-  .panel-sidebar.root-mode::after {
-    background: var(--footer-spectrum);
-    bottom: 0;
-    content: '';
-    position: absolute;
-    right: -1px;
-    top: 0;
-    width: 2px;
-  }
-
   .brand-row {
     align-items: center;
     display: flex;
     justify-content: space-between;
-    min-height: 2.5rem;
+    margin-bottom: var(--space-2);
+    min-height: 2.375rem;
+    padding: 0 var(--space-2);
+    position: relative;
   }
 
   .mark {
     align-items: center;
     display: flex;
-    gap: var(--space-2);
+    gap: 0.625rem;
     margin: 0;
     min-width: 0;
   }
@@ -505,21 +472,27 @@
 
   .mark-copy {
     display: grid;
-    gap: 0.2rem;
+    gap: 0.3rem;
     min-width: 0;
   }
 
   .mark-name {
     color: var(--sidebar-text);
-    font: 700 var(--font-size-body) / 1 var(--sans);
-    letter-spacing: 0.12em;
+    font: 700 0.8125rem / 1 var(--sans);
+    letter-spacing: 0.11em;
+    text-box: trim-both cap alphabetic;
     text-transform: uppercase;
   }
 
   .mark-part {
     color: var(--sidebar-text-muted);
-    font: 500 var(--font-size-micro) / 1 var(--sans);
-    letter-spacing: 0.08em;
+    font: 700 0.65625rem / 1 var(--sans);
+    letter-spacing: 0.12em;
+    text-box: trim-both cap alphabetic;
+  }
+
+  .panel-sidebar.root-mode .mark-part {
+    color: var(--sidebar-root-accent);
   }
 
   .sidebar-collapse-trigger,
@@ -538,12 +511,9 @@
   }
 
   .sidebar-collapse-trigger {
-    background: transparent;
-    color: var(--sidebar-text-muted);
     cursor: pointer;
     opacity: 0;
-    pointer-events: none;
-    position: static;
+    position: relative;
     transition:
       background-color var(--duration-fast) var(--ease-standard),
       color var(--duration-fast) var(--ease-standard),
@@ -553,9 +523,8 @@
   }
 
   .panel-sidebar:hover .sidebar-collapse-trigger,
-  .panel-sidebar:focus-within .sidebar-collapse-trigger {
+  .sidebar-collapse-trigger:focus-visible {
     opacity: 1;
-    pointer-events: auto;
   }
 
   .sidebar-collapse-trigger:hover,
@@ -603,20 +572,44 @@
     z-index: var(--layer-popover);
   }
 
-  .target-trigger,
-  .who {
+  .target-menu {
+    margin: var(--space-2) 0 var(--space-3);
+  }
+
+  /* ---- workspace switcher: context selection lives at the top ---- */
+  .target-trigger {
     align-items: center;
-    background: var(--identity-bg);
-    border: 1px solid var(--identity-border);
+    background: var(--switcher-card-bg);
+    border: 1px solid var(--switcher-card-border);
     border-radius: var(--radius-control);
+    box-shadow: var(--sidebar-thumb-shadow);
     cursor: pointer;
     display: grid;
-    gap: var(--space-2);
+    gap: 0.625rem;
     grid-template-columns: auto minmax(0, 1fr) auto;
-    min-height: 3.75rem;
-    padding: var(--space-2) var(--space-3);
+    min-height: 3.25rem;
+    padding: var(--space-2) 0.625rem;
     position: relative;
+    transition:
+      background-color var(--duration-fast) var(--ease-standard),
+      border-color var(--duration-fast) var(--ease-standard),
+      transform var(--duration-press) var(--ease-standard);
     user-select: none;
+  }
+
+  .target-trigger:hover {
+    background: var(--switcher-card-hover);
+    border-color: color-mix(in srgb, var(--focus) 40%, var(--switcher-card-border));
+  }
+
+  .target-menu[open] .target-trigger {
+    border-color: color-mix(in srgb, var(--focus) 55%, var(--switcher-card-border));
+  }
+
+  .target-trigger:active {
+    background: var(--sidebar-item-pressed);
+    box-shadow: none;
+    transform: translateY(1px);
   }
 
   .target-trigger::-webkit-details-marker,
@@ -629,32 +622,24 @@
     content: '';
   }
 
-  .target-trigger:hover,
-  .target-menu[open] .target-trigger,
-  .who:hover,
-  .account-menu[open] .who {
-    background: var(--identity-hover-bg);
-    border-color: color-mix(in srgb, var(--focus) 40%, var(--identity-border));
-  }
-
-  .target-trigger:active,
-  .who:active {
-    background: var(--sidebar-item-pressed);
-  }
-
-  .target-trigger-copy,
-  .who-text {
-    display: flex;
-    flex-direction: column;
-    gap: 0.18rem;
+  .target-trigger-copy {
+    display: grid;
+    gap: 0.3rem;
     min-width: 0;
     text-align: left;
   }
 
-  .target-trigger-copy strong,
-  .who-name {
+  .target-kicker {
+    color: var(--sidebar-text-muted);
+    font: 700 0.625rem / 1 var(--sans);
+    letter-spacing: 0.11em;
+    text-box: trim-both cap alphabetic;
+    text-transform: uppercase;
+  }
+
+  .target-trigger-copy strong {
     color: var(--sidebar-text);
-    font-size: var(--font-size-body);
+    font-size: var(--font-size-meta);
     font-weight: 600;
     line-height: 1.2;
     overflow: hidden;
@@ -662,81 +647,63 @@
     white-space: nowrap;
   }
 
-  .target-trigger-copy span,
-  .who-context {
-    color: var(--sidebar-text-muted);
-    font-size: var(--font-size-compact);
-    line-height: 1.2;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
   .menu-chevron {
-    color: var(--sidebar-text-muted);
+    color: var(--sidebar-text-secondary);
     display: grid;
     place-items: center;
-    transition: transform var(--duration-fast) var(--ease-standard);
-  }
-
-  details[open] > summary .menu-chevron {
-    transform: rotate(180deg);
   }
 
   .target-popover,
   .account-popover {
-    background: var(--popover-bg);
-    border: 1px solid var(--popover-border);
+    background: var(--sidebar-popover-bg);
+    border: 1px solid var(--sidebar-popover-border);
     border-radius: var(--radius-popover);
     box-shadow: var(--shadow-popover);
-    left: var(--space-2);
-    max-height: min(32rem, calc(100dvh - 2rem));
+    color: var(--sidebar-menu-text);
+    left: 0;
     overflow: hidden;
-    padding: var(--space-2);
+    padding: 6px;
     position: absolute;
     z-index: var(--layer-popover);
   }
 
   .target-popover {
-    bottom: calc(100% + var(--space-2));
     display: grid;
-    grid-template-rows: auto minmax(8rem, 1fr) auto auto auto;
-    left: 0;
-    max-height: min(38rem, calc(100dvh - 2rem));
-    width: min(19rem, calc(100vw - 2rem));
+    grid-template-rows: auto minmax(8rem, 1fr);
+    max-height: min(30rem, calc(100dvh - 8rem));
+    right: 0;
+    top: calc(100% + 6px);
   }
 
   .account-popover {
-    bottom: calc(100% + var(--space-2));
-    left: 0;
-    right: auto;
-    width: min(17rem, calc(100vw - 2rem));
+    bottom: calc(100% + 6px);
+    width: min(16.5rem, calc(100vw - 2rem));
   }
 
   .target-options {
     display: grid;
     gap: 2px;
-    max-height: none;
     min-height: 0;
     overflow: auto;
   }
 
   .target-search {
-    background: var(--popover-bg);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--sidebar-popover-bg);
+    border-bottom: 1px solid var(--sidebar-popover-border);
     display: block;
-    padding: 0 0 var(--space-2);
+    margin: 0 -6px;
+    padding: 2px 6px 8px;
     position: relative;
     z-index: 2;
   }
 
   .target-search input {
-    background: var(--input-bg);
-    border: 1px solid var(--control-border);
+    background: var(--sidebar-seg-track);
+    border: 1px solid var(--sidebar-seg-border);
     border-radius: var(--radius-control);
-    color: var(--text-primary);
+    color: var(--sidebar-menu-text);
     font: 500 var(--font-size-meta) / 1 var(--sans);
-    height: var(--control-height);
+    height: 2.125rem;
     padding: 0 var(--space-3) 0 2.25rem;
     width: 100%;
   }
@@ -748,26 +715,26 @@
   }
 
   .target-search input::placeholder {
-    color: var(--text-muted);
+    color: var(--sidebar-menu-muted);
   }
 
   .target-search-icon {
-    color: var(--text-muted);
+    color: var(--sidebar-menu-muted);
     display: grid;
-    left: 0.625rem;
+    left: 0.875rem;
     place-items: center;
     position: absolute;
-    top: 0.6875rem;
+    top: 0.625rem;
   }
 
   .target-group-label {
-    background: var(--popover-bg);
-    color: var(--text-muted);
-    font-size: var(--font-size-compact);
-    font-weight: 650;
-    letter-spacing: 0.04em;
+    background: var(--sidebar-popover-bg);
+    color: var(--sidebar-menu-muted);
+    font-size: 0.65625rem;
+    font-weight: 700;
+    letter-spacing: 0.09em;
     margin: 0;
-    padding: var(--space-1) var(--space-2);
+    padding: var(--space-2) var(--space-2) var(--space-1);
     position: sticky;
     top: 0;
     text-transform: uppercase;
@@ -775,7 +742,7 @@
   }
 
   .target-empty {
-    color: var(--text-muted);
+    color: var(--sidebar-menu-muted);
     font-size: var(--font-size-meta);
     margin: 0;
     padding: var(--space-5) var(--space-3);
@@ -785,34 +752,34 @@
   .target-option {
     align-items: center;
     background: transparent;
-    border-radius: calc(var(--radius-control) - 2px);
-    color: var(--text-primary);
+    border-radius: calc(var(--radius-popover) - 6px);
+    color: var(--sidebar-menu-text);
     display: grid;
     gap: var(--space-2);
     grid-template-columns: auto minmax(0, 1fr) 1rem;
-    min-height: 2.75rem;
-    padding: var(--space-2);
+    min-height: 2.5rem;
+    padding: var(--space-1) var(--space-2);
     text-align: left;
     text-decoration: none;
+    transition:
+      background-color var(--duration-fast) var(--ease-standard),
+      transform var(--duration-press) var(--ease-standard);
   }
 
   .target-option:hover,
   .target-option:focus-visible {
-    background: var(--interactive-hover);
-  }
-
-  .target-option.current {
-    background: var(--brand-action-tint);
-    color: var(--brand-action-text);
+    background: var(--sidebar-menu-hover);
   }
 
   .target-option:active {
-    background: var(--sidebar-item-pressed);
+    background: var(--sidebar-menu-pressed);
+    transform: translateY(1px);
   }
 
   .option-copy {
     display: flex;
     flex-direction: column;
+    gap: 0.2rem;
     min-width: 0;
   }
 
@@ -824,19 +791,25 @@
   }
 
   .option-copy strong {
-    font-size: var(--font-size-meta);
+    font-size: var(--font-size-compact);
+    font-weight: 600;
+    line-height: 1.2;
   }
 
-  .option-copy span,
-  .option-check {
-    color: var(--text-muted);
-    font-size: var(--font-size-micro);
+  .option-copy span {
+    color: var(--sidebar-menu-muted);
+    font-size: 0.625rem;
+    line-height: 1.2;
   }
 
   .option-check {
-    color: var(--success);
-    font-weight: 700;
-    text-align: center;
+    color: var(--brand-action);
+    display: grid;
+    place-items: center;
+  }
+
+  .panel-sidebar.root-mode .option-check {
+    color: var(--sidebar-root-accent);
   }
 
   .navigation-shell {
@@ -844,140 +817,271 @@
     min-height: 0;
   }
 
-  .target-menu,
+  /* ---- account: the card at the bottom is only about the signed-in user.
+     The bottom zone keeps one rhythm: divider, 8px, admin entry, 8px,
+     divider, 8px, this card. ---- */
   .account-menu {
-    margin-top: auto;
+    border-top: 1px solid var(--sidebar-border);
+    margin-top: var(--space-2);
+    padding-top: var(--space-2);
   }
 
   .who {
-    overflow: hidden;
-  }
-
-  .who-meta {
-    align-items: center;
-    display: flex;
-    gap: var(--space-2);
-    min-width: 0;
-  }
-
-  .who-context {
-    min-width: 0;
-  }
-
-  .account-action {
     align-items: center;
     background: transparent;
-    border: 0;
     border-radius: var(--radius-control);
-    color: var(--text-primary);
+    cursor: pointer;
+    display: grid;
+    gap: 0.625rem;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    min-height: 3rem;
+    padding: var(--space-2) 0.625rem;
+    position: relative;
+    transition:
+      background-color var(--duration-fast) var(--ease-standard),
+      transform var(--duration-press) var(--ease-standard);
+    user-select: none;
+  }
+
+  .who:hover,
+  .account-menu[open] .who {
+    background: var(--sidebar-item-hover);
+  }
+
+  .who:active {
+    background: var(--sidebar-item-pressed);
+    transform: translateY(1px);
+  }
+
+  .who-avatar {
+    display: inline-flex;
+    flex: none;
+    position: relative;
+  }
+
+  .unread-dot {
+    background: var(--unread-badge-bg);
+    border: 2px solid var(--sidebar-bg);
+    border-radius: 50%;
+    height: 0.625rem;
+    position: absolute;
+    right: -1px;
+    top: -1px;
+    width: 0.625rem;
+  }
+
+  .who-text {
     display: flex;
-    font-size: var(--font-size-meta);
-    gap: var(--space-2);
-    height: var(--control-height);
-    padding: 0 var(--space-3);
-    text-align: left;
-    width: 100%;
-  }
-
-  .signed-in-account {
-    align-items: center;
-    border-bottom: 1px solid var(--border-subtle);
-    display: grid;
-    gap: var(--space-2);
-    grid-template-columns: auto minmax(0, 1fr);
-    margin-bottom: var(--space-1);
-    padding: var(--space-2) var(--space-2) var(--space-3);
-  }
-
-  .signed-in-account > span {
-    display: grid;
+    flex-direction: column;
+    gap: 0.3rem;
     min-width: 0;
+    text-align: left;
   }
 
-  .signed-in-account strong,
-  .signed-in-account small {
+  .who-name {
+    color: var(--sidebar-text);
+    font-size: var(--font-size-meta);
+    font-weight: 600;
+    line-height: 1.2;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .signed-in-account strong {
-    font-size: var(--font-size-meta);
+  /* No text-box trim and no tight line-height here: with overflow hidden they
+     clip the descenders of the handle ("@", "y", "g") at the bottom edge. */
+  .who-handle {
+    color: var(--sidebar-text-muted);
+    font-size: var(--font-size-micro);
+    font-weight: 500;
+    line-height: 1.35;
+    margin-top: -0.2rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  .signed-in-account small {
-    color: var(--text-muted);
-    font: 500 var(--font-size-compact) / 1.35 var(--mono);
-  }
-
-  .theme-setting {
-    border-bottom: 1px solid var(--border-subtle);
+  .account-header {
+    align-items: center;
     display: grid;
-    gap: var(--space-2);
-    margin-bottom: var(--space-1);
-    padding: var(--space-2) var(--space-1) var(--space-3);
+    gap: 0.625rem;
+    grid-template-columns: auto minmax(0, 1fr);
+    padding: 8px 10px 12px;
+  }
+
+  .account-header-copy {
+    display: grid;
+    gap: 0.35rem;
+    min-width: 0;
+  }
+
+  .account-name-row {
+    align-items: center;
+    display: flex;
+    gap: 0.4375rem;
+    min-width: 0;
+  }
+
+  .account-name-row strong {
+    font-size: var(--font-size-meta);
+    font-weight: 600;
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .role-chip {
+    align-items: center;
+    background: var(--role-chip-bg);
+    border-radius: var(--radius-chip);
+    color: var(--role-chip-text);
+    display: inline-flex;
+    flex: none;
+    font: 700 0.5938rem / 1 var(--sans);
+    height: 1.125rem;
+    letter-spacing: 0.08em;
+    padding-inline: 0.4375rem;
+    text-transform: uppercase;
+  }
+
+  .account-header-copy small {
+    color: var(--sidebar-menu-muted);
+    font-size: var(--font-size-micro);
+    font-weight: 500;
+    line-height: 1.35;
+    margin-top: -0.2rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .menu-divider {
+    background: var(--sidebar-popover-border);
+    border: 0;
+    height: 1px;
+    margin: 4px -6px;
+  }
+
+  .theme-row {
+    align-items: center;
+    display: flex;
+    gap: 0.625rem;
+    min-height: 2.5rem;
+    padding: 0 10px;
+  }
+
+  .theme-icon {
+    color: var(--sidebar-menu-muted);
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 1.125rem;
   }
 
   .theme-label {
-    color: var(--text-muted);
-    font: 600 var(--font-size-compact) / 1 var(--sans);
-    padding-inline: var(--space-1);
+    color: var(--sidebar-menu-text);
+    flex: 1;
+    font: 500 var(--font-size-meta) / 1 var(--sans);
+    text-box: trim-both cap alphabetic;
   }
 
   .theme-options {
-    background: var(--surface-inset);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-control);
-    display: grid;
-    gap: var(--control-inset);
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    padding: var(--control-inset);
+    background: var(--sidebar-seg-track);
+    border: 1px solid var(--sidebar-seg-border);
+    border-radius: 7px;
+    display: inline-flex;
+    gap: 2px;
+    padding: 2px;
   }
 
   .theme-options button {
     align-items: center;
     background: transparent;
     border: 0;
-    border-radius: calc(var(--radius-control) - var(--control-inset));
-    color: var(--text-muted);
+    border-radius: 5px;
+    color: var(--sidebar-menu-muted);
+    cursor: pointer;
     display: inline-flex;
-    font: 600 var(--font-size-compact) / 1 var(--sans);
-    gap: var(--space-1);
-    height: var(--control-height-compact);
+    height: 1.625rem;
     justify-content: center;
-    padding: 0 var(--space-1);
+    transition:
+      background-color var(--duration-fast) var(--ease-standard),
+      color var(--duration-fast) var(--ease-standard),
+      transform var(--duration-press) var(--ease-standard);
+    width: 1.875rem;
   }
 
-  .theme-options button:hover {
-    background: var(--interactive-hover);
-    color: var(--text-primary);
-  }
-
-  .theme-options button.selected {
-    background: var(--surface-base);
-    box-shadow: 0 1px 2px var(--shadow-color);
-    color: var(--brand-action-text);
+  .theme-options button:hover:not(.selected) {
+    background: color-mix(in srgb, var(--sidebar-menu-text) 8%, transparent);
+    color: var(--sidebar-menu-text);
   }
 
   .theme-options button:active {
-    background: var(--interactive-pressed);
+    transform: scale(0.92);
+  }
+
+  .theme-options button.selected {
+    background: var(--sidebar-seg-thumb);
+    box-shadow: 0 1px 3px rgb(0 0 0 / 18%);
+    color: var(--sidebar-menu-text);
+  }
+
+  .account-action {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-radius: calc(var(--radius-popover) - 6px);
+    color: var(--sidebar-menu-text);
+    cursor: pointer;
+    display: flex;
+    font: 500 var(--font-size-meta) / 1 var(--sans);
+    gap: 0.625rem;
+    min-height: 2.5rem;
+    padding: 0 10px;
+    text-align: left;
+    transition:
+      background-color var(--duration-fast) var(--ease-standard),
+      color var(--duration-fast) var(--ease-standard),
+      transform var(--duration-press) var(--ease-standard);
+    width: 100%;
   }
 
   .account-action:hover,
   .account-action:focus-visible {
-    background: var(--interactive-hover);
+    background: var(--stop-tint);
+    color: var(--stop);
   }
 
   .account-action:active {
-    background: var(--interactive-pressed);
+    background: var(--sidebar-menu-pressed);
+    transform: translateY(1px);
   }
 
+  .action-icon {
+    color: var(--sidebar-menu-muted);
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 1.125rem;
+  }
+
+  .account-action:hover .action-icon,
+  .account-action:focus-visible .action-icon {
+    color: var(--stop);
+  }
+
+  .action-text {
+    text-box: trim-both cap alphabetic;
+  }
+
+  /* ---- collapsed rail ---- */
   .sidebar-tooltip {
-    background: var(--popover-bg);
-    border: 1px solid var(--popover-border);
+    background: var(--sidebar-popover-bg);
+    border: 1px solid var(--sidebar-popover-border);
     border-radius: var(--radius-control);
     box-shadow: var(--shadow-popover);
-    color: var(--text-primary);
+    color: var(--sidebar-menu-text);
     font-size: var(--font-size-meta);
     font-weight: 500;
     left: calc(100% + var(--space-2));
@@ -1006,29 +1110,34 @@
     visibility: visible;
   }
 
+  /* A tooltip never fights the popover it would describe. */
+  .target-menu[open] .sidebar-tooltip,
+  .account-menu[open] .sidebar-tooltip {
+    visibility: hidden !important;
+  }
+
   .collapsed {
     align-items: stretch;
     padding-left: var(--space-2);
     padding-right: var(--space-2);
   }
 
-  .collapsed .brand-row,
-  .collapsed .mark {
-    justify-content: center;
-  }
-
+  /* Collapsed, the toggle joins the rail flow under the mark: always visible,
+     nothing floating over the sidebar edge. */
   .collapsed .brand-row {
-    min-height: 2.5rem;
+    flex-direction: column;
+    gap: var(--space-2);
+    justify-content: center;
+    min-height: 0;
+    padding: 0;
   }
 
   .collapsed .sidebar-collapse-trigger {
-    background: var(--sidebar-bg);
-    border-color: var(--sidebar-border);
-    border-radius: var(--radius-control);
-    box-shadow: 0 3px 10px rgb(0 0 0 / 18%);
-    position: absolute;
-    right: -0.875rem;
-    top: calc(var(--space-5) + 0.375rem);
+    opacity: 1;
+  }
+
+  .collapsed .mark {
+    justify-content: center;
   }
 
   .collapsed .mark-copy,
@@ -1038,28 +1147,31 @@
     display: none;
   }
 
-  .collapsed .target-trigger,
+  .collapsed .target-trigger {
+    display: flex;
+    justify-content: center;
+    padding: var(--space-2) 0;
+  }
+
   .collapsed .who {
     display: flex;
     justify-content: center;
-    padding: var(--space-2);
-  }
-
-  .collapsed .target-popover,
-  .collapsed .account-popover {
-    left: calc(100% + var(--space-2));
+    padding: var(--space-2) 0;
   }
 
   .collapsed .target-popover {
+    left: calc(100% + 10px);
+    right: auto;
     top: 0;
+    width: 17rem;
   }
 
   .collapsed .account-popover {
     bottom: 0;
-    left: calc(100% + var(--space-2));
-    right: auto;
+    left: calc(100% + 10px);
   }
 
+  /* ---- mobile: the sidebar becomes a top bar ---- */
   @media (max-width: 64rem) {
     .panel-sidebar,
     .panel-sidebar.collapsed {
@@ -1080,6 +1192,7 @@
       flex-direction: row;
       height: 3.75rem;
       justify-content: space-between;
+      min-height: 0;
       padding: 0 var(--space-4);
     }
 
@@ -1091,8 +1204,8 @@
       display: flex;
       margin: 0;
       position: absolute;
-      right: 5rem;
-      top: 0.8125rem;
+      right: 7.25rem;
+      top: 1rem;
     }
 
     .navigation-shell {
@@ -1113,22 +1226,32 @@
       display: block;
     }
 
-    .account-menu,
     .target-menu,
-    .collapsed .account-menu,
-    .collapsed .target-menu {
+    .account-menu,
+    .collapsed .target-menu,
+    .collapsed .account-menu {
       border: 0;
       margin: 0;
+      padding: 0;
       position: absolute;
-      right: var(--space-4);
-      top: 0.8125rem;
+      top: 0.9375rem;
     }
 
-    .who,
+    .target-menu {
+      right: 4.25rem;
+    }
+
+    .account-menu {
+      right: var(--space-4);
+    }
+
     .target-trigger,
+    .who,
+    .collapsed .target-trigger,
     .collapsed .who {
       background: transparent;
       border: 0;
+      box-shadow: none;
       display: flex;
       min-height: 2.125rem;
       padding: 0;
@@ -1152,7 +1275,6 @@
     }
 
     .target-popover {
-      right: 0;
       width: min(19rem, calc(100vw - 2rem));
     }
   }

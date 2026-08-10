@@ -59,8 +59,7 @@
   }
 
   function selectFromClick(event: MouseEvent, next: PanelView): void {
-    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
-      return;
+    if (!plainClick(event)) return;
     event.preventDefault();
     onSelect(next);
   }
@@ -102,7 +101,6 @@
     if (view === 'settings') return 'settings';
     if (view === 'repositories') return 'repositories';
     if (view === 'users' || view === 'invitations') return 'users';
-    if (view === 'history') return 'history';
     return 'history';
   }
 
@@ -122,6 +120,7 @@
 <nav class={['panel-navigation', collapsed && 'collapsed']} aria-label="Panel navigation">
   <div class="view-links">
     {#if rootMode}
+      <p class="nav-label">Administration</p>
       {#each ROOT_SECTIONS as section (section)}
         <a
           href={rootHrefFor(section)}
@@ -135,31 +134,22 @@
           <span class="navigation-tooltip">{rootLabel(section)}</span>
         </a>
       {/each}
-      <a
-        class="return-entry"
-        class:disabled={returnHref === '#'}
-        href={returnHref}
-        aria-label={collapsed ? 'Return to panel' : undefined}
-        aria-disabled={returnHref === '#' ? 'true' : undefined}
-        onclick={returnFromClick}
-      >
-        <span class="navigation-icon"><Icon name="chevron-left" size={20} /></span>
-        <span class="navigation-label">Return to panel</span>
-        <span class="navigation-tooltip">Return to panel</span>
-      </a>
-    {:else}
-      {#if rootEnabled}
+      <div class="navigation-spacer"></div>
+      <div class="admin-zone">
         <a
-          class="root-entry"
-          href={rootDashboardHref}
-          aria-label={collapsed ? 'Root dashboard' : undefined}
-          onclick={enterRootFromClick}
+          class="admin-entry"
+          class:disabled={returnHref === '#'}
+          href={returnHref}
+          aria-label={collapsed ? 'Exit Root' : undefined}
+          aria-disabled={returnHref === '#' ? 'true' : undefined}
+          onclick={returnFromClick}
         >
-          <span class="navigation-icon"><Icon name="admin" size={20} strokeWidth={2} /></span>
-          <span class="navigation-label">Root dashboard</span>
-          <span class="navigation-tooltip">Root dashboard</span>
+          <span class="navigation-icon"><Icon name="chevron-left" size={20} /></span>
+          <span class="navigation-label">Exit Root</span>
+          <span class="navigation-tooltip">Exit Root</span>
         </a>
-      {/if}
+      </div>
+    {:else}
       {#each visibleViews as item (item)}
         <a
           href={hrefFor(destination(item))}
@@ -174,6 +164,21 @@
           <span class="navigation-tooltip">{label(item)}</span>
         </a>
       {/each}
+      {#if rootEnabled}
+        <div class="navigation-spacer"></div>
+        <div class="admin-zone">
+          <a
+            class="admin-entry root-entry"
+            href={rootDashboardHref}
+            aria-label={collapsed ? 'Root console' : undefined}
+            onclick={enterRootFromClick}
+          >
+            <span class="navigation-icon"><Icon name="shield" size={20} /></span>
+            <span class="navigation-label">Root console</span>
+            <span class="navigation-tooltip">Root console</span>
+          </a>
+        </div>
+      {/if}
     {/if}
   </div>
 </nav>
@@ -191,26 +196,40 @@
   .view-links {
     display: flex;
     flex-direction: column;
-    gap: var(--space-1);
+    gap: 3px;
     height: 100%;
+  }
+
+  .nav-label {
+    color: var(--sidebar-text-muted);
+    font: 700 var(--font-size-micro) / 1 var(--sans);
+    letter-spacing: 0.09em;
+    margin: 0 0 var(--space-2);
+    padding-inline: var(--space-3);
+    text-transform: uppercase;
+  }
+
+  .navigation-spacer {
+    flex: 1;
   }
 
   a {
     align-items: center;
     border-radius: var(--radius-control);
-    color: var(--sidebar-text-muted);
+    color: var(--sidebar-text-secondary);
     display: flex;
     font-size: var(--font-size-control);
     font-weight: 600;
     gap: var(--space-3);
     line-height: 1;
-    min-height: 2.75rem;
+    min-height: 2.375rem;
     padding: 1px var(--space-3) 0;
     position: relative;
     text-decoration: none;
     transition:
       background-color var(--duration-fast) var(--ease-standard),
-      color var(--duration-fast) var(--ease-standard);
+      color var(--duration-fast) var(--ease-standard),
+      transform var(--duration-press) var(--ease-standard);
   }
 
   a:hover {
@@ -220,53 +239,42 @@
 
   a:active {
     background: var(--sidebar-item-pressed);
+    transform: translateY(1px);
   }
 
+  /* Selected item is a raised thumb, the same language as the app's segmented
+     controls: the accent lives in the text and icon, not a bar or a tint. */
   a.active {
-    background: var(--sidebar-item-active);
+    background: var(--sidebar-thumb);
+    box-shadow: var(--sidebar-thumb-shadow);
     color: var(--sidebar-item-active-text);
     font-weight: 700;
   }
 
   a.active:hover {
-    background-color: var(--interactive-selected-hover);
+    background: color-mix(in srgb, var(--sidebar-item-active-text) 6%, var(--sidebar-thumb));
     color: var(--sidebar-item-active-text);
   }
 
   a.active:active {
-    background-color: var(--interactive-selected-pressed);
+    background: color-mix(in srgb, var(--sidebar-item-active-text) 12%, var(--sidebar-thumb));
   }
 
-  .root-entry {
-    background:
-      linear-gradient(var(--sidebar-bg), var(--sidebar-bg)) padding-box,
-      var(--footer-spectrum) border-box;
-    border: 2px solid transparent;
-    color: var(--sidebar-text);
-    font-weight: 700;
-    margin-bottom: var(--space-2);
+  .admin-zone {
+    border-top: 1px solid var(--sidebar-border);
+    margin-top: var(--space-2);
+    padding-top: var(--space-2);
+  }
+
+  .root-entry .navigation-icon {
+    color: var(--sidebar-root-accent);
   }
 
   .root-entry:hover {
-    background:
-      linear-gradient(var(--sidebar-item-hover), var(--sidebar-item-hover)) padding-box,
-      var(--footer-spectrum) border-box;
+    background: color-mix(in srgb, var(--sidebar-root-accent) 10%, transparent);
   }
 
-  .root-entry:active {
-    background:
-      linear-gradient(var(--sidebar-item-pressed), var(--sidebar-item-pressed)) padding-box,
-      var(--footer-spectrum) border-box;
-  }
-
-  .return-entry {
-    border-top: 1px solid var(--sidebar-border);
-    border-radius: 0;
-    margin-top: auto;
-    padding-top: var(--space-3);
-  }
-
-  .return-entry.disabled {
+  .admin-entry.disabled {
     cursor: default;
     opacity: 0.45;
   }
@@ -284,10 +292,6 @@
     height: 1.25rem;
   }
 
-  a.active .navigation-icon {
-    color: var(--sidebar-item-active-text);
-  }
-
   .navigation-tooltip {
     display: none;
   }
@@ -297,16 +301,20 @@
     padding: 0;
   }
 
+  .collapsed .nav-label {
+    display: none;
+  }
+
   .collapsed .navigation-label {
     display: none;
   }
 
   .collapsed .navigation-tooltip {
-    background: var(--popover-bg);
-    border: 1px solid var(--popover-border);
+    background: var(--sidebar-popover-bg);
+    border: 1px solid var(--sidebar-popover-border);
     border-radius: var(--radius-control);
     box-shadow: var(--shadow-popover);
-    color: var(--text-primary);
+    color: var(--sidebar-menu-text);
     display: block;
     font-size: var(--font-size-meta);
     font-weight: 500;
@@ -341,13 +349,21 @@
       min-height: 2.75rem;
     }
 
+    .navigation-spacer {
+      display: none;
+    }
+
     .collapsed a {
       justify-content: flex-start;
       padding: 0 var(--space-3);
     }
 
+    .collapsed .nav-label {
+      display: block;
+    }
+
     .collapsed .navigation-label {
-      display: inline;
+      display: inline-flex;
     }
 
     .collapsed .navigation-tooltip {

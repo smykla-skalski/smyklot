@@ -6,6 +6,8 @@
     | 'chevron-down'
     | 'chevron-left'
     | 'chevron-right'
+    | 'chevron-up'
+    | 'chevrons-up-down'
     | 'close'
     | 'editor'
     | 'failure'
@@ -32,12 +34,14 @@
     | 'refresh'
     | 'search'
     | 'settings'
+    | 'shield'
     | 'shield-slash'
     | 'sidebar'
     | 'sign-out'
     | 'sort'
     | 'success'
     | 'sun'
+    | 'sun-moon'
     | 'system'
     | 'trash'
     | 'user'
@@ -134,6 +138,13 @@
   {:else if name === 'refresh'}
     <path d="M20 7v5h-5M4 17v-5h5" />
     <path d="M6.1 8.2A7 7 0 0 1 18.6 7L20 12M4 12l1.4 5A7 7 0 0 0 17.9 15.8" />
+  {:else if name === 'shield'}
+    <path d="M12 3 19 6v5c0 4.7-2.8 8.2-7 10-4.2-1.8-7-5.3-7-10V6z" />
+  {:else if name === 'sun-moon'}
+    <path d="M12 8a2.8 2.8 0 0 0 4 4 4 4 0 1 1-4-4" />
+    <path
+      d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M18.7 5.3l-1.4 1.4M6.7 17.3l-1.4 1.4"
+    />
   {:else if name === 'shield-slash'}
     <path
       d="M12 3 19 6v5c0 2.1-.6 4-1.7 5.6M14.8 19.3c-.8.7-1.8 1.2-2.8 1.7-4.2-1.8-7-5.3-7-10V6l3.1-1.3"
@@ -175,6 +186,10 @@
     <path d="m14.5 6-6 6 6 6" />
   {:else if name === 'chevron-right'}
     <path d="m9.5 6 6 6-6 6" />
+  {:else if name === 'chevron-up'}
+    <path d="m7 14.5 5-5 5 5" />
+  {:else if name === 'chevrons-up-down'}
+    <path d="m7 15 5 5 5-5M7 9l5-5 5 5" />
   {:else if name === 'close'}
     <path d="m6 6 12 12M18 6 6 18" />
   {:else if name === 'plus'}

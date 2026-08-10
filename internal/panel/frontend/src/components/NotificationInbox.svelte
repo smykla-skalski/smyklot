@@ -10,10 +10,13 @@
     fetchPage,
     markRead,
     refreshVersion = 0,
+    onUnread,
   }: {
     fetchPage: PanelApi['fetchNotifications'];
     markRead: PanelApi['markNotificationRead'];
     refreshVersion?: number;
+    /** Reports the unread count so the host can badge its own trigger. */
+    onUnread?: (unread: number) => void;
   } = $props();
 
   let open = $state(false);
@@ -114,17 +117,21 @@
   $effect(() => {
     if (refreshVersion >= 0) void load();
   });
+
+  $effect(() => {
+    onUnread?.(unread);
+  });
 </script>
 
 <button
-  class="account-action notification-trigger"
+  class="notification-trigger"
   type="button"
   bind:this={trigger}
-  aria-label={unread === 0 ? 'Security notifications' : `Security notifications, ${unread} unread`}
+  aria-label={unread === 0 ? 'Inbox' : `Inbox, ${unread} unread`}
   onclick={openInbox}
 >
-  <Icon name="notifications" size={16} />
-  <span>Security notifications</span>
+  <span class="trigger-icon"><Icon name="notifications" size={16} /></span>
+  <span class="trigger-text">Inbox</span>
   {#if unread > 0}<span class="unread-count" aria-hidden="true">{unread > 99 ? '99+' : unread}</span
     >{/if}
 </button>
@@ -267,19 +274,55 @@
 </Modal>
 
 <style>
+  /* Styled here rather than by the host menu: a class shared across components
+     silently loses its styles to Svelte's scoping (the trigger once rendered
+     with UA-default gray because of exactly that). */
   .notification-trigger {
-    position: relative;
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-radius: calc(var(--radius-popover) - 6px);
+    color: var(--sidebar-menu-text);
+    cursor: pointer;
+    display: flex;
+    font: 500 var(--font-size-meta) / 1 var(--sans);
+    gap: 0.625rem;
+    min-height: 2.5rem;
+    padding: 0 10px;
+    text-align: left;
+    transition:
+      background-color var(--duration-fast) var(--ease-standard),
+      transform var(--duration-press) var(--ease-standard);
+    width: 100%;
   }
 
-  .notification-trigger > span:nth-child(2) {
+  .notification-trigger:hover {
+    background: var(--sidebar-menu-hover);
+  }
+
+  .notification-trigger:active {
+    background: var(--sidebar-menu-pressed);
+    transform: translateY(1px);
+  }
+
+  .trigger-icon {
+    color: var(--sidebar-menu-muted);
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 1.125rem;
+  }
+
+  .trigger-text {
     flex: 1;
+    text-box: trim-both cap alphabetic;
   }
 
   .unread-count {
     align-items: center;
-    background: var(--stop);
+    background: var(--unread-badge-bg);
     border-radius: 999px;
-    color: #fff;
+    color: var(--unread-badge-text);
     display: inline-flex;
     font: 700 var(--font-size-micro) / 1 var(--sans);
     height: 1.25rem;

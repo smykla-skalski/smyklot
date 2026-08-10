@@ -140,13 +140,40 @@
 
   /* Component tokens. */
   --sidebar-bg: var(--primitive-light-sidebar);
-  --sidebar-border: var(--primitive-light-rule);
+  --sidebar-border: #dbe2df;
   --sidebar-text: var(--primitive-light-text);
-  --sidebar-text-muted: var(--primitive-light-muted);
-  --sidebar-item-hover: var(--primitive-light-sidebar-hover);
-  --sidebar-item-pressed: var(--primitive-light-sidebar-pressed);
+  /* On #eef2f0: secondary 8.1:1, muted 5.8:1 (nav rows read at a glance). */
+  --sidebar-text-secondary: #3d4b47;
+  --sidebar-text-muted: #53615c;
+  --sidebar-item-hover: #e2e8e5;
+  --sidebar-item-pressed: #d6deda;
   --sidebar-item-active: var(--primitive-light-sidebar-active);
-  --sidebar-item-active-text: var(--brand-action-text);
+  --sidebar-item-active-text: #0d5c55;
+  /* Selected nav item is a raised thumb, same language as segmented controls. */
+  --sidebar-thumb: #ffffff;
+  --sidebar-thumb-shadow: 0 1px 3px rgb(24 33 31 / 16%), 0 0 0 0.5px rgb(24 33 31 / 6%);
+  /* Popovers and menus anchored to the sidebar follow its context, not the page. */
+  --sidebar-popover-bg: #ffffff;
+  --sidebar-popover-border: #d9e0dd;
+  --sidebar-menu-text: var(--primitive-light-text);
+  --sidebar-menu-muted: #53615c;
+  --sidebar-menu-hover: #eef2f0;
+  --sidebar-menu-pressed: #dfe6e3;
+  --sidebar-seg-track: #eef1f0;
+  --sidebar-seg-thumb: #ffffff;
+  --sidebar-seg-border: #d9e0dd;
+  --switcher-card-bg: #ffffff;
+  --switcher-card-border: #b3c0ba;
+  --switcher-card-hover: #fafbfa;
+  --sidebar-root-accent: #6d54bd;
+  --role-chip-bg: #efeaf9;
+  --role-chip-text: #5b459f;
+  /* Unread dot and count pill: one vivid alert red for every sidebar context.
+     The muted danger tone reads as wine on light and vanishes on the dark
+     purple root sidebar; this red holds 4.9:1 under white ink and stays over
+     3:1 against all three sidebar backgrounds. */
+  --unread-badge-bg: #d03339;
+  --unread-badge-text: #ffffff;
   --identity-bg: var(--primitive-light-surface);
   --identity-hover-bg: var(--primitive-light-raised);
   --identity-border: var(--primitive-light-rule);
@@ -190,28 +217,6 @@
   --brand: var(--focus);
   --spectrum: var(--brand-action);
   --spectrum-vertical: var(--brand-action);
-  --footer-spectrum: linear-gradient(
-    90deg,
-    #22d3ee 0%,
-    #3b82f6 7%,
-    #8b5cf6 14%,
-    #d946ef 21%,
-    #f43f5e 28%,
-    #fb923c 34%,
-    #facc15 39%,
-    #84cc16 44%,
-    #10b981 47%,
-    #22d3ee 50%,
-    #3b82f6 57%,
-    #8b5cf6 64%,
-    #d946ef 71%,
-    #f43f5e 78%,
-    #fb923c 84%,
-    #facc15 89%,
-    #84cc16 94%,
-    #10b981 97%,
-    #22d3ee 100%
-  );
   --press: var(--interactive-pressed);
   --shadow: var(--shadow-color);
 
@@ -323,11 +328,33 @@
   --sidebar-bg: var(--primitive-dark-sidebar);
   --sidebar-border: var(--primitive-dark-rule);
   --sidebar-text: var(--primitive-dark-text);
-  --sidebar-text-muted: var(--primitive-dark-muted);
-  --sidebar-item-hover: var(--primitive-dark-sidebar-hover);
-  --sidebar-item-pressed: var(--primitive-dark-sidebar-pressed);
+  --sidebar-text-secondary: #c9d2d9;
+  --sidebar-text-muted: #9caab5;
+  --sidebar-item-hover: #1a242d;
+  --sidebar-item-pressed: #223039;
   --sidebar-item-active: var(--primitive-dark-sidebar-active);
-  --sidebar-item-active-text: var(--primitive-petrol-200);
+  --sidebar-item-active-text: #a1f7e6;
+  --sidebar-thumb: #2a333e;
+  --sidebar-thumb-shadow: 0 1px 3px rgb(0 0 0 / 42%), 0 0 0 0.5px rgb(255 255 255 / 4%);
+  --sidebar-popover-bg: #1b222b;
+  --sidebar-popover-border: #333d49;
+  --sidebar-menu-text: var(--primitive-dark-text);
+  --sidebar-menu-muted: #9caab5;
+  --sidebar-menu-hover: #232d38;
+  --sidebar-menu-pressed: #2c3844;
+  --sidebar-seg-track: #151a21;
+  --sidebar-seg-thumb: #2c3641;
+  --sidebar-seg-border: #333d49;
+  --switcher-card-bg: #171e26;
+  --switcher-card-border: #39434f;
+  --switcher-card-hover: #1c242e;
+  --sidebar-root-accent: #c4b5fd;
+  --role-chip-bg: #2a2440;
+  --role-chip-text: #c4b5fd;
+  /* Same alert pair as light: the vivid red carries its own contrast, so it
+     does not follow the theme's pale danger tone. */
+  --unread-badge-bg: #d03339;
+  --unread-badge-text: #ffffff;
   --identity-bg: var(--primitive-dark-sidebar-hover);
   --identity-hover-bg: var(--primitive-dark-sidebar-pressed);
   --identity-border: var(--primitive-dark-rule);
@@ -423,13 +450,31 @@ body {
   --interactive-selected-pressed: #46395f;
   --focus: #6d54bd;
   --sidebar-bg: #15121d;
-  --sidebar-border: #302a3c;
+  --sidebar-border: #322b40;
   --sidebar-text: #f5f2fa;
-  --sidebar-text-muted: #aaa3b8;
-  --sidebar-item-hover: #211d2c;
-  --sidebar-item-pressed: #2b2538;
+  --sidebar-text-secondary: #cfc8dc;
+  --sidebar-text-muted: #aca4bb;
+  --sidebar-item-hover: #221d2e;
+  --sidebar-item-pressed: #2d263c;
   --sidebar-item-active: #312943;
-  --sidebar-item-active-text: #e0d5ff;
+  --sidebar-item-active-text: #e4dbff;
+  --sidebar-thumb: #352d49;
+  --sidebar-thumb-shadow: 0 1px 3px rgb(0 0 0 / 46%), 0 0 0 0.5px rgb(255 255 255 / 5%);
+  --sidebar-popover-bg: #221d2f;
+  --sidebar-popover-border: #3f3656;
+  --sidebar-menu-text: #f5f2fa;
+  --sidebar-menu-muted: #aca4bb;
+  --sidebar-menu-hover: #2b2439;
+  --sidebar-menu-pressed: #372e4b;
+  --sidebar-seg-track: #191524;
+  --sidebar-seg-thumb: #362e4b;
+  --sidebar-seg-border: #3f3656;
+  --switcher-card-bg: #1d1928;
+  --switcher-card-border: #473e5e;
+  --switcher-card-hover: #272133;
+  --sidebar-root-accent: #c4b5fd;
+  --role-chip-bg: #372e50;
+  --role-chip-text: #cfc0ff;
   --identity-bg: #1d1928;
   --identity-hover-bg: #272133;
   --identity-border: #393247;

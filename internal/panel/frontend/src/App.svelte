@@ -47,12 +47,8 @@
   type FailureSource = 'load' | 'sign-out' | 'stream';
   type PanelFailure = { message: string; source: FailureSource };
 
-  const {
-    api,
-    iconUrl,
-    build,
-    router,
-  }: { api: PanelApi; iconUrl: string; build: PanelBuild; router: PanelRouter } = $props();
+  const { api, build, router }: { api: PanelApi; build: PanelBuild; router: PanelRouter } =
+    $props();
 
   let loading = $state(true);
   let viewer = $state<PanelViewer | null>(null);
@@ -530,7 +526,6 @@
 <main class="app-shell" class:sidebar-collapsed={sidebarCollapsed} class:root-mode={rootMode}>
   <IdentityBar
     {viewer}
-    {iconUrl}
     {targets}
     {selectedId}
     {targetHref}
