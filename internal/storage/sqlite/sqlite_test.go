@@ -781,6 +781,51 @@ END`)
 		Expect(filtered.Items[0].User.Account.ID).To(Equal(viewer.ID))
 	})
 
+	It("promotes and demotes Root accounts with an audit trail", func() {
+		root, _ := seedInstallation(ctx, store, now)
+		Expect(store.ReconcileSuperRoot(ctx, root.ID, now)).To(Succeed())
+		subject := root
+		subject.ID = "github:user:root-role"
+		subject.SubjectID = "root-role"
+		subject.Login = "root-role-user"
+		Expect(store.UpsertAccount(ctx, subject)).To(Succeed())
+		created, err := store.CreatePanelUser(ctx, storage.PanelUserCreate{
+			AccountID: subject.ID, GlobalRole: storage.PanelRoleNone,
+			ActorAccountID: root.ID, ChangedAt: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		promoted, err := store.UpdateSystemRole(ctx, storage.SystemRoleChange{
+			AccountID: subject.ID, ActorAccountID: root.ID,
+			SystemRole: storage.SystemRoleRoot, ExpectedRevision: created.Revision,
+			ChangedAt: now.Add(time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(promoted.SystemRole).To(Equal(storage.SystemRoleRoot))
+		Expect(promoted.Revision).To(Equal(created.Revision + 1))
+
+		demoted, err := store.UpdateSystemRole(ctx, storage.SystemRoleChange{
+			AccountID: subject.ID, ActorAccountID: root.ID,
+			SystemRole: storage.SystemRoleNone, ExpectedRevision: promoted.Revision,
+			ChangedAt: now.Add(2 * time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(demoted.SystemRole).To(Equal(storage.SystemRoleNone))
+		decisions, err := store.ListAccessDecisions(ctx, subject.ID, nil, 10)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(decisions).To(ContainElements(
+			HaveField("Summary", "changed system role to root"),
+			HaveField("Summary", "changed system role to none"),
+		))
+
+		_, err = store.UpdateSystemRole(ctx, storage.SystemRoleChange{
+			AccountID: root.ID, ActorAccountID: root.ID,
+			SystemRole: storage.SystemRoleNone, ExpectedRevision: 1,
+			ChangedAt: now.Add(3 * time.Minute),
+		})
+		Expect(errors.Is(err, storage.ErrConflict)).To(BeTrue())
+	})
+
 	It("creates, reissues, expires, and atomically responds to named invitations", func() {
 		owner, target := seedInstallation(ctx, store, now)
 		Expect(store.UpsertAccount(ctx, owner)).To(Succeed())

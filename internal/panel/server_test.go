@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -833,6 +834,66 @@ func TestPanelRootOverview(t *testing.T) {
 		t, http.MethodGet, "/panel/api/v1/root/access/users?system_role=owner", nil, rootSession,
 	)
 	requireResponse(t, invalidUsers, "invalid Root user role", http.StatusBadRequest)
+}
+
+func TestPanelManagesRootUsers(t *testing.T) {
+	harness := newPanelHarness(t, "root")
+	rootSession := harness.signIn(t)
+	ordinary := storage.Account{
+		ID: "github:test:user:managed", Provider: "github:test", SubjectID: "managed",
+		Login: "managed", DisplayName: "Managed User", UpdatedAt: harness.now,
+	}
+	if err := harness.store.UpsertAccount(t.Context(), ordinary); err != nil {
+		t.Fatal(err)
+	}
+	created, err := harness.store.CreatePanelUser(t.Context(), storage.PanelUserCreate{
+		AccountID: ordinary.ID, GlobalRole: storage.PanelRoleNone,
+		ActorAccountID: "github:test:user:1", ChangedAt: harness.now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const ordinaryToken = "managed-session"
+	if err := harness.store.CreateSession(t.Context(), storage.Session{
+		TokenHash: tokenHash(ordinaryToken), AccountID: ordinary.ID,
+		CreatedAt: harness.now, ExpiresAt: harness.now.Add(time.Hour),
+	}, 1); err != nil {
+		t.Fatal(err)
+	}
+
+	promoted := harness.request(
+		t, http.MethodPut, "/panel/api/v1/root/access/users/"+ordinary.ID,
+		strings.NewReader(fmt.Sprintf(
+			`{"system_role":"root","expected_revision":%d}`, created.Revision,
+		)), rootSession,
+	)
+	requireResponse(t, promoted, "promote Root user", http.StatusNoContent)
+	demoted := harness.request(
+		t, http.MethodPut, "/panel/api/v1/root/access/users/"+ordinary.ID,
+		strings.NewReader(fmt.Sprintf(
+			`{"system_role":"none","expected_revision":%d}`, created.Revision+1,
+		)), rootSession,
+	)
+	requireResponse(t, demoted, "demote Root user", http.StatusNoContent)
+	banned := harness.request(
+		t, http.MethodPut, "/panel/api/v1/root/access/users/"+ordinary.ID,
+		strings.NewReader(fmt.Sprintf(
+			`{"status":"banned","reason":"security incident","expected_revision":%d}`,
+			created.Revision+2,
+		)), rootSession,
+	)
+	requireResponse(t, banned, "ban Root user", http.StatusNoContent)
+	if _, err := harness.store.GetSession(
+		t.Context(), tokenHash(ordinaryToken), harness.now,
+	); !errors.Is(err, storage.ErrRevoked) {
+		t.Fatalf("managed session error = %v", err)
+	}
+
+	selfChange := harness.request(
+		t, http.MethodPut, "/panel/api/v1/root/access/users/github:test:user:1",
+		strings.NewReader(`{"system_role":"root","expected_revision":1}`), rootSession,
+	)
+	requireResponse(t, selfChange, "change Super Root", http.StatusForbidden)
 }
 
 func TestPanelRootElevationAndOwnerNotifications(t *testing.T) {

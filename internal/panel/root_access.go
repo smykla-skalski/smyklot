@@ -12,6 +12,13 @@ import (
 
 const rootAccessUsersPath = "users"
 
+type updateRootUserRequest struct {
+	SystemRole       *storage.SystemRole      `json:"system_role"`
+	Status           *storage.PanelUserStatus `json:"status"`
+	Reason           *string                  `json:"reason"`
+	ExpectedRevision *int64                   `json:"expected_revision"`
+}
+
 func (s *Server) getRootAccess(w http.ResponseWriter, r *http.Request) {
 	if r.PathValue("access") != rootAccessUsersPath {
 		s.writeError(w, http.StatusNotFound, "not_found", "Root access view was not found")
@@ -32,6 +39,104 @@ func (s *Server) getRootAccess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, rootPanelUserPageDTO(users, actor, actorUser.SystemRole))
+}
+
+func (s *Server) putRootUser(w http.ResponseWriter, r *http.Request) {
+	if !s.requireSameOrigin(w, r) {
+		return
+	}
+	actor, actorUser, ok := s.requireRoot(w, r)
+	if !ok {
+		return
+	}
+	var input updateRootUserRequest
+	if !decodeJSON(w, r, &input) || input.ExpectedRevision == nil ||
+		(input.SystemRole == nil) == (input.Status == nil) {
+		s.writeError(w, http.StatusBadRequest, "invalid_request", "one Root user change is required")
+		return
+	}
+	subject, err := s.store.GetPanelUser(r.Context(), r.PathValue("account"))
+	if err != nil {
+		s.writeStorageError(w, err)
+		return
+	}
+	if subject.Account.ID == actor.ID || subject.SystemRole == storage.SystemRoleSuperRoot {
+		s.writeError(w, http.StatusForbidden, "forbidden", "this Root account cannot be changed")
+		return
+	}
+	if input.SystemRole != nil {
+		s.changeRootSystemRole(w, r, actor, actorUser, subject, input)
+		return
+	}
+	s.changeRootUserStatus(w, r, actor, subject, input)
+}
+
+func (s *Server) changeRootSystemRole(
+	w http.ResponseWriter,
+	r *http.Request,
+	actor storage.Account,
+	actorUser, subject storage.PanelUser,
+	input updateRootUserRequest,
+) {
+	role := *input.SystemRole
+	if actorUser.SystemRole != storage.SystemRoleSuperRoot ||
+		(role != storage.SystemRoleNone && role != storage.SystemRoleRoot) {
+		s.writeError(w, http.StatusForbidden, "forbidden", "Super Root access is required")
+		return
+	}
+	_, err := s.store.UpdateSystemRole(r.Context(), storage.SystemRoleChange{
+		AccountID: subject.Account.ID, ActorAccountID: actor.ID, SystemRole: role,
+		ExpectedRevision: *input.ExpectedRevision, ChangedAt: s.now().UTC(),
+	})
+	if err != nil {
+		s.writeStorageError(w, err)
+		return
+	}
+	s.events.announce(panelEvent{Type: panelEventResync})
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) changeRootUserStatus(
+	w http.ResponseWriter,
+	r *http.Request,
+	actor storage.Account,
+	subject storage.PanelUser,
+	input updateRootUserRequest,
+) {
+	status := *input.Status
+	if subject.SystemRole.IsRoot() || (status != storage.PanelUserActive &&
+		status != storage.PanelUserBanned && status != storage.PanelUserRemoved) {
+		s.writeError(w, http.StatusForbidden, "forbidden", "Root lifecycle cannot be changed")
+		return
+	}
+	reason, valid := validAccessReason(w, input.Reason)
+	if !valid {
+		return
+	}
+	_, err := s.store.UpdatePanelUser(r.Context(), storage.PanelUserChange{
+		AccountID: subject.Account.ID, ActorAccountID: actor.ID, GlobalRole: storage.PanelRoleNone,
+		Status: status, BanReason: reason, ExpectedRevision: *input.ExpectedRevision,
+		ChangedAt: s.now().UTC(),
+	})
+	if err != nil {
+		s.writeStorageError(w, err)
+		return
+	}
+	if status == storage.PanelUserBanned || status == storage.PanelUserRemoved {
+		code := "account_banned"
+		message := "Your Smyklot account was banned"
+		if status == storage.PanelUserRemoved {
+			code, message = "account_removed", "Your Smyklot account was removed"
+		}
+		if _, err := s.store.RevokeAccountSessions(
+			r.Context(), subject.Account.ID, code, message, s.now().UTC(),
+		); err != nil {
+			s.writeInternal(w, err)
+			return
+		}
+	}
+	s.events.announce(panelEvent{Type: panelEventResync})
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func parseRootPanelUserPage(values url.Values) (storage.RootPanelUserPageRequest, error) {

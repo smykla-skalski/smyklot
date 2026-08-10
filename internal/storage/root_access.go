@@ -1,5 +1,7 @@
 package storage
 
+import "time"
+
 // RootPanelUserOrder controls application-wide user ordering.
 type RootPanelUserOrder string
 
@@ -34,4 +36,13 @@ type RootPanelUserPage struct {
 	Items      []RootPanelUser
 	NextOffset int
 	Total      int
+}
+
+// SystemRoleChange changes one non-Super-Root account's system role.
+type SystemRoleChange struct {
+	AccountID        string
+	ActorAccountID   string
+	SystemRole       SystemRole
+	ExpectedRevision int64
+	ChangedAt        time.Time
 }

@@ -2,11 +2,68 @@ package sqlite
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/smykla-skalski/smyklot/internal/storage"
 )
+
+// UpdateSystemRole promotes or demotes a non-Super-Root account atomically.
+func (s *Store) UpdateSystemRole(
+	ctx context.Context,
+	change storage.SystemRoleChange,
+) (storage.PanelUser, error) {
+	if change.SystemRole != storage.SystemRoleNone && change.SystemRole != storage.SystemRoleRoot {
+		return storage.PanelUser{}, errors.New("unsupported system role")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return storage.PanelUser{}, fmt.Errorf("begin system role update: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	current, err := getPanelUser(ctx, tx, change.AccountID)
+	if err != nil {
+		return storage.PanelUser{}, fmt.Errorf("read system role subject: %w", noRows(err))
+	}
+	if current.Revision != change.ExpectedRevision || current.SystemRole == storage.SystemRoleSuperRoot ||
+		current.Status != storage.PanelUserActive {
+		return storage.PanelUser{}, storage.ErrConflict
+	}
+	legacyRoot := 0
+	legacyRole := storage.PanelRoleNone
+	if change.SystemRole == storage.SystemRoleRoot {
+		legacyRoot = 1
+		legacyRole = storage.PanelRoleOwner
+	}
+	result, err := tx.ExecContext(ctx, `
+UPDATE panel_users
+SET root = ?, global_role = ?, system_role = ?, revision = revision + 1, updated_at = ?
+WHERE account_id = ? AND revision = ?`, legacyRoot, legacyRole, change.SystemRole,
+		formatTime(change.ChangedAt), change.AccountID, change.ExpectedRevision)
+	if err != nil {
+		return storage.PanelUser{}, fmt.Errorf("update system role: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil || changed != 1 {
+		return storage.PanelUser{}, storage.ErrConflict
+	}
+	if err := insertAccessAudit(
+		ctx, tx, nil, change.ActorAccountID, change.AccountID, "system_role.changed",
+		"changed system role to "+string(change.SystemRole), change.ChangedAt,
+	); err != nil {
+		return storage.PanelUser{}, err
+	}
+	updated, err := getPanelUser(ctx, tx, change.AccountID)
+	if err != nil {
+		return storage.PanelUser{}, fmt.Errorf("read updated system role: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return storage.PanelUser{}, fmt.Errorf("commit system role update: %w", err)
+	}
+
+	return updated, nil
+}
 
 // ListRootPanelUserPage returns accounts across the whole application,
 // including soft-removed identities retained for audit continuity.
