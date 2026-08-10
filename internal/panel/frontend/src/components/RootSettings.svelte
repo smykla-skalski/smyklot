@@ -442,9 +442,17 @@
           <dt>Webhook path</dt>
           <dd><code>{current.service.public_paths.webhook}</code></dd>
         </div>
-        <div class="wide">
+        <div>
           <dt>GitHub API</dt>
           <dd><code>{current.service.provider_endpoints.api}</code></dd>
+        </div>
+        <div>
+          <dt>OAuth authorization</dt>
+          <dd><code>{current.service.provider_endpoints.authorize}</code></dd>
+        </div>
+        <div class="wide">
+          <dt>OAuth token exchange</dt>
+          <dd><code>{current.service.provider_endpoints.token}</code></dd>
         </div>
         <div class="wide">
           <dt>Credentials present</dt>

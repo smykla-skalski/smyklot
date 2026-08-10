@@ -26,6 +26,7 @@
   let loadingMore = $state(false);
   let failure = $state<string | null>(null);
   let now = $state(Date.now());
+  let expandedAuditId = $state<string | null>(null);
   const groups = $derived(groupNotifications(items));
 
   async function load(reset = true): Promise<void> {
@@ -58,7 +59,15 @@
 
   function closeInbox(): void {
     open = false;
+    expandedAuditId = null;
     window.setTimeout(() => trigger?.focus(), 0);
+  }
+
+  function toggleAuditRecord(event: MouseEvent, notification: SecurityNotification): void {
+    event.preventDefault();
+    expandedAuditId =
+      expandedAuditId === notification.audit_event_id ? null : notification.audit_event_id;
+    void read(notification);
   }
 
   async function read(notification: SecurityNotification): Promise<void> {
@@ -162,7 +171,10 @@
             {/if}
           </header>
           {#each group.events as notification (notification.id)}
-            <article class:unread={notification.read_at === undefined}>
+            <article
+              id={`audit-event-${notification.audit_event_id}`}
+              class:unread={notification.read_at === undefined}
+            >
               <Avatar account={notification.actor} size={34} />
               <div class="notification-copy">
                 <div class="notification-title">
@@ -179,8 +191,44 @@
                     title={formatTimestamp(notification.created_at)}
                     >{formatRelative(notification.created_at, now)}</time
                   >
-                  <span>Audit #{notification.audit_event_id}</span>
+                  <a
+                    class="audit-link"
+                    href={`#audit-event-${notification.audit_event_id}`}
+                    aria-expanded={expandedAuditId === notification.audit_event_id}
+                    onclick={(event) => toggleAuditRecord(event, notification)}
+                    >Audit #{notification.audit_event_id}</a
+                  >
                 </div>
+                {#if expandedAuditId === notification.audit_event_id}
+                  <dl class="audit-record">
+                    <div>
+                      <dt>Event</dt>
+                      <dd>#{notification.audit_event_id}</dd>
+                    </div>
+                    <div>
+                      <dt>Action</dt>
+                      <dd>{notification.action}</dd>
+                    </div>
+                    <div>
+                      <dt>Installation</dt>
+                      <dd>@{notification.installation.login}</dd>
+                    </div>
+                    <div>
+                      <dt>Actor</dt>
+                      <dd>@{notification.actor.login}</dd>
+                    </div>
+                    <div>
+                      <dt>Elevation</dt>
+                      <dd>{notification.elevation_id}</dd>
+                    </div>
+                    {#if notification.reason !== undefined}
+                      <div class="wide">
+                        <dt>Reason</dt>
+                        <dd>{notification.reason}</dd>
+                      </div>
+                    {/if}
+                  </dl>
+                {/if}
               </div>
               {#if notification.read_at === undefined}
                 <button
@@ -383,6 +431,50 @@
     margin-inline-end: var(--space-2);
   }
 
+  .audit-link {
+    color: var(--accent);
+    font: inherit;
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
+    text-underline-offset: 0.15em;
+  }
+
+  .audit-link:hover {
+    text-decoration-color: currentColor;
+  }
+
+  .audit-record {
+    background: var(--surface-inset);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-control);
+    display: grid;
+    gap: var(--space-2) var(--space-3);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin: var(--space-3) 0 0;
+    padding: var(--space-3);
+  }
+
+  .audit-record div {
+    min-width: 0;
+  }
+
+  .audit-record .wide {
+    grid-column: 1 / -1;
+  }
+
+  .audit-record dt {
+    color: var(--text-muted);
+    font-size: var(--font-size-micro);
+    text-transform: uppercase;
+  }
+
+  .audit-record dd {
+    color: var(--text-primary);
+    font: 500 var(--font-size-compact) / 1.45 var(--mono);
+    margin: var(--space-1) 0 0;
+    overflow-wrap: anywhere;
+  }
+
   .read-state {
     color: var(--text-muted);
     font-size: var(--font-size-compact);
@@ -425,6 +517,14 @@
     article > :last-child {
       grid-column: 1 / -1;
       justify-self: start;
+    }
+
+    .audit-record {
+      grid-template-columns: 1fr;
+    }
+
+    .audit-record .wide {
+      grid-column: auto;
     }
   }
 </style>

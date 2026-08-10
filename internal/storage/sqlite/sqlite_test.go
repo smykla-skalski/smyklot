@@ -599,6 +599,44 @@ END`)
 		Expect(accountAudit.Items[0].Action).To(Equal("target.settings.updated"))
 	})
 
+	It("records only meaningful ownership synchronization changes", func() {
+		account := testAccount(now)
+		installation := testInstallation(account, now, nil)
+		Expect(store.ReconcileInstallation(ctx, installation)).To(Succeed())
+
+		listOwnershipAudit := func() storage.RootAuditPage {
+			page, err := store.ListRootAudit(ctx, storage.RootAuditPageRequest{
+				HistoryPageRequest: storage.HistoryPageRequest{Limit: 10},
+				Categories:         []storage.AuditCategory{storage.AuditCategoryOwnership},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			return page
+		}
+
+		audit := listOwnershipAudit()
+		Expect(audit.Total).To(Equal(1))
+		Expect(audit.Items[0].Action).To(Equal("ownership.synced"))
+		Expect(audit.Items[0].Actor.ID).To(Equal("smyklot:system"))
+
+		installation.SyncedAt = now.Add(time.Minute)
+		installation.Ownership.SyncedAt = installation.SyncedAt
+		Expect(store.ReconcileInstallation(ctx, installation)).To(Succeed())
+		Expect(listOwnershipAudit().Total).To(Equal(1))
+
+		detail := "Members permission approval is required"
+		installation.Ownership.Status = storage.OwnershipStatusPermissionPending
+		installation.Ownership.Detail = &detail
+		installation.Ownership.Owners = nil
+		installation.SyncedAt = now.Add(2 * time.Minute)
+		installation.Ownership.SyncedAt = installation.SyncedAt
+		Expect(store.ReconcileInstallation(ctx, installation)).To(Succeed())
+
+		audit = listOwnershipAudit()
+		Expect(audit.Total).To(Equal(2))
+		Expect(audit.Items[0].Action).To(Equal("ownership.permission_pending"))
+	})
+
 	It("retains file diagnostics while deriving the bypassed state", func() {
 		account, target := seedInstallation(ctx, store, now)
 		problem := "line 7: command_aliases must be a mapping"

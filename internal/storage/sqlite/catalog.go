@@ -3,13 +3,25 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 )
+
+const systemAuditAccountID = "smyklot:system"
+
+type ownershipState struct {
+	exists   bool
+	source   storage.OwnershipSource
+	status   storage.OwnershipStatus
+	detail   string
+	ownerIDs []string
+}
 
 const targetSelect = `
 SELECT
@@ -151,35 +163,99 @@ func reconcileOwnership(
 	tx *sql.Tx,
 	snapshot storage.InstallationSnapshot,
 ) error {
-	ownership := snapshot.Ownership
-	if ownership.Source == "" {
-		if snapshot.Kind == storage.TargetUser {
-			ownership = storage.OwnershipSnapshot{
-				Source: storage.OwnershipSourcePersonal, Status: storage.OwnershipStatusFresh,
-				Owners: []storage.Account{snapshot.Account}, SyncedAt: snapshot.SyncedAt,
-			}
-		} else {
-			detail := "ownership has not been synchronized"
-			ownership = storage.OwnershipSnapshot{
-				Source: storage.OwnershipSourceOrganizationAdmin,
-				Status: storage.OwnershipStatusError, Detail: &detail, SyncedAt: snapshot.SyncedAt,
-			}
-		}
+	ownership := normalizedOwnership(snapshot)
+	previous, err := readOwnershipState(ctx, tx, snapshot.TargetID)
+	if err != nil {
+		return err
 	}
 	for _, owner := range ownership.Owners {
 		if err := upsertCatalogAccount(ctx, tx, owner); err != nil {
 			return fmt.Errorf("reconcile installation owner: %w", err)
 		}
 	}
+	if err := replaceOwnership(ctx, tx, snapshot.TargetID, ownership); err != nil {
+		return err
+	}
+	if ownershipChanged(previous, ownership) {
+		if err := recordOwnershipAudit(ctx, tx, snapshot.TargetID, ownership); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func normalizedOwnership(snapshot storage.InstallationSnapshot) storage.OwnershipSnapshot {
+	if snapshot.Ownership.Source != "" {
+		return snapshot.Ownership
+	}
+	if snapshot.Kind == storage.TargetUser {
+		return storage.OwnershipSnapshot{
+			Source: storage.OwnershipSourcePersonal, Status: storage.OwnershipStatusFresh,
+			Owners: []storage.Account{snapshot.Account}, SyncedAt: snapshot.SyncedAt,
+		}
+	}
+	detail := "ownership has not been synchronized"
+
+	return storage.OwnershipSnapshot{
+		Source: storage.OwnershipSourceOrganizationAdmin,
+		Status: storage.OwnershipStatusError, Detail: &detail, SyncedAt: snapshot.SyncedAt,
+	}
+}
+
+func readOwnershipState(
+	ctx context.Context,
+	tx *sql.Tx,
+	targetID string,
+) (ownershipState, error) {
+	var state ownershipState
+	var detail sql.NullString
+	err := tx.QueryRowContext(ctx, `
+SELECT source, status, detail FROM target_ownership WHERE target_id = ?`, targetID).
+		Scan(&state.source, &state.status, &detail)
+	if errors.Is(err, sql.ErrNoRows) {
+		return state, nil
+	}
+	if err != nil {
+		return ownershipState{}, fmt.Errorf("read previous installation ownership: %w", err)
+	}
+	state.exists = true
+	state.detail = detail.String
+	rows, err := tx.QueryContext(ctx, `
+SELECT account_id FROM target_owners WHERE target_id = ? ORDER BY account_id`, targetID)
+	if err != nil {
+		return ownershipState{}, fmt.Errorf("read previous installation Owners: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var ownerID string
+		if err := rows.Scan(&ownerID); err != nil {
+			return ownershipState{}, fmt.Errorf("scan previous installation Owner: %w", err)
+		}
+		state.ownerIDs = append(state.ownerIDs, ownerID)
+	}
+	if err := rows.Err(); err != nil {
+		return ownershipState{}, fmt.Errorf("iterate previous installation Owners: %w", err)
+	}
+
+	return state, nil
+}
+
+func replaceOwnership(
+	ctx context.Context,
+	tx *sql.Tx,
+	targetID string,
+	ownership storage.OwnershipSnapshot,
+) error {
 	_, err := tx.ExecContext(ctx, `
 INSERT INTO target_ownership (target_id, source, status, detail, synced_at)
 VALUES (?, ?, ?, ?, ?)
 ON CONFLICT(target_id) DO UPDATE SET
     source = excluded.source,
     status = excluded.status,
-    detail = excluded.detail,
-    synced_at = excluded.synced_at`,
-		snapshot.TargetID,
+		detail = excluded.detail,
+		synced_at = excluded.synced_at`,
+		targetID,
 		ownership.Source,
 		ownership.Status,
 		ownership.Detail,
@@ -189,17 +265,67 @@ ON CONFLICT(target_id) DO UPDATE SET
 		return fmt.Errorf("upsert installation ownership: %w", err)
 	}
 	if _, err := tx.ExecContext(
-		ctx, "DELETE FROM target_owners WHERE target_id = ?", snapshot.TargetID,
+		ctx, "DELETE FROM target_owners WHERE target_id = ?", targetID,
 	); err != nil {
 		return fmt.Errorf("replace installation owners: %w", err)
 	}
 	for _, owner := range ownership.Owners {
 		if _, err := tx.ExecContext(ctx, `
 INSERT INTO target_owners (target_id, account_id, synced_at) VALUES (?, ?, ?)`,
-			snapshot.TargetID, owner.ID, formatTime(ownership.SyncedAt),
+			targetID, owner.ID, formatTime(ownership.SyncedAt),
 		); err != nil {
 			return fmt.Errorf("insert installation owner: %w", err)
 		}
+	}
+
+	return nil
+}
+
+func ownershipChanged(previous ownershipState, current storage.OwnershipSnapshot) bool {
+	if !previous.exists || previous.source != current.Source || previous.status != current.Status {
+		return true
+	}
+	currentDetail := ""
+	if current.Detail != nil {
+		currentDetail = *current.Detail
+	}
+	ownerIDs := make([]string, 0, len(current.Owners))
+	for _, owner := range current.Owners {
+		ownerIDs = append(ownerIDs, owner.ID)
+	}
+	slices.Sort(ownerIDs)
+
+	return previous.detail != currentDetail || !slices.Equal(previous.ownerIDs, ownerIDs)
+}
+
+func recordOwnershipAudit(
+	ctx context.Context,
+	tx *sql.Tx,
+	targetID string,
+	ownership storage.OwnershipSnapshot,
+) error {
+	system := storage.Account{
+		ID: systemAuditAccountID, Provider: "smyklot", SubjectID: "system",
+		Login: "smyklot", DisplayName: "Smyklot", UpdatedAt: ownership.SyncedAt,
+	}
+	if err := upsertCatalogAccount(ctx, tx, system); err != nil {
+		return fmt.Errorf("reconcile ownership audit identity: %w", err)
+	}
+	action := "ownership.synced"
+	summary := fmt.Sprintf("Synchronized %d installation Owners", len(ownership.Owners))
+	if ownership.Status == storage.OwnershipStatusPermissionPending {
+		action = "ownership.permission_pending"
+		summary = "Owner synchronization awaits GitHub permission approval"
+	} else if ownership.Status == storage.OwnershipStatusError {
+		action = "ownership.failed"
+		summary = "Owner synchronization failed"
+	}
+	if _, err := insertAppAudit(ctx, tx, appAuditInsert{
+		Category: string(storage.AuditCategoryOwnership), TargetID: &targetID,
+		ActorAccountID: system.ID, Action: action, Summary: summary,
+		CreatedAt: formatTime(ownership.SyncedAt),
+	}); err != nil {
+		return fmt.Errorf("record ownership synchronization: %w", err)
 	}
 
 	return nil
