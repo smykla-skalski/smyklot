@@ -93,6 +93,96 @@ var _ = Describe("SQLite store [Unit]", func() {
 		Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
 	})
 
+	It("persists runtime overrides, audits them, and only shortens sessions", func() {
+		account := testAccount(now)
+		Expect(store.UpsertAccount(ctx, account)).To(Succeed())
+		session := storage.Session{
+			TokenHash: "runtime-settings-session",
+			AccountID: account.ID,
+			CreatedAt: now,
+			ExpiresAt: now.Add(12 * time.Hour),
+		}
+		Expect(store.CreateSession(ctx, session, 1)).To(Succeed())
+
+		initial, err := store.GetRuntimeSettings(ctx)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(initial.Revision).To(BeZero())
+
+		botConfig := config.Default()
+		botConfig.QuietSuccess = true
+		pollInterval := 90 * time.Second
+		logLevel := "debug"
+		sessionTTL := 2 * time.Hour
+		updated, err := store.UpdateRuntimeSettings(ctx, storage.RuntimeSettingsChange{
+			BotConfig:           botConfig,
+			PollInterval:        &pollInterval,
+			LogLevel:            &logLevel,
+			SessionTTL:          &sessionTTL,
+			EffectiveSessionTTL: sessionTTL,
+			ExpectedRevision:    0,
+			ActorAccountID:      account.ID,
+			ChangedAt:           now.Add(time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(updated.Revision).To(Equal(int64(1)))
+		Expect(updated.BotConfig).NotTo(BeNil())
+		Expect(updated.BotConfig.QuietSuccess).To(BeTrue())
+		Expect(updated.PollInterval).To(HaveValue(Equal(pollInterval)))
+		Expect(updated.LogLevel).To(HaveValue(Equal(logLevel)))
+		Expect(updated.SessionTTL).To(HaveValue(Equal(sessionTTL)))
+		Expect(updated.UpdatedBy.ID).To(Equal(account.ID))
+
+		shortened, err := store.GetSession(ctx, session.TokenHash, now.Add(time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(shortened.ExpiresAt).To(Equal(now.Add(2 * time.Hour)))
+
+		longerTTL := 8 * time.Hour
+		updated, err = store.UpdateRuntimeSettings(ctx, storage.RuntimeSettingsChange{
+			SessionTTL:          &longerTTL,
+			EffectiveSessionTTL: longerTTL,
+			ExpectedRevision:    1,
+			ActorAccountID:      account.ID,
+			ChangedAt:           now.Add(2 * time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(updated.Revision).To(Equal(int64(2)))
+		unchanged, err := store.GetSession(ctx, session.TokenHash, now.Add(2*time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(unchanged.ExpiresAt).To(Equal(now.Add(2 * time.Hour)))
+
+		_, err = store.UpdateRuntimeSettings(ctx, storage.RuntimeSettingsChange{
+			EffectiveSessionTTL: time.Hour,
+			ExpectedRevision:    1,
+			ActorAccountID:      account.ID,
+			ChangedAt:           now.Add(3 * time.Minute),
+		})
+		Expect(errors.Is(err, storage.ErrConflict)).To(BeTrue())
+
+		reset, err := store.UpdateRuntimeSettings(ctx, storage.RuntimeSettingsChange{
+			EffectiveSessionTTL: time.Hour,
+			ExpectedRevision:    2,
+			ActorAccountID:      account.ID,
+			ChangedAt:           now.Add(3 * time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(reset.Revision).To(Equal(int64(3)))
+		Expect(reset.BotConfig).To(BeNil())
+		Expect(reset.PollInterval).To(BeNil())
+		Expect(reset.LogLevel).To(BeNil())
+		Expect(reset.SessionTTL).To(BeNil())
+		shortest, err := store.GetSession(ctx, session.TokenHash, now.Add(3*time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(shortest.ExpiresAt).To(Equal(now.Add(time.Hour)))
+
+		audit, err := store.ListRootAudit(ctx, storage.RootAuditPageRequest{
+			HistoryPageRequest: storage.HistoryPageRequest{Limit: 10},
+			Categories:         []storage.AuditCategory{storage.AuditCategoryRuntime},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(audit.Items).To(HaveLen(3))
+		Expect(audit.Items[0].Action).To(Equal("runtime.settings.updated"))
+	})
+
 	It("binds elevated writes to one Root session and notifies every Owner", func() {
 		root, owner, target, session := seedElevationScenario(ctx, store, now)
 		reason := "investigate a reported configuration incident"

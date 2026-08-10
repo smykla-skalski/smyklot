@@ -67,6 +67,8 @@ type ConfigStore interface {
 	UpdateTargetSettings(context.Context, TargetSettingsChange) (Target, error)
 	UpdateRepositorySettings(context.Context, RepositorySettingsChange) (Repository, error)
 	UpdateRepositoryFileState(context.Context, RepositoryFileState) (bool, error)
+	GetRuntimeSettings(context.Context) (RuntimeSettings, error)
+	UpdateRuntimeSettings(context.Context, RuntimeSettingsChange) (RuntimeSettings, error)
 }
 
 // DeliveryStore owns delivery claims, completion, failure, and retention.
