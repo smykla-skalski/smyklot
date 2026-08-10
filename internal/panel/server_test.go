@@ -913,7 +913,15 @@ func TestPanelHistoryPaginationFilteringAndSorting(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	session := harness.signIn(t)
 	targetPath := "/panel/api/v1/targets/github:installation:10"
+	seedPanelHistory(t, harness, targetPath, session)
+	assertAuditPagination(t, harness, targetPath, session)
+	assertAuditChangeFilter(t, harness, targetPath, session)
+	assertFailureHistory(t, harness, targetPath, session)
+	assertInvalidHistoryQueries(t, harness, targetPath, session)
+}
 
+func seedPanelHistory(t *testing.T, harness *panelHarness, targetPath string, session *http.Cookie) {
+	t.Helper()
 	for revision := int64(1); revision <= 2; revision++ {
 		input := fmt.Sprintf(
 			`{"repository_default_enabled":true,"config_patch":{"quiet_success":true},"expected_revision":%d}`,
@@ -930,7 +938,12 @@ func TestPanelHistoryPaginationFilteringAndSorting(t *testing.T) {
 			t.Fatalf("target update %d = %d %s", revision, response.Code, response.Body.String())
 		}
 	}
+	seedFailure(t, harness, "delivery-permanent", "repository configuration is invalid", false)
+	seedFailure(t, harness, "delivery-retryable", "GitHub request timed out", true)
+}
 
+func assertAuditPagination(t *testing.T, harness *panelHarness, targetPath string, session *http.Cookie) {
+	t.Helper()
 	first := harness.request(
 		t,
 		http.MethodGet,
@@ -971,7 +984,10 @@ func TestPanelHistoryPaginationFilteringAndSorting(t *testing.T) {
 		secondPage.Items[0].ID <= firstPage.Items[0].ID {
 		t.Fatalf("unexpected second audit page: %#v", secondPage)
 	}
+}
 
+func assertAuditChangeFilter(t *testing.T, harness *panelHarness, targetPath string, session *http.Cookie) {
+	t.Helper()
 	accountChanges := harness.request(
 		t,
 		http.MethodGet,
@@ -989,9 +1005,10 @@ func TestPanelHistoryPaginationFilteringAndSorting(t *testing.T) {
 	if accountPage.Total != 2 || len(accountPage.Items) != 2 {
 		t.Fatalf("unexpected account-change audit: %#v", accountPage)
 	}
+}
 
-	seedFailure(t, harness, "delivery-permanent", "repository configuration is invalid", false)
-	seedFailure(t, harness, "delivery-retryable", "GitHub request timed out", true)
+func assertFailureHistory(t *testing.T, harness *panelHarness, targetPath string, session *http.Cookie) {
+	t.Helper()
 	failures := harness.request(
 		t,
 		http.MethodGet,
@@ -1027,7 +1044,10 @@ func TestPanelHistoryPaginationFilteringAndSorting(t *testing.T) {
 	if len(failurePage.Items) != 2 || failurePage.Items[0].Retryable {
 		t.Fatalf("unexpected status-sorted failures: %#v", failurePage)
 	}
+}
 
+func assertInvalidHistoryQueries(t *testing.T, harness *panelHarness, targetPath string, session *http.Cookie) {
+	t.Helper()
 	wrongAuditSort := harness.request(
 		t,
 		http.MethodGet,
