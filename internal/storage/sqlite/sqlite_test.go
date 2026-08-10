@@ -147,6 +147,38 @@ var _ = Describe("SQLite store [Unit]", func() {
 		Expect(ended.EndReason).To(HaveValue(Equal(storage.ElevationExpired)))
 	})
 
+	It("summarizes Root operational state", func() {
+		root, _, target, session := seedElevationScenario(ctx, store, now)
+		_, err := store.BeginElevation(ctx, storage.ElevationGrant{
+			ID: "overview-elevation", SessionTokenHash: session.TokenHash,
+			RootAccountID: root.ID, TargetID: target.TargetID, StartedAt: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		claim, err := store.ClaimDelivery(ctx, storage.DeliveryClaim{
+			ClaimKey: "github:overview:failure", DeliveryID: "overview-failure",
+			TargetID: target.TargetID, RepositoryFullName: "smykla-skalski/smyklot",
+			Event: "issue_comment", ClaimedAt: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(store.FailDelivery(ctx, storage.DeliveryFailureChange{
+			ClaimID: claim.ID, Stage: "github", Reason: "provider timeout",
+			Retryable: true, FailedAt: now.Add(time.Minute),
+		})).To(Succeed())
+
+		overview, err := store.GetRootOverview(ctx, root.ID, now.Add(2*time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(overview.InstallationCount).To(Equal(1))
+		Expect(overview.RepositoryCount).To(Equal(1))
+		Expect(overview.EnabledRepositoryCount).To(BeZero())
+		Expect(overview.OwnershipFresh).To(Equal(1))
+		Expect(overview.OwnershipStale).To(BeZero())
+		Expect(overview.ActiveElevations).To(Equal(1))
+		Expect(overview.RecentFailures).To(HaveLen(1))
+		Expect(overview.RecentFailures[0].Failure.DeliveryID).To(Equal("overview-failure"))
+		Expect(overview.RecentFailures[0].Target.Login).To(Equal(target.Account.Login))
+	})
+
 	It("rolls back an elevated write when Owner notifications cannot commit", func() {
 		root, _, target, session := seedElevationScenario(ctx, store, now)
 		elevation, err := store.BeginElevation(ctx, storage.ElevationGrant{

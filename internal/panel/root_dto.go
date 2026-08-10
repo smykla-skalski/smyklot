@@ -54,6 +54,41 @@ type notificationPageResponse struct {
 	Unread     int                            `json:"unread"`
 }
 
+type rootServiceResponse struct {
+	Status        string `json:"status"`
+	Version       string `json:"version"`
+	ServiceHost   string `json:"service_host"`
+	UptimeSeconds int64  `json:"uptime_seconds"`
+	Storage       string `json:"storage"`
+}
+
+type rootCatalogResponse struct {
+	Installations       int `json:"installations"`
+	Repositories        int `json:"repositories"`
+	EnabledRepositories int `json:"enabled_repositories"`
+}
+
+type rootOwnershipSummaryResponse struct {
+	Fresh             int `json:"fresh"`
+	Stale             int `json:"stale"`
+	PermissionPending int `json:"permission_pending"`
+	Error             int `json:"error"`
+}
+
+type rootFailureResponse struct {
+	Installation accountResponse `json:"installation"`
+	Failure      failureResponse `json:"failure"`
+}
+
+type rootOverviewResponse struct {
+	Service              rootServiceResponse          `json:"service"`
+	Catalog              rootCatalogResponse          `json:"catalog"`
+	Ownership            rootOwnershipSummaryResponse `json:"ownership"`
+	ActiveElevations     int                          `json:"active_elevations"`
+	UnreadSecurityEvents int                          `json:"unread_security_events"`
+	RecentFailures       []rootFailureResponse        `json:"recent_failures"`
+}
+
 func rootInstallationDTO(target storage.Target, now time.Time) rootInstallationResponse {
 	return rootInstallationResponse{
 		ID: target.ID, InstallationID: target.InstallationID, Type: target.Kind,
@@ -94,5 +129,38 @@ func securityNotificationDTO(notification storage.SecurityNotification) security
 		AuditEventID: strconv.FormatInt(notification.AuditEventID, 10),
 		Action:       notification.Action, Reason: notification.Reason,
 		CreatedAt: notification.CreatedAt, ReadAt: notification.ReadAt,
+	}
+}
+
+func rootOverviewDTO(
+	overview storage.RootOverview,
+	cfg Config,
+	startedAt, now time.Time,
+) rootOverviewResponse {
+	failures := make([]rootFailureResponse, 0, len(overview.RecentFailures))
+	for _, item := range overview.RecentFailures {
+		failures = append(failures, rootFailureResponse{
+			Installation: accountDTO(item.Target),
+			Failure:      failureDTO(item.Failure),
+		})
+	}
+	uptime := max(int64(now.Sub(startedAt).Seconds()), 0)
+
+	return rootOverviewResponse{
+		Service: rootServiceResponse{
+			Status: "healthy", Version: cfg.Version, ServiceHost: cfg.ServiceHost,
+			UptimeSeconds: uptime, Storage: "healthy",
+		},
+		Catalog: rootCatalogResponse{
+			Installations: overview.InstallationCount, Repositories: overview.RepositoryCount,
+			EnabledRepositories: overview.EnabledRepositoryCount,
+		},
+		Ownership: rootOwnershipSummaryResponse{
+			Fresh: overview.OwnershipFresh, Stale: overview.OwnershipStale,
+			PermissionPending: overview.OwnershipPending, Error: overview.OwnershipError,
+		},
+		ActiveElevations:     overview.ActiveElevations,
+		UnreadSecurityEvents: overview.UnreadSecurityEvents,
+		RecentFailures:       failures,
 	}
 }

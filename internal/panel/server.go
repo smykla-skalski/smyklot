@@ -36,15 +36,16 @@ type Dependencies struct {
 
 // Server owns the panel routes and their authenticated runtime state.
 type Server struct {
-	cfg     Config
-	store   storage.Store
-	catalog catalogSyncer
-	users   userResolver
-	signIn  signInProvider
-	random  io.Reader
-	now     func() time.Time
-	assets  *assetBundle
-	events  *eventHub
+	cfg       Config
+	store     storage.Store
+	catalog   catalogSyncer
+	users     userResolver
+	signIn    signInProvider
+	random    io.Reader
+	now       func() time.Time
+	startedAt time.Time
+	assets    *assetBundle
+	events    *eventHub
 }
 
 // New creates a production panel server.
@@ -77,15 +78,16 @@ func New(cfg Config, deps Dependencies) (*Server, error) {
 	}
 
 	return &Server{
-		cfg:     validated,
-		store:   deps.Store,
-		catalog: deps.Catalog,
-		users:   deps.Users,
-		signIn:  deps.SignIn,
-		random:  deps.Random,
-		now:     deps.Now,
-		assets:  assets,
-		events:  newEventHub(),
+		cfg:       validated,
+		store:     deps.Store,
+		catalog:   deps.Catalog,
+		users:     deps.Users,
+		signIn:    deps.SignIn,
+		random:    deps.Random,
+		now:       deps.Now,
+		startedAt: deps.Now().UTC(),
+		assets:    assets,
+		events:    newEventHub(),
 	}, nil
 }
 
@@ -106,6 +108,7 @@ func (s *Server) Handler() http.Handler {
 	)
 	mux.HandleFunc("GET "+base+"/api/v1/invites/{token}", s.reviewInvitation)
 	mux.HandleFunc("GET "+base+"/api/v1/root/installations", s.getRootInstallations)
+	mux.HandleFunc("GET "+base+"/api/v1/root/overview", s.getRootOverview)
 	mux.HandleFunc("POST "+base+"/api/v1/root/installations/sync", s.postRootInstallationSync)
 	mux.HandleFunc(
 		"GET "+base+"/api/v1/root/installations/{target}/elevation",

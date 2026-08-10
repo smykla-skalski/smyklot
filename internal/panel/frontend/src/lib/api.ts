@@ -26,6 +26,7 @@ import type {
   RootElevation,
   RootElevationInput,
   RootInstallation,
+  RootOverview,
   SecurityNotification,
   TargetSettingsInput,
   InvitationDays,
@@ -48,6 +49,7 @@ export interface PanelApi {
   fetchViewer(): Promise<PanelViewer | null>;
   fetchTargets(): Promise<PanelTarget[]>;
   fetchRootInstallations(): Promise<RootInstallation[]>;
+  fetchRootOverview(): Promise<RootOverview>;
   fetchRootTargetSettings(targetId: string): Promise<PanelTarget>;
   updateRootTargetSettings(targetId: string, input: TargetSettingsInput): Promise<PanelTarget>;
   fetchRootRepositories(
@@ -175,6 +177,10 @@ export function createPanelApi(
         '/api/v1/root/installations',
       );
       return body.installations;
+    },
+
+    fetchRootOverview(): Promise<RootOverview> {
+      return jsonRequest('/api/v1/root/overview');
     },
 
     fetchRootTargetSettings(targetId: string): Promise<PanelTarget> {

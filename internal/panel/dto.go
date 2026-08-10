@@ -322,20 +322,20 @@ func auditPageDTO(page storage.AuditPage) pageResponse[auditResponse] {
 func failurePageDTO(page storage.FailurePage) pageResponse[failureResponse] {
 	items := make([]failureResponse, 0, len(page.Items))
 	for _, failure := range page.Items {
-		items = append(items, failureResponse{
-			ID:                 strconv.FormatInt(failure.ID, 10),
-			DeliveryID:         failure.DeliveryID,
-			RepositoryFullName: failure.RepositoryFullName,
-			Event:              failure.Event,
-			Stage:              failure.Stage,
-			Reason:             failure.Reason,
-			Retryable:          failure.Retryable,
-			OccurredAt:         failure.OccurredAt,
-		})
+		items = append(items, failureDTO(failure))
 	}
 
 	return pageResponse[failureResponse]{
 		Items: items, NextCursor: offsetCursor(page.NextOffset), Total: page.Total,
+	}
+}
+
+func failureDTO(failure storage.DeliveryFailure) failureResponse {
+	return failureResponse{
+		ID: strconv.FormatInt(failure.ID, 10), DeliveryID: failure.DeliveryID,
+		RepositoryFullName: failure.RepositoryFullName, Event: failure.Event,
+		Stage: failure.Stage, Reason: failure.Reason,
+		Retryable: failure.Retryable, OccurredAt: failure.OccurredAt,
 	}
 }
 

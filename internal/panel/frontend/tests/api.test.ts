@@ -255,6 +255,20 @@ describe('Root installation access', () => {
       },
     };
     const stub = stubFetch([
+      jsonResponse(200, {
+        service: {
+          status: 'healthy',
+          version: '1.0.0',
+          service_host: 'smyklot.example',
+          uptime_seconds: 120,
+          storage: 'healthy',
+        },
+        catalog: { installations: 1, repositories: 1, enabled_repositories: 0 },
+        ownership: { fresh: 1, stale: 0, permission_pending: 0, error: 0 },
+        active_elevations: 0,
+        unread_security_events: 0,
+        recent_failures: [],
+      }),
       jsonResponse(200, { installations: [installation] }),
       jsonResponse(200, TARGET),
       jsonResponse(200, { items: [REPOSITORY], next_cursor: null, total: 1 }),
@@ -275,6 +289,10 @@ describe('Root installation access', () => {
       setting: { mode: 'all' as const },
     };
 
+    await expect(api.fetchRootOverview()).resolves.toMatchObject({
+      service: { status: 'healthy', version: '1.0.0' },
+      catalog: { installations: 1, repositories: 1 },
+    });
     await expect(api.fetchRootInstallations()).resolves.toEqual([installation]);
     await api.fetchRootTargetSettings('target.1');
     await api.fetchRootRepositories('target.1', repositoryPage);
@@ -301,6 +319,7 @@ describe('Root installation access', () => {
     await api.endRootElevation('elevation.1');
 
     expect(stub.calls.map((call) => call.url)).toEqual([
+      '/panel/api/v1/root/overview',
       '/panel/api/v1/root/installations',
       '/panel/api/v1/root/installations/target%2E1/settings',
       '/panel/api/v1/root/installations/target%2E1/repositories?sort=name_asc&limit=20&state=all',
@@ -311,12 +330,12 @@ describe('Root installation access', () => {
       '/panel/api/v1/root/installations/target%2E1/elevation',
       '/panel/api/v1/root/elevations/elevation%2E1',
     ]);
-    expect(stub.calls[7]?.init?.method).toBe('POST');
-    expect(JSON.parse(String(stub.calls[7]?.init?.body))).toEqual({
+    expect(stub.calls[8]?.init?.method).toBe('POST');
+    expect(JSON.parse(String(stub.calls[8]?.init?.body))).toEqual({
       acknowledged: true,
       reason: 'Investigating a failed delivery',
     });
-    expect(stub.calls[8]?.init?.method).toBe('DELETE');
+    expect(stub.calls[9]?.init?.method).toBe('DELETE');
   });
 });
 

@@ -774,6 +774,22 @@ func TestPanelSeparatesRootAndInstallationAccessRoutes(t *testing.T) {
 	requireResponse(t, blockedElevation, "ordinary Root elevation", http.StatusForbidden)
 }
 
+func TestPanelRootOverview(t *testing.T) {
+	harness := newPanelHarness(t, "root")
+	rootSession := harness.signIn(t)
+	seedFailure(t, harness, "overview-failure", "GitHub provider timeout", true)
+
+	overview := harness.request(
+		t, http.MethodGet, "/panel/api/v1/root/overview", nil, rootSession,
+	)
+	requireResponse(
+		t, overview, "Root overview", http.StatusOK,
+		`"status":"healthy"`, `"version":"1.0.0"`,
+		`"installations":1`, `"repositories":1`,
+		`"fresh":1`, `"delivery_id":"overview-failure"`,
+	)
+}
+
 func TestPanelRootElevationAndOwnerNotifications(t *testing.T) {
 	harness := newPanelHarness(t, "root")
 	rootSession := harness.signIn(t)

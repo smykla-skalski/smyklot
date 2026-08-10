@@ -26,6 +26,7 @@ import type {
   RootElevation,
   RootElevationInput,
   RootInstallation,
+  RootOverview,
   SecurityNotification,
   TargetSettingsInput,
   UpdateTargetUserInput,
@@ -961,6 +962,10 @@ async function handle(
       });
       return;
     }
+    if (path === route('/api/v1/root/overview') && method === 'GET') {
+      respond(res, 200, rootOverviewValue(state));
+      return;
+    }
     if (path === route('/api/v1/notifications') && method === 'GET') {
       const offset = Math.max(0, Number(parsed.searchParams.get('cursor') ?? '0'));
       const limit = Math.min(100, Math.max(1, Number(parsed.searchParams.get('limit') ?? '20')));
@@ -1417,6 +1422,57 @@ function rootInstallationValue(target: MockTarget, index: number): RootInstallat
       owner_count: available ? (target.value.type === 'User' ? 1 : 2) : 0,
       stale: permissionPending,
     },
+  };
+}
+
+function rootOverviewValue(state: MockState): RootOverview {
+  const installations = state.targets.map((target, index) => rootInstallationValue(target, index));
+  const repositories = state.targets.flatMap((target) => target.repositories);
+  const recentFailures = state.targets
+    .flatMap((target) =>
+      target.failures.map((failure) => ({ installation: target.value.account, failure })),
+    )
+    .sort(
+      (left, right) => Date.parse(right.failure.occurred_at) - Date.parse(left.failure.occurred_at),
+    )
+    .slice(0, 5);
+
+  return {
+    service: {
+      status: 'healthy',
+      version: 'dev',
+      service_host: 'local mock service',
+      uptime_seconds: 9_322,
+      storage: 'healthy',
+    },
+    catalog: {
+      installations: state.targets.length,
+      repositories: repositories.length,
+      enabled_repositories: repositories.filter(
+        (repository) => repository.detail.repository.effective_enabled,
+      ).length,
+    },
+    ownership: {
+      fresh: installations.filter(
+        (installation) =>
+          installation.ownership.status === 'fresh' && !installation.ownership.stale,
+      ).length,
+      stale: installations.filter(
+        (installation) => installation.ownership.status === 'fresh' && installation.ownership.stale,
+      ).length,
+      permission_pending: installations.filter(
+        (installation) => installation.ownership.status === 'permission_pending',
+      ).length,
+      error: installations.filter((installation) => installation.ownership.status === 'error')
+        .length,
+    },
+    active_elevations: [...state.elevations.values()].filter(
+      (elevation) => Date.parse(elevation.expires_at) > Date.now(),
+    ).length,
+    unread_security_events: state.notifications.filter(
+      (notification) => notification.read_at === undefined,
+    ).length,
+    recent_failures: recentFailures,
   };
 }
 

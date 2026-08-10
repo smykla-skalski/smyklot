@@ -222,6 +222,35 @@ export interface RootInstallation {
   ownership: OwnershipState;
 }
 
+export interface RootOverviewFailure {
+  installation: PanelAccount;
+  failure: DeliveryFailure;
+}
+
+export interface RootOverview {
+  service: {
+    status: 'healthy';
+    version: string;
+    service_host: string;
+    uptime_seconds: number;
+    storage: 'healthy';
+  };
+  catalog: {
+    installations: number;
+    repositories: number;
+    enabled_repositories: number;
+  };
+  ownership: {
+    fresh: number;
+    stale: number;
+    permission_pending: number;
+    error: number;
+  };
+  active_elevations: number;
+  unread_security_events: number;
+  recent_failures: RootOverviewFailure[];
+}
+
 export interface RootElevation {
   id: string;
   target_id: string;

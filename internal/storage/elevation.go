@@ -70,3 +70,23 @@ type NotificationPage struct {
 	Total      int
 	Unread     int
 }
+
+// RootOverview is the application-wide operational state shown to Root users.
+type RootOverview struct {
+	InstallationCount      int
+	RepositoryCount        int
+	EnabledRepositoryCount int
+	OwnershipFresh         int
+	OwnershipStale         int
+	OwnershipPending       int
+	OwnershipError         int
+	ActiveElevations       int
+	UnreadSecurityEvents   int
+	RecentFailures         []RootFailure
+}
+
+// RootFailure adds installation identity to a delivery failure.
+type RootFailure struct {
+	Failure DeliveryFailure
+	Target  Account
+}

@@ -5,6 +5,7 @@
   import Plate from './components/Plate.svelte';
   import RepositoryList from './components/RepositoryList.svelte';
   import RootInstallations from './components/RootInstallations.svelte';
+  import RootOverview from './components/RootOverview.svelte';
   import SignedOut from './components/SignedOut.svelte';
   import TargetSettings from './components/TargetSettings.svelte';
   import UserManagement from './components/UserManagement.svelte';
@@ -249,6 +250,10 @@
 
   function rootInstallationsHref(): string {
     return router.path({ rootView: 'installations' });
+  }
+
+  function rootFailuresHref(): string {
+    return router.path({ rootView: 'history-failures' });
   }
 
   function rootInstallationHref(account: string, nextView: ScopedPanelView): string {
@@ -568,7 +573,13 @@
             <span class="root-boundary">Application scope</span>
           </header>
 
-          {#if rootValue === 'installations'}
+          {#if rootValue === 'overview'}
+            <RootOverview
+              {api}
+              installationsHref={rootInstallationsHref()}
+              failuresHref={rootFailuresHref()}
+            />
+          {:else if rootValue === 'installations'}
             <RootInstallations
               route={activeRootRoute}
               {api}

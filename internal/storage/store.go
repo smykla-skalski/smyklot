@@ -84,6 +84,7 @@ type AuditReader interface {
 
 // SecurityStore owns Root elevation grants and Owner notifications.
 type SecurityStore interface {
+	GetRootOverview(context.Context, string, time.Time) (RootOverview, error)
 	BeginElevation(context.Context, ElevationGrant) (Elevation, error)
 	GetElevation(context.Context, string, string, time.Time) (Elevation, error)
 	EndElevation(context.Context, string, string, ElevationEndReason, time.Time) (Elevation, error)

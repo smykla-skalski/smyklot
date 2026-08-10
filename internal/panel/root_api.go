@@ -14,6 +14,24 @@ type elevationRequest struct {
 	Reason       *string `json:"reason"`
 }
 
+func (s *Server) getRootOverview(w http.ResponseWriter, r *http.Request) {
+	account, _, ok := s.requireRoot(w, r)
+	if !ok {
+		return
+	}
+	now := s.now().UTC()
+	if err := s.store.Ping(r.Context()); err != nil {
+		s.writeInternal(w, err)
+		return
+	}
+	overview, err := s.store.GetRootOverview(r.Context(), account.ID, now)
+	if err != nil {
+		s.writeInternal(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, rootOverviewDTO(overview, s.cfg, s.startedAt, now))
+}
+
 func (s *Server) getRootInstallations(w http.ResponseWriter, r *http.Request) {
 	if _, _, ok := s.requireRoot(w, r); !ok {
 		return
