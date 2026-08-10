@@ -55,24 +55,52 @@ func (s *server) drain(workers *sync.WaitGroup) {
 // Sweeping in the loop rather than in a goroutine per tick means a sweep that
 // outruns the interval delays the next one instead of overlapping with it.
 func (s *server) pollLoop(ctx context.Context) {
-	if s.cfg.pollInterval <= 0 {
+	interval := s.pollInterval()
+	s.logPollInterval(interval)
+	for {
+		if interval <= 0 {
+			select {
+			case <-ctx.Done():
+				return
+			case <-s.pollIntervalChanged:
+				interval = s.pollInterval()
+				s.logPollInterval(interval)
+			}
+
+			continue
+		}
+
+		timer := time.NewTimer(interval)
+		select {
+		case <-ctx.Done():
+			stopTimer(timer)
+
+			return
+		case <-s.pollIntervalChanged:
+			stopTimer(timer)
+			interval = s.pollInterval()
+			s.logPollInterval(interval)
+		case <-timer.C:
+			s.runSweep(ctx)
+			interval = s.pollInterval()
+		}
+	}
+}
+
+func (s *server) logPollInterval(interval time.Duration) {
+	if interval <= 0 {
 		s.logger.Info("reaction polling disabled")
 
 		return
 	}
+	s.logger.Info("sweeping reactions", "interval", interval.String())
+}
 
-	s.logger.Info("sweeping reactions", "interval", s.cfg.pollInterval.String())
-
-	ticker := time.NewTicker(s.cfg.pollInterval)
-	defer ticker.Stop()
-
-	for {
+func stopTimer(timer *time.Timer) {
+	if !timer.Stop() {
 		select {
-		case <-ctx.Done():
-			return
-
-		case <-ticker.C:
-			s.runSweep(ctx)
+		case <-timer.C:
+		default:
 		}
 	}
 }

@@ -110,8 +110,10 @@ type server struct {
 	logLevel *slog.LevelVar
 	redactor *logging.Redactor
 
-	runtimeMu        sync.RWMutex
-	runtimeBotConfig *config.Config
+	runtimeMu           sync.RWMutex
+	runtimeBotConfig    *config.Config
+	runtimePollInterval time.Duration
+	pollIntervalChanged chan struct{}
 
 	registry *prometheus.Registry
 	metrics  *metrics.Metrics
@@ -206,6 +208,8 @@ func newServer(cfg *serveConfig) (*server, error) {
 		logLevel:            level,
 		redactor:            redactor,
 		runtimeBotConfig:    &resolvedConfig.Values,
+		runtimePollInterval: cfg.pollInterval,
+		pollIntervalChanged: make(chan struct{}, 1),
 		registry:            registry,
 		metrics:             metrics.New(registry),
 		configs:             newRepoCache(repoConfigTTL, fetchRepositoryConfig),

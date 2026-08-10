@@ -59,10 +59,12 @@ func (s *Store) UpdateRuntimeSettings(
 		_, err = tx.ExecContext(ctx, `
 INSERT INTO runtime_settings (
     singleton, bot_config, log_level,
-    session_ttl_seconds, revision, updated_at, updated_by_account_id
-) VALUES (1, ?, ?, ?, 1, ?, ?)`,
+    poll_interval_seconds, session_ttl_seconds,
+    revision, updated_at, updated_by_account_id
+) VALUES (1, ?, ?, ?, ?, 1, ?, ?)`,
 			botConfig,
 			change.LogLevel,
+			durationSeconds(change.PollInterval),
 			durationSeconds(change.SessionTTL),
 			formatTime(change.ChangedAt),
 			change.ActorAccountID,
@@ -70,11 +72,12 @@ INSERT INTO runtime_settings (
 	} else {
 		_, err = tx.ExecContext(ctx, `
 UPDATE runtime_settings SET
-    bot_config = ?, log_level = ?, session_ttl_seconds = ?,
+    bot_config = ?, log_level = ?, poll_interval_seconds = ?, session_ttl_seconds = ?,
     revision = revision + 1, updated_at = ?, updated_by_account_id = ?
 WHERE singleton = 1 AND revision = ?`,
 			botConfig,
 			change.LogLevel,
+			durationSeconds(change.PollInterval),
 			durationSeconds(change.SessionTTL),
 			formatTime(change.ChangedAt),
 			change.ActorAccountID,
@@ -115,6 +118,12 @@ func validateRuntimeSettingsChange(change storage.RuntimeSettingsChange) (*strin
 	if change.SessionTTL != nil && *change.SessionTTL < time.Minute {
 		return nil, errors.New("session lifetime must be at least one minute")
 	}
+	if change.PollInterval != nil && *change.PollInterval < 0 {
+		return nil, errors.New("reaction sweep interval cannot be negative")
+	}
+	if change.EffectivePollInterval < 0 {
+		return nil, errors.New("effective reaction sweep interval cannot be negative")
+	}
 	if change.EffectiveSessionTTL < time.Minute {
 		return nil, errors.New("effective session lifetime must be at least one minute")
 	}
@@ -139,14 +148,15 @@ func getRuntimeSettings(
 ) (storage.RuntimeSettings, error) {
 	var settings storage.RuntimeSettings
 	var botConfig, logLevel sql.NullString
-	var sessionSeconds sql.NullInt64
+	var pollSeconds, sessionSeconds sql.NullInt64
 	var updatedAt, updatedByID string
 	err := queryer.QueryRowContext(ctx, `
-SELECT bot_config, log_level, session_ttl_seconds,
+SELECT bot_config, log_level, poll_interval_seconds, session_ttl_seconds,
        revision, updated_at, updated_by_account_id
 FROM runtime_settings WHERE singleton = 1`).Scan(
 		&botConfig,
 		&logLevel,
+		&pollSeconds,
 		&sessionSeconds,
 		&settings.Revision,
 		&updatedAt,
@@ -163,6 +173,7 @@ FROM runtime_settings WHERE singleton = 1`).Scan(
 		settings.BotConfig = &value
 	}
 	settings.LogLevel = stringPointer(logLevel)
+	settings.PollInterval = durationPointer(pollSeconds)
 	settings.SessionTTL = durationPointer(sessionSeconds)
 	parsed, err := parseTime(updatedAt)
 	if err != nil {

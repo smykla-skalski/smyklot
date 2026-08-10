@@ -519,6 +519,11 @@ describe('Root runtime settings', () => {
     const runtime = {
       behavior_defaults: { deployment: CONFIG, override: null, effective: CONFIG },
       log_level: { deployment: 'info', override: null, effective: 'info' },
+      reaction_poll_interval: {
+        deployment_seconds: 300,
+        override_seconds: null,
+        effective_seconds: 300,
+      },
       session_lifetime: {
         deployment_seconds: 86_400,
         override_seconds: null,
@@ -542,6 +547,11 @@ describe('Root runtime settings', () => {
     const updated = {
       ...runtime,
       log_level: { ...runtime.log_level, override: 'debug', effective: 'debug' },
+      reaction_poll_interval: {
+        ...runtime.reaction_poll_interval,
+        override_seconds: 90,
+        effective_seconds: 90,
+      },
       session_lifetime: {
         ...runtime.session_lifetime,
         override_seconds: 3_600,
@@ -557,6 +567,7 @@ describe('Root runtime settings', () => {
       api.updateRootRuntimeSettings({
         bot_config: null,
         log_level: 'debug',
+        reaction_poll_interval_seconds: 90,
         session_ttl_seconds: 3_600,
         expected_revision: 3,
       }),
@@ -570,6 +581,7 @@ describe('Root runtime settings', () => {
     expect(JSON.parse(String(stub.calls[1]?.init?.body))).toEqual({
       bot_config: null,
       log_level: 'debug',
+      reaction_poll_interval_seconds: 90,
       session_ttl_seconds: 3_600,
       expected_revision: 3,
     });

@@ -20,12 +20,23 @@
     { value: 'default', label: 'Deployment' },
     { value: 'custom', label: 'Custom' },
   ] as const;
+  const POLL_SOURCES = [
+    { value: 'default', label: 'Deployment' },
+    { value: 'disabled', label: 'Disabled' },
+    { value: 'custom', label: 'Custom' },
+  ] as const;
+  const POLL_UNITS = {
+    seconds: 1,
+    minutes: 60,
+    hours: 3_600,
+  } as const;
   const SESSION_UNITS = {
     minutes: 60,
     hours: 3_600,
     days: 86_400,
   } as const;
   type SessionUnit = keyof typeof SESSION_UNITS;
+  type PollUnit = keyof typeof POLL_UNITS;
 
   const {
     refreshVersion,
@@ -44,6 +55,9 @@
   let sessionSource = $state<'default' | 'custom'>('default');
   let sessionAmount = $state(24);
   let sessionUnit = $state<SessionUnit>('hours');
+  let pollSource = $state<'default' | 'disabled' | 'custom'>('default');
+  let pollAmount = $state(5);
+  let pollUnit = $state<PollUnit>('minutes');
   let receivedRevision = $state(-1);
 
   const behaviorPatch = $derived(
@@ -68,6 +82,17 @@
     sessionSource = settings.session_lifetime.override_seconds === null ? 'default' : 'custom';
     sessionAmount = display.amount;
     sessionUnit = display.unit;
+    const pollSeconds = settings.reaction_poll_interval.override_seconds;
+    if (pollSeconds === null) {
+      pollSource = 'default';
+    } else if (pollSeconds === 0) {
+      pollSource = 'disabled';
+    } else {
+      pollSource = 'custom';
+      const pollDisplay = pollDurationParts(pollSeconds);
+      pollAmount = pollDisplay.amount;
+      pollUnit = pollDisplay.unit;
+    }
   });
 
   async function load(version: number): Promise<void> {
@@ -104,6 +129,26 @@
     if (sessionSource === 'default') await update({ session_ttl_seconds: null });
   }
 
+  async function selectPollSource(value: string): Promise<void> {
+    if (settings === null || saving || value === pollSource) return;
+    const next = value === 'custom' ? 'custom' : value === 'disabled' ? 'disabled' : 'default';
+    if (next === 'custom') {
+      pollSource = next;
+      return;
+    }
+    await update({ reaction_poll_interval_seconds: next === 'disabled' ? 0 : null });
+  }
+
+  async function savePollInterval(): Promise<void> {
+    if (settings === null || saving || pollSource !== 'custom') return;
+    const seconds = Math.round(pollAmount * POLL_UNITS[pollUnit]);
+    if (!Number.isFinite(seconds) || seconds < 1 || seconds > 24 * SESSION_UNITS.hours) {
+      failure = 'Reaction sweep interval must be between 1 second and 24 hours';
+      return;
+    }
+    await update({ reaction_poll_interval_seconds: seconds });
+  }
+
   async function saveSessionLifetime(): Promise<void> {
     if (settings === null || saving || sessionSource !== 'custom') return;
     const seconds = Math.round(sessionAmount * SESSION_UNITS[sessionUnit]);
@@ -116,7 +161,10 @@
 
   async function update(
     change: Partial<
-      Pick<RootRuntimeSettingsInput, 'bot_config' | 'log_level' | 'session_ttl_seconds'>
+      Pick<
+        RootRuntimeSettingsInput,
+        'bot_config' | 'log_level' | 'reaction_poll_interval_seconds' | 'session_ttl_seconds'
+      >
     >,
   ): Promise<void> {
     if (settings === null || saving) return;
@@ -126,6 +174,7 @@
       settings = await updateSettings({
         bot_config: settings.behavior_defaults.override,
         log_level: settings.log_level.override,
+        reaction_poll_interval_seconds: settings.reaction_poll_interval.override_seconds,
         session_ttl_seconds: settings.session_lifetime.override_seconds,
         expected_revision: settings.revision,
         ...change,
@@ -164,6 +213,23 @@
 
   function formatDuration(seconds: number): string {
     const { amount, unit } = durationParts(seconds);
+    const label = amount === 1 ? unit.slice(0, -1) : unit;
+    return `${amount} ${label}`;
+  }
+
+  function pollDurationParts(seconds: number): { amount: number; unit: PollUnit } {
+    if (seconds % POLL_UNITS.hours === 0) {
+      return { amount: seconds / POLL_UNITS.hours, unit: 'hours' };
+    }
+    if (seconds % POLL_UNITS.minutes === 0) {
+      return { amount: seconds / POLL_UNITS.minutes, unit: 'minutes' };
+    }
+    return { amount: seconds, unit: 'seconds' };
+  }
+
+  function formatPollInterval(seconds: number): string {
+    if (seconds === 0) return 'Disabled';
+    const { amount, unit } = pollDurationParts(seconds);
     const label = amount === 1 ? unit.slice(0, -1) : unit;
     return `${amount} ${label}`;
   }
@@ -225,6 +291,59 @@
     </Plate>
 
     <div class="runtime-grid">
+      <Plate label="Reaction sweep">
+        {#snippet status()}
+          <span class="effective-value">
+            Effective: {formatPollInterval(current.reaction_poll_interval.effective_seconds)}
+          </span>
+        {/snippet}
+        <p class="section-intro">
+          Checks reaction changes that GitHub does not deliver through webhooks. The interval
+          changes without restarting Smyklot.
+        </p>
+        <div class="session-editor">
+          <SegmentedControl
+            name="root-poll-source"
+            label="Reaction sweep interval source"
+            options={POLL_SOURCES}
+            value={pollSource}
+            onSelect={(selection) => void selectPollSource(selection)}
+            disabled={saving}
+          />
+          {#if pollSource === 'custom'}
+            <form
+              class="duration-form"
+              aria-label="Custom reaction sweep interval"
+              onsubmit={(event) => {
+                event.preventDefault();
+                void savePollInterval();
+              }}
+            >
+              <label>
+                <span class="visually-hidden">Reaction sweep interval</span>
+                <input
+                  class="text-input duration-input"
+                  type="number"
+                  min="1"
+                  step="1"
+                  bind:value={pollAmount}
+                  disabled={saving}
+                />
+              </label>
+              <label>
+                <span class="visually-hidden">Reaction sweep interval unit</span>
+                <select class="select-input" bind:value={pollUnit} disabled={saving}>
+                  <option value="seconds">Seconds</option>
+                  <option value="minutes">Minutes</option>
+                  <option value="hours">Hours</option>
+                </select>
+              </label>
+              <button class="btn btn-signal" type="submit" disabled={saving}>Apply</button>
+            </form>
+          {/if}
+        </div>
+      </Plate>
+
       <Plate label="Log level">
         {#snippet status()}
           <span class="effective-value">Effective: {current.log_level.effective}</span>

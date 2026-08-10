@@ -120,6 +120,7 @@ interface MockState {
   runtime: {
     behaviorOverride: ConfigValues | null;
     logLevelOverride: string | null;
+    pollIntervalOverride: number | null;
     sessionTTLOverride: number | null;
     revision: number;
     updatedAt?: string;
@@ -385,6 +386,7 @@ function seed(): MockState {
     runtime: {
       behaviorOverride: null,
       logLevelOverride: null,
+      pollIntervalOverride: null,
       sessionTTLOverride: null,
       revision: 0,
       startedAt: now,
@@ -999,6 +1001,7 @@ async function handle(
       }
       state.runtime.behaviorOverride = copyOptionalConfig(input.bot_config);
       state.runtime.logLevelOverride = input.log_level;
+      state.runtime.pollIntervalOverride = input.reaction_poll_interval_seconds;
       state.runtime.sessionTTLOverride = input.session_ttl_seconds;
       state.runtime.revision += 1;
       state.runtime.updatedAt = new Date().toISOString();
@@ -1702,6 +1705,11 @@ function rootRuntimeSettingsValue(state: MockState): RootRuntimeSettings {
       deployment: 'info',
       override: state.runtime.logLevelOverride,
       effective: state.runtime.logLevelOverride ?? 'info',
+    },
+    reaction_poll_interval: {
+      deployment_seconds: 300,
+      override_seconds: state.runtime.pollIntervalOverride,
+      effective_seconds: state.runtime.pollIntervalOverride ?? 300,
     },
     session_lifetime: {
       deployment_seconds: 86_400,

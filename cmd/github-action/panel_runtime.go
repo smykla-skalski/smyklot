@@ -61,6 +61,7 @@ func (s *server) initPanel(ctx context.Context) error {
 		AdminAddress:             s.cfg.adminAddress,
 		WebhookPath:              s.cfg.webhookPath,
 		LogLevel:                 s.cfg.logLevel,
+		PollInterval:             s.cfg.pollInterval,
 		SessionTTL:               s.cfg.panel.sessionTTL,
 		ProcessConfig:            s.cfg.botConfig,
 		WebhookCredentialPresent: len(s.cfg.webhookSecret) > 0,

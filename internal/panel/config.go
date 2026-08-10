@@ -42,6 +42,7 @@ type Config struct {
 	AdminAddress             string
 	WebhookPath              string
 	LogLevel                 slog.Level
+	PollInterval             time.Duration
 	SessionTTL               time.Duration
 	StateTTL                 time.Duration
 	ProcessConfig            *config.Config
@@ -83,6 +84,9 @@ func (c Config) validated() (Config, error) {
 	}
 	if c.SessionTTL < time.Minute || c.StateTTL < time.Minute {
 		return Config{}, fmt.Errorf("%w: authentication TTLs must be at least one minute", errInvalidConfig)
+	}
+	if c.PollInterval < 0 {
+		return Config{}, fmt.Errorf("%w: reaction sweep interval cannot be negative", errInvalidConfig)
 	}
 	if c.ProcessConfig == nil {
 		c.ProcessConfig = config.Default()

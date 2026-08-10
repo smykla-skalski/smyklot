@@ -12,14 +12,17 @@ import (
 )
 
 const (
-	maxRuntimeSessionTTL = 30 * 24 * time.Hour
+	minRuntimePollInterval = time.Second
+	maxRuntimePollInterval = 24 * time.Hour
+	maxRuntimeSessionTTL   = 30 * 24 * time.Hour
 )
 
 type runtimeSettingsRequest struct {
-	BotConfig         *config.Config `json:"bot_config"`
-	LogLevel          *string        `json:"log_level"`
-	SessionTTLSeconds *int64         `json:"session_ttl_seconds"`
-	ExpectedRevision  *int64         `json:"expected_revision"`
+	BotConfig           *config.Config `json:"bot_config"`
+	LogLevel            *string        `json:"log_level"`
+	PollIntervalSeconds *int64         `json:"reaction_poll_interval_seconds"`
+	SessionTTLSeconds   *int64         `json:"session_ttl_seconds"`
+	ExpectedRevision    *int64         `json:"expected_revision"`
 }
 
 func (s *Server) getRootRuntimeSettings(w http.ResponseWriter, r *http.Request) {
@@ -58,6 +61,7 @@ func (s *Server) putRootRuntimeSettings(w http.ResponseWriter, r *http.Request) 
 		s.writeError(w, http.StatusBadRequest, "invalid_runtime_settings", err.Error())
 		return
 	}
+	change.EffectivePollInterval = effective.PollInterval
 	change.EffectiveSessionTTL = effective.SessionTTL
 	updated, err := s.store.UpdateRuntimeSettings(r.Context(), change)
 	if err != nil {
@@ -92,21 +96,49 @@ func (s *Server) runtimeSettingsChange(
 	if err != nil {
 		return storage.RuntimeSettingsChange{}, storage.RuntimeSettings{}, err
 	}
+	pollInterval, err := runtimeOptionalInterval(
+		input.PollIntervalSeconds,
+		minRuntimePollInterval,
+		maxRuntimePollInterval,
+		"reaction sweep interval",
+	)
+	if err != nil {
+		return storage.RuntimeSettingsChange{}, storage.RuntimeSettings{}, err
+	}
 	if input.LogLevel != nil {
 		if _, err := logging.ParseLevel(*input.LogLevel); err != nil {
 			return storage.RuntimeSettingsChange{}, storage.RuntimeSettings{}, err
 		}
 	}
 	proposed := storage.RuntimeSettings{
-		BotConfig: botConfig, LogLevel: input.LogLevel, SessionTTL: sessionTTL,
+		BotConfig: botConfig, LogLevel: input.LogLevel,
+		PollInterval: pollInterval, SessionTTL: sessionTTL,
 	}
 	change := storage.RuntimeSettingsChange{
-		BotConfig: botConfig, LogLevel: input.LogLevel, SessionTTL: sessionTTL,
+		BotConfig: botConfig, LogLevel: input.LogLevel,
+		PollInterval: pollInterval, SessionTTL: sessionTTL,
 		ExpectedRevision: *input.ExpectedRevision,
 		ActorAccountID:   actor.ID, ChangedAt: s.now().UTC(),
 	}
 
 	return change, proposed, nil
+}
+
+func runtimeOptionalInterval(
+	seconds *int64,
+	minimum, maximum time.Duration,
+	label string,
+) (*time.Duration, error) {
+	if seconds == nil {
+		return nil, nil
+	}
+	if *seconds == 0 {
+		disabled := time.Duration(0)
+
+		return &disabled, nil
+	}
+
+	return runtimeDuration(seconds, minimum, maximum, label)
 }
 
 func (s *Server) runtimeBotConfig(input *config.Config) (*config.Config, error) {

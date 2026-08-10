@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,6 +14,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/smykla-skalski/smyklot/internal/githubtest"
+	adminpanel "github.com/smykla-skalski/smyklot/internal/panel"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
@@ -83,6 +86,31 @@ var _ = Describe("Reaction sweep [Unit]", func() {
 
 		Expect(service.sweep(GinkgoT().Context())).To(Succeed())
 		Expect(stub.countCalls(http.MethodGet, "/installation/repositories")).To(Equal(1))
+	})
+
+	It("should apply a new reaction sweep interval without restarting", func() {
+		start()
+		ctx, cancel := context.WithCancel(GinkgoT().Context())
+		stopped := make(chan struct{})
+		go func() {
+			defer close(stopped)
+			service.pollLoop(ctx)
+		}()
+
+		Consistently(func() int {
+			return stub.countCalls(http.MethodGet, "/app/installations")
+		}, 30*time.Millisecond).Should(BeZero())
+
+		service.ApplyRuntimeSettings(adminpanel.RuntimeValues{
+			BotConfig: config.Default(), LogLevel: slog.LevelInfo,
+			PollInterval: 10 * time.Millisecond, SessionTTL: time.Hour,
+		})
+		Eventually(func() int {
+			return stub.countCalls(http.MethodGet, "/app/installations")
+		}, time.Second).Should(BeNumerically(">", 0))
+
+		cancel()
+		Eventually(stopped).Should(BeClosed())
 	})
 
 	It("should process reactions on the open PRs it finds", func() {

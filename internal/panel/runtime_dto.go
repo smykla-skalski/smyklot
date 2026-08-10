@@ -52,6 +52,7 @@ type runtimeServiceResponse struct {
 type runtimeSettingsResponse struct {
 	BehaviorDefaults runtimeConfigValueResponse   `json:"behavior_defaults"`
 	LogLevel         runtimeStringValueResponse   `json:"log_level"`
+	PollInterval     runtimeDurationValueResponse `json:"reaction_poll_interval"`
 	SessionLifetime  runtimeDurationValueResponse `json:"session_lifetime"`
 	Revision         int64                        `json:"revision"`
 	UpdatedAt        *time.Time                   `json:"updated_at,omitempty"`
@@ -76,6 +77,9 @@ func runtimeSettingsDTO(
 			Override:   settings.LogLevel,
 			Effective:  runtimeLogLevelName(effective.LogLevel),
 		},
+		PollInterval: runtimeDurationDTO(
+			cfg.PollInterval, settings.PollInterval, effective.PollInterval,
+		),
 		SessionLifetime: runtimeDurationDTO(
 			cfg.SessionTTL, settings.SessionTTL, effective.SessionTTL,
 		),

@@ -13,16 +13,18 @@ import (
 
 // RuntimeValues are the effective settings consumed by the running service.
 type RuntimeValues struct {
-	BotConfig  *config.Config
-	LogLevel   slog.Level
-	SessionTTL time.Duration
+	BotConfig    *config.Config
+	LogLevel     slog.Level
+	PollInterval time.Duration
+	SessionTTL   time.Duration
 }
 
 func resolveRuntimeValues(cfg Config, persisted storage.RuntimeSettings) (RuntimeValues, error) {
 	values := RuntimeValues{
-		BotConfig:  cloneRuntimeConfig(cfg.ProcessConfig),
-		LogLevel:   cfg.LogLevel,
-		SessionTTL: cfg.SessionTTL,
+		BotConfig:    cloneRuntimeConfig(cfg.ProcessConfig),
+		LogLevel:     cfg.LogLevel,
+		PollInterval: cfg.PollInterval,
+		SessionTTL:   cfg.SessionTTL,
 	}
 	if persisted.BotConfig != nil {
 		values.BotConfig = cloneRuntimeConfig(persisted.BotConfig)
@@ -35,10 +37,13 @@ func resolveRuntimeValues(cfg Config, persisted storage.RuntimeSettings) (Runtim
 		}
 		values.LogLevel = level
 	}
+	if persisted.PollInterval != nil {
+		values.PollInterval = *persisted.PollInterval
+	}
 	if persisted.SessionTTL != nil {
 		values.SessionTTL = *persisted.SessionTTL
 	}
-	if values.SessionTTL < time.Minute {
+	if values.PollInterval < 0 || values.SessionTTL < time.Minute {
 		return RuntimeValues{}, fmt.Errorf("persisted runtime durations are invalid")
 	}
 

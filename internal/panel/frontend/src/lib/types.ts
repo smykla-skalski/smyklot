@@ -320,6 +320,11 @@ export interface RootRuntimeSettings {
     override: string | null;
     effective: string;
   };
+  reaction_poll_interval: {
+    deployment_seconds: number;
+    override_seconds: number | null;
+    effective_seconds: number;
+  };
   session_lifetime: {
     deployment_seconds: number;
     override_seconds: number | null;
@@ -342,6 +347,7 @@ export interface RootRuntimeSettings {
 export interface RootRuntimeSettingsInput {
   bot_config: ConfigValues | null;
   log_level: string | null;
+  reaction_poll_interval_seconds: number | null;
   session_ttl_seconds: number | null;
   expected_revision: number;
 }
