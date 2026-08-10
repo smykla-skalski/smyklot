@@ -15,6 +15,8 @@ const (
 	versionSentinel            = "__smyklot_panel_version__"
 	serviceSentinel            = "__smyklot_panel_service__"
 	panelHistoryPath           = "history"
+	panelHistoryAuditPath      = "audit"
+	panelHistoryFailuresPath   = "failures"
 	panelInvitationsPath       = "invitations"
 	panelInstallationsResource = "installations"
 	panelRepositoriesPath      = "repositories"
@@ -105,7 +107,8 @@ func isRootNavigationPath(parts []string) bool {
 	}
 	if len(parts) == 3 {
 		return parts[1] == "access" && (parts[2] == panelUsersResource || parts[2] == panelInvitationsPath) ||
-			parts[1] == panelHistoryPath && (parts[2] == "audit" || parts[2] == "failures")
+			parts[1] == panelHistoryPath &&
+				(parts[2] == panelHistoryAuditPath || parts[2] == panelHistoryFailuresPath)
 	}
 	if len(parts) != 4 || parts[1] != panelInstallationsResource || parts[2] == "" {
 		return false

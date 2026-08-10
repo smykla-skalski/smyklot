@@ -89,6 +89,18 @@ type rootOverviewResponse struct {
 	RecentFailures       []rootFailureResponse        `json:"recent_failures"`
 }
 
+type rootAuditResponse struct {
+	ID           string                `json:"id"`
+	Category     storage.AuditCategory `json:"category"`
+	Installation *accountResponse      `json:"installation,omitempty"`
+	Actor        accountResponse       `json:"actor"`
+	Subject      *accountResponse      `json:"subject,omitempty"`
+	ElevationID  *string               `json:"elevation_id,omitempty"`
+	Action       string                `json:"action"`
+	Summary      string                `json:"summary"`
+	CreatedAt    time.Time             `json:"created_at"`
+}
+
 func rootInstallationDTO(target storage.Target, now time.Time) rootInstallationResponse {
 	return rootInstallationResponse{
 		ID: target.ID, InstallationID: target.InstallationID, Type: target.Kind,
@@ -162,5 +174,42 @@ func rootOverviewDTO(
 		ActiveElevations:     overview.ActiveElevations,
 		UnreadSecurityEvents: overview.UnreadSecurityEvents,
 		RecentFailures:       failures,
+	}
+}
+
+func rootAuditPageDTO(page storage.RootAuditPage) pageResponse[rootAuditResponse] {
+	items := make([]rootAuditResponse, 0, len(page.Items))
+	for _, event := range page.Items {
+		item := rootAuditResponse{
+			ID: strconv.FormatInt(event.ID, 10), Category: event.Category,
+			Actor: accountDTO(event.Actor), ElevationID: event.ElevationID,
+			Action: event.Action, Summary: event.Summary, CreatedAt: event.CreatedAt,
+		}
+		if event.Target != nil {
+			target := accountDTO(*event.Target)
+			item.Installation = &target
+		}
+		if event.Subject != nil {
+			subject := accountDTO(*event.Subject)
+			item.Subject = &subject
+		}
+		items = append(items, item)
+	}
+
+	return pageResponse[rootAuditResponse]{
+		Items: items, NextCursor: offsetCursor(page.NextOffset), Total: page.Total,
+	}
+}
+
+func rootFailurePageDTO(page storage.RootFailurePage) pageResponse[rootFailureResponse] {
+	items := make([]rootFailureResponse, 0, len(page.Items))
+	for _, item := range page.Items {
+		items = append(items, rootFailureResponse{
+			Installation: accountDTO(item.Target), Failure: failureDTO(item.Failure),
+		})
+	}
+
+	return pageResponse[rootFailureResponse]{
+		Items: items, NextCursor: offsetCursor(page.NextOffset), Total: page.Total,
 	}
 }

@@ -109,6 +109,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET "+base+"/api/v1/invites/{token}", s.reviewInvitation)
 	mux.HandleFunc("GET "+base+"/api/v1/root/installations", s.getRootInstallations)
 	mux.HandleFunc("GET "+base+"/api/v1/root/overview", s.getRootOverview)
+	mux.HandleFunc("GET "+base+"/api/v1/root/history/{history}", s.getRootHistory)
 	mux.HandleFunc("POST "+base+"/api/v1/root/installations/sync", s.postRootInstallationSync)
 	mux.HandleFunc(
 		"GET "+base+"/api/v1/root/installations/{target}/elevation",

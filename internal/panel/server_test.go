@@ -778,6 +778,12 @@ func TestPanelRootOverview(t *testing.T) {
 	harness := newPanelHarness(t, "root")
 	rootSession := harness.signIn(t)
 	seedFailure(t, harness, "overview-failure", "GitHub provider timeout", true)
+	updated := harness.request(
+		t, http.MethodPut, "/panel/api/v1/targets/github:installation:10/settings",
+		strings.NewReader(`{"repository_default_enabled":true,"config_patch":{},"expected_revision":1}`),
+		rootSession,
+	)
+	requireResponse(t, updated, "seed Root audit", http.StatusOK, `"revision":2`)
 
 	overview := harness.request(
 		t, http.MethodGet, "/panel/api/v1/root/overview", nil, rootSession,
@@ -788,6 +794,30 @@ func TestPanelRootOverview(t *testing.T) {
 		`"installations":1`, `"repositories":1`,
 		`"fresh":1`, `"delivery_id":"overview-failure"`,
 	)
+
+	audit := harness.request(
+		t, http.MethodGet,
+		"/panel/api/v1/root/history/audit?category=configuration&sort=newest&limit=10",
+		nil, rootSession,
+	)
+	requireResponse(
+		t, audit, "Root audit", http.StatusOK,
+		`"category":"configuration"`, `"action":"target.settings.updated"`,
+		`"installation":{"id":"github:test:account:2"`,
+	)
+	failures := harness.request(
+		t, http.MethodGet,
+		"/panel/api/v1/root/history/failures?kind=retryable&q=provider&sort=newest&limit=10",
+		nil, rootSession,
+	)
+	requireResponse(
+		t, failures, "Root failures", http.StatusOK,
+		`"delivery_id":"overview-failure"`, `"login":"smykla-skalski"`,
+	)
+	invalid := harness.request(
+		t, http.MethodGet, "/panel/api/v1/root/history/audit?category=unknown", nil, rootSession,
+	)
+	requireResponse(t, invalid, "invalid Root audit category", http.StatusBadRequest)
 }
 
 func TestPanelRootElevationAndOwnerNotifications(t *testing.T) {

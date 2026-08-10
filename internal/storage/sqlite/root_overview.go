@@ -116,16 +116,10 @@ SELECT
 }
 
 func readRootRecentFailures(ctx context.Context, tx *sql.Tx) ([]storage.RootFailure, error) {
-	rows, err := tx.QueryContext(ctx, `
-SELECT
-    d.id, d.delivery_id, d.target_id, d.repository_full_name, d.event,
-    d.stage, d.reason, d.retryable, d.finished_at,
-    a.id, a.provider, a.subject_id, a.login, a.display_name, a.avatar_url, a.updated_at
-FROM deliveries d
-JOIN targets t ON t.id = d.target_id
-JOIN accounts a ON a.id = t.account_id
-WHERE d.status = 'failed'
-ORDER BY d.id DESC LIMIT 5`)
+	rows, err := tx.QueryContext(
+		ctx, rootFailureSelect+" WHERE d.status = ? ORDER BY d.id DESC LIMIT 5",
+		storage.DeliveryFailed,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("list Root recent failures: %w", err)
 	}

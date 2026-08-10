@@ -32,6 +32,119 @@ func (s *Server) getRootOverview(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, rootOverviewDTO(overview, s.cfg, s.startedAt, now))
 }
 
+func (s *Server) getRootHistory(w http.ResponseWriter, r *http.Request) {
+	history := r.PathValue("history")
+	orders := auditHistoryOrders
+	if history == panelHistoryFailuresPath {
+		orders = failureHistoryOrders
+	} else if history != panelHistoryAuditPath {
+		s.writeError(w, http.StatusNotFound, "not_found", "Root history view was not found")
+		return
+	}
+	page, ok := s.rootHistoryPage(w, r, orders...)
+	if !ok {
+		return
+	}
+	if history == panelHistoryFailuresPath {
+		s.getRootFailurePage(w, r, page)
+		return
+	}
+	s.getRootAuditPage(w, r, page)
+}
+
+func (s *Server) getRootAuditPage(
+	w http.ResponseWriter,
+	r *http.Request,
+	page storage.HistoryPageRequest,
+) {
+	categories, err := parseRootAuditCategories(r)
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid_history_query", err.Error())
+		return
+	}
+	result, err := s.store.ListRootAudit(r.Context(), storage.RootAuditPageRequest{
+		HistoryPageRequest: page, Categories: categories,
+	})
+	if err != nil {
+		s.writeInternal(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, rootAuditPageDTO(result))
+}
+
+func (s *Server) getRootFailurePage(
+	w http.ResponseWriter,
+	r *http.Request,
+	page storage.HistoryPageRequest,
+) {
+	retryable, err := parseRootFailureKind(r)
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid_history_query", err.Error())
+		return
+	}
+	result, err := s.store.ListRootFailures(r.Context(), storage.FailurePageRequest{
+		HistoryPageRequest: page, Retryable: retryable,
+	})
+	if err != nil {
+		s.writeInternal(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, rootFailurePageDTO(result))
+}
+
+func (s *Server) rootHistoryPage(
+	w http.ResponseWriter,
+	r *http.Request,
+	orders ...storage.HistoryOrder,
+) (storage.HistoryPageRequest, bool) {
+	if _, _, ok := s.requireRoot(w, r); !ok {
+		return storage.HistoryPageRequest{}, false
+	}
+	page, err := parseHistoryPage(r.URL.Query(), orders...)
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid_history_query", err.Error())
+		return storage.HistoryPageRequest{}, false
+	}
+
+	return page, true
+}
+
+func parseRootAuditCategories(r *http.Request) ([]storage.AuditCategory, error) {
+	raw := r.URL.Query()["category"]
+	if len(raw) == 0 || (len(raw) == 1 && (raw[0] == "" || raw[0] == allFilter)) {
+		return nil, nil
+	}
+	categories := make([]storage.AuditCategory, 0, len(raw))
+	for _, value := range raw {
+		category := storage.AuditCategory(value)
+		switch category {
+		case storage.AuditCategoryConfiguration, storage.AuditCategoryAccess,
+			storage.AuditCategoryOwnership, storage.AuditCategoryElevation,
+			storage.AuditCategoryNotification, storage.AuditCategoryRuntime:
+			categories = append(categories, category)
+		default:
+			return nil, fmt.Errorf("invalid audit category")
+		}
+	}
+
+	return categories, nil
+}
+
+func parseRootFailureKind(r *http.Request) (*bool, error) {
+	switch r.URL.Query().Get("kind") {
+	case "", allFilter:
+		return nil, nil
+	case "retryable":
+		value := true
+		return &value, nil
+	case "permanent":
+		value := false
+		return &value, nil
+	default:
+		return nil, fmt.Errorf("invalid failure kind")
+	}
+}
+
 func (s *Server) getRootInstallations(w http.ResponseWriter, r *http.Request) {
 	if _, _, ok := s.requireRoot(w, r); !ok {
 		return

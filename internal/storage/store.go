@@ -74,12 +74,14 @@ type DeliveryStore interface {
 	FailDelivery(context.Context, DeliveryFailureChange) error
 	RecoverRunningDeliveries(context.Context, time.Time) error
 	ListFailures(context.Context, string, FailurePageRequest) (FailurePage, error)
+	ListRootFailures(context.Context, FailurePageRequest) (RootFailurePage, error)
 	PruneDeliveries(context.Context, time.Time) error
 }
 
 // AuditReader reads immutable mutation history.
 type AuditReader interface {
 	ListAudit(context.Context, string, AuditPageRequest) (AuditPage, error)
+	ListRootAudit(context.Context, RootAuditPageRequest) (RootAuditPage, error)
 }
 
 // SecurityStore owns Root elevation grants and Owner notifications.

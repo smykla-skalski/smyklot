@@ -177,6 +177,23 @@ var _ = Describe("SQLite store [Unit]", func() {
 		Expect(overview.RecentFailures).To(HaveLen(1))
 		Expect(overview.RecentFailures[0].Failure.DeliveryID).To(Equal("overview-failure"))
 		Expect(overview.RecentFailures[0].Target.Login).To(Equal(target.Account.Login))
+
+		audit, err := store.ListRootAudit(ctx, storage.RootAuditPageRequest{
+			HistoryPageRequest: storage.HistoryPageRequest{Limit: 10},
+			Categories:         []storage.AuditCategory{storage.AuditCategoryElevation},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(audit.Total).To(Equal(1))
+		Expect(audit.Items[0].Action).To(Equal("elevation.started"))
+		Expect(audit.Items[0].Target).NotTo(BeNil())
+		Expect(audit.Items[0].Target.Login).To(Equal(target.Account.Login))
+
+		failures, err := store.ListRootFailures(ctx, storage.FailurePageRequest{
+			HistoryPageRequest: storage.HistoryPageRequest{Limit: 10, Query: "provider"},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(failures.Total).To(Equal(1))
+		Expect(failures.Items[0].Failure.DeliveryID).To(Equal("overview-failure"))
 	})
 
 	It("rolls back an elevated write when Owner notifications cannot commit", func() {
