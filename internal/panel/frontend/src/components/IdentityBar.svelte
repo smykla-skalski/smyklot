@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { PanelApi } from '../lib/api';
   import { fuzzyCandidates } from '../lib/fuzzy';
   import { handleLabel, readHandle } from '../lib/identity';
   import type { ThemeDisplay } from '../lib/preferences';
@@ -6,6 +7,7 @@
   import type { PanelTarget, PanelViewer } from '../lib/types';
   import Avatar from './Avatar.svelte';
   import Icon from './Icon.svelte';
+  import NotificationInbox from './NotificationInbox.svelte';
   import ViewTabs from './ViewTabs.svelte';
 
   const {
@@ -33,6 +35,9 @@
     onEnterRoot,
     returnHref,
     onReturnToPanel,
+    fetchNotifications,
+    markNotificationRead,
+    notificationVersion,
   }: {
     viewer: PanelViewer | null;
     iconUrl: string;
@@ -58,6 +63,9 @@
     onEnterRoot: () => void;
     returnHref: string;
     onReturnToPanel: () => void;
+    fetchNotifications: PanelApi['fetchNotifications'];
+    markNotificationRead: PanelApi['markNotificationRead'];
+    notificationVersion: number;
   } = $props();
 
   let accountMenu = $state<HTMLDetailsElement | null>(null);
@@ -121,7 +129,7 @@
   }
 
   function closeFromKeyboard(event: KeyboardEvent): void {
-    if (event.key !== 'Escape') return;
+    if (event.key !== 'Escape' || event.defaultPrevented) return;
     if (accountMenu?.open === true) {
       event.preventDefault();
       accountMenu.open = false;
@@ -335,6 +343,11 @@
               <small>{handleLabel(handle)}</small>
             </span>
           </div>
+          <NotificationInbox
+            fetchPage={fetchNotifications}
+            markRead={markNotificationRead}
+            refreshVersion={notificationVersion}
+          />
           <div class="theme-setting">
             <span class="theme-label">Theme</span>
             <div class="theme-options" role="group" aria-label="Theme">
@@ -397,6 +410,11 @@
               <small>{handleLabel(handle)}</small>
             </span>
           </div>
+          <NotificationInbox
+            fetchPage={fetchNotifications}
+            markRead={markNotificationRead}
+            refreshVersion={notificationVersion}
+          />
           <div class="theme-setting">
             <span class="theme-label">Theme</span>
             <div class="theme-options" role="group" aria-label="Theme">

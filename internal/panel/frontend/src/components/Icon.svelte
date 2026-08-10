@@ -23,6 +23,7 @@
     | 'moon'
     | 'minus-circle'
     | 'no-access'
+    | 'notifications'
     | 'organization'
     | 'owner'
     | 'pending'
@@ -153,6 +154,9 @@
   {:else if name === 'pending'}
     <circle cx="12" cy="12" r="9" />
     <path d="M12 7v5l3 2" />
+  {:else if name === 'notifications'}
+    <path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 6.5 2.5 6.5h-17S6 15 6 9" />
+    <path d="M9.5 19a2.8 2.8 0 0 0 5 0" />
   {:else if name === 'warning'}
     <path d="M12 3 2.8 20h18.4z" />
     <path d="M12 9v4M12 17h.01" />

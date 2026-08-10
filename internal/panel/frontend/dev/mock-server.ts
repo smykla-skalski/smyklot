@@ -26,6 +26,7 @@ import type {
   RootElevation,
   RootElevationInput,
   RootInstallation,
+  SecurityNotification,
   TargetSettingsInput,
   UpdateTargetUserInput,
   InvitationDays,
@@ -113,6 +114,7 @@ interface MockState {
   invitationCounter: number;
   elevationCounter: number;
   elevations: Map<string, RootElevation>;
+  notifications: SecurityNotification[];
   streams: Set<Duplex>;
 }
 
@@ -322,6 +324,11 @@ function seed(): MockState {
 
   const users = userSeeds(iso);
   const invitations = invitationSeeds(iso, users[0]?.account ?? VIEWER, organization.value);
+  const notifications = securityNotificationSeeds(
+    iso,
+    organization.value.account,
+    users[0]?.account ?? VIEWER,
+  );
   const organizationAccess = new Map<string, TargetUserAccess>();
   for (const user of users) {
     if (user.global_role !== 'none' && user.global_role !== 'owner') {
@@ -362,6 +369,7 @@ function seed(): MockState {
     invitationCounter: invitations.length + 1,
     elevationCounter: 1,
     elevations: new Map(),
+    notifications,
     streams: new Set(),
   };
 }
@@ -438,6 +446,46 @@ function invitationSeeds(
     });
   }
   return invitations;
+}
+
+function securityNotificationSeeds(
+  iso: (offsetMs: number) => string,
+  installation: PanelAccount,
+  actor: PanelAccount,
+): SecurityNotification[] {
+  return [
+    {
+      id: 'security-3',
+      installation,
+      actor,
+      elevation_id: 'elevation-prod-incident',
+      audit_event_id: '203',
+      action: 'repository.settings.updated',
+      reason: 'Restore command handling during production incident',
+      created_at: iso(-18 * 60_000),
+    },
+    {
+      id: 'security-2',
+      installation,
+      actor,
+      elevation_id: 'elevation-prod-incident',
+      audit_event_id: '202',
+      action: 'target.settings.updated',
+      reason: 'Restore command handling during production incident',
+      created_at: iso(-24 * 60_000),
+    },
+    {
+      id: 'security-1',
+      installation,
+      actor,
+      elevation_id: 'elevation-support',
+      audit_event_id: '188',
+      action: 'repository.settings.updated',
+      reason: 'Owner-approved support investigation',
+      created_at: iso(-2 * 86_400_000),
+      read_at: iso(-47 * 3_600_000),
+    },
+  ];
 }
 
 function capabilitiesFor(role: PanelRole) {
@@ -913,6 +961,20 @@ async function handle(
       });
       return;
     }
+    if (path === route('/api/v1/notifications') && method === 'GET') {
+      const offset = Math.max(0, Number(parsed.searchParams.get('cursor') ?? '0'));
+      const limit = Math.min(100, Math.max(1, Number(parsed.searchParams.get('limit') ?? '20')));
+      const items = state.notifications.slice(offset, offset + limit);
+      const next = offset + items.length;
+      respond(res, 200, {
+        items,
+        next_cursor: next < state.notifications.length ? String(next) : null,
+        total: state.notifications.length,
+        unread: state.notifications.filter((notification) => notification.read_at === undefined)
+          .length,
+      });
+      return;
+    }
     if (path === route('/api/v1/events') && method === 'GET') {
       respond(res, 426, { error: { code: 'upgrade_required', message: 'WebSocket required' } });
       return;
@@ -926,6 +988,7 @@ async function handle(
       /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/elevation$/,
     );
     const rootElevationEnd = path.match(/^\/api\/v1\/root\/elevations\/(?<elevation>[^/]+)$/);
+    const notificationRead = path.match(/^\/api\/v1\/notifications\/(?<notification>[^/]+)\/read$/);
     const scopedUsers = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/users$/);
     const scopedUser = path.match(
       /^\/api\/v1\/targets\/(?<target>[^/]+)\/users\/(?<account>[^/]+)$/,
@@ -958,6 +1021,19 @@ async function handle(
     );
     const audit = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/audit$/);
     const failures = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/failures$/);
+
+    if (notificationRead && method === 'PUT') {
+      const id = decodeURIComponent(notificationRead.groups?.notification ?? '');
+      const index = state.notifications.findIndex((notification) => notification.id === id);
+      if (index < 0) throw new MockApiError(404, 'not_found', 'security notification not found');
+      const current = state.notifications[index];
+      if (current === undefined)
+        throw new MockApiError(404, 'not_found', 'security notification not found');
+      const updated = { ...current, read_at: current.read_at ?? new Date().toISOString() };
+      state.notifications[index] = updated;
+      respond(res, 200, updated);
+      return;
+    }
 
     if (rootElevation && method === 'GET') {
       const target = findTarget(state, rootElevation.groups?.target ?? '');

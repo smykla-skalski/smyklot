@@ -17,6 +17,8 @@ import type {
   PanelUser,
   PanelUserPageRequest,
   PanelViewer,
+  NotificationPage,
+  NotificationPageRequest,
   RepositoryDetail,
   RepositoryPageRequest,
   RepositorySettingsInput,
@@ -24,6 +26,7 @@ import type {
   RootElevation,
   RootElevationInput,
   RootInstallation,
+  SecurityNotification,
   TargetSettingsInput,
   InvitationDays,
   InvitationSignIn,
@@ -60,6 +63,8 @@ export interface PanelApi {
   fetchRootElevation(targetId: string): Promise<RootElevation>;
   beginRootElevation(targetId: string, input: RootElevationInput): Promise<RootElevation>;
   endRootElevation(elevationId: string): Promise<RootElevation>;
+  fetchNotifications(request: NotificationPageRequest): Promise<NotificationPage>;
+  markNotificationRead(notificationId: string): Promise<SecurityNotification>;
   fetchTargetUsers(targetId: string, request: PanelUserPageRequest): Promise<Page<PanelUser>>;
   addTargetUser(targetId: string, input: AddTargetUserInput): Promise<PanelUser>;
   updateTargetUser(
@@ -221,6 +226,18 @@ export function createPanelApi(
       return jsonRequest(`/api/v1/root/elevations/${pathSegment(elevationId)}`, {
         method: 'DELETE',
       });
+    },
+
+    fetchNotifications(notificationPage: NotificationPageRequest): Promise<NotificationPage> {
+      const parameters = new URLSearchParams({ limit: String(notificationPage.limit) });
+      if (notificationPage.cursor !== undefined) {
+        parameters.set('cursor', notificationPage.cursor);
+      }
+      return jsonRequest(`/api/v1/notifications?${parameters.toString()}`);
+    },
+
+    markNotificationRead(notificationId: string): Promise<SecurityNotification> {
+      return putJson(`/api/v1/notifications/${pathSegment(notificationId)}/read`, {});
     },
 
     fetchTargetUsers(targetId: string, userPage: PanelUserPageRequest): Promise<Page<PanelUser>> {

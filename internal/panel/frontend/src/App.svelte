@@ -59,6 +59,7 @@
   let historyVersion = $state(0);
   let repositoryDetailsVersion = $state(0);
   let userVersion = $state(0);
+  let notificationVersion = $state(0);
   let view = $state<PanelView>('settings');
   let rootMode = $state(false);
   let activeRootRoute = $state<RootRoute>({ rootView: 'overview' });
@@ -394,6 +395,7 @@
         userVersion += 1;
       }
       clearFailure('stream');
+      notificationVersion += 1;
     } catch (error) {
       if (streamRefreshes.isCurrent(refresh)) setFailure('stream', error);
     }
@@ -518,6 +520,9 @@
     onEnterRoot={enterRoot}
     returnHref={returnHref()}
     onReturnToPanel={returnToPanel}
+    fetchNotifications={api.fetchNotifications}
+    markNotificationRead={api.markNotificationRead}
+    {notificationVersion}
   />
 
   <div class="workspace" class:table-scroll-view={tableScrollView} onwheel={forwardTableWheel}>

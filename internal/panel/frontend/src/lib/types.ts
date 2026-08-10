@@ -236,6 +236,30 @@ export interface RootElevationInput {
   reason?: string;
 }
 
+export interface SecurityNotification {
+  id: string;
+  installation: PanelAccount;
+  actor: PanelAccount;
+  elevation_id: string;
+  audit_event_id: string;
+  action: string;
+  reason?: string;
+  created_at: string;
+  read_at?: string;
+}
+
+export interface NotificationPage {
+  items: SecurityNotification[];
+  next_cursor: string | null;
+  total: number;
+  unread: number;
+}
+
+export interface NotificationPageRequest {
+  cursor?: string;
+  limit: number;
+}
+
 export type RepositoryFileStatus = 'missing' | 'valid' | 'invalid' | 'bypassed';
 export type RepositoryEnabledSource = 'target' | 'repository';
 

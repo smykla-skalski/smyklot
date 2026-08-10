@@ -320,6 +320,40 @@ describe('Root installation access', () => {
   });
 });
 
+describe('security notifications', () => {
+  it('pages the Owner inbox and marks notifications read', async () => {
+    const notification = {
+      id: '12',
+      installation: TARGET.account,
+      actor: VIEWER.account,
+      elevation_id: 'elevation.1',
+      audit_event_id: '25',
+      action: 'target.settings.updated',
+      reason: 'Production incident',
+      created_at: '2026-08-10T10:00:00Z',
+    };
+    const stub = stubFetch([
+      jsonResponse(200, {
+        items: [notification],
+        next_cursor: '20',
+        total: 21,
+        unread: 1,
+      }),
+      jsonResponse(200, { ...notification, read_at: '2026-08-10T10:05:00Z' }),
+    ]);
+    const api = createPanelApi('/panel', stub.fetch);
+
+    await api.fetchNotifications({ cursor: '10', limit: 10 });
+    await api.markNotificationRead('notification.12');
+
+    expect(stub.calls.map((call) => call.url)).toEqual([
+      '/panel/api/v1/notifications?limit=10&cursor=10',
+      '/panel/api/v1/notifications/notification%2E12/read',
+    ]);
+    expect(stub.calls[1]?.init?.method).toBe('PUT');
+  });
+});
+
 describe('user management', () => {
   it('uses scoped user endpoints and preserves nullable inheritance', async () => {
     const user = {
