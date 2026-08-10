@@ -556,7 +556,7 @@ func insertAccessAudit(
 	actorAccountID, subjectAccountID, action, summary string,
 	changedAt time.Time,
 ) error {
-	_, err := executor.ExecContext(ctx, `
+	result, err := executor.ExecContext(ctx, `
 INSERT INTO access_audit_entries (
     target_id, actor_account_id, subject_account_id, action, summary, created_at
 ) VALUES (?, ?, ?, ?, ?, ?)`,
@@ -569,6 +569,25 @@ INSERT INTO access_audit_entries (
 	)
 	if err != nil {
 		return fmt.Errorf("insert access audit: %w", err)
+	}
+	sourceID, err := result.LastInsertId()
+	if err != nil {
+		return fmt.Errorf("read access audit ID: %w", err)
+	}
+	sourceKind := "access"
+	_, err = insertAppAudit(ctx, executor, appAuditInsert{
+		Category:         "access",
+		SourceKind:       &sourceKind,
+		SourceID:         &sourceID,
+		TargetID:         targetID,
+		ActorAccountID:   actorAccountID,
+		SubjectAccountID: &subjectAccountID,
+		Action:           action,
+		Summary:          summary,
+		CreatedAt:        formatTime(changedAt),
+	})
+	if err != nil {
+		return err
 	}
 
 	return nil

@@ -2,6 +2,7 @@ package sqlite_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -25,6 +26,7 @@ var _ = Describe("SQLite store [Unit]", func() {
 		ctx   context.Context
 		store *storagesqlite.Store
 		now   time.Time
+		path  string
 	)
 
 	BeforeEach(func() {
@@ -32,7 +34,8 @@ var _ = Describe("SQLite store [Unit]", func() {
 		now = time.Date(2026, time.August, 8, 12, 0, 0, 0, time.UTC)
 
 		var err error
-		store, err = storagesqlite.Open(ctx, filepath.Join(GinkgoT().TempDir(), "panel.db"))
+		path = filepath.Join(GinkgoT().TempDir(), "panel.db")
+		store, err = storagesqlite.Open(ctx, path)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -88,6 +91,95 @@ var _ = Describe("SQLite store [Unit]", func() {
 		Expect(errors.Is(err, storage.ErrExpired)).To(BeTrue())
 		_, err = store.GetSession(ctx, expired.TokenHash, now)
 		Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
+	})
+
+	It("binds elevated writes to one Root session and notifies every Owner", func() {
+		root, owner, target, session := seedElevationScenario(ctx, store, now)
+		reason := "investigate a reported configuration incident"
+		elevation, err := store.BeginElevation(ctx, storage.ElevationGrant{
+			ID: "elevation-1", SessionTokenHash: session.TokenHash,
+			RootAccountID: root.ID, TargetID: target.TargetID,
+			Reason: &reason, StartedAt: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(elevation.ExpiresAt).To(Equal(now.Add(storage.ElevationLifetime)))
+		_, err = store.BeginElevation(ctx, storage.ElevationGrant{
+			ID: "elevation-2", SessionTokenHash: session.TokenHash,
+			RootAccountID: root.ID, TargetID: target.TargetID, StartedAt: now,
+		})
+		Expect(errors.Is(err, storage.ErrConflict)).To(BeTrue())
+
+		updated, err := store.UpdateTargetSettings(ctx, storage.TargetSettingsChange{
+			TargetID: target.TargetID, ActorAccountID: root.ID,
+			ElevationID: &elevation.ID, SessionTokenHash: session.TokenHash,
+			RepositoryDefaultEnabled: true, ExpectedRevision: 1,
+			ChangedAt: now.Add(time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(updated.Revision).To(Equal(int64(2)))
+
+		notifications, err := store.ListSecurityNotifications(
+			ctx, owner.ID, storage.NotificationPageRequest{Limit: 10},
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(notifications.Total).To(Equal(1))
+		Expect(notifications.Unread).To(Equal(1))
+		Expect(notifications.Items[0].ElevationID).To(Equal(elevation.ID))
+		Expect(notifications.Items[0].Actor.ID).To(Equal(root.ID))
+		Expect(notifications.Items[0].Target.ID).To(Equal(owner.ID))
+		Expect(notifications.Items[0].Reason).To(HaveValue(Equal(reason)))
+
+		read, err := store.MarkSecurityNotificationRead(
+			ctx, owner.ID, notifications.Items[0].ID, now.Add(2*time.Minute),
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(read.ReadAt).NotTo(BeNil())
+		notifications, err = store.ListSecurityNotifications(ctx, owner.ID, storage.NotificationPageRequest{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(notifications.Unread).To(BeZero())
+
+		_, err = store.GetElevation(ctx, session.TokenHash, target.TargetID, now.Add(16*time.Minute))
+		Expect(errors.Is(err, storage.ErrExpired)).To(BeTrue())
+		ended, err := store.EndElevation(
+			ctx, elevation.ID, session.TokenHash, storage.ElevationEnded, now.Add(17*time.Minute),
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ended.EndReason).To(HaveValue(Equal(storage.ElevationExpired)))
+	})
+
+	It("rolls back an elevated write when Owner notifications cannot commit", func() {
+		root, _, target, session := seedElevationScenario(ctx, store, now)
+		elevation, err := store.BeginElevation(ctx, storage.ElevationGrant{
+			ID: "elevation-rollback", SessionTokenHash: session.TokenHash,
+			RootAccountID: root.ID, TargetID: target.TargetID, StartedAt: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		raw, err := sql.Open("sqlite", path)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = raw.Exec(`
+CREATE TRIGGER reject_security_notification
+BEFORE INSERT ON security_notifications
+BEGIN
+    SELECT RAISE(ABORT, 'notification write rejected');
+END`)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(raw.Close()).To(Succeed())
+
+		_, err = store.UpdateTargetSettings(ctx, storage.TargetSettingsChange{
+			TargetID: target.TargetID, ActorAccountID: root.ID,
+			ElevationID: &elevation.ID, SessionTokenHash: session.TokenHash,
+			RepositoryDefaultEnabled: true, ExpectedRevision: 1,
+			ChangedAt: now.Add(time.Minute),
+		})
+		Expect(err).To(HaveOccurred())
+		unchanged, err := store.GetTarget(ctx, target.TargetID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(unchanged.RepositoryDefaultEnabled).To(BeFalse())
+		Expect(unchanged.Revision).To(Equal(int64(1)))
+		audit, err := store.ListAudit(ctx, target.TargetID, storage.AuditPageRequest{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(audit.Total).To(BeZero())
 	})
 
 	It("reassigns the singleton Super Root and demotes the former one", func() {
@@ -1132,4 +1224,31 @@ func seedInstallation(
 	Expect(store.ReconcileInstallation(ctx, target)).To(Succeed())
 
 	return account, target
+}
+
+func seedElevationScenario(
+	ctx context.Context,
+	store *storagesqlite.Store,
+	now time.Time,
+) (storage.Account, storage.Account, storage.InstallationSnapshot, storage.Session) {
+	owner := testAccount(now)
+	target := testInstallation(owner, now, []storage.RepositorySnapshot{
+		testRepository("repo-1", "smykla-skalski/smyklot", false),
+	})
+	Expect(store.ReconcileInstallation(ctx, target)).To(Succeed())
+
+	root := owner
+	root.ID = "github:root"
+	root.SubjectID = "root"
+	root.Login = "root"
+	root.DisplayName = "Root Operator"
+	Expect(store.UpsertAccount(ctx, root)).To(Succeed())
+	Expect(store.ReconcileSuperRoot(ctx, root.ID, now)).To(Succeed())
+	session := storage.Session{
+		TokenHash: "root-session", AccountID: root.ID,
+		CreatedAt: now, ExpiresAt: now.Add(time.Hour),
+	}
+	Expect(store.CreateSession(ctx, session, 1)).To(Succeed())
+
+	return root, owner, target, session
 }

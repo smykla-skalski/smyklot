@@ -81,6 +81,16 @@ type AuditReader interface {
 	ListAudit(context.Context, string, AuditPageRequest) (AuditPage, error)
 }
 
+// SecurityStore owns Root elevation grants and Owner notifications.
+type SecurityStore interface {
+	BeginElevation(context.Context, ElevationGrant) (Elevation, error)
+	GetElevation(context.Context, string, string, time.Time) (Elevation, error)
+	EndElevation(context.Context, string, string, ElevationEndReason, time.Time) (Elevation, error)
+	EndSessionElevations(context.Context, string, ElevationEndReason, time.Time) error
+	ListSecurityNotifications(context.Context, string, NotificationPageRequest) (NotificationPage, error)
+	MarkSecurityNotificationRead(context.Context, string, int64, time.Time) (SecurityNotification, error)
+}
+
 // Store is the complete persistence capability needed by the service. It does
 // not expose SQL handles or transactions to callers.
 type Store interface {
@@ -91,6 +101,7 @@ type Store interface {
 	ConfigStore
 	DeliveryStore
 	AuditReader
+	SecurityStore
 
 	Ping(context.Context) error
 	Close() error

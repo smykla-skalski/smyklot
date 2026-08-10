@@ -437,6 +437,8 @@ type InstallationSnapshot struct {
 type TargetSettingsChange struct {
 	TargetID                 string
 	ActorAccountID           string
+	ElevationID              *string
+	SessionTokenHash         string
 	RepositoryDefaultEnabled bool
 	ConfigPatch              config.Patch
 	ExpectedRevision         int64
@@ -449,6 +451,8 @@ type RepositorySettingsChange struct {
 	TargetID             string
 	RepositoryID         string
 	ActorAccountID       string
+	ElevationID          *string
+	SessionTokenHash     string
 	EnabledOverride      *bool
 	ConfigPatch          config.Patch
 	IgnoreRepositoryFile bool

@@ -31,6 +31,19 @@ func (s *Store) UpdateTargetSettings(
 
 	defer func() { _ = tx.Rollback() }()
 
+	elevation, err := elevatedWrite(
+		ctx,
+		tx,
+		change.ElevationID,
+		change.SessionTokenHash,
+		change.ActorAccountID,
+		change.TargetID,
+		change.ChangedAt,
+	)
+	if err != nil {
+		return storage.Target{}, err
+	}
+
 	result, err := tx.ExecContext(ctx, `
 UPDATE targets SET
     repository_default_enabled = ?,
@@ -52,14 +65,23 @@ WHERE id = ? AND revision = ?`,
 		return storage.Target{}, err
 	}
 
-	if err := insertAudit(ctx, tx, auditInsert{
+	auditEventID, err := insertAudit(ctx, tx, auditInsert{
 		TargetID:       change.TargetID,
 		ActorAccountID: change.ActorAccountID,
+		ElevationID:    change.ElevationID,
 		Action:         actionTargetSettings,
 		Summary:        "Updated account defaults",
 		CreatedAt:      formatTime(change.ChangedAt),
-	}); err != nil {
+	})
+	if err != nil {
 		return storage.Target{}, err
+	}
+	if elevation != nil {
+		if err := insertElevatedNotifications(
+			ctx, tx, *elevation, auditEventID, actionTargetSettings, formatTime(change.ChangedAt),
+		); err != nil {
+			return storage.Target{}, err
+		}
 	}
 
 	target, err := getTarget(ctx, tx, change.TargetID)
@@ -92,6 +114,19 @@ func (s *Store) UpdateRepositorySettings(
 
 	defer func() { _ = tx.Rollback() }()
 
+	elevation, err := elevatedWrite(
+		ctx,
+		tx,
+		change.ElevationID,
+		change.SessionTokenHash,
+		change.ActorAccountID,
+		change.TargetID,
+		change.ChangedAt,
+	)
+	if err != nil {
+		return storage.Repository{}, err
+	}
+
 	result, err := updateRepositorySettings(ctx, tx, change, patch)
 	if err != nil {
 		return storage.Repository{}, err
@@ -106,16 +141,25 @@ func (s *Store) UpdateRepositorySettings(
 		return storage.Repository{}, fmt.Errorf("read repository for audit: %w", err)
 	}
 
-	if err := insertAudit(ctx, tx, auditInsert{
+	auditEventID, err := insertAudit(ctx, tx, auditInsert{
 		TargetID:           change.TargetID,
 		RepositoryID:       &change.RepositoryID,
 		RepositoryFullName: &repository.FullName,
 		ActorAccountID:     change.ActorAccountID,
+		ElevationID:        change.ElevationID,
 		Action:             actionRepositorySettings,
 		Summary:            "Updated repository settings",
 		CreatedAt:          formatTime(change.ChangedAt),
-	}); err != nil {
+	})
+	if err != nil {
 		return storage.Repository{}, err
+	}
+	if elevation != nil {
+		if err := insertElevatedNotifications(
+			ctx, tx, *elevation, auditEventID, actionRepositorySettings, formatTime(change.ChangedAt),
+		); err != nil {
+			return storage.Repository{}, err
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -274,13 +318,14 @@ type auditInsert struct {
 	RepositoryID       *string
 	RepositoryFullName *string
 	ActorAccountID     string
+	ElevationID        *string
 	Action             string
 	Summary            string
 	CreatedAt          string
 }
 
-func insertAudit(ctx context.Context, tx *sql.Tx, entry auditInsert) error {
-	_, err := tx.ExecContext(ctx, `
+func insertAudit(ctx context.Context, tx *sql.Tx, entry auditInsert) (int64, error) {
+	result, err := tx.ExecContext(ctx, `
 INSERT INTO audit_entries (
     target_id, repository_id, repository_full_name,
     actor_account_id, action, summary, created_at
@@ -295,8 +340,28 @@ VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		entry.CreatedAt,
 	)
 	if err != nil {
-		return fmt.Errorf("insert settings audit: %w", err)
+		return 0, fmt.Errorf("insert settings audit: %w", err)
+	}
+	sourceID, err := result.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("read settings audit ID: %w", err)
+	}
+	sourceKind := "settings"
+	targetID := entry.TargetID
+	auditEventID, err := insertAppAudit(ctx, tx, appAuditInsert{
+		Category:       "configuration",
+		SourceKind:     &sourceKind,
+		SourceID:       &sourceID,
+		TargetID:       &targetID,
+		ActorAccountID: entry.ActorAccountID,
+		ElevationID:    entry.ElevationID,
+		Action:         entry.Action,
+		Summary:        entry.Summary,
+		CreatedAt:      entry.CreatedAt,
+	})
+	if err != nil {
+		return 0, err
 	}
 
-	return nil
+	return auditEventID, nil
 }
