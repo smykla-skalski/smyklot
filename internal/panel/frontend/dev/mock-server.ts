@@ -1026,6 +1026,84 @@ async function handle(
     );
     const audit = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/audit$/);
     const failures = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/failures$/);
+    const rootHistory = path.match(/^\/api\/v1\/root\/history\/(?<history>audit|failures)$/);
+
+    if (rootHistory && method === 'GET') {
+      if (rootHistory.groups?.history === 'audit') {
+        const categories = parsed.searchParams
+          .getAll('category')
+          .filter((value) => value !== 'all');
+        respond(
+          res,
+          200,
+          historyPage(
+            rootAuditEntries(state),
+            parsed.searchParams,
+            (entry) => entry.created_at,
+            (entry, sort) => {
+              if (sort.startsWith('actor_')) return entry.actor.display_name.toLocaleLowerCase();
+              if (sort.startsWith('target_')) {
+                return (entry.installation?.display_name ?? 'Smyklot').toLocaleLowerCase();
+              }
+              if (sort.startsWith('change_')) return entry.summary.toLocaleLowerCase();
+              return entry.created_at;
+            },
+            (entry, query) =>
+              [
+                entry.category ?? '',
+                entry.installation?.display_name ?? 'Smyklot',
+                entry.installation?.login ?? '',
+                entry.actor.display_name,
+                entry.actor.login,
+                entry.subject?.display_name ?? '',
+                entry.subject?.login ?? '',
+                entry.action,
+                entry.summary,
+              ].some((value) => value.toLocaleLowerCase().includes(query)),
+            (entry) => categories.length === 0 || categories.includes(entry.category ?? ''),
+          ),
+        );
+      } else {
+        const kind = parsed.searchParams.get('kind') ?? 'all';
+        const items = state.targets.flatMap((target) =>
+          target.failures.map((failure) => ({
+            installation: target.value.account,
+            failure,
+          })),
+        );
+        respond(
+          res,
+          200,
+          historyPage(
+            items,
+            parsed.searchParams,
+            (item) => item.failure.occurred_at,
+            (item, sort) => {
+              if (sort.startsWith('status_')) return item.failure.retryable ? 1 : 0;
+              if (sort.startsWith('repository_')) {
+                return item.failure.repository_full_name.toLocaleLowerCase();
+              }
+              return item.failure.occurred_at;
+            },
+            (item, query) =>
+              [
+                item.installation.display_name,
+                item.installation.login,
+                item.failure.delivery_id,
+                item.failure.repository_full_name,
+                item.failure.event,
+                item.failure.stage,
+                item.failure.reason,
+              ].some((value) => value.toLocaleLowerCase().includes(query)),
+            (item) =>
+              kind === 'all' ||
+              (kind === 'retryable' && item.failure.retryable) ||
+              (kind === 'permanent' && !item.failure.retryable),
+          ),
+        );
+      }
+      return;
+    }
 
     if (notificationRead && method === 'PUT') {
       const id = decodeURIComponent(notificationRead.groups?.notification ?? '');
@@ -1474,6 +1552,72 @@ function rootOverviewValue(state: MockState): RootOverview {
     ).length,
     recent_failures: recentFailures,
   };
+}
+
+function rootAuditEntries(state: MockState): AuditEntry[] {
+  const installationEvents = state.targets.flatMap((target) =>
+    target.audit.map((entry) => ({
+      ...entry,
+      id: `${target.value.id}-${entry.id}`,
+      category: 'configuration' as const,
+      installation: target.value.account,
+    })),
+  );
+  const primaryInstallation = state.targets[0]?.value.account;
+  const subject = state.users[0]?.account;
+  const now = Date.now();
+  const systemEvents: AuditEntry[] = [
+    {
+      id: 'root-runtime-1',
+      category: 'runtime',
+      actor: VIEWER,
+      action: 'runtime.settings.updated',
+      summary: 'Updated panel session lifetime',
+      created_at: new Date(now - 7 * 60_000).toISOString(),
+    },
+    {
+      id: 'root-elevation-1',
+      category: 'elevation',
+      installation: primaryInstallation,
+      actor: VIEWER,
+      elevation_id: 'elevation-204',
+      action: 'elevation.started',
+      summary: 'Started audited installation access',
+      created_at: new Date(now - 22 * 60_000).toISOString(),
+    },
+    {
+      id: 'root-access-1',
+      category: 'access',
+      installation: primaryInstallation,
+      actor: VIEWER,
+      subject,
+      action: 'target.access.updated',
+      summary: 'Updated installation access',
+      created_at: new Date(now - 48 * 60_000).toISOString(),
+    },
+    {
+      id: 'root-ownership-1',
+      category: 'ownership',
+      installation: primaryInstallation,
+      actor: VIEWER,
+      action: 'ownership.synced',
+      summary: 'Synchronized installation owners',
+      created_at: new Date(now - 76 * 60_000).toISOString(),
+    },
+    {
+      id: 'root-notification-1',
+      category: 'notification',
+      installation: primaryInstallation,
+      actor: VIEWER,
+      action: 'owner.notification.created',
+      summary: 'Notified owners about elevated access',
+      created_at: new Date(now - 80 * 60_000).toISOString(),
+    },
+  ];
+
+  return [...installationEvents, ...systemEvents].sort(
+    (left, right) => Date.parse(right.created_at) - Date.parse(left.created_at),
+  );
 }
 
 function activeMockElevation(state: MockState, targetId: string): RootElevation | undefined {

@@ -18,6 +18,7 @@
   import type { TimeDisplay } from '../lib/preferences';
   import type {
     AuditEntry,
+    AuditCategory,
     AuditChange,
     AuditHistoryRequest,
     AuditScope,
@@ -39,6 +40,7 @@
   import TableEmptyState from './TableEmptyState.svelte';
 
   type HistoryType = 'audit' | 'failures';
+  type HistoryContext = 'installation' | 'root';
 
   const HISTORY_TYPES = [
     { value: 'audit', label: 'Audit', tone: 'accent' },
@@ -62,6 +64,20 @@
         { value: 'enablement', label: 'Enablement' },
         { value: 'repository', label: 'Repository settings' },
         { value: 'account', label: 'Account settings' },
+      ],
+    },
+  ] satisfies readonly FilterSection[];
+
+  const ROOT_AUDIT_CATEGORY_FILTERS = [
+    {
+      options: [
+        { value: 'all', label: 'All event categories', exclusive: true },
+        { value: 'configuration', label: 'Configuration' },
+        { value: 'access', label: 'Access' },
+        { value: 'ownership', label: 'Ownership' },
+        { value: 'elevation', label: 'Elevation' },
+        { value: 'notification', label: 'Notification' },
+        { value: 'runtime', label: 'Runtime' },
       ],
     },
   ] satisfies readonly FilterSection[];
@@ -109,11 +125,17 @@
     refreshVersion,
     fetchAudit,
     fetchFailures,
+    context = 'installation',
+    section = 'audit',
+    onSection,
   }: {
     targetId: string;
     refreshVersion: number;
     fetchAudit: (request: AuditHistoryRequest) => Promise<Page<AuditEntry>>;
     fetchFailures: (request: FailureHistoryRequest) => Promise<Page<DeliveryFailure>>;
+    context?: HistoryContext;
+    section?: HistoryType;
+    onSection?: (section: HistoryType) => void;
   } = $props();
 
   let historyType = $state<HistoryType>('audit');
@@ -122,6 +144,7 @@
   let sort = $state<HistorySort>('newest');
   let auditScope = $state<AuditScope>('all');
   let auditChange = $state<AuditChange>('all');
+  let auditCategories = $state<AuditCategory[]>([]);
   let failureKind = $state<FailureKind>('all');
   let timeDisplay = $state<TimeDisplay>(readTimeDisplay());
   const limit = 20;
@@ -141,13 +164,19 @@
   const hasFilters = $derived(
     appliedQuery !== '' ||
       (historyType === 'audit'
-        ? auditScope !== 'all' || auditChange !== 'all'
+        ? context === 'root'
+          ? auditCategories.length > 0
+          : auditScope !== 'all' || auditChange !== 'all'
         : failureKind !== 'all'),
   );
   const description = $derived(
-    historyType === 'audit'
-      ? 'Account and repository configuration changes'
-      : 'Webhook deliveries that need investigation',
+    context === 'root'
+      ? historyType === 'audit'
+        ? 'All application and installation events'
+        : 'Webhook delivery failures across every installation'
+      : historyType === 'audit'
+        ? 'Account and repository configuration changes'
+        : 'Webhook deliveries that need investigation',
   );
   const requestKey = $derived(
     [
@@ -158,6 +187,7 @@
       sort,
       auditScope,
       auditChange,
+      auditCategories.join(','),
       failureKind,
       limit,
     ].join(':'),
@@ -180,7 +210,7 @@
       get columnFilters() {
         return [
           { id: 'target', value: auditScope },
-          { id: 'change', value: auditChange },
+          { id: 'change', value: context === 'root' ? auditCategories : auditChange },
         ];
       },
     },
@@ -254,6 +284,13 @@
   });
 
   $effect(() => {
+    if (section !== historyType) {
+      historyType = section;
+      sort = 'newest';
+    }
+  });
+
+  $effect(() => {
     void resetAndLoad(requestKey);
   });
 
@@ -316,6 +353,7 @@
     if ((value === 'audit' || value === 'failures') && value !== historyType) {
       historyType = value;
       sort = 'newest';
+      onSection?.(value);
     }
   }
 
@@ -380,7 +418,17 @@
     const target = resolved.find((filter) => filter.id === 'target')?.value;
     const change = resolved.find((filter) => filter.id === 'change')?.value;
     selectAuditScope(target === undefined ? ['all'] : [String(target)]);
-    selectAuditChange(change === undefined ? ['all'] : [String(change)]);
+    if (context === 'root') {
+      selectAuditCategories(
+        Array.isArray(change)
+          ? change.map(String)
+          : change === undefined
+            ? ['all']
+            : [String(change)],
+      );
+    } else {
+      selectAuditChange(change === undefined ? ['all'] : [String(change)]);
+    }
   }
 
   function selectFailureColumnFilters(next: Updater<ColumnFiltersState>): void {
@@ -419,6 +467,20 @@
     }
   }
 
+  function selectAuditCategories(values: string[]): void {
+    const allowed = new Set<AuditCategory>([
+      'configuration',
+      'access',
+      'ownership',
+      'elevation',
+      'notification',
+      'runtime',
+    ]);
+    auditCategories = values.filter((value): value is AuditCategory =>
+      allowed.has(value as AuditCategory),
+    );
+  }
+
   function selectFailureKind(values: string[]): void {
     const value = values[0];
     if (value === 'all' || value === 'permanent' || value === 'retryable') failureKind = value;
@@ -434,6 +496,18 @@
     return (
       AUDIT_CHANGE_FILTERS[0]?.options.find((option) => option.value === auditChange)?.label ?? ''
     );
+  }
+
+  function auditCategoryLabel(): string {
+    if (auditCategories.length === 0) return 'All event categories';
+    if (auditCategories.length === 1) {
+      return (
+        ROOT_AUDIT_CATEGORY_FILTERS[0]?.options.find(
+          (option) => option.value === auditCategories[0],
+        )?.label ?? 'Event category'
+      );
+    }
+    return `${auditCategories.length} event categories`;
   }
 
   function failureKindLabel(): string {
@@ -486,6 +560,7 @@
           limit,
           scope: auditScope,
           change: auditChange,
+          categories: context === 'root' ? auditCategories : undefined,
         });
         if (sequence === requestSequence && key === requestKey) {
           auditPage =
@@ -547,6 +622,7 @@
     appliedQuery = '';
     auditScope = 'all';
     auditChange = 'all';
+    auditCategories = [];
     failureKind = 'all';
   }
 </script>
@@ -564,10 +640,24 @@
 
 <section
   class="plate history-panel"
+  class:root-context={context === 'root'}
   class:absolute-time={timeDisplay === 'absolute'}
-  aria-labelledby="history-heading"
+  aria-labelledby={context === 'root' ? 'root-page-heading' : 'history-heading'}
 >
-  <PanelHeader id="history-heading" title="History" {description} actions={headerActions} />
+  {#if context === 'root'}
+    <div class="root-history-navigation">
+      <SegmentedControl
+        name="root-history-type"
+        label="Root history type"
+        options={HISTORY_TYPES}
+        value={historyType}
+        onSelect={selectHistoryType}
+      />
+      <p>{description}</p>
+    </div>
+  {:else}
+    <PanelHeader id="history-heading" title="History" {description} actions={headerActions} />
+  {/if}
 
   <div class="history-tools">
     <SearchField
@@ -640,19 +730,22 @@
                       <Icon name="sort" size={14} />
                     </span>
                   </button>
-                  <FilterMenu
-                    label="Target"
-                    summary={auditScopeLabel()}
-                    hint="Choose which configuration changes to show"
-                    sections={AUDIT_SCOPE_FILTERS}
-                    selected={[auditScope]}
-                    fallbackValue="all"
-                    align="end"
-                    showIcon
-                    iconOnly
-                    placement="header"
-                    onChange={(values) => auditTable.getColumn('target')?.setFilterValue(values[0])}
-                  />
+                  {#if context === 'installation'}
+                    <FilterMenu
+                      label="Target"
+                      summary={auditScopeLabel()}
+                      hint="Choose which configuration changes to show"
+                      sections={AUDIT_SCOPE_FILTERS}
+                      selected={[auditScope]}
+                      fallbackValue="all"
+                      align="end"
+                      showIcon
+                      iconOnly
+                      placement="header"
+                      onChange={(values) =>
+                        auditTable.getColumn('target')?.setFilterValue(values[0])}
+                    />
+                  {/if}
                 </div>
               </th>
               <th scope="col" aria-sort={sortDirection('change')}>
@@ -671,19 +764,37 @@
                       <Icon name="sort" size={14} />
                     </span>
                   </button>
-                  <FilterMenu
-                    label="Change"
-                    summary={auditChangeLabel()}
-                    hint="Choose which configuration changes to show"
-                    sections={AUDIT_CHANGE_FILTERS}
-                    selected={[auditChange]}
-                    fallbackValue="all"
-                    align="end"
-                    showIcon
-                    iconOnly
-                    placement="header"
-                    onChange={(values) => auditTable.getColumn('change')?.setFilterValue(values[0])}
-                  />
+                  {#if context === 'root'}
+                    <FilterMenu
+                      label="Event category"
+                      summary={auditCategoryLabel()}
+                      hint="Choose which application events to show"
+                      sections={ROOT_AUDIT_CATEGORY_FILTERS}
+                      selected={auditCategories.length === 0 ? ['all'] : auditCategories}
+                      fallbackValue="all"
+                      align="end"
+                      multiple
+                      showIcon
+                      iconOnly
+                      placement="header"
+                      onChange={(values) => auditTable.getColumn('change')?.setFilterValue(values)}
+                    />
+                  {:else}
+                    <FilterMenu
+                      label="Change"
+                      summary={auditChangeLabel()}
+                      hint="Choose which configuration changes to show"
+                      sections={AUDIT_CHANGE_FILTERS}
+                      selected={[auditChange]}
+                      fallbackValue="all"
+                      align="end"
+                      showIcon
+                      iconOnly
+                      placement="header"
+                      onChange={(values) =>
+                        auditTable.getColumn('change')?.setFilterValue(values[0])}
+                    />
+                  {/if}
                 </div>
               </th>
               <th scope="col" aria-sort={sortDirection('when')}>
@@ -731,7 +842,12 @@
                   </span>
                 </td>
                 <td data-label="Target">
-                  {#if entry.repository_full_name !== undefined}
+                  {#if context === 'root' && entry.installation !== undefined}
+                    <span class="cell-primary">{entry.installation.display_name}</span>
+                    <span class="cell-meta mono">@{entry.installation.login}</span>
+                  {:else if context === 'root'}
+                    <span class="dim">Smyklot</span>
+                  {:else if entry.repository_full_name !== undefined}
                     <code title={entry.repository_full_name}>
                       {repositoryName(entry.repository_full_name)}
                     </code>
@@ -741,7 +857,11 @@
                 </td>
                 <td data-label="Change">
                   <span class="cell-primary">{auditSummary(entry.summary)}</span>
-                  <span class="cell-meta mono">{entry.action}</span>
+                  <span class="cell-meta mono">
+                    {#if entry.category !== undefined}{entry.category} ·
+                    {/if}{entry.action}{#if entry.subject !== undefined}
+                      · @{entry.subject.login}{/if}
+                  </span>
                 </td>
                 <td data-label="When">
                   <time
@@ -882,6 +1002,9 @@
                   <code title={failure.repository_full_name}>
                     {repositoryName(failure.repository_full_name)}
                   </code>
+                  {#if failure.installation !== undefined}
+                    <span class="cell-meta mono">@{failure.installation.login}</span>
+                  {/if}
                 </td>
                 <td data-label="Failure">
                   <span class="cell-primary">{sentenceCase(failure.reason)}</span>
@@ -948,6 +1071,21 @@
     margin-bottom: 0;
     min-height: 0;
     overflow: visible;
+  }
+
+  .root-history-navigation {
+    align-items: center;
+    display: flex;
+    gap: var(--space-4);
+    justify-content: space-between;
+    padding-bottom: var(--space-3);
+  }
+
+  .root-history-navigation p {
+    color: var(--text-secondary);
+    font-size: var(--font-size-compact);
+    margin: 0;
+    text-align: right;
   }
 
   .history-tools {
@@ -1217,6 +1355,10 @@
     width: max-content;
   }
 
+  .history-table td > .cell-meta {
+    justify-self: start;
+  }
+
   .actor-column {
     width: 8.5rem;
   }
@@ -1357,6 +1499,18 @@
   .result-state span {
     color: var(--dim);
     font-size: 0.75rem;
+  }
+
+  @media (max-width: 40rem) {
+    .root-history-navigation {
+      align-items: start;
+      flex-direction: column;
+      gap: var(--space-2);
+    }
+
+    .root-history-navigation p {
+      text-align: left;
+    }
   }
 
   @media (max-width: 48rem) {

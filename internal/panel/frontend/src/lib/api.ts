@@ -50,6 +50,8 @@ export interface PanelApi {
   fetchTargets(): Promise<PanelTarget[]>;
   fetchRootInstallations(): Promise<RootInstallation[]>;
   fetchRootOverview(): Promise<RootOverview>;
+  fetchRootAudit(request: AuditHistoryRequest): Promise<Page<AuditEntry>>;
+  fetchRootFailures(request: FailureHistoryRequest): Promise<Page<DeliveryFailure>>;
   fetchRootTargetSettings(targetId: string): Promise<PanelTarget>;
   updateRootTargetSettings(targetId: string, input: TargetSettingsInput): Promise<PanelTarget>;
   fetchRootRepositories(
@@ -181,6 +183,28 @@ export function createPanelApi(
 
     fetchRootOverview(): Promise<RootOverview> {
       return jsonRequest('/api/v1/root/overview');
+    },
+
+    fetchRootAudit(history: AuditHistoryRequest): Promise<Page<AuditEntry>> {
+      return jsonRequest(
+        withHistoryQuery('/api/v1/root/history/audit', history, {
+          category: history.categories ?? [],
+        }),
+      );
+    },
+
+    async fetchRootFailures(history: FailureHistoryRequest): Promise<Page<DeliveryFailure>> {
+      const page = await jsonRequest<
+        Page<{ installation: DeliveryFailure['installation']; failure: DeliveryFailure }>
+      >(
+        withHistoryQuery('/api/v1/root/history/failures', history, {
+          kind: history.kind,
+        }),
+      );
+      return {
+        ...page,
+        items: page.items.map(({ installation, failure }) => ({ ...failure, installation })),
+      };
     },
 
     fetchRootTargetSettings(targetId: string): Promise<PanelTarget> {
@@ -347,8 +371,8 @@ export function createPanelApi(
     fetchAudit(targetId: string, history: AuditHistoryRequest): Promise<Page<AuditEntry>> {
       return jsonRequest(
         withHistoryQuery(`/api/v1/targets/${pathSegment(targetId)}/audit`, history, {
-          scope: history.scope,
-          change: history.change,
+          scope: history.scope ?? 'all',
+          change: history.change ?? 'all',
         }),
       );
     },
@@ -387,14 +411,20 @@ export function createPanelApi(
 function withHistoryQuery(
   path: string,
   history: { cursor?: string; query: string; sort: string; limit: number },
-  filter: Record<string, string>,
+  filter: Record<string, string | readonly string[]>,
 ): string {
   const parameters = new URLSearchParams();
   if (history.cursor !== undefined) parameters.set('cursor', history.cursor);
   if (history.query !== '') parameters.set('q', history.query);
   parameters.set('sort', history.sort);
   parameters.set('limit', String(history.limit));
-  for (const [name, value] of Object.entries(filter)) parameters.set(name, value);
+  for (const [name, value] of Object.entries(filter)) {
+    if (typeof value !== 'string') {
+      for (const item of value) parameters.append(name, item);
+    } else {
+      parameters.set(name, value);
+    }
+  }
 
   return `${path}?${parameters.toString()}`;
 }

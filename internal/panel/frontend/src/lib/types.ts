@@ -357,15 +357,23 @@ export interface RepositorySettingsInput {
 
 export interface AuditEntry {
   id: string;
+  category?: AuditCategory;
+  installation?: PanelAccount;
   actor: PanelAccount;
+  subject?: PanelAccount;
+  elevation_id?: string;
   action: string;
   summary: string;
   repository_full_name?: string;
   created_at: string;
 }
 
+export type AuditCategory =
+  'configuration' | 'access' | 'ownership' | 'elevation' | 'notification' | 'runtime';
+
 export interface DeliveryFailure {
   id: string;
+  installation?: PanelAccount;
   delivery_id: string;
   repository_full_name: string;
   event: string;
@@ -400,8 +408,9 @@ export interface HistoryRequest {
 }
 
 export interface AuditHistoryRequest extends HistoryRequest {
-  scope: AuditScope;
-  change: AuditChange;
+  scope?: AuditScope;
+  change?: AuditChange;
+  categories?: AuditCategory[];
 }
 
 export interface FailureHistoryRequest extends HistoryRequest {

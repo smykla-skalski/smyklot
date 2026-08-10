@@ -471,7 +471,25 @@ describe('user management', () => {
 describe('history and authentication routes', () => {
   it('encodes history cursors and exposes both histories', async () => {
     const emptyPage = { items: [], next_cursor: null, total: 0 };
-    const stub = stubFetch([jsonResponse(200, emptyPage), jsonResponse(200, emptyPage)]);
+    const rootFailure = {
+      installation: TARGET.account,
+      failure: {
+        id: 'failure.1',
+        delivery_id: 'delivery.1',
+        repository_full_name: 'smykla-skalski/smyklot',
+        event: 'installation_repositories',
+        stage: 'provider',
+        reason: 'provider unavailable',
+        retryable: true,
+        occurred_at: '2026-08-10T10:00:00Z',
+      },
+    };
+    const stub = stubFetch([
+      jsonResponse(200, emptyPage),
+      jsonResponse(200, emptyPage),
+      jsonResponse(200, emptyPage),
+      jsonResponse(200, { items: [rootFailure], next_cursor: null, total: 1 }),
+    ]);
     const api = createPanelApi('/panel', stub.fetch);
 
     await api.fetchAudit('2001', {
@@ -488,10 +506,23 @@ describe('history and authentication routes', () => {
       limit: 50,
       kind: 'retryable',
     });
+    await api.fetchRootAudit({
+      query: '',
+      sort: 'actor_asc',
+      limit: 20,
+      categories: ['access', 'elevation'],
+    });
+    await expect(
+      api.fetchRootFailures({ query: 'provider', sort: 'newest', limit: 10, kind: 'permanent' }),
+    ).resolves.toMatchObject({
+      items: [{ id: 'failure.1', installation: TARGET.account }],
+    });
 
     expect(stub.calls.map((call) => call.url)).toEqual([
       '/panel/api/v1/targets/2001/audit?cursor=next%2Fpage&q=repository+settings&sort=oldest&limit=25&scope=repositories&change=repository',
       '/panel/api/v1/targets/2001/failures?sort=newest&limit=50&kind=retryable',
+      '/panel/api/v1/root/history/audit?sort=actor_asc&limit=20&category=access&category=elevation',
+      '/panel/api/v1/root/history/failures?q=provider&sort=newest&limit=10&kind=permanent',
     ]);
   });
 

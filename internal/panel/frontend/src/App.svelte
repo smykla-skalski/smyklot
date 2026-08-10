@@ -81,9 +81,10 @@
   const rootValue = $derived(rootSection(activeRootRoute));
   const returnTarget = $derived(selectedTarget ?? targets[0] ?? null);
   const tableScrollView = $derived(
-    !rootMode &&
-      selectedTarget !== null &&
-      ['repositories', 'users', 'invitations', 'history'].includes(view),
+    rootMode
+      ? rootValue === 'history'
+      : selectedTarget !== null &&
+          ['repositories', 'users', 'invitations', 'history'].includes(view),
   );
 
   function forwardTableWheel(event: WheelEvent): void {
@@ -292,6 +293,15 @@
     activeRootRoute = route;
     router.push(route);
     resetPageScroll();
+  }
+
+  function selectRootHistorySection(section: 'audit' | 'failures'): void {
+    const route: RootRoute = {
+      rootView: section === 'audit' ? 'history-audit' : 'history-failures',
+    };
+    if (activeRootRoute.rootView === route.rootView) return;
+    activeRootRoute = route;
+    router.push(route);
   }
 
   function enterRoot(): void {
@@ -561,7 +571,11 @@
           <SignedOut href={api.signInUrl()} />
         {/if}
       {:else if rootMode}
-        <section class="root-workspace" aria-labelledby="root-page-heading">
+        <section
+          class="root-workspace"
+          class:root-table-view={rootValue === 'history'}
+          aria-labelledby="root-page-heading"
+        >
           <header class="root-page-header">
             <div>
               <p class="root-eyebrow">
@@ -587,6 +601,16 @@
               hrefFor={rootInstallationHref}
               onList={selectRootInstallations}
               onNavigate={selectRootInstallation}
+            />
+          {:else if rootValue === 'history'}
+            <HistoryPanel
+              context="root"
+              targetId="root"
+              section={activeRootRoute.rootView === 'history-failures' ? 'failures' : 'audit'}
+              onSection={selectRootHistorySection}
+              refreshVersion={historyVersion}
+              fetchAudit={api.fetchRootAudit}
+              fetchFailures={api.fetchRootFailures}
             />
           {:else}
             <div class="root-foundation" role="status">
@@ -757,6 +781,13 @@
   .root-workspace {
     display: grid;
     gap: var(--space-6);
+  }
+
+  .root-workspace.root-table-view {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
   }
 
   .root-page-header {
