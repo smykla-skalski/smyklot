@@ -21,6 +21,7 @@
   import Icon from './Icon.svelte';
   import InheritControl from './InheritControl.svelte';
   import { inkAlign } from '../lib/ink-align';
+  import { tooltip } from '../lib/tooltip';
 
   const VALUE_OPTIONS = [
     { value: 'enabled', label: 'Enabled' },
@@ -230,7 +231,11 @@
                    name it marks, so it rides the label's own 0.45rem gap
                    instead of the row's wider one. -->
               {#if changed}
-                <span class="changed-marker" data-tip="Unsaved" aria-label="Unsaved">
+                <span
+                  class="changed-marker"
+                  use:tooltip={{ text: 'Unsaved', align: 'center' }}
+                  aria-label="Unsaved"
+                >
                   <span class="changed-marker-dot"></span>
                 </span>
               {/if}
@@ -240,7 +245,6 @@
                 label="About {field.label.toLowerCase()}"
                 text={field.help}
                 align="start"
-                compact
               />
             </span>
             <span class="visually-hidden" id="config-{scope}-{idPrefix}-{field.key}-help">
@@ -289,12 +293,15 @@
                   ? 'built-in default'
                   : 'inherited value'} creates an override"
                 align="start"
-                compact
               />
             </span>
             <span class="row-spacer"></span>
             {#if keyChanged('command_prefix')}
-              <span class="changed-marker" data-tip="Unsaved" aria-label="Unsaved">
+              <span
+                class="changed-marker"
+                use:tooltip={{ text: 'Unsaved', align: 'center' }}
+                aria-label="Unsaved"
+              >
                 <span class="changed-marker-dot"></span>
               </span>
             {/if}
@@ -328,12 +335,15 @@
                 label="About allowed commands"
                 text="The command words Smyklot accepts. At least one must remain enabled. Editing the selection creates an override"
                 align="start"
-                compact
               />
             </span>
             <span class="row-spacer"></span>
             {#if keyChanged('allowed_commands')}
-              <span class="changed-marker" data-tip="Unsaved" aria-label="Unsaved">
+              <span
+                class="changed-marker"
+                use:tooltip={{ text: 'Unsaved', align: 'center' }}
+                aria-label="Unsaved"
+              >
                 <span class="changed-marker-dot"></span>
               </span>
             {/if}
@@ -379,12 +389,15 @@
                 label="About command aliases"
                 text="Extra command words mapped to canonical commands. Changing an alias creates an override"
                 align="start"
-                compact
               />
             </span>
             <span class="row-spacer"></span>
             {#if keyChanged('command_aliases')}
-              <span class="changed-marker" data-tip="Unsaved" aria-label="Unsaved">
+              <span
+                class="changed-marker"
+                use:tooltip={{ text: 'Unsaved', align: 'center' }}
+                aria-label="Unsaved"
+              >
                 <span class="changed-marker-dot"></span>
               </span>
             {/if}

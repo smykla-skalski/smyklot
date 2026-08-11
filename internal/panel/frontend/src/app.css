@@ -282,6 +282,8 @@
   --layer-sticky: 30;
   --layer-popover: 35;
   --layer-dialog: 45;
+  /* Above the dialog: a tooltip explains whatever is in front of it. */
+  --layer-tooltip: 50;
   --shadow-plate: 0 1px 2px var(--shadow-color);
   --shadow-popover: 0 16px 42px var(--shadow-color);
   --shadow-dialog: 0 24px 72px color-mix(in srgb, var(--shadow-color) 82%, black);
@@ -1239,42 +1241,39 @@ code {
   }
 }
 
-/* Popover-styled tooltip (replaces native title): shows on hover AND keyboard focus. */
-[data-tip] {
-  position: relative;
-}
-
-[data-tip]::after {
+/* The product's one tooltip, built by `lib/tooltip.ts` and mounted on the shell
+   rather than beside its trigger — a table cell, a pinned header, a card and a
+   dialog all clip their overflow, and a tooltip laid out inside one is cut off
+   by the first of them. Shows on hover AND keyboard focus. */
+.app-tooltip {
   background: var(--popover-bg);
   border: 1px solid var(--popover-border);
-  border-radius: var(--radius-control);
-  bottom: calc(100% + 7px);
+  border-radius: var(--radius-popover);
   box-shadow: var(--shadow-popover);
   color: var(--text-secondary);
-  content: attr(data-tip);
-  font: 500 var(--font-size-compact) / 1.45 var(--sans);
-  left: 50%;
+  font: 400 var(--font-size-meta) / 1.45 var(--sans);
+  left: 0;
   letter-spacing: normal;
-  max-width: 16rem;
+  max-width: min(17rem, calc(100vw - 3rem));
   opacity: 0;
-  padding: 0.45rem 0.6rem;
+  padding: 0.625rem 0.75rem;
   pointer-events: none;
-  position: absolute;
+  position: fixed;
   text-align: left;
   text-transform: none;
+  top: 0;
   transition:
     opacity var(--duration-fast) ease,
     translate var(--duration-fast) ease;
-  translate: -50% 3px;
+  translate: 0 -3px;
   white-space: normal;
   width: max-content;
-  z-index: var(--layer-popover);
+  z-index: var(--layer-tooltip);
 }
 
-[data-tip]:hover::after,
-[data-tip]:focus-visible::after {
+.app-tooltip.is-open {
   opacity: 1;
-  translate: -50% 0;
+  translate: 0 0;
 }
 
 @media (max-width: 48rem) {

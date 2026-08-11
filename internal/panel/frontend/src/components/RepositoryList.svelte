@@ -904,7 +904,6 @@
                       id="repository-enablement-help"
                       label="About enablement"
                       text="Enabled and Disabled filter the effective state. A linked chain means the value is inherited from Unconfigured repositories in Settings. Open a repository to configure repository-specific settings"
-                      compact
                     />
                   </span>
                   <FilterMenu
@@ -1507,7 +1506,7 @@
       flex: 1;
       min-height: 0;
       overflow-y: auto;
-      overscroll-behavior: contain;
+      overscroll-behavior-y: contain;
       position: relative;
     }
 

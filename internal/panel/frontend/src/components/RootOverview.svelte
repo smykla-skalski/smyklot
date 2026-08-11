@@ -13,6 +13,9 @@
     installationsHref,
     elevationsHref,
     failuresHref,
+    onOpenInstallations,
+    onOpenElevations,
+    onOpenFailures,
     onOpenInbox,
   }: {
     api: PanelApi;
@@ -23,9 +26,28 @@
     elevationsHref: string;
     /** Delivery health's "View all" - the failure table, not a metric card. */
     failuresHref: string;
+    onOpenInstallations: () => void;
+    onOpenElevations: () => void;
+    onOpenFailures: () => void;
     /** Unread security events ARE the inbox, so that card opens it. */
     onOpenInbox: () => void;
   } = $props();
+
+  /* The hrefs are real addresses - middle-click, Cmd-click and Copy link all
+     work - so a plain click is the only one the router takes over. */
+  function navigate(event: MouseEvent, open: () => void): void {
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    )
+      return;
+    event.preventDefault();
+    open();
+  }
 
   let overview = $state<RootOverview | null>(null);
   let loading = $state(true);
@@ -147,14 +169,22 @@
     </article>
 
     <div class="metric-grid">
-      <a class="metric-card" href={installationsHref}>
+      <a
+        class="metric-card"
+        href={installationsHref}
+        onclick={(event) => navigate(event, onOpenInstallations)}
+      >
         <span>
           <small>Installations</small>
           <strong>{overview.catalog.installations}</strong>
         </span>
         <span class="metric-chevron"><Icon name="chevron-right" size={14} /></span>
       </a>
-      <a class="metric-card" href={installationsHref}>
+      <a
+        class="metric-card"
+        href={installationsHref}
+        onclick={(event) => navigate(event, onOpenInstallations)}
+      >
         <span>
           <small>Repositories</small>
           <strong>{overview.catalog.repositories}</strong>
@@ -162,7 +192,11 @@
         </span>
         <span class="metric-chevron"><Icon name="chevron-right" size={14} /></span>
       </a>
-      <a class="metric-card" href={elevationsHref}>
+      <a
+        class="metric-card"
+        href={elevationsHref}
+        onclick={(event) => navigate(event, onOpenElevations)}
+      >
         <span>
           <small>Active elevations</small>
           <strong>{overview.active_elevations}</strong>
@@ -239,7 +273,11 @@
             GitHub Members permission approval is blocking Owner synchronization
           </p>
         {/if}
-        <a class="btn panel-link" href={installationsHref}>
+        <a
+          class="btn panel-link"
+          href={installationsHref}
+          onclick={(event) => navigate(event, onOpenInstallations)}
+        >
           Review installations <Icon name="chevron-right" size={14} strokeWidth={2} />
         </a>
       </article>
@@ -250,7 +288,7 @@
             <h3>Delivery health</h3>
             <p>Recent failures</p>
           </div>
-          <a href={failuresHref}>
+          <a href={failuresHref} onclick={(event) => navigate(event, onOpenFailures)}>
             View all
             <Icon name="chevron-right" size={14} />
           </a>

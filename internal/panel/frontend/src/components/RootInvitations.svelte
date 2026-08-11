@@ -878,7 +878,7 @@
       flex: 1;
       min-height: 0;
       overflow-y: auto;
-      overscroll-behavior: contain;
+      overscroll-behavior-y: contain;
     }
 
     thead tr,
@@ -895,10 +895,6 @@
 
     tbody tr:not(.empty-row):hover {
       background: var(--table-row-hover);
-    }
-
-    tbody tr:last-child td {
-      border-bottom: 0;
     }
   }
 

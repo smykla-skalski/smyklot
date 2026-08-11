@@ -1,63 +1,29 @@
 <script lang="ts">
+  import { tooltip } from '../lib/tooltip';
   import Icon from './Icon.svelte';
 
   const {
     id,
     label,
     text,
-    compact = false,
     align = 'end',
   }: {
     id: string;
     label: string;
     text: string;
-    compact?: boolean;
     align?: 'start' | 'end';
   } = $props();
-
-  let trigger: HTMLButtonElement;
-  let tooltip: HTMLSpanElement;
-  let tooltipLeft = $state(0);
-  let tooltipTop = $state(0);
-
-  function placeTooltip(): void {
-    if (!compact) return;
-    const bounds = trigger.getBoundingClientRect();
-    const width = Math.min(272, window.innerWidth - 32);
-    const height = tooltip.getBoundingClientRect().height;
-    const desiredLeft = align === 'start' ? bounds.left : bounds.right - width;
-    tooltipLeft = Math.max(16, Math.min(desiredLeft, window.innerWidth - width - 16));
-    const below = bounds.bottom + 6;
-    tooltipTop =
-      below + height <= window.innerHeight - 16 ? below : Math.max(16, bounds.top - height - 6);
-  }
 </script>
 
-<span class="help-tip" class:compact class:align-start={align === 'start'}>
-  <button
-    bind:this={trigger}
-    type="button"
-    aria-label={label}
-    aria-describedby={id}
-    onpointerenter={placeTooltip}
-    onfocus={placeTooltip}
-  >
+<span class="help-tip" class:align-start={align === 'start'}>
+  <button use:tooltip={{ id, text, align }} type="button" aria-label={label} aria-describedby={id}>
     <Icon name="info" size={14} strokeWidth={2} />
   </button>
-  <span
-    bind:this={tooltip}
-    class="tooltip"
-    {id}
-    role="tooltip"
-    style:left={compact ? `${tooltipLeft}px` : undefined}
-    style:top={compact ? `${tooltipTop}px` : undefined}>{text}</span
-  >
 </span>
 
 <style>
   .help-tip {
     display: inline-flex;
-    position: relative;
   }
 
   /* One help box everywhere: an 18px square centring a 14px glyph, the same
@@ -78,52 +44,5 @@
   button:hover,
   button:focus-visible {
     color: var(--signal);
-  }
-
-  .compact .tooltip {
-    position: fixed;
-    right: auto;
-  }
-
-  .tooltip {
-    background: var(--popover-bg);
-    border: 1px solid var(--popover-border);
-    border-radius: var(--radius-popover);
-    box-shadow: var(--shadow-popover);
-    color: var(--text-secondary);
-    font: 400 var(--font-size-meta) / 1.45 var(--sans);
-    max-width: calc(100vw - 3rem);
-    opacity: 0;
-    padding: 0.625rem 0.75rem;
-    pointer-events: none;
-    position: absolute;
-    right: 0;
-    top: calc(100% + 0.4rem);
-    transform: translateY(-0.2rem);
-    transition:
-      opacity 120ms ease-out,
-      transform 120ms ease-out;
-    visibility: hidden;
-    white-space: normal;
-    width: 17rem;
-    z-index: var(--layer-popover);
-  }
-
-  .align-start .tooltip {
-    left: 0;
-    right: auto;
-  }
-
-  .help-tip:hover .tooltip,
-  .help-tip:focus-within .tooltip {
-    opacity: 1;
-    transform: translateY(0);
-    visibility: visible;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .tooltip {
-      transition: none;
-    }
   }
 </style>

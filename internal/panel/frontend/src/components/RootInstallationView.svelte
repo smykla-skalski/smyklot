@@ -562,6 +562,10 @@
     border-radius: var(--radius-control);
     display: inline-flex;
     gap: var(--space-1);
+    /* The child views' own page headers are hidden here, so the tabs owe the
+       first card the gap a header would have carried - the same 1rem the plates
+       keep between each other. */
+    margin-bottom: var(--space-4);
     max-width: 100%;
     overflow-x: auto;
     padding: var(--space-1);

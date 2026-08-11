@@ -232,7 +232,11 @@
         aria-expanded={!collapsed}
         onclick={onToggleCollapsed}
       >
-        <Icon name={collapsed ? 'chevron-right' : 'chevron-left'} size={14} strokeWidth={2} />
+        <Icon
+          name={collapsed ? 'sidebar-expand' : 'sidebar-collapse'}
+          size={16}
+          strokeWidth={1.75}
+        />
         <span class="sidebar-tooltip">{collapsed ? 'Expand sidebar' : 'Collapse sidebar'}</span>
       </button>
 
@@ -1142,8 +1146,45 @@
     padding: 0;
   }
 
+  /* Collapsed, the trigger sits ON the mark rather than under it. The halo in
+     `smyklot-halo.svg` is drawn in a 1254 box as a circle of r=556 stroked at
+     84, so at the mark's 34px it is 32.43px across with a 2.28px ring - the
+     overlay is that circle exactly, so its own ring lands on the halo's rather
+     than inside it and the interior covers the robot edge to edge. It waits for
+     a hover like the expanded one does, so the mark is what the sidebar shows
+     at rest. */
   .collapsed .sidebar-collapse-trigger {
-    opacity: 1;
+    border: 2.28px solid var(--sidebar-text-muted);
+    border-radius: 50%;
+    /* The halo's outer edge is antialiased and lands on a fraction of a pixel,
+       so an exactly-sized disc leaves a coloured hairline around it. A ring of
+       the surface behind swallows it without moving the geometry. */
+    box-shadow: 0 0 0 1.5px var(--sidebar-bg);
+    box-sizing: border-box;
+    height: 32.43px;
+    left: 50%;
+    position: absolute;
+    top: 50%;
+    translate: -50% -50%;
+    width: 32.43px;
+  }
+
+  .collapsed .sidebar-collapse-trigger,
+  .collapsed .sidebar-collapse-trigger:hover,
+  .collapsed .sidebar-collapse-trigger:focus-visible {
+    /* Opaque: the robot behind must not read through the glyph. */
+    background: var(--sidebar-bg);
+  }
+
+  .collapsed .sidebar-collapse-trigger:hover,
+  .collapsed .sidebar-collapse-trigger:focus-visible {
+    border-color: var(--sidebar-text);
+    color: var(--sidebar-text);
+  }
+
+  .collapsed .sidebar-collapse-trigger:active {
+    background: var(--sidebar-item-pressed);
+    transform: none;
   }
 
   .collapsed .mark {

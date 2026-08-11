@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tooltip } from '../lib/tooltip';
   import Icon from './Icon.svelte';
 
   const {
@@ -39,7 +40,7 @@
     <button
       type="button"
       class="link-toggle broken"
-      data-tip={brokenTip}
+      use:tooltip={{ text: brokenTip, align: 'center' }}
       aria-label={brokenTip}
       {disabled}
       onclick={onRestore}
@@ -47,7 +48,7 @@
       <Icon name="link-off" size={14} strokeWidth={2} />
     </button>
   {:else}
-    <span class="link-toggle" data-tip={linkedTip}>
+    <span class="link-toggle" use:tooltip={{ text: linkedTip, align: 'center' }}>
       <Icon name="link" size={14} strokeWidth={2} />
     </span>
   {/if}

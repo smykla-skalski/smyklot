@@ -413,10 +413,6 @@
     font-weight: inherit;
   }
 
-  tbody tr:last-child > * {
-    border-bottom: 0;
-  }
-
   .installation-row {
     cursor: pointer;
     height: 3.75rem;
@@ -563,7 +559,7 @@
       flex: 1;
       min-height: 0;
       overflow-y: auto;
-      overscroll-behavior: contain;
+      overscroll-behavior-y: contain;
     }
 
     thead tr,
@@ -575,10 +571,6 @@
 
     tbody tr {
       background: var(--surface-base);
-    }
-
-    tbody tr:last-child td {
-      border-bottom: 0;
     }
 
     /* Fixed row-tables need explicit widths so thead and tbody columns line up.

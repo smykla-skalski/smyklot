@@ -42,7 +42,8 @@
     | 'settings'
     | 'shield'
     | 'shield-slash'
-    | 'sidebar'
+    | 'sidebar-collapse'
+    | 'sidebar-expand'
     | 'sign-out'
     | 'sliders'
     | 'sort'
@@ -221,9 +222,12 @@
   {:else if name === 'info'}
     <circle cx="12" cy="12" r="8.5" />
     <path d="M12 11v5M12 7.8h.01" />
-  {:else if name === 'sidebar'}
-    <rect x="3" y="4" width="18" height="16" rx="2" />
-    <path d="M9 4v16M14 9l3 3-3 3" />
+  {:else if name === 'sidebar-collapse' || name === 'sidebar-expand'}
+    <!-- The pane and its divider stay put; only the chevron turns, so the
+         button reads as one control in two states rather than two icons. -->
+    <rect x="3" y="3" width="18" height="18" rx="2.5" />
+    <path d="M9 3v18" />
+    <path d={name === 'sidebar-collapse' ? 'm16.5 15-3-3 3-3' : 'm13.5 9 3 3-3 3'} />
   {:else if name === 'chevron-down'}
     <path d="m6 9 6 6 6-6" />
   {:else if name === 'chevron-left'}

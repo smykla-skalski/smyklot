@@ -325,7 +325,10 @@
   }
 
   function selectRootInstallations(): void {
-    const route: RootRoute = { rootView: 'installations' };
+    selectRootView({ rootView: 'installations' });
+  }
+
+  function selectRootView(route: RootRoute): void {
     activeRootRoute = route;
     router.push(route);
     resetPageScroll();
@@ -663,6 +666,9 @@
               installationsHref={rootInstallationsHref()}
               elevationsHref={rootAuditHref()}
               failuresHref={rootFailuresHref()}
+              onOpenInstallations={selectRootInstallations}
+              onOpenElevations={() => selectRootView({ rootView: 'history-audit' })}
+              onOpenFailures={() => selectRootView({ rootView: 'history-failures' })}
               onOpenInbox={() => identityBar?.openInbox()}
             />
           {:else if rootValue === 'installations'}
