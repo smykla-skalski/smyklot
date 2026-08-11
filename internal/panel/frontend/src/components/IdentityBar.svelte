@@ -668,8 +668,8 @@
   }
 
   .target-popover {
-    display: grid;
-    grid-template-rows: auto minmax(8rem, 1fr);
+    display: flex;
+    flex-direction: column;
     max-height: min(30rem, calc(100dvh - 8rem));
     right: 0;
     top: calc(100% + 6px);
@@ -681,6 +681,7 @@
   }
 
   .target-options {
+    align-content: start;
     display: grid;
     gap: 2px;
     min-height: 0;
