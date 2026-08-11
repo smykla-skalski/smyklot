@@ -242,6 +242,32 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 		Expect(target.Ownership.Detail).To(BeNil())
 	})
 
+	It("uses the public GitHub identity when the API base URL is unset", func() {
+		stub.members = `[{"id":42,"login":"bart","avatar_url":"https://avatars.example/42"}]`
+		client, err := github.NewClient("install-token", endpoint.URL)
+		Expect(err).NotTo(HaveOccurred())
+		syncedAt := time.Date(2026, time.August, 11, 8, 0, 0, 0, time.UTC)
+		snapshot, err := completeInstallationSnapshot(
+			GinkgoT().Context(),
+			"",
+			client,
+			github.Installation{
+				ID:          111,
+				AccountID:   7,
+				Account:     "smykla-skalski",
+				AccountType: string(storage.TargetOrganization),
+			},
+			nil,
+			syncedAt,
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(snapshot.Ownership.Status).To(Equal(storage.OwnershipStatusFresh))
+		Expect(snapshot.Ownership.Owners).To(ConsistOf(HaveField(
+			"ID",
+			"github:https://api.github.com:user:42",
+		)))
+	})
+
 	It("records installation permission approval without hiding catalog diagnostics", func() {
 		stub.installations = `[{"id":111,"account":{"id":7,"login":"smykla-skalski","type":"Organization"}}]`
 		stub.membersStatus = http.StatusForbidden

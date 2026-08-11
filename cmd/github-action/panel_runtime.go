@@ -227,6 +227,9 @@ func completeInstallationSnapshot(
 	repositories []github.Repository,
 	syncedAt time.Time,
 ) (storage.InstallationSnapshot, error) {
+	if apiURL == "" {
+		apiURL = defaultGitHubAPIURL
+	}
 	snapshot, err := installationSnapshot(apiURL, installation, repositories, syncedAt)
 	if err != nil {
 		return storage.InstallationSnapshot{}, err
