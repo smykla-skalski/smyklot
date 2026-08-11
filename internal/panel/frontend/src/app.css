@@ -239,6 +239,10 @@
   --font-size-body: 0.9375rem;
   --font-size-control: 0.8125rem;
   --font-size-title: 1rem;
+  /* One heading ramp: page, dialog, and card titles come from these three tokens. */
+  --font-size-card-title: 1.0625rem;
+  --font-size-dialog-title: 1.25rem;
+  --font-size-page-title: 1.75rem;
   --radius-chip: 999px;
   --radius-control: 8px;
   --radius-surface: 10px;
@@ -247,7 +251,16 @@
   --r-strip: var(--radius-surface);
   --r-ctl: var(--radius-control);
   --r-well: var(--radius-control);
-  --r-chip: var(--radius-chip);
+  /* Chips are 6px rounded rects; only .status-pill keeps the full round
+     (--radius-chip) so status and chips stay distinguishable shapes. */
+  --r-chip: 6px;
+
+  /* How far a mark beside a label drops to meet the word's ink. Zero by
+     default, because a label whose ink stops at the baseline ("Fresh",
+     "Enablement") already has its ink centre on the cap band the trimmed label
+     centres. The `inkAlign` action raises it on labels that carry a descender -
+     see src/lib/ink-align.ts and .ink-descends below. */
+  --ink-nudge: 0em;
   --control-height: 40px;
   --control-height-compact: 34px;
   --touch-target: 44px;
@@ -565,7 +578,7 @@ body {
   flex-direction: column;
 }
 
-@media (min-width: 64.001rem) {
+@media (min-width: 48.0625rem) {
   .workspace.table-scroll-view {
     height: 100dvh;
     min-height: 0;
@@ -758,14 +771,13 @@ a[href]:active {
   color: var(--text-primary);
 }
 
-/* The sorted column is carried by the label and its direction arrow alone.
-   A tinted header slab would jump between columns, fail contrast at 12px in
-   light mode, and stay petrol inside the violet Root shell. */
+/* The sorted column is carried by its direction arrow alone. A tinted header
+   slab would jump between columns, fail contrast at 12px in light mode, and
+   stay petrol inside the violet Root shell; recolouring the label as well made
+   one header read as a different type ramp from the three beside it. */
 th[aria-sort='ascending'] .table-sort-button,
 th[aria-sort='descending'] .table-sort-button {
   background-color: transparent;
-  color: var(--brand-action-text);
-  font-weight: 700;
 }
 
 th[aria-sort='ascending'] .table-sort-button:hover,
@@ -807,11 +819,13 @@ input[type='radio']:not(:disabled) {
   border-radius: var(--r-ctl);
   color: var(--text);
   display: inline-flex;
-  font: 600 var(--font-size-control) / 1 var(--sans);
-  gap: var(--space-2);
-  height: var(--control-height);
+  font: 600 var(--font-size-compact) / 1 var(--sans);
+  gap: 0.45rem;
+  /* Every control in the content panes is 34px (the mock's --ctl-h); contexts
+     that need the tall variant opt in through --local-control-height. */
+  height: var(--local-control-height, var(--control-height-compact));
   justify-content: center;
-  padding: 0 0.875rem;
+  padding: 0 0.9rem;
   text-decoration: none;
   transition:
     background-color var(--duration-fast) var(--ease-out),
@@ -845,12 +859,23 @@ select:disabled {
   background: var(--admin);
   border-color: var(--admin);
   color: var(--on-admin);
-  font-weight: 700;
 }
 
 .btn-signal:hover:not(:disabled) {
   background: var(--brand-action-hover);
   border-color: var(--brand-action-hover);
+}
+
+/* The quiet variant: dismissals and Discard, which sit beside a real primary and
+   should not compete with it for the same bordered-control weight. */
+.btn-ghost {
+  background: transparent;
+  border-color: transparent;
+}
+
+.btn-ghost:hover:not(:disabled) {
+  background: var(--surface-inset);
+  border-color: transparent;
 }
 
 .btn-stop {
@@ -886,26 +911,25 @@ select:disabled {
 .chip {
   align-items: center;
   border-radius: var(--r-chip);
+  /* Self-keyed keyline: mixed from the chip's own foreground, so the fill shape
+     stays visible on any surface (tint fills measure ~1:1 against inset cards). */
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentcolor 22%, transparent);
   display: inline-flex;
   font: 600 var(--font-size-compact) / 1 var(--sans);
   gap: 0.35rem;
-  height: 1.75rem;
-  padding: 0 0.625rem;
+  padding: 0.4rem 0.55rem;
   white-space: nowrap;
 }
 
 .chip-small {
   font-size: var(--font-size-micro);
-  height: 1.5rem;
-  padding: 0 0.5rem;
+  padding: 0.3rem 0.45rem;
 }
 
 .chip-label {
-  align-items: center;
-  display: inline-flex;
-  height: 100%;
   letter-spacing: 0;
   line-height: 1;
+  text-box: trim-both cap alphabetic;
 }
 
 .chip-small .chip-label {
@@ -917,6 +941,7 @@ select:disabled {
   border-radius: 50%;
   flex: none;
   height: 0.375rem;
+  translate: 0 var(--ink-nudge);
   width: 0.375rem;
 }
 
@@ -982,12 +1007,16 @@ select:disabled {
   width: var(--avatar-size);
 }
 
+/* Monogram circles carry the brand tint in the mock, not a grey wash — the tint
+   is what separates an account placeholder from a disabled control. */
 .avatar-fallback {
   align-items: center;
-  background: var(--strip-lift);
-  color: var(--dim);
+  background: var(--brand-action-tint);
+  /* Same self-keyed ring as chips: placeholder circles measured ~1:1 vs their cards. */
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentcolor 28%, transparent);
+  color: var(--brand-action-text);
   display: inline-flex;
-  font: 600 calc(var(--avatar-size) * 0.36) / 1 var(--sans);
+  font: 700 var(--avatar-font, calc(var(--avatar-size) * 0.36)) / 1 var(--sans);
   justify-content: center;
 }
 
@@ -997,7 +1026,8 @@ select:disabled {
   border: 1px solid var(--control-border);
   border-radius: var(--r-ctl);
   color: var(--text);
-  height: var(--control-height);
+  font-size: var(--font-size-meta);
+  height: var(--local-control-height, var(--control-height-compact));
   line-height: 1;
   padding: 0 0.625rem;
   transition:
@@ -1022,16 +1052,30 @@ summary:focus-visible {
 
 .select-input {
   appearance: none;
-  background-image:
-    linear-gradient(45deg, transparent 50%, var(--dim) 50%),
-    linear-gradient(135deg, var(--dim) 50%, transparent 50%);
-  background-position:
-    calc(100% - 0.9rem) 50%,
-    calc(100% - 0.6rem) 50%;
-  background-repeat: no-repeat;
-  background-size: 0.3rem 0.3rem;
-  line-height: 1.2;
-  padding-right: 2rem;
+  padding-right: 1.8rem;
+}
+
+/* One chevron for every select, picker, and disclosure. The glyph used to be
+   two rotated gradients painted into the select's own background, which drew a
+   solid triangle where the rest of the app draws a stroked chevron - and a
+   background image cannot pick up the theme's colour. So it is a real icon in a
+   positioned wrapper, the same recipe the mock uses. */
+.select-wrap {
+  display: block;
+  position: relative;
+}
+
+.select-wrap > select {
+  width: 100%;
+}
+
+.select-wrap > svg {
+  color: var(--dim);
+  pointer-events: none;
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  translate: 0 -50%;
 }
 
 .text-input:hover:not(:disabled),
@@ -1100,20 +1144,140 @@ summary:focus-visible {
   outline: 0;
 }
 
+/* Plain monospace, no filled chrome. The mock never boxes a bare <code>; where a
+   value should read as a token it gets an explicit chip recipe instead, so the
+   filled look stays a deliberate choice rather than an element default. */
 code {
-  background: var(--well);
-  border-radius: 4px;
-  display: inline-block;
-  font: 0.8125rem/1.4 var(--mono);
+  /* 1.5, not 1.4: inline code sits inside body copy, and a shorter line box than
+     its surrounding text pulls the run off the shared baseline grid. */
+  font: 0.8125rem/1.5 var(--mono);
   max-width: 100%;
-  padding: 0.1rem 0.3rem;
 }
 
 .form-error {
   color: var(--stop);
 }
 
-@media (max-width: 64rem) {
+/* Set by the inkAlign action on the element that holds a mark and its label:
+   this face's cap is 0.745em and its descender 0.22em, so a word with a
+   descender has its ink centre (0.745 - 0.22) / 2 below the cap centre the
+   trimmed label gives the mark. */
+.ink-descends {
+  --ink-nudge: 0.11em;
+}
+
+/* Marks that ride the variable. A button's icon, a chip's dot, a help glyph:
+   all of them centre on the cap band by default and drop to the word's ink when
+   the label carries a descender. */
+.btn > :global(svg),
+.btn > svg {
+  translate: 0 var(--ink-nudge);
+}
+
+/* Help marks beside a one-line trimmed label: same nudge as the chip dot, for
+   the same reason. Not applied to .align-start, which pairs with a two-line
+   block and hangs off the first line's top on purpose. */
+.row-label > .help-tip:not(.align-start),
+.o-label > .help-tip:not(.align-start),
+.heading-with-help > .help-tip:not(.align-start) {
+  translate: 0 var(--ink-nudge);
+}
+
+/* Cap-trimmed text: the box shrinks to cap..baseline so flex centers INK against
+   icons and dots, not the glyph box (which carries asymmetric leading). */
+.cap-trim {
+  line-height: 1;
+  text-box: trim-both cap alphabetic;
+}
+
+/* Non-interactive status: short, round, borderless — never the bordered-control
+   silhouette, so nothing next to a button reads as pressable. */
+.status-pill {
+  align-items: center;
+  background: var(--brand-action-tint);
+  border-radius: var(--radius-chip);
+  color: var(--brand-action-text);
+  display: inline-flex;
+  flex: none;
+  font: 700 var(--font-size-micro) / 1 var(--sans);
+  gap: 0.4rem;
+  height: 1.5rem;
+  letter-spacing: 0.06em;
+  padding: 0 0.7rem;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.status-pill .status-pill-dot {
+  background: currentcolor;
+  border-radius: var(--radius-chip);
+  flex: none;
+  height: 0.375rem;
+  /* Same nudge as the chip dot, for the same reason - see --ink-nudge. */
+  translate: 0 var(--ink-nudge);
+  width: 0.375rem;
+}
+
+@keyframes live-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, currentcolor 45%, transparent);
+  }
+
+  70% {
+    box-shadow: 0 0 0 5px transparent;
+  }
+}
+
+.status-pill .status-pill-dot.live {
+  animation: live-pulse 2.6s ease-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-pill .status-pill-dot.live {
+    animation: none;
+  }
+}
+
+/* Popover-styled tooltip (replaces native title): shows on hover AND keyboard focus. */
+[data-tip] {
+  position: relative;
+}
+
+[data-tip]::after {
+  background: var(--popover-bg);
+  border: 1px solid var(--popover-border);
+  border-radius: var(--radius-control);
+  bottom: calc(100% + 7px);
+  box-shadow: var(--shadow-popover);
+  color: var(--text-secondary);
+  content: attr(data-tip);
+  font: 500 var(--font-size-compact) / 1.45 var(--sans);
+  left: 50%;
+  letter-spacing: normal;
+  max-width: 16rem;
+  opacity: 0;
+  padding: 0.45rem 0.6rem;
+  pointer-events: none;
+  position: absolute;
+  text-align: left;
+  text-transform: none;
+  transition:
+    opacity var(--duration-fast) ease,
+    translate var(--duration-fast) ease;
+  translate: -50% 3px;
+  white-space: normal;
+  width: max-content;
+  z-index: var(--layer-popover);
+}
+
+[data-tip]:hover::after,
+[data-tip]:focus-visible::after {
+  opacity: 1;
+  translate: -50% 0;
+}
+
+@media (max-width: 48rem) {
   .app-shell {
     display: block;
   }

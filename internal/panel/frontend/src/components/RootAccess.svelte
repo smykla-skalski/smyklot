@@ -26,6 +26,7 @@
   import InfiniteLoadSentinel from './InfiniteLoadSentinel.svelte';
   import Modal from './Modal.svelte';
   import RootInvitations from './RootInvitations.svelte';
+  import RootPageHeader from './RootPageHeader.svelte';
   import SearchField from './SearchField.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
   import TableEmptyState from './TableEmptyState.svelte';
@@ -58,6 +59,7 @@
   ] satisfies readonly FilterSection[];
 
   const {
+    rootRole,
     section,
     refreshVersion,
     onSection,
@@ -72,6 +74,7 @@
     addInstallationUser,
     onOpenInstallationAccess,
   }: {
+    rootRole: string;
     section: AccessSection;
     refreshVersion: number;
     onSection: (section: AccessSection) => void;
@@ -107,6 +110,8 @@
   let actionProblem = $state<string | null>(null);
   let addOpen = $state(false);
   let addTrigger = $state<HTMLButtonElement | null>(null);
+  let inviteTrigger = $state<HTMLButtonElement | null>(null);
+  let invitations = $state<RootInvitations | null>(null);
   let addLogin = $state('');
   let addRole = $state<Exclude<InstallationRole, 'none' | 'owner'>>('viewer');
   let installationQuery = $state('');
@@ -435,45 +440,71 @@
   }
 </script>
 
-<section class="root-access" aria-labelledby="root-page-heading">
-  <div class="access-navigation">
-    <SegmentedControl
-      name="root-access-section"
-      label="Root access lists"
-      options={SECTIONS}
-      value={section}
-      variant="navigation"
-      onSelect={selectSection}
-    />
-    <p>{section === 'users' ? 'Every account known to Smyklot' : 'Pending system-level access'}</p>
-  </div>
+{#snippet sectionSwitch()}
+  <SegmentedControl
+    name="root-access-section"
+    label="Root access lists"
+    options={SECTIONS}
+    value={section}
+    variant="navigation"
+    onSelect={selectSection}
+  />
+{/snippet}
 
-  {#if section === 'invitations'}
-    <RootInvitations
-      {refreshVersion}
-      fetchPage={fetchInvitations}
-      create={createInvitation}
-      reissue={reissueInvitation}
-      revoke={revokeInvitation}
-      canManage={canManageInvitations}
-    />
-  {:else}
-    <div class="access-tools">
-      <SearchField
-        label="Search Root users"
-        placeholder="Search users"
-        value={search}
-        onInput={(value) => (search = value)}
-      />
-      <span class="stable-feedback" aria-live="polite">{feedback}</span>
+<section class="root-access" aria-labelledby="root-page-heading">
+  <RootPageHeader
+    role={rootRole}
+    title="Access"
+    subtitle={section === 'users'
+      ? 'Every account known to Smyklot'
+      : 'Pending system-level access'}
+  >
+    {#if section === 'invitations'}
+      {#if canManageInvitations}
+        <button
+          class="btn btn-signal"
+          type="button"
+          bind:this={inviteTrigger}
+          onclick={() => invitations?.openCreate(inviteTrigger)}
+        >
+          <Icon name="user-plus" size={14} strokeWidth={2} />
+          <span class="button-label">Invite Root user</span>
+        </button>
+      {/if}
+    {:else}
       <button
         class="btn btn-signal"
         type="button"
         bind:this={addTrigger}
         onclick={() => void openAddUser()}
       >
-        <Icon name="user-plus" size={17} /> Add user
+        <Icon name="user-plus" size={14} strokeWidth={2} />
+        <span class="button-label">Add user</span>
       </button>
+    {/if}
+  </RootPageHeader>
+
+  {#if section === 'invitations'}
+    <RootInvitations
+      bind:this={invitations}
+      {refreshVersion}
+      fetchPage={fetchInvitations}
+      create={createInvitation}
+      reissue={reissueInvitation}
+      revoke={revokeInvitation}
+      canManage={canManageInvitations}
+      navigation={sectionSwitch}
+    />
+  {:else}
+    <div class="access-toolbar">
+      {@render sectionSwitch()}
+      <span class="stable-feedback" aria-live="polite">{feedback}</span>
+      <SearchField
+        label="Search Root users"
+        placeholder="Search users"
+        value={search}
+        onInput={(value) => (search = value)}
+      />
     </div>
 
     <div class:loading class="user-results" aria-busy={loading}>
@@ -675,7 +706,9 @@
   {#if actionProblem !== null}<p class="action-error" role="alert">{actionProblem}</p>{/if}
 
   {#snippet footer()}
-    <button class="btn" type="button" data-modal-focus onclick={closeUserAction}>Cancel</button>
+    <button class="btn btn-ghost" type="button" data-modal-focus onclick={closeUserAction}
+      >Cancel</button
+    >
     <button
       class="btn"
       class:btn-stop={pendingAction === 'ban' ||
@@ -767,11 +800,14 @@
 
     <label>
       <span>Installation role</span>
-      <select class="text-input" bind:value={addRole}>
-        <option value="viewer">Viewer</option>
-        <option value="editor">Editor</option>
-        <option value="admin">Admin</option>
-      </select>
+      <span class="select-wrap">
+        <select class="select-input" bind:value={addRole}>
+          <option value="viewer">Viewer</option>
+          <option value="editor">Editor</option>
+          <option value="admin">Admin</option>
+        </select>
+        <Icon name="chevron-down" size={14} strokeWidth={2} />
+      </span>
     </label>
 
     {#if selectedInstallation !== null && !selectedInstallation.owned_by_viewer}
@@ -787,7 +823,9 @@
   </form>
 
   {#snippet footer()}
-    <button class="btn" type="button" disabled={addSaving} onclick={closeAddUser}>Cancel</button>
+    <button class="btn btn-ghost" type="button" disabled={addSaving} onclick={closeAddUser}
+      >Cancel</button
+    >
     <button
       class="btn btn-signal"
       type="submit"
@@ -814,32 +852,33 @@
     min-height: 0;
   }
 
-  .access-navigation {
+  .access-toolbar {
+    /* One 34px row: the section switch leads, the search fills the rest. The
+       primary action lives in the header slot, same anatomy as the mock. */
+    --control-height: var(--control-height-compact);
+
     align-items: center;
     display: flex;
-    justify-content: space-between;
-    padding-bottom: var(--space-3);
-  }
-
-  .access-navigation p {
-    color: var(--text-secondary);
-    font-size: var(--font-size-compact);
-    margin: 0;
-  }
-
-  .access-tools {
-    align-items: center;
-    display: grid;
-    gap: var(--space-3);
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    min-height: var(--control-height);
     padding-bottom: var(--space-3);
   }
 
   .stable-feedback {
     color: var(--text-secondary);
-    font-size: var(--font-size-compact);
-    min-width: 8rem;
-    text-align: right;
+    flex: none;
+    font-size: var(--font-size-meta);
+    max-width: 18rem;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Collapses entirely when there is no message, so no gap is reserved. */
+  .stable-feedback:empty {
+    display: none;
   }
 
   .add-user-form,
@@ -967,7 +1006,10 @@
 
   table {
     background: var(--surface-base);
-    border-collapse: collapse;
+    /* Separated, not collapsed: a collapsed border is shared between adjacent
+       rows, so each cell owns half of it and every row box lands on a .5. */
+    border-collapse: separate;
+    border-spacing: 0;
     min-width: 46rem;
     table-layout: fixed;
     width: 100%;
@@ -1282,23 +1324,6 @@
   }
 
   @media (max-width: 64rem) {
-    .access-navigation {
-      align-items: start;
-      flex-direction: column;
-      gap: var(--space-2);
-    }
-
-    .access-tools {
-      grid-template-columns: minmax(0, 1fr) auto;
-    }
-
-    .stable-feedback {
-      grid-column: 1 / -1;
-      grid-row: 2;
-      min-width: 0;
-      text-align: left;
-    }
-
     table {
       min-width: 0;
     }

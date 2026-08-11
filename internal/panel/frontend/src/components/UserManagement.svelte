@@ -13,6 +13,7 @@
   import { get } from 'svelte/store';
 
   import { formatDateTime, formatRelative, formatTimestamp, formatUntil } from '../lib/format';
+  import { monogram } from '../lib/identity';
   import type { FilterSection } from '../lib/filter-menu';
   import {
     EPHEMERAL_PREFS,
@@ -962,21 +963,25 @@
 
   function invitationActionItems(invitation: PanelInvitation): ActionMenuItem[] {
     if (readOnly || (invitation.status !== 'pending' && invitation.status !== 'expired')) return [];
-    return [
+    const items: ActionMenuItem[] = [
       {
         id: 'reissue',
         icon: 'refresh',
         label: 'Reissue invitation',
-        description: 'Create a new 7-day link',
+        description: 'Create a new single-use link',
       },
-      {
+    ];
+    // An expired link is already dead; revoking it would be a no-op.
+    if (invitation.status === 'pending') {
+      items.push({
         id: 'revoke',
         icon: 'ban',
         label: 'Revoke invitation',
         description: 'Invalidate this invitation',
         tone: 'danger',
-      },
-    ];
+      });
+    }
+    return items;
   }
 
   function chooseInvitationAction(
@@ -1144,7 +1149,7 @@
 
 {#snippet sortButton(label: string, direction: SortDirection | undefined, onSelect: () => void)}
   <button class="sort-button table-sort-button" type="button" onclick={onSelect}>
-    <span>{label}</span>
+    <span class="cap-trim">{label}</span>
     <span
       class:ascending={direction === 'ascending'}
       class:descending={direction === 'descending'}
@@ -1164,18 +1169,18 @@
 {/snippet}
 
 {#snippet headerActions()}
-  <span class="scope-context">
-    <Icon name="organization" size={16} />
-    <span>{targetName}</span>
-  </span>
+  <button class="btn btn-signal" type="button" bind:this={addButton} onclick={openAddModal}>
+    <Icon name="user-plus" size={14} strokeWidth={2} />
+    <span class="button-label">Add user</span>
+  </button>
 {/snippet}
 
 <section class="plate user-management" aria-labelledby="user-management-heading">
   <PanelHeader
     id="user-management-heading"
     title="Access"
-    description="Manage roles, invitations, and access decisions"
-    actions={headerActions}
+    description="Roles, invitations, and access decisions for this workspace"
+    actions={readOnly ? undefined : headerActions}
   />
 
   <div class="user-management-body">
@@ -1189,16 +1194,20 @@
         onSelect={selectSection}
       />
       <div class="stable-feedback" aria-live="polite">{feedback}</div>
-      {#if !readOnly}
-        <button
-          class="btn btn-signal tab-add"
-          type="button"
-          bind:this={addButton}
-          onclick={openAddModal}
-        >
-          <Icon name="user-plus" size={17} />
-          <span class="button-label">Add user</span>
-        </button>
+      {#if activeSection === 'users'}
+        <SearchField
+          label="Search users"
+          placeholder="Search users"
+          value={userSearch}
+          onInput={(value) => (userSearch = value)}
+        />
+      {:else}
+        <SearchField
+          label="Search invitations"
+          placeholder="Search invitations"
+          value={invitationSearch}
+          onInput={(value) => (invitationSearch = value)}
+        />
       {/if}
     </div>
 
@@ -1206,15 +1215,6 @@
 
     {#if activeSection === 'users'}
       <div id="users-list-panel" aria-label="Users">
-        <div class="management-toolbar" aria-label="User list controls">
-          <SearchField
-            label="Search users"
-            placeholder="Search users"
-            value={userSearch}
-            onInput={(value) => (userSearch = value)}
-          />
-        </div>
-
         <div
           class:loading={loadingUsers}
           class="user-results"
@@ -1240,7 +1240,7 @@
             <div class="user-table-wrap" role="region" aria-label="Panel users" tabindex="0">
               <table class="user-table">
                 <caption class="visually-hidden">
-                  Panel users. Select a sortable column header to change the sort order.
+                  Panel users. Select a sortable column header to change the sort order
                 </caption>
                 <thead>
                   <tr>
@@ -1271,7 +1271,7 @@
                     </th>
                     <th class="filterable-heading">
                       <div class="table-heading-layout">
-                        <span>Status</span>
+                        <span class="cap-trim">Status</span>
                         <FilterMenu
                           label="Status"
                           summary={filterSummary(userStatuses.length)}
@@ -1424,15 +1424,6 @@
       </div>
     {:else}
       <div id="invitations-list-panel" aria-label="Invitations">
-        <div class="management-toolbar" aria-label="Invitation list controls">
-          <SearchField
-            label="Search invitations"
-            placeholder="Search invitations"
-            value={invitationSearch}
-            onInput={(value) => (invitationSearch = value)}
-          />
-        </div>
-
         <div
           class:loading={loadingInvitations}
           class="invitation-results"
@@ -1459,7 +1450,7 @@
             <div class="user-table-wrap" role="region" aria-label="Panel invitations" tabindex="0">
               <table class="user-table invitation-table">
                 <caption class="visually-hidden">
-                  Panel invitations. Select a sortable column header to change the sort order.
+                  Panel invitations. Select a sortable column header to change the sort order
                 </caption>
                 <thead>
                   <tr>
@@ -1491,7 +1482,7 @@
                     </th>
                     <th class="filterable-heading">
                       <div class="table-heading-layout">
-                        <span>Status</span>
+                        <span class="cap-trim">Status</span>
                         <FilterMenu
                           label="Status"
                           summary={filterSummary(invitationStatuses.length)}
@@ -1509,7 +1500,7 @@
                       </div>
                     </th>
                     <th class="sent-heading">
-                      <div class="table-heading-layout"><span>Sent</span></div>
+                      <div class="table-heading-layout"><span class="cap-trim">Sent</span></div>
                     </th>
                     <th aria-sort={invitationSortDirection('expires')}>
                       {@render sortButton('Expires', invitationSortDirection('expires'), () =>
@@ -1664,7 +1655,7 @@
   id="add-user"
   open={addModalOpen}
   title="Add user"
-  description="Grant access now or send a secure invitation"
+  description="Grant access now or send a single-use invitation"
   returnFocus={addReturnFocus}
   onClose={closeAddModal}
 >
@@ -1672,16 +1663,16 @@
     {#if generatedLink === ''}
       <div class="add-scope-summary">
         <span class="add-scope-icon" aria-hidden="true">
-          <Icon name="organization" size={18} />
+          <span class="cap-trim">{monogram(targetName, targetName).slice(0, 1)}</span>
         </span>
         <span>
-          <small>Installation</small>
+          <small>Workspace</small>
           <strong>{targetName}</strong>
         </span>
       </div>
 
       <fieldset class="method-picker">
-        <legend>Access method</legend>
+        <legend class="visually-hidden">Access method</legend>
         <div class="method-options">
           {#each ACCESS_METHODS as method (method.value)}
             <label class="method-option" class:selected={accessMethod === method.value}>
@@ -1692,7 +1683,7 @@
                 bind:group={accessMethod}
               />
               <span class="method-icon" aria-hidden="true">
-                <Icon name={method.value === 'add' ? 'user-plus' : 'pending'} size={18} />
+                <Icon name={method.value === 'add' ? 'plus' : 'mail'} size={14} strokeWidth={2} />
               </span>
               <span class="method-copy">
                 <strong>{method.label}</strong>
@@ -1715,33 +1706,46 @@
             required
             data-modal-focus
           />
+          <small class="identity-help">
+            {accessMethod === 'invite'
+              ? 'The invitation only works for this GitHub identity'
+              : 'GitHub login identifies the account to add'}
+          </small>
         </label>
-        <div class="form-field">
+        <label class="form-field">
           <span>Role</span>
-          <RolePicker
-            label="Role"
-            value={addRole}
-            options={addRoleOptions}
-            variant="field"
-            onSelect={(value) => (addRole = value as InstallationRole)}
-          />
-        </div>
+          <span class="select-wrap">
+            <select
+              class="select-input"
+              value={addRole}
+              aria-label="Role"
+              onchange={(event) => (addRole = event.currentTarget.value as InstallationRole)}
+            >
+              {#each addRoleOptions as option (option.value)}
+                <option value={option.value}>{option.label}</option>
+              {/each}
+            </select>
+            <Icon name="chevron-down" size={14} strokeWidth={2} />
+          </span>
+        </label>
         {#if accessMethod === 'invite'}
           <label class="form-field">
             <span>Expires after</span>
-            <select class="select-input" bind:value={expiresInDays} aria-label="Invitation expiry">
-              <option value={1}>1 day</option>
-              <option value={7}>7 days</option>
-              <option value={30}>30 days</option>
-            </select>
+            <span class="select-wrap">
+              <select
+                class="select-input"
+                bind:value={expiresInDays}
+                aria-label="Invitation expiry"
+              >
+                <option value={1}>1 day</option>
+                <option value={7}>7 days</option>
+                <option value={30}>30 days</option>
+              </select>
+              <Icon name="chevron-down" size={14} strokeWidth={2} />
+            </span>
           </label>
         {/if}
       </div>
-      <small class="identity-help">
-        {accessMethod === 'invite'
-          ? 'The invitation only works for this GitHub identity'
-          : 'GitHub login identifies the account to add'}
-      </small>
     {:else}
       <div class="invitation-created" aria-live="polite">
         <span class="success-mark" aria-hidden="true">✓</span>
@@ -1758,7 +1762,7 @@
   </form>
 
   {#snippet footer()}
-    <button class="btn" type="button" onclick={closeAddModal}>
+    <button class="btn btn-ghost" type="button" onclick={closeAddModal}>
       {generatedLink === '' ? 'Cancel' : 'Done'}
     </button>
     {#if generatedLink === ''}
@@ -1770,10 +1774,10 @@
       >
         {adding
           ? accessMethod === 'invite'
-            ? 'Inviting…'
+            ? 'Sending…'
             : 'Adding…'
           : accessMethod === 'invite'
-            ? 'Create invitation'
+            ? 'Send invitation'
             : 'Add user'}
       </button>
     {:else}
@@ -1816,7 +1820,9 @@
   {/if}
 
   {#snippet footer()}
-    <button class="btn" type="button" data-modal-focus onclick={cancelAction}>Cancel</button>
+    <button class="btn btn-ghost" type="button" data-modal-focus onclick={cancelAction}
+      >Cancel</button
+    >
     <button
       class="btn"
       class:btn-stop={pendingAction !== 'restore'}
@@ -1844,8 +1850,11 @@
   </div>
 
   {#snippet footer()}
-    <button class="btn" type="button" data-modal-focus onclick={() => (pendingInvitation = null)}
-      >Cancel</button
+    <button
+      class="btn btn-ghost"
+      type="button"
+      data-modal-focus
+      onclick={() => (pendingInvitation = null)}>Cancel</button
     >
     <button
       class="btn btn-stop"
@@ -1859,11 +1868,6 @@
 </Modal>
 
 <style>
-  .management-toolbar {
-    align-items: center;
-    display: flex;
-  }
-
   .user-management {
     --local-control-height: var(--control-height-compact);
 
@@ -1899,30 +1903,16 @@
     min-height: 0;
   }
 
-  .scope-context {
-    align-items: center;
-    background: var(--surface-inset);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-control);
-    color: var(--text-secondary);
-    display: inline-flex;
-    font: 600 var(--font-size-compact) / 1 var(--sans);
-    gap: var(--space-2);
-    height: var(--control-height-compact);
-    padding: 0 var(--space-3);
-  }
-
   .management-navigation {
+    /* One 34px row: tabs, feedback, and search share the toolbar line. */
+    --control-height: var(--control-height-compact);
+
     align-items: center;
     display: flex;
-    gap: var(--space-3);
-    margin-bottom: var(--space-3);
+    flex-wrap: wrap;
+    gap: var(--space-2);
     min-height: var(--control-height);
-  }
-
-  .tab-add {
-    height: var(--control-height-compact);
-    margin-left: 0;
+    padding-bottom: var(--space-3);
   }
 
   .button-label {
@@ -1932,26 +1922,19 @@
     line-height: 1;
   }
 
-  .management-toolbar {
-    background: transparent;
-    border: 0;
-    flex-wrap: wrap;
-    gap: var(--space-2);
-    padding: 0 0 var(--space-3);
-  }
-
-  .management-toolbar :global(.search-field) {
-    flex: 1 1 15rem;
-  }
-
   .stable-feedback {
     color: var(--clear);
+    flex: none;
     font-size: var(--font-size-meta);
-    margin-left: auto;
+    max-width: 18rem;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .stable-feedback:empty {
+    display: none;
   }
 
   .form-error {
@@ -2058,7 +2041,10 @@
 
   .user-table {
     background: var(--surface-base);
-    border-collapse: collapse;
+    /* Separated, not collapsed: a collapsed border is shared between adjacent
+       rows, so each cell owns half of it and every row box lands on a .5. */
+    border-collapse: separate;
+    border-spacing: 0;
     min-width: 50rem;
     table-layout: fixed;
     width: 100%;
@@ -2067,6 +2053,7 @@
   .user-table th,
   .user-table td {
     border-bottom: 1px solid var(--rule);
+    font-size: var(--font-size-meta);
     padding: var(--space-2) var(--space-3);
     text-align: left;
     vertical-align: middle;
@@ -2074,12 +2061,12 @@
 
   .user-table th:first-child,
   .user-table td:first-child {
-    padding-left: var(--space-4);
+    padding-left: var(--space-3);
   }
 
   .user-table th:last-child,
   .user-table td:last-child {
-    padding-right: var(--space-4);
+    padding-right: var(--space-3);
   }
 
   .user-table thead th {
@@ -2409,14 +2396,18 @@
     gap: 0.875rem;
   }
 
+  /* The card keeps its stature whatever its copy measures - trimming the two
+     lines to their ink took 5.5px out of the content, and a summary card's
+     height is a shape decision, not a consequence of the leading. */
   .add-scope-summary {
     align-items: center;
     background: var(--surface-inset);
     border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-surface);
+    border-radius: 0.625rem;
     display: grid;
     gap: var(--space-3);
     grid-template-columns: auto minmax(0, 1fr) auto;
+    min-height: 4rem;
     padding: var(--space-3);
   }
 
@@ -2424,25 +2415,44 @@
     align-items: center;
     background: var(--brand-action-tint);
     border-radius: 50%;
+    /* Self-keyed keyline: the tint fill measures near 1:1 against the box. */
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, currentcolor 28%, transparent);
     color: var(--brand-action-text);
     display: inline-flex;
+    font-size: 0.8125rem;
+    font-weight: 700;
     height: 2rem;
     justify-content: center;
     width: 2rem;
   }
 
+  /* Block, not grid: the name is inline in the mock, so it sits in the body's
+     22.5px line box rather than a 18px one of its own. A grid row would size to
+     the glyphs and shorten the card. */
   .add-scope-summary > span:nth-child(2) {
-    display: grid;
-    gap: var(--space-1);
+    display: block;
   }
 
+  /* Both lines trimmed to cap..baseline, so the copy block's BOX equals its ink
+     and the card's centring centres what the eye reads. Untrimmed, the kicker's
+     leading above and the name's descender below are not symmetric and the pair
+     sat 2.7px above the card's middle. 0.65rem holds the 21.4px between the two
+     baselines that the untrimmed pair already had. */
   .add-scope-summary small {
     color: var(--text-muted);
-    font-size: var(--font-size-compact);
+    display: block;
+    font: 700 var(--font-size-micro) / 1 var(--sans);
+    letter-spacing: 0.06em;
+    text-box: trim-both cap alphabetic;
+    text-transform: uppercase;
   }
 
   .add-scope-summary strong {
+    display: block;
     font-size: var(--font-size-body);
+    line-height: 1;
+    margin-top: 0.65rem;
+    text-box: trim-both cap alphabetic;
   }
 
   .method-picker {
@@ -2472,9 +2482,10 @@
     border-radius: var(--r-ctl);
     cursor: pointer;
     display: grid;
-    gap: 0.625rem;
+    gap: 0.6rem;
     grid-template-columns: auto minmax(0, 1fr) auto;
-    min-height: 3.5rem;
+    /* Holds the height the untrimmed copy used to give it; see the scope card. */
+    min-height: 3.75rem;
     padding: 0.625rem;
     transition:
       background-color 120ms ease-out,
@@ -2491,9 +2502,11 @@
     transform: translateY(1px);
   }
 
+  /* Mixed against the control border, not against transparent: over the tinted
+     fill a 60% alpha edge composites lighter than the mock's opaque one. */
   .method-option.selected {
     background: var(--brand-action-tint);
-    border-color: color-mix(in srgb, var(--brand-action) 60%, transparent);
+    border-color: color-mix(in srgb, var(--brand-action) 60%, var(--control-border));
   }
 
   .method-option:has(input:focus-visible) {
@@ -2509,67 +2522,74 @@
     width: 1px;
   }
 
+  /* The circle reads the same selected or not - only the card behind it
+     changes. Tinting the fill on selection made the chosen method look like a
+     different control from the one beside it. */
   .method-icon {
     align-items: center;
-    background: var(--strip-lift);
+    background: var(--surface-base);
     border-radius: 50%;
-    color: var(--dim);
+    /* Self-keyed keyline, same recipe as every avatar and icon circle. */
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, currentcolor 28%, transparent);
+    color: var(--brand-action-text);
     display: inline-flex;
     height: 1.75rem;
     justify-content: center;
     width: 1.75rem;
   }
 
-  .method-option.selected .method-icon {
-    background: color-mix(in srgb, var(--brand-action) 18%, transparent);
-    color: var(--brand-action-text);
-  }
-
+  /* Block, so the description keeps the body line box the mock gives it. */
   .method-copy {
-    display: flex;
-    flex-direction: column;
+    display: block;
     min-width: 0;
   }
 
+  /* Same treatment as the scope card above: trimmed to ink, spaced by the step
+     that keeps the 20.4px the two baselines already had. */
   .method-copy strong {
+    display: block;
     font-size: 0.75rem;
-    line-height: 1.3;
+    line-height: 1;
+    text-box: trim-both cap alphabetic;
   }
 
   .method-copy small {
     color: var(--dim);
-    font-size: 0.625rem;
-    line-height: 1.35;
+    display: block;
+    font-size: var(--font-size-micro);
+    line-height: 1;
+    margin-top: 0.75rem;
+    text-box: trim-both cap alphabetic;
   }
 
   .method-check {
-    border: 1px solid var(--control-border);
+    align-self: center;
+    border: 1.5px solid var(--border-strong);
     border-radius: 50%;
     height: 0.875rem;
-    position: relative;
     width: 0.875rem;
   }
 
+  /* A filled disc with the surface punched back through it, not a ring with a
+     dot drawn inside - the two differ by a pixel at this size. */
   .method-option.selected .method-check {
-    border-color: var(--brand-action);
-  }
-
-  .method-option.selected .method-check::after {
     background: var(--brand-action);
-    border-radius: 50%;
-    content: '';
-    inset: 2px;
-    position: absolute;
+    border-color: var(--brand-action);
+    box-shadow: inset 0 0 0 3px var(--surface-base);
   }
 
   .form-field {
+    /* `start`, not the default `normal`: these fields sit in a row stretched by
+       whichever column carries help text, and stretched auto rows share the
+       slack out - which pushed the Role and Expires controls a row's worth
+       below the login input they are supposed to line up with. */
+    align-content: start;
     display: grid;
     gap: 0.4rem;
   }
 
   .form-field > span {
-    font-size: 0.75rem;
-    font-weight: 600;
+    font: 600 0.75rem / 1 var(--sans);
   }
 
   .form-field > span small {
@@ -2600,13 +2620,16 @@
   }
 
   .identity-grid.with-expiry {
-    grid-template-columns: minmax(0, 1.55fr) minmax(6.75rem, 0.72fr) minmax(7.5rem, 0.8fr);
+    grid-template-columns: minmax(0, 1.75fr) minmax(6.75rem, 0.9fr) minmax(7.5rem, 0.9fr);
   }
 
   .identity-help {
     color: var(--dim);
     font-size: 0.6875rem;
-    margin-top: -0.5rem;
+    font-weight: 400;
+    line-height: 1.35;
+    /* The grid gap is 0.4rem; the mock puts 0.35rem above helpers. */
+    margin-top: -0.05rem;
   }
 
   .reason-textarea {
@@ -2779,12 +2802,6 @@
   @media (max-width: 36rem) {
     .management-navigation {
       gap: var(--space-1);
-    }
-
-    .tab-add {
-      font-size: 0;
-      gap: 0;
-      padding-inline: 0.625rem;
     }
 
     .add-scope-summary {

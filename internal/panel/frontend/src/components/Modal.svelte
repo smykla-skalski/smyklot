@@ -14,6 +14,7 @@
     onClose,
     children,
     footer,
+    headerExtra,
   }: {
     id: string;
     open: boolean;
@@ -25,6 +26,7 @@
     onClose: () => void;
     children: Snippet;
     footer?: Snippet;
+    headerExtra?: Snippet;
   } = $props();
 
   let dialog = $state<HTMLDialogElement | null>(null);
@@ -79,13 +81,23 @@
 >
   <section class="modal-panel">
     <header>
-      <div>
+      <div class="modal-heading">
         <h2 id={elementIds.title}>{title}</h2>
         {#if description !== undefined}
           <p id={elementIds.description}>{description}</p>
         {/if}
       </div>
-      <button class="modal-close" type="button" aria-label={closeLabel} onclick={requestClose}>
+      {#if headerExtra !== undefined}
+        <span class="header-extra">{@render headerExtra()}</span>
+      {/if}
+      <!-- The approved dialogs carry no header X — footer buttons and Escape
+           close them. The control stays for assistive tech only. -->
+      <button
+        class="modal-close visually-hidden"
+        type="button"
+        aria-label={closeLabel}
+        onclick={requestClose}
+      >
         <Icon name="close" size={18} />
       </button>
     </header>
@@ -128,7 +140,7 @@
     grid-template-rows: auto minmax(0, 1fr) auto;
     left: 50%;
     max-height: calc(100dvh - 2rem);
-    max-width: 36rem;
+    max-width: 34rem;
     overflow: hidden;
     position: absolute;
     top: 50%;
@@ -156,7 +168,7 @@
   }
 
   .wide .modal-panel {
-    max-width: 68rem;
+    max-width: 40rem;
   }
 
   header {
@@ -165,6 +177,18 @@
     gap: 1rem;
     justify-content: space-between;
     padding: var(--space-6) var(--space-6) var(--space-3);
+  }
+
+  .modal-heading {
+    flex: 1;
+    min-width: 0;
+  }
+
+  /* Rides the title line, like the Inbox count chip in the approved mock. */
+  .header-extra {
+    align-self: flex-start;
+    flex: none;
+    margin-top: 0.2rem;
   }
 
   h2 {
@@ -178,7 +202,7 @@
   header p {
     color: var(--dim);
     font-size: 0.8125rem;
-    line-height: 1.45;
+    line-height: 1.5;
     margin: 0.3rem 0 0;
   }
 
@@ -188,10 +212,10 @@
     border-radius: var(--r-ctl);
     flex: none;
     color: var(--text-secondary);
-    height: var(--control-height);
+    height: var(--local-control-height, var(--control-height-compact));
     padding: 0;
-    position: relative;
-    width: var(--control-height);
+    position: absolute;
+    width: var(--local-control-height, var(--control-height-compact));
   }
 
   .modal-close:hover {
@@ -199,10 +223,23 @@
     border-color: var(--control-border);
   }
 
+  /* One stack rhythm for every dialog body. Each dialog used to space its own
+     sections with whatever margin it picked, so two dialogs open side by side
+     did not agree on the gap between a card and the block under it. */
   .modal-content {
+    align-content: start;
+    display: grid;
+    gap: 0.875rem;
     min-height: 0;
     overflow-y: auto;
     padding: var(--space-3) var(--space-6) var(--space-6);
+  }
+
+  /* Global: the children come from the caller, so scoped styles never reach
+     them. Grid items default to min-width auto and would refuse to shrink
+     below a long unbroken path or login. */
+  .modal-content > :global(*) {
+    min-width: 0;
   }
 
   footer {

@@ -109,7 +109,7 @@
   bind:this={menu}
 >
   <summary class:icon-only={iconOnly} bind:this={trigger} aria-label={`${label}: ${summary}`}>
-    {#if showIcon}<Icon name="filter" size={16} />{/if}
+    {#if showIcon}<Icon name="filter" size={14} />{/if}
     <span class="summary-copy">{summary}</span>
     {#if (multiple || placement === 'header') && selectedCount > 0}
       <span class="selection-count" aria-hidden="true">{selectedCount}</span>
@@ -481,11 +481,13 @@
     width: 0.22rem;
   }
 
+  /* A dot beside a label takes the shared nudge; see --ink-nudge in app.css. */
   .tone {
     background: var(--dim);
     border-radius: 50%;
     flex: none;
     height: 0.4rem;
+    translate: 0 var(--ink-nudge);
     width: 0.4rem;
   }
 

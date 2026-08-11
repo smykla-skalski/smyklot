@@ -42,7 +42,7 @@
     onpointerenter={placeTooltip}
     onfocus={placeTooltip}
   >
-    <Icon name="info" size={17} />
+    <Icon name="info" size={14} strokeWidth={2} />
   </button>
   <span
     bind:this={tooltip}
@@ -60,29 +60,24 @@
     position: relative;
   }
 
+  /* One help box everywhere: an 18px square centring a 14px glyph, the same
+     recipe the mock uses in settings rows, table headers, and o-labels. */
   button {
-    align-items: center;
     background: transparent;
     border: 0;
     border-radius: var(--r-ctl);
     color: var(--dim);
     cursor: help;
-    display: inline-flex;
-    height: var(--control-height);
-    justify-content: flex-end;
+    display: inline-grid;
+    height: 1.125rem;
     padding: 0;
-    width: var(--control-height);
+    place-items: center;
+    width: 1.125rem;
   }
 
   button:hover,
   button:focus-visible {
     color: var(--signal);
-  }
-
-  .compact button {
-    height: 1.25rem;
-    justify-content: center;
-    width: 1.5rem;
   }
 
   .compact .tooltip {

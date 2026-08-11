@@ -1,8 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { formatDateTime, formatRelative, formatTimestamp } from '../lib/format';
+  import { formatDate, formatTimestamp } from '../lib/format';
   import type { AccessDecision } from '../lib/types';
   import Avatar from './Avatar.svelte';
+  import Chip, { type ChipTone } from './Chip.svelte';
   import Modal from './Modal.svelte';
 
   const {
@@ -30,7 +31,6 @@
   let decisions = $state.raw<AccessDecision[] | null>(null);
   let loading = $state(false);
   let failure = $state<string | null>(null);
-  const now = Date.now();
 
   onMount(() => {
     let active = true;
@@ -50,6 +50,33 @@
     };
   });
 
+  function statusTone(value: string): ChipTone {
+    const normalized = value.toLowerCase();
+    if (normalized === 'banned') return 'stop';
+    if (normalized === 'suspended') return 'warning';
+    if (normalized === 'active' || normalized === 'allowed') return 'clear';
+    return 'neutral';
+  }
+
+  // Audit actions are dotted paths ("target.access.suspended"); the final
+  // segment names the resulting state the chip reports.
+  function decisionState(action: string): string {
+    return action.split('.').at(-1) ?? action;
+  }
+
+  function decisionLabel(action: string): string {
+    const state = decisionState(action);
+    return state.charAt(0).toUpperCase() + state.slice(1);
+  }
+
+  function decisionTone(action: string): ChipTone {
+    const state = decisionState(action);
+    if (state === 'banned' || state === 'removed' || state === 'revoked') return 'stop';
+    if (state === 'suspended' || state === 'expired') return 'warning';
+    if (['accepted', 'created', 'readded', 'restored', 'unbanned'].includes(state)) return 'clear';
+    return 'neutral';
+  }
+
   function close(): void {
     onClose();
   }
@@ -59,26 +86,25 @@
   id="decision-history"
   {open}
   title={label}
-  description="Review the current access state and earlier administrator decisions"
-  variant="wide"
+  description="Current state and earlier administrator decisions"
   {returnFocus}
   onClose={close}
 >
   <dl class="current-decision">
     <div>
       <dt>Status</dt>
-      <dd>{status}</dd>
+      <dd><Chip tone={statusTone(status)} dot>{status}</Chip></dd>
     </div>
     <div>
       <dt>Scope</dt>
-      <dd>{scopeLabel}</dd>
+      <dd title={scopeLabel}>Workspace</dd>
     </div>
     <div>
       <dt>Decided</dt>
       <dd>
         {#if decidedAt !== undefined}
           <time datetime={decidedAt} title={formatTimestamp(decidedAt)}>
-            {formatDateTime(decidedAt)}
+            {formatDate(decidedAt)}
           </time>
         {:else}
           <span class="dim">Unknown</span>
@@ -105,14 +131,25 @@
         {#each decisions ?? [] as decision (decision.id)}
           <article>
             <Avatar account={decision.actor} size={28} />
-            <strong title={decision.summary}>{decision.summary}</strong>
-            <span class="decision-meta">
-              {decision.actor.display_name} ·
-              <time datetime={decision.created_at} title={formatTimestamp(decision.created_at)}>
-                {formatRelative(decision.created_at, now)}
-              </time>
+            <span class="decision-copy">
+              <strong class="cap-trim" title={decision.summary}>
+                {decisionLabel(decision.action)} by @{decision.actor.login}
+              </strong>
+              <span class="decision-meta cap-trim">
+                {#each decision.summary.split(/(Audit #\d+)/) as part, partIndex (partIndex)}
+                  {#if /^Audit #\d+$/.test(part)}<span class="audit-ref mono">{part}</span
+                    >{:else}{part}{/if}
+                {/each}
+              </span>
             </span>
-            <code>{decision.action}</code>
+            <Chip tone={decisionTone(decision.action)}>{decisionLabel(decision.action)}</Chip>
+            <time
+              class="decision-date mono"
+              datetime={decision.created_at}
+              title={formatTimestamp(decision.created_at)}
+            >
+              {formatDate(decision.created_at)}
+            </time>
           </article>
         {:else}
           <p class="state dim">No earlier decisions in this scope</p>
@@ -122,7 +159,7 @@
   </section>
 
   {#snippet footer()}
-    <button class="btn" type="button" data-modal-focus onclick={close}>Close</button>
+    <button class="btn btn-ghost" type="button" data-modal-focus onclick={close}>Close</button>
   {/snippet}
 </Modal>
 
@@ -138,26 +175,32 @@
 
   .current-decision > div {
     min-width: 0;
-    padding: 0.75rem;
+    padding: var(--space-3);
   }
 
   .current-decision > div + div {
     border-inline-start: 1px solid var(--rule);
   }
 
+  /* 1.3, not the inherited 1.5: an uppercase micro key has no descenders to
+     clear, and the extra leading is what made these boxes stand a couple of
+     pixels taller than the cards they sit beside. */
   dt,
   h3 {
-    color: var(--text-secondary);
-    font: 650 var(--font-size-compact) / 1.2 var(--sans);
-    letter-spacing: 0.02em;
+    color: var(--text-muted);
+    font-size: var(--font-size-micro);
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    line-height: 1.3;
+    text-transform: uppercase;
   }
 
   dd {
     align-items: center;
     display: flex;
-    font-size: 0.75rem;
+    font-size: var(--font-size-meta);
     font-weight: 600;
-    gap: 0.4rem;
+    gap: var(--space-2);
     margin: 0.4rem 0 0;
     min-width: 0;
   }
@@ -172,12 +215,22 @@
     background: var(--warning-tint);
     border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent);
     border-radius: var(--r-well);
-    margin-top: 0.75rem;
-    padding: 0.75rem;
+    padding: var(--space-3);
   }
 
   h3 {
     margin: 0;
+  }
+
+  /* Only the boxed "Reason" key is an uppercase micro header. "Decision history"
+     labels a list rather than a value, so the mock sets it in sentence case at
+     compact size. */
+  .history-section h3 {
+    color: var(--text-secondary);
+    font: 650 var(--font-size-compact) / 1 var(--sans);
+    letter-spacing: normal;
+    margin-bottom: 0.5rem;
+    text-transform: none;
   }
 
   .current-reason h3 {
@@ -185,19 +238,15 @@
   }
 
   .current-reason p {
-    font-size: 0.75rem;
-    line-height: 1.45;
+    font-size: var(--font-size-meta);
+    line-height: 1.5;
     margin: 0.3rem 0 0;
-  }
-
-  .history-section {
-    margin-top: 1rem;
   }
 
   .decision-list {
     border: 1px solid var(--rule);
     border-radius: var(--r-well);
-    margin-top: 0.5rem;
+    margin-top: var(--space-2);
     max-height: min(21rem, 42vh);
     overflow: auto;
   }
@@ -205,40 +254,57 @@
   article {
     align-items: center;
     display: grid;
-    gap: 0.625rem;
-    grid-template-columns: auto minmax(10rem, 1fr) max-content max-content;
-    padding: 0.7rem;
+    gap: var(--space-3);
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    padding: var(--space-3);
   }
 
   article + article {
     border-top: 1px solid var(--rule);
   }
 
-  article strong {
-    font-size: 0.75rem;
-    line-height: 1.3;
+  /* Both cap-trimmed lines drop their leading, so the block's box equals its
+     ink and the grid's vertical centering lands optically against the avatar. */
+  .decision-copy {
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  }
+
+  /* No overflow clip here: cap-trim shortens the line box to the cap height, so
+     `overflow: hidden` sliced the descenders off ("Banned by" read "Banned bv").
+     The mock lets the line wrap instead. */
+  article strong {
+    display: block;
+    font-size: var(--font-size-meta);
+    font-weight: 700;
+    line-height: 1;
+    min-width: 0;
   }
 
   .decision-meta {
-    color: var(--dim);
-    font-size: 0.6875rem;
-    line-height: 1.3;
+    color: var(--text-muted);
+    display: block;
+    font: 400 var(--font-size-compact) / 1 var(--sans);
+    margin-top: 0.4rem;
+  }
+
+  .decision-date {
+    color: var(--text-muted);
+    font-size: var(--font-size-compact);
+    font-weight: 500;
+    line-height: 1;
+    min-width: 4.5rem;
+    text-box: trim-both cap alphabetic;
     white-space: nowrap;
   }
 
-  article code {
-    font-size: 0.5625rem;
-    white-space: nowrap;
+  .audit-ref {
+    color: var(--brand-action-text);
   }
 
   .state {
-    font-size: 0.75rem;
+    font-size: var(--font-size-compact);
     margin: 0;
-    padding: 1rem;
+    padding: var(--space-4);
     text-align: center;
   }
 
@@ -257,14 +323,9 @@
       grid-template-columns: auto minmax(0, 1fr);
     }
 
-    article strong,
-    .decision-meta,
-    article code {
+    article :global(.chip),
+    .decision-date {
       grid-column: 2;
-    }
-
-    .decision-meta {
-      white-space: normal;
     }
   }
 </style>

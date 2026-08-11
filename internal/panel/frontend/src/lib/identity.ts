@@ -70,7 +70,9 @@ export function monogram(displayName: string, login: string): string {
     return fallback === '' ? '?' : fallback.toLocaleUpperCase();
   }
   const first = firstGrapheme(words[0] ?? '');
-  const last = words.length > 1 ? firstGrapheme(words[words.length - 1] ?? '') : '';
+  const lastWord = words.length > 1 ? (words[words.length - 1] ?? '') : '';
+  // A trailing number reads by its last digit (Engineering Team 01 -> E1).
+  const last = /^\d+$/.test(lastWord) ? lastWord.slice(-1) : firstGrapheme(lastWord);
   return `${first}${last}`.toLocaleUpperCase();
 }
 

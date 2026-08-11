@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
 
+  import { inkAlign } from '../lib/ink-align';
+
   /** Tones name what a state means rather than which domain state it represents. */
   export type ChipTone = 'neutral' | 'clear' | 'signal' | 'accent' | 'warning' | 'stop';
 
@@ -19,7 +21,7 @@
   } = $props();
 </script>
 
-<span class="chip chip-{tone}" class:chip-small={small}>
+<span use:inkAlign class="chip chip-{tone}" class:chip-small={small}>
   {#if dot}
     <!-- Decoration for the label beside it. Without this some screen readers
          announce the empty element as a blank item of its own. -->

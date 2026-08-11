@@ -5,23 +5,22 @@
     RootRuntimeSettings,
     RootRuntimeSettingsInput,
   } from '../lib/types';
+  import Chip from './Chip.svelte';
   import ConfigEditor from './ConfigEditor.svelte';
+  import Icon from './Icon.svelte';
+  import InheritControl from './InheritControl.svelte';
   import Plate from './Plate.svelte';
-  import SegmentedControl from './SegmentedControl.svelte';
+  import RootPageHeader from './RootPageHeader.svelte';
 
+  const DEPLOYMENT_SOURCE = 'the deployment configuration';
   const LOG_LEVELS = [
-    { value: 'default', label: 'Deployment' },
     { value: 'debug', label: 'Debug' },
     { value: 'info', label: 'Info' },
     { value: 'warn', label: 'Warn' },
     { value: 'error', label: 'Error' },
   ] as const;
-  const SESSION_SOURCES = [
-    { value: 'default', label: 'Deployment' },
-    { value: 'custom', label: 'Custom' },
-  ] as const;
-  const POLL_SOURCES = [
-    { value: 'default', label: 'Deployment' },
+  const SESSION_OPTIONS = [{ value: 'custom', label: 'Custom' }] as const;
+  const POLL_OPTIONS = [
     { value: 'disabled', label: 'Disabled' },
     { value: 'custom', label: 'Custom' },
   ] as const;
@@ -40,10 +39,12 @@
 
   const {
     refreshVersion,
+    rootRole,
     fetchSettings,
     updateSettings,
   }: {
     refreshVersion: number;
+    rootRole: string;
     fetchSettings: () => Promise<RootRuntimeSettings>;
     updateSettings: (input: RootRuntimeSettingsInput) => Promise<RootRuntimeSettings>;
   } = $props();
@@ -234,6 +235,10 @@
     return `${amount} ${label}`;
   }
 
+  function capitalize(value: string): string {
+    return value.charAt(0).toUpperCase() + value.slice(1);
+  }
+
   function formatUptime(seconds: number): string {
     const days = Math.floor(seconds / SESSION_UNITS.days);
     const hours = Math.floor((seconds % SESSION_UNITS.days) / SESSION_UNITS.hours);
@@ -248,6 +253,16 @@
 </script>
 
 <section class="root-settings" aria-label="Root runtime settings">
+  <RootPageHeader
+    role={rootRole}
+    title="Settings"
+    subtitle="Runtime behavior and deployment-backed defaults"
+  >
+    <span class="status-pill"
+      ><span class="status-pill-dot live"></span><span class="cap-trim">Changes apply live</span
+      ></span
+    >
+  </RootPageHeader>
   {#if loading}
     <div class="settings-state" role="status">Loading runtime settings…</div>
   {:else if settings === null}
@@ -258,14 +273,6 @@
     </div>
   {:else}
     {@const current = settings}
-    <div class="live-note">
-      <span class="live-mark" aria-hidden="true"></span>
-      <div>
-        <strong>Changes apply live</strong>
-        <p>Every connected panel receives updates through the authenticated event stream.</p>
-      </div>
-    </div>
-
     {#if failure !== null}
       <p class="form-error" role="alert">{failure}</p>
     {/if}
@@ -298,17 +305,21 @@
           </span>
         {/snippet}
         <p class="section-intro">
-          Checks reaction changes that GitHub does not deliver through webhooks. The interval
-          changes without restarting Smyklot.
+          Checks reaction changes GitHub does not deliver through webhooks
         </p>
         <div class="session-editor">
-          <SegmentedControl
-            name="root-poll-source"
+          <InheritControl
             label="Reaction sweep interval source"
-            options={POLL_SOURCES}
-            value={pollSource}
-            onSelect={(selection) => void selectPollSource(selection)}
+            source={DEPLOYMENT_SOURCE}
+            inheritedValue={current.reaction_poll_interval.deployment_seconds === 0
+              ? 'disabled'
+              : null}
+            inheritedLabel={formatPollInterval(current.reaction_poll_interval.deployment_seconds)}
+            value={pollSource === 'default' ? null : pollSource}
+            options={POLL_OPTIONS}
             disabled={saving}
+            onSelect={(selection) => void selectPollSource(selection)}
+            onRestore={() => void selectPollSource('default')}
           />
           {#if pollSource === 'custom'}
             <form
@@ -332,11 +343,14 @@
               </label>
               <label>
                 <span class="visually-hidden">Reaction sweep interval unit</span>
-                <select class="select-input" bind:value={pollUnit} disabled={saving}>
-                  <option value="seconds">Seconds</option>
-                  <option value="minutes">Minutes</option>
-                  <option value="hours">Hours</option>
-                </select>
+                <span class="select-wrap">
+                  <select class="select-input" bind:value={pollUnit} disabled={saving}>
+                    <option value="seconds">Seconds</option>
+                    <option value="minutes">Minutes</option>
+                    <option value="hours">Hours</option>
+                  </select>
+                  <Icon name="chevron-down" size={14} strokeWidth={2} />
+                </span>
               </label>
               <button class="btn btn-signal" type="submit" disabled={saving}>Apply</button>
             </form>
@@ -346,16 +360,19 @@
 
       <Plate label="Log level">
         {#snippet status()}
-          <span class="effective-value">Effective: {current.log_level.effective}</span>
+          <span class="effective-value">Effective: {capitalize(current.log_level.effective)}</span>
         {/snippet}
-        <p class="section-intro">Updates the process logger without restarting Smyklot.</p>
-        <SegmentedControl
-          name="root-log-level"
+        <p class="section-intro">Updates the process logger without restarting Smyklot</p>
+        <InheritControl
           label="Runtime log level"
+          source={DEPLOYMENT_SOURCE}
+          inheritedValue={current.log_level.deployment}
+          inheritedLabel={capitalize(current.log_level.deployment)}
+          value={current.log_level.override}
           options={LOG_LEVELS}
-          value={current.log_level.override ?? 'default'}
-          onSelect={(selection) => void selectLogLevel(selection)}
           disabled={saving}
+          onSelect={(selection) => void selectLogLevel(selection)}
+          onRestore={() => void selectLogLevel('default')}
         />
       </Plate>
 
@@ -366,16 +383,18 @@
           </span>
         {/snippet}
         <p class="section-intro">
-          Reductions shorten active sessions. Increases apply only to newly created sessions.
+          Reductions shorten active sessions; increases apply to new sessions
         </p>
         <div class="session-editor">
-          <SegmentedControl
-            name="root-session-source"
+          <InheritControl
             label="Session lifetime source"
-            options={SESSION_SOURCES}
-            value={sessionSource}
-            onSelect={(selection) => void selectSessionSource(selection)}
+            source={DEPLOYMENT_SOURCE}
+            inheritedLabel={formatDuration(current.session_lifetime.deployment_seconds)}
+            value={sessionSource === 'default' ? null : 'custom'}
+            options={SESSION_OPTIONS}
             disabled={saving}
+            onSelect={(selection) => void selectSessionSource(selection)}
+            onRestore={() => void selectSessionSource('default')}
           />
           {#if sessionSource === 'custom'}
             <form
@@ -399,11 +418,14 @@
               </label>
               <label>
                 <span class="visually-hidden">Session lifetime unit</span>
-                <select class="select-input" bind:value={sessionUnit} disabled={saving}>
-                  <option value="minutes">Minutes</option>
-                  <option value="hours">Hours</option>
-                  <option value="days">Days</option>
-                </select>
+                <span class="select-wrap">
+                  <select class="select-input" bind:value={sessionUnit} disabled={saving}>
+                    <option value="minutes">Minutes</option>
+                    <option value="hours">Hours</option>
+                    <option value="days">Days</option>
+                  </select>
+                  <Icon name="chevron-down" size={14} strokeWidth={2} />
+                </span>
               </label>
               <button class="btn btn-signal" type="submit" disabled={saving}>Apply</button>
             </form>
@@ -412,9 +434,17 @@
       </Plate>
     </div>
 
+    <p class="inherit-caption">
+      A linked chain inherits from the deployment configuration · the outlined value is what
+      inheritance resolves to
+    </p>
+
     <Plate label="Service and deployment">
       {#snippet status()}
-        <span class="service-health"><span aria-hidden="true"></span>{current.service.storage}</span
+        <span class="status-pill service-health" data-state={current.service.storage}
+          ><span class="status-pill-dot" aria-hidden="true"></span><span class="cap-trim"
+            >{current.service.storage}</span
+          ></span
         >
       {/snippet}
       <dl class="service-grid">
@@ -442,24 +472,29 @@
           <dt>Webhook path</dt>
           <dd><code>{current.service.public_paths.webhook}</code></dd>
         </div>
-        <div>
+        <div class="full">
           <dt>GitHub API</dt>
           <dd><code>{current.service.provider_endpoints.api}</code></dd>
         </div>
-        <div>
+        <div class="full">
           <dt>OAuth authorization</dt>
           <dd><code>{current.service.provider_endpoints.authorize}</code></dd>
         </div>
-        <div class="wide">
+        <div class="full">
           <dt>OAuth token exchange</dt>
           <dd><code>{current.service.provider_endpoints.token}</code></dd>
         </div>
         <div class="wide">
           <dt>Credentials present</dt>
           <dd class="credential-list">
-            <span class:present={current.service.credential_presence.webhook}>Webhook</span>
-            <span class:present={current.service.credential_presence.app}>GitHub App</span>
-            <span class:present={current.service.credential_presence.oauth}>OAuth</span>
+            <Chip tone={current.service.credential_presence.webhook ? 'clear' : 'neutral'}
+              >Webhook</Chip
+            >
+            <Chip tone={current.service.credential_presence.app ? 'clear' : 'neutral'}
+              >GitHub App</Chip
+            >
+            <Chip tone={current.service.credential_presence.oauth ? 'clear' : 'neutral'}>OAuth</Chip
+            >
           </dd>
         </div>
       </dl>
@@ -485,55 +520,38 @@
 
   .root-settings :global(.plate) {
     background: var(--surface-base);
-    border-color: color-mix(in srgb, #8b5cf6 13%, var(--border-subtle));
+    border-color: color-mix(in srgb, var(--brand-action) 13%, var(--border-subtle));
   }
 
-  .live-note,
   .settings-state,
   .duration-form,
   .credential-list,
-  .service-health {
-    align-items: center;
-    display: flex;
-  }
-
-  .live-note {
-    background: color-mix(in srgb, #8b5cf6 6%, var(--surface-base));
-    border: 1px solid color-mix(in srgb, #8b5cf6 20%, var(--border-subtle));
-    border-radius: var(--radius-surface);
-    gap: var(--space-3);
-    padding: var(--space-3) var(--space-4);
-  }
-
-  .live-note p,
   .section-intro,
   .updated-note {
     color: var(--text-secondary);
-    font-size: var(--font-size-small);
+    font-size: var(--font-size-meta);
     margin: 0;
-  }
-
-  .live-mark,
-  .service-health span {
-    background: var(--signal);
-    border-radius: 50%;
-    box-shadow: 0 0 0 4px color-mix(in srgb, var(--signal) 13%, transparent);
-    flex: none;
-    height: 0.5rem;
-    width: 0.5rem;
   }
 
   .form-error {
     color: var(--stop);
-    font-size: var(--font-size-small);
+    font-size: var(--font-size-meta);
     margin: 0;
   }
 
   .source-label,
-  .effective-value,
-  .service-health {
+  .effective-value {
+    background: var(--surface-inset);
+    border-radius: var(--r-chip);
+    /* Self-keyed keyline, same recipe as .chip: the fill alone is near-invisible
+       against the plate head. */
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, currentcolor 22%, transparent);
     color: var(--text-secondary);
-    font-size: var(--font-size-small);
+    display: inline-block;
+    font: 600 var(--font-size-compact) / 1 var(--sans);
+    padding: 0.4rem 0.55rem;
+    text-box: trim-both cap alphabetic;
+    white-space: nowrap;
   }
 
   .section-intro {
@@ -543,7 +561,13 @@
   .runtime-grid {
     display: grid;
     gap: var(--space-4);
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .inherit-caption {
+    color: var(--text-muted);
+    font-size: var(--font-size-compact);
+    margin: 0;
   }
 
   .session-editor {
@@ -561,63 +585,70 @@
     width: 6rem;
   }
 
-  .service-health {
-    gap: var(--space-2);
-    text-transform: capitalize;
+  /* The pill carries the state, marker and word together - the same three states
+     the overview's storage value uses. */
+  .service-health[data-state='healthy'] {
+    background: var(--success-tint);
+    color: var(--success);
   }
 
+  .service-health[data-state='degraded'] {
+    background: var(--warning-tint);
+    color: var(--warning);
+  }
+
+  .service-health[data-state='unavailable'] {
+    background: var(--danger-tint);
+    color: var(--danger);
+  }
+
+  /* A definition list, not a wall of boxed tiles: every other read-only key/value
+     block in the product (the overview's service card, the ownership legend, the
+     audit record) is a plain dl with an uppercase micro key over a mono value.
+     Boxing each field drew ten competing surfaces inside one plate and left
+     holes wherever a row did not fill its four columns. */
   .service-grid {
     display: grid;
-    gap: 1px;
+    gap: var(--space-4) var(--space-6);
     grid-template-columns: repeat(4, minmax(0, 1fr));
     margin: 0;
-    overflow: hidden;
   }
 
   .service-grid > div {
-    background: var(--strip-lift);
-    border: 1px solid color-mix(in srgb, var(--rule) 65%, transparent);
-    border-radius: var(--r-well);
     min-width: 0;
-    padding: var(--space-3);
   }
 
   .service-grid .wide {
     grid-column: span 2;
   }
 
+  .service-grid .full {
+    grid-column: 1 / -1;
+  }
+
   dt {
-    color: var(--text-secondary);
-    font-size: var(--font-size-small);
+    color: var(--text-muted);
+    font: 700 var(--font-size-micro) / 1.3 var(--sans);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
   }
 
   dd {
-    font-weight: 600;
-    margin: var(--space-1) 0 0;
+    font: 600 var(--font-size-compact) / 1.5 var(--mono);
+    margin: 0.15rem 0 0;
     min-width: 0;
     overflow-wrap: anywhere;
   }
 
+  /* The value is already mono; a nested code element would only re-declare it. */
   dd code {
-    font-size: 0.75rem;
+    font: inherit;
   }
 
   .credential-list {
+    display: flex;
     flex-wrap: wrap;
     gap: var(--space-2);
-  }
-
-  .credential-list span {
-    background: var(--strip);
-    border-radius: var(--r-chip);
-    color: var(--text-secondary);
-    font-size: 0.75rem;
-    padding: 0.15rem 0.4rem;
-  }
-
-  .credential-list span.present {
-    background: var(--accent-tint);
-    color: var(--accent);
   }
 
   .updated-note {
@@ -643,6 +674,11 @@
     .runtime-grid,
     .service-grid {
       grid-template-columns: 1fr 1fr;
+    }
+
+    /* Three plates in two columns would leave a hole; the last one takes the row. */
+    .runtime-grid > :global(:last-child) {
+      grid-column: 1 / -1;
     }
   }
 

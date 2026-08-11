@@ -18,11 +18,11 @@
       case 'valid':
         return 'success';
       case 'missing':
-        return 'minus-circle';
+        return 'circle-dashed';
       case 'invalid':
         return 'failure';
       case 'bypassed':
-        return 'shield-slash';
+        return 'circle-slash';
     }
   });
   const message = $derived.by(() => {
@@ -41,7 +41,7 @@
 
 <span class="file-indicator status-{status}">
   <button type="button" class="symbol" aria-label={label} aria-describedby={id}>
-    <Icon name={icon} size={18} />
+    <Icon name={icon} size={14} />
   </button>
   {#if showLabel}
     <span class="status-label">{status.slice(0, 1).toUpperCase() + status.slice(1)}</span>
@@ -55,18 +55,16 @@
     color: var(--dim);
     display: inline-flex;
     gap: var(--space-2);
-    height: var(--control-height-compact);
+    height: 1.125rem;
     position: relative;
   }
 
+  /* Trimmed to the cap band, so the 18px slot centres against the word's ink.
+     Untrimmed, "Bypassed" and "Missing" ride visibly high of their glyph. */
   .status-label {
-    align-items: center;
     color: currentColor;
-    display: inline-flex;
-    font-size: var(--font-size-meta);
-    font-weight: 500;
-    height: 100%;
-    line-height: 1;
+    font: 600 var(--font-size-meta) / 1 var(--sans);
+    text-box: trim-both cap alphabetic;
   }
 
   .status-valid {
@@ -89,7 +87,7 @@
     color: inherit;
     cursor: help;
     display: inline-flex;
-    height: 1.875rem;
+    height: 1.125rem;
     justify-content: center;
     outline: none;
     padding: 0;

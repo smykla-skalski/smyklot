@@ -215,10 +215,18 @@ function seed(): MockState {
       repositorySeed(organization.value, {
         id: `40${String(index + 5).padStart(2, '0')}`,
         name,
-        enabledOverride: index % 3 === 0 ? true : index % 3 === 1 ? false : null,
+        /* auth-service (index 1) INHERITS, which is what the approved table
+           demos in its second row: an unbroken chain and a dashed target on the
+           value Settings supplies. An explicit `false` here drew a broken chain
+           on both rows and the inherit affordance never appeared. */
+        enabledOverride: index % 3 === 0 ? true : index % 3 === 1 ? null : false,
         filePatch: index % 4 === 0 ? { command_prefix: `/${name} ` } : {},
-        fileError: index % 7 === 0 ? 'line 4: unknown setting' : undefined,
-        panelPatch: index % 5 === 0 ? { quiet_success: index % 2 === 0 } : {},
+        fileError: index % 7 === 3 ? 'line 4: unknown setting' : undefined,
+        /* api-gateway (index 0) keeps Success replies explicitly ENABLED, which is
+           the state the approved repository-override demo starts from: the row
+           shows a broken link and a saved value, and switching it to Disabled is
+           the single unsaved change the demo draws. */
+        panelPatch: index % 5 === 0 ? { quiet_success: index % 2 !== 0 } : {},
         bypass: index % 11 === 0,
         private: index % 4 === 1,
         updatedAt: iso(-(index + 3) * 47 * 60_000),
@@ -257,7 +265,7 @@ function seed(): MockState {
       stage: 'config',
       reason: 'repository configuration is invalid',
       retryable: false,
-      occurred_at: iso(-42 * 60_000),
+      occurred_at: iso(-49 * 60_000),
     },
     {
       id: 'failure-2',
@@ -366,10 +374,13 @@ function seed(): MockState {
     targets: [
       organization,
       personal,
-      ...Array.from({ length: 24 }, (_, index) =>
+      /* 32 team orgs + the organization + the personal target = 34 installations,
+         which is what the approved overview demo's ownership legend adds up to:
+         24 fresh (team-11..32 plus those two) + 8 stale + 1 approval + 1 error. */
+      ...Array.from({ length: 32 }, (_, index) =>
         targetSeed({
           id: `mock-organization-${index + 1}`,
-          installationId: `mock-installation-${index + 1}`,
+          installationId: String(3010 + index),
           login: `team-${String(index + 1).padStart(2, '0')}`,
           displayName: `Engineering Team ${String(index + 1).padStart(2, '0')}`,
           type: 'Organization',
@@ -595,8 +606,8 @@ function userSeeds(iso: (offsetMs: number) => string): PanelUser[] {
   };
   const banned = user('1005', 'lin', 'Lin Chen', 'viewer', -9 * 86_400_000);
   banned.status = 'banned';
-  banned.ban_reason = 'Repeated unauthorized access attempts';
-  banned.banned_at = iso(-2 * 86_400_000);
+  banned.ban_reason = 'Repeated abuse of merge commands during the release freeze';
+  banned.banned_at = iso(-9 * 86_400_000);
 
   const users = [
     root,
@@ -1103,8 +1114,11 @@ async function handle(
       return;
     }
     if (path === route('/api/v1/root/installations') && method === 'GET') {
+      const ordered = [...state.targets].sort((left, right) =>
+        left.value.type === right.value.type ? 0 : left.value.type === 'Organization' ? -1 : 1,
+      );
       respond(res, 200, {
-        installations: state.targets.map((target, index) => rootInstallationValue(target, index)),
+        installations: ordered.map((target) => rootInstallationValue(target)),
       });
       return;
     }
@@ -1440,8 +1454,7 @@ async function handle(
         );
       if (mockRootOwns(target))
         throw new MockApiError(409, 'conflict', 'you already own this installation');
-      const targetIndex = state.targets.indexOf(target);
-      if (!rootInstallationValue(target, targetIndex).available)
+      if (!rootInstallationValue(target).available)
         throw new MockApiError(409, 'conflict', 'fresh Owners are required');
       const started = new Date();
       const elevation: RootElevation = {
@@ -1787,9 +1800,10 @@ function mockRootOwns(target: MockTarget): boolean {
   return target.value.id === '2001' || target.value.id === '1001';
 }
 
-function rootInstallationValue(target: MockTarget, index: number): RootInstallation {
-  const permissionPending = index === 2;
-  const syncError = index === 3;
+function rootInstallationValue(target: MockTarget): RootInstallation {
+  const login = target.value.account.login;
+  const permissionPending = login === 'team-01';
+  const syncError = login === 'team-02';
   const available = !permissionPending && !syncError;
   const detail = permissionPending
     ? 'Approve the GitHub App Members permission'
@@ -1806,8 +1820,10 @@ function rootInstallationValue(target: MockTarget, index: number): RootInstallat
     owned_by_viewer: mockRootOwns(target),
     repository_counts: target.value.repository_counts,
     delivery_health: {
-      failed: index === 0 ? 1 : 0,
-      ...(index === 0 ? { last_failure_at: new Date(Date.now() - 18 * 60_000).toISOString() } : {}),
+      failed: login === 'smykla-skalski' ? 1 : 0,
+      ...(login === 'smykla-skalski'
+        ? { last_failure_at: new Date(Date.now() - 18 * 60_000).toISOString() }
+        : {}),
     },
     ownership: {
       source: target.value.type === 'User' ? 'personal' : 'organization_admin',
@@ -1815,7 +1831,9 @@ function rootInstallationValue(target: MockTarget, index: number): RootInstallat
       ...(detail === undefined ? {} : { detail }),
       synced_at: new Date(Date.now() - (available ? 3 : 19) * 60_000).toISOString(),
       owner_count: available ? (target.value.type === 'User' ? 1 : 2) : 0,
-      stale: permissionPending,
+      // Eight stale snapshots (team-03 through team-10), matching the approved
+      // overview demo's explicit Stale count.
+      stale: available && /^team-(0[3-9]|10)$/.test(login),
     },
   };
 }
@@ -1875,7 +1893,7 @@ function copyConfig(value: ConfigValues): ConfigValues {
 }
 
 function rootOverviewValue(state: MockState): RootOverview {
-  const installations = state.targets.map((target, index) => rootInstallationValue(target, index));
+  const installations = state.targets.map((target) => rootInstallationValue(target));
   const repositories = state.targets.flatMap((target) => target.repositories);
   const recentFailures = state.targets
     .flatMap((target) =>
@@ -2239,6 +2257,25 @@ function addAudit(target: MockTarget, action: string, summary: string, repositor
 
 function mockDecisions(user: PanelUser, target: PanelTarget): AccessDecision[] {
   const now = Date.now();
+  if (user.status === 'banned') {
+    // The approved dialog demo: two decisions with audit references.
+    return [
+      {
+        id: `${user.account.id}-decision-2`,
+        actor: VIEWER,
+        action: 'target.access.banned',
+        summary: 'Sessions revoked immediately \u00b7 Audit #188',
+        created_at: new Date(now - 9 * 86_400_000).toISOString(),
+      },
+      {
+        id: `${user.account.id}-decision-1`,
+        actor: VIEWER,
+        action: 'target.access.suspended',
+        summary: 'Warning after repeated force-merge attempts \u00b7 Audit #172',
+        created_at: new Date(now - 14 * 86_400_000).toISOString(),
+      },
+    ];
+  }
   const current =
     user.target_access?.suspended === true
       ? {

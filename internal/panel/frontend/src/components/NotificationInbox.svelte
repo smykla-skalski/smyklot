@@ -2,7 +2,7 @@
   import type { PanelApi } from '../lib/api';
   import { formatRelative, formatTimestamp } from '../lib/format';
   import type { SecurityNotification } from '../lib/types';
-  import Avatar from './Avatar.svelte';
+  import Chip from './Chip.svelte';
   import Icon from './Icon.svelte';
   import Modal from './Modal.svelte';
 
@@ -60,6 +60,12 @@
     void load();
   }
 
+  /** Lets a caller outside the account menu open the inbox - the overview's
+   *  unread-security-events card is about exactly these notifications. */
+  export function showInbox(): void {
+    openInbox();
+  }
+
   function closeInbox(): void {
     open = false;
     expandedAuditId = null;
@@ -85,7 +91,7 @@
   }
 
   function actionLabel(action: string): string {
-    if (action === 'target.settings.updated') return 'Installation settings changed';
+    if (action === 'target.settings.updated') return 'Workspace settings changed';
     if (action === 'repository.settings.updated') return 'Repository settings changed';
     return action
       .split('.')
@@ -114,6 +120,8 @@
     return grouped;
   }
 
+  // Loads eagerly on purpose: the sidebar badge reads `unread` from this same
+  // fetch, so the list load cannot wait for the dialog to open.
   $effect(() => {
     if (refreshVersion >= 0) void load();
   });
@@ -139,26 +147,15 @@
 <Modal
   id="security-notifications"
   {open}
-  title="Security notifications"
-  description="Audited Root activity for installations you own"
+  title="Inbox"
+  description="Audited Root activity on workspaces you own"
   variant="wide"
   returnFocus={trigger}
   onClose={closeInbox}
 >
-  <div class="inbox-summary">
-    <span class="summary-icon"><Icon name="notifications" size={20} /></span>
-    <div>
-      <strong
-        >{unread === 0
-          ? 'You are up to date'
-          : `${unread} unread ${unread === 1 ? 'event' : 'events'}`}</strong
-      >
-      <p>{total} security {total === 1 ? 'event' : 'events'} retained in your inbox</p>
-    </div>
-    <button class="btn btn-row" type="button" disabled={loading} onclick={() => load()}>
-      <Icon name="refresh" size={15} /> Refresh
-    </button>
-  </div>
+  {#snippet headerExtra()}
+    <Chip tone="accent">{unread === 0 ? 'All read' : `${unread} unread`} · {total} retained</Chip>
+  {/snippet}
 
   {#if failure !== null}
     <p class="form-error" role="alert">{failure}</p>
@@ -171,34 +168,30 @@
       {#each groups as group (group.id)}
         <section class="notification-group" aria-label={`Elevation ${group.id}`}>
           <header>
-            <span>Elevation {group.id.slice(-10)}</span>
-            <span>{group.events.length} {group.events.length === 1 ? 'event' : 'events'}</span>
-            {#if group.events[0]?.reason !== undefined}
-              <strong>{group.events[0].reason}</strong>
-            {/if}
+            <span class="group-id">Elevation {group.id.slice(-10)}</span>
+            <span class="group-reason">{group.events[0]?.reason ?? ''}</span>
+            <span class="group-count"
+              >{group.events.length} {group.events.length === 1 ? 'event' : 'events'}</span
+            >
           </header>
           {#each group.events as notification (notification.id)}
             <article
               id={`audit-event-${notification.audit_event_id}`}
               class:unread={notification.read_at === undefined}
             >
-              <Avatar account={notification.actor} size={34} />
+              <span class="unread-slot" aria-hidden="true"></span>
               <div class="notification-copy">
-                <div class="notification-title">
-                  <strong>{actionLabel(notification.action)}</strong>
-                  {#if notification.read_at === undefined}<span>New</span>{/if}
-                </div>
+                <div class="notification-title">{actionLabel(notification.action)}</div>
                 <p>
-                  <strong>{notification.actor.display_name}</strong> used elevated access on
-                  <strong>{notification.installation.display_name}</strong>
+                  {notification.actor.display_name} used elevated access on
+                  {notification.installation.display_name}
                 </p>
                 <div class="notification-meta">
                   <time
                     datetime={notification.created_at}
                     title={formatTimestamp(notification.created_at)}
                     >{formatRelative(notification.created_at, now)}</time
-                  >
-                  <a
+                  ><a
                     class="audit-link"
                     href={`#audit-event-${notification.audit_event_id}`}
                     aria-expanded={expandedAuditId === notification.audit_event_id}
@@ -239,7 +232,7 @@
               </div>
               {#if notification.read_at === undefined}
                 <button
-                  class="btn btn-row mark-read"
+                  class="btn mark-read"
                   type="button"
                   aria-label={`Mark ${actionLabel(notification.action)} for ${notification.installation.display_name} as read`}
                   onclick={() => read(notification)}
@@ -247,7 +240,11 @@
                   Mark read
                 </button>
               {:else}
-                <span class="read-state"><Icon name="success" size={16} /> Read</span>
+                <span class="read-state"
+                  ><span class="read-slot"><Icon name="check" size={14} /></span><span
+                    class="cap-trim">Read</span
+                  ></span
+                >
               {/if}
             </article>
           {/each}
@@ -256,7 +253,7 @@
         <div class="inbox-empty">
           <span><Icon name="success" size={22} /></span>
           <strong>No security events</strong>
-          <p>Audited Root writes to installations you own will appear here.</p>
+          <p>Audited Root writes to workspaces you own will appear here</p>
         </div>
       {/each}
     {/if}
@@ -269,7 +266,7 @@
   {/if}
 
   {#snippet footer()}
-    <button class="btn" type="button" data-modal-focus onclick={closeInbox}>Close</button>
+    <button class="btn btn-ghost" type="button" data-modal-focus onclick={closeInbox}>Close</button>
   {/snippet}
 </Modal>
 
@@ -331,31 +328,11 @@
     padding-inline: 0.3rem;
   }
 
-  .inbox-summary {
-    align-items: center;
-    background: var(--surface-inset);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-control);
-    display: grid;
-    gap: var(--space-3);
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    padding: var(--space-3);
-  }
-
-  .inbox-summary p,
-  .inbox-summary strong,
   .notification-copy p,
   .inbox-empty p {
     margin: 0;
   }
 
-  .inbox-summary p {
-    color: var(--text-secondary);
-    font-size: var(--font-size-compact);
-    margin-top: var(--space-1);
-  }
-
-  .summary-icon,
   .inbox-empty > span {
     align-items: center;
     background: var(--accent-tint);
@@ -373,38 +350,57 @@
 
   .notification-list {
     display: grid;
-    gap: var(--space-2);
-    margin-top: var(--space-4);
+    gap: var(--space-3);
+    margin-top: 0;
   }
 
+  /* No grid gap: each item already draws its own top rule, so a 1px gap showing
+     the group's inset behind it doubled the divider and made the group 2px
+     taller than the approved one. */
   .notification-group {
     background: var(--surface-inset);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-control);
     display: grid;
-    gap: 1px;
     overflow: hidden;
   }
 
+  /* Flex, not a fixed three-track grid: on the grid the middle track took all
+     the slack and ellipsised a reason that fits, while the count sat away from
+     the edge. Here the reason is only clipped when it genuinely overruns. */
   .notification-group > header {
-    align-items: center;
-    color: var(--text-muted);
+    align-items: baseline;
     display: flex;
-    flex-wrap: wrap;
-    font: 600 var(--font-size-micro) / 1.4 var(--mono);
-    gap: var(--space-2);
-    padding: var(--space-2) var(--space-3);
+    gap: 0.6rem;
+    padding: 0.6rem var(--space-3) 0.55rem;
   }
 
-  .notification-group > header > span + span::before {
-    content: '·';
-    margin-inline-end: var(--space-2);
+  .notification-group > header .group-count {
+    margin-left: auto;
+    white-space: nowrap;
   }
 
-  .notification-group > header strong {
+  .notification-group > header .group-reason {
+    min-width: 0;
+  }
+
+  .group-id,
+  .group-count {
+    color: var(--text-muted);
+    font: 600 var(--font-size-micro) / 1 var(--mono);
+  }
+
+  .group-id {
     color: var(--text-secondary);
-    flex-basis: 100%;
-    font: 500 var(--font-size-compact) / 1.4 var(--sans);
+  }
+
+  .group-reason {
+    color: var(--text-muted);
+    font-size: var(--font-size-micro);
+    line-height: 1.35;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   article {
@@ -419,71 +415,77 @@
   }
 
   article.unread {
-    background: color-mix(in srgb, var(--accent) 5%, var(--surface-base));
-    border-color: color-mix(in srgb, var(--accent) 28%, var(--border-subtle));
-    box-shadow: inset 0.2rem 0 var(--accent);
+    background: color-mix(in srgb, var(--accent) 4%, var(--surface-base));
+  }
+
+  /* Fixed-width in every item so read and unread text columns align; the dot
+     rides the title line of unread items only. */
+  .unread-slot {
+    padding-top: 0.265rem;
+    width: 0.5rem;
+  }
+
+  article.unread .unread-slot::before {
+    background: var(--accent);
+    border-radius: 50%;
+    content: '';
+    display: block;
+    height: 0.5rem;
+    width: 0.5rem;
   }
 
   .notification-copy {
     min-width: 0;
   }
 
-  .notification-title,
-  .notification-meta,
   .read-state {
     align-items: center;
     display: flex;
   }
 
   .notification-title {
-    gap: var(--space-2);
+    color: var(--text-secondary);
+    font-size: var(--font-size-meta);
+    font-weight: 700;
+    line-height: 1.3;
   }
 
-  .notification-title > span {
-    background: var(--accent-tint);
-    border-radius: var(--radius-control);
-    color: var(--accent);
-    font-size: var(--font-size-micro);
-    font-weight: 750;
-    padding: 0.2rem 0.4rem;
-    text-transform: uppercase;
+  article.unread .notification-title {
+    color: var(--text-primary);
+    font-weight: 700;
   }
 
   .notification-copy > p {
     color: var(--text-secondary);
-    font-size: var(--font-size-meta);
-    line-height: 1.5;
-    margin-top: var(--space-1);
-  }
-
-  .notification-copy > p strong {
-    color: var(--text-primary);
-    font-weight: 650;
+    font-size: var(--font-size-compact);
+    line-height: 1.45;
+    margin-top: 0.3rem;
   }
 
   .notification-meta {
     color: var(--text-muted);
-    flex-wrap: wrap;
+    display: block;
     font: 500 var(--font-size-micro) / 1.4 var(--mono);
-    gap: var(--space-2);
-    margin-top: var(--space-2);
+    margin-top: 0.3rem;
   }
 
-  .notification-meta > * + *::before {
-    content: '·';
-    margin-inline-end: var(--space-2);
+  /* The separator belongs to the meta line, not to the link: non-breaking
+     spaces so it keeps the mono advance the approved line measures, and muted
+     so the dot does not read as part of the link's label. */
+  .audit-link::before {
+    color: var(--text-muted);
+    content: '\00a0\00b7\00a0';
   }
 
   .audit-link {
-    color: var(--accent);
+    color: var(--brand-action-text);
     font: inherit;
-    text-decoration: underline;
-    text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
-    text-underline-offset: 0.15em;
+    text-decoration: none;
   }
 
   .audit-link:hover {
-    text-decoration-color: currentColor;
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
   }
 
   .audit-record {
@@ -518,11 +520,23 @@
     overflow-wrap: anywhere;
   }
 
+  .mark-read,
+  .read-state {
+    align-self: center;
+  }
+
   .read-state {
     color: var(--text-muted);
-    font-size: var(--font-size-compact);
-    gap: var(--space-1);
-    padding: var(--space-2);
+    font: 600 var(--font-size-compact) / 1.5 var(--sans);
+    gap: var(--space-2);
+  }
+
+  .read-slot {
+    display: grid;
+    flex: none;
+    height: 1.125rem;
+    place-items: center;
+    width: 1.125rem;
   }
 
   .inbox-state,
@@ -551,12 +565,10 @@
   }
 
   @media (max-width: 38rem) {
-    .inbox-summary,
     article {
       grid-template-columns: auto minmax(0, 1fr);
     }
 
-    .inbox-summary .btn,
     article > :last-child {
       grid-column: 1 / -1;
       justify-self: start;

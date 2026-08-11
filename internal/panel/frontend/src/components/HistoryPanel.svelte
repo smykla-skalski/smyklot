@@ -34,12 +34,12 @@
     Page,
   } from '../lib/types';
   import Avatar from './Avatar.svelte';
-  import Chip from './Chip.svelte';
   import FilterMenu from './FilterMenu.svelte';
   import HistoryDisplayMenu from './HistoryDisplayMenu.svelte';
   import Icon from './Icon.svelte';
   import InfiniteLoadSentinel from './InfiniteLoadSentinel.svelte';
   import PanelHeader from './PanelHeader.svelte';
+  import RootPageHeader from './RootPageHeader.svelte';
   import SearchField from './SearchField.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
   import TableEmptyState from './TableEmptyState.svelte';
@@ -131,6 +131,7 @@
     fetchAudit,
     fetchFailures,
     context = 'installation',
+    rootRole = 'Root',
     section,
     onSection,
     prefs = EPHEMERAL_PREFS,
@@ -140,6 +141,7 @@
     fetchAudit: (request: AuditHistoryRequest) => Promise<Page<AuditEntry>>;
     fetchFailures: (request: FailureHistoryRequest) => Promise<Page<DeliveryFailure>>;
     context?: HistoryContext;
+    rootRole?: string;
     section?: HistoryType;
     onSection?: (section: HistoryType) => void;
     prefs?: PrefsAccessor;
@@ -705,17 +707,6 @@
   }
 </script>
 
-{#snippet headerActions()}
-  <SegmentedControl
-    name="history-type"
-    label="History type"
-    options={HISTORY_TYPES}
-    value={historyType}
-    align="end"
-    onSelect={selectHistoryType}
-  />
-{/snippet}
-
 <section
   class="plate history-panel"
   class:root-context={context === 'root'}
@@ -723,21 +714,23 @@
   aria-labelledby={context === 'root' ? 'root-page-heading' : 'history-heading'}
 >
   {#if context === 'root'}
-    <div class="root-history-navigation">
-      <SegmentedControl
-        name="root-history-type"
-        label="Root history type"
-        options={HISTORY_TYPES}
-        value={historyType}
-        onSelect={selectHistoryType}
-      />
-      <p>{description}</p>
-    </div>
+    <RootPageHeader role={rootRole} title="History" subtitle={description} />
   {:else}
-    <PanelHeader id="history-heading" title="History" {description} actions={headerActions} />
+    <PanelHeader id="history-heading" title="History" {description} />
   {/if}
 
+  <!-- The table switch sits at the head of the controls row, left of the
+       search, the same place Access puts its Users/Invitations switch. -->
   <div class="history-tools">
+    <SegmentedControl
+      name="{context}-history-type"
+      label="History type"
+      options={HISTORY_TYPES}
+      value={historyType}
+      variant="navigation"
+      onSelect={selectHistoryType}
+    />
+
     <SearchField
       label="Search history"
       placeholder={historyType === 'audit' ? 'Search changes' : 'Search failures'}
@@ -782,7 +775,7 @@
                   type="button"
                   onclick={() => toggleSort('actor')}
                 >
-                  <span>Actor</span>
+                  <span class="cap-trim">Actor</span>
                   <span
                     class:descending={sortDirection('actor') === 'descending'}
                     class="sort-indicator"
@@ -799,7 +792,7 @@
                     type="button"
                     onclick={() => toggleSort('target')}
                   >
-                    <span>Target</span>
+                    <span class="cap-trim">Target</span>
                     <span
                       class:descending={sortDirection('target') === 'descending'}
                       class="sort-indicator"
@@ -833,7 +826,7 @@
                     type="button"
                     onclick={() => toggleSort('change')}
                   >
-                    <span>Change</span>
+                    <span class="cap-trim">Change</span>
                     <span
                       class:descending={sortDirection('change') === 'descending'}
                       class="sort-indicator"
@@ -881,7 +874,7 @@
                   type="button"
                   onclick={() => toggleSort('when')}
                 >
-                  <span>When</span>
+                  <span class="cap-trim">When</span>
                   <span
                     class:descending={sortDirection('when') === 'descending'}
                     class="sort-indicator"
@@ -913,8 +906,10 @@
                 <td data-label="Actor">
                   <span class="actor">
                     <Avatar account={entry.actor} size={24} />
-                    <strong>{entry.actor.display_name}</strong>
-                    <span class="actor-login mono">@{entry.actor.login}</span>
+                    <span class="actor-copy">
+                      <strong>{entry.actor.display_name}</strong>
+                      <small class="actor-login mono">@{entry.actor.login}</small>
+                    </span>
                   </span>
                 </td>
                 <td data-label="Target">
@@ -923,13 +918,13 @@
                       {entry.installation.display_name}
                     </span>
                   {:else if context === 'root'}
-                    <Chip small>Smyklot</Chip>
+                    <span class="cell-primary">Smyklot</span>
                   {:else if entry.repository_full_name !== undefined}
                     <code title={entry.repository_full_name}>
                       {repositoryName(entry.repository_full_name)}
                     </code>
                   {:else}
-                    <Chip small>Account</Chip>
+                    <span class="cell-primary">Account</span>
                   {/if}
                 </td>
                 <td data-label="Change" title={auditDetail(entry)}>
@@ -993,7 +988,7 @@
                     type="button"
                     onclick={() => toggleSort('status')}
                   >
-                    <span>Status</span>
+                    <span class="cap-trim">Status</span>
                     <span
                       class:descending={sortDirection('status') === 'descending'}
                       class="sort-indicator"
@@ -1024,7 +1019,7 @@
                   type="button"
                   onclick={() => toggleSort('repository')}
                 >
-                  <span>Repository</span>
+                  <span class="cap-trim">Repository</span>
                   <span
                     class:descending={sortDirection('repository') === 'descending'}
                     class="sort-indicator"
@@ -1035,7 +1030,7 @@
                 </button>
               </th>
               <th scope="col">
-                <div class="table-heading-layout"><span>Failure</span></div>
+                <div class="table-heading-layout"><span class="cap-trim">Failure</span></div>
               </th>
               <th scope="col" aria-sort={sortDirection('when')}>
                 <button
@@ -1043,7 +1038,7 @@
                   type="button"
                   onclick={() => toggleSort('when')}
                 >
-                  <span>When</span>
+                  <span class="cap-trim">When</span>
                   <span
                     class:descending={sortDirection('when') === 'descending'}
                     class="sort-indicator"
@@ -1075,9 +1070,9 @@
                 <td data-label="Status">
                   <span class={['failure-kind', failure.retryable ? 'retryable' : 'permanent']}>
                     <span class="cell-symbol" aria-hidden="true">
-                      <Icon name={failure.retryable ? 'refresh' : 'failure'} size={18} />
+                      <Icon name={failure.retryable ? 'refresh' : 'failure'} size={14} />
                     </span>
-                    {failure.retryable ? 'Retryable' : 'Permanent'}
+                    <span class="cap-trim">{failure.retryable ? 'Retryable' : 'Permanent'}</span>
                   </span>
                 </td>
                 <td data-label="Repository">
@@ -1150,21 +1145,6 @@
     overflow: visible;
   }
 
-  .root-history-navigation {
-    align-items: center;
-    display: flex;
-    gap: var(--space-4);
-    justify-content: space-between;
-    padding-bottom: var(--space-3);
-  }
-
-  .root-history-navigation p {
-    color: var(--text-secondary);
-    font-size: var(--font-size-compact);
-    margin: 0;
-    text-align: right;
-  }
-
   .history-tools {
     align-items: center;
     background: transparent;
@@ -1172,7 +1152,7 @@
     border-radius: 0;
     display: grid;
     gap: var(--space-2);
-    grid-template-columns: minmax(12rem, 1fr) auto;
+    grid-template-columns: auto minmax(12rem, 1fr) auto;
     padding: 0 0 var(--space-3);
   }
 
@@ -1222,7 +1202,10 @@
 
   .history-table {
     background: var(--surface-base);
-    border-collapse: collapse;
+    /* Separated, not collapsed: a collapsed border is shared between adjacent
+       rows, so each cell owns half of it and every row box lands on a .5. */
+    border-collapse: separate;
+    border-spacing: 0;
     min-width: 40rem;
     table-layout: fixed;
     width: 100%;
@@ -1231,23 +1214,18 @@
   .history-table th,
   .history-table td {
     border-bottom: 1px solid var(--rule);
+    font-size: var(--font-size-meta);
     padding: 0.625rem 0.75rem;
     text-align: left;
     vertical-align: middle;
   }
 
-  .history-table th:first-child,
   .history-table td:first-child {
-    padding-left: var(--space-4);
+    padding-left: var(--space-3);
   }
 
-  .history-table th:last-child,
   .history-table td:last-child {
-    padding-right: var(--space-4);
-  }
-
-  .history-table thead th:first-child .sort-button {
-    padding-left: var(--space-4);
+    padding-right: var(--space-3);
   }
 
   .failure-table th:last-child,
@@ -1257,12 +1235,25 @@
     text-align: right;
   }
 
+  /* The header band is 2.5rem of content plus its own rule. Putting the height
+     on the th instead would fold the border into it and leave the band 1px
+     shallower than the other four tables. */
   .history-table th {
     background: var(--table-header-bg);
     color: var(--dim);
     font: 650 var(--font-size-compact) / 1.2 var(--sans);
-    height: 2.5rem;
     letter-spacing: 0.02em;
+    padding: 0;
+  }
+
+  .history-table thead .table-heading-layout,
+  .history-table thead .sort-button {
+    height: 2.5rem;
+  }
+
+  /* A header with nothing to press still carries the row's inset. */
+  .history-table th:not(:has(.sort-button)) .table-heading-layout {
+    padding-inline: var(--space-3);
   }
 
   .history-table tbody tr {
@@ -1377,7 +1368,7 @@
     }
 
     .failure-table {
-      --history-columns: 8rem minmax(9rem, 0.9fr) minmax(0, 2.4fr) 7.5rem;
+      --history-columns: minmax(0, 1.1fr) minmax(0, 1.2fr) minmax(0, 2.4fr) minmax(0, 1fr);
     }
 
     .absolute-time .audit-table {
@@ -1387,10 +1378,6 @@
     .absolute-time .failure-table {
       --history-columns: 8rem minmax(9rem, 0.9fr) minmax(0, 2.4fr) 9.5rem;
     }
-  }
-
-  .history-table th:has(.sort-button) {
-    padding: 0;
   }
 
   .table-heading-layout {
@@ -1416,7 +1403,7 @@
     height: 100%;
     justify-content: flex-start;
     letter-spacing: inherit;
-    padding: 0.625rem 0.75rem;
+    padding: 0 var(--space-3);
     text-align: left;
     text-transform: inherit;
     min-width: 0;
@@ -1430,7 +1417,12 @@
   }
 
   .history-table th:last-child .sort-button {
-    justify-content: flex-end;
+    /* Right-aligned sortable column: the indicator leads (row-reverse), the
+       main start is the right edge, and the inset matches the cells' space-3
+       padding, so the label ink lands on the same edge as the times below. */
+    flex-direction: row-reverse;
+    justify-content: flex-start;
+    padding-right: var(--space-3);
   }
 
   .sort-indicator {
@@ -1456,11 +1448,23 @@
     transform: rotate(180deg);
   }
 
+  /* One repository token for the whole panel: the audit table's Target and the
+     failure table's Repository name the same thing, so they wear the same mono
+     chip the repositories pane uses rather than one chip and one bare string.
+     `clip` rather than `hidden` - the trim ends the box at the baseline and a
+     hidden overflow would shave the descenders. */
   .history-table code {
+    background: var(--surface-inset);
+    border-radius: var(--r-chip);
+    color: var(--text-soft);
     display: inline-block;
+    font: 500 var(--font-size-compact) / 1 var(--mono);
     justify-self: start;
     max-width: 100%;
-    overflow: hidden;
+    overflow: clip;
+    overflow-clip-margin: 0.35em;
+    padding: 0.34rem 0.5rem;
+    text-box: trim-both cap alphabetic;
     text-overflow: ellipsis;
     vertical-align: middle;
     white-space: nowrap;
@@ -1488,35 +1492,42 @@
     width: 9.5rem;
   }
 
+  /* Name over handle, the same identity block the installations catalog uses.
+     Both lines are trimmed to cap..baseline, so the pair's box equals its ink
+     and centring the row centres what the eye reads rather than a line box. */
   .actor {
-    align-items: baseline;
+    align-items: center;
     display: flex;
-    gap: 0.5rem;
+    gap: var(--space-2);
     min-width: 0;
   }
 
-  .actor :global(.avatar),
-  .actor :global(.avatar-fallback) {
-    align-self: center;
+  .actor-copy {
+    display: block;
+    min-width: 0;
   }
 
   .actor strong {
-    flex: none;
-    font-size: var(--font-size-meta);
-    font-weight: 650;
-    line-height: 1.2;
-    max-width: 60%;
-    overflow: hidden;
+    display: block;
+    font: 650 var(--font-size-meta) / 1 var(--sans);
+    /* clip, not hidden: the trim ends the box at the baseline, so a hidden
+       overflow would shave the descenders off a name like "Bart Smykla". */
+    overflow: clip;
+    overflow-clip-margin: 0.35em;
+    text-box: trim-both cap alphabetic;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   .actor-login {
     color: var(--text-muted);
-    font-size: var(--font-size-micro);
-    line-height: 1.35;
+    display: block;
+    font: 400 var(--font-size-micro) / 1 var(--mono);
+    margin-top: 0.45rem;
     min-width: 0;
-    overflow: hidden;
+    overflow: clip;
+    overflow-clip-margin: 0.35em;
+    text-box: trim-both cap alphabetic;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -1524,10 +1535,8 @@
   .failure-kind {
     align-items: center;
     display: inline-flex;
-    font-size: var(--font-size-meta);
-    font-weight: 500;
+    font: 600 var(--font-size-meta) / 1.5 var(--sans);
     gap: var(--space-2);
-    line-height: 1;
     white-space: nowrap;
   }
 
@@ -1542,6 +1551,7 @@
   .cell-symbol {
     display: grid;
     flex: none;
+    height: 1.125rem;
     place-items: center;
     width: 1.125rem;
   }
@@ -1573,7 +1583,7 @@
 
   .cell-primary {
     font-size: var(--font-size-meta);
-    line-height: 1.25;
+    line-height: 1.5;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1583,8 +1593,8 @@
     align-items: center;
     color: var(--dim);
     display: inline-flex;
-    font-size: var(--font-size-compact);
-    line-height: 1;
+    font-size: var(--font-size-meta);
+    line-height: 1.5;
     vertical-align: middle;
     white-space: nowrap;
   }
@@ -1647,18 +1657,6 @@
   .result-state span {
     color: var(--dim);
     font-size: 0.75rem;
-  }
-
-  @media (max-width: 40rem) {
-    .root-history-navigation {
-      align-items: start;
-      flex-direction: column;
-      gap: var(--space-2);
-    }
-
-    .root-history-navigation p {
-      text-align: left;
-    }
   }
 
   @media (max-width: 48rem) {
@@ -1765,7 +1763,7 @@
 
   @media (max-width: 36rem) {
     .history-tools {
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr auto;
     }
 
     .history-tools :global(.search-field) {

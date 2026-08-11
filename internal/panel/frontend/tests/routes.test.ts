@@ -143,9 +143,12 @@ describe('resolvePanelRoute', () => {
   it('lets an explicit route win over the remembered installation', () => {
     const requested: PanelRoute = { account: 'SMYKLA-SKALSKI', view: 'history' };
 
+    /* History resolves with a section: the address never sits on a bare
+       /history that a reload would have to guess at. */
     expect(resolvePanelRoute(accounts, requested, 'bartsmykla')).toEqual({
       account: 'smykla-skalski',
       view: 'history',
+      section: 'audit',
     });
   });
 
@@ -193,5 +196,64 @@ describe('browser panel router', () => {
     unsubscribe();
     fixture.navigateFromHistory('/panel/i/smykla-skalski/repositories');
     expect(visited).toHaveLength(1);
+  });
+});
+
+describe('history sections are addressable', () => {
+  it('parses the section off an installation history path', () => {
+    expect(parsePanelRoute('', '/i/acme/history/failures')).toEqual({
+      account: 'acme',
+      view: 'history',
+      section: 'failures',
+    });
+    expect(parsePanelRoute('', '/i/acme/history/audit')).toEqual({
+      account: 'acme',
+      view: 'history',
+      section: 'audit',
+    });
+  });
+
+  it('leaves a bare history path sectionless, and resolves it to audit', () => {
+    expect(parsePanelRoute('', '/i/acme/history')).toEqual({ account: 'acme', view: 'history' });
+    expect(resolvePanelRoute(['acme'], { account: 'acme', view: 'history' }, null)).toEqual({
+      account: 'acme',
+      view: 'history',
+      section: 'audit',
+    });
+  });
+
+  it('refuses a section on a view that has none, and an unknown section', () => {
+    expect(parsePanelRoute('', '/i/acme/settings/audit')).toBeNull();
+    expect(parsePanelRoute('', '/i/acme/history/everything')).toBeNull();
+  });
+
+  it('writes the section back into the path', () => {
+    expect(panelRoutePath('', { account: 'acme', view: 'history', section: 'failures' })).toBe(
+      '/i/acme/history/failures',
+    );
+    expect(panelRoutePath('', { account: 'acme', view: 'history' })).toBe('/i/acme/history');
+    expect(panelRoutePath('', { account: 'acme', view: 'settings' })).toBe('/i/acme/settings');
+  });
+
+  it('resolves a bare root section path to that section default', () => {
+    expect(parsePanelRoute('', '/root/history')).toEqual({ rootView: 'history-audit' });
+    expect(parsePanelRoute('', '/root/access')).toEqual({ rootView: 'access-users' });
+  });
+
+  it('carries the section through a root installation route', () => {
+    expect(parsePanelRoute('', '/root/installations/acme/history/failures')).toEqual({
+      rootView: 'installation',
+      account: 'acme',
+      view: 'history',
+      section: 'failures',
+    });
+    expect(
+      panelRoutePath('', {
+        rootView: 'installation',
+        account: 'acme',
+        view: 'history',
+        section: 'failures',
+      }),
+    ).toBe('/root/installations/acme/history/failures');
   });
 });

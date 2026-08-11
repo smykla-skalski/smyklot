@@ -1,7 +1,8 @@
 <script lang="ts">
   import { PanelApiError, type PanelApi } from '../lib/api';
   import { formatTimestamp } from '../lib/format';
-  import type { ScopedPanelView } from '../lib/routes';
+  import { monogram } from '../lib/identity';
+  import type { HistorySection, ScopedPanelView } from '../lib/routes';
   import type {
     PanelTarget,
     RepositoryDetail,
@@ -21,6 +22,8 @@
   const {
     installation,
     view,
+    historySection,
+    onHistorySection,
     api,
     refreshVersion,
     listHref,
@@ -36,6 +39,8 @@
     hrefFor: (account: string, view: ScopedPanelView) => string;
     onList: () => void;
     onNavigate: (account: string, view: ScopedPanelView) => void;
+    historySection: HistorySection;
+    onHistorySection: (section: HistorySection) => void;
   } = $props();
 
   let target = $state<PanelTarget | null>(null);
@@ -213,19 +218,21 @@
   });
 </script>
 
-<section class="installation-view" aria-labelledby="root-installation-heading">
+<section class="installation-view" aria-labelledby="root-page-heading">
   <header class="installation-heading">
     <div class="installation-title">
       <a class="back-link" href={listHref} onclick={returnToList}>
-        <Icon name="chevron-left" size={16} />
-        All installations
+        <Icon name="chevron-left" size={14} />
+        <span class="cap-trim">Installations</span>
       </a>
       <div>
         <span class="installation-mark">
-          <Icon name={installation.type === 'Organization' ? 'organization' : 'user'} size={20} />
+          <span class="cap-trim">
+            {monogram(installation.account.display_name, installation.account.login)}
+          </span>
         </span>
         <span>
-          <h3 id="root-installation-heading">{installation.account.display_name}</h3>
+          <h2 id="root-page-heading">{installation.account.display_name}</h2>
           <p>@{installation.account.login} · GitHub installation #{installation.installation_id}</p>
         </span>
       </div>
@@ -233,18 +240,19 @@
 
     <div class="access-summary">
       {#if target !== null && ownsInstallation}
-        <span class="access-state owner"><Icon name="owner" size={16} /> Owner access</span>
+        <span class="status-pill"
+          ><Icon name="shield" size={14} /><span class="cap-trim">Owner access</span></span
+        >
       {:else if elevation !== null}
-        <span class="access-state elevated"><Icon name="warning" size={16} /> Elevated</span>
+        <span class="status-pill"
+          ><Icon name="warning" size={14} /><span class="cap-trim">Elevated</span></span
+        >
       {:else}
         <button
           class="btn root-access-button"
           type="button"
           bind:this={elevationTrigger}
           disabled={!canElevate || loading}
-          title={canElevate
-            ? undefined
-            : 'Fresh Owners are required before elevated access can start'}
           onclick={openElevation}
         >
           <Icon name="lock" size={16} />
@@ -255,7 +263,7 @@
   </header>
 
   {#if elevation !== null}
-    <aside class="elevation-banner" aria-live="polite">
+    <aside class="elevation-banner">
       <span class="elevation-icon"><Icon name="warning" size={19} /></span>
       <div>
         <strong>Elevated access to {installation.account.display_name}</strong>
@@ -297,6 +305,10 @@
     {/each}
   </nav>
 
+  {#if !ownsInstallation && elevation === null && !canElevate}
+    <p class="access-hint">Fresh Owners are required before elevated access can start</p>
+  {/if}
+
   {#if loading}
     <div class="root-loading" role="status">Reading installation diagnostics…</div>
   {:else if failure !== null}
@@ -310,6 +322,7 @@
   {:else if target !== null && view === 'repositories'}
     <RepositoryList
       targetId={installation.id}
+      defaultEnabled={target.repository_default_enabled}
       refreshVersion={repositoryVersion}
       fetchPage={fetchRepositories}
       onLoad={loadRepository}
@@ -339,6 +352,8 @@
     <HistoryPanel
       targetId={installation.id}
       refreshVersion={repositoryVersion}
+      section={historySection}
+      onSection={onHistorySection}
       fetchAudit={(request) => api.fetchRootTargetAudit(installation.id, request)}
       fetchFailures={(request) => api.fetchRootTargetFailures(installation.id, request)}
     />
@@ -405,40 +420,49 @@
 <style>
   .installation-view {
     display: grid;
-    gap: var(--space-4);
+    gap: 0;
     min-height: 0;
   }
 
   .installation-heading,
-  .installation-heading > div,
+  .access-summary,
   .installation-title > div,
-  .elevation-banner,
-  .access-state {
+  .elevation-banner {
     align-items: center;
     display: flex;
   }
 
+  /* Embedded child views ship their own page headers; the pill navigation
+     already names the section, so content starts immediately. */
+  .installation-view :global(.panel-header) {
+    display: none;
+  }
+
   .installation-heading {
-    gap: var(--space-5);
+    gap: var(--space-6);
     justify-content: space-between;
+    padding: var(--space-2) 0 var(--space-4);
   }
 
   .installation-title {
     display: grid;
-    gap: var(--space-3);
+    gap: var(--space-2);
   }
 
   .installation-title > div {
     gap: var(--space-3);
   }
 
+  /* The back link sits where a kicker sits, so it dresses like one. */
   .back-link {
     align-items: center;
-    color: var(--text-secondary);
+    color: var(--brand-action-text);
     display: inline-flex;
-    font-size: var(--font-size-compact);
+    font: 700 var(--font-size-micro) / 1 var(--sans);
     gap: var(--space-1);
+    letter-spacing: 0.08em;
     text-decoration: none;
+    text-transform: uppercase;
     width: fit-content;
   }
 
@@ -454,25 +478,39 @@
   }
 
   .installation-mark {
-    background: color-mix(in srgb, #8b5cf6 12%, var(--surface-inset));
-    border: 1px solid color-mix(in srgb, #8b5cf6 25%, var(--border-subtle));
+    background: var(--brand-action-tint);
     border-radius: var(--radius-control);
-    color: #7357bd;
+    /* Self-keyed keyline: mixed from the mark's own foreground, so the tint
+       fill stays visible on any surface. */
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, currentcolor 28%, transparent);
+    color: var(--brand-action-text);
+    font-size: 0.875rem;
+    font-weight: 700;
     height: 2.75rem;
     width: 2.75rem;
   }
 
-  h3,
+  h2,
   p {
     margin: 0;
   }
 
-  h3 {
-    font-size: 1.25rem;
-    letter-spacing: -0.025em;
+  h2 {
+    font-size: 1.375rem;
+    font-weight: 700;
+    letter-spacing: -0.035em;
+    /* Whole pixels, same rule as the page headers: 1.2 of 22px is 26.4, and the
+       fraction lands the avatar row and the nav under it off the device grid. */
+    line-height: round(1.2em, 1px);
+    margin: 0;
   }
 
-  .installation-title p,
+  .installation-title p {
+    color: var(--text-secondary);
+    font: 450 var(--font-size-compact) / 1.4 var(--mono);
+    margin-top: var(--space-1);
+  }
+
   .elevation-banner p,
   .root-loading p {
     color: var(--text-secondary);
@@ -480,33 +518,22 @@
     margin-top: var(--space-1);
   }
 
-  .access-state {
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-control);
-    font-size: var(--font-size-compact);
-    font-weight: 700;
-    gap: var(--space-2);
-    height: var(--control-height);
-    padding: 0 var(--space-3);
-  }
-
-  .access-state.owner {
-    background: var(--accent-tint);
-    color: var(--accent);
-  }
-
-  .access-state.elevated,
   .root-access-button,
   .root-confirm {
-    background: color-mix(in srgb, #8b5cf6 12%, var(--surface-base));
-    border-color: color-mix(in srgb, #8b5cf6 45%, var(--control-border));
-    color: color-mix(in srgb, #6d54bd 88%, var(--text-primary));
+    background: color-mix(in srgb, var(--brand-action) 12%, var(--surface-base));
+    border-color: color-mix(in srgb, var(--brand-action) 45%, var(--control-border));
+    color: var(--brand-action-text);
+  }
+
+  .access-hint {
+    color: var(--text-secondary);
+    font-size: var(--font-size-compact);
   }
 
   .elevation-banner {
-    background: color-mix(in srgb, #8b5cf6 8%, var(--surface-base));
-    border: 1px solid color-mix(in srgb, #8b5cf6 38%, var(--border-subtle));
-    border-inline-start: 0.3rem solid #8b5cf6;
+    background: color-mix(in srgb, var(--brand-action) 8%, var(--surface-base));
+    border: 1px solid color-mix(in srgb, var(--brand-action) 38%, var(--border-subtle));
+    border-inline-start: 0.3rem solid var(--brand-action);
     border-radius: var(--radius-control);
     gap: var(--space-3);
     padding: var(--space-3);
@@ -518,7 +545,7 @@
   }
 
   .elevation-icon {
-    color: #7357bd;
+    color: var(--brand-action-text);
   }
 
   .elevation-countdown {
@@ -527,22 +554,29 @@
   }
 
   .installation-navigation {
-    background: color-mix(in srgb, #8b5cf6 4%, var(--surface-inset));
+    /* The island hugs its tabs (mock .pill-nav is inline-flex) — align-self stops
+       a column parent's default stretch from widening it to the full row. */
+    align-self: flex-start;
+    background: color-mix(in srgb, var(--brand-action) 4%, var(--surface-inset));
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-control);
-    display: flex;
+    display: inline-flex;
     gap: var(--space-1);
+    max-width: 100%;
     overflow-x: auto;
     padding: var(--space-1);
+    width: fit-content;
   }
 
   .installation-navigation a {
     border: 1px solid transparent;
-    border-radius: calc(var(--radius-control) - 0.15rem);
+    border-radius: calc(var(--radius-control) - 2px);
     color: var(--text-secondary);
     font-size: var(--font-size-control);
     font-weight: 650;
-    padding: var(--space-2) var(--space-3);
+    line-height: 1;
+    padding: 0.4375rem var(--space-3);
+    text-box: trim-both cap alphabetic;
     text-decoration: none;
     white-space: nowrap;
   }
@@ -559,9 +593,9 @@
 
   .installation-navigation a.active {
     background: var(--surface-base);
-    border-color: color-mix(in srgb, #8b5cf6 30%, var(--border-subtle));
+    border-color: color-mix(in srgb, var(--brand-action) 30%, var(--border-subtle));
     box-shadow: 0 1px 2px var(--shadow);
-    color: #6d54bd;
+    color: var(--brand-action-text);
   }
 
   .root-loading {
@@ -582,8 +616,8 @@
 
   .elevation-warning {
     align-items: start;
-    background: color-mix(in srgb, #8b5cf6 8%, var(--surface-inset));
-    border: 1px solid color-mix(in srgb, #8b5cf6 28%, var(--border-subtle));
+    background: color-mix(in srgb, var(--brand-action) 8%, var(--surface-inset));
+    border: 1px solid color-mix(in srgb, var(--brand-action) 28%, var(--border-subtle));
     border-radius: var(--radius-control);
     display: grid;
     gap: var(--space-3);
@@ -592,7 +626,7 @@
   }
 
   .elevation-warning > span {
-    color: #7357bd;
+    color: var(--brand-action-text);
   }
 
   .elevation-warning p {
@@ -657,14 +691,5 @@
     .elevation-countdown {
       font-size: 1.05rem;
     }
-  }
-
-  :global(:root[data-theme='dark']) .installation-mark,
-  :global(:root[data-theme='dark']) .elevation-icon,
-  :global(:root[data-theme='dark']) .installation-navigation a.active,
-  :global(:root[data-theme='dark']) .access-state.elevated,
-  :global(:root[data-theme='dark']) .root-access-button,
-  :global(:root[data-theme='dark']) .root-confirm {
-    color: #c4b5fd;
   }
 </style>

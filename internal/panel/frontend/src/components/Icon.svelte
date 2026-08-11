@@ -1,6 +1,7 @@
 <script module lang="ts">
   export type IconName =
     | 'admin'
+    | 'alert'
     | 'ban'
     | 'branch'
     | 'chevron-down'
@@ -8,6 +9,8 @@
     | 'chevron-right'
     | 'chevron-up'
     | 'chevrons-up-down'
+    | 'circle-dashed'
+    | 'circle-slash'
     | 'close'
     | 'editor'
     | 'failure'
@@ -20,7 +23,10 @@
     | 'globe'
     | 'history'
     | 'info'
+    | 'link'
+    | 'link-off'
     | 'lock'
+    | 'mail'
     | 'more'
     | 'moon'
     | 'minus-circle'
@@ -38,7 +44,9 @@
     | 'shield-slash'
     | 'sidebar'
     | 'sign-out'
+    | 'sliders'
     | 'sort'
+    | 'check'
     | 'success'
     | 'sun'
     | 'sun-moon'
@@ -97,12 +105,12 @@
     <rect x="3" y="4" width="18" height="13" rx="2" />
     <path d="M8 21h8M12 17v4" />
   {:else if name === 'search'}
-    <circle cx="10.5" cy="10.5" r="6.5" />
-    <path d="m15.5 15.5 4.5 4.5" />
+    <circle cx="11" cy="11" r="7" />
+    <path d="m20 20-3.5-3.5" />
   {:else if name === 'filter'}
     <path d="M3.5 5h17l-6.7 7.3v5.4l-3.6 1.8v-7.2z" />
   {:else if name === 'globe'}
-    <circle cx="12" cy="12" r="9" />
+    <circle cx="12" cy="12" r="8.5" />
     <path
       d="M3 12h18M12 3c2.4 2.4 3.6 5.4 3.6 9S14.4 18.6 12 21M12 3C9.6 5.4 8.4 8.4 8.4 12s1.2 6.6 3.6 9"
     />
@@ -117,12 +125,21 @@
     <circle cx="17" cy="8" r="2" />
     <circle cx="7" cy="19" r="2" />
     <path d="M7 7v10M9 8h3a5 5 0 0 1 5 5v-3" />
+  {:else if name === 'link'}
+    <path d="M9 17H7A5 5 0 0 1 7 7h2" />
+    <path d="M15 7h2a5 5 0 1 1 0 10h-2" />
+    <path d="M8 12h8" />
+  {:else if name === 'link-off'}
+    <path d="m18.84 12.25 1.72-1.71a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+    <path d="m5.17 11.75-1.71 1.71a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+    <path d="M8 2v3M2 8h3M16 19v3M19 16h3" />
   {:else if name === 'lock'}
     <rect x="5" y="10" width="14" height="10" rx="2" />
     <path d="M8 10V7a4 4 0 0 1 8 0v3" />
   {:else if name === 'user-plus'}
-    <circle cx="9" cy="8" r="3" />
-    <path d="M3.5 19c.5-3.2 2.4-5 5.5-5 2.2 0 3.8.9 4.7 2.4M18 8v6M15 11h6" />
+    <circle cx="9" cy="8" r="3.5" />
+    <path d="M2.5 20c.7-3.2 3.3-5 6.5-5s5.8 1.8 6.5 5" />
+    <path d="M19 7v6M16 10h6" />
   {:else if name === 'more'}
     <circle cx="12" cy="5" r="1.65" fill="currentColor" stroke="none" />
     <circle cx="12" cy="12" r="1.65" fill="currentColor" stroke="none" />
@@ -130,14 +147,30 @@
   {:else if name === 'trash'}
     <path d="M4 7h16M9 3h6l1 4H8zM6.5 7l.8 14h9.4l.8-14M10 11v6M14 11v6" />
   {:else if name === 'ban'}
-    <circle cx="12" cy="12" r="9" />
+    <circle cx="12" cy="12" r="8.5" />
     <path d="m6 6 12 12" />
   {:else if name === 'minus-circle'}
-    <circle cx="12" cy="12" r="9" />
+    <circle cx="12" cy="12" r="8.5" />
     <path d="M8 12h8" />
+  {:else if name === 'circle-slash'}
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="m6 6 12 12" />
+  {:else if name === 'circle-dashed'}
+    <!-- A ring that is drawn but not closed: the file that should be there and
+         is not. Dash length is the mock's, not a guess - a coarser dash reads
+         as a decorative border at 14px. -->
+    <circle cx="12" cy="12" r="8.5" stroke-dasharray="3.4 3.4" />
   {:else if name === 'refresh'}
-    <path d="M20 7v5h-5M4 17v-5h5" />
-    <path d="M6.1 8.2A7 7 0 0 1 18.6 7L20 12M4 12l1.4 5A7 7 0 0 0 17.9 15.8" />
+    <!-- One arc with a single arrowhead, the approved shape. The two-arrow
+         cycle it replaced read as a pair of chevrons at 14px. Used by the sync
+         button, the retryable failure mark, and the history retry row - one
+         glyph, so all three say the same thing.
+         Shifted -0.35,+0.8 from the shape as drawn: the arc plus its arrowhead
+         are not symmetric about the viewBox, so as authored the ink sat 0.35
+         right and 0.8 high of centre and the glyph carried a visible left
+         margin inside its own box. These numbers centre the INK. -->
+    <path d="M20.65 4.8v5h-5" />
+    <path d="M20.15 13.8a8.5 8.5 0 1 1-2-7.5L20.65 9.8" />
   {:else if name === 'shield'}
     <path d="M12 3 19 6v5c0 4.7-2.8 8.2-7 10-4.2-1.8-7-5.3-7-10V6z" />
   {:else if name === 'sun-moon'}
@@ -159,11 +192,13 @@
     />
   {:else if name === 'moon'}
     <path d="M20 15.2A8 8 0 0 1 8.8 4a8.1 8.1 0 1 0 11.2 11.2Z" />
+  {:else if name === 'check'}
+    <path d="M20 6 9 17l-5-5" />
   {:else if name === 'success'}
-    <circle cx="12" cy="12" r="9" />
+    <circle cx="12" cy="12" r="8.5" />
     <path d="m8 12 2.5 2.5L16.5 9" />
   {:else if name === 'pending'}
-    <circle cx="12" cy="12" r="9" />
+    <circle cx="12" cy="12" r="8.5" />
     <path d="M12 7v5l3 2" />
   {:else if name === 'notifications'}
     <path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 6.5 2.5 6.5h-17S6 15 6 9" />
@@ -171,23 +206,32 @@
   {:else if name === 'warning'}
     <path d="M12 3 2.8 20h18.4z" />
     <path d="M12 9v4M12 17h.01" />
+  {:else if name === 'alert'}
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M12 8v4.5M12 15.8h.01" />
+  {:else if name === 'sliders'}
+    <path d="M5 21v-6M5 11V3M12 21v-9M12 8V3M19 21v-4M19 13V3" />
+    <path d="M2 15h6M9 8h6M16 17h6" />
+  {:else if name === 'mail'}
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <path d="m3 7.5 9 6 9-6" />
   {:else if name === 'failure'}
-    <circle cx="12" cy="12" r="9" />
+    <circle cx="12" cy="12" r="8.5" />
     <path d="m9 9 6 6M15 9l-6 6" />
   {:else if name === 'info'}
-    <circle cx="12" cy="12" r="9" />
-    <path d="M12 11v6M12 7h.01" />
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M12 11v5M12 7.8h.01" />
   {:else if name === 'sidebar'}
     <rect x="3" y="4" width="18" height="16" rx="2" />
     <path d="M9 4v16M14 9l3 3-3 3" />
   {:else if name === 'chevron-down'}
-    <path d="m7 9 5 5 5-5" />
+    <path d="m6 9 6 6 6-6" />
   {:else if name === 'chevron-left'}
-    <path d="m14.5 6-6 6 6 6" />
+    <path d="m15 6-6 6 6 6" />
   {:else if name === 'chevron-right'}
-    <path d="m9.5 6 6 6-6 6" />
+    <path d="m9 6 6 6-6 6" />
   {:else if name === 'chevron-up'}
-    <path d="m7 14.5 5-5 5 5" />
+    <path d="m6 15 6-6 6 6" />
   {:else if name === 'chevrons-up-down'}
     <path d="m7 15 5 5 5-5M7 9l5-5 5 5" />
   {:else if name === 'close'}

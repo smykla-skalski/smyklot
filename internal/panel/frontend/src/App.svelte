@@ -20,6 +20,7 @@
     resolvePanelRoute,
     rootSection,
     rootSectionRoute,
+    type HistorySection,
     type PanelRoute,
     type PanelRouter,
     type PanelView,
@@ -56,7 +57,11 @@
   let rootDataVersion = $state(0);
   let view = $state<PanelView>('settings');
   let rootMode = $state(false);
+  let identityBar = $state<ReturnType<typeof IdentityBar> | null>(null);
   let activeRootRoute = $state<RootRoute>({ rootView: 'overview' });
+  /* History's table is part of the address, so a reload lands on the table the
+     reader was on rather than snapping back to Audit. */
+  let historySection = $state<HistorySection>('audit');
   let streamReady = $state(false);
   let revokedReason = $state<string | null>(null);
   const prefs = createPrefsSync();
@@ -67,6 +72,10 @@
   }
 
   let sidebarCollapsed = $state(prefs.get('sidebar') === 'collapsed');
+  /* Between the mobile bar and full desktop the sidebar auto-collapses to the
+     icon rail, so 1024px screens keep navigation instead of the phone layout. */
+  const narrowRail = new MediaQuery('(min-width: 48.0625rem) and (max-width: 72rem)');
+  const effectiveSidebarCollapsed = $derived(sidebarCollapsed || narrowRail.current);
   let theme = $state<ThemeDisplay>(storedTheme());
   const systemDarkTheme = new MediaQuery('prefers-color-scheme: dark');
   const resolvedTheme = $derived(
@@ -79,10 +88,15 @@
     selectedId === null ? null : (targets.find((target) => target.id === selectedId) ?? null),
   );
   const rootValue = $derived(rootSection(activeRootRoute));
+  const rootRole = $derived(viewer?.system_role === 'super_root' ? 'Super Root' : 'Root');
   const returnTarget = $derived(selectedTarget ?? targets[0] ?? null);
   const tableScrollView = $derived(
     rootMode
-      ? rootValue === 'history' || rootValue === 'access'
+      ? rootValue === 'history' ||
+          rootValue === 'access' ||
+          // The list pins like every other table view; the installation detail
+          // page is mixed content and stays in document flow.
+          activeRootRoute.rootView === 'installations'
       : selectedTarget !== null &&
           ['repositories', 'users', 'invitations', 'history'].includes(view),
   );
@@ -90,7 +104,7 @@
   function forwardTableWheel(event: WheelEvent): void {
     if (
       !tableScrollView ||
-      !window.matchMedia('(min-width: 64.001rem)').matches ||
+      !window.matchMedia('(min-width: 48.0625rem)').matches ||
       event.defaultPrevented ||
       event.ctrlKey ||
       event.deltaY === 0 ||
@@ -181,11 +195,22 @@
   ): Promise<void> {
     if (requested !== null && 'rootView' in requested && viewer?.system_role !== 'none') {
       rootMode = true;
-      activeRootRoute = requested;
+      if (requested.rootView === 'installation' && requested.section !== undefined) {
+        historySection = requested.section;
+      }
+      /* Canonicalise: a history address always names its table, so a reload has
+         nothing to guess at. */
+      const canonicalRoot: RootRoute =
+        requested.rootView === 'installation' &&
+        requested.view === 'history' &&
+        requested.section === undefined
+          ? { ...requested, section: historySection }
+          : requested;
+      activeRootRoute = canonicalRoot;
       if (navigation === 'push') {
-        router.push(requested);
-      } else if (navigation === 'replace') {
-        router.replace(requested);
+        router.push(canonicalRoot);
+      } else if (navigation === 'replace' || canonicalRoot !== requested) {
+        router.replace(canonicalRoot);
       }
       return;
     }
@@ -209,8 +234,9 @@
     rootMode = false;
     selectedId = target.id;
     view = resolved.view;
+    if (resolved.section !== undefined) historySection = resolved.section;
     prefs.set('last_installation', target.account.login);
-    const canonical = routeFor(target, resolved.view);
+    const canonical = routeFor(target, resolved.view, resolved.section ?? historySection);
 
     if (navigation === 'push') {
       router.push(canonical);
@@ -230,8 +256,14 @@
     return targets.find((target) => target.account.login.toLowerCase() === folded);
   }
 
-  function routeFor(target: PanelTarget, nextView: PanelView): PanelRoute {
-    return { account: target.account.login, view: nextView };
+  function routeFor(
+    target: PanelTarget,
+    nextView: PanelView,
+    section: HistorySection = historySection,
+  ): PanelRoute {
+    return nextView === 'history'
+      ? { account: target.account.login, view: nextView, section }
+      : { account: target.account.login, view: nextView };
   }
 
   function targetHref(target: PanelTarget): string {
@@ -255,19 +287,41 @@
     return router.path({ rootView: 'installations' });
   }
 
+  function rootAuditHref(): string {
+    return router.path({ rootView: 'history-audit' });
+  }
+
   function rootFailuresHref(): string {
     return router.path({ rootView: 'history-failures' });
   }
 
   function rootInstallationHref(account: string, nextView: ScopedPanelView): string {
-    return router.path({ rootView: 'installation', account, view: nextView });
+    return router.path(rootInstallationRoute(account, nextView));
+  }
+
+  function rootInstallationRoute(
+    account: string,
+    nextView: ScopedPanelView,
+    section: HistorySection = historySection,
+  ): RootRoute {
+    return nextView === 'history'
+      ? { rootView: 'installation', account, view: nextView, section }
+      : { rootView: 'installation', account, view: nextView };
   }
 
   function selectRootInstallation(account: string, nextView: ScopedPanelView): void {
-    const route: RootRoute = { rootView: 'installation', account, view: nextView };
+    const route = rootInstallationRoute(account, nextView);
     activeRootRoute = route;
     router.push(route);
     resetPageScroll();
+  }
+
+  function selectRootInstallationHistory(section: HistorySection): void {
+    if (activeRootRoute.rootView !== 'installation' || historySection === section) return;
+    historySection = section;
+    const route = rootInstallationRoute(activeRootRoute.account, 'history', section);
+    activeRootRoute = route;
+    router.push(route);
   }
 
   function selectRootInstallations(): void {
@@ -328,29 +382,6 @@
     const target = returnTarget;
     if (target === null) return;
     void activateRoute(routeFor(target, view), 'push');
-  }
-
-  function rootPageTitle(route: RootRoute): string {
-    if (route.rootView === 'overview') return 'Overview';
-    if (route.rootView === 'installations' || route.rootView === 'installation')
-      return 'Installations';
-    if (route.rootView === 'access-users' || route.rootView === 'access-invitations')
-      return 'Access';
-    if (route.rootView === 'history-audit' || route.rootView === 'history-failures')
-      return 'History';
-    return 'Settings';
-  }
-
-  function rootPageDescription(route: RootRoute): string {
-    if (route.rootView === 'overview')
-      return 'Application health, ownership, and security activity';
-    if (route.rootView === 'installations' || route.rootView === 'installation')
-      return 'Every GitHub installation connected to Smyklot';
-    if (route.rootView === 'access-users' || route.rootView === 'access-invitations')
-      return 'Application accounts, invitations, and system roles';
-    if (route.rootView === 'history-audit' || route.rootView === 'history-failures')
-      return 'Application-wide audit events and failures';
-    return 'Runtime behavior and deployment-backed defaults';
   }
 
   async function updateTarget(input: TargetSettingsInput): Promise<void> {
@@ -438,6 +469,13 @@
 
   function refreshAccessFromStream(): void {
     void refreshFromStream(true);
+  }
+
+  function selectHistorySection(section: HistorySection): void {
+    const target = selectedTarget;
+    if (target === null || historySection === section) return;
+    historySection = section;
+    router.push(routeFor(target, 'history', section));
   }
 
   function selectUserSection(section: 'users' | 'invitations'): void {
@@ -546,8 +584,13 @@
 
 <a class="skip-link" href="#panel-content">Skip to panel content</a>
 
-<main class="app-shell" class:sidebar-collapsed={sidebarCollapsed} class:root-mode={rootMode}>
+<main
+  class="app-shell"
+  class:sidebar-collapsed={effectiveSidebarCollapsed}
+  class:root-mode={rootMode}
+>
   <IdentityBar
+    bind:this={identityBar}
     {viewer}
     {targets}
     {selectedId}
@@ -559,7 +602,7 @@
     onSelectView={selectView}
     showUsers={selectedTarget?.capabilities.manage_target_users === true}
     showNavigation={viewer !== null && (rootMode || selectedTarget !== null)}
-    collapsed={sidebarCollapsed}
+    collapsed={effectiveSidebarCollapsed}
     onToggleCollapsed={toggleSidebar}
     {theme}
     onSelectTheme={selectTheme}
@@ -609,41 +652,37 @@
       {:else if rootMode}
         <section
           class="root-workspace"
-          class:root-table-view={rootValue === 'history' || rootValue === 'access'}
+          class:root-table-view={tableScrollView}
           aria-labelledby="root-page-heading"
         >
-          <header class="root-page-header">
-            <div>
-              <p class="root-eyebrow">
-                Root mode · {viewer.system_role === 'super_root' ? 'Super Root' : 'Root'}
-              </p>
-              <h2 id="root-page-heading">{rootPageTitle(activeRootRoute)}</h2>
-              <p>{rootPageDescription(activeRootRoute)}</p>
-            </div>
-            <span class="root-boundary">Application scope</span>
-          </header>
-
           {#if rootValue === 'overview'}
             <RootOverview
               {api}
+              {rootRole}
               refreshVersion={rootDataVersion}
               installationsHref={rootInstallationsHref()}
+              elevationsHref={rootAuditHref()}
               failuresHref={rootFailuresHref()}
+              onOpenInbox={() => identityBar?.openInbox()}
             />
           {:else if rootValue === 'installations'}
             <RootInstallations
               route={activeRootRoute}
               {api}
+              {rootRole}
               refreshVersion={rootDataVersion}
               listHref={rootInstallationsHref()}
               hrefFor={rootInstallationHref}
               onList={selectRootInstallations}
               onNavigate={selectRootInstallation}
+              {historySection}
+              onHistorySection={selectRootInstallationHistory}
             />
           {:else if rootValue === 'history'}
             <HistoryPanel
               context="root"
               targetId="root"
+              {rootRole}
               section={activeRootRoute.rootView === 'history-failures' ? 'failures' : 'audit'}
               onSection={selectRootHistorySection}
               refreshVersion={rootDataVersion}
@@ -652,6 +691,7 @@
             />
           {:else if rootValue === 'access'}
             <RootAccess
+              {rootRole}
               section={activeRootRoute.rootView === 'access-invitations' ? 'invitations' : 'users'}
               refreshVersion={rootDataVersion}
               onSection={selectRootAccessSection}
@@ -668,6 +708,7 @@
             />
           {:else}
             <RootSettings
+              {rootRole}
               refreshVersion={runtimeSettingsVersion}
               fetchSettings={api.fetchRootRuntimeSettings}
               updateSettings={api.updateRootRuntimeSettings}
@@ -677,7 +718,7 @@
       {:else}
         {#if selectedTarget !== null}
           {#if view === 'settings'}
-            <div id="settings-panel" aria-labelledby="settings-navigation">
+            <div id="settings-panel">
               {#key selectedTarget.id}
                 <TargetSettings
                   target={selectedTarget}
@@ -687,10 +728,11 @@
               {/key}
             </div>
           {:else if view === 'repositories'}
-            <div id="repositories-panel" aria-labelledby="repositories-navigation">
+            <div id="repositories-panel">
               {#key selectedTarget.id}
                 <RepositoryList
                   targetId={selectedTarget.id}
+                  defaultEnabled={selectedTarget.repository_default_enabled}
                   refreshVersion={repositoryDetailsVersion}
                   fetchPage={fetchRepositories}
                   onLoad={loadRepository}
@@ -702,7 +744,7 @@
               {/key}
             </div>
           {:else if isAccessView(view)}
-            <div id="access-panel" aria-labelledby="users-navigation">
+            <div id="access-panel">
               {#key selectedTarget.id}
                 <UserManagement
                   section={view}
@@ -724,11 +766,13 @@
               {/key}
             </div>
           {:else if view === 'history'}
-            <div id="history-panel" aria-labelledby="history-navigation">
+            <div id="history-panel">
               {#key selectedTarget.id}
                 <HistoryPanel
                   targetId={selectedTarget.id}
                   refreshVersion={historyVersion}
+                  section={historySection}
+                  onSection={selectHistorySection}
                   fetchAudit={(request) => api.fetchAudit(selectedTarget.id, request)}
                   fetchFailures={(request) => api.fetchFailures(selectedTarget.id, request)}
                   {prefs}
@@ -829,7 +873,7 @@
 
   .root-workspace {
     display: grid;
-    gap: var(--space-6);
+    gap: 0;
   }
 
   .root-workspace.root-table-view {
@@ -837,51 +881,6 @@
     flex: 1;
     flex-direction: column;
     min-height: 0;
-  }
-
-  .root-page-header {
-    align-items: end;
-    display: flex;
-    gap: var(--space-6);
-    justify-content: space-between;
-  }
-
-  .root-page-header h2 {
-    font-size: clamp(1.55rem, 2.4vw, 2rem);
-    letter-spacing: -0.035em;
-    line-height: 1.05;
-    margin: 0;
-  }
-
-  .root-page-header p:not(.root-eyebrow) {
-    color: var(--text-secondary);
-    margin: var(--space-2) 0 0;
-  }
-
-  .root-eyebrow,
-  .root-boundary {
-    color: #6d54bd;
-    font: 700 var(--font-size-compact) / 1 var(--sans);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-
-  .root-eyebrow {
-    margin: 0 0 var(--space-3);
-  }
-
-  .root-boundary {
-    background: color-mix(in srgb, #8b5cf6 10%, var(--surface-base));
-    border: 1px solid color-mix(in srgb, #8b5cf6 28%, var(--border-subtle));
-    border-radius: var(--radius-control);
-    color: color-mix(in srgb, #6d54bd 82%, var(--text-primary));
-    padding: var(--space-2) var(--space-3);
-    white-space: nowrap;
-  }
-
-  :global(:root[data-theme='dark']) .root-eyebrow,
-  :global(:root[data-theme='dark']) .root-boundary {
-    color: #c4b5fd;
   }
 
   @keyframes skeleton-pulse {
@@ -903,12 +902,6 @@
     .empty-panel-state .btn {
       grid-column: 1 / -1;
       justify-self: start;
-    }
-
-    .root-page-header {
-      align-items: start;
-      flex-direction: column;
-      gap: var(--space-3);
     }
   }
 </style>

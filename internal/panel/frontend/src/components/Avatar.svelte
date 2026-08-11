@@ -20,6 +20,18 @@
   let failed = $state<string | null>(null);
 
   const source = $derived(account.avatar_url === failed ? null : account.avatar_url);
+
+  // Initials snap to a type token rather than scaling with the circle: a 28px
+  // avatar carries micro, a 32px one carries meta. Scaling by a ratio landed
+  // them between sizes, which reads as a slightly different weight in every
+  // list. The map lives here so no call site picks its own.
+  const monogramFont = $derived(
+    size < 32
+      ? 'var(--font-size-micro)'
+      : size < 40
+        ? 'var(--font-size-meta)'
+        : 'var(--font-size-title)',
+  );
 </script>
 
 <!-- Decorative: the name it belongs to is always beside it, so announcing the
@@ -39,7 +51,13 @@
     onerror={() => (failed = account.avatar_url)}
   />
 {:else}
-  <span class="avatar avatar-fallback" style="--avatar-size: {size}px" aria-hidden="true">
-    {monogram(account.display_name, account.login)}
+  <span
+    class="avatar avatar-fallback"
+    style="--avatar-size: {size}px; --avatar-font: {monogramFont}"
+    aria-hidden="true"
+  >
+    <!-- Trimmed to the caps so the initials centre on their own ink, not on a
+         line box with room for descenders these two letters never have. -->
+    <span class="cap-trim">{monogram(account.display_name, account.login)}</span>
   </span>
 {/if}

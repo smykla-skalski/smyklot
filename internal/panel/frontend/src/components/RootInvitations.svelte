@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Snippet } from 'svelte';
   import { formatDateTime, formatRelative, formatTimestamp, formatUntil } from '../lib/format';
   import type { FilterSection } from '../lib/filter-menu';
   import type {
@@ -42,6 +43,7 @@
     reissue,
     revoke,
     canManage,
+    navigation,
   }: {
     fetchPage: (request: InvitationPageRequest) => Promise<Page<PanelInvitation>>;
     refreshVersion: number;
@@ -49,6 +51,7 @@
     reissue: (invitationId: string, expiresInDays: InvitationDays) => Promise<PanelInvitation>;
     revoke: (invitationId: string) => Promise<PanelInvitation>;
     canManage: boolean;
+    navigation?: Snippet;
   } = $props();
 
   let page = $state<Page<PanelInvitation> | null>(null);
@@ -189,8 +192,10 @@
     return 'neutral';
   }
 
-  function openCreate(event: MouseEvent): void {
-    createTrigger = event.currentTarget as HTMLElement;
+  /* The trigger lives in the page header, which RootAccess owns, so the button
+     hands its own element in for focus return. */
+  export function openCreate(trigger: HTMLElement | null): void {
+    createTrigger = trigger;
     login = '';
     expiresInDays = 7;
     generatedLink = '';
@@ -233,7 +238,7 @@
         id: 'reissue',
         icon: 'refresh',
         label: 'Reissue invitation',
-        description: 'Create a fresh 7-day link',
+        description: 'Create a new single-use link',
       },
       {
         id: 'revoke',
@@ -292,17 +297,13 @@
 
 <section class="root-invitations" aria-label="Root invitations">
   <div class="invitation-tools">
+    {@render navigation?.()}
     <SearchField
       label="Search Root invitations"
       placeholder="Search invitations"
       value={search}
       onInput={(value) => (search = value)}
     />
-    {#if canManage}
-      <button class="btn btn-signal" type="button" onclick={openCreate}>
-        <Icon name="user-plus" size={17} /> Invite Root
-      </button>
-    {/if}
   </div>
 
   <div class:loading class="invitation-results" aria-busy={loading}>
@@ -463,10 +464,10 @@
 <Modal
   id="root-invitation-create"
   open={createOpen}
-  title={generatedLink === '' ? 'Invite a Root' : `Invitation ready for @${generatedFor}`}
+  title={generatedLink === '' ? 'Invite a Root user' : `Invitation ready for @${generatedFor}`}
   description={generatedLink === ''
-    ? 'Only Super Root can grant application-wide administration.'
-    : 'Share this single-use link with the named GitHub user.'}
+    ? 'Only Super Root can grant application-wide administration'
+    : 'Share this single-use link with the named GitHub user'}
   returnFocus={createTrigger}
   onClose={closeCreate}
 >
@@ -484,16 +485,22 @@
       </label>
       <label>
         <span>Expires after</span>
-        <select bind:value={expiresInDays} aria-label="Root invitation expiry">
-          <option value={1}>1 day</option>
-          <option value={7}>7 days</option>
-          <option value={30}>30 days</option>
-        </select>
+        <span class="select-wrap">
+          <select
+            class="select-input"
+            bind:value={expiresInDays}
+            aria-label="Root invitation expiry"
+          >
+            <option value={1}>1 day</option>
+            <option value={7}>7 days</option>
+            <option value={30}>30 days</option>
+          </select>
+          <Icon name="chevron-down" size={14} strokeWidth={2} />
+        </span>
       </label>
       <div class="root-warning">
         <Icon name="warning" size={19} />
-        <span
-          >The recipient becomes a Root only after signing in and accepting this invitation.</span
+        <span>The recipient becomes a Root only after signing in and accepting this invitation</span
         >
       </div>
       {#if createProblem !== null}<p class="form-error" role="alert">{createProblem}</p>{/if}
@@ -506,7 +513,7 @@
   {/if}
 
   {#snippet footer()}
-    <button class="btn" type="button" onclick={closeCreate}>
+    <button class="btn btn-ghost" type="button" onclick={closeCreate}>
       {generatedLink === '' ? 'Cancel' : 'Done'}
     </button>
     {#if generatedLink === ''}
@@ -532,19 +539,19 @@
     ? `Reissue invitation for @${actionInvitation?.account.login ?? ''}?`
     : `Revoke invitation for @${actionInvitation?.account.login ?? ''}?`}
   description={pendingAction === 'reissue'
-    ? 'The existing link is replaced by a fresh link valid for 7 days.'
-    : 'The current link stops working immediately and its audit record remains.'}
+    ? 'The existing link is replaced by a fresh link valid for 7 days'
+    : 'The current link stops working immediately and its audit record remains'}
   returnFocus={actionTrigger}
   onClose={closeAction}
 >
   <div class="root-warning" data-modal-focus tabindex="-1">
     <Icon name={pendingAction === 'reissue' ? 'refresh' : 'warning'} size={19} />
-    <span>Confirm this system-role invitation change.</span>
+    <span>Confirm this system-role invitation change</span>
   </div>
   {#if actionProblem !== null}<p class="form-error" role="alert">{actionProblem}</p>{/if}
 
   {#snippet footer()}
-    <button class="btn" type="button" onclick={closeAction}>Cancel</button>
+    <button class="btn btn-ghost" type="button" onclick={closeAction}>Cancel</button>
     <button
       class="btn"
       class:btn-signal={pendingAction === 'reissue'}
@@ -567,17 +574,15 @@
   }
 
   .invitation-tools {
-    align-items: center;
-    display: grid;
-    gap: var(--space-3);
-    grid-template-columns: minmax(0, 1fr) auto;
-    padding-bottom: var(--space-3);
-  }
+    /* One 34px row: the section switch leads, the search fills the rest. */
+    --control-height: var(--control-height-compact);
 
-  .invitation-tools .btn {
     align-items: center;
-    display: inline-flex;
+    display: flex;
+    flex-wrap: wrap;
     gap: var(--space-2);
+    min-height: var(--control-height);
+    padding-bottom: var(--space-3);
   }
 
   .invitation-results {
@@ -602,7 +607,10 @@
 
   table {
     background: var(--surface-base);
-    border-collapse: collapse;
+    /* Separated, not collapsed: a collapsed border is shared between adjacent
+       rows, so each cell owns half of it and every row box lands on a .5. */
+    border-collapse: separate;
+    border-spacing: 0;
     min-width: 48rem;
     table-layout: fixed;
     width: 100%;

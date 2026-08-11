@@ -27,6 +27,20 @@ export function formatTimestamp(value: string): string {
   return new Date(parsed).toLocaleString();
 }
 
+/** Render a compact local date without the time — decision-level precision.
+ * Day-first ("2 Aug 2026"), as the approved dialogs set their dates. */
+export function formatDate(value: string): string {
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) {
+    return value;
+  }
+  return new Date(parsed).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
 /** Render a compact local date and time without machine-oriented seconds. */
 export function formatDateTime(value: string): string {
   const parsed = Date.parse(value);
@@ -90,11 +104,10 @@ export function formatRelative(value: string, nowMs: number): string {
     case 'hours':
       return `${bucket.hours} ${plural(bucket.hours, 'hour')} ago`;
     case 'date':
-      return new Date(parsed).toLocaleDateString(undefined, {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      });
+      /* Day-first, like every other date in the product - `undefined` here
+         handed an en-US reader "Aug 9, 2026" beside a "9 Aug 2026" written by
+         formatDate two lines up the same dialog. */
+      return formatDate(value);
   }
 }
 
@@ -124,11 +137,7 @@ export function formatUntil(value: string, nowMs: number): string {
     const days = Math.floor(left / DAY);
     return `in ${days} ${plural(days, 'day')}`;
   }
-  return new Date(parsed).toLocaleDateString(undefined, {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
+  return formatDate(value);
 }
 
 /**

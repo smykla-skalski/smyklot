@@ -68,6 +68,7 @@
   } = $props();
 
   let accountMenu = $state<HTMLDetailsElement | null>(null);
+  let inbox = $state<ReturnType<typeof NotificationInbox> | null>(null);
   let accountTrigger = $state<HTMLElement | null>(null);
   let targetMenu = $state<HTMLDetailsElement | null>(null);
   let targetTrigger = $state<HTMLElement | null>(null);
@@ -103,6 +104,13 @@
         ? 'Root'
         : '',
   );
+
+  /** The inbox lives inside the account menu, so opening it from elsewhere -
+   *  the overview's unread-security-events card - opens the menu first. */
+  export function openInbox(): void {
+    if (accountMenu !== null) accountMenu.open = true;
+    inbox?.showInbox();
+  }
 
   function closeMenus(except?: HTMLDetailsElement): void {
     if (accountMenu !== null && accountMenu !== except) accountMenu.open = false;
@@ -377,6 +385,7 @@
         </div>
         <hr class="menu-divider" />
         <NotificationInbox
+          bind:this={inbox}
           fetchPage={fetchNotifications}
           markRead={markNotificationRead}
           refreshVersion={notificationVersion}
@@ -1172,7 +1181,7 @@
   }
 
   /* ---- mobile: the sidebar becomes a top bar ---- */
-  @media (max-width: 64rem) {
+  @media (max-width: 48rem) {
     .panel-sidebar,
     .panel-sidebar.collapsed {
       border-bottom: 1px solid var(--sidebar-border);

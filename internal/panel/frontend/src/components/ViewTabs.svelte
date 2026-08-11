@@ -340,7 +340,7 @@
     visibility: visible;
   }
 
-  @media (max-width: 64rem) {
+  @media (max-width: 48rem) {
     .view-links {
       gap: var(--space-1);
     }

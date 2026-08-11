@@ -2,18 +2,29 @@
   import type { PanelApi } from '../lib/api';
   import { formatRelative, formatTimestamp } from '../lib/format';
   import type { RootOverview } from '../lib/types';
+  import Chip from './Chip.svelte';
   import Icon from './Icon.svelte';
+  import RootPageHeader from './RootPageHeader.svelte';
 
   const {
     api,
     refreshVersion,
+    rootRole,
     installationsHref,
+    elevationsHref,
     failuresHref,
+    onOpenInbox,
   }: {
     api: PanelApi;
     refreshVersion: number;
+    rootRole: string;
     installationsHref: string;
+    /** Elevations are audited events, so the card opens the audit table. */
+    elevationsHref: string;
+    /** Delivery health's "View all" - the failure table, not a metric card. */
     failuresHref: string;
+    /** Unread security events ARE the inbox, so that card opens it. */
+    onOpenInbox: () => void;
   } = $props();
 
   let overview = $state<RootOverview | null>(null);
@@ -30,10 +41,11 @@
           overview.ownership.permission_pending +
           overview.ownership.error,
   );
+  /* Stale is the neutral state - an ageing snapshot, not a fault - so it colours
+     grey in the bar and stays out of this count. Only the warning and danger
+     states are things an operator has to act on. */
   const ownershipProblems = $derived(
-    overview === null
-      ? 0
-      : overview.ownership.stale + overview.ownership.permission_pending + overview.ownership.error,
+    overview === null ? 0 : overview.ownership.permission_pending + overview.ownership.error,
   );
 
   async function load(version = refreshVersion): Promise<void> {
@@ -66,17 +78,26 @@
     return ownershipTotal === 0 ? 0 : (value / ownershipTotal) * 100;
   }
 
+  function sentenceCase(text: string): string {
+    return text.charAt(0).toUpperCase() + text.slice(1);
+  }
+
   $effect(() => {
     void load(refreshVersion);
   });
 </script>
 
-<section class="overview" aria-label="Root operational overview">
-  <div class="overview-actions">
-    <p>Live service, catalog, ownership, and security state</p>
-    <span class="live-state"><span aria-hidden="true"></span> WebSocket live</span>
-  </div>
+<RootPageHeader
+  role={rootRole}
+  title="Overview"
+  subtitle="Live service, catalog, ownership, and security state"
+>
+  <span class="status-pill"
+    ><span class="status-pill-dot live"></span><span class="cap-trim">WebSocket live</span></span
+  >
+</RootPageHeader>
 
+<section class="overview" aria-label="Root operational overview">
   {#if failure !== null}
     <div class="overview-error" role="alert">
       <span><Icon name="failure" size={20} /></span>
@@ -94,10 +115,12 @@
   {:else if overview !== null}
     <article class="service-card">
       <div class="service-status">
-        <span class="health-mark"><Icon name="success" size={22} /></span>
+        <!-- A bare check, not a check inside a ring: the tile already is the
+             enclosing shape, so the ring drew a second one inside it. -->
+        <span class="health-mark"><Icon name="check" size={20} /></span>
         <div>
-          <p>Service health</p>
-          <h3>All systems operational</h3>
+          <h3>Service health</h3>
+          <p>All systems operational</p>
         </div>
       </div>
       <dl>
@@ -111,7 +134,10 @@
         </div>
         <div>
           <dt>Storage</dt>
-          <dd><span class="status-dot"></span>{overview.service.storage}</dd>
+          <dd class="storage-state" data-state={overview.service.storage}>
+            <span aria-hidden="true">●</span>
+            {sentenceCase(overview.service.storage)}
+          </dd>
         </div>
         <div>
           <dt>Service</dt>
@@ -122,61 +148,72 @@
 
     <div class="metric-grid">
       <a class="metric-card" href={installationsHref}>
-        <span class="metric-icon"><Icon name="organization" size={19} /></span>
         <span>
           <small>Installations</small>
           <strong>{overview.catalog.installations}</strong>
         </span>
-        <Icon name="chevron-right" size={17} />
+        <span class="metric-chevron"><Icon name="chevron-right" size={14} /></span>
       </a>
       <a class="metric-card" href={installationsHref}>
-        <span class="metric-icon"><Icon name="repositories" size={19} /></span>
         <span>
           <small>Repositories</small>
           <strong>{overview.catalog.repositories}</strong>
           <em>{overview.catalog.enabled_repositories} enabled</em>
         </span>
-        <Icon name="chevron-right" size={17} />
+        <span class="metric-chevron"><Icon name="chevron-right" size={14} /></span>
       </a>
-      <div class:attention={overview.active_elevations > 0} class="metric-card">
-        <span class="metric-icon"><Icon name="owner" size={19} /></span>
+      <a class="metric-card" href={elevationsHref}>
         <span>
           <small>Active elevations</small>
           <strong>{overview.active_elevations}</strong>
           <em>15-minute write windows</em>
         </span>
-      </div>
-      <div class:attention={overview.unread_security_events > 0} class="metric-card">
-        <span class="metric-icon"><Icon name="notifications" size={19} /></span>
+        <span class="metric-chevron"><Icon name="chevron-right" size={14} /></span>
+      </a>
+      <button
+        class:attention={overview.unread_security_events > 0}
+        class="metric-card"
+        type="button"
+        onclick={onOpenInbox}
+      >
         <span>
           <small>Unread security events</small>
           <strong>{overview.unread_security_events}</strong>
           <em>Owner notifications</em>
         </span>
-      </div>
+        <span class="metric-chevron"><Icon name="chevron-right" size={14} /></span>
+      </button>
     </div>
 
     <div class="overview-columns">
       <article class="overview-panel ownership-panel">
         <header>
           <div>
-            <p>Ownership synchronization</p>
-            <h3>
+            <h3>Ownership synchronization</h3>
+            <p>
               {ownershipProblems === 0
                 ? 'All snapshots trusted'
                 : `${ownershipProblems} need attention`}
-            </h3>
+            </p>
           </div>
-          <span class:warning={ownershipProblems > 0} class="health-label">
+          <Chip tone={ownershipProblems === 0 ? 'accent' : 'warning'}>
             {ownershipProblems === 0 ? 'Healthy' : 'Review'}
-          </span>
+          </Chip>
         </header>
         <div class="ownership-track" aria-hidden="true">
-          <span class="fresh" style={`width: ${ratio(overview.ownership.fresh)}%`}></span>
-          <span class="stale" style={`width: ${ratio(overview.ownership.stale)}%`}></span>
-          <span class="pending" style={`width: ${ratio(overview.ownership.permission_pending)}%`}
-          ></span>
-          <span class="failed" style={`width: ${ratio(overview.ownership.error)}%`}></span>
+          {#if overview.ownership.fresh > 0}
+            <span class="fresh" style={`width: ${ratio(overview.ownership.fresh)}%`}></span>
+          {/if}
+          {#if overview.ownership.stale > 0}
+            <span class="stale" style={`width: ${ratio(overview.ownership.stale)}%`}></span>
+          {/if}
+          {#if overview.ownership.permission_pending > 0}
+            <span class="pending" style={`width: ${ratio(overview.ownership.permission_pending)}%`}
+            ></span>
+          {/if}
+          {#if overview.ownership.error > 0}
+            <span class="failed" style={`width: ${ratio(overview.ownership.error)}%`}></span>
+          {/if}
         </div>
         <dl class="ownership-list">
           <div>
@@ -188,50 +225,63 @@
             <dd>{overview.ownership.stale}</dd>
           </div>
           <div>
-            <dt><span class="legend pending"></span>Permission approval</dt>
+            <dt><span class="legend pending"></span>Approval needed</dt>
             <dd>{overview.ownership.permission_pending}</dd>
           </div>
           <div>
-            <dt><span class="legend failed"></span>Sync error</dt>
+            <dt><span class="legend failed"></span>Sync failed</dt>
             <dd>{overview.ownership.error}</dd>
           </div>
         </dl>
         {#if overview.ownership.permission_pending > 0}
           <p class="ownership-note">
-            <Icon name="warning" size={15} /> GitHub Members permission approval is blocking Owner synchronization.
+            <span class="note-icon"><Icon name="alert" size={14} strokeWidth={2} /></span>
+            GitHub Members permission approval is blocking Owner synchronization
           </p>
         {/if}
-        <a class="btn btn-row panel-link" href={installationsHref}>
-          Review installations <Icon name="chevron-right" size={15} />
+        <a class="btn panel-link" href={installationsHref}>
+          Review installations <Icon name="chevron-right" size={14} strokeWidth={2} />
         </a>
       </article>
 
       <article class="overview-panel failures-panel">
         <header>
           <div>
-            <p>Delivery health</p>
-            <h3>Recent failures</h3>
+            <h3>Delivery health</h3>
+            <p>Recent failures</p>
           </div>
-          <a href={failuresHref}>View all</a>
+          <a href={failuresHref}>
+            View all
+            <Icon name="chevron-right" size={14} />
+          </a>
         </header>
         <div class="failure-list">
           {#each overview.recent_failures as item (item.failure.id)}
             <div class="failure-item">
-              <span class="failure-mark"><Icon name="failure" size={16} /></span>
+              <!-- The kind is carried by the glyph and its colour, so a retry
+                   reads as a retry before the chip on the right is reached. -->
+              <span class:retryable={item.failure.retryable} class="failure-mark">
+                <Icon name={item.failure.retryable ? 'refresh' : 'failure'} size={14} />
+              </span>
               <div>
-                <strong>{item.failure.reason}</strong>
-                <p>
+                <strong>{sentenceCase(item.failure.reason)}</strong>
+                <!-- Inline, not a block: the mock leaves this line in the
+                     panel's own line box, and a block would size it to its own
+                     shorter leading and pull the entry up 4px. -->
+                <span class="failure-meta">
                   {item.installation.display_name} ·
-                  <code>{item.failure.repository_full_name}</code>
-                </p>
-                <time
-                  datetime={item.failure.occurred_at}
-                  title={formatTimestamp(item.failure.occurred_at)}
-                  >{formatRelative(item.failure.occurred_at, now)}</time
-                >
+                  <code>{item.failure.repository_full_name}</code> ·
+                  <time
+                    datetime={item.failure.occurred_at}
+                    title={formatTimestamp(item.failure.occurred_at)}
+                    >{formatRelative(item.failure.occurred_at, now)}</time
+                  >
+                </span>
               </div>
-              <span class:retryable={item.failure.retryable} class="failure-kind">
-                {item.failure.retryable ? 'Retryable' : 'Permanent'}
+              <span class="failure-kind">
+                <Chip tone={item.failure.retryable ? 'warning' : 'stop'}>
+                  {item.failure.retryable ? 'Retryable' : 'Permanent'}
+                </Chip>
               </span>
             </div>
           {:else}
@@ -239,7 +289,7 @@
               <span><Icon name="success" size={20} /></span>
               <div>
                 <strong>No retained failures</strong>
-                <p>Recent deliveries are healthy.</p>
+                <p>Recent deliveries are healthy</p>
               </div>
             </div>
           {/each}
@@ -250,12 +300,13 @@
 </section>
 
 <style>
+  /* One 12px rhythm down the page: the service plate, the stat row, and the
+     two-column block sit the same distance apart as the cards inside them. */
   .overview {
     display: grid;
-    gap: var(--space-4);
+    gap: var(--space-3);
   }
 
-  .overview-actions,
   .service-card,
   .service-status,
   .metric-card,
@@ -267,31 +318,8 @@
     display: flex;
   }
 
-  .overview-actions {
-    justify-content: space-between;
-  }
-
-  .live-state {
-    align-items: center;
-    color: var(--admin);
-    display: inline-flex;
-    font-size: var(--font-size-compact);
-    font-weight: 650;
-    gap: var(--space-2);
-  }
-
-  .live-state > span {
-    background: currentColor;
-    border-radius: 50%;
-    box-shadow: 0 0 0 0.22rem color-mix(in srgb, currentColor 13%, transparent);
-    height: 0.45rem;
-    width: 0.45rem;
-  }
-
-  .overview-actions p,
   .service-status p,
   .overview-panel header p,
-  .failure-item p,
   .no-failures p,
   .ownership-note {
     color: var(--text-secondary);
@@ -303,7 +331,7 @@
   .metric-card,
   .overview-error {
     background: var(--surface-base);
-    border: 1px solid color-mix(in srgb, #8b5cf6 13%, var(--border-subtle));
+    border: 1px solid color-mix(in srgb, var(--brand-action) 13%, var(--border-subtle));
     border-radius: var(--radius-surface);
     box-shadow: var(--shadow-plate);
   }
@@ -314,20 +342,30 @@
     padding: var(--space-5);
   }
 
+  /* The mark and the copy are siblings on the card's own 24px rhythm - the
+     mock has no tighter inner gap here. */
   .service-status {
-    gap: var(--space-3);
+    gap: var(--space-6);
   }
 
   .service-status h3,
   .overview-panel h3 {
     font-size: var(--font-size-title);
     letter-spacing: -0.025em;
-    margin: var(--space-1) 0 0;
+    line-height: 1.3;
+    margin: 0;
+  }
+
+  /* Card heads lead with the title; the changing detail sits under it as a
+     compact sub-line, so scanning the page reads what each card IS first. */
+  .service-status div > p,
+  .overview-panel header div > p {
+    font-size: var(--font-size-compact);
+    line-height: 1.4;
+    margin-top: 0.15rem;
   }
 
   .health-mark,
-  .metric-icon,
-  .failure-mark,
   .no-failures > span {
     align-items: center;
     background: var(--accent-tint);
@@ -353,25 +391,30 @@
   .service-card dt,
   .metric-card small {
     color: var(--text-muted);
-    font-size: var(--font-size-micro);
-    font-weight: 700;
+    font: 700 var(--font-size-micro) / 1.3 var(--sans);
     letter-spacing: 0.05em;
     text-transform: uppercase;
   }
 
+  /* A plain block, not a flex row: the storage marker is a bullet inside the
+     mono run, so it takes the run's own advance and sits on its baseline. A
+     flex gap put it a pixel out from every other value in the row. */
   .service-card dd {
-    align-items: center;
-    display: flex;
-    font: 600 var(--font-size-compact) / 1.4 var(--mono);
-    gap: var(--space-1);
-    margin: var(--space-1) 0 0;
+    font: 600 var(--font-size-compact) / 1.5 var(--mono);
+    margin: 0.15rem 0 0;
   }
 
-  .status-dot {
-    background: var(--accent);
-    border-radius: 50%;
-    height: 0.45rem;
-    width: 0.45rem;
+  /* The whole value carries the state colour, marker and word together. */
+  .storage-state[data-state='healthy'] {
+    color: var(--success);
+  }
+
+  .storage-state[data-state='degraded'] {
+    color: var(--warning);
+  }
+
+  .storage-state[data-state='unavailable'] {
+    color: var(--stop);
   }
 
   .metric-grid {
@@ -380,20 +423,39 @@
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
+  /* No icon tile: the mock's stat card is a label, a number, and a caption,
+     with the chevron floated off in the padding. An icon pushed the copy
+     right and left the number nowhere to breathe. */
   .metric-card {
+    /* Stretch, not the shared `center`: this one is a COLUMN, so the inherited
+       cross-axis centring pushed the whole label/number/caption block into the
+       middle of the card instead of leaving it on the padding edge. */
+    align-items: stretch;
     color: var(--text-primary);
-    gap: var(--space-3);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
     min-height: 6.5rem;
-    padding: var(--space-4);
+    padding: var(--space-4) 2rem var(--space-4) var(--space-4);
+    position: relative;
     text-decoration: none;
   }
 
-  a.metric-card:hover {
-    border-color: color-mix(in srgb, #8b5cf6 34%, var(--border-subtle));
+  button.metric-card {
+    border: 1px solid color-mix(in srgb, var(--brand-action) 13%, var(--border-subtle));
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
+  }
+
+  a.metric-card:hover,
+  button.metric-card:hover {
+    border-color: color-mix(in srgb, var(--brand-action) 34%, var(--border-subtle));
     transform: translateY(-1px);
   }
 
-  a.metric-card:active {
+  a.metric-card:active,
+  button.metric-card:active {
     transform: translateY(1px) scale(0.995);
   }
 
@@ -402,10 +464,9 @@
     border-color: color-mix(in srgb, var(--warning) 30%, var(--border-subtle));
   }
 
-  .metric-card > span:nth-child(2) {
+  .metric-card > span:first-of-type {
     display: grid;
-    flex: 1;
-    gap: var(--space-1);
+    gap: 0.45rem;
   }
 
   .metric-card strong {
@@ -416,16 +477,24 @@
     color: var(--text-secondary);
     font-size: var(--font-size-micro);
     font-style: normal;
+    line-height: 1.3;
   }
 
-  .metric-icon {
-    height: 2.4rem;
-    width: 2.4rem;
+  .metric-chevron {
+    color: var(--text-muted);
+    display: inline-flex;
+    position: absolute;
+    right: 0.7rem;
+    top: 50%;
+    transform: translateY(-50%);
   }
 
+  /* The two cards stand the same height, as the approved pair does: side by
+     side they read as one band, and a short card next to a tall one leaves a
+     step in the bottom edge. Their content stays top-aligned inside. */
   .overview-columns {
     display: grid;
-    gap: var(--space-4);
+    gap: var(--space-3);
     grid-template-columns: minmax(18rem, 0.82fr) minmax(25rem, 1.18fr);
   }
 
@@ -435,43 +504,35 @@
   }
 
   .overview-panel > header {
+    align-items: flex-start;
     justify-content: space-between;
   }
 
-  .health-label,
+  /* Both badges are Chips now rather than two hand-rolled copies of the chip
+     recipe: the tint, the keyline, the padding and the label's trim all live in
+     one place, so a fix to chips reaches these without being ported. */
   .failure-kind {
-    background: var(--accent-tint);
-    border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border-subtle));
-    border-radius: var(--radius-control);
-    color: var(--accent);
-    font-size: var(--font-size-micro);
-    font-weight: 700;
-    padding: 0.35rem 0.5rem;
-  }
-
-  .health-label.warning,
-  .failure-kind:not(.retryable) {
-    background: var(--warning-tint);
-    border-color: color-mix(in srgb, var(--warning) 30%, var(--border-subtle));
-    color: var(--warning);
+    flex: none;
   }
 
   .ownership-track {
-    background: var(--surface-inset);
-    border-radius: 999px;
     display: flex;
+    gap: 3px;
     height: 0.55rem;
     margin: var(--space-5) 0 var(--space-4);
-    overflow: hidden;
   }
 
-  .fresh,
-  .status-dot {
-    background: var(--accent);
+  .ownership-track > span {
+    border-radius: 999px;
+    min-width: 6px;
+  }
+
+  .fresh {
+    background: var(--success);
   }
 
   .stale {
-    background: var(--text-muted);
+    background: var(--border-strong);
   }
 
   .pending {
@@ -479,7 +540,7 @@
   }
 
   .failed {
-    background: var(--stop);
+    background: var(--danger);
   }
 
   .ownership-list {
@@ -499,7 +560,8 @@
     color: var(--text-secondary);
     display: flex;
     font-size: var(--font-size-compact);
-    gap: var(--space-2);
+    gap: 0.55rem;
+    line-height: 1;
   }
 
   .ownership-list dd {
@@ -507,29 +569,51 @@
     margin: 0;
   }
 
+  /* 8px dot, 8.8px gap - the swatch and the space beside it had been swapped,
+     which read as a slightly fat dot crowding its label. */
+  /* A dot beside a label takes the shared nudge; see --ink-nudge in app.css. */
   .legend {
     border-radius: 50%;
-    height: 0.55rem;
-    width: 0.55rem;
+    height: 0.5rem;
+    translate: 0 var(--ink-nudge);
+    width: 0.5rem;
   }
 
   .ownership-note {
-    background: color-mix(in srgb, var(--warning) 6%, var(--surface-inset));
+    align-items: flex-start;
+    background: var(--surface-inset);
+    /* Dashed: the blocker is a pending state, not a settled surface. */
+    border: 1px dashed var(--control-border);
     border-radius: var(--radius-control);
     font-size: var(--font-size-compact);
     gap: var(--space-2);
+    line-height: 1.5;
     margin-top: var(--space-4);
-    padding: var(--space-3);
+    padding: 0.5rem 0.75rem;
+  }
+
+  .note-icon {
+    color: var(--warning);
+    display: grid;
+    flex: none;
+    /* One line-box tall, so the glyph centers on the first line of a wrapped note. */
+    height: 1.125rem;
+    place-items: center;
+    width: 1.125rem;
   }
 
   .panel-link {
-    margin-top: var(--space-4);
+    align-self: flex-start;
+    margin-top: var(--space-3);
   }
 
   .overview-panel header > a {
+    align-items: center;
     color: var(--accent);
-    font-size: var(--font-size-compact);
-    font-weight: 650;
+    display: inline-flex;
+    font: 650 var(--font-size-compact) / 1 var(--sans);
+    gap: 0.2rem;
+    text-decoration: none;
   }
 
   .failure-list {
@@ -537,7 +621,10 @@
     margin-top: var(--space-3);
   }
 
+  /* Top-aligned, so a wrapped reason keeps its icon beside the first line
+     rather than drifting to the middle of the block. */
   .failure-item {
+    align-items: flex-start;
     gap: var(--space-3);
     padding: var(--space-3) 0;
   }
@@ -553,37 +640,52 @@
 
   .failure-item strong {
     display: block;
-    font-size: var(--font-size-compact);
+    font-size: var(--font-size-meta);
+    line-height: 1.4;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .failure-item p,
-  .failure-item time {
-    font-size: var(--font-size-micro);
+  /* Installation, repository, and age share one line. Stacked on three, the
+     entry stood half again as tall as the mock's and the panel ran past the
+     ownership card beside it. */
+  .failure-meta {
+    color: var(--text-muted);
+    font-size: var(--font-size-compact);
+    line-height: 1.5;
   }
 
-  .failure-item code {
+  .failure-item code,
+  .failure-item time {
+    color: inherit;
     font-size: inherit;
   }
 
-  .failure-item time {
-    color: var(--text-muted);
+  /* A bare 18px icon slot, not a filled tile. Every entry in this list is a
+     failure, so tinting a square behind each one only added weight the mock
+     spends on the reason text instead. */
+  .failure-mark {
+    color: var(--stop);
+    display: grid;
+    flex: none;
+    height: 1.125rem;
+    /* The glyph's optical centre sits a hair below its box; the mock nudges it
+       back onto the first line's cap. */
+    margin-top: -0.25px;
+    place-items: center;
+    width: 1.125rem;
   }
 
-  .failure-mark,
+  .failure-mark.retryable {
+    color: var(--warning);
+  }
+
   .no-failures > span {
     background: var(--stop-tint);
     color: var(--stop);
     height: 2rem;
     width: 2rem;
-  }
-
-  .failure-kind.retryable {
-    background: color-mix(in srgb, #8b5cf6 8%, var(--surface-base));
-    border-color: color-mix(in srgb, #8b5cf6 26%, var(--border-subtle));
-    color: #6d54bd;
   }
 
   .no-failures {
@@ -617,7 +719,7 @@
   }
 
   .overview-loading span:not(.visually-hidden) {
-    animation: pulse 850ms ease-in-out infinite alternate;
+    animation: pulse 1.35s ease-in-out infinite alternate;
     background: var(--surface-inset);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-surface);
@@ -656,10 +758,6 @@
   }
 
   @media (max-width: 42rem) {
-    .overview-actions {
-      align-items: start;
-      gap: var(--space-3);
-    }
     .metric-grid,
     .service-card dl,
     .overview-loading {

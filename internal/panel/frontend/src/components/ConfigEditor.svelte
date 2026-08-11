@@ -19,12 +19,20 @@
   import type { ConfigKey, ConfigPatch, ConfigValues } from '../lib/types';
   import HelpTip from './HelpTip.svelte';
   import Icon from './Icon.svelte';
-  import SegmentedControl from './SegmentedControl.svelte';
+  import InheritControl from './InheritControl.svelte';
+  import { inkAlign } from '../lib/ink-align';
 
-  const MODE_OPTIONS = [
-    { value: 'default', label: 'Default' },
-    { value: 'custom', label: 'Custom' },
+  const VALUE_OPTIONS = [
+    { value: 'enabled', label: 'Enabled' },
+    { value: 'disabled', label: 'Disabled' },
   ] as const;
+  const CUSTOM_OPTIONS = [{ value: 'custom', label: 'Custom' }] as const;
+  /* The linked-value control names its inheritance source per scope. */
+  const SOURCE_BY_SCOPE = {
+    target: 'the application defaults',
+    repository: 'workspace defaults',
+    runtime: 'the deployment configuration',
+  } as const;
 
   const ALL_KEYS: readonly ConfigKey[] = [
     ...BOOLEAN_FIELDS.map((field) => field.key),
@@ -40,6 +48,7 @@
     idPrefix,
     disabled = false,
     section = 'all',
+    only,
     onSave,
   }: {
     patch: ConfigPatch;
@@ -48,8 +57,17 @@
     idPrefix: string;
     disabled?: boolean;
     section?: 'all' | 'behavior' | 'commands';
+    /** Render only these behavior rows. Used by the repository-file pane, which
+     *  shows the overrides in effect rather than the whole settings list. */
+    only?: readonly ConfigKey[];
     onSave: (next: ConfigPatch) => Promise<void>;
   } = $props();
+
+  const shownFields = $derived(
+    only === undefined
+      ? BOOLEAN_FIELDS
+      : BOOLEAN_FIELDS.filter((field) => only.includes(field.key)),
+  );
 
   const initialPatch = clonePatch(untrack(() => patch));
   let draft = $state<ConfigPatch>(initialPatch);
@@ -105,33 +123,28 @@
   }
 
   function selectBoolean(field: BooleanField, selection: string): void {
-    if (selection === 'default') {
-      useDefault(field.key);
-      return;
-    }
     draft = setExplicitPatchValue(draft, field.key, fieldRawValue(field, selection === 'enabled'));
   }
 
-  function booleanValue(field: BooleanField): string {
-    if (!hasOverride(field.key)) return 'default';
+  function booleanOverrideValue(field: BooleanField): string | null {
+    if (!hasOverride(field.key)) return null;
     const raw = effectiveValue(draft, inherited, field.key);
     return fieldEnabled(field, raw) ? 'enabled' : 'disabled';
   }
 
-  function booleanOptions(field: BooleanField) {
-    const inheritedEnabled = fieldEnabled(field, inherited[field.key]);
-    return [
-      {
-        value: 'default',
-        label: 'Default',
-        detail: {
-          text: inheritedEnabled ? 'Enabled' : 'Disabled',
-          tone: inheritedEnabled ? ('on' as const) : ('off' as const),
-        },
-      },
-      { value: 'enabled', label: 'Enabled', tone: 'on' as const },
-      { value: 'disabled', label: 'Disabled', tone: 'off' as const },
-    ];
+  function inheritedBooleanValue(field: BooleanField): string {
+    return fieldEnabled(field, inherited[field.key]) ? 'enabled' : 'disabled';
+  }
+
+  function inheritedAllowedLabel(): string {
+    const list = inherited.allowed_commands;
+    const count = list.length === 0 ? COMMANDS.length : list.length;
+    return `${count} command${count === 1 ? '' : 's'}`;
+  }
+
+  function inheritedAliasLabel(): string {
+    const count = Object.keys(inherited.command_aliases).length;
+    return count === 0 ? 'no aliases' : `${count} alias${count === 1 ? '' : 'es'}`;
   }
 
   function setPrefix(value: string): void {
@@ -208,12 +221,19 @@
         <h3 class="visually-hidden" id="config-{scope}-{idPrefix}-behavior">Behavior</h3>
       {/if}
 
-      <div class="rows">
-        {#each BOOLEAN_FIELDS as field (field.key)}
-          {@const overridden = Object.hasOwn(patch, field.key)}
+      <div class="rows rows-plain">
+        {#each shownFields as field (field.key)}
           {@const changed = keyChanged(field.key)}
-          <div class="row" class:overridden class:changed>
-            <span class="row-label">
+          <div class="row" class:changed>
+            <span use:inkAlign class="row-label">
+              <!-- Inside the label, not beside it: the marker belongs to the
+                   name it marks, so it rides the label's own 0.45rem gap
+                   instead of the row's wider one. -->
+              {#if changed}
+                <span class="changed-marker" data-tip="Unsaved" aria-label="Unsaved">
+                  <span class="changed-marker-dot"></span>
+                </span>
+              {/if}
               <span class="label-text">{field.label}</span>
               <HelpTip
                 id="config-{scope}-{idPrefix}-{field.key}-tooltip"
@@ -227,21 +247,17 @@
               {field.help}
             </span>
             <span class="row-spacer"></span>
-            <span class="changed-tag">Unsaved</span>
-            {#if hasOverride(field.key) && !editorDisabled}
-              <button class="reset-link" type="button" onclick={() => useDefault(field.key)}>
-                Reset to default
-              </button>
-            {/if}
-            <SegmentedControl
-              name="config-{scope}-{idPrefix}-{field.key}"
+            <InheritControl
               label={field.label}
-              descriptionId="config-{scope}-{idPrefix}-{field.key}-help"
-              options={booleanOptions(field)}
-              value={booleanValue(field)}
-              compact
-              onSelect={(selection) => selectBoolean(field, selection)}
+              source={SOURCE_BY_SCOPE[scope]}
+              sourcePronoun={scope === 'repository' ? 'them' : 'it'}
+              inheritedValue={inheritedBooleanValue(field)}
+              inheritedLabel={inheritedBooleanValue(field) === 'enabled' ? 'Enabled' : 'Disabled'}
+              value={booleanOverrideValue(field)}
+              options={VALUE_OPTIONS}
               disabled={editorDisabled}
+              onSelect={(selection) => selectBoolean(field, selection)}
+              onRestore={() => useDefault(field.key)}
             />
           </div>
         {/each}
@@ -249,7 +265,7 @@
     </section>
   {/if}
 
-  {#if section === 'all' || section === 'commands'}
+  {#if only === undefined && (section === 'all' || section === 'commands')}
     <section class="editor-section" aria-labelledby="config-{scope}-{idPrefix}-commands">
       {#if section === 'all'}
         <header class="group-heading">
@@ -261,13 +277,9 @@
       {/if}
 
       <div class="rows">
-        <div
-          class="row-group"
-          class:overridden={Object.hasOwn(patch, 'command_prefix')}
-          class:changed={keyChanged('command_prefix')}
-        >
+        <div class="row-group" class:changed={keyChanged('command_prefix')}>
           <div class="row-line">
-            <span class="row-label">
+            <span use:inkAlign class="row-label">
               <label for="config-{scope}-{idPrefix}-prefix">Prefix</label>
               <HelpTip
                 id="config-{scope}-{idPrefix}-prefix-tooltip"
@@ -281,7 +293,11 @@
               />
             </span>
             <span class="row-spacer"></span>
-            <span class="changed-tag">Unsaved</span>
+            {#if keyChanged('command_prefix')}
+              <span class="changed-marker" data-tip="Unsaved" aria-label="Unsaved">
+                <span class="changed-marker-dot"></span>
+              </span>
+            {/if}
             <input
               id="config-{scope}-{idPrefix}-prefix"
               class="prefix-input mono"
@@ -289,26 +305,23 @@
               disabled={editorDisabled}
               oninput={(event) => setPrefix(event.currentTarget.value)}
             />
-            <SegmentedControl
-              name="config-{scope}-{idPrefix}-prefix-mode"
+            <InheritControl
               label="Command prefix source"
-              options={MODE_OPTIONS}
-              value={hasOverride('command_prefix') ? 'custom' : 'default'}
-              compact
-              onSelect={(selection) =>
-                selection === 'custom' ? useCustom('command_prefix') : useDefault('command_prefix')}
+              source={SOURCE_BY_SCOPE[scope]}
+              sourcePronoun={scope === 'repository' ? 'them' : 'it'}
+              inheritedLabel={`"${inherited.command_prefix}"`}
+              value={hasOverride('command_prefix') ? 'custom' : null}
+              options={CUSTOM_OPTIONS}
               disabled={editorDisabled}
+              onSelect={() => useCustom('command_prefix')}
+              onRestore={() => useDefault('command_prefix')}
             />
           </div>
         </div>
 
-        <div
-          class="row-group"
-          class:overridden={Object.hasOwn(patch, 'allowed_commands')}
-          class:changed={keyChanged('allowed_commands')}
-        >
+        <div class="row-group" class:changed={keyChanged('allowed_commands')}>
           <div class="row-line">
-            <span class="row-label">
+            <span use:inkAlign class="row-label">
               <span class="label-text">Allowed commands</span>
               <HelpTip
                 id="config-{scope}-{idPrefix}-commands-tooltip"
@@ -319,18 +332,21 @@
               />
             </span>
             <span class="row-spacer"></span>
-            <span class="changed-tag">Unsaved</span>
-            <SegmentedControl
-              name="config-{scope}-{idPrefix}-commands-mode"
+            {#if keyChanged('allowed_commands')}
+              <span class="changed-marker" data-tip="Unsaved" aria-label="Unsaved">
+                <span class="changed-marker-dot"></span>
+              </span>
+            {/if}
+            <InheritControl
               label="Allowed commands source"
-              options={MODE_OPTIONS}
-              value={hasOverride('allowed_commands') ? 'custom' : 'default'}
-              compact
-              onSelect={(selection) =>
-                selection === 'custom'
-                  ? useCustom('allowed_commands')
-                  : useDefault('allowed_commands')}
+              source={SOURCE_BY_SCOPE[scope]}
+              sourcePronoun={scope === 'repository' ? 'them' : 'it'}
+              inheritedLabel={inheritedAllowedLabel()}
+              value={hasOverride('allowed_commands') ? 'custom' : null}
+              options={CUSTOM_OPTIONS}
               disabled={editorDisabled}
+              onSelect={() => useCustom('allowed_commands')}
+              onRestore={() => useDefault('allowed_commands')}
             />
           </div>
           <div class="row-body">
@@ -354,13 +370,9 @@
           </div>
         </div>
 
-        <div
-          class="row-group"
-          class:overridden={Object.hasOwn(patch, 'command_aliases')}
-          class:changed={keyChanged('command_aliases')}
-        >
+        <div class="row-group" class:changed={keyChanged('command_aliases')}>
           <div class="row-line">
-            <span class="row-label" id="config-{scope}-{idPrefix}-aliases-heading">
+            <span use:inkAlign class="row-label" id="config-{scope}-{idPrefix}-aliases-heading">
               <span class="label-text">Aliases</span>
               <HelpTip
                 id="config-{scope}-{idPrefix}-aliases-tooltip"
@@ -371,30 +383,24 @@
               />
             </span>
             <span class="row-spacer"></span>
-            <span class="changed-tag">Unsaved</span>
-            {#if hasOverride('command_aliases') && !editorDisabled}
-              <button
-                class="reset-link"
-                type="button"
-                onclick={() => {
-                  useDefault('command_aliases');
-                  closeComposer();
-                }}
-              >
-                Reset to default
-              </button>
+            {#if keyChanged('command_aliases')}
+              <span class="changed-marker" data-tip="Unsaved" aria-label="Unsaved">
+                <span class="changed-marker-dot"></span>
+              </span>
             {/if}
-            <SegmentedControl
-              name="config-{scope}-{idPrefix}-aliases-mode"
+            <InheritControl
               label="Command aliases source"
-              options={MODE_OPTIONS}
-              value={hasOverride('command_aliases') ? 'custom' : 'default'}
-              compact
-              onSelect={(selection) =>
-                selection === 'custom'
-                  ? useCustom('command_aliases')
-                  : useDefault('command_aliases')}
+              source={SOURCE_BY_SCOPE[scope]}
+              sourcePronoun={scope === 'repository' ? 'them' : 'it'}
+              inheritedLabel={inheritedAliasLabel()}
+              value={hasOverride('command_aliases') ? 'custom' : null}
+              options={CUSTOM_OPTIONS}
               disabled={editorDisabled}
+              onSelect={() => useCustom('command_aliases')}
+              onRestore={() => {
+                useDefault('command_aliases');
+                closeComposer();
+              }}
             />
           </div>
           <div
@@ -445,16 +451,19 @@
                 <label class="visually-hidden" for="config-{scope}-{idPrefix}-alias-command">
                   Command
                 </label>
-                <select
-                  id="config-{scope}-{idPrefix}-alias-command"
-                  class="mono"
-                  bind:value={aliasCommand}
-                  disabled={editorDisabled}
-                >
-                  {#each COMMANDS as command (command)}
-                    <option value={command}>{command}</option>
-                  {/each}
-                </select>
+                <span class="select-wrap">
+                  <select
+                    id="config-{scope}-{idPrefix}-alias-command"
+                    class="select-input mono"
+                    bind:value={aliasCommand}
+                    disabled={editorDisabled}
+                  >
+                    {#each COMMANDS as command (command)}
+                      <option value={command}>{command}</option>
+                    {/each}
+                  </select>
+                  <Icon name="chevron-down" size={14} strokeWidth={2} />
+                </span>
                 <button
                   type="submit"
                   class="composer-ok"
@@ -546,6 +555,33 @@
     border-radius: 0 0 calc(var(--r-ctl) - 1px) calc(var(--r-ctl) - 1px);
   }
 
+  /* Behavior rows sit on inset hairlines that follow the plate's content padding —
+     no outer box, and the separators never run full-bleed. */
+  .rows-plain {
+    border: 0;
+    border-radius: 0;
+  }
+
+  .rows-plain > :first-child,
+  .rows-plain > :last-child {
+    border-radius: 0;
+  }
+
+  .rows-plain .row {
+    gap: var(--space-3);
+    min-height: 0;
+    padding-block: 0.7rem;
+    padding-inline: 0;
+  }
+
+  .rows-plain > .row:first-child {
+    padding-top: 0.15rem;
+  }
+
+  .rows-plain > .row:last-child {
+    padding-bottom: 0.15rem;
+  }
+
   .row,
   .row-line {
     align-items: center;
@@ -575,7 +611,7 @@
     display: flex;
     font-size: 0.875rem;
     font-weight: 600;
-    gap: 0.125rem;
+    gap: 0.45rem;
   }
 
   .row-label label {
@@ -586,66 +622,32 @@
     flex: 1;
   }
 
-  .overridden .row-label::before,
-  .changed .row-label::before {
-    border-radius: 50%;
-    content: '';
-    flex: none;
-    height: 6px;
-    margin-right: var(--space-2);
-    width: 6px;
-  }
-
-  .overridden .row-label::before {
-    background: var(--brand-action);
-  }
-
-  .changed .row-label::before {
-    background: var(--pending);
-  }
-
+  /* Unsaved reads as a warning, not as information: the mock tints the row and
+     rings the marker in --warning, and an unsaved edit is something you are
+     being asked to resolve. */
   .row.changed,
   .row-group.changed {
-    background: var(--pending-tint);
+    background: color-mix(in srgb, var(--warning) 4%, var(--surface-base));
   }
 
-  .changed-tag {
-    border: 1px solid color-mix(in srgb, var(--pending) 45%, transparent);
-    border-radius: var(--r-chip);
-    color: var(--pending);
-    display: none;
+  /* One marker per meaning: the broken chain marks the override, this ringed dot
+     marks the unsaved edit; the word lives in its tooltip. */
+  .changed-marker {
+    align-items: center;
+    border: 1px solid color-mix(in srgb, var(--warning) 45%, transparent);
+    border-radius: 999px;
+    color: var(--warning);
+    display: inline-flex;
     flex: none;
-    font: 700 0.625rem / 1 var(--sans);
-    letter-spacing: 0.06em;
-    padding: 3px 8px;
-    text-transform: uppercase;
+    padding: 4px;
   }
 
-  .changed .changed-tag {
-    display: inline-block;
-  }
-
-  .reset-link {
-    background: none;
-    border: 0;
-    border-radius: 6px;
-    color: var(--dim);
-    cursor: pointer;
-    font: 600 var(--font-size-compact) / 1 var(--sans);
-    padding: 4px 8px;
-    visibility: hidden;
-  }
-
-  .row:hover .reset-link,
-  .row:focus-within .reset-link,
-  .row-group:hover .reset-link,
-  .row-group:focus-within .reset-link {
-    visibility: visible;
-  }
-
-  .reset-link:hover {
-    background: var(--well);
-    color: var(--text);
+  .changed-marker-dot {
+    background: currentcolor;
+    border-radius: var(--r-chip);
+    display: block;
+    height: 0.35rem;
+    width: 0.35rem;
   }
 
   .prefix-input {
@@ -938,8 +940,6 @@
   .save-bar .btn-label,
   .row-label .label-text,
   .row-label label,
-  .changed-tag,
-  .reset-link,
   .check-tile code,
   .chip-from,
   .chip-arrow,
@@ -950,12 +950,18 @@
     text-box: trim-both cap alphabetic;
   }
 
+  /* Inline, the bar is not a floating slab: no vertical padding of its own, the
+     approved 12px gap, and the trailing inset that lines its Save up with the
+     rows' right edge. */
   .save-bar-inline {
     animation: none;
     bottom: auto;
+    font-size: var(--font-size-compact);
+    gap: var(--space-3);
     justify-content: flex-end;
     left: auto;
-    margin-top: 0.75rem;
+    margin-top: 1.125rem;
+    padding: 0 calc(0.875rem + 1px) 0 0;
     position: static;
     transform: none;
   }
@@ -1003,13 +1009,32 @@
     padding: 0.5rem 0.625rem;
   }
 
+  /* The inline bar carries no status dot: it sits directly under the row it
+     belongs to, and the row already has its unsaved marker. */
   .save-bar-inline .save-dot {
-    background: var(--pending);
+    display: none;
   }
 
-  .save-bar-inline .bar-ghost,
+  /* Regular weight inline: the count is a sentence under the row, not a label
+     on a dark slab where 600 is what keeps it legible. */
   .save-bar-inline .save-count {
     color: var(--text-secondary);
+    font-weight: 400;
+  }
+
+  /* Full-strength text, like the mock's ghost button - a Discard that reads as
+     disabled is a Discard nobody dares press. It also wears the button's own
+     box here, so it stands the same 34px as the Save beside it. */
+  .save-bar-inline .bar-ghost {
+    /* The transparent border is load-bearing, same as the segmented control:
+       the button recipe beside it is 1px border + 0.9rem, so padding alone
+       leaves this one 2px narrower than the Save it sits next to. */
+    border: 1px solid transparent;
+    color: var(--text-primary);
+    font: 600 var(--font-size-compact) / 1 var(--sans);
+    height: var(--control-height-compact);
+    opacity: 1;
+    padding: 0 0.9rem;
   }
 
   .save-bar-inline {

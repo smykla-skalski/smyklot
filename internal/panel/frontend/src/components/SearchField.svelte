@@ -16,7 +16,7 @@
 
 <label class="search-field">
   <span class="visually-hidden">{label}</span>
-  <span class="search-icon"><Icon name="search" size={18} /></span>
+  <span class="search-icon"><Icon name="search" size={14} strokeWidth={2} /></span>
   <input
     class="text-input"
     type="search"
@@ -37,16 +37,16 @@
   }
 
   input {
-    font-size: var(--font-size-body);
-    height: var(--local-control-height, var(--control-height));
-    padding-left: 2rem;
+    font-size: var(--font-size-meta);
+    height: var(--local-control-height, var(--control-height-compact));
+    padding-left: 2.1875rem;
     width: 100%;
   }
 
   .search-icon {
     color: var(--text-muted);
     display: grid;
-    left: 0.6875rem;
+    left: 0.8125rem;
     place-items: center;
     pointer-events: none;
     position: absolute;

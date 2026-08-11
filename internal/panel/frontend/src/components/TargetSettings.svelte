@@ -71,7 +71,7 @@
   <PanelHeader
     id="settings-heading"
     title="Settings"
-    description="Repositories inherit these defaults unless a repository overrides them"
+    description="Defaults every repository inherits unless a repository overrides them"
   />
 
   <section class="plate policy-plate" aria-labelledby="repository-policy-heading">

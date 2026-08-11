@@ -48,8 +48,12 @@
 
 <details class="display-menu" bind:this={menu}>
   <summary bind:this={trigger} aria-label="Display options" title="Display options">
-    <span class="display-icon" aria-hidden="true"><Icon name="settings" size={18} /></span>
-    <span class="menu-chevron" aria-hidden="true"><Icon name="chevron-down" size={15} /></span>
+    <span class="display-icon" aria-hidden="true"
+      ><Icon name="sliders" size={14} strokeWidth={2} /></span
+    >
+    <span class="menu-chevron" aria-hidden="true"
+      ><Icon name="chevron-down" size={14} strokeWidth={2} /></span
+    >
   </summary>
 
   <div class="display-popover">
@@ -80,10 +84,10 @@
     border-radius: var(--r-ctl);
     cursor: pointer;
     display: flex;
-    gap: 0.4rem;
+    gap: 0.45rem;
     height: var(--local-control-height, var(--control-height));
     justify-content: center;
-    padding: 0 0.5rem;
+    padding: 0 0.9rem;
     transition:
       background-color var(--duration-fast) var(--ease-standard),
       border-color var(--duration-fast) var(--ease-standard),

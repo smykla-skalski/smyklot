@@ -117,7 +117,7 @@
     border-radius: var(--r-ctl);
     display: inline-flex;
     flex: none;
-    height: var(--control-height);
+    height: var(--local-control-height, var(--control-height-compact));
     isolation: isolate;
     margin: 0;
     min-width: 0;
@@ -150,12 +150,11 @@
   fieldset.compact .segment-label {
     font-size: var(--font-size-compact);
     min-width: 2.25rem;
-    padding: 0 0.625rem;
   }
 
   fieldset.navigation .segment-label {
-    font-size: var(--font-size-body);
-    gap: var(--space-2);
+    font-size: var(--font-size-meta);
+    gap: 0.35rem;
     min-width: 0;
     padding: 0 var(--space-3);
   }
@@ -178,7 +177,7 @@
 
   label::before {
     background: var(--strip-lift);
-    border-radius: calc(var(--r-ctl) - 3px);
+    border-radius: calc(var(--r-ctl) - 2px);
     content: '';
     inset: 0;
     opacity: 0;
@@ -193,12 +192,12 @@
   }
 
   label:has(input:checked) + label:hover::before {
-    border-radius: 0 calc(var(--r-ctl) - 3px) calc(var(--r-ctl) - 3px) 0;
+    border-radius: 0 calc(var(--r-ctl) - 2px) calc(var(--r-ctl) - 2px) 0;
     inset-inline-start: calc(-1 * var(--r-ctl));
   }
 
   label:hover:has(+ label input:checked)::before {
-    border-radius: calc(var(--r-ctl) - 3px) 0 0 calc(var(--r-ctl) - 3px);
+    border-radius: calc(var(--r-ctl) - 2px) 0 0 calc(var(--r-ctl) - 2px);
     inset-inline-end: calc(-1 * var(--r-ctl));
   }
 
@@ -211,12 +210,18 @@
 
   .segment-label {
     align-items: center;
-    border-radius: calc(var(--r-ctl) - 3px);
+    /* The transparent border is load-bearing: the mock's segment is
+       `1px solid transparent` + 0.75rem of padding, so every segment reads 2px
+       wider than padding alone would make it. Drop it and each control shrinks
+       by 2px per option — the width mismatch is visible against the search
+       field it shares a row with. */
+    border: 1px solid transparent;
+    border-radius: calc(var(--r-ctl) - 2px);
     color: var(--text-muted);
     display: flex;
     font-size: var(--font-size-compact);
     font-weight: 600;
-    gap: 0.25rem;
+    gap: 0.35rem;
     height: 100%;
     justify-content: center;
     line-height: 1;
@@ -296,7 +301,7 @@
 
   .selection-indicator {
     background: var(--selected-bg);
-    border-radius: calc(var(--r-ctl) - 3px);
+    border-radius: calc(var(--r-ctl) - 2px);
     box-shadow: var(--segment-shadow);
     bottom: var(--control-inset);
     left: var(--segment-left, var(--control-inset));

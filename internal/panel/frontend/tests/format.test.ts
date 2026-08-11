@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   formatCountdown,
+  formatDate,
   formatDateTime,
   formatRelative,
   formatTimestamp,
@@ -114,18 +115,14 @@ describe('formatRelative', () => {
 
   // Derived from the same API the panel renders with rather than asserting a
   // literal: a runner under a non-Gregorian calendar or Arabic-Indic digits
-  // renders this date without the substring "2026" in it anywhere.
+  // renders this date without the substring "2026" in it anywhere. It is
+  // formatDate specifically, so the fallback is day-first like every other
+  // date the panel prints rather than whatever the runner's locale prefers.
   it('drops to a date beyond a day', () => {
     const stamp = '2026-07-01T09:00:00Z';
     const rendered = formatRelative(stamp, now);
     expect(rendered).not.toMatch(/ago$/);
-    expect(rendered).toBe(
-      new Date(Date.parse(stamp)).toLocaleDateString(undefined, {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      }),
-    );
+    expect(rendered).toBe(formatDate(stamp));
   });
 });
 
@@ -156,13 +153,7 @@ describe('formatUntil', () => {
     const stamp = '2026-08-20T14:00:00Z';
     const rendered = formatUntil(stamp, now);
     expect(rendered).not.toMatch(/^in /);
-    expect(rendered).toBe(
-      new Date(Date.parse(stamp)).toLocaleDateString(undefined, {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      }),
-    );
+    expect(rendered).toBe(formatDate(stamp));
   });
 });
 

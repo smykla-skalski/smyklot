@@ -3,20 +3,34 @@ import { normalizeBasePath } from './base';
 export const PANEL_VIEWS = ['settings', 'repositories', 'users', 'invitations', 'history'] as const;
 const SCOPED_PANEL_VIEWS = ['settings', 'repositories', 'users', 'invitations', 'history'] as const;
 
+export const HISTORY_SECTIONS = ['audit', 'failures'] as const;
+
 export type PanelView = (typeof PANEL_VIEWS)[number];
 export type ScopedPanelView = (typeof SCOPED_PANEL_VIEWS)[number];
+/** History's two tables are addressable, so a reload lands where you left off. */
+export type HistorySection = (typeof HISTORY_SECTIONS)[number];
 export type RootSection = 'overview' | 'installations' | 'access' | 'history' | 'settings';
 export type RootRoute =
   | { rootView: 'overview' | 'installations' | 'access-users' | 'access-invitations' }
   | { rootView: 'history-audit' | 'history-failures' | 'settings' }
-  | { rootView: 'installation'; account: string; view: ScopedPanelView };
+  | {
+      rootView: 'installation';
+      account: string;
+      view: ScopedPanelView;
+      section?: HistorySection;
+    };
 
-export type InstallationRoute = { account: string; view: ScopedPanelView };
+export type InstallationRoute = {
+  account: string;
+  view: ScopedPanelView;
+  section?: HistorySection;
+};
 export type PanelRoute = InstallationRoute | RootRoute;
 
 export interface ResolvedPanelRoute {
   account: string;
   view: PanelView;
+  section?: HistorySection;
 }
 
 interface BrowserNavigation {
@@ -43,7 +57,7 @@ export function parsePanelRoute(basePath: string, pathname: string): PanelRoute 
 
   const parts = relative.split('/');
   if (parts[0] === 'root') return parseRootRoute(parts);
-  if (parts.length !== 3) return null;
+  if (parts.length !== 3 && parts.length !== 4) return null;
 
   const [namespace, encodedAccount, rawView] = parts;
   if (
@@ -55,6 +69,9 @@ export function parsePanelRoute(basePath: string, pathname: string): PanelRoute 
   )
     return null;
 
+  const section = parseSection(rawView, parts[3]);
+  if (section === 'invalid') return null;
+
   let account: string;
   try {
     account = decodeURIComponent(encodedAccount);
@@ -62,7 +79,9 @@ export function parsePanelRoute(basePath: string, pathname: string): PanelRoute 
     return null;
   }
 
-  return account.trim() === '' ? null : { account, view: rawView };
+  if (account.trim() === '') return null;
+  const route: InstallationRoute = { account, view: rawView };
+  return section === undefined ? route : { ...route, section };
 }
 
 export function parseInvitationToken(basePath: string, pathname: string): string | null {
@@ -82,7 +101,7 @@ export function parseInvitationToken(basePath: string, pathname: string): string
 export function panelRoutePath(basePath: string, route: PanelRoute): string {
   const base = normalizeBasePath(basePath);
   if ('rootView' in route) return `${base}${rootRoutePath(route)}`;
-  return `${base}/i/${encodeURIComponent(route.account)}/${route.view}`;
+  return `${base}/i/${encodeURIComponent(route.account)}/${route.view}${sectionSuffix(route)}`;
 }
 
 export function resolvePanelRoute(
@@ -95,7 +114,12 @@ export function resolvePanelRoute(
     requestedAccount ?? findAccount(availableAccounts, preferredAccount) ?? availableAccounts[0];
   if (account === undefined) return null;
 
-  return { account, view: requested?.view ?? 'settings' };
+  const view = requested?.view ?? 'settings';
+  /* History always resolves to a named table, so the address bar never sits on
+     a bare /history that a reload would have to guess at. */
+  return view === 'history'
+    ? { account, view, section: requested?.section ?? 'audit' }
+    : { account, view };
 }
 
 export function rootSection(route: RootRoute): RootSection {
@@ -141,6 +165,20 @@ function isScopedPanelView(value: string): value is ScopedPanelView {
   return SCOPED_PANEL_VIEWS.some((view) => view === value);
 }
 
+/** `undefined` for "no segment", `'invalid'` for a segment that cannot be one. */
+function parseSection(
+  view: string,
+  raw: string | undefined,
+): HistorySection | undefined | 'invalid' {
+  if (raw === undefined) return undefined;
+  if (view !== 'history') return 'invalid';
+  return HISTORY_SECTIONS.find((section) => section === raw) ?? 'invalid';
+}
+
+function sectionSuffix(route: { view: ScopedPanelView; section?: HistorySection }): string {
+  return route.view === 'history' && route.section !== undefined ? `/${route.section}` : '';
+}
+
 function parseRootRoute(parts: string[]): RootRoute | null {
   if (parts.length === 1) return { rootView: 'overview' };
   if (parts.length === 2 && parts[1] === 'installations') return { rootView: 'installations' };
@@ -153,9 +191,22 @@ function parseRootRoute(parts: string[]): RootRoute | null {
     if (parts[2] === 'audit') return { rootView: 'history-audit' };
     if (parts[2] === 'failures') return { rootView: 'history-failures' };
   }
-  if (parts.length !== 4 || parts[1] !== 'installations' || !isScopedPanelView(parts[3] ?? '')) {
+  /* A bare section path is a legitimate address - somebody typed or bookmarked
+     it - and resolves to that section's default table rather than falling
+     through to the installation default. */
+  if (parts.length === 2 && parts[1] === 'history') return { rootView: 'history-audit' };
+  if (parts.length === 2 && parts[1] === 'access') return { rootView: 'access-users' };
+  if (
+    (parts.length !== 4 && parts.length !== 5) ||
+    parts[1] !== 'installations' ||
+    !isScopedPanelView(parts[3] ?? '')
+  ) {
     return null;
   }
+
+  const view = parts[3] as ScopedPanelView;
+  const section = parseSection(view, parts[4]);
+  if (section === 'invalid') return null;
 
   let account: string;
   try {
@@ -163,14 +214,14 @@ function parseRootRoute(parts: string[]): RootRoute | null {
   } catch {
     return null;
   }
-  return account.trim() === ''
-    ? null
-    : { rootView: 'installation', account, view: parts[3] as ScopedPanelView };
+  if (account.trim() === '') return null;
+  const route: RootRoute = { rootView: 'installation', account, view };
+  return section === undefined ? route : { ...route, section };
 }
 
 function rootRoutePath(route: RootRoute): string {
   if (route.rootView === 'installation')
-    return `/root/installations/${encodeURIComponent(route.account)}/${route.view}`;
+    return `/root/installations/${encodeURIComponent(route.account)}/${route.view}${sectionSuffix(route)}`;
   if (route.rootView === 'overview') return '/root';
   if (route.rootView === 'installations') return '/root/installations';
   if (route.rootView === 'access-users') return '/root/access/users';
