@@ -5,7 +5,7 @@ go 1.26.5
 require (
 	github.com/coder/websocket v1.8.15
 	github.com/jferrl/go-githubauth v1.7.0
-	github.com/onsi/ginkgo/v2 v2.32.0
+	github.com/onsi/ginkgo/v2 v2.32.1
 	github.com/onsi/gomega v1.42.1
 	github.com/prometheus/client_golang v1.24.1
 	github.com/spf13/cobra v1.10.2
