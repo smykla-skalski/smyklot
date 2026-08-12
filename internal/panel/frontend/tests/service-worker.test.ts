@@ -95,6 +95,7 @@ describe('panel service worker cache boundary', () => {
       'https://example.test/panel/unknown',
       'https://example.test/panel/i/acme/history/unknown',
       'https://example.test/panel/root/installations/acme/history/unknown',
+      'https://example.test/panel/root//history/audit',
       'https://cdn.example.test/panel/assets/app.js',
     ]) {
       const request = fetchEvent(url, 'navigate');

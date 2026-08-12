@@ -103,7 +103,8 @@ function isServerRequest(relativePath) {
 }
 
 function isPanelNavigation(relativePath) {
-  const parts = relativePath.split('/').filter(Boolean);
+  const trimmed = relativePath.replace(/^\/+|\/+$/gu, '');
+  const parts = trimmed === '' ? [] : trimmed.split('/');
   if (parts.length === 0 || (parts.length === 1 && parts[0] === 'index.html')) return true;
   if (parts.length === 2 && parts[0] === 'invite') {
     return /^[A-Za-z0-9_-]{43}$/u.test(parts[1]);
