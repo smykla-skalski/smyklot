@@ -13,6 +13,7 @@ import {
 } from './lib/preferences';
 import { effectivePref, migrateLegacyPreferences, readPrefsDoc } from './lib/preferences-sync';
 import { createPanelRouter, parseInvitationToken } from './lib/routes';
+import { registerPanelServiceWorker } from './lib/service-worker';
 
 migrateLegacyPreferences();
 
@@ -37,6 +38,9 @@ try {
   const api = createPanelApi(base, (input, init) => fetch(input, init));
   const iconUrl = panelUrl(base, PANEL_ICON_PATH);
   const build = readPanelBuild(document);
+  void registerPanelServiceWorker(base, build.version).catch((error: unknown) => {
+    console.warn('Smyklot offline cache could not start', error);
+  });
   const invitationToken = parseInvitationToken(base, window.location.pathname);
   // Built from the mount point rather than imported, because Vite would bake the
   // sentinel into the JS bundle and only `index.html` is rewritten when serving.

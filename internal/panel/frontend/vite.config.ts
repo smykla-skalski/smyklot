@@ -24,6 +24,9 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    // The service worker reads this graph at install time so every hashed
+    // application asset is available before it takes control.
+    manifest: 'cache-manifest.json',
   },
   test: {
     environment: 'node',

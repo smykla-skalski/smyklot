@@ -130,6 +130,7 @@ func newPanelHarnessForSubject(t *testing.T, login, subjectID string) *panelHarn
 	assets := fstest.MapFS{
 		"index.html":    &fstest.MapFile{Data: []byte(`<!doctype html><meta name="smyklot-panel-base" content="/__smyklot_panel_base__"><meta name="smyklot-panel-version" content="__smyklot_panel_version__"><meta name="smyklot-panel-service" content="__smyklot_panel_service__"><link rel="icon" href="/__smyklot_panel_base__/smyklot-avatar.png?v=__smyklot_panel_version__">`)},
 		"assets/app.js": &fstest.MapFile{Data: []byte("export {}")},
+		"sw.js":         &fstest.MapFile{Data: []byte(`const BUILD_VERSION = '__smyklot_panel_version__';`)},
 	}
 	randomBytes := make([]byte, 0, tokenBytes*32)
 	for index := range 32 {
@@ -2252,15 +2253,31 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 		response := harness.request(t, http.MethodGet, path, nil, nil)
 		body := response.Body.String()
 		if response.Code != http.StatusOK ||
+			response.Header().Get("Cache-Control") != "private, no-cache" ||
+			response.Header().Get("ETag") == "" ||
 			!strings.Contains(body, `content="/panel"`) ||
 			!strings.Contains(body, `href="/panel/smyklot-avatar.png?v=1.0.0"`) ||
 			strings.Contains(body, basePathSentinel) {
 			t.Fatalf("index %s = %d %s", path, response.Code, response.Body.String())
 		}
 	}
+	index := harness.request(t, http.MethodGet, "/panel/", nil, nil)
+	conditionalRequest := httptest.NewRequest(http.MethodGet, "/panel/", nil)
+	conditionalRequest.Header.Set("If-None-Match", index.Header().Get("ETag"))
+	conditional := httptest.NewRecorder()
+	harness.handler.ServeHTTP(conditional, conditionalRequest)
+	if conditional.Code != http.StatusNotModified || conditional.Body.Len() != 0 {
+		t.Fatalf("conditional index = %d %s", conditional.Code, conditional.Body.String())
+	}
 	asset := harness.request(t, http.MethodGet, "/panel/assets/app.js", nil, nil)
 	if asset.Code != http.StatusOK || asset.Header().Get("Cache-Control") != "public, max-age=31536000, immutable" {
 		t.Fatalf("asset response = %d %#v", asset.Code, asset.Header())
+	}
+	worker := harness.request(t, http.MethodGet, "/panel/sw.js", nil, nil)
+	if worker.Code != http.StatusOK || worker.Header().Get("Cache-Control") != "no-cache" ||
+		!strings.Contains(worker.Body.String(), `const BUILD_VERSION = "1.0.0";`) ||
+		strings.Contains(worker.Body.String(), versionSentinel) {
+		t.Fatalf("service worker response = %d %#v %s", worker.Code, worker.Header(), worker.Body.String())
 	}
 	for _, path := range []string{
 		"/panel/users",
