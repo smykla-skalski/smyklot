@@ -51,6 +51,23 @@ export function resolveThemeDisplay(
   return value === 'system' ? systemTheme : value;
 }
 
+export function themeColor(theme: ResolvedTheme, rootConsole = false): string {
+  if (rootConsole) return theme === 'dark' ? '#0f0d14' : '#f3f1f7';
+  return theme === 'dark' ? '#0e1116' : '#f5f7f6';
+}
+
+export function applyDocumentTheme(
+  source: Document,
+  theme: ResolvedTheme,
+  rootConsole = false,
+): void {
+  source.documentElement.dataset.theme = theme;
+  const color = themeColor(theme, rootConsole);
+  for (const meta of source.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')) {
+    meta.content = color;
+  }
+}
+
 export function readTimeDisplay(storage: PreferenceReader | null = browserStorage()): TimeDisplay {
   if (storage === null) return DEFAULT_TIME_DISPLAY;
 

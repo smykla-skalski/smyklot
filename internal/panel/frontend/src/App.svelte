@@ -14,9 +14,15 @@
   import type { PanelApi } from './lib/api';
   import type { PanelBuild } from './lib/base';
   import { LatestRequest } from './lib/latest-request';
-  import { DEFAULT_THEME_DISPLAY, isThemeDisplay, type ThemeDisplay } from './lib/preferences';
+  import {
+    applyDocumentTheme,
+    DEFAULT_THEME_DISPLAY,
+    isThemeDisplay,
+    type ThemeDisplay,
+  } from './lib/preferences';
   import { createPrefsSync, prefText } from './lib/preferences-sync';
   import {
+    panelDocumentTitle,
     resolvePanelRoute,
     rootSection,
     rootSectionRoute,
@@ -89,6 +95,15 @@
   );
   const rootValue = $derived(rootSection(activeRootRoute));
   const rootRole = $derived(viewer?.system_role === 'super_root' ? 'Super Root' : 'Root');
+  const documentTitle = $derived(
+    panelDocumentTitle(
+      rootMode
+        ? activeRootRoute
+        : view === 'history'
+          ? { account: '', view, section: historySection }
+          : { account: '', view },
+    ),
+  );
   const returnTarget = $derived(selectedTarget ?? targets[0] ?? null);
   const tableScrollView = $derived(
     rootMode
@@ -579,11 +594,15 @@
   }
 
   $effect(() => {
-    document.documentElement.dataset.theme = resolvedTheme;
+    applyDocumentTheme(document, resolvedTheme, rootMode);
   });
 
   void load();
 </script>
+
+<svelte:head>
+  <title>{documentTitle}</title>
+</svelte:head>
 
 <a class="skip-link" href="#panel-content">Skip to panel content</a>
 

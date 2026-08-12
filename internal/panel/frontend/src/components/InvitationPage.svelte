@@ -49,6 +49,10 @@
   }
 </script>
 
+<svelte:head>
+  <title>Invitation | SMYKLOT</title>
+</svelte:head>
+
 <main class="shell invitation-shell">
   <header class="invitation-brand">
     <img src={iconUrl} width="42" height="42" alt="" />

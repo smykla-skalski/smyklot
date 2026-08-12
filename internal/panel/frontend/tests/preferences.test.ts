@@ -9,6 +9,7 @@ import {
   readThemeDisplay,
   readTimeDisplay,
   resolveThemeDisplay,
+  themeColor,
 } from '../src/lib/preferences';
 
 describe('history display preference', () => {
@@ -98,6 +99,15 @@ describe('theme preference', () => {
     expect(resolveThemeDisplay('system', 'dark')).toBe('dark');
     expect(resolveThemeDisplay('system', 'light')).toBe('light');
     expect(resolveThemeDisplay('dark', 'light')).toBe('dark');
+  });
+
+  it.each([
+    ['light', false, '#f5f7f6'],
+    ['dark', false, '#0e1116'],
+    ['light', true, '#f3f1f7'],
+    ['dark', true, '#0f0d14'],
+  ] as const)('uses the %s browser chrome color in Root=%s', (theme, rootConsole, color) => {
+    expect(themeColor(theme, rootConsole)).toBe(color);
   });
 
   it('continues when browser storage is unavailable', () => {

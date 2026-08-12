@@ -104,6 +104,12 @@ export function panelRoutePath(basePath: string, route: PanelRoute): string {
   return `${base}/i/${encodeURIComponent(route.account)}/${route.view}${sectionSuffix(route)}`;
 }
 
+export function panelDocumentTitle(route: PanelRoute): string {
+  const rootConsole = 'rootView' in route;
+  const title = rootConsole ? rootRouteTitle(route) : panelViewTitle(route.view, route.section);
+  return `${title}${rootConsole ? ' | Root Console' : ''} | SMYKLOT`;
+}
+
 export function resolvePanelRoute(
   availableAccounts: readonly string[],
   requested: InstallationRoute | null,
@@ -163,6 +169,24 @@ export function createPanelRouter(basePath: string, browser: BrowserNavigation):
 
 function isScopedPanelView(value: string): value is ScopedPanelView {
   return SCOPED_PANEL_VIEWS.some((view) => view === value);
+}
+
+function panelViewTitle(view: ScopedPanelView, section?: HistorySection): string {
+  if (view === 'users') return 'Users | Access';
+  if (view === 'invitations') return 'Invitations | Access';
+  if (view === 'history' && section !== undefined) {
+    return `${section.slice(0, 1).toUpperCase() + section.slice(1)} | History`;
+  }
+  return view.slice(0, 1).toUpperCase() + view.slice(1);
+}
+
+function rootRouteTitle(route: RootRoute): string {
+  if (route.rootView === 'installation') return panelViewTitle(route.view, route.section);
+  if (route.rootView === 'access-users') return 'Users | Access';
+  if (route.rootView === 'access-invitations') return 'Invitations | Access';
+  if (route.rootView === 'history-audit') return 'Audit | History';
+  if (route.rootView === 'history-failures') return 'Failures | History';
+  return route.rootView.slice(0, 1).toUpperCase() + route.rootView.slice(1);
 }
 
 /** `undefined` for "no segment", `'invalid'` for a segment that cannot be one. */
