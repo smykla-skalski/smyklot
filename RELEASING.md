@@ -100,11 +100,10 @@ Each release produces:
 2. **Semantic Release**: Analyzes commits, creates version, updates files, tags release
 3. **GoReleaser**: Builds binaries and Docker images (only if new release created)
 
-**Secrets Required**:
+**Release Credentials**:
 
-- `SMYKLOT_APP_ID` — GitHub App ID (for generating token)
-- `SMYKLOT_PRIVATE_KEY` — GitHub App private key (for generating token)
-- `GHCR_TOKEN` — GitHub Container Registry token (for Docker push)
+- `SMYKLOT_CLIENT_ID` — optional repository variable overriding the public GitHub App Client ID
+- `SMYKLOT_APP_PRIVATE_KEY` — GitHub App private key repository secret
 
 **Bot Identity**:
 
@@ -197,15 +196,14 @@ gh pr edit 123 --add-label release/patch
 
 1. Check GitHub Actions logs
 2. Verify secrets are configured correctly:
-   - `SMYKLOT_APP_ID` (repository variable)
-   - `SMYKLOT_PRIVATE_KEY` (repository secret)
-   - `GHCR_TOKEN` (repository secret)
+   - `SMYKLOT_CLIENT_ID` (optional repository variable)
+   - `SMYKLOT_APP_PRIVATE_KEY` (repository secret)
 3. Ensure semantic-release configuration is valid
 4. Check commit messages follow conventional format
 
 ### Docker image not updated
 
-1. Verify `GHCR_TOKEN` has `write:packages` permission
+1. Verify the workflow's `GITHUB_TOKEN` has `packages: write` permission
 2. Check Docker build logs in GoReleaser job
 3. Verify semantic-release created new tag
 4. Check GoReleaser job ran (depends on semantic-release output)
