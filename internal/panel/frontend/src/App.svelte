@@ -23,6 +23,7 @@
   import { createPrefsSync, prefText } from './lib/preferences-sync';
   import {
     panelDocumentTitle,
+    resolveDocumentTitleRoute,
     resolvePanelRoute,
     rootSection,
     rootSectionRoute,
@@ -63,6 +64,7 @@
   let rootDataVersion = $state(0);
   let view = $state<PanelView>('settings');
   let rootMode = $state(false);
+  let requestedDocumentRoute = $state<PanelRoute | null>(null);
   let identityBar = $state<ReturnType<typeof IdentityBar> | null>(null);
   let activeRootRoute = $state<RootRoute>({ rootView: 'overview' });
   /* History's table is part of the address, so a reload lands on the table the
@@ -95,13 +97,20 @@
   );
   const rootValue = $derived(rootSection(activeRootRoute));
   const rootRole = $derived(viewer?.system_role === 'super_root' ? 'Super Root' : 'Root');
+  const activeDocumentRoute = $derived(
+    rootMode
+      ? activeRootRoute
+      : view === 'history'
+        ? { account: '', view, section: historySection }
+        : { account: '', view },
+  );
   const documentTitle = $derived(
     panelDocumentTitle(
-      rootMode
-        ? activeRootRoute
-        : view === 'history'
-          ? { account: '', view, section: historySection }
-          : { account: '', view },
+      resolveDocumentTitleRoute(
+        activeDocumentRoute,
+        requestedDocumentRoute,
+        loading || viewer === null || failure?.source === 'load',
+      ),
     ),
   );
   const returnTarget = $derived(selectedTarget ?? targets[0] ?? null);
@@ -150,6 +159,7 @@
   }
 
   async function load(): Promise<void> {
+    requestedDocumentRoute = router.current();
     loading = viewer === null;
     streamReady = false;
     streamRefreshes.invalidate();
@@ -549,6 +559,7 @@
 
   $effect(() =>
     router.subscribe((route) => {
+      requestedDocumentRoute = route;
       if (viewer !== null && !loading) void activateRoute(route, 'none');
     }),
   );

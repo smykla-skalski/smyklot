@@ -108,17 +108,29 @@ function isPanelNavigation(relativePath) {
   if (parts.length === 2 && parts[0] === 'invite') {
     return /^[A-Za-z0-9_-]{43}$/u.test(parts[1]);
   }
+  if (parts.length === 4 && parts[0] === 'i' && parts[1] !== '') {
+    return parts[2] === 'history' && isHistorySection(parts[3]);
+  }
   if (parts.length === 3 && parts[0] === 'i' && parts[1] !== '') {
     return ['settings', 'repositories', 'users', 'invitations', 'history'].includes(parts[2]);
   }
   if (parts[0] !== 'root') return false;
   if (parts.length === 1) return true;
-  if (parts.length === 2) return ['installations', 'settings'].includes(parts[1]);
+  if (parts.length === 2)
+    return ['installations', 'access', 'history', 'settings'].includes(parts[1]);
   if (parts.length === 3 && parts[1] === 'access') {
     return ['users', 'invitations'].includes(parts[2]);
   }
   if (parts.length === 3 && parts[1] === 'history') {
     return ['audit', 'failures'].includes(parts[2]);
+  }
+  if (
+    parts.length === 5 &&
+    parts[1] === 'installations' &&
+    parts[2] !== '' &&
+    parts[3] === 'history'
+  ) {
+    return isHistorySection(parts[4]);
   }
   return (
     parts.length === 4 &&
@@ -126,6 +138,10 @@ function isPanelNavigation(relativePath) {
     parts[2] !== '' &&
     ['settings', 'repositories', 'users', 'invitations', 'history'].includes(parts[3])
   );
+}
+
+function isHistorySection(value) {
+  return value === 'audit' || value === 'failures';
 }
 
 async function refreshShell(event) {

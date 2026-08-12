@@ -3,10 +3,13 @@ import { describe, expect, it } from 'vitest';
 import {
   createPanelRouter,
   panelDocumentTitle,
+  panelViewSection,
   panelRoutePath,
   parseInvitationToken,
   parsePanelRoute,
   resolvePanelRoute,
+  resolveDocumentTitleRoute,
+  routeSegmentLabel,
   type PanelRoute,
 } from '../src/lib/routes';
 
@@ -168,6 +171,21 @@ describe('panel document titles', () => {
     ],
   ] satisfies ReadonlyArray<[PanelRoute, string]>)('formats %j', (route, title) => {
     expect(panelDocumentTitle(route)).toBe(title);
+  });
+
+  it('derives labels and title hierarchy from route segments', () => {
+    expect(panelViewSection('users')).toBe('access');
+    expect(panelViewSection('history')).toBe('history');
+    expect(routeSegmentLabel('root-console')).toBe('Root Console');
+  });
+
+  it('uses the requested route while app state is unresolved', () => {
+    const active: PanelRoute = { account: '', view: 'settings' };
+    const requested: PanelRoute = { rootView: 'history-audit' };
+    expect(panelDocumentTitle(resolveDocumentTitleRoute(active, requested, true))).toBe(
+      'Audit | History | Root Console | SMYKLOT',
+    );
+    expect(resolveDocumentTitleRoute(active, requested, false)).toBe(active);
   });
 });
 

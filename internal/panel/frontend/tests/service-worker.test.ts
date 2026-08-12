@@ -72,6 +72,19 @@ describe('panel service worker cache boundary', () => {
     requireListener(worker, 'fetch')(route);
     expect(route.respondWith).toHaveBeenCalledOnce();
 
+    for (const url of [
+      'https://example.test/panel/root/access',
+      'https://example.test/panel/root/history',
+      'https://example.test/panel/i/acme/history/audit',
+      'https://example.test/panel/i/acme/history/failures',
+      'https://example.test/panel/root/installations/acme/history/audit',
+      'https://example.test/panel/root/installations/acme/history/failures',
+    ]) {
+      const historyRoute = fetchEvent(url, 'navigate');
+      requireListener(worker, 'fetch')(historyRoute);
+      expect(historyRoute.respondWith).toHaveBeenCalledOnce();
+    }
+
     const asset = fetchEvent('https://example.test/panel/assets/app.js', 'same-origin');
     requireListener(worker, 'fetch')(asset);
     expect(asset.respondWith).toHaveBeenCalledOnce();
@@ -80,6 +93,8 @@ describe('panel service worker cache boundary', () => {
       'https://example.test/panel/api/v1/session',
       'https://example.test/panel/auth/github/start',
       'https://example.test/panel/unknown',
+      'https://example.test/panel/i/acme/history/unknown',
+      'https://example.test/panel/root/installations/acme/history/unknown',
       'https://cdn.example.test/panel/assets/app.js',
     ]) {
       const request = fetchEvent(url, 'navigate');

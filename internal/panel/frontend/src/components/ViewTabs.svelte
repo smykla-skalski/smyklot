@@ -1,5 +1,10 @@
 <script lang="ts">
-  import type { PanelView, RootSection } from '../lib/routes';
+  import {
+    panelViewSection,
+    routeSegmentLabel,
+    type PanelView,
+    type RootSection,
+  } from '../lib/routes';
   import Icon, { type IconName } from './Icon.svelte';
 
   const {
@@ -93,8 +98,7 @@
   }
 
   function label(view: PanelView): string {
-    if (view === 'users' || view === 'invitations') return 'Access';
-    return view.slice(0, 1).toUpperCase() + view.slice(1);
+    return routeSegmentLabel(panelViewSection(view));
   }
 
   function icon(view: PanelView): IconName {
@@ -105,7 +109,7 @@
   }
 
   function rootLabel(section: RootSection): string {
-    return section.slice(0, 1).toUpperCase() + section.slice(1);
+    return routeSegmentLabel(section);
   }
 
   function rootIcon(section: RootSection): IconName {

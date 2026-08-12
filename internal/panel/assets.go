@@ -112,8 +112,11 @@ func isPanelNavigationPath(relative string) bool {
 	if len(parts) == 2 && parts[0] == "invite" && validInvitationToken(parts[1]) {
 		return true
 	}
-	if len(parts) != 3 || parts[0] != "i" || parts[1] == "" {
+	if (len(parts) != 3 && len(parts) != 4) || parts[0] != "i" || parts[1] == "" {
 		return false
+	}
+	if len(parts) == 4 {
+		return parts[2] == panelHistoryPath && isPanelHistorySection(parts[3])
 	}
 
 	switch parts[2] {
@@ -132,15 +135,20 @@ func isRootNavigationPath(parts []string) bool {
 		return false
 	}
 	if len(parts) == 2 {
-		return parts[1] == panelInstallationsResource || parts[1] == panelSettingsPath
+		return parts[1] == panelInstallationsResource || parts[1] == "access" ||
+			parts[1] == panelHistoryPath || parts[1] == panelSettingsPath
 	}
 	if len(parts) == 3 {
 		return parts[1] == "access" && (parts[2] == panelUsersResource || parts[2] == panelInvitationsPath) ||
 			parts[1] == panelHistoryPath &&
 				(parts[2] == panelHistoryAuditPath || parts[2] == panelHistoryFailuresPath)
 	}
-	if len(parts) != 4 || parts[1] != panelInstallationsResource || parts[2] == "" {
+	if (len(parts) != 4 && len(parts) != 5) ||
+		parts[1] != panelInstallationsResource || parts[2] == "" {
 		return false
+	}
+	if len(parts) == 5 {
+		return parts[3] == panelHistoryPath && isPanelHistorySection(parts[4])
 	}
 	switch parts[3] {
 	case panelSettingsPath, panelRepositoriesPath, panelUsersResource, panelInvitationsPath, panelHistoryPath:
@@ -148,6 +156,10 @@ func isRootNavigationPath(parts []string) bool {
 	default:
 		return false
 	}
+}
+
+func isPanelHistorySection(value string) bool {
+	return value == panelHistoryAuditPath || value == panelHistoryFailuresPath
 }
 
 func validInvitationToken(token string) bool {
