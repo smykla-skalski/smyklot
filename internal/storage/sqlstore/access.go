@@ -261,14 +261,14 @@ SELECT
     pu.system_role,
     pu.status,
     tr.role,
-    COALESCE(tr.suspended, 0),
+    COALESCE(tr.suspended, FALSE),
     tr.suspension_reason,
     ownership.status,
     ownership.synced_at,
     (SELECT COUNT(*) FROM target_owners owners WHERE owners.target_id = t.id),
     EXISTS(SELECT 1 FROM target_owners owners WHERE owners.target_id = t.id AND owners.account_id = pu.account_id)
 FROM panel_users pu
-JOIN targets t ON t.id = ? AND t.available = 1
+JOIN targets t ON t.id = ? AND t.available = TRUE
 LEFT JOIN target_roles tr ON tr.account_id = pu.account_id AND tr.target_id = t.id
 LEFT JOIN target_ownership ownership ON ownership.target_id = t.id
 WHERE pu.account_id = ?`, targetID, accountID).Scan(
@@ -305,7 +305,7 @@ JOIN panel_users pu ON pu.account_id = ?
 LEFT JOIN target_owners current_owner
   ON current_owner.account_id = pu.account_id AND current_owner.target_id = t.id
 LEFT JOIN target_roles tr ON tr.account_id = pu.account_id AND tr.target_id = t.id
-WHERE t.available = 1
+WHERE t.available = TRUE
   AND pu.status = 'active'
   AND o.status = 'fresh'
   AND o.synced_at >= ?
@@ -314,7 +314,7 @@ WHERE t.available = 1
       current_owner.account_id IS NOT NULL
       OR (
           pu.system_role = 'none'
-          AND COALESCE(tr.suspended, 0) = 0
+          AND COALESCE(tr.suspended, FALSE) = FALSE
           AND tr.role IN ('viewer', 'editor', 'admin')
       )
   )

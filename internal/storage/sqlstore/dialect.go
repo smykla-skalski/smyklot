@@ -32,6 +32,12 @@ type Dialect interface {
 	// column. The key name is bound, so the fragment consumes one argument.
 	JSONHasKey(column string) string
 
+	// RowLock renders the clause that holds a selected row for the rest of the
+	// transaction, so a read-modify-write on it cannot interleave with another
+	// caller's. An engine whose transactions already exclude each other has
+	// nothing to add and returns an empty string.
+	RowLock() string
+
 	// TimeArg renders a time for the engine's own timestamp column: a native
 	// value where the engine has one, text where it does not.
 	TimeArg(value time.Time) any

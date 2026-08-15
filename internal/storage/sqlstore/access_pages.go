@@ -168,11 +168,11 @@ func panelUserStateFilters(states []storage.PanelUserListState) ([]string, error
 func panelUserStateFilter(state storage.PanelUserListState) (string, error) {
 	switch state {
 	case storage.PanelUserListActive:
-		return "(pu.status = 'active' AND COALESCE(tr.suspended, 0) = 0)", nil
+		return "(pu.status = 'active' AND COALESCE(tr.suspended, FALSE) = FALSE)", nil
 	case storage.PanelUserListBanned:
 		return "pu.status = 'banned'", nil
 	case storage.PanelUserListSuspended:
-		return "(pu.status = 'active' AND tr.suspended = 1)", nil
+		return "(pu.status = 'active' AND tr.suspended = TRUE)", nil
 	default:
 		return "", fmt.Errorf("unsupported panel user state %q", state)
 	}
@@ -180,7 +180,7 @@ func panelUserStateFilter(state storage.PanelUserListState) (string, error) {
 
 func targetEffectiveRoleSQL() string {
 	return `(CASE
-WHEN pu.status <> 'active' OR COALESCE(tr.suspended, 0) = 1 THEN 'none'
+WHEN pu.status <> 'active' OR COALESCE(tr.suspended, FALSE) = TRUE THEN 'none'
 WHEN target_owner.account_id IS NOT NULL THEN 'owner'
 WHEN pu.system_role IN ('root', 'super_root') THEN 'none'
 ELSE COALESCE(tr.role, 'none')

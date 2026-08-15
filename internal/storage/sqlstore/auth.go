@@ -144,12 +144,12 @@ func (s *Store) ActivateDerivedOwner(
 	if !errors.Is(err, sql.ErrNoRows) {
 		return false, fmt.Errorf("read derived Owner identity: %w", err)
 	}
-	var owned int
+	var owned bool
 	err = tx.QueryRowContext(ctx, `
 SELECT EXISTS(
     SELECT 1
     FROM target_owners owner
-    JOIN targets t ON t.id = owner.target_id AND t.available = 1
+    JOIN targets t ON t.id = owner.target_id AND t.available = TRUE
     JOIN target_ownership ownership
       ON ownership.target_id = t.id AND ownership.status = 'fresh'
     WHERE owner.account_id = ?
@@ -159,7 +159,7 @@ SELECT EXISTS(
 	if err != nil {
 		return false, fmt.Errorf("resolve derived Owner identity: %w", err)
 	}
-	if owned == 0 {
+	if !owned {
 		return false, nil
 	}
 	_, err = tx.ExecContext(ctx, `
@@ -197,6 +197,19 @@ func (s *Store) CreateSession(ctx context.Context, session storage.Session, maxA
 	}
 
 	defer func() { _ = tx.Rollback() }()
+
+	// Hold the account for the rest of the transaction. Capping its sessions
+	// means reading which ones exist and then deleting the rest, and two
+	// callers doing that at once would each read a set without the other's
+	// row and delete nothing.
+	var locked string
+	if err := tx.QueryRowContext(
+		ctx,
+		"SELECT id FROM accounts WHERE id = ?"+s.dialect.RowLock(),
+		session.AccountID,
+	).Scan(&locked); err != nil {
+		return fmt.Errorf("lock account for session create: %w", noRows(err))
+	}
 
 	if _, err := tx.ExecContext(ctx, `
 INSERT INTO sessions (token_hash, account_id, created_at, expires_at)

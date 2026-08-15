@@ -40,10 +40,10 @@ SELECT
     a.display_name,
     a.avatar_url,
     a.updated_at,
-    COALESCE(SUM(CASE WHEN r.available = 1 THEN 1 ELSE 0 END), 0),
+    COALESCE(SUM(CASE WHEN r.available = TRUE THEN 1 ELSE 0 END), 0),
     COALESCE(SUM(CASE
-        WHEN r.available = 1
-         AND COALESCE(r.enabled_override, t.repository_default_enabled) = 1
+        WHEN r.available = TRUE
+         AND COALESCE(r.enabled_override, t.repository_default_enabled) = TRUE
         THEN 1 ELSE 0 END), 0),
     COALESCE(o.source, CASE WHEN t.kind = 'User' THEN 'personal' ELSE 'organization_admin' END),
     COALESCE(o.status, 'error'),
@@ -104,7 +104,7 @@ func (s *Store) ReconcileCatalog(
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if _, err := tx.ExecContext(ctx, "UPDATE targets SET available = 0"); err != nil {
+	if _, err := tx.ExecContext(ctx, "UPDATE targets SET available = FALSE"); err != nil {
 		return fmt.Errorf("mark installation targets unavailable: %w", err)
 	}
 	for _, snapshot := range snapshots {
@@ -151,7 +151,7 @@ func reconcileInstallation(
 	}
 	if _, err := tx.ExecContext(
 		ctx,
-		"UPDATE repositories SET available = 0 WHERE target_id = ?",
+		"UPDATE repositories SET available = FALSE WHERE target_id = ?",
 		snapshot.TargetID,
 	); err != nil {
 		return fmt.Errorf("mark installation repositories unavailable: %w", err)
@@ -388,7 +388,7 @@ func (s *Store) ListRepositories(
 	targetID string,
 ) ([]storage.Repository, error) {
 	rows, err := s.db.QueryContext(ctx, repositorySelect+`
-WHERE target_id = ? AND available = 1
+WHERE target_id = ? AND available = TRUE
 ORDER BY full_name`, targetID)
 	if err != nil {
 		return nil, fmt.Errorf("list repositories: %w", err)
@@ -477,7 +477,7 @@ func (s *Store) repositoryPageFilters(
 	targetID string,
 	page storage.RepositoryPageRequest,
 ) ([]string, []any, error) {
-	clauses := []string{"r.target_id = ?", "r.available = 1"}
+	clauses := []string{"r.target_id = ?", "r.available = TRUE"}
 	arguments := []any{targetID}
 	if page.Query != "" {
 		clauses = append(clauses, containsClause("r.full_name"))
@@ -492,13 +492,13 @@ func (s *Store) repositoryPageFilters(
 		for _, status := range page.FileStatuses {
 			switch status {
 			case storage.RepositoryFileBypassed:
-				fileClauses = append(fileClauses, "r.ignore_repository_file = 1")
+				fileClauses = append(fileClauses, "r.ignore_repository_file = TRUE")
 			case storage.RepositoryFileMissing,
 				storage.RepositoryFileValid,
 				storage.RepositoryFileInvalid:
 				fileClauses = append(
 					fileClauses,
-					"(r.ignore_repository_file = 0 AND r.config_file_status = ?)",
+					"(r.ignore_repository_file = FALSE AND r.config_file_status = ?)",
 				)
 				arguments = append(arguments, status)
 			default:
@@ -552,7 +552,7 @@ func supportedConfigOverride(key string) bool {
 func (s *Store) repositoryPageOrder(order storage.RepositoryOrder) (string, error) {
 	byName := caseFold("r.full_name")
 	nameAscending := byName + " ASC, r.id ASC"
-	byFileStatus := caseFold(`(CASE WHEN r.ignore_repository_file = 1
+	byFileStatus := caseFold(`(CASE WHEN r.ignore_repository_file = TRUE
             THEN 'bypassed' ELSE r.config_file_status END)`)
 	byOverrides := s.dialect.JSONKeyCount("r.config_patch")
 
@@ -602,12 +602,12 @@ INSERT INTO targets (
     repository_default_enabled, config_patch, revision,
     settings_updated_at, synced_at
 )
-VALUES (?, ?, ?, ?, 1, 0, '{}', 1, ?, ?)
+VALUES (?, ?, ?, ?, TRUE, FALSE, '{}', 1, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
     installation_id = excluded.installation_id,
     kind = excluded.kind,
     account_id = excluded.account_id,
-    available = 1,
+    available = TRUE,
     synced_at = excluded.synced_at`,
 		snapshot.TargetID,
 		snapshot.InstallationID,
@@ -637,14 +637,14 @@ INSERT INTO repositories (
     config_file_status, config_file_patch, revision,
     settings_updated_at, synced_at
 )
-VALUES (?, ?, ?, ?, ?, ?, 1, NULL, '{}', 0, 'missing', '{}', 1, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, TRUE, NULL, '{}', FALSE, 'missing', '{}', 1, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
     target_id = excluded.target_id,
     name = excluded.name,
     full_name = excluded.full_name,
     private = excluded.private,
     default_branch = excluded.default_branch,
-    available = 1,
+    available = TRUE,
     synced_at = excluded.synced_at`,
 		repository.ID,
 		targetID,

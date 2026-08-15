@@ -567,10 +567,10 @@ func acceptInvitation(
 	_, err := tx.ExecContext(ctx, `
 INSERT INTO target_roles (
     account_id, target_id, role, suspended, revision, updated_by, updated_at
-) VALUES (?, ?, ?, 0, 1, ?, ?)
+) VALUES (?, ?, ?, FALSE, 1, ?, ?)
 ON CONFLICT(account_id, target_id) DO UPDATE SET
     role = excluded.role,
-    suspended = 0,
+    suspended = FALSE,
     suspension_reason = NULL,
     revision = target_roles.revision + 1,
     updated_by = excluded.updated_by,

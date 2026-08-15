@@ -29,6 +29,13 @@ func New(pool *sql.DB, dialect Dialect) *Store {
 	return &Store{db: newHandle(pool, dialect), dialect: dialect}
 }
 
+// DB returns the underlying pool.
+//
+// This is for an engine adapter that needs to reach its own server directly,
+// and for tests that inspect what a migration produced. The storage.Store port
+// still exposes no handle, and depguard keeps database/sql inside this tree.
+func (s *Store) DB() *sql.DB { return s.db.pool }
+
 // Ping verifies that the adapter can reach its database.
 func (s *Store) Ping(ctx context.Context) error {
 	if err := s.db.pool.PingContext(ctx); err != nil {

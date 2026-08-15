@@ -38,6 +38,11 @@ func (Dialect) JSONHasKey(column string) string {
 	return "json_type(" + column + ", '$.' || ?) IS NOT NULL"
 }
 
+// RowLock adds nothing. This adapter holds one connection and SQLite gives a
+// write transaction exclusive access, so no two callers are ever inside the
+// same read-modify-write at once.
+func (Dialect) RowLock() string { return "" }
+
 // timeLayout is how a timestamp is written to a TEXT column.
 //
 // SQLite has no timestamp type, so every comparison and every ORDER BY on a

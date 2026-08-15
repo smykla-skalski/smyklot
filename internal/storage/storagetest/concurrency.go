@@ -25,24 +25,12 @@ const contenders = 8
 // the three places where losing that would corrupt real state - a delivery
 // acted on twice, a settings change written over a newer one, and a session
 // cap that lets an account keep more sessions than it is allowed.
-func declareConcurrencySpecs(harness Harness) {
-	var (
-		ctx   context.Context
-		store storage.Store
-		now   time.Time
-	)
-
-	BeforeEach(func() {
-		ctx = context.Background()
-		now = time.Date(2026, time.August, 8, 12, 0, 0, 0, time.UTC)
-		store = harness.Open(ctx)
-	})
-
-	AfterEach(func() {
-		Expect(store.Close()).To(Succeed())
-	})
-
+//
+// The store comes from the enclosing suite rather than being opened here, so
+// that a spec opens exactly one.
+func declareConcurrencySpecs(current func() (context.Context, storage.Store, time.Time)) {
 	It("accepts one delivery claim when many arrive for the same event", func() {
+		ctx, store, now := current()
 		_, target := seedInstallation(ctx, store, now)
 		claim := storage.DeliveryClaim{
 			ClaimKey:           "issue_comment:created:repo:comment:revision",
@@ -74,6 +62,7 @@ func declareConcurrencySpecs(harness Harness) {
 	})
 
 	It("applies one settings change when many carry the same revision", func() {
+		ctx, store, now := current()
 		account, initial := seedInstallation(ctx, store, now)
 
 		results := race(func(index int) (storage.Target, error) {
@@ -108,6 +97,7 @@ func declareConcurrencySpecs(harness Harness) {
 	It("never keeps more sessions than the cap allows", func() {
 		const cap = 3
 
+		ctx, store, now := current()
 		account := testAccount(now)
 		Expect(store.UpsertAccount(ctx, account)).To(Succeed())
 

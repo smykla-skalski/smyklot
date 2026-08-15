@@ -51,11 +51,11 @@ func readRootCatalogCounts(
 SELECT
     COUNT(DISTINCT t.id),
     COUNT(r.id),
-    COALESCE(SUM(CASE WHEN COALESCE(r.enabled_override, t.repository_default_enabled) = 1
+    COALESCE(SUM(CASE WHEN COALESCE(r.enabled_override, t.repository_default_enabled) = TRUE
                       THEN 1 ELSE 0 END), 0)
 FROM targets t
-LEFT JOIN repositories r ON r.target_id = t.id AND r.available = 1
-WHERE t.available = 1`).Scan(
+LEFT JOIN repositories r ON r.target_id = t.id AND r.available = TRUE
+WHERE t.available = TRUE`).Scan(
 		&result.InstallationCount,
 		&result.RepositoryCount,
 		&result.EnabledRepositoryCount,
@@ -83,7 +83,7 @@ SELECT
     COALESCE(SUM(CASE WHEN o.status = 'error' THEN 1 ELSE 0 END), 0)
 FROM targets t
 LEFT JOIN target_ownership o ON o.target_id = t.id
-WHERE t.available = 1`, cutoff, cutoff).Scan(
+WHERE t.available = TRUE`, cutoff, cutoff).Scan(
 		&result.OwnershipFresh,
 		&result.OwnershipStale,
 		&result.OwnershipPending,

@@ -19,8 +19,6 @@ import (
 // proves rather than something a second implementation is trusted to preserve.
 // Call it inside a Describe that names the engine.
 func DeclareSpecs(harness Harness) {
-	Context("under concurrent callers", func() { declareConcurrencySpecs(harness) })
-
 	var (
 		ctx   context.Context
 		store storage.Store
@@ -35,6 +33,14 @@ func DeclareSpecs(harness Harness) {
 
 	AfterEach(func() {
 		Expect(store.Close()).To(Succeed())
+	})
+
+	// The concurrency specs share this store rather than opening one of their
+	// own, so every spec in the suite opens exactly one.
+	Context("under concurrent callers", func() {
+		declareConcurrencySpecs(func() (context.Context, storage.Store, time.Time) {
+			return ctx, store, now
+		})
 	})
 
 	It("caps sessions per account and removes expired sessions on read", func() {

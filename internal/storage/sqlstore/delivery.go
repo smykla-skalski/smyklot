@@ -52,7 +52,7 @@ RETURNING id`,
 		if err := tx.QueryRowContext(ctx, `
 	SELECT status FROM deliveries
 	WHERE claim_key = ?
-	  AND (status IN (?, ?) OR (status = ? AND retryable = 0))`,
+	  AND (status IN (?, ?) OR (status = ? AND retryable = FALSE))`,
 			claim.ClaimKey,
 			storage.DeliveryRunning,
 			storage.DeliverySucceeded,
@@ -157,7 +157,7 @@ UPDATE deliveries SET
     status = ?,
     stage = ?,
     reason = ?,
-    retryable = 1,
+    retryable = TRUE,
     finished_at = ?
 WHERE status = ?`,
 		storage.DeliveryFailed,
