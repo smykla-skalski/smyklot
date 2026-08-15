@@ -153,8 +153,13 @@
     color: var(--text-primary);
   }
 
+  /* Presses like every other control in the product: it takes the colour and it
+     gets smaller. A round target of this size takes the disc scale, the one the
+     avatar and the icon buttons use, because the same ratio on a 2.5rem square
+     reads as no movement at all. */
   .action-trigger:active {
     background: var(--interactive-pressed-bg);
+    scale: var(--press-scale-disc);
   }
 
   .action-popover {

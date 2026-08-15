@@ -352,7 +352,7 @@
   --night-seg-border: rgb(255 255 255 / 16%);
   --night-seg-hover: rgb(255 255 255 / 12%);
   --night-seg-pressed: rgb(255 255 255 / 20%);
-  --night-seg-shadow: 0 1px 3px rgb(0 0 0 / 34%), 0 0 0 0.5px rgb(255 255 255 / 20%);
+  --night-seg-shadow: 0 1px 3px rgb(0 0 0 / 34%), inset 0 0 0 0.5px rgb(255 255 255 / 20%);
   --night-seg-text: rgb(246 249 255);
   --night-seg-muted: rgb(186 203 233);
 
@@ -432,7 +432,8 @@
      black, which is why this step is 7.35 rather than the 8.92 the light side reaches. */
   --sidebar-seg-hover: color-mix(in srgb, black 56%, var(--sidebar-seg-track));
   --sidebar-seg-pressed: #000000;
-  --sidebar-seg-shadow: 0 1px 3px rgb(0 0 0 / 40%), 0 0 0 0.5px rgb(255 255 255 / 14%);
+  /* Inset for the same reason as --segment-shadow above. */
+  --sidebar-seg-shadow: 0 1px 3px rgb(0 0 0 / 40%), inset 0 0 0 0.5px rgb(255 255 255 / 14%);
   --switcher-card-bg: #171e26;
   --switcher-card-border: #39434f;
   --switcher-card-hover: #1c242e;
@@ -467,8 +468,13 @@
   --segment-hover: color-mix(in srgb, var(--canvas) 65%, var(--segment-track));
   --segment-pressed: var(--canvas);
   /* A black ring on a dark track is not a ring: at 20% it measured 1.54 dE00, inside the noise.
-     White at 14% reads 9.76, which clears both the 4.13 fill and the 7.85 press. */
-  --segment-shadow: 0 1px 3px rgb(0 0 0 / 40%), 0 0 0 0.5px rgb(255 255 255 / 14%);
+     White at 14% reads 9.76, which clears both the 4.13 fill and the 7.85 press.
+
+     Inset, so it hugs the thumb instead of expanding into the 2px the thumb is
+     held off the track by. Outset it took the first half-pixel of that gap and
+     left a bright hairline running parallel to the track's own border, about a
+     pixel from it - two lines where the design has one. */
+  --segment-shadow: 0 1px 3px rgb(0 0 0 / 40%), inset 0 0 0 0.5px rgb(255 255 255 / 14%);
 
   --border-strong: #5b6a78;
 
@@ -616,7 +622,7 @@ body {
   /* Declared on the shell so both Root themes get them: the Root sidebar is dark in either. */
   --sidebar-seg-hover: color-mix(in srgb, black 36%, var(--sidebar-seg-track));
   --sidebar-seg-pressed: color-mix(in srgb, black 66%, var(--sidebar-seg-track));
-  --sidebar-seg-shadow: 0 1px 3px rgb(0 0 0 / 46%), 0 0 0 0.5px rgb(255 255 255 / 14%);
+  --sidebar-seg-shadow: 0 1px 3px rgb(0 0 0 / 46%), inset 0 0 0 0.5px rgb(255 255 255 / 14%);
   --switcher-card-bg: #1d1928;
   --switcher-card-border: #473e5e;
   --switcher-card-hover: #272133;

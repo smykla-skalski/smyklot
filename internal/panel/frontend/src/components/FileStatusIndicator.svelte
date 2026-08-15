@@ -40,6 +40,9 @@
   });
 </script>
 
+<!-- The word is part of the same statement as the mark, so it explains itself on
+     hover too. Pointing at "Bypassed" and getting nothing, when the circle beside
+     it answers, is the sort of thing a reader reads as the tooltip being broken. -->
 <span class="file-indicator status-{status}">
   <button
     use:tooltip={{ id, text: message, align: 'start' }}
@@ -49,10 +52,10 @@
     aria-describedby={id}
   >
     <Icon name={icon} size={14} />
+    {#if showLabel}
+      <span class="status-label">{status.slice(0, 1).toUpperCase() + status.slice(1)}</span>
+    {/if}
   </button>
-  {#if showLabel}
-    <span class="status-label">{status.slice(0, 1).toUpperCase() + status.slice(1)}</span>
-  {/if}
 </span>
 
 <style>
@@ -84,6 +87,9 @@
     color: var(--warning);
   }
 
+  /* Square when it is only the mark, and as wide as the statement when the word
+     is there too - the whole thing is one target, so hovering either half
+     answers. */
   .symbol {
     align-items: center;
     background: transparent;
@@ -92,15 +98,16 @@
     color: inherit;
     cursor: help;
     display: inline-flex;
+    gap: var(--space-2);
     height: 1.125rem;
     justify-content: center;
+    min-width: 1.125rem;
     outline: none;
     padding: 0;
     position: relative;
     transition:
       background-color 120ms ease-out,
       color 120ms ease-out;
-    width: 1.125rem;
   }
 
   .symbol::before {
