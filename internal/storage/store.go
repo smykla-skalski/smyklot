@@ -5,6 +5,8 @@ package storage
 import (
 	"context"
 	"time"
+
+	"github.com/smykla-skalski/smyklot/internal/pendingci"
 )
 
 // AuthStore persists short-lived authentication records and panel identities.
@@ -119,6 +121,7 @@ type Store interface {
 	AuditReader
 	SecurityStore
 	PreferenceStore
+	pendingci.Store
 
 	Ping(context.Context) error
 	Close() error
