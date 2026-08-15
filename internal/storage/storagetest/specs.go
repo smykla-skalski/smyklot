@@ -42,6 +42,9 @@ func DeclareSpecs(harness Harness) {
 			return ctx, store, now
 		})
 	})
+	declarePendingCISpecs(func() (context.Context, storage.Store, time.Time) {
+		return ctx, store, now
+	})
 
 	It("caps sessions per account and removes expired sessions on read", func() {
 		account := testAccount(now)

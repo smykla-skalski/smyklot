@@ -17,5 +17,5 @@ CREATE TABLE pending_ci_source_revisions (
     UNIQUE (repository_id, pull_request, source_order)
 );
 
-CREATE INDEX pending_ci_source_revisions_latest
+CREATE INDEX pending_ci_source_revisions_latest_idx
 ON pending_ci_source_revisions (repository_id, pull_request, source_comment_id, source_order DESC);
