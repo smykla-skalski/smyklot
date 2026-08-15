@@ -197,6 +197,10 @@
      state - and is also what the filler paints, so a hovered row and a dead cell were the same
      colour. */
   --table-row-hover: color-mix(in srgb, var(--text-primary) 5.4%, var(--surface-base));
+  /* A row that can be pressed acknowledges the press, like every other control.
+     The step from hover is the one the controls use - 5.3% to 10.9% there, so
+     roughly double - rather than a figure picked for this one surface. */
+  --table-row-pressed: color-mix(in srgb, var(--text-primary) 10.9%, var(--surface-base));
   --dialog-bg: var(--surface-base);
   --dialog-border: var(--border-subtle);
 
@@ -447,6 +451,7 @@
   /* Lifts rather than drops: on a dark ground the pointer raises what it is over, as it does on
      every other control here. 5.09 dE00. */
   --table-row-hover: color-mix(in srgb, #ffffff 6.8%, var(--surface-base));
+  --table-row-pressed: color-mix(in srgb, #ffffff 12.4%, var(--surface-base));
   --spectrum: var(--brand-action);
 
   /* The track is the inset surface here as it is in every other palette. It used to be the sidebar
@@ -554,6 +559,7 @@ body {
      hue: 4.60:1 on the inset against the panel's 4.58:1 on its own. */
   --text-muted: #6c6876;
   --table-row-hover: color-mix(in srgb, var(--text-primary) 5.3%, var(--surface-base));
+  --table-row-pressed: color-mix(in srgb, var(--text-primary) 10.9%, var(--surface-base));
   /* Aliases substitute where they are declared, so the :root copies were
      computed against panel values and inherit here already resolved.
      Re-declaring them on the shell makes them re-resolve against the Root
@@ -644,6 +650,7 @@ body {
   --brand-action-text: #c4b5fd;
   --on-brand-action: #1c1329;
   --table-row-hover: color-mix(in srgb, #ffffff 6.7%, var(--surface-base));
+  --table-row-pressed: color-mix(in srgb, #ffffff 12.4%, var(--surface-base));
   /* The Root shell keeps its own thumb rather than inheriting the panel's #2b3541: a blue-grey
      thumb at hue 253 inside a violet shell at hue 300 reads as another product's control, the
      same argument --brand-action is re-declared for above. */

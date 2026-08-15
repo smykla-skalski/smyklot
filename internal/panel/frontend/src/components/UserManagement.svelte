@@ -1497,11 +1497,6 @@
                         {/if}
                       </td>
                       <td class="row-actions" data-label="Actions">
-                        {#if hasDecisionHistory(user)}
-                          <span class="row-go" aria-hidden="true">
-                            <Icon name="chevron-right" size={14} />
-                          </span>
-                        {/if}
                         {#if user.manageable && !readOnly}
                           <ActionMenu
                             label={`Actions for @${user.account.login}`}
@@ -1516,6 +1511,16 @@
                             aria-hidden="true"
                           >
                             <Icon name="more" size={22} />
+                          </span>
+                        {/if}
+                        <!-- After the actions rather than before, and always
+                             drawn: it points out of the row, and it is what says
+                             this row opens something where its neighbours do
+                             not. Revealing it on hover only told a reader that
+                             after they had already guessed. -->
+                        {#if hasDecisionHistory(user)}
+                          <span class="row-go" aria-hidden="true">
+                            <Icon name="chevron-right" size={14} />
                           </span>
                         {/if}
                       </td>
@@ -2329,6 +2334,19 @@
 
   .user-table tbody tr.history-row {
     cursor: pointer;
+    transition: background-color var(--duration-fast) var(--ease-standard);
+  }
+
+  .user-table tbody tr.history-row:hover {
+    background: var(--table-row-hover);
+  }
+
+  /* A row that can be pressed acknowledges the press, like every other control in
+     the panel. The colour step does it rather than the usual scale: these rows are
+     virtualised and already carry a `transform` for their own position, so a press
+     transform would fight the one that puts the row on screen. */
+  .user-table tbody tr.history-row:active {
+    background: var(--table-row-pressed);
   }
 
   .user-table tbody tr.history-row:focus-visible {
@@ -2526,10 +2544,14 @@
     display: inline-block;
   }
 
+  /* Always there. It is the only thing that separates a row you can open from one
+     you cannot, so hiding it until hover answered the question only for people who
+     had already asked it. Quiet enough at rest that a column of them reads as a
+     margin rather than as a column of arrows, and it leans out on hover. */
   .row-go {
     color: var(--text-muted);
     display: inline-grid;
-    opacity: 0;
+    opacity: 0.55;
     place-items: center;
     transition:
       opacity var(--duration-fast) var(--ease-standard),
