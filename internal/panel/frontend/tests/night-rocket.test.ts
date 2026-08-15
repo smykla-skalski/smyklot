@@ -111,8 +111,47 @@ describe('Flight [Unit]', () => {
   const cruise = 70;
   const dt = 1 / 60;
 
-  it('stays inside its bounds for minutes of wandering', () => {
+  /** Entry is part of every flight now; run it out before asserting on the
+   * roaming that follows. */
+  function enter(fl: Flight): void {
+    let guard = 0;
+    while (fl.entering) {
+      fl.step(dt);
+      expect((guard += 1)).toBeLessThan(60 * 30);
+    }
+  }
+
+  it('flies in from off stage instead of appearing mid-sky', () => {
+    const fl = new Flight({ bounds, cruise, random: rng(41) });
+    expect(fl.entering).toBe(true);
+    expect(fl.x < 0 || fl.x > width || fl.y < 0 || fl.y > height).toBe(true);
+    enter(fl);
+    expect(fl.x).toBeGreaterThanOrEqual(0);
+    expect(fl.x).toBeLessThanOrEqual(width);
+    expect(fl.y).toBeGreaterThanOrEqual(0);
+    expect(fl.y).toBeLessThanOrEqual(height);
+  });
+
+  it('departs off stage at full burn when told to leave', () => {
+    const fl = new Flight({ bounds, cruise, random: rng(43) });
+    enter(fl);
+    for (let i = 0; i < 60 * 5; i += 1) fl.step(dt);
+    fl.depart();
+    expect(fl.departing).toBe(true);
+    let guard = 0;
+    while (!fl.gone) {
+      fl.step(dt);
+      // Leaving is flying, never sitting: no rest on the way out.
+      expect(fl.resting).toBe(false);
+      expect((guard += 1)).toBeLessThan(60 * 40);
+    }
+    const beyond = Math.max(0 - fl.x, fl.x - width, 0 - fl.y, fl.y - height);
+    expect(beyond).toBeGreaterThan(39);
+  });
+
+  it('stays inside its bounds for minutes of wandering once entered', () => {
     const fl = new Flight({ bounds, cruise, random: rng(7) });
+    enter(fl);
     for (let i = 0; i < 240 * 60; i += 1) {
       fl.step(dt);
       expect(fl.x).toBeGreaterThanOrEqual(0);
@@ -143,6 +182,7 @@ describe('Flight [Unit]', () => {
 
   it('rests the way a vehicle does: glide down, sit, turn, build back up', () => {
     const fl = new Flight({ bounds, cruise, random: rng(3) });
+    enter(fl);
     fl.rest();
     // The glide: speed only ever falls until the rocket is parked.
     let guard = 0;
@@ -230,12 +270,18 @@ describe('Flight [Unit]', () => {
         settle = 0;
         continue;
       }
+      // The wall band steers even where flying is hidden, because a crash
+      // is worse than a wiggle - so a band excursion restarts the clock the
+      // way entering does, giving the eased-out steering time to die.
+      if (fl.y < 120 || fl.y > height - 120) {
+        settle = 0;
+        entryHeading = fl.heading;
+        continue;
+      }
       // The turn rate is eased, not snapped, so the first moments inside
       // still carry the curve it entered with; after that it holds course.
-      // The wall band is left out too: the soft wall keeps steering even
-      // where flying is hidden, because a crash is worse than a wiggle.
       settle += dt;
-      if (settle < 1.1 || fl.y < 120 || fl.y > height - 120) {
+      if (settle < 1.1) {
         entryHeading = fl.heading;
         continue;
       }
@@ -303,5 +349,9 @@ describe('NightRocket [Unit]', () => {
 
   it('carries no style attribute for the CSP to discard', () => {
     expect(source).not.toMatch(/\sstyle="/u);
+  });
+
+  it('clears its launch timer on teardown', () => {
+    expect(source).toContain('clearTimeout');
   });
 });

@@ -1,7 +1,9 @@
 <script lang="ts">
   import type { Attachment } from 'svelte/attachments';
 
+  import type { CrossingEdge } from '../lib/crossing';
   import { Flight, TrailEmitter, type TrailDash } from '../lib/rocket';
+  import type { SkySlots } from '../lib/sky-slots';
 
   /**
    * The sky's easter egg: a small line-drawn rocket that wanders wherever
@@ -10,6 +12,14 @@
    * flies the odd full circle or a sudden tight turn, and sometimes glides to
    * a stop, sits, turns on the spot and burns back up to speed. The behaviour
    * lives in `lib/rocket.ts`; this component only sizes the canvas and draws.
+   *
+   * The flight begins and ends off screen. A rocket enters by flying in from
+   * past an allowed edge, and when its home goes inactive - a theme switch -
+   * it is not cut: it departs at full burn through the nearest allowed edge,
+   * its trail fades to nothing, and only then is the seat given back and the
+   * canvas left bare. While inactive a slow timer keeps asking whether to
+   * fly again, which is also what brings the rocket back when its home
+   * reactivates - existence is never toggled, only activity.
    *
    * Placed inside `NightSky`, the sky's own mask fades the rocket out with
    * the stars, and the sky's stacking keeps it behind the page's content -
@@ -20,13 +30,17 @@
    * It must never cost a reader anything: one rAF loop drives one canvas, the
    * loop stops when the canvas is off screen and does not start at all under
    * `prefers-reduced-motion` (the CSS animation squash cannot reach a canvas,
-   * so the gate has to be here), a hidden tab suspends it for free, and a
-   * parked rocket over a drained trail stops repainting entirely.
+   * so the gate has to be here), a hidden tab suspends it for free, a parked
+   * rocket over a drained trail stops repainting entirely, and between
+   * flights there is no loop at all, only the timer.
    */
   const {
     speed = 70,
     trailLife = 7,
     quiet = null,
+    active = true,
+    edges = undefined,
+    slots = undefined,
   }: {
     /** Top speed, in CSS pixels per second; the flight varies its pace
      * beneath it and never passes it. */
@@ -39,6 +53,16 @@
      * carried in, saving its circles, turns and rests for open sky.
      */
     quiet?: HTMLElement | null;
+    /**
+     * Whether this home may fly. Flipping it off retires the flight
+     * gracefully - departure, then the trail's own fade - never a cut.
+     */
+    active?: boolean;
+    /** The edges the rocket may enter and leave through; edges that lie
+     * mid-page are left out by the caller. */
+    edges?: CrossingEdge[];
+    /** The shared seat budget capping how many easter eggs fly at once. */
+    slots?: SkySlots;
   } = $props();
 
   const TAU = Math.PI * 2;
@@ -51,6 +75,14 @@
   const TRAIL_INK = 'rgb(186 212 255)';
   const FLAME_CORE = 'rgb(255 214 140)';
   const FLAME_EDGE = 'rgb(255 172 120)';
+
+  /* The launch timer: quick after mount so the sky is not long empty, and a
+     patient retry when a launch is refused - home inactive, off screen, no
+     seat free, reduced motion. */
+  const FIRST_MIN_S = 0.3;
+  const FIRST_SPAN_S = 0.9;
+  const RETRY_MIN_S = 3;
+  const RETRY_SPAN_S = 6;
 
   function strokeDash(ctx: CanvasRenderingContext2D, dash: TrailDash, alpha: number): void {
     if (dash.pts.length < 2) return;
@@ -170,9 +202,11 @@
       if (ctx === null) return;
 
       let fl: Flight | null = null;
-      const trail = new TrailEmitter();
+      let trail = new TrailEmitter();
+      let timer = 0;
       let raf = 0;
-      let active = false;
+      let running = false;
+      let seat = false;
       let inView = true;
       let lastTs = 0;
       let simT = 0;
@@ -182,6 +216,60 @@
       let frame = 0;
 
       const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+      const schedule = (min: number, span: number): void => {
+        clearTimeout(timer);
+        timer = window.setTimeout(begin, (min + Math.random() * span) * 1000);
+      };
+
+      /* An idle canvas holds no bitmap: at these sizes a backing store is
+         tens of megabytes, and a home that is merely waiting its turn - the
+         inactive theme's, or one between flights - should cost nothing. The
+         bitmap exists exactly as long as a flight does. */
+      const applyBitmap = (): void => {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        canvas.width = Math.round(cssW * dpr);
+        canvas.height = Math.round(cssH * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      };
+
+      const releaseBitmap = (): void => {
+        canvas.width = 0;
+        canvas.height = 0;
+      };
+
+      const begin = (): void => {
+        if (!active || !inView || reduce.matches || cssW === 0 || cssH === 0) {
+          schedule(RETRY_MIN_S, RETRY_SPAN_S);
+          return;
+        }
+        if (slots !== undefined && !slots.take()) {
+          schedule(RETRY_MIN_S, RETRY_SPAN_S);
+          return;
+        }
+        seat = true;
+        trail = new TrailEmitter();
+        applyBitmap();
+        fl = new Flight({
+          bounds: { minX: 0, minY: 0, maxX: cssW, maxY: cssH },
+          cruise: speed,
+          edges,
+          random: Math.random,
+        });
+        parkedDrawn = false;
+        sync();
+      };
+
+      const dismiss = (): void => {
+        fl = null;
+        trail = new TrailEmitter();
+        if (seat) {
+          seat = false;
+          slots?.release();
+        }
+        releaseBitmap();
+        parkedDrawn = false;
+      };
 
       /* Where the panel stands, in canvas coordinates, padded to cover its
          blurred edge. Measured seldom - the layout is still - and never in
@@ -219,13 +307,23 @@
            the scene down around it. */
         fl.setCruise(speed);
         const life = Math.max(0.5, trailLife);
+        if (!active && !fl.departing) fl.depart();
         fl.step(dt);
-        if (fl.speed > 1) {
+        if (fl.speed > 1 && !fl.gone) {
           trail.advance(fl.x - Math.cos(fl.heading) * 16, fl.y - Math.sin(fl.heading) * 16, simT);
         } else {
           trail.lift();
         }
         trail.prune(simT, life);
+        if (fl.gone && trail.empty) {
+          /* Departed and every dash faded: the flight is over off screen.
+             The seat goes back, the loop stops, and the timer decides when -
+             and whether - the next flight happens. */
+          dismiss();
+          sync();
+          schedule(RETRY_MIN_S, RETRY_SPAN_S);
+          return;
+        }
         /* A parked rocket over a drained trail is a still picture. */
         const parked = fl.resting && trail.empty;
         if (parked && parkedDrawn) return;
@@ -237,45 +335,45 @@
       };
 
       const sync = (): void => {
-        const run = inView && !reduce.matches;
-        if (run === active) return;
-        active = run;
-        if (run) {
-          lastTs = performance.now();
-          raf = requestAnimationFrame(tick);
-        } else {
-          cancelAnimationFrame(raf);
-          if (reduce.matches) {
-            /* Reduced motion means nothing moves, and a rocket frozen
-               mid-flight is not nothing moving - the sky goes back to bare. */
-            ctx.clearRect(0, 0, cssW, cssH);
-            parkedDrawn = false;
+        const run = fl !== null && inView && !reduce.matches;
+        if (run !== running) {
+          running = run;
+          if (run) {
+            lastTs = performance.now();
+            raf = requestAnimationFrame(tick);
+          } else {
+            cancelAnimationFrame(raf);
           }
         }
+        if (reduce.matches && fl !== null) {
+          /* Reduced motion means nothing moves, and a rocket frozen
+             mid-flight is not nothing moving - the sky goes back to bare.
+             The one place the retirement is immediate rather than flown. */
+          dismiss();
+        }
+      };
+
+      const onReduce = (): void => {
+        sync();
+        clearTimeout(timer);
+        if (!reduce.matches) schedule(RETRY_MIN_S, RETRY_SPAN_S);
       };
 
       const resize = (): void => {
         const w = canvas.clientWidth;
         const h = canvas.clientHeight;
         if (w === 0 || h === 0) return;
-        /* Capped: past 2x the extra pixels cost fill rate and read the same
-           through the sky's mask. */
-        const dpr = Math.min(window.devicePixelRatio || 1, 2);
-        canvas.width = Math.round(w * dpr);
-        canvas.height = Math.round(h * dpr);
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         cssW = w;
         cssH = h;
-        const bounds = { minX: 0, minY: 0, maxX: w, maxY: h };
-        if (fl === null) {
-          fl = new Flight({ bounds, cruise: speed, random: Math.random });
-        } else {
-          fl.setBounds(bounds);
-        }
+        /* Only a flying home re-sizes its bitmap; an idle one stays bare.
+           The cap at 2x: past it the extra pixels cost fill rate and read
+           the same through the sky's mask. */
+        if (fl === null) return;
+        applyBitmap();
+        fl.setBounds({ minX: 0, minY: 0, maxX: w, maxY: h });
         parkedDrawn = false;
       };
 
-      /* Fires once on observe, which is what creates the flight. */
       const ro = new ResizeObserver(resize);
       ro.observe(canvas);
 
@@ -286,14 +384,16 @@
       });
       io.observe(canvas);
 
-      reduce.addEventListener('change', sync);
-      sync();
+      reduce.addEventListener('change', onReduce);
+      schedule(FIRST_MIN_S, FIRST_SPAN_S);
 
       return () => {
         cancelAnimationFrame(raf);
+        clearTimeout(timer);
         ro.disconnect();
         io.disconnect();
-        reduce.removeEventListener('change', sync);
+        reduce.removeEventListener('change', onReduce);
+        if (seat) slots?.release();
       };
     };
   }

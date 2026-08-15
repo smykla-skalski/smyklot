@@ -12,7 +12,13 @@
  * continuous in both position and curvature.
  */
 
+import { CROSSING_EDGES, pickCrossing, type CrossingEdge } from './crossing';
+
 const TAU = Math.PI * 2;
+
+/** How far past the bounds an entry begins and a departure ends: the whole
+ * drawing, flame included, is off the field at both moments. */
+const OFFSTAGE = 40;
 
 /** Cruising turn-rate cap - what keeps ordinary wandering to gentle arcs. */
 const MAX_TURN = 0.9;
@@ -203,6 +209,12 @@ export interface FlightConfig {
   bounds: FlightBounds;
   /** Cruising speed in px/s. */
   cruise: number;
+  /**
+   * The edges the rocket may enter and leave through. Not every bounds edge
+   * lies off screen - the sky band's bottom sits mid-page - and a rocket
+   * must only ever appear and disappear where nobody can watch it do so.
+   */
+  edges?: readonly CrossingEdge[];
   /** Injected so a test can seed it; the component passes `Math.random`. */
   random: () => number;
 }
@@ -220,9 +232,14 @@ export class Flight {
   speed: number;
   /** How hard the engine is burning, eased, 0 when coasting or parked. */
   thrust = 0;
+  /** Still flying in from off stage; steering takes over once inside. */
+  entering = true;
+  /** Committed to leaving; see `depart`. */
+  departing = false;
 
   private bounds: FlightBounds;
   private cruise: number;
+  private readonly edges?: readonly CrossingEdge[];
   private readonly random: () => number;
   private time = 0;
   private mode: FlightMode = 'cruise';
@@ -245,11 +262,21 @@ export class Flight {
   constructor(cfg: FlightConfig) {
     this.bounds = cfg.bounds;
     this.cruise = Math.max(10, cfg.cruise);
+    this.edges = cfg.edges;
     this.random = cfg.random;
-    const m = this.margin();
-    this.x = this.bounds.minX + m + this.random() * Math.max(1, this.spanX() - 2 * m);
-    this.y = this.bounds.minY + m + this.random() * Math.max(1, this.spanY() - 2 * m);
-    this.heading = this.random() * TAU;
+    // Born off stage: the rocket flies in from past an allowed edge, on the
+    // line a crossing would take, so it never pops into existence where it
+    // can be seen. The ordinary steering takes over once it is inside.
+    const crossing = pickCrossing({
+      width: this.spanX(),
+      height: this.spanY(),
+      edges: this.edges,
+      outside: OFFSTAGE,
+      random: this.random,
+    });
+    this.x = this.bounds.minX + crossing.x;
+    this.y = this.bounds.minY + crossing.y;
+    this.heading = Math.atan2(crossing.uy, crossing.ux);
     this.course = this.heading;
     this.pace = PACE_MIN + this.random() * PACE_SPAN;
     this.speed = this.cruise * this.pace;
@@ -269,9 +296,38 @@ export class Flight {
 
   setBounds(bounds: FlightBounds): void {
     this.bounds = bounds;
+    // A rocket legitimately off stage - entering or leaving - must not be
+    // teleported inside by a resize; the clamp is for the ones already in.
+    if (this.entering || this.departing) return;
     const m = this.margin();
     this.x = clamp(this.x, bounds.minX + m, Math.max(bounds.minX + m, bounds.maxX - m));
     this.y = clamp(this.y, bounds.minY + m, Math.max(bounds.minY + m, bounds.maxY - m));
+  }
+
+  /**
+   * Leave the sky: straight for the nearest allowed edge at full burn, every
+   * manoeuvre suppressed on the way. Used when a home goes inactive - a
+   * theme switch - so the flight ends off screen instead of being cut.
+   * `gone` turns true once the whole drawing is past the bounds.
+   */
+  depart(): void {
+    if (this.departing) return;
+    this.departing = true;
+    this.entering = false;
+    this.arcLeft = 0;
+    this.course = this.exitCourse();
+    // A rocket mid-rest is woken: sitting out a departure is not leaving.
+    if (this.mode !== 'cruise') this.mode = 'launch';
+  }
+
+  get gone(): boolean {
+    return (
+      this.departing &&
+      (this.x < this.bounds.minX - OFFSTAGE ||
+        this.x > this.bounds.maxX + OFFSTAGE ||
+        this.y < this.bounds.minY - OFFSTAGE ||
+        this.y > this.bounds.maxY + OFFSTAGE)
+    );
   }
 
   /**
@@ -320,48 +376,61 @@ export class Flight {
       case 'cruise': {
         this.sinceRest += dt;
         this.decideIn -= dt;
-        if (this.hidden()) {
-          // Behind the panel: fly straight through on the heading it came in
-          // with. Any arc is abandoned, and the next decision waits until
-          // the rocket is somewhere it can be seen making it.
+        if (this.entering && this.wallDistance() > this.margin()) this.entering = false;
+        const straightOnly = this.entering || this.departing || this.hidden();
+        if (straightOnly) {
+          // Entering, leaving, or behind the panel: hold the course and
+          // nothing else. Behind the panel the course *is* the heading it
+          // carried in, so that crossing is dead straight; any arc is
+          // abandoned, and the next decision waits for open sky.
+          if (this.hidden() && !this.departing) this.course = this.heading;
           this.arcLeft = 0;
-          this.course = this.heading;
           if (this.decideIn <= 0) this.decideIn = 0.5;
-        } else if (this.decideIn <= 0) {
-          this.decide();
+          targetOmega = clamp(
+            wrapAngle(this.course - this.heading) * COURSE_GAIN,
+            -MAX_TURN,
+            MAX_TURN,
+          );
+        } else {
+          if (this.decideIn <= 0) this.decide();
+          if (this.arcLeft > 0 && this.wallDistance() < 60) {
+            // The arc has drifted too close to a wall; give it up and let
+            // the ordinary steering carry the rocket back inside.
+            this.arcLeft = 0;
+            this.course = this.centreward();
+          }
+          if (this.arcLeft > 0) {
+            targetOmega = this.arcOmega;
+            this.arcLeft -= Math.abs(this.omega) * dt;
+            // An arc ends on whatever heading it reaches, and that heading
+            // is the course now - a circle hands back the old one.
+            if (this.arcLeft <= 0) this.course = this.heading;
+          } else {
+            targetOmega =
+              clamp(wrapAngle(this.course - this.heading) * COURSE_GAIN, -MAX_TURN, MAX_TURN) +
+              this.wander();
+          }
         }
-        if (this.arcLeft > 0 && this.wallDistance() < 60) {
-          // The arc has drifted too close to a wall; give it up and let the
-          // ordinary steering carry the rocket back inside.
-          this.arcLeft = 0;
-          this.course = this.centreward();
-        }
-        if (this.arcLeft > 0) {
-          targetOmega = this.arcOmega;
-          this.arcLeft -= Math.abs(this.omega) * dt;
-          // An arc ends on whatever heading it reaches, and that heading is
-          // the course now - a circle hands back the old one by geometry.
-          if (this.arcLeft <= 0) this.course = this.heading;
-        } else if (!this.hidden()) {
-          targetOmega =
-            clamp(wrapAngle(this.course - this.heading) * COURSE_GAIN, -MAX_TURN, MAX_TURN) +
-            this.wander();
-        }
-        targetOmega = clamp(targetOmega + this.edgeSteer(), -HARD_TURN_CAP, HARD_TURN_CAP);
+        // The soft wall stays on except while leaving - it would fight the
+        // exit - and entry welcomes it: it bends the arrival inward.
+        if (!this.departing) targetOmega += this.edgeSteer();
+        targetOmega = clamp(targetOmega, -HARD_TURN_CAP, HARD_TURN_CAP);
         // The rippled pace, and on top of it a tight turn bleeds a little
-        // speed, the way a hard bank does; both come back on their own.
+        // speed, the way a hard bank does; both come back on their own. A
+        // departure burns at the full configured speed - it is leaving.
         const pace = clamp(
           this.pace + PACE_RIPPLE * Math.sin(this.time * 0.23 + this.wanderB * 2.1),
           PACE_MIN - PACE_RIPPLE,
           1,
         );
-        targetSpeed = this.cruise * pace;
+        targetSpeed = this.departing ? this.cruise : this.cruise * pace;
         if (this.arcLeft > 0 && Math.abs(this.arcOmega) > 1.6) targetSpeed *= 0.8;
         break;
       }
       case 'brake': {
-        // Engine off, drifting nearly straight while the speed bleeds away.
-        targetOmega = this.wander() * 0.25;
+        // Engine off, drifting nearly straight while the speed bleeds away -
+        // and dead straight where the panel hides it.
+        targetOmega = this.hidden() ? 0 : this.wander() * 0.25;
         if (this.speed < STOP_SPEED) {
           this.speed = 0;
           this.omega = 0;
@@ -385,7 +454,11 @@ export class Flight {
         break;
       }
       case 'launch': {
-        targetSpeed = this.cruise * this.pace;
+        targetSpeed = this.cruise * (this.departing ? 1 : this.pace);
+        // A launch that carries the rocket behind the panel goes straight
+        // there like every other crossing of it - a departure excepted, its
+        // course already is the way out.
+        if (this.hidden() && !this.departing) this.course = this.heading;
         targetOmega =
           clamp(wrapAngle(this.course - this.heading) * COURSE_GAIN, -MAX_TURN, MAX_TURN) * 0.5;
         if (this.speed >= this.cruise * this.pace * 0.92) {
@@ -513,6 +586,9 @@ export class Flight {
    * course is pointed inward and the steering does the turning.
    */
   private confine(): void {
+    // Off stage on purpose: an entry has not arrived yet and a departure is
+    // exactly the act of leaving - clamping either would teleport it.
+    if (this.entering || this.departing) return;
     const m = this.margin();
     const cx = clamp(
       this.x,
@@ -535,5 +611,30 @@ export class Flight {
     // Room for the artwork itself - nose, flame and trail all stay inside
     // the canvas even with the hull pinned to the clamp.
     return Math.min(26, this.spanX() / 4, this.spanY() / 4);
+  }
+
+  /** Perpendicular course through the nearest edge a flight may leave by. */
+  private exitCourse(): number {
+    const edges = this.edges === undefined || this.edges.length === 0 ? CROSSING_EDGES : this.edges;
+    let best: CrossingEdge = edges[0] ?? 'left';
+    let bestDistance = Infinity;
+    for (const edge of edges) {
+      const distance =
+        edge === 'left'
+          ? this.x - this.bounds.minX
+          : edge === 'right'
+            ? this.bounds.maxX - this.x
+            : edge === 'top'
+              ? this.y - this.bounds.minY
+              : this.bounds.maxY - this.y;
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = edge;
+      }
+    }
+    if (best === 'left') return Math.PI;
+    if (best === 'right') return 0;
+    if (best === 'top') return -Math.PI / 2;
+    return Math.PI / 2;
   }
 }

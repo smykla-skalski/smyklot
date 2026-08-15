@@ -12,6 +12,7 @@
   import type { Snippet } from 'svelte';
 
   import type { PanelBuild } from '../lib/base';
+  import { SkySlots } from '../lib/sky-slots';
   import {
     applyDocumentTheme,
     DEFAULT_THEME_DISPLAY,
@@ -23,6 +24,7 @@
   import { createPrefsSync } from '../lib/preferences-sync';
   import BrandMark from './BrandMark.svelte';
   import NightAstronaut from './NightAstronaut.svelte';
+  import NightMeteors from './NightMeteors.svelte';
   import NightRocket from './NightRocket.svelte';
   import NightSky from './NightSky.svelte';
   import PageFooter from './PageFooter.svelte';
@@ -95,6 +97,14 @@
      nobody. */
   let cardElement = $state<HTMLElement | null>(null);
 
+  /* One seat budget for the whole page: the sky band and the dark overlay
+     share it, so at most two easter eggs are ever on screen - including
+     mid-switch, when the old home's flight is still leaving while the new
+     home's waits for its seat. */
+  const flightSlots = new SkySlots();
+
+  const darkFlight = $derived(resolvedTheme === 'dark');
+
   $effect(() => {
     applyDocumentTheme(document, resolvedTheme);
   });
@@ -118,26 +128,27 @@
   <div class="night-brand">
     <NightSky
       height={skyHeight}
-      rocket={resolvedTheme !== 'dark'}
-      astronaut={resolvedTheme !== 'dark'}
+      rocket={!darkFlight}
+      astronaut={!darkFlight}
+      meteors={!darkFlight}
+      slots={flightSlots}
     />
     <!-- Open, so the sky carries through the ring: out here the mark stands on
          night in both themes, which is exactly the ground the robot wants. -->
     <BrandMark stacked interior="clear" size={MARK_SIZE} />
   </div>
 
-  <!-- In the dark theme the whole page is night, so the easter eggs are not
-     held to the sky's patch: they fly the full window, still behind all of
-     the content. In the light theme they stay inside the sky, whose mask is
-     what keeps them off the white page. After the sky in source order: both
-     sit at z-index -1, where document order decides, and the flights belong
-     above the stars they fly through. -->
-  {#if resolvedTheme === 'dark'}
-    <div class="page-flight" aria-hidden="true">
-      <NightRocket quiet={cardElement} />
-      <NightAstronaut />
-    </div>
-  {/if}
+  <!-- Both homes exist in both themes; the theme decides which is active.
+     Nothing unmounts on a switch, so a flight in progress retires on its own
+     terms - the rocket departs, crossings finish off screen - while the new
+     home's flights arrive. After the sky in source order: both sit at
+     z-index -1, where document order decides, and the flights belong above
+     the stars they fly through - still behind every piece of the content. -->
+  <div class="page-flight" aria-hidden="true">
+    <NightRocket quiet={cardElement} active={darkFlight} slots={flightSlots} />
+    <NightAstronaut active={darkFlight} slots={flightSlots} />
+    <NightMeteors active={darkFlight} slots={flightSlots} />
+  </div>
 
   <div class="night-main">
     <div class="night-head">

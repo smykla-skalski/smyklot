@@ -1,5 +1,8 @@
 <script lang="ts">
+  import type { CrossingEdge } from '../lib/crossing';
+  import { SkySlots } from '../lib/sky-slots';
   import NightAstronaut from './NightAstronaut.svelte';
+  import NightMeteors from './NightMeteors.svelte';
   import NightRocket from './NightRocket.svelte';
 
   /**
@@ -19,6 +22,8 @@
     rocketSpeed = 70,
     rocketTrailLife = 7,
     astronaut = true,
+    meteors = true,
+    slots = new SkySlots(),
   }: {
     /** How far the sky reaches across, before the mask fades it out. */
     width?: string;
@@ -31,7 +36,13 @@
      * window, which is the shape that reads as squashed.
      */
     height?: string;
-    /** The easter egg: a little rocket wandering the sky. */
+    /**
+     * The easter egg: a little rocket wandering the sky. The flags gate
+     * activity, never existence - flipping one off retires its flight
+     * gracefully (the rocket departs, crossings finish off screen) and
+     * flipping it back on lets the next flight come, so a theme switch
+     * never cuts an animation mid-air.
+     */
     rocket?: boolean;
     /** Its top speed, in CSS pixels per second; the flight varies its pace
      * beneath it and never passes it. */
@@ -40,7 +51,20 @@
     rocketTrailLife?: number;
     /** The rarer easter egg: an astronaut adrift, tumbling across the sky. */
     astronaut?: boolean;
+    /** The third: the odd small shower of meteors. */
+    meteors?: boolean;
+    /**
+     * The seat budget capping how many easter eggs fly at once - two. Pass
+     * the page's own instance when another flight home exists (the dark
+     * theme's overlay), so the cap holds across both.
+     */
+    slots?: SkySlots;
   } = $props();
+
+  /* No bottom entries or exits: the band's bottom edge lies mid-page, and a
+     flight may only appear and disappear off screen. The other three edges
+     of the band all lie past the window. */
+  const BAND_EDGES: CrossingEdge[] = ['left', 'right', 'top'];
 </script>
 
 <!-- Sized through `style:` rather than a `style` attribute: the panel serves
@@ -53,19 +77,17 @@
   <span class="sky-mid"></span>
   <span class="sky-bright"></span>
   <span class="sky-coloured"></span>
-  {#if rocket || astronaut}
-    <span class="sky-flight">
-      {#if rocket}
-        <NightRocket speed={rocketSpeed} trailLife={rocketTrailLife} />
-      {/if}
-      {#if astronaut}
-        <!-- No bottom crossings: the band's bottom edge lies mid-page, and a
-           crossing may only appear and disappear off screen. The other three
-           edges of the band all lie past the window. -->
-        <NightAstronaut edges={['left', 'right', 'top']} />
-      {/if}
-    </span>
-  {/if}
+  <span class="sky-flight">
+    <NightRocket
+      speed={rocketSpeed}
+      trailLife={rocketTrailLife}
+      active={rocket}
+      edges={BAND_EDGES}
+      {slots}
+    />
+    <NightAstronaut active={astronaut} edges={BAND_EDGES} {slots} />
+    <NightMeteors active={meteors} edges={BAND_EDGES} {slots} />
+  </span>
 </span>
 
 <style>

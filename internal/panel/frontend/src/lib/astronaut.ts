@@ -10,14 +10,11 @@
  * nothing changes until it is gone. The listlessness *is* the constancy.
  */
 
-const TAU = Math.PI * 2;
+import { pickCrossing, type CrossingEdge } from './crossing';
 
 /** How far outside the field a crossing starts and ends, so the figure is
  * entirely off the canvas at both ends of its journey. */
 const OUTSIDE = 30;
-/** Entry and exit keep off the corners: a crossing pinned to a corner cuts
- * it without ever really being seen. */
-const EDGE_KEEP = 0.15;
 /** A crossing takes this long, whatever distance it spans... */
 const CROSS_MIN_S = 18;
 const CROSS_SPAN_S = 32;
@@ -29,25 +26,18 @@ const SPEED_MAX = 45;
 const SPIN_MIN = 0.15;
 const SPIN_SPAN = 0.75;
 
+const TAU = Math.PI * 2;
+
 function clamp(value: number, low: number, high: number): number {
   return Math.min(high, Math.max(low, value));
 }
-
-export type DriftEdge = 'left' | 'right' | 'top' | 'bottom';
-
-const EDGES: readonly DriftEdge[] = ['left', 'right', 'top', 'bottom'];
 
 export interface DriftConfig {
   /** The field being crossed, in the canvas's CSS pixels. */
   width: number;
   height: number;
-  /**
-   * The edges a crossing may begin and end past. A crossing must only ever
-   * appear and disappear off screen, and not every canvas edge lies off
-   * screen: the sky band's bottom sits mid-page, so its caller leaves
-   * `bottom` out. At least two, or there is nowhere to go.
-   */
-  edges?: readonly DriftEdge[];
+  /** The edges a crossing may begin and end past - see `CrossingConfig`. */
+  edges?: readonly CrossingEdge[];
   /** Injected so a test can seed it; the component passes `Math.random`. */
   random: () => number;
 }
@@ -65,8 +55,8 @@ export class Drift {
   angle: number;
   done = false;
 
-  readonly entryEdge: DriftEdge;
-  readonly exitEdge: DriftEdge;
+  readonly entryEdge: CrossingEdge;
+  readonly exitEdge: CrossingEdge;
   readonly speed: number;
   readonly spin: number;
 
@@ -77,22 +67,22 @@ export class Drift {
 
   constructor(cfg: DriftConfig) {
     const random = cfg.random;
-    const allowed = cfg.edges === undefined || cfg.edges.length < 2 ? EDGES : cfg.edges;
-    const entryIndex = Math.floor(random() * allowed.length) % allowed.length;
-    this.entryEdge = allowed[entryIndex] ?? 'left';
-    const others = allowed.filter((edge) => edge !== this.entryEdge);
-    this.exitEdge = others[Math.floor(random() * others.length) % others.length] ?? 'right';
-    const from = edgePoint(this.entryEdge, cfg, random());
-    const to = edgePoint(this.exitEdge, cfg, random());
-    this.x = from.x;
-    this.y = from.y;
-    const dx = to.x - from.x;
-    const dy = to.y - from.y;
-    this.length = Math.hypot(dx, dy);
+    const crossing = pickCrossing({
+      width: cfg.width,
+      height: cfg.height,
+      edges: cfg.edges,
+      outside: OUTSIDE,
+      random,
+    });
+    this.x = crossing.x;
+    this.y = crossing.y;
+    this.length = crossing.length;
+    this.entryEdge = crossing.entryEdge;
+    this.exitEdge = crossing.exitEdge;
     const duration = CROSS_MIN_S + random() * CROSS_SPAN_S;
     this.speed = clamp(this.length / duration, SPEED_MIN, SPEED_MAX);
-    this.vx = (dx / this.length) * this.speed;
-    this.vy = (dy / this.length) * this.speed;
+    this.vx = crossing.ux * this.speed;
+    this.vy = crossing.uy * this.speed;
     this.spin = (random() < 0.5 ? -1 : 1) * (SPIN_MIN + random() * SPIN_SPAN);
     this.angle = random() * TAU;
   }
@@ -104,19 +94,5 @@ export class Drift {
     this.angle += this.spin * dt;
     this.travelled += this.speed * dt;
     if (this.travelled >= this.length) this.done = true;
-  }
-}
-
-function edgePoint(edge: DriftEdge, cfg: DriftConfig, along: number): { x: number; y: number } {
-  const span = EDGE_KEEP + along * (1 - 2 * EDGE_KEEP);
-  switch (edge) {
-    case 'left':
-      return { x: -OUTSIDE, y: span * cfg.height };
-    case 'right':
-      return { x: cfg.width + OUTSIDE, y: span * cfg.height };
-    case 'top':
-      return { x: span * cfg.width, y: -OUTSIDE };
-    case 'bottom':
-      return { x: span * cfg.width, y: cfg.height + OUTSIDE };
   }
 }

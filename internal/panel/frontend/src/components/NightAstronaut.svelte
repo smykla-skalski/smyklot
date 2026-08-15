@@ -1,7 +1,9 @@
 <script lang="ts">
   import type { Attachment } from 'svelte/attachments';
 
-  import { Drift, type DriftEdge } from '../lib/astronaut';
+  import { Drift } from '../lib/astronaut';
+  import type { CrossingEdge } from '../lib/crossing';
+  import type { SkySlots } from '../lib/sky-slots';
 
   /**
    * The sky's other easter egg, rarer than the rocket: a small line-drawn
@@ -14,10 +16,13 @@
    * as dead is the small life left in it - limbs stirring slowly against
    * the tumble, and a severed tether rippling along behind.
    *
-   * The two easter eggs are independent - the rocket may well be flying
-   * while the astronaut passes. Each keeps to its own canvas and its own
-   * loop, and this one sleeps far more than it runs: between crossings there
-   * is no animation frame at all, only one pending timer.
+   * The easter eggs are independent - the rocket may well be flying while
+   * the astronaut passes - but never a crowd: a crossing takes a seat from
+   * the shared `SkySlots` budget and gives it back as it leaves. Each egg
+   * keeps to its own canvas and its own loop, and this one sleeps far more
+   * than it runs: between crossings there is no animation frame at all,
+   * only one pending timer - which is also what wakes it again after its
+   * home has been inactive through a theme switch.
    *
    * The same guarantees as the rocket's: the loop stops when the canvas is
    * off screen, nothing runs or shows under `prefers-reduced-motion` (the
@@ -26,13 +31,22 @@
    */
   const {
     edges,
+    active = true,
+    slots = undefined,
   }: {
     /**
      * The canvas edges a crossing may begin and end past. A crossing only
      * ever appears and disappears off screen, so a caller whose canvas has
      * an edge lying mid-page leaves that edge out.
      */
-    edges?: DriftEdge[];
+    edges?: CrossingEdge[];
+    /**
+     * Whether this home may start crossings. Flipping it off never cuts one
+     * short - a crossing in flight finishes off screen; only new ones wait.
+     */
+    active?: boolean;
+    /** The shared seat budget capping how many easter eggs fly at once. */
+    slots?: SkySlots;
   } = $props();
 
   const TAU = Math.PI * 2;
@@ -146,6 +160,7 @@
       let timer = 0;
       let raf = 0;
       let running = false;
+      let seat = false;
       let inView = true;
       let lastTs = 0;
       let simT = 0;
@@ -159,13 +174,41 @@
         timer = window.setTimeout(begin, (min + Math.random() * span) * 1000);
       };
 
+      /* An idle canvas holds no bitmap - a backing store this size is tens
+         of megabytes, and this component sleeps far more than it runs. The
+         bitmap exists exactly as long as a crossing does. */
+      const applyBitmap = (): void => {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        canvas.width = Math.round(cssW * dpr);
+        canvas.height = Math.round(cssH * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      };
+
+      const releaseBitmap = (): void => {
+        canvas.width = 0;
+        canvas.height = 0;
+      };
+
       const begin = (): void => {
-        if (!inView || reduce.matches || cssW === 0 || cssH === 0) {
+        if (!active || !inView || reduce.matches || cssW === 0 || cssH === 0) {
           schedule(RETRY_MIN_S, RETRY_SPAN_S);
           return;
         }
+        /* The sky seats two; a full house costs this visitor one retry. */
+        if (slots !== undefined && !slots.take()) {
+          schedule(RETRY_MIN_S, RETRY_SPAN_S);
+          return;
+        }
+        seat = true;
+        applyBitmap();
         drift = new Drift({ width: cssW, height: cssH, edges, random: Math.random });
         sync();
+      };
+
+      const releaseSeat = (): void => {
+        if (!seat) return;
+        seat = false;
+        slots?.release();
       };
 
       const tick = (ts: number): void => {
@@ -180,6 +223,8 @@
         ctx.clearRect(0, 0, cssW, cssH);
         if (drift.done) {
           drift = null;
+          releaseSeat();
+          releaseBitmap();
           sync();
           schedule(NEXT_MIN_S, NEXT_SPAN_S);
           return;
@@ -201,7 +246,8 @@
         if (reduce.matches && drift !== null) {
           /* Reduced motion mid-crossing: the visitor simply is not there. */
           drift = null;
-          ctx.clearRect(0, 0, cssW, cssH);
+          releaseSeat();
+          releaseBitmap();
         }
       };
 
@@ -217,12 +263,10 @@
         const w = canvas.clientWidth;
         const h = canvas.clientHeight;
         if (w === 0 || h === 0) return;
-        const dpr = Math.min(window.devicePixelRatio || 1, 2);
-        canvas.width = Math.round(w * dpr);
-        canvas.height = Math.round(h * dpr);
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         cssW = w;
         cssH = h;
+        /* Only a crossing in flight re-sizes its bitmap; idle stays bare. */
+        if (drift !== null) applyBitmap();
       };
 
       const ro = new ResizeObserver(resize);
@@ -243,6 +287,7 @@
         ro.disconnect();
         io.disconnect();
         reduce.removeEventListener('change', onReduce);
+        releaseSeat();
       };
     };
   }
