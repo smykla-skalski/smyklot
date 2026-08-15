@@ -537,6 +537,8 @@ fly proxy 15432:5432 --app smyklot-db &
 
 It prints a row count per table. The destination is migrated to the current schema on the way in and must be empty; a second run refuses rather than merging two histories, and `--force` empties it first if a first attempt needs redoing.
 
+Both databases are migrated, the source included - the copy reads its columns, and a source a few releases behind would be missing some. That is why the steps above pull `panel.sqlite3` down first: the command writes to whatever it is pointed at, and the untouched original on the volume is the thing a rollback needs.
+
 Nothing is copied outside one transaction, so a failure leaves the database empty rather than half-populated. `schema_migrations` is deliberately not carried: the destination wrote its own while migrating.
 
 ### 3. Point the Service at It

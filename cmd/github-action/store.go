@@ -46,6 +46,10 @@ one transaction, so a copy that fails leaves the destination as it found it.
 Stop the service before running this. Rows written after the copy has read a
 table would not be carried, and the report would still say it succeeded.
 
+Both databases are brought to the current schema, the source included - the
+copy reads its columns, and a source a few releases behind would be missing
+some. So the source is written to. Work from a copy of anything irreplaceable.
+
   smyklot store migrate \
       --from /var/lib/smyklot/panel.sqlite3 \
       --to 'postgres://smyklot@smyklot-db.internal:5432/smyklot'`,

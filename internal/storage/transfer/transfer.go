@@ -98,17 +98,22 @@ func (r Report) Total() int {
 
 // Between copies one database into another, naming each by connection string.
 //
-// This is the whole operation: it chooses both engines, migrates the
-// destination to the current schema by opening it, copies, and closes both.
-// Nothing above the storage tree has to know which engines are involved, or
-// that a copy reaches below the port to do its work.
+// This is the whole operation: it chooses both engines, brings both to the
+// current schema by opening them, copies, and closes both. Nothing above the
+// storage tree has to know which engines are involved, or that a copy reaches
+// below the port to do its work.
+//
+// Both sides are migrated, the source included - it has to be, because the
+// copy reads its columns and a source two releases behind would be missing
+// some. That means the source file is written to. Copy it before pointing this
+// at anything you cannot replace.
 func Between(ctx context.Context, from, to string, options Options) (Report, error) {
 	if from == to {
 		return Report{}, fmt.Errorf("source and destination name the same database")
 	}
 
-	// The source is opened first because opening a database migrates it. A typo
-	// in the source should not already have written a schema somewhere.
+	// Opened first so that a typo in the source is reported before the
+	// destination has been created and migrated for a copy that cannot happen.
 	source, err := openEngine(ctx, from)
 	if err != nil {
 		return Report{}, fmt.Errorf("open source: %w", err)
