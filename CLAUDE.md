@@ -29,6 +29,12 @@ Go + Ginkgo/Gomega, deployed as Docker-based GitHub Action.
 - `pkg/webhook/` — parses `issue_comment` deliveries and de-duplicates them; re-exports signature verification from `go-githubauth/webhook`
 - `pkg/logging/` — builds the `slog` logger, carries it on the context, and redacts known secrets from every line
 - `pkg/metrics/` — the Prometheus collectors the service reports, on a registry it owns rather than the default one
+- `internal/storage/` — the port: `Store`, the models, the sentinel errors. No `database/sql`, no driver, no engine name
+- `internal/storage/sqlstore/` — every query, written once and parameterized by a `Dialect`. Both engines run this
+- `internal/storage/sqlite/`, `internal/storage/postgres/` — a driver, a DSN, a dialect and a migration series each, embedding `*sqlstore.Store`
+- `internal/storage/open/` — picks the engine from a connection string; the only thing above the port that names one
+- `internal/storage/storagetest/` — the conformance suite both engines run, and `Seed`, which fills every table through the port
+- `internal/storage/transfer/` — copies a database between engines; behind `smyklot store migrate`
 - Data flow (Action): env vars → `run()` → client → repo config → `executeComment`
 - Data flow (service): signed delivery → `handleDelivery` → dedupe → worker → installation token → client → repo config → `executeComment`
 
@@ -44,6 +50,13 @@ Go + Ginkgo/Gomega, deployed as Docker-based GitHub Action.
 - `serve` **refuses to start** without `SMYKLOT_WEBHOOK_SECRET` — fail closed, or anyone reaching the port could drive the bot
 - Webhook signatures cover the **body only**; header values like `X-GitHub-Delivery` are unverified (`cmd/github-action/server.go:safeDeliveryID`)
 - Delivery dedupe currently keys on comment id + `updated_at`; service deliveries should use the durable webhook inbox instead of assuming an accepted in-memory job survives restart
+- Nothing above `internal/storage/**` may import `database/sql`, `modernc.org/sqlite` or `github.com/jackc/pgx`, and nothing outside `internal/storage/**` or `internal/storage/open/**` may import an engine package. `depguard` in `.golangci.yml` enforces both — decoupling that is not enforced decays
+- A query goes in `sqlstore` and must run on both engines. What they spell differently goes through the `Dialect`; what one does *better* goes in an override on that engine's `Store`, which embeds the shared one. The shared core is a floor, not a ceiling
+- SQLite stores timestamps as fixed-width text (`2006-01-02T15:04:05.000000000Z`) so string order equals time order. `RFC3339Nano` trims trailing zeros and silently breaks `ORDER BY` and expiry comparisons — never format a stored timestamp with it (`internal/storage/sqlstore/time.go`)
+- PostgreSQL's `?` is a jsonb operator, so `JSONHasKey` renders the **function** form `jsonb_exists(col, ?)`. The operator form would collide with placeholder rebinding
+- The PostgreSQL adapter pins every connection to UTC. A `timestamptz` comes back in the session's zone, which is the server's locale, so without it the same instant formats differently depending on where the database runs
+- A read-then-write outside a transaction is only safe on SQLite, which runs one connection. Under PostgreSQL's pool each caller reads its own snapshot — this is how the session cap silently stopped holding. Lock the row (`Dialect.RowLock`) or wrap the pair
+- The PostgreSQL specs skip themselves without `SMYKLOT_TEST_POSTGRES_DSN`. `mise run db:dev` prints one; `mise run test:storage:postgres` fails if any spec skipped, because a skip is not proof
 - The `runner` key in `.github/smyklot.yaml` decides who acts, and it defaults to **`service`** — the Action stands down unless a repo sets `runner: action`. Both entry points check it, at all four places work starts: `run`, `runPoll`, `handleIssueComment`, `sweepRepo` (`cmd/github-action/runner.go`)
 - Standing down is **silent on the PR** — the other entry point has already reacted. The Action's reason goes to the job summary instead
 - `repoConfigTTL` (30s) is deliberately far shorter than `codeownersTTL` (1h) and shorter than the sweep interval. CODEOWNERS decides who may approve; `.github/smyklot.yaml` decides whether the service acts at all, so a stale copy means a rolled-back repo gets answered by both (`cmd/github-action/server.go`)
@@ -64,6 +77,7 @@ Go + Ginkgo/Gomega, deployed as Docker-based GitHub Action.
 - Wrap errors with `fmt.Errorf` and `%w`, or with the typed constructors in `cmd/github-action/errors.go` (`NewGitHubError`, `NewInputError`, `NewConfigError`)
 - Sentinel errors: `var ( ErrX = errors.New("...") )` block pattern — see `pkg/permissions/errors.go:10`
 - Test tags: `[Unit]` or `[Integration]` in Describe block — e.g., `Describe("Parser [Unit]", ...)`
+- Storage specs go in `internal/storage/storagetest`, never beside one adapter — an engine supplies a `Harness` and runs them all, which is what makes parity provable
 - Ginkgo BDD structure: `Describe/Context/It` with table-driven `Entry` where appropriate
 - Use `httptest` for mocking GitHub API in tests (`pkg/github/client_test.go:16`)
 
@@ -96,10 +110,26 @@ Go + Ginkgo/Gomega, deployed as Docker-based GitHub Action.
 2. Implement in `pkg/github/client.go`
 3. Use `httptest` for mocking
 
+### Adding a Storage Method
+
+1. Add the spec to `internal/storage/storagetest/specs.go` — it runs against both engines
+2. Add the method to the port in `internal/storage/store.go`
+3. Implement it once in `internal/storage/sqlstore/`, using `?` placeholders and the helpers in `fragments.go`
+4. Only if the engines genuinely disagree, add a `Dialect` method rather than branching on the engine
+5. `mise run test:storage` runs it on both
+
+### Adding a Table
+
+1. Add the migration to **both** `internal/storage/sqlite/migrations/` and `internal/storage/postgres/migrations/001_baseline.sql` — `TestSchemaParity` fails if they drift
+2. Add it to `transfer.tables` in dependency order — `TestTableListCoversSchema` fails if you forget
+3. Add it to `storagetest.SeededTables` and fill it in `Seed`, so the copy is proven on real rows
+
 ## Configuration
 
 Config precedence: CLI flags > env vars (`SMYKLOT_*` prefix) > JSON (`SMYKLOT_CONFIG`) > defaults.
 See `pkg/config/` for all options and `README.md` for full configuration reference.
+
+Storage is one knob: `SMYKLOT_DATABASE_URL` / `--database-url`. A `postgres://` URL picks PostgreSQL; a bare path or `sqlite://` picks SQLite. `SMYKLOT_STATE_PATH` and `SMYKLOT_PANEL_STATE_PATH` are deprecated aliases that still mean a SQLite file. Setting more than one is an error rather than a guess.
 
 ## Phase Status
 

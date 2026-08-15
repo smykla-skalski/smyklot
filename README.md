@@ -356,13 +356,15 @@ Point the GitHub App's webhook at `https://your-host/webhook`, subscribe it to *
 | `GITHUB_APP_ID`                | -                       | optional                            | Numeric App JWT fallback when no client ID is set                            |
 | `SMYKLOT_PANEL_PUBLIC_ORIGIN`  | `--panel-public-origin` | disabled                            | Browser-visible scheme and host; setting it enables the panel                |
 | `SMYKLOT_PANEL_BASE_PATH`      | `--panel-base-path`     | `/panel`                            | Public path subtree for the panel                                            |
-| `SMYKLOT_PANEL_STATE_PATH`     | `--panel-state-path`    | `/var/lib/smyklot/panel.sqlite3`    | Writable SQLite database path                                                |
+| `SMYKLOT_DATABASE_URL`         | `--database-url`        | `/var/lib/smyklot/panel.sqlite3`    | Where service state lives: a `postgres://` URL, or a path for SQLite         |
 | `SMYKLOT_PANEL_SUPER_ROOT_ID`  | `--panel-super-root-id` | required when panel is enabled      | Numeric GitHub user ID assigned as the singleton Super Root                  |
 | `SMYKLOT_PANEL_SESSION_TTL`    | `--panel-session-ttl`   | `12h`                               | Signed-in panel session lifetime                                             |
 | `SMYKLOT_PANEL_CLIENT_ID`      | -                       | required when panel is enabled      | Client ID of the OAuth App that signs panel users in                         |
 | `SMYKLOT_PANEL_CLIENT_SECRET`  | -                       | required when panel is enabled      | Client secret of that OAuth App                                              |
 
 The webhook secret, private key and OAuth client secret have no flag on purpose - a flag would put them in the process table. An explicit flag beats the environment for everything else.
+
+`SMYKLOT_STATE_PATH` and `SMYKLOT_PANEL_STATE_PATH`, with their flags, still work and still mean a SQLite file. They are deprecated in favour of `SMYKLOT_DATABASE_URL`, which says the same thing and can also name a server. Setting more than one is an error rather than a guess.
 
 ### Administration panel
 
@@ -376,7 +378,13 @@ Register the OAuth App under the same account or organization that owns the GitH
 
 The panel synchronizes every installation and repository visible to the App every five minutes. Personal-installation ownership follows the immutable GitHub user ID. Organization ownership follows organization members with the admin role and requires read-only **Members** organization permission on the GitHub App. Existing installations must approve that added permission before Owner synchronization succeeds. Regular access fails closed when an Owner snapshot is unavailable or more than 15 minutes old; Root diagnostics retain the installation record. New installations default to **Off**, so the service only handles repositories an administrator enables deliberately. Account settings act as defaults, and the effective order is process configuration → account panel settings → `.github/smyklot.yaml` → repository panel settings. A repository may explicitly bypass an invalid file; that exception is visible and audited.
 
-SQLite runs without CGO behind application-level storage interfaces, so the HTTP service and configuration resolver do not depend on SQL or a driver. The v1 deployment must use one service replica and a writable persistent volume for `SMYKLOT_PANEL_STATE_PATH`. Finished delivery history is retained for 30 days; audit history is not pruned.
+State lives in SQLite or PostgreSQL, chosen by `SMYKLOT_DATABASE_URL`: a `postgres://` or `postgresql://` URL picks PostgreSQL, and a bare path or `sqlite://` URL picks SQLite. Both drivers are pure Go, so the image still builds with `CGO_ENABLED=0`. Nothing above the storage package knows which one is running, and a linter enforces that.
+
+The two engines are not a lowest common denominator. PostgreSQL stores timestamps as `timestamptz`, booleans as `boolean` and configuration patches as indexed `jsonb`; SQLite keeps the text and integer spellings it has always used. What they share is one set of queries, so a change lands in both at once, and one conformance suite, so parity is proven rather than assumed.
+
+SQLite is still the smaller-deployment default and needs a writable volume. PostgreSQL needs none, which is what makes a read-only root filesystem workable. Either way the service runs one replica: deliveries are de-duplicated in memory and the reaction sweep has no leader election.
+
+Moving between them keeps the data - `smyklot store migrate --from <old> --to <new>` copies every row and verifies the counts. Finished delivery history is retained for 30 days; audit history is not pruned.
 
 Run `mise run panel:dev:mock` to inspect every panel state with deterministic local data. The mock server uses the same HTTP response types and server-sent event shape as production.
 

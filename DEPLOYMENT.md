@@ -235,6 +235,7 @@ The chart never takes either credential as a value, only the name of a Secret ho
 ```bash
 kubectl create secret generic smyklot-credentials \
   --from-literal=webhook-secret="$WEBHOOK_SECRET" \
+  --from-literal=database-url="postgres://smyklot:PASSWORD@postgres:5432/smyklot" \
   --from-file=private-key=key.pem
 ```
 
@@ -248,11 +249,16 @@ helm install smyklot oci://ghcr.io/smykla-skalski/charts/smyklot \
   --namespace smyklot --create-namespace \
   --set github.clientId=Iv23liExample \
   --set github.existingSecret=smyklot-credentials \
+  --set database.existingSecret=smyklot-credentials \
   --set ingress.enabled=true \
   --set ingress.host=smyklot.example.com
 ```
 
 The chart and the image carry the same version, so `--version` picks both.
+
+The chart needs a database and refuses to render without one. `database.existingSecret` is the form to use: `database.url` puts a connection string, and usually a password, into the values file and into `helm get values`. Point either at a PostgreSQL the cluster already runs - the chart deploys no database of its own, and the operators that do this well are better at it than a subchart here would be.
+
+There is no SQLite option in the chart. The pod runs with a read-only root filesystem and mounts no volume, and giving one replica of one process a PersistentVolumeClaim to hold a file is the arrangement PostgreSQL exists to replace.
 
 Check it came up:
 
@@ -309,6 +315,8 @@ Set `serviceMonitor.enabled=true` on a cluster running the Prometheus Operator.
 **`Recreate` updates**, for the same reason. A rolling update would run two processes for as long as the old one takes to drain. The cost is a few seconds of refused deliveries, which GitHub records and an operator can redeliver from the App's Advanced tab.
 
 **A 60 second grace period**, which covers the worst case the service allows itself: 15 seconds to stop accepting and 30 to finish deliveries already running.
+
+**A PostgreSQL it does not manage.** The chart takes a connection string and nothing else. Backups, failover and upgrades belong to whoever runs that database.
 
 ### Service Troubleshooting
 
@@ -469,6 +477,182 @@ One `shared-cpu-1x` machine with 256MB, running continuously, is roughly $2 a mo
 `min_machines_running = 1` with auto-stop disabled, and `strategy = "rolling"` rather than bluegreen or canary. Deliveries are de-duplicated in memory and the reaction sweep has no leader election, so two machines answer the same comment twice. Rolling replaces the one machine in place; the others start a second one first.
 
 The cost is a few seconds of refused deliveries per deploy. GitHub records those and they can be redelivered from the App's Advanced tab.
+
+## Running on PostgreSQL
+
+SQLite is the default and needs nothing but a volume. PostgreSQL is the other supported engine, and what `smyklot.com` is built to move to. Choose it with one variable:
+
+```bash
+SMYKLOT_DATABASE_URL='postgres://smyklot:PASSWORD@smyklot-db.internal:5432/smyklot'
+```
+
+A `postgres://` or `postgresql://` URL picks PostgreSQL. A bare path or a `sqlite://` URL picks SQLite. `SMYKLOT_STATE_PATH` and `SMYKLOT_PANEL_STATE_PATH` still work and still mean a SQLite file; setting more than one of the three is an error rather than a guess.
+
+Nothing else in the service changes. The migrations, the schema and the conformance suite are the same on both, so a repository, a command or a panel screen behaves identically whichever is underneath.
+
+### Why Not Fly Managed Postgres
+
+`deploy/postgres/fly.toml` is a second Fly app running the stock `postgres:18-alpine` image on one volume. It costs about $3.65 a month and belongs to us. Managed Postgres starts higher and adds a control plane this does not need for a database that holds a few thousand rows.
+
+The trade is real and worth stating: one machine, one volume, no replica, no automatic failover. Losing the volume loses the database back to the last snapshot or the last dump. That is acceptable here and would not be for something with users.
+
+### 1. Create the Database App
+
+```bash
+fly apps create smyklot-db --org personal
+fly secrets set POSTGRES_PASSWORD="$(openssl rand -hex 32)" --app smyklot-db
+fly deploy --config deploy/postgres/fly.toml
+```
+
+Keep that password. Fly never hands a secret back, and both the service's connection string and the backup script need it.
+
+Do **not** allocate an IP address for this app. With no `[http_service]` and no IP, it is reachable only at `smyklot-db.internal:5432` over the organization's private network, which is the whole of its access control.
+
+Check it came up:
+
+```bash
+fly status --app smyklot-db
+fly logs --app smyklot-db          # look for "database system is ready to accept connections"
+```
+
+### 2. Copy the Data Across
+
+Take the SQLite file off the running service first, and stop the service so nothing writes after the copy has read a table:
+
+```bash
+fly ssh sftp get /data/panel.sqlite3 ./panel.sqlite3 --app smyklot
+fly scale count 0 --app smyklot
+fly ssh sftp get /data/panel.sqlite3 ./panel.sqlite3 --app smyklot   # again, now quiesced
+```
+
+Then copy it in, through a proxy to the database:
+
+```bash
+fly proxy 15432:5432 --app smyklot-db &
+
+./bin/smyklot-github-action store migrate \
+  --from ./panel.sqlite3 \
+  --to "postgres://smyklot:$POSTGRES_PASSWORD@localhost:15432/smyklot?sslmode=disable"
+```
+
+It prints a row count per table. The destination is migrated to the current schema on the way in and must be empty; a second run refuses rather than merging two histories, and `--force` empties it first if a first attempt needs redoing.
+
+Nothing is copied outside one transaction, so a failure leaves the database empty rather than half-populated. `schema_migrations` is deliberately not carried: the destination wrote its own while migrating.
+
+### 3. Point the Service at It
+
+```bash
+fly secrets set \
+  SMYKLOT_DATABASE_URL="postgres://smyklot:$POSTGRES_PASSWORD@smyklot-db.internal:5432/smyklot" \
+  --app smyklot
+
+cp deploy/postgres/smyklot.fly.toml fly.toml
+git commit -sS -am 'feat(deploy): move service state to PostgreSQL'
+
+fly deploy --app smyklot --ha=false \
+  --image ghcr.io/smykla-skalski/smyklot:1.23.1
+fly scale count 1 --app smyklot
+```
+
+The configuration swap is what removes `[[mounts]]`, and it is committed rather than done by hand so that the next automated deploy agrees with the last manual one. `deploy.yaml` reads which backend the app is on from whether `SMYKLOT_DATABASE_URL` is set, and checks the topology that matches, so a release after this point verifies the database is up instead of verifying a volume that is no longer used.
+
+Verify before deleting anything:
+
+```bash
+fly proxy 9090 --app smyklot &
+curl localhost:9090/readyz
+curl -sS -o /dev/null -w '%{http_code}\n' https://smyklot.com/
+```
+
+Sign in to the panel and confirm the installation, its settings and the audit trail are the ones you had. Only then:
+
+```bash
+fly volumes list --app smyklot
+fly volumes destroy <id> --app smyklot
+```
+
+Keep `panel.sqlite3` somewhere off both machines until you are sure.
+
+### 4. Roll Back
+
+Rolling back is the same four steps in reverse, and the SQLite file is what makes it possible:
+
+```bash
+fly scale count 0 --app smyklot
+fly secrets unset SMYKLOT_DATABASE_URL --app smyklot
+git revert <the cutover commit>          # restores [[mounts]] and the state path
+fly volumes create smyklot_data --app smyklot --region fra --size 1 \
+  --scheduled-snapshots --snapshot-retention 14 --yes
+fly deploy --app smyklot --ha=false --image ghcr.io/smykla-skalski/smyklot:1.23.1
+fly ssh sftp shell --app smyklot         # put panel.sqlite3 back at /data/panel.sqlite3
+fly scale count 1 --app smyklot
+```
+
+Anything written while PostgreSQL was live is not in that file. `store migrate` runs the other way too, so a rollback that has to keep those writes copies them back first:
+
+```bash
+smyklot store migrate --from "postgres://..." --to ./panel.sqlite3
+```
+
+### Backups
+
+Fly snapshots the volume daily and keeps 14. That covers losing the disk. It does not cover losing the organization, the account, or a `fly volumes destroy` typed at the wrong app, so the first copy is a dump on a machine that is not Fly:
+
+```bash
+export POSTGRES_PASSWORD='...'
+mise run db:backup
+```
+
+That opens a proxy, runs `pg_dump` from the server's own image, verifies the result with `pg_restore --list`, writes it to `~/backups/smyklot`, and only then prunes anything older than the retention. A night where the dump comes back truncated leaves yesterday's copy alone.
+
+`pg_dump` runs in a container rather than from Homebrew on purpose: it refuses a server newer than itself, so a client one major version behind would fail every night for a reason that reads like the database is down.
+
+Run it daily on a Mac with the launchd agent:
+
+```bash
+mkdir -p ~/.config/smyklot
+install -m 600 /dev/null ~/.config/smyklot/postgres-password
+printf '%s' "$POSTGRES_PASSWORD" > ~/.config/smyklot/postgres-password
+
+sed -e "s|__REPO__|$PWD|g" \
+    -e "s|__HOME__|$HOME|g" \
+    -e "s|__PASSWORD_FILE__|$HOME/.config/smyklot/postgres-password|g" \
+    deploy/launchd/com.smykla.smyklot-backup.plist \
+    > ~/Library/LaunchAgents/com.smykla.smyklot-backup.plist
+launchctl load ~/Library/LaunchAgents/com.smykla.smyklot-backup.plist
+```
+
+It runs at 04:30 and logs to `~/backups/smyklot/backup.log`. Read that occasionally: a backup that has been failing quietly for a month is the same as no backup.
+
+Restoring is `pg_restore` into an empty database:
+
+```bash
+fly proxy 15432:5432 --app smyklot-db &
+docker run --rm -i --env PGPASSWORD="$POSTGRES_PASSWORD" \
+  --add-host host.docker.internal:host-gateway postgres:18-alpine \
+  pg_restore --host host.docker.internal --port 15432 \
+    --username smyklot --dbname smyklot --no-owner \
+  < ~/backups/smyklot/smyklot-20260314T043000Z.dump
+```
+
+Practise it once against a scratch database. A backup nobody has restored is a file, not a backup.
+
+### Operating the Database
+
+```bash
+fly proxy 15432:5432 --app smyklot-db          # then connect on localhost:15432
+fly logs --app smyklot-db
+fly status --app smyklot-db
+fly ssh console --app smyklot-db --command "psql -U smyklot -d smyklot -c '\\dt'"
+```
+
+The service opens at most 16 connections against a limit of 50, so there is room for a session at the prompt while it runs.
+
+**The service will not start.** Its migrations run on startup, so an unreachable or unmigratable database means the machine never becomes ready. `fly logs --app smyklot` names which; check `fly status --app smyklot-db` first.
+
+**Sizing.** 512MB, `shared_buffers=96MB`, `max_connections=50`. 256MB is the cheaper size and is not enough - shared buffers plus the backends plus the postmaster sit close enough to it that a checkpoint under load ends in the OOM killer.
+
+**The major version is pinned** to `postgres:18-alpine`. PostgreSQL does not read a data directory written by a newer major, so an unpinned tag would eventually start a machine that refuses to come up and needs `pg_upgrade` to recover.
 
 ## Command Reference
 
