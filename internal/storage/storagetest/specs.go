@@ -141,6 +141,57 @@ func DeclareSpecs(harness Harness) {
 		Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
 	})
 
+	It("extends a live session forwards only, and never revives a dead one", func() {
+		account := testAccount(now)
+		Expect(store.UpsertAccount(ctx, account)).To(Succeed())
+		live := storage.Session{
+			TokenHash: "live-token-hash",
+			AccountID: account.ID,
+			CreatedAt: now,
+			ExpiresAt: now.Add(time.Hour),
+		}
+		Expect(store.CreateSession(ctx, live, 4)).To(Succeed())
+
+		Expect(store.ExtendSession(ctx, live.TokenHash, now.Add(4*time.Hour), now)).To(Succeed())
+		extended, err := store.GetSession(ctx, live.TokenHash, now)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(extended.ExpiresAt).To(BeTemporally("==", now.Add(4*time.Hour)))
+
+		/* Two requests renewing at once must not be able to disagree. The one
+		   carrying the earlier expiry changes nothing rather than pulling the
+		   session's end back in. */
+		Expect(store.ExtendSession(ctx, live.TokenHash, now.Add(2*time.Hour), now)).To(Succeed())
+		unchanged, err := store.GetSession(ctx, live.TokenHash, now)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(unchanged.ExpiresAt).To(BeTemporally("==", now.Add(4*time.Hour)))
+
+		// A session revoked between the read and this write stays revoked.
+		revoked := storage.Session{
+			TokenHash: "revoked-token-hash",
+			AccountID: account.ID,
+			CreatedAt: now,
+			ExpiresAt: now.Add(time.Hour),
+		}
+		Expect(store.CreateSession(ctx, revoked, 4)).To(Succeed())
+		_, err = store.RevokeAccountSessions(ctx, account.ID, "banned", "policy breach", now)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(store.ExtendSession(ctx, revoked.TokenHash, now.Add(4*time.Hour), now)).To(Succeed())
+		_, err = store.GetSession(ctx, revoked.TokenHash, now)
+		Expect(errors.Is(err, storage.ErrRevoked)).To(BeTrue())
+
+		// Nor does one that had already run out come back.
+		dead := storage.Session{
+			TokenHash: "dead-token-hash",
+			AccountID: account.ID,
+			CreatedAt: now.Add(-2 * time.Hour),
+			ExpiresAt: now.Add(-time.Hour),
+		}
+		Expect(store.CreateSession(ctx, dead, 4)).To(Succeed())
+		Expect(store.ExtendSession(ctx, dead.TokenHash, now.Add(4*time.Hour), now)).To(Succeed())
+		_, err = store.GetSession(ctx, dead.TokenHash, now)
+		Expect(errors.Is(err, storage.ErrExpired)).To(BeTrue())
+	})
+
 	It("persists runtime overrides, audits them, and only shortens sessions", func() {
 		account := testAccount(now)
 		Expect(store.UpsertAccount(ctx, account)).To(Succeed())

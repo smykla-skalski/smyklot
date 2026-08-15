@@ -27,6 +27,14 @@ const (
 	panelSettingsPath          = "settings"
 )
 
+// The two documents the panel serves by name rather than as plain static files:
+// the shell every navigable route resolves to, and the worker, which is read and
+// rewritten rather than passed through.
+const (
+	indexAsset         = "index.html"
+	serviceWorkerAsset = "sw.js"
+)
+
 type assetBundle struct {
 	files     fs.FS
 	index     []byte
@@ -39,7 +47,7 @@ type assetBundle struct {
 }
 
 func newAssetBundle(cfg Config) (*assetBundle, error) {
-	index, err := fs.ReadFile(cfg.Assets, "index.html")
+	index, err := fs.ReadFile(cfg.Assets, indexAsset)
 	if err != nil {
 		return nil, fmt.Errorf("read panel index: %w", err)
 	}
@@ -55,7 +63,7 @@ func newAssetBundle(cfg Config) (*assetBundle, error) {
 	}
 	served := strings.NewReplacer(errorSentinel, "", noscriptSentinel, defaultNoscript).
 		Replace(rewritten)
-	serviceWorker, err := fs.ReadFile(cfg.Assets, "sw.js")
+	serviceWorker, err := fs.ReadFile(cfg.Assets, serviceWorkerAsset)
 	if err != nil {
 		return nil, fmt.Errorf("read panel service worker: %w", err)
 	}
@@ -83,7 +91,7 @@ func newAssetBundle(cfg Config) (*assetBundle, error) {
 func (s *Server) serveAsset(w http.ResponseWriter, r *http.Request) {
 	relative := strings.TrimPrefix(r.URL.Path, s.cfg.BasePath)
 	relative = strings.TrimPrefix(relative, "/")
-	if relative == "" || relative == "index.html" {
+	if relative == "" || relative == indexAsset {
 		s.writeIndex(w, r)
 		return
 	}
@@ -105,7 +113,7 @@ func (s *Server) serveAsset(w http.ResponseWriter, r *http.Request) {
 		contentType = "application/octet-stream"
 	}
 	w.Header().Set("Content-Type", contentType)
-	if relative == "sw.js" {
+	if relative == serviceWorkerAsset {
 		content = s.assets.serviceWorker
 		w.Header().Set("Cache-Control", "no-cache")
 	} else if strings.HasPrefix(relative, "assets/") {
@@ -187,5 +195,5 @@ func (s *Server) writeIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "private, no-cache")
 	w.Header().Set("ETag", s.assets.indexETag)
-	http.ServeContent(w, r, "index.html", time.Time{}, bytes.NewReader(s.assets.index))
+	http.ServeContent(w, r, indexAsset, time.Time{}, bytes.NewReader(s.assets.index))
 }

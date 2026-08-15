@@ -298,29 +298,22 @@ func (s *Store) ExtendSession(
 	tokenHash string,
 	expiresAt, now time.Time,
 ) error {
-	result, err := s.db.ExecContext(ctx, `
+	/* Nothing changed means somebody got there first with the same or a later
+	   expiry, or the session is no longer live. Neither is this caller's problem
+	   - the next request reads the session and finds out - so the row count is
+	   not examined. */
+	if _, err := s.db.ExecContext(ctx, `
 UPDATE sessions SET expires_at = ?
 WHERE token_hash = ?
   AND expires_at > ?
   AND expires_at < ?
   AND revoked_at IS NULL`,
-		formatTime(expiresAt),
+		expiresAt,
 		tokenHash,
-		formatTime(now),
-		formatTime(expiresAt),
-	)
-	if err != nil {
+		now,
+		expiresAt,
+	); err != nil {
 		return fmt.Errorf("extend session: %w", err)
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("extend session: %w", err)
-	}
-	if affected == 0 {
-		/* Either somebody else got there first with the same or a later expiry,
-		   or the session is no longer live. Neither is this caller's problem:
-		   the next request reads the session and finds out. */
-		return nil
 	}
 
 	return nil
