@@ -1002,12 +1002,18 @@
                   />
                 </div>
               </th>
+              <th class="action-heading">
+                <!-- The column has a heading for the row's action, said only to a
+                     screen reader: a word over a column of identical buttons is
+                     noise to anyone who can see them. -->
+                <span class="visually-hidden">Settings</span>
+              </th>
             </tr>
           </thead>
           <tbody bind:this={repositoryScroll} data-panel-scroll>
             {#if repositories.length === 0}
               <tr class="empty-row">
-                <td colspan="4">
+                <td colspan="5">
                   <TableEmptyState
                     title={hasFilters ? 'No repositories match' : 'No repositories installed'}
                     description={hasFilters
@@ -1024,7 +1030,7 @@
                 class="virtual-spacer"
                 aria-hidden="true"
                 style:height={`${$repositoryVirtualizer.getTotalSize()}px`}
-                ><td colspan="4"></td></tr
+                ><td colspan="5"></td></tr
               >
             {/if}
             {#each repositoryRenderRows as virtualRow (virtualRow.key)}
@@ -1042,22 +1048,19 @@
                   : undefined}
               >
                 <td>
-                  <button
-                    class="expand"
-                    aria-haspopup="dialog"
-                    aria-label={`Configure ${repository.full_name}`}
-                    onclick={(event) => openRepository(repository, event.currentTarget)}
-                  >
-                    <span class="repo-copy">
-                      <strong>{repository.name}</strong>
-                      {#if repository.config_override_count > 0}
-                        <span class="override-chip">
-                          {repository.config_override_count}
-                          {repository.config_override_count === 1 ? 'override' : 'overrides'}
-                        </span>
-                      {/if}
-                    </span>
-                  </button>
+                  <!-- The name is a name. What opens the dialog is the button at
+                       the end of the row, where a reader looks for something to
+                       press, rather than a cell that gives no sign of being one
+                       until the pointer is already on it. -->
+                  <span class="repo-copy">
+                    <strong>{repository.name}</strong>
+                    {#if repository.config_override_count > 0}
+                      <span class="override-chip">
+                        {repository.config_override_count}
+                        {repository.config_override_count === 1 ? 'override' : 'overrides'}
+                      </span>
+                    {/if}
+                  </span>
                 </td>
                 <td data-label="File state">
                   <FileStatusIndicator
@@ -1094,11 +1097,21 @@
                     />
                   {/if}
                 </td>
+                <td class="row-action" data-label="Settings">
+                  <button
+                    class="btn btn-row configure"
+                    aria-haspopup="dialog"
+                    aria-label={`Configure ${repository.full_name}`}
+                    onclick={(event) => openRepository(repository, event.currentTarget)}
+                  >
+                    <span class="cap-trim">Configure</span>
+                  </button>
+                </td>
               </tr>
 
               {#if repositoryFailure !== undefined && activeRepository?.id !== repository.id}
                 <tr class="visually-hidden">
-                  <td colspan="4"><span role="alert">{repositoryFailure.message}</span></td>
+                  <td colspan="5"><span role="alert">{repositoryFailure.message}</span></td>
                 </tr>
               {/if}
             {/each}
@@ -1563,9 +1576,11 @@
     .repositories thead tr,
     .repositories tbody tr {
       display: grid;
-      /* The approved catalog's 2fr 1fr 1.4fr 1.6fr, as percentages of the 6fr
-         total so they hold at any table width. */
-      grid-template-columns: 33.333% 16.667% 23.333% 26.667%;
+      /* The approved catalog's 2fr 1fr 1.4fr 1.6fr, now sharing what is left
+         after the action column. That one is fixed: it holds a single button
+         whose size has nothing to do with how wide the table is, and a share of
+         the width would leave it swimming on a large screen. */
+      grid-template-columns: 2fr 1fr 1.4fr 1.6fr 8.5rem;
       width: 100%;
     }
 
@@ -1643,28 +1658,9 @@
     background: var(--table-row-hover);
   }
 
-  .expand {
-    align-items: center;
-    background: transparent;
-    border: 0;
-    border-radius: var(--radius-control);
-    color: var(--text-primary);
-    display: flex;
-    height: var(--control-height-compact);
-    margin: 0;
-    min-width: 0;
-    padding: 0;
-    text-align: left;
-    width: 100%;
-  }
-
-  .expand:hover {
-    background: var(--interactive-hover);
-  }
-
-  .expand:focus-visible {
-    background: transparent;
-    outline: 0;
+  /* The row's action, at the end of the row where a reader looks for one. */
+  .row-action {
+    justify-content: flex-end;
   }
 
   /* Name and chip are siblings on one centred row, so the chip's box and the
