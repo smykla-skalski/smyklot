@@ -55,7 +55,23 @@ jobs:
         run: |
           set -euo pipefail
           secrets="$(flyctl secrets list --app smyklot --json)"
-          if jq -e 'any(.[]; .Name == "SMYKLOT_DATABASE_URL")' <<<"$secrets" >/dev/null; then
+
+          # Prove the query works before believing its answer. Absence is what
+          # selects SQLite, so every way of reading nothing - a renamed field, a
+          # wrong app, an flyctl that changed its output - says SQLite just as
+          # confidently as a service that really is on SQLite. That is the
+          # dangerous direction: it verifies a volume the app no longer has and
+          # skips the check that the database is even up.
+          #
+          # serve refuses to start without SMYKLOT_WEBHOOK_SECRET, so it is
+          # present on any app that is running, whichever backend it uses.
+          if ! jq -e 'any(.[]; .name == "SMYKLOT_WEBHOOK_SECRET")' <<<"$secrets" >/dev/null; then
+            echo "cannot read the app's secrets, so the backend cannot be identified" >&2
+            printf '%s\n' "$secrets" >&2
+            exit 1
+          fi
+
+          if jq -e 'any(.[]; .name == "SMYKLOT_DATABASE_URL")' <<<"$secrets" >/dev/null; then
             echo "backend=postgres" >>"$GITHUB_OUTPUT"
             echo "Service state is in PostgreSQL."
           else
