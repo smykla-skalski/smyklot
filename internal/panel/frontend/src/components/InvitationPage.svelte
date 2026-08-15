@@ -6,9 +6,14 @@
   import Avatar from './Avatar.svelte';
   import BrandMark from './BrandMark.svelte';
   import Chip, { type ChipTone } from './Chip.svelte';
+  import NightSky from './NightSky.svelte';
   import PageFooter from './PageFooter.svelte';
 
   const { api, token, build }: { api: PanelApi; token: string; build: PanelBuild } = $props();
+
+  /* One source for the mark's size: the component needs the number, and the sky
+     needs it in CSS to find the middle of the mark it opens out from. */
+  const MARK_SIZE = 96;
 
   let invitation = $state<PanelInvitation | null>(null);
   let loading = $state(true);
@@ -66,8 +71,9 @@
 </svelte:head>
 
 <main class="shell invitation-shell">
-  <div class="invitation-brand">
-    <BrandMark part="PANEL" stacked size={96} />
+  <div class="invitation-brand" style="--invitation-mark-size: {MARK_SIZE}px">
+    <NightSky size="min(40rem, 96vw)" />
+    <BrandMark part="PANEL" stacked size={MARK_SIZE} />
   </div>
 
   <div class="invitation-main">
@@ -196,6 +202,16 @@
     display: flex;
     justify-content: center;
     padding-top: var(--invitation-title-block);
+    position: relative;
+  }
+
+  /* Centred on the middle of the mark's disc, which sits one padding down from
+     the top of this row, so the sky opens out from the logo rather than from the
+     block of type under it. */
+  .invitation-brand :global(.night-sky) {
+    left: 50%;
+    top: calc(var(--invitation-title-block) + var(--invitation-mark-size) / 2);
+    translate: -50% -50%;
   }
 
   /* Reads as the card's own title from the outside, so it keeps the size the
