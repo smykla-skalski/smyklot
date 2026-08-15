@@ -16,6 +16,7 @@
   import HistoryPanel from './HistoryPanel.svelte';
   import Modal from './Modal.svelte';
   import RepositoryList from './RepositoryList.svelte';
+  import ResultProblem from './ResultProblem.svelte';
   import TargetSettings from './TargetSettings.svelte';
   import UserManagement from './UserManagement.svelte';
 
@@ -313,11 +314,23 @@
     <p class="access-hint">Fresh Owners are required before elevated access can start</p>
   {/if}
 
+  <!-- A refresh that failed over a loaded view has not made the view wrong, so
+       the failure is a line above it and the panel stays where it is. -->
+  {#if failure !== null && target !== null}
+    <ResultProblem
+      title="Could not refresh this installation"
+      problem={failure}
+      busy={loading}
+      onRetry={() => void load(refreshVersion)}
+      overContent
+    />
+  {/if}
+
   <!-- Only while there is nothing to read yet. A refresh over a loaded view
        leaves it standing, or the whole panel blinks out on every event. -->
   {#if loading && target === null && failure === null}
     <div class="root-loading" role="status">Reading installation diagnostics…</div>
-  {:else if failure !== null}
+  {:else if failure !== null && target === null}
     <div class="root-loading problem" role="alert">
       <strong>Could not load this installation</strong>
       <p>{failure}</p>

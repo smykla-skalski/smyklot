@@ -50,6 +50,7 @@
   import InfiniteLoadSentinel from './InfiniteLoadSentinel.svelte';
   import Modal from './Modal.svelte';
   import PanelHeader from './PanelHeader.svelte';
+  import ResultProblem from './ResultProblem.svelte';
   import RolePicker, { type RolePickerOption } from './RolePicker.svelte';
   import SearchField from './SearchField.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
@@ -1336,13 +1337,23 @@
             </div>
             <p class="visually-hidden" role="status">Loading users</p>
           {:else if userFailure !== null && userPage === null}
-            <div class="result-state" role="alert">
-              <strong>Users could not be loaded</strong>
-              <span>{userFailure}</span>
-              <button class="btn" onclick={() => void loadUsers(undefined, false)}>Try again</button
-              >
-            </div>
+            <ResultProblem
+              title="Users could not be loaded"
+              problem={userFailure}
+              busy={loadingUsers}
+              onRetry={() => void loadUsers(undefined, false)}
+            />
           {:else}
+            <!-- The table survived the failed refresh, so the failure is a line above it. -->
+            {#if userFailure !== null}
+              <ResultProblem
+                title="Users could not be loaded"
+                problem={userFailure}
+                busy={loadingUsers}
+                onRetry={() => void loadUsers(undefined, false)}
+                overContent
+              />
+            {/if}
             <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
             <div class="user-table-wrap" role="region" aria-label="Panel users" tabindex="0">
               <table class="user-table">
@@ -1515,7 +1526,10 @@
             </div>
           {/if}
           <InfiniteLoadSentinel
-            active={!desktopTableLayout.current && !loadingUsers && userPage?.next_cursor != null}
+            active={!desktopTableLayout.current &&
+              !loadingUsers &&
+              userLoadMoreFailure === null &&
+              userPage?.next_cursor != null}
             cursor={userPage?.next_cursor}
             onVisible={() => void loadNextUsers()}
           />
@@ -1545,14 +1559,23 @@
             </div>
             <p class="visually-hidden" role="status">Loading invitations</p>
           {:else if invitationFailure !== null && invitationPage === null}
-            <div class="result-state" role="alert">
-              <strong>Invitations could not be loaded</strong>
-              <span>{invitationFailure}</span>
-              <button class="btn" onclick={() => void loadInvitations(undefined, false)}>
-                Try again
-              </button>
-            </div>
+            <ResultProblem
+              title="Invitations could not be loaded"
+              problem={invitationFailure}
+              busy={loadingInvitations}
+              onRetry={() => void loadInvitations(undefined, false)}
+            />
           {:else}
+            <!-- The table survived the failed refresh, so the failure is a line above it. -->
+            {#if invitationFailure !== null}
+              <ResultProblem
+                title="Invitations could not be loaded"
+                problem={invitationFailure}
+                busy={loadingInvitations}
+                onRetry={() => void loadInvitations(undefined, false)}
+                overContent
+              />
+            {/if}
             <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
             <div class="user-table-wrap" role="region" aria-label="Panel invitations" tabindex="0">
               <table class="user-table invitation-table">
@@ -1726,6 +1749,7 @@
           <InfiniteLoadSentinel
             active={!desktopTableLayout.current &&
               !loadingInvitations &&
+              invitationLoadMoreFailure === null &&
               invitationPage?.next_cursor != null}
             cursor={invitationPage?.next_cursor}
             onVisible={() => void loadNextInvitations()}
@@ -2120,22 +2144,6 @@
   .user-results.loading,
   .invitation-results.loading {
     cursor: progress;
-  }
-
-  .result-state {
-    align-items: center;
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-    justify-content: center;
-    min-height: 9rem;
-    padding: 1.5rem;
-    text-align: center;
-  }
-
-  .result-state span {
-    color: var(--dim);
-    font-size: var(--font-size-meta);
   }
 
   .empty-row td {

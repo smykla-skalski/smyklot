@@ -58,3 +58,55 @@ describe('a loading placeholder', () => {
     }
   });
 });
+
+/**
+ * A failed read never re-arms itself.
+ *
+ * `InfiniteLoadSentinel` fires whenever it is both `active` and on screen. A failed "load more"
+ * leaves `next_cursor` set and flips `loading` back to false, so a sentinel that ignores the
+ * failure becomes active again while still intersecting, fires again, fails again - thousands of
+ * requests a second against an endpoint that is already unwell. The page's own "Try again" is the
+ * way back, and it clears the failure first.
+ */
+describe('the infinite-load sentinel', () => {
+  const sentinels = sources.flatMap(([file, source]) =>
+    [...source.matchAll(/<InfiniteLoadSentinel[^>]*?active=\{(?<active>[\s\S]*?)\}\s*\n/gu)].map(
+      (match) => [file, (match.groups?.active ?? '').replace(/\s+/gu, ' ')] as const,
+    ),
+  );
+
+  it('finds the ones that exist', () => {
+    expect(sentinels.length).toBeGreaterThan(0);
+  });
+
+  it.each(sentinels.map(([file, active], index) => [`${file} #${index}`, active]))(
+    'stays off after a failed page in %s',
+    (_label, active) => {
+      expect(active).toMatch(/(?:Problem|Failure) === null/u);
+    },
+  );
+});
+
+/**
+ * An effect never depends on state the work it starts writes back.
+ *
+ * `RootAccess` and `RootInvitations` ran `$effect(() => void loadPage(...))`, and `loadPage` reads
+ * `loading` to bail out while a read is in flight. Reading it inside the effect made the effect
+ * depend on it, so every request that finished started another one - a hot loop that ran in normal
+ * use, not just on failure. Svelte's own answer is `untrack`, and the tracked read that remains is
+ * `requestKey`, which is the trigger these views actually want.
+ */
+describe('a list view that reloads itself', () => {
+  it.each(['RootAccess.svelte', 'RootInvitations.svelte'])(
+    'calls its loader untracked in %s',
+    (file) => {
+      const source = sources.find(([name]) => name === file)?.[1] ?? '';
+      const effects = [...source.matchAll(/\$effect\(\(\) => \{(?<body>[\s\S]*?)\n {2}\}\);/gu)]
+        .map((match) => match.groups?.body ?? '')
+        .filter((body) => body.includes('loadPage('));
+
+      expect(effects.length).toBe(1);
+      expect(effects[0]).toMatch(/untrack\(\(\) => \{/u);
+    },
+  );
+});

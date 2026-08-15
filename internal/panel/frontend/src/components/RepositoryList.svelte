@@ -56,6 +56,7 @@
   import InheritControl from './InheritControl.svelte';
   import Modal from './Modal.svelte';
   import PanelHeader from './PanelHeader.svelte';
+  import ResultProblem from './ResultProblem.svelte';
   import SearchField from './SearchField.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
   import TableEmptyState from './TableEmptyState.svelte';
@@ -821,12 +822,24 @@
     bind:this={repositoryResults}
     aria-busy={loading}
   >
-    {#if problem !== null}
-      <div class="result-state" role="alert">
-        <strong>Repositories could not be loaded</strong>
-        <span>{problem}</span>
-        <button class="btn" onclick={retry}>Try again</button>
-      </div>
+    <!-- A refresh that failed over a loaded table has not made the table wrong. -->
+    {#if problem !== null && page !== null}
+      <ResultProblem
+        title="Repositories could not be loaded"
+        {problem}
+        busy={loading}
+        onRetry={() => retry()}
+        overContent
+      />
+    {/if}
+
+    {#if problem !== null && page === null}
+      <ResultProblem
+        title="Repositories could not be loaded"
+        {problem}
+        busy={loading}
+        onRetry={() => retry()}
+      />
     {:else if loading && page === null}
       <div class="table-skeleton" aria-hidden="true">
         {#each [0, 1, 2, 3, 4, 5] as index (index)}
@@ -1022,7 +1035,10 @@
         </table>
       </div>
       <InfiniteLoadSentinel
-        active={!desktopTableLayout.current && !loading && page?.next_cursor != null}
+        active={!desktopTableLayout.current &&
+          !loading &&
+          loadMoreProblem === null &&
+          page?.next_cursor != null}
         cursor={page?.next_cursor}
         onVisible={() => void loadNextPage()}
       />
@@ -1253,17 +1269,6 @@
     cursor: progress;
   }
 
-  .result-state {
-    align-items: center;
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-    justify-content: center;
-    min-height: 9rem;
-    padding: 1.5rem;
-    text-align: center;
-  }
-
   .empty-row td {
     border-bottom: 0;
     height: 12rem;
@@ -1271,11 +1276,6 @@
 
   .empty-row td :global(.table-empty-state) {
     margin-inline: auto;
-  }
-
-  .result-state span {
-    color: var(--dim);
-    font-size: var(--font-size-meta);
   }
 
   .table-skeleton {

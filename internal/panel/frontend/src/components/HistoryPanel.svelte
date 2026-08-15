@@ -39,6 +39,7 @@
   import Icon from './Icon.svelte';
   import InfiniteLoadSentinel from './InfiniteLoadSentinel.svelte';
   import PanelHeader from './PanelHeader.svelte';
+  import ResultProblem from './ResultProblem.svelte';
   import RootPageHeader from './RootPageHeader.svelte';
   import SearchField from './SearchField.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
@@ -742,12 +743,24 @@
   </div>
 
   <div class:loading class="history-results" bind:this={historyResults} aria-busy={loading}>
-    {#if problem !== null}
-      <div class="result-state" role="alert">
-        <strong>History could not be loaded</strong>
-        <span>{problem}</span>
-        <button class="btn" onclick={retry}>Try again</button>
-      </div>
+    <!-- A refresh that failed over a loaded table has not made the table wrong. -->
+    {#if problem !== null && currentPage !== null}
+      <ResultProblem
+        title="History could not be loaded"
+        {problem}
+        busy={loading}
+        onRetry={() => retry()}
+        overContent
+      />
+    {/if}
+
+    {#if problem !== null && currentPage === null}
+      <ResultProblem
+        title="History could not be loaded"
+        {problem}
+        busy={loading}
+        onRetry={() => retry()}
+      />
     {:else if loading && currentPage === null}
       <div class="table-skeleton" aria-hidden="true">
         {#each [0, 1, 2, 3, 4, 5] as index (index)}
@@ -1116,7 +1129,10 @@
       </div>
     {/if}
     <InfiniteLoadSentinel
-      active={!desktopTableLayout.current && !loading && currentPage?.next_cursor != null}
+      active={!desktopTableLayout.current &&
+        !loading &&
+        loadMoreProblem === null &&
+        currentPage?.next_cursor != null}
       cursor={currentPage?.next_cursor}
       onVisible={() => void loadNextPage()}
     />
@@ -1648,22 +1664,6 @@
     to {
       opacity: 0.88;
     }
-  }
-
-  .result-state {
-    align-items: center;
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-    justify-content: center;
-    min-height: 9rem;
-    padding: 1.5rem;
-    text-align: center;
-  }
-
-  .result-state span {
-    color: var(--dim);
-    font-size: 0.75rem;
   }
 
   @media (max-width: 48rem) {

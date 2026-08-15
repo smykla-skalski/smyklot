@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
+
   import { formatRelative, formatTimestamp } from '../lib/format';
   import type { FilterSection } from '../lib/filter-menu';
   import type {
@@ -25,6 +27,7 @@
   import Icon from './Icon.svelte';
   import InfiniteLoadSentinel from './InfiniteLoadSentinel.svelte';
   import Modal from './Modal.svelte';
+  import ResultProblem from './ResultProblem.svelte';
   import RootInvitations from './RootInvitations.svelte';
   import RootPageHeader from './RootPageHeader.svelte';
   import SearchField from './SearchField.svelte';
@@ -159,8 +162,17 @@
     return () => window.clearTimeout(timeout);
   });
 
+  /* `requestKey` is the whole trigger: it changes when a filter, the sort, the
+     page size or the refresh version does. The call is untracked because
+     `loadPage` reads `loading` to bail out while a read is in flight, and an
+     effect that depends on what it calls also writes would start a fresh request
+     every time one finished - a loop that never settled. */
   $effect(() => {
-    if (section === 'users') void loadPage(undefined, false, requestKey);
+    const key = requestKey;
+    const wanted = section === 'users';
+    untrack(() => {
+      if (wanted) void loadPage(undefined, false, key);
+    });
   });
 
   function selectSection(value: string): void {
@@ -512,14 +524,24 @@
     </div>
 
     <div class:loading class="user-results" aria-busy={loading}>
-      {#if problem !== null}
-        <div class="result-state" role="alert">
-          <strong>Root users could not be loaded</strong>
-          <span>{problem}</span>
-          <button class="btn" type="button" onclick={() => void loadPage(undefined, false)}>
-            Try again
-          </button>
-        </div>
+      <!-- A refresh that failed over a loaded table has not made the table wrong. -->
+      {#if problem !== null && page !== null}
+        <ResultProblem
+          title="Root users could not be loaded"
+          {problem}
+          busy={loading}
+          onRetry={() => void loadPage(undefined, false)}
+          overContent
+        />
+      {/if}
+
+      {#if problem !== null && page === null}
+        <ResultProblem
+          title="Root users could not be loaded"
+          {problem}
+          busy={loading}
+          onRetry={() => void loadPage(undefined, false)}
+        />
       {:else if loading && page === null}
         <div class="table-skeleton" aria-hidden="true">
           {#each [0, 1, 2, 3, 4, 5] as index (index)}<span></span>{/each}
@@ -667,7 +689,7 @@
         </div>
       {/if}
       <InfiniteLoadSentinel
-        active={!loading && page?.next_cursor != null}
+        active={!loading && loadMoreProblem === null && page?.next_cursor != null}
         cursor={page?.next_cursor}
         onVisible={loadNext}
       />
@@ -1244,24 +1266,8 @@
     margin-inline: auto;
   }
 
-  .result-state,
   .table-skeleton {
     min-height: 10rem;
-  }
-
-  .result-state {
-    align-items: center;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    justify-content: center;
-    padding: var(--space-6);
-    text-align: center;
-  }
-
-  .result-state span {
-    color: var(--text-secondary);
-    font-size: var(--font-size-meta);
   }
 
   .table-skeleton {
