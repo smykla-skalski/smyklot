@@ -1575,8 +1575,14 @@
       display: block;
       flex: 1;
       min-height: 0;
+      /* No `overscroll-behavior`. It was here to stop a scroll reaching the end
+         of this table from carrying on into the page, but the shell is exactly
+         one viewport tall and the panes around this one are clipped, so there is
+         nothing behind it to chain into - it prevented nothing and was the only
+         thing in the panel with an opinion about what happens at a scroll
+         boundary. The platform's own behaviour, including the elastic overscroll
+         a trackpad expects at the end of a list, is the default. */
       overflow-y: auto;
-      overscroll-behavior-y: contain;
       position: relative;
     }
 

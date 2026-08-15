@@ -1314,8 +1314,10 @@
       display: block;
       flex: 1;
       min-height: 0;
+      /* No `overscroll-behavior` - see the note on the same rule in
+         RepositoryList: there is nothing behind this pane to chain into, so it
+         prevented nothing and only stood between a trackpad and the platform. */
       overflow-y: auto;
-      overscroll-behavior-y: contain;
       position: relative;
     }
 
