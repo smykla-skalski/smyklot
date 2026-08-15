@@ -327,6 +327,7 @@ type Decision struct {
 // GitHub observations and presentation.
 type Store interface {
 	ClaimSourceRevision(context.Context, SourceRevisionRequest) (SourceRevisionResult, error)
+	CheckArm(context.Context, ArmRequest) error
 	Arm(context.Context, ArmRequest) (ArmResult, error)
 	DrainLegacy(context.Context, LegacyDrainRequest) (LegacyDrainResult, error)
 	Get(context.Context, int64) (Request, error)

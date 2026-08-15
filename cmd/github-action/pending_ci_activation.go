@@ -66,6 +66,16 @@ func activatePendingCI(
 
 			return nil
 		}
+		failures.command = command.checkArm(
+			ctx, request.runtime, request.pullRequest, request.commentID,
+			request.headSHA, request.baseBranch, request.method,
+			request.requiredChecksOnly, request.label,
+		)
+		if failures.command != nil {
+			classifyPendingCIArmFailure(ctx, command, request, &failures)
+
+			return nil
+		}
 		info, err := artifacts.GetPRInfo(
 			ctx, request.owner, request.repository, request.pullRequest,
 		)
@@ -119,6 +129,21 @@ func activatePendingCI(
 	})
 
 	return failures, err
+}
+
+func classifyPendingCIArmFailure(
+	ctx context.Context,
+	command *pendingCICommand,
+	request pendingCIActivationRequest,
+	failures *pendingCIActivationErrors,
+) {
+	if errors.Is(failures.command, pendingci.ErrStaleSourceRevision) {
+		failures.command = nil
+		failures.stale = true
+
+		return
+	}
+	_ = resolveAmbiguousPendingCI(ctx, command, request, failures)
 }
 
 func handlePendingCIArmFailure(

@@ -13,6 +13,7 @@ import (
 )
 
 type pendingCICommandStore interface {
+	CheckArm(context.Context, pendingci.ArmRequest) error
 	Arm(context.Context, pendingci.ArmRequest) (pendingci.ArmResult, error)
 	GetArmed(context.Context, string, int) (pendingci.Request, error)
 	CancelBySource(context.Context, pendingci.CancelRequest) (*pendingci.Request, error)
@@ -78,8 +79,44 @@ func (command *pendingCICommand) arm(
 	requiredChecksOnly bool,
 	label string,
 ) (*pendingci.Request, error) {
+	result, err := command.store.Arm(ctx, command.armRequest(
+		runtime, pullRequest, commentID, headSHA, baseBranch,
+		method, requiredChecksOnly, label,
+	))
+	if err != nil {
+		return nil, fmt.Errorf("persist pending CI command: %w", err)
+	}
+	command.wake()
+
+	return result.Superseded, nil
+}
+
+func (command *pendingCICommand) checkArm(
+	ctx context.Context,
+	runtime *RuntimeConfig,
+	pullRequest, commentID int,
+	headSHA, baseBranch string,
+	method github.MergeMethod,
+	requiredChecksOnly bool,
+	label string,
+) error {
+	return command.store.CheckArm(ctx, command.armRequest(
+		runtime, pullRequest, commentID, headSHA, baseBranch,
+		method, requiredChecksOnly, label,
+	))
+}
+
+func (command *pendingCICommand) armRequest(
+	runtime *RuntimeConfig,
+	pullRequest, commentID int,
+	headSHA, baseBranch string,
+	method github.MergeMethod,
+	requiredChecksOnly bool,
+	label string,
+) pendingci.ArmRequest {
 	requestedAt := command.now()
-	result, err := command.store.Arm(ctx, pendingci.ArmRequest{
+
+	return pendingci.ArmRequest{
 		TargetID: command.targetID, InstallationID: command.installationID,
 		RepositoryID: command.repositoryID, RepositoryFullName: command.repositoryFullName,
 		PullRequest: pullRequest, HeadSHA: headSHA, BaseBranch: baseBranch,
@@ -88,13 +125,7 @@ func (command *pendingCICommand) arm(
 		SourceRevision: command.sourceRevision, SourceSequence: command.sourceSequence,
 		SourceOrder: command.sourceOrder,
 		Label:       label, RequestedAt: requestedAt,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("persist pending CI command: %w", err)
 	}
-	command.wake()
-
-	return result.Superseded, nil
 }
 
 func (s *server) commandEnvironment(

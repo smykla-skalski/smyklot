@@ -22,6 +22,27 @@ SELECT id, target_id, installation_id, repository_id, repository_full_name,
        cleanup_attempts, cleanup_error, revision
 FROM pending_ci_requests`
 
+// CheckArm verifies the current durable source order without changing it.
+// Callers use it before publishing external artifacts; Arm remains the final
+// atomic authority in case another process changes the order afterward.
+func (s *Store) CheckArm(ctx context.Context, arm pendingci.ArmRequest) error {
+	if err := arm.Validate(); err != nil {
+		return err
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin pending CI arm check: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, _, err := pendingCIArmTarget(ctx, tx, arm); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // Arm atomically supersedes the current request for a PR and records the last
 // authorized command as the only armed request.
 func (s *Store) Arm(ctx context.Context, arm pendingci.ArmRequest) (pendingci.ArmResult, error) {

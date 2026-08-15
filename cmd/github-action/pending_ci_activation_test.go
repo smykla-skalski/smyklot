@@ -251,6 +251,47 @@ func TestPendingCIActivationKeepsCurrentLabelWhenIncomingCommandIsStale(t *testi
 	}
 }
 
+func TestPendingCIActivationRejectsStaleSourceBeforeApproval(t *testing.T) {
+	t.Parallel()
+	approved := false
+	artifacts := &pendingCIArtifactsStub{
+		info: &github.PRInfo{},
+		approve: func() error {
+			approved = true
+
+			return nil
+		},
+	}
+	command := &pendingCICommand{
+		store: pendingCICommandStoreStub{
+			getErr: storage.ErrNotFound, checkArmErr: pendingci.ErrStaleSourceRevision,
+		},
+		coordinator: newPendingCICoordinator(), repositoryID: "repository:7",
+		now: func() time.Time { return time.Now().UTC() }, wake: func() {},
+	}
+
+	failures, err := activatePendingCI(
+		t.Context(), artifacts, command, pendingCIActivationRequest{
+			runtime: &RuntimeConfig{CommentAuthor: "operator"},
+			owner:   "owner", repository: "repository", pullRequest: 198,
+			commentID: 101, headSHA: "head", baseBranch: "main",
+			method: github.MergeMethodSquash, label: github.LabelPendingCISquash,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !failures.stale || failures.command != nil {
+		t.Fatalf("activation failures = %+v", failures)
+	}
+	if approved {
+		t.Fatal("stale activation approved the pull request")
+	}
+	if len(artifacts.addedLabels) != 0 {
+		t.Fatalf("stale activation added labels: %v", artifacts.addedLabels)
+	}
+}
+
 func TestPendingCIActivationRollbackTreatsMissingLabelsAsClean(t *testing.T) {
 	t.Parallel()
 	methodLabel := github.LabelPendingCISquash

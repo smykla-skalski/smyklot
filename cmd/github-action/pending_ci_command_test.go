@@ -228,10 +228,18 @@ func TestPendingCICleanupWakesDurableCleanupAfterExternalFailure(t *testing.T) {
 type pendingCICommandStoreStub struct {
 	request      pendingci.Request
 	getErr       error
+	checkArmErr  error
 	armErr       error
 	finishResult *pendingci.Request
 	finishErr    error
 	finish       func(pendingci.FinishPRRequest) (*pendingci.Request, error)
+}
+
+func (store pendingCICommandStoreStub) CheckArm(
+	context.Context,
+	pendingci.ArmRequest,
+) error {
+	return store.checkArmErr
 }
 
 func (store pendingCICommandStoreStub) GetArmed(

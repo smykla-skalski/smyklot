@@ -15,7 +15,13 @@ import (
 func declarePendingCISpecs(runtime func() (context.Context, storage.Store, time.Time)) {
 	It("persists the pending CI lifecycle and its crash-safe cleanup phases", func() {
 		ctx, store, now := runtime()
-		armed, err := store.Arm(ctx, pendingCIArm(now, 198, 101, "cleanup-head"))
+		arm := pendingCIArm(now, 198, 101, "cleanup-head")
+		err := store.CheckArm(ctx, arm)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = store.GetArmed(ctx, arm.RepositoryID, arm.PullRequest)
+		Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
+
+		armed, err := store.Arm(ctx, arm)
 		Expect(err).NotTo(HaveOccurred())
 
 		lease, err := store.LeaseDue(ctx, now, now.Add(time.Minute))
@@ -87,6 +93,8 @@ func declarePendingCISpecs(runtime func() (context.Context, storage.Store, time.
 		Expect(cancelled.Request.ID).To(Equal(armed.Request.ID))
 
 		delayed := pendingCIArm(now.Add(90*time.Second), 198, 404, "delayed-head")
+		err = store.CheckArm(ctx, delayed)
+		Expect(errors.Is(err, pendingci.ErrStaleSourceRevision)).To(BeTrue())
 		_, err = store.Arm(ctx, delayed)
 		Expect(errors.Is(err, pendingci.ErrStaleSourceRevision)).To(BeTrue())
 	})
