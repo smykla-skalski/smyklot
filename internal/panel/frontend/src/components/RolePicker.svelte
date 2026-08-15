@@ -10,6 +10,7 @@
 
 <script lang="ts">
   import Icon from './Icon.svelte';
+  import Popover from './Popover.svelte';
 
   const {
     label,
@@ -27,104 +28,53 @@
     onSelect: (value: string) => void;
   } = $props();
 
-  let trigger = $state<HTMLButtonElement | null>(null);
-  let popover = $state<HTMLElement | null>(null);
+  let triggerButton = $state<HTMLButtonElement | null>(null);
   let open = $state(false);
-
-  /* The browser needs to know which button owns this popover. Doing the toggling
-     by hand looks like it works and does not: an auto popover light-dismisses on
-     pointerdown, so a second click on the trigger closed it and then the click
-     handler, finding it closed, opened it again - the list never shut. Naming the
-     invoker hands that sequence to the platform, which knows the dismissal came
-     from the trigger and leaves it closed. */
-  const popoverId = $props.id();
 
   const selected = $derived(options.find((option) => option.value === value) ?? options[0]);
 
-  /* Runs once the popover is open, from its own toggle event rather than from the
-     click: with the platform owning the toggle, that event is the only place that
-     knows an open actually happened. */
-  function afterOpen(): void {
-    placePopover();
-    const selectedOption = popover?.querySelector<HTMLButtonElement>('[aria-selected="true"]');
-    selectedOption?.focus();
-  }
-
-  function placePopover(): void {
-    if (trigger === null || popover === null) return;
-    const anchor = trigger.getBoundingClientRect();
-    const width = Math.max(156, anchor.width);
-    popover.style.width = `${width}px`;
-    const height = popover.offsetHeight;
-    const left = Math.min(window.innerWidth - width - 8, Math.max(8, anchor.left));
-    const below = anchor.bottom + 6;
-    const top = below + height <= window.innerHeight - 8 ? below : anchor.top - height - 6;
-    popover.style.left = `${left}px`;
-    popover.style.top = `${Math.max(8, top)}px`;
-  }
-
-  function syncOpen(): void {
-    const nowOpen = popover?.matches(':popover-open') === true;
-    if (nowOpen && !open) afterOpen();
-    open = nowOpen;
-  }
-
   function choose(next: string): void {
     if (next !== value) onSelect(next);
-    popover?.hidePopover();
-    queueMicrotask(() => trigger?.focus());
+    open = false;
+    queueMicrotask(() => triggerButton?.focus());
   }
 
   function openFromKeyboard(event: KeyboardEvent): void {
     if (!['ArrowDown', 'ArrowUp'].includes(event.key) || open || disabled) return;
     event.preventDefault();
-    popover?.showPopover();
-  }
-
-  function moveOptionFocus(event: KeyboardEvent): void {
-    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
-    const optionButtons = Array.from(
-      popover?.querySelectorAll<HTMLButtonElement>('.role-option') ?? [],
-    );
-    if (optionButtons.length === 0) return;
-    event.preventDefault();
-    const current = optionButtons.indexOf(event.currentTarget as HTMLButtonElement);
-    let next = event.key === 'Home' ? 0 : optionButtons.length - 1;
-    if (event.key === 'ArrowDown') next = (current + 1) % optionButtons.length;
-    if (event.key === 'ArrowUp') next = (current - 1 + optionButtons.length) % optionButtons.length;
-    optionButtons[next]?.focus();
+    open = true;
   }
 </script>
 
-<div class="role-picker" class:field={variant === 'field'}>
-  <button
-    class="role-trigger"
-    type="button"
-    bind:this={trigger}
-    {disabled}
-    aria-label={label}
-    aria-haspopup="listbox"
-    aria-expanded={open}
-    popovertarget={popoverId}
-    popovertargetaction="toggle"
-    onkeydown={openFromKeyboard}
-  >
-    {#if selected !== undefined}
-      <span class="role-icon" aria-hidden="true"><Icon name={selected.icon} size={14} /></span>
-      <span>{selected.label}</span>
-    {/if}
-    <span class="role-chevron" aria-hidden="true"><Icon name="chevron-down" size={14} /></span>
-  </button>
+<Popover
+  bind:open
+  width="min-trigger"
+  role="listbox"
+  {label}
+  itemSelector=".role-option"
+  focusSelector="[aria-selected='true']"
+>
+  {#snippet trigger(attributes)}
+    <div class="role-picker" class:field={variant === 'field'}>
+      <button
+        class="role-trigger"
+        type="button"
+        bind:this={triggerButton}
+        {disabled}
+        aria-label={label}
+        onkeydown={openFromKeyboard}
+        {...attributes}
+      >
+        {#if selected !== undefined}
+          <span class="role-icon" aria-hidden="true"><Icon name={selected.icon} size={14} /></span>
+          <span>{selected.label}</span>
+        {/if}
+        <span class="role-chevron" aria-hidden="true"><Icon name="chevron-down" size={14} /></span>
+      </button>
+    </div>
+  {/snippet}
 
-  <div
-    class="role-popover"
-    bind:this={popover}
-    id={popoverId}
-    popover="auto"
-    role="listbox"
-    aria-label={label}
-    ontoggle={syncOpen}
-  >
+  <div class="role-body">
     {#each options as option (option.value)}
       {@const isSelected = option.value === value}
       <button
@@ -134,7 +84,6 @@
         role="option"
         aria-selected={isSelected}
         onclick={() => choose(option.value)}
-        onkeydown={moveOptionFocus}
       >
         <Icon name={option.icon} size={15} />
         <span>{option.label}</span>
@@ -142,7 +91,7 @@
       </button>
     {/each}
   </div>
-</div>
+</Popover>
 
 <style>
   .role-picker {
@@ -221,34 +170,16 @@
     transform: rotate(180deg);
   }
 
-  .role-popover {
-    background: var(--popover-bg);
-    border: 1px solid var(--popover-border);
-    border-radius: var(--radius-popover);
-    box-shadow: var(--shadow-popover);
-    color: var(--text);
-    inset: auto;
-    margin: 0;
-    max-height: min(24rem, calc(100dvh - 1rem));
-    overflow: auto;
-    padding: var(--space-1);
-    position: fixed;
-  }
-
-  /* Only once it is open. A bare `display` on a popover overrides the `display:
-     none` the UA sheet gives a closed one, and every list in the table painted
-     itself under its own row - author styles win over the UA sheet, so the
-     closed state has to be excluded rather than assumed. */
-  .role-popover:popover-open {
+  /* Inside the layer. Its height is no longer guessed at 24rem: the layer
+     measures the room it actually has and caps itself to that. */
+  .role-body {
     display: grid;
     /* Two pixels, so a hovered row and the selected one below it never meet along
        an edge and read as one taller block. One would do at a whole device ratio
        and round away at a fractional one. */
     gap: 2px;
-  }
-
-  .role-popover::backdrop {
-    background: transparent;
+    min-width: 9.75rem;
+    padding: var(--space-1);
   }
 
   .role-option {

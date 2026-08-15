@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { TimeDisplay } from '../lib/preferences';
   import Icon from './Icon.svelte';
+  import Popover from './Popover.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
 
   const TIME_OPTIONS = [
@@ -16,47 +17,30 @@
     onSelect: (value: TimeDisplay) => void;
   } = $props();
 
-  let menu = $state<HTMLDetailsElement | null>(null);
-  let trigger = $state<HTMLElement | null>(null);
-
-  $effect(() => {
-    function closeFromOutside(event: PointerEvent): void {
-      if (menu?.open === true && event.target instanceof Node && !menu.contains(event.target)) {
-        menu.open = false;
-      }
-    }
-
-    function closeFromKeyboard(event: KeyboardEvent): void {
-      if (event.key !== 'Escape' || menu?.open !== true) return;
-      event.preventDefault();
-      menu.open = false;
-      trigger?.focus();
-    }
-
-    document.addEventListener('pointerdown', closeFromOutside);
-    document.addEventListener('keydown', closeFromKeyboard);
-    return () => {
-      document.removeEventListener('pointerdown', closeFromOutside);
-      document.removeEventListener('keydown', closeFromKeyboard);
-    };
-  });
-
   function select(value: string): void {
     if (value === 'relative' || value === 'absolute') onSelect(value);
   }
 </script>
 
-<details class="display-menu" bind:this={menu}>
-  <summary bind:this={trigger} aria-label="Display options" title="Display options">
-    <span class="display-icon" aria-hidden="true"
-      ><Icon name="sliders" size={14} strokeWidth={2} /></span
+<Popover align="end" role="dialog" label="Display options">
+  {#snippet trigger(attributes)}
+    <button
+      class="display-trigger"
+      type="button"
+      aria-label="Display options"
+      title="Display options"
+      {...attributes}
     >
-    <span class="menu-chevron" aria-hidden="true"
-      ><Icon name="chevron-down" size={14} strokeWidth={2} /></span
-    >
-  </summary>
+      <span class="display-icon" aria-hidden="true"
+        ><Icon name="sliders" size={14} strokeWidth={2} /></span
+      >
+      <span class="menu-chevron" aria-hidden="true"
+        ><Icon name="chevron-down" size={14} strokeWidth={2} /></span
+      >
+    </button>
+  {/snippet}
 
-  <div class="display-popover">
+  <div class="display-body">
     <div class="option-copy">
       <strong>Time display</strong>
       <span>Choose how event times appear</span>
@@ -69,15 +53,10 @@
       onSelect={select}
     />
   </div>
-</details>
+</Popover>
 
 <style>
-  .display-menu {
-    justify-self: end;
-    position: relative;
-  }
-
-  summary {
+  .display-trigger {
     /* 66px wide: the ordinary figure would move its edge two thirds of a pixel, which is not a
        press. See --press-scale-compact in app.css for the bands. */
     --press-scale: var(--press-scale-compact);
@@ -90,6 +69,7 @@
     gap: 0.45rem;
     height: var(--local-control-height, var(--control-height));
     justify-content: center;
+    justify-self: end;
     padding: 0 0.9rem;
     transition:
       background-color var(--duration-fast) var(--ease-standard),
@@ -98,31 +78,23 @@
     user-select: none;
   }
 
-  summary::-webkit-details-marker {
-    display: none;
-  }
-
-  summary::marker {
-    content: '';
-  }
-
-  summary:hover,
-  .display-menu[open] summary {
+  .display-trigger:hover,
+  .display-trigger[aria-expanded='true'] {
     background: var(--control-bg-hover);
   }
 
   /* The ink follows the ground down. Muted on the pressed fill reads 3.93:1, under AA; secondary
      holds 5.49:1, and the same pair the segmented control uses for the same reason. */
-  summary:hover .display-icon,
-  summary:hover .menu-chevron,
-  summary:active .display-icon,
-  summary:active .menu-chevron,
-  .display-menu[open] .display-icon,
-  .display-menu[open] .menu-chevron {
+  .display-trigger:hover .display-icon,
+  .display-trigger:hover .menu-chevron,
+  .display-trigger:active .display-icon,
+  .display-trigger:active .menu-chevron,
+  .display-trigger[aria-expanded='true'] .display-icon,
+  .display-trigger[aria-expanded='true'] .menu-chevron {
     color: var(--text-secondary);
   }
 
-  summary:active {
+  .display-trigger:active {
     background: var(--control-bg-pressed);
     border-color: var(--control-border-hover);
     transform: scale(var(--press-scale));
@@ -141,25 +113,18 @@
     transition: transform var(--duration-fast) var(--ease-out);
   }
 
-  .display-menu[open] .menu-chevron {
+  .display-trigger[aria-expanded='true'] .menu-chevron {
     transform: rotate(180deg);
   }
 
-  .display-popover {
+  /* Inside the layer, so the layer's own surface carries none of this. */
+  .display-body {
     align-items: center;
-    background: var(--popover-bg);
-    border: 1px solid var(--popover-border);
-    border-radius: var(--radius-popover);
-    box-shadow: var(--shadow-popover);
     display: grid;
     gap: 0.75rem;
     grid-template-columns: minmax(0, 1fr) auto;
     padding: 0.75rem;
-    position: absolute;
-    right: 0;
-    top: calc(100% + 0.35rem);
     width: min(22rem, calc(100vw - 2rem));
-    z-index: var(--layer-menu);
   }
 
   .option-copy {
@@ -178,7 +143,7 @@
   }
 
   @media (max-width: 26rem) {
-    .display-popover {
+    .display-body {
       grid-template-columns: 1fr;
     }
   }

@@ -3,6 +3,7 @@
 
   import type { PanelAccount } from '../lib/types';
   import Avatar from './Avatar.svelte';
+  import Popover from './Popover.svelte';
 
   /**
    * A GitHub login, typed, with the people who could be meant offered underneath.
@@ -46,7 +47,6 @@
   let highlighted = $state(-1);
   let open = $state(false);
   let field = $state<HTMLInputElement>();
-  let list = $state<HTMLElement | null>(null);
   /** Rises with each request so a slow answer cannot overwrite a newer one. */
   let generation = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -66,57 +66,6 @@
   });
 
   $effect(() => () => clearTimeout(timer));
-
-  /*
-   * The list is in the top layer, not in the form.
-   *
-   * These fields stand inside a dialog whose body scrolls, and a scroll container
-   * clips whatever is positioned inside it: an absolutely-positioned list was cut
-   * off at the body's edge and what showed there was the dialog's footer. A
-   * popover is outside that box entirely, which is the same reason the role and
-   * action menus in the tables are popovers.
-   *
-   * Manual rather than auto: an auto popover light-dismisses on any pointerdown,
-   * including in the field being typed into. This one is opened by an answer
-   * arriving and closed by choosing, Escape, or leaving the field.
-   */
-  $effect(() => {
-    const element = list;
-    if (element === null) return;
-    if (!open) {
-      if (element.matches(':popover-open')) element.hidePopover();
-      return;
-    }
-    if (!element.matches(':popover-open')) element.showPopover();
-    place();
-  });
-
-  /* Anchored on measurement, so it follows the field when the dialog body is
-     scrolled or the window resized rather than hanging where it was opened. */
-  $effect(() => {
-    if (!open) return;
-    const reposition = (): void => place();
-    // Capture, because the scroller that moves the field is the dialog's body
-    // rather than the window, and its scroll event does not bubble.
-    document.addEventListener('scroll', reposition, true);
-    window.addEventListener('resize', reposition);
-
-    return () => {
-      document.removeEventListener('scroll', reposition, true);
-      window.removeEventListener('resize', reposition);
-    };
-  });
-
-  function place(): void {
-    if (field === undefined || list === null) return;
-    const anchor = field.getBoundingClientRect();
-    list.style.width = `${anchor.width}px`;
-    const height = list.offsetHeight;
-    const below = anchor.bottom + 4;
-    const top = below + height <= window.innerHeight - 8 ? below : anchor.top - height - 4;
-    list.style.left = `${Math.max(8, anchor.left)}px`;
-    list.style.top = `${Math.max(8, top)}px`;
-  }
 
   function schedule(query: string): void {
     clearTimeout(timer);
@@ -212,40 +161,53 @@
   {/if}
 </label>
 
-<ul
-  class="suggestions"
-  bind:this={list}
-  popover="manual"
-  id={listId}
-  role="listbox"
-  aria-label={label}
+<!--
+  The list is in the top layer, not in the form: these fields stand inside a
+  dialog whose body scrolls, and a scroll container clips whatever is positioned
+  inside it - the list was cut off at the body's edge and what showed through
+  there was the dialog's footer.
+
+  Manual rather than the platform's light dismiss, which fires on any pointerdown
+  including one in the field being typed into. This one is opened by an answer
+  arriving and closed by choosing, Escape, or leaving the field - and it never
+  takes focus, because the field has it and is still being typed in.
+-->
+<Popover
+  bind:open
+  anchor={field ?? null}
+  dismiss="manual"
+  width="trigger"
+  offset={4}
+  focusOnOpen={false}
 >
-  {#each items as account, index (account.id)}
-    <li
-      id={`${listId}-${index}`}
-      role="option"
-      aria-selected={index === highlighted}
-      class:highlighted={index === highlighted}
-    >
-      <!-- Pressed on pointerdown, before the field's blur closes the list. -->
-      <button
-        type="button"
-        tabindex="-1"
-        onpointerdown={(event) => {
-          event.preventDefault();
-          choose(account);
-        }}
-        onmouseenter={() => (highlighted = index)}
+  <ul class="suggestions" id={listId} role="listbox" aria-label={label}>
+    {#each items as account, index (account.id)}
+      <li
+        id={`${listId}-${index}`}
+        role="option"
+        aria-selected={index === highlighted}
+        class:highlighted={index === highlighted}
       >
-        <Avatar {account} size={20} />
-        <span class="suggestion-login">{account.login}</span>
-        {#if account.display_name !== '' && account.display_name !== account.login}
-          <span class="suggestion-name">{account.display_name}</span>
-        {/if}
-      </button>
-    </li>
-  {/each}
-</ul>
+        <!-- Pressed on pointerdown, before the field's blur closes the list. -->
+        <button
+          type="button"
+          tabindex="-1"
+          onpointerdown={(event) => {
+            event.preventDefault();
+            choose(account);
+          }}
+          onmouseenter={() => (highlighted = index)}
+        >
+          <Avatar {account} size={20} />
+          <span class="suggestion-login">{account.login}</span>
+          {#if account.display_name !== '' && account.display_name !== account.login}
+            <span class="suggestion-name">{account.display_name}</span>
+          {/if}
+        </button>
+      </li>
+    {/each}
+  </ul>
+</Popover>
 
 <style>
   /* The field owns its own stack rather than inheriting one. A parent's scoped
@@ -284,31 +246,16 @@
   }
 
   /* The list stands over what follows it in the dialog rather than pushing the
-     rest of the form down each time a letter is typed. Same skin as the other
-     lists that hang off a control - see RolePicker, whose tokens these are. */
+     rest of the form down each time a letter is typed. The surface it stands on
+     belongs to the layer around it; this is only the rows. */
   .suggestions {
-    background: var(--popover-bg);
-    border: 1px solid var(--popover-border);
-    border-radius: var(--radius-popover);
-    box-shadow: var(--shadow-popover);
-    color: var(--text);
-    inset: auto;
-    list-style: none;
-    margin: 0;
-    max-height: 15rem;
-    overflow-y: auto;
-    padding: var(--space-1);
-    position: fixed;
-  }
-
-  /* Only once it is open. A bare `display` on a popover overrides the `display:
-     none` the UA sheet gives a closed one, so the closed state has to be excluded
-     rather than assumed - author styles win over the UA sheet. */
-  .suggestions:popover-open {
     /* Two pixels, so a highlighted row and the one below it never meet along an
        edge and read as one taller block. */
     display: grid;
     gap: 2px;
+    list-style: none;
+    margin: 0;
+    padding: var(--space-1);
   }
 
   .suggestions button {

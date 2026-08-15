@@ -16,6 +16,8 @@
 
 import type { Action } from 'svelte/action';
 
+import { placeLayer, type LayerAlign, type LayerRect, type LayerSize } from './anchored-layer';
+
 export interface TooltipOptions {
   /** Matches the trigger's `aria-describedby`. Omit where the trigger already
       carries the same words in an `aria-label`. */
@@ -25,46 +27,36 @@ export interface TooltipOptions {
   align?: 'start' | 'center' | 'end';
 }
 
-interface Size {
-  height: number;
-  width: number;
-}
-
-interface Bounds extends Size {
-  bottom: number;
-  left: number;
-  right: number;
-  top: number;
-}
-
-/** Clearance from the viewport edges, and between trigger and box. */
+/**
+ * Clearance from the viewport edges, and between trigger and box. Wider than a
+ * menu's, because a tooltip is a remark rather than a thing to be used, and one
+ * pressed against the window edge reads as a mistake.
+ */
 const GUTTER = 16;
 const OFFSET = 6;
 
 /**
  * Below the trigger when it fits, above when it does not, and never closer to a
  * viewport edge than the gutter.
+ *
+ * The arithmetic is the shared one - a tooltip is a layer hung off a control
+ * like any other, and it had its own copy of this until the copies were counted.
+ * What stays here is the tooltip's own choice of gutter and offset.
  */
 export function placeTooltip(
-  trigger: Bounds,
-  box: Size,
-  viewport: Size,
-  align: 'start' | 'center' | 'end',
+  trigger: LayerRect,
+  box: LayerSize,
+  viewport: LayerSize,
+  align: LayerAlign,
 ): { left: number; top: number } {
-  const desiredLeft =
-    align === 'start'
-      ? trigger.left
-      : align === 'center'
-        ? trigger.left + (trigger.width - box.width) / 2
-        : trigger.right - box.width;
-  const below = trigger.bottom + OFFSET;
-  return {
-    left: Math.max(GUTTER, Math.min(desiredLeft, viewport.width - box.width - GUTTER)),
-    top:
-      below + box.height <= viewport.height - GUTTER
-        ? below
-        : Math.max(GUTTER, trigger.top - box.height - OFFSET),
-  };
+  const { left, top } = placeLayer(trigger, box, viewport, {
+    align,
+    gutter: GUTTER,
+    offset: OFFSET,
+    side: 'below',
+  });
+
+  return { left, top };
 }
 
 export const tooltip: Action<HTMLElement, TooltipOptions> = (node, initial) => {

@@ -1,7 +1,6 @@
 <script lang="ts">
-  import { tick } from 'svelte';
-
   import Icon, { type IconName } from './Icon.svelte';
+  import Popover from './Popover.svelte';
 
   export interface ActionMenuItem {
     id: string;
@@ -22,114 +21,64 @@
     onSelect: (id: string, trigger: HTMLElement | null) => void;
   } = $props();
 
-  let popover = $state<HTMLDivElement | null>(null);
-  let trigger = $state<HTMLButtonElement | null>(null);
-  let left = $state(0);
-  let top = $state(0);
-
-  /* The browser needs to know which button owns this menu. Toggling it by hand
-     looks right and cannot work: an auto popover light-dismisses on pointerdown,
-     so a second press on the trigger closed it and the handler, finding it
-     closed, opened it again - the menu could only be dismissed by clicking
-     somewhere else. */
-  const popoverId = $props.id();
-
-  /* Placed once it is open, from its own toggle event: that is the only moment
-     the menu has been laid out and can be measured. */
-  async function place(): Promise<void> {
-    if (trigger === null || popover === null) return;
-    const rect = trigger.getBoundingClientRect();
-    await tick();
-    const menu = popover.getBoundingClientRect();
-
-    /* Hung under the button and aligned to its right edge, which is where a menu
-       opened from a trailing control belongs. The width used to be assumed to be
-       224px; the menu is as wide as its longest description, so a wrong guess put
-       it a hundred pixels off the button it belongs to. */
-    left = Math.min(window.innerWidth - menu.width - 8, Math.max(8, rect.right - menu.width));
-    top = rect.bottom + 6;
-    await tick();
-
-    if (popover.getBoundingClientRect().bottom > window.innerHeight - 8) {
-      top = Math.max(8, rect.top - menu.height - 6);
-      await tick();
-    }
-    popover.querySelector<HTMLButtonElement>('.action-item:not(:disabled)')?.focus();
-  }
+  /* Handed back to the caller on select, which is how a dialog opened from here
+     knows what to put focus on once it closes. */
+  let triggerButton = $state<HTMLButtonElement | null>(null);
+  let open = $state(false);
 
   function choose(item: ActionMenuItem): void {
     if (item.disabled === true) return;
-    popover?.hidePopover();
-    onSelect(item.id, trigger);
-  }
-
-  function move(event: KeyboardEvent): void {
-    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
-    const buttons = Array.from(
-      popover?.querySelectorAll<HTMLButtonElement>('.action-item:not(:disabled)') ?? [],
-    );
-    if (buttons.length === 0) return;
-    event.preventDefault();
-    const current = buttons.indexOf(event.currentTarget as HTMLButtonElement);
-    let next = event.key === 'Home' ? 0 : buttons.length - 1;
-    if (event.key === 'ArrowDown') next = (current + 1) % buttons.length;
-    if (event.key === 'ArrowUp') next = (current - 1 + buttons.length) % buttons.length;
-    buttons[next]?.focus();
-  }
-
-  function restoreFocus(): void {
-    trigger?.focus();
+    open = false;
+    onSelect(item.id, triggerButton);
   }
 </script>
 
-<span class="action-menu">
-  <button
-    class="action-trigger"
-    type="button"
-    bind:this={trigger}
-    aria-label={label}
-    title={label}
-    popovertarget={popoverId}
-    popovertargetaction="toggle"
-  >
-    <Icon name="more" size={22} />
-  </button>
-</span>
-
-<div
-  class="action-popover"
-  bind:this={popover}
-  popover="auto"
+<!-- Hung under the button and aligned to its right edge, which is where a menu
+     opened from a trailing control belongs. Its width is its longest description,
+     so it is measured rather than assumed - a guess of 224px once put it a
+     hundred pixels off the button it belongs to. -->
+<Popover
+  bind:open
+  align="end"
   role="menu"
-  aria-label={label}
-  style:left={`${left}px`}
-  style:top={`${top}px`}
-  id={popoverId}
-  onbeforetoggle={(event) => {
-    if (event.newState === 'closed') restoreFocus();
-  }}
-  ontoggle={(event) => {
-    if (event.newState === 'open') void place();
-  }}
+  {label}
+  itemSelector=".action-item"
+  focusSelector=".action-item:not(:disabled)"
 >
-  {#each items as item (item.id)}
-    <button
-      class="action-item"
-      class:danger={item.tone === 'danger'}
-      type="button"
-      role="menuitem"
-      disabled={item.disabled}
-      onclick={() => choose(item)}
-      onkeydown={move}
-    >
-      <span class="action-icon" aria-hidden="true"><Icon name={item.icon} size={16} /></span>
-      <span class="action-copy">
-        <strong>{item.label}</strong>
-        {#if item.description !== undefined}<span>{item.description}</span>{/if}
-      </span>
-    </button>
-  {/each}
-</div>
+  {#snippet trigger(attributes)}
+    <span class="action-menu">
+      <button
+        class="action-trigger"
+        type="button"
+        bind:this={triggerButton}
+        aria-label={label}
+        title={label}
+        {...attributes}
+      >
+        <Icon name="more" size={22} />
+      </button>
+    </span>
+  {/snippet}
+
+  <div class="action-body">
+    {#each items as item (item.id)}
+      <button
+        class="action-item"
+        class:danger={item.tone === 'danger'}
+        type="button"
+        role="menuitem"
+        disabled={item.disabled}
+        onclick={() => choose(item)}
+      >
+        <span class="action-icon" aria-hidden="true"><Icon name={item.icon} size={16} /></span>
+        <span class="action-copy">
+          <strong>{item.label}</strong>
+          {#if item.description !== undefined}<span>{item.description}</span>{/if}
+        </span>
+      </button>
+    {/each}
+  </div>
+</Popover>
 
 <style>
   .action-menu {
@@ -162,15 +111,12 @@
     scale: var(--press-scale-disc);
   }
 
-  .action-popover {
-    background: var(--popover-bg);
-    border: 1px solid var(--popover-border);
-    border-radius: var(--radius-popover);
-    box-shadow: var(--shadow-popover);
-    margin: 0;
+  /* Inside the layer: the surface and where it sits are the layer's, everything
+     within it is this component's. */
+  .action-body {
+    display: grid;
     min-width: 14rem;
     padding: 0.3rem;
-    position: fixed;
   }
 
   .action-item {

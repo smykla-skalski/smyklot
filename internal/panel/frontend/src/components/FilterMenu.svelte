@@ -2,6 +2,7 @@
   import { updateFilterSelection } from '../lib/filter-menu';
   import type { FilterOption, FilterSection } from '../lib/filter-menu';
   import Icon from './Icon.svelte';
+  import Popover from './Popover.svelte';
 
   const {
     label,
@@ -33,8 +34,8 @@
     onChange: (values: string[]) => void;
   } = $props();
 
-  let menu = $state<HTMLDetailsElement | null>(null);
-  let trigger = $state<HTMLElement | null>(null);
+  let triggerButton = $state<HTMLElement | null>(null);
+  let open = $state(false);
 
   const options = $derived(sections.flatMap((section) => section.options));
   // The fallback ("all") is the unfiltered state, not a selection worth counting.
@@ -51,73 +52,49 @@
       : selected.length !== 1 || selected[0] !== fallbackValue,
   );
 
-  $effect(() => {
-    function closeFromOutside(event: PointerEvent): void {
-      if (menu?.open === true && event.target instanceof Node && !menu.contains(event.target)) {
-        close(false);
-      }
-    }
-
-    function closeFromKeyboard(event: KeyboardEvent): void {
-      if (event.key !== 'Escape' || menu?.open !== true) return;
-      event.preventDefault();
-      close(true);
-    }
-
-    document.addEventListener('pointerdown', closeFromOutside);
-    document.addEventListener('keydown', closeFromKeyboard);
-    return () => {
-      document.removeEventListener('pointerdown', closeFromOutside);
-      document.removeEventListener('keydown', closeFromKeyboard);
-    };
-  });
-
   function choose(option: FilterOption): void {
     onChange(updateFilterSelection(selected, option, options, multiple, fallbackValue));
-    if (!multiple) close(true);
+    if (!multiple) close();
   }
 
   function clear(): void {
     onChange(fallbackValue === undefined ? [] : [fallbackValue]);
   }
 
-  function close(restoreFocus: boolean): void {
-    if (menu !== null) menu.open = false;
-    if (restoreFocus) trigger?.focus();
-  }
-
-  function moveOptionFocus(event: KeyboardEvent): void {
-    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
-    const buttons = Array.from(menu?.querySelectorAll<HTMLButtonElement>('.filter-option') ?? []);
-    if (buttons.length === 0) return;
-
-    event.preventDefault();
-    const current = buttons.indexOf(event.currentTarget as HTMLButtonElement);
-    let next = event.key === 'Home' ? 0 : buttons.length - 1;
-    if (event.key === 'ArrowDown') next = (current + 1) % buttons.length;
-    if (event.key === 'ArrowUp') next = (current - 1 + buttons.length) % buttons.length;
-    buttons[next]?.focus();
+  function close(): void {
+    open = false;
+    triggerButton?.focus();
   }
 </script>
 
-<details
-  class="filter-menu"
-  class:align-end={align === 'end'}
-  class:wide
-  class:header-filter={placement === 'header'}
-  class:filtered={canClear}
-  bind:this={menu}
->
-  <summary class:icon-only={iconOnly} bind:this={trigger} aria-label={`${label}: ${summary}`}>
-    {#if showIcon}<Icon name="filter" size={14} />{/if}
-    <span class="summary-copy">{summary}</span>
-    {#if (multiple || placement === 'header') && selectedCount > 0}
-      <span class="selection-count" aria-hidden="true">{selectedCount}</span>
-    {/if}
-    <span class="menu-chevron" aria-hidden="true"><Icon name="chevron-down" size={16} /></span>
-  </summary>
+<Popover bind:open {align} itemSelector=".filter-option">
+  {#snippet trigger(attributes)}
+    <div
+      class="filter-menu"
+      class:open
+      class:header-filter={placement === 'header'}
+      class:filtered={canClear}
+    >
+      <button
+        class="filter-trigger"
+        class:icon-only={iconOnly}
+        type="button"
+        bind:this={triggerButton}
+        aria-haspopup="listbox"
+        aria-label={`${label}: ${summary}`}
+        {...attributes}
+      >
+        {#if showIcon}<Icon name="filter" size={14} />{/if}
+        <span class="summary-copy">{summary}</span>
+        {#if (multiple || placement === 'header') && selectedCount > 0}
+          <span class="selection-count" aria-hidden="true">{selectedCount}</span>
+        {/if}
+        <span class="menu-chevron" aria-hidden="true"><Icon name="chevron-down" size={16} /></span>
+      </button>
+    </div>
+  {/snippet}
 
-  <div class="filter-popover">
+  <div class="filter-body" class:wide>
     <header>
       <strong>{label}</strong>
       <span>{hint}</span>
@@ -147,7 +124,6 @@
               role="option"
               aria-selected={isSelected}
               onclick={() => choose(option)}
-              onkeydown={moveOptionFocus}
             >
               <span class:multiple class="selection-mark" aria-hidden="true">
                 {#if isSelected}<span></span>{/if}
@@ -172,23 +148,20 @@
         <button type="button" class="clear-button" disabled={!canClear} onclick={clear}
           >Clear</button
         >
-        <button type="button" class="done-button" onclick={() => close(true)}>Done</button>
+        <button type="button" class="done-button" onclick={close}>Done</button>
       </footer>
     {/if}
   </div>
-</details>
+</Popover>
 
 <style>
+  /* No `position: relative` and no z-index: the layer is in the top layer, which
+     nothing in the page can be stacked over or clipped by. */
   .filter-menu {
     min-width: 0;
-    position: relative;
   }
 
-  .filter-menu[open] {
-    z-index: var(--layer-menu);
-  }
-
-  summary {
+  .filter-trigger {
     align-items: center;
     background: var(--control-bg);
     border: 1px solid var(--control-border);
@@ -209,7 +182,7 @@
     user-select: none;
   }
 
-  summary.icon-only {
+  .filter-trigger.icon-only {
     flex: none;
     justify-content: space-between;
     padding: 0 0.625rem;
@@ -221,7 +194,7 @@
     flex: none;
   }
 
-  .header-filter summary {
+  .header-filter .filter-trigger {
     background: transparent;
     border: 0;
     border-radius: var(--radius-control);
@@ -233,18 +206,18 @@
     width: 1.75rem;
   }
 
-  .header-filter summary.icon-only {
+  .header-filter .filter-trigger.icon-only {
     width: 1.75rem;
   }
 
-  .header-filter summary .menu-chevron {
+  .header-filter .filter-trigger .menu-chevron {
     display: none;
   }
 
   /* The count rides the funnel's corner so an active filter says how many
      values it holds without reclaiming header width. Specificity beats the
      icon-only in-button placement below. */
-  .filter-menu.header-filter summary .selection-count {
+  .filter-menu.header-filter .filter-trigger .selection-count {
     background: var(--surface-base);
     border-radius: var(--radius-chip);
     box-shadow: 0 0 0 1px var(--border-subtle);
@@ -258,40 +231,40 @@
     top: -4px;
   }
 
-  .header-filter.filtered summary {
+  .header-filter.filtered .filter-trigger {
     background: var(--brand-action);
     color: var(--on-brand-action);
   }
 
-  .header-filter summary:hover,
-  .header-filter[open] summary {
+  .header-filter .filter-trigger:hover,
+  .header-filter.open .filter-trigger {
     background: color-mix(in srgb, var(--text-primary) 8%, transparent);
     border-color: transparent;
     color: var(--text-primary);
   }
 
-  .header-filter.filtered summary:hover,
-  .header-filter.filtered[open] summary {
+  .header-filter.filtered .filter-trigger:hover,
+  .header-filter.filtered.open .filter-trigger {
     background: var(--brand-action-hover);
     color: var(--on-brand-action);
   }
 
-  .header-filter.filtered summary:active {
+  .header-filter.filtered .filter-trigger:active {
     background: var(--brand-action-pressed);
     color: var(--on-brand-action);
   }
 
-  .header-filter summary:active {
+  .header-filter .filter-trigger:active {
     background: color-mix(in srgb, var(--text-primary) 14%, transparent);
     color: var(--text-primary);
     transform: scale(var(--press-scale-disc));
   }
 
-  summary.icon-only .summary-copy {
+  .filter-trigger.icon-only .summary-copy {
     display: none;
   }
 
-  summary.icon-only .selection-count {
+  .filter-trigger.icon-only .selection-count {
     height: 0.875rem;
     min-width: 0.875rem;
     padding: 0 0.15rem;
@@ -300,21 +273,13 @@
     top: 1px;
   }
 
-  summary::-webkit-details-marker {
-    display: none;
-  }
-
-  summary::marker {
-    content: '';
-  }
-
-  summary:hover,
-  .filter-menu[open] summary {
+  .filter-trigger:hover,
+  .filter-menu.open .filter-trigger {
     background: var(--control-bg-hover);
     border-color: var(--control-border-hover);
   }
 
-  summary:active {
+  .filter-trigger:active {
     background: var(--control-bg-pressed);
     border-color: var(--control-border-hover);
     transform: scale(var(--press-scale));
@@ -351,53 +316,49 @@
     transition: transform var(--duration-fast) var(--ease-out);
   }
 
-  .filter-menu[open] .menu-chevron {
+  .filter-menu.open .menu-chevron {
     transform: rotate(180deg);
   }
 
-  .filter-popover {
-    background: var(--popover-bg);
-    border: 1px solid var(--popover-border);
-    border-radius: var(--radius-popover);
-    box-shadow: var(--shadow-popover);
-    left: 0;
+  /* A column that can shrink, so the header and the footer keep their size and
+     the options between them take whatever the layer has left. Which edge it
+     lines up with is the layer's business now, not a left/right pair here. */
+  .filter-body {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
     overflow: hidden;
-    position: absolute;
-    top: calc(100% + 0.35rem);
     width: min(17rem, calc(100vw - 2rem));
-    z-index: var(--layer-menu);
   }
 
-  .align-end .filter-popover {
-    left: auto;
-    right: 0;
-  }
-
-  .wide .filter-popover {
+  .filter-body.wide {
     width: min(21rem, calc(100vw - 2rem));
   }
 
-  .filter-popover > header {
+  .filter-body > header {
     border-bottom: 1px solid var(--rule);
     display: flex;
     flex-direction: column;
     padding: 0.7rem 0.75rem 0.625rem;
   }
 
-  .filter-popover > header strong {
+  .filter-body > header strong {
     font-size: 0.75rem;
     line-height: 1.25;
   }
 
-  .filter-popover > header span {
+  .filter-body > header span {
     color: var(--dim);
     font-size: 0.625rem;
     line-height: 1.35;
     margin-top: 0.1rem;
   }
 
+  /* `min-height: 0`, which is what lets a flex item scroll rather than push its
+     siblings out of the layer. The height it may take is whatever the layer
+     measured for itself, so there is no 24rem guess here any more. */
   .filter-options {
-    max-height: min(24rem, calc(100vh - 12rem));
+    min-height: 0;
     overflow-y: auto;
     padding: 0.35rem;
   }
@@ -522,7 +483,7 @@
     margin-top: 0.1rem;
   }
 
-  .filter-popover > footer {
+  .filter-body > footer {
     align-items: center;
     border-top: 1px solid var(--rule);
     display: flex;
@@ -530,7 +491,7 @@
     padding: 0.45rem;
   }
 
-  .filter-popover > footer button {
+  .filter-body > footer button {
     border: 0;
     border-radius: 6px;
     font-size: 0.6875rem;
@@ -564,7 +525,7 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    summary,
+    .filter-trigger,
     .menu-chevron {
       transition: none;
     }

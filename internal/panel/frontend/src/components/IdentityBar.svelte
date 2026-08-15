@@ -9,6 +9,7 @@
   import BrandMark from './BrandMark.svelte';
   import Icon from './Icon.svelte';
   import NotificationInbox from './NotificationInbox.svelte';
+  import Popover from './Popover.svelte';
   import ThemeSwitch from './ThemeSwitch.svelte';
   import ViewTabs from './ViewTabs.svelte';
 
@@ -68,15 +69,17 @@
     notificationVersion: number;
   } = $props();
 
-  let accountMenu = $state<HTMLDetailsElement | null>(null);
+  let accountOpen = $state(false);
   let inbox = $state<ReturnType<typeof NotificationInbox> | null>(null);
-  let accountTrigger = $state<HTMLElement | null>(null);
-  let targetMenu = $state<HTMLDetailsElement | null>(null);
-  let targetTrigger = $state<HTMLElement | null>(null);
-  let targetSearchInput = $state<HTMLInputElement | null>(null);
+  let targetOpen = $state(false);
   let targetQuery = $state('');
   let mobileNavigationOpen = $state(false);
   let unreadCount = $state(0);
+  /** Read rather than assumed: placement is measured now, so the breakpoint the
+      stylesheet uses has to be a value the placement can see too. */
+  let viewportWidth = $state(0);
+
+  const narrow = $derived(viewportWidth > 0 && viewportWidth <= 768);
 
   const handle = $derived(
     viewer === null ? null : readHandle(viewer.account.provider, viewer.account.login),
@@ -117,47 +120,27 @@
     inbox?.showInbox();
   }
 
-  function closeMenus(except?: HTMLDetailsElement): void {
-    if (accountMenu !== null && accountMenu !== except) accountMenu.open = false;
-    if (targetMenu !== null && targetMenu !== except) {
-      targetMenu.open = false;
-      targetQuery = '';
-    }
+  /* The two menus dismiss themselves: they are layers in the top layer, and the
+     platform closes one when the other opens, on a press outside, and on Escape,
+     returning focus to whichever trigger was named. What is left here is the
+     mobile navigation drawer, which is none of those things. */
+  function closeMenus(): void {
+    accountOpen = false;
+    targetOpen = false;
+    targetQuery = '';
   }
 
   function closeFromOutside(event: PointerEvent): void {
-    if (!(event.target instanceof Node)) return;
-    if (accountMenu?.open === true && !accountMenu.contains(event.target)) accountMenu.open = false;
-    if (targetMenu?.open === true && !targetMenu.contains(event.target)) {
-      targetMenu.open = false;
-      targetQuery = '';
-    }
+    if (!(event.target instanceof Node) || !mobileNavigationOpen) return;
     const sidebar = document.querySelector('.panel-sidebar');
-    if (mobileNavigationOpen && sidebar !== null && !sidebar.contains(event.target)) {
-      mobileNavigationOpen = false;
-    }
+    if (sidebar !== null && !sidebar.contains(event.target)) mobileNavigationOpen = false;
   }
 
   function closeFromKeyboard(event: KeyboardEvent): void {
-    if (event.key !== 'Escape' || event.defaultPrevented) return;
-    if (accountMenu?.open === true) {
-      event.preventDefault();
-      accountMenu.open = false;
-      accountTrigger?.focus();
-      return;
-    }
-    if (targetMenu?.open === true) {
-      event.preventDefault();
-      targetMenu.open = false;
-      targetQuery = '';
-      targetTrigger?.focus();
-      return;
-    }
-    if (mobileNavigationOpen) {
-      event.preventDefault();
-      mobileNavigationOpen = false;
-      document.querySelector<HTMLElement>('.mobile-navigation-trigger')?.focus();
-    }
+    if (event.key !== 'Escape' || event.defaultPrevented || !mobileNavigationOpen) return;
+    event.preventDefault();
+    mobileNavigationOpen = false;
+    document.querySelector<HTMLElement>('.mobile-navigation-trigger')?.focus();
   }
 
   async function signOut(): Promise<void> {
@@ -195,21 +178,9 @@
     mobileNavigationOpen = false;
     onReturnToPanel();
   }
-
-  function toggleDetails(event: Event, menu: HTMLDetailsElement | null): void {
-    if (!(event.currentTarget instanceof HTMLDetailsElement) || menu === null) return;
-    if (event.currentTarget.open) closeMenus(menu);
-  }
-
-  function toggleTargetDetails(event: Event): void {
-    toggleDetails(event, targetMenu);
-    if (!(event.currentTarget instanceof HTMLDetailsElement)) return;
-    targetQuery = '';
-    if (event.currentTarget.open) queueMicrotask(() => targetSearchInput?.focus());
-  }
 </script>
 
-<svelte:window onkeydown={closeFromKeyboard} />
+<svelte:window bind:innerWidth={viewportWidth} onkeydown={closeFromKeyboard} />
 <svelte:document onpointerdown={closeFromOutside} />
 
 <aside
@@ -256,34 +227,44 @@
   </div>
 
   {#if !rootMode && selectedTarget !== null}
-    <details class="target-menu" bind:this={targetMenu} ontoggle={toggleTargetDetails}>
-      <summary
-        class="target-trigger"
-        bind:this={targetTrigger}
-        aria-label={`Switch workspace, currently ${selectedTarget.account.display_name}`}
-      >
-        <Avatar account={selectedTarget.account} size={28} />
-        <span class="target-trigger-copy">
-          <span class="target-kicker">Workspace</span>
-          <strong>{selectedTarget.account.display_name}</strong>
-        </span>
-        <span class="menu-chevron" aria-hidden="true">
-          <Icon name="chevrons-up-down" size={14} strokeWidth={2} />
-        </span>
-        <span class="sidebar-tooltip">Switch workspace</span>
-      </summary>
+    <Popover
+      bind:open={targetOpen}
+      skin="sidebar"
+      role="dialog"
+      label="Switch workspace"
+      side={!narrow && collapsed ? 'right' : 'below'}
+      align={narrow ? 'end' : 'start'}
+      width={narrow || collapsed ? 'auto' : 'trigger'}
+      offset={!narrow && collapsed ? 10 : 6}
+      focusSelector=".target-search input"
+      onopen={() => (targetQuery = '')}
+      onclose={() => (targetQuery = '')}
+    >
+      {#snippet trigger(attributes)}
+        <button
+          class="target-trigger"
+          type="button"
+          aria-label={`Switch workspace, currently ${selectedTarget.account.display_name}`}
+          {...attributes}
+        >
+          <Avatar account={selectedTarget.account} size={28} />
+          <span class="target-trigger-copy">
+            <span class="target-kicker">Workspace</span>
+            <strong>{selectedTarget.account.display_name}</strong>
+          </span>
+          <span class="menu-chevron" aria-hidden="true">
+            <Icon name="chevrons-up-down" size={14} strokeWidth={2} />
+          </span>
+          <span class="sidebar-tooltip">Switch workspace</span>
+        </button>
+      {/snippet}
 
-      <div class="target-popover">
+      <div class="target-body" class:collapsed>
         <label class="target-search">
           <span class="visually-hidden">Search workspaces</span>
           <span class="target-search-icon" aria-hidden="true"><Icon name="search" size={18} /></span
           >
-          <input
-            type="search"
-            placeholder="Search workspaces"
-            bind:this={targetSearchInput}
-            bind:value={targetQuery}
-          />
+          <input type="search" placeholder="Search workspaces" bind:value={targetQuery} />
         </label>
         <div class="target-options">
           {#snippet targetOption(target: PanelTarget)}
@@ -323,7 +304,7 @@
           {/if}
         </div>
       </div>
-    </details>
+    </Popover>
   {/if}
 
   {#if showNavigation}
@@ -348,32 +329,43 @@
   {/if}
 
   {#if viewer !== null && handle !== null}
-    <details
-      class="account-menu"
-      bind:this={accountMenu}
-      ontoggle={(event) => toggleDetails(event, accountMenu)}
+    <Popover
+      bind:open={accountOpen}
+      skin="sidebar"
+      role="dialog"
+      label="Account"
+      side={narrow ? 'below' : collapsed ? 'right' : 'above'}
+      align={narrow || collapsed ? 'end' : 'start'}
+      offset={!narrow && collapsed ? 10 : 6}
+      focusOnOpen={false}
     >
-      <summary
-        class="who"
-        bind:this={accountTrigger}
-        aria-label={unreadCount === 0
-          ? `Account menu for ${viewer.account.display_name}`
-          : `Account menu for ${viewer.account.display_name}, ${unreadCount} unread notifications`}
-      >
-        <span class="who-avatar">
-          <Avatar account={viewer.account} size={32} />
-          {#if unreadCount > 0}<span class="unread-dot" aria-hidden="true"></span>{/if}
-        </span>
-        <span class="who-text">
-          <span class="who-name">{viewer.account.display_name}</span>
-          <span class="who-handle mono">{handle.handle}</span>
-        </span>
-        <span class="menu-chevron" aria-hidden="true">
-          <Icon name="chevron-up" size={14} strokeWidth={2} />
-        </span>
-        <span class="sidebar-tooltip">Account</span>
-      </summary>
-      <div class="account-popover">
+      {#snippet trigger(attributes)}
+        <div class="account-card">
+          <button
+            class="who"
+            type="button"
+            aria-label={unreadCount === 0
+              ? `Account menu for ${viewer.account.display_name}`
+              : `Account menu for ${viewer.account.display_name}, ${unreadCount} unread notifications`}
+            {...attributes}
+          >
+            <span class="who-avatar">
+              <Avatar account={viewer.account} size={32} />
+              {#if unreadCount > 0}<span class="unread-dot" aria-hidden="true"></span>{/if}
+            </span>
+            <span class="who-text">
+              <span class="who-name">{viewer.account.display_name}</span>
+              <span class="who-handle mono">{handle.handle}</span>
+            </span>
+            <span class="menu-chevron" aria-hidden="true">
+              <Icon name="chevron-up" size={14} strokeWidth={2} />
+            </span>
+            <span class="sidebar-tooltip">Account</span>
+          </button>
+        </div>
+      {/snippet}
+
+      <div class="account-body">
         <div class="account-header">
           <Avatar account={viewer.account} size={36} />
           <span class="account-header-copy">
@@ -407,7 +399,7 @@
           <span class="action-text">Sign out</span>
         </button>
       </div>
-    </details>
+    </Popover>
   {/if}
 </aside>
 
@@ -521,16 +513,8 @@
     margin-left: 1.25rem;
   }
 
-  .target-menu,
-  .account-menu {
-    isolation: isolate;
-    position: relative;
-    z-index: var(--layer-popover);
-  }
-
-  .target-menu {
-    margin: var(--space-2) 0 var(--space-3);
-  }
+  /* No stacking context of their own any more: both menus are in the top layer,
+     which nothing in the page can be painted over. */
 
   /* ---- workspace switcher: context selection lives at the top ---- */
   .target-trigger {
@@ -543,9 +527,11 @@
     display: grid;
     gap: 0.625rem;
     grid-template-columns: auto minmax(0, 1fr) auto;
+    margin: var(--space-2) 0 var(--space-3);
     min-height: 3.25rem;
     padding: var(--space-2) 0.625rem;
     position: relative;
+    width: 100%;
     transition:
       background-color var(--duration-fast) var(--ease-standard),
       border-color var(--duration-fast) var(--ease-standard),
@@ -558,23 +544,13 @@
     border-color: color-mix(in srgb, var(--focus) 40%, var(--switcher-card-border));
   }
 
-  .target-menu[open] .target-trigger {
+  .target-trigger[aria-expanded='true'] {
     border-color: color-mix(in srgb, var(--focus) 55%, var(--switcher-card-border));
   }
 
   .target-trigger:active {
     background: var(--sidebar-item-pressed);
     box-shadow: none;
-  }
-
-  .target-trigger::-webkit-details-marker,
-  .who::-webkit-details-marker {
-    display: none;
-  }
-
-  .target-trigger::marker,
-  .who::marker {
-    content: '';
   }
 
   .target-trigger-copy {
@@ -608,30 +584,28 @@
     place-items: center;
   }
 
-  .target-popover,
-  .account-popover {
-    background: var(--sidebar-popover-bg);
-    border: 1px solid var(--sidebar-popover-border);
-    border-radius: var(--radius-popover);
-    box-shadow: var(--shadow-popover);
+  /* Inside the layer, which carries the sidebar's own surface and puts itself
+     under, over or beside the rail depending on whether it is collapsed. */
+  .target-body,
+  .account-body {
     color: var(--sidebar-menu-text);
-    left: 0;
     overflow: hidden;
     padding: 6px;
-    position: absolute;
-    z-index: var(--layer-popover);
   }
 
-  .target-popover {
+  /* A column that can shrink, so the search box keeps its size and the list
+     below it takes whatever room the layer measured for itself. */
+  .target-body {
     display: flex;
     flex-direction: column;
-    max-height: min(30rem, calc(100dvh - 8rem));
-    right: 0;
-    top: calc(100% + 6px);
+    min-height: 0;
   }
 
-  .account-popover {
-    bottom: calc(100% + 6px);
+  .target-body.collapsed {
+    width: 17rem;
+  }
+
+  .account-body {
     width: min(16.5rem, calc(100vw - 2rem));
   }
 
@@ -775,7 +749,9 @@
   /* ---- account: the card at the bottom is only about the signed-in user.
      The bottom zone keeps one rhythm: divider, 8px, admin entry, 8px,
      divider, 8px, this card. ---- */
-  .account-menu {
+  /* The rule and the gap above the card, not on it: a border on `.who` itself
+     would follow its corner radius and sit inside its hover fill. */
+  .account-card {
     border-top: 1px solid var(--sidebar-border);
     margin-top: var(--space-2);
     padding-top: var(--space-2);
@@ -784,6 +760,7 @@
   .who {
     align-items: center;
     background: transparent;
+    border: 0;
     border-radius: var(--radius-control);
     cursor: pointer;
     display: grid;
@@ -796,10 +773,11 @@
       background-color var(--duration-fast) var(--ease-standard),
       transform var(--duration-press) var(--ease-standard);
     user-select: none;
+    width: 100%;
   }
 
   .who:hover,
-  .account-menu[open] .who {
+  .who[aria-expanded='true'] {
     background: var(--sidebar-item-hover);
   }
 
@@ -1026,8 +1004,8 @@
   }
 
   /* A tooltip never fights the popover it would describe. */
-  .target-menu[open] .sidebar-tooltip,
-  .account-menu[open] .sidebar-tooltip {
+  .target-trigger[aria-expanded='true'] .sidebar-tooltip,
+  .who[aria-expanded='true'] .sidebar-tooltip {
     visibility: hidden !important;
   }
 
@@ -1165,18 +1143,6 @@
     padding: var(--space-2) 0;
   }
 
-  .collapsed .target-popover {
-    left: calc(100% + 10px);
-    right: auto;
-    top: 0;
-    width: 17rem;
-  }
-
-  .collapsed .account-popover {
-    bottom: 0;
-    left: calc(100% + 10px);
-  }
-
   /* ---- mobile: the sidebar becomes a top bar ---- */
   @media (max-width: 48rem) {
     .panel-sidebar,
@@ -1232,10 +1198,10 @@
       display: block;
     }
 
-    .target-menu,
-    .account-menu,
-    .collapsed .target-menu,
-    .collapsed .account-menu {
+    .target-trigger,
+    .account-card,
+    .collapsed .target-trigger,
+    .collapsed .account-card {
       border: 0;
       margin: 0;
       padding: 0;
@@ -1243,11 +1209,11 @@
       top: 0.9375rem;
     }
 
-    .target-menu {
+    .target-trigger {
       right: 4.25rem;
     }
 
-    .account-menu {
+    .account-card {
       right: var(--space-4);
     }
 
@@ -1261,6 +1227,9 @@
       display: flex;
       min-height: 2.125rem;
       padding: 0;
+      /* Absolutely positioned up there, so it is sized by its contents rather
+         than by the rail it no longer sits in. */
+      width: auto;
     }
 
     .who-text,
@@ -1270,17 +1239,10 @@
       display: none;
     }
 
-    .account-popover,
-    .target-popover,
-    .collapsed .account-popover,
-    .collapsed .target-popover {
-      bottom: auto;
-      left: auto;
-      right: 0;
-      top: calc(100% + var(--space-2));
-    }
-
-    .target-popover {
+    /* Where they open is measured now, from `narrow` above - both drop below
+       their trigger and line up with its right edge. Only the width is left. */
+    .target-body,
+    .target-body.collapsed {
       width: min(19rem, calc(100vw - 2rem));
     }
   }
