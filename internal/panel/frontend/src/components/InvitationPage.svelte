@@ -160,6 +160,15 @@
     padding-block: var(--space-6);
   }
 
+  /* Inset by the card's corner radius, which is where its edge stops curving
+     and runs straight. Lining the outer rows up with the card's flat edge
+     rather than with the corner's tangent keeps one vertical line down each
+     side of the page. */
+  .invitation-topline,
+  .invitation-shell :global(.foot) {
+    padding-inline: var(--r-strip);
+  }
+
   .invitation-topline {
     align-items: center;
     display: flex;
@@ -189,8 +198,12 @@
     padding: var(--space-5);
   }
 
+  /* No rule above it: the card's own edge already separates the footer from the
+     page's content, and a second line so close to it only crowds the corner. */
   .invitation-shell :global(.foot) {
+    border-top: 0;
     margin-top: var(--space-4);
+    padding-top: 0;
   }
 
   .invited-user {
