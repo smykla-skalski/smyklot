@@ -682,8 +682,8 @@ func scanInvitation(scanner rowScanner, now time.Time) (storage.Invitation, erro
 	var invitation storage.Invitation
 	var invitedAvatar, targetID, targetName, installationRole, systemRole sql.NullString
 	var targetLogin, targetKind, creatorAvatar sql.NullString
-	var respondedAt, invitedUpdatedAt, creatorUpdatedAt storedTime
-	var expiresAt, createdAt storedTime
+	var respondedAt, invitedUpdatedAt, creatorUpdatedAt StoredTime
+	var expiresAt, createdAt StoredTime
 	err := scanner.Scan(
 		&invitation.ID,
 		&invitation.Account.ID,

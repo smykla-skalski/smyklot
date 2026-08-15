@@ -36,6 +36,10 @@ func New(pool *sql.DB, dialect Dialect) *Store {
 // still exposes no handle, and depguard keeps database/sql inside this tree.
 func (s *Store) DB() *sql.DB { return s.db.pool }
 
+// Dialect returns how this store's engine spells its SQL. A copy between two
+// engines needs the destination's, to know what it stores differently.
+func (s *Store) Dialect() Dialect { return s.dialect }
+
 // Ping verifies that the adapter can reach its database.
 func (s *Store) Ping(ctx context.Context) error {
 	if err := s.db.pool.PingContext(ctx); err != nil {

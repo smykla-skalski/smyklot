@@ -6,6 +6,20 @@ import (
 	"time"
 )
 
+// ColumnKind is a storage type that engines spell differently.
+type ColumnKind int
+
+const (
+	// ColumnOther needs no conversion on the way in.
+	ColumnOther ColumnKind = iota
+
+	// ColumnTime is a real timestamp, where another engine may hand over text.
+	ColumnTime
+
+	// ColumnBool is a real boolean, where another engine may hand over 0 or 1.
+	ColumnBool
+)
+
 // Dialect describes the few places where SQL engines genuinely disagree.
 //
 // Every query in this package is written once, in one portable form, and asks
@@ -49,6 +63,20 @@ type Dialect interface {
 	// exists. Engines carry that verdict differently, one in a message and
 	// another in a SQLSTATE code.
 	UniqueViolation(err error) bool
+
+	// ColumnKinds reports the columns of a table that the engine stores as
+	// something other than text, so a copy from another engine can convert
+	// what it reads. An engine that stores everything as text or a number
+	// accepts the Go values another engine hands back and reports nothing.
+	ColumnKinds(ctx context.Context, conn *sql.Conn, table string) (map[string]ColumnKind, error)
+
+	// InsertOverride lets a bulk copy write a key the engine would otherwise
+	// generate. Empty where the engine has no such objection.
+	InsertOverride() string
+
+	// AfterCopy repairs whatever a bulk copy left inconsistent, such as a
+	// sequence that did not advance past the keys written around it.
+	AfterCopy(ctx context.Context, conn *sql.Conn, tables []string) error
 
 	// ExecScript runs a migration file, which holds more than one statement.
 	// A driver that speaks only the extended query protocol cannot send those

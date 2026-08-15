@@ -10,19 +10,19 @@ import (
 // this adapter does not read.
 var errStoredTimeType = errors.New("unsupported stored time")
 
-// storedTime receives a timestamp column from any engine.
+// StoredTime receives a timestamp column from any engine.
 //
 // One engine has a real timestamp type and hands back a time.Time. Another
 // keeps the value as text and hands back a string. Reading through this type
 // means a query does not have to know which, and the parse error is raised
 // where the row is read rather than carried to every caller.
-type storedTime struct {
+type StoredTime struct {
 	value time.Time
 	valid bool
 }
 
 // Scan implements sql.Scanner.
-func (s *storedTime) Scan(src any) error {
+func (s *StoredTime) Scan(src any) error {
 	s.value, s.valid = time.Time{}, false
 
 	switch value := src.(type) {
@@ -41,7 +41,7 @@ func (s *storedTime) Scan(src any) error {
 	}
 }
 
-func (s *storedTime) parse(value string) error {
+func (s *StoredTime) parse(value string) error {
 	// RFC3339Nano reads a fractional part of any width, so it accepts both the
 	// fixed-width form written now and the variable-width form written before.
 	parsed, err := time.Parse(time.RFC3339Nano, value)
@@ -55,10 +55,10 @@ func (s *storedTime) parse(value string) error {
 }
 
 // Time returns the scanned value, or the zero time for a NULL column.
-func (s storedTime) Time() time.Time { return s.value }
+func (s StoredTime) Time() time.Time { return s.value }
 
 // Pointer returns the scanned value, or nil for a NULL column.
-func (s storedTime) Pointer() *time.Time {
+func (s StoredTime) Pointer() *time.Time {
 	if !s.valid {
 		return nil
 	}
@@ -69,4 +69,4 @@ func (s storedTime) Pointer() *time.Time {
 }
 
 // Valid reports whether the column held a value.
-func (s storedTime) Valid() bool { return s.valid }
+func (s StoredTime) Valid() bool { return s.valid }

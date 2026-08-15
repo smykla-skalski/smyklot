@@ -99,7 +99,7 @@ func countHistory(
 }
 
 func scanTimeRange(scanner rowScanner, fields ...any) (storedTimeRange, error) {
-	var createdAt, expiresAt storedTime
+	var createdAt, expiresAt StoredTime
 	fields = append(fields, &createdAt, &expiresAt)
 
 	if err := scanner.Scan(fields...); err != nil {

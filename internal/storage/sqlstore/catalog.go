@@ -674,7 +674,7 @@ WHERE t.id = ?`+targetGroup, targetID))
 func scanTarget(scanner rowScanner) (storage.Target, error) {
 	var target storage.Target
 	var avatarURL, ownershipDetail sql.NullString
-	var lastFailureAt, targetUpdatedAt, accountUpdatedAt, ownershipSyncedAt storedTime
+	var lastFailureAt, targetUpdatedAt, accountUpdatedAt, ownershipSyncedAt StoredTime
 	var targetPatch string
 	var enabled int
 
@@ -721,7 +721,7 @@ func scanTarget(scanner rowScanner) (storage.Target, error) {
 func finishTarget(
 	target storage.Target,
 	patch string,
-	targetUpdatedAt, accountUpdatedAt storedTime,
+	targetUpdatedAt, accountUpdatedAt StoredTime,
 ) (storage.Target, error) {
 	var err error
 	target.ConfigPatch, err = unmarshalPatch(patch)
@@ -775,7 +775,7 @@ func scanRepository(scanner rowScanner) (storage.Repository, error) {
 	var enabledOverride sql.NullBool
 	var fileError sql.NullString
 	var panelPatch, filePatch string
-	var updatedAt storedTime
+	var updatedAt StoredTime
 
 	err := scanner.Scan(
 		&repository.ID,
@@ -810,7 +810,7 @@ func scanRepository(scanner rowScanner) (storage.Repository, error) {
 func finishRepository(
 	repository storage.Repository,
 	panelPatch, filePatch string,
-	updatedAt storedTime,
+	updatedAt StoredTime,
 ) (storage.Repository, error) {
 	var err error
 	repository.ConfigPatch, err = unmarshalPatch(panelPatch)

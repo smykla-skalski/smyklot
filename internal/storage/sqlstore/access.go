@@ -253,7 +253,7 @@ func (s *Store) ResolveTargetAccess(
 	var suspended bool
 	var status storage.PanelUserStatus
 	var targetRole, suspensionReason, ownershipStatus sql.NullString
-	var ownershipSyncedAt storedTime
+	var ownershipSyncedAt StoredTime
 	var ownerCount int
 	var owned bool
 	err := s.db.QueryRowContext(ctx, `
@@ -370,7 +370,7 @@ func resolvedTargetAccess(
 
 func freshOwnership(
 	status sql.NullString,
-	syncedAt storedTime,
+	syncedAt StoredTime,
 	ownerCount int,
 	now time.Time,
 ) bool {
@@ -463,7 +463,7 @@ func getTargetAccessOverride(
 ) (storage.TargetAccessOverride, error) {
 	var override storage.TargetAccessOverride
 	var role, reason sql.NullString
-	var updatedAt storedTime
+	var updatedAt StoredTime
 	err := queryer.QueryRowContext(ctx, `
 SELECT target_id, account_id, role, suspended, suspension_reason, revision, updated_at
 FROM target_roles WHERE account_id = ? AND target_id = ?`, accountID, targetID).Scan(
@@ -503,8 +503,8 @@ func getPanelUser(
 func scanPanelUser(scanner rowScanner) (storage.PanelUser, error) {
 	var user storage.PanelUser
 	var avatar, banReason sql.NullString
-	var bannedAt, removedAt, lastLoginAt storedTime
-	var accountUpdatedAt, createdAt, updatedAt storedTime
+	var bannedAt, removedAt, lastLoginAt StoredTime
+	var accountUpdatedAt, createdAt, updatedAt StoredTime
 	err := scanner.Scan(
 		&user.Account.ID,
 		&user.Account.Provider,

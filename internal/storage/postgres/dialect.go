@@ -11,6 +11,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/stdlib"
+
+	"github.com/smykla-skalski/smyklot/internal/storage/sqlstore"
 )
 
 // uniqueViolation is the SQLSTATE code for a row that already exists.
@@ -117,6 +119,127 @@ func (Dialect) UniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
 
 	return errors.As(err, &pgErr) && pgErr.Code == uniqueViolation
+}
+
+// ColumnKinds reports the columns this engine stores as a real timestamp or a
+// real boolean, which another engine may hand over as text or as 0 and 1.
+func (Dialect) ColumnKinds(
+	ctx context.Context,
+	conn *sql.Conn,
+	table string,
+) (map[string]sqlstore.ColumnKind, error) {
+	rows, err := conn.QueryContext(ctx, `
+SELECT column_name, data_type
+FROM information_schema.columns
+WHERE table_schema = current_schema() AND table_name = $1`, table)
+	if err != nil {
+		return nil, fmt.Errorf("read postgres column types for %q: %w", table, err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	kinds := map[string]sqlstore.ColumnKind{}
+	for rows.Next() {
+		var column, dataType string
+		if err := rows.Scan(&column, &dataType); err != nil {
+			return nil, fmt.Errorf("scan postgres column type: %w", err)
+		}
+		switch {
+		case strings.HasPrefix(dataType, "timestamp"):
+			kinds[column] = sqlstore.ColumnTime
+		case dataType == "boolean":
+			kinds[column] = sqlstore.ColumnBool
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate postgres column types: %w", err)
+	}
+
+	return kinds, nil
+}
+
+// InsertOverride lets a copied row keep the key it already had. An identity
+// column is declared ALWAYS so that ordinary code cannot assign one, and this
+// is the one caller that must.
+func (Dialect) InsertOverride() string { return " OVERRIDING SYSTEM VALUE" }
+
+// AfterCopy advances each identity sequence past the keys just written.
+//
+// Writing a key directly leaves the sequence where it was, so without this the
+// first insert after a copy would collide with a row the copy created.
+func (Dialect) AfterCopy(ctx context.Context, conn *sql.Conn, tables []string) error {
+	generated, err := identityTables(ctx, conn)
+	if err != nil {
+		return err
+	}
+
+	for _, table := range tables {
+		// A table whose key the application supplies - an account id, a token
+		// hash - has no sequence, and nothing to advance. Which tables those
+		// are is asked rather than guarded with a WHERE, because a WHERE would
+		// not help: PostgreSQL type-checks a statement whole before evaluating
+		// any of it, and MAX(id) over a table keyed by text cannot be matched
+		// with the bigint a sequence holds.
+		if !generated[table] {
+			continue
+		}
+
+		var sequence string
+		// Deliberately unqualified, so the name resolves through search_path
+		// exactly as the copy's own INSERT did.
+		if err := conn.QueryRowContext(
+			ctx, "SELECT pg_get_serial_sequence($1, 'id')", table,
+		).Scan(&sequence); err != nil {
+			return fmt.Errorf("look up %q identity sequence: %w", table, err)
+		}
+
+		// #nosec G202 -- the table name is quoted and comes from the caller's
+		// own schema list; the sequence is bound as a parameter.
+		if _, err := conn.ExecContext(ctx, `
+SELECT setval(
+    $1,
+    COALESCE((SELECT MAX(id) FROM `+quoteIdentifier(table)+`), 1),
+    (SELECT COUNT(*) FROM `+quoteIdentifier(table)+`) > 0
+)`, sequence); err != nil {
+			return fmt.Errorf("advance %q identity sequence: %w", table, err)
+		}
+	}
+
+	return nil
+}
+
+// identityTables names every reachable table whose id the database generates.
+func identityTables(ctx context.Context, conn *sql.Conn) (map[string]bool, error) {
+	rows, err := conn.QueryContext(ctx, `
+SELECT DISTINCT table_name
+FROM information_schema.columns
+WHERE column_name = 'id'
+  AND is_identity = 'YES'
+  AND table_schema = ANY (current_schemas(false))`)
+	if err != nil {
+		return nil, fmt.Errorf("read identity columns: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	generated := map[string]bool{}
+	for rows.Next() {
+		var table string
+		if err := rows.Scan(&table); err != nil {
+			return nil, fmt.Errorf("scan identity column: %w", err)
+		}
+		generated[table] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate identity columns: %w", err)
+	}
+
+	return generated, nil
+}
+
+// quoteIdentifier makes a table name safe to interpolate where a parameter is
+// not allowed. Every caller passes a name from the adapter's own schema, and
+// this keeps that true even if one day a caller does not.
+func quoteIdentifier(name string) string {
+	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
 }
 
 // ExecScript runs a migration file.

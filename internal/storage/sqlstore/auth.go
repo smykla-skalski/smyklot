@@ -429,7 +429,7 @@ ON CONFLICT(id) DO UPDATE SET
 func getAccount(ctx context.Context, queryer rowQuerier, id string) (storage.Account, error) {
 	var account storage.Account
 	var avatarURL sql.NullString
-	var updatedAt storedTime
+	var updatedAt StoredTime
 
 	err := queryer.QueryRowContext(ctx, `
 SELECT id, provider, subject_id, login, display_name, avatar_url, updated_at
@@ -460,7 +460,7 @@ func readSession(
 	var session storage.Session
 
 	var revokeCode, revokeReason sql.NullString
-	var revokedAt storedTime
+	var revokedAt StoredTime
 	times, err := scanTimeRange(queryer.QueryRowContext(ctx, `
 SELECT token_hash, account_id, revoked_at, revoke_code, revoke_reason, created_at, expires_at
 FROM sessions WHERE token_hash = ?`, tokenHash),

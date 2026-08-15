@@ -306,7 +306,7 @@ func (s *Store) targetPanelUser(
 func scanAccessDecision(scanner rowScanner) (storage.AccessDecision, error) {
 	var decision storage.AccessDecision
 	var targetID, avatarURL sql.NullString
-	var createdAt, actorUpdatedAt storedTime
+	var createdAt, actorUpdatedAt StoredTime
 	err := scanner.Scan(
 		&decision.ID,
 		&targetID,

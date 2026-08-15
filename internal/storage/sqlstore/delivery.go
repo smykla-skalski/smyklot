@@ -300,7 +300,7 @@ SELECT COUNT(*) FROM deliveries WHERE id = ?`, claimID).Scan(&exists); err != ni
 
 func scanDeliveryFailure(scanner rowScanner) (storage.DeliveryFailure, error) {
 	var failure storage.DeliveryFailure
-	var occurredAt storedTime
+	var occurredAt StoredTime
 
 	if err := scanner.Scan(
 		&failure.ID,

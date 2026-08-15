@@ -133,7 +133,7 @@ func auditFilters(
 func scanAuditEntry(scanner rowScanner) (storage.AuditEntry, error) {
 	var entry storage.AuditEntry
 	var repositoryID, repositoryFullName, avatarURL sql.NullString
-	var createdAt, accountUpdatedAt storedTime
+	var createdAt, accountUpdatedAt StoredTime
 
 	err := scanner.Scan(
 		&entry.ID,

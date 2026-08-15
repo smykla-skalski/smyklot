@@ -85,7 +85,7 @@ func getPreferences(
 	accountID string,
 ) (storage.Preferences, error) {
 	var doc string
-	var updatedAt storedTime
+	var updatedAt StoredTime
 	var revision int64
 	err := queryer.QueryRowContext(ctx, `
 SELECT doc, revision, updated_at

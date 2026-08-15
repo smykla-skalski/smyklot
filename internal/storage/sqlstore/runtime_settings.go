@@ -150,7 +150,7 @@ func getRuntimeSettings(
 	var botConfig, logLevel sql.NullString
 	var pollSeconds, sessionSeconds sql.NullInt64
 	var updatedByID string
-	var updatedAt storedTime
+	var updatedAt StoredTime
 	err := queryer.QueryRowContext(ctx, `
 SELECT bot_config, log_level, poll_interval_seconds, session_ttl_seconds,
        revision, updated_at, updated_by_account_id
@@ -224,7 +224,7 @@ func shortenSessions(ctx context.Context, tx runner, lifetime time.Duration) err
 	}
 	sessions, err := collectRows(rows, func(scanner rowScanner) (sessionWindow, error) {
 		var item sessionWindow
-		var createdAt, expiresAt storedTime
+		var createdAt, expiresAt StoredTime
 		if scanErr := scanner.Scan(&item.tokenHash, &createdAt, &expiresAt); scanErr != nil {
 			return sessionWindow{}, scanErr
 		}

@@ -83,7 +83,7 @@ ORDER BY expires_at`, now)
 func scanElevation(scanner rowScanner) (storage.Elevation, error) {
 	var elevation storage.Elevation
 	var reason, endReason sql.NullString
-	var endedAt, startedAt, expiresAt storedTime
+	var endedAt, startedAt, expiresAt StoredTime
 	if err := scanner.Scan(
 		&elevation.ID,
 		&elevation.SessionTokenHash,
@@ -220,7 +220,7 @@ func getSecurityNotification(
 func scanSecurityNotification(scanner rowScanner) (storage.SecurityNotification, error) {
 	var notification storage.SecurityNotification
 	var reason, targetAvatar, actorAvatar sql.NullString
-	var readAt, createdAt, targetUpdatedAt, actorUpdatedAt storedTime
+	var readAt, createdAt, targetUpdatedAt, actorUpdatedAt StoredTime
 	if err := scanner.Scan(
 		&notification.ID,
 		&notification.RecipientID,

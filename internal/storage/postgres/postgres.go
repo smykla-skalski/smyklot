@@ -3,23 +3,28 @@ package postgres
 
 import (
 	"context"
-	"database/sql"
 	"embed"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/stdlib"
+
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/internal/storage/sqlstore"
-
-	// Register the pure-Go PostgreSQL database/sql driver used by this adapter.
-	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 const (
-	// driverName is what pgx registers itself as with database/sql.
-	driverName = "pgx"
+	// sessionTimeZone is the zone every connection reads timestamps back in.
+	//
+	// A timestamptz names an absolute instant, but the server hands it back in
+	// the session's zone, and that zone is the server's locale unless something
+	// says otherwise. Pinning it means a time formatted into a panel response
+	// or a log line reads the same wherever the database happens to run, rather
+	// than shifting the moment a server moves region.
+	sessionTimeZone = "UTC"
 
 	// maxOpenConns bounds concurrent statements.
 	//
@@ -60,10 +65,17 @@ func Open(ctx context.Context, dsn string) (*Store, error) {
 		return nil, errEmptyDSN
 	}
 
-	pool, err := sql.Open(driverName, dsn)
+	// Parsed rather than handed to sql.Open, because the zone has to be set on
+	// the connection and a DSN can be either a URL or a keyword string. Editing
+	// the text would have to handle both; editing the parsed config handles
+	// neither differently.
+	settings, err := pgx.ParseConfig(dsn)
 	if err != nil {
-		return nil, fmt.Errorf("open postgres database: %w", err)
+		return nil, fmt.Errorf("parse postgres connection string: %w", err)
 	}
+	settings.RuntimeParams["timezone"] = sessionTimeZone
+
+	pool := stdlib.OpenDB(*settings)
 
 	pool.SetMaxOpenConns(maxOpenConns)
 	pool.SetMaxIdleConns(maxIdleConns)

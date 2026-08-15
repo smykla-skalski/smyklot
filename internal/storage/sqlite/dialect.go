@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/smykla-skalski/smyklot/internal/storage/sqlstore"
 )
 
 // Dialect spells the shared store's SQL for SQLite.
@@ -76,6 +78,24 @@ func (d Dialect) NullTimeArg(value *time.Time) any {
 func (Dialect) UniqueViolation(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "constraint failed")
 }
+
+// ColumnKinds reports nothing. SQLite stores a timestamp as text and a boolean
+// as a number, and its driver accepts the time.Time and bool another engine
+// hands back, so a copy into it converts nothing.
+func (Dialect) ColumnKinds(
+	_ context.Context,
+	_ *sql.Conn,
+	_ string,
+) (map[string]sqlstore.ColumnKind, error) {
+	return nil, nil
+}
+
+// InsertOverride is empty. SQLite lets a row carry its own key.
+func (Dialect) InsertOverride() string { return "" }
+
+// AfterCopy has nothing to repair. A rowid key follows the largest value
+// present, so copied keys already leave the next insert in the right place.
+func (Dialect) AfterCopy(_ context.Context, _ *sql.Conn, _ []string) error { return nil }
 
 // ExecScript runs a migration file. SQLite's driver accepts every statement in
 // one call, so there is nothing to take apart.

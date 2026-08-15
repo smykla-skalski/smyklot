@@ -136,9 +136,9 @@ func scanRootAuditEvent(scanner rowScanner) (storage.AppAuditEvent, error) {
 	var actorAvatar, targetAvatar, subjectAvatar sql.NullString
 	var targetIDValue, targetProvider, targetSubject, targetLogin, targetName sql.NullString
 	var subjectID, subjectProvider, subjectSubject sql.NullString
-	var targetUpdated, subjectUpdated storedTime
+	var targetUpdated, subjectUpdated StoredTime
 	var subjectLogin, subjectName sql.NullString
-	var createdAt, actorUpdated storedTime
+	var createdAt, actorUpdated StoredTime
 	if err := scanner.Scan(
 		&event.ID, &event.Category, &targetID, &elevationID,
 		&event.Action, &event.Summary, &createdAt,
@@ -173,7 +173,7 @@ func scanRootAuditEvent(scanner rowScanner) (storage.AppAuditEvent, error) {
 
 func nullableAuditAccount(
 	id, provider, subject, login, name, avatar sql.NullString,
-	updated storedTime,
+	updated StoredTime,
 ) *storage.Account {
 	return &storage.Account{
 		ID: id.String, Provider: provider.String, SubjectID: subject.String,

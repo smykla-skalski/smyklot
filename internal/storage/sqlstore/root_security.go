@@ -255,7 +255,7 @@ func validateRootSession(
 	now time.Time,
 ) error {
 	var accountID string
-	var expiresAt, revokedAt storedTime
+	var expiresAt, revokedAt StoredTime
 	var role storage.SystemRole
 	var status storage.PanelUserStatus
 	err := queryer.QueryRowContext(ctx, `
@@ -283,7 +283,7 @@ func readTargetOwnership(
 ) (storage.TargetOwnership, error) {
 	var ownership storage.TargetOwnership
 	var detail sql.NullString
-	var syncedAt storedTime
+	var syncedAt StoredTime
 	err := queryer.QueryRowContext(ctx, `
 SELECT source, status, detail, synced_at,
        (SELECT COUNT(*) FROM target_owners WHERE target_id = ?)

@@ -133,7 +133,7 @@ func readRootRecentFailures(ctx context.Context, tx runner) ([]storage.RootFailu
 
 func scanRootFailure(scanner rowScanner) (storage.RootFailure, error) {
 	var item storage.RootFailure
-	var occurredAt, accountUpdatedAt storedTime
+	var occurredAt, accountUpdatedAt StoredTime
 	var avatar sql.NullString
 	if err := scanner.Scan(
 		&item.Failure.ID, &item.Failure.DeliveryID, &item.Failure.TargetID,
