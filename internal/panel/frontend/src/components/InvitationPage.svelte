@@ -173,22 +173,29 @@
      outgrows the viewport the flexible rows collapse and the page scrolls from
      the top, so nothing lands above the scroll origin. */
   .invitation-shell {
+    /* The title's own height plus the space under it - stated once, because the
+       mark is centred against the card and has to discount what sits between. */
+    --invitation-title-block: calc(1.0625rem * 1.3 + var(--space-3));
+
     display: grid;
     grid-template-rows: 1fr auto 1fr;
     max-width: 42rem;
     min-height: 100dvh;
     padding-block: var(--space-6);
+    row-gap: var(--space-6);
   }
 
-  /* Anchored to the bottom of the flexible row, so the padding under it is what
-     lifts it: the space it takes comes out of the room above, never out of the
-     room the card is centred against. Past about 5rem the row runs out and the
-     card starts moving down, which is the one thing this layout must not do. */
+  /* Centred in the whitespace between the window's top edge and the card, so the
+     mark holds the middle of that gap at any window height rather than drifting
+     with a fixed offset. Its row ends at the title, not at the card, so it
+     carries the title's block as padding above and centres the padded box - which
+     puts the mark itself half that block lower, on the card's gap. The row gap is
+     symmetric across both flexible rows, so none of this moves the card. */
   .invitation-brand {
-    align-self: end;
+    align-self: center;
     display: flex;
     justify-content: center;
-    padding-bottom: 4.5rem;
+    padding-top: var(--invitation-title-block);
   }
 
   /* Reads as the card's own title from the outside, so it keeps the size the
