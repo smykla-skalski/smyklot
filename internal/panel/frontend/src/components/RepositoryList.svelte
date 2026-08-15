@@ -1037,11 +1037,7 @@
               {@const repository = repositoryAt(virtualRow.index)}
               {@const repositoryFailure = failures[repository.id]}
               <tr
-                class={[
-                  'repository-row',
-                  virtualRow.virtual && 'virtual-row',
-                  virtualRow.index === repositoryRows.length - 1 && 'final-row',
-                ]}
+                class={['repository-row', virtualRow.virtual && 'virtual-row']}
                 style:height={virtualRow.virtual ? `${virtualRow.size}px` : undefined}
                 style:transform={virtualRow.virtual
                   ? `translateY(${virtualRow.start}px)`
@@ -1631,15 +1627,12 @@
       display: flex;
     }
 
-    /* The row separators stop at the last row. Its own line and the table's
-       bottom edge land on the same pixel otherwise, and two hairlines a pixel
-       apart read as one thick, slightly wrong one.
-       Marked in the template rather than found with `:last-child`: the rows are
-       virtualised, so the last one in the DOM is only the last one in the table
-       when the window happens to be at the end. */
-    .repositories tbody tr.final-row td {
-      border-bottom: 0;
-    }
+    /* The last row keeps its separator, on purpose, even though it lands on the
+       table's own bottom edge and the two hairlines read as one slightly thick
+       line. Overscrolling pulls the rows away from that edge, and a last row
+       with no line of its own ends in nothing while it is held there - an open
+       table with its contents hanging out of it. A doubled hairline at rest is
+       the smaller of the two faults. */
 
     .repositories tbody td:last-child {
       /* The enablement control sits at the column start, under the header

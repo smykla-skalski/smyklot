@@ -1519,7 +1519,6 @@
                          that puts the row on screen. -->
                     <tr
                       class:virtual-row={virtualRow.virtual}
-                      class:final-row={virtualRow.index === userTableRows.length - 1}
                       class:history-row={hasDecisionHistory(user)}
                       class:pressing={pressedRow === user.account.id}
                       style:height={virtualRow.virtual ? `${virtualRow.size}px` : undefined}
@@ -1756,7 +1755,6 @@
                     {@const invitation = invitationAt(virtualRow.index)}
                     <tr
                       class:virtual-row={virtualRow.virtual}
-                      class:final-row={virtualRow.index === invitationTableRows.length - 1}
                       style:height={virtualRow.virtual ? `${virtualRow.size}px` : undefined}
                       style:transform={virtualRow.virtual
                         ? `translateY(${virtualRow.start}px)`
@@ -2480,15 +2478,10 @@
         minmax(7.5rem, 0.8fr) 4.25rem;
     }
 
-    /* The row separators stop at the last row, whose own line would otherwise
-       land on the table's bottom edge and read as one thick, slightly wrong
-       hairline. Marked in the template rather than found with `:last-child`,
-       because the rows are virtualised and the last one in the DOM is only the
-       last one in the table when the window is at the end. */
-    .user-table tbody tr.final-row td,
-    .user-table tbody tr.final-row th {
-      border-bottom: 0;
-    }
+    /* The last row keeps its separator - see the note on the same spot in
+       RepositoryList. Overscrolling pulls the rows off the table's bottom edge,
+       and a last row with no line of its own ends in nothing while it is held
+       there. */
 
     /* In the flow, with a height of its own - see the same rule in
        RepositoryList. A table is as tall as its contents now, and something
