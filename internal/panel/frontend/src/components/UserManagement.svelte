@@ -42,6 +42,7 @@
   import ActionMenu, { type ActionMenuItem } from './ActionMenu.svelte';
   import Avatar from './Avatar.svelte';
   import Chip, { type ChipTone } from './Chip.svelte';
+  import CopyReceipt from './CopyReceipt.svelte';
   import DecisionHistory from './DecisionHistory.svelte';
   import FilterMenu from './FilterMenu.svelte';
   import Icon, { type IconName } from './Icon.svelte';
@@ -272,6 +273,17 @@
   let login = $state('');
   let addRole = $state<InstallationRole>('viewer');
   let accessMethod = $state<'add' | 'invite'>('add');
+  /**
+   * Why the dialog was opened, kept apart from which method is selected in it.
+   *
+   * The list you are looking at decides which of the two is the obvious one, so opening the dialog
+   * from Invitations starts on the invitation and says so in its heading. The heading then holds
+   * still while you are inside: flipping the method picker changes what the submit button will do,
+   * and the button already says which. A title that rewrote itself under the pointer would only
+   * make you re-read it.
+   */
+  let addIntent = $state<'add' | 'invite'>('add');
+  const invitingFirst = $derived(activeSection === 'invitations');
   let expiresInDays = $state<InvitationDays>(7);
   let generatedLink = $state('');
   let adding = $state(false);
@@ -721,8 +733,14 @@
       const updated = await reissueInvitation(targetId, invitation.id, 7);
       generatedLink = updated.invite_url ?? '';
       accessMethod = 'invite';
+      addIntent = 'invite';
       addReturnFocus = trigger;
       addModalOpen = true;
+      // A reissued link is a new link that has to be shared, which is the same reason the created
+      // one goes to the clipboard by itself. Coming in through this door rather than the other one
+      // should not change what the dialog has already done for you.
+      linkCopied = null;
+      await copyGeneratedLink(false);
       feedback = `Reissued invitation for @${invitation.account.login}`;
       await reloadInvitations();
     } catch (error) {
@@ -753,17 +771,30 @@
    * Whether the link is on the clipboard, said in the dialog rather than behind it.
    *
    * The link is copied as soon as it exists, because that is the only reason to generate one, and
-   * a dialog that quietly puts something on your clipboard is worse than one that does not. The
-   * line is persistent rather than a toast: the dialog stays open, and a message that has already
-   * faded cannot answer "did that work?" when you look back at it.
+   * a dialog that quietly puts something on your clipboard is worse than one that does not.
+   *
+   * The two outcomes are not the same kind of message and are not shown in the same place. Success
+   * is a receipt for something already done: it rides the heading, and leaves once it has been
+   * read, because a confirmation that never goes away starts reading as part of the dialog. Failure
+   * is an instruction - copy it from the field yourself - so it stays, next to the field it is
+   * about.
    */
   let linkCopied = $state<'copied' | 'failed' | null>(null);
+
+  /**
+   * Bumped on every copy so the receipt is a new element each time.
+   *
+   * Pressing Copy link while the previous receipt is still on screen has to be answered. Without
+   * this the element is the one already running its animation, and the press would look ignored.
+   */
+  let copyReceipt = $state(0);
 
   async function copyGeneratedLink(announce = true): Promise<void> {
     if (generatedLink === '') return;
     try {
       await navigator.clipboard.writeText(generatedLink);
       linkCopied = 'copied';
+      copyReceipt += 1;
       if (announce) feedback = 'Copied invitation link';
     } catch {
       linkCopied = 'failed';
@@ -777,7 +808,8 @@
     generatedLink = '';
     linkCopied = null;
     addRole = 'viewer';
-    accessMethod = 'add';
+    accessMethod = invitingFirst ? 'invite' : 'add';
+    addIntent = accessMethod;
     addReturnFocus = addButton;
     addModalOpen = true;
   }
@@ -1187,7 +1219,7 @@
 {#snippet headerActions()}
   <button class="btn btn-signal" type="button" bind:this={addButton} onclick={openAddModal}>
     <Icon name="user-plus" size={14} strokeWidth={2} />
-    <span class="button-label">Add user</span>
+    <span class="button-label">{invitingFirst ? 'Invite user' : 'Add user'}</span>
   </button>
 {/snippet}
 
@@ -1667,11 +1699,24 @@
   />
 {/if}
 
+{#snippet copyReceiptNotice()}
+  <CopyReceipt
+    shown={linkCopied === 'copied'}
+    pulse={copyReceipt}
+    onDone={() => (linkCopied = null)}
+  />
+{/snippet}
+
 <Modal
   id="add-user"
   open={addModalOpen}
-  title="Add user"
-  description="Grant access now or send a single-use invitation"
+  title={addIntent === 'invite' ? 'Invite user' : 'Add user'}
+  description={generatedLink !== ''
+    ? undefined
+    : addIntent === 'invite'
+      ? 'Send a single-use invitation, or grant access right away'
+      : 'Grant access now or send a single-use invitation'}
+  headerExtra={generatedLink === '' ? undefined : copyReceiptNotice}
   returnFocus={addReturnFocus}
   onClose={closeAddModal}
 >
@@ -1774,12 +1819,10 @@
         <span>Invitation link</span>
         <input class="text-input mono" readonly value={generatedLink} />
       </label>
-      {#if linkCopied !== null}
-        <p class="link-clipboard" class:failed={linkCopied === 'failed'} aria-live="polite">
-          <Icon name={linkCopied === 'copied' ? 'check' : 'alert'} size={13} strokeWidth={2} />
-          {linkCopied === 'copied'
-            ? 'Copied to your clipboard'
-            : 'Copy it from the field above, the clipboard was not available'}
+      {#if linkCopied === 'failed'}
+        <p class="link-clipboard" role="alert">
+          <Icon name="alert" size={13} strokeWidth={2} />
+          Copy it from the field above, the clipboard was not available
         </p>
       {/if}
     {/if}
@@ -2706,15 +2749,11 @@
 
   .link-clipboard {
     align-items: center;
-    color: var(--success);
+    color: var(--warning);
     display: flex;
     font-size: var(--font-size-compact);
     gap: 0.35rem;
     margin: 0.4rem 0 0;
-  }
-
-  .link-clipboard.failed {
-    color: var(--warning);
   }
 
   .success-mark,

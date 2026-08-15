@@ -1065,6 +1065,15 @@ select:disabled {
   width: 0.375rem;
 }
 
+/* A chip's mark, where a dot cannot say which outcome this is. It rides the same
+   nudge as the dot, and gives back its own leading dead space so the ink starts
+   where the padding says it does, exactly as a button's icon does. */
+.chip > svg {
+  flex: none;
+  margin-inline-start: calc(-1 * var(--icon-ink-start, 0px));
+  translate: 0 var(--ink-nudge);
+}
+
 .chip-neutral {
   background: var(--neutral-tint);
   color: var(--text-soft);

@@ -72,6 +72,7 @@
   let expiresInDays = $state<InvitationDays>(7);
   let creating = $state(false);
   let createProblem = $state<string | null>(null);
+  let copyProblem = $state<string | null>(null);
   let generatedLink = $state('');
   let generatedFor = $state('');
 
@@ -201,6 +202,7 @@
     generatedLink = '';
     generatedFor = '';
     createProblem = null;
+    copyProblem = null;
     createOpen = true;
   }
 
@@ -228,7 +230,16 @@
   }
 
   async function copyLink(): Promise<void> {
-    if (generatedLink !== '') await navigator.clipboard.writeText(generatedLink);
+    if (generatedLink === '') return;
+    try {
+      await navigator.clipboard.writeText(generatedLink);
+      copyProblem = null;
+    } catch {
+      // A clipboard that refuses used to reject into nothing at all, so the press looked like it
+      // had worked and the link was not where you went looking for it. The message says what to do
+      // instead, next to the field it is about.
+      copyProblem = 'Copy it from the field above, the clipboard was not available';
+    }
   }
 
   function actionItems(invitation: PanelInvitation): ActionMenuItem[] {
@@ -510,6 +521,7 @@
       <span>Invitation link</span>
       <input class="mono" readonly value={generatedLink} data-modal-focus />
     </label>
+    {#if copyProblem !== null}<p class="form-error" role="alert">{copyProblem}</p>{/if}
   {/if}
 
   {#snippet footer()}
