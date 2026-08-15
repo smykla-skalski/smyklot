@@ -1,19 +1,24 @@
-# Fly.io deployment for the webhook service.
+# Fly.io deployment for the webhook service, once its state lives in PostgreSQL.
 #
-# The image is the one a release publishes, so what runs here is what the
-# release notes describe. Deploy a specific version rather than latest:
+# This is what the repository root's fly.toml becomes at cutover. It is kept
+# separate until then so that a release deployed before the data has been
+# copied cannot quietly detach the SQLite volume and come up empty.
 #
-#   fly deploy --image ghcr.io/smykla-skalski/smyklot:1.13.0
+# The cutover, in DEPLOYMENT.md, ends with:
+#
+#   cp deploy/postgres/smyklot.fly.toml fly.toml
+#
+# The differences from the SQLite configuration are only these:
+#
+#   - no [[mounts]], because there is no local file to keep
+#   - no SMYKLOT_PANEL_STATE_PATH, replaced by SMYKLOT_DATABASE_URL, which is
+#     a secret because it carries the database password
 #
 # Secrets are never in this file. They are set once with `fly secrets set` and
 # live encrypted in Fly:
 #
-#   SMYKLOT_WEBHOOK_SECRET, GITHUB_APP_PRIVATE_KEY, GITHUB_APP_CLIENT_ID,
-#   SMYKLOT_PANEL_CLIENT_ID, SMYKLOT_PANEL_CLIENT_SECRET
-#
-# The panel pair belongs to a classic OAuth App, registered apart from the
-# GitHub App so that signing in to read the panel does not ask anyone to grant
-# the permissions the bot approves and merges with
+#   SMYKLOT_DATABASE_URL, SMYKLOT_WEBHOOK_SECRET, GITHUB_APP_PRIVATE_KEY,
+#   GITHUB_APP_CLIENT_ID, GITHUB_APP_CLIENT_SECRET
 
 app = "smyklot"
 primary_region = "fra"
@@ -27,10 +32,10 @@ primary_region = "fra"
 # the release pipeline, and `fly deploy --image` names which one to run.
 
 [deploy]
-  # Rolling replaces the one machine in place. Blue-green and canary both start
-  # a second machine, but this v1 SQLite deployment deliberately has one volume
-  # and one writer. The deployment workflow refuses unsafe topologies rather
-  # than guessing which volume-backed machine contains canonical state.
+  # Still rolling, and still one machine, but no longer because of SQLite.
+  # Deliveries are de-duplicated in memory and the reaction sweep has no leader
+  # election, so a second machine answers the same comment twice. PostgreSQL
+  # would tolerate the second writer; the service would not.
   strategy = "rolling"
 
 [env]
@@ -42,7 +47,6 @@ primary_region = "fra"
   SMYKLOT_LOG_LEVEL = "info"
   SMYKLOT_PANEL_PUBLIC_ORIGIN = "https://smyklot.com"
   SMYKLOT_PANEL_BASE_PATH = "/"
-  SMYKLOT_PANEL_STATE_PATH = "/data/panel.sqlite3"
   SMYKLOT_PANEL_SUPER_ROOT_ID = "11655498"
 
   # The Go runtime cannot see the machine's memory limit, so it is told.
@@ -81,14 +85,9 @@ primary_region = "fra"
   timeout = "5s"
   path = "/healthz"
 
-# The panel's owner binding, settings, audit trail and delivery history are
-# durable. SQLite is intentionally single-writer in v1, matching the one Fly
-# Machine enforced below.
-[[mounts]]
-  source = "smyklot_data"
-  destination = "/data"
-  initial_size = "1GB"
-  snapshot_retention = 14
+# No [[mounts]]. State lives in the smyklot-db app, which has the volume and
+# the snapshots. Removing the mount is what makes readOnlyRootFilesystem, a
+# scratch machine and a rebuild from the image all safe here.
 
 [[vm]]
   size = "shared-cpu-1x"
