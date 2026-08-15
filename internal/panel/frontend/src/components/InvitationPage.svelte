@@ -338,26 +338,37 @@
      gap above the card - which is what the sky measures itself against - within a
      narrow range instead of doubling when the card holds one line of error. */
   /* The one thing on the page that is not the sky, so it is not quite opaque
-     either: the sky reads through it faintly and the card sits *in* the scene
-     rather than on top of it. The blur behind is what makes that safe - it takes
-     the stars out of the ground the text stands on, leaving an even wash instead
-     of specks of white under the type.
+     either: the sky reads through it and the card sits *in* the scene rather than
+     on top of it. The blur behind is what makes that safe - it takes the stars out
+     of the ground the text stands on, leaving an even wash instead of specks of
+     white under the type.
 
-     94% and not less. The sky is denser at the top of the card than at the
-     bottom, so any translucency puts a gradient across the card and takes a bite
-     out of the contrast at the top, where the ground is darkest. Measured on the
-     light page across 620-1600px window heights: at 94% the card's own ground
-     drifts 2.3 dE00 top to bottom and `dt`, the dimmest type on it, holds
-     4.89-5.02:1; at 92% the drift is 3.1-3.4 and `dt` falls to 4.81, close
-     enough to the 4.5 floor to be worth the two points. The dark page barely
-     moves either way - its surface is already near the sky. */
+     The lift is what pays for the rest. Straight translucency costs contrast,
+     because the sky is denser at the top of the card than at the bottom and the
+     type at the top ends up standing on the darkest ground: at 92% opaque and no
+     lift, `dt` - the dimmest type on the card - fell to 4.81:1 against a 4.5
+     floor, and that was already as far as it could go. Brightening the backdrop
+     before it shows through separates the two: the card transmits the sky's
+     *shape* without transmitting its darkness, so it can be a great deal more
+     see-through and read better while doing it. Measured on the light page across
+     620-1600px window heights - see the commit for the numbers.
+
+     The dark page lifts the other way. Its surface is already close to the sky, so
+     brightening the backdrop would erase the difference the effect is made of;
+     dropping it instead makes the sky behind the card read as depth. */
   .invitation-card {
-    backdrop-filter: blur(18px) saturate(1.3);
-    background: color-mix(in srgb, var(--strip) 94%, transparent);
+    --invitation-card-lift: 1.6;
+
+    backdrop-filter: blur(22px) saturate(1.4) brightness(var(--invitation-card-lift));
+    background: color-mix(in srgb, var(--strip) 86%, transparent);
     border-color: var(--dialog-border);
     box-shadow: var(--shadow-plate);
     margin-bottom: 0;
     min-height: 19rem;
+  }
+
+  :global(:root[data-theme='dark']) .invitation-card {
+    --invitation-card-lift: 0.72;
   }
 
   .invitation-card :global(.plate-body) {
