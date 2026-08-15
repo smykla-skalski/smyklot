@@ -191,6 +191,17 @@ func (request CancelRepositoryRequest) Validate() error {
 	return nil
 }
 
+func (filter CleanupFilter) Validate() error {
+	if strings.TrimSpace(filter.RepositoryID) == "" {
+		return invalid("cleanup repository identity is required")
+	}
+	if filter.PullRequest < 0 || filter.ExcludeID < 0 {
+		return invalid("cleanup scope cannot be negative")
+	}
+
+	return nil
+}
+
 func (request CompleteCleanupRequest) Validate() error {
 	if request.ID <= 0 || request.ExpectedRevision <= 0 {
 		return invalid("cleanup identity and revision must be positive")

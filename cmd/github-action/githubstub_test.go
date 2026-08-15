@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/githubtest"
+	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
 
 // githubStub is a stand-in GitHub API for the service specs.
@@ -29,6 +31,8 @@ type githubStub struct {
 	prAuthor string
 	prLabels string
 	prHead   string
+
+	issueComments map[int64]issueCommentRecord
 
 	// installations is what GET /app/installations reports, and repos what
 	// each installation can reach. Both are empty unless a spec sweeps
@@ -58,10 +62,16 @@ type githubStub struct {
 
 func newGitHubStub() *githubStub {
 	return &githubStub{
-		codeowners:    "* @someone\n",
-		prAuthor:      "author",
-		prLabels:      `[]`,
-		prHead:        "command-head",
+		codeowners: "* @someone\n",
+		prAuthor:   "author",
+		prLabels:   `[]`,
+		prHead:     "command-head",
+		issueComments: map[int64]issueCommentRecord{
+			githubtest.DefaultCommentID: {
+				exists: true, body: "/approve", updatedAt: githubtest.DefaultUpdatedAt,
+				author: githubtest.DefaultAuthor, authorType: githubtest.DefaultAuthorTypeVal,
+			},
+		},
 		installations: `[]`,
 		repos:         `{"total_count": 0, "repositories": []}`,
 		members:       `[]`,
@@ -69,6 +79,14 @@ func newGitHubStub() *githubStub {
 		openPRs:       `[]`,
 		probeStatus:   http.StatusOK,
 	}
+}
+
+type issueCommentRecord struct {
+	exists     bool
+	body       string
+	updatedAt  string
+	author     string
+	authorType string
 }
 
 func (s *githubStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -163,6 +181,9 @@ func (s *githubStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"id": 1}`))
 
+	case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/issues/comments/"):
+		s.writeIssueComment(w, r.URL.Path)
+
 	case strings.HasSuffix(r.URL.Path, "/comments"):
 		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write([]byte(`{"id": 1}`))
@@ -184,6 +205,47 @@ func (s *githubStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{}`))
 	}
+}
+
+func (s *githubStub) observeIssueComment(payload []byte) {
+	event, err := webhook.ParseIssueComment(payload)
+	if err != nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.issueComments[event.Comment.ID] = issueCommentRecord{
+		exists: event.Action != webhook.ActionDeleted,
+		body:   event.Comment.Body, updatedAt: event.Comment.UpdatedAt,
+		author: event.Comment.User.Login, authorType: event.Comment.User.Type,
+	}
+}
+
+func (s *githubStub) writeIssueComment(w http.ResponseWriter, path string) {
+	commentID, err := strconv.ParseInt(path[strings.LastIndex(path, "/")+1:], 10, 64)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	comment, found := s.issueComments[commentID]
+	if !found || !comment.exists {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"message":"Not Found"}`))
+
+		return
+	}
+	_, _ = fmt.Fprintf(w, `{
+		"id":%d,"body":%q,"updated_at":%q,
+		"user":{"login":%q,"type":%q}
+	}`,
+		commentID, comment.body, comment.updatedAt,
+		comment.author, comment.authorType,
+	)
 }
 
 func (s *githubStub) setInstallations(value string) {

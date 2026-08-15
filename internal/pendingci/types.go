@@ -234,6 +234,14 @@ type CancelRepositoryRequest struct {
 	CancelledAt  time.Time
 }
 
+// CleanupFilter scopes ownership-barrier queries. PullRequest zero means the
+// whole repository; ExcludeID omits the cleanup currently being applied.
+type CleanupFilter struct {
+	RepositoryID string
+	PullRequest  int
+	ExcludeID    int64
+}
+
 type CompleteCleanupRequest struct {
 	ID               int64
 	ExpectedRevision int64
@@ -308,5 +316,6 @@ type Store interface {
 	CancelBySource(context.Context, CancelRequest) (*Request, error)
 	FinishPR(context.Context, FinishPRRequest) (*Request, error)
 	CancelRepository(context.Context, CancelRepositoryRequest) ([]Request, error)
+	HasPendingCleanup(context.Context, CleanupFilter) (bool, error)
 	ListQueue(context.Context, QueueFilter) ([]Request, error)
 }

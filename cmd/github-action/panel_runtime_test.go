@@ -528,10 +528,12 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 			workers.Wait()
 		})
 		body := commandDelivery("/approve")
-		response := postDelivery(public, "issue_comment", "disabled-delivery", body, nil)
+		response := postDelivery(public, stub, "issue_comment", "disabled-delivery", body, nil)
 		Expect(response.StatusCode).To(Equal(http.StatusAccepted))
 		Eventually(func() int {
-			redelivery := postDelivery(public, "issue_comment", "disabled-delivery", body, nil)
+			redelivery := postDelivery(
+				public, stub, "issue_comment", "disabled-delivery", body, nil,
+			)
 
 			return redelivery.StatusCode
 		}).Within(eventuallyWindow).Should(Equal(http.StatusOK))
@@ -564,7 +566,7 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 		stub.repos = `{"repositories":[{"id":123456,"name":"smyklot","full_name":"smykla-skalski/smyklot","owner":{"login":"smykla-skalski"}}]}`
 
 		body = delivery("edited", "/approve", "User", "2026-08-08T10:01:00Z", true)
-		response = postDelivery(public, "issue_comment", "enabled-delivery", body, nil)
+		response = postDelivery(public, stub, "issue_comment", "enabled-delivery", body, nil)
 		Expect(response.StatusCode).To(Equal(http.StatusAccepted))
 		Eventually(func() bool {
 			refreshed, refreshErr := service.store.GetRepository(
@@ -580,7 +582,9 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 		}).Within(eventuallyWindow).Should(Equal(1))
 
 		Eventually(func() int {
-			redelivery := postDelivery(public, "issue_comment", "enabled-delivery", body, nil)
+			redelivery := postDelivery(
+				public, stub, "issue_comment", "enabled-delivery", body, nil,
+			)
 
 			return redelivery.StatusCode
 		}).Within(eventuallyWindow).Should(Equal(http.StatusOK))
@@ -631,6 +635,7 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 			})
 			response := postDelivery(
 				public,
+				stub,
 				"issue_comment",
 				fmt.Sprintf("delayed-catalog-%d", index),
 				body,

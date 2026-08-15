@@ -75,14 +75,16 @@ func CompareSourceEvents(
 	return 0, nil
 }
 
-// CompareSourceIntent orders commands by GitHub's source timestamp and uses
-// the durable observation order only when GitHub's second-granularity
-// timestamps tie. Action sequence is deliberately excluded because it is
-// meaningful only between revisions of the same comment.
+// CompareSourceIntent orders commands by GitHub's source timestamp. Distinct
+// comments use their immutable IDs as a deterministic same-second creation
+// order; revisions of one comment use durable receipt order after their live
+// GitHub state has been verified.
 func CompareSourceIntent(
 	leftRevision string,
+	leftCommentID int64,
 	leftOrder int64,
 	rightRevision string,
+	rightCommentID int64,
 	rightOrder int64,
 ) (int, error) {
 	leftTime, err := ParseSourceRevision(leftRevision)
@@ -97,6 +99,12 @@ func CompareSourceIntent(
 		return -1, nil
 	}
 	if leftTime.After(rightTime) {
+		return 1, nil
+	}
+	if leftCommentID < rightCommentID {
+		return -1, nil
+	}
+	if leftCommentID > rightCommentID {
 		return 1, nil
 	}
 	if leftOrder < rightOrder {

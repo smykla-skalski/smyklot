@@ -466,6 +466,36 @@ WHERE id = ? AND cleanup_pending = TRUE AND revision = ?`,
 	)
 }
 
+// HasPendingCleanup reports whether terminal artifacts still belong to the
+// service within a repository or pull-request scope.
+func (s *Store) HasPendingCleanup(
+	ctx context.Context,
+	filter pendingci.CleanupFilter,
+) (bool, error) {
+	if err := filter.Validate(); err != nil {
+		return false, err
+	}
+	query := "SELECT EXISTS(SELECT 1 FROM pending_ci_requests" +
+		" WHERE repository_id = ? AND cleanup_pending = 1"
+	arguments := []any{filter.RepositoryID}
+	if filter.PullRequest > 0 {
+		query += " AND pull_request = ?"
+		arguments = append(arguments, filter.PullRequest)
+	}
+	if filter.ExcludeID > 0 {
+		query += " AND id != ?"
+		arguments = append(arguments, filter.ExcludeID)
+	}
+	query += ")"
+
+	var pending bool
+	if err := s.db.QueryRowContext(ctx, query, arguments...).Scan(&pending); err != nil {
+		return false, fmt.Errorf("read pending CI cleanup ownership: %w", err)
+	}
+
+	return pending, nil
+}
+
 func (s *Store) RetryCleanup(
 	ctx context.Context,
 	change pendingci.RetryCleanupRequest,

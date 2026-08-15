@@ -32,6 +32,25 @@ func pendingCIServiceOwned(
 	return hasLabel(state.Labels, github.LabelPendingCIServiceOwner), nil
 }
 
+func pendingCIActionOwns(
+	ctx context.Context,
+	reader pendingCIOwnershipReader,
+	owner, repository string,
+	pullRequest int,
+	label, headSHA string,
+) (bool, error) {
+	state, err := reader.GetPullRequestState(
+		ctx, owner, repository, pullRequest,
+	)
+	if err != nil {
+		return false, fmt.Errorf("revalidate pending CI ownership: %w", err)
+	}
+
+	return state.Open && state.HeadSHA == headSHA &&
+		hasLabel(state.Labels, label) &&
+		!hasLabel(state.Labels, github.LabelPendingCIServiceOwner), nil
+}
+
 func pendingCIRequiredChecks(
 	ctx context.Context,
 	reader pendingCIRequirementReader,

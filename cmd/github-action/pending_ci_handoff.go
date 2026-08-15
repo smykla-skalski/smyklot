@@ -12,6 +12,7 @@ type pendingCIHandoffStore interface {
 		context.Context,
 		pendingci.CancelRepositoryRequest,
 	) ([]pendingci.Request, error)
+	HasPendingCleanup(context.Context, pendingci.CleanupFilter) (bool, error)
 }
 
 // pendingCIHandoff terminalizes service-owned work before a repository is
@@ -28,25 +29,31 @@ func (handoff *pendingCIHandoff) CancelRepository(
 	repositoryID string,
 	reason string,
 	cancelledAt time.Time,
-) ([]pendingci.Request, error) {
-	var requests []pendingci.Request
+) (bool, error) {
+	var cleanupPending bool
 	err := handoff.coordinator.Exclusive(ctx, repositoryID, func() error {
-		var transitionErr error
-		requests, transitionErr = handoff.store.CancelRepository(
+		_, transitionErr := handoff.store.CancelRepository(
 			ctx,
 			pendingci.CancelRepositoryRequest{
 				RepositoryID: repositoryID, Reason: reason, CancelledAt: cancelledAt,
 			},
 		)
 
+		if transitionErr != nil {
+			return transitionErr
+		}
+		cleanupPending, transitionErr = handoff.store.HasPendingCleanup(
+			ctx, pendingci.CleanupFilter{RepositoryID: repositoryID},
+		)
+
 		return transitionErr
 	})
 	if err != nil {
-		return nil, err
+		return false, err
 	}
-	if len(requests) > 0 {
+	if cleanupPending {
 		handoff.wake()
 	}
 
-	return requests, nil
+	return cleanupPending, nil
 }

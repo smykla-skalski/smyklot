@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/pkg/github"
@@ -58,7 +59,9 @@ func activatePendingCI(
 			request.pullRequest, github.LabelPendingCIServiceOwner,
 		)
 		if failures.label != nil {
-			return nil
+			return rollbackPendingCIArtifacts(
+				ctx, artifacts, request, ownership, false, !ownership.serviceMarker,
+			)
 		}
 		markerAdded := !ownership.serviceMarker
 		_ = artifacts.AddReaction(
@@ -69,11 +72,9 @@ func activatePendingCI(
 			ctx, request.owner, request.repository, request.pullRequest, request.label,
 		)
 		if failures.label != nil {
-			rollbackPendingCIArtifacts(
+			return rollbackPendingCIArtifacts(
 				ctx, artifacts, request, ownership, true, markerAdded,
 			)
-
-			return nil
 		}
 
 		var superseded *pendingci.Request
@@ -83,7 +84,7 @@ func activatePendingCI(
 			request.requiredChecksOnly, request.label,
 		)
 		if failures.command != nil {
-			rollbackPendingCIArtifacts(
+			rollbackErr := rollbackPendingCIArtifacts(
 				ctx, artifacts, request, ownership, true, markerAdded,
 			)
 			if errors.Is(failures.command, pendingci.ErrStaleSourceRevision) {
@@ -91,7 +92,7 @@ func activatePendingCI(
 				failures.stale = true
 			}
 
-			return nil
+			return rollbackErr
 		}
 		if superseded != nil && superseded.Label != request.label {
 			_ = artifacts.RemoveLabel(
@@ -113,23 +114,34 @@ func rollbackPendingCIArtifacts(
 	ownership pendingCIArtifactOwnership,
 	labelAdded bool,
 	markerAdded bool,
-) {
+) error {
+	var rollbackErr error
 	labelRemoved := true
 	if labelAdded && !ownership.label {
-		labelRemoved = artifacts.RemoveLabel(
+		err := artifacts.RemoveLabel(
 			ctx, request.owner, request.repository, request.pullRequest, request.label,
-		) == nil
+		)
+		labelRemoved = err == nil
+		if err != nil {
+			rollbackErr = errors.Join(rollbackErr, fmt.Errorf("remove method label: %w", err))
+		}
 	}
 	if !ownership.reaction {
-		_ = artifacts.RemoveReaction(
+		if err := artifacts.RemoveReaction(
 			ctx, request.owner, request.repository,
 			request.commentID, github.ReactionPendingCI,
-		)
+		); err != nil {
+			rollbackErr = errors.Join(rollbackErr, fmt.Errorf("remove pending reaction: %w", err))
+		}
 	}
-	if markerAdded && labelRemoved {
-		_ = artifacts.RemoveLabel(
+	if markerAdded && labelRemoved && rollbackErr == nil {
+		if err := artifacts.RemoveLabel(
 			ctx, request.owner, request.repository,
 			request.pullRequest, github.LabelPendingCIServiceOwner,
-		)
+		); err != nil {
+			rollbackErr = errors.Join(rollbackErr, fmt.Errorf("remove ownership marker: %w", err))
+		}
 	}
+
+	return rollbackErr
 }

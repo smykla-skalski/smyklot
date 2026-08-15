@@ -585,6 +585,17 @@ func handlePendingCIPassed(
 	headRef string,
 ) error {
 	logging.From(ctx).Info("CI passed, merging")
+	actionOwned, err := pendingCIActionOwns(
+		ctx, client, repoOwner, repoName, prNumber, pr.label, headRef,
+	)
+	if err != nil {
+		return err
+	}
+	if !actionOwned {
+		logging.From(ctx).Info("pending CI ownership changed; Action stands down")
+
+		return nil
+	}
 
 	if err := mergePendingPRAtHead(ctx, client, repoOwner, repoName, prNumber, pr.method, headRef); err != nil {
 		if mergeHeadChanged(err) {

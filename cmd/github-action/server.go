@@ -242,7 +242,7 @@ func newServer(cfg *serveConfig) (*server, error) {
 	pendingCICoordinator := newPendingCICoordinator()
 	srv.pendingCICoordinator = pendingCICoordinator
 	pendingCIBackend := &githubPendingCIBackend{
-		server: srv, current: srv.store, coordinator: pendingCICoordinator,
+		server: srv, current: srv.store,
 	}
 	pendingCIReconciler := newPendingCIReconciler(
 		srv.store,
@@ -673,6 +673,25 @@ func (s *server) handleIssueComment(
 	eventKey string,
 	sourceOrder int64,
 ) error {
+	token, err := s.tokens.InstallationToken(event.Installation.ID)
+	if err != nil {
+		return NewGitHubError(ErrGitHubAppAuth, err)
+	}
+
+	client, err := github.NewClient(token, s.cfg.apiBaseURL)
+	if err != nil {
+		return NewGitHubError(ErrGitHubClient, err)
+	}
+	current, err := issueCommentIsCurrent(ctx, client, event)
+	if err != nil {
+		return err
+	}
+	if !current {
+		logging.From(ctx).Info("ignored stale issue comment delivery")
+
+		return nil
+	}
+
 	claim, err := s.store.ClaimSourceRevision(ctx, pendingci.SourceRevisionRequest{
 		RepositoryID: repositoryStorageID(event.Repository.ID),
 		PullRequest:  event.Issue.Number, CommentID: event.Comment.ID,
@@ -689,15 +708,6 @@ func (s *server) handleIssueComment(
 	}
 	if err := s.cancelEditedPendingCI(ctx, event, claim.SourceOrder); err != nil {
 		return err
-	}
-	token, err := s.tokens.InstallationToken(event.Installation.ID)
-	if err != nil {
-		return NewGitHubError(ErrGitHubAppAuth, err)
-	}
-
-	client, err := github.NewClient(token, s.cfg.apiBaseURL)
-	if err != nil {
-		return NewGitHubError(ErrGitHubClient, err)
 	}
 
 	rc := runtimeConfigFor(event, s.cfg)

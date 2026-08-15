@@ -289,9 +289,13 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 					case r.URL.Path == "/repos/owner/repo/pulls/42" && r.Method == "GET":
 						w.WriteHeader(http.StatusOK)
 						_ = json.NewEncoder(w).Encode(map[string]interface{}{
+							"state": "open",
 							"head": map[string]interface{}{
 								"sha": "abc123",
 							},
+							"labels": []map[string]interface{}{{
+								"name": github.LabelPendingCIMerge,
+							}},
 						})
 
 					case r.URL.Path == "/repos/owner/repo/commits/abc123/check-runs" && r.Method == "GET":
@@ -346,6 +350,58 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 				Expect(labelRemoved).To(BeTrue())
 				Expect(commentPosted).To(BeTrue())
 			})
+
+			It("should stand down when the service acquires ownership before merge", func() {
+				mergeRequested := false
+				pullReads := 0
+				server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					switch {
+					case r.URL.Path == "/repos/owner/repo/pulls/42" && r.Method == http.MethodGet:
+						pullReads++
+						labels := []map[string]interface{}{}
+						if pullReads > 1 {
+							labels = append(labels, map[string]interface{}{
+								"name": github.LabelPendingCIServiceOwner,
+							})
+						}
+						_ = json.NewEncoder(w).Encode(map[string]interface{}{
+							"state": "open", "head": map[string]interface{}{"sha": "abc123"},
+							"labels": append(labels, map[string]interface{}{
+								"name": github.LabelPendingCISquash,
+							}),
+						})
+					case r.URL.Path == "/repos/owner/repo/commits/abc123/status":
+						_ = json.NewEncoder(w).Encode(map[string]interface{}{
+							"total_count": 0, "statuses": []map[string]interface{}{},
+						})
+					case r.URL.Path == "/repos/owner/repo/commits/abc123/check-runs":
+						_ = json.NewEncoder(w).Encode(map[string]interface{}{
+							"total_count": 1,
+							"check_runs": []map[string]interface{}{{
+								"status": "completed", "conclusion": "success",
+							}},
+						})
+					case r.URL.Path == "/repos/owner/repo/pulls/42/merge":
+						mergeRequested = true
+					default:
+						w.WriteHeader(http.StatusNotFound)
+					}
+				}))
+				client, err := github.NewClient("test-token", server.URL)
+				Expect(err).NotTo(HaveOccurred())
+				pr := pendingCIPR{
+					prData: map[string]interface{}{"number": float64(42)},
+					method: github.MergeMethodSquash, label: github.LabelPendingCISquash,
+				}
+
+				err = processPendingCIPR(
+					context.Background(), client, config.Default(),
+					"owner", "repo", pr, "smyklot[bot]",
+				)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(pullReads).To(Equal(2))
+				Expect(mergeRequested).To(BeFalse())
+			})
 		})
 
 		Context("when CI is failing", func() {
@@ -365,9 +421,13 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 					case r.URL.Path == "/repos/owner/repo/pulls/42" && r.Method == "GET":
 						w.WriteHeader(http.StatusOK)
 						_ = json.NewEncoder(w).Encode(map[string]interface{}{
+							"state": "open",
 							"head": map[string]interface{}{
 								"sha": "abc123",
 							},
+							"labels": []map[string]interface{}{{
+								"name": github.LabelPendingCIMerge,
+							}},
 						})
 
 					case r.URL.Path == "/repos/owner/repo/commits/abc123/check-runs" && r.Method == "GET":
@@ -430,9 +490,13 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 					case r.URL.Path == "/repos/owner/repo/pulls/42" && r.Method == "GET":
 						w.WriteHeader(http.StatusOK)
 						_ = json.NewEncoder(w).Encode(map[string]interface{}{
+							"state": "open",
 							"head": map[string]interface{}{
 								"sha": "abc123",
 							},
+							"labels": []map[string]interface{}{{
+								"name": github.LabelPendingCIMerge,
+							}},
 						})
 
 					case r.URL.Path == "/repos/owner/repo/commits/abc123/check-runs" && r.Method == "GET":
@@ -491,9 +555,13 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 					case r.URL.Path == "/repos/owner/repo/pulls/42" && r.Method == "GET":
 						w.WriteHeader(http.StatusOK)
 						_ = json.NewEncoder(w).Encode(map[string]interface{}{
+							"state": "open",
 							"head": map[string]interface{}{
 								"sha": "abc123",
 							},
+							"labels": []map[string]interface{}{{
+								"name": github.LabelPendingCISquash,
+							}},
 						})
 
 					case r.URL.Path == "/repos/owner/repo/commits/abc123/check-runs" && r.Method == "GET":

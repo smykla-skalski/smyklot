@@ -239,16 +239,21 @@ var _ = Describe("Reaction sweep [Unit]", func() {
 		armed := armWebhookTestRequest(service)
 
 		Expect(service.sweep(GinkgoT().Context())).To(Succeed())
+		startPendingCITestScheduler(service)
 		_, err := service.store.GetArmed(
 			GinkgoT().Context(), armed.RepositoryID, armed.PullRequest,
 		)
 		Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
-		Expect(stub.countCalls(
-			http.MethodDelete, "/issues/42/labels/smyklot:pending:ci:squash",
-		)).To(Equal(1))
-		Expect(stub.countCalls(
-			http.MethodDelete, "/issues/42/labels/smyklot:pending:ci:service",
-		)).To(Equal(1))
+		Eventually(func() int {
+			return stub.countCalls(
+				http.MethodDelete, "/issues/42/labels/smyklot:pending:ci:squash",
+			)
+		}, eventuallyWindow).Should(Equal(1))
+		Eventually(func() int {
+			return stub.countCalls(
+				http.MethodDelete, "/issues/42/labels/smyklot:pending:ci:service",
+			)
+		}, eventuallyWindow).Should(Equal(1))
 		calls := stub.recordedCalls()
 		Expect(indexCall(calls, "DELETE", "/issues/42/labels/smyklot:pending:ci:squash")).
 			To(BeNumerically("<", indexCall(

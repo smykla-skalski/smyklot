@@ -265,6 +265,29 @@ var _ = Describe("pending CI storage [Unit]", func() {
 		Expect(done.AvailableAt).To(BeNil())
 	})
 
+	It("reports cleanup ownership within repository and pull request scopes", func() {
+		first, err := store.Arm(ctx, pendingCITestArm(now, 101, "cleanup-sha"))
+		Expect(err).NotTo(HaveOccurred())
+		_, err = store.Finish(ctx, pendingci.FinishRequest{
+			ID: first.Request.ID, ExpectedRevision: first.Request.Revision,
+			Lifecycle: pendingci.LifecycleCancelled, Reason: "cancelled", FinishedAt: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		pending, err := store.HasPendingCleanup(
+			ctx, pendingci.CleanupFilter{RepositoryID: first.Request.RepositoryID},
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(pending).To(BeTrue())
+		pending, err = store.HasPendingCleanup(ctx, pendingci.CleanupFilter{
+			RepositoryID: first.Request.RepositoryID,
+			PullRequest:  first.Request.PullRequest,
+			ExcludeID:    first.Request.ID,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(pending).To(BeFalse())
+	})
+
 	It("persists armed requests across service restarts", func() {
 		armed, err := store.Arm(ctx, pendingCITestArm(now, 101, "restart-sha"))
 		Expect(err).NotTo(HaveOccurred())
@@ -453,15 +476,42 @@ var _ = Describe("pending CI storage [Unit]", func() {
 		Expect(firstClaim.Accepted).To(BeFalse())
 	})
 
-	It("uses durable order to break same-timestamp command ties", func() {
+	It("keeps semantic source order when both deliveries retry", func() {
+		revision := now.Format(time.RFC3339Nano)
+		edited := pendingci.SourceRevisionRequest{
+			RepositoryID: "9001", PullRequest: 198, CommentID: 101,
+			Revision: revision, Sequence: 2, SourceOrder: 1,
+			EventKey: "github-delivery:issue_comment:edited", ObservedAt: now,
+		}
+		created := edited
+		created.Sequence = 1
+		created.SourceOrder = 2
+		created.EventKey = "github-delivery:issue_comment:created"
+
+		createdClaim, err := store.ClaimSourceRevision(ctx, created)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(createdClaim.Accepted).To(BeTrue())
+		editedClaim, err := store.ClaimSourceRevision(ctx, edited)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(editedClaim.Accepted).To(BeTrue())
+
+		editedRetry, err := store.ClaimSourceRevision(ctx, edited)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(editedRetry.Accepted).To(BeTrue())
+		createdRetry, err := store.ClaimSourceRevision(ctx, created)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(createdRetry.Accepted).To(BeFalse())
+	})
+
+	It("uses comment identity to break same-timestamp command ties", func() {
 		firstArm := pendingCITestArm(now, 101, "first-head")
-		firstArm.SourceOrder = 1
+		firstArm.SourceOrder = 2
 		firstArm.MergeMethod = pendingci.MergeMethodMerge
 		first, err := store.Arm(ctx, firstArm)
 		Expect(err).NotTo(HaveOccurred())
 
 		lastArm := pendingCITestArm(now, 202, "last-head")
-		lastArm.SourceOrder = 2
+		lastArm.SourceOrder = 1
 		lastArm.MergeMethod = pendingci.MergeMethodSquash
 		last, err := store.Arm(ctx, lastArm)
 		Expect(err).NotTo(HaveOccurred())

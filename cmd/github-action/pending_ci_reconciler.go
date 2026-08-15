@@ -159,6 +159,15 @@ func (reconciler *pendingCIReconciler) cleanup(
 	ctx context.Context,
 	request pendingci.Request,
 ) error {
+	return reconciler.exclusive.Exclusive(ctx, request.RepositoryID, func() error {
+		return reconciler.cleanupExclusive(ctx, request)
+	})
+}
+
+func (reconciler *pendingCIReconciler) cleanupExclusive(
+	ctx context.Context,
+	request pendingci.Request,
+) error {
 	err := reconciler.effects.Complete(ctx, request, request.Lifecycle)
 	if err == nil {
 		_, completeErr := reconciler.store.CompleteCleanup(ctx, pendingci.CompleteCleanupRequest{

@@ -107,8 +107,8 @@ func TestPendingCIActivationKeepsOwnershipWhenMethodRollbackFails(t *testing.T) 
 			method: github.MergeMethodSquash, label: methodLabel,
 		},
 	)
-	if err != nil {
-		t.Fatal(err)
+	if err == nil || !errors.Is(err, artifacts.removeLabelErrors[methodLabel]) {
+		t.Fatalf("activation error = %v, want rollback failure", err)
 	}
 	if !equalStrings(artifacts.removedLabels, []string{methodLabel}) {
 		t.Fatalf("removed labels = %v, want method label only", artifacts.removedLabels)
@@ -145,6 +145,37 @@ func TestPendingCIActivationCleansAmbiguousMethodPublishFailure(t *testing.T) {
 	if !equalStrings(artifacts.removedLabels, []string{
 		methodLabel, github.LabelPendingCIServiceOwner,
 	}) {
+		t.Fatalf("removed labels = %v", artifacts.removedLabels)
+	}
+}
+
+func TestPendingCIActivationCleansAmbiguousMarkerPublishFailure(t *testing.T) {
+	t.Parallel()
+	publishErr := errors.New("response lost")
+	artifacts := &pendingCIArtifactsStub{addLabelErrors: map[string]error{
+		github.LabelPendingCIServiceOwner: publishErr,
+	}}
+	command := &pendingCICommand{
+		store:       pendingCICommandStoreStub{getErr: storage.ErrNotFound},
+		coordinator: newPendingCICoordinator(), repositoryID: "repository:7",
+		now: func() time.Time { return time.Now().UTC() },
+	}
+
+	failures, err := activatePendingCI(
+		t.Context(), artifacts, command, pendingCIActivationRequest{
+			runtime: &RuntimeConfig{CommentAuthor: "operator"},
+			owner:   "owner", repository: "repository", pullRequest: 198,
+			commentID: 101, headSHA: "head", baseBranch: "main",
+			method: github.MergeMethodSquash, label: "smyklot:pending:ci:squash",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !errors.Is(failures.label, publishErr) {
+		t.Fatalf("label failure = %v, want publish error", failures.label)
+	}
+	if !equalStrings(artifacts.removedLabels, []string{github.LabelPendingCIServiceOwner}) {
 		t.Fatalf("removed labels = %v", artifacts.removedLabels)
 	}
 }

@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
+	"github.com/smykla-skalski/smyklot/internal/storage"
+	"github.com/smykla-skalski/smyklot/pkg/github"
 	"github.com/smykla-skalski/smyklot/pkg/logging"
 	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
@@ -32,6 +35,14 @@ func (s *server) applyPendingCINotification(
 	var changed int64
 
 	for _, signal := range notification.Signals {
+		if signal.Kind == webhook.SignalLabelRemoved &&
+			signal.Label == github.LabelPendingCIServiceOwner {
+			if err := s.restorePendingCIServiceOwnership(
+				ctx, repositoryID, notification.Metadata, signal.PullRequest,
+			); err != nil {
+				return fmt.Errorf("restore pending CI service ownership: %w", err)
+			}
+		}
 		count, err := s.applyPendingCISignal(ctx, repositoryID, occurredAt, signal)
 		if err != nil {
 			return fmt.Errorf("apply %s pending CI signal: %w", notification.Event, err)
@@ -46,6 +57,37 @@ func (s *server) applyPendingCINotification(
 	}
 
 	return nil
+}
+
+func (s *server) restorePendingCIServiceOwnership(
+	ctx context.Context,
+	repositoryID string,
+	metadata webhook.Metadata,
+	pullRequest int,
+) error {
+	_, err := s.store.GetArmed(ctx, repositoryID, pullRequest)
+	if errors.Is(err, storage.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read armed pending CI request: %w", err)
+	}
+	token, err := s.tokens.InstallationToken(metadata.InstallationID)
+	if err != nil {
+		return NewGitHubError(ErrGitHubAppAuth, err)
+	}
+	client, err := github.NewClient(token, s.cfg.apiBaseURL)
+	if err != nil {
+		return NewGitHubError(ErrGitHubClient, err)
+	}
+
+	return client.AddLabel(
+		ctx,
+		metadata.RepositoryOwner,
+		metadata.RepositoryName,
+		pullRequest,
+		github.LabelPendingCIServiceOwner,
+	)
 }
 
 func (s *server) applyPendingCISignal(

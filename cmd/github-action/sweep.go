@@ -377,11 +377,14 @@ func (s *server) handoffPendingCIToAction(
 	repo github.Repository,
 ) error {
 	const reason = "repository switched to the GitHub Action runner"
-	_, err := s.pendingCIHandoff.CancelRepository(
+	cleanupPending, err := s.pendingCIHandoff.CancelRepository(
 		ctx, repositoryStorageID(repo.ID), reason, time.Now().UTC(),
 	)
 	if err != nil {
 		return fmt.Errorf("cancel pending CI during runner handoff: %w", err)
+	}
+	if cleanupPending {
+		return nil
 	}
 	prs, err := client.GetOpenPRs(ctx, repo.Owner, repo.Name)
 	if err != nil {

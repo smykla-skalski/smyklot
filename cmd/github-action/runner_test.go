@@ -226,7 +226,7 @@ var _ = Describe("Choosing an entry point [Unit]", func() {
 			stub.repoConfig = "runner: action\n"
 			start()
 
-			deliverAccepted(service, webhook.EventIssueComment, deliveryOne,
+			deliverAccepted(service, stub, webhook.EventIssueComment, deliveryOne,
 				commandDelivery("/approve"))
 
 			// The delivery still has to be read and the config still has to be
@@ -244,7 +244,7 @@ var _ = Describe("Choosing an entry point [Unit]", func() {
 		It("should still approve in a repository that says nothing", func() {
 			start()
 
-			deliverAccepted(service, webhook.EventIssueComment, deliveryOne,
+			deliverAccepted(service, stub, webhook.EventIssueComment, deliveryOne,
 				commandDelivery("/approve"))
 
 			Eventually(func() int {
@@ -255,7 +255,7 @@ var _ = Describe("Choosing an entry point [Unit]", func() {
 		It("persists an after-CI command and cancels it when its source is edited", func() {
 			start()
 
-			postDelivery(service, webhook.EventIssueComment, deliveryOne,
+			postDelivery(service, stub, webhook.EventIssueComment, deliveryOne,
 				commandDelivery("/squash after ci"), nil)
 
 			var armed pendingci.Request
@@ -275,7 +275,7 @@ var _ = Describe("Choosing an entry point [Unit]", func() {
 			Expect(stub.countCalls(http.MethodGet, "/check-runs")).To(BeZero())
 
 			edited := delivery("edited", "never mind", "User", "2026-08-15T12:01:00Z", true)
-			postDelivery(service, webhook.EventIssueComment, deliveryTwo, edited, nil)
+			postDelivery(service, stub, webhook.EventIssueComment, deliveryTwo, edited, nil)
 
 			Eventually(func() bool {
 				_, err := srv.store.GetArmed(
@@ -297,7 +297,7 @@ var _ = Describe("Choosing an entry point [Unit]", func() {
 			configTTL = time.Millisecond
 			start()
 
-			deliverAccepted(service, webhook.EventIssueComment, deliveryOne,
+			deliverAccepted(service, stub, webhook.EventIssueComment, deliveryOne,
 				commandDelivery("/approve"))
 
 			Eventually(func() int {
@@ -312,7 +312,7 @@ var _ = Describe("Choosing an entry point [Unit]", func() {
 			// would pass without the file ever being read a second time
 			edited := delivery("edited", "/approve", "User", "2026-08-08T10:00:01Z", true)
 
-			deliverAccepted(service, webhook.EventIssueComment, deliveryTwo, edited)
+			deliverAccepted(service, stub, webhook.EventIssueComment, deliveryTwo, edited)
 
 			Eventually(func() int {
 				return stub.countCalls(http.MethodGet, "/contents/.github/smyklot.yaml")

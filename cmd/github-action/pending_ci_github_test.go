@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
@@ -79,10 +80,11 @@ func TestPendingCICleanupScopePreservesReplacementArtifacts(t *testing.T) {
 		Label: "smyklot:pending:ci:squash", SourceCommentID: 101,
 	}
 	tests := []struct {
-		name    string
-		current pendingci.Request
-		err     error
-		scope   pendingCICleanupScope
+		name         string
+		current      pendingci.Request
+		err          error
+		otherCleanup bool
+		scope        pendingCICleanupScope
 	}{
 		{
 			name: "same command source and label",
@@ -103,12 +105,17 @@ func TestPendingCICleanupScopePreservesReplacementArtifacts(t *testing.T) {
 				label: true, reaction: true, serviceMarker: true,
 			},
 		},
+		{
+			name: "another terminal request retains ownership", err: storage.ErrNotFound,
+			otherCleanup: true,
+			scope:        pendingCICleanupScope{label: true, reaction: true},
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			backend := &githubPendingCIBackend{current: pendingCICurrentStoreStub{
-				request: test.current, err: test.err,
+				request: test.current, err: test.err, otherCleanup: test.otherCleanup,
 			}}
 			scope, err := backend.cleanupScope(
 				context.Background(), request,
@@ -140,20 +147,24 @@ func TestPendingCICleanupIgnoresMissingGitHubArtifacts(t *testing.T) {
 func TestPendingCICleanupAcquiresRepositoryOwnership(t *testing.T) {
 	t.Parallel()
 	coordinationErr := errors.New("coordination unavailable")
-	backend := &githubPendingCIBackend{
-		coordinator: pendingCICoordinatorStub{err: coordinationErr},
-	}
-	err := backend.Complete(context.Background(), pendingci.Request{
-		RepositoryID: "9001",
-	}, pendingci.LifecycleCancelled)
+	request := reconcilerRequest(time.Now().UTC())
+	request.RepositoryID = "9001"
+	request.Lifecycle = pendingci.LifecycleCancelled
+	request.CleanupPending = true
+	reconciler := newPendingCIReconciler(
+		&reconcilerTestStore{}, reconcilerTestObserver{}, &reconcilerTestEffects{},
+		pendingCICoordinatorStub{err: coordinationErr}, defaultPendingCITiming(),
+	)
+	err := reconciler.Process(context.Background(), request)
 	if !errors.Is(err, coordinationErr) {
 		t.Fatalf("cleanup error = %v, want coordination failure", err)
 	}
 }
 
 type pendingCICurrentStoreStub struct {
-	request pendingci.Request
-	err     error
+	request      pendingci.Request
+	err          error
+	otherCleanup bool
 }
 
 type pendingCICoordinatorStub struct {
@@ -174,4 +185,11 @@ func (store pendingCICurrentStoreStub) GetArmed(
 	int,
 ) (pendingci.Request, error) {
 	return store.request, store.err
+}
+
+func (store pendingCICurrentStoreStub) HasPendingCleanup(
+	context.Context,
+	pendingci.CleanupFilter,
+) (bool, error) {
+	return store.otherCleanup, nil
 }

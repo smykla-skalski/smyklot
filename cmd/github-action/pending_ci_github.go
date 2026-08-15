@@ -15,13 +15,13 @@ import (
 )
 
 type githubPendingCIBackend struct {
-	server      *server
-	current     pendingCICurrentStore
-	coordinator pendingCIExclusive
+	server  *server
+	current pendingCICurrentStore
 }
 
 type pendingCICurrentStore interface {
 	GetArmed(context.Context, string, int) (pendingci.Request, error)
+	HasPendingCleanup(context.Context, pendingci.CleanupFilter) (bool, error)
 }
 
 type pendingCICleanupScope struct {
@@ -106,9 +106,7 @@ func (backend *githubPendingCIBackend) Complete(
 	request pendingci.Request,
 	lifecycle pendingci.Lifecycle,
 ) error {
-	return backend.coordinator.Exclusive(ctx, request.RepositoryID, func() error {
-		return backend.completeExclusive(ctx, request, lifecycle)
-	})
+	return backend.completeExclusive(ctx, request, lifecycle)
 }
 
 func (backend *githubPendingCIBackend) completeExclusive(
@@ -116,22 +114,31 @@ func (backend *githubPendingCIBackend) completeExclusive(
 	request pendingci.Request,
 	lifecycle pendingci.Lifecycle,
 ) error {
-	scope, err := backend.cleanupScope(ctx, request)
-	if err != nil {
-		return err
-	}
 	client, owner, repository, err := backend.client(ctx, request)
 	if err != nil {
 		return fmt.Errorf("authenticate pending CI cleanup: %w", err)
 	}
+	if request.SourceCommentID > 0 {
+		owned, ownershipErr := pendingCIServiceOwned(
+			ctx, client, owner, repository, request.PullRequest,
+		)
+		if ownershipErr != nil {
+			return ownershipErr
+		}
+		if !owned {
+			return nil
+		}
+	}
+	scope, err := backend.cleanupScope(ctx, request)
+	if err != nil {
+		return err
+	}
 	var cleanupErr error
-	labelRemoved := true
 	if scope.label {
 		labelErr := cleanupGitHubError(
 			"remove pending CI label",
 			client.RemoveLabel(ctx, owner, repository, request.PullRequest, request.Label),
 		)
-		labelRemoved = labelErr == nil
 		cleanupErr = errors.Join(cleanupErr, labelErr)
 	}
 	commentID := int(request.SourceCommentID)
@@ -147,7 +154,7 @@ func (backend *githubPendingCIBackend) completeExclusive(
 			client.AddReaction(ctx, owner, repository, commentID, github.ReactionSuccess),
 		))
 	}
-	if scope.serviceMarker && labelRemoved {
+	if scope.serviceMarker && cleanupErr == nil {
 		cleanupErr = errors.Join(cleanupErr, cleanupGitHubError(
 			"remove pending CI service ownership marker",
 			client.RemoveLabel(
@@ -166,8 +173,22 @@ func (backend *githubPendingCIBackend) cleanupScope(
 ) (pendingCICleanupScope, error) {
 	current, err := backend.current.GetArmed(ctx, request.RepositoryID, request.PullRequest)
 	if errors.Is(err, storage.ErrNotFound) {
+		otherCleanup, cleanupErr := backend.current.HasPendingCleanup(
+			ctx,
+			pendingci.CleanupFilter{
+				RepositoryID: request.RepositoryID,
+				PullRequest:  request.PullRequest,
+				ExcludeID:    request.ID,
+			},
+		)
+		if cleanupErr != nil {
+			return pendingCICleanupScope{}, fmt.Errorf(
+				"read pending CI cleanup owners: %w", cleanupErr,
+			)
+		}
 		return pendingCICleanupScope{
-			label: true, reaction: request.SourceCommentID > 0, serviceMarker: true,
+			label: true, reaction: request.SourceCommentID > 0,
+			serviceMarker: !otherCleanup,
 		}, nil
 	}
 	if err != nil {

@@ -91,13 +91,13 @@ func pendingCISourceRetry(
 	tx *transaction,
 	request pendingci.SourceRevisionRequest,
 ) (*pendingci.SourceRevisionResult, error) {
-	var order int64
+	var retry pendingCISource
 	err := tx.QueryRowContext(ctx, `
-SELECT source_order
+SELECT source_revision, source_sequence, source_order
 FROM pending_ci_source_revisions
 WHERE repository_id = ? AND pull_request = ? AND source_comment_id = ? AND event_key = ?`,
 		request.RepositoryID, request.PullRequest, request.CommentID, request.EventKey,
-	).Scan(&order)
+	).Scan(&retry.revision, &retry.sequence, &retry.order)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -105,19 +105,20 @@ WHERE repository_id = ? AND pull_request = ? AND source_comment_id = ? AND event
 		return nil, fmt.Errorf("read pending CI source retry: %w", err)
 	}
 
-	var latest int64
-	err = tx.QueryRowContext(ctx, `
-SELECT source_order FROM pending_ci_source_revisions
-WHERE repository_id = ? AND pull_request = ? AND source_comment_id = ?
-ORDER BY source_order DESC LIMIT 1`,
-		request.RepositoryID, request.PullRequest, request.CommentID,
-	).Scan(&latest)
+	latest, err := latestPendingCISource(ctx, tx, request)
 	if err != nil {
 		return nil, fmt.Errorf("read latest pending CI source retry: %w", err)
 	}
+	comparison, err := pendingci.CompareSourceEvents(
+		retry.revision, retry.sequence, retry.order,
+		latest.revision, latest.sequence, latest.order,
+	)
+	if err != nil {
+		return nil, err
+	}
 
 	return &pendingci.SourceRevisionResult{
-		Accepted: order == latest, SourceOrder: order,
+		Accepted: comparison == 0, SourceOrder: retry.order,
 	}, nil
 }
 
@@ -126,22 +127,44 @@ func latestPendingCISource(
 	tx *transaction,
 	request pendingci.SourceRevisionRequest,
 ) (*pendingCISource, error) {
-	var latest pendingCISource
-	err := tx.QueryRowContext(ctx, `
+	rows, err := tx.QueryContext(ctx, `
 SELECT source_revision, source_sequence, source_order
 FROM pending_ci_source_revisions
-WHERE repository_id = ? AND pull_request = ? AND source_comment_id = ?
-ORDER BY source_order DESC LIMIT 1`,
+WHERE repository_id = ? AND pull_request = ? AND source_comment_id = ?`,
 		request.RepositoryID, request.PullRequest, request.CommentID,
-	).Scan(&latest.revision, &latest.sequence, &latest.order)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	}
+	)
 	if err != nil {
 		return nil, fmt.Errorf("read latest pending CI source revision: %w", err)
 	}
+	defer func() { _ = rows.Close() }()
 
-	return &latest, nil
+	var latest *pendingCISource
+	for rows.Next() {
+		candidate := &pendingCISource{}
+		if err := rows.Scan(&candidate.revision, &candidate.sequence, &candidate.order); err != nil {
+			return nil, fmt.Errorf("scan pending CI source revision: %w", err)
+		}
+		if latest == nil {
+			latest = candidate
+
+			continue
+		}
+		comparison, err := pendingci.CompareSourceEvents(
+			candidate.revision, candidate.sequence, candidate.order,
+			latest.revision, latest.sequence, latest.order,
+		)
+		if err != nil {
+			return nil, err
+		}
+		if comparison > 0 {
+			latest = candidate
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate pending CI source revisions: %w", err)
+	}
+
+	return latest, nil
 }
 
 // DrainLegacy creates one terminal cleanup record for a label that predates
@@ -254,7 +277,7 @@ func comparePendingCISourceHistory(
 	arm pendingci.ArmRequest,
 ) (bool, bool, error) {
 	rows, err := tx.QueryContext(ctx, `
-SELECT source_revision, source_order
+SELECT source_comment_id, source_revision, source_order
 FROM pending_ci_requests
 WHERE repository_id = ? AND pull_request = ? AND source_comment_id > 0`,
 		arm.RepositoryID, arm.PullRequest,
@@ -265,13 +288,15 @@ WHERE repository_id = ? AND pull_request = ? AND source_comment_id > 0`,
 	equal := false
 
 	for rows.Next() {
+		var commentID int64
 		var revision string
 		var order int64
-		if err := rows.Scan(&revision, &order); err != nil {
+		if err := rows.Scan(&commentID, &revision, &order); err != nil {
 			return false, false, fmt.Errorf("scan pending CI source history: %w", err)
 		}
 		comparison, err := pendingci.CompareSourceIntent(
-			arm.SourceRevision, arm.SourceOrder, revision, order,
+			arm.SourceRevision, arm.SourceCommentID, arm.SourceOrder,
+			revision, commentID, order,
 		)
 		if err != nil {
 			return false, false, err
