@@ -91,7 +91,7 @@ var _ = Describe("Service observability [Unit]", func() {
 		var err error
 
 		srv, err = newServer(&serveConfig{
-			statePath:     GinkgoT().TempDir() + "/state.sqlite3",
+			database:      GinkgoT().TempDir() + "/state.sqlite3",
 			listenAddress: "127.0.0.1:0",
 			adminAddress:  "127.0.0.1:0",
 			webhookPath:   defaultWebhookPath,

@@ -13,7 +13,7 @@ import (
 	adminpanel "github.com/smykla-skalski/smyklot/internal/panel"
 	"github.com/smykla-skalski/smyklot/internal/panelassets"
 	"github.com/smykla-skalski/smyklot/internal/storage"
-	"github.com/smykla-skalski/smyklot/internal/storage/sqlite"
+	"github.com/smykla-skalski/smyklot/internal/storage/open"
 	"github.com/smykla-skalski/smyklot/pkg/github"
 )
 
@@ -67,7 +67,7 @@ func (s *server) initPanel() error {
 }
 
 func (s *server) initStorage(ctx context.Context) error {
-	store, err := sqlite.Open(ctx, s.cfg.statePath)
+	store, err := open.Store(ctx, s.cfg.database)
 	if err != nil {
 		return fmt.Errorf("open service storage: %w", err)
 	}

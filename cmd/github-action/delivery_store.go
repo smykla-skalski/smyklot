@@ -28,7 +28,7 @@ func deliveryFinalizationContext(executionContext context.Context) (
 }
 
 // retryDeliveryFinalization keeps a durable claim owned until its outcome is
-// recorded. A transient SQLite stall therefore delays redelivery instead of
+// recorded. A transient database stall therefore delays redelivery instead of
 // stranding the claim for the rest of the process lifetime. Close cancels and
 // joins these retries before closing the database; startup recovery handles a
 // claim left by shutdown.

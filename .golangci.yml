@@ -21,6 +21,7 @@ linters:
     - dupl
 
     # Best Practices
+    - depguard
     - gocritic
     - revive
     - misspell
@@ -29,6 +30,34 @@ linters:
     - unconvert
 
   settings:
+    # The point of the storage port is that nothing above it knows a database
+    # exists. That only stays true if something checks: the seam was clean
+    # before a second engine, and one convenient import would have ended it.
+    depguard:
+      rules:
+        storage-seam:
+          list-mode: lax
+          files:
+            - "!**/internal/storage/**"
+          deny:
+            - pkg: database/sql
+              desc: only internal/storage may speak SQL; depend on storage.Store instead
+            - pkg: modernc.org/sqlite
+              desc: engines belong to internal/storage; open a store with internal/storage/open
+            - pkg: github.com/jackc/pgx
+              desc: engines belong to internal/storage; open a store with internal/storage/open
+        # Above the factory, no caller picks an engine by name.
+        storage-engine-choice:
+          list-mode: lax
+          files:
+            - "!**/internal/storage/**"
+            - "!**/internal/storage/open/**"
+          deny:
+            - pkg: github.com/smykla-skalski/smyklot/internal/storage/sqlite
+              desc: name a database with SMYKLOT_DATABASE_URL and open it with internal/storage/open
+            - pkg: github.com/smykla-skalski/smyklot/internal/storage/postgres
+              desc: name a database with SMYKLOT_DATABASE_URL and open it with internal/storage/open
+
     cyclop:
       max-complexity: 30
 
