@@ -85,6 +85,29 @@ func postDelivery(
 	return resp
 }
 
+// deliverAccepted posts a delivery and insists the service took it.
+//
+// A refusal is a legitimate answer here, not a fault: the queue is bounded and
+// a claim can be contended, and dispatch releases the claim precisely so that
+// GitHub's redelivery gets a fresh try. A spec that posts once and then waits
+// on the work is therefore asserting on something the service was allowed not
+// to do, and when that happened the failure surfaced two seconds later against
+// an unrelated expectation - "expected 1 to be >= 2" for a config read that was
+// never going to happen, rather than "the delivery was refused".
+//
+// So this redelivers the way GitHub does, and says what went wrong when even
+// that does not get the delivery taken.
+func deliverAccepted(service *httptest.Server, event, deliveryID string, body []byte) {
+	GinkgoHelper()
+
+	Eventually(func() int {
+		return postDelivery(service, event, deliveryID, body, nil).StatusCode
+	}, eventuallyWindow).Should(
+		Equal(http.StatusAccepted),
+		"the service never accepted delivery %s", deliveryID,
+	)
+}
+
 var _ = Describe("Webhook service [Unit]", func() {
 	var (
 		stub     *githubStub
