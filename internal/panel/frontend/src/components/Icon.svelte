@@ -178,8 +178,13 @@
     <circle cx="8" cy="17" r="2" />
     <circle cx="10" cy="12" r="2" />
   {:else if name === 'repositories'}
-    <path d="M4 5.5h6l2 2h8v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" />
-    <path d="M8 13h8M8 16.5h5" />
+    <!-- Shifted up 1 from the shape as drawn. The outline ran 5.5 to 20.5 - the
+         tab at the top, then eleven units of body and a 2-unit corner at the
+         bottom - so its middle sat at 13 in a box whose middle is 12, and the
+         glyph rode a unit low of every label beside it. Same correction, and the
+         same reason, as `refresh` below: these numbers centre the ink. -->
+    <path d="M4 4.5h6l2 2h8v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" />
+    <path d="M8 12h8M8 15.5h5" />
   {:else if name === 'users'}
     <circle cx="9" cy="8" r="3" />
     <circle cx="17" cy="9" r="2.5" />
