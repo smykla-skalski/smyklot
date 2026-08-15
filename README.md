@@ -386,6 +386,10 @@ SQLite is still the smaller-deployment default and needs a writable volume. Post
 
 Moving between them keeps the data - `smyklot store migrate --from <old> --to <new>` copies every row and verifies the counts. Finished delivery history is retained for 30 days; audit history is not pruned.
 
+The Root console reports whichever engine is live. Its overview carries a Database card beside service health - the engine and its release, the schema version applied, the size on disk, how long the database took to answer, and the connection pool with the number of callers that have ever queued for a free connection. Root settings repeats all of it as a reference list. The engine reports these itself through the storage port, so the panel prints the name and never branches on it.
+
+A pool with waits behind it is the signal PostgreSQL introduced and a SQLite file never had: the queries still succeed, so nothing fails, but the service is waiting on the database rather than on GitHub. That count only ever grows, which is why it is shown next to the sampled counts that do not.
+
 Run `mise run panel:dev:mock` to inspect every panel state with deterministic local data. The mock server uses the same HTTP response types and server-sent event shape as production.
 
 ### Watching a running service

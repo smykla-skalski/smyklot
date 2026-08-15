@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  formatBytes,
   formatCountdown,
   formatDate,
   formatDateTime,
+  formatElapsed,
+  formatLatency,
   formatRelative,
   formatTimestamp,
   formatUntil,
@@ -222,5 +225,70 @@ describe('remainingFraction', () => {
   it('reports empty for a deadline that is not a number', () => {
     expect(remainingFraction(0, Number.NaN, 50)).toBe(0);
     expect(remainingFraction(Number.NaN, 100, 50)).toBe(0);
+  });
+});
+
+describe('formatBytes', () => {
+  it('leaves a byte count whole', () => {
+    expect(formatBytes(0)).toBe('0 B');
+    expect(formatBytes(512)).toBe('512 B');
+  });
+
+  // Decimal units, because a hosting provider sells a volume in them. Reporting
+  // a database in GiB beside a 3 GB volume reads as more headroom than exists.
+  it('scales on thousands, not on 1024', () => {
+    expect(formatBytes(1_000)).toBe('1.00 KB');
+    expect(formatBytes(1_024)).toBe('1.02 KB');
+    expect(formatBytes(84_711_103)).toBe('84.7 MB');
+    expect(formatBytes(2_400_000_000)).toBe('2.40 GB');
+  });
+
+  // Three significant figures throughout, so growth inside a unit stays visible
+  // rather than rounding to the same number for weeks.
+  it('keeps three figures as the value grows within a unit', () => {
+    expect(formatBytes(1_050_000_000)).toBe('1.05 GB');
+    expect(formatBytes(12_300_000)).toBe('12.3 MB');
+    expect(formatBytes(123_000_000)).toBe('123 MB');
+  });
+
+  it('reports nothing for a size the engine could not give', () => {
+    expect(formatBytes(-1)).toBe('0 B');
+    expect(formatBytes(Number.NaN)).toBe('0 B');
+  });
+});
+
+describe('formatLatency', () => {
+  // The difference between a socket next door and one across a region lives in
+  // the hundredths, so a sub-millisecond round trip keeps them.
+  it('keeps two decimals under ten milliseconds', () => {
+    expect(formatLatency(0.3)).toBe('0.30 ms');
+    expect(formatLatency(1.24)).toBe('1.24 ms');
+  });
+
+  it('drops precision as the number grows', () => {
+    expect(formatLatency(12.34)).toBe('12.3 ms');
+    expect(formatLatency(148.6)).toBe('149 ms');
+  });
+
+  it('reports nothing measurable for a latency it was not given', () => {
+    expect(formatLatency(Number.NaN)).toBe('—');
+    expect(formatLatency(-1)).toBe('—');
+  });
+});
+
+describe('formatElapsed', () => {
+  it('reports a total that has never accumulated', () => {
+    expect(formatElapsed(0)).toBe('0 ms');
+    expect(formatElapsed(Number.NaN)).toBe('0 ms');
+  });
+
+  // A total since start spans milliseconds to hours, and the useful precision
+  // shrinks as it grows: nobody needs a wait of two hours to the millisecond.
+  it('steps units as the total grows', () => {
+    expect(formatElapsed(41)).toBe('41 ms');
+    expect(formatElapsed(4_100)).toBe('4.1 s');
+    expect(formatElapsed(41_000)).toBe('41 s');
+    expect(formatElapsed(125_000)).toBe('2m 5s');
+    expect(formatElapsed(7_320_000)).toBe('2h 2m');
   });
 });

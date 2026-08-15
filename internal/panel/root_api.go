@@ -23,8 +23,13 @@ func (s *Server) getRootOverview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := s.now().UTC()
-	if err := s.store.Ping(r.Context()); err != nil {
-		s.writeInternal(w, err)
+
+	// Described rather than pinged: the answer to "is it there" is one field of
+	// the answer to "what is it", and asking twice would let the page report a
+	// database it had checked and a database it had read.
+	database := s.store.Status(r.Context())
+	if !database.Reachable {
+		s.writeInternal(w, errors.New(database.Error))
 		return
 	}
 	overview, err := s.store.GetRootOverview(r.Context(), account.ID, now)
@@ -51,7 +56,15 @@ func (s *Server) getRootOverview(w http.ResponseWriter, r *http.Request) {
 	writeJSON(
 		w,
 		http.StatusOK,
-		rootOverviewDTO(overview, activeQueue, deferredQueue, s.cfg, s.startedAt, now),
+		rootOverviewDTO(
+			overview,
+			database,
+			activeQueue,
+			deferredQueue,
+			s.cfg,
+			s.startedAt,
+			now,
+		),
 	)
 }
 

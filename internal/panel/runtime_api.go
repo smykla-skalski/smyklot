@@ -35,7 +35,8 @@ func (s *Server) getRootRuntimeSettings(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeJSON(w, http.StatusOK, runtimeSettingsDTO(
-		settings, s.cfg, s.runtimeValues(), s.startedAt, s.now().UTC(),
+		settings, s.store.Status(r.Context()), s.cfg,
+		s.runtimeValues(), s.startedAt, s.now().UTC(),
 	))
 }
 
@@ -74,7 +75,8 @@ func (s *Server) putRootRuntimeSettings(w http.ResponseWriter, r *http.Request) 
 	}
 	s.events.announce(panelEvent{Type: panelEventResync})
 	writeJSON(w, http.StatusOK, runtimeSettingsDTO(
-		updated, s.cfg, s.runtimeValues(), s.startedAt, s.now().UTC(),
+		updated, s.store.Status(r.Context()), s.cfg,
+		s.runtimeValues(), s.startedAt, s.now().UTC(),
 	))
 }
 

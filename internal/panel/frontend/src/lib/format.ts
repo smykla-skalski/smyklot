@@ -183,6 +183,69 @@ export function remainingFraction(issuedMs: number, expiresMs: number, nowMs: nu
   return Math.min(1, Math.max(0, (expiresMs - nowMs) / window));
 }
 
+const BYTE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB'] as const;
+
+/**
+ * Render a byte count against a volume it has to stay inside.
+ *
+ * Decimal units, because that is what a hosting provider sells a volume in: a
+ * database reported in GiB beside a 3 GB volume reads as more headroom than
+ * there is. Three significant figures, so `1.05 GB` and `1.10 GB` are different
+ * numbers rather than the same rounded one.
+ */
+export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return '0 B';
+  }
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1_000 && unit < BYTE_UNITS.length - 1) {
+    value /= 1_000;
+    unit += 1;
+  }
+  // Bytes are whole things; only a scaled unit has a fraction to show.
+  const digits = unit === 0 ? 0 : value >= 100 ? 0 : value >= 10 ? 1 : 2;
+  return `${value.toFixed(digits)} ${BYTE_UNITS[unit]}`;
+}
+
+/**
+ * Render a database round trip. Sub-millisecond answers keep two decimals,
+ * because the difference between `0.30 ms` and `0.90 ms` is the difference
+ * between a socket next door and one across a region.
+ */
+export function formatLatency(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) {
+    return '—';
+  }
+  if (ms >= 100) {
+    return `${Math.round(ms)} ms`;
+  }
+  return `${ms.toFixed(ms >= 10 ? 1 : 2)} ms`;
+}
+
+/**
+ * Render a total that has been accumulating since the service started, which
+ * can be anything from a few milliseconds to hours. Unlike a round trip, the
+ * useful precision here shrinks as the number grows.
+ */
+export function formatElapsed(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) {
+    return '0 ms';
+  }
+  if (ms < 1_000) {
+    return `${Math.round(ms)} ms`;
+  }
+  const seconds = ms / 1_000;
+  if (seconds < 60) {
+    return `${seconds.toFixed(seconds < 10 ? 1 : 0)} s`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) {
+    return `${minutes}m ${Math.round(seconds - minutes * 60)}s`;
+  }
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
 function plural(count: number, unit: string): string {
   return count === 1 ? unit : `${unit}s`;
 }

@@ -1139,6 +1139,14 @@ func TestPanelRootOverview(t *testing.T) {
 	)
 	requireResponse(t, updated, "seed Root audit", http.StatusOK, `"revision":2`)
 
+	// Whatever the store says its engine is, not a name written here: the suite
+	// runs against either engine, so naming one would pass by describing the
+	// run rather than by proving the panel reports what the port reported.
+	engine := harness.store.Status(t.Context()).Engine
+	if engine == "" {
+		t.Fatal("the store did not name its engine, leaving the assertion below vacuous")
+	}
+
 	overview := harness.request(
 		t, http.MethodGet, "/panel/api/v1/root/overview", nil, rootSession,
 	)
@@ -1147,6 +1155,8 @@ func TestPanelRootOverview(t *testing.T) {
 		`"status":"healthy"`, `"version":"1.0.0"`,
 		`"installations":1`, `"repositories":1`,
 		`"fresh":1`, `"delivery_id":"overview-failure"`,
+		`"storage":"healthy"`,
+		`"database":{"state":"healthy","engine":"`+engine+`","version":"`,
 	)
 
 	audit := harness.request(

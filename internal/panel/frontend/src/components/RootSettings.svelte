@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { formatBytes, formatElapsed, formatLatency } from '../lib/format';
   import type {
     ConfigPatch,
     ConfigValues,
@@ -439,14 +440,65 @@
       inheritance resolves to
     </p>
 
-    <Plate label="Service and deployment">
+    <!-- The database has its own plate, and with it the state pill that used to
+         stand on this one. A word describing storage over a list of listeners
+         and endpoints named neither of them. -->
+    <Plate label="Database">
       {#snippet status()}
-        <span class="status-pill service-health" data-state={current.service.storage}
+        <span class="status-pill service-health" data-state={current.service.database.state}
           ><span class="status-pill-dot" aria-hidden="true"></span><span class="cap-trim"
-            >{current.service.storage}</span
+            >{current.service.database.state}</span
           ></span
         >
       {/snippet}
+      <dl class="service-grid">
+        <div>
+          <dt>Engine</dt>
+          <dd>{current.service.database.engine}</dd>
+        </div>
+        <div>
+          <dt>Server version</dt>
+          <dd>{current.service.database.version || 'unknown'}</dd>
+        </div>
+        <div>
+          <dt>Schema version</dt>
+          <dd>{current.service.database.schema_version}</dd>
+        </div>
+        <div>
+          <dt>Size</dt>
+          <dd>{formatBytes(current.service.database.size_bytes)}</dd>
+        </div>
+        <div>
+          <dt>Response</dt>
+          <dd>{formatLatency(current.service.database.latency_ms)}</dd>
+        </div>
+        <div class="wide">
+          <dt>Connections</dt>
+          <dd>
+            {current.service.database.connections.in_use} in use · {current.service.database
+              .connections.open} open · {current.service.database.connections.max} maximum
+          </dd>
+        </div>
+        <div>
+          <!-- Cumulative, unlike the counts beside it: a pool that reads idle
+               now may still have held the service up earlier. -->
+          <dt>Waits since start</dt>
+          <dd>
+            {current.service.database.connections.wait_count} · {formatElapsed(
+              current.service.database.connections.wait_ms,
+            )}
+          </dd>
+        </div>
+        {#if current.service.database.detail !== undefined}
+          <div class="full">
+            <dt>Reported</dt>
+            <dd class="database-detail">{current.service.database.detail}</dd>
+          </div>
+        {/if}
+      </dl>
+    </Plate>
+
+    <Plate label="Service and deployment">
       <dl class="service-grid">
         <div>
           <dt>Version</dt>
@@ -624,6 +676,13 @@
 
   .service-grid .full {
     grid-column: 1 / -1;
+  }
+
+  /* A driver's own words, which wrap and do not shorten. Everything else in
+     this grid is a value that fits its cell. */
+  .database-detail {
+    overflow-wrap: anywhere;
+    white-space: normal;
   }
 
   dt {

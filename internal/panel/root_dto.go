@@ -1,6 +1,7 @@
 package panel
 
 import (
+	"math"
 	"strconv"
 	"time"
 
@@ -8,7 +9,13 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/storage"
 )
 
-const rootServiceHealthy = "healthy"
+// The three states the panel colours a dependency, and the words its stylesheet
+// keys on.
+const (
+	rootServiceHealthy     = "healthy"
+	rootServiceDegraded    = "degraded"
+	rootServiceUnavailable = "unavailable"
+)
 
 type ownershipResponse struct {
 	Source     storage.OwnershipSource `json:"source"`
@@ -65,11 +72,76 @@ type notificationPageResponse struct {
 }
 
 type rootServiceResponse struct {
-	Status        string `json:"status"`
-	Version       string `json:"version"`
-	ServiceHost   string `json:"service_host"`
-	UptimeSeconds int64  `json:"uptime_seconds"`
-	Storage       string `json:"storage"`
+	Status        string                 `json:"status"`
+	Version       string                 `json:"version"`
+	ServiceHost   string                 `json:"service_host"`
+	UptimeSeconds int64                  `json:"uptime_seconds"`
+	Storage       string                 `json:"storage"`
+	Database      databaseStatusResponse `json:"database"`
+}
+
+type databaseConnectionsResponse struct {
+	Open       int     `json:"open"`
+	InUse      int     `json:"in_use"`
+	Idle       int     `json:"idle"`
+	Max        int     `json:"max"`
+	WaitCount  int64   `json:"wait_count"`
+	WaitMillis float64 `json:"wait_ms"`
+}
+
+type databaseStatusResponse struct {
+	State         string                      `json:"state"`
+	Engine        string                      `json:"engine"`
+	Version       string                      `json:"version"`
+	SchemaVersion int                         `json:"schema_version"`
+	SizeBytes     int64                       `json:"size_bytes"`
+	LatencyMillis float64                     `json:"latency_ms"`
+	Detail        string                      `json:"detail,omitempty"`
+	Connections   databaseConnectionsResponse `json:"connections"`
+}
+
+func databaseStatusDTO(status storage.DatabaseStatus) databaseStatusResponse {
+	return databaseStatusResponse{
+		State:         databaseState(status),
+		Engine:        status.Engine,
+		Version:       status.Version,
+		SchemaVersion: status.SchemaVersion,
+		SizeBytes:     status.SizeBytes,
+		LatencyMillis: millisecondsDTO(status.Latency),
+		Detail:        status.Error,
+		Connections: databaseConnectionsResponse{
+			Open: status.Connections.Open, InUse: status.Connections.InUse,
+			Idle: status.Connections.Idle, Max: status.Connections.Max,
+			WaitCount:  status.Connections.WaitCount,
+			WaitMillis: millisecondsDTO(status.Connections.WaitDuration),
+		},
+	}
+}
+
+// databaseState is the panel's reading of a status, and the only place that
+// decides what colour a database gets.
+//
+// Pool pressure is deliberately not part of it. A pool that is momentarily
+// full is a busy instant rather than a fault, and a light that went amber on
+// one would teach an operator to stop reading it. The counts are shown as
+// numbers instead, where WaitCount records what a sample cannot: whether
+// anyone has ever had to queue for a connection.
+func databaseState(status storage.DatabaseStatus) string {
+	switch {
+	case !status.Reachable:
+		return rootServiceUnavailable
+	case status.Error != "":
+		return rootServiceDegraded
+	default:
+		return rootServiceHealthy
+	}
+}
+
+// millisecondsDTO rounds a duration to hundredths of a millisecond: finer than
+// a database round trip is worth reporting to, and coarse enough that the
+// number does not churn every time the page is read.
+func millisecondsDTO(value time.Duration) float64 {
+	return math.Round(float64(value.Microseconds())/10) / 100
 }
 
 type rootCatalogResponse struct {
@@ -201,6 +273,7 @@ func securityNotificationDTO(notification storage.SecurityNotification) security
 
 func rootOverviewDTO(
 	overview storage.RootOverview,
+	database storage.DatabaseStatus,
 	activeQueue, deferredQueue []pendingci.Request,
 	cfg Config,
 	startedAt, now time.Time,
@@ -213,11 +286,15 @@ func rootOverviewDTO(
 		})
 	}
 	uptime := max(int64(now.Sub(startedAt).Seconds()), 0)
+	databaseStatus := databaseStatusDTO(database)
 
 	return rootOverviewResponse{
 		Service: rootServiceResponse{
 			Status: rootServiceHealthy, Version: cfg.Version, ServiceHost: cfg.ServiceHost,
-			UptimeSeconds: uptime, Storage: rootServiceHealthy,
+			UptimeSeconds: uptime,
+			// The summary word and the detail below it come from one reading,
+			// so the card cannot say healthy over a panel that says otherwise.
+			Storage: databaseStatus.State, Database: databaseStatus,
 		},
 		Catalog: rootCatalogResponse{
 			Installations: overview.InstallationCount, Repositories: overview.RepositoryCount,

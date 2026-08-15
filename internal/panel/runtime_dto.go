@@ -26,9 +26,10 @@ type runtimeStringValueResponse struct {
 }
 
 type runtimeServiceResponse struct {
-	Version       string `json:"version"`
-	UptimeSeconds int64  `json:"uptime_seconds"`
-	Storage       string `json:"storage"`
+	Version       string                 `json:"version"`
+	UptimeSeconds int64                  `json:"uptime_seconds"`
+	Storage       string                 `json:"storage"`
+	Database      databaseStatusResponse `json:"database"`
 	Listeners     struct {
 		Public string `json:"public"`
 		Admin  string `json:"admin"`
@@ -62,6 +63,7 @@ type runtimeSettingsResponse struct {
 
 func runtimeSettingsDTO(
 	settings storage.RuntimeSettings,
+	database storage.DatabaseStatus,
 	cfg Config,
 	effective RuntimeValues,
 	startedAt, now time.Time,
@@ -90,7 +92,7 @@ func runtimeSettingsDTO(
 		updatedBy := accountDTO(*settings.UpdatedBy)
 		response.UpdatedBy = &updatedBy
 	}
-	response.Service = runtimeServiceDTO(cfg, startedAt, now)
+	response.Service = runtimeServiceDTO(database, cfg, startedAt, now)
 
 	return response
 }
@@ -112,11 +114,17 @@ func runtimeDurationDTO(
 	return response
 }
 
-func runtimeServiceDTO(cfg Config, startedAt, now time.Time) runtimeServiceResponse {
+func runtimeServiceDTO(
+	database storage.DatabaseStatus,
+	cfg Config,
+	startedAt, now time.Time,
+) runtimeServiceResponse {
+	databaseStatus := databaseStatusDTO(database)
 	response := runtimeServiceResponse{
 		Version:       cfg.Version,
 		UptimeSeconds: max(int64(now.Sub(startedAt).Seconds()), 0),
-		Storage:       rootServiceHealthy,
+		Storage:       databaseStatus.State,
+		Database:      databaseStatus,
 	}
 	response.Listeners.Public = cfg.ListenAddress
 	response.Listeners.Admin = cfg.AdminAddress

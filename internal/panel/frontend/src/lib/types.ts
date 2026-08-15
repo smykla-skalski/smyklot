@@ -294,13 +294,38 @@ export interface PendingCIRequest {
   revision: number;
 }
 
+/** What the storage subsystem reports about itself. */
+export interface DatabaseStatus {
+  state: DependencyState;
+  /** The engine's own name, printed and never matched on. */
+  engine: string;
+  version: string;
+  schema_version: number;
+  size_bytes: number;
+  latency_ms: number;
+  /** Why the description is incomplete, absent when it is not. */
+  detail?: string;
+  connections: {
+    open: number;
+    in_use: number;
+    idle: number;
+    max: number;
+    /** Callers that have waited for a free connection since the service started. */
+    wait_count: number;
+    wait_ms: number;
+  };
+}
+
+export type DependencyState = 'healthy' | 'degraded' | 'unavailable';
+
 export interface RootOverview {
   service: {
     status: 'healthy';
     version: string;
     service_host: string;
     uptime_seconds: number;
-    storage: 'healthy';
+    storage: DependencyState;
+    database: DatabaseStatus;
   };
   catalog: {
     installations: number;
@@ -363,7 +388,8 @@ export interface RootRuntimeSettings {
   service: {
     version: string;
     uptime_seconds: number;
-    storage: string;
+    storage: DependencyState;
+    database: DatabaseStatus;
     listeners: { public: string; admin: string };
     public_paths: { panel: string; webhook: string };
     provider_endpoints: { api: string; authorize: string; token: string };

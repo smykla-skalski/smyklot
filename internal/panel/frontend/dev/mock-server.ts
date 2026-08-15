@@ -16,6 +16,7 @@ import type {
   ConfigPatch,
   ConfigSources,
   ConfigValues,
+  DatabaseStatus,
   DeliveryFailure,
   Page,
   PanelAccount,
@@ -2040,6 +2041,7 @@ function rootRuntimeSettingsValue(state: MockState): RootRuntimeSettings {
       version: 'dev',
       uptime_seconds: Math.max(0, Math.floor((Date.now() - state.runtime.startedAt) / 1_000)),
       storage: 'healthy',
+      database: mockDatabaseStatus(),
       listeners: { public: ':8080', admin: '127.0.0.1:8081' },
       public_paths: { panel: '/', webhook: '/webhook' },
       provider_endpoints: {
@@ -2049,6 +2051,24 @@ function rootRuntimeSettingsValue(state: MockState): RootRuntimeSettings {
       },
       credential_presence: { webhook: true, app: true, oauth: true },
     },
+  };
+}
+
+/**
+ * The database the panel is looking at, mocked as the deployed one: PostgreSQL
+ * over a private network, a pool with room in it, and one caller that has
+ * queued for a connection at some point, so the note under the card is
+ * something a developer sees rather than something only production has.
+ */
+function mockDatabaseStatus(): DatabaseStatus {
+  return {
+    state: 'healthy',
+    engine: 'PostgreSQL',
+    version: '18.6',
+    schema_version: 1,
+    size_bytes: 84_711_103,
+    latency_ms: 1.24,
+    connections: { open: 3, in_use: 1, idle: 2, max: 16, wait_count: 2, wait_ms: 41 },
   };
 }
 
@@ -2083,6 +2103,7 @@ function rootOverviewValue(state: MockState): RootOverview {
       service_host: 'local mock service',
       uptime_seconds: 9_322,
       storage: 'healthy',
+      database: mockDatabaseStatus(),
     },
     catalog: {
       installations: state.targets.length,

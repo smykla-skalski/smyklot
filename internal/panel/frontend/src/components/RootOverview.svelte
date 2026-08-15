@@ -1,7 +1,14 @@
 <script lang="ts">
   import type { PanelApi } from '../lib/api';
-  import { formatRelative, formatTimestamp } from '../lib/format';
-  import type { RootOverview } from '../lib/types';
+  import {
+    formatBytes,
+    formatElapsed,
+    formatLatency,
+    formatRelative,
+    formatTimestamp,
+  } from '../lib/format';
+  import type { DependencyState, RootOverview } from '../lib/types';
+  import type { ChipTone } from './Chip.svelte';
   import Chip from './Chip.svelte';
   import Icon from './Icon.svelte';
   import PendingCIQueue from './PendingCIQueue.svelte';
@@ -49,6 +56,24 @@
     event.preventDefault();
     open();
   }
+
+  /* The engine names itself. Nothing here maps that name onto behaviour, so a
+     third engine is a change inside internal/storage and nowhere else. */
+  const DATABASE_MARK: Record<DependencyState, 'check' | 'alert' | 'failure'> = {
+    healthy: 'check',
+    degraded: 'alert',
+    unavailable: 'failure',
+  };
+  const DATABASE_TONE: Record<DependencyState, ChipTone> = {
+    healthy: 'accent',
+    degraded: 'warning',
+    unavailable: 'stop',
+  };
+  const DATABASE_WORD: Record<DependencyState, string> = {
+    healthy: 'Healthy',
+    degraded: 'Degraded',
+    unavailable: 'Unreachable',
+  };
 
   let overview = $state<RootOverview | null>(null);
   let loading = $state(true);
@@ -99,6 +124,17 @@
 
   function ratio(value: number): number {
     return ownershipTotal === 0 ? 0 : (value / ownershipTotal) * 100;
+  }
+
+  /* Against the ceiling, not against what is open: a pool that has opened two
+     of sixteen connections is idle, and scaling the track to the two would
+     draw it as full. */
+  function poolRatio(value: number, max: number): number {
+    return max <= 0 ? 0 : Math.min(100, Math.max(0, (value / max) * 100));
+  }
+
+  function poolTitle(pool: { in_use: number; idle: number; max: number }): string {
+    return `${pool.in_use} in use, ${pool.idle} idle, ${pool.max} maximum`;
   }
 
   function sentenceCase(text: string): string {
@@ -156,10 +192,13 @@
           <dd>{uptime(overview.service.uptime_seconds)}</dd>
         </div>
         <div>
-          <dt>Storage</dt>
+          <!-- Which database, not how it is: the marker still carries the
+               state, and the card below spells it out. Repeating the word
+               "Healthy" here put a third reading of one fact on the screen. -->
+          <dt>Database</dt>
           <dd class="storage-state" data-state={overview.service.storage}>
             <span aria-hidden="true">●</span>
-            {sentenceCase(overview.service.storage)}
+            {overview.service.database.engine}
           </dd>
         </div>
         <div>
@@ -168,6 +207,74 @@
         </div>
       </dl>
     </article>
+
+    <!-- The same shape as the card above it, because it answers the same
+         question one layer down: what is it, and is it well. The service card
+         names the database; this one is how it is doing. -->
+    {@const database = overview.service.database}
+    <article class="service-card database-card">
+      <div class="service-status">
+        <span class="health-mark" data-state={database.state}>
+          <Icon name={DATABASE_MARK[database.state]} size={20} />
+        </span>
+        <div>
+          <h3>Database</h3>
+          <p>
+            {database.engine}{database.version === '' ? '' : ` ${database.version}`}
+            {#if database.schema_version > 0}
+              · schema {database.schema_version}
+            {/if}
+          </p>
+        </div>
+        <Chip tone={DATABASE_TONE[database.state]}>{DATABASE_WORD[database.state]}</Chip>
+      </div>
+      <dl>
+        <div>
+          <dt>Response</dt>
+          <dd>{formatLatency(database.latency_ms)}</dd>
+        </div>
+        <div>
+          <dt>Size</dt>
+          <dd>{formatBytes(database.size_bytes)}</dd>
+        </div>
+        <div class="pool">
+          <dt>Connections</dt>
+          <dd>{database.connections.in_use} / {database.connections.max}</dd>
+          <!-- In use over held over the ceiling. A pool holding four idle
+               connections and using one is a service at rest, and a single
+               bar could not tell that from one at its limit. -->
+          <div class="pool-track" aria-hidden="true" title={poolTitle(database.connections)}>
+            <span
+              class="pool-open"
+              style={`width: ${poolRatio(database.connections.open, database.connections.max)}%`}
+            ></span>
+            <span
+              class="pool-used"
+              style={`width: ${poolRatio(database.connections.in_use, database.connections.max)}%`}
+            ></span>
+          </div>
+        </div>
+        <div>
+          <dt>Waits since start</dt>
+          <dd>{database.connections.wait_count}</dd>
+        </div>
+      </dl>
+    </article>
+
+    {#if database.detail !== undefined}
+      <p class="database-note" role="status">
+        <span class="note-icon warning"><Icon name="alert" size={14} strokeWidth={2} /></span>
+        {database.detail}
+      </p>
+    {:else if database.connections.wait_count > 0}
+      <!-- A count that only grows, unlike the sample beside it: the pool may
+           look idle now and still have stalled the service an hour ago. -->
+      <p class="database-note">
+        <span class="note-icon"><Icon name="info" size={14} strokeWidth={2} /></span>
+        Callers have waited for a free connection {database.connections.wait_count} times since this service
+        started, {formatElapsed(database.connections.wait_ms)} in total
+      </p>
+    {/if}
 
     <div class="metric-grid">
       <a
@@ -359,7 +466,8 @@
   .overview-panel > header,
   .failure-item,
   .no-failures,
-  .ownership-note {
+  .ownership-note,
+  .database-note {
     align-items: center;
     display: flex;
   }
@@ -427,6 +535,18 @@
     width: 3rem;
   }
 
+  /* The service card's own mark carries no state and keeps the accent above.
+     Only the database reports one, so only it repaints. */
+  .health-mark[data-state='degraded'] {
+    background: var(--warning-tint);
+    color: var(--warning);
+  }
+
+  .health-mark[data-state='unavailable'] {
+    background: var(--danger-tint);
+    color: var(--danger);
+  }
+
   .service-card dl {
     display: grid;
     gap: var(--space-3) var(--space-6);
@@ -461,6 +581,43 @@
 
   .storage-state[data-state='unavailable'] {
     color: var(--stop);
+  }
+
+  /* Wider than the service card's cells: this row carries a value with a track
+     under it, and 5.5rem left the track too short to read a proportion off. */
+  .database-card dl {
+    grid-template-columns: repeat(4, minmax(7rem, auto));
+  }
+
+  .pool {
+    align-content: start;
+  }
+
+  .pool-track {
+    background: var(--surface-inset);
+    border-radius: 999px;
+    height: 0.25rem;
+    margin-top: 0.4rem;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* Stacked rather than laid side by side, so the shorter run reads as a part
+     of the longer one: connections in use are a subset of those held open. */
+  .pool-track > span {
+    border-radius: 999px;
+    bottom: 0;
+    left: 0;
+    position: absolute;
+    top: 0;
+  }
+
+  .pool-open {
+    background: var(--border-strong);
+  }
+
+  .pool-used {
+    background: var(--accent);
   }
 
   .metric-grid {
@@ -625,7 +782,8 @@
     width: 0.5rem;
   }
 
-  .ownership-note {
+  .ownership-note,
+  .database-note {
     align-items: flex-start;
     background: var(--surface-inset);
     /* Dashed: the blocker is a pending state, not a settled surface. */
@@ -634,8 +792,28 @@
     font-size: var(--font-size-compact);
     gap: var(--space-2);
     line-height: 1.5;
-    margin-top: var(--space-4);
     padding: 0.5rem 0.75rem;
+  }
+
+  .ownership-note {
+    margin-top: var(--space-4);
+  }
+
+  /* Its own row on the page's 12px rhythm, rather than inside the card: the
+     reason is prose that wraps, and a card sized for four short values had
+     nowhere to put a sentence. */
+  .database-note {
+    margin: 0;
+  }
+
+  /* The wait note reports a fact, not a fault, so only the reason a database
+     gave for refusing to describe itself takes the warning colour. */
+  .database-note .note-icon {
+    color: var(--text-muted);
+  }
+
+  .database-note .note-icon.warning {
+    color: var(--warning);
   }
 
   .note-icon {
