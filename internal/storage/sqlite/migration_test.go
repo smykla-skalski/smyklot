@@ -33,7 +33,7 @@ next_check_at, last_progress_at, reason, requested_at, updated_at, finished_at
 		"installation:77", 77, "9001", "smykla-skalski/smyklot",
 		198, "sha", "main", "squash", true,
 		"bartsmykla", 101, now.Format(time.RFC3339Nano),
-		"smyklot:pending:ci:squash-required", "cancelled", "active",
+		"smyklot:pending:ci:squash:required", "cancelled", "active",
 		now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), "cancelled",
 		now.Format(time.RFC3339Nano), finishedAt.Format(time.RFC3339Nano),
 		finishedAt.Format(time.RFC3339Nano),

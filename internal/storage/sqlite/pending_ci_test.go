@@ -391,7 +391,7 @@ func pendingCITestArm(requestedAt time.Time, commentID int64, headSHA string) pe
 		Requester:          "bartsmykla",
 		SourceCommentID:    commentID,
 		SourceRevision:     requestedAt.Format(time.RFC3339Nano),
-		Label:              "smyklot:pending:ci:squash-required",
+		Label:              "smyklot:pending:ci:squash:required",
 		RequestedAt:        requestedAt,
 	}
 }
