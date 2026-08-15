@@ -28,11 +28,17 @@ var errInvalidConfig = errors.New("invalid panel configuration")
 
 // Config contains validated runtime settings for the panel HTTP surface.
 type Config struct {
-	BasePath                 string
-	PublicOrigin             string
-	SuperRootID              int64
-	ClientID                 string
-	ClientSecret             string
+	BasePath     string
+	PublicOrigin string
+	SuperRootID  int64
+	ClientID     string
+
+	// ClientSecret signs the OAuth state and invitation-intent MACs as well
+	// as authenticating the token exchange, so it is the one field here that
+	// must never reach a response body. Nothing marshals Config today; the
+	// tag is what keeps that true if something ever does
+	ClientSecret string `json:"-"`
+
 	AuthorizeURL             string
 	TokenURL                 string
 	APIURL                   string

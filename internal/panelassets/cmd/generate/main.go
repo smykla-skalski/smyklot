@@ -60,7 +60,12 @@ func run() error {
 	if err := os.Chmod(temporaryPath, 0o644); err != nil { //nolint:gosec // Generated bundle is a public build artifact.
 		return fmt.Errorf("set panel asset archive permissions: %w", err)
 	}
-	if err := os.Rename(temporaryPath, output); err != nil {
+	// G703 reads os.Getwd as a taint source and cannot see the guard above.
+	// Both names are fixed: output is a compile-time constant joined to the
+	// working directory and checked to still be under it, and temporaryPath
+	// was created by os.CreateTemp in that same directory. Neither can carry
+	// a traversal, because neither takes any input
+	if err := os.Rename(temporaryPath, output); err != nil { //nolint:gosec // Both paths are repository-relative constants, checked above.
 		return fmt.Errorf("activate panel asset archive: %w", err)
 	}
 
