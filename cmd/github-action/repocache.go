@@ -91,13 +91,15 @@ type repoCache[T any] struct {
 	ttl  time.Duration
 	load func(context.Context, *github.Client, string, string) (T, error)
 
-	mu      sync.Mutex
-	entries map[string]repoCacheEntry[T]
+	mu       sync.Mutex
+	entries  map[string]repoCacheEntry[T]
+	nextLoad uint64
 }
 
 type repoCacheEntry[T any] struct {
-	value   T
-	fetched time.Time
+	value      T
+	fetched    time.Time
+	generation uint64
 }
 
 func newRepoCache[T any](
@@ -119,39 +121,50 @@ func (c *repoCache[T]) Get(
 ) (T, error) {
 	key := repoFullName(owner, repo)
 
-	if value, ok := c.lookup(key); ok {
+	value, ok, generation := c.lookupOrBeginLoad(key)
+	if ok {
 		return value, nil
 	}
 
-	value, err := c.load(ctx, client, owner, repo)
+	loaded, err := c.load(ctx, client, owner, repo)
 	if err != nil {
 		var zero T
 
 		return zero, err
 	}
 
-	c.store(key, value)
+	value = c.storeIfNewest(key, loaded, generation)
 
 	return value, nil
 }
 
-func (c *repoCache[T]) lookup(key string) (T, bool) {
+func (c *repoCache[T]) lookupOrBeginLoad(key string) (T, bool, uint64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	entry, ok := c.entries[key]
-	if !ok || time.Since(entry.fetched) >= c.ttl {
-		var zero T
-
-		return zero, false
+	if ok && time.Since(entry.fetched) < c.ttl {
+		return entry.value, true, 0
 	}
+	c.nextLoad++
+	var zero T
 
-	return entry.value, true
+	return zero, false, c.nextLoad
 }
 
-func (c *repoCache[T]) store(key string, value T) {
+// storeIfNewest makes an older load observe a newer successful result instead
+// of regressing the cache after the newer caller has already acted on it.
+func (c *repoCache[T]) storeIfNewest(key string, value T, generation uint64) T {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.entries[key] = repoCacheEntry[T]{value: value, fetched: time.Now()}
+	entry, ok := c.entries[key]
+	if ok && entry.generation > generation {
+		return entry.value
+	}
+	c.entries[key] = repoCacheEntry[T]{
+		value: value, fetched: time.Now(), generation: generation,
+	}
+
+	return value
 }
