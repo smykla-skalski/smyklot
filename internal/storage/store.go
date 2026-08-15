@@ -74,6 +74,8 @@ type ConfigStore interface {
 type DeliveryStore interface {
 	ClaimDelivery(context.Context, DeliveryClaim) (DeliveryClaimResult, error)
 	AbandonDelivery(context.Context, int64) error
+	LeaseDelivery(context.Context, time.Time, time.Time) (DeliveryLeaseResult, error)
+	RetryDelivery(context.Context, DeliveryRetryChange) error
 	CompleteDelivery(context.Context, int64, time.Time) error
 	FailDelivery(context.Context, DeliveryFailureChange) error
 	RecoverRunningDeliveries(context.Context, time.Time) error

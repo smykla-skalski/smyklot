@@ -3,6 +3,7 @@ package github
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 )
 
@@ -87,4 +88,25 @@ func (e *APIError) Is(target error) bool {
 	}
 
 	return errors.Is(e.Op, target)
+}
+
+// Retryable reports whether repeating the API operation can reasonably change
+// its outcome. Consumers do not need to know GitHub's status-code policy.
+func (e *APIError) Retryable() bool {
+	if e.StatusCode == 0 {
+		return true
+	}
+	if e.StatusCode == http.StatusForbidden {
+		detail := strings.ToLower(e.Detail)
+
+		return strings.Contains(detail, "rate limit") ||
+			strings.Contains(detail, "secondary limit") ||
+			strings.Contains(detail, "abuse")
+	}
+
+	return e.StatusCode == http.StatusRequestTimeout ||
+		e.StatusCode == http.StatusConflict ||
+		e.StatusCode == http.StatusTooEarly ||
+		e.StatusCode == http.StatusTooManyRequests ||
+		e.StatusCode >= http.StatusInternalServerError
 }

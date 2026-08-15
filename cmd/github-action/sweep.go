@@ -25,6 +25,7 @@ func (s *server) startWorkers() *sync.WaitGroup {
 			}
 		}()
 	}
+	s.deliveries.Start(s.jobCtx)
 
 	return &workers
 }

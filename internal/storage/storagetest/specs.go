@@ -1624,6 +1624,56 @@ func DeclareSpecs(harness Harness) {
 		Expect(failures.Items[0].Retryable).To(BeTrue())
 	})
 
+	It("leases, schedules, and recovers durable delivery payloads", func() {
+		_, target := seedInstallation(ctx, store, now)
+		payload := []byte(`{"action":"created"}`)
+		claim := storage.DeliveryClaim{
+			ClaimKey:   "issue_comment:created:repo:durable:revision",
+			DeliveryID: "durable-delivery", TargetID: target.TargetID,
+			RepositoryFullName: "smykla-skalski/smyklot",
+			Event:              "created", Payload: payload, ClaimedAt: now,
+		}
+
+		accepted, err := store.ClaimDelivery(ctx, claim)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(accepted.Disposition).To(Equal(storage.DeliveryClaimAccepted))
+
+		first, err := store.LeaseDelivery(ctx, now, now.Add(time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(first.Work).NotTo(BeNil())
+		Expect(first.Work.ID).To(Equal(accepted.ID))
+		Expect(first.Work.Payload).To(Equal(payload))
+		Expect(first.Work.Attempt).To(Equal(1))
+
+		leased, err := store.LeaseDelivery(ctx, now.Add(30*time.Second), now.Add(2*time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(leased.Work).To(BeNil())
+		Expect(leased.AvailableAt).To(HaveValue(Equal(now.Add(time.Minute))))
+
+		retryAt := now.Add(2 * time.Minute)
+		Expect(store.RetryDelivery(ctx, storage.DeliveryRetryChange{
+			ClaimID: accepted.ID, Stage: "execute",
+			Reason: "temporary GitHub failure", RetryAt: retryAt,
+		})).To(Succeed())
+		waiting, err := store.LeaseDelivery(ctx, retryAt.Add(-time.Second), retryAt.Add(time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(waiting.Work).To(BeNil())
+		Expect(waiting.AvailableAt).To(HaveValue(Equal(retryAt)))
+
+		second, err := store.LeaseDelivery(ctx, retryAt, retryAt.Add(time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(second.Work).NotTo(BeNil())
+		Expect(second.Work.Attempt).To(Equal(2))
+
+		recoveredAt := now.Add(3 * time.Minute)
+		Expect(store.RecoverRunningDeliveries(ctx, recoveredAt)).To(Succeed())
+		recovered, err := store.LeaseDelivery(ctx, recoveredAt, recoveredAt.Add(time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(recovered.Work).NotTo(BeNil())
+		Expect(recovered.Work.ID).To(Equal(accepted.ID))
+		Expect(recovered.Work.Attempt).To(Equal(3))
+	})
+
 	It("finalizes only the claimed attempt when GitHub reuses a delivery ID", func() {
 		_, target := seedInstallation(ctx, store, now)
 		claim := storage.DeliveryClaim{

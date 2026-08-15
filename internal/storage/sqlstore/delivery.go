@@ -29,9 +29,9 @@ func (s *Store) ClaimDelivery(
 	err = tx.QueryRowContext(ctx, `
 INSERT INTO deliveries (
     claim_key, delivery_id, target_id, repository_id, repository_full_name,
-    event, status, claimed_at
+    event, status, payload, claimed_at, next_attempt_at
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT DO NOTHING
 RETURNING id`,
 		claim.ClaimKey,
@@ -41,6 +41,8 @@ RETURNING id`,
 		claim.RepositoryFullName,
 		claim.Event,
 		storage.DeliveryRunning,
+		claim.Payload,
+		claim.ClaimedAt,
 		claim.ClaimedAt,
 	).Scan(&claimID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -78,6 +80,156 @@ RETURNING id`,
 		ID:          claimID,
 		Disposition: storage.DeliveryClaimAccepted,
 	}, nil
+}
+
+// LeaseDelivery atomically reserves the oldest ready durable payload for one
+// executor. When nothing is ready it reports the earliest retry or lease expiry
+// so the dispatcher can sleep without polling.
+func (s *Store) LeaseDelivery(
+	ctx context.Context,
+	now time.Time,
+	leaseExpiresAt time.Time,
+) (storage.DeliveryLeaseResult, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return storage.DeliveryLeaseResult{}, fmt.Errorf("begin delivery lease: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	work, err := selectReadyDelivery(ctx, tx, now)
+	if errors.Is(err, sql.ErrNoRows) {
+		availableAt, availableErr := nextDeliveryAvailability(ctx, tx)
+		if availableErr != nil {
+			return storage.DeliveryLeaseResult{}, availableErr
+		}
+		if err := tx.Commit(); err != nil {
+			return storage.DeliveryLeaseResult{}, fmt.Errorf("commit empty delivery lease: %w", err)
+		}
+
+		return storage.DeliveryLeaseResult{AvailableAt: availableAt}, nil
+	}
+	if err != nil {
+		return storage.DeliveryLeaseResult{}, err
+	}
+
+	result, err := tx.ExecContext(ctx, `
+UPDATE deliveries SET lease_expires_at = ?, attempt_count = attempt_count + 1
+WHERE id = ? AND status = ? AND payload IS NOT NULL
+  AND next_attempt_at <= ?
+  AND (lease_expires_at IS NULL OR lease_expires_at <= ?)`,
+		leaseExpiresAt,
+		work.ID,
+		storage.DeliveryRunning,
+		now,
+		now,
+	)
+	if err != nil {
+		return storage.DeliveryLeaseResult{}, fmt.Errorf("lease delivery: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return storage.DeliveryLeaseResult{}, fmt.Errorf("read delivery lease result: %w", err)
+	}
+	if changed != 1 {
+		return storage.DeliveryLeaseResult{}, storage.ErrConflict
+	}
+	if err := tx.Commit(); err != nil {
+		return storage.DeliveryLeaseResult{}, fmt.Errorf("commit delivery lease: %w", err)
+	}
+	work.Attempt++
+
+	return storage.DeliveryLeaseResult{Work: &work}, nil
+}
+
+func selectReadyDelivery(
+	ctx context.Context,
+	tx *transaction,
+	now time.Time,
+) (storage.DeliveryWork, error) {
+	var work storage.DeliveryWork
+	var repositoryID sql.NullString
+	err := tx.QueryRowContext(ctx, `
+SELECT id, claim_key, delivery_id, target_id, repository_id,
+       repository_full_name, event, payload, attempt_count
+FROM deliveries
+WHERE status = ? AND payload IS NOT NULL
+  AND next_attempt_at <= ?
+  AND (lease_expires_at IS NULL OR lease_expires_at <= ?)
+ORDER BY next_attempt_at, id
+LIMIT 1`,
+		storage.DeliveryRunning,
+		now,
+		now,
+	).Scan(
+		&work.ID,
+		&work.ClaimKey,
+		&work.DeliveryID,
+		&work.TargetID,
+		&repositoryID,
+		&work.RepositoryFullName,
+		&work.Event,
+		&work.Payload,
+		&work.Attempt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return storage.DeliveryWork{}, sql.ErrNoRows
+		}
+
+		return storage.DeliveryWork{}, fmt.Errorf("select ready delivery: %w", err)
+	}
+	if repositoryID.Valid {
+		work.RepositoryID = &repositoryID.String
+	}
+
+	return work, nil
+}
+
+func nextDeliveryAvailability(ctx context.Context, tx *transaction) (*time.Time, error) {
+	var available StoredTime
+	err := tx.QueryRowContext(ctx, `
+SELECT MIN(
+    CASE
+        WHEN lease_expires_at IS NOT NULL AND lease_expires_at > next_attempt_at
+            THEN lease_expires_at
+        ELSE next_attempt_at
+    END
+)
+FROM deliveries
+WHERE status = ? AND payload IS NOT NULL`, storage.DeliveryRunning).Scan(&available)
+	if err != nil {
+		return nil, fmt.Errorf("read next delivery availability: %w", err)
+	}
+	if !available.Valid() {
+		return nil, nil
+	}
+	parsed := available.Time()
+
+	return &parsed, nil
+}
+
+// RetryDelivery clears an executor lease and schedules a transiently failed
+// payload for another attempt.
+func (s *Store) RetryDelivery(ctx context.Context, change storage.DeliveryRetryChange) error {
+	result, err := s.db.ExecContext(ctx, `
+UPDATE deliveries SET
+    stage = ?,
+    reason = ?,
+    retryable = TRUE,
+    next_attempt_at = ?,
+    lease_expires_at = NULL
+WHERE id = ? AND status = ?`,
+		change.Stage,
+		change.Reason,
+		change.RetryAt,
+		change.ClaimID,
+		storage.DeliveryRunning,
+	)
+	if err != nil {
+		return fmt.Errorf("retry delivery: %w", err)
+	}
+
+	return s.checkDeliveryUpdate(ctx, result, change.ClaimID)
 }
 
 // AbandonDelivery releases a running claim that never entered execution, such
@@ -148,26 +300,49 @@ WHERE id = ? AND status IN (?, ?)`,
 	return s.checkDeliveryUpdate(ctx, result, change.ClaimID)
 }
 
-// RecoverRunningDeliveries releases claims that belonged to the previous
-// process. The deployment is intentionally single-replica, so no running row
-// can still have an executor when a new store owner starts.
+// RecoverRunningDeliveries requeues durable payloads that belonged to the
+// previous process and retains the old failure behavior for pre-inbox rows.
+// The deployment is intentionally single-replica, so no running row can still
+// have an executor when a new store owner starts.
 func (s *Store) RecoverRunningDeliveries(ctx context.Context, recoveredAt time.Time) error {
-	_, err := s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin running delivery recovery: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, `
+UPDATE deliveries SET
+    lease_expires_at = NULL,
+    next_attempt_at = ?,
+    stage = NULL,
+    reason = NULL,
+    retryable = NULL
+WHERE status = ? AND payload IS NOT NULL`,
+		recoveredAt,
+		storage.DeliveryRunning,
+	); err != nil {
+		return fmt.Errorf("requeue durable deliveries: %w", err)
+	}
+
+	if _, err := tx.ExecContext(ctx, `
 UPDATE deliveries SET
     status = ?,
     stage = ?,
     reason = ?,
     retryable = TRUE,
     finished_at = ?
-WHERE status = ?`,
+WHERE status = ? AND payload IS NULL`,
 		storage.DeliveryFailed,
 		"recovery",
 		"service stopped before delivery finished",
 		recoveredAt,
 		storage.DeliveryRunning,
-	)
-	if err != nil {
+	); err != nil {
 		return fmt.Errorf("recover running deliveries: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit running delivery recovery: %w", err)
 	}
 
 	return nil

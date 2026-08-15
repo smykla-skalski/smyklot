@@ -283,6 +283,7 @@ func (s *seeder) seedDelivery() error {
 		TargetID:           s.target.TargetID,
 		RepositoryFullName: "smykla-skalski/smyklot",
 		Event:              "issue_comment",
+		Payload:            []byte(`{"action":"created"}`),
 		ClaimedAt:          s.now.Add(7 * time.Minute),
 	})
 	if err != nil {
@@ -298,6 +299,7 @@ func (s *seeder) seedDelivery() error {
 		TargetID:           s.target.TargetID,
 		RepositoryFullName: "smykla-skalski/klaudiush",
 		Event:              "issue_comment",
+		Payload:            []byte(`{"action":"edited"}`),
 		ClaimedAt:          s.now.Add(9 * time.Minute),
 	})
 	if err != nil {

@@ -12,6 +12,11 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+type classifiedDeliveryError bool
+
+func (e classifiedDeliveryError) Error() string   { return "classified delivery failure" }
+func (e classifiedDeliveryError) Retryable() bool { return bool(e) }
+
 var _ = Describe("Delivery persistence [Unit]", func() {
 	It("finalizes a delivery after its execution context expires", func() {
 		type contextKey string
@@ -55,4 +60,15 @@ var _ = Describe("Delivery persistence [Unit]", func() {
 		Eventually(persisted).Within(2 * time.Second).Should(BeClosed())
 		Expect(attempts.Load()).To(Equal(int32(2)))
 	})
+
+	DescribeTable("classifies execution failures before scheduling another attempt",
+		func(cause error, attempt int, expected bool) {
+			Expect(retryableDelivery(cause, attempt)).To(Equal(expected))
+		},
+		Entry("temporary transport failure", errors.New("connection reset"), 1, true),
+		Entry("provider-classified transient failure", classifiedDeliveryError(true), 1, true),
+		Entry("provider-classified permanent failure", classifiedDeliveryError(false), 1, false),
+		Entry("invalid repository configuration", ErrRepoConfigInvalid, 1, false),
+		Entry("attempt budget exhausted", errors.New("still unavailable"), maxDeliveryAttempts, false),
+	)
 })

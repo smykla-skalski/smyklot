@@ -556,7 +556,38 @@ type DeliveryClaim struct {
 	RepositoryID       *string
 	RepositoryFullName string
 	Event              string
+	Payload            []byte
 	ClaimedAt          time.Time
+}
+
+// DeliveryWork is one durable payload leased to an executor. Attempt starts at
+// one and increases each time an expired or explicitly retried lease is taken.
+type DeliveryWork struct {
+	ID                 int64
+	ClaimKey           string
+	DeliveryID         string
+	TargetID           string
+	RepositoryID       *string
+	RepositoryFullName string
+	Event              string
+	Payload            []byte
+	Attempt            int
+}
+
+// DeliveryLeaseResult contains either ready work or the next instant at which
+// the queue should ask again. Both fields are nil when the inbox is empty.
+type DeliveryLeaseResult struct {
+	Work        *DeliveryWork
+	AvailableAt *time.Time
+}
+
+// DeliveryRetryChange returns leased work to the durable inbox after a
+// transient execution failure.
+type DeliveryRetryChange struct {
+	ClaimID int64
+	Stage   string
+	Reason  string
+	RetryAt time.Time
 }
 
 // DeliveryFailureChange finishes a delivery with a sanitized failure.

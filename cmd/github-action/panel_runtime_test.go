@@ -1,16 +1,13 @@
 package main
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -25,36 +22,11 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
 
-type transientAbandonStore struct {
-	storage.Store
-	attempts     atomic.Int32
-	retryStarted chan struct{}
-	retryRelease chan struct{}
-}
-
 type runtimePanelEvent struct {
 	Version      int    `json:"version"`
 	Type         string `json:"type"`
 	TargetID     string `json:"target_id"`
 	RepositoryID string `json:"repository_id"`
-}
-
-func (s *transientAbandonStore) AbandonDelivery(ctx context.Context, claimID int64) error {
-	if s.attempts.Add(1) == 1 {
-		return errors.New("database is busy")
-	}
-	select {
-	case <-s.retryStarted:
-	default:
-		close(s.retryStarted)
-	}
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-s.retryRelease:
-	}
-
-	return s.Store.AbandonDelivery(ctx, claimID)
 }
 
 var _ = Describe("Production panel runtime [Unit]", func() {
@@ -678,48 +650,41 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 		Expect(stub.countCalls(http.MethodGet, "/app/installations") - catalogCalls).To(Equal(1))
 	})
 
-	It("retries a queue-full claim release so redelivery remains possible", func() {
+	It("persists accepted work even when the in-memory queue is full", func() {
 		stub.installations = `[{"id":987,"account":{"id":7,"login":"smykla-skalski","type":"Organization"}}]`
 		stub.repos = `{"repositories":[{"id":123456,"name":"smyklot","full_name":"smykla-skalski/smyklot","owner":{"login":"smykla-skalski"}}]}`
 		_, err := service.SyncCatalog(GinkgoT().Context())
 		Expect(err).NotTo(HaveOccurred())
 
-		baseStore := service.store
-		flakyStore := &transientAbandonStore{
-			Store:        baseStore,
-			retryStarted: make(chan struct{}),
-			retryRelease: make(chan struct{}),
-		}
-		service.store = flakyStore
 		for range cap(service.jobs) {
 			service.jobs <- job{}
 		}
 
-		event, err := webhook.ParseIssueComment(commandDelivery("/approve"))
+		payload := commandDelivery("/approve")
+		event, err := webhook.ParseIssueComment(payload)
 		Expect(err).NotTo(HaveOccurred())
 		delivery := job{
 			event:      event,
 			key:        event.IdempotencyKey(),
 			deliveryID: "queue-full-redelivery",
+			payload:    payload,
 			logger:     service.logger,
 		}
 		response := httptest.NewRecorder()
 		service.dispatch(GinkgoT().Context(), response, delivery)
-		Expect(response.Code).To(Equal(http.StatusServiceUnavailable))
-		Eventually(flakyStore.retryStarted).Should(BeClosed())
+		Expect(response.Code).To(Equal(http.StatusAccepted))
+
 		inProgress := httptest.NewRecorder()
 		service.dispatch(GinkgoT().Context(), inProgress, delivery)
-		Expect(inProgress.Code).To(Equal(http.StatusServiceUnavailable))
+		Expect(inProgress.Code).To(Equal(http.StatusAccepted))
 
-		<-service.jobs
-		close(flakyStore.retryRelease)
-		Eventually(func() int {
-			redelivery := httptest.NewRecorder()
-			service.dispatch(GinkgoT().Context(), redelivery, delivery)
-
-			return redelivery.Code
-		}).Within(eventuallyWindow).Should(Equal(http.StatusAccepted))
-		Expect(flakyStore.attempts.Load()).To(BeNumerically(">=", 2))
+		lease, err := service.deliveryStore.LeaseDelivery(
+			GinkgoT().Context(), time.Now().UTC(), time.Now().UTC().Add(jobTimeout),
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(lease.Work).NotTo(BeNil())
+		Expect(lease.Work.DeliveryID).To(Equal(delivery.deliveryID))
+		Expect(lease.Work.Payload).To(Equal(payload))
 	})
 
 	It("rejects an installation without an immutable account identity", func() {

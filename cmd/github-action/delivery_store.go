@@ -8,12 +8,27 @@ import (
 
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/logging"
+	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
 
 const (
 	maxStoredFailureReason            = 2048
 	deliveryFinalizationRetryInterval = time.Second
+	deliveryRetryBaseDelay            = 2 * time.Second
+	deliveryRetryMaxDelay             = 5 * time.Minute
+	maxDeliveryAttempts               = 8
 )
+
+// deliveryState is the command worker's persistence boundary. Keeping this
+// separate from storage.Store prevents delivery execution from acquiring panel
+// or catalog responsibilities.
+type deliveryState interface {
+	ClaimDelivery(context.Context, storage.DeliveryClaim) (storage.DeliveryClaimResult, error)
+	LeaseDelivery(context.Context, time.Time, time.Time) (storage.DeliveryLeaseResult, error)
+	RetryDelivery(context.Context, storage.DeliveryRetryChange) error
+	CompleteDelivery(context.Context, int64, time.Time) error
+	FailDelivery(context.Context, storage.DeliveryFailureChange) error
+}
 
 type deliveryFinalizer func(context.Context) error
 
@@ -105,26 +120,20 @@ func (s *server) beginDelivery(
 	ctx context.Context,
 	j *job,
 ) (storage.DeliveryClaimDisposition, error) {
-	if s.store == nil {
-		if s.deduper.Begin(j.key) {
-			return storage.DeliveryClaimAccepted, nil
-		}
-
-		return storage.DeliveryClaimRetained, nil
-	}
 	repositoryID := repositoryStorageID(j.event.Repository.ID)
 	fullName := j.event.Repository.FullName
 	if fullName == "" {
 		fullName = repoFullName(j.event.Repository.Owner.Login, j.event.Repository.Name)
 	}
 
-	result, err := s.store.ClaimDelivery(ctx, storage.DeliveryClaim{
+	result, err := s.deliveryStore.ClaimDelivery(ctx, storage.DeliveryClaim{
 		ClaimKey:           j.key,
 		DeliveryID:         j.deliveryID,
 		TargetID:           installationStorageID(j.event.Installation.ID),
 		RepositoryID:       &repositoryID,
 		RepositoryFullName: fullName,
-		Event:              j.event.Action,
+		Event:              webhook.EventIssueComment,
+		Payload:            j.payload,
 		ClaimedAt:          time.Now().UTC(),
 	})
 	if err != nil || result.Disposition != storage.DeliveryClaimAccepted {
@@ -135,21 +144,8 @@ func (s *server) beginDelivery(
 	return storage.DeliveryClaimAccepted, nil
 }
 
-func (s *server) abandonDelivery(ctx context.Context, j job) error {
-	if s.store == nil {
-		s.deduper.Abandon(j.key)
-
-		return nil
-	}
-
-	return s.store.AbandonDelivery(ctx, j.claimID)
-}
-
 func (s *server) completeDelivery(ctx context.Context, j job) error {
-	if s.store == nil {
-		return nil
-	}
-	if err := s.store.CompleteDelivery(ctx, j.claimID, time.Now().UTC()); err != nil {
+	if err := s.deliveryStore.CompleteDelivery(ctx, j.claimID, time.Now().UTC()); err != nil {
 		return err
 	}
 	s.announceDelivery(j)
@@ -158,16 +154,11 @@ func (s *server) completeDelivery(ctx context.Context, j job) error {
 }
 
 func (s *server) failDelivery(ctx context.Context, j job, cause error) error {
-	if s.store == nil {
-		s.deduper.Abandon(j.key)
-
-		return nil
-	}
 	reason := s.redactor.Error(cause)
 	if len(reason) > maxStoredFailureReason {
 		reason = strings.TrimSpace(reason[:maxStoredFailureReason])
 	}
-	err := s.store.FailDelivery(ctx, storage.DeliveryFailureChange{
+	err := s.deliveryStore.FailDelivery(ctx, storage.DeliveryFailureChange{
 		ClaimID:   j.claimID,
 		Stage:     "execute",
 		Reason:    reason,
@@ -179,6 +170,49 @@ func (s *server) failDelivery(ctx context.Context, j job, cause error) error {
 	}
 
 	return err
+}
+
+func (s *server) retryDelivery(ctx context.Context, j job, cause error) error {
+	reason := s.redactor.Error(cause)
+	if len(reason) > maxStoredFailureReason {
+		reason = strings.TrimSpace(reason[:maxStoredFailureReason])
+	}
+	err := s.deliveryStore.RetryDelivery(ctx, storage.DeliveryRetryChange{
+		ClaimID: j.claimID,
+		Stage:   "execute",
+		Reason:  reason,
+		RetryAt: time.Now().UTC().Add(deliveryRetryDelay(j.attempt)),
+	})
+	if err == nil {
+		s.deliveries.Wake()
+	}
+
+	return err
+}
+
+func deliveryRetryDelay(attempt int) time.Duration {
+	delay := deliveryRetryBaseDelay
+	for index := 1; index < attempt && delay < deliveryRetryMaxDelay; index++ {
+		delay *= 2
+	}
+	if delay > deliveryRetryMaxDelay {
+		return deliveryRetryMaxDelay
+	}
+
+	return delay
+}
+
+func retryableDelivery(cause error, attempt int) bool {
+	if attempt >= maxDeliveryAttempts || errors.Is(cause, ErrRepoConfigInvalid) {
+		return false
+	}
+
+	var classified interface{ Retryable() bool }
+	if errors.As(cause, &classified) {
+		return classified.Retryable()
+	}
+
+	return true
 }
 
 func (s *server) announceDelivery(j job) {

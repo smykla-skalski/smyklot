@@ -106,9 +106,10 @@ type server struct {
 	store  storage.Store
 	panel  *adminpanel.Server
 
-	logger   *slog.Logger
-	logLevel *slog.LevelVar
-	redactor *logging.Redactor
+	deliveryStore deliveryState
+	logger        *slog.Logger
+	logLevel      *slog.LevelVar
+	redactor      *logging.Redactor
 
 	runtimeMu           sync.RWMutex
 	runtimeBotConfig    *config.Config
@@ -130,19 +131,12 @@ type server struct {
 	configs *repoCache[repositoryConfigFile]
 	owners  *repoCache[string]
 
-	deduper *webhook.Deduper
+	deliveries *deliveryDispatcher
+	jobs       chan job
 
-	jobs chan job
-
-	// queueMu guards jobs against being closed while a handler is mid-send.
-	//
-	// http.Server.Shutdown leaves a handler that is still running alone once
-	// its deadline passes, so a handler can reach the send after Run has moved
-	// on to closing the queue. A send on a closed channel panics rather than
-	// taking the select's default branch, which would eat the delivery and
-	// strand its claim. Senders hold this for read, the close takes it for
-	// write, so the two cannot overlap
-	queueMu     sync.RWMutex
+	// queueMu makes worker shutdown idempotent. The dispatcher is stopped before
+	// jobs is closed, so it can never send to a closed channel.
+	queueMu     sync.Mutex
 	queueClosed bool
 
 	// catalogMu orders complete GitHub catalog snapshots and the per-installation
@@ -169,6 +163,8 @@ type job struct {
 	key        string
 	deliveryID string
 	claimID    int64
+	attempt    int
+	payload    []byte
 
 	// logger already carries this delivery's identifiers, so every line the
 	// work produces can be traced back to the delivery that caused it
@@ -216,7 +212,6 @@ func newServer(cfg *serveConfig) (*server, error) {
 		owners:              newRepoCache(codeownersTTL, fetchCodeowners),
 		readiness:           newReadiness(),
 		failures:            newFailureLog(maxRecordedFailures),
-		deduper:             webhook.NewDeduper(webhook.DefaultTTL, webhook.DefaultMaxEntries, nil),
 		jobs:                make(chan job, queueDepth),
 		jobCtx:              context.Background(),
 		deliveryRetryCtx:    deliveryRetryCtx,
@@ -229,6 +224,8 @@ func newServer(cfg *serveConfig) (*server, error) {
 		cancelDeliveryRetry()
 		return nil, err
 	}
+	srv.deliveryStore = srv.store
+	srv.deliveries = newDeliveryDispatcher(srv.deliveryStore, srv.jobs, srv.deliveryJob, srv.logger)
 	if err := srv.initPanel(); err != nil {
 		_ = srv.store.Close()
 		cancelDeliveryRetry()
@@ -474,6 +471,7 @@ func (s *server) handleDelivery(w http.ResponseWriter, r *http.Request) {
 		event:      e,
 		key:        e.IdempotencyKey(),
 		deliveryID: deliveryID,
+		payload:    body,
 		logger:     logging.From(ctx),
 	})
 }
@@ -504,9 +502,9 @@ func (s *server) dispatch(ctx context.Context, w http.ResponseWriter, j job) {
 		return
 	}
 	if claim == storage.DeliveryClaimInProgress {
-		s.count(webhook.EventIssueComment, metrics.OutcomeRefused)
+		s.count(webhook.EventIssueComment, metrics.OutcomeDuplicate)
 		logging.From(ctx).Info("delivery is still being processed")
-		http.Error(w, "not accepted", http.StatusServiceUnavailable)
+		w.WriteHeader(http.StatusAccepted)
 
 		return
 	}
@@ -518,61 +516,22 @@ func (s *server) dispatch(ctx context.Context, w http.ResponseWriter, j job) {
 		return
 	}
 
-	if s.enqueue(j) {
-		s.count(webhook.EventIssueComment, metrics.OutcomeAccepted)
-		w.WriteHeader(http.StatusAccepted)
-
-		return
-	}
-
-	// Releasing the claim keeps the delivery retryable rather than dropping it
-	// silently: GitHub records the refusal and a redelivery gets a fresh try
-	finalize := func(finalizationCtx context.Context) error {
-		return s.abandonDelivery(finalizationCtx, j)
-	}
-	finalizationCtx, cancelFinalization := deliveryFinalizationContext(ctx)
-	releaseErr := finalize(finalizationCtx)
-	cancelFinalization()
-	if releaseErr != nil {
-		logging.From(ctx).Error("delivery claim could not be released", "error", releaseErr)
-		s.retryDeliveryFinalization(j, "abandonment", finalize)
-	}
-	s.count(webhook.EventIssueComment, metrics.OutcomeRefused)
-	logging.From(ctx).Error("delivery not accepted, queue is full")
-	http.Error(w, "not accepted", http.StatusServiceUnavailable)
-}
-
-// enqueue offers a delivery to the workers, reporting whether they took it.
-//
-// Refuses rather than blocks when the queue is full, and refuses rather than
-// panics when the queue has already been closed for shutdown.
-func (s *server) enqueue(j job) bool {
-	s.queueMu.RLock()
-	defer s.queueMu.RUnlock()
-
-	if s.queueClosed {
-		return false
-	}
-
-	select {
-	case s.jobs <- j:
-		return true
-
-	default:
-		return false
-	}
+	s.deliveries.Wake()
+	s.count(webhook.EventIssueComment, metrics.OutcomeAccepted)
+	w.WriteHeader(http.StatusAccepted)
 }
 
 // closeQueue stops the workers once every in-flight send has finished.
 func (s *server) closeQueue() {
 	s.queueMu.Lock()
-	defer s.queueMu.Unlock()
-
 	if s.queueClosed {
+		s.queueMu.Unlock()
 		return
 	}
 
 	s.queueClosed = true
+	s.queueMu.Unlock()
+	s.deliveries.Stop()
 	close(s.jobs)
 }
 
@@ -599,6 +558,29 @@ func (s *server) execute(j job) {
 	s.metrics.DeliveryDuration.WithLabelValues(j.event.Action).Observe(elapsed.Seconds())
 
 	if err != nil {
+		if retryableDelivery(err, j.attempt) {
+			finalize := func(finalizationCtx context.Context) error {
+				return s.retryDelivery(finalizationCtx, j, err)
+			}
+			finalizationCtx, cancelFinalization := deliveryFinalizationContext(ctx)
+			finishErr := finalize(finalizationCtx)
+			cancelFinalization()
+			if finishErr != nil {
+				logging.From(ctx).Error("delivery retry could not be persisted", "error", finishErr)
+				s.retryDeliveryFinalization(j, "retry", finalize)
+			}
+			s.metrics.Deliveries.WithLabelValues(j.event.Action, metrics.ResultFailure).Inc()
+			logging.From(ctx).Warn(
+				"delivery execution will be retried",
+				"error", err,
+				"duration", elapsed.String(),
+				"attempt", j.attempt,
+				"max_attempts", maxDeliveryAttempts,
+			)
+
+			return
+		}
+
 		finalize := func(finalizationCtx context.Context) error {
 			return s.failDelivery(finalizationCtx, j, err)
 		}

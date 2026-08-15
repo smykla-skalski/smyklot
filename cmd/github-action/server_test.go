@@ -234,6 +234,44 @@ var _ = Describe("Webhook service [Unit]", func() {
 				return stub.countCalls(http.MethodPost, approveReviews)
 			}, eventuallyWindow).Should(Equal(2))
 		})
+
+		It("should execute an accepted command after a service restart", func() {
+			statePath := GinkgoT().TempDir() + "/restart.sqlite3"
+			endpoint = httptest.NewServer(stub)
+			DeferCleanup(endpoint.Close)
+			serviceConfig := func() *serveConfig {
+				return &serveConfig{
+					database: statePath, listenAddress: "127.0.0.1:0",
+					webhookPath: defaultWebhookPath, webhookSecret: []byte(testSecret),
+					apiBaseURL: endpoint.URL, botUsername: defaultBotUsername,
+					appClientID: "Iv1.test", appPrivateKey: githubtest.AppPrivateKey(),
+					botConfig: config.Default(), logWriter: io.Discard,
+				}
+			}
+
+			first, err := newServer(serviceConfig())
+			Expect(err).NotTo(HaveOccurred())
+			public := httptest.NewServer(first.handler())
+			response := postDelivery(
+				public, webhook.EventIssueComment, deliveryOne, commandDelivery("/approve"), nil,
+			)
+			Expect(response.StatusCode).To(Equal(http.StatusAccepted))
+			public.Close()
+			Expect(first.Close()).To(Succeed())
+
+			second, err := newServer(serviceConfig())
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(second.Close)
+			workers := second.startWorkers()
+			DeferCleanup(func() {
+				second.closeQueue()
+				workers.Wait()
+			})
+
+			Eventually(func() int {
+				return stub.countCalls(http.MethodPost, approveReviews)
+			}, eventuallyWindow).Should(Equal(1))
+		})
 	})
 
 	Describe("rejecting a delivery", func() {
@@ -461,28 +499,27 @@ var _ = Describe("Webhook service [Unit]", func() {
 		})
 	})
 
-	// http.Server.Shutdown leaves a handler that is still running alone once its
-	// deadline passes, so a delivery can reach the queue after Run has closed
-	// it. A bare send would panic there, and the panic would skip the claim
-	// release, losing the command and blocking its redelivery for an hour
+	// http.Server.Shutdown can leave a verified handler running after workers
+	// stop. Durable acceptance must remain safe and leave the command for the
+	// next dispatcher rather than sending to a closed in-memory queue.
 	Describe("a delivery that arrives during shutdown", func() {
 		BeforeEach(func() {
 			start(config.Default())
 		})
 
-		It("should refuse it rather than panic, and leave it retryable", func() {
+		It("should persist it rather than panic or lose it", func() {
 			srv.closeQueue()
 
 			resp := post(webhook.EventIssueComment, deliveryOne, commandDelivery("/approve"), nil)
-			Expect(resp.StatusCode).To(Equal(http.StatusServiceUnavailable))
+			Expect(resp.StatusCode).To(Equal(http.StatusAccepted))
 
 			Consistently(stub.total, 200*time.Millisecond).Should(BeZero())
-
-			// The claim was released, so GitHub redelivering after the restart
-			// gets a fresh attempt rather than "already handled"
-			Expect(srv.deduper.Begin(
-				"issue_comment:created:smykla-skalski/smyklot:555:2026-08-08T10:00:00Z",
-			)).To(BeTrue())
+			lease, err := srv.deliveryStore.LeaseDelivery(
+				GinkgoT().Context(), time.Now().UTC(), time.Now().UTC().Add(jobTimeout),
+			)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(lease.Work).NotTo(BeNil())
+			Expect(lease.Work.DeliveryID).To(Equal(deliveryOne))
 		})
 
 		It("should be safe to close the queue more than once", func() {

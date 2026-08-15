@@ -16,7 +16,7 @@ import (
 
 // TestSchemaParity asserts the two engines end up with the same shape.
 //
-// They get there differently on purpose: SQLite replays fifteen migrations
+// They get there differently on purpose: SQLite replays sixteen migrations
 // because it has that history, and PostgreSQL starts from the end state
 // because it has none. Nothing keeps those two in step except this test, so
 // without it a column added to one series would quietly be missing from the
