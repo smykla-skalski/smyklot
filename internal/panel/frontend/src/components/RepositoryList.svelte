@@ -1765,13 +1765,24 @@
     padding: var(--space-3) var(--space-4);
   }
 
+  /* In a rounded plate of its own, like every other symbol that stands beside a
+     title inside a card - the installation prompt's `+`, the add dialog's
+     workspace mark. Bare, it was a 14px glyph floating in the card's padding
+     with nothing to sit in, and it read as an icon that had lost its button.
+
+     The plate is keyed to the glyph's own colour, so it carries the file's
+     state - valid, invalid, bypassed - rather than a fixed brand tint. */
   .file-card-icon {
+    align-items: center;
+    background: color-mix(in srgb, currentcolor 10%, transparent);
+    border: 1px solid color-mix(in srgb, currentcolor 24%, transparent);
+    border-radius: var(--radius-control);
     color: var(--dim);
-    display: grid;
+    display: inline-flex;
     flex: none;
-    height: 1.125rem;
-    place-items: center;
-    width: 1.125rem;
+    height: 2.25rem;
+    justify-content: center;
+    width: 2.25rem;
   }
 
   .file-card-icon.status-valid {

@@ -153,7 +153,10 @@
           <span class="segment-detail detail-{option.detail.tone}">· {option.detail.text}</span>
         {/if}
         {#if option.badge !== undefined}
-          <sup class="segment-badge"><span>{option.badge}</span></sup>
+          <!-- A count beside its word, not a superscript of it. `sup` earned
+               nothing here: in a flex row `vertical-align` does not apply, so
+               the element was a plain box being shoved upward by hand. -->
+          <span class="segment-badge">{option.badge}</span>
         {/if}
       </span>
     </label>
@@ -452,6 +455,14 @@
     color: var(--text-secondary);
   }
 
+  /* On the word's own centre line. Lifted, it hung over the top of the segment
+     and met the hover fill's edge with nothing between them, and the space it
+     vacated below made the option read as taller on one side than the other.
+     A count belongs beside what it counts.
+
+     Square rather than wide: at 1.125rem of minimum width a single digit sat in
+     a box half again its own size, and that slack read as a gap after the badge
+     that no other pair of things in the control has. */
   .segment-badge {
     align-items: center;
     background: var(--surface-raised);
@@ -461,22 +472,11 @@
     display: inline-grid;
     font: 700 0.5625rem / 1 var(--mono);
     font-variant-numeric: tabular-nums;
-    height: 1rem;
+    height: 0.875rem;
     justify-content: center;
-    min-width: 1.125rem;
-    padding: 0 0.25rem;
+    min-width: 0.875rem;
+    padding: 0 0.1875rem;
     place-items: center;
-    position: relative;
-    top: -0.38rem;
-    vertical-align: super;
-  }
-
-  .segment-badge > span {
-    display: grid;
-    height: 100%;
-    line-height: 1;
-    place-items: center;
-    width: 100%;
   }
 
   input:checked ~ .segment-label .segment-badge {

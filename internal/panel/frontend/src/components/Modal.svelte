@@ -108,14 +108,20 @@
   <section class="modal-panel">
     <header>
       <div class="modal-heading">
-        <h2 id={elementIds.title}>{title}</h2>
+        <!-- The title and whatever rides beside it share one row; the
+             description runs under both. It used to sit in a column next to the
+             extra, so a sentence wrapped early and left a ragged block beside a
+             switch with empty space under it. -->
+        <div class="heading-row">
+          <h2 id={elementIds.title}>{title}</h2>
+          {#if headerExtra !== undefined}
+            <span class="header-extra">{@render headerExtra()}</span>
+          {/if}
+        </div>
         {#if description !== undefined}
           <p id={elementIds.description}>{description}</p>
         {/if}
       </div>
-      {#if headerExtra !== undefined}
-        <span class="header-extra">{@render headerExtra()}</span>
-      {/if}
       <!-- The approved dialogs carry no header X — footer buttons and Escape
            close them. The control stays for assistive tech only. -->
       <button
@@ -210,11 +216,20 @@
     min-width: 0;
   }
 
-  /* Rides the title line, like the Inbox count chip in the approved mock. */
+  /* The title and the control beside it, centred on each other. Box centres are
+     optical centres here because the title's box is trimmed to its cap band
+     below - untrimmed, the line box carries ascender and descender slack the
+     word never uses, and the title rides visibly high of the control. */
+  .heading-row {
+    align-items: center;
+    display: flex;
+    gap: 1rem;
+    justify-content: space-between;
+    min-width: 0;
+  }
+
   .header-extra {
-    align-self: flex-start;
     flex: none;
-    margin-top: 0.2rem;
   }
 
   h2 {
@@ -223,13 +238,18 @@
     letter-spacing: -0.015em;
     line-height: 1.25;
     margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    text-box: trim-both cap alphabetic;
   }
 
+  /* Under the whole row, so a sentence has the dialog's width to run in rather
+     than stopping where the control above it begins. */
   header p {
     color: var(--dim);
     font-size: 0.8125rem;
     line-height: 1.5;
-    margin: 0.3rem 0 0;
+    margin: 0.45rem 0 0;
   }
 
   .modal-close {
