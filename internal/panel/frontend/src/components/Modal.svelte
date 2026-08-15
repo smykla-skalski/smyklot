@@ -32,6 +32,23 @@
   let dialog = $state<HTMLDialogElement | null>(null);
   const elementIds = $derived(modalElementIds(id));
 
+  /**
+   * A dialog is moved out to the shell it belongs to, once, before it is ever opened.
+   *
+   * `showModal()` promotes an element to the top layer, but it does not exempt it from an ancestor
+   * that is not rendering: a dialog written inside a closed `<details>` measures 0x0 and paints
+   * nothing. The inbox is written inside the account menu, so opening it had to leave that menu
+   * hanging open behind it. The shell rather than `document.body`, because the design tokens are
+   * declared on `.app-shell` - the Root console re-skins them there - and a dialog reparented to
+   * the body would inherit the panel's palette inside the Root console.
+   */
+  $effect(() => {
+    const element = dialog;
+    if (element === null) return;
+    const shell = element.closest('.app-shell') ?? document.body;
+    if (element.parentElement !== shell) shell.append(element);
+  });
+
   $effect(() => {
     const element = dialog;
     if (element === null) return;

@@ -11,12 +11,15 @@
     markRead,
     refreshVersion = 0,
     onUnread,
+    onOpen,
   }: {
     fetchPage: PanelApi['fetchNotifications'];
     markRead: PanelApi['markNotificationRead'];
     refreshVersion?: number;
     /** Reports the unread count so the host can badge its own trigger. */
     onUnread?: (unread: number) => void;
+    /** The trigger lives in a menu, which has no reason to stay open behind the dialog. */
+    onOpen?: () => void;
   } = $props();
 
   let open = $state(false);
@@ -57,6 +60,7 @@
   function openInbox(): void {
     open = true;
     now = Date.now();
+    onOpen?.();
     void load();
   }
 

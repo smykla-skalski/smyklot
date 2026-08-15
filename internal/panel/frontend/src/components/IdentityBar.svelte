@@ -113,10 +113,14 @@
         : '',
   );
 
-  /** The inbox lives inside the account menu, so opening it from elsewhere -
-   *  the overview's unread-security-events card - opens the menu first. */
+  /**
+   * The inbox trigger lives in the account menu, but the dialog does not: `Modal` moves itself out
+   * to the shell, so it no longer needs the menu rendered to be visible. Opening from elsewhere -
+   * the overview's unread-security-events card - therefore does not have to open the menu first,
+   * and opening from the menu closes it on the way through.
+   */
   export function openInbox(): void {
-    if (accountMenu !== null) accountMenu.open = true;
+    closeMenus();
     inbox?.showInbox();
   }
 
@@ -402,6 +406,7 @@
           markRead={markNotificationRead}
           refreshVersion={notificationVersion}
           onUnread={(next) => (unreadCount = next)}
+          onOpen={closeMenus}
         />
         <hr class="menu-divider" />
         <div class="theme-row">
