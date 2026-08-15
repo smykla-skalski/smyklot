@@ -1077,6 +1077,56 @@ func DeclareSpecs(harness Harness) {
 		Expect(user.Status).To(Equal(storage.PanelUserActive))
 	})
 
+	It("names the scope an installation invitation is for, and leaves it empty for Root", func() {
+		owner, target := seedInstallation(ctx, store, now)
+		Expect(store.UpsertAccount(ctx, owner)).To(Succeed())
+		Expect(store.ReconcileSuperRoot(ctx, owner.ID, now)).To(Succeed())
+
+		invitee := owner
+		invitee.ID = "github:user:invitee"
+		invitee.SubjectID = "invitee"
+		invitee.Login = "invitee"
+		Expect(store.UpsertAccount(ctx, invitee)).To(Succeed())
+
+		scoped, err := store.CreateInvitation(ctx, storage.InvitationCreate{
+			ID: "scoped-invitation", TokenHash: "scoped-invitation-token", AccountID: invitee.ID,
+			TargetID: &target.TargetID, Role: rolePointer(storage.InstallationRoleViewer),
+			ExpiresAt:        now.Add(7 * 24 * time.Hour),
+			CreatedByAccount: owner.ID, CreatedAt: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		// Whoever opens the link may never have heard of the installation, so the
+		// offer carries what identifies it on GitHub rather than a display name
+		// alone: the login is the handle they can check, and the kind says whether
+		// accepting joins an organisation or one person's installation.
+		Expect(scoped.TargetName).To(HaveValue(Equal(owner.DisplayName)))
+		Expect(scoped.TargetLogin).To(HaveValue(Equal(owner.Login)))
+		Expect(scoped.TargetKind).To(HaveValue(Equal(string(storage.TargetOrganization))))
+
+		// Read back rather than trusting the value the write returned: the two
+		// travel different query paths, and only this one runs after a restart.
+		fetched, err := store.GetInvitationByToken(ctx, "scoped-invitation-token", now)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(fetched.TargetLogin).To(HaveValue(Equal(owner.Login)))
+		Expect(fetched.TargetKind).To(HaveValue(Equal(string(storage.TargetOrganization))))
+
+		systemRole := storage.SystemRoleRoot
+		root, err := store.CreateInvitation(ctx, storage.InvitationCreate{
+			ID: "unscoped-invitation", TokenHash: "unscoped-invitation-token",
+			AccountID: invitee.ID, SystemRole: &systemRole,
+			ExpiresAt:        now.Add(7 * 24 * time.Hour),
+			CreatedByAccount: owner.ID, CreatedAt: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		// A Root offer is scoped to nothing, so every scope column stays null. The
+		// outer join is what makes that so, and it is worth pinning: a plain join
+		// would drop the row entirely rather than return it without a scope.
+		Expect(root.TargetID).To(BeNil())
+		Expect(root.TargetName).To(BeNil())
+		Expect(root.TargetLogin).To(BeNil())
+		Expect(root.TargetKind).To(BeNil())
+	})
+
 	It("creates, reissues, expires, and atomically responds to installation invitations", func() {
 		owner, target := seedInstallation(ctx, store, now)
 		Expect(store.UpsertAccount(ctx, owner)).To(Succeed())
