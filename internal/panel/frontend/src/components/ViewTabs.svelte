@@ -119,10 +119,59 @@
     if (section === 'history') return 'history';
     return 'settings';
   }
+  /**
+   * The selected row is a thumb that travels, the same object the segmented control moves.
+   *
+   * It was a background painted on whichever link happened to be current, so selection appeared in
+   * one place and vanished from another with nothing connecting the two. One element that slides
+   * says where the selection went; two that swap grounds only say that something changed.
+   */
+  function followSelection(node: HTMLElement, current: string) {
+    let frame: number | undefined;
+    let selection = current;
+
+    function place(): void {
+      if (frame !== undefined) cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        frame = requestAnimationFrame(() => {
+          frame = undefined;
+          const active = node.querySelector<HTMLElement>('a.active');
+          if (active === null) {
+            node.style.setProperty('--nav-thumb-height', '0px');
+            node.classList.remove('thumb-ready');
+            return;
+          }
+          node.style.setProperty('--nav-thumb-top', `${active.offsetTop}px`);
+          node.style.setProperty('--nav-thumb-height', `${active.offsetHeight}px`);
+          node.classList.add('thumb-ready');
+        });
+      });
+    }
+
+    place();
+    const resize = new ResizeObserver(place);
+    resize.observe(node);
+
+    return {
+      update(next: string) {
+        if (next === selection) return;
+        selection = next;
+        place();
+      },
+      destroy() {
+        resize.disconnect();
+        if (frame !== undefined) cancelAnimationFrame(frame);
+      },
+    };
+  }
 </script>
 
 <nav class={['panel-navigation', collapsed && 'collapsed']} aria-label="Panel navigation">
-  <div class="view-links">
+  <div
+    class="view-links"
+    use:followSelection={`${rootMode ? 'root' : 'panel'}:${rootValue ?? ''}:${value ?? ''}:${collapsed}`}
+  >
+    <span class="nav-thumb" aria-hidden="true"></span>
     {#if rootMode}
       <p class="nav-label">Administration</p>
       {#each ROOT_SECTIONS as section (section)}
@@ -202,6 +251,8 @@
     flex-direction: column;
     gap: 3px;
     height: 100%;
+    /* The travelling thumb is positioned against this. */
+    position: relative;
   }
 
   .nav-label {
@@ -220,6 +271,9 @@
   a {
     align-items: center;
     border-radius: var(--radius-control);
+    /* Above the thumb, which is painted behind every row. */
+    isolation: isolate;
+    z-index: 1;
     color: var(--sidebar-text-secondary);
     display: flex;
     font-size: var(--font-size-control);
@@ -243,28 +297,52 @@
 
   a:active {
     background: var(--sidebar-item-pressed);
-    transform: translateY(1px);
   }
 
   /* Selected item is a raised thumb, the same language as the app's segmented
-     controls: the accent lives in the text and icon, not a bar or a tint. */
+     controls: the accent lives in the text and icon, not a bar or a tint. The ground is drawn by
+     .nav-thumb, which slides between rows, so the link itself only carries its ink. */
   a.active {
-    background: var(--sidebar-thumb);
-    box-shadow: var(--sidebar-thumb-shadow);
     color: var(--sidebar-item-active-text);
     font-weight: 700;
+  }
+
+  .nav-thumb {
+    background: var(--sidebar-thumb);
+    border-radius: var(--radius-control);
+    box-shadow: var(--sidebar-thumb-shadow);
+    height: var(--nav-thumb-height, 0);
+    inset-inline: 0;
+    pointer-events: none;
+    position: absolute;
+    top: var(--nav-thumb-top, 0);
+    transition:
+      top 240ms cubic-bezier(0.22, 1, 0.36, 1),
+      height 240ms cubic-bezier(0.22, 1, 0.36, 1),
+      background-color var(--duration-fast) var(--ease-standard);
+    z-index: 0;
+  }
+
+  /* Until the first measurement lands there is nothing to travel from. */
+  .view-links:not(.thumb-ready) .nav-thumb {
+    transition: none;
+  }
+
+  .view-links:has(a.active:hover) .nav-thumb {
+    background: color-mix(in srgb, var(--sidebar-item-active-text) 2.5%, var(--sidebar-thumb));
+  }
+
+  .view-links:has(a.active:active) .nav-thumb {
+    background: color-mix(in srgb, var(--sidebar-item-active-text) 5%, var(--sidebar-thumb));
   }
 
   /* The selected row's own states stay under the selection they sit on. At 6% and 12% the press
      measured 6.14 dE00 against a 3.74 fill in the light panel - the acknowledgement was louder than
      the state. Same pair as the segmented control's thumb, for the same reasons. */
-  a.active:hover {
-    background: color-mix(in srgb, var(--sidebar-item-active-text) 2.5%, var(--sidebar-thumb));
-    color: var(--sidebar-item-active-text);
-  }
-
+  a.active:hover,
   a.active:active {
-    background: color-mix(in srgb, var(--sidebar-item-active-text) 5%, var(--sidebar-thumb));
+    background: transparent;
+    color: var(--sidebar-item-active-text);
   }
 
   .admin-zone {

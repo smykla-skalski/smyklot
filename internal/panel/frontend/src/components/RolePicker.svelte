@@ -177,10 +177,6 @@
     border-color: var(--control-border-hover);
   }
 
-  .role-trigger:active:not(:disabled) {
-    transform: translateY(1px);
-  }
-
   .role-trigger:focus-visible {
     border-color: var(--focus);
     box-shadow: inset 0 0 0 1px var(--focus);

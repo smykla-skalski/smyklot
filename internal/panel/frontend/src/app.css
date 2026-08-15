@@ -285,6 +285,18 @@
   --content-max: 100rem;
   --panel-header-height: 5rem;
   --pagination-height: 2.75rem;
+  /* One press, everywhere: the control shrinks toward its own centre, which is what reads as
+     pushed in. Half the app was nudging elements down by a pixel instead - the same gesture said
+     two different ways, and on a wide row a downward nudge reads as the row shifting rather than
+     the control depressing.
+
+     Three figures rather than one because a scale is proportional and the pressables here run from
+     a 28px disc to a 400px table header. Each is picked so the edge travels roughly a pixel and a
+     half either way: 0.98 moves a 215px nav row 2.2px, 0.9 moves a 32px disc 1.6px, and 0.995
+     keeps a wide header from lurching 4px when the same 0.98 would. */
+  --press-scale: 0.98;
+  --press-scale-disc: 0.9;
+  --press-scale-surface: 0.995;
   --duration-press: 100ms;
   --duration-fast: 160ms;
   --duration-normal: 220ms;
@@ -842,7 +854,7 @@ button:active:not(:disabled),
 summary:active,
 a[href]:active {
   background-image: linear-gradient(var(--press), var(--press));
-  transform: scale(0.98);
+  transform: scale(var(--press-scale));
 }
 
 /* Hover mixes from ink rather than using --interactive-hover: that token is
@@ -866,9 +878,13 @@ th[aria-sort='descending'] .table-sort-button:hover {
   background-color: color-mix(in srgb, var(--brand-action-text) 10%, transparent);
 }
 
+.table-sort-button {
+  /* A header runs the width of its column, so it takes the surface figure. */
+  --press-scale: var(--press-scale-surface);
+}
+
 .table-sort-button:active {
   background-color: color-mix(in srgb, var(--text-primary) 12%, transparent);
-  transform: translateY(1px) scale(0.995);
 }
 
 th[aria-sort='ascending'] .table-sort-button:active,
@@ -952,7 +968,7 @@ input[type='radio']:not(:disabled) {
 .btn:active:not(:disabled) {
   background-image: linear-gradient(var(--press), var(--press));
   filter: none;
-  transform: scale(0.98);
+  transform: scale(var(--press-scale));
 }
 
 .btn:disabled,

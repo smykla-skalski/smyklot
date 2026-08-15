@@ -284,7 +284,7 @@
   .header-filter summary:active {
     background: color-mix(in srgb, var(--text-primary) 14%, transparent);
     color: var(--text-primary);
-    transform: scale(0.9);
+    transform: scale(var(--press-scale-disc));
   }
 
   summary.icon-only .summary-copy {
@@ -317,7 +317,7 @@
   summary:active {
     background: var(--interactive-pressed-bg);
     border-color: var(--control-border-hover);
-    transform: translateY(1px) scale(0.98);
+    transform: scale(var(--press-scale));
   }
 
   .summary-copy {

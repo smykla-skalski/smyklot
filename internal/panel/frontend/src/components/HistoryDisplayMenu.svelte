@@ -111,7 +111,7 @@
   summary:active {
     background: var(--interactive-pressed-bg);
     border-color: var(--control-border-hover);
-    transform: translateY(1px) scale(0.98);
+    transform: scale(var(--press-scale));
   }
 
   .display-icon {

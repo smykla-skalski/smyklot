@@ -2498,10 +2498,6 @@
     border-color: color-mix(in srgb, var(--dim) 56%, transparent);
   }
 
-  .method-option:active {
-    transform: translateY(1px);
-  }
-
   /* Mixed against the control border, not against transparent: over the tinted
      fill a 60% alpha edge composites lighter than the mock's opaque one. */
   .method-option.selected {

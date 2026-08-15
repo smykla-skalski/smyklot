@@ -517,6 +517,9 @@
   }
 
   .sidebar-collapse-trigger {
+    /* A 28px square either way, so it takes the figure meant for a disc: the ordinary 0.98 would
+       move its edge a third of a pixel and read as nothing happening. */
+    --press-scale: var(--press-scale-disc);
     cursor: pointer;
     opacity: 0;
     position: relative;
@@ -544,7 +547,7 @@
   .sidebar-collapse-trigger:active,
   .mobile-navigation-trigger:active {
     background: var(--sidebar-item-pressed);
-    transform: translateY(1px);
+    transform: scale(var(--press-scale));
   }
 
   .mobile-navigation-trigger {
@@ -615,7 +618,6 @@
   .target-trigger:active {
     background: var(--sidebar-item-pressed);
     box-shadow: none;
-    transform: translateY(1px);
   }
 
   .target-trigger::-webkit-details-marker,
@@ -780,7 +782,6 @@
 
   .target-option:active {
     background: var(--sidebar-menu-pressed);
-    transform: translateY(1px);
   }
 
   .option-copy {
@@ -857,7 +858,6 @@
 
   .who:active {
     background: var(--sidebar-item-pressed);
-    transform: translateY(1px);
   }
 
   .who-avatar {
@@ -1021,7 +1021,6 @@
 
   .account-action:active {
     background: var(--sidebar-menu-pressed);
-    transform: translateY(1px);
   }
 
   .action-icon {
@@ -1134,9 +1133,12 @@
     color: var(--sidebar-text);
   }
 
+  /* Collapsed, this is a disc sitting on the mark, and it is centred by `translate` rather than by
+     a transform - so the press scale composes with that instead of fighting it, and the ring, its
+     border and the halo behind it all shrink together as one object. */
   .collapsed .sidebar-collapse-trigger:active {
     background: var(--sidebar-item-pressed);
-    transform: none;
+    transform: scale(var(--press-scale));
   }
 
   .collapsed .mark {

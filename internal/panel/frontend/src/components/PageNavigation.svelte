@@ -103,7 +103,6 @@
 
   button:active:not(:disabled) {
     box-shadow: inset 0 0 0 100vmax var(--press);
-    transform: translateY(1px);
   }
 
   button:disabled {

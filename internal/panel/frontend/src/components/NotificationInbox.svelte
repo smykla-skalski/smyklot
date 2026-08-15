@@ -303,7 +303,6 @@
 
   .notification-trigger:active {
     background: var(--sidebar-menu-pressed);
-    transform: translateY(1px);
   }
 
   .trigger-icon {

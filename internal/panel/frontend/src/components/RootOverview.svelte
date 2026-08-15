@@ -494,7 +494,7 @@
 
   a.metric-card:active,
   button.metric-card:active {
-    transform: translateY(1px) scale(0.995);
+    transform: scale(var(--press-scale-surface));
   }
 
   .metric-card.attention {
