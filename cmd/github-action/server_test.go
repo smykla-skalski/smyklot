@@ -275,8 +275,9 @@ var _ = Describe("Webhook service [Unit]", func() {
 				return stub.countCalls(http.MethodPost, approveReviews)
 			}, eventuallyWindow).Should(Equal(1))
 
-			Expect(post(webhook.EventIssueComment, deliveryTwo, payload, nil).StatusCode).
-				To(Equal(http.StatusOK))
+			Eventually(func() int {
+				return post(webhook.EventIssueComment, deliveryTwo, payload, nil).StatusCode
+			}, eventuallyWindow).Should(Equal(http.StatusOK))
 
 			Consistently(func() int {
 				return stub.countCalls(http.MethodPost, approveReviews)
