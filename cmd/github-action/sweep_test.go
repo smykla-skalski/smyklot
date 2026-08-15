@@ -15,6 +15,7 @@ import (
 
 	"github.com/smykla-skalski/smyklot/internal/githubtest"
 	adminpanel "github.com/smykla-skalski/smyklot/internal/panel"
+	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
@@ -133,6 +134,45 @@ var _ = Describe("Reaction sweep [Unit]", func() {
 
 		Expect(stub.countCalls(http.MethodGet, "/repos/smykla-skalski/smyklot/issues/42/reactions")).
 			To(Equal(1))
+	})
+
+	It("should safely drain pre-durable pending CI labels once", func() {
+		stub.installations = `[{"id":111,"account":{"login":"smykla-skalski"}}]`
+		stub.repos = `{
+			"total_count": 1,
+			"repositories": [{
+				"id": 123456,
+				"name": "smyklot",
+				"full_name": "smykla-skalski/smyklot",
+				"owner": {"login": "smykla-skalski"}
+			}]
+		}`
+		stub.openPRs = `[{
+			"number": 42,
+			"state": "open",
+			"title": "a change",
+			"user": {"login": "author"},
+			"head": {"sha": "unknown-authorized-head"},
+			"base": {"ref": "main"},
+			"labels": [{"name": "smyklot:pending-ci:squash"}]
+		}]`
+		stub.prHead = "unknown-authorized-head"
+		stub.prLabels = `[{"name":"smyklot:pending-ci:squash"}]`
+		start()
+
+		Expect(service.sweep(GinkgoT().Context())).To(Succeed())
+		lease, err := service.store.LeaseDue(
+			GinkgoT().Context(), time.Now().UTC(), time.Now().UTC().Add(time.Minute),
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(lease.Request).NotTo(BeNil())
+		Expect(lease.Request.Lifecycle).To(Equal(pendingci.LifecycleCancelled))
+		Expect(lease.Request.CleanupPending).To(BeTrue())
+		Expect(lease.Request.SourceCommentID).To(BeZero())
+		Expect(stub.countCalls(http.MethodPost, "/issues/42/comments")).To(Equal(1))
+
+		Expect(service.sweep(GinkgoT().Context())).To(Succeed())
+		Expect(stub.countCalls(http.MethodPost, "/issues/42/comments")).To(Equal(1))
 	})
 
 	// Without caching these two files, a sweep re-reads them for every

@@ -195,7 +195,7 @@ func reconcilerRequest(progressAt time.Time) pendingci.Request {
 	return pendingci.Request{
 		ID: 7, Revision: 2, Lifecycle: pendingci.LifecycleArmed,
 		RepositoryID: "repository",
-		HeadSHA: "live-head", LastProgressAt: progressAt,
+		HeadSHA:      "live-head", LastProgressAt: progressAt,
 		LastObservedState: string(pendingci.ObservedPassing),
 		LastFingerprint:   "passing",
 	}

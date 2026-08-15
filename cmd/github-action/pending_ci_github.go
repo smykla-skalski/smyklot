@@ -132,7 +132,7 @@ func (backend *githubPendingCIBackend) completeExclusive(
 			client.RemoveReaction(ctx, owner, repository, commentID, github.ReactionPendingCI),
 		))
 	}
-	if lifecycle == pendingci.LifecycleMerged {
+	if lifecycle == pendingci.LifecycleMerged && request.SourceCommentID > 0 {
 		cleanupErr = errors.Join(cleanupErr, cleanupGitHubError(
 			"add pending CI success reaction",
 			client.AddReaction(ctx, owner, repository, commentID, github.ReactionSuccess),
@@ -148,14 +148,14 @@ func (backend *githubPendingCIBackend) cleanupScope(
 ) (bool, bool, error) {
 	current, err := backend.current.GetArmed(ctx, request.RepositoryID, request.PullRequest)
 	if errors.Is(err, storage.ErrNotFound) {
-		return true, true, nil
+		return true, request.SourceCommentID > 0, nil
 	}
 	if err != nil {
 		return false, false, fmt.Errorf("read replacement pending CI request: %w", err)
 	}
 
 	return current.Label != request.Label,
-		current.SourceCommentID != request.SourceCommentID,
+		request.SourceCommentID > 0 && current.SourceCommentID != request.SourceCommentID,
 		nil
 }
 

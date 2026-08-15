@@ -310,7 +310,7 @@ var _ = Describe("Choosing an entry point [Unit]", func() {
 			// its revision rather than the delivery identifier. Sending the
 			// same comment again would be refused as a repeat and the spec
 			// would pass without the file ever being read a second time
-			edited := delivery("edited", "/approve", "User", "2026-01-01T00:00:01Z", true)
+			edited := delivery("edited", "/approve", "User", "2026-08-08T10:00:01Z", true)
 
 			deliverAccepted(service, webhook.EventIssueComment, deliveryTwo, edited)
 

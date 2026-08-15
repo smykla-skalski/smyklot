@@ -149,3 +149,18 @@ func (e *IssueCommentEvent) IdempotencyKey() string {
 		e.Comment.UpdatedAt,
 	)
 }
+
+// SourceSequence orders actions that GitHub reports with the same comment
+// timestamp. An edit supersedes creation; deletion supersedes both.
+func (e *IssueCommentEvent) SourceSequence() int {
+	switch e.Action {
+	case ActionCreated:
+		return 1
+	case ActionEdited:
+		return 2
+	case ActionDeleted:
+		return 3
+	default:
+		return 0
+	}
+}

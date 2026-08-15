@@ -136,6 +136,7 @@ func armWebhookTestRequestWithLabel(srv *server, label string) pendingci.Request
 		Requester:          "someone",
 		SourceCommentID:    555,
 		SourceRevision:     requestedAt.Format(time.RFC3339Nano),
+		SourceSequence:     1,
 		Label:              label,
 		RequestedAt:        requestedAt,
 	})
@@ -342,6 +343,33 @@ var _ = Describe("Webhook service [Unit]", func() {
 			}, eventuallyWindow).Should(Equal(2))
 		})
 
+		It("should not resurrect a command from an older comment revision", func() {
+			post(
+				webhook.EventIssueComment,
+				deliveryOne,
+				delivery("edited", "not a command", "User", "2026-08-08T10:05:00Z", true),
+				nil,
+			)
+			Eventually(func() int {
+				return stub.countCalls(http.MethodPost, "/app/installations/987/access_tokens")
+			}, eventuallyWindow).Should(Equal(1))
+
+			post(
+				webhook.EventIssueComment,
+				deliveryTwo,
+				delivery("created", "/squash after ci", "User", "2026-08-08T10:00:00Z", true),
+				nil,
+			)
+			Consistently(func() int {
+				return stub.countCalls(http.MethodPost, "/app/installations/987/access_tokens")
+			}, 300*time.Millisecond).Should(Equal(1))
+			_, err := srv.store.GetArmed(
+				GinkgoT().Context(), repositoryStorageID(githubtest.DefaultRepoID),
+				githubtest.DefaultPRNumber,
+			)
+			Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
+		})
+
 		It("should execute an accepted command after a service restart", func() {
 			statePath := GinkgoT().TempDir() + "/restart.sqlite3"
 			endpoint = httptest.NewServer(stub)
@@ -383,6 +411,7 @@ var _ = Describe("Webhook service [Unit]", func() {
 
 	Describe("pending CI events", func() {
 		BeforeEach(func() {
+			stub.prHead = "pending-head"
 			start(config.Default())
 		})
 

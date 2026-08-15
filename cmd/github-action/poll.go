@@ -264,6 +264,20 @@ func pollAllPRs(
 		return NewGitHubError(ErrGetPRs, err)
 	}
 
+	return processAllPRs(
+		ctx, client, checker, bc, repoOwner, repoName, botUsername, prs, includePendingCI,
+	)
+}
+
+func processAllPRs(
+	ctx context.Context,
+	client *github.Client,
+	checker *permissions.Checker,
+	bc *config.Config,
+	repoOwner, repoName, botUsername string,
+	prs []map[string]interface{},
+	includePendingCI bool,
+) error {
 	if len(prs) == 0 {
 		logging.From(ctx).Info("no open PRs")
 

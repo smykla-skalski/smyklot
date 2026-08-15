@@ -37,6 +37,9 @@ func ContentsResponse(content string) string {
 
 // IssueComment describes the delivery to render.
 type IssueComment struct {
+	// CommentID identifies one mutable source comment.
+	CommentID int64
+
 	// Action is created, edited, or deleted
 	Action string
 
@@ -78,6 +81,9 @@ func IssueCommentPayload(event IssueComment) []byte {
 	if event.UpdatedAt == "" {
 		event.UpdatedAt = DefaultUpdatedAt
 	}
+	if event.CommentID == 0 {
+		event.CommentID = DefaultCommentID
+	}
 
 	pullRequest := "null"
 	if event.IsPullRequest {
@@ -105,7 +111,7 @@ func IssueCommentPayload(event IssueComment) []byte {
 		"installation": {"id": %d}
 	}`,
 		event.Action,
-		DefaultCommentID, event.Body, event.UpdatedAt,
+		event.CommentID, event.Body, event.UpdatedAt,
 		DefaultAuthor, event.AuthorType,
 		DefaultPRNumber, pullRequest,
 		DefaultRepoID, DefaultRepoName, DefaultRepoOwner, DefaultRepoName, DefaultRepoOwner,

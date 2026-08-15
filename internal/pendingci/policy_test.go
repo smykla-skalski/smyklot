@@ -32,18 +32,15 @@ func TestDecideKeepsUnsafeCIArmed(t *testing.T) {
 	}
 }
 
-func TestDecideUsesDiscoveryGraceForNewHeadWithNoChecks(t *testing.T) {
+func TestDecideCancelsWhenAuthorizedHeadChanges(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, time.August, 15, 12, 0, 0, 0, time.UTC)
 	request := policyRequest(now.Add(-2*time.Hour), ObservedPending, "old")
 	observation := policyObservation(now, ObservedNoChecks, "none")
 	observation.HeadSHA = "new-head"
 	decision := mustDecide(t, request, observation)
-	if decision.Schedule != ScheduleActive || decision.LastProgressAt != now {
-		t.Fatalf("got %#v, want active request with reset progress", decision)
-	}
-	if decision.NextCheckAt != now.Add(10*time.Minute) {
-		t.Fatalf("next check = %s, want discovery grace", decision.NextCheckAt)
+	if decision.Kind != DecisionFinish || decision.Lifecycle != LifecycleCancelled {
+		t.Fatalf("got %#v, want exact-head cancellation", decision)
 	}
 }
 

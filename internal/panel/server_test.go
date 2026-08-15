@@ -1197,8 +1197,9 @@ func TestPanelManagesPendingCIQueue(t *testing.T) {
 		RepositoryID: "github:repository:20", RepositoryFullName: "smykla-skalski/smyklot",
 		PullRequest: 42, HeadSHA: "abc123", BaseBranch: "main",
 		MergeMethod: pendingci.MergeMethodSquash, Requester: "operator",
-		SourceCommentID: 99, SourceRevision: "revision-1",
-		Label: "smyklot:pending:ci:squash", RequestedAt: harness.now,
+		SourceCommentID: 99, SourceRevision: harness.now.Format(time.RFC3339Nano),
+		SourceSequence: 1,
+		Label:          "smyklot:pending:ci:squash", RequestedAt: harness.now,
 	})
 	if err != nil {
 		t.Fatal(err)

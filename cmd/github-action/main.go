@@ -468,6 +468,9 @@ func executeCommentWithEnvironment(
 		if err != nil {
 			return err
 		}
+		if fb == nil {
+			continue
+		}
 
 		// For new comments, filter out "already approved" warnings
 		// Just acknowledge with eyes reaction instead
@@ -1036,6 +1039,9 @@ func executePendingCIMerge(
 		}
 		if failures.command != nil {
 			return nil, failures.command
+		}
+		if failures.stale {
+			return nil, nil
 		}
 	}
 

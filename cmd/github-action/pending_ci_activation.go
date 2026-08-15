@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/pkg/github"
@@ -30,6 +31,7 @@ type pendingCIActivationRequest struct {
 type pendingCIActivationErrors struct {
 	label   error
 	command error
+	stale   bool
 }
 
 // activatePendingCI makes external artifacts and durable command replacement
@@ -72,6 +74,10 @@ func activatePendingCI(
 		)
 		if failures.command != nil {
 			rollbackPendingCIArtifacts(ctx, artifacts, request, ownership, true)
+			if errors.Is(failures.command, pendingci.ErrStaleSourceRevision) {
+				failures.command = nil
+				failures.stale = true
+			}
 
 			return nil
 		}

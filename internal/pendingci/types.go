@@ -66,6 +66,7 @@ type Request struct {
 	Requester          string
 	SourceCommentID    int64
 	SourceRevision     string
+	SourceSequence     int
 	Label              string
 	Lifecycle          Lifecycle
 	Schedule           Schedule
@@ -98,6 +99,7 @@ type ArmRequest struct {
 	Requester          string
 	SourceCommentID    int64
 	SourceRevision     string
+	SourceSequence     int
 	Label              string
 	RequestedAt        time.Time
 }
@@ -105,6 +107,38 @@ type ArmRequest struct {
 type ArmResult struct {
 	Request    Request
 	Superseded *Request
+}
+
+// SourceRevisionRequest orders deliveries for one mutable source comment.
+// Sequence breaks ties between GitHub actions sharing the same timestamp.
+type SourceRevisionRequest struct {
+	RepositoryID string
+	PullRequest  int
+	CommentID    int64
+	Revision     string
+	Sequence     int
+	EventKey     string
+	ObservedAt   time.Time
+}
+
+// LegacyDrainRequest records a pre-durable label as terminal work. Its
+// authorized head cannot be recovered, so adopting it as armed would be unsafe.
+type LegacyDrainRequest struct {
+	TargetID           string
+	InstallationID     int64
+	RepositoryID       string
+	RepositoryFullName string
+	PullRequest        int
+	HeadSHA            string
+	BaseBranch         string
+	MergeMethod        MergeMethod
+	RequiredChecksOnly bool
+	Label              string
+	DrainedAt          time.Time
+}
+
+type LegacyDrainResult struct {
+	Request *Request
 }
 
 type LeaseResult struct {
@@ -161,11 +195,13 @@ type FinishRequest struct {
 }
 
 type CancelRequest struct {
-	RepositoryID string
-	PullRequest  int
-	CommentID    int64
-	Reason       string
-	CancelledAt  time.Time
+	RepositoryID   string
+	PullRequest    int
+	CommentID      int64
+	SourceRevision string
+	SourceSequence int
+	Reason         string
+	CancelledAt    time.Time
 }
 
 type FinishPRRequest struct {
@@ -233,7 +269,9 @@ type Decision struct {
 // operator controls. Implementations own atomic transitions; callers own
 // GitHub observations and presentation.
 type Store interface {
+	ClaimSourceRevision(context.Context, SourceRevisionRequest) (bool, error)
 	Arm(context.Context, ArmRequest) (ArmResult, error)
+	DrainLegacy(context.Context, LegacyDrainRequest) (LegacyDrainResult, error)
 	Get(context.Context, int64) (Request, error)
 	GetArmed(context.Context, string, int) (Request, error)
 	LeaseDue(context.Context, time.Time, time.Time) (LeaseResult, error)

@@ -14,7 +14,7 @@ import (
 const pendingCISelect = `
 SELECT id, target_id, installation_id, repository_id, repository_full_name,
        pull_request, head_sha, base_branch, merge_method, required_checks_only,
-       requester, source_comment_id, source_revision, label, lifecycle, schedule,
+       requester, source_comment_id, source_revision, source_sequence, label, lifecycle, schedule,
        next_check_at, lease_expires_at, last_progress_at, last_observed_state,
        last_fingerprint, last_event_key, reason, requested_at, updated_at,
        finished_at, cleanup_pending, cleanup_attempts, cleanup_error, revision
@@ -33,11 +33,14 @@ func (s *Store) Arm(ctx context.Context, arm pendingci.ArmRequest) (pendingci.Ar
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	superseded, err := getArmedPendingCI(ctx, tx, arm.RepositoryID, arm.PullRequest)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return pendingci.ArmResult{}, fmt.Errorf("read superseded pending CI request: %w", err)
+	superseded, duplicate, err := pendingCIArmTarget(ctx, tx, arm)
+	if err != nil {
+		return pendingci.ArmResult{}, err
 	}
-	if err == nil {
+	if duplicate {
+		return pendingci.ArmResult{Request: superseded}, nil
+	}
+	if superseded.ID != 0 {
 		if _, err := tx.ExecContext(ctx, `
 UPDATE pending_ci_requests SET
     lifecycle = ?, reason = ?, next_check_at = ?, lease_expires_at = NULL,
@@ -71,9 +74,9 @@ WHERE id = ? AND lifecycle = ?`,
 INSERT INTO pending_ci_requests (
     target_id, installation_id, repository_id, repository_full_name,
     pull_request, head_sha, base_branch, merge_method, required_checks_only,
-    requester, source_comment_id, source_revision, label, lifecycle, schedule,
+    requester, source_comment_id, source_revision, source_sequence, label, lifecycle, schedule,
     next_check_at, last_progress_at, requested_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id`,
 		arm.TargetID,
 		arm.InstallationID,
@@ -87,6 +90,7 @@ RETURNING id`,
 		arm.Requester,
 		arm.SourceCommentID,
 		arm.SourceRevision,
+		arm.SourceSequence,
 		arm.Label,
 		pendingci.LifecycleArmed,
 		pendingci.ScheduleActive,
@@ -118,11 +122,51 @@ func armedRequest(id int64, arm pendingci.ArmRequest) pendingci.Request {
 		PullRequest: arm.PullRequest, HeadSHA: arm.HeadSHA, BaseBranch: arm.BaseBranch,
 		MergeMethod: arm.MergeMethod, RequiredChecksOnly: arm.RequiredChecksOnly,
 		Requester: arm.Requester, SourceCommentID: arm.SourceCommentID,
-		SourceRevision: arm.SourceRevision, Label: arm.Label,
+		SourceRevision: arm.SourceRevision, SourceSequence: arm.SourceSequence, Label: arm.Label,
 		Lifecycle: pendingci.LifecycleArmed, Schedule: pendingci.ScheduleActive,
 		NextCheckAt: arm.RequestedAt, LastProgressAt: arm.RequestedAt,
 		RequestedAt: arm.RequestedAt, UpdatedAt: arm.RequestedAt, Revision: 1,
 	}
+}
+
+func pendingCIArmTarget(
+	ctx context.Context,
+	tx *transaction,
+	arm pendingci.ArmRequest,
+) (pendingci.Request, bool, error) {
+	current, err := getArmedPendingCI(ctx, tx, arm.RepositoryID, arm.PullRequest)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return pendingci.Request{}, false, fmt.Errorf(
+			"read superseded pending CI request: %w", err,
+		)
+	}
+	stale, equalHistory, err := comparePendingCISourceHistory(ctx, tx, arm)
+	if err != nil {
+		return pendingci.Request{}, false, err
+	}
+	if stale {
+		return pendingci.Request{}, false, pendingci.ErrStaleSourceRevision
+	}
+	if equalHistory {
+		if current.ID != 0 && samePendingCICommand(current, arm) {
+			return current, true, nil
+		}
+
+		return pendingci.Request{}, false, pendingci.ErrStaleSourceRevision
+	}
+
+	return current, false, nil
+}
+
+func samePendingCICommand(request pendingci.Request, arm pendingci.ArmRequest) bool {
+	return request.TargetID == arm.TargetID && request.InstallationID == arm.InstallationID &&
+		request.RepositoryID == arm.RepositoryID && request.PullRequest == arm.PullRequest &&
+		request.HeadSHA == arm.HeadSHA && request.BaseBranch == arm.BaseBranch &&
+		request.MergeMethod == arm.MergeMethod &&
+		request.RequiredChecksOnly == arm.RequiredChecksOnly && request.Requester == arm.Requester &&
+		request.SourceCommentID == arm.SourceCommentID &&
+		request.SourceRevision == arm.SourceRevision && request.SourceSequence == arm.SourceSequence &&
+		request.Label == arm.Label
 }
 
 func (s *Store) GetArmed(
@@ -483,6 +527,16 @@ WHERE repository_id = ? AND pull_request = ? AND source_comment_id = ? AND lifec
 	}
 	if err != nil {
 		return nil, fmt.Errorf("read pending CI cancellation target: %w", err)
+	}
+	comparison, err := pendingci.CompareSourceRevisions(
+		change.SourceRevision, change.SourceSequence,
+		request.SourceRevision, request.SourceSequence,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if comparison < 0 {
+		return nil, nil
 	}
 
 	result, err := tx.ExecContext(ctx, `

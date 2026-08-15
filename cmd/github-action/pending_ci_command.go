@@ -60,6 +60,7 @@ type pendingCICommand struct {
 	repositoryID       string
 	repositoryFullName string
 	sourceRevision     string
+	sourceSequence     int
 	now                func() time.Time
 }
 
@@ -79,7 +80,8 @@ func (command *pendingCICommand) arm(
 		PullRequest: pullRequest, HeadSHA: headSHA, BaseBranch: baseBranch,
 		MergeMethod: pendingci.MergeMethod(method), RequiredChecksOnly: requiredChecksOnly,
 		Requester: runtime.CommentAuthor, SourceCommentID: int64(commentID),
-		SourceRevision: command.sourceRevision, Label: label, RequestedAt: requestedAt,
+		SourceRevision: command.sourceRevision, SourceSequence: command.sourceSequence,
+		Label: label, RequestedAt: requestedAt,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("persist pending CI command: %w", err)
@@ -98,6 +100,7 @@ func (s *server) commandEnvironment(event *webhook.IssueCommentEvent) commandEnv
 		repositoryID:       repositoryStorageID(event.Repository.ID),
 		repositoryFullName: event.Repository.FullName,
 		sourceRevision:     event.Comment.UpdatedAt,
+		sourceSequence:     event.SourceSequence(),
 		now:                func() time.Time { return time.Now().UTC() },
 	}}
 }
@@ -120,6 +123,7 @@ func (s *server) cancelEditedPendingCI(
 		request, transitionErr = s.store.CancelBySource(ctx, pendingci.CancelRequest{
 			RepositoryID: repositoryID,
 			PullRequest:  event.Issue.Number, CommentID: event.Comment.ID,
+			SourceRevision: event.Comment.UpdatedAt, SourceSequence: event.SourceSequence(),
 			Reason: reason, CancelledAt: time.Now().UTC(),
 		})
 

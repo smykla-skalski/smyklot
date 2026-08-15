@@ -52,6 +52,7 @@ func SeededTables() []string {
 		"security_notifications",
 		"deliveries",
 		"pending_ci_requests",
+		"pending_ci_source_revisions",
 		"user_invitations",
 		"runtime_settings",
 		"user_preferences",
@@ -328,10 +329,22 @@ func (s *seeder) seedPendingCI() error {
 		MergeMethod: pendingci.MergeMethodSquash, RequiredChecksOnly: true,
 		Requester: "seed-owner", SourceCommentID: 101,
 		SourceRevision: requestedAt.Format(time.RFC3339Nano),
+		SourceSequence: 1,
 		Label:          "smyklot:pending:ci:squash:required", RequestedAt: requestedAt,
 	})
 	if err != nil {
 		return err
+	}
+	claimed, err := s.store.ClaimSourceRevision(s.ctx, pendingci.SourceRevisionRequest{
+		RepositoryID: "repo-1", PullRequest: 198, CommentID: 101,
+		Revision: requestedAt.Format(time.RFC3339Nano), Sequence: 1,
+		EventKey: "seed:pending-ci:source", ObservedAt: requestedAt,
+	})
+	if err != nil {
+		return err
+	}
+	if !claimed {
+		return fmt.Errorf("claim seeded pending CI source revision")
 	}
 	_, err = s.store.Finish(s.ctx, pendingci.FinishRequest{
 		ID: armed.Request.ID, ExpectedRevision: armed.Request.Revision,

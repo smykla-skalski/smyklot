@@ -623,13 +623,12 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 		public := httptest.NewServer(service.handler())
 		DeferCleanup(public.Close)
 		for index := range 4 {
-			body := delivery(
-				"edited",
-				"/approve",
-				"User",
-				fmt.Sprintf("2026-08-08T10:0%d:00Z", index+1),
-				true,
-			)
+			body := githubtest.IssueCommentPayload(githubtest.IssueComment{
+				CommentID: int64(githubtest.DefaultCommentID + index + 1),
+				Action:    "edited", Body: "/approve", AuthorType: "User",
+				UpdatedAt:     fmt.Sprintf("2026-08-08T10:0%d:00Z", index+1),
+				IsPullRequest: true,
+			})
 			response := postDelivery(
 				public,
 				"issue_comment",

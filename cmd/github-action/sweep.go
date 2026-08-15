@@ -50,8 +50,9 @@ func (s *server) drain(workers *sync.WaitGroup) {
 // pollLoop sweeps on an interval until ctx is cancelled.
 //
 // GitHub delivers no webhook when someone adds or removes a reaction, so
-// reaction commands can only be found by looking. The same sweep merges pull
-// requests that were waiting for CI.
+// reaction commands can only be found by looking. Pending-CI reconciliation
+// has its own durable scheduler; this loop only performs its one-time safe
+// drain of labels created by older service versions.
 //
 // Sweeping in the loop rather than in a goroutine per tick means a sweep that
 // outruns the interval delays the next one instead of overlapping with it.
@@ -189,7 +190,9 @@ func (s *server) sweepInstallation(ctx context.Context, installation github.Inst
 	for _, repo := range repos {
 		// The repository is named here rather than added to the context,
 		// because pollAllPRs adds it for the lines below that
-		if err := s.sweepRepo(ctx, client, installationStorageID(installation.ID), repo); err != nil {
+		if err := s.sweepRepo(
+			ctx, client, installationStorageID(installation.ID), installation.ID, repo,
+		); err != nil {
 			logging.From(ctx).Error("repository sweep failed",
 				"repo", repoFullName(repo.Owner, repo.Name), "error", err)
 		}
@@ -243,6 +246,7 @@ func (s *server) sweepRepo(
 	ctx context.Context,
 	client *github.Client,
 	targetID string,
+	installationID int64,
 	repo github.Repository,
 ) error {
 	if s.panel != nil {
@@ -293,7 +297,19 @@ func (s *server) sweepRepo(
 		return err
 	}
 
-	return pollAllPRs(
-		ctx, client, checker, bc, repo.Owner, repo.Name, s.cfg.botUsername, false,
+	ctx = logging.With(ctx, "repo", repoFullName(repo.Owner, repo.Name))
+	logging.From(ctx).Info("polling PR reactions")
+	prs, err := client.GetOpenPRs(ctx, repo.Owner, repo.Name)
+	if err != nil {
+		return NewGitHubError(ErrGetPRs, err)
+	}
+	if err := s.drainLegacyPendingCILabels(
+		ctx, client, targetID, installationID, repo, prs,
+	); err != nil {
+		return err
+	}
+
+	return processAllPRs(
+		ctx, client, checker, bc, repo.Owner, repo.Name, s.cfg.botUsername, prs, false,
 	)
 }

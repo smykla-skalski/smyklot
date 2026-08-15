@@ -167,21 +167,25 @@ var _ = Describe("pending CI storage [Unit]", func() {
 		Expect(deferredQueue).To(ConsistOf(HaveField("ID", deferred.ID)))
 
 		cancelled, err := store.CancelBySource(ctx, pendingci.CancelRequest{
-			RepositoryID: secondArm.RepositoryID,
-			PullRequest:  secondArm.PullRequest,
-			CommentID:    999,
-			Reason:       "source comment changed",
-			CancelledAt:  now.Add(4 * time.Minute),
+			RepositoryID:   secondArm.RepositoryID,
+			PullRequest:    secondArm.PullRequest,
+			CommentID:      999,
+			SourceRevision: now.Add(4 * time.Minute).Format(time.RFC3339Nano),
+			SourceSequence: 2,
+			Reason:         "source comment changed",
+			CancelledAt:    now.Add(4 * time.Minute),
 		})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(cancelled).To(BeNil())
 
 		cancelled, err = store.CancelBySource(ctx, pendingci.CancelRequest{
-			RepositoryID: secondArm.RepositoryID,
-			PullRequest:  secondArm.PullRequest,
-			CommentID:    secondArm.SourceCommentID,
-			Reason:       "source comment changed",
-			CancelledAt:  now.Add(4 * time.Minute),
+			RepositoryID:   secondArm.RepositoryID,
+			PullRequest:    secondArm.PullRequest,
+			CommentID:      secondArm.SourceCommentID,
+			SourceRevision: now.Add(4 * time.Minute).Format(time.RFC3339Nano),
+			SourceSequence: 2,
+			Reason:         "source comment changed",
+			CancelledAt:    now.Add(4 * time.Minute),
 		})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(cancelled.Lifecycle).To(Equal(pendingci.LifecycleCancelled))
@@ -346,6 +350,82 @@ var _ = Describe("pending CI storage [Unit]", func() {
 		Expect(finished).To(BeNil())
 	})
 
+	It("orders mutable source deliveries and admits retries of the same event", func() {
+		claim := pendingci.SourceRevisionRequest{
+			RepositoryID: "9001", PullRequest: 198, CommentID: 101,
+			Revision: now.Format(time.RFC3339Nano), Sequence: 1,
+			EventKey: "issue_comment:created:101", ObservedAt: now,
+		}
+		accepted, err := store.ClaimSourceRevision(ctx, claim)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(accepted).To(BeTrue())
+		accepted, err = store.ClaimSourceRevision(ctx, claim)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(accepted).To(BeTrue())
+
+		older := claim
+		older.Revision = now.Add(-time.Second).Format(time.RFC3339Nano)
+		older.EventKey = "issue_comment:created:old"
+		accepted, err = store.ClaimSourceRevision(ctx, older)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(accepted).To(BeFalse())
+
+		edited := claim
+		edited.Sequence = 2
+		edited.EventKey = "issue_comment:edited:101"
+		accepted, err = store.ClaimSourceRevision(ctx, edited)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(accepted).To(BeTrue())
+		accepted, err = store.ClaimSourceRevision(ctx, claim)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(accepted).To(BeFalse())
+	})
+
+	It("rejects delayed commands and source cancellations", func() {
+		newer := pendingCITestArm(now.Add(time.Minute), 202, "new-head")
+		armed, err := store.Arm(ctx, newer)
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = store.Arm(ctx, pendingCITestArm(now, 101, "old-head"))
+		Expect(errors.Is(err, pendingci.ErrStaleSourceRevision)).To(BeTrue())
+		current, err := store.GetArmed(ctx, newer.RepositoryID, newer.PullRequest)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(current.ID).To(Equal(armed.Request.ID))
+
+		cancelled, err := store.CancelBySource(ctx, pendingci.CancelRequest{
+			RepositoryID: newer.RepositoryID, PullRequest: newer.PullRequest,
+			CommentID:      newer.SourceCommentID,
+			SourceRevision: now.Format(time.RFC3339Nano), SourceSequence: 2,
+			Reason: "delayed edit", CancelledAt: now.Add(2 * time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cancelled).To(BeNil())
+		_, err = store.GetArmed(ctx, newer.RepositoryID, newer.PullRequest)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("drains each pre-durable label once without arming an unknown head", func() {
+		drain := pendingci.LegacyDrainRequest{
+			TargetID: "installation:77", InstallationID: 77,
+			RepositoryID: "9001", RepositoryFullName: "smykla-skalski/smyklot",
+			PullRequest: 198, HeadSHA: "observed-head", BaseBranch: "main",
+			MergeMethod: pendingci.MergeMethodSquash, Label: "smyklot:pending-ci:squash",
+			DrainedAt: now,
+		}
+		first, err := store.DrainLegacy(ctx, drain)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(first.Request).NotTo(BeNil())
+		Expect(first.Request.Lifecycle).To(Equal(pendingci.LifecycleCancelled))
+		Expect(first.Request.CleanupPending).To(BeTrue())
+		Expect(first.Request.SourceCommentID).To(BeZero())
+		_, err = store.GetArmed(ctx, drain.RepositoryID, drain.PullRequest)
+		Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
+
+		second, err := store.DrainLegacy(ctx, drain)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(second.Request).To(BeNil())
+	})
+
 	It("rejects invalid transitions before they reach SQLite", func() {
 		invalidArm := pendingCITestArm(now, 101, "sha-1")
 		invalidArm.MergeMethod = "octopus"
@@ -394,6 +474,7 @@ func pendingCITestArm(requestedAt time.Time, commentID int64, headSHA string) pe
 		Requester:          "bartsmykla",
 		SourceCommentID:    commentID,
 		SourceRevision:     requestedAt.Format(time.RFC3339Nano),
+		SourceSequence:     1,
 		Label:              "smyklot:pending:ci:squash:required",
 		RequestedAt:        requestedAt,
 	}

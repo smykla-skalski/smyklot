@@ -23,6 +23,9 @@ func Decide(request Request, observation Observation, timing Timing) (Decision, 
 		}
 		return finishDecision("pull request is no longer open"), nil
 	}
+	if observation.HeadSHA != request.HeadSHA {
+		return finishDecision("pull request head changed after command authorization"), nil
+	}
 	if !observation.PendingLabelFound {
 		return finishDecision("pending CI label was removed"), nil
 	}
@@ -65,8 +68,7 @@ func passingDecision(
 }
 
 func observedProgress(request Request, observation Observation) (time.Time, bool) {
-	progressed := request.HeadSHA != observation.HeadSHA ||
-		request.LastObservedState != string(observation.State) ||
+	progressed := request.LastObservedState != string(observation.State) ||
 		request.LastFingerprint != observation.Fingerprint
 	if progressed {
 		return observation.ObservedAt, true

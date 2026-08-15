@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	adminpanel "github.com/smykla-skalski/smyklot/internal/panel"
+	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/github"
@@ -658,6 +660,20 @@ func (s *server) recordFailure(j job, cause error) {
 // Everything past executeComment is the Action's own code, so a comment gets
 // the same permission check and the same feedback whichever entry point saw it.
 func (s *server) handleIssueComment(ctx context.Context, event *webhook.IssueCommentEvent) error {
+	accepted, err := s.store.ClaimSourceRevision(ctx, pendingci.SourceRevisionRequest{
+		RepositoryID: repositoryStorageID(event.Repository.ID),
+		PullRequest:  event.Issue.Number, CommentID: event.Comment.ID,
+		Revision: event.Comment.UpdatedAt, Sequence: event.SourceSequence(),
+		EventKey: event.IdempotencyKey(), ObservedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		return fmt.Errorf("claim issue comment revision: %w", err)
+	}
+	if !accepted {
+		logging.From(ctx).Info("ignored stale issue comment revision")
+
+		return nil
+	}
 	if err := s.cancelEditedPendingCI(ctx, event); err != nil {
 		return err
 	}

@@ -8,6 +8,10 @@ import (
 
 var ErrInvalidRequest = errors.New("invalid pending CI request")
 
+// ErrStaleSourceRevision means a delayed delivery no longer represents the
+// latest authorized intent for its pull request.
+var ErrStaleSourceRevision = errors.New("stale pending CI source revision")
+
 func (request ArmRequest) Validate() error {
 	if empty(request.TargetID, request.RepositoryID, request.RepositoryFullName) {
 		return invalid("target and repository identity are required")
@@ -18,14 +22,53 @@ func (request ArmRequest) Validate() error {
 	if empty(request.HeadSHA, request.BaseBranch, request.Requester) {
 		return invalid("head, base branch, and requester are required")
 	}
-	if request.SourceCommentID <= 0 || empty(request.SourceRevision, request.Label) {
+	if request.SourceCommentID <= 0 || request.SourceSequence <= 0 ||
+		empty(request.SourceRevision, request.Label) {
 		return invalid("source comment, revision, and label are required")
+	}
+	if _, err := ParseSourceRevision(request.SourceRevision); err != nil {
+		return err
 	}
 	if !request.MergeMethod.valid() {
 		return invalid("unsupported merge method %q", request.MergeMethod)
 	}
 	if request.RequestedAt.IsZero() {
 		return invalid("request time is required")
+	}
+
+	return nil
+}
+
+func (request SourceRevisionRequest) Validate() error {
+	if strings.TrimSpace(request.RepositoryID) == "" || request.PullRequest <= 0 ||
+		request.CommentID <= 0 || request.Sequence <= 0 {
+		return invalid("source identity and sequence are required")
+	}
+	if strings.TrimSpace(request.EventKey) == "" || request.ObservedAt.IsZero() {
+		return invalid("source event identity and observation time are required")
+	}
+	if _, err := ParseSourceRevision(request.Revision); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (request LegacyDrainRequest) Validate() error {
+	if empty(request.TargetID, request.RepositoryID, request.RepositoryFullName) {
+		return invalid("target and repository identity are required")
+	}
+	if request.InstallationID <= 0 || request.PullRequest <= 0 {
+		return invalid("installation and pull request numbers must be positive")
+	}
+	if empty(request.HeadSHA, request.BaseBranch, request.Label) {
+		return invalid("head, base branch, and label are required")
+	}
+	if !request.MergeMethod.valid() {
+		return invalid("unsupported merge method %q", request.MergeMethod)
+	}
+	if request.DrainedAt.IsZero() {
+		return invalid("drain time is required")
 	}
 
 	return nil
@@ -107,8 +150,12 @@ func (request FinishRequest) Validate() error {
 }
 
 func (request CancelRequest) Validate() error {
-	if strings.TrimSpace(request.RepositoryID) == "" || request.PullRequest <= 0 || request.CommentID <= 0 {
+	if strings.TrimSpace(request.RepositoryID) == "" || request.PullRequest <= 0 ||
+		request.CommentID <= 0 || request.SourceSequence <= 0 {
 		return invalid("repository, pull request, and source comment are required")
+	}
+	if _, err := ParseSourceRevision(request.SourceRevision); err != nil {
+		return err
 	}
 	if strings.TrimSpace(request.Reason) == "" || request.CancelledAt.IsZero() {
 		return invalid("cancellation reason and time are required")

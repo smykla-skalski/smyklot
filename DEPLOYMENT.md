@@ -224,9 +224,9 @@ In the App's settings:
 
 - **Webhook URL**: `https://your-host/webhook`
 - **Webhook secret**: generate one and keep it
-- **Subscribe to events**: Issue comment
+- **Subscribe to events**: Issue comment, Check run, Check suite, Status, Pull request
 
-The App needs no new permissions. It already has the ones the Action uses.
+The App needs read access to **Checks**, **Commit statuses**, and **Administration** in addition to its command permissions. Administration access is required to read branch protection's required status checks. Existing installations must approve the new permissions after the App registration changes.
 
 ### 2. Create the Secret
 
