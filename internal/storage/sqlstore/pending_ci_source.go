@@ -316,6 +316,11 @@ WHERE repository_id = ? AND pull_request = ? AND source_comment_id > 0`,
 	if err := rows.Close(); err != nil {
 		return false, false, fmt.Errorf("close pending CI source history: %w", err)
 	}
+	staleIntent, equalIntent, err := comparePendingCIArmIntent(ctx, tx, arm)
+	if err != nil || staleIntent {
+		return staleIntent, false, err
+	}
+	equal = equal || equalIntent
 
 	var revision string
 	var sequence int

@@ -444,8 +444,14 @@ func executeCommentWithEnvironment(
 			fb, err = executeUnapprove(ctx, client, rc, bc, prNum)
 		case commands.CommandCleanup:
 			if environment.pendingCI != nil {
-				if err := environment.pendingCI.cancelPullRequest(ctx, prNum, "cleanup command"); err != nil {
+				accepted, err := environment.pendingCI.cancelPullRequest(
+					ctx, prNum, "cleanup command",
+				)
+				if err != nil {
 					return err
+				}
+				if !accepted {
+					return nil
 				}
 			}
 			// Cleanup is special - it deletes the comment, so handle immediately

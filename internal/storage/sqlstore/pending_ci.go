@@ -73,8 +73,30 @@ WHERE id = ? AND lifecycle = ?`,
 		superseded.Revision++
 	}
 
+	id, err := insertArmedPendingCI(ctx, tx, arm)
+	if err != nil {
+		return pendingci.ArmResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return pendingci.ArmResult{}, fmt.Errorf("commit pending CI arm: %w", err)
+	}
+
+	request := armedRequest(id, arm)
+	resultValue := pendingci.ArmResult{Request: request}
+	if superseded.ID != 0 {
+		resultValue.Superseded = &superseded
+	}
+
+	return resultValue, nil
+}
+
+func insertArmedPendingCI(
+	ctx context.Context,
+	tx *transaction,
+	arm pendingci.ArmRequest,
+) (int64, error) {
 	var id int64
-	err = tx.QueryRowContext(ctx, `
+	err := tx.QueryRowContext(ctx, `
 INSERT INTO pending_ci_requests (
     target_id, installation_id, repository_id, repository_full_name,
     pull_request, head_sha, base_branch, merge_method, required_checks_only,
@@ -106,19 +128,21 @@ RETURNING id`,
 		arm.RequestedAt,
 	).Scan(&id)
 	if err != nil {
-		return pendingci.ArmResult{}, fmt.Errorf("insert pending CI request: %w", err)
+		return 0, fmt.Errorf("insert pending CI request: %w", err)
 	}
-	if err := tx.Commit(); err != nil {
-		return pendingci.ArmResult{}, fmt.Errorf("commit pending CI arm: %w", err)
+	if err := recordPendingCIIntent(ctx, tx, pendingCIIntent{
+		repositoryID: arm.RepositoryID,
+		pullRequest:  arm.PullRequest,
+		commentID:    arm.SourceCommentID,
+		revision:     arm.SourceRevision,
+		sequence:     arm.SourceSequence,
+		order:        arm.SourceOrder,
+		kind:         pendingCIIntentArm,
+		recordedAt:   arm.RequestedAt,
+	}); err != nil {
+		return 0, err
 	}
-
-	request := armedRequest(id, arm)
-	resultValue := pendingci.ArmResult{Request: request}
-	if superseded.ID != 0 {
-		resultValue.Superseded = &superseded
-	}
-
-	return resultValue, nil
+	return id, nil
 }
 
 func armedRequest(id int64, arm pendingci.ArmRequest) pendingci.Request {

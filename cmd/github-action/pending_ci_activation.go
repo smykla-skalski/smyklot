@@ -132,12 +132,12 @@ func resolveAmbiguousPendingCI(
 	if !errors.Is(failures.command, pendingci.ErrAmbiguousSourceRevision) {
 		return false
 	}
-	cancelled, err := command.cancelPullRequestLocked(
+	result, err := command.cancelPullRequestLocked(
 		ctx,
 		request.pullRequest,
 		"commands from different comments have an ambiguous source order",
 	)
-	keepMarker := cancelled != nil || err != nil
+	keepMarker := result.Request != nil || err != nil
 	if err != nil {
 		failures.command = errors.Join(failures.command, err)
 
@@ -145,7 +145,7 @@ func resolveAmbiguousPendingCI(
 	}
 	failures.command = nil
 	failures.ambiguous = true
-	if cancelled != nil {
+	if result.Request != nil {
 		command.wake()
 	}
 

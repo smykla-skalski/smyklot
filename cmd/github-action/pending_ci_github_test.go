@@ -132,6 +132,23 @@ func TestPendingCICleanupScopePreservesReplacementArtifacts(t *testing.T) {
 	}
 }
 
+func TestPendingCIObserveRequiresCurrentSnapshotBeforeMutation(t *testing.T) {
+	t.Parallel()
+	request := pendingci.Request{
+		ID: 41, Revision: 7, RepositoryID: "9001", PullRequest: 198,
+	}
+	backend := &githubPendingCIBackend{current: pendingCICurrentStoreStub{
+		request: pendingci.Request{ID: 42, Revision: 1},
+	}}
+	if err := backend.requireCurrent(t.Context(), request); !errors.Is(err, storage.ErrConflict) {
+		t.Fatalf("currentness error = %v, want conflict", err)
+	}
+	backend.current = pendingCICurrentStoreStub{request: request}
+	if err := backend.requireCurrent(t.Context(), request); err != nil {
+		t.Fatalf("matching snapshot rejected: %v", err)
+	}
+}
+
 func TestPendingCICleanupIgnoresMissingGitHubArtifacts(t *testing.T) {
 	t.Parallel()
 	missing := &github.APIError{StatusCode: http.StatusNotFound}

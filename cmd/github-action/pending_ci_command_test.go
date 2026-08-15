@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
@@ -85,6 +86,24 @@ func TestPendingCICommandReportsLabelOwnershipReadFailure(t *testing.T) {
 	}
 }
 
+func TestPendingCICommandSuppressesStaleCleanupSideEffects(t *testing.T) {
+	t.Parallel()
+	command := pendingCICommand{
+		store: pendingCICommandStoreStub{}, coordinator: newPendingCICoordinator(),
+		repositoryID: "repository:7", sourceCommentID: 101,
+		sourceRevision: "2026-08-15T12:00:00Z", sourceSequence: 1, sourceOrder: 1,
+		now:  func() time.Time { return time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC) },
+		wake: func() {},
+	}
+	accepted, err := command.cancelPullRequest(t.Context(), 198, "cleanup command")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if accepted {
+		t.Fatal("stale cleanup was accepted")
+	}
+}
+
 type pendingCICommandStoreStub struct {
 	request      pendingci.Request
 	getErr       error
@@ -113,6 +132,16 @@ func (pendingCICommandStoreStub) CancelBySource(
 	pendingci.CancelRequest,
 ) (*pendingci.Request, error) {
 	return nil, nil
+}
+
+func (store pendingCICommandStoreStub) CancelByIntent(
+	context.Context,
+	pendingci.CancelIntentRequest,
+) (pendingci.CancelIntentResult, error) {
+	return pendingci.CancelIntentResult{
+		Accepted: store.finishResult != nil,
+		Request:  store.finishResult,
+	}, store.finishErr
 }
 
 func (store pendingCICommandStoreStub) FinishPR(

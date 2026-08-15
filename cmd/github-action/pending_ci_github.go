@@ -54,6 +54,9 @@ func (backend *githubPendingCIBackend) Observe(
 			State: pendingci.ObservedIndeterminate, ObservedAt: observedAt,
 		}, nil
 	}
+	if err := backend.requireCurrent(ctx, request); err != nil {
+		return pendingci.Observation{}, err
+	}
 	if !hasLabel(state.Labels, github.LabelPendingCIServiceOwner) {
 		if err := client.AddLabel(
 			ctx, owner, repository, request.PullRequest,
@@ -120,6 +123,21 @@ func (backend *githubPendingCIBackend) Observe(
 		State: observedCIState(checks.State), Fingerprint: checkFingerprint(checks),
 		ObservedAt: observedAt,
 	}, nil
+}
+
+func (backend *githubPendingCIBackend) requireCurrent(
+	ctx context.Context,
+	request pendingci.Request,
+) error {
+	current, err := backend.current.GetArmed(ctx, request.RepositoryID, request.PullRequest)
+	if err != nil {
+		return fmt.Errorf("verify current pending CI request: %w", err)
+	}
+	if current.ID != request.ID || current.Revision != request.Revision {
+		return fmt.Errorf("verify current pending CI request: %w", storage.ErrConflict)
+	}
+
+	return nil
 }
 
 func (backend *githubPendingCIBackend) MergeAtHead(

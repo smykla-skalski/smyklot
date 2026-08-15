@@ -16,7 +16,7 @@ type pendingCICommandStore interface {
 	Arm(context.Context, pendingci.ArmRequest) (pendingci.ArmResult, error)
 	GetArmed(context.Context, string, int) (pendingci.Request, error)
 	CancelBySource(context.Context, pendingci.CancelRequest) (*pendingci.Request, error)
-	FinishPR(context.Context, pendingci.FinishPRRequest) (*pendingci.Request, error)
+	CancelByIntent(context.Context, pendingci.CancelIntentRequest) (pendingci.CancelIntentResult, error)
 }
 
 type pendingCIArtifactOwnership struct {
@@ -61,6 +61,7 @@ type pendingCICommand struct {
 	installationID     int64
 	repositoryID       string
 	repositoryFullName string
+	sourceCommentID    int64
 	sourceRevision     string
 	sourceSequence     int
 	sourceOrder        int64
@@ -106,6 +107,7 @@ func (s *server) commandEnvironment(
 		installationID:     event.Installation.ID,
 		repositoryID:       repositoryStorageID(event.Repository.ID),
 		repositoryFullName: event.Repository.FullName,
+		sourceCommentID:    event.Comment.ID,
 		sourceRevision:     event.Comment.UpdatedAt,
 		sourceSequence:     event.SourceSequence(),
 		sourceOrder:        sourceOrder,
@@ -153,32 +155,34 @@ func (command *pendingCICommand) cancelPullRequest(
 	ctx context.Context,
 	pullRequest int,
 	reason string,
-) error {
-	var request *pendingci.Request
+) (bool, error) {
+	var result pendingci.CancelIntentResult
 	err := command.coordinator.Exclusive(ctx, command.repositoryID, func() error {
 		var transitionErr error
-		request, transitionErr = command.cancelPullRequestLocked(ctx, pullRequest, reason)
+		result, transitionErr = command.cancelPullRequestLocked(ctx, pullRequest, reason)
 
 		return transitionErr
 	})
 	if err != nil {
-		return fmt.Errorf("cancel pending CI command: %w", err)
+		return false, fmt.Errorf("cancel pending CI command: %w", err)
 	}
-	if request != nil {
+	if result.Request != nil {
 		command.wake()
 	}
 
-	return nil
+	return result.Accepted, nil
 }
 
 func (command *pendingCICommand) cancelPullRequestLocked(
 	ctx context.Context,
 	pullRequest int,
 	reason string,
-) (*pendingci.Request, error) {
-	return command.store.FinishPR(ctx, pendingci.FinishPRRequest{
+) (pendingci.CancelIntentResult, error) {
+	return command.store.CancelByIntent(ctx, pendingci.CancelIntentRequest{
 		RepositoryID: command.repositoryID, PullRequest: pullRequest,
-		Lifecycle: pendingci.LifecycleCancelled, Reason: reason, FinishedAt: command.now(),
+		CommentID: command.sourceCommentID, SourceRevision: command.sourceRevision,
+		SourceSequence: command.sourceSequence, SourceOrder: command.sourceOrder,
+		Reason: reason, CancelledAt: command.now(),
 	})
 }
 

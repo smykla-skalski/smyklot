@@ -221,6 +221,24 @@ type CancelRequest struct {
 	CancelledAt    time.Time
 }
 
+// CancelIntentRequest records a PR-wide cancellation command in the same
+// durable source order as merge-after-CI commands.
+type CancelIntentRequest struct {
+	RepositoryID   string
+	PullRequest    int
+	CommentID      int64
+	SourceRevision string
+	SourceSequence int
+	SourceOrder    int64
+	Reason         string
+	CancelledAt    time.Time
+}
+
+type CancelIntentResult struct {
+	Accepted bool
+	Request  *Request
+}
+
 type FinishPRRequest struct {
 	RepositoryID string
 	PullRequest  int
@@ -324,6 +342,7 @@ type Store interface {
 	CompleteCleanup(context.Context, CompleteCleanupRequest) (Request, error)
 	RetryCleanup(context.Context, RetryCleanupRequest) (Request, error)
 	CancelBySource(context.Context, CancelRequest) (*Request, error)
+	CancelByIntent(context.Context, CancelIntentRequest) (CancelIntentResult, error)
 	FinishPR(context.Context, FinishPRRequest) (*Request, error)
 	CancelRepository(context.Context, CancelRepositoryRequest) ([]Request, error)
 	HasPendingCleanup(context.Context, CleanupFilter) (bool, error)

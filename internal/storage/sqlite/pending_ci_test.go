@@ -588,6 +588,70 @@ var _ = Describe("pending CI storage [Unit]", func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 
+	It("ignores delayed cleanup older than the current merge intent", func() {
+		newer := pendingCITestArm(now.Add(time.Minute), 202, "new-head")
+		armed, err := store.Arm(ctx, newer)
+		Expect(err).NotTo(HaveOccurred())
+
+		cancelled, err := store.CancelByIntent(ctx, pendingci.CancelIntentRequest{
+			RepositoryID: newer.RepositoryID, PullRequest: newer.PullRequest,
+			CommentID: 101, SourceRevision: now.Format(time.RFC3339Nano),
+			SourceSequence: 1, SourceOrder: 101,
+			Reason: "delayed cleanup", CancelledAt: now.Add(2 * time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cancelled.Accepted).To(BeFalse())
+		Expect(cancelled.Request).To(BeNil())
+
+		current, err := store.GetArmed(ctx, newer.RepositoryID, newer.PullRequest)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(current.ID).To(Equal(armed.Request.ID))
+	})
+
+	It("persists cleanup intent and rejects delayed merge commands", func() {
+		older := pendingCITestArm(now, 101, "old-head")
+		armed, err := store.Arm(ctx, older)
+		Expect(err).NotTo(HaveOccurred())
+		cleanup := pendingci.CancelIntentRequest{
+			RepositoryID: older.RepositoryID, PullRequest: older.PullRequest,
+			CommentID: 202, SourceRevision: now.Add(time.Minute).Format(time.RFC3339Nano),
+			SourceSequence: 1, SourceOrder: 202,
+			Reason: "cleanup command", CancelledAt: now.Add(2 * time.Minute),
+		}
+		cancelled, err := store.CancelByIntent(ctx, cleanup)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cancelled.Accepted).To(BeTrue())
+		Expect(cancelled.Request.ID).To(Equal(armed.Request.ID))
+
+		_, err = store.Arm(ctx, pendingCITestArm(now.Add(30*time.Second), 303, "delayed-head"))
+		Expect(errors.Is(err, pendingci.ErrStaleSourceRevision)).To(BeTrue())
+		_, err = store.GetArmed(ctx, older.RepositoryID, older.PullRequest)
+		Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
+
+		cancelled, err = store.CancelByIntent(ctx, cleanup)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cancelled.Accepted).To(BeTrue())
+		Expect(cancelled.Request).To(BeNil())
+	})
+
+	It("lets cleanup win an unknowable same-second command order", func() {
+		armed, err := store.Arm(ctx, pendingCITestArm(now, 101, "ambiguous-head"))
+		Expect(err).NotTo(HaveOccurred())
+		cancelled, err := store.CancelByIntent(ctx, pendingci.CancelIntentRequest{
+			RepositoryID: armed.Request.RepositoryID,
+			PullRequest:  armed.Request.PullRequest,
+			CommentID:    202, SourceRevision: now.Format(time.RFC3339Nano),
+			SourceSequence: 1, SourceOrder: 202,
+			Reason: "ambiguous cleanup", CancelledAt: now.Add(time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cancelled.Accepted).To(BeTrue())
+		Expect(cancelled.Request.ID).To(Equal(armed.Request.ID))
+
+		_, err = store.Arm(ctx, pendingCITestArm(now, 303, "unsafe-head"))
+		Expect(errors.Is(err, pendingci.ErrAmbiguousSourceRevision)).To(BeTrue())
+	})
+
 	It("lets an edit cancel creation when GitHub gives both the same timestamp", func() {
 		created := pendingCITestArm(now, 101, "created-head")
 		created.SourceOrder = 2

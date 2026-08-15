@@ -171,6 +171,21 @@ func (request CancelRequest) Validate() error {
 	return nil
 }
 
+func (request CancelIntentRequest) Validate() error {
+	if strings.TrimSpace(request.RepositoryID) == "" || request.PullRequest <= 0 ||
+		request.CommentID <= 0 || request.SourceSequence <= 0 || request.SourceOrder <= 0 {
+		return invalid("repository, pull request, and cancellation source are required")
+	}
+	if _, err := ParseSourceRevision(request.SourceRevision); err != nil {
+		return err
+	}
+	if strings.TrimSpace(request.Reason) == "" || request.CancelledAt.IsZero() {
+		return invalid("cancellation reason and time are required")
+	}
+
+	return nil
+}
+
 func (request FinishPRRequest) Validate() error {
 	if strings.TrimSpace(request.RepositoryID) == "" || request.PullRequest <= 0 {
 		return invalid("repository identity and pull request number are required")
