@@ -326,34 +326,43 @@ func (s *Server) secureHeaders(next http.Handler) http.Handler {
 }
 
 func (s *Server) viewer(r *http.Request) (storage.Account, string, error) {
+	account, session, err := s.viewerSession(r)
+
+	return account, session.TokenHash, err
+}
+
+// viewerSession is viewer with the session record itself, which the caller that
+// can write a response header needs in order to renew it.
+func (s *Server) viewerSession(r *http.Request) (storage.Account, storage.Session, error) {
 	cookie, err := r.Cookie(sessionCookieName)
 	if err != nil || strings.TrimSpace(cookie.Value) == "" {
-		return storage.Account{}, "", storage.ErrNotFound
+		return storage.Account{}, storage.Session{}, storage.ErrNotFound
 	}
 	hash := tokenHash(cookie.Value)
 	session, err := s.store.GetSession(r.Context(), hash, s.now())
 	if err != nil {
-		return storage.Account{}, "", err
+		return storage.Account{}, storage.Session{}, err
 	}
 	account, err := s.store.GetAccount(r.Context(), session.AccountID)
 	if err != nil {
-		return storage.Account{}, "", err
+		return storage.Account{}, storage.Session{}, err
 	}
 	user, err := s.store.GetPanelUser(r.Context(), session.AccountID)
 	if err != nil {
-		return storage.Account{}, "", err
+		return storage.Account{}, storage.Session{}, err
 	}
 	if user.Status != storage.PanelUserActive {
 		reason := "Your panel access was revoked"
 		if user.BanReason != nil {
 			reason = *user.BanReason
 		}
-		return storage.Account{}, "", storage.SessionRevokedError{
+		return storage.Account{}, storage.Session{}, storage.SessionRevokedError{
 			Code: string(user.Status), Reason: reason,
 		}
 	}
+	session.TokenHash = hash
 
-	return account, hash, nil
+	return account, session, nil
 }
 
 func (s *Server) requireViewer(w http.ResponseWriter, r *http.Request) (storage.Account, bool) {
@@ -366,7 +375,7 @@ func (s *Server) requireViewerSession(
 	w http.ResponseWriter,
 	r *http.Request,
 ) (storage.Account, string, bool) {
-	account, sessionHash, err := s.viewer(r)
+	account, session, err := s.viewerSession(r)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) || errors.Is(err, storage.ErrExpired) {
 			s.writeError(w, http.StatusUnauthorized, "unauthenticated", "sign in to use the panel")
@@ -379,7 +388,12 @@ func (s *Server) requireViewerSession(
 		return storage.Account{}, "", false
 	}
 
-	return account, sessionHash, true
+	/* Every authenticated request passes through here, which is what makes this
+	   the place to notice that a session is running out while it is being used.
+	   It writes nothing on almost all of them. */
+	s.renewSession(w, r, session)
+
+	return account, session.TokenHash, true
 }
 
 func (s *Server) requireRoot(

@@ -17,6 +17,9 @@ type AuthStore interface {
 	ActivateDerivedOwner(context.Context, string, time.Time) (bool, error)
 	CreateSession(context.Context, Session, int) error
 	GetSession(context.Context, string, time.Time) (Session, error)
+	// ExtendSession moves a live session's expiry out, never in, and never
+	// revives one that has already ended.
+	ExtendSession(ctx context.Context, tokenHash string, expiresAt, now time.Time) error
 	DeleteSession(context.Context, string, ElevationEndReason, time.Time) error
 	RevokeAccountSessions(context.Context, string, string, string, time.Time) ([]string, error)
 	DeleteExpiredAuth(context.Context, time.Time) error
