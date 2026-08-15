@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { CrossingEdge } from '../lib/crossing';
   import { rollGalaxies } from '../lib/galaxies';
+  import { rollPulsars } from '../lib/pulsars';
   import { SkySlots } from '../lib/sky-slots';
   import NightAstronaut from './NightAstronaut.svelte';
   import NightMeteors from './NightMeteors.svelte';
@@ -18,7 +19,7 @@
    */
   let {
     width = '100vw',
-    height = 'clamp(44rem, 480%, 72rem)',
+    height = 'clamp(50rem, 560%, 82rem)',
     rocket = true,
     rocketSpeed = 70,
     rocketTrailLife = 7,
@@ -35,7 +36,9 @@
      * content instead of guessing at one. It is clamped at both ends: left to
      * grow it would run past the foot of the page when a short card leaves a
      * large gap, and left to shrink it would flatten into a band on a short
-     * window, which is the shape that reads as squashed.
+     * window, which is the shape that reads as squashed. The default was
+     * raised once already - the night is welcome to reach lower - and the
+     * ceiling is what keeps the fade finishing above the footer.
      */
     height?: string;
     /**
@@ -74,8 +77,10 @@
   const BAND_EDGES: CrossingEdge[] = ['left', 'right', 'top'];
 
   /* Dealt once per mount: most skies carry no galaxy, and a sky that does
-     carries it for the whole visit. */
+     carries it for the whole visit. The pulsars always come - a handful of
+     stars beating to their own rhythms against the layers' even breath. */
   const galaxies = rollGalaxies(Math.random);
+  const pulsars = rollPulsars(Math.random);
 </script>
 
 <!-- Sized through `style:` rather than a `style` attribute: the panel serves
@@ -104,6 +109,17 @@
   <span class="sky-mid"></span>
   <span class="sky-bright"></span>
   <span class="sky-coloured"></span>
+  {#each pulsars as pulsar (pulsar)}
+    <span
+      class={['sky-pulsar', pulsar.hue]}
+      style:--pulsar-x="{pulsar.x}%"
+      style:--pulsar-y="{pulsar.y}%"
+      style:--pulsar-size="{pulsar.size}px"
+      style:--pulse-duration="{pulsar.duration}s"
+      style:--pulse-phase="-{pulsar.phase}s"
+      style:--pulse-floor={pulsar.floor}
+    ></span>
+  {/each}
   <span class="sky-flight">
     <NightRocket
       speed={rocketSpeed}
@@ -716,6 +732,68 @@
       );
     background-position: 337px 211px;
     background-size: 887px 769px;
+  }
+
+  /* The pulsars: one star each, beating alone. The layers' twinkle moves
+     whole sheets at once, and these are the exceptions that make that read
+     as a sky rather than a fade - each has its own period, its own phase
+     (a negative delay, so no two start together) and its own floor, some
+     barely flickering, some nearly going out. Opacity only: the compositor
+     carries it without repainting anything. */
+  .night-sky > .sky-pulsar {
+    animation: sky-pulse var(--pulse-duration) ease-in-out var(--pulse-phase) infinite;
+    background-image: radial-gradient(
+      circle at 50% 50%,
+      var(--pulsar-core) 0 7%,
+      var(--pulsar-bloom) 16%,
+      var(--pulsar-haze) 50%
+    );
+    height: var(--pulsar-size);
+    inset: auto;
+    left: var(--pulsar-x);
+    top: var(--pulsar-y);
+    translate: -50% -50%;
+    width: var(--pulsar-size);
+  }
+
+  .sky-pulsar.white {
+    --pulsar-core: var(--white);
+    --pulsar-bloom: var(--white-bloom);
+    --pulsar-haze: var(--white-haze);
+  }
+
+  .sky-pulsar.ice {
+    --pulsar-core: var(--ice);
+    --pulsar-bloom: var(--ice-bloom);
+    --pulsar-haze: var(--ice-haze);
+  }
+
+  .sky-pulsar.amber {
+    --pulsar-core: var(--amber);
+    --pulsar-bloom: var(--amber-bloom);
+    --pulsar-haze: var(--amber-haze);
+  }
+
+  .sky-pulsar.rose {
+    --pulsar-core: var(--rose);
+    --pulsar-bloom: var(--rose-bloom);
+    --pulsar-haze: var(--rose-haze);
+  }
+
+  /* Rests at full, like the twinkle: reduced motion squashes this to one
+     0.01ms pass that lands on the last keyframe. */
+  @keyframes sky-pulse {
+    0% {
+      opacity: 1;
+    }
+
+    50% {
+      opacity: var(--pulse-floor);
+    }
+
+    100% {
+      opacity: 1;
+    }
   }
 
   /* Rests at full: reduced motion cuts every animation to one 0.01ms pass, which
