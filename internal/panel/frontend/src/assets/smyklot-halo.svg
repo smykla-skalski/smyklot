@@ -1,9 +1,20 @@
 <?xml version='1.0' encoding='UTF-8'?>
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" version="1.1" width="1254" height="1254" viewBox="0 0 1254 1254" preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby="title description" shape-rendering="geometricPrecision">
+<!-- The artwork is drawn in the original 1254 box; the viewBox is wider than that
+     on every side so the ring's glow has canvas to spill onto. Shrink the box and
+     the glow is cut square where it crosses the viewport, at the four points
+     where the ring runs closest to the edge. -->
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" version="1.1" width="1340" height="1340" viewBox="-43 -43 1340 1340" preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby="title description" shape-rendering="geometricPrecision">
   <title id="title">Smyklot robot upper-torso halo avatar</title>
-  <desc id="description">A square, fully layered vector of the approved Smyklot upper-torso robot inside a round halo with a configurable solid color and width plus an optional original-style rainbow ring. The exterior canvas is transparent and no raster images are embedded.</desc>
+  <desc id="description">A square, fully layered vector of the approved Smyklot upper-torso robot inside a round halo with a configurable solid color and width plus an optional original-style rainbow ring, glowing inward and outward. The interior of the ring and the exterior canvas are both transparent and no raster images are embedded.</desc>
   <style id="smyklot-halo-settings">
     /* HALO SETTINGS — edit these values. */
+    #halo-interior-background {
+      /* The ground inside the ring. `none` leaves it transparent, so whatever the
+         mark stands on shows through and the ring reads as a window onto it;
+         `inline` paints it with one of the two settings below. */
+      display: none;
+    }
+
     #halo-interior-solid-color {
       /* Used whenever the optional space/stars group below is disabled. */
       color: #09152B;
@@ -24,10 +35,28 @@
       stroke-width: 84px;
     }
 
+    .halo-ring-bloom {
+      /* The glow either side of the ring. It is the ring itself, blurred and laid
+         under it, so it spills outward onto the canvas and inward across the
+         interior in one pass. 0 turns it off. */
+      opacity: 1;
+    }
+
     #rainbow-halo-ring { display: inline; }
     #solid-halo-ring { display: none; }
     </style>
   <defs id="paint-definitions">
+    <!-- Two blurs make the glow: a tight one for the lit edge either side of the
+         stroke and a wide one for the spill beyond it, the wide one laid down
+         twice so the near field is dense without widening the reach. sRGB rather
+         than the linearRGB default, so the blurred copies keep the hues of the
+         arcs they are made from wherever the file is rasterised. -->
+    <filter id="halo-ring-bloom-near" x="-15%" y="-15%" width="130%" height="130%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="10" />
+    </filter>
+    <filter id="halo-ring-bloom-far" x="-25%" y="-25%" width="150%" height="150%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="24" />
+    </filter>
     <linearGradient id="hardware-dark" x1="0%" y1="0%" x2="0%" y2="100%">
       <stop offset="0" stop-color="#242629" />
       <stop offset="1" stop-color="#08090B" />
@@ -293,17 +322,37 @@
       </g>
     </g>
   </g>
+  <!-- Each ring is defined once here and drawn three times below: twice through a
+       blur for the glow, then once sharp on top. Defining the geometry rather
+       than repeating it keeps the stroke-width setting above governing all three
+       copies, so the glow can never sit on a ring of a different weight. -->
+  <defs id="halo-ring-geometry">
+    <circle id="solid-halo-arc" class="halo-ring-stroke" cx="627" cy="627" r="556" fill="none" stroke="currentColor" stroke-width="84" />
+    <g id="rainbow-halo-arcs">
+      <path id="rainbow-halo-segment-01" class="halo-ring-stroke" d="M623.604 71.010 A556 556 0 0 1 1022.546 236.258" fill="none" stroke="url(#halo-rainbow-gradient-01)" stroke-width="84" stroke-linecap="butt" />
+      <path id="rainbow-halo-segment-02" class="halo-ring-stroke" d="M1017.742 231.454 A556 556 0 0 1 1182.990 630.396" fill="none" stroke="url(#halo-rainbow-gradient-02)" stroke-width="84" stroke-linecap="butt" />
+      <path id="rainbow-halo-segment-03" class="halo-ring-stroke" d="M1182.990 623.604 A556 556 0 0 1 1017.742 1022.546" fill="none" stroke="url(#halo-rainbow-gradient-03)" stroke-width="84" stroke-linecap="butt" />
+      <path id="rainbow-halo-segment-04" class="halo-ring-stroke" d="M1022.546 1017.742 A556 556 0 0 1 623.604 1182.990" fill="none" stroke="url(#halo-rainbow-gradient-04)" stroke-width="84" stroke-linecap="butt" />
+      <path id="rainbow-halo-segment-05" class="halo-ring-stroke" d="M630.396 1182.990 A556 556 0 0 1 231.454 1017.742" fill="none" stroke="url(#halo-rainbow-gradient-05)" stroke-width="84" stroke-linecap="butt" />
+      <path id="rainbow-halo-segment-06" class="halo-ring-stroke" d="M236.258 1022.546 A556 556 0 0 1 71.010 623.604" fill="none" stroke="url(#halo-rainbow-gradient-06)" stroke-width="84" stroke-linecap="butt" />
+      <path id="rainbow-halo-segment-07" class="halo-ring-stroke" d="M71.010 630.396 A556 556 0 0 1 236.258 231.454" fill="none" stroke="url(#halo-rainbow-gradient-07)" stroke-width="84" stroke-linecap="butt" />
+      <path id="rainbow-halo-segment-08" class="halo-ring-stroke" d="M231.454 236.258 A556 556 0 0 1 630.396 71.010" fill="none" stroke="url(#halo-rainbow-gradient-08)" stroke-width="84" stroke-linecap="butt" />
+    </g>
+  </defs>
   <g id="solid-halo-ring" inkscape:groupmode="layer" inkscape:label="20 - Configurable solid halo ring" color="#74777D">
-    <circle class="halo-ring-stroke" cx="627" cy="627" r="556" fill="none" stroke="currentColor" stroke-width="84" />
+    <g class="halo-ring-bloom">
+      <use href="#solid-halo-arc" filter="url(#halo-ring-bloom-far)" opacity="0.7" />
+      <use href="#solid-halo-arc" filter="url(#halo-ring-bloom-far)" opacity="0.55" />
+      <use href="#solid-halo-arc" filter="url(#halo-ring-bloom-near)" opacity="0.9" />
+    </g>
+    <use href="#solid-halo-arc" />
   </g>
   <g id="rainbow-halo-ring" inkscape:groupmode="layer" inkscape:label="21 - Optional rainbow halo ring" display="none">
-    <path id="rainbow-halo-segment-01" class="halo-ring-stroke" d="M623.604 71.010 A556 556 0 0 1 1022.546 236.258" fill="none" stroke="url(#halo-rainbow-gradient-01)" stroke-width="84" stroke-linecap="butt" />
-    <path id="rainbow-halo-segment-02" class="halo-ring-stroke" d="M1017.742 231.454 A556 556 0 0 1 1182.990 630.396" fill="none" stroke="url(#halo-rainbow-gradient-02)" stroke-width="84" stroke-linecap="butt" />
-    <path id="rainbow-halo-segment-03" class="halo-ring-stroke" d="M1182.990 623.604 A556 556 0 0 1 1017.742 1022.546" fill="none" stroke="url(#halo-rainbow-gradient-03)" stroke-width="84" stroke-linecap="butt" />
-    <path id="rainbow-halo-segment-04" class="halo-ring-stroke" d="M1022.546 1017.742 A556 556 0 0 1 623.604 1182.990" fill="none" stroke="url(#halo-rainbow-gradient-04)" stroke-width="84" stroke-linecap="butt" />
-    <path id="rainbow-halo-segment-05" class="halo-ring-stroke" d="M630.396 1182.990 A556 556 0 0 1 231.454 1017.742" fill="none" stroke="url(#halo-rainbow-gradient-05)" stroke-width="84" stroke-linecap="butt" />
-    <path id="rainbow-halo-segment-06" class="halo-ring-stroke" d="M236.258 1022.546 A556 556 0 0 1 71.010 623.604" fill="none" stroke="url(#halo-rainbow-gradient-06)" stroke-width="84" stroke-linecap="butt" />
-    <path id="rainbow-halo-segment-07" class="halo-ring-stroke" d="M71.010 630.396 A556 556 0 0 1 236.258 231.454" fill="none" stroke="url(#halo-rainbow-gradient-07)" stroke-width="84" stroke-linecap="butt" />
-    <path id="rainbow-halo-segment-08" class="halo-ring-stroke" d="M231.454 236.258 A556 556 0 0 1 630.396 71.010" fill="none" stroke="url(#halo-rainbow-gradient-08)" stroke-width="84" stroke-linecap="butt" />
+    <g class="halo-ring-bloom">
+      <use href="#rainbow-halo-arcs" filter="url(#halo-ring-bloom-far)" opacity="0.7" />
+      <use href="#rainbow-halo-arcs" filter="url(#halo-ring-bloom-far)" opacity="0.55" />
+      <use href="#rainbow-halo-arcs" filter="url(#halo-ring-bloom-near)" opacity="0.9" />
+    </g>
+    <use href="#rainbow-halo-arcs" />
   </g>
 </svg>

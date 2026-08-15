@@ -5,7 +5,7 @@
     part,
     heading = false,
     stacked = false,
-    size = 34,
+    size = 36,
   }: {
     /** The line under the wordmark, naming the console. Written as it renders. */
     part: string;
@@ -13,7 +13,12 @@
     heading?: boolean;
     /** Icon over wordmark rather than beside it, for a mark standing on its own. */
     stacked?: boolean;
-    /** The icon's edge in pixels. The wordmark scales with it when stacked. */
+    /**
+     * The icon's edge in pixels, glow included. The halo fills 89.25% of it - the
+     * rest is the canvas the ring's bloom spills onto - so a mark that has to
+     * measure the ring rather than the box multiplies by that. The wordmark
+     * scales with this when stacked.
+     */
     size?: number;
   } = $props();
 </script>

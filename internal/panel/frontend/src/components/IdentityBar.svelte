@@ -1066,8 +1066,8 @@
   }
 
   /* Collapsed, the trigger sits ON the mark rather than under it. The halo in
-     `smyklot-halo.svg` is drawn in a 1254 box as a circle of r=556 stroked at
-     84, so at the mark's 34px it is 32.43px across with a 2.28px ring - the
+     `smyklot-halo.svg` is drawn in a 1340 box as a circle of r=556 stroked at
+     84, so at the mark's 36px it is 32.13px across with a 2.26px ring - the
      overlay is that circle exactly, so its own ring lands on the halo's rather
      than inside it and the interior covers the robot edge to edge. It waits for
      a hover like the expanded one does, so the mark is what the sidebar shows
@@ -1087,7 +1087,7 @@
   }
 
   .collapsed .sidebar-collapse-trigger::before {
-    border: 2.28px solid var(--sidebar-text-muted);
+    border: 2.26px solid var(--sidebar-text-muted);
     border-radius: 50%;
     /* The halo's outer edge is antialiased and lands on a fraction of a pixel,
        so an exactly-sized disc leaves a coloured hairline around it. A ring of
@@ -1095,12 +1095,12 @@
     box-shadow: 0 0 0 1.5px var(--sidebar-bg);
     box-sizing: border-box;
     content: '';
-    height: 32.43px;
+    height: 32.13px;
     left: 50%;
     position: absolute;
     top: 50%;
     translate: -50% -50%;
-    width: 32.43px;
+    width: 32.13px;
   }
 
   .collapsed .sidebar-collapse-trigger > :global(svg) {
