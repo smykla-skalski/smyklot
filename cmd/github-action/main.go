@@ -1056,6 +1056,11 @@ func executePendingCIMerge(
 		if failures.stale {
 			return nil, nil
 		}
+		if failures.ambiguous {
+			return feedback.NewMergeFailed(
+				"GitHub reported multiple after-CI commands with the same timestamp; reissue the command to choose the intended merge method",
+			), nil
+		}
 	}
 
 	// Return pending feedback

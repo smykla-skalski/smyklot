@@ -86,9 +86,11 @@ func TestPendingCICommandReportsLabelOwnershipReadFailure(t *testing.T) {
 }
 
 type pendingCICommandStoreStub struct {
-	request pendingci.Request
-	getErr  error
-	armErr  error
+	request      pendingci.Request
+	getErr       error
+	armErr       error
+	finishResult *pendingci.Request
+	finishErr    error
 }
 
 func (store pendingCICommandStoreStub) GetArmed(
@@ -113,9 +115,9 @@ func (pendingCICommandStoreStub) CancelBySource(
 	return nil, nil
 }
 
-func (pendingCICommandStoreStub) FinishPR(
+func (store pendingCICommandStoreStub) FinishPR(
 	context.Context,
 	pendingci.FinishPRRequest,
 ) (*pendingci.Request, error) {
-	return nil, nil
+	return store.finishResult, store.finishErr
 }

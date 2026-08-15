@@ -125,7 +125,7 @@ func TestPendingCIActivationCleansAmbiguousMethodPublishFailure(t *testing.T) {
 	command := &pendingCICommand{
 		store:       pendingCICommandStoreStub{getErr: storage.ErrNotFound},
 		coordinator: newPendingCICoordinator(), repositoryID: "repository:7",
-		now: func() time.Time { return time.Now().UTC() },
+		now: func() time.Time { return time.Now().UTC() }, wake: func() {},
 	}
 
 	failures, err := activatePendingCI(
@@ -158,7 +158,7 @@ func TestPendingCIActivationCleansAmbiguousMarkerPublishFailure(t *testing.T) {
 	command := &pendingCICommand{
 		store:       pendingCICommandStoreStub{getErr: storage.ErrNotFound},
 		coordinator: newPendingCICoordinator(), repositoryID: "repository:7",
-		now: func() time.Time { return time.Now().UTC() },
+		now: func() time.Time { return time.Now().UTC() }, wake: func() {},
 	}
 
 	failures, err := activatePendingCI(
@@ -180,12 +180,92 @@ func TestPendingCIActivationCleansAmbiguousMarkerPublishFailure(t *testing.T) {
 	}
 }
 
+func TestPendingCIActivationRemovesActionOwnedConflictingLabels(t *testing.T) {
+	t.Parallel()
+	artifacts := &pendingCIArtifactsStub{labels: []string{
+		github.LabelPendingCIMerge,
+		github.LabelPendingCISquash,
+		github.LegacyLabelPendingCIRebase,
+		"unrelated",
+	}}
+	command := &pendingCICommand{
+		store:       pendingCICommandStoreStub{getErr: storage.ErrNotFound},
+		coordinator: newPendingCICoordinator(), repositoryID: "repository:7",
+		now: func() time.Time { return time.Now().UTC() }, wake: func() {},
+	}
+
+	failures, err := activatePendingCI(
+		t.Context(), artifacts, command, pendingCIActivationRequest{
+			runtime: &RuntimeConfig{CommentAuthor: "operator"},
+			owner:   "owner", repository: "repository", pullRequest: 198,
+			commentID: 101, headSHA: "head", baseBranch: "main",
+			method: github.MergeMethodSquash, label: github.LabelPendingCISquash,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failures != (pendingCIActivationErrors{}) {
+		t.Fatalf("activation failures = %+v", failures)
+	}
+	if !equalStrings(artifacts.removedLabels, []string{
+		github.LabelPendingCIMerge,
+		github.LegacyLabelPendingCIRebase,
+	}) {
+		t.Fatalf("removed labels = %v", artifacts.removedLabels)
+	}
+}
+
+func TestPendingCIActivationCancelsAmbiguousCommands(t *testing.T) {
+	t.Parallel()
+	current := pendingci.Request{
+		ID: 7, Label: github.LabelPendingCIMerge, SourceCommentID: 202,
+	}
+	artifacts := &pendingCIArtifactsStub{}
+	command := &pendingCICommand{
+		store: pendingCICommandStoreStub{
+			request: current, armErr: pendingci.ErrAmbiguousSourceRevision,
+			finishResult: &current,
+		},
+		coordinator: newPendingCICoordinator(), repositoryID: "repository:7",
+		now: func() time.Time { return time.Now().UTC() }, wake: func() {},
+	}
+
+	failures, err := activatePendingCI(
+		t.Context(), artifacts, command, pendingCIActivationRequest{
+			runtime: &RuntimeConfig{CommentAuthor: "operator"},
+			owner:   "owner", repository: "repository", pullRequest: 198,
+			commentID: 101, headSHA: "head", baseBranch: "main",
+			method: github.MergeMethodSquash, label: github.LabelPendingCISquash,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !failures.ambiguous || failures.command != nil {
+		t.Fatalf("activation failures = %+v", failures)
+	}
+	if !equalStrings(artifacts.removedLabels, []string{github.LabelPendingCISquash}) {
+		t.Fatalf("removed labels = %v", artifacts.removedLabels)
+	}
+}
+
 type pendingCIArtifactsStub struct {
+	labels            []string
 	addedLabels       []string
 	removedLabels     []string
 	removedReactions  []int
 	addLabelErrors    map[string]error
 	removeLabelErrors map[string]error
+}
+
+func (stub *pendingCIArtifactsStub) GetLabels(
+	context.Context,
+	string,
+	string,
+	int,
+) ([]string, error) {
+	return append([]string(nil), stub.labels...), nil
 }
 
 func (stub *pendingCIArtifactsStub) AddLabel(

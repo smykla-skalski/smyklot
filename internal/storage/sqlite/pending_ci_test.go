@@ -421,7 +421,7 @@ var _ = Describe("pending CI storage [Unit]", func() {
 		Expect(result.SourceOrder).To(Equal(int64(3)))
 	})
 
-	It("keeps receipt order when workers execute same-timestamp commands backwards", func() {
+	It("rejects same-timestamp commands when workers execute them backwards", func() {
 		revision := now.Format(time.RFC3339Nano)
 		later := pendingci.SourceRevisionRequest{
 			RepositoryID: "9001", PullRequest: 198, CommentID: 202,
@@ -450,7 +450,7 @@ var _ = Describe("pending CI storage [Unit]", func() {
 		firstArm.SourceOrder = first.SourceOrder
 		firstArm.MergeMethod = pendingci.MergeMethodMerge
 		_, err = store.Arm(ctx, firstArm)
-		Expect(errors.Is(err, pendingci.ErrStaleSourceRevision)).To(BeTrue())
+		Expect(errors.Is(err, pendingci.ErrAmbiguousSourceRevision)).To(BeTrue())
 
 		current, err := store.GetArmed(ctx, laterArm.RepositoryID, laterArm.PullRequest)
 		Expect(err).NotTo(HaveOccurred())
@@ -503,7 +503,7 @@ var _ = Describe("pending CI storage [Unit]", func() {
 		Expect(createdRetry.Accepted).To(BeFalse())
 	})
 
-	It("uses comment identity to break same-timestamp command ties", func() {
+	It("rejects ambiguous commands from distinct comments at the same timestamp", func() {
 		firstArm := pendingCITestArm(now, 101, "first-head")
 		firstArm.SourceOrder = 2
 		firstArm.MergeMethod = pendingci.MergeMethodMerge
@@ -513,18 +513,13 @@ var _ = Describe("pending CI storage [Unit]", func() {
 		lastArm := pendingCITestArm(now, 202, "last-head")
 		lastArm.SourceOrder = 1
 		lastArm.MergeMethod = pendingci.MergeMethodSquash
-		last, err := store.Arm(ctx, lastArm)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(last.Superseded).NotTo(BeNil())
-		Expect(last.Superseded.ID).To(Equal(first.Request.ID))
+		_, err = store.Arm(ctx, lastArm)
+		Expect(errors.Is(err, pendingci.ErrAmbiguousSourceRevision)).To(BeTrue())
 
 		current, err := store.GetArmed(ctx, lastArm.RepositoryID, lastArm.PullRequest)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(current.ID).To(Equal(last.Request.ID))
-		Expect(current.MergeMethod).To(Equal(pendingci.MergeMethodSquash))
-
-		_, err = store.Arm(ctx, firstArm)
-		Expect(errors.Is(err, pendingci.ErrStaleSourceRevision)).To(BeTrue())
+		Expect(current.ID).To(Equal(first.Request.ID))
+		Expect(current.MergeMethod).To(Equal(pendingci.MergeMethodMerge))
 	})
 
 	It("rejects delayed commands and source cancellations", func() {

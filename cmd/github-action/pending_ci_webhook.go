@@ -67,7 +67,20 @@ func (s *server) restorePendingCIServiceOwnership(
 ) error {
 	_, err := s.store.GetArmed(ctx, repositoryID, pullRequest)
 	if errors.Is(err, storage.ErrNotFound) {
-		return nil
+		cleanupPending, cleanupErr := s.store.HasPendingCleanup(
+			ctx,
+			pendingci.CleanupFilter{
+				RepositoryID: repositoryID,
+				PullRequest:  pullRequest,
+			},
+		)
+		if cleanupErr != nil {
+			return fmt.Errorf("read pending CI cleanup ownership: %w", cleanupErr)
+		}
+		if !cleanupPending {
+			return nil
+		}
+		err = nil
 	}
 	if err != nil {
 		return fmt.Errorf("read armed pending CI request: %w", err)

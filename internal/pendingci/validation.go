@@ -12,6 +12,11 @@ var ErrInvalidRequest = errors.New("invalid pending CI request")
 // latest authorized intent for its pull request.
 var ErrStaleSourceRevision = errors.New("stale pending CI source revision")
 
+// ErrAmbiguousSourceRevision means GitHub reported commands from different
+// comments at the same timestamp precision. Their true order is unknowable,
+// so choosing either merge intent would be unsafe.
+var ErrAmbiguousSourceRevision = errors.New("ambiguous pending CI source revision")
+
 func (request ArmRequest) Validate() error {
 	if empty(request.TargetID, request.RepositoryID, request.RepositoryFullName) {
 		return invalid("target and repository identity are required")

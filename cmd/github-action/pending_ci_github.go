@@ -17,6 +17,7 @@ import (
 type githubPendingCIBackend struct {
 	server  *server
 	current pendingCICurrentStore
+	source  pendingCISourceValidator
 }
 
 type pendingCICurrentStore interface {
@@ -41,17 +42,6 @@ func (backend *githubPendingCIBackend) Observe(
 	if err != nil {
 		return pendingci.Observation{}, err
 	}
-	cancelReason, err := backend.cancelReason(ctx, client, request, owner, repository)
-	if err != nil {
-		return pendingci.Observation{}, err
-	}
-	if cancelReason != "" {
-		return pendingci.Observation{
-			HeadSHA: request.HeadSHA, PullRequestOpen: true,
-			PendingLabelFound: true, CancelReason: cancelReason,
-			State: pendingci.ObservedIndeterminate, ObservedAt: observedAt,
-		}, nil
-	}
 	state, err := client.GetPullRequestState(ctx, owner, repository, request.PullRequest)
 	if err != nil {
 		return pendingci.Observation{}, err
@@ -62,6 +52,42 @@ func (backend *githubPendingCIBackend) Observe(
 			HeadSHA: state.HeadSHA, PullRequestOpen: state.Open,
 			PullRequestMerged: state.Merged, PendingLabelFound: labelFound,
 			State: pendingci.ObservedIndeterminate, ObservedAt: observedAt,
+		}, nil
+	}
+	if !hasLabel(state.Labels, github.LabelPendingCIServiceOwner) {
+		if err := client.AddLabel(
+			ctx, owner, repository, request.PullRequest,
+			github.LabelPendingCIServiceOwner,
+		); err != nil {
+			return pendingci.Observation{}, fmt.Errorf(
+				"restore pending CI service ownership: %w", err,
+			)
+		}
+	}
+	sourceReason, err := backend.source.CancellationReason(
+		ctx, client, request, owner, repository,
+	)
+	if err != nil {
+		return pendingci.Observation{}, err
+	}
+	if sourceReason != "" {
+		return pendingci.Observation{
+			HeadSHA: state.HeadSHA, PullRequestOpen: state.Open,
+			PullRequestMerged: state.Merged, PendingLabelFound: labelFound,
+			CancelReason: sourceReason,
+			State:        pendingci.ObservedIndeterminate, ObservedAt: observedAt,
+		}, nil
+	}
+	cancelReason, err := backend.cancelReason(ctx, client, request, owner, repository)
+	if err != nil {
+		return pendingci.Observation{}, err
+	}
+	if cancelReason != "" {
+		return pendingci.Observation{
+			HeadSHA: state.HeadSHA, PullRequestOpen: state.Open,
+			PullRequestMerged: state.Merged, PendingLabelFound: labelFound,
+			CancelReason: cancelReason,
+			State:        pendingci.ObservedIndeterminate, ObservedAt: observedAt,
 		}, nil
 	}
 	checks, err := backend.checks(ctx, client, request, state, owner, repository)
@@ -126,7 +152,12 @@ func (backend *githubPendingCIBackend) completeExclusive(
 			return ownershipErr
 		}
 		if !owned {
-			return nil
+			if err := client.AddLabel(
+				ctx, owner, repository, request.PullRequest,
+				github.LabelPendingCIServiceOwner,
+			); err != nil {
+				return fmt.Errorf("restore pending CI cleanup ownership: %w", err)
+			}
 		}
 	}
 	scope, err := backend.cleanupScope(ctx, request)

@@ -157,10 +157,7 @@ func (command *pendingCICommand) cancelPullRequest(
 	var request *pendingci.Request
 	err := command.coordinator.Exclusive(ctx, command.repositoryID, func() error {
 		var transitionErr error
-		request, transitionErr = command.store.FinishPR(ctx, pendingci.FinishPRRequest{
-			RepositoryID: command.repositoryID, PullRequest: pullRequest,
-			Lifecycle: pendingci.LifecycleCancelled, Reason: reason, FinishedAt: command.now(),
-		})
+		request, transitionErr = command.cancelPullRequestLocked(ctx, pullRequest, reason)
 
 		return transitionErr
 	})
@@ -172,6 +169,17 @@ func (command *pendingCICommand) cancelPullRequest(
 	}
 
 	return nil
+}
+
+func (command *pendingCICommand) cancelPullRequestLocked(
+	ctx context.Context,
+	pullRequest int,
+	reason string,
+) (*pendingci.Request, error) {
+	return command.store.FinishPR(ctx, pendingci.FinishPRRequest{
+		RepositoryID: command.repositoryID, PullRequest: pullRequest,
+		Lifecycle: pendingci.LifecycleCancelled, Reason: reason, FinishedAt: command.now(),
+	})
 }
 
 func (command *pendingCICommand) exclusive(

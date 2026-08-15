@@ -75,9 +75,10 @@ func CompareSourceEvents(
 	return 0, nil
 }
 
-// CompareSourceIntent orders commands by GitHub's source timestamp. Distinct
-// comments use their immutable IDs as a deterministic same-second creation
-// order; revisions of one comment use durable receipt order after their live
+// CompareSourceIntent orders commands by GitHub's source timestamp. GitHub
+// timestamps have one-second precision, so distinct comments with the same
+// timestamp cannot be ordered safely: one might be a later edit of an older
+// comment. Revisions of one comment use durable receipt order after their live
 // GitHub state has been verified.
 func CompareSourceIntent(
 	leftRevision string,
@@ -101,11 +102,8 @@ func CompareSourceIntent(
 	if leftTime.After(rightTime) {
 		return 1, nil
 	}
-	if leftCommentID < rightCommentID {
-		return -1, nil
-	}
-	if leftCommentID > rightCommentID {
-		return 1, nil
+	if leftCommentID != rightCommentID {
+		return 0, ErrAmbiguousSourceRevision
 	}
 	if leftOrder < rightOrder {
 		return -1, nil

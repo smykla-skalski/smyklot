@@ -153,6 +153,15 @@ func armWebhookTestRequestWithLabel(srv *server, label string) pendingci.Request
 	return result.Request
 }
 
+func seedPendingCISource(stub *githubStub, request pendingci.Request, body string) {
+	stub.mu.Lock()
+	defer stub.mu.Unlock()
+	stub.issueComments[request.SourceCommentID] = issueCommentRecord{
+		exists: true, body: body, updatedAt: request.SourceRevision,
+		author: request.Requester, authorType: githubtest.DefaultAuthorTypeVal,
+	}
+}
+
 func startPendingCITestScheduler(srv *server) {
 	GinkgoHelper()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -575,16 +584,99 @@ var _ = Describe("Webhook service [Unit]", func() {
 			Eventually(func() int {
 				return stub.countCalls(http.MethodPost, "/issues/42/labels")
 			}, eventuallyWindow).Should(Equal(1))
-			request, err := srv.store.GetArmed(
+			Eventually(func(g Gomega) {
+				request, err := srv.store.GetArmed(
+					GinkgoT().Context(), armed.RepositoryID, armed.PullRequest,
+				)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(request.LastEventKey).To(ContainSubstring("pull_request"))
+			}).Within(eventuallyWindow).Should(Succeed())
+		})
+
+		It("restores service ownership when the marker webhook was missed", func() {
+			armed := armWebhookTestRequest(srv)
+			seedPendingCISource(stub, armed, "/squash after ci")
+			stub.prLabels = `[{"name":"smyklot:pending:ci:squash"}]`
+			startPendingCITestScheduler(srv)
+
+			Eventually(func() int {
+				return stub.countCalls(http.MethodPost, "/issues/42/labels")
+			}, eventuallyWindow).Should(Equal(1))
+			updated, err := srv.store.GetArmed(
 				GinkgoT().Context(), armed.RepositoryID, armed.PullRequest,
 			)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(request.LastEventKey).To(ContainSubstring("pull_request"))
+			Expect(updated.ID).To(Equal(armed.ID))
+		})
+
+		It("cancels a command edit when its webhook was missed", func() {
+			armed := armWebhookTestRequest(srv)
+			stub.prLabels = `[
+				{"name":"smyklot:pending:ci:squash"},
+				{"name":"smyklot:pending:ci:service"}
+			]`
+			seedPendingCISource(stub, armed, "do not merge")
+			startPendingCITestScheduler(srv)
+
+			Eventually(func() bool {
+				_, err := srv.store.GetArmed(
+					GinkgoT().Context(), armed.RepositoryID, armed.PullRequest,
+				)
+
+				return errors.Is(err, storage.ErrNotFound)
+			}, eventuallyWindow).Should(BeTrue())
+		})
+
+		It("restores terminal cleanup ownership on a marker webhook", func() {
+			armed := armWebhookTestRequest(srv)
+			_, err := srv.store.Finish(GinkgoT().Context(), pendingci.FinishRequest{
+				ID: armed.ID, ExpectedRevision: armed.Revision,
+				Lifecycle: pendingci.LifecycleCancelled,
+				Reason:    "test terminal cleanup", FinishedAt: time.Now().UTC(),
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			response := post(
+				webhook.EventPullRequest,
+				"terminal-owner-unlabeled-delivery",
+				pendingLabelRemovedDeliveryFor(github.LabelPendingCIServiceOwner),
+				nil,
+			)
+			Expect(response.StatusCode).To(Equal(http.StatusAccepted))
+			Eventually(func() int {
+				return stub.countCalls(http.MethodPost, "/issues/42/labels")
+			}, eventuallyWindow).Should(Equal(1))
+		})
+
+		It("repairs ownership before terminal cleanup when its webhook was missed", func() {
+			armed := armWebhookTestRequest(srv)
+			terminal, err := srv.store.Finish(
+				GinkgoT().Context(), pendingci.FinishRequest{
+					ID: armed.ID, ExpectedRevision: armed.Revision,
+					Lifecycle: pendingci.LifecycleCancelled,
+					Reason:    "test terminal cleanup", FinishedAt: time.Now().UTC(),
+				},
+			)
+			Expect(err).NotTo(HaveOccurred())
+			stub.prLabels = `[{"name":"smyklot:pending:ci:squash"}]`
+			startPendingCITestScheduler(srv)
+
+			Eventually(func(g Gomega) {
+				cleaned, readErr := srv.store.Get(GinkgoT().Context(), terminal.ID)
+				g.Expect(readErr).NotTo(HaveOccurred())
+				g.Expect(cleaned.CleanupPending).To(BeFalse())
+			}).Within(eventuallyWindow).Should(Succeed())
+			Expect(stub.countCalls(http.MethodPost, "/issues/42/labels")).To(Equal(1))
+			Expect(stub.countCalls(
+				http.MethodDelete,
+				"/issues/42/labels/smyklot:pending:ci:squash",
+			)).To(Equal(1))
 		})
 
 		It("treats a superseded label event as a hint about live state", func() {
 			armWebhookTestRequest(srv)
 			current := armWebhookTestRequestWithLabel(srv, "smyklot:pending:ci")
+			seedPendingCISource(stub, current, "/squash after ci")
 			stub.prLabels = `[{"name":"smyklot:pending:ci"}]`
 
 			response := post(
@@ -615,6 +707,7 @@ var _ = Describe("Webhook service [Unit]", func() {
 
 		It("treats a delayed close event as a hint about live state", func() {
 			current := armWebhookTestRequest(srv)
+			seedPendingCISource(stub, current, "/squash after ci")
 			stub.prLabels = `[{"name":"smyklot:pending:ci:squash"}]`
 
 			response := post(

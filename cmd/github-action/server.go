@@ -243,6 +243,7 @@ func newServer(cfg *serveConfig) (*server, error) {
 	srv.pendingCICoordinator = pendingCICoordinator
 	pendingCIBackend := &githubPendingCIBackend{
 		server: srv, current: srv.store,
+		source: githubPendingCISourceValidator{server: srv},
 	}
 	pendingCIReconciler := newPendingCIReconciler(
 		srv.store,
