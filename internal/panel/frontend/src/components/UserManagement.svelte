@@ -2501,7 +2501,8 @@
     /* The grid rows above repaint the row ground at a higher specificity than the plain
          `:hover` rule outside this block, so the pointer state has to be restated here or it never
          reaches the screen. */
-    .user-table tbody tr:not(.virtual-spacer):hover {
+    /* Not the empty state - see the same rule in RepositoryList. */
+    .user-table tbody tr:not(.virtual-spacer, .empty-row):hover {
       background: var(--table-row-hover);
     }
 

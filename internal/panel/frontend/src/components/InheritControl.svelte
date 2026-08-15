@@ -92,7 +92,7 @@
   .linked-control {
     align-items: center;
     display: inline-flex;
-    gap: 0.35rem;
+    gap: var(--inherit-marker-gap);
   }
 
   /* The linked chain is a passive provenance marker; only the broken chain is a
@@ -105,9 +105,9 @@
     cursor: default;
     display: grid;
     flex: none;
-    height: 26px;
+    height: var(--inherit-marker-size);
     place-items: center;
-    width: 26px;
+    width: var(--inherit-marker-size);
   }
 
   .link-toggle.broken {

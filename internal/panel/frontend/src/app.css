@@ -245,6 +245,16 @@
   --space-6: 1.5rem;
   --space-7: 1.75rem;
   --space-8: 2rem;
+  /* The room an inheritance marker takes before the control it belongs to. A
+     table header indents its label by exactly this, so the word over a column
+     starts where that column's controls start rather than where its cells do. */
+  --inherit-marker-size: 26px;
+  --inherit-marker-gap: 0.35rem;
+  --inherit-marker-offset: calc(var(--inherit-marker-size) + var(--inherit-marker-gap));
+
+  /* Below micro: for type that has to fit inside something small rather than be
+     read across a page - a count in a segment, two initials in a 20px circle. */
+  --font-size-nano: 0.5625rem;
   --font-size-micro: 0.6875rem;
   --font-size-compact: 0.75rem;
   --font-size-meta: 0.8125rem;

@@ -976,7 +976,7 @@
                   >
                 </button>
               </th>
-              <th class="filterable-heading">
+              <th class="filterable-heading enablement-heading">
                 <div class="table-heading-layout">
                   <span class="heading-with-help">
                     <span class="cap-trim">Enablement</span>
@@ -1099,7 +1099,7 @@
                 </td>
                 <td class="row-action" data-label="Settings">
                   <button
-                    class="btn btn-row configure"
+                    class="btn btn-row btn-quiet configure"
                     aria-haspopup="dialog"
                     aria-label={`Configure ${repository.full_name}`}
                     onclick={(event) => openRepository(repository, event.currentTarget)}
@@ -1295,6 +1295,13 @@
 <style>
   .repository-panel {
     --local-control-height: var(--control-height-compact);
+
+    /* What the two control columns actually measure: the inheritance marker plus
+       the Enabled/Disabled switch, and the Configure button, each with the
+       cell's own left and right padding. */
+    --enablement-column: 13.25rem;
+    --action-column: 6.8125rem;
+
     background: transparent;
     border: 0;
     border-radius: 0;
@@ -1576,11 +1583,17 @@
     .repositories thead tr,
     .repositories tbody tr {
       display: grid;
-      /* The approved catalog's 2fr 1fr 1.4fr 1.6fr, now sharing what is left
-         after the action column. That one is fixed: it holds a single button
-         whose size has nothing to do with how wide the table is, and a share of
-         the width would leave it swimming on a large screen. */
-      grid-template-columns: 2fr 1fr 1.4fr 1.6fr 8.5rem;
+      /* The two columns on the right hold controls of a known size, so they get
+         exactly that and no share of the table: a fraction left the switch and
+         the button against a gap that grew with the window. Everything else goes
+         to the three text columns, in the approved catalog's 2:1:1.4.
+
+         Fixed lengths rather than `max-content`: every row is its own grid, so a
+         content-sized track is measured per row and the header stopped agreeing
+         with the body about where a column began. The two numbers are the
+         controls' own widths plus the cell padding, and
+         tests/table-columns.test.ts holds them to that. */
+      grid-template-columns: 2fr 1fr 1.4fr var(--enablement-column) var(--action-column);
       width: 100%;
     }
 
@@ -1591,7 +1604,11 @@
     /* The grid rows above repaint the row ground at a higher specificity than the plain
          `:hover` rule outside this block, so the pointer state has to be restated here or it never
          reaches the screen. */
-    .repositories tbody tr:not(.virtual-spacer):hover {
+    /* Not the empty state: a row hover says "this row is a thing you can act on",
+       and a message explaining that there are no rows is not one. It also put the
+       message's text on the hover ground, which is not a pairing any contrast was
+       chosen for. */
+    .repositories tbody tr:not(.virtual-spacer, .empty-row):hover {
       background: var(--table-row-hover);
     }
 
@@ -1661,6 +1678,29 @@
   /* The row's action, at the end of the row where a reader looks for one. */
   .row-action {
     justify-content: flex-end;
+  }
+
+  /* Quiet until it is wanted. One of these in every row, and drawn as a button
+     each time, they became a column of frames competing with the data they sit
+     beside. It carries its word only, and takes its edges when a pointer is on
+     it or a keyboard reaches it. */
+  .configure {
+    border-color: transparent;
+  }
+
+  .configure:hover:not(:disabled),
+  .configure:focus-visible {
+    background: var(--surface-control);
+    border-color: var(--control-border);
+    color: var(--text);
+  }
+
+  /* The word starts where the controls under it start. Every cell in this column
+     opens with an inheritance marker, so the label indents past one: aligned to
+     the cell's edge instead, it sat a chain's width to the left of everything it
+     names. */
+  .enablement-heading {
+    padding-inline-start: calc(var(--space-3) + var(--inherit-marker-offset));
   }
 
   /* Name and chip are siblings on one centred row, so the chip's box and the

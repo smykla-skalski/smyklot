@@ -8,6 +8,7 @@
   import RootInstallations from './components/RootInstallations.svelte';
   import RootOverview from './components/RootOverview.svelte';
   import RootSettings from './components/RootSettings.svelte';
+  import NightPage from './components/NightPage.svelte';
   import SignInPage from './components/SignInPage.svelte';
   import TargetSettings from './components/TargetSettings.svelte';
   import UserManagement from './components/UserManagement.svelte';
@@ -127,6 +128,17 @@
      neither, so the shell holds until then rather than flashing a front door at
      someone who turns out to have a session. */
   const signedOut = $derived(!loading && viewer === null && failure === null);
+
+  /* Signed in, nothing installed, and nothing else to be doing here: not a Root
+     with a console to reach, and no failure whose retry is the way out. */
+  const awaitingInstallation = $derived(
+    !loading &&
+      viewer !== null &&
+      failure === null &&
+      targets.length === 0 &&
+      !rootMode &&
+      viewer.system_role === 'none',
+  );
   const returnTarget = $derived(selectedTarget ?? targets[0] ?? null);
   const tableScrollView = $derived(
     rootMode
@@ -655,6 +667,25 @@
      night page has nowhere to put one. -->
 {#if signedOut}
   <SignInPage {api} {build} ended={sessionEnded} />
+{:else if awaitingInstallation}
+  <!-- A workspace with no workspaces in it is not a workspace. This reader has an
+       account and nothing to administer yet, which is the same kind of moment as
+       an invitation or a sign-in: one thing to say and one thing to do. It gets
+       the same page those get, rather than an empty shell with a sidebar of
+       tabs that lead nowhere. -->
+  <NightPage title="No installations" documentTitle="No installations" {build} size="compact">
+    <div class="install-prompt">
+      <span class="install-mark" aria-hidden="true">+</span>
+      <div class="install-copy">
+        <strong>Install Smyklot to begin</strong>
+        <p>
+          Install the Smyklot GitHub App on an organization or personal account, then reload this
+          panel
+        </p>
+      </div>
+      <button class="btn btn-signal" type="button" onclick={load}>Reload panel</button>
+    </div>
+  </NightPage>
 {:else}
   <a class="skip-link" href="#panel-content">Skip to panel content</a>
 
@@ -931,6 +962,9 @@
     height: 3.25rem;
   }
 
+  /* A Root with no installations keeps the shell - the console is still there to
+     be reached - so this row survives for them. Everyone else gets the night page
+     below, where the same words are a column. */
   .empty-panel-state {
     align-items: center;
     display: grid;
@@ -955,6 +989,40 @@
     height: 2.5rem;
     justify-content: center;
     width: 2.5rem;
+  }
+
+  /* One column, centred. The row above is a shape for a panel that has other
+     things on it; on its own page this is the only thing there, and the mark
+     stands over what it introduces rather than beside it. */
+  .install-prompt {
+    display: grid;
+    gap: var(--space-4);
+    justify-items: center;
+    text-align: center;
+  }
+
+  .install-copy strong {
+    display: block;
+    font-size: 1rem;
+  }
+
+  .install-copy p {
+    color: var(--dim);
+    margin: var(--space-2) 0 0;
+    max-width: 26rem;
+  }
+
+  .install-mark {
+    align-items: center;
+    background: var(--accent-tint);
+    border: 1px solid color-mix(in srgb, var(--accent) 34%, transparent);
+    border-radius: var(--radius-control);
+    color: var(--accent);
+    display: inline-flex;
+    font: 650 1.5rem/1 var(--sans);
+    height: 3rem;
+    justify-content: center;
+    width: 3rem;
   }
 
   .root-workspace {

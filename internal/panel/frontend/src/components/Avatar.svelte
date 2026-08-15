@@ -25,12 +25,17 @@
   // avatar carries micro, a 32px one carries meta. Scaling by a ratio landed
   // them between sizes, which reads as a slightly different weight in every
   // list. The map lives here so no call site picks its own.
+  // A 24px circle was the smallest the map knew about, and everything under it
+  // took the same 11px: two capitals at that size fill a 20px circle to its ring
+  // and read as letters escaping it. Nano is the step below.
   const monogramFont = $derived(
-    size < 32
-      ? 'var(--font-size-micro)'
-      : size < 40
-        ? 'var(--font-size-meta)'
-        : 'var(--font-size-title)',
+    size < 24
+      ? 'var(--font-size-nano)'
+      : size < 32
+        ? 'var(--font-size-micro)'
+        : size < 40
+          ? 'var(--font-size-meta)'
+          : 'var(--font-size-title)',
   );
 </script>
 

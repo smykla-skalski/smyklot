@@ -143,6 +143,8 @@ interface MockInvitation extends PanelInvitation {
 interface MockState {
   signedIn: boolean;
   forceFailure: boolean;
+  /** `?scenario=empty`: an account with nothing installed, without losing the seed. */
+  hideTargets: boolean;
   targets: MockTarget[];
   users: PanelUser[];
   targetAccess: Map<string, Map<string, TargetUserAccess>>;
@@ -506,6 +508,7 @@ function seed(): MockState {
   return {
     signedIn: true,
     forceFailure: false,
+    hideTargets: false,
     targets: [
       organization,
       personal,
@@ -1308,17 +1311,23 @@ async function handle(
     if (path === route('/api/v1/session') && method === 'GET') {
       respond(res, 200, {
         account: VIEWER,
-        system_role: 'super_root',
+        /* A Root with no installations keeps the panel shell, because the console
+           is still there to reach. `?scenario=empty` is for the other reader -
+           signed in, nothing installed, nothing else to do - so it hands back a
+           regular account. */
+        system_role: state.hideTargets ? 'none' : 'super_root',
         status: 'active',
-        target_count: state.targets.filter((target) => mockRootOwns(target)).length,
+        target_count: state.hideTargets
+          ? 0
+          : state.targets.filter((target) => mockRootOwns(target)).length,
       });
       return;
     }
     if (path === route('/api/v1/targets') && method === 'GET') {
       respond(res, 200, {
-        targets: state.targets
-          .filter((target) => mockRootOwns(target))
-          .map((target) => target.value),
+        targets: state.hideTargets
+          ? []
+          : state.targets.filter((target) => mockRootOwns(target)).map((target) => target.value),
       });
       return;
     }
@@ -2069,7 +2078,11 @@ async function handle(
 function applyScenario(state: MockState, scenario: string | null): void {
   state.forceFailure = scenario === 'error';
   state.signedIn = scenario !== 'signed-out';
-  if (scenario === 'empty') state.targets = [];
+  /* Kept apart from the live list rather than emptying it, because a scenario is
+     a way of looking at the mock and not a change to it. Emptying it stuck: every
+     later request in the same process saw an account with no installations, and
+     whatever was being looked at next quietly measured the wrong panel. */
+  state.hideTargets = scenario === 'empty';
 }
 
 function findTarget(state: MockState, encodedId: string): MockTarget {
