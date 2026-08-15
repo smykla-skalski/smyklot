@@ -58,6 +58,19 @@ var _ = Describe("pending CI storage [Unit]", func() {
 		lease, err := store.LeaseDue(ctx, secondArm.RequestedAt, now.Add(3*time.Minute))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(lease.Request).NotTo(BeNil())
+		Expect(lease.Request.ID).To(Equal(first.Request.ID))
+		Expect(lease.Request.Lifecycle).To(Equal(pendingci.LifecycleSuperseded))
+		Expect(lease.Request.CleanupPending).To(BeTrue())
+		_, err = store.CompleteCleanup(ctx, pendingci.CompleteCleanupRequest{
+			ID: lease.Request.ID, ExpectedRevision: lease.Request.Revision,
+			CompletedAt: secondArm.RequestedAt,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		lease, err = store.LeaseDue(ctx, secondArm.RequestedAt, now.Add(3*time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(lease.Request).NotTo(BeNil())
+		Expect(lease.Request.ID).To(Equal(second.Request.ID))
 		Expect(lease.Request.Revision).To(Equal(int64(2)))
 		Expect(lease.Request.LeaseExpiresAt).To(HaveValue(Equal(now.Add(3 * time.Minute))))
 
@@ -181,6 +194,66 @@ var _ = Describe("pending CI storage [Unit]", func() {
 		third, err := store.Arm(ctx, pendingCITestArm(now.Add(5*time.Minute), 303, "sha-3"))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(third.Superseded).To(BeNil())
+	})
+
+	It("persists terminal cleanup retries across service restarts", func() {
+		armed, err := store.Arm(ctx, pendingCITestArm(now, 101, "cleanup-sha"))
+		Expect(err).NotTo(HaveOccurred())
+		lease, err := store.LeaseDue(ctx, now, now.Add(time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+
+		finishedAt := now.Add(time.Second)
+		finished, err := store.Finish(ctx, pendingci.FinishRequest{
+			ID: armed.Request.ID, ExpectedRevision: lease.Request.Revision,
+			Lifecycle: pendingci.LifecycleCancelled,
+			Reason:    "source command removed", FinishedAt: finishedAt,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(finished.CleanupPending).To(BeTrue())
+		Expect(finished.NextCheckAt).To(Equal(finishedAt))
+
+		cleanupLease, err := store.LeaseDue(ctx, finishedAt, now.Add(2*time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cleanupLease.Request).NotTo(BeNil())
+		Expect(cleanupLease.Request.ID).To(Equal(finished.ID))
+		Expect(cleanupLease.Request.CleanupPending).To(BeTrue())
+
+		retryAt := now.Add(10 * time.Second)
+		retried, err := store.RetryCleanup(ctx, pendingci.RetryCleanupRequest{
+			ID: cleanupLease.Request.ID, ExpectedRevision: cleanupLease.Request.Revision,
+			NextAttemptAt: retryAt, FailedAt: finishedAt,
+			Error: "GitHub temporarily unavailable",
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(retried.CleanupPending).To(BeTrue())
+		Expect(retried.CleanupAttempts).To(Equal(1))
+		Expect(retried.CleanupError).To(Equal("GitHub temporarily unavailable"))
+		Expect(retried.LeaseExpiresAt).To(BeNil())
+
+		Expect(store.Close()).To(Succeed())
+		store, err = storagesqlite.Open(ctx, path)
+		Expect(err).NotTo(HaveOccurred())
+		notDue, err := store.LeaseDue(ctx, retryAt.Add(-time.Nanosecond), now.Add(time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(notDue.Request).To(BeNil())
+		Expect(notDue.AvailableAt).To(HaveValue(Equal(retryAt)))
+
+		cleanupLease, err = store.LeaseDue(ctx, retryAt, retryAt.Add(time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cleanupLease.Request).NotTo(BeNil())
+		Expect(cleanupLease.Request.CleanupAttempts).To(Equal(1))
+		completed, err := store.CompleteCleanup(ctx, pendingci.CompleteCleanupRequest{
+			ID: cleanupLease.Request.ID, ExpectedRevision: cleanupLease.Request.Revision,
+			CompletedAt: retryAt,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(completed.CleanupPending).To(BeFalse())
+		Expect(completed.CleanupError).To(BeEmpty())
+
+		done, err := store.LeaseDue(ctx, retryAt.Add(time.Hour), retryAt.Add(2*time.Hour))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(done.Request).To(BeNil())
+		Expect(done.AvailableAt).To(BeNil())
 	})
 
 	It("persists armed requests across service restarts", func() {

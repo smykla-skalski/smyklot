@@ -79,6 +79,9 @@ type Request struct {
 	RequestedAt        time.Time
 	UpdatedAt          time.Time
 	FinishedAt         *time.Time
+	CleanupPending     bool
+	CleanupAttempts    int
+	CleanupError       string
 	Revision           int64
 }
 
@@ -173,6 +176,20 @@ type FinishPRRequest struct {
 	FinishedAt   time.Time
 }
 
+type CompleteCleanupRequest struct {
+	ID               int64
+	ExpectedRevision int64
+	CompletedAt      time.Time
+}
+
+type RetryCleanupRequest struct {
+	ID               int64
+	ExpectedRevision int64
+	NextAttemptAt    time.Time
+	FailedAt         time.Time
+	Error            string
+}
+
 type QueueFilter struct {
 	Schedule *Schedule
 	Limit    int
@@ -225,6 +242,8 @@ type Store interface {
 	ClaimMerge(context.Context, ClaimMergeRequest) (Request, error)
 	Reschedule(context.Context, RescheduleRequest) (Request, error)
 	Finish(context.Context, FinishRequest) (Request, error)
+	CompleteCleanup(context.Context, CompleteCleanupRequest) (Request, error)
+	RetryCleanup(context.Context, RetryCleanupRequest) (Request, error)
 	CancelBySource(context.Context, CancelRequest) (*Request, error)
 	FinishPR(context.Context, FinishPRRequest) (*Request, error)
 	ListQueue(context.Context, QueueFilter) ([]Request, error)

@@ -131,6 +131,31 @@ func (request FinishPRRequest) Validate() error {
 	return nil
 }
 
+func (request CompleteCleanupRequest) Validate() error {
+	if request.ID <= 0 || request.ExpectedRevision <= 0 {
+		return invalid("cleanup identity and revision must be positive")
+	}
+	if request.CompletedAt.IsZero() {
+		return invalid("cleanup completion time is required")
+	}
+
+	return nil
+}
+
+func (request RetryCleanupRequest) Validate() error {
+	if request.ID <= 0 || request.ExpectedRevision <= 0 {
+		return invalid("cleanup identity and revision must be positive")
+	}
+	if request.NextAttemptAt.IsZero() || request.FailedAt.IsZero() {
+		return invalid("cleanup retry and failure times are required")
+	}
+	if strings.TrimSpace(request.Error) == "" {
+		return invalid("cleanup failure is required")
+	}
+
+	return nil
+}
+
 func (filter QueueFilter) Validate() error {
 	if filter.Schedule != nil && !filter.Schedule.valid() {
 		return invalid("unsupported schedule %q", *filter.Schedule)

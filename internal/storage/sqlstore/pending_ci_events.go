@@ -73,11 +73,13 @@ func (s *Store) FinishPR(
 
 	result, err := tx.ExecContext(ctx, `
 UPDATE pending_ci_requests SET
-    lifecycle = ?, reason = ?, lease_expires_at = NULL,
+    lifecycle = ?, reason = ?, next_check_at = ?, lease_expires_at = NULL,
+    cleanup_pending = TRUE, cleanup_attempts = 0, cleanup_error = '',
     updated_at = ?, finished_at = ?, revision = revision + 1
 WHERE id = ? AND lifecycle = ? AND revision = ?`,
 		change.Lifecycle,
 		change.Reason,
+		change.FinishedAt,
 		change.FinishedAt,
 		change.FinishedAt,
 		request.ID,
@@ -103,6 +105,10 @@ WHERE id = ? AND lifecycle = ? AND revision = ?`,
 	request.LeaseExpiresAt = nil
 	request.UpdatedAt = change.FinishedAt
 	request.FinishedAt = timePointer(change.FinishedAt)
+	request.NextCheckAt = change.FinishedAt
+	request.CleanupPending = true
+	request.CleanupAttempts = 0
+	request.CleanupError = ""
 	request.Revision++
 
 	return &request, nil

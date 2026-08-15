@@ -232,7 +232,7 @@ func newServer(cfg *serveConfig) (*server, error) {
 	}
 	srv.deliveryStore = srv.store
 	srv.deliveries = newDeliveryDispatcher(srv.deliveryStore, srv.jobs, srv.deliveryJob, srv.logger)
-	pendingCIBackend := &githubPendingCIBackend{server: srv}
+	pendingCIBackend := &githubPendingCIBackend{server: srv, current: srv.store}
 	pendingCIReconciler := newPendingCIReconciler(
 		srv.store,
 		pendingCIBackend,

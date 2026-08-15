@@ -15,6 +15,80 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/storage/sqlstore"
 )
 
+func TestPendingCICleanupMigration(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "pending-ci-cleanup.db")
+	db := openLegacyDatabase(t, ctx, path, "018_")
+	now := time.Date(2026, time.August, 15, 12, 0, 0, 0, time.UTC)
+	finishedAt := now.Add(time.Minute)
+	insert := `INSERT INTO pending_ci_requests (
+target_id, installation_id, repository_id, repository_full_name,
+pull_request, head_sha, base_branch, merge_method, required_checks_only,
+requester, source_comment_id, source_revision, label, lifecycle, schedule,
+next_check_at, last_progress_at, reason, requested_at, updated_at, finished_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	values := []any{
+		"installation:77", 77, "9001", "smykla-skalski/smyklot",
+		198, "sha", "main", "squash", true,
+		"bartsmykla", 101, now.Format(time.RFC3339Nano),
+		"smyklot:pending:ci:squash-required", "cancelled", "active",
+		now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), "cancelled",
+		now.Format(time.RFC3339Nano), finishedAt.Format(time.RFC3339Nano),
+		finishedAt.Format(time.RFC3339Nano),
+	}
+	if _, err := db.ExecContext(ctx, insert, values...); err != nil {
+		t.Fatalf("seed terminal pending CI request: %v", err)
+	}
+	values[4] = 199
+	values[13] = "armed"
+	values[17] = ""
+	values[20] = nil
+	if _, err := db.ExecContext(ctx, insert, values...); err != nil {
+		t.Fatalf("seed armed pending CI request: %v", err)
+	}
+
+	store, err := Open(ctx, path)
+	if err != nil {
+		t.Fatalf("open migrated store: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	rows, err := store.DB().QueryContext(ctx, `
+SELECT pull_request, cleanup_pending, cleanup_attempts, cleanup_error, next_check_at
+FROM pending_ci_requests ORDER BY pull_request`)
+	if err != nil {
+		t.Fatalf("read migrated cleanup state: %v", err)
+	}
+	defer rows.Close()
+	type cleanupState struct {
+		pullRequest int
+		pending     bool
+		attempts    int
+		errorText   string
+		nextCheck   string
+	}
+	var got []cleanupState
+	for rows.Next() {
+		var state cleanupState
+		if err = rows.Scan(
+			&state.pullRequest, &state.pending, &state.attempts,
+			&state.errorText, &state.nextCheck,
+		); err != nil {
+			t.Fatalf("scan migrated cleanup state: %v", err)
+		}
+		got = append(got, state)
+	}
+	if err = rows.Err(); err != nil {
+		t.Fatalf("iterate migrated cleanup state: %v", err)
+	}
+	if len(got) != 2 || !got[0].pending || got[0].attempts != 0 || got[0].errorText != "" ||
+		got[0].nextCheck != finishedAt.Format(time.RFC3339Nano) || got[1].pending {
+		t.Fatalf("migrated cleanup state = %#v", got)
+	}
+}
+
 func TestRemoveGlobalAccessMigration(t *testing.T) {
 	t.Parallel()
 

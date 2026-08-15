@@ -38,6 +38,9 @@ func scanPendingCI(scanner rowScanner) (pendingci.Request, error) {
 		&requestedAt,
 		&updatedAt,
 		&finishedAt,
+		&request.CleanupPending,
+		&request.CleanupAttempts,
+		&request.CleanupError,
 		&request.Revision,
 	)
 	if err != nil {

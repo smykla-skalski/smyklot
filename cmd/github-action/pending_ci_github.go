@@ -4,17 +4,23 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
+	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/github"
-	"github.com/smykla-skalski/smyklot/pkg/logging"
 )
 
 type githubPendingCIBackend struct {
-	server *server
+	server  *server
+	current pendingCICurrentStore
+}
+
+type pendingCICurrentStore interface {
+	GetArmed(context.Context, string, int) (pendingci.Request, error)
 }
 
 var errNoRequiredStatusChecks = errors.New("base branch has no required status checks")
@@ -92,19 +98,66 @@ func (backend *githubPendingCIBackend) Complete(
 	ctx context.Context,
 	request pendingci.Request,
 	lifecycle pendingci.Lifecycle,
-) {
+) error {
+	removeLabel, removeReaction, err := backend.cleanupScope(ctx, request)
+	if err != nil {
+		return err
+	}
 	client, owner, repository, err := backend.client(ctx, request)
 	if err != nil {
-		logging.From(ctx).Warn("pending CI cleanup could not authenticate", "error", err)
-
-		return
+		return fmt.Errorf("authenticate pending CI cleanup: %w", err)
 	}
-	_ = client.RemoveLabel(ctx, owner, repository, request.PullRequest, request.Label)
+	var cleanupErr error
+	if removeLabel {
+		cleanupErr = errors.Join(cleanupErr, cleanupGitHubError(
+			"remove pending CI label",
+			client.RemoveLabel(ctx, owner, repository, request.PullRequest, request.Label),
+		))
+	}
 	commentID := int(request.SourceCommentID)
-	_ = client.RemoveReaction(ctx, owner, repository, commentID, github.ReactionPendingCI)
-	if lifecycle == pendingci.LifecycleMerged {
-		_ = client.AddReaction(ctx, owner, repository, commentID, github.ReactionSuccess)
+	if removeReaction {
+		cleanupErr = errors.Join(cleanupErr, cleanupGitHubError(
+			"remove pending CI reaction",
+			client.RemoveReaction(ctx, owner, repository, commentID, github.ReactionPendingCI),
+		))
 	}
+	if lifecycle == pendingci.LifecycleMerged {
+		cleanupErr = errors.Join(cleanupErr, cleanupGitHubError(
+			"add pending CI success reaction",
+			client.AddReaction(ctx, owner, repository, commentID, github.ReactionSuccess),
+		))
+	}
+
+	return cleanupErr
+}
+
+func (backend *githubPendingCIBackend) cleanupScope(
+	ctx context.Context,
+	request pendingci.Request,
+) (bool, bool, error) {
+	current, err := backend.current.GetArmed(ctx, request.RepositoryID, request.PullRequest)
+	if errors.Is(err, storage.ErrNotFound) {
+		return true, true, nil
+	}
+	if err != nil {
+		return false, false, fmt.Errorf("read replacement pending CI request: %w", err)
+	}
+
+	return current.Label != request.Label,
+		current.SourceCommentID != request.SourceCommentID,
+		nil
+}
+
+func cleanupGitHubError(operation string, err error) error {
+	if err == nil {
+		return nil
+	}
+	var apiErr *github.APIError
+	if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
+		return nil
+	}
+
+	return fmt.Errorf("%s: %w", operation, err)
 }
 
 func (backend *githubPendingCIBackend) client(

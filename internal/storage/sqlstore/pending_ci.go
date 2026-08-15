@@ -17,7 +17,7 @@ SELECT id, target_id, installation_id, repository_id, repository_full_name,
        requester, source_comment_id, source_revision, label, lifecycle, schedule,
        next_check_at, lease_expires_at, last_progress_at, last_observed_state,
        last_fingerprint, last_event_key, reason, requested_at, updated_at,
-       finished_at, revision
+       finished_at, cleanup_pending, cleanup_attempts, cleanup_error, revision
 FROM pending_ci_requests`
 
 // Arm atomically supersedes the current request for a PR and records the last
@@ -40,11 +40,13 @@ func (s *Store) Arm(ctx context.Context, arm pendingci.ArmRequest) (pendingci.Ar
 	if err == nil {
 		if _, err := tx.ExecContext(ctx, `
 UPDATE pending_ci_requests SET
-    lifecycle = ?, reason = ?, lease_expires_at = NULL,
+    lifecycle = ?, reason = ?, next_check_at = ?, lease_expires_at = NULL,
+    cleanup_pending = TRUE, cleanup_attempts = 0, cleanup_error = '',
     updated_at = ?, finished_at = ?, revision = revision + 1
 WHERE id = ? AND lifecycle = ?`,
 			pendingci.LifecycleSuperseded,
 			"replaced by a newer authorized command",
+			arm.RequestedAt,
 			arm.RequestedAt,
 			arm.RequestedAt,
 			superseded.ID,
@@ -56,7 +58,11 @@ WHERE id = ? AND lifecycle = ?`,
 		superseded.Reason = "replaced by a newer authorized command"
 		superseded.UpdatedAt = arm.RequestedAt
 		superseded.FinishedAt = timePointer(arm.RequestedAt)
+		superseded.NextCheckAt = arm.RequestedAt
 		superseded.LeaseExpiresAt = nil
+		superseded.CleanupPending = true
+		superseded.CleanupAttempts = 0
+		superseded.CleanupError = ""
 		superseded.Revision++
 	}
 
@@ -171,14 +177,15 @@ func (s *Store) LeaseDue(
 	result, err := tx.ExecContext(ctx, `
 UPDATE pending_ci_requests SET
     lease_expires_at = ?, updated_at = ?, revision = revision + 1
-WHERE id = ? AND lifecycle = ? AND revision = ?
+WHERE id = ? AND revision = ?
+  AND (lifecycle = ? OR cleanup_pending = TRUE)
   AND next_check_at <= ?
   AND (lease_expires_at IS NULL OR lease_expires_at <= ?)`,
 		leaseExpiresAt,
 		now,
 		request.ID,
-		pendingci.LifecycleArmed,
 		request.Revision,
+		pendingci.LifecycleArmed,
 		now,
 		now,
 	)
@@ -208,9 +215,13 @@ func selectDuePendingCI(
 	now time.Time,
 ) (pendingci.Request, error) {
 	return scanPendingCI(tx.QueryRowContext(ctx, pendingCISelect+`
-WHERE lifecycle = ? AND next_check_at <= ?
+WHERE (lifecycle = ? OR cleanup_pending = TRUE) AND next_check_at <= ?
   AND (lease_expires_at IS NULL OR lease_expires_at <= ?)
-ORDER BY CASE schedule WHEN 'active' THEN 0 ELSE 1 END, next_check_at, id
+ORDER BY CASE
+    WHEN cleanup_pending = TRUE THEN 0
+    WHEN schedule = 'active' THEN 1
+    ELSE 2
+END, next_check_at, id
 LIMIT 1`,
 		pendingci.LifecycleArmed,
 		now,
@@ -229,7 +240,7 @@ SELECT MIN(
     END
 )
 FROM pending_ci_requests
-WHERE lifecycle = ?`, pendingci.LifecycleArmed).Scan(&available)
+WHERE lifecycle = ? OR cleanup_pending = TRUE`, pendingci.LifecycleArmed).Scan(&available)
 	if err != nil {
 		return nil, fmt.Errorf("read next pending CI availability: %w", err)
 	}
@@ -314,11 +325,11 @@ UPDATE pending_ci_requests SET
     updated_at = ?, revision = revision + 1
 WHERE id = ? AND lifecycle = ? AND revision = ?
   AND lease_expires_at IS NOT NULL AND lease_expires_at > ?`,
-		formatTime(claim.ClaimedAt),
+		claim.ClaimedAt,
 		claim.ID,
 		pendingci.LifecycleArmed,
 		claim.ExpectedRevision,
-		formatTime(claim.ClaimedAt),
+		claim.ClaimedAt,
 	)
 	if err != nil {
 		return pendingci.Request{}, fmt.Errorf("claim pending CI merge: %w", err)
@@ -367,15 +378,58 @@ func (s *Store) Finish(
 
 	return s.updatePendingCI(ctx, change.ID, "finish pending CI request", `
 UPDATE pending_ci_requests SET
-    lifecycle = ?, reason = ?, lease_expires_at = NULL,
+    lifecycle = ?, reason = ?, next_check_at = ?, lease_expires_at = NULL,
+    cleanup_pending = TRUE, cleanup_attempts = 0, cleanup_error = '',
     updated_at = ?, finished_at = ?, revision = revision + 1
 WHERE id = ? AND lifecycle = ? AND revision = ?`,
 		change.Lifecycle,
 		change.Reason,
 		change.FinishedAt,
 		change.FinishedAt,
+		change.FinishedAt,
 		change.ID,
 		pendingci.LifecycleArmed,
+		change.ExpectedRevision,
+	)
+}
+
+func (s *Store) CompleteCleanup(
+	ctx context.Context,
+	change pendingci.CompleteCleanupRequest,
+) (pendingci.Request, error) {
+	if err := change.Validate(); err != nil {
+		return pendingci.Request{}, err
+	}
+
+	return s.updatePendingCI(ctx, change.ID, "complete pending CI cleanup", `
+UPDATE pending_ci_requests SET
+    cleanup_pending = FALSE, cleanup_error = '', lease_expires_at = NULL,
+    updated_at = ?, revision = revision + 1
+WHERE id = ? AND cleanup_pending = TRUE AND revision = ?`,
+		change.CompletedAt,
+		change.ID,
+		change.ExpectedRevision,
+	)
+}
+
+func (s *Store) RetryCleanup(
+	ctx context.Context,
+	change pendingci.RetryCleanupRequest,
+) (pendingci.Request, error) {
+	if err := change.Validate(); err != nil {
+		return pendingci.Request{}, err
+	}
+
+	return s.updatePendingCI(ctx, change.ID, "retry pending CI cleanup", `
+UPDATE pending_ci_requests SET
+    next_check_at = ?, lease_expires_at = NULL,
+    cleanup_attempts = cleanup_attempts + 1, cleanup_error = ?,
+    updated_at = ?, revision = revision + 1
+WHERE id = ? AND cleanup_pending = TRUE AND revision = ?`,
+		change.NextAttemptAt,
+		change.Error,
+		change.FailedAt,
+		change.ID,
 		change.ExpectedRevision,
 	)
 }
@@ -428,11 +482,13 @@ WHERE repository_id = ? AND pull_request = ? AND source_comment_id = ? AND lifec
 
 	result, err := tx.ExecContext(ctx, `
 UPDATE pending_ci_requests SET
-    lifecycle = ?, reason = ?, lease_expires_at = NULL,
+    lifecycle = ?, reason = ?, next_check_at = ?, lease_expires_at = NULL,
+    cleanup_pending = TRUE, cleanup_attempts = 0, cleanup_error = '',
     updated_at = ?, finished_at = ?, revision = revision + 1
 WHERE id = ? AND lifecycle = ?`,
 		pendingci.LifecycleCancelled,
 		change.Reason,
+		change.CancelledAt,
 		change.CancelledAt,
 		change.CancelledAt,
 		request.ID,
@@ -456,6 +512,10 @@ WHERE id = ? AND lifecycle = ?`,
 	request.LeaseExpiresAt = nil
 	request.UpdatedAt = change.CancelledAt
 	request.FinishedAt = timePointer(change.CancelledAt)
+	request.NextCheckAt = change.CancelledAt
+	request.CleanupPending = true
+	request.CleanupAttempts = 0
+	request.CleanupError = ""
 	request.Revision++
 
 	return &request, nil

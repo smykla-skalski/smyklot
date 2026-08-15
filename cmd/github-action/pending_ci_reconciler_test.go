@@ -31,8 +31,8 @@ func TestPendingCIReconcilerMergesOnlyAtObservedHead(t *testing.T) {
 	if store.finished == nil || store.finished.Lifecycle != pendingci.LifecycleMerged {
 		t.Fatalf("finish = %#v, want merged", store.finished)
 	}
-	if effects.completed != pendingci.LifecycleMerged {
-		t.Fatalf("completion = %q, want merged", effects.completed)
+	if effects.completed != "" {
+		t.Fatalf("merge cleanup ran before durable terminal transition: %q", effects.completed)
 	}
 }
 
@@ -109,6 +109,54 @@ func TestPendingCIReconcilerDefersUnchangedFailure(t *testing.T) {
 	}
 }
 
+func TestPendingCIReconcilerCompletesDurableCleanup(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.August, 15, 12, 0, 0, 0, time.UTC)
+	store := &reconcilerTestStore{}
+	effects := &reconcilerTestEffects{}
+	request := reconcilerRequest(now)
+	request.Lifecycle = pendingci.LifecycleCancelled
+	request.CleanupPending = true
+	request.UpdatedAt = now
+	reconciler := newPendingCIReconciler(
+		store, reconcilerTestObserver{}, effects, defaultPendingCITiming(),
+	)
+
+	if err := reconciler.Process(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	if effects.completed != pendingci.LifecycleCancelled {
+		t.Fatalf("cleanup lifecycle = %q, want cancelled", effects.completed)
+	}
+	if store.cleanupCompleted == nil || store.cleanupCompleted.ExpectedRevision != request.Revision {
+		t.Fatalf("cleanup completion = %#v", store.cleanupCompleted)
+	}
+}
+
+func TestPendingCIReconcilerPersistsCleanupRetry(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.August, 15, 12, 0, 0, 0, time.UTC)
+	store := &reconcilerTestStore{}
+	effects := &reconcilerTestEffects{completeErr: errors.New("GitHub unavailable")}
+	request := reconcilerRequest(now)
+	request.Lifecycle = pendingci.LifecycleCancelled
+	request.CleanupPending = true
+	request.UpdatedAt = now
+	reconciler := newPendingCIReconciler(
+		store, reconcilerTestObserver{}, effects, defaultPendingCITiming(),
+	)
+
+	if err := reconciler.Process(context.Background(), request); err == nil {
+		t.Fatal("failed cleanup unexpectedly succeeded")
+	}
+	if store.cleanupRetried == nil {
+		t.Fatal("failed cleanup did not persist a retry")
+	}
+	if store.cleanupRetried.NextAttemptAt != now.Add(pendingCIRetryDelay) {
+		t.Fatalf("cleanup retry = %s", store.cleanupRetried.NextAttemptAt)
+	}
+}
+
 func reconcilerRequest(progressAt time.Time) pendingci.Request {
 	return pendingci.Request{
 		ID: 7, Revision: 2, Lifecycle: pendingci.LifecycleArmed,
@@ -137,9 +185,11 @@ func (observer reconcilerTestObserver) Observe(
 }
 
 type reconcilerTestStore struct {
-	rescheduled *pendingci.RescheduleRequest
-	finished    *pendingci.FinishRequest
-	claimErr    error
+	rescheduled      *pendingci.RescheduleRequest
+	finished         *pendingci.FinishRequest
+	cleanupCompleted *pendingci.CompleteCleanupRequest
+	cleanupRetried   *pendingci.RetryCleanupRequest
+	claimErr         error
 }
 
 func (store *reconcilerTestStore) ClaimMerge(
@@ -174,10 +224,29 @@ func (store *reconcilerTestStore) Finish(
 	return pendingci.Request{Lifecycle: request.Lifecycle}, nil
 }
 
+func (store *reconcilerTestStore) CompleteCleanup(
+	_ context.Context,
+	request pendingci.CompleteCleanupRequest,
+) (pendingci.Request, error) {
+	store.cleanupCompleted = &request
+
+	return pendingci.Request{}, nil
+}
+
+func (store *reconcilerTestStore) RetryCleanup(
+	_ context.Context,
+	request pendingci.RetryCleanupRequest,
+) (pendingci.Request, error) {
+	store.cleanupRetried = &request
+
+	return pendingci.Request{}, nil
+}
+
 type reconcilerTestEffects struct {
-	mergedHead string
-	mergeErr   error
-	completed  pendingci.Lifecycle
+	mergedHead  string
+	mergeErr    error
+	completed   pendingci.Lifecycle
+	completeErr error
 }
 
 func (effects *reconcilerTestEffects) MergeAtHead(
@@ -194,6 +263,8 @@ func (effects *reconcilerTestEffects) Complete(
 	_ context.Context,
 	_ pendingci.Request,
 	lifecycle pendingci.Lifecycle,
-) {
+) error {
 	effects.completed = lifecycle
+
+	return effects.completeErr
 }
