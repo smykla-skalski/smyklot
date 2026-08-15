@@ -135,10 +135,13 @@
      * The thumb gathers itself before it goes, and lands a little past where it is going.
      *
      * A move that is only ease-out arrives correctly and says nothing on the way. This pulls back
-     * a tenth of the distance first and shrinks while it does - the wind-up that tells you it is
-     * about to leave - carries slightly past its destination, then settles and grows back. The
-     * position is set immediately and the travel is drawn as a transform, so nothing here has to
-     * be undone if the selection changes again mid-flight.
+     * a sixteenth of the distance first and shrinks while it does - the wind-up that tells you it
+     * is about to leave - carries slightly past its destination, then settles and grows back.
+     *
+     * The wind-up is 28ms of the 280. Any longer and the control reads as slow to answer rather
+     * than as gathering itself: the first thing that happens after a click has to be movement, and
+     * a wind-up the eye can time is read as lag. Position is set immediately and the travel drawn
+     * as a transform, so nothing here has to be undone if the selection changes again mid-flight.
      */
     function travel(thumb: HTMLElement, from: number, to: number): void {
       const distance = from - to;
@@ -149,26 +152,26 @@
         [
           {
             transform: `translateY(${distance}px) scale(1)`,
-            easing: 'cubic-bezier(0.4, 0, 0.7, 0.2)',
+            easing: 'cubic-bezier(0.5, 0, 0.8, 0.2)',
           },
           {
-            offset: 0.16,
-            transform: `translateY(${distance * 1.1}px) scale(0.965)`,
-            easing: 'cubic-bezier(0.3, 0, 0.2, 1)',
+            offset: 0.1,
+            transform: `translateY(${distance * 1.055}px) scale(0.972)`,
+            easing: 'cubic-bezier(0.25, 0, 0.15, 1)',
           },
           {
-            offset: 0.7,
-            transform: `translateY(${distance * -0.1}px) scale(0.98)`,
+            offset: 0.62,
+            transform: `translateY(${distance * -0.085}px) scale(0.985)`,
             easing: 'ease-out',
           },
           {
-            offset: 0.87,
-            transform: `translateY(${distance * 0.028}px) scale(1.015)`,
+            offset: 0.82,
+            transform: `translateY(${distance * 0.02}px) scale(1.012)`,
             easing: 'ease-out',
           },
           { transform: 'translateY(0) scale(1)' },
         ],
-        { duration: 460, fill: 'none' },
+        { duration: 280, fill: 'none' },
       );
     }
 
@@ -378,6 +381,35 @@
   /* Until the first measurement lands there is nothing to travel from. */
   .view-links:not(.thumb-ready) .nav-thumb {
     transition: none;
+  }
+
+  /* Held down on a row that is not the selected one, the selection starts to fret. It begins after
+     120ms so an ordinary click never sets it off - only holding, which is the only time the
+     question "is this about to be taken from me" stays open. The travel is a script animation,
+     which outranks a CSS one, so the move replaces the fretting rather than fighting it. */
+  .view-links:has(a:not(.active):active) .nav-thumb {
+    animation: nav-thumb-fret 200ms 120ms ease-in-out infinite;
+  }
+
+  @keyframes nav-thumb-fret {
+    0%,
+    100% {
+      transform: translateX(0) rotate(0deg);
+    }
+
+    25% {
+      transform: translateX(-1.6px) rotate(-0.35deg);
+    }
+
+    75% {
+      transform: translateX(1.6px) rotate(0.35deg);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .view-links:has(a:not(.active):active) .nav-thumb {
+      animation: none;
+    }
   }
 
   .view-links:has(a.active:hover) .nav-thumb {
