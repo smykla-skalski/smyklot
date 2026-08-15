@@ -632,6 +632,7 @@
           expires_in_days: expiresInDays,
         });
         generatedLink = created.invite_url ?? '';
+        await copyGeneratedLink(false);
         feedback = `Invited @${normalizedLogin} to ${destination}`;
         await reloadInvitations();
       } else {
@@ -748,18 +749,33 @@
     }
   }
 
-  async function copyGeneratedLink(): Promise<void> {
+  /**
+   * Whether the link is on the clipboard, said in the dialog rather than behind it.
+   *
+   * The link is copied as soon as it exists, because that is the only reason to generate one, and
+   * a dialog that quietly puts something on your clipboard is worse than one that does not. The
+   * line is persistent rather than a toast: the dialog stays open, and a message that has already
+   * faded cannot answer "did that work?" when you look back at it.
+   */
+  let linkCopied = $state<'copied' | 'failed' | null>(null);
+
+  async function copyGeneratedLink(announce = true): Promise<void> {
     if (generatedLink === '') return;
     try {
       await navigator.clipboard.writeText(generatedLink);
-      feedback = 'Copied invitation link';
+      linkCopied = 'copied';
+      if (announce) feedback = 'Copied invitation link';
     } catch {
-      actionFailure = 'The invitation link could not be copied';
+      linkCopied = 'failed';
+      // Never claimed on the copy that happens by itself: the message below the field says what
+      // actually happened, and a banner for something nobody asked for would be noise.
+      if (announce) actionFailure = 'The invitation link could not be copied';
     }
   }
 
   function openAddModal(): void {
     generatedLink = '';
+    linkCopied = null;
     addRole = 'viewer';
     accessMethod = 'add';
     addReturnFocus = addButton;
@@ -1758,6 +1774,14 @@
         <span>Invitation link</span>
         <input class="text-input mono" readonly value={generatedLink} />
       </label>
+      {#if linkCopied !== null}
+        <p class="link-clipboard" class:failed={linkCopied === 'failed'} aria-live="polite">
+          <Icon name={linkCopied === 'copied' ? 'check' : 'alert'} size={13} strokeWidth={2} />
+          {linkCopied === 'copied'
+            ? 'Copied to your clipboard'
+            : 'Copy it from the field above, the clipboard was not available'}
+        </p>
+      {/if}
     {/if}
   </form>
 
@@ -2654,8 +2678,12 @@
     padding: 0.75rem;
   }
 
+  /* Both lines trimmed to their ink, so `align-items: center` centres what you can see rather than
+     two line boxes carrying half-leading the eye does not read. */
   .invitation-created strong {
+    display: block;
     font-size: 0.8125rem;
+    text-box: trim-both cap alphabetic;
   }
 
   .invitation-created p,
@@ -2663,6 +2691,23 @@
     color: var(--dim);
     font-size: 0.75rem;
     margin: 0.15rem 0 0;
+  }
+
+  .invitation-created p {
+    text-box: trim-both cap alphabetic;
+  }
+
+  .link-clipboard {
+    align-items: center;
+    color: var(--success);
+    display: flex;
+    font-size: var(--font-size-compact);
+    gap: 0.35rem;
+    margin: 0.4rem 0 0;
+  }
+
+  .link-clipboard.failed {
+    color: var(--warning);
   }
 
   .success-mark,
@@ -2679,6 +2724,9 @@
 
   .success-mark {
     background: var(--clear-tint);
+    /* Its tint sits 1.05:1 against the card it is on, so the disc had no edge at all. The ring is
+       keyed to the mark's own colour, as the avatar monogram's is. */
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, currentcolor 28%, transparent);
     color: var(--clear);
   }
 
