@@ -100,6 +100,14 @@
     return 'stop';
   }
 
+  /* Built from the login rather than taken from the API, which does not carry a
+     profile URL. `encodeURIComponent` because a login reaches this page from a
+     token a stranger supplied: GitHub logins cannot contain anything that needs
+     escaping, but the guarantee is GitHub's rather than this page's. */
+  function githubProfile(login: string): string {
+    return `https://github.com/${encodeURIComponent(login)}`;
+  }
+
   function roleLabel(value: PanelInvitation): string {
     if (value.system_role === 'root') return 'Root';
     const role = value.role ?? 'viewer';
@@ -162,12 +170,28 @@
 
           <dl class="invitation-details">
             <div>
-              <dt>Access</dt>
+              <dt>Your role</dt>
               <dd>{roleLabel(invitation)}</dd>
             </div>
             <div>
-              <dt>Scope</dt>
-              <dd>{invitation.target_name ?? 'Smyklot application'}</dd>
+              <dt>Applies to</dt>
+              <dd class="invitation-scope">
+                {#if invitation.target_login === undefined}
+                  <span>{invitation.target_name ?? 'Smyklot application'}</span>
+                {:else}
+                  <a
+                    class="link"
+                    href={githubProfile(invitation.target_login)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {invitation.target_name ?? invitation.target_login}
+                  </a>
+                {/if}
+                {#if invitation.target_kind !== undefined}
+                  <span class="scope-kind">{invitation.target_kind}</span>
+                {/if}
+              </dd>
             </div>
             <div>
               <dt>Expires</dt>
@@ -178,15 +202,26 @@
             </div>
             <div>
               <dt>Invited by</dt>
-              <dd>@{invitation.created_by.login}</dd>
+              <dd class="invited-by">
+                <Avatar account={invitation.created_by} size={20} />
+                <a
+                  class="link"
+                  href={githubProfile(invitation.created_by.login)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  @{invitation.created_by.login}
+                </a>
+              </dd>
             </div>
           </dl>
 
           {#if invitation.status === 'pending'}
             <p class="invitation-consent">
-              Either button takes you to GitHub to sign in. That is how this page confirms you are @{invitation
-                .account.login}. The sign-in asks for your public profile only, never for access to
-              your repositories.
+              Accepting gives you {roleLabel(invitation)} access to Smyklot, the bot that approves and
+              merges pull requests{invitation.target_name === undefined
+                ? ''
+                : ` for ${invitation.target_name}`}.
             </p>
             <div class="invitation-actions">
               <a
@@ -421,6 +456,58 @@
 
   dd {
     margin: 0;
+  }
+
+  /* The panel has no links to speak of - it is built from buttons - so this is the
+     first place one has to look like it belongs. It borrows the action ink rather
+     than inventing a link colour, and the underline is drawn faintly at rest and
+     fully on hover, so a page with two of them close together does not read as
+     ruled. Press is a colour step, not the system's usual shrink: scaling a run of
+     text inside a sentence moves the words around it. */
+  .link {
+    border-radius: 2px;
+    color: var(--brand-action-text);
+    font-weight: 600;
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, currentcolor 35%, transparent);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.18em;
+    transition:
+      color var(--duration-fast) var(--ease-standard),
+      text-decoration-color var(--duration-fast) var(--ease-standard);
+  }
+
+  .link:hover {
+    text-decoration-color: currentcolor;
+  }
+
+  .link:active {
+    color: color-mix(in srgb, var(--brand-action-text) 78%, var(--text-primary));
+  }
+
+  .link:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+
+  .invitation-scope {
+    align-items: baseline;
+    column-gap: 0.4rem;
+    display: flex;
+    flex-wrap: wrap;
+  }
+
+  /* Whether accepting joins an organisation or one person's installation. Quiet,
+     because it qualifies the name rather than competing with it. */
+  .scope-kind {
+    color: var(--text-muted);
+    font: 600 var(--font-size-meta) / 1.2 var(--sans);
+  }
+
+  .invited-by {
+    align-items: center;
+    display: flex;
+    gap: 0.4rem;
   }
 
   /* What the reader is actually being asked to consent to, so it is ruled off from
