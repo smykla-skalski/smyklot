@@ -21,6 +21,28 @@ replicaCount: 1
 strategy:
   type: Recreate
 
+# Where the service keeps its state: the panel's owner binding, settings, audit
+# trail and delivery history. Required, because the service refuses to start
+# without durable state
+#
+# A PostgreSQL URL is what this chart is built for. The pod runs with a
+# read-only root filesystem and no volume, so a SQLite path would need both
+# relaxed and a PersistentVolumeClaim to go with it - which one replica of one
+# process would then be the only thing allowed to mount
+database:
+  # url is the connection string, for a database whose password is not a
+  # secret worth protecting - a throwaway cluster, or one on a private network
+  # with trust authentication. It lands in the values file and in
+  # `helm get values`, so prefer existingSecret for anything real
+  url: ""
+
+  # existingSecret names a Secret holding the connection string. Set this or
+  # url, not both
+  existingSecret: ""
+
+  # Key within that Secret
+  urlKey: database-url
+
 github:
   # clientId is the App's client ID, or its numeric app ID. Required
   clientId: ""

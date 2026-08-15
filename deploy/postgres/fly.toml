@@ -1,0 +1,92 @@
+# Fly.io deployment for the service's PostgreSQL database.
+#
+# This is a second Fly app running the stock postgres image, not Fly Managed
+# Postgres. It exists to be small, cheap and ours: one machine, one volume, no
+# public address, and a plain `pg_dump` for backups.
+#
+#   fly deploy --config deploy/postgres/fly.toml
+#
+# The password is never in this file. Set it once, and build the service's
+# SMYKLOT_DATABASE_URL from it:
+#
+#   fly secrets set POSTGRES_PASSWORD="$(openssl rand -hex 32)" --app smyklot-db
+#
+# DEPLOYMENT.md carries the full runbook, including the cutover from SQLite.
+
+app = "smyklot-db"
+primary_region = "fra"
+
+[build]
+  # Pinned to a major version on purpose. PostgreSQL does not read a data
+  # directory written by a newer major, so an unpinned tag would eventually
+  # start a machine that refuses to come up and needs pg_upgrade to recover.
+  image = "postgres:18-alpine"
+
+[processes]
+  # listen_addresses is set explicitly because Fly's private network is IPv6,
+  # and a database that only bound IPv4 would resolve on smyklot-db.internal
+  # and then refuse every connection.
+  #
+  # The rest is sizing for a 512MB machine holding a few thousand rows. The
+  # defaults assume a server with several gigabytes and would leave this one
+  # swapping or short of memory under its own connection limit.
+  app = """postgres \
+    -c listen_addresses=* \
+    -c max_connections=50 \
+    -c shared_buffers=96MB \
+    -c effective_cache_size=256MB \
+    -c work_mem=2MB \
+    -c maintenance_work_mem=32MB \
+    -c max_wal_size=512MB \
+    -c min_wal_size=128MB"""
+
+[env]
+  POSTGRES_USER = "smyklot"
+  POSTGRES_DB = "smyklot"
+
+  # A Fly volume's root holds lost+found, and initdb refuses a directory that
+  # is not empty. The cluster therefore lives one level down.
+  PGDATA = "/var/lib/postgresql/data/pgdata"
+
+  # Checksums catch a page the storage layer corrupted, rather than serving it.
+  # PostgreSQL 18 enables them by default; saying so keeps that true if this
+  # ever runs on an older major.
+  POSTGRES_INITDB_ARGS = "--data-checksums"
+
+# No [http_service] and no [[services]], so nothing is published. The database
+# is reachable only over Fly's private network, at smyklot-db.internal:5432,
+# and only by apps in the same organization. Do not allocate an IP for this app.
+
+[[mounts]]
+  source = "smyklot_pgdata"
+  destination = "/var/lib/postgresql/data"
+  initial_size = "3GB"
+
+  # Fly's own snapshots are the second copy. The first is the daily pg_dump
+  # that scripts/backup-db.sh pulls to a local machine, which is the one that
+  # survives losing the Fly organization itself.
+  snapshot_retention = 14
+
+[[vm]]
+  size = "shared-cpu-1x"
+
+  # 256MB is the cheaper size and is not enough: shared_buffers plus fifty
+  # backends plus the postmaster's own processes sit close enough to the limit
+  # that a checkpoint under load ends in the OOM killer. A database that
+  # restarts under load is worse than a dollar a month.
+  memory = "512mb"
+
+[deploy]
+  # There is one volume and one cluster, so a second machine cannot be started
+  # to replace the first. Rolling stops this one and starts it again.
+  strategy = "rolling"
+
+[checks]
+  # pg_isready over the local socket, so the check tests the database rather
+  # than the network in front of it.
+  [checks.ready]
+    type = "tcp"
+    port = 5432
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "20s"

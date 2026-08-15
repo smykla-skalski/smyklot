@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Runs scripts/backup-db.sh once a day on a Mac.
+
+  Install it by filling in the three placeholders and loading it:
+
+      sed -e "s|__REPO__|$PWD|g" \
+          -e "s|__HOME__|$HOME|g" \
+          -e "s|__PASSWORD_FILE__|$HOME/.config/smyklot/postgres-password|g" \
+          deploy/launchd/com.smykla.smyklot-backup.plist \
+          > ~/Library/LaunchAgents/com.smykla.smyklot-backup.plist
+      launchctl load ~/Library/LaunchAgents/com.smykla.smyklot-backup.plist
+
+  The password is read from a file rather than written here, because a plist in
+  LaunchAgents is world-readable and this one is committed besides:
+
+      install -m 600 /dev/null ~/.config/smyklot/postgres-password
+      printf '%s' 'the-password' > ~/.config/smyklot/postgres-password
+
+  RunAtLoad is off on purpose. StartCalendarInterval already catches up a run
+  the machine slept through, and loading the agent should not start a dump.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.smykla.smyklot-backup</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-lc</string>
+        <!--
+          A login shell, because fly and docker are on a PATH that launchd does
+          not otherwise have. The password is read at run time so it is never
+          in the process arguments, where `ps` would show it.
+        -->
+        <string>POSTGRES_PASSWORD="$(cat __PASSWORD_FILE__)" exec __REPO__/scripts/backup-db.sh --retain 30</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__REPO__</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>SMYKLOT_BACKUP_DIR</key>
+        <string>__HOME__/backups/smyklot</string>
+    </dict>
+
+    <!-- 04:30 local. Late enough to be quiet, early enough to notice by morning. -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>4</integer>
+        <key>Minute</key>
+        <integer>30</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <!--
+      Kept, and worth reading. A backup that has been failing silently for a
+      month is the same as no backup at all.
+    -->
+    <key>StandardOutPath</key>
+    <string>__HOME__/backups/smyklot/backup.log</string>
+    <key>StandardErrorPath</key>
+    <string>__HOME__/backups/smyklot/backup.log</string>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>

@@ -9,6 +9,12 @@ spec:
   {{- if gt (int .Values.replicaCount) 1 }}
   {{- fail "replicaCount cannot exceed 1: deliveries are de-duplicated in memory and the reaction sweep has no leader election, so a second process answers the same comment twice" }}
   {{- end }}
+  {{- if and .Values.database.url .Values.database.existingSecret }}
+  {{- fail "set database.url or database.existingSecret, not both: two answers to where state lives is one too many" }}
+  {{- end }}
+  {{- if not (or .Values.database.url .Values.database.existingSecret) }}
+  {{- fail "database.url or database.existingSecret is required: the service keeps its owner binding, settings and audit trail in a database and will not start without one" }}
+  {{- end }}
   replicas: {{ .Values.replicaCount }}
   strategy:
     {{- toYaml .Values.strategy | nindent 4 }}
@@ -65,6 +71,16 @@ spec:
               value: {{ .Values.logFormat | quote }}
             - name: SMYKLOT_LOG_LEVEL
               value: {{ .Values.logLevel | quote }}
+            {{- if .Values.database.existingSecret }}
+            - name: SMYKLOT_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.database.existingSecret }}
+                  key: {{ .Values.database.urlKey }}
+            {{- else }}
+            - name: SMYKLOT_DATABASE_URL
+              value: {{ .Values.database.url | quote }}
+            {{- end }}
             - name: GITHUB_APP_CLIENT_ID
               value: {{ required "github.clientId is required: set it to the App's client ID (or its numeric app ID)" .Values.github.clientId | quote }}
             {{- with .Values.github.apiBaseURL }}

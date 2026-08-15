@@ -1,0 +1,94 @@
+# Fly.io deployment for the webhook service, once its state lives in PostgreSQL.
+#
+# This is what the repository root's fly.toml becomes at cutover. It is kept
+# separate until then so that a release deployed before the data has been
+# copied cannot quietly detach the SQLite volume and come up empty.
+#
+# The cutover, in DEPLOYMENT.md, ends with:
+#
+#   cp deploy/postgres/smyklot.fly.toml fly.toml
+#
+# The differences from the SQLite configuration are only these:
+#
+#   - no [[mounts]], because there is no local file to keep
+#   - no SMYKLOT_PANEL_STATE_PATH, replaced by SMYKLOT_DATABASE_URL, which is
+#     a secret because it carries the database password
+#
+# Secrets are never in this file. They are set once with `fly secrets set` and
+# live encrypted in Fly:
+#
+#   SMYKLOT_DATABASE_URL, SMYKLOT_WEBHOOK_SECRET, GITHUB_APP_PRIVATE_KEY,
+#   GITHUB_APP_CLIENT_ID, GITHUB_APP_CLIENT_SECRET
+
+app = "smyklot"
+primary_region = "fra"
+
+# The image's entrypoint is the bare binary, whose root command is the Action.
+# Without this the machine prints the help text and exits 1
+[processes]
+  app = "serve"
+
+# There is no build section on purpose. The binary is built and published by
+# the release pipeline, and `fly deploy --image` names which one to run.
+
+[deploy]
+  # Still rolling, and still one machine, but no longer because of SQLite.
+  # Deliveries are de-duplicated in memory and the reaction sweep has no leader
+  # election, so a second machine answers the same comment twice. PostgreSQL
+  # would tolerate the second writer; the service would not.
+  strategy = "rolling"
+
+[env]
+  SMYKLOT_LISTEN_ADDRESS = ":8080"
+  SMYKLOT_ADMIN_ADDRESS = ":9090"
+  SMYKLOT_WEBHOOK_PATH = "/webhook"
+  SMYKLOT_POLL_INTERVAL = "5m"
+  SMYKLOT_LOG_FORMAT = "json"
+  SMYKLOT_LOG_LEVEL = "info"
+  SMYKLOT_PANEL_PUBLIC_ORIGIN = "https://smyklot.com"
+  SMYKLOT_PANEL_BASE_PATH = "/"
+  SMYKLOT_PANEL_SUPER_ROOT_ID = "11655498"
+
+  # The Go runtime cannot see the machine's memory limit, so it is told.
+  # Measured idle is ~17MB and ~23MB under a burst, so 200MiB leaves the
+  # collector room without ever approaching the 256MB the machine has
+  GOMEMLIMIT = "200MiB"
+
+# Webhook deliveries, and the only thing published. Everything an operator
+# reads is on 9090, which no service here exposes: reach it over the private
+# network with `fly proxy 9090 -a smyklot`
+[http_service]
+  internal_port = 8080
+  force_https = true
+  processes = ["app"]
+
+  # The sweep is what makes reaction commands work, and a stopped machine runs
+  # no timers. This is why the service cannot scale to zero
+  auto_stop_machines = false
+  auto_start_machines = false
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "requests"
+
+    # A delivery is answered before its command runs, so these are only ever
+    # brief. The queue behind them is what actually bounds the work
+    soft_limit = 50
+    hard_limit = 100
+
+# /livez on the public port would be one more thing reachable from the
+# internet, so the check uses /healthz, which exists for exactly this
+[[http_service.checks]]
+  grace_period = "10s"
+  interval = "30s"
+  method = "GET"
+  timeout = "5s"
+  path = "/healthz"
+
+# No [[mounts]]. State lives in the smyklot-db app, which has the volume and
+# the snapshots. Removing the mount is what makes readOnlyRootFilesystem, a
+# scratch machine and a rebuild from the image all safe here.
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

@@ -45,7 +45,26 @@ jobs:
       - name: Install flyctl
         uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # v1.6
 
+      # Which backend the app is on decides what "healthy" looks like, so it is
+      # read from the app rather than assumed. SMYKLOT_DATABASE_URL is set as a
+      # secret at cutover and is the only durable marker of which one is live.
+      - name: Identify the storage backend
+        id: backend
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          secrets="$(flyctl secrets list --app smyklot --json)"
+          if jq -e 'any(.[]; .Name == "SMYKLOT_DATABASE_URL")' <<<"$secrets" >/dev/null; then
+            echo "backend=postgres" >>"$GITHUB_OUTPUT"
+            echo "Service state is in PostgreSQL."
+          else
+            echo "backend=sqlite" >>"$GITHUB_OUTPUT"
+            echo "Service state is in SQLite on a volume."
+          fi
+
       - name: Verify the single SQLite writer topology
+        if: steps.backend.outputs.backend == 'sqlite'
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
@@ -70,6 +89,40 @@ jobs:
             exit 1
           fi
 
+      # The volume moved to another app, so what has to be true moved with it:
+      # the database has to be up before the service is replaced. Deploying
+      # into an unreachable database gives a machine that fails its migrations
+      # on start and never becomes ready.
+      - name: Verify the database is up
+        if: steps.backend.outputs.backend == 'postgres'
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          machines="$(flyctl machines list --app smyklot-db --json)"
+          started="$(jq '[.[] | select(.state == "started")] | length' <<<"$machines")"
+          if [[ "$started" -ne 1 ]]; then
+            echo "expected exactly one started smyklot-db machine, found $started" >&2
+            flyctl status --app smyklot-db >&2 || true
+            exit 1
+          fi
+          if ! jq -e '[.[] | select(.state == "started") | .checks // [] | .[] | select(.status != "passing")] | length == 0' \
+            <<<"$machines" >/dev/null; then
+            echo "smyklot-db has a failing health check" >&2
+            flyctl checks list --app smyklot-db >&2 || true
+            exit 1
+          fi
+
+          # The service app is still expected to be a single writer, but now
+          # because deliveries are de-duplicated in memory and the sweep has no
+          # leader election, not because of SQLite.
+          service="$(flyctl machines list --app smyklot --json)"
+          service_count="$(jq '[.[] | select(.config.env.FLY_PROCESS_GROUP == "app")] | length' <<<"$service")"
+          if [[ "$service_count" -gt 1 ]]; then
+            echo "expected at most one app machine, found $service_count" >&2
+            exit 1
+          fi
+
       - name: Deploy
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
@@ -85,13 +138,14 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           VERSION: ${{ inputs.version }}
+          BACKEND: ${{ steps.backend.outputs.backend }}
         run: |
           set -euo pipefail
           flyctl status --app smyklot
           machines="$(flyctl machines list --app smyklot --json)"
           machine_count="$(jq '[.[] | select(.config.env.FLY_PROCESS_GROUP == "app")] | length' <<<"$machines")"
           if [[ "$machine_count" -ne 1 ]]; then
-            echo "deploy left $machine_count app machines; refusing to accept multiple SQLite writers" >&2
+            echo "deploy left $machine_count app machines; refusing to accept a second writer" >&2
             exit 1
           fi
           machine_id="$(jq -r '.[] | select(.config.env.FLY_PROCESS_GROUP == "app") | .id' <<<"$machines")"
@@ -102,16 +156,28 @@ jobs:
             exit 1
           fi
 
-          volumes="$(flyctl volumes list --app smyklot --json)"
-          volume_count="$(jq '[.[] | select(.name == "smyklot_data")] | length' <<<"$volumes")"
-          if [[ "$volume_count" -ne 1 ]]; then
-            echo "deploy left $volume_count smyklot_data volumes" >&2
-            exit 1
-          fi
-          attached_machine="$(jq -r '.[] | select(.name == "smyklot_data") | .attached_machine_id // ""' <<<"$volumes")"
-          if [[ "$attached_machine" != "$machine_id" ]]; then
-            echo "smyklot_data is not attached to the sole app machine $machine_id" >&2
-            exit 1
+          if [[ "$BACKEND" == "sqlite" ]]; then
+            volumes="$(flyctl volumes list --app smyklot --json)"
+            volume_count="$(jq '[.[] | select(.name == "smyklot_data")] | length' <<<"$volumes")"
+            if [[ "$volume_count" -ne 1 ]]; then
+              echo "deploy left $volume_count smyklot_data volumes" >&2
+              exit 1
+            fi
+            attached_machine="$(jq -r '.[] | select(.name == "smyklot_data") | .attached_machine_id // ""' <<<"$volumes")"
+            if [[ "$attached_machine" != "$machine_id" ]]; then
+              echo "smyklot_data is not attached to the sole app machine $machine_id" >&2
+              exit 1
+            fi
+          else
+            # A volume left behind after the cutover is not an error, but it is
+            # worth saying: it is the old SQLite state, and it still costs
+            # money until someone destroys it.
+            leftover="$(flyctl volumes list --app smyklot --json \
+              | jq '[.[] | select(.name == "smyklot_data")] | length')"
+            if [[ "$leftover" -gt 0 ]]; then
+              echo "::notice::$leftover smyklot_data volume(s) remain after the move to PostgreSQL;" \
+                "destroy them once a backup has been kept"
+            fi
           fi
           flyctl proxy 19090:9090 --app smyklot --quiet >fly-proxy.log 2>&1 &
           proxy_pid=$!

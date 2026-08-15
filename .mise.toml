@@ -42,6 +42,29 @@ description = "Run the shared storage suite against every engine"
 env = { CGO_ENABLED = "1" }
 run = "ginkgo -r --race --fail-on-empty ./internal/storage"
 
+[tasks."db:dev"]
+description = "Start a local PostgreSQL for the storage suite and print its DSN"
+run = '''
+name=smyklot-pg-dev
+port=55432
+if [ -z "$(docker ps -aq -f name="^${name}$")" ]; then
+  docker run -d --name "$name" \
+    -e POSTGRES_USER=smyklot \
+    -e POSTGRES_PASSWORD=smyklot \
+    -e POSTGRES_DB=smyklot \
+    -p "${port}:5432" \
+    postgres:18-alpine >/dev/null
+else
+  docker start "$name" >/dev/null
+fi
+until docker exec "$name" pg_isready -U smyklot -q; do sleep 1; done
+echo "export SMYKLOT_TEST_POSTGRES_DSN='postgres://smyklot:smyklot@localhost:${port}/smyklot?sslmode=disable'"
+'''
+
+[tasks."db:backup"]
+description = "Pull a dump of the deployed database to this machine"
+run = "./scripts/backup-db.sh"
+
 [tasks.lint]
 description = "Run all Smyklot linters"
 depends = ["lint:go", "lint:markdown", "lint:mod", "lint:helm", "lint:actions"]
@@ -65,18 +88,32 @@ description = "Verify Go module dependencies"
 run = "go mod verify"
 
 [tasks."lint:helm"]
-description = "Lint the Helm chart and enforce its single-replica guard"
+description = "Lint the Helm chart and prove each of its guards still refuses"
 run = '''
-helm lint charts/smyklot \
-  --set github.clientId=lint \
-  --set github.existingSecret=lint
-if helm template charts/smyklot \
-  --set github.clientId=lint \
-  --set github.existingSecret=lint \
-  --set replicaCount=2 >/dev/null 2>&1; then
-  echo "chart rendered more than one replica" >&2
-  exit 1
-fi
+set -eu
+
+valid="--set github.clientId=lint --set github.existingSecret=lint --set database.existingSecret=lint"
+
+# shellcheck disable=SC2086
+helm lint charts/smyklot $valid
+
+# A guard nothing tests is a comment. Each of these must fail to render.
+refuses() {
+  what="$1"
+  shift
+  if helm template charts/smyklot "$@" >/dev/null 2>&1; then
+    echo "chart rendered $what" >&2
+    exit 1
+  fi
+}
+
+# shellcheck disable=SC2086
+refuses "more than one replica" $valid --set replicaCount=2
+refuses "without a database" \
+  --set github.clientId=lint --set github.existingSecret=lint
+# shellcheck disable=SC2086
+refuses "with two answers for where state lives" $valid \
+  --set database.url=postgres://lint/lint
 '''
 
 [tasks."lint:actions"]
