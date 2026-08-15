@@ -43,7 +43,7 @@ Go + Ginkgo/Gomega, deployed as Docker-based GitHub Action.
 - CODEOWNERS parser is **fail-closed** — if parsing fails, no one has permissions (`pkg/permissions/errors.go:18`)
 - Cleanup command **cannot** be combined with other commands — parser rejects the entire comment (`pkg/commands/parser.go:49`)
 - Success feedback is **reaction-only** (no comment); errors/warnings post both reaction AND comment (`pkg/feedback/feedback.go:15`)
-- Only global owners (`*` pattern) supported in Phase 1 — path-specific patterns are not implemented
+- The CODEOWNERS parser reads the global `*` pattern only — path-specific patterns are not implemented, and `Checker.CanApprove` takes a path and ignores it
 - Self-approval is disabled by default; enable with `allow_self_approval` config option (`pkg/config/config.go:72`)
 - All GitHub Action inputs come via **environment variables**, not CLI args (security: no shell interpolation)
 - Workflow files use `.yaml` extension (not `.yml`) for consistency
@@ -130,9 +130,3 @@ Config precedence: CLI flags > env vars (`SMYKLOT_*` prefix) > JSON (`SMYKLOT_CO
 See `pkg/config/` for all options and `README.md` for full configuration reference.
 
 Storage is one knob: `SMYKLOT_DATABASE_URL` / `--database-url`. A `postgres://` URL picks PostgreSQL; a bare path or `sqlite://` picks SQLite. `SMYKLOT_STATE_PATH` and `SMYKLOT_PANEL_STATE_PATH` are deprecated aliases that still mean a SQLite file. Setting more than one is an error rather than a guess.
-
-## Phase Status
-
-- Phase 1 (GitHub Action): complete
-- Phase 2 (path-specific CODEOWNERS, teams): planned
-- Phase 3 (Kubernetes deployment): future — see `.claude/rules/roadmap.md`

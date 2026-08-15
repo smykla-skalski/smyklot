@@ -175,7 +175,7 @@ Create `.github/CODEOWNERS` in your repository:
 * @username1 @username2
 ```
 
-Currently only global owners (`*` pattern) are supported. Path-specific owners will be added in Phase 2.
+Only the global `*` pattern is read. Path-specific owners are not implemented, so a line naming a path is ignored.
 
 ### Bot configuration
 
@@ -481,20 +481,16 @@ The Action reads the file on its very next run, since a workflow is a fresh proc
 
 ### Permission system
 
-#### Phase 1 (current)
+Supported today:
 
-- Only global owners (`* @username`) are supported
-- Global owners can approve/merge any PR
-- Reaction-based approvals/merges with tracking
-- Self-approval prevention (configurable, disabled by default)
-- Fail-closed CODEOWNERS parsing (returns error if file is corrupted)
+- Global owners (`* @username`), who can approve or merge any PR
+- Team ownership (`@org/team-name`), resolved through the GitHub API
+- Reaction-based approvals and merges, with removal tracking
+- Self-approval prevention, configurable and off by default
+- Fail-closed CODEOWNERS parsing - a corrupted file gives nobody permission
 
-#### Phase 2 (planned)
-
-- Path-specific ownership patterns
-- Scoped permissions based on changed files
-- Team support (`@org/team-name`)
-- Required approvals count
+Not implemented: path-specific ownership patterns, approval scoped to the files
+a PR changes, and a required-approvals count.
 
 ### Security
 
@@ -621,66 +617,6 @@ Current test coverage: 130+ tests passing
 6. Commit with conventional commits (`feat:`, `fix:`, `docs:`, etc.)
 7. Push to your fork
 8. Open a pull request
-
-## Roadmap
-
-### Phase 1: GitHub Actions bot
-
-- [x] Command parser (slash, mention, bare)
-- [x] Multi-command support
-- [x] Merge method commands (merge, squash, rebase)
-- [x] Merge method fallback (merge → squash → rebase)
-- [x] Cleanup command (remove all bot reactions, approvals, comments)
-- [x] Approval deduplication (prevent duplicate approvals)
-- [x] Reaction-based approvals/merges/cleanup (👍, 🚀, ❤️)
-- [x] Reaction removal tracking
-- [x] Comment edit/delete handling
-- [x] CODEOWNERS parser (global owners)
-- [x] Permission checker
-- [x] GitHub API client
-- [x] Feedback system (emoji + comments)
-- [x] Configuration system (Viper)
-- [x] GitHub Actions workflows
-- [x] Docker-based GitHub Action
-- [x] Documentation
-
-### Phase 2: Enhanced permissions (planned)
-
-- [ ] Path-specific ownership patterns
-- [ ] Scoped approval requirements based on changed files
-- [ ] Team support in CODEOWNERS (`@org/team-name`)
-- [x] Self-approval prevention (configurable)
-- [ ] Required approvals count
-
-### Phase 3: Kubernetes deployment (future)
-
-#### Prerequisites (security hardening)
-
-- [x] GraphQL injection prevention
-- [x] HTTP client timeout and connection pooling
-- [x] Rate limiting and retry logic
-- [x] Input validation
-- [x] Fail-closed CODEOWNERS parsing
-
-#### Remaining work
-
-- [ ] Refactor global mutable state to request-scoped parameters
-- [ ] Add context.Context propagation throughout
-- [x] Implement HTTP webhook server
-- [ ] Add concurrency tests with `-race` flag
-- [x] Implement comprehensive audit logging
-- [ ] Kubernetes deployment (Helm chart)
-- [x] Prometheus metrics
-- [ ] Migration strategy
-
-Estimated effort: 18-30 days
-
-### Phase 4: Discord integration (future)
-
-- [ ] Discord bot
-- [ ] Unified command system
-- [ ] Cross-platform notifications
-- [ ] Status synchronization
 
 ## License
 

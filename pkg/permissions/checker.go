@@ -18,18 +18,13 @@ type GitHubClient interface {
 
 // Checker validates user permissions based on CODEOWNERS files
 //
-// Phase 1: Global CODEOWNERS support only
-//   - Uses .github/CODEOWNERS file (GitHub standard)
-//   - Users listed as global owners (*) can approve any changes
-//   - No path-specific permissions (future enhancement)
+// It reads .github/CODEOWNERS and honours two things: the global owners named
+// by the * pattern, who may approve anything, and team ownership
+// (@org/team-name), resolved through the GitHub API when a client is supplied.
 //
-// Phase 2: Team membership support
-//   - Supports team ownership (e.g., @org/team-name)
-//   - Checks team membership via GitHub API
-//
-// Phase 3 (future): Path-specific permissions
-//   - Support path-specific ownership patterns
-//   - Users can approve changes in their scope
+// Path-specific ownership is not implemented. A CODEOWNERS line naming a path
+// is parsed and then ignored, so nobody gains permission from one and nobody
+// loses permission they would otherwise have.
 type Checker struct {
 	rootApprovers []string
 	githubClient  GitHubClient
@@ -124,27 +119,23 @@ func (c *Checker) isTeamMember(approver, username string) (bool, error) {
 	return c.githubClient.IsTeamMember(context.Background(), org, teamSlug, username)
 }
 
-// CanApprove checks if the given user can approve changes at the specified path.
+// CanApprove reports whether a user may approve changes.
 //
-// Phase 1: Root OWNERS only
-//   - Returns true if the user is in the root OWNERS file
-//   - The path parameter is ignored (reserved for future scoped permissions)
-//   - Returns false if the username is empty or not in the approvers list
+// The path argument is accepted and ignored: approval is not scoped to the
+// files a pull request touches, so a global owner may approve any of them. The
+// parameter is kept so that adding scope later does not change every call site.
 //
-// Phase 2: Team membership support
-//   - Supports team ownership (e.g., @org/team-name)
-//   - Checks team membership via GitHub API if client is provided
-//   - Falls back to string matching if no GitHub client
+// A user matches by being a global owner, or by belonging to a team named as
+// one - checked against the GitHub API when a client was supplied, and by
+// string comparison when it was not.
 //
-// Phase 3 (future): Scoped permissions
-//   - Check path-specific OWNERS files
-//   - Support hierarchical permission resolution
+// An empty username is never an approver.
 func (c *Checker) CanApprove(username, _ string) (bool, error) {
 	if username == "" {
 		return false, nil
 	}
 
-	// Check root approvers (Phase 1 & 2)
+	// Global owners, and any team they belong to
 	for _, approver := range c.rootApprovers {
 		// Check if approver is a team (contains '/')
 		if strings.Contains(approver, "/") {
@@ -167,10 +158,11 @@ func (c *Checker) CanApprove(username, _ string) (bool, error) {
 	return false, nil
 }
 
-// GetApprovers returns the list of users who can approve changes.
+// GetApprovers returns everyone named as a global owner.
 //
-// Phase 1: Returns root approvers only
-// Phase 2 (future): Could accept a path parameter to get scoped approvers
+// Teams are returned as they were written, not expanded into their members:
+// membership is resolved per user at check time, and expanding it here would
+// mean an API call for every team on every read.
 func (c *Checker) GetApprovers() []string {
 	return c.rootApprovers
 }

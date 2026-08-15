@@ -21,7 +21,7 @@ Create `.github/CODEOWNERS` in your repository root:
 * @yourusername @teammate1 @teammate2
 ```
 
-**Note**: Only global owners (`* @username`) are supported in Phase 1. Path-specific patterns will be supported in Phase 2.
+**Note**: Only global owners (`* @username`) are read. Path-specific patterns are not implemented, so a line naming a path is ignored.
 
 ### 2. Create Workflow File
 
