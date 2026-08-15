@@ -1,6 +1,4 @@
 <script lang="ts">
-  import { MediaQuery } from 'svelte/reactivity';
-
   import type { PanelApi } from '../lib/api';
   import type { PanelBuild } from '../lib/base';
   import { formatDateTime } from '../lib/format';
@@ -8,6 +6,8 @@
     applyDocumentTheme,
     DEFAULT_THEME_DISPLAY,
     isThemeDisplay,
+    resolveThemeDisplay,
+    systemThemeDisplay,
     type ThemeDisplay,
   } from '../lib/preferences';
   import { createPrefsSync } from '../lib/preferences-sync';
@@ -30,12 +30,17 @@
      after signing in, so the theme chosen on this page is the one that greets
      the reader inside. */
   const prefs = createPrefsSync();
-  const systemDarkTheme = new MediaQuery('prefers-color-scheme: dark');
+
+  /* Read once and never watched. The page opens on whatever the system asks for,
+     but it opens on it as a choice already made - the switch shows light or dark
+     picked from the first paint, and the page holds it. A `MediaQuery` here would
+     repaint the page under a reader who is midway through an invitation because
+     their laptop reached sunset, and this is the one page with no account behind
+     it to remember what they would rather have. */
+  const systemAtOpen = systemThemeDisplay();
 
   let theme = $state<ThemeDisplay>(storedTheme());
-  const resolvedTheme = $derived(
-    theme === 'system' && systemDarkTheme.current ? 'dark' : theme === 'system' ? 'light' : theme,
-  );
+  const resolvedTheme = $derived(resolveThemeDisplay(theme, systemAtOpen));
 
   let invitation = $state<PanelInvitation | null>(null);
   let loading = $state(true);
@@ -115,7 +120,13 @@
   <div class="invitation-main">
     <div class="invitation-head">
       <h1 class="invitation-title" id="invitation-title">{title}</h1>
-      <ThemeSwitch name="invitation-theme" {theme} surface="night" onSelect={selectTheme} />
+      <ThemeSwitch
+        name="invitation-theme"
+        theme={resolvedTheme}
+        surface="night"
+        system={false}
+        onSelect={selectTheme}
+      />
     </div>
 
     <section
@@ -218,10 +229,15 @@
      outgrows the viewport the flexible rows collapse and the page scrolls from
      the top, so nothing lands above the scroll origin. */
   .invitation-shell {
+    /* Smaller than the panel's own compact control. There is one of these on the
+       whole page and it is not what the reader came for, so it steps back from
+       the title it shares a row with rather than matching it. */
+    --invitation-switch-height: 1.75rem;
+
     /* The head row's height plus the space under it - stated once, because the
        mark is centred against the card and has to discount what sits between.
        The row is as tall as the control in it, not as tall as the title. */
-    --invitation-title-block: calc(var(--control-height-compact) + var(--space-3));
+    --invitation-title-block: calc(var(--invitation-switch-height) + var(--space-3));
 
     display: grid;
     grid-template-rows: 1fr auto 1fr;
@@ -298,7 +314,13 @@
     gap: var(--space-3);
     justify-content: space-between;
     margin-bottom: var(--space-3);
-    min-height: var(--control-height-compact);
+    min-height: var(--invitation-switch-height);
+  }
+
+  /* The control reads its own height from this, so the row and the control cannot
+     disagree about how tall the head is. */
+  .invitation-head :global(fieldset) {
+    --local-control-height: var(--invitation-switch-height);
   }
 
   /* Reads as the card's own title from the outside, so it keeps the size the

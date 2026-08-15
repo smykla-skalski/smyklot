@@ -342,14 +342,13 @@
 
      The steps are about three times the size of the panel's, and the reason is
      measurable: the sky is a gradient, so the ground under this control drifts
-     6.33 dE00 (light page) and 6.39 (dark) across the control's own width. The
-     panel's 3.08 selection step would be half of that - the selected option would
-     read as a lighter patch of sky rather than as a state. Scaled to clear it,
-     and measured on the page: the thumb reads 9.81/10.16 dE00 from the track
-     beside it, hover 7.84/8.19 and press 13.50/13.67 from the track under them,
-     and the track itself 6.99/7.70 from the bare sky outside the control. Hover
-     lands at 0.80 of the selection signal, the same fraction the opaque palettes
-     hold it to. */
+     4.40 dE00 (light page) and 3.78 (dark) across the control's own width. The
+     panel's 3.08 selection step would be smaller than that - the selected option
+     would read as a lighter patch of sky rather than as a state. Scaled to clear
+     it, and measured on the page: the thumb reads 9.45/12.87 dE00 from the track
+     beside it, hover 7.55/8.19 and press 13.04/13.67 from the track under them,
+     and the track itself 8.96/7.27 from the bare sky outside the control. Hover
+     stays under the selection signal, as it does in the opaque palettes. */
   --night-seg-track: rgb(255 255 255 / 7%);
   --night-seg-thumb: rgb(255 255 255 / 17%);
   --night-seg-border: rgb(255 255 255 / 16%);

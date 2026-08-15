@@ -14,6 +14,7 @@
     theme,
     onSelect,
     surface = 'panel',
+    system = true,
   }: {
     /** The radio group's name, which has to be unique on the page. */
     name: string;
@@ -21,13 +22,23 @@
     onSelect: (theme: ThemeDisplay) => void;
     /** Which family of surfaces to draw on, passed straight to the control. */
     surface?: 'panel' | 'sidebar' | 'night';
+    /**
+     * Whether to offer "follow the system". Somewhere that cannot keep the answer -
+     * a page reached before signing in - is better off asking for a theme outright
+     * than offering to follow something it will forget.
+     */
+    system?: boolean;
   } = $props();
+
+  const options = $derived(
+    system ? THEME_OPTIONS : THEME_OPTIONS.filter((option) => option.value !== 'system'),
+  );
 </script>
 
 <SegmentedControl
   {name}
   label="Theme"
-  options={THEME_OPTIONS}
+  {options}
   value={theme}
   {surface}
   compact
