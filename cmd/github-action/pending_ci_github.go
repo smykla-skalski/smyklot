@@ -15,8 +15,9 @@ import (
 )
 
 type githubPendingCIBackend struct {
-	server  *server
-	current pendingCICurrentStore
+	server      *server
+	current     pendingCICurrentStore
+	coordinator pendingCIExclusive
 }
 
 type pendingCICurrentStore interface {
@@ -95,6 +96,16 @@ func (backend *githubPendingCIBackend) MergeAtHead(
 }
 
 func (backend *githubPendingCIBackend) Complete(
+	ctx context.Context,
+	request pendingci.Request,
+	lifecycle pendingci.Lifecycle,
+) error {
+	return backend.coordinator.Exclusive(ctx, request.RepositoryID, func() error {
+		return backend.completeExclusive(ctx, request, lifecycle)
+	})
+}
+
+func (backend *githubPendingCIBackend) completeExclusive(
 	ctx context.Context,
 	request pendingci.Request,
 	lifecycle pendingci.Lifecycle,

@@ -28,20 +28,23 @@ type pendingCIEffects interface {
 // pendingCIReconciler combines live truth with the pure policy, then applies
 // one optimistic durable transition. GitHub access stays behind narrow ports.
 type pendingCIReconciler struct {
-	store    pendingCITransitionStore
-	observer pendingCIObserver
-	effects  pendingCIEffects
-	timing   pendingci.Timing
+	store     pendingCITransitionStore
+	observer  pendingCIObserver
+	effects   pendingCIEffects
+	exclusive pendingCIExclusive
+	timing    pendingci.Timing
 }
 
 func newPendingCIReconciler(
 	store pendingCITransitionStore,
 	observer pendingCIObserver,
 	effects pendingCIEffects,
+	exclusive pendingCIExclusive,
 	timing pendingci.Timing,
 ) *pendingCIReconciler {
 	return &pendingCIReconciler{
-		store: store, observer: observer, effects: effects, timing: timing,
+		store: store, observer: observer, effects: effects,
+		exclusive: exclusive, timing: timing,
 	}
 }
 
@@ -75,6 +78,37 @@ func (reconciler *pendingCIReconciler) Process(
 	case pendingci.DecisionFinish:
 		return reconciler.finish(ctx, request, decision.Lifecycle, decision.Reason, observation.ObservedAt)
 	case pendingci.DecisionMerge:
+		return reconciler.mergeExclusive(ctx, request)
+	default:
+		return fmt.Errorf("unsupported pending CI decision %q", decision.Kind)
+	}
+}
+
+func (reconciler *pendingCIReconciler) mergeExclusive(
+	ctx context.Context,
+	request pendingci.Request,
+) error {
+	return reconciler.exclusive.Exclusive(ctx, request.RepositoryID, func() error {
+		observation, err := reconciler.observer.Observe(ctx, request)
+		if err != nil {
+			return fmt.Errorf("revalidate live GitHub state: %w", err)
+		}
+		decision, err := pendingci.Decide(request, observation, reconciler.timing)
+		if err != nil {
+			return fmt.Errorf("revalidate pending CI transition: %w", err)
+		}
+		if decision.Kind == pendingci.DecisionReschedule {
+			return reconciler.reschedule(ctx, request, decision, observation.ObservedAt)
+		}
+		if decision.Kind == pendingci.DecisionFinish {
+			return reconciler.finish(
+				ctx, request, decision.Lifecycle, decision.Reason, observation.ObservedAt,
+			)
+		}
+		if decision.Kind != pendingci.DecisionMerge {
+			return fmt.Errorf("unsupported revalidated pending CI decision %q", decision.Kind)
+		}
+
 		claimed, err := reconciler.store.ClaimMerge(ctx, pendingci.ClaimMergeRequest{
 			ID: request.ID, ExpectedRevision: request.Revision,
 			ClaimedAt: observation.ObservedAt,
@@ -84,9 +118,7 @@ func (reconciler *pendingCIReconciler) Process(
 		}
 
 		return reconciler.merge(ctx, claimed, observation)
-	default:
-		return fmt.Errorf("unsupported pending CI decision %q", decision.Kind)
-	}
+	})
 }
 
 func (reconciler *pendingCIReconciler) reschedule(

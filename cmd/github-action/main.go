@@ -19,6 +19,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/pkg/commands"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/feedback"
@@ -1052,23 +1053,45 @@ func executePendingCIMerge(
 
 	// Add pending-ci label with merge method and required flag
 	label := getPendingCILabel(method, requiredChecksOnly)
-	if err := client.AddLabel(ctx, rc.RepoOwner, rc.RepoName, prNum, label); err != nil {
-		return feedback.NewMergeFailed("failed to record the pending CI request: " + err.Error()), nil
-	}
-	if environment.pendingCI != nil {
-		superseded, err := environment.pendingCI.arm(
-			ctx, rc, prNum, commentID, headRef, info.BaseBranch, method,
-			requiredChecksOnly, label,
-		)
-		if err != nil {
-			_ = client.RemoveLabel(ctx, rc.RepoOwner, rc.RepoName, prNum, label)
-
-			return nil, err
+	if environment.pendingCI == nil {
+		if err := client.AddLabel(ctx, rc.RepoOwner, rc.RepoName, prNum, label); err != nil {
+			return feedback.NewMergeFailed("failed to record the pending CI request: " + err.Error()), nil
 		}
-		if superseded != nil && superseded.Label != label {
-			_ = client.RemoveLabel(
-				ctx, rc.RepoOwner, rc.RepoName, prNum, superseded.Label,
+	} else {
+		var labelErr, commandErr error
+		coordinationErr := environment.pendingCI.exclusive(ctx, func() error {
+			labelErr = client.AddLabel(ctx, rc.RepoOwner, rc.RepoName, prNum, label)
+			if labelErr != nil {
+				return nil
+			}
+			var superseded *pendingci.Request
+			superseded, commandErr = environment.pendingCI.arm(
+				ctx, rc, prNum, commentID, headRef, info.BaseBranch, method,
+				requiredChecksOnly, label,
 			)
+			if commandErr != nil {
+				_ = client.RemoveLabel(ctx, rc.RepoOwner, rc.RepoName, prNum, label)
+
+				return nil
+			}
+			if superseded != nil && superseded.Label != label {
+				_ = client.RemoveLabel(
+					ctx, rc.RepoOwner, rc.RepoName, prNum, superseded.Label,
+				)
+			}
+
+			return nil
+		})
+		if coordinationErr != nil {
+			return nil, coordinationErr
+		}
+		if labelErr != nil {
+			return feedback.NewMergeFailed(
+				"failed to record the pending CI request: " + labelErr.Error(),
+			), nil
+		}
+		if commandErr != nil {
+			return nil, commandErr
 		}
 	}
 

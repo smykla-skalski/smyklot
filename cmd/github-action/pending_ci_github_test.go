@@ -106,9 +106,35 @@ func TestPendingCICleanupIgnoresMissingGitHubArtifacts(t *testing.T) {
 	}
 }
 
+func TestPendingCICleanupAcquiresRepositoryOwnership(t *testing.T) {
+	t.Parallel()
+	coordinationErr := errors.New("coordination unavailable")
+	backend := &githubPendingCIBackend{
+		coordinator: pendingCICoordinatorStub{err: coordinationErr},
+	}
+	err := backend.Complete(context.Background(), pendingci.Request{
+		RepositoryID: "9001",
+	}, pendingci.LifecycleCancelled)
+	if !errors.Is(err, coordinationErr) {
+		t.Fatalf("cleanup error = %v, want coordination failure", err)
+	}
+}
+
 type pendingCICurrentStoreStub struct {
 	request pendingci.Request
 	err     error
+}
+
+type pendingCICoordinatorStub struct {
+	err error
+}
+
+func (stub pendingCICoordinatorStub) Exclusive(
+	context.Context,
+	string,
+	func() error,
+) error {
+	return stub.err
 }
 
 func (store pendingCICurrentStoreStub) GetArmed(

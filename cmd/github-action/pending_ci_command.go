@@ -25,6 +25,7 @@ type commandEnvironment struct {
 type pendingCICommand struct {
 	store              pendingCICommandStore
 	wake               func()
+	coordinator        pendingCIExclusive
 	targetID           string
 	installationID     int64
 	repositoryID       string
@@ -62,6 +63,7 @@ func (command *pendingCICommand) arm(
 func (s *server) commandEnvironment(event *webhook.IssueCommentEvent) commandEnvironment {
 	return commandEnvironment{pendingCI: &pendingCICommand{
 		store: s.store, wake: s.pendingCI.Wake,
+		coordinator:        s.pendingCICoordinator,
 		targetID:           installationStorageID(event.Installation.ID),
 		installationID:     event.Installation.ID,
 		repositoryID:       repositoryStorageID(event.Repository.ID),
@@ -82,10 +84,17 @@ func (s *server) cancelEditedPendingCI(
 	if event.Action == webhook.ActionDeleted {
 		reason = "source comment deleted"
 	}
-	request, err := s.store.CancelBySource(ctx, pendingci.CancelRequest{
-		RepositoryID: repositoryStorageID(event.Repository.ID),
-		PullRequest:  event.Issue.Number, CommentID: event.Comment.ID,
-		Reason: reason, CancelledAt: time.Now().UTC(),
+	repositoryID := repositoryStorageID(event.Repository.ID)
+	var request *pendingci.Request
+	err := s.pendingCICoordinator.Exclusive(ctx, repositoryID, func() error {
+		var transitionErr error
+		request, transitionErr = s.store.CancelBySource(ctx, pendingci.CancelRequest{
+			RepositoryID: repositoryID,
+			PullRequest:  event.Issue.Number, CommentID: event.Comment.ID,
+			Reason: reason, CancelledAt: time.Now().UTC(),
+		})
+
+		return transitionErr
 	})
 	if err != nil {
 		return fmt.Errorf("cancel pending CI source: %w", err)
@@ -102,9 +111,15 @@ func (command *pendingCICommand) cancelPullRequest(
 	pullRequest int,
 	reason string,
 ) error {
-	request, err := command.store.FinishPR(ctx, pendingci.FinishPRRequest{
-		RepositoryID: command.repositoryID, PullRequest: pullRequest,
-		Lifecycle: pendingci.LifecycleCancelled, Reason: reason, FinishedAt: command.now(),
+	var request *pendingci.Request
+	err := command.coordinator.Exclusive(ctx, command.repositoryID, func() error {
+		var transitionErr error
+		request, transitionErr = command.store.FinishPR(ctx, pendingci.FinishPRRequest{
+			RepositoryID: command.repositoryID, PullRequest: pullRequest,
+			Lifecycle: pendingci.LifecycleCancelled, Reason: reason, FinishedAt: command.now(),
+		})
+
+		return transitionErr
 	})
 	if err != nil {
 		return fmt.Errorf("cancel pending CI command: %w", err)
@@ -114,4 +129,11 @@ func (command *pendingCICommand) cancelPullRequest(
 	}
 
 	return nil
+}
+
+func (command *pendingCICommand) exclusive(
+	ctx context.Context,
+	operation func() error,
+) error {
+	return command.coordinator.Exclusive(ctx, command.repositoryID, operation)
 }

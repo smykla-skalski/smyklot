@@ -18,6 +18,16 @@ func (s *server) handlePendingCIWebhook(
 	notification *webhook.PendingCINotification,
 ) error {
 	repositoryID := repositoryStorageID(notification.Metadata.RepositoryID)
+	return s.pendingCICoordinator.Exclusive(ctx, repositoryID, func() error {
+		return s.applyPendingCINotification(ctx, repositoryID, notification)
+	})
+}
+
+func (s *server) applyPendingCINotification(
+	ctx context.Context,
+	repositoryID string,
+	notification *webhook.PendingCINotification,
+) error {
 	occurredAt := time.Now().UTC()
 	var changed int64
 

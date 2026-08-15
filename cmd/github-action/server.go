@@ -131,9 +131,10 @@ type server struct {
 	configs *repoCache[repositoryConfigFile]
 	owners  *repoCache[string]
 
-	deliveries *deliveryDispatcher
-	jobs       chan job
-	pendingCI  *pendingCIScheduler
+	deliveries           *deliveryDispatcher
+	jobs                 chan job
+	pendingCI            *pendingCIScheduler
+	pendingCICoordinator pendingCIExclusive
 
 	// queueMu makes worker shutdown idempotent. The dispatcher is stopped before
 	// jobs is closed, so it can never send to a closed channel.
@@ -232,11 +233,16 @@ func newServer(cfg *serveConfig) (*server, error) {
 	}
 	srv.deliveryStore = srv.store
 	srv.deliveries = newDeliveryDispatcher(srv.deliveryStore, srv.jobs, srv.deliveryJob, srv.logger)
-	pendingCIBackend := &githubPendingCIBackend{server: srv, current: srv.store}
+	pendingCICoordinator := newPendingCICoordinator()
+	srv.pendingCICoordinator = pendingCICoordinator
+	pendingCIBackend := &githubPendingCIBackend{
+		server: srv, current: srv.store, coordinator: pendingCICoordinator,
+	}
 	pendingCIReconciler := newPendingCIReconciler(
 		srv.store,
 		pendingCIBackend,
 		pendingCIBackend,
+		pendingCICoordinator,
 		defaultPendingCITiming(),
 	)
 	srv.pendingCI = newPendingCIScheduler(srv.store, pendingCIReconciler, srv.logger)

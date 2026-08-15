@@ -19,6 +19,7 @@ func TestPendingCIReconcilerMergesOnlyAtObservedHead(t *testing.T) {
 		store,
 		reconcilerTestObserver{observation: reconcilerObservation(now, pendingci.ObservedPassing)},
 		effects,
+		newPendingCICoordinator(),
 		defaultPendingCITiming(),
 	)
 
@@ -45,6 +46,7 @@ func TestPendingCIReconcilerKeepsMergeRaceArmed(t *testing.T) {
 		store,
 		reconcilerTestObserver{observation: reconcilerObservation(now, pendingci.ObservedPassing)},
 		effects,
+		newPendingCICoordinator(),
 		defaultPendingCITiming(),
 	)
 
@@ -69,6 +71,7 @@ func TestPendingCIReconcilerDoesNotMergeAfterLeaseInvalidation(t *testing.T) {
 		store,
 		reconcilerTestObserver{observation: reconcilerObservation(now, pendingci.ObservedPassing)},
 		effects,
+		newPendingCICoordinator(),
 		defaultPendingCITiming(),
 	)
 
@@ -95,7 +98,7 @@ func TestPendingCIReconcilerDefersUnchangedFailure(t *testing.T) {
 	observation.Fingerprint = "failing"
 	reconciler := newPendingCIReconciler(
 		store, reconcilerTestObserver{observation: observation},
-		&reconcilerTestEffects{}, defaultPendingCITiming(),
+		&reconcilerTestEffects{}, newPendingCICoordinator(), defaultPendingCITiming(),
 	)
 
 	if err := reconciler.Process(context.Background(), request); err != nil {
@@ -119,7 +122,8 @@ func TestPendingCIReconcilerCompletesDurableCleanup(t *testing.T) {
 	request.CleanupPending = true
 	request.UpdatedAt = now
 	reconciler := newPendingCIReconciler(
-		store, reconcilerTestObserver{}, effects, defaultPendingCITiming(),
+		store, reconcilerTestObserver{}, effects,
+		newPendingCICoordinator(), defaultPendingCITiming(),
 	)
 
 	if err := reconciler.Process(context.Background(), request); err != nil {
@@ -143,7 +147,8 @@ func TestPendingCIReconcilerPersistsCleanupRetry(t *testing.T) {
 	request.CleanupPending = true
 	request.UpdatedAt = now
 	reconciler := newPendingCIReconciler(
-		store, reconcilerTestObserver{}, effects, defaultPendingCITiming(),
+		store, reconcilerTestObserver{}, effects,
+		newPendingCICoordinator(), defaultPendingCITiming(),
 	)
 
 	if err := reconciler.Process(context.Background(), request); err == nil {
@@ -157,9 +162,39 @@ func TestPendingCIReconcilerPersistsCleanupRetry(t *testing.T) {
 	}
 }
 
+func TestPendingCIReconcilerRevalidatesMergeExclusively(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.August, 15, 12, 0, 0, 0, time.UTC)
+	store := &reconcilerTestStore{}
+	effects := &reconcilerTestEffects{}
+	observer := &reconcilerSequenceObserver{observations: []pendingci.Observation{
+		reconcilerObservation(now, pendingci.ObservedPassing),
+		reconcilerObservation(now.Add(time.Second), pendingci.ObservedFailing),
+	}}
+	request := reconcilerRequest(now.Add(-time.Minute))
+	request.RepositoryID = "repository"
+	reconciler := newPendingCIReconciler(
+		store, observer, effects, newPendingCICoordinator(), defaultPendingCITiming(),
+	)
+
+	if err := reconciler.Process(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	if observer.calls != 2 {
+		t.Fatalf("observation calls = %d, want initial and exclusive revalidation", observer.calls)
+	}
+	if effects.mergedHead != "" {
+		t.Fatalf("stale passing observation merged head %q", effects.mergedHead)
+	}
+	if store.rescheduled == nil || store.rescheduled.LastObservedState != string(pendingci.ObservedFailing) {
+		t.Fatalf("reschedule = %#v, want revalidated failing state", store.rescheduled)
+	}
+}
+
 func reconcilerRequest(progressAt time.Time) pendingci.Request {
 	return pendingci.Request{
 		ID: 7, Revision: 2, Lifecycle: pendingci.LifecycleArmed,
+		RepositoryID: "repository",
 		HeadSHA: "live-head", LastProgressAt: progressAt,
 		LastObservedState: string(pendingci.ObservedPassing),
 		LastFingerprint:   "passing",
@@ -175,6 +210,24 @@ func reconcilerObservation(at time.Time, state pendingci.ObservedState) pendingc
 
 type reconcilerTestObserver struct {
 	observation pendingci.Observation
+}
+
+type reconcilerSequenceObserver struct {
+	observations []pendingci.Observation
+	calls        int
+}
+
+func (observer *reconcilerSequenceObserver) Observe(
+	context.Context,
+	pendingci.Request,
+) (pendingci.Observation, error) {
+	if observer.calls >= len(observer.observations) {
+		return pendingci.Observation{}, errors.New("unexpected observation")
+	}
+	observation := observer.observations[observer.calls]
+	observer.calls++
+
+	return observation, nil
 }
 
 func (observer reconcilerTestObserver) Observe(
