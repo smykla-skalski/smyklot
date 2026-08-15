@@ -28,7 +28,8 @@ var serveEnv = []string{
 	envPanelState,
 	envPanelSuperRootID,
 	envPanelTTL,
-	envAppSecret,
+	envPanelClientID,
+	envPanelClientSecret,
 	envGitHubAuthURL,
 	envGitHubTokenURL,
 	envAPIBaseURL,
@@ -254,8 +255,8 @@ var _ = Describe("Serve configuration [Unit]", func() {
 		var enabledPanel = map[string]string{
 			envPanelOrigin:       "https://smyklot.example",
 			envPanelSuperRootID:  "42",
-			envGitHubAppClientID: "Iv1.panel",
-			envAppSecret:         "oauth-secret",
+			envPanelClientID:     "Ov23li.panel",
+			envPanelClientSecret: "oauth-secret",
 		}
 
 		It("should remain disabled without a public origin", func() {
@@ -273,7 +274,7 @@ var _ = Describe("Serve configuration [Unit]", func() {
 				basePath:     defaultPanelBase,
 				statePath:    defaultPanelState,
 				superRootID:  42,
-				clientID:     "Iv1.panel",
+				clientID:     "Ov23li.panel",
 				clientSecret: "oauth-secret",
 				authorizeURL: defaultGitHubAuthURL,
 				tokenURL:     defaultGitHubTokenURL,
@@ -281,13 +282,28 @@ var _ = Describe("Serve configuration [Unit]", func() {
 			}))
 		})
 
+		// Authorizing a GitHub App shows the permissions its registration
+		// asks for, so reusing the App's OAuth credentials here would ask
+		// someone reading a dashboard to grant the write access the bot
+		// approves and merges with. The panel takes a classic OAuth App or
+		// nothing
+		It("should refuse to sign in with the App's own credentials", func() {
+			_, err := loadServe(map[string]string{
+				envPanelOrigin:             "https://smyklot.example",
+				envPanelSuperRootID:        "42",
+				envGitHubAppClientID:       "Iv1.app",
+				"GITHUB_APP_CLIENT_SECRET": "app-secret",
+			})
+			Expect(err).To(MatchError(ErrPanelConfig))
+		})
+
 		It("should allow the panel to own the public root", func() {
 			env := map[string]string{
 				envPanelOrigin:       "https://smyklot.com",
 				envPanelBase:         "/",
 				envPanelSuperRootID:  "42",
-				envGitHubAppClientID: "Iv1.panel",
-				envAppSecret:         "oauth-secret",
+				envPanelClientID:     "Ov23li.panel",
+				envPanelClientSecret: "oauth-secret",
 			}
 
 			cfg, err := loadServe(env)
@@ -302,8 +318,8 @@ var _ = Describe("Serve configuration [Unit]", func() {
 				envPanelState:        "/tmp/old.sqlite3",
 				envPanelSuperRootID:  "42",
 				envPanelTTL:          "24h",
-				envGitHubAppClientID: "Iv1.panel",
-				envAppSecret:         "oauth-secret",
+				envPanelClientID:     "Ov23li.panel",
+				envPanelClientSecret: "oauth-secret",
 			}
 
 			cfg, err := loadServe(env,
@@ -327,8 +343,8 @@ var _ = Describe("Serve configuration [Unit]", func() {
 				env := map[string]string{
 					envPanelOrigin:       "https://smyklot.example",
 					envPanelSuperRootID:  "42",
-					envGitHubAppClientID: "Iv1.panel",
-					envAppSecret:         "oauth-secret",
+					envPanelClientID:     "Ov23li.panel",
+					envPanelClientSecret: "oauth-secret",
 				}
 				env[name] = ""
 
@@ -336,8 +352,8 @@ var _ = Describe("Serve configuration [Unit]", func() {
 				Expect(err).To(MatchError(ErrPanelConfig))
 			},
 			Entry("without a Super Root ID", envPanelSuperRootID),
-			Entry("without an OAuth client ID", envGitHubAppClientID),
-			Entry("without an OAuth secret", envAppSecret),
+			Entry("without an OAuth client ID", envPanelClientID),
+			Entry("without an OAuth secret", envPanelClientSecret),
 		)
 
 		DescribeTable("should reject unsafe panel settings",

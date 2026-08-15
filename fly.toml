@@ -9,7 +9,11 @@
 # live encrypted in Fly:
 #
 #   SMYKLOT_WEBHOOK_SECRET, GITHUB_APP_PRIVATE_KEY, GITHUB_APP_CLIENT_ID,
-#   GITHUB_APP_CLIENT_SECRET
+#   SMYKLOT_PANEL_CLIENT_ID, SMYKLOT_PANEL_CLIENT_SECRET
+#
+# The panel pair belongs to a classic OAuth App, registered apart from the
+# GitHub App so that signing in to read the panel does not ask anyone to grant
+# the permissions the bot approves and merges with
 
 app = "smyklot"
 primary_region = "fra"

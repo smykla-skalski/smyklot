@@ -57,9 +57,18 @@ const (
 	envPanelState       = "SMYKLOT_PANEL_STATE_PATH"
 	envPanelSuperRootID = "SMYKLOT_PANEL_SUPER_ROOT_ID"
 	envPanelTTL         = "SMYKLOT_PANEL_SESSION_TTL"
-	envAppSecret        = "GITHUB_APP_CLIENT_SECRET" //nolint:gosec // Environment variable name, not a credential
 	envGitHubAuthURL    = "SMYKLOT_GITHUB_AUTHORIZE_URL"
 	envGitHubTokenURL   = "SMYKLOT_GITHUB_TOKEN_URL" //nolint:gosec // Environment variable name, not a credential
+
+	// Panel sign-in deliberately does not reuse the App's OAuth credentials.
+	// Authorizing a GitHub App shows the consent screen the App registration
+	// asks for, so signing in to read a dashboard listed the permissions the
+	// bot needs to approve and merge pull requests. Nothing the client sends
+	// trims that list: a GitHub App ignores the scope parameter. A separate
+	// classic OAuth App does honour it, and the panel asks for no scope, so
+	// the screen offers public profile read and nothing else
+	envPanelClientID     = "SMYKLOT_PANEL_CLIENT_ID"
+	envPanelClientSecret = "SMYKLOT_PANEL_CLIENT_SECRET" //nolint:gosec // Environment variable name, not a credential
 
 	defaultListenAddress = ":8080"
 	defaultAdminAddress  = ":9090"
@@ -127,7 +136,12 @@ meant to be public: /livez, /readyz, /metrics and /failures.
 
 Requires GitHub App credentials and a webhook secret in the environment:
 GITHUB_APP_PRIVATE_KEY, GITHUB_APP_CLIENT_ID (or GITHUB_APP_ID for service-only
-JWT authentication), and SMYKLOT_WEBHOOK_SECRET.`,
+JWT authentication), and SMYKLOT_WEBHOOK_SECRET.
+
+The panel signs users in through its own classic OAuth App, registered apart
+from the bot's GitHub App so that reading a dashboard does not ask anyone to
+grant the permissions the bot approves and merges with. Enabling the panel
+therefore also requires SMYKLOT_PANEL_CLIENT_ID and SMYKLOT_PANEL_CLIENT_SECRET.`,
 	RunE: runServe,
 }
 
@@ -304,16 +318,20 @@ func applyPanelFlags(cmd *cobra.Command, cfg *serveConfig) error {
 		basePath:     normalizePanelBasePath(flagOrEnv(cmd, flagPanelBase, basePath, envPanelBase)),
 		statePath:    flagOrEnv(cmd, flagPanelState, statePath, envPanelState),
 		superRootID:  superRootID,
-		clientID:     strings.TrimSpace(os.Getenv(envGitHubAppClientID)),
-		clientSecret: os.Getenv(envAppSecret),
+		clientID:     strings.TrimSpace(os.Getenv(envPanelClientID)),
+		clientSecret: os.Getenv(envPanelClientSecret),
 		authorizeURL: envOrDefault(envGitHubAuthURL, defaultGitHubAuthURL),
 		tokenURL:     envOrDefault(envGitHubTokenURL, defaultGitHubTokenURL),
 		sessionTTL:   ttl,
 	}
+	if cfg.panel.clientID == "" || strings.TrimSpace(cfg.panel.clientSecret) == "" {
+		return fmt.Errorf(
+			"%w: panel sign-in needs %s and %s from a classic OAuth App, not the App's own credentials",
+			ErrPanelConfig, envPanelClientID, envPanelClientSecret,
+		)
+	}
 	if strings.TrimSpace(cfg.panel.statePath) == "" ||
-		cfg.panel.superRootID <= 0 ||
-		cfg.panel.clientID == "" ||
-		strings.TrimSpace(cfg.panel.clientSecret) == "" || ttl <= 0 {
+		cfg.panel.superRootID <= 0 || ttl <= 0 {
 		return ErrPanelConfig
 	}
 	if cfg.panel.basePath == cfg.webhookPath || cfg.panel.basePath == healthPath {

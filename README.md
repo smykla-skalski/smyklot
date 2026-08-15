@@ -352,20 +352,27 @@ Point the GitHub App's webhook at `https://your-host/webhook`, subscribe it to *
 | `SMYKLOT_LOG_FORMAT`           | `--log-format`          | `json`                              | `json` or `text`                                                             |
 | `SMYKLOT_LOG_LEVEL`            | `--log-level`           | `info`                              | `debug`, `info`, `warn` or `error`                                           |
 | `GITHUB_APP_PRIVATE_KEY`       | -                       | required                            | PEM-encoded App private key                                                  |
-| `GITHUB_APP_CLIENT_ID`         | -                       | required with the panel             | App OAuth client ID; also preferred for App JWTs                             |
-| `GITHUB_APP_ID`                | -                       | optional                            | Numeric service-only App JWT fallback; invalid for panel OAuth               |
+| `GITHUB_APP_CLIENT_ID`         | -                       | recommended                         | App client ID, preferred for App JWTs                                        |
+| `GITHUB_APP_ID`                | -                       | optional                            | Numeric App JWT fallback when no client ID is set                            |
 | `SMYKLOT_PANEL_PUBLIC_ORIGIN`  | `--panel-public-origin` | disabled                            | Browser-visible scheme and host; setting it enables the panel                |
 | `SMYKLOT_PANEL_BASE_PATH`      | `--panel-base-path`     | `/panel`                            | Public path subtree for the panel                                            |
 | `SMYKLOT_PANEL_STATE_PATH`     | `--panel-state-path`    | `/var/lib/smyklot/panel.sqlite3`    | Writable SQLite database path                                                |
 | `SMYKLOT_PANEL_SUPER_ROOT_ID`  | `--panel-super-root-id` | required when panel is enabled      | Numeric GitHub user ID assigned as the singleton Super Root                  |
 | `SMYKLOT_PANEL_SESSION_TTL`    | `--panel-session-ttl`   | `12h`                               | Signed-in panel session lifetime                                             |
-| `GITHUB_APP_CLIENT_SECRET`     | -                       | required when panel is enabled      | GitHub App OAuth client secret                                               |
+| `SMYKLOT_PANEL_CLIENT_ID`      | -                       | required when panel is enabled      | Client ID of the OAuth App that signs panel users in                         |
+| `SMYKLOT_PANEL_CLIENT_SECRET`  | -                       | required when panel is enabled      | Client secret of that OAuth App                                              |
 
 The webhook secret, private key and OAuth client secret have no flag on purpose - a flag would put them in the process table. An explicit flag beats the environment for everything else.
 
 ### Administration panel
 
-Set `SMYKLOT_PANEL_PUBLIC_ORIGIN` to enable the panel, then add `<public origin>/panel/auth/github/callback` as the GitHub App callback URL. The configured numeric `SMYKLOT_PANEL_SUPER_ROOT_ID` is matched against GitHub's immutable user ID on sign-in. Changing it promotes the new identity and demotes the former Super Root to Root when the new identity next signs in.
+Set `SMYKLOT_PANEL_PUBLIC_ORIGIN` to enable the panel. The configured numeric `SMYKLOT_PANEL_SUPER_ROOT_ID` is matched against GitHub's immutable user ID on sign-in. Changing it promotes the new identity and demotes the former Super Root to Root when the new identity next signs in.
+
+#### Sign-in registration
+
+The panel signs users in through a **classic OAuth App**, registered separately from the GitHub App the bot acts as, and never through the GitHub App itself. Authorizing a GitHub App shows the permissions its registration asks for, so signing in through it asks someone who only wants to read a dashboard to grant write access to pull requests and issues. Nothing the client sends trims that screen: a GitHub App ignores the `scope` parameter and uses fine-grained permissions instead. An OAuth App does honour `scope`, and the panel asks for none, so the screen offers public profile read alone.
+
+Register the OAuth App under the same account or organization that owns the GitHub App, with `<public origin><base path>/auth/github/callback` as its authorization callback URL, then set `SMYKLOT_PANEL_CLIENT_ID` and `SMYKLOT_PANEL_CLIENT_SECRET` from it. The service refuses to start if the panel is enabled without both. The panel calls `GET /user` once with the resulting token and discards it; nothing is stored but the profile it returns.
 
 The panel synchronizes every installation and repository visible to the App every five minutes. Personal-installation ownership follows the immutable GitHub user ID. Organization ownership follows organization members with the admin role and requires read-only **Members** organization permission on the GitHub App. Existing installations must approve that added permission before Owner synchronization succeeds. Regular access fails closed when an Owner snapshot is unavailable or more than 15 minutes old; Root diagnostics retain the installation record. New installations default to **Off**, so the service only handles repositories an administrator enables deliberately. Account settings act as defaults, and the effective order is process configuration → account panel settings → `.github/smyklot.yaml` → repository panel settings. A repository may explicitly bypass an invalid file; that exception is visible and audited.
 

@@ -333,11 +333,14 @@ fly secrets set \
   SMYKLOT_WEBHOOK_SECRET="$(openssl rand -hex 32)" \
   GITHUB_APP_PRIVATE_KEY="$(cat key.pem)" \
   GITHUB_APP_CLIENT_ID="Iv23liExample" \
-  GITHUB_APP_CLIENT_SECRET="your-github-app-client-secret" \
+  SMYKLOT_PANEL_CLIENT_ID="Ov23liExample" \
+  SMYKLOT_PANEL_CLIENT_SECRET="your-oauth-app-client-secret" \
   --app smyklot
 ```
 
 Secrets live encrypted in Fly and are injected as environment variables. Nothing sensitive belongs in `fly.toml`, which is committed.
+
+The two `SMYKLOT_PANEL_*` values come from a classic OAuth App, not from the GitHub App above. Registering a second application is what keeps the sign-in consent screen down to public profile read instead of listing every permission the bot approves and merges with - see [Sign-in registration](README.md#sign-in-registration). Its authorization callback URL is `https://smyklot.com/auth/github/callback`.
 
 The private key goes in exactly as GitHub hands it out. Both PEM encodings are read: PKCS#1, which starts `-----BEGIN RSA PRIVATE KEY-----` and is what the App download gives you, and PKCS#8, which starts `-----BEGIN PRIVATE KEY-----`. There is nothing to convert.
 
@@ -365,7 +368,7 @@ fly volumes list --app smyklot
 Run `volumes create` exactly once, only when `volumes list` shows no
 `smyklot_data` volume. Fly encrypts volume contents by default.
 
-In the GitHub App settings, add the exact callback URL
+In the **OAuth App** settings - not the GitHub App's - add the exact callback URL
 `https://smyklot.com/auth/github/callback`. It is separate from the webhook URL
 and must match the redirect URI byte for byte.
 

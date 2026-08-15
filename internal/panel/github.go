@@ -36,6 +36,14 @@ func newGitHubSignIn(cfg Config) (*githubSignIn, error) {
 	}
 	provider := "github:" + api.Scheme + "://" + api.Host + strings.TrimRight(api.Path, "/")
 
+	// Scopes stays empty, and the credential must belong to a classic OAuth
+	// App rather than to the GitHub App the bot acts as. An OAuth App honours
+	// the scope parameter, so asking for nothing gets a consent screen that
+	// offers public profile read alone, which is all the panel reads: one
+	// GET /user, after which the token is discarded. A GitHub App ignores the
+	// parameter and shows whatever its registration asks for instead, so
+	// signing in there would ask a reader to grant write access to pull
+	// requests and issues
 	return &githubSignIn{
 		oauth: oauth2.Config{
 			ClientID:     cfg.ClientID,

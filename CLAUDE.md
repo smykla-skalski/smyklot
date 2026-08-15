@@ -54,6 +54,7 @@ Go + Ginkgo/Gomega, deployed as Docker-based GitHub Action.
 - Whoever **starts** an attribute chain seeds it — `sweep` does `logging.Into(ctx, s.logger)` itself rather than trusting its caller, so a direct call still logs where it should
 - Attach an attribute in **one** place. `pollAllPRs` owns `repo` and `processPR` owns `pr`; adding either again downstream prints it twice
 - The chart runs **one replica** with `Recreate` — dedupe is in-memory and the sweep has no leader election, so a second process double-acts on reactions (`charts/smyklot/values.yaml`)
+- Panel sign-in uses a **classic OAuth App**, never the GitHub App — `SMYKLOT_PANEL_CLIENT_ID` / `SMYKLOT_PANEL_CLIENT_SECRET`, with no fallback to `GITHUB_APP_CLIENT_ID`. Authorizing a GitHub App shows whatever its registration asks for, so signing in through it listed the bot's write permissions on the consent screen. Setting `Scopes` cannot fix that: a GitHub App ignores `scope`, and `x/oauth2` omits the parameter entirely when the slice is empty (`internal/panel/github.go`)
 - The webhook secret and private key are **never chart values**, only `github.existingSecret` — a value would land in a values file and in `helm get values`
 - Chart version and `appVersion` are rewritten by semantic-release, so `helm install --version X` and `smyklot:X` are always one release (`.releaserc.yml`)
 
