@@ -214,6 +214,43 @@ describe('Flight [Unit]', () => {
     expect(Math.abs(net)).toBeGreaterThan(2);
   });
 
+  it('crosses a quiet zone dead straight, on the heading it carried in', () => {
+    const fl = new Flight({ bounds, cruise, random: rng(31) });
+    // A full-height band across the middle: the rocket cannot roam without
+    // crossing it, and inside it every manoeuvre is suspended.
+    const zone = { minX: 450, minY: 0, maxX: 780, maxY: height };
+    fl.setQuiet(zone);
+    const inZone = (): boolean => fl.x > zone.minX && fl.x < zone.maxX;
+    let entryHeading: number | null = null;
+    let settle = 0;
+    for (let i = 0; i < 60 * 240; i += 1) {
+      fl.step(dt);
+      if (!inZone()) {
+        entryHeading = null;
+        settle = 0;
+        continue;
+      }
+      // The turn rate is eased, not snapped, so the first moments inside
+      // still carry the curve it entered with; after that it holds course.
+      // The wall band is left out too: the soft wall keeps steering even
+      // where flying is hidden, because a crash is worse than a wiggle.
+      settle += dt;
+      if (settle < 1.1 || fl.y < 120 || fl.y > height - 120) {
+        entryHeading = fl.heading;
+        continue;
+      }
+      if (entryHeading !== null && fl.x > zone.minX + 40 && fl.x < zone.maxX - 40) {
+        let away = (fl.heading - entryHeading) % TAU;
+        if (away > Math.PI) away -= TAU;
+        if (away < -Math.PI) away += TAU;
+        // Under seven degrees across the whole crossing: the only turning
+        // left is the eased-out tail of whatever curve it entered on.
+        expect(Math.abs(away)).toBeLessThan(0.12);
+        expect(fl.speed).toBeGreaterThan(0);
+      }
+    }
+  });
+
   it('flies a loop right round rather than merely curving', () => {
     const fl = new Flight({ bounds, cruise, random: rng(13) });
     // Parked in the middle so the loop has all the room it asks for.

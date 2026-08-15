@@ -236,6 +236,8 @@ export class Flight {
   private arcOmega = 0;
   /** The fraction of the top speed currently being flown toward. */
   private pace: number;
+  /** Where flying is invisible - behind the page's content. See setQuiet. */
+  private quiet: FlightBounds | null = null;
   /** Wander phases, fixed at birth so each rocket meanders its own way. */
   private readonly wanderA: number;
   private readonly wanderB: number;
@@ -273,6 +275,17 @@ export class Flight {
   }
 
   /**
+   * A region where flying is pointless because nobody can see it - the page's
+   * content panel sits over it. The rocket is not kept out: it crosses, but
+   * it crosses *straight*, holding the heading it carried in until it is out
+   * the other side, and it saves its circles, turns and rests for where they
+   * can be watched.
+   */
+  setQuiet(zone: FlightBounds | null): void {
+    this.quiet = zone;
+  }
+
+  /**
    * Begin the rest sequence: glide to a stop, sit a while, turn on the spot
    * toward a fresh course, then build back up to cruise. Public so a test can
    * force it; `decide` draws it at random.
@@ -307,7 +320,16 @@ export class Flight {
       case 'cruise': {
         this.sinceRest += dt;
         this.decideIn -= dt;
-        if (this.decideIn <= 0) this.decide();
+        if (this.hidden()) {
+          // Behind the panel: fly straight through on the heading it came in
+          // with. Any arc is abandoned, and the next decision waits until
+          // the rocket is somewhere it can be seen making it.
+          this.arcLeft = 0;
+          this.course = this.heading;
+          if (this.decideIn <= 0) this.decideIn = 0.5;
+        } else if (this.decideIn <= 0) {
+          this.decide();
+        }
         if (this.arcLeft > 0 && this.wallDistance() < 60) {
           // The arc has drifted too close to a wall; give it up and let the
           // ordinary steering carry the rocket back inside.
@@ -320,7 +342,7 @@ export class Flight {
           // An arc ends on whatever heading it reaches, and that heading is
           // the course now - a circle hands back the old one by geometry.
           if (this.arcLeft <= 0) this.course = this.heading;
-        } else {
+        } else if (!this.hidden()) {
           targetOmega =
             clamp(wrapAngle(this.course - this.heading) * COURSE_GAIN, -MAX_TURN, MAX_TURN) +
             this.wander();
@@ -457,6 +479,11 @@ export class Flight {
 
   private spanY(): number {
     return this.bounds.maxY - this.bounds.minY;
+  }
+
+  private hidden(): boolean {
+    const q = this.quiet;
+    return q !== null && this.x > q.minX && this.x < q.maxX && this.y > q.minY && this.y < q.maxY;
   }
 
   private wallDistance(): number {

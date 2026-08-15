@@ -22,6 +22,8 @@
   } from '../lib/preferences';
   import { createPrefsSync } from '../lib/preferences-sync';
   import BrandMark from './BrandMark.svelte';
+  import NightAstronaut from './NightAstronaut.svelte';
+  import NightRocket from './NightRocket.svelte';
   import NightSky from './NightSky.svelte';
   import PageFooter from './PageFooter.svelte';
   import ThemeSwitch from './ThemeSwitch.svelte';
@@ -88,6 +90,11 @@
   let theme = $state<ThemeDisplay>(storedTheme());
   const resolvedTheme = $derived(resolveThemeDisplay(theme, systemAtOpen));
 
+  /* The card, handed to the dark-mode rocket as the region it is invisible
+     behind - it crosses there in a straight line instead of performing to
+     nobody. */
+  let cardElement = $state<HTMLElement | null>(null);
+
   $effect(() => {
     applyDocumentTheme(document, resolvedTheme);
   });
@@ -109,11 +116,28 @@
 
 <main class={['shell', 'night-shell', size === 'compact' && 'night-compact']}>
   <div class="night-brand">
-    <NightSky height={skyHeight} />
+    <NightSky
+      height={skyHeight}
+      rocket={resolvedTheme !== 'dark'}
+      astronaut={resolvedTheme !== 'dark'}
+    />
     <!-- Open, so the sky carries through the ring: out here the mark stands on
          night in both themes, which is exactly the ground the robot wants. -->
     <BrandMark stacked interior="clear" size={MARK_SIZE} />
   </div>
+
+  <!-- In the dark theme the whole page is night, so the easter eggs are not
+     held to the sky's patch: they fly the full window, still behind all of
+     the content. In the light theme they stay inside the sky, whose mask is
+     what keeps them off the white page. After the sky in source order: both
+     sit at z-index -1, where document order decides, and the flights belong
+     above the stars they fly through. -->
+  {#if resolvedTheme === 'dark'}
+    <div class="page-flight" aria-hidden="true">
+      <NightRocket quiet={cardElement} />
+      <NightAstronaut />
+    </div>
+  {/if}
 
   <div class="night-main">
     <div class="night-head">
@@ -128,6 +152,7 @@
     </div>
 
     <section
+      bind:this={cardElement}
       class={['plate', 'night-card', busy && 'busy']}
       aria-labelledby="night-page-title"
       aria-busy={busy}
@@ -174,6 +199,20 @@
   .night-compact {
     --night-column: 30rem;
     --night-card-floor: 0;
+  }
+
+  /* In the dark theme the whole page is night, so the easter eggs fly the full
+     window, still behind all of the content. */
+  .page-flight {
+    inset: 0;
+    pointer-events: none;
+    position: fixed;
+    z-index: -1;
+  }
+
+  .page-flight :global(canvas) {
+    inset: 0;
+    position: absolute;
   }
 
   /* Stretched to fill its row rather than centred inside it, so the element's own

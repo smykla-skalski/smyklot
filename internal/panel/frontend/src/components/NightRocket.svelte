@@ -26,12 +26,19 @@
   const {
     speed = 70,
     trailLife = 7,
+    quiet = null,
   }: {
     /** Top speed, in CSS pixels per second; the flight varies its pace
      * beneath it and never passes it. */
     speed?: number;
     /** Seconds each dash of the trail stays on the sky before dissolving. */
     trailLife?: number;
+    /**
+     * An element the flight is invisible behind - the page's content panel.
+     * The rocket still crosses it, but straight through on the heading it
+     * carried in, saving its circles, turns and rests for open sky.
+     */
+    quiet?: HTMLElement | null;
   } = $props();
 
   const TAU = Math.PI * 2;
@@ -172,12 +179,35 @@
       let cssW = 0;
       let cssH = 0;
       let parkedDrawn = false;
+      let frame = 0;
 
       const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+      /* Where the panel stands, in canvas coordinates, padded to cover its
+         blurred edge. Measured seldom - the layout is still - and never in
+         the same frame twice. */
+      const syncQuiet = (): void => {
+        if (fl === null) return;
+        if (quiet === null) {
+          fl.setQuiet(null);
+          return;
+        }
+        const own = canvas.getBoundingClientRect();
+        const zone = quiet.getBoundingClientRect();
+        const pad = 12;
+        fl.setQuiet({
+          minX: zone.left - own.left - pad,
+          minY: zone.top - own.top - pad,
+          maxX: zone.right - own.left + pad,
+          maxY: zone.bottom - own.top + pad,
+        });
+      };
 
       const tick = (ts: number): void => {
         raf = requestAnimationFrame(tick);
         if (fl === null) return;
+        frame += 1;
+        if (frame % 90 === 1) syncQuiet();
         /* A background tab stops rAF; on return the whole absence arrives as
            one dt, clamped so the rocket resumes where it was rather than
            teleporting through the accumulated time. */
