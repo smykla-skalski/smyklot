@@ -279,7 +279,7 @@ func invitedIdentityDeclinedLast(
 	var status storage.InvitationStatus
 	err := executor.QueryRowContext(ctx, `
 SELECT status FROM user_invitations
-WHERE account_id = ? AND ((target_id IS NULL AND ? IS NULL) OR target_id = ?)
+WHERE account_id = ? AND `+optionalScopeClause("target_id")+`
 ORDER BY created_at DESC, id DESC
 LIMIT 1`, accountID, targetID, targetID).Scan(&status)
 	if errors.Is(err, sql.ErrNoRows) {

@@ -127,6 +127,20 @@ linters:
         linters:
           - govet
 
+      # The shared storage suite is test code that has to be importable by
+      # every engine package, so it cannot live in _test.go files and does not
+      # pick up the exclusions above. Same rules, same reasons.
+      - path: internal/storage/storagetest/
+        linters:
+          - gocyclo
+          - errcheck
+          - dupl
+          - gosec
+          - funlen
+          - goconst
+          - unparam
+          - staticcheck  # Ginkgo and Gomega are used as dot imports by design
+
 issues:
   max-same-issues: 50
 

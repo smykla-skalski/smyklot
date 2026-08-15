@@ -38,9 +38,9 @@ env = { CGO_ENABLED = "1" }
 run = "ginkgo watch -r"
 
 [tasks."test:storage"]
-description = "Run the storage adapter unit suite"
+description = "Run the shared storage suite against every engine"
 env = { CGO_ENABLED = "1" }
-run = "ginkgo --focus='\\[Unit\\]' --fail-on-empty ./internal/storage/sqlite"
+run = "ginkgo -r --race --fail-on-empty ./internal/storage"
 
 [tasks.lint]
 description = "Run all Smyklot linters"
