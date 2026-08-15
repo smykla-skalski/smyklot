@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
@@ -50,11 +50,43 @@ describe('a sidebar navigation row', () => {
   });
 
   it('does not drop the icon for words that happen to have a descender', () => {
-    // `--ink-nudge` is for a mark sitting inline with one word. These icons are a column: three of
-    // Settings, Repositories, Access and History carry a descender and one does not, so the nudge
-    // moved most of the column and left the rest, which reads worse than any row reads better.
+    // This is where the descender nudge was found out: three of Settings, Repositories, Access and
+    // History carry one and the fourth does not, so it moved most of the column and left the rest.
+    // It has since been dropped everywhere, which the sweep below holds to.
     expect(rule('.navigation-icon')).not.toContain('--ink-nudge');
     expect(tabs).not.toContain('use:inkAlign');
+  });
+});
+
+describe('the descender nudge', () => {
+  it('is gone from the product', () => {
+    /*
+     * `--ink-nudge` dropped a mark by 0.11em whenever its label carried a descender. It was real
+     * and it was measured, and it still lost: a mark that moves because the word beside it happens
+     * to contain a "p" cannot line up with the identical mark one row down. Alignment between
+     * neighbours beats alignment within one pair, so the whole mechanism went.
+     */
+    const roots = [new URL('../src/', import.meta.url)];
+    const offenders: string[] = [];
+
+    while (roots.length > 0) {
+      const dir = roots.pop() as URL;
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const child = new URL(entry.name + (entry.isDirectory() ? '/' : ''), dir);
+        if (entry.isDirectory()) {
+          roots.push(child);
+          continue;
+        }
+        if (!/\.(svelte|ts|css)$/u.test(entry.name)) continue;
+        const source = readFileSync(child, 'utf8');
+        // The comments explaining why it is gone are allowed to name it; nothing may use it.
+        if (/translate:\s*0 var\(--ink-nudge\)|use:inkAlign|--ink-nudge:\s/u.test(source)) {
+          offenders.push(entry.name);
+        }
+      }
+    }
+
+    expect(offenders).toEqual([]);
   });
 });
 

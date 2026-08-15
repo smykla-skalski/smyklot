@@ -774,11 +774,9 @@
 
   /* 8px dot, 8.8px gap - the swatch and the space beside it had been swapped,
      which read as a slightly fat dot crowding its label. */
-  /* A dot beside a label takes the shared nudge; see --ink-nudge in app.css. */
   .legend {
     border-radius: 50%;
     height: 0.5rem;
-    translate: 0 var(--ink-nudge);
     width: 0.5rem;
   }
 

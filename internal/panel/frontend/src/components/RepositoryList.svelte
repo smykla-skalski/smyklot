@@ -60,7 +60,6 @@
   import SearchField from './SearchField.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
   import TableEmptyState from './TableEmptyState.svelte';
-  import { inkAlign } from '../lib/ink-align';
 
   type RepositoryEnablement = 'inherit' | 'enabled' | 'disabled';
   type RepositoryFailure = { message: string; source: RepositoryFailureSource };
@@ -911,7 +910,7 @@
               </th>
               <th class="filterable-heading">
                 <div class="table-heading-layout">
-                  <span use:inkAlign class="heading-with-help">
+                  <span class="heading-with-help">
                     <span class="cap-trim">Enablement</span>
                     <HelpTip
                       id="repository-enablement-help"
@@ -1164,7 +1163,7 @@
                 </Chip>
               </div>
               <div class="override-row">
-                <span use:inkAlign class="o-label">
+                <span class="o-label">
                   <!-- Trimmed, so the words centre against the 18px help slot
                        on their caps rather than on a taller line box. -->
                   <span class="cap-trim">Bypass file</span>

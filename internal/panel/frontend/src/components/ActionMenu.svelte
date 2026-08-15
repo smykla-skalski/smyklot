@@ -27,20 +27,31 @@
   let left = $state(0);
   let top = $state(0);
 
-  async function open(): Promise<void> {
+  /* The browser needs to know which button owns this menu. Toggling it by hand
+     looks right and cannot work: an auto popover light-dismisses on pointerdown,
+     so a second press on the trigger closed it and the handler, finding it
+     closed, opened it again - the menu could only be dismissed by clicking
+     somewhere else. */
+  const popoverId = $props.id();
+
+  /* Placed once it is open, from its own toggle event: that is the only moment
+     the menu has been laid out and can be measured. */
+  async function place(): Promise<void> {
     if (trigger === null || popover === null) return;
-    if (popover.matches(':popover-open')) {
-      popover.hidePopover();
-      return;
-    }
     const rect = trigger.getBoundingClientRect();
-    left = Math.max(8, Math.min(rect.right - 224, window.innerWidth - 232));
-    top = rect.bottom + 6;
-    popover.showPopover();
     await tick();
-    const menuRect = popover.getBoundingClientRect();
-    if (menuRect.bottom > window.innerHeight - 8) {
-      top = Math.max(8, rect.top - menuRect.height - 6);
+    const menu = popover.getBoundingClientRect();
+
+    /* Hung under the button and aligned to its right edge, which is where a menu
+       opened from a trailing control belongs. The width used to be assumed to be
+       224px; the menu is as wide as its longest description, so a wrong guess put
+       it a hundred pixels off the button it belongs to. */
+    left = Math.min(window.innerWidth - menu.width - 8, Math.max(8, rect.right - menu.width));
+    top = rect.bottom + 6;
+    await tick();
+
+    if (popover.getBoundingClientRect().bottom > window.innerHeight - 8) {
+      top = Math.max(8, rect.top - menu.height - 6);
       await tick();
     }
     popover.querySelector<HTMLButtonElement>('.action-item:not(:disabled)')?.focus();
@@ -78,7 +89,8 @@
     bind:this={trigger}
     aria-label={label}
     title={label}
-    onclick={open}
+    popovertarget={popoverId}
+    popovertargetaction="toggle"
   >
     <Icon name="more" size={22} />
   </button>
@@ -92,8 +104,12 @@
   aria-label={label}
   style:left={`${left}px`}
   style:top={`${top}px`}
+  id={popoverId}
   onbeforetoggle={(event) => {
     if (event.newState === 'closed') restoreFocus();
+  }}
+  ontoggle={(event) => {
+    if (event.newState === 'open') void place();
   }}
 >
   {#each items as item (item.id)}

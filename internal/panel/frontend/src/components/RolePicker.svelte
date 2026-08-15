@@ -229,15 +229,22 @@
     color: var(--text);
     inset: auto;
     margin: 0;
+    max-height: min(24rem, calc(100dvh - 1rem));
+    overflow: auto;
+    padding: var(--space-1);
+    position: fixed;
+  }
+
+  /* Only once it is open. A bare `display` on a popover overrides the `display:
+     none` the UA sheet gives a closed one, and every list in the table painted
+     itself under its own row - author styles win over the UA sheet, so the
+     closed state has to be excluded rather than assumed. */
+  .role-popover:popover-open {
     display: grid;
     /* Two pixels, so a hovered row and the selected one below it never meet along
        an edge and read as one taller block. One would do at a whole device ratio
        and round away at a fractional one. */
     gap: 2px;
-    max-height: min(24rem, calc(100dvh - 1rem));
-    overflow: auto;
-    padding: var(--space-1);
-    position: fixed;
   }
 
   .role-popover::backdrop {

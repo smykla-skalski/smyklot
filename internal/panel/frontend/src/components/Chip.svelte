@@ -1,7 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
 
-  import { inkAlign } from '../lib/ink-align';
   import Icon, { type IconName } from './Icon.svelte';
 
   /** Tones name what a state means rather than which domain state it represents. */
@@ -25,7 +24,7 @@
   } = $props();
 </script>
 
-<span use:inkAlign class="chip chip-{tone}" class:chip-small={small}>
+<span class="chip chip-{tone}" class:chip-small={small}>
   {#if dot}
     <!-- Decoration for the label beside it. Without this some screen readers
          announce the empty element as a blank item of its own. -->

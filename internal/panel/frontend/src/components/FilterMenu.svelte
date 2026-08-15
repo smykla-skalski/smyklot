@@ -481,13 +481,11 @@
     width: 0.22rem;
   }
 
-  /* A dot beside a label takes the shared nudge; see --ink-nudge in app.css. */
   .tone {
     background: var(--dim);
     border-radius: 50%;
     flex: none;
     height: 0.4rem;
-    translate: 0 var(--ink-nudge);
     width: 0.4rem;
   }
 

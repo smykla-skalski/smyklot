@@ -11,7 +11,6 @@
   import RootPageHeader from './RootPageHeader.svelte';
   import SearchField from './SearchField.svelte';
   import TableEmptyState from './TableEmptyState.svelte';
-  import { inkAlign } from '../lib/ink-align';
 
   const {
     route,
@@ -183,13 +182,7 @@
           {syncProblem ?? syncFeedback}
         </span>
       {/if}
-      <button
-        use:inkAlign
-        class="btn"
-        type="button"
-        disabled={syncing}
-        onclick={() => void syncCatalog()}
-      >
+      <button class="btn" type="button" disabled={syncing} onclick={() => void syncCatalog()}>
         <Icon name="refresh" size={14} />
         <span class="cap-trim">{syncing ? 'Synchronizing…' : 'Sync now'}</span>
       </button>

@@ -20,7 +20,6 @@
   import HelpTip from './HelpTip.svelte';
   import Icon from './Icon.svelte';
   import InheritControl from './InheritControl.svelte';
-  import { inkAlign } from '../lib/ink-align';
   import { tooltip } from '../lib/tooltip';
 
   const VALUE_OPTIONS = [
@@ -226,7 +225,7 @@
         {#each shownFields as field (field.key)}
           {@const changed = keyChanged(field.key)}
           <div class="row" class:changed>
-            <span use:inkAlign class="row-label">
+            <span class="row-label">
               <!-- Inside the label, not beside it: the marker belongs to the
                    name it marks, so it rides the label's own 0.45rem gap
                    instead of the row's wider one. -->
@@ -283,7 +282,7 @@
       <div class="rows">
         <div class="row-group" class:changed={keyChanged('command_prefix')}>
           <div class="row-line">
-            <span use:inkAlign class="row-label">
+            <span class="row-label">
               <label for="config-{scope}-{idPrefix}-prefix">Prefix</label>
               <HelpTip
                 id="config-{scope}-{idPrefix}-prefix-tooltip"
@@ -328,7 +327,7 @@
 
         <div class="row-group" class:changed={keyChanged('allowed_commands')}>
           <div class="row-line">
-            <span use:inkAlign class="row-label">
+            <span class="row-label">
               <span class="label-text">Allowed commands</span>
               <HelpTip
                 id="config-{scope}-{idPrefix}-commands-tooltip"
@@ -382,7 +381,7 @@
 
         <div class="row-group" class:changed={keyChanged('command_aliases')}>
           <div class="row-line">
-            <span use:inkAlign class="row-label" id="config-{scope}-{idPrefix}-aliases-heading">
+            <span class="row-label" id="config-{scope}-{idPrefix}-aliases-heading">
               <span class="label-text">Aliases</span>
               <HelpTip
                 id="config-{scope}-{idPrefix}-aliases-tooltip"

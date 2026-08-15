@@ -260,12 +260,6 @@
      (--radius-chip) so status and chips stay distinguishable shapes. */
   --r-chip: 6px;
 
-  /* How far a mark beside a label drops to meet the word's ink. Zero by
-     default, because a label whose ink stops at the baseline ("Fresh",
-     "Enablement") already has its ink centre on the cap band the trimmed label
-     centres. The `inkAlign` action raises it on labels that carry a descender -
-     see src/lib/ink-align.ts and .ink-descends below. */
-  --ink-nudge: 0em;
   --control-height: 40px;
   --control-height-compact: 34px;
   --touch-target: 44px;
@@ -1087,17 +1081,15 @@ select:disabled {
   border-radius: 50%;
   flex: none;
   height: 0.375rem;
-  translate: 0 var(--ink-nudge);
   width: 0.375rem;
 }
 
-/* A chip's mark, where a dot cannot say which outcome this is. It rides the same
-   nudge as the dot, and gives back its own leading dead space so the ink starts
-   where the padding says it does, exactly as a button's icon does. */
+/* A chip's mark, where a dot cannot say which outcome this is. It gives back its
+   own leading dead space so the ink starts where the padding says it does,
+   exactly as a button's icon does. */
 .chip > svg {
   flex: none;
   margin-inline-start: calc(-1 * var(--icon-ink-start, 0px));
-  translate: 0 var(--ink-nudge);
 }
 
 .chip-neutral {
@@ -1362,30 +1354,17 @@ code {
   color: var(--stop);
 }
 
-/* Set by the inkAlign action on the element that holds a mark and its label:
-   this face's cap is 0.745em and its descender 0.22em, so a word with a
-   descender has its ink centre (0.745 - 0.22) / 2 below the cap centre the
-   trimmed label gives the mark. */
-.ink-descends {
-  --ink-nudge: 0.11em;
-}
-
-/* Marks that ride the variable. A button's icon, a chip's dot, a help glyph:
-   all of them centre on the cap band by default and drop to the word's ink when
-   the label carries a descender. */
-.btn > :global(svg),
-.btn > svg {
-  translate: 0 var(--ink-nudge);
-}
-
-/* Help marks beside a one-line trimmed label: same nudge as the chip dot, for
-   the same reason. Not applied to .align-start, which pairs with a two-line
-   block and hangs off the first line's top on purpose. */
-.row-label > .help-tip:not(.align-start),
-.o-label > .help-tip:not(.align-start),
-.heading-with-help > .help-tip:not(.align-start) {
-  translate: 0 var(--ink-nudge);
-}
+/* A mark beside a label centres on the CAP band the trimmed label gives it, and
+   stays there whatever letters the word turns out to contain.
+   ------------------------------------------------------------------------
+   There used to be a nudge here: `--ink-nudge`, raised by an `inkAlign` action on
+   any label carrying a descender, on the reasoning that a word's ink centre sits
+   0.11em below its cap centre. It was measured and it was real, and it still made
+   things worse to look at. A mark that moves because the word next to it happens
+   to contain a "p" is a mark that will not line up with the identical mark one row
+   down - the sidebar's four navigation icons drifted 1.43px apart from each other,
+   and a column of status chips did the same. Alignment between neighbours is worth
+   more than alignment within one pair. */
 
 /* Cap-trimmed text: the box shrinks to cap..baseline so flex centers INK against
    icons and dots, not the glyph box (which carries asymmetric leading). */
@@ -1417,8 +1396,6 @@ code {
   border-radius: var(--radius-chip);
   flex: none;
   height: 0.375rem;
-  /* Same nudge as the chip dot, for the same reason - see --ink-nudge. */
-  translate: 0 var(--ink-nudge);
   width: 0.375rem;
 }
 

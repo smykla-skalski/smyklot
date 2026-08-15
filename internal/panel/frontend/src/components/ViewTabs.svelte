@@ -497,16 +497,10 @@
     opacity: 0.45;
   }
 
-  /* Deliberately NOT riding `--ink-nudge`, which a button's icon and a chip's dot
-     do. That nudge drops a mark to meet the ink centre of a word carrying a
-     descender, and it is right for a mark sitting inline with one word. These
-     icons are a column: three of these four labels contain a descender and one
-     does not, so the nudge pushed Settings, Repositories and History 1.43px below
-     their row centres and left Access on its own - a column with a wobble in it,
-     which reads worse than any single row reads better.
-     The trimmed label puts the cap band on the row's centre, so centring the icon
+  /* The trimmed label puts the cap band on the row's centre, so centring the icon
      on the row centres it on the cap band, in every row, with nothing that
-     depends on which letters the label happens to contain. */
+     depends on which letters the label happens to contain. This is where the
+     descender nudge was found out and where it was dropped first - see app.css. */
   .navigation-icon {
     align-items: center;
     display: inline-flex;
