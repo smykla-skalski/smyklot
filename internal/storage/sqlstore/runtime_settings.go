@@ -1,4 +1,4 @@
-package sqlite
+package sqlstore
 
 import (
 	"context"
@@ -215,7 +215,7 @@ func validRuntimeLogLevel(value string) bool {
 	}
 }
 
-func shortenSessions(ctx context.Context, tx *sql.Tx, lifetime time.Duration) error {
+func shortenSessions(ctx context.Context, tx runner, lifetime time.Duration) error {
 	rows, err := tx.QueryContext(ctx, "SELECT token_hash, created_at, expires_at FROM sessions")
 	if err != nil {
 		return fmt.Errorf("list sessions for lifetime update: %w", err)

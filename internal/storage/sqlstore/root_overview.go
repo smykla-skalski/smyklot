@@ -1,4 +1,4 @@
-package sqlite
+package sqlstore
 
 import (
 	"context"
@@ -44,7 +44,7 @@ func (s *Store) GetRootOverview(
 
 func readRootCatalogCounts(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx runner,
 	result *storage.RootOverview,
 ) error {
 	if err := tx.QueryRowContext(ctx, `
@@ -68,7 +68,7 @@ WHERE t.available = 1`).Scan(
 
 func readRootOwnershipCounts(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx runner,
 	now time.Time,
 	result *storage.RootOverview,
 ) error {
@@ -97,7 +97,7 @@ WHERE t.available = 1`, cutoff, cutoff).Scan(
 
 func readRootSecurityCounts(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx runner,
 	accountID string,
 	now time.Time,
 	result *storage.RootOverview,
@@ -115,7 +115,7 @@ SELECT
 	return nil
 }
 
-func readRootRecentFailures(ctx context.Context, tx *sql.Tx) ([]storage.RootFailure, error) {
+func readRootRecentFailures(ctx context.Context, tx runner) ([]storage.RootFailure, error) {
 	rows, err := tx.QueryContext(
 		ctx, rootFailureSelect+" WHERE d.status = ? ORDER BY d.id DESC LIMIT 5",
 		storage.DeliveryFailed,

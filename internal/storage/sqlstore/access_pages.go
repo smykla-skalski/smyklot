@@ -1,4 +1,4 @@
-package sqlite
+package sqlstore
 
 import (
 	"context"
@@ -207,7 +207,7 @@ WHERE `+strings.Join(clauses, " AND "), arguments...).Scan(&total)
 
 func listPanelUserIDs(
 	ctx context.Context,
-	queryer *sql.DB,
+	queryer runner,
 	join string,
 	clauses []string,
 	arguments []any,

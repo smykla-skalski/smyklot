@@ -1,4 +1,4 @@
-package sqlite
+package sqlstore
 
 import (
 	"context"
@@ -130,7 +130,7 @@ ORDER BY lower(a.login), t.id`)
 
 func reconcileInstallation(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx runner,
 	snapshot storage.InstallationSnapshot,
 ) error {
 	if err := upsertCatalogAccount(ctx, tx, snapshot.Account); err != nil {
@@ -160,7 +160,7 @@ func reconcileInstallation(
 
 func reconcileOwnership(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx runner,
 	snapshot storage.InstallationSnapshot,
 ) error {
 	ownership := normalizedOwnership(snapshot)
@@ -205,7 +205,7 @@ func normalizedOwnership(snapshot storage.InstallationSnapshot) storage.Ownershi
 
 func readOwnershipState(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx runner,
 	targetID string,
 ) (ownershipState, error) {
 	var state ownershipState
@@ -243,7 +243,7 @@ SELECT account_id FROM target_owners WHERE target_id = ? ORDER BY account_id`, t
 
 func replaceOwnership(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx runner,
 	targetID string,
 	ownership storage.OwnershipSnapshot,
 ) error {
@@ -300,7 +300,7 @@ func ownershipChanged(previous ownershipState, current storage.OwnershipSnapshot
 
 func recordOwnershipAudit(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx runner,
 	targetID string,
 	ownership storage.OwnershipSnapshot,
 ) error {
@@ -334,7 +334,7 @@ func recordOwnershipAudit(
 
 func upsertCatalogAccount(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx runner,
 	account storage.Account,
 ) error {
 	_, err := tx.ExecContext(ctx, `
@@ -586,7 +586,7 @@ func (s *Store) GetRepository(
 
 func upsertTarget(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx runner,
 	snapshot storage.InstallationSnapshot,
 ) error {
 	_, err := tx.ExecContext(ctx, `
@@ -618,7 +618,7 @@ ON CONFLICT(id) DO UPDATE SET
 
 func upsertRepository(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx runner,
 	targetID string,
 	repository storage.RepositorySnapshot,
 	syncedAt time.Time,

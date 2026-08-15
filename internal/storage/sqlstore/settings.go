@@ -1,4 +1,4 @@
-package sqlite
+package sqlstore
 
 import (
 	"context"
@@ -228,7 +228,7 @@ WHERE target_id = ? AND id = ?`,
 
 func updateRepositorySettings(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx runner,
 	change storage.RepositorySettingsChange,
 	patch string,
 ) (sql.Result, error) {
@@ -257,7 +257,7 @@ WHERE target_id = ? AND id = ? AND revision = ?`,
 
 func checkTargetUpdate(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx runner,
 	result sql.Result,
 	targetID string,
 ) error {
@@ -284,7 +284,7 @@ func checkTargetUpdate(
 
 func checkRepositoryUpdate(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx runner,
 	result sql.Result,
 	targetID, repositoryID string,
 ) error {
@@ -324,7 +324,7 @@ type auditInsert struct {
 	CreatedAt          string
 }
 
-func insertAudit(ctx context.Context, tx *sql.Tx, entry auditInsert) (int64, error) {
+func insertAudit(ctx context.Context, tx runner, entry auditInsert) (int64, error) {
 	result, err := tx.ExecContext(ctx, `
 INSERT INTO audit_entries (
     target_id, repository_id, repository_full_name,

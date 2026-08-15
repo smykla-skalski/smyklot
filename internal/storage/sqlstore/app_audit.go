@@ -1,8 +1,7 @@
-package sqlite
+package sqlstore
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 
 	"github.com/smykla-skalski/smyklot/internal/storage"
@@ -55,7 +54,7 @@ INSERT INTO app_audit_events (
 
 func insertElevatedNotifications(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx runner,
 	elevation storage.Elevation,
 	auditEventID int64,
 	action string,
@@ -94,7 +93,7 @@ ORDER BY account_id`, elevation.TargetID)
 
 func insertElevatedNotification(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx runner,
 	elevation storage.Elevation,
 	auditEventID int64,
 	action, createdAt, ownerID string,

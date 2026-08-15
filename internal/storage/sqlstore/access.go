@@ -1,4 +1,4 @@
-package sqlite
+package sqlstore
 
 import (
 	"context"
@@ -386,7 +386,7 @@ func freshOwnership(
 
 func targetAccessRevision(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx runner,
 	change storage.TargetAccessChange,
 ) (int64, bool, error) {
 	var revision int64
@@ -407,7 +407,7 @@ SELECT revision FROM target_roles WHERE account_id = ? AND target_id = ?`,
 
 func insertTargetAccess(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx runner,
 	change storage.TargetAccessChange,
 	revision int64,
 ) error {
@@ -434,7 +434,7 @@ INSERT INTO target_roles (
 
 func updateTargetAccess(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx runner,
 	change storage.TargetAccessChange,
 	revision int64,
 ) error {

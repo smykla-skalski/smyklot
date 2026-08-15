@@ -1,4 +1,4 @@
-package sqlite
+package sqlstore
 
 import (
 	"context"
@@ -173,7 +173,7 @@ func (s *Store) EndSessionElevations(
 
 func endSessionElevations(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx runner,
 	sessionTokenHash string,
 	reason storage.ElevationEndReason,
 	endedAt time.Time,
@@ -193,7 +193,7 @@ func endSessionElevations(
 
 func elevatedWrite(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx runner,
 	elevationID *string,
 	sessionTokenHash, actorAccountID, targetID string,
 	changedAt time.Time,
@@ -303,7 +303,7 @@ FROM target_ownership WHERE target_id = ?`, targetID, targetID).Scan(
 	return ownership, err
 }
 
-func insertElevation(ctx context.Context, tx *sql.Tx, elevation storage.Elevation) error {
+func insertElevation(ctx context.Context, tx runner, elevation storage.Elevation) error {
 	_, err := tx.ExecContext(ctx, `
 INSERT INTO root_elevations (
     id, session_token_hash, root_account_id, target_id, reason, started_at, expires_at
@@ -325,7 +325,7 @@ INSERT INTO root_elevations (
 
 func insertElevationAudit(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx runner,
 	elevation storage.Elevation,
 	action, summary string,
 	createdAt time.Time,
@@ -342,7 +342,7 @@ func insertElevationAudit(
 
 func endElevation(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx runner,
 	elevation *storage.Elevation,
 	reason storage.ElevationEndReason,
 	endedAt time.Time,
@@ -380,7 +380,7 @@ WHERE id = ? AND ended_at IS NULL`,
 
 func expireSessionElevations(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx runner,
 	sessionTokenHash string,
 	now time.Time,
 ) error {

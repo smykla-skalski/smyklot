@@ -3,12 +3,15 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"io/fs"
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/storage"
+	"github.com/smykla-skalski/smyklot/internal/storage/sqlstore"
 )
 
 func TestRemoveGlobalAccessMigration(t *testing.T) {
@@ -24,13 +27,15 @@ func TestRemoveGlobalAccessMigration(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 
-	columns := tableColumns(t, ctx, store.db, "panel_users")
+	db := openDatabase(t, ctx, path)
+
+	columns := tableColumns(t, ctx, db, "panel_users")
 	if columns["root"] || columns["global_role"] {
 		t.Fatalf("legacy panel user columns remain after migration: %#v", columns)
 	}
 
 	var revoked int
-	err = store.db.QueryRowContext(ctx, `
+	err = db.QueryRowContext(ctx, `
 SELECT COUNT(*) FROM app_audit_events
 WHERE action = 'global_access.migration_revoked'
   AND subject_account_id = 'legacy-editor'`).Scan(&revoked)
@@ -39,7 +44,7 @@ WHERE action = 'global_access.migration_revoked'
 	}
 
 	var role sql.NullString
-	err = store.db.QueryRowContext(
+	err = db.QueryRowContext(
 		ctx, "SELECT role FROM user_invitations WHERE id = 'root-invitation'",
 	).Scan(&role)
 	if err != nil || role.Valid {
@@ -47,7 +52,7 @@ WHERE action = 'global_access.migration_revoked'
 	}
 
 	var assignedRole string
-	err = store.db.QueryRowContext(ctx, `
+	err = db.QueryRowContext(ctx, `
 SELECT role FROM target_roles
 WHERE account_id = 'legacy-editor' AND target_id = 'legacy-target'`).Scan(&assignedRole)
 	if err != nil || assignedRole != "editor" {
@@ -68,8 +73,10 @@ func TestSystemRoleMigration(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 
+	db := openDatabase(t, ctx, path)
+
 	roles := map[string]string{}
-	rows, err := store.db.QueryContext(ctx, `
+	rows, err := db.QueryContext(ctx, `
 SELECT account_id, system_role FROM panel_users ORDER BY account_id`)
 	if err != nil {
 		t.Fatalf("read migrated system roles: %v", err)
@@ -98,13 +105,13 @@ SELECT account_id, system_role FROM panel_users ORDER BY account_id`)
 		t.Fatalf("restore migrated banned Owner: status = %q, err = %v", restored.Status, err)
 	}
 
-	assertInvitationState(t, ctx, store.db, "global-invitation", "revoked")
-	assertInvitationState(t, ctx, store.db, "target-invitation", "pending")
-	assertAuditAction(t, ctx, store.db, "invitation.migration_revoked", "legacy-editor")
-	assertAuditAction(t, ctx, store.db, "global_access.migration_revoked", "legacy-editor")
+	assertInvitationState(t, ctx, db, "global-invitation", "revoked")
+	assertInvitationState(t, ctx, db, "target-invitation", "pending")
+	assertAuditAction(t, ctx, db, "invitation.migration_revoked", "legacy-editor")
+	assertAuditAction(t, ctx, db, "global_access.migration_revoked", "legacy-editor")
 
 	var assignedRole string
-	err = store.db.QueryRowContext(ctx, `
+	err = db.QueryRowContext(ctx, `
 SELECT role FROM target_roles
 WHERE account_id = 'legacy-editor' AND target_id = 'legacy-target'`).Scan(&assignedRole)
 	if err != nil || assignedRole != "editor" {
@@ -218,6 +225,26 @@ created_by, created_at, system_role
 	}
 }
 
+// openDatabase returns a second handle on an already-migrated file, so a test
+// can read raw rows without the store having to expose its own pool.
+func openDatabase(t *testing.T, ctx context.Context, path string) *sql.DB {
+	t.Helper()
+
+	db, err := sql.Open("sqlite", dataSourceName(path))
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if err = db.PingContext(ctx); err != nil {
+		t.Fatalf("reach database: %v", err)
+	}
+
+	return db
+}
+
+// openLegacyDatabase migrates a fresh file up to but not including the named
+// migration, leaving the schema a released version once had. Reopening it with
+// Open then exercises the upgrade under test.
 func openLegacyDatabase(
 	t *testing.T,
 	ctx context.Context,
@@ -226,42 +253,38 @@ func openLegacyDatabase(
 ) *sql.DB {
 	t.Helper()
 
-	db, err := sql.Open("sqlite", dataSourceName(path))
-	if err != nil {
-		t.Fatalf("open legacy database: %v", err)
+	db := openDatabase(t, ctx, path)
+	if err := sqlstore.Migrate(ctx, db, Dialect{}, migrationsBefore(t, stopBeforePrefix)); err != nil {
+		t.Fatalf("apply legacy migrations: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		t.Fatalf("begin legacy migrations: %v", err)
-	}
-	if _, err = tx.ExecContext(ctx, `
-CREATE TABLE schema_migrations (
-    version INTEGER PRIMARY KEY,
-    applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-)`); err != nil {
-		t.Fatalf("create migration table: %v", err)
-	}
+
+	return db
+}
+
+// migrationsBefore copies the embedded schema files that sort before prefix.
+func migrationsBefore(t *testing.T, prefix string) fs.FS {
+	t.Helper()
+
 	entries, err := migrations.ReadDir("migrations")
 	if err != nil {
 		t.Fatalf("read migrations: %v", err)
 	}
+	earlier := fstest.MapFS{}
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") {
 			continue
 		}
-		if strings.HasPrefix(entry.Name(), stopBeforePrefix) {
+		if strings.HasPrefix(entry.Name(), prefix) {
 			break
 		}
-		if err = applyMigration(ctx, tx, entry.Name()); err != nil {
-			t.Fatalf("apply legacy migration %s: %v", entry.Name(), err)
+		content, readErr := migrations.ReadFile("migrations/" + entry.Name())
+		if readErr != nil {
+			t.Fatalf("read migration %s: %v", entry.Name(), readErr)
 		}
-	}
-	if err = tx.Commit(); err != nil {
-		t.Fatalf("commit legacy migrations: %v", err)
+		earlier["migrations/"+entry.Name()] = &fstest.MapFile{Data: content}
 	}
 
-	return db
+	return earlier
 }
 
 func tableColumns(t *testing.T, ctx context.Context, db *sql.DB, table string) map[string]bool {

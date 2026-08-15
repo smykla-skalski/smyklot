@@ -1,4 +1,4 @@
-package sqlite
+package sqlstore
 
 import (
 	"context"
@@ -196,10 +196,10 @@ INSERT INTO user_invitations (
 // says nothing about whether the identity wants in.
 func invitationOfferable(
 	ctx context.Context,
-	tx *sql.Tx,
+	executor runner,
 	change storage.InvitationCreate,
 ) error {
-	held, err := invitedIdentityHoldsAccess(ctx, tx, change.AccountID, change.TargetID)
+	held, err := invitedIdentityHoldsAccess(ctx, executor, change.AccountID, change.TargetID)
 	if err != nil {
 		return err
 	}
@@ -209,7 +209,7 @@ func invitationOfferable(
 	if change.AcknowledgeDeclined {
 		return nil
 	}
-	declined, err := invitedIdentityDeclinedLast(ctx, tx, change.AccountID, change.TargetID)
+	declined, err := invitedIdentityDeclinedLast(ctx, executor, change.AccountID, change.TargetID)
 	if err != nil {
 		return err
 	}
@@ -223,12 +223,12 @@ func invitationOfferable(
 // invitedIdentityHoldsAccess reports whether the offer would grant what the identity already has.
 func invitedIdentityHoldsAccess(
 	ctx context.Context,
-	tx *sql.Tx,
+	executor runner,
 	accountID string,
 	targetID *string,
 ) (bool, error) {
 	var status storage.PanelUserStatus
-	err := tx.QueryRowContext(
+	err := executor.QueryRowContext(
 		ctx,
 		"SELECT status FROM panel_users WHERE account_id = ?",
 		accountID,
@@ -252,7 +252,7 @@ func invitedIdentityHoldsAccess(
 	var owner bool
 	// Suspension is deliberately not consulted. A suspended user holds a role here and is
 	// restored rather than invited, so the offer is as empty for them as for an active one.
-	err = tx.QueryRowContext(ctx, `
+	err = executor.QueryRowContext(ctx, `
 SELECT
     COALESCE((SELECT role FROM target_roles WHERE account_id = ? AND target_id = ?), 'none'),
     EXISTS(SELECT 1 FROM target_owners WHERE account_id = ? AND target_id = ?)`,
@@ -272,12 +272,12 @@ SELECT
 // make the confirmation permanent noise.
 func invitedIdentityDeclinedLast(
 	ctx context.Context,
-	tx *sql.Tx,
+	executor runner,
 	accountID string,
 	targetID *string,
 ) (bool, error) {
 	var status storage.InvitationStatus
-	err := tx.QueryRowContext(ctx, `
+	err := executor.QueryRowContext(ctx, `
 SELECT status FROM user_invitations
 WHERE account_id = ? AND ((target_id IS NULL AND ? IS NULL) OR target_id = ?)
 ORDER BY created_at DESC, id DESC
@@ -462,7 +462,7 @@ WHERE id = ? AND status = 'pending'`, formatTime(change.RevokedAt), change.ID)
 
 func elevatedInvitationWrite(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx runner,
 	targetID, elevationID *string,
 	sessionTokenHash, actorAccountID string,
 	changedAt time.Time,
@@ -548,7 +548,7 @@ WHERE id = ? AND status = 'pending'`, status, formatTime(change.At), invitation.
 
 func acceptInvitation(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx runner,
 	invitation storage.Invitation,
 	at time.Time,
 ) error {
@@ -590,7 +590,7 @@ ON CONFLICT(account_id, target_id) DO UPDATE SET
 
 func activateInvitedPanelUser(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx runner,
 	accountID string,
 	at time.Time,
 	allowActive bool,
@@ -629,7 +629,7 @@ WHERE account_id = ? AND system_role = 'none'`, formatTime(at), accountID)
 
 func activateInvitedRoot(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx runner,
 	accountID string,
 	role storage.SystemRole,
 	at time.Time,
