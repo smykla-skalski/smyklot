@@ -62,17 +62,6 @@
         : 'Invitation',
   );
 
-  /* Whose invitation this is, first, so a reader holding two of these open can
-     tell the tabs apart without opening them. The same `|` chain the panel's own
-     titles use, from the specific to the general. */
-  const documentTitle = $derived(
-    [
-      ...(invitation === null ? [] : [`@${invitation.account.login}`]),
-      'Invitation',
-      'SMYKLOT',
-    ].join(' | '),
-  );
-
   $effect(() => {
     void load(token);
   });
@@ -119,7 +108,7 @@
 </script>
 
 <svelte:head>
-  <title>{documentTitle}</title>
+  <title>Access Invitation | SMYKLOT</title>
 </svelte:head>
 
 <main class="shell invitation-shell">
@@ -194,8 +183,10 @@
           </dl>
 
           {#if invitation.status === 'pending'}
-            <p>
-              Either choice goes through GitHub first, to prove you are @{invitation.account.login}
+            <p class="invitation-consent">
+              Either button takes you to GitHub to sign in. That is how this page confirms you are @{invitation
+                .account.login}. The sign-in asks for your public profile only, never for access to
+              your repositories.
             </p>
             <div class="invitation-actions">
               <a
@@ -244,11 +235,6 @@
        the title it shares a row with rather than matching it. */
     --invitation-switch-height: 1.75rem;
 
-    /* The head row's height plus the space under it - stated once, because the
-       mark is centred against the card and has to discount what sits between.
-       The row is as tall as the control in it, not as tall as the title. */
-    --invitation-title-block: calc(var(--invitation-switch-height) + var(--space-3));
-
     display: grid;
     grid-template-rows: 1fr auto 1fr;
     max-width: 42rem;
@@ -257,21 +243,22 @@
     row-gap: var(--space-6);
   }
 
-  /* Centred in the whitespace between the window's top edge and the card, so the
-     mark holds the middle of that gap at any window height rather than drifting
-     with a fixed offset. Its row ends at the title, not at the card, so it
-     carries the title's block as padding above and centres the padded box - which
-     puts the mark itself half that block lower, on the card's gap. The row gap is
-     symmetric across both flexible rows, so none of this moves the card. */
   /* Stretched to fill its row rather than centred inside it, so the element's own
-     height *is* the gap above the card. That is what the sky measures itself
-     against; the mark still sits in the middle of it. */
+     height *is* the whitespace above the page's content. That is what the sky
+     measures itself against, and the mark sits in the middle of it.
+
+     Nothing is discounted from that middle. It used to carry the head row's
+     height as padding, which centred the mark on the gap up to the *card* and so
+     left it half that padding low against the whitespace a reader actually sees -
+     the row of title and switch reads as the card's own head, not as part of the
+     space above it. The mark is one object, icon and wordmark together, and it is
+     the object that gets centred: with the padding there the icon looked about
+     right and SMYKLOT hung below the middle, which is what gave it away. */
   .invitation-brand {
     align-items: center;
     align-self: stretch;
     display: flex;
     justify-content: center;
-    padding-top: var(--invitation-title-block);
     position: relative;
   }
 
@@ -434,6 +421,20 @@
 
   dd {
     margin: 0;
+  }
+
+  /* What the reader is actually being asked to consent to, so it is ruled off from
+     the invitation's facts above it rather than reading as one more of them. Three
+     short sentences, in this order because that is the order the questions arrive
+     in: what the buttons do, why they do it, and what it costs. The last one is
+     the one that gets the click - the panel signs in through a scopeless OAuth
+     App, so "public profile only" is exactly true and worth saying out loud on a
+     page asking a stranger to authorise something. Keep it true if that changes
+     (`newGitHubSignIn` in internal/panel/github.go). */
+  .invitation-consent {
+    border-top: 1px solid var(--rule);
+    color: var(--text-secondary);
+    padding-top: 0.875rem;
   }
 
   .invitation-actions {
