@@ -18,6 +18,7 @@
     api,
     refreshVersion,
     rootRole,
+    actorLogin,
     listHref,
     hrefFor,
     onList,
@@ -29,6 +30,7 @@
     api: PanelApi;
     refreshVersion: number;
     rootRole: string;
+    actorLogin: string;
     listHref: string;
     hrefFor: (account: string, view: ScopedPanelView) => string;
     onList: () => void;
@@ -152,6 +154,7 @@
       installation={selected}
       view={route.view}
       {api}
+      {actorLogin}
       {refreshVersion}
       {listHref}
       {hrefFor}

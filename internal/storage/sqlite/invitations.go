@@ -122,19 +122,8 @@ func (s *Store) CreateInvitation(
 		return storage.Invitation{}, err
 	}
 
-	if change.TargetID == nil {
-		var status storage.PanelUserStatus
-		err = tx.QueryRowContext(
-			ctx,
-			"SELECT status FROM panel_users WHERE account_id = ?",
-			change.AccountID,
-		).Scan(&status)
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return storage.Invitation{}, fmt.Errorf("read invited panel user: %w", err)
-		}
-		if err == nil && status != storage.PanelUserRemoved {
-			return storage.Invitation{}, storage.ErrConflict
-		}
+	if err = invitationOfferable(ctx, tx, change); err != nil {
+		return storage.Invitation{}, err
 	}
 	if _, err = tx.ExecContext(ctx, `
 UPDATE user_invitations
@@ -192,6 +181,113 @@ INSERT INTO user_invitations (
 	}
 
 	return invitation, nil
+}
+
+// invitationOfferable rejects an offer that cannot mean anything to the identity it names.
+//
+// It runs inside the create transaction rather than beside it: the handler reads access and
+// invitation history before it writes, so two managers pressing at once would both pass a check
+// made outside. Here the same transaction that inserts the row is the one that read the state.
+//
+// Standing that still allows an offer is left alone on purpose. A pending offer is replaced -
+// somebody has not answered and the manager wants a fresh link - and an expired or revoked one
+// says nothing about whether the identity wants in.
+func invitationOfferable(
+	ctx context.Context,
+	tx *sql.Tx,
+	change storage.InvitationCreate,
+) error {
+	held, err := invitedIdentityHoldsAccess(ctx, tx, change.AccountID, change.TargetID)
+	if err != nil {
+		return err
+	}
+	if held {
+		return storage.ErrAlreadyMember
+	}
+	if change.AcknowledgeDeclined {
+		return nil
+	}
+	declined, err := invitedIdentityDeclinedLast(ctx, tx, change.AccountID, change.TargetID)
+	if err != nil {
+		return err
+	}
+	if declined {
+		return storage.ErrDeclinedEarlier
+	}
+
+	return nil
+}
+
+// invitedIdentityHoldsAccess reports whether the offer would grant what the identity already has.
+func invitedIdentityHoldsAccess(
+	ctx context.Context,
+	tx *sql.Tx,
+	accountID string,
+	targetID *string,
+) (bool, error) {
+	var status storage.PanelUserStatus
+	err := tx.QueryRowContext(
+		ctx,
+		"SELECT status FROM panel_users WHERE account_id = ?",
+		accountID,
+	).Scan(&status)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("read invited panel user: %w", err)
+	}
+	if targetID == nil {
+		// A Root offer only reaches an identity the app does not already hold: accepting one
+		// refuses on any live panel user, so the link would be one nobody could take. An existing
+		// user is promoted through Root user management instead.
+		return status != storage.PanelUserRemoved, nil
+	}
+	if status != storage.PanelUserActive {
+		return false, nil
+	}
+	var role storage.InstallationRole
+	var owner bool
+	// Suspension is deliberately not consulted. A suspended user holds a role here and is
+	// restored rather than invited, so the offer is as empty for them as for an active one.
+	err = tx.QueryRowContext(ctx, `
+SELECT
+    COALESCE((SELECT role FROM target_roles WHERE account_id = ? AND target_id = ?), 'none'),
+    EXISTS(SELECT 1 FROM target_owners WHERE account_id = ? AND target_id = ?)`,
+		accountID, *targetID, accountID, *targetID,
+	).Scan(&role, &owner)
+	if err != nil {
+		return false, fmt.Errorf("read invited target access: %w", err)
+	}
+
+	return owner || role != storage.InstallationRoleNone, nil
+}
+
+// invitedIdentityDeclinedLast reports whether the identity's last word in this scope was no.
+//
+// Only the last one counts. Declining and later accepting, or declining an installation and being
+// invited to another, are not standing refusals, and gating on any decline ever recorded would
+// make the confirmation permanent noise.
+func invitedIdentityDeclinedLast(
+	ctx context.Context,
+	tx *sql.Tx,
+	accountID string,
+	targetID *string,
+) (bool, error) {
+	var status storage.InvitationStatus
+	err := tx.QueryRowContext(ctx, `
+SELECT status FROM user_invitations
+WHERE account_id = ? AND ((target_id IS NULL AND ? IS NULL) OR target_id = ?)
+ORDER BY created_at DESC, id DESC
+LIMIT 1`, accountID, targetID, targetID).Scan(&status)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("read last invitation: %w", err)
+	}
+
+	return status == storage.InvitationDeclined, nil
 }
 
 // ReissueInvitation replaces the secret for a pending or expired offer.

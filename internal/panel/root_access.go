@@ -17,6 +17,9 @@ const rootAccessInvitationsPath = "invitations"
 type createRootInvitationRequest struct {
 	Login         string `json:"login"`
 	ExpiresInDays int    `json:"expires_in_days"`
+
+	// AcknowledgeDeclined carries the same second press as the installation scope.
+	AcknowledgeDeclined bool `json:"acknowledge_declined"`
 }
 
 type updateRootUserRequest struct {
@@ -84,8 +87,7 @@ func (s *Server) postRootInvitation(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadGateway, "github_user_unavailable", "GitHub user could not be resolved")
 		return
 	}
-	if account.ID == actor.ID {
-		s.writeError(w, http.StatusForbidden, "forbidden", "you cannot invite yourself")
+	if s.refusedSelfInvitation(w, actor, account) {
 		return
 	}
 	if err := s.store.UpsertAccount(r.Context(), account); err != nil {
@@ -93,9 +95,10 @@ func (s *Server) postRootInvitation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	role := storage.SystemRoleRoot
-	s.createInvitation(
-		w, r, actor.ID, account.ID, nil, nil, &role, input.ExpiresInDays, nil, "",
-	)
+	s.createInvitation(w, r, invitationDraft{
+		ActorID: actor.ID, AccountID: account.ID, SystemRole: &role,
+		Days: input.ExpiresInDays, AcknowledgeDeclined: input.AcknowledgeDeclined,
+	})
 }
 
 func (s *Server) reissueRootInvitation(w http.ResponseWriter, r *http.Request) {

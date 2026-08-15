@@ -206,6 +206,11 @@ type InvitationCreate struct {
 	ExpiresAt        time.Time
 	CreatedByAccount string
 	CreatedAt        time.Time
+
+	// AcknowledgeDeclined lets an offer through to an identity that turned the last one
+	// down. Declining is an answer, so asking again is a decision the caller has to make
+	// on purpose rather than by pressing the same button twice.
+	AcknowledgeDeclined bool
 }
 
 // InvitationReissue replaces a pending or expired invitation token.

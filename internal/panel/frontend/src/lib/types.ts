@@ -175,6 +175,8 @@ export interface PanelInvitation {
 export interface AddRootInvitationInput {
   login: string;
   expires_in_days: InvitationDays;
+  /** Set only on the second, deliberate attempt after the invited identity declined. */
+  acknowledge_declined?: boolean;
 }
 
 export type InvitationSort =
@@ -208,6 +210,8 @@ export interface AddTargetInvitationInput {
   login: string;
   role: Exclude<InstallationRole, 'none' | 'owner'>;
   expires_in_days: InvitationDays;
+  /** Set only on the second, deliberate attempt after the invited identity declined. */
+  acknowledge_declined?: boolean;
 }
 
 export interface InvitationSignIn {

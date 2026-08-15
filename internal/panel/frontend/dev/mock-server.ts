@@ -2202,12 +2202,72 @@ function findInvitationByToken(state: MockState, encodedToken: string): MockInvi
   return invitation;
 }
 
+/**
+ * The refusals the panel's server makes, so the dev panel walks into the same walls.
+ *
+ * Kept beside the two creators rather than inside them: the login is checked against the signed-in
+ * viewer before anything is resolved, which is the one refusal the panel can also make for itself.
+ */
+function refuseUnusableInvitation(
+  state: MockState,
+  login: string,
+  scope: { targetId?: string },
+  acknowledgedDecline: boolean,
+): void {
+  const normalized = login.trim().toLowerCase();
+  if (normalized === VIEWER.login.toLowerCase()) {
+    throw new MockApiError(403, 'self_invitation', 'you cannot invite yourself');
+  }
+  const user = state.users.find((entry) => entry.account.login.toLowerCase() === normalized);
+  if (scope.targetId === undefined) {
+    if (user !== undefined && user.status !== 'removed') {
+      throw new MockApiError(
+        409,
+        'already_has_access',
+        'this account is already in Smyklot; change its system role instead of inviting it',
+      );
+    }
+  } else if (user !== undefined && user.status === 'active') {
+    const held = state.targetAccess.get(scope.targetId)?.get(user.account.id)?.effective_role;
+    if (held !== undefined && held !== 'none') {
+      throw new MockApiError(
+        409,
+        'already_has_access',
+        'this user already has access to this installation; change their role instead',
+      );
+    }
+  }
+  if (acknowledgedDecline) return;
+  const last = state.invitations
+    .filter(
+      (entry) =>
+        entry.account.login.toLowerCase() === normalized &&
+        (scope.targetId === undefined
+          ? entry.system_role === 'root'
+          : entry.target_id === scope.targetId),
+    )
+    .sort((left, right) => right.created_at.localeCompare(left.created_at))[0];
+  if (last?.status === 'declined') {
+    throw new MockApiError(
+      409,
+      'invitation_declined',
+      'this user declined the last invitation; confirm to send another',
+    );
+  }
+}
+
 function createMockInvitation(
   state: MockState,
   input: AddTargetInvitationInput,
   target: PanelTarget,
 ): MockInvitation {
   const now = new Date();
+  refuseUnusableInvitation(
+    state,
+    input.login,
+    { targetId: target.id },
+    input.acknowledge_declined === true,
+  );
   const account = mockUser(input.login).account;
   for (const invitation of state.invitations) {
     if (
@@ -2238,6 +2298,7 @@ function createMockInvitation(
 
 function createRootMockInvitation(state: MockState, input: AddRootInvitationInput): MockInvitation {
   const now = new Date();
+  refuseUnusableInvitation(state, input.login, {}, input.acknowledge_declined === true);
   const account = mockUser(input.login).account;
   for (const invitation of state.invitations) {
     if (

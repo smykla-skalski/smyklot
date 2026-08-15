@@ -706,6 +706,7 @@
               route={activeRootRoute}
               {api}
               {rootRole}
+              actorLogin={viewer.account.login}
               refreshVersion={rootDataVersion}
               listHref={rootInstallationsHref()}
               hrefFor={rootInstallationHref}
@@ -738,6 +739,7 @@
               reissueInvitation={api.reissueRootInvitation}
               revokeInvitation={api.revokeRootInvitation}
               canManageInvitations={viewer.system_role === 'super_root'}
+              actorLogin={viewer.account.login}
               fetchInstallations={api.fetchRootInstallations}
               addInstallationUser={api.addRootTargetUser}
               onOpenInstallationAccess={(account) => selectRootInstallation(account, 'users')}
@@ -787,6 +789,7 @@
                   {prefs}
                   targetId={selectedTarget.id}
                   targetName={selectedTarget.account.display_name}
+                  actorLogin={viewer.account.login}
                   actorTargetRole={selectedTarget.effective_role}
                   refreshVersion={userVersion}
                   onSection={selectUserSection}

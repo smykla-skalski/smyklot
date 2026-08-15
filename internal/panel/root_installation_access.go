@@ -69,24 +69,25 @@ func (s *Server) postRootTargetInvitation(w http.ResponseWriter, r *http.Request
 		s.writeError(w, http.StatusBadGateway, "github_user_unavailable", "GitHub user could not be resolved")
 		return
 	}
+	if s.refusedSelfInvitation(w, manager.Actor, account) {
+		return
+	}
 	if !s.canInviteToTarget(
 		r, manager.Actor, manager.ActorUser, manager.Access, account, *input.Role,
 	) {
 		s.writeError(w, http.StatusForbidden, "forbidden", "you cannot grant this invitation role")
 		return
 	}
-	s.createInvitation(
-		w,
-		r,
-		manager.Actor.ID,
-		account.ID,
-		&manager.TargetID,
-		input.Role,
-		nil,
-		input.ExpiresInDays,
-		manager.ElevationID,
-		manager.SessionTokenHash,
-	)
+	s.createInvitation(w, r, invitationDraft{
+		ActorID:             manager.Actor.ID,
+		AccountID:           account.ID,
+		TargetID:            &manager.TargetID,
+		Role:                input.Role,
+		Days:                input.ExpiresInDays,
+		ElevationID:         manager.ElevationID,
+		SessionTokenHash:    manager.SessionTokenHash,
+		AcknowledgeDeclined: input.AcknowledgeDeclined,
+	})
 }
 
 func (s *Server) reissueRootTargetInvitation(w http.ResponseWriter, r *http.Request) {

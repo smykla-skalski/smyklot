@@ -1140,6 +1140,15 @@ END`)
 		})
 		Expect(errors.Is(err, storage.ErrConflict)).To(BeTrue())
 
+		// Accepting granted the role, and an offer to somebody who holds it is refused. Taking
+		// the access away is what makes the identity invitable again.
+		_, err = store.SetTargetAccess(ctx, storage.TargetAccessChange{
+			TargetID: target.TargetID, SubjectAccountID: invitee.ID, ActorAccountID: owner.ID,
+			Role: rolePointer(storage.InstallationRoleNone), ExpectedRevision: 1,
+			ChangedAt: now.Add(4 * time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+
 		targetInvitation, err := store.CreateInvitation(ctx, storage.InvitationCreate{
 			ID: "invitation-2", TokenHash: "token-3", AccountID: invitee.ID,
 			TargetID: &target.TargetID, Role: rolePointer(storage.InstallationRoleEditor),
@@ -1164,6 +1173,103 @@ END`)
 		Expect(listed).To(HaveLen(2))
 		Expect(listed[0].Status).To(Equal(storage.InvitationDeclined))
 		Expect(listed[1].Status).To(Equal(storage.InvitationAccepted))
+	})
+
+	// The offer is checked where it is written rather than in the handler above it: two managers
+	// pressing at once would both pass a check made outside this transaction.
+	It("refuses an invitation the invited identity cannot use", func() {
+		owner, target := seedInstallation(ctx, store, now)
+		Expect(store.UpsertAccount(ctx, owner)).To(Succeed())
+		Expect(store.ReconcileSuperRoot(ctx, owner.ID, now)).To(Succeed())
+
+		invitee := owner
+		invitee.ID = "github:user:invitee"
+		invitee.SubjectID = "invitee"
+		invitee.Login = "invitee"
+		Expect(store.UpsertAccount(ctx, invitee)).To(Succeed())
+
+		offer := func(id, token string, at time.Time, acknowledged bool) error {
+			_, err := store.CreateInvitation(ctx, storage.InvitationCreate{
+				ID: id, TokenHash: token, AccountID: invitee.ID, TargetID: &target.TargetID,
+				Role: rolePointer(storage.InstallationRoleViewer), ExpiresAt: at.Add(time.Hour),
+				CreatedByAccount: owner.ID, CreatedAt: at, AcknowledgeDeclined: acknowledged,
+			})
+
+			return err
+		}
+
+		By("offering to an identity the app has never seen")
+		Expect(offer("invitation-1", "token-1", now, false)).To(Succeed())
+
+		By("replacing an offer nobody has answered")
+		Expect(offer("invitation-2", "token-2", now.Add(time.Minute), false)).To(Succeed())
+		superseded, err := store.GetInvitation(ctx, "invitation-1", now.Add(time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(superseded.Status).To(Equal(storage.InvitationRevoked))
+
+		By("offering again after the last one ran out")
+		Expect(offer("invitation-3", "token-3", now.Add(2*time.Hour), false)).To(Succeed())
+
+		By("refusing to offer what the identity already holds")
+		_, err = store.RespondToInvitation(ctx, storage.InvitationResponse{
+			TokenHash: "token-3", AccountID: invitee.ID, Accept: true, At: now.Add(2*time.Hour + time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(errors.Is(offer("invitation-4", "token-4", now.Add(3*time.Hour), false), storage.ErrAlreadyMember)).
+			To(BeTrue())
+
+		By("offering again once the access is gone")
+		_, err = store.SetTargetAccess(ctx, storage.TargetAccessChange{
+			TargetID: target.TargetID, SubjectAccountID: invitee.ID, ActorAccountID: owner.ID,
+			Role: rolePointer(storage.InstallationRoleNone), ExpectedRevision: 1,
+			ChangedAt: now.Add(3 * time.Hour),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(offer("invitation-5", "token-5", now.Add(4*time.Hour), false)).To(Succeed())
+
+		By("gating the offer after the identity said no")
+		_, err = store.RespondToInvitation(ctx, storage.InvitationResponse{
+			TokenHash: "token-5", AccountID: invitee.ID, Accept: false, At: now.Add(4*time.Hour + time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(errors.Is(offer("invitation-6", "token-6", now.Add(5*time.Hour), false), storage.ErrDeclinedEarlier)).
+			To(BeTrue())
+
+		By("letting the offer through once the manager says it meant to ask again")
+		Expect(offer("invitation-7", "token-7", now.Add(5*time.Hour), true)).To(Succeed())
+
+		By("dropping the gate once the decline is no longer the last word")
+		Expect(offer("invitation-8", "token-8", now.Add(6*time.Hour), false)).To(Succeed())
+	})
+
+	It("refuses a Root invitation for an identity the app already holds", func() {
+		owner, _ := seedInstallation(ctx, store, now)
+		Expect(store.UpsertAccount(ctx, owner)).To(Succeed())
+		Expect(store.ReconcileSuperRoot(ctx, owner.ID, now)).To(Succeed())
+
+		invitee := owner
+		invitee.ID = "github:user:invitee"
+		invitee.SubjectID = "invitee"
+		invitee.Login = "invitee"
+		Expect(store.UpsertAccount(ctx, invitee)).To(Succeed())
+
+		rootOffer := func(id, token string) error {
+			role := storage.SystemRoleRoot
+			_, err := store.CreateInvitation(ctx, storage.InvitationCreate{
+				ID: id, TokenHash: token, AccountID: invitee.ID, SystemRole: &role,
+				ExpiresAt: now.Add(time.Hour), CreatedByAccount: owner.ID, CreatedAt: now,
+			})
+
+			return err
+		}
+
+		Expect(rootOffer("root-invitation-1", "root-token-1")).To(Succeed())
+		_, err := store.CreatePanelUser(ctx, storage.PanelUserCreate{
+			AccountID: invitee.ID, ActorAccountID: owner.ID, ChangedAt: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(errors.Is(rootOffer("root-invitation-2", "root-token-2"), storage.ErrAlreadyMember)).
+			To(BeTrue())
 	})
 
 	It("orders invitation pages by invitee name descending", func() {

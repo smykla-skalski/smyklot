@@ -70,6 +70,7 @@
     reissueInvitation,
     revokeInvitation,
     canManageInvitations,
+    actorLogin,
     fetchInstallations,
     addInstallationUser,
     onOpenInstallationAccess,
@@ -88,6 +89,8 @@
     ) => Promise<PanelInvitation>;
     revokeInvitation: (invitationId: string) => Promise<PanelInvitation>;
     canManageInvitations: boolean;
+    /** The signed-in login, so naming yourself is answered before the press. */
+    actorLogin: string;
     fetchInstallations: () => Promise<RootInstallation[]>;
     addInstallationUser: (targetId: string, input: AddTargetUserInput) => Promise<PanelUser>;
     onOpenInstallationAccess: (account: string) => void;
@@ -493,6 +496,7 @@
       reissue={reissueInvitation}
       revoke={revokeInvitation}
       canManage={canManageInvitations}
+      {actorLogin}
       navigation={sectionSwitch}
     />
   {:else}

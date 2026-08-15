@@ -22,6 +22,7 @@
   const {
     installation,
     view,
+    actorLogin,
     historySection,
     onHistorySection,
     api,
@@ -34,6 +35,7 @@
     installation: RootInstallation;
     view: ScopedPanelView;
     api: PanelApi;
+    actorLogin: string;
     refreshVersion: number;
     listHref: string;
     hrefFor: (account: string, view: ScopedPanelView) => string;
@@ -335,6 +337,7 @@
       section={view}
       targetId={installation.id}
       targetName={installation.account.display_name}
+      {actorLogin}
       actorTargetRole={canWrite ? 'owner' : 'none'}
       refreshVersion={repositoryVersion}
       readOnly={!canWrite}

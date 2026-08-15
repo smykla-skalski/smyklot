@@ -17,6 +17,24 @@ type createInvitationRequest struct {
 	Login         string                    `json:"login"`
 	Role          *storage.InstallationRole `json:"role"`
 	ExpiresInDays int                       `json:"expires_in_days"`
+
+	// AcknowledgeDeclined answers the refusal below rather than arriving with the first
+	// attempt: a manager sends, is told the identity said no last time, and decides.
+	AcknowledgeDeclined bool `json:"acknowledge_declined"`
+}
+
+// invitationDraft is one offer about to be written, gathered rather than passed one argument at a
+// time - the three entry points differ only in scope and in how the write is authorised.
+type invitationDraft struct {
+	ActorID             string
+	AccountID           string
+	TargetID            *string
+	Role                *storage.InstallationRole
+	SystemRole          *storage.SystemRole
+	Days                int
+	ElevationID         *string
+	SessionTokenHash    string
+	AcknowledgeDeclined bool
 }
 
 type reissueInvitationRequest struct {
@@ -85,26 +103,38 @@ func (s *Server) postTargetInvitation(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadGateway, "github_user_unavailable", "GitHub user could not be resolved")
 		return
 	}
+	if s.refusedSelfInvitation(w, actor, account) {
+		return
+	}
 	if !s.canInviteToTarget(r, actor, actorUser, actorAccess, account, *input.Role) {
 		s.writeError(w, http.StatusForbidden, "forbidden", "you cannot grant this invitation role")
 		return
 	}
-	s.createInvitation(
-		w, r, actor.ID, account.ID, &targetID, input.Role, nil, input.ExpiresInDays, nil, "",
-	)
+	s.createInvitation(w, r, invitationDraft{
+		ActorID: actor.ID, AccountID: account.ID, TargetID: &targetID, Role: input.Role,
+		Days: input.ExpiresInDays, AcknowledgeDeclined: input.AcknowledgeDeclined,
+	})
 }
 
-func (s *Server) createInvitation(
+// refusedSelfInvitation answers the one refusal a manager can walk into without meaning to.
+//
+// Inviting yourself is already impossible - canInviteToTarget and canManageTargetUser both refuse
+// an actor who is their own subject - but it arrived as "you cannot grant this invitation role",
+// which reads as a limit on the role rather than on who is being named. Said first, and said as
+// itself, the panel can show it against the login field where it was typed.
+func (s *Server) refusedSelfInvitation(
 	w http.ResponseWriter,
-	r *http.Request,
-	actorID, accountID string,
-	targetID *string,
-	role *storage.InstallationRole,
-	systemRole *storage.SystemRole,
-	days int,
-	elevationID *string,
-	sessionTokenHash string,
-) {
+	actor, subject storage.Account,
+) bool {
+	if actor.ID != subject.ID {
+		return false
+	}
+	s.writeError(w, http.StatusForbidden, "self_invitation", "you cannot invite yourself")
+
+	return true
+}
+
+func (s *Server) createInvitation(w http.ResponseWriter, r *http.Request, draft invitationDraft) {
 	id, token, err := s.newInvitationSecrets()
 	if err != nil {
 		s.writeInternal(w, err)
@@ -112,18 +142,52 @@ func (s *Server) createInvitation(
 	}
 	now := s.now().UTC()
 	invitation, err := s.store.CreateInvitation(r.Context(), storage.InvitationCreate{
-		ID: id, TokenHash: tokenHash(token), AccountID: accountID, TargetID: targetID,
-		Role: role, SystemRole: systemRole, ElevationID: elevationID,
-		SessionTokenHash: sessionTokenHash,
-		ExpiresAt:        now.Add(time.Duration(days) * 24 * time.Hour),
-		CreatedByAccount: actorID, CreatedAt: now,
+		ID: id, TokenHash: tokenHash(token), AccountID: draft.AccountID, TargetID: draft.TargetID,
+		Role: draft.Role, SystemRole: draft.SystemRole, ElevationID: draft.ElevationID,
+		SessionTokenHash: draft.SessionTokenHash,
+		ExpiresAt:        now.Add(time.Duration(draft.Days) * 24 * time.Hour),
+		CreatedByAccount: draft.ActorID, CreatedAt: now,
+		AcknowledgeDeclined: draft.AcknowledgeDeclined,
 	})
 	if err != nil {
-		s.writeInvitationMutationError(w, elevationID, err)
+		s.writeInvitationCreateError(w, draft, err)
 		return
 	}
 	s.announceInvitation(invitation)
 	writeJSON(w, http.StatusCreated, invitationDTO(invitation, s.invitationURL(token)))
+}
+
+// writeInvitationCreateError names the two refusals the panel can do something about.
+//
+// Both are conflicts, and both would otherwise arrive as the generic one - "settings changed in
+// another session; reload the latest values" - which is untrue and unactionable here. They are
+// answered before the elevation mapping, which turns every conflict into a stale-Owners message.
+func (s *Server) writeInvitationCreateError(
+	w http.ResponseWriter,
+	draft invitationDraft,
+	err error,
+) {
+	switch {
+	case errors.Is(err, storage.ErrAlreadyMember):
+		s.writeError(w, http.StatusConflict, "already_has_access", alreadyHasAccessMessage(draft))
+	case errors.Is(err, storage.ErrDeclinedEarlier):
+		s.writeError(
+			w,
+			http.StatusConflict,
+			"invitation_declined",
+			"this user declined the last invitation; confirm to send another",
+		)
+	default:
+		s.writeInvitationMutationError(w, draft.ElevationID, err)
+	}
+}
+
+func alreadyHasAccessMessage(draft invitationDraft) string {
+	if draft.TargetID == nil {
+		return "this account is already in Smyklot; change its system role instead of inviting it"
+	}
+
+	return "this user already has access to this installation; change their role instead"
 }
 
 func (s *Server) reviewInvitation(w http.ResponseWriter, r *http.Request) {

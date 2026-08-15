@@ -1497,14 +1497,30 @@ func TestPanelRootElevationAndOwnerNotifications(t *testing.T) {
 	)
 	requireResponse(t, decisions, "Root installation decisions", http.StatusOK, `"target.access.updated"`)
 
-	createdInvitation := harness.request(
+	// support-user is an editor here by now, so an invitation would offer what they hold.
+	refusedInvitation := harness.request(
 		t, http.MethodPost, rootAccessBase+"/invitations",
 		strings.NewReader(`{"login":"support-user","role":"viewer","expires_in_days":7}`),
 		rootSession,
 	)
 	requireResponse(
+		t, refusedInvitation, "elevated Root invitation for a member", http.StatusConflict,
+		`"code":"already_has_access"`,
+	)
+
+	invited := storage.Account{
+		ID: "github:test:user:newcomer", Provider: "github:test", SubjectID: "newcomer",
+		Login: "newcomer", DisplayName: "Newcomer", UpdatedAt: harness.now,
+	}
+	harness.server.users = fakeUserResolver{account: invited}
+	createdInvitation := harness.request(
+		t, http.MethodPost, rootAccessBase+"/invitations",
+		strings.NewReader(`{"login":"newcomer","role":"viewer","expires_in_days":7}`),
+		rootSession,
+	)
+	requireResponse(
 		t, createdInvitation, "elevated Root invitation", http.StatusCreated,
-		`"login":"support-user"`, `"role":"viewer"`,
+		`"login":"newcomer"`, `"role":"viewer"`,
 	)
 	var invitation invitationResponse
 	if err := json.Unmarshal(createdInvitation.Body.Bytes(), &invitation); err != nil {
@@ -1696,6 +1712,98 @@ func TestPanelInvitesNamedGitHubUserThroughOAuth(t *testing.T) {
 	if revoked.Code != http.StatusOK || !strings.Contains(revoked.Body.String(), `"status":"revoked"`) {
 		t.Fatalf("revoke invitation = %d %s", revoked.Code, revoked.Body.String())
 	}
+}
+
+// TestPanelRefusesInvitationsThatCannotBeUsed covers the standings a manager can name, and the
+// codes the panel reads back to decide between saying no and asking again. The generic conflict
+// would tell them settings changed in another session, which is neither true nor actionable.
+func TestPanelRefusesInvitationsThatCannotBeUsed(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+	ownerSession := harness.signIn(t)
+	const invitations = "/panel/api/v1/targets/github:installation:10/invitations"
+
+	invite := func(login, body string) *httptest.ResponseRecorder {
+		t.Helper()
+
+		return harness.request(t, http.MethodPost, invitations, strings.NewReader(body), ownerSession)
+	}
+
+	owner, err := harness.store.GetAccount(t.Context(), "github:test:user:1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	harness.server.users = fakeUserResolver{account: owner}
+	requireResponse(
+		t, invite("owner", `{"login":"owner","role":"viewer","expires_in_days":7}`),
+		"self invitation", http.StatusForbidden, `"code":"self_invitation"`,
+	)
+
+	invitee := storage.Account{
+		ID: "github:test:user:invitee", Provider: "github:test", SubjectID: "invitee",
+		Login: "invitee", DisplayName: "Invitee", UpdatedAt: harness.now,
+	}
+	harness.server.users = fakeUserResolver{account: invitee}
+	const offer = `{"login":"invitee","role":"viewer","expires_in_days":7}`
+
+	first := invite("invitee", offer)
+	requireResponse(t, first, "first invitation", http.StatusCreated, `"status":"pending"`)
+	requireResponse(t, invite("invitee", offer), "unanswered invitation", http.StatusCreated)
+
+	// Accepting grants the role, and an offer of what somebody holds is refused.
+	var pending invitationResponse
+	if err := json.Unmarshal(invite("invitee", offer).Body.Bytes(), &pending); err != nil {
+		t.Fatal(err)
+	}
+	pendingURL, err := url.Parse(pending.InviteURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	accepted := strings.TrimPrefix(pendingURL.Path, "/panel/invite/")
+	if _, err := harness.store.RespondToInvitation(t.Context(), storage.InvitationResponse{
+		TokenHash: tokenHash(accepted), AccountID: invitee.ID, Accept: true, At: harness.now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	requireResponse(
+		t, invite("invitee", offer), "invitation for a member", http.StatusConflict,
+		`"code":"already_has_access"`,
+	)
+
+	// Once the access is gone the identity is invitable again, and a decline gates the next offer
+	// behind a second, deliberate press rather than refusing it outright.
+	if _, err := harness.store.SetTargetAccess(t.Context(), storage.TargetAccessChange{
+		TargetID: "github:installation:10", SubjectAccountID: invitee.ID, ActorAccountID: owner.ID,
+		Role: rolePointer(storage.InstallationRoleNone), ExpectedRevision: 1, ChangedAt: harness.now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var reoffered invitationResponse
+	if err := json.Unmarshal(invite("invitee", offer).Body.Bytes(), &reoffered); err != nil {
+		t.Fatal(err)
+	}
+	reofferedURL, err := url.Parse(reoffered.InviteURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := harness.store.RespondToInvitation(t.Context(), storage.InvitationResponse{
+		TokenHash: tokenHash(strings.TrimPrefix(reofferedURL.Path, "/panel/invite/")),
+		AccountID: invitee.ID, Accept: false, At: harness.now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	requireResponse(
+		t, invite("invitee", offer), "invitation after a decline", http.StatusConflict,
+		`"code":"invitation_declined"`,
+	)
+	requireResponse(
+		t,
+		invite("invitee", `{"login":"invitee","role":"viewer","expires_in_days":7,"acknowledge_declined":true}`),
+		"acknowledged invitation after a decline", http.StatusCreated, `"status":"pending"`,
+	)
+}
+
+func rolePointer(role storage.InstallationRole) *storage.InstallationRole {
+	return &role
 }
 
 func TestPanelOAuthStateIsBrowserBound(t *testing.T) {

@@ -12,6 +12,7 @@
   import { MediaQuery } from 'svelte/reactivity';
   import { get } from 'svelte/store';
 
+  import { PanelApiError } from '../lib/api';
   import { formatDateTime, formatRelative, formatTimestamp, formatUntil } from '../lib/format';
   import { monogram } from '../lib/identity';
   import type { FilterSection } from '../lib/filter-menu';
@@ -139,6 +140,7 @@
     prefs = EPHEMERAL_PREFS,
     targetId,
     targetName,
+    actorLogin,
     actorTargetRole,
     refreshVersion = 0,
     readOnly = false,
@@ -156,6 +158,8 @@
     prefs?: PrefsAccessor;
     targetId: string;
     targetName: string;
+    /** The signed-in login, so the one refusal the panel can make for itself is made here. */
+    actorLogin: string;
     actorTargetRole: InstallationRole;
     refreshVersion?: number;
     readOnly?: boolean;
@@ -284,9 +288,40 @@
    */
   let addIntent = $state<'add' | 'invite'>('add');
   const invitingFirst = $derived(activeSection === 'invitations');
+
+  /** Refusals the dialog raises itself, rather than the toolbar line behind it. */
+  let addFailure = $state<string | null>(null);
+
+  /**
+   * The login the server said had declined, which turns the dialog into a question.
+   *
+   * The gate is the server's - it knows the whole history, the panel only knows the page it has
+   * loaded - so the dialog does not try to predict it. It sends, is told, and asks.
+   */
+  let declinedLogin = $state<string | null>(null);
+
+  /**
+   * Naming yourself is refused here as well as there, because it is the one standing the panel
+   * knows for certain and the only one it can answer before the press. The server refuses it too:
+   * this is a shorter path to the same answer, not the answer itself.
+   */
+  const namingSelf = $derived(
+    login.trim() !== '' && login.trim().toLowerCase() === actorLogin.trim().toLowerCase(),
+  );
+  const selfRefusal = $derived(
+    accessMethod === 'invite' ? 'You cannot invite yourself' : 'You cannot change your own access',
+  );
   let expiresInDays = $state<InvitationDays>(7);
   let generatedLink = $state('');
   let adding = $state(false);
+
+  /**
+   * What the dialog is for right now. The link outranks the question, because reaching a link
+   * means the question has already been answered.
+   */
+  const addStage = $derived(
+    generatedLink !== '' ? 'link' : declinedLogin !== null ? 'confirm' : 'form',
+  );
 
   let actionUser = $state<PanelUser | null>(null);
   let pendingAction = $state<UserAction | null>(null);
@@ -631,10 +666,20 @@
 
   async function submitAdd(event: SubmitEvent): Promise<void> {
     event.preventDefault();
+    await grantAccess(false);
+  }
+
+  /**
+   * One attempt at whichever method is selected, and the answer to a refusal it can act on.
+   *
+   * `acknowledged` is the second press. It is passed rather than read from `declinedLogin` so the
+   * two attempts are visibly different calls: the first never carries it, the second always does.
+   */
+  async function grantAccess(acknowledged: boolean): Promise<void> {
     const normalizedLogin = login.trim();
-    if (normalizedLogin === '') return;
+    if (normalizedLogin === '' || namingSelf) return;
     adding = true;
-    actionFailure = null;
+    addFailure = null;
     const destination = targetName;
     try {
       if (accessMethod === 'invite') {
@@ -642,7 +687,9 @@
           login: normalizedLogin,
           role: addRole as AddTargetInvitationInput['role'],
           expires_in_days: expiresInDays,
+          ...(acknowledged ? { acknowledge_declined: true } : {}),
         });
+        declinedLogin = null;
         generatedLink = created.invite_url ?? '';
         await copyGeneratedLink(false);
         feedback = `Invited @${normalizedLogin} to ${destination}`;
@@ -658,7 +705,11 @@
       }
       login = '';
     } catch (error) {
-      actionFailure = errorMessage(error);
+      if (error instanceof PanelApiError && error.code === 'invitation_declined') {
+        declinedLogin = normalizedLogin;
+      } else {
+        addFailure = errorMessage(error);
+      }
     } finally {
       adding = false;
     }
@@ -807,6 +858,8 @@
   function openAddModal(): void {
     generatedLink = '';
     linkCopied = null;
+    addFailure = null;
+    declinedLogin = null;
     addRole = 'viewer';
     accessMethod = invitingFirst ? 'invite' : 'add';
     addIntent = accessMethod;
@@ -817,6 +870,8 @@
   function closeAddModal(): void {
     addModalOpen = false;
     generatedLink = '';
+    addFailure = null;
+    declinedLogin = null;
     login = '';
   }
 
@@ -1710,18 +1765,35 @@
 <Modal
   id="add-user"
   open={addModalOpen}
-  title={addIntent === 'invite' ? 'Invite user' : 'Add user'}
-  description={generatedLink !== ''
-    ? undefined
+  title={addStage === 'confirm'
+    ? 'Invite again?'
     : addIntent === 'invite'
-      ? 'Send a single-use invitation, or grant access right away'
-      : 'Grant access now or send a single-use invitation'}
-  headerExtra={generatedLink === '' ? undefined : copyReceiptNotice}
+      ? 'Invite user'
+      : 'Add user'}
+  description={addStage === 'link'
+    ? undefined
+    : addStage === 'confirm'
+      ? `@${declinedLogin} turned down the last invitation to ${targetName}`
+      : addIntent === 'invite'
+        ? 'Send a single-use invitation, or grant access right away'
+        : 'Grant access now or send a single-use invitation'}
+  headerExtra={addStage === 'link' ? copyReceiptNotice : undefined}
   returnFocus={addReturnFocus}
   onClose={closeAddModal}
 >
   <form id="add-user-form" class="add-user-form" onsubmit={submitAdd}>
-    {#if generatedLink === ''}
+    {#if addStage === 'confirm'}
+      <div class="confirmation-note">
+        <span class="warning-mark" aria-hidden="true">!</span>
+        <div>
+          <strong>Declining was an answer</strong>
+          <p>
+            A new link reaches the same GitHub identity, and asking twice is visible to them and in
+            the audit record.
+          </p>
+        </div>
+      </div>
+    {:else if addStage === 'form'}
       <div class="add-scope-summary">
         <span class="add-scope-icon" aria-hidden="true">
           <span class="cap-trim">{monogram(targetName, targetName).slice(0, 1)}</span>
@@ -1767,10 +1839,12 @@
             required
             data-modal-focus
           />
-          <small class="identity-help">
-            {accessMethod === 'invite'
-              ? 'The invitation only works for this GitHub identity'
-              : 'GitHub login identifies the account to add'}
+          <small class="identity-help" class:refused={namingSelf}>
+            {namingSelf
+              ? selfRefusal
+              : accessMethod === 'invite'
+                ? 'The invitation only works for this GitHub identity'
+                : 'GitHub login identifies the account to add'}
           </small>
         </label>
         <label class="form-field">
@@ -1826,18 +1900,33 @@
         </p>
       {/if}
     {/if}
+    {#if addFailure !== null}<p class="form-error" role="alert">{addFailure}</p>{/if}
   </form>
 
   {#snippet footer()}
-    <button class="btn btn-ghost" type="button" onclick={closeAddModal}>
-      {generatedLink === '' ? 'Cancel' : 'Done'}
-    </button>
-    {#if generatedLink === ''}
+    {#if addStage === 'confirm'}
+      <button class="btn btn-ghost" type="button" onclick={() => (declinedLogin = null)}>
+        Back
+      </button>
+      <button
+        class="btn btn-signal"
+        type="button"
+        disabled={adding}
+        onclick={() => void grantAccess(true)}
+      >
+        {adding ? 'Sending…' : 'Invite again'}
+      </button>
+    {:else}
+      <button class="btn btn-ghost" type="button" onclick={closeAddModal}>
+        {addStage === 'form' ? 'Cancel' : 'Done'}
+      </button>
+    {/if}
+    {#if addStage === 'form'}
       <button
         class="btn btn-signal"
         type="submit"
         form="add-user-form"
-        disabled={adding || login.trim() === ''}
+        disabled={adding || login.trim() === '' || namingSelf}
       >
         {adding
           ? accessMethod === 'invite'
@@ -1847,7 +1936,7 @@
             ? 'Send invitation'
             : 'Add user'}
       </button>
-    {:else}
+    {:else if addStage === 'link'}
       <button
         class="btn btn-signal copy-button"
         type="button"
@@ -2702,6 +2791,13 @@
     margin-top: -0.05rem;
   }
 
+  /* The helper says why the button is off rather than a line appearing under it: the reason
+     belongs to the field that caused it, and it takes the place of help that no longer applies. */
+  .identity-help.refused {
+    color: var(--stop);
+    font-weight: 500;
+  }
+
   .reason-textarea {
     background: var(--input-bg);
     border: 1px solid var(--control-border);
@@ -2768,11 +2864,16 @@
     width: 1.75rem;
   }
 
+  /* Both tints sit near 1:1 against the card they are on - measured 1.00 to 1.24 across the four
+     palettes - so neither disc had an edge. The ring is keyed to the mark's own colour, as the
+     avatar monogram's is. */
+  .success-mark,
+  .warning-mark {
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, currentcolor 28%, transparent);
+  }
+
   .success-mark {
     background: var(--clear-tint);
-    /* Its tint sits 1.05:1 against the card it is on, so the disc had no edge at all. The ring is
-       keyed to the mark's own colour, as the avatar monogram's is. */
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, currentcolor 28%, transparent);
     color: var(--clear);
   }
 
