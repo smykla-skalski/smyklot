@@ -49,7 +49,9 @@ describe.each(dialogs)('%s', (file, createCall) => {
     // Spread on a flag rather than always sending `false`, so a first attempt cannot pass the gate
     // by accident if the field is ever defaulted the other way round.
     expect(text).toMatch(/\.\.\.\(acknowledged \? \{ acknowledge_declined: true \} : \{\}\)/u);
-    expect(text).toMatch(new RegExp(`${createCall.replace(/[({]/gu, '\\$&')}`, 'u'));
+    // A literal substring, asserted as one. Building a pattern from it meant escaping it by hand,
+    // and a hand-rolled escape that misses the escape character is how that goes wrong.
+    expect(text).toContain(createCall);
   });
 
   it('sends the first attempt without it', () => {

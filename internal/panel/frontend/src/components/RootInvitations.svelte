@@ -230,6 +230,11 @@
   function closeCreate(): void {
     if (creating) return;
     createOpen = false;
+    // Cleared at both ends. Every opener establishes this state too, but leaving it behind here
+    // means a third entry point inherits a message about a link that is no longer on screen.
+    createProblem = null;
+    copyProblem = null;
+    declinedLogin = null;
   }
 
   async function submitCreate(event: SubmitEvent): Promise<void> {

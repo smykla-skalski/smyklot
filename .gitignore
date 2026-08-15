@@ -9,3 +9,6 @@ internal/panel/frontend/dev/.mock-preferences.json
 
 # Guard against a probe script writing screenshots here when its output path is unset.
 internal/panel/frontend/undefined/
+
+# Vitest writes a cache here when it is run from the repo root rather than the frontend.
+node_modules/

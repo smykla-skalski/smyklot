@@ -2252,7 +2252,10 @@ function refuseUnusableInvitation(
           ? entry.system_role === 'root'
           : entry.target_id === scope.targetId),
     )
-    .sort((left, right) => right.created_at.localeCompare(left.created_at))[0];
+    .sort(
+      (left, right) =>
+        right.created_at.localeCompare(left.created_at) || right.id.localeCompare(left.id),
+    )[0];
   if (last?.status === 'declined') {
     throw new MockApiError(
       409,
