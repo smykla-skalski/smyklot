@@ -29,6 +29,7 @@ func (s *server) handlePendingCIWebhook(
 		changed += count
 	}
 	if changed > 0 {
+		s.pendingCI.Wake()
 		logging.From(ctx).Info("pending CI requests notified", "requests", changed)
 	} else {
 		logging.From(ctx).Debug("pending CI webhook matched no armed request")

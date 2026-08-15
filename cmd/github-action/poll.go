@@ -113,7 +113,7 @@ func runPoll(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Poll and process all open PRs
-	return pollAllPRs(ctx, client, checker, bc, repoOwner, repoName, rc.BotUsername)
+	return pollAllPRs(ctx, client, checker, bc, repoOwner, repoName, rc.BotUsername, true)
 }
 
 // loadPollBotConfig loads bot configuration from JSON config and Viper
@@ -250,6 +250,7 @@ func pollAllPRs(
 	bc *config.Config,
 	repoOwner, repoName string,
 	botUsername string,
+	includePendingCI bool,
 ) error {
 	// Named once, here, so every line below carries the repository without
 	// each of them having to say so
@@ -278,9 +279,13 @@ func pollAllPRs(
 		}
 	}
 
-	// Process pending-ci PRs (waiting for CI to pass before merge)
-	if err := processPendingCIPRs(ctx, client, bc, repoOwner, repoName, prs, botUsername); err != nil {
-		logging.From(ctx).Warn("failed to process pending-CI PRs", "error", err)
+	// Only the legacy Action sweep discovers pending work from labels. The
+	// service's fallback is the durable scheduler, so terminal requests can
+	// never be resurrected by a stale label.
+	if includePendingCI {
+		if err := processPendingCIPRs(ctx, client, bc, repoOwner, repoName, prs, botUsername); err != nil {
+			logging.From(ctx).Warn("failed to process pending-CI PRs", "error", err)
+		}
 	}
 
 	logging.From(ctx).Info("polling complete")

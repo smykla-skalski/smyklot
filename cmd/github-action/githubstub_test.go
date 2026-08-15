@@ -171,7 +171,9 @@ func (s *githubStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			"mergeable_state": "clean",
 			"title": "a change",
 			"user": {"login": %q},
-			"base": {"ref": "main"}
+			"base": {"ref": "main"},
+			"head": {"sha": "command-head"},
+			"labels": []
 		}`, s.prAuthor)
 
 	default:

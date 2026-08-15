@@ -293,5 +293,7 @@ func (s *server) sweepRepo(
 		return err
 	}
 
-	return pollAllPRs(ctx, client, checker, bc, repo.Owner, repo.Name, s.cfg.botUsername)
+	return pollAllPRs(
+		ctx, client, checker, bc, repo.Owner, repo.Name, s.cfg.botUsername, false,
+	)
 }

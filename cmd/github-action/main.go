@@ -307,6 +307,16 @@ func executeComment(
 	rc *RuntimeConfig,
 	bc *config.Config,
 ) error {
+	return executeCommentWithEnvironment(ctx, client, rc, bc, commandEnvironment{})
+}
+
+func executeCommentWithEnvironment(
+	ctx context.Context,
+	client *github.Client,
+	rc *RuntimeConfig,
+	bc *config.Config,
+	environment commandEnvironment,
+) error {
 	// Parse the command from the comment
 	//
 	// A parse error still yields the commands the comment asked for, which the
@@ -424,14 +434,19 @@ func executeComment(
 		case commands.CommandApprove:
 			fb, err = executeApprove(ctx, client, rc, bc, prNum)
 		case commands.CommandMerge:
-			fb, err = executeMerge(ctx, client, rc, bc, prNum, commentIDNum, github.MergeMethodMerge, parsedCmd.WaitForCI, parsedCmd.RequiredChecksOnly)
+			fb, err = executeMerge(ctx, client, rc, bc, prNum, commentIDNum, github.MergeMethodMerge, parsedCmd.WaitForCI, parsedCmd.RequiredChecksOnly, environment)
 		case commands.CommandSquash:
-			fb, err = executeMerge(ctx, client, rc, bc, prNum, commentIDNum, github.MergeMethodSquash, parsedCmd.WaitForCI, parsedCmd.RequiredChecksOnly)
+			fb, err = executeMerge(ctx, client, rc, bc, prNum, commentIDNum, github.MergeMethodSquash, parsedCmd.WaitForCI, parsedCmd.RequiredChecksOnly, environment)
 		case commands.CommandRebase:
-			fb, err = executeMerge(ctx, client, rc, bc, prNum, commentIDNum, github.MergeMethodRebase, parsedCmd.WaitForCI, parsedCmd.RequiredChecksOnly)
+			fb, err = executeMerge(ctx, client, rc, bc, prNum, commentIDNum, github.MergeMethodRebase, parsedCmd.WaitForCI, parsedCmd.RequiredChecksOnly, environment)
 		case commands.CommandUnapprove:
 			fb, err = executeUnapprove(ctx, client, rc, bc, prNum)
 		case commands.CommandCleanup:
+			if environment.pendingCI != nil {
+				if err := environment.pendingCI.cancelPullRequest(ctx, prNum, "cleanup command"); err != nil {
+					return err
+				}
+			}
 			// Cleanup is special - it deletes the comment, so handle immediately
 			fb, err = executeCleanup(ctx, client, rc, bc, prNum, commentIDNum)
 			if err != nil {
@@ -810,6 +825,7 @@ func executeMerge(
 	method github.MergeMethod,
 	waitForCI bool,
 	requiredChecksOnly bool,
+	environment commandEnvironment,
 ) (*feedback.Feedback, error) {
 	// Get PR info to check if it's mergeable and get base branch
 	info, err := client.GetPRInfo(ctx, rc.RepoOwner, rc.RepoName, prNum)
@@ -819,7 +835,10 @@ func executeMerge(
 
 	// Handle "after CI" modifier - defer merge until CI passes
 	if waitForCI {
-		return executePendingCIMerge(ctx, client, rc, bc, prNum, commentID, method, info, requiredChecksOnly)
+		return executePendingCIMerge(
+			ctx, client, rc, bc, prNum, commentID, method, info,
+			requiredChecksOnly, environment,
+		)
 	}
 
 	// Check if PR is mergeable
@@ -955,6 +974,7 @@ func executePendingCIMerge(
 	method github.MergeMethod,
 	info *github.PRInfo,
 	requiredChecksOnly bool,
+	environment commandEnvironment,
 ) (*feedback.Feedback, error) {
 	// Get PR head SHA for CI status check
 	headRef, err := client.GetPRHeadRef(ctx, rc.RepoOwner, rc.RepoName, prNum)
@@ -962,12 +982,14 @@ func executePendingCIMerge(
 		return feedback.NewMergeFailed("failed to get PR head ref: " + err.Error()), nil
 	}
 
-	// Get required checks list if filtering by required checks only
+	// The Action has no durable reconciler, so it evaluates immediately and
+	// leaves a label for its scheduled poll. The service always records the
+	// request and lets its reconciler enforce the green quiet period.
 	var requiredChecks []github.RequiredCheck
 	if requiredChecksOnly && info.BaseBranch == "" {
 		return feedback.NewMergeFailed("cannot resolve the base branch for required checks"), nil
 	}
-	if requiredChecksOnly {
+	if requiredChecksOnly && environment.pendingCI == nil {
 		requiredChecks, err = client.GetRequiredStatusChecks(ctx, rc.RepoOwner, rc.RepoName, info.BaseBranch)
 		if err != nil {
 			return feedback.NewMergeFailed("failed to get required checks: " + err.Error()), nil
@@ -977,15 +999,16 @@ func executePendingCIMerge(
 		}
 	}
 
-	// Check current CI status
-	checkStatus, err := client.GetCheckStatus(ctx, rc.RepoOwner, rc.RepoName, headRef, requiredChecks)
-	if err != nil {
-		return feedback.NewMergeFailed("failed to get CI status: " + err.Error()), nil
-	}
-
-	// If CI is already passing, merge immediately (fallback to regular merge flow)
-	if checkStatus.AllPassing {
-		return executeImmediateMerge(ctx, client, rc, bc, prNum, method, info, headRef)
+	if environment.pendingCI == nil {
+		checkStatus, err := client.GetCheckStatus(
+			ctx, rc.RepoOwner, rc.RepoName, headRef, requiredChecks,
+		)
+		if err != nil {
+			return feedback.NewMergeFailed("failed to get CI status: " + err.Error()), nil
+		}
+		if checkStatus.AllPassing {
+			return executeImmediateMerge(ctx, client, rc, bc, prNum, method, info, headRef)
+		}
 	}
 
 	// CI is pending - approve the PR and set up waiting state
@@ -1031,6 +1054,22 @@ func executePendingCIMerge(
 	label := getPendingCILabel(method, requiredChecksOnly)
 	if err := client.AddLabel(ctx, rc.RepoOwner, rc.RepoName, prNum, label); err != nil {
 		return feedback.NewMergeFailed("failed to record the pending CI request: " + err.Error()), nil
+	}
+	if environment.pendingCI != nil {
+		superseded, err := environment.pendingCI.arm(
+			ctx, rc, prNum, commentID, headRef, info.BaseBranch, method,
+			requiredChecksOnly, label,
+		)
+		if err != nil {
+			_ = client.RemoveLabel(ctx, rc.RepoOwner, rc.RepoName, prNum, label)
+
+			return nil, err
+		}
+		if superseded != nil && superseded.Label != label {
+			_ = client.RemoveLabel(
+				ctx, rc.RepoOwner, rc.RepoName, prNum, superseded.Label,
+			)
+		}
 	}
 
 	// Return pending feedback

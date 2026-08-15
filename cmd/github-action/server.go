@@ -133,6 +133,7 @@ type server struct {
 
 	deliveries *deliveryDispatcher
 	jobs       chan job
+	pendingCI  *pendingCIScheduler
 
 	// queueMu makes worker shutdown idempotent. The dispatcher is stopped before
 	// jobs is closed, so it can never send to a closed channel.
@@ -231,6 +232,14 @@ func newServer(cfg *serveConfig) (*server, error) {
 	}
 	srv.deliveryStore = srv.store
 	srv.deliveries = newDeliveryDispatcher(srv.deliveryStore, srv.jobs, srv.deliveryJob, srv.logger)
+	pendingCIBackend := &githubPendingCIBackend{server: srv}
+	pendingCIReconciler := newPendingCIReconciler(
+		srv.store,
+		pendingCIBackend,
+		pendingCIBackend,
+		defaultPendingCITiming(),
+	)
+	srv.pendingCI = newPendingCIScheduler(srv.store, pendingCIReconciler, srv.logger)
 	if err := srv.initPanel(); err != nil {
 		_ = srv.store.Close()
 		cancelDeliveryRetry()
@@ -382,7 +391,7 @@ func (s *server) serveUntilDone(ctx context.Context, listeners ...*http.Server) 
 func (s *server) startBackground(ctx context.Context) <-chan struct{} {
 	var running sync.WaitGroup
 
-	running.Add(2)
+	running.Add(3)
 
 	go func() {
 		defer running.Done()
@@ -394,6 +403,12 @@ func (s *server) startBackground(ctx context.Context) <-chan struct{} {
 		defer running.Done()
 
 		s.probeLoop(ctx)
+	}()
+
+	go func() {
+		defer running.Done()
+
+		s.pendingCI.Run(ctx)
 	}()
 
 	running.Add(1)
@@ -637,6 +652,9 @@ func (s *server) recordFailure(j job, cause error) {
 // Everything past executeComment is the Action's own code, so a comment gets
 // the same permission check and the same feedback whichever entry point saw it.
 func (s *server) handleIssueComment(ctx context.Context, event *webhook.IssueCommentEvent) error {
+	if err := s.cancelEditedPendingCI(ctx, event); err != nil {
+		return err
+	}
 	token, err := s.tokens.InstallationToken(event.Installation.ID)
 	if err != nil {
 		return NewGitHubError(ErrGitHubAppAuth, err)
@@ -672,7 +690,7 @@ func (s *server) handleIssueComment(ctx context.Context, event *webhook.IssueCom
 		return nil
 	}
 
-	return executeComment(ctx, client, rc, bc)
+	return executeCommentWithEnvironment(ctx, client, rc, bc, s.commandEnvironment(event))
 }
 
 // eventLabel reduces an event name to a value safe to use as a metric label.

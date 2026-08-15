@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +16,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/smykla-skalski/smyklot/internal/githubtest"
+	"github.com/smykla-skalski/smyklot/internal/pendingci"
+	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
@@ -247,6 +250,42 @@ var _ = Describe("Choosing an entry point [Unit]", func() {
 			Eventually(func() int {
 				return stub.countCalls(http.MethodPost, approveReviews)
 			}, eventuallyWindow).Should(Equal(1))
+		})
+
+		It("persists an after-CI command and cancels it when its source is edited", func() {
+			start()
+
+			postDelivery(service, webhook.EventIssueComment, deliveryOne,
+				commandDelivery("/squash after ci"), nil)
+
+			var armed pendingci.Request
+			Eventually(func() bool {
+				var err error
+				armed, err = srv.store.GetArmed(
+					context.Background(),
+					repositoryStorageID(githubtest.DefaultRepoID),
+					githubtest.DefaultPRNumber,
+				)
+
+				return err == nil
+			}, eventuallyWindow).Should(BeTrue())
+			Expect(armed.HeadSHA).To(Equal("command-head"))
+			Expect(armed.MergeMethod).To(Equal(pendingci.MergeMethodSquash))
+			Expect(armed.Label).To(Equal("smyklot:pending:ci:squash"))
+			Expect(stub.countCalls(http.MethodGet, "/check-runs")).To(BeZero())
+
+			edited := delivery("edited", "never mind", "User", "2026-08-15T12:01:00Z", true)
+			postDelivery(service, webhook.EventIssueComment, deliveryTwo, edited, nil)
+
+			Eventually(func() bool {
+				_, err := srv.store.GetArmed(
+					context.Background(),
+					repositoryStorageID(githubtest.DefaultRepoID),
+					githubtest.DefaultPRNumber,
+				)
+
+				return errors.Is(err, storage.ErrNotFound)
+			}, eventuallyWindow).Should(BeTrue())
 		})
 
 		// The rollback the documentation promises. The Action reads the file on

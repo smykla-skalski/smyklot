@@ -169,7 +169,9 @@ type QueueFilter struct {
 type Observation struct {
 	HeadSHA           string
 	PullRequestOpen   bool
+	PullRequestMerged bool
 	PendingLabelFound bool
+	CancelReason      string
 	State             ObservedState
 	Fingerprint       string
 	ObservedAt        time.Time

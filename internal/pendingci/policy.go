@@ -11,7 +11,16 @@ func Decide(request Request, observation Observation, timing Timing) (Decision, 
 	if err := validatePolicyInput(request, observation, timing); err != nil {
 		return Decision{}, err
 	}
+	if observation.CancelReason != "" {
+		return finishDecision(observation.CancelReason), nil
+	}
 	if !observation.PullRequestOpen {
+		if observation.PullRequestMerged {
+			return Decision{
+				Kind: DecisionFinish, Lifecycle: LifecycleMerged,
+				Reason: "pull request merged outside pending CI reconciliation",
+			}, nil
+		}
 		return finishDecision("pull request is no longer open"), nil
 	}
 	if !observation.PendingLabelFound {
