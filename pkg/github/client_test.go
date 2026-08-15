@@ -134,6 +134,39 @@ var _ = Describe("GitHub Client [Unit]", func() {
 		})
 	})
 
+	Describe("RemoveReactionByUser", func() {
+		It("preserves matching reactions from other users", func() {
+			var deleted []string
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.Method {
+				case http.MethodGet:
+					Expect(r.URL.Path).To(Equal("/repos/owner/repo/issues/comments/123/reactions"))
+					_ = json.NewEncoder(w).Encode([]map[string]any{
+						{"id": 1, "content": "eyes", "user": map[string]any{"login": "smyklot[bot]"}},
+						{"id": 2, "content": "eyes", "user": map[string]any{"login": "reviewer"}},
+						{"id": 3, "content": "+1", "user": map[string]any{"login": "smyklot[bot]"}},
+					})
+				case http.MethodDelete:
+					deleted = append(deleted, r.URL.Path)
+					w.WriteHeader(http.StatusNoContent)
+				default:
+					Fail("unexpected request method: " + r.Method)
+				}
+			}))
+			client, err := github.NewClient("test-token", server.URL)
+			Expect(err).NotTo(HaveOccurred())
+
+			err = client.RemoveReactionByUser(
+				context.Background(), "owner", "repo", 123,
+				github.ReactionPendingCI, "smyklot[bot]",
+			)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(deleted).To(Equal([]string{
+				"/repos/owner/repo/issues/comments/123/reactions/1",
+			}))
+		})
+	})
+
 	Describe("PostComment", func() {
 		Context("when posting a comment on a PR", func() {
 			It("should post a comment successfully", func() {

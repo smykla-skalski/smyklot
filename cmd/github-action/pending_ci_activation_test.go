@@ -368,11 +368,12 @@ func (*pendingCIArtifactsStub) AddReaction(
 	return nil
 }
 
-func (stub *pendingCIArtifactsStub) RemoveReaction(
+func (stub *pendingCIArtifactsStub) RemoveReactionByUser(
 	_ context.Context,
 	_, _ string,
 	commentID int,
 	_ github.ReactionType,
+	_ string,
 ) error {
 	stub.removedReactions = append(stub.removedReactions, commentID)
 

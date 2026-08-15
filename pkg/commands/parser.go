@@ -43,7 +43,10 @@ var (
 	}
 
 	// ErrContradictingCommands indicates contradicting commands were found
-	ErrContradictingCommands = errors.New("contradicting commands found: cannot use approve/merge with unapprove")
+	ErrContradictingCommands = errors.New(
+		"contradicting commands found: choose one merge method " +
+			"and do not combine approval or merge with unapprove",
+	)
 
 	// ErrCleanupWithOtherCommands indicates cleanup was used with other commands
 	ErrCleanupWithOtherCommands = errors.New("cleanup command cannot be combined with other commands")
@@ -409,21 +412,26 @@ func buildCommandList(commandsFound map[CommandType]bool) []CommandType {
 }
 
 // hasContradictingCommands checks if the command list contains contradicting commands
-// Returns true if both unapprove and (approve or merge) are present
+// Returns true for multiple merge methods or unapprove combined with a state
+// transition that grants approval or merges.
 func hasContradictingCommands(commands []CommandType) bool {
 	hasUnapprove := false
 	hasApproveOrMerge := false
+	mergeCommands := 0
 
 	for _, cmd := range commands {
 		if cmd == CommandUnapprove {
 			hasUnapprove = true
 		}
-		if cmd == CommandApprove || cmd == CommandMerge {
+		if cmd == CommandApprove || isMergeCommand(cmd) {
 			hasApproveOrMerge = true
+		}
+		if isMergeCommand(cmd) {
+			mergeCommands++
 		}
 	}
 
-	return hasUnapprove && hasApproveOrMerge
+	return mergeCommands > 1 || hasUnapprove && hasApproveOrMerge
 }
 
 // hasCleanupWithOtherCommands checks if cleanup is combined with other commands

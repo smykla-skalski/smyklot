@@ -357,12 +357,13 @@ func executeCommentWithEnvironment(
 	}
 
 	// Clean up any previous error reactions (in case comment was edited)
-	_ = client.RemoveReaction(
+	_ = client.RemoveReactionByUser(
 		ctx,
 		rc.RepoOwner,
 		rc.RepoName,
 		commentIDNum,
 		github.ReactionError,
+		rc.BotUsername,
 	)
 
 	// Fetch CODEOWNERS content from GitHub API
@@ -647,12 +648,13 @@ func postFeedback(
 	}
 
 	// Remove eyes reaction after the operation completes
-	_ = client.RemoveReaction(
+	_ = client.RemoveReactionByUser(
 		ctx,
 		rc.RepoOwner,
 		rc.RepoName,
 		commentID,
 		github.ReactionEyes,
+		rc.BotUsername,
 	)
 
 	// Add final status reaction
@@ -1238,12 +1240,13 @@ func executeCleanup(ctx context.Context, client *github.Client, rc *RuntimeConfi
 		// Remove all bot's reactions
 		for _, reaction := range reactions {
 			if reaction.User == botUsername {
-				_ = client.RemoveReaction(
+				_ = client.RemoveReactionByUser(
 					ctx,
 					rc.RepoOwner,
 					rc.RepoName,
 					commentID,
 					reaction.Type,
+					botUsername,
 				)
 			}
 		}
@@ -1293,12 +1296,13 @@ func postCombinedFeedback(ctx context.Context, client *github.Client, rc *Runtim
 	}
 
 	// Remove eyes reaction before adding final status reaction
-	_ = client.RemoveReaction(
+	_ = client.RemoveReactionByUser(
 		ctx,
 		rc.RepoOwner,
 		rc.RepoName,
 		commentID,
 		github.ReactionEyes,
+		rc.BotUsername,
 	)
 
 	// Add reaction

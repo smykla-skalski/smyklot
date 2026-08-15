@@ -40,7 +40,7 @@ func TestPendingCISourceMatchesDurableIntent(t *testing.T) {
 			updatedAt: request.SourceRevision, author: "operator",
 		},
 		{
-			name: "later merge method wins", body: "/squash /rebase after ci",
+			name: "conflicting merge methods", body: "/squash /rebase after ci",
 			updatedAt: request.SourceRevision, author: "operator",
 		},
 		{

@@ -85,13 +85,11 @@ func pendingCISourceMatches(
 	case pendingci.MergeMethodRebase:
 		expected = commands.CommandRebase
 	}
-	actual := commands.CommandUnknown
 	for _, command := range parsed.Commands {
-		switch command {
-		case commands.CommandMerge, commands.CommandSquash, commands.CommandRebase:
-			actual = command
+		if command == expected {
+			return comment.UpdatedAt == request.SourceRevision
 		}
 	}
 
-	return actual == expected && comment.UpdatedAt == request.SourceRevision
+	return false
 }

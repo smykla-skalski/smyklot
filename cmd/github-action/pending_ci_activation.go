@@ -14,7 +14,14 @@ type pendingCIArtifacts interface {
 	AddLabel(context.Context, string, string, int, string) error
 	RemoveLabel(context.Context, string, string, int, string) error
 	AddReaction(context.Context, string, string, int, github.ReactionType) error
-	RemoveReaction(context.Context, string, string, int, github.ReactionType) error
+	RemoveReactionByUser(
+		context.Context,
+		string,
+		string,
+		int,
+		github.ReactionType,
+		string,
+	) error
 }
 
 type pendingCIActivationRequest struct {
@@ -216,9 +223,9 @@ func rollbackPendingCIArtifacts(
 		}
 	}
 	if !ownership.reaction {
-		if err := artifacts.RemoveReaction(
+		if err := artifacts.RemoveReactionByUser(
 			ctx, request.owner, request.repository,
-			request.commentID, github.ReactionPendingCI,
+			request.commentID, github.ReactionPendingCI, request.runtime.BotUsername,
 		); err != nil {
 			rollbackErr = errors.Join(rollbackErr, fmt.Errorf("remove pending reaction: %w", err))
 		}

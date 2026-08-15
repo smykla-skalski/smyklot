@@ -187,7 +187,10 @@ func (backend *githubPendingCIBackend) cleanupArtifactsExclusive(
 	if scope.reaction {
 		cleanupErr = errors.Join(cleanupErr, cleanupGitHubError(
 			"remove pending CI reaction",
-			client.RemoveReaction(ctx, owner, repository, commentID, github.ReactionPendingCI),
+			client.RemoveReactionByUser(
+				ctx, owner, repository, commentID,
+				github.ReactionPendingCI, backend.server.cfg.botUsername,
+			),
 		))
 	}
 	if lifecycle == pendingci.LifecycleMerged && request.SourceCommentID > 0 {

@@ -580,6 +580,12 @@ Thanks!`
 		})
 
 		Context("when detecting contradicting commands", func() {
+			It("should return error for multiple merge methods", func() {
+				cmd, err := commands.ParseCommand("/merge /squash after ci", nil)
+				Expect(err).To(MatchError(commands.ErrContradictingCommands))
+				Expect(cmd.IsValid).To(BeFalse())
+			})
+
 			It("should return error for approve and unapprove", func() {
 				cmd, err := commands.ParseCommand("/approve /unapprove", nil)
 				Expect(err).To(HaveOccurred())
@@ -591,6 +597,12 @@ Thanks!`
 				cmd, err := commands.ParseCommand("/merge /unapprove", nil)
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("contradicting commands"))
+				Expect(cmd.IsValid).To(BeFalse())
+			})
+
+			It("should return error for squash and unapprove", func() {
+				cmd, err := commands.ParseCommand("/squash /unapprove", nil)
+				Expect(err).To(MatchError(commands.ErrContradictingCommands))
 				Expect(cmd.IsValid).To(BeFalse())
 			})
 
