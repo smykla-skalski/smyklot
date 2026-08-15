@@ -2,6 +2,7 @@
   import type { Attachment } from 'svelte/attachments';
 
   import type { CrossingEdge } from '../lib/crossing';
+  import { fadeBlend, mixInk, type Ink } from '../lib/ink';
   import { Streak } from '../lib/meteor';
   import type { SkySlots } from '../lib/sky-slots';
 
@@ -28,6 +29,7 @@
     edges,
     active = true,
     slots = undefined,
+    sky = null,
   }: {
     /**
      * The canvas edges a streak may begin and end past. A streak only ever
@@ -42,11 +44,25 @@
     active?: boolean;
     /** The shared seat budget capping how many easter eggs fly at once. */
     slots?: SkySlots;
+    /**
+     * The element that stays night on the light page. Streaks finishing
+     * after a dark-to-light switch darken their ink smoothly below this
+     * element's fade, so they stay visible to their off-screen end.
+     */
+    sky?: HTMLElement | null;
   } = $props();
 
-  /* The head burns white; the tail cools through the stars' blue and
-     reaches nothing on its own hue, like every glow in this sky. */
-  const HEAD_INK = 'rgb(255 255 255 / 95%)';
+  /* The head burns white and the tail cools through the stars' blue,
+     reaching nothing on its own hue like every glow in this sky - each with
+     a dark twin for a streak caught out on the light page. */
+  const HEAD_INK: Ink = [255, 255, 255];
+  const HEAD_DARK: Ink = [30, 39, 58];
+  const TAIL_NEAR: Ink = [235, 245, 255];
+  const TAIL_NEAR_DARK: Ink = [40, 51, 74];
+  const TAIL_MID: Ink = [214, 230, 255];
+  const TAIL_MID_DARK: Ink = [55, 68, 94];
+  const TAIL_FAR: Ink = [190, 214, 255];
+  const TAIL_FAR_DARK: Ink = [71, 85, 112];
 
   const FIRST_MIN_S = 6;
   const FIRST_SPAN_S = 18;
@@ -55,15 +71,15 @@
   const RETRY_MIN_S = 5;
   const RETRY_SPAN_S = 10;
 
-  function drawStreak(ctx: CanvasRenderingContext2D, streak: Streak): void {
+  function drawStreak(ctx: CanvasRenderingContext2D, streak: Streak, ground: number): void {
     const tailX = streak.x - streak.ux * streak.tail;
     const tailY = streak.y - streak.uy * streak.tail;
     /* One gradient per streak per frame - two or three at the worst - so
        the tail dims along its own length rather than in steps. */
     const glow = ctx.createLinearGradient(streak.x, streak.y, tailX, tailY);
-    glow.addColorStop(0, 'rgb(235 245 255 / 90%)');
-    glow.addColorStop(0.3, 'rgb(214 230 255 / 45%)');
-    glow.addColorStop(1, 'rgb(190 214 255 / 0%)');
+    glow.addColorStop(0, mixInk(TAIL_NEAR, TAIL_NEAR_DARK, ground, 90));
+    glow.addColorStop(0.3, mixInk(TAIL_MID, TAIL_MID_DARK, ground, 45));
+    glow.addColorStop(1, mixInk(TAIL_FAR, TAIL_FAR_DARK, ground, 0));
     ctx.strokeStyle = glow;
     ctx.lineWidth = 1.4;
     ctx.beginPath();
@@ -71,7 +87,7 @@
     ctx.lineTo(tailX, tailY);
     ctx.stroke();
     /* The head: a short hot dash riding the front of the burn. */
-    ctx.strokeStyle = HEAD_INK;
+    ctx.strokeStyle = mixInk(HEAD_INK, HEAD_DARK, ground, 95);
     ctx.lineWidth = 1.7;
     ctx.beginPath();
     ctx.moveTo(streak.x, streak.y);
@@ -98,6 +114,19 @@
       let cssH = 0;
 
       const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+      /* The sky's fade in canvas coordinates, for the retiring-ink blend.
+         Measured when a shower starts and on resize. */
+      let fadeStart = 0;
+      let fadeEnd = 0;
+
+      const syncFade = (): void => {
+        if (sky === null) return;
+        const own = canvas.getBoundingClientRect();
+        const patch = sky.getBoundingClientRect();
+        fadeStart = patch.top - own.top + patch.height * 0.42;
+        fadeEnd = patch.top - own.top + patch.height * 0.8;
+      };
 
       const schedule = (min: number, span: number): void => {
         clearTimeout(timer);
@@ -131,6 +160,7 @@
         }
         seat = true;
         applyBitmap();
+        syncFade();
         streaks = [new Streak({ width: cssW, height: cssH, edges, random: Math.random })];
         pending = Math.floor(Math.random() * 3);
         nextLaunch = simT + 0.4 + Math.random() * 1.4;
@@ -157,11 +187,14 @@
           nextLaunch = simT + 0.4 + Math.random() * 1.4;
         }
         ctx.clearRect(0, 0, cssW, cssH);
+        /* Starlight while the home is active; streaks finishing on the
+           light page blend dark as they move below the sky's fade. */
+        const adaptive = !active && sky !== null;
         let alive = 0;
         for (const streak of streaks) {
           streak.step(dt);
           if (!streak.done) {
-            drawStreak(ctx, streak);
+            drawStreak(ctx, streak, adaptive ? fadeBlend(streak.y, fadeStart, fadeEnd) : 0);
             alive += 1;
           }
         }
@@ -208,7 +241,10 @@
         cssW = w;
         cssH = h;
         /* Only a shower in flight re-sizes its bitmap; idle stays bare. */
-        if (streaks.length > 0 || pending > 0) applyBitmap();
+        if (streaks.length > 0 || pending > 0) {
+          applyBitmap();
+          syncFade();
+        }
       };
 
       const ro = new ResizeObserver(resize);

@@ -15,7 +15,7 @@
    *
    * Anything laid over it needs light ink in both themes.
    */
-  const {
+  let {
     width = '100vw',
     height = 'clamp(44rem, 480%, 72rem)',
     rocket = true,
@@ -24,6 +24,7 @@
     astronaut = true,
     meteors = true,
     slots = new SkySlots(),
+    skyElement = $bindable(null),
   }: {
     /** How far the sky reaches across, before the mask fades it out. */
     width?: string;
@@ -59,6 +60,11 @@
      * theme's overlay), so the cap holds across both.
      */
     slots?: SkySlots;
+    /**
+     * The sky's own element, bindable out so the page can hand it to
+     * overlay flights as the region that stays night on the light page.
+     */
+    skyElement?: HTMLElement | null;
   } = $props();
 
   /* No bottom entries or exits: the band's bottom edge lies mid-page, and a
@@ -70,7 +76,13 @@
 <!-- Sized through `style:` rather than a `style` attribute: the panel serves
      `style-src 'self'`, which drops a parsed style attribute, and the sky has no
      dimensions of its own without these two. See the note in app.css. -->
-<span class="night-sky" style:--sky-width={width} style:--sky-height={height} aria-hidden="true">
+<span
+  bind:this={skyElement}
+  class="night-sky"
+  style:--sky-width={width}
+  style:--sky-height={height}
+  aria-hidden="true"
+>
   <span class="sky-deep"></span>
   <span class="sky-nebula"></span>
   <span class="sky-dust"></span>

@@ -103,6 +103,12 @@
      home's waits for its seat. */
   const flightSlots = new SkySlots();
 
+  /* The sky's element, handed to the overlay flights as the one region that
+     stays night after a switch to the light theme: a flight retiring across
+     the fresh light page darkens its ink below the sky's fade, so it is
+     visible all the way out. */
+  let skyElement = $state<HTMLElement | null>(null);
+
   const darkFlight = $derived(resolvedTheme === 'dark');
 
   $effect(() => {
@@ -132,6 +138,7 @@
       astronaut={!darkFlight}
       meteors={!darkFlight}
       slots={flightSlots}
+      bind:skyElement
     />
     <!-- Open, so the sky carries through the ring: out here the mark stands on
          night in both themes, which is exactly the ground the robot wants. -->
@@ -145,9 +152,9 @@
      z-index -1, where document order decides, and the flights belong above
      the stars they fly through - still behind every piece of the content. -->
   <div class="page-flight" aria-hidden="true">
-    <NightRocket quiet={cardElement} active={darkFlight} slots={flightSlots} />
-    <NightAstronaut active={darkFlight} slots={flightSlots} />
-    <NightMeteors active={darkFlight} slots={flightSlots} />
+    <NightRocket quiet={cardElement} active={darkFlight} slots={flightSlots} sky={skyElement} />
+    <NightAstronaut active={darkFlight} slots={flightSlots} sky={skyElement} />
+    <NightMeteors active={darkFlight} slots={flightSlots} sky={skyElement} />
   </div>
 
   <div class="night-main">

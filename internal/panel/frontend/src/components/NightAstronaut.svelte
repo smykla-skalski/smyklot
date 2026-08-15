@@ -3,6 +3,7 @@
 
   import { Drift } from '../lib/astronaut';
   import type { CrossingEdge } from '../lib/crossing';
+  import { fadeBlend, mixInk, type Ink } from '../lib/ink';
   import type { SkySlots } from '../lib/sky-slots';
 
   /**
@@ -33,6 +34,7 @@
     edges,
     active = true,
     slots = undefined,
+    sky = null,
   }: {
     /**
      * The canvas edges a crossing may begin and end past. A crossing only
@@ -47,12 +49,20 @@
     active?: boolean;
     /** The shared seat budget capping how many easter eggs fly at once. */
     slots?: SkySlots;
+    /**
+     * The element that stays night on the light page. A crossing finishing
+     * after a dark-to-light switch darkens its ink smoothly below this
+     * element's fade, so it stays visible to its off-screen end.
+     */
+    sky?: HTMLElement | null;
   } = $props();
 
   const TAU = Math.PI * 2;
 
-  /* The same starlight ink as the rocket's hull - they are the same universe. */
-  const INK = 'rgb(216 232 255 / 92%)';
+  /* The same starlight ink as the rocket's hull - they are the same
+     universe - with the same dark twin for a light ground. */
+  const INK: Ink = [216, 232, 255];
+  const INK_DARK: Ink = [40, 51, 74];
 
   /* The first sighting comes reasonably soon; later ones keep their
      distance. Retry is for a timer that fires while the canvas is off screen
@@ -70,6 +80,7 @@
     y: number,
     angle: number,
     time: number,
+    ink: string,
   ): void {
     ctx.save();
     ctx.translate(x, y);
@@ -79,7 +90,8 @@
        read as helmet, pack and limbs rather than a scribble. The line
        widths below are pre-scale, so the drawn lines stay hairline. */
     ctx.scale(1.35, 1.35);
-    ctx.strokeStyle = INK;
+    ctx.strokeStyle = ink;
+    ctx.globalAlpha = 0.92;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     /* The severed line, first, so the suit overlaps its root. It leaves the
@@ -149,6 +161,7 @@
     ctx.arc(1, -5.8, 2.4, -1, 1);
     ctx.stroke();
     ctx.restore();
+    ctx.globalAlpha = 1;
   }
 
   function drifting(): Attachment<HTMLCanvasElement> {
@@ -168,6 +181,20 @@
       let cssH = 0;
 
       const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+      /* The sky's fade in canvas coordinates, for the retiring-ink blend.
+         Measured when a crossing starts and on resize - a crossing is long,
+         but the layout under it is still. */
+      let fadeStart = 0;
+      let fadeEnd = 0;
+
+      const syncFade = (): void => {
+        if (sky === null) return;
+        const own = canvas.getBoundingClientRect();
+        const patch = sky.getBoundingClientRect();
+        fadeStart = patch.top - own.top + patch.height * 0.42;
+        fadeEnd = patch.top - own.top + patch.height * 0.8;
+      };
 
       const schedule = (min: number, span: number): void => {
         clearTimeout(timer);
@@ -201,6 +228,7 @@
         }
         seat = true;
         applyBitmap();
+        syncFade();
         drift = new Drift({ width: cssW, height: cssH, edges, random: Math.random });
         sync();
       };
@@ -229,7 +257,10 @@
           schedule(NEXT_MIN_S, NEXT_SPAN_S);
           return;
         }
-        drawAstronaut(ctx, drift.x, drift.y, drift.angle, simT);
+        /* Starlight while the home is active; a crossing finishing on the
+           light page blends dark as it moves below the sky's fade. */
+        const ground = !active && sky !== null ? fadeBlend(drift.y, fadeStart, fadeEnd) : 0;
+        drawAstronaut(ctx, drift.x, drift.y, drift.angle, simT, mixInk(INK, INK_DARK, ground));
       };
 
       const sync = (): void => {
@@ -266,7 +297,10 @@
         cssW = w;
         cssH = h;
         /* Only a crossing in flight re-sizes its bitmap; idle stays bare. */
-        if (drift !== null) applyBitmap();
+        if (drift !== null) {
+          applyBitmap();
+          syncFade();
+        }
       };
 
       const ro = new ResizeObserver(resize);

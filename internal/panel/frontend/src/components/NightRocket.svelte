@@ -2,6 +2,7 @@
   import type { Attachment } from 'svelte/attachments';
 
   import type { CrossingEdge } from '../lib/crossing';
+  import { fadeBlend, mixInk, type Ink } from '../lib/ink';
   import { Flight, TrailEmitter, type TrailDash } from '../lib/rocket';
   import type { SkySlots } from '../lib/sky-slots';
 
@@ -41,6 +42,7 @@
     active = true,
     edges = undefined,
     slots = undefined,
+    sky = null,
   }: {
     /** Top speed, in CSS pixels per second; the flight varies its pace
      * beneath it and never passes it. */
@@ -63,6 +65,13 @@
     edges?: CrossingEdge[];
     /** The shared seat budget capping how many easter eggs fly at once. */
     slots?: SkySlots;
+    /**
+     * The element that stays night on the light page. A retiring flight on
+     * a freshly light ground darkens its ink smoothly below this element's
+     * fade, so a departure after a dark-to-light switch stays visible all
+     * the way out. Without it the ink is starlight always.
+     */
+    sky?: HTMLElement | null;
   } = $props();
 
   const TAU = Math.PI * 2;
@@ -70,11 +79,16 @@
   /* Starlight inks, sitting in the sky's own palette: the hull and trail on
      the blue-white the stars use, the flame on the amber of its coloured
      ones. The trail is dimmer than the hull so the rocket reads in front of
-     its own past. */
-  const HULL_INK = 'rgb(216 232 255 / 92%)';
-  const TRAIL_INK = 'rgb(186 212 255)';
-  const FLAME_CORE = 'rgb(255 214 140)';
-  const FLAME_EDGE = 'rgb(255 172 120)';
+     its own past. Each carries a dark twin for the light page's ground; a
+     retiring flight blends between the two by where it flies. */
+  const HULL_INK: Ink = [216, 232, 255];
+  const HULL_DARK: Ink = [40, 51, 74];
+  const TRAIL_INK: Ink = [186, 212, 255];
+  const TRAIL_DARK: Ink = [71, 85, 112];
+  const FLAME_CORE: Ink = [255, 214, 140];
+  const FLAME_CORE_DARK: Ink = [201, 116, 22];
+  const FLAME_EDGE: Ink = [255, 172, 120];
+  const FLAME_EDGE_DARK: Ink = [180, 83, 44];
 
   /* The launch timer: quick after mount so the sky is not long empty, and a
      patient retry when a launch is refused - home inactive, off screen, no
@@ -84,8 +98,15 @@
   const RETRY_MIN_S = 3;
   const RETRY_SPAN_S = 6;
 
-  function strokeDash(ctx: CanvasRenderingContext2D, dash: TrailDash, alpha: number): void {
+  function strokeDash(
+    ctx: CanvasRenderingContext2D,
+    dash: TrailDash,
+    alpha: number,
+    blend: (y: number) => number,
+  ): void {
     if (dash.pts.length < 2) return;
+    const head = dash.pts[0];
+    ctx.strokeStyle = mixInk(TRAIL_INK, TRAIL_DARK, blend(head?.y ?? 0));
     ctx.globalAlpha = alpha * 0.55;
     ctx.beginPath();
     let first = true;
@@ -105,27 +126,34 @@
     trail: TrailEmitter,
     time: number,
     life: number,
+    blend: (y: number) => number,
   ): void {
-    ctx.strokeStyle = TRAIL_INK;
     ctx.lineWidth = 1.1;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     /* Dashes hold full strength for most of their life and dissolve over the
        last stretch - a hard disappearance would tick like a clock at the
-       trail's tail end. */
+       trail's tail end. Each dash takes its ink from where it lies, so a
+       trail crossing the sky's fade darkens along its own length. */
     const fadeFrom = life * 0.7;
     for (const dash of trail.dashes()) {
       const age = time - dash.born;
       const alpha = age <= fadeFrom ? 1 : Math.max(0, 1 - (age - fadeFrom) / (life - fadeFrom));
-      if (alpha > 0) strokeDash(ctx, dash, alpha);
+      if (alpha > 0) strokeDash(ctx, dash, alpha, blend);
     }
     const growing = trail.growing();
-    if (growing !== null) strokeDash(ctx, growing, 1);
+    if (growing !== null) strokeDash(ctx, growing, 1, blend);
     ctx.globalAlpha = 1;
   }
 
-  function drawFlame(ctx: CanvasRenderingContext2D, fl: Flight, time: number): void {
+  function drawFlame(
+    ctx: CanvasRenderingContext2D,
+    fl: Flight,
+    time: number,
+    blend: (y: number) => number,
+  ): void {
     if (fl.thrust < 0.04) return;
+    const ground = blend(fl.y);
     /* A flame the way line art draws one: a teardrop envelope closing to a
        point behind the nozzle, with a shorter, brighter core nested inside.
        Both tips wag and both lengths breathe - the frequencies share no
@@ -142,7 +170,7 @@
     const sway = Math.sin(time * 9.3) * 1.9 + Math.sin(time * 15.7) * 0.7;
     const outer = (11 + 24 * fl.thrust) * flick;
     const bulge = 4.6 + 0.6 * Math.sin(time * 13.1 + 0.8);
-    ctx.strokeStyle = FLAME_EDGE;
+    ctx.strokeStyle = mixInk(FLAME_EDGE, FLAME_EDGE_DARK, ground);
     ctx.beginPath();
     ctx.moveTo(-15.5, -3.2);
     ctx.quadraticCurveTo(-15.5 - outer * 0.45, -bulge + sway * 0.3, -15.5 - outer, sway);
@@ -150,7 +178,7 @@
     ctx.stroke();
     const core = outer * 0.55;
     const coreSway = sway * 0.6 + Math.sin(time * 27) * 0.4;
-    ctx.strokeStyle = FLAME_CORE;
+    ctx.strokeStyle = mixInk(FLAME_CORE, FLAME_CORE_DARK, ground);
     ctx.beginPath();
     ctx.moveTo(-15.5, -1.7);
     ctx.quadraticCurveTo(-15.5 - core * 0.5, -2.6 + coreSway * 0.3, -15.5 - core, coreSway);
@@ -160,11 +188,16 @@
     ctx.globalAlpha = 1;
   }
 
-  function drawRocket(ctx: CanvasRenderingContext2D, fl: Flight): void {
+  function drawRocket(
+    ctx: CanvasRenderingContext2D,
+    fl: Flight,
+    blend: (y: number) => number,
+  ): void {
     ctx.save();
     ctx.translate(fl.x, fl.y);
     ctx.rotate(fl.heading);
-    ctx.strokeStyle = HULL_INK;
+    ctx.strokeStyle = mixInk(HULL_INK, HULL_DARK, blend(fl.y));
+    ctx.globalAlpha = 0.92;
     ctx.lineWidth = 1.4;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -194,6 +227,7 @@
     ctx.arc(5, 0, 2.1, 0, TAU);
     ctx.stroke();
     ctx.restore();
+    ctx.globalAlpha = 1;
   }
 
   function flight(): Attachment<HTMLCanvasElement> {
@@ -271,31 +305,49 @@
         parkedDrawn = false;
       };
 
-      /* Where the panel stands, in canvas coordinates, padded to cover its
-         blurred edge. Measured seldom - the layout is still - and never in
-         the same frame twice. */
-      const syncQuiet = (): void => {
+      /* The sky's fade, in canvas coordinates: above `fadeStart` the ground
+         is night whatever the theme; by `fadeEnd` it is the page. A
+         retiring flight blends its ink across this band. */
+      let fadeStart = 0;
+      let fadeEnd = 0;
+      let adaptiveInk = false;
+
+      const blend = (y: number): number => (adaptiveInk ? fadeBlend(y, fadeStart, fadeEnd) : 0);
+
+      /* Where the panel stands and where the sky gives out, in canvas
+         coordinates - the quiet zone padded to cover the panel's blurred
+         edge. Measured seldom - the layout is still - and never in the same
+         frame twice. */
+      const syncZones = (): void => {
         if (fl === null) return;
+        const own = canvas.getBoundingClientRect();
         if (quiet === null) {
           fl.setQuiet(null);
-          return;
+        } else {
+          const zone = quiet.getBoundingClientRect();
+          const pad = 12;
+          fl.setQuiet({
+            minX: zone.left - own.left - pad,
+            minY: zone.top - own.top - pad,
+            maxX: zone.right - own.left + pad,
+            maxY: zone.bottom - own.top + pad,
+          });
         }
-        const own = canvas.getBoundingClientRect();
-        const zone = quiet.getBoundingClientRect();
-        const pad = 12;
-        fl.setQuiet({
-          minX: zone.left - own.left - pad,
-          minY: zone.top - own.top - pad,
-          maxX: zone.right - own.left + pad,
-          maxY: zone.bottom - own.top + pad,
-        });
+        if (sky !== null) {
+          const patch = sky.getBoundingClientRect();
+          fadeStart = patch.top - own.top + patch.height * 0.42;
+          fadeEnd = patch.top - own.top + patch.height * 0.8;
+        }
       };
 
       const tick = (ts: number): void => {
         raf = requestAnimationFrame(tick);
         if (fl === null) return;
         frame += 1;
-        if (frame % 90 === 1) syncQuiet();
+        if (frame % 90 === 1) syncZones();
+        /* Starlight while the home is active - its ground is night - and
+           position-blended ink for a flight retiring onto the light page. */
+        adaptiveInk = !active && sky !== null;
         /* A background tab stops rAF; on return the whole absence arrives as
            one dt, clamped so the rocket resumes where it was rather than
            teleporting through the accumulated time. */
@@ -329,9 +381,9 @@
         if (parked && parkedDrawn) return;
         parkedDrawn = parked;
         ctx.clearRect(0, 0, cssW, cssH);
-        drawTrail(ctx, trail, simT, life);
-        drawFlame(ctx, fl, simT);
-        drawRocket(ctx, fl);
+        drawTrail(ctx, trail, simT, life, blend);
+        drawFlame(ctx, fl, simT, blend);
+        drawRocket(ctx, fl, blend);
       };
 
       const sync = (): void => {
