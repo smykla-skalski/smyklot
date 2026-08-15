@@ -74,6 +74,11 @@ var _ = Describe("pending CI storage [Unit]", func() {
 		changed, err = store.Wake(ctx, wake)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(changed).To(BeFalse())
+		_, err = store.ClaimMerge(ctx, pendingci.ClaimMergeRequest{
+			ID: lease.Request.ID, ExpectedRevision: lease.Request.Revision,
+			ClaimedAt: now.Add(2 * time.Minute),
+		})
+		Expect(errors.Is(err, storage.ErrConflict)).To(BeTrue())
 
 		_, err = store.Reschedule(ctx, pendingci.RescheduleRequest{
 			ID:                lease.Request.ID,
@@ -90,9 +95,15 @@ var _ = Describe("pending CI storage [Unit]", func() {
 		lease, err = store.LeaseDue(ctx, wake.OccurredAt, now.Add(4*time.Minute))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(lease.Request).NotTo(BeNil())
+		claimed, err := store.ClaimMerge(ctx, pendingci.ClaimMergeRequest{
+			ID: lease.Request.ID, ExpectedRevision: lease.Request.Revision,
+			ClaimedAt: now.Add(2*time.Minute + time.Second),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(claimed.Revision).To(Equal(lease.Request.Revision + 1))
 		deferred, err := store.Reschedule(ctx, pendingci.RescheduleRequest{
-			ID:                lease.Request.ID,
-			ExpectedRevision:  lease.Request.Revision,
+			ID:                claimed.ID,
+			ExpectedRevision:  claimed.Revision,
 			Schedule:          pendingci.ScheduleDeferred,
 			HeadSHA:           "sha-3",
 			NextCheckAt:       now.Add(8 * time.Hour),

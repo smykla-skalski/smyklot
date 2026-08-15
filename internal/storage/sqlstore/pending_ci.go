@@ -299,6 +299,37 @@ WHERE id = ? AND lifecycle = ? AND revision = ?`,
 	)
 }
 
+// ClaimMerge proves that the passing observation still owns the current
+// lease. A webhook that arrived after observation clears that lease and bumps
+// the revision, so a stale worker cannot start the merge side effect.
+func (s *Store) ClaimMerge(
+	ctx context.Context,
+	claim pendingci.ClaimMergeRequest,
+) (pendingci.Request, error) {
+	if err := claim.Validate(); err != nil {
+		return pendingci.Request{}, err
+	}
+	result, err := s.db.ExecContext(ctx, `
+UPDATE pending_ci_requests SET
+    updated_at = ?, revision = revision + 1
+WHERE id = ? AND lifecycle = ? AND revision = ?
+  AND lease_expires_at IS NOT NULL AND lease_expires_at > ?`,
+		formatTime(claim.ClaimedAt),
+		claim.ID,
+		pendingci.LifecycleArmed,
+		claim.ExpectedRevision,
+		formatTime(claim.ClaimedAt),
+	)
+	if err != nil {
+		return pendingci.Request{}, fmt.Errorf("claim pending CI merge: %w", err)
+	}
+	if err := s.checkPendingCIUpdate(ctx, result, claim.ID); err != nil {
+		return pendingci.Request{}, err
+	}
+
+	return s.getPendingCI(ctx, claim.ID)
+}
+
 func (s *Store) Reschedule(
 	ctx context.Context,
 	change pendingci.RescheduleRequest,

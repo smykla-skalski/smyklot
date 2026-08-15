@@ -9,6 +9,7 @@ import (
 )
 
 type pendingCITransitionStore interface {
+	ClaimMerge(context.Context, pendingci.ClaimMergeRequest) (pendingci.Request, error)
 	Reschedule(context.Context, pendingci.RescheduleRequest) (pendingci.Request, error)
 	Finish(context.Context, pendingci.FinishRequest) (pendingci.Request, error)
 }
@@ -69,7 +70,15 @@ func (reconciler *pendingCIReconciler) Process(
 	case pendingci.DecisionFinish:
 		return reconciler.finish(ctx, request, decision.Lifecycle, decision.Reason, observation.ObservedAt)
 	case pendingci.DecisionMerge:
-		return reconciler.merge(ctx, request, observation)
+		claimed, err := reconciler.store.ClaimMerge(ctx, pendingci.ClaimMergeRequest{
+			ID: request.ID, ExpectedRevision: request.Revision,
+			ClaimedAt: observation.ObservedAt,
+		})
+		if err != nil {
+			return fmt.Errorf("claim pending CI merge: %w", err)
+		}
+
+		return reconciler.merge(ctx, claimed, observation)
 	default:
 		return fmt.Errorf("unsupported pending CI decision %q", decision.Kind)
 	}

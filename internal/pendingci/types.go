@@ -131,6 +131,12 @@ type CheckNowRequest struct {
 	OccurredAt       time.Time
 }
 
+type ClaimMergeRequest struct {
+	ID               int64
+	ExpectedRevision int64
+	ClaimedAt        time.Time
+}
+
 type RescheduleRequest struct {
 	ID                int64
 	ExpectedRevision  int64
@@ -216,6 +222,7 @@ type Store interface {
 	Wake(context.Context, WakeRequest) (bool, error)
 	WakeByHead(context.Context, WakeHeadRequest) (int64, error)
 	CheckNow(context.Context, CheckNowRequest) (Request, error)
+	ClaimMerge(context.Context, ClaimMergeRequest) (Request, error)
 	Reschedule(context.Context, RescheduleRequest) (Request, error)
 	Finish(context.Context, FinishRequest) (Request, error)
 	CancelBySource(context.Context, CancelRequest) (*Request, error)

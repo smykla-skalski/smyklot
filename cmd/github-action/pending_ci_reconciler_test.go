@@ -60,6 +60,30 @@ func TestPendingCIReconcilerKeepsMergeRaceArmed(t *testing.T) {
 	}
 }
 
+func TestPendingCIReconcilerDoesNotMergeAfterLeaseInvalidation(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.August, 15, 12, 0, 0, 0, time.UTC)
+	store := &reconcilerTestStore{claimErr: errors.New("revision changed")}
+	effects := &reconcilerTestEffects{}
+	reconciler := newPendingCIReconciler(
+		store,
+		reconcilerTestObserver{observation: reconcilerObservation(now, pendingci.ObservedPassing)},
+		effects,
+		defaultPendingCITiming(),
+	)
+
+	err := reconciler.Process(context.Background(), reconcilerRequest(now.Add(-time.Minute)))
+	if err == nil {
+		t.Fatal("invalidated lease unexpectedly merged")
+	}
+	if effects.mergedHead != "" {
+		t.Fatalf("invalidated lease merged head %q", effects.mergedHead)
+	}
+	if store.finished != nil {
+		t.Fatalf("invalidated lease became terminal: %#v", store.finished)
+	}
+}
+
 func TestPendingCIReconcilerDefersUnchangedFailure(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, time.August, 15, 12, 0, 0, 0, time.UTC)
@@ -115,6 +139,21 @@ func (observer reconcilerTestObserver) Observe(
 type reconcilerTestStore struct {
 	rescheduled *pendingci.RescheduleRequest
 	finished    *pendingci.FinishRequest
+	claimErr    error
+}
+
+func (store *reconcilerTestStore) ClaimMerge(
+	_ context.Context,
+	request pendingci.ClaimMergeRequest,
+) (pendingci.Request, error) {
+	if store.claimErr != nil {
+		return pendingci.Request{}, store.claimErr
+	}
+
+	return pendingci.Request{
+		ID: request.ID, Revision: request.ExpectedRevision + 1,
+		Lifecycle: pendingci.LifecycleArmed,
+	}, nil
 }
 
 func (store *reconcilerTestStore) Reschedule(

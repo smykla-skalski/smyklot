@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -15,6 +16,8 @@ import (
 type githubPendingCIBackend struct {
 	server *server
 }
+
+var errNoRequiredStatusChecks = errors.New("base branch has no required status checks")
 
 func (backend *githubPendingCIBackend) Observe(
 	ctx context.Context,
@@ -49,6 +52,14 @@ func (backend *githubPendingCIBackend) Observe(
 		}, nil
 	}
 	checks, err := backend.checks(ctx, client, request, state, owner, repository)
+	if errors.Is(err, errNoRequiredStatusChecks) {
+		return pendingci.Observation{
+			HeadSHA: state.HeadSHA, PullRequestOpen: state.Open,
+			PullRequestMerged: state.Merged, PendingLabelFound: labelFound,
+			CancelReason: errNoRequiredStatusChecks.Error(),
+			State:        pendingci.ObservedIndeterminate, ObservedAt: observedAt,
+		}, nil
+	}
 	if err != nil {
 		return pendingci.Observation{}, err
 	}
@@ -164,6 +175,9 @@ func (backend *githubPendingCIBackend) checks(
 		}
 		if required == nil {
 			required = []github.RequiredCheck{}
+		}
+		if len(required) == 0 {
+			return nil, errNoRequiredStatusChecks
 		}
 	}
 

@@ -45,7 +45,7 @@ func (s *server) applyPendingCISignal(
 	signal webhook.PendingCISignal,
 ) (int64, error) {
 	switch signal.Kind {
-	case webhook.SignalWakePullRequest:
+	case webhook.SignalWakePullRequest, webhook.SignalPullRequestDone, webhook.SignalLabelRemoved:
 		expectedHead := ""
 		if signal.MatchHead {
 			expectedHead = signal.HeadSHA
@@ -64,47 +64,7 @@ func (s *server) applyPendingCISignal(
 			RepositoryID: repositoryID, HeadSHA: signal.HeadSHA,
 			EventKey: signal.EventKey, OccurredAt: occurredAt,
 		})
-	case webhook.SignalPullRequestDone:
-		lifecycle := pendingci.LifecycleCancelled
-		reason := "pull request closed before pending CI merge"
-		if signal.Merged {
-			lifecycle = pendingci.LifecycleMerged
-			reason = "pull request merged"
-		}
-
-		return s.finishPendingCIPR(ctx, repositoryID, signal.PullRequest, lifecycle, reason, occurredAt)
-	case webhook.SignalLabelRemoved:
-		return s.finishPendingCIPR(
-			ctx,
-			repositoryID,
-			signal.PullRequest,
-			pendingci.LifecycleCancelled,
-			"pending CI label removed",
-			occurredAt,
-		)
 	default:
 		return 0, fmt.Errorf("unsupported signal kind %q", signal.Kind)
 	}
-}
-
-func (s *server) finishPendingCIPR(
-	ctx context.Context,
-	repositoryID string,
-	pullRequest int,
-	lifecycle pendingci.Lifecycle,
-	reason string,
-	finishedAt time.Time,
-) (int64, error) {
-	request, err := s.store.FinishPR(ctx, pendingci.FinishPRRequest{
-		RepositoryID: repositoryID,
-		PullRequest:  pullRequest,
-		Lifecycle:    lifecycle,
-		Reason:       reason,
-		FinishedAt:   finishedAt,
-	})
-	if request == nil {
-		return 0, err
-	}
-
-	return 1, err
 }

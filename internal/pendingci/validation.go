@@ -61,6 +61,17 @@ func (request CheckNowRequest) Validate() error {
 	return nil
 }
 
+func (request ClaimMergeRequest) Validate() error {
+	if request.ID <= 0 || request.ExpectedRevision <= 0 {
+		return invalid("request identity and revision must be positive")
+	}
+	if request.ClaimedAt.IsZero() {
+		return invalid("merge claim time is required")
+	}
+
+	return nil
+}
+
 func (request RescheduleRequest) Validate() error {
 	if request.ID <= 0 || request.ExpectedRevision <= 0 {
 		return invalid("request identity and revision must be positive")

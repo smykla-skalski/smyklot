@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -96,7 +97,30 @@ func pendingLabelRemovedDelivery() []byte {
 }`)
 }
 
+func pendingClosedDelivery() []byte {
+	return []byte(`{
+  "action": "closed",
+  "number": 42,
+  "pull_request": {
+    "merged": false,
+    "updated_at": "2026-08-15T12:01:00Z",
+    "head": {"sha": "pending-head"}
+  },
+  "repository": {
+    "id": 123456,
+    "name": "smyklot",
+    "full_name": "smykla-skalski/smyklot",
+    "owner": {"login": "smykla-skalski"}
+  },
+  "installation": {"id": 987}
+}`)
+}
+
 func armWebhookTestRequest(srv *server) pendingci.Request {
+	return armWebhookTestRequestWithLabel(srv, "smyklot:pending:ci:squash")
+}
+
+func armWebhookTestRequestWithLabel(srv *server, label string) pendingci.Request {
 	GinkgoHelper()
 	requestedAt := time.Now().UTC().Add(-time.Minute)
 	result, err := srv.store.Arm(GinkgoT().Context(), pendingci.ArmRequest{
@@ -112,12 +136,26 @@ func armWebhookTestRequest(srv *server) pendingci.Request {
 		Requester:          "someone",
 		SourceCommentID:    555,
 		SourceRevision:     requestedAt.Format(time.RFC3339Nano),
-		Label:              "smyklot:pending:ci:squash",
+		Label:              label,
 		RequestedAt:        requestedAt,
 	})
 	Expect(err).NotTo(HaveOccurred())
 
 	return result.Request
+}
+
+func startPendingCITestScheduler(srv *server) {
+	GinkgoHelper()
+	ctx, cancel := context.WithCancel(context.Background())
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		srv.pendingCI.Run(ctx)
+	}()
+	DeferCleanup(func() {
+		cancel()
+		<-stopped
+	})
 }
 
 // postDelivery sends a delivery to a running service, signing it unless the
@@ -382,6 +420,14 @@ var _ = Describe("Webhook service [Unit]", func() {
 				nil,
 			)
 			Expect(response.StatusCode).To(Equal(http.StatusAccepted))
+			Eventually(func(g Gomega) {
+				request, err := srv.store.GetArmed(
+					GinkgoT().Context(), armed.RepositoryID, armed.PullRequest,
+				)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(request.LastEventKey).To(ContainSubstring("pull_request"))
+			}).Within(eventuallyWindow).Should(Succeed())
+			startPendingCITestScheduler(srv)
 
 			Eventually(func() bool {
 				_, err := srv.store.GetArmed(
@@ -392,6 +438,67 @@ var _ = Describe("Webhook service [Unit]", func() {
 
 				return errors.Is(err, storage.ErrNotFound)
 			}).Within(eventuallyWindow).Should(BeTrue())
+		})
+
+		It("treats a superseded label event as a hint about live state", func() {
+			armWebhookTestRequest(srv)
+			current := armWebhookTestRequestWithLabel(srv, "smyklot:pending:ci")
+			stub.prLabels = `[{"name":"smyklot:pending:ci"}]`
+
+			response := post(
+				webhook.EventPullRequest,
+				"stale-unlabeled-delivery",
+				pendingLabelRemovedDelivery(),
+				nil,
+			)
+			Expect(response.StatusCode).To(Equal(http.StatusAccepted))
+			Eventually(func(g Gomega) {
+				armed, err := srv.store.GetArmed(
+					GinkgoT().Context(), current.RepositoryID, current.PullRequest,
+				)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(armed.LastEventKey).To(ContainSubstring("pull_request"))
+			}).Within(eventuallyWindow).Should(Succeed())
+			startPendingCITestScheduler(srv)
+
+			Eventually(func(g Gomega) {
+				armed, err := srv.store.GetArmed(
+					GinkgoT().Context(), current.RepositoryID, current.PullRequest,
+				)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(armed.ID).To(Equal(current.ID))
+				g.Expect(armed.LastObservedState).To(Equal("no_checks"))
+			}).Within(eventuallyWindow).Should(Succeed())
+		})
+
+		It("treats a delayed close event as a hint about live state", func() {
+			current := armWebhookTestRequest(srv)
+			stub.prLabels = `[{"name":"smyklot:pending:ci:squash"}]`
+
+			response := post(
+				webhook.EventPullRequest,
+				"stale-closed-delivery",
+				pendingClosedDelivery(),
+				nil,
+			)
+			Expect(response.StatusCode).To(Equal(http.StatusAccepted))
+			Eventually(func(g Gomega) {
+				armed, err := srv.store.GetArmed(
+					GinkgoT().Context(), current.RepositoryID, current.PullRequest,
+				)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(armed.LastEventKey).To(ContainSubstring("pull_request"))
+			}).Within(eventuallyWindow).Should(Succeed())
+			startPendingCITestScheduler(srv)
+
+			Eventually(func(g Gomega) {
+				armed, err := srv.store.GetArmed(
+					GinkgoT().Context(), current.RepositoryID, current.PullRequest,
+				)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(armed.ID).To(Equal(current.ID))
+				g.Expect(armed.LastObservedState).To(Equal("no_checks"))
+			}).Within(eventuallyWindow).Should(Succeed())
 		})
 	})
 

@@ -27,6 +27,7 @@ type githubStub struct {
 	// prAuthor is who opened the pull request, which decides whether a command
 	// counts as self-approval
 	prAuthor string
+	prLabels string
 
 	// installations is what GET /app/installations reports, and repos what
 	// each installation can reach. Both are empty unless a spec sweeps
@@ -58,6 +59,7 @@ func newGitHubStub() *githubStub {
 	return &githubStub{
 		codeowners:    "* @someone\n",
 		prAuthor:      "author",
+		prLabels:      `[]`,
 		installations: `[]`,
 		repos:         `{"total_count": 0, "repositories": []}`,
 		members:       `[]`,
@@ -173,8 +175,8 @@ func (s *githubStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			"user": {"login": %q},
 			"base": {"ref": "main"},
 			"head": {"sha": "command-head"},
-			"labels": []
-		}`, s.prAuthor)
+			"labels": %s
+		}`, s.prAuthor, s.prLabels)
 
 	default:
 		w.WriteHeader(http.StatusOK)

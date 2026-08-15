@@ -989,7 +989,7 @@ func executePendingCIMerge(
 	if requiredChecksOnly && info.BaseBranch == "" {
 		return feedback.NewMergeFailed("cannot resolve the base branch for required checks"), nil
 	}
-	if requiredChecksOnly && environment.pendingCI == nil {
+	if requiredChecksOnly {
 		requiredChecks, err = client.GetRequiredStatusChecks(ctx, rc.RepoOwner, rc.RepoName, info.BaseBranch)
 		if err != nil {
 			return feedback.NewMergeFailed("failed to get required checks: " + err.Error()), nil
