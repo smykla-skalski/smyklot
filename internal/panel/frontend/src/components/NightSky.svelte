@@ -27,7 +27,10 @@
   } = $props();
 </script>
 
-<span class="night-sky" style="--sky-width: {width}; --sky-height: {height}" aria-hidden="true">
+<!-- Sized through `style:` rather than a `style` attribute: the panel serves
+     `style-src 'self'`, which drops a parsed style attribute, and the sky has no
+     dimensions of its own without these two. See the note in app.css. -->
+<span class="night-sky" style:--sky-width={width} style:--sky-height={height} aria-hidden="true">
   <span class="sky-deep"></span>
   <span class="sky-nebula"></span>
   <span class="sky-dust"></span>

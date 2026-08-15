@@ -1154,6 +1154,16 @@ select:disabled {
   background: var(--stop);
 }
 
+/* Sized by whoever renders it, through a custom property.
+ *
+ * The property has to arrive through the CSSOM, not through a `style` attribute
+ * in the markup: the panel serves `style-src 'self'`, under which a browser
+ * parses a style attribute and then throws it away. Nothing reports that - the
+ * attribute is still in the DOM to read back, and only the computed value shows
+ * it never applied - so an avatar loses its size and falls back to `auto`.
+ * Svelte's `style:` directive is the fix and the rule: it sets the property with
+ * `setProperty`, which is script writing to the CSSOM and is not inline style.
+ * Pinned in tests/csp-safety.test.ts. */
 .avatar {
   border-radius: 50%;
   flex: none;
