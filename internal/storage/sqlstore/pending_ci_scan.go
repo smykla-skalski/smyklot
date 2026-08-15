@@ -41,6 +41,7 @@ func scanPendingCI(scanner rowScanner) (pendingci.Request, error) {
 		&updatedAt,
 		&finishedAt,
 		&request.CleanupPending,
+		&request.CleanupArtifactsDone,
 		&request.CleanupAttempts,
 		&request.CleanupError,
 		&request.Revision,

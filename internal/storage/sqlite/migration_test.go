@@ -56,24 +56,26 @@ next_check_at, last_progress_at, reason, requested_at, updated_at, finished_at
 	t.Cleanup(func() { _ = store.Close() })
 
 	rows, err := store.DB().QueryContext(ctx, `
-SELECT pull_request, cleanup_pending, cleanup_attempts, cleanup_error, next_check_at
+SELECT pull_request, cleanup_pending, cleanup_artifacts_done,
+       cleanup_attempts, cleanup_error, next_check_at
 FROM pending_ci_requests ORDER BY pull_request`)
 	if err != nil {
 		t.Fatalf("read migrated cleanup state: %v", err)
 	}
 	defer rows.Close()
 	type cleanupState struct {
-		pullRequest int
-		pending     bool
-		attempts    int
-		errorText   string
-		nextCheck   string
+		pullRequest   int
+		pending       bool
+		artifactsDone bool
+		attempts      int
+		errorText     string
+		nextCheck     string
 	}
 	var got []cleanupState
 	for rows.Next() {
 		var state cleanupState
 		if err = rows.Scan(
-			&state.pullRequest, &state.pending, &state.attempts,
+			&state.pullRequest, &state.pending, &state.artifactsDone, &state.attempts,
 			&state.errorText, &state.nextCheck,
 		); err != nil {
 			t.Fatalf("scan migrated cleanup state: %v", err)
@@ -83,7 +85,8 @@ FROM pending_ci_requests ORDER BY pull_request`)
 	if err = rows.Err(); err != nil {
 		t.Fatalf("iterate migrated cleanup state: %v", err)
 	}
-	if len(got) != 2 || !got[0].pending || got[0].attempts != 0 || got[0].errorText != "" ||
+	if len(got) != 2 || !got[0].pending || got[0].artifactsDone ||
+		got[0].attempts != 0 || got[0].errorText != "" ||
 		got[0].nextCheck != finishedAt.Format(time.RFC3339Nano) || got[1].pending {
 		t.Fatalf("migrated cleanup state = %#v", got)
 	}

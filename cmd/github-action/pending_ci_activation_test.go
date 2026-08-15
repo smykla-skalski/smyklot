@@ -216,6 +216,74 @@ func TestPendingCIActivationRemovesActionOwnedConflictingLabels(t *testing.T) {
 	}
 }
 
+func TestPendingCIActivationKeepsCurrentLabelWhenIncomingCommandIsStale(t *testing.T) {
+	t.Parallel()
+	currentLabel := github.LabelPendingCIMerge
+	incomingLabel := github.LabelPendingCISquash
+	artifacts := &pendingCIArtifactsStub{labels: []string{currentLabel}}
+	command := &pendingCICommand{
+		store: pendingCICommandStoreStub{
+			request: pendingci.Request{
+				Label: currentLabel, SourceCommentID: 202,
+			},
+			armErr: pendingci.ErrStaleSourceRevision,
+		},
+		coordinator: newPendingCICoordinator(), repositoryID: "repository:7",
+		now: func() time.Time { return time.Now().UTC() }, wake: func() {},
+	}
+
+	failures, err := activatePendingCI(
+		t.Context(), artifacts, command, pendingCIActivationRequest{
+			runtime: &RuntimeConfig{CommentAuthor: "operator"},
+			owner:   "owner", repository: "repository", pullRequest: 198,
+			commentID: 101, headSHA: "head", baseBranch: "main",
+			method: github.MergeMethodSquash, label: incomingLabel,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !failures.stale || failures.command != nil {
+		t.Fatalf("activation failures = %+v", failures)
+	}
+	if !equalStrings(artifacts.removedLabels, []string{incomingLabel}) {
+		t.Fatalf("removed labels = %v, want only stale incoming label", artifacts.removedLabels)
+	}
+}
+
+func TestPendingCIActivationRollbackTreatsMissingLabelsAsClean(t *testing.T) {
+	t.Parallel()
+	methodLabel := github.LabelPendingCISquash
+	missing := &github.APIError{StatusCode: 404}
+	artifacts := &pendingCIArtifactsStub{
+		removeLabelErrors: map[string]error{methodLabel: missing},
+	}
+	command := &pendingCICommand{
+		store: pendingCICommandStoreStub{
+			getErr: storage.ErrNotFound, armErr: errors.New("database full"),
+		},
+		coordinator: newPendingCICoordinator(), repositoryID: "repository:7",
+		now: func() time.Time { return time.Now().UTC() },
+	}
+
+	_, err := activatePendingCI(
+		t.Context(), artifacts, command, pendingCIActivationRequest{
+			runtime: &RuntimeConfig{CommentAuthor: "operator"},
+			owner:   "owner", repository: "repository", pullRequest: 198,
+			commentID: 101, headSHA: "head", baseBranch: "main",
+			method: github.MergeMethodSquash, label: methodLabel,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !equalStrings(artifacts.removedLabels, []string{
+		methodLabel, github.LabelPendingCIServiceOwner,
+	}) {
+		t.Fatalf("removed labels = %v", artifacts.removedLabels)
+	}
+}
+
 func TestPendingCIActivationCancelsAmbiguousCommands(t *testing.T) {
 	t.Parallel()
 	current := pendingci.Request{

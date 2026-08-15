@@ -12,6 +12,10 @@ type pendingCITransitionStore interface {
 	ClaimMerge(context.Context, pendingci.ClaimMergeRequest) (pendingci.Request, error)
 	Reschedule(context.Context, pendingci.RescheduleRequest) (pendingci.Request, error)
 	Finish(context.Context, pendingci.FinishRequest) (pendingci.Request, error)
+	MarkCleanupArtifactsDone(
+		context.Context,
+		pendingci.MarkCleanupArtifactsDoneRequest,
+	) (pendingci.Request, error)
 	CompleteCleanup(context.Context, pendingci.CompleteCleanupRequest) (pendingci.Request, error)
 	RetryCleanup(context.Context, pendingci.RetryCleanupRequest) (pendingci.Request, error)
 }
@@ -22,7 +26,8 @@ type pendingCIObserver interface {
 
 type pendingCIEffects interface {
 	MergeAtHead(context.Context, pendingci.Request, string) error
-	Complete(context.Context, pendingci.Request, pendingci.Lifecycle) error
+	CleanupArtifacts(context.Context, pendingci.Request, pendingci.Lifecycle) error
+	ReleaseOwnership(context.Context, pendingci.Request) error
 }
 
 // pendingCIReconciler combines live truth with the pure policy, then applies
@@ -63,6 +68,16 @@ func (reconciler *pendingCIReconciler) Process(
 	if request.CleanupPending {
 		return reconciler.cleanup(ctx, request)
 	}
+
+	return reconciler.exclusive.Exclusive(ctx, request.RepositoryID, func() error {
+		return reconciler.processArmedExclusive(ctx, request)
+	})
+}
+
+func (reconciler *pendingCIReconciler) processArmedExclusive(
+	ctx context.Context,
+	request pendingci.Request,
+) error {
 	observation, err := reconciler.observer.Observe(ctx, request)
 	if err != nil {
 		return fmt.Errorf("observe live GitHub state: %w", err)
@@ -88,37 +103,35 @@ func (reconciler *pendingCIReconciler) mergeExclusive(
 	ctx context.Context,
 	request pendingci.Request,
 ) error {
-	return reconciler.exclusive.Exclusive(ctx, request.RepositoryID, func() error {
-		observation, err := reconciler.observer.Observe(ctx, request)
-		if err != nil {
-			return fmt.Errorf("revalidate live GitHub state: %w", err)
-		}
-		decision, err := pendingci.Decide(request, observation, reconciler.timing)
-		if err != nil {
-			return fmt.Errorf("revalidate pending CI transition: %w", err)
-		}
-		if decision.Kind == pendingci.DecisionReschedule {
-			return reconciler.reschedule(ctx, request, decision, observation.ObservedAt)
-		}
-		if decision.Kind == pendingci.DecisionFinish {
-			return reconciler.finish(
-				ctx, request, decision.Lifecycle, decision.Reason, observation.ObservedAt,
-			)
-		}
-		if decision.Kind != pendingci.DecisionMerge {
-			return fmt.Errorf("unsupported revalidated pending CI decision %q", decision.Kind)
-		}
+	observation, err := reconciler.observer.Observe(ctx, request)
+	if err != nil {
+		return fmt.Errorf("revalidate live GitHub state: %w", err)
+	}
+	decision, err := pendingci.Decide(request, observation, reconciler.timing)
+	if err != nil {
+		return fmt.Errorf("revalidate pending CI transition: %w", err)
+	}
+	if decision.Kind == pendingci.DecisionReschedule {
+		return reconciler.reschedule(ctx, request, decision, observation.ObservedAt)
+	}
+	if decision.Kind == pendingci.DecisionFinish {
+		return reconciler.finish(
+			ctx, request, decision.Lifecycle, decision.Reason, observation.ObservedAt,
+		)
+	}
+	if decision.Kind != pendingci.DecisionMerge {
+		return fmt.Errorf("unsupported revalidated pending CI decision %q", decision.Kind)
+	}
 
-		claimed, err := reconciler.store.ClaimMerge(ctx, pendingci.ClaimMergeRequest{
-			ID: request.ID, ExpectedRevision: request.Revision,
-			ClaimedAt: observation.ObservedAt,
-		})
-		if err != nil {
-			return fmt.Errorf("claim pending CI merge: %w", err)
-		}
-
-		return reconciler.merge(ctx, claimed, observation)
+	claimed, err := reconciler.store.ClaimMerge(ctx, pendingci.ClaimMergeRequest{
+		ID: request.ID, ExpectedRevision: request.Revision,
+		ClaimedAt: observation.ObservedAt,
 	})
+	if err != nil {
+		return fmt.Errorf("claim pending CI merge: %w", err)
+	}
+
+	return reconciler.merge(ctx, claimed, observation)
 }
 
 func (reconciler *pendingCIReconciler) reschedule(
@@ -168,26 +181,49 @@ func (reconciler *pendingCIReconciler) cleanupExclusive(
 	ctx context.Context,
 	request pendingci.Request,
 ) error {
-	err := reconciler.effects.Complete(ctx, request, request.Lifecycle)
-	if err == nil {
-		_, completeErr := reconciler.store.CompleteCleanup(ctx, pendingci.CompleteCleanupRequest{
-			ID: request.ID, ExpectedRevision: request.Revision,
-			CompletedAt: request.UpdatedAt,
-		})
-
-		return completeErr
+	current := request
+	if !current.CleanupArtifactsDone {
+		if err := reconciler.effects.CleanupArtifacts(ctx, current, current.Lifecycle); err != nil {
+			return reconciler.retryCleanup(ctx, current, err)
+		}
+		marked, err := reconciler.store.MarkCleanupArtifactsDone(
+			ctx,
+			pendingci.MarkCleanupArtifactsDoneRequest{
+				ID: current.ID, ExpectedRevision: current.Revision,
+				MarkedAt: current.UpdatedAt,
+			},
+		)
+		if err != nil {
+			return fmt.Errorf("mark pending CI artifacts cleaned: %w", err)
+		}
+		current = marked
 	}
+	if err := reconciler.effects.ReleaseOwnership(ctx, current); err != nil {
+		return reconciler.retryCleanup(ctx, current, err)
+	}
+	_, err := reconciler.store.CompleteCleanup(ctx, pendingci.CompleteCleanupRequest{
+		ID: current.ID, ExpectedRevision: current.Revision,
+		CompletedAt: current.UpdatedAt,
+	})
 
+	return err
+}
+
+func (reconciler *pendingCIReconciler) retryCleanup(
+	ctx context.Context,
+	request pendingci.Request,
+	cause error,
+) error {
 	_, retryErr := reconciler.store.RetryCleanup(ctx, pendingci.RetryCleanupRequest{
 		ID: request.ID, ExpectedRevision: request.Revision,
 		NextAttemptAt: request.UpdatedAt.Add(pendingCIRetryDelay),
-		FailedAt:      request.UpdatedAt, Error: err.Error(),
+		FailedAt:      request.UpdatedAt, Error: cause.Error(),
 	})
 	if retryErr != nil {
-		return fmt.Errorf("cleanup failed: %v; schedule retry: %w", err, retryErr)
+		return fmt.Errorf("cleanup failed: %v; schedule retry: %w", cause, retryErr)
 	}
 
-	return fmt.Errorf("cleanup failed and will retry: %w", err)
+	return fmt.Errorf("cleanup failed and will retry: %w", cause)
 }
 
 func (reconciler *pendingCIReconciler) merge(

@@ -74,7 +74,8 @@ func (s *Store) FinishPR(
 	result, err := tx.ExecContext(ctx, `
 UPDATE pending_ci_requests SET
     lifecycle = ?, reason = ?, next_check_at = ?, lease_expires_at = NULL,
-    cleanup_pending = TRUE, cleanup_attempts = 0, cleanup_error = '',
+    cleanup_pending = TRUE, cleanup_artifacts_done = FALSE,
+    cleanup_attempts = 0, cleanup_error = '',
     updated_at = ?, finished_at = ?, revision = revision + 1
 WHERE id = ? AND lifecycle = ? AND revision = ?`,
 		change.Lifecycle,
@@ -107,6 +108,7 @@ WHERE id = ? AND lifecycle = ? AND revision = ?`,
 	request.FinishedAt = timePointer(change.FinishedAt)
 	request.NextCheckAt = change.FinishedAt
 	request.CleanupPending = true
+	request.CleanupArtifactsDone = false
 	request.CleanupAttempts = 0
 	request.CleanupError = ""
 	request.Revision++
@@ -132,7 +134,8 @@ func (s *Store) CancelRepository(
 	result, err := tx.ExecContext(ctx, `
 UPDATE pending_ci_requests SET
     lifecycle = ?, reason = ?, next_check_at = ?, lease_expires_at = NULL,
-    cleanup_pending = TRUE, cleanup_attempts = 0, cleanup_error = '',
+    cleanup_pending = TRUE, cleanup_artifacts_done = FALSE,
+    cleanup_attempts = 0, cleanup_error = '',
     updated_at = ?, finished_at = ?, revision = revision + 1
 WHERE repository_id = ? AND lifecycle = ?`,
 		pendingci.LifecycleCancelled, change.Reason,

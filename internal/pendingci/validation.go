@@ -207,6 +207,17 @@ func (filter CleanupFilter) Validate() error {
 	return nil
 }
 
+func (request MarkCleanupArtifactsDoneRequest) Validate() error {
+	if request.ID <= 0 || request.ExpectedRevision <= 0 {
+		return invalid("cleanup identity and revision must be positive")
+	}
+	if request.MarkedAt.IsZero() {
+		return invalid("cleanup artifact completion time is required")
+	}
+
+	return nil
+}
+
 func (request CompleteCleanupRequest) Validate() error {
 	if request.ID <= 0 || request.ExpectedRevision <= 0 {
 		return invalid("cleanup identity and revision must be positive")

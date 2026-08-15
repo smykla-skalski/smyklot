@@ -73,6 +73,11 @@ func pendingCISourceMatches(
 		parsed.RequiredChecksOnly != request.RequiredChecksOnly {
 		return false
 	}
+	for _, command := range parsed.Commands {
+		if command == commands.CommandHelp || command == commands.CommandUnapprove {
+			return false
+		}
+	}
 	expected := commands.CommandMerge
 	switch request.MergeMethod {
 	case pendingci.MergeMethodSquash:
@@ -80,11 +85,13 @@ func pendingCISourceMatches(
 	case pendingci.MergeMethodRebase:
 		expected = commands.CommandRebase
 	}
+	actual := commands.CommandUnknown
 	for _, command := range parsed.Commands {
-		if command == expected {
-			return comment.UpdatedAt == request.SourceRevision
+		switch command {
+		case commands.CommandMerge, commands.CommandSquash, commands.CommandRebase:
+			actual = command
 		}
 	}
 
-	return false
+	return actual == expected && comment.UpdatedAt == request.SourceRevision
 }

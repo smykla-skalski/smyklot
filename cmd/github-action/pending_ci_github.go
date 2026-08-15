@@ -64,6 +64,17 @@ func (backend *githubPendingCIBackend) Observe(
 			)
 		}
 	}
+	if err := removeConflictingPendingCILabelsFrom(
+		state.Labels,
+		request.Label,
+		func(label string) error {
+			return client.RemoveLabel(
+				ctx, owner, repository, request.PullRequest, label,
+			)
+		},
+	); err != nil {
+		return pendingci.Observation{}, err
+	}
 	sourceReason, err := backend.source.CancellationReason(
 		ctx, client, request, owner, repository,
 	)
@@ -127,15 +138,15 @@ func (backend *githubPendingCIBackend) MergeAtHead(
 	)
 }
 
-func (backend *githubPendingCIBackend) Complete(
+func (backend *githubPendingCIBackend) CleanupArtifacts(
 	ctx context.Context,
 	request pendingci.Request,
 	lifecycle pendingci.Lifecycle,
 ) error {
-	return backend.completeExclusive(ctx, request, lifecycle)
+	return backend.cleanupArtifactsExclusive(ctx, request, lifecycle)
 }
 
-func (backend *githubPendingCIBackend) completeExclusive(
+func (backend *githubPendingCIBackend) cleanupArtifactsExclusive(
 	ctx context.Context,
 	request pendingci.Request,
 	lifecycle pendingci.Lifecycle,
@@ -185,17 +196,41 @@ func (backend *githubPendingCIBackend) completeExclusive(
 			client.AddReaction(ctx, owner, repository, commentID, github.ReactionSuccess),
 		))
 	}
-	if scope.serviceMarker && cleanupErr == nil {
-		cleanupErr = errors.Join(cleanupErr, cleanupGitHubError(
-			"remove pending CI service ownership marker",
-			client.RemoveLabel(
-				ctx, owner, repository, request.PullRequest,
-				github.LabelPendingCIServiceOwner,
-			),
-		))
-	}
 
 	return cleanupErr
+}
+
+func (backend *githubPendingCIBackend) ReleaseOwnership(
+	ctx context.Context,
+	request pendingci.Request,
+) error {
+	client, owner, repository, err := backend.client(ctx, request)
+	if err != nil {
+		return fmt.Errorf("authenticate pending CI ownership release: %w", err)
+	}
+	scope, err := backend.cleanupScope(ctx, request)
+	if err != nil || !scope.serviceMarker {
+		return err
+	}
+	if request.SourceCommentID > 0 {
+		owned, ownershipErr := pendingCIServiceOwned(
+			ctx, client, owner, repository, request.PullRequest,
+		)
+		if ownershipErr != nil {
+			return ownershipErr
+		}
+		if !owned {
+			return nil
+		}
+	}
+
+	return cleanupGitHubError(
+		"remove pending CI service ownership marker",
+		client.RemoveLabel(
+			ctx, owner, repository, request.PullRequest,
+			github.LabelPendingCIServiceOwner,
+		),
+	)
 }
 
 func (backend *githubPendingCIBackend) cleanupScope(

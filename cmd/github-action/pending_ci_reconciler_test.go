@@ -132,8 +132,12 @@ func TestPendingCIReconcilerCompletesDurableCleanup(t *testing.T) {
 	if effects.completed != pendingci.LifecycleCancelled {
 		t.Fatalf("cleanup lifecycle = %q, want cancelled", effects.completed)
 	}
-	if store.cleanupCompleted == nil || store.cleanupCompleted.ExpectedRevision != request.Revision {
+	if store.cleanupCompleted == nil ||
+		store.cleanupCompleted.ExpectedRevision != request.Revision+1 {
 		t.Fatalf("cleanup completion = %#v", store.cleanupCompleted)
+	}
+	if !effects.released || store.cleanupArtifactsMarked == nil {
+		t.Fatal("cleanup did not persist artifacts before releasing ownership")
 	}
 }
 
@@ -159,6 +163,52 @@ func TestPendingCIReconcilerPersistsCleanupRetry(t *testing.T) {
 	}
 	if store.cleanupRetried.NextAttemptAt != now.Add(pendingCIRetryDelay) {
 		t.Fatalf("cleanup retry = %s", store.cleanupRetried.NextAttemptAt)
+	}
+}
+
+func TestPendingCIReconcilerNeverRepeatsCleanedArtifacts(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.August, 15, 12, 0, 0, 0, time.UTC)
+	store := &reconcilerTestStore{completeErr: errors.New("database unavailable")}
+	effects := &reconcilerTestEffects{}
+	request := reconcilerRequest(now)
+	request.Lifecycle = pendingci.LifecycleCancelled
+	request.CleanupPending = true
+	request.CleanupArtifactsDone = true
+	request.UpdatedAt = now
+	reconciler := newPendingCIReconciler(
+		store, reconcilerTestObserver{}, effects,
+		newPendingCICoordinator(), defaultPendingCITiming(),
+	)
+
+	if err := reconciler.Process(context.Background(), request); err == nil {
+		t.Fatal("failed durable completion unexpectedly succeeded")
+	}
+	store.completeErr = nil
+	if err := reconciler.Process(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	if effects.cleanupCalls != 0 {
+		t.Fatalf("cleaned artifacts repeated %d times", effects.cleanupCalls)
+	}
+	if effects.releaseCalls != 2 {
+		t.Fatalf("ownership release calls = %d, want two idempotent attempts", effects.releaseCalls)
+	}
+}
+
+func TestPendingCIReconcilerCoordinatesLiveObservation(t *testing.T) {
+	t.Parallel()
+	coordinationErr := errors.New("coordination unavailable")
+	reconciler := newPendingCIReconciler(
+		&reconcilerTestStore{}, reconcilerTestObserver{}, &reconcilerTestEffects{},
+		pendingCICoordinatorStub{err: coordinationErr}, defaultPendingCITiming(),
+	)
+
+	err := reconciler.Process(
+		context.Background(), reconcilerRequest(time.Now().UTC()),
+	)
+	if !errors.Is(err, coordinationErr) {
+		t.Fatalf("observation error = %v, want coordination failure", err)
 	}
 }
 
@@ -238,11 +288,13 @@ func (observer reconcilerTestObserver) Observe(
 }
 
 type reconcilerTestStore struct {
-	rescheduled      *pendingci.RescheduleRequest
-	finished         *pendingci.FinishRequest
-	cleanupCompleted *pendingci.CompleteCleanupRequest
-	cleanupRetried   *pendingci.RetryCleanupRequest
-	claimErr         error
+	rescheduled            *pendingci.RescheduleRequest
+	finished               *pendingci.FinishRequest
+	cleanupArtifactsMarked *pendingci.MarkCleanupArtifactsDoneRequest
+	cleanupCompleted       *pendingci.CompleteCleanupRequest
+	cleanupRetried         *pendingci.RetryCleanupRequest
+	claimErr               error
+	completeErr            error
 }
 
 func (store *reconcilerTestStore) ClaimMerge(
@@ -283,7 +335,19 @@ func (store *reconcilerTestStore) CompleteCleanup(
 ) (pendingci.Request, error) {
 	store.cleanupCompleted = &request
 
-	return pendingci.Request{}, nil
+	return pendingci.Request{}, store.completeErr
+}
+
+func (store *reconcilerTestStore) MarkCleanupArtifactsDone(
+	_ context.Context,
+	request pendingci.MarkCleanupArtifactsDoneRequest,
+) (pendingci.Request, error) {
+	store.cleanupArtifactsMarked = &request
+
+	return pendingci.Request{
+		ID: request.ID, Revision: request.ExpectedRevision + 1,
+		CleanupPending: true, CleanupArtifactsDone: true, UpdatedAt: request.MarkedAt,
+	}, nil
 }
 
 func (store *reconcilerTestStore) RetryCleanup(
@@ -296,10 +360,14 @@ func (store *reconcilerTestStore) RetryCleanup(
 }
 
 type reconcilerTestEffects struct {
-	mergedHead  string
-	mergeErr    error
-	completed   pendingci.Lifecycle
-	completeErr error
+	mergedHead   string
+	mergeErr     error
+	completed    pendingci.Lifecycle
+	completeErr  error
+	released     bool
+	cleanupCalls int
+	releaseCalls int
+	releaseErr   error
 }
 
 func (effects *reconcilerTestEffects) MergeAtHead(
@@ -312,12 +380,23 @@ func (effects *reconcilerTestEffects) MergeAtHead(
 	return effects.mergeErr
 }
 
-func (effects *reconcilerTestEffects) Complete(
+func (effects *reconcilerTestEffects) CleanupArtifacts(
 	_ context.Context,
 	_ pendingci.Request,
 	lifecycle pendingci.Lifecycle,
 ) error {
+	effects.cleanupCalls++
 	effects.completed = lifecycle
 
 	return effects.completeErr
+}
+
+func (effects *reconcilerTestEffects) ReleaseOwnership(
+	context.Context,
+	pendingci.Request,
+) error {
+	effects.released = true
+	effects.releaseCalls++
+
+	return effects.releaseErr
 }

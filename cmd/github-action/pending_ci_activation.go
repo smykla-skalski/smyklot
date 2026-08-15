@@ -70,13 +70,6 @@ func activatePendingCI(
 			ctx, request.owner, request.repository,
 			request.commentID, github.ReactionPendingCI,
 		)
-		if conflictErr := removeConflictingPendingCILabels(ctx, artifacts, request); conflictErr != nil {
-			rollbackErr := rollbackPendingCIArtifacts(
-				ctx, artifacts, request, ownership, false, false,
-			)
-
-			return errors.Join(conflictErr, rollbackErr)
-		}
 		failures.label = artifacts.AddLabel(
 			ctx, request.owner, request.repository, request.pullRequest, request.label,
 		)
@@ -86,8 +79,7 @@ func activatePendingCI(
 			)
 		}
 
-		var superseded *pendingci.Request
-		superseded, failures.command = command.arm(
+		_, failures.command = command.arm(
 			ctx, request.runtime, request.pullRequest, request.commentID,
 			request.headSHA, request.baseBranch, request.method,
 			request.requiredChecksOnly, request.label,
@@ -97,14 +89,7 @@ func activatePendingCI(
 				ctx, artifacts, command, request, ownership, &failures, markerAdded,
 			)
 		}
-		if superseded != nil && superseded.Label != request.label {
-			_ = artifacts.RemoveLabel(
-				ctx, request.owner, request.repository,
-				request.pullRequest, superseded.Label,
-			)
-		}
-
-		return nil
+		return removeConflictingPendingCILabels(ctx, artifacts, request)
 	})
 
 	return failures, err
@@ -171,16 +156,31 @@ func removeConflictingPendingCILabels(
 	if err != nil {
 		return fmt.Errorf("list pending CI labels: %w", err)
 	}
+
+	return removeConflictingPendingCILabelsFrom(
+		labels,
+		request.label,
+		func(label string) error {
+			return artifacts.RemoveLabel(
+				ctx, request.owner, request.repository, request.pullRequest, label,
+			)
+		},
+	)
+}
+
+func removeConflictingPendingCILabelsFrom(
+	labels []string,
+	keep string,
+	remove func(string) error,
+) error {
 	var removeErr error
 	for _, label := range labels {
-		if label == request.label || !isPendingCIMethodLabel(label) {
+		if label == keep || !isPendingCIMethodLabel(label) {
 			continue
 		}
 		removeErr = errors.Join(removeErr, cleanupGitHubError(
 			"remove conflicting pending CI label",
-			artifacts.RemoveLabel(
-				ctx, request.owner, request.repository, request.pullRequest, label,
-			),
+			remove(label),
 		))
 	}
 
@@ -204,12 +204,15 @@ func rollbackPendingCIArtifacts(
 	var rollbackErr error
 	labelRemoved := true
 	if labelAdded && !ownership.label {
-		err := artifacts.RemoveLabel(
-			ctx, request.owner, request.repository, request.pullRequest, request.label,
+		err := cleanupGitHubError(
+			"remove method label",
+			artifacts.RemoveLabel(
+				ctx, request.owner, request.repository, request.pullRequest, request.label,
+			),
 		)
 		labelRemoved = err == nil
 		if err != nil {
-			rollbackErr = errors.Join(rollbackErr, fmt.Errorf("remove method label: %w", err))
+			rollbackErr = errors.Join(rollbackErr, err)
 		}
 	}
 	if !ownership.reaction {
@@ -220,12 +223,15 @@ func rollbackPendingCIArtifacts(
 			rollbackErr = errors.Join(rollbackErr, fmt.Errorf("remove pending reaction: %w", err))
 		}
 	}
-	if markerAdded && labelRemoved && rollbackErr == nil {
-		if err := artifacts.RemoveLabel(
-			ctx, request.owner, request.repository,
-			request.pullRequest, github.LabelPendingCIServiceOwner,
+	if markerAdded && labelRemoved {
+		if err := cleanupGitHubError(
+			"remove ownership marker",
+			artifacts.RemoveLabel(
+				ctx, request.owner, request.repository,
+				request.pullRequest, github.LabelPendingCIServiceOwner,
+			),
 		); err != nil {
-			rollbackErr = errors.Join(rollbackErr, fmt.Errorf("remove ownership marker: %w", err))
+			rollbackErr = errors.Join(rollbackErr, err)
 		}
 	}
 

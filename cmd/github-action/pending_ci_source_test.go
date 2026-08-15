@@ -32,6 +32,18 @@ func TestPendingCISourceMatchesDurableIntent(t *testing.T) {
 			updatedAt: request.SourceRevision, author: "Operator", matches: true,
 		},
 		{
+			name: "help takes precedence", body: "/squash after ci\n/help",
+			updatedAt: request.SourceRevision, author: "operator",
+		},
+		{
+			name: "unapprove revokes approval", body: "/squash after ci\n/unapprove",
+			updatedAt: request.SourceRevision, author: "operator",
+		},
+		{
+			name: "later merge method wins", body: "/squash /rebase after ci",
+			updatedAt: request.SourceRevision, author: "operator",
+		},
+		{
 			name: "revoked within timestamp precision", body: "do not merge",
 			updatedAt: request.SourceRevision, author: "operator",
 		},

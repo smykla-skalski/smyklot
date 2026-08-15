@@ -18,7 +18,8 @@ SELECT id, target_id, installation_id, repository_id, repository_full_name,
        label, lifecycle, schedule,
        next_check_at, lease_expires_at, last_progress_at, last_observed_state,
        last_fingerprint, last_event_key, reason, requested_at, updated_at,
-       finished_at, cleanup_pending, cleanup_attempts, cleanup_error, revision
+       finished_at, cleanup_pending, cleanup_artifacts_done,
+       cleanup_attempts, cleanup_error, revision
 FROM pending_ci_requests`
 
 // Arm atomically supersedes the current request for a PR and records the last
@@ -45,7 +46,8 @@ func (s *Store) Arm(ctx context.Context, arm pendingci.ArmRequest) (pendingci.Ar
 		if _, err := tx.ExecContext(ctx, `
 UPDATE pending_ci_requests SET
     lifecycle = ?, reason = ?, next_check_at = ?, lease_expires_at = NULL,
-    cleanup_pending = TRUE, cleanup_attempts = 0, cleanup_error = '',
+    cleanup_pending = TRUE, cleanup_artifacts_done = FALSE,
+    cleanup_attempts = 0, cleanup_error = '',
     updated_at = ?, finished_at = ?, revision = revision + 1
 WHERE id = ? AND lifecycle = ?`,
 			pendingci.LifecycleSuperseded,
@@ -65,6 +67,7 @@ WHERE id = ? AND lifecycle = ?`,
 		superseded.NextCheckAt = arm.RequestedAt
 		superseded.LeaseExpiresAt = nil
 		superseded.CleanupPending = true
+		superseded.CleanupArtifactsDone = false
 		superseded.CleanupAttempts = 0
 		superseded.CleanupError = ""
 		superseded.Revision++
@@ -433,7 +436,8 @@ func (s *Store) Finish(
 	return s.updatePendingCI(ctx, change.ID, "finish pending CI request", `
 UPDATE pending_ci_requests SET
     lifecycle = ?, reason = ?, next_check_at = ?, lease_expires_at = NULL,
-    cleanup_pending = TRUE, cleanup_attempts = 0, cleanup_error = '',
+    cleanup_pending = TRUE, cleanup_artifacts_done = FALSE,
+    cleanup_attempts = 0, cleanup_error = '',
     updated_at = ?, finished_at = ?, revision = revision + 1
 WHERE id = ? AND lifecycle = ? AND revision = ?`,
 		change.Lifecycle,
@@ -459,8 +463,27 @@ func (s *Store) CompleteCleanup(
 UPDATE pending_ci_requests SET
     cleanup_pending = FALSE, cleanup_error = '', lease_expires_at = NULL,
     updated_at = ?, revision = revision + 1
-WHERE id = ? AND cleanup_pending = TRUE AND revision = ?`,
+WHERE id = ? AND cleanup_pending = TRUE AND cleanup_artifacts_done = TRUE AND revision = ?`,
 		change.CompletedAt,
+		change.ID,
+		change.ExpectedRevision,
+	)
+}
+
+func (s *Store) MarkCleanupArtifactsDone(
+	ctx context.Context,
+	change pendingci.MarkCleanupArtifactsDoneRequest,
+) (pendingci.Request, error) {
+	if err := change.Validate(); err != nil {
+		return pendingci.Request{}, err
+	}
+	return s.updatePendingCI(ctx, change.ID, "mark pending CI cleanup artifacts", `
+UPDATE pending_ci_requests SET
+    cleanup_artifacts_done = TRUE, next_check_at = ?, lease_expires_at = NULL,
+    cleanup_error = '', updated_at = ?, revision = revision + 1
+WHERE id = ? AND cleanup_pending = TRUE AND cleanup_artifacts_done = FALSE AND revision = ?`,
+		change.MarkedAt,
+		change.MarkedAt,
 		change.ID,
 		change.ExpectedRevision,
 	)
@@ -476,7 +499,7 @@ func (s *Store) HasPendingCleanup(
 		return false, err
 	}
 	query := "SELECT EXISTS(SELECT 1 FROM pending_ci_requests" +
-		" WHERE repository_id = ? AND cleanup_pending = 1"
+		" WHERE repository_id = ? AND cleanup_pending = TRUE"
 	arguments := []any{filter.RepositoryID}
 	if filter.PullRequest > 0 {
 		query += " AND pull_request = ?"
@@ -485,6 +508,9 @@ func (s *Store) HasPendingCleanup(
 	if filter.ExcludeID > 0 {
 		query += " AND id != ?"
 		arguments = append(arguments, filter.ExcludeID)
+	}
+	if filter.ArtifactsPendingOnly {
+		query += " AND cleanup_artifacts_done = FALSE"
 	}
 	query += ")"
 
@@ -577,7 +603,8 @@ WHERE repository_id = ? AND pull_request = ? AND source_comment_id = ? AND lifec
 	result, err := tx.ExecContext(ctx, `
 UPDATE pending_ci_requests SET
     lifecycle = ?, reason = ?, next_check_at = ?, lease_expires_at = NULL,
-    cleanup_pending = TRUE, cleanup_attempts = 0, cleanup_error = '',
+    cleanup_pending = TRUE, cleanup_artifacts_done = FALSE,
+    cleanup_attempts = 0, cleanup_error = '',
     updated_at = ?, finished_at = ?, revision = revision + 1
 WHERE id = ? AND lifecycle = ?`,
 		pendingci.LifecycleCancelled,
@@ -608,6 +635,7 @@ WHERE id = ? AND lifecycle = ?`,
 	request.FinishedAt = timePointer(change.CancelledAt)
 	request.NextCheckAt = change.CancelledAt
 	request.CleanupPending = true
+	request.CleanupArtifactsDone = false
 	request.CleanupAttempts = 0
 	request.CleanupError = ""
 	request.Revision++

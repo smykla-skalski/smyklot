@@ -70,8 +70,9 @@ func (s *server) restorePendingCIServiceOwnership(
 		cleanupPending, cleanupErr := s.store.HasPendingCleanup(
 			ctx,
 			pendingci.CleanupFilter{
-				RepositoryID: repositoryID,
-				PullRequest:  pullRequest,
+				RepositoryID:         repositoryID,
+				PullRequest:          pullRequest,
+				ArtifactsPendingOnly: true,
 			},
 		)
 		if cleanupErr != nil {

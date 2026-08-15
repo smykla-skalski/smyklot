@@ -53,38 +53,39 @@ const (
 )
 
 type Request struct {
-	ID                 int64
-	TargetID           string
-	InstallationID     int64
-	RepositoryID       string
-	RepositoryFullName string
-	PullRequest        int
-	HeadSHA            string
-	BaseBranch         string
-	MergeMethod        MergeMethod
-	RequiredChecksOnly bool
-	Requester          string
-	SourceCommentID    int64
-	SourceRevision     string
-	SourceSequence     int
-	SourceOrder        int64
-	Label              string
-	Lifecycle          Lifecycle
-	Schedule           Schedule
-	NextCheckAt        time.Time
-	LeaseExpiresAt     *time.Time
-	LastProgressAt     time.Time
-	LastObservedState  string
-	LastFingerprint    string
-	LastEventKey       string
-	Reason             string
-	RequestedAt        time.Time
-	UpdatedAt          time.Time
-	FinishedAt         *time.Time
-	CleanupPending     bool
-	CleanupAttempts    int
-	CleanupError       string
-	Revision           int64
+	ID                   int64
+	TargetID             string
+	InstallationID       int64
+	RepositoryID         string
+	RepositoryFullName   string
+	PullRequest          int
+	HeadSHA              string
+	BaseBranch           string
+	MergeMethod          MergeMethod
+	RequiredChecksOnly   bool
+	Requester            string
+	SourceCommentID      int64
+	SourceRevision       string
+	SourceSequence       int
+	SourceOrder          int64
+	Label                string
+	Lifecycle            Lifecycle
+	Schedule             Schedule
+	NextCheckAt          time.Time
+	LeaseExpiresAt       *time.Time
+	LastProgressAt       time.Time
+	LastObservedState    string
+	LastFingerprint      string
+	LastEventKey         string
+	Reason               string
+	RequestedAt          time.Time
+	UpdatedAt            time.Time
+	FinishedAt           *time.Time
+	CleanupPending       bool
+	CleanupArtifactsDone bool
+	CleanupAttempts      int
+	CleanupError         string
+	Revision             int64
 }
 
 type ArmRequest struct {
@@ -237,9 +238,16 @@ type CancelRepositoryRequest struct {
 // CleanupFilter scopes ownership-barrier queries. PullRequest zero means the
 // whole repository; ExcludeID omits the cleanup currently being applied.
 type CleanupFilter struct {
-	RepositoryID string
-	PullRequest  int
-	ExcludeID    int64
+	RepositoryID         string
+	PullRequest          int
+	ExcludeID            int64
+	ArtifactsPendingOnly bool
+}
+
+type MarkCleanupArtifactsDoneRequest struct {
+	ID               int64
+	ExpectedRevision int64
+	MarkedAt         time.Time
 }
 
 type CompleteCleanupRequest struct {
@@ -311,6 +319,7 @@ type Store interface {
 	ClaimMerge(context.Context, ClaimMergeRequest) (Request, error)
 	Reschedule(context.Context, RescheduleRequest) (Request, error)
 	Finish(context.Context, FinishRequest) (Request, error)
+	MarkCleanupArtifactsDone(context.Context, MarkCleanupArtifactsDoneRequest) (Request, error)
 	CompleteCleanup(context.Context, CompleteCleanupRequest) (Request, error)
 	RetryCleanup(context.Context, RetryCleanupRequest) (Request, error)
 	CancelBySource(context.Context, CancelRequest) (*Request, error)

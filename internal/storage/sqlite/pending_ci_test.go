@@ -64,8 +64,16 @@ var _ = Describe("pending CI storage [Unit]", func() {
 		Expect(lease.Request.ID).To(Equal(first.Request.ID))
 		Expect(lease.Request.Lifecycle).To(Equal(pendingci.LifecycleSuperseded))
 		Expect(lease.Request.CleanupPending).To(BeTrue())
+		cleaned, err := store.MarkCleanupArtifactsDone(
+			ctx,
+			pendingci.MarkCleanupArtifactsDoneRequest{
+				ID: lease.Request.ID, ExpectedRevision: lease.Request.Revision,
+				MarkedAt: secondArm.RequestedAt,
+			},
+		)
+		Expect(err).NotTo(HaveOccurred())
 		_, err = store.CompleteCleanup(ctx, pendingci.CompleteCleanupRequest{
-			ID: lease.Request.ID, ExpectedRevision: lease.Request.Revision,
+			ID: cleaned.ID, ExpectedRevision: cleaned.Revision,
 			CompletedAt: secondArm.RequestedAt,
 		})
 		Expect(err).NotTo(HaveOccurred())
@@ -251,8 +259,42 @@ var _ = Describe("pending CI storage [Unit]", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(cleanupLease.Request).NotTo(BeNil())
 		Expect(cleanupLease.Request.CleanupAttempts).To(Equal(1))
-		completed, err := store.CompleteCleanup(ctx, pendingci.CompleteCleanupRequest{
+		_, err = store.CompleteCleanup(ctx, pendingci.CompleteCleanupRequest{
 			ID: cleanupLease.Request.ID, ExpectedRevision: cleanupLease.Request.Revision,
+			CompletedAt: retryAt,
+		})
+		Expect(errors.Is(err, storage.ErrConflict)).To(BeTrue())
+		cleaned, err := store.MarkCleanupArtifactsDone(
+			ctx,
+			pendingci.MarkCleanupArtifactsDoneRequest{
+				ID:               cleanupLease.Request.ID,
+				ExpectedRevision: cleanupLease.Request.Revision,
+				MarkedAt:         retryAt,
+			},
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cleaned.CleanupArtifactsDone).To(BeTrue())
+		pendingArtifacts, err := store.HasPendingCleanup(
+			ctx,
+			pendingci.CleanupFilter{
+				RepositoryID:         cleaned.RepositoryID,
+				PullRequest:          cleaned.PullRequest,
+				ArtifactsPendingOnly: true,
+			},
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(pendingArtifacts).To(BeFalse())
+		pendingOwnership, err := store.HasPendingCleanup(
+			ctx,
+			pendingci.CleanupFilter{
+				RepositoryID: cleaned.RepositoryID,
+				PullRequest:  cleaned.PullRequest,
+			},
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(pendingOwnership).To(BeTrue())
+		completed, err := store.CompleteCleanup(ctx, pendingci.CompleteCleanupRequest{
+			ID: cleaned.ID, ExpectedRevision: cleaned.Revision,
 			CompletedAt: retryAt,
 		})
 		Expect(err).NotTo(HaveOccurred())
