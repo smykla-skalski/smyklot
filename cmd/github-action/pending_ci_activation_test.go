@@ -318,6 +318,98 @@ func TestPendingCIActivationCancelsAmbiguousCommands(t *testing.T) {
 	}
 }
 
+func TestPendingCIActivationSerializesApprovalWithCleanup(t *testing.T) {
+	t.Parallel()
+	coordinator := newPendingCICoordinator()
+	cleanupStarted := make(chan struct{})
+	releaseCleanup := make(chan struct{})
+	cleanupDone := make(chan error, 1)
+	go func() {
+		cleanupDone <- coordinator.Exclusive(
+			t.Context(), "repository:7", func() error {
+				close(cleanupStarted)
+				<-releaseCleanup
+
+				return nil
+			},
+		)
+	}()
+	<-cleanupStarted
+
+	approvalStarted := make(chan struct{})
+	artifacts := &pendingCIArtifactsStub{info: &github.PRInfo{}, approve: func() error {
+		close(approvalStarted)
+
+		return nil
+	}}
+	command := &pendingCICommand{
+		store:       pendingCICommandStoreStub{getErr: storage.ErrNotFound},
+		coordinator: coordinator, repositoryID: "repository:7",
+		now: func() time.Time { return time.Now().UTC() }, wake: func() {},
+	}
+	activationAttempted := make(chan struct{})
+	activationDone := make(chan error, 1)
+	go func() {
+		close(activationAttempted)
+		_, err := activatePendingCI(
+			t.Context(), artifacts, command, pendingCIActivationRequest{
+				runtime: &RuntimeConfig{CommentAuthor: "operator"},
+				owner:   "owner", repository: "repository", pullRequest: 198,
+				commentID: 101, headSHA: "head", baseBranch: "main",
+				method: github.MergeMethodSquash, label: github.LabelPendingCISquash,
+			},
+		)
+		activationDone <- err
+	}()
+	<-activationAttempted
+	approvedEarly := false
+	select {
+	case <-approvalStarted:
+		approvedEarly = true
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(releaseCleanup)
+	if err := <-cleanupDone; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-activationDone; err != nil {
+		t.Fatal(err)
+	}
+	if approvedEarly {
+		t.Fatal("approval ran while cleanup still owned the repository")
+	}
+}
+
+func TestPendingCIActivationStopsWhenApprovalFails(t *testing.T) {
+	t.Parallel()
+	approvalErr := errors.New("approval refused")
+	artifacts := &pendingCIArtifactsStub{
+		info: &github.PRInfo{}, approve: func() error { return approvalErr },
+	}
+	command := &pendingCICommand{
+		store:       pendingCICommandStoreStub{getErr: storage.ErrNotFound},
+		coordinator: newPendingCICoordinator(), repositoryID: "repository:7",
+		now: func() time.Time { return time.Now().UTC() }, wake: func() {},
+	}
+	failures, err := activatePendingCI(
+		t.Context(), artifacts, command, pendingCIActivationRequest{
+			runtime: &RuntimeConfig{CommentAuthor: "operator"},
+			owner:   "owner", repository: "repository", pullRequest: 198,
+			commentID: 101, headSHA: "head", baseBranch: "main",
+			method: github.MergeMethodSquash, label: github.LabelPendingCISquash,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !errors.Is(failures.approval, approvalErr) {
+		t.Fatalf("approval failure = %v, want %v", failures.approval, approvalErr)
+	}
+	if len(artifacts.addedLabels) != 0 {
+		t.Fatalf("labels added after approval failure: %v", artifacts.addedLabels)
+	}
+}
+
 type pendingCIArtifactsStub struct {
 	labels            []string
 	addedLabels       []string
@@ -325,6 +417,35 @@ type pendingCIArtifactsStub struct {
 	removedReactions  []int
 	addLabelErrors    map[string]error
 	removeLabelErrors map[string]error
+	approve           func() error
+	info              *github.PRInfo
+	infoErr           error
+}
+
+func (stub *pendingCIArtifactsStub) ApprovePR(
+	context.Context,
+	string,
+	string,
+	int,
+) error {
+	if stub.approve != nil {
+		return stub.approve()
+	}
+
+	return nil
+}
+
+func (stub *pendingCIArtifactsStub) GetPRInfo(
+	context.Context,
+	string,
+	string,
+	int,
+) (*github.PRInfo, error) {
+	if stub.info != nil || stub.infoErr != nil {
+		return stub.info, stub.infoErr
+	}
+
+	return &github.PRInfo{ApprovedBy: []string{"operator"}}, nil
 }
 
 func (stub *pendingCIArtifactsStub) GetLabels(

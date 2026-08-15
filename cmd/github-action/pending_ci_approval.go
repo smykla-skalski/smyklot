@@ -12,12 +12,9 @@ type pendingCIApprover interface {
 	ApprovePR(context.Context, string, string, int) error
 }
 
-func preparePendingCIApproval(
-	ctx context.Context,
-	approver pendingCIApprover,
+func pendingCIApprovalAllowed(
 	runtime *RuntimeConfig,
 	botConfig *config.Config,
-	pullRequest int,
 	info *github.PRInfo,
 ) *feedback.Feedback {
 	if !botConfig.AllowSelfApproval && info.Author == runtime.CommentAuthor {
@@ -26,16 +23,32 @@ func preparePendingCIApproval(
 			[]string{selfApprovalNotAllowed},
 		)
 	}
+
+	return nil
+}
+
+func pendingCIApprovalRequired(
+	runtime *RuntimeConfig,
+	info *github.PRInfo,
+) bool {
 	botApproved := isBotAlreadyApproved(info, runtime.BotUsername)
-	userApproved := false
 	for _, login := range info.ApprovedBy {
 		if login == runtime.CommentAuthor {
-			userApproved = true
-
-			break
+			return false
 		}
 	}
-	if botApproved || userApproved {
+
+	return !botApproved
+}
+
+func approvePendingCI(
+	ctx context.Context,
+	approver pendingCIApprover,
+	runtime *RuntimeConfig,
+	pullRequest int,
+	required bool,
+) *feedback.Feedback {
+	if !required {
 		return nil
 	}
 	if err := approver.ApprovePR(

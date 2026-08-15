@@ -10,6 +10,8 @@ import (
 )
 
 type pendingCIArtifacts interface {
+	pendingCIApprover
+	GetPRInfo(context.Context, string, string, int) (*github.PRInfo, error)
 	GetLabels(context.Context, string, string, int) ([]string, error)
 	AddLabel(context.Context, string, string, int, string) error
 	RemoveLabel(context.Context, string, string, int, string) error
@@ -38,6 +40,7 @@ type pendingCIActivationRequest struct {
 }
 
 type pendingCIActivationErrors struct {
+	approval  error
 	label     error
 	command   error
 	stale     bool
@@ -62,6 +65,22 @@ func activatePendingCI(
 			failures.command = err
 
 			return nil
+		}
+		info, err := artifacts.GetPRInfo(
+			ctx, request.owner, request.repository, request.pullRequest,
+		)
+		if err != nil {
+			failures.approval = err
+
+			return nil
+		}
+		if pendingCIApprovalRequired(request.runtime, info) {
+			failures.approval = artifacts.ApprovePR(
+				ctx, request.owner, request.repository, request.pullRequest,
+			)
+			if failures.approval != nil {
+				return nil
+			}
 		}
 		failures.label = artifacts.AddLabel(
 			ctx, request.owner, request.repository,

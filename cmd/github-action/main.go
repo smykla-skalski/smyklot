@@ -1024,13 +1024,18 @@ func executePendingCIMerge(
 		}
 	}
 
-	if failure := preparePendingCIApproval(ctx, client, rc, bc, prNum, info); failure != nil {
+	if failure := pendingCIApprovalAllowed(rc, bc, info); failure != nil {
 		return failure, nil
 	}
 
 	// Add pending-ci label with merge method and required flag
 	label := getPendingCILabel(method, requiredChecksOnly)
 	if environment.pendingCI == nil {
+		if failure := approvePendingCI(
+			ctx, client, rc, prNum, pendingCIApprovalRequired(rc, info),
+		); failure != nil {
+			return failure, nil
+		}
 		_ = client.AddReaction(
 			ctx, rc.RepoOwner, rc.RepoName, commentID, github.ReactionPendingCI,
 		)
@@ -1048,6 +1053,9 @@ func executePendingCIMerge(
 		)
 		if coordinationErr != nil {
 			return nil, coordinationErr
+		}
+		if failures.approval != nil {
+			return feedback.NewApprovalFailed(failures.approval.Error()), nil
 		}
 		if failures.label != nil {
 			return feedback.NewMergeFailed(
