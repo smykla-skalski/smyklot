@@ -630,8 +630,7 @@ Built with:
 - [Gomega](https://github.com/onsi/gomega) - Matcher library
 - [Viper](https://github.com/spf13/viper) - Configuration management
 - [Cobra](https://github.com/spf13/cobra) - CLI framework
-- [mise](https://mise.jdx.dev/) - Tool version manager
-- [Task](https://taskfile.dev/) - Task runner
+- [mise](https://mise.jdx.dev/) - Tool version and task runner
 - [GoReleaser](https://goreleaser.com/) - Release automation
 
 ---

@@ -26,6 +26,7 @@ func scanPendingCI(scanner rowScanner) (pendingci.Request, error) {
 		&request.SourceCommentID,
 		&request.SourceRevision,
 		&request.SourceSequence,
+		&request.SourceOrder,
 		&request.Label,
 		&request.Lifecycle,
 		&request.Schedule,

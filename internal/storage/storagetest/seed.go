@@ -52,6 +52,7 @@ func SeededTables() []string {
 		"security_notifications",
 		"deliveries",
 		"pending_ci_requests",
+		"pending_ci_source_orders",
 		"pending_ci_source_revisions",
 		"user_invitations",
 		"runtime_settings",
@@ -322,20 +323,7 @@ func (s *seeder) seedDelivery() error {
 // seedPendingCI fills pending_ci_requests with one terminal exact-head request.
 func (s *seeder) seedPendingCI() error {
 	requestedAt := s.now.Add(11 * time.Minute)
-	armed, err := s.store.Arm(s.ctx, pendingci.ArmRequest{
-		TargetID: s.target.TargetID, InstallationID: 77,
-		RepositoryID: "repo-1", RepositoryFullName: "smykla-skalski/smyklot",
-		PullRequest: 198, HeadSHA: "seed-head", BaseBranch: "main",
-		MergeMethod: pendingci.MergeMethodSquash, RequiredChecksOnly: true,
-		Requester: "seed-owner", SourceCommentID: 101,
-		SourceRevision: requestedAt.Format(time.RFC3339Nano),
-		SourceSequence: 1,
-		Label:          "smyklot:pending:ci:squash:required", RequestedAt: requestedAt,
-	})
-	if err != nil {
-		return err
-	}
-	claimed, err := s.store.ClaimSourceRevision(s.ctx, pendingci.SourceRevisionRequest{
+	claim, err := s.store.ClaimSourceRevision(s.ctx, pendingci.SourceRevisionRequest{
 		RepositoryID: "repo-1", PullRequest: 198, CommentID: 101,
 		Revision: requestedAt.Format(time.RFC3339Nano), Sequence: 1,
 		EventKey: "seed:pending-ci:source", ObservedAt: requestedAt,
@@ -343,8 +331,22 @@ func (s *seeder) seedPendingCI() error {
 	if err != nil {
 		return err
 	}
-	if !claimed {
+	if !claim.Accepted {
 		return fmt.Errorf("claim seeded pending CI source revision")
+	}
+
+	armed, err := s.store.Arm(s.ctx, pendingci.ArmRequest{
+		TargetID: s.target.TargetID, InstallationID: 77,
+		RepositoryID: "repo-1", RepositoryFullName: "smykla-skalski/smyklot",
+		PullRequest: 198, HeadSHA: "seed-head", BaseBranch: "main",
+		MergeMethod: pendingci.MergeMethodSquash, RequiredChecksOnly: true,
+		Requester: "seed-owner", SourceCommentID: 101,
+		SourceRevision: requestedAt.Format(time.RFC3339Nano),
+		SourceSequence: 1, SourceOrder: claim.SourceOrder,
+		Label: "smyklot:pending:ci:squash:required", RequestedAt: requestedAt,
+	})
+	if err != nil {
+		return err
 	}
 	_, err = s.store.Finish(s.ctx, pendingci.FinishRequest{
 		ID: armed.Request.ID, ExpectedRevision: armed.Request.Revision,

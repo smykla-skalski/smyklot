@@ -107,6 +107,11 @@ var _ = Describe("IssueCommentEvent.IdempotencyKey [Unit]", func() {
 			NotTo(Equal(key("created", "/approve", "2026-08-08T10:00:00Z")))
 	})
 
+	It("should distinguish two edits within the same timestamp", func() {
+		Expect(key("edited", "/merge after ci", "2026-08-08T10:05:00Z")).
+			NotTo(Equal(key("edited", "/squash after ci", "2026-08-08T10:05:00Z")))
+	})
+
 	// Deleting a comment is a separate event from creating it, and both are
 	// reported
 	It("should distinguish a deletion from the creation it follows", func() {
@@ -116,6 +121,8 @@ var _ = Describe("IssueCommentEvent.IdempotencyKey [Unit]", func() {
 
 	It("should name the repository and the comment", func() {
 		Expect(key("created", "/approve", "2026-08-08T10:00:00Z")).
-			To(Equal("issue_comment:created:smykla-skalski/smyklot:555:2026-08-08T10:00:00Z"))
+			To(HavePrefix(
+				"issue_comment:created:smykla-skalski/smyklot:555:2026-08-08T10:00:00Z:",
+			))
 	})
 })

@@ -1198,8 +1198,8 @@ func TestPanelManagesPendingCIQueue(t *testing.T) {
 		PullRequest: 42, HeadSHA: "abc123", BaseBranch: "main",
 		MergeMethod: pendingci.MergeMethodSquash, Requester: "operator",
 		SourceCommentID: 99, SourceRevision: harness.now.Format(time.RFC3339Nano),
-		SourceSequence: 1,
-		Label:          "smyklot:pending:ci:squash", RequestedAt: harness.now,
+		SourceSequence: 1, SourceOrder: 1,
+		Label: "smyklot:pending:ci:squash", RequestedAt: harness.now,
 	})
 	if err != nil {
 		t.Fatal(err)

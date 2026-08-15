@@ -113,3 +113,57 @@ WHERE id = ? AND lifecycle = ? AND revision = ?`,
 
 	return &request, nil
 }
+
+// CancelRepository terminalizes every armed request before the service hands
+// a repository back to the GitHub Action runner.
+func (s *Store) CancelRepository(
+	ctx context.Context,
+	change pendingci.CancelRepositoryRequest,
+) ([]pendingci.Request, error) {
+	if err := change.Validate(); err != nil {
+		return nil, err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin pending CI repository cancellation: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	result, err := tx.ExecContext(ctx, `
+UPDATE pending_ci_requests SET
+    lifecycle = ?, reason = ?, next_check_at = ?, lease_expires_at = NULL,
+    cleanup_pending = TRUE, cleanup_attempts = 0, cleanup_error = '',
+    updated_at = ?, finished_at = ?, revision = revision + 1
+WHERE repository_id = ? AND lifecycle = ?`,
+		pendingci.LifecycleCancelled, change.Reason,
+		change.CancelledAt, change.CancelledAt,
+		change.CancelledAt, change.RepositoryID, pendingci.LifecycleArmed,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("cancel pending CI repository: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return nil, fmt.Errorf("read pending CI repository cancellation result: %w", err)
+	}
+	if changed == 0 {
+		return nil, nil
+	}
+	rows, err := tx.QueryContext(ctx, pendingCISelect+`
+WHERE repository_id = ? AND lifecycle = ? AND reason = ? AND finished_at = ?`,
+		change.RepositoryID, pendingci.LifecycleCancelled,
+		change.Reason, change.CancelledAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("read cancelled pending CI repository: %w", err)
+	}
+	requests, err := collectRows(rows, scanPendingCI)
+	if err != nil {
+		return nil, fmt.Errorf("collect cancelled pending CI repository: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit pending CI repository cancellation: %w", err)
+	}
+
+	return requests, nil
+}

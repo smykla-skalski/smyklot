@@ -137,6 +137,7 @@ type server struct {
 	jobs                 chan job
 	pendingCI            *pendingCIScheduler
 	pendingCICoordinator pendingCIExclusive
+	pendingCIHandoff     *pendingCIHandoff
 
 	// queueMu makes worker shutdown idempotent. The dispatcher is stopped before
 	// jobs is closed, so it can never send to a closed channel.
@@ -248,6 +249,9 @@ func newServer(cfg *serveConfig) (*server, error) {
 		defaultPendingCITiming(),
 	)
 	srv.pendingCI = newPendingCIScheduler(srv.store, pendingCIReconciler, srv.logger)
+	srv.pendingCIHandoff = &pendingCIHandoff{
+		store: srv.store, coordinator: pendingCICoordinator, wake: srv.pendingCI.Wake,
+	}
 	if err := srv.initPanel(); err != nil {
 		_ = srv.store.Close()
 		cancelDeliveryRetry()
@@ -660,7 +664,7 @@ func (s *server) recordFailure(j job, cause error) {
 // Everything past executeComment is the Action's own code, so a comment gets
 // the same permission check and the same feedback whichever entry point saw it.
 func (s *server) handleIssueComment(ctx context.Context, event *webhook.IssueCommentEvent) error {
-	accepted, err := s.store.ClaimSourceRevision(ctx, pendingci.SourceRevisionRequest{
+	claim, err := s.store.ClaimSourceRevision(ctx, pendingci.SourceRevisionRequest{
 		RepositoryID: repositoryStorageID(event.Repository.ID),
 		PullRequest:  event.Issue.Number, CommentID: event.Comment.ID,
 		Revision: event.Comment.UpdatedAt, Sequence: event.SourceSequence(),
@@ -669,12 +673,12 @@ func (s *server) handleIssueComment(ctx context.Context, event *webhook.IssueCom
 	if err != nil {
 		return fmt.Errorf("claim issue comment revision: %w", err)
 	}
-	if !accepted {
+	if !claim.Accepted {
 		logging.From(ctx).Info("ignored stale issue comment revision")
 
 		return nil
 	}
-	if err := s.cancelEditedPendingCI(ctx, event); err != nil {
+	if err := s.cancelEditedPendingCI(ctx, event, claim.SourceOrder); err != nil {
 		return err
 	}
 	token, err := s.tokens.InstallationToken(event.Installation.ID)
@@ -712,7 +716,9 @@ func (s *server) handleIssueComment(ctx context.Context, event *webhook.IssueCom
 		return nil
 	}
 
-	return executeCommentWithEnvironment(ctx, client, rc, bc, s.commandEnvironment(event))
+	return executeCommentWithEnvironment(
+		ctx, client, rc, bc, s.commandEnvironment(event, claim.SourceOrder),
+	)
 }
 
 // eventLabel reduces an event name to a value safe to use as a metric label.

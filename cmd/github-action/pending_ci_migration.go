@@ -24,14 +24,26 @@ func (s *server) drainLegacyPendingCILabels(
 	repository github.Repository,
 	prs []map[string]interface{},
 ) error {
-	for _, candidate := range filterPendingCIPRs(prs) {
-		pullRequest := extractPRNumber(candidate.prData)
+	for _, pr := range prs {
+		candidates := pendingCILabels(pr)
+		if len(candidates) == 0 {
+			continue
+		}
+		pullRequest := extractPRNumber(pr)
 		if pullRequest == 0 {
 			return fmt.Errorf("drain legacy pending CI label: invalid pull request number")
 		}
-		headSHA, baseBranch, err := pendingCIMigrationRefs(candidate.prData)
+		headSHA, baseBranch, err := pendingCIMigrationRefs(pr)
 		if err != nil {
 			return err
+		}
+		labels := make([]pendingci.LegacyPendingCILabel, 0, len(candidates))
+		for _, candidate := range candidates {
+			labels = append(labels, pendingci.LegacyPendingCILabel{
+				MergeMethod:        pendingci.MergeMethod(candidate.method),
+				RequiredChecksOnly: candidate.requiredOnly,
+				Label:              candidate.label,
+			})
 		}
 
 		var result pendingci.LegacyDrainResult
@@ -43,9 +55,7 @@ func (s *server) drainLegacyPendingCILabels(
 					RepositoryID:       repositoryStorageID(repository.ID),
 					RepositoryFullName: repoFullName(repository.Owner, repository.Name),
 					PullRequest:        pullRequest, HeadSHA: headSHA,
-					BaseBranch: baseBranch, MergeMethod: pendingci.MergeMethod(candidate.method),
-					RequiredChecksOnly: candidate.requiredOnly, Label: candidate.label,
-					DrainedAt: time.Now().UTC(),
+					BaseBranch: baseBranch, Labels: labels, DrainedAt: time.Now().UTC(),
 				})
 
 				return drainErr
@@ -54,7 +64,7 @@ func (s *server) drainLegacyPendingCILabels(
 		if err != nil {
 			return fmt.Errorf("persist legacy pending CI drain: %w", err)
 		}
-		if result.Request == nil {
+		if len(result.Requests) == 0 {
 			continue
 		}
 

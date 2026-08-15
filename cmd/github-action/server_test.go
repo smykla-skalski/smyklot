@@ -137,6 +137,7 @@ func armWebhookTestRequestWithLabel(srv *server, label string) pendingci.Request
 		SourceCommentID:    555,
 		SourceRevision:     requestedAt.Format(time.RFC3339Nano),
 		SourceSequence:     1,
+		SourceOrder:        1,
 		Label:              label,
 		RequestedAt:        requestedAt,
 	})

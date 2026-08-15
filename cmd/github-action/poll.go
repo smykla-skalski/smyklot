@@ -407,34 +407,40 @@ func filterPendingCIPRs(prs []map[string]interface{}) []pendingCIPR {
 	var result []pendingCIPR
 
 	for _, pr := range prs {
-		labels, ok := pr["labels"].([]interface{})
+		labels := pendingCILabels(pr)
+		if len(labels) > 0 {
+			result = append(result, labels[0])
+		}
+	}
+
+	return result
+}
+
+// pendingCILabels returns every pending-CI label on one pull request. Action
+// polling intentionally consumes only the first; upgrade cleanup needs all of
+// them so no stale method label survives the cutover.
+func pendingCILabels(pr map[string]interface{}) []pendingCIPR {
+	labels, ok := pr["labels"].([]interface{})
+	if !ok {
+		return nil
+	}
+	result := make([]pendingCIPR, 0, len(labels))
+	for _, item := range labels {
+		labelMap, ok := item.(map[string]interface{})
 		if !ok {
 			continue
 		}
-
-		for _, l := range labels {
-			labelMap, ok := l.(map[string]interface{})
-			if !ok {
-				continue
-			}
-
-			labelName, ok := labelMap["name"].(string)
-			if !ok {
-				continue
-			}
-
-			method, requiredOnly, label := parsePendingCILabel(labelName)
-			if label != "" {
-				result = append(result, pendingCIPR{
-					prData:       pr,
-					method:       method,
-					label:        label,
-					requiredOnly: requiredOnly,
-				})
-
-				break // Only one pending-ci label per PR
-			}
+		labelName, ok := labelMap["name"].(string)
+		if !ok {
+			continue
 		}
+		method, requiredOnly, label := parsePendingCILabel(labelName)
+		if label == "" {
+			continue
+		}
+		result = append(result, pendingCIPR{
+			prData: pr, method: method, label: label, requiredOnly: requiredOnly,
+		})
 	}
 
 	return result

@@ -61,6 +61,7 @@ type pendingCICommand struct {
 	repositoryFullName string
 	sourceRevision     string
 	sourceSequence     int
+	sourceOrder        int64
 	now                func() time.Time
 }
 
@@ -81,7 +82,8 @@ func (command *pendingCICommand) arm(
 		MergeMethod: pendingci.MergeMethod(method), RequiredChecksOnly: requiredChecksOnly,
 		Requester: runtime.CommentAuthor, SourceCommentID: int64(commentID),
 		SourceRevision: command.sourceRevision, SourceSequence: command.sourceSequence,
-		Label: label, RequestedAt: requestedAt,
+		SourceOrder: command.sourceOrder,
+		Label:       label, RequestedAt: requestedAt,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("persist pending CI command: %w", err)
@@ -91,7 +93,10 @@ func (command *pendingCICommand) arm(
 	return result.Superseded, nil
 }
 
-func (s *server) commandEnvironment(event *webhook.IssueCommentEvent) commandEnvironment {
+func (s *server) commandEnvironment(
+	event *webhook.IssueCommentEvent,
+	sourceOrder int64,
+) commandEnvironment {
 	return commandEnvironment{pendingCI: &pendingCICommand{
 		store: s.store, wake: s.pendingCI.Wake,
 		coordinator:        s.pendingCICoordinator,
@@ -101,6 +106,7 @@ func (s *server) commandEnvironment(event *webhook.IssueCommentEvent) commandEnv
 		repositoryFullName: event.Repository.FullName,
 		sourceRevision:     event.Comment.UpdatedAt,
 		sourceSequence:     event.SourceSequence(),
+		sourceOrder:        sourceOrder,
 		now:                func() time.Time { return time.Now().UTC() },
 	}}
 }
@@ -108,6 +114,7 @@ func (s *server) commandEnvironment(event *webhook.IssueCommentEvent) commandEnv
 func (s *server) cancelEditedPendingCI(
 	ctx context.Context,
 	event *webhook.IssueCommentEvent,
+	sourceOrder int64,
 ) error {
 	if event.Action != webhook.ActionEdited && event.Action != webhook.ActionDeleted {
 		return nil
@@ -124,7 +131,8 @@ func (s *server) cancelEditedPendingCI(
 			RepositoryID: repositoryID,
 			PullRequest:  event.Issue.Number, CommentID: event.Comment.ID,
 			SourceRevision: event.Comment.UpdatedAt, SourceSequence: event.SourceSequence(),
-			Reason: reason, CancelledAt: time.Now().UTC(),
+			SourceOrder: sourceOrder,
+			Reason:      reason, CancelledAt: time.Now().UTC(),
 		})
 
 		return transitionErr

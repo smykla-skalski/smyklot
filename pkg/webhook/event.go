@@ -6,6 +6,7 @@
 package webhook
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 
@@ -137,16 +138,20 @@ func (e *IssueCommentEvent) Actionable() bool {
 //
 // GitHub does not document whether X-GitHub-Delivery survives a redelivery, so
 // keying on it would be a guess. Deriving the key from the comment itself holds
-// either way: a redelivery repeats the same comment at the same revision and is
-// skipped, while a genuine edit moves updated_at and is executed.
+// either way. The body digest distinguishes multiple edits that GitHub reports
+// with the same second-granularity updated_at timestamp without storing the
+// comment body in durable state.
 func (e *IssueCommentEvent) IdempotencyKey() string {
+	bodyDigest := sha256.Sum256([]byte(e.Comment.Body))
+
 	return fmt.Sprintf(
-		"%s:%s:%s:%d:%s",
+		"%s:%s:%s:%d:%s:%x",
 		EventIssueComment,
 		e.Action,
 		e.Repository.FullName,
 		e.Comment.ID,
 		e.Comment.UpdatedAt,
+		bodyDigest,
 	)
 }
 

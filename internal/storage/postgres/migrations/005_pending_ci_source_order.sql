@@ -1,6 +1,16 @@
 ALTER TABLE pending_ci_requests
 ADD COLUMN source_sequence INTEGER NOT NULL DEFAULT 1;
 
+ALTER TABLE pending_ci_requests
+ADD COLUMN source_order BIGINT NOT NULL DEFAULT 1;
+
+CREATE TABLE pending_ci_source_orders (
+    repository_id TEXT NOT NULL,
+    pull_request INTEGER NOT NULL,
+    next_order BIGINT NOT NULL,
+    PRIMARY KEY (repository_id, pull_request)
+);
+
 CREATE TABLE pending_ci_source_revisions (
     repository_id TEXT NOT NULL,
     pull_request INTEGER NOT NULL,
@@ -8,6 +18,11 @@ CREATE TABLE pending_ci_source_revisions (
     source_revision TEXT NOT NULL,
     source_sequence INTEGER NOT NULL,
     event_key TEXT NOT NULL,
+    source_order BIGINT NOT NULL,
     observed_at TIMESTAMPTZ NOT NULL,
-    PRIMARY KEY (repository_id, pull_request, source_comment_id)
+    PRIMARY KEY (repository_id, pull_request, source_comment_id, event_key),
+    UNIQUE (repository_id, pull_request, source_order)
 );
+
+CREATE INDEX pending_ci_source_revisions_latest
+ON pending_ci_source_revisions (repository_id, pull_request, source_comment_id, source_order DESC);

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -15,7 +16,7 @@ import (
 
 	"github.com/smykla-skalski/smyklot/internal/githubtest"
 	adminpanel "github.com/smykla-skalski/smyklot/internal/panel"
-	"github.com/smykla-skalski/smyklot/internal/pendingci"
+	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
@@ -99,9 +100,12 @@ var _ = Describe("Reaction sweep [Unit]", func() {
 			service.pollLoop(ctx)
 		}()
 
+		Eventually(func() int {
+			return stub.countCalls(http.MethodGet, "/app/installations")
+		}, time.Second).Should(Equal(1))
 		Consistently(func() int {
 			return stub.countCalls(http.MethodGet, "/app/installations")
-		}, 30*time.Millisecond).Should(BeZero())
+		}, 30*time.Millisecond).Should(Equal(1))
 
 		service.ApplyRuntimeSettings(adminpanel.RuntimeValues{
 			BotConfig: config.Default(), LogLevel: slog.LevelInfo,
@@ -109,7 +113,46 @@ var _ = Describe("Reaction sweep [Unit]", func() {
 		})
 		Eventually(func() int {
 			return stub.countCalls(http.MethodGet, "/app/installations")
-		}, time.Second).Should(BeNumerically(">", 0))
+		}, time.Second).Should(BeNumerically(">", 1))
+
+		cancel()
+		Eventually(stopped).Should(BeClosed())
+	})
+
+	It("should drain pre-durable labels when reaction polling is disabled", func() {
+		stub.installations = `[{"id":111,"account":{"login":"smykla-skalski"}}]`
+		stub.repos = `{"total_count":1,"repositories":[{
+			"id":123456,
+			"name":"smyklot",
+			"full_name":"smykla-skalski/smyklot",
+			"owner":{"login":"smykla-skalski"}
+		}]}`
+		stub.openPRs = `[{
+			"number":42,
+			"state":"open",
+			"head":{"sha":"legacy-head"},
+			"base":{"ref":"main"},
+			"labels":[{"name":"smyklot:pending-ci:squash"}]
+		}]`
+		start()
+		ctx, cancel := context.WithCancel(GinkgoT().Context())
+		stopped := make(chan struct{})
+		go func() {
+			defer close(stopped)
+			service.pollLoop(ctx)
+		}()
+
+		Eventually(func() []int {
+			return []int{
+				stub.countCalls(http.MethodGet, "/app/installations"),
+				stub.countCalls(http.MethodGet, "/installation/repositories"),
+				stub.countCalls(http.MethodGet, "/repos/smykla-skalski/smyklot/pulls"),
+				stub.countCalls(http.MethodPost, "/issues/42/comments"),
+			}
+		}).Within(eventuallyWindow).Should(Equal([]int{1, 1, 1, 1}))
+		Consistently(func() int {
+			return stub.countCalls(http.MethodGet, "/issues/42/reactions")
+		}, 30*time.Millisecond).Should(BeZero())
 
 		cancel()
 		Eventually(stopped).Should(BeClosed())
@@ -136,6 +179,28 @@ var _ = Describe("Reaction sweep [Unit]", func() {
 			To(Equal(1))
 	})
 
+	It("should terminalize service requests before handing a repository to the Action", func() {
+		stub.installations = `[{"id":987,"account":{"login":"smykla-skalski"}}]`
+		stub.repos = `{"total_count":1,"repositories":[{
+			"id":123456,
+			"name":"smyklot",
+			"full_name":"smykla-skalski/smyklot",
+			"owner":{"login":"smykla-skalski"}
+		}]}`
+		stub.repoConfig = "runner: action\n"
+		start()
+		armed := armWebhookTestRequest(service)
+
+		Expect(service.sweep(GinkgoT().Context())).To(Succeed())
+		_, err := service.store.GetArmed(
+			GinkgoT().Context(), armed.RepositoryID, armed.PullRequest,
+		)
+		Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
+		Expect(stub.countCalls(
+			http.MethodDelete, "/issues/42/labels/smyklot:pending:ci:squash",
+		)).To(Equal(1))
+	})
+
 	It("should safely drain pre-durable pending CI labels once", func() {
 		stub.installations = `[{"id":111,"account":{"login":"smykla-skalski"}}]`
 		stub.repos = `{
@@ -154,21 +219,30 @@ var _ = Describe("Reaction sweep [Unit]", func() {
 			"user": {"login": "author"},
 			"head": {"sha": "unknown-authorized-head"},
 			"base": {"ref": "main"},
-			"labels": [{"name": "smyklot:pending-ci:squash"}]
+			"labels": [
+				{"name": "smyklot:pending-ci:squash"},
+				{"name": "smyklot:pending-ci:rebase"}
+			]
 		}]`
 		stub.prHead = "unknown-authorized-head"
-		stub.prLabels = `[{"name":"smyklot:pending-ci:squash"}]`
+		stub.prLabels = `[
+			{"name":"smyklot:pending-ci:squash"},
+			{"name":"smyklot:pending-ci:rebase"}
+		]`
 		start()
 
 		Expect(service.sweep(GinkgoT().Context())).To(Succeed())
-		lease, err := service.store.LeaseDue(
-			GinkgoT().Context(), time.Now().UTC(), time.Now().UTC().Add(time.Minute),
-		)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(lease.Request).NotTo(BeNil())
-		Expect(lease.Request.Lifecycle).To(Equal(pendingci.LifecycleCancelled))
-		Expect(lease.Request.CleanupPending).To(BeTrue())
-		Expect(lease.Request.SourceCommentID).To(BeZero())
+		startPendingCITestScheduler(service)
+		Eventually(func() int {
+			return stub.countCalls(
+				http.MethodDelete, "/issues/42/labels/smyklot:pending-ci:squash",
+			)
+		}).Within(eventuallyWindow).Should(Equal(1))
+		Eventually(func() int {
+			return stub.countCalls(
+				http.MethodDelete, "/issues/42/labels/smyklot:pending-ci:rebase",
+			)
+		}).Within(eventuallyWindow).Should(Equal(1))
 		Expect(stub.countCalls(http.MethodPost, "/issues/42/comments")).To(Equal(1))
 
 		Expect(service.sweep(GinkgoT().Context())).To(Succeed())

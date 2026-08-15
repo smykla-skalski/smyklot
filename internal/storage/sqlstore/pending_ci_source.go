@@ -11,79 +11,156 @@ import (
 
 const legacyPendingCIDrainReason = "pre-upgrade pending CI request has no recoverable authorized head; reissue the command"
 
-// ClaimSourceRevision records the newest delivery seen for one mutable issue
-// comment. A retry of the same event remains eligible; an older event does not.
+// ClaimSourceRevision records a source event and assigns it a total order
+// within the pull request. An exact retry reuses its order; a superseded retry
+// is rejected. GitHub timestamps still reject genuinely older revisions.
 func (s *Store) ClaimSourceRevision(
 	ctx context.Context,
 	request pendingci.SourceRevisionRequest,
-) (bool, error) {
+) (pendingci.SourceRevisionResult, error) {
 	if err := request.Validate(); err != nil {
-		return false, err
+		return pendingci.SourceRevisionResult{}, err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return false, fmt.Errorf("begin pending CI source claim: %w", err)
+		return pendingci.SourceRevisionResult{}, fmt.Errorf(
+			"begin pending CI source claim: %w", err,
+		)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	var revision, eventKey string
-	var sequence int
-	err = tx.QueryRowContext(ctx, `
-SELECT source_revision, source_sequence, event_key
-FROM pending_ci_source_revisions
-WHERE repository_id = ? AND pull_request = ? AND source_comment_id = ?`,
-		request.RepositoryID, request.PullRequest, request.CommentID,
-	).Scan(&revision, &sequence, &eventKey)
-	if errors.Is(err, sql.ErrNoRows) {
-		_, err = tx.ExecContext(ctx, `
+	retry, err := pendingCISourceRetry(ctx, tx, request)
+	if err != nil || retry != nil {
+		if err != nil {
+			return pendingci.SourceRevisionResult{}, err
+		}
+
+		return *retry, nil
+	}
+	latest, err := latestPendingCISource(ctx, tx, request)
+	if err != nil {
+		return pendingci.SourceRevisionResult{}, err
+	}
+	if latest != nil {
+		comparison, compareErr := pendingci.CompareSourceRevisions(
+			request.Revision, request.Sequence, latest.revision, latest.sequence,
+		)
+		if compareErr != nil {
+			return pendingci.SourceRevisionResult{}, compareErr
+		}
+		if comparison < 0 {
+			return pendingci.SourceRevisionResult{}, nil
+		}
+	}
+
+	order, err := allocatePendingCISourceOrder(ctx, tx, request)
+	if err != nil {
+		return pendingci.SourceRevisionResult{}, err
+	}
+	_, err = tx.ExecContext(ctx, `
 INSERT INTO pending_ci_source_revisions (
     repository_id, pull_request, source_comment_id, source_revision,
-    source_sequence, event_key, observed_at
-) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-			request.RepositoryID, request.PullRequest, request.CommentID,
-			request.Revision, request.Sequence, request.EventKey, request.ObservedAt,
-		)
-		if err != nil {
-			return false, fmt.Errorf("insert pending CI source revision: %w", err)
-		}
-		if err := tx.Commit(); err != nil {
-			return false, fmt.Errorf("commit pending CI source claim: %w", err)
-		}
-
-		return true, nil
-	}
-	if err != nil {
-		return false, fmt.Errorf("read pending CI source revision: %w", err)
-	}
-
-	comparison, err := pendingci.CompareSourceRevisions(
-		request.Revision, request.Sequence, revision, sequence,
-	)
-	if err != nil {
-		return false, err
-	}
-	if comparison < 0 || (comparison == 0 && eventKey != request.EventKey) {
-		return false, nil
-	}
-	if comparison == 0 {
-		return true, nil
-	}
-
-	_, err = tx.ExecContext(ctx, `
-UPDATE pending_ci_source_revisions SET
-    source_revision = ?, source_sequence = ?, event_key = ?, observed_at = ?
-WHERE repository_id = ? AND pull_request = ? AND source_comment_id = ?`,
-		request.Revision, request.Sequence, request.EventKey, request.ObservedAt,
+    source_sequence, event_key, source_order, observed_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		request.RepositoryID, request.PullRequest, request.CommentID,
+		request.Revision, request.Sequence, request.EventKey, order,
+		request.ObservedAt,
 	)
 	if err != nil {
-		return false, fmt.Errorf("update pending CI source revision: %w", err)
+		return pendingci.SourceRevisionResult{}, fmt.Errorf(
+			"insert pending CI source revision: %w", err,
+		)
 	}
 	if err := tx.Commit(); err != nil {
-		return false, fmt.Errorf("commit pending CI source claim: %w", err)
+		return pendingci.SourceRevisionResult{}, fmt.Errorf(
+			"commit pending CI source claim: %w", err,
+		)
 	}
 
-	return true, nil
+	return pendingci.SourceRevisionResult{Accepted: true, SourceOrder: order}, nil
+}
+
+type pendingCISource struct {
+	revision string
+	sequence int
+	order    int64
+}
+
+func pendingCISourceRetry(
+	ctx context.Context,
+	tx *transaction,
+	request pendingci.SourceRevisionRequest,
+) (*pendingci.SourceRevisionResult, error) {
+	var order int64
+	err := tx.QueryRowContext(ctx, `
+SELECT source_order
+FROM pending_ci_source_revisions
+WHERE repository_id = ? AND pull_request = ? AND source_comment_id = ? AND event_key = ?`,
+		request.RepositoryID, request.PullRequest, request.CommentID, request.EventKey,
+	).Scan(&order)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read pending CI source retry: %w", err)
+	}
+
+	var latest int64
+	err = tx.QueryRowContext(ctx, `
+SELECT source_order FROM pending_ci_source_revisions
+WHERE repository_id = ? AND pull_request = ? AND source_comment_id = ?
+ORDER BY source_order DESC LIMIT 1`,
+		request.RepositoryID, request.PullRequest, request.CommentID,
+	).Scan(&latest)
+	if err != nil {
+		return nil, fmt.Errorf("read latest pending CI source retry: %w", err)
+	}
+
+	return &pendingci.SourceRevisionResult{
+		Accepted: order == latest, SourceOrder: order,
+	}, nil
+}
+
+func latestPendingCISource(
+	ctx context.Context,
+	tx *transaction,
+	request pendingci.SourceRevisionRequest,
+) (*pendingCISource, error) {
+	var latest pendingCISource
+	err := tx.QueryRowContext(ctx, `
+SELECT source_revision, source_sequence, source_order
+FROM pending_ci_source_revisions
+WHERE repository_id = ? AND pull_request = ? AND source_comment_id = ?
+ORDER BY source_order DESC LIMIT 1`,
+		request.RepositoryID, request.PullRequest, request.CommentID,
+	).Scan(&latest.revision, &latest.sequence, &latest.order)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read latest pending CI source revision: %w", err)
+	}
+
+	return &latest, nil
+}
+
+func allocatePendingCISourceOrder(
+	ctx context.Context,
+	tx *transaction,
+	request pendingci.SourceRevisionRequest,
+) (int64, error) {
+	var order int64
+	err := tx.QueryRowContext(ctx, `
+INSERT INTO pending_ci_source_orders (repository_id, pull_request, next_order)
+VALUES (?, ?, 1)
+ON CONFLICT (repository_id, pull_request) DO UPDATE SET
+    next_order = next_order + 1
+RETURNING next_order`, request.RepositoryID, request.PullRequest).Scan(&order)
+	if err != nil {
+		return 0, fmt.Errorf("allocate pending CI source order: %w", err)
+	}
+
+	return order, nil
 }
 
 // DrainLegacy creates one terminal cleanup record for a label that predates
@@ -102,20 +179,57 @@ func (s *Store) DrainLegacy(
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	hasHistory, err := hasPendingCIHistory(ctx, tx, request)
+	if err != nil {
+		return pendingci.LegacyDrainResult{}, err
+	}
+	if hasHistory {
+		return pendingci.LegacyDrainResult{}, nil
+	}
+
+	requests := make([]pendingci.Request, 0, len(request.Labels))
+	for _, label := range request.Labels {
+		drained, insertErr := insertLegacyPendingCI(ctx, tx, request, label)
+		if insertErr != nil {
+			return pendingci.LegacyDrainResult{}, insertErr
+		}
+		requests = append(requests, drained)
+	}
+	if err := tx.Commit(); err != nil {
+		return pendingci.LegacyDrainResult{}, fmt.Errorf("commit legacy pending CI drain: %w", err)
+	}
+
+	return pendingci.LegacyDrainResult{Requests: requests}, nil
+}
+
+func hasPendingCIHistory(
+	ctx context.Context,
+	tx *transaction,
+	request pendingci.LegacyDrainRequest,
+) (bool, error) {
 	var existing int64
-	err = tx.QueryRowContext(ctx, `
+	err := tx.QueryRowContext(ctx, `
 SELECT id FROM pending_ci_requests
 WHERE repository_id = ? AND pull_request = ?
 ORDER BY id DESC LIMIT 1`, request.RepositoryID, request.PullRequest).Scan(&existing)
 	if err == nil {
-		return pendingci.LegacyDrainResult{}, nil
+		return true, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
-		return pendingci.LegacyDrainResult{}, fmt.Errorf("read legacy pending CI history: %w", err)
+		return false, fmt.Errorf("read legacy pending CI history: %w", err)
 	}
 
+	return false, nil
+}
+
+func insertLegacyPendingCI(
+	ctx context.Context,
+	tx *transaction,
+	request pendingci.LegacyDrainRequest,
+	label pendingci.LegacyPendingCILabel,
+) (pendingci.Request, error) {
 	var id int64
-	err = tx.QueryRowContext(ctx, `
+	err := tx.QueryRowContext(ctx, `
 INSERT INTO pending_ci_requests (
     target_id, installation_id, repository_id, repository_full_name,
     pull_request, head_sha, base_branch, merge_method, required_checks_only,
@@ -126,34 +240,31 @@ INSERT INTO pending_ci_requests (
 RETURNING id`,
 		request.TargetID, request.InstallationID, request.RepositoryID,
 		request.RepositoryFullName, request.PullRequest, request.HeadSHA,
-		request.BaseBranch, request.MergeMethod, request.RequiredChecksOnly,
-		"smyklot-migration", "legacy-label-drain:v1", request.Label,
+		request.BaseBranch, label.MergeMethod, label.RequiredChecksOnly,
+		"smyklot-migration", "legacy-label-drain:v1", label.Label,
 		pendingci.LifecycleCancelled, pendingci.ScheduleActive,
 		request.DrainedAt, request.DrainedAt,
 		legacyPendingCIDrainReason, request.DrainedAt,
 		request.DrainedAt, request.DrainedAt,
 	).Scan(&id)
 	if err != nil {
-		return pendingci.LegacyDrainResult{}, fmt.Errorf("insert legacy pending CI drain: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return pendingci.LegacyDrainResult{}, fmt.Errorf("commit legacy pending CI drain: %w", err)
+		return pendingci.Request{}, fmt.Errorf("insert legacy pending CI drain: %w", err)
 	}
 
 	drained := pendingci.Request{
 		ID: id, TargetID: request.TargetID, InstallationID: request.InstallationID,
 		RepositoryID: request.RepositoryID, RepositoryFullName: request.RepositoryFullName,
 		PullRequest: request.PullRequest, HeadSHA: request.HeadSHA, BaseBranch: request.BaseBranch,
-		MergeMethod: request.MergeMethod, RequiredChecksOnly: request.RequiredChecksOnly,
+		MergeMethod: label.MergeMethod, RequiredChecksOnly: label.RequiredChecksOnly,
 		Requester: "smyklot-migration", SourceRevision: "legacy-label-drain:v1",
-		Label: request.Label, Lifecycle: pendingci.LifecycleCancelled,
+		Label: label.Label, Lifecycle: pendingci.LifecycleCancelled,
 		Schedule: pendingci.ScheduleActive, NextCheckAt: request.DrainedAt,
 		LastProgressAt: request.DrainedAt, Reason: legacyPendingCIDrainReason,
 		RequestedAt: request.DrainedAt, UpdatedAt: request.DrainedAt,
 		FinishedAt: &request.DrainedAt, CleanupPending: true, Revision: 1,
 	}
 
-	return pendingci.LegacyDrainResult{Request: &drained}, nil
+	return drained, nil
 }
 
 func comparePendingCISourceHistory(
@@ -162,7 +273,7 @@ func comparePendingCISourceHistory(
 	arm pendingci.ArmRequest,
 ) (bool, bool, error) {
 	rows, err := tx.QueryContext(ctx, `
-SELECT source_revision, source_sequence
+SELECT source_revision, source_order
 FROM pending_ci_requests
 WHERE repository_id = ? AND pull_request = ? AND source_comment_id > 0`,
 		arm.RepositoryID, arm.PullRequest,
@@ -174,12 +285,12 @@ WHERE repository_id = ? AND pull_request = ? AND source_comment_id > 0`,
 
 	for rows.Next() {
 		var revision string
-		var sequence int
-		if err := rows.Scan(&revision, &sequence); err != nil {
+		var order int64
+		if err := rows.Scan(&revision, &order); err != nil {
 			return false, false, fmt.Errorf("scan pending CI source history: %w", err)
 		}
-		comparison, err := pendingci.CompareSourceRevisions(
-			arm.SourceRevision, arm.SourceSequence, revision, sequence,
+		comparison, err := pendingci.CompareSourceIntent(
+			arm.SourceRevision, arm.SourceOrder, revision, order,
 		)
 		if err != nil {
 			return false, false, err
@@ -201,21 +312,22 @@ WHERE repository_id = ? AND pull_request = ? AND source_comment_id > 0`,
 	}
 
 	var revision string
-	var sequence int
+	var order int64
 	err = tx.QueryRowContext(ctx, `
-SELECT source_revision, source_sequence
+SELECT source_revision, source_order
 FROM pending_ci_source_revisions
-WHERE repository_id = ? AND pull_request = ? AND source_comment_id = ?`,
+WHERE repository_id = ? AND pull_request = ? AND source_comment_id = ?
+ORDER BY source_order DESC LIMIT 1`,
 		arm.RepositoryID, arm.PullRequest, arm.SourceCommentID,
-	).Scan(&revision, &sequence)
+	).Scan(&revision, &order)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, equal, nil
 	}
 	if err != nil {
 		return false, false, fmt.Errorf("read current pending CI source revision: %w", err)
 	}
-	comparison, err := pendingci.CompareSourceRevisions(
-		arm.SourceRevision, arm.SourceSequence, revision, sequence,
+	comparison, err := pendingci.CompareSourceIntent(
+		arm.SourceRevision, arm.SourceOrder, revision, order,
 	)
 
 	return comparison < 0, equal, err

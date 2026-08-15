@@ -22,7 +22,7 @@ func (request ArmRequest) Validate() error {
 	if empty(request.HeadSHA, request.BaseBranch, request.Requester) {
 		return invalid("head, base branch, and requester are required")
 	}
-	if request.SourceCommentID <= 0 || request.SourceSequence <= 0 ||
+	if request.SourceCommentID <= 0 || request.SourceSequence <= 0 || request.SourceOrder <= 0 ||
 		empty(request.SourceRevision, request.Label) {
 		return invalid("source comment, revision, and label are required")
 	}
@@ -61,11 +61,13 @@ func (request LegacyDrainRequest) Validate() error {
 	if request.InstallationID <= 0 || request.PullRequest <= 0 {
 		return invalid("installation and pull request numbers must be positive")
 	}
-	if empty(request.HeadSHA, request.BaseBranch, request.Label) {
-		return invalid("head, base branch, and label are required")
+	if empty(request.HeadSHA, request.BaseBranch) || len(request.Labels) == 0 {
+		return invalid("head, base branch, and labels are required")
 	}
-	if !request.MergeMethod.valid() {
-		return invalid("unsupported merge method %q", request.MergeMethod)
+	for _, label := range request.Labels {
+		if !label.MergeMethod.valid() || strings.TrimSpace(label.Label) == "" {
+			return invalid("invalid legacy pending CI label")
+		}
 	}
 	if request.DrainedAt.IsZero() {
 		return invalid("drain time is required")
@@ -151,7 +153,7 @@ func (request FinishRequest) Validate() error {
 
 func (request CancelRequest) Validate() error {
 	if strings.TrimSpace(request.RepositoryID) == "" || request.PullRequest <= 0 ||
-		request.CommentID <= 0 || request.SourceSequence <= 0 {
+		request.CommentID <= 0 || request.SourceSequence <= 0 || request.SourceOrder <= 0 {
 		return invalid("repository, pull request, and source comment are required")
 	}
 	if _, err := ParseSourceRevision(request.SourceRevision); err != nil {
@@ -173,6 +175,17 @@ func (request FinishPRRequest) Validate() error {
 	}
 	if strings.TrimSpace(request.Reason) == "" || request.FinishedAt.IsZero() {
 		return invalid("pull request finish reason and time are required")
+	}
+
+	return nil
+}
+
+func (request CancelRepositoryRequest) Validate() error {
+	if strings.TrimSpace(request.RepositoryID) == "" {
+		return invalid("repository identity is required")
+	}
+	if strings.TrimSpace(request.Reason) == "" || request.CancelledAt.IsZero() {
+		return invalid("repository cancellation reason and time are required")
 	}
 
 	return nil

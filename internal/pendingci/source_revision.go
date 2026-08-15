@@ -48,3 +48,37 @@ func CompareSourceRevisions(
 
 	return 0, nil
 }
+
+// CompareSourceIntent orders commands by GitHub's source timestamp and uses
+// the durable observation order only when GitHub's second-granularity
+// timestamps tie. Action sequence is deliberately excluded because it is
+// meaningful only between revisions of the same comment.
+func CompareSourceIntent(
+	leftRevision string,
+	leftOrder int64,
+	rightRevision string,
+	rightOrder int64,
+) (int, error) {
+	leftTime, err := ParseSourceRevision(leftRevision)
+	if err != nil {
+		return 0, err
+	}
+	rightTime, err := ParseSourceRevision(rightRevision)
+	if err != nil {
+		return 0, err
+	}
+	if leftTime.Before(rightTime) {
+		return -1, nil
+	}
+	if leftTime.After(rightTime) {
+		return 1, nil
+	}
+	if leftOrder < rightOrder {
+		return -1, nil
+	}
+	if leftOrder > rightOrder {
+		return 1, nil
+	}
+
+	return 0, nil
+}

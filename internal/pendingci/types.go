@@ -67,6 +67,7 @@ type Request struct {
 	SourceCommentID    int64
 	SourceRevision     string
 	SourceSequence     int
+	SourceOrder        int64
 	Label              string
 	Lifecycle          Lifecycle
 	Schedule           Schedule
@@ -100,6 +101,7 @@ type ArmRequest struct {
 	SourceCommentID    int64
 	SourceRevision     string
 	SourceSequence     int
+	SourceOrder        int64
 	Label              string
 	RequestedAt        time.Time
 }
@@ -121,6 +123,13 @@ type SourceRevisionRequest struct {
 	ObservedAt   time.Time
 }
 
+// SourceRevisionResult carries the durable total order assigned to one
+// accepted source event. An exact retry reuses the same order.
+type SourceRevisionResult struct {
+	Accepted    bool
+	SourceOrder int64
+}
+
 // LegacyDrainRequest records a pre-durable label as terminal work. Its
 // authorized head cannot be recovered, so adopting it as armed would be unsafe.
 type LegacyDrainRequest struct {
@@ -131,14 +140,18 @@ type LegacyDrainRequest struct {
 	PullRequest        int
 	HeadSHA            string
 	BaseBranch         string
-	MergeMethod        MergeMethod
-	RequiredChecksOnly bool
-	Label              string
+	Labels             []LegacyPendingCILabel
 	DrainedAt          time.Time
 }
 
+type LegacyPendingCILabel struct {
+	MergeMethod        MergeMethod
+	RequiredChecksOnly bool
+	Label              string
+}
+
 type LegacyDrainResult struct {
-	Request *Request
+	Requests []Request
 }
 
 type LeaseResult struct {
@@ -200,6 +213,7 @@ type CancelRequest struct {
 	CommentID      int64
 	SourceRevision string
 	SourceSequence int
+	SourceOrder    int64
 	Reason         string
 	CancelledAt    time.Time
 }
@@ -210,6 +224,12 @@ type FinishPRRequest struct {
 	Lifecycle    Lifecycle
 	Reason       string
 	FinishedAt   time.Time
+}
+
+type CancelRepositoryRequest struct {
+	RepositoryID string
+	Reason       string
+	CancelledAt  time.Time
 }
 
 type CompleteCleanupRequest struct {
@@ -269,7 +289,7 @@ type Decision struct {
 // operator controls. Implementations own atomic transitions; callers own
 // GitHub observations and presentation.
 type Store interface {
-	ClaimSourceRevision(context.Context, SourceRevisionRequest) (bool, error)
+	ClaimSourceRevision(context.Context, SourceRevisionRequest) (SourceRevisionResult, error)
 	Arm(context.Context, ArmRequest) (ArmResult, error)
 	DrainLegacy(context.Context, LegacyDrainRequest) (LegacyDrainResult, error)
 	Get(context.Context, int64) (Request, error)
@@ -285,5 +305,6 @@ type Store interface {
 	RetryCleanup(context.Context, RetryCleanupRequest) (Request, error)
 	CancelBySource(context.Context, CancelRequest) (*Request, error)
 	FinishPR(context.Context, FinishPRRequest) (*Request, error)
+	CancelRepository(context.Context, CancelRepositoryRequest) ([]Request, error)
 	ListQueue(context.Context, QueueFilter) ([]Request, error)
 }

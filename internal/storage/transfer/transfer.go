@@ -46,6 +46,7 @@ var tables = []string{
 	"security_notifications",
 	"deliveries",
 	"pending_ci_requests",
+	"pending_ci_source_orders",
 	"pending_ci_source_revisions",
 	"user_invitations",
 	"runtime_settings",

@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -57,6 +59,7 @@ func (s *server) drain(workers *sync.WaitGroup) {
 // Sweeping in the loop rather than in a goroutine per tick means a sweep that
 // outruns the interval delays the next one instead of overlapping with it.
 func (s *server) pollLoop(ctx context.Context) {
+	s.runMigrationSweep(ctx)
 	interval := s.pollInterval()
 	s.logPollInterval(interval)
 	for {
@@ -86,6 +89,12 @@ func (s *server) pollLoop(ctx context.Context) {
 			s.runSweep(ctx)
 			interval = s.pollInterval()
 		}
+	}
+}
+
+func (s *server) runMigrationSweep(ctx context.Context) {
+	if err := s.migrationSweep(ctx); err != nil {
+		s.logger.Error("pending CI migration sweep failed", "error", err)
 	}
 }
 
@@ -137,6 +146,16 @@ func (s *server) runSweep(ctx context.Context) {
 // repository installed while the process runs is swept on the next tick without
 // a restart.
 func (s *server) sweep(ctx context.Context) error {
+	return s.sweepMode(ctx, true)
+}
+
+// migrationSweep performs only state handoff and pre-durable label cleanup.
+// It runs once even when reaction polling is disabled.
+func (s *server) migrationSweep(ctx context.Context) error {
+	return s.sweepMode(ctx, false)
+}
+
+func (s *server) sweepMode(ctx context.Context, pollReactions bool) error {
 	// A sweep is where a chain of per-installation and per-repository
 	// attributes starts, so it seeds that chain itself rather than trusting
 	// whoever called it to have done so
@@ -162,7 +181,7 @@ func (s *server) sweep(ctx context.Context) error {
 			"installation", installation.ID, "account", installation.Account)
 
 		// One installation losing access must not stop the rest of the sweep
-		if err := s.sweepInstallation(installCtx, installation); err != nil {
+		if err := s.sweepInstallation(installCtx, installation, pollReactions); err != nil {
 			logging.From(installCtx).Error("installation sweep failed", "error", err)
 		}
 	}
@@ -171,7 +190,11 @@ func (s *server) sweep(ctx context.Context) error {
 }
 
 // sweepInstallation polls every repository one installation can reach.
-func (s *server) sweepInstallation(ctx context.Context, installation github.Installation) error {
+func (s *server) sweepInstallation(
+	ctx context.Context,
+	installation github.Installation,
+	pollReactions bool,
+) error {
 	token, err := s.tokens.InstallationToken(installation.ID)
 	if err != nil {
 		return NewGitHubError(ErrGitHubAppAuth, err)
@@ -192,6 +215,7 @@ func (s *server) sweepInstallation(ctx context.Context, installation github.Inst
 		// because pollAllPRs adds it for the lines below that
 		if err := s.sweepRepo(
 			ctx, client, installationStorageID(installation.ID), installation.ID, repo,
+			pollReactions,
 		); err != nil {
 			logging.From(ctx).Error("repository sweep failed",
 				"repo", repoFullName(repo.Owner, repo.Name), "error", err)
@@ -248,6 +272,7 @@ func (s *server) sweepRepo(
 	targetID string,
 	installationID int64,
 	repo github.Repository,
+	pollReactions bool,
 ) error {
 	if s.panel != nil {
 		target, repository, err := s.repositoryControls(
@@ -282,6 +307,20 @@ func (s *server) sweepRepo(
 	// Checked before CODEOWNERS is read, so a repository left to the Action
 	// costs the sweep one request rather than two
 	if serviceStandsDown(logging.With(ctx, "repo", repoFullName(repo.Owner, repo.Name)), bc) {
+		return s.handoffPendingCIToAction(ctx, client, repo)
+	}
+
+	ctx = logging.With(ctx, "repo", repoFullName(repo.Owner, repo.Name))
+	prs, err := client.GetOpenPRs(ctx, repo.Owner, repo.Name)
+	if err != nil {
+		return NewGitHubError(ErrGetPRs, err)
+	}
+	if err := s.drainLegacyPendingCILabels(
+		ctx, client, targetID, installationID, repo, prs,
+	); err != nil {
+		return err
+	}
+	if !pollReactions {
 		return nil
 	}
 
@@ -296,20 +335,34 @@ func (s *server) sweepRepo(
 	if err != nil {
 		return err
 	}
-
-	ctx = logging.With(ctx, "repo", repoFullName(repo.Owner, repo.Name))
 	logging.From(ctx).Info("polling PR reactions")
-	prs, err := client.GetOpenPRs(ctx, repo.Owner, repo.Name)
-	if err != nil {
-		return NewGitHubError(ErrGetPRs, err)
-	}
-	if err := s.drainLegacyPendingCILabels(
-		ctx, client, targetID, installationID, repo, prs,
-	); err != nil {
-		return err
-	}
 
 	return processAllPRs(
 		ctx, client, checker, bc, repo.Owner, repo.Name, s.cfg.botUsername, prs, false,
 	)
+}
+
+func (s *server) handoffPendingCIToAction(
+	ctx context.Context,
+	client *github.Client,
+	repo github.Repository,
+) error {
+	const reason = "repository switched to the GitHub Action runner"
+	requests, err := s.pendingCIHandoff.CancelRepository(
+		ctx, repositoryStorageID(repo.ID), reason, time.Now().UTC(),
+	)
+	if err != nil {
+		return fmt.Errorf("cancel pending CI during runner handoff: %w", err)
+	}
+	var cleanupErr error
+	for _, request := range requests {
+		cleanupErr = errors.Join(cleanupErr, cleanupGitHubError(
+			"remove pending CI label during runner handoff",
+			client.RemoveLabel(
+				ctx, repo.Owner, repo.Name, request.PullRequest, request.Label,
+			),
+		))
+	}
+
+	return cleanupErr
 }

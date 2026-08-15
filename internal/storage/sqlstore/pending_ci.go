@@ -14,7 +14,8 @@ import (
 const pendingCISelect = `
 SELECT id, target_id, installation_id, repository_id, repository_full_name,
        pull_request, head_sha, base_branch, merge_method, required_checks_only,
-       requester, source_comment_id, source_revision, source_sequence, label, lifecycle, schedule,
+       requester, source_comment_id, source_revision, source_sequence, source_order,
+       label, lifecycle, schedule,
        next_check_at, lease_expires_at, last_progress_at, last_observed_state,
        last_fingerprint, last_event_key, reason, requested_at, updated_at,
        finished_at, cleanup_pending, cleanup_attempts, cleanup_error, revision
@@ -74,9 +75,10 @@ WHERE id = ? AND lifecycle = ?`,
 INSERT INTO pending_ci_requests (
     target_id, installation_id, repository_id, repository_full_name,
     pull_request, head_sha, base_branch, merge_method, required_checks_only,
-    requester, source_comment_id, source_revision, source_sequence, label, lifecycle, schedule,
+    requester, source_comment_id, source_revision, source_sequence, source_order,
+    label, lifecycle, schedule,
     next_check_at, last_progress_at, requested_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id`,
 		arm.TargetID,
 		arm.InstallationID,
@@ -91,6 +93,7 @@ RETURNING id`,
 		arm.SourceCommentID,
 		arm.SourceRevision,
 		arm.SourceSequence,
+		arm.SourceOrder,
 		arm.Label,
 		pendingci.LifecycleArmed,
 		pendingci.ScheduleActive,
@@ -122,7 +125,8 @@ func armedRequest(id int64, arm pendingci.ArmRequest) pendingci.Request {
 		PullRequest: arm.PullRequest, HeadSHA: arm.HeadSHA, BaseBranch: arm.BaseBranch,
 		MergeMethod: arm.MergeMethod, RequiredChecksOnly: arm.RequiredChecksOnly,
 		Requester: arm.Requester, SourceCommentID: arm.SourceCommentID,
-		SourceRevision: arm.SourceRevision, SourceSequence: arm.SourceSequence, Label: arm.Label,
+		SourceRevision: arm.SourceRevision, SourceSequence: arm.SourceSequence,
+		SourceOrder: arm.SourceOrder, Label: arm.Label,
 		Lifecycle: pendingci.LifecycleArmed, Schedule: pendingci.ScheduleActive,
 		NextCheckAt: arm.RequestedAt, LastProgressAt: arm.RequestedAt,
 		RequestedAt: arm.RequestedAt, UpdatedAt: arm.RequestedAt, Revision: 1,
@@ -166,6 +170,7 @@ func samePendingCICommand(request pendingci.Request, arm pendingci.ArmRequest) b
 		request.RequiredChecksOnly == arm.RequiredChecksOnly && request.Requester == arm.Requester &&
 		request.SourceCommentID == arm.SourceCommentID &&
 		request.SourceRevision == arm.SourceRevision && request.SourceSequence == arm.SourceSequence &&
+		request.SourceOrder == arm.SourceOrder &&
 		request.Label == arm.Label
 }
 
@@ -528,9 +533,9 @@ WHERE repository_id = ? AND pull_request = ? AND source_comment_id = ? AND lifec
 	if err != nil {
 		return nil, fmt.Errorf("read pending CI cancellation target: %w", err)
 	}
-	comparison, err := pendingci.CompareSourceRevisions(
-		change.SourceRevision, change.SourceSequence,
-		request.SourceRevision, request.SourceSequence,
+	comparison, err := pendingci.CompareSourceIntent(
+		change.SourceRevision, change.SourceOrder,
+		request.SourceRevision, request.SourceOrder,
 	)
 	if err != nil {
 		return nil, err
