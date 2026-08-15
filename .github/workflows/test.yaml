@@ -77,3 +77,12 @@ jobs:
 
       - name: Lint the Helm chart
         run: mise run lint:helm
+
+      - name: Lint shell scripts
+        run: mise run lint:shell
+
+      # The deploy workflow's own checks. Nothing else runs them until a
+      # release does, and by then the only thing they can report is that the
+      # release failed.
+      - name: Test the deploy checks
+        run: mise run test:deploy

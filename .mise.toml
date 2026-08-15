@@ -8,6 +8,8 @@ node = "24.19.0"
 actionlint = "1.7.12"
 golangci-lint = "2.12.2"
 helm = "4.2.4"
+shellcheck = "0.11.0"
+yq = "4.48.1"
 
 [env]
 GO111MODULE = "on"
@@ -36,6 +38,10 @@ ginkgo -r --focus='\[Unit\]' --fail-on-empty --cover --race \
 description = "Run tests in watch mode"
 env = { CGO_ENABLED = "1" }
 run = "ginkgo watch -r"
+
+[tasks."test:deploy"]
+description = "Run the deploy workflow's checks against canned flyctl answers"
+run = "./scripts/test-deploy-steps.sh"
 
 [tasks."test:storage"]
 description = "Run the shared storage suite against every engine"
@@ -113,7 +119,7 @@ run = "./scripts/backup-db.sh"
 
 [tasks.lint]
 description = "Run all Smyklot linters"
-depends = ["lint:go", "lint:markdown", "lint:mod", "lint:helm", "lint:actions"]
+depends = ["lint:go", "lint:markdown", "lint:mod", "lint:helm", "lint:actions", "lint:shell"]
 
 [tasks."lint:go"]
 description = "Lint Go code"
@@ -178,6 +184,12 @@ refuses "with two answers for where state lives" \
 [tasks."lint:actions"]
 description = "Lint GitHub Actions workflows"
 run = "actionlint"
+
+# actionlint shellchecks the run: blocks inside a workflow. Nothing was
+# shellchecking the scripts beside them until the deploy checks moved into one.
+[tasks."lint:shell"]
+description = "Shellcheck the repository's shell scripts"
+run = "shellcheck -x scripts/*.sh"
 
 [tasks.build]
 description = "Build all Smyklot binaries"
@@ -246,6 +258,7 @@ description = "Run the complete local CI dependency graph"
 run = [
   { task = "lint" },
   { task = "test" },
+  { task = "test:deploy" },
   { task = "panel:frontend:lint" },
   { task = "panel:frontend:test" },
   { task = "build" },

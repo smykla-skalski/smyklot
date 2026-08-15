@@ -12,9 +12,11 @@ Go + Ginkgo/Gomega, deployed as Docker-based GitHub Action.
 - Test (single package): `ginkgo -r pkg/commands`
 - Test (focused): `ginkgo -r --focus "parses slash commands" pkg/commands`
 - Test (watch): `ginkgo watch -r`
+- Test (deploy checks): `mise run test:deploy`
 - Lint (all): `mise run lint`
 - Lint (Go only): `mise run lint:go`
 - Lint (markdown): `mise run lint:markdown`
+- Lint (shell): `mise run lint:shell`
 - Pre-commit: `mise run ci`
 
 ## Architecture
@@ -71,6 +73,8 @@ Go + Ginkgo/Gomega, deployed as Docker-based GitHub Action.
 - Panel sign-in uses a **classic OAuth App**, never the GitHub App — `SMYKLOT_PANEL_CLIENT_ID` / `SMYKLOT_PANEL_CLIENT_SECRET`, with no fallback to `GITHUB_APP_CLIENT_ID`. Authorizing a GitHub App shows whatever its registration asks for, so signing in through it listed the bot's write permissions on the consent screen. Setting `Scopes` cannot fix that: a GitHub App ignores `scope`, and `x/oauth2` omits the parameter entirely when the slice is empty (`internal/panel/github.go`)
 - The webhook secret and private key are **never chart values**, only `github.existingSecret` — a value would land in a values file and in `helm get values`
 - Chart version and `appVersion` are rewritten by semantic-release, so `helm install --version X` and `smyklot:X` are always one release (`.releaserc.yml`)
+- `deploy.yaml` holds **two** Fly tokens. `FLY_API_TOKEN` is scoped to the `smyklot` app and Fly answers `unauthorized` for any other, which is how release 1.26.0 failed once the state moved to `smyklot-db`. The step that reads the database app uses `FLY_DB_READ_TOKEN`, attenuated to read-only: one org-wide token would have been simpler and would have handed the release pipeline the power to destroy the database
+- The deploy workflow's checks run **only during a deploy**, against a healthy production where every failure case is absent. `mise run test:deploy` lifts them out of the YAML and runs them against a flyctl that answers from a fixture, so a rename of the step makes it fail loudly rather than quietly test nothing (`scripts/test-deploy-steps.sh`)
 
 ## Code Style
 
