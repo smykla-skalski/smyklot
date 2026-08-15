@@ -32,6 +32,7 @@ var _ = Describe("Reaction sweep [Unit]", func() {
 		DeferCleanup(endpoint.Close)
 
 		srv, err := newServer(&serveConfig{
+			statePath:     GinkgoT().TempDir() + "/state.sqlite3",
 			webhookPath:   defaultWebhookPath,
 			webhookSecret: []byte(testSecret),
 			apiBaseURL:    endpoint.URL,
@@ -193,6 +194,7 @@ var _ = Describe("Reaction sweep [Unit]", func() {
 		DeferCleanup(failing.Close)
 
 		srv, err := newServer(&serveConfig{
+			statePath:     GinkgoT().TempDir() + "/state.sqlite3",
 			webhookSecret: []byte(testSecret),
 			apiBaseURL:    failing.URL,
 			botUsername:   defaultBotUsername,

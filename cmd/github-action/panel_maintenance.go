@@ -26,15 +26,19 @@ func (s *server) panelMaintenanceLoop(ctx context.Context) {
 }
 
 func (s *server) maintainPanel(ctx context.Context) {
+	now := time.Now().UTC()
+	if err := s.store.PruneDeliveries(ctx, now.Add(-deliveryRetention)); err != nil {
+		s.logger.Error("delivery cleanup failed", "error", err)
+	}
+	if s.panel == nil {
+		return
+	}
+
 	if err := s.refreshPanelCatalog(ctx); err != nil {
 		s.logger.Error("panel catalog synchronization failed", "error", err)
 	}
-	now := time.Now().UTC()
 	if err := s.store.DeleteExpiredAuth(ctx, now); err != nil {
 		s.logger.Error("panel authentication cleanup failed", "error", err)
-	}
-	if err := s.store.PruneDeliveries(ctx, now.Add(-deliveryRetention)); err != nil {
-		s.logger.Error("panel delivery cleanup failed", "error", err)
 	}
 }
 

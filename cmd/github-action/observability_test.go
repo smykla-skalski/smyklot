@@ -91,6 +91,7 @@ var _ = Describe("Service observability [Unit]", func() {
 		var err error
 
 		srv, err = newServer(&serveConfig{
+			statePath:     GinkgoT().TempDir() + "/state.sqlite3",
 			listenAddress: "127.0.0.1:0",
 			adminAddress:  "127.0.0.1:0",
 			webhookPath:   defaultWebhookPath,
@@ -301,11 +302,16 @@ var _ = Describe("Service observability [Unit]", func() {
 
 			post(webhook.EventIssueComment, deliveryOne, payload, nil)
 
+			// Wait for the first delivery to finish, not merely to be accepted.
+			// A claim is retained once its outcome is recorded; until then it
+			// is still running, and a redelivery is refused rather than
+			// answered as a duplicate.
 			Eventually(func() string {
 				_, body := read(metricsPath)
 
 				return body
-			}, eventuallyWindow).Should(ContainSubstring(`outcome="accepted"} 1`))
+			}, eventuallyWindow).Should(ContainSubstring(
+				`smyklot_deliveries_total{action="created",result="success"} 1`))
 
 			post(webhook.EventIssueComment, deliveryTwo, payload, nil)
 

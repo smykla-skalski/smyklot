@@ -225,7 +225,12 @@ func newServer(cfg *serveConfig) (*server, error) {
 
 	metrics.RegisterQueue(registry, func() float64 { return float64(len(srv.jobs)) }, queueDepth)
 	metrics.RegisterReadiness(registry, func() bool { return srv.readiness.state().Ready })
-	if err := srv.initPanel(context.Background()); err != nil {
+	if err := srv.initStorage(context.Background()); err != nil {
+		cancelDeliveryRetry()
+		return nil, err
+	}
+	if err := srv.initPanel(); err != nil {
+		_ = srv.store.Close()
 		cancelDeliveryRetry()
 		return nil, err
 	}
@@ -233,14 +238,11 @@ func newServer(cfg *serveConfig) (*server, error) {
 	return srv, nil
 }
 
-// Close releases optional durable service resources.
+// Close releases durable service resources.
 func (s *server) Close() error {
 	s.stopDeliveryFinalizationRetries()
-	if s.store != nil {
-		return s.store.Close()
-	}
 
-	return nil
+	return s.store.Close()
 }
 
 // handler builds the service's public routes.
@@ -392,15 +394,13 @@ func (s *server) startBackground(ctx context.Context) <-chan struct{} {
 		s.probeLoop(ctx)
 	}()
 
-	if s.store != nil {
-		running.Add(1)
+	running.Add(1)
 
-		go func() {
-			defer running.Done()
+	go func() {
+		defer running.Done()
 
-			s.panelMaintenanceLoop(ctx)
-		}()
-	}
+		s.panelMaintenanceLoop(ctx)
+	}()
 
 	stopped := make(chan struct{})
 
@@ -588,7 +588,7 @@ func (s *server) execute(j job) {
 	started := time.Now()
 	executed := true
 	var err error
-	if s.store != nil {
+	if s.panel != nil {
 		executed, err = s.repositoryEnabled(ctx, j.event)
 	}
 	if err == nil && executed {

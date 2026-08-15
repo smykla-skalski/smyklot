@@ -131,7 +131,7 @@ func (s *server) serviceConfig(
 	if err != nil {
 		return nil, err
 	}
-	if s.store == nil {
+	if s.panel == nil {
 		if file.err != nil {
 			return nil, file.err
 		}

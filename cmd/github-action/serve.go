@@ -27,9 +27,10 @@ const (
 	flagPollInterval     = "poll-interval"
 	flagLogFormat        = "log-format"
 	flagLogLevel         = "log-level"
+	flagState            = "state-path"
 	flagPanelOrigin      = "panel-public-origin"
 	flagPanelBase        = "panel-base-path"
-	flagPanelState       = "panel-state-path"
+	flagPanelState       = "panel-state-path" // Deprecated compatibility alias.
 	flagPanelSuperRootID = "panel-super-root-id"
 	flagPanelTTL         = "panel-session-ttl"
 
@@ -39,9 +40,10 @@ const (
 	descPollInterval     = "How often to sweep reactions and pending-CI PRs (0 disables)"
 	descLogFormat        = "Log format: json or text"
 	descLogLevel         = "Log level: debug, info, warn or error"
+	descState            = "Path to the service SQLite database"
 	descPanelOrigin      = "Public origin for the panel (empty disables it)"
 	descPanelBase        = "Path subtree that serves the panel"
-	descPanelState       = "Path to the panel SQLite database"
+	descPanelState       = "Deprecated alias for --state-path"
 	descPanelSuperRootID = "Numeric GitHub user ID assigned as the panel Super Root"
 	descPanelTTL         = "How long a signed-in panel session remains valid"
 
@@ -52,9 +54,10 @@ const (
 	envPollInterval     = "SMYKLOT_POLL_INTERVAL"
 	envLogFormat        = "SMYKLOT_LOG_FORMAT"
 	envLogLevel         = "SMYKLOT_LOG_LEVEL"
+	envState            = "SMYKLOT_STATE_PATH"
 	envPanelOrigin      = "SMYKLOT_PANEL_PUBLIC_ORIGIN"
 	envPanelBase        = "SMYKLOT_PANEL_BASE_PATH"
-	envPanelState       = "SMYKLOT_PANEL_STATE_PATH"
+	envPanelState       = "SMYKLOT_PANEL_STATE_PATH" // Deprecated compatibility alias.
 	envPanelSuperRootID = "SMYKLOT_PANEL_SUPER_ROOT_ID"
 	envPanelTTL         = "SMYKLOT_PANEL_SESSION_TTL"
 	envGitHubAuthURL    = "SMYKLOT_GITHUB_AUTHORIZE_URL"
@@ -81,7 +84,7 @@ const (
 
 	defaultLogLevel       = "info"
 	defaultPanelBase      = "/panel"
-	defaultPanelState     = "/var/lib/smyklot/panel.sqlite3"
+	defaultState          = "/var/lib/smyklot/panel.sqlite3"
 	defaultPanelTTL       = 12 * time.Hour
 	defaultGitHubAPIURL   = "https://api.github.com"
 	defaultGitHubAuthURL  = "https://github.com/login/oauth/authorize"
@@ -106,6 +109,9 @@ var (
 
 	// ErrInvalidPollInterval is returned when the poll interval is unparseable
 	ErrInvalidPollInterval = errors.New("invalid poll interval")
+
+	// ErrStateConfig is returned when mandatory durable state cannot be configured.
+	ErrStateConfig = errors.New("invalid service state configuration")
 
 	// ErrAddressConflict is returned when the admin listener would bind the
 	// same address as the webhook listener, which would publish everything the
@@ -152,9 +158,11 @@ func init() {
 	serveCmd.Flags().Duration(flagPollInterval, defaultPollInterval, descPollInterval)
 	serveCmd.Flags().String(flagLogFormat, defaultLogFormat, descLogFormat)
 	serveCmd.Flags().String(flagLogLevel, defaultLogLevel, descLogLevel)
+	serveCmd.Flags().String(flagState, defaultState, descState)
 	serveCmd.Flags().String(flagPanelOrigin, "", descPanelOrigin)
 	serveCmd.Flags().String(flagPanelBase, defaultPanelBase, descPanelBase)
-	serveCmd.Flags().String(flagPanelState, defaultPanelState, descPanelState)
+	serveCmd.Flags().String(flagPanelState, "", descPanelState)
+	_ = serveCmd.Flags().MarkDeprecated(flagPanelState, "use --state-path")
 	serveCmd.Flags().Int64(flagPanelSuperRootID, 0, descPanelSuperRootID)
 	serveCmd.Flags().Duration(flagPanelTTL, defaultPanelTTL, descPanelTTL)
 
@@ -195,13 +203,16 @@ type serveConfig struct {
 	// .github/smyklot.yaml is layered over
 	botConfig *config.Config
 
+	// statePath is mandatory even when the panel is disabled. It owns webhook
+	// delivery identity and pending-CI state as well as optional panel data.
+	statePath string
+
 	panel *panelServeConfig
 }
 
 type panelServeConfig struct {
 	publicOrigin string
 	basePath     string
-	statePath    string
 	superRootID  int64
 	clientID     string
 	clientSecret string
@@ -270,6 +281,9 @@ func loadServeConfig(cmd *cobra.Command) (*serveConfig, error) {
 	if err := applyServeFlags(cmd, cfg); err != nil {
 		return nil, err
 	}
+	if err := applyStatePath(cmd, cfg); err != nil {
+		return nil, err
+	}
 	if err := applyPanelFlags(cmd, cfg); err != nil {
 		return nil, err
 	}
@@ -287,10 +301,6 @@ func applyPanelFlags(cmd *cobra.Command, cfg *serveConfig) error {
 		return nil
 	}
 	basePath, err := cmd.Flags().GetString(flagPanelBase)
-	if err != nil {
-		return err
-	}
-	statePath, err := cmd.Flags().GetString(flagPanelState)
 	if err != nil {
 		return err
 	}
@@ -316,7 +326,6 @@ func applyPanelFlags(cmd *cobra.Command, cfg *serveConfig) error {
 	cfg.panel = &panelServeConfig{
 		publicOrigin: origin,
 		basePath:     normalizePanelBasePath(flagOrEnv(cmd, flagPanelBase, basePath, envPanelBase)),
-		statePath:    flagOrEnv(cmd, flagPanelState, statePath, envPanelState),
 		superRootID:  superRootID,
 		clientID:     strings.TrimSpace(os.Getenv(envPanelClientID)),
 		clientSecret: os.Getenv(envPanelClientSecret),
@@ -330,12 +339,40 @@ func applyPanelFlags(cmd *cobra.Command, cfg *serveConfig) error {
 			ErrPanelConfig, envPanelClientID, envPanelClientSecret,
 		)
 	}
-	if strings.TrimSpace(cfg.panel.statePath) == "" ||
-		cfg.panel.superRootID <= 0 || ttl <= 0 {
+	if cfg.panel.superRootID <= 0 || ttl <= 0 {
 		return ErrPanelConfig
 	}
 	if cfg.panel.basePath == cfg.webhookPath || cfg.panel.basePath == healthPath {
 		return fmt.Errorf("%w: panel base path conflicts with a public service route", ErrPanelConfig)
+	}
+
+	return nil
+}
+
+func applyStatePath(cmd *cobra.Command, cfg *serveConfig) error {
+	statePath, err := cmd.Flags().GetString(flagState)
+	if err != nil {
+		return err
+	}
+	legacyPath, err := cmd.Flags().GetString(flagPanelState)
+	if err != nil {
+		return err
+	}
+
+	switch {
+	case cmd.Flags().Changed(flagState):
+		cfg.statePath = statePath
+	case strings.TrimSpace(os.Getenv(envState)) != "":
+		cfg.statePath = os.Getenv(envState)
+	case cmd.Flags().Changed(flagPanelState):
+		cfg.statePath = legacyPath
+	case strings.TrimSpace(os.Getenv(envPanelState)) != "":
+		cfg.statePath = os.Getenv(envPanelState)
+	default:
+		cfg.statePath = statePath
+	}
+	if strings.TrimSpace(cfg.statePath) == "" {
+		return fmt.Errorf("%w: state path must not be empty", ErrStateConfig)
 	}
 
 	return nil

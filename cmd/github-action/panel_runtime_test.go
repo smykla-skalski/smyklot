@@ -71,6 +71,7 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 
 		var err error
 		service, err = newServer(&serveConfig{
+			statePath:     GinkgoT().TempDir() + "/panel.sqlite3",
 			webhookPath:   defaultWebhookPath,
 			webhookSecret: []byte(testSecret),
 			apiBaseURL:    endpoint.URL,
@@ -82,7 +83,6 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 			panel: &panelServeConfig{
 				publicOrigin: "https://smyklot.example",
 				basePath:     defaultPanelBase,
-				statePath:    GinkgoT().TempDir() + "/panel.sqlite3",
 				superRootID:  42,
 				clientID:     "Iv1.test",
 				clientSecret: "oauth-secret",
@@ -107,6 +107,7 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 
 	It("mounts the panel at the public root without shadowing service routes", func() {
 		rootService, err := newServer(&serveConfig{
+			statePath:     GinkgoT().TempDir() + "/panel.sqlite3",
 			webhookPath:   defaultWebhookPath,
 			webhookSecret: []byte(testSecret),
 			apiBaseURL:    endpoint.URL,
@@ -118,7 +119,6 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 			panel: &panelServeConfig{
 				publicOrigin: "https://smyklot.com",
 				basePath:     "",
-				statePath:    GinkgoT().TempDir() + "/panel.sqlite3",
 				superRootID:  42,
 				clientID:     "Iv1.test",
 				clientSecret: "oauth-secret",

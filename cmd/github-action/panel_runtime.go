@@ -17,7 +17,7 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/github"
 )
 
-func (s *server) initPanel(ctx context.Context) error {
+func (s *server) initPanel() error {
 	if s.cfg.panel == nil {
 		return nil
 	}
@@ -26,24 +26,12 @@ func (s *server) initPanel(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	store, err := sqlite.Open(ctx, s.cfg.panel.statePath)
-	if err != nil {
-		return fmt.Errorf("open panel storage: %w", err)
-	}
-	if err := store.RecoverRunningDeliveries(ctx, time.Now().UTC()); err != nil {
-		_ = store.Close()
-
-		return fmt.Errorf("recover interrupted panel deliveries: %w", err)
-	}
-
 	apiURL := s.cfg.apiBaseURL
 	if apiURL == "" {
 		apiURL = defaultGitHubAPIURL
 	}
 	publicOrigin, err := url.Parse(s.cfg.panel.publicOrigin)
 	if err != nil {
-		_ = store.Close()
-
 		return fmt.Errorf("parse panel public origin: %w", err)
 	}
 	panelServer, err := adminpanel.New(adminpanel.Config{
@@ -68,15 +56,28 @@ func (s *server) initPanel(ctx context.Context) error {
 		AppCredentialPresent:     len(s.cfg.appPrivateKey) > 0,
 		OAuthCredentialPresent:   s.cfg.panel.clientSecret != "",
 		Assets:                   assets,
-	}, adminpanel.Dependencies{Store: store, Catalog: s, Users: s, Runtime: s})
+	}, adminpanel.Dependencies{Store: s.store, Catalog: s, Users: s, Runtime: s})
 	if err != nil {
-		_ = store.Close()
-
 		return fmt.Errorf("initialize panel: %w", err)
 	}
 
-	s.store = store
 	s.panel = panelServer
+
+	return nil
+}
+
+func (s *server) initStorage(ctx context.Context) error {
+	store, err := sqlite.Open(ctx, s.cfg.statePath)
+	if err != nil {
+		return fmt.Errorf("open service storage: %w", err)
+	}
+	if err := store.RecoverRunningDeliveries(ctx, time.Now().UTC()); err != nil {
+		_ = store.Close()
+
+		return fmt.Errorf("recover interrupted deliveries: %w", err)
+	}
+
+	s.store = store
 
 	return nil
 }
@@ -159,7 +160,9 @@ func (s *server) SyncCatalog(ctx context.Context) ([]string, error) {
 
 func (s *server) syncPanelCatalogLocked(ctx context.Context) ([]string, error) {
 	targetIDs, err := s.syncCatalog(ctx)
-	s.panel.AnnounceCatalog()
+	if s.panel != nil {
+		s.panel.AnnounceCatalog()
+	}
 
 	return targetIDs, err
 }

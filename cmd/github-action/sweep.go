@@ -209,7 +209,7 @@ func (s *server) reconcileSweepInstallation(
 	if err != nil {
 		return nil, NewGitHubError(ErrListRepos, err)
 	}
-	if s.store == nil {
+	if s.panel == nil {
 		return repos, nil
 	}
 	snapshot, err := completeInstallationSnapshot(
@@ -244,7 +244,7 @@ func (s *server) sweepRepo(
 	targetID string,
 	repo github.Repository,
 ) error {
-	if s.store != nil {
+	if s.panel != nil {
 		target, repository, err := s.repositoryControls(
 			ctx,
 			targetID,
