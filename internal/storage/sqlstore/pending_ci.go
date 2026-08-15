@@ -1,4 +1,4 @@
-package sqlite
+package sqlstore
 
 import (
 	"context"
@@ -45,8 +45,8 @@ UPDATE pending_ci_requests SET
 WHERE id = ? AND lifecycle = ?`,
 			pendingci.LifecycleSuperseded,
 			"replaced by a newer authorized command",
-			formatTime(arm.RequestedAt),
-			formatTime(arm.RequestedAt),
+			arm.RequestedAt,
+			arm.RequestedAt,
 			superseded.ID,
 			pendingci.LifecycleArmed,
 		); err != nil {
@@ -60,13 +60,15 @@ WHERE id = ? AND lifecycle = ?`,
 		superseded.Revision++
 	}
 
-	result, err := tx.ExecContext(ctx, `
+	var id int64
+	err = tx.QueryRowContext(ctx, `
 INSERT INTO pending_ci_requests (
     target_id, installation_id, repository_id, repository_full_name,
     pull_request, head_sha, base_branch, merge_method, required_checks_only,
     requester, source_comment_id, source_revision, label, lifecycle, schedule,
     next_check_at, last_progress_at, requested_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id`,
 		arm.TargetID,
 		arm.InstallationID,
 		arm.RepositoryID,
@@ -82,17 +84,13 @@ INSERT INTO pending_ci_requests (
 		arm.Label,
 		pendingci.LifecycleArmed,
 		pendingci.ScheduleActive,
-		formatTime(arm.RequestedAt),
-		formatTime(arm.RequestedAt),
-		formatTime(arm.RequestedAt),
-		formatTime(arm.RequestedAt),
-	)
+		arm.RequestedAt,
+		arm.RequestedAt,
+		arm.RequestedAt,
+		arm.RequestedAt,
+	).Scan(&id)
 	if err != nil {
 		return pendingci.ArmResult{}, fmt.Errorf("insert pending CI request: %w", err)
-	}
-	id, err := result.LastInsertId()
-	if err != nil {
-		return pendingci.ArmResult{}, fmt.Errorf("read pending CI request id: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return pendingci.ArmResult{}, fmt.Errorf("commit pending CI arm: %w", err)
@@ -176,13 +174,13 @@ UPDATE pending_ci_requests SET
 WHERE id = ? AND lifecycle = ? AND revision = ?
   AND next_check_at <= ?
   AND (lease_expires_at IS NULL OR lease_expires_at <= ?)`,
-		formatTime(leaseExpiresAt),
-		formatTime(now),
+		leaseExpiresAt,
+		now,
 		request.ID,
 		pendingci.LifecycleArmed,
 		request.Revision,
-		formatTime(now),
-		formatTime(now),
+		now,
+		now,
 	)
 	if err != nil {
 		return pendingci.LeaseResult{}, fmt.Errorf("lease pending CI request: %w", err)
@@ -206,7 +204,7 @@ WHERE id = ? AND lifecycle = ? AND revision = ?
 
 func selectDuePendingCI(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx *transaction,
 	now time.Time,
 ) (pendingci.Request, error) {
 	return scanPendingCI(tx.QueryRowContext(ctx, pendingCISelect+`
@@ -215,13 +213,13 @@ WHERE lifecycle = ? AND next_check_at <= ?
 ORDER BY CASE schedule WHEN 'active' THEN 0 ELSE 1 END, next_check_at, id
 LIMIT 1`,
 		pendingci.LifecycleArmed,
-		formatTime(now),
-		formatTime(now),
+		now,
+		now,
 	))
 }
 
-func nextPendingCIAvailability(ctx context.Context, tx *sql.Tx) (*time.Time, error) {
-	var available sql.NullString
+func nextPendingCIAvailability(ctx context.Context, tx *transaction) (*time.Time, error) {
+	var available StoredTime
 	err := tx.QueryRowContext(ctx, `
 SELECT MIN(
     CASE
@@ -235,13 +233,10 @@ WHERE lifecycle = ?`, pendingci.LifecycleArmed).Scan(&available)
 	if err != nil {
 		return nil, fmt.Errorf("read next pending CI availability: %w", err)
 	}
-	if !available.Valid {
+	if !available.Valid() {
 		return nil, nil
 	}
-	parsed, err := parseTime(available.String)
-	if err != nil {
-		return nil, fmt.Errorf("parse next pending CI availability: %w", err)
-	}
+	parsed := available.Time()
 
 	return &parsed, nil
 }
@@ -260,9 +255,9 @@ WHERE repository_id = ? AND pull_request = ? AND lifecycle = ?
   AND last_event_key <> ?
   AND (? = '' OR head_sha = ?)`,
 		pendingci.ScheduleActive,
-		formatTime(wake.OccurredAt),
+		wake.OccurredAt,
 		wake.EventKey,
-		formatTime(wake.OccurredAt),
+		wake.OccurredAt,
 		wake.RepositoryID,
 		wake.PullRequest,
 		pendingci.LifecycleArmed,
@@ -297,11 +292,11 @@ UPDATE pending_ci_requests SET
 WHERE id = ? AND lifecycle = ? AND revision = ?`,
 		change.Schedule,
 		change.HeadSHA,
-		formatTime(change.NextCheckAt),
-		formatTime(change.LastProgressAt),
+		change.NextCheckAt,
+		change.LastProgressAt,
 		change.LastObservedState,
 		change.LastFingerprint,
-		formatTime(change.CheckedAt),
+		change.CheckedAt,
 		change.ID,
 		pendingci.LifecycleArmed,
 		change.ExpectedRevision,
@@ -331,8 +326,8 @@ UPDATE pending_ci_requests SET
 WHERE id = ? AND lifecycle = ? AND revision = ?`,
 		change.Lifecycle,
 		change.Reason,
-		formatTime(change.FinishedAt),
-		formatTime(change.FinishedAt),
+		change.FinishedAt,
+		change.FinishedAt,
 		change.ID,
 		pendingci.LifecycleArmed,
 		change.ExpectedRevision,
@@ -382,8 +377,8 @@ UPDATE pending_ci_requests SET
 WHERE id = ? AND lifecycle = ?`,
 		pendingci.LifecycleCancelled,
 		change.Reason,
-		formatTime(change.CancelledAt),
-		formatTime(change.CancelledAt),
+		change.CancelledAt,
+		change.CancelledAt,
 		request.ID,
 		pendingci.LifecycleArmed,
 	)
@@ -445,7 +440,7 @@ func (s *Store) ListQueue(
 
 func getArmedPendingCI(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx *transaction,
 	repositoryID string,
 	pullRequest int,
 ) (pendingci.Request, error) {

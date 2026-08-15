@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,8 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/smykla-skalski/smyklot/internal/githubtest"
+	"github.com/smykla-skalski/smyklot/internal/pendingci"
+	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/internal/storage/storagetest"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/webhook"
@@ -50,6 +53,71 @@ func delivery(action, body, authorType, updatedAt string, isPR bool) []byte {
 // commandDelivery is the common case: a user commenting a command on a PR
 func commandDelivery(body string) []byte {
 	return githubtest.Command(body)
+}
+
+func checkRunDelivery() []byte {
+	return []byte(`{
+  "action": "completed",
+  "check_run": {
+    "id": 501,
+    "head_sha": "pending-head",
+    "status": "completed",
+    "conclusion": "success",
+    "updated_at": "2026-08-15T12:00:00Z",
+    "pull_requests": [{"number": 42}]
+  },
+  "repository": {
+    "id": 123456,
+    "name": "smyklot",
+    "full_name": "smykla-skalski/smyklot",
+    "owner": {"login": "smykla-skalski"}
+  },
+  "installation": {"id": 987}
+}`)
+}
+
+func pendingLabelRemovedDelivery() []byte {
+	return []byte(`{
+  "action": "unlabeled",
+  "number": 42,
+  "pull_request": {
+    "merged": false,
+    "updated_at": "2026-08-15T12:01:00Z",
+    "head": {"sha": "pending-head"}
+  },
+  "label": {"name": "smyklot:pending:ci:squash"},
+  "repository": {
+    "id": 123456,
+    "name": "smyklot",
+    "full_name": "smykla-skalski/smyklot",
+    "owner": {"login": "smykla-skalski"}
+  },
+  "installation": {"id": 987}
+}`)
+}
+
+func armWebhookTestRequest(srv *server) pendingci.Request {
+	GinkgoHelper()
+	requestedAt := time.Now().UTC().Add(-time.Minute)
+	result, err := srv.store.Arm(GinkgoT().Context(), pendingci.ArmRequest{
+		TargetID:           installationStorageID(987),
+		InstallationID:     987,
+		RepositoryID:       repositoryStorageID(githubtest.DefaultRepoID),
+		RepositoryFullName: "smykla-skalski/smyklot",
+		PullRequest:        42,
+		HeadSHA:            "pending-head",
+		BaseBranch:         "main",
+		MergeMethod:        pendingci.MergeMethodSquash,
+		RequiredChecksOnly: false,
+		Requester:          "someone",
+		SourceCommentID:    555,
+		SourceRevision:     requestedAt.Format(time.RFC3339Nano),
+		Label:              "smyklot:pending:ci:squash",
+		RequestedAt:        requestedAt,
+	})
+	Expect(err).NotTo(HaveOccurred())
+
+	return result.Request
 }
 
 // postDelivery sends a delivery to a running service, signing it unless the
@@ -271,6 +339,58 @@ var _ = Describe("Webhook service [Unit]", func() {
 			Eventually(func() int {
 				return stub.countCalls(http.MethodPost, approveReviews)
 			}, eventuallyWindow).Should(Equal(1))
+		})
+	})
+
+	Describe("pending CI events", func() {
+		BeforeEach(func() {
+			start(config.Default())
+		})
+
+		It("durably accepts a check event and releases a matching request lease", func() {
+			armed := armWebhookTestRequest(srv)
+			lease, err := srv.store.LeaseDue(
+				GinkgoT().Context(),
+				time.Now().UTC(),
+				time.Now().UTC().Add(time.Minute),
+			)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(lease.Request.ID).To(Equal(armed.ID))
+
+			response := post(webhook.EventCheckRun, "check-delivery", checkRunDelivery(), nil)
+			Expect(response.StatusCode).To(Equal(http.StatusAccepted))
+
+			Eventually(func(g Gomega) {
+				updated, readErr := srv.store.GetArmed(
+					GinkgoT().Context(),
+					armed.RepositoryID,
+					armed.PullRequest,
+				)
+				g.Expect(readErr).NotTo(HaveOccurred())
+				g.Expect(updated.LastEventKey).To(ContainSubstring("check_run"))
+				g.Expect(updated.LeaseExpiresAt).To(BeNil())
+			}).Within(eventuallyWindow).Should(Succeed())
+		})
+
+		It("cancels an armed request when its pending label is removed", func() {
+			armed := armWebhookTestRequest(srv)
+			response := post(
+				webhook.EventPullRequest,
+				"unlabeled-delivery",
+				pendingLabelRemovedDelivery(),
+				nil,
+			)
+			Expect(response.StatusCode).To(Equal(http.StatusAccepted))
+
+			Eventually(func() bool {
+				_, err := srv.store.GetArmed(
+					GinkgoT().Context(),
+					armed.RepositoryID,
+					armed.PullRequest,
+				)
+
+				return errors.Is(err, storage.ErrNotFound)
+			}).Within(eventuallyWindow).Should(BeTrue())
 		})
 	})
 

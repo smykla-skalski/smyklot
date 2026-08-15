@@ -96,6 +96,13 @@ type WakeRequest struct {
 	OccurredAt      time.Time
 }
 
+type WakeHeadRequest struct {
+	RepositoryID string
+	HeadSHA      string
+	EventKey     string
+	OccurredAt   time.Time
+}
+
 type RescheduleRequest struct {
 	ID                int64
 	ExpectedRevision  int64
@@ -124,6 +131,14 @@ type CancelRequest struct {
 	CancelledAt  time.Time
 }
 
+type FinishPRRequest struct {
+	RepositoryID string
+	PullRequest  int
+	Lifecycle    Lifecycle
+	Reason       string
+	FinishedAt   time.Time
+}
+
 type QueueFilter struct {
 	Schedule *Schedule
 	Limit    int
@@ -137,8 +152,10 @@ type Store interface {
 	GetArmed(context.Context, string, int) (Request, error)
 	LeaseDue(context.Context, time.Time, time.Time) (LeaseResult, error)
 	Wake(context.Context, WakeRequest) (bool, error)
+	WakeByHead(context.Context, WakeHeadRequest) (int64, error)
 	Reschedule(context.Context, RescheduleRequest) (Request, error)
 	Finish(context.Context, FinishRequest) (Request, error)
 	CancelBySource(context.Context, CancelRequest) (*Request, error)
+	FinishPR(context.Context, FinishPRRequest) (*Request, error)
 	ListQueue(context.Context, QueueFilter) ([]Request, error)
 }

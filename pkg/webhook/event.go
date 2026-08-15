@@ -28,6 +28,10 @@ const (
 const (
 	// EventIssueComment is the only event that carries a command
 	EventIssueComment = "issue_comment"
+	EventCheckRun     = "check_run"
+	EventCheckSuite   = "check_suite"
+	EventStatus       = "status"
+	EventPullRequest  = "pull_request"
 
 	// EventPing is what GitHub sends when a webhook is first configured
 	EventPing = "ping"

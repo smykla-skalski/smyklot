@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 )
@@ -50,6 +51,7 @@ func SeededTables() []string {
 		"app_audit_events",
 		"security_notifications",
 		"deliveries",
+		"pending_ci_requests",
 		"user_invitations",
 		"runtime_settings",
 		"user_preferences",
@@ -87,6 +89,7 @@ func (s *seeder) run() error {
 		{"runtime settings", s.seedRuntimeSettings},
 		{"preferences", s.seedPreferences},
 		{"delivery", s.seedDelivery},
+		{"pending CI", s.seedPendingCI},
 	}
 
 	for _, step := range steps {
@@ -313,6 +316,30 @@ func (s *seeder) seedDelivery() error {
 		Retryable: true,
 		FailedAt:  s.now.Add(10 * time.Minute),
 	})
+}
+
+// seedPendingCI fills pending_ci_requests with one terminal exact-head request.
+func (s *seeder) seedPendingCI() error {
+	requestedAt := s.now.Add(11 * time.Minute)
+	armed, err := s.store.Arm(s.ctx, pendingci.ArmRequest{
+		TargetID: s.target.TargetID, InstallationID: 77,
+		RepositoryID: "repo-1", RepositoryFullName: "smykla-skalski/smyklot",
+		PullRequest: 198, HeadSHA: "seed-head", BaseBranch: "main",
+		MergeMethod: pendingci.MergeMethodSquash, RequiredChecksOnly: true,
+		Requester: "seed-owner", SourceCommentID: 101,
+		SourceRevision: requestedAt.Format(time.RFC3339Nano),
+		Label:          "smyklot:pending:ci:squash:required", RequestedAt: requestedAt,
+	})
+	if err != nil {
+		return err
+	}
+	_, err = s.store.Finish(s.ctx, pendingci.FinishRequest{
+		ID: armed.Request.ID, ExpectedRevision: armed.Request.Revision,
+		Lifecycle: pendingci.LifecycleMerged, Reason: "seeded terminal request",
+		FinishedAt: requestedAt.Add(time.Minute),
+	})
+
+	return err
 }
 
 // derive makes a second account from the first, so the seeded people differ in

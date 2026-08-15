@@ -3,13 +3,11 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/storage"
-	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
 
 const (
@@ -183,35 +181,4 @@ func (d *deliveryDispatcher) wait(ctx context.Context, availableAt *time.Time) b
 	case <-timer.C:
 		return true
 	}
-}
-
-func (s *server) deliveryJob(work storage.DeliveryWork) (job, error) {
-	event, err := webhook.ParseIssueComment(work.Payload)
-	if err != nil {
-		return job{}, fmt.Errorf("parse persisted issue comment: %w", err)
-	}
-	if !event.Actionable() {
-		return job{}, errors.New("persisted issue comment is not actionable")
-	}
-	if err := validateCommentInput(runtimeConfigFor(event, s.cfg)); err != nil {
-		return job{}, fmt.Errorf("validate persisted issue comment: %w", err)
-	}
-
-	logger := s.logger.With(
-		"delivery_id", work.DeliveryID,
-		"event", webhook.EventIssueComment,
-		"repo", event.Repository.FullName,
-		"pr", event.Issue.Number,
-		"action", event.Action,
-		"attempt", work.Attempt,
-	)
-
-	return job{
-		event:      event,
-		key:        work.ClaimKey,
-		deliveryID: work.DeliveryID,
-		claimID:    work.ID,
-		attempt:    work.Attempt,
-		logger:     logger,
-	}, nil
 }

@@ -45,6 +45,7 @@ var tables = []string{
 	"app_audit_events",
 	"security_notifications",
 	"deliveries",
+	"pending_ci_requests",
 	"user_invitations",
 	"runtime_settings",
 	"user_preferences",

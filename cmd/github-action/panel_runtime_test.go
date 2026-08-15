@@ -664,11 +664,15 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 		event, err := webhook.ParseIssueComment(payload)
 		Expect(err).NotTo(HaveOccurred())
 		delivery := job{
-			event:      event,
-			key:        event.IdempotencyKey(),
-			deliveryID: "queue-full-redelivery",
-			payload:    payload,
-			logger:     service.logger,
+			eventName:   webhook.EventIssueComment,
+			action:      event.Action,
+			metadata:    issueCommentMetadata(event),
+			pullRequest: event.Issue.Number,
+			comment:     event,
+			key:         event.IdempotencyKey(),
+			deliveryID:  "queue-full-redelivery",
+			payload:     payload,
+			logger:      service.logger,
 		}
 		response := httptest.NewRecorder()
 		service.dispatch(GinkgoT().Context(), response, delivery)

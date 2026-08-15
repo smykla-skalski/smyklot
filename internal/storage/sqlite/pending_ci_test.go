@@ -196,6 +196,51 @@ var _ = Describe("pending CI storage [Unit]", func() {
 		Expect(queue).To(BeEmpty())
 	})
 
+	It("wakes by the current head and applies terminal pull request events once", func() {
+		armed, err := store.Arm(ctx, pendingCITestArm(now, 101, "head-for-status"))
+		Expect(err).NotTo(HaveOccurred())
+		changed, err := store.WakeByHead(ctx, pendingci.WakeHeadRequest{
+			RepositoryID: armed.Request.RepositoryID,
+			HeadSHA:      "stale-head",
+			EventKey:     "status:stale-head:build:success",
+			OccurredAt:   now.Add(time.Second),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(changed).To(BeZero())
+
+		wake := pendingci.WakeHeadRequest{
+			RepositoryID: armed.Request.RepositoryID,
+			HeadSHA:      armed.Request.HeadSHA,
+			EventKey:     "status:head-for-status:build:success",
+			OccurredAt:   now.Add(2 * time.Second),
+		}
+		changed, err = store.WakeByHead(ctx, wake)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(changed).To(Equal(int64(1)))
+		changed, err = store.WakeByHead(ctx, wake)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(changed).To(BeZero())
+
+		finished, err := store.FinishPR(ctx, pendingci.FinishPRRequest{
+			RepositoryID: armed.Request.RepositoryID,
+			PullRequest:  armed.Request.PullRequest,
+			Lifecycle:    pendingci.LifecycleCancelled,
+			Reason:       "pending CI label removed",
+			FinishedAt:   now.Add(3 * time.Second),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(finished.Lifecycle).To(Equal(pendingci.LifecycleCancelled))
+		finished, err = store.FinishPR(ctx, pendingci.FinishPRRequest{
+			RepositoryID: armed.Request.RepositoryID,
+			PullRequest:  armed.Request.PullRequest,
+			Lifecycle:    pendingci.LifecycleMerged,
+			Reason:       "late close event",
+			FinishedAt:   now.Add(4 * time.Second),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(finished).To(BeNil())
+	})
+
 	It("rejects invalid transitions before they reach SQLite", func() {
 		invalidArm := pendingCITestArm(now, 101, "sha-1")
 		invalidArm.MergeMethod = "octopus"

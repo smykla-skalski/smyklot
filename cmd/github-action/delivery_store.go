@@ -8,7 +8,6 @@ import (
 
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/logging"
-	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
 
 const (
@@ -120,19 +119,15 @@ func (s *server) beginDelivery(
 	ctx context.Context,
 	j *job,
 ) (storage.DeliveryClaimDisposition, error) {
-	repositoryID := repositoryStorageID(j.event.Repository.ID)
-	fullName := j.event.Repository.FullName
-	if fullName == "" {
-		fullName = repoFullName(j.event.Repository.Owner.Login, j.event.Repository.Name)
-	}
+	repositoryID := repositoryStorageID(j.metadata.RepositoryID)
 
 	result, err := s.deliveryStore.ClaimDelivery(ctx, storage.DeliveryClaim{
 		ClaimKey:           j.key,
 		DeliveryID:         j.deliveryID,
-		TargetID:           installationStorageID(j.event.Installation.ID),
+		TargetID:           installationStorageID(j.metadata.InstallationID),
 		RepositoryID:       &repositoryID,
-		RepositoryFullName: fullName,
-		Event:              webhook.EventIssueComment,
+		RepositoryFullName: j.metadata.RepositoryFullName,
+		Event:              j.eventName,
 		Payload:            j.payload,
 		ClaimedAt:          time.Now().UTC(),
 	})
@@ -218,8 +213,8 @@ func retryableDelivery(cause error, attempt int) bool {
 func (s *server) announceDelivery(j job) {
 	if s.panel != nil {
 		s.panel.Announce(
-			installationStorageID(j.event.Installation.ID),
-			repositoryStorageID(j.event.Repository.ID),
+			installationStorageID(j.metadata.InstallationID),
+			repositoryStorageID(j.metadata.RepositoryID),
 		)
 	}
 }

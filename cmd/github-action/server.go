@@ -159,12 +159,17 @@ type server struct {
 
 // job is one delivery waiting to be executed.
 type job struct {
-	event      *webhook.IssueCommentEvent
-	key        string
-	deliveryID string
-	claimID    int64
-	attempt    int
-	payload    []byte
+	eventName    string
+	action       string
+	metadata     webhook.Metadata
+	pullRequest  int
+	comment      *webhook.IssueCommentEvent
+	notification *webhook.PendingCINotification
+	key          string
+	deliveryID   string
+	claimID      int64
+	attempt      int
+	payload      []byte
 
 	// logger already carries this delivery's identifiers, so every line the
 	// work produces can be traced back to the delivery that caused it
@@ -426,9 +431,7 @@ func (s *server) handleDelivery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// A command only ever arrives on a comment. Subscribing to more events than
-	// that is the operator's business, but nothing else has anything to execute
-	if eventName != webhook.EventIssueComment {
+	if eventName != webhook.EventIssueComment && !webhook.SupportsPendingCI(eventName) {
 		s.ignore(w, event, http.StatusNoContent)
 
 		return
@@ -446,34 +449,28 @@ func (s *server) handleDelivery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	e, err := webhook.ParseIssueComment(body)
+	j, actionable, err := s.decodeWebhookJob(eventName, body)
 	if err != nil {
 		s.reject(ctx, w, event, "malformed payload", err)
 
 		return
 	}
 
-	if !e.Actionable() {
+	if !actionable {
 		s.ignore(w, event, http.StatusNoContent)
 
 		return
 	}
 
 	ctx = logging.With(ctx,
-		"repo", e.Repository.FullName, "pr", e.Issue.Number, "action", e.Action)
-
-	if err := validateCommentInput(runtimeConfigFor(e, s.cfg)); err != nil {
-		s.reject(ctx, w, event, "unusable payload", err)
-
-		return
-	}
-	s.dispatch(ctx, w, job{
-		event:      e,
-		key:        e.IdempotencyKey(),
-		deliveryID: deliveryID,
-		payload:    body,
-		logger:     logging.From(ctx),
-	})
+		"repo", j.metadata.RepositoryFullName,
+		"pr", j.pullRequest,
+		"action", j.action,
+	)
+	j.deliveryID = deliveryID
+	j.payload = body
+	j.logger = logging.From(ctx)
+	s.dispatch(ctx, w, j)
 }
 
 // ignore answers a delivery that carried nothing to execute.
@@ -495,21 +492,21 @@ func (s *server) dispatch(ctx context.Context, w http.ResponseWriter, j job) {
 	// copy never reaches a worker
 	claim, err := s.beginDelivery(ctx, &j)
 	if err != nil {
-		s.count(webhook.EventIssueComment, metrics.OutcomeRefused)
+		s.count(j.eventName, metrics.OutcomeRefused)
 		logging.From(ctx).Error("delivery claim failed", "error", err)
 		http.Error(w, "not accepted", http.StatusServiceUnavailable)
 
 		return
 	}
 	if claim == storage.DeliveryClaimInProgress {
-		s.count(webhook.EventIssueComment, metrics.OutcomeDuplicate)
+		s.count(j.eventName, metrics.OutcomeDuplicate)
 		logging.From(ctx).Info("delivery is still being processed")
 		w.WriteHeader(http.StatusAccepted)
 
 		return
 	}
 	if claim == storage.DeliveryClaimRetained {
-		s.count(webhook.EventIssueComment, metrics.OutcomeDuplicate)
+		s.count(j.eventName, metrics.OutcomeDuplicate)
 		logging.From(ctx).Info("delivery already handled")
 		w.WriteHeader(http.StatusOK)
 
@@ -517,7 +514,7 @@ func (s *server) dispatch(ctx context.Context, w http.ResponseWriter, j job) {
 	}
 
 	s.deliveries.Wake()
-	s.count(webhook.EventIssueComment, metrics.OutcomeAccepted)
+	s.count(j.eventName, metrics.OutcomeAccepted)
 	w.WriteHeader(http.StatusAccepted)
 }
 
@@ -547,15 +544,21 @@ func (s *server) execute(j job) {
 	started := time.Now()
 	executed := true
 	var err error
-	if s.panel != nil {
-		executed, err = s.repositoryEnabled(ctx, j.event)
-	}
-	if err == nil && executed {
-		err = s.handleIssueComment(ctx, j.event)
+	if j.comment != nil {
+		if s.panel != nil {
+			executed, err = s.repositoryEnabled(ctx, j.comment)
+		}
+		if err == nil && executed {
+			err = s.handleIssueComment(ctx, j.comment)
+		}
+	} else if j.notification != nil {
+		err = s.handlePendingCIWebhook(ctx, j.notification)
+	} else {
+		err = errors.New("delivery job has no executable event")
 	}
 	elapsed := time.Since(started)
 
-	s.metrics.DeliveryDuration.WithLabelValues(j.event.Action).Observe(elapsed.Seconds())
+	s.metrics.DeliveryDuration.WithLabelValues(j.action).Observe(elapsed.Seconds())
 
 	if err != nil {
 		if retryableDelivery(err, j.attempt) {
@@ -569,7 +572,7 @@ func (s *server) execute(j job) {
 				logging.From(ctx).Error("delivery retry could not be persisted", "error", finishErr)
 				s.retryDeliveryFinalization(j, "retry", finalize)
 			}
-			s.metrics.Deliveries.WithLabelValues(j.event.Action, metrics.ResultFailure).Inc()
+			s.metrics.Deliveries.WithLabelValues(j.action, metrics.ResultFailure).Inc()
 			logging.From(ctx).Warn(
 				"delivery execution will be retried",
 				"error", err,
@@ -591,7 +594,7 @@ func (s *server) execute(j job) {
 			logging.From(ctx).Error("delivery failure could not be persisted", "error", finishErr)
 			s.retryDeliveryFinalization(j, "failure", finalize)
 		}
-		s.metrics.Deliveries.WithLabelValues(j.event.Action, metrics.ResultFailure).Inc()
+		s.metrics.Deliveries.WithLabelValues(j.action, metrics.ResultFailure).Inc()
 		s.recordFailure(j, err)
 		logging.From(ctx).Error("delivery failed", "error", err, "duration", elapsed.String())
 
@@ -608,7 +611,7 @@ func (s *server) execute(j job) {
 		logging.From(ctx).Error("delivery completion could not be persisted", "error", finishErr)
 		s.retryDeliveryFinalization(j, "success", finalize)
 	}
-	s.metrics.Deliveries.WithLabelValues(j.event.Action, metrics.ResultSuccess).Inc()
+	s.metrics.Deliveries.WithLabelValues(j.action, metrics.ResultSuccess).Inc()
 	if executed {
 		logging.From(ctx).Info("delivery executed", "duration", elapsed.String())
 	} else {
@@ -622,9 +625,9 @@ func (s *server) recordFailure(j job, cause error) {
 	s.failures.Record(deliveryFailure{
 		Time:        time.Now(),
 		DeliveryID:  j.deliveryID,
-		Repository:  j.event.Repository.FullName,
-		PullRequest: j.event.Issue.Number,
-		Action:      j.event.Action,
+		Repository:  j.metadata.RepositoryFullName,
+		PullRequest: j.pullRequest,
+		Action:      j.action,
 		Reason:      s.redactor.Error(cause),
 	})
 }
@@ -678,7 +681,8 @@ func (s *server) handleIssueComment(ctx context.Context, event *webhook.IssueCom
 // let any caller that can reach the port mint a new time series per request.
 func eventLabel(name string) string {
 	switch name {
-	case webhook.EventIssueComment, webhook.EventPing:
+	case webhook.EventIssueComment, webhook.EventCheckRun, webhook.EventCheckSuite,
+		webhook.EventStatus, webhook.EventPullRequest, webhook.EventPing:
 		return name
 
 	default:

@@ -42,6 +42,14 @@ func (request WakeRequest) Validate() error {
 	return nil
 }
 
+func (request WakeHeadRequest) Validate() error {
+	if empty(request.RepositoryID, request.HeadSHA, request.EventKey) || request.OccurredAt.IsZero() {
+		return invalid("repository, head SHA, event identity, and occurrence time are required")
+	}
+
+	return nil
+}
+
 func (request RescheduleRequest) Validate() error {
 	if request.ID <= 0 || request.ExpectedRevision <= 0 {
 		return invalid("request identity and revision must be positive")
@@ -82,6 +90,20 @@ func (request CancelRequest) Validate() error {
 	}
 	if strings.TrimSpace(request.Reason) == "" || request.CancelledAt.IsZero() {
 		return invalid("cancellation reason and time are required")
+	}
+
+	return nil
+}
+
+func (request FinishPRRequest) Validate() error {
+	if strings.TrimSpace(request.RepositoryID) == "" || request.PullRequest <= 0 {
+		return invalid("repository identity and pull request number are required")
+	}
+	if request.Lifecycle != LifecycleMerged && request.Lifecycle != LifecycleCancelled {
+		return invalid("pull request finish lifecycle must be merged or cancelled")
+	}
+	if strings.TrimSpace(request.Reason) == "" || request.FinishedAt.IsZero() {
+		return invalid("pull request finish reason and time are required")
 	}
 
 	return nil
