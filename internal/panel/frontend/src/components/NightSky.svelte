@@ -11,7 +11,7 @@
    */
   const {
     width = '100vw',
-    height = 'clamp(36rem, 380%, 58rem)',
+    height = 'clamp(44rem, 480%, 72rem)',
   }: {
     /** How far the sky reaches across, before the mask fades it out. */
     width?: string;
@@ -67,40 +67,78 @@
 
     display: block;
     height: var(--sky-height);
-    /* The sky is larger than the window on purpose, so the fade happens off the
-       edges rather than inside them: a ramp short enough to finish on screen is
-       the thing that reads as a cut. Fourteen stops rather than four, and no
-       straight run at the end, so the falloff has no step in it anywhere and no
-       star is ever chopped by a boundary - they dim out with the sky around them.
-       The radii are given, not left to `farthest-corner`, which sizes the ellipse
-       to the corner and leaves the ramp unfinished on the short axis. */
-    /* A wide plateau and then a long ramp with no straight run at the end. The
-       plateau is what keeps the column of text on deep sky - the falloff is
-       elliptical, so a line out at the column's edge is further along it than its
-       distance below the mark suggests - and the ramp's length is what keeps the
-       edge from reading as a cut.
-
-       The radii run past the box rather than matching it, which is what sends the
-       falloff off the top and the sides: the sky is still at strength where the
-       window clips it there, and the only fade you actually see runs down and
-       diagonally into the corners. `farthest-corner` would not do - it sizes the
-       ellipse to the corner and leaves the ramp unfinished on the short axis. */
-    mask-image: radial-gradient(
-      ellipse 78% 58% at 50% 50%,
-      rgb(0 0 0 / 100%) 0%,
-      rgb(0 0 0 / 100%) 46%,
-      rgb(0 0 0 / 97%) 54%,
-      rgb(0 0 0 / 91%) 61%,
-      rgb(0 0 0 / 82%) 67%,
-      rgb(0 0 0 / 70%) 72%,
-      rgb(0 0 0 / 56%) 77%,
-      rgb(0 0 0 / 42%) 82%,
-      rgb(0 0 0 / 28%) 86%,
-      rgb(0 0 0 / 16%) 90%,
-      rgb(0 0 0 / 8%) 94%,
-      rgb(0 0 0 / 3%) 97%,
-      rgb(0 0 0 / 0%) 100%
-    );
+    /*
+     * The boundary is one long tilted fade, cut off at the bottom by a straight
+     * one, with banks of fog added back along it.
+     *
+     * The tilt runs down-and-left, so the sky gives out earlier on the left of
+     * the window than on the right - the edge sits high on one side and carries
+     * on down past the card on the other, rather than mirroring itself. A pair of
+     * opposite tilts would be symmetric by construction; one is not.
+     *
+     * The straight fade underneath it exists for one reason: it reaches nothing
+     * exactly at the box's own bottom edge. Left to the tilt alone that edge
+     * still has substance in it where it crosses the screen, and an element
+     * boundary with substance in it is a cut ruled across the page.
+     *
+     * A radial falloff was the obvious first try and cannot do any of this. Any
+     * horizontal component to it dims the top corners more than the top middle -
+     * the lens vignette - and pushing its radii past the box to avoid that leaves
+     * the ramp unfinished at the bottom, which is the same cut again.
+     *
+     * The ramps are deliberately long, half the box and more. A short ramp reads
+     * as an edge however smooth its stops are, and a long one is also what keeps
+     * stars from being chopped: they dim out with the sky around them.
+     */
+    mask-image:
+      /* Fog: soft banks sitting along the boundary, added to it rather than
+         multiplied into it, so the sky bulges past the ramp in some places and
+         not others. A clean line is the thing that reads as an edge. */
+      /* Every bank has to reach nothing well inside the box. One centred at 80%
+         with a 22% radius reached past the bottom edge, and fog that is still
+         solid where the element stops is a cut with a soft top to it. */
+      radial-gradient(ellipse 32% 14% at 15% 56%, rgb(0 0 0 / 82%), rgb(0 0 0 / 0%)),
+      radial-gradient(ellipse 28% 13% at 42% 64%, rgb(0 0 0 / 78%), rgb(0 0 0 / 0%)),
+      radial-gradient(ellipse 34% 15% at 76% 68%, rgb(0 0 0 / 84%), rgb(0 0 0 / 0%)),
+      radial-gradient(ellipse 22% 11% at 60% 58%, rgb(0 0 0 / 72%), rgb(0 0 0 / 0%)),
+      radial-gradient(ellipse 24% 12% at 29% 50%, rgb(0 0 0 / 74%), rgb(0 0 0 / 0%)),
+      linear-gradient(
+        197deg,
+        rgb(0 0 0 / 100%) 0%,
+        rgb(0 0 0 / 100%) 45%,
+        rgb(0 0 0 / 97%) 50%,
+        rgb(0 0 0 / 93%) 55%,
+        rgb(0 0 0 / 87%) 60%,
+        rgb(0 0 0 / 79%) 64%,
+        rgb(0 0 0 / 69%) 68%,
+        rgb(0 0 0 / 58%) 72%,
+        rgb(0 0 0 / 46%) 76%,
+        rgb(0 0 0 / 34%) 80%,
+        rgb(0 0 0 / 23%) 84%,
+        rgb(0 0 0 / 14%) 88%,
+        rgb(0 0 0 / 7%) 92%,
+        rgb(0 0 0 / 2%) 95%,
+        rgb(0 0 0 / 0%) 98%
+      ),
+      linear-gradient(
+        to bottom,
+        rgb(0 0 0 / 100%) 0%,
+        rgb(0 0 0 / 100%) 48%,
+        rgb(0 0 0 / 96%) 54%,
+        rgb(0 0 0 / 90%) 60%,
+        rgb(0 0 0 / 81%) 66%,
+        rgb(0 0 0 / 70%) 71%,
+        rgb(0 0 0 / 57%) 76%,
+        rgb(0 0 0 / 44%) 81%,
+        rgb(0 0 0 / 31%) 86%,
+        rgb(0 0 0 / 19%) 90%,
+        rgb(0 0 0 / 10%) 94%,
+        rgb(0 0 0 / 3%) 97%,
+        rgb(0 0 0 / 0%) 100%
+      );
+    /* Read from the bottom up: the tilt meets the straight fade first, then each
+       bank of fog is added onto what they left. */
+    mask-composite: add, add, add, add, add, intersect, add;
     pointer-events: none;
     position: absolute;
     width: var(--sky-width);
