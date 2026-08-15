@@ -41,7 +41,7 @@ RETURNING id`,
 		claim.RepositoryFullName,
 		claim.Event,
 		storage.DeliveryRunning,
-		formatTime(claim.ClaimedAt),
+		claim.ClaimedAt,
 	).Scan(&claimID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return storage.DeliveryClaimResult{}, fmt.Errorf("claim delivery: %w", err)
@@ -106,7 +106,7 @@ func (s *Store) CompleteDelivery(
 UPDATE deliveries SET status = ?, finished_at = ?
 WHERE id = ? AND status IN (?, ?)`,
 		storage.DeliverySucceeded,
-		formatTime(completedAt),
+		completedAt,
 		claimID,
 		storage.DeliveryRunning,
 		storage.DeliverySucceeded,
@@ -136,7 +136,7 @@ WHERE id = ? AND status IN (?, ?)`,
 		change.Stage,
 		change.Reason,
 		change.Retryable,
-		formatTime(change.FailedAt),
+		change.FailedAt,
 		change.ClaimID,
 		storage.DeliveryRunning,
 		storage.DeliveryFailed,
@@ -163,7 +163,7 @@ WHERE status = ?`,
 		storage.DeliveryFailed,
 		"recovery",
 		"service stopped before delivery finished",
-		formatTime(recoveredAt),
+		recoveredAt,
 		storage.DeliveryRunning,
 	)
 	if err != nil {
@@ -264,7 +264,7 @@ func failureFilters(
 func (s *Store) PruneDeliveries(ctx context.Context, finishedBefore time.Time) error {
 	if _, err := s.db.ExecContext(ctx, `
 DELETE FROM deliveries
-WHERE finished_at IS NOT NULL AND finished_at < ?`, formatTime(finishedBefore)); err != nil {
+WHERE finished_at IS NOT NULL AND finished_at < ?`, finishedBefore); err != nil {
 		return fmt.Errorf("prune deliveries: %w", err)
 	}
 
@@ -300,7 +300,7 @@ SELECT COUNT(*) FROM deliveries WHERE id = ?`, claimID).Scan(&exists); err != ni
 
 func scanDeliveryFailure(scanner rowScanner) (storage.DeliveryFailure, error) {
 	var failure storage.DeliveryFailure
-	var occurredAt string
+	var occurredAt storedTime
 
 	if err := scanner.Scan(
 		&failure.ID,
@@ -316,12 +316,7 @@ func scanDeliveryFailure(scanner rowScanner) (storage.DeliveryFailure, error) {
 		return storage.DeliveryFailure{}, err
 	}
 
-	parsed, err := parseTime(occurredAt)
-	if err != nil {
-		return storage.DeliveryFailure{}, err
-	}
-
-	failure.OccurredAt = parsed
+	failure.OccurredAt = occurredAt.Time()
 
 	return failure, nil
 }

@@ -132,7 +132,7 @@ UPDATE user_invitations
 SET status = 'revoked', responded_at = ?
 WHERE account_id = ? AND status = 'pending'
   AND `+optionalScopeClause("target_id"),
-		formatTime(change.CreatedAt), change.AccountID, change.TargetID, change.TargetID,
+		change.CreatedAt, change.AccountID, change.TargetID, change.TargetID,
 	); err != nil {
 		return storage.Invitation{}, fmt.Errorf("revoke earlier invitations: %w", err)
 	}
@@ -147,9 +147,9 @@ INSERT INTO user_invitations (
 		change.TargetID,
 		change.Role,
 		change.SystemRole,
-		formatTime(change.ExpiresAt),
+		change.ExpiresAt,
 		change.CreatedByAccount,
-		formatTime(change.CreatedAt),
+		change.CreatedAt,
 	); err != nil {
 		return storage.Invitation{}, fmt.Errorf("insert invitation: %w", s.conflictConstraint(err))
 	}
@@ -169,7 +169,7 @@ INSERT INTO user_invitations (
 	}
 	if elevation != nil {
 		if err := insertElevatedNotifications(
-			ctx, tx, *elevation, auditEventID, "invitation.created", formatTime(change.CreatedAt),
+			ctx, tx, *elevation, auditEventID, "invitation.created", change.CreatedAt,
 		); err != nil {
 			return storage.Invitation{}, err
 		}
@@ -347,9 +347,9 @@ SET token_hash = ?, status = 'pending', expires_at = ?, created_by = ?, created_
     responded_at = NULL
 WHERE id = ? AND status = 'pending'`,
 		change.TokenHash,
-		formatTime(change.ExpiresAt),
+		change.ExpiresAt,
 		change.CreatedByAccount,
-		formatTime(change.CreatedAt),
+		change.CreatedAt,
 		change.ID,
 	)
 	if err != nil {
@@ -374,7 +374,7 @@ WHERE id = ? AND status = 'pending'`,
 	}
 	if elevation != nil {
 		if err := insertElevatedNotifications(
-			ctx, tx, *elevation, auditEventID, "invitation.reissued", formatTime(change.CreatedAt),
+			ctx, tx, *elevation, auditEventID, "invitation.reissued", change.CreatedAt,
 		); err != nil {
 			return storage.Invitation{}, err
 		}
@@ -421,7 +421,7 @@ func (s *Store) RevokeInvitation(
 	}
 	result, err := tx.ExecContext(ctx, `
 UPDATE user_invitations SET status = 'revoked', responded_at = ?
-WHERE id = ? AND status = 'pending'`, formatTime(change.RevokedAt), change.ID)
+WHERE id = ? AND status = 'pending'`, change.RevokedAt, change.ID)
 	if err != nil {
 		return storage.Invitation{}, fmt.Errorf("revoke invitation: %w", err)
 	}
@@ -444,7 +444,7 @@ WHERE id = ? AND status = 'pending'`, formatTime(change.RevokedAt), change.ID)
 	}
 	if elevation != nil {
 		if err := insertElevatedNotifications(
-			ctx, tx, *elevation, auditEventID, "invitation.revoked", formatTime(change.RevokedAt),
+			ctx, tx, *elevation, auditEventID, "invitation.revoked", change.RevokedAt,
 		); err != nil {
 			return storage.Invitation{}, err
 		}
@@ -516,7 +516,7 @@ func (s *Store) RespondToInvitation(
 	}
 	result, err := tx.ExecContext(ctx, `
 UPDATE user_invitations SET status = ?, responded_at = ?
-WHERE id = ? AND status = 'pending'`, status, formatTime(change.At), invitation.ID)
+WHERE id = ? AND status = 'pending'`, status, change.At, invitation.ID)
 	if err != nil {
 		return storage.Invitation{}, fmt.Errorf("record invitation response: %w", err)
 	}
@@ -579,7 +579,7 @@ ON CONFLICT(account_id, target_id) DO UPDATE SET
 		*invitation.TargetID,
 		*invitation.Role,
 		invitation.Account.ID,
-		formatTime(at),
+		at,
 	)
 	if err != nil {
 		return fmt.Errorf("grant invited target access: %w", err)
@@ -606,7 +606,7 @@ func activateInvitedPanelUser(
 		_, err = tx.ExecContext(ctx, `
 INSERT INTO panel_users (
     account_id, status, system_role, revision, created_at, updated_at
-) VALUES (?, 'active', 'none', 1, ?, ?)`, accountID, formatTime(at), formatTime(at))
+) VALUES (?, 'active', 'none', 1, ?, ?)`, accountID, at, at)
 	case err != nil:
 		return fmt.Errorf("read invited user state: %w", err)
 	case status == storage.PanelUserRemoved:
@@ -614,7 +614,7 @@ INSERT INTO panel_users (
 UPDATE panel_users
 SET status = 'active', ban_reason = NULL, banned_at = NULL,
     removed_at = NULL, revision = revision + 1, updated_at = ?
-WHERE account_id = ? AND system_role = 'none'`, formatTime(at), accountID)
+WHERE account_id = ? AND system_role = 'none'`, at, accountID)
 	case status == storage.PanelUserActive && allowActive:
 		return nil
 	default:
@@ -648,7 +648,7 @@ func activateInvitedRoot(
 		_, err = tx.ExecContext(ctx, `
 INSERT INTO panel_users (
     account_id, status, system_role, revision, created_at, updated_at
-) VALUES (?, 'active', 'root', 1, ?, ?)`, accountID, formatTime(at), formatTime(at))
+) VALUES (?, 'active', 'root', 1, ?, ?)`, accountID, at, at)
 	case err != nil:
 		return fmt.Errorf("read invited Root state: %w", err)
 	case status == storage.PanelUserRemoved:
@@ -657,7 +657,7 @@ UPDATE panel_users
 SET status = 'active', system_role = 'root',
     ban_reason = NULL, banned_at = NULL, removed_at = NULL,
     revision = revision + 1, updated_at = ?
-WHERE account_id = ? AND system_role <> 'super_root'`, formatTime(at), accountID)
+WHERE account_id = ? AND system_role <> 'super_root'`, at, accountID)
 	default:
 		return storage.ErrConflict
 	}
@@ -681,9 +681,9 @@ func getInvitation(
 func scanInvitation(scanner rowScanner, now time.Time) (storage.Invitation, error) {
 	var invitation storage.Invitation
 	var invitedAvatar, targetID, targetName, installationRole, systemRole sql.NullString
-	var targetLogin, targetKind sql.NullString
-	var creatorAvatar, respondedAt sql.NullString
-	var invitedUpdatedAt, creatorUpdatedAt, expiresAt, createdAt string
+	var targetLogin, targetKind, creatorAvatar sql.NullString
+	var respondedAt, invitedUpdatedAt, creatorUpdatedAt storedTime
+	var expiresAt, createdAt storedTime
 	err := scanner.Scan(
 		&invitation.ID,
 		&invitation.Account.ID,
@@ -728,21 +728,11 @@ func scanInvitation(scanner rowScanner, now time.Time) (storage.Invitation, erro
 		role := storage.SystemRole(systemRole.String)
 		invitation.SystemRole = &role
 	}
-	if invitation.Account.UpdatedAt, err = parseTime(invitedUpdatedAt); err != nil {
-		return storage.Invitation{}, err
-	}
-	if invitation.CreatedBy.UpdatedAt, err = parseTime(creatorUpdatedAt); err != nil {
-		return storage.Invitation{}, err
-	}
-	if invitation.ExpiresAt, err = parseTime(expiresAt); err != nil {
-		return storage.Invitation{}, err
-	}
-	if invitation.CreatedAt, err = parseTime(createdAt); err != nil {
-		return storage.Invitation{}, err
-	}
-	if invitation.RespondedAt, err = nullableTime(respondedAt); err != nil {
-		return storage.Invitation{}, err
-	}
+	invitation.Account.UpdatedAt = invitedUpdatedAt.Time()
+	invitation.CreatedBy.UpdatedAt = creatorUpdatedAt.Time()
+	invitation.ExpiresAt = expiresAt.Time()
+	invitation.CreatedAt = createdAt.Time()
+	invitation.RespondedAt = respondedAt.Pointer()
 	if invitation.Status == storage.InvitationPending && !now.Before(invitation.ExpiresAt) {
 		invitation.Status = storage.InvitationExpired
 	}

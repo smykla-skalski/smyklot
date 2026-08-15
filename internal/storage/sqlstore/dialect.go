@@ -3,6 +3,7 @@ package sqlstore
 import (
 	"context"
 	"database/sql"
+	"time"
 )
 
 // Dialect describes the few places where SQL engines genuinely disagree.
@@ -30,6 +31,13 @@ type Dialect interface {
 	// JSONHasKey renders a test for one top-level key in a JSON document
 	// column. The key name is bound, so the fragment consumes one argument.
 	JSONHasKey(column string) string
+
+	// TimeArg renders a time for the engine's own timestamp column: a native
+	// value where the engine has one, text where it does not.
+	TimeArg(value time.Time) any
+
+	// NullTimeArg renders an optional time, and nil for one that is absent.
+	NullTimeArg(value *time.Time) any
 
 	// UniqueViolation reports whether a driver error means a row already
 	// exists. Engines carry that verdict differently, one in a message and

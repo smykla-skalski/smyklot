@@ -110,7 +110,7 @@ WHERE account_id = ? AND revision = ?`,
 		values.banReason,
 		values.bannedAt,
 		values.removedAt,
-		formatTime(change.ChangedAt),
+		change.ChangedAt,
 		change.AccountID,
 		change.ExpectedRevision,
 	)
@@ -129,7 +129,7 @@ WHERE account_id = ? AND revision = ?`,
 UPDATE user_invitations
 SET status = 'revoked', responded_at = ?
 WHERE account_id = ? AND status = 'pending'`,
-			formatTime(change.ChangedAt), change.AccountID,
+			change.ChangedAt, change.AccountID,
 		); err != nil {
 			return storage.PanelUser{}, fmt.Errorf("revoke removed user invitations: %w", err)
 		}
@@ -183,14 +183,14 @@ func panelUserUpdateValues(
 		}
 	case storage.PanelUserBanned:
 		values.banReason = normalizedOptional(change.BanReason)
-		values.bannedAt = formatTime(change.ChangedAt)
+		values.bannedAt = change.ChangedAt
 		values.action = "user.banned"
 		values.summary = "banned user"
 		if reason, ok := values.banReason.(string); ok {
 			values.summary += ": " + reason
 		}
 	case storage.PanelUserRemoved:
-		values.removedAt = formatTime(change.ChangedAt)
+		values.removedAt = change.ChangedAt
 		values.action = "user.removed"
 		values.summary = "removed user"
 	}

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 )
 
 // Dialect spells the shared store's SQL for SQLite.
@@ -35,6 +36,30 @@ func (Dialect) JSONKeyCount(column string) string {
 // key. SQLite addresses a member by path, so the bound key becomes one.
 func (Dialect) JSONHasKey(column string) string {
 	return "json_type(" + column + ", '$.' || ?) IS NOT NULL"
+}
+
+// timeLayout is how a timestamp is written to a TEXT column.
+//
+// SQLite has no timestamp type, so every comparison and every ORDER BY on a
+// stored time is a string comparison. RFC3339Nano drops trailing zeros from
+// the fractional part, which makes those two orders disagree: a whole second
+// sorts after the same second plus a fraction, because Z outranks the dot.
+// Padding the fraction to a fixed nine digits makes string order and time
+// order the same thing, and the result still parses as RFC3339.
+const timeLayout = "2006-01-02T15:04:05.000000000Z07:00"
+
+// TimeArg writes a time as sortable UTC text.
+func (Dialect) TimeArg(value time.Time) any {
+	return value.UTC().Format(timeLayout)
+}
+
+// NullTimeArg writes an optional time, and NULL for one that is absent.
+func (d Dialect) NullTimeArg(value *time.Time) any {
+	if value == nil {
+		return nil
+	}
+
+	return d.TimeArg(*value)
 }
 
 // UniqueViolation reports a row that already exists.

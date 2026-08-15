@@ -119,7 +119,7 @@ func invitationPageFilters(
 				return nil, nil, fmt.Errorf("unsupported invitation status %q", status)
 			}
 			parts = append(parts, statusExpression+" = ?")
-			arguments = append(arguments, formatTime(now), status)
+			arguments = append(arguments, now, status)
 		}
 		clauses = append(clauses, "("+strings.Join(parts, " OR ")+")")
 	}

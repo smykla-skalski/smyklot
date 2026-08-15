@@ -72,7 +72,7 @@ func readRootOwnershipCounts(
 	now time.Time,
 	result *storage.RootOverview,
 ) error {
-	cutoff := formatTime(now.Add(-storage.OwnershipFreshFor))
+	cutoff := now.Add(-storage.OwnershipFreshFor)
 	if err := tx.QueryRowContext(ctx, `
 SELECT
     COALESCE(SUM(CASE WHEN o.status = 'fresh' AND o.synced_at >= ? AND
@@ -107,7 +107,7 @@ SELECT
     (SELECT COUNT(*) FROM root_elevations WHERE ended_at IS NULL AND expires_at > ?),
     (SELECT COUNT(*) FROM security_notifications
      WHERE recipient_account_id = ? AND read_at IS NULL)`,
-		formatTime(now), accountID,
+		now, accountID,
 	).Scan(&result.ActiveElevations, &result.UnreadSecurityEvents); err != nil {
 		return fmt.Errorf("read Root security counts: %w", err)
 	}
@@ -133,7 +133,7 @@ func readRootRecentFailures(ctx context.Context, tx runner) ([]storage.RootFailu
 
 func scanRootFailure(scanner rowScanner) (storage.RootFailure, error) {
 	var item storage.RootFailure
-	var occurredAt, accountUpdatedAt string
+	var occurredAt, accountUpdatedAt storedTime
 	var avatar sql.NullString
 	if err := scanner.Scan(
 		&item.Failure.ID, &item.Failure.DeliveryID, &item.Failure.TargetID,
@@ -144,13 +144,9 @@ func scanRootFailure(scanner rowScanner) (storage.RootFailure, error) {
 	); err != nil {
 		return storage.RootFailure{}, err
 	}
-	var err error
-	item.Failure.OccurredAt, err = parseTime(occurredAt)
-	if err != nil {
-		return storage.RootFailure{}, err
-	}
-	item.Target.UpdatedAt, err = parseTime(accountUpdatedAt)
+	item.Failure.OccurredAt = occurredAt.Time()
+	item.Target.UpdatedAt = accountUpdatedAt.Time()
 	item.Target.AvatarURL = stringPointer(avatar)
 
-	return item, err
+	return item, nil
 }

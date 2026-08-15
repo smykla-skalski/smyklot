@@ -3,6 +3,7 @@ package sqlstore
 import (
 	"context"
 	"database/sql"
+	"time"
 )
 
 // runner is the statement surface every query in this package needs. The
@@ -28,7 +29,7 @@ func (b binder) ExecContext(
 	query string,
 	arguments ...any,
 ) (sql.Result, error) {
-	return b.raw.ExecContext(ctx, b.dialect.Rebind(query), arguments...)
+	return b.raw.ExecContext(ctx, b.dialect.Rebind(query), b.bind(arguments)...)
 }
 
 func (b binder) QueryContext(
@@ -36,7 +37,7 @@ func (b binder) QueryContext(
 	query string,
 	arguments ...any,
 ) (*sql.Rows, error) {
-	return b.raw.QueryContext(ctx, b.dialect.Rebind(query), arguments...)
+	return b.raw.QueryContext(ctx, b.dialect.Rebind(query), b.bind(arguments)...)
 }
 
 func (b binder) QueryRowContext(
@@ -44,7 +45,28 @@ func (b binder) QueryRowContext(
 	query string,
 	arguments ...any,
 ) *sql.Row {
-	return b.raw.QueryRowContext(ctx, b.dialect.Rebind(query), arguments...)
+	return b.raw.QueryRowContext(ctx, b.dialect.Rebind(query), b.bind(arguments)...)
+}
+
+// bind hands each argument to the engine in the shape that engine stores.
+//
+// Only time needs this. One engine has a real timestamp type; another keeps
+// timestamps as text and has to be told which text. Converting here means a
+// query passes the time.Time it already holds and no caller formats anything.
+func (b binder) bind(arguments []any) []any {
+	bound := make([]any, len(arguments))
+	for index, argument := range arguments {
+		switch value := argument.(type) {
+		case time.Time:
+			bound[index] = b.dialect.TimeArg(value)
+		case *time.Time:
+			bound[index] = b.dialect.NullTimeArg(value)
+		default:
+			bound[index] = argument
+		}
+	}
+
+	return bound
 }
 
 // handle is the store's pooled connection. It binds statements like any other

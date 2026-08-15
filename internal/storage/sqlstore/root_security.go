@@ -37,7 +37,7 @@ func (s *Store) BeginElevation(
 SELECT COUNT(*) FROM root_elevations
 WHERE session_token_hash = ? AND ended_at IS NULL AND expires_at > ?`,
 		grant.SessionTokenHash,
-		formatTime(grant.StartedAt),
+		grant.StartedAt,
 	).Scan(&active); err != nil {
 		return storage.Elevation{}, fmt.Errorf("check active Root elevation: %w", err)
 	}
@@ -254,8 +254,8 @@ func validateRootSession(
 	sessionTokenHash, rootAccountID string,
 	now time.Time,
 ) error {
-	var accountID, expiresAt string
-	var revokedAt sql.NullString
+	var accountID string
+	var expiresAt, revokedAt storedTime
 	var role storage.SystemRole
 	var status storage.PanelUserStatus
 	err := queryer.QueryRowContext(ctx, `
@@ -268,11 +268,7 @@ WHERE s.token_hash = ?`, sessionTokenHash).Scan(
 	if err != nil {
 		return fmt.Errorf("validate Root session: %w", noRows(err))
 	}
-	expires, err := parseTime(expiresAt)
-	if err != nil {
-		return err
-	}
-	if accountID != rootAccountID || revokedAt.Valid || !now.Before(expires) ||
+	if accountID != rootAccountID || revokedAt.Valid() || !now.Before(expiresAt.Time()) ||
 		status != storage.PanelUserActive || !role.IsRoot() {
 		return storage.ErrRevoked
 	}
@@ -287,7 +283,7 @@ func readTargetOwnership(
 ) (storage.TargetOwnership, error) {
 	var ownership storage.TargetOwnership
 	var detail sql.NullString
-	var syncedAt string
+	var syncedAt storedTime
 	err := queryer.QueryRowContext(ctx, `
 SELECT source, status, detail, synced_at,
        (SELECT COUNT(*) FROM target_owners WHERE target_id = ?)
@@ -298,9 +294,9 @@ FROM target_ownership WHERE target_id = ?`, targetID, targetID).Scan(
 		return storage.TargetOwnership{}, fmt.Errorf("read elevated ownership: %w", noRows(err))
 	}
 	ownership.Detail = stringPointer(detail)
-	ownership.SyncedAt, err = parseTime(syncedAt)
+	ownership.SyncedAt = syncedAt.Time()
 
-	return ownership, err
+	return ownership, nil
 }
 
 func (s *Store) insertElevation(
@@ -317,8 +313,8 @@ INSERT INTO root_elevations (
 		elevation.RootAccountID,
 		elevation.TargetID,
 		elevation.Reason,
-		formatTime(elevation.StartedAt),
-		formatTime(elevation.ExpiresAt),
+		elevation.StartedAt,
+		elevation.ExpiresAt,
 	)
 	if err != nil {
 		return fmt.Errorf("insert Root elevation: %w", s.conflictConstraint(err))
@@ -338,7 +334,7 @@ func insertElevationAudit(
 	_, err := insertAppAudit(ctx, tx, appAuditInsert{
 		Category: "elevation", TargetID: &targetID,
 		ActorAccountID: elevation.RootAccountID, ElevationID: &elevation.ID,
-		Action: action, Summary: summary, CreatedAt: formatTime(createdAt),
+		Action: action, Summary: summary, CreatedAt: createdAt,
 	})
 
 	return err
@@ -354,7 +350,7 @@ func endElevation(
 	result, err := tx.ExecContext(ctx, `
 UPDATE root_elevations SET ended_at = ?, end_reason = ?
 WHERE id = ? AND ended_at IS NULL`,
-		formatTime(endedAt), reason, elevation.ID,
+		endedAt, reason, elevation.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("end Root elevation: %w", err)

@@ -266,7 +266,7 @@ ON CONFLICT(target_id) DO UPDATE SET
 		ownership.Source,
 		ownership.Status,
 		ownership.Detail,
-		formatTime(ownership.SyncedAt),
+		ownership.SyncedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("upsert installation ownership: %w", err)
@@ -279,7 +279,7 @@ ON CONFLICT(target_id) DO UPDATE SET
 	for _, owner := range ownership.Owners {
 		if _, err := tx.ExecContext(ctx, `
 INSERT INTO target_owners (target_id, account_id, synced_at) VALUES (?, ?, ?)`,
-			targetID, owner.ID, formatTime(ownership.SyncedAt),
+			targetID, owner.ID, ownership.SyncedAt,
 		); err != nil {
 			return fmt.Errorf("insert installation owner: %w", err)
 		}
@@ -331,7 +331,7 @@ func recordOwnershipAudit(
 	if _, err := insertAppAudit(ctx, tx, appAuditInsert{
 		Category: string(storage.AuditCategoryOwnership), TargetID: &targetID,
 		ActorAccountID: system.ID, Action: action, Summary: summary,
-		CreatedAt: formatTime(ownership.SyncedAt),
+		CreatedAt: ownership.SyncedAt,
 	}); err != nil {
 		return fmt.Errorf("record ownership synchronization: %w", err)
 	}
@@ -363,7 +363,7 @@ ON CONFLICT(id) DO UPDATE SET
 		account.Login,
 		account.DisplayName,
 		account.AvatarURL,
-		formatTime(account.UpdatedAt),
+		account.UpdatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("upsert installation account: %w", err)
@@ -613,8 +613,8 @@ ON CONFLICT(id) DO UPDATE SET
 		snapshot.InstallationID,
 		snapshot.Kind,
 		snapshot.Account.ID,
-		formatTime(snapshot.SyncedAt),
-		formatTime(snapshot.SyncedAt),
+		snapshot.SyncedAt,
+		snapshot.SyncedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("upsert installation target: %w", err)
@@ -652,8 +652,8 @@ ON CONFLICT(id) DO UPDATE SET
 		repository.FullName,
 		repository.Private,
 		repository.DefaultBranch,
-		formatTime(syncedAt),
-		formatTime(syncedAt),
+		syncedAt,
+		syncedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("upsert installation repository: %w", err)
@@ -673,8 +673,9 @@ WHERE t.id = ?`+targetGroup, targetID))
 
 func scanTarget(scanner rowScanner) (storage.Target, error) {
 	var target storage.Target
-	var avatarURL, ownershipDetail, lastFailureAt sql.NullString
-	var targetPatch, targetUpdatedAt, accountUpdatedAt, ownershipSyncedAt string
+	var avatarURL, ownershipDetail sql.NullString
+	var lastFailureAt, targetUpdatedAt, accountUpdatedAt, ownershipSyncedAt storedTime
+	var targetPatch string
 	var enabled int
 
 	err := scanner.Scan(
@@ -711,24 +712,16 @@ func scanTarget(scanner rowScanner) (storage.Target, error) {
 	target.RepositoryCounts.Enabled = enabled
 	target.RepositoryCounts.Disabled = target.RepositoryCounts.Total - enabled
 	target.Ownership.Detail = stringPointer(ownershipDetail)
-	if lastFailureAt.Valid {
-		failedAt, parseErr := parseTime(lastFailureAt.String)
-		if parseErr != nil {
-			return storage.Target{}, parseErr
-		}
-		target.DeliveryHealth.LastFailureAt = &failedAt
-	}
-	target.Ownership.SyncedAt, err = parseTime(ownershipSyncedAt)
-	if err != nil {
-		return storage.Target{}, err
-	}
+	target.DeliveryHealth.LastFailureAt = lastFailureAt.Pointer()
+	target.Ownership.SyncedAt = ownershipSyncedAt.Time()
 
 	return finishTarget(target, targetPatch, targetUpdatedAt, accountUpdatedAt)
 }
 
 func finishTarget(
 	target storage.Target,
-	patch, targetUpdatedAt, accountUpdatedAt string,
+	patch string,
+	targetUpdatedAt, accountUpdatedAt storedTime,
 ) (storage.Target, error) {
 	var err error
 	target.ConfigPatch, err = unmarshalPatch(patch)
@@ -736,14 +729,10 @@ func finishTarget(
 		return storage.Target{}, err
 	}
 
-	target.UpdatedAt, err = parseTime(targetUpdatedAt)
-	if err != nil {
-		return storage.Target{}, err
-	}
+	target.UpdatedAt = targetUpdatedAt.Time()
+	target.Account.UpdatedAt = accountUpdatedAt.Time()
 
-	target.Account.UpdatedAt, err = parseTime(accountUpdatedAt)
-
-	return target, err
+	return target, nil
 }
 
 const repositoryColumns = `
@@ -785,7 +774,8 @@ func scanRepository(scanner rowScanner) (storage.Repository, error) {
 	var repository storage.Repository
 	var enabledOverride sql.NullBool
 	var fileError sql.NullString
-	var panelPatch, filePatch, updatedAt string
+	var panelPatch, filePatch string
+	var updatedAt storedTime
 
 	err := scanner.Scan(
 		&repository.ID,
@@ -819,7 +809,8 @@ func scanRepository(scanner rowScanner) (storage.Repository, error) {
 
 func finishRepository(
 	repository storage.Repository,
-	panelPatch, filePatch, updatedAt string,
+	panelPatch, filePatch string,
+	updatedAt storedTime,
 ) (storage.Repository, error) {
 	var err error
 	repository.ConfigPatch, err = unmarshalPatch(panelPatch)
@@ -832,7 +823,7 @@ func finishRepository(
 		return storage.Repository{}, err
 	}
 
-	repository.UpdatedAt, err = parseTime(updatedAt)
+	repository.UpdatedAt = updatedAt.Time()
 
-	return repository, err
+	return repository, nil
 }

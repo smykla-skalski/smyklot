@@ -306,7 +306,7 @@ func (s *Store) targetPanelUser(
 func scanAccessDecision(scanner rowScanner) (storage.AccessDecision, error) {
 	var decision storage.AccessDecision
 	var targetID, avatarURL sql.NullString
-	var createdAt, actorUpdatedAt string
+	var createdAt, actorUpdatedAt storedTime
 	err := scanner.Scan(
 		&decision.ID,
 		&targetID,
@@ -326,11 +326,8 @@ func scanAccessDecision(scanner rowScanner) (storage.AccessDecision, error) {
 	}
 	decision.TargetID = stringPointer(targetID)
 	decision.Actor.AvatarURL = stringPointer(avatarURL)
-	decision.CreatedAt, err = parseTime(createdAt)
-	if err != nil {
-		return storage.AccessDecision{}, err
-	}
-	decision.Actor.UpdatedAt, err = parseTime(actorUpdatedAt)
+	decision.CreatedAt = createdAt.Time()
+	decision.Actor.UpdatedAt = actorUpdatedAt.Time()
 
-	return decision, err
+	return decision, nil
 }

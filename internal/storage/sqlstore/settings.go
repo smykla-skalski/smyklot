@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/storage"
 )
@@ -53,7 +54,7 @@ UPDATE targets SET
 WHERE id = ? AND revision = ?`,
 		change.RepositoryDefaultEnabled,
 		patch,
-		formatTime(change.ChangedAt),
+		change.ChangedAt,
 		change.TargetID,
 		change.ExpectedRevision,
 	)
@@ -71,14 +72,14 @@ WHERE id = ? AND revision = ?`,
 		ElevationID:    change.ElevationID,
 		Action:         actionTargetSettings,
 		Summary:        "Updated account defaults",
-		CreatedAt:      formatTime(change.ChangedAt),
+		CreatedAt:      change.ChangedAt,
 	})
 	if err != nil {
 		return storage.Target{}, err
 	}
 	if elevation != nil {
 		if err := insertElevatedNotifications(
-			ctx, tx, *elevation, auditEventID, actionTargetSettings, formatTime(change.ChangedAt),
+			ctx, tx, *elevation, auditEventID, actionTargetSettings, change.ChangedAt,
 		); err != nil {
 			return storage.Target{}, err
 		}
@@ -149,14 +150,14 @@ func (s *Store) UpdateRepositorySettings(
 		ElevationID:        change.ElevationID,
 		Action:             actionRepositorySettings,
 		Summary:            "Updated repository settings",
-		CreatedAt:          formatTime(change.ChangedAt),
+		CreatedAt:          change.ChangedAt,
 	})
 	if err != nil {
 		return storage.Repository{}, err
 	}
 	if elevation != nil {
 		if err := insertElevatedNotifications(
-			ctx, tx, *elevation, auditEventID, actionRepositorySettings, formatTime(change.ChangedAt),
+			ctx, tx, *elevation, auditEventID, actionRepositorySettings, change.ChangedAt,
 		); err != nil {
 			return storage.Repository{}, err
 		}
@@ -212,7 +213,7 @@ WHERE target_id = ? AND id = ?`,
 		state.Status,
 		patch,
 		state.Error,
-		formatTime(state.ObservedAt),
+		state.ObservedAt,
 		state.TargetID,
 		state.RepositoryID,
 	)
@@ -243,7 +244,7 @@ WHERE target_id = ? AND id = ? AND revision = ?`,
 		change.EnabledOverride,
 		patch,
 		change.IgnoreRepositoryFile,
-		formatTime(change.ChangedAt),
+		change.ChangedAt,
 		change.TargetID,
 		change.RepositoryID,
 		change.ExpectedRevision,
@@ -321,7 +322,7 @@ type auditInsert struct {
 	ElevationID        *string
 	Action             string
 	Summary            string
-	CreatedAt          string
+	CreatedAt          time.Time
 }
 
 func insertAudit(ctx context.Context, tx runner, entry auditInsert) (int64, error) {

@@ -78,8 +78,8 @@ ON CONFLICT(account_id) DO UPDATE SET
     updated_at = excluded.updated_at
 WHERE panel_users.system_role = 'none' AND panel_users.status = 'removed'`,
 		change.AccountID,
-		formatTime(change.ChangedAt),
-		formatTime(change.ChangedAt),
+		change.ChangedAt,
+		change.ChangedAt,
 	)
 	if err != nil {
 		return storage.PanelUser{}, fmt.Errorf("insert panel user: %w", s.conflictConstraint(err))
@@ -198,7 +198,7 @@ func (s *Store) SetTargetAccess(
 	}
 	if elevation != nil {
 		if err := insertElevatedNotifications(
-			ctx, tx, *elevation, auditEventID, action, formatTime(change.ChangedAt),
+			ctx, tx, *elevation, auditEventID, action, change.ChangedAt,
 		); err != nil {
 			return storage.TargetAccessOverride{}, err
 		}
@@ -252,7 +252,8 @@ func (s *Store) ResolveTargetAccess(
 	var systemRole storage.SystemRole
 	var suspended bool
 	var status storage.PanelUserStatus
-	var targetRole, suspensionReason, ownershipStatus, ownershipSyncedAt sql.NullString
+	var targetRole, suspensionReason, ownershipStatus sql.NullString
+	var ownershipSyncedAt storedTime
 	var ownerCount int
 	var owned bool
 	err := s.db.QueryRowContext(ctx, `
@@ -307,7 +308,7 @@ LEFT JOIN target_roles tr ON tr.account_id = pu.account_id AND tr.target_id = t.
 WHERE t.available = 1
   AND pu.status = 'active'
   AND o.status = 'fresh'
-  AND julianday(o.synced_at) >= julianday(?)
+  AND o.synced_at >= ?
   AND EXISTS(SELECT 1 FROM target_owners owners WHERE owners.target_id = t.id)
   AND (
       current_owner.account_id IS NOT NULL
@@ -318,7 +319,7 @@ WHERE t.available = 1
       )
   )
 `+targetGroup+`
-ORDER BY a.login`, accountID, formatTime(now.Add(-storage.OwnershipFreshFor)))
+ORDER BY a.login`, accountID, now.Add(-storage.OwnershipFreshFor))
 	if err != nil {
 		return nil, fmt.Errorf("list targets: %w", err)
 	}
@@ -368,20 +369,17 @@ func resolvedTargetAccess(
 }
 
 func freshOwnership(
-	status, syncedAt sql.NullString,
+	status sql.NullString,
+	syncedAt storedTime,
 	ownerCount int,
 	now time.Time,
 ) bool {
 	if !status.Valid || storage.OwnershipStatus(status.String) != storage.OwnershipStatusFresh ||
-		!syncedAt.Valid || ownerCount == 0 {
-		return false
-	}
-	parsed, err := parseTime(syncedAt.String)
-	if err != nil {
+		!syncedAt.Valid() || ownerCount == 0 {
 		return false
 	}
 
-	return !parsed.Before(now.Add(-storage.OwnershipFreshFor))
+	return !syncedAt.Time().Before(now.Add(-storage.OwnershipFreshFor))
 }
 
 func targetAccessRevision(
@@ -423,7 +421,7 @@ INSERT INTO target_roles (
 		change.SuspensionReason,
 		revision,
 		change.ActorAccountID,
-		formatTime(change.ChangedAt),
+		change.ChangedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("insert target access: %w", err)
@@ -447,7 +445,7 @@ WHERE account_id = ? AND target_id = ?`,
 		change.SuspensionReason,
 		revision,
 		change.ActorAccountID,
-		formatTime(change.ChangedAt),
+		change.ChangedAt,
 		change.SubjectAccountID,
 		change.TargetID,
 	)
@@ -465,7 +463,7 @@ func getTargetAccessOverride(
 ) (storage.TargetAccessOverride, error) {
 	var override storage.TargetAccessOverride
 	var role, reason sql.NullString
-	var updatedAt string
+	var updatedAt storedTime
 	err := queryer.QueryRowContext(ctx, `
 SELECT target_id, account_id, role, suspended, suspension_reason, revision, updated_at
 FROM target_roles WHERE account_id = ? AND target_id = ?`, accountID, targetID).Scan(
@@ -485,9 +483,9 @@ FROM target_roles WHERE account_id = ? AND target_id = ?`, accountID, targetID).
 		override.Role = &parsed
 	}
 	override.SuspensionReason = stringPointer(reason)
-	override.UpdatedAt, err = parseTime(updatedAt)
+	override.UpdatedAt = updatedAt.Time()
 
-	return override, err
+	return override, nil
 }
 
 func getPanelUser(
@@ -504,8 +502,9 @@ func getPanelUser(
 
 func scanPanelUser(scanner rowScanner) (storage.PanelUser, error) {
 	var user storage.PanelUser
-	var avatar, banReason, bannedAt, removedAt, lastLoginAt sql.NullString
-	var accountUpdatedAt, createdAt, updatedAt string
+	var avatar, banReason sql.NullString
+	var bannedAt, removedAt, lastLoginAt storedTime
+	var accountUpdatedAt, createdAt, updatedAt storedTime
 	err := scanner.Scan(
 		&user.Account.ID,
 		&user.Account.Provider,
@@ -529,39 +528,14 @@ func scanPanelUser(scanner rowScanner) (storage.PanelUser, error) {
 	}
 	user.Account.AvatarURL = stringPointer(avatar)
 	user.BanReason = stringPointer(banReason)
-	user.Account.UpdatedAt, err = parseTime(accountUpdatedAt)
-	if err != nil {
-		return storage.PanelUser{}, err
-	}
-	user.CreatedAt, err = parseTime(createdAt)
-	if err != nil {
-		return storage.PanelUser{}, err
-	}
-	user.UpdatedAt, err = parseTime(updatedAt)
-	if err != nil {
-		return storage.PanelUser{}, err
-	}
-	if user.BannedAt, err = nullableTime(bannedAt); err != nil {
-		return storage.PanelUser{}, err
-	}
-	if user.RemovedAt, err = nullableTime(removedAt); err != nil {
-		return storage.PanelUser{}, err
-	}
-	user.LastLoginAt, err = nullableTime(lastLoginAt)
+	user.Account.UpdatedAt = accountUpdatedAt.Time()
+	user.CreatedAt = createdAt.Time()
+	user.UpdatedAt = updatedAt.Time()
+	user.BannedAt = bannedAt.Pointer()
+	user.RemovedAt = removedAt.Pointer()
+	user.LastLoginAt = lastLoginAt.Pointer()
 
-	return user, err
-}
-
-func nullableTime(value sql.NullString) (*time.Time, error) {
-	if !value.Valid {
-		return nil, nil
-	}
-	parsed, err := parseTime(value.String)
-	if err != nil {
-		return nil, err
-	}
-
-	return &parsed, nil
+	return user, nil
 }
 
 func insertAccessAudit(
@@ -598,7 +572,7 @@ RETURNING id`,
 		subjectAccountID,
 		action,
 		summary,
-		formatTime(changedAt),
+		changedAt,
 	).Scan(&sourceID)
 	if err != nil {
 		return 0, fmt.Errorf("insert access audit: %w", err)
@@ -614,7 +588,7 @@ RETURNING id`,
 		ElevationID:      elevationID,
 		Action:           action,
 		Summary:          summary,
-		CreatedAt:        formatTime(changedAt),
+		CreatedAt:        changedAt,
 	})
 	if err != nil {
 		return 0, err

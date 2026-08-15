@@ -68,7 +68,7 @@ func listExpiredElevations(
 ) ([]storage.Elevation, error) {
 	rows, err := queryer.QueryContext(ctx, elevationSelect+`
 WHERE ended_at IS NULL AND expires_at <= ?
-ORDER BY expires_at`, formatTime(now))
+ORDER BY expires_at`, now)
 	if err != nil {
 		return nil, fmt.Errorf("list expired elevations: %w", err)
 	}
@@ -82,8 +82,8 @@ ORDER BY expires_at`, formatTime(now))
 
 func scanElevation(scanner rowScanner) (storage.Elevation, error) {
 	var elevation storage.Elevation
-	var reason, endedAt, endReason sql.NullString
-	var startedAt, expiresAt string
+	var reason, endReason sql.NullString
+	var endedAt, startedAt, expiresAt storedTime
 	if err := scanner.Scan(
 		&elevation.ID,
 		&elevation.SessionTokenHash,
@@ -98,19 +98,9 @@ func scanElevation(scanner rowScanner) (storage.Elevation, error) {
 		return storage.Elevation{}, err
 	}
 	elevation.Reason = stringPointer(reason)
-	var err error
-	elevation.StartedAt, err = parseTime(startedAt)
-	if err != nil {
-		return storage.Elevation{}, err
-	}
-	elevation.ExpiresAt, err = parseTime(expiresAt)
-	if err != nil {
-		return storage.Elevation{}, err
-	}
-	elevation.EndedAt, err = nullableTime(endedAt)
-	if err != nil {
-		return storage.Elevation{}, err
-	}
+	elevation.StartedAt = startedAt.Time()
+	elevation.ExpiresAt = expiresAt.Time()
+	elevation.EndedAt = endedAt.Pointer()
 	if endReason.Valid {
 		parsed := storage.ElevationEndReason(endReason.String)
 		elevation.EndReason = &parsed
@@ -184,7 +174,7 @@ func (s *Store) MarkSecurityNotificationRead(
 	if _, err := tx.ExecContext(ctx, `
 UPDATE security_notifications SET read_at = ?
 WHERE id = ? AND recipient_account_id = ? AND read_at IS NULL`,
-		formatTime(readAt), notificationID, recipientAccountID,
+		readAt, notificationID, recipientAccountID,
 	); err != nil {
 		return storage.SecurityNotification{}, fmt.Errorf("mark security notification read: %w", err)
 	}
@@ -229,8 +219,8 @@ func getSecurityNotification(
 
 func scanSecurityNotification(scanner rowScanner) (storage.SecurityNotification, error) {
 	var notification storage.SecurityNotification
-	var reason, readAt, targetAvatar, actorAvatar sql.NullString
-	var createdAt, targetUpdatedAt, actorUpdatedAt string
+	var reason, targetAvatar, actorAvatar sql.NullString
+	var readAt, createdAt, targetUpdatedAt, actorUpdatedAt storedTime
 	if err := scanner.Scan(
 		&notification.ID,
 		&notification.RecipientID,
@@ -261,20 +251,10 @@ func scanSecurityNotification(scanner rowScanner) (storage.SecurityNotification,
 	notification.Reason = stringPointer(reason)
 	notification.Target.AvatarURL = stringPointer(targetAvatar)
 	notification.Actor.AvatarURL = stringPointer(actorAvatar)
-	var err error
-	notification.CreatedAt, err = parseTime(createdAt)
-	if err != nil {
-		return storage.SecurityNotification{}, err
-	}
-	notification.ReadAt, err = nullableTime(readAt)
-	if err != nil {
-		return storage.SecurityNotification{}, err
-	}
-	notification.Target.UpdatedAt, err = parseTime(targetUpdatedAt)
-	if err != nil {
-		return storage.SecurityNotification{}, err
-	}
-	notification.Actor.UpdatedAt, err = parseTime(actorUpdatedAt)
+	notification.CreatedAt = createdAt.Time()
+	notification.ReadAt = readAt.Pointer()
+	notification.Target.UpdatedAt = targetUpdatedAt.Time()
+	notification.Actor.UpdatedAt = actorUpdatedAt.Time()
 
-	return notification, err
+	return notification, nil
 }

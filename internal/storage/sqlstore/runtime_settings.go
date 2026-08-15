@@ -66,7 +66,7 @@ INSERT INTO runtime_settings (
 			change.LogLevel,
 			durationSeconds(change.PollInterval),
 			durationSeconds(change.SessionTTL),
-			formatTime(change.ChangedAt),
+			change.ChangedAt,
 			change.ActorAccountID,
 		)
 	} else {
@@ -79,7 +79,7 @@ WHERE singleton = 1 AND revision = ?`,
 			change.LogLevel,
 			durationSeconds(change.PollInterval),
 			durationSeconds(change.SessionTTL),
-			formatTime(change.ChangedAt),
+			change.ChangedAt,
 			change.ActorAccountID,
 			change.ExpectedRevision,
 		)
@@ -95,7 +95,7 @@ WHERE singleton = 1 AND revision = ?`,
 		ActorAccountID: change.ActorAccountID,
 		Action:         actionRuntimeSettings,
 		Summary:        "Updated runtime settings",
-		CreatedAt:      formatTime(change.ChangedAt),
+		CreatedAt:      change.ChangedAt,
 	}); err != nil {
 		return storage.RuntimeSettings{}, err
 	}
@@ -149,7 +149,8 @@ func getRuntimeSettings(
 	var settings storage.RuntimeSettings
 	var botConfig, logLevel sql.NullString
 	var pollSeconds, sessionSeconds sql.NullInt64
-	var updatedAt, updatedByID string
+	var updatedByID string
+	var updatedAt storedTime
 	err := queryer.QueryRowContext(ctx, `
 SELECT bot_config, log_level, poll_interval_seconds, session_ttl_seconds,
        revision, updated_at, updated_by_account_id
@@ -175,11 +176,7 @@ FROM runtime_settings WHERE singleton = 1`).Scan(
 	settings.LogLevel = stringPointer(logLevel)
 	settings.PollInterval = durationPointer(pollSeconds)
 	settings.SessionTTL = durationPointer(sessionSeconds)
-	parsed, err := parseTime(updatedAt)
-	if err != nil {
-		return storage.RuntimeSettings{}, err
-	}
-	settings.UpdatedAt = &parsed
+	settings.UpdatedAt = updatedAt.Pointer()
 	account, err := getAccount(ctx, queryer, updatedByID)
 	if err != nil {
 		return storage.RuntimeSettings{}, err
@@ -227,17 +224,13 @@ func shortenSessions(ctx context.Context, tx runner, lifetime time.Duration) err
 	}
 	sessions, err := collectRows(rows, func(scanner rowScanner) (sessionWindow, error) {
 		var item sessionWindow
-		var createdAt, expiresAt string
+		var createdAt, expiresAt storedTime
 		if scanErr := scanner.Scan(&item.tokenHash, &createdAt, &expiresAt); scanErr != nil {
 			return sessionWindow{}, scanErr
 		}
-		var parseErr error
-		item.createdAt, parseErr = parseTime(createdAt)
-		if parseErr == nil {
-			item.expiresAt, parseErr = parseTime(expiresAt)
-		}
+		item.createdAt, item.expiresAt = createdAt.Time(), expiresAt.Time()
 
-		return item, parseErr
+		return item, nil
 	})
 	if err != nil {
 		return fmt.Errorf("read sessions for lifetime update: %w", err)
@@ -250,7 +243,7 @@ func shortenSessions(ctx context.Context, tx runner, lifetime time.Duration) err
 		if _, err := tx.ExecContext(
 			ctx,
 			"UPDATE sessions SET expires_at = ? WHERE token_hash = ?",
-			formatTime(maximum),
+			maximum,
 			session.tokenHash,
 		); err != nil {
 			return fmt.Errorf("shorten session lifetime: %w", err)

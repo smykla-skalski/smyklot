@@ -44,19 +44,6 @@ func unmarshalPatch(content string) (config.Patch, error) {
 	return patch, nil
 }
 
-func formatTime(value time.Time) string {
-	return value.UTC().Format(time.RFC3339Nano)
-}
-
-func parseTime(value string) (time.Time, error) {
-	parsed, err := time.Parse(time.RFC3339Nano, value)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("parse stored time: %w", err)
-	}
-
-	return parsed, nil
-}
-
 func stringPointer(value sql.NullString) *string {
 	if !value.Valid {
 		return nil
@@ -112,24 +99,14 @@ func countHistory(
 }
 
 func scanTimeRange(scanner rowScanner, fields ...any) (storedTimeRange, error) {
-	var createdAt, expiresAt string
+	var createdAt, expiresAt storedTime
 	fields = append(fields, &createdAt, &expiresAt)
 
 	if err := scanner.Scan(fields...); err != nil {
 		return storedTimeRange{}, err
 	}
 
-	created, err := parseTime(createdAt)
-	if err != nil {
-		return storedTimeRange{}, err
-	}
-
-	expires, err := parseTime(expiresAt)
-	if err != nil {
-		return storedTimeRange{}, err
-	}
-
-	return storedTimeRange{createdAt: created, expiresAt: expires}, nil
+	return storedTimeRange{createdAt: createdAt.Time(), expiresAt: expiresAt.Time()}, nil
 }
 
 func collectRows[T any](

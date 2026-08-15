@@ -3,6 +3,7 @@ package sqlstore
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/storage"
 )
@@ -17,7 +18,7 @@ type appAuditInsert struct {
 	ElevationID      *string
 	Action           string
 	Summary          string
-	CreatedAt        string
+	CreatedAt        time.Time
 }
 
 func insertAppAudit(
@@ -56,7 +57,7 @@ func insertElevatedNotifications(
 	elevation storage.Elevation,
 	auditEventID int64,
 	action string,
-	createdAt string,
+	createdAt time.Time,
 ) error {
 	rows, err := tx.QueryContext(ctx, `
 SELECT account_id
@@ -80,7 +81,7 @@ ORDER BY account_id`, elevation.TargetID)
 	}
 	for _, ownerID := range owners {
 		if err := insertElevatedNotification(
-			ctx, tx, elevation, auditEventID, action, createdAt, ownerID,
+			ctx, tx, elevation, auditEventID, action, ownerID, createdAt,
 		); err != nil {
 			return err
 		}
@@ -94,7 +95,8 @@ func insertElevatedNotification(
 	tx runner,
 	elevation storage.Elevation,
 	auditEventID int64,
-	action, createdAt, ownerID string,
+	action, ownerID string,
+	createdAt time.Time,
 ) error {
 	var notificationID int64
 	err := tx.QueryRowContext(ctx, `

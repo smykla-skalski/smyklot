@@ -135,9 +135,10 @@ func scanRootAuditEvent(scanner rowScanner) (storage.AppAuditEvent, error) {
 	var targetID, elevationID sql.NullString
 	var actorAvatar, targetAvatar, subjectAvatar sql.NullString
 	var targetIDValue, targetProvider, targetSubject, targetLogin, targetName sql.NullString
-	var targetUpdated, subjectID, subjectProvider, subjectSubject sql.NullString
-	var subjectLogin, subjectName, subjectUpdated sql.NullString
-	var createdAt, actorUpdated string
+	var subjectID, subjectProvider, subjectSubject sql.NullString
+	var targetUpdated, subjectUpdated storedTime
+	var subjectLogin, subjectName sql.NullString
+	var createdAt, actorUpdated storedTime
 	if err := scanner.Scan(
 		&event.ID, &event.Category, &targetID, &elevationID,
 		&event.Action, &event.Summary, &createdAt,
@@ -152,50 +153,33 @@ func scanRootAuditEvent(scanner rowScanner) (storage.AppAuditEvent, error) {
 	}
 	event.ElevationID = stringPointer(elevationID)
 	event.Actor.AvatarURL = stringPointer(actorAvatar)
-	var err error
-	event.CreatedAt, err = parseTime(createdAt)
-	if err != nil {
-		return storage.AppAuditEvent{}, err
-	}
-	event.Actor.UpdatedAt, err = parseTime(actorUpdated)
-	if err != nil {
-		return storage.AppAuditEvent{}, err
-	}
+	event.CreatedAt = createdAt.Time()
+	event.Actor.UpdatedAt = actorUpdated.Time()
 	if targetID.Valid && targetIDValue.Valid {
-		target, targetErr := nullableAuditAccount(
+		event.Target = nullableAuditAccount(
 			targetIDValue, targetProvider, targetSubject, targetLogin, targetName,
 			targetAvatar, targetUpdated,
 		)
-		if targetErr != nil {
-			return storage.AppAuditEvent{}, targetErr
-		}
-		event.Target = target
 	}
 	if subjectID.Valid {
-		subject, subjectErr := nullableAuditAccount(
+		event.Subject = nullableAuditAccount(
 			subjectID, subjectProvider, subjectSubject, subjectLogin, subjectName,
 			subjectAvatar, subjectUpdated,
 		)
-		if subjectErr != nil {
-			return storage.AppAuditEvent{}, subjectErr
-		}
-		event.Subject = subject
 	}
 
 	return event, nil
 }
 
 func nullableAuditAccount(
-	id, provider, subject, login, name, avatar, updated sql.NullString,
-) (*storage.Account, error) {
-	account := &storage.Account{
+	id, provider, subject, login, name, avatar sql.NullString,
+	updated storedTime,
+) *storage.Account {
+	return &storage.Account{
 		ID: id.String, Provider: provider.String, SubjectID: subject.String,
 		Login: login.String, DisplayName: name.String, AvatarURL: stringPointer(avatar),
+		UpdatedAt: updated.Time(),
 	}
-	var err error
-	account.UpdatedAt, err = parseTime(updated.String)
-
-	return account, err
 }
 
 func rootAuditPage(

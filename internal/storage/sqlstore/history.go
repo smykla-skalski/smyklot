@@ -133,7 +133,7 @@ func auditFilters(
 func scanAuditEntry(scanner rowScanner) (storage.AuditEntry, error) {
 	var entry storage.AuditEntry
 	var repositoryID, repositoryFullName, avatarURL sql.NullString
-	var createdAt, accountUpdatedAt string
+	var createdAt, accountUpdatedAt storedTime
 
 	err := scanner.Scan(
 		&entry.ID,
@@ -159,14 +159,10 @@ func scanAuditEntry(scanner rowScanner) (storage.AuditEntry, error) {
 	entry.RepositoryFullName = stringPointer(repositoryFullName)
 	entry.Actor.AvatarURL = stringPointer(avatarURL)
 
-	entry.CreatedAt, err = parseTime(createdAt)
-	if err != nil {
-		return storage.AuditEntry{}, err
-	}
+	entry.CreatedAt = createdAt.Time()
+	entry.Actor.UpdatedAt = accountUpdatedAt.Time()
 
-	entry.Actor.UpdatedAt, err = parseTime(accountUpdatedAt)
-
-	return entry, err
+	return entry, nil
 }
 
 func auditPage(items []storage.AuditEntry, limit, total, offset int) storage.AuditPage {

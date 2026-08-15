@@ -60,7 +60,7 @@ SELECT account_id, status FROM panel_users WHERE system_role = 'super_root'`).
 		if _, err := tx.ExecContext(ctx, `
 UPDATE panel_users
 SET system_role = 'root', revision = revision + 1, updated_at = ?
-WHERE account_id = ?`, formatTime(changedAt), previousID); err != nil {
+WHERE account_id = ?`, changedAt, previousID); err != nil {
 			return fmt.Errorf("demote former Super Root: %w", err)
 		}
 		if err := insertAccessAudit(
@@ -85,8 +85,8 @@ ON CONFLICT(account_id) DO UPDATE SET
     removed_at = NULL,
     revision = panel_users.revision + 1,
     updated_at = excluded.updated_at`,
-		formatTime(changedAt),
-		formatTime(changedAt),
+		changedAt,
+		changedAt,
 		accountID,
 	)
 	if err != nil {
@@ -153,9 +153,9 @@ SELECT EXISTS(
     JOIN target_ownership ownership
       ON ownership.target_id = t.id AND ownership.status = 'fresh'
     WHERE owner.account_id = ?
-      AND julianday(ownership.synced_at) >= julianday(?)
+      AND ownership.synced_at >= ?
       AND EXISTS(SELECT 1 FROM target_owners any_owner WHERE any_owner.target_id = t.id)
-)`, accountID, formatTime(changedAt.Add(-storage.OwnershipFreshFor))).Scan(&owned)
+)`, accountID, changedAt.Add(-storage.OwnershipFreshFor)).Scan(&owned)
 	if err != nil {
 		return false, fmt.Errorf("resolve derived Owner identity: %w", err)
 	}
@@ -166,7 +166,7 @@ SELECT EXISTS(
 INSERT INTO panel_users (
     account_id, status, revision, created_at, updated_at, system_role
 ) VALUES (?, 'active', 1, ?, ?, 'none')`,
-		accountID, formatTime(changedAt), formatTime(changedAt),
+		accountID, changedAt, changedAt,
 	)
 	if err != nil {
 		return false, fmt.Errorf("activate derived Owner: %w", s.conflictConstraint(err))
@@ -203,15 +203,15 @@ INSERT INTO sessions (token_hash, account_id, created_at, expires_at)
 VALUES (?, ?, ?, ?)`,
 		session.TokenHash,
 		session.AccountID,
-		formatTime(session.CreatedAt),
-		formatTime(session.ExpiresAt),
+		session.CreatedAt,
+		session.ExpiresAt,
 	); err != nil {
 		return fmt.Errorf("insert session: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `
 UPDATE panel_users SET last_login_at = ?, updated_at = ? WHERE account_id = ?`,
-		formatTime(session.CreatedAt),
-		formatTime(session.CreatedAt),
+		session.CreatedAt,
+		session.CreatedAt,
 		session.AccountID,
 	); err != nil {
 		return fmt.Errorf("record panel login: %w", err)
@@ -307,7 +307,7 @@ func (s *Store) RevokeAccountSessions(
 	rows, err := tx.QueryContext(ctx, `
 SELECT token_hash FROM sessions
 WHERE account_id = ? AND revoked_at IS NULL AND expires_at > ?
-ORDER BY token_hash`, accountID, formatTime(revokedAt))
+ORDER BY token_hash`, accountID, revokedAt)
 	if err != nil {
 		return nil, fmt.Errorf("list account sessions for revocation: %w", err)
 	}
@@ -329,11 +329,11 @@ ORDER BY token_hash`, accountID, formatTime(revokedAt))
 UPDATE sessions
 SET revoked_at = ?, revoke_code = ?, revoke_reason = ?
 WHERE account_id = ? AND revoked_at IS NULL AND expires_at > ?`,
-		formatTime(revokedAt),
+		revokedAt,
 		code,
 		reason,
 		accountID,
-		formatTime(revokedAt),
+		revokedAt,
 	); err != nil {
 		return nil, fmt.Errorf("revoke account sessions: %w", err)
 	}
@@ -362,7 +362,7 @@ func (s *Store) DeleteExpiredAuth(ctx context.Context, now time.Time) error {
 			return err
 		}
 	}
-	rows, err := tx.QueryContext(ctx, "SELECT token_hash FROM sessions WHERE expires_at <= ?", formatTime(now))
+	rows, err := tx.QueryContext(ctx, "SELECT token_hash FROM sessions WHERE expires_at <= ?", now)
 	if err != nil {
 		return fmt.Errorf("list expired sessions: %w", err)
 	}
@@ -380,7 +380,7 @@ func (s *Store) DeleteExpiredAuth(ctx context.Context, now time.Time) error {
 			return err
 		}
 	}
-	if _, err := tx.ExecContext(ctx, "DELETE FROM sessions WHERE expires_at <= ?", formatTime(now)); err != nil {
+	if _, err := tx.ExecContext(ctx, "DELETE FROM sessions WHERE expires_at <= ?", now); err != nil {
 		return fmt.Errorf("delete expired sessions: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -407,7 +407,7 @@ ON CONFLICT(id) DO UPDATE SET
 		account.Login,
 		account.DisplayName,
 		account.AvatarURL,
-		formatTime(account.UpdatedAt),
+		account.UpdatedAt,
 	)
 
 	return err
@@ -416,7 +416,7 @@ ON CONFLICT(id) DO UPDATE SET
 func getAccount(ctx context.Context, queryer rowQuerier, id string) (storage.Account, error) {
 	var account storage.Account
 	var avatarURL sql.NullString
-	var updatedAt string
+	var updatedAt storedTime
 
 	err := queryer.QueryRowContext(ctx, `
 SELECT id, provider, subject_id, login, display_name, avatar_url, updated_at
@@ -434,9 +434,9 @@ FROM accounts WHERE id = ?`, id).Scan(
 	}
 
 	account.AvatarURL = stringPointer(avatarURL)
-	account.UpdatedAt, err = parseTime(updatedAt)
+	account.UpdatedAt = updatedAt.Time()
 
-	return account, err
+	return account, nil
 }
 
 func readSession(
@@ -446,7 +446,8 @@ func readSession(
 ) (storage.Session, error) {
 	var session storage.Session
 
-	var revokedAt, revokeCode, revokeReason sql.NullString
+	var revokeCode, revokeReason sql.NullString
+	var revokedAt storedTime
 	times, err := scanTimeRange(queryer.QueryRowContext(ctx, `
 SELECT token_hash, account_id, revoked_at, revoke_code, revoke_reason, created_at, expires_at
 FROM sessions WHERE token_hash = ?`, tokenHash),
@@ -462,10 +463,7 @@ FROM sessions WHERE token_hash = ?`, tokenHash),
 
 	session.CreatedAt = times.createdAt
 	session.ExpiresAt = times.expiresAt
-	session.RevokedAt, err = nullableTime(revokedAt)
-	if err != nil {
-		return storage.Session{}, err
-	}
+	session.RevokedAt = revokedAt.Pointer()
 	session.RevokeCode = stringPointer(revokeCode)
 	session.RevokeReason = stringPointer(revokeReason)
 

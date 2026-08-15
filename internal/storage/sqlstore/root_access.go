@@ -34,7 +34,7 @@ func (s *Store) UpdateSystemRole(
 UPDATE panel_users
 SET system_role = ?, revision = revision + 1, updated_at = ?
 WHERE account_id = ? AND revision = ?`, change.SystemRole,
-		formatTime(change.ChangedAt), change.AccountID, change.ExpectedRevision)
+		change.ChangedAt, change.AccountID, change.ExpectedRevision)
 	if err != nil {
 		return storage.PanelUser{}, fmt.Errorf("update system role: %w", err)
 	}

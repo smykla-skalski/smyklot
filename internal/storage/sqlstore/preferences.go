@@ -62,7 +62,7 @@ ON CONFLICT(account_id) DO UPDATE SET
     updated_at = excluded.updated_at`,
 		change.AccountID,
 		string(doc),
-		formatTime(change.ChangedAt),
+		change.ChangedAt,
 	); err != nil {
 		return storage.Preferences{}, fmt.Errorf("update preferences: %w", err)
 	}
@@ -84,7 +84,8 @@ func getPreferences(
 	queryer rowQuerier,
 	accountID string,
 ) (storage.Preferences, error) {
-	var doc, updatedAt string
+	var doc string
+	var updatedAt storedTime
 	var revision int64
 	err := queryer.QueryRowContext(ctx, `
 SELECT doc, revision, updated_at
@@ -108,16 +109,11 @@ WHERE account_id = ?`, accountID).Scan(&doc, &revision, &updatedAt)
 		values = map[string]json.RawMessage{}
 	}
 
-	updated, err := parseTime(updatedAt)
-	if err != nil {
-		return storage.Preferences{}, err
-	}
-
 	return storage.Preferences{
 		AccountID: accountID,
 		Values:    values,
 		Revision:  revision,
-		UpdatedAt: updated,
+		UpdatedAt: updatedAt.Time(),
 	}, nil
 }
 

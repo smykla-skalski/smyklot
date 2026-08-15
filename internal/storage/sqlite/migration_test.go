@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"io/fs"
 	"path/filepath"
 	"strings"
@@ -117,6 +118,97 @@ WHERE account_id = 'legacy-editor' AND target_id = 'legacy-target'`).Scan(&assig
 	if err != nil || assignedRole != "editor" {
 		t.Fatalf("installation assignment = %q, err = %v", assignedRole, err)
 	}
+}
+
+// TestFixedWidthTimestampMigration proves the ordering bug the migration
+// exists to fix: values written with RFC3339Nano sort by string in an order
+// that is not their order in time, and after the rewrite they agree.
+func TestFixedWidthTimestampMigration(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "legacy-timestamps.db")
+	base := time.Date(2026, time.August, 10, 12, 0, 0, 0, time.UTC)
+	// Same second, different numbers of fractional digits - which is exactly
+	// where the old layout puts string order and time order at odds.
+	offsets := []time.Duration{
+		0,
+		100 * time.Millisecond,
+		120 * time.Millisecond,
+		500 * time.Millisecond,
+		999999999 * time.Nanosecond,
+	}
+
+	db := openLegacyDatabase(t, ctx, path, "015_")
+	for index, offset := range offsets {
+		written := base.Add(offset).Format(time.RFC3339Nano)
+		if _, err := db.ExecContext(ctx, `
+INSERT INTO accounts (id, provider, subject_id, login, display_name, updated_at)
+VALUES (?, 'github', ?, ?, ?, ?)`,
+			fmt.Sprintf("account-%d", index), fmt.Sprint(index),
+			fmt.Sprintf("login-%d", index), fmt.Sprintf("Account %d", index), written,
+		); err != nil {
+			t.Fatalf("seed legacy timestamp: %v", err)
+		}
+	}
+
+	if got := accountOrderByUpdatedAt(t, ctx, db); got == "01234" {
+		t.Fatalf("legacy rows already sort correctly (%s), so this migration proves nothing", got)
+	}
+
+	store, err := Open(ctx, path)
+	if err != nil {
+		t.Fatalf("open migrated store: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	if got := accountOrderByUpdatedAt(t, ctx, db); got != "01234" {
+		t.Fatalf("migrated order = %s, want 01234", got)
+	}
+
+	var updatedAt string
+	if err := db.QueryRowContext(
+		ctx, "SELECT updated_at FROM accounts WHERE id = 'account-0'",
+	).Scan(&updatedAt); err != nil {
+		t.Fatalf("read migrated timestamp: %v", err)
+	}
+	if want := "2026-08-10T12:00:00.000000000Z"; updatedAt != want {
+		t.Fatalf("migrated timestamp = %q, want %q", updatedAt, want)
+	}
+
+	// Reading it back through the store must still yield the original instant.
+	account, err := store.GetAccount(ctx, "account-2")
+	if err != nil {
+		t.Fatalf("read migrated account: %v", err)
+	}
+	if want := base.Add(120 * time.Millisecond); !account.UpdatedAt.Equal(want) {
+		t.Fatalf("migrated account time = %s, want %s", account.UpdatedAt, want)
+	}
+}
+
+// accountOrderByUpdatedAt returns the seeded account indexes in the order the
+// database sorts them, as a compact string like "01234".
+func accountOrderByUpdatedAt(t *testing.T, ctx context.Context, db *sql.DB) string {
+	t.Helper()
+
+	rows, err := db.QueryContext(ctx, "SELECT id FROM accounts ORDER BY updated_at ASC")
+	if err != nil {
+		t.Fatalf("order accounts: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+	order := ""
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			t.Fatalf("scan ordered account: %v", err)
+		}
+		order += strings.TrimPrefix(id, "account-")
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate ordered accounts: %v", err)
+	}
+
+	return order
 }
 
 func seedLegacySystemRoles(t *testing.T, ctx context.Context, path string) {
