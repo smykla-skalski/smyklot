@@ -569,6 +569,17 @@
     }),
   );
 
+  /* Any refused request means the session is gone, wherever in the panel it came
+     from. Without this a reader sat inside a workspace that could no longer load
+     anything, reading "sign in to use the panel" over stale rows, with a Try
+     again button that could only fail the same way. */
+  $effect(() =>
+    api.onSessionLost((code) => {
+      if (viewer === null) return;
+      revokeAccess({ code, reason: '' });
+    }),
+  );
+
   $effect(() =>
     router.subscribe((route) => {
       requestedDocumentRoute = route;

@@ -55,6 +55,21 @@ const BY_CODE: Readonly<Record<string, SessionNotice>> = {
     note: 'Signing in again will not lift it. If you think this is a mistake, ask whoever runs Smyklot',
     offersSignIn: false,
   },
+  /* What the server says when a request arrives without a session behind it. The
+     panel used to leave a reader inside a workspace it could no longer load, so
+     this is the code that now takes them out to the front door. */
+  unauthenticated: {
+    title: 'Session ended',
+    lead: 'You are no longer signed in',
+    note: 'Sessions do not last forever, and signing in again picks up where you left off',
+    offersSignIn: true,
+  },
+  session_revoked: {
+    title: 'Session ended',
+    lead: 'This session was ended',
+    note: 'It was signed out from somewhere else, or it ran out. Signing in again starts a new one',
+    offersSignIn: true,
+  },
   access_revoked: {
     title: 'Session ended',
     lead: 'Your access to the panel has changed',

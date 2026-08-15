@@ -1604,8 +1604,14 @@
 
   /* Name and chip are siblings on one centred row, so the chip's box and the
      name's caps share a centre line rather than an inline baseline. */
+  /* Baselines, not box centres. The name and the badge are two runs of text on one
+     line, and two runs of text sit on a shared baseline - centring their boxes
+     instead lines up their middles, which for two different sizes (13px name,
+     12px badge, cap heights 9.69 and 8.76) puts the smaller one's baseline above
+     the larger one's and the badge reads as floating. Measured: 0.36px of baseline
+     drift centred, 0.00 here. */
   .repo-copy {
-    align-items: center;
+    align-items: baseline;
     display: flex;
     gap: var(--space-2);
     min-width: 0;
