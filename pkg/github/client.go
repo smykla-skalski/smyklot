@@ -306,20 +306,6 @@ func (c *Client) dismissReviewIfApprovedByUser(
 	return err
 }
 
-// MergePR merges a pull request using the specified merge method
-//
-// Supported merge methods: merge, squash, rebase
-func (c *Client) MergePR(ctx context.Context, owner, repo string, prNumber int, method MergeMethod) error {
-	path := fmt.Sprintf("/repos/%s/%s/pulls/%d/merge", owner, repo, prNumber)
-
-	body := map[string]interface{}{
-		"merge_method": string(method),
-	}
-
-	_, err := c.makeRequestWithRetry(ctx, "PUT", path, body)
-	return err
-}
-
 // EnableAutoMerge enables auto-merge for a pull request
 //
 // This will automatically merge the PR when all required checks pass.
@@ -1064,33 +1050,6 @@ func (c *Client) RemoveReactionByUser(
 	return nil
 }
 
-// GetOpenPRs retrieves all open pull requests in a repository
-//
-// Returns a slice of PR data including number, title, and state.
-func (c *Client) GetOpenPRs(ctx context.Context, owner, repo string) ([]map[string]interface{}, error) {
-	path := fmt.Sprintf("/repos/%s/%s/pulls", owner, repo)
-
-	data, err := c.makeRequestWithRetry(ctx, "GET", path, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	var prs []map[string]interface{}
-	if err := json.Unmarshal(data, &prs); err != nil {
-		return nil, NewAPIError(ErrResponseParse, 0, "GET", path, err)
-	}
-
-	// Filter only open PRs
-	var openPRs []map[string]interface{}
-	for _, pr := range prs {
-		if state, ok := pr["state"].(string); ok && state == "open" {
-			openPRs = append(openPRs, pr)
-		}
-	}
-
-	return openPRs, nil
-}
-
 // HasWritePermission checks if the user has write/admin permission to the repository
 func (c *Client) HasWritePermission(ctx context.Context, owner, repo, username string) (bool, error) {
 	path := fmt.Sprintf("/repos/%s/%s/collaborators/%s/permission", owner, repo, username)
@@ -1202,131 +1161,6 @@ func (c *Client) IsMergeQueueEnabled(ctx context.Context, owner, repo, branch st
 	}
 
 	return false, nil
-}
-
-// GetRequiredStatusChecks retrieves the list of required status check names from branch protection
-//
-// Returns empty slice if branch protection is not enabled or no required checks configured.
-func (c *Client) GetRequiredStatusChecks(ctx context.Context, owner, repo, branch string) ([]string, error) {
-	path := fmt.Sprintf("/repos/%s/%s/branches/%s/protection/required_status_checks", owner, repo, branch)
-
-	data, err := c.makeRequest(ctx, "GET", path, nil)
-	if err != nil {
-		// 404 means branch protection not enabled or no required status checks
-		var apiErr *APIError
-		if errors.As(err, &apiErr) && apiErr.StatusCode == 404 {
-			return []string{}, nil
-		}
-
-		return nil, err
-	}
-
-	var response struct {
-		Contexts []string `json:"contexts"` // Legacy required checks
-		Checks   []struct {
-			Context string `json:"context"` // New required checks format
-		} `json:"checks"`
-	}
-
-	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, NewAPIError(ErrResponseParse, 0, "GET", path, err)
-	}
-
-	// Combine both legacy contexts and new checks format
-	required := make([]string, 0, len(response.Contexts)+len(response.Checks))
-	required = append(required, response.Contexts...)
-
-	for _, check := range response.Checks {
-		required = append(required, check.Context)
-	}
-
-	return required, nil
-}
-
-// GetCheckStatus retrieves the CI check status for a commit
-//
-// Returns a CheckStatus struct indicating whether all checks pass, are pending, or failing.
-// Uses the GitHub REST API: GET /repos/{owner}/{repo}/commits/{ref}/check-runs
-//
-// If requiredOnly is specified (non-empty slice), only checks matching those names are considered.
-func (c *Client) GetCheckStatus(
-	ctx context.Context,
-	owner, repo, ref string,
-	requiredOnly []string,
-) (*CheckStatus, error) {
-	path := fmt.Sprintf("/repos/%s/%s/commits/%s/check-runs", owner, repo, ref)
-
-	data, err := c.makeRequestWithRetry(ctx, "GET", path, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	var response struct {
-		TotalCount int `json:"total_count"`
-		CheckRuns  []struct {
-			Name       string `json:"name"`
-			Status     string `json:"status"`
-			Conclusion string `json:"conclusion"`
-		} `json:"check_runs"`
-	}
-
-	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, NewAPIError(ErrResponseParse, 0, "GET", path, err)
-	}
-
-	// Build map for quick required check lookup
-	requiredMap := make(map[string]bool)
-	for _, name := range requiredOnly {
-		requiredMap[name] = true
-	}
-
-	status := &CheckStatus{
-		Total: response.TotalCount,
-	}
-
-	// If filtering by required checks only, reset total to count only required
-	if len(requiredOnly) > 0 {
-		status.Total = 0
-	}
-
-	for _, run := range response.CheckRuns {
-		// If filtering by required checks, skip non-required checks
-		if len(requiredOnly) > 0 && !requiredMap[run.Name] {
-			continue
-		}
-
-		// Count this check toward the total if filtering
-		if len(requiredOnly) > 0 {
-			status.Total++
-		}
-
-		switch run.Status {
-		case "completed":
-			switch run.Conclusion {
-			case "success", "skipped", "neutral":
-				status.Passed++
-			case "failure", "cancelled", "timed_out", "action_required":
-				status.Failed++
-			}
-		case "queued", "in_progress", "pending", "waiting":
-			status.InProgress++
-		}
-	}
-
-	status.AllPassing = status.Total > 0 && status.Failed == 0 && status.InProgress == 0
-	status.Pending = status.InProgress > 0
-	status.Failing = status.Failed > 0
-
-	status.Summary = fmt.Sprintf("%d/%d checks passing", status.Passed, status.Total)
-	if status.InProgress > 0 {
-		status.Summary += fmt.Sprintf(", %d in progress", status.InProgress)
-	}
-
-	if status.Failed > 0 {
-		status.Summary += fmt.Sprintf(", %d failed", status.Failed)
-	}
-
-	return status, nil
 }
 
 // GetPRHeadRef retrieves the head commit SHA of a pull request

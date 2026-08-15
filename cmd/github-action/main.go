@@ -963,11 +963,17 @@ func executePendingCIMerge(
 	}
 
 	// Get required checks list if filtering by required checks only
-	var requiredChecks []string
-	if requiredChecksOnly && info.BaseBranch != "" {
+	var requiredChecks []github.RequiredCheck
+	if requiredChecksOnly && info.BaseBranch == "" {
+		return feedback.NewMergeFailed("cannot resolve the base branch for required checks"), nil
+	}
+	if requiredChecksOnly {
 		requiredChecks, err = client.GetRequiredStatusChecks(ctx, rc.RepoOwner, rc.RepoName, info.BaseBranch)
 		if err != nil {
 			return feedback.NewMergeFailed("failed to get required checks: " + err.Error()), nil
+		}
+		if len(requiredChecks) == 0 {
+			return feedback.NewMergeFailed("the base branch has no required status checks"), nil
 		}
 	}
 
@@ -979,12 +985,7 @@ func executePendingCIMerge(
 
 	// If CI is already passing, merge immediately (fallback to regular merge flow)
 	if checkStatus.AllPassing {
-		return executeImmediateMerge(ctx, client, rc, bc, prNum, method, info)
-	}
-
-	// If CI is failing, don't wait - return error immediately
-	if checkStatus.Failing {
-		return feedback.NewPendingCIFailed(checkStatus.Summary), nil
+		return executeImmediateMerge(ctx, client, rc, bc, prNum, method, info, headRef)
 	}
 
 	// CI is pending - approve the PR and set up waiting state
@@ -1028,7 +1029,9 @@ func executePendingCIMerge(
 
 	// Add pending-ci label with merge method and required flag
 	label := getPendingCILabel(method, requiredChecksOnly)
-	_ = client.AddLabel(ctx, rc.RepoOwner, rc.RepoName, prNum, label)
+	if err := client.AddLabel(ctx, rc.RepoOwner, rc.RepoName, prNum, label); err != nil {
+		return feedback.NewMergeFailed("failed to record the pending CI request: " + err.Error()), nil
+	}
 
 	// Return pending feedback
 	methodName := getMergeMethodName(method)
@@ -1047,6 +1050,7 @@ func executeImmediateMerge(
 	prNum int,
 	method github.MergeMethod,
 	info *github.PRInfo,
+	expectedHead string,
 ) (*feedback.Feedback, error) {
 	// Prevent self-approval unless explicitly allowed
 	if !bc.AllowSelfApproval && info.Author == rc.CommentAuthor {
@@ -1077,11 +1081,15 @@ func executeImmediateMerge(
 	}
 
 	// Merge the PR
-	if err := client.MergePR(ctx, rc.RepoOwner, rc.RepoName, prNum, method); err != nil {
+	if err := client.MergePRAtHead(ctx, rc.RepoOwner, rc.RepoName, prNum, method, expectedHead); err != nil {
 		// Try fallback methods if merge commits not allowed
 		if method == github.MergeMethodMerge && strings.Contains(err.Error(), "Merge commits are not allowed") {
-			if err := client.MergePR(ctx, rc.RepoOwner, rc.RepoName, prNum, github.MergeMethodSquash); err != nil {
-				if err := client.MergePR(ctx, rc.RepoOwner, rc.RepoName, prNum, github.MergeMethodRebase); err != nil {
+			if err := client.MergePRAtHead(
+				ctx, rc.RepoOwner, rc.RepoName, prNum, github.MergeMethodSquash, expectedHead,
+			); err != nil {
+				if err := client.MergePRAtHead(
+					ctx, rc.RepoOwner, rc.RepoName, prNum, github.MergeMethodRebase, expectedHead,
+				); err != nil {
 					return feedback.NewMergeFailed(err.Error()), nil
 				}
 			}

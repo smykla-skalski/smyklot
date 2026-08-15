@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -426,17 +428,17 @@ func filterPendingCIPRs(prs []map[string]interface{}) []pendingCIPR {
 // - Empty string if not a pending-ci label
 func parsePendingCILabel(label string) (github.MergeMethod, bool, string) {
 	switch label {
-	case github.LabelPendingCIMerge:
+	case github.LabelPendingCIMerge, github.LegacyLabelPendingCIMerge:
 		return github.MergeMethodMerge, false, label
-	case github.LabelPendingCISquash:
+	case github.LabelPendingCISquash, github.LegacyLabelPendingCISquash:
 		return github.MergeMethodSquash, false, label
-	case github.LabelPendingCIRebase:
+	case github.LabelPendingCIRebase, github.LegacyLabelPendingCIRebase:
 		return github.MergeMethodRebase, false, label
-	case github.LabelPendingCIMergeRequired:
+	case github.LabelPendingCIMergeRequired, github.LegacyLabelPendingCIMergeRequired:
 		return github.MergeMethodMerge, true, label
-	case github.LabelPendingCISquashRequired:
+	case github.LabelPendingCISquashRequired, github.LegacyLabelPendingCISquashRequired:
 		return github.MergeMethodSquash, true, label
-	case github.LabelPendingCIRebaseRequired:
+	case github.LabelPendingCIRebaseRequired, github.LegacyLabelPendingCIRebaseRequired:
 		return github.MergeMethodRebase, true, label
 	default:
 		return "", false, ""
@@ -477,7 +479,7 @@ func processPendingCIPR(
 	}
 
 	// Get required checks list if filtering by required checks only
-	var requiredChecks []string
+	var requiredChecks []github.RequiredCheck
 	if pr.requiredOnly {
 		// Get base branch from PR info
 		info, err := client.GetPRInfo(ctx, repoOwner, repoName, prNumber)
@@ -485,11 +487,15 @@ func processPendingCIPR(
 			return fmt.Errorf("failed to get PR info: %w", err)
 		}
 
-		if info.BaseBranch != "" {
-			requiredChecks, err = client.GetRequiredStatusChecks(ctx, repoOwner, repoName, info.BaseBranch)
-			if err != nil {
-				return fmt.Errorf("failed to get required checks: %w", err)
-			}
+		if info.BaseBranch == "" {
+			return fmt.Errorf("cannot resolve base branch for required-check wait")
+		}
+		requiredChecks, err = client.GetRequiredStatusChecks(ctx, repoOwner, repoName, info.BaseBranch)
+		if err != nil {
+			return fmt.Errorf("failed to get required checks: %w", err)
+		}
+		if len(requiredChecks) == 0 {
+			return fmt.Errorf("base branch has no required status checks")
 		}
 	}
 
@@ -500,19 +506,25 @@ func processPendingCIPR(
 	}
 
 	// Handle based on CI status
-	switch {
-	case checkStatus.AllPassing:
-		return handlePendingCIPassed(ctx, client, bc, repoOwner, repoName, prNumber, pr, botUsername)
-
-	case checkStatus.Failing:
-		return handlePendingCIFailed(ctx, client, bc, repoOwner, repoName, prNumber, pr, checkStatus.Summary)
-
-	default:
-		// CI still pending, skip
-		logging.From(ctx).Debug("CI still pending", "summary", checkStatus.Summary)
-
-		return nil
+	if checkStatus.State == github.CIStatePassing {
+		return handlePendingCIPassed(
+			ctx,
+			client,
+			bc,
+			repoOwner,
+			repoName,
+			prNumber,
+			pr,
+			botUsername,
+			headRef,
+		)
 	}
+
+	// A red, missing, or indeterminate observation is not terminal. A rerun or
+	// newly-created check can still make this same request eligible to merge.
+	logging.From(ctx).Debug("CI wait remains armed", "state", checkStatus.State, "summary", checkStatus.Summary)
+
+	return nil
 }
 
 // handlePendingCIPassed handles a PR where CI has passed
@@ -524,21 +536,16 @@ func handlePendingCIPassed(
 	prNumber int,
 	pr pendingCIPR,
 	botUsername string,
+	headRef string,
 ) error {
 	logging.From(ctx).Info("CI passed, merging")
 
-	// Merge the PR
-	if err := client.MergePR(ctx, repoOwner, repoName, prNumber, pr.method); err != nil {
-		// Try fallback methods if merge commits not allowed
-		if pr.method == github.MergeMethodMerge && strings.Contains(err.Error(), "Merge commits are not allowed") {
-			if err := client.MergePR(ctx, repoOwner, repoName, prNumber, github.MergeMethodSquash); err != nil {
-				if err := client.MergePR(ctx, repoOwner, repoName, prNumber, github.MergeMethodRebase); err != nil {
-					return postPendingCIError(ctx, client, repoOwner, repoName, prNumber, pr.label, err.Error())
-				}
-			}
-		} else {
-			return postPendingCIError(ctx, client, repoOwner, repoName, prNumber, pr.label, err.Error())
+	if err := mergePendingPRAtHead(ctx, client, repoOwner, repoName, prNumber, pr.method, headRef); err != nil {
+		if mergeHeadChanged(err) {
+			return nil
 		}
+
+		return postPendingCIError(ctx, client, repoOwner, repoName, prNumber, pr.label, err.Error())
 	}
 
 	// Remove pending-ci label
@@ -557,24 +564,37 @@ func handlePendingCIPassed(
 	return nil
 }
 
-// handlePendingCIFailed handles a PR where CI has failed
-//
-//nolint:unparam // bc kept for API consistency with handlePendingCIPassed
-func handlePendingCIFailed(
+func mergePendingPRAtHead(
 	ctx context.Context,
 	client *github.Client,
-	_ *config.Config, // kept for API consistency with handlePendingCIPassed
-	repoOwner, repoName string,
+	owner, repo string,
 	prNumber int,
-	pr pendingCIPR,
-	summary string,
+	method github.MergeMethod,
+	headRef string,
 ) error {
-	logging.From(ctx).Info("CI failed", "summary", summary)
+	err := client.MergePRAtHead(ctx, owner, repo, prNumber, method, headRef)
+	if err == nil || method != github.MergeMethodMerge || !strings.Contains(err.Error(), "Merge commits are not allowed") {
+		return err
+	}
 
-	return postPendingCIError(ctx, client, repoOwner, repoName, prNumber, pr.label, summary)
+	err = client.MergePRAtHead(ctx, owner, repo, prNumber, github.MergeMethodSquash, headRef)
+	if err == nil || mergeHeadChanged(err) {
+		return err
+	}
+
+	return client.MergePRAtHead(ctx, owner, repo, prNumber, github.MergeMethodRebase, headRef)
 }
 
-// postPendingCIError posts error feedback and removes label for failed pending-ci
+func mergeHeadChanged(err error) bool {
+	var apiErr *github.APIError
+	if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusConflict {
+		return false
+	}
+
+	return true
+}
+
+// postPendingCIError posts error feedback and removes a request that cannot be completed.
 func postPendingCIError(
 	ctx context.Context,
 	client *github.Client,

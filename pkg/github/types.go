@@ -150,22 +150,30 @@ const (
 	LabelReactionCleanup = "smyklot:reaction-cleanup"
 
 	// LabelPendingCIMerge indicates PR is waiting for CI before merge
-	LabelPendingCIMerge = "smyklot:pending-ci"
+	LabelPendingCIMerge = "smyklot:pending:ci"
 
 	// LabelPendingCISquash indicates PR is waiting for CI before squash merge
-	LabelPendingCISquash = "smyklot:pending-ci:squash"
+	LabelPendingCISquash = "smyklot:pending:ci:squash"
 
 	// LabelPendingCIRebase indicates PR is waiting for CI before rebase merge
-	LabelPendingCIRebase = "smyklot:pending-ci:rebase"
+	LabelPendingCIRebase = "smyklot:pending:ci:rebase"
 
 	// LabelPendingCIMergeRequired indicates PR is waiting for required CI only before merge
-	LabelPendingCIMergeRequired = "smyklot:pending-ci:required"
+	LabelPendingCIMergeRequired = "smyklot:pending:ci:required"
 
 	// LabelPendingCISquashRequired indicates PR is waiting for required CI only before squash merge
-	LabelPendingCISquashRequired = "smyklot:pending-ci:squash:required"
+	LabelPendingCISquashRequired = "smyklot:pending:ci:squash:required"
 
 	// LabelPendingCIRebaseRequired indicates PR is waiting for required CI only before rebase merge
-	LabelPendingCIRebaseRequired = "smyklot:pending-ci:rebase:required"
+	LabelPendingCIRebaseRequired = "smyklot:pending:ci:rebase:required"
+
+	// Legacy pending-CI labels remain readable during the organization migration.
+	LegacyLabelPendingCIMerge          = "smyklot:pending-ci"
+	LegacyLabelPendingCISquash         = "smyklot:pending-ci:squash"
+	LegacyLabelPendingCIRebase         = "smyklot:pending-ci:rebase"
+	LegacyLabelPendingCIMergeRequired  = "smyklot:pending-ci:required"
+	LegacyLabelPendingCISquashRequired = "smyklot:pending-ci:squash:required"
+	LegacyLabelPendingCIRebaseRequired = "smyklot:pending-ci:rebase:required"
 )
 
 // MergeMethod represents the type of merge method to use
@@ -182,8 +190,29 @@ const (
 	MergeMethodRebase MergeMethod = "rebase"
 )
 
-// CheckStatus represents the status of CI checks on a commit
+// CIState is the exhaustive aggregate state of CI for one commit.
+type CIState string
+
+const (
+	CIStatePassing       CIState = "passing"
+	CIStatePending       CIState = "pending"
+	CIStateFailing       CIState = "failing"
+	CIStateNoChecks      CIState = "no_checks"
+	CIStateIndeterminate CIState = "indeterminate"
+)
+
+// RequiredCheck identifies a branch-protection requirement. AppID is nil for
+// legacy contexts that any status producer may satisfy.
+type RequiredCheck struct {
+	Context string
+	AppID   *int64
+}
+
+// CheckStatus represents the aggregate state of Checks and commit statuses.
 type CheckStatus struct {
+	// State is the authoritative aggregate state.
+	State CIState
+
 	// AllPassing indicates all checks have completed successfully
 	AllPassing bool
 
@@ -207,4 +236,10 @@ type CheckStatus struct {
 
 	// InProgress is the number of check runs still running
 	InProgress int
+
+	// Unknown is the number of contexts whose state Smyklot cannot classify.
+	Unknown int
+
+	// Missing is the number of required contexts not reported for this head.
+	Missing int
 }

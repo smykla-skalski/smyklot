@@ -57,6 +57,27 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 			Expect(label).To(Equal(github.LabelPendingCIRebaseRequired))
 		})
 
+		It("should continue to parse all legacy label forms during migration", func() {
+			cases := []struct {
+				label    string
+				method   github.MergeMethod
+				required bool
+			}{
+				{github.LegacyLabelPendingCIMerge, github.MergeMethodMerge, false},
+				{github.LegacyLabelPendingCISquash, github.MergeMethodSquash, false},
+				{github.LegacyLabelPendingCIRebase, github.MergeMethodRebase, false},
+				{github.LegacyLabelPendingCIMergeRequired, github.MergeMethodMerge, true},
+				{github.LegacyLabelPendingCISquashRequired, github.MergeMethodSquash, true},
+				{github.LegacyLabelPendingCIRebaseRequired, github.MergeMethodRebase, true},
+			}
+			for _, testCase := range cases {
+				method, required, label := parsePendingCILabel(testCase.label)
+				Expect(method).To(Equal(testCase.method))
+				Expect(required).To(Equal(testCase.required))
+				Expect(label).To(Equal(testCase.label))
+			}
+		})
+
 		It("should return empty string for non-pending-ci labels", func() {
 			method, requiredOnly, label := parsePendingCILabel("some-other-label")
 			Expect(method).To(Equal(github.MergeMethod("")))
@@ -245,6 +266,13 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 
 				server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					switch {
+					case r.URL.Path == "/repos/owner/repo/commits/abc123/status" && r.Method == "GET":
+						w.WriteHeader(http.StatusOK)
+						_ = json.NewEncoder(w).Encode(map[string]interface{}{
+							"total_count": 0,
+							"statuses":    []map[string]interface{}{},
+						})
+
 					case r.URL.Path == "/repos/owner/repo/pulls/42" && r.Method == "GET":
 						w.WriteHeader(http.StatusOK)
 						_ = json.NewEncoder(w).Encode(map[string]interface{}{
@@ -265,12 +293,15 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 
 					case r.URL.Path == "/repos/owner/repo/pulls/42/merge" && r.Method == "PUT":
 						mergeRequested = true
+						var body map[string]interface{}
+						_ = json.NewDecoder(r.Body).Decode(&body)
+						Expect(body["sha"]).To(Equal("abc123"))
 						w.WriteHeader(http.StatusOK)
 						_ = json.NewEncoder(w).Encode(map[string]interface{}{
 							"merged": true,
 						})
 
-					case r.URL.Path == "/repos/owner/repo/issues/42/labels/smyklot:pending-ci" && r.Method == "DELETE":
+					case r.URL.Path == "/repos/owner/repo/issues/42/labels/smyklot:pending:ci" && r.Method == "DELETE":
 						labelRemoved = true
 						w.WriteHeader(http.StatusOK)
 
@@ -305,13 +336,19 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 		})
 
 		Context("when CI is failing", func() {
-			It("should remove label and post failure comment", func() {
+			It("should stay armed for a successful rerun", func() {
 				labelRemoved := false
 				commentPosted := false
-				var postedComment string
 
 				server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					switch {
+					case r.URL.Path == "/repos/owner/repo/commits/abc123/status" && r.Method == "GET":
+						w.WriteHeader(http.StatusOK)
+						_ = json.NewEncoder(w).Encode(map[string]interface{}{
+							"total_count": 0,
+							"statuses":    []map[string]interface{}{},
+						})
+
 					case r.URL.Path == "/repos/owner/repo/pulls/42" && r.Method == "GET":
 						w.WriteHeader(http.StatusOK)
 						_ = json.NewEncoder(w).Encode(map[string]interface{}{
@@ -330,15 +367,12 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 							},
 						})
 
-					case r.URL.Path == "/repos/owner/repo/issues/42/labels/smyklot:pending-ci" && r.Method == "DELETE":
+					case r.URL.Path == "/repos/owner/repo/issues/42/labels/smyklot:pending:ci" && r.Method == "DELETE":
 						labelRemoved = true
 						w.WriteHeader(http.StatusOK)
 
 					case r.URL.Path == "/repos/owner/repo/issues/42/comments" && r.Method == "POST":
 						commentPosted = true
-						var body map[string]string
-						_ = json.NewDecoder(r.Body).Decode(&body)
-						postedComment = body["body"]
 						w.WriteHeader(http.StatusCreated)
 						_ = json.NewEncoder(w).Encode(map[string]interface{}{
 							"id": 1,
@@ -361,9 +395,8 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 
 				err = processPendingCIPR(context.Background(), client, bc, "owner", "repo", pr, "smyklot[bot]")
 				Expect(err).NotTo(HaveOccurred())
-				Expect(labelRemoved).To(BeTrue())
-				Expect(commentPosted).To(BeTrue())
-				Expect(postedComment).To(ContainSubstring("CI Failed"))
+				Expect(labelRemoved).To(BeFalse())
+				Expect(commentPosted).To(BeFalse())
 			})
 		})
 
@@ -374,6 +407,13 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 
 				server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					switch {
+					case r.URL.Path == "/repos/owner/repo/commits/abc123/status" && r.Method == "GET":
+						w.WriteHeader(http.StatusOK)
+						_ = json.NewEncoder(w).Encode(map[string]interface{}{
+							"total_count": 0,
+							"statuses":    []map[string]interface{}{},
+						})
+
 					case r.URL.Path == "/repos/owner/repo/pulls/42" && r.Method == "GET":
 						w.WriteHeader(http.StatusOK)
 						_ = json.NewEncoder(w).Encode(map[string]interface{}{
@@ -396,7 +436,7 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 						mergeRequested = true
 						w.WriteHeader(http.StatusOK)
 
-					case r.URL.Path == "/repos/owner/repo/issues/42/labels/smyklot:pending-ci" && r.Method == "DELETE":
+					case r.URL.Path == "/repos/owner/repo/issues/42/labels/smyklot:pending:ci" && r.Method == "DELETE":
 						labelRemoved = true
 						w.WriteHeader(http.StatusOK)
 
@@ -428,6 +468,13 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 
 				server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					switch {
+					case r.URL.Path == "/repos/owner/repo/commits/abc123/status" && r.Method == "GET":
+						w.WriteHeader(http.StatusOK)
+						_ = json.NewEncoder(w).Encode(map[string]interface{}{
+							"total_count": 0,
+							"statuses":    []map[string]interface{}{},
+						})
+
 					case r.URL.Path == "/repos/owner/repo/pulls/42" && r.Method == "GET":
 						w.WriteHeader(http.StatusOK)
 						_ = json.NewEncoder(w).Encode(map[string]interface{}{
@@ -449,12 +496,13 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 						var body map[string]interface{}
 						_ = json.NewDecoder(r.Body).Decode(&body)
 						mergeMethod = body["merge_method"].(string)
+						Expect(body["sha"]).To(Equal("abc123"))
 						w.WriteHeader(http.StatusOK)
 						_ = json.NewEncoder(w).Encode(map[string]interface{}{
 							"merged": true,
 						})
 
-					case r.URL.Path == "/repos/owner/repo/issues/42/labels/smyklot:pending-ci:squash" && r.Method == "DELETE":
+					case r.URL.Path == "/repos/owner/repo/issues/42/labels/smyklot:pending:ci:squash" && r.Method == "DELETE":
 						w.WriteHeader(http.StatusOK)
 
 					case r.URL.Path == "/repos/owner/repo/issues/42/comments" && r.Method == "POST":
