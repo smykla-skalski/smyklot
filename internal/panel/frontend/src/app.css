@@ -688,7 +688,27 @@ body {
     overflow: hidden;
   }
 
+  /* As tall as it needs to be, and no taller.
+     ----------------------------------------
+     A table used to stretch to the bottom of the window whatever it held, so four
+     rows sat above a field of empty ground with the footer parked under it. Sized
+     by its content it stops where the content stops, and the footer takes the
+     space that is left rather than the table taking it.
+
+     `flex: 0 1 auto` is what makes both halves true: no growing, so a short table
+     stays short, and shrinking with `min-height: 0`, so a long one gives way at
+     the point it would reach the footer and hands the overflow to the scroller
+     inside it. The footer never moves either way. */
+  /* The leftover room is an auto margin under the content, not one over the
+     footer. Putting it on the footer replaces the margin the footer already
+     carries, and an auto margin resolves to zero once the space is used up - so a
+     full table ended flush against the rule, losing the gap a short one still
+     had. Under the content it adds to that margin instead of standing in for it,
+     and the gap above the rule is the same whether the table fills the window or
+     holds one row. */
   .workspace.table-scroll-view .workspace-content {
+    flex: 0 1 auto;
+    margin-bottom: auto;
     min-height: 0;
     overflow: hidden;
   }
