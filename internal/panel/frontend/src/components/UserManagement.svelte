@@ -34,6 +34,7 @@
     InvitationSort,
     InvitationStatus,
     Page,
+    PanelAccount,
     PanelInvitation,
     InstallationRole,
     PanelUser,
@@ -50,6 +51,7 @@
   import FilterMenu from './FilterMenu.svelte';
   import Icon, { type IconName } from './Icon.svelte';
   import InfiniteLoadSentinel from './InfiniteLoadSentinel.svelte';
+  import LoginField from './LoginField.svelte';
   import Modal from './Modal.svelte';
   import PanelHeader from './PanelHeader.svelte';
   import ResultProblem from './ResultProblem.svelte';
@@ -156,6 +158,7 @@
     onSection,
     fetchTargetUsers,
     addTargetUser,
+    suggestUsers,
     updateTargetUser,
     fetchTargetInvitations,
     createTargetInvitation,
@@ -175,6 +178,8 @@
     onSection: (section: ManagementSection) => void;
     fetchTargetUsers: (targetId: string, request: PanelUserPageRequest) => Promise<Page<PanelUser>>;
     addTargetUser: (targetId: string, input: AddTargetUserInput) => Promise<PanelUser>;
+    /** Completes a login as it is typed; returns none when no roster is readable. */
+    suggestUsers: (targetId: string, query: string) => Promise<PanelAccount[]>;
     updateTargetUser: (
       targetId: string,
       accountId: string,
@@ -1934,24 +1939,19 @@
       </fieldset>
 
       <div class="identity-grid" class:with-expiry={accessMethod === 'invite'}>
-        <label class="form-field login-field">
-          <span>GitHub login</span>
-          <input
-            class="text-input"
-            autocomplete="off"
-            placeholder="octocat"
-            bind:value={login}
-            required
-            data-modal-focus
-          />
-          <small class="identity-help" class:refused={namingSelf}>
-            {namingSelf
-              ? selfRefusal
-              : accessMethod === 'invite'
-                ? 'The invitation only works for this GitHub identity'
-                : 'GitHub login identifies the account to add'}
-          </small>
-        </label>
+        <LoginField
+          id="add-user-login"
+          label="GitHub login"
+          bind:value={login}
+          refused={namingSelf}
+          focusOnOpen
+          help={namingSelf
+            ? selfRefusal
+            : accessMethod === 'invite'
+              ? 'The invitation only works for this GitHub identity'
+              : 'GitHub login identifies the account to add'}
+          suggest={(query) => suggestUsers(targetId, query)}
+        />
         <label class="form-field">
           <span>Role</span>
           <span class="select-wrap">

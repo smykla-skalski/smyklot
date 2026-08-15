@@ -8,6 +8,7 @@
     Page,
     AddTargetUserInput,
     AddRootInvitationInput,
+    PanelAccount,
     InvitationDays,
     InvitationPageRequest,
     PanelInvitation,
@@ -27,6 +28,7 @@
   import FilterMenu from './FilterMenu.svelte';
   import Icon from './Icon.svelte';
   import InfiniteLoadSentinel from './InfiniteLoadSentinel.svelte';
+  import LoginField from './LoginField.svelte';
   import Modal from './Modal.svelte';
   import ResultProblem from './ResultProblem.svelte';
   import RootInvitations from './RootInvitations.svelte';
@@ -83,6 +85,7 @@
     actorLogin,
     fetchInstallations,
     addInstallationUser,
+    suggestUsers,
     onOpenInstallationAccess,
   }: {
     rootRole: string;
@@ -103,6 +106,8 @@
     actorLogin: string;
     fetchInstallations: () => Promise<RootInstallation[]>;
     addInstallationUser: (targetId: string, input: AddTargetUserInput) => Promise<PanelUser>;
+    /** Completes a login against the chosen installation's organization. */
+    suggestUsers: (targetId: string, query: string) => Promise<PanelAccount[]>;
     onOpenInstallationAccess: (account: string) => void;
   } = $props();
 
@@ -785,17 +790,20 @@
       void submitAddUser();
     }}
   >
-    <label>
-      <span>GitHub login</span>
-      <input
-        class="text-input"
-        type="text"
-        autocomplete="off"
-        placeholder="octocat"
-        bind:value={addLogin}
-        data-modal-focus
-      />
-    </label>
+    <!-- Completed against the chosen installation's organization, which is why
+         the field reads the selection rather than owning a roster of its own.
+         Before one is chosen there is nothing to complete against, and the field
+         is what it always was. -->
+    <LoginField
+      id="root-add-installation-login"
+      label="GitHub login"
+      bind:value={addLogin}
+      focusOnOpen
+      suggest={(query) =>
+        selectedInstallation === null
+          ? Promise.resolve([])
+          : suggestUsers(selectedInstallation.id, query)}
+    />
 
     <fieldset class="installation-fieldset">
       <legend>Installation</legend>

@@ -374,6 +374,7 @@
       onSection={selectAccessSection}
       fetchTargetUsers={api.fetchRootTargetUsers}
       addTargetUser={api.addRootTargetUser}
+      suggestUsers={api.suggestRootTargetUsers}
       updateTargetUser={api.updateRootTargetUser}
       fetchTargetInvitations={api.fetchRootTargetInvitations}
       createTargetInvitation={api.createRootTargetInvitation}

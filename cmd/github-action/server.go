@@ -151,6 +151,12 @@ type server struct {
 	// older read can never commit after a newer one.
 	catalogMu sync.Mutex
 
+	// candidates holds each installation's organization roster, which the panel
+	// completes logins against. Keyed by target id; see ListTargetCandidates for
+	// why it is cached rather than read per keystroke.
+	candidatesMu sync.Mutex
+	candidates   map[string]candidateRoster
+
 	// jobCtx outlives the request that enqueued a job and survives shutdown
 	// being signalled, so a delivery already in the queue still completes
 	jobCtx context.Context

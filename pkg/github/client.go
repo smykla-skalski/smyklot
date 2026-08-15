@@ -748,16 +748,42 @@ func (c *Client) ListInstallationRepos(ctx context.Context) ([]Repository, error
 // role. Requires an installation token with read-only organization Members
 // permission.
 func (c *Client) ListOrganizationAdmins(ctx context.Context, organization string) ([]User, error) {
+	return c.listOrganizationMembers(ctx, organization, "admin")
+}
+
+// ListOrganizationMembers retrieves every member of the organization, whatever
+// their role. Requires the same read-only organization Members permission as
+// ListOrganizationAdmins.
+//
+// This is the roster the panel completes logins against. GitHub's user search is
+// not one of the endpoints an installation token may call, and the panel holds
+// no other credential - it reads the signed-in person's profile once and throws
+// the OAuth token away rather than keeping one per session. The people who can
+// be added to an installation are its organization's members anyway, so the
+// narrower list is also the more useful one.
+func (c *Client) ListOrganizationMembers(ctx context.Context, organization string) ([]User, error) {
+	return c.listOrganizationMembers(ctx, organization, "")
+}
+
+func (c *Client) listOrganizationMembers(
+	ctx context.Context,
+	organization, role string,
+) ([]User, error) {
 	organization = strings.TrimSpace(organization)
 	if organization == "" {
 		return nil, errors.New("GitHub organization must not be empty")
 	}
+	filter := ""
+	if role != "" {
+		filter = "role=" + url.QueryEscape(role) + "&"
+	}
 
-	var admins []User
+	var members []User
 	for page := 1; page <= maxPages; page++ {
 		path := fmt.Sprintf(
-			"/orgs/%s/members?role=admin&per_page=%d&page=%d",
+			"/orgs/%s/members?%sper_page=%d&page=%d",
 			url.PathEscape(organization),
+			filter,
 			pageSize,
 			page,
 		)
@@ -774,12 +800,12 @@ func (c *Client) ListOrganizationAdmins(ctx context.Context, organization string
 			return nil, NewAPIError(ErrResponseParse, 0, http.MethodGet, path, err)
 		}
 		for _, item := range response {
-			admins = append(admins, User{
+			members = append(members, User{
 				ID: item.ID, Login: item.Login, AvatarURL: stringPointer(item.AvatarURL),
 			})
 		}
 		if len(response) < pageSize {
-			return admins, nil
+			return members, nil
 		}
 		if page == maxPages {
 			return nil, NewAPIError(
@@ -787,12 +813,12 @@ func (c *Client) ListOrganizationAdmins(ctx context.Context, organization string
 				0,
 				http.MethodGet,
 				path,
-				fmt.Errorf("organization admin list still has a full page after %d items", len(admins)),
+				fmt.Errorf("organization member list still has a full page after %d items", len(members)),
 			)
 		}
 	}
 
-	return admins, nil
+	return members, nil
 }
 
 func stringPointer(value string) *string {

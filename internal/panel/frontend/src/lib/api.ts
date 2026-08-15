@@ -11,6 +11,7 @@ import type {
   DeliveryFailure,
   FailureHistoryRequest,
   Page,
+  PanelAccount,
   PanelErrorBody,
   PanelTarget,
   PanelInvitation,
@@ -119,6 +120,9 @@ export interface PanelApi {
   markNotificationRead(notificationId: string): Promise<SecurityNotification>;
   fetchTargetUsers(targetId: string, request: PanelUserPageRequest): Promise<Page<PanelUser>>;
   addTargetUser(targetId: string, input: AddTargetUserInput): Promise<PanelUser>;
+  /** Logins offered while one is being typed; see `UserCompletion`. */
+  suggestUsers(targetId: string, query: string): Promise<PanelAccount[]>;
+  suggestRootTargetUsers(targetId: string, query: string): Promise<PanelAccount[]>;
   updateTargetUser(
     targetId: string,
     accountId: string,
@@ -208,6 +212,26 @@ export function createPanelApi(
   const jsonRequest = async <T>(path: string, init?: RequestInit): Promise<T> => {
     const response = await request(path, init);
     return (await response.json()) as T;
+  };
+
+  /**
+   * Reads a completion list, and never fails loudly.
+   *
+   * Completion is an offer beside a field that works without it, so a request
+   * that does not arrive leaves the field exactly as it was. Surfacing this as an
+   * error would put a failure in front of somebody who is only typing a name, and
+   * whatever they type is still resolved when they submit.
+   */
+  const suggest = async (path: string, query: string): Promise<PanelAccount[]> => {
+    try {
+      const response = await jsonRequest<{ items?: PanelAccount[] }>(
+        `${path}?q=${encodeURIComponent(query)}`,
+      );
+
+      return response.items ?? [];
+    } catch {
+      return [];
+    }
   };
 
   const putJson = <T>(path: string, body: unknown): Promise<T> =>
@@ -506,6 +530,14 @@ export function createPanelApi(
 
     addTargetUser(targetId: string, input: AddTargetUserInput): Promise<PanelUser> {
       return postJson(`/api/v1/targets/${pathSegment(targetId)}/users`, input);
+    },
+
+    suggestUsers(targetId: string, query: string): Promise<PanelAccount[]> {
+      return suggest(`/api/v1/targets/${pathSegment(targetId)}/user-suggestions`, query);
+    },
+
+    suggestRootTargetUsers(targetId: string, query: string): Promise<PanelAccount[]> {
+      return suggest(`/api/v1/root/installations/${pathSegment(targetId)}/user-suggestions`, query);
     },
 
     updateTargetUser(

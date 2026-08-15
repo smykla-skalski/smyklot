@@ -24,6 +24,13 @@ type accountResponse struct {
 	AvatarURL   *string `json:"avatar_url"`
 }
 
+// userSuggestionsResponse carries logins offered while somebody types one. It is
+// a bare list rather than a page: the server has already cut it to what a reader
+// can take in, and there is no second page of a completion.
+type userSuggestionsResponse struct {
+	Items []accountResponse `json:"items"`
+}
+
 type viewerResponse struct {
 	Account     accountResponse         `json:"account"`
 	SystemRole  storage.SystemRole      `json:"system_role"`

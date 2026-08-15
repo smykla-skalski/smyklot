@@ -74,6 +74,33 @@ const VIEWER: PanelAccount = {
   avatar_url: null,
 };
 
+/**
+ * Stands in for the organization roster the service reads from GitHub.
+ *
+ * Deliberately holds names that overlap on different parts - a login starting
+ * with the query, a display name starting with it, and one that only contains it
+ * - so the ordering the panel applies is visible while working on it.
+ */
+const MOCK_ORGANIZATION_ROSTER: PanelAccount[] = [
+  { login: 'marta-w', display_name: 'Marta Wisniewska' },
+  { login: 'marek', display_name: 'Marek Kowalski' },
+  { login: 'kasia', display_name: 'Katarzyna Marcinkowska' },
+  { login: 'tomasz', display_name: 'Tomasz Nowak' },
+  { login: 'piotr-z', display_name: 'Piotr Zielinski' },
+  { login: 'agnieszka', display_name: 'Agnieszka Lewandowska' },
+  { login: 'jakub', display_name: 'Jakub Wojcik' },
+  { login: 'zofia', display_name: 'Zofia Kaminska' },
+  { login: 'michal', display_name: 'Michal Dabrowski' },
+  { login: 'ola', display_name: 'Aleksandra Mazur' },
+].map((person, index) => ({
+  id: `roster-${index + 1}`,
+  provider: 'github:https://api.github.com',
+  subject_id: `${9000 + index}`,
+  login: person.login,
+  display_name: person.display_name,
+  avatar_url: null,
+}));
+
 const OWNER_CAPABILITIES = {
   read: true,
   write: true,
@@ -1411,6 +1438,9 @@ async function handle(
     const notificationRead = path.match(/^\/api\/v1\/notifications\/(?<notification>[^/]+)\/read$/);
     const scopedUsers = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/users$/);
     const rootScopedUsers = path.match(/^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/users$/);
+    const userSuggestions = path.match(
+      /^\/api\/v1\/(?:targets|root\/installations)\/(?<target>[^/]+)\/user-suggestions$/,
+    );
     const rootUser = path.match(/^\/api\/v1\/root\/access\/users\/(?<account>[^/]+)$/);
     const rootInvitationReissue = path.match(
       /^\/api\/v1\/root\/access\/invitations\/(?<invitation>[^/]+)\/reissue$/,
@@ -1814,6 +1844,38 @@ async function handle(
       respond(res, 200, publicInvitationValue(current));
       return;
     }
+    if (userSuggestions && method === 'GET') {
+      const target = findTarget(state, userSuggestions.groups?.target ?? '');
+      const query = (parsed.searchParams.get('q') ?? '').trim().toLowerCase();
+      if (query.length < 2) {
+        respond(res, 200, { items: [] });
+        return;
+      }
+      /* Stands in for the organization roster the service reads from GitHub.
+         People already on the installation are dropped, the same as the service
+         does - they are not candidates for being added to it. */
+      const held = new Set(
+        targetUsers(state, target.value.id).map((user) => user.account.login.toLowerCase()),
+      );
+      /* Ranked the way the service ranks: a login that starts with what was
+         typed, then a display name that does, then anything containing it. */
+      const rank = (account: PanelAccount): number => {
+        const login = account.login.toLowerCase();
+        const name = account.display_name.toLowerCase();
+        if (login.startsWith(query)) return 0;
+        if (name.startsWith(query)) return 1;
+        if (login.includes(query) || name.includes(query)) return 2;
+        return -1;
+      };
+      const items = MOCK_ORGANIZATION_ROSTER.filter(
+        (account) => !held.has(account.login.toLowerCase()) && rank(account) !== -1,
+      )
+        .sort((left, right) => rank(left) - rank(right) || left.login.localeCompare(right.login))
+        .slice(0, 8);
+      respond(res, 200, { items });
+      return;
+    }
+
     if (installationUsers && method === 'GET') {
       const target = findTarget(state, installationUsers.groups?.target ?? '');
       respond(res, 200, userPage(targetUsers(state, target.value.id), parsed.searchParams));

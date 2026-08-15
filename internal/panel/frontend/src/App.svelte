@@ -787,6 +787,7 @@
                 actorLogin={viewer.account.login}
                 fetchInstallations={api.fetchRootInstallations}
                 addInstallationUser={api.addRootTargetUser}
+                suggestUsers={api.suggestRootTargetUsers}
                 onOpenInstallationAccess={(account) => selectRootInstallation(account, 'users')}
               />
             {:else}
@@ -840,6 +841,7 @@
                     onSection={selectUserSection}
                     fetchTargetUsers={api.fetchTargetUsers}
                     addTargetUser={api.addTargetUser}
+                    suggestUsers={api.suggestUsers}
                     updateTargetUser={api.updateTargetUser}
                     fetchTargetInvitations={api.fetchTargetInvitations}
                     createTargetInvitation={api.createTargetInvitation}

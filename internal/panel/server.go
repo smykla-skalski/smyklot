@@ -51,6 +51,10 @@ type Dependencies struct {
 	Now       func() time.Time
 	Runtime   RuntimeController
 	PendingCI PendingCIController
+	// Candidates reads the roster logins are completed against. Optional: a
+	// panel without one offers no completion, which is what the dialogs did
+	// before there was any.
+	Candidates candidateDirectory
 }
 
 // Server owns the panel routes and their authenticated runtime state.
@@ -59,6 +63,7 @@ type Server struct {
 	store      storage.Store
 	catalog    catalogSyncer
 	users      userResolver
+	candidates candidateDirectory
 	signIn     signInProvider
 	random     io.Reader
 	now        func() time.Time
@@ -120,6 +125,7 @@ func New(cfg Config, deps Dependencies) (*Server, error) {
 		store:      deps.Store,
 		catalog:    deps.Catalog,
 		users:      deps.Users,
+		candidates: deps.Candidates,
 		signIn:     deps.SignIn,
 		random:     deps.Random,
 		now:        deps.Now,
@@ -151,6 +157,10 @@ func (s *Server) Handler() http.Handler {
 	s.registerRootRoutes(mux, base)
 	mux.HandleFunc("PUT "+base+"/api/v1/targets/{target}/settings", s.putTargetSettings)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/users", s.getTargetUsers)
+	mux.HandleFunc(
+		"GET "+base+"/api/v1/targets/{target}/user-suggestions",
+		s.getTargetUserSuggestions,
+	)
 	mux.HandleFunc("POST "+base+"/api/v1/targets/{target}/users", s.postTargetUser)
 	mux.HandleFunc(
 		"GET "+base+"/api/v1/targets/{target}/users/{account}/decisions",
@@ -249,6 +259,10 @@ func (s *Server) registerRootRoutes(mux *http.ServeMux, base string) {
 	mux.HandleFunc(
 		"POST "+base+"/api/v1/root/installations/{target}/users",
 		s.postRootTargetUser,
+	)
+	mux.HandleFunc(
+		"GET "+base+"/api/v1/root/installations/{target}/user-suggestions",
+		s.getRootTargetUserSuggestions,
 	)
 	mux.HandleFunc(
 		"PUT "+base+"/api/v1/root/installations/{target}/users/{account}",

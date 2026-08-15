@@ -17,6 +17,17 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/github"
 )
 
+// candidateTTL is how long an organization roster is reused. Short enough that
+// somebody who joined the organization this morning can be completed by the
+// afternoon, long enough that a person typing a login costs no GitHub requests
+// at all after the first.
+const candidateTTL = 10 * time.Minute
+
+type candidateRoster struct {
+	accounts  []storage.Account
+	expiresAt time.Time
+}
+
 func (s *server) initPanel() error {
 	if s.cfg.panel == nil {
 		return nil
@@ -57,7 +68,7 @@ func (s *server) initPanel() error {
 		OAuthCredentialPresent:   s.cfg.panel.clientSecret != "",
 		Assets:                   assets,
 	}, adminpanel.Dependencies{
-		Store: s.store, Catalog: s, Users: s, Runtime: s,
+		Store: s.store, Catalog: s, Users: s, Runtime: s, Candidates: s,
 		PendingCI: newPendingCIControl(
 			s.store, s.pendingCICoordinator, s.pendingCI.Wake,
 		),
@@ -139,6 +150,95 @@ func (s *server) ResolveUser(
 // ResolveRootUser resolves a login through the first available installation.
 // This keeps user lookup independent of regular-panel ownership while using
 // the same least-privilege installation authentication as scoped invitations.
+// ListTargetCandidates returns the people who could be given access to the
+// installation: the members of the organization it belongs to.
+//
+// A personal installation has no roster, and returns none rather than an error -
+// the panel offers no completion there and the field stays what it always was, a
+// login typed in full.
+//
+// The roster is read whole and cached. GitHub pages it, so completing on every
+// keystroke would be several requests per letter; membership changes on the
+// scale of days, and the panel resolves whatever is typed on submit regardless,
+// so a list a few minutes stale costs nothing and a wrong one is impossible.
+func (s *server) ListTargetCandidates(
+	ctx context.Context,
+	targetID string,
+) ([]storage.Account, error) {
+	target, err := s.store.GetTarget(ctx, targetID)
+	if err != nil {
+		return nil, fmt.Errorf("read candidate installation: %w", err)
+	}
+	if target.Kind != storage.TargetOrganization || !target.Available {
+		return nil, nil
+	}
+	if cached, ok := s.cachedCandidates(targetID); ok {
+		return cached, nil
+	}
+
+	installationID, err := strconv.ParseInt(target.InstallationID, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("parse candidate installation id: %w", err)
+	}
+	token, err := s.tokens.InstallationToken(installationID)
+	if err != nil {
+		return nil, NewGitHubError(ErrGitHubAppAuth, err)
+	}
+	client, err := github.NewClient(token, s.cfg.apiBaseURL)
+	if err != nil {
+		return nil, NewGitHubError(ErrGitHubClient, err)
+	}
+	members, err := client.ListOrganizationMembers(ctx, target.Account.Login)
+	if err != nil {
+		return nil, fmt.Errorf("list organization members: %w", err)
+	}
+
+	apiURL := s.cfg.apiBaseURL
+	if apiURL == "" {
+		apiURL = defaultGitHubAPIURL
+	}
+	now := time.Now().UTC()
+	accounts := make([]storage.Account, 0, len(members))
+	for _, member := range members {
+		account, err := adminpanel.NewGitHubAccount(
+			apiURL, member.ID, member.Login, member.Name, member.AvatarURL, now,
+		)
+		if err != nil {
+			// One unusable record must not cost the whole roster.
+			continue
+		}
+		accounts = append(accounts, account)
+	}
+	s.storeCandidates(targetID, accounts, now)
+
+	return accounts, nil
+}
+
+func (s *server) cachedCandidates(targetID string) ([]storage.Account, bool) {
+	s.candidatesMu.Lock()
+	defer s.candidatesMu.Unlock()
+
+	entry, ok := s.candidates[targetID]
+	if !ok || time.Now().UTC().After(entry.expiresAt) {
+		return nil, false
+	}
+
+	return entry.accounts, true
+}
+
+func (s *server) storeCandidates(targetID string, accounts []storage.Account, now time.Time) {
+	s.candidatesMu.Lock()
+	defer s.candidatesMu.Unlock()
+
+	if s.candidates == nil {
+		s.candidates = map[string]candidateRoster{}
+	}
+	s.candidates[targetID] = candidateRoster{
+		accounts:  accounts,
+		expiresAt: now.Add(candidateTTL),
+	}
+}
+
 func (s *server) ResolveRootUser(ctx context.Context, login string) (storage.Account, error) {
 	targets, err := s.store.ListRootTargets(ctx)
 	if err != nil {
