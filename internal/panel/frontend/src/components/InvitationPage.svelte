@@ -72,7 +72,7 @@
 
 <main class="shell invitation-shell">
   <div class="invitation-brand" style="--invitation-mark-size: {MARK_SIZE}px">
-    <NightSky size="min(40rem, 96vw)" />
+    <NightSky />
     <BrandMark part="PANEL" stacked size={MARK_SIZE} />
   </div>
 
@@ -197,27 +197,60 @@
      carries the title's block as padding above and centres the padded box - which
      puts the mark itself half that block lower, on the card's gap. The row gap is
      symmetric across both flexible rows, so none of this moves the card. */
+  /* Stretched to fill its row rather than centred inside it, so the element's own
+     height *is* the gap above the card. That is what the sky measures itself
+     against; the mark still sits in the middle of it. */
   .invitation-brand {
-    align-self: center;
+    align-items: center;
+    align-self: stretch;
     display: flex;
     justify-content: center;
     padding-top: var(--invitation-title-block);
     position: relative;
   }
 
-  /* Centred on the middle of the mark's disc, which sits one padding down from
-     the top of this row, so the sky opens out from the logo rather than from the
-     block of type under it. */
+  /* Sized against the gap it sits in, not in rem or `vh`. The page is centred, so
+     that gap grows when the card is short and shrinks when it is tall - a sky
+     with a fixed reach lands differently in each state, and whichever line it
+     leaves inside its fade reads against a mid-tone. As a multiple of the gap,
+     the title falls at the same point on the falloff every time and the footer
+     stays past the end of it. */
+  /* Fixed rather than absolute: the sky is deliberately larger than the window,
+     and an absolutely positioned element that size extends the document's
+     scrollable area - a page with nothing on it would gain scrollbars in both
+     directions. A fixed one is outside that reckoning. The cost is that it is
+     anchored to the window rather than to the mark, so `top` approximates where
+     the mark sits; at this size a few pixels of drift is not visible. */
   .invitation-brand :global(.night-sky) {
     left: 50%;
-    top: calc(var(--invitation-title-block) + var(--invitation-mark-size) / 2);
+    position: fixed;
+    top: 16vh;
     translate: -50% -50%;
+  }
+
+  /* Everything outside the card stands on the sky, and the sky is night whichever
+     theme the page is in, so this page writes in light ink in both. The card
+     keeps the page's own palette: it is a panel laid on the sky, not part of it. */
+  .invitation-brand :global(.mark-name) {
+    color: rgb(246 249 255);
+  }
+
+  .invitation-brand :global(.mark-part) {
+    color: rgb(186 203 233);
+  }
+
+  .invitation-shell :global(.foot-name) {
+    color: rgb(214 226 246);
+  }
+
+  .invitation-shell :global(.foot-host) {
+    color: rgb(160 180 214);
   }
 
   /* Reads as the card's own title from the outside, so it keeps the size the
      plate header gave it. */
   .invitation-title {
-    color: var(--text-primary);
+    color: rgb(246 249 255);
     font: 700 1.0625rem / 1.3 var(--sans);
     letter-spacing: 0;
     margin: 0 0 var(--space-3);
