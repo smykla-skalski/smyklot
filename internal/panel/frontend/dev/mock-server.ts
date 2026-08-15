@@ -1,6 +1,9 @@
 import { createHash } from 'node:crypto';
+import { readFileSync, writeFileSync } from 'node:fs';
 import type { Server as HttpServer, IncomingMessage, ServerResponse } from 'node:http';
+import { dirname, resolve } from 'node:path';
 import type { Duplex } from 'node:stream';
+import { fileURLToPath } from 'node:url';
 import type { Connect, Plugin } from 'vite';
 
 import type {
@@ -134,6 +137,44 @@ interface MockState {
 
 function enabled(): boolean {
   return process.env.SMYKLOT_PANEL_DEV_MOCK === '1';
+}
+
+/**
+ * Preferences outlive the process they were set in.
+ *
+ * Everything the panel remembers about you is a synced preference - the theme, whether the sidebar
+ * is collapsed, and every table's sort, filters and search. The mock held them in memory, so each
+ * Vite restart, and each edit to this file, handed back a factory-fresh panel and you set them all
+ * again. Only the preference document is kept: the rest of the mock is fixture data, and a fixture
+ * that drifts across restarts is worse than one that resets.
+ */
+const PREFERENCES_FILE = resolve(dirname(fileURLToPath(import.meta.url)), '.mock-preferences.json');
+
+function loadPreferences(): MockState['prefs'] {
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(PREFERENCES_FILE, 'utf8'));
+    if (parsed === null || typeof parsed !== 'object') return { values: {}, rev: 0 };
+    const { values, rev } = parsed as { values?: unknown; rev?: unknown };
+    if (values === null || typeof values !== 'object') return { values: {}, rev: 0 };
+    return {
+      values: { ...(values as Record<string, unknown>) },
+      rev: typeof rev === 'number' && Number.isFinite(rev) ? rev : 0,
+    };
+  } catch {
+    // No file yet, or one this build cannot read. Starting clean beats refusing to serve.
+    return { values: {}, rev: 0 };
+  }
+}
+
+function savePreferences(state: MockState): void {
+  try {
+    writeFileSync(
+      PREFERENCES_FILE,
+      `${JSON.stringify({ values: state.prefs.values, rev: state.prefs.rev }, null, 2)}\n`,
+    );
+  } catch {
+    // Persisting is a convenience, so a read-only checkout still runs the mock.
+  }
 }
 
 function seed(): MockState {
@@ -405,7 +446,7 @@ function seed(): MockState {
       startedAt: now,
     },
     streams: new Set(),
-    prefs: { values: {}, rev: 0 },
+    prefs: loadPreferences(),
   };
 }
 
@@ -993,6 +1034,7 @@ function handleClientFrame(state: MockState, socket: Duplex, payload: Buffer): v
       }
     }
     state.prefs.rev += 1;
+    savePreferences(state);
     for (const stream of state.streams) {
       writeWebSocket(stream, {
         version: 1,
