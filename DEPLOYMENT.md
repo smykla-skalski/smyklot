@@ -409,7 +409,7 @@ fly machines list --app smyklot
 fly volumes list --app smyklot
 ```
 
-After a release, `.github/workflows/deploy.yaml` does this automatically. It needs `FLY_API_TOKEN` as a repository secret, from `fly tokens create deploy -a smyklot`. The same workflow can be dispatched by hand with a version, which is how you roll back.
+After a release, `.github/workflows/deploy.yaml` does this automatically. It needs `FLY_API_TOKEN` as a repository secret, from `fly tokens create deploy -a smyklot`. A PostgreSQL-backed deployment needs a second secret as well, `FLY_DB_READ_TOKEN`, minted under "Running on PostgreSQL" below. The same workflow can be dispatched by hand with a version, which is how you roll back.
 
 ### 3. Point the Domain at It
 
@@ -558,6 +558,31 @@ fly scale count 1 --app smyklot
 ```
 
 The configuration swap is what removes `[[mounts]]`, and it is committed rather than done by hand so that the next automated deploy agrees with the last manual one. `deploy.yaml` reads which backend the app is on from whether `SMYKLOT_DATABASE_URL` is set, and checks the topology that matches, so a release after this point verifies the database is up instead of verifying a volume that is no longer used.
+
+That check reads a second app, so it needs a second token. `FLY_API_TOKEN` is scoped to `smyklot` and Fly answers `unauthorized` for anything else, which is how release 1.26.0 failed. Add `FLY_DB_READ_TOKEN` as a repository secret, read-only, so the pipeline that watches the database has no way to change it:
+
+```bash
+parent="$(fly tokens create deploy --app smyklot-db --expiry 8760h \
+  --name 'GitHub Actions db read (parent of the CI read-only child)' --json | jq -r .token)"
+
+child="$(FLY_API_TOKEN="$parent" fly tokens create readonly --from-existing \
+  --expiry 8760h --name 'GitHub Actions db read' --json | jq -r .token)"
+
+printf %s "$child" | gh secret set FLY_DB_READ_TOKEN --repo smykla-skalski/smyklot
+```
+
+A read-only token is an attenuation of an existing one rather than an entry of its own, so `fly tokens list --app smyklot-db` lists only the parent, and revoking the parent revokes the child with it. Keep that entry and throw its string away: it is the half of the pair that can write. Confirm what shipped before trusting it — the child has to read the database app, refuse the service app, and refuse to write anything:
+
+```bash
+FLY_API_TOKEN="$child" fly machines list --app smyklot-db --json   # one started machine
+FLY_API_TOKEN="$child" fly machines list --app smyklot --json      # unauthorized
+FLY_API_TOKEN="$child" fly tokens create deploy --app smyklot-db \
+  --expiry 1h --name probe                                        # not authorized
+
+unset parent child
+```
+
+Both tokens expire after a year. `fly tokens list --scope org --org personal` is where you find that out before a release does.
 
 Verify before deleting anything:
 

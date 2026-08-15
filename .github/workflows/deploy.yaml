@@ -14,7 +14,12 @@ on:
         required: true
         type: string
     secrets:
+      # Scoped to the service app, so it cannot read the database app - which
+      # is the point. Two tokens rather than one org-wide token means the
+      # release pipeline can replace the service and can change nothing else.
       FLY_API_TOKEN:
+        required: true
+      FLY_DB_READ_TOKEN:
         required: true
   workflow_dispatch:
     inputs:
@@ -79,10 +84,13 @@ jobs:
             echo "Service state is in SQLite on a volume."
           fi
 
-      - name: Verify the single SQLite writer topology
-        if: steps.backend.outputs.backend == 'sqlite'
+      # The service is a single writer on either backend - deliveries are
+      # de-duplicated in memory and the sweep has no leader election. Only the
+      # volume half of that is SQLite's, so only the volume half is skipped.
+      - name: Verify the single writer topology
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          BACKEND: ${{ steps.backend.outputs.backend }}
         run: |
           set -euo pipefail
           machines="$(flyctl machines list --app smyklot --json)"
@@ -92,6 +100,10 @@ jobs:
             exit 1
           fi
           machine_id="$(jq -r '.[] | select(.config.env.FLY_PROCESS_GROUP == "app") | .id' <<<"$machines")"
+
+          if [[ "$BACKEND" != "sqlite" ]]; then
+            exit 0
+          fi
 
           volumes="$(flyctl volumes list --app smyklot --json)"
           volume_count="$(jq '[.[] | select(.name == "smyklot_data")] | length' <<<"$volumes")"
@@ -109,33 +121,43 @@ jobs:
       # the database has to be up before the service is replaced. Deploying
       # into an unreachable database gives a machine that fails its migrations
       # on start and never becomes ready.
+      #
+      # A different token, because the deploy token is scoped to smyklot and
+      # cannot see smyklot-db. This one is the mirror of it: scoped to the
+      # database app, and read-only, so the pipeline that reads the database's
+      # health has no way to change the database.
       - name: Verify the database is up
         if: steps.backend.outputs.backend == 'postgres'
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_API_TOKEN: ${{ secrets.FLY_DB_READ_TOKEN }}
         run: |
           set -euo pipefail
-          machines="$(flyctl machines list --app smyklot-db --json)"
+
+          # Name the likely cause rather than passing flyctl's "unauthorized"
+          # along. This step read smyklot-db with the service's deploy token
+          # once, and an app-scoped token refusing another app looks like the
+          # database being gone rather than the token being the wrong one.
+          if ! machines="$(flyctl machines list --app smyklot-db --json 2>&1)"; then
+            echo "cannot read smyklot-db: $machines" >&2
+            echo "FLY_DB_READ_TOKEN must be scoped to smyklot-db; see DEPLOYMENT.md" >&2
+            exit 1
+          fi
+
           started="$(jq '[.[] | select(.state == "started")] | length' <<<"$machines")"
           if [[ "$started" -ne 1 ]]; then
             echo "expected exactly one started smyklot-db machine, found $started" >&2
             flyctl status --app smyklot-db >&2 || true
             exit 1
           fi
-          if ! jq -e '[.[] | select(.state == "started") | .checks // [] | .[] | select(.status != "passing")] | length == 0' \
-            <<<"$machines" >/dev/null; then
-            echo "smyklot-db has a failing health check" >&2
+          # Counted rather than filtered for failures, because a machine that
+          # reports no checks at all would pass a "nothing is failing" test
+          # while saying nothing about whether Postgres is accepting queries.
+          checks="$(jq '[.[] | select(.state == "started") | .checks // []] | add // []' <<<"$machines")"
+          total="$(jq 'length' <<<"$checks")"
+          passing="$(jq '[.[] | select(.status == "passing")] | length' <<<"$checks")"
+          if [[ "$total" -eq 0 || "$passing" -ne "$total" ]]; then
+            echo "expected every smyklot-db health check to pass, found $passing of $total" >&2
             flyctl checks list --app smyklot-db >&2 || true
-            exit 1
-          fi
-
-          # The service app is still expected to be a single writer, but now
-          # because deliveries are de-duplicated in memory and the sweep has no
-          # leader election, not because of SQLite.
-          service="$(flyctl machines list --app smyklot --json)"
-          service_count="$(jq '[.[] | select(.config.env.FLY_PROCESS_GROUP == "app")] | length' <<<"$service")"
-          if [[ "$service_count" -gt 1 ]]; then
-            echo "expected at most one app machine, found $service_count" >&2
             exit 1
           fi
 
