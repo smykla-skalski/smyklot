@@ -30,6 +30,21 @@ type Dialect interface {
 	// Name identifies the engine in errors and logs.
 	Name() string
 
+	// DisplayName names the engine for a person reading a panel, where Name
+	// identifies it for a log line: "PostgreSQL" against "postgres". It is
+	// spelled here so that nothing above the port has to map one to the other.
+	DisplayName() string
+
+	// VersionQuery selects the server's own release as a single string, and
+	// only the release: an engine that reports its packaging alongside trims
+	// that here, rather than leaving every caller to guess at the shape.
+	VersionQuery() string
+
+	// SizeQuery selects how many bytes the database occupies, as a single
+	// integer. An engine with no answer returns an empty string, which is not
+	// the same as returning zero.
+	SizeQuery() string
+
 	// Rebind rewrites a statement written with ? placeholders into the form
 	// the engine expects. Every statement passes through it exactly once.
 	Rebind(query string) string

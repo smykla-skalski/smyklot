@@ -46,6 +46,51 @@ func DeclareSpecs(harness Harness) {
 		return ctx, store, now
 	})
 
+	It("describes the database it is talking to", func() {
+		status := store.Status(ctx)
+
+		Expect(status.Engine).ToNot(BeEmpty())
+		Expect(status.Reachable).To(BeTrue())
+		Expect(status.Error).To(BeEmpty())
+		Expect(status.Latency).To(BeNumerically(">", 0))
+
+		// A release and nothing around it. An engine that reports its
+		// packaging beside its version trims that in its own dialect, so
+		// anything but digits and dots here means the trim was dropped and
+		// every panel would print the build string.
+		Expect(status.Version).To(MatchRegexp(`^\d+(\.\d+)*$`))
+
+		// Open applies every migration before it returns a store, so a zero
+		// means the query failed to find the runner's bookkeeping rather than
+		// that this database has none.
+		Expect(status.SchemaVersion).To(BeNumerically(">", 0))
+
+		// Not merely "not negative": zero is what a size query that silently
+		// returned nothing would report, and it is the one answer a database
+		// holding a migrated schema cannot honestly give.
+		Expect(status.SizeBytes).To(BeNumerically(">", 0))
+
+		Expect(status.Connections.Max).To(BeNumerically(">", 0))
+		Expect(status.Connections.Open).To(BeNumerically(">", 0))
+	})
+
+	It("reports a database it can no longer reach, and still names it", func() {
+		Expect(store.Close()).To(Succeed())
+
+		status := store.Status(ctx)
+
+		Expect(status.Reachable).To(BeFalse())
+		Expect(status.Error).ToNot(BeEmpty())
+
+		// The engine is what this adapter is, not what a server answered, so a
+		// reader is still told which database has gone rather than shown a
+		// blank where its name was.
+		Expect(status.Engine).ToNot(BeEmpty())
+		Expect(status.Version).To(BeEmpty())
+		Expect(status.SchemaVersion).To(BeZero())
+		Expect(status.SizeBytes).To(BeZero())
+	})
+
 	It("caps sessions per account and removes expired sessions on read", func() {
 		account := testAccount(now)
 		Expect(store.UpsertAccount(ctx, account)).To(Succeed())

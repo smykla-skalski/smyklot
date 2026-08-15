@@ -16,6 +16,22 @@ type Dialect struct{}
 // Name identifies the engine in errors and logs.
 func (Dialect) Name() string { return "sqlite" }
 
+// DisplayName names the engine for a person reading a panel.
+func (Dialect) DisplayName() string { return "SQLite" }
+
+// VersionQuery selects the library's release. SQLite is linked into the
+// process rather than reached over a socket, so this is the version of the
+// binary asking, which is also the version of the binary answering.
+func (Dialect) VersionQuery() string { return "SELECT sqlite_version()" }
+
+// SizeQuery selects the size of the database file, which SQLite reports as the
+// pages it has allocated rather than as bytes. Space freed by a delete stays
+// in the file until it is vacuumed, so this is what the file occupies and not
+// what its rows need.
+func (Dialect) SizeQuery() string {
+	return "SELECT page_count * page_size FROM pragma_page_count(), pragma_page_size()"
+}
+
 // Rebind returns the statement unchanged, because ? is already SQLite's own
 // placeholder.
 func (Dialect) Rebind(query string) string { return query }

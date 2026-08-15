@@ -24,6 +24,22 @@ type Dialect struct{}
 // Name identifies the engine in errors and logs.
 func (Dialect) Name() string { return "postgres" }
 
+// DisplayName names the engine for a person reading a panel.
+func (Dialect) DisplayName() string { return "PostgreSQL" }
+
+// VersionQuery selects the server's release without the packaging string it
+// reports beside it: server_version reads "18.6 (Debian 18.6-1.pgdg13+2)" on a
+// distribution build and "18.6" on the image this service runs, and only the
+// first field is the same answer in both.
+func (Dialect) VersionQuery() string {
+	return "SELECT split_part(current_setting('server_version'), ' ', 1)"
+}
+
+// SizeQuery selects what this database occupies on the server, which is the
+// number that has to stay under the volume it sits on. It counts only this
+// database, so a server holding another one reports less than its disk holds.
+func (Dialect) SizeQuery() string { return "SELECT pg_database_size(current_database())" }
+
 // Rebind numbers the placeholders, because this engine addresses a parameter
 // by position rather than by order of appearance.
 //

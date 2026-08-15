@@ -124,5 +124,11 @@ type Store interface {
 	pendingci.Store
 
 	Ping(context.Context) error
+
+	// Status describes the database behind the port. It returns no error
+	// because a database that will not answer is a status worth reading, not a
+	// failure to produce one.
+	Status(context.Context) DatabaseStatus
+
 	Close() error
 }
