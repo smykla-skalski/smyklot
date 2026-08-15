@@ -9,7 +9,15 @@
   import Avatar from './Avatar.svelte';
   import Icon from './Icon.svelte';
   import NotificationInbox from './NotificationInbox.svelte';
+  import SegmentedControl from './SegmentedControl.svelte';
   import ViewTabs from './ViewTabs.svelte';
+
+  /* Icon-only, so each option's label is its accessible name rather than visible text. */
+  const THEME_OPTIONS = [
+    { value: 'system', label: 'System theme', icon: 'system' },
+    { value: 'light', label: 'Light theme', icon: 'sun' },
+    { value: 'dark', label: 'Dark theme', icon: 'moon' },
+  ] as const;
 
   const {
     viewer,
@@ -399,38 +407,15 @@
         <div class="theme-row">
           <span class="theme-icon" aria-hidden="true"><Icon name="sun-moon" size={15} /></span>
           <span class="theme-label">Theme</span>
-          <div class="theme-options" role="group" aria-label="Theme">
-            <button
-              type="button"
-              class:selected={theme === 'system'}
-              aria-pressed={theme === 'system'}
-              aria-label="System theme"
-              title="System theme"
-              onclick={() => onSelectTheme('system')}
-            >
-              <Icon name="system" size={14} />
-            </button>
-            <button
-              type="button"
-              class:selected={theme === 'light'}
-              aria-pressed={theme === 'light'}
-              aria-label="Light theme"
-              title="Light theme"
-              onclick={() => onSelectTheme('light')}
-            >
-              <Icon name="sun" size={14} />
-            </button>
-            <button
-              type="button"
-              class:selected={theme === 'dark'}
-              aria-pressed={theme === 'dark'}
-              aria-label="Dark theme"
-              title="Dark theme"
-              onclick={() => onSelectTheme('dark')}
-            >
-              <Icon name="moon" size={14} />
-            </button>
-          </div>
+          <SegmentedControl
+            name="panel-theme"
+            label="Theme"
+            options={THEME_OPTIONS}
+            value={theme}
+            surface="sidebar"
+            compact
+            onSelect={(selection) => onSelectTheme(selection as ThemeDisplay)}
+          />
         </div>
         <hr class="menu-divider" />
         <button class="account-action" type="button" onclick={signOut}>
@@ -466,7 +451,10 @@
     justify-content: space-between;
     margin-bottom: var(--space-2);
     min-height: 2.375rem;
-    padding: 0 var(--space-2);
+    /* No padding on the closing edge: it held the collapse trigger 8px inside the right edge every
+       navigation row below it lines up on. The mark keeps its own inset on the opening edge.
+       Collapsed, the row zeroes this out and centres instead. */
+    padding: 0 0 0 var(--space-2);
     position: relative;
   }
 
@@ -998,47 +986,6 @@
     flex: 1;
     font: 500 var(--font-size-meta) / 1 var(--sans);
     text-box: trim-both cap alphabetic;
-  }
-
-  .theme-options {
-    background: var(--sidebar-seg-track);
-    border: 1px solid var(--sidebar-seg-border);
-    border-radius: 7px;
-    display: inline-flex;
-    gap: 2px;
-    padding: 2px;
-  }
-
-  .theme-options button {
-    align-items: center;
-    background: transparent;
-    border: 0;
-    border-radius: 5px;
-    color: var(--sidebar-menu-muted);
-    cursor: pointer;
-    display: inline-flex;
-    height: 1.625rem;
-    justify-content: center;
-    transition:
-      background-color var(--duration-fast) var(--ease-standard),
-      color var(--duration-fast) var(--ease-standard),
-      transform var(--duration-press) var(--ease-standard);
-    width: 1.875rem;
-  }
-
-  .theme-options button:hover:not(.selected) {
-    background: color-mix(in srgb, var(--sidebar-menu-text) 8%, transparent);
-    color: var(--sidebar-menu-text);
-  }
-
-  .theme-options button:active {
-    transform: scale(0.92);
-  }
-
-  .theme-options button.selected {
-    background: var(--sidebar-seg-thumb);
-    box-shadow: 0 1px 3px rgb(0 0 0 / 18%);
-    color: var(--sidebar-menu-text);
   }
 
   .account-action {

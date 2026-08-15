@@ -130,8 +130,11 @@
   --danger-tint: var(--primitive-danger-light-tint);
   --neutral-tint: var(--primitive-light-inset);
   --interactive-hover: #f1f5f3;
-  --interactive-hover-layer: rgb(24 33 31 / 4%);
-  --interactive-pressed: rgb(24 33 31 / 10%);
+  /* One state change and two, as overlays so the step is the same on any ground.
+     Sized against the sidebar's approved pair - 2.51 and 5.09 dE00 - rather than picked:
+     4% measured 1.81, which is under two thirds of a state change on a white surface. */
+  --interactive-hover-layer: rgb(24 33 31 / 5.5%);
+  --interactive-pressed: rgb(24 33 31 / 11%);
   --interactive-pressed-bg: #e7ece9;
   --interactive-selected-hover: #dceee9;
   --interactive-selected-pressed: #cfe5df;
@@ -151,7 +154,10 @@
   --sidebar-item-active-text: #0d5c55;
   /* Selected nav item is a raised thumb, same language as segmented controls. */
   --sidebar-thumb: #ffffff;
-  --sidebar-thumb-shadow: 0 1px 3px rgb(24 33 31 / 16%), 0 0 0 0.5px rgb(24 33 31 / 6%);
+  /* The ring at 6% read 2.78 against the sidebar, under both the 3.74 fill and the 5.09 a press on
+     a neighbouring row moves: pressing an unselected row was louder than the selection it sat
+     beside. At 14% the edge reads 6.25 and the order is right again. */
+  --sidebar-thumb-shadow: 0 1px 3px rgb(24 33 31 / 16%), 0 0 0 0.5px rgb(24 33 31 / 14%);
   /* Popovers and menus anchored to the sidebar follow its context, not the page. */
   --sidebar-popover-bg: #ffffff;
   --sidebar-popover-border: #d9e0dd;
@@ -159,9 +165,15 @@
   --sidebar-menu-muted: #53615c;
   --sidebar-menu-hover: #eef2f0;
   --sidebar-menu-pressed: #dfe6e3;
+  /* The segmented control inside a sidebar popover: same rules as the one in the content area,
+     against the popover's own surfaces. Hover and press step down, away from the thumb; the ring
+     carries the selection where the fill alone would lose to a press on a neighbour. */
   --sidebar-seg-track: #eef1f0;
   --sidebar-seg-thumb: #ffffff;
   --sidebar-seg-border: #d9e0dd;
+  --sidebar-seg-hover: color-mix(in srgb, var(--sidebar-menu-text) 5.5%, var(--sidebar-seg-track));
+  --sidebar-seg-pressed: color-mix(in srgb, var(--sidebar-menu-text) 11%, var(--sidebar-seg-track));
+  --sidebar-seg-shadow: 0 1px 3px rgb(24 33 31 / 14%), 0 0 0 0.5px rgb(24 33 31 / 12%);
   --switcher-card-bg: #ffffff;
   --switcher-card-border: #b3c0ba;
   --switcher-card-hover: #fafbfa;
@@ -288,10 +300,28 @@
   --shadow-popover: 0 16px 42px var(--shadow-color);
   --shadow-dialog: 0 24px 72px color-mix(in srgb, var(--shadow-color) 82%, black);
 
-  /* Segmented controls: a raised thumb on a slightly darker track. */
+  /* Segmented controls: a raised thumb on a slightly darker track.
+
+     Hover and press step *down* from the track, away from the thumb. Down, not up: the thumb is
+     pure white, so lightening a hovered option moves it toward the selected one. Lifting to
+     --surface-raised left 1.19 dE00 between "hovered" and "selected", against the 3.08 that is the
+     whole selected/unselected signal - hover ate two thirds of it. Darkening opens that gap to
+     5.53 and 7.91.
+
+     The sizes are the pair the sidebar already uses for one state change and two, measured rather
+     than guessed: 2.51 and 5.09 dE00. Both steps are carried by lightness alone, so they survive
+     colour-vision deficiency almost whole - 2.41 of 2.52 under deuteranopia, where mixing the
+     accent in instead would have kept about half. */
   --segment-track: var(--surface-inset);
   --segment-thumb: #ffffff;
-  --segment-shadow: 0 1px 3px rgb(0 0 0 / 14%), 0 0 0 0.5px rgb(0 0 0 / 4%);
+  --segment-hover: color-mix(in srgb, var(--text-primary) 5.5%, var(--segment-track));
+  --segment-pressed: color-mix(in srgb, var(--text-primary) 11%, var(--segment-track));
+  /* Two layers, and the second is the load-bearing half: a hairline ring that gives the thumb an
+     edge. A white thumb on a near-white track separates by only 3.08 dE00 - less than the 5.06 a
+     press on a neighbouring option moves - so the fill alone leaves the selection quieter than the
+     states around it. At 14% the ring reads 6.49 against the track and the selection is once again
+     the loudest thing on the control. */
+  --segment-shadow: 0 1px 3px rgb(24 33 31 / 14%), 0 0 0 0.5px rgb(24 33 31 / 14%);
 
   /* Input and checkbox boundaries at ~3:1 against the surface. */
   --border-strong: #9aa89f;
@@ -317,7 +347,10 @@
   --text-muted: var(--primitive-dark-muted);
   --brand-action: var(--primitive-petrol-400);
   --brand-action-hover: #5eead4;
-  --brand-action-pressed: #14b8a6;
+  /* One direction. A filled accent on a dark ground brightens on hover, so a press that went back
+     down the ramp reversed it: hovering then pressing moved the fill lighter, then darker than it
+     started. The press is now the same gesture one step further. */
+  --brand-action-pressed: var(--primitive-petrol-200);
   --brand-action-tint: var(--primitive-petrol-950);
   --brand-action-text: var(--primitive-petrol-200);
   --on-brand-action: #062c2a;
@@ -333,8 +366,11 @@
   --danger-tint: var(--primitive-danger-dark-tint);
   --neutral-tint: var(--primitive-dark-inset);
   --interactive-hover: var(--primitive-dark-raised);
-  --interactive-hover-layer: rgb(255 255 255 / 6%);
-  --interactive-pressed: rgb(0 0 0 / 30%);
+  /* Light, not dark. Hover lifts a control on a dark ground, so a press that darkened it sent the
+     two states in opposite directions; press is now the same gesture one step further. Sized to
+     the dark sidebar's own approved pair, 5.07 and 8.92 dE00. */
+  --interactive-hover-layer: rgb(255 255 255 / 7%);
+  --interactive-pressed: rgb(255 255 255 / 12.5%);
   --interactive-pressed-bg: #26313d;
   --interactive-selected-hover: #194344;
   --interactive-selected-pressed: #1d4e4e;
@@ -349,7 +385,11 @@
   --sidebar-item-pressed: #223039;
   --sidebar-item-active: var(--primitive-dark-sidebar-active);
   --sidebar-item-active-text: #a1f7e6;
-  --sidebar-thumb: #2a333e;
+  /* Lifted from #2a333e. The dark sidebar has no room below it - it sits 0.02 in OKLCh lightness
+     above the canvas - so its hover and press have to move up, toward the thumb. That left a
+     pressed *unselected* row 3.33 dE00 from the selected one, 73% of the way across a 9.63 gap.
+     Raising the thumb restores the margin: press now stops 5.22 short of it. */
+  --sidebar-thumb: #333b46;
   --sidebar-thumb-shadow: 0 1px 3px rgb(0 0 0 / 42%), 0 0 0 0.5px rgb(255 255 255 / 4%);
   --sidebar-popover-bg: #1b222b;
   --sidebar-popover-border: #333d49;
@@ -360,6 +400,12 @@
   --sidebar-seg-track: #151a21;
   --sidebar-seg-thumb: #2c3641;
   --sidebar-seg-border: #333d49;
+  /* Black rather than the sidebar's own ground: the popover track sits close enough to it that
+     mixing toward it saturates at 1.68 dE00, less than a state change. Pressed bottoms out at
+     black, which is why this step is 7.35 rather than the 8.92 the light side reaches. */
+  --sidebar-seg-hover: color-mix(in srgb, black 56%, var(--sidebar-seg-track));
+  --sidebar-seg-pressed: #000000;
+  --sidebar-seg-shadow: 0 1px 3px rgb(0 0 0 / 40%), 0 0 0 0.5px rgb(255 255 255 / 14%);
   --switcher-card-bg: #171e26;
   --switcher-card-border: #39434f;
   --switcher-card-hover: #1c242e;
@@ -380,9 +426,21 @@
   --spectrum: var(--brand-action);
   --spectrum-vertical: var(--brand-action);
 
-  --segment-track: var(--primitive-dark-sidebar);
+  /* The track is the inset surface here as it is in every other palette. It used to be the sidebar
+     primitive, which sits 0.02 above the canvas in OKLCh lightness and so left the control no room
+     to step down: the furthest a hovered option could recede was 3.68 dE00, and every larger step
+     had to move *toward* the thumb instead. On --surface-inset the same rule as light applies -
+     hover and press recede toward the canvas, away from the selected thumb. */
+  --segment-track: var(--surface-inset);
   --segment-thumb: #2b3541;
-  --segment-shadow: 0 1px 3px rgb(0 0 0 / 40%), 0 0 0 0.5px rgb(0 0 0 / 20%);
+  /* A pressed option recedes to the page's own ground, which is the darkest surface the product
+     paints and therefore a floor rather than an arbitrary stop: 7.85 dE00 from the track, with
+     hover at 5.07 halfway there. */
+  --segment-hover: color-mix(in srgb, var(--canvas) 65%, var(--segment-track));
+  --segment-pressed: var(--canvas);
+  /* A black ring on a dark track is not a ring: at 20% it measured 1.54 dE00, inside the noise.
+     White at 14% reads 9.76, which clears both the 4.13 fill and the 7.85 press. */
+  --segment-shadow: 0 1px 3px rgb(0 0 0 / 40%), 0 0 0 0.5px rgb(255 255 255 / 14%);
 
   --border-strong: #5b6a78;
 
@@ -472,6 +530,10 @@ body {
   --brand-action-tint: #ede9fa;
   --brand-action-text: #5c46a8;
   --on-brand-action: #ffffff;
+  /* The panel's muted ink is a petrol grey at hue 172. On the violet inset it reads 4.34:1 - under
+     AA - which is what a resting segment label sits on. This is the same weight in the shell's own
+     hue: 4.60:1 on the inset against the panel's 4.58:1 on its own. */
+  --text-muted: #6c6876;
   --table-sorted-bg: #ede9fa;
   --table-row-hover: #f5f2fa;
   /* Aliases substitute where they are declared, so the :root copies were
@@ -498,6 +560,10 @@ body {
   --control-surface: var(--control-bg);
   --input-surface: var(--input-bg);
   --segment-track: var(--surface-inset);
+  /* Re-resolved against the Root surfaces, like the aliases above: the panel copies were computed
+     against petrol-neutral greys and would otherwise arrive here already mixed. */
+  --segment-hover: color-mix(in srgb, var(--text-primary) 5.5%, var(--segment-track));
+  --segment-pressed: color-mix(in srgb, var(--text-primary) 11%, var(--segment-track));
   --popover-bg: var(--surface-base);
   --popover-border: var(--border-subtle);
   --dialog-bg: var(--surface-base);
@@ -511,7 +577,9 @@ body {
   --sidebar-item-pressed: #2d263c;
   --sidebar-item-active: #312943;
   --sidebar-item-active-text: #e4dbff;
-  --sidebar-thumb: #352d49;
+  /* Lifted from #352d49, for the reason the dark panel sidebar was: a pressed unselected row
+     landed 3.30 dE00 from the selected thumb. It now stops 5.25 short. */
+  --sidebar-thumb: #3d3550;
   --sidebar-thumb-shadow: 0 1px 3px rgb(0 0 0 / 46%), 0 0 0 0.5px rgb(255 255 255 / 5%);
   --sidebar-popover-bg: #221d2f;
   --sidebar-popover-border: #3f3656;
@@ -522,6 +590,10 @@ body {
   --sidebar-seg-track: #191524;
   --sidebar-seg-thumb: #362e4b;
   --sidebar-seg-border: #3f3656;
+  /* Declared on the shell so both Root themes get them: the Root sidebar is dark in either. */
+  --sidebar-seg-hover: color-mix(in srgb, black 36%, var(--sidebar-seg-track));
+  --sidebar-seg-pressed: color-mix(in srgb, black 66%, var(--sidebar-seg-track));
+  --sidebar-seg-shadow: 0 1px 3px rgb(0 0 0 / 46%), 0 0 0 0.5px rgb(255 255 255 / 14%);
   --switcher-card-bg: #1d1928;
   --switcher-card-border: #473e5e;
   --switcher-card-hover: #272133;
@@ -550,12 +622,19 @@ body {
   --focus: #b9a4ff;
   --brand-action: #a78bfa;
   --brand-action-hover: #b9a4ff;
-  --brand-action-pressed: #8b6ff2;
+  /* Continues up the ramp, as in the dark panel. */
+  --brand-action-pressed: #cdbdff;
   --brand-action-tint: #2e2544;
   --brand-action-text: #c4b5fd;
   --on-brand-action: #1c1329;
   --table-sorted-bg: #2e2544;
   --table-row-hover: #1d1828;
+  /* The Root shell keeps its own thumb rather than inheriting the panel's #2b3541: a blue-grey
+     thumb at hue 253 inside a violet shell at hue 300 reads as another product's control, the
+     same argument --brand-action is re-declared for above. */
+  --segment-thumb: #302b39;
+  --segment-hover: color-mix(in srgb, var(--canvas) 65%, var(--segment-track));
+  --segment-pressed: var(--canvas);
 }
 
 .workspace {
@@ -839,13 +918,17 @@ input[type='radio']:not(:disabled) {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* The hover and the press come from the overlays every other button uses, so the step is the same
+   whatever the button is sitting on. A flat --interactive-hover cannot be: on dark it resolves to
+   --surface-raised, which is this button's own resting ground, and the default button had no hover
+   state at all there - 0.00 dE00. The press replaces the hover layer rather than stacking on it,
+   so one press is one value everywhere. */
 .btn:hover:not(:disabled) {
-  background: var(--interactive-hover);
   border-color: var(--control-border-hover);
 }
 
 .btn:active:not(:disabled) {
-  box-shadow: inset 0 0 0 100vmax var(--press);
+  background-image: linear-gradient(var(--press), var(--press));
   filter: none;
   transform: scale(0.98);
 }
@@ -868,6 +951,11 @@ select:disabled {
   border-color: var(--brand-action-hover);
 }
 
+.btn-signal:active:not(:disabled) {
+  background: var(--brand-action-pressed);
+  border-color: var(--brand-action-pressed);
+}
+
 /* The quiet variant: dismissals and Discard, which sit beside a real primary and
    should not compete with it for the same bordered-control weight. */
 .btn-ghost {
@@ -878,6 +966,10 @@ select:disabled {
 .btn-ghost:hover:not(:disabled) {
   background: var(--surface-inset);
   border-color: transparent;
+}
+
+.btn-ghost:active:not(:disabled) {
+  background-image: linear-gradient(var(--press), var(--press));
 }
 
 .btn-stop {
@@ -891,6 +983,10 @@ select:disabled {
   border-color: color-mix(in srgb, var(--stop) 88%, black);
 }
 
+.btn-stop:active:not(:disabled) {
+  background-image: linear-gradient(var(--press), var(--press));
+}
+
 .btn-quiet {
   background: transparent;
   border-color: transparent;
@@ -898,8 +994,9 @@ select:disabled {
   padding: 0 0.5rem;
 }
 
+/* No flat fill: --strip-lift is 0.5 dE00 from the surface this sits on, so the hover was not
+   visible at all. The overlay carries it, on whatever ground the button happens to be on. */
 .btn-quiet:hover:not(:disabled) {
-  background: var(--strip-lift);
   color: var(--text);
   filter: none;
 }

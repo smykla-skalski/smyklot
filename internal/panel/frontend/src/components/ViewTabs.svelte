@@ -255,13 +255,16 @@
     font-weight: 700;
   }
 
+  /* The selected row's own states stay under the selection they sit on. At 6% and 12% the press
+     measured 6.14 dE00 against a 3.74 fill in the light panel - the acknowledgement was louder than
+     the state. Same pair as the segmented control's thumb, for the same reasons. */
   a.active:hover {
-    background: color-mix(in srgb, var(--sidebar-item-active-text) 6%, var(--sidebar-thumb));
+    background: color-mix(in srgb, var(--sidebar-item-active-text) 2.5%, var(--sidebar-thumb));
     color: var(--sidebar-item-active-text);
   }
 
   a.active:active {
-    background: color-mix(in srgb, var(--sidebar-item-active-text) 12%, var(--sidebar-thumb));
+    background: color-mix(in srgb, var(--sidebar-item-active-text) 5%, var(--sidebar-thumb));
   }
 
   .admin-zone {

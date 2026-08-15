@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Icon, { type IconName } from './Icon.svelte';
+
   type SegmentTone = 'default' | 'accent' | 'on' | 'off';
 
   interface SegmentOption {
@@ -8,6 +10,13 @@
     badge?: string | number;
     /** Resolved-value suffix rendered after the label, e.g. "· Enabled". */
     detail?: { text: string; tone: 'on' | 'off' };
+    /**
+     * Draws this option's boundary as a dashed outline: its value is where the control lands
+     * without a choice being made here, rather than something chosen.
+     */
+    outline?: boolean;
+    /** Renders in place of the label, which stays as the accessible name. */
+    icon?: IconName;
   }
 
   const {
@@ -16,27 +25,51 @@
     descriptionId,
     options,
     value,
+    preview = null,
     disabled = false,
     align = 'start',
     compact = false,
     variant = 'default',
+    surface = 'panel',
     onSelect,
   }: {
     name: string;
     label: string;
     descriptionId?: string;
     options: ReadonlyArray<SegmentOption>;
-    value: string;
+    /** `null` selects nothing, and the thumb does not render. */
+    value: string | null;
+    /**
+     * An option the control is offering to move to before it is chosen: it takes on the look it
+     * will have afterwards, and the current selection steps back so the two can be compared.
+     */
+    preview?: string | null;
     disabled?: boolean;
     align?: 'start' | 'end';
     compact?: boolean;
     variant?: 'default' | 'navigation';
+    /** Which family of surfaces to draw on. Sidebar popovers carry their own. */
+    surface?: 'panel' | 'sidebar';
     onSelect: (value: string) => void;
   } = $props();
 
   const selectedTone = $derived(
     options.find((option) => option.value === value)?.tone ?? 'default',
   );
+
+  /**
+   * Where the previewed option sits relative to the selection, so the thumb can square the corner
+   * they share the way a hovered neighbour does.
+   */
+  const previewSide = $derived.by(() => {
+    if (preview === null || value === null) return undefined;
+    const [selected, offered] = [
+      options.findIndex((option) => option.value === value),
+      options.findIndex((option) => option.value === preview),
+    ];
+    if (selected === -1 || offered === -1 || Math.abs(selected - offered) !== 1) return undefined;
+    return offered < selected ? 'before' : 'after';
+  });
 
   function positionSelection(node: HTMLFieldSetElement, selection: string) {
     let frame: number | undefined;
@@ -48,7 +81,13 @@
         frame = requestAnimationFrame(() => {
           frame = undefined;
           const option = node.querySelector<HTMLInputElement>('input:checked')?.closest('label');
-          if (option === null || option === undefined) return;
+          // Nothing checked is a real state, not a missing one: the control is showing a value it
+          // inherits rather than one chosen here, so the thumb collapses instead of staying put.
+          if (option === null || option === undefined) {
+            node.style.setProperty('--segment-width', '0px');
+            node.classList.remove('selection-ready');
+            return;
+          }
           node.style.setProperty('--segment-left', `${option.offsetLeft}px`);
           node.style.setProperty('--segment-width', `${option.offsetWidth}px`);
           node.classList.add('selection-ready');
@@ -76,18 +115,21 @@
     align === 'end' && 'align-end',
     compact && 'compact',
     variant === 'navigation' && 'navigation',
+    surface === 'sidebar' && 'on-sidebar',
   ]}
   class:selected-accent={selectedTone === 'accent'}
   class:selected-on={selectedTone === 'on'}
   class:selected-off={selectedTone === 'off'}
+  class:previewing={preview !== null}
+  data-preview={previewSide}
   aria-describedby={descriptionId}
-  use:positionSelection={value}
+  use:positionSelection={value ?? ''}
   {disabled}
 >
   <legend>{label}</legend>
   <span class="selection-indicator" aria-hidden="true"></span>
   {#each options as option (option.value)}
-    <label>
+    <label class:outlined={option.outline === true} class:previewed={preview === option.value}>
       <input
         type="radio"
         {name}
@@ -96,7 +138,12 @@
         onchange={(event) => onSelect(event.currentTarget.value)}
       />
       <span class="segment-label">
-        <span>{option.label}</span>
+        {#if option.icon === undefined}
+          <span>{option.label}</span>
+        {:else}
+          <Icon name={option.icon} size={14} />
+          <span class="visually-hidden">{option.label}</span>
+        {/if}
         {#if option.detail !== undefined}
           <span class="segment-detail detail-{option.detail.tone}">· {option.detail.text}</span>
         {/if}
@@ -110,10 +157,18 @@
 
 <style>
   fieldset {
+    /* Every surface the control paints reads through these five, so a different ground is one
+       block of overrides rather than a second copy of the component. */
+    --seg-track: var(--segment-track);
+    --seg-hover: var(--segment-hover);
+    --seg-pressed: var(--segment-pressed);
+    --seg-border: var(--rule);
+    --seg-shadow: var(--segment-shadow);
+    --seg-muted: var(--text-muted);
     --selected-bg: var(--segment-thumb);
     --selected-text: var(--text-primary);
-    background: var(--segment-track);
-    border: 1px solid var(--rule);
+    background: var(--seg-track);
+    border: 1px solid var(--seg-border);
     border-radius: var(--r-ctl);
     display: inline-flex;
     flex: none;
@@ -124,6 +179,19 @@
     overflow: clip;
     padding: var(--control-inset);
     position: relative;
+  }
+
+  /* A sidebar popover carries its own surfaces, so a control inside one follows the popover rather
+     than the page behind it. */
+  fieldset.on-sidebar {
+    --seg-track: var(--sidebar-seg-track);
+    --seg-hover: var(--sidebar-seg-hover);
+    --seg-pressed: var(--sidebar-seg-pressed);
+    --seg-border: var(--sidebar-seg-border);
+    --seg-shadow: var(--sidebar-seg-shadow);
+    --seg-muted: var(--sidebar-menu-muted);
+    --selected-bg: var(--sidebar-seg-thumb);
+    --selected-text: var(--sidebar-menu-text);
   }
 
   fieldset.selected-accent {
@@ -175,19 +243,31 @@
     position: relative;
   }
 
+  /* The hover lift, under the label and over the track. It steps *down* from the track: the thumb
+     is the lighter of the two in every palette, so a lift toward it previews selection. See
+     --segment-hover in app.css for the measurements. */
   label::before {
-    background: var(--strip-lift);
+    background: var(--seg-hover);
     border-radius: calc(var(--r-ctl) - 2px);
     content: '';
     inset: 0;
     opacity: 0;
     pointer-events: none;
     position: absolute;
-    transition: opacity 120ms ease-out;
+    transition:
+      opacity 120ms ease-out,
+      background-color var(--duration-press) var(--ease-standard);
     z-index: 1;
   }
 
   label:hover:not(:has(input:disabled))::before {
+    opacity: 1;
+  }
+
+  /* The press goes one step further down the same ramp, so hover and press are the same gesture at
+     two depths rather than two different ideas. */
+  label:active:not(:has(input:disabled))::before {
+    background: var(--seg-pressed);
     opacity: 1;
   }
 
@@ -217,7 +297,7 @@
        field it shares a row with. */
     border: 1px solid transparent;
     border-radius: calc(var(--r-ctl) - 2px);
-    color: var(--text-muted);
+    color: var(--seg-muted);
     display: flex;
     font-size: var(--font-size-compact);
     font-weight: 600;
@@ -302,7 +382,7 @@
   .selection-indicator {
     background: var(--selected-bg);
     border-radius: calc(var(--r-ctl) - 2px);
-    box-shadow: var(--segment-shadow);
+    box-shadow: var(--seg-shadow);
     bottom: var(--control-inset);
     left: var(--segment-left, var(--control-inset));
     pointer-events: none;
@@ -321,12 +401,87 @@
     transition: none;
   }
 
+  /* 2.5% and 5%, not 8% and 16%. At the larger pair the thumb's own states measured 4.07 and 8.27
+     dE00 against white, and the 8.27 was 2.7x the 3.08 that says the option is selected at all:
+     acknowledging a pointer shouted over the state it was acknowledging.
+
+     The window either side is narrower than it looks, because this one pair has to hold on three
+     thumbs across four palettes, each mixing a different ink. Below 2.5% the sidebar popover's
+     hover falls under a just-noticeable difference (0.98, mixing a grey menu ink into white);
+     above it the panel's press passes the 3.08 fill it must stay under. 2.5/5 is the only pair
+     that clears both ends everywhere. Pressing the option that is already selected is also the one
+     press that changes nothing, so the faintest feedback on the control is the honest one for it. */
   fieldset:has(label:hover input:checked:not(:disabled)) .selection-indicator {
-    background: color-mix(in srgb, var(--selected-text) 8%, var(--selected-bg));
+    background: color-mix(in srgb, var(--selected-text) 2.5%, var(--selected-bg));
   }
 
   fieldset:has(label:active input:checked:not(:disabled)) .selection-indicator {
-    background: color-mix(in srgb, var(--selected-text) 16%, var(--selected-bg));
+    background: color-mix(in srgb, var(--selected-text) 5%, var(--selected-bg));
+  }
+
+  /* The value the control falls back to, drawn as a boundary rather than a fill: it is where this
+     lands without a choice, so it must not read as one already made. */
+  label.outlined .segment-label {
+    border-color: color-mix(in srgb, currentcolor 55%, transparent);
+    border-style: dashed;
+    color: var(--text-secondary);
+    font-weight: 650;
+  }
+
+  /* The offer: this is what the control will look like once the move is taken. */
+  label.previewed .segment-label {
+    animation: segment-preview 1.6s ease-in-out infinite;
+    border-color: color-mix(in srgb, var(--brand-action) 70%, transparent);
+    border-style: dashed;
+    color: var(--text-primary);
+  }
+
+  /* The selection steps back whenever an offer is on the table - including the case where the
+     offer is the option already selected, which is a real one: an override can happen to name the
+     same value it inherits. */
+  fieldset.previewing .selection-indicator,
+  fieldset.previewing input:checked ~ .segment-label {
+    opacity: 0.4;
+  }
+
+  /* Squaring the shared corner only applies when the two sit next to each other, so it is keyed on
+     that separately rather than on the offer existing. */
+
+  fieldset[data-preview='before'] .selection-indicator {
+    border-end-start-radius: 0;
+    border-start-start-radius: 0;
+  }
+
+  fieldset[data-preview='after'] .selection-indicator {
+    border-end-end-radius: 0;
+    border-start-end-radius: 0;
+  }
+
+  @keyframes segment-preview {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 color-mix(in srgb, var(--brand-action) 38%, transparent);
+    }
+
+    50% {
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-action) 10%, transparent);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    label.previewed .segment-label {
+      animation: none;
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand-action) 25%, transparent);
+    }
+  }
+
+  .visually-hidden {
+    clip-path: inset(50%);
+    height: 1px;
+    overflow: hidden;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
   }
 
   input:focus-visible ~ .segment-label {
