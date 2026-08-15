@@ -23,6 +23,27 @@ const (
 	ScheduleDeferred Schedule = "deferred"
 )
 
+// ObservedState is the reconciler's transport-independent view of CI.
+type ObservedState string
+
+const (
+	ObservedPassing       ObservedState = "passing"
+	ObservedPending       ObservedState = "pending"
+	ObservedFailing       ObservedState = "failing"
+	ObservedNoChecks      ObservedState = "no_checks"
+	ObservedIndeterminate ObservedState = "indeterminate"
+)
+
+// DecisionKind describes the single state transition a reconciliation may
+// perform. GitHub side effects remain outside this package.
+type DecisionKind string
+
+const (
+	DecisionReschedule DecisionKind = "reschedule"
+	DecisionMerge      DecisionKind = "merge"
+	DecisionFinish     DecisionKind = "finish"
+)
+
 type MergeMethod string
 
 const (
@@ -142,6 +163,38 @@ type FinishPRRequest struct {
 type QueueFilter struct {
 	Schedule *Schedule
 	Limit    int
+}
+
+// Observation is live GitHub truth projected into the pending-CI domain.
+type Observation struct {
+	HeadSHA           string
+	PullRequestOpen   bool
+	PendingLabelFound bool
+	State             ObservedState
+	Fingerprint       string
+	ObservedAt        time.Time
+}
+
+// Timing controls fallback frequency and the green stability window.
+type Timing struct {
+	ActiveInterval   time.Duration
+	DiscoveryGrace   time.Duration
+	DeferAfter       time.Duration
+	DeferredInterval time.Duration
+	PassingQuiet     time.Duration
+}
+
+// Decision is the policy result consumed by the scheduler.
+type Decision struct {
+	Kind              DecisionKind
+	Lifecycle         Lifecycle
+	Reason            string
+	Schedule          Schedule
+	HeadSHA           string
+	NextCheckAt       time.Time
+	LastProgressAt    time.Time
+	LastObservedState string
+	LastFingerprint   string
 }
 
 // Store is the persistence port used by pending-CI commands, scheduling, and
