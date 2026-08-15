@@ -147,42 +147,6 @@ func (s *server) commandEnvironment(
 	}}
 }
 
-func (s *server) cancelEditedPendingCI(
-	ctx context.Context,
-	event *webhook.IssueCommentEvent,
-	sourceOrder int64,
-) error {
-	if event.Action != webhook.ActionEdited && event.Action != webhook.ActionDeleted {
-		return nil
-	}
-	reason := "source comment edited"
-	if event.Action == webhook.ActionDeleted {
-		reason = "source comment deleted"
-	}
-	repositoryID := repositoryStorageID(event.Repository.ID)
-	var request *pendingci.Request
-	err := s.pendingCICoordinator.Exclusive(ctx, repositoryID, func() error {
-		var transitionErr error
-		request, transitionErr = s.store.CancelBySource(ctx, pendingci.CancelRequest{
-			RepositoryID: repositoryID,
-			PullRequest:  event.Issue.Number, CommentID: event.Comment.ID,
-			SourceRevision: event.Comment.UpdatedAt, SourceSequence: event.SourceSequence(),
-			SourceOrder: sourceOrder,
-			Reason:      reason, CancelledAt: time.Now().UTC(),
-		})
-
-		return transitionErr
-	})
-	if err != nil {
-		return fmt.Errorf("cancel pending CI source: %w", err)
-	}
-	if request != nil {
-		s.pendingCI.Wake()
-	}
-
-	return nil
-}
-
 // cancelAndRun keeps durable cancellation and its external cleanup in one
 // repository-owned operation. A newer command cannot arm between the two.
 func (command *pendingCICommand) cancelAndRun(

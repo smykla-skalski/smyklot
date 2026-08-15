@@ -693,22 +693,26 @@ func (s *server) handleIssueComment(
 		return nil
 	}
 
-	claim, err := s.store.ClaimSourceRevision(ctx, pendingci.SourceRevisionRequest{
+	source := pendingci.SourceRevisionRequest{
 		RepositoryID: repositoryStorageID(event.Repository.ID),
 		PullRequest:  event.Issue.Number, CommentID: event.Comment.ID,
 		Revision: event.Comment.UpdatedAt, Sequence: event.SourceSequence(),
 		SourceOrder: sourceOrder, EventKey: eventKey, ObservedAt: time.Now().UTC(),
-	})
+	}
+	claim, err := claimPendingCISource(
+		ctx, s.store, s.pendingCICoordinator, source,
+		pendingCISourceCancellation(event, source.RepositoryID),
+	)
 	if err != nil {
 		return fmt.Errorf("claim issue comment revision: %w", err)
 	}
-	if !claim.Accepted {
+	if !claim.Source.Accepted {
 		logging.From(ctx).Info("ignored stale issue comment revision")
 
 		return nil
 	}
-	if err := s.cancelEditedPendingCI(ctx, event, claim.SourceOrder); err != nil {
-		return err
+	if claim.Cancelled != nil {
+		s.pendingCI.Wake()
 	}
 
 	rc := runtimeConfigFor(event, s.cfg)
@@ -737,7 +741,7 @@ func (s *server) handleIssueComment(
 	}
 
 	return executeCommentWithEnvironment(
-		ctx, client, rc, bc, s.commandEnvironment(event, claim.SourceOrder),
+		ctx, client, rc, bc, s.commandEnvironment(event, claim.Source.SourceOrder),
 	)
 }
 
