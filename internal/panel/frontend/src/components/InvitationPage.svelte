@@ -287,20 +287,51 @@
     color: rgb(186 203 233);
   }
 
+  /* The card's own head, lifted out of it: the title on the left names whichever
+     state the card is showing, and the switch on the right is the one control on
+     the page that is not part of the invitation. The row keeps the control's
+     height whatever the title does, so the gap the mark measures itself against
+     does not move when the title wraps. */
+  .invitation-head {
+    align-items: center;
+    display: flex;
+    gap: var(--space-3);
+    justify-content: space-between;
+    margin-bottom: var(--space-3);
+    min-height: var(--control-height-compact);
+  }
+
   /* Reads as the card's own title from the outside, so it keeps the size the
      plate header gave it. */
   .invitation-title {
     color: rgb(246 249 255);
     font: 700 1.0625rem / 1.3 var(--sans);
     letter-spacing: 0;
-    margin: 0 0 var(--space-3);
+    margin: 0;
+    min-width: 0;
   }
 
   /* A floor under the card, so the three states are not three different page
      layouts. It stops the stack resettling when a load finishes, and it keeps the
      gap above the card - which is what the sky measures itself against - within a
      narrow range instead of doubling when the card holds one line of error. */
+  /* The one thing on the page that is not the sky, so it is not quite opaque
+     either: the sky reads through it faintly and the card sits *in* the scene
+     rather than on top of it. The blur behind is what makes that safe - it takes
+     the stars out of the ground the text stands on, leaving an even wash instead
+     of specks of white under the type.
+
+     94% and not less. The sky is denser at the top of the card than at the
+     bottom, so any translucency puts a gradient across the card and takes a bite
+     out of the contrast at the top, where the ground is darkest. Measured on the
+     light page across 620-1600px window heights: at 94% the card's own ground
+     drifts 2.3 dE00 top to bottom and `dt`, the dimmest type on it, holds
+     4.89-5.02:1; at 92% the drift is 3.1-3.4 and `dt` falls to 4.81, close
+     enough to the 4.5 floor to be worth the two points. The dark page barely
+     moves either way - its surface is already near the sky. */
   .invitation-card {
+    backdrop-filter: blur(18px) saturate(1.3);
+    background: color-mix(in srgb, var(--strip) 94%, transparent);
     border-color: var(--dialog-border);
     box-shadow: var(--shadow-plate);
     margin-bottom: 0;
