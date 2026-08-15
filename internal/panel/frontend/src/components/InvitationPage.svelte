@@ -66,120 +66,125 @@
 </svelte:head>
 
 <main class="shell invitation-shell">
-  <div class="invitation-topline">
-    <BrandMark part="PANEL" />
-    <h1 class="invitation-title" id="invitation-title">{title}</h1>
+  <div class="invitation-brand">
+    <BrandMark part="PANEL" stacked size={64} />
   </div>
 
-  <section
-    class={['plate', 'invitation-card', loading && 'loading']}
-    aria-labelledby="invitation-title"
-    aria-busy={loading}
-  >
-    <div class="plate-body">
-      {#if loading && nothingYet}
-        <div class="invitation-skeleton" aria-hidden="true">
-          <span class="skeleton-person"></span>
-          <span></span>
-          <span></span>
-          <span class="skeleton-action"></span>
-        </div>
-        <p class="visually-hidden" role="status">Loading invitation</p>
-      {:else if failure !== null}
-        <p>{failure}</p>
-        <button class="btn" onclick={() => void load(token)} disabled={loading}>
-          {loading ? 'Trying again…' : 'Try again'}
-        </button>
-      {:else if invitation !== null}
-        <div class="invited-user">
-          <Avatar account={invitation.account} size={48} />
-          <div>
-            <strong>{invitation.account.display_name}</strong>
-            <span class="mono dim">@{invitation.account.login}</span>
-          </div>
-          <Chip tone={statusTone(invitation.status)}
-            >{invitation.status.slice(0, 1).toUpperCase() + invitation.status.slice(1)}</Chip
-          >
-        </div>
+  <div class="invitation-main">
+    <h1 class="invitation-title" id="invitation-title">{title}</h1>
 
-        <dl class="invitation-details">
-          <div>
-            <dt>Access</dt>
-            <dd>{roleLabel(invitation)}</dd>
+    <section
+      class={['plate', 'invitation-card', loading && 'loading']}
+      aria-labelledby="invitation-title"
+      aria-busy={loading}
+    >
+      <div class="plate-body">
+        {#if loading && nothingYet}
+          <div class="invitation-skeleton" aria-hidden="true">
+            <span class="skeleton-person"></span>
+            <span></span>
+            <span></span>
+            <span class="skeleton-action"></span>
           </div>
-          <div>
-            <dt>Scope</dt>
-            <dd>{invitation.target_name ?? 'Smyklot application'}</dd>
+          <p class="visually-hidden" role="status">Loading invitation</p>
+        {:else if failure !== null}
+          <p>{failure}</p>
+          <button class="btn" onclick={() => void load(token)} disabled={loading}>
+            {loading ? 'Trying again…' : 'Try again'}
+          </button>
+        {:else if invitation !== null}
+          <div class="invited-user">
+            <Avatar account={invitation.account} size={48} />
+            <div>
+              <strong>{invitation.account.display_name}</strong>
+              <span class="mono dim">@{invitation.account.login}</span>
+            </div>
+            <Chip tone={statusTone(invitation.status)}
+              >{invitation.status.slice(0, 1).toUpperCase() + invitation.status.slice(1)}</Chip
+            >
           </div>
-          <div>
-            <dt>Expires</dt>
-            <dd>
-              <time datetime={invitation.expires_at}>{formatDateTime(invitation.expires_at)}</time>
-            </dd>
-          </div>
-          <div>
-            <dt>Invited by</dt>
-            <dd>@{invitation.created_by.login}</dd>
-          </div>
-        </dl>
 
-        {#if invitation.status === 'pending'}
-          <p>
-            Continue with GitHub to prove you are @{invitation.account.login}, then accept or
-            decline this invitation
-          </p>
-          <div class="invitation-actions">
-            <a
-              class="btn btn-signal"
-              href={api.signInUrl({ token, action: 'accept' })}
-              rel="nofollow"
-            >
-              Accept with GitHub
-            </a>
-            <a
-              class="btn btn-quiet"
-              href={api.signInUrl({ token, action: 'decline' })}
-              rel="nofollow"
-            >
-              Decline
-            </a>
-          </div>
-        {:else if invitation.status === 'accepted'}
-          <p>This invitation was accepted</p>
-          <a class="btn btn-signal" href={api.signInUrl()}>Open panel</a>
-        {:else if invitation.status === 'declined'}
-          <p>This invitation was declined</p>
-        {:else if invitation.status === 'expired'}
-          <p>This invitation expired. Ask the sender to reissue it</p>
-        {:else}
-          <p>This invitation was revoked</p>
+          <dl class="invitation-details">
+            <div>
+              <dt>Access</dt>
+              <dd>{roleLabel(invitation)}</dd>
+            </div>
+            <div>
+              <dt>Scope</dt>
+              <dd>{invitation.target_name ?? 'Smyklot application'}</dd>
+            </div>
+            <div>
+              <dt>Expires</dt>
+              <dd>
+                <time datetime={invitation.expires_at}>{formatDateTime(invitation.expires_at)}</time
+                >
+              </dd>
+            </div>
+            <div>
+              <dt>Invited by</dt>
+              <dd>@{invitation.created_by.login}</dd>
+            </div>
+          </dl>
+
+          {#if invitation.status === 'pending'}
+            <p>
+              Continue with GitHub to prove you are @{invitation.account.login}, then accept or
+              decline this invitation
+            </p>
+            <div class="invitation-actions">
+              <a
+                class="btn btn-signal"
+                href={api.signInUrl({ token, action: 'accept' })}
+                rel="nofollow"
+              >
+                Accept with GitHub
+              </a>
+              <a
+                class="btn btn-quiet"
+                href={api.signInUrl({ token, action: 'decline' })}
+                rel="nofollow"
+              >
+                Decline
+              </a>
+            </div>
+          {:else if invitation.status === 'accepted'}
+            <p>This invitation was accepted</p>
+            <a class="btn btn-signal" href={api.signInUrl()}>Open panel</a>
+          {:else if invitation.status === 'declined'}
+            <p>This invitation was declined</p>
+          {:else if invitation.status === 'expired'}
+            <p>This invitation expired. Ask the sender to reissue it</p>
+          {:else}
+            <p>This invitation was revoked</p>
+          {/if}
         {/if}
-      {/if}
-    </div>
-  </section>
+      </div>
+    </section>
 
-  <PageFooter {build} />
+    <PageFooter {build} />
+  </div>
 </main>
 
 <style>
-  /* One centred stack: mark and title, the card, then the footer. `safe` keeps
-     the top reachable when the card outgrows a short viewport, which plain
-     centring would push above the scroll origin. */
+  /* Three rows, and the mark shares the top one with the empty bottom one. Both
+     flexible rows take the same share, so the group between them keeps the exact
+     centre it had before the mark moved above it - the mark grows into the space
+     that was already there rather than pushing the card down. When the content
+     outgrows the viewport the flexible rows collapse and the page scrolls from
+     the top, so nothing lands above the scroll origin. */
   .invitation-shell {
-    align-content: safe center;
     display: grid;
+    grid-template-rows: 1fr auto 1fr;
     max-width: 42rem;
     min-height: 100dvh;
     padding-block: var(--space-6);
   }
 
-  .invitation-topline {
-    align-items: center;
+  .invitation-brand {
+    align-self: end;
     display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2) var(--space-4);
-    justify-content: space-between;
-    margin-bottom: var(--space-3);
+    justify-content: center;
+    padding-bottom: var(--space-6);
   }
 
   /* Reads as the card's own title from the outside, so it keeps the size the
@@ -188,8 +193,7 @@
     color: var(--text-primary);
     font: 700 1.0625rem / 1.3 var(--sans);
     letter-spacing: 0;
-    margin: 0;
-    text-align: right;
+    margin: 0 0 var(--space-3);
   }
 
   .invitation-card {
