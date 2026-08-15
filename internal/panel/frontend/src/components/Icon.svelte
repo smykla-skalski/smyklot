@@ -58,6 +58,80 @@
     | 'users'
     | 'viewer'
     | 'warning';
+
+  /**
+   * How far each glyph's outline sits inside its own 24-unit box, as [start, end] when the two
+   * differ. Measured by rendering every icon and reading its geometry, not eyeballed.
+   *
+   * This is what makes a symbol beside a word look wrong: a button pads both edges equally, the word
+   * puts ink almost immediately, and the symbol does not. `plus` keeps 5 units clear before its
+   * stroke begins - at 13px that is 2.2px of dead space the eye reads as extra padding on that side
+   * alone. The stroke is drawn centred on the outline, so half of it spills back out; that half is
+   * subtracted at render time because stroke width is a prop.
+   */
+  const INK_BEARING: Record<IconName, number | [number, number]> = {
+    admin: [4, 3],
+    alert: 3.5,
+    ban: 3.5,
+    branch: 5,
+    check: 4,
+    'chevron-down': 6,
+    'chevron-left': 9,
+    'chevron-right': 9,
+    'chevron-up': 6,
+    'chevrons-up-down': 7,
+    'circle-dashed': 3.5,
+    'circle-slash': 3.5,
+    close: 6,
+    editor: [4, 4.9],
+    failure: 3.5,
+    // The whole family shares one document outline, `M6 3h8l4 4v14H6z`; the mark inside it is
+    // always narrower, so the outline is what sets the bearing.
+    file: 6,
+    'file-bypassed': 6,
+    'file-invalid': 6,
+    'file-missing': 6,
+    'file-valid': 6,
+    filter: 3.5,
+    globe: 3,
+    history: [4, 3.48],
+    info: 3.5,
+    link: 2,
+    'link-off': 2,
+    lock: 5,
+    mail: 3,
+    'minus-circle': 3.5,
+    moon: [5.1, 4],
+    more: 10.35,
+    'no-access': 2.5,
+    notifications: 3.5,
+    organization: 4,
+    owner: 5,
+    pending: 3.5,
+    plus: 5,
+    refresh: [3.34, 3.35],
+    repositories: 4,
+    search: 4,
+    settings: 4,
+    shield: 5,
+    'shield-slash': 3.5,
+    // One pane with a divider; only the chevron inside it turns, so both states measure the same.
+    'sidebar-collapse': 3,
+    'sidebar-expand': 3,
+    'sign-out': [5, 6],
+    sliders: 2,
+    sort: 8,
+    success: 3.5,
+    sun: 2.5,
+    'sun-moon': 2.5,
+    system: 3,
+    trash: 4,
+    user: 4.5,
+    'user-plus': [2.5, 2],
+    users: 3.5,
+    viewer: 2.5,
+    warning: 2.8,
+  };
 </script>
 
 <script lang="ts">
@@ -72,10 +146,22 @@
     strokeWidth?: number;
     class?: string;
   } = $props();
+
+  /** The dead space before the ink starts, in rendered pixels, per edge. */
+  const bearing = $derived.by(() => {
+    const declared = INK_BEARING[name];
+    const [start, end] = Array.isArray(declared) ? declared : [declared, declared];
+    const ink = (units: number): string =>
+      `${Math.max(0, ((units - strokeWidth / 2) / 24) * size).toFixed(3)}px`;
+    return { start: ink(start), end: ink(end) };
+  });
 </script>
 
 <svg
   class={className}
+  data-icon={name}
+  style:--icon-ink-start={bearing.start}
+  style:--icon-ink-end={bearing.end}
   width={size}
   height={size}
   viewBox="0 0 24 24"

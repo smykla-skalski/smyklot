@@ -893,6 +893,28 @@ input[type='radio']:not(:disabled) {
   cursor: pointer;
 }
 
+/* A symbol beside a word, padded to match it.
+
+   Every control here pads both edges equally, and a word puts ink almost immediately while a
+   symbol does not: `plus` keeps 5 of its 24 units clear before the stroke starts, so at 13px the
+   leading edge carried 2.2px of dead space the eye read as extra padding on that side alone. Each
+   icon reports its own bearing - see INK_BEARING in Icon.svelte, measured rather than guessed -
+   and the icon is pulled back by exactly that, so its ink begins where the word's would.
+
+   Keyed on position rather than on a prop, so it holds for every control that pairs the two
+   without anyone remembering to ask for it. Only where the icon is the control's own child: an
+   icon inside a fixed-width span is in a gutter, holding a column of icons in line down a menu or
+   the sidebar, and hugging one of those to its label would break the column it belongs to. A
+   control whose only other child is a tooltip is icon-only in flow and stays centred on its box -
+   there is no word beside the symbol for it to balance against. */
+:is(button, .btn, summary, a):not(:has(> .sidebar-tooltip)) > svg:first-child:not(:only-child) {
+  margin-inline-start: calc(-1 * var(--icon-ink-start, 0px));
+}
+
+:is(button, .btn, summary, a):not(:has(> .sidebar-tooltip)) > svg:last-child:not(:only-child) {
+  margin-inline-end: calc(-1 * var(--icon-ink-end, 0px));
+}
+
 .btn {
   align-items: center;
   background: var(--strip-lift);
