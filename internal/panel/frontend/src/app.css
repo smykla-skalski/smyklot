@@ -177,7 +177,13 @@
   --unread-badge-bg: #d03339;
   --unread-badge-text: #ffffff;
   --control-bg: var(--surface-control);
-  --control-bg-hover: var(--surface-raised);
+  /* One state change from the control's own ground, like every other state in the shell. It used
+     to be --surface-raised, which is 0.55 dE00 from --surface-control - half a just-noticeable
+     difference, so the pickers above the tables did not visibly answer the pointer at all. */
+  --control-bg-hover: color-mix(in srgb, var(--text-primary) 5.3%, var(--control-bg));
+  /* Two, so a press reads as more than a hover. --interactive-pressed-bg is a menu-row fill and
+     lands within half a just-noticeable difference of this hover on both dark palettes. */
+  --control-bg-pressed: color-mix(in srgb, var(--text-primary) 10.9%, var(--control-bg));
   --control-border: var(--border-control);
   --control-border-hover: #99a7a1;
   --input-bg: var(--surface-inset);
@@ -286,6 +292,7 @@
      keeps a wide header from lurching 4px when the same 0.98 would. */
   --press-scale: 0.98;
   --press-scale-disc: 0.9;
+  --press-scale-compact: 0.96;
   --press-scale-surface: 0.995;
   --duration-press: 100ms;
   --duration-fast: 160ms;
@@ -413,6 +420,8 @@
   --unread-badge-bg: #d03339;
   --unread-badge-text: #ffffff;
   --control-border-hover: #536170;
+  --control-bg-hover: color-mix(in srgb, #ffffff 7%, var(--control-bg));
+  --control-bg-pressed: color-mix(in srgb, #ffffff 12.4%, var(--control-bg));
   --table-header-bg: var(--surface-inset);
   --table-footer-bg: var(--surface-inset);
   /* Lifts rather than drops: on a dark ground the pointer raises what it is over, as it does on
@@ -544,7 +553,8 @@ body {
   --table-filler-bg: var(--surface-raised);
   --input-bg: var(--surface-inset);
   --control-bg: var(--surface-control);
-  --control-bg-hover: var(--surface-raised);
+  --control-bg-hover: color-mix(in srgb, var(--text-primary) 5.4%, var(--control-bg));
+  --control-bg-pressed: color-mix(in srgb, var(--text-primary) 11%, var(--control-bg));
   --control-border: var(--border-control);
   --control-surface: var(--control-bg);
   --segment-track: var(--surface-inset);
@@ -608,6 +618,8 @@ body {
   --brand-action-hover: #b9a4ff;
   /* Continues up the ramp, as in the dark panel. */
   --brand-action-pressed: #cdbdff;
+  --control-bg-hover: color-mix(in srgb, #ffffff 6.7%, var(--control-bg));
+  --control-bg-pressed: color-mix(in srgb, #ffffff 11.9%, var(--control-bg));
   --brand-action-tint: #2e2544;
   --brand-action-text: #c4b5fd;
   --on-brand-action: #1c1329;

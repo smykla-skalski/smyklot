@@ -61,6 +61,36 @@ describe.each(palettes.map((palette) => [palette.name, palette] as const))(
       },
     );
 
+    it('answers the pointer on a control by one state change, and a press by two', () => {
+      // The pickers above the tables hovered to --surface-raised, 0.55 dE00 from their own ground:
+      // half a just-noticeable difference, so they did not visibly answer at all. The press used a
+      // menu-row fill that landed within half a JND of this hover on both dark palettes.
+      const ground = palette.color('control-bg');
+      const one = deltaE(ground, palette.color('control-bg-hover'));
+      const two = deltaE(ground, palette.color('control-bg-pressed'));
+      expect(one).toBeGreaterThan(step(ground) - 0.5);
+      expect(one).toBeLessThan(step(ground) + 0.5);
+      expect(two).toBeGreaterThan(one * 1.5);
+      // Both move the same way, so hover and press are one gesture at two depths.
+      const direction = (state: string): number => Math.sign(oklch(state).L - oklch(ground).L);
+      expect(direction(palette.color('control-bg-pressed'))).toBe(
+        direction(palette.color('control-bg-hover')),
+      );
+    });
+
+    it('keeps a control label legible once its ground moves', () => {
+      // These controls carry muted ink at rest, which falls under AA on the pressed fill - so the
+      // component darkens it to secondary, and that is the pair that has to hold.
+      for (const ground of ['control-bg-hover', 'control-bg-pressed']) {
+        expect(
+          contrast(palette.color('text-secondary'), palette.color(ground)),
+        ).toBeGreaterThanOrEqual(4.5);
+      }
+      expect(
+        contrast(palette.color('text-muted'), palette.color('control-bg')),
+      ).toBeGreaterThanOrEqual(4.5);
+    });
+
     it.each([
       ['text-secondary', 'table-header-bg'],
       ['text-muted', 'table-header-bg'],

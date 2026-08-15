@@ -177,6 +177,11 @@
     border-color: var(--control-border-hover);
   }
 
+  .role-trigger:active:not(:disabled) {
+    background: var(--control-bg-pressed);
+    transform: scale(var(--press-scale-compact));
+  }
+
   .role-trigger:focus-visible {
     border-color: var(--focus);
     box-shadow: inset 0 0 0 1px var(--focus);

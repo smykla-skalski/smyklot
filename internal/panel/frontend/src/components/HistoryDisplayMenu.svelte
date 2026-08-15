@@ -78,6 +78,9 @@
   }
 
   summary {
+    /* 66px wide: the ordinary figure would move its edge two thirds of a pixel, which is not a
+       press. See --press-scale-compact in app.css for the bands. */
+    --press-scale: var(--press-scale-compact);
     align-items: center;
     background: var(--control-bg);
     border: 1px solid var(--control-border);
@@ -108,8 +111,19 @@
     background: var(--control-bg-hover);
   }
 
+  /* The ink follows the ground down. Muted on the pressed fill reads 3.93:1, under AA; secondary
+     holds 5.49:1, and the same pair the segmented control uses for the same reason. */
+  summary:hover .display-icon,
+  summary:hover .menu-chevron,
+  summary:active .display-icon,
+  summary:active .menu-chevron,
+  .display-menu[open] .display-icon,
+  .display-menu[open] .menu-chevron {
+    color: var(--text-secondary);
+  }
+
   summary:active {
-    background: var(--interactive-pressed-bg);
+    background: var(--control-bg-pressed);
     border-color: var(--control-border-hover);
     transform: scale(var(--press-scale));
   }

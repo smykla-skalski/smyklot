@@ -315,7 +315,7 @@
   }
 
   summary:active {
-    background: var(--interactive-pressed-bg);
+    background: var(--control-bg-pressed);
     border-color: var(--control-border-hover);
     transform: scale(var(--press-scale));
   }
