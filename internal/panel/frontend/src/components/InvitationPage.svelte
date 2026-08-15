@@ -67,7 +67,7 @@
 
 <main class="shell invitation-shell">
   <div class="invitation-brand">
-    <BrandMark part="PANEL" stacked size={64} />
+    <BrandMark part="PANEL" stacked size={96} />
   </div>
 
   <div class="invitation-main">
@@ -180,11 +180,15 @@
     padding-block: var(--space-6);
   }
 
+  /* Anchored to the bottom of the flexible row, so the padding under it is what
+     lifts it: the space it takes comes out of the room above, never out of the
+     room the card is centred against. Past about 5rem the row runs out and the
+     card starts moving down, which is the one thing this layout must not do. */
   .invitation-brand {
     align-self: end;
     display: flex;
     justify-content: center;
-    padding-bottom: var(--space-6);
+    padding-bottom: 4.5rem;
   }
 
   /* Reads as the card's own title from the outside, so it keeps the size the
