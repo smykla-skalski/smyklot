@@ -82,7 +82,7 @@ WHERE panel_users.system_role = 'none' AND panel_users.status = 'removed'`,
 		formatTime(change.ChangedAt),
 	)
 	if err != nil {
-		return storage.PanelUser{}, fmt.Errorf("insert panel user: %w", conflictConstraint(err))
+		return storage.PanelUser{}, fmt.Errorf("insert panel user: %w", s.conflictConstraint(err))
 	}
 	changed, err := result.RowsAffected()
 	if err != nil {
@@ -317,7 +317,7 @@ WHERE t.available = 1
           AND tr.role IN ('viewer', 'editor', 'admin')
       )
   )
-GROUP BY t.id, a.id
+`+targetGroup+`
 ORDER BY a.login`, accountID, formatTime(now.Add(-storage.OwnershipFreshFor)))
 	if err != nil {
 		return nil, fmt.Errorf("list targets: %w", err)
@@ -566,7 +566,7 @@ func nullableTime(value sql.NullString) (*time.Time, error) {
 
 func insertAccessAudit(
 	ctx context.Context,
-	executor accountExecutor,
+	executor runner,
 	targetID *string,
 	actorAccountID, subjectAccountID, action, summary string,
 	changedAt time.Time,
@@ -581,29 +581,27 @@ func insertAccessAudit(
 
 func insertAccessAuditEvent(
 	ctx context.Context,
-	executor accountExecutor,
+	executor runner,
 	targetID *string,
 	actorAccountID, subjectAccountID, action, summary string,
 	changedAt time.Time,
 	elevationID *string,
 ) (int64, error) {
-	result, err := executor.ExecContext(ctx, `
+	var sourceID int64
+	err := executor.QueryRowContext(ctx, `
 INSERT INTO access_audit_entries (
     target_id, actor_account_id, subject_account_id, action, summary, created_at
-) VALUES (?, ?, ?, ?, ?, ?)`,
+) VALUES (?, ?, ?, ?, ?, ?)
+RETURNING id`,
 		targetID,
 		actorAccountID,
 		subjectAccountID,
 		action,
 		summary,
 		formatTime(changedAt),
-	)
+	).Scan(&sourceID)
 	if err != nil {
 		return 0, fmt.Errorf("insert access audit: %w", err)
-	}
-	sourceID, err := result.LastInsertId()
-	if err != nil {
-		return 0, fmt.Errorf("read access audit ID: %w", err)
 	}
 	sourceKind := "access"
 	auditEventID, err := insertAppAudit(ctx, executor, appAuditInsert{
@@ -642,11 +640,13 @@ func validTargetRole(role storage.InstallationRole) bool {
 	return validInstallationRole(role) && role != storage.InstallationRoleOwner
 }
 
-func conflictConstraint(err error) error {
+// conflictConstraint reports a row that already exists as a conflict the
+// caller can act on, and leaves every other failure alone.
+func (s *Store) conflictConstraint(err error) error {
 	if err == nil {
 		return nil
 	}
-	if strings.Contains(err.Error(), "constraint failed") {
+	if s.dialect.UniqueViolation(err) {
 		return storage.ErrConflict
 	}
 

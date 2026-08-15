@@ -325,12 +325,14 @@ type auditInsert struct {
 }
 
 func insertAudit(ctx context.Context, tx runner, entry auditInsert) (int64, error) {
-	result, err := tx.ExecContext(ctx, `
+	var sourceID int64
+	err := tx.QueryRowContext(ctx, `
 INSERT INTO audit_entries (
     target_id, repository_id, repository_full_name,
     actor_account_id, action, summary, created_at
 )
-VALUES (?, ?, ?, ?, ?, ?, ?)`,
+VALUES (?, ?, ?, ?, ?, ?, ?)
+RETURNING id`,
 		entry.TargetID,
 		entry.RepositoryID,
 		entry.RepositoryFullName,
@@ -338,13 +340,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		entry.Action,
 		entry.Summary,
 		entry.CreatedAt,
-	)
+	).Scan(&sourceID)
 	if err != nil {
 		return 0, fmt.Errorf("insert settings audit: %w", err)
-	}
-	sourceID, err := result.LastInsertId()
-	if err != nil {
-		return 0, fmt.Errorf("read settings audit ID: %w", err)
 	}
 	sourceKind := "settings"
 	targetID := entry.TargetID

@@ -86,7 +86,7 @@ func (s *Store) ListAccessDecisions(
 ) ([]storage.AccessDecision, error) {
 	rows, err := s.db.QueryContext(ctx, accessDecisionSelect+`
 WHERE aa.subject_account_id = ?
-  AND ((aa.target_id IS NULL AND ? IS NULL) OR aa.target_id = ?)
+  AND `+optionalScopeClause("aa.target_id")+`
 ORDER BY aa.id DESC
 LIMIT ?`, accountID, targetID, targetID, pageLimit(limit))
 	if err != nil {
@@ -109,9 +109,8 @@ func panelUserPageFilters(
 	}
 	arguments := make([]any, 0)
 	if page.Query != "" {
-		clauses = append(clauses, `(instr(lower(a.login), lower(?)) > 0
-OR instr(lower(a.display_name), lower(?)) > 0)`)
-		arguments = append(arguments, page.Query, page.Query)
+		clauses = append(clauses, containsAnyClause("a.login", "a.display_name"))
+		arguments = append(arguments, containsArguments(page.Query, 2)...)
 	}
 	if len(page.Roles) > 0 {
 		roleClauses, roleArguments, err := panelUserRoleFilters(page.Roles)

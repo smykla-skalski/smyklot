@@ -1516,6 +1516,38 @@ END`)
 		Expect(matching.Items[1].Name).To(Equal("delta"))
 	})
 
+	It("treats wildcard characters in a search as ordinary text", func() {
+		account := testAccount(now)
+		Expect(store.ReconcileInstallation(ctx, testInstallation(account, now, []storage.RepositorySnapshot{
+			testRepository("repo-1", "smykla-skalski/alpha_one", false),
+			testRepository("repo-2", "smykla-skalski/alphaXone", false),
+		}))).To(Succeed())
+		targetID := testInstallation(account, now, nil).TargetID
+
+		search := func(query string) []string {
+			page, err := store.ListRepositoryPage(ctx, targetID, storage.RepositoryPageRequest{
+				Limit: 10,
+				Order: storage.RepositoryNameAscending,
+				Query: query,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			names := make([]string, 0, len(page.Items))
+			for _, item := range page.Items {
+				names = append(names, item.Name)
+			}
+
+			return names
+		}
+
+		// An underscore is a single-character wildcard to LIKE, and it is also
+		// an ordinary character in a repository name.
+		Expect(search("alpha_one")).To(Equal([]string{"alpha_one"}))
+		// A bare percent would otherwise match every row.
+		Expect(search("%")).To(BeEmpty())
+		// Case-folded ordering puts _ before x; the search itself ignores case.
+		Expect(search("ALPHA")).To(Equal([]string{"alpha_one", "alphaXone"}))
+	})
+
 	It("recovers running deliveries left by a stopped process", func() {
 		_, target := seedInstallation(ctx, store, now)
 		claim := storage.DeliveryClaim{

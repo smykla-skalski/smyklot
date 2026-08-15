@@ -96,14 +96,15 @@ func auditFilters(
 	clauses := []string{"ae.target_id = ?"}
 	arguments := []any{targetID}
 	if page.Query != "" {
-		clauses = append(clauses, `(instr(lower(ae.action), lower(?)) > 0
-OR instr(lower(ae.summary), lower(?)) > 0
-OR instr(lower(COALESCE(ae.repository_full_name, '')), lower(?)) > 0
-OR instr(lower(a.login), lower(?)) > 0
-OR instr(lower(a.display_name), lower(?)) > 0)`)
-		for range 5 {
-			arguments = append(arguments, page.Query)
+		columns := []string{
+			"ae.action",
+			"ae.summary",
+			"COALESCE(ae.repository_full_name, '')",
+			"a.login",
+			"a.display_name",
 		}
+		clauses = append(clauses, containsAnyClause(columns...))
+		arguments = append(arguments, containsArguments(page.Query, len(columns))...)
 	}
 	switch page.Scope {
 	case "", storage.AuditAll:

@@ -64,17 +64,18 @@ func rootAuditFilters(page storage.RootAuditPageRequest) ([]string, []any, error
 	clauses := []string{"1 = 1"}
 	arguments := []any{}
 	if page.Query != "" {
-		clauses = append(clauses, `(instr(lower(event.action), lower(?)) > 0
-OR instr(lower(event.summary), lower(?)) > 0
-OR instr(lower(actor.login), lower(?)) > 0
-OR instr(lower(actor.display_name), lower(?)) > 0
-OR instr(lower(COALESCE(target_account.login, '')), lower(?)) > 0
-OR instr(lower(COALESCE(target_account.display_name, '')), lower(?)) > 0
-OR instr(lower(COALESCE(subject.login, '')), lower(?)) > 0
-OR instr(lower(COALESCE(event.elevation_id, '')), lower(?)) > 0)`)
-		for range 8 {
-			arguments = append(arguments, page.Query)
+		columns := []string{
+			"event.action",
+			"event.summary",
+			"actor.login",
+			"actor.display_name",
+			"COALESCE(target_account.login, '')",
+			"COALESCE(target_account.display_name, '')",
+			"COALESCE(subject.login, '')",
+			"COALESCE(event.elevation_id, '')",
 		}
+		clauses = append(clauses, containsAnyClause(columns...))
+		arguments = append(arguments, containsArguments(page.Query, len(columns))...)
 	}
 	if len(page.Categories) > 0 {
 		placeholders := make([]string, 0, len(page.Categories))
@@ -266,9 +267,9 @@ func rootFailureOrder(order storage.HistoryOrder) (string, error) {
 	case storage.HistoryStatusDescending:
 		return "d.retryable DESC, d.id DESC", nil
 	case storage.HistoryRepositoryAscending:
-		return "d.repository_full_name COLLATE NOCASE ASC, d.id DESC", nil
+		return caseFold("d.repository_full_name") + " ASC, d.id DESC", nil
 	case storage.HistoryRepositoryDescending:
-		return "d.repository_full_name COLLATE NOCASE DESC, d.id DESC", nil
+		return caseFold("d.repository_full_name") + " DESC, d.id DESC", nil
 	default:
 		return "", fmt.Errorf("unsupported Root failure order %q", order)
 	}
@@ -278,16 +279,17 @@ func rootFailureFilters(page storage.FailurePageRequest) ([]string, []any) {
 	clauses := []string{"d.status = ?"}
 	arguments := []any{storage.DeliveryFailed}
 	if page.Query != "" {
-		clauses = append(clauses, `(instr(lower(d.delivery_id), lower(?)) > 0
-OR instr(lower(d.repository_full_name), lower(?)) > 0
-OR instr(lower(d.event), lower(?)) > 0
-OR instr(lower(d.stage), lower(?)) > 0
-OR instr(lower(d.reason), lower(?)) > 0
-OR instr(lower(a.login), lower(?)) > 0
-OR instr(lower(a.display_name), lower(?)) > 0)`)
-		for range 7 {
-			arguments = append(arguments, page.Query)
+		columns := []string{
+			"d.delivery_id",
+			"d.repository_full_name",
+			"d.event",
+			"d.stage",
+			"d.reason",
+			"a.login",
+			"a.display_name",
 		}
+		clauses = append(clauses, containsAnyClause(columns...))
+		arguments = append(arguments, containsArguments(page.Query, len(columns))...)
 	}
 	if page.Retryable != nil {
 		clauses = append(clauses, "d.retryable = ?")

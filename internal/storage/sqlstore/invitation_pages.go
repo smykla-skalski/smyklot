@@ -88,7 +88,7 @@ func invitationPageFilters(
 	now time.Time,
 	page storage.InvitationPageRequest,
 ) ([]string, []any, error) {
-	clauses := []string{"((ui.target_id IS NULL AND ? IS NULL) OR ui.target_id = ?)"}
+	clauses := []string{optionalScopeClause("ui.target_id")}
 	arguments := []any{targetID, targetID}
 	if root {
 		clauses = append(clauses, "ui.system_role = 'root'")
@@ -96,10 +96,9 @@ func invitationPageFilters(
 		clauses = append(clauses, "ui.system_role IS NULL")
 	}
 	if page.Query != "" {
-		clauses = append(clauses, `(instr(lower(invited.login), lower(?)) > 0
-OR instr(lower(invited.display_name), lower(?)) > 0
-OR instr(lower(creator.login), lower(?)) > 0)`)
-		arguments = append(arguments, page.Query, page.Query, page.Query)
+		columns := []string{"invited.login", "invited.display_name", "creator.login"}
+		clauses = append(clauses, containsAnyClause(columns...))
+		arguments = append(arguments, containsArguments(page.Query, len(columns))...)
 	}
 	if len(page.Roles) > 0 {
 		parts := make([]string, 0, len(page.Roles))

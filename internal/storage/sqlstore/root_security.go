@@ -73,7 +73,7 @@ WHERE session_token_hash = ? AND ended_at IS NULL AND expires_at > ?`,
 		Reason: grant.Reason, StartedAt: grant.StartedAt,
 		ExpiresAt: grant.StartedAt.Add(storage.ElevationLifetime),
 	}
-	if err := insertElevation(ctx, tx, elevation); err != nil {
+	if err := s.insertElevation(ctx, tx, elevation); err != nil {
 		return storage.Elevation{}, err
 	}
 	if err := insertElevationAudit(ctx, tx, elevation, "elevation.started", "started elevated installation access", grant.StartedAt); err != nil {
@@ -303,7 +303,11 @@ FROM target_ownership WHERE target_id = ?`, targetID, targetID).Scan(
 	return ownership, err
 }
 
-func insertElevation(ctx context.Context, tx runner, elevation storage.Elevation) error {
+func (s *Store) insertElevation(
+	ctx context.Context,
+	tx runner,
+	elevation storage.Elevation,
+) error {
 	_, err := tx.ExecContext(ctx, `
 INSERT INTO root_elevations (
     id, session_token_hash, root_account_id, target_id, reason, started_at, expires_at
@@ -317,7 +321,7 @@ INSERT INTO root_elevations (
 		formatTime(elevation.ExpiresAt),
 	)
 	if err != nil {
-		return fmt.Errorf("insert Root elevation: %w", conflictConstraint(err))
+		return fmt.Errorf("insert Root elevation: %w", s.conflictConstraint(err))
 	}
 
 	return nil

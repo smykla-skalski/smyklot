@@ -22,14 +22,16 @@ type appAuditInsert struct {
 
 func insertAppAudit(
 	ctx context.Context,
-	executor accountExecutor,
+	executor runner,
 	entry appAuditInsert,
 ) (int64, error) {
-	result, err := executor.ExecContext(ctx, `
+	var id int64
+	err := executor.QueryRowContext(ctx, `
 INSERT INTO app_audit_events (
     category, source_kind, source_id, target_id, actor_account_id,
     subject_account_id, elevation_id, action, summary, created_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id`,
 		entry.Category,
 		entry.SourceKind,
 		entry.SourceID,
@@ -40,13 +42,9 @@ INSERT INTO app_audit_events (
 		entry.Action,
 		entry.Summary,
 		entry.CreatedAt,
-	)
+	).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("insert app audit: %w", err)
-	}
-	id, err := result.LastInsertId()
-	if err != nil {
-		return 0, fmt.Errorf("read app audit ID: %w", err)
 	}
 
 	return id, nil
@@ -98,12 +96,13 @@ func insertElevatedNotification(
 	auditEventID int64,
 	action, createdAt, ownerID string,
 ) error {
-	result, err := tx.ExecContext(ctx, `
+	var notificationID int64
+	err := tx.QueryRowContext(ctx, `
 INSERT INTO security_notifications (
     recipient_account_id, target_id, actor_account_id, elevation_id,
     audit_event_id, action, reason, created_at
-
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id`,
 		ownerID,
 		elevation.TargetID,
 		elevation.RootAccountID,
@@ -112,13 +111,9 @@ INSERT INTO security_notifications (
 		action,
 		elevation.Reason,
 		createdAt,
-	)
+	).Scan(&notificationID)
 	if err != nil {
 		return fmt.Errorf("insert Owner notifications: %w", err)
-	}
-	notificationID, err := result.LastInsertId()
-	if err != nil {
-		return fmt.Errorf("read Owner notification ID: %w", err)
 	}
 	sourceKind := "notification"
 	targetID := elevation.TargetID

@@ -122,9 +122,8 @@ func rootPanelUserFilters(
 	clauses := []string{"1 = 1"}
 	arguments := make([]any, 0)
 	if page.Query != "" {
-		clauses = append(clauses, `(instr(lower(a.login), lower(?)) > 0
-OR instr(lower(a.display_name), lower(?)) > 0)`)
-		arguments = append(arguments, page.Query, page.Query)
+		clauses = append(clauses, containsAnyClause("a.login", "a.display_name"))
+		arguments = append(arguments, containsArguments(page.Query, 2)...)
 	}
 	if len(page.SystemRoles) > 0 {
 		values := make([]string, 0, len(page.SystemRoles))

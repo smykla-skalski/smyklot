@@ -169,7 +169,7 @@ INSERT INTO panel_users (
 		accountID, formatTime(changedAt), formatTime(changedAt),
 	)
 	if err != nil {
-		return false, fmt.Errorf("activate derived Owner: %w", conflictConstraint(err))
+		return false, fmt.Errorf("activate derived Owner: %w", s.conflictConstraint(err))
 	}
 	if err := insertAccessAudit(
 		ctx, tx, nil, accountID, accountID, "owner.access.activated",
@@ -217,14 +217,18 @@ UPDATE panel_users SET last_login_at = ?, updated_at = ? WHERE account_id = ?`,
 		return fmt.Errorf("record panel login: %w", err)
 	}
 
+	// Keeping the newest rows says the same thing as skipping past them, and
+	// says it without an unbounded LIMIT, which the two engines spell
+	// differently.
 	if _, err := tx.ExecContext(ctx, `
 DELETE FROM sessions
-WHERE token_hash IN (
+WHERE account_id = ?
+  AND token_hash NOT IN (
     SELECT token_hash FROM sessions
     WHERE account_id = ?
     ORDER BY created_at DESC, token_hash DESC
-    LIMIT -1 OFFSET ?
-)`, session.AccountID, maxActive); err != nil {
+    LIMIT ?
+)`, session.AccountID, session.AccountID, maxActive); err != nil {
 		return fmt.Errorf("cap active sessions: %w", err)
 	}
 
@@ -386,11 +390,7 @@ func (s *Store) DeleteExpiredAuth(ctx context.Context, now time.Time) error {
 	return nil
 }
 
-type accountExecutor interface {
-	ExecContext(context.Context, string, ...any) (sql.Result, error)
-}
-
-func upsertAccount(ctx context.Context, executor accountExecutor, account storage.Account) error {
+func upsertAccount(ctx context.Context, executor runner, account storage.Account) error {
 	_, err := executor.ExecContext(ctx, `
 INSERT INTO accounts (id, provider, subject_id, login, display_name, avatar_url, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)

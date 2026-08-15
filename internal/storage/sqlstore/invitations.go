@@ -50,7 +50,7 @@ func (s *Store) ListInvitations(
 	now time.Time,
 ) ([]storage.Invitation, error) {
 	rows, err := s.db.QueryContext(ctx, invitationSelect+`
-WHERE (ui.target_id IS NULL AND ? IS NULL) OR ui.target_id = ?
+WHERE `+optionalScopeClause("ui.target_id")+`
 ORDER BY ui.created_at DESC, ui.id DESC`, targetID, targetID)
 	if err != nil {
 		return nil, fmt.Errorf("list invitations: %w", err)
@@ -131,7 +131,7 @@ func (s *Store) CreateInvitation(
 UPDATE user_invitations
 SET status = 'revoked', responded_at = ?
 WHERE account_id = ? AND status = 'pending'
-  AND ((target_id IS NULL AND ? IS NULL) OR target_id = ?)`,
+  AND `+optionalScopeClause("target_id"),
 		formatTime(change.CreatedAt), change.AccountID, change.TargetID, change.TargetID,
 	); err != nil {
 		return storage.Invitation{}, fmt.Errorf("revoke earlier invitations: %w", err)
@@ -151,7 +151,7 @@ INSERT INTO user_invitations (
 		change.CreatedByAccount,
 		formatTime(change.CreatedAt),
 	); err != nil {
-		return storage.Invitation{}, fmt.Errorf("insert invitation: %w", conflictConstraint(err))
+		return storage.Invitation{}, fmt.Errorf("insert invitation: %w", s.conflictConstraint(err))
 	}
 	auditEventID, err := insertAccessAuditEvent(
 		ctx,
@@ -353,7 +353,7 @@ WHERE id = ? AND status = 'pending'`,
 		change.ID,
 	)
 	if err != nil {
-		return storage.Invitation{}, fmt.Errorf("reissue invitation: %w", conflictConstraint(err))
+		return storage.Invitation{}, fmt.Errorf("reissue invitation: %w", s.conflictConstraint(err))
 	}
 	if !oneRowChanged(result) {
 		return storage.Invitation{}, storage.ErrConflict

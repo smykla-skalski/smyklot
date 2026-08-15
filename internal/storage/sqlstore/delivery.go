@@ -3,6 +3,7 @@ package sqlstore
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -22,13 +23,17 @@ func (s *Store) ClaimDelivery(
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	result, err := tx.ExecContext(ctx, `
-	INSERT INTO deliveries (
+	// A retained claim conflicts and returns no row, which is how a duplicate
+	// delivery is recognized without asking the driver how many rows changed.
+	var claimID int64
+	err = tx.QueryRowContext(ctx, `
+INSERT INTO deliveries (
     claim_key, delivery_id, target_id, repository_id, repository_full_name,
     event, status, claimed_at
 )
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT DO NOTHING`,
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT DO NOTHING
+RETURNING id`,
 		claim.ClaimKey,
 		claim.DeliveryID,
 		claim.TargetID,
@@ -37,16 +42,12 @@ ON CONFLICT DO NOTHING`,
 		claim.Event,
 		storage.DeliveryRunning,
 		formatTime(claim.ClaimedAt),
-	)
-	if err != nil {
+	).Scan(&claimID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return storage.DeliveryClaimResult{}, fmt.Errorf("claim delivery: %w", err)
 	}
 
-	changed, err := result.RowsAffected()
-	if err != nil {
-		return storage.DeliveryClaimResult{}, fmt.Errorf("read delivery claim result: %w", err)
-	}
-	if changed == 0 {
+	if errors.Is(err, sql.ErrNoRows) {
 		var status storage.DeliveryStatus
 		if err := tx.QueryRowContext(ctx, `
 	SELECT status FROM deliveries
@@ -68,10 +69,6 @@ ON CONFLICT DO NOTHING`,
 		}
 
 		return storage.DeliveryClaimResult{Disposition: disposition}, nil
-	}
-	claimID, err := result.LastInsertId()
-	if err != nil {
-		return storage.DeliveryClaimResult{}, fmt.Errorf("read delivery claim id: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return storage.DeliveryClaimResult{}, fmt.Errorf("commit delivery claim: %w", err)
@@ -235,9 +232,9 @@ func failurePageOrder(order storage.HistoryOrder) (string, error) {
 	case storage.HistoryStatusDescending:
 		return "retryable DESC, id DESC", nil
 	case storage.HistoryRepositoryAscending:
-		return "repository_full_name COLLATE NOCASE ASC, id DESC", nil
+		return caseFold("repository_full_name") + " ASC, id DESC", nil
 	case storage.HistoryRepositoryDescending:
-		return "repository_full_name COLLATE NOCASE DESC, id DESC", nil
+		return caseFold("repository_full_name") + " DESC, id DESC", nil
 	default:
 		return "", fmt.Errorf("unsupported failure order %q", order)
 	}
@@ -250,14 +247,9 @@ func failureFilters(
 	clauses := []string{"target_id = ?", "status = ?"}
 	arguments := []any{targetID, storage.DeliveryFailed}
 	if page.Query != "" {
-		clauses = append(clauses, `(instr(lower(delivery_id), lower(?)) > 0
-OR instr(lower(repository_full_name), lower(?)) > 0
-OR instr(lower(event), lower(?)) > 0
-OR instr(lower(stage), lower(?)) > 0
-OR instr(lower(reason), lower(?)) > 0)`)
-		for range 5 {
-			arguments = append(arguments, page.Query)
-		}
+		columns := []string{"delivery_id", "repository_full_name", "event", "stage", "reason"}
+		clauses = append(clauses, containsAnyClause(columns...))
+		arguments = append(arguments, containsArguments(page.Query, len(columns))...)
 	}
 	if page.Retryable != nil {
 		clauses = append(clauses, "retryable = ?")

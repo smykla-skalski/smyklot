@@ -59,6 +59,14 @@ JOIN accounts a ON a.id = t.account_id
 LEFT JOIN target_ownership o ON o.target_id = t.id
 LEFT JOIN repositories r ON r.target_id = t.id`
 
+// targetGroup closes targetSelect's per-installation aggregate.
+//
+// Every joined table is grouped by its own primary key, which is what lets a
+// strict engine accept the plain columns the select reads from targets,
+// accounts and target_ownership alongside the repository counts.
+const targetGroup = `
+GROUP BY t.id, a.id, o.target_id`
+
 // ReconcileInstallation replaces GitHub-owned catalog state while preserving
 // every panel-owned control and revision.
 func (s *Store) ReconcileInstallation(
@@ -114,8 +122,7 @@ func (s *Store) ReconcileCatalog(
 // ListRootTargets returns the complete retained installation catalog. Root
 // diagnostics include unavailable installations and unhealthy ownership.
 func (s *Store) ListRootTargets(ctx context.Context) ([]storage.Target, error) {
-	rows, err := s.db.QueryContext(ctx, targetSelect+`
-GROUP BY t.id, a.id
+	rows, err := s.db.QueryContext(ctx, targetSelect+targetGroup+`
 ORDER BY lower(a.login), t.id`)
 	if err != nil {
 		return nil, fmt.Errorf("list Root installation targets: %w", err)
@@ -408,7 +415,7 @@ func (s *Store) ListRepositoryPage(
 	defer func() { _ = tx.Rollback() }()
 
 	limit := pageLimit(page.Limit)
-	clauses, arguments, err := repositoryPageFilters(targetID, page)
+	clauses, arguments, err := s.repositoryPageFilters(targetID, page)
 	if err != nil {
 		return storage.RepositoryPage{}, err
 	}
@@ -431,7 +438,7 @@ WHERE ` + strings.Join(clauses, " AND ")
 		return storage.RepositoryPage{}, fmt.Errorf("read repository default: %w", noRows(err))
 	}
 
-	order, err := repositoryPageOrder(page.Order)
+	order, err := s.repositoryPageOrder(page.Order)
 	if err != nil {
 		return storage.RepositoryPage{}, err
 	}
@@ -466,15 +473,15 @@ WHERE ` + strings.Join(clauses, " AND ")
 	return result, nil
 }
 
-func repositoryPageFilters(
+func (s *Store) repositoryPageFilters(
 	targetID string,
 	page storage.RepositoryPageRequest,
 ) ([]string, []any, error) {
 	clauses := []string{"r.target_id = ?", "r.available = 1"}
 	arguments := []any{targetID}
 	if page.Query != "" {
-		clauses = append(clauses, "instr(lower(r.full_name), lower(?)) > 0")
-		arguments = append(arguments, page.Query)
+		clauses = append(clauses, containsClause("r.full_name"))
+		arguments = append(arguments, containsArgument(page.Query))
 	}
 	if page.EffectiveEnabled != nil {
 		clauses = append(clauses, "COALESCE(r.enabled_override, t.repository_default_enabled) = ?")
@@ -501,11 +508,11 @@ func repositoryPageFilters(
 		clauses = append(clauses, "("+strings.Join(fileClauses, " OR ")+")")
 	}
 	if page.HasConfigOverrides != nil {
-		expression := "EXISTS (SELECT 1 FROM json_each(r.config_patch))"
+		comparison := " > 0"
 		if !*page.HasConfigOverrides {
-			expression = "NOT " + expression
+			comparison = " = 0"
 		}
-		clauses = append(clauses, expression)
+		clauses = append(clauses, s.dialect.JSONKeyCount("r.config_patch")+comparison)
 	}
 	if len(page.ConfigOverrideKeys) > 0 {
 		keyClauses := make([]string, 0, len(page.ConfigOverrideKeys))
@@ -513,8 +520,8 @@ func repositoryPageFilters(
 			if !supportedConfigOverride(key) {
 				return nil, nil, fmt.Errorf("unsupported repository config override %q", key)
 			}
-			keyClauses = append(keyClauses, "json_type(r.config_patch, ?) IS NOT NULL")
-			arguments = append(arguments, "$."+key)
+			keyClauses = append(keyClauses, s.dialect.JSONHasKey("r.config_patch"))
+			arguments = append(arguments, key)
 		}
 		clauses = append(clauses, "("+strings.Join(keyClauses, " OR ")+")")
 	}
@@ -542,26 +549,26 @@ func supportedConfigOverride(key string) bool {
 	}
 }
 
-func repositoryPageOrder(order storage.RepositoryOrder) (string, error) {
+func (s *Store) repositoryPageOrder(order storage.RepositoryOrder) (string, error) {
+	byName := caseFold("r.full_name")
+	nameAscending := byName + " ASC, r.id ASC"
+	byFileStatus := caseFold(`(CASE WHEN r.ignore_repository_file = 1
+            THEN 'bypassed' ELSE r.config_file_status END)`)
+	byOverrides := s.dialect.JSONKeyCount("r.config_patch")
+
 	switch order {
 	case "", storage.RepositoryNameAscending:
-		return "r.full_name COLLATE NOCASE ASC, r.id ASC", nil
+		return nameAscending, nil
 	case storage.RepositoryNameDescending:
-		return "r.full_name COLLATE NOCASE DESC, r.id DESC", nil
+		return byName + " DESC, r.id DESC", nil
 	case storage.RepositoryFileAscending:
-		return `(CASE WHEN r.ignore_repository_file = 1
-            THEN 'bypassed' ELSE r.config_file_status END) COLLATE NOCASE ASC,
-            r.full_name COLLATE NOCASE ASC, r.id ASC`, nil
+		return byFileStatus + " ASC, " + nameAscending, nil
 	case storage.RepositoryFileDescending:
-		return `(CASE WHEN r.ignore_repository_file = 1
-            THEN 'bypassed' ELSE r.config_file_status END) COLLATE NOCASE DESC,
-            r.full_name COLLATE NOCASE ASC, r.id ASC`, nil
+		return byFileStatus + " DESC, " + nameAscending, nil
 	case storage.RepositoryOverridesAscending:
-		return `(SELECT COUNT(*) FROM json_each(r.config_patch)) ASC,
-            r.full_name COLLATE NOCASE ASC, r.id ASC`, nil
+		return byOverrides + " ASC, " + nameAscending, nil
 	case storage.RepositoryOverridesDescending:
-		return `(SELECT COUNT(*) FROM json_each(r.config_patch)) DESC,
-            r.full_name COLLATE NOCASE ASC, r.id ASC`, nil
+		return byOverrides + " DESC, " + nameAscending, nil
 	case storage.RepositoryNewest:
 		return "r.settings_updated_at DESC, r.id DESC", nil
 	case storage.RepositoryOldest:
@@ -661,8 +668,7 @@ func getTarget(
 	targetID string,
 ) (storage.Target, error) {
 	return scanTarget(queryer.QueryRowContext(ctx, targetSelect+`
-WHERE t.id = ?
-GROUP BY t.id, a.id`, targetID))
+WHERE t.id = ?`+targetGroup, targetID))
 }
 
 func scanTarget(scanner rowScanner) (storage.Target, error) {
