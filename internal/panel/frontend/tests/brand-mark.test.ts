@@ -40,8 +40,10 @@ describe('the brand mark', () => {
     expect(importers).toEqual(['BrandMark.svelte']);
   });
 
-  it('is what the sidebar and the invitation page both render', () => {
-    for (const file of ['IdentityBar.svelte', 'InvitationPage.svelte']) {
+  it('is what the sidebar and the pages outside the panel both render', () => {
+    // `NightPage` is the shell the invitation and the error pages share, so it stands the mark
+    // up for both of them.
+    for (const file of ['IdentityBar.svelte', 'NightPage.svelte']) {
       expect(read(file)).toMatch(/<BrandMark\b/u);
     }
   });

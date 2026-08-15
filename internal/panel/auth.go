@@ -41,7 +41,7 @@ func (s *Server) startSignIn(w http.ResponseWriter, r *http.Request) {
 		action := invitationAction(r.URL.Query().Get("action"))
 		if !validInvitationToken(token) ||
 			(action != invitationAccept && action != invitationDecline) {
-			s.writeError(w, http.StatusBadRequest, "invalid_invitation", "invitation action is invalid")
+			s.writePageError(w, r, http.StatusBadRequest, "invalid_invitation", "invitation action is invalid")
 			return
 		}
 		invitation, inviteErr := s.store.GetInvitationByToken(
@@ -52,7 +52,7 @@ func (s *Server) startSignIn(w http.ResponseWriter, r *http.Request) {
 			if inviteErr == nil {
 				status, code, message = http.StatusConflict, "invitation_used", "this invitation is no longer pending"
 			}
-			s.writeError(w, status, code, message)
+			s.writePageError(w, r, status, code, message)
 			return
 		}
 		s.setCookie(
@@ -64,7 +64,7 @@ func (s *Server) startSignIn(w http.ResponseWriter, r *http.Request) {
 	}
 	state, err := newOAuthState(s.random, s.now().UTC(), s.cfg.ClientSecret)
 	if err != nil {
-		s.writeInternal(w, err)
+		s.writePageInternal(w, r, err)
 		return
 	}
 	s.setCookie(w, stateCookieName, state, s.cfg.StateTTL)
@@ -76,31 +76,31 @@ func (s *Server) finishSignIn(w http.ResponseWriter, r *http.Request) {
 	s.clearCookie(w, inviteCookieName)
 	query := r.URL.Query()
 	if query.Get("error") != "" {
-		s.writeError(w, http.StatusUnauthorized, "sign_in_failed", "GitHub sign-in was not completed")
+		s.writePageError(w, r, http.StatusUnauthorized, "sign_in_failed", "GitHub sign-in was not completed")
 		return
 	}
 	state := query.Get("state")
 	code := query.Get("code")
 	if state == "" || code == "" {
-		s.writeError(w, http.StatusBadRequest, "sign_in_failed", "GitHub callback is incomplete")
+		s.writePageError(w, r, http.StatusBadRequest, "sign_in_failed", "GitHub callback is incomplete")
 		return
 	}
 	cookie, cookieErr := r.Cookie(stateCookieName)
 	if cookieErr != nil ||
 		subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(state)) != 1 ||
 		!validOAuthState(state, s.now().UTC(), s.cfg.StateTTL, s.cfg.ClientSecret) {
-		s.writeError(w, http.StatusUnauthorized, "sign_in_failed", "GitHub sign-in belongs to another browser")
+		s.writePageError(w, r, http.StatusUnauthorized, "sign_in_failed", "GitHub sign-in belongs to another browser")
 		return
 	}
 
 	account, err := s.signIn.ExchangeIdentity(r.Context(), code)
 	if err != nil {
-		s.writeError(w, http.StatusBadGateway, "sign_in_failed", "GitHub sign-in could not be verified")
+		s.writePageError(w, r, http.StatusBadGateway, "sign_in_failed", "GitHub sign-in could not be verified")
 		return
 	}
 	account.UpdatedAt = s.now().UTC()
 	if err := s.store.UpsertAccount(r.Context(), account); err != nil {
-		s.writeInternal(w, err)
+		s.writePageInternal(w, r, err)
 		return
 	}
 	invited, handled := s.respondToInvitation(w, r, account)
@@ -109,22 +109,22 @@ func (s *Server) finishSignIn(w http.ResponseWriter, r *http.Request) {
 	}
 	authorized, err := s.authorizeAccount(r, account)
 	if err != nil {
-		s.writeInternal(w, err)
+		s.writePageInternal(w, r, err)
 		return
 	}
 	authorized = authorized || invited
 	if !authorized {
-		s.writeError(w, http.StatusForbidden, "forbidden", "this GitHub account cannot access the panel")
+		s.writePageError(w, r, http.StatusForbidden, "forbidden", "this GitHub account cannot access the panel")
 		return
 	}
 	_, err = s.catalog.SyncCatalog(r.Context())
 	if err != nil {
-		s.writeError(w, http.StatusBadGateway, "catalog_unavailable", "GitHub installations could not be synchronized")
+		s.writePageError(w, r, http.StatusBadGateway, "catalog_unavailable", "GitHub installations could not be synchronized")
 		return
 	}
 	session, err := s.createSession(r, account.ID)
 	if err != nil {
-		s.writeInternal(w, err)
+		s.writePageInternal(w, r, err)
 		return
 	}
 	s.setCookie(w, sessionCookieName, session, s.sessionTTL())
@@ -140,7 +140,7 @@ func (s *Server) respondToInvitation(
 ) (invited, handled bool) {
 	intent, hasInvitation, err := readInvitationIntent(r, s.cfg.ClientSecret)
 	if err != nil {
-		s.writeError(w, http.StatusUnauthorized, "invalid_invitation", "invitation response belongs to another browser")
+		s.writePageError(w, r, http.StatusUnauthorized, "invalid_invitation", "invitation response belongs to another browser")
 
 		return false, true
 	}
@@ -153,7 +153,7 @@ func (s *Server) respondToInvitation(
 	})
 	if err != nil {
 		status, code, message := invitationErrorStatus(err)
-		s.writeError(w, status, code, message)
+		s.writePageError(w, r, status, code, message)
 
 		return false, true
 	}

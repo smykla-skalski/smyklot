@@ -49,18 +49,23 @@ describe('the invitation page', () => {
     }
   });
 
-  it('offers no retry for a link that names no invitation', () => {
+  it('answers a link that names no invitation the way every dead address is answered', () => {
     // 404 is terminal - there is nothing on the other end to press again for - while every other
-    // failure is worth another go. So the branch has to be on the status, not on there being an
-    // error at all, and the view it reaches must not carry a button.
+    // failure is worth another go, so the branch is on the status rather than on there being an
+    // error at all. What it reaches is the shared error card, which is the whole point: a link
+    // that leads nowhere must not be told it was an invitation, because that describes something
+    // the reader has no way to reach. The words themselves are pinned in panel-error.test.ts.
     expect(page).toMatch(/PanelApiError && error\.status === 404/u);
 
     const missing =
       /\{:else if failure !== null && failure\.missing\}([\s\S]*?)\{:else if/u.exec(page)?.[1] ??
       '';
 
-    expect(missing).toContain('404');
+    expect(missing).toMatch(/<ErrorCard\b/u);
     expect(missing, 'the not-found view should not offer a retry').not.toContain('<button');
+    expect(missing.toLowerCase(), 'the not-found view should not name invitations').not.toContain(
+      'invit',
+    );
   });
 
   it('names the scope by more than its display name', () => {

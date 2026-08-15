@@ -1,10 +1,12 @@
 import { mount } from 'svelte';
 
 import App from './App.svelte';
+import ErrorPage from './components/ErrorPage.svelte';
 import InvitationPage from './components/InvitationPage.svelte';
 import './app.css';
 import { createPanelApi } from './lib/api';
 import { readBasePath, readPanelBuild } from './lib/base';
+import { readPanelFailure } from './lib/panel-error';
 import {
   applyDocumentTheme,
   DEFAULT_THEME_DISPLAY,
@@ -40,10 +42,20 @@ try {
   void registerPanelServiceWorker(base, build.version).catch((error: unknown) => {
     console.warn('Smyklot offline cache could not start', error);
   });
+  // The server serves this same bundle when it is answering with an error, and
+  // says so in the document. That is checked before the address is, because the
+  // address is what failed: a 404 arrives at a path that looks like a panel route
+  // and a failed sign-in arrives back at one, and neither should be booted into.
+  const failure = readPanelFailure(document);
   const invitationToken = parseInvitationToken(base, window.location.pathname);
   // Built from the mount point rather than imported, because Vite would bake the
   // sentinel into the JS bundle and only `index.html` is rewritten when serving.
-  if (invitationToken === null) {
+  if (failure !== null) {
+    mount(ErrorPage, {
+      target,
+      props: { api, base, build, failure },
+    });
+  } else if (invitationToken === null) {
     mount(App, {
       target,
       props: { api, build, router: createPanelRouter(base, window) },
@@ -51,7 +63,7 @@ try {
   } else {
     mount(InvitationPage, {
       target,
-      props: { api, token: invitationToken, build },
+      props: { api, base, token: invitationToken, build },
     });
   }
 } catch (error) {

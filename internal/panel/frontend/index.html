@@ -9,6 +9,10 @@
     <meta name="smyklot-panel-base" content="/__smyklot_panel_base__" />
     <meta name="smyklot-panel-version" content="__smyklot_panel_version__" />
     <meta name="smyklot-panel-service" content="__smyklot_panel_service__" />
+    <!-- Empty on every page the panel means to serve. The server fills it in when
+         it is answering with an error instead, so the page that boots knows what
+         happened without a second request. -->
+    <meta name="smyklot-panel-error" content="__smyklot_panel_error__" />
 
     <title>SMYKLOT</title>
     <meta name="application-name" content="SMYKLOT" />
@@ -51,6 +55,10 @@
   </head>
   <body>
     <div id="app"></div>
+    <!-- The panel is a mounted application, so without scripting there is no page
+         to fall back to. An error document says which error it was here, because
+         that is the one case where the reader has been told nothing else. -->
+    <noscript>__smyklot_panel_noscript__</noscript>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

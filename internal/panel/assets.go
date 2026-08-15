@@ -28,9 +28,13 @@ const (
 )
 
 type assetBundle struct {
-	files         fs.FS
-	index         []byte
-	indexETag     string
+	files     fs.FS
+	index     []byte
+	indexETag string
+	// The same document with the error placeholders still in it, so an error
+	// response can fill them per request. Kept apart from index rather than
+	// re-derived: index is served on the hot path and must not carry them.
+	errorPage     string
 	serviceWorker []byte
 }
 
@@ -42,6 +46,15 @@ func newAssetBundle(cfg Config) (*assetBundle, error) {
 	rewritten := strings.ReplaceAll(string(index), basePathSentinel, cfg.BasePath)
 	rewritten = strings.ReplaceAll(rewritten, versionSentinel, html.EscapeString(cfg.Version))
 	rewritten = strings.ReplaceAll(rewritten, serviceSentinel, html.EscapeString(cfg.ServiceHost))
+	// An error document is built by substitution, so a missing placeholder would
+	// silently serve a page that reports nothing. Fail at startup instead.
+	for _, sentinel := range []string{errorSentinel, noscriptSentinel} {
+		if strings.Count(rewritten, sentinel) != 1 {
+			return nil, fmt.Errorf("panel index must carry %s exactly once", sentinel)
+		}
+	}
+	served := strings.NewReplacer(errorSentinel, "", noscriptSentinel, defaultNoscript).
+		Replace(rewritten)
 	serviceWorker, err := fs.ReadFile(cfg.Assets, "sw.js")
 	if err != nil {
 		return nil, fmt.Errorf("read panel service worker: %w", err)
@@ -60,8 +73,9 @@ func newAssetBundle(cfg Config) (*assetBundle, error) {
 
 	return &assetBundle{
 		files:         cfg.Assets,
-		index:         []byte(rewritten),
-		indexETag:     fmt.Sprintf(`"%x"`, sha256.Sum256([]byte(rewritten))),
+		index:         []byte(served),
+		indexETag:     fmt.Sprintf(`"%x"`, sha256.Sum256([]byte(served))),
+		errorPage:     rewritten,
 		serviceWorker: []byte(rewrittenWorker),
 	}, nil
 }
@@ -74,7 +88,7 @@ func (s *Server) serveAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !fs.ValidPath(relative) {
-		s.writeError(w, http.StatusNotFound, "not_found", "panel asset not found")
+		s.writePageError(w, r, http.StatusNotFound, "not_found", "panel asset not found")
 		return
 	}
 	content, err := fs.ReadFile(s.assets.files, relative)
@@ -82,7 +96,7 @@ func (s *Server) serveAsset(w http.ResponseWriter, r *http.Request) {
 		if isPanelNavigationPath(relative) {
 			s.writeIndex(w, r)
 		} else {
-			s.writeError(w, http.StatusNotFound, "not_found", "panel route not found")
+			s.writePageError(w, r, http.StatusNotFound, "not_found", "panel route not found")
 		}
 		return
 	}

@@ -1154,6 +1154,39 @@ select:disabled {
   background: var(--stop);
 }
 
+/* The panel has no links to speak of - it is built from buttons - so this is a
+   primitive rather than a page's own style, and it lives here because both pages
+   outside the panel need it. It borrows the action ink rather than inventing a
+   link colour, and the underline is drawn faintly at rest and fully on hover, so
+   a page with two of them close together does not read as ruled. Press is a
+   colour step, not the system's usual shrink: scaling a run of text inside a
+   sentence moves the words around it. */
+.link {
+  border-radius: 2px;
+  color: var(--brand-action-text);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentcolor 35%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+  transition:
+    color var(--duration-fast) var(--ease-standard),
+    text-decoration-color var(--duration-fast) var(--ease-standard);
+}
+
+.link:hover {
+  text-decoration-color: currentcolor;
+}
+
+.link:active {
+  color: color-mix(in srgb, var(--brand-action-text) 78%, var(--text-primary));
+}
+
+.link:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
 /* Sized by whoever renders it, through a custom property.
  *
  * The property has to arrive through the CSSOM, not through a `style` attribute

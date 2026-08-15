@@ -28,28 +28,41 @@ describe('the theme switch', () => {
     expect(holders).toEqual(['ThemeSwitch.svelte']);
   });
 
-  it('is what the sidebar and the invitation page both render', () => {
-    for (const file of ['IdentityBar.svelte', 'InvitationPage.svelte']) {
+  it('is what the sidebar and the pages outside the panel both render', () => {
+    // `NightPage` is the shell the invitation and the error pages share, so it is the one
+    // place outside the sidebar that renders a switch.
+    for (const file of ['IdentityBar.svelte', 'NightPage.svelte']) {
       expect(read(file)).toMatch(/<ThemeSwitch\b/u);
     }
   });
 
   it('offers "follow the system" only where the answer is kept', () => {
-    // The invitation page has no account behind it, so "system" there is an offer to follow
+    // A page outside the panel has no account behind it, so "system" there is an offer to follow
     // something it will forget. It asks for a theme outright instead; the sidebar still offers it.
-    expect(read('InvitationPage.svelte')).toMatch(/<ThemeSwitch[^>]*\ssystem=\{false\}/su);
+    expect(read('NightPage.svelte')).toMatch(/<ThemeSwitch[^>]*\ssystem=\{false\}/su);
     expect(read('IdentityBar.svelte')).not.toMatch(/<ThemeSwitch[^>]*\ssystem=/su);
   });
 
-  it('does not follow the system on the page that cannot remember', () => {
-    // A `MediaQuery` here would repaint the page under a reader midway through an invitation
-    // because their laptop reached sunset. The system theme is read once, as an opening choice.
-    // The page's own comment says so in words, so this asks what it *imports* rather than
-    // what it mentions.
-    const page = read('InvitationPage.svelte');
+  it('is offered only by the page that can settle into an answer', () => {
+    // An invitation is read and acted on, so its theme is picked once and held. An error page is
+    // read and left, so it carries no switch and follows the system instead.
+    expect(read('ErrorPage.svelte')).toMatch(/themeChoice=\{false\}/u);
+    expect(read('InvitationPage.svelte')).not.toContain('themeChoice');
+  });
 
-    expect(page).not.toMatch(/^\s*import\b.*\bMediaQuery\b/mu);
+  it('does not follow the system on the page that cannot remember', () => {
+    // A live `MediaQuery` on the invitation page would repaint it under a reader midway through
+    // because their laptop reached sunset, and that page has no account behind it to remember
+    // what they would rather have. The system theme is read once there, as an opening choice.
+    //
+    // `NightPage` does import `MediaQuery` now, for the switchless page, so what this checks is
+    // that the two are exclusive: the query is built only where there is no switch.
+    const page = read('NightPage.svelte');
+
     expect(page).toContain('systemThemeDisplay()');
+    expect(page).toMatch(/offersChoice\s*\?\s*null\s*:\s*new MediaQuery\(/u);
+    // Nothing may reach for the live query without going through that gate.
+    expect([...page.matchAll(/new MediaQuery\(/gu)]).toHaveLength(1);
   });
 
   it('can be sized by the surface it stands on', () => {

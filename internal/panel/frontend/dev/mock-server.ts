@@ -137,7 +137,15 @@ interface MockState {
   };
   streams: Set<Duplex>;
   prefs: { values: Record<string, unknown>; rev: number };
+  transformIndex: IndexTransform;
 }
+
+/** How a served `index.html` reaches its final form: Vite's own dev transform. */
+type IndexTransform = (url: string, html: string) => Promise<string> | string;
+
+const ERROR_SENTINEL = '__smyklot_panel_error__';
+const NOSCRIPT_SENTINEL = '__smyklot_panel_noscript__';
+const DEFAULT_NOSCRIPT = 'The Smyklot panel needs JavaScript to run.';
 
 function enabled(): boolean {
   return process.env.SMYKLOT_PANEL_DEV_MOCK === '1';
@@ -152,6 +160,7 @@ function enabled(): boolean {
  * again. Only the preference document is kept: the rest of the mock is fixture data, and a fixture
  * that drifts across restarts is worse than one that resets.
  */
+const FRONTEND_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PREFERENCES_FILE = resolve(dirname(fileURLToPath(import.meta.url)), '.mock-preferences.json');
 
 interface DevState {
@@ -507,6 +516,8 @@ function seed(): MockState {
     },
     streams: new Set(),
     prefs: loadPreferences(),
+    // Replaced by install() with the running server's own transform.
+    transformIndex: (_url, html) => html,
   };
 }
 
@@ -935,20 +946,35 @@ export function mockServer(): Plugin {
       return html
         .replaceAll('/__smyklot_panel_base__', '')
         .replaceAll('__smyklot_panel_version__', 'dev')
-        .replaceAll('__smyklot_panel_service__', 'local mock service');
+        .replaceAll('__smyklot_panel_service__', 'local mock service')
+        .replaceAll(ERROR_SENTINEL, '')
+        .replaceAll(NOSCRIPT_SENTINEL, DEFAULT_NOSCRIPT);
     },
     configureServer(server) {
-      if (enabled()) install(server.httpServer as DevHttpServer, server.middlewares);
+      if (enabled()) {
+        install(server.httpServer as DevHttpServer, server.middlewares, (url, html) =>
+          server.transformIndexHtml(url, html),
+        );
+      }
     },
     configurePreviewServer(server) {
-      if (enabled()) install(server.httpServer as DevHttpServer, server.middlewares);
+      // Preview serves the built bundle, which went through the hook above at
+      // build time, so there is nothing left to transform.
+      if (enabled()) {
+        install(server.httpServer as DevHttpServer, server.middlewares, (_url, html) => html);
+      }
     },
   };
 }
 
-function install(httpServer: DevHttpServer | undefined, middlewares: Connect.Server): void {
+function install(
+  httpServer: DevHttpServer | undefined,
+  middlewares: Connect.Server,
+  transform: IndexTransform,
+): void {
   if (httpServer === undefined) throw new Error('the mock dev server has no HTTP server');
   const state = seed();
+  state.transformIndex = transform;
   httpServer.on('upgrade', (request, socket) => handleUpgrade(state, request, socket));
   middlewares.use((req, res, next) => void handle(state, req, res, next));
 }
@@ -1143,6 +1169,24 @@ async function handle(
   }
 
   /**
+   * Every error page, on demand. Dev only, and it exists because almost none of them can be
+   * reached here otherwise: they come out of the GitHub sign-in round trip, and the mock has no
+   * GitHub to fail against. `/__error/403/forbidden` renders exactly what production would.
+   */
+  const preview = path.match(/^\/__error\/(?<status>\d{3})(?:\/(?<code>[a-z_]*))?$/u);
+  if (preview && method === 'GET') {
+    await respondError(
+      state,
+      req,
+      res,
+      Number(preview.groups?.status),
+      preview.groups?.code ?? '',
+      parsed.searchParams.get('message') ?? 'a mock error, for looking at',
+    );
+    return;
+  }
+
+  /**
    * A navigation to a path the panel does not own is a 404, as it is in production.
    *
    * Vite answers every navigation with index.html, so in dev an unknown path quietly rendered the
@@ -1155,7 +1199,7 @@ async function handle(
     const navigable =
       parsePanelRoute('/', path) !== null || parseInvitationToken('/', path) !== null;
     if (!navigable) {
-      respond(res, 404, { error: { code: 'not_found', message: 'panel route not found' } });
+      await respondError(state, req, res, 404, 'not_found', 'panel route not found');
       return;
     }
   }
@@ -1183,9 +1227,14 @@ async function handle(
     if (token !== null && (action === 'accept' || action === 'decline')) {
       const invitation = findInvitationByToken(state, token);
       if (invitation.status !== 'pending') {
-        respond(res, 409, {
-          error: { code: 'invitation_used', message: 'invitation is not pending' },
-        });
+        await respondError(
+          state,
+          req,
+          res,
+          409,
+          'invitation_used',
+          'this invitation is no longer pending',
+        );
         return;
       }
       invitation.status = action === 'accept' ? 'accepted' : 'declined';
@@ -2952,6 +3001,75 @@ function respond(res: ServerResponse, status: number, body: unknown): void {
   }
   res.setHeader('Content-Type', 'application/json');
   res.end(JSON.stringify(body));
+}
+
+/**
+ * The production answer to an error: the panel's own page for a browser that
+ * navigated here, and JSON for everything else.
+ *
+ * Mirrors `writePageError` in internal/panel/error_page.go, including how it
+ * decides which of the two the caller wants. Without it the mock hands a browser
+ * a JSON blob where production hands it a page, and the error pages could only be
+ * looked at by building the Go binary.
+ */
+async function respondError(
+  state: MockState,
+  req: IncomingMessage,
+  res: ServerResponse,
+  status: number,
+  code: string,
+  message: string,
+): Promise<void> {
+  if (!wantsDocument(req)) {
+    respond(res, status, { error: { code, message } });
+    return;
+  }
+  const page = await renderErrorDocument(state, req.url ?? '/', status, code, message);
+  res.statusCode = status;
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  res.end(page);
+}
+
+function wantsDocument(req: IncomingMessage): boolean {
+  const destination = req.headers['sec-fetch-dest'];
+  if (typeof destination === 'string' && destination !== '') return destination === 'document';
+
+  return (req.headers.accept ?? '')
+    .split(',')
+    .some((entry) => entry.split(';')[0]?.trim() === 'text/html');
+}
+
+async function renderErrorDocument(
+  state: MockState,
+  url: string,
+  status: number,
+  code: string,
+  message: string,
+): Promise<string> {
+  const source = readFileSync(resolve(FRONTEND_DIR, 'index.html'), 'utf8');
+  const transformed = await state.transformIndex(url, source);
+  const descriptor = escapeHtml(JSON.stringify({ status, code, message }));
+
+  return transformed
+    .replace(
+      /(<meta name="smyklot-panel-error" content=")[^"]*(")/u,
+      (_match, head: string, tail: string) => `${head}${descriptor}${tail}`,
+    )
+    .replace(
+      /(<noscript>)[^<]*(<\/noscript>)/u,
+      (_match, head: string, tail: string) =>
+        `${head}${escapeHtml(`${status} - ${message}`)}${tail}`,
+    );
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&#34;')
+    .replaceAll("'", '&#39;');
 }
 
 export default mockServer;

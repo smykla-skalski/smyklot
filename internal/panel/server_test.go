@@ -160,7 +160,7 @@ func newPanelHarnessForSubject(t *testing.T, login, subjectID string) *panelHarn
 		SyncedAt: now,
 	}
 	assets := fstest.MapFS{
-		"index.html":    &fstest.MapFile{Data: []byte(`<!doctype html><meta name="smyklot-panel-base" content="/__smyklot_panel_base__"><meta name="smyklot-panel-version" content="__smyklot_panel_version__"><meta name="smyklot-panel-service" content="__smyklot_panel_service__"><link rel="icon" href="/__smyklot_panel_base__/smyklot-avatar.png?v=__smyklot_panel_version__">`)},
+		"index.html":    &fstest.MapFile{Data: []byte(`<!doctype html><meta name="smyklot-panel-base" content="/__smyklot_panel_base__"><meta name="smyklot-panel-version" content="__smyklot_panel_version__"><meta name="smyklot-panel-service" content="__smyklot_panel_service__"><meta name="smyklot-panel-error" content="__smyklot_panel_error__"><link rel="icon" href="/__smyklot_panel_base__/smyklot-avatar.png?v=__smyklot_panel_version__"><noscript>__smyklot_panel_noscript__</noscript>`)},
 		"assets/app.js": &fstest.MapFile{Data: []byte("export {}")},
 		"sw.js":         &fstest.MapFile{Data: []byte(`const BUILD_VERSION = '__smyklot_panel_version__';`)},
 	}
