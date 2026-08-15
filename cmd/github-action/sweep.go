@@ -367,7 +367,8 @@ func (s *server) sweepRepo(
 	logging.From(ctx).Info("polling PR reactions")
 
 	return processAllPRs(
-		ctx, client, checker, bc, repo.Owner, repo.Name, s.cfg.botUsername, prs, false,
+		ctx, client, checker, bc, repo.Owner, repo.Name, s.cfg.botUsername, prs,
+		s.reactionCommandEnvironment(repositoryStorageID(repo.ID)), false,
 	)
 }
 

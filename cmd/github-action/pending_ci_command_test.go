@@ -88,6 +88,7 @@ func TestPendingCICommandReportsLabelOwnershipReadFailure(t *testing.T) {
 
 func TestPendingCICommandSuppressesStaleCleanupSideEffects(t *testing.T) {
 	t.Parallel()
+	called := false
 	command := pendingCICommand{
 		store: pendingCICommandStoreStub{}, coordinator: newPendingCICoordinator(),
 		repositoryID: "repository:7", sourceCommentID: 101,
@@ -95,12 +96,132 @@ func TestPendingCICommandSuppressesStaleCleanupSideEffects(t *testing.T) {
 		now:  func() time.Time { return time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC) },
 		wake: func() {},
 	}
-	accepted, err := command.cancelPullRequest(t.Context(), 198, "cleanup command")
+	accepted, err := command.cancelAndRun(t.Context(), 198, "cleanup command", func() error {
+		called = true
+
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if accepted {
 		t.Fatal("stale cleanup was accepted")
+	}
+	if called {
+		t.Fatal("stale cleanup ran external side effects")
+	}
+}
+
+func TestPendingCICommandKeepsCleanupUnderRepositoryOwnership(t *testing.T) {
+	t.Parallel()
+	coordinator := newPendingCICoordinator()
+	command := pendingCICommand{
+		store:       pendingCICommandStoreStub{finishResult: &pendingci.Request{ID: 1}},
+		coordinator: coordinator, repositoryID: "repository:7",
+		sourceCommentID: 101, sourceRevision: "2026-08-15T12:00:00Z",
+		sourceSequence: 1, sourceOrder: 1,
+		now:  func() time.Time { return time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC) },
+		wake: func() {},
+	}
+	cleanupStarted := make(chan struct{})
+	releaseCleanup := make(chan struct{})
+	cleanupDone := make(chan error, 1)
+	go func() {
+		_, err := command.cancelAndRun(t.Context(), 198, "cleanup command", func() error {
+			close(cleanupStarted)
+			<-releaseCleanup
+
+			return nil
+		})
+		cleanupDone <- err
+	}()
+	<-cleanupStarted
+
+	replacementAttempted := make(chan struct{})
+	replacementEntered := make(chan struct{})
+	replacementDone := make(chan error, 1)
+	go func() {
+		close(replacementAttempted)
+		replacementDone <- coordinator.Exclusive(
+			t.Context(), "repository:7", func() error {
+				close(replacementEntered)
+
+				return nil
+			},
+		)
+	}()
+	<-replacementAttempted
+	enteredEarly := false
+	select {
+	case <-replacementEntered:
+		enteredEarly = true
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(releaseCleanup)
+	if err := <-cleanupDone; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-replacementDone; err != nil {
+		t.Fatal(err)
+	}
+	if enteredEarly {
+		t.Fatal("replacement entered while cleanup still owned the repository")
+	}
+}
+
+func TestPendingCIReactionCleanupFinishesCurrentRequest(t *testing.T) {
+	t.Parallel()
+	var change pendingci.FinishPRRequest
+	command := pendingCICommand{
+		store: pendingCICommandStoreStub{finish: func(
+			request pendingci.FinishPRRequest,
+		) (*pendingci.Request, error) {
+			change = request
+
+			return &pendingci.Request{ID: 1}, nil
+		}},
+		coordinator: newPendingCICoordinator(), repositoryID: "repository:7",
+		now:  func() time.Time { return time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC) },
+		wake: func() {},
+	}
+	called := false
+	accepted, err := command.cancelAndRun(t.Context(), 198, "cleanup reaction", func() error {
+		called = true
+
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !accepted || !called {
+		t.Fatalf("accepted = %t, cleanup called = %t", accepted, called)
+	}
+	if change.RepositoryID != "repository:7" || change.PullRequest != 198 ||
+		change.Lifecycle != pendingci.LifecycleCancelled || change.Reason != "cleanup reaction" {
+		t.Fatalf("finish request = %+v", change)
+	}
+}
+
+func TestPendingCICleanupWakesDurableCleanupAfterExternalFailure(t *testing.T) {
+	t.Parallel()
+	woke := false
+	externalErr := errors.New("GitHub unavailable")
+	command := pendingCICommand{
+		store:       pendingCICommandStoreStub{finishResult: &pendingci.Request{ID: 1}},
+		coordinator: newPendingCICoordinator(), repositoryID: "repository:7",
+		sourceCommentID: 101, sourceRevision: "2026-08-15T12:00:00Z",
+		sourceSequence: 1, sourceOrder: 1,
+		now:  func() time.Time { return time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC) },
+		wake: func() { woke = true },
+	}
+	_, err := command.cancelAndRun(t.Context(), 198, "cleanup command", func() error {
+		return externalErr
+	})
+	if !errors.Is(err, externalErr) {
+		t.Fatalf("cleanup error = %v, want external failure", err)
+	}
+	if !woke {
+		t.Fatal("durable cleanup was not woken after external failure")
 	}
 }
 
@@ -110,6 +231,7 @@ type pendingCICommandStoreStub struct {
 	armErr       error
 	finishResult *pendingci.Request
 	finishErr    error
+	finish       func(pendingci.FinishPRRequest) (*pendingci.Request, error)
 }
 
 func (store pendingCICommandStoreStub) GetArmed(
@@ -145,8 +267,12 @@ func (store pendingCICommandStoreStub) CancelByIntent(
 }
 
 func (store pendingCICommandStoreStub) FinishPR(
-	context.Context,
-	pendingci.FinishPRRequest,
+	_ context.Context,
+	request pendingci.FinishPRRequest,
 ) (*pendingci.Request, error) {
+	if store.finish != nil {
+		return store.finish(request)
+	}
+
 	return store.finishResult, store.finishErr
 }

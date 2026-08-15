@@ -392,7 +392,9 @@ func executeCommentWithEnvironment(
 	// Handle reaction-based approvals/merges if enabled
 	// Only process reactions if no command was found in the comment
 	if !bc.DisableReactions && !parsedCmd.IsValid {
-		if err := handleReactions(ctx, client, rc, bc, checker, prNum, commentIDNum); err != nil {
+		if err := handleReactions(
+			ctx, client, rc, bc, checker, prNum, commentIDNum, environment,
+		); err != nil {
 			return err
 		}
 		// Reactions have been processed, exit early
@@ -443,21 +445,15 @@ func executeCommentWithEnvironment(
 		case commands.CommandUnapprove:
 			fb, err = executeUnapprove(ctx, client, rc, bc, prNum)
 		case commands.CommandCleanup:
-			if environment.pendingCI != nil {
-				accepted, err := environment.pendingCI.cancelPullRequest(
-					ctx, prNum, "cleanup command",
-				)
-				if err != nil {
-					return err
-				}
-				if !accepted {
-					return nil
-				}
-			}
-			// Cleanup is special - it deletes the comment, so handle immediately
-			fb, err = executeCleanup(ctx, client, rc, bc, prNum, commentIDNum)
+			fb, _, err = executeCoordinatedCleanup(
+				ctx, client, rc, bc, prNum, commentIDNum,
+				"cleanup command", environment,
+			)
 			if err != nil {
 				return err
+			}
+			if fb == nil {
+				return nil
 			}
 			// If cleanup failed, post error feedback before returning
 			if fb.Type == feedback.Error {
@@ -1403,6 +1399,7 @@ func handleReactions(
 	bc *config.Config,
 	checker *permissions.Checker,
 	prNum, commentID int,
+	environment commandEnvironment,
 ) error {
 	// Fetch reactions - use PR reactions if commentID equals prNum (PR description),
 	// otherwise get comment reactions
@@ -1515,7 +1512,9 @@ func handleReactions(
 
 		// Handle cleanup reaction
 		if reaction.Type == github.ReactionCleanup {
-			if err := handleReactionCleanup(ctx, client, rc, bc, prNum, commentID); err != nil {
+			if err := handleReactionCleanup(
+				ctx, client, rc, bc, prNum, commentID, environment,
+			); err != nil {
 				return err
 			}
 		}
@@ -1820,11 +1819,17 @@ func handleReactionCleanup(
 	rc *RuntimeConfig,
 	bc *config.Config,
 	prNum, commentID int,
+	environment commandEnvironment,
 ) error {
-	// Execute cleanup
-	fb, err := executeCleanup(ctx, client, rc, bc, prNum, commentID)
+	fb, accepted, err := executeCoordinatedCleanup(
+		ctx, client, rc, bc, prNum, commentID,
+		"cleanup reaction", environment,
+	)
 	if err != nil {
 		return err
+	}
+	if !accepted {
+		return nil
 	}
 
 	// If cleanup failed, post error feedback
@@ -1843,6 +1848,34 @@ func handleReactionCleanup(
 	)
 
 	return nil
+}
+
+func executeCoordinatedCleanup(
+	ctx context.Context,
+	client *github.Client,
+	rc *RuntimeConfig,
+	bc *config.Config,
+	prNum, commentID int,
+	reason string,
+	environment commandEnvironment,
+) (*feedback.Feedback, bool, error) {
+	var result *feedback.Feedback
+	operation := func() error {
+		var err error
+		result, err = executeCleanup(ctx, client, rc, bc, prNum, commentID)
+
+		return err
+	}
+	if environment.pendingCI == nil {
+		err := operation()
+
+		return result, true, err
+	}
+	accepted, err := environment.pendingCI.cancelAndRun(
+		ctx, prNum, reason, operation,
+	)
+
+	return result, accepted, err
 }
 
 // postNotMergeable posts feedback when PR is not mergeable.

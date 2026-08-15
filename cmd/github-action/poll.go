@@ -113,7 +113,10 @@ func runPoll(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Poll and process all open PRs
-	return pollAllPRs(ctx, client, checker, bc, repoOwner, repoName, rc.BotUsername, true)
+	return pollAllPRs(
+		ctx, client, checker, bc, repoOwner, repoName, rc.BotUsername,
+		commandEnvironment{}, true,
+	)
 }
 
 // loadPollBotConfig loads bot configuration from JSON config and Viper
@@ -250,6 +253,7 @@ func pollAllPRs(
 	bc *config.Config,
 	repoOwner, repoName string,
 	botUsername string,
+	environment commandEnvironment,
 	includePendingCI bool,
 ) error {
 	// Named once, here, so every line below carries the repository without
@@ -265,7 +269,8 @@ func pollAllPRs(
 	}
 
 	return processAllPRs(
-		ctx, client, checker, bc, repoOwner, repoName, botUsername, prs, includePendingCI,
+		ctx, client, checker, bc, repoOwner, repoName, botUsername, prs,
+		environment, includePendingCI,
 	)
 }
 
@@ -276,6 +281,7 @@ func processAllPRs(
 	bc *config.Config,
 	repoOwner, repoName, botUsername string,
 	prs []map[string]interface{},
+	environment commandEnvironment,
 	includePendingCI bool,
 ) error {
 	if len(prs) == 0 {
@@ -288,7 +294,9 @@ func processAllPRs(
 
 	// Process reactions on each PR
 	for _, pr := range prs {
-		if err := processPR(ctx, client, checker, bc, repoOwner, repoName, pr); err != nil {
+		if err := processPR(
+			ctx, client, checker, bc, repoOwner, repoName, pr, environment,
+		); err != nil {
 			logging.From(ctx).Warn("failed to process PR reactions", "error", err)
 		}
 	}
@@ -315,6 +323,7 @@ func processPR(
 	bc *config.Config,
 	repoOwner, repoName string,
 	pr map[string]interface{},
+	environment commandEnvironment,
 ) error {
 	prNumberFloat, ok := pr["number"].(float64)
 	if !ok {
@@ -351,7 +360,9 @@ func processPR(
 
 	// Process reactions if not disabled
 	if !bc.DisableReactions {
-		if err := handleReactions(ctx, client, rc, bc, checker, prNumber, prNumber); err != nil {
+		if err := handleReactions(
+			ctx, client, rc, bc, checker, prNumber, prNumber, environment,
+		); err != nil {
 			return fmt.Errorf("failed to process reactions on PR #%d: %w", prNumber, err)
 		}
 	}

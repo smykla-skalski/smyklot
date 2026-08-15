@@ -17,6 +17,7 @@ type pendingCICommandStore interface {
 	GetArmed(context.Context, string, int) (pendingci.Request, error)
 	CancelBySource(context.Context, pendingci.CancelRequest) (*pendingci.Request, error)
 	CancelByIntent(context.Context, pendingci.CancelIntentRequest) (pendingci.CancelIntentResult, error)
+	FinishPR(context.Context, pendingci.FinishPRRequest) (*pendingci.Request, error)
 }
 
 type pendingCIArtifactOwnership struct {
@@ -151,23 +152,32 @@ func (s *server) cancelEditedPendingCI(
 	return nil
 }
 
-func (command *pendingCICommand) cancelPullRequest(
+// cancelAndRun keeps durable cancellation and its external cleanup in one
+// repository-owned operation. A newer command cannot arm between the two.
+func (command *pendingCICommand) cancelAndRun(
 	ctx context.Context,
 	pullRequest int,
 	reason string,
+	operation func() error,
 ) (bool, error) {
+	if operation == nil {
+		return false, errors.New("pending CI cleanup operation is required")
+	}
 	var result pendingci.CancelIntentResult
 	err := command.coordinator.Exclusive(ctx, command.repositoryID, func() error {
 		var transitionErr error
 		result, transitionErr = command.cancelPullRequestLocked(ctx, pullRequest, reason)
+		if transitionErr != nil || !result.Accepted {
+			return transitionErr
+		}
 
-		return transitionErr
+		return operation()
 	})
-	if err != nil {
-		return false, fmt.Errorf("cancel pending CI command: %w", err)
-	}
 	if result.Request != nil {
 		command.wake()
+	}
+	if err != nil {
+		return false, fmt.Errorf("cancel pending CI command: %w", err)
 	}
 
 	return result.Accepted, nil
@@ -178,12 +188,30 @@ func (command *pendingCICommand) cancelPullRequestLocked(
 	pullRequest int,
 	reason string,
 ) (pendingci.CancelIntentResult, error) {
+	if command.sourceCommentID == 0 {
+		request, err := command.store.FinishPR(ctx, pendingci.FinishPRRequest{
+			RepositoryID: command.repositoryID, PullRequest: pullRequest,
+			Lifecycle: pendingci.LifecycleCancelled,
+			Reason:    reason, FinishedAt: command.now(),
+		})
+
+		return pendingci.CancelIntentResult{Accepted: true, Request: request}, err
+	}
+
 	return command.store.CancelByIntent(ctx, pendingci.CancelIntentRequest{
 		RepositoryID: command.repositoryID, PullRequest: pullRequest,
 		CommentID: command.sourceCommentID, SourceRevision: command.sourceRevision,
 		SourceSequence: command.sourceSequence, SourceOrder: command.sourceOrder,
 		Reason: reason, CancelledAt: command.now(),
 	})
+}
+
+func (s *server) reactionCommandEnvironment(repositoryID string) commandEnvironment {
+	return commandEnvironment{pendingCI: &pendingCICommand{
+		store: s.store, wake: s.pendingCI.Wake,
+		coordinator: s.pendingCICoordinator, repositoryID: repositoryID,
+		now: func() time.Time { return time.Now().UTC() },
+	}}
 }
 
 func (command *pendingCICommand) exclusive(
