@@ -1,4 +1,6 @@
 <script lang="ts">
+  import NightRocket from './NightRocket.svelte';
+
   /**
    * A patch of night sky that opens out from a point and fades into the page.
    *
@@ -12,6 +14,9 @@
   const {
     width = '100vw',
     height = 'clamp(44rem, 480%, 72rem)',
+    rocket = true,
+    rocketSpeed = 70,
+    rocketTrailLife = 7,
   }: {
     /** How far the sky reaches across, before the mask fades it out. */
     width?: string;
@@ -24,6 +29,13 @@
      * window, which is the shape that reads as squashed.
      */
     height?: string;
+    /** The easter egg: a little rocket wandering the sky. */
+    rocket?: boolean;
+    /** Its top speed, in CSS pixels per second; the flight varies its pace
+     * beneath it and never passes it. */
+    rocketSpeed?: number;
+    /** Seconds each dash of its trail stays on the sky before dissolving. */
+    rocketTrailLife?: number;
   } = $props();
 </script>
 
@@ -37,6 +49,11 @@
   <span class="sky-mid"></span>
   <span class="sky-bright"></span>
   <span class="sky-coloured"></span>
+  {#if rocket}
+    <span class="sky-flight">
+      <NightRocket speed={rocketSpeed} trailLife={rocketTrailLife} />
+    </span>
+  {/if}
 </span>
 
 <style>
@@ -155,6 +172,15 @@
     display: block;
     inset: 0;
     position: absolute;
+  }
+
+  /* The rocket flies above the stars but inside the sky's mask, so it fades
+     out with the sky rather than crossing the page - and the sky's own
+     stacking keeps it behind everything laid on top. Its flight band stops
+     short of the bottom: below that line the fade has taken most of the sky,
+     and a rocket spending its life where it cannot be seen is no easter egg. */
+  .night-sky > .sky-flight {
+    inset: 0 0 34% 0;
   }
 
   .sky-deep {
