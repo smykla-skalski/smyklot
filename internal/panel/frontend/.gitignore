@@ -1,4 +1,4 @@
 dist/
-node_modules/
+node_modules
 .smyklot-panel-install.lock/
 .smyklot-panel-install.lock.stale-*

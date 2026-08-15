@@ -11,4 +11,6 @@ internal/panel/frontend/dev/.mock-preferences.json
 internal/panel/frontend/undefined/
 
 # Vitest writes a cache here when it is run from the repo root rather than the frontend.
-node_modules/
+# No trailing slash: that would match directories only, and a symlinked node_modules is a
+# symlink as far as git is concerned, not a directory.
+node_modules
