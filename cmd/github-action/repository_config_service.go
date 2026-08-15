@@ -127,7 +127,9 @@ func (s *server) serviceConfig(
 	client *github.Client,
 	targetID, repositoryID, owner, repositoryName string,
 ) (*config.Config, error) {
-	file, err := s.configs.Get(ctx, client, owner, repositoryName)
+	file, err := s.configs.GetByKey(
+		ctx, client, repositoryID, owner, repositoryName,
+	)
 	if err != nil {
 		return nil, err
 	}

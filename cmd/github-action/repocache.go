@@ -119,8 +119,17 @@ func (c *repoCache[T]) Get(
 	client *github.Client,
 	owner, repo string,
 ) (T, error) {
-	key := repoFullName(owner, repo)
+	return c.GetByKey(ctx, client, repoFullName(owner, repo), owner, repo)
+}
 
+// GetByKey decouples immutable cache identity from mutable GitHub lookup
+// coordinates. Service configuration uses the repository ID so a rename
+// cannot leave a second, stale configuration entry behind.
+func (c *repoCache[T]) GetByKey(
+	ctx context.Context,
+	client *github.Client,
+	key, owner, repo string,
+) (T, error) {
 	value, ok, generation := c.lookupOrBeginLoad(key)
 	if ok {
 		return value, nil
