@@ -101,6 +101,18 @@ type PRInfo struct {
 	BaseBranch string
 }
 
+// PullRequestState is the live state needed by background reconciliation.
+// Unlike PRInfo it deliberately omits reviews and avoids that extra API call.
+type PullRequestState struct {
+	Number     int
+	Open       bool
+	Merged     bool
+	Draft      bool
+	HeadSHA    string
+	BaseBranch string
+	Labels     []string
+}
+
 // ReactionType represents the type of emoji reaction
 type ReactionType string
 
