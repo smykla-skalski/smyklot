@@ -25,7 +25,7 @@ func (s *Server) postRootPendingCICheck(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	now := s.now().UTC()
-	request, err := s.store.CheckNow(r.Context(), pendingci.CheckNowRequest{
+	request, err := s.pendingCI.CheckNow(r.Context(), pendingci.CheckNowRequest{
 		ID: id, ExpectedRevision: revision,
 		EventKey:   fmt.Sprintf("panel:%s:check:%d", account.ID, now.UnixNano()),
 		OccurredAt: now,
@@ -34,7 +34,7 @@ func (s *Server) postRootPendingCICheck(w http.ResponseWriter, r *http.Request) 
 		s.writeStorageError(w, err)
 		return
 	}
-	s.wakePendingCI()
+	s.announcePendingCIChange()
 	writeJSON(w, http.StatusOK, pendingCIQueueDTO([]pendingci.Request{request})[0])
 }
 
@@ -51,7 +51,7 @@ func (s *Server) deleteRootPendingCI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := s.now().UTC()
-	request, err := s.store.Finish(r.Context(), pendingci.FinishRequest{
+	request, err := s.pendingCI.Cancel(r.Context(), pendingci.FinishRequest{
 		ID: id, ExpectedRevision: revision, Lifecycle: pendingci.LifecycleCancelled,
 		Reason: "cancelled by panel user @" + account.Login, FinishedAt: now,
 	})
@@ -59,7 +59,7 @@ func (s *Server) deleteRootPendingCI(w http.ResponseWriter, r *http.Request) {
 		s.writeStorageError(w, err)
 		return
 	}
-	s.wakePendingCI()
+	s.announcePendingCIChange()
 	writeJSON(w, http.StatusOK, pendingCIQueueDTO([]pendingci.Request{request})[0])
 }
 
@@ -84,9 +84,6 @@ func (s *Server) pendingCIChange(
 	return id, *input.ExpectedRevision, true
 }
 
-func (s *Server) wakePendingCI() {
-	if s.pendingCI != nil {
-		s.pendingCI.Wake()
-	}
+func (s *Server) announcePendingCIChange() {
 	s.events.announce(panelEvent{Type: panelEventResync})
 }

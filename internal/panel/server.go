@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 )
 
@@ -33,10 +34,11 @@ type RuntimeController interface {
 	ApplyRuntimeSettings(RuntimeValues)
 }
 
-// PendingCIController wakes the service scheduler after an operator changes
-// durable queue state. The panel does not own reconciliation policy.
+// PendingCIController applies operator transitions without exposing service
+// coordination or reconciliation policy to the panel.
 type PendingCIController interface {
-	Wake()
+	CheckNow(context.Context, pendingci.CheckNowRequest) (pendingci.Request, error)
+	Cancel(context.Context, pendingci.FinishRequest) (pendingci.Request, error)
 }
 
 // Dependencies are the service capabilities used by panel handlers.
@@ -78,9 +80,9 @@ func New(cfg Config, deps Dependencies) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	if deps.Store == nil || deps.Catalog == nil || deps.Users == nil {
+	if deps.Store == nil || deps.Catalog == nil || deps.Users == nil || deps.PendingCI == nil {
 		return nil, fmt.Errorf(
-			"%w: storage, catalog sync, and user lookup are required",
+			"%w: storage, catalog sync, user lookup, and pending CI control are required",
 			errInvalidConfig,
 		)
 	}

@@ -146,6 +146,11 @@ WHERE repository_id = ? AND pull_request = ? AND lifecycle = ?`,
 	return request, nil
 }
 
+// Get returns one pending-CI request regardless of its lifecycle.
+func (s *Store) Get(ctx context.Context, id int64) (pendingci.Request, error) {
+	return s.getPendingCI(ctx, id)
+}
+
 // LeaseDue reserves one due request and increments its optimistic revision.
 func (s *Store) LeaseDue(
 	ctx context.Context,

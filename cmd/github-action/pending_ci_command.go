@@ -2,18 +2,47 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
+	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/github"
 	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
 
 type pendingCICommandStore interface {
 	Arm(context.Context, pendingci.ArmRequest) (pendingci.ArmResult, error)
+	GetArmed(context.Context, string, int) (pendingci.Request, error)
 	CancelBySource(context.Context, pendingci.CancelRequest) (*pendingci.Request, error)
 	FinishPR(context.Context, pendingci.FinishPRRequest) (*pendingci.Request, error)
+}
+
+type pendingCIArtifactOwnership struct {
+	label    bool
+	reaction bool
+}
+
+func (command *pendingCICommand) armedArtifactOwnership(
+	ctx context.Context,
+	pullRequest int,
+	label string,
+	commentID int,
+) (pendingCIArtifactOwnership, error) {
+	request, err := command.store.GetArmed(ctx, command.repositoryID, pullRequest)
+	if errors.Is(err, storage.ErrNotFound) {
+		return pendingCIArtifactOwnership{}, nil
+	}
+	if err != nil {
+		return pendingCIArtifactOwnership{}, fmt.Errorf(
+			"read pending CI artifact owner: %w", err,
+		)
+	}
+
+	return pendingCIArtifactOwnership{
+		label: request.Label == label, reaction: request.SourceCommentID == int64(commentID),
+	}, nil
 }
 
 type commandEnvironment struct {

@@ -19,7 +19,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/pkg/commands"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/feedback"
@@ -986,18 +985,11 @@ func executePendingCIMerge(
 	// The Action has no durable reconciler, so it evaluates immediately and
 	// leaves a label for its scheduled poll. The service always records the
 	// request and lets its reconciler enforce the green quiet period.
-	var requiredChecks []github.RequiredCheck
-	if requiredChecksOnly && info.BaseBranch == "" {
-		return feedback.NewMergeFailed("cannot resolve the base branch for required checks"), nil
-	}
-	if requiredChecksOnly {
-		requiredChecks, err = client.GetRequiredStatusChecks(ctx, rc.RepoOwner, rc.RepoName, info.BaseBranch)
-		if err != nil {
-			return feedback.NewMergeFailed("failed to get required checks: " + err.Error()), nil
-		}
-		if len(requiredChecks) == 0 {
-			return feedback.NewMergeFailed("the base branch has no required status checks"), nil
-		}
+	requiredChecks, err := pendingCIRequiredChecks(
+		ctx, client, rc.RepoOwner, rc.RepoName, info.BaseBranch, requiredChecksOnly,
+	)
+	if err != nil {
+		return feedback.NewMergeFailed(err.Error()), nil
 	}
 
 	if environment.pendingCI == nil {
@@ -1012,86 +1004,38 @@ func executePendingCIMerge(
 		}
 	}
 
-	// CI is pending - approve the PR and set up waiting state
-
-	// Prevent self-approval unless explicitly allowed
-	if !bc.AllowSelfApproval && info.Author == rc.CommentAuthor {
-		return feedback.NewUnauthorized(
-			rc.CommentAuthor,
-			[]string{selfApprovalNotAllowed},
-		), nil
+	if failure := preparePendingCIApproval(ctx, client, rc, bc, prNum, info); failure != nil {
+		return failure, nil
 	}
-
-	// Check if bot already approved the PR
-	botAlreadyApproved := isBotAlreadyApproved(info, rc.BotUsername)
-
-	// Check if user already approved the PR
-	userAlreadyApproved := false
-	for _, approver := range info.ApprovedBy {
-		if approver == rc.CommentAuthor {
-			userAlreadyApproved = true
-
-			break
-		}
-	}
-
-	// Approve the PR if neither bot nor user has already approved
-	if !botAlreadyApproved && !userAlreadyApproved {
-		if err := client.ApprovePR(ctx, rc.RepoOwner, rc.RepoName, prNum); err != nil {
-			return feedback.NewApprovalFailed(err.Error()), nil
-		}
-	}
-
-	// Add hourglass reaction to indicate waiting state
-	_ = client.AddReaction(
-		ctx,
-		rc.RepoOwner,
-		rc.RepoName,
-		commentID,
-		github.ReactionPendingCI,
-	)
 
 	// Add pending-ci label with merge method and required flag
 	label := getPendingCILabel(method, requiredChecksOnly)
 	if environment.pendingCI == nil {
+		_ = client.AddReaction(
+			ctx, rc.RepoOwner, rc.RepoName, commentID, github.ReactionPendingCI,
+		)
 		if err := client.AddLabel(ctx, rc.RepoOwner, rc.RepoName, prNum, label); err != nil {
 			return feedback.NewMergeFailed("failed to record the pending CI request: " + err.Error()), nil
 		}
 	} else {
-		var labelErr, commandErr error
-		coordinationErr := environment.pendingCI.exclusive(ctx, func() error {
-			labelErr = client.AddLabel(ctx, rc.RepoOwner, rc.RepoName, prNum, label)
-			if labelErr != nil {
-				return nil
-			}
-			var superseded *pendingci.Request
-			superseded, commandErr = environment.pendingCI.arm(
-				ctx, rc, prNum, commentID, headRef, info.BaseBranch, method,
-				requiredChecksOnly, label,
-			)
-			if commandErr != nil {
-				_ = client.RemoveLabel(ctx, rc.RepoOwner, rc.RepoName, prNum, label)
-
-				return nil
-			}
-			if superseded != nil && superseded.Label != label {
-				_ = client.RemoveLabel(
-					ctx, rc.RepoOwner, rc.RepoName, prNum, superseded.Label,
-				)
-			}
-
-			return nil
-		})
+		failures, coordinationErr := activatePendingCI(
+			ctx, client, environment.pendingCI, pendingCIActivationRequest{
+				runtime: rc, owner: rc.RepoOwner, repository: rc.RepoName,
+				pullRequest: prNum, commentID: commentID, headSHA: headRef,
+				baseBranch: info.BaseBranch, method: method,
+				requiredChecksOnly: requiredChecksOnly, label: label,
+			},
+		)
 		if coordinationErr != nil {
 			return nil, coordinationErr
 		}
-		if labelErr != nil {
+		if failures.label != nil {
 			return feedback.NewMergeFailed(
-				"failed to record the pending CI request: " + labelErr.Error(),
+				"failed to record the pending CI request: " + failures.label.Error(),
 			), nil
 		}
-		if commandErr != nil {
-			return nil, commandErr
+		if failures.command != nil {
+			return nil, failures.command
 		}
 	}
 

@@ -39,6 +39,9 @@ var _ = Describe("pending CI storage [Unit]", func() {
 	It("keeps only the latest command armed and prevents stale workers from overwriting events", func() {
 		first, err := store.Arm(ctx, pendingCITestArm(now, 101, "sha-1"))
 		Expect(err).NotTo(HaveOccurred())
+		stored, err := store.Get(ctx, first.Request.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(stored).To(Equal(first.Request))
 		Expect(first.Superseded).To(BeNil())
 		Expect(first.Request.Revision).To(Equal(int64(1)))
 

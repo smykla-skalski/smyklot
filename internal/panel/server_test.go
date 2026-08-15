@@ -53,11 +53,32 @@ type fakeRuntimeController struct {
 }
 
 type fakePendingCIController struct {
+	store storage.Store
 	wakes int
 }
 
-func (controller *fakePendingCIController) Wake() {
-	controller.wakes++
+func (controller *fakePendingCIController) CheckNow(
+	ctx context.Context,
+	change pendingci.CheckNowRequest,
+) (pendingci.Request, error) {
+	request, err := controller.store.CheckNow(ctx, change)
+	if err == nil {
+		controller.wakes++
+	}
+
+	return request, err
+}
+
+func (controller *fakePendingCIController) Cancel(
+	ctx context.Context,
+	change pendingci.FinishRequest,
+) (pendingci.Request, error) {
+	request, err := controller.store.Finish(ctx, change)
+	if err == nil {
+		controller.wakes++
+	}
+
+	return request, err
 }
 
 func (f *fakeRuntimeController) ApplyRuntimeSettings(values RuntimeValues) {
@@ -149,7 +170,7 @@ func newPanelHarnessForSubject(t *testing.T, login, subjectID string) *panelHarn
 	}
 	random := bytes.NewReader(randomBytes)
 	runtime := &fakeRuntimeController{}
-	pendingCIController := &fakePendingCIController{}
+	pendingCIController := &fakePendingCIController{store: store}
 	server, err := New(Config{
 		BasePath:                 "/panel",
 		PublicOrigin:             "https://smyklot.example",

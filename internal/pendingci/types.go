@@ -234,6 +234,7 @@ type Decision struct {
 // GitHub observations and presentation.
 type Store interface {
 	Arm(context.Context, ArmRequest) (ArmResult, error)
+	Get(context.Context, int64) (Request, error)
 	GetArmed(context.Context, string, int) (Request, error)
 	LeaseDue(context.Context, time.Time, time.Time) (LeaseResult, error)
 	Wake(context.Context, WakeRequest) (bool, error)
