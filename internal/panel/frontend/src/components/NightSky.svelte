@@ -1,4 +1,5 @@
 <script lang="ts">
+  import NightAstronaut from './NightAstronaut.svelte';
   import NightRocket from './NightRocket.svelte';
 
   /**
@@ -17,6 +18,7 @@
     rocket = true,
     rocketSpeed = 70,
     rocketTrailLife = 7,
+    astronaut = true,
   }: {
     /** How far the sky reaches across, before the mask fades it out. */
     width?: string;
@@ -36,6 +38,8 @@
     rocketSpeed?: number;
     /** Seconds each dash of its trail stays on the sky before dissolving. */
     rocketTrailLife?: number;
+    /** The rarer easter egg: an astronaut adrift, tumbling across the sky. */
+    astronaut?: boolean;
   } = $props();
 </script>
 
@@ -49,9 +53,17 @@
   <span class="sky-mid"></span>
   <span class="sky-bright"></span>
   <span class="sky-coloured"></span>
-  {#if rocket}
+  {#if rocket || astronaut}
     <span class="sky-flight">
-      <NightRocket speed={rocketSpeed} trailLife={rocketTrailLife} />
+      {#if rocket}
+        <NightRocket speed={rocketSpeed} trailLife={rocketTrailLife} />
+      {/if}
+      {#if astronaut}
+        <!-- No bottom crossings: the band's bottom edge lies mid-page, and a
+           crossing may only appear and disappear off screen. The other three
+           edges of the band all lie past the window. -->
+        <NightAstronaut edges={['left', 'right', 'top']} />
+      {/if}
     </span>
   {/if}
 </span>
@@ -174,13 +186,20 @@
     position: absolute;
   }
 
-  /* The rocket flies above the stars but inside the sky's mask, so it fades
-     out with the sky rather than crossing the page - and the sky's own
-     stacking keeps it behind everything laid on top. Its flight band stops
+  /* The easter eggs fly above the stars but inside the sky's mask, so they
+     fade out with the sky rather than crossing the page - and the sky's own
+     stacking keeps them behind everything laid on top. The flight band stops
      short of the bottom: below that line the fade has taken most of the sky,
-     and a rocket spending its life where it cannot be seen is no easter egg. */
+     and a rocket spending its life where it cannot be seen is no easter egg.
+     The canvases lie on top of one another; stacked in flow, the second
+     would sit below the band instead of over it. */
   .night-sky > .sky-flight {
     inset: 0 0 34% 0;
+  }
+
+  .sky-flight > :global(canvas) {
+    inset: 0;
+    position: absolute;
   }
 
   .sky-deep {
