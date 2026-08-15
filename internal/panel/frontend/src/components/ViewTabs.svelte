@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tick } from 'svelte';
+
   import {
     panelViewSection,
     routeSegmentLabel,
@@ -126,29 +128,83 @@
    * one place and vanished from another with nothing connecting the two. One element that slides
    * says where the selection went; two that swap grounds only say that something changed.
    */
+  /**
+   * The selected row's ground, kept under whichever row is current.
+   *
+   * Everything here is driven by explicit state rather than by the style engine. The fret used to
+   * be `:has(a:not(.active):active)`, which asks the browser to re-evaluate an ancestor selector on
+   * every pointer state change in the subtree, and the move used to be scheduled through a pair of
+   * animation frames that a ResizeObserver tick could cancel out from under it - so a click that
+   * landed while the sidebar was still settling produced no movement at all. Now a pointer handler
+   * owns the fret, and each placement is a numbered job where only the newest may finish.
+   */
   function followSelection(node: HTMLElement, current: string) {
-    let frame: number | undefined;
     let selection = current;
+    /** Where the thumb is parked, in the list's own coordinates. */
     let restingTop: number | null = null;
+    let travelling: Animation | null = null;
+    let fretting: Animation | null = null;
+    let fretTimer: ReturnType<typeof setTimeout> | undefined;
+    let job = 0;
+
+    const still = (): boolean => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const thumbOf = (): HTMLElement | null => node.querySelector<HTMLElement>('.nav-thumb');
+
+    /** How far the thumb currently sits from its parked position, mid-flight included. */
+    function offsetNow(thumb: HTMLElement): number {
+      const matrix = new DOMMatrixReadOnly(getComputedStyle(thumb).transform);
+      return matrix.f;
+    }
+
+    function stopFret(): void {
+      clearTimeout(fretTimer);
+      fretTimer = undefined;
+      fretting?.cancel();
+      fretting = null;
+    }
+
+    /**
+     * Held down on a row that is not the selected one, the selection frets.
+     *
+     * After 120ms, so an ordinary click never sets it off: holding is the only time the question
+     * of whether this is about to be taken away stays open long enough to be worth answering.
+     */
+    function beginFret(): void {
+      const thumb = thumbOf();
+      if (thumb === null || still() || travelling !== null) return;
+      fretting = thumb.animate(
+        [
+          { transform: 'translateX(0) rotate(0deg)' },
+          { offset: 0.25, transform: 'translateX(-1.6px) rotate(-0.35deg)' },
+          { offset: 0.75, transform: 'translateX(1.6px) rotate(0.35deg)' },
+          { transform: 'translateX(0) rotate(0deg)' },
+        ],
+        { duration: 200, iterations: Infinity, easing: 'ease-in-out' },
+      );
+    }
+
+    function pointerDown(event: PointerEvent): void {
+      stopFret();
+      const row = (event.target as Element | null)?.closest?.('a');
+      if (row === null || row === undefined || row.classList.contains('active')) return;
+      if (!node.contains(row)) return;
+      fretTimer = setTimeout(beginFret, 120);
+    }
 
     /**
      * The thumb gathers itself before it goes, and lands a little past where it is going.
      *
-     * A move that is only ease-out arrives correctly and says nothing on the way. This pulls back
-     * a sixteenth of the distance first and shrinks while it does - the wind-up that tells you it
-     * is about to leave - carries slightly past its destination, then settles and grows back.
-     *
      * The wind-up is 28ms of the 280. Any longer and the control reads as slow to answer rather
      * than as gathering itself: the first thing that happens after a click has to be movement, and
-     * a wind-up the eye can time is read as lag. Position is set immediately and the travel drawn
-     * as a transform, so nothing here has to be undone if the selection changes again mid-flight.
+     * a wind-up the eye can time is read as lag.
+     *
+     * `distance` is measured from where the thumb *is*, not from where it was parked, so a click
+     * that interrupts a move continues from the position on screen instead of snapping back.
      */
-    function travel(thumb: HTMLElement, from: number, to: number): void {
-      const distance = from - to;
-      if (Math.abs(distance) < 1) return;
-      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-      thumb.getAnimations().forEach((animation) => animation.cancel());
-      thumb.animate(
+    function travel(thumb: HTMLElement, distance: number): void {
+      if (Math.abs(distance) < 1 || still()) return;
+      travelling?.cancel();
+      travelling = thumb.animate(
         [
           {
             transform: `translateY(${distance}px) scale(1)`,
@@ -173,37 +229,53 @@
         ],
         { duration: 280, fill: 'none' },
       );
+      const mine = travelling;
+      const settle = (): void => {
+        if (travelling === mine) travelling = null;
+      };
+      mine.addEventListener('finish', settle);
+      mine.addEventListener('cancel', settle);
     }
 
-    function place(moved: boolean): void {
-      if (frame !== undefined) cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        frame = requestAnimationFrame(() => {
-          frame = undefined;
-          const active = node.querySelector<HTMLElement>('a.active');
-          const thumb = node.querySelector<HTMLElement>('.nav-thumb');
-          if (active === null) {
-            node.style.setProperty('--nav-thumb-height', '0px');
-            node.classList.remove('thumb-ready');
-            restingTop = null;
-            return;
-          }
-          const top = active.offsetTop;
-          node.style.setProperty('--nav-thumb-top', `${top}px`);
-          node.style.setProperty('--nav-thumb-height', `${active.offsetHeight}px`);
-          const first = !node.classList.contains('thumb-ready');
-          node.classList.add('thumb-ready');
-          if (moved && !first && thumb !== null && restingTop !== null) {
-            travel(thumb, restingTop, top);
-          }
-          restingTop = top;
-        });
-      });
+    /**
+     * Measure and park the thumb. `moved` asks for the travel; a resize never does.
+     *
+     * Numbered so a placement queued behind a newer one cannot land after it: the old job returns
+     * without touching anything rather than writing a stale position.
+     */
+    async function place(moved: boolean): Promise<void> {
+      const mine = ++job;
+      await tick();
+      if (mine !== job) return;
+      const active = node.querySelector<HTMLElement>('a.active');
+      const thumb = thumbOf();
+      if (active === null || thumb === null) {
+        node.style.setProperty('--nav-thumb-height', '0px');
+        node.classList.remove('thumb-ready');
+        restingTop = null;
+        return;
+      }
+      const top = active.offsetTop;
+      const parked = node.classList.contains('thumb-ready');
+      const from = parked && restingTop !== null ? restingTop + offsetNow(thumb) : top;
+      node.style.setProperty('--nav-thumb-top', `${top}px`);
+      node.style.setProperty('--nav-thumb-height', `${active.offsetHeight}px`);
+      node.classList.add('thumb-ready');
+      restingTop = top;
+      if (moved && parked) {
+        stopFret();
+        travel(thumb, from - top);
+      }
     }
 
-    place(false);
+    void place(false);
+    node.addEventListener('pointerdown', pointerDown);
+    node.addEventListener('pointerup', stopFret);
+    node.addEventListener('pointercancel', stopFret);
+    node.addEventListener('pointerleave', stopFret);
+    window.addEventListener('blur', stopFret);
     // A width change is not a move: collapsing the sidebar re-measures without anything travelling.
-    const resize = new ResizeObserver(() => place(false));
+    const resize = new ResizeObserver(() => void place(false));
     resize.observe(node);
 
     return {
@@ -212,11 +284,17 @@
         const moved =
           next.split(':').slice(0, 3).join(':') !== selection.split(':').slice(0, 3).join(':');
         selection = next;
-        place(moved);
+        void place(moved);
       },
       destroy() {
         resize.disconnect();
-        if (frame !== undefined) cancelAnimationFrame(frame);
+        stopFret();
+        travelling?.cancel();
+        node.removeEventListener('pointerdown', pointerDown);
+        node.removeEventListener('pointerup', stopFret);
+        node.removeEventListener('pointercancel', stopFret);
+        node.removeEventListener('pointerleave', stopFret);
+        window.removeEventListener('blur', stopFret);
       },
     };
   }
@@ -381,35 +459,6 @@
   /* Until the first measurement lands there is nothing to travel from. */
   .view-links:not(.thumb-ready) .nav-thumb {
     transition: none;
-  }
-
-  /* Held down on a row that is not the selected one, the selection starts to fret. It begins after
-     120ms so an ordinary click never sets it off - only holding, which is the only time the
-     question "is this about to be taken from me" stays open. The travel is a script animation,
-     which outranks a CSS one, so the move replaces the fretting rather than fighting it. */
-  .view-links:has(a:not(.active):active) .nav-thumb {
-    animation: nav-thumb-fret 200ms 120ms ease-in-out infinite;
-  }
-
-  @keyframes nav-thumb-fret {
-    0%,
-    100% {
-      transform: translateX(0) rotate(0deg);
-    }
-
-    25% {
-      transform: translateX(-1.6px) rotate(-0.35deg);
-    }
-
-    75% {
-      transform: translateX(1.6px) rotate(0.35deg);
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .view-links:has(a:not(.active):active) .nav-thumb {
-      animation: none;
-    }
   }
 
   .view-links:has(a.active:hover) .nav-thumb {

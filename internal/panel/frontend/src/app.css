@@ -269,7 +269,10 @@
   --icon-lg: 1.375rem;
   --sidebar-width: 15rem;
   --sidebar-width-collapsed: 4.5rem;
-  --content-max: 100rem;
+  /* 1120px, the column the design draws inside its pane. Capped rather than proportional: at
+     100rem the pane kept growing with the display and every card in it grew with the pane, so a
+     wide monitor produced lines nobody wants to read and tables with acres between columns. */
+  --content-max: 70rem;
   --panel-header-height: 5rem;
   --pagination-height: 2.75rem;
   /* One press, everywhere: the control shrinks toward its own centre, which is what reads as
