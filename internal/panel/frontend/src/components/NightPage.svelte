@@ -32,6 +32,7 @@
     documentTitle,
     build,
     busy = false,
+    size = 'default',
     themeChoice = true,
     children,
   }: {
@@ -42,6 +43,13 @@
     build: PanelBuild;
     /** Marks the card busy and shows the progress cursor over it. */
     busy?: boolean;
+    /**
+     * How much room the card is given. `compact` is for a card that holds a
+     * sentence and a button rather than a set of facts: the column narrows and the
+     * floor drops, so a short card reads as deliberately small instead of as a
+     * full-width one that came up short.
+     */
+    size?: 'default' | 'compact';
     /**
      * Whether the page offers a theme switch. A page without one follows the
      * system instead, which is what an error page does: there is nothing on it to
@@ -54,6 +62,22 @@
   /* The mark's size. Large enough to be the page's subject rather than a badge on
      it, which is what the sky is drawn around. */
   const MARK_SIZE = 104;
+
+  /* The sky measures itself against the gap above the card, and a compact card
+     leaves a much larger one, so the same percentage reaches further down and
+     the fade ends up under the footer rather than above it: at 1280x900 the
+     invitation's sky finishes 79px above the footer and the compact page's
+     finished 120px below it, taking the footer's host line to 4.12:1.
+     It is squeezed from both ends. The title is light ink and needs dark sky
+     behind it, the footer is dark ink and needs to be clear of the fade, and a
+     short card puts the two closer together than any other page does. Swept
+     200-480% against both, in light, at 390x844, 768x700, 1280x900 and
+     1920x1200: below 350% the title falls to 3.32:1 on a phone, the 480% default
+     drops the footer to 4.12:1, and 400% is the one value where everything
+     clears - worst case 4.63:1.
+     `undefined` leaves NightSky's own default, so the pages that want it keep
+     the number in one place. */
+  const skyHeight = $derived(size === 'compact' ? 'clamp(44rem, 400%, 72rem)' : undefined);
 
   /* Which of the two the page is, decided once. A page does not change its mind
      about whether it carries a switch, and only one of the two things below should
@@ -110,9 +134,9 @@
   <title>{documentTitle} | SMYKLOT</title>
 </svelte:head>
 
-<main class="shell night-shell">
+<main class={['shell', 'night-shell', size === 'compact' && 'night-compact']}>
   <div class="night-brand">
-    <NightSky />
+    <NightSky height={skyHeight} />
     <BrandMark stacked size={MARK_SIZE} />
   </div>
 
@@ -156,13 +180,27 @@
        whole page and it is not what the reader came for, so it steps back from
        the title it shares a row with rather than matching it. */
     --night-switch-height: 1.75rem;
+    /* The two numbers `size` sets, kept together so the pair stays a pair: a
+       narrow column with a tall floor is a card with a hole in it, and a wide one
+       with a short floor is a letterbox. */
+    --night-column: 42rem;
+    --night-card-floor: 19rem;
 
     display: grid;
     grid-template-rows: 1fr auto 1fr;
-    max-width: 42rem;
+    max-width: var(--night-column);
     min-height: 100dvh;
     padding-block: var(--space-6);
     row-gap: var(--space-6);
+  }
+
+  /* A card holding one sentence and one button. Narrow enough that the button is
+     never marooned at the end of a line it could have shared, and short enough
+     that the card is not mostly air - which is what the default floor, sized for
+     an invitation's four rows of facts, would leave it. */
+  .night-compact {
+    --night-column: 30rem;
+    --night-card-floor: 0;
   }
 
   /* Stretched to fill its row rather than centred inside it, so the element's own
@@ -274,7 +312,7 @@
     border-color: var(--dialog-border);
     box-shadow: var(--shadow-plate);
     margin-bottom: 0;
-    min-height: 19rem;
+    min-height: var(--night-card-floor);
   }
 
   :global(:root[data-theme='dark']) .night-card {

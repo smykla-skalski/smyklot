@@ -8,7 +8,7 @@
   import RootInstallations from './components/RootInstallations.svelte';
   import RootOverview from './components/RootOverview.svelte';
   import RootSettings from './components/RootSettings.svelte';
-  import SignedOut from './components/SignedOut.svelte';
+  import SignInPage from './components/SignInPage.svelte';
   import TargetSettings from './components/TargetSettings.svelte';
   import UserManagement from './components/UserManagement.svelte';
   import type { PanelApi } from './lib/api';
@@ -20,6 +20,7 @@
     isThemeDisplay,
     type ThemeDisplay,
   } from './lib/preferences';
+  import type { SessionEnded } from './lib/panel-session';
   import { createPrefsSync, prefText } from './lib/preferences-sync';
   import {
     panelDocumentTitle,
@@ -71,7 +72,10 @@
      reader was on rather than snapping back to Audit. */
   let historySection = $state<HistorySection>('audit');
   let streamReady = $state(false);
-  let revokedReason = $state<string | null>(null);
+  /* Why the session went, when it went while someone was using it. Kept as the
+     code as well as the words, because pressing Sign out and having an account
+     removed are not the same event and must not read as the same page. */
+  let sessionEnded = $state<SessionEnded | null>(null);
   const prefs = createPrefsSync();
 
   function storedTheme(): ThemeDisplay {
@@ -113,6 +117,10 @@
       ),
     ),
   );
+  /* There is a panel to show only once the viewer is known. Waiting counts as
+     neither, so the shell holds until then rather than flashing a front door at
+     someone who turns out to have a session. */
+  const signedOut = $derived(!loading && viewer === null && failure === null);
   const returnTarget = $derived(selectedTarget ?? targets[0] ?? null);
   const tableScrollView = $derived(
     rootMode
@@ -171,6 +179,8 @@
         selectedId = null;
         return;
       }
+      // Signed in again, so whatever ended the last session is history.
+      sessionEnded = null;
       prefs.adoptAccount(viewer.account.id);
       if (!(await refreshTargets())) return;
       await activateRoute(router.current(), 'replace');
@@ -460,7 +470,9 @@
         const currentViewer = await api.fetchViewer();
         if (!streamRefreshes.isCurrent(refresh)) return;
         if (currentViewer === null) {
-          revokeAccess('Your panel access was revoked');
+          // The stream said something changed and the session went with it, so this
+          // is what the panel worked out rather than what it was told.
+          revokeAccess({ code: 'access_revoked', reason: '' });
           return;
         }
         viewer = currentViewer;
@@ -516,8 +528,8 @@
     return candidate === 'users' || candidate === 'invitations';
   }
 
-  function revokeAccess(reason: string): void {
-    revokedReason = reason;
+  function revokeAccess(ended: SessionEnded): void {
+    sessionEnded = ended;
     viewer = null;
     targets = [];
     selectedId = null;
@@ -533,7 +545,7 @@
         onResync: refreshAccessFromStream,
         onChange: (event) =>
           event.type === 'access.changed' ? refreshAccessFromStream() : refreshFromStreamSafely(),
-        onRevoked: (event) => revokeAccess(event.reason),
+        onRevoked: (event) => revokeAccess(event),
         onPrefsReady: (info) => prefs.onPrefsReady(info),
         onPrefsChanged: (event) => prefs.onPrefsChanged(event),
         onPrefsRejected: (keys) => prefs.onPrefsRejected(keys),
@@ -569,6 +581,11 @@
     failure = null;
     try {
       await api.signOut();
+      /* Set here rather than left to the revocation the server broadcasts. The
+         socket is closing at the same moment, so whether that event arrives is a
+         race, and losing it would land someone on the page that greets a stranger
+         straight after they pressed Sign out. */
+      sessionEnded = { code: 'signed_out', reason: 'You signed out' };
       viewer = null;
       targets = [];
       selectedId = null;
@@ -611,237 +628,246 @@
   void load();
 </script>
 
+<!-- The block goes inside the head rather than the head inside a block, which
+     Svelte does not allow. The sign-in page names the document itself, so this
+     stands down rather than leaving two titles to fight over the tab. -->
 <svelte:head>
-  <title>{documentTitle}</title>
+  {#if !signedOut}
+    <title>{documentTitle}</title>
+  {/if}
 </svelte:head>
 
-<a class="skip-link" href="#panel-content">Skip to panel content</a>
+<!-- Nobody to show a panel to, so there is no panel: the sign-in page takes the
+     whole window rather than sitting in a workspace beside an empty sidebar. A
+     load failure keeps the shell, because its retry is the way out of it and the
+     night page has nowhere to put one. -->
+{#if signedOut}
+  <SignInPage {api} {build} ended={sessionEnded} />
+{:else}
+  <a class="skip-link" href="#panel-content">Skip to panel content</a>
 
-<main
-  class="app-shell"
-  class:sidebar-collapsed={effectiveSidebarCollapsed}
-  class:root-mode={rootMode}
->
-  <IdentityBar
-    bind:this={identityBar}
-    {viewer}
-    {targets}
-    {selectedId}
-    {targetHref}
-    onSelectTarget={(targetId) => void selectTarget(targetId)}
-    onSignOut={signOut}
-    {view}
-    {viewHref}
-    onSelectView={selectView}
-    showUsers={selectedTarget?.capabilities.manage_target_users === true}
-    showNavigation={viewer !== null && (rootMode || selectedTarget !== null)}
-    collapsed={effectiveSidebarCollapsed}
-    onToggleCollapsed={toggleSidebar}
-    {theme}
-    onSelectTheme={selectTheme}
-    {rootMode}
-    {rootValue}
-    {rootHrefFor}
-    onSelectRoot={selectRootSection}
-    rootDashboardHref={rootDashboardHref()}
-    onEnterRoot={enterRoot}
-    returnHref={returnHref()}
-    onReturnToPanel={returnToPanel}
-    fetchNotifications={api.fetchNotifications}
-    markNotificationRead={api.markNotificationRead}
-    {notificationVersion}
-  />
+  <main
+    class="app-shell"
+    class:sidebar-collapsed={effectiveSidebarCollapsed}
+    class:root-mode={rootMode}
+  >
+    <IdentityBar
+      bind:this={identityBar}
+      {viewer}
+      {targets}
+      {selectedId}
+      {targetHref}
+      onSelectTarget={(targetId) => void selectTarget(targetId)}
+      onSignOut={signOut}
+      {view}
+      {viewHref}
+      onSelectView={selectView}
+      showUsers={selectedTarget?.capabilities.manage_target_users === true}
+      showNavigation={viewer !== null && (rootMode || selectedTarget !== null)}
+      collapsed={effectiveSidebarCollapsed}
+      onToggleCollapsed={toggleSidebar}
+      {theme}
+      onSelectTheme={selectTheme}
+      {rootMode}
+      {rootValue}
+      {rootHrefFor}
+      onSelectRoot={selectRootSection}
+      rootDashboardHref={rootDashboardHref()}
+      onEnterRoot={enterRoot}
+      returnHref={returnHref()}
+      onReturnToPanel={returnToPanel}
+      fetchNotifications={api.fetchNotifications}
+      markNotificationRead={api.markNotificationRead}
+      {notificationVersion}
+    />
 
-  <div class="workspace" class:table-scroll-view={tableScrollView} onwheel={forwardTableWheel}>
-    <div id="panel-content" class="workspace-content" tabindex="-1">
-      {#if failure !== null}
-        <Plate label="Problem" tone="alarm">
-          <p>{failure.message}</p>
-          <button class="btn" onclick={load}>Try again</button>
-        </Plate>
-      {/if}
+    <div class="workspace" class:table-scroll-view={tableScrollView} onwheel={forwardTableWheel}>
+      <div id="panel-content" class="workspace-content" tabindex="-1">
+        {#if failure !== null}
+          <Plate label="Problem" tone="alarm">
+            <p>{failure.message}</p>
+            <button class="btn" onclick={load}>Try again</button>
+          </Plate>
+        {/if}
 
-      <!-- Only when there is no workspace to show. Signing out holds the one it
+        <!-- Only when there is no workspace to show. Signing out holds the one it
            has until the server confirms, rather than blanking on the request. -->
-      {#if loading && viewer === null}
-        <Plate label="Panel">
-          <div class="panel-skeleton" aria-hidden="true">
-            <span class="skeleton-line skeleton-title"></span>
-            <span class="skeleton-line skeleton-copy"></span>
-            <span class="skeleton-line skeleton-control"></span>
-            <span class="skeleton-line skeleton-row"></span>
-            <span class="skeleton-line skeleton-row"></span>
-            <span class="skeleton-line skeleton-row"></span>
-          </div>
-          <p class="visually-hidden" role="status">Loading panel</p>
-        </Plate>
-      {:else if viewer === null}
-        {#if revokedReason !== null}
-          <Plate label="Access revoked" tone="alarm">
-            <p>{revokedReason}</p>
-            <a class="btn" href={api.signInUrl()}>Sign in</a>
+        {#if loading && viewer === null}
+          <Plate label="Panel">
+            <div class="panel-skeleton" aria-hidden="true">
+              <span class="skeleton-line skeleton-title"></span>
+              <span class="skeleton-line skeleton-copy"></span>
+              <span class="skeleton-line skeleton-control"></span>
+              <span class="skeleton-line skeleton-row"></span>
+              <span class="skeleton-line skeleton-row"></span>
+              <span class="skeleton-line skeleton-row"></span>
+            </div>
+            <p class="visually-hidden" role="status">Loading panel</p>
           </Plate>
-        {:else if failure === null}
-          <SignedOut href={api.signInUrl()} />
-        {/if}
-      {:else if rootMode}
-        <section
-          class="root-workspace"
-          class:root-table-view={tableScrollView}
-          aria-labelledby="root-page-heading"
-        >
-          {#if rootValue === 'overview'}
-            <RootOverview
-              {api}
-              {rootRole}
-              refreshVersion={rootDataVersion}
-              installationsHref={rootInstallationsHref()}
-              elevationsHref={rootAuditHref()}
-              failuresHref={rootFailuresHref()}
-              onOpenInstallations={selectRootInstallations}
-              onOpenElevations={() => selectRootView({ rootView: 'history-audit' })}
-              onOpenFailures={() => selectRootView({ rootView: 'history-failures' })}
-              onOpenInbox={() => identityBar?.openInbox()}
-            />
-          {:else if rootValue === 'installations'}
-            <RootInstallations
-              route={activeRootRoute}
-              {api}
-              {rootRole}
-              actorLogin={viewer.account.login}
-              refreshVersion={rootDataVersion}
-              listHref={rootInstallationsHref()}
-              hrefFor={rootInstallationHref}
-              onList={selectRootInstallations}
-              onNavigate={selectRootInstallation}
-              {historySection}
-              onHistorySection={selectRootInstallationHistory}
-            />
-          {:else if rootValue === 'history'}
-            <HistoryPanel
-              context="root"
-              targetId="root"
-              {rootRole}
-              section={activeRootRoute.rootView === 'history-failures' ? 'failures' : 'audit'}
-              onSection={selectRootHistorySection}
-              refreshVersion={rootDataVersion}
-              fetchAudit={api.fetchRootAudit}
-              fetchFailures={api.fetchRootFailures}
-            />
-          {:else if rootValue === 'access'}
-            <RootAccess
-              {rootRole}
-              section={activeRootRoute.rootView === 'access-invitations' ? 'invitations' : 'users'}
-              refreshVersion={rootDataVersion}
-              onSection={selectRootAccessSection}
-              fetchUsers={api.fetchRootUsers}
-              updateUser={api.updateRootUser}
-              fetchInvitations={api.fetchRootInvitations}
-              createInvitation={api.createRootInvitation}
-              reissueInvitation={api.reissueRootInvitation}
-              revokeInvitation={api.revokeRootInvitation}
-              canManageInvitations={viewer.system_role === 'super_root'}
-              actorLogin={viewer.account.login}
-              fetchInstallations={api.fetchRootInstallations}
-              addInstallationUser={api.addRootTargetUser}
-              onOpenInstallationAccess={(account) => selectRootInstallation(account, 'users')}
-            />
-          {:else}
-            <RootSettings
-              {rootRole}
-              refreshVersion={runtimeSettingsVersion}
-              fetchSettings={api.fetchRootRuntimeSettings}
-              updateSettings={api.updateRootRuntimeSettings}
-            />
-          {/if}
-        </section>
-      {:else}
-        {#if selectedTarget !== null}
-          {#if view === 'settings'}
-            <div id="settings-panel">
-              {#key selectedTarget.id}
-                <TargetSettings
-                  target={selectedTarget}
-                  readOnly={!selectedTarget.capabilities.write}
-                  onUpdate={updateTarget}
-                />
-              {/key}
-            </div>
-          {:else if view === 'repositories'}
-            <div id="repositories-panel">
-              {#key selectedTarget.id}
-                <RepositoryList
-                  targetId={selectedTarget.id}
-                  defaultEnabled={selectedTarget.repository_default_enabled}
-                  refreshVersion={repositoryDetailsVersion}
-                  fetchPage={fetchRepositories}
-                  onLoad={loadRepository}
-                  onUpdate={updateRepository}
-                  onChanged={() => repositoryChanged(selectedTarget.id)}
-                  readOnly={!selectedTarget.capabilities.write}
-                  {prefs}
-                />
-              {/key}
-            </div>
-          {:else if isAccessView(view)}
-            <div id="access-panel">
-              {#key selectedTarget.id}
-                <UserManagement
-                  section={view}
-                  {prefs}
-                  targetId={selectedTarget.id}
-                  targetName={selectedTarget.account.display_name}
-                  actorLogin={viewer.account.login}
-                  actorTargetRole={selectedTarget.effective_role}
-                  refreshVersion={userVersion}
-                  onSection={selectUserSection}
-                  fetchTargetUsers={api.fetchTargetUsers}
-                  addTargetUser={api.addTargetUser}
-                  updateTargetUser={api.updateTargetUser}
-                  fetchTargetInvitations={api.fetchTargetInvitations}
-                  createTargetInvitation={api.createTargetInvitation}
-                  reissueInvitation={api.reissueTargetInvitation}
-                  revokeInvitation={api.revokeTargetInvitation}
-                  fetchUserDecisions={api.fetchUserDecisions}
-                />
-              {/key}
-            </div>
-          {:else if view === 'history'}
-            <div id="history-panel">
-              {#key selectedTarget.id}
-                <HistoryPanel
-                  targetId={selectedTarget.id}
-                  refreshVersion={historyVersion}
-                  section={historySection}
-                  onSection={selectHistorySection}
-                  fetchAudit={(request) => api.fetchAudit(selectedTarget.id, request)}
-                  fetchFailures={(request) => api.fetchFailures(selectedTarget.id, request)}
-                  {prefs}
-                />
-              {/key}
-            </div>
-          {/if}
-        {:else if failure === null}
-          <Plate label="No installations">
-            <div class="empty-panel-state">
-              <span class="empty-panel-mark" aria-hidden="true">+</span>
-              <div>
-                <strong>Install Smyklot to begin</strong>
-                <p class="dim">
-                  Install the Smyklot GitHub App on an organization or personal account, then reload
-                  this panel
-                </p>
+        {:else if viewer === null}
+          <!-- Only reachable with a failure above it; the signed-out page is a page
+             of its own now, and the branch that chooses it sits outside this. -->
+        {:else if rootMode}
+          <section
+            class="root-workspace"
+            class:root-table-view={tableScrollView}
+            aria-labelledby="root-page-heading"
+          >
+            {#if rootValue === 'overview'}
+              <RootOverview
+                {api}
+                {rootRole}
+                refreshVersion={rootDataVersion}
+                installationsHref={rootInstallationsHref()}
+                elevationsHref={rootAuditHref()}
+                failuresHref={rootFailuresHref()}
+                onOpenInstallations={selectRootInstallations}
+                onOpenElevations={() => selectRootView({ rootView: 'history-audit' })}
+                onOpenFailures={() => selectRootView({ rootView: 'history-failures' })}
+                onOpenInbox={() => identityBar?.openInbox()}
+              />
+            {:else if rootValue === 'installations'}
+              <RootInstallations
+                route={activeRootRoute}
+                {api}
+                {rootRole}
+                actorLogin={viewer.account.login}
+                refreshVersion={rootDataVersion}
+                listHref={rootInstallationsHref()}
+                hrefFor={rootInstallationHref}
+                onList={selectRootInstallations}
+                onNavigate={selectRootInstallation}
+                {historySection}
+                onHistorySection={selectRootInstallationHistory}
+              />
+            {:else if rootValue === 'history'}
+              <HistoryPanel
+                context="root"
+                targetId="root"
+                {rootRole}
+                section={activeRootRoute.rootView === 'history-failures' ? 'failures' : 'audit'}
+                onSection={selectRootHistorySection}
+                refreshVersion={rootDataVersion}
+                fetchAudit={api.fetchRootAudit}
+                fetchFailures={api.fetchRootFailures}
+              />
+            {:else if rootValue === 'access'}
+              <RootAccess
+                {rootRole}
+                section={activeRootRoute.rootView === 'access-invitations'
+                  ? 'invitations'
+                  : 'users'}
+                refreshVersion={rootDataVersion}
+                onSection={selectRootAccessSection}
+                fetchUsers={api.fetchRootUsers}
+                updateUser={api.updateRootUser}
+                fetchInvitations={api.fetchRootInvitations}
+                createInvitation={api.createRootInvitation}
+                reissueInvitation={api.reissueRootInvitation}
+                revokeInvitation={api.revokeRootInvitation}
+                canManageInvitations={viewer.system_role === 'super_root'}
+                actorLogin={viewer.account.login}
+                fetchInstallations={api.fetchRootInstallations}
+                addInstallationUser={api.addRootTargetUser}
+                onOpenInstallationAccess={(account) => selectRootInstallation(account, 'users')}
+              />
+            {:else}
+              <RootSettings
+                {rootRole}
+                refreshVersion={runtimeSettingsVersion}
+                fetchSettings={api.fetchRootRuntimeSettings}
+                updateSettings={api.updateRootRuntimeSettings}
+              />
+            {/if}
+          </section>
+        {:else}
+          {#if selectedTarget !== null}
+            {#if view === 'settings'}
+              <div id="settings-panel">
+                {#key selectedTarget.id}
+                  <TargetSettings
+                    target={selectedTarget}
+                    readOnly={!selectedTarget.capabilities.write}
+                    onUpdate={updateTarget}
+                  />
+                {/key}
               </div>
-              <button class="btn btn-signal" type="button" onclick={load}>Reload panel</button>
-            </div>
-          </Plate>
+            {:else if view === 'repositories'}
+              <div id="repositories-panel">
+                {#key selectedTarget.id}
+                  <RepositoryList
+                    targetId={selectedTarget.id}
+                    defaultEnabled={selectedTarget.repository_default_enabled}
+                    refreshVersion={repositoryDetailsVersion}
+                    fetchPage={fetchRepositories}
+                    onLoad={loadRepository}
+                    onUpdate={updateRepository}
+                    onChanged={() => repositoryChanged(selectedTarget.id)}
+                    readOnly={!selectedTarget.capabilities.write}
+                    {prefs}
+                  />
+                {/key}
+              </div>
+            {:else if isAccessView(view)}
+              <div id="access-panel">
+                {#key selectedTarget.id}
+                  <UserManagement
+                    section={view}
+                    {prefs}
+                    targetId={selectedTarget.id}
+                    targetName={selectedTarget.account.display_name}
+                    actorLogin={viewer.account.login}
+                    actorTargetRole={selectedTarget.effective_role}
+                    refreshVersion={userVersion}
+                    onSection={selectUserSection}
+                    fetchTargetUsers={api.fetchTargetUsers}
+                    addTargetUser={api.addTargetUser}
+                    updateTargetUser={api.updateTargetUser}
+                    fetchTargetInvitations={api.fetchTargetInvitations}
+                    createTargetInvitation={api.createTargetInvitation}
+                    reissueInvitation={api.reissueTargetInvitation}
+                    revokeInvitation={api.revokeTargetInvitation}
+                    fetchUserDecisions={api.fetchUserDecisions}
+                  />
+                {/key}
+              </div>
+            {:else if view === 'history'}
+              <div id="history-panel">
+                {#key selectedTarget.id}
+                  <HistoryPanel
+                    targetId={selectedTarget.id}
+                    refreshVersion={historyVersion}
+                    section={historySection}
+                    onSection={selectHistorySection}
+                    fetchAudit={(request) => api.fetchAudit(selectedTarget.id, request)}
+                    fetchFailures={(request) => api.fetchFailures(selectedTarget.id, request)}
+                    {prefs}
+                  />
+                {/key}
+              </div>
+            {/if}
+          {:else if failure === null}
+            <Plate label="No installations">
+              <div class="empty-panel-state">
+                <span class="empty-panel-mark" aria-hidden="true">+</span>
+                <div>
+                  <strong>Install Smyklot to begin</strong>
+                  <p class="dim">
+                    Install the Smyklot GitHub App on an organization or personal account, then
+                    reload this panel
+                  </p>
+                </div>
+                <button class="btn btn-signal" type="button" onclick={load}>Reload panel</button>
+              </div>
+            </Plate>
+          {/if}
         {/if}
-      {/if}
-    </div>
+      </div>
 
-    <PageFooter {build} />
-  </div>
-</main>
+      <PageFooter {build} />
+    </div>
+  </main>
+{/if}
 
 <style>
   #repositories-panel,
