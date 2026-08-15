@@ -3,16 +3,21 @@
  *
  * Every dialog in the panel used to be a piece of component state, so a reload
  * put a reader back on the list behind it and a link to what they were looking at
- * did not exist. The address carries it now: the dialog's name, and whatever it
- * needs to find its subject again.
+ * did not exist. The address carries it now.
  *
- * It rides the query string rather than the path. A dialog is a thing on top of a
- * view, not a different view, and every view can raise one - a path segment would
- * have to be understood by every route the panel parses, and the panel's own
- * route writer would then have to know which of them are dialogs. The query says
- * the same thing without teaching the router a second grammar, and it survives a
- * reload and a paste into a colleague's window just as well.
+ * A dialog about a row of a view reads as part of that view's path:
+ * `/i/acme/repositories/api-gateway/file`. The grammar for those lives in
+ * `route-dialogs`, and this router writes them through the panel's own route
+ * writer, so there is one place that decides what a panel address looks like.
+ *
+ * A dialog with no view to sit on - the notification inbox, which any view can
+ * raise - has no such path, and rides the query string until it becomes a view of
+ * its own. Both kinds are read and opened through the same three calls, so a
+ * component never has to know which kind it is.
  */
+
+import { panelRoutePath, parsePanelRoute, type PanelRoute, type RouteDialog } from './routes';
+import { dialogSegments, isDialogHost } from './route-dialogs';
 
 const DIALOG_KEY = 'dialog';
 
@@ -45,7 +50,31 @@ export function dialogSearch(dialog: OpenDialog | null): string {
   // Built and serialised in the same expression - see parseDialog above.
   // eslint-disable-next-line svelte/prefer-svelte-reactivity
   const query = new URLSearchParams({ [DIALOG_KEY]: dialog.name, ...dialog.params });
+
   return `?${query.toString()}`;
+}
+
+/** Whether this dialog has a place in its view's path, or has to ride the query. */
+export function hasRouteHome(route: PanelRoute | null, dialog: OpenDialog): boolean {
+  const view = hostView(route);
+
+  return view !== null && dialogSegments(view, dialog) !== null;
+}
+
+function hostView(route: PanelRoute | null) {
+  if (route === null) return null;
+  const view = 'rootView' in route ? rootHost(route) : route.view;
+
+  return view !== null && isDialogHost(view) ? view : null;
+}
+
+function rootHost(route: Extract<PanelRoute, { rootView: string }>): string | null {
+  if (route.rootView === 'installation') return route.view;
+  if (route.rootView === 'access-users' || route.rootView === 'access-invitations') {
+    return route.rootView;
+  }
+
+  return null;
 }
 
 interface HistoryLike {
@@ -80,6 +109,7 @@ interface BrowserLike {
 class DialogRouter {
   #current = $state<OpenDialog | null>(null);
   #browser: BrowserLike | null = null;
+  #basePath = '';
 
   /** What the address says is open. Read it in a component and it re-reads on navigation. */
   get current(): OpenDialog | null {
@@ -96,11 +126,12 @@ class DialogRouter {
     return this.#current?.name === name ? this.#current.params[key] : undefined;
   }
 
-  attach(browser: BrowserLike): () => void {
+  attach(browser: BrowserLike, basePath = ''): () => void {
     this.#browser = browser;
-    this.#current = parseDialog(browser.location.search);
+    this.#basePath = basePath;
+    this.#current = this.#read();
     const onPopState = (): void => {
-      this.#current = parseDialog(browser.location.search);
+      this.#current = this.#read();
     };
     browser.addEventListener('popstate', onPopState);
 
@@ -121,7 +152,7 @@ class DialogRouter {
        one. Two entries would take two presses of Back to leave what reads as one
        piece of work, and would leave the first dialog re-opening behind the
        second. */
-    const url = browser.location.pathname + dialogSearch(next);
+    const url = this.#url(next);
     if (replacing) {
       browser.history.replaceState(browser.history.state, '', url);
       return;
@@ -136,11 +167,7 @@ class DialogRouter {
     this.#current = next;
     const browser = this.#browser;
     if (browser === null) return;
-    browser.history.replaceState(
-      browser.history.state,
-      '',
-      browser.location.pathname + dialogSearch(next),
-    );
+    browser.history.replaceState(browser.history.state, '', this.#url(next));
   }
 
   close(): void {
@@ -152,13 +179,60 @@ class DialogRouter {
     /* Undo the entry this router added, so Back after closing goes where the
        reader came from rather than re-opening what they just dismissed. Landing
        here from a pasted link or a reload means there is no entry of ours behind
-       this one, and the query is dropped in place instead. */
+       this one, and the address is rewritten in place instead. */
     if (isOwnEntry(browser.history.state)) {
       browser.history.back();
       return;
     }
-    browser.history.replaceState(browser.history.state, '', browser.location.pathname);
+    browser.history.replaceState(browser.history.state, '', this.#url(null));
   }
+
+  /** The address for a dialog: in the view's path when it has a place there. */
+  #url(dialog: OpenDialog | null): string {
+    const browser = this.#browser;
+    if (browser === null) return '';
+    const route = parsePanelRoute(this.#basePath, browser.location.pathname);
+
+    if (dialog !== null && hasRouteHome(route, dialog)) {
+      return panelRoutePath(this.#basePath, withDialog(route, dialog));
+    }
+    /* Either there is no path for it, or it is being closed. Closing writes the
+       bare view, which drops a path dialog and a query one alike. */
+    const bare =
+      route === null
+        ? browser.location.pathname
+        : panelRoutePath(this.#basePath, withDialog(route, null));
+
+    return bare + dialogSearch(dialog === null || hasRouteHome(route, dialog) ? null : dialog);
+  }
+
+  #read(): OpenDialog | null {
+    const browser = this.#browser;
+    if (browser === null) return null;
+    const route = parsePanelRoute(this.#basePath, browser.location.pathname);
+    const fromPath = route === null ? undefined : routeDialog(route);
+    if (fromPath !== undefined) return fromPath;
+
+    return parseDialog(browser.location.search);
+  }
+}
+
+function routeDialog(route: PanelRoute): RouteDialog | undefined {
+  return 'dialog' in route ? route.dialog : undefined;
+}
+
+function withDialog(route: PanelRoute | null, dialog: OpenDialog | null): PanelRoute {
+  if (route === null)
+    throw new Error('cannot place a dialog on an address that is not a panel route');
+  const next = { ...route } as PanelRoute & { dialog?: RouteDialog };
+  if (dialog === null) {
+    delete next.dialog;
+
+    return next;
+  }
+  next.dialog = dialog;
+
+  return next;
 }
 
 export const dialogRoute = new DialogRouter();

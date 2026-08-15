@@ -761,13 +761,26 @@ FROM repositories r
 JOIN targets t ON t.id = r.target_id
 `
 
+/*
+getRepository finds one repository of an installation by id or by name.
+
+Both, because the panel's addresses name repositories the way people do. The id
+is what the rest of the panel carries, but a link somebody sends a colleague says
+`/repositories/api-gateway`, and a name is unique within an installation, so it
+identifies exactly as well.
+
+The id is tried first. A repository may legitimately be named "123", and if some
+other repository carries 123 as its id, the id is the reading that was meant.
+*/
 func getRepository(
 	ctx context.Context,
 	queryer rowQuerier,
-	targetID, repositoryID string,
+	targetID, repository string,
 ) (storage.Repository, error) {
 	return scanRepository(queryer.QueryRowContext(ctx, repositorySelect+`
-WHERE r.target_id = ? AND r.id = ?`, targetID, repositoryID))
+WHERE r.target_id = ? AND (r.id = ? OR r.name = ?)
+ORDER BY CASE WHEN r.id = ? THEN 0 ELSE 1 END
+LIMIT 1`, targetID, repository, repository, repository))
 }
 
 func scanRepository(scanner rowScanner) (storage.Repository, error) {

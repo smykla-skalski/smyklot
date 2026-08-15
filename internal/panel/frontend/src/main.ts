@@ -58,7 +58,7 @@ try {
   } else if (invitationToken === null) {
     mount(App, {
       target,
-      props: { api, build, router: createPanelRouter(base, window) },
+      props: { api, base, build, router: createPanelRouter(base, window) },
     });
   } else {
     mount(InvitationPage, {

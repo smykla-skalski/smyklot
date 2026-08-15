@@ -253,17 +253,35 @@
   let observedRefreshVersion: number | undefined;
   let repositoryResults = $state<HTMLDivElement>();
   let repositoryScroll = $state<HTMLTableSectionElement>();
+  /** Names learned from a repository read by name, so the id is known next time. */
+  let namedRepositories = $state<Record<string, string>>({});
 
   const repositories = $derived(page?.items ?? []);
 
   /* The dialog is whatever the address names, not a click the component
      remembers, so a reload lands back on the repository that was open.
 
-     It is keyed on the id rather than the name because the list is paginated:
-     re-opening after a reload starts from the first page, and a repository from
-     further down it is not there to be found. The id is the key the detail is
-     fetched with, and that response carries the summary the header needs. */
-  const activeRepositoryId = $derived(dialogRoute.param(REPOSITORY_DIALOG, 'repository') ?? null);
+     It is named the way a person would name it - `api-gateway`, not an id - and
+     the detail read accepts either, so a repository further down a paginated list
+     still opens on a cold load without first finding it in the list. That
+     response carries the summary the header needs. Names are unique within an
+     installation and every read is scoped to one, so two organizations owning a
+     repository of the same name never meet. */
+  const activeRepositoryKey = $derived(dialogRoute.param(REPOSITORY_DIALOG, 'repository') ?? null);
+
+  /* The address carries a name; everything inside this component is keyed by id.
+     The name is resolved from the loaded page when it is there, and otherwise
+     from the detail that reading it by name returned. */
+  const activeRepositoryId = $derived.by(() => {
+    const key = activeRepositoryKey;
+    if (key === null) return null;
+
+    return (
+      repositories.find((repository) => repository.name === key)?.id ??
+      namedRepositories[key] ??
+      null
+    );
+  });
   const activeRepository = $derived(
     activeRepositoryId === null
       ? null
@@ -528,7 +546,7 @@
 
   function openRepository(repository: RepositorySummary, trigger: HTMLElement): void {
     repositoryReturnFocus = trigger;
-    dialogRoute.open(REPOSITORY_DIALOG, { repository: repository.id });
+    dialogRoute.open(REPOSITORY_DIALOG, { repository: repository.name });
   }
 
   function closeRepository(): void {
@@ -537,16 +555,33 @@
 
   /* Whatever the address names has to be on screen, however it got there: a click
      on a row, the Back button, or a link opened cold in a new window. Watching the
-     id rather than acting inside the click handler is what makes the last of those
-     work, since no click happened. */
+     address rather than acting inside the click handler is what makes the last of
+     those work, since no click happened. */
   $effect(() => {
+    const key = activeRepositoryKey;
     const repositoryId = activeRepositoryId;
-    if (repositoryId === null) {
+    if (key === null) {
       untrack(() => visibleDetails.clear());
       return;
     }
 
     untrack(() => {
+      /* Nothing in the loaded page matches the name, which is what a link opened
+         cold looks like. Reading it by name settles both the detail and the id
+         the rest of this component works in. */
+      if (repositoryId === null) {
+        void loadDetail(key)
+          .then((detail) => {
+            namedRepositories = { ...namedRepositories, [key]: detail.repository.id };
+          })
+          .catch(() => {
+            /* A name nothing answers to leaves the dialog shut over the list,
+               which is the truthful outcome for a link to a repository that is
+               gone or was never there. */
+          });
+        return;
+      }
+
       visibleDetails.clear();
       visibleDetails.add(repositoryId);
       if (details[repositoryId] !== undefined) return;
@@ -582,8 +617,11 @@
     return value === 'file' || value === 'behavior' || value === 'commands';
   }
 
-  function selectDetailSection(repositoryId: string, section: RepositoryDetailSection): void {
-    dialogRoute.update(REPOSITORY_DIALOG, { repository: repositoryId, section });
+  function selectDetailSection(
+    repository: RepositorySummary,
+    section: RepositoryDetailSection,
+  ): void {
+    dialogRoute.update(REPOSITORY_DIALOG, { repository: repository.name, section });
   }
 
   /* Names the pane for the reader, now that the switch above it is a control with
@@ -669,9 +707,16 @@
     }
   }
 
-  async function loadDetail(repositoryId: string): Promise<RepositoryDetail> {
-    const detail = await onLoad(repositoryId);
-    details = { ...details, [repositoryId]: detail };
+  /**
+   * Reads one repository, by id or by the name an address carries.
+   *
+   * Stored under the id the answer carries rather than under what was asked for,
+   * so everything else in this component - the failures, the pending refreshes,
+   * the open set - keeps one key whichever way the repository was reached.
+   */
+  async function loadDetail(repository: string): Promise<RepositoryDetail> {
+    const detail = await onLoad(repository);
+    details = { ...details, [detail.repository.id]: detail };
     return detail;
   }
 
@@ -1119,7 +1164,7 @@
             },
           ]}
           value={detailSection(repository)}
-          onSelect={(next) => selectDetailSection(repository.id, next as RepositoryDetailSection)}
+          onSelect={(next) => selectDetailSection(repository, next as RepositoryDetailSection)}
         />
       {/if}
     {/snippet}

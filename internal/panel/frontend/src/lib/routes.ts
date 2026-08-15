@@ -1,4 +1,12 @@
 import { normalizeBasePath } from './base';
+import {
+  dialogSegments,
+  isDialogHost,
+  parseDialogSegments,
+  type RouteDialog,
+} from './route-dialogs';
+
+export type { RouteDialog };
 
 export const PANEL_VIEWS = ['settings', 'repositories', 'users', 'invitations', 'history'] as const;
 const SCOPED_PANEL_VIEWS = ['settings', 'repositories', 'users', 'invitations', 'history'] as const;
@@ -12,19 +20,25 @@ export type HistorySection = (typeof HISTORY_SECTIONS)[number];
 export type RootSection = 'overview' | 'installations' | 'access' | 'history' | 'settings';
 export type PanelSection = Exclude<ScopedPanelView, 'users' | 'invitations'> | 'access';
 export type RootRoute =
-  | { rootView: 'overview' | 'installations' | 'access-users' | 'access-invitations' }
+  | {
+      rootView: 'overview' | 'installations' | 'access-users' | 'access-invitations';
+      dialog?: RouteDialog;
+    }
   | { rootView: 'history-audit' | 'history-failures' | 'settings' }
   | {
       rootView: 'installation';
       account: string;
       view: ScopedPanelView;
       section?: HistorySection;
+      dialog?: RouteDialog;
     };
 
 export type InstallationRoute = {
   account: string;
   view: ScopedPanelView;
   section?: HistorySection;
+  /** What is open on top of the view; see `route-dialogs`. */
+  dialog?: RouteDialog;
 };
 export type PanelRoute = InstallationRoute | RootRoute;
 
@@ -58,7 +72,7 @@ export function parsePanelRoute(basePath: string, pathname: string): PanelRoute 
 
   const parts = relative.split('/');
   if (parts[0] === 'root') return parseRootRoute(parts);
-  if (parts.length !== 3 && parts.length !== 4) return null;
+  if (parts.length < 3) return null;
 
   const [namespace, encodedAccount, rawView] = parts;
   if (
@@ -70,8 +84,15 @@ export function parsePanelRoute(basePath: string, pathname: string): PanelRoute 
   )
     return null;
 
-  const section = parseSection(rawView, parts[3]);
-  if (section === 'invalid') return null;
+  /* Everything past the view is either history's table or a dialog. A view that
+     hosts dialogs never has a section, and one that has a section hosts none, so
+     the two grammars cannot be confused for each other. */
+  const trailing = parts.slice(3);
+  const dialog = parseTrailingDialog(rawView, trailing);
+  if (dialog === 'invalid') return null;
+
+  const section = parseSection(rawView, dialog === undefined ? trailing[0] : undefined);
+  if (section === 'invalid' || (dialog === undefined && trailing.length > 1)) return null;
 
   let account: string;
   try {
@@ -82,7 +103,25 @@ export function parsePanelRoute(basePath: string, pathname: string): PanelRoute 
 
   if (account.trim() === '') return null;
   const route: InstallationRoute = { account, view: rawView };
+  if (dialog !== undefined) return { ...route, dialog };
   return section === undefined ? route : { ...route, section };
+}
+
+/**
+ * Reads the segments past a view as a dialog.
+ *
+ * `undefined` for a view that hosts none or a path that carries none;
+ * `'invalid'` for segments that were meant to be one and are not, which is an
+ * address that does not resolve rather than the bare view - a mistyped
+ * repository name should say so rather than quietly showing the list.
+ */
+function parseTrailingDialog(
+  view: string,
+  segments: string[],
+): RouteDialog | undefined | 'invalid' {
+  if (segments.length === 0 || !isDialogHost(view)) return undefined;
+
+  return parseDialogSegments(view, segments) ?? 'invalid';
 }
 
 export function parseInvitationToken(basePath: string, pathname: string): string | null {
@@ -102,7 +141,21 @@ export function parseInvitationToken(basePath: string, pathname: string): string
 export function panelRoutePath(basePath: string, route: PanelRoute): string {
   const base = normalizeBasePath(basePath);
   if ('rootView' in route) return `${base}${rootRoutePath(route)}`;
-  return `${base}/i/${encodeURIComponent(route.account)}/${route.view}${sectionSuffix(route)}`;
+
+  return (
+    `${base}/i/${encodeURIComponent(route.account)}/${route.view}` +
+    sectionSuffix(route) +
+    dialogSuffix(route.view, route.dialog)
+  );
+}
+
+/** The path segments an open dialog adds, already escaped. */
+function dialogSuffix(view: string, dialog: RouteDialog | undefined): string {
+  if (dialog === undefined || !isDialogHost(view)) return '';
+  const segments = dialogSegments(view, dialog);
+  if (segments === null) return '';
+
+  return segments.map((segment) => `/${encodeURIComponent(segment)}`).join('');
 }
 
 export function panelDocumentTitle(route: PanelRoute): string {
@@ -227,9 +280,16 @@ function parseRootRoute(parts: string[]): RootRoute | null {
   if (parts.length === 1) return { rootView: 'overview' };
   if (parts.length === 2 && parts[1] === 'installations') return { rootView: 'installations' };
   if (parts.length === 2 && parts[1] === 'settings') return { rootView: 'settings' };
-  if (parts.length === 3 && parts[1] === 'access') {
-    if (parts[2] === 'users') return { rootView: 'access-users' };
-    if (parts[2] === 'invitations') return { rootView: 'access-invitations' };
+  if (parts.length >= 3 && parts[1] === 'access') {
+    /* The Root console's tables take the same dialog grammar as an
+       installation's, because they list the same things. */
+    const host = parts[2] === 'users' ? 'access-users' : 'access-invitations';
+    if (parts[2] === 'users' || parts[2] === 'invitations') {
+      if (parts.length === 3) return { rootView: host };
+      const dialog = parseDialogSegments(host, parts.slice(3));
+
+      return dialog === null ? null : { rootView: host, dialog };
+    }
   }
   if (parts.length === 3 && parts[1] === 'history') {
     if (parts[2] === 'audit') return { rootView: 'history-audit' };
@@ -240,17 +300,17 @@ function parseRootRoute(parts: string[]): RootRoute | null {
      through to the installation default. */
   if (parts.length === 2 && parts[1] === 'history') return { rootView: 'history-audit' };
   if (parts.length === 2 && parts[1] === 'access') return { rootView: 'access-users' };
-  if (
-    (parts.length !== 4 && parts.length !== 5) ||
-    parts[1] !== 'installations' ||
-    !isScopedPanelView(parts[3] ?? '')
-  ) {
+  if (parts.length < 4 || parts[1] !== 'installations' || !isScopedPanelView(parts[3] ?? '')) {
     return null;
   }
 
   const view = parts[3] as ScopedPanelView;
-  const section = parseSection(view, parts[4]);
-  if (section === 'invalid') return null;
+  const trailing = parts.slice(4);
+  const dialog = parseTrailingDialog(view, trailing);
+  if (dialog === 'invalid') return null;
+
+  const section = parseSection(view, dialog === undefined ? trailing[0] : undefined);
+  if (section === 'invalid' || (dialog === undefined && trailing.length > 1)) return null;
 
   let account: string;
   try {
@@ -260,16 +320,23 @@ function parseRootRoute(parts: string[]): RootRoute | null {
   }
   if (account.trim() === '') return null;
   const route: RootRoute = { rootView: 'installation', account, view };
+  if (dialog !== undefined) return { ...route, dialog };
   return section === undefined ? route : { ...route, section };
 }
 
 function rootRoutePath(route: RootRoute): string {
   if (route.rootView === 'installation')
-    return `/root/installations/${encodeURIComponent(route.account)}/${route.view}${sectionSuffix(route)}`;
+    return (
+      `/root/installations/${encodeURIComponent(route.account)}/${route.view}` +
+      sectionSuffix(route) +
+      dialogSuffix(route.view, route.dialog)
+    );
   if (route.rootView === 'overview') return '/root';
   if (route.rootView === 'installations') return '/root/installations';
-  if (route.rootView === 'access-users') return '/root/access/users';
-  if (route.rootView === 'access-invitations') return '/root/access/invitations';
+  if (route.rootView === 'access-users')
+    return `/root/access/users${dialogSuffix('access-users', route.dialog)}`;
+  if (route.rootView === 'access-invitations')
+    return `/root/access/invitations${dialogSuffix('access-invitations', route.dialog)}`;
   if (route.rootView === 'history-audit') return '/root/history/audit';
   if (route.rootView === 'history-failures') return '/root/history/failures';
   return '/root/settings';

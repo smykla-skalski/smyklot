@@ -35,6 +35,7 @@
     type PanelView,
     type RootRoute,
     type RootSection,
+    type RouteDialog,
     type ScopedPanelView,
   } from './lib/routes';
   import type {
@@ -50,8 +51,12 @@
   type FailureSource = 'load' | 'sign-out' | 'stream';
   type PanelFailure = { message: string; source: FailureSource };
 
-  const { api, build, router }: { api: PanelApi; build: PanelBuild; router: PanelRouter } =
-    $props();
+  const {
+    api,
+    base,
+    build,
+    router,
+  }: { api: PanelApi; base: string; build: PanelBuild; router: PanelRouter } = $props();
 
   let loading = $state(true);
   let viewer = $state<PanelViewer | null>(null);
@@ -272,7 +277,16 @@
     view = resolved.view;
     if (resolved.section !== undefined) historySection = resolved.section;
     prefs.set('last_installation', target.account.login);
-    const canonical = routeFor(target, resolved.view, resolved.section ?? historySection);
+    /* The dialog rides along. Canonicalising is about the view - `/root/access`
+       becoming `/root/access/users`, a remembered installation filling in - and
+       must not throw away what the address said was open on top of it, which is
+       what a pasted link to a dialog is entirely made of. */
+    const canonical = routeFor(
+      target,
+      resolved.view,
+      resolved.section ?? historySection,
+      installationRoute?.dialog,
+    );
 
     if (navigation === 'push') {
       router.push(canonical);
@@ -296,10 +310,21 @@
     target: PanelTarget,
     nextView: PanelView,
     section: HistorySection = historySection,
+    dialog?: RouteDialog,
   ): PanelRoute {
-    return nextView === 'history'
-      ? { account: target.account.login, view: nextView, section }
-      : { account: target.account.login, view: nextView };
+    const route: PanelRoute =
+      nextView === 'history'
+        ? { account: target.account.login, view: nextView, section }
+        : { account: target.account.login, view: nextView };
+
+    return dialog === undefined ? route : { ...route, dialog };
+  }
+
+  /** What the address currently says is open, so a rewrite of it can say so too. */
+  function currentDialog(): RouteDialog | undefined {
+    const route = router.current();
+
+    return route !== null && 'dialog' in route ? route.dialog : undefined;
   }
 
   function targetHref(target: PanelTarget): string {
@@ -488,7 +513,9 @@
         await activateRoute(router.current(), 'replace');
       } else if (selectedTarget !== null) {
         prefs.set('last_installation', selectedTarget.account.login);
-        router.replace(routeFor(selectedTarget, view));
+        /* Rewriting the address because the stream said something changed must
+           not close what the reader has open on top of it. */
+        router.replace(routeFor(selectedTarget, view, historySection, currentDialog()));
       }
       if (selectedId !== null) {
         repositoryDetailsVersion += 1;
@@ -592,7 +619,7 @@
      whenever it writes a path. That is the behaviour we want - walking to another
      view closes what was open on top of the old one - so the two routers share the
      address without needing to know about each other. */
-  $effect(() => dialogRoute.attach(window));
+  $effect(() => dialogRoute.attach(window, base));
 
   async function signOut(): Promise<void> {
     loading = true;

@@ -1171,7 +1171,7 @@
       void reissue(invitation, trigger);
     } else if (action === 'revoke') {
       invitationActionTrigger = trigger;
-      dialogRoute.open(INVITATION_DIALOG, { invitation: invitation.id });
+      dialogRoute.open(INVITATION_DIALOG, { invitation: invitation.id, action: 'revoke' });
     }
   }
 

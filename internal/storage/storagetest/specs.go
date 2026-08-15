@@ -617,6 +617,70 @@ func DeclareSpecs(harness Harness) {
 		Expect(target.Account.AvatarURL).To(Equal(account.AvatarURL))
 	})
 
+	It("finds a repository by name within its own installation only", func() {
+		/* Panel addresses name repositories the way people do - `api-gateway`
+		   rather than an id - so the lookup accepts both. Two organizations very
+		   often own a repository of the same name, and the name must never reach
+		   across from one to the other: the lookup is scoped to the installation
+		   asking, and there is no query that is not. */
+		first := testAccount(now)
+		second := derive(first, "second-org", "Second Organization")
+		Expect(store.UpsertAccount(ctx, first)).To(Succeed())
+		Expect(store.UpsertAccount(ctx, second)).To(Succeed())
+
+		firstInstallation := testInstallation(first, now, []storage.RepositorySnapshot{
+			testRepository("first-api", "smykla-skalski/api-gateway", false),
+		})
+		secondInstallation := testInstallation(second, now, []storage.RepositorySnapshot{
+			testRepository("second-api", "second-org/api-gateway", false),
+		})
+		secondInstallation.TargetID = "github:installation:200"
+		secondInstallation.InstallationID = "200"
+		Expect(store.ReconcileInstallation(ctx, firstInstallation)).To(Succeed())
+		Expect(store.ReconcileInstallation(ctx, secondInstallation)).To(Succeed())
+
+		byName, err := store.GetRepository(ctx, firstInstallation.TargetID, "api-gateway")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(byName.ID).To(Equal("first-api"))
+		Expect(byName.FullName).To(Equal("smykla-skalski/api-gateway"))
+
+		// The same name, asked of the other installation, is the other repository.
+		otherByName, err := store.GetRepository(ctx, secondInstallation.TargetID, "api-gateway")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(otherByName.ID).To(Equal("second-api"))
+		Expect(otherByName.FullName).To(Equal("second-org/api-gateway"))
+
+		// An id belonging to the other installation is not found here either.
+		_, err = store.GetRepository(ctx, firstInstallation.TargetID, "second-api")
+		Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
+
+		byID, err := store.GetRepository(ctx, firstInstallation.TargetID, "first-api")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(byID.Name).To(Equal("api-gateway"))
+
+		_, err = store.GetRepository(ctx, firstInstallation.TargetID, "no-such-repository")
+		Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
+	})
+
+	It("prefers the id when a repository is named like another's id", func() {
+		/* A repository may legitimately be called "1234", and another may carry
+		   1234 as its id. Both readings are of the same installation, so scoping
+		   does not settle it - the id wins, because that is the identifier the
+		   panel itself passes and a name that looks like one is the coincidence. */
+		account := testAccount(now)
+		Expect(store.UpsertAccount(ctx, account)).To(Succeed())
+		installation := testInstallation(account, now, []storage.RepositorySnapshot{
+			testRepository("1234", "smykla-skalski/actual-id", false),
+			testRepository("other-id", "smykla-skalski/1234", false),
+		})
+		Expect(store.ReconcileInstallation(ctx, installation)).To(Succeed())
+
+		found, err := store.GetRepository(ctx, installation.TargetID, "1234")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(found.ID).To(Equal("1234"))
+		Expect(found.Name).To(Equal("actual-id"))
+	})
+
 	It("reconciles GitHub catalog state without overwriting local controls", func() {
 		account := testAccount(now)
 		initial := testInstallation(account, now, []storage.RepositorySnapshot{
