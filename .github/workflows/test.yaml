@@ -20,7 +20,7 @@ jobs:
     # step below fails if the suite skipped anyway.
     services:
       postgres:
-        image: postgres:18-alpine
+        image: postgres:18-alpine@sha256:a1d02e4bd40c94d3bf2bdd3678c137388e76d9efcd23c285e9429d336a834b44
         env:
           POSTGRES_USER: smyklot
           POSTGRES_PASSWORD: smyklot
