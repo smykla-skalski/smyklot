@@ -139,39 +139,6 @@
           ['repositories', 'users', 'invitations', 'history'].includes(view),
   );
 
-  function forwardTableWheel(event: WheelEvent): void {
-    if (
-      !tableScrollView ||
-      !window.matchMedia('(min-width: 48.0625rem)').matches ||
-      event.defaultPrevented ||
-      event.ctrlKey ||
-      event.deltaY === 0 ||
-      Math.abs(event.deltaX) > Math.abs(event.deltaY)
-    )
-      return;
-
-    const target = event.target;
-    if (
-      target instanceof Element &&
-      target.closest('[data-panel-scroll], [role="dialog"], [role="menu"]') !== null
-    )
-      return;
-
-    const workspace = event.currentTarget as HTMLDivElement;
-    const scroller = workspace.querySelector<HTMLElement>('[data-panel-scroll]');
-    if (scroller === null || scroller.scrollHeight <= scroller.clientHeight) return;
-
-    const previous = scroller.scrollTop;
-    const delta =
-      event.deltaMode === 1
-        ? event.deltaY * 16
-        : event.deltaMode === 2
-          ? event.deltaY * scroller.clientHeight
-          : event.deltaY;
-    scroller.scrollTop += delta;
-    if (scroller.scrollTop !== previous) event.preventDefault();
-  }
-
   async function load(): Promise<void> {
     requestedDocumentRoute = router.current();
     loading = viewer === null;
@@ -726,7 +693,12 @@
       {notificationVersion}
     />
 
-    <div class="workspace" class:table-scroll-view={tableScrollView} onwheel={forwardTableWheel}>
+    <!-- No wheel handler. A pointer over the page chrome used to have its wheel
+         events applied to the table by hand and the browser's own handling
+         cancelled, which meant no momentum and no elastic overscroll: the list
+         moved a fixed distance per notch and stopped dead at both ends. Scrolling
+         is the platform's, everywhere. -->
+    <div class="workspace" class:table-scroll-view={tableScrollView}>
       <div id="panel-content" class="workspace-content" tabindex="-1">
         {#if failure !== null}
           <Plate label="Problem" tone="alarm">

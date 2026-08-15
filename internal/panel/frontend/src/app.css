@@ -102,6 +102,9 @@
   --surface-control: var(--primitive-light-control);
   --border-subtle: var(--primitive-light-rule);
   --border-control: var(--primitive-light-control-border);
+  /* The edge a photograph is given, so a portrait ending in the card's own colour
+     still reads as a circle. Ink on light grounds, light on dark ones. */
+  --avatar-ring: rgb(24 33 31 / 22%);
   --text-primary: var(--primitive-light-text);
   --text-secondary: var(--primitive-light-secondary);
   --text-muted: var(--primitive-light-muted);
@@ -372,6 +375,7 @@
   --surface-control: var(--primitive-dark-control);
   --border-subtle: var(--primitive-dark-rule);
   --border-control: var(--primitive-dark-control-border);
+  --avatar-ring: rgb(255 255 255 / 22%);
   --text-primary: var(--primitive-dark-text);
   --text-secondary: var(--primitive-dark-secondary);
   --text-muted: var(--primitive-dark-muted);
@@ -549,6 +553,7 @@ body {
   --surface-control: #f8f6fb;
   --border-subtle: #ded8e8;
   --border-control: #c9c0d8;
+  --avatar-ring: rgb(35 24 47 / 22%);
   --interactive-hover: #f0ecf6;
   --interactive-pressed-bg: #e7e1ef;
   --focus: #6d54bd;
@@ -640,6 +645,7 @@ body {
   --surface-control: #1b1724;
   --border-subtle: #342d40;
   --border-control: #4a405a;
+  --avatar-ring: rgb(255 255 255 / 22%);
   --text-primary: #f4f1f8;
   --text-secondary: #cbc3d4;
   --text-muted: #9e95aa;
@@ -1228,9 +1234,12 @@ select:disabled {
   height: var(--avatar-size);
   object-fit: cover;
   width: var(--avatar-size);
-  /* The same self-keyed ring the monogram carries. A photograph can end in any colour, including
-     one that matches the card behind it, and a circle that meets its ground at 1:1 has no edge. */
-  box-shadow: inset 0 0 0 1px rgb(24 33 31 / 12%);
+  /* A photograph can end in any colour, including one that matches the card behind it, so the
+     circle is given an edge of its own. Keyed to the palette rather than fixed: the ring used to be
+     a dark 12% wash in every theme, which is most of nothing on a light card and literally
+     invisible on a dark one - a portrait on a pale background simply dissolved into the sidebar and
+     into the Access rows. Same weight the monogram's ring carries, so the two read as one family. */
+  box-shadow: inset 0 0 0 1px var(--avatar-ring);
 }
 
 /* Monogram circles carry the brand tint in the mock, not a grey wash — the tint
