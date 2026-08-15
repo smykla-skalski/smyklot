@@ -48,8 +48,12 @@
     align?: 'start' | 'end';
     compact?: boolean;
     variant?: 'default' | 'navigation';
-    /** Which family of surfaces to draw on. Sidebar popovers carry their own. */
-    surface?: 'panel' | 'sidebar';
+    /**
+     * Which family of surfaces to draw on. Sidebar popovers carry their own, and
+     * `night` is for a control standing on the invitation page's sky rather than
+     * on any of the themed surfaces.
+     */
+    surface?: 'panel' | 'sidebar' | 'night';
     onSelect: (value: string) => void;
   } = $props();
 
@@ -116,6 +120,7 @@
     compact && 'compact',
     variant === 'navigation' && 'navigation',
     surface === 'sidebar' && 'on-sidebar',
+    surface === 'night' && 'on-night',
   ]}
   class:selected-accent={selectedTone === 'accent'}
   class:selected-on={selectedTone === 'on'}
@@ -165,6 +170,7 @@
     --seg-border: var(--rule);
     --seg-shadow: var(--segment-shadow);
     --seg-muted: var(--text-muted);
+    --seg-text: var(--text);
     --selected-bg: var(--segment-thumb);
     --selected-text: var(--text-primary);
     background: var(--seg-track);
@@ -192,6 +198,24 @@
     --seg-muted: var(--sidebar-menu-muted);
     --selected-bg: var(--sidebar-seg-thumb);
     --selected-text: var(--sidebar-menu-text);
+  }
+
+  /* Standing on the invitation page's sky, which is night in both themes, so this
+     one is the same control in light mode as in dark. It is glass rather than a
+     surface: the track is white over whatever is behind it, so the stars carry on
+     under the control instead of stopping at its edge. */
+  fieldset.on-night {
+    --seg-track: var(--night-seg-track);
+    --seg-hover: var(--night-seg-hover);
+    --seg-pressed: var(--night-seg-pressed);
+    --seg-border: var(--night-seg-border);
+    --seg-shadow: var(--night-seg-shadow);
+    --seg-muted: var(--night-seg-muted);
+    --seg-text: var(--night-seg-text);
+    --selected-bg: var(--night-seg-thumb);
+    --selected-text: var(--night-seg-text);
+
+    backdrop-filter: blur(6px);
   }
 
   fieldset.selected-accent {
@@ -372,7 +396,7 @@
   }
 
   label:hover input:not(:checked):not(:disabled) ~ .segment-label {
-    color: var(--text);
+    color: var(--seg-text);
   }
 
   label:active input:not(:disabled) ~ .segment-label {

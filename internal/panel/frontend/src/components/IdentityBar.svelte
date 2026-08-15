@@ -9,15 +9,8 @@
   import BrandMark from './BrandMark.svelte';
   import Icon from './Icon.svelte';
   import NotificationInbox from './NotificationInbox.svelte';
-  import SegmentedControl from './SegmentedControl.svelte';
+  import ThemeSwitch from './ThemeSwitch.svelte';
   import ViewTabs from './ViewTabs.svelte';
-
-  /* Icon-only, so each option's label is its accessible name rather than visible text. */
-  const THEME_OPTIONS = [
-    { value: 'system', label: 'System theme', icon: 'system' },
-    { value: 'light', label: 'Light theme', icon: 'sun' },
-    { value: 'dark', label: 'Dark theme', icon: 'moon' },
-  ] as const;
 
   const {
     viewer,
@@ -406,15 +399,7 @@
         <div class="theme-row">
           <span class="theme-icon" aria-hidden="true"><Icon name="sun-moon" size={15} /></span>
           <span class="theme-label">Theme</span>
-          <SegmentedControl
-            name="panel-theme"
-            label="Theme"
-            options={THEME_OPTIONS}
-            value={theme}
-            surface="sidebar"
-            compact
-            onSelect={(selection) => onSelectTheme(selection as ThemeDisplay)}
-          />
+          <ThemeSwitch name="panel-theme" {theme} surface="sidebar" onSelect={onSelectTheme} />
         </div>
         <hr class="menu-divider" />
         <button class="account-action" type="button" onclick={signOut}>

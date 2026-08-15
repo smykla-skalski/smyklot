@@ -1,19 +1,41 @@
 <script lang="ts">
+  import { MediaQuery } from 'svelte/reactivity';
+
   import type { PanelApi } from '../lib/api';
   import type { PanelBuild } from '../lib/base';
   import { formatDateTime } from '../lib/format';
+  import {
+    applyDocumentTheme,
+    DEFAULT_THEME_DISPLAY,
+    isThemeDisplay,
+    type ThemeDisplay,
+  } from '../lib/preferences';
+  import { createPrefsSync } from '../lib/preferences-sync';
   import type { PanelInvitation } from '../lib/types';
   import Avatar from './Avatar.svelte';
   import BrandMark from './BrandMark.svelte';
   import Chip, { type ChipTone } from './Chip.svelte';
   import NightSky from './NightSky.svelte';
   import PageFooter from './PageFooter.svelte';
+  import ThemeSwitch from './ThemeSwitch.svelte';
 
   const { api, token, build }: { api: PanelApi; token: string; build: PanelBuild } = $props();
 
   /* One source for the mark's size: the component needs the number, and the sky
      needs it in CSS to find the middle of the mark it opens out from. */
-  const MARK_SIZE = 96;
+  const MARK_SIZE = 104;
+
+  /* The same synced document the panel writes, without the stream behind it: a
+     write here stays pending in local storage and goes up on the first connect
+     after signing in, so the theme chosen on this page is the one that greets
+     the reader inside. */
+  const prefs = createPrefsSync();
+  const systemDarkTheme = new MediaQuery('prefers-color-scheme: dark');
+
+  let theme = $state<ThemeDisplay>(storedTheme());
+  const resolvedTheme = $derived(
+    theme === 'system' && systemDarkTheme.current ? 'dark' : theme === 'system' ? 'light' : theme,
+  );
 
   let invitation = $state<PanelInvitation | null>(null);
   let loading = $state(true);
@@ -38,6 +60,20 @@
   $effect(() => {
     void load(token);
   });
+
+  $effect(() => {
+    applyDocumentTheme(document, resolvedTheme);
+  });
+
+  function storedTheme(): ThemeDisplay {
+    const value = prefs.get('theme');
+    return typeof value === 'string' && isThemeDisplay(value) ? value : DEFAULT_THEME_DISPLAY;
+  }
+
+  function selectTheme(nextTheme: ThemeDisplay): void {
+    theme = nextTheme;
+    prefs.set('theme', nextTheme);
+  }
 
   async function load(requestedToken: string): Promise<void> {
     loading = true;
@@ -77,7 +113,10 @@
   </div>
 
   <div class="invitation-main">
-    <h1 class="invitation-title" id="invitation-title">{title}</h1>
+    <div class="invitation-head">
+      <h1 class="invitation-title" id="invitation-title">{title}</h1>
+      <ThemeSwitch name="invitation-theme" {theme} surface="night" onSelect={selectTheme} />
+    </div>
 
     <section
       class={['plate', 'invitation-card', loading && 'loading']}
@@ -179,9 +218,10 @@
      outgrows the viewport the flexible rows collapse and the page scrolls from
      the top, so nothing lands above the scroll origin. */
   .invitation-shell {
-    /* The title's own height plus the space under it - stated once, because the
-       mark is centred against the card and has to discount what sits between. */
-    --invitation-title-block: calc(1.0625rem * 1.3 + var(--space-3));
+    /* The head row's height plus the space under it - stated once, because the
+       mark is centred against the card and has to discount what sits between.
+       The row is as tall as the control in it, not as tall as the title. */
+    --invitation-title-block: calc(var(--control-height-compact) + var(--space-3));
 
     display: grid;
     grid-template-rows: 1fr auto 1fr;

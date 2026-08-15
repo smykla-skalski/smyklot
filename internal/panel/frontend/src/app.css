@@ -332,6 +332,33 @@
      the loudest thing on the control. */
   --segment-shadow: 0 1px 3px rgb(24 33 31 / 14%), 0 0 0 0.5px rgb(24 33 31 / 14%);
 
+  /* The night surface, for a control standing on the invitation page's sky. It is
+     declared once and never per theme: the sky is night in both, so a control on
+     it that followed the page would turn into a bright chip on a dark ground in
+     light mode. Every value is white at a low alpha rather than a colour, so the
+     stars carry on under the control instead of stopping at its edge, and hover
+     and press step *up* from the track - the opposite of every opaque palette
+     above, where the thumb is the near-white one and a lift moves toward it.
+
+     The steps are about three times the size of the panel's, and the reason is
+     measurable: the sky is a gradient, so the ground under this control drifts
+     6.33 dE00 (light page) and 6.39 (dark) across the control's own width. The
+     panel's 3.08 selection step would be half of that - the selected option would
+     read as a lighter patch of sky rather than as a state. Scaled to clear it,
+     and measured on the page: the thumb reads 9.81/10.16 dE00 from the track
+     beside it, hover 7.84/8.19 and press 13.50/13.67 from the track under them,
+     and the track itself 6.99/7.70 from the bare sky outside the control. Hover
+     lands at 0.80 of the selection signal, the same fraction the opaque palettes
+     hold it to. */
+  --night-seg-track: rgb(255 255 255 / 7%);
+  --night-seg-thumb: rgb(255 255 255 / 17%);
+  --night-seg-border: rgb(255 255 255 / 16%);
+  --night-seg-hover: rgb(255 255 255 / 12%);
+  --night-seg-pressed: rgb(255 255 255 / 20%);
+  --night-seg-shadow: 0 1px 3px rgb(0 0 0 / 34%), 0 0 0 0.5px rgb(255 255 255 / 20%);
+  --night-seg-text: rgb(246 249 255);
+  --night-seg-muted: rgb(186 203 233);
+
   /* Input and checkbox boundaries at ~3:1 against the surface. */
   --border-strong: #9aa89f;
 
