@@ -10,17 +10,18 @@
    * Anything laid over it needs light ink in both themes.
    */
   const {
-    width = 'min(90rem, 100vw)',
-    height = 'min(300%, 34rem)',
+    width = '100vw',
+    height = 'clamp(36rem, 380%, 58rem)',
   }: {
     /** How far the sky reaches across, before the mask fades it out. */
     width?: string;
     /**
      * How far it reaches up and down. A percentage measures against whatever it
      * is placed in, which is how it can follow a gap that changes with the
-     * content instead of guessing at one - but only up to a point: a very short
-     * card leaves a very large gap, and a sky that grew with it without limit
-     * would run past the foot of the page.
+     * content instead of guessing at one. It is clamped at both ends: left to
+     * grow it would run past the foot of the page when a short card leaves a
+     * large gap, and left to shrink it would flatten into a band on a short
+     * window, which is the shape that reads as squashed.
      */
     height?: string;
   } = $props();
@@ -77,11 +78,15 @@
        plateau is what keeps the column of text on deep sky - the falloff is
        elliptical, so a line out at the column's edge is further along it than its
        distance below the mark suggests - and the ramp's length is what keeps the
-       edge from reading as a cut. The radii are given, not left to
-       `farthest-corner`, which sizes the ellipse to the corner and leaves the
-       ramp unfinished on the short axis. */
+       edge from reading as a cut.
+
+       The radii run past the box rather than matching it, which is what sends the
+       falloff off the top and the sides: the sky is still at strength where the
+       window clips it there, and the only fade you actually see runs down and
+       diagonally into the corners. `farthest-corner` would not do - it sizes the
+       ellipse to the corner and leaves the ramp unfinished on the short axis. */
     mask-image: radial-gradient(
-      ellipse 50% 50% at 50% 50%,
+      ellipse 78% 58% at 50% 50%,
       rgb(0 0 0 / 100%) 0%,
       rgb(0 0 0 / 100%) 46%,
       rgb(0 0 0 / 97%) 54%,

@@ -227,6 +227,15 @@
     translate: -50% -50%;
   }
 
+  /* The sky is a viewport wide and centred on a column that is narrower, so it
+     reaches the window's edges - and past them once a scrollbar takes a slice out
+     of the content box. Clipped rather than hidden, which would make a scroll
+     container of the page, and scoped to this page by what it contains so the
+     panel's own horizontal scrollers are left alone. */
+  :global(html:has(.invitation-shell)) {
+    overflow-x: clip;
+  }
+
   /* Everything outside the card stands on the sky, and the sky is night whichever
      theme the page is in, so this page writes in light ink in both. The card
      keeps the page's own palette: it is a panel laid on the sky, not part of it. */
