@@ -35,7 +35,7 @@ jobs:
             ${{ runner.os }}-go-
 
       - name: Run tests
-        run: ginkgo -r --cover
+        run: mise run test
 
       - name: Run linters
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
@@ -46,7 +46,7 @@ jobs:
           version: v2.12.2
 
       - name: Verify modules
-        run: go mod verify
+        run: mise run lint:mod
 
       - name: Lint the Helm chart
-        run: task lint:helm
+        run: mise run lint:helm

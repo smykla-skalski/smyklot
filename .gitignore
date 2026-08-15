@@ -2,7 +2,7 @@
 .idea
 tmp
 bin/
-.task/
+*.test
 
 # The dev mock server keeps your panel preferences here so a restart does not reset them.
 internal/panel/frontend/dev/.mock-preferences.json

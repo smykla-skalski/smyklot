@@ -5,16 +5,17 @@ Go + Ginkgo/Gomega, deployed as Docker-based GitHub Action.
 
 ## Commands
 
-- Build: `task build`
-- Test (all): `task test`
-- Test (unit only): `task test:unit`
+- Discover workflows: `mise tasks ls`
+- Build: `mise run build`
+- Test (all): `mise run test`
+- Test (unit only): `mise run test:unit`
 - Test (single package): `ginkgo -r pkg/commands`
 - Test (focused): `ginkgo -r --focus "parses slash commands" pkg/commands`
 - Test (watch): `ginkgo watch -r`
-- Lint (all): `task lint`
-- Lint (Go only): `task lint:go`
-- Lint (markdown): `task lint:markdown`
-- Pre-commit: `task lint && task test`
+- Lint (all): `mise run lint`
+- Lint (Go only): `mise run lint:go`
+- Lint (markdown): `mise run lint:markdown`
+- Pre-commit: `mise run ci`
 
 ## Architecture
 
@@ -42,7 +43,7 @@ Go + Ginkgo/Gomega, deployed as Docker-based GitHub Action.
 - Workflow files use `.yaml` extension (not `.yml`) for consistency
 - `serve` **refuses to start** without `SMYKLOT_WEBHOOK_SECRET` — fail closed, or anyone reaching the port could drive the bot
 - Webhook signatures cover the **body only**; header values like `X-GitHub-Delivery` are unverified (`cmd/github-action/server.go:safeDeliveryID`)
-- Delivery dedupe keys on comment id + `updated_at`, **not** the delivery GUID — GitHub does not document whether the GUID survives a redelivery
+- Delivery dedupe currently keys on comment id + `updated_at`; service deliveries should use the durable webhook inbox instead of assuming an accepted in-memory job survives restart
 - The `runner` key in `.github/smyklot.yaml` decides who acts, and it defaults to **`service`** — the Action stands down unless a repo sets `runner: action`. Both entry points check it, at all four places work starts: `run`, `runPoll`, `handleIssueComment`, `sweepRepo` (`cmd/github-action/runner.go`)
 - Standing down is **silent on the PR** — the other entry point has already reacted. The Action's reason goes to the job summary instead
 - `repoConfigTTL` (30s) is deliberately far shorter than `codeownersTTL` (1h) and shorter than the sweep interval. CODEOWNERS decides who may approve; `.github/smyklot.yaml` decides whether the service acts at all, so a stale copy means a rolled-back repo gets answered by both (`cmd/github-action/server.go`)

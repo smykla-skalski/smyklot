@@ -530,7 +530,6 @@ Smyklot implements defense-in-depth security practices.
 
 - Go 1.25+
 - [mise](https://mise.jdx.dev/) for tool management
-- [Task](https://taskfile.dev/) for task automation
 
 ### Setup
 
@@ -543,10 +542,10 @@ cd smyklot
 mise install
 
 # Download dependencies
-go mod download
+mise run deps
 
 # Run tests
-task test
+mise run test
 ```
 
 ### Project structure
@@ -565,21 +564,20 @@ smyklot/
 │   └── webhook/             # Delivery parsing and de-duplication
 ├── .github/workflows/       # GitHub Actions workflows
 ├── .goreleaser.yml          # GoReleaser config for releases
-├── .mise.toml               # Tool versions
+├── .mise.toml               # Tool versions and native tasks
 ├── Dockerfile               # Docker image for GitHub Actions
-├── Taskfile.yaml            # Task automation
 └── go.mod                   # Go module definition
 ```
 
 ### Available tasks
 
 ```bash
-task             # Show available tasks
-task test        # Run all tests with coverage
-task test:unit   # Run unit tests only
-task lint        # Run all linters
-task build       # Build binaries
-task clean       # Clean build artifacts
+mise tasks ls            # Show available tasks
+mise run test            # Run all tests with coverage
+mise run test:unit       # Run unit tests only
+mise run lint            # Run all linters
+mise run build           # Build binaries
+mise run clean           # Clean repository-local artifacts
 ```
 
 ### Testing
@@ -588,7 +586,7 @@ All tests use Ginkgo/Gomega BDD framework:
 
 ```bash
 # Run all tests
-task test
+mise run test
 
 # Run specific package
 ginkgo -r pkg/commands/
@@ -611,7 +609,7 @@ Current test coverage: 130+ tests passing
 2. Create a feature branch (`git checkout -b feat/amazing-feature`)
 3. Write tests first (TDD)
 4. Implement the feature
-5. Ensure all checks pass: `task lint && task test`
+5. Ensure all checks pass: `mise run lint && mise run test`
 6. Commit with conventional commits (`feat:`, `fix:`, `docs:`, etc.)
 7. Push to your fork
 8. Open a pull request

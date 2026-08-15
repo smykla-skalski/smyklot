@@ -1,60 +1,186 @@
-# mise configuration - tool version management
-#
-# Install tools: mise install
-# Update mise: mise self-update
+# mise configuration - pinned tools and native repository workflows
 
 [tools]
-go = "1.26.6"                              # Go 1.25.4 (latest stable)
-node = "24.19.0"                           # Node.js for semantic-release
-task = "3.52.0"                            # Task runner
-"npm:markdownlint-cli2" = "0.23.2"         # Markdown linter
-"go:github.com/onsi/ginkgo/v2/ginkgo" = "2.32.1" # Ginkgo test runner
-actionlint = "1.7.12"                       # GitHub Actions linter
-ginkgo = "2.32.1"                          # Ginkgo test runner
-golangci-lint = "2.12.2"                   # Go linter; keep in step with test.yaml
-helm = "4.2.4"                            # Packages and publishes the chart
+go = "1.26.6"
+node = "24.19.0"
+"npm:markdownlint-cli2" = "0.23.2"
+"go:github.com/onsi/ginkgo/v2/ginkgo" = "2.32.1"
+actionlint = "1.7.12"
+golangci-lint = "2.12.2"
+helm = "4.2.4"
 
 [env]
 GO111MODULE = "on"
 GOFLAGS = "-mod=readonly"
 CGO_ENABLED = "0"
 
-[tasks.build]
-description = "Build all Smyklot binaries through the repository Taskfile"
-run = "task build"
-
 [tasks.test]
-description = "Run the complete Smyklot test suite through the repository Taskfile"
-run = "task test"
+description = "Run the complete Smyklot test suite with race detection and coverage"
+env = { CGO_ENABLED = "1" }
+run = '''
+mkdir -p tmp/coverage
+ginkgo -r --cover --race --output-dir=tmp/coverage --coverprofile=coverage.out
+go tool cover -html=tmp/coverage/coverage.out -o tmp/coverage/coverage.html
+'''
 
 [tasks."test:unit"]
-description = "Run Smyklot unit tests through the repository Taskfile"
-run = "task test:unit"
+description = "Run Smyklot unit tests with race detection and coverage"
+env = { CGO_ENABLED = "1" }
+run = '''
+mkdir -p tmp/coverage/unit
+ginkgo -r --focus='\[Unit\]' --fail-on-empty --cover --race \
+  --output-dir=tmp/coverage/unit --coverprofile=coverage.out
+'''
+
+[tasks."test:watch"]
+description = "Run tests in watch mode"
+env = { CGO_ENABLED = "1" }
+run = "ginkgo watch -r"
 
 [tasks."test:storage"]
 description = "Run the storage adapter unit suite"
-run = "ginkgo --focus Unit ./internal/storage/sqlite"
+env = { CGO_ENABLED = "1" }
+run = "ginkgo --focus='\\[Unit\\]' --fail-on-empty ./internal/storage/sqlite"
 
 [tasks.lint]
-description = "Run all Smyklot linters through the repository Taskfile"
-run = "task lint"
+description = "Run all Smyklot linters"
+depends = ["lint:go", "lint:markdown", "lint:mod", "lint:helm", "lint:actions"]
 
-[tasks.fmt]
-description = "Format Smyklot Go sources through the repository Taskfile"
-run = "task fmt"
+[tasks."lint:go"]
+description = "Lint Go code"
+run = '''
+if [ -n "${CI:-}" ]; then
+  echo "Skipping local golangci-lint; CI uses golangci-lint-action"
+else
+  golangci-lint run ./...
+fi
+'''
+
+[tasks."lint:markdown"]
+description = "Lint Markdown files"
+run = "markdownlint-cli2 '**/*.md'"
+
+[tasks."lint:mod"]
+description = "Verify Go module dependencies"
+run = "go mod verify"
+
+[tasks."lint:helm"]
+description = "Lint the Helm chart and enforce its single-replica guard"
+run = '''
+helm lint charts/smyklot \
+  --set github.clientId=lint \
+  --set github.existingSecret=lint
+if helm template charts/smyklot \
+  --set github.clientId=lint \
+  --set github.existingSecret=lint \
+  --set replicaCount=2 >/dev/null 2>&1; then
+  echo "chart rendered more than one replica" >&2
+  exit 1
+fi
+'''
+
+[tasks."lint:actions"]
+description = "Lint GitHub Actions workflows"
+run = "actionlint"
+
+[tasks.build]
+description = "Build all Smyklot binaries"
+depends = ["build:github-action"]
+
+[tasks."build:github-action"]
+description = "Build the Smyklot service binary"
+depends = ["panel:assets:generate"]
+sources = [
+  "go.mod",
+  "go.sum",
+  "cmd/**/*.go",
+  "internal/**/*.go",
+  "pkg/**/*.go",
+  "internal/panelassets/bundle.zip",
+]
+outputs = ["bin/smyklot-github-action"]
+run = "go build -o bin/smyklot-github-action ./cmd/github-action"
+
+[tasks.deps]
+description = "Download and verify Go dependencies"
+run = '''
+go mod download
+go mod verify
+'''
+
+[tasks."deps:update"]
+description = "Update and tidy Go dependencies"
+env = { GOFLAGS = "" }
+run = '''
+go get -u ./...
+go mod tidy
+'''
 
 [tasks."deps:tidy"]
-description = "Tidy Smyklot Go module metadata through the repository Taskfile"
-run = "task deps:tidy"
+description = "Tidy Go module metadata"
+env = { GOFLAGS = "" }
+run = "go mod tidy"
+
+[tasks.generate]
+description = "Run Go code generation"
+run = "go generate ./..."
+
+[tasks.clean]
+description = "Remove repository-local build artifacts while preserving shared caches"
+run = '''
+repo_root="$(git rev-parse --show-toplevel)"
+test -n "$repo_root" && test "$PWD" = "$repo_root"
+rm -rf -- bin tmp/coverage dist internal/panel/frontend/dist
+'''
+
+[tasks."dev:setup"]
+description = "Install pinned tools and prepare dependencies"
+depends = ["deps", "panel:frontend:install"]
+run = "mise install"
+
+[tasks.fmt]
+description = "Format Go code"
+run = '''
+go fmt ./...
+gofmt -s -w $(git ls-files '*.go')
+'''
+
+[tasks.ci]
+description = "Run the complete local CI dependency graph"
+run = [
+  { task = "lint" },
+  { task = "test" },
+  { task = "panel:frontend:lint" },
+  { task = "panel:frontend:test" },
+  { task = "build" },
+]
+
+[tasks."docker:build"]
+description = "Build the Smyklot container image"
+run = "docker build -t smyklot:latest ."
+
+[tasks.info]
+description = "Show project and toolchain information"
+run = '''
+echo "Project: smyklot"
+echo "Module: $(go list -m)"
+echo "Go version: $(go version)"
+echo "Packages: $(go list ./... | wc -l | tr -d ' ')"
+echo "Files: $(git ls-files '*.go' | wc -l | tr -d ' ')"
+'''
 
 [tasks."panel:frontend:install"]
 description = "Install the panel frontend's pinned dependencies"
+sources = ["internal/panel/frontend/package.json", "internal/panel/frontend/package-lock.json"]
+outputs = ["internal/panel/frontend/node_modules/.package-lock.json"]
 run = "./scripts/install-panel-frontend.sh"
 
 [tasks."panel:frontend:build"]
 description = "Build the panel frontend"
 depends = ["panel:frontend:install"]
 dir = "internal/panel/frontend"
+sources = ["src/**/*", "package.json", "package-lock.json", "svelte.config.js", "vite.config.ts"]
+outputs = ["dist/**/*"]
 run = "npm run build"
 
 [tasks."panel:frontend:lint"]
@@ -64,20 +190,22 @@ dir = "internal/panel/frontend"
 run = "npm run lint"
 
 [tasks."panel:frontend:format"]
-description = "Format the panel frontend with its pinned Prettier configuration"
+description = "Format the panel frontend"
 depends = ["panel:frontend:install"]
 dir = "internal/panel/frontend"
 run = "npm run format"
 
 [tasks."panel:frontend:test"]
-description = "Run the panel frontend unit tests"
+description = "Run panel frontend unit tests"
 depends = ["panel:frontend:install"]
 dir = "internal/panel/frontend"
 run = "npm test"
 
 [tasks."panel:assets:generate"]
-description = "Build and package the panel frontend for Go embedding"
+description = "Build and package panel assets for Go embedding"
 depends = ["panel:frontend:build"]
+sources = ["internal/panel/frontend/dist/**/*", "internal/panelassets/cmd/generate/**/*.go"]
+outputs = ["internal/panelassets/bundle.zip"]
 run = "go run ./internal/panelassets/cmd/generate"
 
 [tasks."panel:dev"]
