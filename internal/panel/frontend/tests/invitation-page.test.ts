@@ -49,6 +49,20 @@ describe('the invitation page', () => {
     }
   });
 
+  it('offers no retry for a link that names no invitation', () => {
+    // 404 is terminal - there is nothing on the other end to press again for - while every other
+    // failure is worth another go. So the branch has to be on the status, not on there being an
+    // error at all, and the view it reaches must not carry a button.
+    expect(page).toMatch(/PanelApiError && error\.status === 404/u);
+
+    const missing =
+      /\{:else if failure !== null && failure\.missing\}([\s\S]*?)\{:else if/u.exec(page)?.[1] ??
+      '';
+
+    expect(missing).toContain('404');
+    expect(missing, 'the not-found view should not offer a retry').not.toContain('<button');
+  });
+
   it('names the scope by more than its display name', () => {
     // "Smykla Skalski" identifies nothing on its own. The login is what a reader can check against
     // GitHub, and the kind says whether accepting joins an organisation or one person's

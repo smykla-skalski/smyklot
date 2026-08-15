@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { PanelApi } from '../lib/api';
+  import { PanelApiError, type PanelApi } from '../lib/api';
   import type { PanelBuild } from '../lib/base';
   import { formatDateTime } from '../lib/format';
   import {
@@ -42,9 +42,15 @@
   let theme = $state<ThemeDisplay>(storedTheme());
   const resolvedTheme = $derived(resolveThemeDisplay(theme, systemAtOpen));
 
+  /* A link that names no invitation is a different answer from a request that did
+     not get through, and the two want opposite things from the reader: one is
+     over, the other is worth pressing again. They are one field rather than two so
+     they cannot disagree about which of them is showing. */
+  type InvitationFailure = { missing: true } | { missing: false; message: string };
+
   let invitation = $state<PanelInvitation | null>(null);
   let loading = $state(true);
-  let failure = $state<string | null>(null);
+  let failure = $state<InvitationFailure | null>(null);
 
   /* The skeleton stands in for an answer the page does not have yet. Once it has
      one, a retry keeps it on screen and marks the card busy: swapping it back to
@@ -56,10 +62,12 @@
      displayed rather than the request, so a retry does not flicker it. */
   const title = $derived(
     invitation !== null
-      ? 'GitHub access invitation'
-      : failure !== null
-        ? 'Invitation unavailable'
-        : 'Invitation',
+      ? 'Access invitation'
+      : failure === null
+        ? 'Invitation'
+        : failure.missing
+          ? 'Not found'
+          : 'Invitation unavailable',
   );
 
   $effect(() => {
@@ -86,7 +94,10 @@
       invitation = await api.fetchInvitation(requestedToken);
       failure = null;
     } catch (error) {
-      failure = error instanceof Error ? error.message : String(error);
+      failure =
+        error instanceof PanelApiError && error.status === 404
+          ? { missing: true }
+          : { missing: false, message: error instanceof Error ? error.message : String(error) };
       invitation = null;
     } finally {
       loading = false;
@@ -106,6 +117,16 @@
      escaping, but the guarantee is GitHub's rather than this page's. */
   function githubProfile(login: string): string {
     return `https://github.com/${encodeURIComponent(login)}`;
+  }
+
+  /* What the offer covers, as the tail of a sentence. The kind carries its weight:
+     "for Smykla Skalski" leaves a reader guessing whether that is a company or a
+     person, and "for the Smykla Skalski organization" does not. A system-role
+     offer has no target and ends the sentence where it stands. */
+  function scopePhrase(value: PanelInvitation): string {
+    if (value.target_name === undefined) return '';
+    if (value.target_kind === undefined) return ` for ${value.target_name}`;
+    return ` for the ${value.target_name} ${value.target_kind.toLowerCase()}`;
   }
 
   function roleLabel(value: PanelInvitation): string {
@@ -151,8 +172,17 @@
             <span class="skeleton-action"></span>
           </div>
           <p class="visually-hidden" role="status">Loading invitation</p>
+        {:else if failure !== null && failure.missing}
+          <div class="invitation-missing">
+            <p class="missing-code" aria-hidden="true">404</p>
+            <p class="missing-lead">This invitation link does not exist</p>
+            <p class="missing-note">
+              It may have been withdrawn, or the address may be incomplete. Ask whoever sent it for
+              a new one
+            </p>
+          </div>
         {:else if failure !== null}
-          <p>{failure}</p>
+          <p>{failure.message}</p>
           <button class="btn" onclick={() => void load(token)} disabled={loading}>
             {loading ? 'Trying again…' : 'Try again'}
           </button>
@@ -202,8 +232,7 @@
             </div>
             <div>
               <dt>Invited by</dt>
-              <dd class="invited-by">
-                <Avatar account={invitation.created_by} size={20} />
+              <dd>
                 <a
                   class="link"
                   href={githubProfile(invitation.created_by.login)}
@@ -219,9 +248,7 @@
           {#if invitation.status === 'pending'}
             <p class="invitation-consent">
               Accepting gives you {roleLabel(invitation)} access to Smyklot, the bot that approves and
-              merges pull requests{invitation.target_name === undefined
-                ? ''
-                : ` for ${invitation.target_name}`}.
+              merges pull requests{scopePhrase(invitation)}
             </p>
             <div class="invitation-actions">
               <a
@@ -504,10 +531,35 @@
     font: 600 var(--font-size-meta) / 1.2 var(--sans);
   }
 
-  .invited-by {
-    align-items: center;
-    display: flex;
-    gap: 0.4rem;
+  /* A link that names no invitation is not a failed request, so it is not offered
+     a retry: there is nothing on the other end to try again for. It says so as a
+     404 because that is the one thing every reader already recognises, and then in
+     words, because the number alone does not say what to do next. */
+  .invitation-missing {
+    display: grid;
+    gap: var(--space-2);
+    justify-items: center;
+    text-align: center;
+  }
+
+  .missing-code {
+    color: var(--text-muted);
+    font: 800 3.25rem / 1 var(--sans);
+    letter-spacing: 0.06em;
+    margin: 0;
+    opacity: 0.55;
+  }
+
+  .missing-lead {
+    color: var(--text-primary);
+    font: 650 1.0625rem / 1.35 var(--sans);
+    margin: 0;
+  }
+
+  .missing-note {
+    color: var(--text-secondary);
+    margin: 0;
+    max-width: 28rem;
   }
 
   /* What the reader is actually being asked to consent to, so it is ruled off from
