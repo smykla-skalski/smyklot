@@ -31,20 +31,23 @@
   let popover = $state<HTMLElement | null>(null);
   let open = $state(false);
 
+  /* The browser needs to know which button owns this popover. Doing the toggling
+     by hand looks like it works and does not: an auto popover light-dismisses on
+     pointerdown, so a second click on the trigger closed it and then the click
+     handler, finding it closed, opened it again - the list never shut. Naming the
+     invoker hands that sequence to the platform, which knows the dismissal came
+     from the trigger and leaves it closed. */
+  const popoverId = $props.id();
+
   const selected = $derived(options.find((option) => option.value === value) ?? options[0]);
 
-  function toggle(): void {
-    if (popover === null || disabled) return;
-    if (popover.matches(':popover-open')) {
-      popover.hidePopover();
-      return;
-    }
-    popover.showPopover();
+  /* Runs once the popover is open, from its own toggle event rather than from the
+     click: with the platform owning the toggle, that event is the only place that
+     knows an open actually happened. */
+  function afterOpen(): void {
     placePopover();
-    queueMicrotask(() => {
-      const selectedOption = popover?.querySelector<HTMLButtonElement>('[aria-selected="true"]');
-      selectedOption?.focus();
-    });
+    const selectedOption = popover?.querySelector<HTMLButtonElement>('[aria-selected="true"]');
+    selectedOption?.focus();
   }
 
   function placePopover(): void {
@@ -61,7 +64,9 @@
   }
 
   function syncOpen(): void {
-    open = popover?.matches(':popover-open') === true;
+    const nowOpen = popover?.matches(':popover-open') === true;
+    if (nowOpen && !open) afterOpen();
+    open = nowOpen;
   }
 
   function choose(next: string): void {
@@ -71,9 +76,9 @@
   }
 
   function openFromKeyboard(event: KeyboardEvent): void {
-    if (!['ArrowDown', 'ArrowUp'].includes(event.key) || open) return;
+    if (!['ArrowDown', 'ArrowUp'].includes(event.key) || open || disabled) return;
     event.preventDefault();
-    toggle();
+    popover?.showPopover();
   }
 
   function moveOptionFocus(event: KeyboardEvent): void {
@@ -100,7 +105,8 @@
     aria-label={label}
     aria-haspopup="listbox"
     aria-expanded={open}
-    onclick={toggle}
+    popovertarget={popoverId}
+    popovertargetaction="toggle"
     onkeydown={openFromKeyboard}
   >
     {#if selected !== undefined}
@@ -113,6 +119,7 @@
   <div
     class="role-popover"
     bind:this={popover}
+    id={popoverId}
     popover="auto"
     role="listbox"
     aria-label={label}
@@ -222,6 +229,11 @@
     color: var(--text);
     inset: auto;
     margin: 0;
+    display: grid;
+    /* Two pixels, so a hovered row and the selected one below it never meet along
+       an edge and read as one taller block. One would do at a whole device ratio
+       and round away at a fractional one. */
+    gap: 2px;
     max-height: min(24rem, calc(100dvh - 1rem));
     overflow: auto;
     padding: var(--space-1);
@@ -240,12 +252,25 @@
     color: var(--text-secondary);
     display: grid;
     font: 600 var(--font-size-compact) / 1 var(--sans);
-    gap: var(--space-2);
+    /* The symbol sits closer to its word than the row does to its edge: a mark and
+       the word it belongs to are one object, and at --space-2 they read as two
+       columns that happen to be adjacent. */
+    gap: var(--space-1);
     grid-template-columns: 1rem minmax(0, 1fr) 1rem;
     min-height: var(--control-height-compact);
     padding: 0 var(--space-2);
     text-align: left;
     width: 100%;
+  }
+
+  /* Pulled left by its own bearing, so what the eye measures from is the symbol's
+     ink and not the empty space its 24-unit box carries around it - the same
+     correction `.btn > svg` makes, and the reason the gaps looked lopsided: the
+     left one was padding, the right one was padding plus whatever slack that
+     particular glyph happened to have. The column keeps its width, so the text
+     stays in the same place down the list. */
+  .role-option > :global(svg:first-child) {
+    margin-inline-start: calc(-1 * var(--icon-ink-start, 0px));
   }
 
   .role-option:hover,
