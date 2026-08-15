@@ -24,6 +24,6 @@
   const content = $derived(describeFailure(failure));
 </script>
 
-<NightPage title={content.title} documentTitle={content.title} {build} themeChoice={false}>
+<NightPage title={content.title} documentTitle={content.title} {build}>
   <ErrorCard {content} panelHref={panelUrl(base, '/')} signInHref={api.signInUrl()} />
 </NightPage>

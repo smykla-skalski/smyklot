@@ -179,11 +179,11 @@ describe('the pages that show it', () => {
     expect(holders).toEqual(['ErrorCard.svelte']);
   });
 
-  it('does not offer a theme switch on an error', () => {
-    // There is nothing on an error page to settle into, so it follows the system
-    // rather than asking. The invitation page still asks.
-    expect(read('ErrorPage.svelte')).toMatch(/<NightPage[^>]*\sthemeChoice=\{false\}/su);
-    expect(read('InvitationPage.svelte')).not.toContain('themeChoice');
+  it('carries the same head row as every other page out here', () => {
+    // It went without a theme switch for a while and read as a page missing a piece. Whether the
+    // switch is there is NightPage's business now; what matters here is that the error page does
+    // not reach in and turn it off. Pinned in theme-switch.test.ts.
+    expect(read('ErrorPage.svelte')).not.toContain('themeChoice');
   });
 
   it('keeps the number out of the reading order', () => {

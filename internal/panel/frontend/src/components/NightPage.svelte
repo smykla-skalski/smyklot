@@ -9,8 +9,7 @@
    * two different products, and so the sky, the card's glass and the theme switch
    * are written once.
    */
-  import { untrack, type Snippet } from 'svelte';
-  import { MediaQuery } from 'svelte/reactivity';
+  import type { Snippet } from 'svelte';
 
   import type { PanelBuild } from '../lib/base';
   import {
@@ -33,7 +32,6 @@
     build,
     busy = false,
     size = 'default',
-    themeChoice = true,
     children,
   }: {
     /** Names whichever state the card is showing. Stands above it, as its head. */
@@ -50,12 +48,6 @@
      * full-width one that came up short.
      */
     size?: 'default' | 'compact';
-    /**
-     * Whether the page offers a theme switch. A page without one follows the
-     * system instead, which is what an error page does: there is nothing on it to
-     * settle into, so there is nothing for a switch to be worth.
-     */
-    themeChoice?: boolean;
     children: Snippet;
   } = $props();
 
@@ -79,54 +71,35 @@
      the number in one place. */
   const skyHeight = $derived(size === 'compact' ? 'clamp(44rem, 400%, 72rem)' : undefined);
 
-  /* Which of the two the page is, decided once. A page does not change its mind
-     about whether it carries a switch, and only one of the two things below should
-     exist: an error page has no business opening the preference document, and an
-     invitation has no business watching the system clock. `untrack` says the
-     single read is deliberate rather than a missed reactive dependency. */
-  const offersChoice = untrack(() => themeChoice);
-
-  /* Live, and only on the page with no switch. Following the system is safe here
-     for the same reason the switch is pointless: an error page is read and left,
-     so there is no state for a repaint to interrupt and nothing worth
-     remembering. */
-  const systemLive = offersChoice ? null : new MediaQuery('(prefers-color-scheme: dark)');
-
   /* The same synced document the panel writes, without the stream behind it: a
      write here stays pending in local storage and goes up on the first connect
      after signing in, so the theme chosen out here is the one that greets the
      reader inside. */
-  const prefs = offersChoice ? createPrefsSync() : null;
+  const prefs = createPrefsSync();
 
-  /* Read once and never watched, where the page offers the switch. It opens on
-     whatever the system asks for, but it opens on it as a choice already made -
-     the switch shows light or dark picked from the first paint, and the page holds
-     it. A `MediaQuery` there would repaint the page under a reader midway through
-     an invitation because their laptop reached sunset, and that is the page with
-     no account behind it to remember what they would rather have. */
+  /* Read once and never watched. The page opens on whatever the system asks for,
+     but it opens on it as a choice already made - the switch shows light or dark
+     picked from the first paint, and the page holds it. A `MediaQuery` would
+     repaint the page under a reader midway through an invitation because their
+     laptop reached sunset, and these are the pages with no account behind them to
+     remember what they would rather have. */
   const systemAtOpen = systemThemeDisplay();
 
   let theme = $state<ThemeDisplay>(storedTheme());
-  const resolvedTheme = $derived(
-    systemLive === null
-      ? resolveThemeDisplay(theme, systemAtOpen)
-      : systemLive.current
-        ? 'dark'
-        : 'light',
-  );
+  const resolvedTheme = $derived(resolveThemeDisplay(theme, systemAtOpen));
 
   $effect(() => {
     applyDocumentTheme(document, resolvedTheme);
   });
 
   function storedTheme(): ThemeDisplay {
-    const value = prefs?.get('theme');
+    const value = prefs.get('theme');
     return typeof value === 'string' && isThemeDisplay(value) ? value : DEFAULT_THEME_DISPLAY;
   }
 
   function selectTheme(nextTheme: ThemeDisplay): void {
     theme = nextTheme;
-    prefs?.set('theme', nextTheme);
+    prefs.set('theme', nextTheme);
   }
 </script>
 
@@ -137,21 +110,21 @@
 <main class={['shell', 'night-shell', size === 'compact' && 'night-compact']}>
   <div class="night-brand">
     <NightSky height={skyHeight} />
-    <BrandMark stacked size={MARK_SIZE} />
+    <!-- Open, so the sky carries through the ring: out here the mark stands on
+         night in both themes, which is exactly the ground the robot wants. -->
+    <BrandMark stacked interior="clear" size={MARK_SIZE} />
   </div>
 
   <div class="night-main">
     <div class="night-head">
       <h1 class="night-title" id="night-page-title">{title}</h1>
-      {#if themeChoice}
-        <ThemeSwitch
-          name="night-page-theme"
-          theme={resolvedTheme}
-          surface="night"
-          system={false}
-          onSelect={selectTheme}
-        />
-      {/if}
+      <ThemeSwitch
+        name="night-page-theme"
+        theme={resolvedTheme}
+        surface="night"
+        system={false}
+        onSelect={selectTheme}
+      />
     </div>
 
     <section

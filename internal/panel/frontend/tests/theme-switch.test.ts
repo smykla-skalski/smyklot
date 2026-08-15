@@ -43,26 +43,31 @@ describe('the theme switch', () => {
     expect(read('IdentityBar.svelte')).not.toMatch(/<ThemeSwitch[^>]*\ssystem=/su);
   });
 
-  it('is offered only by the page that can settle into an answer', () => {
-    // An invitation is read and acted on, so its theme is picked once and held. An error page is
-    // read and left, so it carries no switch and follows the system instead.
-    expect(read('ErrorPage.svelte')).toMatch(/themeChoice=\{false\}/u);
-    expect(read('InvitationPage.svelte')).not.toContain('themeChoice');
-  });
-
-  it('does not follow the system on the page that cannot remember', () => {
-    // A live `MediaQuery` on the invitation page would repaint it under a reader midway through
-    // because their laptop reached sunset, and that page has no account behind it to remember
-    // what they would rather have. The system theme is read once there, as an opening choice.
-    //
-    // `NightPage` does import `MediaQuery` now, for the switchless page, so what this checks is
-    // that the two are exclusive: the query is built only where there is no switch.
+  it('is on every page outside the panel, without exception', () => {
+    // The error pages went without one for a while, on the reasoning that there is nothing on an
+    // error page to settle into. It read as a page missing a piece: the head row is a title and a
+    // control, and with the control gone the title floated. `NightPage` renders it unconditionally
+    // now, so no page can be the odd one out.
     const page = read('NightPage.svelte');
 
+    expect(page).toMatch(/<ThemeSwitch\b/u);
+    expect(page, 'the switch must not be behind a condition').not.toMatch(
+      /\{#if[^}]*\}\s*<ThemeSwitch/u,
+    );
+    for (const file of ['ErrorPage.svelte', 'InvitationPage.svelte', 'SignInPage.svelte']) {
+      expect(read(file), `${file} must not opt out`).not.toContain('themeChoice');
+    }
+  });
+
+  it('does not follow the system on the pages that cannot remember', () => {
+    // A live `MediaQuery` out here would repaint the page under a reader midway through an
+    // invitation because their laptop reached sunset, and these are the pages with no account
+    // behind them to remember what they would rather have. The system theme is read once, as an
+    // opening choice. The page's own comment says so in words, so this asks what it *imports*.
+    const page = read('NightPage.svelte');
+
+    expect(page).not.toMatch(/^\s*import\b.*\bMediaQuery\b/mu);
     expect(page).toContain('systemThemeDisplay()');
-    expect(page).toMatch(/offersChoice\s*\?\s*null\s*:\s*new MediaQuery\(/u);
-    // Nothing may reach for the live query without going through that gate.
-    expect([...page.matchAll(/new MediaQuery\(/gu)]).toHaveLength(1);
   });
 
   it('can be sized by the surface it stands on', () => {

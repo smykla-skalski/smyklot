@@ -1050,13 +1050,9 @@
     padding: 0;
   }
 
-  /* Collapsed, the trigger sits ON the mark rather than under it. The halo in
-     `smyklot-halo.svg` is drawn in a 1340 box as a circle of r=556 stroked at
-     84, so at the mark's 36px it is 32.13px across with a 2.26px ring - the
-     overlay is that circle exactly, so its own ring lands on the halo's rather
-     than inside it and the interior covers the robot edge to edge. It waits for
-     a hover like the expanded one does, so the mark is what the sidebar shows
-     at rest. */
+  /* Collapsed, the trigger sits ON the mark rather than under it. It waits for a
+     hover like the expanded one does, so the mark is what the sidebar shows at
+     rest. */
   /* The target is the whole row - the same reach the workspace tile below it has - while the disc
      stays the size of the halo it sits on. A 32px circle is a small thing to hit for the control
      that opens the sidebar. */
@@ -1071,21 +1067,30 @@
     width: auto;
   }
 
+  /* The glyph goes inside the halo, not over it.
+     -------------------------------------------
+     `smyklot-halo.svg` draws the ring in a 1340 box as a circle of r=556 stroked
+     at 84, so at the mark's 36px the ring is 32.13px across its outer edge with a
+     2.26px stroke, and the interior inside it is 27.62px. This disc used to be
+     the outer figure with a grey ring of its own, which meant hovering swapped
+     the rainbow halo for a plain circle - the mark disappeared exactly when
+     someone reached for it. Sized to the interior instead, the halo stays and the
+     glyph sits where the robot was.
+
+     A third of a pixel over the interior on each side, because the ring's inner
+     edge is antialiased and lands on a fraction: an exactly-sized disc leaves a
+     hairline of interior showing between the two. It is far less than the ring's
+     own 2.26px, so the halo is not visibly eaten into. */
   .collapsed .sidebar-collapse-trigger::before {
-    border: 2.26px solid var(--sidebar-text-muted);
     border-radius: 50%;
-    /* The halo's outer edge is antialiased and lands on a fraction of a pixel,
-       so an exactly-sized disc leaves a coloured hairline around it. A ring of
-       the surface behind swallows it without moving the geometry. */
-    box-shadow: 0 0 0 1.5px var(--sidebar-bg);
     box-sizing: border-box;
     content: '';
-    height: 32.13px;
+    height: 28.3px;
     left: 50%;
     position: absolute;
     top: 50%;
     translate: -50% -50%;
-    width: 32.13px;
+    width: 28.3px;
   }
 
   .collapsed .sidebar-collapse-trigger > :global(svg) {
@@ -1095,16 +1100,25 @@
 
   /* The states belong to the disc, not to the row-sized target it is drawn on: a background on the
      button itself would cover the mark it is meant to sit over. */
-  .collapsed .sidebar-collapse-trigger::before,
-  .collapsed .sidebar-collapse-trigger:hover::before,
-  .collapsed .sidebar-collapse-trigger:focus-visible::before {
-    /* Opaque: the robot behind must not read through the glyph. */
+  /* The row-sized target keeps no surface of its own. It is drawn over the mark,
+     so a background on the button is a background over the halo - which is how
+     hovering used to wipe the ring off the rail even before the disc was drawn.
+     Every state belongs to the disc instead. */
+  .collapsed .sidebar-collapse-trigger,
+  .collapsed .sidebar-collapse-trigger:hover,
+  .collapsed .sidebar-collapse-trigger:focus-visible,
+  .collapsed .sidebar-collapse-trigger:active {
+    background: transparent;
+  }
+
+  /* Opaque: the robot behind must not read through the glyph. */
+  .collapsed .sidebar-collapse-trigger::before {
     background: var(--sidebar-bg);
   }
 
   .collapsed .sidebar-collapse-trigger:hover::before,
   .collapsed .sidebar-collapse-trigger:focus-visible::before {
-    border-color: var(--sidebar-text);
+    background: var(--sidebar-item-hover);
   }
 
   .collapsed .sidebar-collapse-trigger:hover,
