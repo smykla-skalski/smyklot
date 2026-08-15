@@ -179,10 +179,16 @@ type AccessDecision struct {
 
 // Invitation is an identity-locked offer of a system or installation role.
 type Invitation struct {
-	ID          string
-	Account     Account
-	TargetID    *string
+	ID       string
+	Account  Account
+	TargetID *string
+	// TargetName, TargetLogin and TargetKind describe the installation the offer
+	// is scoped to, and are all nil for a system-role offer. The login and kind
+	// are what let a reader check the scope against GitHub itself: a display name
+	// alone names an organisation without identifying it.
 	TargetName  *string
+	TargetLogin *string
+	TargetKind  *string
 	Role        *InstallationRole
 	SystemRole  *SystemRole
 	Status      InvitationStatus

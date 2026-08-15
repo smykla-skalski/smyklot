@@ -46,6 +46,8 @@ type invitationResponse struct {
 	Account     accountResponse           `json:"account"`
 	TargetID    *string                   `json:"target_id,omitempty"`
 	TargetName  *string                   `json:"target_name,omitempty"`
+	TargetLogin *string                   `json:"target_login,omitempty"`
+	TargetKind  *string                   `json:"target_kind,omitempty"`
 	Role        *storage.InstallationRole `json:"role,omitempty"`
 	SystemRole  *storage.SystemRole       `json:"system_role,omitempty"`
 	Status      storage.InvitationStatus  `json:"status"`
@@ -362,7 +364,9 @@ func (s *Server) announceInvitation(invitation storage.Invitation) {
 func invitationDTO(invitation storage.Invitation, inviteURL string) invitationResponse {
 	return invitationResponse{
 		ID: invitation.ID, Account: accountDTO(invitation.Account), TargetID: invitation.TargetID,
-		TargetName: invitation.TargetName, Role: invitation.Role, SystemRole: invitation.SystemRole,
+		TargetName: invitation.TargetName, TargetLogin: invitation.TargetLogin,
+		TargetKind: invitation.TargetKind,
+		Role:       invitation.Role, SystemRole: invitation.SystemRole,
 		Status:    invitation.Status,
 		ExpiresAt: invitation.ExpiresAt, CreatedBy: accountDTO(invitation.CreatedBy),
 		CreatedAt: invitation.CreatedAt, RespondedAt: invitation.RespondedAt, InviteURL: inviteURL,

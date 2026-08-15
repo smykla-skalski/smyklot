@@ -1647,6 +1647,16 @@ func TestPanelInvitesNamedGitHubUserThroughOAuth(t *testing.T) {
 		!strings.Contains(review.Body.String(), `"status":"pending"`) {
 		t.Fatalf("review invitation = %d %s", review.Code, review.Body.String())
 	}
+	// The invitation page names the scope to someone who has not signed in and may
+	// never have heard of it, so the display name alone is not enough: the login is
+	// what identifies the account on GitHub, and the kind says whether accepting
+	// joins an organisation or one person's installation.
+	requireResponse(
+		t, review, "review invitation scope", http.StatusOK,
+		`"target_name":"Smykla Skalski"`,
+		`"target_login":"smykla-skalski"`,
+		`"target_kind":"Organization"`,
+	)
 
 	invitedSession := harness.acceptInvitation(t, invitee, token)
 	viewer := harness.request(t, http.MethodGet, "/panel/api/v1/session", nil, invitedSession)

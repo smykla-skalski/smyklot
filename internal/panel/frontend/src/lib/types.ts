@@ -162,6 +162,9 @@ export interface PanelInvitation {
   account: PanelAccount;
   target_id?: string;
   target_name?: string;
+  /** The scope's GitHub login, which is what identifies it there. */
+  target_login?: string;
+  target_kind?: 'Organization' | 'User';
   role?: Exclude<InstallationRole, 'none'>;
   system_role?: Exclude<SystemRole, 'none' | 'super_root'>;
   status: InvitationStatus;

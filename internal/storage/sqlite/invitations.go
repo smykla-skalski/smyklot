@@ -22,6 +22,8 @@ SELECT
     invited.updated_at,
     ui.target_id,
     target_account.display_name,
+    target_account.login,
+    target.kind,
     ui.role,
     ui.system_role,
     ui.status,
@@ -679,6 +681,7 @@ func getInvitation(
 func scanInvitation(scanner rowScanner, now time.Time) (storage.Invitation, error) {
 	var invitation storage.Invitation
 	var invitedAvatar, targetID, targetName, installationRole, systemRole sql.NullString
+	var targetLogin, targetKind sql.NullString
 	var creatorAvatar, respondedAt sql.NullString
 	var invitedUpdatedAt, creatorUpdatedAt, expiresAt, createdAt string
 	err := scanner.Scan(
@@ -692,6 +695,8 @@ func scanInvitation(scanner rowScanner, now time.Time) (storage.Invitation, erro
 		&invitedUpdatedAt,
 		&targetID,
 		&targetName,
+		&targetLogin,
+		&targetKind,
 		&installationRole,
 		&systemRole,
 		&invitation.Status,
@@ -713,6 +718,8 @@ func scanInvitation(scanner rowScanner, now time.Time) (storage.Invitation, erro
 	invitation.CreatedBy.AvatarURL = stringPointer(creatorAvatar)
 	invitation.TargetID = stringPointer(targetID)
 	invitation.TargetName = stringPointer(targetName)
+	invitation.TargetLogin = stringPointer(targetLogin)
+	invitation.TargetKind = stringPointer(targetKind)
 	if installationRole.Valid {
 		role := storage.InstallationRole(installationRole.String)
 		invitation.Role = &role
