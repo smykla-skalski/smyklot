@@ -143,23 +143,36 @@ valid="--set github.clientId=lint --set github.existingSecret=lint --set databas
 # shellcheck disable=SC2086
 helm lint charts/smyklot $valid
 
-# A guard nothing tests is a comment. Each of these must fail to render.
+# A guard nothing tests is a comment. Each of these must fail to render, and
+# fail for its own reason: any broken template makes helm exit non-zero, so a
+# check that only asks whether rendering failed passes just as happily when the
+# guard has been deleted and something unrelated is what broke. That is the way
+# a guard retires without anybody noticing, which is what these exist to stop.
 refuses() {
   what="$1"
-  shift
-  if helm template charts/smyklot "$@" >/dev/null 2>&1; then
+  because="$2"
+  shift 2
+  if output=$(helm template charts/smyklot "$@" 2>&1); then
     echo "chart rendered $what" >&2
+    exit 1
+  fi
+  if ! printf '%s' "$output" | grep -qF "$because"; then
+    echo "chart refused $what, but not over $because" >&2
+    printf '%s\n' "$output" >&2
     exit 1
   fi
 }
 
 # shellcheck disable=SC2086
-refuses "more than one replica" $valid --set replicaCount=2
+refuses "more than one replica" "replicaCount cannot exceed 1" \
+  $valid --set replicaCount=2
 refuses "without a database" \
+  "database.url or database.existingSecret is required" \
   --set github.clientId=lint --set github.existingSecret=lint
 # shellcheck disable=SC2086
-refuses "with two answers for where state lives" $valid \
-  --set database.url=postgres://lint/lint
+refuses "with two answers for where state lives" \
+  "set database.url or database.existingSecret, not both" \
+  $valid --set database.url=postgres://lint/lint
 '''
 
 [tasks."lint:actions"]
