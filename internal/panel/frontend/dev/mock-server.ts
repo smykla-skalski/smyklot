@@ -1444,6 +1444,8 @@ async function handle(
         throw new MockApiError(404, 'not_found', 'Root invitation not found');
       }
       const input = await readBody<{ expires_in_days: InvitationDays }>(req);
+      requireReissuable(current);
+      refuseUnusableInvitation(state, current.account.login, {}, true);
       current.token = mockInvitationToken(state.invitationCounter++);
       current.status = 'pending';
       current.expires_at = new Date(Date.now() + input.expires_in_days * 86_400_000).toISOString();
@@ -1695,6 +1697,10 @@ async function handle(
         throw new MockApiError(404, 'not_found', 'installation invitation not found');
       }
       const input = await readBody<{ expires_in_days: InvitationDays }>(req);
+      requireReissuable(current);
+      // An outstanding offer can be outgrown while it waits. Renewing it is refused on the same
+      // ground as making a new one, exactly as the server does.
+      refuseUnusableInvitation(state, current.account.login, { targetId: target.value.id }, true);
       current.token = mockInvitationToken(state.invitationCounter++);
       current.status = 'pending';
       current.expires_at = new Date(Date.now() + input.expires_in_days * 86_400_000).toISOString();
@@ -2254,6 +2260,15 @@ function refuseUnusableInvitation(
       'this user declined the last invitation; confirm to send another',
     );
   }
+}
+
+/**
+ * Only an offer still in play can be renewed. A declined one is an answer, and the server refuses
+ * to reissue it - letting it through here would teach the opposite rule in dev.
+ */
+function requireReissuable(invitation: MockInvitation): void {
+  if (invitation.status === 'pending' || invitation.status === 'expired') return;
+  throw new MockApiError(409, 'conflict', 'this invitation is no longer pending');
 }
 
 function createMockInvitation(

@@ -150,40 +150,15 @@ func (s *Server) createInvitation(w http.ResponseWriter, r *http.Request, draft 
 		AcknowledgeDeclined: draft.AcknowledgeDeclined,
 	})
 	if err != nil {
-		s.writeInvitationCreateError(w, draft, err)
+		s.writeInvitationMutationError(w, draft.TargetID, draft.ElevationID, err)
 		return
 	}
 	s.announceInvitation(invitation)
 	writeJSON(w, http.StatusCreated, invitationDTO(invitation, s.invitationURL(token)))
 }
 
-// writeInvitationCreateError names the two refusals the panel can do something about.
-//
-// Both are conflicts, and both would otherwise arrive as the generic one - "settings changed in
-// another session; reload the latest values" - which is untrue and unactionable here. They are
-// answered before the elevation mapping, which turns every conflict into a stale-Owners message.
-func (s *Server) writeInvitationCreateError(
-	w http.ResponseWriter,
-	draft invitationDraft,
-	err error,
-) {
-	switch {
-	case errors.Is(err, storage.ErrAlreadyMember):
-		s.writeError(w, http.StatusConflict, "already_has_access", alreadyHasAccessMessage(draft))
-	case errors.Is(err, storage.ErrDeclinedEarlier):
-		s.writeError(
-			w,
-			http.StatusConflict,
-			"invitation_declined",
-			"this user declined the last invitation; confirm to send another",
-		)
-	default:
-		s.writeInvitationMutationError(w, draft.ElevationID, err)
-	}
-}
-
-func alreadyHasAccessMessage(draft invitationDraft) string {
-	if draft.TargetID == nil {
+func alreadyHasAccessMessage(targetID *string) string {
+	if targetID == nil {
 		return "this account is already in Smyklot; change its system role instead of inviting it"
 	}
 
@@ -236,7 +211,7 @@ func (s *Server) reissueManagedInvitation(
 		CreatedByAccount: actor.ID, CreatedAt: now,
 	})
 	if err != nil {
-		s.writeInvitationMutationError(w, elevationID, err)
+		s.writeInvitationMutationError(w, invitation.TargetID, elevationID, err)
 		return
 	}
 	s.announceInvitation(updated)
@@ -267,23 +242,40 @@ func (s *Server) revokeManagedInvitation(
 		SessionTokenHash: sessionTokenHash, RevokedAt: s.now().UTC(),
 	})
 	if err != nil {
-		s.writeInvitationMutationError(w, elevationID, err)
+		s.writeInvitationMutationError(w, invitation.TargetID, elevationID, err)
 		return
 	}
 	s.announceInvitation(updated)
 	writeJSON(w, http.StatusOK, invitationDTO(updated, ""))
 }
 
+// writeInvitationMutationError names the two refusals the panel can do something about.
+//
+// Both are conflicts, and both would otherwise arrive as the generic one - "settings changed in
+// another session; reload the latest values", or under elevation the stale-Owners message - which
+// is untrue and unactionable here. They are answered before either mapping, and for every write
+// that can raise them: an offer can become meaningless while it sits unanswered, so renewing one
+// is refused on the same ground as making it.
 func (s *Server) writeInvitationMutationError(
 	w http.ResponseWriter,
-	elevationID *string,
+	targetID, elevationID *string,
 	err error,
 ) {
-	if elevationID != nil {
+	switch {
+	case errors.Is(err, storage.ErrAlreadyMember):
+		s.writeError(w, http.StatusConflict, "already_has_access", alreadyHasAccessMessage(targetID))
+	case errors.Is(err, storage.ErrDeclinedEarlier):
+		s.writeError(
+			w,
+			http.StatusConflict,
+			"invitation_declined",
+			"this user declined the last invitation; confirm to send another",
+		)
+	case elevationID != nil:
 		s.writeRootWriteError(w, err)
-		return
+	default:
+		s.writeStorageError(w, err)
 	}
-	s.writeStorageError(w, err)
 }
 
 func (s *Server) requireInvitationManager(

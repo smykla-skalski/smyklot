@@ -1242,6 +1242,49 @@ END`)
 		Expect(offer("invitation-8", "token-8", now.Add(6*time.Hour), false)).To(Succeed())
 	})
 
+	// An offer can outlive the reason for it. Renewing one is refused on the same ground as making
+	// it, because accepting a stale offer overwrites the role the identity holds now.
+	It("refuses to renew an offer the invited identity has since outgrown", func() {
+		owner, target := seedInstallation(ctx, store, now)
+		Expect(store.UpsertAccount(ctx, owner)).To(Succeed())
+		Expect(store.ReconcileSuperRoot(ctx, owner.ID, now)).To(Succeed())
+		invitee := owner
+		invitee.ID = "github:user:invitee"
+		invitee.SubjectID = "invitee"
+		invitee.Login = "invitee"
+		Expect(store.UpsertAccount(ctx, invitee)).To(Succeed())
+
+		_, err := store.CreateInvitation(ctx, storage.InvitationCreate{
+			ID: "inv-1", TokenHash: "tok-1", AccountID: invitee.ID, TargetID: &target.TargetID,
+			Role: rolePointer(storage.InstallationRoleViewer), ExpiresAt: now.Add(time.Hour),
+			CreatedByAccount: owner.ID, CreatedAt: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = store.CreatePanelUser(ctx, storage.PanelUserCreate{
+			AccountID: invitee.ID, ActorAccountID: owner.ID, ChangedAt: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		_, err = store.SetTargetAccess(ctx, storage.TargetAccessChange{
+			TargetID: target.TargetID, SubjectAccountID: invitee.ID, ActorAccountID: owner.ID,
+			Role: rolePointer(storage.InstallationRoleEditor), ExpectedRevision: 0, ChangedAt: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = store.CreateInvitation(ctx, storage.InvitationCreate{
+			ID: "inv-2", TokenHash: "tok-2", AccountID: invitee.ID, TargetID: &target.TargetID,
+			Role: rolePointer(storage.InstallationRoleViewer), ExpiresAt: now.Add(time.Hour),
+			CreatedByAccount: owner.ID, CreatedAt: now,
+		})
+		Expect(errors.Is(err, storage.ErrAlreadyMember)).To(BeTrue(), "create should refuse")
+
+		_, err = store.ReissueInvitation(ctx, storage.InvitationReissue{
+			ID: "inv-1", TokenHash: "tok-3", ExpiresAt: now.Add(24 * time.Hour),
+			CreatedByAccount: owner.ID, CreatedAt: now.Add(time.Minute),
+		})
+		Expect(errors.Is(err, storage.ErrAlreadyMember)).To(BeTrue(), "reissue should refuse too")
+	})
+
 	It("refuses a Root invitation for an identity the app already holds", func() {
 		owner, _ := seedInstallation(ctx, store, now)
 		Expect(store.UpsertAccount(ctx, owner)).To(Succeed())

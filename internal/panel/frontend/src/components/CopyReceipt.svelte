@@ -44,19 +44,21 @@
 
 <style>
   .copy-receipt {
+    /* How long a receipt lives, stated once: long enough to be read twice. The animation is what
+       ends it, so this is the message's lifetime rather than a motion setting. */
+    --receipt-life: 2.6s;
+
     display: block;
     position: relative;
   }
 
   .copy-receipt :global(.chip) {
-    animation: copy-receipt 2.6s var(--ease-out) both;
+    animation: copy-receipt var(--receipt-life) var(--ease-out) both;
     position: absolute;
     right: 0;
     top: 0;
   }
 
-  /* The one statement of how long a receipt lives: long enough to be read twice, and it leaves the
-     way it came. */
   @keyframes copy-receipt {
     0% {
       opacity: 0;
@@ -78,8 +80,18 @@
     }
   }
 
-  /* Same lifetime, no travel - the element still has to finish an animation to be taken away. */
+  /* Same lifetime, no travel.
+
+     The app-wide reduced-motion rule squashes every animation to 0.01ms, which is right for motion
+     and wrong here: this animation is not movement, it is how long the message stays. Left
+     squashed, the receipt was removed on the frame it appeared and a reduced-motion reader never
+     saw it at all. The duration is re-asserted at the same weight and higher specificity; what
+     goes is the travel, in the keyframes below. */
   @media (prefers-reduced-motion: reduce) {
+    .copy-receipt :global(.chip) {
+      animation-duration: var(--receipt-life) !important;
+    }
+
     @keyframes copy-receipt {
       0%,
       100% {

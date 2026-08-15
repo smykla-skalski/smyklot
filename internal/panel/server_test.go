@@ -1800,6 +1800,35 @@ func TestPanelRefusesInvitationsThatCannotBeUsed(t *testing.T) {
 		invite("invitee", `{"login":"invitee","role":"viewer","expires_in_days":7,"acknowledge_declined":true}`),
 		"acknowledged invitation after a decline", http.StatusCreated, `"status":"pending"`,
 	)
+
+	// The offer just made is outstanding. Granting the access directly makes it meaningless, and
+	// renewing it has to be refused for the same reason making a new one would be - the reissue
+	// button is one press away in the same table.
+	var outstanding invitationResponse
+	listed := harness.request(
+		t, http.MethodGet, invitations+"?status=pending&limit=1", nil, ownerSession,
+	)
+	requireResponse(t, listed, "pending invitations", http.StatusOK, `"login":"invitee"`)
+	var page struct {
+		Items []invitationResponse `json:"items"`
+	}
+	if err := json.Unmarshal(listed.Body.Bytes(), &page); err != nil || len(page.Items) == 0 {
+		t.Fatalf("pending invitation page = %v %s", err, listed.Body.String())
+	}
+	outstanding = page.Items[0]
+	if _, err := harness.store.SetTargetAccess(t.Context(), storage.TargetAccessChange{
+		TargetID: "github:installation:10", SubjectAccountID: invitee.ID, ActorAccountID: owner.ID,
+		Role: rolePointer(storage.InstallationRoleEditor), ExpectedRevision: 2, ChangedAt: harness.now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	reissued := harness.request(
+		t, http.MethodPost, invitations+"/"+outstanding.ID+"/reissue",
+		strings.NewReader(`{"expires_in_days":7}`), ownerSession,
+	)
+	requireResponse(
+		t, reissued, "reissue for a member", http.StatusConflict, `"code":"already_has_access"`,
+	)
 }
 
 func rolePointer(role storage.InstallationRole) *storage.InstallationRole {

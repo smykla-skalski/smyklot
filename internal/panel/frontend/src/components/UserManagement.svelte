@@ -787,6 +787,10 @@
       addIntent = 'invite';
       addReturnFocus = trigger;
       addModalOpen = true;
+      // Whoever opens the dialog owns its whole state. This door bypasses openAddModal, so it
+      // clears the same fields rather than trusting that the last close did.
+      addFailure = null;
+      declinedLogin = null;
       // A reissued link is a new link that has to be shared, which is the same reason the created
       // one goes to the clipboard by itself. Coming in through this door rather than the other one
       // should not change what the dialog has already done for you.

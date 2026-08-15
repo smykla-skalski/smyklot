@@ -322,6 +322,23 @@ func (s *Store) ReissueInvitation(
 	if err != nil {
 		return storage.Invitation{}, err
 	}
+	// The same standing that stops an offer being made stops one being renewed. An outstanding
+	// offer outlives the reason for it: granted access directly while it sat unanswered, and
+	// reissuing would mint a live link for somebody who already holds a role - one that overwrites
+	// that role on acceptance, so a stale viewer offer can quietly demote an editor.
+	//
+	// Checked after the elevation, as in CreateInvitation. A caller whose elevation has lapsed is
+	// told that, rather than being told what standing the invited identity has.
+	//
+	// A decline is not consulted here because a declined offer is not reissuable at all: the status
+	// check above already refused it.
+	held, err := invitedIdentityHoldsAccess(ctx, tx, current.Account.ID, current.TargetID)
+	if err != nil {
+		return storage.Invitation{}, err
+	}
+	if held {
+		return storage.Invitation{}, storage.ErrAlreadyMember
+	}
 	result, err := tx.ExecContext(ctx, `
 UPDATE user_invitations
 SET token_hash = ?, status = 'pending', expires_at = ?, created_by = ?, created_at = ?,

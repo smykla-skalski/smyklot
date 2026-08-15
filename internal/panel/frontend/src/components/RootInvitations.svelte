@@ -324,6 +324,10 @@
         generatedLink = updated.invite_url ?? '';
         generatedFor = updated.account.login;
         login = updated.account.login;
+        // This door bypasses openCreate, so it clears the same fields itself.
+        createProblem = null;
+        copyProblem = null;
+        declinedLogin = null;
         createOpen = true;
       } else {
         await revoke(actionInvitation.id);
