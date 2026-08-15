@@ -549,8 +549,9 @@ fly secrets set \
 cp deploy/postgres/smyklot.fly.toml fly.toml
 git commit -sS -am 'feat(deploy): move service state to PostgreSQL'
 
+VERSION=1.23.2          # or whichever release you are deploying
 fly deploy --app smyklot --ha=false \
-  --image ghcr.io/smykla-skalski/smyklot:1.23.1
+  --image "ghcr.io/smykla-skalski/smyklot:$VERSION"
 fly scale count 1 --app smyklot
 ```
 
@@ -583,7 +584,7 @@ fly secrets unset SMYKLOT_DATABASE_URL --app smyklot
 git revert <the cutover commit>          # restores [[mounts]] and the state path
 fly volumes create smyklot_data --app smyklot --region fra --size 1 \
   --scheduled-snapshots --snapshot-retention 14 --yes
-fly deploy --app smyklot --ha=false --image ghcr.io/smykla-skalski/smyklot:1.23.1
+fly deploy --app smyklot --ha=false --image "ghcr.io/smykla-skalski/smyklot:$VERSION"
 fly ssh sftp shell --app smyklot         # put panel.sqlite3 back at /data/panel.sqlite3
 fly scale count 1 --app smyklot
 ```

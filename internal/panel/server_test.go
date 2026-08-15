@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"path/filepath"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -22,6 +21,7 @@ import (
 	"github.com/coder/websocket/wsjson"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/internal/storage/open"
+	"github.com/smykla-skalski/smyklot/internal/storage/storagetest"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
@@ -89,7 +89,7 @@ func newPanelHarness(t *testing.T, login string) *panelHarness {
 func newPanelHarnessForSubject(t *testing.T, login, subjectID string) *panelHarness {
 	t.Helper()
 	now := time.Date(2026, time.August, 8, 12, 0, 0, 0, time.UTC)
-	store, err := open.Store(t.Context(), filepath.Join(t.TempDir(), "panel.db"))
+	store, err := open.Store(t.Context(), storagetest.Connection(t, t.TempDir()))
 	if err != nil {
 		t.Fatal(err)
 	}

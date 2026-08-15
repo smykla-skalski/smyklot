@@ -33,9 +33,6 @@ jobs:
           --health-timeout 5s
           --health-retries 12
 
-    env:
-      SMYKLOT_TEST_POSTGRES_DSN: postgres://smyklot:smyklot@localhost:5432/smyklot?sslmode=disable
-
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -60,9 +57,11 @@ jobs:
       - name: Run tests
         run: mise run test
 
-      # Runs after the full suite, which already covered PostgreSQL, to assert
-      # that it did rather than skipping past it.
-      - name: Prove the PostgreSQL engine was tested
+      # The step above sets no DSN, so it is the SQLite pass. This is the
+      # PostgreSQL one, and it fails if any spec skipped rather than ran.
+      - name: Run tests against PostgreSQL
+        env:
+          SMYKLOT_TEST_POSTGRES_DSN: postgres://smyklot:smyklot@localhost:5432/smyklot?sslmode=disable
         run: mise run test:storage:postgres
 
       - name: Run linters

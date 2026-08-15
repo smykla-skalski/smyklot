@@ -63,9 +63,6 @@ jobs:
           --health-timeout 5s
           --health-retries 12
 
-    env:
-      SMYKLOT_TEST_POSTGRES_DSN: postgres://smyklot:smyklot@localhost:5432/smyklot?sslmode=disable
-
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -78,7 +75,9 @@ jobs:
       - name: Run tests
         run: mise run test
 
-      - name: Prove the PostgreSQL engine was tested
+      - name: Run tests against PostgreSQL
+        env:
+          SMYKLOT_TEST_POSTGRES_DSN: postgres://smyklot:smyklot@localhost:5432/smyklot?sslmode=disable
         run: mise run test:storage:postgres
 
   # Run golangci-lint

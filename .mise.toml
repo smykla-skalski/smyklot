@@ -80,6 +80,12 @@ echo "$passed PostgreSQL specs passed, none skipped"
 # The copier only has a second engine to copy into when a server is present,
 # so its suite is proof of the same thing and belongs to the same check.
 go test -race -count=1 ./internal/storage/transfer
+
+# The panel and the service open whichever engine the environment names, so
+# with a DSN set these are the PostgreSQL pass over everything above the port.
+# Their SQLite pass is `mise run test`, which sets no DSN. Running both is the
+# point: a suite that only ever saw one engine proves nothing about the other.
+go test -race -count=1 ./internal/panel ./cmd/github-action
 '''
 
 [tasks."db:dev"]

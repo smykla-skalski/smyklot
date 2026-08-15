@@ -14,6 +14,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/smykla-skalski/smyklot/internal/githubtest"
+	"github.com/smykla-skalski/smyklot/internal/storage/storagetest"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
@@ -127,7 +128,7 @@ var _ = Describe("Webhook service [Unit]", func() {
 		var err error
 
 		srv, err = newServer(&serveConfig{
-			database:      GinkgoT().TempDir() + "/state.sqlite3",
+			database:      storagetest.Connection(GinkgoT(), GinkgoT().TempDir()),
 			listenAddress: "127.0.0.1:0",
 			webhookPath:   defaultWebhookPath,
 			webhookSecret: []byte(testSecret),
