@@ -245,7 +245,7 @@ func reconcilerRequest(progressAt time.Time) pendingci.Request {
 	return pendingci.Request{
 		ID: 7, Revision: 2, Lifecycle: pendingci.LifecycleArmed,
 		RepositoryID: "repository",
-		HeadSHA:      "live-head", LastProgressAt: progressAt,
+		HeadSHA:      "live-head", BaseBranch: "main", LastProgressAt: progressAt,
 		LastObservedState: string(pendingci.ObservedPassing),
 		LastFingerprint:   "passing",
 	}
@@ -253,7 +253,8 @@ func reconcilerRequest(progressAt time.Time) pendingci.Request {
 
 func reconcilerObservation(at time.Time, state pendingci.ObservedState) pendingci.Observation {
 	return pendingci.Observation{
-		HeadSHA: "live-head", PullRequestOpen: true, PendingLabelFound: true,
+		HeadSHA: "live-head", BaseBranch: "main",
+		PullRequestOpen: true, PendingLabelFound: true,
 		State: state, Fingerprint: "passing", ObservedAt: at,
 	}
 }

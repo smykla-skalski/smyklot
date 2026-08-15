@@ -49,7 +49,7 @@ func (backend *githubPendingCIBackend) Observe(
 	labelFound := hasLabel(state.Labels, request.Label)
 	if !state.Open || !labelFound {
 		return pendingci.Observation{
-			HeadSHA: state.HeadSHA, PullRequestOpen: state.Open,
+			HeadSHA: state.HeadSHA, BaseBranch: state.BaseBranch, PullRequestOpen: state.Open,
 			PullRequestMerged: state.Merged, PendingLabelFound: labelFound,
 			State: pendingci.ObservedIndeterminate, ObservedAt: observedAt,
 		}, nil
@@ -83,7 +83,7 @@ func (backend *githubPendingCIBackend) Observe(
 	}
 	if sourceReason != "" {
 		return pendingci.Observation{
-			HeadSHA: state.HeadSHA, PullRequestOpen: state.Open,
+			HeadSHA: state.HeadSHA, BaseBranch: state.BaseBranch, PullRequestOpen: state.Open,
 			PullRequestMerged: state.Merged, PendingLabelFound: labelFound,
 			CancelReason: sourceReason,
 			State:        pendingci.ObservedIndeterminate, ObservedAt: observedAt,
@@ -95,7 +95,7 @@ func (backend *githubPendingCIBackend) Observe(
 	}
 	if cancelReason != "" {
 		return pendingci.Observation{
-			HeadSHA: state.HeadSHA, PullRequestOpen: state.Open,
+			HeadSHA: state.HeadSHA, BaseBranch: state.BaseBranch, PullRequestOpen: state.Open,
 			PullRequestMerged: state.Merged, PendingLabelFound: labelFound,
 			CancelReason: cancelReason,
 			State:        pendingci.ObservedIndeterminate, ObservedAt: observedAt,
@@ -104,7 +104,7 @@ func (backend *githubPendingCIBackend) Observe(
 	checks, err := backend.checks(ctx, client, request, state, owner, repository)
 	if errors.Is(err, errNoRequiredStatusChecks) {
 		return pendingci.Observation{
-			HeadSHA: state.HeadSHA, PullRequestOpen: state.Open,
+			HeadSHA: state.HeadSHA, BaseBranch: state.BaseBranch, PullRequestOpen: state.Open,
 			PullRequestMerged: state.Merged, PendingLabelFound: labelFound,
 			CancelReason: errNoRequiredStatusChecks.Error(),
 			State:        pendingci.ObservedIndeterminate, ObservedAt: observedAt,
@@ -115,7 +115,7 @@ func (backend *githubPendingCIBackend) Observe(
 	}
 
 	return pendingci.Observation{
-		HeadSHA: state.HeadSHA, PullRequestOpen: state.Open,
+		HeadSHA: state.HeadSHA, BaseBranch: state.BaseBranch, PullRequestOpen: state.Open,
 		PullRequestMerged: state.Merged, PendingLabelFound: labelFound,
 		State: observedCIState(checks.State), Fingerprint: checkFingerprint(checks),
 		ObservedAt: observedAt,

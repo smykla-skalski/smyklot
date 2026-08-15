@@ -272,6 +272,7 @@ type QueueFilter struct {
 // Observation is live GitHub truth projected into the pending-CI domain.
 type Observation struct {
 	HeadSHA           string
+	BaseBranch        string
 	PullRequestOpen   bool
 	PullRequestMerged bool
 	PendingLabelFound bool

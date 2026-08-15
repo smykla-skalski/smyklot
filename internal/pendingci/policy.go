@@ -26,6 +26,9 @@ func Decide(request Request, observation Observation, timing Timing) (Decision, 
 	if observation.HeadSHA != request.HeadSHA {
 		return finishDecision("pull request head changed after command authorization"), nil
 	}
+	if observation.BaseBranch != request.BaseBranch {
+		return finishDecision("pull request base changed after command authorization"), nil
+	}
 	if !observation.PendingLabelFound {
 		return finishDecision("pending CI label was removed"), nil
 	}
@@ -97,8 +100,10 @@ func validatePolicyInput(request Request, observation Observation, timing Timing
 	if request.Lifecycle != LifecycleArmed || request.LastProgressAt.IsZero() {
 		return invalid("policy requires an armed request with progress time")
 	}
-	if strings.TrimSpace(observation.HeadSHA) == "" || observation.ObservedAt.IsZero() {
-		return invalid("observation head and time are required")
+	if strings.TrimSpace(observation.HeadSHA) == "" ||
+		strings.TrimSpace(observation.BaseBranch) == "" ||
+		observation.ObservedAt.IsZero() {
+		return invalid("observation head, base branch, and time are required")
 	}
 	if !observation.State.valid() {
 		return invalid("unsupported observed state %q", observation.State)

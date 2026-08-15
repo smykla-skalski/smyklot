@@ -44,6 +44,18 @@ func TestDecideCancelsWhenAuthorizedHeadChanges(t *testing.T) {
 	}
 }
 
+func TestDecideCancelsWhenAuthorizedBaseChanges(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.August, 15, 12, 0, 0, 0, time.UTC)
+	request := policyRequest(now.Add(-2*time.Hour), ObservedPending, "old")
+	observation := policyObservation(now, ObservedNoChecks, "none")
+	observation.BaseBranch = "release"
+	decision := mustDecide(t, request, observation)
+	if decision.Kind != DecisionFinish || decision.Lifecycle != LifecycleCancelled {
+		t.Fatalf("got %#v, want exact-base cancellation", decision)
+	}
+}
+
 func TestDecideRequiresStableGreen(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, time.August, 15, 12, 0, 0, 0, time.UTC)
@@ -80,14 +92,16 @@ func TestDecideCancelsTerminalPullRequestState(t *testing.T) {
 
 func policyRequest(progressAt time.Time, state ObservedState, fingerprint string) Request {
 	return Request{
-		Lifecycle: LifecycleArmed, HeadSHA: "head", LastProgressAt: progressAt,
+		Lifecycle: LifecycleArmed, HeadSHA: "head", BaseBranch: "main",
+		LastProgressAt:    progressAt,
 		LastObservedState: string(state), LastFingerprint: fingerprint,
 	}
 }
 
 func policyObservation(at time.Time, state ObservedState, fingerprint string) Observation {
 	return Observation{
-		HeadSHA: "head", PullRequestOpen: true, PendingLabelFound: true,
+		HeadSHA: "head", BaseBranch: "main",
+		PullRequestOpen: true, PendingLabelFound: true,
 		State: state, Fingerprint: fingerprint, ObservedAt: at,
 	}
 }
