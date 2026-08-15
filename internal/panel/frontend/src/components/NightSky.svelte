@@ -10,13 +10,18 @@
    * Anything laid over it needs light ink in both themes.
    */
   const {
-    width = '210vw',
-    height = '300vh',
+    width = 'min(90rem, 100vw)',
+    height = 'min(300%, 34rem)',
   }: {
-    /** How far the sky reaches across. Larger than the window is the point: the
-     * fade then happens past the edges instead of inside them. */
+    /** How far the sky reaches across, before the mask fades it out. */
     width?: string;
-    /** How far it reaches up and down, for the same reason. */
+    /**
+     * How far it reaches up and down. A percentage measures against whatever it
+     * is placed in, which is how it can follow a gap that changes with the
+     * content instead of guessing at one - but only up to a point: a very short
+     * card leaves a very large gap, and a sky that grew with it without limit
+     * would run past the foot of the page.
+     */
     height?: string;
   } = $props();
 </script>
@@ -36,11 +41,11 @@
        `smyklot-halo.svg` - so the sky reads as the emblem's own interior carrying
        on past the ring rather than a different dark placed behind it. */
     --sky-core: rgb(9 21 43);
-    --sky-void: rgb(4 9 22);
-    --sky-deep: rgb(8 16 38);
-    --sky-violet: rgb(118 74 206 / 40%);
-    --sky-teal: rgb(30 142 184 / 26%);
-    --sky-rose: rgb(184 84 150 / 18%);
+    --sky-void: rgb(3 7 18);
+    --sky-deep: rgb(6 13 30);
+    --sky-violet: rgb(118 74 206 / 34%);
+    --sky-teal: rgb(30 142 184 / 22%);
+    --sky-rose: rgb(184 84 150 / 16%);
 
     /* Each star is a core, a bloom and a haze that reaches zero on its own hue -
        fading to `transparent` would pass through grey and dirty the glow. */
@@ -68,22 +73,27 @@
        star is ever chopped by a boundary - they dim out with the sky around them.
        The radii are given, not left to `farthest-corner`, which sizes the ellipse
        to the corner and leaves the ramp unfinished on the short axis. */
+    /* A wide plateau and then a long ramp with no straight run at the end. The
+       plateau is what keeps the column of text on deep sky - the falloff is
+       elliptical, so a line out at the column's edge is further along it than its
+       distance below the mark suggests - and the ramp's length is what keeps the
+       edge from reading as a cut. The radii are given, not left to
+       `farthest-corner`, which sizes the ellipse to the corner and leaves the
+       ramp unfinished on the short axis. */
     mask-image: radial-gradient(
       ellipse 50% 50% at 50% 50%,
       rgb(0 0 0 / 100%) 0%,
-      rgb(0 0 0 / 100%) 30%,
-      rgb(0 0 0 / 98%) 38%,
-      rgb(0 0 0 / 95%) 45%,
-      rgb(0 0 0 / 90%) 51%,
-      rgb(0 0 0 / 82%) 57%,
-      rgb(0 0 0 / 72%) 62%,
-      rgb(0 0 0 / 60%) 67%,
-      rgb(0 0 0 / 47%) 72%,
-      rgb(0 0 0 / 34%) 77%,
-      rgb(0 0 0 / 23%) 82%,
-      rgb(0 0 0 / 13%) 87%,
-      rgb(0 0 0 / 6%) 92%,
-      rgb(0 0 0 / 2%) 96%,
+      rgb(0 0 0 / 100%) 46%,
+      rgb(0 0 0 / 97%) 54%,
+      rgb(0 0 0 / 91%) 61%,
+      rgb(0 0 0 / 82%) 67%,
+      rgb(0 0 0 / 70%) 72%,
+      rgb(0 0 0 / 56%) 77%,
+      rgb(0 0 0 / 42%) 82%,
+      rgb(0 0 0 / 28%) 86%,
+      rgb(0 0 0 / 16%) 90%,
+      rgb(0 0 0 / 8%) 94%,
+      rgb(0 0 0 / 3%) 97%,
       rgb(0 0 0 / 0%) 100%
     );
     pointer-events: none;
@@ -113,13 +123,21 @@
   }
 
   /* Clouds, off-centre and overlapping, so the sky has some weather in it rather
-     than one even wash. */
+     than one even wash. Held off the middle by a mask of their own: a cloud over
+     the mark lifts the very colour the sky is supposed to start on. */
   .sky-nebula {
     background-image:
-      radial-gradient(ellipse 44% 58% at 31% 36%, var(--sky-violet) 0%, transparent 70%),
-      radial-gradient(ellipse 38% 50% at 71% 62%, var(--sky-teal) 0%, transparent 66%),
-      radial-gradient(ellipse 28% 40% at 57% 22%, var(--sky-violet) 0%, transparent 62%),
-      radial-gradient(ellipse 26% 34% at 22% 74%, var(--sky-rose) 0%, transparent 60%);
+      radial-gradient(ellipse 40% 52% at 24% 32%, var(--sky-violet) 0%, transparent 70%),
+      radial-gradient(ellipse 34% 44% at 78% 66%, var(--sky-teal) 0%, transparent 66%),
+      radial-gradient(ellipse 26% 36% at 66% 18%, var(--sky-violet) 0%, transparent 62%),
+      radial-gradient(ellipse 24% 32% at 16% 78%, var(--sky-rose) 0%, transparent 60%);
+    mask-image: radial-gradient(
+      ellipse 50% 50% at 50% 50%,
+      rgb(0 0 0 / 0%) 0%,
+      rgb(0 0 0 / 0%) 9%,
+      rgb(0 0 0 / 55%) 18%,
+      rgb(0 0 0 / 100%) 30%
+    );
   }
 
   /*
@@ -128,7 +146,20 @@
    * sizes, brightnesses and hues; the tile edges share no common factor, so the
    * repeat has no beat you can pick out. Every star sits well inside its tile,
    * bloom included, so none is clipped by a tile boundary.
+   *
+   * An even scatter of them reads as wallpaper, though - a real sky is lumpy. So
+   * each layer carries a coarse mask of its own at a scale far larger than its
+   * tile, thinning it here and letting it through there. The layers clump in
+   * different places, which is what turns a regular grid into drifts and gaps.
    */
+  .sky-dust,
+  .sky-mid,
+  .sky-bright,
+  .sky-coloured {
+    mask-composite: intersect;
+    mask-size: 100% 100%;
+  }
+
   .sky-dust {
     animation: sky-twinkle 13s ease-in-out 2.5s infinite;
     background-image:
@@ -139,6 +170,10 @@
       radial-gradient(circle at 69% 47%, var(--dust) 0 0.45px, var(--dust-haze) 1.8px),
       radial-gradient(circle at 27% 33%, var(--dust) 0 0.4px, var(--dust-haze) 1.6px);
     background-size: 89px 71px;
+    mask-image:
+      radial-gradient(ellipse 38% 44% at 22% 28%, rgb(0 0 0 / 100%) 0%, rgb(0 0 0 / 15%) 100%),
+      radial-gradient(ellipse 46% 40% at 74% 70%, rgb(0 0 0 / 100%) 0%, rgb(0 0 0 / 25%) 100%);
+    mask-composite: add;
   }
 
   .sky-mid {
@@ -175,16 +210,22 @@
         var(--white-haze) 3.2px
       );
     background-size: 173px 149px;
+    mask-image:
+      radial-gradient(ellipse 44% 38% at 68% 24%, rgb(0 0 0 / 100%) 0%, rgb(0 0 0 / 18%) 100%),
+      radial-gradient(ellipse 36% 46% at 18% 66%, rgb(0 0 0 / 100%) 0%, rgb(0 0 0 / 22%) 100%);
+    mask-composite: add;
   }
 
+  /* The near ones, and the size range is deliberately wide: a field where every
+     star is the same magnitude has no depth in it. */
   .sky-bright {
     animation: sky-twinkle 7s ease-in-out infinite;
     background-image:
       radial-gradient(
         circle at 26% 31%,
-        var(--white) 0 1.3px,
-        var(--white-bloom) 2.8px,
-        var(--white-haze) 9px
+        var(--white) 0 1.9px,
+        var(--white-bloom) 4.2px,
+        var(--white-haze) 15px
       ),
       radial-gradient(
         circle at 73% 66%,
@@ -194,11 +235,22 @@
       ),
       radial-gradient(
         circle at 52% 84%,
-        var(--ice) 0 1px,
-        var(--ice-bloom) 2.2px,
-        var(--ice-haze) 7px
+        var(--ice) 0 1.5px,
+        var(--ice-bloom) 3.4px,
+        var(--ice-haze) 12px
+      ),
+      radial-gradient(
+        circle at 11% 72%,
+        var(--white) 0 0.9px,
+        var(--white-bloom) 2px,
+        var(--white-haze) 6px
       );
     background-size: 311px 269px;
+    mask-image: radial-gradient(
+      ellipse 54% 48% at 38% 58%,
+      rgb(0 0 0 / 100%) 0%,
+      rgb(0 0 0 / 30%) 100%
+    );
   }
 
   /* The few coloured ones, sparse enough to read as individuals. */

@@ -215,16 +215,15 @@
      leaves inside its fade reads against a mid-tone. As a multiple of the gap,
      the title falls at the same point on the falloff every time and the footer
      stays past the end of it. */
-  /* Fixed rather than absolute: the sky is deliberately larger than the window,
-     and an absolutely positioned element that size extends the document's
-     scrollable area - a page with nothing on it would gain scrollbars in both
-     directions. A fixed one is outside that reckoning. The cost is that it is
-     anchored to the window rather than to the mark, so `top` approximates where
-     the mark sits; at this size a few pixels of drift is not visible. */
+  /* Centred on the mark, and its height is read from this row - which is the gap
+     above the card. The page is centred, so that gap grows when the card is short
+     and shrinks when it is tall; a sky measured in rem or `vh` lands differently
+     in each state, and whichever line it leaves inside its fade reads against a
+     mid-tone. As a multiple of the gap, the title sits at the same point on the
+     falloff every time. */
   .invitation-brand :global(.night-sky) {
     left: 50%;
-    position: fixed;
-    top: 16vh;
+    top: 50%;
     translate: -50% -50%;
   }
 
@@ -239,14 +238,6 @@
     color: rgb(186 203 233);
   }
 
-  .invitation-shell :global(.foot-name) {
-    color: rgb(214 226 246);
-  }
-
-  .invitation-shell :global(.foot-host) {
-    color: rgb(160 180 214);
-  }
-
   /* Reads as the card's own title from the outside, so it keeps the size the
      plate header gave it. */
   .invitation-title {
@@ -256,10 +247,21 @@
     margin: 0 0 var(--space-3);
   }
 
+  /* A floor under the card, so the three states are not three different page
+     layouts. It stops the stack resettling when a load finishes, and it keeps the
+     gap above the card - which is what the sky measures itself against - within a
+     narrow range instead of doubling when the card holds one line of error. */
   .invitation-card {
     border-color: var(--dialog-border);
     box-shadow: var(--shadow-plate);
     margin-bottom: 0;
+    min-height: 19rem;
+  }
+
+  .invitation-card :global(.plate-body) {
+    align-content: center;
+    display: grid;
+    min-height: inherit;
   }
 
   .invitation-card.loading {
