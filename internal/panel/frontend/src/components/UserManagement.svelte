@@ -1010,6 +1010,21 @@
     return user.status === 'banned' || user.target_access?.suspended === true;
   }
 
+  /* Which row is being held down. `:active` on a `<tr>` matches but does not
+     repaint it - the row stayed on its hover colour with `matches(':active')`
+     already true - so the state is carried as a class the row can be styled by
+     like anything else. */
+  let pressedRow = $state<string | null>(null);
+
+  function holdRow(user: PanelUser): void {
+    if (!hasDecisionHistory(user)) return;
+    pressedRow = user.account.id;
+  }
+
+  function releaseRow(): void {
+    pressedRow = null;
+  }
+
   function openHistory(user: PanelUser, trigger: HTMLElement): void {
     if (!hasDecisionHistory(user)) return;
     historyUser = user;
@@ -1443,16 +1458,23 @@
                   {/if}
                   {#each userRenderRows as virtualRow (virtualRow.key)}
                     {@const user = userAt(virtualRow.index)}
+                    <!-- The virtualiser's offset goes in a custom property rather
+                         than straight into `transform`, so the press can add a
+                         scale to the same property without overwriting the value
+                         that puts the row on screen. -->
                     <tr
                       class:virtual-row={virtualRow.virtual}
                       class:history-row={hasDecisionHistory(user)}
+                      class:pressing={pressedRow === user.account.id}
                       style:height={virtualRow.virtual ? `${virtualRow.size}px` : undefined}
-                      style:transform={virtualRow.virtual
-                        ? `translateY(${virtualRow.start}px)`
-                        : undefined}
+                      style:--row-y={virtualRow.virtual ? `${virtualRow.start}px` : '0px'}
                       tabindex={hasDecisionHistory(user) ? 0 : undefined}
                       onclick={(event) => clickHistoryRow(event, user)}
                       onkeydown={(event) => keyHistoryRow(event, user)}
+                      onpointerdown={() => holdRow(user)}
+                      onpointerup={releaseRow}
+                      onpointercancel={releaseRow}
+                      onpointerleave={releaseRow}
                     >
                       <th scope="row">
                         <span class="user-identity">
@@ -2334,19 +2356,28 @@
 
   .user-table tbody tr.history-row {
     cursor: pointer;
-    transition: background-color var(--duration-fast) var(--ease-standard);
+    transition:
+      background-color var(--duration-fast) var(--ease-standard),
+      transform var(--duration-press) var(--ease-standard);
   }
 
   .user-table tbody tr.history-row:hover {
     background: var(--table-row-hover);
   }
 
-  /* A row that can be pressed acknowledges the press, like every other control in
-     the panel. The colour step does it rather than the usual scale: these rows are
-     virtualised and already carry a `transform` for their own position, so a press
-     transform would fight the one that puts the row on screen. */
-  .user-table tbody tr.history-row:active {
+  /* A row that can be pressed acknowledges the press the way every other control
+     in the panel does: it steps its ground and gets slightly smaller. The scale
+     goes through the same property the virtualiser uses for the row's position,
+     which is why that position is a variable - written straight into `transform`
+     it would be overwritten here and the row would jump to the top of the list. */
+  .user-table tbody tr.history-row {
+    transform: translateY(var(--row-y, 0px));
+    transform-origin: center;
+  }
+
+  .user-table tbody tr.history-row.pressing {
     background: var(--table-row-pressed);
+    transform: translateY(var(--row-y, 0px)) scale(var(--press-scale-surface));
   }
 
   .user-table tbody tr.history-row:focus-visible {
@@ -2412,6 +2443,14 @@
       background: var(--table-row-hover);
     }
 
+    /* And the press with it, for the same reason and one more: the rule above is
+       later in the sheet than the one that paints a held row, and carries the same
+       specificity, so without this the row kept its hover colour under the pointer
+       while the scale went ahead - which reads as the press half working. */
+    .user-table tbody tr.history-row.pressing {
+      background: var(--table-row-pressed);
+    }
+
     .user-table tbody tr:not(.virtual-spacer) {
       background: var(--surface-base);
       /* Pin the grid track to the row's fixed height: auto-sizing would take
@@ -2434,6 +2473,9 @@
       left: 0;
       position: absolute;
       top: 0;
+      /* The offset the virtualiser measured. It arrives as a variable so a press
+         can add a scale without losing it - see .history-row.pressing. */
+      transform: translateY(var(--row-y, 0px));
     }
 
     .user-table tbody .virtual-spacer {

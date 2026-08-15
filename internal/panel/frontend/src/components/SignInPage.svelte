@@ -36,18 +36,12 @@
 <NightPage {title} documentTitle={title} {build} size="compact">
   <div class="sign-in-body">
     {#if notice === null}
-      <!-- Written for the reader who has never been here: someone who has just
-           installed the app on their organisation and followed a link. Everyone
-           else is here for the button and will not read it. -->
-      <p class="sign-in-lead">
-        The panel for Smyklot, the bot that approves and merges pull requests
-      </p>
-      <!-- Not "Sign in to ...": the title says it, the button says it, and a third
-           telling in between reads as a page that only knows one sentence. -->
-      <p class="sign-in-note">
-        Here you choose the repositories it acts on, decide who else can, and read everything it has
-        done
-      </p>
+      <!-- Names the place and stops. It used to explain what Smyklot does and then
+           list what the panel is for, which is a paragraph that goes stale the
+           first time a feature is added and that nobody standing at a sign-in
+           screen is reading anyway. -->
+      <p class="sign-in-lead">The Smyklot control panel</p>
+      <p class="sign-in-note">You need to be signed in to open it</p>
     {:else}
       <p class="sign-in-lead">{notice.lead}</p>
       <p class="sign-in-note">{notice.note}</p>
