@@ -16,6 +16,7 @@
   import { get } from 'svelte/store';
 
   import { BOOLEAN_FIELDS } from '../lib/config';
+  import { dialogRoute } from '../lib/dialog-route.svelte';
   import type { FilterSection } from '../lib/filter-menu';
   import { formatRelative, formatTimestamp } from '../lib/format';
   import {
@@ -64,6 +65,9 @@
   type RepositoryEnablement = 'inherit' | 'enabled' | 'disabled';
   type RepositoryFailure = { message: string; source: RepositoryFailureSource };
   type RepositoryDetailSection = 'file' | 'behavior' | 'commands';
+
+  /** Names the dialog in the address, and is the `id` the dialog carries. */
+  const REPOSITORY_DIALOG = 'repository-settings';
 
   const REPOSITORY_VALUE_OPTIONS = [
     { value: 'enabled', label: 'Enabled' },
@@ -240,8 +244,6 @@
   let details = $state<Record<string, RepositoryDetail>>({});
   let failures = $state<Record<string, RepositoryFailure>>({});
   let pendingEnablement = $state<Record<string, RepositoryEnablement>>({});
-  let detailSections = $state<Record<string, RepositoryDetailSection>>({});
-  let activeRepository = $state<RepositorySummary | null>(null);
   let repositoryReturnFocus = $state<HTMLElement | null>(null);
   const visibleDetails = new SvelteSet<string>();
   const working = new SvelteSet<string>();
@@ -253,6 +255,22 @@
   let repositoryScroll = $state<HTMLTableSectionElement>();
 
   const repositories = $derived(page?.items ?? []);
+
+  /* The dialog is whatever the address names, not a click the component
+     remembers, so a reload lands back on the repository that was open.
+
+     It is keyed on the id rather than the name because the list is paginated:
+     re-opening after a reload starts from the first page, and a repository from
+     further down it is not there to be found. The id is the key the detail is
+     fetched with, and that response carries the summary the header needs. */
+  const activeRepositoryId = $derived(dialogRoute.param(REPOSITORY_DIALOG, 'repository') ?? null);
+  const activeRepository = $derived(
+    activeRepositoryId === null
+      ? null
+      : (repositories.find((repository) => repository.id === activeRepositoryId) ??
+          details[activeRepositoryId]?.repository ??
+          null),
+  );
   const settingSelection = $derived(
     settingFilter.mode === 'keys' ? settingFilter.keys : [settingFilter.mode],
   );
@@ -508,38 +526,64 @@
     });
   }
 
-  async function openRepository(
-    repository: RepositorySummary,
-    trigger: HTMLElement,
-  ): Promise<void> {
-    activeRepository = repository;
+  function openRepository(repository: RepositorySummary, trigger: HTMLElement): void {
     repositoryReturnFocus = trigger;
-    visibleDetails.clear();
-    visibleDetails.add(repository.id);
-    if (details[repository.id] === undefined) {
-      await refresh(repository.id);
-      if (activeRepository?.id !== repository.id) return;
-      await tick();
-      const section = detailSection(repository);
-      document
-        .querySelector<HTMLButtonElement>(`#repository-${repository.id}-${section}-tab`)
-        ?.focus();
-    }
+    dialogRoute.open(REPOSITORY_DIALOG, { repository: repository.id });
   }
 
   function closeRepository(): void {
-    if (activeRepository !== null) visibleDetails.delete(activeRepository.id);
-    activeRepository = null;
+    dialogRoute.close();
   }
 
+  /* Whatever the address names has to be on screen, however it got there: a click
+     on a row, the Back button, or a link opened cold in a new window. Watching the
+     id rather than acting inside the click handler is what makes the last of those
+     work, since no click happened. */
+  $effect(() => {
+    const repositoryId = activeRepositoryId;
+    if (repositoryId === null) {
+      untrack(() => visibleDetails.clear());
+      return;
+    }
+
+    untrack(() => {
+      visibleDetails.clear();
+      visibleDetails.add(repositoryId);
+      if (details[repositoryId] !== undefined) return;
+      void refresh(repositoryId).then(async () => {
+        if (activeRepositoryId !== repositoryId) return;
+        await tick();
+        /* The switch only exists once the detail is in, so this is the first
+           moment there is anything inside the dialog to land on. */
+        document
+          .querySelector<HTMLInputElement>(
+            `input[name="repository-${repositoryId}-section"]:checked`,
+          )
+          ?.focus();
+      });
+    });
+  });
+
+  /* The pane the dialog is showing rides the address too, so a link points at the
+     commands a colleague was asked to look at rather than at the file pane
+     everyone starts on. It replaces rather than pushes: flipping the switch is
+     part of reading one repository, not a second place to come back from. */
   function detailSection(repository: RepositorySummary): RepositoryDetailSection {
-    // The file tab leads: it orients the dialog around the repository's own
+    if (repository.id === activeRepositoryId) {
+      const requested = dialogRoute.param(REPOSITORY_DIALOG, 'section');
+      if (requested !== undefined && isDetailSection(requested)) return requested;
+    }
+    // The file section leads: it orients the dialog around the repository's own
     // configuration before overrides.
-    return detailSections[repository.id] ?? 'file';
+    return 'file';
+  }
+
+  function isDetailSection(value: string): value is RepositoryDetailSection {
+    return value === 'file' || value === 'behavior' || value === 'commands';
   }
 
   function selectDetailSection(repositoryId: string, section: RepositoryDetailSection): void {
-    detailSections = { ...detailSections, [repositoryId]: section };
+    dialogRoute.update(REPOSITORY_DIALOG, { repository: repositoryId, section });
   }
 
   /* Names the pane for the reader, now that the switch above it is a control with
@@ -953,7 +997,7 @@
                     class="expand"
                     aria-haspopup="dialog"
                     aria-label={`Configure ${repository.full_name}`}
-                    onclick={(event) => void openRepository(repository, event.currentTarget)}
+                    onclick={(event) => openRepository(repository, event.currentTarget)}
                   >
                     <span class="repo-copy">
                       <strong>{repository.name}</strong>
@@ -1036,7 +1080,7 @@
   {@const repositoryFailure = failures[repository.id]}
   {@const activeSection = detailSection(repository)}
   <Modal
-    id="repository-settings"
+    id={REPOSITORY_DIALOG}
     open
     title={repository.name}
     description="Repository settings override workspace defaults and repository-file values"

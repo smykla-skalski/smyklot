@@ -1,6 +1,7 @@
 <script lang="ts">
   import { untrack, type Snippet } from 'svelte';
   import { PanelApiError } from '../lib/api';
+  import { dialogRoute } from '../lib/dialog-route.svelte';
   import { formatDateTime, formatRelative, formatTimestamp, formatUntil } from '../lib/format';
   import type { FilterSection } from '../lib/filter-menu';
   import type {
@@ -24,7 +25,9 @@
   import TableEmptyState from './TableEmptyState.svelte';
 
   type SortColumn = 'name' | 'created' | 'expiry';
-  type InvitationAction = 'reissue' | 'revoke';
+  /** Name the dialogs in the address, and are the `id` each dialog carries. */
+  const CREATE_DIALOG = 'root-invitation-create';
+  const ACTION_DIALOG = 'root-invitation-action';
 
   const STATUS_FILTERS = [
     {
@@ -71,7 +74,6 @@
   let loadMoreProblem = $state<string | null>(null);
   let sequence = 0;
 
-  let createOpen = $state(false);
   let createTrigger = $state<HTMLElement | null>(null);
   let login = $state('');
   let expiresInDays = $state<InvitationDays>(7);
@@ -97,8 +99,6 @@
     login.trim() !== '' && login.trim().toLowerCase() === actorLogin.trim().toLowerCase(),
   );
 
-  let actionInvitation = $state<PanelInvitation | null>(null);
-  let pendingAction = $state<InvitationAction | null>(null);
   let actionTrigger = $state<HTMLElement | null>(null);
   let actionBusy = $state(false);
   let actionProblem = $state<string | null>(null);
@@ -107,6 +107,21 @@
   const requestKey = $derived(JSON.stringify([query, sort, statuses, limit, refreshVersion]));
   const invitations = $derived(page?.items ?? []);
   const hasFilters = $derived(query !== '' || statuses.length > 0);
+
+  /* Both dialogs are whatever the address names, so a reload keeps the reader
+     where they were. The invitation is looked up in the loaded page, and one that
+     has since been used or revoked is no longer there to open. */
+  const createOpen = $derived(dialogRoute.isOpen(CREATE_DIALOG));
+  const actionInvitation = $derived.by(() => {
+    const id = dialogRoute.param(ACTION_DIALOG, 'invitation');
+    if (id === undefined) return null;
+    return invitations.find((invitation) => invitation.id === id) ?? null;
+  });
+  const pendingAction = $derived.by(() => {
+    if (actionInvitation === null) return null;
+    const action = dialogRoute.param(ACTION_DIALOG, 'action');
+    return action === 'reissue' || action === 'revoke' ? action : null;
+  });
 
   $effect(() => {
     const tick = setInterval(() => {
@@ -233,12 +248,12 @@
     createProblem = null;
     copyProblem = null;
     declinedLogin = null;
-    createOpen = true;
+    dialogRoute.open(CREATE_DIALOG);
   }
 
   function closeCreate(): void {
     if (creating) return;
-    createOpen = false;
+    if (dialogRoute.isOpen(CREATE_DIALOG)) dialogRoute.close();
     // Cleared at both ends. Every opener establishes this state too, but leaving it behind here
     // means a third entry point inherits a message about a link that is no longer on screen.
     createProblem = null;
@@ -315,16 +330,14 @@
     trigger: HTMLElement | null,
   ): void {
     if (action !== 'reissue' && action !== 'revoke') return;
-    actionInvitation = invitation;
-    pendingAction = action;
     actionTrigger = trigger;
     actionProblem = null;
+    dialogRoute.open(ACTION_DIALOG, { invitation: invitation.id, action });
   }
 
   function closeAction(): void {
     if (actionBusy) return;
-    actionInvitation = null;
-    pendingAction = null;
+    if (dialogRoute.isOpen(ACTION_DIALOG)) dialogRoute.close();
     actionProblem = null;
   }
 
@@ -342,12 +355,14 @@
         createProblem = null;
         copyProblem = null;
         declinedLogin = null;
-        createOpen = true;
+        /* The confirmation gives way to the dialog holding the new link, in the
+           entry the confirmation was occupying: one press of Back leaves the
+           reissue rather than walking back through the question. */
+        dialogRoute.open(CREATE_DIALOG);
       } else {
         await revoke(actionInvitation.id);
+        if (dialogRoute.isOpen(ACTION_DIALOG)) dialogRoute.close();
       }
-      actionInvitation = null;
-      pendingAction = null;
       page = null;
       await loadPage(undefined, false);
     } catch (error) {
@@ -535,7 +550,7 @@
 </section>
 
 <Modal
-  id="root-invitation-create"
+  id={CREATE_DIALOG}
   open={createOpen}
   title={createStage === 'link'
     ? `Invitation ready for @${generatedFor}`
@@ -639,7 +654,7 @@
 </Modal>
 
 <Modal
-  id="root-invitation-action"
+  id={ACTION_DIALOG}
   open={actionInvitation !== null && pendingAction !== null}
   title={pendingAction === 'reissue'
     ? `Reissue invitation for @${actionInvitation?.account.login ?? ''}?`

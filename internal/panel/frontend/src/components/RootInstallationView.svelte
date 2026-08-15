@@ -1,5 +1,6 @@
 <script lang="ts">
   import { PanelApiError, type PanelApi } from '../lib/api';
+  import { dialogRoute } from '../lib/dialog-route.svelte';
   import { formatTimestamp } from '../lib/format';
   import { monogram } from '../lib/identity';
   import type { HistorySection, ScopedPanelView } from '../lib/routes';
@@ -46,12 +47,17 @@
     onHistorySection: (section: HistorySection) => void;
   } = $props();
 
+  /** Names the dialog in the address, and is the `id` the dialog carries. */
+  const ELEVATION_DIALOG = 'root-elevation';
+
   let target = $state<PanelTarget | null>(null);
   let elevation = $state<RootElevation | null>(null);
   let loading = $state(true);
   let failure = $state<string | null>(null);
   let elevationFailure = $state<string | null>(null);
-  let elevationModalOpen = $state(false);
+  /* Whatever the address names, so a reload keeps the reader in the dialog they
+     were reading rather than dropping them back onto the installation. */
+  const elevationModalOpen = $derived(dialogRoute.isOpen(ELEVATION_DIALOG));
   let elevationAcknowledged = $state(false);
   let elevationReason = $state('');
   let elevationPending = $state(false);
@@ -124,12 +130,12 @@
     elevationAcknowledged = false;
     elevationReason = '';
     elevationFailure = null;
-    elevationModalOpen = true;
+    dialogRoute.open(ELEVATION_DIALOG);
   }
 
   function closeElevation(): void {
     if (elevationPending) return;
-    elevationModalOpen = false;
+    if (dialogRoute.isOpen(ELEVATION_DIALOG)) dialogRoute.close();
   }
 
   async function beginElevation(): Promise<void> {
@@ -142,7 +148,7 @@
         ...(elevationReason.trim() === '' ? {} : { reason: elevationReason.trim() }),
       });
       target = await api.fetchRootTargetSettings(installation.id);
-      elevationModalOpen = false;
+      if (dialogRoute.isOpen(ELEVATION_DIALOG)) dialogRoute.close();
     } catch (error) {
       elevationFailure = message(error);
     } finally {
@@ -393,7 +399,7 @@
 </section>
 
 <Modal
-  id="root-elevation"
+  id={ELEVATION_DIALOG}
   open={elevationModalOpen}
   title={`Elevate access to ${installation.account.display_name}`}
   description="This grants write access for 15 minutes. It cannot be extended by activity."

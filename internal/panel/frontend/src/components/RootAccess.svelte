@@ -1,6 +1,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
 
+  import { dialogRoute } from '../lib/dialog-route.svelte';
   import { formatRelative, formatTimestamp } from '../lib/format';
   import type { FilterSection } from '../lib/filter-menu';
   import type {
@@ -36,7 +37,13 @@
 
   type AccessSection = 'users' | 'invitations';
   type SortColumn = 'name' | 'role' | 'last_login';
-  type UserAction = 'promote_root' | 'demote_root' | 'restore' | 'ban' | 'remove';
+  type UserAction = (typeof USER_ACTIONS)[number];
+
+  const USER_ACTIONS = ['promote_root', 'demote_root', 'restore', 'ban', 'remove'] as const;
+
+  /** Name the dialogs in the address, and are the `id` each dialog carries. */
+  const ACTION_DIALOG = 'root-user-action';
+  const ADD_DIALOG = 'root-add-installation-user';
 
   const SECTIONS = [
     { value: 'users', label: 'Users', tone: 'accent' },
@@ -108,13 +115,10 @@
   let loading = $state(false);
   let problem = $state<string | null>(null);
   let loadMoreProblem = $state<string | null>(null);
-  let actionUser = $state<RootPanelUser | null>(null);
-  let pendingAction = $state<UserAction | null>(null);
   let actionTrigger = $state<HTMLElement | null>(null);
   let reason = $state('');
   let saving = $state(false);
   let actionProblem = $state<string | null>(null);
-  let addOpen = $state(false);
   let addTrigger = $state<HTMLButtonElement | null>(null);
   let inviteTrigger = $state<HTMLButtonElement | null>(null);
   let invitations = $state<RootInvitations | null>(null);
@@ -136,6 +140,23 @@
   );
   const users = $derived(page?.items ?? []);
   const hasFilters = $derived(query !== '' || systemRoles.length > 0 || statuses.length > 0);
+
+  /* Both dialogs are whatever the address names, so a reload keeps the reader
+     where they were. The account is named by login and looked up in the loaded
+     page: an address naming somebody who is no longer listed opens nothing. */
+  const addOpen = $derived(dialogRoute.isOpen(ADD_DIALOG));
+  const actionUser = $derived.by(() => {
+    const login = dialogRoute.param(ACTION_DIALOG, 'user');
+    if (login === undefined) return null;
+    return users.find((user) => user.account.login === login) ?? null;
+  });
+  const pendingAction = $derived(
+    actionUser === null ? null : userAction(dialogRoute.param(ACTION_DIALOG, 'action')),
+  );
+
+  function userAction(value: string | undefined): UserAction | null {
+    return USER_ACTIONS.find((action) => action === value) ?? null;
+  }
   const selectedInstallation = $derived(
     installations.find((installation) => installation.id === selectedInstallationID) ?? null,
   );
@@ -257,7 +278,7 @@
   }
 
   async function openAddUser(): Promise<void> {
-    addOpen = true;
+    dialogRoute.open(ADD_DIALOG);
     addLogin = '';
     addRole = 'viewer';
     installationQuery = '';
@@ -277,7 +298,7 @@
 
   function closeAddUser(): void {
     if (addSaving) return;
-    addOpen = false;
+    if (dialogRoute.isOpen(ADD_DIALOG)) dialogRoute.close();
     addProblem = null;
   }
 
@@ -285,7 +306,7 @@
     const installation = selectedInstallation;
     if (installation === null || !installation.available) return;
     if (!installation.owned_by_viewer) {
-      addOpen = false;
+      if (dialogRoute.isOpen(ADD_DIALOG)) dialogRoute.close();
       onOpenInstallationAccess(installation.account.login);
       return;
     }
@@ -296,7 +317,7 @@
     try {
       await addInstallationUser(installation.id, { login, role: addRole });
       feedback = `Added @${login} to ${installation.account.display_name}`;
-      addOpen = false;
+      if (dialogRoute.isOpen(ADD_DIALOG)) dialogRoute.close();
       page = null;
       await loadPage(undefined, false);
     } catch (error) {
@@ -385,18 +406,17 @@
     action: string,
     trigger: HTMLElement | null,
   ): void {
-    if (!['promote_root', 'demote_root', 'restore', 'ban', 'remove'].includes(action)) return;
-    actionUser = user;
-    pendingAction = action as UserAction;
+    const chosen = userAction(action);
+    if (chosen === null) return;
     actionTrigger = trigger;
     reason = '';
     actionProblem = null;
+    dialogRoute.open(ACTION_DIALOG, { user: user.account.login, action: chosen });
   }
 
   function closeUserAction(): void {
     if (saving) return;
-    actionUser = null;
-    pendingAction = null;
+    if (dialogRoute.isOpen(ACTION_DIALOG)) dialogRoute.close();
     actionProblem = null;
   }
 
@@ -443,8 +463,7 @@
           };
     try {
       await updateUser(actionUser.account.id, input);
-      actionUser = null;
-      pendingAction = null;
+      if (dialogRoute.isOpen(ACTION_DIALOG)) dialogRoute.close();
       page = null;
       await loadPage(undefined, false);
     } catch (error) {
@@ -705,7 +724,7 @@
 </section>
 
 <Modal
-  id="root-user-action"
+  id={ACTION_DIALOG}
   open={actionUser !== null && pendingAction !== null}
   title={actionTitle()}
   description={actionDescription()}
@@ -751,7 +770,7 @@
 </Modal>
 
 <Modal
-  id="root-add-installation-user"
+  id={ADD_DIALOG}
   open={addOpen}
   title="Add installation user"
   description="Choose the installation before assigning a Viewer, Editor, or Admin role."

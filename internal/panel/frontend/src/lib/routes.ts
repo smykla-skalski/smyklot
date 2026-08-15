@@ -35,8 +35,8 @@ export interface ResolvedPanelRoute {
 }
 
 interface BrowserNavigation {
-  readonly location: Pick<Location, 'pathname'>;
-  readonly history: Pick<History, 'pushState' | 'replaceState'>;
+  readonly location: Pick<Location, 'pathname' | 'search'>;
+  readonly history: Pick<History, 'pushState' | 'replaceState' | 'state'>;
   addEventListener(type: 'popstate', listener: () => void): void;
   removeEventListener(type: 'popstate', listener: () => void): void;
 }
@@ -171,8 +171,15 @@ export function createPanelRouter(basePath: string, browser: BrowserNavigation):
     const next = panelRoutePath(basePath, route);
     if (next === browser.location.pathname) return;
 
+    /* The query belongs to the view, and says which dialog is open on top of it.
+       Walking somewhere else leaves that behind, which is what a reader means by
+       pressing another tab. Tidying the address the panel is already on does not:
+       `/root/access` is rewritten to `/root/access/users` the moment it loads, and
+       dropping the query there would throw away a pasted link to a dialog before
+       anything had a chance to open it. */
+    const url = replace ? next + browser.location.search : next;
     const method = replace ? browser.history.replaceState : browser.history.pushState;
-    method.call(browser.history, null, '', next);
+    method.call(browser.history, browser.history.state, '', url);
   }
 
   return {

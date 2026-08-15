@@ -1,5 +1,7 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import type { PanelApi } from '../lib/api';
+  import { dialogRoute } from '../lib/dialog-route.svelte';
   import { formatRelative, formatTimestamp } from '../lib/format';
   import type { SecurityNotification } from '../lib/types';
   import Chip from './Chip.svelte';
@@ -22,7 +24,12 @@
     onOpen?: () => void;
   } = $props();
 
-  let open = $state(false);
+  /** Names the dialog in the address, and is the `id` the dialog carries. */
+  const INBOX_DIALOG = 'security-notifications';
+
+  /* Whatever the address names, so a reload keeps the inbox open and a link to it
+     can be sent to somebody who needs to read the same thing. */
+  const open = $derived(dialogRoute.isOpen(INBOX_DIALOG));
   let trigger = $state<HTMLButtonElement | null>(null);
   let items = $state<SecurityNotification[]>([]);
   let unread = $state(0);
@@ -58,10 +65,9 @@
   }
 
   function openInbox(): void {
-    open = true;
+    dialogRoute.open(INBOX_DIALOG);
     now = Date.now();
     onOpen?.();
-    void load();
   }
 
   /** Lets a caller outside the account menu open the inbox - the overview's
@@ -71,10 +77,21 @@
   }
 
   function closeInbox(): void {
-    open = false;
-    expandedAuditId = null;
+    if (dialogRoute.isOpen(INBOX_DIALOG)) dialogRoute.close();
     window.setTimeout(() => trigger?.focus(), 0);
   }
+
+  /* The list is loaded because the dialog is open, not because a button was
+     pressed, so an address that arrives with the inbox already open fills it.
+     Collapsing the expanded record on the way out belongs here for the same
+     reason: Back closes the dialog without passing through any handler. */
+  $effect(() => {
+    if (!open) {
+      untrack(() => (expandedAuditId = null));
+      return;
+    }
+    untrack(() => void load());
+  });
 
   function toggleAuditRecord(event: MouseEvent, notification: SecurityNotification): void {
     event.preventDefault();
@@ -149,7 +166,7 @@
 </button>
 
 <Modal
-  id="security-notifications"
+  id={INBOX_DIALOG}
   {open}
   title="Inbox"
   description="Audited Root activity on workspaces you own"

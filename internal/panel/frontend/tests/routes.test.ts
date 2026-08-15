@@ -13,25 +13,33 @@ import {
   type PanelRoute,
 } from '../src/lib/routes';
 
-function fakeBrowser(initialPath: string) {
+function fakeBrowser(initialPath: string, initialSearch = '') {
   let pathname = initialPath;
+  let search = initialSearch;
   const listeners = new Set<() => void>();
   const location = {
     get pathname(): string {
       return pathname;
     },
+    get search(): string {
+      return search;
+    },
   };
   const setPath = (_data: unknown, _unused: string, url?: string | URL | null): void => {
-    if (url !== undefined && url !== null) pathname = String(url);
+    if (url === undefined || url === null) return;
+    const [nextPath = '', query] = String(url).split('?');
+    pathname = nextPath;
+    search = query === undefined ? '' : `?${query}`;
   };
 
   return {
     browser: {
       location,
-      history: { pushState: setPath, replaceState: setPath },
+      history: { state: null, pushState: setPath, replaceState: setPath },
       addEventListener: (_type: 'popstate', listener: () => void) => listeners.add(listener),
       removeEventListener: (_type: 'popstate', listener: () => void) => listeners.delete(listener),
     },
+    url: (): string => pathname + search,
     navigateFromHistory(nextPath: string): void {
       pathname = nextPath;
       for (const listener of listeners) listener();
@@ -248,6 +256,21 @@ describe('browser panel router', () => {
     unsubscribe();
     fixture.navigateFromHistory('/panel/i/smykla-skalski/repositories');
     expect(visited).toHaveLength(1);
+  });
+
+  it('keeps the query when it tidies the address, and drops it on the way elsewhere', () => {
+    /* The query names the dialog open on top of the view. `/panel/root/access` is
+       rewritten to its canonical form the moment it loads, and a pasted link to a
+       dialog has to survive that rewrite to open at all. */
+    const fixture = fakeBrowser('/panel/root/access', '?dialog=root-add-installation-user');
+    const router = createPanelRouter('/panel', fixture.browser);
+
+    router.replace({ rootView: 'access-users' });
+    expect(fixture.url()).toBe('/panel/root/access/users?dialog=root-add-installation-user');
+
+    // Walking to another view leaves behind what was open on the one before it.
+    router.push({ rootView: 'overview' });
+    expect(fixture.url()).toBe('/panel/root');
   });
 });
 

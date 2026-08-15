@@ -13,6 +13,7 @@
   import UserManagement from './components/UserManagement.svelte';
   import type { PanelApi } from './lib/api';
   import type { PanelBuild } from './lib/base';
+  import { dialogRoute } from './lib/dialog-route.svelte';
   import { LatestRequest } from './lib/latest-request';
   import {
     applyDocumentTheme,
@@ -586,6 +587,12 @@
       if (viewer !== null && !loading) void activateRoute(route, 'none');
     }),
   );
+
+  /* Dialogs live in the query string, which the panel's own route writer drops
+     whenever it writes a path. That is the behaviour we want - walking to another
+     view closes what was open on top of the old one - so the two routers share the
+     address without needing to know about each other. */
+  $effect(() => dialogRoute.attach(window));
 
   async function signOut(): Promise<void> {
     loading = true;

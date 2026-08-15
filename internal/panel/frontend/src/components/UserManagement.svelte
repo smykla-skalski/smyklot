@@ -9,10 +9,12 @@
   } from '@tanstack/svelte-table';
   import type { ColumnFiltersState, SortingState, Updater } from '@tanstack/svelte-table';
   import { createVirtualizer } from '@tanstack/svelte-virtual';
+  import { untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import { get } from 'svelte/store';
 
   import { PanelApiError } from '../lib/api';
+  import { dialogRoute } from '../lib/dialog-route.svelte';
   import { formatDateTime, formatRelative, formatTimestamp, formatUntil } from '../lib/format';
   import { monogram } from '../lib/identity';
   import type { FilterSection } from '../lib/filter-menu';
@@ -60,6 +62,12 @@
   type SortDirection = 'ascending' | 'descending';
   type UserSortColumn = 'name' | 'role' | 'last_login';
   type InvitationSortColumn = 'name' | 'role' | 'expires';
+  /** Name the dialogs in the address, and are the `id` each dialog carries. */
+  const ADD_DIALOG = 'add-user';
+  const ACTION_DIALOG = 'user-action';
+  const INVITATION_DIALOG = 'invitation-action';
+  const HISTORY_DIALOG = 'decision-history';
+
   type UserAction = 'suspend' | 'restore' | 'remove_access';
   type TargetRole = Exclude<InstallationRole, 'owner'>;
   type GrantedTargetRole = Exclude<TargetRole, 'none'>;
@@ -272,7 +280,6 @@
   });
   const invitationLimit = 20;
 
-  let addModalOpen = $state(false);
   let addButton = $state<HTMLButtonElement | null>(null);
   let addReturnFocus = $state<HTMLElement | null>(null);
   let login = $state('');
@@ -324,15 +331,11 @@
     generatedLink !== '' ? 'link' : declinedLogin !== null ? 'confirm' : 'form',
   );
 
-  let actionUser = $state<PanelUser | null>(null);
-  let pendingAction = $state<UserAction | null>(null);
   let actionTrigger = $state<HTMLElement | null>(null);
   let reason = $state('');
-  let pendingInvitation = $state<PanelInvitation | null>(null);
   let invitationActionTrigger = $state<HTMLElement | null>(null);
   let invitationBusy = $state<string | null>(null);
   let savingAccount = $state<string | null>(null);
-  let historyUser = $state<PanelUser | null>(null);
   let historyTrigger = $state<HTMLElement | null>(null);
   let userResults = $state<HTMLDivElement>();
   let invitationResults = $state<HTMLDivElement>();
@@ -347,6 +350,37 @@
 
   const users = $derived(userPage?.items ?? []);
   const invitations = $derived(invitationPage?.items ?? []);
+
+  /* Every dialog here is whatever the address names, so a reload keeps the reader
+     on what they were doing and a link to it can be sent to someone else.
+
+     People are named by login and invitations by id, and both are looked up in
+     the loaded page: an address naming somebody who is not there opens nothing,
+     which is the right answer for a link to a person whose access has since been
+     removed. */
+  const addModalOpen = $derived(dialogRoute.isOpen(ADD_DIALOG));
+  const actionUser = $derived(findUser(dialogRoute.param(ACTION_DIALOG, 'user')));
+  const pendingAction = $derived(
+    actionUser === null ? null : userAction(dialogRoute.param(ACTION_DIALOG, 'action')),
+  );
+  const pendingInvitation = $derived(
+    findInvitation(dialogRoute.param(INVITATION_DIALOG, 'invitation')),
+  );
+  const historyUser = $derived(findUser(dialogRoute.param(HISTORY_DIALOG, 'user')));
+
+  function findUser(login: string | undefined): PanelUser | null {
+    if (login === undefined) return null;
+    return users.find((user) => user.account.login === login) ?? null;
+  }
+
+  function findInvitation(id: string | undefined): PanelInvitation | null {
+    if (id === undefined) return null;
+    return invitations.find((invitation) => invitation.id === id) ?? null;
+  }
+
+  function userAction(value: string | undefined): UserAction | null {
+    return value === 'suspend' || value === 'restore' || value === 'remove_access' ? value : null;
+  }
   // Initial-load failures render inside the table region with a retry; the
   // toolbar line is for action failures and refresh failures over live data.
   const failure = $derived(
@@ -730,15 +764,13 @@
   }
 
   function beginAction(user: PanelUser, action: UserAction, trigger?: HTMLElement): void {
-    actionUser = user;
-    pendingAction = action;
     actionTrigger = trigger ?? null;
     reason = '';
+    dialogRoute.open(ACTION_DIALOG, { user: user.account.login, action });
   }
 
   function cancelAction(): void {
-    actionUser = null;
-    pendingAction = null;
+    if (dialogRoute.isOpen(ACTION_DIALOG)) dialogRoute.close();
     reason = '';
   }
 
@@ -787,7 +819,7 @@
       accessMethod = 'invite';
       addIntent = 'invite';
       addReturnFocus = trigger;
-      addModalOpen = true;
+      dialogRoute.open(ADD_DIALOG);
       // Whoever opens the dialog owns its whole state. This door bypasses openAddModal, so it
       // clears the same fields rather than trusting that the last close did.
       addFailure = null;
@@ -814,7 +846,7 @@
     try {
       await revokeInvitation(targetId, invitation.id);
       feedback = `Revoked invitation for @${invitation.account.login}`;
-      pendingInvitation = null;
+      closeInvitationAction();
       await reloadInvitations();
     } catch (error) {
       actionFailure = errorMessage(error);
@@ -869,16 +901,34 @@
     accessMethod = invitingFirst ? 'invite' : 'add';
     addIntent = accessMethod;
     addReturnFocus = addButton;
-    addModalOpen = true;
+    dialogRoute.open(ADD_DIALOG);
   }
 
   function closeAddModal(): void {
-    addModalOpen = false;
-    generatedLink = '';
-    addFailure = null;
-    declinedLogin = null;
-    login = '';
+    if (dialogRoute.isOpen(ADD_DIALOG)) dialogRoute.close();
   }
+
+  function closeInvitationAction(): void {
+    if (dialogRoute.isOpen(INVITATION_DIALOG)) dialogRoute.close();
+  }
+
+  /* The dialog's own fields are cleared when it goes away, not when Cancel is
+     pressed. Back closes it without ever reaching a handler, and a half-typed
+     login left behind would be waiting inside it the next time it opened. */
+  $effect(() => {
+    if (addModalOpen) return;
+    untrack(() => {
+      generatedLink = '';
+      addFailure = null;
+      declinedLogin = null;
+      login = '';
+    });
+  });
+
+  $effect(() => {
+    if (actionUser !== null) return;
+    untrack(() => (reason = ''));
+  });
 
   function selectSection(section: string): void {
     if (section === 'users' || section === 'invitations') onSection(section);
@@ -1027,8 +1077,8 @@
 
   function openHistory(user: PanelUser, trigger: HTMLElement): void {
     if (!hasDecisionHistory(user)) return;
-    historyUser = user;
     historyTrigger = trigger;
+    dialogRoute.open(HISTORY_DIALOG, { user: user.account.login });
   }
 
   function clickHistoryRow(event: MouseEvent, user: PanelUser): void {
@@ -1048,7 +1098,7 @@
   }
 
   function closeHistory(): void {
-    historyUser = null;
+    if (dialogRoute.isOpen(HISTORY_DIALOG)) dialogRoute.close();
   }
 
   function scrollResultsToTop(results: HTMLDivElement | undefined): void {
@@ -1116,7 +1166,7 @@
       void reissue(invitation, trigger);
     } else if (action === 'revoke') {
       invitationActionTrigger = trigger;
-      pendingInvitation = invitation;
+      dialogRoute.open(INVITATION_DIALOG, { invitation: invitation.id });
     }
   }
 
@@ -1818,7 +1868,7 @@
 {/snippet}
 
 <Modal
-  id="add-user"
+  id={ADD_DIALOG}
   open={addModalOpen}
   title={addStage === 'confirm'
     ? 'Invite again?'
@@ -2004,7 +2054,7 @@
 </Modal>
 
 <Modal
-  id="user-action"
+  id={ACTION_DIALOG}
   open={actionUser !== null && pendingAction !== null}
   title={actionTitle()}
   description={actionDescription()}
@@ -2048,12 +2098,12 @@
 </Modal>
 
 <Modal
-  id="invitation-action"
+  id={INVITATION_DIALOG}
   open={pendingInvitation !== null}
   title={`Revoke invitation for @${pendingInvitation?.account.login ?? ''}`}
   description="The current link will stop working immediately and the audit record will remain"
   returnFocus={invitationActionTrigger}
-  onClose={() => (pendingInvitation = null)}
+  onClose={closeInvitationAction}
 >
   <div class="confirmation-note">
     <span class="warning-mark" aria-hidden="true">!</span>
@@ -2061,11 +2111,8 @@
   </div>
 
   {#snippet footer()}
-    <button
-      class="btn btn-ghost"
-      type="button"
-      data-modal-focus
-      onclick={() => (pendingInvitation = null)}>Cancel</button
+    <button class="btn btn-ghost" type="button" data-modal-focus onclick={closeInvitationAction}
+      >Cancel</button
     >
     <button
       class="btn btn-stop"
