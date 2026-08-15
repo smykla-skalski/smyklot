@@ -19,12 +19,20 @@ import { describe, expect, it } from 'vitest';
 
 const tabs = readFileSync(new URL('../src/components/ViewTabs.svelte', import.meta.url), 'utf8');
 
-/** The body of the first rule for a selector. Selectors here are plain, so only `.` needs escaping. */
+/**
+ * Every character a regular expression reads as syntax.
+ *
+ * All of them, not the `.` these selectors happen to contain: a partial escape
+ * is the kind that holds until the first caller passes something it did not
+ * anticipate, and then quietly matches the wrong thing rather than failing.
+ */
+function quoteForPattern(literal: string): string {
+  return literal.replaceAll(/[$()*+.?[\]\\^{|}]/gu, '\\$&');
+}
+
+/** The body of the first rule for a selector. */
 function rule(selector: string): string {
-  const pattern = new RegExp(
-    `(?:^|\\n)\\s*${selector.replace(/\./gu, '\\.')}\\s*\\{([^}]*)\\}`,
-    'u',
-  );
+  const pattern = new RegExp(`(?:^|\\n)\\s*${quoteForPattern(selector)}\\s*\\{([^}]*)\\}`, 'u');
   return pattern.exec(tabs)?.[1] ?? '';
 }
 

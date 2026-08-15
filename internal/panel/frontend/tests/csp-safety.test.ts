@@ -26,12 +26,31 @@ const sources = readdirSync(components)
   .filter((file) => file.endsWith('.svelte'))
   .map((file) => [file, readFileSync(new URL(file, components), 'utf8')] as const);
 
+/**
+ * Strips a pattern until the text stops changing.
+ *
+ * One pass is not enough for anything that can nest or overlap: removing the
+ * comment in `<!--<!-- -->` leaves a bare `<!--` behind, and a single pass would
+ * hand that back as if it were markup. Repeating until nothing changes is what
+ * makes the result actually free of them.
+ */
+function stripAll(source: string, pattern: RegExp): string {
+  let current = source;
+  let previous: string;
+  do {
+    previous = current;
+    current = current.replaceAll(pattern, '');
+  } while (current !== previous);
+
+  return current;
+}
+
 /** Comments explain the rule and quote the thing it forbids, so they are not markup. */
 function markupOf(source: string): string {
-  return source
-    .replaceAll(/<!--[\s\S]*?-->/gu, '')
-    .replaceAll(/\/\*[\s\S]*?\*\//gu, '')
-    .replaceAll(/^\s*\/\/.*$/gmu, '');
+  const withoutHTML = stripAll(source, /<!--[\s\S]*?-->/gu);
+  const withoutBlocks = stripAll(withoutHTML, /\/\*[\s\S]*?\*\//gu);
+
+  return stripAll(withoutBlocks, /^\s*\/\/.*$/gmu);
 }
 
 describe('styles the browser will actually apply', () => {
