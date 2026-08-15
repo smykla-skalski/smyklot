@@ -276,6 +276,29 @@ WHERE repository_id = ? AND pull_request = ? AND lifecycle = ?
 	return changed == 1, nil
 }
 
+// CheckNow promotes exactly the operator-visible revision and makes it due.
+func (s *Store) CheckNow(
+	ctx context.Context,
+	wake pendingci.CheckNowRequest,
+) (pendingci.Request, error) {
+	if err := wake.Validate(); err != nil {
+		return pendingci.Request{}, err
+	}
+	return s.updatePendingCI(ctx, wake.ID, "check pending CI request now", `
+UPDATE pending_ci_requests SET
+    schedule = ?, next_check_at = ?, lease_expires_at = NULL,
+    last_event_key = ?, updated_at = ?, revision = revision + 1
+WHERE id = ? AND lifecycle = ? AND revision = ?`,
+		pendingci.ScheduleActive,
+		wake.OccurredAt,
+		wake.EventKey,
+		wake.OccurredAt,
+		wake.ID,
+		pendingci.LifecycleArmed,
+		wake.ExpectedRevision,
+	)
+}
+
 func (s *Store) Reschedule(
 	ctx context.Context,
 	change pendingci.RescheduleRequest,
@@ -284,7 +307,7 @@ func (s *Store) Reschedule(
 		return pendingci.Request{}, err
 	}
 
-	result, err := s.db.ExecContext(ctx, `
+	return s.updatePendingCI(ctx, change.ID, "reschedule pending CI request", `
 UPDATE pending_ci_requests SET
     schedule = ?, head_sha = ?, next_check_at = ?, lease_expires_at = NULL,
     last_progress_at = ?, last_observed_state = ?, last_fingerprint = ?,
@@ -301,14 +324,6 @@ WHERE id = ? AND lifecycle = ? AND revision = ?`,
 		pendingci.LifecycleArmed,
 		change.ExpectedRevision,
 	)
-	if err != nil {
-		return pendingci.Request{}, fmt.Errorf("reschedule pending CI request: %w", err)
-	}
-	if err := s.checkPendingCIUpdate(ctx, result, change.ID); err != nil {
-		return pendingci.Request{}, err
-	}
-
-	return s.getPendingCI(ctx, change.ID)
 }
 
 func (s *Store) Finish(
@@ -319,7 +334,7 @@ func (s *Store) Finish(
 		return pendingci.Request{}, err
 	}
 
-	result, err := s.db.ExecContext(ctx, `
+	return s.updatePendingCI(ctx, change.ID, "finish pending CI request", `
 UPDATE pending_ci_requests SET
     lifecycle = ?, reason = ?, lease_expires_at = NULL,
     updated_at = ?, finished_at = ?, revision = revision + 1
@@ -332,14 +347,24 @@ WHERE id = ? AND lifecycle = ? AND revision = ?`,
 		pendingci.LifecycleArmed,
 		change.ExpectedRevision,
 	)
+}
+
+func (s *Store) updatePendingCI(
+	ctx context.Context,
+	id int64,
+	action string,
+	query string,
+	args ...any,
+) (pendingci.Request, error) {
+	result, err := s.db.ExecContext(ctx, query, args...)
 	if err != nil {
-		return pendingci.Request{}, fmt.Errorf("finish pending CI request: %w", err)
+		return pendingci.Request{}, fmt.Errorf("%s: %w", action, err)
 	}
-	if err := s.checkPendingCIUpdate(ctx, result, change.ID); err != nil {
+	if err := s.checkPendingCIUpdate(ctx, result, id); err != nil {
 		return pendingci.Request{}, err
 	}
 
-	return s.getPendingCI(ctx, change.ID)
+	return s.getPendingCI(ctx, id)
 }
 
 func (s *Store) CancelBySource(

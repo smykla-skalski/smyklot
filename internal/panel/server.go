@@ -33,15 +33,22 @@ type RuntimeController interface {
 	ApplyRuntimeSettings(RuntimeValues)
 }
 
+// PendingCIController wakes the service scheduler after an operator changes
+// durable queue state. The panel does not own reconciliation policy.
+type PendingCIController interface {
+	Wake()
+}
+
 // Dependencies are the service capabilities used by panel handlers.
 type Dependencies struct {
-	Store   storage.Store
-	Catalog catalogSyncer
-	Users   userResolver
-	SignIn  signInProvider
-	Random  io.Reader
-	Now     func() time.Time
-	Runtime RuntimeController
+	Store     storage.Store
+	Catalog   catalogSyncer
+	Users     userResolver
+	SignIn    signInProvider
+	Random    io.Reader
+	Now       func() time.Time
+	Runtime   RuntimeController
+	PendingCI PendingCIController
 }
 
 // Server owns the panel routes and their authenticated runtime state.
@@ -59,6 +66,7 @@ type Server struct {
 	runtimeMu  sync.RWMutex
 	runtime    RuntimeValues
 	controller RuntimeController
+	pendingCI  PendingCIController
 	// prefsMu spans each preference commit and its fan-out so announce order
 	// matches commit order (see applyPrefsPatch).
 	prefsMu sync.Mutex
@@ -118,6 +126,7 @@ func New(cfg Config, deps Dependencies) (*Server, error) {
 		events:     newEventHub(),
 		runtime:    runtime,
 		controller: deps.Runtime,
+		pendingCI:  deps.PendingCI,
 	}, nil
 }
 
@@ -182,6 +191,8 @@ func (s *Server) Handler() http.Handler {
 func (s *Server) registerRootRoutes(mux *http.ServeMux, base string) {
 	mux.HandleFunc("GET "+base+"/api/v1/root/installations", s.getRootInstallations)
 	mux.HandleFunc("GET "+base+"/api/v1/root/overview", s.getRootOverview)
+	mux.HandleFunc("POST "+base+"/api/v1/root/pending-ci/{request}/check", s.postRootPendingCICheck)
+	mux.HandleFunc("DELETE "+base+"/api/v1/root/pending-ci/{request}", s.deleteRootPendingCI)
 	mux.HandleFunc("GET "+base+"/api/v1/root/settings", s.getRootRuntimeSettings)
 	mux.HandleFunc("PUT "+base+"/api/v1/root/settings", s.putRootRuntimeSettings)
 	mux.HandleFunc("GET "+base+"/api/v1/root/history/{history}", s.getRootHistory)

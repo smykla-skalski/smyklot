@@ -278,6 +278,22 @@ export interface RootOverviewFailure {
   failure: DeliveryFailure;
 }
 
+export interface PendingCIRequest {
+  id: string;
+  repository_full_name: string;
+  pull_request: number;
+  head_sha: string;
+  merge_method: 'merge' | 'squash' | 'rebase';
+  required_checks_only: boolean;
+  requester: string;
+  schedule: 'active' | 'deferred';
+  next_check_at: string;
+  last_observed_state: string;
+  requested_at: string;
+  updated_at: string;
+  revision: number;
+}
+
 export interface RootOverview {
   service: {
     status: 'healthy';
@@ -300,6 +316,10 @@ export interface RootOverview {
   active_elevations: number;
   unread_security_events: number;
   recent_failures: RootOverviewFailure[];
+  pending_ci: {
+    active: PendingCIRequest[];
+    deferred: PendingCIRequest[];
+  };
 }
 
 export interface RootElevation {

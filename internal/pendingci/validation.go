@@ -50,6 +50,17 @@ func (request WakeHeadRequest) Validate() error {
 	return nil
 }
 
+func (request CheckNowRequest) Validate() error {
+	if request.ID <= 0 || request.ExpectedRevision <= 0 {
+		return invalid("request identity and revision must be positive")
+	}
+	if strings.TrimSpace(request.EventKey) == "" || request.OccurredAt.IsZero() {
+		return invalid("event identity and occurrence time are required")
+	}
+
+	return nil
+}
+
 func (request RescheduleRequest) Validate() error {
 	if request.ID <= 0 || request.ExpectedRevision <= 0 {
 		return invalid("request identity and revision must be positive")

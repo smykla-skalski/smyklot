@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 )
 
@@ -96,6 +97,28 @@ type rootOverviewResponse struct {
 	ActiveElevations     int                          `json:"active_elevations"`
 	UnreadSecurityEvents int                          `json:"unread_security_events"`
 	RecentFailures       []rootFailureResponse        `json:"recent_failures"`
+	PendingCI            pendingCIQueueResponse       `json:"pending_ci"`
+}
+
+type pendingCIQueueResponse struct {
+	Active   []pendingCIResponse `json:"active"`
+	Deferred []pendingCIResponse `json:"deferred"`
+}
+
+type pendingCIResponse struct {
+	ID                 string                `json:"id"`
+	RepositoryFullName string                `json:"repository_full_name"`
+	PullRequest        int                   `json:"pull_request"`
+	HeadSHA            string                `json:"head_sha"`
+	MergeMethod        pendingci.MergeMethod `json:"merge_method"`
+	RequiredChecksOnly bool                  `json:"required_checks_only"`
+	Requester          string                `json:"requester"`
+	Schedule           pendingci.Schedule    `json:"schedule"`
+	NextCheckAt        time.Time             `json:"next_check_at"`
+	LastObservedState  string                `json:"last_observed_state"`
+	RequestedAt        time.Time             `json:"requested_at"`
+	UpdatedAt          time.Time             `json:"updated_at"`
+	Revision           int64                 `json:"revision"`
 }
 
 type rootAuditResponse struct {
@@ -178,6 +201,7 @@ func securityNotificationDTO(notification storage.SecurityNotification) security
 
 func rootOverviewDTO(
 	overview storage.RootOverview,
+	activeQueue, deferredQueue []pendingci.Request,
 	cfg Config,
 	startedAt, now time.Time,
 ) rootOverviewResponse {
@@ -206,7 +230,27 @@ func rootOverviewDTO(
 		ActiveElevations:     overview.ActiveElevations,
 		UnreadSecurityEvents: overview.UnreadSecurityEvents,
 		RecentFailures:       failures,
+		PendingCI: pendingCIQueueResponse{
+			Active: pendingCIQueueDTO(activeQueue), Deferred: pendingCIQueueDTO(deferredQueue),
+		},
 	}
+}
+
+func pendingCIQueueDTO(requests []pendingci.Request) []pendingCIResponse {
+	items := make([]pendingCIResponse, 0, len(requests))
+	for _, request := range requests {
+		items = append(items, pendingCIResponse{
+			ID: strconv.FormatInt(request.ID, 10), RepositoryFullName: request.RepositoryFullName,
+			PullRequest: request.PullRequest, HeadSHA: request.HeadSHA,
+			MergeMethod: request.MergeMethod, RequiredChecksOnly: request.RequiredChecksOnly,
+			Requester: request.Requester, Schedule: request.Schedule,
+			NextCheckAt: request.NextCheckAt, LastObservedState: request.LastObservedState,
+			RequestedAt: request.RequestedAt, UpdatedAt: request.UpdatedAt,
+			Revision: request.Revision,
+		})
+	}
+
+	return items
 }
 
 func rootAuditPageDTO(page storage.RootAuditPage) pageResponse[rootAuditResponse] {

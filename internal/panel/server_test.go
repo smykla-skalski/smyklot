@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
+	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/internal/storage/open"
 	"github.com/smykla-skalski/smyklot/internal/storage/storagetest"
@@ -50,6 +52,14 @@ type fakeRuntimeController struct {
 	values RuntimeValues
 }
 
+type fakePendingCIController struct {
+	wakes int
+}
+
+func (controller *fakePendingCIController) Wake() {
+	controller.wakes++
+}
+
 func (f *fakeRuntimeController) ApplyRuntimeSettings(values RuntimeValues) {
 	f.values = values
 }
@@ -75,11 +85,12 @@ func (f fakeCatalog) SyncCatalog(ctx context.Context) ([]string, error) {
 }
 
 type panelHarness struct {
-	server  *Server
-	store   storage.Store
-	handler http.Handler
-	now     time.Time
-	runtime *fakeRuntimeController
+	server    *Server
+	store     storage.Store
+	handler   http.Handler
+	now       time.Time
+	runtime   *fakeRuntimeController
+	pendingCI *fakePendingCIController
 }
 
 func newPanelHarness(t *testing.T, login string) *panelHarness {
@@ -138,6 +149,7 @@ func newPanelHarnessForSubject(t *testing.T, login, subjectID string) *panelHarn
 	}
 	random := bytes.NewReader(randomBytes)
 	runtime := &fakeRuntimeController{}
+	pendingCIController := &fakePendingCIController{}
 	server, err := New(Config{
 		BasePath:                 "/panel",
 		PublicOrigin:             "https://smyklot.example",
@@ -161,13 +173,14 @@ func newPanelHarnessForSubject(t *testing.T, login, subjectID string) *panelHarn
 		OAuthCredentialPresent:   true,
 		Assets:                   assets,
 	}, Dependencies{
-		Store:   store,
-		Catalog: fakeCatalog{store: store, snapshot: snapshot},
-		Users:   fakeUserResolver{account: viewer},
-		SignIn:  fakeSignIn{account: viewer},
-		Random:  random,
-		Now:     func() time.Time { return now },
-		Runtime: runtime,
+		Store:     store,
+		Catalog:   fakeCatalog{store: store, snapshot: snapshot},
+		Users:     fakeUserResolver{account: viewer},
+		SignIn:    fakeSignIn{account: viewer},
+		Random:    random,
+		Now:       func() time.Time { return now },
+		Runtime:   runtime,
+		PendingCI: pendingCIController,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -175,6 +188,7 @@ func newPanelHarnessForSubject(t *testing.T, login, subjectID string) *panelHarn
 
 	return &panelHarness{
 		server: server, store: store, handler: server.Handler(), now: now, runtime: runtime,
+		pendingCI: pendingCIController,
 	}
 }
 
@@ -1152,6 +1166,55 @@ func TestPanelRootOverview(t *testing.T) {
 		t, http.MethodGet, "/panel/api/v1/root/access/users?system_role=owner", nil, rootSession,
 	)
 	requireResponse(t, invalidUsers, "invalid Root user role", http.StatusBadRequest)
+}
+
+func TestPanelManagesPendingCIQueue(t *testing.T) {
+	harness := newPanelHarness(t, "root")
+	rootSession := harness.signIn(t)
+	result, err := harness.store.Arm(context.Background(), pendingci.ArmRequest{
+		TargetID: "github:installation:10", InstallationID: 10,
+		RepositoryID: "github:repository:20", RepositoryFullName: "smykla-skalski/smyklot",
+		PullRequest: 42, HeadSHA: "abc123", BaseBranch: "main",
+		MergeMethod: pendingci.MergeMethodSquash, Requester: "operator",
+		SourceCommentID: 99, SourceRevision: "revision-1",
+		Label: "smyklot:pending:ci:squash", RequestedAt: harness.now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	overview := harness.request(
+		t, http.MethodGet, "/panel/api/v1/root/overview", nil, rootSession,
+	)
+	requireResponse(
+		t, overview, "pending CI overview", http.StatusOK,
+		`"pending_ci":{"active":[`, `"repository_full_name":"smykla-skalski/smyklot"`,
+		`"merge_method":"squash"`,
+	)
+
+	check := harness.request(
+		t, http.MethodPost,
+		"/panel/api/v1/root/pending-ci/"+strconv.FormatInt(result.Request.ID, 10)+"/check",
+		strings.NewReader(`{"expected_revision":1}`), rootSession,
+	)
+	requireResponse(t, check, "check pending CI now", http.StatusOK, `"schedule":"active"`, `"revision":2`)
+
+	stale := harness.request(
+		t, http.MethodDelete,
+		"/panel/api/v1/root/pending-ci/"+strconv.FormatInt(result.Request.ID, 10),
+		strings.NewReader(`{"expected_revision":1}`), rootSession,
+	)
+	requireResponse(t, stale, "stale pending CI cancellation", http.StatusConflict)
+
+	cancel := harness.request(
+		t, http.MethodDelete,
+		"/panel/api/v1/root/pending-ci/"+strconv.FormatInt(result.Request.ID, 10),
+		strings.NewReader(`{"expected_revision":2}`), rootSession,
+	)
+	requireResponse(t, cancel, "cancel pending CI", http.StatusOK)
+	if harness.pendingCI.wakes != 2 {
+		t.Fatalf("scheduler wakes = %d, want 2", harness.pendingCI.wakes)
+	}
 }
 
 func TestPanelRootRuntimeSettings(t *testing.T) {

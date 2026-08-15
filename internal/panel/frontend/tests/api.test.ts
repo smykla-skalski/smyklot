@@ -242,6 +242,50 @@ describe('Root installation access', () => {
     expect(stub.calls[0]?.init?.method).toBe('POST');
   });
 
+  it('checks and cancels pending CI requests with optimistic revisions', async () => {
+    const request = {
+      id: 'pending/1',
+      repository_full_name: 'example/api',
+      pull_request: 42,
+      head_sha: 'abc123',
+      merge_method: 'squash' as const,
+      required_checks_only: false,
+      requester: 'ada',
+      schedule: 'active' as const,
+      next_check_at: '2026-08-15T10:00:00Z',
+      last_observed_state: 'pending',
+      requested_at: '2026-08-15T09:00:00Z',
+      updated_at: '2026-08-15T09:55:00Z',
+      revision: 4,
+    };
+    const stub = stubFetch([jsonResponse(200, request), jsonResponse(200, request)]);
+    const api = createPanelApi('/panel', stub.fetch);
+
+    await api.checkRootPendingCI(request.id, request.revision);
+    await api.cancelRootPendingCI(request.id, request.revision);
+
+    expect(stub.calls).toEqual([
+      {
+        url: '/panel/api/v1/root/pending-ci/pending%2F1/check',
+        init: {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{"expected_revision":4}',
+        },
+      },
+      {
+        url: '/panel/api/v1/root/pending-ci/pending%2F1',
+        init: {
+          method: 'DELETE',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{"expected_revision":4}',
+        },
+      },
+    ]);
+  });
+
   it('uses dedicated Root reads, writes, and elevation routes', async () => {
     const elevation = {
       id: 'elevation.1',

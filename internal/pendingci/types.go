@@ -124,6 +124,13 @@ type WakeHeadRequest struct {
 	OccurredAt   time.Time
 }
 
+type CheckNowRequest struct {
+	ID               int64
+	ExpectedRevision int64
+	EventKey         string
+	OccurredAt       time.Time
+}
+
 type RescheduleRequest struct {
 	ID                int64
 	ExpectedRevision  int64
@@ -208,6 +215,7 @@ type Store interface {
 	LeaseDue(context.Context, time.Time, time.Time) (LeaseResult, error)
 	Wake(context.Context, WakeRequest) (bool, error)
 	WakeByHead(context.Context, WakeHeadRequest) (int64, error)
+	CheckNow(context.Context, CheckNowRequest) (Request, error)
 	Reschedule(context.Context, RescheduleRequest) (Request, error)
 	Finish(context.Context, FinishRequest) (Request, error)
 	CancelBySource(context.Context, CancelRequest) (*Request, error)

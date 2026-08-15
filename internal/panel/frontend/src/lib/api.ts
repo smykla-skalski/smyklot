@@ -20,6 +20,7 @@ import type {
   PanelViewer,
   NotificationPage,
   NotificationPageRequest,
+  PendingCIRequest,
   RepositoryDetail,
   RepositoryPageRequest,
   RepositorySettingsInput,
@@ -57,6 +58,8 @@ export interface PanelApi {
   fetchRootInstallations(): Promise<RootInstallation[]>;
   syncRootInstallations(): Promise<string[]>;
   fetchRootOverview(): Promise<RootOverview>;
+  checkRootPendingCI(requestId: string, expectedRevision: number): Promise<PendingCIRequest>;
+  cancelRootPendingCI(requestId: string, expectedRevision: number): Promise<PendingCIRequest>;
   fetchRootUsers(request: RootPanelUserPageRequest): Promise<Page<RootPanelUser>>;
   updateRootUser(accountId: string, input: UpdateRootUserInput): Promise<void>;
   fetchRootInvitations(request: InvitationPageRequest): Promise<Page<PanelInvitation>>;
@@ -237,6 +240,20 @@ export function createPanelApi(
 
     fetchRootOverview(): Promise<RootOverview> {
       return jsonRequest('/api/v1/root/overview');
+    },
+
+    checkRootPendingCI(requestId: string, expectedRevision: number): Promise<PendingCIRequest> {
+      return postJson(`/api/v1/root/pending-ci/${pathSegment(requestId)}/check`, {
+        expected_revision: expectedRevision,
+      });
+    },
+
+    cancelRootPendingCI(requestId: string, expectedRevision: number): Promise<PendingCIRequest> {
+      return jsonRequest(`/api/v1/root/pending-ci/${pathSegment(requestId)}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expected_revision: expectedRevision }),
+      });
     },
 
     fetchRootUsers(userPage: RootPanelUserPageRequest): Promise<Page<RootPanelUser>> {

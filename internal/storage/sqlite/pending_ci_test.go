@@ -106,6 +106,24 @@ var _ = Describe("pending CI storage [Unit]", func() {
 		Expect(deferred.HeadSHA).To(Equal("sha-3"))
 		Expect(deferred.LeaseExpiresAt).To(BeNil())
 
+		checked, err := store.CheckNow(ctx, pendingci.CheckNowRequest{
+			ID: deferred.ID, ExpectedRevision: deferred.Revision,
+			EventKey: "panel:check-now", OccurredAt: now.Add(4 * time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(checked.Schedule).To(Equal(pendingci.ScheduleActive))
+		Expect(checked.NextCheckAt).To(Equal(now.Add(4 * time.Minute)))
+		Expect(checked.LeaseExpiresAt).To(BeNil())
+
+		deferred, err = store.Reschedule(ctx, pendingci.RescheduleRequest{
+			ID: checked.ID, ExpectedRevision: checked.Revision,
+			Schedule: pendingci.ScheduleDeferred, HeadSHA: checked.HeadSHA,
+			NextCheckAt: now.Add(8 * time.Hour), LastProgressAt: checked.LastProgressAt,
+			LastObservedState: "failing", LastFingerprint: "checks:v2:red",
+			CheckedAt: now.Add(5 * time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+
 		staleWake := wake
 		staleWake.EventKey = "check_run:old-head:completed"
 		changed, err = store.Wake(ctx, staleWake)

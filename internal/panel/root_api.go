@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 )
 
@@ -31,7 +32,27 @@ func (s *Server) getRootOverview(w http.ResponseWriter, r *http.Request) {
 		s.writeInternal(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, rootOverviewDTO(overview, s.cfg, s.startedAt, now))
+	active := pendingci.ScheduleActive
+	activeQueue, err := s.store.ListQueue(
+		r.Context(), pendingci.QueueFilter{Schedule: &active, Limit: 50},
+	)
+	if err != nil {
+		s.writeInternal(w, err)
+		return
+	}
+	deferred := pendingci.ScheduleDeferred
+	deferredQueue, err := s.store.ListQueue(
+		r.Context(), pendingci.QueueFilter{Schedule: &deferred, Limit: 50},
+	)
+	if err != nil {
+		s.writeInternal(w, err)
+		return
+	}
+	writeJSON(
+		w,
+		http.StatusOK,
+		rootOverviewDTO(overview, activeQueue, deferredQueue, s.cfg, s.startedAt, now),
+	)
 }
 
 func (s *Server) getRootHistory(w http.ResponseWriter, r *http.Request) {

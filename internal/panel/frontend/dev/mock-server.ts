@@ -22,6 +22,7 @@ import type {
   PanelInvitation,
   PanelTarget,
   PanelUser,
+  PendingCIRequest,
   InstallationRole,
   TargetUserAccess,
   RepositoryDetail,
@@ -122,6 +123,7 @@ interface MockState {
   elevationCounter: number;
   elevations: Map<string, RootElevation>;
   notifications: SecurityNotification[];
+  pendingCI: PendingCIRequest[];
   runtime: {
     behaviorOverride: ConfigValues | null;
     logLevelOverride: string | null;
@@ -493,6 +495,7 @@ function seed(): MockState {
     elevationCounter: 1,
     elevations: new Map(),
     notifications,
+    pendingCI: pendingCISeeds(iso),
     runtime: {
       behaviorOverride: null,
       logLevelOverride: null,
@@ -1416,6 +1419,10 @@ async function handle(
       /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/failures$/,
     );
     const rootHistory = path.match(/^\/api\/v1\/root\/history\/(?<history>audit|failures)$/);
+    const rootPendingCICheck = path.match(
+      /^\/api\/v1\/root\/pending-ci\/(?<request>[^/]+)\/check$/,
+    );
+    const rootPendingCI = path.match(/^\/api\/v1\/root\/pending-ci\/(?<request>[^/]+)$/);
     const installationUsers = scopedUsers ?? rootScopedUsers;
     const installationUser = scopedUser ?? rootScopedUser;
     const installationUserDecisions = scopedUserDecisions ?? rootScopedUserDecisions;
@@ -1424,6 +1431,30 @@ async function handle(
     const installationInvitation = invitation ?? rootScopedInvitation;
     const installationAudit = audit ?? rootTargetAudit;
     const installationFailures = failures ?? rootTargetFailures;
+
+    if (rootPendingCICheck && method === 'POST') {
+      const request = findPendingCI(state, rootPendingCICheck.groups?.request ?? '');
+      const input = await readBody<{ expected_revision: number }>(req);
+      requirePendingCIRevision(request, input.expected_revision);
+      const now = new Date().toISOString();
+      request.schedule = 'active';
+      request.next_check_at = now;
+      request.updated_at = now;
+      request.revision += 1;
+      broadcast(state, { type: 'resync' });
+      respond(res, 200, structuredClone(request));
+      return;
+    }
+
+    if (rootPendingCI && method === 'DELETE') {
+      const request = findPendingCI(state, rootPendingCI.groups?.request ?? '');
+      const input = await readBody<{ expected_revision: number }>(req);
+      requirePendingCIRevision(request, input.expected_revision);
+      state.pendingCI = state.pendingCI.filter((candidate) => candidate.id !== request.id);
+      broadcast(state, { type: 'resync' });
+      respond(res, 200, structuredClone(request));
+      return;
+    }
 
     if (rootUser && method === 'PUT') {
       const accountID = decodeURIComponent(rootUser.groups?.account ?? '');
@@ -2081,7 +2112,61 @@ function rootOverviewValue(state: MockState): RootOverview {
       (notification) => notification.read_at === undefined,
     ).length,
     recent_failures: recentFailures,
+    pending_ci: {
+      active: state.pendingCI.filter((request) => request.schedule === 'active'),
+      deferred: state.pendingCI.filter((request) => request.schedule === 'deferred'),
+    },
   };
+}
+
+function pendingCISeeds(iso: (offsetMs: number) => string): PendingCIRequest[] {
+  return [
+    {
+      id: 'pending-ci-1',
+      repository_full_name: 'smykla-skalski/smyklot',
+      pull_request: 198,
+      head_sha: 'fb6ce0370e75410dc5264ba48b279581fd7229ed',
+      merge_method: 'squash',
+      required_checks_only: false,
+      requester: 'bart',
+      schedule: 'active',
+      next_check_at: iso(4 * 60_000),
+      last_observed_state: 'pending',
+      requested_at: iso(-18 * 60_000),
+      updated_at: iso(-60_000),
+      revision: 3,
+    },
+    {
+      id: 'pending-ci-2',
+      repository_full_name: 'smykla-skalski/infra',
+      pull_request: 72,
+      head_sha: 'c5f038bf21cbd097ee9d671f8e76c7a83f6c21d4',
+      merge_method: 'rebase',
+      required_checks_only: true,
+      requester: 'operator',
+      schedule: 'deferred',
+      next_check_at: iso(5 * 3_600_000),
+      last_observed_state: 'failing',
+      requested_at: iso(-8 * 3_600_000),
+      updated_at: iso(-3 * 3_600_000),
+      revision: 7,
+    },
+  ];
+}
+
+function findPendingCI(state: MockState, encodedID: string): PendingCIRequest {
+  const id = decodeURIComponent(encodedID);
+  const request = state.pendingCI.find((candidate) => candidate.id === id);
+  if (request === undefined) {
+    throw new MockApiError(404, 'not_found', 'pending CI request not found');
+  }
+  return request;
+}
+
+function requirePendingCIRevision(request: PendingCIRequest, revision: number): void {
+  if (revision !== request.revision) {
+    throw new MockApiError(409, 'conflict', 'pending CI request changed; reload and try again');
+  }
 }
 
 function rootAuditEntries(state: MockState): AuditEntry[] {

@@ -4,6 +4,7 @@
   import type { RootOverview } from '../lib/types';
   import Chip from './Chip.svelte';
   import Icon from './Icon.svelte';
+  import PendingCIQueue from './PendingCIQueue.svelte';
   import RootPageHeader from './RootPageHeader.svelte';
 
   const {
@@ -218,6 +219,13 @@
         <span class="metric-chevron"><Icon name="chevron-right" size={14} /></span>
       </button>
     </div>
+
+    <PendingCIQueue
+      {api}
+      queue={overview.pending_ci}
+      {now}
+      onChanged={() => load(refreshVersion)}
+    />
 
     <div class="overview-columns">
       <article class="overview-panel ownership-panel">
