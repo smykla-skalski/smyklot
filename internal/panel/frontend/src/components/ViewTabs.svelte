@@ -129,34 +129,87 @@
   function followSelection(node: HTMLElement, current: string) {
     let frame: number | undefined;
     let selection = current;
+    let restingTop: number | null = null;
 
-    function place(): void {
+    /**
+     * The thumb gathers itself before it goes, and lands a little past where it is going.
+     *
+     * A move that is only ease-out arrives correctly and says nothing on the way. This pulls back
+     * a tenth of the distance first and shrinks while it does - the wind-up that tells you it is
+     * about to leave - carries slightly past its destination, then settles and grows back. The
+     * position is set immediately and the travel is drawn as a transform, so nothing here has to
+     * be undone if the selection changes again mid-flight.
+     */
+    function travel(thumb: HTMLElement, from: number, to: number): void {
+      const distance = from - to;
+      if (Math.abs(distance) < 1) return;
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      thumb.getAnimations().forEach((animation) => animation.cancel());
+      thumb.animate(
+        [
+          {
+            transform: `translateY(${distance}px) scale(1)`,
+            easing: 'cubic-bezier(0.4, 0, 0.7, 0.2)',
+          },
+          {
+            offset: 0.16,
+            transform: `translateY(${distance * 1.1}px) scale(0.965)`,
+            easing: 'cubic-bezier(0.3, 0, 0.2, 1)',
+          },
+          {
+            offset: 0.7,
+            transform: `translateY(${distance * -0.1}px) scale(0.98)`,
+            easing: 'ease-out',
+          },
+          {
+            offset: 0.87,
+            transform: `translateY(${distance * 0.028}px) scale(1.015)`,
+            easing: 'ease-out',
+          },
+          { transform: 'translateY(0) scale(1)' },
+        ],
+        { duration: 460, fill: 'none' },
+      );
+    }
+
+    function place(moved: boolean): void {
       if (frame !== undefined) cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         frame = requestAnimationFrame(() => {
           frame = undefined;
           const active = node.querySelector<HTMLElement>('a.active');
+          const thumb = node.querySelector<HTMLElement>('.nav-thumb');
           if (active === null) {
             node.style.setProperty('--nav-thumb-height', '0px');
             node.classList.remove('thumb-ready');
+            restingTop = null;
             return;
           }
-          node.style.setProperty('--nav-thumb-top', `${active.offsetTop}px`);
+          const top = active.offsetTop;
+          node.style.setProperty('--nav-thumb-top', `${top}px`);
           node.style.setProperty('--nav-thumb-height', `${active.offsetHeight}px`);
+          const first = !node.classList.contains('thumb-ready');
           node.classList.add('thumb-ready');
+          if (moved && !first && thumb !== null && restingTop !== null) {
+            travel(thumb, restingTop, top);
+          }
+          restingTop = top;
         });
       });
     }
 
-    place();
-    const resize = new ResizeObserver(place);
+    place(false);
+    // A width change is not a move: collapsing the sidebar re-measures without anything travelling.
+    const resize = new ResizeObserver(() => place(false));
     resize.observe(node);
 
     return {
       update(next: string) {
         if (next === selection) return;
+        const moved =
+          next.split(':').slice(0, 3).join(':') !== selection.split(':').slice(0, 3).join(':');
         selection = next;
-        place();
+        place(moved);
       },
       destroy() {
         resize.disconnect();
@@ -317,7 +370,6 @@
     position: absolute;
     top: var(--nav-thumb-top, 0);
     transition:
-      top 240ms cubic-bezier(0.22, 1, 0.36, 1),
       height 240ms cubic-bezier(0.22, 1, 0.36, 1),
       background-color var(--duration-fast) var(--ease-standard);
     z-index: 0;
@@ -403,7 +455,10 @@
     display: block;
     font-size: var(--font-size-meta);
     font-weight: 500;
-    left: calc(100% + var(--space-2));
+    /* Clear of the sidebar rather than of the row. The row stops one padding inside the sidebar,
+       so reaching the same air on the outside is that padding, the border, and one more. The
+       collapsed rail pads by --space-2, which is the padding this has to match. */
+    left: calc(100% + var(--space-2) * 2 + 1px);
     opacity: 0;
     padding: var(--space-2) var(--space-3);
     pointer-events: none;

@@ -1049,7 +1049,10 @@
     color: var(--sidebar-menu-text);
     font-size: var(--font-size-meta);
     font-weight: 500;
-    left: calc(100% + var(--space-2));
+    /* Clear of the sidebar rather than of the row it belongs to: the row stops one padding inside
+       the sidebar, so the same air on the outside is that padding, the border, and one more. The collapsed
+       rail pads by --space-2, which is the padding this has to match. */
+    left: calc(100% + var(--space-2) * 2 + 1px);
     opacity: 0;
     padding: var(--space-2) var(--space-3);
     pointer-events: none;
@@ -1089,11 +1092,14 @@
 
   /* Collapsed, the toggle joins the rail flow under the mark: always visible,
      nothing floating over the sidebar edge. */
+  /* Same height as the expanded row, so the mark's centre does not move. Collapsing dropped
+     min-height, the row shrank to the 34px mark inside it, and the mark's centre stepped from 35
+     to 33 - a two-pixel hop in the middle of a width animation. */
   .collapsed .brand-row {
     flex-direction: column;
     gap: var(--space-2);
     justify-content: center;
-    min-height: 0;
+    min-height: 2.375rem;
     padding: 0;
   }
 
@@ -1104,7 +1110,21 @@
      than inside it and the interior covers the robot edge to edge. It waits for
      a hover like the expanded one does, so the mark is what the sidebar shows
      at rest. */
+  /* The target is the whole row - the same reach the workspace tile below it has - while the disc
+     stays the size of the halo it sits on. A 32px circle is a small thing to hit for the control
+     that opens the sidebar. */
   .collapsed .sidebar-collapse-trigger {
+    border: 0;
+    border-radius: var(--radius-control);
+    box-shadow: none;
+    height: auto;
+    inset: 0;
+    position: absolute;
+    translate: none;
+    width: auto;
+  }
+
+  .collapsed .sidebar-collapse-trigger::before {
     border: 2.28px solid var(--sidebar-text-muted);
     border-radius: 50%;
     /* The halo's outer edge is antialiased and lands on a fraction of a pixel,
@@ -1112,6 +1132,7 @@
        the surface behind swallows it without moving the geometry. */
     box-shadow: 0 0 0 1.5px var(--sidebar-bg);
     box-sizing: border-box;
+    content: '';
     height: 32.43px;
     left: 50%;
     position: absolute;
@@ -1120,25 +1141,44 @@
     width: 32.43px;
   }
 
-  .collapsed .sidebar-collapse-trigger,
-  .collapsed .sidebar-collapse-trigger:hover,
-  .collapsed .sidebar-collapse-trigger:focus-visible {
+  .collapsed .sidebar-collapse-trigger > :global(svg) {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* The states belong to the disc, not to the row-sized target it is drawn on: a background on the
+     button itself would cover the mark it is meant to sit over. */
+  .collapsed .sidebar-collapse-trigger::before,
+  .collapsed .sidebar-collapse-trigger:hover::before,
+  .collapsed .sidebar-collapse-trigger:focus-visible::before {
     /* Opaque: the robot behind must not read through the glyph. */
     background: var(--sidebar-bg);
   }
 
+  .collapsed .sidebar-collapse-trigger:hover::before,
+  .collapsed .sidebar-collapse-trigger:focus-visible::before {
+    border-color: var(--sidebar-text);
+  }
+
   .collapsed .sidebar-collapse-trigger:hover,
   .collapsed .sidebar-collapse-trigger:focus-visible {
-    border-color: var(--sidebar-text);
     color: var(--sidebar-text);
   }
 
-  /* Collapsed, this is a disc sitting on the mark, and it is centred by `translate` rather than by
-     a transform - so the press scale composes with that instead of fighting it, and the ring, its
-     border and the halo behind it all shrink together as one object. */
-  .collapsed .sidebar-collapse-trigger:active {
+  .collapsed .sidebar-collapse-trigger:active::before {
     background: var(--sidebar-item-pressed);
-    transform: scale(var(--press-scale));
+  }
+
+  /* The mark shrinks with the disc that covers it. They are concentric, so scaling only the disc
+     let the halo underneath show past its own edge - a lit crescent at the bottom left, where the
+     halo's stroke is thickest. Pressed, the logo and the ring over it are one object. */
+  .collapsed .brand-row:has(.sidebar-collapse-trigger:active) .mark-icon,
+  .collapsed .sidebar-collapse-trigger:active {
+    transform: scale(var(--press-scale-disc));
+  }
+
+  .collapsed .mark-icon {
+    transition: transform var(--duration-press) var(--ease-standard);
   }
 
   .collapsed .mark {
