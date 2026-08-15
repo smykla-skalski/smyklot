@@ -984,6 +984,19 @@ func executePendingCIMerge(
 	if err != nil {
 		return feedback.NewMergeFailed("failed to get PR head ref: " + err.Error()), nil
 	}
+	if environment.pendingCI == nil {
+		serviceOwned, ownershipErr := pendingCIServiceOwned(
+			ctx, client, rc.RepoOwner, rc.RepoName, prNum,
+		)
+		if ownershipErr != nil {
+			return feedback.NewMergeFailed(ownershipErr.Error()), nil
+		}
+		if serviceOwned {
+			return feedback.NewMergeFailed(
+				"the service is still handing off this pending CI request; retry after its ownership label is removed",
+			), nil
+		}
+	}
 
 	// The Action has no durable reconciler, so it evaluates immediately and
 	// leaves a label for its scheduled poll. The service always records the

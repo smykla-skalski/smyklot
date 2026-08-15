@@ -356,7 +356,7 @@ var _ = Describe("pending CI storage [Unit]", func() {
 		claim := pendingci.SourceRevisionRequest{
 			RepositoryID: "9001", PullRequest: 198, CommentID: 101,
 			Revision: now.Format(time.RFC3339Nano), Sequence: 1,
-			EventKey: "issue_comment:created:101", ObservedAt: now,
+			SourceOrder: 1, EventKey: "issue_comment:created:101", ObservedAt: now,
 		}
 		result, err := store.ClaimSourceRevision(ctx, claim)
 		Expect(err).NotTo(HaveOccurred())
@@ -369,6 +369,7 @@ var _ = Describe("pending CI storage [Unit]", func() {
 
 		older := claim
 		older.Revision = now.Add(-time.Second).Format(time.RFC3339Nano)
+		older.SourceOrder = 2
 		older.EventKey = "issue_comment:created:old"
 		result, err = store.ClaimSourceRevision(ctx, older)
 		Expect(err).NotTo(HaveOccurred())
@@ -376,23 +377,80 @@ var _ = Describe("pending CI storage [Unit]", func() {
 
 		edited := claim
 		edited.Sequence = 2
+		edited.SourceOrder = 3
 		edited.EventKey = "issue_comment:edited:101"
 		result, err = store.ClaimSourceRevision(ctx, edited)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result.Accepted).To(BeTrue())
-		Expect(result.SourceOrder).To(Equal(int64(2)))
+		Expect(result.SourceOrder).To(Equal(int64(3)))
 
 		editedAgain := edited
+		editedAgain.SourceOrder = 4
 		editedAgain.EventKey = "issue_comment:edited:101:different-body"
 		result, err = store.ClaimSourceRevision(ctx, editedAgain)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result.Accepted).To(BeTrue())
-		Expect(result.SourceOrder).To(Equal(int64(3)))
+		Expect(result.SourceOrder).To(Equal(int64(4)))
 
 		result, err = store.ClaimSourceRevision(ctx, edited)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result.Accepted).To(BeFalse())
-		Expect(result.SourceOrder).To(Equal(int64(2)))
+		Expect(result.SourceOrder).To(Equal(int64(3)))
+	})
+
+	It("keeps receipt order when workers execute same-timestamp commands backwards", func() {
+		revision := now.Format(time.RFC3339Nano)
+		later := pendingci.SourceRevisionRequest{
+			RepositoryID: "9001", PullRequest: 198, CommentID: 202,
+			Revision: revision, Sequence: 1, SourceOrder: 2,
+			EventKey: "github-delivery:issue_comment:second", ObservedAt: now,
+		}
+		first := later
+		first.CommentID = 101
+		first.SourceOrder = 1
+		first.EventKey = "github-delivery:issue_comment:first"
+
+		laterClaim, err := store.ClaimSourceRevision(ctx, later)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(laterClaim.Accepted).To(BeTrue())
+		firstClaim, err := store.ClaimSourceRevision(ctx, first)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(firstClaim.Accepted).To(BeTrue())
+
+		laterArm := pendingCITestArm(now, later.CommentID, "head")
+		laterArm.SourceOrder = later.SourceOrder
+		laterArm.MergeMethod = pendingci.MergeMethodSquash
+		_, err = store.Arm(ctx, laterArm)
+		Expect(err).NotTo(HaveOccurred())
+
+		firstArm := pendingCITestArm(now, first.CommentID, "head")
+		firstArm.SourceOrder = first.SourceOrder
+		firstArm.MergeMethod = pendingci.MergeMethodMerge
+		_, err = store.Arm(ctx, firstArm)
+		Expect(errors.Is(err, pendingci.ErrStaleSourceRevision)).To(BeTrue())
+
+		current, err := store.GetArmed(ctx, laterArm.RepositoryID, laterArm.PullRequest)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(current.MergeMethod).To(Equal(pendingci.MergeMethodSquash))
+	})
+
+	It("rejects an earlier same-comment delivery that executes after a later one", func() {
+		revision := now.Format(time.RFC3339Nano)
+		later := pendingci.SourceRevisionRequest{
+			RepositoryID: "9001", PullRequest: 198, CommentID: 101,
+			Revision: revision, Sequence: 2, SourceOrder: 2,
+			EventKey: "github-delivery:issue_comment:second", ObservedAt: now,
+		}
+		first := later
+		first.SourceOrder = 1
+		first.EventKey = "github-delivery:issue_comment:first"
+
+		laterClaim, err := store.ClaimSourceRevision(ctx, later)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(laterClaim.Accepted).To(BeTrue())
+		firstClaim, err := store.ClaimSourceRevision(ctx, first)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(firstClaim.Accepted).To(BeFalse())
 	})
 
 	It("uses durable order to break same-timestamp command ties", func() {
@@ -441,6 +499,24 @@ var _ = Describe("pending CI storage [Unit]", func() {
 		Expect(cancelled).To(BeNil())
 		_, err = store.GetArmed(ctx, newer.RepositoryID, newer.PullRequest)
 		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("lets an edit cancel creation when GitHub gives both the same timestamp", func() {
+		created := pendingCITestArm(now, 101, "created-head")
+		created.SourceOrder = 2
+		armed, err := store.Arm(ctx, created)
+		Expect(err).NotTo(HaveOccurred())
+
+		cancelled, err := store.CancelBySource(ctx, pendingci.CancelRequest{
+			RepositoryID: created.RepositoryID, PullRequest: created.PullRequest,
+			CommentID:      created.SourceCommentID,
+			SourceRevision: created.SourceRevision, SourceSequence: 2,
+			SourceOrder: 1,
+			Reason:      "same-second edit", CancelledAt: now.Add(time.Second),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cancelled).NotTo(BeNil())
+		Expect(cancelled.ID).To(Equal(armed.Request.ID))
 	})
 
 	It("drains each pre-durable label once without arming an unknown head", func() {

@@ -49,6 +49,32 @@ func CompareSourceRevisions(
 	return 0, nil
 }
 
+// CompareSourceEvents adds durable receipt order after GitHub's timestamp and
+// action sequence. It is used only for revisions of the same mutable comment.
+func CompareSourceEvents(
+	leftRevision string,
+	leftSequence int,
+	leftOrder int64,
+	rightRevision string,
+	rightSequence int,
+	rightOrder int64,
+) (int, error) {
+	comparison, err := CompareSourceRevisions(
+		leftRevision, leftSequence, rightRevision, rightSequence,
+	)
+	if err != nil || comparison != 0 {
+		return comparison, err
+	}
+	if leftOrder < rightOrder {
+		return -1, nil
+	}
+	if leftOrder > rightOrder {
+		return 1, nil
+	}
+
+	return 0, nil
+}
+
 // CompareSourceIntent orders commands by GitHub's source timestamp and uses
 // the durable observation order only when GitHub's second-granularity
 // timestamps tie. Action sequence is deliberately excluded because it is

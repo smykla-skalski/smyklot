@@ -36,7 +36,10 @@ func TestPendingCIActivationRollsBackOnlyUnownedArtifacts(t *testing.T) {
 		},
 		{
 			name: "no prior request owns artifacts", getErr: storage.ErrNotFound,
-			wantLabels: []string{"smyklot:pending:ci:squash"}, wantReactionCount: 1,
+			wantLabels: []string{
+				"smyklot:pending:ci:squash", github.LabelPendingCIServiceOwner,
+			},
+			wantReactionCount: 1,
 		},
 	}
 	for _, test := range tests {
@@ -64,6 +67,11 @@ func TestPendingCIActivationRollsBackOnlyUnownedArtifacts(t *testing.T) {
 			if !errors.Is(failures.command, armErr) {
 				t.Fatalf("command failure = %v, want arm error", failures.command)
 			}
+			if !equalStrings(artifacts.addedLabels, []string{
+				github.LabelPendingCIServiceOwner, "smyklot:pending:ci:squash",
+			}) {
+				t.Fatalf("added labels = %v", artifacts.addedLabels)
+			}
 			if !equalStrings(artifacts.removedLabels, test.wantLabels) {
 				t.Fatalf("removed labels = %v, want %v", artifacts.removedLabels, test.wantLabels)
 			}
@@ -77,13 +85,87 @@ func TestPendingCIActivationRollsBackOnlyUnownedArtifacts(t *testing.T) {
 	}
 }
 
-type pendingCIArtifactsStub struct {
-	removedLabels    []string
-	removedReactions []int
+func TestPendingCIActivationKeepsOwnershipWhenMethodRollbackFails(t *testing.T) {
+	t.Parallel()
+	methodLabel := "smyklot:pending:ci:squash"
+	artifacts := &pendingCIArtifactsStub{
+		removeLabelErrors: map[string]error{methodLabel: errors.New("GitHub unavailable")},
+	}
+	command := &pendingCICommand{
+		store: pendingCICommandStoreStub{
+			getErr: storage.ErrNotFound, armErr: errors.New("database full"),
+		},
+		coordinator: newPendingCICoordinator(), repositoryID: "repository:7",
+		now: func() time.Time { return time.Now().UTC() },
+	}
+
+	_, err := activatePendingCI(
+		t.Context(), artifacts, command, pendingCIActivationRequest{
+			runtime: &RuntimeConfig{CommentAuthor: "operator"},
+			owner:   "owner", repository: "repository", pullRequest: 198,
+			commentID: 101, headSHA: "head", baseBranch: "main",
+			method: github.MergeMethodSquash, label: methodLabel,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !equalStrings(artifacts.removedLabels, []string{methodLabel}) {
+		t.Fatalf("removed labels = %v, want method label only", artifacts.removedLabels)
+	}
 }
 
-func (*pendingCIArtifactsStub) AddLabel(context.Context, string, string, int, string) error {
-	return nil
+func TestPendingCIActivationCleansAmbiguousMethodPublishFailure(t *testing.T) {
+	t.Parallel()
+	methodLabel := "smyklot:pending:ci:squash"
+	publishErr := errors.New("response lost")
+	artifacts := &pendingCIArtifactsStub{
+		addLabelErrors: map[string]error{methodLabel: publishErr},
+	}
+	command := &pendingCICommand{
+		store:       pendingCICommandStoreStub{getErr: storage.ErrNotFound},
+		coordinator: newPendingCICoordinator(), repositoryID: "repository:7",
+		now: func() time.Time { return time.Now().UTC() },
+	}
+
+	failures, err := activatePendingCI(
+		t.Context(), artifacts, command, pendingCIActivationRequest{
+			runtime: &RuntimeConfig{CommentAuthor: "operator"},
+			owner:   "owner", repository: "repository", pullRequest: 198,
+			commentID: 101, headSHA: "head", baseBranch: "main",
+			method: github.MergeMethodSquash, label: methodLabel,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !errors.Is(failures.label, publishErr) {
+		t.Fatalf("label failure = %v, want publish error", failures.label)
+	}
+	if !equalStrings(artifacts.removedLabels, []string{
+		methodLabel, github.LabelPendingCIServiceOwner,
+	}) {
+		t.Fatalf("removed labels = %v", artifacts.removedLabels)
+	}
+}
+
+type pendingCIArtifactsStub struct {
+	addedLabels       []string
+	removedLabels     []string
+	removedReactions  []int
+	addLabelErrors    map[string]error
+	removeLabelErrors map[string]error
+}
+
+func (stub *pendingCIArtifactsStub) AddLabel(
+	_ context.Context,
+	_, _ string,
+	_ int,
+	label string,
+) error {
+	stub.addedLabels = append(stub.addedLabels, label)
+
+	return stub.addLabelErrors[label]
 }
 
 func (stub *pendingCIArtifactsStub) RemoveLabel(
@@ -94,7 +176,7 @@ func (stub *pendingCIArtifactsStub) RemoveLabel(
 ) error {
 	stub.removedLabels = append(stub.removedLabels, label)
 
-	return nil
+	return stub.removeLabelErrors[label]
 }
 
 func (*pendingCIArtifactsStub) AddReaction(

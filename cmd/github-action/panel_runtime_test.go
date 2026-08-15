@@ -580,7 +580,7 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 		}).Within(eventuallyWindow).Should(Equal(1))
 
 		Eventually(func() int {
-			redelivery := postDelivery(public, "issue_comment", "redelivery", body, nil)
+			redelivery := postDelivery(public, "issue_comment", "enabled-delivery", body, nil)
 
 			return redelivery.StatusCode
 		}).Within(eventuallyWindow).Should(Equal(http.StatusOK))
@@ -668,7 +668,7 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 			metadata:    issueCommentMetadata(event),
 			pullRequest: event.Issue.Number,
 			comment:     event,
-			key:         event.IdempotencyKey(),
+			key:         event.ContentKey(),
 			deliveryID:  "queue-full-redelivery",
 			payload:     payload,
 			logger:      service.logger,

@@ -41,6 +41,37 @@ func TestPendingCIRequiredWaitRejectsUnprotectedBranch(t *testing.T) {
 	}
 }
 
+func TestActionRecognizesServicePendingCIOwnership(t *testing.T) {
+	t.Parallel()
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repos/owner/repository/pulls/42" {
+			t.Fatalf("unexpected GitHub path %q", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{
+			"number":42,
+			"state":"open",
+			"head":{"sha":"head"},
+			"base":{"ref":"main"},
+			"labels":[{"name":"smyklot:pending:ci:service"}]
+		}`))
+	}))
+	defer api.Close()
+
+	client, err := github.NewClient("installation-token", api.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owned, err := pendingCIServiceOwned(
+		context.Background(), client, "owner", "repository", 42,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !owned {
+		t.Fatal("service ownership marker was ignored")
+	}
+}
+
 func TestPendingCICleanupScopePreservesReplacementArtifacts(t *testing.T) {
 	t.Parallel()
 	request := pendingci.Request{
@@ -48,11 +79,10 @@ func TestPendingCICleanupScopePreservesReplacementArtifacts(t *testing.T) {
 		Label: "smyklot:pending:ci:squash", SourceCommentID: 101,
 	}
 	tests := []struct {
-		name           string
-		current        pendingci.Request
-		err            error
-		removeLabel    bool
-		removeReaction bool
+		name    string
+		current pendingci.Request
+		err     error
+		scope   pendingCICleanupScope
 	}{
 		{
 			name: "same command source and label",
@@ -65,11 +95,13 @@ func TestPendingCICleanupScopePreservesReplacementArtifacts(t *testing.T) {
 			current: pendingci.Request{
 				Label: "smyklot:pending:ci:rebase", SourceCommentID: 202,
 			},
-			removeLabel: true, removeReaction: true,
+			scope: pendingCICleanupScope{label: true, reaction: true},
 		},
 		{
 			name: "replacement no longer armed", err: storage.ErrNotFound,
-			removeLabel: true, removeReaction: true,
+			scope: pendingCICleanupScope{
+				label: true, reaction: true, serviceMarker: true,
+			},
 		},
 	}
 	for _, test := range tests {
@@ -78,16 +110,15 @@ func TestPendingCICleanupScopePreservesReplacementArtifacts(t *testing.T) {
 			backend := &githubPendingCIBackend{current: pendingCICurrentStoreStub{
 				request: test.current, err: test.err,
 			}}
-			removeLabel, removeReaction, err := backend.cleanupScope(
+			scope, err := backend.cleanupScope(
 				context.Background(), request,
 			)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if removeLabel != test.removeLabel || removeReaction != test.removeReaction {
+			if scope != test.scope {
 				t.Fatalf(
-					"cleanup scope = (%t, %t), want (%t, %t)",
-					removeLabel, removeReaction, test.removeLabel, test.removeReaction,
+					"cleanup scope = %+v, want %+v", scope, test.scope,
 				)
 			}
 		})

@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
+	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/github"
 	"github.com/smykla-skalski/smyklot/pkg/logging"
 )
@@ -25,6 +27,11 @@ func (s *server) drainLegacyPendingCILabels(
 	prs []map[string]interface{},
 ) error {
 	for _, pr := range prs {
+		// Service-owned labels are either backed by an armed request or cleaned
+		// by reconcilePendingCIServiceOwnership. They are never legacy input.
+		if pullRequestHasLabel(pr, github.LabelPendingCIServiceOwner) {
+			continue
+		}
 		candidates := pendingCILabels(pr)
 		if len(candidates) == 0 {
 			continue
@@ -80,6 +87,67 @@ func (s *server) drainLegacyPendingCILabels(
 	}
 
 	return nil
+}
+
+// reconcilePendingCIServiceOwnership repairs the narrow crash window between
+// publishing service-owned artifacts and committing the durable command. An
+// armed request keeps its marker. Everything else is already terminal or was
+// never committed, so method labels are removed before the marker is released
+// to prevent the Action runner from adopting stale work.
+func (s *server) reconcilePendingCIServiceOwnership(
+	ctx context.Context,
+	client *github.Client,
+	repository github.Repository,
+	prs []map[string]interface{},
+) error {
+	repositoryID := repositoryStorageID(repository.ID)
+	var reconcileErr error
+	for _, pr := range prs {
+		if !pullRequestHasLabel(pr, github.LabelPendingCIServiceOwner) {
+			continue
+		}
+		pullRequest := extractPRNumber(pr)
+		if pullRequest == 0 {
+			reconcileErr = errors.Join(
+				reconcileErr,
+				fmt.Errorf("reconcile pending CI service ownership: invalid pull request number"),
+			)
+
+			continue
+		}
+		err := s.pendingCICoordinator.Exclusive(ctx, repositoryID, func() error {
+			_, armedErr := s.store.GetArmed(ctx, repositoryID, pullRequest)
+			if armedErr == nil {
+				return nil
+			}
+			if !errors.Is(armedErr, storage.ErrNotFound) {
+				return fmt.Errorf("read pending CI service owner: %w", armedErr)
+			}
+			for _, candidate := range pendingCILabels(pr) {
+				if err := cleanupGitHubError(
+					"remove orphaned pending CI label",
+					client.RemoveLabel(
+						ctx, repository.Owner, repository.Name, pullRequest, candidate.label,
+					),
+				); err != nil {
+					return err
+				}
+			}
+
+			return cleanupGitHubError(
+				"remove orphaned pending CI service ownership marker",
+				client.RemoveLabel(
+					ctx, repository.Owner, repository.Name, pullRequest,
+					github.LabelPendingCIServiceOwner,
+				),
+			)
+		})
+		if err != nil {
+			reconcileErr = errors.Join(reconcileErr, err)
+		}
+	}
+
+	return reconcileErr
 }
 
 func pendingCIMigrationRefs(pr map[string]interface{}) (string, string, error) {

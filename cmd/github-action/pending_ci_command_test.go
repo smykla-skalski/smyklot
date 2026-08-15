@@ -25,7 +25,9 @@ func TestPendingCICommandRecognizesExistingArtifactOwnership(t *testing.T) {
 				Label: "smyklot:pending:ci:squash", SourceCommentID: 101,
 			},
 			label: "smyklot:pending:ci:squash", comment: 101,
-			owned: pendingCIArtifactOwnership{label: true, reaction: true},
+			owned: pendingCIArtifactOwnership{
+				label: true, reaction: true, serviceMarker: true,
+			},
 		},
 		{
 			name: "same label with different comment",
@@ -33,7 +35,7 @@ func TestPendingCICommandRecognizesExistingArtifactOwnership(t *testing.T) {
 				Label: "smyklot:pending:ci:squash", SourceCommentID: 202,
 			},
 			label: "smyklot:pending:ci:squash", comment: 101,
-			owned: pendingCIArtifactOwnership{label: true},
+			owned: pendingCIArtifactOwnership{label: true, serviceMarker: true},
 		},
 		{
 			name: "different label with same comment",
@@ -41,7 +43,7 @@ func TestPendingCICommandRecognizesExistingArtifactOwnership(t *testing.T) {
 				Label: "smyklot:pending:ci:rebase", SourceCommentID: 101,
 			},
 			label: "smyklot:pending:ci:squash", comment: 101,
-			owned: pendingCIArtifactOwnership{reaction: true},
+			owned: pendingCIArtifactOwnership{reaction: true, serviceMarker: true},
 		},
 		{
 			name: "no armed request", err: storage.ErrNotFound,

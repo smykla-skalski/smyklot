@@ -29,6 +29,7 @@ const (
 	prCommentsPath   = "/issues/42/comments"
 	deliveryOne      = "delivery-1"
 	deliveryTwo      = "delivery-2"
+	deliveryThree    = "delivery-3"
 	eventuallyWindow = 2 * time.Second
 )
 
@@ -316,12 +317,36 @@ var _ = Describe("Webhook service [Unit]", func() {
 			}, eventuallyWindow).Should(Equal(1))
 
 			Eventually(func() int {
-				return post(webhook.EventIssueComment, deliveryTwo, payload, nil).StatusCode
+				return post(webhook.EventIssueComment, deliveryOne, payload, nil).StatusCode
 			}, eventuallyWindow).Should(Equal(http.StatusOK))
 
 			Consistently(func() int {
 				return stub.countCalls(http.MethodPost, approveReviews)
 			}, 200*time.Millisecond).Should(Equal(1))
+		})
+
+		It("should execute a same-second edit whose content cycles back", func() {
+			updatedAt := "2026-08-08T10:05:00Z"
+			post(
+				webhook.EventIssueComment, deliveryOne,
+				delivery("edited", "/approve", "User", updatedAt, true), nil,
+			)
+			Eventually(func() int {
+				return stub.countCalls(http.MethodPost, approveReviews)
+			}, eventuallyWindow).Should(Equal(1))
+
+			post(
+				webhook.EventIssueComment, deliveryTwo,
+				delivery("edited", "/help", "User", updatedAt, true), nil,
+			)
+			post(
+				webhook.EventIssueComment, deliveryThree,
+				delivery("edited", "/approve", "User", updatedAt, true), nil,
+			)
+
+			Eventually(func() int {
+				return stub.countCalls(http.MethodPost, approveReviews)
+			}, eventuallyWindow).Should(Equal(2))
 		})
 
 		// An edit is a new instruction, not a repeat of the old one

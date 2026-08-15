@@ -24,6 +24,12 @@ type pendingCICurrentStore interface {
 	GetArmed(context.Context, string, int) (pendingci.Request, error)
 }
 
+type pendingCICleanupScope struct {
+	label         bool
+	reaction      bool
+	serviceMarker bool
+}
+
 var errNoRequiredStatusChecks = errors.New("base branch has no required status checks")
 
 func (backend *githubPendingCIBackend) Observe(
@@ -110,7 +116,7 @@ func (backend *githubPendingCIBackend) completeExclusive(
 	request pendingci.Request,
 	lifecycle pendingci.Lifecycle,
 ) error {
-	removeLabel, removeReaction, err := backend.cleanupScope(ctx, request)
+	scope, err := backend.cleanupScope(ctx, request)
 	if err != nil {
 		return err
 	}
@@ -119,14 +125,17 @@ func (backend *githubPendingCIBackend) completeExclusive(
 		return fmt.Errorf("authenticate pending CI cleanup: %w", err)
 	}
 	var cleanupErr error
-	if removeLabel {
-		cleanupErr = errors.Join(cleanupErr, cleanupGitHubError(
+	labelRemoved := true
+	if scope.label {
+		labelErr := cleanupGitHubError(
 			"remove pending CI label",
 			client.RemoveLabel(ctx, owner, repository, request.PullRequest, request.Label),
-		))
+		)
+		labelRemoved = labelErr == nil
+		cleanupErr = errors.Join(cleanupErr, labelErr)
 	}
 	commentID := int(request.SourceCommentID)
-	if removeReaction {
+	if scope.reaction {
 		cleanupErr = errors.Join(cleanupErr, cleanupGitHubError(
 			"remove pending CI reaction",
 			client.RemoveReaction(ctx, owner, repository, commentID, github.ReactionPendingCI),
@@ -138,6 +147,15 @@ func (backend *githubPendingCIBackend) completeExclusive(
 			client.AddReaction(ctx, owner, repository, commentID, github.ReactionSuccess),
 		))
 	}
+	if scope.serviceMarker && labelRemoved {
+		cleanupErr = errors.Join(cleanupErr, cleanupGitHubError(
+			"remove pending CI service ownership marker",
+			client.RemoveLabel(
+				ctx, owner, repository, request.PullRequest,
+				github.LabelPendingCIServiceOwner,
+			),
+		))
+	}
 
 	return cleanupErr
 }
@@ -145,18 +163,24 @@ func (backend *githubPendingCIBackend) completeExclusive(
 func (backend *githubPendingCIBackend) cleanupScope(
 	ctx context.Context,
 	request pendingci.Request,
-) (bool, bool, error) {
+) (pendingCICleanupScope, error) {
 	current, err := backend.current.GetArmed(ctx, request.RepositoryID, request.PullRequest)
 	if errors.Is(err, storage.ErrNotFound) {
-		return true, request.SourceCommentID > 0, nil
+		return pendingCICleanupScope{
+			label: true, reaction: request.SourceCommentID > 0, serviceMarker: true,
+		}, nil
 	}
 	if err != nil {
-		return false, false, fmt.Errorf("read replacement pending CI request: %w", err)
+		return pendingCICleanupScope{}, fmt.Errorf(
+			"read replacement pending CI request: %w", err,
+		)
 	}
 
-	return current.Label != request.Label,
-		request.SourceCommentID > 0 && current.SourceCommentID != request.SourceCommentID,
-		nil
+	return pendingCICleanupScope{
+		label: current.Label != request.Label,
+		reaction: request.SourceCommentID > 0 &&
+			current.SourceCommentID != request.SourceCommentID,
+	}, nil
 }
 
 func cleanupGitHubError(operation string, err error) error {

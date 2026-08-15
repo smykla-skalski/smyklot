@@ -533,9 +533,9 @@ WHERE repository_id = ? AND pull_request = ? AND source_comment_id = ? AND lifec
 	if err != nil {
 		return nil, fmt.Errorf("read pending CI cancellation target: %w", err)
 	}
-	comparison, err := pendingci.CompareSourceIntent(
-		change.SourceRevision, change.SourceOrder,
-		request.SourceRevision, request.SourceOrder,
+	comparison, err := pendingci.CompareSourceEvents(
+		change.SourceRevision, change.SourceSequence, change.SourceOrder,
+		request.SourceRevision, request.SourceSequence, request.SourceOrder,
 	)
 	if err != nil {
 		return nil, err

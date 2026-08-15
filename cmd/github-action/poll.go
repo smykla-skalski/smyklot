@@ -407,6 +407,9 @@ func filterPendingCIPRs(prs []map[string]interface{}) []pendingCIPR {
 	var result []pendingCIPR
 
 	for _, pr := range prs {
+		if pullRequestHasLabel(pr, github.LabelPendingCIServiceOwner) {
+			continue
+		}
 		labels := pendingCILabels(pr)
 		if len(labels) > 0 {
 			result = append(result, labels[0])
@@ -414,6 +417,24 @@ func filterPendingCIPRs(prs []map[string]interface{}) []pendingCIPR {
 	}
 
 	return result
+}
+
+func pullRequestHasLabel(pr map[string]interface{}, wanted string) bool {
+	labels, ok := pr["labels"].([]interface{})
+	if !ok {
+		return false
+	}
+	for _, item := range labels {
+		label, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if name, _ := label["name"].(string); name == wanted {
+			return true
+		}
+	}
+
+	return false
 }
 
 // pendingCILabels returns every pending-CI label on one pull request. Action

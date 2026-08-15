@@ -112,13 +112,15 @@ type ArmResult struct {
 }
 
 // SourceRevisionRequest orders deliveries for one mutable source comment.
-// Sequence breaks ties between GitHub actions sharing the same timestamp.
+// Sequence orders actions sharing a timestamp; SourceOrder orders distinct
+// deliveries with otherwise identical source metadata.
 type SourceRevisionRequest struct {
 	RepositoryID string
 	PullRequest  int
 	CommentID    int64
 	Revision     string
 	Sequence     int
+	SourceOrder  int64
 	EventKey     string
 	ObservedAt   time.Time
 }

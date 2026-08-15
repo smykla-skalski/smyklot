@@ -11,9 +11,10 @@ import (
 
 const legacyPendingCIDrainReason = "pre-upgrade pending CI request has no recoverable authorized head; reissue the command"
 
-// ClaimSourceRevision records a source event and assigns it a total order
-// within the pull request. An exact retry reuses its order; a superseded retry
-// is rejected. GitHub timestamps still reject genuinely older revisions.
+// ClaimSourceRevision records a source event in the durable delivery receipt
+// order assigned before concurrent execution. An exact retry reuses its order;
+// a superseded retry is rejected. GitHub timestamps still reject genuinely
+// older revisions.
 func (s *Store) ClaimSourceRevision(
 	ctx context.Context,
 	request pendingci.SourceRevisionRequest,
@@ -42,28 +43,25 @@ func (s *Store) ClaimSourceRevision(
 		return pendingci.SourceRevisionResult{}, err
 	}
 	if latest != nil {
-		comparison, compareErr := pendingci.CompareSourceRevisions(
-			request.Revision, request.Sequence, latest.revision, latest.sequence,
+		comparison, compareErr := pendingci.CompareSourceEvents(
+			request.Revision, request.Sequence, request.SourceOrder,
+			latest.revision, latest.sequence, latest.order,
 		)
 		if compareErr != nil {
 			return pendingci.SourceRevisionResult{}, compareErr
 		}
-		if comparison < 0 {
+		if comparison <= 0 {
 			return pendingci.SourceRevisionResult{}, nil
 		}
 	}
 
-	order, err := allocatePendingCISourceOrder(ctx, tx, request)
-	if err != nil {
-		return pendingci.SourceRevisionResult{}, err
-	}
 	_, err = tx.ExecContext(ctx, `
 INSERT INTO pending_ci_source_revisions (
     repository_id, pull_request, source_comment_id, source_revision,
     source_sequence, event_key, source_order, observed_at
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		request.RepositoryID, request.PullRequest, request.CommentID,
-		request.Revision, request.Sequence, request.EventKey, order,
+		request.Revision, request.Sequence, request.EventKey, request.SourceOrder,
 		request.ObservedAt,
 	)
 	if err != nil {
@@ -77,7 +75,9 @@ INSERT INTO pending_ci_source_revisions (
 		)
 	}
 
-	return pendingci.SourceRevisionResult{Accepted: true, SourceOrder: order}, nil
+	return pendingci.SourceRevisionResult{
+		Accepted: true, SourceOrder: request.SourceOrder,
+	}, nil
 }
 
 type pendingCISource struct {
@@ -142,25 +142,6 @@ ORDER BY source_order DESC LIMIT 1`,
 	}
 
 	return &latest, nil
-}
-
-func allocatePendingCISourceOrder(
-	ctx context.Context,
-	tx *transaction,
-	request pendingci.SourceRevisionRequest,
-) (int64, error) {
-	var order int64
-	err := tx.QueryRowContext(ctx, `
-INSERT INTO pending_ci_source_orders (repository_id, pull_request, next_order)
-VALUES (?, ?, 1)
-ON CONFLICT (repository_id, pull_request) DO UPDATE SET
-    next_order = next_order + 1
-RETURNING next_order`, request.RepositoryID, request.PullRequest).Scan(&order)
-	if err != nil {
-		return 0, fmt.Errorf("allocate pending CI source order: %w", err)
-	}
-
-	return order, nil
 }
 
 // DrainLegacy creates one terminal cleanup record for a label that predates
@@ -312,22 +293,24 @@ WHERE repository_id = ? AND pull_request = ? AND source_comment_id > 0`,
 	}
 
 	var revision string
+	var sequence int
 	var order int64
 	err = tx.QueryRowContext(ctx, `
-SELECT source_revision, source_order
+SELECT source_revision, source_sequence, source_order
 FROM pending_ci_source_revisions
 WHERE repository_id = ? AND pull_request = ? AND source_comment_id = ?
 ORDER BY source_order DESC LIMIT 1`,
 		arm.RepositoryID, arm.PullRequest, arm.SourceCommentID,
-	).Scan(&revision, &order)
+	).Scan(&revision, &sequence, &order)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, equal, nil
 	}
 	if err != nil {
 		return false, false, fmt.Errorf("read current pending CI source revision: %w", err)
 	}
-	comparison, err := pendingci.CompareSourceIntent(
-		arm.SourceRevision, arm.SourceOrder, revision, order,
+	comparison, err := pendingci.CompareSourceEvents(
+		arm.SourceRevision, arm.SourceSequence, arm.SourceOrder,
+		revision, sequence, order,
 	)
 
 	return comparison < 0, equal, err

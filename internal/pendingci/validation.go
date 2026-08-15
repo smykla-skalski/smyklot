@@ -41,8 +41,8 @@ func (request ArmRequest) Validate() error {
 
 func (request SourceRevisionRequest) Validate() error {
 	if strings.TrimSpace(request.RepositoryID) == "" || request.PullRequest <= 0 ||
-		request.CommentID <= 0 || request.Sequence <= 0 {
-		return invalid("source identity and sequence are required")
+		request.CommentID <= 0 || request.Sequence <= 0 || request.SourceOrder <= 0 {
+		return invalid("source identity, sequence, and order are required")
 	}
 	if strings.TrimSpace(request.EventKey) == "" || request.ObservedAt.IsZero() {
 		return invalid("source event identity and observation time are required")

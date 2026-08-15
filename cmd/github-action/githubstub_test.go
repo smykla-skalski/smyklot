@@ -239,6 +239,13 @@ func (s *githubStub) countCalls(method, pathSuffix string) int {
 	return count
 }
 
+func (s *githubStub) recordedCalls() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return append([]string(nil), s.calls...)
+}
+
 // total reports how many calls the service made in all
 func (s *githubStub) total() int {
 	s.mu.Lock()

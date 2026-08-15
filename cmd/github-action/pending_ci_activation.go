@@ -53,6 +53,14 @@ func activatePendingCI(
 
 			return nil
 		}
+		failures.label = artifacts.AddLabel(
+			ctx, request.owner, request.repository,
+			request.pullRequest, github.LabelPendingCIServiceOwner,
+		)
+		if failures.label != nil {
+			return nil
+		}
+		markerAdded := !ownership.serviceMarker
 		_ = artifacts.AddReaction(
 			ctx, request.owner, request.repository,
 			request.commentID, github.ReactionPendingCI,
@@ -61,7 +69,9 @@ func activatePendingCI(
 			ctx, request.owner, request.repository, request.pullRequest, request.label,
 		)
 		if failures.label != nil {
-			rollbackPendingCIArtifacts(ctx, artifacts, request, ownership, false)
+			rollbackPendingCIArtifacts(
+				ctx, artifacts, request, ownership, true, markerAdded,
+			)
 
 			return nil
 		}
@@ -73,7 +83,9 @@ func activatePendingCI(
 			request.requiredChecksOnly, request.label,
 		)
 		if failures.command != nil {
-			rollbackPendingCIArtifacts(ctx, artifacts, request, ownership, true)
+			rollbackPendingCIArtifacts(
+				ctx, artifacts, request, ownership, true, markerAdded,
+			)
 			if errors.Is(failures.command, pendingci.ErrStaleSourceRevision) {
 				failures.command = nil
 				failures.stale = true
@@ -100,16 +112,24 @@ func rollbackPendingCIArtifacts(
 	request pendingCIActivationRequest,
 	ownership pendingCIArtifactOwnership,
 	labelAdded bool,
+	markerAdded bool,
 ) {
+	labelRemoved := true
 	if labelAdded && !ownership.label {
-		_ = artifacts.RemoveLabel(
+		labelRemoved = artifacts.RemoveLabel(
 			ctx, request.owner, request.repository, request.pullRequest, request.label,
-		)
+		) == nil
 	}
 	if !ownership.reaction {
 		_ = artifacts.RemoveReaction(
 			ctx, request.owner, request.repository,
 			request.commentID, github.ReactionPendingCI,
+		)
+	}
+	if markerAdded && labelRemoved {
+		_ = artifacts.RemoveLabel(
+			ctx, request.owner, request.repository,
+			request.pullRequest, github.LabelPendingCIServiceOwner,
 		)
 	}
 }

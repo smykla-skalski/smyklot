@@ -57,7 +57,7 @@ func (s *server) decodeIssueCommentJob(body []byte) (job, bool, error) {
 		metadata:    issueCommentMetadata(event),
 		pullRequest: event.Issue.Number,
 		comment:     event,
-		key:         event.IdempotencyKey(),
+		key:         event.ContentKey(),
 	}, true, nil
 }
 

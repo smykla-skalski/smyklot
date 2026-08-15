@@ -161,6 +161,19 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 			Expect(result).To(BeEmpty())
 		})
 
+		It("should leave service-owned requests to the durable reconciler", func() {
+			prs := []map[string]interface{}{{
+				"number": float64(1),
+				"labels": []interface{}{
+					map[string]interface{}{"name": github.LabelPendingCIServiceOwner},
+					map[string]interface{}{"name": github.LabelPendingCISquash},
+				},
+			}}
+
+			Expect(filterPendingCIPRs(prs)).To(BeEmpty())
+			Expect(pendingCILabels(prs[0])).To(HaveLen(1))
+		})
+
 		It("should handle PRs without labels field", func() {
 			prs := []map[string]interface{}{
 				{

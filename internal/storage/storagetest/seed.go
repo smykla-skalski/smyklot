@@ -52,7 +52,6 @@ func SeededTables() []string {
 		"security_notifications",
 		"deliveries",
 		"pending_ci_requests",
-		"pending_ci_source_orders",
 		"pending_ci_source_revisions",
 		"user_invitations",
 		"runtime_settings",
@@ -326,7 +325,8 @@ func (s *seeder) seedPendingCI() error {
 	claim, err := s.store.ClaimSourceRevision(s.ctx, pendingci.SourceRevisionRequest{
 		RepositoryID: "repo-1", PullRequest: 198, CommentID: 101,
 		Revision: requestedAt.Format(time.RFC3339Nano), Sequence: 1,
-		EventKey: "seed:pending-ci:source", ObservedAt: requestedAt,
+		SourceOrder: 1,
+		EventKey:    "seed:pending-ci:source", ObservedAt: requestedAt,
 	})
 	if err != nil {
 		return err

@@ -158,6 +158,39 @@ var _ = Describe("Reaction sweep [Unit]", func() {
 		Eventually(stopped).Should(BeClosed())
 	})
 
+	It("should retry pre-durable cleanup independently of reaction polling", func() {
+		stub.installations = `not-json`
+		stub.repos = `{"total_count":1,"repositories":[{
+			"id":123456,
+			"name":"smyklot",
+			"full_name":"smykla-skalski/smyklot",
+			"owner":{"login":"smykla-skalski"}
+		}]}`
+		stub.openPRs = `[{"number":42,"state":"open",
+			"head":{"sha":"legacy-head"},"base":{"ref":"main"},
+			"labels":[{"name":"smyklot:pending-ci:squash"}]}]`
+		start()
+		service.migrationRetryDelay = 10 * time.Millisecond
+		ctx, cancel := context.WithCancel(GinkgoT().Context())
+		stopped := make(chan struct{})
+		go func() {
+			defer close(stopped)
+			service.pollLoop(ctx)
+		}()
+
+		Eventually(func() int {
+			return stub.countCalls(http.MethodGet, "/app/installations")
+		}, time.Second).Should(Equal(1))
+		stub.setInstallations(`[{"id":111,"account":{"login":"smykla-skalski"}}]`)
+		Eventually(func() int {
+			return stub.countCalls(http.MethodPost, "/issues/42/comments")
+		}, eventuallyWindow).Should(Equal(1))
+		Expect(stub.countCalls(http.MethodGet, "/app/installations")).To(BeNumerically(">", 1))
+
+		cancel()
+		Eventually(stopped).Should(BeClosed())
+	})
+
 	It("should process reactions on the open PRs it finds", func() {
 		stub.installations = `[{"id": 111, "account": {"login": "smykla-skalski"}}]`
 		stub.repos = `{
@@ -188,6 +221,20 @@ var _ = Describe("Reaction sweep [Unit]", func() {
 			"owner":{"login":"smykla-skalski"}
 		}]}`
 		stub.repoConfig = "runner: action\n"
+		stub.openPRs = `[{
+			"number":42,
+			"state":"open",
+			"head":{"sha":"command-head"},
+			"base":{"ref":"main"},
+			"labels":[
+				{"name":"smyklot:pending:ci:service"},
+				{"name":"smyklot:pending:ci:squash"}
+			]
+		}]`
+		stub.prLabels = `[
+			{"name":"smyklot:pending:ci:service"},
+			{"name":"smyklot:pending:ci:squash"}
+		]`
 		start()
 		armed := armWebhookTestRequest(service)
 
@@ -199,6 +246,77 @@ var _ = Describe("Reaction sweep [Unit]", func() {
 		Expect(stub.countCalls(
 			http.MethodDelete, "/issues/42/labels/smyklot:pending:ci:squash",
 		)).To(Equal(1))
+		Expect(stub.countCalls(
+			http.MethodDelete, "/issues/42/labels/smyklot:pending:ci:service",
+		)).To(Equal(1))
+		calls := stub.recordedCalls()
+		Expect(indexCall(calls, "DELETE", "/issues/42/labels/smyklot:pending:ci:squash")).
+			To(BeNumerically("<", indexCall(
+				calls, "DELETE", "/issues/42/labels/smyklot:pending:ci:service",
+			)))
+	})
+
+	It("should remove orphaned service ownership without draining it as legacy work", func() {
+		stub.installations = `[{"id":111,"account":{"login":"smykla-skalski"}}]`
+		stub.repos = `{"total_count":1,"repositories":[{
+			"id":123456,
+			"name":"smyklot",
+			"full_name":"smykla-skalski/smyklot",
+			"owner":{"login":"smykla-skalski"}
+		}]}`
+		stub.openPRs = `[{
+			"number":42,
+			"state":"open",
+			"head":{"sha":"orphan-head"},
+			"base":{"ref":"main"},
+			"labels":[
+				{"name":"smyklot:pending:ci:service"},
+				{"name":"smyklot:pending:ci:squash"}
+			]
+		}]`
+		start()
+
+		Expect(service.migrationSweep(GinkgoT().Context())).To(Succeed())
+
+		Expect(stub.countCalls(
+			http.MethodDelete, "/issues/42/labels/smyklot:pending:ci:squash",
+		)).To(Equal(1))
+		Expect(stub.countCalls(
+			http.MethodDelete, "/issues/42/labels/smyklot:pending:ci:service",
+		)).To(Equal(1))
+		Expect(stub.countCalls(http.MethodPost, "/issues/42/comments")).To(BeZero())
+	})
+
+	It("should preserve ownership for an armed service request", func() {
+		stub.installations = `[{"id":987,"account":{"login":"smykla-skalski"}}]`
+		stub.repos = `{"total_count":1,"repositories":[{
+			"id":123456,
+			"name":"smyklot",
+			"full_name":"smykla-skalski/smyklot",
+			"owner":{"login":"smykla-skalski"}
+		}]}`
+		stub.openPRs = `[{
+			"number":42,
+			"state":"open",
+			"head":{"sha":"command-head"},
+			"base":{"ref":"main"},
+			"labels":[
+				{"name":"smyklot:pending:ci:service"},
+				{"name":"smyklot:pending:ci:squash"}
+			]
+		}]`
+		start()
+		_ = armWebhookTestRequest(service)
+
+		Expect(service.migrationSweep(GinkgoT().Context())).To(Succeed())
+
+		Expect(stub.countCalls(
+			http.MethodDelete, "/issues/42/labels/smyklot:pending:ci:squash",
+		)).To(BeZero())
+		Expect(stub.countCalls(
+			http.MethodDelete, "/issues/42/labels/smyklot:pending:ci:service",
+		)).To(BeZero())
+		Expect(stub.countCalls(http.MethodPost, "/issues/42/comments")).To(BeZero())
 	})
 
 	It("should safely drain pre-durable pending CI labels once", func() {
@@ -285,7 +403,7 @@ var _ = Describe("Reaction sweep [Unit]", func() {
 		stub.brokenRepo = "gone"
 		start()
 
-		Expect(service.sweep(GinkgoT().Context())).To(Succeed())
+		Expect(service.sweep(GinkgoT().Context())).To(HaveOccurred())
 
 		Expect(stub.countCalls(http.MethodGet, "/repos/smykla-skalski/smyklot/pulls")).To(Equal(1))
 	})
@@ -322,3 +440,13 @@ var _ = Describe("Reaction sweep [Unit]", func() {
 		Expect(srv.sweep(GinkgoT().Context())).To(MatchError(ErrListInstallations))
 	})
 })
+
+func indexCall(calls []string, method, pathSuffix string) int {
+	for index, call := range calls {
+		if strings.HasPrefix(call, method+" ") && strings.HasSuffix(call, pathSuffix) {
+			return index
+		}
+	}
+
+	return len(calls)
+}

@@ -134,14 +134,12 @@ func (e *IssueCommentEvent) Actionable() bool {
 	return e.Comment.User.Type != userTypeBot
 }
 
-// IdempotencyKey identifies the event a delivery carries, not the delivery.
+// ContentKey identifies the event content when no delivery GUID is available.
 //
-// GitHub does not document whether X-GitHub-Delivery survives a redelivery, so
-// keying on it would be a guess. Deriving the key from the comment itself holds
-// either way. The body digest distinguishes multiple edits that GitHub reports
-// with the same second-granularity updated_at timestamp without storing the
-// comment body in durable state.
-func (e *IssueCommentEvent) IdempotencyKey() string {
+// The service normally uses X-GitHub-Delivery, which GitHub guarantees remains
+// stable across redelivery. This fallback cannot distinguish content that
+// cycles within GitHub's second-granularity updated_at timestamp.
+func (e *IssueCommentEvent) ContentKey() string {
 	bodyDigest := sha256.Sum256([]byte(e.Comment.Body))
 
 	return fmt.Sprintf(

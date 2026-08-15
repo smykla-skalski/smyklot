@@ -139,6 +139,17 @@ func (s *server) beginDelivery(
 	return storage.DeliveryClaimAccepted, nil
 }
 
+// deliveryClaimKey uses GitHub's stable delivery GUID for real webhook
+// identity. GitHub documents that redelivery retains this GUID. ContentKey is
+// only a compatibility fallback for synthetic callers without the header.
+func deliveryClaimKey(eventName, deliveryID, contentKey string) string {
+	if deliveryID == "" || deliveryID == "unknown" {
+		return contentKey
+	}
+
+	return "github-delivery:" + eventName + ":" + deliveryID
+}
+
 func (s *server) completeDelivery(ctx context.Context, j job) error {
 	if err := s.deliveryStore.CompleteDelivery(ctx, j.claimID, time.Now().UTC()); err != nil {
 		return err

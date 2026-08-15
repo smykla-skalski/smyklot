@@ -161,6 +161,10 @@ const (
 	// LabelReactionCleanup indicates cleanup was triggered via ❤️ reaction
 	LabelReactionCleanup = "smyklot:reaction-cleanup"
 
+	// LabelPendingCIServiceOwner prevents the legacy Action poller from
+	// adopting a request whose exact authorized head lives in the service.
+	LabelPendingCIServiceOwner = "smyklot:pending:ci:service"
+
 	// LabelPendingCIMerge indicates PR is waiting for CI before merge
 	LabelPendingCIMerge = "smyklot:pending:ci"
 

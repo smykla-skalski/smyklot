@@ -117,6 +117,8 @@ type server struct {
 	runtimeBotConfig    *config.Config
 	runtimePollInterval time.Duration
 	pollIntervalChanged chan struct{}
+	migrationRetryDelay time.Duration
+	sweepMu             sync.Mutex
 
 	registry *prometheus.Registry
 	metrics  *metrics.Metrics
@@ -216,6 +218,7 @@ func newServer(cfg *serveConfig) (*server, error) {
 		runtimeBotConfig:    &resolvedConfig.Values,
 		runtimePollInterval: cfg.pollInterval,
 		pollIntervalChanged: make(chan struct{}, 1),
+		migrationRetryDelay: pendingCIRetryDelay,
 		registry:            registry,
 		metrics:             metrics.New(registry),
 		configs:             newRepoCache(repoConfigTTL, fetchRepositoryConfig),
@@ -517,6 +520,7 @@ func (s *server) reject(ctx context.Context, w http.ResponseWriter, event, messa
 func (s *server) dispatch(ctx context.Context, w http.ResponseWriter, j job) {
 	// Claiming before queueing is what makes a redelivery harmless: the second
 	// copy never reaches a worker
+	j.key = deliveryClaimKey(j.eventName, j.deliveryID, j.key)
 	claim, err := s.beginDelivery(ctx, &j)
 	if err != nil {
 		s.count(j.eventName, metrics.OutcomeRefused)
@@ -576,7 +580,7 @@ func (s *server) execute(j job) {
 			executed, err = s.repositoryEnabled(ctx, j.comment)
 		}
 		if err == nil && executed {
-			err = s.handleIssueComment(ctx, j.comment)
+			err = s.handleIssueComment(ctx, j.comment, j.key, j.claimID)
 		}
 	} else if j.notification != nil {
 		err = s.handlePendingCIWebhook(ctx, j.notification)
@@ -663,12 +667,17 @@ func (s *server) recordFailure(j job, cause error) {
 //
 // Everything past executeComment is the Action's own code, so a comment gets
 // the same permission check and the same feedback whichever entry point saw it.
-func (s *server) handleIssueComment(ctx context.Context, event *webhook.IssueCommentEvent) error {
+func (s *server) handleIssueComment(
+	ctx context.Context,
+	event *webhook.IssueCommentEvent,
+	eventKey string,
+	sourceOrder int64,
+) error {
 	claim, err := s.store.ClaimSourceRevision(ctx, pendingci.SourceRevisionRequest{
 		RepositoryID: repositoryStorageID(event.Repository.ID),
 		PullRequest:  event.Issue.Number, CommentID: event.Comment.ID,
 		Revision: event.Comment.UpdatedAt, Sequence: event.SourceSequence(),
-		EventKey: event.IdempotencyKey(), ObservedAt: time.Now().UTC(),
+		SourceOrder: sourceOrder, EventKey: eventKey, ObservedAt: time.Now().UTC(),
 	})
 	if err != nil {
 		return fmt.Errorf("claim issue comment revision: %w", err)

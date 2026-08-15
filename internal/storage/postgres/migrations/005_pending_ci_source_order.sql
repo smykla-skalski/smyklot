@@ -4,13 +4,6 @@ ADD COLUMN source_sequence INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE pending_ci_requests
 ADD COLUMN source_order BIGINT NOT NULL DEFAULT 1;
 
-CREATE TABLE pending_ci_source_orders (
-    repository_id TEXT NOT NULL,
-    pull_request INTEGER NOT NULL,
-    next_order BIGINT NOT NULL,
-    PRIMARY KEY (repository_id, pull_request)
-);
-
 CREATE TABLE pending_ci_source_revisions (
     repository_id TEXT NOT NULL,
     pull_request INTEGER NOT NULL,

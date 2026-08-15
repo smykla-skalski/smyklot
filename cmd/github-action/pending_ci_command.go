@@ -20,8 +20,9 @@ type pendingCICommandStore interface {
 }
 
 type pendingCIArtifactOwnership struct {
-	label    bool
-	reaction bool
+	label         bool
+	reaction      bool
+	serviceMarker bool
 }
 
 func (command *pendingCICommand) armedArtifactOwnership(
@@ -42,6 +43,7 @@ func (command *pendingCICommand) armedArtifactOwnership(
 
 	return pendingCIArtifactOwnership{
 		label: request.Label == label, reaction: request.SourceCommentID == int64(commentID),
+		serviceMarker: true,
 	}, nil
 }
 

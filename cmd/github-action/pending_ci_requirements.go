@@ -12,6 +12,26 @@ type pendingCIRequirementReader interface {
 	GetRequiredStatusChecks(context.Context, string, string, string) ([]github.RequiredCheck, error)
 }
 
+type pendingCIOwnershipReader interface {
+	GetPullRequestState(context.Context, string, string, int) (github.PullRequestState, error)
+}
+
+func pendingCIServiceOwned(
+	ctx context.Context,
+	reader pendingCIOwnershipReader,
+	owner, repository string,
+	pullRequest int,
+) (bool, error) {
+	state, err := reader.GetPullRequestState(
+		ctx, owner, repository, pullRequest,
+	)
+	if err != nil {
+		return false, fmt.Errorf("read pending CI ownership: %w", err)
+	}
+
+	return hasLabel(state.Labels, github.LabelPendingCIServiceOwner), nil
+}
+
 func pendingCIRequiredChecks(
 	ctx context.Context,
 	reader pendingCIRequirementReader,

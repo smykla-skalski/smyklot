@@ -82,7 +82,7 @@ var _ = Describe("IssueCommentEvent.Actionable [Unit]", func() {
 	)
 })
 
-var _ = Describe("IssueCommentEvent.IdempotencyKey [Unit]", func() {
+var _ = Describe("IssueCommentEvent.ContentKey [Unit]", func() {
 	key := func(action, body, updatedAt string) string {
 		GinkgoHelper()
 
@@ -91,12 +91,11 @@ var _ = Describe("IssueCommentEvent.IdempotencyKey [Unit]", func() {
 		)
 		Expect(err).NotTo(HaveOccurred())
 
-		return event.IdempotencyKey()
+		return event.ContentKey()
 	}
 
-	// The whole reason the key is derived from the comment rather than from
-	// X-GitHub-Delivery: a redelivery must land on the same key whatever GitHub
-	// does with the delivery identifier
+	// Synthetic callers without an X-GitHub-Delivery header still need stable
+	// content identity for an exact retry.
 	It("should be stable across a redelivery of the same event", func() {
 		Expect(key("created", "/approve", "2026-08-08T10:00:00Z")).
 			To(Equal(key("created", "/approve", "2026-08-08T10:00:00Z")))
