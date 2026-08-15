@@ -6,3 +6,6 @@ bin/
 
 # The dev mock server keeps your panel preferences here so a restart does not reset them.
 internal/panel/frontend/dev/.mock-preferences.json
+
+# Guard against a probe script writing screenshots here when its output path is unset.
+internal/panel/frontend/undefined/
