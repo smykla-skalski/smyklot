@@ -542,32 +542,11 @@
     detailSections = { ...detailSections, [repositoryId]: section };
   }
 
-  function moveDetailSection(
-    event: KeyboardEvent,
-    repositoryId: string,
-    section: RepositoryDetailSection,
-  ): void {
-    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-    event.preventDefault();
-    const sections: readonly RepositoryDetailSection[] = ['file', 'behavior', 'commands'];
-    const current = sections.indexOf(section);
-    let next = current;
-    if (event.key === 'Home') next = 0;
-    if (event.key === 'End') next = sections.length - 1;
-    if (event.key === 'ArrowRight') {
-      next = (current + 1) % sections.length;
-    }
-    if (event.key === 'ArrowLeft') {
-      next = (current - 1 + sections.length) % sections.length;
-    }
-    const selected = sections[next];
-    if (selected === undefined) return;
-    selectDetailSection(repositoryId, selected);
-    queueMicrotask(() =>
-      document
-        .querySelector<HTMLButtonElement>(`#repository-${repositoryId}-${selected}-tab`)
-        ?.focus(),
-    );
+  /* Names the pane for the reader, now that the switch above it is a control with
+     its own label rather than a strip of tabs the pane could point back at. */
+  function sectionLabel(section: RepositoryDetailSection): string {
+    if (section === 'file') return 'File';
+    return section === 'behavior' ? 'Behavior' : 'Commands';
   }
 
   /* The repository-file pane lists the behavior settings this repository
@@ -1064,6 +1043,42 @@
     returnFocus={repositoryReturnFocus}
     onClose={closeRepository}
   >
+    <!-- Beside the title, where every other switch in the product sits, and the
+         product's own switch rather than a set of buttons dressed as one. -->
+    {#snippet headerExtra()}
+      {#if detail !== undefined}
+        <SegmentedControl
+          name="repository-{repository.id}-section"
+          label="Settings for {repository.name}"
+          compact
+          options={[
+            {
+              value: 'file',
+              label: 'File',
+              badge: detail.config_file_error === undefined ? undefined : 1,
+            },
+            {
+              value: 'behavior',
+              label: 'Behavior',
+              badge:
+                configSectionCount(detail, 'behavior') === 0
+                  ? undefined
+                  : configSectionCount(detail, 'behavior'),
+            },
+            {
+              value: 'commands',
+              label: 'Commands',
+              badge:
+                configSectionCount(detail, 'commands') === 0
+                  ? undefined
+                  : configSectionCount(detail, 'commands'),
+            },
+          ]}
+          value={detailSection(repository)}
+          onSelect={(next) => selectDetailSection(repository.id, next as RepositoryDetailSection)}
+        />
+      {/if}
+    {/snippet}
     {#if repositoryFailure !== undefined}
       <p class="form-error repository-modal-error" role="alert">{repositoryFailure.message}</p>
     {/if}
@@ -1072,70 +1087,13 @@
       {#if detail === undefined}
         <p class="detail-loading dim">Reading repository settings…</p>
       {:else}
-        {@const behaviorCount = configSectionCount(detail, 'behavior')}
-        {@const commandCount = configSectionCount(detail, 'commands')}
-        <div
-          class="repository-detail-navigation"
-          aria-label="Settings for {repository.name}"
-          role="tablist"
-          aria-orientation="horizontal"
-        >
-          <button
-            id="repository-{repository.id}-file-tab"
-            class:active={activeSection === 'file'}
-            type="button"
-            role="tab"
-            aria-selected={activeSection === 'file'}
-            aria-controls="repository-{repository.id}-detail-panel"
-            tabindex={activeSection === 'file' ? 0 : -1}
-            data-modal-focus
-            onclick={() => selectDetailSection(repository.id, 'file')}
-            onkeydown={(event) => moveDetailSection(event, repository.id, 'file')}
-          >
-            <span>Repository file</span>
-            {#if detail.config_file_error !== undefined}
-              <span class="detail-count problem-count" aria-label="1 file error">1</span>
-            {/if}
-          </button>
-          <button
-            id="repository-{repository.id}-behavior-tab"
-            class:active={activeSection === 'behavior'}
-            type="button"
-            role="tab"
-            aria-selected={activeSection === 'behavior'}
-            aria-controls="repository-{repository.id}-detail-panel"
-            tabindex={activeSection === 'behavior' ? 0 : -1}
-            onclick={() => selectDetailSection(repository.id, 'behavior')}
-            onkeydown={(event) => moveDetailSection(event, repository.id, 'behavior')}
-          >
-            <span>Behavior</span>
-            {#if behaviorCount > 0}
-              <span class="detail-count">{behaviorCount}</span>
-            {/if}
-          </button>
-          <button
-            id="repository-{repository.id}-commands-tab"
-            class:active={activeSection === 'commands'}
-            type="button"
-            role="tab"
-            aria-selected={activeSection === 'commands'}
-            aria-controls="repository-{repository.id}-detail-panel"
-            tabindex={activeSection === 'commands' ? 0 : -1}
-            onclick={() => selectDetailSection(repository.id, 'commands')}
-            onkeydown={(event) => moveDetailSection(event, repository.id, 'commands')}
-          >
-            <span>Commands</span>
-            {#if commandCount > 0}
-              <span class="detail-count">{commandCount}</span>
-            {/if}
-          </button>
-        </div>
-
+        <!-- Keyboard focus lets a reader scroll a pane taller than the dialog. -->
+        <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
         <div
           class="repository-detail-content"
           id="repository-{repository.id}-detail-panel"
-          role="tabpanel"
-          aria-labelledby="repository-{repository.id}-{activeSection}-tab"
+          role="group"
+          aria-label="{sectionLabel(activeSection)} settings for {repository.name}"
           tabindex="0"
         >
           {#if activeSection === 'file'}
@@ -1677,73 +1635,6 @@
   .detail-loading {
     margin: 0;
     padding: var(--space-4);
-  }
-
-  /* The shared pill-nav pattern (same as the Root installation detail tabs) —
-     the app's one internal-tab treatment, replacing the old underline bar. */
-  .repository-detail-navigation {
-    background: color-mix(in srgb, var(--brand-action) 4%, var(--surface-inset));
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-control);
-    display: flex;
-    flex-direction: row;
-    gap: var(--space-1);
-    overflow-x: auto;
-    padding: var(--space-1);
-  }
-
-  .repository-detail-navigation button {
-    align-items: center;
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 6px;
-    color: var(--text-secondary);
-    display: flex;
-    flex: 0 0 auto;
-    font-size: var(--font-size-meta);
-    font-weight: 650;
-    gap: 0.4rem;
-    justify-content: center;
-    line-height: 1;
-    padding: 0.4375rem var(--space-3);
-    text-align: left;
-    text-box: trim-both cap alphabetic;
-    white-space: nowrap;
-  }
-
-  .repository-detail-navigation button:hover,
-  .repository-detail-navigation button:focus-visible {
-    background: var(--interactive-hover);
-    color: var(--text-primary);
-  }
-
-  .repository-detail-navigation button.active {
-    background: var(--surface-base);
-    border-color: color-mix(in srgb, var(--brand-action) 30%, var(--border-subtle));
-    box-shadow: 0 1px 2px var(--shadow-color);
-    color: var(--brand-action-text);
-  }
-
-  /* Trimmed to the digits, so the badge is a 15px pill rather than an 18px
-     circle — and the tab row it sits in stands 31px like the mock instead of
-     34px. Untrimmed, the badge was the tallest thing in the row and set its
-     height on its own. */
-  .detail-count {
-    background: var(--brand-action-tint);
-    border-radius: 999px;
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, currentcolor 30%, transparent);
-    color: var(--brand-action-text);
-    display: inline-block;
-    font: 700 0.625rem / 1 var(--mono);
-    font-variant-numeric: tabular-nums;
-    min-width: 1ch;
-    padding: 4px 6px;
-    text-align: center;
-    text-box: trim-both cap alphabetic;
-  }
-
-  .problem-count {
-    color: var(--danger);
   }
 
   /* The dialog is titled by the repository name — code, so it sets in mono.
