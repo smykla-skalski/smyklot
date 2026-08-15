@@ -62,6 +62,17 @@
         : 'Invitation',
   );
 
+  /* Whose invitation this is, first, so a reader holding two of these open can
+     tell the tabs apart without opening them. The same `|` chain the panel's own
+     titles use, from the specific to the general. */
+  const documentTitle = $derived(
+    [
+      ...(invitation === null ? [] : [`@${invitation.account.login}`]),
+      'Invitation',
+      'SMYKLOT',
+    ].join(' | '),
+  );
+
   $effect(() => {
     void load(token);
   });
@@ -108,13 +119,13 @@
 </script>
 
 <svelte:head>
-  <title>Invitation | SMYKLOT</title>
+  <title>{documentTitle}</title>
 </svelte:head>
 
 <main class="shell invitation-shell">
   <div class="invitation-brand" style="--invitation-mark-size: {MARK_SIZE}px">
     <NightSky />
-    <BrandMark part="PANEL" stacked size={MARK_SIZE} />
+    <BrandMark stacked size={MARK_SIZE} />
   </div>
 
   <div class="invitation-main">
@@ -184,8 +195,7 @@
 
           {#if invitation.status === 'pending'}
             <p>
-              Continue with GitHub to prove you are @{invitation.account.login}, then accept or
-              decline this invitation
+              Either choice goes through GitHub first, to prove you are @{invitation.account.login}
             </p>
             <div class="invitation-actions">
               <a
@@ -297,10 +307,6 @@
      keeps the page's own palette: it is a panel laid on the sky, not part of it. */
   .invitation-brand :global(.mark-name) {
     color: rgb(246 249 255);
-  }
-
-  .invitation-brand :global(.mark-part) {
-    color: rgb(186 203 233);
   }
 
   /* The card's own head, lifted out of it: the title on the left names whichever

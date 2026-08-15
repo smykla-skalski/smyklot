@@ -7,8 +7,12 @@
     stacked = false,
     size = 36,
   }: {
-    /** The line under the wordmark, naming the console. Written as it renders. */
-    part: string;
+    /**
+     * The line under the wordmark, naming the console. Written as it renders.
+     * Omit it where the page says the same thing elsewhere - the invitation page
+     * has it in the footer, and twice on one screen is once too many.
+     */
+    part?: string;
     /** Whether this mark is the page's own heading, as it is in the sidebar. */
     heading?: boolean;
     /** Icon over wordmark rather than beside it, for a mark standing on its own. */
@@ -27,7 +31,9 @@
   <img class="mark-icon" src={haloUrl} alt="" width={size} height={size} decoding="async" />
   <span class="mark-copy">
     <span class="mark-name">Smyklot</span>
-    <span class="mark-part">{part}</span>
+    {#if part !== undefined}
+      <span class="mark-part">{part}</span>
+    {/if}
   </span>
 </svelte:element>
 
