@@ -1044,7 +1044,8 @@ func executePendingCIMerge(
 		}
 	} else {
 		failures, coordinationErr := activatePendingCI(
-			ctx, client, environment.pendingCI, pendingCIActivationRequest{
+			ctx, client, environment.pendingCI, environment.pendingCIActivation,
+			pendingCIActivationRequest{
 				runtime: rc, owner: rc.RepoOwner, repository: rc.RepoName,
 				pullRequest: prNum, commentID: commentID, headSHA: headRef,
 				baseBranch: info.BaseBranch, method: method,
@@ -1066,6 +1067,9 @@ func executePendingCIMerge(
 			return nil, failures.command
 		}
 		if failures.stale {
+			return nil, nil
+		}
+		if failures.stoodDown {
 			return nil, nil
 		}
 		if failures.ambiguous {

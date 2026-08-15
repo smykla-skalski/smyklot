@@ -11,6 +11,16 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/github"
 )
 
+type pendingCIActivationGuardFunc func(context.Context) (bool, error)
+
+func (guard pendingCIActivationGuardFunc) AllowsActivation(ctx context.Context) (bool, error) {
+	return guard(ctx)
+}
+
+var allowPendingCIActivation pendingCIActivationGuardFunc = func(context.Context) (bool, error) {
+	return true, nil
+}
+
 func TestPendingCIActivationRollsBackOnlyUnownedArtifacts(t *testing.T) {
 	t.Parallel()
 	armErr := errors.New("database full")
@@ -54,7 +64,8 @@ func TestPendingCIActivationRollsBackOnlyUnownedArtifacts(t *testing.T) {
 				now: func() time.Time { return time.Now().UTC() },
 			}
 			failures, err := activatePendingCI(
-				t.Context(), artifacts, command, pendingCIActivationRequest{
+				t.Context(), artifacts, command, allowPendingCIActivation,
+				pendingCIActivationRequest{
 					runtime: &RuntimeConfig{CommentAuthor: "operator"},
 					owner:   "owner", repository: "repository", pullRequest: 198,
 					commentID: 101, headSHA: "head", baseBranch: "main",
@@ -100,7 +111,8 @@ func TestPendingCIActivationKeepsOwnershipWhenMethodRollbackFails(t *testing.T) 
 	}
 
 	_, err := activatePendingCI(
-		t.Context(), artifacts, command, pendingCIActivationRequest{
+		t.Context(), artifacts, command, allowPendingCIActivation,
+		pendingCIActivationRequest{
 			runtime: &RuntimeConfig{CommentAuthor: "operator"},
 			owner:   "owner", repository: "repository", pullRequest: 198,
 			commentID: 101, headSHA: "head", baseBranch: "main",
@@ -129,7 +141,8 @@ func TestPendingCIActivationCleansAmbiguousMethodPublishFailure(t *testing.T) {
 	}
 
 	failures, err := activatePendingCI(
-		t.Context(), artifacts, command, pendingCIActivationRequest{
+		t.Context(), artifacts, command, allowPendingCIActivation,
+		pendingCIActivationRequest{
 			runtime: &RuntimeConfig{CommentAuthor: "operator"},
 			owner:   "owner", repository: "repository", pullRequest: 198,
 			commentID: 101, headSHA: "head", baseBranch: "main",
@@ -162,7 +175,8 @@ func TestPendingCIActivationCleansAmbiguousMarkerPublishFailure(t *testing.T) {
 	}
 
 	failures, err := activatePendingCI(
-		t.Context(), artifacts, command, pendingCIActivationRequest{
+		t.Context(), artifacts, command, allowPendingCIActivation,
+		pendingCIActivationRequest{
 			runtime: &RuntimeConfig{CommentAuthor: "operator"},
 			owner:   "owner", repository: "repository", pullRequest: 198,
 			commentID: 101, headSHA: "head", baseBranch: "main",
@@ -195,7 +209,8 @@ func TestPendingCIActivationRemovesActionOwnedConflictingLabels(t *testing.T) {
 	}
 
 	failures, err := activatePendingCI(
-		t.Context(), artifacts, command, pendingCIActivationRequest{
+		t.Context(), artifacts, command, allowPendingCIActivation,
+		pendingCIActivationRequest{
 			runtime: &RuntimeConfig{CommentAuthor: "operator"},
 			owner:   "owner", repository: "repository", pullRequest: 198,
 			commentID: 101, headSHA: "head", baseBranch: "main",
@@ -233,7 +248,8 @@ func TestPendingCIActivationKeepsCurrentLabelWhenIncomingCommandIsStale(t *testi
 	}
 
 	failures, err := activatePendingCI(
-		t.Context(), artifacts, command, pendingCIActivationRequest{
+		t.Context(), artifacts, command, allowPendingCIActivation,
+		pendingCIActivationRequest{
 			runtime: &RuntimeConfig{CommentAuthor: "operator"},
 			owner:   "owner", repository: "repository", pullRequest: 198,
 			commentID: 101, headSHA: "head", baseBranch: "main",
@@ -271,7 +287,8 @@ func TestPendingCIActivationRejectsStaleSourceBeforeApproval(t *testing.T) {
 	}
 
 	failures, err := activatePendingCI(
-		t.Context(), artifacts, command, pendingCIActivationRequest{
+		t.Context(), artifacts, command, allowPendingCIActivation,
+		pendingCIActivationRequest{
 			runtime: &RuntimeConfig{CommentAuthor: "operator"},
 			owner:   "owner", repository: "repository", pullRequest: 198,
 			commentID: 101, headSHA: "head", baseBranch: "main",
@@ -308,7 +325,8 @@ func TestPendingCIActivationRollbackTreatsMissingLabelsAsClean(t *testing.T) {
 	}
 
 	_, err := activatePendingCI(
-		t.Context(), artifacts, command, pendingCIActivationRequest{
+		t.Context(), artifacts, command, allowPendingCIActivation,
+		pendingCIActivationRequest{
 			runtime: &RuntimeConfig{CommentAuthor: "operator"},
 			owner:   "owner", repository: "repository", pullRequest: 198,
 			commentID: 101, headSHA: "head", baseBranch: "main",
@@ -341,7 +359,8 @@ func TestPendingCIActivationCancelsAmbiguousCommands(t *testing.T) {
 	}
 
 	failures, err := activatePendingCI(
-		t.Context(), artifacts, command, pendingCIActivationRequest{
+		t.Context(), artifacts, command, allowPendingCIActivation,
+		pendingCIActivationRequest{
 			runtime: &RuntimeConfig{CommentAuthor: "operator"},
 			owner:   "owner", repository: "repository", pullRequest: 198,
 			commentID: 101, headSHA: "head", baseBranch: "main",
@@ -393,7 +412,8 @@ func TestPendingCIActivationSerializesApprovalWithCleanup(t *testing.T) {
 	go func() {
 		close(activationAttempted)
 		_, err := activatePendingCI(
-			t.Context(), artifacts, command, pendingCIActivationRequest{
+			t.Context(), artifacts, command, allowPendingCIActivation,
+			pendingCIActivationRequest{
 				runtime: &RuntimeConfig{CommentAuthor: "operator"},
 				owner:   "owner", repository: "repository", pullRequest: 198,
 				commentID: 101, headSHA: "head", baseBranch: "main",
@@ -421,6 +441,85 @@ func TestPendingCIActivationSerializesApprovalWithCleanup(t *testing.T) {
 	}
 }
 
+func TestPendingCIActivationRechecksOwnershipAfterHandoff(t *testing.T) {
+	t.Parallel()
+	coordinator := newPendingCICoordinator()
+	handoffStarted := make(chan struct{})
+	releaseHandoff := make(chan struct{})
+	handoffDone := make(chan error, 1)
+	go func() {
+		handoffDone <- coordinator.Exclusive(
+			t.Context(), "repository:7", func() error {
+				close(handoffStarted)
+				<-releaseHandoff
+
+				return nil
+			},
+		)
+	}()
+	<-handoffStarted
+
+	guardChecked := make(chan struct{})
+	guard := pendingCIActivationGuardFunc(func(context.Context) (bool, error) {
+		close(guardChecked)
+
+		return false, nil
+	})
+	approved := false
+	artifacts := &pendingCIArtifactsStub{info: &github.PRInfo{}, approve: func() error {
+		approved = true
+
+		return nil
+	}}
+	command := &pendingCICommand{
+		store:       pendingCICommandStoreStub{getErr: storage.ErrNotFound},
+		coordinator: coordinator, repositoryID: "repository:7",
+		now: func() time.Time { return time.Now().UTC() }, wake: func() {},
+	}
+	type activationResult struct {
+		failures pendingCIActivationErrors
+		err      error
+	}
+	activationDone := make(chan activationResult, 1)
+	go func() {
+		failures, err := activatePendingCI(
+			t.Context(), artifacts, command, guard, pendingCIActivationRequest{
+				runtime: &RuntimeConfig{CommentAuthor: "operator"},
+				owner:   "owner", repository: "repository", pullRequest: 198,
+				commentID: 101, headSHA: "head", baseBranch: "main",
+				method: github.MergeMethodSquash, label: github.LabelPendingCISquash,
+			},
+		)
+		activationDone <- activationResult{failures: failures, err: err}
+	}()
+	checkedDuringHandoff := false
+	select {
+	case <-guardChecked:
+		checkedDuringHandoff = true
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(releaseHandoff)
+	if err := <-handoffDone; err != nil {
+		t.Fatal(err)
+	}
+	result := <-activationDone
+	if result.err != nil {
+		t.Fatal(result.err)
+	}
+	if checkedDuringHandoff {
+		t.Fatal("runner ownership was checked while handoff still owned the repository")
+	}
+	if !result.failures.stoodDown {
+		t.Fatalf("activation failures = %+v, want stood down", result.failures)
+	}
+	if approved || len(artifacts.addedLabels) != 0 {
+		t.Fatalf(
+			"activation ran after handoff: approved=%t labels=%v",
+			approved, artifacts.addedLabels,
+		)
+	}
+}
+
 func TestPendingCIActivationStopsWhenApprovalFails(t *testing.T) {
 	t.Parallel()
 	approvalErr := errors.New("approval refused")
@@ -433,7 +532,8 @@ func TestPendingCIActivationStopsWhenApprovalFails(t *testing.T) {
 		now: func() time.Time { return time.Now().UTC() }, wake: func() {},
 	}
 	failures, err := activatePendingCI(
-		t.Context(), artifacts, command, pendingCIActivationRequest{
+		t.Context(), artifacts, command, allowPendingCIActivation,
+		pendingCIActivationRequest{
 			runtime: &RuntimeConfig{CommentAuthor: "operator"},
 			owner:   "owner", repository: "repository", pullRequest: 198,
 			commentID: 101, headSHA: "head", baseBranch: "main",

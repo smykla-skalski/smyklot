@@ -45,6 +45,7 @@ type pendingCIActivationErrors struct {
 	command   error
 	stale     bool
 	ambiguous bool
+	stoodDown bool
 }
 
 // activatePendingCI makes external artifacts and durable command replacement
@@ -54,27 +55,16 @@ func activatePendingCI(
 	ctx context.Context,
 	artifacts pendingCIArtifacts,
 	command *pendingCICommand,
+	guard pendingCIActivationGuard,
 	request pendingCIActivationRequest,
 ) (pendingCIActivationErrors, error) {
 	var failures pendingCIActivationErrors
 	err := command.exclusive(ctx, func() error {
-		ownership, err := command.armedArtifactOwnership(
-			ctx, request.pullRequest, request.label, request.commentID,
+		ownership, stopped, err := preparePendingCIActivation(
+			ctx, command, guard, request, &failures,
 		)
-		if err != nil {
-			failures.command = err
-
-			return nil
-		}
-		failures.command = command.checkArm(
-			ctx, request.runtime, request.pullRequest, request.commentID,
-			request.headSHA, request.baseBranch, request.method,
-			request.requiredChecksOnly, request.label,
-		)
-		if failures.command != nil {
-			classifyPendingCIArmFailure(ctx, command, request, &failures)
-
-			return nil
+		if stopped {
+			return err
 		}
 		info, err := artifacts.GetPRInfo(
 			ctx, request.owner, request.repository, request.pullRequest,
@@ -129,6 +119,57 @@ func activatePendingCI(
 	})
 
 	return failures, err
+}
+
+func preparePendingCIActivation(
+	ctx context.Context,
+	command *pendingCICommand,
+	guard pendingCIActivationGuard,
+	request pendingCIActivationRequest,
+	failures *pendingCIActivationErrors,
+) (pendingCIArtifactOwnership, bool, error) {
+	if guard == nil {
+		return pendingCIArtifactOwnership{}, true,
+			errors.New("pending CI activation guard is required")
+	}
+	if err := revalidatePendingCIActivation(ctx, guard, failures); err != nil ||
+		failures.stoodDown {
+		return pendingCIArtifactOwnership{}, true, err
+	}
+	ownership, err := command.armedArtifactOwnership(
+		ctx, request.pullRequest, request.label, request.commentID,
+	)
+	if err != nil {
+		failures.command = err
+
+		return ownership, true, nil
+	}
+	failures.command = command.checkArm(
+		ctx, request.runtime, request.pullRequest, request.commentID,
+		request.headSHA, request.baseBranch, request.method,
+		request.requiredChecksOnly, request.label,
+	)
+	if failures.command != nil {
+		classifyPendingCIArmFailure(ctx, command, request, failures)
+
+		return ownership, true, nil
+	}
+
+	return ownership, false, nil
+}
+
+func revalidatePendingCIActivation(
+	ctx context.Context,
+	guard pendingCIActivationGuard,
+	failures *pendingCIActivationErrors,
+) error {
+	allowed, err := guard.AllowsActivation(ctx)
+	if err != nil {
+		return fmt.Errorf("revalidate pending CI runner ownership: %w", err)
+	}
+	failures.stoodDown = !allowed
+
+	return nil
 }
 
 func classifyPendingCIArmFailure(

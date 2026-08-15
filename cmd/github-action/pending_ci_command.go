@@ -50,7 +50,8 @@ func (command *pendingCICommand) armedArtifactOwnership(
 }
 
 type commandEnvironment struct {
-	pendingCI *pendingCICommand
+	pendingCI           *pendingCICommand
+	pendingCIActivation pendingCIActivationGuard
 }
 
 // pendingCICommand translates an already-authorized command into durable
@@ -129,22 +130,32 @@ func (command *pendingCICommand) armRequest(
 }
 
 func (s *server) commandEnvironment(
+	client *github.Client,
 	event *webhook.IssueCommentEvent,
 	sourceOrder int64,
 ) commandEnvironment {
-	return commandEnvironment{pendingCI: &pendingCICommand{
-		store: s.store, wake: s.pendingCI.Wake,
-		coordinator:        s.pendingCICoordinator,
-		targetID:           installationStorageID(event.Installation.ID),
-		installationID:     event.Installation.ID,
-		repositoryID:       repositoryStorageID(event.Repository.ID),
-		repositoryFullName: event.Repository.FullName,
-		sourceCommentID:    event.Comment.ID,
-		sourceRevision:     event.Comment.UpdatedAt,
-		sourceSequence:     event.SourceSequence(),
-		sourceOrder:        sourceOrder,
-		now:                func() time.Time { return time.Now().UTC() },
-	}}
+	return commandEnvironment{
+		pendingCIActivation: githubPendingCIActivationGuard{
+			server: s, client: client,
+			targetID:     installationStorageID(event.Installation.ID),
+			repositoryID: repositoryStorageID(event.Repository.ID),
+			owner:        event.Repository.Owner.Login,
+			repository:   event.Repository.Name,
+		},
+		pendingCI: &pendingCICommand{
+			store: s.store, wake: s.pendingCI.Wake,
+			coordinator:        s.pendingCICoordinator,
+			targetID:           installationStorageID(event.Installation.ID),
+			installationID:     event.Installation.ID,
+			repositoryID:       repositoryStorageID(event.Repository.ID),
+			repositoryFullName: event.Repository.FullName,
+			sourceCommentID:    event.Comment.ID,
+			sourceRevision:     event.Comment.UpdatedAt,
+			sourceSequence:     event.SourceSequence(),
+			sourceOrder:        sourceOrder,
+			now:                func() time.Time { return time.Now().UTC() },
+		},
+	}
 }
 
 // cancelAndRun keeps durable cancellation and its external cleanup in one

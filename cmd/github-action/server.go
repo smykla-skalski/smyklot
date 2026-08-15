@@ -741,7 +741,7 @@ func (s *server) handleIssueComment(
 	}
 
 	return executeCommentWithEnvironment(
-		ctx, client, rc, bc, s.commandEnvironment(event, claim.Source.SourceOrder),
+		ctx, client, rc, bc, s.commandEnvironment(client, event, claim.Source.SourceOrder),
 	)
 }
 
