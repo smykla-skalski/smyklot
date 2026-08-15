@@ -33,7 +33,7 @@
   const elementIds = $derived(modalElementIds(id));
 
   /**
-   * A dialog is moved out to the shell it belongs to, once, before it is ever opened.
+   * A dialog is moved out to the shell it belongs to, and taken away again by hand.
    *
    * `showModal()` promotes an element to the top layer, but it does not exempt it from an ancestor
    * that is not rendering: a dialog written inside a closed `<details>` measures 0x0 and paints
@@ -41,12 +41,21 @@
    * hanging open behind it. The shell rather than `document.body`, because the design tokens are
    * declared on `.app-shell` - the Root console re-skins them there - and a dialog reparented to
    * the body would inherit the panel's palette inside the Root console.
+   *
+   * The teardown is not optional. Svelte removes a component's nodes from where it put them, so a
+   * node moved somewhere else is not removed at all: without this, dismissing a modal that is
+   * conditionally rendered left the dialog in the document, still open and still in the top layer,
+   * where it silently swallowed the first click on every other control on the page.
    */
   $effect(() => {
     const element = dialog;
     if (element === null) return;
     const shell = element.closest('.app-shell') ?? document.body;
     if (element.parentElement !== shell) shell.append(element);
+    return () => {
+      if (element.open) element.close();
+      element.remove();
+    };
   });
 
   $effect(() => {
