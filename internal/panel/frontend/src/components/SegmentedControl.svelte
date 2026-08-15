@@ -235,8 +235,12 @@
     justify-self: end;
   }
 
+  /* Same fallback as the base rule rather than the token outright: `compact` wins
+     on specificity, so naming the token here would make it override the height a
+     caller had already set and leave `--local-control-height` silently ignored on
+     every compact control. */
   fieldset.compact {
-    height: var(--control-height-compact);
+    height: var(--local-control-height, var(--control-height-compact));
   }
 
   fieldset.compact .segment-label {
@@ -295,14 +299,37 @@
     opacity: 1;
   }
 
-  label:has(input:checked) + label:hover::before {
-    border-radius: 0 calc(var(--r-ctl) - 2px) calc(var(--r-ctl) - 2px) 0;
-    inset-inline-start: calc(-1 * var(--r-ctl));
+  /* Hovering the option next to the selected one squares the corner the two share,
+     on *both* sides of it: the hover loses its rounding there and the thumb loses
+     its own, so the pair meets along a straight edge with nothing between them.
+
+     The hover used to keep its round corner and slide a radius' worth of fill in
+     under the thumb instead, which filled the same gap and was invisible as long
+     as the thumb was opaque. On the night surface the thumb is glass, and the fill
+     tucked behind it read straight through as a bright band across the selected
+     option. Squaring both sides needs nothing hidden anywhere, so it holds however
+     see-through the thumb is - and it is what the control already does when it is
+     previewing a move onto a neighbouring option. */
+  label:has(input:checked) + label:hover:not(:has(input:disabled))::before {
+    border-start-start-radius: 0;
+    border-end-start-radius: 0;
   }
 
-  label:hover:has(+ label input:checked)::before {
-    border-radius: calc(var(--r-ctl) - 2px) 0 0 calc(var(--r-ctl) - 2px);
-    inset-inline-end: calc(-1 * var(--r-ctl));
+  label:hover:not(:has(input:disabled)):has(+ label input:checked)::before {
+    border-start-end-radius: 0;
+    border-end-end-radius: 0;
+  }
+
+  fieldset:has(label:has(input:checked) + label:hover:not(:has(input:disabled)))
+    .selection-indicator {
+    border-start-end-radius: 0;
+    border-end-end-radius: 0;
+  }
+
+  fieldset:has(label:hover:not(:has(input:disabled)) + label:has(input:checked))
+    .selection-indicator {
+    border-start-start-radius: 0;
+    border-end-start-radius: 0;
   }
 
   input {
