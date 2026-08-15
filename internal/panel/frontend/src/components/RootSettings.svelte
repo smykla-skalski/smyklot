@@ -263,7 +263,7 @@
       ></span
     >
   </RootPageHeader>
-  {#if loading}
+  {#if loading && settings === null}
     <div class="settings-state" role="status">Loading runtime settings…</div>
   {:else if settings === null}
     <div class="settings-state settings-error" role="alert">

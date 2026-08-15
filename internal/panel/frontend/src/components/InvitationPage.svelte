@@ -14,14 +14,20 @@
   let loading = $state(true);
   let failure = $state<string | null>(null);
 
+  /* The skeleton stands in for an answer the page does not have yet. Once it has
+     one, a retry keeps it on screen and marks the card busy: swapping it back to
+     a placeholder of a different height moves the whole centred stack, twice. */
+  const nothingYet = $derived(invitation === null && failure === null);
+
   /* The card carries no header of its own, so its title stands above it and
-     names whichever of the three states the card is showing. */
+     names whichever of the three states the card is showing. It follows what is
+     displayed rather than the request, so a retry does not flicker it. */
   const title = $derived(
-    loading
-      ? 'Invitation'
+    invitation !== null
+      ? 'GitHub access invitation'
       : failure !== null
         ? 'Invitation unavailable'
-        : 'GitHub access invitation',
+        : 'Invitation',
   );
 
   $effect(() => {
@@ -30,11 +36,12 @@
 
   async function load(requestedToken: string): Promise<void> {
     loading = true;
-    failure = null;
     try {
       invitation = await api.fetchInvitation(requestedToken);
+      failure = null;
     } catch (error) {
       failure = error instanceof Error ? error.message : String(error);
+      invitation = null;
     } finally {
       loading = false;
     }
@@ -64,9 +71,13 @@
     <h1 class="invitation-title" id="invitation-title">{title}</h1>
   </div>
 
-  <section class="plate invitation-card" aria-labelledby="invitation-title">
+  <section
+    class={['plate', 'invitation-card', loading && 'loading']}
+    aria-labelledby="invitation-title"
+    aria-busy={loading}
+  >
     <div class="plate-body">
-      {#if loading}
+      {#if loading && nothingYet}
         <div class="invitation-skeleton" aria-hidden="true">
           <span class="skeleton-person"></span>
           <span></span>
@@ -76,7 +87,9 @@
         <p class="visually-hidden" role="status">Loading invitation</p>
       {:else if failure !== null}
         <p>{failure}</p>
-        <button class="btn" onclick={() => void load(token)}>Try again</button>
+        <button class="btn" onclick={() => void load(token)} disabled={loading}>
+          {loading ? 'Trying again…' : 'Try again'}
+        </button>
       {:else if invitation !== null}
         <div class="invited-user">
           <Avatar account={invitation.account} size={48} />
@@ -183,6 +196,10 @@
     border-color: var(--dialog-border);
     box-shadow: var(--shadow-plate);
     margin-bottom: 0;
+  }
+
+  .invitation-card.loading {
+    cursor: progress;
   }
 
   .invitation-card :global(.plate-body) {

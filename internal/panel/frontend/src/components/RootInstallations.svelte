@@ -294,7 +294,7 @@
           {:else}
             <tr class="state-row">
               <td colspan="5" class="empty-cell">
-                {#if loading}
+                {#if loading && installations.length === 0}
                   Loading installation catalog…
                 {:else if failure !== null}
                   <span role="alert">{failure}</span>

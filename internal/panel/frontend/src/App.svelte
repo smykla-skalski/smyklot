@@ -661,7 +661,9 @@
         </Plate>
       {/if}
 
-      {#if loading}
+      <!-- Only when there is no workspace to show. Signing out holds the one it
+           has until the server confirms, rather than blanking on the request. -->
+      {#if loading && viewer === null}
         <Plate label="Panel">
           <div class="panel-skeleton" aria-hidden="true">
             <span class="skeleton-line skeleton-title"></span>

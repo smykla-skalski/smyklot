@@ -123,7 +123,7 @@
   <section class="history-section" aria-labelledby="decision-history-heading">
     <h3 id="decision-history-heading">Decision history</h3>
     <div class="decision-list" aria-live="polite">
-      {#if loading}
+      {#if loading && decisions === null}
         <p class="state dim">Loading decisions…</p>
       {:else if failure !== null}
         <p class="state form-error" role="alert">{failure}</p>

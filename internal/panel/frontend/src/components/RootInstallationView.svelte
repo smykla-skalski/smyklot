@@ -76,13 +76,15 @@
   async function load(version = refreshVersion): Promise<void> {
     const current = ++loadSequence;
     loading = true;
-    failure = null;
     try {
       const currentTarget = await api.fetchRootTargetSettings(installation.id);
       const currentElevation = await loadElevation();
       if (current !== loadSequence || version !== refreshVersion) return;
       target = currentTarget;
       elevation = currentElevation;
+      // Cleared here rather than up front: a retry keeps the failure on screen
+      // until there is something to put in its place.
+      failure = null;
       repositoryVersion += 1;
     } catch (error) {
       if (current !== loadSequence || version !== refreshVersion) return;
@@ -311,13 +313,22 @@
     <p class="access-hint">Fresh Owners are required before elevated access can start</p>
   {/if}
 
-  {#if loading}
+  <!-- Only while there is nothing to read yet. A refresh over a loaded view
+       leaves it standing, or the whole panel blinks out on every event. -->
+  {#if loading && target === null && failure === null}
     <div class="root-loading" role="status">Reading installation diagnostics…</div>
   {:else if failure !== null}
     <div class="root-loading problem" role="alert">
       <strong>Could not load this installation</strong>
       <p>{failure}</p>
-      <button class="btn" type="button" onclick={() => void load(refreshVersion)}>Try again</button>
+      <button
+        class="btn"
+        type="button"
+        onclick={() => void load(refreshVersion)}
+        disabled={loading}
+      >
+        {loading ? 'Trying again…' : 'Try again'}
+      </button>
     </div>
   {:else if target !== null && view === 'settings'}
     <TargetSettings {target} readOnly={!canWrite} onUpdate={updateTarget} />
