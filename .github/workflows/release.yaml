@@ -46,6 +46,26 @@ jobs:
     name: Test
     runs-on: ubuntu-24.04
 
+    # A release ships both engines, so a release must have tested both. Same
+    # server, and the same proof that the suite did not skip, as test.yaml.
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: smyklot
+          POSTGRES_PASSWORD: smyklot
+          POSTGRES_DB: smyklot
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U smyklot"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      SMYKLOT_TEST_POSTGRES_DSN: postgres://smyklot:smyklot@localhost:5432/smyklot?sslmode=disable
+
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -57,6 +77,9 @@ jobs:
 
       - name: Run tests
         run: mise run test
+
+      - name: Prove the PostgreSQL engine was tested
+        run: mise run test:storage:postgres
 
   # Run golangci-lint
   golangci-lint:

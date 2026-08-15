@@ -42,6 +42,46 @@ description = "Run the shared storage suite against every engine"
 env = { CGO_ENABLED = "1" }
 run = "ginkgo -r --race --fail-on-empty ./internal/storage"
 
+[tasks."test:storage:postgres"]
+description = "Run the storage suite against PostgreSQL, failing if it skipped"
+env = { CGO_ENABLED = "1" }
+run = '''
+set -eu
+
+if [ -z "${SMYKLOT_TEST_POSTGRES_DSN:-}" ]; then
+  echo "SMYKLOT_TEST_POSTGRES_DSN is not set; run 'mise run db:dev' first" >&2
+  exit 1
+fi
+
+mkdir -p tmp/storage
+ginkgo --race --fail-on-empty \
+  --json-report=postgres.json --output-dir=tmp/storage \
+  ./internal/storage/postgres
+
+# The suite skips itself when there is no server, and a skip is not proof.
+# --fail-on-empty does not cover this: the specs were found, they just did not
+# run. Without this check a misconfigured DSN would look exactly like a pass.
+report=tmp/storage/postgres.json
+skipped="$(jq '[.[].SpecReports[]? | select(.State == "skipped")] | length' "$report")"
+passed="$(jq '[.[].SpecReports[]? | select(.State == "passed")] | length' "$report")"
+
+if [ "$skipped" -gt 0 ]; then
+  echo "$skipped PostgreSQL spec(s) skipped; the engine was not actually tested" >&2
+  jq -r '.[].SpecReports[]? | select(.State == "skipped")
+    | "  " + (.ContainerHierarchyTexts | join(" ")) + " " + .LeafNodeText' "$report" >&2
+  exit 1
+fi
+if [ "$passed" -eq 0 ]; then
+  echo "no PostgreSQL specs passed" >&2
+  exit 1
+fi
+echo "$passed PostgreSQL specs passed, none skipped"
+
+# The copier only has a second engine to copy into when a server is present,
+# so its suite is proof of the same thing and belongs to the same check.
+go test -race -count=1 ./internal/storage/transfer
+'''
+
 [tasks."db:dev"]
 description = "Start a local PostgreSQL for the storage suite and print its DSN"
 run = '''

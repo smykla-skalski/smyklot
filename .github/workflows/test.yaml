@@ -13,6 +13,29 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-24.04
+
+    # The storage suite runs against both engines, and the PostgreSQL half
+    # skips itself when there is no server. A skip that CI accepted would mean
+    # the second engine was never tested, so the server is provided here and a
+    # step below fails if the suite skipped anyway.
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: smyklot
+          POSTGRES_PASSWORD: smyklot
+          POSTGRES_DB: smyklot
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U smyklot"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      SMYKLOT_TEST_POSTGRES_DSN: postgres://smyklot:smyklot@localhost:5432/smyklot?sslmode=disable
+
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -36,6 +59,11 @@ jobs:
 
       - name: Run tests
         run: mise run test
+
+      # Runs after the full suite, which already covered PostgreSQL, to assert
+      # that it did rather than skipping past it.
+      - name: Prove the PostgreSQL engine was tested
+        run: mise run test:storage:postgres
 
       - name: Run linters
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
