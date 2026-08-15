@@ -32,12 +32,16 @@
       crossorigin
     />
 
+    <!-- The vector is the mark; the raster is the fallback, so it is declared
+         first and only browsers that cannot read the SVG stop there. The home
+         screen icon has no choice: `apple-touch-icon` does not accept SVG. -->
     <link
       rel="icon"
       type="image/png"
       sizes="256x256"
       href="/__smyklot_panel_base__/smyklot-avatar.png?v=__smyklot_panel_version__"
     />
+    <link rel="icon" type="image/svg+xml" href="/src/assets/smyklot-halo.svg" />
     <link
       rel="apple-touch-icon"
       sizes="256x256"

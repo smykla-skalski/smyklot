@@ -7,8 +7,6 @@ const SERVICE_META_NAME = 'smyklot-panel-service';
 const VERSION_SENTINEL = '__smyklot_panel_version__';
 const SERVICE_SENTINEL = '__smyklot_panel_service__';
 
-export const PANEL_ICON_PATH = '/smyklot-avatar.png';
-
 export interface PanelBuild {
   version: string | null;
   serviceHost: string | null;

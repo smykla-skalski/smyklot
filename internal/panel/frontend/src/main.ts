@@ -4,7 +4,7 @@ import App from './App.svelte';
 import InvitationPage from './components/InvitationPage.svelte';
 import './app.css';
 import { createPanelApi } from './lib/api';
-import { PANEL_ICON_PATH, panelUrl, readBasePath, readPanelBuild } from './lib/base';
+import { readBasePath, readPanelBuild } from './lib/base';
 import {
   applyDocumentTheme,
   DEFAULT_THEME_DISPLAY,
@@ -36,7 +36,6 @@ if (target === null) {
 try {
   const base = readBasePath(document);
   const api = createPanelApi(base, (input, init) => fetch(input, init));
-  const iconUrl = panelUrl(base, PANEL_ICON_PATH);
   const build = readPanelBuild(document);
   void registerPanelServiceWorker(base, build.version).catch((error: unknown) => {
     console.warn('Smyklot offline cache could not start', error);
@@ -52,7 +51,7 @@ try {
   } else {
     mount(InvitationPage, {
       target,
-      props: { api, token: invitationToken, iconUrl, build },
+      props: { api, token: invitationToken, build },
     });
   }
 } catch (error) {
