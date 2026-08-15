@@ -160,15 +160,6 @@
     padding-block: var(--space-6);
   }
 
-  /* Inset by the card's corner radius, which is where its edge stops curving
-     and runs straight. Lining the outer rows up with the card's flat edge
-     rather than with the corner's tangent keeps one vertical line down each
-     side of the page. */
-  .invitation-topline,
-  .invitation-shell :global(.foot) {
-    padding-inline: var(--r-strip);
-  }
-
   .invitation-topline {
     align-items: center;
     display: flex;
