@@ -69,16 +69,9 @@
   --primitive-dark-secondary: #c4cdd4;
   --primitive-dark-muted: #95a1ab;
   --primitive-light-sidebar: #eef2f0;
-  --primitive-light-sidebar-hover: #e4eae7;
-  --primitive-light-sidebar-pressed: #d8e0dc;
-  --primitive-light-sidebar-active: #dceee9;
   --primitive-dark-sidebar: #10151b;
-  --primitive-dark-sidebar-hover: #19232b;
-  --primitive-dark-sidebar-pressed: #202d36;
-  --primitive-dark-sidebar-active: #153638;
   --primitive-petrol-800: #115e59;
   --primitive-petrol-700: #0f766e;
-  --primitive-petrol-600: #0d9488;
   --primitive-petrol-400: #2dd4bf;
   --primitive-petrol-200: #99f6e4;
   --primitive-petrol-50: #e7f5f2;
@@ -136,8 +129,6 @@
   --interactive-hover-layer: rgb(24 33 31 / 5.5%);
   --interactive-pressed: rgb(24 33 31 / 11%);
   --interactive-pressed-bg: #e7ece9;
-  --interactive-selected-hover: #dceee9;
-  --interactive-selected-pressed: #cfe5df;
   --scrim: rgb(14 17 22 / 56%);
   --shadow-color: rgb(24 33 31 / 10%);
 
@@ -150,7 +141,6 @@
   --sidebar-text-muted: #53615c;
   --sidebar-item-hover: #e2e8e5;
   --sidebar-item-pressed: #d6deda;
-  --sidebar-item-active: var(--primitive-light-sidebar-active);
   --sidebar-item-active-text: #0d5c55;
   /* Selected nav item is a raised thumb, same language as segmented controls. */
   --sidebar-thumb: #ffffff;
@@ -186,9 +176,6 @@
      3:1 against all three sidebar backgrounds. */
   --unread-badge-bg: #d03339;
   --unread-badge-text: #ffffff;
-  --identity-bg: var(--primitive-light-surface);
-  --identity-hover-bg: var(--primitive-light-raised);
-  --identity-border: var(--primitive-light-rule);
   --control-bg: var(--surface-control);
   --control-bg-hover: var(--surface-raised);
   --control-border: var(--border-control);
@@ -199,8 +186,11 @@
   --table-header-bg: var(--surface-inset);
   --table-footer-bg: var(--surface-inset);
   --table-filler-bg: var(--surface-raised);
-  --table-row-hover: var(--surface-raised);
-  --table-sorted-bg: #dceee9;
+  /* One state change from the row's own ground, measured like every other state in the shell:
+     2.52 dE00 here. It used to be --surface-raised, which is 1.19 from the row - under half a
+     state - and is also what the filler paints, so a hovered row and a dead cell were the same
+     colour. */
+  --table-row-hover: color-mix(in srgb, var(--text-primary) 5.4%, var(--surface-base));
   --dialog-bg: var(--surface-base);
   --dialog-border: var(--border-subtle);
 
@@ -211,12 +201,10 @@
   --well: var(--surface-inset);
   --rule: var(--border-subtle);
   --control-surface: var(--control-bg);
-  --input-surface: var(--input-bg);
   --text: var(--text-primary);
   --text-soft: var(--text-secondary);
   --dim: var(--text-muted);
   --signal: var(--info);
-  --on-signal: var(--on-info);
   --signal-tint: var(--info-tint);
   --accent: var(--brand-action);
   --accent-tint: var(--brand-action-tint);
@@ -228,7 +216,6 @@
   --stop-tint: var(--danger-tint);
   --brand: var(--focus);
   --spectrum: var(--brand-action);
-  --spectrum-vertical: var(--brand-action);
   --press: var(--interactive-pressed);
   --shadow: var(--shadow-color);
 
@@ -338,9 +325,6 @@
   /* Input and checkbox boundaries at ~3:1 against the surface. */
   --border-strong: #9aa89f;
 
-  /* Pending (unsaved) state. Info-slate so it never reads as an error. */
-  --pending: var(--primitive-info-light);
-  --pending-tint: #f4f8fa;
   --pending-inverse: #a9bfcc;
 }
 
@@ -384,8 +368,6 @@
   --interactive-hover-layer: rgb(255 255 255 / 7%);
   --interactive-pressed: rgb(255 255 255 / 12.5%);
   --interactive-pressed-bg: #26313d;
-  --interactive-selected-hover: #194344;
-  --interactive-selected-pressed: #1d4e4e;
   --scrim: rgb(0 0 0 / 62%);
   --shadow-color: rgb(0 0 0 / 32%);
   --sidebar-bg: var(--primitive-dark-sidebar);
@@ -395,7 +377,6 @@
   --sidebar-text-muted: #9caab5;
   --sidebar-item-hover: #1a242d;
   --sidebar-item-pressed: #223039;
-  --sidebar-item-active: var(--primitive-dark-sidebar-active);
   --sidebar-item-active-text: #a1f7e6;
   /* Lifted from #2a333e. The dark sidebar has no room below it - it sits 0.02 in OKLCh lightness
      above the canvas - so its hover and press have to move up, toward the thumb. That left a
@@ -428,15 +409,13 @@
      does not follow the theme's pale danger tone. */
   --unread-badge-bg: #d03339;
   --unread-badge-text: #ffffff;
-  --identity-bg: var(--primitive-dark-sidebar-hover);
-  --identity-hover-bg: var(--primitive-dark-sidebar-pressed);
-  --identity-border: var(--primitive-dark-rule);
   --control-border-hover: #536170;
   --table-header-bg: var(--surface-inset);
   --table-footer-bg: var(--surface-inset);
-  --table-sorted-bg: #153638;
+  /* Lifts rather than drops: on a dark ground the pointer raises what it is over, as it does on
+     every other control here. 5.09 dE00. */
+  --table-row-hover: color-mix(in srgb, #ffffff 6.8%, var(--surface-base));
   --spectrum: var(--brand-action);
-  --spectrum-vertical: var(--brand-action);
 
   /* The track is the inset surface here as it is in every other palette. It used to be the sidebar
      primitive, which sits 0.02 above the canvas in OKLCh lightness and so left the control no room
@@ -456,8 +435,6 @@
 
   --border-strong: #5b6a78;
 
-  --pending: var(--primitive-info-dark);
-  --pending-tint: var(--primitive-info-dark-tint);
   --pending-inverse: #526b7a;
 }
 
@@ -531,8 +508,6 @@ body {
   --border-control: #c9c0d8;
   --interactive-hover: #f0ecf6;
   --interactive-pressed-bg: #e7e1ef;
-  --interactive-selected-hover: #3a3150;
-  --interactive-selected-pressed: #46395f;
   --focus: #6d54bd;
   /* Actions follow the shell: teal controls inside the violet Root context
      read as another product. */
@@ -546,8 +521,7 @@ body {
      AA - which is what a resting segment label sits on. This is the same weight in the shell's own
      hue: 4.60:1 on the inset against the panel's 4.58:1 on its own. */
   --text-muted: #6c6876;
-  --table-sorted-bg: #ede9fa;
-  --table-row-hover: #f5f2fa;
+  --table-row-hover: color-mix(in srgb, var(--text-primary) 5.3%, var(--surface-base));
   /* Aliases substitute where they are declared, so the :root copies were
      computed against panel values and inherit here already resolved.
      Re-declaring them on the shell makes them re-resolve against the Root
@@ -570,7 +544,6 @@ body {
   --control-bg-hover: var(--surface-raised);
   --control-border: var(--border-control);
   --control-surface: var(--control-bg);
-  --input-surface: var(--input-bg);
   --segment-track: var(--surface-inset);
   /* Re-resolved against the Root surfaces, like the aliases above: the panel copies were computed
      against petrol-neutral greys and would otherwise arrive here already mixed. */
@@ -587,7 +560,6 @@ body {
   --sidebar-text-muted: #aca4bb;
   --sidebar-item-hover: #221d2e;
   --sidebar-item-pressed: #2d263c;
-  --sidebar-item-active: #312943;
   --sidebar-item-active-text: #e4dbff;
   /* Lifted from #352d49, for the reason the dark panel sidebar was: a pressed unselected row
      landed 3.30 dE00 from the selected thumb. It now stops 5.25 short. */
@@ -612,9 +584,6 @@ body {
   --sidebar-root-accent: #c4b5fd;
   --role-chip-bg: #372e50;
   --role-chip-text: #cfc0ff;
-  --identity-bg: #1d1928;
-  --identity-hover-bg: #272133;
-  --identity-border: #393247;
   background: var(--canvas);
 }
 
@@ -639,8 +608,7 @@ body {
   --brand-action-tint: #2e2544;
   --brand-action-text: #c4b5fd;
   --on-brand-action: #1c1329;
-  --table-sorted-bg: #2e2544;
-  --table-row-hover: #1d1828;
+  --table-row-hover: color-mix(in srgb, #ffffff 6.7%, var(--surface-base));
   /* The Root shell keeps its own thumb rather than inheriting the panel's #2b3541: a blue-grey
      thumb at hue 253 inside a violet shell at hue 300 reads as another product's control, the
      same argument --brand-action is re-declared for above. */

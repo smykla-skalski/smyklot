@@ -1310,6 +1310,13 @@
       width: 100%;
     }
 
+    /* The grid rows above repaint the row ground at a higher specificity than the plain
+         `:hover` rule outside this block, so the pointer state has to be restated here or it never
+         reaches the screen. */
+    .history-table tbody tr:not(.virtual-spacer):hover {
+      background: var(--table-row-hover);
+    }
+
     .history-table tbody tr:not(.virtual-spacer) {
       background: var(--surface-base);
       /* Pin the grid track to the row's fixed height: auto-sizing would take
