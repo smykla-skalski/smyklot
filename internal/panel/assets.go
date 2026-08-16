@@ -30,7 +30,7 @@ const (
 // The documents the panel serves by name rather than as plain static files.
 const (
 	indexAsset         = "index.html"
-	serviceWorkerAsset = "sw.js"
+	serviceWorkerAsset = "service-worker.js"
 )
 
 // Text file extensions whose sentinels the server rewrites at startup. Binary
