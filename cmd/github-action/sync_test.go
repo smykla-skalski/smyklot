@@ -331,6 +331,35 @@ var _ = Describe("Label sync [Unit]", func() {
 				To(ContainElement(string(orgsync.AuditDeleted)))
 		})
 
+		// A failure is not the end of it. The plan closes failed, nothing is
+		// recorded as applied, and the next reconcile computes the work again -
+		// which is what makes a transient refusal from GitHub recoverable
+		// without anybody doing anything
+		It("plans the work again after a plan failed", func() {
+			target := seed()
+			configure(target, `{"labels":[{"name":"bug","color":"d73a4a"}]}`)
+			plan(target)
+			computed, _ := livePlan(target)
+			approve(computed)
+
+			stub.brokenRepo = "smyklot"
+			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+
+			failed, _, err := service.store.GetSyncPlan(
+				GinkgoT().Context(), target.ID, computed.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(failed.State).To(Equal(orgsync.PlanFailed))
+
+			// GitHub answers again, and the next reconcile proposes the same
+			// work rather than believing it was done
+			stub.brokenRepo = ""
+			plan(target)
+			again, actions := livePlan(target)
+			Expect(again.ID).NotTo(Equal(computed.ID))
+			Expect(actions).To(HaveLen(1))
+			Expect(actions[0].Subject).To(Equal("bug"))
+		})
+
 		It("does nothing for a plan nobody approved", func() {
 			target := seed()
 			configure(target, `{"labels":[{"name":"bug","color":"d73a4a"}]}`)

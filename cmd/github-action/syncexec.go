@@ -193,6 +193,8 @@ func (s *server) applyRepositoryWork(
 		if blocker != "" {
 			for _, action := range kind.Actions {
 				if action.State != orgsync.ActionPending {
+					outcome.Carry(action)
+
 					continue
 				}
 				outcome.Skip(action, blocker)
@@ -243,6 +245,7 @@ func (s *server) applyKind(
 		// this is what keeps it from doing that kind's work a second time -
 		// re-creating a label GitHub already made is a 422.
 		if action.State != orgsync.ActionPending {
+			outcome.Carry(action)
 			succeeded = succeeded && action.State == orgsync.ActionApplied
 
 			continue

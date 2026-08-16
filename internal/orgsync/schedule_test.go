@@ -100,6 +100,26 @@ var _ = Describe("Scheduling [Unit]", func() {
 			Expect(outcome.Failed).To(Equal(1))
 		})
 
+		// A plan's verdict is about the plan, not about whichever attempt
+		// happened to close it. A retry that found everything already settled
+		// counts no failures of its own, and without carrying the earlier one
+		// it would close a failed plan as applied - reporting success for work
+		// that never happened, and recording the digest that says so
+		It("closes as failed when an earlier attempt failed and this one did nothing", func() {
+			var outcome orgsync.Outcome
+			outcome.Carry(orgsync.Action{ID: 1, State: orgsync.ActionApplied})
+			outcome.Carry(orgsync.Action{ID: 2, State: orgsync.ActionFailed})
+
+			Expect(outcome.State()).To(Equal(orgsync.PlanFailed))
+		})
+
+		It("stays applied when everything an earlier attempt settled succeeded", func() {
+			var outcome orgsync.Outcome
+			outcome.Carry(orgsync.Action{ID: 1, State: orgsync.ActionApplied})
+
+			Expect(outcome.State()).To(Equal(orgsync.PlanApplied))
+		})
+
 		// Deletion is off by default and destroys something somebody may have
 		// made by hand, so it is counted on its own and audited on its own
 		It("counts a removal separately from the rest", func() {

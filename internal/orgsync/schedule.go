@@ -110,6 +110,19 @@ func (o *Outcome) Skip(action Action, blocker Kind) {
 	})
 }
 
+// Carry accounts for an action a previous attempt already settled.
+//
+// A plan's verdict is about the plan, not about the attempt that happened to
+// close it. Without this, a retry that found every action already settled would
+// count no failures of its own and close a plan as applied although an earlier
+// attempt had failed one - reporting success for work that never happened, and
+// recording the digest that says the repository is up to date.
+func (o *Outcome) Carry(action Action) {
+	if action.State != ActionApplied {
+		o.Failed++
+	}
+}
+
 // State is the state to close the plan in. Anything failed or skipped makes the
 // whole plan failed: a plan that did most of its work is not a plan that did it.
 func (o *Outcome) State() PlanState {
