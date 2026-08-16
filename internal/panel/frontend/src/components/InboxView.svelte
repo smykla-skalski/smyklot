@@ -3,6 +3,7 @@
 
   import type { PanelApi } from '../lib/api';
   import { formatRelative, formatTimestamp } from '../lib/format';
+  import { LatestRequest } from '../lib/latest-request';
   import type { SecurityNotification } from '../lib/types';
   import Chip from './Chip.svelte';
   import Icon from './Icon.svelte';
@@ -35,9 +36,16 @@
   let now = $state(0);
   let expandedAuditId = $state<string | null>(null);
   const groups = $derived(groupNotifications(items));
+  const reads = new LatestRequest();
 
   async function load(reset = true): Promise<void> {
     if (reset ? loading : loadingMore) return;
+    /* A read of the whole list and a read of the next page can be in the air at
+       once - the stream refreshes while somebody is pressing for earlier events -
+       and only the newer one may commit. Without this the refresh could land
+       after the page it was racing and take the earlier events away again,
+       leaving a reader who pressed the button watching it undo itself. */
+    const read = reads.begin();
     if (reset) loading = true;
     else loadingMore = true;
     problem = null;
@@ -46,6 +54,7 @@
         ...(reset || nextCursor === null ? {} : { cursor: nextCursor }),
         limit: PAGE_SIZE,
       });
+      if (!reads.isCurrent(read)) return;
       items = reset ? page.items : merge(items, page.items);
       unread = page.unread;
       total = page.total;
@@ -56,10 +65,12 @@
          tab open does not come back to a list that says "now" about yesterday. */
       now = Date.now();
     } catch (error) {
-      problem = error instanceof Error ? error.message : String(error);
+      if (reads.isCurrent(read)) problem = error instanceof Error ? error.message : String(error);
     } finally {
-      loading = false;
-      loadingMore = false;
+      // Its own flag, whether or not it was still the newest: the other read owns
+      // the other flag, and a control left disabled never comes back.
+      if (reset) loading = false;
+      else loadingMore = false;
     }
   }
 
