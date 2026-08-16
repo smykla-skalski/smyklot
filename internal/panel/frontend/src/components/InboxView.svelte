@@ -37,6 +37,9 @@
   let expandedAuditId = $state<string | null>(null);
   const groups = $derived(groupNotifications(items));
   const reads = new LatestRequest();
+  /* How many times a read has replaced the list. Not state: nothing renders it,
+     and it is read inside the effect that starts the reads. */
+  let listVersion = 0;
 
   async function load(reset = true): Promise<void> {
     if (reset ? loading : loadingMore) return;
@@ -60,6 +63,11 @@
       total = page.total;
       nextCursor = page.next_cursor;
       loaded = true;
+      /* Counts a list that has actually replaced what was on screen, which is
+         what tells a mark-read still in the air that its own subtraction has
+         already been made for it. Started reads do not count: one that began
+         before the mark-read may answer without it. */
+      listVersion += 1;
       /* Stamped from the answer rather than at mount: every relative time on the
          page is measured against the same instant, and a reader who leaves the
          tab open does not come back to a list that says "now" about yesterday. */
@@ -83,10 +91,16 @@
 
   async function read(notification: SecurityNotification): Promise<void> {
     if (notification.read_at !== undefined) return;
+    const countedAgainst = listVersion;
     try {
       const updated = await markRead(notification.id);
+      // Always: the row is read whoever else has said so since.
       items = items.map((item) => (item.id === updated.id ? updated : item));
-      unread = Math.max(0, unread - 1);
+      /* The count only while it is still the count this was subtracted from. A
+         list that arrived first was counted by the server with this read already
+         in it, and subtracting again puts the total one below the truth - with
+         nothing to correct it until the next read. */
+      if (listVersion === countedAgainst) unread = Math.max(0, unread - 1);
     } catch (error) {
       problem = error instanceof Error ? error.message : String(error);
     }
