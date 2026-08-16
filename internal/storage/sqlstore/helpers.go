@@ -67,6 +67,44 @@ func unmarshalPatch(content string) (config.Patch, error) {
 	return patch, nil
 }
 
+// marshalPermissions encodes what an installation granted.
+//
+// An empty map is stored as an empty object rather than as null, so a reader
+// gets "nothing was reported" from one shape only. Two spellings of absence is
+// how a caller comes to handle one and not the other.
+func marshalPermissions(permissions map[string]string) (string, error) {
+	if len(permissions) == 0 {
+		return "{}", nil
+	}
+
+	content, err := json.Marshal(permissions)
+	if err != nil {
+		return "", fmt.Errorf("encode installation permissions: %w", err)
+	}
+
+	return string(content), nil
+}
+
+// unmarshalPermissions reads them back.
+//
+// Lenient, for the reason unmarshalPatch is: a row that will not decode must
+// not take the whole listing with it, and collectRows abandons a page on the
+// first row it cannot scan. An unreadable permissions column reads as "nothing
+// reported", which permits - the same answer GitHub's own silence gets, and the
+// failure it protects against is a 403 the caller already handles.
+func unmarshalPermissions(content string) map[string]string {
+	if strings.TrimSpace(content) == "" {
+		return nil
+	}
+
+	var permissions map[string]string
+	if err := json.Unmarshal([]byte(content), &permissions); err != nil {
+		return nil
+	}
+
+	return permissions
+}
+
 // marshalPaths encodes a list of file paths for storage.
 //
 // A JSON array rather than a joined string, because a path is text a

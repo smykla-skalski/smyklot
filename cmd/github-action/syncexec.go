@@ -120,6 +120,17 @@ func (s *server) applySyncPlan(
 		return orgsync.Outcome{}, fmt.Errorf("read sync installation: %w", err)
 	}
 
+	// Checked again here, not only where the plan was computed.
+	//
+	// A plan is approved by a person and applied minutes or hours later, and a
+	// permission can be revoked in between - that is what revoking one is for.
+	// Without this, every action in the plan would be refused one at a time and
+	// the revocation would read as a repository that failed rather than as a
+	// decision somebody made.
+	if unavailable, missing := unavailableForTarget(target, lease.Actions); missing {
+		return orgsync.Outcome{}, fmt.Errorf("%w: %s", errSyncNotPermitted, unavailable.Reason())
+	}
+
 	client, err := s.installationClient(target.InstallationID)
 	if err != nil {
 		return orgsync.Outcome{}, err
@@ -307,7 +318,40 @@ func (s *server) applyAction(
 	return s.applyLabelAction(ctx, client, owner, name, action)
 }
 
-var errSyncKindUnsupported = errors.New("this Smyklot cannot apply that kind of sync yet")
+var (
+	errSyncKindUnsupported = errors.New("this Smyklot cannot apply that kind of sync yet")
+
+	// errSyncNotPermitted is a plan whose permission was revoked between being
+	// approved and being applied. The plan keeps its lease and is offered again,
+	// which is right: granting the permission back is all it needs.
+	errSyncNotPermitted = errors.New("this installation has not permitted that sync")
+)
+
+// unavailableForTarget reports the first kind in a plan that the installation
+// no longer permits.
+//
+// The first, because a plan stops at one: there is no useful partial answer
+// between "apply this" and "somebody has to grant something".
+func unavailableForTarget(
+	target storage.Target,
+	actions []orgsync.Action,
+) (orgsync.Unavailable, bool) {
+	seen := map[orgsync.Kind]struct{}{}
+
+	for _, action := range actions {
+		if _, checked := seen[action.Kind]; checked {
+			continue
+		}
+		seen[action.Kind] = struct{}{}
+
+		permission := action.Kind.RequiredPermission()
+		if permission != "" && !target.Grants(permission) {
+			return orgsync.Unavailable{Kind: action.Kind, Permission: permission}, true
+		}
+	}
+
+	return orgsync.Unavailable{}, false
+}
 
 // syncDigestIndex answers what a repository and kind should record once its
 // work lands.

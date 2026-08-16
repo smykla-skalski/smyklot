@@ -1,0 +1,15 @@
+-- What an installation has granted the App, kept beside the installation it
+-- belongs to.
+--
+-- Read from GitHub's installation listing, which already carries it, and stored
+-- so that everything below the sweep can answer "may we do this" without an
+-- App-level request of its own. The executor applies a plan minutes after the
+-- planner computed it and holds only an installation token, which cannot ask;
+-- the panel renders long after either, and has to be able to say which
+-- permission an operator should grant.
+--
+-- Empty means the listing said nothing, which is read as permitting everything.
+-- The field is optional in GitHub's answer, and treating its absence as a
+-- refusal would stand every sync down on a response shape rather than on a
+-- decision somebody made.
+ALTER TABLE targets ADD COLUMN permissions TEXT NOT NULL DEFAULT '{}';

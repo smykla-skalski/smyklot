@@ -422,6 +422,37 @@ var _ = Describe("Label sync [Unit]", func() {
 			Expect(actions[0].Subject).To(Equal("bug"))
 		})
 
+		// A plan is approved by a person and applied later, and a permission can
+		// be revoked in between - that is what revoking one is for. Without a
+		// second check the plan's every action would be refused one at a time,
+		// and the revocation would read as a repository that failed rather than
+		// as a decision somebody made
+		It("refuses to apply a plan whose permission was revoked", func() {
+			target := seed()
+			configure(target, `{"labels":[{"name":"bug","color":"d73a4a"}]}`)
+			plan(target)
+			computed, _ := livePlan(target)
+			approve(computed)
+
+			// The installation withdraws the permission, which the next catalog
+			// reconcile records.
+			stub.installations = `[{"id":411,"account":` +
+				`{"id":7,"login":"smykla-skalski","type":"Organization"},` +
+				`"permissions":{"issues":"read"}}]`
+			_, err := service.SyncCatalog(GinkgoT().Context())
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(service.applySyncPlans(GinkgoT().Context())).To(HaveOccurred())
+
+			// Nothing was written to GitHub, and the plan keeps its lease rather
+			// than being closed: granting the permission back is all it needs
+			Expect(stub.labelWrites).To(BeEmpty())
+			held, _, err := service.store.GetSyncPlan(
+				GinkgoT().Context(), target.ID, computed.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(held.State).To(Equal(orgsync.PlanApplying))
+		})
+
 		It("does nothing for a plan nobody approved", func() {
 			target := seed()
 			configure(target, `{"labels":[{"name":"bug","color":"d73a4a"}]}`)

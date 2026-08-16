@@ -394,6 +394,31 @@ type Target struct {
 	RepositoryCounts         RepositoryCounts
 	DeliveryHealth           DeliveryHealth
 	Ownership                TargetOwnership
+
+	// Permissions is what the installation has granted. Kept here rather than
+	// asked of GitHub, because the two callers that need it cannot ask: the
+	// executor holds an installation token and the panel is rendering a page.
+	Permissions map[string]string
+}
+
+// Grants reports whether the installation may write through a permission.
+//
+// Admin implies write, so this is a method rather than an equality check at
+// each call site. An installation that reported no permissions at all grants
+// everything: the field is optional in GitHub's answer, and reading its absence
+// as a refusal would stand every sync down on a response shape rather than on a
+// decision somebody made.
+func (t Target) Grants(permission string) bool {
+	if len(t.Permissions) == 0 {
+		return true
+	}
+
+	switch t.Permissions[permission] {
+	case "write", "admin":
+		return true
+	default:
+		return false
+	}
 }
 
 // RepositoryFileStatus is the most recently observed state of the repository
@@ -513,6 +538,11 @@ type InstallationSnapshot struct {
 	Repositories   []RepositorySnapshot
 	Ownership      OwnershipSnapshot
 	SyncedAt       time.Time
+
+	// Permissions is what the installation has granted, keyed by GitHub's own
+	// name against "read", "write" or "admin". Empty means the listing reported
+	// none, which is not the same as granting none.
+	Permissions map[string]string
 }
 
 // TargetSettingsChange atomically changes target defaults and records audit.

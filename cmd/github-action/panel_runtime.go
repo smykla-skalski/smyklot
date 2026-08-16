@@ -430,6 +430,7 @@ func installationSnapshot(
 		},
 		Repositories: make([]storage.RepositorySnapshot, 0, len(repositories)),
 		SyncedAt:     syncedAt,
+		Permissions:  installation.Permissions,
 	}
 	for _, repository := range repositories {
 		if repository.ID <= 0 || strings.TrimSpace(repository.Name) == "" {

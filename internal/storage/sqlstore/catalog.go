@@ -33,6 +33,7 @@ SELECT
     t.config_patch,
     t.revision,
     t.settings_updated_at,
+    t.permissions,
     a.id,
     a.provider,
     a.subject_id,
@@ -596,25 +597,36 @@ func upsertTarget(
 	tx runner,
 	snapshot storage.InstallationSnapshot,
 ) error {
-	_, err := tx.ExecContext(ctx, `
+	permissions, err := marshalPermissions(snapshot.Permissions)
+	if err != nil {
+		return err
+	}
+
+	// permissions is refreshed on every reconcile, because it is GitHub's
+	// answer rather than anything Smyklot decides. An operator who grants a
+	// permission expects the next sweep to notice, and one who revokes it
+	// expects the same.
+	_, err = tx.ExecContext(ctx, `
 INSERT INTO targets (
     id, installation_id, kind, account_id, available,
     repository_default_enabled, config_patch, revision,
-    settings_updated_at, synced_at
+    settings_updated_at, synced_at, permissions
 )
-VALUES (?, ?, ?, ?, TRUE, FALSE, '{}', 1, ?, ?)
+VALUES (?, ?, ?, ?, TRUE, FALSE, '{}', 1, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
     installation_id = excluded.installation_id,
     kind = excluded.kind,
     account_id = excluded.account_id,
     available = TRUE,
-    synced_at = excluded.synced_at`,
+    synced_at = excluded.synced_at,
+    permissions = excluded.permissions`,
 		snapshot.TargetID,
 		snapshot.InstallationID,
 		snapshot.Kind,
 		snapshot.Account.ID,
 		snapshot.SyncedAt,
 		snapshot.SyncedAt,
+		permissions,
 	)
 	if err != nil {
 		return fmt.Errorf("upsert installation target: %w", err)
@@ -675,7 +687,7 @@ func scanTarget(scanner rowScanner) (storage.Target, error) {
 	var target storage.Target
 	var avatarURL, ownershipDetail sql.NullString
 	var lastFailureAt, targetUpdatedAt, accountUpdatedAt, ownershipSyncedAt StoredTime
-	var targetPatch string
+	var targetPatch, targetPermissions string
 	var enabled int
 
 	err := scanner.Scan(
@@ -687,6 +699,7 @@ func scanTarget(scanner rowScanner) (storage.Target, error) {
 		&targetPatch,
 		&target.Revision,
 		&targetUpdatedAt,
+		&targetPermissions,
 		&target.Account.ID,
 		&target.Account.Provider,
 		&target.Account.SubjectID,
@@ -714,6 +727,7 @@ func scanTarget(scanner rowScanner) (storage.Target, error) {
 	target.Ownership.Detail = stringPointer(ownershipDetail)
 	target.DeliveryHealth.LastFailureAt = lastFailureAt.Pointer()
 	target.Ownership.SyncedAt = ownershipSyncedAt.Time()
+	target.Permissions = unmarshalPermissions(targetPermissions)
 
 	return finishTarget(target, targetPatch, targetUpdatedAt, accountUpdatedAt)
 }
