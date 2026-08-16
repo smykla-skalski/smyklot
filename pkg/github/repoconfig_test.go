@@ -214,6 +214,35 @@ var _ = Describe("Repository configuration discovery [Unit]", func() {
 		Expect(chosen).NotTo(Equal(standard))
 	})
 
+	// The file decides what may be run, so it is read from whatever GitHub
+	// serves by default - the default branch - and never from a ref a caller
+	// names. Sending one would let a pull request widen allowed_commands for
+	// its own pull request, which is a privilege escalation with a one-line
+	// diff and no test standing in its way until now.
+	It("never asks for a configuration file at a ref anybody chose", func() {
+		var queries []string
+
+		server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			queries = append(queries, r.URL.RawQuery)
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"message":"Not Found"}`))
+		}))
+
+		client, err := github.NewClient("test-token", server.URL)
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = client.FindRepoConfig(context.Background(), "acme", "web", "")
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = client.RepoConfigFingerprint(context.Background(), "acme", "web", "")
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(queries).NotTo(BeEmpty())
+		for _, query := range queries {
+			Expect(query).To(BeEmpty())
+		}
+	})
+
 	It("surfaces a read failure rather than trying the next path", func() {
 		var asked []string
 

@@ -297,22 +297,56 @@ var _ = Describe("Configuration migration [Unit]", func() {
 		Expect(stub.createdPRs).To(BeEmpty())
 	})
 
-	// The proposal merged, or somebody moved the file by hand. Either way the
-	// state has to stop describing a pull request that has done its job
-	It("forgets a proposal once the file is no longer the legacy one", func() {
+	// GitHub is the one that knows what became of a proposal, so the state
+	// follows its answer rather than the file
+	It("forgets a proposal once it merges", func() {
 		stub.repoConfig = "quiet_success: true\n"
 		targetID := seed()
 		propose(targetID)
 		Expect(repository(targetID).ConfigMigration).
 			To(Equal(storage.ConfigMigrationProposed))
 
-		stub.repoConfig = ""
-		stub.repoConfigTOML = "quiet_success = true\n"
-
+		stub.branchPRs = `[{"number":77,"state":"closed","merged":true}]`
 		propose(targetID)
+
 		found := repository(targetID)
 		Expect(found.ConfigMigration).To(Equal(storage.ConfigMigrationNone))
 		Expect(found.ConfigMigrationPR).To(BeNil())
+	})
+
+	// The refusal was about a file that is not there any more, so showing it
+	// would describe a decision about nothing
+	It("forgets a refusal once the repository is on TOML", func() {
+		stub.repoConfig = "quiet_success: true\n"
+		stub.refuseBranchPush = true
+		targetID := seed()
+		propose(targetID)
+		Expect(repository(targetID).ConfigMigration).
+			To(Equal(storage.ConfigMigrationBlocked))
+
+		stub.repoConfig = ""
+		stub.repoConfigTOML = "quiet_success = true\n"
+		propose(targetID)
+
+		Expect(repository(targetID).ConfigMigration).To(Equal(storage.ConfigMigrationNone))
+	})
+
+	// A file that stopped parsing is not a repository that changed its mind,
+	// and clearing the refusal on it would have Smyklot ask again the moment
+	// the file was fixed - the nagging the refusal exists to prevent
+	It("keeps a refusal while the file merely stops parsing", func() {
+		stub.repoConfig = "quiet_success: true\n"
+		stub.refuseBranchPush = true
+		targetID := seed()
+		propose(targetID)
+		Expect(repository(targetID).ConfigMigration).
+			To(Equal(storage.ConfigMigrationBlocked))
+
+		stub.repoConfig = "command_aliases: invalid\n"
+		propose(targetID)
+
+		Expect(repository(targetID).ConfigMigration).
+			To(Equal(storage.ConfigMigrationBlocked))
 	})
 
 	It("says nothing without somewhere to remember a refusal", func() {

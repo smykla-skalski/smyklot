@@ -131,15 +131,29 @@ func nextMigrationStep(
 	repository storage.Repository,
 	file repositoryConfigFile,
 ) migrationStep {
-	if !migratable(file) {
-		// The file moved, or was replaced, or stopped parsing. Whatever an
-		// open proposal was about, it is not this - and leaving the state at
-		// "proposed" would have the panel describing a pull request that has
-		// already done its job.
-		if repository.ConfigMigration == storage.ConfigMigrationProposed {
-			return migrationStepForget
+	// An open proposal is followed up whatever the file looks like now, because
+	// GitHub is the one that knows what became of it. Reading the file instead
+	// would leave the panel describing a pull request somebody has since closed.
+	if repository.ConfigMigration == storage.ConfigMigrationProposed {
+		return migrationStepFollowUp
+	}
+
+	// The repository is on TOML, so every answer this state could hold is about
+	// something that is over. A refusal in particular has to stop being shown:
+	// the file it refused to move is not there any more.
+	if migrated(file) {
+		if repository.ConfigMigration == storage.ConfigMigrationNone {
+			return migrationStepNothing
 		}
 
+		return migrationStepForget
+	}
+
+	if !migratable(file) {
+		// Deliberately not forgetting a refusal here. A file that stopped
+		// parsing is not a repository that changed its mind, and clearing the
+		// state on it would have Smyklot ask again the moment the file was
+		// fixed - which is the nagging the refusal exists to prevent.
 		return migrationStepNothing
 	}
 
@@ -149,16 +163,25 @@ func nextMigrationStep(
 		return migrationStepNothing
 	}
 
-	switch repository.ConfigMigration {
-	case storage.ConfigMigrationDeclined, storage.ConfigMigrationBlocked:
-		return migrationStepNothing
-
-	case storage.ConfigMigrationProposed:
-		return migrationStepFollowUp
-
-	default:
+	if repository.ConfigMigration == storage.ConfigMigrationNone {
 		return migrationStepOpen
 	}
+
+	// Refused, or refused by GitHub. Both are durable and both are cleared from
+	// the panel rather than by another tick.
+	return migrationStepNothing
+}
+
+// migrated reports a repository reading a TOML file, which is where all of this
+// was trying to get it.
+func migrated(file repositoryConfigFile) bool {
+	if file.status != storage.RepositoryFileValid {
+		return false
+	}
+
+	format, err := config.FormatOf(file.path)
+
+	return err == nil && format == config.FormatTOML
 }
 
 // migratable reports a repository whose configuration can be converted without
@@ -199,19 +222,26 @@ func (s *server) followUpConfigMigration(
 	if err != nil {
 		return err
 	}
-	if pull == nil || pull.State != github.PullRequestClosed || pull.Merged {
-		// Still open, or merged and about to stop being migratable anyway.
+
+	switch {
+	case pull == nil || pull.State != github.PullRequestClosed:
+		// Nothing to report, or still open and waiting on the repository.
 		return nil
+
+	case pull.Merged:
+		// Done. The state goes back to nothing rather than staying at
+		// "proposed" describing a pull request that has already landed.
+		logging.From(ctx).Info("configuration migration merged", "pull_request", pull.Number)
+
+		return s.recordConfigMigration(ctx, targetID, repo, storage.ConfigMigrationNone, nil)
+
+	default:
+		logging.From(ctx).Info("configuration migration declined", "pull_request", pull.Number)
+
+		return s.recordConfigMigration(
+			ctx, targetID, repo, storage.ConfigMigrationDeclined, &pull.Number,
+		)
 	}
-
-	logging.From(ctx).Info(
-		"configuration migration declined",
-		"pull_request", pull.Number,
-	)
-
-	return s.recordConfigMigration(
-		ctx, targetID, repo, storage.ConfigMigrationDeclined, &pull.Number,
-	)
 }
 
 // openConfigMigration writes the converted file and proposes it.
