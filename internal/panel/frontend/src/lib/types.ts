@@ -643,6 +643,12 @@ export interface SyncConfig {
   updated_at: string;
   digest: string;
   /**
+   * The stored configuration as it is, whatever kind it belongs to. The typed
+   * fields above describe labels, which is the kind this panel has a form for;
+   * every other kind travels here untouched.
+   */
+  document: Record<string, unknown>;
+  /**
    * The stored document could not be read, so the lists above are empty because
    * nothing came out of them - not because nothing is configured. Saving over
    * this would send back the emptiness rather than the labels the row holds, so

@@ -184,14 +184,14 @@ interface MockState {
  * empty answer the first time. Never configured is not an error and not the
  * same as configured and switched off, which is what the server says too.
  */
-function mockSyncConfig(state: MockState, targetId: string): SyncConfig {
-  const existing = state.sync.get(targetId);
+function mockSyncConfig(state: MockState, key: string, kind: string): SyncConfig {
+  const existing = state.sync.get(key);
   if (existing) {
     return existing;
   }
 
   const fresh: SyncConfig = {
-    kind: 'labels',
+    kind,
     enabled: false,
     labels: [],
     allow_removal: false,
@@ -200,9 +200,10 @@ function mockSyncConfig(state: MockState, targetId: string): SyncConfig {
     updated_by: '',
     updated_at: new Date().toISOString(),
     digest: '',
+    document: {},
     unreadable: false,
   };
-  state.sync.set(targetId, fresh);
+  state.sync.set(key, fresh);
 
   return fresh;
 }
@@ -1388,12 +1389,15 @@ async function handle(
       });
       return;
     }
-    const syncConfigMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/config$/.exec(
+    const syncConfigMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/config\/([^/]+)$/.exec(
       path.slice(route('').length),
     );
     if (syncConfigMatch) {
+      // Keyed by installation and kind together, because an installation
+      // configures each kind separately and the server stores them that way.
       const targetId = decodeURIComponent(syncConfigMatch[1] ?? '');
-      const config = mockSyncConfig(state, targetId);
+      const kind = decodeURIComponent(syncConfigMatch[2] ?? '');
+      const config = mockSyncConfig(state, `${targetId}/${kind}`, kind);
       if (method === 'GET') {
         respond(res, 200, config);
         return;
@@ -1403,7 +1407,7 @@ async function handle(
         if (input.expected_revision !== config.revision) {
           throw new MockApiError(409, 'conflict', 'the label set changed; reload and try again');
         }
-        state.sync.set(targetId, {
+        state.sync.set(`${targetId}/${kind}`, {
           ...config,
           enabled: input.enabled,
           labels: input.labels ?? [],
@@ -1412,7 +1416,7 @@ async function handle(
           revision: config.revision + 1,
           updated_at: new Date().toISOString(),
         });
-        respond(res, 200, mockSyncConfig(state, targetId));
+        respond(res, 200, mockSyncConfig(state, `${targetId}/${kind}`, kind));
         return;
       }
     }

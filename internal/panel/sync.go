@@ -3,6 +3,7 @@ package panel
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -22,6 +23,11 @@ type syncConfigRequest struct {
 	AllowRemoval     bool            `json:"allow_removal"`
 	Excludes         []string        `json:"excludes"`
 	ExpectedRevision *int64          `json:"expected_revision"`
+
+	// Document is a kind whose shape the panel has no form for, sent through
+	// untouched. Labels use the typed fields above; everything else arrives
+	// here, so a new kind is configurable before it has a form.
+	Document json.RawMessage `json:"document,omitempty"`
 }
 
 // syncConfigDTO is what the panel reads back.
@@ -36,6 +42,15 @@ type syncConfigDTO struct {
 	UpdatedAt    time.Time       `json:"updated_at"`
 	Digest       string          `json:"digest"`
 
+	// Document is the stored configuration as it is, whatever kind it belongs
+	// to.
+	//
+	// The typed fields above describe labels, which is the kind the panel has a
+	// form for. Every other kind travels here untouched, so adding one needs no
+	// change on this side - and the fields it does not have come back as an
+	// empty object rather than as null, which a browser would have to guard.
+	Document json.RawMessage `json:"document"`
+
 	// Unreadable is a stored document this version cannot decode. The lists
 	// above are then empty because nothing could be read out of them, not
 	// because the installation configured nothing - and a panel that could not
@@ -43,6 +58,10 @@ type syncConfigDTO struct {
 	// set that was never shown to them.
 	Unreadable bool `json:"unreadable"`
 }
+
+// emptyDocument is what a kind nobody has configured answers with. An object
+// rather than null, so a reader has one shape to handle.
+var emptyDocument = json.RawMessage(`{}`)
 
 // syncPlanDTO is a plan as a person reads it: what it would do, and enough to
 // approve exactly this one.
@@ -77,19 +96,41 @@ type syncActionDTO struct {
 	Blocker    string `json:"blocker,omitempty"`
 }
 
-// getSyncConfig reads an installation's sync configuration.
+// syncKind reads the kind from the address, refusing one this version does not
+// know rather than answering about a kind nothing can sync.
+func (s *Server) syncKind(w http.ResponseWriter, r *http.Request) (orgsync.Kind, bool) {
+	kind := orgsync.Kind(r.PathValue(syncKindKey))
+	if !kind.Valid() {
+		s.writeError(w, http.StatusNotFound, "unknown_sync_kind",
+			"Smyklot does not synchronize that")
+
+		return "", false
+	}
+
+	return kind, true
+}
+
+// syncKindKey is the wildcard the sync routes name a kind by.
+const syncKindKey = "kind"
+
+// getSyncConfig reads an installation's sync configuration for one kind.
 func (s *Server) getSyncConfig(w http.ResponseWriter, r *http.Request) {
 	_, target, _, ok := s.requireTarget(w, r, false)
 	if !ok {
 		return
 	}
+	kind, ok := s.syncKind(w, r)
+	if !ok {
+		return
+	}
 
-	config, err := s.store.GetSyncConfig(r.Context(), target.ID, orgsync.KindLabels)
+	config, err := s.store.GetSyncConfig(r.Context(), target.ID, kind)
 	if errors.Is(err, storage.ErrNotFound) {
 		// Never configured, which is not an error and not the same as
 		// configured and switched off. An empty answer says so.
 		writeJSON(w, http.StatusOK, syncConfigDTO{
-			Kind: string(orgsync.KindLabels), Labels: []orgsync.Label{}, Excludes: []string{},
+			Kind: string(kind), Labels: []orgsync.Label{}, Excludes: []string{},
+			Document: emptyDocument,
 		})
 
 		return
@@ -116,6 +157,10 @@ func (s *Server) putSyncConfig(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	kind, ok := s.syncKind(w, r)
+	if !ok {
+		return
+	}
 
 	var input syncConfigRequest
 	if !decodeJSON(w, r, &input) {
@@ -128,30 +173,16 @@ func (s *Server) putSyncConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	config := orgsync.LabelConfig{
-		Labels:       input.Labels,
-		AllowRemoval: input.AllowRemoval,
-		Excludes:     input.Excludes,
-	}
-	if err := config.Validate(); err != nil {
-		s.writeError(w, http.StatusBadRequest, "invalid_sync_config", err.Error())
-
-		return
-	}
-
-	// The stored document is the domain type itself, so what the planner reads
-	// is what the panel wrote. A second shape here is what made every configured
-	// exclusion a silent no-op: the planner decoded the type without them.
-	document, err := json.Marshal(config)
+	document, err := syncDocumentFor(kind, input)
 	if err != nil {
-		s.writeInternal(w, err)
+		s.writeError(w, http.StatusBadRequest, "invalid_sync_config", err.Error())
 
 		return
 	}
 
 	saved, err := s.store.SetSyncConfig(r.Context(), orgsync.ConfigChange{
 		TargetID: target.ID,
-		Kind:     orgsync.KindLabels,
+		Kind:     kind,
 		Enabled:  *input.Enabled,
 		Document: document,
 		ActorID:  account.ID,
@@ -172,6 +203,55 @@ func (s *Server) putSyncConfig(w http.ResponseWriter, r *http.Request) {
 // names it by.
 const syncPlanKey = "plan"
 
+// syncDocumentFor validates a kind's configuration and returns what to store.
+//
+// The stored document is the domain type itself, so what the planner reads is
+// what the panel wrote. A second shape here is what made every configured
+// exclusion a silent no-op in the kind before this one: the planner decoded the
+// type without them.
+//
+// Validated now rather than at apply time, because every rule checked is one
+// GitHub answers with a 422 that abandons the rest of that repository's change.
+// Answering here puts the message beside the field somebody typed.
+func syncDocumentFor(kind orgsync.Kind, input syncConfigRequest) ([]byte, error) {
+	switch kind {
+	case orgsync.KindLabels:
+		config := orgsync.LabelConfig{
+			Labels:       input.Labels,
+			AllowRemoval: input.AllowRemoval,
+			Excludes:     input.Excludes,
+		}
+		if err := config.Validate(); err != nil {
+			return nil, err
+		}
+
+		return json.Marshal(config)
+
+	case orgsync.KindSettings:
+		var config orgsync.SettingsConfig
+		if err := json.Unmarshal(documentOrEmpty(input.Document), &config); err != nil {
+			return nil, fmt.Errorf("%w: %w", orgsync.ErrInvalidConfig, err)
+		}
+		if err := config.Validate(); err != nil {
+			return nil, err
+		}
+
+		return json.Marshal(config)
+
+	default:
+		return nil, fmt.Errorf("%w: Smyklot cannot synchronize %s yet",
+			orgsync.ErrInvalidConfig, kind)
+	}
+}
+
+func documentOrEmpty(document json.RawMessage) json.RawMessage {
+	if len(document) == 0 {
+		return emptyDocument
+	}
+
+	return document
+}
+
 func syncConfigToDTO(config orgsync.Config) syncConfigDTO {
 	dto := syncConfigDTO{
 		Kind:      string(config.Kind),
@@ -182,6 +262,14 @@ func syncConfigToDTO(config orgsync.Config) syncConfigDTO {
 		UpdatedBy: config.UpdatedBy,
 		UpdatedAt: config.UpdatedAt,
 		Digest:    config.Digest,
+		Document:  documentOrEmpty(config.Document),
+	}
+
+	if config.Kind != orgsync.KindLabels {
+		// Only labels have typed fields here. Every other kind travels in
+		// Document, which is already set, and inventing empty label lists for
+		// it would describe a configuration it does not have.
+		return dto
 	}
 
 	var document orgsync.LabelConfig

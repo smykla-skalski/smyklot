@@ -104,6 +104,7 @@ var routePlaceholders = map[string]string{
 	"{invitation}": "invitation-id",
 	"{repository}": "repository-30",
 	"{plan}":       "sync-plan-1",
+	"{kind}":       "labels",
 }
 
 // regularRouteProbes is every installation-scoped route, with the concrete
@@ -130,8 +131,8 @@ func regularRouteProbes(target string) []authorizationProbe {
 		{http.MethodGet, target + "/repositories/repository-30"},
 		{http.MethodPut, target + "/repositories/repository-30/settings"},
 		{http.MethodPost, target + "/repositories/repository-30/config-migration"},
-		{http.MethodGet, target + "/sync/config"},
-		{http.MethodPut, target + "/sync/config"},
+		{http.MethodGet, target + "/sync/config/labels"},
+		{http.MethodPut, target + "/sync/config/labels"},
 		{http.MethodGet, target + "/sync/plan"},
 		{http.MethodPost, target + "/sync/plans/sync-plan-1/approval"},
 		{http.MethodGet, target + "/audit"},

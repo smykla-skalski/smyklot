@@ -22,11 +22,16 @@
   }: {
     targetId: string;
     readOnly: boolean;
-    fetchConfig: (targetId: string) => Promise<SyncConfig>;
-    saveConfig: (targetId: string, input: SyncConfigInput) => Promise<SyncConfig>;
+    fetchConfig: (targetId: string, kind: string) => Promise<SyncConfig>;
+    saveConfig: (targetId: string, kind: string, input: SyncConfigInput) => Promise<SyncConfig>;
     fetchPlan: (targetId: string) => Promise<{ plan: SyncPlan | null }>;
     approvePlan: (targetId: string, planId: string, digest: string) => Promise<{ plan: SyncPlan }>;
   } = $props();
+
+  // The kind this view has a form for. Settings, rulesets and files are
+  // configurable through the API and have no form here yet, so naming the one
+  // this page means is better than a parameter nothing varies.
+  const LABELS = 'labels';
 
   let config = $state<SyncConfig | null>(null);
   let plan = $state<SyncPlan | null>(null);
@@ -46,7 +51,10 @@
   async function load(id: string): Promise<void> {
     error = null;
     try {
-      const [loadedConfig, loadedPlan] = await Promise.all([fetchConfig(id), fetchPlan(id)]);
+      const [loadedConfig, loadedPlan] = await Promise.all([
+        fetchConfig(id, LABELS),
+        fetchPlan(id),
+      ]);
       config = loadedConfig;
       plan = loadedPlan.plan;
     } catch (cause) {
@@ -61,7 +69,7 @@
     saving = true;
     error = null;
     try {
-      config = await saveConfig(targetId, {
+      config = await saveConfig(targetId, LABELS, {
         enabled,
         labels: current.labels,
         allow_removal: current.allow_removal,

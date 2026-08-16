@@ -168,8 +168,8 @@ export interface PanelApi {
    */
   resetConfigMigration(targetId: string, repositoryId: string): Promise<RepositoryDetail>;
   resetRootConfigMigration(targetId: string, repositoryId: string): Promise<RepositoryDetail>;
-  fetchSyncConfig(targetId: string): Promise<SyncConfig>;
-  saveSyncConfig(targetId: string, input: SyncConfigInput): Promise<SyncConfig>;
+  fetchSyncConfig(targetId: string, kind: string): Promise<SyncConfig>;
+  saveSyncConfig(targetId: string, kind: string, input: SyncConfigInput): Promise<SyncConfig>;
   fetchSyncPlan(targetId: string): Promise<{ plan: SyncPlan | null }>;
   approveSyncPlan(targetId: string, planId: string, digest: string): Promise<{ plan: SyncPlan }>;
   fetchAudit(targetId: string, request: AuditHistoryRequest): Promise<Page<AuditEntry>>;
@@ -692,12 +692,17 @@ export function createPanelApi(
       );
     },
 
-    fetchSyncConfig(targetId: string): Promise<SyncConfig> {
-      return jsonRequest(`/api/v1/targets/${pathSegment(targetId)}/sync/config`);
+    fetchSyncConfig(targetId: string, kind: string): Promise<SyncConfig> {
+      return jsonRequest(
+        `/api/v1/targets/${pathSegment(targetId)}/sync/config/${pathSegment(kind)}`,
+      );
     },
 
-    saveSyncConfig(targetId: string, input: SyncConfigInput): Promise<SyncConfig> {
-      return putJson(`/api/v1/targets/${pathSegment(targetId)}/sync/config`, input);
+    saveSyncConfig(targetId: string, kind: string, input: SyncConfigInput): Promise<SyncConfig> {
+      return putJson(
+        `/api/v1/targets/${pathSegment(targetId)}/sync/config/${pathSegment(kind)}`,
+        input,
+      );
     },
 
     fetchSyncPlan(targetId: string): Promise<{ plan: SyncPlan | null }> {
