@@ -200,7 +200,7 @@
     <!-- Keyboard focus lets users scroll columns that overflow the viewport. -->
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <div
-      class="installation-table-shell"
+      class="installation-table-shell table-card"
       role="region"
       tabindex="0"
       aria-label="Installation catalog table"
@@ -355,11 +355,10 @@
     color: var(--stop);
   }
 
+  /* Surface, keyline, corner and lift come from `.table-card` in `app.css` -
+     this was the only table drawing them, and the other five were bare. */
   .installation-table-shell {
-    background: var(--surface-base);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-surface);
-    overflow: auto;
+    overflow-y: auto;
   }
 
   /* `separate`, not `collapse`: a collapsed border is shared between adjacent

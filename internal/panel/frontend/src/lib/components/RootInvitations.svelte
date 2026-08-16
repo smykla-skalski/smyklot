@@ -392,7 +392,12 @@
       </div>
     {:else}
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-      <div class="table-scroll" role="region" tabindex="0" aria-label="Root invitations table">
+      <div
+        class="table-scroll table-card"
+        role="region"
+        tabindex="0"
+        aria-label="Root invitations table"
+      >
         <table>
           <caption class="visually-hidden">Root role invitations</caption>
           <thead>
@@ -698,12 +703,11 @@
     position: relative;
   }
 
+  /* Surface, keyline, corner and lift come from `.table-card` in `app.css`. */
   .table-scroll {
-    background: var(--surface-base);
     flex: 1;
     max-width: 100%;
     min-height: 0;
-    overflow-x: auto;
   }
 
   table {

@@ -1382,7 +1382,12 @@
               />
             {/if}
             <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-            <div class="user-table-wrap" role="region" aria-label="Panel users" tabindex="0">
+            <div
+              class="user-table-wrap table-card"
+              role="region"
+              aria-label="Panel users"
+              tabindex="0"
+            >
               <table class="user-table">
                 <caption class="visually-hidden">
                   Panel users. Select a sortable column header to change the sort order
@@ -1617,7 +1622,12 @@
               />
             {/if}
             <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-            <div class="user-table-wrap" role="region" aria-label="Panel invitations" tabindex="0">
+            <div
+              class="user-table-wrap table-card"
+              role="region"
+              aria-label="Panel invitations"
+              tabindex="0"
+            >
               <table class="user-table invitation-table">
                 <caption class="visually-hidden">
                   Panel invitations. Select a sortable column header to change the sort order
@@ -2222,12 +2232,11 @@
     }
   }
 
+  /* Surface, keyline, corner and lift come from `.table-card` in `app.css`. */
   .user-table-wrap {
-    background: var(--surface-base);
     display: flex;
     flex: 1;
     min-height: 0;
-    overflow-x: auto;
   }
 
   .user-table-wrap:focus-visible {

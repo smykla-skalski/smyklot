@@ -755,7 +755,12 @@
     {:else if historyType === 'audit'}
       <!-- Keyboard focus lets users scroll columns that overflow the viewport. -->
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-      <div class="table-scroll" role="region" tabindex="0" aria-label="Audit history table">
+      <div
+        class="table-scroll table-card"
+        role="region"
+        tabindex="0"
+        aria-label="Audit history table"
+      >
         <table class="history-table audit-table">
           <caption class="visually-hidden">Audit history</caption>
           <colgroup>
@@ -954,7 +959,7 @@
       <!-- Keyboard focus lets users scroll columns that overflow the viewport. -->
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
       <div
-        class="table-scroll"
+        class="table-scroll table-card"
         role="region"
         tabindex="0"
         aria-label="Delivery failure history table"
@@ -1182,10 +1187,9 @@
     cursor: progress;
   }
 
+  /* Surface, keyline, corner and lift come from `.table-card` in `app.css`. */
   .table-scroll {
-    background: var(--surface-base);
     max-width: 100%;
-    overflow-x: auto;
   }
 
   .history-table {

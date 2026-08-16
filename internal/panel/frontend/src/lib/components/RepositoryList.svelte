@@ -933,7 +933,7 @@
       </div>
       <p class="visually-hidden" role="status">Loading repositories</p>
     {:else}
-      <div class="repository-table-scroll">
+      <div class="repository-table-scroll table-card">
         <table class="repositories">
           <thead>
             <tr>
@@ -1432,9 +1432,9 @@
     }
   }
 
+  /* Surface, keyline, corner and lift come from `.table-card` in `app.css`. */
   .repository-table-scroll {
-    background: var(--surface-base);
-    overflow-x: auto;
+    max-width: 100%;
   }
 
   .repositories {

@@ -879,6 +879,27 @@ body {
   border-color: var(--rule);
 }
 
+/* The card a table is drawn on.
+   ------------------------------------------------------------------------
+   A table view marks its section `.plate` and then unpaints it - transparent,
+   no border, no corner - because the plate has to be a bare flex column for the
+   toolbar above the table and the pagination below it. The card is the scroller
+   in between, and five of the six tables were not drawing one: a background and
+   nothing else, so the rows ran to the edge of the page with no keyline, no
+   corner and no lift, while the installation catalog alone had a border and the
+   approved design has all three.
+
+   `overflow` is not `visible` here, which is what clips the header's corners to
+   the radius; naming the x axis is enough, since the y axis follows it out of
+   `visible` on its own. */
+.table-card {
+  background: var(--surface-base);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-surface);
+  box-shadow: var(--shadow-plate);
+  overflow-x: auto;
+}
+
 .plate-alarm {
   border-color: var(--rule);
 }
