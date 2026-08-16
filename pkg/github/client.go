@@ -146,8 +146,7 @@ func (c *Client) AddReaction(
 		"content": string(reaction),
 	}
 
-	_, err := c.makeRequest(ctx, "POST", path, body)
-	return err
+	return doRequest(ctx, c, http.MethodPost, path, body)
 }
 
 // RemoveReaction removes an emoji reaction from a comment
@@ -163,14 +162,9 @@ func (c *Client) RemoveReaction(
 	// First, get all reactions on the comment
 	path := fmt.Sprintf("/repos/%s/%s/issues/comments/%d/reactions", owner, repo, commentID)
 
-	data, err := c.makeRequest(ctx, "GET", path, nil)
+	reactions, err := doJSON[[]map[string]interface{}](ctx, c, http.MethodGet, path, nil)
 	if err != nil {
 		return err
-	}
-
-	var reactions []map[string]interface{}
-	if err := json.Unmarshal(data, &reactions); err != nil {
-		return NewAPIError(ErrResponseParse, 0, "GET", path, err)
 	}
 
 	// Find and delete matching reactions
@@ -184,7 +178,7 @@ func (c *Client) RemoveReaction(
 					commentID,
 					int(id),
 				)
-				if _, err := c.makeRequest(ctx, "DELETE", deletePath, nil); err != nil {
+				if err := doRequest(ctx, c, http.MethodDelete, deletePath, nil); err != nil {
 					return err
 				}
 			}
@@ -208,8 +202,7 @@ func (c *Client) PostComment(ctx context.Context, owner, repo string, prNumber i
 		"body": body,
 	}
 
-	_, err := c.makeRequest(ctx, "POST", path, payload)
-	return err
+	return doRequest(ctx, c, http.MethodPost, path, payload)
 }
 
 // ApprovePR approves a pull request
@@ -222,8 +215,7 @@ func (c *Client) ApprovePR(ctx context.Context, owner, repo string, prNumber int
 		"event": "APPROVE",
 	}
 
-	_, err := c.makeRequestWithRetry(ctx, "POST", path, payload)
-	return err
+	return doRequest(ctx, c, http.MethodPost, path, payload)
 }
 
 // DismissReviewByUsername dismisses all approved reviews by the specified username
@@ -254,17 +246,7 @@ func (c *Client) getPullRequestReviews(
 	prNumber int,
 ) ([]map[string]interface{}, error) {
 	reviewsPath := fmt.Sprintf("/repos/%s/%s/pulls/%d/reviews", owner, repo, prNumber)
-	reviewsData, err := c.makeRequest(ctx, "GET", reviewsPath, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	var reviews []map[string]interface{}
-	if err := json.Unmarshal(reviewsData, &reviews); err != nil {
-		return nil, NewAPIError(ErrResponseParse, 0, "GET", reviewsPath, err)
-	}
-
-	return reviews, nil
+	return doJSON[[]map[string]interface{}](ctx, c, http.MethodGet, reviewsPath, nil)
 }
 
 // dismissApprovedReviews dismisses all approved reviews by the specified user
@@ -323,8 +305,7 @@ func (c *Client) dismissReviewIfApprovedByUser(
 		"message": "Review dismissed",
 	}
 
-	_, err := c.makeRequest(ctx, "PUT", dismissPath, payload)
-	return err
+	return doRequest(ctx, c, http.MethodPut, dismissPath, payload)
 }
 
 // EnableAutoMerge enables auto-merge for a pull request

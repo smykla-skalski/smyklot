@@ -149,6 +149,21 @@ func doJSON[T any](
 	return out, err
 }
 
+// doRequest sends one request and discards the response body.
+//
+// For the endpoints whose answer carries nothing a caller needs: adding a
+// reaction, deleting a comment, dismissing a review.
+func doRequest(ctx context.Context, client *Client, method, path string, body any) error {
+	req, err := client.gh.NewRequest(ctx, method, strings.TrimPrefix(path, "/"), body)
+	if err != nil {
+		return NewAPIError(ErrAPIRequest, 0, method, path, err)
+	}
+
+	_, err = client.gh.Do(req, nil)
+
+	return wrapError(ErrAPIRequest, method, path, err)
+}
+
 // doJSONPage is doJSON plus the response, for the callers that have to follow
 // GitHub's Link header themselves.
 func doJSONPage[T any](
