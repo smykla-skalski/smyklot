@@ -18,7 +18,10 @@
   <Tabs.List class="navigation-tab-list" aria-label={label}>
     {#each options as option (option.value)}
       <Tabs.Trigger class="navigation-tab" value={option.value}>
-        <span>{option.label}</span>
+        <!-- Trimmed to its own band, so the equal padding above and below is the
+             whole of what centres the word on the tab. Untrimmed it sat 0.34px
+             high of its own surface, which is a device row at 2x. -->
+        <span class="cap-trim">{option.label}</span>
         {#if option.badge !== undefined}<span class="navigation-badge">{option.badge}</span>{/if}
       </Tabs.Trigger>
     {/each}
