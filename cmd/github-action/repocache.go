@@ -108,20 +108,17 @@ func reportInvalidRepoConfig(
 //
 // Safe for concurrent use.
 type repoCache[T any] struct {
-	ttl  time.Duration
-	load func(context.Context, *github.Client, string, string) (T, error)
+	ttl time.Duration
 
-	// stillValid reports that an expired entry can be kept anyway, because
-	// what it was read from provably has not changed. Nil means age is the
-	// only test.
+	// load re-reads a repository's value. previous is what the cache already
+	// holds, or nil on the first read, so a loader that can tell cheaply that
+	// nothing has changed may hand it straight back.
 	//
-	// This is what lets a configuration file be looked for at four paths
-	// without paying for four requests every tick: the question "has the
-	// default branch moved" costs one request and answers all of them. It is
-	// also stricter than the age test it defers to - an answer is reused only
-	// while the content cannot have changed, where a window of thirty seconds
-	// can serve a setting somebody rolled back thirty seconds ago.
-	stillValid func(context.Context, *github.Client, string, string, T) (bool, error)
+	// Revalidation lives inside the load rather than beside it because the two
+	// share work: the configuration loader asks GitHub one question whose
+	// answer both decides whether to re-read and identifies what it read. Split
+	// across two hooks, that question was asked twice.
+	load func(ctx context.Context, client *github.Client, owner, repo string, previous *T) (T, error)
 
 	// group collapses concurrent misses for one repository into one read.
 	group singleflight.Group
@@ -137,7 +134,7 @@ type repoCacheEntry[T any] struct {
 
 func newRepoCache[T any](
 	ttl time.Duration,
-	load func(context.Context, *github.Client, string, string) (T, error),
+	load func(ctx context.Context, client *github.Client, owner, repo string, previous *T) (T, error),
 ) *repoCache[T] {
 	return &repoCache[T]{
 		ttl:     ttl,
@@ -212,25 +209,15 @@ func (c *repoCache[T]) refresh(
 		return value, nil
 	}
 
-	if stale && c.stillValid != nil {
-		// A failure to revalidate is a failure to read, not a reason to serve
-		// something Smyklot can no longer vouch for. The caller retries.
-		unchanged, err := c.stillValid(ctx, client, owner, repo, value)
-		if err != nil {
-			var zero T
-
-			return zero, err
-		}
-
-		if unchanged {
-			c.store(key, value)
-
-			return value, nil
-		}
+	var previous *T
+	if stale {
+		previous = &value
 	}
 
-	loaded, err := c.load(ctx, client, owner, repo)
+	loaded, err := c.load(ctx, client, owner, repo, previous)
 	if err != nil {
+		// A failure to read is not a reason to serve something Smyklot can no
+		// longer vouch for. The caller retries.
 		var zero T
 
 		return zero, err
@@ -274,14 +261,6 @@ func (c *repoCache[T]) store(key string, value T) {
 
 // newRepoConfigCache builds the cache the service reads a repository's own
 // configuration through.
-//
-// It expires on age like every other, and then asks whether the default branch
-// has moved before spending anything re-reading. In the steady state that is
-// one request per repository per tick - what it cost when there was one path to
-// look at - while four are now supported.
 func newRepoConfigCache() *repoCache[repositoryConfigFile] {
-	cache := newRepoCache(repoConfigTTL, fetchRepositoryConfig)
-	cache.stillValid = repositoryConfigUnchanged
-
-	return cache
+	return newRepoCache(repoConfigTTL, fetchRepositoryConfig)
 }

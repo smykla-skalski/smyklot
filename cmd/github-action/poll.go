@@ -204,7 +204,7 @@ func newPermissionChecker(
 	client *github.Client,
 	repoOwner, repoName string,
 ) (*permissions.Checker, error) {
-	codeownersContent, err := fetchCodeowners(ctx, client, repoOwner, repoName)
+	codeownersContent, err := fetchCodeowners(ctx, client, repoOwner, repoName, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -213,10 +213,14 @@ func newPermissionChecker(
 }
 
 // fetchCodeowners reads a repository's CODEOWNERS, or empty when it has none.
+//
+// It takes what the cache already holds and ignores it: CODEOWNERS is one
+// request to read, so there is nothing cheaper to ask first.
 func fetchCodeowners(
 	ctx context.Context,
 	client *github.Client,
 	repoOwner, repoName string,
+	_ *string,
 ) (string, error) {
 	content, err := client.GetCodeowners(ctx, repoOwner, repoName)
 	if err != nil {

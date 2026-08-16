@@ -80,44 +80,65 @@ func candidatePaths(preferred string) []string {
 	return append([]string{preferred}, RepoConfigPaths...)
 }
 
-// DefaultBranchHead is the SHA at the head of the repository's default branch.
-//
-// It exists to be a cache validator. Reading a configuration file means one
-// request per candidate path, and the answer can only change when the default
-// branch does - so the service asks this one cheap question per repository per
-// tick and re-reads nothing until the answer changes. "No file anywhere" is
-// cached against the SHA exactly like a file that was found.
-//
-// Keying on the SHA is also stricter than the age-based cache it replaces: an
-// answer is reused only while the content provably cannot have changed, where a
-// thirty-second window could serve a rolled-back runner setting for thirty
-// seconds after the merge that changed it.
-//
-// A repository with no commits has no head, and reports an empty SHA rather
-// than an error - it has no configuration file either.
-func (c *Client) DefaultBranchHead(ctx context.Context, owner, repo string) (string, error) {
-	// The list endpoint defaults to the repository's default branch, so this
-	// needs neither the branch name nor a second request to learn it.
-	path := fmt.Sprintf("/repos/%s/%s/commits?per_page=1", owner, repo)
+// configRoots are the entries at the repository root that a configuration file
+// can be reached through: the file itself, and the two directories one may sit
+// in.
+var configRoots = []string{".smyklot.toml", ".smyklot", ".github"}
 
-	commits, err := doJSON[[]struct {
-		SHA string `json:"sha"`
+// RepoConfigFingerprint identifies the state of everything a configuration file
+// could be read from, in one request.
+//
+// It exists to be a cache validator. Reading the configuration means a request
+// per candidate path, and the answer can only change when one of those paths
+// does - so the service asks this one cheap question per repository per tick
+// and re-reads nothing until the answer changes. "No file anywhere" is
+// fingerprinted exactly like a file that was found.
+//
+// It fingerprints the root entries rather than the head commit, and that is the
+// whole point. The head moves on every commit, so on a repository anyone is
+// working in it would report a change every tick and re-probe every candidate
+// path - six requests where there used to be one, for exactly the repositories
+// this bot exists to serve. A blob SHA and two tree SHAs move only when
+// something that could be the configuration moves.
+//
+// A repository with no commits, or one Smyklot cannot read, fingerprints as
+// empty, which never compares equal - so it is re-read rather than assumed.
+func (c *Client) RepoConfigFingerprint(ctx context.Context, owner, repo string) (string, error) {
+	path := fmt.Sprintf("/repos/%s/%s/contents", owner, repo)
+
+	entries, err := doJSON[[]struct {
+		Name string `json:"name"`
+		SHA  string `json:"sha"`
 	}](ctx, c, http.MethodGet, path, nil)
 	if err != nil {
-		// GitHub answers a repository with no commits with 409, which is a
-		// repository that cannot have a configuration file rather than a
-		// failure to read one.
+		// An empty repository answers 404 here and has no configuration file.
 		var apiErr *APIError
-		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusConflict {
+		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
 			return "", nil
 		}
 
 		return "", err
 	}
 
-	if len(commits) == 0 {
-		return "", nil
+	found := make(map[string]string, len(configRoots))
+
+	for _, entry := range entries {
+		if slices.Contains(configRoots, entry.Name) {
+			found[entry.Name] = entry.SHA
+		}
 	}
 
-	return commits[0].SHA, nil
+	// Rendered in a fixed order over a fixed set, so the same repository always
+	// fingerprints the same way and an absent entry is distinct from a present
+	// one rather than just missing from the middle of a string.
+	var builder strings.Builder
+
+	for _, name := range configRoots {
+		builder.WriteString(name)
+		builder.WriteByte('=')
+		builder.WriteString(found[name])
+		builder.WriteByte(';')
+	}
+
+	return builder.String(), nil
 }

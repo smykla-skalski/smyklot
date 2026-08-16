@@ -167,39 +167,86 @@ var _ = Describe("Repository configuration discovery [Unit]", func() {
 		Expect(asked).To(HaveLen(1))
 	})
 
-	Describe("DefaultBranchHead", func() {
-		It("reads the head of the default branch in one request", func() {
+	Describe("RepoConfigFingerprint", func() {
+		// One request, and it must be sensitive to what a configuration file
+		// could live in and to nothing else. Fingerprinting the head commit
+		// instead would report a change on every commit, and re-probe every
+		// candidate path on every sweep tick for any repository anyone works in.
+		It("reads the roots a configuration file can live in, in one request", func() {
 			var asked []string
 
 			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				asked = append(asked, r.URL.Path+"?"+r.URL.RawQuery)
-				_, _ = w.Write([]byte(`[{"sha":"abc123"}]`))
+				asked = append(asked, r.URL.Path)
+				_, _ = w.Write([]byte(`[
+					{"name":"README.md","sha":"aaa"},
+					{"name":".github","sha":"bbb"},
+					{"name":"main.go","sha":"ccc"}
+				]`))
 			}))
 
 			client, err := github.NewClient("test-token", server.URL)
 			Expect(err).NotTo(HaveOccurred())
 
-			head, err := client.DefaultBranchHead(context.Background(), "acme", "web")
+			fingerprint, err := client.RepoConfigFingerprint(context.Background(), "acme", "web")
 			Expect(err).NotTo(HaveOccurred())
-			Expect(head).To(Equal("abc123"))
-			Expect(asked).To(HaveLen(1))
-			Expect(asked[0]).To(Equal("/repos/acme/web/commits?per_page=1"))
+			Expect(fingerprint).To(ContainSubstring(".github=bbb"))
+			Expect(fingerprint).NotTo(ContainSubstring("aaa"))
+			Expect(fingerprint).NotTo(ContainSubstring("ccc"))
+			Expect(asked).To(Equal([]string{"/repos/acme/web/contents"}))
 		})
 
-		// An empty repository has no head and no configuration file. Reporting
-		// a failure would make the sweep retry it forever.
-		It("reads an empty repository as having no head", func() {
+		fingerprintOf := func(body string) string {
+			GinkgoHelper()
+
 			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				w.WriteHeader(http.StatusConflict)
-				_, _ = w.Write([]byte(`{"message":"Git Repository is empty."}`))
+				_, _ = w.Write([]byte(body))
+			}))
+			DeferCleanup(server.Close)
+
+			client, err := github.NewClient("test-token", server.URL)
+			Expect(err).NotTo(HaveOccurred())
+
+			fingerprint, err := client.RepoConfigFingerprint(context.Background(), "acme", "web")
+			Expect(err).NotTo(HaveOccurred())
+
+			return fingerprint
+		}
+
+		// The whole point: a commit that touches nothing a configuration file
+		// could be in must not look like a change.
+		It("does not change when an unrelated file does", func() {
+			before := fingerprintOf(`[{"name":"main.go","sha":"one"},{"name":".github","sha":"gh"}]`)
+			after := fingerprintOf(`[{"name":"main.go","sha":"two"},{"name":".github","sha":"gh"}]`)
+
+			Expect(after).To(Equal(before))
+		})
+
+		DescribeTable("changes when something it could be in does",
+			func(body string) {
+				Expect(fingerprintOf(body)).NotTo(Equal(
+					fingerprintOf(`[{"name":".github","sha":"gh"}]`),
+				))
+			},
+			Entry("the .github tree moved", `[{"name":".github","sha":"moved"}]`),
+			Entry("a root file appeared", `[{"name":".github","sha":"gh"},{"name":".smyklot.toml","sha":"x"}]`),
+			Entry("a directory appeared", `[{"name":".github","sha":"gh"},{"name":".smyklot","sha":"y"}]`),
+			Entry("everything went away", `[]`),
+		)
+
+		// An empty repository has no configuration file. Reporting a failure
+		// would make the sweep retry it forever.
+		It("reads an empty repository as having no roots", func() {
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusNotFound)
+				_, _ = w.Write([]byte(`{"message":"This repository is empty."}`))
 			}))
 
 			client, err := github.NewClient("test-token", server.URL)
 			Expect(err).NotTo(HaveOccurred())
 
-			head, err := client.DefaultBranchHead(context.Background(), "acme", "web")
+			fingerprint, err := client.RepoConfigFingerprint(context.Background(), "acme", "web")
 			Expect(err).NotTo(HaveOccurred())
-			Expect(head).To(BeEmpty())
+			Expect(fingerprint).To(BeEmpty())
 		})
 
 		It("surfaces any other failure", func() {
@@ -211,8 +258,9 @@ var _ = Describe("Repository configuration discovery [Unit]", func() {
 			client, err := github.NewClient("test-token", server.URL)
 			Expect(err).NotTo(HaveOccurred())
 
-			_, err = client.DefaultBranchHead(context.Background(), "acme", "web")
+			_, err = client.RepoConfigFingerprint(context.Background(), "acme", "web")
 			Expect(err).To(HaveOccurred())
 		})
+
 	})
 })

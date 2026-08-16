@@ -21,23 +21,38 @@ type repositoryConfigFile struct {
 	// path is the file this was read from, empty when the repository has none.
 	path string
 
-	// head is the default branch's head when this was read. The file is looked
-	// for at four paths, and re-reading them every time the entry ages out
-	// would cost four requests per repository per tick; the head answers all
-	// four in one, because none of them can have changed while it has not.
-	head string
+	// fingerprint identifies everything the file could have been read from when
+	// it was read. The file is looked for at four paths, and re-probing them
+	// every time the entry ages out would cost four requests per repository per
+	// tick; comparing this answers all four in one.
+	fingerprint string
 }
 
+// fetchRepositoryConfig reads a repository's own configuration file.
+//
+// previous is what the cache already holds, and the fingerprint is what decides
+// whether it can be handed straight back. That question costs one request and
+// answers all four candidate paths at once, which is what keeps looking in four
+// places from costing four times as much as looking in one.
+//
+// The fingerprint is read before the file, so a commit landing during the read
+// is noticed on the next tick rather than mistaken for the state this answer
+// describes.
 func fetchRepositoryConfig(
 	ctx context.Context,
 	client *github.Client,
 	owner, repository string,
+	previous *repositoryConfigFile,
 ) (repositoryConfigFile, error) {
-	// Read before the file, so a commit landing during the read is noticed on
-	// the next tick rather than mistaken for the state this answer describes.
-	head, err := client.DefaultBranchHead(ctx, owner, repository)
+	fingerprint, err := client.RepoConfigFingerprint(ctx, owner, repository)
 	if err != nil {
 		return repositoryConfigFile{}, NewConfigError(ErrConfigLoad, err)
+	}
+
+	// An empty fingerprint is "could not tell", and never compares equal, so a
+	// repository Smyklot could not read is re-read rather than assumed.
+	if previous != nil && fingerprint != "" && previous.fingerprint == fingerprint {
+		return *previous, nil
 	}
 
 	found, err := client.FindRepoConfig(ctx, owner, repository, "")
@@ -45,50 +60,32 @@ func fetchRepositoryConfig(
 		return repositoryConfigFile{}, NewConfigError(ErrConfigLoad, err)
 	}
 	if !found.Found() {
-		return repositoryConfigFile{status: storage.RepositoryFileMissing, head: head}, nil
+		return repositoryConfigFile{
+			status: storage.RepositoryFileMissing, fingerprint: fingerprint,
+		}, nil
 	}
 	if len(bytes.TrimSpace(found.Content)) == 0 {
 		return repositoryConfigFile{
-			status: storage.RepositoryFileValid, path: found.Path, head: head,
+			status: storage.RepositoryFileValid, path: found.Path, fingerprint: fingerprint,
 		}, nil
 	}
 
 	patch, err := parseRepositoryConfig(found)
 	if err != nil {
 		return repositoryConfigFile{
-			status: storage.RepositoryFileInvalid,
-			err:    NewConfigError(ErrRepoConfigInvalid, err),
-			path:   found.Path,
-			head:   head,
+			status:      storage.RepositoryFileInvalid,
+			err:         NewConfigError(ErrRepoConfigInvalid, err),
+			path:        found.Path,
+			fingerprint: fingerprint,
 		}, nil
 	}
 
 	return repositoryConfigFile{
-		patch: patch, status: storage.RepositoryFileValid, path: found.Path, head: head,
+		patch:       patch,
+		status:      storage.RepositoryFileValid,
+		path:        found.Path,
+		fingerprint: fingerprint,
 	}, nil
-}
-
-// repositoryConfigUnchanged reports that a cached answer can be kept because
-// the default branch has not moved since it was read.
-//
-// A repository whose head could not be read, or which has none, is re-read:
-// keeping an answer requires proof it is still true, and no answer is not proof.
-func repositoryConfigUnchanged(
-	ctx context.Context,
-	client *github.Client,
-	owner, repository string,
-	previous repositoryConfigFile,
-) (bool, error) {
-	if previous.head == "" {
-		return false, nil
-	}
-
-	head, err := client.DefaultBranchHead(ctx, owner, repository)
-	if err != nil {
-		return false, NewConfigError(ErrConfigLoad, err)
-	}
-
-	return head != "" && head == previous.head, nil
 }
 
 // parseRepositoryConfig reads a found file in whichever format its name says.

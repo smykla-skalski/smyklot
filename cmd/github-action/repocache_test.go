@@ -31,6 +31,7 @@ func TestRepoCacheCollapsesConcurrentMisses(t *testing.T) {
 		*github.Client,
 		string,
 		string,
+		*string,
 	) (string, error) {
 		if loadCalls.Add(1) == 1 {
 			close(started)
@@ -106,6 +107,7 @@ func TestRepoCacheReloadsAfterItsEntryExpires(t *testing.T) {
 		*github.Client,
 		string,
 		string,
+		*string,
 	) (string, error) {
 		if loadCalls.Add(1) == 1 {
 			return "service", nil
@@ -141,6 +143,7 @@ func TestRepoCacheKeepsIdentityAcrossRepositoryRename(t *testing.T) {
 		_ *github.Client,
 		owner string,
 		repository string,
+		_ *string,
 	) (string, error) {
 		name := repoFullName(owner, repository)
 		loadCalls = append(loadCalls, name)
