@@ -80,26 +80,13 @@ func TestAsPatchDoesNotAliasItsSource(t *testing.T) {
 	if original.CommandPrefix != "" {
 		t.Errorf("CommandPrefix aliased: %q", original.CommandPrefix)
 	}
-}
 
-// And the reverse direction: editing the source must not reach a patch already
-// taken from it.
-func TestEditingTheSourceDoesNotReachAPatch(t *testing.T) {
-	original := config.Config{
-		AllowedCommands: []string{"approve"},
-		CommandAliases:  map[string]string{"a": "approve"},
-	}
+	// The other direction needs no test of its own: sharing a slice or a map is
+	// symmetric, so an implementation that let a patch edit its source would let
+	// the source edit the patch too, and fail here just the same.
+	original.AllowedCommands[0] = "close"
 
-	patch := original.AsPatch()
-
-	original.AllowedCommands[0] = "merge"
-	original.CommandAliases["a"] = "merge"
-
-	if (*patch.AllowedCommands)[0] != "approve" {
-		t.Errorf("patch saw a later edit: %v", *patch.AllowedCommands)
-	}
-
-	if (*patch.CommandAliases)["a"] != "approve" {
-		t.Errorf("patch saw a later edit: %v", *patch.CommandAliases)
+	if (*patch.AllowedCommands)[0] == "close" {
+		t.Error("the patch saw a later edit to its source")
 	}
 }

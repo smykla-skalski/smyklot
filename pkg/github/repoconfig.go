@@ -22,9 +22,6 @@ var RepoConfigPaths = []string{
 	repoConfigPath,
 }
 
-// LegacyRepoConfigPath is the file a repository configured before TOML.
-const LegacyRepoConfigPath = repoConfigPath
-
 // FindRepoConfig returns the repository's configuration file.
 //
 // preferred is the path an operator set in the panel, and is looked at first
@@ -64,20 +61,19 @@ func candidatePaths(preferred string) []string {
 		return RepoConfigPaths
 	}
 
-	if slices.Contains(RepoConfigPaths, preferred) {
-		paths := make([]string, 0, len(RepoConfigPaths))
-		paths = append(paths, preferred)
+	// One loop covers both cases. When the chosen path is not one of the
+	// standard ones the filter copies them all through, which is the same list
+	// a plain concatenation would have produced.
+	paths := make([]string, 0, len(RepoConfigPaths)+1)
+	paths = append(paths, preferred)
 
-		for _, path := range RepoConfigPaths {
-			if path != preferred {
-				paths = append(paths, path)
-			}
+	for _, path := range RepoConfigPaths {
+		if path != preferred {
+			paths = append(paths, path)
 		}
-
-		return paths
 	}
 
-	return append([]string{preferred}, RepoConfigPaths...)
+	return paths
 }
 
 // configRoots are the entries at the repository root that a configuration file

@@ -46,10 +46,6 @@ var (
 	// ErrConfigLoad is returned when loading configuration fails
 	ErrConfigLoad = errors.New("failed to load configuration")
 
-	// ErrRepoCacheType is returned when a shared cache read produces a value of
-	// the wrong type, which one key serving two caches would cause
-	ErrRepoCacheType = errors.New("repository cache produced the wrong type")
-
 	// ErrRepoConfigInvalid is returned when a repository's own configuration
 	// file exists but cannot be parsed. Unlike a failure to fetch it, retrying
 	// will not help, so the repository is told rather than left guessing

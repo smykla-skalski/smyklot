@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"sync"
 	"time"
@@ -99,6 +100,13 @@ func reportInvalidRepoConfig(
 	return cause
 }
 
+// errRepoCacheType guards the one place a shared read is handed back untyped.
+//
+// It cannot happen: the singleflight group belongs to this cache alone and the
+// function it runs returns T. The assertion is checked rather than bare so that
+// if it ever does, the service reports it instead of panicking mid-delivery.
+var errRepoCacheType = errors.New("repository cache produced the wrong type")
+
 // repoCache remembers something read per repository for a while.
 //
 // The Action reads one comment and exits, so it calls the loaders directly. The
@@ -190,7 +198,7 @@ func (c *repoCache[T]) GetByKey(
 	if !ok {
 		var zero T
 
-		return zero, ErrRepoCacheType
+		return zero, errRepoCacheType
 	}
 
 	return value, nil
