@@ -2558,6 +2558,7 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 		"/panel/inbox/security",
 		"/panel/i/smykla-skalski/inbox",
 		// A view still has to be a view, and a dialog is one segment or two.
+		"/panel/root/installations/smykla-skalski",
 		"/panel/i/smykla-skalski/settings/anything",
 		"/panel/i/smykla-skalski/repositories/api-gateway/file/extra",
 		"/panel/root/access/users/octocat/ban/extra",
