@@ -125,8 +125,12 @@
     if (refreshVersion >= 0) untrack(() => void load());
   });
 
+  /* Only once there is a count to report. `unread` starts at zero because nothing
+     has been read yet, not because everything has been read, and reporting that
+     took the number off the sidebar row for as long as the page took to load -
+     ending on the same number it started with, which reads as a flicker. */
   $effect(() => {
-    onUnread?.(unread);
+    if (loaded) onUnread?.(unread);
   });
 </script>
 
