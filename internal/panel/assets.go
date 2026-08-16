@@ -27,6 +27,7 @@ const (
 	panelInvitationsPath       = "invitations"
 	panelInstallationsResource = "installations"
 	panelRepositoriesPath      = "repositories"
+	panelRootPath              = "root"
 	panelSettingsPath          = "settings"
 	panelSyncPath              = "sync"
 )
@@ -337,7 +338,7 @@ func isDialogSegments(trailing []string) bool {
 }
 
 func isRootNavigationPath(parts []string) bool {
-	if parts[0] != "root" {
+	if parts[0] != panelRootPath {
 		return false
 	}
 	if len(parts) == 1 {

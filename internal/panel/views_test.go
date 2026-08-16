@@ -34,7 +34,7 @@ func TestEveryBrowserViewIsServedOnReload(t *testing.T) {
 	// unavailable reads as a fault rather than a boundary.
 	console := browserPanelViews(t, "ROOT_INSTALLATION_VIEWS")
 	for _, view := range console {
-		if !isRootNavigationPath([]string{"root", "installations", "acme", view}) {
+		if !isRootNavigationPath([]string{panelRootPath, panelInstallationsResource, "acme", view}) {
 			t.Errorf("the console has a %q view and a reload of it is refused", view)
 		}
 	}
@@ -43,7 +43,7 @@ func TestEveryBrowserViewIsServedOnReload(t *testing.T) {
 		if slices.Contains(console, view) {
 			continue
 		}
-		if isRootNavigationPath([]string{"root", "installations", "acme", view}) {
+		if isRootNavigationPath([]string{panelRootPath, panelInstallationsResource, "acme", view}) {
 			t.Errorf("the console renders no %q view and its address is served anyway", view)
 		}
 	}
