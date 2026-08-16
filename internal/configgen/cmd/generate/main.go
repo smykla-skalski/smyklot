@@ -40,13 +40,22 @@ func run() error {
 		return err
 	}
 
-	path := filepath.Join(root, configgen.GoFile)
-	//nolint:gosec // Generated source is checked in and read by every build.
-	if err := os.WriteFile(path, source, 0o644); err != nil {
-		return fmt.Errorf("write %s: %w", path, err)
+	schema, err := configgen.RenderSchema(model)
+	if err != nil {
+		return err
 	}
 
-	fmt.Println("configgen: wrote", configgen.GoFile)
+	for path, content := range map[string][]byte{
+		configgen.GoFile:     source,
+		configgen.SchemaFile: schema,
+	} {
+		//nolint:gosec // Generated files are checked in and read by every build.
+		if err := os.WriteFile(filepath.Join(root, path), content, 0o644); err != nil {
+			return fmt.Errorf("write %s: %w", path, err)
+		}
+
+		fmt.Println("configgen: wrote", path)
+	}
 
 	return nil
 }
