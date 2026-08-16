@@ -345,9 +345,9 @@ func (s *Server) postSyncPlanApproval(w http.ResponseWriter, r *http.Request) {
 	plan, err := s.store.ApproveSyncPlan(r.Context(), orgsync.PlanApproval{
 		TargetID: target.ID,
 		PlanID:   r.PathValue(syncPlanKey),
-		Digest:  input.Digest,
-		ActorID: account.ID,
-		Now:     s.now().UTC(),
+		Digest:   input.Digest,
+		ActorID:  account.ID,
+		Now:      s.now().UTC(),
 	})
 	if errors.Is(err, orgsync.ErrStalePlan) {
 		// The one refusal worth its own message: what is on the screen is not

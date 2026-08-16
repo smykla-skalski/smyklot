@@ -372,7 +372,6 @@ func (s syncScope) digestFor(repositoryID string) string {
 	return orgsync.DigestRepositoryKind(s.config.Digest, s.overrides[repositoryID])
 }
 
-
 func asCurrentLabels(labels []github.RepositoryLabel) []orgsync.CurrentLabel {
 	current := make([]orgsync.CurrentLabel, 0, len(labels))
 	for _, label := range labels {

@@ -8,8 +8,13 @@
 -- the panel renders long after either, and has to be able to say which
 -- permission an operator should grant.
 --
--- Empty means the listing said nothing, which is read as permitting everything.
--- The field is optional in GitHub's answer, and treating its absence as a
--- refusal would stand every sync down on a response shape rather than on a
--- decision somebody made.
+-- Empty means the listing said nothing, and that grants nothing. GitHub marks
+-- the field required on the installation object, so its absence is a malformed
+-- answer rather than an installation that granted none - and writing to
+-- somebody's repositories on an answer that could not be read is worse than the
+-- 403 the alternative costs.
+--
+-- An existing row gets the default and is read as granting nothing until the
+-- next sweep, which is one tick of standing down rather than one tick of acting
+-- on what nobody has confirmed.
 ALTER TABLE targets ADD COLUMN permissions TEXT NOT NULL DEFAULT '{}';

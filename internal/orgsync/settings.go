@@ -3,6 +3,7 @@ package orgsync
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -81,7 +82,7 @@ func (c SettingsConfig) Validate() error {
 		if field.value == nil {
 			continue
 		}
-		if !contains(field.allowed, *field.value) {
+		if !slices.Contains(field.allowed, *field.value) {
 			return invalid("%s must be one of %s, not %q",
 				field.name, strings.Join(field.allowed, ", "), *field.value)
 		}
@@ -330,16 +331,6 @@ func describeBool(value bool) string {
 	}
 
 	return "off"
-}
-
-func contains(values []string, value string) bool {
-	for _, candidate := range values {
-		if candidate == value {
-			return true
-		}
-	}
-
-	return false
 }
 
 // allFalse reports every configured value being off, ignoring the ones nobody
