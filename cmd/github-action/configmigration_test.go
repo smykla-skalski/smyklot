@@ -376,6 +376,14 @@ var _ = Describe("Configuration migration [Unit]", func() {
 
 		content, err := base64.StdEncoding.DecodeString(blob.Content)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(string(content)).To(Equal("quiet_success = true\n"))
+		Expect(string(content)).To(HaveSuffix("quiet_success = true\n"))
+
+		// The file has to say what it is to somebody who was not here when the
+		// pull request arrived, and still parse as the settings it carries
+		Expect(string(content)).To(HavePrefix("# Smyklot reads this file"))
+
+		patch, err := config.ParsePatch(config.FormatTOML, content)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(patch.SetKeys()).To(Equal([]string{config.KeyQuietSuccess}))
 	})
 })

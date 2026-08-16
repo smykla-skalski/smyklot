@@ -26,6 +26,16 @@ const (
 	migrationTitle = "Move Smyklot's configuration to TOML"
 
 	migrationCommit = "chore(smyklot): move configuration to TOML"
+
+	// migrationHeader is what the file says about itself, months later, to
+	// somebody who was not here when the pull request arrived.
+	//
+	// It goes on the file the migration writes rather than into RenderTOML,
+	// because it is context for a human reading an unsolicited change, not part
+	// of serialising settings. It is also where the schema directive will go
+	// once there is a URL that will not rot.
+	migrationHeader = "# Smyklot reads this file from the default branch.\n" +
+		"# https://github.com/smykla-skalski/smyklot#bot-configuration\n\n"
 )
 
 // migrationBody is what the pull request says, with the file it is moving.
@@ -298,7 +308,9 @@ func (s *server) openConfigMigration(
 		return err
 	}
 
-	blob, err := client.CreateBlob(ctx, repo.Owner, repo.Name, content)
+	blob, err := client.CreateBlob(
+		ctx, repo.Owner, repo.Name, append([]byte(migrationHeader), content...),
+	)
 	if err != nil {
 		return err
 	}
