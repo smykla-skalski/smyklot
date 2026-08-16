@@ -26,8 +26,6 @@
     display: inline-flex;
   }
 
-  /* One help box everywhere: an 18px square centring a 14px glyph, the same
-     recipe the mock uses in settings rows, table headers, and o-labels. */
   button {
     background: transparent;
     border: 0;
