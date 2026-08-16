@@ -1411,7 +1411,7 @@ async function handle(
           ...config,
           enabled: input.enabled,
           labels: input.labels ?? [],
-          allow_removal: input.allow_removal,
+          allow_removal: input.allow_removal ?? false,
           excludes: input.excludes ?? [],
           // Kept as it is sent, like the server keeps it: the kinds that have
           // no form here are configured entirely through this field, and a

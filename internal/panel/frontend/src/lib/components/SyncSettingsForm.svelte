@@ -12,6 +12,8 @@
    * repository and the whole of it succeeds or fails together, so a control
    * that saved on every click would send a dozen half-formed policies.
    */
+  import { canonicalStringify } from '$lib/preferences-sync';
+
   import InheritControl from './InheritControl.svelte';
 
   const {
@@ -125,14 +127,12 @@
   let wanted = $derived(enabled);
 
   const disabled = $derived(saving || readOnly || unreadable);
-  const changed = $derived(wanted !== enabled || canonical(draft) !== canonical(stored));
 
-  /** Two documents that would be saved the same way, compared the same way. */
-  function canonical(document: Record<string, unknown>): string {
-    const keys = Object.keys(document).sort();
-
-    return JSON.stringify(keys.map((key) => [key, document[key]]));
-  }
+  /* Two documents that would be saved the same way compare the same way, which
+     is what the preferences sync already needed and already spells. */
+  const changed = $derived(
+    wanted !== enabled || canonicalStringify(draft) !== canonicalStringify(stored),
+  );
 
   /** What a control shows: null where nothing is configured. */
   function valueOf(field: Field): string | null {

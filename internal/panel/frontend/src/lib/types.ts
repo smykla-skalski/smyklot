@@ -660,10 +660,15 @@ export interface SyncConfig {
 /** What a save sends. The revision is what it believes it is replacing. */
 export interface SyncConfigInput {
   enabled: boolean;
-  labels: SyncLabel[];
-  allow_removal: boolean;
-  excludes: string[];
   expected_revision: number;
+  /**
+   * The label set and what may be done to it, for the labels kind. Optional
+   * because they describe that kind alone: a settings save that had to send
+   * empty ones would be sending three values nothing reads.
+   */
+  labels?: SyncLabel[];
+  allow_removal?: boolean;
+  excludes?: string[];
   /**
    * The kind's own document, for every kind but labels. Labels travel in the
    * typed fields above because the panel has a form built out of them; anything

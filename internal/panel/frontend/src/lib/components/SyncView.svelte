@@ -109,9 +109,6 @@
     try {
       settings = await saveConfig(targetId, SETTINGS, {
         enabled: wanted,
-        labels: [],
-        allow_removal: false,
-        excludes: [],
         document,
         expected_revision: current.revision,
       });
