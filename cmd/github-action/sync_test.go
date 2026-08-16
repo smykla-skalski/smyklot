@@ -122,6 +122,23 @@ var _ = Describe("Label sync [Unit]", func() {
 		return seed()
 	}
 
+	// override is a repository's own answer for one kind, which is the layer a
+	// person uses to leave one repository out.
+	override := func(target storage.Target, kind orgsync.Kind, enabled bool) {
+		GinkgoHelper()
+
+		repositories, err := service.store.ListRepositories(GinkgoT().Context(), target.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(repositories).NotTo(BeEmpty())
+
+		_, err = service.store.SetSyncRepositoryOverride(
+			GinkgoT().Context(), orgsync.RepositoryOverrideChange{
+				RepositoryID: repositories[0].ID, Kind: kind, Enabled: &enabled,
+				ActorID: target.Account.ID, Now: time.Now().UTC(),
+			})
+		Expect(err).NotTo(HaveOccurred())
+	}
+
 	plan := func(target storage.Target) {
 		GinkgoHelper()
 
@@ -260,6 +277,75 @@ var _ = Describe("Label sync [Unit]", func() {
 			plan(target)
 			Expect(stub.countCalls(http.MethodGet, "/repos/smykla-skalski/smyklot/labels")).
 				To(Equal(reads))
+		})
+
+		// Each kind settles on its own, against its own digest and its own
+		// record. Reading another kind's rows here answers the question with
+		// the wrong kind's answer, and a settings sync that never settles asks
+		// GitHub about every repository on every tick for ever
+		It("stops asking GitHub about a repository whose settings already match", func() {
+			target := granting(`{"issues":"write","administration":"write"}`)
+			stub.repoSettings = `{"has_wiki":true}`
+			configureKind(target, orgsync.KindSettings, `{"has_wiki":true}`)
+
+			plan(target)
+
+			reads := stub.countCalls(http.MethodGet, "/repos/smykla-skalski/smyklot")
+			Expect(reads).NotTo(BeZero())
+
+			plan(target)
+			Expect(stub.countCalls(http.MethodGet, "/repos/smykla-skalski/smyklot")).
+				To(Equal(reads))
+		})
+
+		// A repository decides each kind on its own: somebody may want their
+		// labels left alone and their settings kept in step
+		It("leaves out a repository that turned this kind off", func() {
+			target := granting(`{"issues":"write","administration":"write"}`)
+			stub.repoSettings = `{"has_wiki":true}`
+			configureKind(target, orgsync.KindSettings, `{"has_wiki":false}`)
+			override(target, orgsync.KindSettings, false)
+
+			plan(target)
+
+			_, _, err := service.store.GetLiveSyncPlan(GinkgoT().Context(), target.ID)
+			Expect(err).To(MatchError(storage.ErrNotFound))
+		})
+
+		// And the other direction, which is the one that silently does too
+		// little: turning labels off for a repository must not take its
+		// settings with it
+		It("keeps syncing the kinds a repository did not turn off", func() {
+			target := granting(`{"issues":"write","administration":"write"}`)
+			stub.repoSettings = `{"has_wiki":true}`
+			configureKind(target, orgsync.KindSettings, `{"has_wiki":false}`)
+			override(target, orgsync.KindLabels, false)
+
+			plan(target)
+
+			_, actions := livePlan(target)
+			Expect(actions).To(HaveLen(1))
+			Expect(actions[0].Kind).To(Equal(orgsync.KindSettings))
+		})
+
+		// The panel refuses this at the keyboard, but a row written before a
+		// rule existed - or by a hand on the database - reaches the planner
+		// anyway, and a plan holding work GitHub is going to refuse asks
+		// somebody to approve a promise it cannot keep
+		It("plans nothing from a stored document GitHub would refuse", func() {
+			target := granting(`{"issues":"write","administration":"write"}`)
+			stub.repoSettings = `{"has_wiki":true}`
+			configureKind(target, orgsync.KindSettings,
+				`{"has_wiki":false,"merge_commit_title":"NONSENSE"}`)
+
+			plan(target)
+
+			_, _, err := service.store.GetLiveSyncPlan(GinkgoT().Context(), target.ID)
+			Expect(err).To(MatchError(storage.ErrNotFound))
+
+			// And it asked GitHub nothing, rather than finding out by refusal
+			Expect(stub.countCalls(http.MethodGet, "/repos/smykla-skalski/smyklot")).
+				To(BeZero())
 		})
 
 		// A reconcile that changed nothing is not an event, and one row a tick

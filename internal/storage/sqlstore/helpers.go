@@ -89,9 +89,10 @@ func marshalPermissions(permissions map[string]string) (string, error) {
 //
 // Lenient, for the reason unmarshalPatch is: a row that will not decode must
 // not take the whole listing with it, and collectRows abandons a page on the
-// first row it cannot scan. An unreadable permissions column reads as "nothing
-// reported", which permits - the same answer GitHub's own silence gets, and the
-// failure it protects against is a 403 the caller already handles.
+// first row it cannot scan. An unreadable column reads as nothing reported,
+// which grants nothing - the same answer GitHub's own silence gets, since it
+// marks the field required and its absence is a malformed listing rather than
+// an installation that granted none.
 func unmarshalPermissions(content string) map[string]string {
 	if strings.TrimSpace(content) == "" {
 		return nil

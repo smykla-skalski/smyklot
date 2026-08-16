@@ -160,7 +160,10 @@ func activeSyncKinds(
 // configuration it enforces.
 //
 // The most recent, because a plan carries one actor and the newest save is the
-// one that caused this plan to differ from the last.
+// one that caused this plan to differ from the last. Two saved at the same
+// instant is one save the panel cannot make and a tie nothing can break on the
+// merits, so the earlier kind wins - stable, since the configurations arrive
+// ordered by kind.
 func syncActor(active []orgsync.Config) string {
 	var (
 		actor  string
@@ -204,6 +207,19 @@ func (s *server) planSyncActions(
 	// and its own record of what a repository already has. A repository settled
 	// for its labels may be out of date for its settings.
 	for _, config := range active {
+		ask, err := repositoryPlanner(client, config)
+		if err != nil {
+			// A stored document this version cannot use. Every repository would
+			// answer the same way, so the kind stands down rather than failing
+			// once per repository - and it stands down rather than planning,
+			// because a plan holding work GitHub is going to refuse asks
+			// somebody to approve a promise it cannot keep.
+			logging.From(ctx).Warn("sync configuration cannot be planned",
+				"kind", config.Kind, "error", err)
+
+			continue
+		}
+
 		scope := newSyncScope(config, overrides, applied)
 
 		for _, repository := range repositories {
@@ -211,7 +227,7 @@ func (s *server) planSyncActions(
 				continue
 			}
 
-			found, err := s.planRepositoryKind(ctx, client, config, repository)
+			found, err := ask(ctx, repository)
 			if err != nil {
 				// One repository refusing must not stop the rest. It will be
 				// planned again on the next tick, and reporting a plan that
@@ -248,53 +264,92 @@ func (s *server) planSyncActions(
 	return actions, nil
 }
 
-// planRepositoryKind asks one repository what one kind would take.
+// repositoryQuestion asks one repository what one kind would take.
+type repositoryQuestion func(
+	context.Context, storage.Repository,
+) ([]orgsync.Action, error)
+
+// repositoryPlanner reads a kind's stored document and returns what to ask each
+// repository with it.
 //
-// The one place a kind's stored document meets its planner. A kind this version
-// does not know is refused rather than skipped: skipping would record the
-// repository as settled for work nothing did.
-func (s *server) planRepositoryKind(
-	ctx context.Context,
+// The one place a kind's stored document meets its planner, and it is read once
+// for the whole kind rather than once per repository: the document is the same
+// for all of them, so decoding it inside the loop would decode it a hundred
+// times over and report a document nobody can read a hundred times too.
+//
+// Validated here as well as in the panel. The panel covers what somebody typed;
+// this covers a row written before a rule existed, or by a hand on the database,
+// and every rule it checks is one GitHub answers with a 422. A kind this version
+// does not know is refused rather than skipped, because skipping would record
+// the repository as settled for work nothing did.
+func repositoryPlanner(
 	client *github.Client,
 	config orgsync.Config,
-	repository storage.Repository,
-) ([]orgsync.Action, error) {
-	owner, name := splitFullName(repository.FullName)
-
+) (repositoryQuestion, error) {
 	switch config.Kind {
 	case orgsync.KindLabels:
-		var labels orgsync.LabelConfig
-		if err := json.Unmarshal(config.Document, &labels); err != nil {
-			return nil, fmt.Errorf("decode label configuration: %w", err)
-		}
-
-		current, err := client.ListRepositoryLabels(ctx, owner, name)
+		labels, err := decodeSyncDocument[orgsync.LabelConfig](config)
 		if err != nil {
 			return nil, err
 		}
 
-		return orgsync.PlanLabels(
-			repository.ID, labels, asCurrentLabels(current), labels.Exclusions(),
-		), nil
+		return func(
+			ctx context.Context, repository storage.Repository,
+		) ([]orgsync.Action, error) {
+			owner, name := splitFullName(repository.FullName)
+
+			current, err := client.ListRepositoryLabels(ctx, owner, name)
+			if err != nil {
+				return nil, err
+			}
+
+			return orgsync.PlanLabels(
+				repository.ID, labels, asCurrentLabels(current), labels.Exclusions(),
+			), nil
+		}, nil
 
 	case orgsync.KindSettings:
-		var settings orgsync.SettingsConfig
-		if err := json.Unmarshal(config.Document, &settings); err != nil {
-			return nil, fmt.Errorf("decode settings configuration: %w", err)
-		}
-
-		current, err := client.GetRepositorySettings(ctx, owner, name)
+		settings, err := decodeSyncDocument[orgsync.SettingsConfig](config)
 		if err != nil {
 			return nil, err
 		}
 
-		return orgsync.PlanSettings(
-			repository.ID, settings, orgsync.CurrentSettings(current),
-		), nil
+		return func(
+			ctx context.Context, repository storage.Repository,
+		) ([]orgsync.Action, error) {
+			owner, name := splitFullName(repository.FullName)
+
+			current, err := client.GetRepositorySettings(ctx, owner, name)
+			if err != nil {
+				return nil, err
+			}
+
+			return orgsync.PlanSettings(
+				repository.ID, settings, orgsync.CurrentSettings(current),
+			), nil
+		}, nil
 
 	default:
 		return nil, fmt.Errorf("%w: %s", errSyncKindUnsupported, config.Kind)
 	}
+}
+
+// syncDocument is a kind's configuration: something to decode, and something
+// that knows what GitHub would refuse.
+type syncDocument interface{ Validate() error }
+
+// decodeSyncDocument reads one and checks it.
+func decodeSyncDocument[T syncDocument](config orgsync.Config) (T, error) {
+	var document T
+	if err := json.Unmarshal(config.Document, &document); err != nil {
+		return document, fmt.Errorf("decode %s configuration: %w", config.Kind, err)
+	}
+
+	if err := document.Validate(); err != nil {
+		return document, fmt.Errorf("%s configuration: %w", config.Kind, err)
+	}
+
+	return document, nil
 }
 
 // newSyncPlanID mints a plan identifier.
@@ -331,13 +386,18 @@ func newSyncScope(
 		applied:   map[string]string{},
 	}
 
+	// This kind's rows and no other's. A repository decides each kind on its
+	// own - somebody may want their labels left alone and their settings kept
+	// in step - and it settles each on its own too, against that kind's digest.
+	// Reading another kind's rows here would answer both questions with the
+	// wrong one's answer.
 	for _, override := range overrides {
-		if override.Kind == orgsync.KindLabels {
+		if override.Kind == config.Kind {
 			scope.overrides[override.RepositoryID] = override.Enabled
 		}
 	}
 	for _, state := range applied {
-		if state.Kind == orgsync.KindLabels {
+		if state.Kind == config.Kind {
 			scope.applied[state.RepositoryID] = state.AppliedDigest
 		}
 	}
