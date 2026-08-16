@@ -549,7 +549,7 @@ func DiffSettings(config SettingsConfig, current CurrentSettings) (SettingsChang
 		// A feature the repository does not have comes first, because nothing
 		// configured here can change that: it is a plan or a licence, and every
 		// run would otherwise try again and be refused again.
-		if field.available != nil && !field.available(current) {
+		if absent[field.name] {
 			change.withhold(field.name, becauseUnavailable)
 
 			continue
