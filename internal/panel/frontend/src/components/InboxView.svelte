@@ -98,6 +98,11 @@
     try {
       const updated = await markRead(notification.id);
       items = items.map((item) => (item.id === updated.id ? updated : item));
+      /* One fewer, straight away. The reader just did that and should see it
+         happen, so the count answers the press rather than the round trip after
+         it. It can be out by one either way depending on what else was in the
+         air, which is what the read below settles. */
+      unread = Math.max(0, unread - 1);
       await refreshCount();
     } catch (error) {
       problem = error instanceof Error ? error.message : String(error);
@@ -105,17 +110,17 @@
   }
 
   /**
-   * Asks what the count is now, rather than working it out.
+   * Asks what the count is now, because the subtraction above is a guess.
    *
-   * Subtracting one locally is wrong in both directions and a client cannot tell
-   * which: a list that arrives while the read is in flight may have been counted
-   * by the server with the read already in it, or from a moment before it, and
-   * the two are indistinguishable from here. Guessing left the total one below
-   * the truth in the first case and one above it in the second, with nothing to
-   * correct either until some other read happened to run.
+   * A client cannot tell which way the guess is wrong: a list that arrives while
+   * the read is in flight may have been counted by the server with the read
+   * already in it, or from a moment before it, and the two are indistinguishable
+   * from here. Subtracting anyway leaves the total one below the truth in the
+   * first case; refusing to subtract leaves it one above in the second. Neither
+   * corrected itself until some other read happened to run.
    *
-   * So the count is read. It costs one small request per press of a button
-   * somebody deliberately pressed, and it is right whatever else is in the air.
+   * So the guess stands only until the answer arrives, which is one small request
+   * per press of a button somebody deliberately pressed.
    */
   async function refreshCount(): Promise<void> {
     const count = counts.begin();
