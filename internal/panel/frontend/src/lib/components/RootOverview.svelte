@@ -12,7 +12,7 @@
   import type { ChipTone } from './Chip.svelte';
   import Chip from './Chip.svelte';
   import Icon from './Icon.svelte';
-  import PendingCIQueue from './PendingCIQueue.svelte';
+  import QueueSummary from './QueueSummary.svelte';
   import RootPageHeader from './RootPageHeader.svelte';
 
   const {
@@ -26,6 +26,10 @@
     onOpenFailures,
     inboxHref,
     onOpenInbox,
+    queueHref,
+    onOpenQueue,
+    requestHref,
+    onOpenRequest,
   }: {
     api: PanelApi;
     rootRole: string;
@@ -37,6 +41,12 @@
     onOpenFailures: () => void;
     inboxHref: string;
     onOpenInbox: () => void;
+    /** The queue summary is a link to the page that replaced the panel here. */
+    queueHref: string;
+    onOpenQueue: () => void;
+    /** Each row in that summary opens the request it names. */
+    requestHref: (requestId: string) => string;
+    onOpenRequest: (requestId: string) => void;
   } = $props();
 
   /* The hrefs are real addresses - middle-click, Cmd-click and Copy link all
@@ -322,7 +332,18 @@
       </a>
     </div>
 
-    <PendingCIQueue {api} queue={overview.pending_ci} {now} />
+    <!-- A summary, not the queue: the panel that used to live here grew past
+         what a dashboard card can hold and moved to `/root/queue`. What the
+         dashboard still owes it is what lands next and whether anything is
+         stuck, which is three rows and a chip. -->
+    <QueueSummary
+      queue={overview.pending_ci}
+      {now}
+      {queueHref}
+      {onOpenQueue}
+      {requestHref}
+      {onOpenRequest}
+    />
 
     <div class="overview-columns">
       <article class="overview-panel ownership-panel">
