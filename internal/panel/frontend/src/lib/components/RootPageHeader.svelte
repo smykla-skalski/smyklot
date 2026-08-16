@@ -41,20 +41,20 @@
   /* A grid, not a flex row: the slot shares the TITLE's row (row 2) and centres
      on it, rather than on the kicker + title + subtitle block. */
   .root-page-header {
-    /* Drops the slot onto the title's cap-to-baseline centre; a control centred
-       on the line box lands high, since the line box keeps room under the
-       baseline the caps never use. See PanelHeader for where 0.0382em comes
-       from - it is measured off TextMetrics, not derived from nominal ascent
-       and descent, which overshot by more than 2px. Keyed to the TITLE's size -
-       an em on the slot would resolve against its own font. */
     --title-size: var(--font-size-page-title);
-    --title-ink-offset: round(calc(var(--title-size) * 0.0382), 1px);
 
     align-content: center;
     align-items: center;
     column-gap: var(--space-6);
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
+    /* The title's row is a control tall whether or not there is a control in it.
+       Trimmed, the title is 20.86px, so a page with a segmented control in the
+       slot would otherwise sit 6.57px further from its kicker and its subtitle
+       than a page without one - the rhythm would depend on what the slot happens
+       to hold. `minmax` rather than a fixed height: a taller slot still grows the
+       row, and everything in it still centres. */
+    grid-template-rows: auto minmax(var(--control-height-compact), auto) auto;
     min-height: 5.25rem;
     padding: var(--space-2) 0 var(--space-6);
   }
@@ -68,6 +68,9 @@
     grid-column: 1;
     grid-row: 1;
     letter-spacing: 0.08em;
+    /* The approved design's own step. With the title trimmed and its row a
+       control tall, the ink-to-cap gap this produces is 29.05px, which is what
+       the mock measures. */
     margin: 0 0 var(--space-3);
     text-transform: uppercase;
   }
@@ -85,6 +88,10 @@
        title's 34px line box. */
     line-height: round(1.2em, 1px);
     margin: 0;
+    /* The title's box IS its band, which is what lets the slot beside it centre
+       natively. There used to be a measured `translateY(round(0.0382em, 1px))`
+       on that slot instead. */
+    text-box: trim-both cap alphabetic;
   }
 
   .root-subtitle {
@@ -96,8 +103,11 @@
        the half pixel pushed the toolbar row under this line off the device
        grid. */
     line-height: round(1.5em, 1px);
-    margin: var(--space-2) 0 0;
+    /* Baseline to cap line, both boxes being their bands and the title's row a
+       control tall: 18.57px, the gap the approved design measures. */
+    margin: var(--space-3) 0 0;
     max-width: 52rem;
+    text-box: trim-both cap alphabetic;
   }
 
   .header-slot {
@@ -112,11 +122,6 @@
     grid-column: 2;
     grid-row: 2;
     justify-self: end;
-    /* Down onto the letters' optical centre. A transform, not a margin: a
-       margin would grow the title's row whenever the control is taller than the
-       title line (a 34px segmented control does, a 24px pill does not), which
-       would drag the title itself and every gap with it. */
-    transform: translateY(var(--title-ink-offset));
   }
 
   @media (max-width: 36rem) {

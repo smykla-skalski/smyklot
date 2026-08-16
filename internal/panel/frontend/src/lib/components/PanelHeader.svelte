@@ -29,30 +29,23 @@
      it. Centring against the whole heading block hung the button below the
      title once a description wrapped underneath. */
   .panel-header {
-    /* A control centred on the title's line box lands slightly high against the
-       letters, because the line box reserves room below the baseline that the
-       caps never use. The nudge drops it onto the cap-to-baseline centre - the
-       band the eye reads as "the word".
-
-       0.0382em is measured, not derived from nominal font metrics: TextMetrics
-       puts this face's cap height at 0.75em and its baseline 0.6382em under the
-       line box top at line-height 1.2. Deriving it from the 0.347/0.108 ascent
-       split overshot by more than 2px, which is visible. Keyed to the TITLE's
-       size - an em on the action would resolve against its own font.
-
-       Descenders are deliberately out of it: centring on the glyph ink would
-       move the control whenever a title happened to contain a "y". */
     /* A flat token, not clamp(…, 2vw, …): the viewport-relative step resolved
        to 27.56px at this width, which is both a size the mock never uses and a
        fraction that every metric under it inherited. */
     --title-size: var(--font-size-page-title);
-    --title-ink-offset: round(calc(var(--title-size) * 0.0382), 1px);
 
     align-content: center;
     align-items: center;
     column-gap: var(--space-6);
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
+    /* The title's row is a control tall whether or not there is a control in it.
+       Trimmed, the title is 20.86px, so a page with actions would otherwise sit
+       6.57px further from its description than a page without them - the rhythm
+       would depend on what the slot happens to hold. `minmax` rather than a fixed
+       height: a taller slot still grows the row, and everything in it still
+       centres. */
+    grid-template-rows: minmax(var(--control-height-compact), auto) auto;
     min-height: 5.25rem;
     padding: var(--space-2) 0 var(--space-6);
   }
@@ -70,6 +63,12 @@
        title's 34px line box. */
     line-height: round(1.2em, 1px);
     margin: 0;
+    /* The title's box IS its band, which is what lets the slot beside it centre
+       natively. There used to be a measured `translateY(round(0.0382em, 1px))`
+       on that slot instead, correcting for the room a line box keeps under the
+       baseline that the capitals never use. Trimmed, there is nothing to
+       correct. */
+    text-box: trim-both cap alphabetic;
   }
 
   p {
@@ -81,8 +80,13 @@
        the half pixel pushed the toolbar row under this line off the device
        grid. */
     line-height: round(1.5em, 1px);
-    margin: var(--space-2) 0 0;
+    /* Baseline to cap line, now that both boxes are their bands and the title's
+       row is a control tall: 18.57px, the gap the approved design measures. The
+       number written here is the whole gap, rather than the number plus whatever
+       leading the two fonts happened to carry. */
+    margin: var(--space-3) 0 0;
     max-width: 52rem;
+    text-box: trim-both cap alphabetic;
     text-wrap: balance;
   }
 
@@ -98,11 +102,6 @@
     grid-column: 2;
     grid-row: 1;
     justify-self: end;
-    /* Down onto the letters' optical centre. A transform, not a margin: a
-       margin would grow the title's row whenever the control is taller than the
-       title line (a 34px segmented control does, a 24px pill does not), which
-       would drag the title itself and every gap with it. */
-    transform: translateY(var(--title-ink-offset));
   }
 
   @media (max-width: 36rem) {
