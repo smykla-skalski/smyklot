@@ -35,6 +35,10 @@ interface Measured {
   widest: { right: number; element: string; text: string } | null;
   /** Controls the page renders and a thumb cannot land on. */
   unreachable: string[];
+  /** Column-heading filters that are on the page but hidden at this width. */
+  hiddenFilters: number;
+  /** Filters the reader can actually open here, from a heading or from the tools menu. */
+  reachableFilters: number;
 }
 
 /** The bar's controls, measured by what a thumb can hit rather than what is painted. */
@@ -205,11 +209,29 @@ async function measure(path: string, width: number): Promise<Measured> {
         );
       }
 
+      /* Filtering that went away rather than being crushed. The sweep above
+         cannot see this: it skips anything failing `checkVisibility`, and a
+         `thead` hidden with `display: none` takes its funnels out of the page
+         entirely - no box to measure, no tab stop to find. The queue shipped
+         that way, offering a search field and nothing else on a phone.
+
+         So the rule is stated as a relation instead of a measurement: where a
+         column heading's filter is on the page but hidden, something else on
+         the page has to filter. `TableToolsMenu` is what answers it. */
+      const hiddenFilters = [...document.querySelectorAll('.filter-trigger')].filter(
+        (control) => !control.checkVisibility(),
+      ).length;
+      const reachableFilters = [
+        ...document.querySelectorAll('.filter-trigger, .tools-trigger'),
+      ].filter((control) => control.checkVisibility()).length;
+
       return {
         layoutViewport: window.innerWidth,
         heading: document.querySelector('h1, h2')?.textContent?.trim() ?? null,
         widest,
         unreachable: [...new Set(unreachable)],
+        hiddenFilters,
+        reachableFilters,
       };
     }, width);
   } finally {
@@ -354,6 +376,21 @@ describe('every page on a phone', () => {
       result.unreachable,
       `${key} renders controls a thumb cannot land on:\n  ${result.unreachable.join('\n  ')}`,
     ).toEqual([]);
+  });
+
+  /* Hiding the heading band is how every table here becomes a stack of cards, and
+     it is the right move - but the funnels live in that band, and a page that
+     hides them without putting them anywhere else has quietly dropped a feature
+     on the readers least able to work around it. */
+  it.each(cases)('still offers a way to filter %s', (key) => {
+    const result = measured.get(key);
+    if (result === undefined) throw new Error(`${key} was never measured`);
+    if (result.hiddenFilters === 0) return;
+
+    expect(
+      result.reachableFilters,
+      `${key} hides ${result.hiddenFilters} column filter(s) and offers nothing in their place`,
+    ).toBeGreaterThan(0);
   });
 });
 

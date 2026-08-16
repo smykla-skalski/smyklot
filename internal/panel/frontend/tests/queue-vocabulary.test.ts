@@ -36,20 +36,42 @@ function declaredStates(): string[] {
   return states;
 }
 
-/** The states `queueState` names, read from its own switch rather than restated here. */
+/**
+ * The states `queueState` names, read from its own switch rather than restated here.
+ *
+ * Guarded like `declaredStates`, and for a sharper reason: this one answers a question of the form
+ * "is anything here wrong", so a parse that reads nothing is indistinguishable from a clean result.
+ * Rewriting the switch as a lookup table would silently retire the check - including a rewrite that
+ * put `running` and `unreadable` back.
+ */
 function handledStates(): string[] {
   const source = readFileSync(new URL('../src/lib/queue.ts', import.meta.url), 'utf8');
   const start = source.indexOf('export function queueState');
   const body = source.slice(start, source.indexOf('\n}', start));
-
-  return [...body.matchAll(/case '(?<state>[a-z_]+)':/gu)].map(
+  const states = [...body.matchAll(/case '(?<state>[a-z_]+)':/gu)].map(
     (match) => match.groups?.state ?? '',
   );
+  if (states.length < 4) {
+    throw new Error(
+      `queueState parsed to only ${states.length} cases - if it no longer switches on the state, ` +
+        'this parse needs rewriting rather than deleting',
+    );
+  }
+
+  return states;
 }
 
 function requestWith(state: string): PendingCIRequest {
   return { last_observed_state: state } as PendingCIRequest;
 }
+
+/**
+ * What an unnamed state draws, taken from the code rather than copied out of it.
+ *
+ * Written as a literal, the assertion below rested on a label in the file it was checking: renaming
+ * the default arm's copy disarmed it, and nothing failed.
+ */
+const UNNAMED = queueState(requestWith('a state no service will ever emit')).label;
 
 describe('the queue vocabulary [Unit]', () => {
   const declared = declaredStates();
@@ -60,15 +82,30 @@ describe('the queue vocabulary [Unit]', () => {
     );
   });
 
-  /* The default arm says "Awaiting first check", which is the honest answer for a request with no
-     observation yet - and the wrong one for every state that has a name. */
+  /* The default arm is the honest answer for a request with no observation yet, and the wrong one
+     for every state that has a name. */
   it.each(declaredStates())('draws %s as a state of its own', (state) => {
-    expect(queueState(requestWith(state)).label).not.toBe('Awaiting first check');
+    expect(queueState(requestWith(state)).label).not.toBe(UNNAMED);
   });
 
   it('invents no state the service cannot emit', () => {
     const invented = handledStates().filter((state) => !declared.includes(state));
 
     expect(invented, `handled here but never emitted:\n  ${invented.join('\n  ')}`).toEqual([]);
+  });
+
+  /* The fixture is where the vocabulary is read in practice - it is what the panel is developed and
+     measured against, so a state it seeds that the service cannot send is a view of the product
+     nobody will ever see. One seed already spelled `running`, and was hidden only because its row
+     had finished, which sends the chip down a different function. */
+  it('is the vocabulary the development fixture seeds', () => {
+    const source = readFileSync(new URL('../dev/mock-server.ts', import.meta.url), 'utf8');
+    const seeded = [...source.matchAll(/last_observed_state: '(?<state>[a-z_]*)'/gu)].map(
+      (match) => match.groups?.state ?? '',
+    );
+    if (seeded.length === 0) throw new Error('no pending-CI seeds found in the mock server');
+    const invented = [...new Set(seeded.filter((state) => !declared.includes(state)))];
+
+    expect(invented, `seeded but never emitted:\n  ${invented.join('\n  ')}`).toEqual([]);
   });
 });

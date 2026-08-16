@@ -65,9 +65,14 @@ export function queueNext(request: PendingCIRequest, nowMs: number): QueueNext {
      merge. Nothing in the product said so, and the row that said "next check in 24s" was describing
      the moment the pull request would be merged. */
   if (request.last_observed_state === 'passing' && request.next_check_trigger === 'quiet_period') {
+    /* Zero is its own state, not a countdown that happens to read 0:00. The row clears when the
+       merge's delivery lands, and between the quiet period elapsing and that arriving there is a
+       gap - which the countdown spent sitting at "Merging in 0:00" under the escalation the last
+       five seconds turn on, saying a merge was still coming that had already gone. */
+    const landing = seconds === null || seconds === 0;
     return {
-      lead: seconds === null ? 'Merging' : `Merging in ${formatCountdown(seconds * 1000)}`,
-      sub: 'Quiet period, then it lands',
+      lead: landing ? 'Merging now' : `Merging in ${formatCountdown(seconds * 1000)}`,
+      sub: landing ? 'Waiting for it to land' : 'Quiet period, then it lands',
       merging: true,
       seconds,
     };

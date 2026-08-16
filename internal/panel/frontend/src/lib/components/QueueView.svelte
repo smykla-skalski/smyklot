@@ -25,6 +25,7 @@
   import SearchField from './SearchField.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
   import TableEmptyState from './TableEmptyState.svelte';
+  import TableToolsMenu from './TableToolsMenu.svelte';
 
   type QueueSection = 'waiting' | 'recent';
 
@@ -285,6 +286,35 @@
     value={search}
     onInput={(next) => (search = next)}
   />
+  <!-- The same two filters the headings carry, for the widths where there are no
+       headings to carry them. Below 48rem the table is a stack of cards and the
+       band is hidden, and both menus live inside it - so the page offered a
+       search field and nothing else. Sharing the state rather than a copy of it,
+       and no sorts: the queue is ordered by what happens next, not by a column.
+       -->
+  <TableToolsMenu
+    label="Filter the queue"
+    sorts={[]}
+    filters={[
+      {
+        label: section === 'recent' ? 'Outcome' : 'Checks',
+        hint:
+          section === 'recent' ? 'Select one or more outcomes' : 'Select one or more check states',
+        sections: section === 'recent' ? OUTCOME_FILTERS : STATE_FILTERS,
+        selected: states,
+        multiple: true,
+        onChange: (values) => (states = values),
+      },
+      {
+        label: 'Schedule',
+        hint: 'Select one or more schedules',
+        sections: SCHEDULE_FILTERS,
+        selected: schedules,
+        multiple: true,
+        onChange: (values) => (schedules = values),
+      },
+    ]}
+  />
   <span class="toolbar-spacer"></span>
   <!-- What actually moves this queue along, said once rather than implied by
        every row's timer. The timers are the safety net. -->
@@ -527,6 +557,13 @@
   .queue-toolbar :global(.search-field) {
     flex: none;
     width: 20rem;
+  }
+
+  /* Only where the column headings are not. They carry the same two filters while
+     the table is a table, and two ways to set one value is one way too many - the
+     menu exists because the headings go away, not instead of them. */
+  .queue-toolbar :global(.tools-trigger) {
+    display: none;
   }
 
   .queue-table {
@@ -869,8 +906,15 @@
       display: none;
     }
 
+    /* The search gives up the width the menu needs, rather than the menu dropping
+       to a line of its own beside an empty half. */
     .queue-toolbar :global(.search-field) {
-      width: 100%;
+      flex: 1;
+      width: auto;
+    }
+
+    .queue-toolbar :global(.tools-trigger) {
+      display: inline-flex;
     }
 
     .queue-table {
@@ -882,12 +926,22 @@
       display: none;
     }
 
+    /* Every row, not only `.queue-row`. The empty row left as a `table-row` inside
+       a block tbody gets an anonymous table of its own and shrinks to fit its
+       words, so the card's default state - an idle queue - sat flush left in a
+       box narrower than the card, centring its text in the wrong one. */
     .queue-table,
     .queue-table tbody,
-    .queue-row,
-    .queue-row td {
+    .queue-table tr,
+    .queue-table td {
       display: block;
       width: 100%;
+    }
+
+    .empty-cell {
+      /* `colspan` means nothing once the cells are blocks; the row is the width. */
+      display: flex;
+      justify-content: center;
     }
 
     /* Every column width above is stated against a band that is gone; left

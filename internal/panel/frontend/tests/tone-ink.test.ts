@@ -21,7 +21,19 @@ import { describe, expect, it } from 'vitest';
  */
 
 const stylesheet = new URL('../src/app.css', import.meta.url);
-const components = new URL('../src/lib/components/', import.meta.url);
+/* Every component, wherever it lives. Reading one directory left `src/routes/**` uncovered, and a
+   route page carries a `<style>` block like any other component. */
+const source = new URL('../src/', import.meta.url);
+
+/** Every `.svelte` file under `src`, as `[label, css]` pairs. */
+function componentStyles(): [string, string][] {
+  return readdirSync(source, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.svelte'))
+    .map((entry) => {
+      const path = `${entry.parentPath}/${entry.name}`;
+      return [entry.name, styleOf(readFileSync(path, 'utf8'))] as [string, string];
+    });
+}
 
 /**
  * Colours that are not the palette's to decide, each with the reason it is not.
@@ -34,35 +46,68 @@ const NOT_THEME_COLOUR: Record<string, string> = {
     'the logo artwork is drawn on its own ground, which the mark carries into any palette',
 };
 
-/** Every literal colour written inside a rule body, ignoring custom-property declarations. */
+/**
+ * Every literal colour written inside a rule body, ignoring custom-property declarations.
+ *
+ * `--x: #fff` is the palette and is where a literal belongs; `var(--x)` is a use of one. Telling
+ * them apart needs the position, not the characters: both start `--`, and skipping to the next
+ * semicolon on sight of one swallowed the rest of whatever declaration it appeared in. Everything
+ * after a token in the same value went unread, which is precisely where the next literal will sit -
+ * `color-mix(in srgb, var(--danger) 45%, #ffffff)` is the house idiom.
+ *
+ * So a `--` counts as a declaration only where a declaration can begin: after `{`, `}` or `;`, with
+ * only whitespace and comments in between.
+ */
 function literals(source: string, label: string): string[] {
   const found: string[] = [];
   let depth = 0;
   let index = 0;
+  let atDeclarationStart = true;
 
   while (index < source.length) {
     const character = source[index];
-    if (character === '{') depth += 1;
-    else if (character === '}') depth -= 1;
-    else if (character === '/' && source[index + 1] === '*') {
-      index = source.indexOf('*/', index) + 2;
+
+    if (character === '/' && source[index + 1] === '*') {
+      const close = source.indexOf('*/', index);
+      // An unterminated comment is the rest of the file, and reading on from -1 would restart it.
+      if (close === -1) break;
+      index = close + 2;
       continue;
-    } else if (depth > 0 && character === '-' && source[index + 1] === '-') {
-      // A custom-property declaration: the palette itself, which is where literals belong.
+    }
+
+    if (character === '{' || character === '}' || character === ';') {
+      if (character === '{') depth += 1;
+      if (character === '}') depth -= 1;
+      atDeclarationStart = true;
+      index += 1;
+      continue;
+    }
+
+    if (/\s/u.test(character ?? '')) {
+      index += 1;
+      continue;
+    }
+
+    if (depth > 0 && atDeclarationStart && character === '-' && source[index + 1] === '-') {
       const semicolon = source.indexOf(';', index);
       const brace = source.indexOf('{', index);
       if (semicolon !== -1 && (brace === -1 || semicolon < brace)) {
         index = semicolon + 1;
         continue;
       }
-    } else if (depth > 0 && character === '#') {
+    }
+
+    if (depth > 0 && character === '#') {
       const hex = /^#(?:[\da-f]{3,4}|[\da-f]{6}|[\da-f]{8})\b/iu.exec(source.slice(index));
       if (hex !== null) {
         found.push(`${label} ${hex[0].toLowerCase()}`);
+        atDeclarationStart = false;
         index += hex[0].length;
         continue;
       }
     }
+
+    atDeclarationStart = false;
     index += 1;
   }
 
@@ -76,15 +121,56 @@ function styleOf(source: string): string {
     .join('\n');
 }
 
+/**
+ * The scanner, checked against the shapes it is asked to read.
+ *
+ * A guard that silently reads nothing passes for the same reason a clean codebase does, and this
+ * one did: on sight of `--` it skipped to the next semicolon, so every literal sitting after a
+ * token in the same declaration went unseen. The cases below are the ones that got past it.
+ */
+describe('the colour scan [Unit]', () => {
+  it.each([
+    ['a plain declaration', '.a { color: #ffffff; }', ['x #ffffff']],
+    [
+      'a literal after a token',
+      '.a { border-color: color-mix(in srgb, var(--d) 45%, #ffffff); }',
+      ['x #ffffff'],
+    ],
+    [
+      'a literal in a list after a token',
+      '.a { box-shadow: 0 0 0 1px var(--r), 0 1px 2px #00000033; }',
+      ['x #00000033'],
+    ],
+    [
+      'a literal across lines after a token',
+      '.a {\n  background: linear-gradient(\n    var(--a),\n    #ff0000\n  );\n}',
+      ['x #ff0000'],
+    ],
+    [
+      'two literals in one declaration',
+      '.a { background: linear-gradient(#ff0000, #00ff00); }',
+      ['x #ff0000', 'x #00ff00'],
+    ],
+  ])('reads %s', (_case, css, expected) => {
+    expect(literals(css, 'x')).toEqual(expected);
+  });
+
+  it.each([
+    ['a custom property, which is the palette', ':root { --brand: #ff0000; }'],
+    ['one declared after a comment', ':root { /* the ground */ --brand: #ff0000; }'],
+    ['one declared after another declaration', ':root { --a: #ff0000; --b: #00ff00; }'],
+    ['a selector outside any rule body', '#app { }'],
+    ['a colour inside a comment', '.a { /* was #ff0000 */ color: var(--x); }'],
+  ])('passes over %s', (_case, css) => {
+    expect(literals(css, 'x')).toEqual([]);
+  });
+});
+
 describe('the palette [Unit]', () => {
   it('is the only place a colour is written down', () => {
     const found = [
       ...literals(readFileSync(stylesheet, 'utf8'), 'app.css'),
-      ...readdirSync(components)
-        .filter((file) => file.endsWith('.svelte'))
-        .flatMap((file) =>
-          literals(styleOf(readFileSync(new URL(file, components), 'utf8')), file),
-        ),
+      ...componentStyles().flatMap(([file, css]) => literals(css, file)),
     ];
 
     const unexplained = found.filter((one) => NOT_THEME_COLOUR[one] === undefined);
@@ -100,11 +186,7 @@ describe('the palette [Unit]', () => {
     // that no longer matches anything is removed rather than left standing.
     const found = new Set([
       ...literals(readFileSync(stylesheet, 'utf8'), 'app.css'),
-      ...readdirSync(components)
-        .filter((file) => file.endsWith('.svelte'))
-        .flatMap((file) =>
-          literals(styleOf(readFileSync(new URL(file, components), 'utf8')), file),
-        ),
+      ...componentStyles().flatMap(([file, css]) => literals(css, file)),
     ]);
 
     expect(Object.keys(NOT_THEME_COLOUR).filter((one) => !found.has(one))).toEqual([]);

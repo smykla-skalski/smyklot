@@ -116,35 +116,40 @@
 
   <div class="tools-body">
     <div class="tools-scroll">
-      <div class="tools-group" role="group" aria-label="Sort">
-        <p class="tools-label">Sort by</p>
-        {#each sorts as sort (sort.label)}
-          <button
-            type="button"
-            class="tools-option"
-            class:selected={sort.direction !== undefined}
-            aria-pressed={sort.direction !== undefined}
-            onclick={sort.onToggle}
-          >
-            <span class="selection-mark" aria-hidden="true">
-              {#if sort.direction !== undefined}<span></span>{/if}
-            </span>
-            <span class="option-copy">
-              <strong>{sort.label}</strong>
-              {#if sort.direction !== undefined}
-                <span>{sort.direction === 'ascending' ? 'Ascending' : 'Descending'}</span>
-              {/if}
-            </span>
-            {#if sort.direction !== undefined}
-              <!-- The arrow says which way, and the press flips it. Rotated rather
-                 than a second glyph, so the two directions are one shape. -->
-              <span class:descending={sort.direction === 'descending'} class="sort-arrow">
-                <Icon name="chevron-up" size={14} />
+      <!-- A table whose rows carry their own order - the queue is sorted by what
+           happens next - passes no sorts, and an empty group would announce a
+           heading with nothing under it. -->
+      {#if sorts.length > 0}
+        <div class="tools-group" role="group" aria-label="Sort">
+          <p class="tools-label">Sort by</p>
+          {#each sorts as sort (sort.label)}
+            <button
+              type="button"
+              class="tools-option"
+              class:selected={sort.direction !== undefined}
+              aria-pressed={sort.direction !== undefined}
+              onclick={sort.onToggle}
+            >
+              <span class="selection-mark" aria-hidden="true">
+                {#if sort.direction !== undefined}<span></span>{/if}
               </span>
-            {/if}
-          </button>
-        {/each}
-      </div>
+              <span class="option-copy">
+                <strong>{sort.label}</strong>
+                {#if sort.direction !== undefined}
+                  <span>{sort.direction === 'ascending' ? 'Ascending' : 'Descending'}</span>
+                {/if}
+              </span>
+              {#if sort.direction !== undefined}
+                <!-- The arrow says which way, and the press flips it. Rotated rather
+                 than a second glyph, so the two directions are one shape. -->
+                <span class:descending={sort.direction === 'descending'} class="sort-arrow">
+                  <Icon name="chevron-up" size={14} />
+                </span>
+              {/if}
+            </button>
+          {/each}
+        </div>
+      {/if}
 
       {#each filters as filter (filter.label)}
         <div

@@ -36,6 +36,7 @@
   import RootInvitations from './RootInvitations.svelte';
   import RootPageHeader from './RootPageHeader.svelte';
   import SearchField from './SearchField.svelte';
+  import TableToolsMenu from './TableToolsMenu.svelte';
   import NavigationTabs from './NavigationTabs.svelte';
   import TableEmptyState from './TableEmptyState.svelte';
 
@@ -521,6 +522,31 @@
         placeholder="Search users"
         value={search}
         onInput={(value) => (search = value)}
+      />
+      <!-- Both filters live in column headings, and the heading band is hidden
+           once this table becomes a stack of cards. Without this the page
+           offered a search field and nothing else. -->
+      <TableToolsMenu
+        label="Filter Root users"
+        sorts={[]}
+        filters={[
+          {
+            label: 'System role',
+            hint: 'Filter application-level privileges',
+            sections: ROLE_FILTERS,
+            selected: systemRoles,
+            multiple: true,
+            onChange: selectRoles,
+          },
+          {
+            label: 'Status',
+            hint: 'Filter account lifecycle state',
+            sections: STATUS_FILTERS,
+            selected: statuses,
+            multiple: true,
+            onChange: selectStatuses,
+          },
+        ]}
       />
     </div>
 
@@ -1360,7 +1386,17 @@
     }
   }
 
+  /* Only where the column headings are not: they carry the same two filters while
+     the table is a table. */
+  .access-toolbar :global(.tools-trigger) {
+    display: none;
+  }
+
   @media (max-width: 64rem) {
+    .access-toolbar :global(.tools-trigger) {
+      display: inline-flex;
+    }
+
     table {
       min-width: 0;
     }

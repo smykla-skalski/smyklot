@@ -2521,7 +2521,7 @@ function pendingCISeeds(iso: (offsetMs: number) => string): PendingCIRequest[] {
       schedule: 'active',
       next_check_at: iso(-4 * 3_600_000),
       next_check_trigger: 'manual',
-      last_observed_state: 'running',
+      last_observed_state: 'pending',
       reason: 'Head commit changed after the command',
       requested_at: iso(-5 * 3_600_000),
       updated_at: iso(-4 * 3_600_000),

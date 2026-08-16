@@ -24,6 +24,7 @@
   import Modal from './Modal.svelte';
   import ResultProblem from './ResultProblem.svelte';
   import SearchField from './SearchField.svelte';
+  import TableToolsMenu from './TableToolsMenu.svelte';
   import TableEmptyState from './TableEmptyState.svelte';
 
   type SortColumn = 'name' | 'created' | 'expiry';
@@ -364,6 +365,23 @@
       placeholder="Search invitations"
       value={search}
       onInput={(value) => (search = value)}
+    />
+    <!-- The status filter lives in a column heading, and the heading band is
+         hidden once this table becomes a stack of cards. Without this the page
+         offered a search field and nothing else. -->
+    <TableToolsMenu
+      label="Filter invitations"
+      sorts={[]}
+      filters={[
+        {
+          label: 'Status',
+          hint: 'Filter invitation lifecycle',
+          sections: STATUS_FILTERS,
+          selected: statuses,
+          multiple: true,
+          onChange: selectStatuses,
+        },
+      ]}
     />
   </div>
 
@@ -1003,7 +1021,17 @@
     }
   }
 
+  /* Only where the column headings are not: the Status heading carries the same
+     filter while the table is a table. */
+  .invitation-tools :global(.tools-trigger) {
+    display: none;
+  }
+
   @media (max-width: 64rem) {
+    .invitation-tools :global(.tools-trigger) {
+      display: inline-flex;
+    }
+
     .invitation-tools {
       grid-template-columns: 1fr;
     }
