@@ -1,0 +1,554 @@
+package storagetest
+
+import (
+	"context"
+	"errors"
+	"time"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
+	"github.com/smykla-skalski/smyklot/internal/orgsync"
+	"github.com/smykla-skalski/smyklot/internal/storage"
+)
+
+// declareOrgSyncSpecs covers what org sync needs from a database, on both
+// engines. The invariants below are ones a second engine could plausibly fail
+// on its own: a partial unique index, a read-then-write that has to hold under
+// a connection pool, and an invalidation that has to share its transaction.
+func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Time)) {
+	const (
+		target = "github:installation:100"
+		repoA  = "github:repository:1"
+		repoB  = "github:repository:2"
+	)
+
+	// seed puts one installation with two repositories behind the port, which
+	// is what every sync row references.
+	seed := func(ctx context.Context, store storage.Store, now time.Time) storage.Account {
+		GinkgoHelper()
+
+		account := testAccount(now)
+		Expect(store.UpsertAccount(ctx, account)).To(Succeed())
+		Expect(store.ReconcileCatalog(ctx, []storage.InstallationSnapshot{
+			testInstallation(account, now, []storage.RepositorySnapshot{
+				testRepository(repoA, "smykla-skalski/one", false),
+				testRepository(repoB, "smykla-skalski/two", false),
+			}),
+		})).To(Succeed())
+
+		return account
+	}
+
+	writeConfig := func(
+		ctx context.Context, store storage.Store, actor string, now time.Time,
+		document string, revision int64,
+	) orgsync.Config {
+		GinkgoHelper()
+
+		config, err := store.SetSyncConfig(ctx, orgsync.ConfigChange{
+			TargetID: target, Kind: orgsync.KindLabels, Enabled: true,
+			Document: []byte(document), ActorID: actor, Now: now, Revision: revision,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		return config
+	}
+
+	planFor := func(
+		ctx context.Context, store storage.Store, id, actor, digest string, now time.Time,
+		actions []orgsync.Action,
+	) orgsync.Plan {
+		GinkgoHelper()
+
+		plan, err := store.CreateSyncPlan(ctx, orgsync.PlanCreate{
+			ID: id, TargetID: target, Trigger: orgsync.TriggerManual, ActorID: actor,
+			Digest: digest, Actions: actions, Now: now, ExpiresAt: now.Add(time.Hour),
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		return plan
+	}
+
+	action := func(repo string, operation orgsync.Operation, subject string) orgsync.Action {
+		return orgsync.Action{
+			RepositoryID: repo, Kind: orgsync.KindLabels,
+			Operation: operation, Subject: subject, After: subject,
+		}
+	}
+
+	It("keeps a configuration, its fingerprint and its revision", func() {
+		ctx, store, now := runtime()
+		account := seed(ctx, store, now)
+
+		written := writeConfig(ctx, store, account.ID, now, `{"labels":[]}`, 0)
+		Expect(written.Revision).To(Equal(int64(1)))
+		Expect(written.Digest).To(Equal(orgsync.DigestConfig(true, []byte(`{"labels":[]}`))))
+
+		read, err := store.GetSyncConfig(ctx, target, orgsync.KindLabels)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(read.Digest).To(Equal(written.Digest))
+
+		// Byte for byte, on either engine. The fingerprint is taken from what
+		// somebody saved, and a copy between engines moves the document and the
+		// fingerprint independently - so a column that re-rendered its contents
+		// would hand back a document its own fingerprint no longer describes.
+		// PostgreSQL's JSONB does exactly that, which is why this column is not
+		// one.
+		Expect(string(read.Document)).To(Equal(`{"labels":[]}`))
+		Expect(read.Enabled).To(BeTrue())
+		Expect(read.UpdatedBy).To(Equal(account.ID))
+		Expect(read.UpdatedAt).To(BeTemporally("==", now))
+
+		listed, err := store.ListSyncConfigs(ctx, target)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(listed).To(HaveLen(1))
+	})
+
+	// A kind nobody has configured is not a kind configured and switched off,
+	// and the fingerprint has to tell those apart
+	It("reports a kind nobody has configured as absent", func() {
+		ctx, store, now := runtime()
+		seed(ctx, store, now)
+
+		_, err := store.GetSyncConfig(ctx, target, orgsync.KindSettings)
+		Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
+	})
+
+	// Two people editing the same label set from two tabs is the ordinary
+	// case, and the one who saved second should be told rather than win
+	It("refuses a write against a revision that has moved", func() {
+		ctx, store, now := runtime()
+		account := seed(ctx, store, now)
+		writeConfig(ctx, store, account.ID, now, `{"labels":[]}`, 0)
+
+		_, err := store.SetSyncConfig(ctx, orgsync.ConfigChange{
+			TargetID: target, Kind: orgsync.KindLabels, Enabled: true,
+			Document: []byte(`{"labels":[{}]}`), ActorID: account.ID, Now: now, Revision: 0,
+		})
+		Expect(errors.Is(err, storage.ErrConflict)).To(BeTrue())
+	})
+
+	Describe("repository overrides", func() {
+		It("keeps a repository's own answer, and tells it from inheriting", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			no := false
+
+			written, err := store.SetSyncRepositoryOverride(
+				ctx, orgsync.RepositoryOverrideChange{
+					RepositoryID: repoA, Kind: orgsync.KindLabels, Enabled: &no,
+					ActorID: account.ID, Now: now,
+				})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(written.Enabled).To(HaveValue(BeFalse()))
+
+			listed, err := store.ListSyncRepositoryOverrides(ctx, target)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(listed).To(HaveLen(1))
+			Expect(listed[0].RepositoryID).To(Equal(repoA))
+			Expect(listed[0].Enabled).To(HaveValue(BeFalse()))
+
+			// Cleared back to inheriting, which is a third state and not the
+			// same as saying no
+			cleared, err := store.SetSyncRepositoryOverride(
+				ctx, orgsync.RepositoryOverrideChange{
+					RepositoryID: repoA, Kind: orgsync.KindLabels, Enabled: nil,
+					ActorID: account.ID, Now: now, Revision: written.Revision,
+				})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cleared.Enabled).To(BeNil())
+
+			listed, err = store.ListSyncRepositoryOverrides(ctx, target)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(listed[0].Enabled).To(BeNil())
+		})
+
+		It("refuses an override for a repository nothing knows about", func() {
+			ctx, store, now := runtime()
+			seed(ctx, store, now)
+			yes := true
+
+			_, err := store.SetSyncRepositoryOverride(
+				ctx, orgsync.RepositoryOverrideChange{
+					RepositoryID: "github:repository:404", Kind: orgsync.KindLabels,
+					Enabled: &yes, ActorID: testAccount(now).ID, Now: now,
+				})
+			Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
+		})
+	})
+
+	Describe("plans", func() {
+		It("records a plan with its actions and counts", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+
+			plan := planFor(ctx, store, "plan-1", account.ID, "digest-1", now, []orgsync.Action{
+				action(repoA, orgsync.OperationCreate, "bug"),
+				action(repoA, orgsync.OperationUpdate, "chore"),
+				action(repoB, orgsync.OperationDelete, "wontfix"),
+			})
+
+			Expect(plan.Counts).To(Equal(orgsync.Counts{Create: 1, Update: 1, Delete: 1}))
+			Expect(plan.State).To(Equal(orgsync.PlanComputed))
+
+			read, actions, err := store.GetSyncPlan(ctx, plan.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(read.Counts).To(Equal(plan.Counts))
+			Expect(read.ComputedAt).To(BeTemporally("==", now))
+			Expect(actions).To(HaveLen(3))
+			Expect(actions[0].State).To(Equal(orgsync.ActionPending))
+			Expect(actions[0].RepositoryID).To(Equal(repoA))
+
+			live, _, err := store.GetLiveSyncPlan(ctx, target)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(live.ID).To(Equal(plan.ID))
+		})
+
+		// The partial unique index makes this a fact the database holds rather
+		// than a convention its callers keep, so the reconcile loop cannot race
+		// the panel and pressing "sync now" twice is idempotent
+		It("allows one live plan per installation", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			planFor(ctx, store, "plan-1", account.ID, "digest-1", now, nil)
+
+			_, err := store.CreateSyncPlan(ctx, orgsync.PlanCreate{
+				ID: "plan-2", TargetID: target, Trigger: orgsync.TriggerReconcile,
+				ActorID: account.ID, Digest: "digest-1", Now: now,
+				ExpiresAt: now.Add(time.Hour),
+			})
+			Expect(errors.Is(err, storage.ErrConflict)).To(BeTrue())
+		})
+
+		It("frees the slot once a plan is finished", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			planFor(ctx, store, "plan-1", account.ID, "digest-1", now, nil)
+
+			Expect(store.FinishSyncPlan(ctx, orgsync.PlanOutcome{
+				PlanID: "plan-1", State: orgsync.PlanApplied, Now: now,
+			})).To(Succeed())
+
+			planFor(ctx, store, "plan-2", account.ID, "digest-1", now, nil)
+		})
+
+		It("approves a plan whose fingerprint still matches", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			planFor(ctx, store, "plan-1", account.ID, "digest-1", now, nil)
+
+			approved, err := store.ApproveSyncPlan(ctx, orgsync.PlanApproval{
+				PlanID: "plan-1", Digest: "digest-1", ActorID: account.ID, Now: now,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(approved.State).To(Equal(orgsync.PlanApproved))
+			Expect(approved.ApprovedAt).To(HaveValue(BeTemporally("==", now)))
+		})
+
+		// The fingerprint is the only thing standing between what somebody
+		// read and what runs
+		It("refuses an approval carrying a fingerprint that has moved", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			planFor(ctx, store, "plan-1", account.ID, "digest-1", now, nil)
+
+			_, err := store.ApproveSyncPlan(ctx, orgsync.PlanApproval{
+				PlanID: "plan-1", Digest: "digest-stale", ActorID: account.ID, Now: now,
+			})
+			Expect(errors.Is(err, orgsync.ErrStalePlan)).To(BeTrue())
+		})
+
+		// Checked in the approval itself rather than left to the sweeper, so
+		// correctness never depends on the sweeper having run
+		It("refuses an approval of a plan that outlived its window", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			planFor(ctx, store, "plan-1", account.ID, "digest-1", now, nil)
+
+			_, err := store.ApproveSyncPlan(ctx, orgsync.PlanApproval{
+				PlanID: "plan-1", Digest: "digest-1", ActorID: account.ID,
+				Now: now.Add(2 * time.Hour),
+			})
+			Expect(errors.Is(err, orgsync.ErrStalePlan)).To(BeTrue())
+		})
+
+		It("retires a plan nobody acted on, and frees the slot", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			planFor(ctx, store, "plan-1", account.ID, "digest-1", now, nil)
+
+			Expect(store.ExpireSyncPlans(ctx, now.Add(2*time.Hour))).To(Succeed())
+
+			read, _, err := store.GetSyncPlan(ctx, "plan-1")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(read.State).To(Equal(orgsync.PlanExpired))
+
+			_, _, err = store.GetLiveSyncPlan(ctx, target)
+			Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
+		})
+
+		// A plan an executor holds is not abandoned because its expiry passed.
+		// It is being applied, and its lease is what says whether that is true
+		It("leaves a plan being applied alone when its expiry passes", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			planFor(ctx, store, "plan-1", account.ID, "digest-1", now, nil)
+			_, err := store.ApproveSyncPlan(ctx, orgsync.PlanApproval{
+				PlanID: "plan-1", Digest: "digest-1", ActorID: account.ID, Now: now,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			_, err = store.LeaseSyncPlan(ctx, now, now.Add(time.Minute))
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(store.ExpireSyncPlans(ctx, now.Add(2*time.Hour))).To(Succeed())
+
+			read, _, err := store.GetSyncPlan(ctx, "plan-1")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(read.State).To(Equal(orgsync.PlanApplying))
+		})
+	})
+
+	Describe("invalidation", func() {
+		// Saving a label colour while a plan is on screen has to invalidate
+		// that plan in the same transaction, or the plan stays approvable and
+		// applies work nobody agreed to
+		It("marks a live plan stale when the configuration changes", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			config := writeConfig(ctx, store, account.ID, now, `{"labels":[]}`, 0)
+			planFor(ctx, store, "plan-1", account.ID, config.Digest, now, nil)
+
+			writeConfig(ctx, store, account.ID, now.Add(time.Minute),
+				`{"labels":[{"name":"bug"}]}`, config.Revision)
+
+			read, _, err := store.GetSyncPlan(ctx, "plan-1")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(read.State).To(Equal(orgsync.PlanStale))
+
+			// And the slot is free, so the next planner can compute against
+			// what the configuration now says
+			planFor(ctx, store, "plan-2", account.ID, "digest-2", now, nil)
+		})
+
+		// Turning a kind off for one repository removes its actions just as
+		// surely as deleting a label does
+		It("marks a live plan stale when a repository override changes", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			planFor(ctx, store, "plan-1", account.ID, "digest-1", now, nil)
+			no := false
+
+			_, err := store.SetSyncRepositoryOverride(ctx, orgsync.RepositoryOverrideChange{
+				RepositoryID: repoA, Kind: orgsync.KindLabels, Enabled: &no,
+				ActorID: account.ID, Now: now,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			read, _, err := store.GetSyncPlan(ctx, "plan-1")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(read.State).To(Equal(orgsync.PlanStale))
+		})
+	})
+
+	Describe("applying", func() {
+		leaseOne := func(
+			ctx context.Context, store storage.Store, account string, now time.Time,
+			actions []orgsync.Action,
+		) orgsync.PlanLease {
+			GinkgoHelper()
+
+			planFor(ctx, store, "plan-1", account, "digest-1", now, actions)
+			_, err := store.ApproveSyncPlan(ctx, orgsync.PlanApproval{
+				PlanID: "plan-1", Digest: "digest-1", ActorID: account, Now: now,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			lease, err := store.LeaseSyncPlan(ctx, now, now.Add(time.Minute))
+			Expect(err).NotTo(HaveOccurred())
+
+			return lease
+		}
+
+		It("leases an approved plan with the work still to do", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+
+			lease := leaseOne(ctx, store, account.ID, now, []orgsync.Action{
+				action(repoA, orgsync.OperationCreate, "bug"),
+			})
+
+			Expect(lease.Found).To(BeTrue())
+			Expect(lease.Plan.State).To(Equal(orgsync.PlanApplying))
+			Expect(lease.Plan.Attempt).To(Equal(1))
+			Expect(lease.Actions).To(HaveLen(1))
+			Expect(lease.Actions[0].Subject).To(Equal("bug"))
+		})
+
+		// Nothing due is the ordinary answer on most ticks, not a failure
+		It("reports nothing due without an error", func() {
+			ctx, store, now := runtime()
+			seed(ctx, store, now)
+
+			lease, err := store.LeaseSyncPlan(ctx, now, now.Add(time.Minute))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(lease.Found).To(BeFalse())
+		})
+
+		// An executor that dies leaves work whose lease runs out, rather than a
+		// plan stuck in applying for as long as nobody notices
+		It("offers a plan again once its lease runs out", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			leaseOne(ctx, store, account.ID, now, nil)
+
+			again, err := store.LeaseSyncPlan(ctx, now.Add(time.Minute), now.Add(2*time.Minute))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(again.Found).To(BeTrue())
+			Expect(again.Plan.Attempt).To(Equal(2))
+		})
+
+		It("does not offer a plan whose lease is still held", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			leaseOne(ctx, store, account.ID, now, nil)
+
+			again, err := store.LeaseSyncPlan(ctx, now.Add(time.Second), now.Add(time.Minute))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(again.Found).To(BeFalse())
+		})
+
+		It("records what became of each action, and skips name the blocker", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			lease := leaseOne(ctx, store, account.ID, now, []orgsync.Action{
+				action(repoA, orgsync.OperationCreate, "bug"),
+				action(repoA, orgsync.OperationCreate, "chore"),
+			})
+
+			Expect(store.RecordSyncActionOutcome(ctx, orgsync.ActionOutcome{
+				ActionID: lease.Actions[0].ID, State: orgsync.ActionFailed,
+				Error: "422 invalid color",
+			})).To(Succeed())
+			Expect(store.RecordSyncActionOutcome(ctx, orgsync.ActionOutcome{
+				ActionID: lease.Actions[1].ID, State: orgsync.ActionSkipped,
+				Blocker: orgsync.KindLabels,
+			})).To(Succeed())
+
+			_, actions, err := store.GetSyncPlan(ctx, "plan-1")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(actions[0].State).To(Equal(orgsync.ActionFailed))
+			Expect(actions[0].Error).To(Equal("422 invalid color"))
+			Expect(actions[1].State).To(Equal(orgsync.ActionSkipped))
+			Expect(actions[1].Blocker).To(Equal(orgsync.KindLabels))
+		})
+
+		// A second lease must not re-offer work the first one finished
+		It("leases only the work still pending", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			lease := leaseOne(ctx, store, account.ID, now, []orgsync.Action{
+				action(repoA, orgsync.OperationCreate, "bug"),
+				action(repoA, orgsync.OperationCreate, "chore"),
+			})
+			Expect(store.RecordSyncActionOutcome(ctx, orgsync.ActionOutcome{
+				ActionID: lease.Actions[0].ID, State: orgsync.ActionApplied,
+			})).To(Succeed())
+
+			again, err := store.LeaseSyncPlan(ctx, now.Add(time.Minute), now.Add(2*time.Minute))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(again.Actions).To(HaveLen(1))
+			Expect(again.Actions[0].Subject).To(Equal("chore"))
+		})
+
+		// The digests are what the next reconcile trusts, so they are written
+		// with the plan's own state rather than beside it
+		It("records what a repository now has when the plan finishes", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			leaseOne(ctx, store, account.ID, now, nil)
+
+			Expect(store.FinishSyncPlan(ctx, orgsync.PlanOutcome{
+				PlanID: "plan-1", State: orgsync.PlanApplied, Now: now,
+				Applied: []orgsync.RepositoryState{{
+					RepositoryID: repoA, Kind: orgsync.KindLabels,
+					AppliedDigest: "digest-1", AppliedAt: now,
+				}},
+			})).To(Succeed())
+
+			state, err := store.ListSyncRepositoryState(ctx, target)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(state).To(HaveLen(1))
+			Expect(state[0].RepositoryID).To(Equal(repoA))
+			Expect(state[0].AppliedDigest).To(Equal("digest-1"))
+			Expect(state[0].AppliedAt).To(BeTemporally("==", now))
+		})
+
+		It("replaces what a repository had rather than adding beside it", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			leaseOne(ctx, store, account.ID, now, nil)
+			applied := []orgsync.RepositoryState{{
+				RepositoryID: repoA, Kind: orgsync.KindLabels,
+				AppliedDigest: "digest-1", AppliedAt: now,
+			}}
+			Expect(store.FinishSyncPlan(ctx, orgsync.PlanOutcome{
+				PlanID: "plan-1", State: orgsync.PlanApplied, Now: now, Applied: applied,
+			})).To(Succeed())
+
+			later := now.Add(time.Hour)
+			planFor(ctx, store, "plan-2", account.ID, "digest-2", later, nil)
+			applied[0].AppliedDigest = "digest-2"
+			applied[0].AppliedAt = later
+			Expect(store.FinishSyncPlan(ctx, orgsync.PlanOutcome{
+				PlanID: "plan-2", State: orgsync.PlanApplied, Now: later, Applied: applied,
+			})).To(Succeed())
+
+			state, err := store.ListSyncRepositoryState(ctx, target)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(state).To(HaveLen(1))
+			Expect(state[0].AppliedDigest).To(Equal("digest-2"))
+		})
+	})
+
+	Describe("refusals", func() {
+		DescribeTable("refuses a plan that could not be applied safely",
+			func(mutate func(*orgsync.PlanCreate)) {
+				ctx, store, now := runtime()
+				account := seed(ctx, store, now)
+
+				create := orgsync.PlanCreate{
+					ID: "plan-1", TargetID: target, Trigger: orgsync.TriggerManual,
+					ActorID: account.ID, Digest: "digest-1", Now: now,
+					ExpiresAt: now.Add(time.Hour),
+				}
+				mutate(&create)
+
+				_, err := store.CreateSyncPlan(ctx, create)
+				Expect(errors.Is(err, orgsync.ErrInvalidPlan)).To(BeTrue())
+			},
+			// A plan with no fingerprint could never be approved safely: there
+			// would be nothing for the browser's copy to be checked against
+			Entry("without a fingerprint", func(c *orgsync.PlanCreate) { c.Digest = "" }),
+			Entry("without an actor", func(c *orgsync.PlanCreate) { c.ActorID = "" }),
+			Entry("without an expiry", func(c *orgsync.PlanCreate) { c.ExpiresAt = time.Time{} }),
+			Entry("with an unknown trigger", func(c *orgsync.PlanCreate) { c.Trigger = "cron" }),
+			Entry("with an action naming no kind", func(c *orgsync.PlanCreate) {
+				c.Actions = []orgsync.Action{{RepositoryID: repoA, Subject: "bug"}}
+			}),
+			Entry("with an action naming no subject", func(c *orgsync.PlanCreate) {
+				c.Actions = []orgsync.Action{{RepositoryID: repoA, Kind: orgsync.KindLabels}}
+			}),
+		)
+
+		It("refuses a configuration for a kind it does not know", func() {
+			ctx, store, now := runtime()
+			seed(ctx, store, now)
+
+			_, err := store.SetSyncConfig(ctx, orgsync.ConfigChange{
+				TargetID: target, Kind: "workflows", ActorID: testAccount(now).ID, Now: now,
+			})
+			Expect(err).To(HaveOccurred())
+		})
+	})
+}

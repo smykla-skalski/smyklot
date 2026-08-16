@@ -6,6 +6,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 )
 
@@ -126,6 +127,7 @@ type Store interface {
 	SecurityStore
 	PreferenceStore
 	pendingci.Store
+	orgsync.Store
 
 	Ping(context.Context) error
 

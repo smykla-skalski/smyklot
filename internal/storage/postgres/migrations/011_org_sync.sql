@@ -5,7 +5,17 @@ CREATE TABLE sync_configs (
     target_id TEXT NOT NULL REFERENCES targets(id) ON DELETE CASCADE,
     kind TEXT NOT NULL CHECK (kind IN ('labels', 'settings', 'rulesets', 'files')),
     enabled BOOLEAN NOT NULL DEFAULT FALSE,
-    document JSONB NOT NULL DEFAULT '{}',
+    -- TEXT rather than JSONB, unlike config_patch beside it.
+    --
+    -- JSONB stores a parsed document and re-renders it on the way out, so
+    -- {"labels":[]} comes back as {"labels": []}. The digest beside this column
+    -- is taken from the bytes somebody saved, and a copy between engines moves
+    -- the two columns independently - so a document normalised on arrival and a
+    -- digest carried across verbatim would disagree the moment they landed.
+    --
+    -- Nothing queries into this. It is read whole, decoded by the kind that
+    -- owns it, and an index over it later can cast on the way in.
+    document TEXT NOT NULL DEFAULT '{}',
     digest TEXT NOT NULL,
     revision BIGINT NOT NULL DEFAULT 1,
     updated_by TEXT NOT NULL REFERENCES accounts(id),

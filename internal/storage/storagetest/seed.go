@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/config"
@@ -58,6 +59,11 @@ func SeededTables() []string {
 		"user_invitations",
 		"runtime_settings",
 		"user_preferences",
+		"sync_configs",
+		"sync_repository_overrides",
+		"sync_repository_state",
+		"sync_plans",
+		"sync_plan_actions",
 	}
 }
 
@@ -93,6 +99,7 @@ func (s *seeder) run() error {
 		{"preferences", s.seedPreferences},
 		{"delivery", s.seedDelivery},
 		{"pending CI", s.seedPendingCI},
+		{"org sync", s.seedOrgSync},
 	}
 
 	for _, step := range steps {
@@ -391,6 +398,97 @@ func (s *seeder) seedPendingCI() error {
 	})
 
 	return err
+}
+
+// seedOrgSync fills every sync table with a row nothing else would produce.
+//
+// A finished plan and a live one, because the two exercise different columns:
+// the finished one carries approval, lease and outcome timestamps and an
+// applied digest, and the live one holds the installation's single live slot.
+// A copy compared row by row proves nothing about a column left at its default
+// on both sides.
+func (s *seeder) seedOrgSync() error {
+	document := []byte(`{"labels":[{"name":"seeded","color":"d73a4a"}]}`)
+
+	config, err := s.store.SetSyncConfig(s.ctx, orgsync.ConfigChange{
+		TargetID: s.target.TargetID, Kind: orgsync.KindLabels, Enabled: true,
+		Document: document, ActorID: s.owner.ID, Now: s.now,
+	})
+	if err != nil {
+		return err
+	}
+
+	disabled := false
+	if _, err := s.store.SetSyncRepositoryOverride(
+		s.ctx, orgsync.RepositoryOverrideChange{
+			RepositoryID: "repo-2", Kind: orgsync.KindLabels, Enabled: &disabled,
+			ActorID: s.owner.ID, Now: s.now,
+		}); err != nil {
+		return err
+	}
+
+	if err := s.seedFinishedSyncPlan(config.Digest); err != nil {
+		return err
+	}
+
+	// The live one is created last so it is the one holding the slot.
+	_, err = s.store.CreateSyncPlan(s.ctx, orgsync.PlanCreate{
+		ID: "sync-plan-live", TargetID: s.target.TargetID,
+		Trigger: orgsync.TriggerReconcile, ActorID: s.owner.ID,
+		Digest: config.Digest, Now: s.now.Add(time.Minute),
+		ExpiresAt: s.now.Add(time.Hour),
+		Actions: []orgsync.Action{{
+			RepositoryID: "repo-1", Kind: orgsync.KindLabels,
+			Operation: orgsync.OperationUpdate, Subject: "seeded",
+			Before: "seeded #000000", After: "seeded #d73a4a",
+		}},
+	})
+
+	return err
+}
+
+// seedFinishedSyncPlan leaves a plan that has been through every state, so the
+// approval, lease and outcome columns carry values rather than nulls.
+func (s *seeder) seedFinishedSyncPlan(digest string) error {
+	if _, err := s.store.CreateSyncPlan(s.ctx, orgsync.PlanCreate{
+		ID: "sync-plan-done", TargetID: s.target.TargetID,
+		Trigger: orgsync.TriggerManual, ActorID: s.owner.ID, Digest: digest,
+		Now: s.now, ExpiresAt: s.now.Add(time.Hour),
+		Actions: []orgsync.Action{{
+			RepositoryID: "repo-1", Kind: orgsync.KindLabels,
+			Operation: orgsync.OperationCreate, Subject: "seeded",
+			After: "seeded #d73a4a",
+		}},
+	}); err != nil {
+		return err
+	}
+
+	if _, err := s.store.ApproveSyncPlan(s.ctx, orgsync.PlanApproval{
+		PlanID: "sync-plan-done", Digest: digest, ActorID: s.owner.ID, Now: s.now,
+	}); err != nil {
+		return err
+	}
+
+	lease, err := s.store.LeaseSyncPlan(s.ctx, s.now, s.now.Add(time.Minute))
+	if err != nil {
+		return err
+	}
+	for _, action := range lease.Actions {
+		if err := s.store.RecordSyncActionOutcome(s.ctx, orgsync.ActionOutcome{
+			ActionID: action.ID, State: orgsync.ActionApplied,
+		}); err != nil {
+			return err
+		}
+	}
+
+	return s.store.FinishSyncPlan(s.ctx, orgsync.PlanOutcome{
+		PlanID: "sync-plan-done", State: orgsync.PlanApplied,
+		Now: s.now.Add(30 * time.Second),
+		Applied: []orgsync.RepositoryState{{
+			RepositoryID: "repo-1", Kind: orgsync.KindLabels,
+			AppliedDigest: digest, AppliedAt: s.now.Add(30 * time.Second),
+		}},
+	})
 }
 
 // derive makes a second account from the first, so the seeded people differ in
