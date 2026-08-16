@@ -51,6 +51,76 @@ func TestPullRequestServiceReactionLifecycle(t *testing.T) {
 	}
 }
 
+func TestPullRequestServiceReactionRemovalRestartsAfterPageShift(t *testing.T) {
+	t.Parallel()
+	state := &shiftingPullRequestReactionState{}
+	server := httptest.NewServer(state)
+	defer server.Close()
+
+	client, err := github.NewClient("test-token", server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := client.RemovePullRequestReactionByUser(
+		t.Context(), "owner", "repo", 42, "smyklot[bot]",
+		github.ReactionPendingCIService,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if state.firstPageReads != 2 {
+		t.Fatalf("first page reads = %d, want 2", state.firstPageReads)
+	}
+	if state.deleted != "/repos/owner/repo/issues/42/reactions/501" {
+		t.Fatalf("deleted reaction path = %q", state.deleted)
+	}
+}
+
+type shiftingPullRequestReactionState struct {
+	firstPageReads int
+	deleted        string
+}
+
+func (state *shiftingPullRequestReactionState) ServeHTTP(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method == http.MethodDelete {
+		state.deleted = r.URL.Path
+		w.WriteHeader(http.StatusNoContent)
+
+		return
+	}
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	if page == 1 {
+		state.firstPageReads++
+		writeShiftingPullRequestReactionPage(w, state.firstPageReads)
+
+		return
+	}
+	_ = json.NewEncoder(w).Encode([]map[string]any{})
+}
+
+func writeShiftingPullRequestReactionPage(w http.ResponseWriter, scan int) {
+	count := 100
+	if scan > 1 {
+		count = 99
+	}
+	reactions := make([]map[string]any, 0, count+1)
+	for index := range count {
+		reactions = append(reactions, map[string]any{
+			"id": index + 1, "content": "eyes",
+			"user": map[string]any{"login": fmt.Sprintf("reviewer-%d", index)},
+		})
+	}
+	if scan > 1 {
+		reactions = append(reactions, map[string]any{
+			"id": 501, "content": "hooray",
+			"user": map[string]any{"login": "smyklot[bot]"},
+		})
+	}
+	_ = json.NewEncoder(w).Encode(reactions)
+}
+
 type pullRequestReactionState struct {
 	t       *testing.T
 	added   github.ReactionType

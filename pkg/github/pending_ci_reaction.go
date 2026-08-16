@@ -2,10 +2,13 @@ package github
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"net/http"
 )
+
+const pendingCIReactionScanAttempts = 3
 
 // HasPullRequestReaction reports whether one user left a specific reaction on
 // the pull request itself. Unlike a comment reaction, this survives deletion
@@ -57,6 +60,8 @@ func (c *Client) RemovePullRequestReactionByUser(
 				ctx, owner, repo, pullRequest, page,
 			)
 		},
+		username,
+		reactionType,
 		func(raw map[string]interface{}) error {
 			return c.removeMatchingPullRequestReaction(
 				ctx, owner, repo, pullRequest, username, reactionType, raw,
@@ -107,57 +112,102 @@ func (c *Client) removeMatchingPullRequestReaction(
 type pendingCIReactionPager func(int) ([]map[string]interface{}, string, error)
 type pendingCIReactionRemover func(map[string]interface{}) error
 
+type pendingCIReactionScan struct {
+	match       map[string]interface{}
+	fingerprint string
+	pages       int
+	path        string
+}
+
 func findPendingCIReaction(
 	page pendingCIReactionPager,
 	username string,
 	reactionType ReactionType,
 	subject string,
 ) (bool, error) {
+	_, found, err := locatePendingCIReaction(page, username, reactionType, subject)
+
+	return found, err
+}
+
+func locatePendingCIReaction(
+	page pendingCIReactionPager,
+	username string,
+	reactionType ReactionType,
+	subject string,
+) (map[string]interface{}, bool, error) {
+	previous := ""
+	lastPath := ""
+	for attempt := 0; attempt < pendingCIReactionScanAttempts; attempt++ {
+		scan, err := scanPendingCIReactions(page, username, reactionType, subject)
+		if err != nil {
+			return nil, false, err
+		}
+		if scan.match != nil {
+			return scan.match, true, nil
+		}
+		if scan.pages == 1 || previous != "" && scan.fingerprint == previous {
+			return nil, false, nil
+		}
+		previous = scan.fingerprint
+		lastPath = scan.path
+	}
+
+	return nil, false, pendingCIReactionMutationError(subject, lastPath)
+}
+
+func scanPendingCIReactions(
+	page pendingCIReactionPager,
+	username string,
+	reactionType ReactionType,
+	subject string,
+) (pendingCIReactionScan, error) {
+	digest := sha256.New()
 	for number := 1; number <= maxPages; number++ {
 		raw, path, err := page(number)
 		if err != nil {
-			return false, err
+			return pendingCIReactionScan{}, err
 		}
 		for _, reaction := range raw {
 			if pendingCIReactionMatches(reaction, username, reactionType) {
-				return true, nil
+				return pendingCIReactionScan{match: reaction}, nil
 			}
+			encoded, marshalErr := json.Marshal(reaction)
+			if marshalErr != nil {
+				return pendingCIReactionScan{}, fmt.Errorf(
+					"fingerprint %s: %w", subject, marshalErr,
+				)
+			}
+			_, _ = digest.Write(encoded)
+			_, _ = digest.Write([]byte{0})
 		}
 		if len(raw) < pageSize {
-			return false, nil
+			return pendingCIReactionScan{
+				fingerprint: string(digest.Sum(nil)), pages: number, path: path,
+			}, nil
 		}
 		if number == maxPages {
-			return false, pendingCIReactionPaginationError(subject, path, number)
+			return pendingCIReactionScan{},
+				pendingCIReactionPaginationError(subject, path, number)
 		}
 	}
 
-	return false, nil
+	return pendingCIReactionScan{}, nil
 }
 
 func removePendingCIReactions(
 	page pendingCIReactionPager,
+	username string,
+	reactionType ReactionType,
 	remove pendingCIReactionRemover,
 	subject string,
 ) error {
-	for number := 1; number <= maxPages; number++ {
-		raw, path, err := page(number)
-		if err != nil {
-			return err
-		}
-		for _, reaction := range raw {
-			if err := remove(reaction); err != nil {
-				return err
-			}
-		}
-		if len(raw) < pageSize {
-			return nil
-		}
-		if number == maxPages {
-			return pendingCIReactionPaginationError(subject, path, number)
-		}
+	reaction, found, err := locatePendingCIReaction(page, username, reactionType, subject)
+	if err != nil || !found {
+		return err
 	}
 
-	return nil
+	return remove(reaction)
 }
 
 func pendingCIReactionMatches(
@@ -174,6 +224,13 @@ func pendingCIReactionPaginationError(subject, path string, page int) error {
 	return NewAPIError(
 		ErrIncompletePagination, 0, http.MethodGet, path,
 		fmt.Errorf("%s list still has a full page after %d pages", subject, page),
+	)
+}
+
+func pendingCIReactionMutationError(subject, path string) error {
+	return NewAPIError(
+		ErrIncompletePagination, 0, http.MethodGet, path,
+		fmt.Errorf("%s list changed during pagination", subject),
 	)
 }
 
@@ -296,6 +353,8 @@ func (c *Client) removeCommentReactionsByUser(
 		func(page int) ([]map[string]interface{}, string, error) {
 			return c.pendingCIReactionsPage(ctx, owner, repo, commentID, page)
 		},
+		username,
+		reactionType,
 		func(raw map[string]interface{}) error {
 			return c.removeMatchingCommentReaction(
 				ctx, owner, repo, commentID, username, reactionType, raw,
