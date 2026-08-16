@@ -344,9 +344,8 @@ func unavailableForTarget(
 		}
 		seen[action.Kind] = struct{}{}
 
-		permission := action.Kind.RequiredPermission()
-		if permission != "" && !target.Grants(permission) {
-			return orgsync.Unavailable{Kind: action.Kind, Permission: permission}, true
+		if unavailable, missing := orgsync.Unpermitted(target, action.Kind); missing {
+			return unavailable, true
 		}
 	}
 

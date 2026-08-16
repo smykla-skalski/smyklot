@@ -25,8 +25,12 @@ var _ = Describe("Label sync [Unit]", func() {
 
 	BeforeEach(func() {
 		stub = newGitHubStub()
+		// With the permission label sync needs, which GitHub always reports:
+		// the field is required on the installation object, so a listing
+		// without it is a malformed answer rather than a real installation.
 		stub.installations = `[{"id":411,"account":` +
-			`{"id":7,"login":"smykla-skalski","type":"Organization"}}]`
+			`{"id":7,"login":"smykla-skalski","type":"Organization"},` +
+			`"permissions":{"issues":"write"}}]`
 		stub.repos = `{"repositories":[{"id":41,"name":"smyklot",` +
 			`"full_name":"smykla-skalski/smyklot","default_branch":"main",` +
 			`"owner":{"login":"smykla-skalski"}}]}`
@@ -190,8 +194,9 @@ var _ = Describe("Label sync [Unit]", func() {
 				http.MethodGet, "/repos/smykla-skalski/smyklot/labels")).To(BeZero())
 		})
 
-		// Admin is more than write, not something else. Comparing against
-		// "write" alone would stand down an organization that granted more
+		// Not a level GitHub returns for the permissions Smyklot reads, but one
+		// it returns elsewhere - so this is what stops a permission added here
+		// later being read as refused
 		It("plans for an installation that granted admin", func() {
 			target := seed()
 			configure(target, `{"labels":[{"name":"bug","color":"d73a4a"}]}`)
@@ -204,17 +209,19 @@ var _ = Describe("Label sync [Unit]", func() {
 			Expect(actions).To(HaveLen(1))
 		})
 
-		// GitHub's answer may carry no permissions at all, and reading that
-		// absence as a refusal would stand every sync down on a response shape
-		// rather than on a decision somebody made
-		It("plans for an installation that reported no permissions", func() {
+		// GitHub marks the permissions field required on the installation
+		// object, so an answer without it is malformed rather than an
+		// installation that granted nothing. Proceeding would mean writing to
+		// somebody's repositories on an answer that could not be read, and a
+		// 403 is the smaller problem
+		It("plans nothing for an installation whose permissions could not be read", func() {
 			target := seed()
 			configure(target, `{"labels":[{"name":"bug","color":"d73a4a"}]}`)
 
 			planAs(target, github.Installation{ID: 411})
 
-			_, actions := livePlan(target)
-			Expect(actions).To(HaveLen(1))
+			_, _, err := service.store.GetLiveSyncPlan(GinkgoT().Context(), target.ID)
+			Expect(err).To(MatchError(storage.ErrNotFound))
 		})
 
 		It("plans nothing when the repository already matches", func() {

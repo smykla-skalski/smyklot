@@ -92,6 +92,26 @@ func (u Unavailable) Reason() string {
 	)
 }
 
+// Grantor is whatever can answer whether a permission was granted.
+//
+// An interface because the same question is asked in two places that hold
+// different things: the planner has the installation GitHub just described, and
+// the executor has the row that was stored from it. One rule, asked the same
+// way, so the two cannot come to disagree about whether an installation may act.
+type Grantor interface {
+	Grants(permission string) bool
+}
+
+// Unpermitted reports a kind the grantor has not granted the permission for.
+func Unpermitted(grantor Grantor, kind Kind) (Unavailable, bool) {
+	permission := kind.RequiredPermission()
+	if permission == "" || grantor.Grants(permission) {
+		return Unavailable{}, false
+	}
+
+	return Unavailable{Kind: kind, Permission: permission}, true
+}
+
 // Operation is what an action does to its subject.
 type Operation string
 

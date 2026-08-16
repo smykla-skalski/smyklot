@@ -104,8 +104,26 @@ var _ = Describe("GitHub App Client [Unit]", func() {
 			Expect(installations[0].Grants("administration")).To(BeFalse())
 		})
 
-		// Admin is more than write, not something else. An organization that
-		// granted admin has granted what write asks for
+		// GitHub marks the field required on the installation object, so an
+		// answer without it is malformed rather than an installation that
+		// granted nothing - and acting on an answer that could not be read
+		// means writing to somebody's repositories on a guess
+		It("grants nothing for an answer that carried no permissions", func() {
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(`[{"id": 111, "account": {"login": "acme"}}]`))
+			}))
+
+			client, err := github.NewAppClient("test-jwt", server.URL)
+			Expect(err).NotTo(HaveOccurred())
+
+			installations, err := client.ListInstallations(context.Background())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(installations[0].Grants("issues")).To(BeFalse())
+		})
+
+		// Not a level GitHub returns for any permission Smyklot reads - those
+		// are only ever read or write - but one it does return elsewhere, so
+		// this is what stops a permission added here later reading as refused
 		It("reads admin as granting write", func() {
 			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				_, _ = w.Write([]byte(

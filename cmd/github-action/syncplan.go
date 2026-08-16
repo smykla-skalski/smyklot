@@ -51,7 +51,7 @@ func (s *server) planInstallationSync(
 	// every action 403s, once per repository, every tick - a history full of
 	// refusals that are really one question nobody has been asked. The kind is
 	// reported as unavailable instead, naming the permission to grant.
-	if unavailable, missing := unavailableKind(installation, orgsync.KindLabels); missing {
+	if unavailable, missing := orgsync.Unpermitted(installation, orgsync.KindLabels); missing {
 		logging.From(ctx).Info("sync is configured but not permitted",
 			"kind", unavailable.Kind, "permission", unavailable.Permission)
 
@@ -277,30 +277,6 @@ func (s syncScope) covers(repository storage.Repository) bool {
 // cannot drift into disagreeing about whether a repository is settled.
 func (s syncScope) digestFor(repositoryID string) string {
 	return orgsync.DigestRepositoryKind(s.config.Digest, s.overrides[repositoryID])
-}
-
-// unavailableKind reports a kind the installation has not granted Smyklot the
-// permission for.
-//
-// Read from the installation listing, which already carries what was granted,
-// so this costs no request. An installation reporting no permissions at all is
-// treated as permitting everything: the field is optional in GitHub's answer,
-// and reading its absence as a refusal would stand every sync down on a
-// response shape rather than on a decision somebody made.
-func unavailableKind(
-	installation github.Installation,
-	kind orgsync.Kind,
-) (orgsync.Unavailable, bool) {
-	permission := kind.RequiredPermission()
-	if permission == "" || len(installation.Permissions) == 0 {
-		return orgsync.Unavailable{}, false
-	}
-
-	if installation.Grants(permission) {
-		return orgsync.Unavailable{}, false
-	}
-
-	return orgsync.Unavailable{Kind: kind, Permission: permission}, true
 }
 
 func syncConfigOf(configs []orgsync.Config, kind orgsync.Kind) (orgsync.Config, bool) {

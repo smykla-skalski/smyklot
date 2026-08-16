@@ -45,8 +45,8 @@ type Installation struct {
 	AvatarURL string
 
 	// Permissions is what this installation has granted, keyed by GitHub's own
-	// name for each - "administration", "issues", "contents" - against "read",
-	// "write" or "admin".
+	// name for each - "administration", "issues", "contents" - against the level
+	// granted.
 	//
 	// Read from the installation listing, which already carries it, so knowing
 	// whether the App may do something costs no request. That matters because
@@ -54,6 +54,10 @@ type Installation struct {
 	// not approved a new permission is the ordinary state during a rollout, and
 	// discovering it one 403 at a time would fill an operator's history with
 	// failures that are really a question nobody has been asked yet.
+	//
+	// Empty means GitHub answered without the field. That is not a legitimate
+	// "granted nothing" - the field is required on the installation object - so
+	// it means the answer was malformed, and Grants says nothing was granted.
 	Permissions map[string]string
 }
 
@@ -61,14 +65,22 @@ type Installation struct {
 const (
 	PermissionRead  = "read"
 	PermissionWrite = "write"
+
+	// PermissionAdmin is a level GitHub returns for a handful of permissions -
+	// repository and organization projects among them - and never for the four
+	// Smyklot reads, which are only ever read or write. It is accepted anyway,
+	// because a permission added here later may use it and a silent false would
+	// be the wrong direction to be wrong in.
 	PermissionAdmin = "admin"
 )
 
 // Grants reports whether an installation may write through a permission.
 //
-// Admin implies write, which is why this is a method rather than an equality
-// check at each call site: an organization that granted admin has granted more
-// than write, and a comparison against "write" alone would report it as missing.
+// An installation whose permissions are unknown grants nothing. GitHub marks
+// the field required, so its absence means a malformed or degraded answer
+// rather than an installation that granted none - and proceeding on an answer
+// that could not be read means writing to somebody's repositories on a guess.
+// A 403 is a smaller problem than that.
 func (i Installation) Grants(permission string) bool {
 	switch i.Permissions[permission] {
 	case PermissionWrite, PermissionAdmin:

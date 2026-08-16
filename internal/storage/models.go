@@ -403,16 +403,15 @@ type Target struct {
 
 // Grants reports whether the installation may write through a permission.
 //
-// Admin implies write, so this is a method rather than an equality check at
-// each call site. An installation that reported no permissions at all grants
-// everything: the field is optional in GitHub's answer, and reading its absence
-// as a refusal would stand every sync down on a response shape rather than on a
-// decision somebody made.
+// The same rule as github.Installation.Grants, deliberately spelled the same
+// way: an installation whose permissions are unknown grants nothing. GitHub
+// marks the field required, so its absence is a malformed answer rather than an
+// installation that granted none, and writing to somebody's repositories on an
+// answer that could not be read is worse than a 403.
+//
+// Two spellings of one rule is how the planner and the executor come to
+// disagree about whether an installation may act.
 func (t Target) Grants(permission string) bool {
-	if len(t.Permissions) == 0 {
-		return true
-	}
-
 	switch t.Permissions[permission] {
 	case "write", "admin":
 		return true
