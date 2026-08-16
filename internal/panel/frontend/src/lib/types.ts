@@ -612,3 +612,64 @@ export interface PanelErrorBody {
     message: string;
   };
 }
+
+/** One label an installation expects its repositories to carry. */
+export interface SyncLabel {
+  name: string;
+  color: string;
+  /**
+   * Absent means "leave whatever the repository wrote". Present and empty means
+   * "clear it". They are different requests, which is why this is optional
+   * rather than a string that is sometimes blank.
+   */
+  description?: string;
+}
+
+/** An installation's label sync configuration, as saved. */
+export interface SyncConfig {
+  kind: string;
+  enabled: boolean;
+  labels: SyncLabel[];
+  allow_removal: boolean;
+  excludes: string[];
+  revision: number;
+  updated_by: string;
+  updated_at: string;
+  digest: string;
+}
+
+/** What a save sends. The revision is what it believes it is replacing. */
+export interface SyncConfigInput {
+  enabled: boolean;
+  labels: SyncLabel[];
+  allow_removal: boolean;
+  excludes: string[];
+  expected_revision: number;
+}
+
+/** One change a plan would make. */
+export interface SyncAction {
+  repository: string;
+  kind: string;
+  operation: 'create' | 'update' | 'delete';
+  subject: string;
+  before?: string;
+  after?: string;
+  state: 'pending' | 'applied' | 'failed' | 'skipped';
+  error?: string;
+  blocker?: string;
+}
+
+/** A computed answer to "what would change", and the unit somebody approves. */
+export interface SyncPlan {
+  id: string;
+  trigger: string;
+  state: 'computed' | 'approved' | 'applying' | 'applied' | 'failed' | 'stale' | 'expired';
+  digest: string;
+  counts: { create: number; update: number; delete: number };
+  actions: SyncAction[];
+  computed_at: string;
+  expires_at: string;
+  approved_at?: string;
+  finished_at?: string;
+}

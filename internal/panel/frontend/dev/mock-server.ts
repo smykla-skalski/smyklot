@@ -37,6 +37,9 @@ import type {
   RootInstallation,
   RootOverview,
   RootPanelUser,
+  SyncConfig,
+  SyncConfigInput,
+  SyncPlan,
   RootRuntimeSettings,
   RootRuntimeSettingsInput,
   SecurityNotification,
@@ -169,7 +172,37 @@ interface MockState {
   };
   streams: Set<Duplex>;
   prefs: { values: Record<string, unknown>; rev: number };
+  /** Label sync, per installation: what is configured and what is in flight. */
+  sync: Map<string, SyncConfig>;
+  syncPlans: Map<string, SyncPlan>;
   transformIndex: IndexTransform;
+}
+
+/**
+ * mockSyncConfig answers what an installation has configured, inventing an
+ * empty answer the first time. Never configured is not an error and not the
+ * same as configured and switched off, which is what the server says too.
+ */
+function mockSyncConfig(state: MockState, targetId: string): SyncConfig {
+  const existing = state.sync.get(targetId);
+  if (existing) {
+    return existing;
+  }
+
+  const fresh: SyncConfig = {
+    kind: 'labels',
+    enabled: false,
+    labels: [],
+    allow_removal: false,
+    excludes: [],
+    revision: 0,
+    updated_by: '',
+    updated_at: new Date().toISOString(),
+    digest: '',
+  };
+  state.sync.set(targetId, fresh);
+
+  return fresh;
 }
 
 /** How a served `index.html` reaches its final form: Vite's own dev transform. */
@@ -558,6 +591,8 @@ function seed(): MockState {
     },
     streams: new Set(),
     prefs: loadPreferences(),
+    sync: new Map(),
+    syncPlans: new Map(),
     // Replaced by install() with the running server's own transform.
     transformIndex: (_url, html) => html,
   };
@@ -1350,6 +1385,71 @@ async function handle(
       });
       return;
     }
+    const syncConfigMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/config$/.exec(
+      path.slice(route('').length),
+    );
+    if (syncConfigMatch) {
+      const targetId = decodeURIComponent(syncConfigMatch[1] ?? '');
+      const config = mockSyncConfig(state, targetId);
+      if (method === 'GET') {
+        respond(res, 200, config);
+        return;
+      }
+      if (method === 'PUT') {
+        const input = await readBody<SyncConfigInput>(req);
+        if (input.expected_revision !== config.revision) {
+          throw new MockApiError(409, 'conflict', 'the label set changed; reload and try again');
+        }
+        state.sync.set(targetId, {
+          ...config,
+          enabled: input.enabled,
+          labels: input.labels ?? [],
+          allow_removal: input.allow_removal,
+          excludes: input.excludes ?? [],
+          revision: config.revision + 1,
+          updated_at: new Date().toISOString(),
+        });
+        respond(res, 200, mockSyncConfig(state, targetId));
+        return;
+      }
+    }
+
+    const syncPlanMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/plan$/.exec(
+      path.slice(route('').length),
+    );
+    if (syncPlanMatch && method === 'GET') {
+      const targetId = decodeURIComponent(syncPlanMatch[1] ?? '');
+      respond(res, 200, { plan: state.syncPlans.get(targetId) ?? null });
+      return;
+    }
+
+    const syncApprovalMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/plans\/([^/]+)\/approval$/.exec(
+      path.slice(route('').length),
+    );
+    if (syncApprovalMatch && method === 'POST') {
+      const targetId = decodeURIComponent(syncApprovalMatch[1] ?? '');
+      const plan = state.syncPlans.get(targetId);
+      const input = await readBody<{ digest: string }>(req);
+      if (!plan) {
+        throw new MockApiError(404, 'not_found', 'there is no plan to approve');
+      }
+      if (plan.digest !== input.digest) {
+        throw new MockApiError(
+          409,
+          'stale_plan',
+          'this plan no longer matches the configuration; ask for a new one',
+        );
+      }
+      const approved = {
+        ...plan,
+        state: 'approved' as const,
+        approved_at: new Date().toISOString(),
+      };
+      state.syncPlans.set(targetId, approved);
+      respond(res, 200, { plan: approved });
+      return;
+    }
+
     if (path === route('/api/v1/root/installations') && method === 'GET') {
       const ordered = [...state.targets].sort((left, right) =>
         left.value.type === right.value.type ? 0 : left.value.type === 'Organization' ? -1 : 1,

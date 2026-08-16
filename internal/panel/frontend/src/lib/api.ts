@@ -38,6 +38,9 @@ import type {
   RootRuntimeSettings,
   RootRuntimeSettingsInput,
   SecurityNotification,
+  SyncConfig,
+  SyncConfigInput,
+  SyncPlan,
   TargetSettingsInput,
   InvitationDays,
   InvitationSignIn,
@@ -165,6 +168,10 @@ export interface PanelApi {
    */
   resetConfigMigration(targetId: string, repositoryId: string): Promise<RepositoryDetail>;
   resetRootConfigMigration(targetId: string, repositoryId: string): Promise<RepositoryDetail>;
+  fetchSyncConfig(targetId: string): Promise<SyncConfig>;
+  saveSyncConfig(targetId: string, input: SyncConfigInput): Promise<SyncConfig>;
+  fetchSyncPlan(targetId: string): Promise<{ plan: SyncPlan | null }>;
+  approveSyncPlan(targetId: string, planId: string, digest: string): Promise<{ plan: SyncPlan }>;
   fetchAudit(targetId: string, request: AuditHistoryRequest): Promise<Page<AuditEntry>>;
   fetchFailures(targetId: string, request: FailureHistoryRequest): Promise<Page<DeliveryFailure>>;
   signOut(): Promise<void>;
@@ -682,6 +689,28 @@ export function createPanelApi(
         `/api/v1/targets/${pathSegment(targetId)}/repositories/${pathSegment(repositoryId)}` +
           '/config-migration',
         {},
+      );
+    },
+
+    fetchSyncConfig(targetId: string): Promise<SyncConfig> {
+      return jsonRequest(`/api/v1/targets/${pathSegment(targetId)}/sync/config`);
+    },
+
+    saveSyncConfig(targetId: string, input: SyncConfigInput): Promise<SyncConfig> {
+      return putJson(`/api/v1/targets/${pathSegment(targetId)}/sync/config`, input);
+    },
+
+    fetchSyncPlan(targetId: string): Promise<{ plan: SyncPlan | null }> {
+      return jsonRequest(`/api/v1/targets/${pathSegment(targetId)}/sync/plan`);
+    },
+
+    // The digest goes back with the approval. It is what says the plan on the
+    // screen is the plan in the database, so approving without it would agree
+    // to whatever the configuration says by the time the request lands.
+    approveSyncPlan(targetId: string, planId: string, digest: string): Promise<{ plan: SyncPlan }> {
+      return postJson(
+        `/api/v1/targets/${pathSegment(targetId)}/sync/plans/${pathSegment(planId)}/approval`,
+        { digest },
       );
     },
 
