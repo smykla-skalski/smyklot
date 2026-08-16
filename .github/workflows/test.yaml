@@ -84,11 +84,13 @@ jobs:
           POSTGRES_USER: smyklot
           POSTGRES_PASSWORD: smyklot
           POSTGRES_DB: smyklot
-          # The cluster lives in RAM. Every spec above the port creates a schema
-          # and replays the migration series into it, which is almost all write,
-          # and a test database has nothing to survive a crash for - the next run
-          # builds it again from nothing either way.
+          # The cluster lives in RAM and is built without waiting for a disk it
+          # does not have. Every spec above the port creates a schema and replays
+          # the migration series into it, which is almost all write, and a test
+          # database has nothing to survive a crash for - the next run builds it
+          # again from nothing either way.
           PGDATA: /dev/shm/pgdata
+          POSTGRES_INITDB_ARGS: --no-sync
         ports:
           - 5432:5432
         # A one second interval, not five: the container is ready long before the
