@@ -1,6 +1,7 @@
 package panel
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -61,6 +62,58 @@ func TestSyncConfigReadsADocumentItCan(t *testing.T) {
 	}
 	if len(dto.Excludes) != 1 || dto.Excludes[0] != "ci/*" {
 		t.Errorf("excludes = %v, wanted the one that was stored", dto.Excludes)
+	}
+}
+
+// TestSyncDocumentRefusesSettingsGitHubWould is the panel half of the settings
+// rules: a value GitHub answers with a 422 is refused beside the field somebody
+// typed rather than in a plan that fails later against somebody's repositories.
+func TestSyncDocumentRefusesSettingsGitHubWould(t *testing.T) {
+	for _, invalid := range []struct {
+		name     string
+		document string
+	}{
+		{"a wording nobody defined", `{"merge_commit_title":"NONSENSE"}`},
+		{"no way of merging at all", `{"allow_merge_commit":false,` +
+			`"allow_squash_merge":false,"allow_rebase_merge":false}`},
+		{"a wording its own strategy forbids", `{"allow_squash_merge":false,` +
+			`"squash_merge_commit_title":"PR_TITLE"}`},
+		{"a key this version does not know", `{"allow_forking":true}`},
+	} {
+		t.Run(invalid.name, func(t *testing.T) {
+			_, err := syncDocumentFor(orgsync.KindSettings, syncConfigRequest{
+				Document: []byte(invalid.document),
+			})
+			if err == nil {
+				t.Fatalf("%s was accepted", invalid.name)
+			}
+		})
+	}
+}
+
+// TestSyncDocumentStoresTheSettingsType keeps what is stored the type the
+// planner decodes.
+//
+// A second shape here is what made every configured exclusion a silent no-op in
+// the kind before this one: the panel wrote one document and the planner decoded
+// another, which had no field for them.
+func TestSyncDocumentStoresTheSettingsType(t *testing.T) {
+	document, err := syncDocumentFor(orgsync.KindSettings, syncConfigRequest{
+		Document: []byte(`{"has_wiki":false,"allow_squash_merge":true}`),
+	})
+	if err != nil {
+		t.Fatalf("a settings document GitHub accepts was refused: %v", err)
+	}
+
+	var stored orgsync.SettingsConfig
+	if err := json.Unmarshal(document, &stored); err != nil {
+		t.Fatalf("what was stored is not a settings configuration: %v", err)
+	}
+	if stored.HasWiki == nil || *stored.HasWiki {
+		t.Error("has_wiki did not survive the round trip")
+	}
+	if stored.AllowSquashMerge == nil || !*stored.AllowSquashMerge {
+		t.Error("allow_squash_merge did not survive the round trip")
 	}
 }
 

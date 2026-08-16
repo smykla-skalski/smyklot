@@ -1,6 +1,7 @@
 package panel
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -229,8 +230,8 @@ func syncDocumentFor(kind orgsync.Kind, input syncConfigRequest) ([]byte, error)
 
 	case orgsync.KindSettings:
 		var config orgsync.SettingsConfig
-		if err := json.Unmarshal(documentOrEmpty(input.Document), &config); err != nil {
-			return nil, fmt.Errorf("%w: %w", orgsync.ErrInvalidConfig, err)
+		if err := decodeStrictly(input.Document, &config); err != nil {
+			return nil, err
 		}
 		if err := config.Validate(); err != nil {
 			return nil, err
@@ -242,6 +243,26 @@ func syncDocumentFor(kind orgsync.Kind, input syncConfigRequest) ([]byte, error)
 		return nil, fmt.Errorf("%w: Smyklot cannot synchronize %s yet",
 			orgsync.ErrInvalidConfig, kind)
 	}
+}
+
+// decodeStrictly reads a kind's document, refusing a key this version does not
+// know.
+//
+// The panel is where a human wrote it, and a setting spelled wrong that is
+// quietly dropped is a configuration somebody believes is in force - which is
+// why an unknown key in SMYKLOT_CONFIG became a hard error rather than a shrug.
+// The planner reads the same document leniently, and deliberately: by then
+// nobody can fix it, and a key a newer version wrote must not take a kind down
+// through a rollback.
+func decodeStrictly(document json.RawMessage, into any) error {
+	decoder := json.NewDecoder(bytes.NewReader(documentOrEmpty(document)))
+	decoder.DisallowUnknownFields()
+
+	if err := decoder.Decode(into); err != nil {
+		return fmt.Errorf("%w: %w", orgsync.ErrInvalidConfig, err)
+	}
+
+	return nil
 }
 
 func documentOrEmpty(document json.RawMessage) json.RawMessage {
