@@ -205,3 +205,33 @@ runner: action
 		Expect(cfg.CommandPrefix).To(Equal(config.DefaultCommandPrefix))
 	})
 })
+
+var _ = Describe("EffectiveRunner [Unit]", func() {
+	// Both entry points decide whether to act by comparing the runner to their
+	// own name, so a third value matches neither: the service stands down, the
+	// Action stands down, and the repository goes quiet with nothing anywhere
+	// to say why. Every decoder refuses one it does not know, so this should be
+	// unreachable - which is a claim about today's callers, not about the
+	// failure, and the failure is a repository nobody can see has stopped.
+	DescribeTable("reads anything it does not recognise as the default",
+		func(runner config.Runner, want config.Runner) {
+			cfg := &config.Config{Runner: runner}
+
+			Expect(cfg.EffectiveRunner()).To(Equal(want))
+			Expect(cfg.RunBy(want)).To(BeTrue())
+		},
+		Entry("the service", config.RunnerService, config.RunnerService),
+		Entry("the action", config.RunnerAction, config.RunnerAction),
+		Entry("unset", config.Runner(""), config.DefaultRunner),
+		Entry("a value nothing writes", config.Runner("workflow"), config.DefaultRunner),
+	)
+
+	It("is always run by exactly one entry point", func() {
+		for _, runner := range []config.Runner{"", "service", "action", "workflow", "  "} {
+			cfg := &config.Config{Runner: runner}
+
+			Expect(cfg.RunBy(config.RunnerService) != cfg.RunBy(config.RunnerAction)).
+				To(BeTrue(), "runner %q is run by neither entry point or by both", runner)
+		}
+	})
+})

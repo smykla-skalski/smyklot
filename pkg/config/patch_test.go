@@ -64,9 +64,6 @@ command_prefix = ""
 			},
 			Entry("yaml", parseAs(config.FormatYAML), "unexpected_setting: true\n"),
 			Entry("toml", parseAs(config.FormatTOML), "unexpected_setting = true\n"),
-			// The stored form, which no human writes but which is read straight
-			// into Resolve and so is held to the same rule
-			Entry("stored json", config.ParseStoredPatch, `{"unexpected_setting":true}`),
 		)
 
 		It("names every unknown setting, not only the first", func() {

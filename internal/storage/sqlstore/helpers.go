@@ -35,17 +35,32 @@ func marshalPatch(patch config.Patch) (string, error) {
 	return string(content), nil
 }
 
-// unmarshalPatch reads a stored patch, refusing one it cannot vouch for.
+// unmarshalPatch reads a stored patch.
 //
-// It was a bare json.Unmarshal, which accepts an unknown key without a word
-// and any string at all for the runner. A row saying `{"runner": "workflow"}` -
-// written before the panel refused that key, or by hand - resolved to a runner
-// neither entry point matches, so both stood down and the repository went
-// silent. The file layer has always been fail-closed; this is the same rule for
-// the layer beside it.
+// Deliberately lenient, where every decoder reading a document somebody wrote
+// is strict. A stored row is not a document: it is written only by marshalPatch
+// after the panel has validated it, and a row that somehow could not be decoded
+// strictly would take the whole page with it. collectRows abandons a listing on
+// the first row it cannot scan, and UpdateRepositorySettings reads the row back
+// inside its own transaction - so a strict decode here turns one bad row into
+// an installation whose repositories will not render and cannot be repaired
+// from the panel that exists to repair them.
+//
+// The value that made this look worth tightening was the runner, since one
+// neither entry point matches takes both of them out. That is closed where the
+// damage happens instead: Config.EffectiveRunner reads anything it does not
+// recognise as the default, so no stored string can silence a repository.
 func unmarshalPatch(content string) (config.Patch, error) {
-	patch, err := config.ParseStoredPatch([]byte(content))
-	if err != nil {
+	var patch config.Patch
+
+	// The column is NOT NULL with an empty object for a default, so this is
+	// only reachable from a row nothing here wrote - which is exactly the row
+	// that must not take the page with it.
+	if strings.TrimSpace(content) == "" {
+		return patch, nil
+	}
+
+	if err := json.Unmarshal([]byte(content), &patch); err != nil {
 		return config.Patch{}, fmt.Errorf("decode config patch: %w", err)
 	}
 

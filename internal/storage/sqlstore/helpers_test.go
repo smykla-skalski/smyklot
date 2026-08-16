@@ -1,43 +1,27 @@
 package sqlstore
 
 import (
-	"errors"
-	"strings"
 	"testing"
 
 	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
-// A stored patch reaches Resolve without passing anything else, so this is the
-// last place a value nobody vouched for can be turned away. It used to be a
-// bare json.Unmarshal.
-func TestUnmarshalPatchRefusesWhatItCannotVouchFor(t *testing.T) {
+// A row a strict decoder would refuse must not take the page with it.
+// collectRows abandons a listing on the first row it cannot scan, and
+// UpdateRepositorySettings reads the row back inside its own transaction, so a
+// refusal here would leave an installation whose repositories will not render
+// and cannot be repaired from the panel that exists to repair them.
+func TestUnmarshalPatchDoesNotFailThePageOverOneRow(t *testing.T) {
 	t.Parallel()
 
-	// Both entry points compare the runner to their own name, so a third value
-	// takes both of them out and the repository goes silent with nothing
-	// anywhere to say why.
-	t.Run("a runner naming no entry point", func(t *testing.T) {
-		t.Parallel()
-
-		if _, err := unmarshalPatch(`{"runner":"workflow"}`); !errors.Is(
-			err, config.ErrUnknownRunner,
-		) {
-			t.Errorf("unmarshalPatch() error = %v, want %v", err, config.ErrUnknownRunner)
+	for _, content := range []string{
+		`{"not_a_setting":true}`,
+		`{"runner":"workflow"}`,
+	} {
+		if _, err := unmarshalPatch(content); err != nil {
+			t.Errorf("unmarshalPatch(%s) error = %v", content, err)
 		}
-	})
-
-	t.Run("a setting that does not exist", func(t *testing.T) {
-		t.Parallel()
-
-		_, err := unmarshalPatch(`{"not_a_setting":true}`)
-		if err == nil {
-			t.Fatal("unmarshalPatch() accepted a setting that does not exist")
-		}
-		if !strings.Contains(err.Error(), "not_a_setting") {
-			t.Errorf("error %q does not name the offending key", err)
-		}
-	})
+	}
 }
 
 func TestUnmarshalPatchReadsWhatMarshalPatchWrote(t *testing.T) {
