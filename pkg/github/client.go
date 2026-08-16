@@ -129,63 +129,7 @@ func newClient(token, baseURL, authScheme string) (*Client, error) {
 	}, nil
 }
 
-// AddReaction adds an emoji reaction to a comment
-//
-// The reaction parameter should be one of the ReactionType constants
-// (ReactionSuccess, ReactionError, ReactionWarning, ReactionEyes).
-func (c *Client) AddReaction(
-	ctx context.Context,
-	owner, repo string,
-	commentID int,
-	reaction ReactionType,
-) error {
-	path := fmt.Sprintf("/repos/%s/%s/issues/comments/%d/reactions", owner, repo, commentID)
-
-	body := map[string]string{
-		"content": string(reaction),
-	}
-
-	return doRequest(ctx, c, http.MethodPost, path, body)
-}
-
-// RemoveReaction removes an emoji reaction from a comment
-//
-// The reaction parameter should be one of the ReactionType constants.
-// This retrieves all reactions on the comment and deletes matching ones.
-func (c *Client) RemoveReaction(
-	ctx context.Context,
-	owner, repo string,
-	commentID int,
-	reaction ReactionType,
-) error {
-	// First, get all reactions on the comment
-	path := fmt.Sprintf("/repos/%s/%s/issues/comments/%d/reactions", owner, repo, commentID)
-
-	reactions, err := doJSON[[]map[string]interface{}](ctx, c, http.MethodGet, path, nil)
-	if err != nil {
-		return err
-	}
-
-	// Find and delete matching reactions
-	for _, r := range reactions {
-		if content, ok := r["content"].(string); ok && content == string(reaction) {
-			if id, ok := r["id"].(float64); ok {
-				deletePath := fmt.Sprintf(
-					"/repos/%s/%s/issues/comments/%d/reactions/%d",
-					owner,
-					repo,
-					commentID,
-					int(id),
-				)
-				if err := doRequest(ctx, c, http.MethodDelete, deletePath, nil); err != nil {
-					return err
-				}
-			}
-		}
-	}
-
-	return nil
-}
+// Reaction operations live in reactions.go.
 
 // PostComment posts a comment on a pull request
 //
@@ -204,108 +148,7 @@ func (c *Client) PostComment(ctx context.Context, owner, repo string, prNumber i
 	return doRequest(ctx, c, http.MethodPost, path, payload)
 }
 
-// ApprovePR approves a pull request
-//
-// This creates a review with the APPROVE event.
-func (c *Client) ApprovePR(ctx context.Context, owner, repo string, prNumber int) error {
-	path := fmt.Sprintf("/repos/%s/%s/pulls/%d/reviews", owner, repo, prNumber)
-
-	payload := map[string]string{
-		"event": "APPROVE",
-	}
-
-	return doRequest(ctx, c, http.MethodPost, path, payload)
-}
-
-// DismissReviewByUsername dismisses all approved reviews by the specified username
-//
-// This finds all APPROVED reviews by the specified user and dismisses them.
-//
-// The username is passed in rather than looked up: GET /user answers 403
-// "Resource not accessible by integration" for an App installation token, which
-// is the only kind of token this bot holds in practice.
-func (c *Client) DismissReviewByUsername(
-	ctx context.Context,
-	owner, repo string,
-	prNumber int,
-	username string,
-) error {
-	reviews, err := c.getPullRequestReviews(ctx, owner, repo, prNumber)
-	if err != nil {
-		return err
-	}
-
-	return c.dismissApprovedReviews(ctx, owner, repo, prNumber, username, reviews)
-}
-
-// getPullRequestReviews retrieves all reviews for a pull request
-func (c *Client) getPullRequestReviews(
-	ctx context.Context,
-	owner, repo string,
-	prNumber int,
-) ([]map[string]interface{}, error) {
-	reviewsPath := fmt.Sprintf("/repos/%s/%s/pulls/%d/reviews", owner, repo, prNumber)
-	return doJSON[[]map[string]interface{}](ctx, c, http.MethodGet, reviewsPath, nil)
-}
-
-// dismissApprovedReviews dismisses all approved reviews by the specified user
-func (c *Client) dismissApprovedReviews(
-	ctx context.Context,
-	owner, repo string,
-	prNumber int,
-	username string,
-	reviews []map[string]interface{},
-) error {
-	for _, review := range reviews {
-		if err := c.dismissReviewIfApprovedByUser(ctx, owner, repo, prNumber, username, review); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// dismissReviewIfApprovedByUser dismisses a review if it's approved by the specified user
-func (c *Client) dismissReviewIfApprovedByUser(
-	ctx context.Context,
-	owner, repo string,
-	prNumber int,
-	username string,
-	review map[string]interface{},
-) error {
-	state, ok := review["state"].(string)
-	if !ok || state != "APPROVED" {
-		return nil
-	}
-
-	reviewUser, ok := review["user"].(map[string]interface{})
-	if !ok {
-		return nil
-	}
-
-	reviewUsername, ok := reviewUser["login"].(string)
-	if !ok || reviewUsername != username {
-		return nil
-	}
-
-	reviewID, ok := review["id"].(float64)
-	if !ok {
-		return nil
-	}
-
-	dismissPath := fmt.Sprintf(
-		"/repos/%s/%s/pulls/%d/reviews/%d/dismissals",
-		owner,
-		repo,
-		prNumber,
-		int(reviewID),
-	)
-	payload := map[string]string{
-		"message": "Review dismissed",
-	}
-
-	return doRequest(ctx, c, http.MethodPut, dismissPath, payload)
-}
+// Review operations live in reviews.go.
 
 // EnableAutoMerge enables auto-merge for a pull request
 //
@@ -360,64 +203,6 @@ func (c *Client) EnableAutoMerge(
 		"pullRequestId": nodeID,
 		"mergeMethod":   gqlMethod,
 	}, nil)
-}
-
-// parseReactions parses raw reaction data into Reaction structs
-func parseReactions(rawReactions []map[string]interface{}) []Reaction {
-	reactions := make([]Reaction, 0, len(rawReactions))
-
-	for _, r := range rawReactions {
-		reaction := Reaction{}
-
-		if content, ok := r["content"].(string); ok {
-			reaction.Type = ReactionType(content)
-		}
-
-		if user, ok := r["user"].(map[string]interface{}); ok {
-			if login, ok := user["login"].(string); ok {
-				reaction.User = login
-			}
-		}
-
-		if reaction.Type != "" && reaction.User != "" {
-			reactions = append(reactions, reaction)
-		}
-	}
-
-	return reactions
-}
-
-// GetPRReactions retrieves all reactions for a pull request (issue)
-//
-// Returns a slice of Reaction structs containing user and reaction type information.
-// This gets reactions on the PR description/body, not on comments.
-func (c *Client) GetPRReactions(ctx context.Context, owner, repo string, prNumber int) ([]Reaction, error) {
-	path := fmt.Sprintf("/repos/%s/%s/issues/%d/reactions", owner, repo, prNumber)
-
-	rawReactions, err := doJSON[[]map[string]interface{}](ctx, c, http.MethodGet, path, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return parseReactions(rawReactions), nil
-}
-
-// GetCommentReactions retrieves all reactions for a comment
-//
-// Returns a slice of Reaction structs containing user and reaction type information.
-func (c *Client) GetCommentReactions(
-	ctx context.Context,
-	owner, repo string,
-	commentID int,
-) ([]Reaction, error) {
-	path := fmt.Sprintf("/repos/%s/%s/issues/comments/%d/reactions", owner, repo, commentID)
-
-	rawReactions, err := doJSON[[]map[string]interface{}](ctx, c, http.MethodGet, path, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return parseReactions(rawReactions), nil
 }
 
 // Label operations live in labels.go.
@@ -798,53 +583,6 @@ func (c *Client) GetPRInfo(ctx context.Context, owner, repo string, prNumber int
 	return info, nil
 }
 
-// getApprovers retrieves the list of users who have approved a PR
-func (c *Client) getApprovers(ctx context.Context, owner, repo string, prNumber int) []string {
-	reviews, err := c.getPullRequestReviews(ctx, owner, repo, prNumber)
-	if err != nil {
-		// Return empty slice if we can't get reviews
-		return []string{}
-	}
-
-	approvers := make([]string, 0)
-	approverSet := make(map[string]bool)
-
-	for _, review := range reviews {
-		login := c.extractApproverFromReview(review)
-		if login == "" {
-			continue
-		}
-
-		// Use a set to deduplicate approvers
-		if !approverSet[login] {
-			approverSet[login] = true
-			approvers = append(approvers, login)
-		}
-	}
-
-	return approvers
-}
-
-// extractApproverFromReview extracts the approver username from a review
-func (c *Client) extractApproverFromReview(review map[string]interface{}) string {
-	state, ok := review["state"].(string)
-	if !ok || state != "APPROVED" {
-		return ""
-	}
-
-	user, ok := review["user"].(map[string]interface{})
-	if !ok {
-		return ""
-	}
-
-	login, ok := user["login"].(string)
-	if !ok {
-		return ""
-	}
-
-	return login
-}
-
 // GetPRComments retrieves all comments on a pull request
 //
 // Returns a slice of comment data including ID, user, and body.
@@ -914,56 +652,6 @@ func (c *Client) UpdatePendingCIReaction(
 
 			// Add "+1" (thumbs up) reaction
 			_ = c.AddReaction(ctx, owner, repo, commentID, ReactionSuccess)
-		}
-	}
-
-	return nil
-}
-
-// RemoveReactionByUser removes a specific reaction from a comment, but only if it belongs to the specified user
-func (c *Client) RemoveReactionByUser(
-	ctx context.Context,
-	owner, repo string,
-	commentID int,
-	reaction ReactionType,
-	username string,
-) error {
-	// Get all reactions on the comment
-	path := fmt.Sprintf("/repos/%s/%s/issues/comments/%d/reactions", owner, repo, commentID)
-
-	reactions, err := doJSON[[]map[string]interface{}](ctx, c, http.MethodGet, path, nil)
-	if err != nil {
-		return err
-	}
-
-	// Find and delete matching reactions from the specific user
-	for _, r := range reactions {
-		content, contentOK := r["content"].(string)
-		user, userOK := r["user"].(map[string]interface{})
-
-		if !contentOK || !userOK {
-			continue
-		}
-
-		login, loginOK := user["login"].(string)
-		if !loginOK {
-			continue
-		}
-
-		if content == string(reaction) && login == username {
-			if id, ok := r["id"].(float64); ok {
-				deletePath := fmt.Sprintf(
-					"/repos/%s/%s/issues/comments/%d/reactions/%d",
-					owner,
-					repo,
-					commentID,
-					int(id),
-				)
-
-				if err := doRequest(ctx, c, http.MethodDelete, deletePath, nil); err != nil {
-					return err
-				}
-			}
 		}
 	}
 

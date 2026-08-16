@@ -149,6 +149,48 @@ func doJSON[T any](
 	return out, err
 }
 
+// paginate walks every page of a go-github list endpoint.
+//
+// The package had four hand-rolled versions of this loop and they did not agree
+// with each other: some ended on a short page, some on a page count, one on the
+// Link header. Reactions and reviews had no loop at all, so a comment with more
+// than thirty reactions reported a truncated set and the code that removes a
+// reaction quietly left some behind.
+//
+// fetch is called once per page and reports the page and the response carrying
+// the Link header.
+func paginate[T any](
+	ctx context.Context,
+	op string,
+	fetch func(context.Context, *gogithub.ListOptions) ([]T, *gogithub.Response, error),
+) ([]T, error) {
+	opts := &gogithub.ListOptions{PerPage: pageSize}
+	items := make([]T, 0, pageSize)
+
+	for range maxPages {
+		page, resp, err := fetch(ctx, opts)
+		if err != nil {
+			return nil, wrapError(ErrAPIRequest, http.MethodGet, op, err)
+		}
+
+		items = append(items, page...)
+
+		// GitHub sends a next link while there is more. A short page is the
+		// belt to that braces: an endpoint or proxy that omits Link entirely
+		// would otherwise look like a single page and silently truncate.
+		switch {
+		case resp != nil && resp.NextPage > 0:
+			opts.Page = resp.NextPage
+		case len(page) < pageSize:
+			return items, nil
+		default:
+			opts.Page++
+		}
+	}
+
+	return nil, NewAPIError(ErrIncompletePagination, 0, http.MethodGet, op, nil)
+}
+
 // doRequest sends one request and discards the response body.
 //
 // For the endpoints whose answer carries nothing a caller needs: adding a

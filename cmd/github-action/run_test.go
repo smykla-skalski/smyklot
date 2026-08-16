@@ -104,8 +104,20 @@ func (r *commentRecorder) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	r.other = append(r.other, req.Method+" "+req.URL.Path)
+
+	// GitHub answers a create with the thing it created, and a list with a
+	// list. Answering everything with `[]` was survivable only while the client
+	// discarded the bodies it did not need; it is a lie either way, and the
+	// kind that makes a spec pass against an endpoint nobody modelled.
+	if req.Method == http.MethodGet {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`[]`))
+
+		return
+	}
+
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(`[]`))
+	_, _ = w.Write([]byte(`{"id":1}`))
 }
 
 func (r *commentRecorder) posted() []postedComment {
