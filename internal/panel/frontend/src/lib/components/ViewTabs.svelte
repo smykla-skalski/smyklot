@@ -279,11 +279,20 @@
         restingTop = null;
         return;
       }
-      const top = active.offsetTop;
+      /* Rects rather than `offsetTop` and `offsetHeight`, which are rounded to
+         whole pixels. The rows above the console's list sit on a fraction - the
+         section header is trimmed to its cap band, and a cap height is not an
+         integer - so the rounded figure put the thumb 0.19px above every row it
+         was supposed to be the ground of. `.view-links` is the thumb's
+         containing block and carries no border, so subtracting its top is the
+         same coordinate the thumb is placed in. */
+      const origin = node.getBoundingClientRect().top;
+      const bounds = active.getBoundingClientRect();
+      const top = bounds.top - origin;
       const parked = node.classList.contains('thumb-ready');
       const from = parked && restingTop !== null ? restingTop + offsetNow(thumb) : top;
       node.style.setProperty('--nav-thumb-top', `${top}px`);
-      node.style.setProperty('--nav-thumb-height', `${active.offsetHeight}px`);
+      node.style.setProperty('--nav-thumb-height', `${bounds.height}px`);
       node.classList.add('thumb-ready');
       restingTop = top;
       if (moved && parked) {
@@ -435,12 +444,24 @@
     position: relative;
   }
 
+  /* Trimmed to its cap band, so the margins around it are the gaps that are seen.
+     Untrimmed, the line box carried ~1.5px of ascender air above the caps and as
+     much below the baseline, which is space nothing here asked for and space that
+     would change with the font.
+
+     The top margin is the mark's clearance. Root mode has no workspace card
+     between the two, so this label was the next thing under the wordmark - and it
+     is uppercase, letterspaced and bold, exactly like the two lines above it, so
+     at the rail's default 8px it read as a third line of the mark rather than as
+     the heading of the list. It stands further from the mark than from the rows
+     it heads, which is what makes it belong to them. */
   .nav-label {
     color: var(--sidebar-text-muted);
     font: 700 var(--font-size-micro) / 1 var(--sans);
     letter-spacing: 0.09em;
-    margin: 0 0 var(--space-2);
+    margin: var(--space-4) 0 var(--space-2);
     padding-inline: var(--space-3);
+    text-box: trim-both cap alphabetic;
     text-transform: uppercase;
   }
 
@@ -669,6 +690,12 @@
   @media (max-width: 48rem) {
     .view-links {
       gap: var(--space-1);
+    }
+
+    /* No mark above it here - the drawer hangs below the top bar and this is the
+       first thing in it, so the clearance the rail needs would be a hole. */
+    .nav-label {
+      margin-top: 0;
     }
 
     a {
