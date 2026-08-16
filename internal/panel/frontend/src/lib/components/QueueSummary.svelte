@@ -31,7 +31,7 @@
   /* The one thing a reader takes at a glance: Review when something needs a
      person, Clear otherwise. */
   const needsReview = $derived(
-    waiting.some((request) => ['failing', 'unreadable'].includes(request.last_observed_state)),
+    waiting.some((request) => ['failing', 'indeterminate'].includes(request.last_observed_state)),
   );
   const summary = $derived.by(() => {
     if (waiting.length === 0) return 'Nothing waiting on CI';

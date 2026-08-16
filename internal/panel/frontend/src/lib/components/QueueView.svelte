@@ -55,9 +55,9 @@
     {
       options: [
         { value: 'passing', label: 'Passing', tone: 'valid', icon: 'success' },
-        { value: 'running', label: 'Running', tone: 'missing', icon: 'pending' },
+        { value: 'pending', label: 'Running', tone: 'default', icon: 'pending' },
         { value: 'failing', label: 'Failing', tone: 'invalid', icon: 'failure' },
-        { value: 'unreadable', label: 'Unreadable', tone: 'bypassed', icon: 'alert' },
+        { value: 'indeterminate', label: 'Unreadable', tone: 'bypassed', icon: 'alert' },
         { value: 'no_checks', label: 'No checks', tone: 'missing', icon: 'circle-dashed' },
       ],
     },
@@ -70,7 +70,7 @@
     {
       options: [
         { value: 'merged', label: 'Merged', tone: 'valid', icon: 'success' },
-        { value: 'cancelled', label: 'Cancelled', tone: 'missing', icon: 'circle-dashed' },
+        { value: 'cancelled', label: 'Cancelled', tone: 'default', icon: 'circle-dashed' },
         { value: 'superseded', label: 'Superseded', tone: 'bypassed', icon: 'alert' },
       ],
     },
@@ -189,7 +189,10 @@
      item like any other, and it is simply not offered on a request that has
      already finished. */
   function actionsFor(request: PendingCIRequest): ActionMenuItem[] {
-    const armed = request.lifecycle === 'armed';
+    /* Held while a mutation is in flight, because both of these carry the revision they were
+       drawn with. A second Cancel sends the same one, the row has already moved past it, and the
+       store answers 409 - so the reader is shown a red banner over a cancel that worked. */
+    const armed = request.lifecycle === 'armed' && pendingAction === null;
     return [
       {
         id: 'open',
@@ -367,7 +370,7 @@
           onclick={(event) => openRow(event, request)}
           onkeydown={(event) => openFromKeyboard(event, request)}
         >
-          <td data-label="Checks">
+          <td data-label={section === 'recent' ? 'Outcome' : 'Checks'}>
             <Chip tone={state.tone} icon={state.icon}>{state.label}</Chip>
           </td>
           <td data-label="Pull request">

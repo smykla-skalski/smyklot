@@ -3,7 +3,7 @@
 
   import type { PanelApi } from '$lib/api';
   import { formatTimestamp } from '$lib/format';
-  import { cleanupState, outcomeState, queueNext, queueState, shortAge } from '$lib/queue';
+  import { cleanupState, outcomeState, queueNext, queueState, sinceLabel } from '$lib/queue';
   import type { PendingCIEvent } from '$lib/types';
   import Chip from './Chip.svelte';
   import Icon, { type IconName } from './Icon.svelte';
@@ -180,7 +180,7 @@
   <RootPageHeader
     role={rootRole}
     title={`${request.repository_full_name} #${request.pull_request}`}
-    subtitle={`Armed ${shortAge(request.requested_at, now)} ago by @${request.requester}, bound to commit ${request.head_sha.slice(0, 8)}`}
+    subtitle={`Armed ${sinceLabel(request.requested_at, now)} by @${request.requester}, bound to commit ${request.head_sha.slice(0, 8)}`}
   >
     <a
       class="btn"
@@ -299,7 +299,7 @@
         <dt>Armed</dt>
         <dd>
           <span class="cap-trim" title={formatTimestamp(request.requested_at)}
-            >{shortAge(request.requested_at, now)} ago</span
+            >{sinceLabel(request.requested_at, now)}</span
           >
         </dd>
       </div>

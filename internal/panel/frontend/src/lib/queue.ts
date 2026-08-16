@@ -36,10 +36,9 @@ export function queueState(request: PendingCIRequest): QueueState {
       return { tone: 'clear', icon: 'success', label: 'Passing' };
     case 'failing':
       return { tone: 'stop', icon: 'failure', label: 'Failing' };
-    case 'running':
     case 'pending':
       return { tone: 'neutral', icon: 'pending', label: 'Running' };
-    case 'unreadable':
+    case 'indeterminate':
       return { tone: 'warning', icon: 'alert', label: 'Unreadable' };
     case 'no_checks':
       return { tone: 'absent', icon: 'circle-dashed', label: 'No checks' };
@@ -117,6 +116,21 @@ export function shortAge(value: string, nowMs: number): string {
   if (days < 7) return `${days} d`;
 
   return `${Math.floor(days / 7)} wk`;
+}
+
+/**
+ * The same age as a phrase rather than as a measure.
+ *
+ * `shortAge` is the column's form: a bare `5 min` under a heading that says what is being measured.
+ * A sentence needs the preposition, and the first minute already reads as one - `just now ago` is
+ * what appending it blindly produces, on the freshest request there is.
+ */
+export function sinceLabel(value: string, nowMs: number): string {
+  const age = shortAge(value, nowMs);
+  // An unparseable value comes back untouched, and takes no preposition either.
+  if (age === 'just now' || age === value) return age;
+
+  return `${age} ago`;
 }
 
 /** Soonest first: the row at the top of the queue is the row about to move. */
