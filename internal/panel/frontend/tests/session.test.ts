@@ -27,6 +27,35 @@ class TestMediaQueryList extends EventTarget implements MediaQueryList {
   removeListener(): void {}
 }
 
+/**
+ * A `Storage` for the session to keep preferences in.
+ *
+ * jsdom has one, but Vitest 4 does not carry it out onto the environment's
+ * globals, so `localStorage` is undefined here and on `window` both. The
+ * session reads preferences through `window.localStorage` inside a `try` and
+ * treats its absence as "no preferences", which is why nothing about this is
+ * visible until the reset below asks the missing object to clear itself.
+ *
+ * Stubbed rather than worked around, because storage that is quietly always
+ * empty is the worse outcome: every preference this file sets would be written
+ * to nothing and read back as a default, and the tests would agree with each
+ * other while proving the opposite of what they say.
+ */
+function memoryStorage(): Storage {
+  const entries = new Map<string, string>();
+
+  return {
+    get length(): number {
+      return entries.size;
+    },
+    clear: (): void => void entries.clear(),
+    getItem: (key: string): string | null => entries.get(key) ?? null,
+    key: (index: number): string | null => [...entries.keys()][index] ?? null,
+    removeItem: (key: string): void => void entries.delete(key),
+    setItem: (key: string, value: string): void => void entries.set(key, String(value)),
+  };
+}
+
 describe('PanelSession [Unit]', () => {
   beforeEach(() => {
     navigation.goto.mockReset();
@@ -34,7 +63,9 @@ describe('PanelSession [Unit]', () => {
     routePage.url = new URL('https://panel.example/root');
     vi.stubGlobal('matchMedia', () => new TestMediaQueryList());
     vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
-    localStorage.clear();
+    // A fresh one per test rather than one cleared between them, so nothing can
+    // be carried over by a key this file does not know to remove.
+    vi.stubGlobal('localStorage', memoryStorage());
   });
 
   afterEach(() => {
