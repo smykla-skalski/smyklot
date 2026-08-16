@@ -144,6 +144,21 @@ func (s *githubStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case strings.HasSuffix(r.URL.Path, "/labels"):
 		_, _ = w.Write([]byte(`[]`))
 
+	// CI signals. These answer "nothing has reported" rather than being left to
+	// a permissive default: the specs that watch a pull request settle on
+	// no_checks are asserting exactly this, and leaving it implicit meant they
+	// passed against an endpoint nobody had stubbed.
+	case strings.HasSuffix(r.URL.Path, "/check-runs"):
+		_, _ = w.Write([]byte(`{"total_count": 0, "check_runs": []}`))
+
+	case strings.HasSuffix(r.URL.Path, "/status"):
+		_, _ = w.Write([]byte(`{"total_count": 0, "statuses": []}`))
+
+	// An unprotected branch, which is what these repositories are.
+	case strings.HasSuffix(r.URL.Path, "/protection/required_status_checks"):
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"message": "Branch not protected"}`))
+
 	case strings.HasSuffix(r.URL.Path, "/access_tokens"):
 		expiry := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
 		w.WriteHeader(http.StatusCreated)
@@ -202,8 +217,18 @@ func (s *githubStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}`, s.prAuthor, s.prHead, s.prLabels)
 
 	default:
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{}`))
+		// A path this stub does not know about is a gap in the stub, and it
+		// has to look like one. Answering 200 {} made a list decode to an
+		// empty slice and an object to a zero struct, so a spec exercising an
+		// endpoint nobody had stubbed passed while proving nothing. The 404
+		// names the path so the fix is obvious rather than a hunt.
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = fmt.Fprintf(
+			w,
+			`{"message":"githubstub has no route for %s %s"}`,
+			r.Method,
+			r.URL.Path,
+		)
 	}
 }
 
