@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/sync/singleflight"
+
 	"github.com/smykla-skalski/smyklot/pkg/commands"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/feedback"
@@ -121,15 +123,16 @@ type repoCache[T any] struct {
 	// can serve a setting somebody rolled back thirty seconds ago.
 	stillValid func(context.Context, *github.Client, string, string, T) (bool, error)
 
-	mu       sync.Mutex
-	entries  map[string]repoCacheEntry[T]
-	nextLoad uint64
+	// group collapses concurrent misses for one repository into one read.
+	group singleflight.Group
+
+	mu      sync.Mutex
+	entries map[string]repoCacheEntry[T]
 }
 
 type repoCacheEntry[T any] struct {
-	value      T
-	fetched    time.Time
-	generation uint64
+	value   T
+	fetched time.Time
 }
 
 func newRepoCache[T any](
@@ -160,8 +163,52 @@ func (c *repoCache[T]) GetByKey(
 	client *github.Client,
 	key, owner, repo string,
 ) (T, error) {
-	value, fresh, stale, generation := c.lookupOrBeginLoad(key)
+	if value, fresh, _ := c.lookup(key); fresh {
+		return value, nil
+	}
+
+	// One caller refreshes and the rest wait for it. This type's own comment
+	// used to claim it avoided the duplicate request and it did not: every
+	// caller that missed did the whole read. That was one wasted request each;
+	// it is now up to five, because a configuration file is looked for at four
+	// paths behind one validator - and a cold start is exactly when every
+	// delivery for a repository arrives at once.
+	//
+	// The shared read runs on the caller's context, so it is cancelled when the
+	// work that wanted it is. Detaching it instead - so a cancelled caller does
+	// not fail the others - leaves a read running with nothing waiting for it,
+	// which is a request outliving the shutdown that was meant to stop it. The
+	// cost of not detaching is that abandoning one caller fails the others; they
+	// retry, and deliveries are durable.
+	shared, err, _ := c.group.Do(key, func() (any, error) {
+		return c.refresh(ctx, client, key, owner, repo)
+	})
+	if err != nil {
+		var zero T
+
+		return zero, err
+	}
+
+	value, ok := shared.(T)
+	if !ok {
+		var zero T
+
+		return zero, ErrRepoCacheType
+	}
+
+	return value, nil
+}
+
+// refresh re-reads a repository's value, keeping the one it already has when
+// that is still provably good.
+func (c *repoCache[T]) refresh(
+	ctx context.Context,
+	client *github.Client,
+	key, owner, repo string,
+) (T, error) {
+	value, fresh, stale := c.lookup(key)
 	if fresh {
+		// Another caller finished while this one waited for its turn.
 		return value, nil
 	}
 
@@ -176,7 +223,9 @@ func (c *repoCache[T]) GetByKey(
 		}
 
 		if unchanged {
-			return c.storeIfNewest(key, value, generation), nil
+			c.store(key, value)
+
+			return value, nil
 		}
 	}
 
@@ -187,48 +236,40 @@ func (c *repoCache[T]) GetByKey(
 		return zero, err
 	}
 
-	value = c.storeIfNewest(key, loaded, generation)
+	c.store(key, loaded)
 
-	return value, nil
+	return loaded, nil
 }
 
-// lookupOrBeginLoad reports a usable entry, or hands back the expired one so
-// the caller can ask whether it is still good.
-func (c *repoCache[T]) lookupOrBeginLoad(key string) (value T, fresh, stale bool, gen uint64) {
+// lookup reports a usable entry, or hands back the expired one so the caller
+// can ask whether it is still good.
+func (c *repoCache[T]) lookup(key string) (value T, fresh, stale bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	entry, ok := c.entries[key]
-	if ok && time.Since(entry.fetched) < c.ttl {
-		return entry.value, true, false, 0
+	if !ok {
+		var zero T
+
+		return zero, false, false
 	}
 
-	c.nextLoad++
-
-	if ok {
-		return entry.value, false, true, c.nextLoad
-	}
-
-	var zero T
-
-	return zero, false, false, c.nextLoad
+	return entry.value, time.Since(entry.fetched) < c.ttl, true
 }
 
-// storeIfNewest makes an older load observe a newer successful result instead
-// of regressing the cache after the newer caller has already acted on it.
-func (c *repoCache[T]) storeIfNewest(key string, value T, generation uint64) T {
+// store records a value as of now.
+//
+// There was a generation counter here, so that a load which started earlier but
+// finished later could not overwrite a newer one. Nothing can reach that now:
+// every store happens inside the singleflight call, which admits one refresh
+// per key at a time, so two loads for one repository can no longer overlap at
+// all. Keeping both would be two mechanisms for one problem, and the one that
+// went is the one that only tidied up after the waste rather than avoiding it.
+func (c *repoCache[T]) store(key string, value T) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	entry, ok := c.entries[key]
-	if ok && entry.generation > generation {
-		return entry.value
-	}
-	c.entries[key] = repoCacheEntry[T]{
-		value: value, fetched: time.Now(), generation: generation,
-	}
-
-	return value
+	c.entries[key] = repoCacheEntry[T]{value: value, fetched: time.Now()}
 }
 
 // newRepoConfigCache builds the cache the service reads a repository's own
