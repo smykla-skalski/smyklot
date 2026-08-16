@@ -22,7 +22,7 @@ const (
 	maxRetryAfter = 10 * time.Second
 
 	// attemptTimeout bounds one attempt, not the call. See retryTransport.attempt.
-	attemptTimeout = defaultTimeout
+	attemptTimeout = 30 * time.Second
 )
 
 // retryTransport retries the requests that can succeed on a second attempt.
@@ -37,9 +37,8 @@ const (
 // exactly the failures worth waiting for, and guessing an exponential backoff
 // against a limit that names its own reset is how a client earns a longer one.
 type retryTransport struct {
-	base     http.RoundTripper
-	attempts int
-	sleep    func(*http.Request, time.Duration) error
+	base  http.RoundTripper
+	sleep func(*http.Request, time.Duration) error
 }
 
 // noRetryKey marks a request that must be answered once and reported as it
@@ -66,7 +65,7 @@ func (t retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		return t.base.RoundTrip(req)
 	}
 
-	last := t.attemptCount() - 1
+	last := maxRetries - 1
 
 	for attempt := 0; ; attempt++ {
 		resp, err := t.attempt(req)
@@ -139,14 +138,6 @@ func (b cancelOnClose) Close() error {
 	b.cancel()
 
 	return err
-}
-
-func (t retryTransport) attemptCount() int {
-	if t.attempts > 0 {
-		return t.attempts
-	}
-
-	return maxRetries
 }
 
 // wait sleeps for as long as the next attempt should be delayed.

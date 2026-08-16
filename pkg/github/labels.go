@@ -47,27 +47,21 @@ func (c *Client) RemoveLabel(ctx context.Context, owner, repo string, prNumber i
 func (c *Client) GetLabels(ctx context.Context, owner, repo string, prNumber int) ([]string, error) {
 	path := fmt.Sprintf("/repos/%s/%s/issues/%d/labels", owner, repo, prNumber)
 
-	opts := &gogithub.ListOptions{PerPage: pageSize}
-	labels := make([]string, 0, pageSize)
-
-	for page := 0; page < maxPages; page++ {
-		batch, resp, err := c.gh.Issues.ListLabelsByIssue(ctx, owner, repo, prNumber, opts)
-		if err != nil {
-			return nil, wrapError(ErrAPIRequest, http.MethodGet, path, err)
-		}
-
-		for _, label := range batch {
-			if name := label.GetName(); name != "" {
-				labels = append(labels, name)
-			}
-		}
-
-		if resp == nil || resp.NextPage == 0 {
-			return labels, nil
-		}
-
-		opts.Page = resp.NextPage
+	raw, err := paginate(ctx, path,
+		func(ctx context.Context, opts *gogithub.ListOptions) ([]*gogithub.Label, *gogithub.Response, error) {
+			return c.gh.Issues.ListLabelsByIssue(ctx, owner, repo, prNumber, opts)
+		})
+	if err != nil {
+		return nil, err
 	}
 
-	return nil, NewAPIError(ErrIncompletePagination, 0, http.MethodGet, path, nil)
+	labels := make([]string, 0, len(raw))
+
+	for _, label := range raw {
+		if name := label.GetName(); name != "" {
+			labels = append(labels, name)
+		}
+	}
+
+	return labels, nil
 }

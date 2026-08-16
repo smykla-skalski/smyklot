@@ -20,7 +20,6 @@ import (
 const (
 	defaultBaseURL      = "https://api.github.com"
 	userAgent           = "smyklot-github-app"
-	defaultTimeout      = 30 * time.Second
 	maxIdleConns        = 100
 	maxIdleConnsPerHost = 10
 	idleConnTimeout     = 90 * time.Second
@@ -327,53 +326,30 @@ func (c *Client) GetUser(ctx context.Context, login string) (User, error) {
 // Requires a client created with NewAppClient - this endpoint accepts only a
 // GitHub App JWT.
 func (c *Client) ListInstallations(ctx context.Context) ([]Installation, error) {
-	var installations []Installation
+	raw, err := paginate(ctx, "/app/installations",
+		func(ctx context.Context, opts *gogithub.ListOptions) ([]*gogithub.Installation, *gogithub.Response, error) {
+			return c.gh.Apps.ListInstallations(ctx, opts)
+		})
+	if err != nil {
+		return nil, err
+	}
 
-	for page := 1; page <= maxPages; page++ {
-		path := fmt.Sprintf("/app/installations?per_page=%d&page=%d", pageSize, page)
+	installations := make([]Installation, 0, len(raw))
 
-		response, err := doJSON[[]struct {
-			ID      int64 `json:"id"`
-			Account struct {
-				ID        int64  `json:"id"`
-				Login     string `json:"login"`
-				Type      string `json:"type"`
-				AvatarURL string `json:"avatar_url"`
-			} `json:"account"`
-			SuspendedAt *string `json:"suspended_at"`
-		}](ctx, c, http.MethodGet, path, nil)
-		if err != nil {
-			return nil, err
+	for _, item := range raw {
+		// A suspended installation cannot mint a token, so polling it only
+		// produces errors
+		if item.SuspendedAt != nil {
+			continue
 		}
 
-		for _, item := range response {
-			// A suspended installation cannot mint a token, so polling it only
-			// produces errors
-			if item.SuspendedAt != nil {
-				continue
-			}
-
-			installations = append(installations, Installation{
-				ID:          item.ID,
-				AccountID:   item.Account.ID,
-				Account:     item.Account.Login,
-				AccountType: item.Account.Type,
-				AvatarURL:   item.Account.AvatarURL,
-			})
-		}
-
-		if len(response) < pageSize {
-			return installations, nil
-		}
-		if page == maxPages {
-			return nil, NewAPIError(
-				ErrIncompletePagination,
-				0,
-				"GET",
-				path,
-				fmt.Errorf("installation list still has a full page after %d items", len(installations)),
-			)
-		}
+		installations = append(installations, Installation{
+			ID:          item.GetID(),
+			AccountID:   item.GetAccount().GetID(),
+			Account:     item.GetAccount().GetLogin(),
+			AccountType: item.GetAccount().GetType(),
+			AvatarURL:   item.GetAccount().GetAvatarURL(),
+		})
 	}
 
 	return installations, nil
@@ -477,45 +453,26 @@ func (c *Client) listOrganizationMembers(
 	if organization == "" {
 		return nil, errors.New("GitHub organization must not be empty")
 	}
-	filter := ""
-	if role != "" {
-		filter = "role=" + url.QueryEscape(role) + "&"
+
+	op := fmt.Sprintf("/orgs/%s/members", url.PathEscape(organization))
+
+	raw, err := paginate(ctx, op,
+		func(ctx context.Context, opts *gogithub.ListOptions) ([]*gogithub.User, *gogithub.Response, error) {
+			return c.gh.Organizations.ListMembers(ctx, organization, &gogithub.ListMembersOptions{
+				Role: role, ListOptions: *opts,
+			})
+		})
+	if err != nil {
+		return nil, err
 	}
 
-	var members []User
-	for page := 1; page <= maxPages; page++ {
-		path := fmt.Sprintf(
-			"/orgs/%s/members?%sper_page=%d&page=%d",
-			url.PathEscape(organization),
-			filter,
-			pageSize,
-			page,
-		)
-		response, err := doJSON[[]struct {
-			ID        int64  `json:"id"`
-			Login     string `json:"login"`
-			AvatarURL string `json:"avatar_url"`
-		}](ctx, c, http.MethodGet, path, nil)
-		if err != nil {
-			return nil, err
-		}
-		for _, item := range response {
-			members = append(members, User{
-				ID: item.ID, Login: item.Login, AvatarURL: stringPointer(item.AvatarURL),
-			})
-		}
-		if len(response) < pageSize {
-			return members, nil
-		}
-		if page == maxPages {
-			return nil, NewAPIError(
-				ErrIncompletePagination,
-				0,
-				http.MethodGet,
-				path,
-				fmt.Errorf("organization member list still has a full page after %d items", len(members)),
-			)
-		}
+	members := make([]User, 0, len(raw))
+	for _, item := range raw {
+		members = append(members, User{
+			ID:        item.GetID(),
+			Login:     item.GetLogin(),
+			AvatarURL: stringPointer(item.GetAvatarURL()),
+		})
 	}
 
 	return members, nil
@@ -769,11 +726,9 @@ func (c *Client) GetPRHeadRef(
 ) (string, error) {
 	path := fmt.Sprintf("/repos/%s/%s/pulls/%d", owner, repo, prNumber)
 
-	response, err := doJSON[struct {
-		Head struct {
-			SHA string `json:"sha"`
-		} `json:"head"`
-	}](ctx, c, http.MethodGet, path, nil)
+	// pullRequestStateResponse already models this shape, and reusing it keeps
+	// one description of a pull request's head rather than two.
+	response, err := doJSON[pullRequestStateResponse](ctx, c, http.MethodGet, path, nil)
 	if err != nil {
 		return "", err
 	}

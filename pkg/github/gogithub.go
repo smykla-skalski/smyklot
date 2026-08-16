@@ -164,13 +164,20 @@ func paginate[T any](
 	op string,
 	fetch func(context.Context, *gogithub.ListOptions) ([]T, *gogithub.Response, error),
 ) ([]T, error) {
-	opts := &gogithub.ListOptions{PerPage: pageSize}
+	// Page is set explicitly rather than left at zero. GitHub reads an absent
+	// page as the first one, so both spellings work - but the hand-rolled
+	// loops this replaces all sent it, and a request that changes shape is a
+	// request a spec has to be rewritten to accept.
+	opts := &gogithub.ListOptions{Page: 1, PerPage: pageSize}
 	items := make([]T, 0, pageSize)
 
 	for range maxPages {
 		page, resp, err := fetch(ctx, opts)
 		if err != nil {
-			return nil, wrapError(ErrAPIRequest, http.MethodGet, op, err)
+			// decodeOp, not a bare ErrAPIRequest: a body that will not parse
+			// is a permanent failure, and reporting it as a request failure
+			// would put it back in the delivery retry queue eight times.
+			return nil, wrapError(decodeOp(resp, err), http.MethodGet, op, err)
 		}
 
 		items = append(items, page...)

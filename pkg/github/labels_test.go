@@ -65,7 +65,7 @@ var _ = Describe("Pull request labels [Unit]", func() {
 				func(w http.ResponseWriter, r *http.Request) {
 					pages++
 
-					if r.URL.Query().Get("page") == "" {
+					if r.URL.Query().Get("page") == "1" {
 						w.Header().Set(
 							"Link",
 							fmt.Sprintf(`<%s/repos/acme/web/issues/42/labels?page=2>; rel="next"`,
