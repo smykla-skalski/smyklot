@@ -95,6 +95,25 @@
         {@render failedView('repositories', error)}
       {/await}
     </div>
+  {:else if view === 'sync'}
+    <div id="sync-panel">
+      {#await import('$lib/components/SyncView.svelte')}
+        {@render loadingView('sync')}
+      {:then { default: SyncView }}
+        {#key session.selectedTarget.id}
+          <SyncView
+            targetId={session.selectedTarget.id}
+            readOnly={!session.selectedTarget.capabilities.write}
+            fetchConfig={session.api.fetchSyncConfig}
+            saveConfig={session.api.saveSyncConfig}
+            fetchPlan={session.api.fetchSyncPlan}
+            approvePlan={session.api.approveSyncPlan}
+          />
+        {/key}
+      {:catch error}
+        {@render failedView('sync', error)}
+      {/await}
+    </div>
   {:else if view === 'users' || view === 'invitations'}
     <div id="access-panel">
       {#await import('$lib/components/UserManagement.svelte')}

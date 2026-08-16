@@ -56,6 +56,7 @@
   const NAVIGATION_VIEWS = [
     'settings',
     'repositories',
+    'sync',
     'users',
     'history',
   ] as const satisfies readonly PanelView[];
@@ -134,6 +135,7 @@
   function icon(view: PanelView): IconName {
     if (view === 'settings') return 'settings';
     if (view === 'repositories') return 'repositories';
+    if (view === 'sync') return 'refresh';
     if (view === 'users' || view === 'invitations') return 'users';
     return 'history';
   }

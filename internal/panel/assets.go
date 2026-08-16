@@ -28,6 +28,7 @@ const (
 	panelInstallationsResource = "installations"
 	panelRepositoriesPath      = "repositories"
 	panelSettingsPath          = "settings"
+	panelSyncPath              = "sync"
 )
 
 // The documents the panel serves by name rather than as plain static files.
@@ -311,7 +312,7 @@ func isPanelNavigationPath(relative string) bool {
 // the view has to be a view, and a dialog is one segment or two.
 func isPanelViewPath(view string, trailing []string) bool {
 	switch view {
-	case panelSettingsPath:
+	case panelSettingsPath, panelSyncPath:
 		return len(trailing) == 0
 	case panelHistoryPath:
 		return len(trailing) == 0 || (len(trailing) == 1 && isPanelHistorySection(trailing[0]))

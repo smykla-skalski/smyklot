@@ -8,8 +8,22 @@ import {
 
 export type { RouteDialog };
 
-export const PANEL_VIEWS = ['settings', 'repositories', 'users', 'invitations', 'history'] as const;
-const SCOPED_PANEL_VIEWS = ['settings', 'repositories', 'users', 'invitations', 'history'] as const;
+export const PANEL_VIEWS = [
+  'settings',
+  'repositories',
+  'sync',
+  'users',
+  'invitations',
+  'history',
+] as const;
+const SCOPED_PANEL_VIEWS = [
+  'settings',
+  'repositories',
+  'sync',
+  'users',
+  'invitations',
+  'history',
+] as const;
 
 /**
  * The views that belong to the reader rather than to a workspace or the console.
