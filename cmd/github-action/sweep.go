@@ -290,7 +290,9 @@ func (s *server) reconcileInstallationSync(
 
 	targetID := installationStorageID(installation.ID)
 
-	if err := s.planInstallationSync(ctx, client, targetID, orgsync.TriggerReconcile); err != nil {
+	if err := s.planInstallationSync(
+		ctx, client, installation, targetID, orgsync.TriggerReconcile,
+	); err != nil {
 		return err
 	}
 

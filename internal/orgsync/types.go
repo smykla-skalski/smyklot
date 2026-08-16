@@ -13,7 +13,10 @@
 // pass and reported the plan as though it were the outcome.
 package orgsync
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 // Kind is one area of a repository that is synchronized.
 //
@@ -46,6 +49,47 @@ func (k Kind) Valid() bool {
 	}
 
 	return false
+}
+
+// RequiredPermission is what an installation must have granted for a kind to
+// run, in GitHub's own spelling.
+//
+// Labels need only what the bot already holds to label a pull request, which is
+// why they shipped without asking any installation for anything. The rest need
+// permissions an installation has to approve, and until it does, that kind is
+// unavailable rather than broken.
+func (k Kind) RequiredPermission() string {
+	switch k {
+	case KindLabels:
+		return "issues"
+	case KindSettings, KindRulesets:
+		return "administration"
+	case KindFiles:
+		return "contents"
+	default:
+		return ""
+	}
+}
+
+// Unavailable is a kind an installation has not granted the permission for.
+//
+// It is a state to report, not an error to fail on. An installation that has
+// not approved a newly requested permission is the ordinary condition during a
+// rollout, and a sweep that treated it as a failure would fill an operator's
+// history with the same refusal every tick while telling them nothing about
+// what to do. The permission is named so the panel can say which one to grant.
+type Unavailable struct {
+	Kind       Kind
+	Permission string
+}
+
+// Reason says what is missing, for somebody reading it rather than matching on
+// it.
+func (u Unavailable) Reason() string {
+	return fmt.Sprintf(
+		"Smyklot has not been granted %s access, which %s sync needs",
+		u.Permission, u.Kind,
+	)
 }
 
 // Operation is what an action does to its subject.

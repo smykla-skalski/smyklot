@@ -43,6 +43,39 @@ type Installation struct {
 
 	// AvatarURL is the public avatar of the installation owner.
 	AvatarURL string
+
+	// Permissions is what this installation has granted, keyed by GitHub's own
+	// name for each - "administration", "issues", "contents" - against "read",
+	// "write" or "admin".
+	//
+	// Read from the installation listing, which already carries it, so knowing
+	// whether the App may do something costs no request. That matters because
+	// the alternative is finding out by being refused: an installation that has
+	// not approved a new permission is the ordinary state during a rollout, and
+	// discovering it one 403 at a time would fill an operator's history with
+	// failures that are really a question nobody has been asked yet.
+	Permissions map[string]string
+}
+
+// Permission levels, as GitHub spells them.
+const (
+	PermissionRead  = "read"
+	PermissionWrite = "write"
+	PermissionAdmin = "admin"
+)
+
+// Grants reports whether an installation may write through a permission.
+//
+// Admin implies write, which is why this is a method rather than an equality
+// check at each call site: an organization that granted admin has granted more
+// than write, and a comparison against "write" alone would report it as missing.
+func (i Installation) Grants(permission string) bool {
+	switch i.Permissions[permission] {
+	case PermissionWrite, PermissionAdmin:
+		return true
+	default:
+		return false
+	}
 }
 
 // Repository identifies a repository an installation can reach

@@ -96,12 +96,26 @@ var _ = Describe("Label sync [Unit]", func() {
 		return client
 	}
 
-	plan := func(target storage.Target) {
+	// permitted is an installation that granted everything label sync needs,
+	// which is what every spec here assumes unless it says otherwise.
+	permitted := github.Installation{
+		ID: 411, Account: "smykla-skalski",
+		Permissions: map[string]string{"issues": github.PermissionWrite},
+	}
+
+	planAs := func(target storage.Target, installation github.Installation) {
 		GinkgoHelper()
 
 		Expect(service.planInstallationSync(
-			GinkgoT().Context(), client(), target.ID, orgsync.TriggerReconcile,
+			GinkgoT().Context(), client(), installation, target.ID,
+			orgsync.TriggerReconcile,
 		)).To(Succeed())
+	}
+
+	plan := func(target storage.Target) {
+		GinkgoHelper()
+
+		planAs(target, permitted)
 	}
 
 	livePlan := func(target storage.Target) (orgsync.Plan, []orgsync.Action) {
@@ -153,6 +167,54 @@ var _ = Describe("Label sync [Unit]", func() {
 
 			_, _, err = service.store.GetLiveSyncPlan(GinkgoT().Context(), target.ID)
 			Expect(err).To(MatchError(storage.ErrNotFound))
+		})
+
+		// An installation that has not approved a newly requested permission is
+		// the ordinary state during a rollout, not a fault. Planning anyway
+		// would produce a plan whose every action 403s, once per repository,
+		// every tick - a history full of refusals that are really one question
+		// nobody has been asked
+		It("plans nothing for a kind the installation has not permitted", func() {
+			target := seed()
+			configure(target, `{"labels":[{"name":"bug","color":"d73a4a"}]}`)
+
+			planAs(target, github.Installation{
+				ID: 411, Permissions: map[string]string{"issues": github.PermissionRead},
+			})
+
+			_, _, err := service.store.GetLiveSyncPlan(GinkgoT().Context(), target.ID)
+			Expect(err).To(MatchError(storage.ErrNotFound))
+
+			// And it asked GitHub nothing, rather than finding out by refusal
+			Expect(stub.countCalls(
+				http.MethodGet, "/repos/smykla-skalski/smyklot/labels")).To(BeZero())
+		})
+
+		// Admin is more than write, not something else. Comparing against
+		// "write" alone would stand down an organization that granted more
+		It("plans for an installation that granted admin", func() {
+			target := seed()
+			configure(target, `{"labels":[{"name":"bug","color":"d73a4a"}]}`)
+
+			planAs(target, github.Installation{
+				ID: 411, Permissions: map[string]string{"issues": github.PermissionAdmin},
+			})
+
+			_, actions := livePlan(target)
+			Expect(actions).To(HaveLen(1))
+		})
+
+		// GitHub's answer may carry no permissions at all, and reading that
+		// absence as a refusal would stand every sync down on a response shape
+		// rather than on a decision somebody made
+		It("plans for an installation that reported no permissions", func() {
+			target := seed()
+			configure(target, `{"labels":[{"name":"bug","color":"d73a4a"}]}`)
+
+			planAs(target, github.Installation{ID: 411})
+
+			_, actions := livePlan(target)
+			Expect(actions).To(HaveLen(1))
 		})
 
 		It("plans nothing when the repository already matches", func() {

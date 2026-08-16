@@ -74,6 +74,66 @@ var _ = Describe("GitHub App Client [Unit]", func() {
 			}))
 		})
 
+		// The listing already carries what an installation granted, so knowing
+		// whether the App may do something costs no request - and the
+		// alternative is finding out one 403 at a time
+		It("reads the permissions an installation granted", func() {
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(`[{"id": 111, "account": {"login": "acme"},
+					"permissions": {"issues": "write", "administration": "read",
+					"contents": "write", "pull_requests": "write",
+					"single_file": "read"}}]`))
+			}))
+
+			client, err := github.NewAppClient("test-jwt", server.URL)
+			Expect(err).NotTo(HaveOccurred())
+
+			installations, err := client.ListInstallations(context.Background())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(installations).To(HaveLen(1))
+
+			// Only the ones Smyklot acts on. Carrying every permission GitHub
+			// has would be a map nothing reads and a line to maintain each time
+			// GitHub adds one
+			Expect(installations[0].Permissions).To(Equal(map[string]string{
+				"issues": "write", "administration": "read",
+				"contents": "write", "pull_requests": "write",
+			}))
+
+			Expect(installations[0].Grants("issues")).To(BeTrue())
+			Expect(installations[0].Grants("administration")).To(BeFalse())
+		})
+
+		// Admin is more than write, not something else. An organization that
+		// granted admin has granted what write asks for
+		It("reads admin as granting write", func() {
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(
+					`[{"id": 111, "permissions": {"administration": "admin"}}]`))
+			}))
+
+			client, err := github.NewAppClient("test-jwt", server.URL)
+			Expect(err).NotTo(HaveOccurred())
+
+			installations, err := client.ListInstallations(context.Background())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(installations[0].Grants("administration")).To(BeTrue())
+		})
+
+		It("reports a permission nobody granted as absent", func() {
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(`[{"id": 111, "permissions": {"issues": "write"}}]`))
+			}))
+
+			client, err := github.NewAppClient("test-jwt", server.URL)
+			Expect(err).NotTo(HaveOccurred())
+
+			installations, err := client.ListInstallations(context.Background())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(installations[0].Permissions).NotTo(HaveKey("administration"))
+			Expect(installations[0].Grants("administration")).To(BeFalse())
+		})
+
 		// A suspended installation cannot mint a token, so polling it would
 		// only produce errors every sweep
 		It("should skip a suspended installation", func() {

@@ -349,10 +349,36 @@ func (c *Client) ListInstallations(ctx context.Context) ([]Installation, error) 
 			Account:     item.GetAccount().GetLogin(),
 			AccountType: item.GetAccount().GetType(),
 			AvatarURL:   item.GetAccount().GetAvatarURL(),
+			Permissions: installationPermissions(item.GetPermissions()),
 		})
 	}
 
 	return installations, nil
+}
+
+// installationPermissions reads the permissions an installation granted.
+//
+// Only the ones Smyklot acts on. go-github models every permission GitHub has
+// as its own field, and carrying all of them would mean a map nothing reads and
+// a line to maintain each time GitHub adds one.
+func installationPermissions(granted *gogithub.InstallationPermissions) map[string]string {
+	if granted == nil {
+		return nil
+	}
+
+	permissions := map[string]string{}
+	for name, level := range map[string]string{
+		"administration": granted.GetAdministration(),
+		"contents":       granted.GetContents(),
+		"issues":         granted.GetIssues(),
+		"pull_requests":  granted.GetPullRequests(),
+	} {
+		if level != "" {
+			permissions[name] = level
+		}
+	}
+
+	return permissions
 }
 
 // ListInstallationRepos retrieves every repository the installation can reach.
