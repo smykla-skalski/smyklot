@@ -119,9 +119,72 @@ export function shortAge(value: string, nowMs: number): string {
   return `${Math.floor(days / 7)} wk`;
 }
 
-/** Soonest first, which is the only order this page is ever sorted in by default. */
+/** Soonest first: the row at the top of the queue is the row about to move. */
 export function bySoonest(first: PendingCIRequest, second: PendingCIRequest): number {
   return first.next_check_at.localeCompare(second.next_check_at);
+}
+
+/**
+ * Newest first, for the table of things that have already happened.
+ *
+ * The waiting list is sorted by what happens soonest, and reading that order onto the past puts the
+ * oldest outcome at the top - the exact opposite of what somebody scanning for "what just
+ * happened" wants.
+ */
+export function byMostRecent(first: PendingCIRequest, second: PendingCIRequest): number {
+  const at = (request: PendingCIRequest): string => request.finished_at ?? request.updated_at;
+
+  return at(second).localeCompare(at(first));
+}
+
+/** Whether the branch and the reaction were tidied up after the merge. */
+export interface CleanupState {
+  tone: 'clear' | 'warning' | 'stop';
+  icon: 'check' | 'pending' | 'alert';
+  label: string;
+  /** The whole story, for the tooltip that stands in for the label on a narrow screen. */
+  detail: string;
+}
+
+/**
+ * The label says the outcome and not the subject: the column is headed "Cleanup", so a chip
+ * reading "Cleanup failed" says the word twice. The whole sentence is on the tooltip, which is
+ * where it is needed - on a narrow screen the label goes and the mark is all that is left.
+ */
+export function cleanupState(request: PendingCIRequest): CleanupState {
+  if (request.cleanup_error !== undefined && request.cleanup_error !== '') {
+    return {
+      tone: 'stop',
+      icon: 'alert',
+      label: 'Failed',
+      detail: `Cleanup failed: ${request.cleanup_error}`,
+    };
+  }
+  if (request.cleanup_pending) {
+    return {
+      tone: 'warning',
+      icon: 'pending',
+      label: 'Pending',
+      detail: 'The branch and the reaction are still being tidied up',
+    };
+  }
+
+  return { tone: 'clear', icon: 'check', label: 'Done', detail: 'Tidied up' };
+}
+
+/**
+ * Why a request ended, in a sentence.
+ *
+ * The stored `reason` is the service's own words where it has any; the fallbacks are what each
+ * lifecycle means, since a row with an empty cell says nothing about what happened to it.
+ */
+export function endReason(request: PendingCIRequest): string {
+  if (request.reason !== '') return request.reason;
+  if (request.lifecycle === 'merged') return 'Checks passed and stayed quiet for 30 s';
+  if (request.lifecycle === 'cancelled') return 'Cancelled before it could merge';
+  if (request.lifecycle === 'superseded') return 'Replaced by a later command';
+
+  return 'Still waiting';
 }
 
 /** The one-line summary of how a request ended, for the Recent table. */

@@ -4,9 +4,19 @@
   import type { PanelApi } from '$lib/api';
   import type { FilterSection } from '$lib/filter-menu';
   import { formatTimestamp } from '$lib/format';
-  import { bySoonest, outcomeState, queueNext, queueState, shortAge } from '$lib/queue';
+  import {
+    byMostRecent,
+    bySoonest,
+    cleanupState,
+    endReason,
+    outcomeState,
+    queueNext,
+    queueState,
+    shortAge,
+  } from '$lib/queue';
   import type { PendingCIRequest } from '$lib/types';
   import ActionMenu, { type ActionMenuItem } from './ActionMenu.svelte';
+  import AppTooltip from './AppTooltip.svelte';
   import Chip from './Chip.svelte';
   import FilterMenu from './FilterMenu.svelte';
   import Icon from './Icon.svelte';
@@ -45,6 +55,19 @@
         { value: 'failing', label: 'Failing', tone: 'invalid' },
         { value: 'unreadable', label: 'Unreadable', tone: 'bypassed' },
         { value: 'no_checks', label: 'No checks', tone: 'default' },
+      ],
+    },
+  ] satisfies readonly FilterSection[];
+
+  /* The past is filtered by how a request ENDED, not by what its checks last
+     said - and cancelled is not a failure, so it does not take the invalid tone.
+     Somebody chose it, or the pull request moved on underneath it. */
+  const OUTCOME_FILTERS = [
+    {
+      options: [
+        { value: 'merged', label: 'Merged', tone: 'valid' },
+        { value: 'cancelled', label: 'Cancelled', tone: 'default' },
+        { value: 'superseded', label: 'Superseded', tone: 'bypassed' },
       ],
     },
   ] satisfies readonly FilterSection[];
@@ -96,7 +119,11 @@
     const source = section === 'waiting' ? waiting : recent;
     const needle = query.trim().toLocaleLowerCase();
     return source
-      .filter((request) => states.length === 0 || states.includes(request.last_observed_state))
+      .filter(
+        (request) =>
+          states.length === 0 ||
+          states.includes(section === 'recent' ? request.lifecycle : request.last_observed_state),
+      )
       .filter((request) => schedules.length === 0 || schedules.includes(request.schedule))
       .filter(
         (request) =>
@@ -105,7 +132,7 @@
             (field) => field.toLocaleLowerCase().includes(needle),
           ),
       )
-      .sort(bySoonest);
+      .sort(section === 'recent' ? byMostRecent : bySoonest);
   });
 
   const hasFilters = $derived(query !== '' || states.length > 0 || schedules.length > 0);
@@ -269,17 +296,25 @@
 {/if}
 
 <div class="table-card queue-card">
-  <table class="queue-table">
+  <table
+    class="queue-table"
+    class:waiting-table={section === 'waiting'}
+    class:recent-table={section === 'recent'}
+  >
     <thead>
       <tr>
         <th scope="col">
           <div class="heading-layout">
-            <span class="heading-label band-trim">Checks</span>
+            <span class="heading-label band-trim"
+              >{section === 'recent' ? 'Outcome' : 'Checks'}</span
+            >
             <FilterMenu
-              label="Checks"
+              label={section === 'recent' ? 'Outcome' : 'Checks'}
               summary={states.length === 0 ? 'All states' : `${states.length} selected`}
-              hint="Filter by what the checks last said"
-              sections={STATE_FILTERS}
+              hint={section === 'recent'
+                ? 'Cancelled is not a failure: somebody chose it'
+                : 'Filter by what the checks last said'}
+              sections={section === 'recent' ? OUTCOME_FILTERS : STATE_FILTERS}
               selected={states}
               multiple
               align="start"
@@ -288,22 +323,30 @@
           </div>
         </th>
         <th scope="col"><span class="heading-label band-trim">Pull request</span></th>
-        <th scope="col">
-          <div class="heading-layout">
-            <span class="heading-label band-trim">Next</span>
-            <FilterMenu
-              label="Schedule"
-              summary={schedules.length === 0 ? 'Any schedule' : `${schedules.length} selected`}
-              hint="Deferred means nothing has moved for an hour"
-              sections={SCHEDULE_FILTERS}
-              selected={schedules}
-              multiple
-              align="start"
-              onChange={(values) => (schedules = values)}
-            />
-          </div>
-        </th>
-        <th scope="col"><span class="heading-label band-trim">Armed</span></th>
+        {#if section === 'recent'}
+          <th scope="col" class="cleanup-column"
+            ><span class="heading-label band-trim">Cleanup</span></th
+          >
+          <th scope="col"><span class="heading-label band-trim">Why it ended</span></th>
+          <th scope="col"><span class="heading-label band-trim">Finished</span></th>
+        {:else}
+          <th scope="col">
+            <div class="heading-layout">
+              <span class="heading-label band-trim">Next</span>
+              <FilterMenu
+                label="Schedule"
+                summary={schedules.length === 0 ? 'Any schedule' : `${schedules.length} selected`}
+                hint="Deferred means nothing has moved for an hour"
+                sections={SCHEDULE_FILTERS}
+                selected={schedules}
+                multiple
+                align="start"
+                onChange={(values) => (schedules = values)}
+              />
+            </div>
+          </th>
+          <th scope="col"><span class="heading-label band-trim">Armed</span></th>
+        {/if}
         <th scope="col"><span class="visually-hidden">Actions</span></th>
       </tr>
     </thead>
@@ -341,51 +384,76 @@
               <span>@{request.requester}</span>
             </div>
           </td>
-          <td data-label="Next">
-            <div
-              class="next-lead"
-              class:due={next.merging}
-              class:idle={!next.merging}
-              class:imminent={next.merging && next.seconds !== null && next.seconds <= 10}
-              class:final={next.merging && next.seconds !== null && next.seconds <= 5}
-            >
-              {#if next.merging && next.seconds !== null}
-                <!-- The quiet period drawn as what it is: a wait with an end.
-                     Circumference is 2πr at r=5.6, so the dash offset is the
-                     part already spent - the ring empties as the merge nears.
-                     Sized in `cap` units so it sits in the band of the words
-                     beside it rather than making the line taller than them. -->
-                <svg class="ring" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-                  <circle
-                    cx="7"
-                    cy="7"
-                    r="5.6"
-                    stroke="currentColor"
-                    stroke-opacity="0.25"
-                    stroke-width="1.8"
-                  />
-                  <circle
-                    cx="7"
-                    cy="7"
-                    r="5.6"
-                    stroke="currentColor"
-                    stroke-width="1.8"
-                    stroke-linecap="round"
-                    stroke-dasharray="35.2"
-                    stroke-dashoffset={35.2 * (1 - Math.min(1, next.seconds / QUIET_SECONDS))}
-                    transform="rotate(-90 7 7)"
-                  />
-                </svg>
-              {/if}
-              <span class="band-trim">{next.lead}</span>
-            </div>
-            <div class="next-sub">{next.sub}</div>
-          </td>
-          <td data-label="Armed">
-            <span class="age band-trim" title={formatTimestamp(request.requested_at)}
-              >{shortAge(request.requested_at, now)}</span
-            >
-          </td>
+          {#if section === 'recent'}
+            {@const cleanup = cleanupState(request)}
+            <!-- The words go and the mark stays below 64rem, with the whole
+                 sentence on the tooltip: there is usually room to say "Cleanup
+                 failed" in full, and where there is not, a mark that can be
+                 hovered beats a truncated word. -->
+            <AppTooltip text={cleanup.detail}>
+              {#snippet children(props)}
+                <td {...props} class="cleanup-column" data-label="Cleanup">
+                  <Chip tone={cleanup.tone} icon={cleanup.icon} small>
+                    <span class="cleanup-label">{cleanup.label}</span>
+                  </Chip>
+                </td>
+              {/snippet}
+            </AppTooltip>
+            <td data-label="Why it ended"><div class="reason">{endReason(request)}</div></td>
+            <td data-label="Finished">
+              <span
+                class="age band-trim"
+                title={formatTimestamp(request.finished_at ?? request.updated_at)}
+                >{shortAge(request.finished_at ?? request.updated_at, now)}</span
+              >
+            </td>
+          {:else}
+            <td data-label="Next">
+              <div
+                class="next-lead"
+                class:due={next.merging}
+                class:idle={!next.merging}
+                class:imminent={next.merging && next.seconds !== null && next.seconds <= 10}
+                class:final={next.merging && next.seconds !== null && next.seconds <= 5}
+              >
+                {#if next.merging && next.seconds !== null}
+                  <!-- The quiet period drawn as what it is: a wait with an end.
+                       Circumference is 2πr at r=5.6, so the dash offset is the
+                       part already spent - the ring empties as the merge nears.
+                       Sized in `cap` units so it sits in the band of the words
+                       beside it rather than making the line taller than them. -->
+                  <svg class="ring" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                    <circle
+                      cx="7"
+                      cy="7"
+                      r="5.6"
+                      stroke="currentColor"
+                      stroke-opacity="0.25"
+                      stroke-width="1.8"
+                    />
+                    <circle
+                      cx="7"
+                      cy="7"
+                      r="5.6"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                      stroke-linecap="round"
+                      stroke-dasharray="35.2"
+                      stroke-dashoffset={35.2 * (1 - Math.min(1, next.seconds / QUIET_SECONDS))}
+                      transform="rotate(-90 7 7)"
+                    />
+                  </svg>
+                {/if}
+                <span class="band-trim">{next.lead}</span>
+              </div>
+              <div class="next-sub">{next.sub}</div>
+            </td>
+            <td data-label="Armed">
+              <span class="age band-trim" title={formatTimestamp(request.requested_at)}
+                >{shortAge(request.requested_at, now)}</span
+              >
+            </td>
+          {/if}
           <td class="row-actions" data-label="Actions">
             <ActionMenu
               label={`Actions for ${request.repository_full_name} #${request.pull_request}`}
@@ -396,7 +464,7 @@
         </tr>
       {:else}
         <tr class="empty-row">
-          <td class="empty-cell" colspan="5">
+          <td class="empty-cell" colspan={section === 'recent' ? 6 : 5}>
             <!-- Qualified with `!loaded`: a refresh that is in flight over rows
                  already on screen must not replace them with a placeholder, and
                  an empty queue that HAS loaded is a real answer rather than a
@@ -405,10 +473,16 @@
               Reading the queue…
             {:else}
               <TableEmptyState
-                title={hasFilters ? 'Nothing matches' : 'Nothing is waiting'}
+                title={hasFilters
+                  ? 'Nothing matches'
+                  : section === 'recent'
+                    ? 'Nothing has finished yet'
+                    : 'Nothing is waiting'}
                 description={hasFilters
-                  ? 'No request in the queue matches these filters'
-                  : 'Every armed merge has been dealt with'}
+                  ? 'No request here matches these filters'
+                  : section === 'recent'
+                    ? 'Requests appear here once they merge, are cancelled, or are replaced'
+                    : 'Every armed merge has been dealt with'}
                 actionLabel={hasFilters ? 'Clear filters' : undefined}
                 onAction={hasFilters ? clearFilters : undefined}
               />
@@ -465,21 +539,38 @@
      looking right in development. `tests/csp-safety.test.ts` catches it.
 
      The pull request takes what is left - it is the one column whose content
-     has no bound - and every other column is the width of its own worst case. */
-  .queue-table :is(th, td):nth-child(1) {
+     has no bound - and every other column is the width of its own worst case.
+     The two sections carry different columns, so each states its own. */
+  .queue-table :is(th, td):first-child {
     width: 9.5rem;
   }
 
-  .queue-table :is(th, td):nth-child(3) {
+  .waiting-table :is(th, td):nth-child(3) {
     width: 13.5rem;
   }
 
-  .queue-table :is(th, td):nth-child(4) {
+  .waiting-table :is(th, td):nth-child(4) {
     width: 6.5rem;
   }
 
-  .queue-table :is(th, td):nth-child(5) {
+  .waiting-table :is(th, td):nth-child(5) {
     width: 5rem;
+  }
+
+  .recent-table :is(th, td):nth-child(3) {
+    width: 9.5rem;
+  }
+
+  .recent-table :is(th, td):nth-child(4) {
+    width: 15rem;
+  }
+
+  .recent-table :is(th, td):nth-child(5) {
+    width: 6.5rem;
+  }
+
+  .recent-table :is(th, td):nth-child(6) {
+    width: 3.5rem;
   }
 
   .queue-table th:first-child,
@@ -727,6 +818,25 @@
     color: var(--text-soft);
     display: block;
     font-size: var(--font-size-meta);
+  }
+
+  .reason {
+    color: var(--dim);
+    font-size: var(--font-size-compact);
+    text-box: trim-both cap alphabetic;
+  }
+
+  /* The label goes and the mark stays where the column has run out of room. The
+     whole sentence is on the cell's tooltip either way, so nothing is lost by
+     the words leaving - and a mark that can be hovered beats a word cut short. */
+  @media (max-width: 64rem) {
+    .cleanup-label {
+      display: none;
+    }
+
+    .queue-table :is(th, td).cleanup-column {
+      width: 3.5rem;
+    }
   }
 
   .row-actions {

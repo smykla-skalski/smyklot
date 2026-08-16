@@ -205,7 +205,7 @@
           <!-- A count beside its word, not a superscript of it. `sup` earned
                nothing here: in a flex row `vertical-align` does not apply, so
                the element was a plain box being shoved upward by hand. -->
-          <span class="segment-badge">{option.badge}</span>
+          <span class="segment-badge"><span class="cap-trim">{option.badge}</span></span>
         {/if}
       </span>
     </label>
@@ -517,6 +517,9 @@
      Square rather than wide: at 1.125rem of minimum width a single digit sat in
      a box half again its own size, and that slack read as a gap after the badge
      that no other pair of things in the control has. */
+  /* The number inside is trimmed to its own band, so `place-items: center` puts
+     the digits on the badge's middle rather than their line box - a 9px numeral
+     in a 14px square sat 0.78px high of it, which is a device row at 2x. */
   .segment-badge {
     align-items: center;
     background: var(--surface-raised);

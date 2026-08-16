@@ -45,6 +45,8 @@ const ROUTES = [
   'i/invitations',
   'i/history',
   'root/settings',
+  'root/queue',
+  'root/queue/recent',
   'root/installations',
   'root/access/users',
   'root/access/invitations',
