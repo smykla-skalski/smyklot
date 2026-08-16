@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -28,11 +29,13 @@ type githubStub struct {
 
 	// prAuthor is who opened the pull request, which decides whether a command
 	// counts as self-approval
-	prAuthor string
-	prLabels string
-	prHead   string
+	prAuthor   string
+	prLabels   string
+	prHead     string
+	prComments string
 
-	issueComments map[int64]issueCommentRecord
+	issueComments    map[int64]issueCommentRecord
+	commentReactions map[int64]string
 
 	// installations is what GET /app/installations reports, and repos what
 	// each installation can reach. Both are empty unless a spec sweeps
@@ -66,18 +69,20 @@ func newGitHubStub() *githubStub {
 		prAuthor:   "author",
 		prLabels:   `[]`,
 		prHead:     "command-head",
+		prComments: `[{"id":555}]`,
 		issueComments: map[int64]issueCommentRecord{
 			githubtest.DefaultCommentID: {
 				exists: true, body: "/approve", updatedAt: githubtest.DefaultUpdatedAt,
 				author: githubtest.DefaultAuthor, authorType: githubtest.DefaultAuthorTypeVal,
 			},
 		},
-		installations: `[]`,
-		repos:         `{"total_count": 0, "repositories": []}`,
-		members:       `[]`,
-		membersStatus: http.StatusOK,
-		openPRs:       `[]`,
-		probeStatus:   http.StatusOK,
+		commentReactions: map[int64]string{},
+		installations:    `[]`,
+		repos:            `{"total_count": 0, "repositories": []}`,
+		members:          `[]`,
+		membersStatus:    http.StatusOK,
+		openPRs:          `[]`,
+		probeStatus:      http.StatusOK,
 	}
 }
 
@@ -186,6 +191,10 @@ func (s *githubStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"id": 1, "state": "APPROVED"}`))
 
+	case strings.Contains(r.URL.Path, "/issues/comments/") &&
+		strings.Contains(r.URL.Path, "/reactions"):
+		s.writeCommentReactions(w, r)
+
 	case strings.HasSuffix(r.URL.Path, "/reactions"):
 		if r.Method == http.MethodGet {
 			_, _ = w.Write([]byte(`[]`))
@@ -200,6 +209,11 @@ func (s *githubStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.writeIssueComment(w, r.URL.Path)
 
 	case strings.HasSuffix(r.URL.Path, "/comments"):
+		if r.Method == http.MethodGet {
+			_, _ = io.WriteString(w, s.prComments)
+
+			return
+		}
 		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write([]byte(`{"id": 1}`))
 
@@ -271,6 +285,53 @@ func (s *githubStub) writeIssueComment(w http.ResponseWriter, path string) {
 		commentID, comment.body, comment.updatedAt,
 		comment.author, comment.authorType,
 	)
+}
+
+func (s *githubStub) writeCommentReactions(w http.ResponseWriter, r *http.Request) {
+	commentID, err := reactionCommentID(r.URL.Path)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+
+		return
+	}
+	s.mu.Lock()
+	comment, found := s.issueComments[commentID]
+	reactions := s.commentReactions[commentID]
+	s.mu.Unlock()
+	if !found || !comment.exists {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"message":"Not Found"}`))
+
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		if reactions == "" {
+			reactions = `[]`
+		}
+		_, _ = io.WriteString(w, reactions)
+	case http.MethodPost:
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"id":1}`))
+	case http.MethodDelete:
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func reactionCommentID(path string) (int64, error) {
+	const marker = "/issues/comments/"
+	start := strings.Index(path, marker)
+	if start < 0 {
+		return 0, errors.New("comment path is missing")
+	}
+	value := path[start+len(marker):]
+	if slash := strings.Index(value, "/"); slash >= 0 {
+		value = value[:slash]
+	}
+
+	return strconv.ParseInt(value, 10, 64)
 }
 
 func (s *githubStub) setInstallations(value string) {

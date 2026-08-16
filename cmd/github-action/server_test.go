@@ -598,6 +598,26 @@ var _ = Describe("Webhook service [Unit]", func() {
 			}, eventuallyWindow).Should(BeTrue())
 		})
 
+		It("cancels a command deletion when its webhook was missed", func() {
+			armed := armWebhookTestRequest(srv)
+			stub.prLabels = `[{"name":"smyklot:pending:ci:squash"}]`
+			stub.mu.Lock()
+			stub.issueComments[armed.SourceCommentID] = issueCommentRecord{exists: false}
+			stub.mu.Unlock()
+			startPendingCITestScheduler(srv)
+
+			Eventually(func() bool {
+				_, err := srv.store.GetArmed(
+					GinkgoT().Context(), armed.RepositoryID, armed.PullRequest,
+				)
+
+				return errors.Is(err, storage.ErrNotFound)
+			}, eventuallyWindow).Should(BeTrue())
+			Expect(stub.countCalls(
+				http.MethodPost, "/issues/comments/555/reactions",
+			)).To(BeZero())
+		})
+
 		It("completes terminal cleanup without adding an ownership label", func() {
 			armed := armWebhookTestRequest(srv)
 			terminal, err := srv.store.Finish(

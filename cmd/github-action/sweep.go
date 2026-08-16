@@ -322,7 +322,10 @@ func (s *server) sweepRepo(
 	if err != nil {
 		return NewGitHubError(ErrGetPRs, err)
 	}
-	if err := s.migrateLegacyPendingCIServiceLabels(ctx, client, repo, prs); err != nil {
+	cleaned, err := s.reconcilePendingCIServiceArtifacts(
+		ctx, client, repo, prs, !pollReactions,
+	)
+	if err != nil {
 		return err
 	}
 
@@ -345,7 +348,7 @@ func (s *server) sweepRepo(
 	}
 
 	if err := s.drainLegacyPendingCILabels(
-		ctx, client, targetID, installationID, repo, prs,
+		ctx, client, targetID, installationID, repo, prs, cleaned,
 	); err != nil {
 		return err
 	}
@@ -392,5 +395,7 @@ func (s *server) handoffPendingCIToAction(
 		return NewGitHubError(ErrGetPRs, err)
 	}
 
-	return s.migrateLegacyPendingCIServiceLabels(ctx, client, repo, prs)
+	_, err = s.reconcilePendingCIServiceArtifacts(ctx, client, repo, prs, false)
+
+	return err
 }

@@ -24,6 +24,7 @@
   let auditDetail = $state.raw<PendingCIDetail | null>(null);
   let auditLoading = $state(false);
   let auditError = $state<string | null>(null);
+  let auditLoadGeneration = 0;
   const total = $derived(queue.active.length + queue.deferred.length);
 
   function actionKey(action: 'check' | 'cancel', request: PendingCIRequest): string {
@@ -85,8 +86,10 @@
 
   async function toggleAudit(request: PendingCIRequest): Promise<void> {
     if (selectedRequest === request.id) {
+      auditLoadGeneration += 1;
       selectedRequest = null;
       auditDetail = null;
+      auditLoading = false;
       auditError = null;
       return;
     }
@@ -96,14 +99,20 @@
   }
 
   async function loadAudit(requestId: string): Promise<void> {
+    const generation = ++auditLoadGeneration;
     auditLoading = true;
     auditError = null;
     try {
-      auditDetail = await api.fetchRootPendingCI(requestId);
+      const detail = await api.fetchRootPendingCI(requestId);
+      if (generation === auditLoadGeneration && selectedRequest === requestId) {
+        auditDetail = detail;
+      }
     } catch (error) {
-      auditError = error instanceof Error ? error.message : String(error);
+      if (generation === auditLoadGeneration && selectedRequest === requestId) {
+        auditError = error instanceof Error ? error.message : String(error);
+      }
     } finally {
-      auditLoading = false;
+      if (generation === auditLoadGeneration) auditLoading = false;
     }
   }
 </script>

@@ -55,6 +55,20 @@ func (backend *githubPendingCIBackend) Observe(
 	if err := backend.requireCurrent(ctx, request); err != nil {
 		return pendingci.Observation{}, err
 	}
+	sourceReason, err := backend.source.CancellationReason(
+		ctx, client, request, owner, repository,
+	)
+	if err != nil {
+		return pendingci.Observation{}, err
+	}
+	if sourceReason != "" {
+		return pendingci.Observation{
+			HeadSHA: state.HeadSHA, BaseBranch: state.BaseBranch, PullRequestOpen: state.Open,
+			PullRequestMerged: state.Merged, PendingLabelFound: labelFound,
+			CancelReason: sourceReason,
+			State:        pendingci.ObservedIndeterminate, ObservedAt: observedAt,
+		}, nil
+	}
 	if request.SourceCommentID > 0 {
 		if err := client.AddReaction(
 			ctx, owner, repository, int(request.SourceCommentID),
@@ -75,20 +89,6 @@ func (backend *githubPendingCIBackend) Observe(
 		},
 	); err != nil {
 		return pendingci.Observation{}, err
-	}
-	sourceReason, err := backend.source.CancellationReason(
-		ctx, client, request, owner, repository,
-	)
-	if err != nil {
-		return pendingci.Observation{}, err
-	}
-	if sourceReason != "" {
-		return pendingci.Observation{
-			HeadSHA: state.HeadSHA, BaseBranch: state.BaseBranch, PullRequestOpen: state.Open,
-			PullRequestMerged: state.Merged, PendingLabelFound: labelFound,
-			CancelReason: sourceReason,
-			State:        pendingci.ObservedIndeterminate, ObservedAt: observedAt,
-		}, nil
 	}
 	cancelReason, err := backend.cancelReason(ctx, client, request, owner, repository)
 	if err != nil {

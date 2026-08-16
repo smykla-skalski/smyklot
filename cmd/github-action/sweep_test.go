@@ -289,9 +289,40 @@ var _ = Describe("Reaction sweep [Unit]", func() {
 
 		Expect(stub.countCalls(
 			http.MethodDelete, "/issues/42/labels/smyklot:pending:ci:squash",
-		)).To(BeZero())
+		)).To(Equal(1))
 		Expect(stub.countCalls(
 			http.MethodDelete, "/issues/42/labels/smyklot:pending:ci:service",
+		)).To(Equal(1))
+		Expect(stub.countCalls(http.MethodPost, "/issues/42/comments")).To(Equal(1))
+	})
+
+	It("should clean service artifacts left before durable activation", func() {
+		stub.installations = `[{"id":111,"account":{"login":"smykla-skalski"}}]`
+		stub.repos = `{"total_count":1,"repositories":[{
+			"id":123456,
+			"name":"smyklot",
+			"full_name":"smykla-skalski/smyklot",
+			"owner":{"login":"smykla-skalski"}
+		}]}`
+		stub.openPRs = `[{
+			"number":42,
+			"state":"open",
+			"head":{"sha":"orphan-head"},
+			"base":{"ref":"main"},
+			"labels":[{"name":"smyklot:pending:ci:squash"}]
+		}]`
+		stub.commentReactions[555] = `[
+			{"id":99,"content":"hooray","user":{"login":"smyklot[bot]"}}
+		]`
+		start()
+
+		Expect(service.migrationSweep(GinkgoT().Context())).To(Succeed())
+
+		Expect(stub.countCalls(
+			http.MethodDelete, "/issues/42/labels/smyklot:pending:ci:squash",
+		)).To(Equal(1))
+		Expect(stub.countCalls(
+			http.MethodDelete, "/issues/comments/555/reactions/99",
 		)).To(Equal(1))
 		Expect(stub.countCalls(http.MethodPost, "/issues/42/comments")).To(Equal(1))
 	})
