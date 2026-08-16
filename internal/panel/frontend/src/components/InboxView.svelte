@@ -86,8 +86,12 @@
     }
   }
 
-  function toggleAuditRecord(event: MouseEvent, notification: SecurityNotification): void {
-    event.preventDefault();
+  /* A disclosure, so the control is a button. It was an anchor whose href named
+     the article it sat inside, which made every modified click a promise the
+     page could not keep: Cmd-click opened a second tab scrolled to the same
+     place with nothing expanded, and a plain click had to swallow the address
+     to stop it going anywhere. */
+  function toggleAuditRecord(notification: SecurityNotification): void {
     expandedAuditId =
       expandedAuditId === notification.audit_event_id ? null : notification.audit_event_id;
     void read(notification);
@@ -239,10 +243,7 @@
               >
             </header>
             {#each group.events as notification (notification.id)}
-              <article
-                id={`audit-event-${notification.audit_event_id}`}
-                class:unread={notification.read_at === undefined}
-              >
+              <article class:unread={notification.read_at === undefined}>
                 <span class="unread-slot" aria-hidden="true"></span>
                 <div class="notification-copy">
                   <div class="notification-title">{actionLabel(notification.action)}</div>
@@ -255,12 +256,12 @@
                       datetime={notification.created_at}
                       title={formatTimestamp(notification.created_at)}
                       >{formatRelative(notification.created_at, now)}</time
-                    ><a
-                      class="audit-link"
-                      href={`#audit-event-${notification.audit_event_id}`}
+                    ><button
+                      type="button"
+                      class="audit-toggle"
                       aria-expanded={expandedAuditId === notification.audit_event_id}
-                      onclick={(event) => toggleAuditRecord(event, notification)}
-                      >Audit #{notification.audit_event_id}</a
+                      onclick={() => toggleAuditRecord(notification)}
+                      >Audit #{notification.audit_event_id}</button
                     >
                   </div>
                   {#if expandedAuditId === notification.audit_event_id}
@@ -504,18 +505,21 @@
   /* The separator belongs to the meta line, not to the link: non-breaking
      spaces so it keeps the mono advance the approved line measures, and muted
      so the dot does not read as part of the link's label. */
-  .audit-link::before {
+  .audit-toggle::before {
     color: var(--text-muted);
     content: '\00a0\00b7\00a0';
   }
 
-  .audit-link {
+  .audit-toggle {
+    background: none;
+    border: 0;
     color: var(--brand-action-text);
     font: inherit;
+    padding: 0;
     text-decoration: none;
   }
 
-  .audit-link:hover {
+  .audit-toggle:hover {
     text-decoration: underline;
     text-underline-offset: 0.15em;
   }
