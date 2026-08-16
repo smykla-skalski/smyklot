@@ -181,10 +181,39 @@ func doJSONPage[T any](
 
 	resp, err := client.gh.Do(req, &out)
 	if err != nil {
-		return out, resp, wrapError(ErrAPIRequest, method, path, err)
+		return out, resp, wrapError(decodeOp(resp, err), method, path, err)
 	}
 
 	return out, resp, nil
+}
+
+// decodeOp separates "GitHub refused" from "GitHub answered something this
+// package could not read".
+//
+// The distinction is load-bearing rather than cosmetic: ErrAPIRequest can be
+// retryable, and a body that will not parse will not parse on the second
+// attempt either. go-github reports a decode failure as a plain error against a
+// successful response, which is exactly the pair checked here.
+func decodeOp(resp *gogithub.Response, err error) error {
+	if resp == nil || resp.Response == nil {
+		return ErrAPIRequest
+	}
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return ErrAPIRequest
+	}
+
+	var (
+		rateErr  *gogithub.RateLimitError
+		abuseErr *gogithub.AbuseRateLimitError
+		respErr  *gogithub.ErrorResponse
+	)
+
+	if errors.As(err, &rateErr) || errors.As(err, &abuseErr) || errors.As(err, &respErr) {
+		return ErrAPIRequest
+	}
+
+	return ErrResponseParse
 }
 
 // newRetryableAPIError marks an error retryable on GitHub's own authority

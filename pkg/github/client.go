@@ -5,13 +5,10 @@
 package github
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -27,7 +24,6 @@ const (
 	maxIdleConns        = 100
 	maxIdleConnsPerHost = 10
 	idleConnTimeout     = 90 * time.Second
-	maxRetries          = 3
 	maxCodeownersSize   = 1024 * 1024 // 1MB
 	maxRepoConfigSize   = 64 * 1024   // 64KB
 
@@ -110,7 +106,8 @@ func newClient(token, baseURL, authScheme string) (*Client, error) {
 	httpClient := &http.Client{
 		Timeout: defaultTimeout,
 		Transport: authTransport{
-			base:   sharedTransport,
+			base: retryTransport{base: sharedTransport},
+
 			scheme: authScheme,
 			token:  token,
 		},
@@ -395,14 +392,9 @@ func parseReactions(rawReactions []map[string]interface{}) []Reaction {
 func (c *Client) GetPRReactions(ctx context.Context, owner, repo string, prNumber int) ([]Reaction, error) {
 	path := fmt.Sprintf("/repos/%s/%s/issues/%d/reactions", owner, repo, prNumber)
 
-	data, err := c.makeRequest(ctx, "GET", path, nil)
+	rawReactions, err := doJSON[[]map[string]interface{}](ctx, c, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
-	}
-
-	var rawReactions []map[string]interface{}
-	if err := json.Unmarshal(data, &rawReactions); err != nil {
-		return nil, NewAPIError(ErrResponseParse, 0, "GET", path, err)
 	}
 
 	return parseReactions(rawReactions), nil
@@ -418,14 +410,9 @@ func (c *Client) GetCommentReactions(
 ) ([]Reaction, error) {
 	path := fmt.Sprintf("/repos/%s/%s/issues/comments/%d/reactions", owner, repo, commentID)
 
-	data, err := c.makeRequest(ctx, "GET", path, nil)
+	rawReactions, err := doJSON[[]map[string]interface{}](ctx, c, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
-	}
-
-	var rawReactions []map[string]interface{}
-	if err := json.Unmarshal(data, &rawReactions); err != nil {
-		return nil, NewAPIError(ErrResponseParse, 0, "GET", path, err)
 	}
 
 	return parseReactions(rawReactions), nil
@@ -468,19 +455,14 @@ func (c *Client) getFileContent(
 ) ([]byte, error) {
 	path := fmt.Sprintf("/repos/%s/%s/contents/%s", owner, repo, filePath)
 
-	data, err := c.makeRequestWithRetry(ctx, "GET", path, nil)
+	response, err := doJSON[map[string]interface{}](ctx, c, http.MethodGet, path, nil)
 	if err != nil {
 		var apiErr *APIError
-		if errors.As(err, &apiErr) && apiErr.StatusCode == 404 {
+		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
 			return nil, nil
 		}
 
 		return nil, err
-	}
-
-	var response map[string]interface{}
-	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, NewAPIError(ErrResponseParse, 0, "GET", path, err)
 	}
 
 	content, ok := response["content"].(string)
@@ -528,9 +510,7 @@ func (c *Client) getFileContent(
 // Sent without the retry every other call gets: a readiness probe wants the
 // current answer, not a patient one.
 func (c *Client) Ping(ctx context.Context) error {
-	_, err := c.makeRequest(ctx, http.MethodGet, "/app", nil)
-
-	return err
+	return doRequest(withoutRetry(ctx), c, http.MethodGet, "/app", nil)
 }
 
 // GetUser resolves a GitHub login to its stable numeric identity.
@@ -540,18 +520,14 @@ func (c *Client) GetUser(ctx context.Context, login string) (User, error) {
 		return User{}, errors.New("GitHub login must not be empty")
 	}
 	path := "/users/" + url.PathEscape(login)
-	data, err := c.makeRequestWithRetry(ctx, http.MethodGet, path, nil)
-	if err != nil {
-		return User{}, err
-	}
-	var response struct {
+	response, err := doJSON[struct {
 		ID        int64   `json:"id"`
 		Login     string  `json:"login"`
 		Name      *string `json:"name"`
 		AvatarURL *string `json:"avatar_url"`
-	}
-	if err := json.Unmarshal(data, &response); err != nil {
-		return User{}, NewAPIError(ErrResponseParse, 0, http.MethodGet, path, err)
+	}](ctx, c, http.MethodGet, path, nil)
+	if err != nil {
+		return User{}, err
 	}
 
 	return User{
@@ -569,12 +545,7 @@ func (c *Client) ListInstallations(ctx context.Context) ([]Installation, error) 
 	for page := 1; page <= maxPages; page++ {
 		path := fmt.Sprintf("/app/installations?per_page=%d&page=%d", pageSize, page)
 
-		data, err := c.makeRequestWithRetry(ctx, "GET", path, nil)
-		if err != nil {
-			return nil, err
-		}
-
-		var response []struct {
+		response, err := doJSON[[]struct {
 			ID      int64 `json:"id"`
 			Account struct {
 				ID        int64  `json:"id"`
@@ -583,9 +554,9 @@ func (c *Client) ListInstallations(ctx context.Context) ([]Installation, error) 
 				AvatarURL string `json:"avatar_url"`
 			} `json:"account"`
 			SuspendedAt *string `json:"suspended_at"`
-		}
-		if err := json.Unmarshal(data, &response); err != nil {
-			return nil, NewAPIError(ErrResponseParse, 0, "GET", path, err)
+		}](ctx, c, http.MethodGet, path, nil)
+		if err != nil {
+			return nil, err
 		}
 
 		for _, item := range response {
@@ -630,13 +601,8 @@ func (c *Client) ListInstallationRepos(ctx context.Context) ([]Repository, error
 	for page := 1; page <= maxPages; page++ {
 		path := fmt.Sprintf("/installation/repositories?per_page=%d&page=%d", pageSize, page)
 
-		data, err := c.makeRequestWithRetry(ctx, "GET", path, nil)
-		if err != nil {
-			return nil, err
-		}
-
 		// Unlike most list endpoints this one wraps its results in an object
-		var response struct {
+		response, err := doJSON[struct {
 			TotalCount   *int `json:"total_count"`
 			Repositories []struct {
 				ID            int64  `json:"id"`
@@ -648,9 +614,9 @@ func (c *Client) ListInstallationRepos(ctx context.Context) ([]Repository, error
 					Login string `json:"login"`
 				} `json:"owner"`
 			} `json:"repositories"`
-		}
-		if err := json.Unmarshal(data, &response); err != nil {
-			return nil, NewAPIError(ErrResponseParse, 0, "GET", path, err)
+		}](ctx, c, http.MethodGet, path, nil)
+		if err != nil {
+			return nil, err
 		}
 
 		for _, item := range response.Repositories {
@@ -738,17 +704,13 @@ func (c *Client) listOrganizationMembers(
 			pageSize,
 			page,
 		)
-		data, err := c.makeRequestWithRetry(ctx, http.MethodGet, path, nil)
-		if err != nil {
-			return nil, err
-		}
-		var response []struct {
+		response, err := doJSON[[]struct {
 			ID        int64  `json:"id"`
 			Login     string `json:"login"`
 			AvatarURL string `json:"avatar_url"`
-		}
-		if err := json.Unmarshal(data, &response); err != nil {
-			return nil, NewAPIError(ErrResponseParse, 0, http.MethodGet, path, err)
+		}](ctx, c, http.MethodGet, path, nil)
+		if err != nil {
+			return nil, err
 		}
 		for _, item := range response {
 			members = append(members, User{
@@ -787,14 +749,9 @@ func stringPointer(value string) *string {
 func (c *Client) GetPRInfo(ctx context.Context, owner, repo string, prNumber int) (*PRInfo, error) {
 	path := fmt.Sprintf("/repos/%s/%s/pulls/%d", owner, repo, prNumber)
 
-	data, err := c.makeRequestWithRetry(ctx, "GET", path, nil)
+	response, err := doJSON[map[string]interface{}](ctx, c, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
-	}
-
-	var response map[string]interface{}
-	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, NewAPIError(ErrResponseParse, 0, "GET", path, err)
 	}
 
 	info := &PRInfo{
@@ -896,25 +853,14 @@ func (c *Client) GetPRComments(
 ) ([]map[string]interface{}, error) {
 	path := fmt.Sprintf("/repos/%s/%s/issues/%d/comments", owner, repo, prNumber)
 
-	data, err := c.makeRequestWithRetry(ctx, "GET", path, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	var comments []map[string]interface{}
-	if err := json.Unmarshal(data, &comments); err != nil {
-		return nil, NewAPIError(ErrResponseParse, 0, "GET", path, err)
-	}
-
-	return comments, nil
+	return doJSON[[]map[string]interface{}](ctx, c, http.MethodGet, path, nil)
 }
 
 // DeleteComment deletes a comment from a pull request
 func (c *Client) DeleteComment(ctx context.Context, owner, repo string, commentID int) error {
 	path := fmt.Sprintf("/repos/%s/%s/issues/comments/%d", owner, repo, commentID)
 
-	_, err := c.makeRequest(ctx, "DELETE", path, nil)
-	return err
+	return doRequest(ctx, c, http.MethodDelete, path, nil)
 }
 
 // UpdatePendingCIReaction finds comments with the bot's "eyes" reaction and replaces with "+1"
@@ -983,14 +929,9 @@ func (c *Client) RemoveReactionByUser(
 	// Get all reactions on the comment
 	path := fmt.Sprintf("/repos/%s/%s/issues/comments/%d/reactions", owner, repo, commentID)
 
-	data, err := c.makeRequest(ctx, "GET", path, nil)
+	reactions, err := doJSON[[]map[string]interface{}](ctx, c, http.MethodGet, path, nil)
 	if err != nil {
 		return err
-	}
-
-	var reactions []map[string]interface{}
-	if err := json.Unmarshal(data, &reactions); err != nil {
-		return NewAPIError(ErrResponseParse, 0, "GET", path, err)
 	}
 
 	// Find and delete matching reactions from the specific user
@@ -1017,7 +958,7 @@ func (c *Client) RemoveReactionByUser(
 					int(id),
 				)
 
-				if _, err := c.makeRequest(ctx, "DELETE", deletePath, nil); err != nil {
+				if err := doRequest(ctx, c, http.MethodDelete, deletePath, nil); err != nil {
 					return err
 				}
 			}
@@ -1031,19 +972,15 @@ func (c *Client) RemoveReactionByUser(
 func (c *Client) HasWritePermission(ctx context.Context, owner, repo, username string) (bool, error) {
 	path := fmt.Sprintf("/repos/%s/%s/collaborators/%s/permission", owner, repo, username)
 
-	data, err := c.makeRequest(ctx, "GET", path, nil)
+	response, err := doJSON[map[string]interface{}](ctx, c, http.MethodGet, path, nil)
 	if err != nil {
 		// If user is not a collaborator, return false (not an error)
 		var apiErr *APIError
-		if errors.As(err, &apiErr) && apiErr.StatusCode == 404 {
+		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
 			return false, nil
 		}
-		return false, err
-	}
 
-	var response map[string]interface{}
-	if err := json.Unmarshal(data, &response); err != nil {
-		return false, NewAPIError(ErrResponseParse, 0, "GET", path, err)
+		return false, err
 	}
 
 	permission, ok := response["permission"].(string)
@@ -1068,25 +1005,21 @@ func (c *Client) HasWritePermission(ctx context.Context, owner, repo, username s
 func (c *Client) IsTeamMember(ctx context.Context, org, teamSlug, username string) (bool, error) {
 	path := fmt.Sprintf("/orgs/%s/teams/%s/memberships/%s", org, teamSlug, username)
 
-	data, err := c.makeRequest(ctx, "GET", path, nil)
+	response, err := doJSON[map[string]interface{}](ctx, c, http.MethodGet, path, nil)
 	if err != nil {
 		var apiErr *APIError
 		if errors.As(err, &apiErr) {
 			// 404 means user is not a member
-			if apiErr.StatusCode == 404 {
+			if apiErr.StatusCode == http.StatusNotFound {
 				return false, nil
 			}
 			// 403 likely means insufficient permissions (missing read:org or members:read)
-			if apiErr.StatusCode == 403 {
+			if apiErr.StatusCode == http.StatusForbidden {
 				return false, fmt.Errorf("insufficient permissions to check team membership (need read:org or members:read scope): %w", err)
 			}
 		}
-		return false, err
-	}
 
-	var response map[string]interface{}
-	if err := json.Unmarshal(data, &response); err != nil {
-		return false, NewAPIError(ErrResponseParse, 0, "GET", path, err)
+		return false, err
 	}
 
 	// Check if membership is active (not pending)
@@ -1108,19 +1041,15 @@ func (c *Client) IsTeamMember(ctx context.Context, org, teamSlug, username strin
 func (c *Client) IsMergeQueueEnabled(ctx context.Context, owner, repo, branch string) (bool, error) {
 	path := fmt.Sprintf("/repos/%s/%s/branches/%s/protection", owner, repo, branch)
 
-	data, err := c.makeRequest(ctx, "GET", path, nil)
+	protection, err := doJSON[map[string]interface{}](ctx, c, http.MethodGet, path, nil)
 	if err != nil {
 		// 404 means branch protection not enabled
 		var apiErr *APIError
-		if errors.As(err, &apiErr) && apiErr.StatusCode == 404 {
+		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
 			return false, nil
 		}
-		return false, err
-	}
 
-	var protection map[string]interface{}
-	if err := json.Unmarshal(data, &protection); err != nil {
-		return false, NewAPIError(ErrResponseParse, 0, "GET", path, err)
+		return false, err
 	}
 
 	// Check if merge queue is enabled
@@ -1150,19 +1079,13 @@ func (c *Client) GetPRHeadRef(
 ) (string, error) {
 	path := fmt.Sprintf("/repos/%s/%s/pulls/%d", owner, repo, prNumber)
 
-	data, err := c.makeRequestWithRetry(ctx, "GET", path, nil)
-	if err != nil {
-		return "", err
-	}
-
-	var response struct {
+	response, err := doJSON[struct {
 		Head struct {
 			SHA string `json:"sha"`
 		} `json:"head"`
-	}
-
-	if err := json.Unmarshal(data, &response); err != nil {
-		return "", NewAPIError(ErrResponseParse, 0, "GET", path, err)
+	}](ctx, c, http.MethodGet, path, nil)
+	if err != nil {
+		return "", err
 	}
 
 	if response.Head.SHA == "" {
@@ -1176,112 +1099,4 @@ func (c *Client) GetPRHeadRef(
 	}
 
 	return response.Head.SHA, nil
-}
-
-// makeRequestWithRetry makes an HTTP request with retry logic and exponential backoff
-func (c *Client) makeRequestWithRetry(
-	ctx context.Context,
-	method, path string,
-	payload interface{},
-) ([]byte, error) {
-	var lastErr error
-
-	for attempt := 0; attempt < maxRetries; attempt++ {
-		data, err := c.makeRequest(ctx, method, path, payload)
-		if err == nil {
-			return data, nil
-		}
-
-		lastErr = err
-
-		// Check for rate limiting (429) or server errors (5xx)
-		var apiErr *APIError
-		if errors.As(err, &apiErr) {
-			if apiErr.StatusCode == 429 || (apiErr.StatusCode >= 500 && apiErr.StatusCode < 600) {
-				// Exponential backoff: 1s, 2s, 4s
-				backoff := time.Duration(1<<uint(attempt)) * time.Second
-
-				// A long-running service cancels this context on shutdown, and
-				// a sleep that ignored it would outlive the cancellation by up
-				// to the whole backoff
-				select {
-				case <-ctx.Done():
-					return nil, ctx.Err()
-				case <-time.After(backoff):
-				}
-
-				continue
-			}
-		}
-
-		// For other errors, don't retry
-		return nil, err
-	}
-
-	return nil, lastErr
-}
-
-// makeRequest makes an HTTP request to the GitHub API
-func (c *Client) makeRequest(ctx context.Context, method, path string, payload interface{}) ([]byte, error) {
-	url := c.baseURL + path
-
-	var body io.Reader
-	if payload != nil {
-		jsonData, err := json.Marshal(payload)
-		if err != nil {
-			return nil, NewAPIError(ErrAPIRequest, 0, method, path, err)
-		}
-		body = bytes.NewBuffer(jsonData)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, method, url, body)
-	if err != nil {
-		return nil, NewAPIError(ErrAPIRequest, 0, method, path, err)
-	}
-
-	scheme := c.authScheme
-	if scheme == "" {
-		scheme = schemeToken
-	}
-
-	req.Header.Set("Authorization", fmt.Sprintf("%s %s", scheme, c.token))
-	req.Header.Set("User-Agent", userAgent)
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
-	if payload != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-
-	resp, err := c.httpClient.Do(req) //nolint:gosec // URL is constructed from trusted baseURL config + internal path
-	if err != nil {
-		return nil, NewAPIError(ErrAPIRequest, 0, method, path, err)
-	}
-	defer func() {
-		_ = resp.Body.Close()
-	}()
-
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, NewAPIError(ErrAPIRequest, resp.StatusCode, method, path, err)
-	}
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		errMsg := fmt.Sprintf("status code %d", resp.StatusCode)
-
-		var errResp map[string]interface{}
-		if json.Unmarshal(data, &errResp) == nil {
-			if message, ok := errResp["message"].(string); ok {
-				errMsg = message
-			}
-		}
-
-		return nil, NewAPIError(
-			ErrAPIRequest,
-			resp.StatusCode,
-			method,
-			path,
-			fmt.Errorf("%s", errMsg),
-		)
-	}
-
-	return data, nil
 }
