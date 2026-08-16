@@ -984,5 +984,14 @@
     .failure-kind {
       display: none;
     }
+
+    /* Truncation is what a fixed column does when the text will not fit it.
+       There is no column here once the panel is one entry wide, and the reason
+       is the whole entry: "GitHub request timed out after credentials w…" told
+       the reader nothing the icon had not. It wraps. */
+    .failure-item strong {
+      overflow: visible;
+      white-space: normal;
+    }
   }
 </style>

@@ -1570,15 +1570,16 @@
     text-transform: uppercase;
   }
 
+  /* One rule, not two. These were declared separately and the second undid the
+     first: `white-space: nowrap` leaves `overflow-wrap` nothing to do, so the
+     line could only ever be cut short. It earns its place again on a phone,
+     where the card lets the text wrap and a long name has to break somewhere. */
   .cell-primary {
     display: block;
-    overflow-wrap: anywhere;
-  }
-
-  .cell-primary {
     font-size: var(--font-size-meta);
     line-height: 1.5;
     overflow: hidden;
+    overflow-wrap: anywhere;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -1661,10 +1662,15 @@
       display: block;
     }
 
+    /* Wrapped, and from the start rather than the end. Four sort chips do not
+       fit one phone-width line, and a flex row justified to the end overflows
+       backwards: the first chip - Actor - hung 52px off the left of the screen,
+       where nothing can scroll to it and nothing says it is there. */
     .history-table thead tr {
       border: 0;
       display: flex;
-      justify-content: flex-end;
+      flex-wrap: wrap;
+      justify-content: flex-start;
       padding: 0 0 var(--space-3);
     }
 
@@ -1725,6 +1731,24 @@
       font: 650 var(--font-size-compact) / 1 var(--sans);
       letter-spacing: 0.04em;
       text-transform: uppercase;
+    }
+
+    /* What the entry is actually about, given the card's width to say it in.
+       Sharing a two-column row with the timestamp, and standing beside the
+       category tag inside its own cell, the description had 30px: every audit
+       entry on the Root console read "CONFIGURATION Up…" while the half of the
+       card beside it was empty. */
+    .history-table td[data-label='Change'],
+    .history-table td[data-label='Failure'] {
+      grid-column: 1 / -1;
+    }
+
+    /* A card has no column to keep to, so the line wraps rather than being cut.
+       Truncation is a table's answer to a fixed column width, and there is no
+       fixed column here. */
+    .history-table .cell-primary {
+      overflow: visible;
+      white-space: normal;
     }
 
     .history-table .empty-cell {

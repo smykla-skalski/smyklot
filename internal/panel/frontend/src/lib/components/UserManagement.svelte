@@ -2982,10 +2982,14 @@
       display: block;
     }
 
+    /* Wrapped, because these are four independent chips rather than a row that
+       has to stay a row: unwrapped, the last of them was cut off by the card's
+       edge with no way to reach it. */
     .user-table thead tr {
       align-items: center;
       border: 0;
       display: flex;
+      flex-wrap: wrap;
       gap: var(--space-2);
       padding: 0 0 var(--space-3);
     }
@@ -2995,13 +2999,29 @@
       padding: 0;
     }
 
-    .user-table thead th:not(:has(.sort-button)) {
+    /* A heading with nothing to operate is a column name for a column that is
+       no longer drawn, so it goes. One carrying a *filter* is not that: Status
+       has no sort button, only a funnel, and hiding it took the funnel with it
+       - on a phone there was no way to filter users or invitations by status at
+       all. The control was still in the page, focusable, in a 1px box. */
+    .user-table thead th:not(:has(.sort-button)):not(:has(.filter-trigger)) {
       clip-path: inset(50%);
       height: 1px;
       overflow: hidden;
       position: absolute;
       white-space: nowrap;
       width: 1px;
+    }
+
+    /* Dressed as the sort chips beside it: it does the same job in the same row,
+       and the border is what makes either read as something to press. */
+    .user-table thead th.filterable-heading .table-heading-layout {
+      background: var(--control-bg);
+      border: 1px solid var(--control-border);
+      border-radius: var(--radius-control);
+      gap: var(--space-1);
+      height: var(--control-height-compact);
+      padding-inline: var(--space-3) var(--space-1);
     }
 
     .user-table thead .sort-button {

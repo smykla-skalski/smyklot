@@ -33,6 +33,8 @@ interface Measured {
   heading: string | null;
   /** Named only when it does not fit, so a failure says what to go and look at. */
   widest: { right: number; element: string; text: string } | null;
+  /** Controls the page renders and a thumb cannot land on. */
+  unreachable: string[];
 }
 
 let panel: Panel;
@@ -137,10 +139,54 @@ async function measure(path: string, width: number): Promise<Measured> {
         root.style.cssText = pinned;
       }
 
+      /* A control that is on the page and cannot be pressed. The status filter
+         on the users and invitations tables was one: the mobile rule hid every
+         heading that carried no sort button, and Status carries a funnel
+         instead, so the whole heading went into a 1px box - filter and all -
+         while staying in the page and in the tab order. Nothing that measures
+         overflow would ever see it, because a control crushed to nothing
+         overflows nothing. */
+      const unreachable: string[] = [];
+      const CONTROLS =
+        'button, a[href], input:not([type=hidden]), select, textarea, [role="button"], [role="tab"], [role="switch"], [role="menuitem"]';
+      for (const control of document.querySelectorAll(CONTROLS)) {
+        // Shut, rather than lost: a closed popover, dialog or drawer collapses
+        // its contents on purpose, and `checkVisibility` reads the ancestors.
+        if (!control.checkVisibility()) continue;
+        if (control.closest('[popover]:not(:popover-open)') !== null) continue;
+        if (control.closest('dialog:not([open])') !== null) continue;
+        if (control.closest('[inert], [aria-hidden="true"], [hidden]') !== null) continue;
+        // Offered to a screen reader alone, which is a decision rather than a
+        // defect - as is a radio sitting 1x1 under the label that operates it.
+        if (control.closest('.visually-hidden') !== null) continue;
+        if (control.tagName === 'INPUT' && control.closest('label') !== null) continue;
+
+        const box = control.getBoundingClientRect();
+        let crushed: Element | null = null;
+        for (let node = control.parentElement; node !== null; node = node.parentElement) {
+          const around = node.getBoundingClientRect();
+          if (around.width > 8 && around.height > 8) continue;
+          if (getComputedStyle(node).overflow === 'visible') continue;
+          crushed = node;
+          break;
+        }
+        if (box.width >= 8 && box.height >= 8 && crushed === null) continue;
+
+        const named = (control.getAttribute('aria-label') ?? control.textContent ?? '')
+          .replace(/\s+/gu, ' ')
+          .trim()
+          .slice(0, 40);
+        unreachable.push(
+          `${describe_(control)} ${Math.round(box.width)}x${Math.round(box.height)}` +
+            `${crushed === null ? '' : ` inside ${describe_(crushed)}`} "${named}"`,
+        );
+      }
+
       return {
         layoutViewport: window.innerWidth,
         heading: document.querySelector('h1, h2')?.textContent?.trim() ?? null,
         widest,
+        unreachable: [...new Set(unreachable)],
       };
     }, width);
   } finally {
@@ -179,5 +225,15 @@ describe('every page on a phone', () => {
         `${result.widest?.element ?? 'unknown'} reaching ${result.widest?.right ?? 0}px: ` +
         `"${result.widest?.text ?? ''}"`,
     ).toBe(width);
+  });
+
+  it.each(cases)('leaves nothing on %s that cannot be pressed', (key) => {
+    const result = measured.get(key);
+    if (result === undefined) throw new Error(`${key} was never measured`);
+
+    expect(
+      result.unreachable,
+      `${key} renders controls a thumb cannot land on:\n  ${result.unreachable.join('\n  ')}`,
+    ).toEqual([]);
   });
 });

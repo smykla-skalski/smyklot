@@ -1384,6 +1384,17 @@
     }
   }
 
+  /* The label column is a fixed 7rem, which is affordable until it is not: at
+     320 it left the value 90px and every name longer than "Ada Lovelace" was
+     cut. The label goes above the value rather than beside it, which is what
+     the other tables already do at this width. */
+  @media (max-width: 22rem) {
+    td {
+      gap: var(--space-1);
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .table-skeleton span {
       animation: none;

@@ -596,5 +596,18 @@
     .audit-record .wide {
       grid-column: auto;
     }
+
+    /* The reason is the only part of this header a reader has not already got
+       from the elevation id, and sharing the line with both of the others left
+       it 121px: "Restore command handling during production i…". It takes the
+       line below instead, where it can say the whole thing. */
+    .notification-group > header {
+      flex-wrap: wrap;
+    }
+
+    .notification-group > header .group-reason {
+      flex-basis: 100%;
+      white-space: normal;
+    }
   }
 </style>
