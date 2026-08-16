@@ -315,6 +315,7 @@ run = [
   { task = "lint" },
   { task = "test" },
   { task = "test:deploy" },
+  { task = "test:panel-install" },
   { task = "panel:frontend:lint" },
   { task = "panel:frontend:test" },
   { task = "panel:frontend:test:browser" },
@@ -338,8 +339,15 @@ echo "Files: $(git ls-files '*.go' | wc -l | tr -d ' ')"
 [tasks."panel:frontend:install"]
 description = "Install the panel frontend's pinned dependencies"
 sources = ["internal/panel/frontend/package.json", "internal/panel/frontend/package-lock.json"]
-outputs = ["internal/panel/frontend/node_modules/.package-lock.json"]
+outputs = [
+  "internal/panel/frontend/node_modules/.package-lock.json",
+  "internal/panel/frontend/.svelte-kit/tsconfig.json",
+]
 run = "./scripts/install-panel-frontend.sh"
+
+[tasks."test:panel-install"]
+description = "Test panel dependency cache restoration"
+run = "./scripts/test-install-panel-frontend.sh"
 
 [tasks."panel:frontend:build"]
 description = "Build the panel frontend"

@@ -29,6 +29,10 @@ trap 'command rm -f -- "$stamp_tmp"' EXIT
 } >"$stamp_tmp"
 
 if [[ -f "$stamp" ]] && command cmp -s "$stamp_tmp" "$stamp"; then
+  (
+    CDPATH='' command cd -- "$frontend"
+    command "$npm" run prepare
+  )
   exit 0
 fi
 

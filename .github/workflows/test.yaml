@@ -209,6 +209,9 @@ jobs:
       - name: Test the deploy checks
         run: mise run test:deploy
 
+      - name: Test panel dependency cache restoration
+        run: mise run test:panel-install
+
   frontend:
     name: frontend
     runs-on: ubuntu-24.04

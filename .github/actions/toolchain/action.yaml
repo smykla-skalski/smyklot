@@ -56,9 +56,10 @@ runs:
     #
     # What is cached is that task graph's outputs, keyed by everything that
     # decides them. mise skips a task whose outputs are newer than its sources,
-    # so with these three present nothing in the chain runs. `.package-lock.json`
-    # is the install step's output and the only part of node_modules anything
-    # here reads: when the key misses, npm ci runs and replaces the directory
+    # so with these four present nothing in the chain runs. `.package-lock.json`
+    # and SvelteKit's generated tsconfig are the install step's outputs. They
+    # are the only parts of node_modules and .svelte-kit anything here reads:
+    # when the key misses, npm ci runs and replaces the dependency directory
     # wholesale, which is the only path that ever needs the rest of it.
     - name: Restore the panel bundle
       if: inputs.go-cache != ''
@@ -66,10 +67,14 @@ runs:
       with:
         path: |
           internal/panel/frontend/node_modules/.package-lock.json
+          internal/panel/frontend/.svelte-kit/tsconfig.json
           internal/panel/frontend/dist
           internal/panelassets/generated/bundle.zip
         key: >-
           ${{ runner.os }}-panel-bundle-${{ hashFiles(
+            '.github/actions/toolchain/action.yaml',
+            '.mise.toml',
+            'scripts/install-panel-frontend.sh',
             'internal/panel/frontend/**',
             '!internal/panel/frontend/node_modules/**',
             '!internal/panel/frontend/dist/**',
@@ -90,5 +95,6 @@ runs:
         # In the order the chain produces them, so each output is newer than the
         # one it was made from as well as newer than the checkout.
         touch internal/panel/frontend/node_modules/.package-lock.json
+        touch internal/panel/frontend/.svelte-kit/tsconfig.json
         find internal/panel/frontend/dist -exec touch {} +
         touch "$bundle"
