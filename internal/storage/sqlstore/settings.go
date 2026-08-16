@@ -180,26 +180,40 @@ func (s *Store) UpdateRepositoryFileState(
 	if err != nil {
 		return false, err
 	}
+	superseded, err := marshalPaths(state.Superseded)
+	if err != nil {
+		return false, err
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return false, fmt.Errorf("begin repository file state update: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	var currentStatus, currentPatch string
+	var currentStatus, currentPatch, currentPath, currentSuperseded string
 	var currentError sql.NullString
 	if err := tx.QueryRowContext(ctx, `
-SELECT config_file_status, config_file_patch, config_file_error
+SELECT config_file_status, config_file_patch, config_file_error,
+       config_file_path, config_file_superseded
 FROM repositories
 WHERE target_id = ? AND id = ?`, state.TargetID, state.RepositoryID).Scan(
 		&currentStatus,
 		&currentPatch,
 		&currentError,
+		&currentPath,
+		&currentSuperseded,
 	); err != nil {
 		return false, fmt.Errorf("read repository file state: %w", noRows(err))
 	}
+
+	// The path and the superseded list are part of "changed" because the panel
+	// is told to refresh on the strength of this. A repository that moved its
+	// file from the legacy path to a TOML one changes neither its status nor
+	// its patch, and a panel left un-announced would keep naming the old file
 	changed := currentStatus != string(state.Status) ||
 		currentPatch != patch ||
+		currentPath != state.Path ||
+		currentSuperseded != superseded ||
 		currentError.Valid != (state.Error != nil) ||
 		(state.Error != nil && currentError.String != *state.Error)
 
@@ -208,11 +222,15 @@ UPDATE repositories SET
     config_file_status = ?,
     config_file_patch = ?,
     config_file_error = ?,
+    config_file_path = ?,
+    config_file_superseded = ?,
     file_observed_at = ?
 WHERE target_id = ? AND id = ?`,
 		state.Status,
 		patch,
 		state.Error,
+		state.Path,
+		superseded,
 		state.ObservedAt,
 		state.TargetID,
 		state.RepositoryID,

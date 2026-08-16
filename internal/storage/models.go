@@ -422,8 +422,20 @@ type Repository struct {
 	ConfigFileStatus     RepositoryFileStatus
 	ConfigFilePatch      config.Patch
 	ConfigFileError      *string
-	Revision             int64
-	UpdatedAt            time.Time
+
+	// ConfigFilePath is the file the configuration was read from, empty when
+	// the repository has none. Discovery looks in four places plus a
+	// panel-chosen one, so the status alone no longer says which file it is
+	// describing.
+	ConfigFilePath string
+
+	// ConfigFileSuperseded are the other paths that also hold a configuration
+	// file and were passed over. Nothing reads them; they are here to be shown
+	// to a repository that migrated and left the old file behind.
+	ConfigFileSuperseded []string
+
+	Revision  int64
+	UpdatedAt time.Time
 }
 
 // RepositorySnapshot is GitHub-owned catalog state. Reconciliation must not
@@ -483,6 +495,8 @@ type RepositoryFileState struct {
 	Status       RepositoryFileStatus
 	Patch        config.Patch
 	Error        *string
+	Path         string
+	Superseded   []string
 	ObservedAt   time.Time
 }
 

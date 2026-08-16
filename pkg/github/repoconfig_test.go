@@ -60,7 +60,11 @@ var _ = Describe("Repository configuration discovery [Unit]", func() {
 		Entry("the legacy file", ".github/smyklot.yaml"),
 	)
 
-	It("stops at the first match rather than reading them all", func() {
+	// Every candidate is asked for, not just those up to the first hit, so a
+	// repository carrying two configuration files can be told which one is in
+	// charge. The fingerprint cache is what makes that affordable: the service
+	// asks only when something a file could live in has moved.
+	It("asks for every candidate even once it has an answer", func() {
 		var asked []string
 
 		server = serveOnly(".smyklot.toml", "quiet_success = true\n", &asked)
@@ -68,9 +72,11 @@ var _ = Describe("Repository configuration discovery [Unit]", func() {
 		client, err := github.NewClient("test-token", server.URL)
 		Expect(err).NotTo(HaveOccurred())
 
-		_, err = client.FindRepoConfig(context.Background(), "acme", "web", "")
+		found, err := client.FindRepoConfig(context.Background(), "acme", "web", "")
 		Expect(err).NotTo(HaveOccurred())
-		Expect(asked).To(Equal([]string{".smyklot.toml"}))
+		Expect(found.Path).To(Equal(".smyklot.toml"))
+		Expect(found.Superseded).To(BeEmpty())
+		Expect(asked).To(Equal(github.RepoConfigPaths))
 	})
 
 	// TOML wins over the legacy file, so a half-finished migration leaves the
@@ -94,6 +100,32 @@ var _ = Describe("Repository configuration discovery [Unit]", func() {
 		found, err := client.FindRepoConfig(context.Background(), "acme", "web", "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(found.Path).To(Equal(".github/.smyklot.toml"))
+
+		// The file it migrated away from is still there, still believed by
+		// whoever wrote it to be in charge, and read by nothing
+		Expect(found.Superseded).To(Equal([]string{".github/smyklot.yaml"}))
+	})
+
+	// Reporting must not take a repository offline over a file it is not even
+	// using. Before anything is found the read has failed and stays fail-closed
+	It("keeps the file it found when a later candidate cannot be read", func() {
+		server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasSuffix(r.URL.Path, "/contents/.smyklot.toml") {
+				_, _ = w.Write([]byte(githubtest.ContentsResponse("quiet_success = true\n")))
+
+				return
+			}
+
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"message":"Resource not accessible by integration"}`))
+		}))
+
+		client, err := github.NewClient("test-token", server.URL)
+		Expect(err).NotTo(HaveOccurred())
+
+		found, err := client.FindRepoConfig(context.Background(), "acme", "web", "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(found.Path).To(Equal(".smyklot.toml"))
 	})
 
 	Describe("a path an operator chose in the panel", func() {
@@ -110,7 +142,7 @@ var _ = Describe("Repository configuration discovery [Unit]", func() {
 			)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(found.Path).To(Equal("config/smyklot.toml"))
-			Expect(asked).To(Equal([]string{"config/smyklot.toml"}))
+			Expect(asked[0]).To(Equal("config/smyklot.toml"))
 		})
 
 		// Naming a standard path must not make it cost two requests.

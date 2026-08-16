@@ -124,3 +124,22 @@ func TestPatchSizeCountsAFullPatch(t *testing.T) {
 		t.Errorf("patchSize(full patch) = %d, want %d", got, want)
 	}
 }
+
+// The detail pane used to print ".github/smyklot.yaml" as a literal, which was
+// true while that was the only place a configuration file could be. It is now
+// one of five, so the pane has to be told which one won and which were passed
+// over.
+func TestRepositoryDetailNamesTheFileItRead(t *testing.T) {
+	response := repositoryDetailDTO(config.Default(), storage.Target{}, storage.Repository{
+		ConfigFileStatus:     storage.RepositoryFileValid,
+		ConfigFilePath:       ".smyklot.toml",
+		ConfigFileSuperseded: []string{".github/smyklot.yaml"},
+	})
+
+	if response.ConfigFilePath != ".smyklot.toml" {
+		t.Errorf("detail names %q as the file it read", response.ConfigFilePath)
+	}
+	if !reflect.DeepEqual(response.ConfigFileSuperseded, []string{".github/smyklot.yaml"}) {
+		t.Errorf("detail reports %#v as passed over", response.ConfigFileSuperseded)
+	}
+}

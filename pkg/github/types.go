@@ -15,6 +15,12 @@ type RepoConfig struct {
 
 	// Content is the file's decoded bytes, nil when no file was found.
 	Content []byte
+
+	// Superseded are the other paths that also hold a configuration file, in
+	// search order. They are read by nothing and reported to the repository,
+	// which is the point: a repository that migrated to TOML and left the
+	// YAML behind has a file it believes is in charge and is not.
+	Superseded []string
 }
 
 // Found reports whether the repository has a configuration file at all.

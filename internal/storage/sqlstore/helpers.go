@@ -44,6 +44,36 @@ func unmarshalPatch(content string) (config.Patch, error) {
 	return patch, nil
 }
 
+// marshalPaths encodes a list of file paths for storage.
+//
+// A JSON array rather than a joined string, because a path is text a
+// repository chooses and a separator is a bet that it never contains one.
+func marshalPaths(paths []string) (string, error) {
+	if len(paths) == 0 {
+		return "[]", nil
+	}
+
+	content, err := json.Marshal(paths)
+	if err != nil {
+		return "", fmt.Errorf("encode file paths: %w", err)
+	}
+
+	return string(content), nil
+}
+
+func unmarshalPaths(content string) ([]string, error) {
+	if content == "" {
+		return nil, nil
+	}
+
+	var paths []string
+	if err := json.Unmarshal([]byte(content), &paths); err != nil {
+		return nil, fmt.Errorf("decode file paths: %w", err)
+	}
+
+	return paths, nil
+}
+
 func stringPointer(value sql.NullString) *string {
 	if !value.Valid {
 		return nil

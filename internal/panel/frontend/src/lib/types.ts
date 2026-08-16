@@ -491,6 +491,8 @@ export interface RepositoryDetail {
   config_sources: ConfigSources;
   config_file_patch: ConfigPatch;
   config_file_error?: string;
+  config_file_path?: string;
+  config_file_superseded?: string[];
   ignore_repository_file: boolean;
   revision: number;
 }

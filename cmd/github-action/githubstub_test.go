@@ -23,6 +23,11 @@ type githubStub struct {
 	// without one
 	codeowners string
 
+	// repoConfigTOML is the repository's .smyklot.toml, or empty for a
+	// repository that has not migrated. Stocking both is how a spec describes
+	// a repository carrying two configuration files
+	repoConfigTOML string
+
 	// repoConfig is the repository's .github/smyklot.yaml, or empty for a
 	// repository without one
 	repoConfig string
@@ -186,6 +191,11 @@ func (s *githubStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case strings.Contains(r.URL.Path, "/contents/"):
 		if strings.HasSuffix(r.URL.Path, "/contents/.github/smyklot.yaml") {
 			s.writeFile(w, s.currentRepoConfig())
+
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "/contents/.smyklot.toml") {
+			s.writeFile(w, s.repoConfigTOML)
 
 			return
 		}

@@ -866,6 +866,47 @@ func DeclareSpecs(harness Harness) {
 		Expect(repository.ConfigFileError).To(HaveValue(Equal(problem)))
 	})
 
+	// Discovery looks in four places plus a panel-chosen one, so the status
+	// alone stopped saying which file it was describing - and a repository that
+	// migrated to TOML and left the YAML behind has a file it believes is in
+	// charge and is not
+	It("records which file was read and which were passed over", func() {
+		_, target := seedInstallation(ctx, store, now)
+
+		stateChanged, err := store.UpdateRepositoryFileState(ctx, storage.RepositoryFileState{
+			TargetID:     target.TargetID,
+			RepositoryID: "repo-1",
+			Status:       storage.RepositoryFileValid,
+			Path:         ".smyklot.toml",
+			Superseded:   []string{".github/smyklot.yaml"},
+			ObservedAt:   now.Add(time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(stateChanged).To(BeTrue())
+
+		repository, err := store.GetRepository(ctx, target.TargetID, "repo-1")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(repository.ConfigFilePath).To(Equal(".smyklot.toml"))
+		Expect(repository.ConfigFileSuperseded).To(ConsistOf(".github/smyklot.yaml"))
+
+		// The panel is told to refresh on the strength of this, and a
+		// repository that moved its file changes neither status nor patch
+		stateChanged, err = store.UpdateRepositoryFileState(ctx, storage.RepositoryFileState{
+			TargetID:     target.TargetID,
+			RepositoryID: "repo-1",
+			Status:       storage.RepositoryFileValid,
+			Path:         ".github/.smyklot.toml",
+			ObservedAt:   now.Add(2 * time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(stateChanged).To(BeTrue())
+
+		repository, err = store.GetRepository(ctx, target.TargetID, "repo-1")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(repository.ConfigFilePath).To(Equal(".github/.smyklot.toml"))
+		Expect(repository.ConfigFileSuperseded).To(BeEmpty())
+	})
+
 	It("reconciles the complete catalog without deleting removed target settings", func() {
 		account := testAccount(now)
 		first := testInstallation(account, now, []storage.RepositorySnapshot{

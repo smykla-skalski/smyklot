@@ -21,6 +21,11 @@ type repositoryConfigFile struct {
 	// path is the file this was read from, empty when the repository has none.
 	path string
 
+	// superseded are the other paths that also hold a configuration file. They
+	// change nothing about how a comment is answered and are reported to the
+	// repository, which is the point of reading them at all.
+	superseded []string
+
 	// fingerprint identifies everything the file could have been read from when
 	// it was read. The file is looked for at four paths, and re-probing them
 	// every time the entry ages out would cost four requests per repository per
@@ -66,7 +71,10 @@ func fetchRepositoryConfig(
 	}
 	if len(bytes.TrimSpace(found.Content)) == 0 {
 		return repositoryConfigFile{
-			status: storage.RepositoryFileValid, path: found.Path, fingerprint: fingerprint,
+			status:      storage.RepositoryFileValid,
+			path:        found.Path,
+			superseded:  found.Superseded,
+			fingerprint: fingerprint,
 		}, nil
 	}
 
@@ -76,6 +84,7 @@ func fetchRepositoryConfig(
 			status:      storage.RepositoryFileInvalid,
 			err:         NewConfigError(ErrRepoConfigInvalid, err),
 			path:        found.Path,
+			superseded:  found.Superseded,
 			fingerprint: fingerprint,
 		}, nil
 	}
@@ -84,6 +93,7 @@ func fetchRepositoryConfig(
 		patch:       patch,
 		status:      storage.RepositoryFileValid,
 		path:        found.Path,
+		superseded:  found.Superseded,
 		fingerprint: fingerprint,
 	}, nil
 }
@@ -209,6 +219,8 @@ func (s *server) serviceConfig(
 		Status:       file.status,
 		Patch:        file.patch,
 		Error:        fileError,
+		Path:         file.path,
+		Superseded:   file.superseded,
 		ObservedAt:   time.Now().UTC(),
 	})
 	if err != nil {

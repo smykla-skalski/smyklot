@@ -1203,7 +1203,15 @@
                 </span>
                 <div class="f-copy">
                   <strong>Configuration path</strong>
-                  <div><code class="mono">.github/smyklot.yaml</code></div>
+                  <!-- The file is looked for in four places plus a chosen one,
+                       so this names the one that won rather than the one that
+                       used to be the only candidate. -->
+                  <div><code class="mono">{detail.config_file_path || '—'}</code></div>
+                  {#if detail.config_file_superseded !== undefined}
+                    <p class="f-note">
+                      Also present and not read: {detail.config_file_superseded.join(', ')}
+                    </p>
+                  {/if}
                   {#if detail.config_file_error !== undefined}
                     <p>{detail.config_file_error}</p>
                   {/if}
@@ -1858,6 +1866,13 @@
     color: var(--danger);
     font-size: var(--font-size-compact);
     margin: 0.15rem 0 0;
+  }
+
+  /* A file the repository still carries and Smyklot is not reading is worth
+     saying, and is not a failure - so it wears the dim tone the path above it
+     wears rather than the danger tone the parse error does. */
+  .f-copy p.f-note {
+    color: var(--dim);
   }
 
   /* The file pane's override rows wear the same boxed shape as the bypass row

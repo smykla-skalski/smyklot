@@ -22,34 +22,52 @@ var RepoConfigPaths = []string{
 	repoConfigPath,
 }
 
-// FindRepoConfig returns the repository's configuration file.
+// FindRepoConfig returns the repository's configuration file, and any others
+// it passed over.
 //
 // preferred is the path an operator set in the panel, and is looked at first
 // when it is not empty. A repository with no configuration file at all gets a
 // zero RepoConfig back rather than an error.
 //
-// This costs one request per candidate until something is found, and most
-// repositories have none - which is why nothing calls it on a schedule. The
-// service asks only when the default branch has moved, and reuses the answer
-// until it moves again. Probing every candidate on every sweep tick would cost
+// Every candidate is asked for, not just those up to the first hit, so a
+// repository carrying two configuration files is told which one is in charge
+// rather than left to wonder. That is one request per candidate, and nothing
+// calls this on a schedule: the service asks only when the fingerprint of
+// everything a configuration file could live in has moved, and reuses the
+// answer until it moves again. Probing on every sweep tick instead would cost
 // an organization of two hundred repositories twelve thousand requests an hour
 // against a budget of five thousand.
 func (c *Client) FindRepoConfig(
 	ctx context.Context,
 	owner, repo, preferred string,
 ) (RepoConfig, error) {
+	var found RepoConfig
+
 	for _, path := range candidatePaths(preferred) {
 		content, err := c.getFileContent(ctx, owner, repo, path, maxRepoConfigSize)
 		if err != nil {
-			return RepoConfig{}, err
+			// Before anything is found this is the read failing, and the file
+			// is fail-closed. After, the answer is already in hand and the
+			// remaining requests only decide what to report - so a failure
+			// there stops the search rather than taking a repository offline
+			// over a file it is not even using.
+			if !found.Found() {
+				return RepoConfig{}, err
+			}
+
+			return found, nil
 		}
 
-		if content != nil {
-			return RepoConfig{Path: path, Content: content}, nil
+		switch {
+		case content == nil:
+		case !found.Found():
+			found = RepoConfig{Path: path, Content: content}
+		default:
+			found.Superseded = append(found.Superseded, path)
 		}
 	}
 
-	return RepoConfig{}, nil
+	return found, nil
 }
 
 // candidatePaths puts an operator's chosen path first and never looks at any

@@ -110,6 +110,8 @@ type repositoryDetailResponse struct {
 	ConfigSources        map[string]config.Source  `json:"config_sources"`
 	ConfigFilePatch      config.Patch              `json:"config_file_patch"`
 	ConfigFileError      *string                   `json:"config_file_error,omitempty"`
+	ConfigFilePath       string                    `json:"config_file_path,omitempty"`
+	ConfigFileSuperseded []string                  `json:"config_file_superseded,omitempty"`
 	IgnoreRepositoryFile bool                      `json:"ignore_repository_file"`
 	Revision             int64                     `json:"revision"`
 }
@@ -280,6 +282,8 @@ func repositoryDetailDTO(
 		ConfigSources:        resolved.Sources,
 		ConfigFilePatch:      repository.ConfigFilePatch,
 		ConfigFileError:      repository.ConfigFileError,
+		ConfigFilePath:       repository.ConfigFilePath,
+		ConfigFileSuperseded: repository.ConfigFileSuperseded,
 		IgnoreRepositoryFile: repository.IgnoreRepositoryFile,
 		Revision:             repository.Revision,
 	}

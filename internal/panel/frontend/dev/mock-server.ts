@@ -889,6 +889,14 @@ function repositorySeed(
       config_sources: resolved.sources,
       config_file_patch: input.filePatch,
       config_file_error: input.fileError,
+      config_file_path: status === 'missing' ? undefined : '.smyklot.toml',
+      // Every fifth repository carries the file it was meant to have migrated
+      // away from, so the detail pane's "also present" line has something to
+      // render against
+      config_file_superseded:
+        status === 'missing' || Number(input.id.replace(/\D/g, '')) % 5 !== 0
+          ? undefined
+          : ['.github/smyklot.yaml'],
       ignore_repository_file: bypass,
       revision: 1,
     },
