@@ -1,8 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   EMPTY_DOC_SUM,
   PREF_DEFAULTS,
+  browserStorage,
   canonicalStringify,
   effectivePref,
   effectivePrefs,
@@ -237,5 +238,54 @@ describe('legacy preference migration', () => {
     expect(() =>
       migrateLegacyPreferences({ getItem, setItem: vi.fn(), removeItem: vi.fn() }),
     ).not.toThrow();
+  });
+});
+
+/**
+ * Storage that is present and unusable, which is not the same as storage that throws.
+ *
+ * `window.localStorage` is typed non-optional, so nothing here is visible to the type checker: a
+ * host can leave the accessor answering undefined, and Node's own Web Storage does exactly that
+ * unless the process was given `--localstorage-file`. This module writes and removes as well as
+ * reads, so a partial object is no more usable to it than a missing one.
+ */
+describe('storage the browser declines to provide', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /* Asserted on `browserStorage` rather than through a reader, because a reader cannot tell the
+     two apart: it catches the TypeError from calling a missing method and returns the same empty
+     document it would have returned from the guard. The rule under test is which path it took. */
+  it.each([
+    ['undefined', undefined],
+    ['null', null],
+    ['read-only', { getItem: (): string | null => null }],
+    ['unable to remove', { getItem: (): string | null => null, setItem: (): void => {} }],
+  ])('reads as no storage at all when localStorage is %s', (_case, localStorage) => {
+    vi.stubGlobal('window', { localStorage });
+
+    expect(browserStorage()).toBeNull();
+  });
+
+  it('reads as itself when the storage works', () => {
+    const storage = new MemoryStorage();
+    writePrefsDoc(emptyPrefsDoc('acme'), storage);
+    vi.stubGlobal('window', { localStorage: storage });
+
+    expect(browserStorage()).toBe(storage);
+    expect(readPrefsDoc()).toEqual(emptyPrefsDoc('acme'));
+  });
+
+  it('leaves every entry point inert when there is no storage', () => {
+    vi.stubGlobal('window', { localStorage: undefined });
+
+    expect(readPrefsDoc()).toEqual(emptyPrefsDoc());
+    expect(() => {
+      writePrefsDoc(emptyPrefsDoc());
+    }).not.toThrow();
+    expect(() => {
+      migrateLegacyPreferences();
+    }).not.toThrow();
   });
 });

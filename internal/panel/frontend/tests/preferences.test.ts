@@ -1,9 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   DEFAULT_SIDEBAR_DISPLAY,
   DEFAULT_THEME_DISPLAY,
   DEFAULT_TIME_DISPLAY,
+  browserStorage,
   readLastInstallation,
   readSidebarDisplay,
   readThemeDisplay,
@@ -121,5 +122,48 @@ describe('theme preference', () => {
         'dark',
       ),
     ).toBe('dark');
+  });
+});
+
+/**
+ * Storage that is present and unusable, which is not the same as storage that throws.
+ *
+ * `window.localStorage` is typed non-optional, so nothing here is visible to the type checker: a
+ * host can leave the accessor answering undefined, and Node's own Web Storage does exactly that
+ * unless the process was given `--localstorage-file`. Reading it raises nothing, so the `catch`
+ * that covers the disabled-storage case never runs and an undefined reaches the reader instead.
+ */
+describe('storage the browser declines to provide', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /* Asserted on `browserStorage` rather than through a reader, because a reader cannot tell the
+     two apart: it catches the TypeError from calling a missing `getItem` and returns the same
+     default it would have returned from the guard. The rule under test is which path it took. */
+  it.each([
+    ['undefined', undefined],
+    ['null', null],
+    ['an object with no getItem', {}],
+  ])('reads as no storage at all when localStorage is %s', (_case, localStorage) => {
+    vi.stubGlobal('window', { localStorage });
+
+    expect(browserStorage()).toBeNull();
+  });
+
+  it('reads as itself when the storage works', () => {
+    const localStorage = { getItem: () => 'absolute' };
+    vi.stubGlobal('window', { localStorage });
+
+    expect(browserStorage()).toBe(localStorage);
+    expect(readTimeDisplay()).toBe('absolute');
+  });
+
+  it('leaves every reader on its default when there is no storage', () => {
+    vi.stubGlobal('window', { localStorage: undefined });
+
+    expect(readTimeDisplay()).toBe(DEFAULT_TIME_DISPLAY);
+    expect(readSidebarDisplay()).toBe(DEFAULT_SIDEBAR_DISPLAY);
+    expect(readLastInstallation()).toBeNull();
   });
 });

@@ -65,11 +65,24 @@ type PreferenceReader = Pick<Storage, 'getItem'>;
 type PreferenceWriter = Pick<Storage, 'setItem'>;
 type PreferenceStore = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
-function browserStorage(): Storage | null {
+// Exported for the specs: the rule it states - unusable storage reads as null - is invisible from
+// the readers, which catch the resulting failure either way.
+export function browserStorage(): Storage | null {
   if (typeof window === 'undefined') return null;
 
   try {
-    return window.localStorage;
+    // See the same guard in `preferences.ts`: `window.localStorage` is typed non-optional but can
+    // answer undefined on a host whose Web Storage is present and disabled. This module reads,
+    // writes and removes, so all three have to be there before it counts as storage.
+    const storage = window.localStorage as Storage | null | undefined;
+    if (storage === null || storage === undefined) return null;
+
+    const usable =
+      typeof storage.getItem === 'function' &&
+      typeof storage.setItem === 'function' &&
+      typeof storage.removeItem === 'function';
+
+    return usable ? storage : null;
   } catch {
     return null;
   }
