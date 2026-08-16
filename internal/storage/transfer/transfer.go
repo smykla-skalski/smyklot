@@ -59,6 +59,7 @@ var tables = []string{
 	"sync_repository_state",
 	"sync_plans",
 	"sync_plan_actions",
+	"sync_audit_entries",
 }
 
 // Engine is what a copy needs from a store: a connection to read or write on,

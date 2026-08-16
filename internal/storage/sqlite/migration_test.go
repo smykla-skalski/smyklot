@@ -480,3 +480,186 @@ func tableColumns(t *testing.T, ctx context.Context, db *sql.DB, table string) m
 
 	return columns
 }
+
+// TestSyncAuditCategoryMigration proves the rebuild of app_audit_events keeps
+// what was in it.
+//
+// This is the one migration in this work with real production risk. SQLite
+// cannot alter a CHECK, so widening the category rebuilds the largest table in
+// the schema - and that table is the parent of security_notifications, whose
+// rows point at its ids. A rebuild that renumbered them would leave every
+// notification pointing at the wrong event, silently, with the audit trail as
+// the thing that broke.
+//
+// So it is tested rather than reasoned about: rows on both sides of the
+// relationship, applied across the migration, with the ids and the foreign keys
+// checked afterwards.
+func TestSyncAuditCategoryMigration(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "sync-audit.db")
+	db := openLegacyDatabase(t, ctx, path, "026_")
+	now := time.Date(2026, time.August, 16, 12, 0, 0, 0, time.UTC).Format(time.RFC3339Nano)
+
+	seedAuditRelationship(t, ctx, db, now)
+
+	before := auditIDs(t, ctx, db)
+	if len(before) != 2 {
+		t.Fatalf("seeded %d audit events, wanted 2", len(before))
+	}
+
+	if err := sqlstore.Migrate(ctx, db, Dialect{}, migrations); err != nil {
+		t.Fatalf("apply the sync audit migration: %v", err)
+	}
+
+	// The ids, because security_notifications points at them by value.
+	if after := auditIDs(t, ctx, db); !equalInts(before, after) {
+		t.Errorf("audit event ids changed across the rebuild: %v -> %v", before, after)
+	}
+
+	// The relationship itself. A dangling reference is exactly what a rebuild
+	// that dropped and recreated the parent would leave, and nothing else in
+	// the suite would notice.
+	requireNoForeignKeyViolations(t, ctx, db)
+
+	var notifications int
+	if err := db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM security_notifications").Scan(&notifications); err != nil {
+		t.Fatalf("count notifications: %v", err)
+	}
+	if notifications != 1 {
+		t.Errorf("security notifications after the rebuild = %d, wanted 1", notifications)
+	}
+
+	// The point of the exercise: the new category is accepted.
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO app_audit_events (category, actor_account_id, action, summary, created_at)
+VALUES ('sync', 'github:1', 'sync.plan.applied', 'applied', ?)`, now); err != nil {
+		t.Errorf("the widened category refused a sync event: %v", err)
+	}
+
+	// And the CHECK still refuses everything else, rather than having been
+	// dropped along the way.
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO app_audit_events (category, actor_account_id, action, summary, created_at)
+VALUES ('not-a-category', 'github:1', 'x', 'x', ?)`, now); err == nil {
+		t.Error("the rebuilt table accepted a category nothing defines")
+	}
+
+	// AUTOINCREMENT keeps its high-water mark, so a new event cannot be handed
+	// an id a notification already points at.
+	var next int64
+	if err := db.QueryRowContext(ctx,
+		"SELECT MAX(id) FROM app_audit_events").Scan(&next); err != nil {
+		t.Fatalf("read the new id: %v", err)
+	}
+	if next <= before[len(before)-1] {
+		t.Errorf("a new event reused id %d, at or below the seeded %d",
+			next, before[len(before)-1])
+	}
+}
+
+// seedAuditRelationship writes an audit event with a notification pointing at
+// it, which is the pair the rebuild has to keep together.
+func seedAuditRelationship(t *testing.T, ctx context.Context, db *sql.DB, now string) {
+	t.Helper()
+
+	statements := []struct {
+		query     string
+		arguments []any
+	}{
+		{`INSERT INTO accounts (id, provider, subject_id, login, display_name, updated_at)
+          VALUES ('github:1', 'github', '1', 'smykla-skalski', 'Smykla', ?)`, []any{now}},
+		{`INSERT INTO targets (
+              id, installation_id, kind, account_id, settings_updated_at, synced_at
+          ) VALUES ('github:installation:1', '1', 'Organization', 'github:1', ?, ?)`,
+			[]any{now, now}},
+		{`INSERT INTO root_elevations (
+              id, session_token_hash, root_account_id, target_id, reason,
+              started_at, expires_at
+          ) VALUES ('elev-1', 'hash', 'github:1', 'github:installation:1', 'why', ?, ?)`,
+			[]any{now, now}},
+		{`INSERT INTO app_audit_events (
+              category, source_kind, source_id, target_id, actor_account_id,
+              elevation_id, action, summary, created_at
+          ) VALUES ('elevation', 'elevation', 1, 'github:installation:1', 'github:1',
+                    'elev-1', 'elevation.begin', 'began', ?)`, []any{now}},
+		{`INSERT INTO app_audit_events (
+              category, actor_account_id, action, summary, created_at
+          ) VALUES ('configuration', 'github:1', 'settings.update', 'changed', ?)`,
+			[]any{now}},
+		{`INSERT INTO security_notifications (
+              recipient_account_id, target_id, actor_account_id, elevation_id,
+              audit_event_id, action, created_at
+          ) SELECT 'github:1', 'github:installation:1', 'github:1', 'elev-1',
+                   MIN(id), 'elevation.begin', ? FROM app_audit_events`, []any{now}},
+	}
+
+	for _, statement := range statements {
+		if _, err := db.ExecContext(ctx, statement.query, statement.arguments...); err != nil {
+			t.Fatalf("seed audit relationship: %v\n%s", err, statement.query)
+		}
+	}
+}
+
+func auditIDs(t *testing.T, ctx context.Context, db *sql.DB) []int64 {
+	t.Helper()
+
+	rows, err := db.QueryContext(ctx, "SELECT id FROM app_audit_events ORDER BY id")
+	if err != nil {
+		t.Fatalf("read audit ids: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			t.Fatalf("scan audit id: %v", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate audit ids: %v", err)
+	}
+
+	return ids
+}
+
+// requireNoForeignKeyViolations asks SQLite itself whether anything now points
+// at a row that is not there.
+func requireNoForeignKeyViolations(t *testing.T, ctx context.Context, db *sql.DB) {
+	t.Helper()
+
+	rows, err := db.QueryContext(ctx, "PRAGMA foreign_key_check")
+	if err != nil {
+		t.Fatalf("run foreign_key_check: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var table, parent string
+		var rowID, key any
+		if err := rows.Scan(&table, &rowID, &parent, &key); err != nil {
+			t.Fatalf("scan foreign_key_check: %v", err)
+		}
+		t.Errorf("%s has a row pointing at nothing in %s", table, parent)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate foreign_key_check: %v", err)
+	}
+}
+
+func equalInts(left, right []int64) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+
+	return true
+}
