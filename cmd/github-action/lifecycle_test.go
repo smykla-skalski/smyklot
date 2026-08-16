@@ -146,6 +146,8 @@ var _ = Describe("Service lifecycle [Unit]", func() {
 		DeferCleanup(func() { _ = blocker.Close() })
 
 		Expect(srv.Run(GinkgoT().Context())).To(HaveOccurred())
-		Expect(get(address, healthPath)).To(BeZero())
+		// Another parallel suite may claim the released port. What matters is
+		// that this server's unconditional health response is gone.
+		Expect(get(address, healthPath)).NotTo(Equal(http.StatusOK))
 	})
 })
