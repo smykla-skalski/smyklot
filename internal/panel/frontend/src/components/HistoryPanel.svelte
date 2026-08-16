@@ -355,6 +355,13 @@
     void resetAndLoad(requestKey);
   });
 
+  /* Warms the other table while this one is being read, so switching to it is
+     instant.
+
+     effect settles: it reads `failurePage` and its answer fills it, so the run
+     that the answer triggers stops at the guard below. One extra run, then
+     nothing - unlike a ring whose answer clears the flag that let it start,
+     which is the shape `tests/effect-cycles` exists to keep out. */
   $effect(() => {
     const version = ++failureWarmupSequence;
     const expectedTarget = targetId;
