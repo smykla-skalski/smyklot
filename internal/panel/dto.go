@@ -103,15 +103,19 @@ type repositorySummaryResponse struct {
 }
 
 type repositoryDetailResponse struct {
-	Repository           repositorySummaryResponse `json:"repository"`
-	ConfigPatch          config.Patch              `json:"config_patch"`
-	InheritedConfig      config.Config             `json:"inherited_config"`
-	EffectiveConfig      config.Config             `json:"effective_config"`
-	ConfigSources        map[string]config.Source  `json:"config_sources"`
-	ConfigFilePatch      config.Patch              `json:"config_file_patch"`
-	ConfigFileError      *string                   `json:"config_file_error,omitempty"`
-	IgnoreRepositoryFile bool                      `json:"ignore_repository_file"`
-	Revision             int64                     `json:"revision"`
+	Repository           repositorySummaryResponse    `json:"repository"`
+	ConfigPatch          config.Patch                 `json:"config_patch"`
+	InheritedConfig      config.Config                `json:"inherited_config"`
+	EffectiveConfig      config.Config                `json:"effective_config"`
+	ConfigSources        map[string]config.Source     `json:"config_sources"`
+	ConfigFilePatch      config.Patch                 `json:"config_file_patch"`
+	ConfigFileError      *string                      `json:"config_file_error,omitempty"`
+	ConfigFilePath       string                       `json:"config_file_path,omitempty"`
+	ConfigFileSuperseded []string                     `json:"config_file_superseded,omitempty"`
+	ConfigMigration      storage.ConfigMigrationState `json:"config_migration"`
+	ConfigMigrationPR    *int                         `json:"config_migration_pr,omitempty"`
+	IgnoreRepositoryFile bool                         `json:"ignore_repository_file"`
+	Revision             int64                        `json:"revision"`
 }
 
 type auditResponse struct {
@@ -280,9 +284,23 @@ func repositoryDetailDTO(
 		ConfigSources:        resolved.Sources,
 		ConfigFilePatch:      repository.ConfigFilePatch,
 		ConfigFileError:      repository.ConfigFileError,
+		ConfigFilePath:       repository.ConfigFilePath,
+		ConfigFileSuperseded: repository.ConfigFileSuperseded,
+		ConfigMigration:      migrationState(repository.ConfigMigration),
+		ConfigMigrationPR:    repository.ConfigMigrationPR,
 		IgnoreRepositoryFile: repository.IgnoreRepositoryFile,
 		Revision:             repository.Revision,
 	}
+}
+
+// migrationState fills in the state a repository written before this column
+// existed carries, so the panel never has to read an empty string as a state.
+func migrationState(state storage.ConfigMigrationState) storage.ConfigMigrationState {
+	if state == "" {
+		return storage.ConfigMigrationNone
+	}
+
+	return state
 }
 
 func repositoryPageDTO(
@@ -346,28 +364,14 @@ func offsetCursor(value int) *string {
 	return &formatted
 }
 
+// patchSize is how many settings a layer speaks to, which the panel shows as
+// the override count beside a repository.
+//
+// This used to enumerate the fields, and it had drifted: Runner was missing, so
+// a repository overriding only its runner counted as overriding nothing. Asking
+// the patch is what stops that happening again to the next field added.
 func patchSize(patch config.Patch) int {
-	count := 0
-	for _, present := range []bool{
-		patch.QuietSuccess != nil,
-		patch.QuietReactions != nil,
-		patch.QuietPending != nil,
-		patch.AllowedCommands != nil,
-		patch.CommandAliases != nil,
-		patch.CommandPrefix != nil,
-		patch.DisableMentions != nil,
-		patch.DisableBareCommands != nil,
-		patch.DisableUnapprove != nil,
-		patch.DisableReactions != nil,
-		patch.DisableDeletedComments != nil,
-		patch.AllowSelfApproval != nil,
-	} {
-		if present {
-			count++
-		}
-	}
-
-	return count
+	return len(patch.SetKeys())
 }
 
 var auditHistoryOrders = []storage.HistoryOrder{

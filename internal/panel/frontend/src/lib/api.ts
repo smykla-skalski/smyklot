@@ -159,6 +159,12 @@ export interface PanelApi {
     repositoryId: string,
     input: RepositorySettingsInput,
   ): Promise<RepositoryDetail>;
+  /**
+   * Puts a refused TOML migration back on the table. A refusal is durable and
+   * never expires, so this is the only way back from it.
+   */
+  resetConfigMigration(targetId: string, repositoryId: string): Promise<RepositoryDetail>;
+  resetRootConfigMigration(targetId: string, repositoryId: string): Promise<RepositoryDetail>;
   fetchAudit(targetId: string, request: AuditHistoryRequest): Promise<Page<AuditEntry>>;
   fetchFailures(targetId: string, request: FailureHistoryRequest): Promise<Page<DeliveryFailure>>;
   signOut(): Promise<void>;
@@ -660,6 +666,22 @@ export function createPanelApi(
       return putJson(
         `/api/v1/targets/${pathSegment(targetId)}/repositories/${pathSegment(repositoryId)}/settings`,
         input,
+      );
+    },
+
+    resetRootConfigMigration(targetId: string, repositoryId: string): Promise<RepositoryDetail> {
+      return postJson(
+        `/api/v1/root/installations/${pathSegment(targetId)}/repositories/` +
+          `${pathSegment(repositoryId)}/config-migration`,
+        {},
+      );
+    },
+
+    resetConfigMigration(targetId: string, repositoryId: string): Promise<RepositoryDetail> {
+      return postJson(
+        `/api/v1/targets/${pathSegment(targetId)}/repositories/${pathSegment(repositoryId)}` +
+          '/config-migration',
+        {},
       );
     },
 

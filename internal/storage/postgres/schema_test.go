@@ -40,7 +40,11 @@ func TestSchemaParity(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = sqliteStore.Close() })
 
-	schema := "smyklot_parity"
+	// Named after the process, not fixed. `ginkgo -p` runs the suite binary once
+	// per process, and a plain test in a Ginkgo package runs in every one of
+	// them, so a fixed name had thirteen copies dropping and creating the same
+	// schema underneath each other.
+	schema := fmt.Sprintf("smyklot_parity_%d", os.Getpid())
 	admin, err := sql.Open("pgx", dsn)
 	if err != nil {
 		t.Fatalf("open postgres: %v", err)

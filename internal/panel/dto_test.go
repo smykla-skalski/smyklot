@@ -82,3 +82,56 @@ func testOwnerAccess() storage.TargetAccess {
 		Capabilities: storage.EffectiveCapabilities(storage.InstallationRoleOwner),
 	}
 }
+
+// patchSize used to enumerate its fields and had fallen one behind, so a
+// repository that overrode only its runner was reported as overriding nothing.
+// The count now comes from the patch itself.
+func TestPatchSizeCountsEverySetting(t *testing.T) {
+	runner := config.RunnerAction
+	prefix := "!"
+
+	cases := map[string]struct {
+		patch config.Patch
+		want  int
+	}{
+		"nothing set":    {want: 0},
+		"one setting":    {patch: config.Patch{CommandPrefix: &prefix}, want: 1},
+		"runner alone":   {patch: config.Patch{Runner: &runner}, want: 1},
+		"runner and one": {patch: config.Patch{Runner: &runner, CommandPrefix: &prefix}, want: 2},
+	}
+
+	for name, test := range cases {
+		t.Run(name, func(t *testing.T) {
+			if got := patchSize(test.patch); got != test.want {
+				t.Errorf("patchSize() = %d, want %d", got, test.want)
+			}
+		})
+	}
+}
+
+// Every key the patch can carry has to be countable, or patchSize is back to
+// enumerating a subset - just generated rather than hand-written.
+func TestPatchSizeCountsAFullPatch(t *testing.T) {
+	if got, want := patchSize(fullPatch(t)), len(config.Keys()); got != want {
+		t.Errorf("patchSize(full patch) = %d, want %d", got, want)
+	}
+}
+
+// The detail pane used to print ".github/smyklot.yaml" as a literal, which was
+// true while that was the only place a configuration file could be. It is now
+// one of five, so the pane has to be told which one won and which were passed
+// over.
+func TestRepositoryDetailNamesTheFileItRead(t *testing.T) {
+	response := repositoryDetailDTO(config.Default(), storage.Target{}, storage.Repository{
+		ConfigFileStatus:     storage.RepositoryFileValid,
+		ConfigFilePath:       ".smyklot.toml",
+		ConfigFileSuperseded: []string{".github/smyklot.yaml"},
+	})
+
+	if response.ConfigFilePath != ".smyklot.toml" {
+		t.Errorf("detail names %q as the file it read", response.ConfigFilePath)
+	}
+	if !reflect.DeepEqual(response.ConfigFileSuperseded, []string{".github/smyklot.yaml"}) {
+		t.Errorf("detail reports %#v as passed over", response.ConfigFileSuperseded)
+	}
+}

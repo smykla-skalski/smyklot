@@ -6,6 +6,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -976,6 +977,59 @@ var _ = Describe("Webhook service [Unit]", func() {
 			DeferCleanup(resp.Body.Close)
 
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
+		})
+	})
+
+	Describe("schema", func() {
+		BeforeEach(func() {
+			start(config.Default())
+		})
+
+		fetch := func(path string) *http.Response {
+			GinkgoHelper()
+
+			req, err := http.NewRequestWithContext(
+				GinkgoT().Context(), http.MethodGet, service.URL+path, nil)
+			Expect(err).NotTo(HaveOccurred())
+
+			resp, err := http.DefaultClient.Do(req)
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(resp.Body.Close)
+
+			return resp
+		}
+
+		// The whole point of publishing it: an editor on a laptop that has
+		// never signed in fetches the document a repository's file names
+		It("serves the schema the migration points repositories at", func() {
+			resp := fetch(config.SchemaPath)
+			Expect(resp.StatusCode).To(Equal(http.StatusOK))
+			Expect(resp.Header.Get("Content-Type")).To(Equal("application/schema+json"))
+
+			body, err := io.ReadAll(resp.Body)
+			Expect(err).NotTo(HaveOccurred())
+
+			embedded, ok := config.Schema(config.SchemaName)
+			Expect(ok).To(BeTrue())
+			Expect(body).To(Equal(embedded))
+
+			// And it is the document it says it is, at the address it claims.
+			// Three things have to agree - the $id, this route, and the
+			// directive the migration writes - and a schema advertising an
+			// address nothing answers is exactly the rot this replaces
+			var document struct {
+				ID string `json:"$id"`
+			}
+			Expect(json.Unmarshal(body, &document)).To(Succeed())
+			Expect(document.ID).To(Equal(config.SchemaURL))
+			Expect(config.SchemaURL).To(HaveSuffix(config.SchemaPath))
+		})
+
+		// A version this binary does not carry, which is what an editor pinned
+		// to a schema an older deployment serves would ask for
+		It("answers a schema it does not have", func() {
+			Expect(fetch(schemaRoot + "/repository-v2.json").StatusCode).
+				To(Equal(http.StatusNotFound))
 		})
 	})
 })

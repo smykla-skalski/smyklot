@@ -312,71 +312,6 @@ var _ = Describe("GitHub App Client [Unit]", func() {
 		})
 	})
 
-	Describe("GetRepoConfig", func() {
-		It("should decode the canonical .yaml file", func() {
-			var requestedPaths []string
-
-			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				requestedPaths = append(requestedPaths, r.URL.Path)
-				_, _ = w.Write([]byte(githubtest.ContentsResponse("quiet_success: true\n")))
-			}))
-
-			client, err := github.NewClient("test-token", server.URL)
-			Expect(err).NotTo(HaveOccurred())
-
-			content, err := client.GetRepoConfig(context.Background(), "owner", "repo")
-			Expect(err).NotTo(HaveOccurred())
-			Expect(string(content)).To(Equal("quiet_success: true\n"))
-			Expect(requestedPaths).To(Equal([]string{"/repos/owner/repo/contents/.github/smyklot.yaml"}))
-		})
-
-		// Most repositories have no config file, so the miss must not cost more
-		// than one request - a second spelling would double it every read
-		It("should spend one request on a repository without the file", func() {
-			var requestedPaths []string
-
-			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				requestedPaths = append(requestedPaths, r.URL.Path)
-
-				w.WriteHeader(http.StatusNotFound)
-				_, _ = w.Write([]byte(`{"message": "Not Found"}`))
-			}))
-
-			client, err := github.NewClient("test-token", server.URL)
-			Expect(err).NotTo(HaveOccurred())
-
-			content, err := client.GetRepoConfig(context.Background(), "owner", "repo")
-			Expect(err).NotTo(HaveOccurred())
-			Expect(content).To(BeNil())
-			Expect(requestedPaths).To(Equal([]string{"/repos/owner/repo/contents/.github/smyklot.yaml"}))
-		})
-
-		It("should reject a file above the size cap", func() {
-			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				_, _ = w.Write([]byte(githubtest.ContentsResponse(strings.Repeat("a", 64*1024+1))))
-			}))
-
-			client, err := github.NewClient("test-token", server.URL)
-			Expect(err).NotTo(HaveOccurred())
-
-			_, err = client.GetRepoConfig(context.Background(), "owner", "repo")
-			Expect(err).To(MatchError(ContainSubstring("too large")))
-		})
-
-		It("should surface a non-404 API error", func() {
-			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				w.WriteHeader(http.StatusForbidden)
-				_, _ = w.Write([]byte(`{"message": "Resource not accessible by integration"}`))
-			}))
-
-			client, err := github.NewClient("test-token", server.URL)
-			Expect(err).NotTo(HaveOccurred())
-
-			_, err = client.GetRepoConfig(context.Background(), "owner", "repo")
-			Expect(err).To(MatchError(ContainSubstring("Resource not accessible")))
-		})
-	})
-
 	// GetCodeowners shares its body with GetRepoConfig, so its contract is
 	// re-checked here rather than assumed
 	Describe("GetCodeowners", func() {
@@ -431,7 +366,7 @@ var _ = Describe("GitHub App Client [Unit]", func() {
 			client, err := github.NewClient("test-token", server.URL)
 			Expect(err).NotTo(HaveOccurred())
 
-			_, err = client.GetRepoConfig(context.Background(), "owner", "repo")
+			_, err = client.FindRepoConfig(context.Background(), "owner", "repo", "")
 			Expect(err).To(MatchError(ContainSubstring("no content field")))
 		})
 	})

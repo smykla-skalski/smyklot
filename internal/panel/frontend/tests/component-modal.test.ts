@@ -33,7 +33,7 @@ describe('Modal [Component]', () => {
     expect(dialog.classList.contains('modal-panel')).toBe(true);
     expect(dialog.parentElement?.classList.contains('modal-content-wrapper')).toBe(true);
     expect(screen.getByText('Override inherited settings')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Close dialog' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Close dialog' })).toBeNull();
     await waitFor(() => expect(document.activeElement).toBe(dialog));
 
     await fireEvent.keyDown(document, { key: 'Escape' });

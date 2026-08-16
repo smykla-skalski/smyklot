@@ -2,66 +2,136 @@ package main
 
 import (
 	"context"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/pkg/github"
 )
 
-func TestRepoCacheDoesNotRegressToAnOlderLoad(t *testing.T) {
+func TestRepoCacheCollapsesConcurrentMisses(t *testing.T) {
 	t.Parallel()
-	olderStarted := make(chan struct{})
-	releaseOlder := make(chan struct{})
-	loadCalls := 0
+
+	// This used to assert that a load which started earlier could not overwrite
+	// a newer one, by running two at once. Two can no longer run at once: the
+	// cache admits one refresh per key, which is the stronger property and the
+	// one worth pinning. A configuration file now costs up to five requests to
+	// read, and a cold start is exactly when every delivery for a repository
+	// arrives together.
+	const callers = 16
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+
+	var loadCalls atomic.Int64
+
 	cache := newRepoCache(time.Hour, func(
 		context.Context,
 		*github.Client,
 		string,
 		string,
+		*string,
 	) (string, error) {
-		loadCalls++
-		if loadCalls == 1 {
-			close(olderStarted)
-			<-releaseOlder
+		if loadCalls.Add(1) == 1 {
+			close(started)
+			<-release
+		}
 
+		return "service", nil
+	})
+
+	results := make(chan string, callers)
+
+	var wg sync.WaitGroup
+
+	// The first caller blocks inside the load, so the rest arrive while it is
+	// in flight - which is the only moment collapsing can be observed.
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+
+		value, err := cache.Get(t.Context(), nil, "owner", "repository")
+		if err != nil {
+			t.Error(err)
+		}
+
+		results <- value
+	}()
+
+	<-started
+
+	for range callers - 1 {
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+
+			value, err := cache.Get(t.Context(), nil, "owner", "repository")
+			if err != nil {
+				t.Error(err)
+			}
+
+			results <- value
+		}()
+	}
+
+	// Give the waiters a moment to reach the cache before the load returns, so
+	// they join the call in flight rather than finding a filled cache.
+	time.Sleep(50 * time.Millisecond)
+	close(release)
+	wg.Wait()
+	close(results)
+
+	for value := range results {
+		if value != "service" {
+			t.Errorf("caller saw %q, want service", value)
+		}
+	}
+
+	if calls := loadCalls.Load(); calls != 1 {
+		t.Errorf("load ran %d times for %d concurrent callers, want 1", calls, callers)
+	}
+}
+
+// A later read still replaces an earlier one; collapsing is only for callers
+// that overlap.
+func TestRepoCacheReloadsAfterItsEntryExpires(t *testing.T) {
+	t.Parallel()
+
+	var loadCalls atomic.Int64
+
+	cache := newRepoCache(time.Nanosecond, func(
+		context.Context,
+		*github.Client,
+		string,
+		string,
+		*string,
+	) (string, error) {
+		if loadCalls.Add(1) == 1 {
 			return "service", nil
 		}
 
 		return "action", nil
 	})
 
-	olderResult := make(chan string, 1)
-	go func() {
-		value, err := cache.Get(t.Context(), nil, "owner", "repository")
-		if err != nil {
-			olderResult <- "error: " + err.Error()
-
-			return
-		}
-		olderResult <- value
-	}()
-	<-olderStarted
-
-	newer, err := cache.Get(t.Context(), nil, "owner", "repository")
+	first, err := cache.Get(t.Context(), nil, "owner", "repository")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if newer != "action" {
-		t.Fatalf("newer load = %q, want action", newer)
+
+	if first != "service" {
+		t.Fatalf("first read = %q, want service", first)
 	}
-	close(releaseOlder)
-	if older := <-olderResult; older != "action" {
-		t.Fatalf("older load returned %q after newer commit, want action", older)
-	}
-	cached, err := cache.Get(t.Context(), nil, "owner", "repository")
+
+	second, err := cache.Get(t.Context(), nil, "owner", "repository")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cached != "action" {
-		t.Fatalf("cached value = %q, want action", cached)
-	}
-	if loadCalls != 2 {
-		t.Fatalf("load calls = %d, want 2", loadCalls)
+
+	if second != "action" {
+		t.Fatalf("second read = %q, want action", second)
 	}
 }
 
@@ -73,6 +143,7 @@ func TestRepoCacheKeepsIdentityAcrossRepositoryRename(t *testing.T) {
 		_ *github.Client,
 		owner string,
 		repository string,
+		_ *string,
 	) (string, error) {
 		name := repoFullName(owner, repository)
 		loadCalls = append(loadCalls, name)

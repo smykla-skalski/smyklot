@@ -114,6 +114,7 @@ const DETAIL: RepositoryDetail = {
   effective_config: CONFIG,
   config_sources: SOURCES,
   config_file_patch: {},
+  config_migration: 'none' as const,
   ignore_repository_file: false,
   revision: 1,
 };

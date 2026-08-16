@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 
 	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/feedback"
@@ -43,16 +42,16 @@ func init() {
 	pollCmd.Flags().StringP(flagPollRepo, "r", "", descPollRepo)
 	pollCmd.Flags().StringP(flagPollToken, "t", "", descPollToken)
 
+	// The sweep takes the same settings flags as the Action, so a workflow
+	// that passes one to one command can pass it to the other
+	config.RegisterFlags(pollCmd.Flags())
+
 	rootCmd.AddCommand(pollCmd)
 }
 
 func runPoll(cmd *cobra.Command, _ []string) error {
 	// Create context from command
 	ctx := cmd.Context()
-
-	// Create Viper instance
-	v := viper.New()
-	config.SetupViper(v)
 
 	// Create runtime config for GitHub App auth
 	rc := &RuntimeConfig{}
@@ -69,7 +68,7 @@ func runPoll(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Load bot configuration
-	bc, err := loadPollBotConfig(v)
+	bc, err := loadBotConfig(cmd)
 	if err != nil {
 		return err
 	}
@@ -117,22 +116,6 @@ func runPoll(cmd *cobra.Command, _ []string) error {
 		ctx, client, checker, bc, repoOwner, repoName, rc.BotUsername,
 		commandEnvironment{}, true,
 	)
-}
-
-// loadPollBotConfig loads bot configuration from JSON config and Viper
-func loadPollBotConfig(v *viper.Viper) (*config.Config, error) {
-	// Load JSON configuration from SMYKLOT_CONFIG if present
-	if err := config.LoadJSONConfig(v); err != nil {
-		return nil, NewConfigError(ErrConfigLoad, err)
-	}
-
-	// Load bot configuration from Viper
-	bc, err := config.LoadFromViper(v)
-	if err != nil {
-		return nil, NewConfigError(ErrConfigLoad, err)
-	}
-
-	return bc, nil
 }
 
 // getPollConfig retrieves repo and token from flags or environment
@@ -204,7 +187,7 @@ func newPermissionChecker(
 	client *github.Client,
 	repoOwner, repoName string,
 ) (*permissions.Checker, error) {
-	codeownersContent, err := fetchCodeowners(ctx, client, repoOwner, repoName)
+	codeownersContent, err := fetchCodeowners(ctx, client, repoOwner, repoName, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -213,10 +196,14 @@ func newPermissionChecker(
 }
 
 // fetchCodeowners reads a repository's CODEOWNERS, or empty when it has none.
+//
+// It takes what the cache already holds and ignores it: CODEOWNERS is one
+// request to read, so there is nothing cheaper to ask first.
 func fetchCodeowners(
 	ctx context.Context,
 	client *github.Client,
 	repoOwner, repoName string,
+	_ *string,
 ) (string, error) {
 	content, err := client.GetCodeowners(ctx, repoOwner, repoName)
 	if err != nil {

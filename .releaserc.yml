@@ -5,6 +5,15 @@ plugins:
   - - "@semantic-release/commit-analyzer"
     - preset: conventionalcommits
       releaseRules:
+        # First, and it has to stay first. These rules are read in order, the
+        # first match decides the release, and they are read before the
+        # built-in ones - so `type: feat` matches a breaking `feat!` too and
+        # answers "minor" before anything asks whether it was breaking.
+        #
+        # That is how 1.31.0 happened: `feat(config)!` released 1.30.2 -> 1.31.0
+        # rather than 2.0.0, and nobody on `^1` was told.
+        - breaking: true
+          release: major
         - type: feat
           release: minor
         - type: fix

@@ -887,6 +887,20 @@ function repositorySeed(
       config_sources: resolved.sources,
       config_file_patch: input.filePatch,
       config_file_error: input.fileError,
+      config_file_path: status === 'missing' ? undefined : '.smyklot.toml',
+      // Every fifth repository carries the file it was meant to have migrated
+      // away from, so the detail pane's "also present" line has something to
+      // render against
+      config_file_superseded:
+        status === 'missing' || Number(input.id.replace(/\D/g, '')) % 5 !== 0
+          ? undefined
+          : ['.github/smyklot.yaml'],
+      // Every seventh repository has already been asked and said no, so the
+      // detail pane's refusal line and its way back are both reachable
+      config_migration:
+        status === 'missing' || Number(input.id.replace(/\D/g, '')) % 7 !== 0 ? 'none' : 'declined',
+      config_migration_pr:
+        status === 'missing' || Number(input.id.replace(/\D/g, '')) % 7 !== 0 ? undefined : 42,
       ignore_repository_file: bypass,
       revision: 1,
     },
@@ -1506,6 +1520,12 @@ async function handle(
     const rootRepositorySettings = path.match(
       /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/repositories\/(?<repository>[^/]+)\/settings$/,
     );
+    const repositoryConfigMigration = path.match(
+      /^\/api\/v1\/targets\/(?<target>[^/]+)\/repositories\/(?<repository>[^/]+)\/config-migration$/,
+    );
+    const rootRepositoryConfigMigration = path.match(
+      /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/repositories\/(?<repository>[^/]+)\/config-migration$/,
+    );
     const audit = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/audit$/);
     const failures = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/failures$/);
     const rootTargetAudit = path.match(/^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/audit$/);
@@ -1803,6 +1823,13 @@ async function handle(
       respond(res, 200, stored.detail);
       return;
     }
+    if (rootRepositoryConfigMigration && method === 'POST') {
+      const target = findTarget(state, rootRepositoryConfigMigration.groups?.target ?? '');
+      requireRootWrite(state, target);
+      const stored = findRepository(target, rootRepositoryConfigMigration.groups?.repository ?? '');
+      respond(res, 200, resetMockConfigMigration(state, target, stored));
+      return;
+    }
 
     if (installationUserDecisions && method === 'GET') {
       const target = findTarget(state, installationUserDecisions.groups?.target ?? '');
@@ -2002,6 +2029,12 @@ async function handle(
         repository_id: stored.detail.repository.id,
       });
       respond(res, 200, stored.detail);
+      return;
+    }
+    if (repositoryConfigMigration && method === 'POST') {
+      const target = findTarget(state, repositoryConfigMigration.groups?.target ?? '');
+      const stored = findRepository(target, repositoryConfigMigration.groups?.repository ?? '');
+      respond(res, 200, resetMockConfigMigration(state, target, stored));
       return;
     }
     if (installationAudit && method === 'GET') {
@@ -2754,6 +2787,35 @@ function addAudit(target: MockTarget, action: string, summary: string, repositor
     repository_full_name: repository,
     created_at: new Date().toISOString(),
   });
+}
+
+function resetMockConfigMigration(
+  state: MockState,
+  target: MockTarget,
+  stored: MockRepository,
+): RepositoryDetail {
+  if (stored.detail.config_migration === 'none') return stored.detail;
+  if (
+    stored.detail.config_migration !== 'declined' &&
+    stored.detail.config_migration !== 'blocked'
+  ) {
+    throw new MockApiError(409, 'conflict', 'the migration is no longer declined');
+  }
+  stored.detail.config_migration = 'none';
+  stored.detail.config_migration_pr = undefined;
+  addAudit(
+    target,
+    'repository.config_migration.reset',
+    'Allowed Smyklot to propose the TOML migration again',
+    stored.detail.repository.full_name,
+  );
+  broadcast(state, {
+    type: 'repository.changed',
+    target_id: target.value.id,
+    repository_id: stored.detail.repository.id,
+  });
+
+  return stored.detail;
 }
 
 function mockDecisions(user: PanelUser, target: PanelTarget): AccessDecision[] {

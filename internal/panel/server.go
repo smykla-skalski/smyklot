@@ -186,6 +186,10 @@ func (s *Server) Handler() http.Handler {
 		"PUT "+base+"/api/v1/targets/{target}/repositories/{repository}/settings",
 		s.putRepositorySettings,
 	)
+	mux.HandleFunc(
+		"POST "+base+"/api/v1/targets/{target}/repositories/{repository}/config-migration",
+		s.postRepositoryConfigMigrationReset,
+	)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/audit", s.getAudit)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/failures", s.getFailures)
 	mux.HandleFunc("GET "+base+"/api/v1/events", s.streamEvents)
@@ -252,6 +256,10 @@ func (s *Server) registerRootRoutes(mux *http.ServeMux, base string) {
 	mux.HandleFunc(
 		"PUT "+base+"/api/v1/root/installations/{target}/repositories/{repository}/settings",
 		s.putRootRepositorySettings,
+	)
+	mux.HandleFunc(
+		"POST "+base+"/api/v1/root/installations/{target}/repositories/{repository}/config-migration",
+		s.postRootRepositoryConfigMigrationReset,
 	)
 	mux.HandleFunc(
 		"GET "+base+"/api/v1/root/installations/{target}/users",

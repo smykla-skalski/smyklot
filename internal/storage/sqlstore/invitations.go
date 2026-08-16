@@ -111,7 +111,7 @@ func (s *Store) CreateInvitation(
 		return storage.Invitation{}, fmt.Errorf("begin invitation create: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	elevation, err := elevatedInvitationWrite(
+	elevation, err := s.elevatedInvitationWrite(
 		ctx,
 		tx,
 		change.TargetID,
@@ -312,7 +312,7 @@ func (s *Store) ReissueInvitation(
 	if current.Status != storage.InvitationPending && current.Status != storage.InvitationExpired {
 		return storage.Invitation{}, storage.ErrConflict
 	}
-	elevation, err := elevatedInvitationWrite(
+	elevation, err := s.elevatedInvitationWrite(
 		ctx,
 		tx,
 		current.TargetID,
@@ -407,7 +407,7 @@ func (s *Store) RevokeInvitation(
 	if current.Status != storage.InvitationPending && current.Status != storage.InvitationExpired {
 		return storage.Invitation{}, storage.ErrConflict
 	}
-	elevation, err := elevatedInvitationWrite(
+	elevation, err := s.elevatedInvitationWrite(
 		ctx,
 		tx,
 		current.TargetID,
@@ -460,7 +460,7 @@ WHERE id = ? AND status = 'pending'`, change.RevokedAt, change.ID)
 	return updated, nil
 }
 
-func elevatedInvitationWrite(
+func (s *Store) elevatedInvitationWrite(
 	ctx context.Context,
 	tx runner,
 	targetID, elevationID *string,
@@ -474,7 +474,7 @@ func elevatedInvitationWrite(
 		return nil, nil
 	}
 
-	return elevatedWrite(
+	return s.elevatedWrite(
 		ctx, tx, elevationID, sessionTokenHash, actorAccountID, *targetID, changedAt,
 	)
 }

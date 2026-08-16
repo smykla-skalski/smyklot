@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -77,17 +78,20 @@ FOR EACH ROW EXECUTE FUNCTION %[1]s.reject_security_notification();`, schema))
 })
 
 // uniqueSchema names a schema no other spec is using.
+//
+// The three parts stay separate rather than being added together. Summed, the
+// second process's first schema has the same name as the first process's
+// second, so under `ginkgo -p` half the suite failed on "schema already exists"
+// - which is a collision, not a flake, and it arrived the moment the suite was
+// first run in parallel.
 func uniqueSchema() string {
-	return fmt.Sprintf("smyklot_test_%d", GinkgoRandomSeed()+int64(GinkgoParallelProcess())+nextSchema())
+	return fmt.Sprintf(
+		"smyklot_test_%d_%d_%d",
+		GinkgoRandomSeed(), GinkgoParallelProcess(), schemaCounter.Add(1),
+	)
 }
 
-var schemaCounter int64
-
-func nextSchema() int64 {
-	schemaCounter++
-
-	return schemaCounter
-}
+var schemaCounter atomic.Int64
 
 // connect opens a handle on the configured server with no schema of its own.
 func connect(ctx context.Context) *sql.DB {

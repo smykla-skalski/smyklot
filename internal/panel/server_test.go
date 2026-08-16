@@ -1601,6 +1601,26 @@ func TestPanelRootElevationAndOwnerNotifications(t *testing.T) {
 	requireResponse(
 		t, repositoryWrite, "elevated Root repository write", http.StatusOK, `"revision":2`,
 	)
+	proposal := 42
+	if err := harness.store.SetRepositoryConfigMigration(
+		t.Context(),
+		storage.RepositoryConfigMigration{
+			TargetID: target.TargetID, RepositoryID: "repository-30",
+			State: storage.ConfigMigrationDeclined, PullRequest: &proposal,
+		},
+	); err != nil {
+		t.Fatalf("seed declined configuration migration: %v", err)
+	}
+	migrationReset := harness.request(
+		t, http.MethodPost,
+		"/panel/api/v1/root/installations/"+target.TargetID+
+			"/repositories/repository-30/config-migration",
+		strings.NewReader(`{}`), rootSession,
+	)
+	requireResponse(
+		t, migrationReset, "elevated Root configuration migration reset", http.StatusOK,
+		`"config_migration":"none"`,
+	)
 
 	subject := storage.Account{
 		ID: "github:test:user:support", Provider: "github:test", SubjectID: "support",
@@ -1686,6 +1706,7 @@ func TestPanelRootElevationAndOwnerNotifications(t *testing.T) {
 	requireResponse(
 		t, installationAudit, "Root installation audit", http.StatusOK,
 		`"target.access.updated"`, `"invitation.created"`,
+		`"repository.config_migration.reset"`,
 	)
 	notificationAudit := harness.request(
 		t, http.MethodGet,
@@ -1707,9 +1728,10 @@ func TestPanelRootElevationAndOwnerNotifications(t *testing.T) {
 	)
 	requireResponse(
 		t, notifications, "Owner notifications", http.StatusOK,
-		`"unread":7`, `"elevation_id":"`+elevation.ID+`"`,
+		`"unread":8`, `"elevation_id":"`+elevation.ID+`"`,
 		`"action":"target.settings.updated"`, `"action":"repository.settings.updated"`,
 		`"action":"target.access.updated"`, `"action":"invitation.created"`,
+		`"action":"repository.config_migration.reset"`,
 	)
 	var page notificationPageResponse
 	if err := json.Unmarshal(notifications.Body.Bytes(), &page); err != nil {
@@ -2632,3 +2654,66 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 }
 
 var _ fs.FS = fstest.MapFS{}
+
+// A refusal is durable and never expires, so this endpoint is the only way back
+// from one. If it does not work, "declined" is a state only a database edit can
+// leave.
+func TestConfigMigrationResetPutsItBackOnTheTable(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+	session := harness.signIn(t)
+
+	const (
+		target     = "github:installation:10"
+		repository = "repository-20"
+		path       = "/panel/api/v1/targets/" + target +
+			"/repositories/" + repository + "/config-migration"
+	)
+
+	proposal := 12
+	if err := harness.store.SetRepositoryConfigMigration(
+		t.Context(),
+		storage.RepositoryConfigMigration{
+			TargetID:     target,
+			RepositoryID: repository,
+			State:        storage.ConfigMigrationDeclined,
+			PullRequest:  &proposal,
+		},
+	); err != nil {
+		t.Fatalf("seed a refusal: %v", err)
+	}
+
+	response := harness.request(t, http.MethodPost, path, strings.NewReader(`{}`), session)
+	if response.Code != http.StatusOK {
+		t.Fatalf("reset = %d %s", response.Code, response.Body.String())
+	}
+
+	var detail repositoryDetailResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &detail); err != nil {
+		t.Fatal(err)
+	}
+	if detail.ConfigMigration != storage.ConfigMigrationNone {
+		t.Errorf("after reset the state is %q", detail.ConfigMigration)
+	}
+	if detail.ConfigMigrationPR != nil {
+		t.Errorf("after reset the proposal is still #%d", *detail.ConfigMigrationPR)
+	}
+
+	// Somebody decided this, so it is written down where decisions are
+	audit, err := harness.store.ListAudit(t.Context(), target, storage.AuditPageRequest{
+		HistoryPageRequest: storage.HistoryPageRequest{Limit: 50},
+		Scope:              storage.AuditAll,
+	})
+	if err != nil {
+		t.Fatalf("read audit: %v", err)
+	}
+
+	var recorded bool
+	for _, entry := range audit.Items {
+		if strings.Contains(entry.Summary, "TOML migration") {
+			recorded = true
+		}
+	}
+	if !recorded {
+		t.Error("the reset left no audit entry")
+	}
+}

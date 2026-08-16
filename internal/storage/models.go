@@ -407,6 +407,55 @@ const (
 	RepositoryFileBypassed RepositoryFileStatus = "bypassed"
 )
 
+// ConfigMigrationState is how far Smyklot has got with moving a repository's
+// configuration file to TOML.
+type ConfigMigrationState string
+
+const (
+	// ConfigMigrationNone is a repository nobody has asked yet.
+	ConfigMigrationNone ConfigMigrationState = "none"
+
+	// ConfigMigrationProposed is a pull request waiting on the repository.
+	ConfigMigrationProposed ConfigMigrationState = "proposed"
+
+	// ConfigMigrationDeclined is a pull request somebody closed without
+	// merging. It is durable and never expires: asking again would be the bot
+	// arguing with a decision a person already made.
+	ConfigMigrationDeclined ConfigMigrationState = "declined"
+
+	// ConfigMigrationBlocked is GitHub refusing the work - most often an App
+	// that was never granted write access to this repository. Durable for a
+	// different reason than a refusal: finding out costs seven requests, and a
+	// permission nobody has granted will not appear because the bot asked
+	// again twelve times an hour.
+	ConfigMigrationBlocked ConfigMigrationState = "blocked"
+)
+
+// RepositoryConfigMigration records what came of proposing the move to TOML.
+type RepositoryConfigMigration struct {
+	TargetID     string
+	RepositoryID string
+	State        ConfigMigrationState
+
+	// PullRequest is the proposal, so the panel can link to the thing it is
+	// describing rather than to a search for it.
+	PullRequest *int
+
+	// ActorAccountID is who decided, when anyone did. The sweep leaves it
+	// unset: it observed a pull request rather than choosing anything, and
+	// there is no synthetic account to attribute that to.
+	ActorAccountID *string
+
+	// Elevated Root decisions carry both halves of the proof. The store checks
+	// them again inside the write transaction so an elevation revoked after the
+	// HTTP authorization check cannot still commit.
+	ElevationID      *string
+	SessionTokenHash string
+
+	// ChangedAt stamps the audit entry an actor earns.
+	ChangedAt time.Time
+}
+
 // Repository is a catalog entry plus its panel-owned controls.
 type Repository struct {
 	ID                   string
@@ -422,8 +471,26 @@ type Repository struct {
 	ConfigFileStatus     RepositoryFileStatus
 	ConfigFilePatch      config.Patch
 	ConfigFileError      *string
-	Revision             int64
-	UpdatedAt            time.Time
+
+	// ConfigFilePath is the file the configuration was read from, empty when
+	// the repository has none. Discovery looks in four places plus a
+	// panel-chosen one, so the status alone no longer says which file it is
+	// describing.
+	ConfigFilePath string
+
+	// ConfigFileSuperseded are the other paths that also hold a configuration
+	// file and were passed over. Nothing reads them; they are here to be shown
+	// to a repository that migrated and left the old file behind.
+	ConfigFileSuperseded []string
+
+	// ConfigMigration is how far the move to TOML has got.
+	ConfigMigration ConfigMigrationState
+
+	// ConfigMigrationPR is the proposal, when there has been one.
+	ConfigMigrationPR *int
+
+	Revision  int64
+	UpdatedAt time.Time
 }
 
 // RepositorySnapshot is GitHub-owned catalog state. Reconciliation must not
@@ -483,6 +550,8 @@ type RepositoryFileState struct {
 	Status       RepositoryFileStatus
 	Patch        config.Patch
 	Error        *string
+	Path         string
+	Superseded   []string
 	ObservedAt   time.Time
 }
 

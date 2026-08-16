@@ -47,82 +47,26 @@ func ParseRunner(name string) (Runner, error) {
 	}
 }
 
-// Config represents the configuration for Smyklot
-type Config struct {
-	// QuietSuccess disables success comments (keeps reactions only)
-	QuietSuccess bool `json:"quiet_success"`
-
-	// QuietReactions disables reaction-based approval/merge comments
-	QuietReactions bool `json:"quiet_reactions"`
-
-	// QuietPending disables pending CI comments (keeps reactions only)
-	QuietPending bool `json:"quiet_pending"`
-
-	// AllowedCommands is a list of allowed command names
-	// an Empty list means all commands are allowed
-	AllowedCommands []string `json:"allowed_commands"`
-
-	// CommandAliases maps aliases to command names,
-	// For example, {"app": "approve", "a": "approve"}
-	CommandAliases map[string]string `json:"command_aliases"`
-
-	// CommandPrefix is the prefix for slash-style commands
-	// The default is "/" (e.g., /approve)
-	CommandPrefix string `json:"command_prefix"`
-
-	// DisableMentions disables mention-style commands (@smyklot approve)
-	DisableMentions bool `json:"disable_mentions"`
-
-	// DisableBareCommands disables bare commands (approve, lgtm, merge)
-	DisableBareCommands bool `json:"disable_bare_commands"`
-
-	// DisableUnapprove disables unapprove/disapprove commands
-	DisableUnapprove bool `json:"disable_unapprove"`
-
-	// DisableReactions disables reaction-based approvals/merges
-	DisableReactions bool `json:"disable_reactions"`
-
-	// DisableDeletedComments disables comments about deleted commands
-	DisableDeletedComments bool `json:"disable_deleted_comments"`
-
-	// AllowSelfApproval allows PR authors to approve their own PRs
-	// Default is false (self-approval is not allowed)
-	AllowSelfApproval bool `json:"allow_self_approval"`
-
-	// Runner names the entry point that acts on this repository, so the other
-	// one stands down. Empty means DefaultRunner
-	Runner Runner `json:"runner"`
-}
-
-// Default returns a Config with default values
-func Default() *Config {
-	return &Config{
-		QuietSuccess:           false,
-		QuietReactions:         false,
-		QuietPending:           false,
-		AllowedCommands:        []string{},
-		CommandAliases:         make(map[string]string),
-		CommandPrefix:          DefaultCommandPrefix,
-		DisableMentions:        false,
-		DisableBareCommands:    false,
-		DisableUnapprove:       false,
-		DisableReactions:       false,
-		DisableDeletedComments: false,
-		AllowSelfApproval:      false,
-		Runner:                 DefaultRunner,
-	}
-}
-
 // EffectiveRunner is the entry point that acts on this repository.
 //
-// An unset runner reads as the default rather than as nothing, so a Config
-// built in code behaves the same as one loaded from a file that omits the key.
+// Anything this does not recognise reads as the default, which is what makes a
+// wrong value harmless rather than silencing. Both entry points decide whether
+// to act by comparing this to their own name, so a third value matches neither
+// and the repository goes quiet with nothing anywhere to say why.
+//
+// Every place a runner is read from text refuses one it does not know -
+// ParsePatch does it for a file and a document, and the generated normalize
+// does it for a variable and a flag - so this should be unreachable. It is here
+// because "unreachable" is a claim about today's callers, and the failure it
+// prevents is a repository nobody can see has stopped working.
 func (c *Config) EffectiveRunner() Runner {
-	if c.Runner == "" {
+	switch c.Runner {
+	case RunnerService, RunnerAction:
+		return c.Runner
+
+	default:
 		return DefaultRunner
 	}
-
-	return c.Runner
 }
 
 // RunBy reports whether the given entry point should act on this repository.

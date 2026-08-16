@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -23,9 +24,50 @@ type githubStub struct {
 	// without one
 	codeowners string
 
+	// branchPRs answers a pull request listing filtered by head branch, which
+	// is how the configuration migration asks what became of its proposal.
+	branchPRs string
+
+	// migrationRefs are immutable, content-addressed proposal branches.
+	migrationRefs map[string]string
+
+	// migrationTipTree is the tree recorded by a migration branch's tip.
+	migrationTipTree string
+	createdTreeSHA   string
+	migrationPRState string
+
+	// Branch updates keep both the wire body and whether one asked GitHub to
+	// discard non-fast-forward work.
+	branchUpdates []string
+	forcedPushes  int
+
+	// refuseBranchPush is an App that was never granted write access here.
+	refuseBranchPush bool
+
+	// busyOnBranchPush is GitHub rate-limiting the push, which is the same
+	// request worth making again rather than a permission that will not come.
+	busyOnBranchPush bool
+
+	// createdPRs and createdTrees are what the migration sent, because a pull
+	// request nobody asked for is judged entirely on what it contains.
+	createdPRs     []string
+	createdTrees   []string
+	createdBlobs   []string
+	createdCommits []string
+
+	// repoConfigTOML is the repository's .smyklot.toml, or empty for a
+	// repository that has not migrated. Stocking both is how a spec describes
+	// a repository carrying two configuration files
+	repoConfigTOML string
+
 	// repoConfig is the repository's .github/smyklot.yaml, or empty for a
 	// repository without one
 	repoConfig string
+
+	// repoConfigAtBase, when set, is the file at the immutable default-branch
+	// commit used to build a migration. The unpinned cache read can then differ
+	// from the exact snapshot without a timing-dependent test.
+	repoConfigAtBase *string
 
 	// prAuthor is who opened the pull request, which decides whether a command
 	// counts as self-approval
@@ -66,7 +108,11 @@ type githubStub struct {
 
 func newGitHubStub() *githubStub {
 	return &githubStub{
-		codeowners: "* @someone\n",
+		codeowners:       "* @someone\n",
+		migrationRefs:    map[string]string{},
+		migrationTipTree: "treesha",
+		createdTreeSHA:   "treesha",
+
 		prAuthor:   "author",
 		prLabels:   `[]`,
 		prHead:     "command-head",
@@ -146,7 +192,13 @@ func (s *githubStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, s.members)
 
 	case strings.HasSuffix(r.URL.Path, "/pulls"):
-		_, _ = io.WriteString(w, s.openPRs)
+		s.servePulls(w, r)
+
+	// Git data, enough of it to let the configuration migration run end to
+	// end. It routes in its own function because this switch is already at the
+	// complexity the linter allows.
+	case strings.Contains(r.URL.Path, "/git/"):
+		s.serveGitData(w, r)
 
 	case strings.HasSuffix(r.URL.Path, "/labels"):
 		_, _ = w.Write([]byte(`[]`))
@@ -174,14 +226,17 @@ func (s *githubStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case strings.HasSuffix(r.URL.Path, "/contents/.github/CODEOWNERS"):
 		s.writeFile(w, s.codeowners)
 
-	case strings.Contains(r.URL.Path, "/contents/.github/smyklot."):
-		if strings.HasSuffix(r.URL.Path, ".yaml") {
-			s.writeFile(w, s.currentRepoConfig())
+	// The head of the default branch, which the service reads as the validator
+	// for its configuration cache. A fixed SHA means a spec that reads twice
+	// gets the second answer from cache, which is what production does.
+	case strings.HasSuffix(r.URL.Path, "/commits"):
+		_, _ = io.WriteString(w, `[{"sha":"0000000000000000000000000000000000000000"}]`)
 
-			return
-		}
-
-		s.writeFile(w, "")
+	// A repository's own configuration, at any of the paths it may live at.
+	// Only the legacy one is stocked, so a spec that sets repoConfig still
+	// describes a repository configured the way it was before TOML.
+	case strings.Contains(r.URL.Path, "/contents/"):
+		s.serveRepoConfig(w, r)
 
 	case strings.HasSuffix(r.URL.Path, "/reviews"):
 		if r.Method == http.MethodGet {
@@ -214,6 +269,11 @@ func (s *githubStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"id": 1}`))
 
 	case strings.Contains(r.URL.Path, "/pulls/"):
+		if s.migrationPRState != "" {
+			_, _ = io.WriteString(w, s.migrationPRState)
+
+			return
+		}
 		_, _ = fmt.Fprintf(w, `{
 			"number": 42,
 			"state": "open",
@@ -373,6 +433,186 @@ func (s *githubStub) currentRepoConfig() string {
 }
 
 // writeFile answers the contents API, treating empty content as a missing file
+// servePulls answers both things the pull request endpoint is asked: opening
+// one, and reporting what became of the one opened from a named branch.
+func (s *githubStub) servePulls(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		s.record(&s.createdPRs, r)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = io.WriteString(w, `{"number":77,"state":"open"}`)
+
+		return
+	}
+
+	// A listing filtered by head branch is asking about one proposal, not
+	// about the repository's open pull requests
+	if r.URL.Query().Get("head") != "" {
+		_, _ = io.WriteString(w, orEmptyList(s.branchPRs))
+
+		return
+	}
+
+	_, _ = io.WriteString(w, s.openPRs)
+}
+
+// serveRepoConfig stocks the two configuration paths a spec can set, and 404s
+// the rest - which is what a repository that only has one of them looks like.
+func (s *githubStub) serveRepoConfig(w http.ResponseWriter, r *http.Request) {
+	legacy := s.currentRepoConfig()
+	if r.URL.Query().Get("ref") == "basecommit" && s.repoConfigAtBase != nil {
+		legacy = *s.repoConfigAtBase
+	}
+	switch {
+	case strings.HasSuffix(r.URL.Path, "/contents/.github/smyklot.yaml"):
+		s.writeFile(w, legacy)
+
+	case strings.HasSuffix(r.URL.Path, "/contents/.smyklot.toml"):
+		s.writeFile(w, s.repoConfigTOML)
+
+	default:
+		s.writeFile(w, "")
+	}
+}
+
+// serveGitData answers the object endpoints the configuration migration
+// builds a commit from.
+//
+// Each one answers with a fixed sha: what the migration builds out of them is
+// the thing under test, not what git would have made of it.
+func (s *githubStub) serveGitData(w http.ResponseWriter, r *http.Request) {
+	switch {
+	case strings.Contains(r.URL.Path, "/git/ref/heads/"+migrationBranch):
+		branch := r.URL.Path[strings.Index(r.URL.Path, "/git/ref/heads/")+len("/git/ref/heads/"):]
+		s.mu.Lock()
+		sha := s.migrationRefs[branch]
+		s.mu.Unlock()
+
+		if sha == "" {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = io.WriteString(w, `{"message": "Not Found"}`)
+
+			return
+		}
+
+		_, _ = fmt.Fprintf(w, `{"object":{"sha":%q}}`, sha)
+
+	case strings.Contains(r.URL.Path, "/git/ref/"):
+		_, _ = io.WriteString(w, `{"object":{"sha":"basecommit"}}`)
+
+	// A commit and the tree it records are different objects, and the tree is
+	// what a new one is built from
+	case strings.HasSuffix(r.URL.Path, "/git/commits/basecommit"):
+		_, _ = io.WriteString(w, `{"sha":"basecommit","tree":{"sha":"basetree"}}`)
+
+	// The tip of an existing migration branch.
+	case strings.Contains(r.URL.Path, "/git/commits/"):
+		s.mu.Lock()
+		tree := s.migrationTipTree
+		s.mu.Unlock()
+
+		_, _ = fmt.Fprintf(
+			w, `{"sha":"commitsha","tree":{"sha":%q},"message":%q}`, tree, migrationCommit,
+		)
+
+	case strings.HasSuffix(r.URL.Path, "/git/blobs"):
+		s.record(&s.createdBlobs, r)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = io.WriteString(w, `{"sha":"blobsha"}`)
+
+	case strings.HasSuffix(r.URL.Path, "/git/trees"):
+		s.record(&s.createdTrees, r)
+		s.mu.Lock()
+		tree := s.createdTreeSHA
+		s.mu.Unlock()
+		w.WriteHeader(http.StatusCreated)
+		_, _ = fmt.Fprintf(w, `{"sha":%q}`, tree)
+
+	case strings.HasSuffix(r.URL.Path, "/git/commits"):
+		s.record(&s.createdCommits, r)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = io.WriteString(w, `{"sha":"commitsha"}`)
+
+	case strings.Contains(r.URL.Path, "/git/refs/heads/"):
+		body, _ := io.ReadAll(r.Body)
+		var update struct {
+			Force bool `json:"force"`
+		}
+		_ = json.Unmarshal(body, &update)
+		s.mu.Lock()
+		s.branchUpdates = append(s.branchUpdates, string(body))
+		if update.Force {
+			s.forcedPushes++
+		}
+		s.mu.Unlock()
+		_, _ = io.WriteString(w, `{"object":{"sha":"commitsha"}}`)
+
+	case strings.HasSuffix(r.URL.Path, "/git/refs"):
+		if s.refuseBranchPush {
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = io.WriteString(w,
+				`{"message": "Resource not accessible by integration"}`)
+
+			return
+		}
+		if s.busyOnBranchPush {
+			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = io.WriteString(w, `{"message": "API rate limit exceeded"}`)
+
+			return
+		}
+
+		body, _ := io.ReadAll(r.Body)
+		var created struct {
+			Ref string `json:"ref"`
+			SHA string `json:"sha"`
+		}
+		_ = json.Unmarshal(body, &created)
+		s.mu.Lock()
+		s.migrationRefs[strings.TrimPrefix(created.Ref, "refs/heads/")] = created.SHA
+		s.mu.Unlock()
+		w.WriteHeader(http.StatusCreated)
+		_, _ = io.WriteString(w, `{"object":{"sha":"commitsha"}}`)
+
+	default:
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = fmt.Fprintf(w, `{"message": "unstubbed git path %s"}`, r.URL.Path)
+	}
+}
+
+// record keeps a request body for a spec to assert on.
+func (s *githubStub) record(into *[]string, r *http.Request) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	*into = append(*into, readBody(r))
+}
+
+// readBody reads a request body for a spec to assert on, and never fails: a
+// stub that could not read one has nothing useful to say about it either.
+func readBody(r *http.Request) string {
+	if r.Body == nil {
+		return ""
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		return ""
+	}
+
+	return string(body)
+}
+
+// orEmptyList keeps an unset listing decoding as an empty list rather than as
+// a parse failure, which is what a stub answering nothing would produce.
+func orEmptyList(body string) string {
+	if body == "" {
+		return "[]"
+	}
+
+	return body
+}
+
 func (s *githubStub) writeFile(w http.ResponseWriter, content string) {
 	if content == "" {
 		w.WriteHeader(http.StatusNotFound)

@@ -1,0 +1,94 @@
+name: Toolchain
+description: Install the versions pinned in .mise.toml and restore one job's Go caches
+
+# Every job in the test workflow needs the same two things, and GitHub Actions
+# has no anchors, so without this the setup would be copied into each of them
+# and would drift the first time one was changed.
+
+inputs:
+  go-cache:
+    description: >-
+      Cache namespace for the Go build and module caches. A job caches only what
+      it compiles, so the archive it restores is its own work rather than the
+      whole repository's. Leave it empty in a job that builds no Go.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Install mise
+      uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518 # v4.2.5
+      with:
+        cache: true
+
+    # Two archives, because the two caches answer to different things. The
+    # module cache is the same bytes in every job - it is what go.sum names -
+    # so it is one entry every job restores. The build cache is what that job
+    # compiled, and keeping it to itself is what stops each area's archive
+    # growing into the union of all of them.
+    #
+    # Both keys carry go.sum rather than the commit, so each is written once and
+    # then hit by every later run: Go's build cache is content addressed, and
+    # what it holds is the compilation of dependencies and of the race
+    # instrumented standard library, neither of which a change in this
+    # repository invalidates.
+    - name: Restore the Go module cache
+      if: inputs.go-cache != ''
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-gomod-${{ hashFiles('go.sum') }}
+        restore-keys: ${{ runner.os }}-gomod-
+
+    - name: Restore the Go build cache
+      if: inputs.go-cache != ''
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/go-build
+        key: ${{ runner.os }}-gobuild-${{ inputs.go-cache }}-${{ hashFiles('go.sum') }}
+        restore-keys: ${{ runner.os }}-gobuild-${{ inputs.go-cache }}-
+
+    # The panel bundle stopped being tracked, so every Go suite now depends on
+    # the task that produces it - and producing it means installing the frontend
+    # and building it, which is half a minute in a job that only wanted to run
+    # `pkg/config`.
+    #
+    # What is cached is that task graph's outputs, keyed by everything that
+    # decides them. mise skips a task whose outputs are newer than its sources,
+    # so with these three present nothing in the chain runs. `.package-lock.json`
+    # is the install step's output and the only part of node_modules anything
+    # here reads: when the key misses, npm ci runs and replaces the directory
+    # wholesale, which is the only path that ever needs the rest of it.
+    - name: Restore the panel bundle
+      if: inputs.go-cache != ''
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          internal/panel/frontend/node_modules/.package-lock.json
+          internal/panel/frontend/dist
+          internal/panelassets/generated/bundle.zip
+        key: >-
+          ${{ runner.os }}-panel-bundle-${{ hashFiles(
+            'internal/panel/frontend/**',
+            '!internal/panel/frontend/node_modules/**',
+            '!internal/panel/frontend/dist/**',
+            'internal/panelassets/cmd/generate/**') }}
+
+    # An archive carries the times its files had when it was written, and a
+    # checkout stamps every source with now, so a restored output looks older
+    # than the source it was made from and mise rebuilds it. It was made after,
+    # in the run that filled this archive; this says so.
+    - name: Mark the panel bundle as current
+      if: inputs.go-cache != ''
+      shell: bash
+      run: |
+        set -eu
+        bundle=internal/panelassets/generated/bundle.zip
+        test -f "$bundle" || exit 0
+
+        # In the order the chain produces them, so each output is newer than the
+        # one it was made from as well as newer than the checkout.
+        touch internal/panel/frontend/node_modules/.package-lock.json
+        find internal/panel/frontend/dist -exec touch {} +
+        touch "$bundle"

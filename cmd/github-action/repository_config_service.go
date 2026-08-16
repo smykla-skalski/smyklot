@@ -17,32 +17,104 @@ type repositoryConfigFile struct {
 	patch  config.Patch
 	status storage.RepositoryFileStatus
 	err    error
+
+	// path is the file this was read from, empty when the repository has none.
+	path string
+
+	// superseded are the other paths that also hold a configuration file. They
+	// change nothing about how a comment is answered and are reported to the
+	// repository, which is the point of reading them at all.
+	superseded []string
+
+	// fingerprint identifies everything the file could have been read from when
+	// it was read. The file is looked for at four paths, and re-probing them
+	// every time the entry ages out would cost four requests per repository per
+	// tick; comparing this answers all four in one.
+	fingerprint string
 }
 
+// fetchRepositoryConfig reads a repository's own configuration file.
+//
+// previous is what the cache already holds, and the fingerprint is what decides
+// whether it can be handed straight back. That question costs one request and
+// answers all four candidate paths at once, which is what keeps looking in four
+// places from costing four times as much as looking in one.
+//
+// The fingerprint is read before the file, so a commit landing during the read
+// is noticed on the next tick rather than mistaken for the state this answer
+// describes.
 func fetchRepositoryConfig(
 	ctx context.Context,
 	client *github.Client,
 	owner, repository string,
+	previous *repositoryConfigFile,
 ) (repositoryConfigFile, error) {
-	content, err := client.GetRepoConfig(ctx, owner, repository)
+	// The same preferred path goes into both, so what is watched cannot drift
+	// from what is searched
+	const preferred = ""
+
+	fingerprint, err := client.RepoConfigFingerprint(ctx, owner, repository, preferred)
 	if err != nil {
 		return repositoryConfigFile{}, NewConfigError(ErrConfigLoad, err)
 	}
-	if content == nil {
-		return repositoryConfigFile{status: storage.RepositoryFileMissing}, nil
+
+	// An empty fingerprint is "could not tell", and never compares equal, so a
+	// repository Smyklot could not read is re-read rather than assumed.
+	if previous != nil && fingerprint != "" && previous.fingerprint == fingerprint {
+		return *previous, nil
 	}
-	if len(bytes.TrimSpace(content)) == 0 {
-		return repositoryConfigFile{status: storage.RepositoryFileValid}, nil
-	}
-	patch, err := config.ParsePatch(content)
+
+	found, err := client.FindRepoConfig(ctx, owner, repository, preferred)
 	if err != nil {
+		return repositoryConfigFile{}, NewConfigError(ErrConfigLoad, err)
+	}
+	if !found.Found() {
 		return repositoryConfigFile{
-			status: storage.RepositoryFileInvalid,
-			err:    NewConfigError(ErrRepoConfigInvalid, err),
+			status: storage.RepositoryFileMissing, fingerprint: fingerprint,
 		}, nil
 	}
 
-	return repositoryConfigFile{patch: patch, status: storage.RepositoryFileValid}, nil
+	return repositoryConfigFileFrom(found, fingerprint), nil
+}
+
+func repositoryConfigFileFrom(found github.RepoConfig, fingerprint string) repositoryConfigFile {
+	if len(bytes.TrimSpace(found.Content)) == 0 {
+		return repositoryConfigFile{
+			status:      storage.RepositoryFileValid,
+			path:        found.Path,
+			superseded:  found.Superseded,
+			fingerprint: fingerprint,
+		}
+	}
+
+	patch, err := parseRepositoryConfig(found)
+	if err != nil {
+		return repositoryConfigFile{
+			status:      storage.RepositoryFileInvalid,
+			err:         NewConfigError(ErrRepoConfigInvalid, err),
+			path:        found.Path,
+			superseded:  found.Superseded,
+			fingerprint: fingerprint,
+		}
+	}
+
+	return repositoryConfigFile{
+		patch:       patch,
+		status:      storage.RepositoryFileValid,
+		path:        found.Path,
+		superseded:  found.Superseded,
+		fingerprint: fingerprint,
+	}
+}
+
+// parseRepositoryConfig reads a found file in whichever format its name says.
+func parseRepositoryConfig(found github.RepoConfig) (config.Patch, error) {
+	format, err := config.FormatOf(found.Path)
+	if err != nil {
+		return config.Patch{}, err
+	}
+
+	return config.ParsePatch(format, found.Content)
 }
 
 func (s *server) repositoryEnabled(
@@ -156,6 +228,8 @@ func (s *server) serviceConfig(
 		Status:       file.status,
 		Patch:        file.patch,
 		Error:        fileError,
+		Path:         file.path,
+		Superseded:   file.superseded,
 		ObservedAt:   time.Now().UTC(),
 	})
 	if err != nil {

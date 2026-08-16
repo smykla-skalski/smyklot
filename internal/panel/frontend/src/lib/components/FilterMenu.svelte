@@ -14,9 +14,6 @@
     fallbackValue,
     align = 'start',
     wide = false,
-    showIcon = false,
-    iconOnly = false,
-    placement = 'toolbar',
     onChange,
   }: {
     label: string;
@@ -28,9 +25,6 @@
     fallbackValue?: string;
     align?: 'start' | 'end';
     wide?: boolean;
-    showIcon?: boolean;
-    iconOnly?: boolean;
-    placement?: 'toolbar' | 'header';
     onChange: (values: string[]) => void;
   } = $props();
 
@@ -78,25 +72,28 @@
   {#snippet trigger(attributes)}
     <!-- Open state is read from the trigger's own `aria-expanded`, which the
          layer writes: mirroring it into a class here made two conventions out of
-         one fact, and the other two menus already read the attribute. -->
-    <div class="filter-menu" class:header-filter={placement === 'header'} class:filtered={canClear}>
-      <button
-        class="filter-trigger"
-        class:icon-only={iconOnly}
-        type="button"
-        bind:this={triggerButton}
-        aria-haspopup="listbox"
-        aria-label={`${label}: ${summary}`}
-        {...attributes}
-      >
-        {#if showIcon}<Icon name="filter" size={14} />{/if}
-        <span class="summary-copy">{summary}</span>
-        {#if (multiple || placement === 'header') && selectedCount > 0}
-          <span class="selection-count" aria-hidden="true">{selectedCount}</span>
-        {/if}
-        <span class="menu-chevron" aria-hidden="true"><Icon name="chevron-down" size={16} /></span>
-      </button>
-    </div>
+         one fact, and the other two menus already read the attribute.
+
+         A funnel in a column heading is the only shape this has: every caller
+         asked for it, so the component no longer offers another. It carried a
+         `placement` prop, an `iconOnly` prop and a `showIcon` prop whose other
+         values nothing had ever passed - a labelled toolbar control, with a
+         chevron and a visible summary, that could not be reached from anywhere
+         and so could not be seen to have rotted. -->
+    <button
+      class="filter-trigger"
+      class:filtered={canClear}
+      type="button"
+      bind:this={triggerButton}
+      aria-haspopup="listbox"
+      aria-label={`${label}: ${summary}`}
+      {...attributes}
+    >
+      <Icon name="filter" size={14} />
+      {#if selectedCount > 0}
+        <span class="selection-count" aria-hidden="true">{selectedCount}</span>
+      {/if}
+    </button>
   {/snippet}
 
   <div class="filter-body" class:wide>
@@ -160,169 +157,75 @@
 </Popover>
 
 <style>
-  /* No `position: relative` and no z-index: the layer is in the top layer, which
-     nothing in the page can be stacked over or clipped by. */
-  .filter-menu {
-    min-width: 0;
-  }
-
+  /* No `position: relative` on an ancestor and no z-index: the layer is in the
+     top layer, which nothing in the page can be stacked over or clipped by. The
+     trigger is positioned only so the count can ride its corner. */
   .filter-trigger {
     align-items: center;
-    background: var(--control-bg);
-    border: 1px solid var(--control-border);
-    border-radius: var(--r-ctl);
-    color: var(--text);
-    cursor: pointer;
-    display: flex;
-    font-size: var(--font-size-body);
-    gap: 0.4rem;
-    height: var(--local-control-height, var(--control-height));
-    line-height: 1;
-    padding: 0 0.625rem;
-    transition:
-      background-color var(--duration-fast) var(--ease-out),
-      border-color var(--duration-fast) var(--ease-out),
-      color var(--duration-fast) var(--ease-out),
-      transform var(--duration-press) var(--ease-standard);
-    user-select: none;
-  }
-
-  .filter-trigger.icon-only {
-    flex: none;
-    justify-content: space-between;
-    padding: 0 0.625rem;
-    position: relative;
-    width: 3.75rem;
-  }
-
-  .header-filter {
-    flex: none;
-  }
-
-  .header-filter .filter-trigger {
     background: transparent;
     border: 0;
     border-radius: var(--radius-control);
     color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    flex: none;
     height: 1.75rem;
     justify-content: center;
+    line-height: 1;
     padding: 0;
     position: relative;
+    transition:
+      background-color var(--duration-fast) var(--ease-out),
+      color var(--duration-fast) var(--ease-out),
+      transform var(--duration-press) var(--ease-standard);
+    user-select: none;
     width: 1.75rem;
   }
 
-  .header-filter .filter-trigger.icon-only {
-    width: 1.75rem;
-  }
-
-  .header-filter .filter-trigger .menu-chevron {
-    display: none;
-  }
-
-  /* The count rides the funnel's corner so an active filter says how many
-     values it holds without reclaiming header width. Specificity beats the
-     icon-only in-button placement below. */
-  .filter-menu.header-filter .filter-trigger .selection-count {
-    background: var(--surface-base);
-    border-radius: var(--radius-chip);
-    box-shadow: 0 0 0 1px var(--border-subtle);
-    color: var(--brand-action-text);
-    font: 700 0.5625rem / 1 var(--sans);
-    margin: 0;
-    min-width: 0;
-    padding: 2px 4px;
-    position: absolute;
-    right: -4px;
-    top: -4px;
-  }
-
-  .header-filter.filtered .filter-trigger {
-    background: var(--brand-action);
-    color: var(--on-brand-action);
-  }
-
-  .header-filter .filter-trigger:hover,
-  .header-filter .filter-trigger[aria-expanded='true'] {
+  .filter-trigger:hover,
+  .filter-trigger[aria-expanded='true'] {
     background: color-mix(in srgb, var(--text-primary) 8%, transparent);
-    border-color: transparent;
     color: var(--text-primary);
   }
 
-  .header-filter.filtered .filter-trigger:hover,
-  .header-filter.filtered .filter-trigger[aria-expanded='true'] {
-    background: var(--brand-action-hover);
-    color: var(--on-brand-action);
-  }
-
-  .header-filter.filtered .filter-trigger:active {
-    background: var(--brand-action-pressed);
-    color: var(--on-brand-action);
-  }
-
-  .header-filter .filter-trigger:active {
+  .filter-trigger:active {
     background: color-mix(in srgb, var(--text-primary) 14%, transparent);
     color: var(--text-primary);
     transform: scale(var(--press-scale-disc));
   }
 
-  .filter-trigger.icon-only .summary-copy {
-    display: none;
+  .filter-trigger.filtered {
+    background: var(--brand-action);
+    color: var(--on-brand-action);
   }
 
-  .filter-trigger.icon-only .selection-count {
-    height: 0.875rem;
-    min-width: 0.875rem;
-    padding: 0 0.15rem;
-    position: absolute;
-    right: 1px;
-    top: 1px;
+  .filter-trigger.filtered:hover,
+  .filter-trigger.filtered[aria-expanded='true'] {
+    background: var(--brand-action-hover);
+    color: var(--on-brand-action);
   }
 
-  .filter-trigger:hover,
-  .filter-menu .filter-trigger[aria-expanded='true'] {
-    background: var(--control-bg-hover);
-    border-color: var(--control-border-hover);
+  .filter-trigger.filtered:active {
+    background: var(--brand-action-pressed);
+    color: var(--on-brand-action);
   }
 
-  .filter-trigger:active {
-    background: var(--control-bg-pressed);
-    border-color: var(--control-border-hover);
-    transform: scale(var(--press-scale));
-  }
-
-  .summary-copy {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
+  /* The count rides the funnel's corner so an active filter says how many
+     values it holds without reclaiming header width. */
   .selection-count {
     align-items: center;
-    background: var(--signal-tint);
-    border-radius: 999px;
-    color: var(--signal);
+    background: var(--surface-base);
+    border-radius: var(--radius-chip);
+    box-shadow: 0 0 0 1px var(--border-subtle);
+    color: var(--brand-action-text);
     display: inline-grid;
-    font-size: 0.5625rem;
-    font-weight: 700;
-    height: 1rem;
-    line-height: 1;
-    min-width: 1rem;
-    padding: 0 0.2rem;
+    font: 700 0.5625rem / 1 var(--sans);
+    height: 0.875rem;
+    padding: 2px 4px;
     place-items: center;
-  }
-
-  .menu-chevron {
-    color: var(--text-muted);
-    display: grid;
-    flex: none;
-    margin-left: auto;
-    place-items: center;
-    transition: transform var(--duration-fast) var(--ease-out);
-  }
-
-  .filter-menu .filter-trigger[aria-expanded='true'] .menu-chevron {
-    transform: rotate(180deg);
+    position: absolute;
+    right: -4px;
+    top: -4px;
   }
 
   /* A column that can shrink, so the header and the footer keep their size and
@@ -530,8 +433,7 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .filter-trigger,
-    .menu-chevron {
+    .filter-trigger {
       transition: none;
     }
   }

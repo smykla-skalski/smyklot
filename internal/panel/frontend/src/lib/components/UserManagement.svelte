@@ -1407,9 +1407,6 @@
                           selected={userRoles}
                           multiple
                           align="end"
-                          showIcon
-                          iconOnly
-                          placement="header"
                           onChange={(values) => userTable.getColumn('role')?.setFilterValue(values)}
                         />
                       </div>
@@ -1425,9 +1422,6 @@
                           selected={userStatuses}
                           multiple
                           align="end"
-                          showIcon
-                          iconOnly
-                          placement="header"
                           onChange={(values) =>
                             userTable.getColumn('status')?.setFilterValue(values)}
                         />
@@ -1641,9 +1635,6 @@
                           selected={invitationRoles}
                           multiple
                           align="end"
-                          showIcon
-                          iconOnly
-                          placement="header"
                           onChange={(values) =>
                             invitationTable.getColumn('role')?.setFilterValue(values)}
                         />
@@ -1660,9 +1651,6 @@
                           selected={invitationStatuses}
                           multiple
                           align="end"
-                          showIcon
-                          iconOnly
-                          placement="header"
                           onChange={(values) =>
                             invitationTable.getColumn('status')?.setFilterValue(values)}
                         />

@@ -3,6 +3,29 @@ package github
 // repoConfigPath is where a repository's own Smyklot configuration lives
 const repoConfigPath = ".github/smyklot.yaml"
 
+// RepoConfig is a repository's own configuration file, as found.
+//
+// The path is carried alongside the bytes because the caller has to know which
+// file it got: the format is decided by the name, and telling the decoder is
+// what keeps a TOML syntax error from being reported as bad YAML.
+type RepoConfig struct {
+	// Path is the file the content came from, relative to the repository root.
+	// Empty when the repository has no configuration file.
+	Path string
+
+	// Content is the file's decoded bytes, nil when no file was found.
+	Content []byte
+
+	// Superseded are the other paths that also hold a configuration file, in
+	// search order. They are read by nothing and reported to the repository,
+	// which is the point: a repository that migrated to TOML and left the
+	// YAML behind has a file it believes is in charge and is not.
+	Superseded []string
+}
+
+// Found reports whether the repository has a configuration file at all.
+func (c RepoConfig) Found() bool { return c.Path != "" }
+
 // Installation represents one installation of the GitHub App
 type Installation struct {
 	// ID identifies the installation, and is what an installation token is

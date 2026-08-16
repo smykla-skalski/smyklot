@@ -6,6 +6,7 @@
   import { dialogRoute } from '../dialog-route.svelte';
   import { formatTimestamp } from '../format';
   import { monogram } from '../identity';
+  import { invalidateRootInstallationSettings } from '../query-client';
   import type { HistorySection, ScopedPanelView } from '../routes';
   import type {
     PanelTarget,
@@ -72,7 +73,7 @@
   const targetSettingsMutation = createMutation(() => ({
     mutationFn: (input: TargetSettingsInput) =>
       api.updateRootTargetSettings(installation.id, input),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: detailKey }),
+    onSettled: () => invalidateRootInstallationSettings(queryClient, installation.id),
   }));
   const target = $derived<PanelTarget | null>(detailQuery.data?.target ?? null);
   const elevation = $derived<RootElevation | null>(detailQuery.data?.elevation ?? null);
@@ -204,6 +205,16 @@
     input: RepositorySettingsInput,
   ): Promise<RepositoryDetail> {
     return api.updateRootRepositorySettings(installation.id, repositoryId, input);
+  }
+
+  function resetConfigMigration(targetId: string, repositoryId: string): Promise<RepositoryDetail> {
+    return api.resetRootConfigMigration(targetId, repositoryId);
+  }
+
+  function repositoryChanged(targetId: string): void {
+    void queryClient.invalidateQueries({ queryKey: ['repositories', targetId] });
+    void queryClient.invalidateQueries({ queryKey: ['root-installations'] });
+    void queryClient.invalidateQueries({ queryKey: ['root-overview'] });
   }
 
   function countdown(seconds: number): string {
@@ -356,7 +367,8 @@
       fetchPage={fetchRepositories}
       onLoad={loadRepository}
       onUpdate={updateRepository}
-      onChanged={() => {}}
+      onResetConfigMigration={resetConfigMigration}
+      onChanged={repositoryChanged}
       readOnly={!canWrite}
     />
   {:else if target !== null && (view === 'users' || view === 'invitations')}

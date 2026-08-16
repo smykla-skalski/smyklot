@@ -311,6 +311,20 @@ func (s *server) sweepRepo(
 		return err
 	}
 
+	// Offered before the stand-down check, deliberately. Standing down is about
+	// who answers comments; the file's format is not that question, and the
+	// service is the only entry point with a database to remember a refusal in.
+	// Left after the check, every repository that had pinned itself to the
+	// Action would keep its legacy file for ever and nothing could migrate it.
+	//
+	// A failure is logged rather than returned: the sweep's job is to answer
+	// reactions, and an unsolicited pull request failing to open must not stop
+	// that.
+	if err := s.migrateRepositoryConfig(ctx, client, targetID, repo); err != nil {
+		logging.From(ctx).Warn("could not propose the configuration migration",
+			"repo", repoFullName(repo.Owner, repo.Name), "error", err)
+	}
+
 	// Checked before CODEOWNERS is read, so a repository left to the Action
 	// costs the sweep one request rather than two
 	if serviceStandsDown(logging.With(ctx, "repo", repoFullName(repo.Owner, repo.Name)), bc) {
@@ -373,6 +387,27 @@ func (s *server) sweepRepo(
 		ctx, client, checker, bc, repo.Owner, repo.Name, s.cfg.botUsername, prs,
 		s.reactionCommandEnvironment(repositoryStorageID(repo.ID)), false,
 	)
+}
+
+// migrateRepositoryConfig reads the repository's configuration back out of the
+// cache serviceConfig filled, and offers the move to TOML.
+func (s *server) migrateRepositoryConfig(
+	ctx context.Context,
+	client *github.Client,
+	targetID string,
+	repo github.Repository,
+) error {
+	// The read is the same one serviceConfig has already made for this
+	// repository, so it costs a map lookup whether or not there is a panel to
+	// remember an answer in. proposeConfigMigration is where that is decided.
+	file, err := s.configs.GetByKey(
+		ctx, client, repositoryStorageID(repo.ID), repo.Owner, repo.Name,
+	)
+	if err != nil {
+		return err
+	}
+
+	return s.proposeConfigMigration(ctx, client, targetID, repo, file)
 }
 
 func (s *server) handoffPendingCIToAction(

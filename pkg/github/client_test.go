@@ -632,8 +632,16 @@ var _ = Describe("GitHub Client [Unit]", func() {
 	Describe("Error Handling", func() {
 		Context("when handling various error conditions", func() {
 			It("should handle network errors", func() {
-				// Create client with invalid URL
-				client, err := github.NewClient("test-token", "http://invalid-url-that-does-not-exist.local")
+				// An address nothing is listening on, rather than a hostname
+				// nothing resolves: a name that does not exist costs seconds to
+				// establish on a machine with mDNS, and resolves to a landing
+				// page on any network running a wildcard DNS, which would make
+				// this pass for the wrong reason.
+				dead := httptest.NewServer(http.NotFoundHandler())
+				address := dead.URL
+				dead.Close()
+
+				client, err := github.NewClient("test-token", address)
 				Expect(err).NotTo(HaveOccurred())
 
 				err = client.AddReaction(context.Background(), "owner", "repo", 1, github.ReactionSuccess)

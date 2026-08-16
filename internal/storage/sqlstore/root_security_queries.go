@@ -28,6 +28,20 @@ func getElevationByID(
 	))
 }
 
+func getElevationByIDForWrite(
+	ctx context.Context,
+	queryer rowQuerier,
+	dialect Dialect,
+	id, sessionTokenHash string,
+) (storage.Elevation, error) {
+	return scanElevation(queryer.QueryRowContext(
+		ctx,
+		elevationSelect+" WHERE id = ? AND session_token_hash = ?"+dialect.RowLock(),
+		id,
+		sessionTokenHash,
+	))
+}
+
 func getElevationBySessionTarget(
 	ctx context.Context,
 	queryer rowQuerier,

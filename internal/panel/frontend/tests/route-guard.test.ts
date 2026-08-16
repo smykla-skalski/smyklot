@@ -36,6 +36,7 @@ describe('panel view route guard', () => {
 
 describe('root access route guard', () => {
   it('accepts known user and invitation dialogs', () => {
+    expect(() => guardRootAccessRest('users', 'add')).not.toThrow();
     expect(() => guardRootAccessRest('users', 'octocat/ban')).not.toThrow();
     expect(() => guardRootAccessRest('invitations', 'new')).not.toThrow();
     expect(() => guardRootAccessRest('invitations', 'invite-1/reissue')).not.toThrow();

@@ -1,14 +1,12 @@
 <script lang="ts">
   import { type Snippet } from 'svelte';
   import { Dialog } from 'bits-ui';
-  import Icon from './Icon.svelte';
 
   const {
     id,
     open,
     title,
     description,
-    closeLabel = 'Close dialog',
     variant = 'dialog',
     returnFocus = null,
     onClose,
@@ -20,7 +18,6 @@
     open: boolean;
     title: string;
     description?: string;
-    closeLabel?: string;
     variant?: 'dialog' | 'inspector' | 'wide';
     returnFocus?: HTMLElement | null;
     onClose: () => void;
@@ -65,9 +62,6 @@
               <p id={`${id}-description`}>{description}</p>
             {/if}
           </div>
-          <Dialog.Close class="modal-close" aria-label={closeLabel}>
-            <Icon name="close" size={18} />
-          </Dialog.Close>
         </header>
 
         <div class="modal-body">
@@ -188,25 +182,6 @@
     font-size: 0.8125rem;
     line-height: 1.5;
     margin: 0.45rem 0 0;
-  }
-
-  :global(.modal-close) {
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: var(--r-ctl);
-    flex: none;
-    color: var(--text-secondary);
-    cursor: pointer;
-    display: grid;
-    height: var(--local-control-height, var(--control-height-compact));
-    padding: 0;
-    place-items: center;
-    width: var(--local-control-height, var(--control-height-compact));
-  }
-
-  :global(.modal-close:hover) {
-    background: var(--strip-lift);
-    border-color: var(--control-border);
   }
 
   :global(.modal-body) {

@@ -22,6 +22,7 @@ import type { SessionEnded } from './panel-session';
 import { DEFAULT_THEME_DISPLAY, isThemeDisplay, type ThemeDisplay } from './preferences';
 import { createPrefsSync, type PrefsSync } from './preferences-sync';
 import {
+  PANEL_VIEWS,
   panelDocumentTitle,
   panelRoutePath,
   rootSection,
@@ -69,6 +70,8 @@ export class PanelSession {
 
   theme = $state<ThemeDisplay>('system');
   sidebarCollapsed = $state(false);
+  private lastScopedView = $state<PanelView>('settings');
+  private lastScopedHistorySection = $state<HistorySection>('audit');
 
   readonly narrowRail = new MediaQuery('(min-width: 48.0625rem) and (max-width: 72rem)');
   readonly systemDarkTheme = new MediaQuery('prefers-color-scheme: dark');
@@ -138,7 +141,7 @@ export class PanelSession {
   }
 
   get currentView(): PanelView {
-    return (page.params.view as PanelView) ?? 'settings';
+    return (page.params.view as PanelView | undefined) ?? this.lastScopedView;
   }
 
   get currentHistorySection(): HistorySection {
@@ -146,7 +149,17 @@ export class PanelSession {
     if (section === 'audit' || section === 'failures') return section;
     const rest = page.params.rest;
     if (typeof rest === 'string' && (rest === 'audit' || rest === 'failures')) return rest;
-    return 'audit';
+    return this.lastScopedHistorySection;
+  }
+
+  syncRouteContext(view: string | undefined, rest: string | undefined): void {
+    if (this.isRootMode || this.isInbox || this.isInvitation) return;
+    const scoped = PANEL_VIEWS.find((candidate) => candidate === view);
+    if (scoped === undefined) return;
+    this.lastScopedView = scoped;
+    if (view === 'history' && (rest === 'audit' || rest === 'failures')) {
+      this.lastScopedHistorySection = rest;
+    }
   }
 
   get currentRootRoute(): RootRoute {
@@ -270,7 +283,7 @@ export class PanelSession {
 
   async selectTarget(targetId: string): Promise<void> {
     const target = this.targets.find((t) => t.id === targetId);
-    if (target === undefined || this.selectedId === targetId) return;
+    if (target === undefined || (this.selectedId === targetId && !this.isInbox)) return;
     await this.openTarget(target);
   }
 
@@ -280,7 +293,7 @@ export class PanelSession {
 
   selectView(nextView: PanelView): void {
     const target = this.selectedTarget;
-    if (target === null || this.currentView === nextView) return;
+    if (target === null || (this.currentView === nextView && !this.isInbox)) return;
     void this.navigate(this.routeFor(target, nextView));
   }
 
@@ -344,19 +357,19 @@ export class PanelSession {
     this.resetPageScroll();
   }
 
-  returnToPanel(): void {
+  returnToPanel(replaceState = false): void {
     const target = this.returnTarget;
     if (target === null) {
-      void goto(this.returnHref() as Pathname, { replaceState: true });
+      void goto(resolve(this.returnHref() as Pathname), { replaceState: true });
       return;
     }
-    void this.navigate(this.routeFor(target, this.currentView));
+    void this.navigate(this.returnRoute(target), replaceState);
   }
 
   // --- Hrefs ---
 
   targetHref(target: PanelTarget): string {
-    return panelRoutePath(this.base, this.routeFor(target, this.currentView));
+    return panelRoutePath(this.base, this.returnRoute(target));
   }
 
   viewHref(nextView: PanelView): string {
@@ -391,7 +404,7 @@ export class PanelSession {
   returnHref(): string {
     return this.returnTarget === null
       ? `${this.base}/`
-      : panelRoutePath(this.base, this.routeFor(this.returnTarget, this.currentView));
+      : panelRoutePath(this.base, this.returnRoute(this.returnTarget));
   }
 
   inboxHref(): string {
@@ -517,6 +530,10 @@ export class PanelSession {
 
   private routePath(route: PanelRoute): string {
     return panelRoutePath('', route);
+  }
+
+  private returnRoute(target: PanelTarget): PanelRoute {
+    return this.routeFor(target, this.lastScopedView, this.lastScopedHistorySection);
   }
 
   private navigate(route: PanelRoute, replaceState = false): Promise<void> {

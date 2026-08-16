@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://smyklot.com/schema/repository-v1.json",
+  "title": "Smyklot repository configuration",
+  "description": "Settings a repository may set for Smyklot, in .smyklot.toml, .smyklot/config.toml, .github/.smyklot.toml or the legacy .github/smyklot.yaml.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "quiet_success": {"type": "boolean", "description": "Drops the comment a successful command would post, leaving only its reaction. Errors and warnings still comment.", "default": false},
+    "quiet_reactions": {"type": "boolean", "description": "Drops the comment an approval or merge driven by a reaction would post.", "default": false},
+    "quiet_pending": {"type": "boolean", "description": "Drops the comment announcing that a merge is waiting on CI, leaving only its reaction.", "default": false},
+    "allowed_commands": {"type": "array", "description": "Narrows what may be run. An empty list allows every command; naming any command forbids the rest.", "items": {"type": "string"}, "default": []},
+    "command_aliases": {"type": "object", "description": "Maps a spelling somebody uses onto the command it means, such as \"app\" onto \"approve\".", "additionalProperties": {"type": "string"}, "default": {}},
+    "command_prefix": {"type": "string", "description": "Opens a slash-style command, as \"/\" does in \"/approve\".", "default": "/"},
+    "disable_mentions": {"type": "boolean", "description": "Stops Smyklot answering a mention, such as \"@smyklot approve\".", "default": false},
+    "disable_bare_commands": {"type": "boolean", "description": "Stops Smyklot answering an unprefixed word such as \"approve\" or \"lgtm\" on a line of its own.", "default": false},
+    "disable_unapprove": {"type": "boolean", "description": "Withdraws the unapprove and disapprove commands.", "default": false},
+    "disable_reactions": {"type": "boolean", "description": "Stops a reaction on the pull request body counting as a command at all.", "default": false},
+    "disable_deleted_comments": {"type": "boolean", "description": "Stops Smyklot reporting that a comment carrying a command was deleted.", "default": false},
+    "allow_self_approval": {"type": "boolean", "description": "Lets the author of a pull request approve it. Off by default: an approval is meant to be a second pair of eyes.", "default": false},
+    "runner": {"type": "string", "description": "Names the entry point that acts on this repository, so the other one stands down. It is settable only in the repository's own file: the panel cannot write it, because a repository that has moved back to the Action must be able to say so itself.", "enum": ["service","action"], "default": "service"}
+  }
+}

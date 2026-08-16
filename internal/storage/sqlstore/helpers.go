@@ -35,13 +35,76 @@ func marshalPatch(patch config.Patch) (string, error) {
 	return string(content), nil
 }
 
+// unmarshalPatch reads a stored patch.
+//
+// Deliberately lenient, where every decoder reading a document somebody wrote
+// is strict. A stored row is not a document: it is written only by marshalPatch
+// after the panel has validated it, and a row that somehow could not be decoded
+// strictly would take the whole page with it. collectRows abandons a listing on
+// the first row it cannot scan, and UpdateRepositorySettings reads the row back
+// inside its own transaction - so a strict decode here turns one bad row into
+// an installation whose repositories will not render and cannot be repaired
+// from the panel that exists to repair them.
+//
+// The value that made this look worth tightening was the runner, since one
+// neither entry point matches takes both of them out. That is closed where the
+// damage happens instead: Config.EffectiveRunner reads anything it does not
+// recognise as the default, so no stored string can silence a repository.
 func unmarshalPatch(content string) (config.Patch, error) {
 	var patch config.Patch
+
+	// The column is NOT NULL with an empty object for a default, so this is
+	// only reachable from a row nothing here wrote - which is exactly the row
+	// that must not take the page with it.
+	if strings.TrimSpace(content) == "" {
+		return patch, nil
+	}
+
 	if err := json.Unmarshal([]byte(content), &patch); err != nil {
 		return config.Patch{}, fmt.Errorf("decode config patch: %w", err)
 	}
 
 	return patch, nil
+}
+
+// marshalPaths encodes a list of file paths for storage.
+//
+// A JSON array rather than a joined string, because a path is text a
+// repository chooses and a separator is a bet that it never contains one.
+func marshalPaths(paths []string) (string, error) {
+	if len(paths) == 0 {
+		return "[]", nil
+	}
+
+	content, err := json.Marshal(paths)
+	if err != nil {
+		return "", fmt.Errorf("encode file paths: %w", err)
+	}
+
+	return string(content), nil
+}
+
+func unmarshalPaths(content string) ([]string, error) {
+	if content == "" {
+		return nil, nil
+	}
+
+	var paths []string
+	if err := json.Unmarshal([]byte(content), &paths); err != nil {
+		return nil, fmt.Errorf("decode file paths: %w", err)
+	}
+
+	return paths, nil
+}
+
+func intPointer(value sql.NullInt64) *int {
+	if !value.Valid {
+		return nil
+	}
+
+	number := int(value.Int64)
+
+	return &number
 }
 
 func stringPointer(value sql.NullString) *string {

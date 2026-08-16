@@ -177,6 +177,7 @@
     fetchPage,
     onLoad,
     onUpdate,
+    onResetConfigMigration,
     onChanged,
     readOnly = false,
     prefs = EPHEMERAL_PREFS,
@@ -186,7 +187,8 @@
     fetchPage: (request: RepositoryPageRequest) => Promise<Page<RepositorySummary>>;
     onLoad: (repositoryId: string) => Promise<RepositoryDetail>;
     onUpdate: (repositoryId: string, input: RepositorySettingsInput) => Promise<RepositoryDetail>;
-    onChanged: (detail: RepositoryDetail) => void;
+    onResetConfigMigration: (targetId: string, repositoryId: string) => Promise<RepositoryDetail>;
+    onChanged: (targetId: string, detail: RepositoryDetail) => void;
     readOnly?: boolean;
     prefs?: PrefsAccessor;
   } = $props();
@@ -704,7 +706,7 @@
         (current) =>
           current?.repository.id === repositoryId || current === detail ? updated : current,
       );
-      onChanged(updated);
+      onChanged(targetId, updated);
       return updated;
     } catch (error) {
       if (shouldReloadRepositoryAfterSaveFailure(error)) {
@@ -749,6 +751,30 @@
       ignore_repository_file: ignored,
       expected_revision: detail.revision,
     }));
+  }
+
+  // A refused migration is durable and never expires, so this is the only way
+  // back from it. It goes through the same working and failure plumbing every
+  // other repository write does rather than inventing a second one.
+  async function resetConfigMigration(repositoryId: string): Promise<void> {
+    if (readOnly || working.has(repositoryId)) return;
+    working.add(repositoryId);
+    clearFailure(repositoryId);
+    try {
+      const detail = details[repositoryId];
+      const updated = await onResetConfigMigration(targetId, repositoryId);
+      rememberDetail(updated, updated.repository.name);
+      queryClient.setQueriesData<RepositoryDetail>(
+        { queryKey: ['repository', targetId] },
+        (current) =>
+          current?.repository.id === repositoryId || current === detail ? updated : current,
+      );
+      onChanged(targetId, updated);
+    } catch (error) {
+      setFailure(repositoryId, error, 'write');
+    } finally {
+      finishWorking(repositoryId);
+    }
   }
 
   async function setConfig(repositoryId: string, configPatch: ConfigPatch): Promise<void> {
@@ -889,9 +915,6 @@
                     fallbackValue="all"
                     align="start"
                     wide
-                    showIcon
-                    iconOnly
-                    placement="header"
                     onChange={(values) =>
                       repositoryTable.getColumn('overrides')?.setFilterValue(values)}
                   />
@@ -913,9 +936,6 @@
                     selected={fileFilters}
                     multiple
                     align="end"
-                    showIcon
-                    iconOnly
-                    placement="header"
                     onChange={(values) => repositoryTable.getColumn('file')?.setFilterValue(values)}
                   />
                 </div>
@@ -946,9 +966,6 @@
                     selected={[stateFilter]}
                     fallbackValue="all"
                     align="end"
-                    showIcon
-                    iconOnly
-                    placement="header"
                     onChange={(values) =>
                       repositoryTable.getColumn('enablement')?.setFilterValue(values[0])}
                   />
@@ -1164,9 +1181,35 @@
                 </span>
                 <div class="f-copy">
                   <strong>Configuration path</strong>
-                  <div><code class="mono">.github/smyklot.yaml</code></div>
+                  <!-- The file is looked for in four places plus a chosen one,
+                       so this names the one that won rather than the one that
+                       used to be the only candidate. -->
+                  <div><code class="mono">{detail.config_file_path || '—'}</code></div>
+                  {#if detail.config_file_superseded !== undefined}
+                    <p class="f-note">
+                      Also present and not read: {detail.config_file_superseded.join(', ')}
+                    </p>
+                  {/if}
                   {#if detail.config_file_error !== undefined}
                     <p>{detail.config_file_error}</p>
+                  {/if}
+                  {#if detail.config_migration === 'proposed'}
+                    <p class="f-note">
+                      Smyklot proposed moving this to TOML{#if detail.config_migration_pr !== undefined}&nbsp;in
+                        #{detail.config_migration_pr}{/if}
+                    </p>
+                  {:else if detail.config_migration !== 'none'}
+                    <p class="f-note">
+                      {detail.config_migration === 'declined'
+                        ? 'The TOML migration was closed, so Smyklot will not ask again'
+                        : 'GitHub refused the TOML migration, so Smyklot will not ask again'}
+                      <button
+                        type="button"
+                        class="f-again"
+                        disabled={readOnly || working.has(repository.id)}
+                        onclick={() => resetConfigMigration(repository.id)}>Let it ask</button
+                      >
+                    </p>
                   {/if}
                 </div>
                 <Chip tone={FILE_STATUS_TONES[detail.repository.config_file_status]} dot>
@@ -1812,6 +1855,36 @@
     color: var(--danger);
     font-size: var(--font-size-compact);
     margin: 0.15rem 0 0;
+  }
+
+  /* A file the repository still carries and Smyklot is not reading is worth
+     saying, and is not a failure - so it wears the dim tone the path above it
+     wears rather than the danger tone the parse error does. */
+  .f-copy p.f-note {
+    color: var(--dim);
+  }
+
+  /* An inline continuation of the sentence above it, not a control in its own
+     right: it sits on the same line, at the same size, and is underlined the
+     way a link in prose is. Giving it a button's chrome would make refusing a
+     migration look like it had a button to undo it, which is the opposite of
+     what a durable refusal means. */
+  .f-again {
+    background: none;
+    border: 0;
+    color: var(--text);
+    cursor: pointer;
+    font: inherit;
+    margin-left: 0.35rem;
+    padding: 0;
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+  }
+
+  .f-again:disabled {
+    color: var(--dim);
+    cursor: default;
+    text-decoration: none;
   }
 
   /* The file pane's override rows wear the same boxed shape as the bypass row

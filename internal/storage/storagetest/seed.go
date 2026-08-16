@@ -113,7 +113,41 @@ func (s *seeder) seedCatalog() error {
 		testRepository("repo-2", "smykla-skalski/klaudiush", true),
 	})
 
-	return s.store.ReconcileInstallation(s.ctx, s.target)
+	if err := s.store.ReconcileInstallation(s.ctx, s.target); err != nil {
+		return err
+	}
+
+	return s.seedRepositoryFileState()
+}
+
+// seedRepositoryFileState fills the repository columns a reconcile leaves at
+// their defaults.
+//
+// The copy is compared row by row, so a column left at its default on both
+// sides proves nothing about whether it was carried across. Every one of these
+// is written with a value nothing else would produce.
+func (s *seeder) seedRepositoryFileState() error {
+	problem := "line 7: command_aliases must be a mapping"
+	if _, err := s.store.UpdateRepositoryFileState(s.ctx, storage.RepositoryFileState{
+		TargetID:     s.target.TargetID,
+		RepositoryID: "repo-1",
+		Status:       storage.RepositoryFileInvalid,
+		Error:        &problem,
+		Path:         ".github/smyklot.yaml",
+		Superseded:   []string{".smyklot/config.toml"},
+		ObservedAt:   s.now,
+	}); err != nil {
+		return err
+	}
+
+	proposal := 41
+
+	return s.store.SetRepositoryConfigMigration(s.ctx, storage.RepositoryConfigMigration{
+		TargetID:     s.target.TargetID,
+		RepositoryID: "repo-1",
+		State:        storage.ConfigMigrationDeclined,
+		PullRequest:  &proposal,
+	})
 }
 
 // seedRootSession fills panel_users and sessions.

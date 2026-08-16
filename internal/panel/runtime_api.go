@@ -1,7 +1,6 @@
 package panel
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -147,15 +146,14 @@ func (s *Server) runtimeBotConfig(input *config.Config) (*config.Config, error) 
 	if input == nil {
 		return nil, nil
 	}
-	content, err := json.Marshal(input)
-	if err != nil {
-		return nil, fmt.Errorf("encode behavior defaults: %w", err)
-	}
-	patch, err := config.ParsePatch(content)
-	if err != nil {
+	// The runner is the process's, and is overwritten below whatever this
+	// document says. A value that cannot mean anything is still refused rather
+	// than silently replaced, so a typo is reported where it was made.
+	if _, err := config.ParseRunner(string(input.Runner)); err != nil {
 		return nil, fmt.Errorf("invalid behavior defaults: %w", err)
 	}
-	value := config.ApplyPatch(config.Default(), patch)
+
+	value := config.ApplyPatch(config.Default(), input.AsPatch())
 	value.Runner = s.cfg.ProcessConfig.EffectiveRunner()
 
 	return value, nil

@@ -17,7 +17,6 @@ import (
 	"text/template"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 
 	"github.com/smykla-skalski/smyklot/pkg/commands"
 	"github.com/smykla-skalski/smyklot/pkg/config"
@@ -186,18 +185,10 @@ func registerRunFlags(cmd *cobra.Command) {
 	cmd.Flags().String(flagRepoName, "", descRepoName)
 	cmd.Flags().String(flagCommentAuthor, "", descCommentAuthor)
 
-	// Define CLI flags for bot configuration
-	cmd.Flags().Bool(config.KeyQuietSuccess, false, "Disable success comments (emoji only)")
-	cmd.Flags().StringSlice(config.KeyAllowedCommands, []string{}, "Allowed commands (empty = all)")
-	cmd.Flags().StringToString(config.KeyCommandAliases, map[string]string{}, "Command aliases (JSON)")
-	cmd.Flags().String(config.KeyCommandPrefix, config.DefaultCommandPrefix, "Command prefix")
-	cmd.Flags().Bool(config.KeyDisableMentions, false, "Disable mention-style commands")
-	cmd.Flags().Bool(config.KeyDisableBareCommands, false, "Disable bare commands")
-	cmd.Flags().Bool(config.KeyDisableUnapprove, false, "Disable unapprove commands")
-	cmd.Flags().Bool(config.KeyQuietReactions, false, "Disable reaction-based approval/merge comments")
-	cmd.Flags().Bool(config.KeyDisableReactions, false, "Disable reaction-based approvals/merges")
-	cmd.Flags().Bool(config.KeyDisableDeletedComments, false, "Disable comments about deleted commands")
-	cmd.Flags().Bool(config.KeyAllowSelfApproval, false, "Allow PR authors to approve their own PRs")
+	// Every setting that takes a flag, defined from the one description of
+	// them. This was written out by hand and had fallen behind: quiet_pending
+	// had no flag at all.
+	config.RegisterFlags(cmd.Flags())
 }
 
 func main() {
@@ -215,28 +206,11 @@ func run(cmd *cobra.Command, _ []string) error {
 	// Create context from command
 	ctx := cmd.Context()
 
-	// Create Viper instance
-	v := viper.New()
-	config.SetupViper(v)
-
-	// Bind configuration flags to Viper
-	_ = v.BindPFlag(config.KeyQuietSuccess, cmd.Flags().Lookup(config.KeyQuietSuccess))
-	_ = v.BindPFlag(config.KeyAllowedCommands, cmd.Flags().Lookup(config.KeyAllowedCommands))
-	_ = v.BindPFlag(config.KeyCommandAliases, cmd.Flags().Lookup(config.KeyCommandAliases))
-	_ = v.BindPFlag(config.KeyCommandPrefix, cmd.Flags().Lookup(config.KeyCommandPrefix))
-	_ = v.BindPFlag(config.KeyDisableMentions, cmd.Flags().Lookup(config.KeyDisableMentions))
-	_ = v.BindPFlag(config.KeyDisableBareCommands, cmd.Flags().Lookup(config.KeyDisableBareCommands))
-	_ = v.BindPFlag(config.KeyDisableUnapprove, cmd.Flags().Lookup(config.KeyDisableUnapprove))
-	_ = v.BindPFlag(config.KeyQuietReactions, cmd.Flags().Lookup(config.KeyQuietReactions))
-	_ = v.BindPFlag(config.KeyDisableReactions, cmd.Flags().Lookup(config.KeyDisableReactions))
-	_ = v.BindPFlag(config.KeyDisableDeletedComments, cmd.Flags().Lookup(config.KeyDisableDeletedComments))
-	_ = v.BindPFlag(config.KeyAllowSelfApproval, cmd.Flags().Lookup(config.KeyAllowSelfApproval))
-
 	// Load runtime configuration from flags and environment
 	rc := loadRuntimeConfig(cmd)
 
-	// Load bot configuration from Viper
-	bc, err := loadBotConfig(v)
+	// Every layer below the repository, in one order stated in one place
+	bc, err := loadBotConfig(cmd)
 	if err != nil {
 		return err
 	}
@@ -542,17 +516,27 @@ func loadRuntimeConfig(cmd *cobra.Command) *RuntimeConfig {
 	return rc
 }
 
-// loadBotConfig loads bot configuration from Viper
-func loadBotConfig(v *viper.Viper) (*config.Config, error) {
-	// Load JSON configuration from SMYKLOT_CONFIG if present
-	if err := config.LoadJSONConfig(v); err != nil {
+// loadBotConfig resolves the settings this process starts with.
+//
+// Every entry point calls this with its own flag set, so the ladder is the
+// same whether a comment is answered by the Action, the sweep or the service.
+// A command that registered no settings flags simply contributes nothing at
+// that layer.
+func loadBotConfig(cmd *cobra.Command) (*config.Config, error) {
+	bc, err := config.LoadProcess(cmd.Flags())
+	if err != nil {
 		return nil, NewConfigError(ErrConfigLoad, err)
 	}
 
-	// Load bot configuration from Viper
-	bc, err := config.LoadFromViper(v)
-	if err != nil {
-		return nil, NewConfigError(ErrConfigLoad, err)
+	// The one thing Smyklot cannot migrate for anyone. A repository's
+	// configuration file gets a pull request; this variable may be an Actions
+	// variable, which the App has no permission to write, so saying so is all
+	// there is to do
+	if config.DocumentIsLegacyJSON() {
+		logging.From(cmd.Context()).Warn(
+			"SMYKLOT_CONFIG is written as JSON; rewrite it as TOML",
+			"variable", config.EnvConfig,
+		)
 	}
 
 	return bc, nil
@@ -1606,7 +1590,7 @@ func handleRemovedReactions(
 		}
 
 		// If PR is already merged, post warning (unless disabled)
-		if info.State == "closed" {
+		if info.State == github.PullRequestClosed {
 			if !bc.QuietReactions {
 				fb := feedback.NewReactionMergeRemoved()
 				_ = client.PostComment(

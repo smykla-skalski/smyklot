@@ -133,6 +133,10 @@ describe('dialog addresses on a view [Unit]', () => {
 
 describe('dialog addresses in the Root console [Unit]', () => {
   it('gives the Root tables the same grammar as an installation', () => {
+    expect(parsePanelRoute('', '/root/access/users/add')).toEqual({
+      rootView: 'access-users',
+      dialog: { name: 'root-add-installation-user', params: {} },
+    });
     expect(parsePanelRoute('', '/root/access/users/octocat/ban')).toEqual({
       rootView: 'access-users',
       dialog: { name: 'root-user-action', params: { user: 'octocat', action: 'ban' } },

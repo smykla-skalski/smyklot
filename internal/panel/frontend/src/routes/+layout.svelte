@@ -1,12 +1,15 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import { base } from '$app/paths';
+  import { goto } from '$app/navigation';
+  import { base, resolve } from '$app/paths';
+  import type { Pathname } from '$app/types';
   import { createQuery, QueryClientProvider } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 
   import { initializePanel } from '$lib/boot';
   import { createPanelApi } from '$lib/api';
   import { readPanelBuild } from '$lib/base';
+  import { legacyInboxRoute } from '$lib/dialog-route.svelte';
   import { readPanelFailure } from '$lib/panel-error';
   import { PanelSession, setPanelSession } from '$lib/session.svelte';
   import { createPanelQueryClient } from '$lib/query-client';
@@ -70,6 +73,10 @@
   );
 
   const { children } = $props();
+
+  $effect(() => {
+    session.syncRouteContext(page.params.view, page.params.rest);
+  });
 
   $effect(() => {
     const state = {
@@ -161,6 +168,12 @@
   // --- Theme application ---
   $effect(() => {
     applyDocumentTheme(document, session.resolvedTheme, session.isRootMode);
+  });
+
+  // Bookmarks from when the inbox was a dialog still lead to the inbox page.
+  $effect(() => {
+    if (!legacyInboxRoute(page.url.search) || session.isInbox) return;
+    void goto(resolve('/inbox' as Pathname), { replaceState: true });
   });
 </script>
 

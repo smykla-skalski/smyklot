@@ -1,4 +1,7 @@
 /// <reference types="@sveltejs/kit" />
+/// <reference lib="webworker" />
+
+declare const self: ServiceWorkerGlobalScope;
 
 /**
  * SvelteKit native service worker.
@@ -14,6 +17,7 @@ const SCOPE_PATH = `${base}/`;
 const CACHE_PREFIX = `smyklot-panel:${encodeURIComponent(SCOPE_PATH)}:`;
 const CACHE = `${CACHE_PREFIX}${version}`;
 const ASSETS = [...build, ...files];
+const IMMUTABLE_PATH = `${base}/_app/immutable/`;
 const SHELL_REQUEST = new Request(SCOPE_PATH, { credentials: 'same-origin' });
 
 self.addEventListener('install', (event) => {
@@ -30,10 +34,13 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     (async () => {
       const keys = await caches.keys();
+      const scoped = keys.filter((key) => key.startsWith(CACHE_PREFIX));
+      // CacheStorage.keys() is creation-ordered. Keep the immediately previous
+      // build so a tab claimed during deployment can still lazy-load chunks
+      // named by the document it already has open.
+      const previous = scoped.filter((key) => key !== CACHE).at(-1);
       await Promise.all(
-        keys
-          .filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE)
-          .map((key) => caches.delete(key)),
+        scoped.filter((key) => key !== CACHE && key !== previous).map((key) => caches.delete(key)),
       );
       await self.clients.claim();
     })(),
@@ -49,13 +56,18 @@ self.addEventListener('fetch', (event) => {
   // Same-origin only.
   if (url.origin !== location.origin || !url.pathname.startsWith(SCOPE_PATH)) return;
 
-  // Build assets and static files are precached and immutable for this version.
-  if (ASSETS.includes(url.pathname)) {
+  // Immutable chunk names carry their content hash, so a cross-version lookup
+  // cannot return the wrong bytes. Static files may keep the same name between
+  // builds and must be read from the current cache only.
+  if (ASSETS.includes(url.pathname) || url.pathname.startsWith(IMMUTABLE_PATH)) {
     event.respondWith(
       (async () => {
         const cache = await caches.open(CACHE);
-        const cached = await cache.match(url.pathname);
+        const cached = url.pathname.startsWith(IMMUTABLE_PATH)
+          ? await caches.match(url.pathname)
+          : await cache.match(url.pathname);
         if (cached) return cached;
+
         const fetched = await fetch(request);
         if (fetched.ok && fetched.type === 'basic') {
           await cache.put(url.pathname, fetched.clone());

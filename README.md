@@ -14,7 +14,7 @@ Smyklot is a GitHub App that automates pull request approvals and merges by vali
 - Reaction-based commands - use 👍 to approve, 🚀 to merge, or ❤️ to cleanup
 - Cleanup command - removes all bot reactions, approvals, and comments with a single command
 - Approval deduplication - prevents duplicate approvals with smart reaction handling
-- Flexible configuration - configure via `SMYKLOT_CONFIG` JSON, individual variables, or environment variables
+- Flexible configuration - a TOML file in the repository, one `SMYKLOT_CONFIG` document, individual variables, or flags
 - Emoji feedback - instant visual confirmation with ✅ (success), ❌ (error), or ⚠️ (warning)
 - Comment edit/delete handling - reacts to command edits and posts a notice when an approve/merge command comment is deleted
 - Reaction removal tracking - automatically removes approvals/merges when reactions are removed
@@ -181,31 +181,45 @@ Only the global `*` pattern is read. Path-specific owners are not implemented, s
 
 Smyklot can be configured via repository variables (Settings → Secrets and variables → Actions → Variables) or a config file checked into the repository.
 
-Config precedence: `.github/smyklot.yaml` > CLI flags > environment variables > repository variables > defaults
+A setting can be given a value in eight places. They are resolved lowest first, so a later layer replaces what an earlier one said and a setting nobody names keeps its default:
 
-#### Option 1: Full JSON configuration (recommended)
-
-Set a `SMYKLOT_CONFIG` repository variable with your complete configuration:
-
-```json
-{
-  "quiet_success": false,
-  "quiet_reactions": false,
-  "quiet_pending": false,
-  "allowed_commands": ["approve", "merge"],
-  "command_aliases": {
-    "ok": "approve",
-    "ship": "merge"
-  },
-  "command_prefix": "/",
-  "disable_mentions": false,
-  "disable_bare_commands": false,
-  "disable_unapprove": false,
-  "disable_reactions": false,
-  "disable_deleted_comments": false,
-  "allow_self_approval": false
-}
+```text
+1. defaults             built into Smyklot
+2. process file         --config-file, or SMYKLOT_CONFIG_FILE
+3. process document     SMYKLOT_CONFIG
+4. process environment  SMYKLOT_* variables, one per setting
+5. process flags        the command line
+6. account settings     the panel, for every repository
+7. repository file      .smyklot.toml in the repository
+8. repository settings  the panel, for one repository
 ```
+
+The environment document sits below the individual variables so that changing one setting means adding one variable rather than rewriting the whole document.
+
+That block is generated from `config.PrecedenceDoc`, and a test fails if this copy of it goes stale.
+
+#### Option 1: A whole configuration in one variable
+
+Set a `SMYKLOT_CONFIG` repository variable to a TOML document:
+
+```toml
+quiet_success = false
+quiet_reactions = false
+quiet_pending = false
+allowed_commands = ["approve", "merge"]
+command_aliases = { ok = "approve", ship = "merge" }
+command_prefix = "/"
+disable_mentions = false
+disable_bare_commands = false
+disable_unapprove = false
+disable_reactions = false
+disable_deleted_comments = false
+allow_self_approval = false
+```
+
+A variable still holding the JSON object this used to be is read as before, and Smyklot warns at startup. It cannot open a pull request migrating that one: the App has no permission to write Actions variables.
+
+An unknown key refuses to start. A typo in `allowed_commands` used to be dropped without a word, which left every command allowed.
 
 #### Option 2: Repository config file
 
@@ -223,6 +237,18 @@ runner: action
 ```
 
 Settings the file omits keep whatever the workflow or the service was started with, so a file need only list what it changes.
+
+TOML is what Smyklot asks for now, at `.smyklot.toml`, `.smyklot/config.toml` or `.github/.smyklot.toml`. `.github/smyklot.yaml` is still read, and the service opens a pull request moving it across - one commit that adds the TOML and removes the YAML, so the repository never carries both. Close that pull request and Smyklot will not ask again; the panel is where an operator puts it back on the table.
+
+When a repository carries more than one of these, the first in that order wins and the panel names the others.
+
+Editors complete and check the file from a published JSON Schema. Point one at it with a directive on the first line, which is what the migration pull request writes:
+
+```toml
+#:schema https://smyklot.com/schema/repository-v1.json
+```
+
+Smyklot serves that document itself, from the same build that reads the file, so the two cannot describe different settings.
 
 This is the only per-repository configuration the [service](#running-as-a-service) can see - it has no access to a repository's Actions variables. The Action reads the same file, so a repository gets the same behaviour whichever one handles the comment.
 
@@ -251,6 +277,10 @@ Configure individual settings via repository variables or environment variables 
 | `SMYKLOT_RUNNER`                   | string  | `service`      | Which entry point acts: `service` or `action`; the other stands down       |
 | `SMYKLOT_BOT_USERNAME`             | string  | `smyklot[bot]` | Bot username for cleanup operations (GitHub App format: `{app-slug}[bot]`) |
 | `SMYKLOT_GITHUB_API_URL`           | string  | public API     | REST API base URL for a proxy or mirror (Enterprise is not supported)      |
+
+A list is separated by commas or whitespace, and a map is written `name=value` pairs the same way: `SMYKLOT_COMMAND_ALIASES="ok=approve,ship=merge"`. A variable set to nothing counts as unset, so a workflow forwarding an input nobody filled in changes nothing.
+
+Every setting except `runner` also takes a command-line flag named after it, and `--config-file` names a TOML file of them.
 
 #### Configuration examples
 
@@ -283,7 +313,7 @@ Create shortcuts for commands:
 
 ```yaml
 env:
-  SMYKLOT_COMMAND_ALIASES: '{"app":"approve","a":"approve","m":"merge"}'
+  SMYKLOT_COMMAND_ALIASES: "app=approve,a=approve,m=merge"
 ```
 
 Users can use `/app`, `/a`, or `/m` as shortcuts.

@@ -8,13 +8,13 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"path"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 
 	"github.com/smykla-skalski/smyklot/internal/storage/open"
 	"github.com/smykla-skalski/smyklot/pkg/config"
@@ -172,6 +172,10 @@ func init() {
 	serveCmd.Flags().Int64(flagPanelSuperRootID, 0, descPanelSuperRootID)
 	serveCmd.Flags().Duration(flagPanelTTL, defaultPanelTTL, descPanelTTL)
 
+	// The service resolves the same settings from the same layers the Action
+	// does, so it takes the same flags
+	config.RegisterFlags(serveCmd.Flags())
+
 	rootCmd.AddCommand(serveCmd)
 }
 
@@ -256,10 +260,7 @@ func runServe(cmd *cobra.Command, _ []string) (runErr error) {
 // webhook secret would accept unsigned deliveries for as long as nobody
 // noticed.
 func loadServeConfig(cmd *cobra.Command) (*serveConfig, error) {
-	v := viper.New()
-	config.SetupViper(v)
-
-	botConfig, err := loadPollBotConfig(v)
+	botConfig, err := loadBotConfig(cmd)
 	if err != nil {
 		return nil, err
 	}
@@ -349,7 +350,10 @@ func applyPanelFlags(cmd *cobra.Command, cfg *serveConfig) error {
 	if cfg.panel.superRootID <= 0 || ttl <= 0 {
 		return ErrPanelConfig
 	}
-	if cfg.panel.basePath == cfg.webhookPath || cfg.panel.basePath == healthPath {
+	if cfg.panel.basePath == cfg.webhookPath ||
+		cfg.panel.basePath == healthPath ||
+		cfg.panel.basePath == schemaRoot ||
+		path.Dir(cfg.panel.basePath) == schemaRoot {
 		return fmt.Errorf("%w: panel base path conflicts with a public service route", ErrPanelConfig)
 	}
 

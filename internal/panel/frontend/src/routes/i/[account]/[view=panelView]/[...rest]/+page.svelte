@@ -84,7 +84,9 @@
             fetchPage={fetchRepositories}
             onLoad={loadRepository}
             onUpdate={updateRepository}
-            onChanged={() => session.repositoryChanged(session.selectedTarget!.id)}
+            onResetConfigMigration={(targetId, repositoryId) =>
+              session.api.resetConfigMigration(targetId, repositoryId)}
+            onChanged={(targetId) => session.repositoryChanged(targetId)}
             readOnly={!session.selectedTarget.capabilities.write}
             prefs={session.prefs}
           />

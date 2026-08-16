@@ -41,6 +41,23 @@ const layers = {
   rootModeDark: block(":root[data-theme='dark'] .app-shell.root-mode"),
 };
 
+/**
+ * Every `--x: var(--y)` the panel declares on `:root`, as the pair it promises to be.
+ *
+ * These are the declarations the substitution rule above can silently break: each one resolves on
+ * `:root` against panel values and inherits into the Root shell already answered, so a shell that
+ * overrides `--y` gets a stale `--x` unless it re-declares that too. Read from the stylesheet
+ * rather than listed by hand, because a list is the thing that goes out of date - which is exactly
+ * how five of these came to be wrong in the Root console.
+ */
+export const rootAliases: readonly (readonly [alias: string, source: string])[] = Object.entries(
+  layers.base,
+)
+  .map(
+    ([alias, value]) => [alias, /^var\(--(?<name>[\w-]+)\)$/u.exec(value)?.groups?.name] as const,
+  )
+  .filter((pair): pair is readonly [string, string] => pair[1] !== undefined);
+
 /** A colour, plus the alpha it is painted at when the declaration is translucent. */
 export interface Paint {
   readonly color: string;

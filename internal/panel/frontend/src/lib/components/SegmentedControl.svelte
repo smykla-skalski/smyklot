@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tick } from 'svelte';
+
   import Icon, { type IconName } from './Icon.svelte';
 
   type SegmentTone = 'default' | 'accent' | 'on' | 'off';
@@ -76,39 +78,86 @@
   });
 
   function positionSelection(node: HTMLFieldSetElement, selection: string) {
-    let frame: number | undefined;
     let currentSelection = selection;
 
-    function scheduleMove(): void {
-      if (frame !== undefined) cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        frame = requestAnimationFrame(() => {
-          frame = undefined;
-          const option = node.querySelector<HTMLInputElement>('input:checked')?.closest('label');
-          // Nothing checked is a real state, not a missing one: the control is showing a value it
-          // inherits rather than one chosen here, so the thumb collapses instead of staying put.
-          if (option === null || option === undefined) {
-            node.style.setProperty('--segment-width', '0px');
-            node.classList.remove('selection-ready');
-            return;
-          }
-          node.style.setProperty('--segment-left', `${option.offsetLeft}px`);
-          node.style.setProperty('--segment-width', `${option.offsetWidth}px`);
-          node.classList.add('selection-ready');
-        });
-      });
+    /* Nothing to point at, so the thumb takes up no room and gives up its transition: whatever it
+       is told next is a first placement, not a move from here. */
+    function collapse(): void {
+      node.style.setProperty('--segment-width', '0px');
+      node.classList.remove('selection-ready');
     }
 
-    scheduleMove();
+    function measure(): void {
+      const option = node.querySelector<HTMLInputElement>('input:checked')?.closest('label');
+      // Nothing checked is a real state, not a missing one: the control is showing a value it
+      // inherits rather than one chosen here, so the thumb collapses instead of staying put.
+      if (option === null || option === undefined) {
+        collapse();
+        return;
+      }
+
+      /* A control inside a closed popover has no box, and `offsetWidth` reports that as 0 exactly
+         as it reports a real zero. Reading the two the same way is what left the thumb at 0x0 on
+         the first open of the account menu: the one measurement this had ever taken was taken
+         against `display: none`, and only choosing a different option ever asked for another. No
+         box is not a position, so it collapses and waits to be measured somewhere it can be. */
+      if (option.offsetWidth === 0) {
+        collapse();
+        return;
+      }
+
+      node.style.setProperty('--segment-left', `${option.offsetLeft}px`);
+      node.style.setProperty('--segment-width', `${option.offsetWidth}px`);
+
+      /* Landing in place rather than sliding into it, which is a real difference and not a
+         precaution: the two writes above and the class below otherwise resolve in one style
+         change, and a transition compares against the style *before* it. So the width would go
+         from nothing to its measurement with the transition already on. Reading layout in between
+         splits them in two, and by the time the class lands the geometry is the old style with
+         nothing left to animate. Measured with the read taken out: the theme switch opened at 6px
+         and grew to 40, and the history menu's at 11px and grew to 73. */
+      if (!node.classList.contains('selection-ready')) {
+        node.getBoundingClientRect();
+        node.classList.add('selection-ready');
+      }
+    }
+
+    /* Measured once Svelte has committed the DOM, which is the event this actually waits on: the
+       action's own effect can run before the `checked` attributes the measurement reads. `tick()`
+       names that moment, where a pair of animation frames only landed safely past it and spent
+       about two frames of stillness getting there. Nothing is cancelled when a newer call arrives
+       - `measure` captures nothing and reads the checked option each time, so an older one writes
+       the same answer as the newer rather than a stale one, and there is no turn to lose. */
+    async function scheduleMove(): Promise<void> {
+      await tick();
+      measure();
+    }
+
+    /* Gaining a box is the event this actually waits on, and no prop changes when it happens: a
+       popover opens, a pane unfolds, a webfont finally arrives and every option is a little wider.
+       The observer catches all of those, and it fires after layout, so it can measure on the spot.
+       It cannot feed itself either - the thumb is absolutely positioned, so what this writes never
+       changes the size being watched.
+
+       It measures directly and does not go through `scheduleMove`, which is not a shortcut but the
+       point: `ViewTabs` had its own thumb scheduled through a frame pair that a resize tick could
+       cancel out from under it, so a click landing while the sidebar was still settling moved
+       nothing at all. Nothing here is cancellable and nothing is captured - `measure` reads the
+       checked option each time - so a tick arriving mid-flight writes the same answer early rather
+       than taking anybody's turn. */
+    const resize = new ResizeObserver(() => measure());
+    resize.observe(node);
+
+    void scheduleMove();
 
     return {
       update(nextSelection: string) {
         if (nextSelection === currentSelection) return;
         currentSelection = nextSelection;
-        scheduleMove();
+        void scheduleMove();
       },
       destroy() {
-        if (frame !== undefined) cancelAnimationFrame(frame);
+        resize.disconnect();
       },
     };
   }
@@ -199,6 +248,11 @@
     --seg-border: var(--sidebar-seg-border);
     --seg-shadow: var(--sidebar-seg-shadow);
     --seg-muted: var(--sidebar-menu-muted);
+    /* The menu's ink, not the page's. The Root console's sidebar is dark in both themes while the
+       page behind it is not, so `--seg-text` inherited from the base rule put the light theme's
+       near-black label on the menu's near-black track: 1.09:1, which is a label that is not there.
+       Every other ink in this block already comes from the sidebar family - this one was missed. */
+    --seg-text: var(--sidebar-menu-text);
     --selected-bg: var(--sidebar-seg-thumb);
     --selected-text: var(--sidebar-menu-text);
   }

@@ -16,7 +16,7 @@ import { PanelSession } from '../src/lib/session.svelte.ts';
 import type { PanelApi } from '../src/lib/api.ts';
 import type { PanelBuild } from '../src/lib/base.ts';
 import type { PanelChangeEvent } from '../src/lib/events.ts';
-import type { PanelViewer } from '../src/lib/types.ts';
+import type { PanelTarget, PanelViewer } from '../src/lib/types.ts';
 
 class TestMediaQueryList extends EventTarget implements MediaQueryList {
   matches = false;
@@ -30,11 +30,17 @@ class TestMediaQueryList extends EventTarget implements MediaQueryList {
 describe('PanelSession [Unit]', () => {
   beforeEach(() => {
     navigation.goto.mockReset();
+    routePage.params = {};
+    routePage.url = new URL('https://panel.example/root');
     vi.stubGlobal('matchMedia', () => new TestMediaQueryList());
+    vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
     localStorage.clear();
   });
 
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
 
   it('leaves an unauthorized Root route even when there is no installation to return to', () => {
     const session = createSession();
@@ -43,6 +49,69 @@ describe('PanelSession [Unit]', () => {
 
     expect(navigation.goto).toHaveBeenCalledWith('/', { replaceState: true });
     expect(session.returnHref()).toBe('/');
+  });
+
+  it('replaces an unauthorized Root route when an installation exists', () => {
+    const session = createSession();
+    session.targets = [
+      {
+        id: 'target-1',
+        account: { login: 'acme' },
+      } as PanelTarget,
+    ];
+
+    session.returnToPanel(true);
+
+    expect(navigation.goto).toHaveBeenCalledWith('/i/acme/settings', { replaceState: true });
+  });
+
+  it('returns from Root to the workspace view it left', () => {
+    const session = createSession();
+    session.viewer = { system_role: 'root' } as PanelViewer;
+    session.targets = [{ id: 'target-1', account: { login: 'acme' } } as PanelTarget];
+    session.selectedId = 'target-1';
+    routePage.url = new URL('https://panel.example/i/acme/repositories');
+    routePage.params = { account: 'acme', view: 'repositories' };
+    session.syncRouteContext(routePage.params.view, routePage.params.rest);
+
+    session.enterRoot();
+    expect(navigation.goto).toHaveBeenLastCalledWith('/root', { replaceState: false });
+
+    // Visiting another installation view inside Root does not replace the
+    // workspace context the Return action promises to restore.
+    routePage.url = new URL('https://panel.example/root/installations/acme/settings');
+    routePage.params = { account: 'acme', view: 'settings' };
+    session.syncRouteContext(routePage.params.view, routePage.params.rest);
+    session.returnToPanel();
+
+    expect(navigation.goto).toHaveBeenLastCalledWith('/i/acme/repositories', {
+      replaceState: false,
+    });
+    expect(session.returnHref()).toBe('/i/acme/repositories');
+  });
+
+  it('retains and can reopen the workspace view while the inbox is open', async () => {
+    const session = createSession();
+    session.targets = [{ id: 'target-1', account: { login: 'acme' } } as PanelTarget];
+    session.selectedId = 'target-1';
+    routePage.url = new URL('https://panel.example/i/acme/history/failures');
+    routePage.params = { account: 'acme', view: 'history', rest: 'failures' };
+    session.syncRouteContext('history', 'failures');
+    routePage.url = new URL('https://panel.example/inbox');
+    routePage.params = {};
+
+    expect(session.targetHref(session.targets[0]!)).toBe('/i/acme/history/failures');
+    expect(session.returnHref()).toBe('/i/acme/history/failures');
+
+    session.selectView('history');
+    expect(navigation.goto).toHaveBeenLastCalledWith('/i/acme/history/failures', {
+      replaceState: false,
+    });
+
+    await session.selectTarget('target-1');
+    expect(navigation.goto).toHaveBeenLastCalledWith('/i/acme/history/failures', {
+      replaceState: false,
+    });
   });
 
   it('refreshes every repository-count aggregate after a remote repository change', () => {

@@ -61,34 +61,7 @@ type assetBundle struct {
 }
 
 func newAssetBundle(cfg Config) (*assetBundle, error) {
-	files := make(map[string][]byte)
-	var indexRaw string
-
-	err := fs.WalkDir(cfg.Assets, ".", func(p string, entry fs.DirEntry, err error) error {
-		if err != nil || entry.IsDir() {
-			return err
-		}
-		content, err := fs.ReadFile(cfg.Assets, p)
-		if err != nil {
-			return err
-		}
-		if !textExtensions[path.Ext(p)] {
-			files[p] = content
-			return nil
-		}
-		rewritten := rewriteAssetText(p, string(content), cfg)
-		if p == indexAsset {
-			rewritten, err = refreshInlineScriptHashes(string(content), rewritten)
-			if err != nil {
-				return fmt.Errorf("refresh panel CSP hashes: %w", err)
-			}
-		}
-		files[p] = []byte(rewritten)
-		if p == indexAsset {
-			indexRaw = rewritten
-		}
-		return nil
-	})
+	files, indexRaw, err := loadAssetFiles(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("walk panel assets: %w", err)
 	}
@@ -125,6 +98,42 @@ func newAssetBundle(cfg Config) (*assetBundle, error) {
 		indexETag: fmt.Sprintf(`"%x"`, sha256.Sum256([]byte(served))),
 		errorPage: indexRaw,
 	}, nil
+}
+
+func loadAssetFiles(cfg Config) (map[string][]byte, string, error) {
+	files := make(map[string][]byte)
+	var indexRaw string
+
+	err := fs.WalkDir(cfg.Assets, ".", func(p string, entry fs.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			return err
+		}
+		content, err := fs.ReadFile(cfg.Assets, p)
+		if err != nil {
+			return err
+		}
+		if !textExtensions[path.Ext(p)] {
+			files[p] = content
+			return nil
+		}
+		rewritten := rewriteAssetText(p, string(content), cfg)
+		if p == indexAsset {
+			rewritten, err = refreshInlineScriptHashes(string(content), rewritten)
+			if err != nil {
+				return fmt.Errorf("refresh panel CSP hashes: %w", err)
+			}
+		}
+		files[p] = []byte(rewritten)
+		if p == indexAsset {
+			indexRaw = rewritten
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, "", err
+	}
+
+	return files, indexRaw, nil
 }
 
 func rewriteAssetText(assetPath, content string, cfg Config) string {

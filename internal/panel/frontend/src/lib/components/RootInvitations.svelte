@@ -414,9 +414,6 @@
                     selected={statuses}
                     multiple
                     align="end"
-                    showIcon
-                    iconOnly
-                    placement="header"
                     onChange={selectStatuses}
                   />
                 </div>

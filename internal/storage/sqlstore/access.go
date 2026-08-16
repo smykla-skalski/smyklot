@@ -134,7 +134,7 @@ func (s *Store) SetTargetAccess(
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	elevation, err := elevatedWrite(
+	elevation, err := s.elevatedWrite(
 		ctx,
 		tx,
 		change.ElevationID,

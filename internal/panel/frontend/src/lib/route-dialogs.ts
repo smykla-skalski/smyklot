@@ -80,7 +80,13 @@ export function parseDialogSegments(host: DialogHost, segments: string[]): Route
     case 'users':
       return parseUserDialog(decoded, 'user-action', 'decision-history', 'add-user', USER_ACTIONS);
     case 'access-users':
-      return parseUserDialog(decoded, 'root-user-action', null, null, ROOT_USER_ACTIONS);
+      return parseUserDialog(
+        decoded,
+        'root-user-action',
+        null,
+        'root-add-installation-user',
+        ROOT_USER_ACTIONS,
+      );
     case 'invitations':
       return parseInvitationDialog(decoded, 'invitation-action');
     case 'access-invitations':
@@ -109,6 +115,8 @@ export function dialogSegments(host: DialogHost, dialog: RouteDialog | null): st
       return subjectSegments(dialog.params.user, dialog.params.action);
     case 'add-user':
       return host === 'users' ? ['add'] : null;
+    case 'root-add-installation-user':
+      return host === 'access-users' ? ['add'] : null;
     case 'invitation-action':
     case 'root-invitation-action':
       return subjectSegments(dialog.params.invitation, dialog.params.action);

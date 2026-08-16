@@ -3,6 +3,7 @@ import adapter from '@sveltejs/adapter-static';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { svelteTesting } from '@testing-library/svelte/vite';
 import { defineConfig } from 'vitest/config';
+import { configDefaults } from 'vitest/config';
 
 import { mockServer } from './dev/mock-server.ts';
 
@@ -62,5 +63,10 @@ export default defineConfig({
         inline: [/svelte/, /@testing-library/],
       },
     },
+    // The browser budget boots a dev server and drives Chrome, which costs ten
+    // times what everything else here costs put together. It runs from
+    // `vitest.browser.config.ts`, so that `npm test` stays a loop worth running
+    // on every save.
+    exclude: [...configDefaults.exclude, 'tests/browser/**'],
   },
 });

@@ -25,3 +25,16 @@ export function createPanelQueryClient(): QueryClient {
     },
   });
 }
+
+/** Refreshes every Root view whose counts can change with installation settings. */
+export async function invalidateRootInstallationSettings(
+  queryClient: QueryClient,
+  installationId: string,
+): Promise<void> {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: ['root-installations'] }),
+    queryClient.invalidateQueries({ queryKey: ['root-overview'] }),
+    queryClient.invalidateQueries({ queryKey: ['repositories', installationId] }),
+    queryClient.invalidateQueries({ queryKey: ['targets'] }),
+  ]);
+}

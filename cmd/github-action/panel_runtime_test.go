@@ -514,6 +514,47 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 		Expect(repository.ConfigFileStatus).To(Equal(storage.RepositoryFileInvalid))
 	})
 
+	// The panel used to print ".github/smyklot.yaml" as a literal, which was
+	// true while that was the only place a configuration file could be. It is
+	// now one of five, and a repository that migrated to TOML and left the YAML
+	// behind has a file it believes is in charge and is not
+	It("records which file it read and which it passed over", func() {
+		stub.installations = `[{"id":112,"account":{"id":7,"login":"smykla-skalski","type":"Organization"}}]`
+		stub.repos = `{"repositories":[{"id":32,"name":"smyklot","full_name":"smykla-skalski/smyklot","owner":{"login":"smykla-skalski"}}]}`
+		stub.repoConfigTOML = "quiet_success = true\n"
+		stub.repoConfig = "quiet_success: false\n"
+
+		targetIDs, err := service.SyncCatalog(GinkgoT().Context())
+		Expect(err).NotTo(HaveOccurred())
+		target, err := service.store.GetTarget(GinkgoT().Context(), targetIDs[0])
+		Expect(err).NotTo(HaveOccurred())
+
+		client, err := github.NewClient("installation-token", endpoint.URL)
+		Expect(err).NotTo(HaveOccurred())
+
+		effective, err := service.serviceConfig(
+			GinkgoT().Context(),
+			client,
+			target.ID,
+			"github:repository:32",
+			"smykla-skalski",
+			"smyklot",
+		)
+		Expect(err).NotTo(HaveOccurred())
+
+		// The TOML file is the one in charge, so it is the one that decided
+		Expect(effective.QuietSuccess).To(BeTrue())
+
+		repository, err := service.store.GetRepository(
+			GinkgoT().Context(),
+			target.ID,
+			"github:repository:32",
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(repository.ConfigFilePath).To(Equal(".smyklot.toml"))
+		Expect(repository.ConfigFileSuperseded).To(ConsistOf(".github/smyklot.yaml"))
+	})
+
 	It("enforces repository enablement and durable delivery claims", func() {
 		stub.installations = `[{"id":987,"account":{"id":7,"login":"smykla-skalski","type":"Organization"}}]`
 		stub.repos = `{"repositories":[{"id":123456,"name":"smyklot","full_name":"smykla-skalski/smyklot","owner":{"login":"smykla-skalski"}}]}`

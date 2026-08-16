@@ -191,7 +191,7 @@ func endSessionElevations(
 	return nil
 }
 
-func elevatedWrite(
+func (s *Store) elevatedWrite(
 	ctx context.Context,
 	tx runner,
 	elevationID *string,
@@ -201,7 +201,13 @@ func elevatedWrite(
 	if elevationID == nil {
 		return nil, nil
 	}
-	elevation, err := getElevationByID(ctx, tx, *elevationID, sessionTokenHash)
+	// Hold the grant through the write. PostgreSQL's default read-committed
+	// snapshot alone would allow a revocation to commit after this read and
+	// before the protected mutation commits. EndElevation updates this same row,
+	// so whichever transaction reaches it first becomes the only valid order.
+	elevation, err := getElevationByIDForWrite(
+		ctx, tx, s.dialect, *elevationID, sessionTokenHash,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("validate elevated write: %w", noRows(err))
 	}

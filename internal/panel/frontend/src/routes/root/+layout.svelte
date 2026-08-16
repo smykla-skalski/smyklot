@@ -6,7 +6,7 @@
 
   $effect(() => {
     if (session.viewer !== null && session.viewer.system_role === 'none' && !session.loading) {
-      session.returnToPanel();
+      session.returnToPanel(true);
     }
   });
 </script>

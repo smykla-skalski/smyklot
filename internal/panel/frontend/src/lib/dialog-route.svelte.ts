@@ -2,14 +2,16 @@
  * Which dialog is open, kept in the address.
  *
  * Under SvelteKit, path-form dialogs live in the [...rest] route param and
- * query-form dialogs live in page.state (shallow routing). This adapter reads
- * both and exposes the same interface the view components already use.
+ * query-form dialogs live in the URL query and page.state (shallow routing).
+ * This adapter reads both and exposes the same interface the view components
+ * already use.
  */
 
 import { page } from '$app/state';
 import { goto, pushState, replaceState } from '$app/navigation';
 import { base, resolve } from '$app/paths';
 import type { Pathname } from '$app/types';
+import { SvelteURLSearchParams } from 'svelte/reactivity';
 
 import {
   dialogSegments,
@@ -22,6 +24,8 @@ import { panelRoutePath, type PanelRoute, type RootRoute } from './routes';
 
 export type { RouteDialog } from './route-dialogs';
 
+const DIALOG_KEY = 'dialog';
+
 export interface OpenDialog {
   name: string;
   params: Readonly<Record<string, string>>;
@@ -30,6 +34,7 @@ export interface OpenDialog {
 interface DialogPageState {
   dialog?: OpenDialog;
   smyklotDialogEntry?: true;
+  smyklotDialogClosed?: true;
 }
 
 function dialogState(): DialogPageState {
@@ -40,6 +45,7 @@ function withoutDialogState(): App.PageState {
   const state = { ...dialogState() };
   delete state.dialog;
   delete state.smyklotDialogEntry;
+  state.smyklotDialogClosed = true;
   return state;
 }
 
@@ -47,12 +53,38 @@ function isRootInstallation(): boolean {
   return page.url.pathname.startsWith(`${base}/root/installations/`);
 }
 
-function currentPanelPath(): string {
+function currentPanelPath(search = page.url.search): string {
   const pathname =
     base !== '' && page.url.pathname.startsWith(base)
       ? page.url.pathname.slice(base.length)
       : page.url.pathname;
-  return `${pathname}${page.url.search}${page.url.hash}`;
+  return `${pathname}${search}${page.url.hash}`;
+}
+
+export function parseDialog(search: string): OpenDialog | null {
+  // Read once and discard; the reactive source is page.url.
+  const query = new SvelteURLSearchParams(search);
+  const name = query.get(DIALOG_KEY)?.trim() ?? '';
+  if (name === '') return null;
+
+  const params: Record<string, string> = {};
+  for (const [key, value] of query) {
+    if (key !== DIALOG_KEY) params[key] = value;
+  }
+
+  return { name, params };
+}
+
+export function dialogSearch(dialog: OpenDialog | null): string {
+  if (dialog === null) return '';
+  // Built and serialized in one expression; see parseDialog above.
+  const query = new SvelteURLSearchParams({ [DIALOG_KEY]: dialog.name, ...dialog.params });
+
+  return `?${query.toString()}`;
+}
+
+export function legacyInboxRoute(search: string): boolean {
+  return parseDialog(search)?.name === 'security-notifications';
 }
 
 function dialogHostFromPage(): DialogHost | null {
@@ -103,6 +135,7 @@ class DialogRouter {
   get current(): OpenDialog | null {
     const state = dialogState();
     if (state.dialog !== undefined) return state.dialog;
+    if (state.smyklotDialogClosed === true) return null;
 
     const host = dialogHostFromPage();
     const rest = page.params.rest;
@@ -113,7 +146,8 @@ class DialogRouter {
         if (dialog !== null) return dialog;
       }
     }
-    return null;
+
+    return parseDialog(page.url.search);
   }
 
   isOpen(name: string): boolean {
@@ -126,14 +160,20 @@ class DialogRouter {
   }
 
   open(name: string, params: Readonly<Record<string, string>> = {}): void {
+    const replacing = this.current !== null;
     const host = dialogHostFromPage();
     const dialog: RouteDialog = { name, params };
     const path = host === null ? null : pathForDialog(host, dialog);
-    pushState(resolve((path ?? currentPanelPath()) as Pathname), {
+    const state: DialogPageState = {
       ...page.state,
       dialog: { name, params },
-      smyklotDialogEntry: true,
-    });
+      ...(!replacing || dialogState().smyklotDialogEntry === true
+        ? { smyklotDialogEntry: true as const }
+        : {}),
+    };
+    delete state.smyklotDialogClosed;
+    const navigate = replacing ? replaceState : pushState;
+    navigate(resolve((path ?? currentPanelPath(dialogSearch(dialog))) as Pathname), state);
   }
 
   update(name: string, params: Readonly<Record<string, string>>): void {
@@ -141,11 +181,13 @@ class DialogRouter {
     const next: OpenDialog = { name, params: { ...this.current.params, ...params } };
     const host = dialogHostFromPage();
     const path = host === null ? null : pathForDialog(host, next);
-    replaceState(resolve((path ?? currentPanelPath()) as Pathname), {
+    const state: DialogPageState = {
       ...page.state,
       dialog: next,
       ...(dialogState().smyklotDialogEntry === true ? { smyklotDialogEntry: true } : {}),
-    });
+    };
+    delete state.smyklotDialogClosed;
+    replaceState(resolve((path ?? currentPanelPath(dialogSearch(next))) as Pathname), state);
   }
 
   close(): void {
@@ -160,7 +202,7 @@ class DialogRouter {
     if (typeof rest === 'string' && rest !== '' && path !== null) {
       goto(resolve(path as Pathname), { replaceState: true, state: withoutDialogState() });
     } else {
-      replaceState(resolve(currentPanelPath() as Pathname), withoutDialogState());
+      replaceState(resolve(currentPanelPath('') as Pathname), withoutDialogState());
     }
   }
 }
