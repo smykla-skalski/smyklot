@@ -446,14 +446,26 @@ var _ = Describe("Webhook service [Unit]", func() {
 		})
 
 		It("should not resurrect a command from an older comment revision", func() {
+			/* The newer revision carries a command with a visible effect, because
+			   the older delivery must not be posted until the newer revision has
+			   been recorded, and the approval is the only thing here that happens
+			   after the claim.
+
+			   Waiting on the access token waited on something that happens before
+			   it: the delivery still had a comment to fetch and a revision to
+			   claim, so the older delivery could overtake and claim first. Nothing
+			   was then stale about it - it was the first revision recorded - and
+			   the command it carried was armed, which is what the spec exists to
+			   forbid. It failed about one run in four against PostgreSQL, where the
+			   round trips are slower and the window is wider. */
 			post(
 				webhook.EventIssueComment,
 				deliveryOne,
-				delivery("edited", "not a command", "User", "2026-08-08T10:05:00Z", true),
+				delivery("edited", "/approve", "User", "2026-08-08T10:05:00Z", true),
 				nil,
 			)
 			Eventually(func() int {
-				return stub.countCalls(http.MethodPost, "/app/installations/987/access_tokens")
+				return stub.countCalls(http.MethodPost, approveReviews)
 			}, eventuallyWindow).Should(Equal(1))
 
 			post(
@@ -463,7 +475,7 @@ var _ = Describe("Webhook service [Unit]", func() {
 				nil,
 			)
 			Consistently(func() int {
-				return stub.countCalls(http.MethodPost, "/app/installations/987/access_tokens")
+				return stub.countCalls(http.MethodPost, approveReviews)
 			}, 300*time.Millisecond).Should(Equal(1))
 			_, err := srv.store.GetArmed(
 				GinkgoT().Context(), repositoryStorageID(githubtest.DefaultRepoID),
