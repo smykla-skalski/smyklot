@@ -1,5 +1,7 @@
 package config
 
+//go:generate go run github.com/smykla-skalski/smyklot/internal/configgen/cmd/generate
+
 import (
 	"bytes"
 	"fmt"
@@ -17,22 +19,73 @@ const (
 	SourceRepositoryPanel Source = "repository_panel"
 )
 
-// Patch is a sparse configuration layer. Pointer fields distinguish an
-// omitted setting from an explicit zero value such as false or an empty list.
+// Patch is a sparse configuration layer, and the authoritative description of
+// what Smyklot can be configured to do. Pointer fields distinguish an omitted
+// setting from an explicit zero value such as false or an empty list.
+//
+// Config, Default, the Key constants, applyPatch, the source map and the JSON
+// Schema are all generated from this type - see internal/configgen. Adding a
+// setting here and running `mise run generate` adds it everywhere; adding it
+// anywhere else fails the completeness test rather than half-working.
+//
+// The tags beyond the encoders' own carry what the generator cannot infer:
+//
+//	default  the value Default() reports and the schema publishes
+//	enum     the complete set of accepted values
+//	flag     "-" for a setting with no command-line flag
+//	panel    "deny" for a setting the panel must refuse to write
 type Patch struct {
-	QuietSuccess           *bool              `json:"quiet_success,omitempty" yaml:"quiet_success,omitempty"`
-	QuietReactions         *bool              `json:"quiet_reactions,omitempty" yaml:"quiet_reactions,omitempty"`
-	QuietPending           *bool              `json:"quiet_pending,omitempty" yaml:"quiet_pending,omitempty"`
-	AllowedCommands        *[]string          `json:"allowed_commands,omitempty" yaml:"allowed_commands,omitempty"`
-	CommandAliases         *map[string]string `json:"command_aliases,omitempty" yaml:"command_aliases,omitempty"`
-	CommandPrefix          *string            `json:"command_prefix,omitempty" yaml:"command_prefix,omitempty"`
-	DisableMentions        *bool              `json:"disable_mentions,omitempty" yaml:"disable_mentions,omitempty"`
-	DisableBareCommands    *bool              `json:"disable_bare_commands,omitempty" yaml:"disable_bare_commands,omitempty"`
-	DisableUnapprove       *bool              `json:"disable_unapprove,omitempty" yaml:"disable_unapprove,omitempty"`
-	DisableReactions       *bool              `json:"disable_reactions,omitempty" yaml:"disable_reactions,omitempty"`
-	DisableDeletedComments *bool              `json:"disable_deleted_comments,omitempty" yaml:"disable_deleted_comments,omitempty"`
-	AllowSelfApproval      *bool              `json:"allow_self_approval,omitempty" yaml:"allow_self_approval,omitempty"`
-	Runner                 *Runner            `json:"runner,omitempty" yaml:"runner,omitempty"`
+	// QuietSuccess drops the comment a successful command would post, leaving
+	// only its reaction. Errors and warnings still comment.
+	QuietSuccess *bool `json:"quiet_success,omitempty" yaml:"quiet_success,omitempty" toml:"quiet_success,omitempty"`
+
+	// QuietReactions drops the comment an approval or merge driven by a
+	// reaction would post.
+	QuietReactions *bool `json:"quiet_reactions,omitempty" yaml:"quiet_reactions,omitempty" toml:"quiet_reactions,omitempty"`
+
+	// QuietPending drops the comment announcing that a merge is waiting on CI,
+	// leaving only its reaction.
+	QuietPending *bool `json:"quiet_pending,omitempty" yaml:"quiet_pending,omitempty" toml:"quiet_pending,omitempty"`
+
+	// AllowedCommands narrows what may be run. An empty list allows every
+	// command; naming any command forbids the rest.
+	AllowedCommands *[]string `json:"allowed_commands,omitempty" yaml:"allowed_commands,omitempty" toml:"allowed_commands,omitempty"`
+
+	// CommandAliases maps a spelling somebody uses onto the command it means,
+	// such as "app" onto "approve".
+	CommandAliases *map[string]string `json:"command_aliases,omitempty" yaml:"command_aliases,omitempty" toml:"command_aliases,omitempty"`
+
+	// CommandPrefix opens a slash-style command, as "/" does in "/approve".
+	CommandPrefix *string `json:"command_prefix,omitempty" yaml:"command_prefix,omitempty" toml:"command_prefix,omitempty" default:"/"`
+
+	// DisableMentions stops Smyklot answering a mention, such as
+	// "@smyklot approve".
+	DisableMentions *bool `json:"disable_mentions,omitempty" yaml:"disable_mentions,omitempty" toml:"disable_mentions,omitempty"`
+
+	// DisableBareCommands stops Smyklot answering an unprefixed word such as
+	// "approve" or "lgtm" on a line of its own.
+	DisableBareCommands *bool `json:"disable_bare_commands,omitempty" yaml:"disable_bare_commands,omitempty" toml:"disable_bare_commands,omitempty"`
+
+	// DisableUnapprove withdraws the unapprove and disapprove commands.
+	DisableUnapprove *bool `json:"disable_unapprove,omitempty" yaml:"disable_unapprove,omitempty" toml:"disable_unapprove,omitempty"`
+
+	// DisableReactions stops a reaction on the pull request body counting as a
+	// command at all.
+	DisableReactions *bool `json:"disable_reactions,omitempty" yaml:"disable_reactions,omitempty" toml:"disable_reactions,omitempty"`
+
+	// DisableDeletedComments stops Smyklot reporting that a comment carrying a
+	// command was deleted.
+	DisableDeletedComments *bool `json:"disable_deleted_comments,omitempty" yaml:"disable_deleted_comments,omitempty" toml:"disable_deleted_comments,omitempty"`
+
+	// AllowSelfApproval lets the author of a pull request approve it. Off by
+	// default: an approval is meant to be a second pair of eyes.
+	AllowSelfApproval *bool `json:"allow_self_approval,omitempty" yaml:"allow_self_approval,omitempty" toml:"allow_self_approval,omitempty"`
+
+	// Runner names the entry point that acts on this repository, so the other
+	// one stands down. It is settable only in the repository's own file: the
+	// panel cannot write it, because a repository that has moved back to the
+	// Action must be able to say so itself.
+	Runner *Runner `json:"runner,omitempty" yaml:"runner,omitempty" toml:"runner,omitempty" default:"service" enum:"service,action" flag:"-" panel:"deny"`
 }
 
 // Layer associates a sparse patch with its provenance.
@@ -112,46 +165,6 @@ func cloneAliases(aliases map[string]string) map[string]string {
 	}
 
 	return result
-}
-
-func processSources() map[string]Source {
-	return map[string]Source{
-		KeyQuietSuccess:           SourceProcess,
-		KeyQuietReactions:         SourceProcess,
-		KeyQuietPending:           SourceProcess,
-		KeyAllowedCommands:        SourceProcess,
-		KeyCommandAliases:         SourceProcess,
-		KeyCommandPrefix:          SourceProcess,
-		KeyDisableMentions:        SourceProcess,
-		KeyDisableBareCommands:    SourceProcess,
-		KeyDisableUnapprove:       SourceProcess,
-		KeyDisableReactions:       SourceProcess,
-		KeyDisableDeletedComments: SourceProcess,
-		KeyAllowSelfApproval:      SourceProcess,
-		KeyRunner:                 SourceProcess,
-	}
-}
-
-func applyPatch(values *Config, patch Patch, sources map[string]Source, source Source) {
-	set(&values.QuietSuccess, patch.QuietSuccess, sources, KeyQuietSuccess, source)
-	set(&values.QuietReactions, patch.QuietReactions, sources, KeyQuietReactions, source)
-	set(&values.QuietPending, patch.QuietPending, sources, KeyQuietPending, source)
-	setSlice(&values.AllowedCommands, patch.AllowedCommands, sources, KeyAllowedCommands, source)
-	setMap(&values.CommandAliases, patch.CommandAliases, sources, KeyCommandAliases, source)
-	set(&values.CommandPrefix, patch.CommandPrefix, sources, KeyCommandPrefix, source)
-	set(&values.DisableMentions, patch.DisableMentions, sources, KeyDisableMentions, source)
-	set(&values.DisableBareCommands, patch.DisableBareCommands, sources, KeyDisableBareCommands, source)
-	set(&values.DisableUnapprove, patch.DisableUnapprove, sources, KeyDisableUnapprove, source)
-	set(&values.DisableReactions, patch.DisableReactions, sources, KeyDisableReactions, source)
-	set(
-		&values.DisableDeletedComments,
-		patch.DisableDeletedComments,
-		sources,
-		KeyDisableDeletedComments,
-		source,
-	)
-	set(&values.AllowSelfApproval, patch.AllowSelfApproval, sources, KeyAllowSelfApproval, source)
-	set(&values.Runner, patch.Runner, sources, KeyRunner, source)
 }
 
 func set[T any](target *T, value *T, sources map[string]Source, key string, source Source) {
