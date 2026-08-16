@@ -98,36 +98,73 @@ interface Walk {
 /**
  * What a body depends on, and what it writes.
  *
- * Only the part that runs before the first `await` can be a dependency, because
- * that is all Svelte is watching when the effect returns. Writes count wherever
- * they are - after an await, inside a callback, anywhere - because a write is
- * what re-runs the effect whenever it lands.
+ * Only what runs before the first `await` can be a dependency, because that is
+ * all Svelte is still watching when the effect returns. The cut is the await's
+ * own position rather than the statement holding it: `if (!loading) { loading =
+ * true; items = await read(); }` is one statement, and cutting whole statements
+ * threw the guard away with it and saw no ring at all.
+ *
+ * Writes count wherever they are - after the await, inside a `.then`, anywhere -
+ * because a write is what re-runs the effect whenever it lands.
  */
 function collect(body: Node, name: string, walk: Walk): void {
   const notReads = namesInWritePosition(body);
+  const boundary = firstAwait(body);
   const immediate = new Set<Node>();
-  for (const node of untilAwait(body)) {
-    walkSync(node, (current) => {
-      immediate.add(current);
-      if (isRead(current, walk.reactive, notReads)) walk.depends.add(String(current.name));
-      const called = calledLocal(current, walk.functions);
-      if (called === null || walk.seen.has(called)) return;
-      walk.seen.add(called);
-      const target = walk.functions.get(called);
-      if (target !== undefined) collect(target, called, walk);
-    });
-  }
+  /* Functions declared inside this body count too. An effect that declares its
+     own `const run = async () => …` and calls it is the same ring written in one
+     place instead of two. */
+  const functions = new Map([...walk.functions, ...declaredFunctions(statementsOf(body))]);
+  walkSync(body, (current) => {
+    if (offsetOf(current) >= boundary) return;
+    immediate.add(current);
+    if (isRead(current, walk.reactive, notReads)) walk.depends.add(String(current.name));
+    const called = calledLocal(current, functions);
+    if (called === null || walk.seen.has(called)) return;
+    walk.seen.add(called);
+    const target = functions.get(called);
+    if (target !== undefined) collect(target, called, { ...walk, functions });
+  });
   walkAll(body, (current) => {
     /* Only a write that lands later can close the ring invisibly. One that lands
        now either settles - the guard that compares before it writes is how half
        the panel keeps a copy in step - or spins, and a ring that spins without
        ever awaiting is stopped by the runtime itself with
        `effect_update_depth_exceeded`. Nothing stops the other kind. */
-    if (immediate.has(current)) return;
+    /* Where a write lands, not where it is written. `settings = await read()`
+       begins before the await and completes after it, so the assignment's own
+       position says immediate while the value arrives late. */
+    if (immediate.has(current) && !awaitsWithin(current)) return;
     for (const written of assigned(current, walk.reactive)) {
       if (!walk.writes.has(written)) walk.writes.set(written, name);
     }
   });
+}
+
+/** Where this body's first await is, ignoring the ones belonging to functions inside it. */
+function firstAwait(body: Node): number {
+  let earliest = Number.POSITIVE_INFINITY;
+  walkSync(body, (current) => {
+    if (current.type !== 'AwaitExpression') return;
+    earliest = Math.min(earliest, offsetOf(current));
+  });
+
+  return earliest;
+}
+
+function awaitsWithin(current: Node): boolean {
+  return firstAwait(current) !== Number.POSITIVE_INFINITY;
+}
+
+function offsetOf(current: Node): number {
+  return typeof current.start === 'number' ? current.start : 0;
+}
+
+/** The statements of a block body, or none for an expression body. */
+function statementsOf(body: Node): Node[] {
+  const block = node(body, 'body');
+
+  return block !== null && block.type === 'BlockStatement' ? nodes(block, 'body') : [];
 }
 
 /**
@@ -159,21 +196,6 @@ function namesInWritePosition(body: Node): Set<Node> {
   });
 
   return ignored;
-}
-
-/** The statements of a body up to the first one that awaits, or the whole of an expression body. */
-function untilAwait(body: Node): Node[] {
-  const block = node(body, 'body');
-  if (block === null) return [];
-  if (block.type !== 'BlockStatement') return [block];
-  const statements = nodes(block, 'body');
-  const upToAwait: Node[] = [];
-  for (const statement of statements) {
-    if (contains(statement, 'AwaitExpression')) break;
-    upToAwait.push(statement);
-  }
-
-  return upToAwait;
 }
 
 /** A read of reactive state: an identifier that is not being written and is not a property name. */
@@ -228,15 +250,6 @@ function walk(root: Node, visit: (current: Node) => void, into: (current: Node) 
   for (const child of children(root)) {
     if (into(child)) walk(child, visit, into);
   }
-}
-
-function contains(root: Node, type: string): boolean {
-  let found = false;
-  walkAll(root, (current) => {
-    if (current.type === type) found = true;
-  });
-
-  return found;
 }
 
 function isFunction(current: Node): boolean {

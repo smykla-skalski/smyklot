@@ -41,6 +41,27 @@ describe('effects that feed themselves [Unit]', () => {
     expect(findEffectCycles(DIRECT_FIXTURE)).toEqual([{ state: 'rows', through: 'the effect' }]);
   });
 
+  /* The guard and the await in one statement. Cutting the body at the statement
+     that awaits threw the guard away with it and reported nothing at all. */
+  it('catches a guard that shares its statement with the await', () => {
+    expect(findEffectCycles(ONE_STATEMENT_FIXTURE)).toEqual([
+      { state: 'loading', through: 'load' },
+    ]);
+  });
+
+  it('catches a loader the effect declares for itself', () => {
+    expect(findEffectCycles(INNER_FUNCTION_FIXTURE)).toEqual([
+      { state: 'loading', through: 'run' },
+    ]);
+  });
+
+  /* A read after the await is not a dependency: Svelte stopped watching when the
+     effect returned. Flagging it would ask half the panel to untrack a ring that
+     does not exist. */
+  it('leaves a read that happens after the await alone', () => {
+    expect(findEffectCycles(LATE_READ_FIXTURE)).toEqual([]);
+  });
+
   it('lets untrack say the work is not what the effect watches', () => {
     expect(findEffectCycles(UNTRACKED_FIXTURE)).toEqual([]);
   });
@@ -115,6 +136,53 @@ const DIRECT_FIXTURE = `<script lang="ts">
       .then((loaded) => {
         rows = [...loaded, known];
       });
+  });
+</script>`;
+
+const ONE_STATEMENT_FIXTURE = `<script lang="ts">
+  const { version }: { version: number } = $props();
+  let loading = $state(false);
+  let items = $state<string[]>([]);
+
+  async function load(): Promise<void> {
+    if (!loading) {
+      loading = true;
+      items = await fetch('/x').then((response) => response.json());
+      loading = false;
+    }
+  }
+
+  $effect(() => {
+    if (version >= 0) void load();
+  });
+</script>`;
+
+const INNER_FUNCTION_FIXTURE = `<script lang="ts">
+  let loading = $state(false);
+  let items = $state<string[]>([]);
+
+  $effect(() => {
+    const run = async (): Promise<void> => {
+      if (loading) return;
+      loading = true;
+      items = await fetch('/x').then((response) => response.json());
+      loading = false;
+    };
+    void run();
+  });
+</script>`;
+
+const LATE_READ_FIXTURE = `<script lang="ts">
+  const { version }: { version: number } = $props();
+  let page = $state<string[] | null>(null);
+
+  async function load(): Promise<void> {
+    const loaded = await fetch('/x').then((response) => response.json());
+    if (page === null) page = loaded;
+  }
+
+  $effect(() => {
+    if (version >= 0) void load();
   });
 </script>`;
 
