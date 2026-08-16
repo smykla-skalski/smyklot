@@ -65,7 +65,7 @@
       >
         {#if selected !== undefined}
           <span class="role-icon" aria-hidden="true"><Icon name={selected.icon} size={14} /></span>
-          <span>{selected.label}</span>
+          <span class="band-trim">{selected.label}</span>
         {/if}
         <span class="role-chevron" aria-hidden="true"><Icon name="chevron-down" size={14} /></span>
       </button>

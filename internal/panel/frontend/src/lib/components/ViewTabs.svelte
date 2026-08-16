@@ -418,7 +418,9 @@
           {#if unreadCount > 0}<span class="unread-dot" aria-hidden="true"></span>{/if}
         </span>
         <span class="navigation-label">Inbox</span>
-        {#if unreadCount > 0}<span class="unread-count" aria-hidden="true">{unreadLabel}</span>{/if}
+        {#if unreadCount > 0}<span class="unread-count" aria-hidden="true"
+            ><span class="cap-trim">{unreadLabel}</span></span
+          >{/if}
         <span class="navigation-tooltip">{inboxLabel}</span>
       </a>
     </div>

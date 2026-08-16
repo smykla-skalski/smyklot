@@ -272,7 +272,7 @@
           {...attributes}
         >
           <Avatar account={selectedTarget.account} size={28} shape="workspace" />
-          <span class="target-trigger-copy">
+          <span class="target-trigger-copy band-trim-stack">
             <span class="target-kicker">Workspace</span>
             <strong>{selectedTarget.account.display_name}</strong>
           </span>
@@ -387,7 +387,7 @@
             <span class="who-avatar">
               <Avatar account={viewer.account} size={32} />
             </span>
-            <span class="who-text">
+            <span class="who-text band-trim-stack">
               <span class="who-name">{viewer.account.display_name}</span>
               <span class="who-handle mono">{handle.handle}</span>
             </span>

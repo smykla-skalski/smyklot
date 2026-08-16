@@ -405,7 +405,7 @@
               <th scope="col">System role</th>
               <th scope="col">
                 <div class="heading-layout">
-                  <span>Status</span>
+                  <span class="heading-label band-trim">Status</span>
                   <FilterMenu
                     label="Invitation status"
                     summary={statuses.length === 0 ? 'All statuses' : `${statuses.length} selected`}
@@ -445,7 +445,7 @@
                 <td data-label="User">
                   <span class="identity">
                     <Avatar account={invitation.account} size={32} />
-                    <span
+                    <span class="band-trim-stack"
                       ><strong>{invitation.account.display_name}</strong><span class="mono"
                         >@{invitation.account.login}</span
                       ></span

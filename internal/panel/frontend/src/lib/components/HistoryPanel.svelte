@@ -920,12 +920,12 @@
                     {#if entry.category !== undefined}
                       <span class="category-tag" aria-hidden="true">{entry.category}</span>
                     {/if}
-                    <span class="cell-primary">{auditSummary(entry.summary)}</span>
+                    <span class="cell-primary band-trim">{auditSummary(entry.summary)}</span>
                   </span>
                 </td>
                 <td data-label="When">
                   <time
-                    class="table-time"
+                    class="table-time band-trim"
                     datetime={entry.created_at}
                     title={formatTimestamp(entry.created_at)}
                   >
@@ -1567,31 +1567,43 @@
     font: 650 0.65rem / 1 var(--sans);
     letter-spacing: 0.04em;
     padding: 0.2rem 0.35rem;
+    /* Symmetric about its own band, so the equal padding above and below is the
+       whole of what centres the word on the tag. */
+    text-box: trim-both cap alphabetic;
     text-transform: uppercase;
   }
 
-  /* One rule, not two. These were declared separately and the second undid the
-     first: `white-space: nowrap` leaves `overflow-wrap` nothing to do, so the
-     line could only ever be cut short. It earns its place again on a phone,
-     where the card lets the text wrap and a long name has to break somewhere. */
+  /* One rule, not the two that had grown here - the second quietly replaced the
+     first's `overflow-wrap` reasoning with `nowrap` and an ellipsis.
+     `overflow: clip` rather than `hidden`, with a margin: the trim ends this box
+     on the baseline, so `hidden` would shave the tail off every g, p and y in the
+     table. The margin is vertical room the clip gives back; horizontally there is
+     nothing to give back, since the ellipsis truncates inside the box.
+     `overflow-wrap` does nothing against `nowrap` here, and earns its place on a
+     phone, where the card lets the text wrap and a long name has to break. */
   .cell-primary {
     display: block;
     font-size: var(--font-size-meta);
     line-height: 1.5;
-    overflow: hidden;
+    overflow: clip;
+    overflow-clip-margin: 0.35em;
     overflow-wrap: anywhere;
+    text-box: trim-both cap alphabetic;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
+  /* Block-level, so `.band-trim` has line boxes to trim and the cell has a box to
+     centre. As an inline-flex it had neither: the trim was a no-op on a flex
+     container, and inline it rode the row's strut instead of the cell's middle,
+     which put the timestamp 0.59px below every other column. */
   .table-time {
-    align-items: center;
     color: var(--dim);
-    display: inline-flex;
+    display: block;
     font-size: var(--font-size-meta);
     line-height: 1.5;
-    vertical-align: middle;
     white-space: nowrap;
+    width: fit-content;
   }
 
   .empty-cell {

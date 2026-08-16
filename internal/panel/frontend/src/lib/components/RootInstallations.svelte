@@ -231,7 +231,7 @@
                       {monogram(installation.account.display_name, installation.account.login)}
                     </span>
                   </span>
-                  <span>
+                  <span class="band-trim-stack">
                     <a
                       class="installation-link"
                       href={hrefFor(installation.account.login, 'settings')}
@@ -245,9 +245,9 @@
               </th>
               <td class="count-cell">
                 {#if installation.repository_counts.total === 0}
-                  <span class="cell-dash" aria-label="No repositories">—</span>
+                  <span class="cell-dash band-trim" aria-label="No repositories">—</span>
                 {:else}
-                  <span class="repo-count">
+                  <span class="repo-count band-trim">
                     <b>{installation.repository_counts.enabled}</b>
                     of {installation.repository_counts.enabled +
                       installation.repository_counts.disabled} enabled
@@ -275,9 +275,9 @@
               </td>
               <td>
                 {#if installation.ownership.owner_count === 0}
-                  <span class="cell-dash" aria-label="No owners">—</span>
+                  <span class="cell-dash band-trim" aria-label="No owners">—</span>
                 {:else}
-                  <span class="owners-line">
+                  <span class="owners-line band-trim">
                     {installation.ownership.owner_count} ·
                     {installation.ownership.source === 'personal' ? 'Account owner' : 'Org admins'}
                   </span>

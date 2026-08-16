@@ -1472,6 +1472,97 @@ code {
   text-box: trim-both cap alphabetic;
 }
 
+/* The same trim without the collapse to `line-height: 1`, for text that has to
+   keep its own leading: a label that may wrap, a cell whose row height is set
+   by its line box. `trim-both` still ends the box on the first line's cap and
+   the last line's baseline, so the box IS the band whether it runs to one line
+   or three.
+
+   This is what a row centring boxes needs, because the leading above the
+   capitals and the room under the baseline are never equal, and centring a box
+   therefore lands the words off centre: measured at 0.67px under every sortable
+   column heading and 0.59px beside every category tag in the audit table.
+   `tests/browser/vertical-alignment.test.ts` walks the product and asks every
+   row that declares a centre to keep it. */
+.band-trim {
+  text-box: trim-both cap alphabetic;
+}
+
+/* And for a STACK, where the lines are separate elements and the container has
+   no text of its own to trim - a name over a handle, a label over a
+   description. Only the outer edges go: the first line gives back the leading
+   above its capitals, the last gives back the room under its baseline, and the
+   gap between them is left exactly as it was drawn. Asked for on the container,
+   so a component does not have to name which of its lines is on the outside.
+
+   Measured at 1.80px in the sidebar's workspace switcher and 0.76px in the
+   account card. */
+.band-trim-stack > :first-child {
+  text-box: trim-start cap alphabetic;
+}
+
+.band-trim-stack > :last-child {
+  text-box: trim-end cap alphabetic;
+}
+
+/* Two labels that are always a word beside a mark, wherever they are used.
+   ------------------------------------------------------------------------
+   A sortable column heading is the one place this cannot be left to each table:
+   five components draw the same control - a word beside a sort mark - and each
+   keeps its own copy of the rule, thirty-nine of them in all. Trimmed here once,
+   so a sixth table gets it by writing the same markup rather than by
+   remembering.
+
+   The word is what has to give: the mark and any filter trigger beside it are
+   boxes and already centre on each other, and it was the label landing 0.67px
+   above them in every table in the console. A heading with no sort control asks
+   for `.band-trim` itself - there were two, spelled two different ways, which is
+   the argument against matching on a container's name here. */
+.table-sort-button > span,
+.button-label {
+  text-box: trim-both cap alphabetic;
+}
+
+/* And a heading that is nothing but a word - no sort, no filter - is trimmed
+   where it stands, since there is no element inside it to ask. Safe on the whole
+   header row because a heading holds either bare words or a control: a cell whose
+   content is a block or a flex row has no line boxes of its own, so this is a
+   no-op there. It is NOT safe on `tbody`, where a cell can hold anything - tried,
+   and it threw the body rows 5.41px apart. */
+thead th {
+  text-box: trim-both cap alphabetic;
+}
+
+/* A cell centres its CONTENT BOX, since `vertical-align: middle` is what a table
+   has instead of `align-items`. So a cell is only centred when its content box
+   is the thing a reader sees, and there are exactly two ways it is not.
+   ------------------------------------------------------------------------
+   One: an INLINE chip does not centre in the cell at all. It joins the cell's
+   inline formatting context and is placed against the row's own strut, so where
+   it lands depends on the chip's baseline - which for an inline-flex box comes
+   from its last flex item, and therefore moves when a chip gains a dot. That is
+   why the role chip and the status chip beside it, identical in height, sat
+   0.83px and 1.56px below the avatar in the same row. Block-level, it centres
+   like everything else and there is no strut left to argue with. */
+:is(td, th) > .chip,
+:is(td, th) > :has(> .chip:only-child) {
+  display: flex;
+  width: fit-content;
+}
+
+/* The second selector above is the same chip one wrapper down. A cell often holds
+   its chip inside a `<span title>` carrying the row's explanation, and a rule that
+   only reached the direct child left two columns of the installation catalog
+   0.66px adrift while the columns beside them were exact.
+   ------------------------------------------------------------------------
+   Two: the words in a cell carry their leading with them, so the content box is
+   taller than the band and centring it puts the words low. `.band-trim` is the
+   answer, as everywhere else - it only needs blockifying first, because an
+   inline box has no line boxes of its own to trim. */
+:is(td, th) > .band-trim {
+  display: block;
+}
+
 /* Non-interactive status: short, round, borderless — never the bordered-control
    silhouette, so nothing next to a button reads as pressable. */
 .status-pill {

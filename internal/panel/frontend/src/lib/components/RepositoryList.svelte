@@ -1080,7 +1080,7 @@
                     datetime={repository.updated_at}
                     title={formatTimestamp(repository.updated_at)}
                   >
-                    {formatRelative(repository.updated_at, now)}
+                    <span class="cap-trim">{formatRelative(repository.updated_at, now)}</span>
                   </time>
                 </td>
                 <td data-label="Enablement">

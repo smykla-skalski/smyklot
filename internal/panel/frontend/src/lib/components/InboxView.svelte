@@ -260,7 +260,7 @@
                     aria-label={`Mark ${actionLabel(notification.action)} for ${notification.installation.display_name} as read`}
                     onclick={() => read(notification)}
                   >
-                    Mark read
+                    <span class="button-label">Mark read</span>
                   </button>
                 {:else}
                   <span class="read-state"

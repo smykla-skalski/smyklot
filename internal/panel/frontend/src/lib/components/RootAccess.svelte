@@ -589,7 +589,7 @@
                 </th>
                 <th scope="col">
                   <div class="heading-layout">
-                    <span class="heading-label">Status</span>
+                    <span class="heading-label band-trim">Status</span>
                     <FilterMenu
                       label="Status"
                       summary={statuses.length === 0
@@ -640,7 +640,7 @@
                       >{statusLabel(user.status)}</Chip
                     >
                   </td>
-                  <td data-label="Installations">
+                  <td class="band-trim-stack" data-label="Installations">
                     <span class="relationship-count">{installationSummary(user)}</span>
                     <span class="relationship-meta"
                       >{user.owned_installations} owned · {user.assigned_installations} assigned</span
@@ -649,11 +649,12 @@
                   <td data-label="Last login">
                     {#if user.last_login_at !== undefined}
                       <time
+                        class="band-trim"
                         datetime={user.last_login_at}
                         title={formatTimestamp(user.last_login_at)}
                         >{formatRelative(user.last_login_at, now)}</time
                       >
-                    {:else}<span class="dim">Never</span>{/if}
+                    {:else}<span class="dim band-trim">Never</span>{/if}
                   </td>
                   <td class="row-actions" data-label="Actions">
                     {#if userActions(user).length > 0}
@@ -1039,6 +1040,10 @@
   }
 
   table {
+    /* Named once: the row height below is derived from it, and a padding changed
+       in one place and not the other would silently un-state the row height. */
+    --cell-pad-block: 0.625rem;
+
     background: var(--surface-base);
     /* Separated, not collapsed: a collapsed border is shared between adjacent
        rows, so each cell owns half of it and every row box lands on a .5. */
@@ -1052,9 +1057,21 @@
   th,
   td {
     border-bottom: 1px solid var(--rule);
-    padding: 0.625rem 0.75rem;
+    padding: var(--cell-pad-block) 0.75rem;
     text-align: left;
     vertical-align: middle;
+  }
+
+  /* Stated, not inherited from whatever the tallest cell happens to hold.
+     It used to come out at 61px because the row menu is 40px tall, and at 60.9px
+     on the viewer's own row - which has no menu, since nobody may act on
+     themselves - where two lines of untrimmed leading happened to measure the
+     same. Trimming those lines to their band, which is what centres them, took
+     that row to 54px and left one short row in the middle of the table. A row's
+     height is a decision: the tallest control it has to hold, plus its own
+     padding and rule. */
+  tbody tr {
+    height: calc(var(--control-height) + 2 * var(--cell-pad-block) + 1px);
   }
 
   th:first-child,
