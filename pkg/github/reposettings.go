@@ -28,6 +28,39 @@ type RepositorySettings struct {
 	HasProjects    bool `json:"has_projects"`
 	HasWiki        bool `json:"has_wiki"`
 	HasDiscussions bool `json:"has_discussions"`
+
+	// Security is what the repository reports about its security features, and
+	// the one part of this answer with three states rather than two.
+	Security RepositorySecurity `json:"security_and_analysis"`
+}
+
+// RepositorySecurity is the security_and_analysis object.
+//
+// Pointers, and here they carry what a pointer is for: a feature this
+// repository cannot have is absent from the answer, which is a different fact
+// from a feature it has and has turned off. Reading absence as off would make
+// every sync try to switch it on, and GitHub answers that with a 422 on the
+// whole request - so one repository without the feature would lose every other
+// setting sent beside it.
+type RepositorySecurity struct {
+	AdvancedSecurity             *SecurityFeature `json:"advanced_security"`
+	SecretScanning               *SecurityFeature `json:"secret_scanning"`
+	SecretScanningPushProtection *SecurityFeature `json:"secret_scanning_push_protection"`
+}
+
+// SecurityFeature is one feature's state, as GitHub spells it.
+type SecurityFeature struct {
+	Status string `json:"status"`
+}
+
+// SecurityEnabled is the status GitHub reports and accepts for a feature that
+// is on. Anything else is off: the field is a string rather than a boolean, so
+// a value nobody here knows should read as the safer of the two.
+const SecurityEnabled = "enabled"
+
+// On reports a feature that is present and switched on.
+func (f *SecurityFeature) On() bool {
+	return f != nil && f.Status == SecurityEnabled
 }
 
 // GetRepositorySettings reads what a repository is set to.

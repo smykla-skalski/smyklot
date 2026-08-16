@@ -42,6 +42,15 @@ type SettingsConfig struct {
 	HasProjects    *bool `json:"has_projects,omitempty"`
 	HasWiki        *bool `json:"has_wiki,omitempty"`
 	HasDiscussions *bool `json:"has_discussions,omitempty"`
+
+	// Which security features it has switched on. Configured as booleans like
+	// everything else here, though GitHub takes them nested under
+	// security_and_analysis with a status string: a person configuring an
+	// organization should not have to know which half of the endpoint a
+	// setting lives in.
+	AdvancedSecurity             *bool `json:"advanced_security,omitempty"`
+	SecretScanning               *bool `json:"secret_scanning,omitempty"`
+	SecretScanningPushProtection *bool `json:"secret_scanning_push_protection,omitempty"`
 }
 
 // The values GitHub accepts for how a commit is worded. Checked here because
@@ -150,7 +159,31 @@ type CurrentSettings struct {
 	HasProjects    bool
 	HasWiki        bool
 	HasDiscussions bool
+
+	// The security features, which are the one part of a repository with three
+	// states rather than two.
+	AdvancedSecurity             FeatureState
+	SecretScanning               FeatureState
+	SecretScanningPushProtection FeatureState
 }
+
+// FeatureState is what a repository reports about a security feature.
+//
+// Three values, because GitHub omits a feature the repository cannot have
+// rather than reporting it off - and the difference decides whether sync should
+// try. Reading absence as off is how the tool this replaces came to send
+// "enable advanced security" to a repository that has no such thing on every
+// single run, and to lose the whole settings change to the 422 that came back.
+type FeatureState string
+
+const (
+	FeatureOn  FeatureState = "on"
+	FeatureOff FeatureState = "off"
+
+	// FeatureUnavailable is a feature this repository does not offer. Nothing
+	// can be done about it here: it is a plan or a licence, bought elsewhere.
+	FeatureUnavailable FeatureState = "unavailable"
+)
 
 // settingsField is one setting, named once for the three things that have to
 // agree about it: what to compare, what to send, and what to show a person.
@@ -177,6 +210,18 @@ type settingsField struct {
 	// something else depends on. Nil where nothing can: only a boolean is ever
 	// the subject of a requires.
 	on func(SettingsConfig, CurrentSettings) bool
+
+	// available reports the repository having this setting at all, for the ones
+	// it may not. Nil where every repository has it, which is all of them
+	// except the security features.
+	available func(CurrentSettings) bool
+
+	// put writes the value where GitHub expects it in the request body. Most
+	// settings are a key of their own; the security features are nested under
+	// security_and_analysis with a status string rather than a boolean, and the
+	// body is the plan's contract, so the shape is decided here rather than
+	// rebuilt by whoever sends it.
+	put func(body map[string]any, value any)
 }
 
 // settingsFields is every setting, in the order a person reads them.
@@ -228,7 +273,76 @@ func settingsFields() []settingsField {
 		boolField("has_discussions",
 			func(c SettingsConfig) *bool { return c.HasDiscussions },
 			func(s CurrentSettings) bool { return s.HasDiscussions }),
+		securityField("advanced_security", "",
+			func(c SettingsConfig) *bool { return c.AdvancedSecurity },
+			func(s CurrentSettings) FeatureState { return s.AdvancedSecurity }),
+		securityField("secret_scanning", "",
+			func(c SettingsConfig) *bool { return c.SecretScanning },
+			func(s CurrentSettings) FeatureState { return s.SecretScanning }),
+		// GitHub refuses push protection on a repository whose secret scanning
+		// is off, which is the same rule as a commit wording needing its merge
+		// strategy and is enforced by the same field.
+		securityField("secret_scanning_push_protection", "secret_scanning",
+			func(c SettingsConfig) *bool { return c.SecretScanningPushProtection },
+			func(s CurrentSettings) FeatureState { return s.SecretScanningPushProtection }),
 	}
+}
+
+// securitySection is the object GitHub keeps the security features under, in
+// both directions.
+const securitySection = "security_and_analysis"
+
+// securityStatus is how GitHub spells a feature being on and off. A status
+// string rather than the boolean everything else here uses.
+const (
+	securityEnabled  = "enabled"
+	securityDisabled = "disabled"
+)
+
+func securityField(
+	name, requires string,
+	want func(SettingsConfig) *bool,
+	have func(CurrentSettings) FeatureState,
+) settingsField {
+	return settingsField{
+		name:     name,
+		requires: requires,
+		want: func(c SettingsConfig) (any, string, bool) {
+			value := want(c)
+			if value == nil {
+				return nil, "", false
+			}
+
+			return *value, describeBool(*value), true
+		},
+		have:      func(s CurrentSettings) string { return string(have(s)) },
+		available: func(s CurrentSettings) bool { return have(s) != FeatureUnavailable },
+		on: func(c SettingsConfig, s CurrentSettings) bool {
+			if value := want(c); value != nil {
+				return *value
+			}
+
+			return have(s) == FeatureOn
+		},
+		put: func(body map[string]any, value any) {
+			section, nested := body[securitySection].(map[string]any)
+			if !nested {
+				section = map[string]any{}
+				body[securitySection] = section
+			}
+
+			enabled, _ := value.(bool)
+			section[name] = map[string]any{"status": describeStatus(enabled)}
+		},
+	}
+}
+
+func describeStatus(enabled bool) string {
+	if enabled {
+		return securityEnabled
+	}
+
+	return securityDisabled
 }
 
 func boolField(
@@ -259,6 +373,7 @@ func boolField(
 
 			return have(s)
 		},
+		put: flatly(name),
 	}
 }
 
@@ -279,7 +394,14 @@ func textField(
 			return *value, *value, true
 		},
 		have: func(s CurrentSettings) string { return have(s) },
+		put:  flatly(name),
 	}
+}
+
+// flatly writes a setting as a key of its own, which is where all but the
+// security features live.
+func flatly(name string) func(map[string]any, any) {
+	return func(body map[string]any, value any) { body[name] = value }
 }
 
 // fieldsByName addresses the table by the name GitHub knows a setting as, which
@@ -307,17 +429,32 @@ type SettingsChange struct {
 	// "make it what it was a moment ago", and loses whatever changed in between.
 	Body map[string]any
 
-	// Withheld names what this repository will not be given, because it would
-	// not accept it: a commit wording whose merge strategy is off here.
+	// Withheld is what this repository will not be given, because it would not
+	// accept it, and why.
 	//
-	// Left out rather than sent and refused. GitHub answers the pair with a 422
-	// on the whole request, so one squash-only repository would otherwise lose
-	// every other setting in the same change - which is the failure this port
-	// indicts the tool it replaces for, where one unavailable feature took the
-	// rest of the run down with it. Withholding can only leave a setting as it
-	// was; sending can undo the ones beside it.
-	Withheld []string
+	// Left out rather than sent and refused. GitHub answers either case with a
+	// 422 on the whole request, so one repository without the feature would
+	// otherwise lose every other setting in the same change - which is the
+	// failure this port indicts the tool it replaces for, where one unavailable
+	// feature took the rest of the run down with it. Withholding can only leave
+	// a setting as it was; sending can undo the ones beside it.
+	Withheld []Withholding
 }
+
+// Withholding is one setting left alone, and the reason a person needs in order
+// to know whether there is anything they can do about it.
+type Withholding struct {
+	Field  string
+	Reason string
+}
+
+// The two reasons a setting is withheld. One is about this repository's plan or
+// licence and cannot be configured away; the other is a setting somebody could
+// turn on in the same configuration.
+const (
+	becauseUnavailable = "this repository does not offer it"
+	becauseUnmet       = "the setting it needs is off here"
+)
 
 // DiffSettings reports what would have to change, and whether anything would.
 //
@@ -351,20 +488,35 @@ func DiffSettings(config SettingsConfig, current CurrentSettings) (SettingsChang
 			continue
 		}
 
+		// A feature the repository does not have comes first, because nothing
+		// configured here can change that: it is a plan or a licence, and every
+		// run would otherwise try again and be refused again.
+		if field.available != nil && !field.available(current) {
+			change.withhold(field.name, becauseUnavailable)
+
+			continue
+		}
+
 		if field.requires != "" && !resulting[field.requires] {
-			change.Withheld = append(change.Withheld, field.name)
+			change.withhold(field.name, becauseUnmet)
 
 			continue
 		}
 
 		change.Fields = append(change.Fields, field.name)
-		change.Body[field.name] = value
+		field.put(change.Body, value)
 	}
 
 	sort.Strings(change.Fields)
-	sort.Strings(change.Withheld)
+	sort.Slice(change.Withheld, func(i, j int) bool {
+		return change.Withheld[i].Field < change.Withheld[j].Field
+	})
 
 	return change, len(change.Fields) > 0
+}
+
+func (c *SettingsChange) withhold(field, reason string) {
+	c.Withheld = append(c.Withheld, Withholding{Field: field, Reason: reason})
 }
 
 // PlanSettings answers what one repository's settings would need.
@@ -408,13 +560,16 @@ func PlanSettings(
 // it. A setting that is configured, differs, and is being left alone anyway is
 // not something to discover from a repository that never changed.
 func describeChange(change SettingsChange) string {
-	after := strings.Join(change.Fields, ", ")
-	if len(change.Withheld) == 0 {
-		return after
+	parts := make([]string, 0, len(change.Withheld)+1)
+	if len(change.Fields) > 0 {
+		parts = append(parts, strings.Join(change.Fields, ", "))
 	}
 
-	return after + "; leaving " + strings.Join(change.Withheld, ", ") +
-		" alone, the merge strategy each one needs is off here"
+	for _, withheld := range change.Withheld {
+		parts = append(parts, "leaving "+withheld.Field+" alone: "+withheld.Reason)
+	}
+
+	return strings.Join(parts, "; ")
 }
 
 // SettingsSubject is what a settings action is about. A repository has one set

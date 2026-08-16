@@ -84,6 +84,41 @@ var _ = Describe("Repository settings [Unit]", func() {
 			Expect(request.URL.Path).To(Equal("/repos/acme/web"))
 		})
 
+		// A feature the repository cannot have is left out of the answer
+		// rather than reported off, and that difference is what stops a sync
+		// asking for it on every run and being refused on every run
+		It("tells a security feature that is off from one that is absent", func() {
+			server = serve(http.StatusOK, `{"security_and_analysis":{
+				"secret_scanning": {"status": "enabled"},
+				"secret_scanning_push_protection": {"status": "disabled"}
+			}}`)
+
+			settings, err := client().GetRepositorySettings(
+				context.Background(), "acme", "web")
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(settings.Security.SecretScanning.On()).To(BeTrue())
+			Expect(settings.Security.SecretScanningPushProtection).NotTo(BeNil())
+			Expect(settings.Security.SecretScanningPushProtection.On()).To(BeFalse())
+
+			// Never mentioned, which is not the same as mentioned and off
+			Expect(settings.Security.AdvancedSecurity).To(BeNil())
+		})
+
+		// The whole object is absent for a repository whose features nobody can
+		// see, and a nil there must answer like every other absence rather than
+		// panicking on the way past
+		It("reads a repository that reports no security features at all", func() {
+			server = serve(http.StatusOK, `{"has_wiki": true}`)
+
+			settings, err := client().GetRepositorySettings(
+				context.Background(), "acme", "web")
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(settings.Security.SecretScanning).To(BeNil())
+			Expect(settings.Security.SecretScanning.On()).To(BeFalse())
+		})
+
 		// A setting GitHub reports as false has to read as false, not as
 		// missing. The whole diff turns on telling those apart
 		It("reads a setting that is off as off", func() {

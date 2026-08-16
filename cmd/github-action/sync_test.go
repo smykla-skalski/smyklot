@@ -580,6 +580,41 @@ var _ = Describe("Label sync [Unit]", func() {
 			Expect(sent).To(HaveLen(2))
 		})
 
+		// The security features travel nested, with a status string, and a
+		// feature the repository does not have is absent from GitHub's answer
+		// rather than reported off - so this is the one place the whole shape
+		// is proved against something that parses it back
+		It("switches on the security features, and leaves the missing one", func() {
+			target := granting(`{"issues":"write","administration":"write"}`)
+			stub.repoSettings = `{"has_wiki":true,"security_and_analysis":{
+				"secret_scanning":{"status":"disabled"},
+				"secret_scanning_push_protection":{"status":"disabled"}}}`
+			configureKind(target, orgsync.KindSettings,
+				`{"advanced_security":true,"secret_scanning":true,`+
+					`"secret_scanning_push_protection":true}`)
+
+			plan(target)
+			computed, actions := livePlan(target)
+			Expect(actions).To(HaveLen(1))
+			approve(computed)
+
+			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+
+			Expect(stub.settingsWrites).To(HaveLen(1))
+
+			var sent map[string]any
+			Expect(json.Unmarshal([]byte(stub.settingsWrites[0]), &sent)).To(Succeed())
+			Expect(sent).To(HaveKeyWithValue("security_and_analysis", map[string]any{
+				"secret_scanning":                 map[string]any{"status": "enabled"},
+				"secret_scanning_push_protection": map[string]any{"status": "enabled"},
+			}))
+
+			// Advanced security was never mentioned by GitHub, so this
+			// repository does not have it - and asking for it would have been a
+			// 422 that took the two features beside it down as well
+			Expect(actions[0].After).To(ContainSubstring("advanced_security"))
+		})
+
 		// An installation may have approved one kind and not another, and the
 		// one it approved should still run
 		It("plans the permitted kind and leaves the other", func() {

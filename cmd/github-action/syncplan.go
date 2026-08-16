@@ -325,7 +325,7 @@ func repositoryPlanner(
 			}
 
 			return orgsync.PlanSettings(
-				repository.ID, settings, orgsync.CurrentSettings(current),
+				repository.ID, settings, asCurrentSettings(current),
 			), nil
 		}, nil
 
@@ -430,6 +430,50 @@ func (s syncScope) covers(repository storage.Repository) bool {
 // cannot drift into disagreeing about whether a repository is settled.
 func (s syncScope) digestFor(repositoryID string) string {
 	return orgsync.DigestRepositoryKind(s.config.Digest, s.overrides[repositoryID])
+}
+
+// asCurrentSettings reads what GitHub said as what the planner compares.
+//
+// Written out rather than converted, because the two types no longer say the
+// same thing: a security feature is absent from GitHub's answer where the
+// repository cannot have it, and the planner needs that as a state of its own
+// rather than as a missing pointer it might read as off.
+func asCurrentSettings(settings github.RepositorySettings) orgsync.CurrentSettings {
+	return orgsync.CurrentSettings{
+		AllowMergeCommit:    settings.AllowMergeCommit,
+		AllowSquashMerge:    settings.AllowSquashMerge,
+		AllowRebaseMerge:    settings.AllowRebaseMerge,
+		AllowAutoMerge:      settings.AllowAutoMerge,
+		DeleteBranchOnMerge: settings.DeleteBranchOnMerge,
+		AllowUpdateBranch:   settings.AllowUpdateBranch,
+
+		SquashMergeCommitTitle:   settings.SquashMergeCommitTitle,
+		SquashMergeCommitMessage: settings.SquashMergeCommitMessage,
+		MergeCommitTitle:         settings.MergeCommitTitle,
+		MergeCommitMessage:       settings.MergeCommitMessage,
+
+		HasIssues:      settings.HasIssues,
+		HasProjects:    settings.HasProjects,
+		HasWiki:        settings.HasWiki,
+		HasDiscussions: settings.HasDiscussions,
+
+		AdvancedSecurity: featureState(settings.Security.AdvancedSecurity),
+		SecretScanning:   featureState(settings.Security.SecretScanning),
+		SecretScanningPushProtection: featureState(
+			settings.Security.SecretScanningPushProtection),
+	}
+}
+
+// featureState reads a security feature GitHub may not have mentioned.
+func featureState(feature *github.SecurityFeature) orgsync.FeatureState {
+	switch {
+	case feature == nil:
+		return orgsync.FeatureUnavailable
+	case feature.On():
+		return orgsync.FeatureOn
+	default:
+		return orgsync.FeatureOff
+	}
 }
 
 func asCurrentLabels(labels []github.RepositoryLabel) []orgsync.CurrentLabel {

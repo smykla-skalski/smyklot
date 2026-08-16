@@ -96,6 +96,12 @@ var _ = Describe("Settings configuration [Unit]", func() {
 		Entry("a merge message with merge commits off", orgsync.SettingsConfig{
 			AllowMergeCommit: disabled(), MergeCommitMessage: text("BLANK"),
 		}, "merge_commit_message needs allow_merge_commit"),
+
+		// The same rule, one endpoint down: GitHub refuses push protection on a
+		// repository whose secret scanning is off
+		Entry("push protection with secret scanning off", orgsync.SettingsConfig{
+			SecretScanning: disabled(), SecretScanningPushProtection: enabled(),
+		}, "secret_scanning_push_protection needs secret_scanning"),
 	)
 
 	// The same configuration turning the strategy on is what makes the wording
@@ -292,6 +298,102 @@ var _ = Describe("Settings planning [Unit]", func() {
 			orgsync.SettingsConfig{SquashMergeCommitTitle: text("PR_TITLE")},
 			orgsync.CurrentSettings{AllowSquashMerge: false},
 		)).To(BeEmpty())
+	})
+
+	// GitHub takes the security features nested, with a status string rather
+	// than the boolean everything else here uses
+	It("sends a security feature where GitHub keeps it", func() {
+		sent := body(orgsync.PlanSettings(repo,
+			orgsync.SettingsConfig{SecretScanning: enabled(), HasWiki: disabled()},
+			orgsync.CurrentSettings{
+				SecretScanning: orgsync.FeatureOff, HasWiki: true,
+			},
+		))
+
+		Expect(sent).To(HaveKeyWithValue("has_wiki", false))
+		Expect(sent).To(HaveKeyWithValue("security_and_analysis", map[string]any{
+			"secret_scanning": map[string]any{"status": "enabled"},
+		}))
+	})
+
+	It("sends a security feature being turned off", func() {
+		sent := body(orgsync.PlanSettings(repo,
+			orgsync.SettingsConfig{SecretScanning: disabled()},
+			orgsync.CurrentSettings{SecretScanning: orgsync.FeatureOn},
+		))
+
+		Expect(sent).To(HaveKeyWithValue("security_and_analysis", map[string]any{
+			"secret_scanning": map[string]any{"status": "disabled"},
+		}))
+	})
+
+	It("says nothing about a security feature that already matches", func() {
+		Expect(orgsync.PlanSettings(repo,
+			orgsync.SettingsConfig{SecretScanning: enabled()},
+			orgsync.CurrentSettings{SecretScanning: orgsync.FeatureOn},
+		)).To(BeEmpty())
+	})
+
+	// The bug this port indicts the tool it replaces for, in the exact shape it
+	// had: a repository without the feature diffed empty against enabled on
+	// every run, 422d, and took the whole settings change down with it
+	It("withholds a security feature the repository does not have", func() {
+		actions := orgsync.PlanSettings(repo,
+			orgsync.SettingsConfig{AdvancedSecurity: enabled(), HasWiki: disabled()},
+			orgsync.CurrentSettings{
+				AdvancedSecurity: orgsync.FeatureUnavailable, HasWiki: true,
+			},
+		)
+
+		sent := body(actions)
+		Expect(sent).To(HaveKeyWithValue("has_wiki", false))
+		Expect(sent).NotTo(HaveKey("security_and_analysis"))
+
+		// And it says which, and that nothing configured here will fix it
+		Expect(actions[0].After).To(ContainSubstring("advanced_security"))
+		Expect(actions[0].After).To(ContainSubstring("does not offer it"))
+	})
+
+	It("proposes nothing for a repository whose only gap is a feature it lacks", func() {
+		Expect(orgsync.PlanSettings(repo,
+			orgsync.SettingsConfig{AdvancedSecurity: enabled()},
+			orgsync.CurrentSettings{AdvancedSecurity: orgsync.FeatureUnavailable},
+		)).To(BeEmpty())
+	})
+
+	// Push protection needs secret scanning, which is the wording rule one
+	// endpoint down - and the same field in the table says so
+	It("withholds push protection from a repository without secret scanning", func() {
+		actions := orgsync.PlanSettings(repo,
+			orgsync.SettingsConfig{
+				SecretScanningPushProtection: enabled(), HasWiki: disabled(),
+			},
+			orgsync.CurrentSettings{
+				SecretScanning:               orgsync.FeatureOff,
+				SecretScanningPushProtection: orgsync.FeatureOff,
+				HasWiki:                      true,
+			},
+		)
+
+		Expect(body(actions)).NotTo(HaveKey("security_and_analysis"))
+		Expect(actions[0].After).To(ContainSubstring("secret_scanning_push_protection"))
+	})
+
+	It("sends push protection with the scanning the same change turns on", func() {
+		sent := body(orgsync.PlanSettings(repo,
+			orgsync.SettingsConfig{
+				SecretScanning: enabled(), SecretScanningPushProtection: enabled(),
+			},
+			orgsync.CurrentSettings{
+				SecretScanning:               orgsync.FeatureOff,
+				SecretScanningPushProtection: orgsync.FeatureOff,
+			},
+		))
+
+		Expect(sent).To(HaveKeyWithValue("security_and_analysis", map[string]any{
+			"secret_scanning":                 map[string]any{"status": "enabled"},
+			"secret_scanning_push_protection": map[string]any{"status": "enabled"},
+		}))
 	})
 
 	It("carries a payload the executor can read back", func() {
