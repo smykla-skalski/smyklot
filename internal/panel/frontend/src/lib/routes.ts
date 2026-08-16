@@ -16,14 +16,6 @@ export const PANEL_VIEWS = [
   'invitations',
   'history',
 ] as const;
-const SCOPED_PANEL_VIEWS = [
-  'settings',
-  'repositories',
-  'sync',
-  'users',
-  'invitations',
-  'history',
-] as const;
 
 /**
  * The views that belong to the reader rather than to a workspace or the console.
@@ -60,7 +52,17 @@ export const ROOT_INSTALLATION_VIEWS = [
 export const HISTORY_SECTIONS = ['audit', 'failures'] as const;
 
 export type PanelView = (typeof PANEL_VIEWS)[number];
-export type ScopedPanelView = (typeof SCOPED_PANEL_VIEWS)[number];
+
+/**
+ * A view in an installation's own address, which is every view there is.
+ *
+ * The name is kept because it says which surface an address belongs to - the
+ * console's subset is `RootInstallationView` - but it is the same list rather
+ * than a second copy of it. It used to be a copy, and a copy is what the
+ * router's own list turned out to be too: sync was added to every list but
+ * that one, and the row led to the not-found page.
+ */
+export type ScopedPanelView = PanelView;
 export type RootInstallationView = (typeof ROOT_INSTALLATION_VIEWS)[number];
 export type PersonalView = (typeof PERSONAL_VIEWS)[number];
 /** History's two tables are addressable, so a reload lands where you left off. */
@@ -262,7 +264,7 @@ export function rootSectionRoute(section: RootSection): RootRoute {
 }
 
 function isScopedPanelView(value: string): value is ScopedPanelView {
-  return SCOPED_PANEL_VIEWS.some((view) => view === value);
+  return PANEL_VIEWS.some((view) => view === value);
 }
 
 function isRootInstallationView(value: string): value is RootInstallationView {

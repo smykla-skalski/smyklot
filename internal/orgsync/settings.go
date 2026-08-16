@@ -449,10 +449,13 @@ func flatly(name string) func(map[string]any, any) {
 // configure, so any value at all means wanting the strategy it belongs to.
 func (f settingsField) asking(c SettingsConfig) bool {
 	value, _, configured := f.want(c)
-	if !configured {
-		return false
-	}
 
+	return configured && askingValue(value)
+}
+
+// askingValue is the same question asked of a value already in hand, which is
+// what the diff has by the time it needs the answer.
+func askingValue(value any) bool {
 	enabled, boolean := value.(bool)
 
 	return !boolean || enabled
@@ -581,7 +584,7 @@ func DiffSettings(config SettingsConfig, current CurrentSettings) (SettingsChang
 		// repository has secret scanning without advanced security and GitHub
 		// reports no advanced security there at all, so reading that absence as
 		// "off" would withhold a setting nothing was going to refuse.
-		if field.requires != "" && field.asking(config) &&
+		if field.requires != "" && askingValue(value) &&
 			!resulting[field.requires] && !absent[field.requires] {
 			change.withhold(field.name, becauseUnmet)
 

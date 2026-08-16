@@ -22,7 +22,9 @@ const panelViewsSource = "frontend/src/lib/routes.ts"
 // tested in the browser while a reload of its address answered with the
 // not-found page, because nothing held the two lists together.
 func TestEveryBrowserViewIsServedOnReload(t *testing.T) {
-	for _, view := range browserPanelViews(t, "PANEL_VIEWS") {
+	installation := browserPanelViews(t, "PANEL_VIEWS")
+
+	for _, view := range installation {
 		if !isPanelViewPath(view, nil) {
 			t.Errorf("the browser has a %q view and a reload of it is refused", view)
 		}
@@ -39,7 +41,7 @@ func TestEveryBrowserViewIsServedOnReload(t *testing.T) {
 		}
 	}
 
-	for _, view := range browserPanelViews(t, "PANEL_VIEWS") {
+	for _, view := range installation {
 		if slices.Contains(console, view) {
 			continue
 		}

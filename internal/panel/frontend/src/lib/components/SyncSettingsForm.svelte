@@ -146,10 +146,10 @@
   const disabled = $derived(saving || readOnly || unreadable);
 
   /* Two documents that would be saved the same way compare the same way, which
-     is what the preferences sync already needed and already spells. */
-  const changed = $derived(
-    wanted !== enabled || canonicalStringify(draft) !== canonicalStringify(stored),
-  );
+     is what the preferences sync already needed and already spells. The saved
+     side is rendered once per save rather than once per keystroke. */
+  const saved = $derived(canonicalStringify(stored));
+  const changed = $derived(wanted !== enabled || canonicalStringify(draft) !== saved);
 
   /** What a control shows: null where nothing is configured. */
   function valueOf(field: Field): string | null {
