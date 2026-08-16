@@ -826,6 +826,11 @@
     class:sidebar-collapsed={effectiveSidebarCollapsed}
     class:root-mode={rootMode}
   >
+    <!-- `showNavigation` covers a Root who owns no installation: no workspace for
+         the view rows to lead to, not in the console yet, and so - before this -
+         no navigation at all and no way to reach the console except by typing its
+         address. The rail is worth showing to anyone with somewhere to go from it,
+         and the view rows stand down by themselves through `showViews`. -->
     <IdentityBar
       {viewer}
       {targets}
@@ -839,7 +844,10 @@
       showUsers={selectedTarget?.capabilities.manage_target_users === true}
       showViews={selectedTarget !== null}
       showNavigation={viewer !== null &&
-        (rootMode || selectedTarget !== null || personalView !== null)}
+        (rootMode ||
+          selectedTarget !== null ||
+          personalView !== null ||
+          viewer.system_role !== 'none')}
       collapsed={effectiveSidebarCollapsed}
       onToggleCollapsed={toggleSidebar}
       {theme}
