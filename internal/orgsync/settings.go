@@ -128,10 +128,7 @@ func (c SettingsConfig) Validate() error {
 	// somebody typed rather than in every plan, silently.
 
 	for _, field := range fields {
-		if field.requires == "" {
-			continue
-		}
-		if _, _, configured := field.want(c); !configured {
+		if field.requires == "" || !field.asking(c) {
 			continue
 		}
 
@@ -441,6 +438,26 @@ func flatly(name string) func(map[string]any, any) {
 	return func(body map[string]any, value any) { body[name] = value }
 }
 
+// asking reports a setting configured to something that needs whatever it
+// depends on.
+//
+// Only one direction needs anything underneath it. Turning a feature off asks
+// nothing of the feature below it - GitHub refuses secret scanning being
+// switched on where advanced security is off, and accepts both being switched
+// off together, which is an ordinary thing for an organization to want. A
+// wording is different and is a request by existing: there is no "off" to
+// configure, so any value at all means wanting the strategy it belongs to.
+func (f settingsField) asking(c SettingsConfig) bool {
+	value, _, configured := f.want(c)
+	if !configured {
+		return false
+	}
+
+	enabled, boolean := value.(bool)
+
+	return !boolean || enabled
+}
+
 // fieldsByName addresses the table by the name GitHub knows a setting as, which
 // is how a dependent setting finds the one it depends on and how a plan renders
 // what a repository has now.
@@ -555,13 +572,17 @@ func DiffSettings(config SettingsConfig, current CurrentSettings) (SettingsChang
 			continue
 		}
 
-		// A dependency this repository does not have is not a dependency it is
-		// failing. Advanced security is the case: a public repository has
-		// secret scanning without it and GitHub does not report one at all
-		// there, so reading its absence as "off" would withhold a setting
-		// nothing was going to refuse. What the repository does have and has
-		// switched off is the pair GitHub answers with a 422.
-		if field.requires != "" && !resulting[field.requires] && !absent[field.requires] {
+		// Only on the way up, and only where the dependency is something this
+		// repository has.
+		//
+		// GitHub refuses a feature being switched on while what it needs is
+		// off; switching it off asks nothing of anything. And a dependency the
+		// repository does not have is not one it is failing - a public
+		// repository has secret scanning without advanced security and GitHub
+		// reports no advanced security there at all, so reading that absence as
+		// "off" would withhold a setting nothing was going to refuse.
+		if field.requires != "" && field.asking(config) &&
+			!resulting[field.requires] && !absent[field.requires] {
 			change.withhold(field.name, becauseUnmet)
 
 			continue

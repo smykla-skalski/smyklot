@@ -104,6 +104,27 @@ var _ = Describe("Settings configuration [Unit]", func() {
 		}, "secret_scanning_push_protection needs secret_scanning"),
 	)
 
+	// Only one direction needs anything underneath it. GitHub refuses a feature
+	// being switched on where what it needs is off, and accepts both being
+	// switched off together - which is an ordinary thing for an organization to
+	// want, and was refused at the keyboard with no way round it
+	DescribeTable("accepts a feature and its dependency both being turned off",
+		func(config orgsync.SettingsConfig) {
+			Expect(config.Validate()).To(Succeed())
+		},
+		Entry("secret scanning under advanced security", orgsync.SettingsConfig{
+			AdvancedSecurity: disabled(), SecretScanning: disabled(),
+		}),
+		Entry("push protection under secret scanning", orgsync.SettingsConfig{
+			SecretScanning: disabled(), SecretScanningPushProtection: disabled(),
+		}),
+		Entry("all three at once", orgsync.SettingsConfig{
+			AdvancedSecurity:             disabled(),
+			SecretScanning:               disabled(),
+			SecretScanningPushProtection: disabled(),
+		}),
+	)
+
 	// The same configuration turning the strategy on is what makes the wording
 	// beside it legal, and it is the ordinary way to configure both
 	It("accepts a wording whose strategy it turns on", func() {
@@ -460,6 +481,23 @@ var _ = Describe("Settings planning [Unit]", func() {
 
 		Expect(sent).To(HaveKeyWithValue("security_and_analysis", map[string]any{
 			"secret_scanning": map[string]any{"status": "enabled"},
+		}))
+	})
+
+	// The plan half of the same rule. A repository whose advanced security has
+	// lapsed still has secret scanning on, and turning that off is a change
+	// nothing refuses - withholding it would leave the feature enforced on a
+	// repository the configuration says should not have it
+	It("switches a security feature off under a dependency that is off", func() {
+		sent := body(orgsync.PlanSettings(repo,
+			orgsync.SettingsConfig{SecretScanning: disabled()},
+			orgsync.CurrentSettings{
+				AdvancedSecurity: orgsync.FeatureOff, SecretScanning: orgsync.FeatureOn,
+			},
+		))
+
+		Expect(sent).To(HaveKeyWithValue("security_and_analysis", map[string]any{
+			"secret_scanning": map[string]any{"status": "disabled"},
 		}))
 	})
 
