@@ -14,6 +14,7 @@
     hrefFor,
     onSelect,
     showUsers,
+    showViews,
     collapsed,
     rootMode,
     rootEnabled,
@@ -24,11 +25,23 @@
     onEnterRoot,
     returnHref,
     onReturnToPanel,
+    inboxHref,
+    inboxActive,
+    onSelectInbox,
+    unreadCount,
   }: {
     value: PanelView;
     hrefFor: (view: PanelView) => string;
     onSelect: (view: PanelView) => void;
     showUsers: boolean;
+    /**
+     * Whether a workspace is settled for the view links to lead to.
+     *
+     * A personal page names no workspace, so it can be reached before one has been
+     * chosen - by a Root who owns nothing, arriving straight at `/inbox`. Rows
+     * that would all point at `#` are worse than no rows.
+     */
+    showViews: boolean;
     collapsed: boolean;
     rootMode: boolean;
     rootEnabled: boolean;
@@ -39,6 +52,10 @@
     onEnterRoot: () => void;
     returnHref: string;
     onReturnToPanel: () => void;
+    inboxHref: string;
+    inboxActive: boolean;
+    onSelectInbox: () => void;
+    unreadCount: number;
   } = $props();
 
   const NAVIGATION_VIEWS = [
@@ -57,9 +74,15 @@
     'settings',
   ] as const satisfies readonly RootSection[];
 
+  /* A personal page stands over the view the reader was on, so while one is open
+     nothing in the list is current - the selection is on the Inbox row instead. */
   function isActive(item: PanelView): boolean {
+    if (inboxActive) return false;
     return value === item || (item === 'users' && value === 'invitations');
   }
+
+  const unreadLabel = $derived(unreadCount > 99 ? '99+' : String(unreadCount));
+  const inboxLabel = $derived(unreadCount === 0 ? 'Inbox' : `Inbox, ${unreadCount} unread`);
 
   function destination(item: PanelView): PanelView {
     return item === 'users' && value === 'invitations' ? 'invitations' : item;
@@ -81,6 +104,12 @@
     if (!plainClick(event)) return;
     event.preventDefault();
     onEnterRoot();
+  }
+
+  function selectInboxFromClick(event: MouseEvent): void {
+    if (!plainClick(event)) return;
+    event.preventDefault();
+    onSelectInbox();
   }
 
   function returnFromClick(event: MouseEvent): void {
@@ -281,8 +310,10 @@
     return {
       update(next: string) {
         if (next === selection) return;
+        /* Every field but the last says where the selection is; the last is the
+           rail's width, and changing that is a re-measure rather than a move. */
         const moved =
-          next.split(':').slice(0, 3).join(':') !== selection.split(':').slice(0, 3).join(':');
+          next.split(':').slice(0, -1).join(':') !== selection.split(':').slice(0, -1).join(':');
         selection = next;
         void place(moved);
       },
@@ -303,7 +334,7 @@
 <nav class={['panel-navigation', collapsed && 'collapsed']} aria-label="Panel navigation">
   <div
     class="view-links"
-    use:followSelection={`${rootMode ? 'root' : 'panel'}:${rootValue ?? ''}:${value ?? ''}:${collapsed}`}
+    use:followSelection={`${rootMode ? 'root' : 'panel'}:${rootValue ?? ''}:${value ?? ''}:${inboxActive}:${collapsed}`}
   >
     <span class="nav-thumb" aria-hidden="true"></span>
     {#if rootMode}
@@ -321,22 +352,7 @@
           <span class="navigation-tooltip">{rootLabel(section)}</span>
         </a>
       {/each}
-      <div class="navigation-spacer"></div>
-      <div class="admin-zone">
-        <a
-          class="admin-entry"
-          class:disabled={returnHref === '#'}
-          href={returnHref}
-          aria-label={collapsed ? 'Exit Root' : undefined}
-          aria-disabled={returnHref === '#' ? 'true' : undefined}
-          onclick={returnFromClick}
-        >
-          <span class="navigation-icon"><Icon name="chevron-left" size={20} /></span>
-          <span class="navigation-label">Exit Root</span>
-          <span class="navigation-tooltip">Exit Root</span>
-        </a>
-      </div>
-    {:else}
+    {:else if showViews}
       {#each visibleViews as item (item)}
         <a
           href={hrefFor(destination(item))}
@@ -351,22 +367,57 @@
           <span class="navigation-tooltip">{label(item)}</span>
         </a>
       {/each}
-      {#if rootEnabled}
-        <div class="navigation-spacer"></div>
-        <div class="admin-zone">
-          <a
-            class="admin-entry root-entry"
-            href={rootDashboardHref}
-            aria-label={collapsed ? 'Root console' : undefined}
-            onclick={enterRootFromClick}
-          >
-            <span class="navigation-icon"><Icon name="shield" size={20} /></span>
-            <span class="navigation-label">Root console</span>
-            <span class="navigation-tooltip">Root console</span>
-          </a>
-        </div>
-      {/if}
     {/if}
+
+    <div class="navigation-spacer"></div>
+
+    <!-- The zone the list does not reach: what is here belongs to the reader or to
+         the application, not to the workspace above it, and it is the same zone in
+         both modes so the inbox does not move when somebody enters the console. -->
+    <div class="foot-zone">
+      {#if rootMode}
+        <a
+          class="foot-entry"
+          class:disabled={returnHref === '#'}
+          href={returnHref}
+          aria-label={collapsed ? 'Exit Root' : undefined}
+          aria-disabled={returnHref === '#' ? 'true' : undefined}
+          onclick={returnFromClick}
+        >
+          <span class="navigation-icon"><Icon name="chevron-left" size={20} /></span>
+          <span class="navigation-label">Exit Root</span>
+          <span class="navigation-tooltip">Exit Root</span>
+        </a>
+      {:else if rootEnabled}
+        <a
+          class="foot-entry root-entry"
+          href={rootDashboardHref}
+          aria-label={collapsed ? 'Root console' : undefined}
+          onclick={enterRootFromClick}
+        >
+          <span class="navigation-icon"><Icon name="shield" size={20} /></span>
+          <span class="navigation-label">Root console</span>
+          <span class="navigation-tooltip">Root console</span>
+        </a>
+      {/if}
+
+      <a
+        class="foot-entry inbox-entry"
+        class:active={inboxActive}
+        href={inboxHref}
+        aria-label={collapsed || unreadCount > 0 ? inboxLabel : undefined}
+        aria-current={inboxActive ? 'page' : undefined}
+        onclick={selectInboxFromClick}
+      >
+        <span class="navigation-icon">
+          <Icon name="notifications" size={20} />
+          {#if unreadCount > 0}<span class="unread-dot" aria-hidden="true"></span>{/if}
+        </span>
+        <span class="navigation-label">Inbox</span>
+        {#if unreadCount > 0}<span class="unread-count" aria-hidden="true">{unreadLabel}</span>{/if}
+        <span class="navigation-tooltip">{inboxLabel}</span>
+      </a>
+    </div>
   </div>
 </nav>
 
@@ -478,10 +529,15 @@
     color: var(--sidebar-item-active-text);
   }
 
-  .admin-zone {
-    border-top: 1px solid var(--sidebar-border);
+  /* Named for where it is rather than for what it holds: it carries the reader's
+     own inbox as well as the way into and out of the console. No rule above it -
+     the space the spacer opens already separates it from the list, and the card
+     below draws the only line the foot of the rail needs. */
+  .foot-zone {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
     margin-top: var(--space-2);
-    padding-top: var(--space-2);
   }
 
   .root-entry .navigation-icon {
@@ -492,9 +548,53 @@
     background: color-mix(in srgb, var(--sidebar-root-accent) 10%, transparent);
   }
 
-  .admin-entry.disabled {
+  .foot-entry.disabled {
     cursor: default;
     opacity: 0.45;
+  }
+
+  /* The count reads as a count, not as a control: it takes no press or hover
+     state of its own, and the row it rides carries both. */
+  .unread-count {
+    align-items: center;
+    background: var(--unread-badge-bg);
+    border-radius: 999px;
+    color: var(--unread-badge-text);
+    display: inline-flex;
+    flex: none;
+    font: 700 var(--font-size-micro) / 1 var(--sans);
+    height: 1.25rem;
+    justify-content: center;
+    margin-left: auto;
+    min-width: 1.25rem;
+    padding-inline: 0.3rem;
+  }
+
+  /* Collapsed, the number has nowhere to go, so the fact that there is a number
+     rides the icon instead. Ringed in the rail's own ground so it reads as
+     sitting on the glyph rather than as part of it. */
+  .unread-dot {
+    display: none;
+  }
+
+  .collapsed .unread-count {
+    display: none;
+  }
+
+  .collapsed .unread-dot {
+    background: var(--unread-badge-bg);
+    border: 2px solid var(--sidebar-bg);
+    border-radius: 50%;
+    display: block;
+    height: 0.5rem;
+    position: absolute;
+    right: -0.1875rem;
+    top: -0.1875rem;
+    width: 0.5rem;
+  }
+
+  .inbox-entry .navigation-icon {
+    position: relative;
   }
 
   /* The trimmed label puts the cap band on the row's centre, so centring the icon
@@ -598,6 +698,16 @@
     }
 
     .collapsed .navigation-tooltip {
+      display: none;
+    }
+
+    /* The drawer is a full-width list whatever the rail is doing behind it, so
+       the count goes back to being a number beside its label. */
+    .collapsed .unread-count {
+      display: inline-flex;
+    }
+
+    .collapsed .unread-dot {
       display: none;
     }
   }

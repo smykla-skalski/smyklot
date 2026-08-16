@@ -24,6 +24,7 @@
     onOpenInstallations,
     onOpenElevations,
     onOpenFailures,
+    inboxHref,
     onOpenInbox,
   }: {
     api: PanelApi;
@@ -37,7 +38,8 @@
     onOpenInstallations: () => void;
     onOpenElevations: () => void;
     onOpenFailures: () => void;
-    /** Unread security events ARE the inbox, so that card opens it. */
+    /** Unread security events ARE the inbox, so that card leads to it. */
+    inboxHref: string;
     onOpenInbox: () => void;
   } = $props();
 
@@ -312,11 +314,12 @@
         </span>
         <span class="metric-chevron"><Icon name="chevron-right" size={14} /></span>
       </a>
-      <button
+      <!-- A link like every other card here, now that the inbox has an address. -->
+      <a
         class:attention={overview.unread_security_events > 0}
         class="metric-card"
-        type="button"
-        onclick={onOpenInbox}
+        href={inboxHref}
+        onclick={(event) => navigate(event, onOpenInbox)}
       >
         <span>
           <small>Unread security events</small>
@@ -324,7 +327,7 @@
           <em>Owner notifications</em>
         </span>
         <span class="metric-chevron"><Icon name="chevron-right" size={14} /></span>
-      </button>
+      </a>
     </div>
 
     <PendingCIQueue
@@ -644,21 +647,12 @@
     text-decoration: none;
   }
 
-  button.metric-card {
-    border: 1px solid color-mix(in srgb, var(--brand-action) 13%, var(--border-subtle));
-    cursor: pointer;
-    font: inherit;
-    text-align: left;
-  }
-
-  a.metric-card:hover,
-  button.metric-card:hover {
+  a.metric-card:hover {
     border-color: color-mix(in srgb, var(--brand-action) 34%, var(--border-subtle));
     transform: translateY(-1px);
   }
 
-  a.metric-card:active,
-  button.metric-card:active {
+  a.metric-card:active {
     transform: scale(var(--press-scale-surface));
   }
 

@@ -18,9 +18,8 @@
  * - A name is only ever read in the first position. `/repositories/file/file` is
  *   the repository called `file`, opened on its File pane.
  *
- * Dialogs with no row and no view to sit on - the notification inbox, which any
- * view can raise - are not here. They keep the query string until they become
- * views of their own.
+ * Dialogs with no row and no view to sit on are not here. They keep the query
+ * string, which is where the inbox lived until it became a page of its own.
  */
 
 export const REPOSITORY_SECTIONS = ['file', 'behavior', 'commands'] as const;

@@ -1,6 +1,7 @@
 <script lang="ts">
   import HistoryPanel from './components/HistoryPanel.svelte';
   import IdentityBar from './components/IdentityBar.svelte';
+  import InboxView from './components/InboxView.svelte';
   import PageFooter from './components/PageFooter.svelte';
   import Plate from './components/Plate.svelte';
   import RepositoryList from './components/RepositoryList.svelte';
@@ -14,7 +15,7 @@
   import UserManagement from './components/UserManagement.svelte';
   import type { PanelApi } from './lib/api';
   import type { PanelBuild } from './lib/base';
-  import { dialogRoute } from './lib/dialog-route.svelte';
+  import { dialogRoute, legacyInboxRoute } from './lib/dialog-route.svelte';
   import { LatestRequest } from './lib/latest-request';
   import {
     applyDocumentTheme,
@@ -34,6 +35,7 @@
     type PanelRoute,
     type PanelRouter,
     type PanelView,
+    type PersonalView,
     type RootRoute,
     type RootSection,
     type RouteDialog,
@@ -72,8 +74,16 @@
   let rootDataVersion = $state(0);
   let view = $state<PanelView>('settings');
   let rootMode = $state(false);
+  /**
+   * The reader's own page, when one is open over everything else.
+   *
+   * Not a view of the workspace and not a section of the console: while it is set
+   * it decides what the workspace shows, and the sidebar around it keeps the
+   * workspace it was reached from so there is somewhere to go back to.
+   */
+  let personalView = $state<PersonalView | null>(null);
+  let notificationUnread = $state(0);
   let requestedDocumentRoute = $state<PanelRoute | null>(null);
-  let identityBar = $state<ReturnType<typeof IdentityBar> | null>(null);
   let activeRootRoute = $state<RootRoute>({ rootView: 'overview' });
   /* History's table is part of the address, so a reload lands on the table the
      reader was on rather than snapping back to Audit. */
@@ -108,12 +118,14 @@
   );
   const rootValue = $derived(rootSection(activeRootRoute));
   const rootRole = $derived(viewer?.system_role === 'super_root' ? 'Super Root' : 'Root');
-  const activeDocumentRoute = $derived(
-    rootMode
-      ? activeRootRoute
-      : view === 'history'
-        ? { account: '', view, section: historySection }
-        : { account: '', view },
+  const activeDocumentRoute = $derived<PanelRoute>(
+    personalView !== null
+      ? { personal: personalView }
+      : rootMode
+        ? activeRootRoute
+        : view === 'history'
+          ? { account: '', view, section: historySection }
+          : { account: '', view },
   );
   const documentTitle = $derived(
     panelDocumentTitle(
@@ -141,13 +153,16 @@
   );
   const returnTarget = $derived(selectedTarget ?? targets[0] ?? null);
   const tableScrollView = $derived(
-    rootMode
-      ? rootValue === 'history' ||
+    personalView !== null
+      ? // The inbox is a feed and scrolls as a document; nothing is pinned.
+        false
+      : rootMode
+        ? rootValue === 'history' ||
           rootValue === 'access' ||
           // The list pins like every other table view; the installation detail
           // page is mixed content and stays in document flow.
           activeRootRoute.rootView === 'installations'
-      : selectedTarget !== null &&
+        : selectedTarget !== null &&
           ['repositories', 'users', 'invitations', 'history'].includes(view),
   );
 
@@ -204,15 +219,56 @@
 
   function selectView(nextView: PanelView): void {
     const target = selectedTarget;
-    if (target === null || view === nextView) return;
+    if (target === null || (view === nextView && personalView === null)) return;
     view = nextView;
-    router.push(routeFor(target, nextView));
+    navigate(routeFor(target, nextView));
+  }
+
+  /**
+   * Every push goes through here, so one place decides whether a personal page is
+   * still showing.
+   *
+   * It used to be `router.push` at a dozen call sites. Adding a page that stands
+   * over the workspace to that shape means every one of them has to remember to
+   * take it down, and the one that forgets leaves the inbox on screen with the
+   * address of somewhere else.
+   */
+  function navigate(route: PanelRoute): void {
+    personalView = 'personal' in route ? route.personal : null;
+    router.push(route);
+  }
+
+  /* Through `activateRoute` rather than straight to the router, because arriving
+     at a personal page is more than a push: it leaves the console and settles a
+     workspace underneath, and that has to be the same whether the reader pressed
+     the row or opened the address. */
+  function selectPersonal(next: PersonalView): void {
+    if (personalView === next) return;
+    void activateRoute({ personal: next }, 'push');
+    resetPageScroll();
   }
 
   async function activateRoute(
     requested: PanelRoute | null,
     navigation: 'none' | 'push' | 'replace',
   ): Promise<void> {
+    if (requested !== null && 'personal' in requested) {
+      /* A page of the reader's own leaves the console rather than hiding inside
+         it: the address says nothing about a console, so a reload could not put
+         one back, and the same address has to look the same both times.
+
+         The workspace context is still settled underneath, or the sidebar beside
+         the page would carry a switcher naming nothing and view links leading
+         nowhere. */
+      personalView = requested.personal;
+      rootMode = false;
+      settleInstallationContext();
+      if (navigation === 'push') router.push(requested);
+      else if (navigation === 'replace') router.replace(requested);
+      return;
+    }
+    personalView = null;
+
     if (requested !== null && 'rootView' in requested && viewer?.system_role !== 'none') {
       rootMode = true;
       if (requested.rootView === 'installation' && requested.section !== undefined) {
@@ -285,6 +341,33 @@
     return targets.find((target) => target.account.login.toLowerCase() === folded);
   }
 
+  /**
+   * Picks up the workspace the reader was last in, without navigating to it.
+   *
+   * A personal page names no workspace, so arriving at one directly would leave
+   * the sidebar with nothing selected and every view link pointing at `#`. This
+   * settles the same context the panel would have resolved for a bare address,
+   * and the address stays the personal one.
+   */
+  function settleInstallationContext(): void {
+    const lastInstallation = prefText(prefs.get('last_installation'));
+    const resolved = resolvePanelRoute(
+      targets.map((target) => target.account.login),
+      null,
+      lastInstallation === '' ? null : lastInstallation,
+    );
+    if (resolved === null) return;
+    const target = targetForAccount(resolved.account);
+    // Already in a workspace: keep the view the reader was reading, not the default.
+    if (target === undefined || selectedId === target.id) return;
+    selectedId = target.id;
+    view = resolved.view;
+    prefs.set('last_installation', target.account.login);
+    repositoryDetailsVersion += 1;
+    historyVersion += 1;
+    userVersion += 1;
+  }
+
   function routeFor(
     target: PanelTarget,
     nextView: PanelView,
@@ -317,6 +400,10 @@
 
   function rootHrefFor(section: RootSection): string {
     return router.path(rootSectionRoute(section));
+  }
+
+  function inboxHref(): string {
+    return router.path({ personal: 'inbox' });
   }
 
   function rootDashboardHref(): string {
@@ -352,7 +439,7 @@
   function selectRootInstallation(account: string, nextView: ScopedPanelView): void {
     const route = rootInstallationRoute(account, nextView);
     activeRootRoute = route;
-    router.push(route);
+    navigate(route);
     resetPageScroll();
   }
 
@@ -361,7 +448,7 @@
     historySection = section;
     const route = rootInstallationRoute(activeRootRoute.account, 'history', section);
     activeRootRoute = route;
-    router.push(route);
+    navigate(route);
   }
 
   function selectRootInstallations(): void {
@@ -370,7 +457,7 @@
 
   function selectRootView(route: RootRoute): void {
     activeRootRoute = route;
-    router.push(route);
+    navigate(route);
     resetPageScroll();
   }
 
@@ -390,7 +477,7 @@
     if (!rootMode || rootValue === section) return;
     const route = rootSectionRoute(section);
     activeRootRoute = route;
-    router.push(route);
+    navigate(route);
     resetPageScroll();
   }
 
@@ -400,7 +487,7 @@
     };
     if (activeRootRoute.rootView === route.rootView) return;
     activeRootRoute = route;
-    router.push(route);
+    navigate(route);
   }
 
   function selectRootAccessSection(section: 'users' | 'invitations'): void {
@@ -409,7 +496,7 @@
     };
     if (activeRootRoute.rootView === route.rootView) return;
     activeRootRoute = route;
-    router.push(route);
+    navigate(route);
   }
 
   function enterRoot(): void {
@@ -417,7 +504,7 @@
     const route: RootRoute = { rootView: 'overview' };
     rootMode = true;
     activeRootRoute = route;
-    router.push(route);
+    navigate(route);
     resetPageScroll();
   }
 
@@ -486,6 +573,11 @@
       if (rootMode && viewer?.system_role === 'none') {
         rootMode = false;
         await activateRoute(null, 'replace');
+      } else if (personalView !== null) {
+        /* The reader is on a page of their own. Rewriting the address because the
+           stream said something changed must not walk them off it, which writing
+           the workspace underneath would do. */
+        router.replace({ personal: personalView });
       } else if (rootMode) {
         router.replace(activeRootRoute);
       } else if (selectedId === null) {
@@ -514,6 +606,23 @@
     void refreshFromStream();
   }
 
+  /**
+   * The count on the sidebar's Inbox row, read without reading the inbox.
+   *
+   * The page reports its own count back while it is open, which is what makes
+   * marking something read take the badge down; this is for every other moment,
+   * when nothing on screen is asking the server about notifications.
+   */
+  async function refreshNotificationUnread(): Promise<void> {
+    try {
+      const page = await api.fetchNotifications({ limit: 1 });
+      notificationUnread = page.unread;
+    } catch {
+      /* A badge is not worth a failure of its own. The count keeps the last number
+         it knew rather than the panel growing an error about a sidebar dot. */
+    }
+  }
+
   function refreshAccessFromStream(): void {
     void refreshFromStream(true);
   }
@@ -522,13 +631,13 @@
     const target = selectedTarget;
     if (target === null || historySection === section) return;
     historySection = section;
-    router.push(routeFor(target, 'history', section));
+    navigate(routeFor(target, 'history', section));
   }
 
   function selectUserSection(section: 'users' | 'invitations'): void {
     if (!isAccessView(view) || view === section || selectedTarget === null) return;
     view = section;
-    router.push(routeFor(selectedTarget, section));
+    navigate(routeFor(selectedTarget, section));
   }
 
   function isAccessView(candidate: PanelView): candidate is 'users' | 'invitations' {
@@ -594,6 +703,16 @@
     }),
   );
 
+  /* Keyed to the account rather than to the viewer object, which the stream
+     replaces whenever anything about access changes: the count is the same count
+     until somebody else is signed in. */
+  const viewerAccountId = $derived(viewer?.account.id ?? null);
+
+  $effect(() => {
+    if (viewerAccountId === null || notificationVersion < 0) return;
+    void refreshNotificationUnread();
+  });
+
   /* Dialogs live in the query string, which the panel's own route writer drops
      whenever it writes a path. That is the behaviour we want - walking to another
      view closes what was open on top of the old one - so the two routers share the
@@ -649,6 +768,19 @@
     applyDocumentTheme(document, resolvedTheme, rootMode);
   });
 
+  /**
+   * Rewrites the address the inbox had while it was a dialog.
+   *
+   * Called before anything reads the address: the dialog router attaches on mount,
+   * and letting it see the name of a dialog no part of the panel will open leaves
+   * it thinking something is up there.
+   */
+  function adoptLegacyInboxAddress(): void {
+    const legacy = legacyInboxRoute(window.location.search);
+    if (legacy !== null) router.replace(legacy);
+  }
+
+  adoptLegacyInboxAddress();
   void load();
 </script>
 
@@ -695,7 +827,6 @@
     class:root-mode={rootMode}
   >
     <IdentityBar
-      bind:this={identityBar}
       {viewer}
       {targets}
       {selectedId}
@@ -706,7 +837,9 @@
       {viewHref}
       onSelectView={selectView}
       showUsers={selectedTarget?.capabilities.manage_target_users === true}
-      showNavigation={viewer !== null && (rootMode || selectedTarget !== null)}
+      showViews={selectedTarget !== null}
+      showNavigation={viewer !== null &&
+        (rootMode || selectedTarget !== null || personalView !== null)}
       collapsed={effectiveSidebarCollapsed}
       onToggleCollapsed={toggleSidebar}
       {theme}
@@ -719,9 +852,10 @@
       onEnterRoot={enterRoot}
       returnHref={returnHref()}
       onReturnToPanel={returnToPanel}
-      fetchNotifications={api.fetchNotifications}
-      markNotificationRead={api.markNotificationRead}
-      {notificationVersion}
+      inboxHref={inboxHref()}
+      inboxActive={personalView === 'inbox'}
+      onSelectInbox={() => selectPersonal('inbox')}
+      unreadCount={notificationUnread}
     />
 
     <!-- No wheel handler. A pointer over the page chrome used to have its wheel
@@ -755,6 +889,13 @@
         {:else if viewer === null}
           <!-- Only reachable with a failure above it; the signed-out page is a page
              of its own now, and the branch that chooses it sits outside this. -->
+        {:else if personalView === 'inbox'}
+          <InboxView
+            fetchPage={api.fetchNotifications}
+            markRead={api.markNotificationRead}
+            refreshVersion={notificationVersion}
+            onUnread={(unread) => (notificationUnread = unread)}
+          />
         {:else if rootMode}
           <section
             class="root-workspace"
@@ -772,7 +913,8 @@
                 onOpenInstallations={selectRootInstallations}
                 onOpenElevations={() => selectRootView({ rootView: 'history-audit' })}
                 onOpenFailures={() => selectRootView({ rootView: 'history-failures' })}
-                onOpenInbox={() => identityBar?.openInbox()}
+                inboxHref={inboxHref()}
+                onOpenInbox={() => selectPersonal('inbox')}
               />
             {:else if rootValue === 'installations'}
               <RootInstallations

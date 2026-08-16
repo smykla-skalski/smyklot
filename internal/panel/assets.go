@@ -21,6 +21,7 @@ const (
 	panelHistoryPath           = "history"
 	panelHistoryAuditPath      = "audit"
 	panelHistoryFailuresPath   = "failures"
+	panelInboxPath             = "inbox"
 	panelInvitationsPath       = "invitations"
 	panelInstallationsResource = "installations"
 	panelRepositoriesPath      = "repositories"
@@ -131,6 +132,10 @@ func isPanelNavigationPath(relative string) bool {
 		return true
 	}
 	parts := strings.Split(trimmed, "/")
+	// A page of the reader's own is the whole address; nothing hangs off it.
+	if len(parts) == 1 && parts[0] == panelInboxPath {
+		return true
+	}
 	if len(parts) == 2 && parts[0] == "invite" && validInvitationToken(parts[1]) {
 		return true
 	}

@@ -2488,6 +2488,7 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	for _, path := range []string{
 		"/panel/",
+		"/panel/inbox",
 		"/panel/invite/abcdefghijklmnopqrstuvwxyzABCDEFGH_01234567",
 		"/panel/i/smykla-skalski/repositories",
 		"/panel/i/smykla-skalski/users",
@@ -2541,6 +2542,8 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 		"/panel/users",
 		"/panel/invitations",
 		"/panel/help",
+		"/panel/inbox/security",
+		"/panel/i/smykla-skalski/inbox",
 		"/panel/smykla-skalski/repositories",
 		"/panel/auth/settings",
 		"/panel/webhook/history",

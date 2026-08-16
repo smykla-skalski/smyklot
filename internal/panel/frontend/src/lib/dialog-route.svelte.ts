@@ -10,16 +10,33 @@
  * `route-dialogs`, and this router writes them through the panel's own route
  * writer, so there is one place that decides what a panel address looks like.
  *
- * A dialog with no view to sit on - the notification inbox, which any view can
- * raise - has no such path, and rides the query string until it becomes a view of
- * its own. Both kinds are read and opened through the same three calls, so a
+ * A dialog with no view to sit on has no such path, and rides the query string
+ * instead. Both kinds are read and opened through the same three calls, so a
  * component never has to know which kind it is.
  */
 
-import { panelRoutePath, parsePanelRoute, type PanelRoute, type RouteDialog } from './routes';
+import {
+  panelRoutePath,
+  parsePanelRoute,
+  type PanelRoute,
+  type PersonalRoute,
+  type RouteDialog,
+} from './routes';
 import { dialogSegments, isDialogHost } from './route-dialogs';
 
 const DIALOG_KEY = 'dialog';
+
+/**
+ * The inbox as a dialog, which is what it was before it became a page.
+ *
+ * `?dialog=security-notifications` was its address for a few releases. A bookmark
+ * from then opens the inbox rather than whichever view it happened to be standing
+ * on, and the address is rewritten before anything reads it, so the name of a
+ * dialog nothing will open never enters the router.
+ */
+export function legacyInboxRoute(search: string): PersonalRoute | null {
+  return parseDialog(search)?.name === 'security-notifications' ? { personal: 'inbox' } : null;
+}
 
 export interface OpenDialog {
   /** Matches the `id` the dialog is declared with, so the two cannot drift. */
@@ -62,7 +79,7 @@ export function hasRouteHome(route: PanelRoute | null, dialog: OpenDialog): bool
 }
 
 function hostView(route: PanelRoute | null) {
-  if (route === null) return null;
+  if (route === null || 'personal' in route) return null;
   const view = 'rootView' in route ? rootHost(route) : route.view;
 
   return view !== null && isDialogHost(view) ? view : null;

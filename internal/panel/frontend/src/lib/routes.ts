@@ -11,10 +11,24 @@ export type { RouteDialog };
 export const PANEL_VIEWS = ['settings', 'repositories', 'users', 'invitations', 'history'] as const;
 const SCOPED_PANEL_VIEWS = ['settings', 'repositories', 'users', 'invitations', 'history'] as const;
 
+/**
+ * The views that belong to the reader rather than to a workspace or the console.
+ *
+ * Everything else the panel shows is scoped to something in the address: an
+ * installation under `/i/<account>`, the application under `/root`. The inbox is
+ * scoped to whoever is signed in, which no path segment can name, so it sits at
+ * the top: `/inbox`. One address, and the same page whichever part of the panel
+ * it was reached from - a Root who opens it leaves the console rather than
+ * carrying it along, because an address that says nothing about the console
+ * cannot be reloaded back into one.
+ */
+export const PERSONAL_VIEWS = ['inbox'] as const;
+
 export const HISTORY_SECTIONS = ['audit', 'failures'] as const;
 
 export type PanelView = (typeof PANEL_VIEWS)[number];
 export type ScopedPanelView = (typeof SCOPED_PANEL_VIEWS)[number];
+export type PersonalView = (typeof PERSONAL_VIEWS)[number];
 /** History's two tables are addressable, so a reload lands where you left off. */
 export type HistorySection = (typeof HISTORY_SECTIONS)[number];
 export type RootSection = 'overview' | 'installations' | 'access' | 'history' | 'settings';
@@ -40,7 +54,9 @@ export type InstallationRoute = {
   /** What is open on top of the view; see `route-dialogs`. */
   dialog?: RouteDialog;
 };
-export type PanelRoute = InstallationRoute | RootRoute;
+/** A page of the reader's own, standing beside the workspaces and the console. */
+export type PersonalRoute = { personal: PersonalView };
+export type PanelRoute = InstallationRoute | RootRoute | PersonalRoute;
 
 export interface ResolvedPanelRoute {
   account: string;
@@ -72,6 +88,11 @@ export function parsePanelRoute(basePath: string, pathname: string): PanelRoute 
 
   const parts = relative.split('/');
   if (parts[0] === 'root') return parseRootRoute(parts);
+  /* A personal view is the whole address. Nothing hangs off it - no account to
+     scope it to and no dialog to stand on it - so anything further is a path
+     that does not resolve rather than the view with something appended. */
+  const personal = PERSONAL_VIEWS.find((view) => view === parts[0]);
+  if (personal !== undefined) return parts.length === 1 ? { personal } : null;
   if (parts.length < 3) return null;
 
   const [namespace, encodedAccount, rawView] = parts;
@@ -141,6 +162,7 @@ export function parseInvitationToken(basePath: string, pathname: string): string
 export function panelRoutePath(basePath: string, route: PanelRoute): string {
   const base = normalizeBasePath(basePath);
   if ('rootView' in route) return `${base}${rootRoutePath(route)}`;
+  if ('personal' in route) return `${base}/${route.personal}`;
 
   return (
     `${base}/i/${encodeURIComponent(route.account)}/${route.view}` +
@@ -229,8 +251,12 @@ export function createPanelRouter(basePath: string, browser: BrowserNavigation):
        pressing another tab. Tidying the address the panel is already on does not:
        `/root/access` is rewritten to `/root/access/users` the moment it loads, and
        dropping the query there would throw away a pasted link to a dialog before
-       anything had a chance to open it. */
-    const url = replace ? next + browser.location.search : next;
+       anything had a chance to open it.
+
+       A personal view hosts no dialogs at all, so there is nothing there to
+       preserve, and carrying a query onto one would leave `?dialog=` naming
+       something no part of the page will ever open. */
+    const url = replace && !('personal' in route) ? next + browser.location.search : next;
     const method = replace ? browser.history.replaceState : browser.history.pushState;
     method.call(browser.history, browser.history.state, '', url);
   }
@@ -253,6 +279,7 @@ function isScopedPanelView(value: string): value is ScopedPanelView {
 }
 
 function routeTitleSegments(route: PanelRoute): string[] {
+  if ('personal' in route) return [route.personal];
   if ('rootView' in route && route.rootView !== 'installation') {
     return route.rootView.split('-').reverse();
   }

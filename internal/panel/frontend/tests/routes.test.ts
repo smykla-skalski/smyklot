@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { legacyInboxRoute } from '../src/lib/dialog-route.svelte';
 import {
   createPanelRouter,
   panelDocumentTitle,
@@ -157,6 +158,7 @@ describe('panel document titles', () => {
     [{ account: 'acme', view: 'invitations' }, 'Invitations | Access | SMYKLOT'],
     [{ account: 'acme', view: 'history', section: 'audit' }, 'Audit | History | SMYKLOT'],
     [{ account: 'acme', view: 'history', section: 'failures' }, 'Failures | History | SMYKLOT'],
+    [{ personal: 'inbox' }, 'Inbox | SMYKLOT'],
     [{ rootView: 'overview' }, 'Overview | Root Console | SMYKLOT'],
     [{ rootView: 'installations' }, 'Installations | Root Console | SMYKLOT'],
     [{ rootView: 'access-users' }, 'Users | Access | Root Console | SMYKLOT'],
@@ -271,6 +273,37 @@ describe('browser panel router', () => {
     // Walking to another view leaves behind what was open on the one before it.
     router.push({ rootView: 'overview' });
     expect(fixture.url()).toBe('/panel/root');
+  });
+});
+
+describe('personal routes', () => {
+  it('reads the inbox at the top of the panel, under any mount', () => {
+    expect(parsePanelRoute('', '/inbox')).toEqual({ personal: 'inbox' });
+    expect(parsePanelRoute('/panel', '/panel/inbox/')).toEqual({ personal: 'inbox' });
+    expect(panelRoutePath('/panel', { personal: 'inbox' })).toBe('/panel/inbox');
+  });
+
+  it('refuses anything hanging off it, or scoped to a workspace', () => {
+    expect(parsePanelRoute('', '/inbox/security')).toBeNull();
+    expect(parsePanelRoute('', '/i/acme/inbox')).toBeNull();
+    expect(parsePanelRoute('', '/root/inbox')).toBeNull();
+  });
+
+  /* Replacing normally keeps the query, because it names the dialog open on the
+     view being tidied. A personal page hosts none, so a query carried onto one
+     would name something nothing there will ever open. */
+  it('drops the query on the way to a page that hosts no dialogs', () => {
+    const fixture = fakeBrowser('/panel/i/acme/repositories', '?dialog=security-notifications');
+    const router = createPanelRouter('/panel', fixture.browser);
+
+    router.replace({ personal: 'inbox' });
+    expect(fixture.url()).toBe('/panel/inbox');
+  });
+
+  it('sends the inbox dialog that used to ride the query to the page', () => {
+    expect(legacyInboxRoute('?dialog=security-notifications')).toEqual({ personal: 'inbox' });
+    expect(legacyInboxRoute('?dialog=repository-settings&repository=api')).toBeNull();
+    expect(legacyInboxRoute('')).toBeNull();
   });
 });
 

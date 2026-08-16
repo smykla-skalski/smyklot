@@ -1,5 +1,4 @@
 <script lang="ts">
-  import type { PanelApi } from '../lib/api';
   import { fuzzyCandidates } from '../lib/fuzzy';
   import { handleLabel, readHandle } from '../lib/identity';
   import type { ThemeDisplay } from '../lib/preferences';
@@ -8,7 +7,6 @@
   import Avatar from './Avatar.svelte';
   import BrandMark from './BrandMark.svelte';
   import Icon from './Icon.svelte';
-  import NotificationInbox from './NotificationInbox.svelte';
   import Popover from './Popover.svelte';
   import ThemeSwitch from './ThemeSwitch.svelte';
   import ViewTabs from './ViewTabs.svelte';
@@ -24,6 +22,7 @@
     viewHref,
     onSelectView,
     showUsers,
+    showViews,
     showNavigation,
     collapsed,
     onToggleCollapsed,
@@ -37,9 +36,10 @@
     onEnterRoot,
     returnHref,
     onReturnToPanel,
-    fetchNotifications,
-    markNotificationRead,
-    notificationVersion,
+    inboxHref,
+    inboxActive,
+    onSelectInbox,
+    unreadCount,
   }: {
     viewer: PanelViewer | null;
     targets: PanelTarget[];
@@ -51,6 +51,8 @@
     viewHref: (view: PanelView) => string;
     onSelectView: (view: PanelView) => void;
     showUsers: boolean;
+    /** Whether there is a workspace for the view links to lead to. */
+    showViews: boolean;
     showNavigation: boolean;
     collapsed: boolean;
     onToggleCollapsed: () => void;
@@ -64,17 +66,17 @@
     onEnterRoot: () => void;
     returnHref: string;
     onReturnToPanel: () => void;
-    fetchNotifications: PanelApi['fetchNotifications'];
-    markNotificationRead: PanelApi['markNotificationRead'];
-    notificationVersion: number;
+    inboxHref: string;
+    inboxActive: boolean;
+    onSelectInbox: () => void;
+    /** Unread notifications, for the badge on the Inbox row and the account card. */
+    unreadCount: number;
   } = $props();
 
   let accountOpen = $state(false);
-  let inbox = $state<ReturnType<typeof NotificationInbox> | null>(null);
   let targetOpen = $state(false);
   let targetQuery = $state('');
   let mobileNavigationOpen = $state(false);
-  let unreadCount = $state(0);
   /**
    * The stylesheet's own breakpoint, asked of the browser rather than reproduced.
    *
@@ -135,17 +137,6 @@
         : '',
   );
 
-  /**
-   * The inbox trigger lives in the account menu, but the dialog does not: `Modal` moves itself out
-   * to the shell, so it no longer needs the menu rendered to be visible. Opening from elsewhere -
-   * the overview's unread-security-events card - therefore does not have to open the menu first,
-   * and opening from the menu closes it on the way through.
-   */
-  export function openInbox(): void {
-    closeMenus();
-    inbox?.showInbox();
-  }
-
   /* The two menus dismiss themselves: they are layers in the top layer, and the
      platform closes one when the other opens, on a press outside, and on Escape,
      returning focus to whichever trigger was named. What is left here is the
@@ -196,6 +187,11 @@
   function selectRoot(next: RootSection): void {
     mobileNavigationOpen = false;
     onSelectRoot(next);
+  }
+
+  function selectInbox(): void {
+    mobileNavigationOpen = false;
+    onSelectInbox();
   }
 
   function enterRoot(): void {
@@ -346,6 +342,7 @@
         hrefFor={viewHref}
         onSelect={selectView}
         {showUsers}
+        {showViews}
         {collapsed}
         {rootMode}
         rootEnabled={systemRoleLabel !== ''}
@@ -356,6 +353,10 @@
         onEnterRoot={enterRoot}
         {returnHref}
         onReturnToPanel={returnToPanel}
+        {inboxHref}
+        {inboxActive}
+        onSelectInbox={selectInbox}
+        {unreadCount}
       />
     </div>
   {/if}
@@ -373,17 +374,18 @@
     >
       {#snippet trigger(attributes)}
         <div class="account-card">
+          <!-- No unread dot here any more. It marked a count that could only be
+               read by opening this menu; the count is on the Inbox row now, and a
+               second mark on a card holding nothing about notifications would
+               point at nothing. -->
           <button
             class="who"
             type="button"
-            aria-label={unreadCount === 0
-              ? `Account menu for ${viewer.account.display_name}`
-              : `Account menu for ${viewer.account.display_name}, ${unreadCount} unread notifications`}
+            aria-label={`Account menu for ${viewer.account.display_name}`}
             {...attributes}
           >
             <span class="who-avatar">
               <Avatar account={viewer.account} size={32} />
-              {#if unreadCount > 0}<span class="unread-dot" aria-hidden="true"></span>{/if}
             </span>
             <span class="who-text">
               <span class="who-name">{viewer.account.display_name}</span>
@@ -410,15 +412,6 @@
             <small class="mono">{handleLabel(handle)}</small>
           </span>
         </div>
-        <hr class="menu-divider" />
-        <NotificationInbox
-          bind:this={inbox}
-          fetchPage={fetchNotifications}
-          markRead={markNotificationRead}
-          refreshVersion={notificationVersion}
-          onUnread={(next) => (unreadCount = next)}
-          onOpen={closeMenus}
-        />
         <hr class="menu-divider" />
         <div class="theme-row">
           <span class="theme-icon" aria-hidden="true"><Icon name="sun-moon" size={15} /></span>
@@ -828,18 +821,6 @@
   .who-avatar {
     display: inline-flex;
     flex: none;
-    position: relative;
-  }
-
-  .unread-dot {
-    background: var(--unread-badge-bg);
-    border: 2px solid var(--sidebar-bg);
-    border-radius: 50%;
-    height: 0.625rem;
-    position: absolute;
-    right: -1px;
-    top: -1px;
-    width: 0.625rem;
   }
 
   .who-text {
