@@ -97,11 +97,24 @@ func (c SettingsConfig) Validate() error {
 		}
 	}
 
+	fields := settingsFields()
+	byName := fieldsByName(fields)
+
 	// A repository has to allow some way of merging. GitHub refuses the last
 	// one being turned off, and it refuses it as a 422 on the whole request -
 	// so a configuration that turns all three off breaks every other setting
 	// in the same change rather than only itself.
-	if allFalse(c.AllowMergeCommit, c.AllowSquashMerge, c.AllowRebaseMerge) {
+	//
+	// All three, because two off is a legal thing to ask for: a repository
+	// whose third one is on takes it. What that leaves - two off and one
+	// unconfigured, against a repository that already has the third off - is
+	// caught by DiffSettings, which is the only place that knows.
+	if noMergeMethod(fields, func(field settingsField) (bool, bool) {
+		value, _, configured := field.want(c)
+		enabled, _ := value.(bool)
+
+		return enabled, configured
+	}) {
 		return invalid("a repository must allow at least one way to merge")
 	}
 
@@ -113,8 +126,6 @@ func (c SettingsConfig) Validate() error {
 	// configuration that turns the strategy off itself is asking for something
 	// impossible everywhere, and the place to say so is beside the field
 	// somebody typed rather than in every plan, silently.
-	fields := settingsFields()
-	byName := fieldsByName(fields)
 
 	for _, field := range fields {
 		if field.requires == "" {
@@ -203,6 +214,11 @@ type settingsField struct {
 	// cannot use would take down every other setting sent beside it.
 	requires string
 
+	// merges marks one of the ways a repository may be merged. GitHub judges
+	// those as a group rather than one at a time: at least one has to be left
+	// on, and the last one being turned off is a 422 on the whole request.
+	merges bool
+
 	want func(SettingsConfig) (value any, display string, configured bool)
 	have func(CurrentSettings) string
 
@@ -231,15 +247,15 @@ type settingsField struct {
 // validate three fields it never sent.
 func settingsFields() []settingsField {
 	return []settingsField{
-		boolField("allow_merge_commit",
+		merging(boolField("allow_merge_commit",
 			func(c SettingsConfig) *bool { return c.AllowMergeCommit },
-			func(s CurrentSettings) bool { return s.AllowMergeCommit }),
-		boolField("allow_squash_merge",
+			func(s CurrentSettings) bool { return s.AllowMergeCommit })),
+		merging(boolField("allow_squash_merge",
 			func(c SettingsConfig) *bool { return c.AllowSquashMerge },
-			func(s CurrentSettings) bool { return s.AllowSquashMerge }),
-		boolField("allow_rebase_merge",
+			func(s CurrentSettings) bool { return s.AllowSquashMerge })),
+		merging(boolField("allow_rebase_merge",
 			func(c SettingsConfig) *bool { return c.AllowRebaseMerge },
-			func(s CurrentSettings) bool { return s.AllowRebaseMerge }),
+			func(s CurrentSettings) bool { return s.AllowRebaseMerge })),
 		boolField("allow_auto_merge",
 			func(c SettingsConfig) *bool { return c.AllowAutoMerge },
 			func(s CurrentSettings) bool { return s.AllowAutoMerge }),
@@ -343,6 +359,13 @@ func describeStatus(enabled bool) string {
 	}
 
 	return securityDisabled
+}
+
+// merging marks one of the ways a repository may be merged.
+func merging(field settingsField) settingsField {
+	field.merges = true
+
+	return field
 }
 
 func boolField(
@@ -454,6 +477,11 @@ type Withholding struct {
 const (
 	becauseUnavailable = "this repository does not offer it"
 	becauseUnmet       = "the setting it needs is off here"
+
+	// becauseUnmergeable is the third, and the one no configuration can be
+	// checked for on its own: two merge methods off is a legal thing to ask of
+	// a repository whose third one is on.
+	becauseUnmergeable = "it would leave this repository no way to merge"
 )
 
 // DiffSettings reports what would have to change, and whether anything would.
@@ -473,6 +501,16 @@ func DiffSettings(config SettingsConfig, current CurrentSettings) (SettingsChang
 			resulting[field.name] = field.on(config, current)
 		}
 	}
+
+	// Whether this repository would still have a way to merge afterwards.
+	//
+	// Only the repository can answer it. A configuration turning two methods
+	// off is legal - a repository whose third is on takes it - so the pair that
+	// gets refused is that configuration meeting a repository that already had
+	// the third one off, and nothing checked before this point has both halves.
+	mergeable := !noMergeMethod(fields, func(field settingsField) (bool, bool) {
+		return resulting[field.name], true
+	})
 
 	for _, field := range fields {
 		value, want, configured := field.want(config)
@@ -499,6 +537,16 @@ func DiffSettings(config SettingsConfig, current CurrentSettings) (SettingsChang
 
 		if field.requires != "" && !resulting[field.requires] {
 			change.withhold(field.name, becauseUnmet)
+
+			continue
+		}
+
+		// Every merge method the change would switch off, not an arbitrary one
+		// of them: turning off one of a pair and keeping the other would leave
+		// a repository half-way to a policy it can never reach, and which half
+		// depended on the order of this table.
+		if field.merges && !mergeable {
+			change.withhold(field.name, becauseUnmergeable)
 
 			continue
 		}
@@ -599,22 +647,39 @@ func describeBool(value bool) string {
 	return "off"
 }
 
-// allFalse reports every configured value being off, ignoring the ones nobody
-// configured. Three unset merge strategies is not a repository that forbids
-// merging; it is a repository nobody said anything about.
-func allFalse(values ...*bool) bool {
-	configured := 0
-	for _, value := range values {
-		if value == nil {
+// noMergeMethod reports a repository that would be left unable to merge at all.
+//
+// Asked twice with two different answers to "what would this setting be": the
+// configuration's own, where an unconfigured one says nothing, and the state a
+// change would produce, where it says what the repository already has. The
+// question is the same either way, so the walk over the table is written once.
+//
+// Nobody configuring any of them is not a repository that forbids merging; it
+// is a repository nobody said anything about, so an answer that says nothing
+// counts as neither on nor against.
+func noMergeMethod(
+	fields []settingsField,
+	answer func(settingsField) (enabled, configured bool),
+) bool {
+	methods, silent := 0, 0
+
+	for _, field := range fields {
+		if !field.merges {
 			continue
 		}
-		configured++
-		if *value {
+
+		methods++
+
+		enabled, configured := answer(field)
+		switch {
+		case enabled:
 			return false
+		case !configured:
+			silent++
 		}
 	}
 
-	return configured == len(values)
+	return methods > 0 && silent == 0
 }
 
 // DecodeSettings reads what an action says to apply.

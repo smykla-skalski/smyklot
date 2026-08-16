@@ -290,6 +290,71 @@ var _ = Describe("Settings planning [Unit]", func() {
 		Expect(sent).To(HaveLen(1))
 	})
 
+	// Two merge methods off is a legal thing to ask for - a repository whose
+	// third is on takes it - so the configuration alone cannot be refused. The
+	// pair that GitHub answers with a 422 is that configuration meeting a
+	// repository that already had the third one off, and only here are both
+	// halves in hand
+	It("withholds the merge methods that would leave a repository unmergeable", func() {
+		actions := orgsync.PlanSettings(repo,
+			orgsync.SettingsConfig{
+				AllowMergeCommit: disabled(),
+				AllowSquashMerge: disabled(),
+				HasWiki:          disabled(),
+			},
+			orgsync.CurrentSettings{
+				AllowMergeCommit: true, AllowSquashMerge: true,
+				// Nothing configured says otherwise, and this is what makes the
+				// pair above impossible here
+				AllowRebaseMerge: false,
+				HasWiki:          true,
+			},
+		)
+
+		sent := body(actions)
+		Expect(sent).To(HaveKeyWithValue("has_wiki", false))
+
+		// Both, not one of them. Turning one off and keeping the other would
+		// leave a repository half-way to a policy it can never reach, and which
+		// half would depend on the order of a table
+		Expect(sent).NotTo(HaveKey("allow_merge_commit"))
+		Expect(sent).NotTo(HaveKey("allow_squash_merge"))
+		Expect(actions[0].After).To(ContainSubstring("no way to merge"))
+	})
+
+	// The same configuration against a repository that does allow rebasing is
+	// exactly what it asks for, and has to go through
+	It("switches merge methods off where one is left", func() {
+		sent := body(orgsync.PlanSettings(repo,
+			orgsync.SettingsConfig{
+				AllowMergeCommit: disabled(), AllowSquashMerge: disabled(),
+			},
+			orgsync.CurrentSettings{
+				AllowMergeCommit: true, AllowSquashMerge: true, AllowRebaseMerge: true,
+			},
+		))
+
+		Expect(sent).To(HaveKeyWithValue("allow_merge_commit", false))
+		Expect(sent).To(HaveKeyWithValue("allow_squash_merge", false))
+	})
+
+	// And the method the same change turns on counts, so a repository can be
+	// moved from merge commits to rebasing in one go
+	It("counts a merge method the same change switches on", func() {
+		sent := body(orgsync.PlanSettings(repo,
+			orgsync.SettingsConfig{
+				AllowMergeCommit: disabled(),
+				AllowSquashMerge: disabled(),
+				AllowRebaseMerge: enabled(),
+			},
+			orgsync.CurrentSettings{AllowMergeCommit: true, AllowSquashMerge: true},
+		))
+
+		Expect(sent).To(HaveKeyWithValue("allow_merge_commit", false))
+		Expect(sent).To(HaveKeyWithValue("allow_squash_merge", false))
+		Expect(sent).To(HaveKeyWithValue("allow_rebase_merge", true))
+	})
+
 	// Nothing this can do about it until somebody configures the strategy or
 	// the repository turns it on, and an action whose body would be empty is a
 	// PATCH that can only fail
