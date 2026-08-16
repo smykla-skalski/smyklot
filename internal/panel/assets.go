@@ -3,7 +3,6 @@ package panel
 import (
 	"bytes"
 	"crypto/sha256"
-	"encoding/json"
 	"fmt"
 	"html"
 	"io/fs"
@@ -28,64 +27,94 @@ const (
 	panelSettingsPath          = "settings"
 )
 
-// The two documents the panel serves by name rather than as plain static files:
-// the shell every navigable route resolves to, and the worker, which is read and
-// rewritten rather than passed through.
+// The documents the panel serves by name rather than as plain static files.
 const (
 	indexAsset         = "index.html"
 	serviceWorkerAsset = "sw.js"
 )
 
+// Text file extensions whose sentinels the server rewrites at startup. Binary
+// files (images, fonts) are stored verbatim.
+var textExtensions = map[string]bool{
+	".html": true,
+	".js":   true,
+	".mjs":  true,
+	".css":  true,
+	".json": true,
+	".svg":  true,
+	".map":  true,
+}
+
 type assetBundle struct {
-	files     fs.FS
+	files     map[string][]byte
 	index     []byte
 	indexETag string
-	// The same document with the error placeholders still in it, so an error
-	// response can fill them per request. Kept apart from index rather than
-	// re-derived: index is served on the hot path and must not carry them.
-	errorPage     string
-	serviceWorker []byte
+	// The index with the error and noscript placeholders still in it, so an
+	// error response can fill them per request. Kept apart from index rather
+	// than re-derived: index is served on the hot path and must not carry them.
+	errorPage string
 }
 
 func newAssetBundle(cfg Config) (*assetBundle, error) {
-	index, err := fs.ReadFile(cfg.Assets, indexAsset)
+	files := make(map[string][]byte)
+	var indexRaw string
+
+	err := fs.WalkDir(cfg.Assets, ".", func(p string, entry fs.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			return err
+		}
+		content, err := fs.ReadFile(cfg.Assets, p)
+		if err != nil {
+			return err
+		}
+		if !textExtensions[path.Ext(p)] {
+			files[p] = content
+			return nil
+		}
+		rewritten := strings.ReplaceAll(string(content), basePathSentinel, cfg.BasePath)
+		rewritten = strings.ReplaceAll(rewritten, versionSentinel, html.EscapeString(cfg.Version))
+		rewritten = strings.ReplaceAll(rewritten, serviceSentinel, html.EscapeString(cfg.ServiceHost))
+		files[p] = []byte(rewritten)
+		if p == indexAsset {
+			indexRaw = rewritten
+		}
+		return nil
+	})
 	if err != nil {
-		return nil, fmt.Errorf("read panel index: %w", err)
+		return nil, fmt.Errorf("walk panel assets: %w", err)
 	}
-	rewritten := strings.ReplaceAll(string(index), basePathSentinel, cfg.BasePath)
-	rewritten = strings.ReplaceAll(rewritten, versionSentinel, html.EscapeString(cfg.Version))
-	rewritten = strings.ReplaceAll(rewritten, serviceSentinel, html.EscapeString(cfg.ServiceHost))
+
+	if indexRaw == "" {
+		return nil, fmt.Errorf("panel bundle has no %s", indexAsset)
+	}
+
 	// An error document is built by substitution, so a missing placeholder would
 	// silently serve a page that reports nothing. Fail at startup instead.
 	for _, sentinel := range []string{errorSentinel, noscriptSentinel} {
-		if strings.Count(rewritten, sentinel) != 1 {
+		if strings.Count(indexRaw, sentinel) != 1 {
 			return nil, fmt.Errorf("panel index must carry %s exactly once", sentinel)
 		}
 	}
 	served := strings.NewReplacer(errorSentinel, "", noscriptSentinel, defaultNoscript).
-		Replace(rewritten)
-	serviceWorker, err := fs.ReadFile(cfg.Assets, serviceWorkerAsset)
-	if err != nil {
-		return nil, fmt.Errorf("read panel service worker: %w", err)
-	}
-	encodedVersion, err := json.Marshal(cfg.Version)
-	if err != nil {
-		return nil, fmt.Errorf("encode panel version: %w", err)
-	}
-	rewrittenWorker := string(serviceWorker)
-	for _, placeholder := range []string{`"` + versionSentinel + `"`, `'` + versionSentinel + `'`} {
-		rewrittenWorker = strings.ReplaceAll(rewrittenWorker, placeholder, string(encodedVersion))
-	}
-	if strings.Contains(rewrittenWorker, versionSentinel) {
-		return nil, fmt.Errorf("rewrite panel service worker version")
+		Replace(indexRaw)
+
+	// index.html is served via writeIndex, not from the file map.
+	delete(files, indexAsset)
+
+	// Fail-closed: no served text asset may retain an unresolved sentinel.
+	for p, content := range files {
+		if strings.Contains(string(content), basePathSentinel) ||
+			strings.Contains(string(content), versionSentinel) ||
+			strings.Contains(string(content), serviceSentinel) {
+			return nil, fmt.Errorf("panel asset %s retains an unresolved sentinel after rewrite", p)
+		}
 	}
 
 	return &assetBundle{
-		files:         cfg.Assets,
-		index:         []byte(served),
-		indexETag:     fmt.Sprintf(`"%x"`, sha256.Sum256([]byte(served))),
-		errorPage:     rewritten,
-		serviceWorker: []byte(rewrittenWorker),
+		files:     files,
+		index:     []byte(served),
+		indexETag: fmt.Sprintf(`"%x"`, sha256.Sum256([]byte(served))),
+		errorPage: indexRaw,
 	}, nil
 }
 
@@ -103,8 +132,8 @@ func (s *Server) serveAsset(w http.ResponseWriter, r *http.Request) {
 		s.writePageError(w, r, http.StatusNotFound, "not_found", "panel asset not found")
 		return
 	}
-	content, err := fs.ReadFile(s.assets.files, relative)
-	if err != nil {
+	content, ok := s.assets.files[relative]
+	if !ok {
 		if isPanelNavigationPath(relative) {
 			s.writeIndex(w, r)
 		} else {
@@ -118,9 +147,8 @@ func (s *Server) serveAsset(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", contentType)
 	if relative == serviceWorkerAsset {
-		content = s.assets.serviceWorker
 		w.Header().Set("Cache-Control", "no-cache")
-	} else if strings.HasPrefix(relative, "assets/") {
+	} else if strings.HasPrefix(relative, "_app/") {
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	} else {
 		w.Header().Set("Cache-Control", "public, max-age=3600")
