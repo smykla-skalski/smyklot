@@ -251,11 +251,15 @@ describe('Root installation access', () => {
       merge_method: 'squash' as const,
       required_checks_only: false,
       requester: 'ada',
+      lifecycle: 'armed' as const,
       schedule: 'active' as const,
       next_check_at: '2026-08-15T10:00:00Z',
+      next_check_trigger: 'webhook' as const,
       last_observed_state: 'pending',
+      reason: '',
       requested_at: '2026-08-15T09:00:00Z',
       updated_at: '2026-08-15T09:55:00Z',
+      cleanup_pending: false,
       revision: 4,
     };
     const stub = stubFetch([jsonResponse(200, request), jsonResponse(200, request)]);
@@ -282,6 +286,52 @@ describe('Root installation access', () => {
           headers: { 'Content-Type': 'application/json' },
           body: '{"expected_revision":4}',
         },
+      },
+    ]);
+  });
+
+  it('reads the durable pending CI timeline', async () => {
+    const detail = {
+      request: {
+        id: 'pending/1',
+        repository_full_name: 'example/api',
+        pull_request: 42,
+        head_sha: 'abc123',
+        merge_method: 'squash' as const,
+        required_checks_only: false,
+        requester: 'ada',
+        lifecycle: 'merged' as const,
+        schedule: 'active' as const,
+        next_check_at: '2026-08-15T10:00:30Z',
+        next_check_trigger: 'cleanup' as const,
+        last_observed_state: 'passing',
+        reason: 'merged after CI passed',
+        requested_at: '2026-08-15T09:00:00Z',
+        updated_at: '2026-08-15T10:00:30Z',
+        finished_at: '2026-08-15T10:00:30Z',
+        cleanup_pending: false,
+        revision: 8,
+      },
+      events: [
+        {
+          id: 'event/1',
+          kind: 'wake_received' as const,
+          trigger: 'webhook' as const,
+          event_name: 'check_suite',
+          delivery_id: 'delivery-123',
+          summary: 'Received a CI state webhook',
+          created_at: '2026-08-15T10:00:00Z',
+        },
+      ],
+    };
+    const stub = stubFetch([jsonResponse(200, detail)]);
+    const api = createPanelApi('/panel', stub.fetch);
+
+    await expect(api.fetchRootPendingCI('pending/1')).resolves.toEqual(detail);
+    expect(stub.calls).toEqual([
+      {
+        url: '/panel/api/v1/root/pending-ci/pending%2F1',
+        init: { credentials: 'same-origin' },
       },
     ]);
   });

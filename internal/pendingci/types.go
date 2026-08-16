@@ -72,6 +72,7 @@ type Request struct {
 	Lifecycle            Lifecycle
 	Schedule             Schedule
 	NextCheckAt          time.Time
+	NextCheckTrigger     Trigger
 	LeaseExpiresAt       *time.Time
 	LastProgressAt       time.Time
 	LastObservedState    string
@@ -165,7 +166,9 @@ type LeaseResult struct {
 type WakeRequest struct {
 	RepositoryID    string
 	PullRequest     int
+	EventName       string
 	EventKey        string
+	DeliveryID      string
 	ExpectedHeadSHA string
 	OccurredAt      time.Time
 }
@@ -173,7 +176,9 @@ type WakeRequest struct {
 type WakeHeadRequest struct {
 	RepositoryID string
 	HeadSHA      string
+	EventName    string
 	EventKey     string
+	DeliveryID   string
 	OccurredAt   time.Time
 }
 
@@ -187,25 +192,29 @@ type CheckNowRequest struct {
 type ClaimMergeRequest struct {
 	ID               int64
 	ExpectedRevision int64
+	Observation      Observation
 	ClaimedAt        time.Time
 }
 
 type RescheduleRequest struct {
-	ID                int64
-	ExpectedRevision  int64
-	Schedule          Schedule
-	HeadSHA           string
-	NextCheckAt       time.Time
-	LastProgressAt    time.Time
-	LastObservedState string
-	LastFingerprint   string
-	CheckedAt         time.Time
+	ID                 int64
+	ExpectedRevision   int64
+	Schedule           Schedule
+	HeadSHA            string
+	NextCheckAt        time.Time
+	NextCheckTrigger   Trigger
+	LastProgressAt     time.Time
+	LastObservedState  string
+	LastFingerprint    string
+	ObservationSummary string
+	CheckedAt          time.Time
 }
 
 type FinishRequest struct {
 	ID               int64
 	ExpectedRevision int64
 	Lifecycle        Lifecycle
+	Trigger          Trigger
 	Reason           string
 	FinishedAt       time.Time
 }
@@ -297,6 +306,7 @@ type Observation struct {
 	CancelReason      string
 	State             ObservedState
 	Fingerprint       string
+	Summary           string
 	ObservedAt        time.Time
 }
 
@@ -317,6 +327,7 @@ type Decision struct {
 	Schedule          Schedule
 	HeadSHA           string
 	NextCheckAt       time.Time
+	NextCheckTrigger  Trigger
 	LastProgressAt    time.Time
 	LastObservedState string
 	LastFingerprint   string
@@ -348,4 +359,6 @@ type Store interface {
 	CancelRepository(context.Context, CancelRepositoryRequest) ([]Request, error)
 	HasPendingCleanup(context.Context, CleanupFilter) (bool, error)
 	ListQueue(context.Context, QueueFilter) ([]Request, error)
+	ListHistory(context.Context, HistoryFilter) ([]Request, error)
+	ListEvents(context.Context, EventFilter) ([]Event, error)
 }

@@ -27,7 +27,6 @@ type pendingCIObserver interface {
 type pendingCIEffects interface {
 	MergeAtHead(context.Context, pendingci.Request, string) error
 	CleanupArtifacts(context.Context, pendingci.Request, pendingci.Lifecycle) error
-	ReleaseOwnership(context.Context, pendingci.Request) error
 }
 
 // pendingCIReconciler combines live truth with the pure policy, then applies
@@ -89,7 +88,7 @@ func (reconciler *pendingCIReconciler) processArmedExclusive(
 
 	switch decision.Kind {
 	case pendingci.DecisionReschedule:
-		return reconciler.reschedule(ctx, request, decision, observation.ObservedAt)
+		return reconciler.reschedule(ctx, request, decision, observation)
 	case pendingci.DecisionFinish:
 		return reconciler.finish(ctx, request, decision.Lifecycle, decision.Reason, observation.ObservedAt)
 	case pendingci.DecisionMerge:
@@ -112,7 +111,7 @@ func (reconciler *pendingCIReconciler) mergeExclusive(
 		return fmt.Errorf("revalidate pending CI transition: %w", err)
 	}
 	if decision.Kind == pendingci.DecisionReschedule {
-		return reconciler.reschedule(ctx, request, decision, observation.ObservedAt)
+		return reconciler.reschedule(ctx, request, decision, observation)
 	}
 	if decision.Kind == pendingci.DecisionFinish {
 		return reconciler.finish(
@@ -125,7 +124,7 @@ func (reconciler *pendingCIReconciler) mergeExclusive(
 
 	claimed, err := reconciler.store.ClaimMerge(ctx, pendingci.ClaimMergeRequest{
 		ID: request.ID, ExpectedRevision: request.Revision,
-		ClaimedAt: observation.ObservedAt,
+		Observation: observation, ClaimedAt: observation.ObservedAt,
 	})
 	if err != nil {
 		return fmt.Errorf("claim pending CI merge: %w", err)
@@ -138,14 +137,16 @@ func (reconciler *pendingCIReconciler) reschedule(
 	ctx context.Context,
 	request pendingci.Request,
 	decision pendingci.Decision,
-	checkedAt time.Time,
+	observation pendingci.Observation,
 ) error {
 	_, err := reconciler.store.Reschedule(ctx, pendingci.RescheduleRequest{
 		ID: request.ID, ExpectedRevision: request.Revision,
 		Schedule: decision.Schedule, HeadSHA: decision.HeadSHA,
-		NextCheckAt: decision.NextCheckAt, LastProgressAt: decision.LastProgressAt,
+		NextCheckAt: decision.NextCheckAt, NextCheckTrigger: decision.NextCheckTrigger,
+		LastProgressAt:    decision.LastProgressAt,
 		LastObservedState: decision.LastObservedState,
-		LastFingerprint:   decision.LastFingerprint, CheckedAt: checkedAt,
+		LastFingerprint:   decision.LastFingerprint, ObservationSummary: observation.Summary,
+		CheckedAt: observation.ObservedAt,
 	})
 
 	return err
@@ -160,7 +161,8 @@ func (reconciler *pendingCIReconciler) finish(
 ) error {
 	_, err := reconciler.store.Finish(ctx, pendingci.FinishRequest{
 		ID: request.ID, ExpectedRevision: request.Revision,
-		Lifecycle: lifecycle, Reason: reason, FinishedAt: finishedAt,
+		Lifecycle: lifecycle, Trigger: request.NextCheckTrigger,
+		Reason: reason, FinishedAt: finishedAt,
 	})
 	if err != nil {
 		return err
@@ -198,9 +200,6 @@ func (reconciler *pendingCIReconciler) cleanupExclusive(
 		}
 		current = marked
 	}
-	if err := reconciler.effects.ReleaseOwnership(ctx, current); err != nil {
-		return reconciler.retryCleanup(ctx, current, err)
-	}
 	_, err := reconciler.store.CompleteCleanup(ctx, pendingci.CompleteCleanupRequest{
 		ID: current.ID, ExpectedRevision: current.Revision,
 		CompletedAt: current.UpdatedAt,
@@ -235,11 +234,12 @@ func (reconciler *pendingCIReconciler) merge(
 		decision := pendingci.Decision{
 			Schedule: pendingci.ScheduleActive, HeadSHA: observation.HeadSHA,
 			NextCheckAt:       observation.ObservedAt.Add(reconciler.timing.ActiveInterval),
+			NextCheckTrigger:  pendingci.TriggerFallback,
 			LastProgressAt:    observation.ObservedAt,
 			LastObservedState: string(observation.State),
 			LastFingerprint:   observation.Fingerprint,
 		}
-		if scheduleErr := reconciler.reschedule(ctx, request, decision, observation.ObservedAt); scheduleErr != nil {
+		if scheduleErr := reconciler.reschedule(ctx, request, decision, observation); scheduleErr != nil {
 			return fmt.Errorf("merge failed: %v; reschedule failed: %w", err, scheduleErr)
 		}
 

@@ -80,7 +80,7 @@ func TestServiceResponsesSummarizeTheSameDatabaseTheyDescribe(t *testing.T) {
 	// Two responses carry the state twice, once as a word beside the service
 	// and once inside the database block. Reading it from the same DTO is what
 	// stops a card saying healthy over a panel that says otherwise.
-	overview := rootOverviewDTO(storage.RootOverview{}, status, nil, nil, cfg, startedAt, now)
+	overview := rootOverviewDTO(storage.RootOverview{}, status, nil, nil, nil, cfg, startedAt, now)
 	if overview.Service.Storage != rootServiceDegraded {
 		t.Fatalf("overview storage = %q", overview.Service.Storage)
 	}

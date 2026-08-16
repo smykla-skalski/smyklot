@@ -161,16 +161,16 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 			Expect(result).To(BeEmpty())
 		})
 
-		It("should leave service-owned requests to the durable reconciler", func() {
+		It("should ignore the retired service marker as a method label", func() {
 			prs := []map[string]interface{}{{
 				"number": float64(1),
 				"labels": []interface{}{
-					map[string]interface{}{"name": github.LabelPendingCIServiceOwner},
+					map[string]interface{}{"name": github.LegacyLabelPendingCIServiceOwner},
 					map[string]interface{}{"name": github.LabelPendingCISquash},
 				},
 			}}
 
-			Expect(filterPendingCIPRs(prs)).To(BeEmpty())
+			Expect(filterPendingCIPRs(prs)).To(HaveLen(1))
 			Expect(pendingCILabels(prs[0])).To(HaveLen(1))
 		})
 
@@ -308,6 +308,10 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 							},
 						})
 
+					case r.URL.Path == "/repos/owner/repo/issues/42/comments" && r.Method == "GET":
+						w.WriteHeader(http.StatusOK)
+						_, _ = w.Write([]byte(`[]`))
+
 					case r.URL.Path == "/repos/owner/repo/pulls/42/merge" && r.Method == "PUT":
 						mergeRequested = true
 						var body map[string]interface{}
@@ -354,22 +358,26 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 			It("should stand down when the service acquires ownership before merge", func() {
 				mergeRequested := false
 				pullReads := 0
+				ownershipReads := 0
 				server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					switch {
 					case r.URL.Path == "/repos/owner/repo/pulls/42" && r.Method == http.MethodGet:
 						pullReads++
-						labels := []map[string]interface{}{}
-						if pullReads > 1 {
-							labels = append(labels, map[string]interface{}{
-								"name": github.LabelPendingCIServiceOwner,
-							})
-						}
 						_ = json.NewEncoder(w).Encode(map[string]interface{}{
 							"state": "open", "head": map[string]interface{}{"sha": "abc123"},
-							"labels": append(labels, map[string]interface{}{
+							"labels": []map[string]interface{}{{
 								"name": github.LabelPendingCISquash,
-							}),
+							}},
 						})
+					case r.URL.Path == "/repos/owner/repo/issues/42/comments":
+						ownershipReads++
+						if ownershipReads > 1 {
+							_, _ = w.Write([]byte(`[{"id":101}]`))
+						} else {
+							_, _ = w.Write([]byte(`[]`))
+						}
+					case r.URL.Path == "/repos/owner/repo/issues/comments/101/reactions":
+						_, _ = w.Write([]byte(`[{"content":"hooray","user":{"login":"smyklot[bot]"}}]`))
 					case r.URL.Path == "/repos/owner/repo/commits/abc123/status":
 						_ = json.NewEncoder(w).Encode(map[string]interface{}{
 							"total_count": 0, "statuses": []map[string]interface{}{},
@@ -399,7 +407,8 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 					"owner", "repo", pr, "smyklot[bot]",
 				)
 				Expect(err).NotTo(HaveOccurred())
-				Expect(pullReads).To(Equal(2))
+				Expect(pullReads).To(Equal(3))
+				Expect(ownershipReads).To(Equal(2))
 				Expect(mergeRequested).To(BeFalse())
 			})
 		})
@@ -439,6 +448,10 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 								{"status": "completed", "conclusion": "failure"},
 							},
 						})
+
+					case r.URL.Path == "/repos/owner/repo/issues/42/comments" && r.Method == "GET":
+						w.WriteHeader(http.StatusOK)
+						_, _ = w.Write([]byte(`[]`))
 
 					case r.URL.Path == "/repos/owner/repo/issues/42/labels/smyklot:pending:ci" && r.Method == "DELETE":
 						labelRemoved = true
@@ -509,6 +522,10 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 							},
 						})
 
+					case r.URL.Path == "/repos/owner/repo/issues/42/comments" && r.Method == "GET":
+						w.WriteHeader(http.StatusOK)
+						_, _ = w.Write([]byte(`[]`))
+
 					case r.URL.Path == "/repos/owner/repo/pulls/42/merge" && r.Method == "PUT":
 						mergeRequested = true
 						w.WriteHeader(http.StatusOK)
@@ -572,6 +589,10 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 								{"status": "completed", "conclusion": "success"},
 							},
 						})
+
+					case r.URL.Path == "/repos/owner/repo/issues/42/comments" && r.Method == "GET":
+						w.WriteHeader(http.StatusOK)
+						_, _ = w.Write([]byte(`[]`))
 
 					case r.URL.Path == "/repos/owner/repo/pulls/42/merge" && r.Method == "PUT":
 						var body map[string]interface{}

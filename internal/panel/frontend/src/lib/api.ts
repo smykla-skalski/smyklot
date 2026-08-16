@@ -24,6 +24,7 @@ import type {
   NotificationPage,
   NotificationPageRequest,
   PendingCIRequest,
+  PendingCIDetail,
   RepositoryDetail,
   RepositoryPageRequest,
   RepositorySettingsInput,
@@ -61,6 +62,7 @@ export interface PanelApi {
   fetchRootInstallations(): Promise<RootInstallation[]>;
   syncRootInstallations(): Promise<string[]>;
   fetchRootOverview(): Promise<RootOverview>;
+  fetchRootPendingCI(requestId: string): Promise<PendingCIDetail>;
   checkRootPendingCI(requestId: string, expectedRevision: number): Promise<PendingCIRequest>;
   cancelRootPendingCI(requestId: string, expectedRevision: number): Promise<PendingCIRequest>;
   fetchRootUsers(request: RootPanelUserPageRequest): Promise<Page<RootPanelUser>>;
@@ -313,6 +315,10 @@ export function createPanelApi(
 
     fetchRootOverview(): Promise<RootOverview> {
       return jsonRequest('/api/v1/root/overview');
+    },
+
+    fetchRootPendingCI(requestId: string): Promise<PendingCIDetail> {
+      return jsonRequest(`/api/v1/root/pending-ci/${pathSegment(requestId)}`);
     },
 
     checkRootPendingCI(requestId: string, expectedRevision: number): Promise<PendingCIRequest> {

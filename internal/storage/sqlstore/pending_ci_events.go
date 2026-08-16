@@ -21,30 +21,73 @@ func (s *Store) WakeByHead(
 		return 0, err
 	}
 
-	result, err := s.db.ExecContext(ctx, `
-UPDATE pending_ci_requests SET
-    schedule = ?, next_check_at = ?, lease_expires_at = NULL,
-    last_event_key = ?, updated_at = ?, revision = revision + 1
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("begin pending CI head wake: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	rows, err := tx.QueryContext(ctx, pendingCISelect+`
 WHERE repository_id = ? AND head_sha = ? AND lifecycle = ?
   AND last_event_key <> ?`,
-		pendingci.ScheduleActive,
-		wake.OccurredAt,
-		wake.EventKey,
-		wake.OccurredAt,
 		wake.RepositoryID,
 		wake.HeadSHA,
 		pendingci.LifecycleArmed,
 		wake.EventKey,
 	)
 	if err != nil {
-		return 0, fmt.Errorf("wake pending CI requests by head: %w", err)
+		return 0, fmt.Errorf("read pending CI head wake targets: %w", err)
 	}
-	changed, err := result.RowsAffected()
+	requests, err := collectRows(rows, scanPendingCI)
 	if err != nil {
-		return 0, fmt.Errorf("read pending CI head wake result: %w", err)
+		return 0, fmt.Errorf("collect pending CI head wake targets: %w", err)
 	}
 
-	return changed, nil
+	for _, request := range requests {
+		result, updateErr := tx.ExecContext(ctx, `
+UPDATE pending_ci_requests SET
+    schedule = ?, next_check_at = ?, lease_expires_at = NULL,
+	last_event_key = ?, next_check_trigger = ?, updated_at = ?, revision = revision + 1
+WHERE id = ? AND lifecycle = ? AND revision = ?`,
+			pendingci.ScheduleActive,
+			wake.OccurredAt,
+			wake.EventKey,
+			pendingci.TriggerWebhook,
+			wake.OccurredAt,
+			request.ID,
+			pendingci.LifecycleArmed,
+			request.Revision,
+		)
+		if updateErr != nil {
+			return 0, fmt.Errorf("wake pending CI request by head: %w", updateErr)
+		}
+		changed, rowsErr := result.RowsAffected()
+		if rowsErr != nil {
+			return 0, fmt.Errorf("read pending CI head wake result: %w", rowsErr)
+		}
+		if changed != 1 {
+			return 0, storage.ErrConflict
+		}
+		event := pendingCIAuditEvent(
+			request.ID,
+			pendingci.EventWakeReceived,
+			pendingci.TriggerWebhook,
+			request.LastObservedState,
+			"Received a CI status webhook and scheduled an immediate reconciliation",
+			wake.OccurredAt,
+		)
+		event.EventName = wake.EventName
+		event.EventKey = wake.EventKey
+		event.DeliveryID = wake.DeliveryID
+		if err := recordPendingCIEvent(ctx, tx, event); err != nil {
+			return 0, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit pending CI head wake: %w", err)
+	}
+
+	return int64(len(requests)), nil
 }
 
 // FinishPR applies a terminal event only to the currently armed request. A
@@ -76,11 +119,12 @@ UPDATE pending_ci_requests SET
     lifecycle = ?, reason = ?, next_check_at = ?, lease_expires_at = NULL,
     cleanup_pending = TRUE, cleanup_artifacts_done = FALSE,
     cleanup_attempts = 0, cleanup_error = '',
-    updated_at = ?, finished_at = ?, revision = revision + 1
+    next_check_trigger = ?, updated_at = ?, finished_at = ?, revision = revision + 1
 WHERE id = ? AND lifecycle = ? AND revision = ?`,
 		change.Lifecycle,
 		change.Reason,
 		change.FinishedAt,
+		pendingci.TriggerCleanup,
 		change.FinishedAt,
 		change.FinishedAt,
 		request.ID,
@@ -97,6 +141,16 @@ WHERE id = ? AND lifecycle = ? AND revision = ?`,
 	if changed != 1 {
 		return nil, storage.ErrConflict
 	}
+	if err := recordPendingCIEvent(ctx, tx, pendingCIAuditEvent(
+		request.ID,
+		pendingci.EventFinished,
+		pendingci.TriggerWebhook,
+		string(change.Lifecycle),
+		change.Reason,
+		change.FinishedAt,
+	)); err != nil {
+		return nil, err
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit pending CI pull request finish: %w", err)
 	}
@@ -107,6 +161,7 @@ WHERE id = ? AND lifecycle = ? AND revision = ?`,
 	request.UpdatedAt = change.FinishedAt
 	request.FinishedAt = timePointer(change.FinishedAt)
 	request.NextCheckAt = change.FinishedAt
+	request.NextCheckTrigger = pendingci.TriggerCleanup
 	request.CleanupPending = true
 	request.CleanupArtifactsDone = false
 	request.CleanupAttempts = 0
@@ -136,10 +191,10 @@ UPDATE pending_ci_requests SET
     lifecycle = ?, reason = ?, next_check_at = ?, lease_expires_at = NULL,
     cleanup_pending = TRUE, cleanup_artifacts_done = FALSE,
     cleanup_attempts = 0, cleanup_error = '',
-    updated_at = ?, finished_at = ?, revision = revision + 1
+    next_check_trigger = ?, updated_at = ?, finished_at = ?, revision = revision + 1
 WHERE repository_id = ? AND lifecycle = ?`,
 		pendingci.LifecycleCancelled, change.Reason,
-		change.CancelledAt, change.CancelledAt,
+		change.CancelledAt, pendingci.TriggerCleanup, change.CancelledAt,
 		change.CancelledAt, change.RepositoryID, pendingci.LifecycleArmed,
 	)
 	if err != nil {
@@ -163,6 +218,18 @@ WHERE repository_id = ? AND lifecycle = ? AND reason = ? AND finished_at = ?`,
 	requests, err := collectRows(rows, scanPendingCI)
 	if err != nil {
 		return nil, fmt.Errorf("collect cancelled pending CI repository: %w", err)
+	}
+	for _, request := range requests {
+		if err := recordPendingCIEvent(ctx, tx, pendingCIAuditEvent(
+			request.ID,
+			pendingci.EventFinished,
+			pendingci.TriggerFallback,
+			string(pendingci.LifecycleCancelled),
+			change.Reason,
+			change.CancelledAt,
+		)); err != nil {
+			return nil, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit pending CI repository cancellation: %w", err)

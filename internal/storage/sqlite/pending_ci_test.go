@@ -88,7 +88,9 @@ var _ = Describe("pending CI storage [Unit]", func() {
 		wake := pendingci.WakeRequest{
 			RepositoryID:    secondArm.RepositoryID,
 			PullRequest:     secondArm.PullRequest,
+			EventName:       "check_run",
 			EventKey:        "check_run:501:completed",
+			DeliveryID:      "delivery-501",
 			ExpectedHeadSHA: secondArm.HeadSHA,
 			OccurredAt:      now.Add(2 * time.Minute),
 		}
@@ -361,7 +363,9 @@ var _ = Describe("pending CI storage [Unit]", func() {
 		changed, err := store.Wake(ctx, pendingci.WakeRequest{
 			RepositoryID:    armed.Request.RepositoryID,
 			PullRequest:     armed.Request.PullRequest,
+			EventName:       "check_suite",
 			EventKey:        "check_suite:700:completed",
+			DeliveryID:      "delivery-700",
 			ExpectedHeadSHA: armed.Request.HeadSHA,
 			OccurredAt:      now.Add(2 * time.Second),
 		})
@@ -378,7 +382,9 @@ var _ = Describe("pending CI storage [Unit]", func() {
 		changed, err := store.WakeByHead(ctx, pendingci.WakeHeadRequest{
 			RepositoryID: armed.Request.RepositoryID,
 			HeadSHA:      "stale-head",
+			EventName:    "status",
 			EventKey:     "status:stale-head:build:success",
+			DeliveryID:   "delivery-stale",
 			OccurredAt:   now.Add(time.Second),
 		})
 		Expect(err).NotTo(HaveOccurred())
@@ -387,7 +393,9 @@ var _ = Describe("pending CI storage [Unit]", func() {
 		wake := pendingci.WakeHeadRequest{
 			RepositoryID: armed.Request.RepositoryID,
 			HeadSHA:      armed.Request.HeadSHA,
+			EventName:    "status",
 			EventKey:     "status:head-for-status:build:success",
+			DeliveryID:   "delivery-current",
 			OccurredAt:   now.Add(2 * time.Second),
 		}
 		changed, err = store.WakeByHead(ctx, wake)

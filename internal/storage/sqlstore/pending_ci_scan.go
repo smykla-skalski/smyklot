@@ -30,6 +30,7 @@ func scanPendingCI(scanner rowScanner) (pendingci.Request, error) {
 		&request.Label,
 		&request.Lifecycle,
 		&request.Schedule,
+		&request.NextCheckTrigger,
 		&nextCheckAt,
 		&leaseExpiresAt,
 		&lastProgressAt,

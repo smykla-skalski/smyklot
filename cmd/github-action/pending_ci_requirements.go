@@ -14,6 +14,9 @@ type pendingCIRequirementReader interface {
 
 type pendingCIOwnershipReader interface {
 	GetPullRequestState(context.Context, string, string, int) (github.PullRequestState, error)
+	HasPullRequestCommentReaction(
+		context.Context, string, string, int, string, github.ReactionType,
+	) (bool, error)
 }
 
 func pendingCIServiceOwned(
@@ -21,15 +24,38 @@ func pendingCIServiceOwned(
 	reader pendingCIOwnershipReader,
 	owner, repository string,
 	pullRequest int,
+	botUsername string,
 ) (bool, error) {
-	state, err := reader.GetPullRequestState(
-		ctx, owner, repository, pullRequest,
-	)
+	state, err := reader.GetPullRequestState(ctx, owner, repository, pullRequest)
 	if err != nil {
 		return false, fmt.Errorf("read pending CI ownership: %w", err)
 	}
 
-	return hasLabel(state.Labels, github.LabelPendingCIServiceOwner), nil
+	return pendingCIServiceOwnedForState(
+		ctx, reader, owner, repository, pullRequest, botUsername, state,
+	)
+}
+
+func pendingCIServiceOwnedForState(
+	ctx context.Context,
+	reader pendingCIOwnershipReader,
+	owner, repository string,
+	pullRequest int,
+	botUsername string,
+	state github.PullRequestState,
+) (bool, error) {
+	if hasLabel(state.Labels, github.LegacyLabelPendingCIServiceOwner) {
+		return true, nil
+	}
+	owned, err := reader.HasPullRequestCommentReaction(
+		ctx, owner, repository, pullRequest, botUsername,
+		github.ReactionPendingCIService,
+	)
+	if err != nil {
+		return false, fmt.Errorf("read pending CI service ownership: %w", err)
+	}
+
+	return owned, nil
 }
 
 func pendingCIActionOwns(
@@ -37,7 +63,7 @@ func pendingCIActionOwns(
 	reader pendingCIOwnershipReader,
 	owner, repository string,
 	pullRequest int,
-	label, headSHA string,
+	label, headSHA, botUsername string,
 ) (bool, error) {
 	state, err := reader.GetPullRequestState(
 		ctx, owner, repository, pullRequest,
@@ -46,9 +72,17 @@ func pendingCIActionOwns(
 		return false, fmt.Errorf("revalidate pending CI ownership: %w", err)
 	}
 
-	return state.Open && state.HeadSHA == headSHA &&
-		hasLabel(state.Labels, label) &&
-		!hasLabel(state.Labels, github.LabelPendingCIServiceOwner), nil
+	if !state.Open || state.HeadSHA != headSHA || !hasLabel(state.Labels, label) {
+		return false, nil
+	}
+	serviceOwned, err := pendingCIServiceOwnedForState(
+		ctx, reader, owner, repository, pullRequest, botUsername, state,
+	)
+	if err != nil {
+		return false, err
+	}
+
+	return !serviceOwned, nil
 }
 
 func pendingCIRequiredChecks(

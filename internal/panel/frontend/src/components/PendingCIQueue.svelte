@@ -1,9 +1,10 @@
 <script lang="ts">
   import type { PanelApi } from '../lib/api';
   import { formatRelative, formatTimestamp } from '../lib/format';
-  import type { PendingCIRequest, RootOverview } from '../lib/types';
+  import type { PendingCIDetail, PendingCIRequest, RootOverview } from '../lib/types';
   import Chip from './Chip.svelte';
   import Icon from './Icon.svelte';
+  import PendingCIAudit from './PendingCIAudit.svelte';
 
   const {
     api,
@@ -19,6 +20,10 @@
 
   let pendingAction = $state<string | null>(null);
   let failure = $state<string | null>(null);
+  let selectedRequest = $state<string | null>(null);
+  let auditDetail = $state.raw<PendingCIDetail | null>(null);
+  let auditLoading = $state(false);
+  let auditError = $state<string | null>(null);
   const total = $derived(queue.active.length + queue.deferred.length);
 
   function actionKey(action: 'check' | 'cancel', request: PendingCIRequest): string {
@@ -44,6 +49,7 @@
     try {
       await operation();
       await onChanged();
+      if (selectedRequest === request.id) await loadAudit(request.id);
     } catch (error) {
       failure = error instanceof Error ? error.message : String(error);
     } finally {
@@ -58,6 +64,47 @@
 
   function methodLabel(request: PendingCIRequest): string {
     return `${request.merge_method}${request.required_checks_only ? ' · required checks' : ''}`;
+  }
+
+  function triggerLabel(request: PendingCIRequest): string {
+    switch (request.next_check_trigger) {
+      case 'webhook':
+        return 'Webhook reconciliation';
+      case 'quiet_period':
+        return 'Quiet-period verification';
+      case 'manual':
+        return 'Panel reconciliation';
+      case 'cleanup':
+        return 'Cleanup';
+      case 'command':
+        return 'Initial reconciliation';
+      case 'fallback':
+        return 'Fallback reconciliation';
+    }
+  }
+
+  async function toggleAudit(request: PendingCIRequest): Promise<void> {
+    if (selectedRequest === request.id) {
+      selectedRequest = null;
+      auditDetail = null;
+      auditError = null;
+      return;
+    }
+    selectedRequest = request.id;
+    auditDetail = null;
+    await loadAudit(request.id);
+  }
+
+  async function loadAudit(requestId: string): Promise<void> {
+    auditLoading = true;
+    auditError = null;
+    try {
+      auditDetail = await api.fetchRootPendingCI(requestId);
+    } catch (error) {
+      auditError = error instanceof Error ? error.message : String(error);
+    } finally {
+      auditLoading = false;
+    }
   }
 </script>
 
@@ -115,7 +162,7 @@
                 </div>
                 <div class="request-timing">
                   <span>
-                    Next check
+                    {triggerLabel(request)}
                     <time
                       datetime={request.next_check_at}
                       title={formatTimestamp(request.next_check_at)}
@@ -126,6 +173,15 @@
                 </div>
               </div>
               <div class="request-actions">
+                <button
+                  class="btn btn-quiet"
+                  type="button"
+                  aria-expanded={selectedRequest === request.id}
+                  onclick={() => void toggleAudit(request)}
+                >
+                  <Icon name="history" size={14} />
+                  Timeline
+                </button>
                 <button
                   class="btn btn-quiet"
                   type="button"
@@ -145,6 +201,9 @@
                   {pendingAction === actionKey('cancel', request) ? 'Cancelling…' : 'Cancel'}
                 </button>
               </div>
+              {#if selectedRequest === request.id}
+                <PendingCIAudit detail={auditDetail} loading={auditLoading} error={auditError} />
+              {/if}
             </article>
           {:else}
             <p class="queue-empty">No {title.toLowerCase()} requests</p>
@@ -158,6 +217,64 @@
       {@render queueSection('Deferred', queue.deferred, true)}
     </div>
   {/if}
+
+  <section class="recent-section" aria-label="Recent pending CI requests">
+    <div class="queue-heading">
+      <h4>Recent outcomes</h4>
+      <p>Durable request history and webhook causality</p>
+    </div>
+    <div class="queue-list">
+      {#each queue.recent as request (request.id)}
+        <article class="queue-item recent-item">
+          <div class="request-main">
+            <a
+              href={`https://github.com/${request.repository_full_name}/pull/${request.pull_request}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {request.repository_full_name}#{request.pull_request}
+              <Icon name="link" size={13} />
+            </a>
+            <div class="request-meta">
+              <code>{methodLabel(request)}</code>
+              <span aria-hidden="true">·</span>
+              <span>{request.lifecycle}</span>
+              {#if request.reason}
+                <span aria-hidden="true">·</span>
+                <span>{request.reason}</span>
+              {/if}
+            </div>
+            {#if request.finished_at}
+              <div class="request-timing">
+                <span>
+                  Finished
+                  <time datetime={request.finished_at} title={formatTimestamp(request.finished_at)}>
+                    {formatRelative(request.finished_at, now)}
+                  </time>
+                </span>
+              </div>
+            {/if}
+          </div>
+          <div class="request-actions">
+            <button
+              class="btn btn-quiet"
+              type="button"
+              aria-expanded={selectedRequest === request.id}
+              onclick={() => void toggleAudit(request)}
+            >
+              <Icon name="history" size={14} />
+              Timeline
+            </button>
+          </div>
+          {#if selectedRequest === request.id}
+            <PendingCIAudit detail={auditDetail} loading={auditLoading} error={auditError} />
+          {/if}
+        </article>
+      {:else}
+        <p class="queue-empty">No completed requests yet</p>
+      {/each}
+    </div>
+  </section>
 </article>
 
 <style>
@@ -213,6 +330,14 @@
     gap: var(--space-4);
     grid-template-columns: repeat(2, minmax(0, 1fr));
     margin-top: var(--space-5);
+  }
+
+  .recent-section {
+    margin-top: var(--space-5);
+  }
+
+  .recent-item {
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .queue-heading {

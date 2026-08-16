@@ -2,13 +2,10 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
-	"github.com/smykla-skalski/smyklot/internal/storage"
-	"github.com/smykla-skalski/smyklot/pkg/github"
 	"github.com/smykla-skalski/smyklot/pkg/logging"
 	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
@@ -19,10 +16,11 @@ import (
 func (s *server) handlePendingCIWebhook(
 	ctx context.Context,
 	notification *webhook.PendingCINotification,
+	deliveryID string,
 ) error {
 	repositoryID := repositoryStorageID(notification.Metadata.RepositoryID)
 	return s.pendingCICoordinator.Exclusive(ctx, repositoryID, func() error {
-		return s.applyPendingCINotification(ctx, repositoryID, notification)
+		return s.applyPendingCINotification(ctx, repositoryID, notification, deliveryID)
 	})
 }
 
@@ -30,20 +28,15 @@ func (s *server) applyPendingCINotification(
 	ctx context.Context,
 	repositoryID string,
 	notification *webhook.PendingCINotification,
+	deliveryID string,
 ) error {
 	occurredAt := time.Now().UTC()
 	var changed int64
 
 	for _, signal := range notification.Signals {
-		if signal.Kind == webhook.SignalLabelRemoved &&
-			signal.Label == github.LabelPendingCIServiceOwner {
-			if err := s.restorePendingCIServiceOwnership(
-				ctx, repositoryID, notification.Metadata, signal.PullRequest,
-			); err != nil {
-				return fmt.Errorf("restore pending CI service ownership: %w", err)
-			}
-		}
-		count, err := s.applyPendingCISignal(ctx, repositoryID, occurredAt, signal)
+		count, err := s.applyPendingCISignal(
+			ctx, repositoryID, occurredAt, notification.Event, deliveryID, signal,
+		)
 		if err != nil {
 			return fmt.Errorf("apply %s pending CI signal: %w", notification.Event, err)
 		}
@@ -59,55 +52,12 @@ func (s *server) applyPendingCINotification(
 	return nil
 }
 
-func (s *server) restorePendingCIServiceOwnership(
-	ctx context.Context,
-	repositoryID string,
-	metadata webhook.Metadata,
-	pullRequest int,
-) error {
-	_, err := s.store.GetArmed(ctx, repositoryID, pullRequest)
-	if errors.Is(err, storage.ErrNotFound) {
-		cleanupPending, cleanupErr := s.store.HasPendingCleanup(
-			ctx,
-			pendingci.CleanupFilter{
-				RepositoryID:         repositoryID,
-				PullRequest:          pullRequest,
-				ArtifactsPendingOnly: true,
-			},
-		)
-		if cleanupErr != nil {
-			return fmt.Errorf("read pending CI cleanup ownership: %w", cleanupErr)
-		}
-		if !cleanupPending {
-			return nil
-		}
-		err = nil
-	}
-	if err != nil {
-		return fmt.Errorf("read armed pending CI request: %w", err)
-	}
-	token, err := s.tokens.InstallationToken(metadata.InstallationID)
-	if err != nil {
-		return NewGitHubError(ErrGitHubAppAuth, err)
-	}
-	client, err := github.NewClient(token, s.cfg.apiBaseURL)
-	if err != nil {
-		return NewGitHubError(ErrGitHubClient, err)
-	}
-
-	return client.AddLabel(
-		ctx,
-		metadata.RepositoryOwner,
-		metadata.RepositoryName,
-		pullRequest,
-		github.LabelPendingCIServiceOwner,
-	)
-}
-
 func (s *server) applyPendingCISignal(
 	ctx context.Context,
 	repositoryID string,
 	occurredAt time.Time,
+	eventName string,
+	deliveryID string,
 	signal webhook.PendingCISignal,
 ) (int64, error) {
 	switch signal.Kind {
@@ -118,7 +68,8 @@ func (s *server) applyPendingCISignal(
 		}
 		changed, err := s.store.Wake(ctx, pendingci.WakeRequest{
 			RepositoryID: repositoryID, PullRequest: signal.PullRequest,
-			EventKey: signal.EventKey, ExpectedHeadSHA: expectedHead, OccurredAt: occurredAt,
+			EventName: eventName, EventKey: signal.EventKey, DeliveryID: deliveryID,
+			ExpectedHeadSHA: expectedHead, OccurredAt: occurredAt,
 		})
 		if changed {
 			return 1, err
@@ -128,7 +79,8 @@ func (s *server) applyPendingCISignal(
 	case webhook.SignalWakeHead:
 		return s.store.WakeByHead(ctx, pendingci.WakeHeadRequest{
 			RepositoryID: repositoryID, HeadSHA: signal.HeadSHA,
-			EventKey: signal.EventKey, OccurredAt: occurredAt,
+			EventName: eventName, EventKey: signal.EventKey,
+			DeliveryID: deliveryID, OccurredAt: occurredAt,
 		})
 	default:
 		return 0, fmt.Errorf("unsupported signal kind %q", signal.Kind)

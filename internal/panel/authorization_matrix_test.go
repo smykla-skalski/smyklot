@@ -24,6 +24,7 @@ func TestPanelRootRouteAuthorizationMatrix(t *testing.T) {
 
 	probes := []authorizationProbe{
 		{http.MethodGet, "/panel/api/v1/root/overview"},
+		{http.MethodGet, "/panel/api/v1/root/pending-ci/7"},
 		{http.MethodPost, "/panel/api/v1/root/pending-ci/7/check"},
 		{http.MethodDelete, "/panel/api/v1/root/pending-ci/7"},
 		{http.MethodGet, "/panel/api/v1/root/installations"},

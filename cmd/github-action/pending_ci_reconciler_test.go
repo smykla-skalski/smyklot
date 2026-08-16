@@ -136,8 +136,8 @@ func TestPendingCIReconcilerCompletesDurableCleanup(t *testing.T) {
 		store.cleanupCompleted.ExpectedRevision != request.Revision+1 {
 		t.Fatalf("cleanup completion = %#v", store.cleanupCompleted)
 	}
-	if !effects.released || store.cleanupArtifactsMarked == nil {
-		t.Fatal("cleanup did not persist artifacts before releasing ownership")
+	if store.cleanupArtifactsMarked == nil {
+		t.Fatal("cleanup did not persist artifact completion")
 	}
 }
 
@@ -190,9 +190,6 @@ func TestPendingCIReconcilerNeverRepeatsCleanedArtifacts(t *testing.T) {
 	}
 	if effects.cleanupCalls != 0 {
 		t.Fatalf("cleaned artifacts repeated %d times", effects.cleanupCalls)
-	}
-	if effects.releaseCalls != 2 {
-		t.Fatalf("ownership release calls = %d, want two idempotent attempts", effects.releaseCalls)
 	}
 }
 
@@ -365,10 +362,7 @@ type reconcilerTestEffects struct {
 	mergeErr     error
 	completed    pendingci.Lifecycle
 	completeErr  error
-	released     bool
 	cleanupCalls int
-	releaseCalls int
-	releaseErr   error
 }
 
 func (effects *reconcilerTestEffects) MergeAtHead(
@@ -390,14 +384,4 @@ func (effects *reconcilerTestEffects) CleanupArtifacts(
 	effects.completed = lifecycle
 
 	return effects.completeErr
-}
-
-func (effects *reconcilerTestEffects) ReleaseOwnership(
-	context.Context,
-	pendingci.Request,
-) error {
-	effects.released = true
-	effects.releaseCalls++
-
-	return effects.releaseErr
 }

@@ -590,7 +590,7 @@ func (s *server) execute(j job) {
 			err = s.handleIssueComment(ctx, j.comment, j.key, j.claimID)
 		}
 	} else if j.notification != nil {
-		err = s.handlePendingCIWebhook(ctx, j.notification)
+		err = s.handlePendingCIWebhook(ctx, j.notification, j.deliveryID)
 	} else {
 		err = errors.New("delivery job has no executable event")
 	}

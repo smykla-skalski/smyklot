@@ -48,7 +48,9 @@ func Decide(request Request, observation Observation, timing Timing) (Decision, 
 		nextCheck = observation.ObservedAt.Add(timing.DeferredInterval)
 	}
 
-	return rescheduleDecision(observation, schedule, nextCheck, progressAt), nil
+	return rescheduleDecision(
+		observation, schedule, nextCheck, progressAt, TriggerFallback,
+	), nil
 }
 
 func passingDecision(
@@ -67,6 +69,7 @@ func passingDecision(
 		ScheduleActive,
 		progressAt.Add(timing.PassingQuiet),
 		progressAt,
+		TriggerQuietPeriod,
 	)
 }
 
@@ -84,10 +87,11 @@ func rescheduleDecision(
 	observation Observation,
 	schedule Schedule,
 	nextCheck, progressAt time.Time,
+	trigger Trigger,
 ) Decision {
 	return Decision{
 		Kind: DecisionReschedule, Schedule: schedule, HeadSHA: observation.HeadSHA,
-		NextCheckAt: nextCheck, LastProgressAt: progressAt,
+		NextCheckAt: nextCheck, NextCheckTrigger: trigger, LastProgressAt: progressAt,
 		LastObservedState: string(observation.State), LastFingerprint: observation.Fingerprint,
 	}
 }

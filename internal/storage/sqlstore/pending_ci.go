@@ -15,7 +15,7 @@ const pendingCISelect = `
 SELECT id, target_id, installation_id, repository_id, repository_full_name,
        pull_request, head_sha, base_branch, merge_method, required_checks_only,
        requester, source_comment_id, source_revision, source_sequence, source_order,
-       label, lifecycle, schedule,
+	       label, lifecycle, schedule, next_check_trigger,
        next_check_at, lease_expires_at, last_progress_at, last_observed_state,
        last_fingerprint, last_event_key, reason, requested_at, updated_at,
        finished_at, cleanup_pending, cleanup_artifacts_done,
@@ -69,11 +69,12 @@ UPDATE pending_ci_requests SET
     lifecycle = ?, reason = ?, next_check_at = ?, lease_expires_at = NULL,
     cleanup_pending = TRUE, cleanup_artifacts_done = FALSE,
     cleanup_attempts = 0, cleanup_error = '',
-    updated_at = ?, finished_at = ?, revision = revision + 1
+    next_check_trigger = ?, updated_at = ?, finished_at = ?, revision = revision + 1
 WHERE id = ? AND lifecycle = ?`,
 			pendingci.LifecycleSuperseded,
 			"replaced by a newer authorized command",
 			arm.RequestedAt,
+			pendingci.TriggerCleanup,
 			arm.RequestedAt,
 			arm.RequestedAt,
 			superseded.ID,
@@ -86,16 +87,37 @@ WHERE id = ? AND lifecycle = ?`,
 		superseded.UpdatedAt = arm.RequestedAt
 		superseded.FinishedAt = timePointer(arm.RequestedAt)
 		superseded.NextCheckAt = arm.RequestedAt
+		superseded.NextCheckTrigger = pendingci.TriggerCleanup
 		superseded.LeaseExpiresAt = nil
 		superseded.CleanupPending = true
 		superseded.CleanupArtifactsDone = false
 		superseded.CleanupAttempts = 0
 		superseded.CleanupError = ""
 		superseded.Revision++
+		if err := recordPendingCIEvent(ctx, tx, pendingCIAuditEvent(
+			superseded.ID,
+			pendingci.EventSuperseded,
+			pendingci.TriggerCommand,
+			string(pendingci.LifecycleSuperseded),
+			superseded.Reason,
+			arm.RequestedAt,
+		)); err != nil {
+			return pendingci.ArmResult{}, err
+		}
 	}
 
 	id, err := insertArmedPendingCI(ctx, tx, arm)
 	if err != nil {
+		return pendingci.ArmResult{}, err
+	}
+	if err := recordPendingCIEvent(ctx, tx, pendingCIAuditEvent(
+		id,
+		pendingci.EventArmed,
+		pendingci.TriggerCommand,
+		string(pendingci.LifecycleArmed),
+		fmt.Sprintf("Waiting to %s pull request after CI passes", arm.MergeMethod),
+		arm.RequestedAt,
+	)); err != nil {
 		return pendingci.ArmResult{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -122,9 +144,9 @@ INSERT INTO pending_ci_requests (
     target_id, installation_id, repository_id, repository_full_name,
     pull_request, head_sha, base_branch, merge_method, required_checks_only,
     requester, source_comment_id, source_revision, source_sequence, source_order,
-    label, lifecycle, schedule,
+		label, lifecycle, schedule, next_check_trigger,
     next_check_at, last_progress_at, requested_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id`,
 		arm.TargetID,
 		arm.InstallationID,
@@ -143,6 +165,7 @@ RETURNING id`,
 		arm.Label,
 		pendingci.LifecycleArmed,
 		pendingci.ScheduleActive,
+		pendingci.TriggerCommand,
 		arm.RequestedAt,
 		arm.RequestedAt,
 		arm.RequestedAt,
@@ -176,7 +199,8 @@ func armedRequest(id int64, arm pendingci.ArmRequest) pendingci.Request {
 		SourceRevision: arm.SourceRevision, SourceSequence: arm.SourceSequence,
 		SourceOrder: arm.SourceOrder, Label: arm.Label,
 		Lifecycle: pendingci.LifecycleArmed, Schedule: pendingci.ScheduleActive,
-		NextCheckAt: arm.RequestedAt, LastProgressAt: arm.RequestedAt,
+		NextCheckTrigger: pendingci.TriggerCommand,
+		NextCheckAt:      arm.RequestedAt, LastProgressAt: arm.RequestedAt,
 		RequestedAt: arm.RequestedAt, UpdatedAt: arm.RequestedAt, Revision: 1,
 	}
 }
@@ -301,6 +325,16 @@ WHERE id = ? AND revision = ?
 	if changed != 1 {
 		return pendingci.LeaseResult{}, storage.ErrConflict
 	}
+	if err := recordPendingCIEvent(ctx, tx, pendingCIAuditEvent(
+		request.ID,
+		pendingci.EventReconciliationStarted,
+		normalizedTrigger(request.NextCheckTrigger, pendingci.TriggerFallback),
+		request.LastObservedState,
+		"Reading live pull request and CI state",
+		now,
+	)); err != nil {
+		return pendingci.LeaseResult{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return pendingci.LeaseResult{}, fmt.Errorf("commit pending CI lease: %w", err)
 	}
@@ -360,23 +394,35 @@ func (s *Store) Wake(ctx context.Context, wake pendingci.WakeRequest) (bool, err
 		return false, err
 	}
 
-	result, err := s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("begin pending CI webhook wake: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	request, err := getArmedPendingCI(ctx, tx, wake.RepositoryID, wake.PullRequest)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("read pending CI webhook wake target: %w", err)
+	}
+	if request.LastEventKey == wake.EventKey ||
+		(wake.ExpectedHeadSHA != "" && request.HeadSHA != wake.ExpectedHeadSHA) {
+		return false, nil
+	}
+	result, err := tx.ExecContext(ctx, `
 UPDATE pending_ci_requests SET
     schedule = ?, next_check_at = ?, lease_expires_at = NULL,
-    last_event_key = ?, updated_at = ?, revision = revision + 1
-WHERE repository_id = ? AND pull_request = ? AND lifecycle = ?
-  AND last_event_key <> ?
-  AND (? = '' OR head_sha = ?)`,
+	last_event_key = ?, next_check_trigger = ?, updated_at = ?, revision = revision + 1
+WHERE id = ? AND lifecycle = ? AND revision = ?`,
 		pendingci.ScheduleActive,
 		wake.OccurredAt,
 		wake.EventKey,
+		pendingci.TriggerWebhook,
 		wake.OccurredAt,
-		wake.RepositoryID,
-		wake.PullRequest,
+		request.ID,
 		pendingci.LifecycleArmed,
-		wake.EventKey,
-		wake.ExpectedHeadSHA,
-		wake.ExpectedHeadSHA,
+		request.Revision,
 	)
 	if err != nil {
 		return false, fmt.Errorf("wake pending CI request: %w", err)
@@ -386,7 +432,28 @@ WHERE repository_id = ? AND pull_request = ? AND lifecycle = ?
 		return false, fmt.Errorf("read pending CI wake result: %w", err)
 	}
 
-	return changed == 1, nil
+	if changed != 1 {
+		return false, storage.ErrConflict
+	}
+	event := pendingCIAuditEvent(
+		request.ID,
+		pendingci.EventWakeReceived,
+		pendingci.TriggerWebhook,
+		request.LastObservedState,
+		"Received a CI state webhook and scheduled an immediate reconciliation",
+		wake.OccurredAt,
+	)
+	event.EventName = wake.EventName
+	event.EventKey = wake.EventKey
+	event.DeliveryID = wake.DeliveryID
+	if err := recordPendingCIEvent(ctx, tx, event); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("commit pending CI webhook wake: %w", err)
+	}
+
+	return true, nil
 }
 
 // CheckNow promotes exactly the operator-visible revision and makes it due.
@@ -397,14 +464,26 @@ func (s *Store) CheckNow(
 	if err := wake.Validate(); err != nil {
 		return pendingci.Request{}, err
 	}
-	return s.updatePendingCI(ctx, wake.ID, "check pending CI request now", `
+	return s.updatePendingCIWithEvents(ctx, wake.ID, "check pending CI request now", `
 UPDATE pending_ci_requests SET
     schedule = ?, next_check_at = ?, lease_expires_at = NULL,
-    last_event_key = ?, updated_at = ?, revision = revision + 1
+	last_event_key = ?, next_check_trigger = ?, updated_at = ?, revision = revision + 1
 WHERE id = ? AND lifecycle = ? AND revision = ?`,
+		func(before, _ pendingci.Request) []pendingci.Event {
+			event := pendingCIAuditEvent(
+				before.ID, pendingci.EventWakeReceived, pendingci.TriggerManual,
+				before.LastObservedState, "Operator requested an immediate reconciliation",
+				wake.OccurredAt,
+			)
+			event.EventName = "panel"
+			event.EventKey = wake.EventKey
+
+			return []pendingci.Event{event}
+		},
 		pendingci.ScheduleActive,
 		wake.OccurredAt,
 		wake.EventKey,
+		pendingci.TriggerManual,
 		wake.OccurredAt,
 		wake.ID,
 		pendingci.LifecycleArmed,
@@ -422,25 +501,40 @@ func (s *Store) ClaimMerge(
 	if err := claim.Validate(); err != nil {
 		return pendingci.Request{}, err
 	}
-	result, err := s.db.ExecContext(ctx, `
+	return s.updatePendingCIWithEvents(ctx, claim.ID, "claim pending CI merge", `
 UPDATE pending_ci_requests SET
     updated_at = ?, revision = revision + 1
 WHERE id = ? AND lifecycle = ? AND revision = ?
   AND lease_expires_at IS NOT NULL AND lease_expires_at > ?`,
+		func(before, _ pendingci.Request) []pendingci.Event {
+			observation := claim.Observation
+			state := string(observation.State)
+			if state == "" {
+				state = before.LastObservedState
+			}
+			summary := observation.Summary
+			if summary == "" {
+				summary = "CI remained passing after the quiet period"
+			}
+			observed := pendingCIAuditEvent(
+				before.ID, pendingci.EventChecksObserved,
+				normalizedTrigger(before.NextCheckTrigger, pendingci.TriggerQuietPeriod),
+				state, summary, claim.ClaimedAt,
+			)
+			started := pendingCIAuditEvent(
+				before.ID, pendingci.EventMergeStarted,
+				normalizedTrigger(before.NextCheckTrigger, pendingci.TriggerQuietPeriod),
+				state, "CI is stable; submitting the exact-head merge", claim.ClaimedAt,
+			)
+
+			return []pendingci.Event{observed, started}
+		},
 		claim.ClaimedAt,
 		claim.ID,
 		pendingci.LifecycleArmed,
 		claim.ExpectedRevision,
 		claim.ClaimedAt,
 	)
-	if err != nil {
-		return pendingci.Request{}, fmt.Errorf("claim pending CI merge: %w", err)
-	}
-	if err := s.checkPendingCIUpdate(ctx, result, claim.ID); err != nil {
-		return pendingci.Request{}, err
-	}
-
-	return s.getPendingCI(ctx, claim.ID)
 }
 
 func (s *Store) Reschedule(
@@ -451,18 +545,37 @@ func (s *Store) Reschedule(
 		return pendingci.Request{}, err
 	}
 
-	return s.updatePendingCI(ctx, change.ID, "reschedule pending CI request", `
+	trigger := change.NextCheckTrigger
+	if trigger == "" {
+		trigger = pendingci.TriggerFallback
+		if change.LastObservedState == string(pendingci.ObservedPassing) {
+			trigger = pendingci.TriggerQuietPeriod
+		}
+	}
+	return s.updatePendingCIWithEvents(ctx, change.ID, "reschedule pending CI request", `
 UPDATE pending_ci_requests SET
     schedule = ?, head_sha = ?, next_check_at = ?, lease_expires_at = NULL,
     last_progress_at = ?, last_observed_state = ?, last_fingerprint = ?,
-    updated_at = ?, revision = revision + 1
+	next_check_trigger = ?, updated_at = ?, revision = revision + 1
 WHERE id = ? AND lifecycle = ? AND revision = ?`,
+		func(before, _ pendingci.Request) []pendingci.Event {
+			summary := change.ObservationSummary
+			if summary == "" {
+				summary = "Observed CI state " + change.LastObservedState
+			}
+			return []pendingci.Event{pendingCIAuditEvent(
+				before.ID, pendingci.EventChecksObserved,
+				normalizedTrigger(before.NextCheckTrigger, pendingci.TriggerFallback),
+				change.LastObservedState, summary, change.CheckedAt,
+			)}
+		},
 		change.Schedule,
 		change.HeadSHA,
 		change.NextCheckAt,
 		change.LastProgressAt,
 		change.LastObservedState,
 		change.LastFingerprint,
+		trigger,
 		change.CheckedAt,
 		change.ID,
 		pendingci.LifecycleArmed,
@@ -478,16 +591,24 @@ func (s *Store) Finish(
 		return pendingci.Request{}, err
 	}
 
-	return s.updatePendingCI(ctx, change.ID, "finish pending CI request", `
+	return s.updatePendingCIWithEvents(ctx, change.ID, "finish pending CI request", `
 UPDATE pending_ci_requests SET
     lifecycle = ?, reason = ?, next_check_at = ?, lease_expires_at = NULL,
     cleanup_pending = TRUE, cleanup_artifacts_done = FALSE,
     cleanup_attempts = 0, cleanup_error = '',
-    updated_at = ?, finished_at = ?, revision = revision + 1
+	next_check_trigger = ?, updated_at = ?, finished_at = ?, revision = revision + 1
 WHERE id = ? AND lifecycle = ? AND revision = ?`,
+		func(before, _ pendingci.Request) []pendingci.Event {
+			return []pendingci.Event{pendingCIAuditEvent(
+				before.ID, pendingci.EventFinished,
+				normalizedTrigger(change.Trigger, before.NextCheckTrigger),
+				string(change.Lifecycle), change.Reason, change.FinishedAt,
+			)}
+		},
 		change.Lifecycle,
 		change.Reason,
 		change.FinishedAt,
+		pendingci.TriggerCleanup,
 		change.FinishedAt,
 		change.FinishedAt,
 		change.ID,
@@ -504,11 +625,17 @@ func (s *Store) CompleteCleanup(
 		return pendingci.Request{}, err
 	}
 
-	return s.updatePendingCI(ctx, change.ID, "complete pending CI cleanup", `
+	return s.updatePendingCIWithEvents(ctx, change.ID, "complete pending CI cleanup", `
 UPDATE pending_ci_requests SET
     cleanup_pending = FALSE, cleanup_error = '', lease_expires_at = NULL,
     updated_at = ?, revision = revision + 1
 WHERE id = ? AND cleanup_pending = TRUE AND cleanup_artifacts_done = TRUE AND revision = ?`,
+		func(before, _ pendingci.Request) []pendingci.Event {
+			return []pendingci.Event{pendingCIAuditEvent(
+				before.ID, pendingci.EventCleanupCompleted, pendingci.TriggerCleanup,
+				string(before.Lifecycle), "Removed pending-CI artifacts", change.CompletedAt,
+			)}
+		},
 		change.CompletedAt,
 		change.ID,
 		change.ExpectedRevision,
@@ -522,11 +649,12 @@ func (s *Store) MarkCleanupArtifactsDone(
 	if err := change.Validate(); err != nil {
 		return pendingci.Request{}, err
 	}
-	return s.updatePendingCI(ctx, change.ID, "mark pending CI cleanup artifacts", `
+	return s.updatePendingCIWithEvents(ctx, change.ID, "mark pending CI cleanup artifacts", `
 UPDATE pending_ci_requests SET
     cleanup_artifacts_done = TRUE, next_check_at = ?, lease_expires_at = NULL,
     cleanup_error = '', updated_at = ?, revision = revision + 1
 WHERE id = ? AND cleanup_pending = TRUE AND cleanup_artifacts_done = FALSE AND revision = ?`,
+		func(_, _ pendingci.Request) []pendingci.Event { return nil },
 		change.MarkedAt,
 		change.MarkedAt,
 		change.ID,
@@ -575,36 +703,25 @@ func (s *Store) RetryCleanup(
 		return pendingci.Request{}, err
 	}
 
-	return s.updatePendingCI(ctx, change.ID, "retry pending CI cleanup", `
+	return s.updatePendingCIWithEvents(ctx, change.ID, "retry pending CI cleanup", `
 UPDATE pending_ci_requests SET
-    next_check_at = ?, lease_expires_at = NULL,
+	next_check_at = ?, next_check_trigger = ?, lease_expires_at = NULL,
     cleanup_attempts = cleanup_attempts + 1, cleanup_error = ?,
     updated_at = ?, revision = revision + 1
 WHERE id = ? AND cleanup_pending = TRUE AND revision = ?`,
+		func(before, _ pendingci.Request) []pendingci.Event {
+			return []pendingci.Event{pendingCIAuditEvent(
+				before.ID, pendingci.EventCleanupRetry, pendingci.TriggerCleanup,
+				string(before.Lifecycle), change.Error, change.FailedAt,
+			)}
+		},
 		change.NextAttemptAt,
+		pendingci.TriggerCleanup,
 		change.Error,
 		change.FailedAt,
 		change.ID,
 		change.ExpectedRevision,
 	)
-}
-
-func (s *Store) updatePendingCI(
-	ctx context.Context,
-	id int64,
-	action string,
-	query string,
-	args ...any,
-) (pendingci.Request, error) {
-	result, err := s.db.ExecContext(ctx, query, args...)
-	if err != nil {
-		return pendingci.Request{}, fmt.Errorf("%s: %w", action, err)
-	}
-	if err := s.checkPendingCIUpdate(ctx, result, id); err != nil {
-		return pendingci.Request{}, err
-	}
-
-	return s.getPendingCI(ctx, id)
 }
 
 func (s *Store) CancelBySource(
@@ -650,11 +767,12 @@ UPDATE pending_ci_requests SET
     lifecycle = ?, reason = ?, next_check_at = ?, lease_expires_at = NULL,
     cleanup_pending = TRUE, cleanup_artifacts_done = FALSE,
     cleanup_attempts = 0, cleanup_error = '',
-    updated_at = ?, finished_at = ?, revision = revision + 1
+    next_check_trigger = ?, updated_at = ?, finished_at = ?, revision = revision + 1
 WHERE id = ? AND lifecycle = ?`,
 		pendingci.LifecycleCancelled,
 		change.Reason,
 		change.CancelledAt,
+		pendingci.TriggerCleanup,
 		change.CancelledAt,
 		change.CancelledAt,
 		request.ID,
@@ -670,6 +788,16 @@ WHERE id = ? AND lifecycle = ?`,
 	if changed != 1 {
 		return nil, storage.ErrConflict
 	}
+	if err := recordPendingCIEvent(ctx, tx, pendingCIAuditEvent(
+		request.ID,
+		pendingci.EventFinished,
+		pendingci.TriggerCommand,
+		string(pendingci.LifecycleCancelled),
+		change.Reason,
+		change.CancelledAt,
+	)); err != nil {
+		return nil, err
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit pending CI cancellation: %w", err)
 	}
@@ -679,6 +807,7 @@ WHERE id = ? AND lifecycle = ?`,
 	request.UpdatedAt = change.CancelledAt
 	request.FinishedAt = timePointer(change.CancelledAt)
 	request.NextCheckAt = change.CancelledAt
+	request.NextCheckTrigger = pendingci.TriggerCleanup
 	request.CleanupPending = true
 	request.CleanupArtifactsDone = false
 	request.CleanupAttempts = 0

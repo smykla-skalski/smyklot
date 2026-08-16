@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/smykla-skalski/smyklot/internal/storage"
-	"github.com/smykla-skalski/smyklot/pkg/github"
 	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
 
@@ -76,11 +75,6 @@ func relevantPendingCISignals(signals []webhook.PendingCISignal) []webhook.Pendi
 	relevant := make([]webhook.PendingCISignal, 0, len(signals))
 	for _, signal := range signals {
 		if signal.Kind == webhook.SignalLabelRemoved {
-			if signal.Label == github.LabelPendingCIServiceOwner {
-				relevant = append(relevant, signal)
-
-				continue
-			}
 			_, _, label := parsePendingCILabel(signal.Label)
 			if label == "" {
 				continue

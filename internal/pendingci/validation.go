@@ -85,7 +85,7 @@ func (request WakeRequest) Validate() error {
 	if strings.TrimSpace(request.RepositoryID) == "" || request.PullRequest <= 0 {
 		return invalid("repository identity and pull request number are required")
 	}
-	if strings.TrimSpace(request.EventKey) == "" || request.OccurredAt.IsZero() {
+	if empty(request.EventName, request.EventKey, request.DeliveryID) || request.OccurredAt.IsZero() {
 		return invalid("event identity and occurrence time are required")
 	}
 
@@ -93,7 +93,10 @@ func (request WakeRequest) Validate() error {
 }
 
 func (request WakeHeadRequest) Validate() error {
-	if empty(request.RepositoryID, request.HeadSHA, request.EventKey) || request.OccurredAt.IsZero() {
+	if empty(
+		request.RepositoryID, request.HeadSHA, request.EventName,
+		request.EventKey, request.DeliveryID,
+	) || request.OccurredAt.IsZero() {
 		return invalid("repository, head SHA, event identity, and occurrence time are required")
 	}
 
@@ -137,6 +140,9 @@ func (request RescheduleRequest) Validate() error {
 	}
 	if strings.TrimSpace(request.LastObservedState) == "" {
 		return invalid("last observed state is required")
+	}
+	if request.NextCheckTrigger != "" && !request.NextCheckTrigger.valid() {
+		return invalid("unsupported next check trigger %q", request.NextCheckTrigger)
 	}
 
 	return nil
@@ -217,6 +223,25 @@ func (filter CleanupFilter) Validate() error {
 	}
 	if filter.PullRequest < 0 || filter.ExcludeID < 0 {
 		return invalid("cleanup scope cannot be negative")
+	}
+
+	return nil
+}
+
+func (filter HistoryFilter) Validate() error {
+	if filter.Limit < 0 || filter.Limit > 200 {
+		return invalid("history limit must be between 0 and 200")
+	}
+
+	return nil
+}
+
+func (filter EventFilter) Validate() error {
+	if filter.RequestID <= 0 {
+		return invalid("event request identity must be positive")
+	}
+	if filter.Limit < 0 || filter.Limit > 500 {
+		return invalid("event limit must be between 0 and 500")
 	}
 
 	return nil

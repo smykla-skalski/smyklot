@@ -140,6 +140,10 @@ const (
 
 	// ReactionPendingCI represents waiting for CI (👀)
 	ReactionPendingCI ReactionType = "eyes"
+
+	// ReactionPendingCIService fences a service-owned wait from the Action
+	// runner without adding a second label to the pull request.
+	ReactionPendingCIService ReactionType = "hooray"
 )
 
 // Reaction represents a reaction on a comment
@@ -161,9 +165,9 @@ const (
 	// LabelReactionCleanup indicates cleanup was triggered via ❤️ reaction
 	LabelReactionCleanup = "smyklot:reaction-cleanup"
 
-	// LabelPendingCIServiceOwner prevents the legacy Action poller from
-	// adopting a request whose exact authorized head lives in the service.
-	LabelPendingCIServiceOwner = "smyklot:pending:ci:service"
+	// LegacyLabelPendingCIServiceOwner is removed from pull requests created by
+	// older service versions. New requests use only their method label.
+	LegacyLabelPendingCIServiceOwner = "smyklot:pending:ci:service"
 
 	// LabelPendingCIMerge indicates PR is waiting for CI before merge
 	LabelPendingCIMerge = "smyklot:pending:ci"

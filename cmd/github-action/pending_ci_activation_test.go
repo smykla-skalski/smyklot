@@ -46,9 +46,7 @@ func TestPendingCIActivationRollsBackOnlyUnownedArtifacts(t *testing.T) {
 		},
 		{
 			name: "no prior request owns artifacts", getErr: storage.ErrNotFound,
-			wantLabels: []string{
-				"smyklot:pending:ci:squash", github.LabelPendingCIServiceOwner,
-			},
+			wantLabels:        []string{"smyklot:pending:ci:squash"},
 			wantReactionCount: 1,
 		},
 	}
@@ -78,9 +76,7 @@ func TestPendingCIActivationRollsBackOnlyUnownedArtifacts(t *testing.T) {
 			if !errors.Is(failures.command, armErr) {
 				t.Fatalf("command failure = %v, want arm error", failures.command)
 			}
-			if !equalStrings(artifacts.addedLabels, []string{
-				github.LabelPendingCIServiceOwner, "smyklot:pending:ci:squash",
-			}) {
+			if !equalStrings(artifacts.addedLabels, []string{"smyklot:pending:ci:squash"}) {
 				t.Fatalf("added labels = %v", artifacts.addedLabels)
 			}
 			if !equalStrings(artifacts.removedLabels, test.wantLabels) {
@@ -155,19 +151,15 @@ func TestPendingCIActivationCleansAmbiguousMethodPublishFailure(t *testing.T) {
 	if !errors.Is(failures.label, publishErr) {
 		t.Fatalf("label failure = %v, want publish error", failures.label)
 	}
-	if !equalStrings(artifacts.removedLabels, []string{
-		methodLabel, github.LabelPendingCIServiceOwner,
-	}) {
+	if !equalStrings(artifacts.removedLabels, []string{methodLabel}) {
 		t.Fatalf("removed labels = %v", artifacts.removedLabels)
 	}
 }
 
-func TestPendingCIActivationCleansAmbiguousMarkerPublishFailure(t *testing.T) {
+func TestPendingCIActivationStopsWhenWaitingReactionCannotBePublished(t *testing.T) {
 	t.Parallel()
 	publishErr := errors.New("response lost")
-	artifacts := &pendingCIArtifactsStub{addLabelErrors: map[string]error{
-		github.LabelPendingCIServiceOwner: publishErr,
-	}}
+	artifacts := &pendingCIArtifactsStub{addReactionErr: publishErr}
 	command := &pendingCICommand{
 		store:       pendingCICommandStoreStub{getErr: storage.ErrNotFound},
 		coordinator: newPendingCICoordinator(), repositoryID: "repository:7",
@@ -186,11 +178,20 @@ func TestPendingCIActivationCleansAmbiguousMarkerPublishFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !errors.Is(failures.label, publishErr) {
-		t.Fatalf("label failure = %v, want publish error", failures.label)
+	if !errors.Is(failures.reaction, publishErr) {
+		t.Fatalf("reaction failure = %v, want publish error", failures.reaction)
 	}
-	if !equalStrings(artifacts.removedLabels, []string{github.LabelPendingCIServiceOwner}) {
-		t.Fatalf("removed labels = %v", artifacts.removedLabels)
+	if len(artifacts.addedLabels) != 0 || len(artifacts.removedLabels) != 0 {
+		t.Fatalf(
+			"reaction failure touched labels: added=%v removed=%v",
+			artifacts.addedLabels, artifacts.removedLabels,
+		)
+	}
+	if len(artifacts.removedReactions) != 1 || artifacts.removedReactions[0] != 101 {
+		t.Fatalf(
+			"removed reactions = %v, want ambiguous reaction cleanup",
+			artifacts.removedReactions,
+		)
 	}
 }
 
@@ -336,9 +337,7 @@ func TestPendingCIActivationRollbackTreatsMissingLabelsAsClean(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !equalStrings(artifacts.removedLabels, []string{
-		methodLabel, github.LabelPendingCIServiceOwner,
-	}) {
+	if !equalStrings(artifacts.removedLabels, []string{methodLabel}) {
 		t.Fatalf("removed labels = %v", artifacts.removedLabels)
 	}
 }
@@ -558,6 +557,7 @@ type pendingCIArtifactsStub struct {
 	removedReactions  []int
 	addLabelErrors    map[string]error
 	removeLabelErrors map[string]error
+	addReactionErr    error
 	approve           func() error
 	info              *github.PRInfo
 	infoErr           error
@@ -620,14 +620,14 @@ func (stub *pendingCIArtifactsStub) RemoveLabel(
 	return stub.removeLabelErrors[label]
 }
 
-func (*pendingCIArtifactsStub) AddReaction(
+func (stub *pendingCIArtifactsStub) AddReaction(
 	context.Context,
 	string,
 	string,
 	int,
 	github.ReactionType,
 ) error {
-	return nil
+	return stub.addReactionErr
 }
 
 func (stub *pendingCIArtifactsStub) RemoveReactionByUser(

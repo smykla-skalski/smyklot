@@ -53,6 +53,13 @@ func (s *Server) getRootOverview(w http.ResponseWriter, r *http.Request) {
 		s.writeInternal(w, err)
 		return
 	}
+	recent, err := s.store.ListHistory(
+		r.Context(), pendingci.HistoryFilter{Limit: 10},
+	)
+	if err != nil {
+		s.writeInternal(w, err)
+		return
+	}
 	writeJSON(
 		w,
 		http.StatusOK,
@@ -61,6 +68,7 @@ func (s *Server) getRootOverview(w http.ResponseWriter, r *http.Request) {
 			database,
 			activeQueue,
 			deferredQueue,
+			recent,
 			s.cfg,
 			s.startedAt,
 			now,

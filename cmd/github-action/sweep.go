@@ -322,7 +322,7 @@ func (s *server) sweepRepo(
 	if err != nil {
 		return NewGitHubError(ErrGetPRs, err)
 	}
-	if err := s.reconcilePendingCIServiceOwnership(ctx, client, repo, prs); err != nil {
+	if err := s.migrateLegacyPendingCIServiceLabels(ctx, client, repo, prs); err != nil {
 		return err
 	}
 
@@ -392,5 +392,5 @@ func (s *server) handoffPendingCIToAction(
 		return NewGitHubError(ErrGetPRs, err)
 	}
 
-	return s.reconcilePendingCIServiceOwnership(ctx, client, repo, prs)
+	return s.migrateLegacyPendingCIServiceLabels(ctx, client, repo, prs)
 }

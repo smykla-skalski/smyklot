@@ -1224,6 +1224,17 @@ func TestPanelManagesPendingCIQueue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	woke, err := harness.store.Wake(t.Context(), pendingci.WakeRequest{
+		RepositoryID: result.Request.RepositoryID,
+		PullRequest:  result.Request.PullRequest,
+		EventName:    "check_suite",
+		EventKey:     "check_suite:abc123:completed:success",
+		DeliveryID:   "delivery-123",
+		OccurredAt:   harness.now.Add(time.Second),
+	})
+	if err != nil || !woke {
+		t.Fatalf("webhook wake = %t, %v", woke, err)
+	}
 
 	overview := harness.request(
 		t, http.MethodGet, "/panel/api/v1/root/overview", nil, rootSession,
@@ -1231,29 +1242,49 @@ func TestPanelManagesPendingCIQueue(t *testing.T) {
 	requireResponse(
 		t, overview, "pending CI overview", http.StatusOK,
 		`"pending_ci":{"active":[`, `"repository_full_name":"smykla-skalski/smyklot"`,
-		`"merge_method":"squash"`,
+		`"merge_method":"squash"`, `"next_check_trigger":"webhook"`, `"recent":[]`,
+	)
+	detail := harness.request(
+		t, http.MethodGet,
+		"/panel/api/v1/root/pending-ci/"+strconv.FormatInt(result.Request.ID, 10),
+		nil, rootSession,
+	)
+	requireResponse(
+		t, detail, "pending CI audit", http.StatusOK,
+		`"kind":"armed"`, `"kind":"wake_received"`,
+		`"trigger":"webhook"`, `"event_name":"check_suite"`,
+		`"delivery_id":"delivery-123"`,
 	)
 
 	check := harness.request(
 		t, http.MethodPost,
 		"/panel/api/v1/root/pending-ci/"+strconv.FormatInt(result.Request.ID, 10)+"/check",
-		strings.NewReader(`{"expected_revision":1}`), rootSession,
+		strings.NewReader(`{"expected_revision":2}`), rootSession,
 	)
-	requireResponse(t, check, "check pending CI now", http.StatusOK, `"schedule":"active"`, `"revision":2`)
+	requireResponse(t, check, "check pending CI now", http.StatusOK, `"schedule":"active"`, `"revision":3`)
 
 	stale := harness.request(
 		t, http.MethodDelete,
 		"/panel/api/v1/root/pending-ci/"+strconv.FormatInt(result.Request.ID, 10),
-		strings.NewReader(`{"expected_revision":1}`), rootSession,
+		strings.NewReader(`{"expected_revision":2}`), rootSession,
 	)
 	requireResponse(t, stale, "stale pending CI cancellation", http.StatusConflict)
 
 	cancel := harness.request(
 		t, http.MethodDelete,
 		"/panel/api/v1/root/pending-ci/"+strconv.FormatInt(result.Request.ID, 10),
-		strings.NewReader(`{"expected_revision":2}`), rootSession,
+		strings.NewReader(`{"expected_revision":3}`), rootSession,
 	)
-	requireResponse(t, cancel, "cancel pending CI", http.StatusOK)
+	requireResponse(t, cancel, "cancel pending CI", http.StatusOK, `"lifecycle":"cancelled"`)
+
+	finished := harness.request(
+		t, http.MethodGet, "/panel/api/v1/root/overview", nil, rootSession,
+	)
+	requireResponse(
+		t, finished, "finished pending CI overview", http.StatusOK,
+		`"active":[]`, `"recent":[`, `"lifecycle":"cancelled"`,
+		`"reason":"cancelled by panel user @root"`,
+	)
 	if harness.pendingCI.wakes != 2 {
 		t.Fatalf("scheduler wakes = %d, want 2", harness.pendingCI.wakes)
 	}

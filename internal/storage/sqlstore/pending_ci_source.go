@@ -238,21 +238,32 @@ INSERT INTO pending_ci_requests (
     target_id, installation_id, repository_id, repository_full_name,
     pull_request, head_sha, base_branch, merge_method, required_checks_only,
     requester, source_comment_id, source_revision, source_sequence, label,
-    lifecycle, schedule, next_check_at, last_progress_at, reason,
+	    lifecycle, schedule, next_check_trigger, next_check_at, last_progress_at, reason,
     requested_at, updated_at, finished_at, cleanup_pending
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE)
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE)
 RETURNING id`,
 		request.TargetID, request.InstallationID, request.RepositoryID,
 		request.RepositoryFullName, request.PullRequest, request.HeadSHA,
 		request.BaseBranch, label.MergeMethod, label.RequiredChecksOnly,
 		"smyklot-migration", "legacy-label-drain:v1", label.Label,
 		pendingci.LifecycleCancelled, pendingci.ScheduleActive,
+		pendingci.TriggerCleanup,
 		request.DrainedAt, request.DrainedAt,
 		legacyPendingCIDrainReason, request.DrainedAt,
 		request.DrainedAt, request.DrainedAt,
 	).Scan(&id)
 	if err != nil {
 		return pendingci.Request{}, fmt.Errorf("insert legacy pending CI drain: %w", err)
+	}
+	if err := recordPendingCIEvent(ctx, tx, pendingCIAuditEvent(
+		id,
+		pendingci.EventFinished,
+		pendingci.TriggerCleanup,
+		string(pendingci.LifecycleCancelled),
+		legacyPendingCIDrainReason,
+		request.DrainedAt,
+	)); err != nil {
+		return pendingci.Request{}, err
 	}
 
 	drained := pendingci.Request{
@@ -262,7 +273,8 @@ RETURNING id`,
 		MergeMethod: label.MergeMethod, RequiredChecksOnly: label.RequiredChecksOnly,
 		Requester: "smyklot-migration", SourceRevision: "legacy-label-drain:v1",
 		Label: label.Label, Lifecycle: pendingci.LifecycleCancelled,
-		Schedule: pendingci.ScheduleActive, NextCheckAt: request.DrainedAt,
+		Schedule: pendingci.ScheduleActive, NextCheckTrigger: pendingci.TriggerCleanup,
+		NextCheckAt:    request.DrainedAt,
 		LastProgressAt: request.DrainedAt, Reason: legacyPendingCIDrainReason,
 		RequestedAt: request.DrainedAt, UpdatedAt: request.DrainedAt,
 		FinishedAt: &request.DrainedAt, CleanupPending: true, Revision: 1,

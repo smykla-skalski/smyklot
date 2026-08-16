@@ -13,6 +13,69 @@ import (
 )
 
 func declarePendingCISpecs(runtime func() (context.Context, storage.Store, time.Time)) {
+	It("records webhook causality and completed pending CI history", func() {
+		ctx, store, now := runtime()
+		armed, err := store.Arm(ctx, pendingCIArm(now, 197, 100, "audit-head"))
+		Expect(err).NotTo(HaveOccurred())
+		wakeAt := now.Add(time.Second)
+		changed, err := store.Wake(ctx, pendingci.WakeRequest{
+			RepositoryID: armed.Request.RepositoryID, PullRequest: armed.Request.PullRequest,
+			EventName: "check_run", EventKey: "check_run:501:completed",
+			DeliveryID: "delivery-501", ExpectedHeadSHA: armed.Request.HeadSHA,
+			OccurredAt: wakeAt,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(changed).To(BeTrue())
+
+		lease, err := store.LeaseDue(ctx, wakeAt, wakeAt.Add(time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		quietAt := wakeAt.Add(30 * time.Second)
+		rescheduled, err := store.Reschedule(ctx, pendingci.RescheduleRequest{
+			ID: lease.Request.ID, ExpectedRevision: lease.Request.Revision,
+			Schedule: pendingci.ScheduleActive, HeadSHA: armed.Request.HeadSHA,
+			NextCheckAt: quietAt, NextCheckTrigger: pendingci.TriggerQuietPeriod,
+			LastProgressAt: wakeAt, LastObservedState: string(pendingci.ObservedPassing),
+			LastFingerprint: "passing:2:2", ObservationSummary: "2/2 checks passing",
+			CheckedAt: wakeAt,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		lease, err = store.LeaseDue(ctx, quietAt, quietAt.Add(time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(lease.Request.ID).To(Equal(rescheduled.ID))
+		claimed, err := store.ClaimMerge(ctx, pendingci.ClaimMergeRequest{
+			ID: lease.Request.ID, ExpectedRevision: lease.Request.Revision,
+			Observation: pendingci.Observation{
+				State: pendingci.ObservedPassing, Summary: "2/2 checks passing",
+			},
+			ClaimedAt: quietAt,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		finished, err := store.Finish(ctx, pendingci.FinishRequest{
+			ID: claimed.ID, ExpectedRevision: claimed.Revision,
+			Lifecycle: pendingci.LifecycleMerged, Trigger: pendingci.TriggerQuietPeriod,
+			Reason: "CI passed and pull request merged", FinishedAt: quietAt.Add(time.Second),
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		events, err := store.ListEvents(ctx, pendingci.EventFilter{RequestID: finished.ID})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(events).To(HaveLen(8))
+		Expect(events[1].Kind).To(Equal(pendingci.EventWakeReceived))
+		Expect(events[1].Trigger).To(Equal(pendingci.TriggerWebhook))
+		Expect(events[1].EventName).To(Equal("check_run"))
+		Expect(events[1].DeliveryID).To(Equal("delivery-501"))
+		Expect(events[3].Kind).To(Equal(pendingci.EventChecksObserved))
+		Expect(events[3].Summary).To(Equal("2/2 checks passing"))
+		Expect(events[4].Trigger).To(Equal(pendingci.TriggerQuietPeriod))
+		Expect(events[6].Kind).To(Equal(pendingci.EventMergeStarted))
+		Expect(events[7].Kind).To(Equal(pendingci.EventFinished))
+
+		history, err := store.ListHistory(ctx, pendingci.HistoryFilter{Limit: 5})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(history).To(HaveLen(1))
+		Expect(history[0].ID).To(Equal(finished.ID))
+	})
+
 	It("persists the pending CI lifecycle and its crash-safe cleanup phases", func() {
 		ctx, store, now := runtime()
 		arm := pendingCIArm(now, 198, 101, "cleanup-head")

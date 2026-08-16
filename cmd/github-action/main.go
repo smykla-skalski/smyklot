@@ -990,21 +990,19 @@ func executePendingCIMerge(
 	}
 	if environment.pendingCI == nil {
 		serviceOwned, ownershipErr := pendingCIServiceOwned(
-			ctx, client, rc.RepoOwner, rc.RepoName, prNum,
+			ctx, client, rc.RepoOwner, rc.RepoName, prNum, rc.BotUsername,
 		)
 		if ownershipErr != nil {
 			return feedback.NewMergeFailed(ownershipErr.Error()), nil
 		}
 		if serviceOwned {
 			return feedback.NewMergeFailed(
-				"the service is still handing off this pending CI request; retry after its ownership label is removed",
+				"the service is still handing off this pending CI request; retry after its waiting reaction is removed",
 			), nil
 		}
 	}
-
-	// The Action has no durable reconciler, so it evaluates immediately and
-	// leaves a label for its scheduled poll. The service always records the
-	// request and lets its reconciler enforce the green quiet period.
+	// The Action has no durable reconciler, so it delegates the wait to GitHub
+	// labels. The service records the request and enforces its own policy.
 	requiredChecks, err := pendingCIRequiredChecks(
 		ctx, client, rc.RepoOwner, rc.RepoName, info.BaseBranch, requiredChecksOnly,
 	)
@@ -1020,6 +1018,15 @@ func executePendingCIMerge(
 			return feedback.NewMergeFailed("failed to get CI status: " + err.Error()), nil
 		}
 		if checkStatus.AllPassing {
+			serviceOwned, ownershipErr := pendingCIServiceOwned(
+				ctx, client, rc.RepoOwner, rc.RepoName, prNum, rc.BotUsername,
+			)
+			if ownershipErr != nil {
+				return feedback.NewMergeFailed(ownershipErr.Error()), nil
+			}
+			if serviceOwned {
+				return nil, nil
+			}
 			return executeImmediateMerge(ctx, client, rc, bc, prNum, method, info, headRef)
 		}
 	}
@@ -1028,13 +1035,21 @@ func executePendingCIMerge(
 		return failure, nil
 	}
 
-	// Add pending-ci label with merge method and required flag
 	label := getPendingCILabel(method, requiredChecksOnly)
 	if environment.pendingCI == nil {
 		if failure := approvePendingCI(
 			ctx, client, rc, prNum, pendingCIApprovalRequired(rc, info),
 		); failure != nil {
 			return failure, nil
+		}
+		serviceOwned, ownershipErr := pendingCIServiceOwned(
+			ctx, client, rc.RepoOwner, rc.RepoName, prNum, rc.BotUsername,
+		)
+		if ownershipErr != nil {
+			return feedback.NewMergeFailed(ownershipErr.Error()), nil
+		}
+		if serviceOwned {
+			return nil, nil
 		}
 		_ = client.AddReaction(
 			ctx, rc.RepoOwner, rc.RepoName, commentID, github.ReactionPendingCI,
@@ -1061,6 +1076,11 @@ func executePendingCIMerge(
 		if failures.label != nil {
 			return feedback.NewMergeFailed(
 				"failed to record the pending CI request: " + failures.label.Error(),
+			), nil
+		}
+		if failures.reaction != nil {
+			return feedback.NewMergeFailed(
+				"failed to record the pending CI request: " + failures.reaction.Error(),
 			), nil
 		}
 		if failures.command != nil {

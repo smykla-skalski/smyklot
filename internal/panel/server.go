@@ -203,6 +203,7 @@ func (s *Server) Handler() http.Handler {
 func (s *Server) registerRootRoutes(mux *http.ServeMux, base string) {
 	mux.HandleFunc("GET "+base+"/api/v1/root/installations", s.getRootInstallations)
 	mux.HandleFunc("GET "+base+"/api/v1/root/overview", s.getRootOverview)
+	mux.HandleFunc("GET "+base+"/api/v1/root/pending-ci/{request}", s.getRootPendingCI)
 	mux.HandleFunc("POST "+base+"/api/v1/root/pending-ci/{request}/check", s.postRootPendingCICheck)
 	mux.HandleFunc("DELETE "+base+"/api/v1/root/pending-ci/{request}", s.deleteRootPendingCI)
 	mux.HandleFunc("GET "+base+"/api/v1/root/settings", s.getRootRuntimeSettings)

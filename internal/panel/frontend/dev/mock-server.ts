@@ -23,6 +23,7 @@ import type {
   PanelInvitation,
   PanelTarget,
   PanelUser,
+  PendingCIDetail,
   PendingCIRequest,
   InstallationRole,
   TargetUserAccess,
@@ -1547,6 +1548,7 @@ async function handle(
       const now = new Date().toISOString();
       request.schedule = 'active';
       request.next_check_at = now;
+      request.next_check_trigger = 'manual';
       request.updated_at = now;
       request.revision += 1;
       broadcast(state, { type: 'resync' });
@@ -1554,11 +1556,25 @@ async function handle(
       return;
     }
 
+    if (rootPendingCI && method === 'GET') {
+      const request = findPendingCI(state, rootPendingCI.groups?.request ?? '');
+      respond(res, 200, pendingCIDetail(request));
+      return;
+    }
+
     if (rootPendingCI && method === 'DELETE') {
       const request = findPendingCI(state, rootPendingCI.groups?.request ?? '');
       const input = await readBody<{ expected_revision: number }>(req);
       requirePendingCIRevision(request, input.expected_revision);
-      state.pendingCI = state.pendingCI.filter((candidate) => candidate.id !== request.id);
+      const now = new Date().toISOString();
+      request.lifecycle = 'cancelled';
+      request.reason = 'cancelled by panel user @bart';
+      request.finished_at = now;
+      request.next_check_at = now;
+      request.next_check_trigger = 'cleanup';
+      request.cleanup_pending = true;
+      request.updated_at = now;
+      request.revision += 1;
       broadcast(state, { type: 'resync' });
       respond(res, 200, structuredClone(request));
       return;
@@ -2277,8 +2293,13 @@ function rootOverviewValue(state: MockState): RootOverview {
     ).length,
     recent_failures: recentFailures,
     pending_ci: {
-      active: state.pendingCI.filter((request) => request.schedule === 'active'),
-      deferred: state.pendingCI.filter((request) => request.schedule === 'deferred'),
+      active: state.pendingCI.filter(
+        (request) => request.lifecycle === 'armed' && request.schedule === 'active',
+      ),
+      deferred: state.pendingCI.filter(
+        (request) => request.lifecycle === 'armed' && request.schedule === 'deferred',
+      ),
+      recent: state.pendingCI.filter((request) => request.lifecycle !== 'armed'),
     },
   };
 }
@@ -2293,11 +2314,15 @@ function pendingCISeeds(iso: (offsetMs: number) => string): PendingCIRequest[] {
       merge_method: 'squash',
       required_checks_only: false,
       requester: 'bart',
+      lifecycle: 'armed',
       schedule: 'active',
       next_check_at: iso(4 * 60_000),
+      next_check_trigger: 'webhook',
       last_observed_state: 'pending',
+      reason: '',
       requested_at: iso(-18 * 60_000),
       updated_at: iso(-60_000),
+      cleanup_pending: false,
       revision: 3,
     },
     {
@@ -2308,11 +2333,15 @@ function pendingCISeeds(iso: (offsetMs: number) => string): PendingCIRequest[] {
       merge_method: 'rebase',
       required_checks_only: true,
       requester: 'operator',
+      lifecycle: 'armed',
       schedule: 'deferred',
       next_check_at: iso(5 * 3_600_000),
+      next_check_trigger: 'fallback',
       last_observed_state: 'failing',
+      reason: '',
       requested_at: iso(-8 * 3_600_000),
       updated_at: iso(-3 * 3_600_000),
+      cleanup_pending: false,
       revision: 7,
     },
   ];
@@ -2331,6 +2360,24 @@ function requirePendingCIRevision(request: PendingCIRequest, revision: number): 
   if (revision !== request.revision) {
     throw new MockApiError(409, 'conflict', 'pending CI request changed; reload and try again');
   }
+}
+
+function pendingCIDetail(request: PendingCIRequest): PendingCIDetail {
+  return {
+    request: structuredClone(request),
+    events: [
+      {
+        id: `${request.id}:wake`,
+        kind: 'wake_received',
+        trigger: 'webhook',
+        event_name: 'check_suite',
+        event_key: `check_suite:${request.head_sha}:completed:success`,
+        delivery_id: 'mock-delivery-id',
+        summary: 'Received a CI state webhook and scheduled an immediate reconciliation',
+        created_at: request.updated_at,
+      },
+    ],
+  };
 }
 
 function rootAuditEntries(state: MockState): AuditEntry[] {

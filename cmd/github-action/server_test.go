@@ -21,7 +21,6 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/internal/storage/storagetest"
 	"github.com/smykla-skalski/smyklot/pkg/config"
-	"github.com/smykla-skalski/smyklot/pkg/github"
 	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
 
@@ -584,49 +583,9 @@ var _ = Describe("Webhook service [Unit]", func() {
 			}).Within(eventuallyWindow).Should(BeTrue())
 		})
 
-		It("restores service ownership when its marker is removed", func() {
-			armed := armWebhookTestRequest(srv)
-			response := post(
-				webhook.EventPullRequest,
-				"owner-unlabeled-delivery",
-				pendingLabelRemovedDeliveryFor(github.LabelPendingCIServiceOwner),
-				nil,
-			)
-			Expect(response.StatusCode).To(Equal(http.StatusAccepted))
-			Eventually(func() int {
-				return stub.countCalls(http.MethodPost, "/issues/42/labels")
-			}, eventuallyWindow).Should(Equal(1))
-			Eventually(func(g Gomega) {
-				request, err := srv.store.GetArmed(
-					GinkgoT().Context(), armed.RepositoryID, armed.PullRequest,
-				)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(request.LastEventKey).To(ContainSubstring("pull_request"))
-			}).Within(eventuallyWindow).Should(Succeed())
-		})
-
-		It("restores service ownership when the marker webhook was missed", func() {
-			armed := armWebhookTestRequest(srv)
-			seedPendingCISource(stub, armed, "/squash after ci")
-			stub.prLabels = `[{"name":"smyklot:pending:ci:squash"}]`
-			startPendingCITestScheduler(srv)
-
-			Eventually(func() int {
-				return stub.countCalls(http.MethodPost, "/issues/42/labels")
-			}, eventuallyWindow).Should(Equal(1))
-			updated, err := srv.store.GetArmed(
-				GinkgoT().Context(), armed.RepositoryID, armed.PullRequest,
-			)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(updated.ID).To(Equal(armed.ID))
-		})
-
 		It("cancels a command edit when its webhook was missed", func() {
 			armed := armWebhookTestRequest(srv)
-			stub.prLabels = `[
-				{"name":"smyklot:pending:ci:squash"},
-				{"name":"smyklot:pending:ci:service"}
-			]`
+			stub.prLabels = `[{"name":"smyklot:pending:ci:squash"}]`
 			seedPendingCISource(stub, armed, "do not merge")
 			startPendingCITestScheduler(srv)
 
@@ -639,28 +598,7 @@ var _ = Describe("Webhook service [Unit]", func() {
 			}, eventuallyWindow).Should(BeTrue())
 		})
 
-		It("restores terminal cleanup ownership on a marker webhook", func() {
-			armed := armWebhookTestRequest(srv)
-			_, err := srv.store.Finish(GinkgoT().Context(), pendingci.FinishRequest{
-				ID: armed.ID, ExpectedRevision: armed.Revision,
-				Lifecycle: pendingci.LifecycleCancelled,
-				Reason:    "test terminal cleanup", FinishedAt: time.Now().UTC(),
-			})
-			Expect(err).NotTo(HaveOccurred())
-
-			response := post(
-				webhook.EventPullRequest,
-				"terminal-owner-unlabeled-delivery",
-				pendingLabelRemovedDeliveryFor(github.LabelPendingCIServiceOwner),
-				nil,
-			)
-			Expect(response.StatusCode).To(Equal(http.StatusAccepted))
-			Eventually(func() int {
-				return stub.countCalls(http.MethodPost, "/issues/42/labels")
-			}, eventuallyWindow).Should(Equal(1))
-		})
-
-		It("repairs ownership before terminal cleanup when its webhook was missed", func() {
+		It("completes terminal cleanup without adding an ownership label", func() {
 			armed := armWebhookTestRequest(srv)
 			terminal, err := srv.store.Finish(
 				GinkgoT().Context(), pendingci.FinishRequest{
@@ -678,7 +616,7 @@ var _ = Describe("Webhook service [Unit]", func() {
 				g.Expect(readErr).NotTo(HaveOccurred())
 				g.Expect(cleaned.CleanupPending).To(BeFalse())
 			}).Within(eventuallyWindow).Should(Succeed())
-			Expect(stub.countCalls(http.MethodPost, "/issues/42/labels")).To(Equal(1))
+			Expect(stub.countCalls(http.MethodPost, "/issues/42/labels")).To(BeZero())
 			Expect(stub.countCalls(
 				http.MethodDelete,
 				"/issues/42/labels/smyklot:pending:ci:squash",

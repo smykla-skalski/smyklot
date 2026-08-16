@@ -100,10 +100,10 @@ UPDATE pending_ci_requests SET
     lifecycle = ?, reason = ?, next_check_at = ?, lease_expires_at = NULL,
     cleanup_pending = TRUE, cleanup_artifacts_done = FALSE,
     cleanup_attempts = 0, cleanup_error = '',
-    updated_at = ?, finished_at = ?, revision = revision + 1
+    next_check_trigger = ?, updated_at = ?, finished_at = ?, revision = revision + 1
 WHERE id = ? AND lifecycle = ? AND revision = ?`,
 		pendingci.LifecycleCancelled, change.Reason,
-		change.CancelledAt, change.CancelledAt,
+		change.CancelledAt, pendingci.TriggerCleanup, change.CancelledAt,
 		change.CancelledAt, request.ID,
 		pendingci.LifecycleArmed, request.Revision,
 	)
@@ -117,12 +117,23 @@ WHERE id = ? AND lifecycle = ? AND revision = ?`,
 	if changed != 1 {
 		return storage.ErrConflict
 	}
+	if err := recordPendingCIEvent(ctx, tx, pendingCIAuditEvent(
+		request.ID,
+		pendingci.EventFinished,
+		pendingci.TriggerCommand,
+		string(pendingci.LifecycleCancelled),
+		change.Reason,
+		change.CancelledAt,
+	)); err != nil {
+		return err
+	}
 	request.Lifecycle = pendingci.LifecycleCancelled
 	request.Reason = change.Reason
 	request.LeaseExpiresAt = nil
 	request.UpdatedAt = change.CancelledAt
 	request.FinishedAt = timePointer(change.CancelledAt)
 	request.NextCheckAt = change.CancelledAt
+	request.NextCheckTrigger = pendingci.TriggerCleanup
 	request.CleanupPending = true
 	request.CleanupArtifactsDone = false
 	request.CleanupAttempts = 0

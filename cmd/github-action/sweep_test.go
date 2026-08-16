@@ -249,7 +249,11 @@ var _ = Describe("Reaction sweep [Unit]", func() {
 				http.MethodDelete, "/issues/42/labels/smyklot:pending:ci:squash",
 			)
 		}, eventuallyWindow).Should(Equal(1))
+		// The legacy marker remains a handoff fence until durable cleanup has
+		// removed the method label. A later sweep then removes the marker.
 		Eventually(func() int {
+			Expect(service.sweep(GinkgoT().Context())).To(Succeed())
+
 			return stub.countCalls(
 				http.MethodDelete, "/issues/42/labels/smyklot:pending:ci:service",
 			)
@@ -261,7 +265,7 @@ var _ = Describe("Reaction sweep [Unit]", func() {
 			)))
 	})
 
-	It("should remove orphaned service ownership without draining it as legacy work", func() {
+	It("should remove orphaned service ownership and safely drain its method label", func() {
 		stub.installations = `[{"id":111,"account":{"login":"smykla-skalski"}}]`
 		stub.repos = `{"total_count":1,"repositories":[{
 			"id":123456,
@@ -285,11 +289,11 @@ var _ = Describe("Reaction sweep [Unit]", func() {
 
 		Expect(stub.countCalls(
 			http.MethodDelete, "/issues/42/labels/smyklot:pending:ci:squash",
-		)).To(Equal(1))
+		)).To(BeZero())
 		Expect(stub.countCalls(
 			http.MethodDelete, "/issues/42/labels/smyklot:pending:ci:service",
 		)).To(Equal(1))
-		Expect(stub.countCalls(http.MethodPost, "/issues/42/comments")).To(BeZero())
+		Expect(stub.countCalls(http.MethodPost, "/issues/42/comments")).To(Equal(1))
 	})
 
 	It("should preserve ownership for an armed service request", func() {
@@ -320,7 +324,7 @@ var _ = Describe("Reaction sweep [Unit]", func() {
 		)).To(BeZero())
 		Expect(stub.countCalls(
 			http.MethodDelete, "/issues/42/labels/smyklot:pending:ci:service",
-		)).To(BeZero())
+		)).To(Equal(1))
 		Expect(stub.countCalls(http.MethodPost, "/issues/42/comments")).To(BeZero())
 	})
 

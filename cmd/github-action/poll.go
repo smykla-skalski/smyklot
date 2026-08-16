@@ -418,9 +418,6 @@ func filterPendingCIPRs(prs []map[string]interface{}) []pendingCIPR {
 	var result []pendingCIPR
 
 	for _, pr := range prs {
-		if pullRequestHasLabel(pr, github.LabelPendingCIServiceOwner) {
-			continue
-		}
 		labels := pendingCILabels(pr)
 		if len(labels) > 0 {
 			result = append(result, labels[0])
@@ -534,6 +531,17 @@ func processPendingCIPR(
 	if err != nil {
 		return fmt.Errorf("failed to get PR head ref: %w", err)
 	}
+	actionOwned, err := pendingCIActionOwns(
+		ctx, client, repoOwner, repoName, prNumber, pr.label, headRef, botUsername,
+	)
+	if err != nil {
+		return err
+	}
+	if !actionOwned {
+		logging.From(ctx).Info("pending CI request is owned by the service; Action stands down")
+
+		return nil
+	}
 
 	// Get required checks list if filtering by required checks only
 	var requiredChecks []github.RequiredCheck
@@ -597,7 +605,7 @@ func handlePendingCIPassed(
 ) error {
 	logging.From(ctx).Info("CI passed, merging")
 	actionOwned, err := pendingCIActionOwns(
-		ctx, client, repoOwner, repoName, prNumber, pr.label, headRef,
+		ctx, client, repoOwner, repoName, prNumber, pr.label, headRef, botUsername,
 	)
 	if err != nil {
 		return err

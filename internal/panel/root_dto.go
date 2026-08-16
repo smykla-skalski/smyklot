@@ -175,6 +175,7 @@ type rootOverviewResponse struct {
 type pendingCIQueueResponse struct {
 	Active   []pendingCIResponse `json:"active"`
 	Deferred []pendingCIResponse `json:"deferred"`
+	Recent   []pendingCIResponse `json:"recent"`
 }
 
 type pendingCIResponse struct {
@@ -185,12 +186,35 @@ type pendingCIResponse struct {
 	MergeMethod        pendingci.MergeMethod `json:"merge_method"`
 	RequiredChecksOnly bool                  `json:"required_checks_only"`
 	Requester          string                `json:"requester"`
+	Lifecycle          pendingci.Lifecycle   `json:"lifecycle"`
 	Schedule           pendingci.Schedule    `json:"schedule"`
 	NextCheckAt        time.Time             `json:"next_check_at"`
+	NextCheckTrigger   pendingci.Trigger     `json:"next_check_trigger"`
 	LastObservedState  string                `json:"last_observed_state"`
+	Reason             string                `json:"reason"`
 	RequestedAt        time.Time             `json:"requested_at"`
 	UpdatedAt          time.Time             `json:"updated_at"`
+	FinishedAt         *time.Time            `json:"finished_at,omitempty"`
+	CleanupPending     bool                  `json:"cleanup_pending"`
+	CleanupError       string                `json:"cleanup_error,omitempty"`
 	Revision           int64                 `json:"revision"`
+}
+
+type pendingCIEventResponse struct {
+	ID         string              `json:"id"`
+	Kind       pendingci.EventKind `json:"kind"`
+	Trigger    pendingci.Trigger   `json:"trigger"`
+	EventName  string              `json:"event_name,omitempty"`
+	EventKey   string              `json:"event_key,omitempty"`
+	DeliveryID string              `json:"delivery_id,omitempty"`
+	State      string              `json:"state,omitempty"`
+	Summary    string              `json:"summary"`
+	CreatedAt  time.Time           `json:"created_at"`
+}
+
+type pendingCIDetailResponse struct {
+	Request pendingCIResponse        `json:"request"`
+	Events  []pendingCIEventResponse `json:"events"`
 }
 
 type rootAuditResponse struct {
@@ -274,7 +298,7 @@ func securityNotificationDTO(notification storage.SecurityNotification) security
 func rootOverviewDTO(
 	overview storage.RootOverview,
 	database storage.DatabaseStatus,
-	activeQueue, deferredQueue []pendingci.Request,
+	activeQueue, deferredQueue, recent []pendingci.Request,
 	cfg Config,
 	startedAt, now time.Time,
 ) rootOverviewResponse {
@@ -309,6 +333,7 @@ func rootOverviewDTO(
 		RecentFailures:       failures,
 		PendingCI: pendingCIQueueResponse{
 			Active: pendingCIQueueDTO(activeQueue), Deferred: pendingCIQueueDTO(deferredQueue),
+			Recent: pendingCIQueueDTO(recent),
 		},
 	}
 }
@@ -320,10 +345,27 @@ func pendingCIQueueDTO(requests []pendingci.Request) []pendingCIResponse {
 			ID: strconv.FormatInt(request.ID, 10), RepositoryFullName: request.RepositoryFullName,
 			PullRequest: request.PullRequest, HeadSHA: request.HeadSHA,
 			MergeMethod: request.MergeMethod, RequiredChecksOnly: request.RequiredChecksOnly,
-			Requester: request.Requester, Schedule: request.Schedule,
-			NextCheckAt: request.NextCheckAt, LastObservedState: request.LastObservedState,
+			Requester: request.Requester, Lifecycle: request.Lifecycle, Schedule: request.Schedule,
+			NextCheckAt: request.NextCheckAt, NextCheckTrigger: request.NextCheckTrigger,
+			LastObservedState: request.LastObservedState, Reason: request.Reason,
 			RequestedAt: request.RequestedAt, UpdatedAt: request.UpdatedAt,
-			Revision: request.Revision,
+			FinishedAt: request.FinishedAt, CleanupPending: request.CleanupPending,
+			CleanupError: request.CleanupError,
+			Revision:     request.Revision,
+		})
+	}
+
+	return items
+}
+
+func pendingCIEventsDTO(events []pendingci.Event) []pendingCIEventResponse {
+	items := make([]pendingCIEventResponse, 0, len(events))
+	for _, event := range events {
+		items = append(items, pendingCIEventResponse{
+			ID: strconv.FormatInt(event.ID, 10), Kind: event.Kind, Trigger: event.Trigger,
+			EventName: event.EventName, EventKey: event.EventKey,
+			DeliveryID: event.DeliveryID, State: event.State,
+			Summary: event.Summary, CreatedAt: event.CreatedAt,
 		})
 	}
 

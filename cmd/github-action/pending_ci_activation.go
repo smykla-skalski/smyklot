@@ -42,6 +42,7 @@ type pendingCIActivationRequest struct {
 type pendingCIActivationErrors struct {
 	approval  error
 	label     error
+	reaction  error
 	command   error
 	stale     bool
 	ambiguous bool
@@ -82,26 +83,34 @@ func activatePendingCI(
 				return nil
 			}
 		}
-		failures.label = artifacts.AddLabel(
-			ctx, request.owner, request.repository,
-			request.pullRequest, github.LabelPendingCIServiceOwner,
-		)
-		if failures.label != nil {
-			return rollbackPendingCIArtifacts(
-				ctx, artifacts, request, ownership, false, !ownership.serviceMarker,
+		if !ownership.reaction {
+			failures.reaction = artifacts.AddReaction(
+				ctx, request.owner, request.repository,
+				request.commentID, github.ReactionPendingCIService,
 			)
+			if failures.reaction != nil {
+				// A transport error is ambiguous: GitHub may have accepted the
+				// reaction even though the response never reached us. Remove it
+				// before returning so the Action runner is not fenced forever.
+				return rollbackPendingCIArtifacts(
+					ctx, artifacts, request, ownership, false,
+				)
+			}
 		}
-		markerAdded := !ownership.serviceMarker
-		_ = artifacts.AddReaction(
-			ctx, request.owner, request.repository,
-			request.commentID, github.ReactionPendingCI,
-		)
+		if err := revalidatePendingCIActivation(ctx, guard, &failures); err != nil ||
+			failures.stoodDown {
+			rollbackErr := rollbackPendingCIArtifacts(
+				ctx, artifacts, request, ownership, false,
+			)
+
+			return errors.Join(err, rollbackErr)
+		}
 		failures.label = artifacts.AddLabel(
 			ctx, request.owner, request.repository, request.pullRequest, request.label,
 		)
 		if failures.label != nil {
 			return rollbackPendingCIArtifacts(
-				ctx, artifacts, request, ownership, true, markerAdded,
+				ctx, artifacts, request, ownership, true,
 			)
 		}
 
@@ -112,7 +121,7 @@ func activatePendingCI(
 		)
 		if failures.command != nil {
 			return handlePendingCIArmFailure(
-				ctx, artifacts, command, request, ownership, &failures, markerAdded,
+				ctx, artifacts, command, request, ownership, &failures,
 			)
 		}
 		return removeConflictingPendingCILabels(ctx, artifacts, request)
@@ -184,7 +193,7 @@ func classifyPendingCIArmFailure(
 
 		return
 	}
-	_ = resolveAmbiguousPendingCI(ctx, command, request, failures)
+	resolveAmbiguousPendingCI(ctx, command, request, failures)
 }
 
 func handlePendingCIArmFailure(
@@ -194,11 +203,10 @@ func handlePendingCIArmFailure(
 	request pendingCIActivationRequest,
 	ownership pendingCIArtifactOwnership,
 	failures *pendingCIActivationErrors,
-	markerAdded bool,
 ) error {
-	keepMarker := resolveAmbiguousPendingCI(ctx, command, request, failures)
+	resolveAmbiguousPendingCI(ctx, command, request, failures)
 	rollbackErr := rollbackPendingCIArtifacts(
-		ctx, artifacts, request, ownership, true, markerAdded && !keepMarker,
+		ctx, artifacts, request, ownership, true,
 	)
 	if errors.Is(failures.command, pendingci.ErrStaleSourceRevision) {
 		failures.command = nil
@@ -213,28 +221,25 @@ func resolveAmbiguousPendingCI(
 	command *pendingCICommand,
 	request pendingCIActivationRequest,
 	failures *pendingCIActivationErrors,
-) bool {
+) {
 	if !errors.Is(failures.command, pendingci.ErrAmbiguousSourceRevision) {
-		return false
+		return
 	}
 	result, err := command.cancelPullRequestLocked(
 		ctx,
 		request.pullRequest,
 		"commands from different comments have an ambiguous source order",
 	)
-	keepMarker := result.Request != nil || err != nil
 	if err != nil {
 		failures.command = errors.Join(failures.command, err)
 
-		return keepMarker
+		return
 	}
 	failures.command = nil
 	failures.ambiguous = true
 	if result.Request != nil {
 		command.wake()
 	}
-
-	return keepMarker
 }
 
 func removeConflictingPendingCILabels(
@@ -291,10 +296,8 @@ func rollbackPendingCIArtifacts(
 	request pendingCIActivationRequest,
 	ownership pendingCIArtifactOwnership,
 	labelAdded bool,
-	markerAdded bool,
 ) error {
 	var rollbackErr error
-	labelRemoved := true
 	if labelAdded && !ownership.label {
 		err := cleanupGitHubError(
 			"remove method label",
@@ -302,7 +305,6 @@ func rollbackPendingCIArtifacts(
 				ctx, request.owner, request.repository, request.pullRequest, request.label,
 			),
 		)
-		labelRemoved = err == nil
 		if err != nil {
 			rollbackErr = errors.Join(rollbackErr, err)
 		}
@@ -310,22 +312,10 @@ func rollbackPendingCIArtifacts(
 	if !ownership.reaction {
 		if err := artifacts.RemoveReactionByUser(
 			ctx, request.owner, request.repository,
-			request.commentID, github.ReactionPendingCI, request.runtime.BotUsername,
+			request.commentID, github.ReactionPendingCIService, request.runtime.BotUsername,
 		); err != nil {
 			rollbackErr = errors.Join(rollbackErr, fmt.Errorf("remove pending reaction: %w", err))
 		}
 	}
-	if markerAdded && labelRemoved {
-		if err := cleanupGitHubError(
-			"remove ownership marker",
-			artifacts.RemoveLabel(
-				ctx, request.owner, request.repository,
-				request.pullRequest, github.LabelPendingCIServiceOwner,
-			),
-		); err != nil {
-			rollbackErr = errors.Join(rollbackErr, err)
-		}
-	}
-
 	return rollbackErr
 }

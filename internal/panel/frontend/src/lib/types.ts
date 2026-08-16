@@ -286,12 +286,47 @@ export interface PendingCIRequest {
   merge_method: 'merge' | 'squash' | 'rebase';
   required_checks_only: boolean;
   requester: string;
+  lifecycle: 'armed' | 'merged' | 'cancelled' | 'superseded';
   schedule: 'active' | 'deferred';
   next_check_at: string;
+  next_check_trigger: PendingCITrigger;
   last_observed_state: string;
+  reason: string;
   requested_at: string;
   updated_at: string;
+  finished_at?: string;
+  cleanup_pending: boolean;
+  cleanup_error?: string;
   revision: number;
+}
+
+export type PendingCITrigger =
+  'command' | 'webhook' | 'fallback' | 'quiet_period' | 'manual' | 'cleanup';
+
+export interface PendingCIEvent {
+  id: string;
+  kind:
+    | 'armed'
+    | 'superseded'
+    | 'wake_received'
+    | 'reconciliation_started'
+    | 'checks_observed'
+    | 'merge_started'
+    | 'finished'
+    | 'cleanup_retry'
+    | 'cleanup_completed';
+  trigger: PendingCITrigger;
+  event_name?: string;
+  event_key?: string;
+  delivery_id?: string;
+  state?: string;
+  summary: string;
+  created_at: string;
+}
+
+export interface PendingCIDetail {
+  request: PendingCIRequest;
+  events: PendingCIEvent[];
 }
 
 /** What the storage subsystem reports about itself. */
@@ -344,6 +379,7 @@ export interface RootOverview {
   pending_ci: {
     active: PendingCIRequest[];
     deferred: PendingCIRequest[];
+    recent: PendingCIRequest[];
   };
 }
 
