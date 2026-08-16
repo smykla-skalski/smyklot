@@ -20,6 +20,7 @@
     stored,
     enabled,
     unreadable,
+    problem = null,
     readOnly,
     saving,
     onSave,
@@ -27,6 +28,13 @@
     stored: Record<string, unknown>;
     enabled: boolean;
     unreadable: boolean;
+    /**
+     * What went wrong saving these settings, which belongs beside them. The
+     * labels form on the same page saves separately and neither waits for the
+     * other, so one shared message is one form's failure wiped by the other's
+     * next click.
+     */
+    problem?: string | null;
     readOnly: boolean;
     saving: boolean;
     onSave: (enabled: boolean, document: Record<string, unknown>) => void;
@@ -177,6 +185,10 @@
       repository is not touched at all, which is not the same as setting it off.
     </p>
   </header>
+
+  {#if problem !== null}
+    <p class="settings-error" role="alert">{problem}</p>
+  {/if}
 
   {#if unreadable}
     <p class="settings-error" role="alert">

@@ -119,6 +119,17 @@ describe('SyncSettingsForm [Component]', () => {
     expect(onSave.mock.calls[0]?.[0]).toBe(true);
   });
 
+  /**
+   * The labels form on the same page saves separately and neither waits for the
+   * other, so a failure has to be shown beside the form it belongs to. One
+   * shared message was one form's failure wiped by the other's next click.
+   */
+  it('shows a failure of its own beside its own controls', () => {
+    render(SyncSettingsForm, { ...base, problem: 'the settings changed; reload' });
+
+    expect(screen.getByRole('alert').textContent).toContain('reload');
+  });
+
   it('offers no save while nothing has changed', () => {
     render(SyncSettingsForm, { ...base, stored: { has_wiki: false } });
 

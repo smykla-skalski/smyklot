@@ -42,7 +42,13 @@
   let saving = $state(false);
   let savingSettings = $state(false);
   let approving = $state(false);
+
+  /* One failure per thing that can fail, because the two forms are saved
+     independently and neither disables the other. A single field let a settings
+     save clear a labels failure the moment it started - the label switch had
+     already sprung back and nothing on the page said why. */
   let error = $state<string | null>(null);
+  let settingsError = $state<string | null>(null);
 
   /* Both documents, because the second is only meaningful beside the first: a
      plan says what would change, and what it would change to is what the
@@ -55,6 +61,7 @@
 
   async function load(id: string): Promise<void> {
     error = null;
+    settingsError = null;
     try {
       const [loadedConfig, loadedSettings, loadedPlan] = await Promise.all([
         fetchConfig(id, LABELS),
@@ -105,7 +112,7 @@
     if (current === null) return;
 
     savingSettings = true;
-    error = null;
+    settingsError = null;
     try {
       settings = await saveConfig(targetId, SETTINGS, {
         enabled: wanted,
@@ -114,7 +121,7 @@
       });
       plan = (await fetchPlan(targetId)).plan;
     } catch (cause) {
-      error = messageOf(cause);
+      settingsError = messageOf(cause);
     } finally {
       savingSettings = false;
     }
@@ -259,6 +266,7 @@
     stored={settings.document}
     enabled={settings.enabled}
     unreadable={settings.unreadable}
+    problem={settingsError}
     {readOnly}
     saving={savingSettings}
     onSave={onSaveSettings}
