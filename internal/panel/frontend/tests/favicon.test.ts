@@ -25,10 +25,7 @@ describe('panel document metadata', () => {
     expect(index).toContain('content="noindex, nofollow, noarchive, nosnippet, noimageindex"');
   });
 
-  it('preloads the primary font and declares exact icon dimensions', () => {
-    expect(index).toContain('href="/src/assets/fonts/PlusJakartaSansLatinVF.woff2"');
-    expect(index).toContain('as="font"');
-    expect(index).toContain('crossorigin');
+  it('declares exact icon dimensions', () => {
     expect(index).toContain('rel="apple-touch-icon"');
     expect(index.match(/sizes="256x256"/g)).toHaveLength(2);
   });

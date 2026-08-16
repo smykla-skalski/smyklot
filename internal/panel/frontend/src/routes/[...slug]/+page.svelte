@@ -6,14 +6,13 @@
   import { readBasePath, readPanelBuild } from '$lib/base';
   import { readPanelFailure } from '$lib/panel-error';
   import { createPanelRouter, parseInvitationToken } from '$lib/routes';
-  import { registerPanelServiceWorker } from '$lib/service-worker';
 
   const base = readBasePath(document);
   const api = createPanelApi(base, (input, init) => fetch(input, init));
   const build = readPanelBuild(document);
-  void registerPanelServiceWorker(base, build.version).catch((error: unknown) => {
-    console.warn('Smyklot offline cache could not start', error);
-  });
+  // The service worker is disabled until Phase 8 migrates it to SvelteKit's
+  // $service-worker module. The old sw.js fetches cache-manifest.json, which
+  // SvelteKit does not emit, so registering it now would fail silently.
   // The server serves this same bundle when it is answering with an error, and
   // says so in the document. That is checked before the address is, because the
   // address is what failed: a 404 arrives at a path that looks like a panel route

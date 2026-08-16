@@ -1,5 +1,5 @@
 <script lang="ts">
-  import haloUrl from '../assets/smyklot-halo.svg';
+  import haloUrl from '../../assets/smyklot-halo.svg';
 
   const {
     part,

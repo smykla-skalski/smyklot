@@ -34,7 +34,9 @@ describe('the brand mark', () => {
     // The rail names the same file in a comment, sizing its collapsed overlay against the halo's
     // drawn geometry, so this asks who *imports* it rather than who mentions it.
     const importers = sources
-      .filter(([, source]) => /import\s+\w+\s+from\s+\x27[^\x27]*smyklot-halo\.svg\x27/.test(source))
+      .filter(([, source]) =>
+        /import\s+\w+\s+from\s+\x27[^\x27]*smyklot-halo\.svg\x27/.test(source),
+      )
       .map(([file]) => file);
 
     expect(importers).toEqual(['BrandMark.svelte']);
