@@ -426,6 +426,57 @@ var _ = Describe("Settings planning [Unit]", func() {
 		)).To(BeEmpty())
 	})
 
+	// GitHub refuses secret scanning on a repository whose advanced security is
+	// off, and refuses it as a 422 on the whole request - so a repository that
+	// has advanced security and has it switched off is one to leave alone
+	It("withholds secret scanning from a repository with advanced security off", func() {
+		actions := orgsync.PlanSettings(repo,
+			orgsync.SettingsConfig{SecretScanning: enabled(), HasWiki: disabled()},
+			orgsync.CurrentSettings{
+				AdvancedSecurity: orgsync.FeatureOff,
+				SecretScanning:   orgsync.FeatureOff,
+				HasWiki:          true,
+			},
+		)
+
+		sent := body(actions)
+		Expect(sent).To(HaveKeyWithValue("has_wiki", false))
+		Expect(sent).NotTo(HaveKey("security_and_analysis"))
+		Expect(actions[0].After).To(ContainSubstring("secret_scanning"))
+	})
+
+	// And the case that makes a blanket rule wrong: a public repository has
+	// secret scanning without advanced security, and GitHub reports no advanced
+	// security there at all. Reading that absence as "off" would withhold a
+	// setting nothing was ever going to refuse
+	It("sends secret scanning where the repository has no advanced security to have", func() {
+		sent := body(orgsync.PlanSettings(repo,
+			orgsync.SettingsConfig{SecretScanning: enabled()},
+			orgsync.CurrentSettings{
+				AdvancedSecurity: orgsync.FeatureUnavailable,
+				SecretScanning:   orgsync.FeatureOff,
+			},
+		))
+
+		Expect(sent).To(HaveKeyWithValue("security_and_analysis", map[string]any{
+			"secret_scanning": map[string]any{"status": "enabled"},
+		}))
+	})
+
+	It("sends secret scanning with the advanced security the same change turns on", func() {
+		sent := body(orgsync.PlanSettings(repo,
+			orgsync.SettingsConfig{AdvancedSecurity: enabled(), SecretScanning: enabled()},
+			orgsync.CurrentSettings{
+				AdvancedSecurity: orgsync.FeatureOff, SecretScanning: orgsync.FeatureOff,
+			},
+		))
+
+		Expect(sent).To(HaveKeyWithValue("security_and_analysis", map[string]any{
+			"advanced_security": map[string]any{"status": "enabled"},
+			"secret_scanning":   map[string]any{"status": "enabled"},
+		}))
+	})
+
 	// Push protection needs secret scanning, which is the wording rule one
 	// endpoint down - and the same field in the table says so
 	It("withholds push protection from a repository without secret scanning", func() {

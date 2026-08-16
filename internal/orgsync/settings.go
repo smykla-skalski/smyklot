@@ -196,6 +196,14 @@ const (
 	FeatureUnavailable FeatureState = "unavailable"
 )
 
+// Reported answers whether GitHub said anything about this feature.
+//
+// Only the two states it names count. The zero value is neither, and reading it
+// as "has the feature, switched off" would be reading a repository nobody
+// described as one that refused something - which is how an unset field in a
+// caller becomes a change GitHub answers with a 422.
+func (f FeatureState) Reported() bool { return f == FeatureOn || f == FeatureOff }
+
 // settingsField is one setting, named once for the three things that have to
 // agree about it: what to compare, what to send, and what to show a person.
 //
@@ -292,7 +300,13 @@ func settingsFields() []settingsField {
 		securityField("advanced_security", "",
 			func(c SettingsConfig) *bool { return c.AdvancedSecurity },
 			func(s CurrentSettings) FeatureState { return s.AdvancedSecurity }),
-		securityField("secret_scanning", "",
+		// GitHub refuses secret scanning on a repository whose advanced
+		// security is off - "secret scanning can only be enabled on repos where
+		// Advanced Security is enabled" - and refuses it as a 422 on the whole
+		// request. A repository that has no such thing to turn on is a
+		// different case and is not held to this: see how a dependency that is
+		// unavailable is read in DiffSettings.
+		securityField("secret_scanning", "advanced_security",
 			func(c SettingsConfig) *bool { return c.SecretScanning },
 			func(s CurrentSettings) FeatureState { return s.SecretScanning }),
 		// GitHub refuses push protection on a repository whose secret scanning
@@ -332,7 +346,7 @@ func securityField(
 			return *value, describeBool(*value), true
 		},
 		have:      func(s CurrentSettings) string { return string(have(s)) },
-		available: func(s CurrentSettings) bool { return have(s) != FeatureUnavailable },
+		available: func(s CurrentSettings) bool { return have(s).Reported() },
 		on: func(c SettingsConfig, s CurrentSettings) bool {
 			if value := want(c); value != nil {
 				return *value
@@ -494,11 +508,17 @@ func DiffSettings(config SettingsConfig, current CurrentSettings) (SettingsChang
 	fields := settingsFields()
 
 	// What each boolean would be once this change lands, which is the state
-	// GitHub judges a dependent setting against.
+	// GitHub judges a dependent setting against, and which of them this
+	// repository does not have at all.
 	resulting := make(map[string]bool, len(fields))
+	absent := make(map[string]bool, len(fields))
+
 	for _, field := range fields {
 		if field.on != nil {
 			resulting[field.name] = field.on(config, current)
+		}
+		if field.available != nil && !field.available(current) {
+			absent[field.name] = true
 		}
 	}
 
@@ -535,7 +555,13 @@ func DiffSettings(config SettingsConfig, current CurrentSettings) (SettingsChang
 			continue
 		}
 
-		if field.requires != "" && !resulting[field.requires] {
+		// A dependency this repository does not have is not a dependency it is
+		// failing. Advanced security is the case: a public repository has
+		// secret scanning without it and GitHub does not report one at all
+		// there, so reading its absence as "off" would withhold a setting
+		// nothing was going to refuse. What the repository does have and has
+		// switched off is the pair GitHub answers with a 422.
+		if field.requires != "" && !resulting[field.requires] && !absent[field.requires] {
 			change.withhold(field.name, becauseUnmet)
 
 			continue
