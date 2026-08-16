@@ -407,7 +407,7 @@ The panel signs users in through a **classic OAuth App**, registered separately 
 
 Register the OAuth App under the same account or organization that owns the GitHub App, with `<public origin><base path>/auth/github/callback` as its authorization callback URL, then set `SMYKLOT_PANEL_CLIENT_ID` and `SMYKLOT_PANEL_CLIENT_SECRET` from it. The service refuses to start if the panel is enabled without both. The panel calls `GET /user` once with the resulting token and discards it; nothing is stored but the profile it returns.
 
-The panel synchronizes every installation and repository visible to the App every five minutes. Personal-installation ownership follows the immutable GitHub user ID. Organization ownership follows organization members with the admin role and requires read-only **Members** organization permission on the GitHub App. Existing installations must approve that added permission before Owner synchronization succeeds. Regular access fails closed when an Owner snapshot is unavailable or more than 15 minutes old; Root diagnostics retain the installation record. New installations default to **Off**, so the service only handles repositories an administrator enables deliberately. Account settings act as defaults, and the effective order is process configuration → account panel settings → `.github/smyklot.yaml` → repository panel settings. A repository may explicitly bypass an invalid file; that exception is visible and audited.
+The panel synchronizes every installation and repository visible to the App every five minutes. Personal-installation ownership follows the immutable GitHub user ID. Organization ownership follows organization members with the admin role and requires read-only **Members** organization permission on the GitHub App. Existing installations must approve that added permission before Owner synchronization succeeds. Regular access fails closed when an Owner snapshot is unavailable or more than 15 minutes old; Root diagnostics retain the installation record. New installations default to **Off**, so the service only handles repositories an administrator enables deliberately. Account settings act as defaults, and the panel is one of the eight layers listed under [Configuration](#configuration) - which is the only place that order is written down. A repository may explicitly bypass an invalid file; that exception is visible and audited.
 
 State lives in SQLite or PostgreSQL, chosen by `SMYKLOT_DATABASE_URL`: a `postgres://` or `postgresql://` URL picks PostgreSQL, and a bare path or `sqlite://` URL picks SQLite. Both drivers are pure Go, so the image still builds with `CGO_ENABLED=0`. Nothing above the storage package knows which one is running, and a linter enforces that.
 
@@ -422,6 +422,20 @@ The Root console reports whichever engine is live. Its overview carries a Databa
 A pool with waits behind it is the signal PostgreSQL introduced and a SQLite file never had: the queries still succeed, so nothing fails, but the service is waiting on the database rather than on GitHub. That count only ever grows, which is why it is shown next to the sampled counts that do not.
 
 Run `mise run panel:dev:mock` to inspect every panel state with deterministic local data. The mock server uses the same HTTP response types and server-sent event shape as production.
+
+### Organization sync
+
+The service can keep every repository in an installation carrying the same labels and set to the same repository settings. Both are configured in the panel, per installation, and each is switched on separately.
+
+Nothing is changed without being shown first. A reconcile works out what would differ, stores it as a plan, and waits: the panel lists every change against every repository, and applying is a second act. A plan is invalidated the moment the configuration behind it changes, so nobody can approve a screen that has gone stale.
+
+A repository may opt out of one kind and keep the others. Removal is off unless it is switched on, and a label pattern can be excluded from it, so a label somebody added by hand is not deleted because it is not in the list.
+
+Settings carry a rule labels do not. Every one of them has three states - on, off, and not configured - and the third means the repository keeps whatever it has. Some combinations GitHub refuses outright, with a 422 on the whole request, so those are found before they are sent: a commit wording whose merge strategy would be off, a change that would leave a repository with no way to merge at all, and a security feature the repository does not have. Each is left alone and named in the plan with the reason, rather than costing the repository every other setting in the same change.
+
+Labels need the **Issues** write access the bot already holds. Settings need **Administration** write, and an installation that has not approved it is not an error: that kind stands down, says which permission it wants, and the rest of the sync carries on.
+
+A repository that already matches is not read again for six hours. That is what keeps a steady sweep at almost no cost, and the horizon is what lets it still notice a label renamed by hand.
 
 ### Watching a running service
 

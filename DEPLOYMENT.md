@@ -228,6 +228,8 @@ In the App's settings:
 
 The App needs read access to **Checks**, **Commit statuses**, and **Administration** in addition to its command permissions. Administration access is required to read branch protection's required status checks. Existing installations must approve the new permissions after the App registration changes.
 
+Organization sync asks for one more. Label sync needs only the **Issues** write access the bot already holds, so it works the day it is switched on. Settings sync needs **Administration** write, and until an installation approves it that kind stands down and names the permission in the panel - the rest of the sync runs. Nothing is written to a repository on a permissions listing the service could not read.
+
 ### 2. Create the Secret
 
 The chart never takes either credential as a value, only the name of a Secret holding both, so neither can end up in a values file, in git, or in `helm get values` output:
