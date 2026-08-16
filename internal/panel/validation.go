@@ -2,6 +2,7 @@ package panel
 
 import (
 	"errors"
+	"fmt"
 	"regexp"
 	"slices"
 	"strings"
@@ -18,14 +19,15 @@ const (
 
 var aliasPattern = regexp.MustCompile(`^[A-Za-z0-9_]+$`)
 
-// errRunnerManagedByRepository reports a setting the panel must not write.
+// errManagedByRepository reports a setting the panel must not write.
 //
-// It names the runner because that is the only such setting today, and the
-// message is what a person reads. Which settings those are is not decided here:
-// a field carries `panel:"deny"` on config.Patch and config.PanelDeniedKeys
-// reports it, so the rule lives beside the field rather than in a list this
-// package would have to remember to update.
-var errRunnerManagedByRepository = errors.New("runner can only be configured in the repository file")
+// Which settings those are is not decided here: a field carries `panel:"deny"`
+// on config.Patch and config.PanelDeniedKeys reports it, so the rule lives
+// beside the field rather than in a list this package would have to remember to
+// update. The message names whichever key was refused for the same reason - it
+// is what a person reads, and hardcoding "runner" would make it wrong for the
+// next field that opts out rather than merely incomplete.
+var errManagedByRepository = errors.New("can only be configured in the repository file")
 
 var canonicalCommands = map[string]struct{}{
 	"approve":   {},
@@ -58,7 +60,7 @@ func validateDeniedKeys(patch config.Patch) error {
 
 	for _, key := range patch.SetKeys() {
 		if slices.Contains(denied, key) {
-			return errRunnerManagedByRepository
+			return fmt.Errorf("%s %w", key, errManagedByRepository)
 		}
 	}
 
