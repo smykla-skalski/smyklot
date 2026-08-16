@@ -216,7 +216,7 @@ func (s *server) planSyncActions(
 			continue
 		}
 
-		scope := newSyncScope(config, overrides, applied)
+		scope := newSyncScope(config, overrides, applied, now)
 
 		for _, repository := range repositories {
 			if !scope.covers(repository) {
@@ -364,22 +364,41 @@ func newSyncPlanID() string {
 	return "sync-" + hex.EncodeToString(raw[:])
 }
 
+// syncRecheckInterval is how long a repository's recorded state counts as
+// evidence that it still matches.
+//
+// The record says what a repository looked like when it was last read, which is
+// a fact about the past. Nothing on GitHub stops somebody renaming a label or
+// turning a feature off by hand, and without a horizon a repository that
+// settled once is never looked at again - so the drift this exists to correct
+// would be the one thing it cannot see.
+//
+// Six hours because the two costs are not close. A full pass is one request per
+// repository per kind, and two hundred repositories on two kinds is four
+// hundred requests every six hours against a budget of five thousand an hour;
+// what it buys is the difference between noticing a hand-made change by the
+// same evening and never.
+const syncRecheckInterval = 6 * time.Hour
+
 // syncScope answers which repositories a plan covers.
 type syncScope struct {
 	config    orgsync.Config
 	overrides map[string]*bool
-	applied   map[string]string
+	applied   map[string]orgsync.RepositoryState
+	now       time.Time
 }
 
 func newSyncScope(
 	config orgsync.Config,
 	overrides []orgsync.RepositoryOverride,
 	applied []orgsync.RepositoryState,
+	now time.Time,
 ) syncScope {
 	scope := syncScope{
 		config:    config,
 		overrides: map[string]*bool{},
-		applied:   map[string]string{},
+		applied:   map[string]orgsync.RepositoryState{},
+		now:       now,
 	}
 
 	// This kind's rows and no other's. A repository decides each kind on its
@@ -394,7 +413,7 @@ func newSyncScope(
 	}
 	for _, state := range applied {
 		if state.Kind == config.Kind {
-			scope.applied[state.RepositoryID] = state.AppliedDigest
+			scope.applied[state.RepositoryID] = state
 		}
 	}
 
@@ -404,10 +423,11 @@ func newSyncScope(
 // covers reports a repository worth asking GitHub about.
 //
 // Two reasons to skip. A repository that turned this off, and a repository
-// whose recorded digest already matches what the configuration asks for - the
-// second is what keeps a steady-state reconcile at zero API calls rather than
-// one per repository, which is the difference between a sweep that costs
-// nothing and one that spends an installation's whole hourly budget.
+// whose recorded digest already matches what the configuration asks for and was
+// read recently enough for that to still mean something - the second is what
+// keeps a steady-state reconcile at zero API calls rather than one per
+// repository, which is the difference between a sweep that costs nothing and
+// one that spends an installation's whole hourly budget.
 func (s syncScope) covers(repository storage.Repository) bool {
 	if !repository.Available {
 		return false
@@ -418,7 +438,15 @@ func (s syncScope) covers(repository storage.Repository) bool {
 		return false
 	}
 
-	return s.applied[repository.ID] != s.digestFor(repository.ID)
+	state, settled := s.applied[repository.ID]
+	if !settled || state.AppliedDigest != s.digestFor(repository.ID) {
+		return true
+	}
+
+	// Settled, and how long ago decides whether that is still evidence. The
+	// record answers what this repository looked like when it was read, and
+	// nothing on GitHub stops somebody changing it by hand afterwards.
+	return s.now.Sub(state.AppliedAt) >= syncRecheckInterval
 }
 
 // digestFor is what a repository would record once it matches, and what covers

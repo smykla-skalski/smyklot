@@ -298,6 +298,46 @@ var _ = Describe("Label sync [Unit]", func() {
 				To(Equal(reads))
 		})
 
+		// The record says what a repository looked like when it was read, which
+		// is a fact about the past. Nothing on GitHub stops somebody renaming a
+		// label by hand afterwards, and a record with no horizon means the one
+		// thing a reconcile exists to correct is the one thing it cannot see
+		It("looks again at a repository it has not read for a while", func() {
+			target := seed()
+			stub.repoLabels = `[{"name":"bug","color":"d73a4a","description":""}]`
+			configure(target, `{"labels":[{"name":"bug","color":"d73a4a"}]}`)
+
+			plan(target)
+			reads := stub.countCalls(
+				http.MethodGet, "/repos/smykla-skalski/smyklot/labels")
+			Expect(reads).NotTo(BeZero())
+
+			// The same record, written as though the read behind it were older
+			// than the horizon. Nothing else changes: the configuration is the
+			// same and so is its digest.
+			settled, err := service.store.ListSyncRepositoryState(
+				GinkgoT().Context(), target.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(settled).To(HaveLen(1))
+			settled[0].AppliedAt = time.Now().UTC().Add(-syncRecheckInterval - time.Minute)
+			Expect(service.store.RecordSyncRepositoryState(
+				GinkgoT().Context(), settled)).To(Succeed())
+
+			// Somebody has been at it by hand in the meantime
+			stub.repoLabels = `[{"name":"bug","color":"ffffff","description":""}]`
+
+			plan(target)
+
+			Expect(stub.countCalls(
+				http.MethodGet, "/repos/smykla-skalski/smyklot/labels")).
+				To(BeNumerically(">", reads))
+
+			_, actions := livePlan(target)
+			Expect(actions).To(HaveLen(1))
+			Expect(actions[0].Operation).To(Equal(orgsync.OperationUpdate))
+			Expect(actions[0].Subject).To(Equal("bug"))
+		})
+
 		// A repository decides each kind on its own: somebody may want their
 		// labels left alone and their settings kept in step
 		It("leaves out a repository that turned this kind off", func() {
