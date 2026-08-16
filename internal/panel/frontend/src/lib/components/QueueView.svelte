@@ -47,14 +47,18 @@
     onOpenRequest: (requestId: string) => void;
   } = $props();
 
+  /* Each value carries the glyph its column carries, so the menu and the table
+     say the same state the same way - and so no state here is told apart by hue
+     alone, which three of these five pairs cannot survive under one dichromacy or
+     another. */
   const STATE_FILTERS = [
     {
       options: [
-        { value: 'passing', label: 'Passing', tone: 'valid' },
-        { value: 'running', label: 'Running', tone: 'default' },
-        { value: 'failing', label: 'Failing', tone: 'invalid' },
-        { value: 'unreadable', label: 'Unreadable', tone: 'bypassed' },
-        { value: 'no_checks', label: 'No checks', tone: 'default' },
+        { value: 'passing', label: 'Passing', tone: 'valid', icon: 'success' },
+        { value: 'running', label: 'Running', tone: 'missing', icon: 'pending' },
+        { value: 'failing', label: 'Failing', tone: 'invalid', icon: 'failure' },
+        { value: 'unreadable', label: 'Unreadable', tone: 'bypassed', icon: 'alert' },
+        { value: 'no_checks', label: 'No checks', tone: 'missing', icon: 'circle-dashed' },
       ],
     },
   ] satisfies readonly FilterSection[];
@@ -65,9 +69,9 @@
   const OUTCOME_FILTERS = [
     {
       options: [
-        { value: 'merged', label: 'Merged', tone: 'valid' },
-        { value: 'cancelled', label: 'Cancelled', tone: 'default' },
-        { value: 'superseded', label: 'Superseded', tone: 'bypassed' },
+        { value: 'merged', label: 'Merged', tone: 'valid', icon: 'success' },
+        { value: 'cancelled', label: 'Cancelled', tone: 'missing', icon: 'circle-dashed' },
+        { value: 'superseded', label: 'Superseded', tone: 'bypassed', icon: 'alert' },
       ],
     },
   ] satisfies readonly FilterSection[];

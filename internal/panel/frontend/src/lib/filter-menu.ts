@@ -1,11 +1,34 @@
+import type { ChipTone } from './components/Chip.svelte';
+import type { IconName } from './components/Icon.svelte';
+
 export type FilterTone = 'default' | 'on' | 'off' | 'valid' | 'missing' | 'invalid' | 'bypassed';
+
+/** A filter's vocabulary in the chip vocabulary, so a value looks the same here as in its column. */
+export function chipToneOf(tone: FilterTone): ChipTone {
+  if (tone === 'valid' || tone === 'on') return 'clear';
+  if (tone === 'invalid' || tone === 'off') return 'stop';
+  if (tone === 'bypassed') return 'warning';
+  if (tone === 'missing') return 'absent';
+
+  return 'neutral';
+}
 
 export interface FilterOption {
   value: string;
   label: string;
   description?: string;
   exclusive?: boolean;
+  /**
+   * Draws this value as the chip its column draws, rather than as a plain label.
+   *
+   * It used to put an invented coloured dot in a column of its own between the checkbox and the
+   * words, which meant two small marks side by side and a reader having to decide which one was the
+   * control. Drawn as the chip, the row reads control, then the thing being filtered - one mark,
+   * one object - and the menu shows exactly what the column shows.
+   */
   tone?: FilterTone;
+  /** The glyph that chip carries, where the column's chip has one. */
+  icon?: IconName;
 }
 
 export interface FilterSection {

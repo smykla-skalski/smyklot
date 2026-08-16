@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { updateFilterSelection } from '../filter-menu';
+  import { chipToneOf, updateFilterSelection } from '../filter-menu';
   import type { FilterOption, FilterSection } from '../filter-menu';
+  import Chip from './Chip.svelte';
   import Icon from './Icon.svelte';
   import Popover from './Popover.svelte';
 
@@ -130,13 +131,20 @@
               <span class:multiple class="selection-mark" aria-hidden="true">
                 {#if isSelected}<span></span>{/if}
               </span>
-              {#if option.tone !== undefined && option.tone !== 'default'}
-                <span class="tone tone-{option.tone}" aria-hidden="true"></span>
-              {/if}
               <span class="option-copy">
-                <strong>{option.label}</strong>
+                {#if option.tone !== undefined && option.tone !== 'default'}
+                  <!-- The value drawn the way its column draws it, so the menu
+                       shows exactly what the table shows. -->
+                  <span class="option-chip">
+                    <Chip tone={chipToneOf(option.tone)} icon={option.icon} small
+                      >{option.label}</Chip
+                    >
+                  </span>
+                {:else}
+                  <strong>{option.label}</strong>
+                {/if}
                 {#if option.description !== undefined}
-                  <span>{option.description}</span>
+                  <span class="option-description">{option.description}</span>
                 {/if}
               </span>
             </button>
@@ -231,11 +239,17 @@
   /* A column that can shrink, so the header and the footer keep their size and
      the options between them take whatever the layer has left. Which edge it
      lines up with is the layer's business now, not a left/right pair here. */
+  /* The menu hangs off a column heading, and a heading is uppercase with tracking
+     - both of which inherit. Without this the menu's own title and its hint were
+     shouted in capitals and spaced like a label, because they were sitting inside
+     a `<th>`. The menu is its own surface and states its own typography. */
   .filter-body {
     display: flex;
     flex-direction: column;
+    letter-spacing: normal;
     min-height: 0;
     overflow: hidden;
+    text-transform: none;
     width: min(17rem, calc(100vw - 2rem));
   }
 
@@ -243,23 +257,31 @@
     width: min(21rem, calc(100vw - 2rem));
   }
 
+  /* Every measure in this menu used to be smaller than the one the rest of the
+     product uses - a 12px title, a 10px hint, 0.35rem of padding - so it read as
+     cramped beside every other surface. It is on the type ramp and the space
+     scale now, like everything else. */
   .filter-body > header {
     border-bottom: 1px solid var(--rule);
     display: flex;
     flex-direction: column;
-    padding: 0.7rem 0.75rem 0.625rem;
+    padding: var(--space-4);
   }
 
   .filter-body > header strong {
-    font-size: 0.75rem;
-    line-height: 1.25;
+    font-size: var(--font-size-meta);
+    line-height: 1;
+    text-box: trim-both cap alphabetic;
   }
 
   .filter-body > header span {
     color: var(--dim);
-    font-size: 0.625rem;
-    line-height: 1.35;
-    margin-top: 0.1rem;
+    font-size: var(--font-size-compact);
+    line-height: 1.4;
+    /* A real step between the title and the line under it: at 0.1rem the two ran
+       together and the hint read as a second line of the title. */
+    margin-top: var(--space-2);
+    text-box: trim-both cap alphabetic;
   }
 
   /* `min-height: 0`, which is what lets a flex item scroll rather than push its
@@ -268,35 +290,39 @@
   .filter-options {
     min-height: 0;
     overflow-y: auto;
-    padding: 0.35rem;
+    padding: var(--space-2);
   }
 
   .filter-section + .filter-section {
     border-top: 1px solid var(--rule);
-    margin-top: 0.35rem;
-    padding-top: 0.35rem;
+    margin-top: var(--space-2);
+    padding-top: var(--space-2);
   }
 
   .section-label {
     color: var(--dim);
-    font-size: 0.5625rem;
-    font-weight: 700;
+    font: 700 var(--font-size-micro) / 1 var(--sans);
     letter-spacing: 0.1em;
     margin: 0;
-    padding: 0.35rem 0.45rem 0.25rem;
+    padding: var(--space-2) var(--space-2) var(--space-1);
     text-transform: uppercase;
   }
 
+  /* A grid, so the mark, the label and anything after them are one ROW and share
+     a centre. Under `align-items: center` on a flex row the mark would centre on
+     the label-and-description block instead - 6.47px below the line it marks. */
   .filter-option {
     align-items: center;
     background: transparent;
     border: 0;
-    border-radius: 6px;
+    border-radius: var(--r-ctl);
     color: var(--text);
-    display: flex;
-    gap: 0.5rem;
-    min-height: 2.25rem;
-    padding: 0.4rem 0.45rem;
+    column-gap: var(--space-3);
+    display: grid;
+    font: 400 var(--font-size-meta) / 1 var(--sans);
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    padding: var(--space-3) var(--space-2);
+    row-gap: var(--space-2);
     text-align: left;
     width: 100%;
   }
@@ -314,89 +340,103 @@
     box-shadow: inset 0 0 0 100vmax var(--press);
   }
 
+  /* One size for both marks and one weight for their borders, so a menu of
+     checkboxes and a menu of radios read as the same control in two moods. The
+     two selected states stay conventionally distinct - a checkbox fills and
+     carries a tick, a radio keeps its ring and takes a dot - which is what tells
+     a reader whether picking one thing will drop another. */
   .selection-mark {
-    border: 1.5px solid var(--dim);
+    block-size: 1rem;
+    border: 1.5px solid var(--border-strong);
     border-radius: 50%;
     display: grid;
     flex: none;
-    height: 0.875rem;
+    inline-size: 1rem;
     place-items: center;
-    width: 0.875rem;
+    transition:
+      background-color var(--duration-fast) var(--ease-out),
+      border-color var(--duration-fast) var(--ease-out);
   }
 
   .selection-mark.multiple {
-    border-radius: 4px;
+    border-radius: 5px;
   }
 
-  .filter-option.selected .selection-mark {
-    background: var(--brand-action-tint);
-    border-color: var(--brand-action);
+  .filter-option:hover .selection-mark {
+    border-color: var(--text-soft);
   }
 
+  /* The checkbox fills; the radio keeps its ring, which is the whole of the
+     distinction. */
+  .filter-option.selected .selection-mark.multiple {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .filter-option.selected .selection-mark:not(.multiple) {
+    border-color: var(--accent);
+  }
+
+  /* The radio's dot is a grid item like the checkbox's tick, not an `::after`
+     positioned against the box: an absolutely-sized pseudo-element inside a
+     bordered box centres on the PADDING box, which is a border-width off the
+     mark's own middle. */
   .selection-mark span {
-    background: var(--brand-action);
+    background: var(--accent);
+    block-size: 0.5rem;
     border-radius: 50%;
-    height: 0.35rem;
-    width: 0.35rem;
+    inline-size: 0.5rem;
   }
 
   .selection-mark.multiple span {
     background: transparent;
-    border-bottom: 1.5px solid var(--brand-action);
-    border-right: 1.5px solid var(--brand-action);
+    border-bottom: 1.5px solid var(--on-admin);
+    border-right: 1.5px solid var(--on-admin);
     border-radius: 0;
-    height: 0.42rem;
+    block-size: 0.45rem;
+    inline-size: 0.25rem;
     transform: rotate(45deg) translate(-0.05rem, -0.05rem);
-    width: 0.22rem;
   }
 
-  .tone {
-    background: var(--dim);
-    border-radius: 50%;
-    flex: none;
-    height: 0.4rem;
-    width: 0.4rem;
-  }
-
-  .tone-on,
-  .tone-valid {
-    background: var(--clear);
-  }
-
-  .tone-off,
-  .tone-invalid {
-    background: var(--stop);
-  }
-
-  .tone-bypassed {
-    background: var(--warning);
-  }
-
-  .option-copy {
-    display: flex;
-    flex-direction: column;
+  .option-chip {
+    grid-column: 2;
+    justify-self: start;
     min-width: 0;
   }
 
+  /* The label sits on the option's own row; a description drops to a second row
+     spanning from the label across, so it lines up under the words rather than
+     under the mark. */
+  .option-copy {
+    display: contents;
+  }
+
   .option-copy strong {
-    font-size: 0.6875rem;
-    font-weight: 550;
-    line-height: 1.25;
+    font: 600 var(--font-size-meta) / 1 var(--sans);
+    grid-column: 2;
+    justify-self: start;
+    min-width: 0;
+    text-box: trim-both cap alphabetic;
   }
 
-  .option-copy span {
+  .option-description {
     color: var(--dim);
-    font-size: 0.625rem;
-    line-height: 1.25;
-    margin-top: 0.1rem;
+    font-size: var(--font-size-compact);
+    grid-column: 2 / -1;
+    grid-row: 2;
+    line-height: 1;
+    text-box: trim-both cap alphabetic;
   }
 
+  /* The quiet way out sits on the left and the committing one on the right, and
+     the buttons keep their own room under the rule above them. */
   .filter-body > footer {
     align-items: center;
     border-top: 1px solid var(--rule);
     display: flex;
+    gap: var(--space-2);
     justify-content: space-between;
-    padding: 0.45rem;
+    padding: var(--space-3);
   }
 
   .filter-body > footer button {
