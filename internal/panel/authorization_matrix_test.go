@@ -2,6 +2,8 @@ package panel
 
 import (
 	"net/http"
+	"os"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -80,11 +82,40 @@ func TestPanelRegularRouteRejectsNonOwnedRootMatrix(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	rootSession := harness.signIn(t)
 	_, installation := seedNonOwnedInstallation(t, harness)
-	target := "/panel/api/v1/targets/" + installation.TargetID
-	const account = "github:test:user:ordinary"
-	const invitation = "invitation-id"
+	probes := regularRouteProbes("/panel/api/v1/targets/" + installation.TargetID)
 
-	probes := []authorizationProbe{
+	for _, probe := range probes {
+		probe := probe
+		t.Run(probe.method+" "+probe.path, func(t *testing.T) {
+			response := harness.request(
+				t, probe.method, probe.path, strings.NewReader(`{}`), rootSession,
+			)
+			requireResponse(t, response, "non-owned regular route", http.StatusNotFound)
+		})
+	}
+}
+
+// routePlaceholders is what a registered pattern's wildcards stand for in a
+// probe. A pattern using one that is not here fails the completeness check
+// loudly, which is right: a new kind of wildcard is a new decision about who
+// may reach it.
+var routePlaceholders = map[string]string{
+	"{account}":    "github:test:user:ordinary",
+	"{invitation}": "invitation-id",
+	"{repository}": "repository-30",
+	"{plan}":       "sync-plan-1",
+}
+
+// regularRouteProbes is every installation-scoped route, with the concrete
+// values a request needs. Shared so the matrix and its completeness check
+// cannot describe different route sets.
+func regularRouteProbes(target string) []authorizationProbe {
+	const (
+		account    = "github:test:user:ordinary"
+		invitation = "invitation-id"
+	)
+
+	return []authorizationProbe{
 		{http.MethodPut, target + "/settings"},
 		{http.MethodGet, target + "/users"},
 		{http.MethodPost, target + "/users"},
@@ -99,19 +130,77 @@ func TestPanelRegularRouteRejectsNonOwnedRootMatrix(t *testing.T) {
 		{http.MethodGet, target + "/repositories/repository-30"},
 		{http.MethodPut, target + "/repositories/repository-30/settings"},
 		{http.MethodPost, target + "/repositories/repository-30/config-migration"},
+		{http.MethodGet, target + "/sync/config"},
+		{http.MethodPut, target + "/sync/config"},
+		{http.MethodGet, target + "/sync/plan"},
+		{http.MethodPost, target + "/sync/plans/sync-plan-1/approval"},
 		{http.MethodGet, target + "/audit"},
 		{http.MethodGet, target + "/failures"},
 	}
+}
 
-	for _, probe := range probes {
-		probe := probe
-		t.Run(probe.method+" "+probe.path, func(t *testing.T) {
-			response := harness.request(
-				t, probe.method, probe.path, strings.NewReader(`{}`), rootSession,
-			)
-			requireResponse(t, response, "non-owned regular route", http.StatusNotFound)
-		})
+// TestPanelRegularRouteMatrixCoversEveryRoute fails when a route is added and
+// not probed.
+//
+// The matrix above is a hand-written list, and a hand-written list is a thing
+// you can forget to add to. Nothing downstream notices: the new route works,
+// its specs pass, and the one question nobody asked is whether somebody else's
+// installation can reach it. So the list is checked against the routes the
+// server actually registers.
+func TestPanelRegularRouteMatrixCoversEveryRoute(t *testing.T) {
+	registered := registeredTargetRoutes(t)
+	if len(registered) == 0 {
+		t.Fatal("read no target routes out of server.go")
 	}
+
+	const target = "/panel/api/v1/targets/the-installation"
+
+	probed := map[string]bool{}
+	for _, probe := range regularRouteProbes(target) {
+		probed[probe.method+" "+probe.path] = true
+	}
+
+	for _, route := range registered {
+		method, pattern, _ := strings.Cut(route, " ")
+
+		concrete := strings.Replace(pattern, "{target}", "the-installation", 1)
+		for placeholder, value := range routePlaceholders {
+			concrete = strings.ReplaceAll(concrete, placeholder, value)
+		}
+		if strings.Contains(concrete, "{") {
+			t.Errorf("%s uses a wildcard routePlaceholders does not name", route)
+
+			continue
+		}
+
+		if !probed[method+" /panel"+concrete] {
+			t.Errorf("%s is registered but nothing probes who may reach it", route)
+		}
+	}
+}
+
+// registeredTargetRoutes reads the installation-scoped routes out of the file
+// that registers them.
+//
+// Reading the source rather than the mux, because http.ServeMux does not report
+// its patterns and teaching the server to record them would change production
+// code to suit a test.
+func registeredTargetRoutes(t *testing.T) []string {
+	t.Helper()
+
+	source, err := os.ReadFile("server.go")
+	if err != nil {
+		t.Fatalf("read server.go: %v", err)
+	}
+
+	pattern := regexp.MustCompile(`"(GET|PUT|POST|DELETE) "\+base\+"(/api/v1/targets/\{target\}[^"]*)"`)
+
+	var routes []string
+	for _, match := range pattern.FindAllStringSubmatch(string(source), -1) {
+		routes = append(routes, match[1]+" "+match[2])
+	}
+
+	return routes
 }
 
 func createOrdinarySession(t *testing.T, harness *panelHarness) *http.Cookie {

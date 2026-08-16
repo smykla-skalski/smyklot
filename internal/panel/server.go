@@ -190,6 +190,13 @@ func (s *Server) Handler() http.Handler {
 		"POST "+base+"/api/v1/targets/{target}/repositories/{repository}/config-migration",
 		s.postRepositoryConfigMigrationReset,
 	)
+	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/sync/config", s.getSyncConfig)
+	mux.HandleFunc("PUT "+base+"/api/v1/targets/{target}/sync/config", s.putSyncConfig)
+	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/sync/plan", s.getSyncPlan)
+	mux.HandleFunc(
+		"POST "+base+"/api/v1/targets/{target}/sync/plans/{plan}/approval",
+		s.postSyncPlanApproval,
+	)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/audit", s.getAudit)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/failures", s.getFailures)
 	mux.HandleFunc("GET "+base+"/api/v1/events", s.streamEvents)
