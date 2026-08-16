@@ -309,13 +309,18 @@ func (s *server) applyAction(
 	owner, name string,
 	action orgsync.Action,
 ) error {
-	if action.Kind != orgsync.KindLabels {
-		// Settings, rulesets and files arrive in later work. Refusing loudly
-		// beats silently reporting an action applied that nothing performed.
+	switch action.Kind {
+	case orgsync.KindLabels:
+		return s.applyLabelAction(ctx, client, owner, name, action)
+
+	case orgsync.KindSettings:
+		return applySettingsAction(ctx, client, owner, name, action)
+
+	default:
+		// Rulesets and files arrive in later work. Refusing loudly beats
+		// silently reporting an action applied that nothing performed.
 		return fmt.Errorf("%w: %s", errSyncKindUnsupported, action.Kind)
 	}
-
-	return s.applyLabelAction(ctx, client, owner, name, action)
 }
 
 var (

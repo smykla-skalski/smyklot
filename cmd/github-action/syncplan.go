@@ -32,7 +32,6 @@ const syncPlanTTL = 2 * time.Hour
 func (s *server) planInstallationSync(
 	ctx context.Context,
 	client *github.Client,
-	installation github.Installation,
 	targetID string,
 	trigger orgsync.Trigger,
 ) error {
@@ -41,20 +40,21 @@ func (s *server) planInstallationSync(
 		return fmt.Errorf("read sync configuration: %w", err)
 	}
 
-	labels, found := syncConfigOf(configs, orgsync.KindLabels)
-	if !found || !labels.Enabled {
-		// Nothing is switched on, so there is nothing to compare against.
-		return nil
+	// The stored installation, not the one the sweep is holding.
+	//
+	// The executor reads this row too, and it has no choice: it holds an
+	// installation token and cannot ask GitHub what was granted. Two sources
+	// for one fact is two answers, and the one that decides whether work runs
+	// should be the one the work will be judged against.
+	target, err := s.store.GetTarget(ctx, targetID)
+	if err != nil {
+		return fmt.Errorf("read sync installation: %w", err)
 	}
 
-	// Switched on but not granted. Planning anyway would produce a plan whose
-	// every action 403s, once per repository, every tick - a history full of
-	// refusals that are really one question nobody has been asked. The kind is
-	// reported as unavailable instead, naming the permission to grant.
-	if unavailable, missing := orgsync.Unpermitted(installation, orgsync.KindLabels); missing {
-		logging.From(ctx).Info("sync is configured but not permitted",
-			"kind", unavailable.Kind, "permission", unavailable.Permission)
-
+	active := activeSyncKinds(ctx, configs, target)
+	if len(active) == 0 {
+		// Nothing switched on and permitted, so there is nothing to compare
+		// against.
 		return nil
 	}
 
@@ -72,7 +72,7 @@ func (s *server) planInstallationSync(
 		return fmt.Errorf("read live sync plan: %w", err)
 	}
 
-	actions, err := s.planSyncActions(ctx, client, targetID, labels, overrides)
+	actions, err := s.planSyncActions(ctx, client, targetID, active, overrides)
 	if err != nil {
 		return err
 	}
@@ -87,7 +87,7 @@ func (s *server) planInstallationSync(
 		ID:        newSyncPlanID(),
 		TargetID:  targetID,
 		Trigger:   trigger,
-		ActorID:   labels.UpdatedBy,
+		ActorID:   syncActor(active),
 		Digest:    orgsync.DigestScope(configs, overrides),
 		Actions:   actions,
 		Now:       time.Now().UTC(),
@@ -125,21 +125,65 @@ func syncPlanSummary(counts orgsync.Counts) string {
 		counts.Create, counts.Update, counts.Delete)
 }
 
+// activeSyncKinds is what an installation has switched on and been permitted.
+//
+// Both, in one place. A kind switched on but not granted is reported and left
+// out, so the rest of the sweep proceeds: an installation that has approved
+// labels and not settings should get its labels, not a plan that fails on
+// everything because one kind is waiting on somebody.
+func activeSyncKinds(
+	ctx context.Context,
+	configs []orgsync.Config,
+	grantor orgsync.Grantor,
+) []orgsync.Config {
+	active := make([]orgsync.Config, 0, len(configs))
+
+	for _, config := range configs {
+		if !config.Enabled {
+			continue
+		}
+
+		if unavailable, missing := orgsync.Unpermitted(grantor, config.Kind); missing {
+			logging.From(ctx).Info("sync is configured but not permitted",
+				"kind", unavailable.Kind, "permission", unavailable.Permission)
+
+			continue
+		}
+
+		active = append(active, config)
+	}
+
+	return active
+}
+
+// syncActor is who a plan is attributed to: whoever last saved any of the
+// configuration it enforces.
+//
+// The most recent, because a plan carries one actor and the newest save is the
+// one that caused this plan to differ from the last.
+func syncActor(active []orgsync.Config) string {
+	var (
+		actor  string
+		latest time.Time
+	)
+
+	for _, config := range active {
+		if actor == "" || config.UpdatedAt.After(latest) {
+			actor, latest = config.UpdatedBy, config.UpdatedAt
+		}
+	}
+
+	return actor
+}
+
 // planSyncActions asks each repository in scope what it would take to match.
 func (s *server) planSyncActions(
 	ctx context.Context,
 	client *github.Client,
 	targetID string,
-	labels orgsync.Config,
+	active []orgsync.Config,
 	overrides []orgsync.RepositoryOverride,
 ) ([]orgsync.Action, error) {
-	var config orgsync.LabelConfig
-	if err := json.Unmarshal(labels.Document, &config); err != nil {
-		// A stored configuration that will not decode is not a reason to plan
-		// nothing quietly: it is a reason to say so and change nothing.
-		return nil, fmt.Errorf("decode label configuration: %w", err)
-	}
-
 	repositories, err := s.store.ListRepositories(ctx, targetID)
 	if err != nil {
 		return nil, fmt.Errorf("read sync repositories: %w", err)
@@ -150,51 +194,51 @@ func (s *server) planSyncActions(
 		return nil, fmt.Errorf("read sync repository state: %w", err)
 	}
 
-	scope := newSyncScope(labels, overrides, applied)
-
 	var (
 		actions []orgsync.Action
 		matched []orgsync.RepositoryState
 		now     = time.Now().UTC()
 	)
 
-	for _, repository := range repositories {
-		if !scope.covers(repository) {
-			continue
+	// Kind by kind, because each has its own configuration, its own fingerprint
+	// and its own record of what a repository already has. A repository settled
+	// for its labels may be out of date for its settings.
+	for _, config := range active {
+		scope := newSyncScope(config, overrides, applied)
+
+		for _, repository := range repositories {
+			if !scope.covers(repository) {
+				continue
+			}
+
+			found, err := s.planRepositoryKind(ctx, client, config, repository)
+			if err != nil {
+				// One repository refusing must not stop the rest. It will be
+				// planned again on the next tick, and reporting a plan that
+				// silently omitted it would be worse than a shorter one.
+				logging.From(ctx).Warn("could not read a repository while planning",
+					"repo", repository.FullName, "kind", config.Kind, "error", err)
+
+				continue
+			}
+
+			if len(found) == 0 {
+				// Nothing to do, which is a fact worth keeping. It appears in
+				// no plan, so an apply would never record it, and without a
+				// record this repository is read from GitHub again on every
+				// tick for ever - the cost the digest exists to remove.
+				matched = append(matched, orgsync.RepositoryState{
+					RepositoryID:  repository.ID,
+					Kind:          config.Kind,
+					AppliedDigest: scope.digestFor(repository.ID),
+					AppliedAt:     now,
+				})
+
+				continue
+			}
+
+			actions = append(actions, found...)
 		}
-
-		owner, name := splitFullName(repository.FullName)
-
-		current, err := client.ListRepositoryLabels(ctx, owner, name)
-		if err != nil {
-			// One repository refusing must not stop the rest. It will be
-			// planned again on the next tick, and reporting a plan that
-			// silently omitted it would be worse than a shorter one.
-			logging.From(ctx).Warn("could not read labels while planning",
-				"repo", repository.FullName, "error", err)
-
-			continue
-		}
-
-		found := orgsync.PlanLabels(
-			repository.ID, config, asCurrentLabels(current), config.Exclusions(),
-		)
-		if len(found) == 0 {
-			// Nothing to do, which is a fact worth keeping. It appears in no
-			// plan, so an apply would never record it, and without a record
-			// this repository is read from GitHub again on every tick for ever
-			// - the cost the recorded digest exists to remove.
-			matched = append(matched, orgsync.RepositoryState{
-				RepositoryID:  repository.ID,
-				Kind:          orgsync.KindLabels,
-				AppliedDigest: scope.digestFor(repository.ID),
-				AppliedAt:     now,
-			})
-
-			continue
-		}
-
-		actions = append(actions, found...)
 	}
 
 	if err := s.store.RecordSyncRepositoryState(ctx, matched); err != nil {
@@ -202,6 +246,55 @@ func (s *server) planSyncActions(
 	}
 
 	return actions, nil
+}
+
+// planRepositoryKind asks one repository what one kind would take.
+//
+// The one place a kind's stored document meets its planner. A kind this version
+// does not know is refused rather than skipped: skipping would record the
+// repository as settled for work nothing did.
+func (s *server) planRepositoryKind(
+	ctx context.Context,
+	client *github.Client,
+	config orgsync.Config,
+	repository storage.Repository,
+) ([]orgsync.Action, error) {
+	owner, name := splitFullName(repository.FullName)
+
+	switch config.Kind {
+	case orgsync.KindLabels:
+		var labels orgsync.LabelConfig
+		if err := json.Unmarshal(config.Document, &labels); err != nil {
+			return nil, fmt.Errorf("decode label configuration: %w", err)
+		}
+
+		current, err := client.ListRepositoryLabels(ctx, owner, name)
+		if err != nil {
+			return nil, err
+		}
+
+		return orgsync.PlanLabels(
+			repository.ID, labels, asCurrentLabels(current), labels.Exclusions(),
+		), nil
+
+	case orgsync.KindSettings:
+		var settings orgsync.SettingsConfig
+		if err := json.Unmarshal(config.Document, &settings); err != nil {
+			return nil, fmt.Errorf("decode settings configuration: %w", err)
+		}
+
+		current, err := client.GetRepositorySettings(ctx, owner, name)
+		if err != nil {
+			return nil, err
+		}
+
+		return orgsync.PlanSettings(
+			repository.ID, settings, orgsync.CurrentSettings(current),
+		), nil
+
+	default:
+		return nil, fmt.Errorf("%w: %s", errSyncKindUnsupported, config.Kind)
+	}
 }
 
 // newSyncPlanID mints a plan identifier.
@@ -279,15 +372,6 @@ func (s syncScope) digestFor(repositoryID string) string {
 	return orgsync.DigestRepositoryKind(s.config.Digest, s.overrides[repositoryID])
 }
 
-func syncConfigOf(configs []orgsync.Config, kind orgsync.Kind) (orgsync.Config, bool) {
-	for _, config := range configs {
-		if config.Kind == kind {
-			return config, true
-		}
-	}
-
-	return orgsync.Config{}, false
-}
 
 func asCurrentLabels(labels []github.RepositoryLabel) []orgsync.CurrentLabel {
 	current := make([]orgsync.CurrentLabel, 0, len(labels))

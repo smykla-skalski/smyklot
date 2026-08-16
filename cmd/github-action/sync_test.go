@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -77,18 +78,26 @@ var _ = Describe("Label sync [Unit]", func() {
 		return target
 	}
 
-	configure := func(target storage.Target, document string) orgsync.Config {
+	configureKind := func(
+		target storage.Target, kind orgsync.Kind, document string,
+	) orgsync.Config {
 		GinkgoHelper()
 
 		config, err := service.store.SetSyncConfig(
 			GinkgoT().Context(), orgsync.ConfigChange{
-				TargetID: target.ID, Kind: orgsync.KindLabels, Enabled: true,
+				TargetID: target.ID, Kind: kind, Enabled: true,
 				Document: []byte(document), ActorID: target.Account.ID,
 				Now: time.Now().UTC(),
 			})
 		Expect(err).NotTo(HaveOccurred())
 
 		return config
+	}
+
+	configure := func(target storage.Target, document string) orgsync.Config {
+		GinkgoHelper()
+
+		return configureKind(target, orgsync.KindLabels, document)
 	}
 
 	client := func() *github.Client {
@@ -100,26 +109,25 @@ var _ = Describe("Label sync [Unit]", func() {
 		return client
 	}
 
-	// permitted is an installation that granted everything label sync needs,
-	// which is what every spec here assumes unless it says otherwise.
-	permitted := github.Installation{
-		ID: 411, Account: "smykla-skalski",
-		Permissions: map[string]string{"issues": github.PermissionWrite},
-	}
-
-	planAs := func(target storage.Target, installation github.Installation) {
+	// granting re-lists the installation with the permissions given and
+	// reconciles, which is how a grant or a revocation actually reaches the
+	// service: GitHub reports it and the sweep stores it.
+	granting := func(permissions string) storage.Target {
 		GinkgoHelper()
 
-		Expect(service.planInstallationSync(
-			GinkgoT().Context(), client(), installation, target.ID,
-			orgsync.TriggerReconcile,
-		)).To(Succeed())
+		stub.installations = `[{"id":411,"account":` +
+			`{"id":7,"login":"smykla-skalski","type":"Organization"},` +
+			`"permissions":` + permissions + `}]`
+
+		return seed()
 	}
 
 	plan := func(target storage.Target) {
 		GinkgoHelper()
 
-		planAs(target, permitted)
+		Expect(service.planInstallationSync(
+			GinkgoT().Context(), client(), target.ID, orgsync.TriggerReconcile,
+		)).To(Succeed())
 	}
 
 	livePlan := func(target storage.Target) (orgsync.Plan, []orgsync.Action) {
@@ -179,12 +187,10 @@ var _ = Describe("Label sync [Unit]", func() {
 		// every tick - a history full of refusals that are really one question
 		// nobody has been asked
 		It("plans nothing for a kind the installation has not permitted", func() {
-			target := seed()
+			target := granting(`{"issues":"read"}`)
 			configure(target, `{"labels":[{"name":"bug","color":"d73a4a"}]}`)
 
-			planAs(target, github.Installation{
-				ID: 411, Permissions: map[string]string{"issues": github.PermissionRead},
-			})
+			plan(target)
 
 			_, _, err := service.store.GetLiveSyncPlan(GinkgoT().Context(), target.ID)
 			Expect(err).To(MatchError(storage.ErrNotFound))
@@ -198,12 +204,10 @@ var _ = Describe("Label sync [Unit]", func() {
 		// it returns elsewhere - so this is what stops a permission added here
 		// later being read as refused
 		It("plans for an installation that granted admin", func() {
-			target := seed()
+			target := granting(`{"issues":"admin"}`)
 			configure(target, `{"labels":[{"name":"bug","color":"d73a4a"}]}`)
 
-			planAs(target, github.Installation{
-				ID: 411, Permissions: map[string]string{"issues": github.PermissionAdmin},
-			})
+			plan(target)
 
 			_, actions := livePlan(target)
 			Expect(actions).To(HaveLen(1))
@@ -215,10 +219,10 @@ var _ = Describe("Label sync [Unit]", func() {
 		// somebody's repositories on an answer that could not be read, and a
 		// 403 is the smaller problem
 		It("plans nothing for an installation whose permissions could not be read", func() {
-			target := seed()
+			target := granting(`{}`)
 			configure(target, `{"labels":[{"name":"bug","color":"d73a4a"}]}`)
 
-			planAs(target, github.Installation{ID: 411})
+			plan(target)
 
 			_, _, err := service.store.GetLiveSyncPlan(GinkgoT().Context(), target.ID)
 			Expect(err).To(MatchError(storage.ErrNotFound))
@@ -458,6 +462,51 @@ var _ = Describe("Label sync [Unit]", func() {
 				GinkgoT().Context(), target.ID, computed.ID)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(held.State).To(Equal(orgsync.PlanApplying))
+		})
+
+		It("changes the settings the plan named, and only those", func() {
+			target := granting(`{"issues":"write","administration":"write"}`)
+			stub.repoSettings = `{"has_wiki": true, "has_issues": true,
+				"delete_branch_on_merge": false, "allow_squash_merge": true}`
+			configureKind(target, orgsync.KindSettings,
+				`{"has_wiki":false,"delete_branch_on_merge":true}`)
+
+			plan(target)
+			computed, actions := livePlan(target)
+			Expect(actions).To(HaveLen(1))
+			Expect(actions[0].Kind).To(Equal(orgsync.KindSettings))
+			approve(computed)
+
+			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+
+			Expect(stub.settingsWrites).To(HaveLen(1))
+
+			var sent map[string]any
+			Expect(json.Unmarshal([]byte(stub.settingsWrites[0]), &sent)).To(Succeed())
+			Expect(sent).To(HaveKeyWithValue("has_wiki", false))
+			Expect(sent).To(HaveKeyWithValue("delete_branch_on_merge", true))
+
+			// Nothing about the settings nobody configured. Against an endpoint
+			// that replaces what it is sent, writing those back is how a sync
+			// undoes somebody else's change
+			Expect(sent).NotTo(HaveKey("has_issues"))
+			Expect(sent).NotTo(HaveKey("allow_squash_merge"))
+			Expect(sent).To(HaveLen(2))
+		})
+
+		// An installation may have approved one kind and not another, and the
+		// one it approved should still run
+		It("plans the permitted kind and leaves the other", func() {
+			target := granting(`{"issues":"write"}`)
+			configure(target, `{"labels":[{"name":"bug","color":"d73a4a"}]}`)
+			configureKind(target, orgsync.KindSettings, `{"has_wiki":false}`)
+			stub.repoSettings = `{"has_wiki": true}`
+
+			plan(target)
+
+			_, actions := livePlan(target)
+			Expect(actions).To(HaveLen(1))
+			Expect(actions[0].Kind).To(Equal(orgsync.KindLabels))
 		})
 
 		It("does nothing for a plan nobody approved", func() {

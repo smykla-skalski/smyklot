@@ -47,6 +47,11 @@ type githubStub struct {
 	repoLabels  string
 	labelWrites []string
 
+	// repoSettings is what a repository reports itself as set to, and
+	// settingsWrites is every change sync sent.
+	repoSettings   string
+	settingsWrites []string
+
 	// refuseBranchPush is an App that was never granted write access here.
 	refuseBranchPush bool
 
@@ -119,6 +124,7 @@ func newGitHubStub() *githubStub {
 		migrationTipTree: "treesha",
 		createdTreeSHA:   "treesha",
 		repoLabels:       `[]`,
+		repoSettings:     `{}`,
 
 		prAuthor:   "author",
 		prLabels:   `[]`,
@@ -197,6 +203,11 @@ func (s *githubStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(s.membersStatus)
 		}
 		_, _ = io.WriteString(w, s.members)
+
+	// A repository itself, which settings sync reads and writes. Matched last
+	// among the /repos routes because every other one is a path under it.
+	case repositoryRootPath(r.URL.Path):
+		s.serveRepositorySettings(w, r)
 
 	case strings.HasSuffix(r.URL.Path, "/pulls"):
 		s.servePulls(w, r)
@@ -593,6 +604,37 @@ func (s *githubStub) serveGitData(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		_, _ = fmt.Fprintf(w, `{"message": "unstubbed git path %s"}`, r.URL.Path)
 	}
+}
+
+// repositoryRootPath reports /repos/{owner}/{repo} and nothing under it.
+//
+// Counted rather than suffix-matched, because every other repository route is a
+// path beneath this one and a suffix test would claim them all.
+func repositoryRootPath(path string) bool {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+
+	return len(parts) == 3 && parts[0] == "repos"
+}
+
+// serveRepositorySettings answers and records the repository settings
+// endpoints.
+func (s *githubStub) serveRepositorySettings(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		s.mu.Lock()
+		settings := s.repoSettings
+		s.mu.Unlock()
+		_, _ = io.WriteString(w, settings)
+
+		return
+	}
+
+	body, _ := io.ReadAll(r.Body)
+
+	s.mu.Lock()
+	s.settingsWrites = append(s.settingsWrites, string(body))
+	s.mu.Unlock()
+
+	_, _ = io.WriteString(w, `{}`)
 }
 
 // serveRepositoryLabels answers and records the repository label endpoints.
