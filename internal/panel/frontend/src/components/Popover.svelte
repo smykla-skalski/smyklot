@@ -173,12 +173,15 @@
     const box = { height: panel.offsetHeight, width: panel.offsetWidth };
     let at = placeLayer(rect, box, viewport, { align, gutter, offset, side });
 
-    /* The axis it hangs on is the one that can run out: below a trigger that is
-       its height, beside one that is its width. The other axis is only ever
-       bounded by the window. */
-    const capped = isVertical(at.side)
-      ? { height: Math.min(box.height, at.available), width: box.width }
-      : { height: Math.min(box.height, at.crossAvailable), width: Math.min(box.width, at.available) };
+    /* Both axes, not just the one it hangs on. The side it sits on is bounded by
+       the room between the trigger and the edge; the other by the window less
+       its gutters. Capping only the first left a layer wider than the window
+       hanging off it, held at the near edge and running past the far one. */
+    const vertical = isVertical(at.side);
+    const capped = {
+      height: Math.min(box.height, vertical ? at.available : at.crossAvailable),
+      width: Math.min(box.width, vertical ? at.crossAvailable : at.available),
+    };
 
     if (capped.height !== box.height || capped.width !== box.width) {
       panel.style.maxHeight = `${capped.height}px`;
