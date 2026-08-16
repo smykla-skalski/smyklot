@@ -184,6 +184,14 @@ export class PanelSession {
     if (page.url.pathname === `${this.base}/root/installations`)
       return { rootView: 'installations' };
     if (page.url.pathname === `${this.base}/root/settings`) return { rootView: 'settings' };
+    /* The queue's three addresses. `params.id` alone would be enough to name the
+       request page, but every other branch here reads the path, and one of these
+       three has no parameter at all - so they are read the same way, together. */
+    if (page.url.pathname === `${this.base}/root/queue`) return { rootView: 'queue' };
+    if (page.url.pathname === `${this.base}/root/queue/recent`) return { rootView: 'queue-recent' };
+    if (page.url.pathname.startsWith(`${this.base}/root/queue/request/`)) {
+      return { rootView: 'queue-request', request: (page.params.id as string | undefined) ?? '' };
+    }
     return { rootView: 'overview' };
   }
 
