@@ -472,4 +472,16 @@
       flex: 1;
     }
   }
+
+  /* Timeline, Check now and Cancel carry nowrap labels, so on one row they need
+     292px - more than a phone has once the console's padding is taken out. A
+     flex item will not shrink under its label either, so the row set the width
+     of the entire overview: Chrome widened the layout viewport to fit it and
+     zoomed the whole console out to 75% on a 320px screen. Two lines cost less
+     than that. */
+  @media (max-width: 30rem) {
+    .request-actions {
+      flex-wrap: wrap;
+    }
+  }
 </style>

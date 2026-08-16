@@ -181,4 +181,30 @@
     font-size: 0.8125rem;
     margin: -0.5rem 0 1rem;
   }
+
+  /* The copy is the only part of this row that can give, and beside a control
+     that holds 157px it gave everything: at 320 it was down to a 100px column
+     setting one word per line, and the control had still run off the screen.
+     Stacked, the copy gets the row and the control sits under it. */
+  @media (max-width: 30rem) {
+    .policy-row {
+      align-items: start;
+      flex-direction: column;
+      gap: var(--space-3);
+      padding-inline: 0.875rem;
+      position: relative;
+    }
+
+    /* Lifted out of the column rather than left in it: it is empty almost
+       always, and an empty flex item still takes a line, so in flow it would
+       hold a 27px gap open between the copy and the control to say nothing.
+       It stays in the DOM either way - `display: none` would drop a live
+       region, and the announcement is the whole point of it. */
+    .saved-flash {
+      inset-block-start: 0.875rem;
+      inset-inline-end: 0.875rem;
+      min-width: 0;
+      position: absolute;
+    }
+  }
 </style>

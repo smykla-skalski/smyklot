@@ -1064,6 +1064,34 @@
     background: var(--well);
   }
 
+  /* On a phone the row's parts do not fit on one line. The control holds a fixed
+     width - a segmented control does not shrink - and the label is the only part
+     that gives, so it collapsed to a one-word column while the control still ran
+     past the screen and took the page's layout viewport with it: Chrome widens
+     the viewport to fit the overflow and zooms the whole page out to compensate,
+     so one row too wide shrank every glyph on the page.
+
+     Wrapped rather than stacked with `flex-direction`, because the prefix row's
+     input and its control still belong on one line together; it is only the
+     label that needs the width to itself. */
+  @media (max-width: 30rem) {
+    .row,
+    .row-line {
+      flex-wrap: wrap;
+    }
+
+    .row-label {
+      flex: 1 0 100%;
+    }
+
+    /* It exists to push the control to the far end of a shared line. On its own
+       line there is no far end, and the control reads as belonging to the label
+       above it only if it starts where the label starts. */
+    .row-spacer {
+      display: none;
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .save-bar {
       animation: none;

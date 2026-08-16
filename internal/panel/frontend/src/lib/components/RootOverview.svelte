@@ -825,10 +825,18 @@
   }
 
   /* Top-aligned, so a wrapped reason keeps its icon beside the first line
-     rather than drifting to the middle of the block. */
+     rather than drifting to the middle of the block.
+
+     `min-width: 0` because a grid item's automatic minimum is its min-content
+     width, and the meta line below carries `owner/repository-name` - one
+     unbreakable run. The entry therefore refused to go under 396px on any
+     phone, and Chrome answers an overflow it cannot scroll by widening the
+     layout viewport and zooming the page out to match: one list held the whole
+     console at 75% on a 320px screen. */
   .failure-item {
     align-items: flex-start;
     gap: var(--space-3);
+    min-width: 0;
     padding: var(--space-3) 0;
   }
 
@@ -857,6 +865,10 @@
     color: var(--text-muted);
     font-size: var(--font-size-compact);
     line-height: 1.5;
+    /* The repository name is the longest unbreakable run on the line and there
+       is no width on a phone at which it fits. It breaks rather than deciding
+       how wide the console has to be. */
+    overflow-wrap: anywhere;
   }
 
   .failure-item code,
