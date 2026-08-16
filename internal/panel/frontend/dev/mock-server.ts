@@ -2414,18 +2414,7 @@ function rootOverviewValue(state: MockState): RootOverview {
     pending_ci: {
       active: state.pendingCI
         .filter((request) => request.lifecycle === 'armed' && request.schedule === 'active')
-        /* The quiet period is 30 seconds long, and the seed is written once when the
-           process starts - so by the time anybody opens the page it has always
-           expired, and the countdown the Next column exists to show sits at 0:00
-           for ever. Rolling a passed deadline forward keeps it live in
-           development. Nothing outside the mock does this: a real deadline that
-           has passed means the merge is happening. */
-        .map((request) =>
-          request.next_check_trigger === 'quiet_period' &&
-          Date.parse(request.next_check_at) <= Date.now()
-            ? { ...request, next_check_at: new Date(Date.now() + 30_000).toISOString() }
-            : request,
-        ),
+        .map(liveQuietPeriod),
       deferred: state.pendingCI.filter(
         (request) => request.lifecycle === 'armed' && request.schedule === 'deferred',
       ),
@@ -2570,7 +2559,23 @@ function findPendingCI(state: MockState, encodedID: string): PendingCIRequest {
   if (request === undefined) {
     throw new MockApiError(404, 'not_found', 'pending CI request not found');
   }
-  return request;
+  return liveQuietPeriod(request);
+}
+
+/**
+ * Keeps a seeded quiet period from having expired before anybody could look at it.
+ *
+ * The seed is written once when the process starts and the period is 30 seconds long, so by the
+ * time a page opens it has always run out and the countdown sits at 0:00 for ever. Only the mock
+ * does this: a real deadline in the past means the merge is happening.
+ */
+export function liveQuietPeriod(request: PendingCIRequest): PendingCIRequest {
+  if (request.lifecycle !== 'armed' || request.next_check_trigger !== 'quiet_period') {
+    return request;
+  }
+  if (Date.parse(request.next_check_at) > Date.now()) return request;
+
+  return { ...request, next_check_at: new Date(Date.now() + 30_000).toISOString() };
 }
 
 function requirePendingCIRevision(request: PendingCIRequest, revision: number): void {
@@ -2579,19 +2584,60 @@ function requirePendingCIRevision(request: PendingCIRequest, revision: number): 
   }
 }
 
+/**
+ * A record with enough in it to be a record.
+ *
+ * One event drew a timeline with no rail, no second mark and nothing to align - which is most of
+ * what the page is. These are the events a passing request actually accumulates, in the order the
+ * reconciler writes them.
+ */
 function pendingCIDetail(request: PendingCIRequest): PendingCIDetail {
+  const armedAt = Date.parse(request.requested_at);
+  const at = (offsetMs: number): string => new Date(armedAt + offsetMs).toISOString();
+
   return {
     request: structuredClone(request),
     events: [
+      {
+        id: `${request.id}:armed`,
+        kind: 'armed',
+        trigger: 'command',
+        summary: `@${request.requester} commented /${request.merge_method} after ci and holds merge permission through CODEOWNERS`,
+        created_at: request.requested_at,
+      },
       {
         id: `${request.id}:wake`,
         kind: 'wake_received',
         trigger: 'webhook',
         event_name: 'check_suite',
-        event_key: `check_suite:${request.head_sha}:completed:success`,
-        delivery_id: 'mock-delivery-id',
-        summary: 'Received a CI state webhook and scheduled an immediate reconciliation',
-        created_at: request.updated_at,
+        event_key: `check_suite:${request.head_sha.slice(0, 8)}:completed:success`,
+        delivery_id: '8f3a1c7e-2b40-4d19-9a5e-71c0d2f4b8aa',
+        summary:
+          'A check_suite delivery reported completed checks and scheduled an immediate reconciliation',
+        created_at: at(3 * 60_000),
+      },
+      {
+        id: `${request.id}:reconcile`,
+        kind: 'reconciliation_started',
+        trigger: 'webhook',
+        summary: 'Lease taken, pull request and check state read from GitHub',
+        created_at: at(3 * 60_000 + 1_000),
+      },
+      {
+        id: `${request.id}:observed`,
+        kind: 'checks_observed',
+        trigger: 'webhook',
+        state: request.last_observed_state,
+        event_key: `check_suite:${request.head_sha.slice(0, 8)}:completed:success`,
+        summary: `All 11 checks green on ${request.head_sha.slice(0, 8)}; the previous observation was pending`,
+        created_at: at(3 * 60_000 + 2_000),
+      },
+      {
+        id: `${request.id}:quiet`,
+        kind: 'reconciliation_started',
+        trigger: 'quiet_period',
+        summary: 'Quiet period started; merging unless a new check or commit arrives first',
+        created_at: at(3 * 60_000 + 2_500),
       },
     ],
   };

@@ -47,6 +47,7 @@ const ROUTES = [
   'root/settings',
   'root/queue',
   'root/queue/recent',
+  'root/queue/request/pending-ci-0',
   'root/installations',
   'root/access/users',
   'root/access/invitations',
