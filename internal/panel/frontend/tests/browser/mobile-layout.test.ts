@@ -37,8 +37,22 @@ interface Measured {
   unreachable: string[];
 }
 
+/** The bar's controls, measured by what a thumb can hit rather than what is painted. */
+interface Target {
+  control: { width: number; height: number };
+  /** The pressable area, which is the overlay when there is one. */
+  area: { width: number; height: number; onScreen: boolean };
+  /** Anything else pressable the area reaches over, which would take the press instead. */
+  steals: string[];
+  /** Room above and below the control inside the bar. Equal means it sits on the bar's centre. */
+  seat: { above: number; below: number } | null;
+  /** Whether pressing the far corner of the area - outside the paint - opened the drawer. */
+  cornerOpensDrawer: boolean | null;
+}
+
 let panel: Panel;
 const measured = new Map<string, Measured>();
+const targets = new Map<string, Target>();
 
 /** Every addressable page, named as the reader would say it. */
 function routes(account: string): ReadonlyArray<readonly [string, string]> {
@@ -69,6 +83,10 @@ beforeAll(async () => {
     for (const [name, path] of routes(panel.account)) {
       measured.set(`${name} at ${width}`, await measure(path, width));
     }
+  }
+
+  for (const [name, selector] of BAR_CONTROLS) {
+    targets.set(name, await measureTarget(selector, name === 'the menu button'));
   }
 }, 300_000);
 
@@ -194,6 +212,102 @@ async function measure(path: string, width: number): Promise<Measured> {
   }
 }
 
+/** What the top bar offers a thumb on a phone. */
+const BAR_CONTROLS = [
+  ['the menu button', '.mobile-navigation-trigger'],
+  ['the account menu', '.who'],
+] as const;
+
+/** The size the platforms ask for, and what the overlay is built to give. */
+const THUMB = 44;
+
+async function measureTarget(selector: string, pressCorner: boolean): Promise<Target> {
+  const page = await panel.browser.newPage({
+    viewport: { width: 375, height: 812 },
+    deviceScaleFactor: 2,
+    isMobile: true,
+    hasTouch: true,
+  });
+
+  try {
+    await page.goto(`${panel.origin}/i/${panel.account}/settings`, {
+      waitUntil: 'domcontentloaded',
+    });
+    await page.waitForTimeout(SETTLE_MS);
+
+    const measurement = await page.evaluate((target: string) => {
+      const control = document.querySelector(target);
+      if (control === null) throw new Error(`${target} is not on the page`);
+
+      const own = control.getBoundingClientRect();
+      /* The overlay's box, read from the resolved insets of the pseudo-element
+         that draws it. A negative inset is the expansion. */
+      const overlay = getComputedStyle(control, '::after');
+      const px = (value: string): number => Number.parseFloat(value) || 0;
+      const area = {
+        left: own.left + px(overlay.left),
+        top: own.top + px(overlay.top),
+        right: own.right - px(overlay.right),
+        bottom: own.bottom - px(overlay.bottom),
+      };
+
+      const CONTROLS =
+        'button, a[href], input:not([type=hidden]), select, textarea, [role="button"], [role="tab"], [role="switch"], [role="menuitem"]';
+      const steals: string[] = [];
+      for (const other of document.querySelectorAll(CONTROLS)) {
+        if (other === control || control.contains(other) || other.contains(control)) continue;
+        if (!other.checkVisibility()) continue;
+        if (other.closest('[popover]:not(:popover-open)') !== null) continue;
+        if (other.closest('.navigation-shell, .visually-hidden') !== null) continue;
+        const box = other.getBoundingClientRect();
+        if (box.width === 0 || box.height === 0) continue;
+        if (area.left >= box.right || box.left >= area.right) continue;
+        if (area.top >= box.bottom || box.top >= area.bottom) continue;
+        steals.push(
+          `${other.tagName.toLowerCase()} "${(other.getAttribute('aria-label') ?? other.textContent ?? '').replace(/\s+/gu, ' ').trim().slice(0, 30)}"`,
+        );
+      }
+
+      const bar = document.querySelector('.brand-row')?.getBoundingClientRect() ?? null;
+
+      return {
+        control: { width: own.width, height: own.height },
+        seat: bar === null ? null : { above: own.top - bar.top, below: bar.bottom - own.bottom },
+        area: {
+          width: area.right - area.left,
+          height: area.bottom - area.top,
+          onScreen: area.left >= 0 && area.right <= window.innerWidth && area.top >= 0,
+        },
+        corner: { x: area.left + 2, y: area.top + 2 },
+        steals,
+      };
+    }, selector);
+
+    let cornerOpensDrawer: boolean | null = null;
+    if (pressCorner) {
+      /* Pressed where only the overlay is - a couple of pixels inside the far
+         corner, well outside the 28px the reader can see. A real press rather
+         than `.click()`, which fires the handler whether or not anything would
+         actually have received it. */
+      await page.mouse.click(measurement.corner.x, measurement.corner.y);
+      await page.waitForTimeout(700);
+      cornerOpensDrawer = await page.evaluate(
+        () => document.querySelector('.navigation-shell')?.checkVisibility() ?? false,
+      );
+    }
+
+    return {
+      control: measurement.control,
+      area: measurement.area,
+      seat: measurement.seat,
+      steals: [...new Set(measurement.steals)],
+      cornerOpensDrawer,
+    };
+  } finally {
+    await page.close();
+  }
+}
+
 const cases = WIDTHS.flatMap((width) =>
   routes('').map(([name]) => [`${name} at ${width}`, width] as const),
 );
@@ -235,5 +349,68 @@ describe('every page on a phone', () => {
       result.unreachable,
       `${key} renders controls a thumb cannot land on:\n  ${result.unreachable.join('\n  ')}`,
     ).toEqual([]);
+  });
+});
+
+/**
+ * The top bar is the one part of the panel every page is reached through, and on
+ * a phone its controls are 28-32px squares because that is the weight the bar
+ * wants. They keep it: what grows is an invisible overlay that takes the press,
+ * so these are measurements of what a thumb can hit rather than of what is drawn.
+ */
+describe('the top bar on a phone', () => {
+  it.each(BAR_CONTROLS.map(([name]) => name))('gives %s a thumb-sized target', (name) => {
+    const target = targets.get(name);
+    if (target === undefined) throw new Error(`${name} was never measured`);
+
+    // The precondition: the control is still the small square it is meant to be,
+    // so a change that simply made it bigger does not pass as this being fixed.
+    expect(target.control.width, `${name} is no longer a compact control`).toBeLessThan(THUMB);
+
+    expect(
+      Math.round(Math.min(target.area.width, target.area.height)),
+      `${name} offers a ${Math.round(target.area.width)}x${Math.round(target.area.height)} target`,
+    ).toBeGreaterThanOrEqual(THUMB);
+    expect(target.area.onScreen, `${name}'s target runs off the screen`).toBe(true);
+  });
+
+  it.each(BAR_CONTROLS.map(([name]) => name))('keeps %s off its neighbours', (name) => {
+    const target = targets.get(name);
+    if (target === undefined) throw new Error(`${name} was never measured`);
+
+    /* An expanded target that reaches over another control does not make the bar
+       easier to use, it makes the neighbour unpressable. */
+    expect(
+      target.steals,
+      `${name}'s target reaches over:\n  ${target.steals.join('\n  ')}`,
+    ).toEqual([]);
+  });
+
+  it.each(BAR_CONTROLS.map(([name]) => name))('keeps %s seated on the bar', (name) => {
+    const target = targets.get(name);
+    if (target === undefined) throw new Error(`${name} was never measured`);
+    if (target.seat === null) throw new Error('the bar was not found');
+
+    /* Equal room above and below, which is the cheapest true statement about a
+       control that is placed rather than one that has fallen into the flow.
+       Growing a hit area must not move anything, and the first attempt at it
+       did: a `position: relative` added for the overlay outranked the
+       `absolute` that puts the menu button in its corner, and the button
+       dropped into the row. Every size and overlap check here still passed. */
+    expect(
+      Math.round(target.seat.above),
+      `${name} sits ${target.seat.above.toFixed(1)}px below the top of the bar and ` +
+        `${target.seat.below.toFixed(1)}px above the bottom`,
+    ).toBe(Math.round(target.seat.below));
+  });
+
+  it('opens the drawer from outside the menu button’s paint', () => {
+    const target = targets.get('the menu button');
+    if (target === undefined) throw new Error('the menu button was never measured');
+
+    /* The whole claim, tested where it is made: a point no part of the visible
+       button covers still opens the navigation. Without this the size checks
+       above would pass on an overlay that had `pointer-events: none`. */
+    expect(target.cornerOpensDrawer).toBe(true);
   });
 });

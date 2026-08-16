@@ -5,9 +5,21 @@
   const {
     account,
     size,
+    shape = 'person',
   }: {
     account: PanelAccount;
     size: number;
+    /**
+     * Who or what the picture stands for, which decides its outline: a person is
+     * a circle and a workspace is a rounded square.
+     *
+     * The distinction is GitHub's own - it draws organisations square and people
+     * round - and the panel already keeps it, in the rounded square the Root
+     * console puts an installation's monogram in. It earns its place in the top
+     * bar on a phone, where the workspace switcher and the account menu lose
+     * their labels and stand next to each other as two identical discs.
+     */
+    shape?: 'person' | 'workspace';
   } = $props();
 
   // A profile picture the browser cannot fetch leaves a broken-image glyph where
@@ -49,6 +61,7 @@
 {#if source !== null}
   <img
     class="avatar"
+    class:avatar-workspace={shape === 'workspace'}
     style:--avatar-size="{size}px"
     src={source}
     alt=""
@@ -62,6 +75,7 @@
 {:else}
   <span
     class="avatar avatar-fallback"
+    class:avatar-workspace={shape === 'workspace'}
     style:--avatar-size="{size}px"
     style:--avatar-font={monogramFont}
     aria-hidden="true"

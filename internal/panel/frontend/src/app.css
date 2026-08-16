@@ -1265,6 +1265,18 @@ select:disabled {
   box-shadow: inset 0 0 0 1px var(--avatar-ring);
 }
 
+/* A workspace is drawn square, a person round. GitHub's own distinction, and the
+   panel already keeps it in the rounded square the Root console gives an
+   installation's monogram — this puts the same shape on the avatar itself, so
+   the two can stand side by side with no labels and still say which is which.
+
+   Proportional rather than the flat control radius: the same 8px reads as a
+   squircle at 28px and as a barely-softened square at 48px, and the shape has to
+   carry the meaning at every size it is used. */
+.avatar-workspace {
+  border-radius: calc(var(--avatar-size) * 0.3);
+}
+
 /* Monogram circles carry the brand tint in the mock, not a grey wash — the tint
    is what separates an account placeholder from a disabled control. */
 .avatar-fallback {

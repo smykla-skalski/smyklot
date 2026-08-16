@@ -271,7 +271,7 @@
           aria-label={`Switch workspace, currently ${selectedTarget.account.display_name}`}
           {...attributes}
         >
-          <Avatar account={selectedTarget.account} size={28} />
+          <Avatar account={selectedTarget.account} size={28} shape="workspace" />
           <span class="target-trigger-copy">
             <span class="target-kicker">Workspace</span>
             <strong>{selectedTarget.account.display_name}</strong>
@@ -302,7 +302,7 @@
               aria-current={target.id === selectedId ? 'page' : undefined}
               onclick={(event) => selectTarget(event, target.id)}
             >
-              <Avatar account={target.account} size={28} />
+              <Avatar account={target.account} size={28} shape="workspace" />
               <span class="option-copy">
                 <strong>{target.account.display_name}</strong>
                 <span class="mono">@{target.account.login}</span>
@@ -1168,6 +1168,16 @@
   @media (max-width: 48rem) {
     .panel-sidebar,
     .panel-sidebar.collapsed {
+      /* The rail becomes a bar, and two of the things standing on it - the
+         workspace switcher and the account card - are not inside it: they are
+         siblings, placed into it from here. So the bar's height and the height
+         of a control on it are named once, up on the ancestor both can read,
+         and every offset below is derived from the pair rather than written
+         out. The switcher and the account sat 2px under the bar's centre line
+         for exactly as long as that offset was a number somebody typed. */
+      --bar-height: 3.75rem;
+      --bar-control: 2.125rem;
+
       border-bottom: 1px solid var(--sidebar-border);
       border-right: 0;
       display: block;
@@ -1183,7 +1193,7 @@
     .brand-row,
     .collapsed .brand-row {
       flex-direction: row;
-      height: 3.75rem;
+      height: var(--bar-height);
       justify-content: space-between;
       min-height: 0;
       padding: 0 var(--space-4);
@@ -1198,7 +1208,8 @@
       margin: 0;
       position: absolute;
       right: 7.25rem;
-      top: 1rem;
+      /* Centred on the bar by subtraction, like the two beside it. */
+      top: calc((var(--bar-height) - 1.75rem) / 2);
     }
 
     .navigation-shell {
@@ -1207,7 +1218,7 @@
       box-shadow: var(--shadow-popover);
       display: none;
       left: 0;
-      max-height: calc(100dvh - 3.75rem);
+      max-height: calc(100dvh - var(--bar-height));
       overflow: auto;
       padding: var(--space-3);
       position: absolute;
@@ -1227,7 +1238,7 @@
       margin: 0;
       padding: 0;
       position: absolute;
-      top: 0.9375rem;
+      top: calc((var(--bar-height) - var(--bar-control)) / 2);
     }
 
     .target-trigger {
@@ -1246,7 +1257,7 @@
       border: 0;
       box-shadow: none;
       display: flex;
-      min-height: 2.125rem;
+      min-height: var(--bar-control);
       padding: 0;
       /* Absolutely positioned up there, so it is sized by its contents rather
          than by the rail it no longer sits in. */
@@ -1272,6 +1283,37 @@
     .panel-sidebar :global(.mark-part),
     .mobile-navigation-trigger > span:last-child {
       display: none;
+    }
+  }
+
+  /* A finger needs more room than an eye does. These three are 28-32px squares
+     because that is the weight the bar wants them to carry, and the menu is the
+     one control on a phone that every other page is reached through - at 28px
+     it was the smallest thing in the bar and the most often pressed.
+
+     So the target grows and the control does not: a coarse pointer gets a 44px
+     square laid over each, invisible, taking the presses. Nothing moves and
+     nothing is redrawn. There is room for it - the bar is 60px tall and the
+     three sit 20px apart, so the expanded squares still clear each other by 4px
+     and the last one stops 10px short of the screen edge.
+
+     The percentages resolve against the control's own padding box, so the same
+     expression centres 44px on whichever size each one is. Where a control is
+     already larger - `.who` is a full row in the sidebar, not a disc - the
+     result goes positive and the overlay sits inside it, changing nothing.
+
+     No `position` of its own, deliberately. All three are positioned already:
+     the switcher and the account menu relatively, the menu button absolutely
+     once the rail becomes a drawer. Adding a `relative` here broke the header -
+     same specificity as the drawer rule's `absolute` and later in the file, so
+     it won, and the menu button left the corner it is placed in. */
+  @media (pointer: coarse) {
+    .mobile-navigation-trigger::after,
+    .target-trigger::after,
+    .who::after {
+      content: '';
+      inset: calc((2.75rem - 100%) / -2) calc((2.75rem - 100%) / -2);
+      position: absolute;
     }
   }
 </style>

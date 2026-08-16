@@ -2024,9 +2024,65 @@
       text-transform: uppercase;
     }
 
+    /* The name is the card's heading and was not dressed as one: at
+       `--font-size-meta` and 600 it came out 13px, under the 12px/650 uppercase
+       labels standing beneath it, so the thing the card is *about* read as the
+       lightest line on it. A step up in size and weight puts it back on top.
+       Mono still - it is a repository name and the column above it is mono. */
+    /* A card heading, not a table cell, so it wraps rather than being cut: at
+       320 the longest name here is 6px over its share of the line and lost its
+       tail to an ellipsis, which is a poor trade for a heading. */
+    .repo-copy {
+      flex-wrap: wrap;
+    }
+
+    .repo-copy strong {
+      font-size: var(--font-size-body);
+      font-weight: 700;
+      overflow: visible;
+      white-space: normal;
+    }
+
+    /* One height for every label-and-value row, set by the tallest thing that
+       can stand in one: a segmented control, 2.125rem. Each row used to be as
+       tall as whatever it happened to hold - 38px for the file state, 50px for
+       the three carrying a control, a time that is given a control's height so
+       it lines up in the *table* - so the card read as a stack of unrelated
+       spacings. Padding comes down as the floor goes up, so the rows that were
+       bloated by their control end up shorter than before rather than everything
+       ending up taller. */
+    .repository-row td[data-label] {
+      min-height: calc(var(--control-height-compact) + var(--space-2));
+      padding-block: var(--space-1);
+    }
+
+    /* The heading takes the room the rows gave back. It is the one line here
+       that is not a label-and-value pair, and it was the tightest on the card:
+       8px to the first value where any two values had 16 between them, which is
+       what made it read as one of them rather than as their heading. */
+    .repository-row td:first-child {
+      border-bottom: 1px solid var(--border-subtle);
+      padding-block: var(--space-2) var(--space-4);
+    }
+
+    .repository-row td:nth-child(2) {
+      padding-top: var(--space-4);
+    }
+
     .file-status {
       align-items: flex-start;
       flex-direction: column;
+    }
+  }
+
+  /* Its edge is drawn on hover, which on a device that cannot hover means never:
+     "Configure" was permanently a word in the corner of the card with nothing to
+     say it could be pressed. Keyed on `hover: none` rather than on a width,
+     because the absence of hover is the whole reason it was invisible. */
+  @media (hover: none) {
+    .configure {
+      border-color: var(--control-border);
+      color: var(--text);
     }
   }
 </style>
