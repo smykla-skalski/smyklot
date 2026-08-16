@@ -4,7 +4,7 @@
   import { formatDateTime } from '../format';
   import { fuzzyCandidates } from '../fuzzy';
   import { monogram } from '../identity';
-  import type { HistorySection, RootRoute, ScopedPanelView } from '../routes';
+  import type { HistorySection, RootRoute, RootInstallationView } from '../routes';
   import type { RootInstallation } from '../types';
   import Chip from './Chip.svelte';
   import Icon from './Icon.svelte';
@@ -29,9 +29,9 @@
     rootRole: string;
     actorLogin: string;
     listHref: string;
-    hrefFor: (account: string, view: ScopedPanelView) => string;
+    hrefFor: (account: string, view: RootInstallationView) => string;
     onList: () => void;
-    onNavigate: (account: string, view: ScopedPanelView) => void;
+    onNavigate: (account: string, view: RootInstallationView) => void;
     historySection: HistorySection;
     onHistorySection: (section: HistorySection) => void;
   } = $props();
@@ -95,7 +95,7 @@
   function navigate(
     event: MouseEvent,
     installation: RootInstallation,
-    view: ScopedPanelView,
+    view: RootInstallationView,
   ): void {
     if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey) return;
     event.preventDefault();

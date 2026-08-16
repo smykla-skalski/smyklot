@@ -120,23 +120,75 @@ func TestEveryBrowserViewHasSomethingToRender(t *testing.T) {
 	}
 }
 
-// rendersView reports a page whose markup branches on a view.
+// TestRendersViewReadsTheBranchAndItsContents pins the guard itself.
 //
-// The branch, not the name anywhere in the file. A nav row highlights itself by
+// A guard is only worth what it refuses, and this one has been wrong twice
+// already: it read the whole file once, and then read a branch without reading
+// what was in it.
+func TestRendersViewReadsTheBranchAndItsContents(t *testing.T) {
+	t.Parallel()
+
+	for _, markup := range []struct {
+		name    string
+		source  string
+		renders bool
+	}{
+		{"a branch with something in it", "{#if view === 'sync'}\n  <SyncView />\n{/if}\n", true},
+		{"a later branch", "{#if view === 'settings'}\n  <A />\n" +
+			"{:else if view === 'sync'}\n  <B />\n{/if}\n", true},
+		{"a branch shared with another view",
+			"{:else if view === 'users' || view === 'sync'}\n  <B />\n{/if}\n", true},
+		{"a branch with nothing in it", "{#if view === 'sync'}\n{/if}\n", false},
+		{"a branch holding only a comment",
+			"{#if view === 'sync'}\n  <!-- one day -->\n{/if}\n", false},
+		{"a branch holding a comment that runs on",
+			"{#if view === 'sync'}\n  <!-- one\n  day -->\n{/if}\n", false},
+		{"the name in a nav row", "  class:active={view === 'sync'}\n", false},
+		{"another view's branch", "{#if view === 'settings'}\n  <A />\n{/if}\n", false},
+		{"a following branch's contents",
+			"{#if view === 'sync'}\n{:else if view === 'settings'}\n  <A />\n{/if}\n", false},
+	} {
+		if rendersView(markup.source, "sync") != markup.renders {
+			t.Errorf("%s: renders = %t, wanted %t", markup.name, !markup.renders, markup.renders)
+		}
+	}
+}
+
+// rendersView reports a page whose markup branches on a view and puts something
+// in that branch.
+//
+// The branch, not the name anywhere in the file: a nav row highlights itself by
 // comparing the same two things, so a bare search found "invitations" in the
 // console's tab styling and would have waved through the deletion of the branch
-// that renders it - which is the exact bug this test is here for, passing.
+// that renders it. And the branch's contents, not merely its existence, because
+// a branch emptied by a bad merge renders exactly as much as no branch at all.
 //
 // A condition split across lines fails this rather than passing it. That is the
 // safe direction for a guard: a false alarm is read, and a guard that quietly
 // stops seeing its subject is not.
 func rendersView(source, view string) bool {
+	var inside, commented bool
+
 	for line := range strings.Lines(source) {
-		branch := strings.TrimSpace(line)
-		if !strings.HasPrefix(branch, "{#if ") && !strings.HasPrefix(branch, "{:else if ") {
-			continue
-		}
-		if strings.Contains(branch, "view === '"+view+"'") {
+		markup := strings.TrimSpace(line)
+
+		switch {
+		case commented:
+			commented = !strings.Contains(markup, "-->")
+
+		case strings.HasPrefix(markup, "{#if "), strings.HasPrefix(markup, "{:else if "):
+			inside = strings.Contains(markup, "view === '"+view+"'")
+
+		// The branch ends where the next one starts.
+		case strings.HasPrefix(markup, "{:else"), strings.HasPrefix(markup, "{/if}"):
+			inside = false
+
+		// A comment is not something a reader sees, however many lines it runs
+		// to, so it is not what a branch renders.
+		case strings.HasPrefix(markup, "<!--"):
+			commented = !strings.Contains(markup, "-->")
+
+		case inside && markup != "":
 			return true
 		}
 	}

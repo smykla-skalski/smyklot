@@ -7,7 +7,7 @@
   import { formatTimestamp } from '../format';
   import { monogram } from '../identity';
   import { invalidateRootInstallationSettings } from '../query-client';
-  import type { HistorySection, ScopedPanelView } from '../routes';
+  import type { HistorySection, RootInstallationView } from '../routes';
   import type {
     PanelTarget,
     RepositoryDetail,
@@ -38,13 +38,13 @@
     onNavigate,
   }: {
     installation: RootInstallation;
-    view: ScopedPanelView;
+    view: RootInstallationView;
     api: PanelApi;
     actorLogin: string;
     listHref: string;
-    hrefFor: (account: string, view: ScopedPanelView) => string;
+    hrefFor: (account: string, view: RootInstallationView) => string;
     onList: () => void;
-    onNavigate: (account: string, view: ScopedPanelView) => void;
+    onNavigate: (account: string, view: RootInstallationView) => void;
     historySection: HistorySection;
     onHistorySection: (section: HistorySection) => void;
   } = $props();
@@ -126,7 +126,7 @@
     }
   }
 
-  function navigate(event: MouseEvent, next: ScopedPanelView): void {
+  function navigate(event: MouseEvent, next: RootInstallationView): void {
     if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey) return;
     event.preventDefault();
     onNavigate(installation.account.login, next);
@@ -316,7 +316,7 @@
     aria-label={`Root views for ${installation.account.display_name}`}
   >
     {#each ['settings', 'repositories', 'users', 'history'] as section (section)}
-      {@const item = section as ScopedPanelView}
+      {@const item = section as RootInstallationView}
       <a
         class:active={view === item || (item === 'users' && view === 'invitations')}
         href={hrefFor(installation.account.login, item)}
