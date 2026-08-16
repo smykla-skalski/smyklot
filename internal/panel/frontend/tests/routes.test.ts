@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  PANEL_VIEWS,
   panelDocumentTitle,
   panelViewSection,
   panelRoutePath,
@@ -10,6 +11,7 @@ import {
   routeSegmentLabel,
   type PanelRoute,
 } from '../src/lib/routes';
+import { match } from '../src/params/panelView';
 
 describe('panel routes', () => {
   it('reads installation routes at the public root', () => {
@@ -150,6 +152,25 @@ describe('panel document titles', () => {
     expect(panelViewSection('users')).toBe('access');
     expect(panelViewSection('history')).toBe('history');
     expect(routeSegmentLabel('root-console')).toBe('Root Console');
+  });
+});
+
+/**
+ * The router's own list of views, which is the one that decides whether an
+ * address exists at all. It kept a second copy of PANEL_VIEWS and drifted: a
+ * view added everywhere else was still refused here, so the row in the
+ * navigation led to the not-found page and so did a reload.
+ */
+describe('the panel view matcher', () => {
+  it('accepts every view the panel has', () => {
+    for (const view of PANEL_VIEWS) {
+      expect(match(view), `the router refuses the ${view} view`).toBe(true);
+    }
+  });
+
+  it('refuses a segment that is not a view', () => {
+    expect(match('everything')).toBe(false);
+    expect(match('')).toBe(false);
   });
 });
 

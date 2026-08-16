@@ -19,3 +19,8 @@ internal/panel/frontend/undefined/
 # No trailing slash: that would match directories only, and a symlinked node_modules is a
 # symlink as far as git is concerned, not a directory.
 node_modules
+
+# And SvelteKit generates its client here for the same reason: a vite or vitest run
+# rooted at the repository rather than at the frontend. Two hundred and sixty generated
+# files landed in a commit once already.
+.svelte-kit/

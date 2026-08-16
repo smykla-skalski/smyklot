@@ -62,8 +62,14 @@
    * way the endpoint spells them. The keys are GitHub's own, because they are
    * what the stored document holds and what a plan names.
    */
-  const GROUPS: readonly { title: string; note: string; fields: readonly Field[] }[] = [
+  const GROUPS: readonly {
+    id: string;
+    title: string;
+    note: string;
+    fields: readonly Field[];
+  }[] = [
     {
+      id: 'merging',
       title: 'Merging',
       note: 'How a pull request may be merged, and what happens afterwards.',
       fields: [
@@ -76,6 +82,7 @@
       ],
     },
     {
+      id: 'wording',
       title: 'Commit wording',
       note: 'What a merge or squash commit is called. A repository that does not allow the strategy keeps its own.',
       fields: [
@@ -100,6 +107,7 @@
       ],
     },
     {
+      id: 'features',
       title: 'Features',
       note: 'Which tabs a repository offers.',
       fields: [
@@ -110,6 +118,7 @@
       ],
     },
     {
+      id: 'security',
       title: 'Security',
       note: 'A repository that does not have one of these is left alone rather than asked, and the plan says which.',
       fields: [
@@ -189,27 +198,32 @@
   </div>
 
   {#each GROUPS as group (group.title)}
-    <fieldset class="settings-group">
-      <legend>{group.title}</legend>
-      <p class="settings-note">{group.note}</p>
+    <section class="settings-group" aria-labelledby="sync-group-{group.id}">
+      <header class="settings-group-heading">
+        <h3 id="sync-group-{group.id}">{group.title}</h3>
+        <p class="settings-note">{group.note}</p>
+      </header>
 
-      {#each group.fields as field (field.key)}
-        <div class="settings-row">
-          <span class="settings-label">{field.label}</span>
-          <InheritControl
-            label={field.label}
-            source="each repository"
-            sourcePronoun="them"
-            inheritedLabel="whatever it has now"
-            value={valueOf(field)}
-            options={field.options}
-            {disabled}
-            onSelect={(selection) => select(field, selection)}
-            onRestore={() => restore(field)}
-          />
-        </div>
-      {/each}
-    </fieldset>
+      <div class="settings-rows">
+        {#each group.fields as field (field.key)}
+          <div class="settings-row">
+            <span class="settings-label">{field.label}</span>
+            <span class="settings-spacer"></span>
+            <InheritControl
+              label={field.label}
+              source="each repository"
+              sourcePronoun="them"
+              inheritedLabel="whatever it has now"
+              value={valueOf(field)}
+              options={field.options}
+              {disabled}
+              onSelect={(selection) => select(field, selection)}
+              onRestore={() => restore(field)}
+            />
+          </div>
+        {/each}
+      </div>
+    </section>
   {/each}
 
   {#if !readOnly}
@@ -255,28 +269,60 @@
   }
 
   .settings-group {
-    border: 1px solid var(--border-muted);
-    border-radius: var(--radius-control);
     display: grid;
     gap: var(--space-2);
+  }
+
+  .settings-group-heading {
+    display: grid;
+    gap: var(--space-1);
+  }
+
+  .settings-group-heading h3 {
     margin: 0;
-    padding: var(--space-3);
   }
 
-  .settings-group legend {
-    color: var(--text-strong);
-    font-weight: 600;
-    padding-inline: var(--space-1);
+  /* The rows the configuration editor uses, because they are the same kind of
+     row: a name, and one control that answers followed-or-overridden. */
+  .settings-rows {
+    border: 1px solid var(--rule);
+    border-radius: var(--r-ctl);
   }
 
-  /* The label and its control sit on one line where there is room and stack
-     where there is not, so a narrow window scrolls down rather than across. */
+  .settings-row + .settings-row {
+    border-top: 1px solid var(--rule);
+  }
+
+  /* One line where there is room and two where there is not, so a narrow
+     window scrolls down rather than across. */
   .settings-row {
     align-items: center;
+    background: var(--strip);
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-2);
-    justify-content: space-between;
+    min-height: 3.25rem;
+    padding: var(--space-2) 0.875rem;
+  }
+
+  .settings-row:first-child {
+    border-radius: calc(var(--r-ctl) - 1px) calc(var(--r-ctl) - 1px) 0 0;
+  }
+
+  .settings-row:last-child {
+    border-radius: 0 0 calc(var(--r-ctl) - 1px) calc(var(--r-ctl) - 1px);
+  }
+
+  .settings-label {
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+
+  /* The control sits at the end of its row rather than at the end of the page:
+     the spacer collapses when the row wraps, which is what puts the control
+     under its own name at a narrow width instead of far off to the right. */
+  .settings-spacer {
+    flex: 1;
   }
 
   .settings-actions {
