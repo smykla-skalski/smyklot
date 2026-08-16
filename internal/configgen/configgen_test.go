@@ -5,8 +5,11 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/spf13/pflag"
 
 	"github.com/smykla-skalski/smyklot/internal/configgen"
 	"github.com/smykla-skalski/smyklot/pkg/config"
@@ -350,5 +353,95 @@ func TestRefusalNamesTheField(t *testing.T) {
 
 	if !strings.Contains(err.Error(), "maybe") {
 		t.Errorf("error %q does not name the offending value", err)
+	}
+}
+
+// The command-line flags were the last hand-written enumeration, and they had
+// fallen behind: quiet_pending had no flag at all and nothing said so. They are
+// generated now, and this is what holds them to the tags.
+func TestEverySettingWithAFlagHasOne(t *testing.T) {
+	flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	config.RegisterFlags(flags)
+
+	registered := make(map[string]*pflag.Flag)
+	flags.VisitAll(func(flag *pflag.Flag) { registered[flag.Name] = flag })
+
+	var wanted int
+
+	for _, field := range parse(t).Fields {
+		flag, ok := registered[field.Key]
+
+		if !field.HasFlag {
+			if ok {
+				t.Errorf("%q carries flag:\"-\" but a flag was registered for it", field.Key)
+			}
+
+			continue
+		}
+
+		wanted++
+
+		if !ok {
+			t.Errorf("%q has no command-line flag", field.Key)
+
+			continue
+		}
+
+		if flag.Usage != field.Description {
+			t.Errorf("flag %q describes itself as %q, the setting says %q",
+				field.Key, flag.Usage, field.Description)
+		}
+	}
+
+	if len(registered) != wanted {
+		t.Errorf("%d flags registered, %d settings take one", len(registered), wanted)
+	}
+
+	if wanted == 0 {
+		t.Error("no setting takes a flag, so this test proves nothing")
+	}
+}
+
+// The runner is the one setting deliberately without a flag: it says which
+// entry point acts on a repository, and only the repository may answer that. A
+// flag would let one deployment decide it for every repository it serves.
+func TestTheRunnerTakesNoFlag(t *testing.T) {
+	flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	config.RegisterFlags(flags)
+
+	if flag := flags.Lookup(config.KeyRunner); flag != nil {
+		t.Error("the runner has a command-line flag, which would let a deployment set it")
+	}
+}
+
+// A flag whose default differs from Default() reports one thing in --help and
+// resolves to another.
+func TestFlagDefaultsAreTheRealDefaults(t *testing.T) {
+	flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	config.RegisterFlags(flags)
+
+	defaults := reflect.ValueOf(*config.Default())
+
+	for _, field := range parse(t).Fields {
+		flag := flags.Lookup(field.Key)
+		if flag == nil {
+			continue
+		}
+
+		value := defaults.FieldByName(field.GoName)
+
+		switch field.Kind {
+		case configgen.KindBool:
+			if flag.DefValue != strconv.FormatBool(value.Bool()) {
+				t.Errorf("flag %q defaults to %q, Default() says %v",
+					field.Key, flag.DefValue, value.Bool())
+			}
+
+		case configgen.KindString, configgen.KindEnum:
+			if flag.DefValue != value.String() {
+				t.Errorf("flag %q defaults to %q, Default() says %q",
+					field.Key, flag.DefValue, value.String())
+			}
+		}
 	}
 }

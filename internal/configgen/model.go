@@ -139,18 +139,6 @@ type Model struct {
 	Fields []Field
 }
 
-// Keys returns every key, sorted, for the callers that need a stable set rather
-// than declaration order.
-func (m Model) Keys() []string {
-	keys := make([]string, 0, len(m.Fields))
-	for _, field := range m.Fields {
-		keys = append(keys, field.Key)
-	}
-	sort.Strings(keys)
-
-	return keys
-}
-
 // Parse reads the config package at dir and returns what Patch declares.
 //
 // The files are read in name order rather than through parser.ParseDir, which

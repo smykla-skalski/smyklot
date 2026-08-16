@@ -186,18 +186,10 @@ func registerRunFlags(cmd *cobra.Command) {
 	cmd.Flags().String(flagRepoName, "", descRepoName)
 	cmd.Flags().String(flagCommentAuthor, "", descCommentAuthor)
 
-	// Define CLI flags for bot configuration
-	cmd.Flags().Bool(config.KeyQuietSuccess, false, "Disable success comments (emoji only)")
-	cmd.Flags().StringSlice(config.KeyAllowedCommands, []string{}, "Allowed commands (empty = all)")
-	cmd.Flags().StringToString(config.KeyCommandAliases, map[string]string{}, "Command aliases (JSON)")
-	cmd.Flags().String(config.KeyCommandPrefix, config.DefaultCommandPrefix, "Command prefix")
-	cmd.Flags().Bool(config.KeyDisableMentions, false, "Disable mention-style commands")
-	cmd.Flags().Bool(config.KeyDisableBareCommands, false, "Disable bare commands")
-	cmd.Flags().Bool(config.KeyDisableUnapprove, false, "Disable unapprove commands")
-	cmd.Flags().Bool(config.KeyQuietReactions, false, "Disable reaction-based approval/merge comments")
-	cmd.Flags().Bool(config.KeyDisableReactions, false, "Disable reaction-based approvals/merges")
-	cmd.Flags().Bool(config.KeyDisableDeletedComments, false, "Disable comments about deleted commands")
-	cmd.Flags().Bool(config.KeyAllowSelfApproval, false, "Allow PR authors to approve their own PRs")
+	// Every setting that takes a flag, defined from the one description of
+	// them. This was written out by hand and had fallen behind: quiet_pending
+	// had no flag at all.
+	config.RegisterFlags(cmd.Flags())
 }
 
 func main() {

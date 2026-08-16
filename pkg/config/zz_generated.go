@@ -4,6 +4,8 @@ package config
 
 import (
 	"maps"
+
+	"github.com/spf13/pflag"
 )
 
 // Config is the effective configuration: every setting resolved to one value.
@@ -246,6 +248,31 @@ func (p Patch) SetKeys() []string {
 	}
 
 	return keys
+}
+
+// RegisterFlags defines a command-line flag for every setting that takes one.
+//
+// A setting opts out with `flag:"-"` on Patch. The runner does, because it
+// says which entry point acts on a repository and only the repository may
+// answer that - a flag on the process would let one installation's deployment
+// decide it for every repository it serves.
+//
+// This was written by hand and had fallen behind: quiet_pending had no flag at
+// all, and nothing said so.
+func RegisterFlags(flags *pflag.FlagSet) {
+	defaults := Default()
+	flags.Bool(KeyQuietSuccess, defaults.QuietSuccess, "Drops the comment a successful command would post, leaving only its reaction. Errors and warnings still comment.")
+	flags.Bool(KeyQuietReactions, defaults.QuietReactions, "Drops the comment an approval or merge driven by a reaction would post.")
+	flags.Bool(KeyQuietPending, defaults.QuietPending, "Drops the comment announcing that a merge is waiting on CI, leaving only its reaction.")
+	flags.StringSlice(KeyAllowedCommands, defaults.AllowedCommands, "Narrows what may be run. An empty list allows every command; naming any command forbids the rest.")
+	flags.StringToString(KeyCommandAliases, defaults.CommandAliases, "Maps a spelling somebody uses onto the command it means, such as \"app\" onto \"approve\".")
+	flags.String(KeyCommandPrefix, defaults.CommandPrefix, "Opens a slash-style command, as \"/\" does in \"/approve\".")
+	flags.Bool(KeyDisableMentions, defaults.DisableMentions, "Stops Smyklot answering a mention, such as \"@smyklot approve\".")
+	flags.Bool(KeyDisableBareCommands, defaults.DisableBareCommands, "Stops Smyklot answering an unprefixed word such as \"approve\" or \"lgtm\" on a line of its own.")
+	flags.Bool(KeyDisableUnapprove, defaults.DisableUnapprove, "Withdraws the unapprove and disapprove commands.")
+	flags.Bool(KeyDisableReactions, defaults.DisableReactions, "Stops a reaction on the pull request body counting as a command at all.")
+	flags.Bool(KeyDisableDeletedComments, defaults.DisableDeletedComments, "Stops Smyklot reporting that a comment carrying a command was deleted.")
+	flags.Bool(KeyAllowSelfApproval, defaults.AllowSelfApproval, "Lets the author of a pull request approve it. Off by default: an approval is meant to be a second pair of eyes.")
 }
 
 func applyPatch(values *Config, patch Patch, sources map[string]Source, source Source) {
