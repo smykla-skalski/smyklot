@@ -266,14 +266,32 @@ function calledInPlace(current: Node): Node | null {
   return callee !== null && isFunction(callee) ? callee : null;
 }
 
-/** The name of a locally declared function this node calls, if it calls one. */
+/**
+ * The name of a locally declared function this node calls, if it calls one.
+ *
+ * `load()` and `guards.active()` alike: a function kept as a property of a local
+ * object is still a function written here, and a guard read through one closes
+ * the same ring. Anything further - a call through an import, a value that
+ * arrived as a prop - is a different module's business and stops here.
+ */
 function calledLocal(current: Node, functions: Map<string, Node>): string | null {
   if (current.type !== 'CallExpression') return null;
   const callee = node(current, 'callee');
-  if (callee === null || callee.type !== 'Identifier') return null;
-  const name = String(callee.name);
+  if (callee === null) return null;
+  const name = callee.type === 'Identifier' ? String(callee.name) : dottedName(callee);
 
-  return functions.has(name) ? name : null;
+  return name !== null && functions.has(name) ? name : null;
+}
+
+/** `guards.active` for a plain property access, or null for anything computed. */
+function dottedName(callee: Node): string | null {
+  if (callee.type !== 'MemberExpression' || callee.computed === true) return null;
+  const object = node(callee, 'object');
+  const property = node(callee, 'property');
+  if (object === null || object.type !== 'Identifier') return null;
+  if (property === null || property.type !== 'Identifier') return null;
+
+  return `${String(object.name)}.${String(property.name)}`;
 }
 
 /**
@@ -358,15 +376,29 @@ function declaredFunctions(script: Node[]): Map<string, Node> {
     for (const declarator of nodes(statement, 'declarations')) {
       const id = node(declarator, 'id');
       const init = node(declarator, 'init');
-      if (id === null || id.type !== 'Identifier' || init === null || !isFunction(init)) continue;
-      functions.set(String(id.name), init);
+      if (id === null || id.type !== 'Identifier' || init === null) continue;
+      if (isFunction(init)) {
+        functions.set(String(id.name), init);
+        continue;
+      }
+      // A function kept as a property of a local object is still a local function.
+      if (init.type === 'ObjectExpression') registerMethods(functions, String(id.name), init);
     }
   }
 
   return functions;
 }
 
-/** The callback of every `$effect(...)` and `$effect.pre(...)` in the script. */
+function registerMethods(functions: Map<string, Node>, owner: string, object: Node): void {
+  for (const property of nodes(object, 'properties')) {
+    if (property.type !== 'Property' || property.computed === true) continue;
+    const key = node(property, 'key');
+    const value = node(property, 'value');
+    if (key === null || key.type !== 'Identifier' || value === null || !isFunction(value)) continue;
+    functions.set(`${owner}.${String(key.name)}`, value);
+  }
+}
+
 /** Every `$effect(...)` in the script, in the order they are written. */
 function effectCalls(script: Node[]): EffectCall[] {
   const calls: EffectCall[] = [];

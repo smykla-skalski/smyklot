@@ -55,6 +55,18 @@ describe('effects that feed themselves [Unit]', () => {
     expect(findEffectCycles(NESTED_GUARD_FIXTURE)).toEqual([{ state: 'loading', through: 'load' }]);
   });
 
+  /* Two more ways of spelling the same guard, both raised by a reviewer against
+     an earlier version of this rule, which saw neither. */
+  it('catches a guard called where it is written', () => {
+    expect(findEffectCycles(IIFE_GUARD_FIXTURE)).toEqual([{ state: 'loading', through: 'load' }]);
+  });
+
+  it('catches a guard kept as a method on a local object', () => {
+    expect(findEffectCycles(OBJECT_METHOD_FIXTURE)).toEqual([
+      { state: 'loading', through: 'load' },
+    ]);
+  });
+
   it('catches a loader the effect runs where it stands', () => {
     expect(findEffectCycles(IIFE_FIXTURE)).toEqual([{ state: 'loading', through: 'the effect' }]);
   });
@@ -207,6 +219,48 @@ const INNER_FUNCTION_FIXTURE = `<script lang="ts">
       loading = false;
     };
     void run();
+  });
+</script>`;
+
+const IIFE_GUARD_FIXTURE = `<script lang="ts">
+  const { version }: { version: number } = $props();
+  let loading = $state(false);
+  let items = $state<string[]>([]);
+
+  async function load(): Promise<void> {
+    if ((() => loading)()) return;
+    loading = true;
+    try {
+      items = await fetch('/x').then((response) => response.json());
+    } finally {
+      loading = false;
+    }
+  }
+
+  $effect(() => {
+    if (version >= 0) void load();
+  });
+</script>`;
+
+const OBJECT_METHOD_FIXTURE = `<script lang="ts">
+  const { version }: { version: number } = $props();
+  let loading = $state(false);
+  let items = $state<string[]>([]);
+
+  const guards = { active: (): boolean => loading };
+
+  async function load(): Promise<void> {
+    if (guards.active()) return;
+    loading = true;
+    try {
+      items = await fetch('/x').then((response) => response.json());
+    } finally {
+      loading = false;
+    }
+  }
+
+  $effect(() => {
+    if (version >= 0) void load();
   });
 </script>`;
 

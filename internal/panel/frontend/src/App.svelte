@@ -114,6 +114,7 @@
   );
   const targetReads = new LatestRequest();
   const streamRefreshes = new LatestRequest();
+  const notificationReads = new LatestRequest();
 
   const selectedTarget = $derived(
     selectedId === null ? null : (targets.find((target) => target.id === selectedId) ?? null),
@@ -623,8 +624,14 @@
    * when nothing on screen is asking the server about notifications.
    */
   async function refreshNotificationUnread(): Promise<void> {
+    const read = notificationReads.begin();
     try {
       const page = await api.fetchNotifications({ limit: 1 });
+      /* A count that was already old when it arrived must not replace a newer
+         one. The reader who opens the inbox while this is in flight gets the
+         page's own count first, and this landing after it would put the badge
+         back to what it was before they read anything. */
+      if (!notificationReads.isCurrent(read)) return;
       notificationUnread = page.unread;
     } catch {
       /* A badge is not worth a failure of its own. The count keeps the last number
@@ -914,7 +921,12 @@
             fetchPage={api.fetchNotifications}
             markRead={api.markNotificationRead}
             refreshVersion={notificationVersion}
-            onUnread={(unread) => (notificationUnread = unread)}
+            onUnread={(unread) => {
+              // The page has read the whole thing; any badge poll still in the
+              // air is answering an older question.
+              notificationReads.invalidate();
+              notificationUnread = unread;
+            }}
           />
         {:else if rootMode}
           <section
