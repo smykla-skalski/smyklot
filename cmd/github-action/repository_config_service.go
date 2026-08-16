@@ -17,6 +17,15 @@ type repositoryConfigFile struct {
 	patch  config.Patch
 	status storage.RepositoryFileStatus
 	err    error
+
+	// path is the file this was read from, empty when the repository has none.
+	path string
+
+	// head is the default branch's head when this was read. The file is looked
+	// for at four paths, and re-reading them every time the entry ages out
+	// would cost four requests per repository per tick; the head answers all
+	// four in one, because none of them can have changed while it has not.
+	head string
 }
 
 func fetchRepositoryConfig(
@@ -24,15 +33,24 @@ func fetchRepositoryConfig(
 	client *github.Client,
 	owner, repository string,
 ) (repositoryConfigFile, error) {
-	found, err := client.GetRepoConfig(ctx, owner, repository)
+	// Read before the file, so a commit landing during the read is noticed on
+	// the next tick rather than mistaken for the state this answer describes.
+	head, err := client.DefaultBranchHead(ctx, owner, repository)
+	if err != nil {
+		return repositoryConfigFile{}, NewConfigError(ErrConfigLoad, err)
+	}
+
+	found, err := client.FindRepoConfig(ctx, owner, repository, "")
 	if err != nil {
 		return repositoryConfigFile{}, NewConfigError(ErrConfigLoad, err)
 	}
 	if !found.Found() {
-		return repositoryConfigFile{status: storage.RepositoryFileMissing}, nil
+		return repositoryConfigFile{status: storage.RepositoryFileMissing, head: head}, nil
 	}
 	if len(bytes.TrimSpace(found.Content)) == 0 {
-		return repositoryConfigFile{status: storage.RepositoryFileValid}, nil
+		return repositoryConfigFile{
+			status: storage.RepositoryFileValid, path: found.Path, head: head,
+		}, nil
 	}
 
 	patch, err := parseRepositoryConfig(found)
@@ -40,10 +58,37 @@ func fetchRepositoryConfig(
 		return repositoryConfigFile{
 			status: storage.RepositoryFileInvalid,
 			err:    NewConfigError(ErrRepoConfigInvalid, err),
+			path:   found.Path,
+			head:   head,
 		}, nil
 	}
 
-	return repositoryConfigFile{patch: patch, status: storage.RepositoryFileValid}, nil
+	return repositoryConfigFile{
+		patch: patch, status: storage.RepositoryFileValid, path: found.Path, head: head,
+	}, nil
+}
+
+// repositoryConfigUnchanged reports that a cached answer can be kept because
+// the default branch has not moved since it was read.
+//
+// A repository whose head could not be read, or which has none, is re-read:
+// keeping an answer requires proof it is still true, and no answer is not proof.
+func repositoryConfigUnchanged(
+	ctx context.Context,
+	client *github.Client,
+	owner, repository string,
+	previous repositoryConfigFile,
+) (bool, error) {
+	if previous.head == "" {
+		return false, nil
+	}
+
+	head, err := client.DefaultBranchHead(ctx, owner, repository)
+	if err != nil {
+		return false, NewConfigError(ErrConfigLoad, err)
+	}
+
+	return head != "" && head == previous.head, nil
 }
 
 // parseRepositoryConfig reads a found file in whichever format its name says.

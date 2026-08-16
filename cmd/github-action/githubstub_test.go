@@ -174,8 +174,17 @@ func (s *githubStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case strings.HasSuffix(r.URL.Path, "/contents/.github/CODEOWNERS"):
 		s.writeFile(w, s.codeowners)
 
-	case strings.Contains(r.URL.Path, "/contents/.github/smyklot."):
-		if strings.HasSuffix(r.URL.Path, ".yaml") {
+	// The head of the default branch, which the service reads as the validator
+	// for its configuration cache. A fixed SHA means a spec that reads twice
+	// gets the second answer from cache, which is what production does.
+	case strings.HasSuffix(r.URL.Path, "/commits"):
+		_, _ = io.WriteString(w, `[{"sha":"0000000000000000000000000000000000000000"}]`)
+
+	// A repository's own configuration, at any of the paths it may live at.
+	// Only the legacy one is stocked, so a spec that sets repoConfig still
+	// describes a repository configured the way it was before TOML.
+	case strings.Contains(r.URL.Path, "/contents/"):
+		if strings.HasSuffix(r.URL.Path, "/contents/.github/smyklot.yaml") {
 			s.writeFile(w, s.currentRepoConfig())
 
 			return

@@ -227,7 +227,7 @@ func newServer(cfg *serveConfig) (*server, error) {
 		migrationRetryDelay: pendingCIRetryDelay,
 		registry:            registry,
 		metrics:             metrics.New(registry),
-		configs:             newRepoCache(repoConfigTTL, fetchRepositoryConfig),
+		configs:             newRepoConfigCache(),
 		owners:              newRepoCache(codeownersTTL, fetchCodeowners),
 		readiness:           newReadiness(),
 		failures:            newFailureLog(maxRecordedFailures),

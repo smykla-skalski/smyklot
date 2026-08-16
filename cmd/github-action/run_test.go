@@ -86,9 +86,13 @@ func (r *commentRecorder) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	// Both entry points look for the repository's own configuration before
-	// doing anything else, so this is expected traffic rather than a surprise
-	if strings.Contains(req.URL.Path, "/contents/.github/smyklot.") {
-		if r.repoConfig == "" || !strings.HasSuffix(req.URL.Path, ".yaml") {
+	// doing anything else, at every path it may live at, so this is expected
+	// traffic rather than a surprise. Only the legacy path is stocked: a spec
+	// setting repoConfig describes a repository configured before TOML, and the
+	// other candidates have to answer "no such file" rather than falling
+	// through to a generic body that the contents decoder cannot read.
+	if strings.Contains(req.URL.Path, "/contents/") {
+		if r.repoConfig == "" || !strings.HasSuffix(req.URL.Path, "/.github/smyklot.yaml") {
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`{"message":"Not Found"}`))
 

@@ -23,8 +23,12 @@ func effectiveConfig(
 	base *config.Config,
 ) (*config.Config, error) {
 	// A failure to read is transient - the network, a rate limit, a permission
-	// the App just lost - so it stays retryable and says nothing
-	found, err := client.GetRepoConfig(ctx, owner, repo)
+	// the App just lost - so it stays retryable and says nothing.
+	//
+	// This costs one request per candidate path and does not cache, which is
+	// what the Action is: one comment, one process, then exit. The service is
+	// the one that reads this on a timer, and it goes through repoCache.
+	found, err := client.FindRepoConfig(ctx, owner, repo, "")
 	if err != nil {
 		return nil, NewConfigError(ErrConfigLoad, err)
 	}
@@ -105,6 +109,18 @@ type repoCache[T any] struct {
 	ttl  time.Duration
 	load func(context.Context, *github.Client, string, string) (T, error)
 
+	// stillValid reports that an expired entry can be kept anyway, because
+	// what it was read from provably has not changed. Nil means age is the
+	// only test.
+	//
+	// This is what lets a configuration file be looked for at four paths
+	// without paying for four requests every tick: the question "has the
+	// default branch moved" costs one request and answers all of them. It is
+	// also stricter than the age test it defers to - an answer is reused only
+	// while the content cannot have changed, where a window of thirty seconds
+	// can serve a setting somebody rolled back thirty seconds ago.
+	stillValid func(context.Context, *github.Client, string, string, T) (bool, error)
+
 	mu       sync.Mutex
 	entries  map[string]repoCacheEntry[T]
 	nextLoad uint64
@@ -144,9 +160,24 @@ func (c *repoCache[T]) GetByKey(
 	client *github.Client,
 	key, owner, repo string,
 ) (T, error) {
-	value, ok, generation := c.lookupOrBeginLoad(key)
-	if ok {
+	value, fresh, stale, generation := c.lookupOrBeginLoad(key)
+	if fresh {
 		return value, nil
+	}
+
+	if stale && c.stillValid != nil {
+		// A failure to revalidate is a failure to read, not a reason to serve
+		// something Smyklot can no longer vouch for. The caller retries.
+		unchanged, err := c.stillValid(ctx, client, owner, repo, value)
+		if err != nil {
+			var zero T
+
+			return zero, err
+		}
+
+		if unchanged {
+			return c.storeIfNewest(key, value, generation), nil
+		}
 	}
 
 	loaded, err := c.load(ctx, client, owner, repo)
@@ -161,18 +192,26 @@ func (c *repoCache[T]) GetByKey(
 	return value, nil
 }
 
-func (c *repoCache[T]) lookupOrBeginLoad(key string) (T, bool, uint64) {
+// lookupOrBeginLoad reports a usable entry, or hands back the expired one so
+// the caller can ask whether it is still good.
+func (c *repoCache[T]) lookupOrBeginLoad(key string) (value T, fresh, stale bool, gen uint64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	entry, ok := c.entries[key]
 	if ok && time.Since(entry.fetched) < c.ttl {
-		return entry.value, true, 0
+		return entry.value, true, false, 0
 	}
+
 	c.nextLoad++
+
+	if ok {
+		return entry.value, false, true, c.nextLoad
+	}
+
 	var zero T
 
-	return zero, false, c.nextLoad
+	return zero, false, false, c.nextLoad
 }
 
 // storeIfNewest makes an older load observe a newer successful result instead
@@ -190,4 +229,18 @@ func (c *repoCache[T]) storeIfNewest(key string, value T, generation uint64) T {
 	}
 
 	return value
+}
+
+// newRepoConfigCache builds the cache the service reads a repository's own
+// configuration through.
+//
+// It expires on age like every other, and then asks whether the default branch
+// has moved before spending anything re-reading. In the steady state that is
+// one request per repository per tick - what it cost when there was one path to
+// look at - while four are now supported.
+func newRepoConfigCache() *repoCache[repositoryConfigFile] {
+	cache := newRepoCache(repoConfigTTL, fetchRepositoryConfig)
+	cache.stillValid = repositoryConfigUnchanged
+
+	return cache
 }
