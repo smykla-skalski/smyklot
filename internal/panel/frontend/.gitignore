@@ -1,4 +1,8 @@
 dist/
 node_modules
+# SvelteKit regenerates this on every sync and build. It is a few hundred files
+# of generated glue, and nothing here was ignoring it - so the first person to
+# commit after running the frontend adds them all without noticing.
+.svelte-kit/
 .smyklot-panel-install.lock/
 .smyklot-panel-install.lock.stale-*
