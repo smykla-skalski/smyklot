@@ -120,10 +120,25 @@
   --on-info: #ffffff;
   --success: var(--primitive-success-light);
   --success-tint: var(--primitive-success-light-tint);
+  /* The ink a filled tone carries. --brand-action and --info had one; success,
+     warning and danger did not, so the one control that fills with a state tone
+     (.btn-stop) named white itself - correct here at 6.46:1 and 2.04:1 on the
+     dark palettes, where the same token is a pale pink. A tone is a *text*
+     colour on both sides of the theme; only its partner knows which way round
+     the pair goes. Measured light / dark: 5.47 and 7.76, 5.74 and 9.38, 6.46
+     and 8.78. */
+  --on-success: #ffffff;
   --warning: var(--primitive-warning-light);
   --warning-tint: var(--primitive-warning-light-tint);
+  --on-warning: #ffffff;
   --danger: var(--primitive-danger-light);
   --danger-tint: var(--primitive-danger-light-tint);
+  --on-danger: #ffffff;
+  /* Deepens on a light ground and brightens on a dark one, which is the rule
+     --brand-action-hover already follows and the reason it is stated per
+     palette rather than mixed at the call site: a fill that darkens on both
+     sends hover and press in opposite directions on dark. */
+  --danger-hover: color-mix(in srgb, var(--danger) 88%, black);
   --neutral-tint: var(--primitive-light-inset);
   --interactive-hover: #f1f5f3;
   /* One state change and two, as overlays so the step is the same on any ground.
@@ -405,10 +420,18 @@
   --on-info: #0e1116;
   --success: var(--primitive-success-dark);
   --success-tint: var(--primitive-success-dark-tint);
+  /* A deep tone of the tone's own hue, the way --on-brand-action is - and this
+     one *is* --on-brand-action, since the dark success and the dark brand are
+     both petrol. Not the canvas: near-black on a pastel fill reads as a hole
+     punched in it rather than as writing on it. */
+  --on-success: #062c2a;
   --warning: var(--primitive-warning-dark);
   --warning-tint: var(--primitive-warning-dark-tint);
+  --on-warning: #2c1f06;
   --danger: var(--primitive-danger-dark);
   --danger-tint: var(--primitive-danger-dark-tint);
+  --on-danger: #2e0b10;
+  --danger-hover: color-mix(in srgb, var(--danger) 88%, white);
   --neutral-tint: var(--primitive-dark-inset);
   --interactive-hover: var(--primitive-dark-raised);
   /* Light, not dark. Hover lifts a control on a dark ground, so a press that darkened it sent the
@@ -1076,14 +1099,14 @@ select:disabled {
 }
 
 .btn-stop {
-  background: var(--stop);
-  border-color: var(--stop);
-  color: #ffffff;
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--on-danger);
 }
 
 .btn-stop:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--stop) 88%, black);
-  border-color: color-mix(in srgb, var(--stop) 88%, black);
+  background: var(--danger-hover);
+  border-color: var(--danger-hover);
 }
 
 .btn-stop:active:not(:disabled) {

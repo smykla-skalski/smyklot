@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { contrast } from './color';
+import { contrast, relativeLuminance as relativeLuminanceOf } from './color';
 import { palettes } from './theme';
 
 /**
@@ -35,6 +35,13 @@ describe.each(palettes.map((palette) => [palette.name, palette] as const))(
       ['brand-action-text', 'brand-action-tint'],
       ['on-brand-action', 'brand-action'],
       ['on-info', 'info'],
+      // A tone is a text colour on one side of the theme and a fill on the other, so the ink over
+      // it cannot be named at the call site. .btn-stop named white and carried it into both dark
+      // palettes, where --danger is a pale pink: 2.04:1, under AA and under AA-large, on every
+      // destructive confirmation in the product.
+      ['on-danger', 'danger'],
+      ['on-success', 'success'],
+      ['on-warning', 'warning'],
       ['sidebar-text', 'sidebar-bg'],
       ['sidebar-text-muted', 'sidebar-bg'],
     ])('keeps %s readable on %s', (foreground, background) => {
@@ -92,6 +99,18 @@ describe.each(palettes.map((palette) => [palette.name, palette] as const))(
 
     it('keeps active header filters distinct from table chrome', () => {
       expect(contrast(color('brand-action'), color('table-header-bg'))).toBeGreaterThanOrEqual(3);
+    });
+
+    /* Hover lightens on a dark ground and darkens on a light one - the rule --brand-action-hover
+       and --interactive-hover-layer are both written to. A filled tone that darkened on both sent
+       hover and press in opposite directions on the dark palettes, since the press overlay follows
+       the theme and the hover did not. */
+    it('moves a hovered destructive fill the way the theme moves', () => {
+      const dark = relativeLuminanceOf(color('canvas')) < 0.5;
+      const moved =
+        relativeLuminanceOf(color('danger-hover')) - relativeLuminanceOf(color('danger'));
+      expect(Math.sign(moved)).toBe(dark ? 1 : -1);
+      expect(contrast(color('on-danger'), color('danger-hover'))).toBeGreaterThanOrEqual(4.5);
     });
 
     it('keeps segmented-control labels readable and selected fills restrained', () => {
