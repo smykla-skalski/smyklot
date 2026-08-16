@@ -283,8 +283,14 @@ func (s *server) reconcileInstallationSync(
 	installation github.Installation,
 ) error {
 	if s.panel == nil {
-		// No database means nowhere to keep a plan, and a sync with no plan is
-		// the shape this work exists to replace.
+		// The panel is where a plan is read and approved, and nothing else
+		// approves one. Without it every reconcile would compute work nobody
+		// can accept, hold the installation's one live slot until it expired,
+		// and start again - so a deployment with no panel does not sync.
+		//
+		// It is also where the configuration is written, so there would be
+		// nothing to enforce; the catalog reconcile above stands down for the
+		// same reason and never records what an installation granted.
 		return nil
 	}
 
