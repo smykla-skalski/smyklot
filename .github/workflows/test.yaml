@@ -200,3 +200,29 @@ jobs:
 
       - name: Test the panel
         run: mise run panel:frontend:test
+
+  # The panel driven in Chrome, counting what it asks the server for. Its own
+  # job because it costs ten times what the unit tests cost, and because it is
+  # the only check here that needs a browser: the runner image ships Chrome, so
+  # nothing is downloaded to get one.
+  budget:
+    name: request budget
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+
+      - name: Install the toolchain
+        uses: ./.github/actions/toolchain
+
+      - name: Restore the panel's dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: internal/panel/frontend/node_modules
+          key: ${{ runner.os }}-panel-npm-${{ hashFiles('internal/panel/frontend/package-lock.json') }}
+
+      - name: Count what the panel asks for
+        run: mise run panel:frontend:test:browser

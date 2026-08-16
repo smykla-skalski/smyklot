@@ -13,7 +13,8 @@
     "dev:mock": "SMYKLOT_PANEL_DEV_MOCK=1 vite",
     "lint": "eslint . && prettier --check . && svelte-check --tsconfig ./tsconfig.json",
     "format": "prettier --write .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:browser": "vitest run --config vitest.browser.config.ts"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
@@ -24,6 +25,7 @@
     "eslint": "10.8.1",
     "eslint-plugin-svelte": "3.23.0",
     "globals": "17.11.0",
+    "playwright-core": "1.62.1",
     "prettier": "3.9.6",
     "prettier-plugin-svelte": "4.1.1",
     "svelte": "5.56.9",

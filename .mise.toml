@@ -294,6 +294,7 @@ run = [
   { task = "test:deploy" },
   { task = "panel:frontend:lint" },
   { task = "panel:frontend:test" },
+  { task = "panel:frontend:test:browser" },
   { task = "build" },
 ]
 
@@ -342,6 +343,16 @@ description = "Run panel frontend unit tests"
 depends = ["panel:frontend:install"]
 dir = "internal/panel/frontend"
 run = "npm test"
+
+# Apart from the unit tests because it costs ten times what all of them cost put
+# together, and `npm test` is a loop worth running on every save. It drives
+# Chrome through Playwright's `channel`, so nothing is downloaded - the runner
+# image ships Chrome and so does a developer's machine.
+[tasks."panel:frontend:test:browser"]
+description = "Drive the panel in Chrome and fail on an address asked for too often"
+depends = ["panel:frontend:install"]
+dir = "internal/panel/frontend"
+run = "npm run test:browser"
 
 [tasks."panel:assets:generate"]
 description = "Build and package panel assets for Go embedding"
