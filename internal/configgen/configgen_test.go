@@ -366,6 +366,16 @@ func TestEverySettingWithAFlagHasOne(t *testing.T) {
 	registered := make(map[string]*pflag.Flag)
 	flags.VisitAll(func(flag *pflag.Flag) { registered[flag.Name] = flag })
 
+	// --config-file names a document of settings rather than being one, so it
+	// is the one flag with no field behind it. Taking it out here is what lets
+	// the count below still catch a flag nothing asked for
+	if _, ok := registered[config.FlagConfigFile]; !ok {
+		t.Errorf("--%s is not registered, so a process cannot be given a file of settings",
+			config.FlagConfigFile)
+	}
+
+	delete(registered, config.FlagConfigFile)
+
 	var wanted int
 
 	for _, field := range parse(t).Fields {

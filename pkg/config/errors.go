@@ -20,4 +20,14 @@ var (
 	// ErrMultipleDocuments is returned for a YAML file that carries settings
 	// past its first document, which a single decode would silently ignore
 	ErrMultipleDocuments = errors.New("settings after the first YAML document")
+
+	// ErrTrailingContent is returned for a configuration document with
+	// something after it. A decoder reads one document and says nothing about
+	// the rest, so without this a second one would be silently discarded
+	ErrTrailingContent = errors.New("content after the configuration document")
+
+	// ErrInvalidValue is returned for a setting whose text cannot be read as
+	// the type it takes. It names the setting, because the text came from an
+	// environment variable somebody has to go and find
+	ErrInvalidValue = errors.New("invalid value")
 )

@@ -17,7 +17,6 @@ import (
 	"text/template"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 
 	"github.com/smykla-skalski/smyklot/pkg/commands"
 	"github.com/smykla-skalski/smyklot/pkg/config"
@@ -207,28 +206,11 @@ func run(cmd *cobra.Command, _ []string) error {
 	// Create context from command
 	ctx := cmd.Context()
 
-	// Create Viper instance
-	v := viper.New()
-	config.SetupViper(v)
-
-	// Bind configuration flags to Viper
-	_ = v.BindPFlag(config.KeyQuietSuccess, cmd.Flags().Lookup(config.KeyQuietSuccess))
-	_ = v.BindPFlag(config.KeyAllowedCommands, cmd.Flags().Lookup(config.KeyAllowedCommands))
-	_ = v.BindPFlag(config.KeyCommandAliases, cmd.Flags().Lookup(config.KeyCommandAliases))
-	_ = v.BindPFlag(config.KeyCommandPrefix, cmd.Flags().Lookup(config.KeyCommandPrefix))
-	_ = v.BindPFlag(config.KeyDisableMentions, cmd.Flags().Lookup(config.KeyDisableMentions))
-	_ = v.BindPFlag(config.KeyDisableBareCommands, cmd.Flags().Lookup(config.KeyDisableBareCommands))
-	_ = v.BindPFlag(config.KeyDisableUnapprove, cmd.Flags().Lookup(config.KeyDisableUnapprove))
-	_ = v.BindPFlag(config.KeyQuietReactions, cmd.Flags().Lookup(config.KeyQuietReactions))
-	_ = v.BindPFlag(config.KeyDisableReactions, cmd.Flags().Lookup(config.KeyDisableReactions))
-	_ = v.BindPFlag(config.KeyDisableDeletedComments, cmd.Flags().Lookup(config.KeyDisableDeletedComments))
-	_ = v.BindPFlag(config.KeyAllowSelfApproval, cmd.Flags().Lookup(config.KeyAllowSelfApproval))
-
 	// Load runtime configuration from flags and environment
 	rc := loadRuntimeConfig(cmd)
 
-	// Load bot configuration from Viper
-	bc, err := loadBotConfig(v)
+	// Every layer below the repository, in one order stated in one place
+	bc, err := loadBotConfig(cmd)
 	if err != nil {
 		return err
 	}
@@ -534,15 +516,14 @@ func loadRuntimeConfig(cmd *cobra.Command) *RuntimeConfig {
 	return rc
 }
 
-// loadBotConfig loads bot configuration from Viper
-func loadBotConfig(v *viper.Viper) (*config.Config, error) {
-	// Load JSON configuration from SMYKLOT_CONFIG if present
-	if err := config.LoadJSONConfig(v); err != nil {
-		return nil, NewConfigError(ErrConfigLoad, err)
-	}
-
-	// Load bot configuration from Viper
-	bc, err := config.LoadFromViper(v)
+// loadBotConfig resolves the settings this process starts with.
+//
+// Every entry point calls this with its own flag set, so the ladder is the
+// same whether a comment is answered by the Action, the sweep or the service.
+// A command that registered no settings flags simply contributes nothing at
+// that layer.
+func loadBotConfig(cmd *cobra.Command) (*config.Config, error) {
+	bc, err := config.LoadProcess(cmd.Flags())
 	if err != nil {
 		return nil, NewConfigError(ErrConfigLoad, err)
 	}

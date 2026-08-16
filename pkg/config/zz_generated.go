@@ -250,7 +250,8 @@ func (p Patch) SetKeys() []string {
 	return keys
 }
 
-// RegisterFlags defines a command-line flag for every setting that takes one.
+// RegisterFlags defines a command-line flag for every setting that takes one,
+// and --config-file, which names a document of them.
 //
 // A setting opts out with `flag:"-"` on Patch. The runner does, because it
 // says which entry point acts on a repository and only the repository may
@@ -273,6 +274,273 @@ func RegisterFlags(flags *pflag.FlagSet) {
 	flags.Bool(KeyDisableReactions, defaults.DisableReactions, "Stops a reaction on the pull request body counting as a command at all.")
 	flags.Bool(KeyDisableDeletedComments, defaults.DisableDeletedComments, "Stops Smyklot reporting that a comment carrying a command was deleted.")
 	flags.Bool(KeyAllowSelfApproval, defaults.AllowSelfApproval, "Lets the author of a pull request approve it. Off by default: an approval is meant to be a second pair of eyes.")
+
+	registerConfigFileFlag(flags)
+}
+
+// normalize turns whatever a decoder or a variable produced into a value this
+// package vouches for.
+//
+// A setting whose Go type this package declares is only text until its own
+// parser has seen it, and every layer reads text: a file, a document, a
+// variable, a flag. Running this once in the resolver is what stops a typo
+// being caught in a repository's file and waved through in an environment
+// variable. The pointer is replaced rather than written through, since a patch
+// may point into a Config that nothing asked to have edited.
+func (p *Patch) normalize() error {
+	if p.Runner != nil {
+		value, err := ParseRunner(string(*p.Runner))
+		if err != nil {
+			return err
+		}
+
+		p.Runner = &value
+	}
+
+	return nil
+}
+
+// envPatch reads the layer written one variable per setting.
+//
+// A variable set to nothing counts as unset. A workflow that forwards an input
+// nobody filled in writes an empty string, and reading that as an instruction
+// would let a missing input narrow allowed_commands to nothing - on the layer
+// stack that is fail-closed, so every command would be refused. viper read it
+// the same way, for the same reason.
+func envPatch(lookup func(string) (string, bool)) (Patch, error) {
+	var patch Patch
+
+	if raw, ok := lookup(EnvVar(KeyQuietSuccess)); ok && raw != "" {
+		value, err := parseBool(KeyQuietSuccess, raw)
+		if err != nil {
+			return Patch{}, err
+		}
+
+		patch.QuietSuccess = &value
+	}
+
+	if raw, ok := lookup(EnvVar(KeyQuietReactions)); ok && raw != "" {
+		value, err := parseBool(KeyQuietReactions, raw)
+		if err != nil {
+			return Patch{}, err
+		}
+
+		patch.QuietReactions = &value
+	}
+
+	if raw, ok := lookup(EnvVar(KeyQuietPending)); ok && raw != "" {
+		value, err := parseBool(KeyQuietPending, raw)
+		if err != nil {
+			return Patch{}, err
+		}
+
+		patch.QuietPending = &value
+	}
+
+	if raw, ok := lookup(EnvVar(KeyAllowedCommands)); ok && raw != "" {
+		value := parseList(raw)
+		patch.AllowedCommands = &value
+	}
+
+	if raw, ok := lookup(EnvVar(KeyCommandAliases)); ok && raw != "" {
+		value, err := parseMapping(KeyCommandAliases, raw)
+		if err != nil {
+			return Patch{}, err
+		}
+
+		patch.CommandAliases = &value
+	}
+
+	if raw, ok := lookup(EnvVar(KeyCommandPrefix)); ok && raw != "" {
+		value := raw
+		patch.CommandPrefix = &value
+	}
+
+	if raw, ok := lookup(EnvVar(KeyDisableMentions)); ok && raw != "" {
+		value, err := parseBool(KeyDisableMentions, raw)
+		if err != nil {
+			return Patch{}, err
+		}
+
+		patch.DisableMentions = &value
+	}
+
+	if raw, ok := lookup(EnvVar(KeyDisableBareCommands)); ok && raw != "" {
+		value, err := parseBool(KeyDisableBareCommands, raw)
+		if err != nil {
+			return Patch{}, err
+		}
+
+		patch.DisableBareCommands = &value
+	}
+
+	if raw, ok := lookup(EnvVar(KeyDisableUnapprove)); ok && raw != "" {
+		value, err := parseBool(KeyDisableUnapprove, raw)
+		if err != nil {
+			return Patch{}, err
+		}
+
+		patch.DisableUnapprove = &value
+	}
+
+	if raw, ok := lookup(EnvVar(KeyDisableReactions)); ok && raw != "" {
+		value, err := parseBool(KeyDisableReactions, raw)
+		if err != nil {
+			return Patch{}, err
+		}
+
+		patch.DisableReactions = &value
+	}
+
+	if raw, ok := lookup(EnvVar(KeyDisableDeletedComments)); ok && raw != "" {
+		value, err := parseBool(KeyDisableDeletedComments, raw)
+		if err != nil {
+			return Patch{}, err
+		}
+
+		patch.DisableDeletedComments = &value
+	}
+
+	if raw, ok := lookup(EnvVar(KeyAllowSelfApproval)); ok && raw != "" {
+		value, err := parseBool(KeyAllowSelfApproval, raw)
+		if err != nil {
+			return Patch{}, err
+		}
+
+		patch.AllowSelfApproval = &value
+	}
+
+	if raw, ok := lookup(EnvVar(KeyRunner)); ok && raw != "" {
+		value := Runner(raw)
+		patch.Runner = &value
+	}
+
+	return patch, nil
+}
+
+// flagPatch reads the layer given on the command line.
+//
+// Changed is what makes this a patch rather than a whole configuration: a flag
+// carries its default whether or not anyone passed it, and applying those
+// defaults over the layers below would let the command line silently outrank a
+// file it never mentioned. A flag no command registered reports false, so an
+// entry point that takes fewer of them needs no special case.
+func flagPatch(flags *pflag.FlagSet) (Patch, error) {
+	var patch Patch
+
+	if flags == nil {
+		return patch, nil
+	}
+
+	if flags.Changed(KeyQuietSuccess) {
+		value, err := flags.GetBool(KeyQuietSuccess)
+		if err != nil {
+			return Patch{}, err
+		}
+
+		patch.QuietSuccess = &value
+	}
+
+	if flags.Changed(KeyQuietReactions) {
+		value, err := flags.GetBool(KeyQuietReactions)
+		if err != nil {
+			return Patch{}, err
+		}
+
+		patch.QuietReactions = &value
+	}
+
+	if flags.Changed(KeyQuietPending) {
+		value, err := flags.GetBool(KeyQuietPending)
+		if err != nil {
+			return Patch{}, err
+		}
+
+		patch.QuietPending = &value
+	}
+
+	if flags.Changed(KeyAllowedCommands) {
+		value, err := flags.GetStringSlice(KeyAllowedCommands)
+		if err != nil {
+			return Patch{}, err
+		}
+
+		patch.AllowedCommands = &value
+	}
+
+	if flags.Changed(KeyCommandAliases) {
+		value, err := flags.GetStringToString(KeyCommandAliases)
+		if err != nil {
+			return Patch{}, err
+		}
+
+		patch.CommandAliases = &value
+	}
+
+	if flags.Changed(KeyCommandPrefix) {
+		value, err := flags.GetString(KeyCommandPrefix)
+		if err != nil {
+			return Patch{}, err
+		}
+
+		patch.CommandPrefix = &value
+	}
+
+	if flags.Changed(KeyDisableMentions) {
+		value, err := flags.GetBool(KeyDisableMentions)
+		if err != nil {
+			return Patch{}, err
+		}
+
+		patch.DisableMentions = &value
+	}
+
+	if flags.Changed(KeyDisableBareCommands) {
+		value, err := flags.GetBool(KeyDisableBareCommands)
+		if err != nil {
+			return Patch{}, err
+		}
+
+		patch.DisableBareCommands = &value
+	}
+
+	if flags.Changed(KeyDisableUnapprove) {
+		value, err := flags.GetBool(KeyDisableUnapprove)
+		if err != nil {
+			return Patch{}, err
+		}
+
+		patch.DisableUnapprove = &value
+	}
+
+	if flags.Changed(KeyDisableReactions) {
+		value, err := flags.GetBool(KeyDisableReactions)
+		if err != nil {
+			return Patch{}, err
+		}
+
+		patch.DisableReactions = &value
+	}
+
+	if flags.Changed(KeyDisableDeletedComments) {
+		value, err := flags.GetBool(KeyDisableDeletedComments)
+		if err != nil {
+			return Patch{}, err
+		}
+
+		patch.DisableDeletedComments = &value
+	}
+
+	if flags.Changed(KeyAllowSelfApproval) {
+		value, err := flags.GetBool(KeyAllowSelfApproval)
+		if err != nil {
+			return Patch{}, err
+		}
+
+		patch.AllowSelfApproval = &value
+	}
+
+	return patch, nil
 }
 
 func applyPatch(values *Config, patch Patch, sources map[string]Source, source Source) {

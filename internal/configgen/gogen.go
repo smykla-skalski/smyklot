@@ -37,6 +37,8 @@ var goTemplate = template.Must(template.New("go").Funcs(template.FuncMap{
 	"copyExpr":   copyExpr,
 	"patchRef":   patchRef,
 	"flagMethod": flagMethod,
+	"envRead":    envRead,
+	"flagRead":   flagRead,
 }).Parse(`{{ .Header }}
 
 package config
@@ -139,7 +141,8 @@ func (p Patch) SetKeys() []string {
 {{ end }}	return keys
 }
 
-// RegisterFlags defines a command-line flag for every setting that takes one.
+// RegisterFlags defines a command-line flag for every setting that takes one,
+// and --config-file, which names a document of them.
 //
 // A setting opts out with ` + "`flag:\"-\"`" + ` on Patch. The runner does, because it
 // says which entry point acts on a repository and only the repository may
@@ -151,7 +154,76 @@ func (p Patch) SetKeys() []string {
 func RegisterFlags(flags *pflag.FlagSet) {
 	defaults := Default()
 {{ range .Fields }}{{ if .HasFlag }}	flags.{{ flagMethod . }}(Key{{ .GoName }}, defaults.{{ .GoName }}, {{ quote .Description }})
-{{ end }}{{ end }}}
+{{ end }}{{ end }}
+	registerConfigFileFlag(flags)
+}
+
+// normalize turns whatever a decoder or a variable produced into a value this
+// package vouches for.
+//
+// A setting whose Go type this package declares is only text until its own
+// parser has seen it, and every layer reads text: a file, a document, a
+// variable, a flag. Running this once in the resolver is what stops a typo
+// being caught in a repository's file and waved through in an environment
+// variable. The pointer is replaced rather than written through, since a patch
+// may point into a Config that nothing asked to have edited.
+func (p *Patch) normalize() error {
+{{- range .Fields }}{{ if .Named }}
+	if p.{{ .GoName }} != nil {
+		value, err := Parse{{ .GoType }}(string(*p.{{ .GoName }}))
+		if err != nil {
+			return err
+		}
+
+		p.{{ .GoName }} = &value
+	}
+{{ end }}{{ end }}
+	return nil
+}
+
+// envPatch reads the layer written one variable per setting.
+//
+// A variable set to nothing counts as unset. A workflow that forwards an input
+// nobody filled in writes an empty string, and reading that as an instruction
+// would let a missing input narrow allowed_commands to nothing - on the layer
+// stack that is fail-closed, so every command would be refused. viper read it
+// the same way, for the same reason.
+func envPatch(lookup func(string) (string, bool)) (Patch, error) {
+	var patch Patch
+{{ range .Fields }}
+	if raw, ok := lookup(EnvVar(Key{{ .GoName }})); ok && raw != "" {
+		{{ envRead . }}
+		patch.{{ .GoName }} = &value
+	}
+{{ end }}
+	return patch, nil
+}
+
+// flagPatch reads the layer given on the command line.
+//
+// Changed is what makes this a patch rather than a whole configuration: a flag
+// carries its default whether or not anyone passed it, and applying those
+// defaults over the layers below would let the command line silently outrank a
+// file it never mentioned. A flag no command registered reports false, so an
+// entry point that takes fewer of them needs no special case.
+func flagPatch(flags *pflag.FlagSet) (Patch, error) {
+	var patch Patch
+
+	if flags == nil {
+		return patch, nil
+	}
+{{ range .Fields }}{{ if .HasFlag }}
+	if flags.Changed(Key{{ .GoName }}) {
+		value, err := flags.Get{{ flagMethod . }}(Key{{ .GoName }})
+		if err != nil {
+			return Patch{}, err
+		}
+
+		{{ flagRead . }}
+	}
+{{ end }}{{ end }}
+	return patch, nil
+}
 
 func applyPatch(values *Config, patch Patch, sources map[string]Source, source Source) {
 {{- range .Fields }}
@@ -226,9 +298,10 @@ func zeroValue(field Field) string {
 // imports lists what the rendered file needs, split into the two groups gofmt
 // separates with a blank line.
 //
-// Each is conditional on a field that needs it: an import emitted regardless
-// would stop compiling the moment the last map field, or the last field with a
-// flag, was removed.
+// pflag is unconditional because flagPatch takes a *pflag.FlagSet whether or
+// not any setting has a flag - a process still reads the layer, it is just
+// empty. maps is conditional on a map field, since an import emitted regardless
+// would stop compiling the moment the last one was removed.
 func imports(model Model) (std, thirdParty []string) {
 	for _, field := range model.Fields {
 		if field.Kind == KindStringMap {
@@ -238,15 +311,54 @@ func imports(model Model) (std, thirdParty []string) {
 		}
 	}
 
-	for _, field := range model.Fields {
-		if field.HasFlag {
-			thirdParty = append(thirdParty, "github.com/spf13/pflag")
+	return std, []string{"github.com/spf13/pflag"}
+}
 
-			break
-		}
+// envRead renders the statements that turn one variable's text into a value.
+//
+// The lines are emitted with their own newlines rather than as one statement,
+// because gofmt keeps a single-line if block on one line and the result would
+// read unlike anything in the package.
+func envRead(field Field) string {
+	switch {
+	case field.Kind == KindBool:
+		return checked("parseBool(Key" + field.GoName + ", raw)")
+
+	case field.Kind == KindStringSlice:
+		return "value := parseList(raw)"
+
+	case field.Kind == KindStringMap:
+		return checked("parseMapping(Key" + field.GoName + ", raw)")
+
+	case field.Named:
+		return "value := " + field.GoType + "(raw)"
+
+	default:
+		return "value := raw"
+	}
+}
+
+// flagRead renders what flagPatch does with the value pflag handed back.
+//
+// A named string type needs converting, since pflag only knows the builtin it
+// was registered as.
+func flagRead(field Field) string {
+	if !field.Named {
+		return "patch." + field.GoName + " = &value"
 	}
 
-	return std, thirdParty
+	local := localName(field.GoName)
+
+	return local + " := " + field.GoType + "(value)\n" +
+		"patch." + field.GoName + " = &" + local
+}
+
+// checked renders a call that can fail, with the error returned.
+func checked(call string) string {
+	return "value, err := " + call + "\n" +
+		"if err != nil {\n" +
+		"return Patch{}, err\n" +
+		"}\n"
 }
 
 // flagMethod names the pflag registrar for a field's type.

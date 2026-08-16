@@ -18,10 +18,10 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
-// envDisableDeletedComments is the viper-bound form of the disable flag
+// envDisableDeletedComments is the environment spelling of the disable flag
 const envDisableDeletedComments = "SMYKLOT_DISABLE_DELETED_COMMENTS"
 
-// envRunner is the viper-bound form of the runner setting
+// envRunner is the environment spelling of the runner setting
 const envRunner = "SMYKLOT_RUNNER"
 
 // runEnv lists every variable run() reads, so a spec starts from a known state

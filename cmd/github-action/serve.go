@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 
 	"github.com/smykla-skalski/smyklot/internal/storage/open"
 	"github.com/smykla-skalski/smyklot/pkg/config"
@@ -172,6 +171,10 @@ func init() {
 	serveCmd.Flags().Int64(flagPanelSuperRootID, 0, descPanelSuperRootID)
 	serveCmd.Flags().Duration(flagPanelTTL, defaultPanelTTL, descPanelTTL)
 
+	// The service resolves the same settings from the same layers the Action
+	// does, so it takes the same flags
+	config.RegisterFlags(serveCmd.Flags())
+
 	rootCmd.AddCommand(serveCmd)
 }
 
@@ -256,10 +259,7 @@ func runServe(cmd *cobra.Command, _ []string) (runErr error) {
 // webhook secret would accept unsigned deliveries for as long as nobody
 // noticed.
 func loadServeConfig(cmd *cobra.Command) (*serveConfig, error) {
-	v := viper.New()
-	config.SetupViper(v)
-
-	botConfig, err := loadPollBotConfig(v)
+	botConfig, err := loadBotConfig(cmd)
 	if err != nil {
 		return nil, err
 	}

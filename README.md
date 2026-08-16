@@ -181,7 +181,22 @@ Only the global `*` pattern is read. Path-specific owners are not implemented, s
 
 Smyklot can be configured via repository variables (Settings → Secrets and variables → Actions → Variables) or a config file checked into the repository.
 
-Config precedence: `.github/smyklot.yaml` > CLI flags > environment variables > repository variables > defaults
+A setting can be given a value in eight places. They are resolved lowest first, so a later layer replaces what an earlier one said and a setting nobody names keeps its default:
+
+```text
+1. defaults             built into Smyklot
+2. process file         --config-file, or SMYKLOT_CONFIG_FILE
+3. process document     SMYKLOT_CONFIG
+4. process environment  SMYKLOT_* variables, one per setting
+5. process flags        the command line
+6. account settings     the panel, for every repository
+7. repository file      .smyklot.toml in the repository
+8. repository settings  the panel, for one repository
+```
+
+The environment document sits below the individual variables so that changing one setting means adding one variable rather than rewriting the whole document.
+
+That block is generated from `config.PrecedenceDoc`, and a test fails if this copy of it goes stale.
 
 #### Option 1: Full JSON configuration (recommended)
 

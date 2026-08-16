@@ -109,6 +109,13 @@ type Field struct {
 	// Kind decides the schema, the flag and the apply helper.
 	Kind Kind
 
+	// Named reports a setting whose Go type is one this package declares
+	// rather than a builtin, such as Runner. Text read from an environment
+	// variable or a flag has to go through that type's own parser, so the
+	// generated code calls Parse<GoType> - which the compiler then insists
+	// exists.
+	Named bool
+
 	// Doc is the doc comment as written, which the generated Go field carries
 	// so godoc reads the way the source did.
 	Doc string
@@ -279,7 +286,7 @@ func buildField(name string, astField *ast.Field, stringTypes map[string]struct{
 		return Field{}, ErrFieldNotSparse
 	}
 
-	goType, kind, err := classify(pointer.X, stringTypes)
+	typed, err := classify(pointer.X, stringTypes)
 	if err != nil {
 		return Field{}, err
 	}
@@ -299,8 +306,9 @@ func buildField(name string, astField *ast.Field, stringTypes map[string]struct{
 	field := Field{
 		GoName:      name,
 		Key:         key,
-		GoType:      goType,
-		Kind:        kind,
+		GoType:      typed.GoType,
+		Kind:        typed.Kind,
+		Named:       typed.Named,
 		Doc:         doc,
 		Description: describe(name, doc),
 		Default:     tag.Get("default"),
@@ -354,33 +362,40 @@ func validate(field Field) error {
 	return nil
 }
 
+// classified is what a Patch field's type tells the generator.
+type classified struct {
+	GoType string
+	Kind   Kind
+	Named  bool
+}
+
 // classify maps a Patch field's pointed-to type onto the Config type and the
 // behaviour. An unrecognised type is refused rather than guessed at.
-func classify(expr ast.Expr, stringTypes map[string]struct{}) (string, Kind, error) {
+func classify(expr ast.Expr, stringTypes map[string]struct{}) (classified, error) {
 	switch typed := expr.(type) {
 	case *ast.Ident:
 		switch typed.Name {
 		case goBool:
-			return goBool, KindBool, nil
+			return classified{GoType: goBool, Kind: KindBool}, nil
 		case goString:
-			return goString, KindString, nil
+			return classified{GoType: goString, Kind: KindString}, nil
 		default:
 			// A named type such as Runner, accepted only when the package
 			// declares it as a string. Anything else - int, a struct, a type
 			// from another package - is refused, because the decoders read a
 			// setting from text and the schema has to publish it as one.
 			if _, ok := stringTypes[typed.Name]; !ok {
-				return "", "", fmt.Errorf(
+				return classified{}, fmt.Errorf(
 					"%w: %s is not a string-based type declared in this package",
 					ErrUnsupportedType, typed.Name)
 			}
 
-			return typed.Name, KindString, nil
+			return classified{GoType: typed.Name, Kind: KindString, Named: true}, nil
 		}
 
 	case *ast.ArrayType:
 		if ident, ok := typed.Elt.(*ast.Ident); ok && ident.Name == goString && typed.Len == nil {
-			return "[]string", KindStringSlice, nil
+			return classified{GoType: "[]string", Kind: KindStringSlice}, nil
 		}
 
 	case *ast.MapType:
@@ -388,11 +403,11 @@ func classify(expr ast.Expr, stringTypes map[string]struct{}) (string, Kind, err
 		value, valueOK := typed.Value.(*ast.Ident)
 
 		if keyOK && valueOK && key.Name == goString && value.Name == goString {
-			return "map[string]string", KindStringMap, nil
+			return classified{GoType: "map[string]string", Kind: KindStringMap}, nil
 		}
 	}
 
-	return "", "", ErrUnsupportedType
+	return classified{}, ErrUnsupportedType
 }
 
 func parseTag(literal *ast.BasicLit) reflect.StructTag {

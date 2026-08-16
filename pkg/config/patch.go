@@ -154,13 +154,8 @@ func ParsePatch(format Format, content []byte) (Patch, error) {
 		return Patch{}, fmt.Errorf("decode %s config patch: %w", format, err)
 	}
 
-	if patch.Runner != nil {
-		runner, err := ParseRunner(string(*patch.Runner))
-		if err != nil {
-			return Patch{}, err
-		}
-
-		patch.Runner = &runner
+	if err := patch.normalize(); err != nil {
+		return Patch{}, err
 	}
 
 	return patch, nil
