@@ -10,11 +10,6 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/storage"
 )
 
-const pendingCIEventSelect = `
-SELECT id, request_id, kind, trigger_kind, event_name, event_key,
-       delivery_id, state, summary, created_at
-FROM pending_ci_events`
-
 type pendingCIEventWriter interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 }

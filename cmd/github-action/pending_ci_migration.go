@@ -99,57 +99,79 @@ func (s *server) migrateLegacyPendingCIServiceLabels(
 		if !pullRequestHasLabel(pr, github.LegacyLabelPendingCIServiceOwner) {
 			continue
 		}
-		pullRequest := extractPRNumber(pr)
-		if pullRequest == 0 {
-			cleanupErr = errors.Join(
-				cleanupErr,
-				fmt.Errorf("remove legacy pending CI service label: invalid pull request number"),
-			)
-
-			continue
-		}
-		err := s.pendingCICoordinator.Exclusive(ctx, repositoryID, func() error {
-			request, armedErr := s.store.GetArmed(ctx, repositoryID, pullRequest)
-			if armedErr == nil {
-				if request.SourceCommentID > 0 {
-					if err := client.AddReaction(
-						ctx, repository.Owner, repository.Name,
-						int(request.SourceCommentID), github.ReactionPendingCIService,
-					); err != nil {
-						return fmt.Errorf("migrate pending CI service reaction: %w", err)
-					}
-				}
-			} else if !errors.Is(armedErr, storage.ErrNotFound) {
-				return fmt.Errorf("read pending CI service request: %w", armedErr)
-			} else {
-				pending, pendingErr := s.store.HasPendingCleanup(
-					ctx, pendingci.CleanupFilter{
-						RepositoryID: repositoryID, PullRequest: pullRequest,
-						ArtifactsPendingOnly: true,
-					},
-				)
-				if pendingErr != nil {
-					return fmt.Errorf("read pending CI cleanup: %w", pendingErr)
-				}
-				if pending {
-					return nil
-				}
-			}
-
-			return cleanupGitHubError(
-				"remove legacy pending CI service label",
-				client.RemoveLabel(
-					ctx, repository.Owner, repository.Name, pullRequest,
-					github.LegacyLabelPendingCIServiceOwner,
-				),
-			)
-		})
+		err := s.migrateLegacyPendingCIServiceLabel(
+			ctx, client, repository, repositoryID, extractPRNumber(pr),
+		)
 		if err != nil {
 			cleanupErr = errors.Join(cleanupErr, err)
 		}
 	}
 
 	return cleanupErr
+}
+
+func (s *server) migrateLegacyPendingCIServiceLabel(
+	ctx context.Context,
+	client *github.Client,
+	repository github.Repository,
+	repositoryID string,
+	pullRequest int,
+) error {
+	if pullRequest == 0 {
+		return fmt.Errorf("remove legacy pending CI service label: invalid pull request number")
+	}
+
+	return s.pendingCICoordinator.Exclusive(ctx, repositoryID, func() error {
+		keepLabel, err := s.prepareLegacyPendingCIServiceLabel(
+			ctx, client, repository, repositoryID, pullRequest,
+		)
+		if err != nil || keepLabel {
+			return err
+		}
+
+		return cleanupGitHubError(
+			"remove legacy pending CI service label",
+			client.RemoveLabel(
+				ctx, repository.Owner, repository.Name, pullRequest,
+				github.LegacyLabelPendingCIServiceOwner,
+			),
+		)
+	})
+}
+
+func (s *server) prepareLegacyPendingCIServiceLabel(
+	ctx context.Context,
+	client *github.Client,
+	repository github.Repository,
+	repositoryID string,
+	pullRequest int,
+) (bool, error) {
+	request, err := s.store.GetArmed(ctx, repositoryID, pullRequest)
+	if err == nil {
+		if request.SourceCommentID == 0 {
+			return false, nil
+		}
+		if err := client.AddReaction(
+			ctx, repository.Owner, repository.Name,
+			int(request.SourceCommentID), github.ReactionPendingCIService,
+		); err != nil {
+			return false, fmt.Errorf("migrate pending CI service reaction: %w", err)
+		}
+
+		return false, nil
+	}
+	if !errors.Is(err, storage.ErrNotFound) {
+		return false, fmt.Errorf("read pending CI service request: %w", err)
+	}
+	pending, err := s.store.HasPendingCleanup(ctx, pendingci.CleanupFilter{
+		RepositoryID: repositoryID, PullRequest: pullRequest,
+		ArtifactsPendingOnly: true,
+	})
+	if err != nil {
+		return false, fmt.Errorf("read pending CI cleanup: %w", err)
+	}
+
+	return pending, nil
 }
 
 func pendingCIMigrationRefs(pr map[string]interface{}) (string, string, error) {

@@ -61,73 +61,127 @@ func activatePendingCI(
 ) (pendingCIActivationErrors, error) {
 	var failures pendingCIActivationErrors
 	err := command.exclusive(ctx, func() error {
-		ownership, stopped, err := preparePendingCIActivation(
-			ctx, command, guard, request, &failures,
+		return activatePendingCIExclusive(
+			ctx, artifacts, command, guard, request, &failures,
 		)
-		if stopped {
-			return err
-		}
-		info, err := artifacts.GetPRInfo(
-			ctx, request.owner, request.repository, request.pullRequest,
-		)
-		if err != nil {
-			failures.approval = err
-
-			return nil
-		}
-		if pendingCIApprovalRequired(request.runtime, info) {
-			failures.approval = artifacts.ApprovePR(
-				ctx, request.owner, request.repository, request.pullRequest,
-			)
-			if failures.approval != nil {
-				return nil
-			}
-		}
-		if !ownership.reaction {
-			failures.reaction = artifacts.AddReaction(
-				ctx, request.owner, request.repository,
-				request.commentID, github.ReactionPendingCIService,
-			)
-			if failures.reaction != nil {
-				// A transport error is ambiguous: GitHub may have accepted the
-				// reaction even though the response never reached us. Remove it
-				// before returning so the Action runner is not fenced forever.
-				return rollbackPendingCIArtifacts(
-					ctx, artifacts, request, ownership, false,
-				)
-			}
-		}
-		if err := revalidatePendingCIActivation(ctx, guard, &failures); err != nil ||
-			failures.stoodDown {
-			rollbackErr := rollbackPendingCIArtifacts(
-				ctx, artifacts, request, ownership, false,
-			)
-
-			return errors.Join(err, rollbackErr)
-		}
-		failures.label = artifacts.AddLabel(
-			ctx, request.owner, request.repository, request.pullRequest, request.label,
-		)
-		if failures.label != nil {
-			return rollbackPendingCIArtifacts(
-				ctx, artifacts, request, ownership, true,
-			)
-		}
-
-		_, failures.command = command.arm(
-			ctx, request.runtime, request.pullRequest, request.commentID,
-			request.headSHA, request.baseBranch, request.method,
-			request.requiredChecksOnly, request.label,
-		)
-		if failures.command != nil {
-			return handlePendingCIArmFailure(
-				ctx, artifacts, command, request, ownership, &failures,
-			)
-		}
-		return removeConflictingPendingCILabels(ctx, artifacts, request)
 	})
 
 	return failures, err
+}
+
+func activatePendingCIExclusive(
+	ctx context.Context,
+	artifacts pendingCIArtifacts,
+	command *pendingCICommand,
+	guard pendingCIActivationGuard,
+	request pendingCIActivationRequest,
+	failures *pendingCIActivationErrors,
+) error {
+	ownership, stopped, err := preparePendingCIActivation(
+		ctx, command, guard, request, failures,
+	)
+	if stopped {
+		return err
+	}
+	if pendingCIApprovalFailed(ctx, artifacts, request, failures) {
+		return nil
+	}
+	stopped, err = addPendingCIServiceReaction(
+		ctx, artifacts, request, ownership, failures,
+	)
+	if stopped {
+		return err
+	}
+
+	return persistPendingCIActivation(
+		ctx, artifacts, command, guard, request, ownership, failures,
+	)
+}
+
+func pendingCIApprovalFailed(
+	ctx context.Context,
+	artifacts pendingCIArtifacts,
+	request pendingCIActivationRequest,
+	failures *pendingCIActivationErrors,
+) bool {
+	info, err := artifacts.GetPRInfo(
+		ctx, request.owner, request.repository, request.pullRequest,
+	)
+	if err != nil {
+		failures.approval = err
+
+		return true
+	}
+	if !pendingCIApprovalRequired(request.runtime, info) {
+		return false
+	}
+	failures.approval = artifacts.ApprovePR(
+		ctx, request.owner, request.repository, request.pullRequest,
+	)
+
+	return failures.approval != nil
+}
+
+func addPendingCIServiceReaction(
+	ctx context.Context,
+	artifacts pendingCIArtifacts,
+	request pendingCIActivationRequest,
+	ownership pendingCIArtifactOwnership,
+	failures *pendingCIActivationErrors,
+) (bool, error) {
+	if ownership.reaction {
+		return false, nil
+	}
+	failures.reaction = artifacts.AddReaction(
+		ctx, request.owner, request.repository,
+		request.commentID, github.ReactionPendingCIService,
+	)
+	if failures.reaction == nil {
+		return false, nil
+	}
+
+	// A transport error is ambiguous: GitHub may have accepted the reaction
+	// even though the response never reached us. Remove it so the Action runner
+	// is not fenced forever.
+	return true, rollbackPendingCIArtifacts(ctx, artifacts, request, ownership, false)
+}
+
+func persistPendingCIActivation(
+	ctx context.Context,
+	artifacts pendingCIArtifacts,
+	command *pendingCICommand,
+	guard pendingCIActivationGuard,
+	request pendingCIActivationRequest,
+	ownership pendingCIArtifactOwnership,
+	failures *pendingCIActivationErrors,
+) error {
+	if err := revalidatePendingCIActivation(ctx, guard, failures); err != nil ||
+		failures.stoodDown {
+		rollbackErr := rollbackPendingCIArtifacts(
+			ctx, artifacts, request, ownership, false,
+		)
+
+		return errors.Join(err, rollbackErr)
+	}
+	failures.label = artifacts.AddLabel(
+		ctx, request.owner, request.repository, request.pullRequest, request.label,
+	)
+	if failures.label != nil {
+		return rollbackPendingCIArtifacts(ctx, artifacts, request, ownership, true)
+	}
+
+	_, failures.command = command.arm(
+		ctx, request.runtime, request.pullRequest, request.commentID,
+		request.headSHA, request.baseBranch, request.method,
+		request.requiredChecksOnly, request.label,
+	)
+	if failures.command != nil {
+		return handlePendingCIArmFailure(
+			ctx, artifacts, command, request, ownership, failures,
+		)
+	}
+
+	return removeConflictingPendingCILabels(ctx, artifacts, request)
 }
 
 func preparePendingCIActivation(

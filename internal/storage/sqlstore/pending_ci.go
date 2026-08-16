@@ -875,27 +875,3 @@ func (s *Store) getPendingCI(ctx context.Context, id int64) (pendingci.Request, 
 
 	return request, nil
 }
-
-func (s *Store) checkPendingCIUpdate(ctx context.Context, result sql.Result, id int64) error {
-	changed, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("read pending CI update result: %w", err)
-	}
-	if changed == 1 {
-		return nil
-	}
-
-	var exists int
-	if err := s.db.QueryRowContext(
-		ctx,
-		"SELECT COUNT(*) FROM pending_ci_requests WHERE id = ?",
-		id,
-	).Scan(&exists); err != nil {
-		return fmt.Errorf("classify pending CI update: %w", err)
-	}
-	if exists == 0 {
-		return storage.ErrNotFound
-	}
-
-	return storage.ErrConflict
-}
