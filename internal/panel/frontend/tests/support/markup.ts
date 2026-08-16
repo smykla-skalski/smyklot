@@ -8,6 +8,23 @@
  * A rule whose own explanation breaks it is a rule nobody will keep.
  */
 
+import { readFileSync, readdirSync } from 'node:fs';
+
+const components = new URL('../../src/components/', import.meta.url);
+
+/**
+ * Every component, as `[filename, source]`.
+ *
+ * Several of these checks are sweeps over the whole component directory, and
+ * each had grown its own copy of this three-line read - which is how one of them
+ * ends up scanning a set the others do not.
+ */
+export function componentSources(): (readonly [string, string])[] {
+  return readdirSync(components)
+    .filter((file) => file.endsWith('.svelte'))
+    .map((file) => [file, readFileSync(new URL(file, components), 'utf8')] as const);
+}
+
 /**
  * Strips a pattern until the text stops changing.
  *
@@ -16,7 +33,7 @@
  * hand that back as if it were markup. Repeating until nothing changes is what
  * makes the result actually free of them.
  */
-export function stripAll(source: string, pattern: RegExp): string {
+function stripAll(source: string, pattern: RegExp): string {
   let current = source;
   let previous: string;
   do {

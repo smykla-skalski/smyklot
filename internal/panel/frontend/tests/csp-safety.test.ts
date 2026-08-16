@@ -1,9 +1,7 @@
-import { readFileSync, readdirSync } from 'node:fs';
-
 import { describe, expect, it } from 'vitest';
 
 // Comments explain the rule and quote the thing it forbids, so they are not markup.
-import { markupOf } from './support/markup';
+import { componentSources, markupOf } from './support/markup';
 
 /**
  * The panel serves `style-src 'self'`, under which a browser parses a `style` attribute written in
@@ -23,11 +21,7 @@ import { markupOf } from './support/markup';
  * Checked as source, because the runtime here has no DOM, no cascade and no CSP.
  */
 
-const components = new URL('../src/components/', import.meta.url);
-
-const sources = readdirSync(components)
-  .filter((file) => file.endsWith('.svelte'))
-  .map((file) => [file, readFileSync(new URL(file, components), 'utf8')] as const);
+const sources = componentSources();
 
 describe('styles the browser will actually apply', () => {
   it('has components to check', () => {

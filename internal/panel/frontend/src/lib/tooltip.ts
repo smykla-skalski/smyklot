@@ -24,7 +24,7 @@ export interface TooltipOptions {
   id?: string;
   text: string;
   /** Which edge of the box lines up with the trigger's. */
-  align?: 'start' | 'center' | 'end';
+  align?: LayerAlign;
 }
 
 /**
@@ -75,10 +75,6 @@ export const tooltip: Action<HTMLElement, TooltipOptions> = (node, initial) => {
     box.style.top = `${top}px`;
   };
 
-  const follow = (): void => {
-    place();
-  };
-
   const show = (): void => {
     if (box !== null) return;
     const next = document.createElement('span');
@@ -99,14 +95,14 @@ export const tooltip: Action<HTMLElement, TooltipOptions> = (node, initial) => {
     });
     // Capture: the scroller that moves the trigger is usually an inner one - a
     // pinned table body, a dialog - and those do not bubble a scroll event.
-    window.addEventListener('scroll', follow, true);
-    window.addEventListener('resize', follow);
+    window.addEventListener('scroll', place, true);
+    window.addEventListener('resize', place);
   };
 
   const hide = (): void => {
     if (box === null) return;
-    window.removeEventListener('scroll', follow, true);
-    window.removeEventListener('resize', follow);
+    window.removeEventListener('scroll', place, true);
+    window.removeEventListener('resize', place);
     box.remove();
     box = null;
   };

@@ -89,6 +89,13 @@
    */
   let narrow = $state(false);
 
+  /* The collapsed rail: a column of icons with its menus flying out beside it.
+     Only on a wide window - narrow, the rail is a top bar and they drop from it
+     like any other menu. The wider gap goes with the fly-out, because there it
+     crosses the rail's edge rather than hanging off a control. */
+  const flyout = $derived(!narrow && collapsed);
+  const railOffset = $derived(flyout ? 10 : 6);
+
   $effect(() => {
     const breakpoint = window.matchMedia('(max-width: 48rem)');
     const sync = (): void => {
@@ -146,7 +153,6 @@
   function closeMenus(): void {
     accountOpen = false;
     targetOpen = false;
-    targetQuery = '';
   }
 
   function closeFromOutside(event: PointerEvent): void {
@@ -173,7 +179,6 @@
       return;
     event.preventDefault();
     closeMenus();
-    targetQuery = '';
     mobileNavigationOpen = false;
     onSelectTarget(targetId);
   }
@@ -251,12 +256,11 @@
       skin="sidebar"
       role="dialog"
       label="Switch workspace"
-      side={!narrow && collapsed ? 'right' : 'below'}
+      side={flyout ? 'right' : 'below'}
       align={narrow ? 'end' : 'start'}
       width={narrow || collapsed ? 'auto' : 'trigger'}
-      offset={!narrow && collapsed ? 10 : 6}
+      offset={railOffset}
       focusSelector=".target-search input"
-      onopen={() => (targetQuery = '')}
       onclose={() => (targetQuery = '')}
     >
       {#snippet trigger(attributes)}
@@ -353,9 +357,9 @@
       skin="sidebar"
       role="dialog"
       label="Account"
-      side={narrow ? 'below' : collapsed ? 'right' : 'above'}
+      side={flyout ? 'right' : narrow ? 'below' : 'above'}
       align={narrow || collapsed ? 'end' : 'start'}
-      offset={!narrow && collapsed ? 10 : 6}
+      offset={railOffset}
       focusOnOpen={false}
     >
       {#snippet trigger(attributes)}

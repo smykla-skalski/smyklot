@@ -69,12 +69,10 @@
 
 <Popover bind:open {align} itemSelector=".filter-option">
   {#snippet trigger(attributes)}
-    <div
-      class="filter-menu"
-      class:open
-      class:header-filter={placement === 'header'}
-      class:filtered={canClear}
-    >
+    <!-- Open state is read from the trigger's own `aria-expanded`, which the
+         layer writes: mirroring it into a class here made two conventions out of
+         one fact, and the other two menus already read the attribute. -->
+    <div class="filter-menu" class:header-filter={placement === 'header'} class:filtered={canClear}>
       <button
         class="filter-trigger"
         class:icon-only={iconOnly}
@@ -237,14 +235,14 @@
   }
 
   .header-filter .filter-trigger:hover,
-  .header-filter.open .filter-trigger {
+  .header-filter .filter-trigger[aria-expanded='true'] {
     background: color-mix(in srgb, var(--text-primary) 8%, transparent);
     border-color: transparent;
     color: var(--text-primary);
   }
 
   .header-filter.filtered .filter-trigger:hover,
-  .header-filter.filtered.open .filter-trigger {
+  .header-filter.filtered .filter-trigger[aria-expanded='true'] {
     background: var(--brand-action-hover);
     color: var(--on-brand-action);
   }
@@ -274,7 +272,7 @@
   }
 
   .filter-trigger:hover,
-  .filter-menu.open .filter-trigger {
+  .filter-menu .filter-trigger[aria-expanded='true'] {
     background: var(--control-bg-hover);
     border-color: var(--control-border-hover);
   }
@@ -316,7 +314,7 @@
     transition: transform var(--duration-fast) var(--ease-out);
   }
 
-  .filter-menu.open .menu-chevron {
+  .filter-menu .filter-trigger[aria-expanded='true'] .menu-chevron {
     transform: rotate(180deg);
   }
 

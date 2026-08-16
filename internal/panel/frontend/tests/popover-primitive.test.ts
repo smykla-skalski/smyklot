@@ -1,8 +1,6 @@
-import { readFileSync, readdirSync } from 'node:fs';
-
 import { describe, expect, it } from 'vitest';
 
-import { markupOf } from './support/markup';
+import { componentSources, markupOf } from './support/markup';
 
 /**
  * One component floats a layer, and the rest ask it to.
@@ -19,12 +17,9 @@ import { markupOf } from './support/markup';
  * layer to put anything in.
  */
 
-const components = new URL('../src/components/', import.meta.url);
 const PRIMITIVE = 'Popover.svelte';
 
-const sources = readdirSync(components)
-  .filter((file) => file.endsWith('.svelte'))
-  .map((file) => [file, readFileSync(new URL(file, components), 'utf8')] as const);
+const sources = componentSources();
 
 /* Scanned without their commentary: these rules are explained in the components
    they govern, and an explanation that quotes the forbidden thing would be

@@ -3,9 +3,6 @@
 
   import type { LayerAlign, LayerSide } from '../lib/anchored-layer';
 
-  export type PopoverAlign = LayerAlign;
-  export type PopoverSide = LayerSide;
-
   /** How wide the layer is relative to what it hangs off. */
   export type PopoverWidth = 'auto' | 'min-trigger' | 'trigger';
 
@@ -65,7 +62,6 @@
     side = 'below',
     width = 'auto',
     dismiss = 'auto',
-    gutter,
     offset,
     role,
     label,
@@ -82,11 +78,10 @@
     onopen,
     onclose,
   }: {
-    align?: PopoverAlign;
-    side?: PopoverSide;
+    align?: LayerAlign;
+    side?: LayerSide;
     width?: PopoverWidth;
     dismiss?: PopoverDismiss;
-    gutter?: number;
     offset?: number;
     role?: 'dialog' | 'listbox' | 'menu';
     label?: string;
@@ -136,22 +131,8 @@
       : {}),
   }) as PopoverTriggerAttributes;
 
-  /* Set while placing, because placing writes width and max-height and the
-     observer below watches exactly that. Without it the two feed each other. */
-  let placing = false;
-
   /** Measured, so it follows its trigger rather than hanging where it opened. */
   function place(): void {
-    if (anchor === null || panel === null || placing) return;
-    placing = true;
-    try {
-      measure();
-    } finally {
-      placing = false;
-    }
-  }
-
-  function measure(): void {
     if (anchor === null || panel === null) return;
 
     /* Measuring lets the layer back to its natural size for an instant, and a
@@ -176,7 +157,7 @@
     panel.style.maxWidth = '';
     const viewport = { height: window.innerHeight, width: window.innerWidth };
     const box = { height: panel.offsetHeight, width: panel.offsetWidth };
-    let at = placeLayer(rect, box, viewport, { align, gutter, offset, side });
+    let at = placeLayer(rect, box, viewport, { align, offset, side });
 
     /* Both axes, not just the one it hangs on. The side it sits on is bounded by
        the room between the trigger and the edge; the other by the window less
@@ -191,7 +172,7 @@
     if (capped.height !== box.height || capped.width !== box.width) {
       panel.style.maxHeight = `${capped.height}px`;
       panel.style.maxWidth = `${capped.width}px`;
-      at = placeLayer(rect, capped, viewport, { align, gutter, offset, side });
+      at = placeLayer(rect, capped, viewport, { align, offset, side });
     }
 
     panel.style.left = `${at.left}px`;
@@ -235,8 +216,19 @@
 
     /* Contents can change while it is open - a suggestion list narrows to what
        has been typed - and a layer that grew after being placed would be
-       measured against the size it used to be. */
-    const watcher = new ResizeObserver(reposition);
+       measured against the size it used to be.
+
+       Observing delivers once for the size the layer already has, which is not
+       a change and was a second full measurement on every open - in every menu,
+       and these are built per table row. */
+    let sizeKnown = false;
+    const watcher = new ResizeObserver(() => {
+      if (!sizeKnown) {
+        sizeKnown = true;
+        return;
+      }
+      place();
+    });
     if (panel !== null) watcher.observe(panel);
 
     return () => {

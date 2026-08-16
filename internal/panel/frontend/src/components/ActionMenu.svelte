@@ -37,14 +37,7 @@
      opened from a trailing control belongs. Its width is its longest description,
      so it is measured rather than assumed - a guess of 224px once put it a
      hundred pixels off the button it belongs to. -->
-<Popover
-  bind:open
-  align="end"
-  role="menu"
-  {label}
-  itemSelector=".action-item"
-  focusSelector=".action-item:not(:disabled)"
->
+<Popover bind:open align="end" role="menu" {label} itemSelector=".action-item">
   {#snippet trigger(attributes)}
     <span class="action-menu">
       <button
