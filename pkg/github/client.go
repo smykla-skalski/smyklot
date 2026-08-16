@@ -140,11 +140,11 @@ func (c *Client) PostComment(ctx context.Context, owner, repo string, prNumber i
 
 	path := fmt.Sprintf("/repos/%s/%s/issues/%d/comments", owner, repo, prNumber)
 
-	payload := map[string]string{
-		"body": body,
-	}
+	_, _, err := c.gh.Issues.CreateComment(ctx, owner, repo, prNumber, &gogithub.IssueComment{
+		Body: gogithub.Ptr(body),
+	})
 
-	return doRequest(ctx, c, http.MethodPost, path, payload)
+	return wrapError(ErrAPIRequest, http.MethodPost, path, err)
 }
 
 // Review operations live in reviews.go.
@@ -557,7 +557,9 @@ func (c *Client) GetPRComments(
 func (c *Client) DeleteComment(ctx context.Context, owner, repo string, commentID int) error {
 	path := fmt.Sprintf("/repos/%s/%s/issues/comments/%d", owner, repo, commentID)
 
-	return doRequest(ctx, c, http.MethodDelete, path, nil)
+	_, err := c.gh.Issues.DeleteComment(ctx, owner, repo, int64(commentID))
+
+	return wrapError(ErrAPIRequest, http.MethodDelete, path, err)
 }
 
 // UpdatePendingCIReaction finds comments with the bot's "eyes" reaction and replaces with "+1"

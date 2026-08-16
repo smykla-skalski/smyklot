@@ -238,14 +238,33 @@ func paginate[T any](
 // For the endpoints whose answer carries nothing a caller needs: adding a
 // reaction, deleting a comment, dismissing a review.
 func doRequest(ctx context.Context, client *Client, method, path string, body any) error {
-	req, err := client.gh.NewRequest(ctx, method, strings.TrimPrefix(path, "/"), body)
+	req, err := newAPIRequest(ctx, client, method, path, body)
 	if err != nil {
-		return NewAPIError(ErrAPIRequest, 0, method, path, err)
+		return err
 	}
 
 	_, err = client.gh.Do(req, nil)
 
 	return wrapError(ErrAPIRequest, method, path, err)
+}
+
+// newAPIRequest builds a request against the client's base URL.
+//
+// The paths in this package are written with a leading slash, the way the old
+// hand-rolled client concatenated them, while go-github resolves each endpoint
+// as a reference relative to a base that already ends in one.
+func newAPIRequest(
+	ctx context.Context,
+	client *Client,
+	method, path string,
+	body any,
+) (*http.Request, error) {
+	req, err := client.gh.NewRequest(ctx, method, strings.TrimPrefix(path, "/"), body)
+	if err != nil {
+		return nil, NewAPIError(ErrAPIRequest, 0, method, path, err)
+	}
+
+	return req, nil
 }
 
 // doJSONPage is doJSON plus the response, for the callers that have to follow
@@ -258,9 +277,9 @@ func doJSONPage[T any](
 ) (T, *gogithub.Response, error) {
 	var out T
 
-	req, err := client.gh.NewRequest(ctx, method, strings.TrimPrefix(path, "/"), body)
+	req, err := newAPIRequest(ctx, client, method, path, body)
 	if err != nil {
-		return out, nil, NewAPIError(ErrAPIRequest, 0, method, path, err)
+		return out, nil, err
 	}
 
 	resp, err := client.gh.Do(req, &out)

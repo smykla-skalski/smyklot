@@ -66,8 +66,12 @@ func retriesDisabled(ctx context.Context) bool {
 }
 
 func (t retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	// Still through attempt, not straight to base. These two paths send once
+	// rather than never, and the deadline is not part of retrying - routing
+	// them around it left the readiness probe and any non-replayable request
+	// with no timeout at all, since the client no longer carries one.
 	if retriesDisabled(req.Context()) || !replayable(req) {
-		return t.base.RoundTrip(req)
+		return t.attempt(req)
 	}
 
 	last := maxRetries - 1
@@ -152,6 +156,12 @@ func (t retryTransport) wait(req *http.Request, attempt int, resp *http.Response
 		delay = after
 	}
 
+	// Capped here, once, rather than inside retryAfter. There it clamped only
+	// the header-derived branch and ran for nothing when retryableStatus asked
+	// merely whether a delay existed - leaving the exponential branch the one
+	// path that could exceed the cap if either constant above ever changed.
+	delay = min(delay, maxRetryAfter)
+
 	sleep := t.sleep
 	if sleep == nil {
 		sleep = sleepContext
@@ -222,7 +232,7 @@ func retryAfter(resp *http.Response) (time.Duration, bool) {
 
 	if raw := resp.Header.Get("Retry-After"); raw != "" {
 		if seconds, err := strconv.Atoi(raw); err == nil && seconds >= 0 {
-			return capRetryAfter(time.Duration(seconds) * time.Second), true
+			return time.Duration(seconds) * time.Second, true
 		}
 	}
 
@@ -243,15 +253,7 @@ func retryAfter(resp *http.Response) (time.Duration, bool) {
 		return 0, false
 	}
 
-	return capRetryAfter(wait), true
-}
-
-func capRetryAfter(delay time.Duration) time.Duration {
-	if delay > maxRetryAfter {
-		return maxRetryAfter
-	}
-
-	return delay
+	return wait, true
 }
 
 // sleepContext waits, but gives up the moment the caller does. A long-running
