@@ -133,11 +133,10 @@
               </span>
               <span class="option-copy">
                 {#if option.tone !== undefined && option.tone !== 'default'}
-                  <!-- The value drawn the way its column draws it, so the menu
-                       shows exactly what the table shows. -->
-                  <!-- The column's chip at the column's size. Shrunk to `small`
-                       it stops being the same object the table shows and becomes
-                       a smaller thing that resembles it. -->
+                  <!-- The value drawn the way its column draws it, at the size
+                       its column draws it: the menu shows exactly what the table
+                       shows. Shrunk to `small` it stops being the same object and
+                       becomes a smaller thing that resembles it. -->
                   <span class="option-chip">
                     <Chip tone={chipToneOf(option.tone)} icon={option.icon}>{option.label}</Chip>
                   </span>
