@@ -61,9 +61,12 @@ type Installation struct {
 	Permissions map[string]string
 }
 
-// Permission levels, as GitHub spells them.
+// Permission levels that let Smyklot write, as GitHub spells them.
+//
+// Read is not among them and is not named: every other level answers the same
+// way, so a constant for one of them would suggest a list that has to be kept
+// complete.
 const (
-	PermissionRead  = "read"
 	PermissionWrite = "write"
 
 	// PermissionAdmin is a level GitHub returns for a handful of permissions -

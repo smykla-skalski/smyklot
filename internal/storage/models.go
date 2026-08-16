@@ -410,7 +410,11 @@ type Target struct {
 // answer that could not be read is worse than a 403.
 //
 // Two spellings of one rule is how the planner and the executor come to
-// disagree about whether an installation may act.
+// disagree about whether an installation may act, so the two are held together
+// by a test rather than by a comment: see grants_test.go. Sharing the code
+// instead would mean pkg/github importing this side to borrow four lines, and
+// the client knowing nothing about what Smyklot does with GitHub is worth more
+// than the duplication.
 func (t Target) Grants(permission string) bool {
 	switch t.Permissions[permission] {
 	case "write", "admin":

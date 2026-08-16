@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
@@ -162,21 +163,16 @@ func activeSyncKinds(
 // The most recent, because a plan carries one actor and the newest save is the
 // one that caused this plan to differ from the last. Two saved at the same
 // instant is one save the panel cannot make and a tie nothing can break on the
-// merits, so the earlier kind wins - stable, since the configurations arrive
-// ordered by kind.
+// merits, so the earlier kind wins - MaxFunc keeps the first of equals, and the
+// configurations arrive ordered by kind, so the answer is at least the same one
+// every time.
+//
+// Never called with nothing: planInstallationSync returns before this when no
+// kind is active, and MaxFunc has no answer for an empty slice.
 func syncActor(active []orgsync.Config) string {
-	var (
-		actor  string
-		latest time.Time
-	)
-
-	for _, config := range active {
-		if actor == "" || config.UpdatedAt.After(latest) {
-			actor, latest = config.UpdatedBy, config.UpdatedAt
-		}
-	}
-
-	return actor
+	return slices.MaxFunc(active, func(one, other orgsync.Config) int {
+		return one.UpdatedAt.Compare(other.UpdatedAt)
+	}).UpdatedBy
 }
 
 // planSyncActions asks each repository in scope what it would take to match.
