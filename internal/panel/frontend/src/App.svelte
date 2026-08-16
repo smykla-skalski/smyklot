@@ -32,10 +32,12 @@
     rootSection,
     rootSectionRoute,
     type HistorySection,
+    type InstallationRoute,
     type PanelRoute,
     type PanelRouter,
     type PanelView,
     type PersonalView,
+    type ResolvedPanelRoute,
     type RootRoute,
     type RootSection,
     type RouteDialog,
@@ -292,12 +294,7 @@
     }
 
     const installationRoute = requested !== null && !('rootView' in requested) ? requested : null;
-    const lastInstallation = prefText(prefs.get('last_installation'));
-    const resolved = resolvePanelRoute(
-      targets.map((target) => target.account.login),
-      installationRoute,
-      lastInstallation === '' ? null : lastInstallation,
-    );
+    const resolved = resolveWorkspace(installationRoute);
     if (resolved === null) {
       selectedId = null;
       return;
@@ -342,6 +339,23 @@
   }
 
   /**
+   * Which workspace an address means: its own account, or the last one the reader
+   * was in.
+   *
+   * Both the address of a workspace view and a personal page that names none need
+   * the same answer, and each had its own copy of the call.
+   */
+  function resolveWorkspace(requested: InstallationRoute | null): ResolvedPanelRoute | null {
+    const lastInstallation = prefText(prefs.get('last_installation'));
+
+    return resolvePanelRoute(
+      targets.map((target) => target.account.login),
+      requested,
+      lastInstallation === '' ? null : lastInstallation,
+    );
+  }
+
+  /**
    * Picks up the workspace the reader was last in, without navigating to it.
    *
    * A personal page names no workspace, so arriving at one directly would leave
@@ -350,12 +364,7 @@
    * and the address stays the personal one.
    */
   function settleInstallationContext(): void {
-    const lastInstallation = prefText(prefs.get('last_installation'));
-    const resolved = resolvePanelRoute(
-      targets.map((target) => target.account.login),
-      null,
-      lastInstallation === '' ? null : lastInstallation,
-    );
+    const resolved = resolveWorkspace(null);
     if (resolved === null) return;
     const target = targetForAccount(resolved.account);
     // Already in a workspace: keep the view the reader was reading, not the default.

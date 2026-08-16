@@ -38,24 +38,20 @@ export interface RequestRate {
 const LIMIT = 25;
 const WINDOW_MS = 2000;
 
-export function createRequestRate(
-  now: () => number = () => Date.now(),
-  limit = LIMIT,
-  windowMs = WINDOW_MS,
-): RequestRate {
+export function createRequestRate(now: () => number = () => Date.now()): RequestRate {
   const seen = new Map<string, number[]>();
 
   return {
     record(address: string): RequestFlood | null {
       const at = now();
-      const times = (seen.get(address) ?? []).filter((time) => at - time < windowMs);
+      const times = (seen.get(address) ?? []).filter((time) => at - time < WINDOW_MS);
       times.push(at);
       seen.set(address, times);
       /* Only the addresses being asked for right now are worth keeping. Without
          this the map is a list of every address the session has ever used. */
-      if (seen.size > 1) prune(seen, at, windowMs);
+      if (seen.size > 1) prune(seen, at, WINDOW_MS);
 
-      return times.length > limit ? { address, count: times.length, withinMs: windowMs } : null;
+      return times.length > LIMIT ? { address, count: times.length, withinMs: WINDOW_MS } : null;
     },
   };
 }
