@@ -194,8 +194,8 @@ func (command *pendingCICommand) cancelPullRequestLocked(
 	if command.sourceCommentID == 0 {
 		request, err := command.store.FinishPR(ctx, pendingci.FinishPRRequest{
 			RepositoryID: command.repositoryID, PullRequest: pullRequest,
-			Lifecycle: pendingci.LifecycleCancelled,
-			Reason:    reason, FinishedAt: command.now(),
+			Lifecycle: pendingci.LifecycleCancelled, Trigger: pendingci.TriggerFallback,
+			Reason: reason, FinishedAt: command.now(),
 		})
 
 		return pendingci.CancelIntentResult{Accepted: true, Request: request}, err

@@ -76,6 +76,42 @@ func declarePendingCISpecs(runtime func() (context.Context, storage.Store, time.
 		Expect(history[0].ID).To(Equal(finished.ID))
 	})
 
+	It("records the true cause of terminal pending CI events", func() {
+		ctx, store, now := runtime()
+		fallbackArm := pendingCIArm(now, 199, 102, "fallback-head")
+		fallback, err := store.Arm(ctx, fallbackArm)
+		Expect(err).NotTo(HaveOccurred())
+		finished, err := store.FinishPR(ctx, pendingci.FinishPRRequest{
+			RepositoryID: fallbackArm.RepositoryID, PullRequest: fallbackArm.PullRequest,
+			Lifecycle: pendingci.LifecycleCancelled, Trigger: pendingci.TriggerFallback,
+			Reason: "cleanup reaction found by sweep", FinishedAt: now.Add(time.Second),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(finished.ID).To(Equal(fallback.Request.ID))
+		events, err := store.ListEvents(ctx, pendingci.EventFilter{RequestID: finished.ID})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(events).To(HaveLen(2))
+		Expect(events[1].Trigger).To(Equal(pendingci.TriggerFallback))
+
+		webhookArm := pendingCIArm(now.Add(time.Minute), 200, 103, "webhook-head")
+		webhookRequest, err := store.Arm(ctx, webhookArm)
+		Expect(err).NotTo(HaveOccurred())
+		cancelled, err := store.CancelBySource(ctx, pendingci.CancelRequest{
+			RepositoryID: webhookArm.RepositoryID, PullRequest: webhookArm.PullRequest,
+			CommentID:      webhookArm.SourceCommentID,
+			SourceRevision: now.Add(2 * time.Minute).Format(time.RFC3339Nano),
+			SourceSequence: 2, SourceOrder: webhookArm.SourceOrder + 1,
+			Trigger: pendingci.TriggerWebhook,
+			Reason:  "source comment edited", CancelledAt: now.Add(2 * time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cancelled.ID).To(Equal(webhookRequest.Request.ID))
+		events, err = store.ListEvents(ctx, pendingci.EventFilter{RequestID: cancelled.ID})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(events).To(HaveLen(2))
+		Expect(events[1].Trigger).To(Equal(pendingci.TriggerWebhook))
+	})
+
 	It("persists the pending CI lifecycle and its crash-safe cleanup phases", func() {
 		ctx, store, now := runtime()
 		arm := pendingCIArm(now, 198, 101, "cleanup-head")

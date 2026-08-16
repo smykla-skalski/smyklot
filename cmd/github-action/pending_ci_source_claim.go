@@ -68,6 +68,6 @@ func pendingCISourceCancellation(
 		RepositoryID: repositoryID,
 		PullRequest:  event.Issue.Number, CommentID: event.Comment.ID,
 		SourceRevision: event.Comment.UpdatedAt, SourceSequence: event.SourceSequence(),
-		Reason: reason, CancelledAt: time.Now().UTC(),
+		Trigger: pendingci.TriggerWebhook, Reason: reason, CancelledAt: time.Now().UTC(),
 	}
 }

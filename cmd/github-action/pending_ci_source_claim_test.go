@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
+	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
 
 func TestPendingCISourceClaimWaitsForRepositoryOwnership(t *testing.T) {
@@ -81,6 +82,19 @@ func TestPendingCISourceClaimCancelsWithClaimedOrder(t *testing.T) {
 	}
 	if result.Cancelled == nil || result.Cancelled.ID != 9 {
 		t.Fatalf("cancelled request = %#v", result.Cancelled)
+	}
+}
+
+func TestPendingCISourceCancellationReportsWebhookCausality(t *testing.T) {
+	t.Parallel()
+	event := &webhook.IssueCommentEvent{Action: webhook.ActionEdited}
+	event.Issue.Number = 198
+	event.Comment.ID = 23
+	event.Comment.UpdatedAt = "2026-08-16T12:00:00Z"
+
+	change := pendingCISourceCancellation(event, "repository:7")
+	if change == nil || change.Trigger != pendingci.TriggerWebhook {
+		t.Fatalf("source cancellation = %+v", change)
 	}
 }
 

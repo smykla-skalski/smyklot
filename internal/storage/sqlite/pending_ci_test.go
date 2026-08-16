@@ -183,6 +183,7 @@ var _ = Describe("pending CI storage [Unit]", func() {
 			SourceRevision: now.Add(4 * time.Minute).Format(time.RFC3339Nano),
 			SourceSequence: 2,
 			SourceOrder:    1,
+			Trigger:        pendingci.TriggerWebhook,
 			Reason:         "source comment changed",
 			CancelledAt:    now.Add(4 * time.Minute),
 		})
@@ -196,6 +197,7 @@ var _ = Describe("pending CI storage [Unit]", func() {
 			SourceRevision: now.Add(4 * time.Minute).Format(time.RFC3339Nano),
 			SourceSequence: 2,
 			SourceOrder:    1,
+			Trigger:        pendingci.TriggerWebhook,
 			Reason:         "source comment changed",
 			CancelledAt:    now.Add(4 * time.Minute),
 		})
@@ -409,6 +411,7 @@ var _ = Describe("pending CI storage [Unit]", func() {
 			RepositoryID: armed.Request.RepositoryID,
 			PullRequest:  armed.Request.PullRequest,
 			Lifecycle:    pendingci.LifecycleCancelled,
+			Trigger:      pendingci.TriggerFallback,
 			Reason:       "pending CI label removed",
 			FinishedAt:   now.Add(3 * time.Second),
 		})
@@ -418,6 +421,7 @@ var _ = Describe("pending CI storage [Unit]", func() {
 			RepositoryID: armed.Request.RepositoryID,
 			PullRequest:  armed.Request.PullRequest,
 			Lifecycle:    pendingci.LifecycleMerged,
+			Trigger:      pendingci.TriggerFallback,
 			Reason:       "late close event",
 			FinishedAt:   now.Add(4 * time.Second),
 		})
@@ -588,6 +592,7 @@ var _ = Describe("pending CI storage [Unit]", func() {
 			CommentID:      newer.SourceCommentID,
 			SourceRevision: now.Format(time.RFC3339Nano), SourceSequence: 2,
 			SourceOrder: 1,
+			Trigger:     pendingci.TriggerWebhook,
 			Reason:      "delayed edit", CancelledAt: now.Add(2 * time.Minute),
 		})
 		Expect(err).NotTo(HaveOccurred())
@@ -671,6 +676,7 @@ var _ = Describe("pending CI storage [Unit]", func() {
 			CommentID:      created.SourceCommentID,
 			SourceRevision: created.SourceRevision, SourceSequence: 2,
 			SourceOrder: 1,
+			Trigger:     pendingci.TriggerWebhook,
 			Reason:      "same-second edit", CancelledAt: now.Add(time.Second),
 		})
 		Expect(err).NotTo(HaveOccurred())

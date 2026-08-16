@@ -226,6 +226,7 @@ type CancelRequest struct {
 	SourceRevision string
 	SourceSequence int
 	SourceOrder    int64
+	Trigger        Trigger
 	Reason         string
 	CancelledAt    time.Time
 }
@@ -252,6 +253,7 @@ type FinishPRRequest struct {
 	RepositoryID string
 	PullRequest  int
 	Lifecycle    Lifecycle
+	Trigger      Trigger
 	Reason       string
 	FinishedAt   time.Time
 }

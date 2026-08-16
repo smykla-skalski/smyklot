@@ -144,7 +144,7 @@ WHERE id = ? AND lifecycle = ? AND revision = ?`,
 	if err := recordPendingCIEvent(ctx, tx, pendingCIAuditEvent(
 		request.ID,
 		pendingci.EventFinished,
-		pendingci.TriggerWebhook,
+		change.Trigger,
 		string(change.Lifecycle),
 		change.Reason,
 		change.FinishedAt,

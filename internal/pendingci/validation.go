@@ -170,6 +170,9 @@ func (request CancelRequest) Validate() error {
 	if _, err := ParseSourceRevision(request.SourceRevision); err != nil {
 		return err
 	}
+	if !request.Trigger.valid() {
+		return invalid("unsupported source cancellation trigger %q", request.Trigger)
+	}
 	if strings.TrimSpace(request.Reason) == "" || request.CancelledAt.IsZero() {
 		return invalid("cancellation reason and time are required")
 	}
@@ -198,6 +201,9 @@ func (request FinishPRRequest) Validate() error {
 	}
 	if request.Lifecycle != LifecycleMerged && request.Lifecycle != LifecycleCancelled {
 		return invalid("pull request finish lifecycle must be merged or cancelled")
+	}
+	if !request.Trigger.valid() {
+		return invalid("unsupported pull request finish trigger %q", request.Trigger)
 	}
 	if strings.TrimSpace(request.Reason) == "" || request.FinishedAt.IsZero() {
 		return invalid("pull request finish reason and time are required")

@@ -196,7 +196,8 @@ func TestPendingCIReactionCleanupFinishesCurrentRequest(t *testing.T) {
 		t.Fatalf("accepted = %t, cleanup called = %t", accepted, called)
 	}
 	if change.RepositoryID != "repository:7" || change.PullRequest != 198 ||
-		change.Lifecycle != pendingci.LifecycleCancelled || change.Reason != "cleanup reaction" {
+		change.Lifecycle != pendingci.LifecycleCancelled ||
+		change.Trigger != pendingci.TriggerFallback || change.Reason != "cleanup reaction" {
 		t.Fatalf("finish request = %+v", change)
 	}
 }

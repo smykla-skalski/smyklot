@@ -791,7 +791,7 @@ WHERE id = ? AND lifecycle = ?`,
 	if err := recordPendingCIEvent(ctx, tx, pendingCIAuditEvent(
 		request.ID,
 		pendingci.EventFinished,
-		pendingci.TriggerCommand,
+		change.Trigger,
 		string(pendingci.LifecycleCancelled),
 		change.Reason,
 		change.CancelledAt,
