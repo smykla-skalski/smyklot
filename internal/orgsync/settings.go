@@ -96,6 +96,35 @@ func (c SettingsConfig) Validate() error {
 		return invalid("a repository must allow at least one way to merge")
 	}
 
+	// A wording no repository could ever accept. GitHub judges a commit
+	// wording against the merge strategy beside it and refuses the pair as a
+	// 422 on the whole request, so DiffSettings withholds one from a repository
+	// that has the strategy off - which is what keeps a squash-only repository
+	// from losing its whole settings change over a merge commit title. A
+	// configuration that turns the strategy off itself is asking for something
+	// impossible everywhere, and the place to say so is beside the field
+	// somebody typed rather than in every plan, silently.
+	fields := settingsFields()
+	byName := fieldsByName(fields)
+
+	for _, field := range fields {
+		if field.requires == "" {
+			continue
+		}
+		if _, _, configured := field.want(c); !configured {
+			continue
+		}
+
+		strategy, known := byName[field.requires]
+		if !known {
+			continue
+		}
+		if value, _, configured := strategy.want(c); configured && value == false {
+			return invalid("%s needs %s, which this configuration turns off",
+				field.name, field.requires)
+		}
+	}
+
 	return nil
 }
 
@@ -133,8 +162,21 @@ type CurrentSettings struct {
 // other: break either and every spec still passes.
 type settingsField struct {
 	name string
+
+	// requires names the merge strategy this setting is meaningless without,
+	// and is empty for one that stands on its own. GitHub refuses a squash
+	// commit title on a repository that does not allow squash merges, and it
+	// refuses it as a 422 on the whole request - so a wording the repository
+	// cannot use would take down every other setting sent beside it.
+	requires string
+
 	want func(SettingsConfig) (value any, display string, configured bool)
 	have func(CurrentSettings) string
+
+	// on is what this setting would be once the change lands, for the settings
+	// something else depends on. Nil where nothing can: only a boolean is ever
+	// the subject of a requires.
+	on func(SettingsConfig, CurrentSettings) bool
 }
 
 // settingsFields is every setting, in the order a person reads them.
@@ -162,16 +204,16 @@ func settingsFields() []settingsField {
 		boolField("allow_update_branch",
 			func(c SettingsConfig) *bool { return c.AllowUpdateBranch },
 			func(s CurrentSettings) bool { return s.AllowUpdateBranch }),
-		textField("squash_merge_commit_title",
+		textField("squash_merge_commit_title", "allow_squash_merge",
 			func(c SettingsConfig) *string { return c.SquashMergeCommitTitle },
 			func(s CurrentSettings) string { return s.SquashMergeCommitTitle }),
-		textField("squash_merge_commit_message",
+		textField("squash_merge_commit_message", "allow_squash_merge",
 			func(c SettingsConfig) *string { return c.SquashMergeCommitMessage },
 			func(s CurrentSettings) string { return s.SquashMergeCommitMessage }),
-		textField("merge_commit_title",
+		textField("merge_commit_title", "allow_merge_commit",
 			func(c SettingsConfig) *string { return c.MergeCommitTitle },
 			func(s CurrentSettings) string { return s.MergeCommitTitle }),
-		textField("merge_commit_message",
+		textField("merge_commit_message", "allow_merge_commit",
 			func(c SettingsConfig) *string { return c.MergeCommitMessage },
 			func(s CurrentSettings) string { return s.MergeCommitMessage }),
 		boolField("has_issues",
@@ -205,16 +247,29 @@ func boolField(
 			return *value, describeBool(*value), true
 		},
 		have: func(s CurrentSettings) string { return describeBool(have(s)) },
+		on: func(c SettingsConfig, s CurrentSettings) bool {
+			// What the repository would be left with: what this change says, or
+			// what it already has where the change says nothing. The resulting
+			// repository is what GitHub judges a dependent setting against, so
+			// switching a strategy on in the same request is what makes the
+			// wording sent beside it legal.
+			if value := want(c); value != nil {
+				return *value
+			}
+
+			return have(s)
+		},
 	}
 }
 
 func textField(
-	name string,
+	name, requires string,
 	want func(SettingsConfig) *string,
 	have func(CurrentSettings) string,
 ) settingsField {
 	return settingsField{
-		name: name,
+		name:     name,
+		requires: requires,
 		want: func(c SettingsConfig) (any, string, bool) {
 			value := want(c)
 			if value == nil {
@@ -225,6 +280,18 @@ func textField(
 		},
 		have: func(s CurrentSettings) string { return have(s) },
 	}
+}
+
+// fieldsByName addresses the table by the name GitHub knows a setting as, which
+// is how a dependent setting finds the one it depends on and how a plan renders
+// what a repository has now.
+func fieldsByName(fields []settingsField) map[string]settingsField {
+	byName := make(map[string]settingsField, len(fields))
+	for _, field := range fields {
+		byName[field.name] = field
+	}
+
+	return byName
 }
 
 // SettingsChange is one repository's settings that differ from configuration.
@@ -239,13 +306,38 @@ type SettingsChange struct {
 	// happened to read - which is how a blind write turns "leave it alone" into
 	// "make it what it was a moment ago", and loses whatever changed in between.
 	Body map[string]any
+
+	// Withheld names what this repository will not be given, because it would
+	// not accept it: a commit wording whose merge strategy is off here.
+	//
+	// Left out rather than sent and refused. GitHub answers the pair with a 422
+	// on the whole request, so one squash-only repository would otherwise lose
+	// every other setting in the same change - which is the failure this port
+	// indicts the tool it replaces for, where one unavailable feature took the
+	// rest of the run down with it. Withholding can only leave a setting as it
+	// was; sending can undo the ones beside it.
+	Withheld []string
 }
 
 // DiffSettings reports what would have to change, and whether anything would.
+//
+// Only what would change: a repository where the sole difference is withheld
+// gets no action at all, because there is nothing this can do about it until
+// somebody configures the strategy or the repository turns it on.
 func DiffSettings(config SettingsConfig, current CurrentSettings) (SettingsChange, bool) {
 	change := SettingsChange{Body: map[string]any{}}
+	fields := settingsFields()
 
-	for _, field := range settingsFields() {
+	// What each boolean would be once this change lands, which is the state
+	// GitHub judges a dependent setting against.
+	resulting := make(map[string]bool, len(fields))
+	for _, field := range fields {
+		if field.on != nil {
+			resulting[field.name] = field.on(config, current)
+		}
+	}
+
+	for _, field := range fields {
 		value, want, configured := field.want(config)
 		if !configured {
 			// Not configured is not a value. Nothing is compared and nothing is
@@ -259,11 +351,18 @@ func DiffSettings(config SettingsConfig, current CurrentSettings) (SettingsChang
 			continue
 		}
 
+		if field.requires != "" && !resulting[field.requires] {
+			change.Withheld = append(change.Withheld, field.name)
+
+			continue
+		}
+
 		change.Fields = append(change.Fields, field.name)
 		change.Body[field.name] = value
 	}
 
 	sort.Strings(change.Fields)
+	sort.Strings(change.Withheld)
 
 	return change, len(change.Fields) > 0
 }
@@ -297,10 +396,25 @@ func PlanSettings(
 		// offer.
 		Subject: SettingsSubject,
 		Before:  describeSettings(change.Fields, current),
-		After:   strings.Join(change.Fields, ", "),
+		After:   describeChange(change),
 		Payload: payload,
 		State:   ActionPending,
 	}}
+}
+
+// describeChange says what this repository is getting, and what it is not.
+//
+// The withheld half is named here because this is the only place a person sees
+// it. A setting that is configured, differs, and is being left alone anyway is
+// not something to discover from a repository that never changed.
+func describeChange(change SettingsChange) string {
+	after := strings.Join(change.Fields, ", ")
+	if len(change.Withheld) == 0 {
+		return after
+	}
+
+	return after + "; leaving " + strings.Join(change.Withheld, ", ") +
+		" alone, the merge strategy each one needs is off here"
 }
 
 // SettingsSubject is what a settings action is about. A repository has one set
@@ -310,10 +424,7 @@ const SettingsSubject = "repository"
 // describeSettings renders what a repository has now, for the fields about to
 // change. Display only.
 func describeSettings(fields []string, current CurrentSettings) string {
-	byName := map[string]settingsField{}
-	for _, field := range settingsFields() {
-		byName[field.name] = field
-	}
+	byName := fieldsByName(settingsFields())
 
 	parts := make([]string, 0, len(fields))
 	for _, name := range fields {

@@ -18,10 +18,10 @@ func disabled() *bool { value := false; return &value }
 var _ = Describe("Settings configuration [Unit]", func() {
 	It("accepts what GitHub accepts", func() {
 		Expect(orgsync.SettingsConfig{
-			AllowSquashMerge:       enabled(),
-			AllowMergeCommit:       disabled(),
-			SquashMergeCommitTitle: text("PR_TITLE"),
-			MergeCommitMessage:     text("BLANK"),
+			AllowSquashMerge:         enabled(),
+			AllowMergeCommit:         disabled(),
+			SquashMergeCommitTitle:   text("PR_TITLE"),
+			SquashMergeCommitMessage: text("BLANK"),
 		}.Validate()).To(Succeed())
 	})
 
@@ -69,6 +69,41 @@ var _ = Describe("Settings configuration [Unit]", func() {
 	It("accepts two off when the third is on", func() {
 		Expect(orgsync.SettingsConfig{
 			AllowMergeCommit: disabled(), AllowSquashMerge: enabled(), AllowRebaseMerge: disabled(),
+		}.Validate()).To(Succeed())
+	})
+
+	// GitHub judges a commit wording against the merge strategy beside it, and
+	// refuses the pair as a 422 on the whole request. A repository that merely
+	// has the strategy off has the wording withheld from it; a configuration
+	// that turns the strategy off itself is asking for something no repository
+	// could accept, so the answer belongs beside the field somebody typed
+	DescribeTable("refuses a wording its own configuration makes impossible",
+		func(config orgsync.SettingsConfig, because string) {
+			err := config.Validate()
+
+			Expect(err).To(MatchError(orgsync.ErrInvalidConfig))
+			Expect(err.Error()).To(ContainSubstring(because))
+		},
+		Entry("a squash title with squash merges off", orgsync.SettingsConfig{
+			AllowSquashMerge: disabled(), SquashMergeCommitTitle: text("PR_TITLE"),
+		}, "squash_merge_commit_title needs allow_squash_merge"),
+		Entry("a squash message with squash merges off", orgsync.SettingsConfig{
+			AllowSquashMerge: disabled(), SquashMergeCommitMessage: text("BLANK"),
+		}, "squash_merge_commit_message needs allow_squash_merge"),
+		Entry("a merge title with merge commits off", orgsync.SettingsConfig{
+			AllowMergeCommit: disabled(), MergeCommitTitle: text("PR_TITLE"),
+		}, "merge_commit_title needs allow_merge_commit"),
+		Entry("a merge message with merge commits off", orgsync.SettingsConfig{
+			AllowMergeCommit: disabled(), MergeCommitMessage: text("BLANK"),
+		}, "merge_commit_message needs allow_merge_commit"),
+	)
+
+	// The same configuration turning the strategy on is what makes the wording
+	// beside it legal, and it is the ordinary way to configure both
+	It("accepts a wording whose strategy it turns on", func() {
+		Expect(orgsync.SettingsConfig{
+			AllowSquashMerge:       enabled(),
+			SquashMergeCommitTitle: text("PR_TITLE"),
 		}.Validate()).To(Succeed())
 	})
 })
@@ -152,7 +187,7 @@ var _ = Describe("Settings planning [Unit]", func() {
 				SquashMergeCommitTitle:   text("PR_TITLE"),
 				SquashMergeCommitMessage: text("BLANK"),
 			},
-			orgsync.CurrentSettings{},
+			orgsync.CurrentSettings{AllowSquashMerge: true},
 		))
 
 		Expect(sent).To(HaveKeyWithValue("allow_update_branch", true))
@@ -178,6 +213,85 @@ var _ = Describe("Settings planning [Unit]", func() {
 		))
 
 		Expect(sent).To(HaveKeyWithValue("has_wiki", false))
+	})
+
+	// One repository having the strategy off must not cost it every other
+	// setting in the same change. GitHub answers the pair with a 422 on the
+	// whole request, which is how the tool this replaces let one unavailable
+	// feature take a run down with it
+	DescribeTable("withholds a wording the repository could not accept",
+		func(config orgsync.SettingsConfig, withheld string) {
+			actions := orgsync.PlanSettings(repo, config,
+				orgsync.CurrentSettings{
+					// Squash-only, and nothing in any of these configurations
+					// says otherwise
+					AllowSquashMerge: false, AllowMergeCommit: false, HasWiki: true,
+				})
+
+			sent := body(actions)
+			Expect(sent).To(HaveKeyWithValue("has_wiki", false))
+			Expect(sent).NotTo(HaveKey(withheld))
+
+			// And it says so where somebody reading the plan will see it, rather
+			// than leaving a configured setting quietly unapplied for ever
+			Expect(actions[0].After).To(ContainSubstring(withheld))
+			Expect(actions[0].After).To(ContainSubstring("leaving"))
+		},
+		Entry("a squash title", orgsync.SettingsConfig{
+			HasWiki: disabled(), SquashMergeCommitTitle: text("PR_TITLE"),
+		}, "squash_merge_commit_title"),
+		Entry("a squash message", orgsync.SettingsConfig{
+			HasWiki: disabled(), SquashMergeCommitMessage: text("BLANK"),
+		}, "squash_merge_commit_message"),
+		Entry("a merge title", orgsync.SettingsConfig{
+			HasWiki: disabled(), MergeCommitTitle: text("PR_TITLE"),
+		}, "merge_commit_title"),
+		Entry("a merge message", orgsync.SettingsConfig{
+			HasWiki: disabled(), MergeCommitMessage: text("BLANK"),
+		}, "merge_commit_message"),
+	)
+
+	// The resulting repository is what GitHub judges the wording against, so a
+	// strategy switched on in the same request carries the wording with it
+	DescribeTable("sends a wording whose strategy the same change turns on",
+		func(config orgsync.SettingsConfig, field, value string) {
+			sent := body(orgsync.PlanSettings(repo, config, orgsync.CurrentSettings{}))
+
+			Expect(sent).To(HaveKeyWithValue(field, value))
+		},
+		Entry("a squash title", orgsync.SettingsConfig{
+			AllowSquashMerge: enabled(), SquashMergeCommitTitle: text("PR_TITLE"),
+		}, "squash_merge_commit_title", "PR_TITLE"),
+		Entry("a squash message", orgsync.SettingsConfig{
+			AllowSquashMerge: enabled(), SquashMergeCommitMessage: text("BLANK"),
+		}, "squash_merge_commit_message", "BLANK"),
+		Entry("a merge title", orgsync.SettingsConfig{
+			AllowMergeCommit: enabled(), MergeCommitTitle: text("PR_TITLE"),
+		}, "merge_commit_title", "PR_TITLE"),
+		Entry("a merge message", orgsync.SettingsConfig{
+			AllowMergeCommit: enabled(), MergeCommitMessage: text("BLANK"),
+		}, "merge_commit_message", "BLANK"),
+	)
+
+	// A repository that already allows it needs nothing said about the strategy
+	It("sends a wording to a repository that already allows the strategy", func() {
+		sent := body(orgsync.PlanSettings(repo,
+			orgsync.SettingsConfig{MergeCommitTitle: text("PR_TITLE")},
+			orgsync.CurrentSettings{AllowMergeCommit: true},
+		))
+
+		Expect(sent).To(HaveKeyWithValue("merge_commit_title", "PR_TITLE"))
+		Expect(sent).To(HaveLen(1))
+	})
+
+	// Nothing this can do about it until somebody configures the strategy or
+	// the repository turns it on, and an action whose body would be empty is a
+	// PATCH that can only fail
+	It("proposes nothing when the only difference is withheld", func() {
+		Expect(orgsync.PlanSettings(repo,
+			orgsync.SettingsConfig{SquashMergeCommitTitle: text("PR_TITLE")},
+			orgsync.CurrentSettings{AllowSquashMerge: false},
+		)).To(BeEmpty())
 	})
 
 	It("carries a payload the executor can read back", func() {
