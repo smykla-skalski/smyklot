@@ -151,7 +151,15 @@ run = "./scripts/backup-db.sh"
 
 [tasks.lint]
 description = "Run all Smyklot linters"
-depends = ["lint:go", "lint:markdown", "lint:mod", "lint:helm", "lint:actions", "lint:shell"]
+depends = [
+  "lint:go",
+  "lint:markdown",
+  "lint:mod",
+  "lint:helm",
+  "lint:actions",
+  "lint:shell",
+  "lint:matrix",
+]
 
 [tasks."lint:go"]
 description = "Lint Go code"
@@ -222,6 +230,13 @@ run = "actionlint"
 [tasks."lint:shell"]
 description = "Shellcheck the repository's shell scripts"
 run = "shellcheck -x scripts/*.sh"
+
+# actionlint reads whether the workflow is valid. This reads whether it is
+# complete: the suites are run by a list of directories now, and a list is a
+# thing a new package can be left out of without anything going red.
+[tasks."lint:matrix"]
+description = "Check the test workflow's matrix runs every Go suite"
+run = "./scripts/check-test-matrix.sh"
 
 [tasks.build]
 description = "Build all Smyklot binaries"

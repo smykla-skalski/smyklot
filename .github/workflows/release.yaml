@@ -40,128 +40,32 @@ jobs:
       - name: Conditions met
         run: echo "Workflow conditions met, proceeding with release process"
 
-  # Run tests
+  # The gate is the Test workflow itself, called rather than copied. It had been
+  # copied, and the copy had already drifted: it ran the suites above the port
+  # against SQLite only, and it ran neither the browser budget nor the chart,
+  # shell, workflow and deploy checks, so a release could publish what a pull
+  # request would have refused.
+  #
+  # It is also almost the whole of the wait before semantic-release. Eleven jobs
+  # in parallel cost about what the slowest one costs, where the single job they
+  # replace cost the sum of every suite: 3m20s of a 7m25s release, against the
+  # 1m20s the same checks take on a pull request.
   test:
     needs: check
     name: Test
-    runs-on: ubuntu-24.04
-
-    # A release ships both engines, so a release must have tested both. Same
-    # server, and the same proof that the suite did not skip, as test.yaml.
-    services:
-      postgres:
-        image: postgres:18-alpine@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2
-        env:
-          POSTGRES_USER: smyklot
-          POSTGRES_PASSWORD: smyklot
-          POSTGRES_DB: smyklot
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U smyklot"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 12
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Install mise
-        uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518 # v4.2.5
-        with:
-          cache: true
-
-      - name: Run tests
-        run: mise run test
-
-      - name: Run tests against PostgreSQL
-        env:
-          SMYKLOT_TEST_POSTGRES_DSN: postgres://smyklot:smyklot@localhost:5432/smyklot?sslmode=disable
-        run: mise run test:storage:postgres
-
-  # Run golangci-lint
-  golangci-lint:
-    needs: check
-    name: Go Lint
-    runs-on: ubuntu-24.04
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
-        with:
-          version: v2.12.2
-
-  # Run markdownlint
-  markdownlint:
-    needs: check
-    name: Markdown Lint
-    runs-on: ubuntu-24.04
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Install mise
-        uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518 # v4.2.5
-        with:
-          cache: true
-
-      - name: Run markdownlint
-        run: mise run lint:markdown
-
-  # Verify go.mod
-  go-mod-verify:
-    needs: check
-    name: Go Mod Verify
-    runs-on: ubuntu-24.04
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Install mise
-        uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518 # v4.2.5
-        with:
-          cache: true
-
-      - name: Verify go.mod
-        run: mise run lint:mod
-
-  # The panel ships inside the Go binary, so its independent TypeScript,
-  # Svelte and production-build gates must pass before semantic-release can
-  # publish an image containing it.
-  panel-frontend:
-    needs: check
-    name: Panel Frontend
-    runs-on: ubuntu-24.04
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Install mise
-        uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518 # v4.2.5
-        with:
-          cache: true
-
-      - name: Lint and type-check
-        run: mise run panel:frontend:lint
-
-      - name: Test
-        run: mise run panel:frontend:test
-
-      - name: Build
-        run: mise run panel:frontend:build
+    uses: ./.github/workflows/test.yaml
+    with:
+      # Its own group. The default is keyed on the ref, and a release dispatched
+      # on main has the same ref as the push run for the commit it is releasing.
+      # One group would put this behind that run, and let the next push to main
+      # cancel it while it waited.
+      concurrency-group: release-test
 
   # Determine if a release should be created
   release:
     name: Semantic Release
     runs-on: ubuntu-24.04
-    needs: [test, golangci-lint, markdownlint, go-mod-verify, panel-frontend]
+    needs: test
     permissions:
       contents: write
       issues: write

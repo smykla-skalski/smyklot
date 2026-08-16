@@ -5,16 +5,32 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # The release gate is this workflow, called. A release must have passed what a
+  # pull request passes, and writing that list down a second time is writing a
+  # list that drifts from this one.
+  workflow_call:
+    inputs:
+      concurrency-group:
+        description: >-
+          The group this run keys its concurrency on. Required, because the
+          default below is keyed on the ref and a caller shares its ref with the
+          runs this workflow starts for itself: a release dispatched on main
+          would queue behind the push run for the same commit, and the push
+          after that would cancel it while it waited.
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 # A superseded pull request run is a run nobody is waiting for any more. Pushes
 # to main are left alone: a release is cut from a commit that has proved itself,
-# so cancelling one would leave main with nothing to have proved it.
+# so cancelling one would leave main with nothing to have proved it. A called
+# run is left alone for the same reason and a plainer one - a release is blocked
+# on it, so nothing about it is superseded.
 concurrency:
-  group: test-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ inputs.concurrency-group || format('test-{0}', github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && !inputs.concurrency-group }}
 
 jobs:
   # One job per area, because ginkgo runs one suite at a time. Giving each area
@@ -172,6 +188,12 @@ jobs:
 
       - name: Lint the workflows
         run: mise run lint:actions
+
+      # actionlint above says the workflow is valid. This says it is complete:
+      # the go matrix names the directories it runs, and a new package can be
+      # left out of that list without anything here going red.
+      - name: Check the matrix runs every suite
+        run: mise run lint:matrix
 
       - name: Lint Markdown
         run: mise run lint:markdown
