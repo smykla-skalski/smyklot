@@ -159,6 +159,7 @@ depends = [
   "lint:actions",
   "lint:shell",
   "lint:matrix",
+  "lint:release",
 ]
 
 [tasks."lint:go"]
@@ -237,6 +238,13 @@ run = "shellcheck -x scripts/*.sh"
 [tasks."lint:matrix"]
 description = "Check the test workflow's matrix runs every Go suite"
 run = "./scripts/check-test-matrix.sh"
+
+# The release config decides a version number, and a wrong one is invisible:
+# the release runs, the tag looks plausible, and the only symptom is a breaking
+# change reaching everyone pinned to the major it broke.
+[tasks."lint:release"]
+description = "Check a breaking change would release a major version"
+run = "./scripts/check-release-rules.sh"
 
 [tasks.build]
 description = "Build all Smyklot binaries"

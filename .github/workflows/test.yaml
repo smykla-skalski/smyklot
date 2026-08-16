@@ -195,6 +195,11 @@ jobs:
       - name: Check the matrix runs every suite
         run: mise run lint:matrix
 
+      # A release config that swallows a breaking change ships one to everybody
+      # pinned to the major it broke, and the release itself looks fine.
+      - name: Check a breaking change releases a major
+        run: mise run lint:release
+
       - name: Lint Markdown
         run: mise run lint:markdown
 
