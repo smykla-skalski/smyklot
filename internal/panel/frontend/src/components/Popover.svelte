@@ -154,6 +154,11 @@
   function measure(): void {
     if (anchor === null || panel === null) return;
 
+    /* Measuring lets the layer back to its natural size for an instant, and a
+       box with no overflow has no scroll position to keep - so reading it here
+       and putting it back is what stops a capped layer from jumping to its top
+       every time it is re-placed. */
+    const scrolledTo = { left: panel.scrollLeft, top: panel.scrollTop };
     const rect = anchor.getBoundingClientRect();
     /* Cleared before they are set, because the strategy can change under the
        same layer: a sidebar menu is its trigger's width until the rail
@@ -191,6 +196,8 @@
 
     panel.style.left = `${at.left}px`;
     panel.style.top = `${at.top}px`;
+    panel.scrollLeft = scrolledTo.left;
+    panel.scrollTop = scrolledTo.top;
   }
 
   function focusInside(): void {
@@ -213,9 +220,17 @@
   $effect(() => {
     if (!open) return;
     const reposition = (): void => place();
+    /* A layer scrolling inside itself has not moved its trigger, so re-placing
+       it there is work at best. It was worse than that: measuring resets the
+       scroll it was reading, so the layer walked back to its top under whoever
+       was scrolling it. */
+    const repositionUnlessInside = (event: Event): void => {
+      if (event.target instanceof Node && panel?.contains(event.target) === true) return;
+      place();
+    };
     /* Capture: the scroller that moves a trigger is usually an inner one - a
        pinned table body, a dialog - and a scroll event does not bubble. */
-    document.addEventListener('scroll', reposition, true);
+    document.addEventListener('scroll', repositionUnlessInside, true);
     window.addEventListener('resize', reposition);
 
     /* Contents can change while it is open - a suggestion list narrows to what
@@ -225,7 +240,7 @@
     if (panel !== null) watcher.observe(panel);
 
     return () => {
-      document.removeEventListener('scroll', reposition, true);
+      document.removeEventListener('scroll', repositionUnlessInside, true);
       window.removeEventListener('resize', reposition);
       watcher.disconnect();
     };

@@ -608,16 +608,24 @@
   .target-body,
   .account-body {
     color: var(--sidebar-menu-text);
-    overflow: hidden;
     padding: 6px;
   }
 
-  /* A column that can shrink, so the search box keeps its size and the list
-     below it takes whatever room the layer measured for itself. */
+  /*
+   * A column that can shrink, so the search box keeps its size and the list
+   * below it takes whatever room the layer measured for itself. It clips
+   * because `.target-options` inside it is what scrolls.
+   *
+   * The account menu deliberately does not: it has no inner scroller, so
+   * clipping there hid whatever did not fit instead of letting the layer scroll
+   * to it. On a short enough window that was Sign out - drawn, measured, and
+   * beyond the layer's bottom edge with no way to reach it.
+   */
   .target-body {
     display: flex;
     flex-direction: column;
     min-height: 0;
+    overflow: hidden;
   }
 
   .target-body.collapsed {
