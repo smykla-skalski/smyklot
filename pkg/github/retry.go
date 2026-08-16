@@ -19,7 +19,12 @@ const (
 	// secondary rate limit can name minutes, and a request path holding a
 	// worker that long is worse than failing and letting the delivery layer
 	// retry with its own, much longer, schedule.
-	maxRetryAfter = 10 * time.Second
+	//
+	// It bounds two different waits. Here it caps the backoff between attempts.
+	// It is also handed to go-github, which otherwise remembers a secondary
+	// limit for as long as GitHub named and answers every later call on the
+	// same client from memory - see newGoGitHub.
+	maxRetryAfter = 5 * time.Second
 
 	// attemptTimeout bounds one attempt, not the call. See retryTransport.attempt.
 	attemptTimeout = 30 * time.Second

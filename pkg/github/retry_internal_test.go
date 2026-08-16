@@ -154,7 +154,7 @@ func TestRetryTransportHonoursRetryAfter(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		attempts++
 		if attempts == 1 {
-			w.Header().Set("Retry-After", "7")
+			w.Header().Set("Retry-After", "3")
 			w.WriteHeader(http.StatusForbidden)
 
 			return
@@ -175,8 +175,8 @@ func TestRetryTransportHonoursRetryAfter(t *testing.T) {
 
 	defer func() { _ = resp.Body.Close() }()
 
-	if len(waits) != 1 || waits[0] != 7*time.Second {
-		t.Fatalf("waits = %v, want [7s]", waits)
+	if len(waits) != 1 || waits[0] != 3*time.Second {
+		t.Fatalf("waits = %v, want [3s]", waits)
 	}
 }
 

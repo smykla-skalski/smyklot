@@ -29,6 +29,21 @@ func newGoGitHub(httpClient *http.Client, baseURL string) (*gogithub.Client, err
 		gogithub.WithHTTPClient(httpClient),
 		gogithub.WithUserAgent(userAgent),
 		gogithub.WithURLs(&base, &base),
+
+		// Bound go-github's own secondary-rate-limit memory.
+		//
+		// On a 403 naming a Retry-After, go-github records the reset time and
+		// then short-circuits every later call on the same client until it
+		// passes - returning a synthetic 403 without touching the network, and
+		// therefore without passing through retryTransport at all. Left
+		// unbounded it remembers whatever GitHub named, which can be minutes.
+		//
+		// That matters because a client is not per-call: sweepInstallation
+		// mints one and reuses it for every repository in an installation. One
+		// request tripping abuse detection would otherwise fail every
+		// repository left in that sweep, instantly and silently, with the
+		// maxRetryAfter cap never getting a look in.
+		gogithub.WithMaxSecondaryRateLimitRetryAfterDuration(maxRetryAfter),
 	)
 }
 
@@ -88,6 +103,26 @@ func wrapError(op error, method, path string, err error) error {
 	// status-code rules, but saying so explicitly costs nothing and survives a
 	// future change to them.
 	return newRetryableAPIError(op, 0, method, path, err.Error())
+}
+
+// fromGitHub reports whether GitHub answered and this is what it said, rather
+// than the answer being unreadable.
+//
+// One list, read by both wrapError and decodeOp. They each had their own and
+// the two had already drifted: decodeOp was missing AcceptedError, so a 202 -
+// "still working on it, ask again" - came back labelled a parse failure.
+func fromGitHub(err error) bool {
+	var (
+		rateErr     *gogithub.RateLimitError
+		abuseErr    *gogithub.AbuseRateLimitError
+		respErr     *gogithub.ErrorResponse
+		acceptedErr *gogithub.AcceptedError
+	)
+
+	return errors.As(err, &rateErr) ||
+		errors.As(err, &abuseErr) ||
+		errors.As(err, &respErr) ||
+		errors.As(err, &acceptedErr)
 }
 
 func statusOf(resp *http.Response, fallback int) int {
@@ -252,13 +287,7 @@ func decodeOp(resp *gogithub.Response, err error) error {
 		return ErrAPIRequest
 	}
 
-	var (
-		rateErr  *gogithub.RateLimitError
-		abuseErr *gogithub.AbuseRateLimitError
-		respErr  *gogithub.ErrorResponse
-	)
-
-	if errors.As(err, &rateErr) || errors.As(err, &abuseErr) || errors.As(err, &respErr) {
+	if fromGitHub(err) {
 		return ErrAPIRequest
 	}
 
