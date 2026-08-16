@@ -61,6 +61,13 @@
     onChange(fallbackValue === undefined ? [] : [fallbackValue]);
   }
 
+  /* The layer returns focus to the trigger itself when it closes with focus
+     still inside it, so this looks like a second copy of that. It stays: the
+     layer can only act on where focus actually is, and Safari does not focus a
+     button that was clicked, so closing from Done or an option leaves focus
+     loose there and nothing to return. Relaxing the layer's rule to cover that
+     would also fire when somebody clicked away to dismiss it, which is the one
+     case where the trigger should not take focus back. */
   function close(): void {
     open = false;
     triggerButton?.focus();
