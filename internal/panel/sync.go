@@ -286,6 +286,20 @@ func syncConfigToDTO(config orgsync.Config) syncConfigDTO {
 		Document:  documentOrEmpty(config.Document),
 	}
 
+	// Bytes that are not JSON at all, before they are carried anywhere.
+	//
+	// A json.RawMessage is copied out verbatim and validated as it goes, so
+	// holding one that does not parse fails the whole response rather than this
+	// field - and the answer somebody would get is a truncated body, not the
+	// message below saying what is wrong. The row is still there; nothing here
+	// pretends to have read it.
+	if !json.Valid(dto.Document) {
+		dto.Document = emptyDocument
+		dto.Unreadable = true
+
+		return dto
+	}
+
 	if config.Kind != orgsync.KindLabels {
 		// Only labels have typed fields here. Every other kind travels in
 		// Document, which is already set, and inventing empty label lists for

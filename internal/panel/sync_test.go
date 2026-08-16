@@ -45,6 +45,34 @@ func TestSyncConfigReportsADocumentItCannotRead(t *testing.T) {
 	}
 }
 
+// TestSyncConfigStillAnswersOnAnUnreadableDocument is the guard on the answer
+// itself reaching the browser.
+//
+// A json.RawMessage is copied out verbatim and validated on the way, so a
+// document that is not JSON fails the whole response - and what a person then
+// gets is a truncated body and a parse error, rather than the careful message
+// about a row this version cannot read. The guard above it is worth nothing if
+// the response carrying it cannot be written.
+func TestSyncConfigStillAnswersOnAnUnreadableDocument(t *testing.T) {
+	dto := syncConfigToDTO(orgsync.Config{
+		Kind:     orgsync.KindLabels,
+		Document: []byte(`{"labels": [ this is not json`),
+	})
+
+	answer, err := json.Marshal(dto)
+	if err != nil {
+		t.Fatalf("the answer could not be written at all: %v", err)
+	}
+
+	var decoded map[string]any
+	if err := json.Unmarshal(answer, &decoded); err != nil {
+		t.Fatalf("the answer is not readable by a browser: %v", err)
+	}
+	if decoded["unreadable"] != true {
+		t.Error("the answer does not say the document could not be read")
+	}
+}
+
 // TestSyncConfigReadsADocumentItCan is the other half: a readable document must
 // not be reported as unreadable, or the panel would refuse to edit a
 // configuration that is perfectly fine.
