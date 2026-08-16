@@ -532,7 +532,6 @@ body {
 
   .btn:active:not(:disabled),
   button:active:not(:disabled),
-  summary:active,
   a[href]:active {
     transform: none;
   }
@@ -879,7 +878,6 @@ button {
 }
 
 button:not(:disabled),
-summary,
 a[href] {
   touch-action: manipulation;
   transition:
@@ -893,7 +891,6 @@ a[href] {
 
 @media (hover: hover) {
   button:hover:not(:disabled),
-  summary:hover,
   a[href]:hover {
     background-image: linear-gradient(
       var(--interactive-hover-layer),
@@ -903,7 +900,6 @@ a[href] {
 }
 
 button:active:not(:disabled),
-summary:active,
 a[href]:active {
   background-image: linear-gradient(var(--press), var(--press));
   transform: scale(var(--press-scale));
@@ -954,7 +950,6 @@ th[aria-sort='descending'] .table-sort-button:focus-visible {
   box-shadow: inset 0 0 0 2px var(--focus);
 }
 
-summary,
 select:not(:disabled),
 input[type='checkbox']:not(:disabled),
 input[type='radio']:not(:disabled) {
@@ -975,11 +970,11 @@ input[type='radio']:not(:disabled) {
    the sidebar, and hugging one of those to its label would break the column it belongs to. A
    control whose only other child is a tooltip is icon-only in flow and stays centred on its box -
    there is no word beside the symbol for it to balance against. */
-:is(button, .btn, summary, a):not(:has(> .sidebar-tooltip)) > svg:first-child:not(:only-child) {
+:is(button, .btn, a):not(:has(> .sidebar-tooltip)) > svg:first-child:not(:only-child) {
   margin-inline-start: calc(-1 * var(--icon-ink-start, 0px));
 }
 
-:is(button, .btn, summary, a):not(:has(> .sidebar-tooltip)) > svg:last-child:not(:only-child) {
+:is(button, .btn, a):not(:has(> .sidebar-tooltip)) > svg:last-child:not(:only-child) {
   margin-inline-end: calc(-1 * var(--icon-ink-end, 0px));
 }
 
@@ -1291,8 +1286,7 @@ select:disabled {
 .btn:focus-visible,
 .text-input:focus-visible,
 .select-input:focus-visible,
-select:focus-visible,
-summary:focus-visible {
+select:focus-visible {
   border-color: var(--focus);
   box-shadow: inset 0 0 0 1px var(--focus);
   outline: 0;
