@@ -162,7 +162,12 @@
   }
 
   function closeFromKeyboard(event: KeyboardEvent): void {
-    if (event.key !== 'Escape' || event.defaultPrevented || !mobileNavigationOpen) return;
+    if (event.key !== 'Escape' || event.defaultPrevented) return;
+    /* An open layer dismisses itself on Escape and returns focus where it came
+       from. Taking the key here would cancel both, so the drawer waits its turn
+       - which is what the innermost thing closing first means, and what the
+       menus themselves used to do before the platform took the job on. */
+    if (accountOpen || targetOpen || !mobileNavigationOpen) return;
     event.preventDefault();
     mobileNavigationOpen = false;
     document.querySelector<HTMLElement>('.mobile-navigation-trigger')?.focus();
@@ -282,7 +287,11 @@
         </button>
       {/snippet}
 
-      <div class="target-body" class:collapsed>
+      <!-- `rail`, not `collapsed`: scoped styles are scoped to the component and
+           not to the element they were written for, so the rail's own
+           `.collapsed` padding reached in here and pushed the search strip off
+           the popover's edges. -->
+      <div class="target-body" class:rail={collapsed}>
         <label class="target-search">
           <span class="visually-hidden">Search workspaces</span>
           <span class="target-search-icon" aria-hidden="true"><Icon name="search" size={18} /></span
@@ -632,7 +641,7 @@
     overflow: hidden;
   }
 
-  .target-body.collapsed {
+  .target-body.rail {
     width: 17rem;
   }
 
@@ -1273,7 +1282,7 @@
     /* Where they open is measured now, from `narrow` above - both drop below
        their trigger and line up with its right edge. Only the width is left. */
     .target-body,
-    .target-body.collapsed {
+    .target-body.rail {
       width: min(19rem, calc(100vw - 2rem));
     }
   }
