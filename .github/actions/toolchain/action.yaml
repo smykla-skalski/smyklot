@@ -22,20 +22,29 @@ runs:
       with:
         cache: true
 
-    # The key carries go.sum rather than the commit, so it is written once and
+    # Two archives, because the two caches answer to different things. The
+    # module cache is the same bytes in every job - it is what go.sum names -
+    # so it is one entry every job restores. The build cache is what that job
+    # compiled, and keeping it to itself is what stops each area's archive
+    # growing into the union of all of them.
+    #
+    # Both keys carry go.sum rather than the commit, so each is written once and
     # then hit by every later run: Go's build cache is content addressed, and
-    # what it saves is the compilation of dependencies and of the race
+    # what it holds is the compilation of dependencies and of the race
     # instrumented standard library, neither of which a change in this
-    # repository invalidates. The second restore key is what makes a new area
-    # start from a sibling's archive instead of from nothing.
-    - name: Restore the Go caches
+    # repository invalidates.
+    - name: Restore the Go module cache
       if: inputs.go-cache != ''
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: |
-          ~/.cache/go-build
-          ~/go/pkg/mod
-        key: ${{ runner.os }}-go-${{ inputs.go-cache }}-${{ hashFiles('go.sum') }}
-        restore-keys: |
-          ${{ runner.os }}-go-${{ inputs.go-cache }}-
-          ${{ runner.os }}-go-
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-gomod-${{ hashFiles('go.sum') }}
+        restore-keys: ${{ runner.os }}-gomod-
+
+    - name: Restore the Go build cache
+      if: inputs.go-cache != ''
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/go-build
+        key: ${{ runner.os }}-gobuild-${{ inputs.go-cache }}-${{ hashFiles('go.sum') }}
+        restore-keys: ${{ runner.os }}-gobuild-${{ inputs.go-cache }}-
