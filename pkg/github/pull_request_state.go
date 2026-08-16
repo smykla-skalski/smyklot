@@ -2,7 +2,7 @@ package github
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 )
@@ -15,17 +15,15 @@ func (c *Client) GetPullRequestState(
 	pullRequest int,
 ) (PullRequestState, error) {
 	path := fmt.Sprintf("/repos/%s/%s/pulls/%d", owner, repo, pullRequest)
-	data, err := c.makeRequestWithRetry(ctx, http.MethodGet, path, nil)
+
+	response, err := doJSON[pullRequestStateResponse](ctx, c, http.MethodGet, path, nil)
 	if err != nil {
 		return PullRequestState{}, err
 	}
-	var response pullRequestStateResponse
-	if err := json.Unmarshal(data, &response); err != nil {
-		return PullRequestState{}, NewAPIError(ErrResponseParse, 0, http.MethodGet, path, err)
-	}
+
 	if response.Head.SHA == "" {
 		return PullRequestState{}, NewAPIError(
-			ErrResponseParse, 0, http.MethodGet, path, fmt.Errorf("no head SHA in response"),
+			ErrResponseParse, 0, http.MethodGet, path, errors.New("no head SHA in response"),
 		)
 	}
 

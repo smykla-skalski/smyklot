@@ -2,7 +2,7 @@ package github
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 )
@@ -27,20 +27,16 @@ func (c *Client) GetIssueComment(
 	commentID int64,
 ) (IssueCommentState, error) {
 	path := fmt.Sprintf("/repos/%s/%s/issues/comments/%d", owner, repository, commentID)
-	data, err := c.makeRequestWithRetry(ctx, http.MethodGet, path, nil)
+
+	comment, err := doJSON[IssueCommentState](ctx, c, http.MethodGet, path, nil)
 	if err != nil {
 		return IssueCommentState{}, err
 	}
-	var comment IssueCommentState
-	if err := json.Unmarshal(data, &comment); err != nil {
-		return IssueCommentState{}, NewAPIError(
-			ErrResponseParse, 0, http.MethodGet, path, err,
-		)
-	}
+
 	if comment.ID == 0 || comment.UpdatedAt == "" {
 		return IssueCommentState{}, NewAPIError(
 			ErrResponseParse, 0, http.MethodGet, path,
-			fmt.Errorf("incomplete issue comment response"),
+			errors.New("incomplete issue comment response"),
 		)
 	}
 

@@ -16,6 +16,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	gogithub "github.com/google/go-github/v90/github"
 )
 
 const (
@@ -61,8 +63,15 @@ var sharedTransport = &http.Transport{
 }
 
 // Client is a GitHub API client
+//
+// The exported surface is the whole contract: nothing outside this package
+// names go-github, and a depguard rule in .golangci.yml keeps it that way. That
+// is what let the transport underneath change without touching the hundred call
+// sites above it, and what keeps a second client from growing back one
+// convenient import at a time.
 type Client struct {
 	httpClient *http.Client
+	gh         *gogithub.Client
 	token      string
 	baseURL    string
 	authScheme string
@@ -98,11 +107,23 @@ func newClient(token, baseURL, authScheme string) (*Client, error) {
 	// would produce a double slash in the request URL
 	baseURL = strings.TrimSuffix(baseURL, "/")
 
-	return &Client{
-		httpClient: &http.Client{
-			Timeout:   defaultTimeout,
-			Transport: sharedTransport,
+	httpClient := &http.Client{
+		Timeout: defaultTimeout,
+		Transport: authTransport{
+			base:   sharedTransport,
+			scheme: authScheme,
+			token:  token,
 		},
+	}
+
+	gh, err := newGoGitHub(httpClient, baseURL)
+	if err != nil {
+		return nil, NewAPIError(ErrAPIRequest, 0, "", "", err)
+	}
+
+	return &Client{
+		httpClient: httpClient,
+		gh:         gh,
 		token:      token,
 		baseURL:    baseURL,
 		authScheme: authScheme,
@@ -318,24 +339,20 @@ func (c *Client) EnableAutoMerge(
 ) error {
 	// Get PR node ID first (required for GraphQL)
 	path := fmt.Sprintf("/repos/%s/%s/pulls/%d", owner, repo, prNumber)
-	data, err := c.makeRequest(ctx, "GET", path, nil)
+
+	pull, _, err := c.gh.PullRequests.Get(ctx, owner, repo, prNumber)
 	if err != nil {
-		return err
+		return wrapError(ErrAPIRequest, http.MethodGet, path, err)
 	}
 
-	var prData map[string]interface{}
-	if err := json.Unmarshal(data, &prData); err != nil {
-		return NewAPIError(ErrResponseParse, 0, "GET", path, err)
-	}
-
-	nodeID, ok := prData["node_id"].(string)
-	if !ok {
+	nodeID := pull.GetNodeID()
+	if nodeID == "" {
 		return NewAPIError(
 			ErrResponseParse,
 			0,
-			"GET",
+			http.MethodGet,
 			path,
-			fmt.Errorf("no node_id in response"),
+			errors.New("no node_id in response"),
 		)
 	}
 
@@ -353,21 +370,16 @@ func (c *Client) EnableAutoMerge(
 	}
 
 	// Enable auto-merge via GraphQL (using parameterized query to prevent injection)
-	graphqlPath := "/graphql"
-	query := map[string]interface{}{
-		"query": `mutation($pullRequestId: ID!, $mergeMethod: PullRequestMergeMethod!) {
+	const mutation = `mutation($pullRequestId: ID!, $mergeMethod: PullRequestMergeMethod!) {
 			enablePullRequestAutoMerge(input: {pullRequestId: $pullRequestId, mergeMethod: $mergeMethod}) {
 				clientMutationId
 			}
-		}`,
-		"variables": map[string]interface{}{
-			"pullRequestId": nodeID,
-			"mergeMethod":   gqlMethod,
-		},
-	}
+		}`
 
-	_, err = c.makeRequest(ctx, "POST", graphqlPath, query)
-	return err
+	return c.graphql(ctx, mutation, map[string]any{
+		"pullRequestId": nodeID,
+		"mergeMethod":   gqlMethod,
+	}, nil)
 }
 
 // parseReactions parses raw reaction data into Reaction structs
@@ -438,49 +450,7 @@ func (c *Client) GetCommentReactions(
 	return parseReactions(rawReactions), nil
 }
 
-// AddLabel adds a label to a pull request
-func (c *Client) AddLabel(ctx context.Context, owner, repo string, prNumber int, label string) error {
-	path := fmt.Sprintf("/repos/%s/%s/issues/%d/labels", owner, repo, prNumber)
-
-	payload := map[string][]string{
-		"labels": {label},
-	}
-
-	_, err := c.makeRequest(ctx, "POST", path, payload)
-	return err
-}
-
-// RemoveLabel removes a label from a pull request
-func (c *Client) RemoveLabel(ctx context.Context, owner, repo string, prNumber int, label string) error {
-	path := fmt.Sprintf("/repos/%s/%s/issues/%d/labels/%s", owner, repo, prNumber, label)
-
-	_, err := c.makeRequest(ctx, "DELETE", path, nil)
-	return err
-}
-
-// GetLabels retrieves all labels from a pull request
-func (c *Client) GetLabels(ctx context.Context, owner, repo string, prNumber int) ([]string, error) {
-	path := fmt.Sprintf("/repos/%s/%s/issues/%d/labels", owner, repo, prNumber)
-
-	data, err := c.makeRequest(ctx, "GET", path, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	var rawLabels []map[string]interface{}
-	if err := json.Unmarshal(data, &rawLabels); err != nil {
-		return nil, NewAPIError(ErrResponseParse, 0, "GET", path, err)
-	}
-
-	labels := make([]string, 0, len(rawLabels))
-	for _, l := range rawLabels {
-		if name, ok := l["name"].(string); ok {
-			labels = append(labels, name)
-		}
-	}
-
-	return labels, nil
-}
+// Label operations live in labels.go.
 
 // GetCodeowners fetches the CODEOWNERS file content from the repository
 //

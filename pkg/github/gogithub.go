@@ -1,0 +1,188 @@
+package github
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"strings"
+
+	gogithub "github.com/google/go-github/v90/github"
+)
+
+// newGoGitHub builds the typed client this package speaks GitHub through.
+//
+// WithURLs, not WithEnterpriseURLs. The latter appends /api/v3/ to whatever it
+// is given, which is right for a real Enterprise host and wrong for everything
+// this package is pointed at: SMYKLOT_GITHUB_API_URL names a proxy or mirror
+// that already serves the API at its root, and every spec in this package hands
+// it an httptest server that serves /repos/... directly. WithURLs takes the
+// base verbatim.
+//
+// go-github resolves each endpoint as a relative reference against the base, so
+// the base needs a trailing slash or the last path segment is discarded.
+// newClient has just stripped one, deliberately, because the hand-rolled
+// request path concatenates and would otherwise double it.
+func newGoGitHub(httpClient *http.Client, baseURL string) (*gogithub.Client, error) {
+	base := strings.TrimSuffix(baseURL, "/") + "/"
+
+	return gogithub.NewClient(
+		gogithub.WithHTTPClient(httpClient),
+		gogithub.WithUserAgent(userAgent),
+		gogithub.WithURLs(&base, &base),
+	)
+}
+
+// wrapError turns a go-github error into the APIError the rest of Smyklot
+// already understands.
+//
+// Everything downstream keys on APIError: retryableDelivery asks Retryable(),
+// mergeHeadChanged looks for a 409, and getFileContent turns a 404 into a nil
+// result rather than an error. Mapping here rather than changing those callers
+// is what lets the transport swap underneath them.
+//
+// The *http.Response go-github carries on its error types is deliberately not
+// stored. It holds the request headers, and therefore the installation token,
+// and an APIError reaches both the log and the /failures endpoint. The
+// redactor only knows the three process-level secrets; an installation token is
+// minted per delivery and can never be in that list, so the only safe handling
+// is never to capture it.
+func wrapError(op error, method, path string, err error) error {
+	if err == nil {
+		return nil
+	}
+
+	var (
+		rateErr     *gogithub.RateLimitError
+		abuseErr    *gogithub.AbuseRateLimitError
+		respErr     *gogithub.ErrorResponse
+		acceptedErr *gogithub.AcceptedError
+	)
+
+	switch {
+	case errors.As(err, &rateErr):
+		return newRetryableAPIError(
+			op, statusOf(rateErr.Response, http.StatusForbidden), method, path,
+			rateErr.Message,
+		)
+
+	case errors.As(err, &abuseErr):
+		return newRetryableAPIError(
+			op, statusOf(abuseErr.Response, http.StatusForbidden), method, path,
+			abuseErr.Message,
+		)
+
+	case errors.As(err, &acceptedErr):
+		// GitHub scheduled the work and has not finished it. Asking again is
+		// exactly the documented remedy.
+		return newRetryableAPIError(op, http.StatusAccepted, method, path, acceptedErr.Error())
+
+	case errors.As(err, &respErr):
+		// Message is the same field the hand-rolled client extracted, so the
+		// substring heuristics in Retryable keep matching what they used to.
+		return NewAPIError(
+			op, statusOf(respErr.Response, 0), method, path, errors.New(detailOf(respErr)),
+		)
+	}
+
+	// No status: the request never completed. That is already retryable by the
+	// status-code rules, but saying so explicitly costs nothing and survives a
+	// future change to them.
+	return newRetryableAPIError(op, 0, method, path, err.Error())
+}
+
+func statusOf(resp *http.Response, fallback int) int {
+	if resp == nil {
+		return fallback
+	}
+
+	return resp.StatusCode
+}
+
+// detailOf prefers GitHub's per-field validation errors when it sent any.
+// "Validation Failed" alone tells an operator nothing; "name already_exists"
+// tells them which label collided.
+func detailOf(err *gogithub.ErrorResponse) string {
+	if len(err.Errors) == 0 {
+		return err.Message
+	}
+
+	parts := make([]string, 0, len(err.Errors))
+	for _, item := range err.Errors {
+		detail := strings.TrimSpace(item.Field + " " + item.Code)
+		if item.Message != "" {
+			detail = strings.TrimSpace(item.Field + " " + item.Message)
+		}
+
+		if detail != "" {
+			parts = append(parts, detail)
+		}
+	}
+
+	if len(parts) == 0 {
+		return err.Message
+	}
+
+	return err.Message + ": " + strings.Join(parts, "; ")
+}
+
+// doJSON sends one request through go-github's plumbing and decodes the answer
+// into a type this package owns.
+//
+// It exists for the handful of responses where go-github's model loses
+// something. The clearest case is an issue comment's updated_at: go-github
+// parses it into a Timestamp, and every way of turning that back into a string
+// is lossy in a way that matters here, because the value is an opaque revision
+// token compared byte-for-byte against what a webhook payload carried.
+// RFC3339 truncates sub-second precision and RFC3339Nano trims trailing zeros;
+// either one turns "unchanged" into "changed" and makes Smyklot act twice.
+//
+// Everything else still comes from go-github: the base URL, the auth transport,
+// the rate-limit accounting and the typed errors wrapError reads.
+func doJSON[T any](
+	ctx context.Context,
+	client *Client,
+	method, path string,
+	body any,
+) (T, error) {
+	out, _, err := doJSONPage[T](ctx, client, method, path, body)
+
+	return out, err
+}
+
+// doJSONPage is doJSON plus the response, for the callers that have to follow
+// GitHub's Link header themselves.
+func doJSONPage[T any](
+	ctx context.Context,
+	client *Client,
+	method, path string,
+	body any,
+) (T, *gogithub.Response, error) {
+	var out T
+
+	req, err := client.gh.NewRequest(ctx, method, strings.TrimPrefix(path, "/"), body)
+	if err != nil {
+		return out, nil, NewAPIError(ErrAPIRequest, 0, method, path, err)
+	}
+
+	resp, err := client.gh.Do(req, &out)
+	if err != nil {
+		return out, resp, wrapError(ErrAPIRequest, method, path, err)
+	}
+
+	return out, resp, nil
+}
+
+// newRetryableAPIError marks an error retryable on GitHub's own authority
+// rather than by inference from its status code.
+func newRetryableAPIError(op error, statusCode int, method, path, detail string) error {
+	retryable := true
+
+	return &APIError{
+		Op:         op,
+		StatusCode: statusCode,
+		Method:     method,
+		Path:       path,
+		Detail:     detail,
+		retryable:  &retryable,
+	}
+}

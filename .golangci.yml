@@ -57,6 +57,18 @@ linters:
               desc: name a database with SMYKLOT_DATABASE_URL and open it with internal/storage/open
             - pkg: github.com/smykla-skalski/smyklot/internal/storage/postgres
               desc: name a database with SMYKLOT_DATABASE_URL and open it with internal/storage/open
+        # Same rule, one layer over: pkg/github is the only place that knows
+        # which HTTP library talks to GitHub. Smyklot ran a hand-rolled client
+        # and go-github side by side for exactly as long as it took to finish
+        # the migration, and the way that state comes back is one caller
+        # reaching past the facade for one convenient type.
+        github-seam:
+          list-mode: lax
+          files:
+            - "!**/pkg/github/**"
+          deny:
+            - pkg: github.com/google/go-github
+              desc: only pkg/github may name the GitHub library; add a method to pkg/github.Client instead
 
     cyclop:
       max-complexity: 30

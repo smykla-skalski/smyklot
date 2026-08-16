@@ -60,25 +60,22 @@ func (c *Client) GetRequiredStatusChecks(
 		repo,
 		url.PathEscape(branch),
 	)
-	data, err := c.makeRequest(ctx, http.MethodGet, path, nil)
+	response, err := doJSON[struct {
+		Contexts []string `json:"contexts"`
+		Checks   []struct {
+			Context string `json:"context"`
+			AppID   *int64 `json:"app_id"`
+		} `json:"checks"`
+	}](ctx, c, http.MethodGet, path, nil)
 	if err != nil {
+		// An unprotected branch has no required checks, which is an answer
+		// rather than a failure.
 		var apiErr *APIError
 		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
 			return []RequiredCheck{}, nil
 		}
 
 		return nil, err
-	}
-
-	var response struct {
-		Contexts []string `json:"contexts"`
-		Checks   []struct {
-			Context string `json:"context"`
-			AppID   *int64 `json:"app_id"`
-		} `json:"checks"`
-	}
-	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, NewAPIError(ErrResponseParse, 0, http.MethodGet, path, err)
 	}
 
 	required := make([]RequiredCheck, 0, len(response.Contexts)+len(response.Checks))

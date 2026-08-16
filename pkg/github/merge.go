@@ -2,7 +2,6 @@ package github
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -41,18 +40,17 @@ func (c *Client) mergePR(
 		body["sha"] = headSHA
 	}
 
-	data, err := c.makeRequestWithRetry(ctx, http.MethodPut, path, body)
+	// A merge that GitHub declines can still answer 200 with merged:false, so
+	// the body is checked rather than the status alone - the same shape of
+	// mistake the GraphQL path used to make.
+	response, err := doJSON[struct {
+		Merged  bool   `json:"merged"`
+		Message string `json:"message"`
+	}](ctx, c, http.MethodPut, path, body)
 	if err != nil {
 		return err
 	}
 
-	var response struct {
-		Merged  bool   `json:"merged"`
-		Message string `json:"message"`
-	}
-	if err := json.Unmarshal(data, &response); err != nil {
-		return NewAPIError(ErrResponseParse, 0, http.MethodPut, path, err)
-	}
 	if !response.Merged {
 		message := response.Message
 		if message == "" {

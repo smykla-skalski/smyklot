@@ -33,6 +33,13 @@ type APIError struct {
 	Method     string
 	Path       string
 	Detail     string
+
+	// retryable records what GitHub said, when it said anything. A typed rate
+	// limit error is authoritative in a way a status code is not: 403 alone is
+	// as likely to be a permission the App was never granted, which no amount
+	// of retrying will produce. Nil means nothing authoritative was available
+	// and Retryable falls back to reading the status code.
+	retryable *bool
 }
 
 // NewAPIError creates a new API error
@@ -92,7 +99,17 @@ func (e *APIError) Is(target error) bool {
 
 // Retryable reports whether repeating the API operation can reasonably change
 // its outcome. Consumers do not need to know GitHub's status-code policy.
+//
+// This is the single policy. The transport used to carry a second, narrower one
+// that retried only 429 and 5xx, so a secondary-rate-limit 403 was abandoned by
+// the client and would have been retried by the delivery layer had it ever got
+// there. One policy, read in both places, is what stops those drifting apart
+// again.
 func (e *APIError) Retryable() bool {
+	if e.retryable != nil {
+		return *e.retryable
+	}
+
 	if e.StatusCode == 0 {
 		return true
 	}
