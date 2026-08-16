@@ -18,7 +18,7 @@ import { describe, expect, it } from 'vitest';
  * reparents a node also takes it away.
  */
 
-const components = new URL('../src/components/', import.meta.url);
+const components = new URL('../src/lib/components/', import.meta.url);
 
 describe('a component that reparents a node', () => {
   const movers = readdirSync(components)

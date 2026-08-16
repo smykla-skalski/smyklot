@@ -16,7 +16,7 @@ import {
  * only what a 404 can honestly say.
  */
 
-const components = new URL('../src/components/', import.meta.url);
+const components = new URL('../src/lib/components/', import.meta.url);
 const read = (file: string): string => readFileSync(new URL(file, components), 'utf8');
 
 function documentWith(content: string | null): Document {

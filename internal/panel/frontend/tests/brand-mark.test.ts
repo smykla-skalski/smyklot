@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
  * Checked as source because the runtime here has no DOM and no cascade.
  */
 
-const components = new URL('../src/components/', import.meta.url);
+const components = new URL('../src/lib/components/', import.meta.url);
 
 const sources = readdirSync(components)
   .filter((file) => file.endsWith('.svelte'))
@@ -34,7 +34,7 @@ describe('the brand mark', () => {
     // The rail names the same file in a comment, sizing its collapsed overlay against the halo's
     // drawn geometry, so this asks who *imports* it rather than who mentions it.
     const importers = sources
-      .filter(([, source]) => /^\s*import\s+\w+\s+from\s+'[^']*smyklot-halo\.svg';$/mu.test(source))
+      .filter(([, source]) => /import\s+\w+\s+from\s+\x27[^\x27]*smyklot-halo\.svg\x27/.test(source))
       .map(([file]) => file);
 
     expect(importers).toEqual(['BrandMark.svelte']);

@@ -110,7 +110,7 @@ describe('Drift [Unit]', () => {
  */
 describe('NightAstronaut [Unit]', () => {
   const source = readFileSync(
-    new URL('../src/components/NightAstronaut.svelte', import.meta.url),
+    new URL('../src/lib/components/NightAstronaut.svelte', import.meta.url),
     'utf8',
   );
 

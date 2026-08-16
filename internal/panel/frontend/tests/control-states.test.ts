@@ -37,7 +37,7 @@ function band(ground: string): { hover: [number, number]; press: [number, number
 
 /** The share a component's own stylesheet mixes at, read from the file rather than copied. */
 function shares(file: string, pattern: RegExp): number[] {
-  const source = readFileSync(new URL(`../src/components/${file}`, import.meta.url), 'utf8');
+  const source = readFileSync(new URL(`../src/lib/components/${file}`, import.meta.url), 'utf8');
   const found = [...source.matchAll(pattern)].map((match) => Number(match.groups?.share) / 100);
   if (found.length !== 2) throw new Error(`${file} no longer has a hover and a press mix`);
   return found;

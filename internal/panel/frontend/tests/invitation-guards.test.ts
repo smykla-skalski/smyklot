@@ -14,7 +14,7 @@ import { describe, expect, it } from 'vitest';
  * thing that would silently stop working, not a shape the markup happens to have today.
  */
 
-const components = new URL('../src/components/', import.meta.url);
+const components = new URL('../src/lib/components/', import.meta.url);
 const source = (file: string): string => readFileSync(new URL(file, components), 'utf8');
 
 const dialogs = [

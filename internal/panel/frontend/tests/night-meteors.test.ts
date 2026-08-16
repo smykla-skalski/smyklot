@@ -92,7 +92,7 @@ describe('Streak [Unit]', () => {
 /** The component's safety promises, checked as source like the others'. */
 describe('NightMeteors [Unit]', () => {
   const source = readFileSync(
-    new URL('../src/components/NightMeteors.svelte', import.meta.url),
+    new URL('../src/lib/components/NightMeteors.svelte', import.meta.url),
     'utf8',
   );
 

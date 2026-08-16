@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
  * Checked as source, because the runtime here has no DOM and no cascade.
  */
 
-const components = new URL('../src/components/', import.meta.url);
+const components = new URL('../src/lib/components/', import.meta.url);
 
 const sources = readdirSync(components)
   .filter((file) => file.endsWith('.svelte'))

@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
  */
 
 const page = readFileSync(
-  new URL('../src/components/InvitationPage.svelte', import.meta.url),
+  new URL('../src/lib/components/InvitationPage.svelte', import.meta.url),
   'utf8',
 );
 

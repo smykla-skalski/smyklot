@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
-const index = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-const panelAvatar = readFileSync(new URL('../public/smyklot-avatar.png', import.meta.url));
+const index = readFileSync(new URL('../src/app.html', import.meta.url), 'utf8');
+const panelAvatar = readFileSync(new URL('../static/smyklot-avatar.png', import.meta.url));
 const latestAvatar = readFileSync(
   new URL('../../../../assets/smyklot-avatar-256-transparent-wide.png', import.meta.url),
 );

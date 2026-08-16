@@ -14,8 +14,8 @@ import { describe, expect, it } from 'vitest';
 
 const read = (path: string): string => readFileSync(new URL(path, import.meta.url), 'utf8');
 const halo = read('../src/assets/smyklot-halo.svg');
-const mark = read('../src/components/BrandMark.svelte');
-const rail = read('../src/components/IdentityBar.svelte');
+const mark = read('../src/lib/components/BrandMark.svelte');
+const rail = read('../src/lib/components/IdentityBar.svelte');
 
 function number(source: string, pattern: RegExp): number {
   const found = pattern.exec(source);

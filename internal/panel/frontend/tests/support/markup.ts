@@ -10,7 +10,7 @@
 
 import { readFileSync, readdirSync } from 'node:fs';
 
-const components = new URL('../../src/components/', import.meta.url);
+const components = new URL('../../src/lib/components/', import.meta.url);
 
 /**
  * Every component, as `[filename, source]`.

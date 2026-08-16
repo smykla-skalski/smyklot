@@ -17,7 +17,10 @@ import { describe, expect, it } from 'vitest';
  * centre both boxes. Checked as source, because the runtime here has no DOM and no cascade.
  */
 
-const tabs = readFileSync(new URL('../src/components/ViewTabs.svelte', import.meta.url), 'utf8');
+const tabs = readFileSync(
+  new URL('../src/lib/components/ViewTabs.svelte', import.meta.url),
+  'utf8',
+);
 
 /**
  * Every character a regular expression reads as syntax.
@@ -170,7 +173,10 @@ describe('an icon in a column', () => {
      * Read out of the path rather than asserted as a string: what matters is where the shape ends
      * up, not how it is written.
      */
-    const icons = readFileSync(new URL('../src/components/Icon.svelte', import.meta.url), 'utf8');
+    const icons = readFileSync(
+      new URL('../src/lib/components/Icon.svelte', import.meta.url),
+      'utf8',
+    );
     const folder = /name === 'repositories'\}[\s\S]*?<path d="(?<d>M[^"]+)"/u.exec(icons)?.groups
       ?.d;
 

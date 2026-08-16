@@ -114,7 +114,7 @@ interface WorkerHarness {
 }
 
 async function loadWorker(): Promise<WorkerHarness> {
-  const source = await readFile(new URL('../public/sw.js', import.meta.url), 'utf8');
+  const source = await readFile(new URL('../static/sw.js', import.meta.url), 'utf8');
   const listeners: WorkerHarness['listeners'] = {};
   const addAll = vi.fn().mockResolvedValue(undefined);
   const match = vi.fn().mockResolvedValue(undefined);

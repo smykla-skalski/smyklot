@@ -18,10 +18,10 @@ import { describe, expect, it } from 'vitest';
  * Checked as source because the runtime here has no DOM.
  */
 
-const components = new URL('../src/components/', import.meta.url);
+const components = new URL('../src/lib/components/', import.meta.url);
 
 const sources = [
-  ['App.svelte', readFileSync(new URL('../src/App.svelte', import.meta.url), 'utf8')] as const,
+  ['App.svelte', readFileSync(new URL('../src/lib/App.svelte', import.meta.url), 'utf8')] as const,
   ...readdirSync(components)
     .filter((file) => file.endsWith('.svelte'))
     .map((file) => [file, readFileSync(new URL(file, components), 'utf8')] as const),

@@ -14,7 +14,7 @@ import { describe, expect, it } from 'vitest';
  * against looks like a correct change and only shows up as a misaligned header.
  */
 const source = readFileSync(
-  fileURLToPath(new URL('../src/components/RepositoryList.svelte', import.meta.url)),
+  fileURLToPath(new URL('../src/lib/components/RepositoryList.svelte', import.meta.url)),
   'utf8',
 );
 

@@ -6,7 +6,7 @@ import tseslint from 'typescript-eslint';
 import svelteConfig from './svelte.config.js';
 
 export default tseslint.config(
-  { ignores: ['dist/**', 'node_modules/**'] },
+  { ignores: ['dist/**', 'node_modules/**', '.svelte-kit/**'] },
   js.configs.recommended,
   tseslint.configs.recommended,
   svelte.configs.recommended,
@@ -28,6 +28,15 @@ export default tseslint.config(
     files: ['*.config.ts', '*.config.js', 'tests/**/*.ts', 'dev/**/*.ts'],
     languageOptions: {
       globals: { ...globals.node },
+    },
+  },
+  {
+    // Address generation goes through the panel's own route helpers
+    // (`panelRoutePath`), which know the installation/root console grammar.
+    // `resolve()` would only accept literal templates, so the href checks
+    // SvelteKit turns on would flag every navigation in the app.
+    rules: {
+      'svelte/no-navigation-without-resolve': 'off',
     },
   },
 );

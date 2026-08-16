@@ -10,9 +10,9 @@ import { describeSessionEnd } from '../src/lib/panel-session';
  * of its several states it says it in, is the whole of the first impression.
  */
 
-const components = new URL('../src/components/', import.meta.url);
+const components = new URL('../src/lib/components/', import.meta.url);
 const read = (file: string): string => readFileSync(new URL(file, components), 'utf8');
-const app = readFileSync(new URL('../src/App.svelte', import.meta.url), 'utf8');
+const app = readFileSync(new URL('../src/lib/App.svelte', import.meta.url), 'utf8');
 const session = readFileSync(new URL('../src/lib/panel-session.ts', import.meta.url), 'utf8');
 
 describe('why the session ended', () => {
