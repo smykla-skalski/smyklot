@@ -1,6 +1,8 @@
 import { panelUrl } from './base';
 import type { PanelStreamHandle, PanelStreamHandlers, PanelWebSocketFactory } from './events';
 import { openPanelStream, panelStreamUrl } from './events';
+import type { RequestFlood } from './request-rate';
+import { createRequestRate, floodMessage } from './request-rate';
 import type {
   AuditEntry,
   AuditHistoryRequest,
@@ -189,8 +191,26 @@ export function createPanelApi(
   createWebSocket: PanelWebSocketFactory = browserWebSocket,
 ): PanelApi {
   const sessionLost = new Set<(code: string) => void>();
+  const rate = createRequestRate();
+  const reported = new Set<string>();
+
+  /**
+   * Says so, once, and only in the browser console.
+   *
+   * Not thrown, and not shown to anybody: a reader whose panel is caught in a
+   * loop is better off with a page that works than with an error explaining why
+   * it should not. This is here so that whoever opens the console - which is
+   * where a developer looks and where a report from a colleague starts - finds
+   * the cause written down instead of a request log scrolling past.
+   */
+  const reportFlood = (flood: RequestFlood | null): void => {
+    if (flood === null || reported.has(flood.address)) return;
+    reported.add(flood.address);
+    console.error(`[smyklot] ${floodMessage(flood)}`);
+  };
 
   const request = async (path: string, init?: RequestInit): Promise<Response> => {
+    reportFlood(rate.record(path));
     const response = await fetchImpl(panelUrl(base, path), {
       ...init,
       credentials: 'same-origin',
