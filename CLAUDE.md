@@ -26,7 +26,7 @@ Go + Ginkgo/Gomega, deployed as Docker-based GitHub Action.
 - `pkg/permissions/` — parses `.github/CODEOWNERS` (global `*` pattern only), checks if user is owner; called before approve/merge
 - `pkg/config/` — loads config via Viper (CLI flags > env vars > JSON > defaults); consumed by all handlers
 - `pkg/feedback/` — builds reaction/comment responses; called after each command execution
-- `pkg/github/` — GitHub API client (REST + GraphQL); used by all handlers for approvals, merges, reactions, comments
+- `pkg/github/` — GitHub API client (REST + GraphQL); used by all handlers for approvals, merges, reactions, comments. The only place that names go-github: `depguard` denies it everywhere else, so a new endpoint is a method here rather than an import there
 - `pkg/githubapp/` — mints and caches App JWTs and per-installation tokens; the service needs one token per installation
 - `pkg/webhook/` — parses `issue_comment` deliveries and de-duplicates them; re-exports signature verification from `go-githubauth/webhook`
 - `pkg/logging/` — builds the `slog` logger, carries it on the context, and redacts known secrets from every line
@@ -68,6 +68,10 @@ Go + Ginkgo/Gomega, deployed as Docker-based GitHub Action.
 - `dispatch` must never send on `s.jobs` directly — use `enqueue`, which holds `queueMu` for read. `Shutdown` abandons a running handler once its deadline passes, and a bare send on the closed queue panics rather than taking `default` (`cmd/github-action/server.go`)
 - Metrics live on the **admin listener**, never the webhook one — the webhook port faces the internet, and queue depth and failure reasons should not
 - Never use a request header as a metric label — the signature does not cover headers, so an unbounded value mints a time series per request (`eventLabel` in `cmd/github-action/server.go`)
+- The GitHub client's `http.Client` has **no `Timeout`**, and that is deliberate. Retry lives in the transport, so a client-level timeout would bound all three attempts and their backoffs together — a first attempt that hung would leave the retries no time and the backoff would be spent waiting for a request that could never be made. Each attempt gets its own deadline in `retryTransport.attempt`, tied to the response body so it cannot fire while a caller is still reading (`pkg/github/retry.go`)
+- `APIError.Retryable()` is the **only** retry policy. The transport used to carry a second, narrower one covering just 429 and 5xx, so the client abandoned a secondary-rate-limit 403 that the delivery layer would have retried had it ever arrived
+- GraphQL answers a **refused** mutation with HTTP 200 and an `errors` array. Branch on the body, never the status — this is how the bot came to post "auto-merge enabled" on pull requests where the mutation had been rejected (`pkg/github/graphql.go`)
+- The service test stub 404s any path it does not route, and names it. It used to answer `200 {}`, which a list decodes as empty and an object as a zero struct, so a spec exercising an unstubbed endpoint passed while proving nothing (`cmd/github-action/githubstub_test.go`)
 - Log through `logging.From(ctx)` where the work carries per-item attributes (a delivery, a repo, a PR); use `s.logger` in background loops that carry none (`probe`, `pollLoop`, `drain`). Never `log` or `fmt.Print`
 - Whoever **starts** an attribute chain seeds it — `sweep` does `logging.Into(ctx, s.logger)` itself rather than trusting its caller, so a direct call still logs where it should
 - Attach an attribute in **one** place. `pollAllPRs` owns `repo` and `processPR` owns `pr`; adding either again downstream prints it twice
