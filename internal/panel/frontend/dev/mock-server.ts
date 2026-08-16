@@ -988,33 +988,33 @@ export function mockServer(): Plugin {
     name: 'smyklot-panel-mock-server',
     config() {
       if (!enabled()) return;
-      // The mock serves the panel at the root rather than at the baked sentinel.
-      return { base: '/', server: opensBrowser() ? { open: '/' } : {} };
+      return { server: opensBrowser() ? { open: '/' } : {} };
     },
     transformIndexHtml(html) {
       if (!enabled()) return html;
-      return html
-        .replaceAll('/__smyklot_panel_base__', '')
-        .replaceAll('__smyklot_panel_version__', 'dev')
-        .replaceAll('__smyklot_panel_service__', 'local mock service')
-        .replaceAll(ERROR_SENTINEL, '')
-        .replaceAll(NOSCRIPT_SENTINEL, DEFAULT_NOSCRIPT);
+      return rewriteSentinels(html);
     },
     configureServer(server) {
-      if (enabled()) {
-        install(server.httpServer as DevHttpServer, server.middlewares, (url, html) =>
-          server.transformIndexHtml(url, html),
-        );
-      }
+      if (!enabled()) return;
+      install(server.httpServer as DevHttpServer, server.middlewares, (url, html) =>
+        server.transformIndexHtml(url, html),
+      );
     },
     configurePreviewServer(server) {
-      // Preview serves the built bundle, which went through the hook above at
-      // build time, so there is nothing left to transform.
       if (enabled()) {
         install(server.httpServer as DevHttpServer, server.middlewares, (_url, html) => html);
       }
     },
   };
+}
+
+function rewriteSentinels(html: string): string {
+  return html
+    .replaceAll('/__smyklot_panel_base__', '')
+    .replaceAll('__smyklot_panel_version__', 'dev')
+    .replaceAll('__smyklot_panel_service__', 'local mock service')
+    .replaceAll(ERROR_SENTINEL, '')
+    .replaceAll(NOSCRIPT_SENTINEL, DEFAULT_NOSCRIPT);
 }
 
 function install(
@@ -1209,7 +1209,7 @@ async function handle(
 ): Promise<void> {
   if (req.headers.host !== undefined) devOrigin = `http://${req.headers.host}`;
   const parsed = new URL(req.url ?? '/', 'http://localhost');
-  const path = parsed.pathname;
+  const path = parsed.pathname.replace(/^\/__smyklot_panel_base__/, '');
   const method = req.method ?? 'GET';
 
   if (path === '/' && method === 'GET') {
@@ -1252,10 +1252,6 @@ async function handle(
       await respondError(state, req, res, 404, 'not_found', 'panel route not found');
       return;
     }
-  }
-  if (path.startsWith('/__smyklot_panel_base__')) {
-    respond(res, 404, { error: { code: 'not_found', message: 'the mock panel is mounted at /' } });
-    return;
   }
   const publicInvitation = path.match(/^\/api\/v1\/invites\/(?<token>[^/]+)$/);
   if (publicInvitation && method === 'GET') {
@@ -3188,7 +3184,7 @@ async function renderErrorDocument(
   code: string,
   message: string,
 ): Promise<string> {
-  const source = readFileSync(resolve(FRONTEND_DIR, 'index.html'), 'utf8');
+  const source = readFileSync(resolve(FRONTEND_DIR, 'src/app.html'), 'utf8');
   const transformed = await state.transformIndex(url, source);
   const descriptor = escapeHtml(JSON.stringify({ status, code, message }));
 

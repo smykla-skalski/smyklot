@@ -12,7 +12,8 @@ import { describeSessionEnd } from '../src/lib/panel-session';
 
 const components = new URL('../src/lib/components/', import.meta.url);
 const read = (file: string): string => readFileSync(new URL(file, components), 'utf8');
-const app = readFileSync(new URL('../src/lib/App.svelte', import.meta.url), 'utf8');
+const app = readFileSync(new URL('../src/routes/+layout.svelte', import.meta.url), 'utf8');
+const sessionClass = readFileSync(new URL('../src/lib/session.svelte.ts', import.meta.url), 'utf8');
 const session = readFileSync(new URL('../src/lib/panel-session.ts', import.meta.url), 'utf8');
 
 describe('why the session ended', () => {
@@ -78,22 +79,23 @@ describe('the page', () => {
 
   it('replaces the panel rather than sitting inside it', () => {
     // It used to render as a plate in the workspace, beside a sidebar with nothing in it.
-    expect(app).toMatch(/\{#if signedOut\}\s*<SignInPage/u);
+    expect(app).toMatch(/\{:else if session\.signedOut\}\s*<SignInPage/u);
     expect(app).not.toContain('SignedOut.svelte');
   });
 
   it('waits until the viewer is known before showing a front door', () => {
     // `viewer === null` is also true while the first request is in flight, and flashing a sign-in
     // page at someone who turns out to have a session is worse than a moment of skeleton.
-    expect(app).toMatch(/const signedOut = \$derived\(!loading && viewer === null/u);
+    expect(sessionClass).toMatch(/get signedOut\(\)/u);
+    expect(sessionClass).toMatch(/!this\.loading && this\.viewer === null/u);
   });
 
   it('names the end of the session itself rather than racing the server for it', () => {
     // The socket closes as the sign-out lands, so whether the revocation event arrives is a race.
     // Losing it would greet someone as a stranger straight after they pressed Sign out.
-    const signOut = /async function signOut\(\)[\s\S]*?\n {2}\}/u.exec(app)?.[0] ?? '';
+    const signOut = /async signOut\(\)[\s\S]*?\n {4}\}/u.exec(sessionClass)?.[0] ?? '';
 
-    expect(signOut).toMatch(/sessionEnded = \{ code: 'signed_out'/u);
+    expect(signOut).toMatch(/this\.sessionEnded = \{ code: 'signed_out'/u);
   });
 
   it('keeps the promise the sign-in copy makes', () => {

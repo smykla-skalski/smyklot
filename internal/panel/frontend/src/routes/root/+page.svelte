@@ -1,0 +1,26 @@
+<script lang="ts">
+  import { getContext } from 'svelte';
+  import type { PanelSession } from '$lib/session.svelte';
+  import RootOverview from '$lib/components/RootOverview.svelte';
+
+  const session = getContext<PanelSession>('panel-session');
+</script>
+
+<section
+  class="root-workspace"
+  class:root-table-view={session.tableScrollView}
+  aria-labelledby="root-page-heading"
+>
+  <RootOverview
+    api={session.api}
+    rootRole={session.rootRole}
+    refreshVersion={session.rootDataVersion}
+    installationsHref={session.rootInstallationsHref()}
+    elevationsHref={session.rootAuditHref()}
+    failuresHref={session.rootFailuresHref()}
+    onOpenInstallations={() => session.selectRootInstallations()}
+    onOpenElevations={() => session.selectRootHistorySection('audit')}
+    onOpenFailures={() => session.selectRootHistorySection('failures')}
+    onOpenInbox={() => session.identityBar?.openInbox()}
+  />
+</section>

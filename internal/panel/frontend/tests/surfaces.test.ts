@@ -108,7 +108,7 @@ describe('the palette', () => {
   const sources = readdirSync(new URL('../src/lib/components', import.meta.url))
     .filter((file) => file.endsWith('.svelte'))
     .map((file) => readFileSync(new URL(`../src/lib/components/${file}`, import.meta.url), 'utf8'))
-    .concat(css, readFileSync(new URL('../src/lib/App.svelte', import.meta.url), 'utf8'));
+    .concat(css, readFileSync(new URL('../src/routes/+layout.svelte', import.meta.url), 'utf8'));
 
   it('declares nothing it does not paint', () => {
     // Four tokens were declared in every palette and referenced by nothing: --table-sorted-bg,
