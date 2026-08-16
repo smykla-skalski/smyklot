@@ -178,9 +178,13 @@ var _ = Describe("Reaction sweep [Unit]", func() {
 			service.pollLoop(ctx)
 		}()
 
+		// At least one, not exactly one: the loop retries every ten milliseconds
+		// while the answer will not parse, so "exactly one" is true for a tenth
+		// of the interval Eventually polls on. On a busy runner the first poll
+		// already saw ninety.
 		Eventually(func() int {
 			return stub.countCalls(http.MethodGet, "/app/installations")
-		}, time.Second).Should(Equal(1))
+		}, time.Second).Should(BeNumerically(">=", 1))
 		stub.setInstallations(`[{"id":111,"account":{"login":"smykla-skalski"}}]`)
 		Eventually(func() int {
 			return stub.countCalls(http.MethodPost, "/issues/42/comments")
