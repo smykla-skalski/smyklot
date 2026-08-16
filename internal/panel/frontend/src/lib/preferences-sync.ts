@@ -1,11 +1,11 @@
-import { CONFIG_KEYS } from './config';
+import { CONFIG_KEYS } from './config.ts';
 import {
   readLastInstallation,
   readSidebarDisplay,
   readThemeDisplay,
   readTimeDisplay,
-} from './preferences';
-import type { ConfigKey, RepositorySettingFilter } from './types';
+} from './preferences.ts';
+import type { ConfigKey, RepositorySettingFilter } from './types.ts';
 
 export type PrefValue = string | string[];
 export type PrefValues = Record<string, PrefValue>;

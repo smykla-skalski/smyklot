@@ -1,10 +1,10 @@
-import { normalizeBasePath } from './base';
+import { normalizeBasePath } from './base.ts';
 import {
   dialogSegments,
   isDialogHost,
   parseDialogSegments,
   type RouteDialog,
-} from './route-dialogs';
+} from './route-dialogs.ts';
 
 export type { RouteDialog };
 

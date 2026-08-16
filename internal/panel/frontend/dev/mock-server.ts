@@ -43,9 +43,9 @@ import type {
   UpdateRootUserInput,
   InvitationDays,
   InvitationStatus,
-} from '../src/lib/types';
-import { canonicalStringify, PREF_DEFAULTS } from '../src/lib/preferences-sync';
-import { parseInvitationToken, parsePanelRoute } from '../src/lib/routes';
+} from '../src/lib/types.ts';
+import { canonicalStringify, PREF_DEFAULTS } from '../src/lib/preferences-sync.ts';
+import { parseInvitationToken, parsePanelRoute } from '../src/lib/routes.ts';
 
 type DevHttpServer = HttpServer;
 const BASE = '';

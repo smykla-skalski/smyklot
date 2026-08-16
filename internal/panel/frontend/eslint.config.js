@@ -3,8 +3,6 @@ import svelte from 'eslint-plugin-svelte';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
-import svelteConfig from './svelte.config.js';
-
 export default tseslint.config(
   { ignores: ['dist/**', 'node_modules/**', '.svelte-kit/**'] },
   js.configs.recommended,
@@ -20,7 +18,6 @@ export default tseslint.config(
     languageOptions: {
       parserOptions: {
         parser: tseslint.parser,
-        svelteConfig,
       },
     },
   },

@@ -1,4 +1,4 @@
-import type { ConfigKey, ConfigPatch, ConfigValues } from './types';
+import type { ConfigKey, ConfigPatch, ConfigValues } from './types.ts';
 
 export interface BooleanField {
   key: Exclude<ConfigKey, 'allowed_commands' | 'command_aliases' | 'command_prefix'>;
