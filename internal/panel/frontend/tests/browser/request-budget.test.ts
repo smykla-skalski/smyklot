@@ -12,15 +12,11 @@
  * through the network, and both needed a route, a layout and a mounted account
  * menu to exist at all - the notification inbox was asking from every page of the
  * panel because it hung off a menu that was on every page.
- *
- * Chrome is driven through `channel`, so nothing is downloaded: the runner image
- * ships it and so does a developer's machine. There is no skip if it is missing -
- * a guard that stands down when it cannot run is not a guard.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { Browser, Page } from 'playwright-core';
-import { chromium } from 'playwright-core';
-import { createServer, type ViteDevServer } from 'vite';
+import type { Page } from 'playwright-core';
+
+import { SETTLE_MS, startPanel, type Panel } from './harness';
 
 /**
  * How many times one address may be asked for while a page settles.
@@ -31,9 +27,6 @@ import { createServer, type ViteDevServer } from 'vite';
  * `request-rate` reports at runtime - which is itself far under a loop.
  */
 const BUDGET = 6;
-
-/** Long enough for a route to load its data. A loop needs a tenth of it. */
-const SETTLE_MS = 1500;
 
 /** Nothing in the panel polls over HTTP, so an idle panel asks for nothing. */
 const IDLE_MS = 2000;
@@ -61,37 +54,19 @@ interface Measurement {
   crashes: string[];
 }
 
-let server: ViteDevServer;
-let browser: Browser;
-let origin: string;
-let account: string;
+let panel: Panel;
 const measured = new Map<string, Measurement>();
 let walked: Measurement;
 
 beforeAll(async () => {
-  process.env.SMYKLOT_PANEL_DEV_MOCK = '1';
-  // Bound to the address the browser is told to use. Vite's default host
-  // resolves to the IPv6 loopback on some machines and the IPv4 one on others,
-  // and it reports the same port either way, so naming one is the difference
-  // between a measurement and a connection refused.
-  server = await createServer({ logLevel: 'error', server: { host: '127.0.0.1', port: 0 } });
-  await server.listen();
-
-  const address = server.httpServer?.address();
-  if (address === null || address === undefined || typeof address === 'string') {
-    throw new Error('the dev server did not report a port');
-  }
-  origin = `http://127.0.0.1:${address.port}`;
-
-  browser = await chromium.launch({ channel: 'chrome' });
-  account = await signIn();
+  panel = await startPanel();
 
   // Measured together rather than one after another, and the walk alongside
   // them. A count does not change under load - only how long a page takes to
   // reach it does, which is what the "asked for something" checks are for.
   await Promise.all([
     ...ADDRESSES.map(async (template) => {
-      measured.set(template, await measure(template.replace('{account}', account)));
+      measured.set(template, await measure(template.replace('{account}', panel.account)));
     }),
     walk().then((result) => {
       walked = result;
@@ -100,33 +75,14 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await browser?.close();
-  await server?.close();
+  await panel?.close();
 });
 
-/** Signs in against the mock and reports the workspace it landed on. */
-async function signIn(): Promise<string> {
-  const page = await browser.newPage();
-  try {
-    await page.goto(`${origin}/?scenario=default`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(SETTLE_MS);
-    const landing = new URL(page.url()).pathname;
-    const match = /^\/i\/([^/]+)\//u.exec(landing);
-    if (match?.[1] === undefined) {
-      throw new Error(`signing in did not land on a workspace, it landed on ${landing}`);
-    }
-
-    return match[1];
-  } finally {
-    await page.close();
-  }
-}
-
 async function measure(path: string): Promise<Measurement> {
-  const page = await browser.newPage();
+  const page = await panel.browser.newPage();
   const watcher = watch(page);
   try {
-    await page.goto(`${origin}${path}`, { waitUntil: 'domcontentloaded' });
+    await page.goto(`${panel.origin}${path}`, { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(SETTLE_MS);
 
     return {
@@ -151,15 +107,17 @@ async function measure(path: string): Promise<Measurement> {
  * must stop moving entirely.
  */
 async function walk(): Promise<Measurement> {
-  const page = await browser.newPage();
+  const page = await panel.browser.newPage();
   const watcher = watch(page);
   try {
-    await page.goto(`${origin}/i/${account}/settings`, { waitUntil: 'domcontentloaded' });
+    await page.goto(`${panel.origin}/i/${panel.account}/settings`, {
+      waitUntil: 'domcontentloaded',
+    });
     await page.waitForTimeout(SETTLE_MS);
 
     for (const path of [
-      `/i/${account}/repositories`,
-      `/i/${account}/users`,
+      `/i/${panel.account}/repositories`,
+      `/i/${panel.account}/users`,
       '/inbox',
       '/root',
       '/root/settings',
