@@ -1,5 +1,5 @@
 -- What an installation has granted the App. The SQLite twin is
--- 027_target_permissions.sql.
+-- 028_target_permissions.sql.
 --
 -- TEXT rather than JSONB for the same reason the sync document is: nothing
 -- queries into it, it is read whole, and a column that re-renders its contents
