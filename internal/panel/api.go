@@ -213,6 +213,61 @@ func (s *Server) putRepositorySettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, repositoryDetailDTO(s.processConfig(), target, updated))
 }
 
+// postRepositoryConfigMigrationReset lets an operator put a refused
+// configuration migration back on the table.
+//
+// A refusal is durable and never expires, because a pull request somebody
+// closed is a decision rather than a timeout. That leaves exactly one way back,
+// and this is it - without which "declined" would be a state only a database
+// edit could leave.
+func (s *Server) postRepositoryConfigMigrationReset(w http.ResponseWriter, r *http.Request) {
+	if !s.requireSameOrigin(w, r) {
+		return
+	}
+	account, target, _, ok := s.requireTarget(w, r, true)
+	if !ok {
+		return
+	}
+	repository, ok := s.repository(w, r, target)
+	if !ok {
+		return
+	}
+	s.resetConfigMigration(w, r, target, repository, account.ID, s.writeStorageError)
+}
+
+// resetConfigMigration is the half of the reset that does not depend on how the
+// caller proved they may do it. The two routes differ only in that, and having
+// one body is what stops the root one drifting into a second set of rules.
+func (s *Server) resetConfigMigration(
+	w http.ResponseWriter,
+	r *http.Request,
+	target storage.Target,
+	repository storage.Repository,
+	actorID string,
+	writeError func(http.ResponseWriter, error),
+) {
+	if err := s.store.SetRepositoryConfigMigration(
+		r.Context(),
+		storage.RepositoryConfigMigration{
+			TargetID:       target.ID,
+			RepositoryID:   repository.ID,
+			State:          storage.ConfigMigrationNone,
+			ActorAccountID: &actorID,
+			ChangedAt:      s.now().UTC(),
+		},
+	); err != nil {
+		writeError(w, err)
+		return
+	}
+	updated, err := s.store.GetRepository(r.Context(), target.ID, repository.ID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	s.Announce(target.ID, updated.ID)
+	writeJSON(w, http.StatusOK, repositoryDetailDTO(s.processConfig(), target, updated))
+}
+
 func (s *Server) repository(
 	w http.ResponseWriter,
 	r *http.Request,

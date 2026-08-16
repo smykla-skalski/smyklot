@@ -907,6 +907,60 @@ func DeclareSpecs(harness Harness) {
 		Expect(repository.ConfigFileSuperseded).To(BeEmpty())
 	})
 
+	// A pull request somebody closed is a refusal, and asking again every sweep
+	// tick would be the bot arguing with a decision a person already made
+	It("remembers that a configuration migration was refused", func() {
+		_, target := seedInstallation(ctx, store, now)
+
+		repository, err := store.GetRepository(ctx, target.TargetID, "repo-1")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(repository.ConfigMigration).To(Equal(storage.ConfigMigrationNone))
+		Expect(repository.ConfigMigrationPR).To(BeNil())
+
+		number := 12
+		Expect(store.SetRepositoryConfigMigration(ctx, storage.RepositoryConfigMigration{
+			TargetID:     target.TargetID,
+			RepositoryID: "repo-1",
+			State:        storage.ConfigMigrationProposed,
+			PullRequest:  &number,
+		})).To(Succeed())
+
+		repository, err = store.GetRepository(ctx, target.TargetID, "repo-1")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(repository.ConfigMigration).To(Equal(storage.ConfigMigrationProposed))
+		Expect(repository.ConfigMigrationPR).To(HaveValue(Equal(number)))
+
+		Expect(store.SetRepositoryConfigMigration(ctx, storage.RepositoryConfigMigration{
+			TargetID:     target.TargetID,
+			RepositoryID: "repo-1",
+			State:        storage.ConfigMigrationDeclined,
+			PullRequest:  &number,
+		})).To(Succeed())
+
+		repository, err = store.GetRepository(ctx, target.TargetID, "repo-1")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(repository.ConfigMigration).To(Equal(storage.ConfigMigrationDeclined))
+
+		// Panel-owned settings are not touched by it, and it does not contend
+		// for their revision: a sweep tick must not fail somebody's save
+		settings, err := store.UpdateRepositorySettings(ctx, storage.RepositorySettingsChange{
+			TargetID:         target.TargetID,
+			RepositoryID:     "repo-1",
+			ActorAccountID:   testAccount(now).ID,
+			ConfigPatch:      config.Patch{},
+			ExpectedRevision: repository.Revision,
+			ChangedAt:        now.Add(time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(settings.ConfigMigration).To(Equal(storage.ConfigMigrationDeclined))
+
+		Expect(store.SetRepositoryConfigMigration(ctx, storage.RepositoryConfigMigration{
+			TargetID:     target.TargetID,
+			RepositoryID: "absent",
+			State:        storage.ConfigMigrationNone,
+		})).To(MatchError(storage.ErrNotFound))
+	})
+
 	It("reconciles the complete catalog without deleting removed target settings", func() {
 		account := testAccount(now)
 		first := testInstallation(account, now, []storage.RepositorySnapshot{

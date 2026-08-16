@@ -103,17 +103,19 @@ type repositorySummaryResponse struct {
 }
 
 type repositoryDetailResponse struct {
-	Repository           repositorySummaryResponse `json:"repository"`
-	ConfigPatch          config.Patch              `json:"config_patch"`
-	InheritedConfig      config.Config             `json:"inherited_config"`
-	EffectiveConfig      config.Config             `json:"effective_config"`
-	ConfigSources        map[string]config.Source  `json:"config_sources"`
-	ConfigFilePatch      config.Patch              `json:"config_file_patch"`
-	ConfigFileError      *string                   `json:"config_file_error,omitempty"`
-	ConfigFilePath       string                    `json:"config_file_path,omitempty"`
-	ConfigFileSuperseded []string                  `json:"config_file_superseded,omitempty"`
-	IgnoreRepositoryFile bool                      `json:"ignore_repository_file"`
-	Revision             int64                     `json:"revision"`
+	Repository           repositorySummaryResponse    `json:"repository"`
+	ConfigPatch          config.Patch                 `json:"config_patch"`
+	InheritedConfig      config.Config                `json:"inherited_config"`
+	EffectiveConfig      config.Config                `json:"effective_config"`
+	ConfigSources        map[string]config.Source     `json:"config_sources"`
+	ConfigFilePatch      config.Patch                 `json:"config_file_patch"`
+	ConfigFileError      *string                      `json:"config_file_error,omitempty"`
+	ConfigFilePath       string                       `json:"config_file_path,omitempty"`
+	ConfigFileSuperseded []string                     `json:"config_file_superseded,omitempty"`
+	ConfigMigration      storage.ConfigMigrationState `json:"config_migration"`
+	ConfigMigrationPR    *int                         `json:"config_migration_pr,omitempty"`
+	IgnoreRepositoryFile bool                         `json:"ignore_repository_file"`
+	Revision             int64                        `json:"revision"`
 }
 
 type auditResponse struct {
@@ -284,9 +286,21 @@ func repositoryDetailDTO(
 		ConfigFileError:      repository.ConfigFileError,
 		ConfigFilePath:       repository.ConfigFilePath,
 		ConfigFileSuperseded: repository.ConfigFileSuperseded,
+		ConfigMigration:      migrationState(repository.ConfigMigration),
+		ConfigMigrationPR:    repository.ConfigMigrationPR,
 		IgnoreRepositoryFile: repository.IgnoreRepositoryFile,
 		Revision:             repository.Revision,
 	}
+}
+
+// migrationState fills in the state a repository written before this column
+// existed carries, so the panel never has to read an empty string as a state.
+func migrationState(state storage.ConfigMigrationState) storage.ConfigMigrationState {
+	if state == "" {
+		return storage.ConfigMigrationNone
+	}
+
+	return state
 }
 
 func repositoryPageDTO(

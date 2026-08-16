@@ -1025,6 +1025,8 @@
                     fetchPage={fetchRepositories}
                     onLoad={loadRepository}
                     onUpdate={updateRepository}
+                    onResetConfigMigration={(repositoryId) =>
+                      api.resetConfigMigration(selectedTarget.id, repositoryId)}
                     onChanged={() => repositoryChanged(selectedTarget.id)}
                     readOnly={!selectedTarget.capabilities.write}
                     {prefs}

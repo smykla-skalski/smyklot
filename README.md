@@ -238,6 +238,10 @@ runner: action
 
 Settings the file omits keep whatever the workflow or the service was started with, so a file need only list what it changes.
 
+TOML is what Smyklot asks for now, at `.smyklot.toml`, `.smyklot/config.toml` or `.github/.smyklot.toml`. `.github/smyklot.yaml` is still read, and the service opens a pull request moving it across - one commit that adds the TOML and removes the YAML, so the repository never carries both. Close that pull request and Smyklot will not ask again; the panel is where an operator puts it back on the table.
+
+When a repository carries more than one of these, the first in that order wins and the panel names the others.
+
 This is the only per-repository configuration the [service](#running-as-a-service) can see - it has no access to a repository's Actions variables. The Action reads the same file, so a repository gets the same behaviour whichever one handles the comment.
 
 The file is read from the **default branch**, so a pull request cannot change how its own commands are handled.

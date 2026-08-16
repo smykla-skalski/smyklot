@@ -352,6 +352,20 @@ func (s *server) sweepRepo(
 	); err != nil {
 		return err
 	}
+
+	// From the sweep and from nowhere else. A repository is offered the move to
+	// TOML on a timer, not as a side effect of somebody asking for an approval.
+	//
+	// The file comes from the same cache serviceConfig has just filled, so this
+	// costs nothing, and taking it as an argument is what lets the decision be
+	// exercised against a file rather than against a clock.
+	//
+	// A failure here is logged rather than returned: the sweep's job is to
+	// answer reactions, and an unsolicited pull request failing to open must
+	// not stop that.
+	if err := s.migrateRepositoryConfig(ctx, client, targetID, repo); err != nil {
+		logging.From(ctx).Warn("could not propose the configuration migration", "error", err)
+	}
 	if !pollReactions {
 		return nil
 	}
@@ -373,6 +387,28 @@ func (s *server) sweepRepo(
 		ctx, client, checker, bc, repo.Owner, repo.Name, s.cfg.botUsername, prs,
 		s.reactionCommandEnvironment(repositoryStorageID(repo.ID)), false,
 	)
+}
+
+// migrateRepositoryConfig reads the repository's configuration back out of the
+// cache serviceConfig filled, and offers the move to TOML.
+func (s *server) migrateRepositoryConfig(
+	ctx context.Context,
+	client *github.Client,
+	targetID string,
+	repo github.Repository,
+) error {
+	if s.panel == nil {
+		return nil
+	}
+
+	file, err := s.configs.GetByKey(
+		ctx, client, repositoryStorageID(repo.ID), repo.Owner, repo.Name,
+	)
+	if err != nil {
+		return err
+	}
+
+	return s.proposeConfigMigration(ctx, client, targetID, repo, file)
 }
 
 func (s *server) handoffPendingCIToAction(

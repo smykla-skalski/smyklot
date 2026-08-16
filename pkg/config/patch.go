@@ -168,6 +168,24 @@ func ParsePatch(format Format, content []byte) (Patch, error) {
 	return patch, nil
 }
 
+// RenderTOML writes a patch as the file Smyklot asks repositories to keep.
+//
+// Only what the patch sets is written, because that is what the file means: a
+// setting it omits keeps whatever the layers below it said, and writing out
+// the full set would silently pin twelve defaults a repository never chose.
+//
+// This is what converts a repository's legacy YAML, so it is held to a
+// round-trip: what ParsePatch reads back has to be what went in, or the
+// migration would quietly change how a repository behaves.
+func RenderTOML(patch Patch) ([]byte, error) {
+	content, err := toml.Marshal(patch)
+	if err != nil {
+		return nil, fmt.Errorf("render toml config patch: %w", err)
+	}
+
+	return content, nil
+}
+
 // byteOrderMark is what several editors write at the start of a UTF-8 file.
 //
 // It is metadata rather than content, and invisible to whoever saved the file.

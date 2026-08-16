@@ -74,6 +74,16 @@ func unmarshalPaths(content string) ([]string, error) {
 	return paths, nil
 }
 
+func intPointer(value sql.NullInt64) *int {
+	if !value.Valid {
+		return nil
+	}
+
+	number := int(value.Int64)
+
+	return &number
+}
+
 func stringPointer(value sql.NullString) *string {
 	if !value.Valid {
 		return nil

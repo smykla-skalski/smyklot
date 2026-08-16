@@ -23,6 +23,19 @@ type githubStub struct {
 	// without one
 	codeowners string
 
+	// branchPRs answers a pull request listing filtered by head branch, which
+	// is how the configuration migration asks what became of its proposal.
+	branchPRs string
+
+	// migrationRef is the migration branch, empty until something pushes it.
+	migrationRef string
+
+	// createdPRs and createdTrees are what the migration sent, because a pull
+	// request nobody asked for is judged entirely on what it contains.
+	createdPRs   []string
+	createdTrees []string
+	createdBlobs []string
+
 	// repoConfigTOML is the repository's .smyklot.toml, or empty for a
 	// repository that has not migrated. Stocking both is how a spec describes
 	// a repository carrying two configuration files
@@ -151,7 +164,13 @@ func (s *githubStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, s.members)
 
 	case strings.HasSuffix(r.URL.Path, "/pulls"):
-		_, _ = io.WriteString(w, s.openPRs)
+		s.servePulls(w, r)
+
+	// Git data, enough of it to let the configuration migration run end to
+	// end. It routes in its own function because this switch is already at the
+	// complexity the linter allows.
+	case strings.Contains(r.URL.Path, "/git/"):
+		s.serveGitData(w, r)
 
 	case strings.HasSuffix(r.URL.Path, "/labels"):
 		_, _ = w.Write([]byte(`[]`))
@@ -189,18 +208,7 @@ func (s *githubStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Only the legacy one is stocked, so a spec that sets repoConfig still
 	// describes a repository configured the way it was before TOML.
 	case strings.Contains(r.URL.Path, "/contents/"):
-		if strings.HasSuffix(r.URL.Path, "/contents/.github/smyklot.yaml") {
-			s.writeFile(w, s.currentRepoConfig())
-
-			return
-		}
-		if strings.HasSuffix(r.URL.Path, "/contents/.smyklot.toml") {
-			s.writeFile(w, s.repoConfigTOML)
-
-			return
-		}
-
-		s.writeFile(w, "")
+		s.serveRepoConfig(w, r)
 
 	case strings.HasSuffix(r.URL.Path, "/reviews"):
 		if r.Method == http.MethodGet {
@@ -392,6 +400,127 @@ func (s *githubStub) currentRepoConfig() string {
 }
 
 // writeFile answers the contents API, treating empty content as a missing file
+// servePulls answers both things the pull request endpoint is asked: opening
+// one, and reporting what became of the one opened from a named branch.
+func (s *githubStub) servePulls(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		s.record(&s.createdPRs, r)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = io.WriteString(w, `{"number":77,"state":"open"}`)
+
+		return
+	}
+
+	// A listing filtered by head branch is asking about one proposal, not
+	// about the repository's open pull requests
+	if r.URL.Query().Get("head") != "" {
+		_, _ = io.WriteString(w, orEmptyList(s.branchPRs))
+
+		return
+	}
+
+	_, _ = io.WriteString(w, s.openPRs)
+}
+
+// serveRepoConfig stocks the two configuration paths a spec can set, and 404s
+// the rest - which is what a repository that only has one of them looks like.
+func (s *githubStub) serveRepoConfig(w http.ResponseWriter, r *http.Request) {
+	switch {
+	case strings.HasSuffix(r.URL.Path, "/contents/.github/smyklot.yaml"):
+		s.writeFile(w, s.currentRepoConfig())
+
+	case strings.HasSuffix(r.URL.Path, "/contents/.smyklot.toml"):
+		s.writeFile(w, s.repoConfigTOML)
+
+	default:
+		s.writeFile(w, "")
+	}
+}
+
+// serveGitData answers the object endpoints the configuration migration
+// builds a commit from.
+//
+// Each one answers with a fixed sha: what the migration builds out of them is
+// the thing under test, not what git would have made of it.
+func (s *githubStub) serveGitData(w http.ResponseWriter, r *http.Request) {
+	switch {
+	case strings.HasSuffix(r.URL.Path, "/git/ref/heads/"+migrationBranch):
+		s.mu.Lock()
+		sha := s.migrationRef
+		s.mu.Unlock()
+
+		if sha == "" {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = io.WriteString(w, `{"message": "Not Found"}`)
+
+			return
+		}
+
+		_, _ = fmt.Fprintf(w, `{"object":{"sha":%q}}`, sha)
+
+	case strings.Contains(r.URL.Path, "/git/ref/"):
+		_, _ = io.WriteString(w, `{"object":{"sha":"basecommit"}}`)
+
+	case strings.HasSuffix(r.URL.Path, "/git/blobs"):
+		s.record(&s.createdBlobs, r)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = io.WriteString(w, `{"sha":"blobsha"}`)
+
+	case strings.HasSuffix(r.URL.Path, "/git/trees"):
+		s.record(&s.createdTrees, r)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = io.WriteString(w, `{"sha":"treesha"}`)
+
+	case strings.HasSuffix(r.URL.Path, "/git/commits"):
+		w.WriteHeader(http.StatusCreated)
+		_, _ = io.WriteString(w, `{"sha":"commitsha"}`)
+
+	case strings.HasSuffix(r.URL.Path, "/git/refs"):
+		s.mu.Lock()
+		s.migrationRef = "commitsha"
+		s.mu.Unlock()
+		w.WriteHeader(http.StatusCreated)
+		_, _ = io.WriteString(w, `{"object":{"sha":"commitsha"}}`)
+
+	default:
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = fmt.Fprintf(w, `{"message": "unstubbed git path %s"}`, r.URL.Path)
+	}
+}
+
+// record keeps a request body for a spec to assert on.
+func (s *githubStub) record(into *[]string, r *http.Request) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	*into = append(*into, readBody(r))
+}
+
+// readBody reads a request body for a spec to assert on, and never fails: a
+// stub that could not read one has nothing useful to say about it either.
+func readBody(r *http.Request) string {
+	if r.Body == nil {
+		return ""
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		return ""
+	}
+
+	return string(body)
+}
+
+// orEmptyList keeps an unset listing decoding as an empty list rather than as
+// a parse failure, which is what a stub answering nothing would produce.
+func orEmptyList(body string) string {
+	if body == "" {
+		return "[]"
+	}
+
+	return body
+}
+
 func (s *githubStub) writeFile(w http.ResponseWriter, content string) {
 	if content == "" {
 		w.WriteHeader(http.StatusNotFound)

@@ -407,6 +407,42 @@ const (
 	RepositoryFileBypassed RepositoryFileStatus = "bypassed"
 )
 
+// ConfigMigrationState is how far Smyklot has got with moving a repository's
+// configuration file to TOML.
+type ConfigMigrationState string
+
+const (
+	// ConfigMigrationNone is a repository nobody has asked yet.
+	ConfigMigrationNone ConfigMigrationState = "none"
+
+	// ConfigMigrationProposed is a pull request waiting on the repository.
+	ConfigMigrationProposed ConfigMigrationState = "proposed"
+
+	// ConfigMigrationDeclined is a pull request somebody closed without
+	// merging. It is durable and never expires: asking again would be the bot
+	// arguing with a decision a person already made.
+	ConfigMigrationDeclined ConfigMigrationState = "declined"
+)
+
+// RepositoryConfigMigration records what came of proposing the move to TOML.
+type RepositoryConfigMigration struct {
+	TargetID     string
+	RepositoryID string
+	State        ConfigMigrationState
+
+	// PullRequest is the proposal, so the panel can link to the thing it is
+	// describing rather than to a search for it.
+	PullRequest *int
+
+	// ActorAccountID is who decided, when anyone did. The sweep leaves it
+	// unset: it observed a pull request rather than choosing anything, and
+	// there is no synthetic account to attribute that to.
+	ActorAccountID *string
+
+	// ChangedAt stamps the audit entry an actor earns.
+	ChangedAt time.Time
+}
+
 // Repository is a catalog entry plus its panel-owned controls.
 type Repository struct {
 	ID                   string
@@ -433,6 +469,12 @@ type Repository struct {
 	// file and were passed over. Nothing reads them; they are here to be shown
 	// to a repository that migrated and left the old file behind.
 	ConfigFileSuperseded []string
+
+	// ConfigMigration is how far the move to TOML has got.
+	ConfigMigration ConfigMigrationState
+
+	// ConfigMigrationPR is the proposal, when there has been one.
+	ConfigMigrationPR *int
 
 	Revision  int64
 	UpdatedAt time.Time

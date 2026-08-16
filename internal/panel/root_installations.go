@@ -128,6 +128,23 @@ func (s *Server) putRootRepositorySettings(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, repositoryDetailDTO(s.processConfig(), context.Target, updated))
 }
 
+func (s *Server) postRootRepositoryConfigMigrationReset(w http.ResponseWriter, r *http.Request) {
+	if !s.requireSameOrigin(w, r) {
+		return
+	}
+	context, ok := s.requireRootTarget(w, r, true)
+	if !ok {
+		return
+	}
+	repository, ok := s.repository(w, r, context.Target)
+	if !ok {
+		return
+	}
+	s.resetConfigMigration(
+		w, r, context.Target, repository, context.Account.ID, s.writeRootWriteError,
+	)
+}
+
 func (s *Server) requireRootTarget(
 	w http.ResponseWriter,
 	r *http.Request,

@@ -1590,7 +1590,7 @@ func handleRemovedReactions(
 		}
 
 		// If PR is already merged, post warning (unless disabled)
-		if info.State == "closed" {
+		if info.State == github.PullRequestClosed {
 			if !bc.QuietReactions {
 				fb := feedback.NewReactionMergeRemoved()
 				_ = client.PostComment(

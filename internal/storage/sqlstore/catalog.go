@@ -752,6 +752,8 @@ SELECT
     r.config_file_error,
     r.config_file_path,
     r.config_file_superseded,
+    r.config_migration,
+    r.config_migration_pr,
     r.revision,
     r.settings_updated_at
 `
@@ -790,6 +792,7 @@ func scanRepository(scanner rowScanner) (storage.Repository, error) {
 	var enabledOverride sql.NullBool
 	var fileError sql.NullString
 	var panelPatch, filePatch, superseded string
+	var migrationPR sql.NullInt64
 	var updatedAt StoredTime
 
 	err := scanner.Scan(
@@ -808,6 +811,8 @@ func scanRepository(scanner rowScanner) (storage.Repository, error) {
 		&fileError,
 		&repository.ConfigFilePath,
 		&superseded,
+		&repository.ConfigMigration,
+		&migrationPR,
 		&repository.Revision,
 		&updatedAt,
 	)
@@ -817,6 +822,7 @@ func scanRepository(scanner rowScanner) (storage.Repository, error) {
 
 	repository.EnabledOverride = boolPointer(enabledOverride)
 	repository.ConfigFileError = stringPointer(fileError)
+	repository.ConfigMigrationPR = intPointer(migrationPR)
 	if repository.IgnoreRepositoryFile {
 		repository.ConfigFileStatus = storage.RepositoryFileBypassed
 	}

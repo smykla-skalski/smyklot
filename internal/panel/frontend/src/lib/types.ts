@@ -466,6 +466,9 @@ export interface NotificationPageRequest {
 }
 
 export type RepositoryFileStatus = 'missing' | 'valid' | 'invalid' | 'bypassed';
+
+/** How far Smyklot has got with moving a repository's file to TOML. */
+export type ConfigMigrationState = 'none' | 'proposed' | 'declined';
 export type RepositoryEnabledSource = 'target' | 'repository';
 
 export interface RepositorySummary {
@@ -493,6 +496,8 @@ export interface RepositoryDetail {
   config_file_error?: string;
   config_file_path?: string;
   config_file_superseded?: string[];
+  config_migration: ConfigMigrationState;
+  config_migration_pr?: number;
   ignore_repository_file: boolean;
   revision: number;
 }

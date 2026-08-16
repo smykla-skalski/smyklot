@@ -1,6 +1,8 @@
 package config_test
 
 import (
+	"strings"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -245,3 +247,48 @@ command_prefix = ""
 func stringPointer(value string) *string {
 	return &value
 }
+
+var _ = Describe("RenderTOML [Unit]", func() {
+	// The migration converts a repository's legacy YAML by reading it into a
+	// patch and writing that patch out. If the round trip is not exact, a pull
+	// request nobody asked for would quietly change how a repository behaves.
+	It("writes a patch that reads back as itself", func() {
+		quiet := true
+		prefix := "!"
+		commands := []string{"approve", "merge"}
+		aliases := map[string]string{"ok": "approve", "ship": "merge"}
+		runner := config.RunnerAction
+
+		patch := config.Patch{
+			QuietSuccess:    &quiet,
+			CommandPrefix:   &prefix,
+			AllowedCommands: &commands,
+			CommandAliases:  &aliases,
+			Runner:          &runner,
+		}
+
+		content, err := config.RenderTOML(patch)
+		Expect(err).NotTo(HaveOccurred())
+
+		read, err := config.ParsePatch(config.FormatTOML, content)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(read).To(Equal(patch))
+	})
+
+	// A file says what a repository chose. Writing out the settings it did not
+	// choose would pin twelve defaults it never asked for, and the next time a
+	// default changed the repository would be the only one it did not reach.
+	It("writes only what the patch sets", func() {
+		quiet := true
+
+		content, err := config.RenderTOML(config.Patch{QuietSuccess: &quiet})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(content)).To(Equal("quiet_success = true\n"))
+	})
+
+	It("writes nothing for a patch that sets nothing", func() {
+		content, err := config.RenderTOML(config.Patch{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(strings.TrimSpace(string(content))).To(BeEmpty())
+	})
+})

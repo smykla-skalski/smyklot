@@ -897,6 +897,12 @@ function repositorySeed(
         status === 'missing' || Number(input.id.replace(/\D/g, '')) % 5 !== 0
           ? undefined
           : ['.github/smyklot.yaml'],
+      // Every seventh repository has already been asked and said no, so the
+      // detail pane's refusal line and its way back are both reachable
+      config_migration:
+        status === 'missing' || Number(input.id.replace(/\D/g, '')) % 7 !== 0 ? 'none' : 'declined',
+      config_migration_pr:
+        status === 'missing' || Number(input.id.replace(/\D/g, '')) % 7 !== 0 ? undefined : 42,
       ignore_repository_file: bypass,
       revision: 1,
     },

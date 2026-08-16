@@ -204,6 +204,10 @@
     return api.updateRootRepositorySettings(installation.id, repositoryId, input);
   }
 
+  function resetConfigMigration(repositoryId: string): Promise<RepositoryDetail> {
+    return api.resetRootConfigMigration(installation.id, repositoryId);
+  }
+
   function countdown(seconds: number): string {
     const minutes = Math.floor(seconds / 60);
     return `${String(minutes).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
@@ -359,6 +363,7 @@
       fetchPage={fetchRepositories}
       onLoad={loadRepository}
       onUpdate={updateRepository}
+      onResetConfigMigration={resetConfigMigration}
       onChanged={() => (repositoryVersion += 1)}
       readOnly={!canWrite}
     />

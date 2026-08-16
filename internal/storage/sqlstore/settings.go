@@ -12,6 +12,7 @@ import (
 const (
 	actionTargetSettings     = "target.settings.updated"
 	actionRepositorySettings = "repository.settings.updated"
+	actionConfigMigration    = "repository.config_migration.reset"
 )
 
 // UpdateTargetSettings changes target defaults and appends immutable audit in
@@ -243,6 +244,72 @@ WHERE target_id = ? AND id = ?`,
 	}
 
 	return changed, nil
+}
+
+// SetRepositoryConfigMigration records how far the move to TOML has got.
+//
+// Outside the revision guard the panel's own settings sit behind, because this
+// is not a setting anyone chose: it is what the service observed of a pull
+// request it opened, and making it contend for the same revision would let a
+// sweep tick fail somebody's save.
+func (s *Store) SetRepositoryConfigMigration(
+	ctx context.Context,
+	migration storage.RepositoryConfigMigration,
+) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin repository config migration update: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	result, err := tx.ExecContext(ctx, `
+UPDATE repositories SET
+    config_migration = ?,
+    config_migration_pr = ?
+WHERE target_id = ? AND id = ?`,
+		migration.State,
+		migration.PullRequest,
+		migration.TargetID,
+		migration.RepositoryID,
+	)
+	if err != nil {
+		return fmt.Errorf("update repository config migration: %w", err)
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("update repository config migration: %w", err)
+	}
+	if affected == 0 {
+		return storage.ErrNotFound
+	}
+
+	// Only when somebody decided. The sweep observed a pull request rather than
+	// choosing anything, and audit_entries wants an account - inventing one to
+	// fill the column would put a person's name on a machine's observation.
+	if migration.ActorAccountID != nil {
+		repository, err := getRepository(ctx, tx, migration.TargetID, migration.RepositoryID)
+		if err != nil {
+			return fmt.Errorf("read repository for audit: %w", err)
+		}
+		if _, err := insertAudit(ctx, tx, auditInsert{
+			TargetID:           migration.TargetID,
+			RepositoryID:       &migration.RepositoryID,
+			RepositoryFullName: &repository.FullName,
+			ActorAccountID:     *migration.ActorAccountID,
+			Action:             actionConfigMigration,
+			Summary:            "Allowed Smyklot to propose the TOML migration again",
+			CreatedAt:          migration.ChangedAt,
+		}); err != nil {
+			return err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit repository config migration update: %w", err)
+	}
+
+	return nil
 }
 
 func updateRepositorySettings(

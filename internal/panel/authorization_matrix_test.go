@@ -47,6 +47,11 @@ func TestPanelRootRouteAuthorizationMatrix(t *testing.T) {
 		{http.MethodGet, "/panel/api/v1/root/installations/" + target + "/repositories"},
 		{http.MethodGet, "/panel/api/v1/root/installations/" + target + "/repositories/repository-20"},
 		{http.MethodPut, "/panel/api/v1/root/installations/" + target + "/repositories/repository-20/settings"},
+		{
+			http.MethodPost,
+			"/panel/api/v1/root/installations/" + target +
+				"/repositories/repository-20/config-migration",
+		},
 		{http.MethodGet, "/panel/api/v1/root/installations/" + target + "/users"},
 		{http.MethodPost, "/panel/api/v1/root/installations/" + target + "/users"},
 		{http.MethodGet, "/panel/api/v1/root/installations/" + target + "/user-suggestions"},
@@ -93,6 +98,7 @@ func TestPanelRegularRouteRejectsNonOwnedRootMatrix(t *testing.T) {
 		{http.MethodGet, target + "/repositories"},
 		{http.MethodGet, target + "/repositories/repository-30"},
 		{http.MethodPut, target + "/repositories/repository-30/settings"},
+		{http.MethodPost, target + "/repositories/repository-30/config-migration"},
 		{http.MethodGet, target + "/audit"},
 		{http.MethodGet, target + "/failures"},
 	}
