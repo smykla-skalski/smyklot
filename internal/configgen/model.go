@@ -423,11 +423,21 @@ func parseTag(literal *ast.BasicLit) reflect.StructTag {
 // what follows leaves a sentence about the setting.
 func describe(name, doc string) string {
 	if rest, found := strings.CutPrefix(doc, name+" "); found {
-		first, size := utf8.DecodeRuneInString(rest)
-		if size > 0 {
-			doc = string(unicode.ToUpper(first)) + rest[size:]
-		}
+		return mapFirstRune(rest, unicode.ToUpper)
 	}
 
 	return doc
+}
+
+// mapFirstRune applies f to the first rune of text, leaving the rest alone.
+//
+// Decoding the rune rather than indexing a byte is what keeps a multi-byte
+// first character intact: text[1:] would cut one apart.
+func mapFirstRune(text string, f func(rune) rune) string {
+	first, size := utf8.DecodeRuneInString(text)
+	if size == 0 {
+		return text
+	}
+
+	return string(f(first)) + text[size:]
 }

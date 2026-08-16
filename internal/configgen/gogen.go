@@ -8,7 +8,6 @@ import (
 	"strings"
 	"text/template"
 	"unicode"
-	"unicode/utf8"
 )
 
 const (
@@ -196,9 +195,6 @@ func zeroValue(field Field) string {
 
 		return field.Default
 
-	case KindString, KindEnum:
-		return strconv.Quote(field.Default)
-
 	default:
 		return strconv.Quote(field.Default)
 	}
@@ -244,12 +240,7 @@ func patchRef(field Field) string {
 
 // localName renders a Go identifier for a field's local copy.
 func localName(goName string) string {
-	first, size := utf8.DecodeRuneInString(goName)
-	if size == 0 {
-		return goName
-	}
-
-	return string(unicode.ToLower(first)) + goName[size:]
+	return mapFirstRune(goName, unicode.ToLower)
 }
 
 // applier names the helper that applies one field, which differs only because a
@@ -261,9 +252,6 @@ func applier(field Field) string {
 
 	case KindStringMap:
 		return "setMap"
-
-	case KindBool, KindString, KindEnum:
-		return "set"
 
 	default:
 		return "set"
