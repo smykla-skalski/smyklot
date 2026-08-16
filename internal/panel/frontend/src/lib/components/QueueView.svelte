@@ -846,6 +846,108 @@
     }
   }
 
+  /* A phone gets the cards the other tables give it, for the reason measured in
+     `tests/browser/mobile-layout.test.ts`: these columns are stated in rem and a
+     fixed table will not go under their sum, so the waiting table asked for
+     498px and the recent one 578px on a 375px screen. Chrome does not scroll
+     that sideways - it widens the layout viewport and scales the console down,
+     which took it to 75% and 65%. The headings are already on every cell as
+     `data-label`, so the band can go and the labels stay. */
+  @media (max-width: 48rem) {
+    /* The search takes the line and the pill drops under it. The spacer that
+       holds them apart on a wide screen is what would keep them on one line
+       here, and `Webhook driven` does not wrap, so the pair set the width of the
+       whole console rather than giving way. */
+    .queue-toolbar {
+      flex-wrap: wrap;
+    }
+
+    .toolbar-spacer {
+      display: none;
+    }
+
+    .queue-toolbar :global(.search-field) {
+      width: 100%;
+    }
+
+    .queue-table {
+      min-width: 0;
+      table-layout: auto;
+    }
+
+    .queue-table thead {
+      display: none;
+    }
+
+    .queue-table,
+    .queue-table tbody,
+    .queue-row,
+    .queue-row td {
+      display: block;
+      width: 100%;
+    }
+
+    /* Every column width above is stated against a band that is gone; left
+       standing they would size the cards instead. */
+    .queue-table :is(th, td):first-child,
+    .waiting-table :is(th, td):nth-child(3),
+    .waiting-table :is(th, td):nth-child(4),
+    .waiting-table :is(th, td):nth-child(5),
+    .recent-table :is(th, td):nth-child(3),
+    .recent-table :is(th, td):nth-child(4),
+    .recent-table :is(th, td):nth-child(5),
+    .recent-table :is(th, td):nth-child(6) {
+      width: auto;
+    }
+
+    .queue-row {
+      border-bottom: 1px solid var(--border-subtle);
+      padding: var(--space-3);
+    }
+
+    .queue-row td {
+      align-items: center;
+      border: 0;
+      display: flex;
+      gap: var(--space-3);
+      justify-content: space-between;
+      min-height: calc(var(--control-height-compact) + var(--space-2));
+      padding: var(--space-1) 0;
+      text-align: left;
+    }
+
+    .queue-row td[data-label]::before {
+      color: var(--text-muted);
+      content: attr(data-label);
+      flex: none;
+      font-size: var(--font-size-compact);
+      font-weight: 650;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    /* The pull request is the card's heading rather than a labelled row: it is
+       what the card is about, and it is the one column whose text has no bound,
+       so it wraps instead of being cut. */
+    .queue-row td:nth-child(2) {
+      border-bottom: 1px solid var(--border-subtle);
+      display: block;
+      padding-bottom: var(--space-3);
+    }
+
+    .queue-row td:nth-child(2)::before {
+      content: none;
+    }
+
+    .cleanup-label {
+      display: inline;
+    }
+
+    .queue-table :is(th, td).cleanup-column {
+      width: auto;
+    }
+  }
+
   .row-actions {
     text-align: right;
   }

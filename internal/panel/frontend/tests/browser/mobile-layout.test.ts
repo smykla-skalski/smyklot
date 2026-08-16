@@ -65,6 +65,11 @@ function routes(account: string): ReadonlyArray<readonly [string, string]> {
     ['failure history', `/i/${account}/history/failures`],
     ['the inbox', `/inbox`],
     ['the Root overview', `/root`],
+    ['the queue', `/root/queue`],
+    ['recent queue outcomes', `/root/queue/recent`],
+    /* Armed, so the row of actions this file exists for is on the page. An ended
+       request draws no buttons and would measure the easy half of the view. */
+    ['a queue request', `/root/queue/request/pending-ci-0`],
     ['the installation catalog', `/root/installations`],
     ['Root access users', `/root/access/users`],
     ['Root access invitations', `/root/access/invitations`],

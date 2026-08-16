@@ -367,6 +367,34 @@
     margin-left: 0.15rem;
   }
 
+  /* The row's first column is a stated 9.5rem, which a phone does not have to
+     spare once the name and the countdown have had theirs - the four of them
+     came to 337px on a 320px screen and took the whole overview down to 95%
+     with them. Wrapped instead: the chip, the name and the chevron keep the
+     line they are read on, and the countdown takes the one below. Ordered
+     rather than reordered in the markup, so the chevron stays last in the tab
+     and reading order it has on a wide screen. */
+  @media (max-width: 48rem) {
+    .panel-row {
+      display: flex;
+      flex-wrap: wrap;
+      padding-block: var(--space-2);
+    }
+
+    .pr-name {
+      flex: 1 1 6rem;
+    }
+
+    .row-chevron {
+      order: 1;
+    }
+
+    .next-lead {
+      flex: 1 0 100%;
+      order: 2;
+    }
+  }
+
   .next-lead {
     align-items: baseline;
     display: flex;
