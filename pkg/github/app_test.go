@@ -324,9 +324,11 @@ var _ = Describe("GitHub App Client [Unit]", func() {
 			client, err := github.NewClient("test-token", server.URL)
 			Expect(err).NotTo(HaveOccurred())
 
-			content, err := client.GetRepoConfig(context.Background(), "owner", "repo")
+			found, err := client.GetRepoConfig(context.Background(), "owner", "repo")
 			Expect(err).NotTo(HaveOccurred())
-			Expect(string(content)).To(Equal("quiet_success: true\n"))
+			Expect(found.Found()).To(BeTrue())
+			Expect(string(found.Content)).To(Equal("quiet_success: true\n"))
+			Expect(found.Path).To(Equal(".github/smyklot.yaml"))
 			Expect(requestedPaths).To(Equal([]string{"/repos/owner/repo/contents/.github/smyklot.yaml"}))
 		})
 
@@ -345,9 +347,10 @@ var _ = Describe("GitHub App Client [Unit]", func() {
 			client, err := github.NewClient("test-token", server.URL)
 			Expect(err).NotTo(HaveOccurred())
 
-			content, err := client.GetRepoConfig(context.Background(), "owner", "repo")
+			found, err := client.GetRepoConfig(context.Background(), "owner", "repo")
 			Expect(err).NotTo(HaveOccurred())
-			Expect(content).To(BeNil())
+			Expect(found.Found()).To(BeFalse())
+			Expect(found.Content).To(BeNil())
 			Expect(requestedPaths).To(Equal([]string{"/repos/owner/repo/contents/.github/smyklot.yaml"}))
 		})
 

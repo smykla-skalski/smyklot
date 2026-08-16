@@ -15,7 +15,7 @@ import (
 // effectiveConfig returns base with the repository's own configuration layered
 // over it.
 //
-// A repository without .github/smyklot.yaml gets base back untouched.
+// A repository with no configuration file gets base back untouched.
 func effectiveConfig(
 	ctx context.Context,
 	client *github.Client,
@@ -24,19 +24,33 @@ func effectiveConfig(
 ) (*config.Config, error) {
 	// A failure to read is transient - the network, a rate limit, a permission
 	// the App just lost - so it stays retryable and says nothing
-	content, err := client.GetRepoConfig(ctx, owner, repo)
+	found, err := client.GetRepoConfig(ctx, owner, repo)
 	if err != nil {
 		return nil, NewConfigError(ErrConfigLoad, err)
+	}
+	if !found.Found() {
+		return base, nil
 	}
 
 	// A failure to parse is not: the file is wrong and will stay wrong until
 	// someone edits it. Callers tell the repository so, rather than retrying
-	cfg, err := config.LoadRepoConfig(base, content)
+	cfg, err := loadRepoConfig(base, found)
 	if err != nil {
 		return nil, NewConfigError(ErrRepoConfigInvalid, err)
 	}
 
 	return cfg, nil
+}
+
+// loadRepoConfig layers a found configuration file over base, reading it in
+// whichever format its name says it is written in.
+func loadRepoConfig(base *config.Config, found github.RepoConfig) (*config.Config, error) {
+	format, err := config.FormatOf(found.Path)
+	if err != nil {
+		return nil, err
+	}
+
+	return config.LoadRepoConfig(base, format, found.Content)
 }
 
 // reportInvalidRepoConfig tells the repository its configuration file is

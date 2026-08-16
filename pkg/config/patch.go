@@ -4,10 +4,47 @@ package config
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"io"
+	"path"
+	"strings"
 
+	"github.com/pelletier/go-toml/v2"
 	"go.yaml.in/yaml/v3"
 )
+
+// Format is how a configuration document is written.
+type Format string
+
+const (
+	// FormatTOML is the format every configuration file Smyklot asks for is
+	// written in.
+	FormatTOML Format = "toml"
+
+	// FormatYAML is .github/smyklot.yaml, which is still read and still
+	// layered the same way, so a repository that has not migrated keeps
+	// working. Nothing new is written in it.
+	FormatYAML Format = "yaml"
+)
+
+// FormatOf reports how the file at path is written.
+//
+// The extension decides, because it is the only thing known before the file is
+// fetched - which is what lets discovery ask for a path and know what it will
+// get back.
+func FormatOf(filePath string) (Format, error) {
+	switch strings.ToLower(path.Ext(filePath)) {
+	case ".toml":
+		return FormatTOML, nil
+
+	case ".yaml", ".yml":
+		return FormatYAML, nil
+
+	default:
+		return "", fmt.Errorf("%w: %q", ErrUnknownFormat, filePath)
+	}
+}
 
 // Source identifies the layer that supplied an effective setting.
 type Source string
@@ -100,18 +137,23 @@ type Resolved struct {
 	Sources map[string]Source `json:"sources"`
 }
 
-// ParsePatch decodes a repository or panel configuration layer. Unknown keys
-// are rejected so a typo cannot silently leave a security-relevant default in
-// effect.
-func ParsePatch(content []byte) (Patch, error) {
+// ParsePatch decodes a configuration layer written in format.
+//
+// The format is told rather than sniffed. A caller always knows which file it
+// read, and guessing turns "this TOML file has a syntax error on line 4" into
+// "this file is not valid YAML either", which names neither the format nor the
+// line.
+//
+// Unknown keys are rejected in both formats, so a typo cannot silently leave a
+// security-relevant default in effect. That is the same reason the file is
+// fail-closed: it is where allowed_commands is narrowed.
+func ParsePatch(format Format, content []byte) (Patch, error) {
 	var patch Patch
 
-	decoder := yaml.NewDecoder(bytes.NewReader(content))
-	decoder.KnownFields(true)
-
-	if err := decoder.Decode(&patch); err != nil {
-		return Patch{}, fmt.Errorf("decode config patch: %w", err)
+	if err := decode(format, content, &patch); err != nil {
+		return Patch{}, fmt.Errorf("decode %s config patch: %w", format, err)
 	}
+
 	if patch.Runner != nil {
 		runner, err := ParseRunner(string(*patch.Runner))
 		if err != nil {
@@ -122,6 +164,60 @@ func ParsePatch(content []byte) (Patch, error) {
 	}
 
 	return patch, nil
+}
+
+// decode reads content into patch.
+//
+// A document that sets nothing - blank, or nothing but comments - is not an
+// error. Both decoders report it as io.EOF, having found no values, and a file
+// somebody created and has not filled in yet has to read as "nothing set". It
+// used to be an error, which meant a repository that commented its settings out
+// was told its configuration was invalid and had every command refused.
+func decode(format Format, content []byte, patch *Patch) error {
+	switch format {
+	case FormatTOML:
+		decoder := toml.NewDecoder(bytes.NewReader(content))
+		decoder.DisallowUnknownFields()
+
+		return emptyIsNothing(unknownSettings(decoder.Decode(patch)))
+
+	case FormatYAML:
+		decoder := yaml.NewDecoder(bytes.NewReader(content))
+		decoder.KnownFields(true)
+
+		return emptyIsNothing(decoder.Decode(patch))
+
+	default:
+		return fmt.Errorf("%w: %q", ErrUnknownFormat, format)
+	}
+}
+
+func emptyIsNothing(err error) error {
+	if errors.Is(err, io.EOF) {
+		return nil
+	}
+
+	return err
+}
+
+// unknownSettings restates a TOML strict-mode failure so it names the keys.
+//
+// go-toml reports "fields in the document are missing in the target struct",
+// which says nothing a repository owner could act on - and this message is
+// shown to them, on the pull request, as the reason nothing ran. The keys are
+// in the error, one level down.
+func unknownSettings(err error) error {
+	var missing *toml.StrictMissingError
+	if !errors.As(err, &missing) {
+		return err
+	}
+
+	keys := make([]string, 0, len(missing.Errors))
+	for _, one := range missing.Errors {
+		keys = append(keys, strings.Join(one.Key(), "."))
+	}
+
+	return fmt.Errorf("%w: %s", ErrUnknownSetting, strings.Join(keys, ", "))
 }
 
 // ApplyPatch returns a deep copy of base with every present patch field

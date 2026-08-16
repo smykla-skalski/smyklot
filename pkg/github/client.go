@@ -221,13 +221,19 @@ func (c *Client) GetCodeowners(ctx context.Context, owner, repo string) (string,
 
 // GetRepoConfig retrieves the repository's Smyklot configuration file.
 //
-// Returns nil (not an error) when the repository has no configuration file.
+// A repository with no configuration file gets a zero RepoConfig back rather
+// than an error, so "nothing configured" is a result and not a failure.
 //
 // Only .github/smyklot.yaml is read. Most repositories have no such file, and
 // accepting a second spelling would make that common case cost two 404s on
 // every read rather than one.
-func (c *Client) GetRepoConfig(ctx context.Context, owner, repo string) ([]byte, error) {
-	return c.getFileContent(ctx, owner, repo, repoConfigPath, maxRepoConfigSize)
+func (c *Client) GetRepoConfig(ctx context.Context, owner, repo string) (RepoConfig, error) {
+	content, err := c.getFileContent(ctx, owner, repo, repoConfigPath, maxRepoConfigSize)
+	if err != nil || content == nil {
+		return RepoConfig{}, err
+	}
+
+	return RepoConfig{Path: repoConfigPath, Content: content}, nil
 }
 
 // getFileContent reads a file through the contents API.

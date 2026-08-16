@@ -24,17 +24,18 @@ func fetchRepositoryConfig(
 	client *github.Client,
 	owner, repository string,
 ) (repositoryConfigFile, error) {
-	content, err := client.GetRepoConfig(ctx, owner, repository)
+	found, err := client.GetRepoConfig(ctx, owner, repository)
 	if err != nil {
 		return repositoryConfigFile{}, NewConfigError(ErrConfigLoad, err)
 	}
-	if content == nil {
+	if !found.Found() {
 		return repositoryConfigFile{status: storage.RepositoryFileMissing}, nil
 	}
-	if len(bytes.TrimSpace(content)) == 0 {
+	if len(bytes.TrimSpace(found.Content)) == 0 {
 		return repositoryConfigFile{status: storage.RepositoryFileValid}, nil
 	}
-	patch, err := config.ParsePatch(content)
+
+	patch, err := parseRepositoryConfig(found)
 	if err != nil {
 		return repositoryConfigFile{
 			status: storage.RepositoryFileInvalid,
@@ -43,6 +44,16 @@ func fetchRepositoryConfig(
 	}
 
 	return repositoryConfigFile{patch: patch, status: storage.RepositoryFileValid}, nil
+}
+
+// parseRepositoryConfig reads a found file in whichever format its name says.
+func parseRepositoryConfig(found github.RepoConfig) (config.Patch, error) {
+	format, err := config.FormatOf(found.Path)
+	if err != nil {
+		return config.Patch{}, err
+	}
+
+	return config.ParsePatch(format, found.Content)
 }
 
 func (s *server) repositoryEnabled(

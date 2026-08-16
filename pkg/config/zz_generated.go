@@ -2,6 +2,10 @@
 
 package config
 
+import (
+	"maps"
+)
+
 // Config is the effective configuration: every setting resolved to one value.
 //
 // It is the shape the rest of Smyklot reads. Patch is the shape a layer is
@@ -152,6 +156,32 @@ func Keys() []string {
 func PanelDeniedKeys() []string {
 	return []string{
 		KeyRunner,
+	}
+}
+
+// AsPatch returns this configuration as a layer that sets every setting.
+//
+// The list and the mapping are copied rather than pointed at, so the patch does
+// not alias the configuration it came from. A caller holding both would
+// otherwise find that editing one edited the other.
+func (c Config) AsPatch() Patch {
+	allowedCommands := append([]string{}, c.AllowedCommands...)
+	commandAliases := maps.Clone(c.CommandAliases)
+
+	return Patch{
+		QuietSuccess:           &c.QuietSuccess,
+		QuietReactions:         &c.QuietReactions,
+		QuietPending:           &c.QuietPending,
+		AllowedCommands:        &allowedCommands,
+		CommandAliases:         &commandAliases,
+		CommandPrefix:          &c.CommandPrefix,
+		DisableMentions:        &c.DisableMentions,
+		DisableBareCommands:    &c.DisableBareCommands,
+		DisableUnapprove:       &c.DisableUnapprove,
+		DisableReactions:       &c.DisableReactions,
+		DisableDeletedComments: &c.DisableDeletedComments,
+		AllowSelfApproval:      &c.AllowSelfApproval,
+		Runner:                 &c.Runner,
 	}
 }
 
