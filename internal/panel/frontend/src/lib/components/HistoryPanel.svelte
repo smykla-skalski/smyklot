@@ -1203,7 +1203,8 @@
     width: 100%;
   }
 
-  .history-table th,
+  /* The header's own rule comes from `thead th` in `app.css`, so every table in
+     the product draws it the same. This is the separator between rows. */
   .history-table td {
     border-bottom: 1px solid var(--rule);
     font-size: var(--font-size-meta);

@@ -55,7 +55,7 @@
     font-weight: 700;
     grid-column: 1;
     grid-row: 1;
-    letter-spacing: -0.035em;
+    letter-spacing: -0.03em;
     /* Rounded to whole pixels: 1.2 of a 28px title is 33.6, and a fractional
        line box puts the subtitle - and everything under it - on a half device
        pixel, which reads as a soft edge at 2x. Keyed to 1.2em, the element's
@@ -71,9 +71,11 @@
     text-box: trim-both cap alphabetic;
   }
 
+  /* The meta size, as the approved design draws it, and the same as the Root
+     header's subtitle: the two headers are one anatomy and read alike. */
   p {
     color: var(--text-secondary);
-    font-size: var(--font-size-body);
+    font-size: var(--font-size-meta);
     grid-column: 1;
     grid-row: 2;
     /* Whole pixels, same rule as the title: 1.5 of a 15px body is 22.5, and

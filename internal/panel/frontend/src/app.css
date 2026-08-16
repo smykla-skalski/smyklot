@@ -1596,6 +1596,11 @@ code {
    cell can hold anything - tried, and it threw the body rows 5.41px apart. */
 thead th {
   background: var(--table-header-bg);
+  /* The rule under the header band, stated here so every table has it and has the
+     same one. Some tables drew it from a `th, td` rule of their own and some drew
+     none at all - the queue's header sat straight on its first row with nothing
+     between them. */
+  border-bottom: 1px solid var(--rule);
   color: var(--text-soft);
   font: 700 var(--font-size-micro) / 1 var(--sans);
   letter-spacing: 0.08em;
@@ -1638,16 +1643,25 @@ thead th {
    silhouette, so nothing next to a button reads as pressable. */
 .status-pill {
   align-items: center;
-  background: var(--brand-action-tint);
+  /* The inset surface, not the brand tint: this says what is true, not what can
+     be pressed, and a brand-coloured pill beside a brand-coloured button reads as
+     a second control. */
+  background: var(--well);
   border-radius: var(--radius-chip);
-  color: var(--brand-action-text);
+  /* Mixed from the pill's own foreground, which is the answer the chips already
+     carry and works on any ground without a per-palette value. Its fill measures
+     0.99 dE00 against the light panel's canvas and 1.95 against the light Root
+     one - under a just-noticeable difference, so without a keyline the pill has
+     no shape at all there. */
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentcolor 22%, transparent);
+  color: var(--text-soft);
   display: inline-flex;
   flex: none;
   font: 700 var(--font-size-micro) / 1 var(--sans);
   gap: 0.4rem;
   height: 1.5rem;
   letter-spacing: 0.06em;
-  padding: 0 0.7rem;
+  padding: 0 0.6rem;
   text-transform: uppercase;
   white-space: nowrap;
 }

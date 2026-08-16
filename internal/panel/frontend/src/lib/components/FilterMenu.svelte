@@ -327,6 +327,14 @@
     width: 100%;
   }
 
+  /* A row with nothing on its second line does not need the room a second line
+     would have taken. The approved design gives every value a description and so
+     draws every row at 66.73px; where a menu has none, the same padding leaves a
+     chip floating in a 49.8px row with the space a sentence would have used. */
+  .filter-option:not(:has(.option-description)) {
+    padding-block: var(--space-2);
+  }
+
   .filter-option:hover,
   .filter-option:focus-visible {
     background: var(--interactive-hover);

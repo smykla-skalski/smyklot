@@ -1448,13 +1448,20 @@
     width: 100%;
   }
 
+  /* Padding is shared; the rule under the header and the header's own type are
+     not. A `th, td` font-size here outranks `thead th` in `app.css` - a class
+     selector beats two element ones - so this table's heading was rendering at
+     13px while the other five were at 11. */
   th,
   td {
-    border-bottom: 1px solid var(--border-subtle);
-    font-size: var(--font-size-meta);
     padding: var(--space-2) var(--space-3);
     text-align: left;
     vertical-align: middle;
+  }
+
+  td {
+    border-bottom: 1px solid var(--rule);
+    font-size: var(--font-size-meta);
   }
 
   /* Typography and ground come from `thead th` in `app.css`. This one used

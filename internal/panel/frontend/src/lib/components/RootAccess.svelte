@@ -1058,9 +1058,14 @@
     width: 100%;
   }
 
-  th,
+  /* The header's rule comes from `thead th` in `app.css`; this is the row
+     separator. */
   td {
     border-bottom: 1px solid var(--rule);
+  }
+
+  th,
+  td {
     padding: var(--cell-pad-block) 0.75rem;
     text-align: left;
     vertical-align: middle;

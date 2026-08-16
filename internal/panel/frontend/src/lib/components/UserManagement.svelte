@@ -2255,10 +2255,21 @@
     width: 100%;
   }
 
-  .user-table th,
-  .user-table td {
+  /* The header's rule and its type come from `thead th` in `app.css`. A
+     `font-size` on `th` here would outrank it - a class selector beats two
+     element ones - and this table's heading would be 13px against everyone
+     else's 11. */
+  /* `tbody th` as well as `td`: the identity cell is a row header, and without
+     the separator it is a pixel taller than the cells beside it - which centres
+     its contents half a pixel lower than the rest of the row. */
+  .user-table td,
+  .user-table tbody th {
     border-bottom: 1px solid var(--rule);
     font-size: var(--font-size-meta);
+  }
+
+  .user-table th,
+  .user-table td {
     padding: var(--space-2) var(--space-3);
     text-align: left;
     vertical-align: middle;
