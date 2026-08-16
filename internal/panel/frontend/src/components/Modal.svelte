@@ -36,9 +36,9 @@
    * A dialog is moved out to the shell it belongs to, and taken away again by hand.
    *
    * `showModal()` promotes an element to the top layer, but it does not exempt it from an ancestor
-   * that is not rendering: a dialog written inside a closed `<details>` measures 0x0 and paints
-   * nothing. The inbox is written inside the account menu, so opening it had to leave that menu
-   * hanging open behind it. The shell rather than `document.body`, because the design tokens are
+   * that is not rendering: a dialog written inside something closed measures 0x0 and paints
+   * nothing. The inbox is written inside the account menu - a popover, closed most of the time - so
+   * opening it had to leave that menu hanging open behind it. The shell rather than `document.body`, because the design tokens are
    * declared on `.app-shell` - the Root console re-skins them there - and a dialog reparented to
    * the body would inherit the panel's palette inside the Root console.
    *

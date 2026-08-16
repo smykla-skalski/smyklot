@@ -7,7 +7,8 @@ import { describe, expect, it } from 'vitest';
  *
  * Svelte takes a component's nodes out of where it put them. A node moved somewhere else is
  * therefore not removed at all, and `Modal` moves its `<dialog>` to the shell so that a dialog
- * written inside a closed `<details>` can still be seen. Without a teardown, dismissing a modal
+ * written inside something closed can still be seen - the inbox dialog lives in the account menu,
+ * which is a closed popover most of the time. Without a teardown, dismissing a modal
  * that is conditionally rendered left the dialog in the document - still open, still in the top
  * layer - where it swallowed the first click on every other control on the page and looked for all
  * the world like the sidebar needing focus before it would answer.
