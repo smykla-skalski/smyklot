@@ -58,6 +58,20 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/**/*.test.ts'],
+    // The `test` script runs Node with `--no-experimental-webstorage`, and it has to. Node 26 turns
+    // Web Storage on by default, which puts a `localStorage` accessor on `globalThis` that answers
+    // `undefined` unless the process was given `--localstorage-file`. jsdom installs its globals by
+    // copying and declines to overwrite a key that is already there, so its own storage never lands
+    // and `window.localStorage` - the same object here, because the jsdom window is flattened onto
+    // `globalThis` - reads as undefined. `sessionStorage` arrives intact, which is what makes this
+    // look like anything but a Node flag.
+    //
+    // The silence is the reason it is worth a flag. `browserStorage()` in `lib/preferences.ts`
+    // catches a throw, not an undefined, so on such a host every preference falls back to its
+    // default and the storage-backed paths pass while proving nothing. The pinned toolchain is
+    // Node 24, where the global does not exist and the copy works - so this bites a newer local
+    // Node only, and quietly. The flag has to travel as `NODE_OPTIONS` rather than
+    // `poolOptions.forks.execArgv`, which vitest overwrites when it builds the worker.
     server: {
       deps: {
         inline: [/svelte/, /@testing-library/],
