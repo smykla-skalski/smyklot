@@ -54,7 +54,9 @@ jobs:
           - area: storage
             dirs: ./internal/storage/sqlite ./internal/storage/postgres
           - area: packages
-            dirs: ./pkg ./internal/pendingci ./internal/configgen ./internal/storage/sqlstore
+            dirs: >-
+              ./pkg ./internal/pendingci ./internal/orgsync ./internal/configgen
+              ./internal/storage/sqlstore
 
     steps:
       - name: Checkout code
