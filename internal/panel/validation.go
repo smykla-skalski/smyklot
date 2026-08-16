@@ -3,6 +3,7 @@ package panel
 import (
 	"errors"
 	"regexp"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -17,6 +18,13 @@ const (
 
 var aliasPattern = regexp.MustCompile(`^[A-Za-z0-9_]+$`)
 
+// errRunnerManagedByRepository reports a setting the panel must not write.
+//
+// It names the runner because that is the only such setting today, and the
+// message is what a person reads. Which settings those are is not decided here:
+// a field carries `panel:"deny"` on config.Patch and config.PanelDeniedKeys
+// reports it, so the rule lives beside the field rather than in a list this
+// package would have to remember to update.
 var errRunnerManagedByRepository = errors.New("runner can only be configured in the repository file")
 
 var canonicalCommands = map[string]struct{}{
@@ -30,7 +38,7 @@ var canonicalCommands = map[string]struct{}{
 }
 
 func validatePatch(patch config.Patch) error {
-	if err := validateRunner(patch.Runner); err != nil {
+	if err := validateDeniedKeys(patch); err != nil {
 		return err
 	}
 	if err := validatePrefix(patch.CommandPrefix); err != nil {
@@ -43,12 +51,18 @@ func validatePatch(patch config.Patch) error {
 	return validateAliases(patch.CommandAliases)
 }
 
-func validateRunner(runner *config.Runner) error {
-	if runner == nil {
-		return nil
+// validateDeniedKeys refuses a patch that writes a setting the panel does not
+// own, whichever setting that turns out to be.
+func validateDeniedKeys(patch config.Patch) error {
+	denied := config.PanelDeniedKeys()
+
+	for _, key := range patch.SetKeys() {
+		if slices.Contains(denied, key) {
+			return errRunnerManagedByRepository
+		}
 	}
 
-	return errRunnerManagedByRepository
+	return nil
 }
 
 func validatePrefix(prefix *string) error {

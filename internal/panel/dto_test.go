@@ -82,3 +82,45 @@ func testOwnerAccess() storage.TargetAccess {
 		Capabilities: storage.EffectiveCapabilities(storage.InstallationRoleOwner),
 	}
 }
+
+// patchSize used to enumerate its fields and had fallen one behind, so a
+// repository that overrode only its runner was reported as overriding nothing.
+// The count now comes from the patch itself.
+func TestPatchSizeCountsEverySetting(t *testing.T) {
+	runner := config.RunnerAction
+	prefix := "!"
+
+	cases := map[string]struct {
+		patch config.Patch
+		want  int
+	}{
+		"nothing set":    {want: 0},
+		"one setting":    {patch: config.Patch{CommandPrefix: &prefix}, want: 1},
+		"runner alone":   {patch: config.Patch{Runner: &runner}, want: 1},
+		"runner and one": {patch: config.Patch{Runner: &runner, CommandPrefix: &prefix}, want: 2},
+	}
+
+	for name, test := range cases {
+		t.Run(name, func(t *testing.T) {
+			if got := patchSize(test.patch); got != test.want {
+				t.Errorf("patchSize() = %d, want %d", got, test.want)
+			}
+		})
+	}
+}
+
+// Every key the patch can carry has to be countable, or patchSize is back to
+// enumerating a subset - just generated rather than hand-written.
+func TestPatchSizeCountsAFullPatch(t *testing.T) {
+	full := config.Patch{}
+	value := reflect.ValueOf(&full).Elem()
+
+	for index := range value.NumField() {
+		field := value.Field(index)
+		field.Set(reflect.New(field.Type().Elem()))
+	}
+
+	if got, want := patchSize(full), len(config.Keys()); got != want {
+		t.Errorf("patchSize(full patch) = %d, want %d", got, want)
+	}
+}

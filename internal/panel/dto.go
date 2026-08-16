@@ -346,28 +346,14 @@ func offsetCursor(value int) *string {
 	return &formatted
 }
 
+// patchSize is how many settings a layer speaks to, which the panel shows as
+// the override count beside a repository.
+//
+// This used to enumerate the fields, and it had drifted: Runner was missing, so
+// a repository overriding only its runner counted as overriding nothing. Asking
+// the patch is what stops that happening again to the next field added.
 func patchSize(patch config.Patch) int {
-	count := 0
-	for _, present := range []bool{
-		patch.QuietSuccess != nil,
-		patch.QuietReactions != nil,
-		patch.QuietPending != nil,
-		patch.AllowedCommands != nil,
-		patch.CommandAliases != nil,
-		patch.CommandPrefix != nil,
-		patch.DisableMentions != nil,
-		patch.DisableBareCommands != nil,
-		patch.DisableUnapprove != nil,
-		patch.DisableReactions != nil,
-		patch.DisableDeletedComments != nil,
-		patch.AllowSelfApproval != nil,
-	} {
-		if present {
-			count++
-		}
-	}
-
-	return count
+	return len(patch.SetKeys())
 }
 
 var auditHistoryOrders = []storage.HistoryOrder{
