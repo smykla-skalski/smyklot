@@ -17,6 +17,9 @@ const migrationDir = "migrations"
 // errMigrationName reports a file the runner cannot order.
 var errMigrationName = errors.New("migration name must start with a numeric version")
 
+// errMigrationVersion reports two files claiming one version.
+var errMigrationVersion = errors.New("two migrations share a version")
+
 // Migrate applies every unapplied .sql file in fsys, in filename order, inside
 // one transaction. A migration that fails leaves the schema untouched.
 //
@@ -72,6 +75,13 @@ func Migrate(ctx context.Context, pool *sql.DB, dialect Dialect, fsys fs.FS) (er
 }
 
 // migrationNames returns the schema files in the order their versions apply.
+//
+// A version claimed twice is refused rather than run. The runner records a
+// version once and skips anything that repeats it, so the second file would be
+// dropped in silence - and which of the two is dropped depends on which one is
+// already recorded, so two databases that ran the same code would end up with
+// different schemas. Two branches open at once is how it happens, and neither
+// author sees anything wrong.
 func migrationNames(fsys fs.FS) ([]string, error) {
 	entries, err := fs.ReadDir(fsys, migrationDir)
 	if err != nil {
@@ -88,6 +98,20 @@ func migrationNames(fsys fs.FS) ([]string, error) {
 	}
 
 	sort.Strings(names)
+
+	claimed := make(map[int]string, len(names))
+	for _, name := range names {
+		version, err := migrationVersion(name)
+		if err != nil {
+			return nil, err
+		}
+
+		if first, taken := claimed[version]; taken {
+			return nil, fmt.Errorf("%w: %q and %q", errMigrationVersion, first, name)
+		}
+
+		claimed[version] = name
+	}
 
 	return names, nil
 }
