@@ -76,11 +76,14 @@
     },
   ] satisfies readonly FilterSection[];
 
+  /* Plain labels, no chips: a value is drawn as a chip here because its column
+     draws it as one, and there is no schedule column - the schedule is what the
+     Next column's second line explains in words. */
   const SCHEDULE_FILTERS = [
     {
       options: [
-        { value: 'active', label: 'Active', tone: 'valid' },
-        { value: 'deferred', label: 'Deferred', tone: 'default' },
+        { value: 'active', label: 'Active', description: 'Checked every few minutes' },
+        { value: 'deferred', label: 'Deferred', description: 'Nothing has moved for an hour' },
       ],
     },
   ] satisfies readonly FilterSection[];
