@@ -41,6 +41,12 @@ type githubStub struct {
 	branchUpdates []string
 	forcedPushes  int
 
+	// repoLabels is what a repository's own label list answers, and
+	// labelWrites is every create, update and delete sync sent - which is the
+	// whole of what applying a plan does.
+	repoLabels  string
+	labelWrites []string
+
 	// refuseBranchPush is an App that was never granted write access here.
 	refuseBranchPush bool
 
@@ -112,6 +118,7 @@ func newGitHubStub() *githubStub {
 		migrationRefs:    map[string]string{},
 		migrationTipTree: "treesha",
 		createdTreeSHA:   "treesha",
+		repoLabels:       `[]`,
 
 		prAuthor:   "author",
 		prLabels:   `[]`,
@@ -200,7 +207,15 @@ func (s *githubStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case strings.Contains(r.URL.Path, "/git/"):
 		s.serveGitData(w, r)
 
-	case strings.HasSuffix(r.URL.Path, "/labels"):
+	// A repository's own labels, which sync reads and writes. Told apart from a
+	// pull request's by the path carrying no issue number: a deletion addresses
+	// /repos/o/r/labels/{name}, so matching on the suffix alone would miss
+	// exactly the operation that destroys something.
+	case strings.Contains(r.URL.Path, "/labels") &&
+		!strings.Contains(r.URL.Path, "/issues/"):
+		s.serveRepositoryLabels(w, r)
+
+	case strings.Contains(r.URL.Path, "/labels"):
 		_, _ = w.Write([]byte(`[]`))
 
 	// CI signals. These answer "nothing has reported" rather than being left to
@@ -578,6 +593,28 @@ func (s *githubStub) serveGitData(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		_, _ = fmt.Fprintf(w, `{"message": "unstubbed git path %s"}`, r.URL.Path)
 	}
+}
+
+// serveRepositoryLabels answers and records the repository label endpoints.
+func (s *githubStub) serveRepositoryLabels(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		s.mu.Lock()
+		labels := s.repoLabels
+		s.mu.Unlock()
+		_, _ = io.WriteString(w, labels)
+
+		return
+	}
+
+	body, _ := io.ReadAll(r.Body)
+
+	s.mu.Lock()
+	s.labelWrites = append(s.labelWrites,
+		r.Method+" "+r.URL.EscapedPath()+" "+string(body))
+	s.mu.Unlock()
+
+	w.WriteHeader(http.StatusCreated)
+	_, _ = io.WriteString(w, `{}`)
 }
 
 // record keeps a request body for a spec to assert on.

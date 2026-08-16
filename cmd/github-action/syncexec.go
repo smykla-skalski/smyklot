@@ -133,7 +133,7 @@ func (s *server) applySyncPlan(
 		if err != nil {
 			// A repository the catalog no longer has is not a failure of the
 			// plan, but its actions cannot run and must not stay pending.
-			s.abandonRepositoryWork(&outcome, work, "repository is no longer available")
+			s.abandonRepositoryWork(ctx, &outcome, work, "repository is no longer available")
 
 			continue
 		}
@@ -147,6 +147,7 @@ func (s *server) applySyncPlan(
 // abandonRepositoryWork records every action for a repository that cannot be
 // reached, so nothing is left pending for a later lease to retry for ever.
 func (s *server) abandonRepositoryWork(
+	ctx context.Context,
 	outcome *orgsync.Outcome,
 	work orgsync.RepositoryWork,
 	reason string,
@@ -154,6 +155,7 @@ func (s *server) abandonRepositoryWork(
 	for _, kind := range work.Kinds {
 		for _, action := range kind.Actions {
 			outcome.Fail(action, reason)
+			s.recordSyncAction(ctx, action, orgsync.ActionFailed, reason, "")
 		}
 	}
 }
@@ -182,6 +184,7 @@ func (s *server) applyRepositoryWork(
 		if blocker != "" {
 			for _, action := range kind.Actions {
 				outcome.Skip(action, blocker)
+				s.recordSyncAction(ctx, action, orgsync.ActionSkipped, "", blocker)
 			}
 
 			continue
@@ -207,6 +210,12 @@ func (s *server) applyRepositoryWork(
 }
 
 // applyKind runs one kind's actions and reports whether every one succeeded.
+//
+// Each outcome is written as it happens rather than accumulated and written at
+// the end. An executor that dies halfway must not leave its finished work
+// looking pending: the plan would be leased again and every applied action
+// retried, and retrying a create GitHub has already honoured is a 422 that
+// fails a repository for having succeeded.
 func (s *server) applyKind(
 	ctx context.Context,
 	client *github.Client,
@@ -223,15 +232,38 @@ func (s *server) applyKind(
 				"kind", action.Kind, "operation", action.Operation,
 				"subject", action.Subject, "error", err)
 			outcome.Fail(action, err.Error())
+			s.recordSyncAction(ctx, action, orgsync.ActionFailed, err.Error(), "")
 			succeeded = false
 
 			continue
 		}
 
 		outcome.Apply(action)
+		s.recordSyncAction(ctx, action, orgsync.ActionApplied, "", "")
 	}
 
 	return succeeded
+}
+
+// recordSyncAction writes what became of one action.
+//
+// A failure to write is logged rather than returned. The work against GitHub
+// has already happened, and abandoning the rest of the plan because the note
+// about it could not be filed would turn one lost record into a repository left
+// half-synchronised.
+func (s *server) recordSyncAction(
+	ctx context.Context,
+	action orgsync.Action,
+	state orgsync.ActionState,
+	reason string,
+	blocker orgsync.Kind,
+) {
+	if err := s.store.RecordSyncActionOutcome(ctx, orgsync.ActionOutcome{
+		ActionID: action.ID, State: state, Error: reason, Blocker: blocker,
+	}); err != nil {
+		logging.From(ctx).Error("could not record what became of a sync action",
+			"subject", action.Subject, "error", err)
+	}
 }
 
 // applyAction performs one action against GitHub.
