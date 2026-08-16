@@ -1,5 +1,8 @@
+import { readFileSync } from 'node:fs';
+
 import { describe, expect, it } from 'vitest';
 
+import { ROOT_USER_ACTIONS } from '../src/lib/route-dialogs';
 import { panelRoutePath, parsePanelRoute } from '../src/lib/routes';
 
 /**
@@ -180,5 +183,32 @@ describe('dialog addresses in the Root console [Unit]', () => {
       rootView: 'access-invitations',
     });
     expect(parsePanelRoute('', '/root/access/users/octocat')).toBeNull();
+  });
+});
+
+/**
+ * The two lists that have to agree, tied together.
+ *
+ * `RootAccess` keeps its own list of the actions it offers, in the underscore
+ * spelling its handlers switch on; the grammar keeps the same five in the
+ * hyphenated spelling an address uses. Nothing connected them, so an action
+ * added to the menu and not to the grammar would write an address that does not
+ * resolve, and nobody would find out until somebody reloaded one. That is the
+ * shape that already cost this panel every dialog link it wrote.
+ */
+describe('the Root user actions the console offers [Unit]', () => {
+  const component = readFileSync(
+    new URL('../src/components/RootAccess.svelte', import.meta.url),
+    'utf8',
+  );
+
+  it('are exactly the actions an address can name', () => {
+    const declared = /const USER_ACTIONS = \[([^\]]*)\]/u.exec(component)?.[1];
+    expect(declared).toBeDefined();
+    const offered = [...(declared ?? '').matchAll(/'([a-z_]+)'/gu)].map((match) =>
+      match[1]?.replaceAll('_', '-'),
+    );
+
+    expect(offered).toEqual([...ROOT_USER_ACTIONS]);
   });
 });

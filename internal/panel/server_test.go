@@ -2521,6 +2521,11 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 		"/panel/root/access/invitations/inv-1/reissue",
 		"/panel/root/installations/smykla-skalski/repositories/api-gateway/file",
 		"/panel/root/installations/smykla-skalski/users/octocat/history",
+		// A trailing slash is not part of the address; the panel's router reads
+		// `/inbox/` as `/inbox`, and the server has to agree.
+		"/panel/inbox/",
+		"/panel/i/smykla-skalski/history/audit/",
+		"/panel/root/access/users/",
 	} {
 		response := harness.request(t, http.MethodGet, path, nil, nil)
 		body := response.Body.String()

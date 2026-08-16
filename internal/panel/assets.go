@@ -90,8 +90,11 @@ func newAssetBundle(cfg Config) (*assetBundle, error) {
 }
 
 func (s *Server) serveAsset(w http.ResponseWriter, r *http.Request) {
-	relative := strings.TrimPrefix(r.URL.Path, s.cfg.BasePath)
-	relative = strings.TrimPrefix(relative, "/")
+	/* Trimmed at both ends. A trailing slash is not part of the address - the
+	   panel's own router reads `/inbox/` as `/inbox` - but `fs.ValidPath` refuses
+	   one, so every panel route answered a typed or copied trailing slash with the
+	   not-found page. */
+	relative := strings.Trim(strings.TrimPrefix(r.URL.Path, s.cfg.BasePath), "/")
 	if relative == "" || relative == indexAsset {
 		s.writeIndex(w, r)
 		return
