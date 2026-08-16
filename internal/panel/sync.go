@@ -35,6 +35,13 @@ type syncConfigDTO struct {
 	UpdatedBy    string          `json:"updated_by"`
 	UpdatedAt    time.Time       `json:"updated_at"`
 	Digest       string          `json:"digest"`
+
+	// Unreadable is a stored document this version cannot decode. The lists
+	// above are then empty because nothing could be read out of them, not
+	// because the installation configured nothing - and a panel that could not
+	// tell those apart would offer an empty form somebody saves, wiping a label
+	// set that was never shown to them.
+	Unreadable bool `json:"unreadable"`
 }
 
 // syncPlanDTO is a plan as a person reads it: what it would do, and enough to
@@ -189,9 +196,14 @@ func syncConfigToDTO(config orgsync.Config) syncConfigDTO {
 
 	var document syncDocument
 	if err := json.Unmarshal(config.Document, &document); err != nil {
-		// A stored document that will not decode is shown as empty rather than
-		// failing the page. The row is what it is, and a panel that will not
-		// render is a panel nobody can use to fix it.
+		// The page still renders - a panel that will not load is a panel nobody
+		// can use to fix anything - but it says so, and it says so because the
+		// alternative is worse than a blank screen. An empty list that looks
+		// like a configuration is one somebody saves over, and the save would
+		// send back the emptiness the panel invented rather than the labels the
+		// row still holds.
+		dto.Unreadable = true
+
 		return dto
 	}
 

@@ -199,6 +199,7 @@ function mockSyncConfig(state: MockState, targetId: string): SyncConfig {
     updated_by: '',
     updated_at: new Date().toISOString(),
     digest: '',
+    unreadable: false,
   };
   state.sync.set(targetId, fresh);
 

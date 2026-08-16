@@ -636,6 +636,13 @@ export interface SyncConfig {
   updated_by: string;
   updated_at: string;
   digest: string;
+  /**
+   * The stored document could not be read, so the lists above are empty because
+   * nothing came out of them - not because nothing is configured. Saving over
+   * this would send back the emptiness rather than the labels the row holds, so
+   * the view refuses.
+   */
+  unreadable: boolean;
 }
 
 /** What a save sends. The revision is what it believes it is replacing. */
