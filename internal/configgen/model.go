@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -58,6 +59,14 @@ var (
 	// ErrMissingDoc reports a field with no doc comment. The comment becomes the
 	// schema description, so an undocumented field would publish an empty one.
 	ErrMissingDoc = errors.New("field has no doc comment")
+
+	// ErrInvalidDefault reports a default or enum tag that does not fit the
+	// field it sits on.
+	ErrInvalidDefault = errors.New("invalid tag")
+
+	// ErrDuplicateKey reports two fields addressed by the same key. Both would
+	// render into one map entry, so one of them would silently never resolve.
+	ErrDuplicateKey = errors.New("duplicate key")
 )
 
 // Kind is how a setting behaves, which is what decides the Go type it takes,
@@ -166,6 +175,14 @@ func Parse(dir string) (Model, error) {
 
 	fset := token.NewFileSet()
 
+	// Every file is read before anything is built, because a field's type may
+	// be declared in a different one. Runner lives in types.go and Patch in
+	// patch.go, and without the first the second cannot be told apart from a
+	// field of some type the generator has no business rendering.
+	var patch *ast.StructType
+
+	stringTypes := make(map[string]struct{})
+
 	for _, name := range names {
 		path := filepath.Join(dir, name)
 
@@ -174,12 +191,45 @@ func Parse(dir string) (Model, error) {
 			return Model{}, fmt.Errorf("parse %s: %w", path, err)
 		}
 
-		if spec := findStruct(file, PatchTypeName); spec != nil {
-			return build(spec)
+		collectStringTypes(file, stringTypes)
+
+		if spec := findStruct(file, PatchTypeName); spec != nil && patch == nil {
+			patch = spec
 		}
 	}
 
-	return Model{}, fmt.Errorf("%w in %s", ErrPatchNotFound, dir)
+	if patch == nil {
+		return Model{}, fmt.Errorf("%w in %s", ErrPatchNotFound, dir)
+	}
+
+	return build(patch, stringTypes)
+}
+
+// collectStringTypes records every `type X string` in the package.
+//
+// A named type is only renderable if it is a string underneath: the decoders
+// read it from text, the schema publishes it as a string, and an enum tag
+// closes the set. Without this the generator could not tell `*Runner` from
+// `*int` - both are a bare identifier in the AST - and it took `*int` for a
+// named string type, rendering a Config field that would not compile.
+func collectStringTypes(file *ast.File, into map[string]struct{}) {
+	for _, decl := range file.Decls {
+		generic, ok := decl.(*ast.GenDecl)
+		if !ok || generic.Tok != token.TYPE {
+			continue
+		}
+
+		for _, spec := range generic.Specs {
+			typeSpec, ok := spec.(*ast.TypeSpec)
+			if !ok || typeSpec.Assign.IsValid() {
+				continue
+			}
+
+			if ident, ok := typeSpec.Type.(*ast.Ident); ok && ident.Name == goString {
+				into[typeSpec.Name.Name] = struct{}{}
+			}
+		}
+	}
 }
 
 func findStruct(file *ast.File, name string) *ast.StructType {
@@ -200,8 +250,10 @@ func findStruct(file *ast.File, name string) *ast.StructType {
 	return found
 }
 
-func build(spec *ast.StructType) (Model, error) {
+func build(spec *ast.StructType, stringTypes map[string]struct{}) (Model, error) {
 	var model Model
+
+	seen := make(map[string]string)
 
 	for _, astField := range spec.Fields.List {
 		// An embedded field has no names. Patch has none, and one appearing
@@ -211,11 +263,17 @@ func build(spec *ast.StructType) (Model, error) {
 		}
 
 		for _, name := range astField.Names {
-			field, err := buildField(name.Name, astField)
+			field, err := buildField(name.Name, astField, stringTypes)
 			if err != nil {
 				return Model{}, fmt.Errorf("%s: %w", name.Name, err)
 			}
 
+			if owner, taken := seen[field.Key]; taken {
+				return Model{}, fmt.Errorf("%s: %w: %q also names %s",
+					name.Name, ErrDuplicateKey, field.Key, owner)
+			}
+
+			seen[field.Key] = name.Name
 			model.Fields = append(model.Fields, field)
 		}
 	}
@@ -223,13 +281,13 @@ func build(spec *ast.StructType) (Model, error) {
 	return model, nil
 }
 
-func buildField(name string, astField *ast.Field) (Field, error) {
+func buildField(name string, astField *ast.Field, stringTypes map[string]struct{}) (Field, error) {
 	pointer, ok := astField.Type.(*ast.StarExpr)
 	if !ok {
 		return Field{}, ErrFieldNotSparse
 	}
 
-	goType, kind, err := classify(pointer.X)
+	goType, kind, err := classify(pointer.X, stringTypes)
 	if err != nil {
 		return Field{}, err
 	}
@@ -263,12 +321,50 @@ func buildField(name string, astField *ast.Field) (Field, error) {
 		field.Kind = KindEnum
 	}
 
+	if err := validate(field); err != nil {
+		return Field{}, err
+	}
+
 	return field, nil
+}
+
+// validate rejects a tag that would render into Go that does not compile, or
+// worse, into Go that does.
+//
+// Without it a `default:"maybe"` on a boolean renders as the identifier `maybe`
+// and the failure is a compile error in a generated file, which is a long way
+// from the tag that caused it.
+func validate(field Field) error {
+	switch field.Kind {
+	case KindBool:
+		if field.Default != "" && field.Default != "true" && field.Default != "false" {
+			return fmt.Errorf("%w: %q is not a boolean", ErrInvalidDefault, field.Default)
+		}
+
+	case KindEnum:
+		if field.Default != "" && !slices.Contains(field.Enum, field.Default) {
+			return fmt.Errorf("%w: %q is not one of %s",
+				ErrInvalidDefault, field.Default, strings.Join(field.Enum, ", "))
+		}
+
+	case KindStringSlice, KindStringMap:
+		if field.Default != "" {
+			return fmt.Errorf("%w: a list or mapping defaults to empty", ErrInvalidDefault)
+		}
+	}
+
+	// An enum is a closed set of strings. On a boolean it would silently
+	// re-type the field and render a quoted default into a bool.
+	if len(field.Enum) > 0 && field.GoType == goBool {
+		return fmt.Errorf("%w: a boolean cannot carry an enum", ErrInvalidDefault)
+	}
+
+	return nil
 }
 
 // classify maps a Patch field's pointed-to type onto the Config type and the
 // behaviour. An unrecognised type is refused rather than guessed at.
-func classify(expr ast.Expr) (string, Kind, error) {
+func classify(expr ast.Expr, stringTypes map[string]struct{}) (string, Kind, error) {
 	switch typed := expr.(type) {
 	case *ast.Ident:
 		switch typed.Name {
@@ -277,9 +373,16 @@ func classify(expr ast.Expr) (string, Kind, error) {
 		case goString:
 			return goString, KindString, nil
 		default:
-			// A named type such as Runner. Its underlying type is not visible
-			// from this file alone, so it is treated as a string and an enum
-			// tag is what makes it a closed set.
+			// A named type such as Runner, accepted only when the package
+			// declares it as a string. Anything else - int, a struct, a type
+			// from another package - is refused, because the decoders read a
+			// setting from text and the schema has to publish it as one.
+			if _, ok := stringTypes[typed.Name]; !ok {
+				return "", "", fmt.Errorf(
+					"%w: %s is not a string-based type declared in this package",
+					ErrUnsupportedType, typed.Name)
+			}
+
 			return typed.Name, KindString, nil
 		}
 

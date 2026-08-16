@@ -1,6 +1,7 @@
 package configgen_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -307,4 +308,47 @@ func contains(values []string, want string) bool {
 	}
 
 	return false
+}
+
+// The generator's refusals. Each fixture is a Patch that would otherwise render
+// into Go that does not compile, or - worse - into Go that does and is wrong.
+// Without these, the only test of an error path is the day somebody trips it.
+func TestParseRefusesABadPatch(t *testing.T) {
+	cases := map[string]error{
+		"notpointer":  configgen.ErrFieldNotSparse,
+		"badtype":     configgen.ErrUnsupportedType,
+		"nodoc":       configgen.ErrMissingDoc,
+		"nokey":       configgen.ErrMissingKey,
+		"baddefault":  configgen.ErrInvalidDefault,
+		"badenum":     configgen.ErrInvalidDefault,
+		"listdefault": configgen.ErrInvalidDefault,
+		"dupkey":      configgen.ErrDuplicateKey,
+		"nopatch":     configgen.ErrPatchNotFound,
+	}
+
+	for fixture, want := range cases {
+		t.Run(fixture, func(t *testing.T) {
+			_, err := configgen.Parse(filepath.Join("testdata", fixture))
+			if !errors.Is(err, want) {
+				t.Errorf("Parse(%s) error = %v, want %v", fixture, err, want)
+			}
+		})
+	}
+}
+
+// A refusal has to name the field, or the report sends the reader to a
+// generated file rather than to the tag that caused it.
+func TestRefusalNamesTheField(t *testing.T) {
+	_, err := configgen.Parse(filepath.Join("testdata", "baddefault"))
+	if err == nil {
+		t.Fatal("Parse(baddefault) succeeded")
+	}
+
+	if !strings.Contains(err.Error(), "QuietSuccess") {
+		t.Errorf("error %q does not name the field", err)
+	}
+
+	if !strings.Contains(err.Error(), "maybe") {
+		t.Errorf("error %q does not name the offending value", err)
+	}
 }
