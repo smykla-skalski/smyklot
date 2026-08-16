@@ -30,6 +30,10 @@ type githubStub struct {
 	// migrationRef is the migration branch, empty until something pushes it.
 	migrationRef string
 
+	// migrationTip is what the commit on the migration branch says. Smyklot's
+	// own, unless a spec describes somebody else having pushed to it.
+	migrationTip string
+
 	// forcedPushes counts the times the branch was replaced rather than
 	// created, which must only happen when nothing is open against it.
 	forcedPushes int
@@ -95,7 +99,9 @@ type githubStub struct {
 
 func newGitHubStub() *githubStub {
 	return &githubStub{
-		codeowners: "* @someone\n",
+		codeowners:   "* @someone\n",
+		migrationTip: migrationCommit,
+
 		prAuthor:   "author",
 		prLabels:   `[]`,
 		prHead:     "command-head",
@@ -476,6 +482,17 @@ func (s *githubStub) serveGitData(w http.ResponseWriter, r *http.Request) {
 	// what a new one is built from
 	case strings.HasSuffix(r.URL.Path, "/git/commits/basecommit"):
 		_, _ = io.WriteString(w, `{"sha":"basecommit","tree":{"sha":"basetree"}}`)
+
+	// The tip of the migration branch, whose message is what says whether the
+	// branch is still Smyklot's to rebuild.
+	case strings.Contains(r.URL.Path, "/git/commits/"):
+		s.mu.Lock()
+		message := s.migrationTip
+		s.mu.Unlock()
+
+		_, _ = fmt.Fprintf(
+			w, `{"sha":"commitsha","tree":{"sha":"treesha"},"message":%q}`, message,
+		)
 
 	case strings.HasSuffix(r.URL.Path, "/git/blobs"):
 		s.record(&s.createdBlobs, r)

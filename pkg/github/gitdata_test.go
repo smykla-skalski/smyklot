@@ -86,6 +86,19 @@ var _ = Describe("Git data [Unit]", func() {
 		})
 	})
 
+	Describe("GetCommit", func() {
+		// The tree because a commit is not one, and the message because it is
+		// what tells Smyklot's own commit on a branch from anybody else's.
+		It("reads the tree and the message", func() {
+			server = record(map[string]string{
+				"/git/commits/c1": `{"tree":{"sha":"t1"},"message":"chore: move it"}`,
+			})
+
+			Expect(client().GetCommit(context.Background(), "acme", "web", "c1")).
+				To(Equal(github.Commit{Tree: "t1", Message: "chore: move it"}))
+		})
+	})
+
 	Describe("CreateTree", func() {
 		// The API spells a deletion as an explicit null sha. An omitted key
 		// leaves the path alone and an empty string asks for an object named

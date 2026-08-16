@@ -90,21 +90,31 @@ func (c *Client) CreateRef(ctx context.Context, owner, repo, ref, sha string) er
 	return wrapError(ErrAPIRequest, http.MethodPost, path, err)
 }
 
-// GetCommitTree resolves a commit to the tree it records.
-//
-// CreateTree's base is a tree, not a commit - the API documents base_tree as
-// "the SHA1 of an existing Git tree object", and a reference points at a
-// commit. Peeling one to the other is a request rather than an assumption
-// about what GitHub will accept.
-func (c *Client) GetCommitTree(ctx context.Context, owner, repo, commit string) (string, error) {
-	path := fmt.Sprintf("/repos/%s/%s/git/commits/%s", owner, repo, commit)
+// Commit is a commit object, as much of one as Smyklot reads.
+type Commit struct {
+	// Tree is the tree the commit records.
+	//
+	// CreateTree's base is a tree, not a commit - the API documents base_tree
+	// as "the SHA1 of an existing Git tree object", while a reference points at
+	// a commit. Peeling one to the other is a request rather than an assumption
+	// about what GitHub will accept.
+	Tree string
 
-	found, _, err := c.gh.Git.GetCommit(ctx, owner, repo, commit)
+	// Message is what the commit says, which is how Smyklot recognises its own
+	// work on a branch anyone else can also push to.
+	Message string
+}
+
+// GetCommit reads a commit object.
+func (c *Client) GetCommit(ctx context.Context, owner, repo, sha string) (Commit, error) {
+	path := fmt.Sprintf("/repos/%s/%s/git/commits/%s", owner, repo, sha)
+
+	found, _, err := c.gh.Git.GetCommit(ctx, owner, repo, sha)
 	if err != nil {
-		return "", wrapError(ErrAPIRequest, http.MethodGet, path, err)
+		return Commit{}, wrapError(ErrAPIRequest, http.MethodGet, path, err)
 	}
 
-	return found.GetTree().GetSHA(), nil
+	return Commit{Tree: found.GetTree().GetSHA(), Message: found.GetMessage()}, nil
 }
 
 // UpdateRef moves an existing reference to a commit.
@@ -143,7 +153,7 @@ func (c *Client) CreateBlob(ctx context.Context, owner, repo string, content []b
 
 // CreateTree builds a tree from base with the given paths changed.
 //
-// base is a tree, which GetCommitTree resolves from a commit. Every path not
+// base is a tree, which GetCommit resolves from a commit. Every path not
 // named is inherited from it, so this describes a change rather than a whole
 // repository.
 func (c *Client) CreateTree(

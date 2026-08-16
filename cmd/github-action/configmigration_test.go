@@ -236,6 +236,32 @@ var _ = Describe("Configuration migration [Unit]", func() {
 				To(Equal(storage.ConfigMigrationProposed))
 		})
 
+		// A branch named after the bot is still a branch anybody can push to,
+		// and rebuilding one replaces its history. Somebody who closed the
+		// proposal, pushed a fixup and had an operator clear the refusal would
+		// have watched their commit disappear with no error and no trace
+		It("leaves a branch somebody else pushed to alone", func() {
+			stub.migrationRef = "commitsha"
+			stub.migrationTip = "fix the thing the bot got wrong"
+
+			targetID := seed()
+			propose(targetID)
+
+			Expect(stub.forcedPushes).To(BeZero(), "somebody's commit was pushed over")
+			Expect(stub.createdTrees).To(BeEmpty())
+			Expect(stub.createdPRs).To(BeEmpty())
+
+			// And nothing is written down, because the state resolves itself:
+			// whoever pushed opens a pull request and the next tick adopts it
+			Expect(repository(targetID).ConfigMigration).
+				To(Equal(storage.ConfigMigrationNone))
+
+			stub.branchPRs = `[{"number":77,"state":"open","merged":false}]`
+			propose(targetID)
+			Expect(repository(targetID).ConfigMigration).
+				To(Equal(storage.ConfigMigrationProposed))
+		})
+
 		// The panel's only way back from a refusal. It used to undo itself on
 		// the next sweep tick: the branch was still there, the closed proposal
 		// was still findable, and adopting it wrote the refusal straight back

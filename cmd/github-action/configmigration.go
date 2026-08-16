@@ -299,9 +299,16 @@ func (s *server) openConfigMigration(
 		if err != nil || adopted {
 			return err
 		}
+
 		// Nothing open against the branch: an earlier tick pushed it and never
 		// opened anything, or the proposal was closed and an operator has since
-		// asked for it again. Either way the branch is stale and gets rebuilt.
+		// asked for it again. Either way the branch is stale - but rebuilding it
+		// replaces its history, so it is only stale if Smyklot is still the last
+		// thing to have written to it.
+		own, err := s.ownsMigrationBranch(ctx, client, repo, existing)
+		if err != nil || !own {
+			return err
+		}
 	}
 
 	commit, branch, err := s.buildConfigMigration(ctx, client, repo, file)
@@ -368,7 +375,7 @@ func (s *server) buildConfigMigration(
 	// The tree the base commit records, because that is what a tree is built
 	// from. A reference points at a commit, and CreateTree wants the thing the
 	// commit points at.
-	baseTree, err := client.GetCommitTree(ctx, repo.Owner, repo.Name, base)
+	baseCommit, err := client.GetCommit(ctx, repo.Owner, repo.Name, base)
 	if err != nil {
 		return "", "", err
 	}
@@ -380,7 +387,7 @@ func (s *server) buildConfigMigration(
 		return "", "", err
 	}
 
-	tree, err := client.CreateTree(ctx, repo.Owner, repo.Name, baseTree, []github.TreeChange{
+	tree, err := client.CreateTree(ctx, repo.Owner, repo.Name, baseCommit.Tree, []github.TreeChange{
 		{Path: migrationTarget, Blob: blob},
 		{Path: file.path},
 	})
@@ -393,14 +400,49 @@ func (s *server) buildConfigMigration(
 	return commit, branch, err
 }
 
+// ownsMigrationBranch reports a branch still carrying the commit Smyklot put
+// there, and nothing on top of it.
+//
+// A branch named after the bot is the bot's by convention and by nothing
+// stronger - it is a place anybody can push to. So the tip is checked rather
+// than assumed, because the alternative is that a fixup somebody pushed after
+// closing the proposal disappears on the next tick with no error and no trace:
+// the failure that made file sync's force-push dangerous in the tool this
+// replaces.
+//
+// Somebody else's branch is left alone rather than written down as blocked,
+// because the state resolves itself. Whoever pushed opens a pull request, and
+// the next tick adopts it; a refusal recorded here would be a refusal to.
+func (s *server) ownsMigrationBranch(
+	ctx context.Context,
+	client *github.Client,
+	repo github.Repository,
+	head string,
+) (bool, error) {
+	tip, err := client.GetCommit(ctx, repo.Owner, repo.Name, head)
+	if err != nil {
+		return false, err
+	}
+
+	if tip.Message == migrationCommit {
+		return true, nil
+	}
+
+	logging.From(ctx).Info(
+		"configuration migration branch carries somebody else's work; leaving it alone",
+		"branch", migrationBranch,
+		"commit", head,
+	)
+
+	return false, nil
+}
+
 // pushConfigMigration puts the commit on the migration branch.
 //
-// Replacing an existing branch is a force, and it is safe here for a reason
-// worth stating: this is only reached when nothing is open against the branch,
-// so there is no review in progress to lose. A branch with an open proposal is
-// adopted rather than pushed over, which is what keeps somebody's fixup commit
-// from being thrown away - the failure that made file sync's force-push
-// dangerous in the tool this replaces.
+// Replacing an existing branch is a force, and what makes that safe is checked
+// rather than assumed. A branch with an open proposal is adopted instead of
+// pushed over, and a branch whose tip somebody else wrote is left alone, so
+// what reaches here is a branch holding Smyklot's own commit and nothing else.
 func (s *server) pushConfigMigration(
 	ctx context.Context,
 	client *github.Client,
