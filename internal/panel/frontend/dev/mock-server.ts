@@ -181,6 +181,19 @@ function enabled(): boolean {
 }
 
 /**
+ * Whether starting the server should also raise a browser.
+ *
+ * Off unless asked for. A dev server is restarted far more often than it is
+ * started to be looked at - after a config change, after a port clash, from a
+ * script - and each restart took a tab whether or not anybody wanted one.
+ * `SMYKLOT_PANEL_DEV_OPEN=1`, or Vite's own `--open`, which overrides this
+ * either way.
+ */
+function opensBrowser(): boolean {
+  return process.env.SMYKLOT_PANEL_DEV_OPEN === '1';
+}
+
+/**
  * Preferences outlive the process they were set in.
  *
  * Everything the panel remembers about you is a synced preference - the theme, whether the sidebar
@@ -974,7 +987,8 @@ export function mockServer(): Plugin {
     name: 'smyklot-panel-mock-server',
     config() {
       if (!enabled()) return;
-      return { base: '/', server: { open: '/' } };
+      // The mock serves the panel at the root rather than at the baked sentinel.
+      return { base: '/', server: opensBrowser() ? { open: '/' } : {} };
     },
     transformIndexHtml(html) {
       if (!enabled()) return html;
