@@ -31,7 +31,8 @@ export type ScopedPanelView = (typeof SCOPED_PANEL_VIEWS)[number];
 export type PersonalView = (typeof PERSONAL_VIEWS)[number];
 /** History's two tables are addressable, so a reload lands where you left off. */
 export type HistorySection = (typeof HISTORY_SECTIONS)[number];
-export type RootSection = 'overview' | 'installations' | 'access' | 'history' | 'settings';
+export type RootSection =
+  'overview' | 'queue' | 'installations' | 'access' | 'history' | 'settings';
 export type PanelSection = Exclude<ScopedPanelView, 'users' | 'invitations'> | 'access';
 export type RootRoute =
   | {
@@ -39,6 +40,17 @@ export type RootRoute =
       dialog?: RouteDialog;
     }
   | { rootView: 'history-audit' | 'history-failures' | 'settings' }
+  /**
+   * Work the service has accepted and will do later, on a schedule it chooses.
+   *
+   * One word, like every other item in this nav, and a generic one: what is in it
+   * today is pull requests waiting on their checks, and the data model already
+   * carries cleanup retries. "Merge queue" is GitHub's name for batching pull
+   * requests and testing them together, which is not this.
+   */
+  | { rootView: 'queue' | 'queue-recent' }
+  /** A request is a page rather than a dialog: the timeline is a record to link someone to. */
+  | { rootView: 'queue-request'; request: string }
   | {
       rootView: 'installation';
       account: string;
@@ -205,6 +217,7 @@ export function rootSection(route: RootRoute): RootSection {
   if (route.rootView === 'access-users' || route.rootView === 'access-invitations') return 'access';
   if (route.rootView === 'history-audit' || route.rootView === 'history-failures') return 'history';
   if (route.rootView === 'installation') return 'installations';
+  if (route.rootView === 'queue-recent' || route.rootView === 'queue-request') return 'queue';
   return route.rootView;
 }
 
@@ -258,6 +271,20 @@ function parseRootRoute(parts: string[]): RootRoute | null {
       return dialog === null ? null : { rootView: host, dialog };
     }
   }
+  if (parts.length === 2 && parts[1] === 'queue') return { rootView: 'queue' };
+  if (parts.length === 3 && parts[1] === 'queue' && parts[2] === 'recent') {
+    return { rootView: 'queue-recent' };
+  }
+  if (parts.length === 4 && parts[1] === 'queue' && parts[2] === 'request') {
+    let request: string;
+    try {
+      request = decodeURIComponent(parts[3] ?? '');
+    } catch {
+      return null;
+    }
+
+    return request.trim() === '' ? null : { rootView: 'queue-request', request };
+  }
   if (parts.length === 3 && parts[1] === 'history') {
     if (parts[2] === 'audit') return { rootView: 'history-audit' };
     if (parts[2] === 'failures') return { rootView: 'history-failures' };
@@ -306,6 +333,10 @@ function rootRoutePath(route: RootRoute): string {
     return `/root/access/invitations${dialogSuffix('access-invitations', route.dialog)}`;
   if (route.rootView === 'history-audit') return '/root/history/audit';
   if (route.rootView === 'history-failures') return '/root/history/failures';
+  if (route.rootView === 'queue') return '/root/queue';
+  if (route.rootView === 'queue-recent') return '/root/queue/recent';
+  if (route.rootView === 'queue-request')
+    return `/root/queue/request/${encodeURIComponent(route.request)}`;
   return '/root/settings';
 }
 

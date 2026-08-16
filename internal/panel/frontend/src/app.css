@@ -1259,6 +1259,22 @@ select:disabled {
   background: var(--stop);
 }
 
+/* Absence, drawn as absence: no fill and a dashed edge where every other chip
+   has a solid one. Outline rather than the keyline the others carry, because
+   `box-shadow: inset` cannot be dashed. Inset by its own width so the chip
+   measures the same as its neighbours and the column keeps its rhythm. */
+.chip-absent {
+  background: transparent;
+  box-shadow: none;
+  color: var(--dim);
+  outline: 1px dashed color-mix(in srgb, currentcolor 42%, transparent);
+  outline-offset: -1px;
+}
+
+.chip-absent .chip-dot {
+  background: var(--dim);
+}
+
 /* The panel has no links to speak of - it is built from buttons - so this is a
    primitive rather than a page's own style, and it lives here because both pages
    outside the panel need it. It borrows the action ink rather than inventing a

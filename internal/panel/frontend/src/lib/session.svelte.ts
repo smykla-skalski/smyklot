@@ -317,6 +317,18 @@ export class PanelSession {
     this.resetPageScroll();
   }
 
+  selectQueueSection(section: 'waiting' | 'recent'): void {
+    const route: RootRoute = { rootView: section === 'waiting' ? 'queue' : 'queue-recent' };
+    if (this.currentRootRoute.rootView === route.rootView) return;
+    void this.navigate(route);
+  }
+
+  /** A request is a page of its own, so opening one is navigation and resets the scroll. */
+  openQueueRequest(request: string): void {
+    void this.navigate({ rootView: 'queue-request', request });
+    this.resetPageScroll();
+  }
+
   selectRootHistorySection(section: 'audit' | 'failures'): void {
     const route: RootRoute = {
       rootView: section === 'audit' ? 'history-audit' : 'history-failures',
@@ -391,6 +403,14 @@ export class PanelSession {
 
   rootAuditHref(): string {
     return panelRoutePath(this.base, { rootView: 'history-audit' });
+  }
+
+  queueHref(): string {
+    return panelRoutePath(this.base, { rootView: 'queue' });
+  }
+
+  queueRequestHref(request: string): string {
+    return panelRoutePath(this.base, { rootView: 'queue-request', request });
   }
 
   rootFailuresHref(): string {

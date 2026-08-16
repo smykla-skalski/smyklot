@@ -3,8 +3,15 @@
 
   import Icon, { type IconName } from './Icon.svelte';
 
-  /** Tones name what a state means rather than which domain state it represents. */
-  export type ChipTone = 'neutral' | 'clear' | 'signal' | 'accent' | 'warning' | 'stop';
+  /**
+   * Tones name what a state means rather than which domain state it represents.
+   *
+   * `absent` is the odd one and earns its place: two solid neutral chips beside
+   * each other - "Running" and "No checks" - share a fill and read as the same
+   * state at a glance. An unfilled dashed keyline says "there is nothing to
+   * show" in the shape itself, and still keeps the column's rhythm.
+   */
+  export type ChipTone = 'neutral' | 'clear' | 'signal' | 'accent' | 'warning' | 'stop' | 'absent';
 
   const {
     tone = 'neutral',
