@@ -16,13 +16,24 @@ GO111MODULE = "on"
 GOFLAGS = "-mod=readonly"
 CGO_ENABLED = "0"
 
+# -p, and everywhere. Ginkgo runs one suite at a time, and without it the specs
+# inside each are serial too - which is how the two slowest packages alone came
+# to take longer than the whole CI job is now allowed. Directories may be named
+# to run a subset; CI names one per job so the suites run concurrently, which is
+# the parallelism ginkgo itself does not have.
 [tasks.test]
-description = "Run the complete Smyklot test suite with race detection and coverage"
+description = "Run the Go suite with race detection - every directory, or only the ones named"
+depends = ["panel:assets:generate"]
+env = { CGO_ENABLED = "1" }
+run = 'ginkgo -r -p --race --fail-on-empty {{arg(name="dirs", var=true, default=".")}}'
+
+[tasks."test:cover"]
+description = "Run the whole Go suite and write an HTML coverage report"
 depends = ["panel:assets:generate"]
 env = { CGO_ENABLED = "1" }
 run = '''
 mkdir -p tmp/coverage
-ginkgo -r --cover --race --output-dir=tmp/coverage --coverprofile=coverage.out
+ginkgo -r -p --cover --race --output-dir=tmp/coverage --coverprofile=coverage.out
 go tool cover -html=tmp/coverage/coverage.out -o tmp/coverage/coverage.html
 '''
 
@@ -64,7 +75,7 @@ if [ -z "${SMYKLOT_TEST_POSTGRES_DSN:-}" ]; then
 fi
 
 mkdir -p tmp/storage
-ginkgo --race --fail-on-empty \
+ginkgo -p --race --fail-on-empty \
   --json-report=postgres.json --output-dir=tmp/storage \
   ./internal/storage/postgres
 
@@ -89,13 +100,30 @@ echo "$passed PostgreSQL specs passed, none skipped"
 
 # The copier only has a second engine to copy into when a server is present,
 # so its suite is proof of the same thing and belongs to the same check.
-go test -race -count=1 ./internal/storage/transfer
+ginkgo -p --race ./internal/storage/transfer
+'''
 
-# The panel and the service open whichever engine the environment names, so
-# with a DSN set these are the PostgreSQL pass over everything above the port.
-# Their SQLite pass is `mise run test`, which sets no DSN. Running both is the
-# point: a suite that only ever saw one engine proves nothing about the other.
-go test -race -count=1 ./internal/panel ./cmd/github-action
+# The layers above the port open whichever engine the environment names, so with
+# a DSN set this is their PostgreSQL pass. Their SQLite pass is `mise run test`,
+# which sets no DSN. Running both is the point: a suite that only ever saw one
+# engine proves nothing about the other.
+#
+# It refuses without a DSN rather than falling back. Nothing above the port
+# skips when there is no server - it opens SQLite instead and passes, which
+# looks exactly like a second engine having been tested.
+[tasks."test:postgres"]
+description = "Run the Go suite against PostgreSQL - every directory, or only the ones named"
+depends = ["panel:assets:generate"]
+env = { CGO_ENABLED = "1" }
+run = '''
+set -eu
+
+if [ -z "${SMYKLOT_TEST_POSTGRES_DSN:-}" ]; then
+  echo "SMYKLOT_TEST_POSTGRES_DSN is not set; run 'mise run db:dev' first" >&2
+  exit 1
+fi
+
+ginkgo -r -p --race --fail-on-empty {{arg(name="dirs", var=true, default=".")}}
 '''
 
 [tasks."db:dev"]
