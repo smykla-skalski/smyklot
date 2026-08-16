@@ -23,6 +23,7 @@ import { DEFAULT_THEME_DISPLAY, isThemeDisplay, type ThemeDisplay } from './pref
 import { createPrefsSync, type PrefsSync } from './preferences-sync';
 import {
   PANEL_VIEWS,
+  ROOT_INSTALLATION_VIEWS,
   panelDocumentTitle,
   panelRoutePath,
   rootSection,
@@ -30,10 +31,10 @@ import {
   type HistorySection,
   type PanelRoute,
   type PanelView,
+  type RootInstallationView,
   type RootRoute,
   type RootSection,
   type RouteDialog,
-  type ScopedPanelView,
 } from './routes';
 import type { NotificationPage, PanelTarget, PanelViewer } from './types';
 
@@ -167,7 +168,11 @@ export class PanelSession {
     const params = page.params;
     if (params.view !== undefined) {
       const account = params.account as string;
-      const view = params.view as ScopedPanelView;
+      // The console renders a subset of an installation's views; anything
+      // outside it is not an address here, so the catalog is where that lands.
+      const view = ROOT_INSTALLATION_VIEWS.find((candidate) => candidate === params.view);
+      if (view === undefined) return { rootView: 'installations' };
+
       const route: RootRoute = { rootView: 'installation', account, view };
       if (params.rest !== undefined) {
         const rest = params.rest as string;
@@ -353,7 +358,7 @@ export class PanelSession {
     void this.navigate(route);
   }
 
-  selectRootInstallation(account: string, nextView: ScopedPanelView): void {
+  selectRootInstallation(account: string, nextView: RootInstallationView): void {
     const route = this.rootInstallationRoute(account, nextView);
     void this.navigate(route);
     this.resetPageScroll();
@@ -425,7 +430,7 @@ export class PanelSession {
     return panelRoutePath(this.base, { rootView: 'history-failures' });
   }
 
-  rootInstallationHref(account: string, nextView: ScopedPanelView): string {
+  rootInstallationHref(account: string, nextView: RootInstallationView): string {
     return panelRoutePath(this.base, this.rootInstallationRoute(account, nextView));
   }
 
@@ -598,7 +603,7 @@ export class PanelSession {
 
   private rootInstallationRoute(
     account: string,
-    nextView: ScopedPanelView,
+    nextView: RootInstallationView,
     section: HistorySection = this.currentHistorySection,
   ): RootRoute {
     return nextView === 'history'

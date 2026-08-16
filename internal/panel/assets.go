@@ -366,6 +366,15 @@ func isRootNavigationPath(parts []string) bool {
 			return false
 		}
 
+		// The console renders a subset of an installation's views: what an
+		// organization's repositories should carry is configured by elevating
+		// into the installation, through the endpoints its own members use. An
+		// address the console has no page for is refused here rather than
+		// served a shell that says the view is unavailable.
+		if parts[3] == panelSyncPath {
+			return false
+		}
+
 		return isPanelViewPath(parts[3], parts[4:])
 	default:
 		return false

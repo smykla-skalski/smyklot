@@ -3,6 +3,7 @@ package panel
 import (
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -21,20 +22,40 @@ const panelViewsSource = "frontend/src/lib/routes.ts"
 // tested in the browser while a reload of its address answered with the
 // not-found page, because nothing held the two lists together.
 func TestEveryBrowserViewIsServedOnReload(t *testing.T) {
-	for _, view := range browserPanelViews(t) {
+	for _, view := range browserPanelViews(t, "PANEL_VIEWS") {
 		if !isPanelViewPath(view, nil) {
 			t.Errorf("the browser has a %q view and a reload of it is refused", view)
 		}
 	}
+
+	// The console's own subset, at its own addresses. It renders fewer views
+	// than an installation has, and what it does not render must not be served
+	// either - an address answered with a shell that says the view is
+	// unavailable reads as a fault rather than a boundary.
+	console := browserPanelViews(t, "ROOT_INSTALLATION_VIEWS")
+	for _, view := range console {
+		if !isRootNavigationPath([]string{"root", "installations", "acme", view}) {
+			t.Errorf("the console has a %q view and a reload of it is refused", view)
+		}
+	}
+
+	for _, view := range browserPanelViews(t, "PANEL_VIEWS") {
+		if slices.Contains(console, view) {
+			continue
+		}
+		if isRootNavigationPath([]string{"root", "installations", "acme", view}) {
+			t.Errorf("the console renders no %q view and its address is served anyway", view)
+		}
+	}
 }
 
-// browserPanelViews reads PANEL_VIEWS out of the frontend source.
+// browserPanelViews reads a view list out of the frontend source.
 //
 // Read rather than duplicated, because a copy is the thing being guarded
 // against. A parse that finds nothing fails the test rather than passing
 // vacuously - a guard that stops seeing its subject is worse than none, because
 // it is counted.
-func browserPanelViews(t *testing.T) []string {
+func browserPanelViews(t *testing.T, declared string) []string {
 	t.Helper()
 
 	source, err := os.ReadFile(panelViewsSource)
@@ -42,10 +63,10 @@ func browserPanelViews(t *testing.T) []string {
 		t.Fatalf("read the browser's view list: %v", err)
 	}
 
-	declaration := regexp.MustCompile(`(?s)export const PANEL_VIEWS = \[(.*?)\]`).
+	declaration := regexp.MustCompile(`(?s)export const ` + declared + ` = \[(.*?)\]`).
 		FindSubmatch(source)
 	if declaration == nil {
-		t.Fatalf("no PANEL_VIEWS declaration in %s", panelViewsSource)
+		t.Fatalf("no %s declaration in %s", declared, panelViewsSource)
 	}
 
 	views := make([]string, 0, 6)
@@ -55,7 +76,7 @@ func browserPanelViews(t *testing.T) []string {
 	}
 
 	if len(views) == 0 {
-		t.Fatalf("PANEL_VIEWS in %s parsed as empty", panelViewsSource)
+		t.Fatalf("%s in %s parsed as empty", declared, panelViewsSource)
 	}
 
 	return views
@@ -66,18 +87,33 @@ func browserPanelViews(t *testing.T) []string {
 //
 // A component nobody renders passes every test written about it. The sync view
 // had an API, a route, a Go authorization matrix entry and its own specs, and no
-// page mounted it, so the panel simply had no such page.
+// page mounted it, so the panel simply had no such page - twice, because the
+// console keeps its own list and its own dispatch and was missed when the first
+// half was fixed.
 func TestEveryBrowserViewHasSomethingToRender(t *testing.T) {
-	const page = "frontend/src/routes/i/[account]/[view=panelView]/[...rest]/+page.svelte"
+	for _, surface := range []struct {
+		declared string
+		page     string
+	}{
+		{
+			"PANEL_VIEWS",
+			"frontend/src/routes/i/[account]/[view=panelView]/[...rest]/+page.svelte",
+		},
+		{
+			"ROOT_INSTALLATION_VIEWS",
+			"frontend/src/lib/components/RootInstallationView.svelte",
+		},
+	} {
+		source, err := os.ReadFile(surface.page)
+		if err != nil {
+			t.Fatalf("read %s: %v", surface.page, err)
+		}
 
-	source, err := os.ReadFile(page)
-	if err != nil {
-		t.Fatalf("read the view page: %v", err)
-	}
-
-	for _, view := range browserPanelViews(t) {
-		if !strings.Contains(string(source), "view === '"+view+"'") {
-			t.Errorf("the browser has a %q view and no page renders it", view)
+		for _, view := range browserPanelViews(t, surface.declared) {
+			if !strings.Contains(string(source), "view === '"+view+"'") {
+				t.Errorf("%s has a %q view and %s renders nothing for it",
+					surface.declared, view, surface.page)
+			}
 		}
 	}
 }
