@@ -144,11 +144,20 @@ func rewriteAssetText(assetPath, content string, cfg Config) string {
 		return strings.ReplaceAll(content, serviceSentinel, html.EscapeString(cfg.ServiceHost))
 	}
 
-	// The generated worker and version manifest carry these sentinels as
-	// complete string literals. Replacing the delimiters too makes one encoding
-	// correct for JavaScript and JSON, regardless of which quote style the
-	// bundler chose. A naked or embedded sentinel is deliberately left behind so
-	// the fail-closed check below rejects a new, context-ambiguous build shape.
+	// The generated worker, the version manifest and the bundler's own version
+	// export carry these sentinels as complete string literals. Replacing the
+	// delimiters too makes one encoding correct for JavaScript and JSON,
+	// regardless of which quote style the bundler chose. A naked or embedded
+	// sentinel is deliberately left behind so the fail-closed check below
+	// rejects a new, context-ambiguous build shape.
+	//
+	// This reaches every served script, not only the generated ones, and it
+	// cannot be narrowed: the chunk holding the bundler's version export is
+	// hashed, so there is no name to match on. Panel source must therefore never
+	// spell a sentinel - one that did held the version sentinel to recognise an
+	// unsubstituted page, got it rewritten into the version itself, and reported
+	// every release as having no version at all. `tests/base.test.ts` in the
+	// frontend keeps sentinels out of the source this rewrites.
 	content = strings.ReplaceAll(content, basePathSentinel, cfg.BasePath)
 	content = replaceStringLiteral(content, versionSentinel, cfg.Version)
 

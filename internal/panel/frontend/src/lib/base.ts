@@ -1,11 +1,23 @@
-/** Build-time mount placeholder replaced only in the generated index page. */
-export const BASE_PATH_SENTINEL = '/__smyklot_panel_base__';
-
 const BASE_META_NAME = 'smyklot-panel-base';
 const VERSION_META_NAME = 'smyklot-panel-version';
 const SERVICE_META_NAME = 'smyklot-panel-service';
-const VERSION_SENTINEL = '__smyklot_panel_version__';
-const SERVICE_SENTINEL = '__smyklot_panel_service__';
+
+/**
+ * A placeholder the server has not filled in, recognised by its shape.
+ *
+ * Never by its value. The server substitutes each of its sentinels wherever one
+ * appears as a complete string literal in a served text asset, and this module
+ * is built into one: a constant holding the version sentinel comes back from
+ * that rewrite holding the version instead, so the equality is true for the
+ * real value and every build reports itself as unset. That is how the released
+ * panel came to render no footer while the meta tag beside it carried the right
+ * version all along.
+ *
+ * A pattern never spells a whole sentinel, so nothing rewrites it, and nothing
+ * the server injects can match one - a version and a host both carry dots.
+ * `tests/base.test.ts` holds the rule that keeps a sentinel out of this file.
+ */
+const PLACEHOLDER = /^__[a-z0-9_]+__$/u;
 
 export interface PanelBuild {
   version: string | null;
@@ -23,14 +35,14 @@ export function readBasePath(source: Document): string {
 
 export function readPanelBuild(source: Document): PanelBuild {
   return {
-    version: readInjected(source, VERSION_META_NAME, VERSION_SENTINEL),
-    serviceHost: readInjected(source, SERVICE_META_NAME, SERVICE_SENTINEL),
+    version: readInjected(source, VERSION_META_NAME),
+    serviceHost: readInjected(source, SERVICE_META_NAME),
   };
 }
 
-function readInjected(source: Document, name: string, sentinel: string): string | null {
+function readInjected(source: Document, name: string): string | null {
   const content = source.querySelector(`meta[name="${name}"]`)?.getAttribute('content')?.trim();
-  if (content === undefined || content === '' || content === sentinel) {
+  if (content === undefined || content === '' || PLACEHOLDER.test(content)) {
     return null;
   }
   return content;
