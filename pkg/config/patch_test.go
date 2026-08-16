@@ -105,6 +105,36 @@ command_prefix = ""
 			_, err := config.ParsePatch(config.Format("ini"), []byte("quiet_success=1"))
 			Expect(err).To(MatchError(config.ErrUnknownFormat))
 		})
+
+		// A decoder reads one document. Everything after a `---` was dropped
+		// without a word, so a file that narrowed allowed_commands in its
+		// second document narrowed nothing at all.
+		DescribeTable("refuses settings after the first YAML document",
+			func(document, named string) {
+				_, err := config.ParsePatch(config.FormatYAML, []byte(document))
+				Expect(err).To(MatchError(config.ErrMultipleDocuments))
+				Expect(err.Error()).To(ContainSubstring(named))
+			},
+			Entry("second document carries settings",
+				"quiet_success: true\n---\nallowed_commands: [approve]\n", "allowed_commands"),
+			Entry("first document is empty",
+				"---\n---\nquiet_success: true\n", "quiet_success"),
+			Entry("third document carries settings",
+				"quiet_success: true\n---\n---\nrunner: action\n", "runner"),
+		)
+
+		// A trailing separator is legal, means nothing, and works today.
+		// Refusing it would break a file that says exactly what it appears to.
+		DescribeTable("allows a later document that sets nothing",
+			func(document string) {
+				patch, err := config.ParsePatch(config.FormatYAML, []byte(document))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(patch.SetKeys()).To(ConsistOf(config.KeyQuietSuccess))
+			},
+			Entry("trailing separator", "quiet_success: true\n---\n"),
+			Entry("leading separator", "---\nquiet_success: true\n"),
+			Entry("trailing comment document", "quiet_success: true\n---\n# nothing\n"),
+		)
 	})
 
 	Describe("FormatOf", func() {

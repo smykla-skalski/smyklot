@@ -185,10 +185,45 @@ func decode(format Format, content []byte, patch *Patch) error {
 		decoder := yaml.NewDecoder(bytes.NewReader(content))
 		decoder.KnownFields(true)
 
-		return emptyIsNothing(decoder.Decode(patch))
+		if err := emptyIsNothing(decoder.Decode(patch)); err != nil {
+			return err
+		}
+
+		return rejectLaterSettings(decoder)
 
 	default:
 		return fmt.Errorf("%w: %q", ErrUnknownFormat, format)
+	}
+}
+
+// rejectLaterSettings refuses a YAML stream whose settings continue past the
+// first document.
+//
+// A decoder reads one document, so everything after a `---` was being dropped
+// without a word: `quiet_success: true` followed by `---` and
+// `allowed_commands: [approve]` narrowed nothing, and a file whose first
+// document was empty was ignored in its entirety. Both read as "this repository
+// configured nothing", which grants back every command the file was there to
+// take away.
+//
+// A later document that sets nothing is left alone, because a trailing `---` is
+// legal, means nothing, and works today. Only a document carrying settings
+// Smyklot would not otherwise honour is refused, and it is refused rather than
+// merged: a file that says two things is one somebody should be told about.
+func rejectLaterSettings(decoder *yaml.Decoder) error {
+	for {
+		var later Patch
+
+		switch err := decoder.Decode(&later); {
+		case errors.Is(err, io.EOF):
+			return nil
+
+		case err != nil:
+			return err
+
+		case len(later.SetKeys()) > 0:
+			return fmt.Errorf("%w: %s", ErrMultipleDocuments, strings.Join(later.SetKeys(), ", "))
+		}
 	}
 }
 

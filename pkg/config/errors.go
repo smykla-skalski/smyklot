@@ -16,4 +16,8 @@ var (
 	// not exist. It is fail-closed on purpose: the file is where a repository
 	// narrows allowed_commands, so a typo must not quietly restore a default
 	ErrUnknownSetting = errors.New("unknown setting")
+
+	// ErrMultipleDocuments is returned for a YAML file that carries settings
+	// past its first document, which a single decode would silently ignore
+	ErrMultipleDocuments = errors.New("settings after the first YAML document")
 )
