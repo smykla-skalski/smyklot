@@ -11,16 +11,16 @@
   } from '@tanstack/svelte-table';
   import type { ColumnFiltersState, SortingState, Updater } from '@tanstack/svelte-table';
   import { createVirtualizer } from '@tanstack/svelte-virtual';
-  import { getContext, tick, untrack } from 'svelte';
+  import { tick, untrack } from 'svelte';
   import { MediaQuery, SvelteSet } from 'svelte/reactivity';
   import { get } from 'svelte/store';
   import { useDebounce, useInterval } from 'runed';
+  import { createInfiniteQuery, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { BOOLEAN_FIELDS } from '../config';
   import { dialogRoute } from '../dialog-route.svelte';
   import type { FilterSection } from '../filter-menu';
   import { formatRelative, formatTimestamp } from '../format';
-  import { onInvalidate } from '../on-invalidate';
   import {
     decodeRepositorySettingFilter,
     encodeRepositorySettingFilter,
@@ -30,13 +30,8 @@
     prefText,
     type PrefsAccessor,
   } from '../preferences-sync';
-  import {
-    shouldClearFailureAfterAutomaticRefresh,
-    shouldReloadRepositoryAfterSaveFailure,
-    shouldReplaceFailureWithReadError,
-  } from '../repository';
+  import { shouldReloadRepositoryAfterSaveFailure } from '../repository';
   import type { RepositoryFailureSource } from '../repository';
-  import type { PanelSession } from '../session.svelte';
   import type {
     ConfigPatch,
     ConfigKey,
@@ -196,8 +191,6 @@
     prefs?: PrefsAccessor;
   } = $props();
 
-  const session = getContext<PanelSession>('panel-session');
-
   // Table state deliberately captures the preferences at mount; remote
   // changes apply on the next remount instead of mid-interaction.
   // svelte-ignore state_referenced_locally
@@ -240,24 +233,59 @@
     prefs.set('table.repositories.search', appliedQuery);
   });
   const limit = 20;
-  let page = $state<Page<RepositorySummary> | null>(null);
-  let loading = $state(false);
-  let problem = $state<string | null>(null);
-  let loadMoreProblem = $state<string | null>(null);
   let details = $state<Record<string, RepositoryDetail>>({});
   let failures = $state<Record<string, RepositoryFailure>>({});
   let pendingEnablement = $state<Record<string, RepositoryEnablement>>({});
   let repositoryReturnFocus = $state<HTMLElement | null>(null);
-  const visibleDetails = new SvelteSet<string>();
   const working = new SvelteSet<string>();
-  const pendingRefreshes = new SvelteSet<string>();
+  const queryClient = useQueryClient();
   let now = $state(Date.now());
+  useInterval(30_000, { callback: () => (now = Date.now()) });
   let repositoryResults = $state<HTMLDivElement>();
   let repositoryScroll = $state<HTMLTableSectionElement>();
   /** Names learned from a repository read by name, so the id is known next time. */
   let namedRepositories = $state<Record<string, string>>({});
-
+  const repositoryQuery = createInfiniteQuery(() => ({
+    queryKey: [
+      'repositories',
+      targetId,
+      appliedQuery,
+      sort,
+      stateFilter,
+      [...fileFilters],
+      settingFilter,
+      limit,
+    ],
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam }) =>
+      fetchPage({
+        cursor: pageParam,
+        query: appliedQuery,
+        sort,
+        limit,
+        state: stateFilter,
+        files: [...fileFilters],
+        setting: settingFilter,
+      }),
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+  }));
+  const page = $derived.by((): Page<RepositorySummary> | null => {
+    const pages = repositoryQuery.data?.pages;
+    if (pages === undefined || pages.length === 0) return null;
+    const last = pages.at(-1);
+    if (last === undefined) return null;
+    return { ...last, items: pages.flatMap((entry) => entry.items) };
+  });
   const repositories = $derived(page?.items ?? []);
+  const loading = $derived(repositoryQuery.isFetching);
+  const problem = $derived(
+    repositoryQuery.isError && !repositoryQuery.isFetchNextPageError
+      ? errorMessage(repositoryQuery.error)
+      : null,
+  );
+  const loadMoreProblem = $derived(
+    repositoryQuery.isFetchNextPageError ? errorMessage(repositoryQuery.error) : null,
+  );
 
   /* The dialog is whatever the address names, not a click the component
      remembers, so a reload lands back on the repository that was open.
@@ -269,6 +297,14 @@
      installation and every read is scoped to one, so two organizations owning a
      repository of the same name never meet. */
   const activeRepositoryKey = $derived(dialogRoute.param(REPOSITORY_DIALOG, 'repository') ?? null);
+  const repositoryDetailQuery = createQuery(() => ({
+    queryKey: ['repository', targetId, activeRepositoryKey],
+    enabled: activeRepositoryKey !== null,
+    queryFn: () => {
+      if (activeRepositoryKey === null) throw new Error('select a repository first');
+      return onLoad(activeRepositoryKey);
+    },
+  }));
 
   /* The address carries a name; everything inside this component is keyed by id.
      The name is resolved from the loaded page when it is there, and otherwise
@@ -279,6 +315,9 @@
 
     return (
       repositories.find((repository) => repository.name === key)?.id ??
+      (repositoryDetailQuery.data?.repository.name === key
+        ? repositoryDetailQuery.data.repository.id
+        : null) ??
       namedRepositories[key] ??
       null
     );
@@ -287,6 +326,9 @@
     activeRepositoryId === null
       ? null
       : (repositories.find((repository) => repository.id === activeRepositoryId) ??
+          (repositoryDetailQuery.data?.repository.id === activeRepositoryId
+            ? repositoryDetailQuery.data.repository
+            : null) ??
           details[activeRepositoryId]?.repository ??
           null),
   );
@@ -371,24 +413,24 @@
   }, 250);
 
   $effect(() => {
-    debouncedSearch(search.trim());
+    const value = search.trim();
+    untrack(() => void debouncedSearch(value));
   });
 
   $effect(() => {
-    void resetAndLoad(filterKey);
-  });
-
-  onInvalidate(session.queryClient, ['repositories', targetId], () => {
-    void resetAndLoad(filterKey);
-    refreshVisibleRepository();
+    void filterKey;
+    untrack(() => scrollResultsToTop());
   });
 
   $effect(() => {
     const rows = repositoryRows;
-    get(repositoryVirtualizer).setOptions({
-      count: desktopTableLayout.current ? rows.length : 0,
-      getScrollElement: () => repositoryScroll ?? null,
-      getItemKey: (index) => rows[index]?.id ?? index,
+    const desktop = desktopTableLayout.current;
+    untrack(() => {
+      get(repositoryVirtualizer).setOptions({
+        count: desktop ? rows.length : 0,
+        getScrollElement: () => repositoryScroll ?? null,
+        getItemKey: (index) => rows[index]?.id ?? index,
+      });
     });
   });
 
@@ -396,53 +438,14 @@
     if (!desktopTableLayout.current) return;
     const rows = repositoryRows;
     const last = $repositoryVirtualizer.getVirtualItems().at(-1);
-    if (last !== undefined && last.index >= rows.length - 5) void loadNextPage();
-  });
-
-  $effect(() => {
-    const interval = useInterval(30_000, { callback: () => (now = Date.now()) });
-    return () => interval.pause();
-  });
-
-  async function resetAndLoad(key: string): Promise<void> {
-    loadMoreProblem = null;
-    scrollResultsToTop();
-    await loadPage(undefined, key, false);
-  }
-
-  async function loadPage(cursor: string | undefined, key: string, append: boolean): Promise<void> {
-    loading = true;
-    if (!append) problem = null;
-    else loadMoreProblem = null;
-    try {
-      const loaded = await fetchPage({
-        cursor,
-        query: appliedQuery,
-        sort,
-        limit,
-        state: stateFilter,
-        files: fileFilters,
-        setting: settingFilter,
-      });
-      if (key !== filterKey) return;
-      page =
-        append && page !== null ? { ...loaded, items: [...page.items, ...loaded.items] } : loaded;
-    } catch (error) {
-      if (key === filterKey) {
-        const message = error instanceof Error ? error.message : String(error);
-        if (append) loadMoreProblem = message;
-        else problem = message;
-      }
-    } finally {
-      if (key === filterKey) {
-        loading = false;
-      }
+    if (last !== undefined && last.index >= rows.length - 5) {
+      untrack(() => void loadNextPage());
     }
-  }
+  });
 
   async function loadNextPage(): Promise<void> {
-    if (loading || page?.next_cursor === null || page?.next_cursor === undefined) return;
-    await loadPage(page.next_cursor, filterKey, true);
+    if (repositoryQuery.isFetchingNextPage || !repositoryQuery.hasNextPage) return;
+    await repositoryQuery.fetchNextPage();
   }
 
   function scrollResultsToTop(): void {
@@ -456,8 +459,12 @@
   }
 
   function retry(): void {
-    if (page === null) void loadPage(undefined, filterKey, false);
-    else void loadNextPage();
+    if (repositoryQuery.isFetchNextPageError) void repositoryQuery.fetchNextPage();
+    else void repositoryQuery.refetch();
+  }
+
+  function errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
   }
 
   function repositoryAt(index: number): RepositorySummary {
@@ -526,12 +533,6 @@
     settingFilter = { mode: 'all' };
   }
 
-  function refreshVisibleRepository(): void {
-    untrack(() => {
-      for (const repositoryId of visibleDetails) requestRefresh(repositoryId);
-    });
-  }
-
   function openRepository(repository: RepositorySummary, trigger: HTMLElement): void {
     repositoryReturnFocus = trigger;
     dialogRoute.open(REPOSITORY_DIALOG, { repository: repository.name });
@@ -547,43 +548,33 @@
      those work, since no click happened. */
   $effect(() => {
     const key = activeRepositoryKey;
-    const repositoryId = activeRepositoryId;
-    if (key === null) {
-      untrack(() => visibleDetails.clear());
-      return;
-    }
+    const detail = repositoryDetailQuery.data;
+    const error = repositoryDetailQuery.error;
+    if (key === null) return;
 
     untrack(() => {
-      /* Nothing in the loaded page matches the name, which is what a link opened
-         cold looks like. Reading it by name settles both the detail and the id
-         the rest of this component works in. */
-      if (repositoryId === null) {
-        void loadDetail(key)
-          .then((detail) => {
-            namedRepositories = { ...namedRepositories, [key]: detail.repository.id };
-          })
-          .catch(() => {
-            /* A name nothing answers to leaves the dialog shut over the list,
-               which is the truthful outcome for a link to a repository that is
-               gone or was never there. */
-          });
+      if (detail === undefined) {
+        const repositoryId = activeRepositoryId;
+        if (error !== null && repositoryId !== null) setFailure(repositoryId, error, 'read');
         return;
       }
 
-      visibleDetails.clear();
-      visibleDetails.add(repositoryId);
-      if (details[repositoryId] !== undefined) return;
-      void refresh(repositoryId).then(async () => {
-        if (activeRepositoryId !== repositoryId) return;
-        await tick();
-        /* The switch only exists once the detail is in, so this is the first
-           moment there is anything inside the dialog to land on. */
-        document
-          .querySelector<HTMLInputElement>(
-            `input[name="repository-${repositoryId}-section"]:checked`,
-          )
-          ?.focus();
-      });
+      const repositoryId = detail.repository.id;
+      const firstRead = details[repositoryId] === undefined;
+      rememberDetail(detail, key);
+      if (failures[repositoryId]?.source === 'read') clearFailure(repositoryId);
+      if (firstRead) {
+        void tick().then(() => {
+          if (activeRepositoryId !== repositoryId) return;
+          /* The switch only exists once the detail is in, so this is the first
+             moment there is anything inside the dialog to land on. */
+          document
+            .querySelector<HTMLInputElement>(
+              `input[name="repository-${repositoryId}-section"]:checked`,
+            )
+            ?.focus();
+        });
+      }
     });
   });
 
@@ -663,62 +654,30 @@
     return direction === 'asc' ? 'ascending' : direction === 'desc' ? 'descending' : undefined;
   }
 
-  async function refresh(
-    repositoryId: string,
-    clearExistingFailure = true,
-  ): Promise<RepositoryDetail | null> {
-    if (working.has(repositoryId)) {
-      pendingRefreshes.add(repositoryId);
-      return null;
-    }
-    working.add(repositoryId);
-    if (clearExistingFailure) clearFailure(repositoryId);
-    try {
-      const detail = await loadDetail(repositoryId);
-      if (
-        !clearExistingFailure &&
-        shouldClearFailureAfterAutomaticRefresh(failures[repositoryId]?.source)
-      ) {
-        clearFailure(repositoryId);
-      }
-      return detail;
-    } catch (error) {
-      if (
-        clearExistingFailure ||
-        shouldReplaceFailureWithReadError(failures[repositoryId]?.source)
-      ) {
-        setFailure(repositoryId, error, 'read');
-      }
-      return null;
-    } finally {
-      finishWorking(repositoryId);
-    }
-  }
-
   /**
    * Reads one repository, by id or by the name an address carries.
    *
    * Stored under the id the answer carries rather than under what was asked for,
-   * so everything else in this component - the failures, the pending refreshes,
-   * the open set - keeps one key whichever way the repository was reached.
+   * so everything else in this component keeps one key whichever way the
+   * repository was reached.
    */
   async function loadDetail(repository: string): Promise<RepositoryDetail> {
-    const detail = await onLoad(repository);
-    details = { ...details, [detail.repository.id]: detail };
+    const detail = await queryClient.fetchQuery({
+      queryKey: ['repository', targetId, repository],
+      queryFn: () => onLoad(repository),
+      staleTime: 0,
+    });
+    rememberDetail(detail, repository);
     return detail;
   }
 
-  function requestRefresh(repositoryId: string): void {
-    if (working.has(repositoryId)) {
-      pendingRefreshes.add(repositoryId);
-      return;
-    }
-    void refresh(repositoryId, false);
+  function rememberDetail(detail: RepositoryDetail, requested: string): void {
+    details = { ...details, [detail.repository.id]: detail };
+    namedRepositories = { ...namedRepositories, [requested]: detail.repository.id };
   }
 
   function finishWorking(repositoryId: string): void {
     working.delete(repositoryId);
-    if (pendingRefreshes.delete(repositoryId)) void refresh(repositoryId, false);
   }
 
   async function save(
@@ -739,7 +698,12 @@
         }
       }
       const updated = await onUpdate(repositoryId, change(detail));
-      details = { ...details, [repositoryId]: updated };
+      rememberDetail(updated, updated.repository.name);
+      queryClient.setQueriesData<RepositoryDetail>(
+        { queryKey: ['repository', targetId] },
+        (current) =>
+          current?.repository.id === repositoryId || current === detail ? updated : current,
+      );
       onChanged(updated);
       return updated;
     } catch (error) {
@@ -1559,13 +1523,6 @@
       display: block;
       flex: 1;
       min-height: 0;
-      /* No `overscroll-behavior`. It was here to stop a scroll reaching the end
-         of this table from carrying on into the page, but the shell is exactly
-         one viewport tall and the panes around this one are clipped, so there is
-         nothing behind it to chain into - it prevented nothing and was the only
-         thing in the panel with an opinion about what happens at a scroll
-         boundary. The platform's own behaviour, including the elastic overscroll
-         a trackpad expects at the end of a list, is the default. */
       overflow-y: auto;
       position: relative;
     }

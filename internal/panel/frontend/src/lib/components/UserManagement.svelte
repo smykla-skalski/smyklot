@@ -9,16 +9,17 @@
   } from '@tanstack/svelte-table';
   import type { ColumnFiltersState, SortingState, Updater } from '@tanstack/svelte-table';
   import { createVirtualizer } from '@tanstack/svelte-virtual';
-  import { getContext, untrack } from 'svelte';
+  import { createInfiniteQuery, type InfiniteData } from '@tanstack/svelte-query';
+  import { untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import { get } from 'svelte/store';
+  import { useDebounce, useInterval } from 'runed';
 
   import { PanelApiError } from '../api';
   import { dialogRoute } from '../dialog-route.svelte';
   import { formatDateTime, formatRelative, formatTimestamp, formatUntil } from '../format';
   import { monogram } from '../identity';
   import type { FilterSection } from '../filter-menu';
-  import { onInvalidate } from '../on-invalidate';
   import {
     EPHEMERAL_PREFS,
     prefList,
@@ -26,7 +27,6 @@
     prefText,
     type PrefsAccessor,
   } from '../preferences-sync';
-  import type { PanelSession } from '../session.svelte';
   import type {
     AccessDecision,
     AddTargetInvitationInput,
@@ -59,7 +59,7 @@
   import ResultProblem from './ResultProblem.svelte';
   import RolePicker, { type RolePickerOption } from './RolePicker.svelte';
   import SearchField from './SearchField.svelte';
-  import SegmentedControl from './SegmentedControl.svelte';
+  import NavigationTabs from './NavigationTabs.svelte';
   import TableEmptyState from './TableEmptyState.svelte';
 
   type ManagementSection = 'users' | 'invitations';
@@ -202,21 +202,11 @@
     fetchUserDecisions: (accountId: string, targetId: string) => Promise<AccessDecision[]>;
   } = $props();
 
-  const session = getContext<PanelSession>('panel-session');
-
   // Table state deliberately captures the preferences at mount; remote
   // changes apply on the next remount instead of mid-interaction.
   // svelte-ignore state_referenced_locally
   const initialPrefs = prefs;
 
-  let userPage = $state<Page<PanelUser> | null>(null);
-  let invitationPage = $state<Page<PanelInvitation> | null>(null);
-  let loadingUsers = $state(true);
-  let loadingInvitations = $state(true);
-  let userFailure = $state<string | null>(null);
-  let invitationFailure = $state<string | null>(null);
-  let userLoadMoreFailure = $state<string | null>(null);
-  let invitationLoadMoreFailure = $state<string | null>(null);
   let actionFailure = $state<string | null>(null);
   let feedback = $state('');
 
@@ -286,6 +276,68 @@
     prefs.set('table.invitations.search', invitationQuery);
   });
   const invitationLimit = 20;
+  const usersQuery = createInfiniteQuery(() => ({
+    queryKey: [
+      'users',
+      targetId,
+      userQuery,
+      userSort,
+      [...userRoles],
+      [...userStatuses],
+      userLimit,
+    ],
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam }) =>
+      fetchTargetUsers(targetId, {
+        ...(pageParam === undefined ? {} : { cursor: pageParam }),
+        query: userQuery,
+        sort: userSort,
+        limit: userLimit,
+        roles: [...userRoles],
+        statuses: [...userStatuses],
+      }),
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+  }));
+  const invitationsQuery = createInfiniteQuery(() => ({
+    queryKey: [
+      'invitations',
+      targetId,
+      invitationQuery,
+      invitationSort,
+      [...invitationRoles],
+      [...invitationStatuses],
+      invitationLimit,
+    ],
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam }) =>
+      fetchTargetInvitations(targetId, {
+        ...(pageParam === undefined ? {} : { cursor: pageParam }),
+        query: invitationQuery,
+        sort: invitationSort,
+        limit: invitationLimit,
+        roles: [...invitationRoles],
+        statuses: [...invitationStatuses],
+      }),
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+  }));
+  const userPage = $derived(flattenPages(usersQuery.data));
+  const invitationPage = $derived(flattenPages(invitationsQuery.data));
+  const loadingUsers = $derived(usersQuery.isFetching);
+  const loadingInvitations = $derived(invitationsQuery.isFetching);
+  const userFailure = $derived(
+    usersQuery.isError && !usersQuery.isFetchNextPageError ? errorMessage(usersQuery.error) : null,
+  );
+  const invitationFailure = $derived(
+    invitationsQuery.isError && !invitationsQuery.isFetchNextPageError
+      ? errorMessage(invitationsQuery.error)
+      : null,
+  );
+  const userLoadMoreFailure = $derived(
+    usersQuery.isFetchNextPageError ? errorMessage(usersQuery.error) : null,
+  );
+  const invitationLoadMoreFailure = $derived(
+    invitationsQuery.isFetchNextPageError ? errorMessage(invitationsQuery.error) : null,
+  );
 
   let addButton = $state<HTMLButtonElement | null>(null);
   let addReturnFocus = $state<HTMLElement | null>(null);
@@ -413,19 +465,6 @@
   const addRoleOptions = $derived(
     addRoles().map((role) => ({ value: role, label: roleLabel(role), icon: roleIcon(role) })),
   );
-  const userRequestKey = $derived(
-    JSON.stringify([targetId, userQuery, userSort, userRoles, userStatuses, userLimit]),
-  );
-  const invitationRequestKey = $derived(
-    JSON.stringify([
-      targetId,
-      invitationQuery,
-      invitationSort,
-      invitationRoles,
-      invitationStatuses,
-      invitationLimit,
-    ]),
-  );
   const userStatusFilterSections = $derived<FilterSection[]>([
     {
       options: [
@@ -513,65 +552,46 @@
         })),
   );
 
-  $effect(() => {
-    const tick = setInterval(() => {
-      now = Date.now();
-    }, 30_000);
-    return () => clearInterval(tick);
-  });
-
-  $effect(() => {
-    const value = userSearch;
-    const timeout = window.setTimeout(() => {
-      userQuery = value.trim();
-      scrollResultsToTop(userResults);
-    }, 180);
-    return () => window.clearTimeout(timeout);
-  });
-
-  $effect(() => {
-    const value = invitationSearch;
-    const timeout = window.setTimeout(() => {
-      invitationQuery = value.trim();
-      scrollResultsToTop(invitationResults);
-    }, 180);
-    return () => window.clearTimeout(timeout);
-  });
-
-  $effect(() => {
-    const requestKey = userRequestKey;
-    userLoadMoreFailure = null;
+  useInterval(30_000, { callback: () => (now = Date.now()) });
+  const debouncedUserSearch = useDebounce((value: string) => {
+    userQuery = value;
     scrollResultsToTop(userResults);
-    void loadUsers(undefined, false, requestKey);
+  }, 180);
+  const debouncedInvitationSearch = useDebounce((value: string) => {
+    invitationQuery = value;
+    scrollResultsToTop(invitationResults);
+  }, 180);
+  $effect(() => {
+    const value = userSearch.trim();
+    untrack(() => void debouncedUserSearch(value));
   });
 
   $effect(() => {
-    const requestKey = invitationRequestKey;
-    invitationLoadMoreFailure = null;
-    scrollResultsToTop(invitationResults);
-    void loadInvitations(undefined, false, requestKey);
-  });
-
-  onInvalidate(session.queryClient, ['users', targetId], () => {
-    void loadUsers(undefined, false);
-    void loadInvitations(undefined, false);
+    const value = invitationSearch.trim();
+    untrack(() => void debouncedInvitationSearch(value));
   });
 
   $effect(() => {
     const rows = userTableRows;
-    get(userVirtualizer).setOptions({
-      count: desktopTableLayout.current ? rows.length : 0,
-      getScrollElement: () => userScroll ?? null,
-      getItemKey: (index) => rows[index]?.id ?? index,
+    const desktop = desktopTableLayout.current;
+    untrack(() => {
+      get(userVirtualizer).setOptions({
+        count: desktop ? rows.length : 0,
+        getScrollElement: () => userScroll ?? null,
+        getItemKey: (index) => rows[index]?.id ?? index,
+      });
     });
   });
 
   $effect(() => {
     const rows = invitationTableRows;
-    get(invitationVirtualizer).setOptions({
-      count: desktopTableLayout.current ? rows.length : 0,
-      getScrollElement: () => invitationScroll ?? null,
-      getItemKey: (index) => rows[index]?.id ?? index,
+    const desktop = desktopTableLayout.current;
+    untrack(() => {
+      get(invitationVirtualizer).setOptions({
+        count: desktop ? rows.length : 0,
+        getScrollElement: () => invitationScroll ?? null,
+        getItemKey: (index) => rows[index]?.id ?? index,
+      });
     });
   });
 
@@ -584,100 +604,40 @@
         : $invitationVirtualizer.getVirtualItems();
     const last = items.at(-1);
     if (last === undefined || last.index < rows.length - 5) return;
-    if (activeSection === 'users') void loadNextUsers();
-    else void loadNextInvitations();
+    untrack(() => {
+      if (activeSection === 'users') void loadNextUsers();
+      else void loadNextInvitations();
+    });
   });
 
-  async function loadUsers(
-    cursor: string | undefined,
-    append: boolean,
-    _requestKey = userRequestKey,
-  ): Promise<void> {
-    if (_requestKey !== userRequestKey) return;
-    const requestedTarget = targetId;
-    loadingUsers = true;
-    if (!append) userFailure = null;
-    else userLoadMoreFailure = null;
-    const request: PanelUserPageRequest = {
-      ...(cursor === undefined ? {} : { cursor }),
-      query: userQuery,
-      sort: userSort,
-      limit: userLimit,
-      roles: [...userRoles],
-      statuses: [...userStatuses],
-    };
-    try {
-      const listed = await fetchTargetUsers(requestedTarget, request);
-      if (_requestKey !== userRequestKey) return;
-      userPage =
-        append && userPage !== null
-          ? { ...listed, items: [...userPage.items, ...listed.items] }
-          : listed;
-    } catch (error) {
-      if (_requestKey !== userRequestKey) return;
-      if (append) userLoadMoreFailure = errorMessage(error);
-      else userFailure = errorMessage(error);
-    } finally {
-      if (_requestKey === userRequestKey) loadingUsers = false;
-    }
+  async function loadUsers(_cursor?: string, append = false): Promise<void> {
+    if (append) await usersQuery.fetchNextPage();
+    else await usersQuery.refetch();
   }
 
-  async function loadInvitations(
-    cursor: string | undefined,
-    append: boolean,
-    _requestKey = invitationRequestKey,
-  ): Promise<void> {
-    if (_requestKey !== invitationRequestKey) return;
-    const requestedTarget = targetId;
-    loadingInvitations = true;
-    if (!append) invitationFailure = null;
-    else invitationLoadMoreFailure = null;
-    const request: InvitationPageRequest = {
-      ...(cursor === undefined ? {} : { cursor }),
-      query: invitationQuery,
-      sort: invitationSort,
-      limit: invitationLimit,
-      roles: [...invitationRoles],
-      statuses: [...invitationStatuses],
-    };
-    try {
-      const listed = await fetchTargetInvitations(requestedTarget, request);
-      if (_requestKey !== invitationRequestKey) return;
-      invitationPage =
-        append && invitationPage !== null
-          ? { ...listed, items: [...invitationPage.items, ...listed.items] }
-          : listed;
-    } catch (error) {
-      if (_requestKey !== invitationRequestKey) return;
-      if (append) invitationLoadMoreFailure = errorMessage(error);
-      else invitationFailure = errorMessage(error);
-    } finally {
-      if (_requestKey === invitationRequestKey) loadingInvitations = false;
-    }
+  async function loadInvitations(_cursor?: string, append = false): Promise<void> {
+    if (append) await invitationsQuery.fetchNextPage();
+    else await invitationsQuery.refetch();
   }
 
   async function loadNextUsers(): Promise<void> {
-    const cursor = userPage?.next_cursor;
-    if (loadingUsers || cursor === null || cursor === undefined) return;
-    await loadUsers(cursor, true);
+    if (!usersQuery.hasNextPage || usersQuery.isFetchingNextPage) return;
+    await usersQuery.fetchNextPage();
   }
 
   async function loadNextInvitations(): Promise<void> {
-    const cursor = invitationPage?.next_cursor;
-    if (loadingInvitations || cursor === null || cursor === undefined) return;
-    await loadInvitations(cursor, true);
+    if (!invitationsQuery.hasNextPage || invitationsQuery.isFetchingNextPage) return;
+    await invitationsQuery.fetchNextPage();
   }
 
   async function reloadUsers(): Promise<void> {
-    userPage = null;
     scrollResultsToTop(userResults);
-    await loadUsers(undefined, false);
+    await usersQuery.refetch();
   }
 
   async function reloadInvitations(): Promise<void> {
-    invitationPage = null;
     scrollResultsToTop(invitationResults);
-    await loadInvitations(undefined, false);
+    await invitationsQuery.refetch();
   }
 
   function clearUserFilters(): void {
@@ -1315,6 +1275,13 @@
   function errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
   }
+
+  function flattenPages<T>(data: InfiniteData<Page<T>> | undefined): Page<T> | null {
+    const pages = data?.pages;
+    if (pages === undefined || pages.length === 0) return null;
+    const last = pages.at(-1);
+    return last === undefined ? null : { ...last, items: pages.flatMap((page) => page.items) };
+  }
 </script>
 
 {#snippet sortButton(label: string, direction: SortDirection | undefined, onSelect: () => void)}
@@ -1355,12 +1322,10 @@
 
   <div class="user-management-body">
     <div class="management-navigation">
-      <SegmentedControl
-        name="user-management-list"
+      <NavigationTabs
         label="User management lists"
         options={sectionOptions}
         value={activeSection}
-        variant="navigation"
         onSelect={selectSection}
       />
       <div class="stable-feedback" aria-live="polite">{feedback}</div>
@@ -1851,6 +1816,7 @@
     reason={currentReason(historyUser)}
     decidedAt={currentDecisionAt(historyUser)}
     returnFocus={historyTrigger}
+    queryKey={['access-decisions', targetId, historyUser.account.id]}
     fetchDecisions={() => fetchUserDecisions(historyUser!.account.id, targetId)}
     onClose={closeHistory}
   />
@@ -2447,9 +2413,6 @@
       display: block;
       flex: 1;
       min-height: 0;
-      /* No `overscroll-behavior` - see the note on the same rule in
-         RepositoryList: there is nothing behind this pane to chain into, so it
-         prevented nothing and only stood between a trackpad and the platform. */
       overflow-y: auto;
       position: relative;
     }

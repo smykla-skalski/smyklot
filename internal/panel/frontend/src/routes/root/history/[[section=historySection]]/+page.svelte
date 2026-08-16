@@ -1,11 +1,10 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import { getContext } from 'svelte';
-  import type { PanelSession } from '$lib/session.svelte';
+  import { getPanelSession } from '$lib/session.svelte';
   import HistoryPanel from '$lib/components/HistoryPanel.svelte';
 
-  const session = getContext<PanelSession>('panel-session');
-  const section = (page.params.section ?? 'audit') as 'audit' | 'failures';
+  const session = getPanelSession();
+  const section = $derived((page.params.section ?? 'audit') as 'audit' | 'failures');
 </script>
 
 <section

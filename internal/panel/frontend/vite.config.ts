@@ -1,6 +1,7 @@
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 import adapter from '@sveltejs/adapter-static';
 import { sveltekit } from '@sveltejs/kit/vite';
+import { svelteTesting } from '@testing-library/svelte/vite';
 import { defineConfig } from 'vitest/config';
 
 import { mockServer } from './dev/mock-server.ts';
@@ -21,20 +22,41 @@ export default defineConfig({
         assets: 'dist',
         fallback: 'index.html',
       }),
+      csp: {
+        mode: 'hash',
+        directives: {
+          'default-src': ['self'],
+          'connect-src': ['self'],
+          'img-src': ['self', 'https:'],
+          'style-src': ['self'],
+          // Virtualized rows, data bars, and component dimensions are dynamic
+          // style attributes. Keep style elements hash-restricted while allowing
+          // that narrower channel.
+          'style-src-attr': ['unsafe-inline'],
+          'script-src': ['self'],
+          'base-uri': ['none'],
+          'form-action': ['self', 'https://github.com'],
+        },
+      },
       paths: {
         base: isMockDev ? '' : '/__smyklot_panel_base__',
       },
+      version: {
+        // The Go server resolves this in every text asset, including the
+        // generated service worker, from the runtime deployment version.
+        name: '__smyklot_panel_version__',
+      },
     }),
+    svelteTesting(),
     mockServer(),
   ],
   server: {
-    port: 5275,
+    port: 5175,
     strictPort: true,
   },
   test: {
     environment: 'node',
     include: ['tests/**/*.test.ts'],
-    setupFiles: ['tests/component-setup.ts'],
     server: {
       deps: {
         inline: [/svelte/, /@testing-library/],

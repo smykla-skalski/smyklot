@@ -1,13 +1,12 @@
 <script lang="ts">
-  import { getContext } from 'svelte';
+  import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
+  import { untrack } from 'svelte';
   import { useInterval } from 'runed';
   import { PanelApiError, type PanelApi } from '../api';
   import { dialogRoute } from '../dialog-route.svelte';
   import { formatTimestamp } from '../format';
   import { monogram } from '../identity';
-  import { onInvalidate } from '../on-invalidate';
   import type { HistorySection, ScopedPanelView } from '../routes';
-  import type { PanelSession } from '../session.svelte';
   import type {
     PanelTarget,
     RepositoryDetail,
@@ -49,24 +48,54 @@
     onHistorySection: (section: HistorySection) => void;
   } = $props();
 
-  const session = getContext<PanelSession>('panel-session');
-
   /** Names the dialog in the address, and is the `id` the dialog carries. */
   const ELEVATION_DIALOG = 'root-elevation';
 
-  let target = $state<PanelTarget | null>(null);
-  let elevation = $state<RootElevation | null>(null);
-  let loading = $state(true);
-  let failure = $state<string | null>(null);
+  const queryClient = useQueryClient();
+  const detailKey = $derived(['root-installations', installation.id, 'detail'] as const);
+  const detailQuery = createQuery(() => ({
+    queryKey: detailKey,
+    queryFn: async () => ({
+      target: await api.fetchRootTargetSettings(installation.id),
+      elevation: await loadElevation(),
+    }),
+  }));
+  const beginElevationMutation = createMutation(() => ({
+    mutationFn: (input: { acknowledged: true; reason?: string }) =>
+      api.beginRootElevation(installation.id, input),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: detailKey }),
+  }));
+  const endElevationMutation = createMutation(() => ({
+    mutationFn: (elevationId: string) => api.endRootElevation(elevationId),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: detailKey }),
+  }));
+  const targetSettingsMutation = createMutation(() => ({
+    mutationFn: (input: TargetSettingsInput) =>
+      api.updateRootTargetSettings(installation.id, input),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: detailKey }),
+  }));
+  const target = $derived<PanelTarget | null>(detailQuery.data?.target ?? null);
+  const elevation = $derived<RootElevation | null>(detailQuery.data?.elevation ?? null);
+  const loading = $derived(detailQuery.isFetching);
+  let detailFailure = $state<string | null>(null);
+  const failure = $derived(
+    detailFailure ?? (detailQuery.error === null ? null : message(detailQuery.error)),
+  );
   let elevationFailure = $state<string | null>(null);
   /* Whatever the address names, so a reload keeps the reader in the dialog they
      were reading rather than dropping them back onto the installation. */
   const elevationModalOpen = $derived(dialogRoute.isOpen(ELEVATION_DIALOG));
   let elevationAcknowledged = $state(false);
   let elevationReason = $state('');
-  let elevationPending = $state(false);
+  const elevationPending = $derived(
+    beginElevationMutation.isPending || endElevationMutation.isPending,
+  );
   let elevationTrigger = $state<HTMLButtonElement | null>(null);
   let now = $state(Date.now());
+  const elevationClock = useInterval(1_000, {
+    immediate: false,
+    callback: () => (now = Date.now()),
+  });
 
   const remainingSeconds = $derived(
     elevation === null
@@ -83,20 +112,8 @@
   const canWrite = $derived(target?.capabilities.write === true);
 
   async function load(): Promise<void> {
-    loading = true;
-    try {
-      const currentTarget = await api.fetchRootTargetSettings(installation.id);
-      const currentElevation = await loadElevation();
-      target = currentTarget;
-      elevation = currentElevation;
-      // Cleared here rather than up front: a retry keeps the failure on screen
-      // until there is something to put in its place.
-      failure = null;
-    } catch (error) {
-      failure = message(error);
-    } finally {
-      loading = false;
-    }
+    detailFailure = null;
+    await detailQuery.refetch();
   }
 
   async function loadElevation(): Promise<RootElevation | null> {
@@ -138,50 +155,40 @@
 
   async function beginElevation(): Promise<void> {
     if (!elevationAcknowledged || elevationPending) return;
-    elevationPending = true;
     elevationFailure = null;
     try {
-      elevation = await api.beginRootElevation(installation.id, {
+      await beginElevationMutation.mutateAsync({
         acknowledged: true,
         ...(elevationReason.trim() === '' ? {} : { reason: elevationReason.trim() }),
       });
-      target = await api.fetchRootTargetSettings(installation.id);
       if (dialogRoute.isOpen(ELEVATION_DIALOG)) dialogRoute.close();
     } catch (error) {
       elevationFailure = message(error);
-    } finally {
-      elevationPending = false;
     }
   }
 
   async function endElevation(): Promise<void> {
     const current = elevation;
     if (current === null || elevationPending) return;
-    elevationPending = true;
     elevationFailure = null;
     try {
-      await api.endRootElevation(current.id);
-      elevation = null;
-      target = await api.fetchRootTargetSettings(installation.id);
+      await endElevationMutation.mutateAsync(current.id);
     } catch (error) {
       elevationFailure = message(error);
-    } finally {
-      elevationPending = false;
     }
   }
 
   async function expireElevation(): Promise<void> {
     if (elevation === null) return;
-    elevation = null;
     try {
-      target = await api.fetchRootTargetSettings(installation.id);
+      await detailQuery.refetch();
     } catch (error) {
-      failure = message(error);
+      detailFailure = message(error);
     }
   }
 
   async function updateTarget(input: TargetSettingsInput): Promise<void> {
-    target = await api.updateRootTargetSettings(installation.id, input);
+    await targetSettingsMutation.mutateAsync(input);
   }
 
   function fetchRepositories(request: RepositoryPageRequest) {
@@ -209,16 +216,15 @@
   }
 
   $effect(() => {
-    void load();
-  });
-
-  onInvalidate(session.queryClient, ['root-installations'], () => void load());
-
-  $effect(() => {
-    if (elevation === null) return;
-    now = Date.now();
-    const interval = useInterval(1_000, { callback: () => (now = Date.now()) });
-    return () => interval.pause();
+    const active = elevation !== null;
+    untrack(() => {
+      if (!active) {
+        elevationClock.pause();
+        return;
+      }
+      now = Date.now();
+      elevationClock.resume();
+    });
   });
 
   $effect(() => {

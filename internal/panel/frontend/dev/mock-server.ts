@@ -6,6 +6,8 @@ import type { Duplex } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import type { Connect, Plugin } from 'vite';
 
+import { rewriteMockHtml } from './mock-html.ts';
+
 import type {
   AuditEntry,
   AccessDecision,
@@ -172,10 +174,6 @@ interface MockState {
 
 /** How a served `index.html` reaches its final form: Vite's own dev transform. */
 type IndexTransform = (url: string, html: string) => Promise<string> | string;
-
-const ERROR_SENTINEL = '__smyklot_panel_error__';
-const NOSCRIPT_SENTINEL = '__smyklot_panel_noscript__';
-const DEFAULT_NOSCRIPT = 'The Smyklot panel needs JavaScript to run.';
 
 function enabled(): boolean {
   return process.env.SMYKLOT_PANEL_DEV_MOCK === '1';
@@ -992,7 +990,7 @@ export function mockServer(): Plugin {
     },
     transformIndexHtml(html) {
       if (!enabled()) return html;
-      return rewriteSentinels(html);
+      return rewriteMockHtml(html);
     },
     configureServer(server) {
       if (!enabled()) return;
@@ -1006,15 +1004,6 @@ export function mockServer(): Plugin {
       }
     },
   };
-}
-
-function rewriteSentinels(html: string): string {
-  return html
-    .replaceAll('/__smyklot_panel_base__', '')
-    .replaceAll('__smyklot_panel_version__', 'dev')
-    .replaceAll('__smyklot_panel_service__', 'local mock service')
-    .replaceAll(ERROR_SENTINEL, '')
-    .replaceAll(NOSCRIPT_SENTINEL, DEFAULT_NOSCRIPT);
 }
 
 function install(
@@ -2737,9 +2726,11 @@ function scopedUserValue(state: MockState, targetId: string, user: PanelUser): P
   return { ...structuredClone(user), target_access: structuredClone(access) };
 }
 
-function findRepository(target: MockTarget, encodedId: string): MockRepository {
-  const id = decodeURIComponent(encodedId);
-  const repository = target.repositories.find((entry) => entry.detail.repository.id === id);
+function findRepository(target: MockTarget, encodedSelector: string): MockRepository {
+  const selector = decodeURIComponent(encodedSelector);
+  const repository = target.repositories.find(
+    (entry) => entry.detail.repository.id === selector || entry.detail.repository.name === selector,
+  );
   if (repository === undefined) throw new MockApiError(404, 'not_found', 'repository not found');
   return repository;
 }

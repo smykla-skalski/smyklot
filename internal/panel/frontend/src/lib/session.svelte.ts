@@ -1,20 +1,23 @@
 /**
  * Session state shared across the panel's route tree.
  *
- * Absorbed from App.svelte: the viewer, targets, version counters, WebSocket
- * stream, and navigation. Route-derived state (view, root mode, active root
- * route) is read from SvelteKit's `$app/state` page object, not stored here.
+ * Absorbed from App.svelte: viewer and target shell state, query invalidation,
+ * and navigation. Route-derived state (view, root mode, active root route) is
+ * read from SvelteKit's `$app/state` page object, not stored here.
  */
 
 import { goto } from '$app/navigation';
-import { base } from '$app/paths';
+import { base, resolve } from '$app/paths';
 import { page } from '$app/state';
+import type { Pathname } from '$app/types';
+import { createContext } from 'svelte';
 import { MediaQuery } from 'svelte/reactivity';
 
 import type { QueryClient } from '@tanstack/svelte-query';
 
 import type { PanelApi } from './api';
 import type { PanelBuild } from './base';
+import type { PanelChangeEvent } from './events';
 import type { SessionEnded } from './panel-session';
 import { DEFAULT_THEME_DISPLAY, isThemeDisplay, type ThemeDisplay } from './preferences';
 import { createPrefsSync, type PrefsSync } from './preferences-sync';
@@ -31,10 +34,19 @@ import {
   type RouteDialog,
   type ScopedPanelView,
 } from './routes';
-import type { PanelTarget, PanelViewer, TargetSettingsInput } from './types';
+import type { NotificationPage, PanelTarget, PanelViewer } from './types';
 
-type FailureSource = 'load' | 'sign-out' | 'stream';
+type FailureSource = 'load' | 'sign-out';
 type PanelFailure = { message: string; source: FailureSource };
+
+export interface SessionQueryState {
+  viewer: PanelViewer | null | undefined;
+  targets: PanelTarget[] | undefined;
+  viewerPending: boolean;
+  targetsPending: boolean;
+  viewerError: unknown;
+  targetsError: unknown;
+}
 
 export class PanelSession {
   readonly api: PanelApi;
@@ -44,8 +56,8 @@ export class PanelSession {
   readonly queryClient: QueryClient;
 
   loading = $state(true);
-  viewer = $state<PanelViewer | null>(null);
-  targets = $state<PanelTarget[]>([]);
+  viewer = $state.raw<PanelViewer | null>(null);
+  targets = $state.raw<PanelTarget[]>([]);
   selectedId = $state<string | null>(null);
   failure = $state<PanelFailure | null>(null);
   notificationUnread = $state(0);
@@ -121,6 +133,10 @@ export class PanelSession {
     );
   }
 
+  get isInvitation(): boolean {
+    return page.url.pathname.startsWith(`${this.base}/invite/`);
+  }
+
   get currentView(): PanelView {
     return (page.params.view as PanelView) ?? 'settings';
   }
@@ -163,6 +179,7 @@ export class PanelSession {
   }
 
   get documentTitle(): string {
+    if (this.isInbox) return panelDocumentTitle({ personal: 'inbox' });
     const active = this.isRootMode
       ? this.currentRootRoute
       : this.currentView === 'history'
@@ -173,10 +190,14 @@ export class PanelSession {
 
   get tableScrollView(): boolean {
     if (this.isRootMode) {
+      const route = this.currentRootRoute;
+      if (route.rootView === 'installation') {
+        return ['repositories', 'users', 'invitations', 'history'].includes(route.view);
+      }
       return (
         this.rootValue === 'history' ||
         this.rootValue === 'access' ||
-        this.currentRootRoute.rootView === 'installations'
+        route.rootView === 'installations'
       );
     }
     return (
@@ -188,39 +209,61 @@ export class PanelSession {
   // --- Session lifecycle ---
 
   async load(): Promise<void> {
-    this.loading = this.viewer === null;
-    this.streamReady = false;
-    this.queryClient.clear();
+    this.loading = true;
     this.failure = null;
-    try {
-      this.viewer = await this.api.fetchViewer();
-      if (this.viewer === null) {
-        this.targets = [];
-        this.selectedId = null;
-        return;
-      }
-      this.sessionEnded = null;
-      this.prefs.adoptAccount(this.viewer.account.id);
-      await this.refreshTargets();
-      this.streamReady = true;
-    } catch (error) {
-      this.setFailure('load', error);
-    } finally {
-      this.loading = false;
-    }
+    await this.queryClient.invalidateQueries({ queryKey: ['viewer'] });
+    await this.queryClient.invalidateQueries({ queryKey: ['targets'] });
   }
 
-  async refreshTargets(): Promise<boolean> {
-    try {
-      const listed = await this.api.fetchTargets();
-      this.targets = listed;
-      if (this.selectedId !== null && !listed.some((t) => t.id === this.selectedId)) {
-        this.selectedId = null;
-      }
-      return true;
-    } catch {
-      return false;
+  syncQueries(state: SessionQueryState): void {
+    const initialError =
+      state.viewer === undefined
+        ? state.viewerError
+        : state.viewer !== null && state.targets === undefined
+          ? state.targetsError
+          : null;
+    if (initialError !== null) {
+      this.setFailure('load', initialError);
+      this.loading = false;
+      this.streamReady = false;
+      return;
     }
+
+    if (state.viewer === undefined) {
+      this.loading = state.viewerPending;
+      return;
+    }
+
+    if (state.viewer === null) {
+      this.viewer = null;
+      this.targets = [];
+      this.selectedId = null;
+      this.loading = false;
+      this.streamReady = false;
+      this.clearFailure('load');
+      return;
+    }
+
+    const accountChanged = this.viewer?.account.id !== state.viewer.account.id;
+    this.viewer = state.viewer;
+    this.sessionEnded = null;
+    if (accountChanged) this.prefs.adoptAccount(state.viewer.account.id);
+
+    if (state.targets === undefined) {
+      this.loading = state.targetsPending;
+      return;
+    }
+
+    this.targets = state.targets;
+    if (
+      this.selectedId !== null &&
+      !state.targets.some((target) => target.id === this.selectedId)
+    ) {
+      this.selectedId = null;
+    }
+    this.loading = false;
+    this.streamReady = true;
+    this.clearFailure('load');
   }
 
   // --- Target selection ---
@@ -228,32 +271,36 @@ export class PanelSession {
   async selectTarget(targetId: string): Promise<void> {
     const target = this.targets.find((t) => t.id === targetId);
     if (target === undefined || this.selectedId === targetId) return;
-    await goto(this.routePath(this.routeFor(target, this.currentView)));
+    await this.openTarget(target);
+  }
+
+  openTarget(target: PanelTarget, replaceState = false): Promise<void> {
+    return this.navigate(this.routeFor(target, this.currentView), replaceState);
   }
 
   selectView(nextView: PanelView): void {
     const target = this.selectedTarget;
     if (target === null || this.currentView === nextView) return;
-    goto(this.routePath(this.routeFor(target, nextView)));
+    void this.navigate(this.routeFor(target, nextView));
   }
 
   selectHistorySection(section: HistorySection): void {
     const target = this.selectedTarget;
     if (target === null || this.currentHistorySection === section) return;
-    goto(this.routePath(this.routeFor(target, 'history', section)));
+    void this.navigate(this.routeFor(target, 'history', section));
   }
 
   selectUserSection(section: 'users' | 'invitations'): void {
     if (this.selectedTarget === null) return;
     if (this.currentView === section) return;
-    goto(this.routePath(this.routeFor(this.selectedTarget, section)));
+    void this.navigate(this.routeFor(this.selectedTarget, section));
   }
 
   // --- Root navigation ---
 
   selectRootSection(section: RootSection): void {
     if (!this.isRootMode || this.rootValue === section) return;
-    goto(this.routePath(rootSectionRoute(section)));
+    void this.navigate(rootSectionRoute(section));
     this.resetPageScroll();
   }
 
@@ -262,7 +309,7 @@ export class PanelSession {
       rootView: section === 'audit' ? 'history-audit' : 'history-failures',
     };
     if (this.currentRootRoute.rootView === route.rootView) return;
-    goto(this.routePath(route));
+    void this.navigate(route);
   }
 
   selectRootAccessSection(section: 'users' | 'invitations'): void {
@@ -270,12 +317,12 @@ export class PanelSession {
       rootView: section === 'users' ? 'access-users' : 'access-invitations',
     };
     if (this.currentRootRoute.rootView === route.rootView) return;
-    goto(this.routePath(route));
+    void this.navigate(route);
   }
 
   selectRootInstallation(account: string, nextView: ScopedPanelView): void {
     const route = this.rootInstallationRoute(account, nextView);
-    goto(this.routePath(route));
+    void this.navigate(route);
     this.resetPageScroll();
   }
 
@@ -283,24 +330,27 @@ export class PanelSession {
     if (this.currentRootRoute.rootView !== 'installation') return;
     if (this.currentHistorySection === section) return;
     const route = this.rootInstallationRoute(this.currentRootRoute.account, 'history', section);
-    goto(this.routePath(route));
+    void this.navigate(route);
   }
 
   selectRootInstallations(): void {
-    goto(this.routePath({ rootView: 'installations' }));
+    void this.navigate({ rootView: 'installations' });
     this.resetPageScroll();
   }
 
   enterRoot(): void {
     if (this.viewer?.system_role === 'none') return;
-    goto(this.routePath({ rootView: 'overview' }));
+    void this.navigate({ rootView: 'overview' });
     this.resetPageScroll();
   }
 
   returnToPanel(): void {
     const target = this.returnTarget;
-    if (target === null) return;
-    goto(this.routePath(this.routeFor(target, this.currentView)));
+    if (target === null) {
+      void goto(this.returnHref() as Pathname, { replaceState: true });
+      return;
+    }
+    void this.navigate(this.routeFor(target, this.currentView));
   }
 
   // --- Hrefs ---
@@ -340,7 +390,7 @@ export class PanelSession {
 
   returnHref(): string {
     return this.returnTarget === null
-      ? '#'
+      ? `${this.base}/`
       : panelRoutePath(this.base, this.routeFor(this.returnTarget, this.currentView));
   }
 
@@ -349,58 +399,73 @@ export class PanelSession {
   }
 
   openInbox(): void {
-    goto(this.inboxHref());
-  }
-
-  // --- Mutations ---
-
-  async updateTarget(input: TargetSettingsInput): Promise<void> {
-    const target = this.selectedTarget;
-    if (target === null) return;
-    const updated = await this.api.updateTargetSettings(target.id, input);
-    this.targets = this.targets.map((e) => (e.id === updated.id ? updated : e));
-    this.invalidateTargetData(target.id);
+    void this.navigate({ personal: 'inbox' });
   }
 
   repositoryChanged(targetId: string): void {
     if (this.viewer === null) return;
     this.invalidateTargetData(targetId);
-    this.refreshFromStreamSafely();
+    this.invalidateRepositoryAggregates();
+  }
+
+  updateNotificationUnread(unread: number): void {
+    this.notificationUnread = unread;
+    this.queryClient.setQueriesData<NotificationPage>(
+      { queryKey: ['notifications', 'unread'] },
+      (current) =>
+        current === undefined || current.unread === unread ? current : { ...current, unread },
+    );
   }
 
   // --- Stream ---
 
-  async refreshFromStream(refreshViewer = false): Promise<void> {
-    try {
-      if (refreshViewer) {
-        const currentViewer = await this.api.fetchViewer();
-        if (currentViewer === null) {
-          this.revokeAccess({ code: 'access_revoked', reason: '' });
-          return;
-        }
-        this.viewer = currentViewer;
-      }
-      await this.refreshTargets();
-      if (this.isRootMode && this.viewer?.system_role === 'none') {
-        goto(this.routePath(this.routeFor(this.selectedTarget ?? this.targets[0]!, 'settings')), {
-          replaceState: true,
-        });
-      }
-      // Invalidate everything the stream could have changed. Each component
-      // subscribes to its own key and refetches only what it needs.
-      this.queryClient.invalidateQueries();
-      this.clearFailure('stream');
-    } catch (error) {
-      this.setFailure('stream', error);
-    }
-  }
-
-  refreshFromStreamSafely(): void {
-    void this.refreshFromStream();
-  }
-
   refreshAccessFromStream(): void {
-    void this.refreshFromStream(true);
+    void this.queryClient.invalidateQueries({ queryKey: ['viewer'] });
+    void this.queryClient.invalidateQueries({ queryKey: ['targets'] });
+    void this.queryClient.invalidateQueries({
+      predicate: (query) => !['viewer', 'targets'].includes(String(query.queryKey[0])),
+    });
+  }
+
+  invalidateChange(event: PanelChangeEvent): void {
+    const targetId = event.target_id;
+    // The server has no notification-specific event. Any audited change can
+    // produce a new Owner notification, which is why the old shell refreshed
+    // this count on every change frame too.
+    void this.queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    switch (event.type) {
+      case 'target.changed':
+        void this.queryClient.invalidateQueries({ queryKey: ['targets'] });
+        void this.queryClient.invalidateQueries({ queryKey: ['root-installations'] });
+        void this.queryClient.invalidateQueries({ queryKey: ['root-overview'] });
+        this.invalidateTargetData(targetId);
+        return;
+      case 'repository.changed':
+        void this.queryClient.invalidateQueries({ queryKey: ['repositories', targetId] });
+        void this.queryClient.invalidateQueries({ queryKey: ['repository', targetId] });
+        this.invalidateRepositoryAggregates();
+        return;
+      case 'audit.changed':
+        void this.queryClient.invalidateQueries({ queryKey: ['audit', targetId] });
+        void this.queryClient.invalidateQueries({ queryKey: ['audit', 'root'] });
+        return;
+      case 'failure.changed':
+        void this.queryClient.invalidateQueries({ queryKey: ['failures', targetId] });
+        void this.queryClient.invalidateQueries({ queryKey: ['failures', 'root'] });
+        void this.queryClient.invalidateQueries({ queryKey: ['root-overview'] });
+        return;
+      case 'users.changed':
+        void this.queryClient.invalidateQueries({ queryKey: ['users', targetId] });
+        void this.queryClient.invalidateQueries({ queryKey: ['access-decisions', targetId] });
+        void this.queryClient.invalidateQueries({ queryKey: ['root-access', 'users'] });
+        return;
+      case 'invitation.changed':
+        void this.queryClient.invalidateQueries({ queryKey: ['invitations', targetId] });
+        void this.queryClient.invalidateQueries({ queryKey: ['root-access', 'invitations'] });
+        return;
+      case 'access.changed':
+        this.refreshAccessFromStream();
+    }
   }
 
   revokeAccess(ended: SessionEnded): void {
@@ -409,7 +474,8 @@ export class PanelSession {
     this.targets = [];
     this.selectedId = null;
     this.streamReady = false;
-    this.queryClient.clear();
+    this.queryClient.setQueryData(['viewer'], null);
+    this.queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== 'viewer' });
   }
 
   async signOut(): Promise<void> {
@@ -422,8 +488,8 @@ export class PanelSession {
       this.targets = [];
       this.selectedId = null;
       this.streamReady = false;
-      this.queryClient.clear();
-      await this.load();
+      this.queryClient.setQueryData(['viewer'], null);
+      this.queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== 'viewer' });
     } catch (error) {
       this.setFailure('sign-out', error);
       this.loading = false;
@@ -453,12 +519,23 @@ export class PanelSession {
     return panelRoutePath('', route);
   }
 
-  private invalidateTargetData(targetId: string): void {
+  private navigate(route: PanelRoute, replaceState = false): Promise<void> {
+    return goto(resolve(this.routePath(route) as Pathname), { replaceState });
+  }
+
+  invalidateTargetData(targetId: string): void {
     this.queryClient.invalidateQueries({ queryKey: ['repositories', targetId] });
+    this.queryClient.invalidateQueries({ queryKey: ['repository', targetId] });
     this.queryClient.invalidateQueries({ queryKey: ['audit', targetId] });
     this.queryClient.invalidateQueries({ queryKey: ['failures', targetId] });
     this.queryClient.invalidateQueries({ queryKey: ['users', targetId] });
     this.queryClient.invalidateQueries({ queryKey: ['invitations', targetId] });
+  }
+
+  private invalidateRepositoryAggregates(): void {
+    void this.queryClient.invalidateQueries({ queryKey: ['targets'] });
+    void this.queryClient.invalidateQueries({ queryKey: ['root-installations'] });
+    void this.queryClient.invalidateQueries({ queryKey: ['root-overview'] });
   }
 
   private routeFor(
@@ -500,3 +577,5 @@ export class PanelSession {
     return error instanceof Error ? error.message : String(error);
   }
 }
+
+export const [getPanelSession, setPanelSession] = createContext<PanelSession>();

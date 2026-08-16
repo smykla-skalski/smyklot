@@ -14,12 +14,12 @@ import { componentSources } from './support/markup';
  * screen because the next attempt clears it first.
  */
 
-/* The shell holds effects of its own - the stream, the preferences, the router -
-   so it is swept with the components rather than left as the one file exempt. */
-const APP = readFileSync(new URL('../src/App.svelte', import.meta.url), 'utf8');
+/* The shell holds effects of its own - the stream, preferences, and route
+   resolution - so it is swept with the components rather than left exempt. */
+const ROOT_LAYOUT = readFileSync(new URL('../src/routes/+layout.svelte', import.meta.url), 'utf8');
 
 describe('effects that feed themselves [Unit]', () => {
-  const sources = [...componentSources(), ['App.svelte', APP] as const];
+  const sources = [...componentSources(), ['routes/+layout.svelte', ROOT_LAYOUT] as const];
 
   it.each(sources.map(([file]) => file))('%s starts no ring', (file) => {
     const source = sources.find(([name]) => name === file)?.[1] ?? '';

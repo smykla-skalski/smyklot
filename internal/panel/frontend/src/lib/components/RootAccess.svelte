@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { getContext, untrack } from 'svelte';
+  import { createInfiniteQuery, createQuery, type InfiniteData } from '@tanstack/svelte-query';
+  import { untrack } from 'svelte';
+  import { useDebounce, useInterval } from 'runed';
 
   import { dialogRoute } from '../dialog-route.svelte';
   import { formatRelative, formatTimestamp } from '../format';
   import type { FilterSection } from '../filter-menu';
-  import { onInvalidate } from '../on-invalidate';
-  import type { PanelSession } from '../session.svelte';
   import type {
     Page,
     AddTargetUserInput,
@@ -36,7 +36,7 @@
   import RootInvitations from './RootInvitations.svelte';
   import RootPageHeader from './RootPageHeader.svelte';
   import SearchField from './SearchField.svelte';
-  import SegmentedControl from './SegmentedControl.svelte';
+  import NavigationTabs from './NavigationTabs.svelte';
   import TableEmptyState from './TableEmptyState.svelte';
 
   type AccessSection = 'users' | 'invitations';
@@ -111,17 +111,11 @@
     onOpenInstallationAccess: (account: string) => void;
   } = $props();
 
-  const session = getContext<PanelSession>('panel-session');
-
-  let page = $state<Page<RootPanelUser> | null>(null);
   let search = $state('');
   let query = $state('');
   let sort = $state<RootPanelUserSort>('name_asc');
   let systemRoles = $state<SystemRole[]>([]);
   let statuses = $state<PanelUserStatus[]>([]);
-  let loading = $state(false);
-  let problem = $state<string | null>(null);
-  let loadMoreProblem = $state<string | null>(null);
   let actionTrigger = $state<HTMLElement | null>(null);
   let reason = $state('');
   let saving = $state(false);
@@ -132,16 +126,36 @@
   let addLogin = $state('');
   let addRole = $state<Exclude<InstallationRole, 'none' | 'owner'>>('viewer');
   let installationQuery = $state('');
-  let installations = $state<RootInstallation[]>([]);
   let selectedInstallationID = $state('');
-  let installationsLoading = $state(false);
   let addSaving = $state(false);
   let addProblem = $state<string | null>(null);
   let feedback = $state('');
   const limit = 20;
   // Ticks so relative login times keep aging in a long Root session.
   let now = $state(Date.now());
-  const requestKey = $derived(JSON.stringify([query, sort, systemRoles, statuses, limit]));
+  const usersQuery = createInfiniteQuery(() => ({
+    queryKey: ['root-access', 'users', query, sort, [...systemRoles], [...statuses], limit],
+    enabled: section === 'users',
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam }) =>
+      fetchUsers({
+        ...(pageParam === undefined ? {} : { cursor: pageParam }),
+        query,
+        sort,
+        limit,
+        systemRoles: [...systemRoles],
+        statuses: [...statuses],
+      }),
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+  }));
+  const page = $derived(flattenPages(usersQuery.data));
+  const loading = $derived(usersQuery.isFetching);
+  const problem = $derived(
+    usersQuery.isError && !usersQuery.isFetchNextPageError ? errorMessage(usersQuery.error) : null,
+  );
+  const loadMoreProblem = $derived(
+    usersQuery.isFetchNextPageError ? errorMessage(usersQuery.error) : null,
+  );
   const users = $derived(page?.items ?? []);
   const hasFilters = $derived(query !== '' || systemRoles.length > 0 || statuses.length > 0);
 
@@ -157,12 +171,30 @@
   const pendingAction = $derived(
     actionUser === null ? null : userAction(dialogRoute.param(ACTION_DIALOG, 'action')),
   );
+  const installationsQuery = createQuery(() => ({
+    queryKey: ['root-installations'],
+    queryFn: fetchInstallations,
+    enabled: addOpen,
+  }));
+  const installations = $derived<RootInstallation[]>(installationsQuery.data ?? []);
+  const installationsLoading = $derived(
+    addOpen && installationsQuery.isFetching && installationsQuery.data === undefined,
+  );
+  const installationsProblem = $derived(
+    addOpen && installationsQuery.error !== null ? errorMessage(installationsQuery.error) : null,
+  );
+  const defaultInstallationID = $derived(
+    installations.find((installation) => installation.available)?.id ?? '',
+  );
+  const effectiveInstallationID = $derived(
+    selectedInstallationID === '' ? defaultInstallationID : selectedInstallationID,
+  );
 
   function userAction(value: string | undefined): UserAction | null {
     return USER_ACTIONS.find((action) => action === value) ?? null;
   }
   const selectedInstallation = $derived(
-    installations.find((installation) => installation.id === selectedInstallationID) ?? null,
+    installations.find((installation) => installation.id === effectiveInstallationID) ?? null,
   );
   const filteredInstallations = $derived.by(() => {
     const needle = installationQuery.trim().toLocaleLowerCase();
@@ -174,33 +206,12 @@
     );
   });
 
+  useInterval(30_000, { callback: () => (now = Date.now()) });
+  const debouncedSearch = useDebounce((value: string) => (query = value), 180);
   $effect(() => {
-    const tick = setInterval(() => {
-      now = Date.now();
-    }, 30_000);
-    return () => clearInterval(tick);
+    const value = search.trim();
+    untrack(() => void debouncedSearch(value));
   });
-
-  $effect(() => {
-    const next = search.trim();
-    const timeout = window.setTimeout(() => (query = next), 180);
-    return () => window.clearTimeout(timeout);
-  });
-
-  /* `requestKey` is the whole trigger: it changes when a filter, the sort, the
-     page size or the refresh version does. The call is untracked because
-     `loadPage` reads `loading` to bail out while a read is in flight, and an
-     effect that depends on what it calls also writes would start a fresh request
-     every time one finished - a loop that never settled. */
-  $effect(() => {
-    const key = requestKey;
-    const wanted = section === 'users';
-    untrack(() => {
-      if (wanted) void loadPage(undefined, false, key);
-    });
-  });
-
-  onInvalidate(session.queryClient, ['root-access'], () => void loadPage(undefined, false));
 
   function selectSection(value: string): void {
     if (value === 'users' || value === 'invitations') onSection(value);
@@ -234,40 +245,26 @@
     );
   }
 
-  async function loadPage(
-    cursor: string | undefined,
-    append: boolean,
-    key = requestKey,
-  ): Promise<void> {
-    if (key !== requestKey || loading) return;
-    loading = true;
-    if (append) loadMoreProblem = null;
-    else problem = null;
-    try {
-      const loaded = await fetchUsers({
-        ...(cursor === undefined ? {} : { cursor }),
-        query,
-        sort,
-        limit,
-        systemRoles,
-        statuses,
-      });
-      if (key !== requestKey) return;
-      page =
-        append && page !== null ? { ...loaded, items: [...page.items, ...loaded.items] } : loaded;
-    } catch (error) {
-      if (key !== requestKey) return;
-      const message = error instanceof Error ? error.message : String(error);
-      if (append) loadMoreProblem = message;
-      else problem = message;
-    } finally {
-      if (key === requestKey) loading = false;
-    }
+  async function loadPage(_cursor: string | undefined, append: boolean): Promise<void> {
+    if (append) await usersQuery.fetchNextPage();
+    else await usersQuery.refetch();
   }
 
   function loadNext(): void {
-    const cursor = page?.next_cursor;
-    if (cursor !== null && cursor !== undefined) void loadPage(cursor, true);
+    if (usersQuery.hasNextPage && !usersQuery.isFetchingNextPage) {
+      void usersQuery.fetchNextPage();
+    }
+  }
+
+  function flattenPages(data: InfiniteData<Page<RootPanelUser>> | undefined) {
+    const pages = data?.pages;
+    if (pages === undefined || pages.length === 0) return null;
+    const last = pages.at(-1);
+    return last === undefined ? null : { ...last, items: pages.flatMap((entry) => entry.items) };
+  }
+
+  function errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
   }
 
   function loadFromScroll(event: Event): void {
@@ -282,23 +279,13 @@
     statuses = [];
   }
 
-  async function openAddUser(): Promise<void> {
+  function openAddUser(): void {
     dialogRoute.open(ADD_DIALOG);
     addLogin = '';
     addRole = 'viewer';
     installationQuery = '';
     selectedInstallationID = '';
     addProblem = null;
-    installationsLoading = true;
-    try {
-      installations = await fetchInstallations();
-      selectedInstallationID =
-        installations.find((installation) => installation.available)?.id ?? '';
-    } catch (error) {
-      addProblem = error instanceof Error ? error.message : String(error);
-    } finally {
-      installationsLoading = false;
-    }
   }
 
   function closeAddUser(): void {
@@ -323,7 +310,6 @@
       await addInstallationUser(installation.id, { login, role: addRole });
       feedback = `Added @${login} to ${installation.account.display_name}`;
       if (dialogRoute.isOpen(ADD_DIALOG)) dialogRoute.close();
-      page = null;
       await loadPage(undefined, false);
     } catch (error) {
       addProblem = error instanceof Error ? error.message : String(error);
@@ -469,7 +455,6 @@
     try {
       await updateUser(actionUser.account.id, input);
       if (dialogRoute.isOpen(ACTION_DIALOG)) dialogRoute.close();
-      page = null;
       await loadPage(undefined, false);
     } catch (error) {
       actionProblem = error instanceof Error ? error.message : String(error);
@@ -480,12 +465,10 @@
 </script>
 
 {#snippet sectionSwitch()}
-  <SegmentedControl
-    name="root-access-section"
+  <NavigationTabs
     label="Root access lists"
     options={SECTIONS}
     value={section}
-    variant="navigation"
     onSelect={selectSection}
   />
 {/snippet}
@@ -511,12 +494,7 @@
         </button>
       {/if}
     {:else}
-      <button
-        class="btn btn-signal"
-        type="button"
-        bind:this={addTrigger}
-        onclick={() => void openAddUser()}
-      >
+      <button class="btn btn-signal" type="button" bind:this={addTrigger} onclick={openAddUser}>
         <Icon name="user-plus" size={14} strokeWidth={2} />
         <span class="button-label">Add user</span>
       </button>
@@ -814,6 +792,15 @@
       />
       {#if installationsLoading}
         <div class="installation-state" role="status">Loading installations…</div>
+      {:else if installationsProblem !== null}
+        <div class="installation-state installation-problem" role="alert">
+          <span>{installationsProblem}</span>
+          <button
+            class="btn btn-quiet"
+            type="button"
+            onclick={() => void installationsQuery.refetch()}>Try again</button
+          >
+        </div>
       {:else if filteredInstallations.length === 0}
         <div class="installation-state">No installations match this search.</div>
       {:else}
@@ -825,7 +812,8 @@
                 name="root-installation"
                 value={installation.id}
                 disabled={!installation.available}
-                bind:group={selectedInstallationID}
+                checked={effectiveInstallationID === installation.id}
+                onchange={() => (selectedInstallationID = installation.id)}
               />
               <span class="installation-option-copy">
                 <strong>{installation.account.display_name}</strong>
@@ -1334,9 +1322,6 @@
       display: block;
       flex: 1;
       min-height: 0;
-      /* No `overscroll-behavior` - see the note on the same rule in
-         RepositoryList: there is nothing behind this pane to chain into, so it
-         prevented nothing and only stood between a trackpad and the platform. */
       overflow-y: auto;
     }
 

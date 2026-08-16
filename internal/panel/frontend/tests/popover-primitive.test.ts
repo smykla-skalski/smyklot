@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { componentSources, markupOf } from './support/markup';
 
 /**
- * One component floats a layer, and the rest ask it to.
+ * Floating layers use Bits UI's purpose-built primitives.
  *
  * There were six, and they disagreed. Three rendered into the page, where the
  * first ancestor that scrolls clips them; three re-implemented dismissal, and the
@@ -11,10 +11,9 @@ import { componentSources, markupOf } from './support/markup';
  * The cost of that was never one big failure - it was that fixing a layer bug
  * fixed it in one place out of six.
  *
- * So these hold the shape rather than the pixels: what may open a layer, what may
- * position one, and that the components which have one still get it from the
- * primitive. Checked as source, because the runtime here has no DOM and no top
- * layer to put anything in.
+ * These hold the architectural shape rather than pixels: no component drives a
+ * platform popover directly, generic layers use the shared wrapper, and widgets
+ * with stronger semantics use the matching Bits UI primitive.
  */
 
 const PRIMITIVE = 'Popover.svelte';
@@ -74,22 +73,27 @@ describe('the popover primitive', () => {
 });
 
 describe('the components that float a layer', () => {
-  const users = [
-    'ActionMenu.svelte',
+  const genericUsers = [
     'FilterMenu.svelte',
     'HistoryDisplayMenu.svelte',
     'IdentityBar.svelte',
-    'LoginField.svelte',
     'RolePicker.svelte',
   ];
 
-  it.each(users)('%s gets its layer from the primitive', (file) => {
+  it.each(genericUsers)('%s gets its layer from the shared primitive', (file) => {
     expect(read(file)).toMatch(/<Popover[\s\n]/u);
   });
 
-  it('keeps the combobox out of the platform light dismiss', () => {
-    // An auto popover dismisses on any pointerdown, including one in the field
-    // being typed into, which is the whole interaction here.
-    expect(read('LoginField.svelte')).toMatch(/dismiss="manual"/u);
+  it.each([
+    ['Popover.svelte', 'Popover'],
+    ['ActionMenu.svelte', 'DropdownMenu'],
+    ['LoginField.svelte', 'Combobox'],
+    ['AppTooltip.svelte', 'Tooltip'],
+    ['HelpTip.svelte', 'Tooltip'],
+    ['NavigationTabs.svelte', 'Tabs'],
+  ])('%s uses the Bits UI %s primitive', (file, primitive) => {
+    const source = read(file);
+    expect(source).toContain(`import { ${primitive} } from 'bits-ui'`);
+    expect(source).toContain(`<${primitive}.Root`);
   });
 });

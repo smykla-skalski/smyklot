@@ -91,25 +91,25 @@ describe('the infinite-load sentinel', () => {
 });
 
 /**
- * An effect never depends on state the work it starts writes back.
+ * Query observers own list reads instead of effects that can depend on state the read writes.
  *
  * `RootAccess` and `RootInvitations` ran `$effect(() => void loadPage(...))`, and `loadPage` reads
  * `loading` to bail out while a read is in flight. Reading it inside the effect made the effect
  * depend on it, so every request that finished started another one - a hot loop that ran in normal
- * use, not just on failure. Svelte's own answer is `untrack`, and the tracked read that remains is
- * `requestKey`, which is the trigger these views actually want.
+ * use, not just on failure. TanStack Query derives the request from its reactive key and cancels
+ * stale observers without a component-managed loading cycle.
  */
 describe('a list view that reloads itself', () => {
   it.each(['RootAccess.svelte', 'RootInvitations.svelte'])(
-    'calls its loader untracked in %s',
+    'does not call its loader from an effect in %s',
     (file) => {
       const source = sources.find(([name]) => name === file)?.[1] ?? '';
       const effects = [...source.matchAll(/\$effect\(\(\) => \{(?<body>[\s\S]*?)\n {2}\}\);/gu)]
         .map((match) => match.groups?.body ?? '')
         .filter((body) => body.includes('loadPage('));
 
-      expect(effects.length).toBe(1);
-      expect(effects[0]).toMatch(/untrack\(\(\) => \{/u);
+      expect(source).toContain('createInfiniteQuery');
+      expect(effects).toEqual([]);
     },
   );
 });

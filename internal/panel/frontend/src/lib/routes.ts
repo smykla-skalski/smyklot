@@ -64,21 +64,6 @@ export interface ResolvedPanelRoute {
   section?: HistorySection;
 }
 
-interface BrowserNavigation {
-  readonly location: Pick<Location, 'pathname' | 'search'>;
-  readonly history: Pick<History, 'pushState' | 'replaceState' | 'state'>;
-  addEventListener(type: 'popstate', listener: () => void): void;
-  removeEventListener(type: 'popstate', listener: () => void): void;
-}
-
-export interface PanelRouter {
-  current(): PanelRoute | null;
-  path(route: PanelRoute): string;
-  push(route: PanelRoute): void;
-  replace(route: PanelRoute): void;
-  subscribe(listener: (route: PanelRoute | null) => void): () => void;
-}
-
 export function parsePanelRoute(basePath: string, pathname: string): PanelRoute | null {
   const base = normalizeBasePath(basePath);
   if (base !== '' && pathname !== base && !pathname.startsWith(`${base}/`)) return null;
@@ -198,14 +183,6 @@ export function routeSegmentLabel(segment: string): string {
     .join(' ');
 }
 
-export function resolveDocumentTitleRoute(
-  active: PanelRoute,
-  requested: PanelRoute | null,
-  routePending: boolean,
-): PanelRoute {
-  return routePending && requested !== null ? requested : active;
-}
-
 export function resolvePanelRoute(
   availableAccounts: readonly string[],
   requested: InstallationRoute | null,
@@ -235,47 +212,6 @@ export function rootSectionRoute(section: RootSection): RootRoute {
   if (section === 'access') return { rootView: 'access-users' };
   if (section === 'history') return { rootView: 'history-audit' };
   return { rootView: section };
-}
-
-export function createPanelRouter(basePath: string, browser: BrowserNavigation): PanelRouter {
-  function current(): PanelRoute | null {
-    return parsePanelRoute(basePath, browser.location.pathname);
-  }
-
-  function write(route: PanelRoute, replace: boolean): void {
-    const next = panelRoutePath(basePath, route);
-
-    /* The query belongs to the view, and says which dialog is open on top of it.
-       Walking somewhere else leaves that behind, which is what a reader means by
-       pressing another tab. Tidying the address the panel is already on does not:
-       `/root/access` is rewritten to `/root/access/users` the moment it loads, and
-       dropping the query there would throw away a pasted link to a dialog before
-       anything had a chance to open it.
-
-       A personal view hosts no dialogs at all, so there is nothing there to
-       preserve, and carrying a query onto one would leave `?dialog=` naming
-       something no part of the page will ever open. */
-    const url = replace && !('personal' in route) ? next + browser.location.search : next;
-    /* Compared as the whole address rather than as the path alone. On the path
-       alone, arriving at a personal view that is already the current path left a
-       query behind that this call exists to drop, and the dialog router went on
-       reading a dialog nothing would open. */
-    if (url === browser.location.pathname + browser.location.search) return;
-    const method = replace ? browser.history.replaceState : browser.history.pushState;
-    method.call(browser.history, browser.history.state, '', url);
-  }
-
-  return {
-    current,
-    path: (route) => panelRoutePath(basePath, route),
-    push: (route) => write(route, false),
-    replace: (route) => write(route, true),
-    subscribe(listener) {
-      const handlePopState = (): void => listener(current());
-      browser.addEventListener('popstate', handlePopState);
-      return () => browser.removeEventListener('popstate', handlePopState);
-    },
-  };
 }
 
 function isScopedPanelView(value: string): value is ScopedPanelView {

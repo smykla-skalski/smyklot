@@ -314,6 +314,7 @@
   --layer-sticky: 30;
   --layer-popover: 35;
   --layer-dialog: 45;
+  --layer-dialog-popover: 47;
   /* Above the dialog: a tooltip explains whatever is in front of it. */
   --layer-tooltip: 50;
   --shadow-plate: 0 1px 2px var(--shadow-color);
@@ -686,7 +687,7 @@ body {
   flex-direction: column;
   min-height: 100dvh;
   min-width: 0;
-  padding: var(--space-6) clamp(var(--space-4), 2.4vw, var(--space-8)) var(--space-8);
+  padding: var(--space-6) clamp(var(--space-4), 2.4vw, var(--space-8)) 0;
 }
 
 .workspace-content,
@@ -694,6 +695,10 @@ body {
   margin-inline: auto;
   max-width: var(--content-max);
   width: 100%;
+}
+
+.workspace > .foot {
+  padding-bottom: var(--space-8);
 }
 
 .workspace-content {
@@ -1466,41 +1471,6 @@ code {
   }
 }
 
-/* The product's one tooltip, built by `lib/tooltip.ts` and mounted on the shell
-   rather than beside its trigger — a table cell, a pinned header, a card and a
-   dialog all clip their overflow, and a tooltip laid out inside one is cut off
-   by the first of them. Shows on hover AND keyboard focus. */
-.app-tooltip {
-  background: var(--popover-bg);
-  border: 1px solid var(--popover-border);
-  border-radius: var(--radius-popover);
-  box-shadow: var(--shadow-popover);
-  color: var(--text-secondary);
-  font: 400 var(--font-size-meta) / 1.45 var(--sans);
-  left: 0;
-  letter-spacing: normal;
-  max-width: min(17rem, calc(100vw - 3rem));
-  opacity: 0;
-  padding: 0.625rem 0.75rem;
-  pointer-events: none;
-  position: fixed;
-  text-align: left;
-  text-transform: none;
-  top: 0;
-  transition:
-    opacity var(--duration-fast) ease,
-    translate var(--duration-fast) ease;
-  translate: 0 -3px;
-  white-space: normal;
-  width: max-content;
-  z-index: var(--layer-tooltip);
-}
-
-.app-tooltip.is-open {
-  opacity: 1;
-  translate: 0 0;
-}
-
 @media (max-width: 48rem) {
   .app-shell {
     display: block;
@@ -1518,7 +1488,11 @@ code {
   }
 
   .workspace {
-    padding: var(--space-3) var(--space-3) var(--space-6);
+    padding: var(--space-3) var(--space-3) 0;
+  }
+
+  .workspace > .foot {
+    padding-bottom: var(--space-6);
   }
 
   .plate-head,

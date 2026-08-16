@@ -8,7 +8,8 @@
 
 import { page } from '$app/state';
 import { goto, pushState, replaceState } from '$app/navigation';
-import { base } from '$app/paths';
+import { base, resolve } from '$app/paths';
+import type { Pathname } from '$app/types';
 
 import {
   dialogSegments,
@@ -17,62 +18,41 @@ import {
   type DialogHost,
   type RouteDialog,
 } from './route-dialogs';
-import { panelRoutePath, type PanelRoute, type PersonalRoute, type RootRoute } from './routes';
+import { panelRoutePath, type PanelRoute, type RootRoute } from './routes';
 
 export type { RouteDialog } from './route-dialogs';
-
-/**
- * The inbox as a dialog, which is what it was before it became a page.
- *
- * `?dialog=security-notifications` was its address for a few releases. A bookmark
- * from then opens the inbox rather than whichever view it happened to be standing
- * on, and the address is rewritten before anything reads it, so the name of a
- * dialog nothing will open never enters the router.
- */
-export function legacyInboxRoute(search: string): PersonalRoute | null {
-  return parseDialog(search)?.name === 'security-notifications' ? { personal: 'inbox' } : null;
-}
 
 export interface OpenDialog {
   name: string;
   params: Readonly<Record<string, string>>;
 }
 
-export function parseDialog(search: string): OpenDialog | null {
-  // eslint-disable-next-line svelte/prefer-svelte-reactivity
-  const query = new URLSearchParams(search);
-  const name = query.get('dialog')?.trim() ?? '';
-  if (name === '') return null;
-  const params: Record<string, string> = {};
-  for (const [key, value] of query) {
-    if (key !== 'dialog') params[key] = value;
-  }
-  return { name, params };
+interface DialogPageState {
+  dialog?: OpenDialog;
+  smyklotDialogEntry?: true;
 }
 
-export function dialogSearch(dialog: OpenDialog | null): string {
-  if (dialog === null) return '';
-  // eslint-disable-next-line svelte/prefer-svelte-reactivity
-  const query = new URLSearchParams({ dialog: dialog.name, ...dialog.params });
-  return `?${query.toString()}`;
+function dialogState(): DialogPageState {
+  return page.state as DialogPageState;
 }
 
-export function hasRouteHome(route: PanelRoute | null, dialog: OpenDialog): boolean {
-  if (route === null) return false;
-  const view =
-    'rootView' in route && route.rootView === 'installation'
-      ? route.view
-      : 'rootView' in route &&
-          (route.rootView === 'access-users' || route.rootView === 'access-invitations')
-        ? route.rootView
-        : 'view' in route
-          ? route.view
-          : null;
-  return view !== null && isDialogHost(view) && dialogSegments(view as DialogHost, dialog) !== null;
+function withoutDialogState(): App.PageState {
+  const state = { ...dialogState() };
+  delete state.dialog;
+  delete state.smyklotDialogEntry;
+  return state;
 }
 
 function isRootInstallation(): boolean {
   return page.url.pathname.startsWith(`${base}/root/installations/`);
+}
+
+function currentPanelPath(): string {
+  const pathname =
+    base !== '' && page.url.pathname.startsWith(base)
+      ? page.url.pathname.slice(base.length)
+      : page.url.pathname;
+  return `${pathname}${page.url.search}${page.url.hash}`;
 }
 
 function dialogHostFromPage(): DialogHost | null {
@@ -86,8 +66,44 @@ function dialogHostFromPage(): DialogHost | null {
   return null;
 }
 
+function pathForDialog(host: DialogHost, dialog: RouteDialog): string | null {
+  const segments = dialogSegments(host, dialog);
+  if (segments === null) return null;
+
+  const suffix = segments.map((segment) => `/${encodeURIComponent(segment)}`).join('');
+  const section = page.params.section;
+  if (typeof section === 'string' && (host === 'access-users' || host === 'access-invitations')) {
+    return `/root/access/${section}${suffix}`;
+  }
+
+  const view = page.params.view;
+  const account = page.params.account;
+  if (view === undefined || account === undefined || !isDialogHost(view)) return null;
+  if (isRootInstallation()) {
+    return panelRoutePath('', { rootView: 'installation', account, view, dialog } as RootRoute);
+  }
+  return panelRoutePath('', { account, view, dialog } as PanelRoute);
+}
+
+function bareHostPath(): string | null {
+  const section = page.params.section;
+  if (typeof section === 'string' && page.url.pathname.startsWith(`${base}/root/access/`)) {
+    return `/root/access/${section}`;
+  }
+
+  const view = page.params.view;
+  const account = page.params.account;
+  if (view === undefined || account === undefined) return null;
+  return isRootInstallation()
+    ? panelRoutePath('', { rootView: 'installation', account, view } as RootRoute)
+    : panelRoutePath('', { account, view } as PanelRoute);
+}
+
 class DialogRouter {
   get current(): OpenDialog | null {
+    const state = dialogState();
+    if (state.dialog !== undefined) return state.dialog;
+
     const host = dialogHostFromPage();
     const rest = page.params.rest;
     if (host !== null && typeof rest === 'string' && rest !== '') {
@@ -97,8 +113,7 @@ class DialogRouter {
         if (dialog !== null) return dialog;
       }
     }
-    const state = page.state as { dialog?: OpenDialog };
-    return state.dialog ?? null;
+    return null;
   }
 
   isOpen(name: string): boolean {
@@ -111,70 +126,42 @@ class DialogRouter {
   }
 
   open(name: string, params: Readonly<Record<string, string>> = {}): void {
-    const view = page.params.view;
-    const account = page.params.account;
-    if (view !== undefined && account !== undefined && isDialogHost(view)) {
-      const dialog: RouteDialog = { name, params };
-      const segments = dialogSegments(view as DialogHost, dialog);
-      if (segments !== null) {
-        if (isRootInstallation()) {
-          goto(
-            panelRoutePath('', { rootView: 'installation', account, view, dialog } as RootRoute),
-          );
-        } else {
-          goto(panelRoutePath('', { account, view, dialog } as PanelRoute));
-        }
-        return;
-      }
-    }
-    pushState(page.url, { dialog: { name, params } });
+    const host = dialogHostFromPage();
+    const dialog: RouteDialog = { name, params };
+    const path = host === null ? null : pathForDialog(host, dialog);
+    pushState(resolve((path ?? currentPanelPath()) as Pathname), {
+      ...page.state,
+      dialog: { name, params },
+      smyklotDialogEntry: true,
+    });
   }
 
   update(name: string, params: Readonly<Record<string, string>>): void {
     if (this.current?.name !== name) return;
     const next: OpenDialog = { name, params: { ...this.current.params, ...params } };
-    const view = page.params.view;
-    const account = page.params.account;
-    if (view !== undefined && account !== undefined && isDialogHost(view)) {
-      const dialog: RouteDialog = next;
-      const segments = dialogSegments(view as DialogHost, dialog);
-      if (segments !== null) {
-        if (isRootInstallation()) {
-          goto(
-            panelRoutePath('', { rootView: 'installation', account, view, dialog } as RootRoute),
-            {
-              replaceState: true,
-            },
-          );
-        } else {
-          goto(panelRoutePath('', { account, view, dialog } as PanelRoute), { replaceState: true });
-        }
-        return;
-      }
-    }
-    replaceState(page.url, { dialog: next });
+    const host = dialogHostFromPage();
+    const path = host === null ? null : pathForDialog(host, next);
+    replaceState(resolve((path ?? currentPanelPath()) as Pathname), {
+      ...page.state,
+      dialog: next,
+      ...(dialogState().smyklotDialogEntry === true ? { smyklotDialogEntry: true } : {}),
+    });
   }
 
   close(): void {
     if (this.current === null) return;
-    const view = page.params.view;
-    const account = page.params.account;
-    const rest = page.params.rest;
-    if (view !== undefined && account !== undefined && typeof rest === 'string' && rest !== '') {
-      if (isRootInstallation()) {
-        goto(panelRoutePath('', { rootView: 'installation', account, view } as RootRoute), {
-          replaceState: true,
-        });
-      } else {
-        goto(panelRoutePath('', { account, view } as PanelRoute), { replaceState: true });
-      }
-    } else {
-      replaceState(page.url, {});
+    if (dialogState().smyklotDialogEntry === true) {
+      history.back();
+      return;
     }
-  }
 
-  attach(): () => void {
-    return () => {};
+    const rest = page.params.rest;
+    const path = bareHostPath();
+    if (typeof rest === 'string' && rest !== '' && path !== null) {
+      goto(resolve(path as Pathname), { replaceState: true, state: withoutDialogState() });
+    } else {
+      replaceState(resolve(currentPanelPath() as Pathname), withoutDialogState());
+    }
   }
 }
 

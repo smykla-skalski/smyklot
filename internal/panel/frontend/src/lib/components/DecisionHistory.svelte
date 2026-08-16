@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { createQuery } from '@tanstack/svelte-query';
   import { formatDate, formatTimestamp } from '../format';
   import type { AccessDecision } from '../types';
   import Avatar from './Avatar.svelte';
@@ -14,6 +14,7 @@
     reason,
     decidedAt,
     returnFocus = null,
+    queryKey,
     fetchDecisions,
     onClose,
   }: {
@@ -24,31 +25,25 @@
     reason?: string;
     decidedAt?: string;
     returnFocus?: HTMLElement | null;
+    queryKey: readonly unknown[];
     fetchDecisions: () => Promise<AccessDecision[]>;
     onClose: () => void;
   } = $props();
 
-  let decisions = $state.raw<AccessDecision[] | null>(null);
-  let loading = $state(false);
-  let failure = $state<string | null>(null);
-
-  onMount(() => {
-    let active = true;
-    loading = true;
-    void fetchDecisions()
-      .then((listed) => {
-        if (active) decisions = listed;
-      })
-      .catch((error: unknown) => {
-        if (active) failure = error instanceof Error ? error.message : String(error);
-      })
-      .finally(() => {
-        if (active) loading = false;
-      });
-    return () => {
-      active = false;
-    };
-  });
+  const decisionsQuery = createQuery(() => ({
+    queryKey: [...queryKey],
+    queryFn: fetchDecisions,
+    enabled: open,
+  }));
+  const decisions = $derived<AccessDecision[] | null>(decisionsQuery.data ?? null);
+  const loading = $derived(decisionsQuery.isFetching);
+  const failure = $derived(
+    decisionsQuery.error === null
+      ? null
+      : decisionsQuery.error instanceof Error
+        ? decisionsQuery.error.message
+        : String(decisionsQuery.error),
+  );
 
   function statusTone(value: string): ChipTone {
     const normalized = value.toLowerCase();

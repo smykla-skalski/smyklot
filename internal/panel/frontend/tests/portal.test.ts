@@ -25,6 +25,10 @@ describe('a component that reparents a node', () => {
     .map((file) => [file, readFileSync(new URL(file, components), 'utf8')] as const)
     .filter(([, source]) => /\.(?:append|appendChild|insertBefore|prepend)\(/u.test(source));
 
+  it('leaves portal ownership to the headless primitives', () => {
+    expect(movers).toEqual([]);
+  });
+
   it.each(movers.map(([file]) => file))('takes the node away again in %s', (file) => {
     const source = movers.find(([name]) => name === file)?.[1] ?? '';
     expect(source).toMatch(/\.remove\(\)/u);

@@ -1,9 +1,7 @@
 <script lang="ts">
-  import { getContext, untrack } from 'svelte';
+  import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { formatBytes, formatElapsed, formatLatency } from '../format';
-  import { onInvalidate } from '../on-invalidate';
-  import type { PanelSession } from '../session.svelte';
   import type {
     ConfigPatch,
     ConfigValues,
@@ -52,12 +50,27 @@
     updateSettings: (input: RootRuntimeSettingsInput) => Promise<RootRuntimeSettings>;
   } = $props();
 
-  const session = getContext<PanelSession>('panel-session');
-
-  let settings = $state<RootRuntimeSettings | null>(null);
-  let loading = $state(true);
-  let saving = $state(false);
-  let failure = $state<string | null>(null);
+  const queryClient = useQueryClient();
+  const settingsQuery = createQuery(() => ({
+    queryKey: ['root-settings'],
+    queryFn: fetchSettings,
+  }));
+  const settingsMutation = createMutation(() => ({
+    mutationFn: updateSettings,
+    onSuccess: (updated) => queryClient.setQueryData(['root-settings'], updated),
+  }));
+  const settings = $derived<RootRuntimeSettings | null>(settingsQuery.data ?? null);
+  const loading = $derived(settingsQuery.isPending);
+  const saving = $derived(settingsMutation.isPending);
+  let actionFailure = $state<string | null>(null);
+  const failure = $derived(
+    actionFailure ??
+      (settingsQuery.error === null
+        ? null
+        : settingsQuery.error instanceof Error
+          ? settingsQuery.error.message
+          : String(settingsQuery.error)),
+  );
   let sessionSource = $state<'default' | 'custom'>('default');
   let sessionAmount = $state(24);
   let sessionUnit = $state<SessionUnit>('hours');
@@ -74,17 +87,6 @@
           settings.behavior_defaults.deployment,
         ),
   );
-
-  /* `untrack` because `load` reads `settings` before its first await, to decide
-     whether this is a first read or a refresh over settings already on screen.
-     That read is inside this effect, and `load` also writes `settings` - with a
-     fresh object every time - so each completed read scheduled another one. The
-     page asked the server about 1500 times a second. */
-  $effect(() => {
-    untrack(() => void load());
-  });
-
-  onInvalidate(session.queryClient, ['root-settings'], () => void load());
 
   $effect(() => {
     if (settings === null || settings.revision === receivedRevision) return;
@@ -109,15 +111,8 @@
   });
 
   async function load(): Promise<void> {
-    loading = settings === null;
-    failure = null;
-    try {
-      settings = await fetchSettings();
-    } catch (error) {
-      failure = errorMessage(error);
-    } finally {
-      loading = false;
-    }
+    actionFailure = null;
+    await settingsQuery.refetch();
   }
 
   async function saveBehavior(patch: ConfigPatch): Promise<void> {
@@ -154,7 +149,7 @@
     if (settings === null || saving || pollSource !== 'custom') return;
     const seconds = Math.round(pollAmount * POLL_UNITS[pollUnit]);
     if (!Number.isFinite(seconds) || seconds < 1 || seconds > 24 * SESSION_UNITS.hours) {
-      failure = 'Reaction sweep interval must be between 1 second and 24 hours';
+      actionFailure = 'Reaction sweep interval must be between 1 second and 24 hours';
       return;
     }
     await update({ reaction_poll_interval_seconds: seconds });
@@ -164,7 +159,7 @@
     if (settings === null || saving || sessionSource !== 'custom') return;
     const seconds = Math.round(sessionAmount * SESSION_UNITS[sessionUnit]);
     if (!Number.isFinite(seconds) || seconds < 60 || seconds > 30 * SESSION_UNITS.days) {
-      failure = 'Session lifetime must be between 1 minute and 30 days';
+      actionFailure = 'Session lifetime must be between 1 minute and 30 days';
       return;
     }
     await update({ session_ttl_seconds: seconds });
@@ -179,10 +174,9 @@
     >,
   ): Promise<void> {
     if (settings === null || saving) return;
-    saving = true;
-    failure = null;
+    actionFailure = null;
     try {
-      settings = await updateSettings({
+      await settingsMutation.mutateAsync({
         bot_config: settings.behavior_defaults.override,
         log_level: settings.log_level.override,
         reaction_poll_interval_seconds: settings.reaction_poll_interval.override_seconds,
@@ -191,9 +185,7 @@
         ...change,
       });
     } catch (error) {
-      failure = errorMessage(error);
-    } finally {
-      saving = false;
+      actionFailure = errorMessage(error);
     }
   }
 

@@ -1,18 +1,15 @@
 <script lang="ts">
-  import { getContext } from 'svelte';
-  import type { PanelSession } from '$lib/session.svelte';
+  import { getPanelSession } from '$lib/session.svelte';
   import InboxView from '$lib/components/InboxView.svelte';
 
-  const session = getContext<PanelSession>('panel-session');
+  const session = getPanelSession();
 </script>
 
 <div id="inbox-panel">
   <InboxView
     fetchPage={session.api.fetchNotifications}
     markRead={session.api.markNotificationRead}
-    onUnread={(count: number) => {
-      session.notificationUnread = count;
-    }}
+    onUnread={(count: number) => session.updateNotificationUnread(count)}
   />
 </div>
 

@@ -1,8 +1,6 @@
 <script lang="ts">
-  import { getContext } from 'svelte';
+  import { createQuery } from '@tanstack/svelte-query';
   import type { PanelApi } from '../api';
-  import { onInvalidate } from '../on-invalidate';
-  import type { PanelSession } from '../session.svelte';
   import {
     formatBytes,
     formatElapsed,
@@ -41,8 +39,6 @@
     onOpenInbox: () => void;
   } = $props();
 
-  const session = getContext<PanelSession>('panel-session');
-
   /* The hrefs are real addresses - middle-click, Cmd-click and Copy link all
      work - so a plain click is the only one the router takes over. */
   function navigate(event: MouseEvent, open: () => void): void {
@@ -77,9 +73,19 @@
     unavailable: 'Unreachable',
   };
 
-  let overview = $state<RootOverview | null>(null);
-  let loading = $state(true);
-  let failure = $state<string | null>(null);
+  const overviewQuery = createQuery(() => ({
+    queryKey: ['root-overview'],
+    queryFn: () => api.fetchRootOverview(),
+  }));
+  const overview = $derived<RootOverview | null>(overviewQuery.data ?? null);
+  const loading = $derived(overviewQuery.isFetching);
+  const failure = $derived(
+    overviewQuery.error === null
+      ? null
+      : overviewQuery.error instanceof Error
+        ? overviewQuery.error.message
+        : String(overviewQuery.error),
+  );
   let now = $state(Date.now());
 
   const ownershipTotal = $derived(
@@ -98,16 +104,7 @@
   );
 
   async function load(): Promise<void> {
-    loading = true;
-    failure = null;
-    try {
-      overview = await api.fetchRootOverview();
-      now = Date.now();
-    } catch (error) {
-      failure = error instanceof Error ? error.message : String(error);
-    } finally {
-      loading = false;
-    }
+    await overviewQuery.refetch();
   }
 
   function uptime(seconds: number): string {
@@ -139,10 +136,8 @@
   }
 
   $effect(() => {
-    void load();
+    if (overviewQuery.dataUpdatedAt > 0) now = overviewQuery.dataUpdatedAt;
   });
-
-  onInvalidate(session.queryClient, ['root-overview'], () => void load());
 </script>
 
 <RootPageHeader
@@ -327,7 +322,7 @@
       </a>
     </div>
 
-    <PendingCIQueue {api} queue={overview.pending_ci} {now} onChanged={() => load()} />
+    <PendingCIQueue {api} queue={overview.pending_ci} {now} />
 
     <div class="overview-columns">
       <article class="overview-panel ownership-panel">

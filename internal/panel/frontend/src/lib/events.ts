@@ -33,7 +33,7 @@ export type PanelStreamEvent =
   | { version: 1; type: 'prefs.changed'; rev: number; changes: Record<string, unknown> }
   | { version: 1; type: 'prefs.rejected'; keys: string[] };
 
-type PanelChangeEvent = Extract<PanelStreamEvent, { target_id: string }>;
+export type PanelChangeEvent = Extract<PanelStreamEvent, { target_id: string }>;
 type PanelRevokedEvent = Extract<PanelStreamEvent, { type: 'session.revoked' }>;
 type PanelPrefsChangedEvent = Extract<PanelStreamEvent, { type: 'prefs.changed' }>;
 

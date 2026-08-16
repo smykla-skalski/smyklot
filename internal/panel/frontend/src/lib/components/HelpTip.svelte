@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tooltip } from '../tooltip';
+  import { Tooltip } from 'bits-ui';
   import Icon from './Icon.svelte';
 
   const {
@@ -16,9 +16,25 @@
 </script>
 
 <span class="help-tip" class:align-start={align === 'start'}>
-  <button use:tooltip={{ id, text, align }} type="button" aria-label={label} aria-describedby={id}>
-    <Icon name="info" size={14} strokeWidth={2} />
-  </button>
+  <Tooltip.Provider delayDuration={250}>
+    <Tooltip.Root>
+      <Tooltip.Trigger class="help-trigger" aria-label={label}>
+        <Icon name="info" size={14} strokeWidth={2} />
+      </Tooltip.Trigger>
+      <Tooltip.Portal to=".app-shell">
+        <Tooltip.Content
+          {id}
+          class="help-content"
+          side="top"
+          {align}
+          sideOffset={6}
+          collisionPadding={8}
+        >
+          {text}
+        </Tooltip.Content>
+      </Tooltip.Portal>
+    </Tooltip.Root>
+  </Tooltip.Provider>
 </span>
 
 <style>
@@ -26,7 +42,7 @@
     display: inline-flex;
   }
 
-  button {
+  :global(.help-trigger) {
     background: transparent;
     border: 0;
     border-radius: var(--r-ctl);
@@ -39,8 +55,18 @@
     width: 1.125rem;
   }
 
-  button:hover,
-  button:focus-visible {
+  :global(.help-trigger:hover),
+  :global(.help-trigger:focus-visible) {
     color: var(--signal);
+  }
+
+  :global(.help-content) {
+    background: var(--text-primary);
+    border-radius: var(--radius-control);
+    color: var(--surface);
+    font-size: var(--font-size-meta);
+    max-width: 18rem;
+    padding: var(--space-2) var(--space-3);
+    z-index: var(--layer-tooltip);
   }
 </style>

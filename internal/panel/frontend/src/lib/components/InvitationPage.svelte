@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { createQuery } from '@tanstack/svelte-query';
   import { PanelApiError, type PanelApi } from '../api';
   import { panelUrl, type PanelBuild } from '../base';
   import { formatDateTime } from '../format';
@@ -29,9 +30,16 @@
      they cannot disagree about which of them is showing. */
   type InvitationFailure = { missing: true } | { missing: false; message: string };
 
-  let invitation = $state<PanelInvitation | null>(null);
-  let loading = $state(true);
-  let failure = $state<InvitationFailure | null>(null);
+  const invitationQuery = createQuery(() => ({
+    queryKey: ['invitation', token],
+    queryFn: () => api.fetchInvitation(token),
+    enabled: token !== '',
+    retry: (failureCount, error) =>
+      !(error instanceof PanelApiError && error.status === 404) && failureCount < 1,
+  }));
+  const invitation = $derived<PanelInvitation | null>(invitationQuery.data ?? null);
+  const loading = $derived(invitationQuery.isFetching);
+  const failure = $derived<InvitationFailure | null>(invitationFailure(invitationQuery.error));
 
   /* The skeleton stands in for an answer the page does not have yet. Once it has
      one, a retry keeps it on screen and marks the card busy: swapping it back to
@@ -51,24 +59,11 @@
           : 'Invitation unavailable',
   );
 
-  $effect(() => {
-    void load(token);
-  });
-
-  async function load(requestedToken: string): Promise<void> {
-    loading = true;
-    try {
-      invitation = await api.fetchInvitation(requestedToken);
-      failure = null;
-    } catch (error) {
-      failure =
-        error instanceof PanelApiError && error.status === 404
-          ? { missing: true }
-          : { missing: false, message: error instanceof Error ? error.message : String(error) };
-      invitation = null;
-    } finally {
-      loading = false;
-    }
+  function invitationFailure(error: unknown): InvitationFailure | null {
+    if (error === null) return null;
+    return error instanceof PanelApiError && error.status === 404
+      ? { missing: true }
+      : { missing: false, message: error instanceof Error ? error.message : String(error) };
   }
 
   function statusTone(status: PanelInvitation['status']): ChipTone {
@@ -128,7 +123,7 @@
     />
   {:else if failure !== null}
     <p>{failure.message}</p>
-    <button class="btn" onclick={() => void load(token)} disabled={loading}>
+    <button class="btn" onclick={() => void invitationQuery.refetch()} disabled={loading}>
       {loading ? 'Trying again…' : 'Try again'}
     </button>
   {:else if invitation !== null}

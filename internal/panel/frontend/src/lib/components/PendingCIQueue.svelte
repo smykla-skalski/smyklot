@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
   import type { PanelApi } from '../api';
   import { formatRelative, formatTimestamp } from '../format';
   import type { PendingCIDetail, PendingCIRequest, RootOverview } from '../types';
@@ -10,52 +11,71 @@
     api,
     queue,
     now,
-    onChanged,
   }: {
     api: PanelApi;
     queue: RootOverview['pending_ci'];
     now: number;
-    onChanged: () => Promise<void>;
   } = $props();
 
-  let pendingAction = $state<string | null>(null);
-  let failure = $state<string | null>(null);
   let selectedRequest = $state<string | null>(null);
-  let auditDetail = $state.raw<PendingCIDetail | null>(null);
-  let auditLoading = $state(false);
-  let auditError = $state<string | null>(null);
-  let auditLoadGeneration = 0;
+  const queryClient = useQueryClient();
   const total = $derived(queue.active.length + queue.deferred.length);
 
   function actionKey(action: 'check' | 'cancel', request: PendingCIRequest): string {
     return `${action}:${request.id}`;
   }
 
-  async function checkNow(request: PendingCIRequest): Promise<void> {
-    await runAction('check', request, () => api.checkRootPendingCI(request.id, request.revision));
+  const auditQuery = createQuery(() => ({
+    queryKey: ['root-pending-ci', selectedRequest],
+    queryFn: () => {
+      if (selectedRequest === null) throw new Error('select a pending CI request first');
+      return api.fetchRootPendingCI(selectedRequest);
+    },
+    enabled: selectedRequest !== null,
+  }));
+  const auditDetail = $derived<PendingCIDetail | null>(
+    selectedRequest === null ? null : (auditQuery.data ?? null),
+  );
+  const auditLoading = $derived(selectedRequest !== null && auditQuery.isFetching);
+  const auditError = $derived(
+    selectedRequest === null || auditQuery.error === null
+      ? null
+      : auditQuery.error instanceof Error
+        ? auditQuery.error.message
+        : String(auditQuery.error),
+  );
+
+  const actionMutation = createMutation(() => ({
+    mutationFn: ({ action, request }: { action: 'check' | 'cancel'; request: PendingCIRequest }) =>
+      action === 'check'
+        ? api.checkRootPendingCI(request.id, request.revision)
+        : api.cancelRootPendingCI(request.id, request.revision),
+    onSuccess: async (_updated, { request }) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['root-overview'] }),
+        queryClient.invalidateQueries({ queryKey: ['root-pending-ci', request.id] }),
+      ]);
+    },
+  }));
+  const pendingAction = $derived(
+    actionMutation.isPending && actionMutation.variables !== undefined
+      ? actionKey(actionMutation.variables.action, actionMutation.variables.request)
+      : null,
+  );
+  const failure = $derived(
+    actionMutation.error === null
+      ? null
+      : actionMutation.error instanceof Error
+        ? actionMutation.error.message
+        : String(actionMutation.error),
+  );
+
+  function checkNow(request: PendingCIRequest): void {
+    actionMutation.mutate({ action: 'check', request });
   }
 
-  async function cancel(request: PendingCIRequest): Promise<void> {
-    await runAction('cancel', request, () => api.cancelRootPendingCI(request.id, request.revision));
-  }
-
-  async function runAction(
-    action: 'check' | 'cancel',
-    request: PendingCIRequest,
-    operation: () => Promise<PendingCIRequest>,
-  ): Promise<void> {
-    const key = actionKey(action, request);
-    pendingAction = key;
-    failure = null;
-    try {
-      await operation();
-      await onChanged();
-      if (selectedRequest === request.id) await loadAudit(request.id);
-    } catch (error) {
-      failure = error instanceof Error ? error.message : String(error);
-    } finally {
-      if (pendingAction === key) pendingAction = null;
-    }
+  function cancel(request: PendingCIRequest): void {
+    actionMutation.mutate({ action: 'cancel', request });
   }
 
   function stateLabel(request: PendingCIRequest): string {
@@ -84,36 +104,12 @@
     }
   }
 
-  async function toggleAudit(request: PendingCIRequest): Promise<void> {
+  function toggleAudit(request: PendingCIRequest): void {
     if (selectedRequest === request.id) {
-      auditLoadGeneration += 1;
       selectedRequest = null;
-      auditDetail = null;
-      auditLoading = false;
-      auditError = null;
       return;
     }
     selectedRequest = request.id;
-    auditDetail = null;
-    await loadAudit(request.id);
-  }
-
-  async function loadAudit(requestId: string): Promise<void> {
-    const generation = ++auditLoadGeneration;
-    auditLoading = true;
-    auditError = null;
-    try {
-      const detail = await api.fetchRootPendingCI(requestId);
-      if (generation === auditLoadGeneration && selectedRequest === requestId) {
-        auditDetail = detail;
-      }
-    } catch (error) {
-      if (generation === auditLoadGeneration && selectedRequest === requestId) {
-        auditError = error instanceof Error ? error.message : String(error);
-      }
-    } finally {
-      if (generation === auditLoadGeneration) auditLoading = false;
-    }
   }
 </script>
 
@@ -186,7 +182,7 @@
                   class="btn btn-quiet"
                   type="button"
                   aria-expanded={selectedRequest === request.id}
-                  onclick={() => void toggleAudit(request)}
+                  onclick={() => toggleAudit(request)}
                 >
                   <Icon name="history" size={14} />
                   Timeline
@@ -195,7 +191,7 @@
                   class="btn btn-quiet"
                   type="button"
                   disabled={pendingAction !== null}
-                  onclick={() => void checkNow(request)}
+                  onclick={() => checkNow(request)}
                 >
                   <Icon name="refresh" size={14} />
                   {pendingAction === actionKey('check', request) ? 'Checking…' : 'Check now'}
@@ -204,7 +200,7 @@
                   class="btn btn-stop"
                   type="button"
                   disabled={pendingAction !== null}
-                  onclick={() => void cancel(request)}
+                  onclick={() => cancel(request)}
                 >
                   <Icon name="close" size={14} />
                   {pendingAction === actionKey('cancel', request) ? 'Cancelling…' : 'Cancel'}
@@ -269,7 +265,7 @@
               class="btn btn-quiet"
               type="button"
               aria-expanded={selectedRequest === request.id}
-              onclick={() => void toggleAudit(request)}
+              onclick={() => toggleAudit(request)}
             >
               <Icon name="history" size={14} />
               Timeline

@@ -1,17 +1,16 @@
 <script lang="ts">
-  import { setContext } from 'svelte';
   import { page } from '$app/state';
-  import { goto } from '$app/navigation';
   import { base } from '$app/paths';
+  import { createQuery, QueryClientProvider } from '@tanstack/svelte-query';
+  import { untrack } from 'svelte';
 
   import { initializePanel } from '$lib/boot';
   import { createPanelApi } from '$lib/api';
   import { readPanelBuild } from '$lib/base';
   import { readPanelFailure } from '$lib/panel-error';
-  import { PanelSession } from '$lib/session.svelte';
+  import { PanelSession, setPanelSession } from '$lib/session.svelte';
   import { createPanelQueryClient } from '$lib/query-client';
   import { applyDocumentTheme } from '$lib/preferences';
-  import { panelRoutePath } from '$lib/routes';
   import { prefText } from '$lib/preferences-sync';
   import type { PanelTarget } from '$lib/types';
   import type { PanelView, RootSection } from '$lib/routes';
@@ -32,14 +31,62 @@
   const build = readPanelBuild(document);
   const pageFailure = readPanelFailure(document);
 
-  const session = new PanelSession(api, build, createPanelQueryClient());
-  setContext('panel-session', session);
+  const queryClient = createPanelQueryClient();
+  const session = new PanelSession(api, build, queryClient);
+  setPanelSession(session);
+  const viewerQuery = createQuery(
+    () => ({
+      queryKey: ['viewer'],
+      queryFn: api.fetchViewer,
+      enabled: session.isInvitation === false,
+    }),
+    () => queryClient,
+  );
+  const targetsQuery = createQuery(
+    () => ({
+      queryKey: ['targets', viewerQuery.data?.account.id],
+      queryFn: api.fetchTargets,
+      enabled:
+        session.isInvitation === false &&
+        viewerQuery.data !== undefined &&
+        viewerQuery.data !== null,
+    }),
+    () => queryClient,
+  );
+  const notificationCountQuery = createQuery(
+    () => ({
+      queryKey: ['notifications', 'unread', viewerQuery.data?.account.id],
+      queryFn: () => api.fetchNotifications({ limit: 1 }),
+      enabled:
+        session.isInvitation === false &&
+        viewerQuery.data !== undefined &&
+        viewerQuery.data !== null &&
+        session.isInbox === false,
+    }),
+    () => queryClient,
+  );
+  const notificationUnread = $derived(
+    notificationCountQuery.data?.unread ?? session.notificationUnread,
+  );
 
   const { children } = $props();
+
+  $effect(() => {
+    const state = {
+      viewer: viewerQuery.data,
+      targets: targetsQuery.data,
+      viewerPending: viewerQuery.isPending,
+      targetsPending: targetsQuery.isPending,
+      viewerError: viewerQuery.error,
+      targetsError: targetsQuery.error,
+    };
+    untrack(() => session.syncQueries(state));
+  });
 
   // --- Target resolution: watches the route's account param ---
   $effect(() => {
     if (session.viewer === null || session.loading) return;
+    if (session.isRootMode || session.isInbox || session.isInvitation) return;
     const account = page.params.account;
     if (account === undefined) {
       if (!session.isRootMode && session.targets.length > 0 && session.selectedId === null) {
@@ -50,9 +97,7 @@
           session.targets[0];
         if (target !== undefined) {
           session.selectedId = target.id;
-          goto(panelRoutePath('', { account: target.account.login, view: 'settings' }), {
-            replaceState: true,
-          });
+          void session.openTarget(target, true);
         }
       }
       return;
@@ -62,19 +107,26 @@
     if (target !== undefined) {
       session.selectedId = target.id;
       session.prefs.set('last_installation', target.account.login);
+      return;
+    }
+
+    const remembered = prefText(session.prefs.get('last_installation')).toLowerCase();
+    const fallback =
+      session.targets.find((candidate) => candidate.account.login.toLowerCase() === remembered) ??
+      session.targets[0];
+    if (fallback !== undefined) {
+      session.selectedId = fallback.id;
+      void session.openTarget(fallback, true);
     }
   });
 
   // --- WebSocket stream ---
   $effect(() => {
-    if (!session.streamReady) return;
+    if (!session.streamReady || session.isInvitation) return;
     const stream = api.openStream(
       {
         onResync: () => session.refreshAccessFromStream(),
-        onChange: (event) =>
-          event.type === 'access.changed'
-            ? session.refreshAccessFromStream()
-            : session.refreshFromStreamSafely(),
+        onChange: (event) => session.invalidateChange(event),
         onRevoked: (event) => session.revokeAccess(event),
         onPrefsReady: (info) => session.prefs.onPrefsReady(info),
         onPrefsChanged: (event) => session.prefs.onPrefsChanged(event),
@@ -110,8 +162,6 @@
   $effect(() => {
     applyDocumentTheme(document, session.resolvedTheme, session.isRootMode);
   });
-
-  void session.load();
 </script>
 
 <svelte:head>
@@ -120,94 +170,98 @@
   {/if}
 </svelte:head>
 
-{#if pageFailure !== null}
-  <ErrorPage {api} {base} {build} failure={pageFailure} />
-{:else if session.signedOut}
-  <SignInPage {api} {build} ended={session.sessionEnded} />
-{:else if session.awaitingInstallation}
-  <NightPage title="No installations" documentTitle="No installations" {build} size="compact">
-    <div class="install-prompt">
-      <span class="install-mark" aria-hidden="true">+</span>
-      <div class="install-copy">
-        <strong>Install Smyklot to begin</strong>
-        <p>
-          Install the Smyklot GitHub App on an organization or personal account, then reload this
-          panel
-        </p>
+<QueryClientProvider client={queryClient}>
+  {#if pageFailure !== null}
+    <ErrorPage {api} {base} {build} failure={pageFailure} />
+  {:else if session.isInvitation}
+    {@render children()}
+  {:else if session.signedOut}
+    <SignInPage {api} {build} ended={session.sessionEnded} />
+  {:else if session.awaitingInstallation}
+    <NightPage title="No installations" documentTitle="No installations" {build} size="compact">
+      <div class="install-prompt">
+        <span class="install-mark" aria-hidden="true">+</span>
+        <div class="install-copy">
+          <strong>Install Smyklot to begin</strong>
+          <p>
+            Install the Smyklot GitHub App on an organization or personal account, then reload this
+            panel
+          </p>
+        </div>
+        <button class="btn btn-signal" type="button" onclick={() => void session.load()}>
+          Reload panel
+        </button>
       </div>
-      <button class="btn btn-signal" type="button" onclick={() => void session.load()}>
-        Reload panel
-      </button>
-    </div>
-  </NightPage>
-{:else}
-  <a class="skip-link" href="#panel-content">Skip to panel content</a>
-  <main
-    class="app-shell"
-    class:sidebar-collapsed={session.effectiveSidebarCollapsed}
-    class:root-mode={session.isRootMode}
-  >
-    <IdentityBar
-      bind:this={session.identityBar}
-      viewer={session.viewer}
-      targets={session.targets}
-      selectedId={session.selectedId}
-      targetHref={(t: PanelTarget) => session.targetHref(t)}
-      onSelectTarget={(targetId: string) => void session.selectTarget(targetId)}
-      onSignOut={() => void session.signOut()}
-      view={session.currentView}
-      viewHref={(v: PanelView) => session.viewHref(v)}
-      onSelectView={(v: PanelView) => session.selectView(v)}
-      showUsers={session.selectedTarget?.capabilities.manage_target_users === true}
-      showViews={session.selectedTarget !== null || session.isRootMode}
-      showNavigation={session.viewer !== null &&
-        (session.isRootMode || session.selectedTarget !== null)}
-      collapsed={session.effectiveSidebarCollapsed}
-      onToggleCollapsed={() => session.toggleSidebar()}
-      theme={session.theme}
-      onSelectTheme={(t: ThemeDisplay) => session.selectTheme(t)}
-      rootMode={session.isRootMode}
-      rootValue={session.rootValue}
-      rootHrefFor={(s: RootSection) => session.rootHrefFor(s)}
-      onSelectRoot={(s: RootSection) => session.selectRootSection(s)}
-      rootDashboardHref={session.rootDashboardHref()}
-      onEnterRoot={() => session.enterRoot()}
-      returnHref={session.returnHref()}
-      onReturnToPanel={() => session.returnToPanel()}
-      inboxHref={session.inboxHref()}
-      inboxActive={session.isInbox}
-      onSelectInbox={() => session.openInbox()}
-      unreadCount={session.notificationUnread}
-    />
+    </NightPage>
+  {:else}
+    <a class="skip-link" href="#panel-content">Skip to panel content</a>
+    <main
+      class="app-shell"
+      class:sidebar-collapsed={session.effectiveSidebarCollapsed}
+      class:root-mode={session.isRootMode}
+    >
+      <IdentityBar
+        bind:this={session.identityBar}
+        viewer={session.viewer}
+        targets={session.targets}
+        selectedId={session.selectedId}
+        targetHref={(t: PanelTarget) => session.targetHref(t)}
+        onSelectTarget={(targetId: string) => void session.selectTarget(targetId)}
+        onSignOut={() => void session.signOut()}
+        view={session.currentView}
+        viewHref={(v: PanelView) => session.viewHref(v)}
+        onSelectView={(v: PanelView) => session.selectView(v)}
+        showUsers={session.selectedTarget?.capabilities.manage_target_users === true}
+        showViews={session.selectedTarget !== null || session.isRootMode}
+        showNavigation={session.viewer !== null &&
+          (session.isRootMode || session.selectedTarget !== null)}
+        collapsed={session.effectiveSidebarCollapsed}
+        onToggleCollapsed={() => session.toggleSidebar()}
+        theme={session.theme}
+        onSelectTheme={(t: ThemeDisplay) => session.selectTheme(t)}
+        rootMode={session.isRootMode}
+        rootValue={session.rootValue}
+        rootHrefFor={(s: RootSection) => session.rootHrefFor(s)}
+        onSelectRoot={(s: RootSection) => session.selectRootSection(s)}
+        rootDashboardHref={session.rootDashboardHref()}
+        onEnterRoot={() => session.enterRoot()}
+        returnHref={session.returnHref()}
+        onReturnToPanel={() => session.returnToPanel()}
+        inboxHref={session.inboxHref()}
+        inboxActive={session.isInbox}
+        onSelectInbox={() => session.openInbox()}
+        unreadCount={notificationUnread}
+      />
 
-    <div class="workspace" class:table-scroll-view={session.tableScrollView}>
-      <div id="panel-content" class="workspace-content" tabindex="-1">
-        {#if session.failure !== null}
-          <Plate label="Problem" tone="alarm">
-            <p>{session.failure.message}</p>
-            <button class="btn" onclick={() => void session.load()}>Try again</button>
-          </Plate>
-        {/if}
-        {#if session.loading && session.viewer === null}
-          <Plate label="Panel">
-            <div class="panel-skeleton" aria-hidden="true">
-              <span class="skeleton-line skeleton-title"></span>
-              <span class="skeleton-line skeleton-copy"></span>
-              <span class="skeleton-line skeleton-control"></span>
-              <span class="skeleton-line skeleton-row"></span>
-              <span class="skeleton-line skeleton-row"></span>
-              <span class="skeleton-line skeleton-row"></span>
-            </div>
-            <p class="visually-hidden" role="status">Loading panel</p>
-          </Plate>
-        {:else if session.viewer !== null}
-          {@render children()}
-        {/if}
+      <div class="workspace" class:table-scroll-view={session.tableScrollView}>
+        <div id="panel-content" class="workspace-content" tabindex="-1">
+          {#if session.failure !== null}
+            <Plate label="Problem" tone="alarm">
+              <p>{session.failure.message}</p>
+              <button class="btn" onclick={() => void session.load()}>Try again</button>
+            </Plate>
+          {/if}
+          {#if session.loading && session.viewer === null}
+            <Plate label="Panel">
+              <div class="panel-skeleton" aria-hidden="true">
+                <span class="skeleton-line skeleton-title"></span>
+                <span class="skeleton-line skeleton-copy"></span>
+                <span class="skeleton-line skeleton-control"></span>
+                <span class="skeleton-line skeleton-row"></span>
+                <span class="skeleton-line skeleton-row"></span>
+                <span class="skeleton-line skeleton-row"></span>
+              </div>
+              <p class="visually-hidden" role="status">Loading panel</p>
+            </Plate>
+          {:else if session.viewer !== null}
+            {@render children()}
+          {/if}
+        </div>
+        <PageFooter {build} />
       </div>
-      <PageFooter {build} />
-    </div>
-  </main>
-{/if}
+    </main>
+  {/if}
+</QueryClientProvider>
 
 <style>
   .panel-skeleton {

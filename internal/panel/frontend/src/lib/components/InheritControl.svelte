@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tooltip } from '../tooltip';
+  import AppTooltip from './AppTooltip.svelte';
   import Icon from './Icon.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
 
@@ -57,24 +57,32 @@
 
 <span class="linked-control">
   {#if overridden}
-    <button
-      type="button"
-      class="link-toggle broken"
-      use:tooltip={{ text: brokenTip, align: 'center' }}
-      aria-label={brokenTip}
-      {disabled}
-      onclick={onRestore}
-      onpointerenter={() => (offering = true)}
-      onpointerleave={() => (offering = false)}
-      onfocus={() => (offering = true)}
-      onblur={() => (offering = false)}
-    >
-      <Icon name="link-off" size={14} strokeWidth={2} />
-    </button>
+    <AppTooltip text={brokenTip}>
+      {#snippet children(props)}
+        <button
+          {...props}
+          type="button"
+          class="link-toggle broken"
+          aria-label={brokenTip}
+          {disabled}
+          onclick={onRestore}
+          onpointerenter={() => (offering = true)}
+          onpointerleave={() => (offering = false)}
+          onfocus={() => (offering = true)}
+          onblur={() => (offering = false)}
+        >
+          <Icon name="link-off" size={14} strokeWidth={2} />
+        </button>
+      {/snippet}
+    </AppTooltip>
   {:else}
-    <span class="link-toggle" use:tooltip={{ text: linkedTip, align: 'center' }}>
-      <Icon name="link" size={14} strokeWidth={2} />
-    </span>
+    <AppTooltip text={linkedTip}>
+      {#snippet children(props)}
+        <span {...props} class="link-toggle">
+          <Icon name="link" size={14} strokeWidth={2} />
+        </span>
+      {/snippet}
+    </AppTooltip>
   {/if}
   <SegmentedControl
     name={groupName}

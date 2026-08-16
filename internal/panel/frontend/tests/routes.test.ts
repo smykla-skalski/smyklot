@@ -1,52 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
-import { legacyInboxRoute } from '../src/lib/dialog-route.svelte';
 import {
-  createPanelRouter,
   panelDocumentTitle,
   panelViewSection,
   panelRoutePath,
   parseInvitationToken,
   parsePanelRoute,
   resolvePanelRoute,
-  resolveDocumentTitleRoute,
   routeSegmentLabel,
   type PanelRoute,
 } from '../src/lib/routes';
-
-function fakeBrowser(initialPath: string, initialSearch = '') {
-  let pathname = initialPath;
-  let search = initialSearch;
-  const listeners = new Set<() => void>();
-  const location = {
-    get pathname(): string {
-      return pathname;
-    },
-    get search(): string {
-      return search;
-    },
-  };
-  const setPath = (_data: unknown, _unused: string, url?: string | URL | null): void => {
-    if (url === undefined || url === null) return;
-    const [nextPath = '', query] = String(url).split('?');
-    pathname = nextPath;
-    search = query === undefined ? '' : `?${query}`;
-  };
-
-  return {
-    browser: {
-      location,
-      history: { state: null, pushState: setPath, replaceState: setPath },
-      addEventListener: (_type: 'popstate', listener: () => void) => listeners.add(listener),
-      removeEventListener: (_type: 'popstate', listener: () => void) => listeners.delete(listener),
-    },
-    url: (): string => pathname + search,
-    navigateFromHistory(nextPath: string): void {
-      pathname = nextPath;
-      for (const listener of listeners) listener();
-    },
-  };
-}
 
 describe('panel routes', () => {
   it('reads installation routes at the public root', () => {
@@ -188,15 +151,6 @@ describe('panel document titles', () => {
     expect(panelViewSection('history')).toBe('history');
     expect(routeSegmentLabel('root-console')).toBe('Root Console');
   });
-
-  it('uses the requested route while app state is unresolved', () => {
-    const active: PanelRoute = { account: '', view: 'settings' };
-    const requested: PanelRoute = { rootView: 'history-audit' };
-    expect(panelDocumentTitle(resolveDocumentTitleRoute(active, requested, true))).toBe(
-      'Audit | History | Root Console | SMYKLOT',
-    );
-    expect(resolveDocumentTitleRoute(active, requested, false)).toBe(active);
-  });
 });
 
 describe('resolvePanelRoute', () => {
@@ -236,43 +190,6 @@ describe('resolvePanelRoute', () => {
 
   it('has no destination without an installation', () => {
     expect(resolvePanelRoute([], null, 'bartsmykla')).toBeNull();
-  });
-});
-
-describe('browser panel router', () => {
-  it('writes canonical links and reports browser history navigation', () => {
-    const fixture = fakeBrowser('/panel/i/bartsmykla/settings');
-    const router = createPanelRouter('/panel', fixture.browser);
-    const visited: Array<PanelRoute | null> = [];
-    const unsubscribe = router.subscribe((route) => visited.push(route));
-
-    router.push({ account: 'smykla-skalski', view: 'repositories' });
-    expect(fixture.browser.location.pathname).toBe('/panel/i/smykla-skalski/repositories');
-
-    router.push({ rootView: 'overview' });
-    expect(fixture.browser.location.pathname).toBe('/panel/root');
-
-    fixture.navigateFromHistory('/panel/i/bartsmykla/history');
-    expect(visited).toEqual([{ account: 'bartsmykla', view: 'history' }]);
-
-    unsubscribe();
-    fixture.navigateFromHistory('/panel/i/smykla-skalski/repositories');
-    expect(visited).toHaveLength(1);
-  });
-
-  it('keeps the query when it tidies the address, and drops it on the way elsewhere', () => {
-    /* The query names the dialog open on top of the view. `/panel/root/access` is
-       rewritten to its canonical form the moment it loads, and a pasted link to a
-       dialog has to survive that rewrite to open at all. */
-    const fixture = fakeBrowser('/panel/root/access', '?dialog=root-add-installation-user');
-    const router = createPanelRouter('/panel', fixture.browser);
-
-    router.replace({ rootView: 'access-users' });
-    expect(fixture.url()).toBe('/panel/root/access/users?dialog=root-add-installation-user');
-
-    // Walking to another view leaves behind what was open on the one before it.
-    router.push({ rootView: 'overview' });
-    expect(fixture.url()).toBe('/panel/root');
   });
 });
 
@@ -320,31 +237,6 @@ describe('personal routes', () => {
       view: 'users',
       dialog: { name: 'decision-history', params: { user: 'octocat' } },
     });
-  });
-
-  it('drops a stale dialog query when it lands on the page it names', () => {
-    const fixture = fakeBrowser('/panel/inbox', '?dialog=security-notifications');
-    const router = createPanelRouter('/panel', fixture.browser);
-
-    router.replace({ personal: 'inbox' });
-    expect(fixture.url()).toBe('/panel/inbox');
-  });
-
-  /* Replacing normally keeps the query, because it names the dialog open on the
-     view being tidied. A personal page hosts none, so a query carried onto one
-     would name something nothing there will ever open. */
-  it('drops the query on the way to a page that hosts no dialogs', () => {
-    const fixture = fakeBrowser('/panel/i/acme/repositories', '?dialog=security-notifications');
-    const router = createPanelRouter('/panel', fixture.browser);
-
-    router.replace({ personal: 'inbox' });
-    expect(fixture.url()).toBe('/panel/inbox');
-  });
-
-  it('sends the inbox dialog that used to ride the query to the page', () => {
-    expect(legacyInboxRoute('?dialog=security-notifications')).toEqual({ personal: 'inbox' });
-    expect(legacyInboxRoute('?dialog=repository-settings&repository=api')).toBeNull();
-    expect(legacyInboxRoute('')).toBeNull();
   });
 });
 

@@ -7,7 +7,7 @@
 
   const api = createPanelApi(base, (input, init) => fetch(input, init));
   const build = readPanelBuild(document);
-  const token = page.params.token ?? '';
+  const token = $derived(page.params.token ?? '');
 </script>
 
 <InvitationPage {api} {base} {token} {build} />

@@ -1,25 +1,16 @@
 // @vitest-environment jsdom
+import { render, screen } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
 
-import { parseDialog, dialogSearch } from '../src/lib/dialog-route.svelte';
+import Plate from '../src/lib/components/Plate.svelte';
 
-describe('dialog address parsing [Component]', () => {
-  it('parses a dialog with params from a query string', () => {
-    const result = parseDialog('?dialog=repository-settings&repository=42&section=commands');
-    expect(result).toEqual({
-      name: 'repository-settings',
-      params: { repository: '42', section: 'commands' },
-    });
-  });
+describe('Plate [Component]', () => {
+  it('renders a labelled alarm surface without an empty body', () => {
+    const { container } = render(Plate, { label: 'Problem', tone: 'alarm' });
 
-  it('returns null for a query with no dialog', () => {
-    expect(parseDialog('')).toBeNull();
-    expect(parseDialog('?page=2')).toBeNull();
-    expect(parseDialog('?dialog=')).toBeNull();
-  });
-
-  it('serializes a dialog back to a query string', () => {
-    expect(dialogSearch({ name: 'add-user', params: {} })).toBe('?dialog=add-user');
-    expect(dialogSearch(null)).toBe('');
+    expect(screen.getByRole('heading', { name: 'Problem', level: 2 })).toBeTruthy();
+    expect(container.querySelector('.plate-alarm')).toBeTruthy();
+    expect(container.querySelector('.plate-header-only')).toBeTruthy();
+    expect(container.querySelector('.plate-body')).toBeNull();
   });
 });

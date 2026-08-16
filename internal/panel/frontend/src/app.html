@@ -27,6 +27,10 @@
     <meta name="color-scheme" content="dark light" />
     <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0e1116" />
     <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f7f6" />
+    <!-- Synchronous and external on purpose: it runs before the stylesheet and body,
+         avoids a theme flash, and satisfies the static build's hash-based CSP without
+         requiring an unsafe reusable nonce in the SPA fallback. -->
+    <script src="/__smyklot_panel_base__/theme-boot.js?v=__smyklot_panel_version__"></script>
 
     <!-- The vector is the mark; the raster is the fallback, so it is declared
          first and only browsers that cannot read the SVG stop there. The home

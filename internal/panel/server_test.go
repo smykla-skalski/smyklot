@@ -164,9 +164,10 @@ func newPanelHarnessForSubject(t *testing.T, login, subjectID string) *panelHarn
 		SyncedAt: now,
 	}
 	assets := fstest.MapFS{
-		"index.html":          &fstest.MapFile{Data: []byte(`<!doctype html><meta name="smyklot-panel-base" content="/__smyklot_panel_base__"><meta name="smyklot-panel-version" content="__smyklot_panel_version__"><meta name="smyklot-panel-service" content="__smyklot_panel_service__"><meta name="smyklot-panel-error" content="__smyklot_panel_error__"><link rel="icon" href="/__smyklot_panel_base__/smyklot-avatar.png?v=__smyklot_panel_version__"><noscript>__smyklot_panel_noscript__</noscript>`)},
-		"_app/app.js":         &fstest.MapFile{Data: []byte("const base='__smyklot_panel_base__';")},
-		"service-worker.js":   &fstest.MapFile{Data: []byte(`const version='__smyklot_panel_version__';`)},
+		"index.html":        &fstest.MapFile{Data: []byte(`<!doctype html><meta name="smyklot-panel-base" content="/__smyklot_panel_base__"><meta name="smyklot-panel-version" content="__smyklot_panel_version__"><meta name="smyklot-panel-service" content="__smyklot_panel_service__"><meta name="smyklot-panel-error" content="__smyklot_panel_error__"><link rel="icon" href="/__smyklot_panel_base__/smyklot-avatar.png?v=__smyklot_panel_version__"><noscript>__smyklot_panel_noscript__</noscript>`)},
+		"_app/app.js":       &fstest.MapFile{Data: []byte("const base='__smyklot_panel_base__';")},
+		"service-worker.js": &fstest.MapFile{Data: []byte(`const version='__smyklot_panel_version__';`)},
+		"theme-boot.js":     &fstest.MapFile{Data: []byte(`document.documentElement.dataset.theme = "dark";`)},
 	}
 	randomBytes := make([]byte, 0, tokenBytes*32)
 	for index := range 32 {
@@ -2562,6 +2563,7 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 		body := response.Body.String()
 		if response.Code != http.StatusOK ||
 			response.Header().Get("Cache-Control") != "private, no-cache" ||
+			response.Header().Get("Content-Security-Policy") != "frame-ancestors 'none'" ||
 			response.Header().Get("ETag") == "" ||
 			!strings.Contains(body, `content="/panel"`) ||
 			!strings.Contains(body, `href="/panel/smyklot-avatar.png?v=1.0.0"`) ||
@@ -2581,6 +2583,12 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 	if asset.Code != http.StatusOK || asset.Header().Get("Cache-Control") != "public, max-age=31536000, immutable" ||
 		strings.Contains(asset.Body.String(), basePathSentinel) {
 		t.Fatalf("asset response = %d %#v %s", asset.Code, asset.Header(), asset.Body.String())
+	}
+	themeBoot := harness.request(t, http.MethodGet, "/panel/theme-boot.js", nil, nil)
+	if themeBoot.Code != http.StatusOK || themeBoot.Header().Get("Cache-Control") != "public, max-age=3600" ||
+		!strings.Contains(themeBoot.Body.String(), "document.documentElement.dataset.theme") ||
+		strings.Contains(themeBoot.Body.String(), basePathSentinel) {
+		t.Fatalf("theme boot response = %d %#v %s", themeBoot.Code, themeBoot.Header(), themeBoot.Body.String())
 	}
 	worker := harness.request(t, http.MethodGet, "/panel/service-worker.js", nil, nil)
 	if worker.Code != http.StatusOK || worker.Header().Get("Cache-Control") != "no-cache" ||

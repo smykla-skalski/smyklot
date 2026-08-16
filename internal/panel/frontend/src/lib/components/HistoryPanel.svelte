@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { getContext } from 'svelte';
+  import { untrack } from 'svelte';
+  import { createInfiniteQuery, type InfiniteData } from '@tanstack/svelte-query';
   import {
     columnFilteringFeature,
     createColumnHelper,
@@ -12,13 +13,12 @@
   import { createVirtualizer } from '@tanstack/svelte-virtual';
   import { MediaQuery } from 'svelte/reactivity';
   import { get } from 'svelte/store';
+  import { useDebounce, useInterval } from 'runed';
 
   import { formatDateTime, formatRelative, formatTimestamp } from '../format';
   import type { FilterSection } from '../filter-menu';
-  import { onInvalidate } from '../on-invalidate';
   import type { TimeDisplay } from '../preferences';
   import { EPHEMERAL_PREFS, prefOption, prefText, type PrefsAccessor } from '../preferences-sync';
-  import type { PanelSession } from '../session.svelte';
   import type {
     AuditEntry,
     AuditCategory,
@@ -40,7 +40,7 @@
   import ResultProblem from './ResultProblem.svelte';
   import RootPageHeader from './RootPageHeader.svelte';
   import SearchField from './SearchField.svelte';
-  import SegmentedControl from './SegmentedControl.svelte';
+  import NavigationTabs from './NavigationTabs.svelte';
   import TableEmptyState from './TableEmptyState.svelte';
 
   type HistoryType = 'audit' | 'failures';
@@ -144,8 +144,6 @@
     prefs?: PrefsAccessor;
   } = $props();
 
-  const session = getContext<PanelSession>('panel-session');
-
   // Table state deliberately captures the preferences at mount; remote
   // changes apply on the next remount instead of mid-interaction.
   // svelte-ignore state_referenced_locally
@@ -199,17 +197,12 @@
     prefOption(initialPrefs.get('history.time_display'), ['relative', 'absolute'], 'relative'),
   );
   const limit = 20;
-  let auditPage = $state<Page<AuditEntry> | null>(null);
-  let failurePage = $state<Page<DeliveryFailure> | null>(null);
-  let loading = $state(false);
-  let problem = $state<string | null>(null);
-  let loadMoreProblem = $state<string | null>(null);
   let now = $state(Date.now());
+  useInterval(30_000, { callback: () => (now = Date.now()) });
   let historyResults = $state<HTMLDivElement>();
   let auditScroll = $state<HTMLTableSectionElement>();
   let failureScroll = $state<HTMLTableSectionElement>();
 
-  const currentPage = $derived(historyType === 'audit' ? auditPage : failurePage);
   const hasFilters = $derived(
     appliedQuery !== '' ||
       (historyType === 'audit'
@@ -227,18 +220,59 @@
         ? 'Account and repository configuration changes'
         : 'Webhook deliveries that need investigation',
   );
-  const requestKey = $derived(
-    [
+  const auditQuery = createInfiniteQuery(() => ({
+    queryKey: [
+      'audit',
       targetId,
-      historyType,
       appliedQuery,
       sort,
       auditScope,
       auditChange,
-      auditCategories.join(','),
-      failureKind,
+      [...auditCategories],
+      context,
       limit,
-    ].join(':'),
+    ],
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam }) =>
+      fetchAudit({
+        cursor: pageParam,
+        query: appliedQuery,
+        sort,
+        limit,
+        scope: auditScope,
+        change: auditChange,
+        categories: context === 'root' ? [...auditCategories] : undefined,
+      }),
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+  }));
+  const failureQuery = createInfiniteQuery(() => ({
+    queryKey: ['failures', targetId, appliedQuery, sort, failureKind, limit],
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam }) =>
+      fetchFailures({
+        cursor: pageParam,
+        query: appliedQuery,
+        sort,
+        limit,
+        kind: failureKind,
+      }),
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+  }));
+  const auditPage = $derived(flattenPages(auditQuery.data));
+  const failurePage = $derived(flattenPages(failureQuery.data));
+  const currentPage = $derived(historyType === 'audit' ? auditPage : failurePage);
+  const loading = $derived(
+    historyType === 'audit' ? auditQuery.isFetching : failureQuery.isFetching,
+  );
+  const activeError = $derived(historyType === 'audit' ? auditQuery.error : failureQuery.error);
+  const nextPageError = $derived(
+    historyType === 'audit' ? auditQuery.isFetchNextPageError : failureQuery.isFetchNextPageError,
+  );
+  const problem = $derived(
+    !nextPageError && activeError !== null ? errorMessage(activeError) : null,
+  );
+  const loadMoreProblem = $derived(
+    nextPageError && activeError !== null ? errorMessage(activeError) : null,
   );
   const auditRows = $derived(auditPage?.items ?? []);
   const failureRows = $derived(failurePage?.items ?? []);
@@ -323,12 +357,26 @@
         })),
   );
 
+  const debouncedSearch = useDebounce((value: string) => (appliedQuery = value), 250);
   $effect(() => {
-    const nextQuery = search.trim();
-    const timer = window.setTimeout(() => {
-      appliedQuery = nextQuery;
-    }, 250);
-    return () => window.clearTimeout(timer);
+    const value = search.trim();
+    untrack(() => void debouncedSearch(value));
+  });
+
+  $effect(() => {
+    const resultKey = JSON.stringify([
+      targetId,
+      historyType,
+      appliedQuery,
+      sort,
+      auditScope,
+      auditChange,
+      auditCategories,
+      failureKind,
+    ]);
+    untrack(() => {
+      if (resultKey !== '') scrollResultsToTop();
+    });
   });
 
   // Follow the prop only when it actually changes. Comparing it against the
@@ -347,45 +395,26 @@
   });
 
   $effect(() => {
-    void resetAndLoad(requestKey);
-  });
-
-  onInvalidate(session.queryClient, ['history', targetId], () => void resetAndLoad(requestKey));
-
-  /* Warms the other table while this one is being read, so switching to it is
-      instant.
-
-      effect settles: it reads `failurePage` and its answer fills it, so the run
-      that the answer triggers stops at the guard below. One extra run, then
-      nothing - unlike a ring whose answer clears the flag that let it start,
-      which is the shape `tests/effect-cycles` exists to keep out. */
-  $effect(() => {
-    const expectedTarget = targetId;
-    if (failurePage !== null || historyType !== 'audit') return;
-    void fetchFailures({ query: '', sort: 'newest', limit, kind: 'all' })
-      .then((loaded) => {
-        if (targetId === expectedTarget && failurePage === null) {
-          failurePage = loaded;
-        }
-      })
-      .catch(() => undefined);
-  });
-
-  $effect(() => {
     const rows = auditTableRows;
-    get(auditVirtualizer).setOptions({
-      count: desktopTableLayout.current ? rows.length : 0,
-      getScrollElement: () => auditScroll ?? null,
-      getItemKey: (index) => rows[index]?.id ?? index,
+    const desktop = desktopTableLayout.current;
+    untrack(() => {
+      get(auditVirtualizer).setOptions({
+        count: desktop ? rows.length : 0,
+        getScrollElement: () => auditScroll ?? null,
+        getItemKey: (index) => rows[index]?.id ?? index,
+      });
     });
   });
 
   $effect(() => {
     const rows = failureTableRows;
-    get(failureVirtualizer).setOptions({
-      count: desktopTableLayout.current ? rows.length : 0,
-      getScrollElement: () => failureScroll ?? null,
-      getItemKey: (index) => rows[index]?.id ?? index,
+    const desktop = desktopTableLayout.current;
+    untrack(() => {
+      get(failureVirtualizer).setOptions({
+        count: desktop ? rows.length : 0,
+        getScrollElement: () => failureScroll ?? null,
+        getItemKey: (index) => rows[index]?.id ?? index,
+      });
     });
   });
 
@@ -397,14 +426,9 @@
         ? $auditVirtualizer.getVirtualItems()
         : $failureVirtualizer.getVirtualItems();
     const last = items.at(-1);
-    if (last !== undefined && last.index >= rows.length - 5) void loadNextPage();
-  });
-
-  $effect(() => {
-    const tick = window.setInterval(() => {
-      now = Date.now();
-    }, 30_000);
-    return () => window.clearInterval(tick);
+    if (last !== undefined && last.index >= rows.length - 5) {
+      untrack(() => void loadNextPage());
+    }
   });
 
   function selectHistoryType(value: string): void {
@@ -618,65 +642,15 @@
     return name === '' ? fullName : name;
   }
 
-  async function resetAndLoad(key: string): Promise<void> {
-    loadMoreProblem = null;
-    scrollResultsToTop();
-    await loadPage(undefined, key, false);
-  }
-
-  async function loadPage(cursor: string | undefined, key: string, append: boolean): Promise<void> {
-    loading = true;
-    if (!append) problem = null;
-    else loadMoreProblem = null;
-    try {
-      if (historyType === 'audit') {
-        const loaded = await fetchAudit({
-          cursor,
-          query: appliedQuery,
-          sort,
-          limit,
-          scope: auditScope,
-          change: auditChange,
-          categories: context === 'root' ? auditCategories : undefined,
-        });
-        if (key === requestKey) {
-          auditPage =
-            append && auditPage !== null
-              ? { ...loaded, items: [...auditPage.items, ...loaded.items] }
-              : loaded;
-        }
-      } else {
-        const loaded = await fetchFailures({
-          cursor,
-          query: appliedQuery,
-          sort,
-          limit,
-          kind: failureKind,
-        });
-        if (key === requestKey) {
-          failurePage =
-            append && failurePage !== null
-              ? { ...loaded, items: [...failurePage.items, ...loaded.items] }
-              : loaded;
-        }
-      }
-    } catch (error) {
-      if (key === requestKey) {
-        const message = error instanceof Error ? error.message : String(error);
-        if (append) loadMoreProblem = message;
-        else problem = message;
-      }
-    } finally {
-      if (key === requestKey) {
-        loading = false;
-      }
-    }
-  }
-
   async function loadNextPage(): Promise<void> {
-    const cursor = currentPage?.next_cursor;
-    if (loading || cursor === null || cursor === undefined) return;
-    await loadPage(cursor, requestKey, true);
+    if (historyType === 'audit') {
+      if (auditQuery.hasNextPage && !auditQuery.isFetchingNextPage)
+        await auditQuery.fetchNextPage();
+      return;
+    }
+    if (failureQuery.hasNextPage && !failureQuery.isFetchingNextPage) {
+      await failureQuery.fetchNextPage();
+    }
   }
 
   function scrollResultsToTop(): void {
@@ -690,8 +664,24 @@
   }
 
   function retry(): void {
-    if (currentPage === null) void loadPage(undefined, requestKey, false);
-    else void loadNextPage();
+    if (historyType === 'audit') {
+      if (auditQuery.isFetchNextPageError) void auditQuery.fetchNextPage();
+      else void auditQuery.refetch();
+      return;
+    }
+    if (failureQuery.isFetchNextPageError) void failureQuery.fetchNextPage();
+    else void failureQuery.refetch();
+  }
+
+  function flattenPages<T>(data: InfiniteData<Page<T>> | undefined): Page<T> | null {
+    const pages = data?.pages;
+    if (pages === undefined || pages.length === 0) return null;
+    const last = pages.at(-1);
+    return last === undefined ? null : { ...last, items: pages.flatMap((page) => page.items) };
+  }
+
+  function errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
   }
 
   function clearFilters(): void {
@@ -719,12 +709,10 @@
   <!-- The table switch sits at the head of the controls row, left of the
        search, the same place Access puts its Users/Invitations switch. -->
   <div class="history-tools">
-    <SegmentedControl
-      name="{context}-history-type"
+    <NavigationTabs
       label="History type"
       options={HISTORY_TYPES}
       value={historyType}
-      variant="navigation"
       onSelect={selectHistoryType}
     />
 
@@ -1310,9 +1298,6 @@
       display: block;
       flex: 1;
       min-height: 0;
-      /* No `overscroll-behavior` - see the note on the same rule in
-         RepositoryList: there is nothing behind this pane to chain into, so it
-         prevented nothing and only stood between a trackpad and the platform. */
       overflow-y: auto;
       position: relative;
     }

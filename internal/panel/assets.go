@@ -3,12 +3,15 @@ package panel
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"html"
 	"io/fs"
 	"mime"
 	"net/http"
 	"path"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -45,6 +48,8 @@ var textExtensions = map[string]bool{
 	".map":  true,
 }
 
+var scriptSourceAttribute = regexp.MustCompile(`(?i)(?:^|\s)src\s*=`)
+
 type assetBundle struct {
 	files     map[string][]byte
 	index     []byte
@@ -71,9 +76,13 @@ func newAssetBundle(cfg Config) (*assetBundle, error) {
 			files[p] = content
 			return nil
 		}
-		rewritten := strings.ReplaceAll(string(content), basePathSentinel, cfg.BasePath)
-		rewritten = strings.ReplaceAll(rewritten, versionSentinel, html.EscapeString(cfg.Version))
-		rewritten = strings.ReplaceAll(rewritten, serviceSentinel, html.EscapeString(cfg.ServiceHost))
+		rewritten := rewriteAssetText(p, string(content), cfg)
+		if p == indexAsset {
+			rewritten, err = refreshInlineScriptHashes(string(content), rewritten)
+			if err != nil {
+				return fmt.Errorf("refresh panel CSP hashes: %w", err)
+			}
+		}
 		files[p] = []byte(rewritten)
 		if p == indexAsset {
 			indexRaw = rewritten
@@ -116,6 +125,102 @@ func newAssetBundle(cfg Config) (*assetBundle, error) {
 		indexETag: fmt.Sprintf(`"%x"`, sha256.Sum256([]byte(served))),
 		errorPage: indexRaw,
 	}, nil
+}
+
+func rewriteAssetText(assetPath, content string, cfg Config) string {
+	if assetPath == indexAsset {
+		content = strings.ReplaceAll(content, basePathSentinel, html.EscapeString(cfg.BasePath))
+		content = strings.ReplaceAll(content, versionSentinel, html.EscapeString(cfg.Version))
+
+		return strings.ReplaceAll(content, serviceSentinel, html.EscapeString(cfg.ServiceHost))
+	}
+
+	// The generated worker and version manifest carry these sentinels as
+	// complete string literals. Replacing the delimiters too makes one encoding
+	// correct for JavaScript and JSON, regardless of which quote style the
+	// bundler chose. A naked or embedded sentinel is deliberately left behind so
+	// the fail-closed check below rejects a new, context-ambiguous build shape.
+	content = strings.ReplaceAll(content, basePathSentinel, cfg.BasePath)
+	content = replaceStringLiteral(content, versionSentinel, cfg.Version)
+
+	return replaceStringLiteral(content, serviceSentinel, cfg.ServiceHost)
+}
+
+// SvelteKit hashes its generated inline bootstrap at build time. The bootstrap
+// carries the base-path sentinel, so replacing the sentinel changes the script
+// bytes and invalidates that hash. Refresh the matching CSP token after every
+// HTML rewrite, and fail closed if the generated document no longer has the
+// shape the server knows how to secure.
+func refreshInlineScriptHashes(original, rewritten string) (string, error) {
+	originalScripts, err := inlineScriptBodies(original)
+	if err != nil {
+		return "", err
+	}
+	rewrittenScripts, err := inlineScriptBodies(rewritten)
+	if err != nil {
+		return "", err
+	}
+	if len(originalScripts) != len(rewrittenScripts) {
+		return "", fmt.Errorf(
+			"inline script count changed from %d to %d",
+			len(originalScripts),
+			len(rewrittenScripts),
+		)
+	}
+
+	for index, originalScript := range originalScripts {
+		rewrittenScript := rewrittenScripts[index]
+		if originalScript == rewrittenScript {
+			continue
+		}
+		oldHash := quotedScriptHash(originalScript)
+		if strings.Count(rewritten, oldHash) != 1 {
+			return "", fmt.Errorf("changed inline script %d has no unique CSP hash", index)
+		}
+		rewritten = strings.Replace(rewritten, oldHash, quotedScriptHash(rewrittenScript), 1)
+	}
+
+	return rewritten, nil
+}
+
+func inlineScriptBodies(document string) ([]string, error) {
+	var bodies []string
+	for remaining := document; ; {
+		open := strings.Index(remaining, "<script")
+		if open == -1 {
+			return bodies, nil
+		}
+		tagEnd := strings.IndexByte(remaining[open:], '>')
+		if tagEnd == -1 {
+			return nil, fmt.Errorf("inline script opening tag is incomplete")
+		}
+		tagEnd += open
+		bodyStart := tagEnd + 1
+		closeOffset := strings.Index(remaining[bodyStart:], "</script>")
+		if closeOffset == -1 {
+			return nil, fmt.Errorf("script closing tag is missing")
+		}
+		bodyEnd := bodyStart + closeOffset
+		if !scriptSourceAttribute.MatchString(remaining[open:tagEnd]) {
+			bodies = append(bodies, remaining[bodyStart:bodyEnd])
+		}
+		remaining = remaining[bodyEnd+len("</script>"):]
+	}
+}
+
+func quotedScriptHash(script string) string {
+	digest := sha256.Sum256([]byte(script))
+
+	return `'sha256-` + base64.StdEncoding.EncodeToString(digest[:]) + `'`
+}
+
+func replaceStringLiteral(content, sentinel, value string) string {
+	encoded, _ := json.Marshal(value) // A Go string always has a JSON representation.
+	for _, delimiter := range []string{`"`, `'`, "`"} {
+		content = strings.ReplaceAll(content, delimiter+sentinel+delimiter, string(encoded))
+	}
+
+	return content
 }
 
 func (s *Server) serveAsset(w http.ResponseWriter, r *http.Request) {

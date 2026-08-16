@@ -1,9 +1,8 @@
 <script lang="ts">
-  import { getContext } from 'svelte';
-  import type { PanelSession } from '$lib/session.svelte';
+  import { getPanelSession } from '$lib/session.svelte';
   import RootInstallations from '$lib/components/RootInstallations.svelte';
 
-  const session = getContext<PanelSession>('panel-session');
+  const session = getPanelSession();
 </script>
 
 <section

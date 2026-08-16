@@ -1,16 +1,13 @@
 <script lang="ts">
-  import { getContext } from 'svelte';
+  import { createMutation, createQuery } from '@tanstack/svelte-query';
   import type { PanelApi } from '../api';
   import { formatDateTime } from '../format';
   import { fuzzyCandidates } from '../fuzzy';
   import { monogram } from '../identity';
-  import { onInvalidate } from '../on-invalidate';
   import type { HistorySection, RootRoute, ScopedPanelView } from '../routes';
-  import type { PanelSession } from '../session.svelte';
   import type { RootInstallation } from '../types';
   import Chip from './Chip.svelte';
   import Icon from './Icon.svelte';
-  import RootInstallationView from './RootInstallationView.svelte';
   import RootPageHeader from './RootPageHeader.svelte';
   import SearchField from './SearchField.svelte';
   import TableEmptyState from './TableEmptyState.svelte';
@@ -39,15 +36,29 @@
     onHistorySection: (section: HistorySection) => void;
   } = $props();
 
-  const session = getContext<PanelSession>('panel-session');
-
-  let installations = $state<RootInstallation[]>([]);
-  let loading = $state(true);
-  let failure = $state<string | null>(null);
+  const installationsQuery = createQuery(() => ({
+    queryKey: ['root-installations'],
+    queryFn: () => api.fetchRootInstallations(),
+  }));
+  const syncMutation = createMutation(() => ({
+    mutationFn: () => api.syncRootInstallations(),
+    onSuccess: async () => {
+      await installationsQuery.refetch();
+    },
+  }));
+  const installations = $derived<RootInstallation[]>(installationsQuery.data ?? []);
+  const loading = $derived(installationsQuery.isFetching);
+  const failure = $derived(
+    installationsQuery.error === null
+      ? null
+      : installationsQuery.error instanceof Error
+        ? installationsQuery.error.message
+        : String(installationsQuery.error),
+  );
   let query = $state('');
-  let syncing = $state(false);
   let syncProblem = $state<string | null>(null);
   let syncFeedback = $state('');
+  const syncing = $derived(syncMutation.isPending);
 
   const selected = $derived(
     route.rootView === 'installation'
@@ -69,30 +80,15 @@
     ).map((candidate) => candidate.installation),
   );
 
-  async function load(): Promise<void> {
-    loading = true;
-    failure = null;
-    try {
-      installations = await api.fetchRootInstallations();
-    } catch (error) {
-      failure = error instanceof Error ? error.message : String(error);
-    } finally {
-      loading = false;
-    }
-  }
-
   async function syncCatalog(): Promise<void> {
     if (syncing) return;
-    syncing = true;
     syncProblem = null;
     syncFeedback = '';
     try {
-      const targetIDs = await api.syncRootInstallations();
+      const targetIDs = await syncMutation.mutateAsync();
       syncFeedback = `Synchronized ${targetIDs.length} installation${targetIDs.length === 1 ? '' : 's'}`;
     } catch (error) {
       syncProblem = error instanceof Error ? error.message : String(error);
-    } finally {
-      syncing = false;
     }
   }
 
@@ -139,29 +135,34 @@
     if (installation.ownership.stale) return 'neutral';
     return 'clear';
   }
-
-  $effect(() => {
-    void load();
-  });
-
-  onInvalidate(session.queryClient, ['root-installations'], () => void load());
 </script>
 
 {#if route.rootView === 'installation' && selected !== null}
-  {#key selected.id}
-    <RootInstallationView
-      installation={selected}
-      view={route.view}
-      {api}
-      {actorLogin}
-      {listHref}
-      {hrefFor}
-      {onList}
-      {onNavigate}
-      {historySection}
-      {onHistorySection}
+  {#await import('./RootInstallationView.svelte')}
+    <p class="installation-loading" role="status">Loading installation…</p>
+  {:then { default: RootInstallationView }}
+    {#key selected.id}
+      <RootInstallationView
+        installation={selected}
+        view={route.view}
+        {api}
+        {actorLogin}
+        {listHref}
+        {hrefFor}
+        {onList}
+        {onNavigate}
+        {historySection}
+        {onHistorySection}
+      />
+    {/key}
+  {:catch error}
+    <TableEmptyState
+      title="Installation view could not be loaded"
+      description={error instanceof Error ? error.message : String(error)}
+      actionLabel="Reload panel"
+      onAction={() => window.location.reload()}
     />
-  {/key}
+  {/await}
 {:else if route.rootView === 'installation' && !loading}
   <TableEmptyState
     title="Installation not found"
@@ -315,6 +316,11 @@
     gap: 0;
     min-height: 0;
     min-width: 0;
+  }
+
+  .installation-loading {
+    color: var(--dim);
+    margin: 0;
   }
 
   /* The same controls row every other table view has: one 34px line with the
@@ -553,9 +559,6 @@
       display: block;
       flex: 1;
       min-height: 0;
-      /* No `overscroll-behavior` - see the note on the same rule in
-         RepositoryList: there is nothing behind this pane to chain into, so it
-         prevented nothing and only stood between a trackpad and the platform. */
       overflow-y: auto;
     }
 

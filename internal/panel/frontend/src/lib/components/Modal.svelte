@@ -40,17 +40,19 @@
 </script>
 
 <Dialog.Root bind:open={openState} onOpenChange={handleOpenChange}>
-  <Dialog.Portal>
+  <Dialog.Portal to=".app-shell">
     <Dialog.Overlay class="modal-overlay" />
-    <Dialog.Content
-      {id}
+    <div
       class="modal-content-wrapper {variant === 'inspector' ? 'inspector' : ''} {variant === 'wide'
         ? 'wide'
         : ''}"
-      aria-labelledby={`${id}-title`}
-      aria-describedby={description === undefined ? undefined : `${id}-description`}
     >
-      <section class="modal-panel">
+      <Dialog.Content
+        {id}
+        class="modal-panel"
+        aria-labelledby={`${id}-title`}
+        aria-describedby={description === undefined ? undefined : `${id}-description`}
+      >
         <header>
           <div class="modal-heading">
             <div class="heading-row">
@@ -63,7 +65,7 @@
               <p id={`${id}-description`}>{description}</p>
             {/if}
           </div>
-          <Dialog.Close class="modal-close visually-hidden" aria-label={closeLabel}>
+          <Dialog.Close class="modal-close" aria-label={closeLabel}>
             <Icon name="close" size={18} />
           </Dialog.Close>
         </header>
@@ -75,8 +77,8 @@
         {#if footer !== undefined}
           <footer>{@render footer()}</footer>
         {/if}
-      </section>
-    </Dialog.Content>
+      </Dialog.Content>
+    </div>
   </Dialog.Portal>
 </Dialog.Root>
 
@@ -93,11 +95,13 @@
     background: transparent;
     border: 0;
     color: var(--text);
-    height: 100%;
+    inset: 0;
     margin: auto;
     max-height: none;
     max-width: none;
     padding: 1rem;
+    pointer-events: none;
+    position: fixed;
     width: 100%;
     z-index: var(--layer-dialog);
   }
@@ -113,6 +117,7 @@
     max-height: calc(100dvh - 2rem);
     max-width: 34rem;
     overflow: hidden;
+    pointer-events: auto;
     position: absolute;
     top: 50%;
     transform: translate(-50%, -50%);
@@ -191,9 +196,11 @@
     border-radius: var(--r-ctl);
     flex: none;
     color: var(--text-secondary);
+    cursor: pointer;
+    display: grid;
     height: var(--local-control-height, var(--control-height-compact));
     padding: 0;
-    position: absolute;
+    place-items: center;
     width: var(--local-control-height, var(--control-height-compact));
   }
 

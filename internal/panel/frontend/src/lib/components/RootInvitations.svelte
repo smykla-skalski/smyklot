@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { getContext, untrack, type Snippet } from 'svelte';
+  import { createInfiniteQuery, type InfiniteData } from '@tanstack/svelte-query';
+  import { untrack, type Snippet } from 'svelte';
+  import { useDebounce, useInterval } from 'runed';
   import { PanelApiError } from '../api';
   import { dialogRoute } from '../dialog-route.svelte';
   import { formatDateTime, formatRelative, formatTimestamp, formatUntil } from '../format';
   import type { FilterSection } from '../filter-menu';
-  import { onInvalidate } from '../on-invalidate';
-  import type { PanelSession } from '../session.svelte';
   import type {
     AddRootInvitationInput,
     InvitationDays,
@@ -62,18 +62,12 @@
     navigation?: Snippet;
   } = $props();
 
-  const session = getContext<PanelSession>('panel-session');
-
-  let page = $state<Page<PanelInvitation> | null>(null);
   // Ticks so the pending countdown and relative Created column keep aging.
   let now = $state(Date.now());
   let search = $state('');
   let query = $state('');
   let sort = $state<InvitationSort>('created_newest');
   let statuses = $state<InvitationStatus[]>([]);
-  let loading = $state(false);
-  let problem = $state<string | null>(null);
-  let loadMoreProblem = $state<string | null>(null);
 
   let createTrigger = $state<HTMLElement | null>(null);
   let login = $state('');
@@ -105,7 +99,30 @@
   let actionProblem = $state<string | null>(null);
 
   const limit = 20;
-  const requestKey = $derived(JSON.stringify([query, sort, statuses, limit]));
+  const invitationQuery = createInfiniteQuery(() => ({
+    queryKey: ['root-access', 'invitations', query, sort, [...statuses], limit],
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam }) =>
+      fetchPage({
+        ...(pageParam === undefined ? {} : { cursor: pageParam }),
+        query,
+        sort,
+        limit,
+        roles: [],
+        statuses: [...statuses],
+      }),
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+  }));
+  const page = $derived(flattenPages(invitationQuery.data));
+  const loading = $derived(invitationQuery.isFetching);
+  const problem = $derived(
+    invitationQuery.isError && !invitationQuery.isFetchNextPageError
+      ? errorMessage(invitationQuery.error)
+      : null,
+  );
+  const loadMoreProblem = $derived(
+    invitationQuery.isFetchNextPageError ? errorMessage(invitationQuery.error) : null,
+  );
   const invitations = $derived(page?.items ?? []);
   const hasFilters = $derived(query !== '' || statuses.length > 0);
 
@@ -124,67 +141,33 @@
     return action === 'reissue' || action === 'revoke' ? action : null;
   });
 
+  useInterval(30_000, { callback: () => (now = Date.now()) });
+  const debouncedSearch = useDebounce((value: string) => (query = value), 180);
   $effect(() => {
-    const tick = setInterval(() => {
-      now = Date.now();
-    }, 30_000);
-    return () => clearInterval(tick);
+    const value = search.trim();
+    untrack(() => void debouncedSearch(value));
   });
 
-  $effect(() => {
-    const next = search.trim();
-    const timeout = window.setTimeout(() => (query = next), 180);
-    return () => window.clearTimeout(timeout);
-  });
-
-  /* `requestKey` is the whole trigger: it changes when a filter, the sort, the
-     page size or the refresh version does. The call is untracked because
-     `loadPage` reads `loading` to bail out while a read is in flight, and an
-     effect that depends on what it calls also writes would start a fresh request
-     every time one finished - a loop that never settled. */
-  $effect(() => {
-    const key = requestKey;
-    untrack(() => {
-      void loadPage(undefined, false, key);
-    });
-  });
-
-  onInvalidate(session.queryClient, ['root-access'], () => void loadPage(undefined, false));
-
-  async function loadPage(
-    cursor: string | undefined,
-    append: boolean,
-    key = requestKey,
-  ): Promise<void> {
-    if (key !== requestKey || loading) return;
-    loading = true;
-    if (append) loadMoreProblem = null;
-    else problem = null;
-    try {
-      const loaded = await fetchPage({
-        ...(cursor === undefined ? {} : { cursor }),
-        query,
-        sort,
-        limit,
-        roles: [],
-        statuses,
-      });
-      if (key !== requestKey) return;
-      page =
-        append && page !== null ? { ...loaded, items: [...page.items, ...loaded.items] } : loaded;
-    } catch (error) {
-      if (key !== requestKey) return;
-      const message = error instanceof Error ? error.message : String(error);
-      if (append) loadMoreProblem = message;
-      else problem = message;
-    } finally {
-      if (key === requestKey) loading = false;
-    }
+  async function loadPage(_cursor: string | undefined, append: boolean): Promise<void> {
+    if (append) await invitationQuery.fetchNextPage();
+    else await invitationQuery.refetch();
   }
 
   function loadNext(): void {
-    const cursor = page?.next_cursor;
-    if (cursor !== null && cursor !== undefined) void loadPage(cursor, true);
+    if (invitationQuery.hasNextPage && !invitationQuery.isFetchingNextPage) {
+      void invitationQuery.fetchNextPage();
+    }
+  }
+
+  function flattenPages(data: InfiniteData<Page<PanelInvitation>> | undefined) {
+    const pages = data?.pages;
+    if (pages === undefined || pages.length === 0) return null;
+    const last = pages.at(-1);
+    return last === undefined ? null : { ...last, items: pages.flatMap((entry) => entry.items) };
+  }
+
+  function errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
   }
 
   function loadFromScroll(event: Event): void {
@@ -281,7 +264,6 @@
       declinedLogin = null;
       generatedLink = invitation.invite_url ?? '';
       generatedFor = invitation.account.login;
-      page = null;
       await loadPage(undefined, false);
     } catch (error) {
       if (error instanceof PanelApiError && error.code === 'invitation_declined') {
@@ -365,7 +347,6 @@
         await revoke(actionInvitation.id);
         if (dialogRoute.isOpen(ACTION_DIALOG)) dialogRoute.close();
       }
-      page = null;
       await loadPage(undefined, false);
     } catch (error) {
       actionProblem = error instanceof Error ? error.message : String(error);
@@ -999,9 +980,6 @@
       display: block;
       flex: 1;
       min-height: 0;
-      /* No `overscroll-behavior` - see the note on the same rule in
-         RepositoryList: there is nothing behind this pane to chain into, so it
-         prevented nothing and only stood between a trackpad and the platform. */
       overflow-y: auto;
     }
 

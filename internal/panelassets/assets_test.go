@@ -43,3 +43,33 @@ func TestBundleCarriesBaseSentinel(t *testing.T) {
 		t.Fatal("bundle has no index.html")
 	}
 }
+
+func TestBundleCarriesExecutableStaticCSP(t *testing.T) {
+	assets, err := panelassets.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	index, err := fs.ReadFile(assets, "index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range [][]byte{
+		[]byte(`<meta http-equiv="content-security-policy"`),
+		[]byte(`script-src 'self' 'sha256-`),
+		[]byte(`style-src-attr 'unsafe-inline'`),
+		[]byte(`src="/__smyklot_panel_base__/theme-boot.js`),
+	} {
+		if !bytes.Contains(index, required) {
+			t.Errorf("index.html does not contain %q", required)
+		}
+	}
+
+	themeBoot, err := fs.ReadFile(assets, "theme-boot.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(themeBoot, []byte("document.documentElement.dataset.theme")) {
+		t.Error("theme-boot.js does not set the document theme")
+	}
+}

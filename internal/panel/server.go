@@ -318,7 +318,10 @@ func (s *Server) AnnounceCatalog() {
 
 func (s *Server) secureHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; connect-src 'self'; img-src 'self' https:; style-src 'self'; script-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self' https://github.com")
+		// The static SvelteKit document supplies the resource policy as a hash-based
+		// CSP meta tag so its generated bootstrap can run. frame-ancestors is the
+		// one directive browsers ignore in a meta policy, so it remains a header.
+		w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")

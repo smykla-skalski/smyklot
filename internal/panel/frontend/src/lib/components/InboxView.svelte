@@ -1,12 +1,16 @@
 <script lang="ts">
-  import { getContext, untrack } from 'svelte';
+  import {
+    createInfiniteQuery,
+    createMutation,
+    useQueryClient,
+    type InfiniteData,
+  } from '@tanstack/svelte-query';
+  import { untrack } from 'svelte';
+  import { SvelteSet } from 'svelte/reactivity';
 
   import type { PanelApi } from '../api';
   import { formatRelative, formatTimestamp } from '../format';
-  import { LatestRequest } from '../latest-request';
-  import { onInvalidate } from '../on-invalidate';
-  import type { PanelSession } from '../session.svelte';
-  import type { SecurityNotification } from '../types';
+  import type { NotificationPage, SecurityNotification } from '../types';
   import Chip from './Chip.svelte';
   import Icon from './Icon.svelte';
   import PanelHeader from './PanelHeader.svelte';
@@ -23,69 +27,58 @@
     onUnread?: (unread: number) => void;
   } = $props();
 
-  const session = getContext<PanelSession>('panel-session');
-
   const PAGE_SIZE = 20;
-
-  let items = $state<SecurityNotification[]>([]);
-  let unread = $state(0);
-  let total = $state(0);
-  let nextCursor = $state<string | null>(null);
-  let loading = $state(false);
-  let loadingMore = $state(false);
-  let problem = $state<string | null>(null);
-  let loaded = $state(false);
+  const queryClient = useQueryClient();
+  const notificationsQuery = createInfiniteQuery(() => ({
+    queryKey: ['notifications'],
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam }) =>
+      fetchPage({
+        ...(pageParam === undefined ? {} : { cursor: pageParam }),
+        limit: PAGE_SIZE,
+      }),
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+  }));
+  const markReadMutation = createMutation(() => ({
+    mutationFn: (notificationId: string) => markRead(notificationId),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<InfiniteData<NotificationPage>>(['notifications'], (current) =>
+        current === undefined
+          ? current
+          : {
+              ...current,
+              pages: current.pages.map((page) => ({
+                ...page,
+                items: page.items.map((item) => (item.id === updated.id ? updated : item)),
+                unread: Math.max(0, page.unread - 1),
+              })),
+            },
+      );
+    },
+  }));
+  const pages = $derived(notificationsQuery.data?.pages ?? []);
+  const items = $derived(mergePages(pages));
+  const unread = $derived(pages[0]?.unread ?? 0);
+  const total = $derived(pages[0]?.total ?? 0);
+  const loading = $derived(notificationsQuery.isFetching && !notificationsQuery.isFetchingNextPage);
+  const loadingMore = $derived(notificationsQuery.isFetchingNextPage);
+  let actionProblem = $state<string | null>(null);
+  const problem = $derived(
+    actionProblem ??
+      (notificationsQuery.error === null
+        ? null
+        : notificationsQuery.error instanceof Error
+          ? notificationsQuery.error.message
+          : String(notificationsQuery.error)),
+  );
+  const loaded = $derived(notificationsQuery.data !== undefined);
   let now = $state(0);
   let expandedAuditId = $state<string | null>(null);
   const groups = $derived(groupNotifications(items));
-  const reads = new LatestRequest();
-  /**
-   * The count is guarded apart from the list, because the two are answered by
-   * different requests.
-   *
-   * A read of the list carries a count with it, and a read of the count carries
-   * no list. Whichever was asked for last is the one to believe, and that is not
-   * the same question as which list is on screen.
-   */
-  const counts = new LatestRequest();
 
   async function load(reset = true): Promise<void> {
-    if (reset ? loading : loadingMore) return;
-    /* A read of the whole list and a read of the next page can be in the air at
-       once - the stream refreshes while somebody is pressing for earlier events -
-       and only the newer one may commit. Without this the refresh could land
-       after the page it was racing and take the earlier events away again,
-       leaving a reader who pressed the button watching it undo itself. */
-    const read = reads.begin();
-    const count = counts.begin();
-    if (reset) loading = true;
-    else loadingMore = true;
-    problem = null;
-    try {
-      const page = await fetchPage({
-        ...(reset || nextCursor === null ? {} : { cursor: nextCursor }),
-        limit: PAGE_SIZE,
-      });
-      if (counts.isCurrent(count)) {
-        unread = page.unread;
-        total = page.total;
-      }
-      if (!reads.isCurrent(read)) return;
-      items = reset ? page.items : merge(items, page.items);
-      nextCursor = page.next_cursor;
-      loaded = true;
-      /* Stamped from the answer rather than at mount: every relative time on the
-         page is measured against the same instant, and a reader who leaves the
-         tab open does not come back to a list that says "now" about yesterday. */
-      now = Date.now();
-    } catch (error) {
-      if (reads.isCurrent(read)) problem = error instanceof Error ? error.message : String(error);
-    } finally {
-      // Its own flag, whether or not it was still the newest: the other read owns
-      // the other flag, and a control left disabled never comes back.
-      if (reset) loading = false;
-      else loadingMore = false;
-    }
+    if (reset) await notificationsQuery.refetch();
+    else if (notificationsQuery.hasNextPage) await notificationsQuery.fetchNextPage();
   }
 
   function toggleAuditRecord(event: MouseEvent, notification: SecurityNotification): void {
@@ -97,43 +90,12 @@
 
   async function read(notification: SecurityNotification): Promise<void> {
     if (notification.read_at !== undefined) return;
+    actionProblem = null;
     try {
-      const updated = await markRead(notification.id);
-      items = items.map((item) => (item.id === updated.id ? updated : item));
-      /* One fewer, straight away. The reader just did that and should see it
-         happen, so the count answers the press rather than the round trip after
-         it. It can be out by one either way depending on what else was in the
-         air, which is what the read below settles. */
-      unread = Math.max(0, unread - 1);
-      await refreshCount();
+      await markReadMutation.mutateAsync(notification.id);
+      await notificationsQuery.refetch();
     } catch (error) {
-      problem = error instanceof Error ? error.message : String(error);
-    }
-  }
-
-  /**
-   * Asks what the count is now, because the subtraction above is a guess.
-   *
-   * A client cannot tell which way the guess is wrong: a list that arrives while
-   * the read is in flight may have been counted by the server with the read
-   * already in it, or from a moment before it, and the two are indistinguishable
-   * from here. Subtracting anyway leaves the total one below the truth in the
-   * first case; refusing to subtract leaves it one above in the second. Neither
-   * corrected itself until some other read happened to run.
-   *
-   * So the guess stands only until the answer arrives, which is one small request
-   * per press of a button somebody deliberately pressed.
-   */
-  async function refreshCount(): Promise<void> {
-    const count = counts.begin();
-    try {
-      const page = await fetchPage({ limit: 1 });
-      if (!counts.isCurrent(count)) return;
-      unread = page.unread;
-      total = page.total;
-    } catch {
-      /* A count is not worth a failure of its own over a list that is fine. The
-         next read of either settles it. */
+      actionProblem = error instanceof Error ? error.message : String(error);
     }
   }
 
@@ -146,12 +108,15 @@
       .join(' ');
   }
 
-  function merge(
-    current: SecurityNotification[],
-    incoming: SecurityNotification[],
-  ): SecurityNotification[] {
-    const known = new Set(current.map((notification) => notification.id));
-    return [...current, ...incoming.filter((notification) => !known.has(notification.id))];
+  function mergePages(notificationPages: NotificationPage[]): SecurityNotification[] {
+    const known = new SvelteSet<string>();
+    return notificationPages.flatMap((page) =>
+      page.items.filter((notification) => {
+        if (known.has(notification.id)) return false;
+        known.add(notification.id);
+        return true;
+      }),
+    );
   }
 
   function groupNotifications(notifications: SecurityNotification[]) {
@@ -167,28 +132,17 @@
     return grouped;
   }
 
-  /**
-   * Reads on mount, and again whenever the stream says something changed.
-   *
-   * `untrack` because `load` reads `loading` before its first await, to refuse a
-   * second read while one is in flight. That read is inside this effect, so the
-   * effect depended on a value `load` also writes: finishing a read set `loading`
-   * back to false, which scheduled another read, which finished. The page asked
-   * the server about 1600 times a second, and a failed read never reached the
-   * screen because the next attempt cleared it before it could render.
-   */
   $effect(() => {
-    untrack(() => void load());
+    if (notificationsQuery.dataUpdatedAt > 0) now = notificationsQuery.dataUpdatedAt;
   });
-
-  onInvalidate(session.queryClient, ['notifications'], () => void load());
 
   /* Only once there is a count to report. `unread` starts at zero because nothing
      has been read yet, not because everything has been read, and reporting that
      took the number off the sidebar row for as long as the page took to load -
      ending on the same number it started with, which reads as a flicker. */
   $effect(() => {
-    if (loaded) onUnread?.(unread);
+    const count = unread;
+    if (loaded) untrack(() => onUnread?.(count));
   });
 </script>
 
@@ -326,7 +280,7 @@
         {/each}
       </div>
 
-      {#if nextCursor !== null}
+      {#if notificationsQuery.hasNextPage}
         <button
           class="btn load-more"
           type="button"

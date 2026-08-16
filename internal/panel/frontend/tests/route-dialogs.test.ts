@@ -198,7 +198,7 @@ describe('dialog addresses in the Root console [Unit]', () => {
  */
 describe('the Root user actions the console offers [Unit]', () => {
   const component = readFileSync(
-    new URL('../src/components/RootAccess.svelte', import.meta.url),
+    new URL('../src/lib/components/RootAccess.svelte', import.meta.url),
     'utf8',
   );
 

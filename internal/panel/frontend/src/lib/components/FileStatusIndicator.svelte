@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { tooltip } from '../tooltip';
   import type { RepositoryFileStatus } from '../types';
+  import AppTooltip from './AppTooltip.svelte';
   import Icon, { type IconName } from './Icon.svelte';
 
   const {
@@ -44,18 +44,16 @@
      hover too. Pointing at "Bypassed" and getting nothing, when the circle beside
      it answers, is the sort of thing a reader reads as the tooltip being broken. -->
 <span class="file-indicator status-{status}">
-  <button
-    use:tooltip={{ id, text: message, align: 'start' }}
-    type="button"
-    class="symbol"
-    aria-label={label}
-    aria-describedby={id}
-  >
-    <Icon name={icon} size={14} />
-    {#if showLabel}
-      <span class="status-label">{status.slice(0, 1).toUpperCase() + status.slice(1)}</span>
-    {/if}
-  </button>
+  <AppTooltip {id} text={message} align="start">
+    {#snippet children(props)}
+      <button {...props} type="button" class="symbol" aria-label={label}>
+        <Icon name={icon} size={14} />
+        {#if showLabel}
+          <span class="status-label">{status.slice(0, 1).toUpperCase() + status.slice(1)}</span>
+        {/if}
+      </button>
+    {/snippet}
+  </AppTooltip>
 </span>
 
 <style>

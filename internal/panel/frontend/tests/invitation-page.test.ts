@@ -14,11 +14,22 @@ const page = readFileSync(
   new URL('../src/lib/components/InvitationPage.svelte', import.meta.url),
   'utf8',
 );
+const rootLayout = readFileSync(new URL('../src/routes/+layout.svelte', import.meta.url), 'utf8');
 
 /** Every `<a …>` opening tag on the page, with its attributes. */
 const anchors = [...page.matchAll(/<a\b([^>]*)>/gsu)].map(([, attributes]) => attributes ?? '');
 
 describe('the invitation page', () => {
+  it('renders outside the authenticated panel shell', () => {
+    expect(rootLayout).toMatch(/\{:else if session\.isInvitation\}\s*\{@render children\(\)\}/u);
+    expect(rootLayout.indexOf('{:else if session.isInvitation}')).toBeLessThan(
+      rootLayout.indexOf('{:else if session.signedOut}'),
+    );
+    expect(rootLayout).toMatch(
+      /if \(session\.isRootMode \|\| session\.isInbox \|\| session\.isInvitation\) return;\s*const account = page\.params\.account/u,
+    );
+  });
+
   it('sends every link off the page to a new tab, without a referrer', () => {
     // These go to GitHub. `noreferrer` also implies `noopener`, which is the half that matters:
     // the token this page was reached with is in its URL, and an opener handle would hand the
