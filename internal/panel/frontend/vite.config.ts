@@ -34,5 +34,11 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/**/*.test.ts'],
+    setupFiles: ['tests/component-setup.ts'],
+    server: {
+      deps: {
+        inline: [/svelte/, /@testing-library/],
+      },
+    },
   },
 });
