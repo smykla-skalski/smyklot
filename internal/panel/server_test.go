@@ -2508,6 +2508,19 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 		"/panel/root/history/audit",
 		"/panel/root/history/failures",
 		"/panel/root/settings",
+		// Every dialog the panel gives an address to. A link to one, and a reload
+		// of one, has to answer with the shell rather than the not-found page.
+		"/panel/i/smykla-skalski/repositories/api-gateway",
+		"/panel/i/smykla-skalski/repositories/api-gateway/behavior",
+		"/panel/i/smykla-skalski/users/add",
+		"/panel/i/smykla-skalski/users/octocat/history",
+		"/panel/i/smykla-skalski/users/octocat/remove-access",
+		"/panel/i/smykla-skalski/invitations/inv-1/revoke",
+		"/panel/root/access/users/octocat/ban",
+		"/panel/root/access/invitations/new",
+		"/panel/root/access/invitations/inv-1/reissue",
+		"/panel/root/installations/smykla-skalski/repositories/api-gateway/file",
+		"/panel/root/installations/smykla-skalski/users/octocat/history",
 	} {
 		response := harness.request(t, http.MethodGet, path, nil, nil)
 		body := response.Body.String()
@@ -2544,6 +2557,11 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 		"/panel/help",
 		"/panel/inbox/security",
 		"/panel/i/smykla-skalski/inbox",
+		// A view still has to be a view, and a dialog is one segment or two.
+		"/panel/i/smykla-skalski/settings/anything",
+		"/panel/i/smykla-skalski/repositories/api-gateway/file/extra",
+		"/panel/root/access/users/octocat/ban/extra",
+		"/panel/root/installations/smykla-skalski/settings/anything",
 		"/panel/smykla-skalski/repositories",
 		"/panel/auth/settings",
 		"/panel/webhook/history",

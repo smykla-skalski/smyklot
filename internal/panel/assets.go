@@ -127,11 +127,10 @@ func (s *Server) serveAsset(w http.ResponseWriter, r *http.Request) {
 }
 
 func isPanelNavigationPath(relative string) bool {
-	trimmed := strings.Trim(relative, "/")
-	if isRootNavigationPath(strings.Split(trimmed, "/")) {
+	parts := strings.Split(strings.Trim(relative, "/"), "/")
+	if isRootNavigationPath(parts) {
 		return true
 	}
-	parts := strings.Split(trimmed, "/")
 	// A page of the reader's own is the whole address; nothing hangs off it.
 	if len(parts) == 1 && parts[0] == panelInboxPath {
 		return true
@@ -139,47 +138,80 @@ func isPanelNavigationPath(relative string) bool {
 	if len(parts) == 2 && parts[0] == "invite" && validInvitationToken(parts[1]) {
 		return true
 	}
-	if (len(parts) != 3 && len(parts) != 4) || parts[0] != "i" || parts[1] == "" {
+	if len(parts) < 3 || parts[0] != "i" || parts[1] == "" {
 		return false
 	}
-	if len(parts) == 4 {
-		return parts[2] == panelHistoryPath && isPanelHistorySection(parts[3])
-	}
 
-	switch parts[2] {
-	case panelSettingsPath, panelRepositoriesPath, panelUsersResource, panelInvitationsPath, panelHistoryPath:
-		return true
+	return isPanelViewPath(parts[2], parts[3:])
+}
+
+// A view, and whatever the panel writes after it: history's table, or the
+// segments of a dialog standing on the view.
+//
+// The dialog segments are counted rather than read. Their grammar lives in the
+// frontend's route-dialogs, where a name is a repository somebody chose or a
+// login somebody registered, and a second copy of it here is a copy that drifts
+// - which is exactly what happened: every dialog address the panel writes was
+// refused by this function, so a link to one, or a reload of one, answered with
+// the not-found page. What is still checked is the part that is ours to know:
+// the view has to be a view, and a dialog is one segment or two.
+func isPanelViewPath(view string, trailing []string) bool {
+	switch view {
+	case panelSettingsPath:
+		return len(trailing) == 0
+	case panelHistoryPath:
+		return len(trailing) == 0 || (len(trailing) == 1 && isPanelHistorySection(trailing[0]))
+	case panelRepositoriesPath, panelUsersResource, panelInvitationsPath:
+		return isDialogSegments(trailing)
 	default:
 		return false
 	}
 }
 
-func isRootNavigationPath(parts []string) bool {
-	if len(parts) == 1 {
-		return parts[0] == "root"
+func isDialogSegments(trailing []string) bool {
+	if len(trailing) > 2 {
+		return false
 	}
+	for _, segment := range trailing {
+		if segment == "" {
+			return false
+		}
+	}
+
+	return true
+}
+
+func isRootNavigationPath(parts []string) bool {
 	if parts[0] != "root" {
 		return false
 	}
-	if len(parts) == 2 {
-		return parts[1] == panelInstallationsResource || parts[1] == "access" ||
-			parts[1] == panelHistoryPath || parts[1] == panelSettingsPath
-	}
-	if len(parts) == 3 {
-		return parts[1] == "access" && (parts[2] == panelUsersResource || parts[2] == panelInvitationsPath) ||
-			parts[1] == panelHistoryPath &&
-				(parts[2] == panelHistoryAuditPath || parts[2] == panelHistoryFailuresPath)
-	}
-	if (len(parts) != 4 && len(parts) != 5) ||
-		parts[1] != panelInstallationsResource || parts[2] == "" {
-		return false
-	}
-	if len(parts) == 5 {
-		return parts[3] == panelHistoryPath && isPanelHistorySection(parts[4])
-	}
-	switch parts[3] {
-	case panelSettingsPath, panelRepositoriesPath, panelUsersResource, panelInvitationsPath, panelHistoryPath:
+	if len(parts) == 1 {
 		return true
+	}
+	switch parts[1] {
+	case panelSettingsPath:
+		return len(parts) == 2
+	case panelHistoryPath:
+		return len(parts) == 2 || (len(parts) == 3 && isPanelHistorySection(parts[2]))
+	case "access":
+		if len(parts) == 2 {
+			return true
+		}
+		if parts[2] != panelUsersResource && parts[2] != panelInvitationsPath {
+			return false
+		}
+
+		// The console's tables take the same dialog grammar as an installation's.
+		return isDialogSegments(parts[3:])
+	case panelInstallationsResource:
+		if len(parts) == 2 {
+			return true
+		}
+		if len(parts) < 4 || parts[2] == "" {
+			return false
+		}
+
+		return isPanelViewPath(parts[3], parts[4:])
 	default:
 		return false
 	}
