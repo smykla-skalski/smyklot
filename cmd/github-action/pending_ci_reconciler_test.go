@@ -112,6 +112,30 @@ func TestPendingCIReconcilerDefersUnchangedFailure(t *testing.T) {
 	}
 }
 
+func TestPendingCIReconcilerAppliesQuietPeriodChangesLive(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.August, 15, 12, 0, 0, 0, time.UTC)
+	store := &reconcilerTestStore{}
+	effects := &reconcilerTestEffects{}
+	timing := defaultPendingCITiming()
+	timing.PassingQuiet = time.Minute
+	reconciler := newPendingCIReconciler(
+		store,
+		reconcilerTestObserver{observation: reconcilerObservation(now, pendingci.ObservedPassing)},
+		effects,
+		newPendingCICoordinator(),
+		timing,
+	)
+	reconciler.SetPassingQuiet(10 * time.Second)
+
+	if err := reconciler.Process(context.Background(), reconcilerRequest(now.Add(-20*time.Second))); err != nil {
+		t.Fatal(err)
+	}
+	if effects.mergedHead != "live-head" {
+		t.Fatalf("merged head %q, want live-head after live timing change", effects.mergedHead)
+	}
+}
+
 func TestPendingCIReconcilerCompletesDurableCleanup(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, time.August, 15, 12, 0, 0, 0, time.UTC)

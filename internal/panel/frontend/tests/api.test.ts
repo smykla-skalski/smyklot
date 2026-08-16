@@ -619,6 +619,11 @@ describe('Root runtime settings', () => {
         override_seconds: null,
         effective_seconds: 300,
       },
+      merge_after_ci_quiet_period: {
+        deployment_seconds: 30,
+        override_seconds: null,
+        effective_seconds: 30,
+      },
       session_lifetime: {
         deployment_seconds: 86_400,
         override_seconds: null,
@@ -647,6 +652,11 @@ describe('Root runtime settings', () => {
         override_seconds: 90,
         effective_seconds: 90,
       },
+      merge_after_ci_quiet_period: {
+        ...runtime.merge_after_ci_quiet_period,
+        override_seconds: 45,
+        effective_seconds: 45,
+      },
       session_lifetime: {
         ...runtime.session_lifetime,
         override_seconds: 3_600,
@@ -663,6 +673,7 @@ describe('Root runtime settings', () => {
         bot_config: null,
         log_level: 'debug',
         reaction_poll_interval_seconds: 90,
+        merge_after_ci_quiet_period_seconds: 45,
         session_ttl_seconds: 3_600,
         expected_revision: 3,
       }),
@@ -677,6 +688,7 @@ describe('Root runtime settings', () => {
       bot_config: null,
       log_level: 'debug',
       reaction_poll_interval_seconds: 90,
+      merge_after_ci_quiet_period_seconds: 45,
       session_ttl_seconds: 3_600,
       expected_revision: 3,
     });

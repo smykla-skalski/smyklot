@@ -413,6 +413,11 @@ export interface RootRuntimeSettings {
     override_seconds: number | null;
     effective_seconds: number;
   };
+  merge_after_ci_quiet_period: {
+    deployment_seconds: number;
+    override_seconds: number | null;
+    effective_seconds: number;
+  };
   session_lifetime: {
     deployment_seconds: number;
     override_seconds: number | null;
@@ -437,6 +442,7 @@ export interface RootRuntimeSettingsInput {
   bot_config: ConfigValues | null;
   log_level: string | null;
   reaction_poll_interval_seconds: number | null;
+  merge_after_ci_quiet_period_seconds: number | null;
   session_ttl_seconds: number | null;
   expected_revision: number;
 }

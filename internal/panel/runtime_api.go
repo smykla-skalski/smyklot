@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/logging"
@@ -17,11 +18,12 @@ const (
 )
 
 type runtimeSettingsRequest struct {
-	BotConfig           *config.Config `json:"bot_config"`
-	LogLevel            *string        `json:"log_level"`
-	PollIntervalSeconds *int64         `json:"reaction_poll_interval_seconds"`
-	SessionTTLSeconds   *int64         `json:"session_ttl_seconds"`
-	ExpectedRevision    *int64         `json:"expected_revision"`
+	BotConfig                   *config.Config `json:"bot_config"`
+	LogLevel                    *string        `json:"log_level"`
+	PollIntervalSeconds         *int64         `json:"reaction_poll_interval_seconds"`
+	PendingCIQuietPeriodSeconds *int64         `json:"merge_after_ci_quiet_period_seconds"`
+	SessionTTLSeconds           *int64         `json:"session_ttl_seconds"`
+	ExpectedRevision            *int64         `json:"expected_revision"`
 }
 
 func (s *Server) getRootRuntimeSettings(w http.ResponseWriter, r *http.Request) {
@@ -62,6 +64,7 @@ func (s *Server) putRootRuntimeSettings(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	change.EffectivePollInterval = effective.PollInterval
+	change.EffectivePendingCIQuietPeriod = effective.PendingCIQuietPeriod
 	change.EffectiveSessionTTL = effective.SessionTTL
 	updated, err := s.store.UpdateRuntimeSettings(r.Context(), change)
 	if err != nil {
@@ -106,6 +109,15 @@ func (s *Server) runtimeSettingsChange(
 	if err != nil {
 		return storage.RuntimeSettingsChange{}, storage.RuntimeSettings{}, err
 	}
+	pendingCIQuietPeriod, err := runtimeDuration(
+		input.PendingCIQuietPeriodSeconds,
+		pendingci.MinPassingQuiet,
+		pendingci.MaxPassingQuiet,
+		"merge-after-CI quiet period",
+	)
+	if err != nil {
+		return storage.RuntimeSettingsChange{}, storage.RuntimeSettings{}, err
+	}
 	if input.LogLevel != nil {
 		if _, err := logging.ParseLevel(*input.LogLevel); err != nil {
 			return storage.RuntimeSettingsChange{}, storage.RuntimeSettings{}, err
@@ -113,11 +125,13 @@ func (s *Server) runtimeSettingsChange(
 	}
 	proposed := storage.RuntimeSettings{
 		BotConfig: botConfig, LogLevel: input.LogLevel,
-		PollInterval: pollInterval, SessionTTL: sessionTTL,
+		PollInterval: pollInterval, PendingCIQuietPeriod: pendingCIQuietPeriod,
+		SessionTTL: sessionTTL,
 	}
 	change := storage.RuntimeSettingsChange{
 		BotConfig: botConfig, LogLevel: input.LogLevel,
-		PollInterval: pollInterval, SessionTTL: sessionTTL,
+		PollInterval: pollInterval, PendingCIQuietPeriod: pendingCIQuietPeriod,
+		SessionTTL:       sessionTTL,
 		ExpectedRevision: *input.ExpectedRevision,
 		ActorAccountID:   actor.ID, ChangedAt: s.now().UTC(),
 	}

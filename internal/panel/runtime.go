@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/logging"
@@ -13,18 +14,20 @@ import (
 
 // RuntimeValues are the effective settings consumed by the running service.
 type RuntimeValues struct {
-	BotConfig    *config.Config
-	LogLevel     slog.Level
-	PollInterval time.Duration
-	SessionTTL   time.Duration
+	BotConfig            *config.Config
+	LogLevel             slog.Level
+	PollInterval         time.Duration
+	PendingCIQuietPeriod time.Duration
+	SessionTTL           time.Duration
 }
 
 func resolveRuntimeValues(cfg Config, persisted storage.RuntimeSettings) (RuntimeValues, error) {
 	values := RuntimeValues{
-		BotConfig:    cloneRuntimeConfig(cfg.ProcessConfig),
-		LogLevel:     cfg.LogLevel,
-		PollInterval: cfg.PollInterval,
-		SessionTTL:   cfg.SessionTTL,
+		BotConfig:            cloneRuntimeConfig(cfg.ProcessConfig),
+		LogLevel:             cfg.LogLevel,
+		PollInterval:         cfg.PollInterval,
+		PendingCIQuietPeriod: cfg.PendingCIQuietPeriod,
+		SessionTTL:           cfg.SessionTTL,
 	}
 	if persisted.BotConfig != nil {
 		values.BotConfig = cloneRuntimeConfig(persisted.BotConfig)
@@ -40,10 +43,16 @@ func resolveRuntimeValues(cfg Config, persisted storage.RuntimeSettings) (Runtim
 	if persisted.PollInterval != nil {
 		values.PollInterval = *persisted.PollInterval
 	}
+	if persisted.PendingCIQuietPeriod != nil {
+		values.PendingCIQuietPeriod = *persisted.PendingCIQuietPeriod
+	}
 	if persisted.SessionTTL != nil {
 		values.SessionTTL = *persisted.SessionTTL
 	}
-	if values.PollInterval < 0 || values.SessionTTL < time.Minute {
+	if values.PollInterval < 0 ||
+		values.PendingCIQuietPeriod < pendingci.MinPassingQuiet ||
+		values.PendingCIQuietPeriod > pendingci.MaxPassingQuiet ||
+		values.SessionTTL < time.Minute {
 		return RuntimeValues{}, fmt.Errorf("persisted runtime durations are invalid")
 	}
 

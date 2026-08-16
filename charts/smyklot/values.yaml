@@ -77,6 +77,10 @@ webhookPath: /webhook
 # 0 disables the sweep, and reaction commands stop working with it
 pollInterval: 5m
 
+# pendingCIQuietPeriod is how long passing checks must remain unchanged before
+# a merge-after-CI request is completed
+pendingCIQuietPeriod: 30s
+
 logFormat: json
 logLevel: info
 

@@ -67,6 +67,8 @@ spec:
               value: {{ .Values.webhookPath | quote }}
             - name: SMYKLOT_POLL_INTERVAL
               value: {{ .Values.pollInterval | quote }}
+            - name: SMYKLOT_PENDING_CI_QUIET_PERIOD
+              value: {{ .Values.pendingCIQuietPeriod | quote }}
             - name: SMYKLOT_LOG_FORMAT
               value: {{ .Values.logFormat | quote }}
             - name: SMYKLOT_LOG_LEVEL

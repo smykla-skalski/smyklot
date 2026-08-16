@@ -18,11 +18,16 @@ func (s *server) ApplyRuntimeSettings(values adminpanel.RuntimeValues) {
 	s.runtimePollInterval = values.PollInterval
 	s.runtimeMu.Unlock()
 	s.logLevel.Set(values.LogLevel)
+	quietPeriodChanged := s.pendingCIReconciler != nil &&
+		s.pendingCIReconciler.SetPassingQuiet(values.PendingCIQuietPeriod)
 	if pollIntervalChanged {
 		select {
 		case s.pollIntervalChanged <- struct{}{}:
 		default:
 		}
+	}
+	if quietPeriodChanged && s.pendingCI != nil {
+		s.pendingCI.Wake()
 	}
 }
 

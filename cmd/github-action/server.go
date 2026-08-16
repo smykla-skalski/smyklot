@@ -138,6 +138,7 @@ type server struct {
 	deliveries           *deliveryDispatcher
 	jobs                 chan job
 	pendingCI            *pendingCIScheduler
+	pendingCIReconciler  *pendingCIReconciler
 	pendingCICoordinator pendingCIExclusive
 	pendingCIHandoff     *pendingCIHandoff
 
@@ -190,6 +191,13 @@ type job struct {
 }
 
 func newServer(cfg *serveConfig) (*server, error) {
+	if cfg.pendingCIQuietPeriod == 0 {
+		cfg.pendingCIQuietPeriod = defaultPendingCIQuietPeriod
+	}
+	if cfg.pendingCIQuietPeriod < pendingci.MinPassingQuiet ||
+		cfg.pendingCIQuietPeriod > pendingci.MaxPassingQuiet {
+		return nil, ErrInvalidPendingCIQuietPeriod
+	}
 	tokens, err := githubapp.NewTokenStore(
 		cfg.appClientID, cfg.appPrivateKey, cfg.apiBaseURL, githubapp.DefaultMintTimeout)
 	if err != nil {
@@ -251,13 +259,16 @@ func newServer(cfg *serveConfig) (*server, error) {
 		server: srv, current: srv.store,
 		source: githubPendingCISourceValidator{server: srv},
 	}
+	pendingCITiming := defaultPendingCITiming()
+	pendingCITiming.PassingQuiet = cfg.pendingCIQuietPeriod
 	pendingCIReconciler := newPendingCIReconciler(
 		srv.store,
 		pendingCIBackend,
 		pendingCIBackend,
 		pendingCICoordinator,
-		defaultPendingCITiming(),
+		pendingCITiming,
 	)
+	srv.pendingCIReconciler = pendingCIReconciler
 	srv.pendingCI = newPendingCIScheduler(srv.store, pendingCIReconciler, srv.logger)
 	srv.pendingCIHandoff = &pendingCIHandoff{
 		store: srv.store, coordinator: pendingCICoordinator, wake: srv.pendingCI.Wake,

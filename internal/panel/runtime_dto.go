@@ -51,14 +51,15 @@ type runtimeServiceResponse struct {
 }
 
 type runtimeSettingsResponse struct {
-	BehaviorDefaults runtimeConfigValueResponse   `json:"behavior_defaults"`
-	LogLevel         runtimeStringValueResponse   `json:"log_level"`
-	PollInterval     runtimeDurationValueResponse `json:"reaction_poll_interval"`
-	SessionLifetime  runtimeDurationValueResponse `json:"session_lifetime"`
-	Revision         int64                        `json:"revision"`
-	UpdatedAt        *time.Time                   `json:"updated_at,omitempty"`
-	UpdatedBy        *accountResponse             `json:"updated_by,omitempty"`
-	Service          runtimeServiceResponse       `json:"service"`
+	BehaviorDefaults     runtimeConfigValueResponse   `json:"behavior_defaults"`
+	LogLevel             runtimeStringValueResponse   `json:"log_level"`
+	PollInterval         runtimeDurationValueResponse `json:"reaction_poll_interval"`
+	PendingCIQuietPeriod runtimeDurationValueResponse `json:"merge_after_ci_quiet_period"`
+	SessionLifetime      runtimeDurationValueResponse `json:"session_lifetime"`
+	Revision             int64                        `json:"revision"`
+	UpdatedAt            *time.Time                   `json:"updated_at,omitempty"`
+	UpdatedBy            *accountResponse             `json:"updated_by,omitempty"`
+	Service              runtimeServiceResponse       `json:"service"`
 }
 
 func runtimeSettingsDTO(
@@ -81,6 +82,11 @@ func runtimeSettingsDTO(
 		},
 		PollInterval: runtimeDurationDTO(
 			cfg.PollInterval, settings.PollInterval, effective.PollInterval,
+		),
+		PendingCIQuietPeriod: runtimeDurationDTO(
+			cfg.PendingCIQuietPeriod,
+			settings.PendingCIQuietPeriod,
+			effective.PendingCIQuietPeriod,
 		),
 		SessionLifetime: runtimeDurationDTO(
 			cfg.SessionTTL, settings.SessionTTL, effective.SessionTTL,

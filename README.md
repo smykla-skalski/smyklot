@@ -372,25 +372,26 @@ Point the GitHub App's webhook at `https://your-host/webhook` and set the same s
 
 ### Service configuration
 
-| Variable                       | Flag                    | Default                             | Description                                                                  |
-| ------------------------------ | ----------------------- | ----------------------------------- | ---------------------------------------------------------------------------- |
-| `SMYKLOT_WEBHOOK_SECRET`       | -                       | required                            | Secret GitHub signs deliveries with; the process refuses to start without it |
-| `SMYKLOT_LISTEN_ADDRESS`       | `--listen`              | `:8080`                             | Address to listen on                                                         |
-| `SMYKLOT_ADMIN_ADDRESS`        | `--admin-listen`        | `:9090`                             | Address for probes, metrics and recent failures                              |
-| `SMYKLOT_WEBHOOK_PATH`         | `--webhook-path`        | `/webhook`                          | Path GitHub delivers to                                                      |
-| `SMYKLOT_POLL_INTERVAL`        | `--poll-interval`       | `5m`                                | How often to sweep reactions and PRs waiting for CI; `0` disables            |
-| `SMYKLOT_LOG_FORMAT`           | `--log-format`          | `json`                              | `json` or `text`                                                             |
-| `SMYKLOT_LOG_LEVEL`            | `--log-level`           | `info`                              | `debug`, `info`, `warn` or `error`                                           |
-| `GITHUB_APP_PRIVATE_KEY`       | -                       | required                            | PEM-encoded App private key                                                  |
-| `GITHUB_APP_CLIENT_ID`         | -                       | recommended                         | App client ID, preferred for App JWTs                                        |
-| `GITHUB_APP_ID`                | -                       | optional                            | Numeric App JWT fallback when no client ID is set                            |
-| `SMYKLOT_PANEL_PUBLIC_ORIGIN`  | `--panel-public-origin` | disabled                            | Browser-visible scheme and host; setting it enables the panel                |
-| `SMYKLOT_PANEL_BASE_PATH`      | `--panel-base-path`     | `/panel`                            | Public path subtree for the panel                                            |
-| `SMYKLOT_DATABASE_URL`         | `--database-url`        | `/var/lib/smyklot/panel.sqlite3`    | Where service state lives: a `postgres://` URL, or a path for SQLite         |
-| `SMYKLOT_PANEL_SUPER_ROOT_ID`  | `--panel-super-root-id` | required when panel is enabled      | Numeric GitHub user ID assigned as the singleton Super Root                  |
-| `SMYKLOT_PANEL_SESSION_TTL`    | `--panel-session-ttl`   | `12h`                               | Signed-in panel session lifetime                                             |
-| `SMYKLOT_PANEL_CLIENT_ID`      | -                       | required when panel is enabled      | Client ID of the OAuth App that signs panel users in                         |
-| `SMYKLOT_PANEL_CLIENT_SECRET`  | -                       | required when panel is enabled      | Client secret of that OAuth App                                              |
+| Variable                          | Flag                        | Default                          | Description                                                                  |
+| --------------------------------- | --------------------------- | -------------------------------- | ---------------------------------------------------------------------------- |
+| `SMYKLOT_WEBHOOK_SECRET`          | -                           | required                         | Secret GitHub signs deliveries with; the process refuses to start without it |
+| `SMYKLOT_LISTEN_ADDRESS`          | `--listen`                  | `:8080`                          | Address to listen on                                                         |
+| `SMYKLOT_ADMIN_ADDRESS`           | `--admin-listen`            | `:9090`                          | Address for probes, metrics and recent failures                              |
+| `SMYKLOT_WEBHOOK_PATH`            | `--webhook-path`            | `/webhook`                       | Path GitHub delivers to                                                      |
+| `SMYKLOT_POLL_INTERVAL`           | `--poll-interval`           | `5m`                             | How often to sweep reactions and PRs waiting for CI; `0` disables            |
+| `SMYKLOT_PENDING_CI_QUIET_PERIOD` | `--pending-ci-quiet-period` | `30s`                            | How long passing CI must remain unchanged before Smyklot merges              |
+| `SMYKLOT_LOG_FORMAT`              | `--log-format`              | `json`                           | `json` or `text`                                                             |
+| `SMYKLOT_LOG_LEVEL`               | `--log-level`               | `info`                           | `debug`, `info`, `warn` or `error`                                           |
+| `GITHUB_APP_PRIVATE_KEY`          | -                           | required                         | PEM-encoded App private key                                                  |
+| `GITHUB_APP_CLIENT_ID`            | -                           | recommended                      | App client ID, preferred for App JWTs                                        |
+| `GITHUB_APP_ID`                   | -                           | optional                         | Numeric App JWT fallback when no client ID is set                            |
+| `SMYKLOT_PANEL_PUBLIC_ORIGIN`     | `--panel-public-origin`     | disabled                         | Browser-visible scheme and host; setting it enables the panel                |
+| `SMYKLOT_PANEL_BASE_PATH`         | `--panel-base-path`         | `/panel`                         | Public path subtree for the panel                                            |
+| `SMYKLOT_DATABASE_URL`            | `--database-url`            | `/var/lib/smyklot/panel.sqlite3` | Where service state lives: a `postgres://` URL, or a path for SQLite         |
+| `SMYKLOT_PANEL_SUPER_ROOT_ID`     | `--panel-super-root-id`     | required when panel is enabled   | Numeric GitHub user ID assigned as the singleton Super Root                  |
+| `SMYKLOT_PANEL_SESSION_TTL`       | `--panel-session-ttl`       | `12h`                            | Signed-in panel session lifetime                                             |
+| `SMYKLOT_PANEL_CLIENT_ID`         | -                           | required when panel is enabled   | Client ID of the OAuth App that signs panel users in                         |
+| `SMYKLOT_PANEL_CLIENT_SECRET`     | -                           | required when panel is enabled   | Client secret of that OAuth App                                              |
 
 The webhook secret, private key and OAuth client secret have no flag on purpose - a flag would put them in the process table. An explicit flag beats the environment for everything else.
 
@@ -447,7 +448,7 @@ Each delivery names its own installation, so the process mints a token per insta
 
 Without the panel, behaviour per repository comes from [`.github/smyklot.yaml`](#option-2-repository-config-file), layered over the process's `SMYKLOT_CONFIG`. With the panel enabled, account settings sit below the file and repository panel settings sit above it. Actions repository variables are invisible to a process running outside Actions.
 
-GitHub sends no webhook when someone adds or removes a reaction, so reaction commands are found by sweeping open pull requests on `--poll-interval`. The same sweep merges pull requests that were waiting for CI. This replaces the `poll-reactions.yaml` workflow.
+GitHub sends no webhook when someone adds or removes a reaction, so reaction commands are found by sweeping open pull requests on `--poll-interval`. Pending-CI requests use a durable scheduler and require passing checks to remain unchanged for `--pending-ci-quiet-period` before merge. This replaces the `poll-reactions.yaml` workflow.
 
 A delivery is answered before its command runs, because GitHub allows ten seconds and does not retry a delivery that times out. A redelivery of an event that already took effect is recognised and skipped.
 

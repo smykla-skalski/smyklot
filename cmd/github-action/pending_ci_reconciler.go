@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
@@ -36,6 +37,7 @@ type pendingCIReconciler struct {
 	observer  pendingCIObserver
 	effects   pendingCIEffects
 	exclusive pendingCIExclusive
+	timingMu  sync.RWMutex
 	timing    pendingci.Timing
 }
 
@@ -56,8 +58,26 @@ func defaultPendingCITiming() pendingci.Timing {
 	return pendingci.Timing{
 		ActiveInterval: 5 * time.Minute, DiscoveryGrace: 10 * time.Minute,
 		DeferAfter: time.Hour, DeferredInterval: 6 * time.Hour,
-		PassingQuiet: 30 * time.Second,
+		PassingQuiet: pendingci.DefaultPassingQuiet,
 	}
+}
+
+func (reconciler *pendingCIReconciler) SetPassingQuiet(value time.Duration) bool {
+	reconciler.timingMu.Lock()
+	defer reconciler.timingMu.Unlock()
+	if reconciler.timing.PassingQuiet == value {
+		return false
+	}
+	reconciler.timing.PassingQuiet = value
+
+	return true
+}
+
+func (reconciler *pendingCIReconciler) currentTiming() pendingci.Timing {
+	reconciler.timingMu.RLock()
+	defer reconciler.timingMu.RUnlock()
+
+	return reconciler.timing
 }
 
 func (reconciler *pendingCIReconciler) Process(
@@ -81,7 +101,7 @@ func (reconciler *pendingCIReconciler) processArmedExclusive(
 	if err != nil {
 		return fmt.Errorf("observe live GitHub state: %w", err)
 	}
-	decision, err := pendingci.Decide(request, observation, reconciler.timing)
+	decision, err := pendingci.Decide(request, observation, reconciler.currentTiming())
 	if err != nil {
 		return fmt.Errorf("decide pending CI transition: %w", err)
 	}
@@ -106,7 +126,7 @@ func (reconciler *pendingCIReconciler) mergeExclusive(
 	if err != nil {
 		return fmt.Errorf("revalidate live GitHub state: %w", err)
 	}
-	decision, err := pendingci.Decide(request, observation, reconciler.timing)
+	decision, err := pendingci.Decide(request, observation, reconciler.currentTiming())
 	if err != nil {
 		return fmt.Errorf("revalidate pending CI transition: %w", err)
 	}

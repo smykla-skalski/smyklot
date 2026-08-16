@@ -164,6 +164,7 @@ interface MockState {
     behaviorOverride: ConfigValues | null;
     logLevelOverride: string | null;
     pollIntervalOverride: number | null;
+    pendingCIQuietPeriodOverride: number | null;
     sessionTTLOverride: number | null;
     revision: number;
     updatedAt?: string;
@@ -586,6 +587,7 @@ function seed(): MockState {
       behaviorOverride: null,
       logLevelOverride: null,
       pollIntervalOverride: null,
+      pendingCIQuietPeriodOverride: null,
       sessionTTLOverride: null,
       revision: 0,
       startedAt: now,
@@ -1478,9 +1480,21 @@ async function handle(
       if (input.expected_revision !== state.runtime.revision) {
         throw new MockApiError(409, 'conflict', 'runtime settings changed; reload and try again');
       }
+      const quietPeriod = input.merge_after_ci_quiet_period_seconds;
+      if (
+        quietPeriod !== null &&
+        (!Number.isInteger(quietPeriod) || quietPeriod < 1 || quietPeriod > 86_400)
+      ) {
+        throw new MockApiError(
+          400,
+          'invalid_runtime_settings',
+          'merge-after-CI quiet period must be between 1 second and 24 hours',
+        );
+      }
       state.runtime.behaviorOverride = copyOptionalConfig(input.bot_config);
       state.runtime.logLevelOverride = input.log_level;
       state.runtime.pollIntervalOverride = input.reaction_poll_interval_seconds;
+      state.runtime.pendingCIQuietPeriodOverride = quietPeriod;
       state.runtime.sessionTTLOverride = input.session_ttl_seconds;
       state.runtime.revision += 1;
       state.runtime.updatedAt = new Date().toISOString();
@@ -2306,6 +2320,11 @@ function rootRuntimeSettingsValue(state: MockState): RootRuntimeSettings {
       deployment_seconds: 300,
       override_seconds: state.runtime.pollIntervalOverride,
       effective_seconds: state.runtime.pollIntervalOverride ?? 300,
+    },
+    merge_after_ci_quiet_period: {
+      deployment_seconds: 30,
+      override_seconds: state.runtime.pendingCIQuietPeriodOverride,
+      effective_seconds: state.runtime.pendingCIQuietPeriodOverride ?? 30,
     },
     session_lifetime: {
       deployment_seconds: 86_400,

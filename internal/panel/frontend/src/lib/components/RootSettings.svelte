@@ -71,13 +71,45 @@
           ? settingsQuery.error.message
           : String(settingsQuery.error)),
   );
-  let sessionSource = $state<'default' | 'custom'>('default');
-  let sessionAmount = $state(24);
-  let sessionUnit = $state<SessionUnit>('hours');
-  let pollSource = $state<'default' | 'disabled' | 'custom'>('default');
-  let pollAmount = $state(5);
-  let pollUnit = $state<PollUnit>('minutes');
-  let receivedRevision = $state(-1);
+  const sessionSeconds = $derived(
+    settings?.session_lifetime.override_seconds ??
+      settings?.session_lifetime.effective_seconds ??
+      SESSION_UNITS.days,
+  );
+  const sessionDisplay = $derived(durationParts(sessionSeconds));
+  let sessionSource = $derived<'default' | 'custom'>(
+    settings?.session_lifetime.override_seconds == null ? 'default' : 'custom',
+  );
+  let sessionAmount = $derived(sessionDisplay.amount);
+  let sessionUnit = $derived<SessionUnit>(sessionDisplay.unit);
+
+  const pollSeconds = $derived(
+    settings?.reaction_poll_interval.override_seconds ??
+      settings?.reaction_poll_interval.effective_seconds ??
+      POLL_UNITS.minutes * 5,
+  );
+  const pollDisplay = $derived(pollDurationParts(pollSeconds));
+  let pollSource = $derived<'default' | 'disabled' | 'custom'>(
+    settings?.reaction_poll_interval.override_seconds == null
+      ? 'default'
+      : settings.reaction_poll_interval.override_seconds === 0
+        ? 'disabled'
+        : 'custom',
+  );
+  let pollAmount = $derived(pollDisplay.amount);
+  let pollUnit = $derived<PollUnit>(pollDisplay.unit);
+
+  const quietPeriodSeconds = $derived(
+    settings?.merge_after_ci_quiet_period.override_seconds ??
+      settings?.merge_after_ci_quiet_period.effective_seconds ??
+      30,
+  );
+  const quietPeriodDisplay = $derived(pollDurationParts(quietPeriodSeconds));
+  let quietPeriodSource = $derived<'default' | 'custom'>(
+    settings?.merge_after_ci_quiet_period.override_seconds == null ? 'default' : 'custom',
+  );
+  let quietPeriodAmount = $derived(quietPeriodDisplay.amount);
+  let quietPeriodUnit = $derived<PollUnit>(quietPeriodDisplay.unit);
 
   const behaviorPatch = $derived(
     settings === null
@@ -87,28 +119,6 @@
           settings.behavior_defaults.deployment,
         ),
   );
-
-  $effect(() => {
-    if (settings === null || settings.revision === receivedRevision) return;
-    receivedRevision = settings.revision;
-    const seconds =
-      settings.session_lifetime.override_seconds ?? settings.session_lifetime.effective_seconds;
-    const display = durationParts(seconds);
-    sessionSource = settings.session_lifetime.override_seconds === null ? 'default' : 'custom';
-    sessionAmount = display.amount;
-    sessionUnit = display.unit;
-    const pollSeconds = settings.reaction_poll_interval.override_seconds;
-    if (pollSeconds === null) {
-      pollSource = 'default';
-    } else if (pollSeconds === 0) {
-      pollSource = 'disabled';
-    } else {
-      pollSource = 'custom';
-      const pollDisplay = pollDurationParts(pollSeconds);
-      pollAmount = pollDisplay.amount;
-      pollUnit = pollDisplay.unit;
-    }
-  });
 
   async function load(): Promise<void> {
     actionFailure = null;
@@ -131,8 +141,11 @@
 
   async function selectSessionSource(value: string): Promise<void> {
     if (settings === null || saving || value === sessionSource) return;
-    sessionSource = value === 'custom' ? 'custom' : 'default';
-    if (sessionSource === 'default') await update({ session_ttl_seconds: null });
+    if (value === 'custom') {
+      sessionSource = 'custom';
+      return;
+    }
+    await update({ session_ttl_seconds: null });
   }
 
   async function selectPollSource(value: string): Promise<void> {
@@ -145,6 +158,15 @@
     await update({ reaction_poll_interval_seconds: next === 'disabled' ? 0 : null });
   }
 
+  async function selectQuietPeriodSource(value: string): Promise<void> {
+    if (settings === null || saving || value === quietPeriodSource) return;
+    if (value === 'custom') {
+      quietPeriodSource = 'custom';
+      return;
+    }
+    await update({ merge_after_ci_quiet_period_seconds: null });
+  }
+
   async function savePollInterval(): Promise<void> {
     if (settings === null || saving || pollSource !== 'custom') return;
     const seconds = Math.round(pollAmount * POLL_UNITS[pollUnit]);
@@ -153,6 +175,16 @@
       return;
     }
     await update({ reaction_poll_interval_seconds: seconds });
+  }
+
+  async function saveQuietPeriod(): Promise<void> {
+    if (settings === null || saving || quietPeriodSource !== 'custom') return;
+    const seconds = Math.round(quietPeriodAmount * POLL_UNITS[quietPeriodUnit]);
+    if (!Number.isFinite(seconds) || seconds < 1 || seconds > 24 * SESSION_UNITS.hours) {
+      actionFailure = 'Merge-after-CI quiet period must be between 1 second and 24 hours';
+      return;
+    }
+    await update({ merge_after_ci_quiet_period_seconds: seconds });
   }
 
   async function saveSessionLifetime(): Promise<void> {
@@ -169,7 +201,11 @@
     change: Partial<
       Pick<
         RootRuntimeSettingsInput,
-        'bot_config' | 'log_level' | 'reaction_poll_interval_seconds' | 'session_ttl_seconds'
+        | 'bot_config'
+        | 'log_level'
+        | 'reaction_poll_interval_seconds'
+        | 'session_ttl_seconds'
+        | 'merge_after_ci_quiet_period_seconds'
       >
     >,
   ): Promise<void> {
@@ -180,6 +216,7 @@
         bot_config: settings.behavior_defaults.override,
         log_level: settings.log_level.override,
         reaction_poll_interval_seconds: settings.reaction_poll_interval.override_seconds,
+        merge_after_ci_quiet_period_seconds: settings.merge_after_ci_quiet_period.override_seconds,
         session_ttl_seconds: settings.session_lifetime.override_seconds,
         expected_revision: settings.revision,
         ...change,
@@ -347,6 +384,65 @@
                 <span class="visually-hidden">Reaction sweep interval unit</span>
                 <span class="select-wrap">
                   <select class="select-input" bind:value={pollUnit} disabled={saving}>
+                    <option value="seconds">Seconds</option>
+                    <option value="minutes">Minutes</option>
+                    <option value="hours">Hours</option>
+                  </select>
+                  <Icon name="chevron-down" size={14} strokeWidth={2} />
+                </span>
+              </label>
+              <button class="btn btn-signal" type="submit" disabled={saving}>Apply</button>
+            </form>
+          {/if}
+        </div>
+      </Plate>
+
+      <Plate label="Merge after CI">
+        {#snippet status()}
+          <span class="effective-value">
+            Effective: {formatPollInterval(current.merge_after_ci_quiet_period.effective_seconds)}
+          </span>
+        {/snippet}
+        <p class="section-intro">
+          Requires checks to remain unchanged and passing before Smyklot merges
+        </p>
+        <div class="session-editor">
+          <InheritControl
+            label="Merge-after-CI quiet period source"
+            source={DEPLOYMENT_SOURCE}
+            inheritedLabel={formatPollInterval(
+              current.merge_after_ci_quiet_period.deployment_seconds,
+            )}
+            value={quietPeriodSource === 'default' ? null : 'custom'}
+            options={SESSION_OPTIONS}
+            disabled={saving}
+            onSelect={(selection) => void selectQuietPeriodSource(selection)}
+            onRestore={() => void selectQuietPeriodSource('default')}
+          />
+          {#if quietPeriodSource === 'custom'}
+            <form
+              class="duration-form"
+              aria-label="Custom merge-after-CI quiet period"
+              onsubmit={(event) => {
+                event.preventDefault();
+                void saveQuietPeriod();
+              }}
+            >
+              <label>
+                <span class="visually-hidden">Merge-after-CI quiet period</span>
+                <input
+                  class="text-input duration-input"
+                  type="number"
+                  min="1"
+                  step="1"
+                  bind:value={quietPeriodAmount}
+                  disabled={saving}
+                />
+              </label>
+              <label>
+                <span class="visually-hidden">Merge-after-CI quiet period unit</span>
+                <span class="select-wrap">
+                  <select class="select-input" bind:value={quietPeriodUnit} disabled={saving}>
                     <option value="seconds">Seconds</option>
                     <option value="minutes">Minutes</option>
                     <option value="hours">Hours</option>
@@ -614,7 +710,7 @@
   .runtime-grid {
     display: grid;
     gap: var(--space-4);
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .inherit-caption {
@@ -734,11 +830,6 @@
     .runtime-grid,
     .service-grid {
       grid-template-columns: 1fr 1fr;
-    }
-
-    /* Three plates in two columns would leave a hole; the last one takes the row. */
-    .runtime-grid > :global(:last-child) {
-      grid-column: 1 / -1;
     }
   }
 

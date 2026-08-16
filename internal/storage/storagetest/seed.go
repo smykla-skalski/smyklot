@@ -290,18 +290,21 @@ func (s *seeder) seedRuntimeSettings() error {
 	botConfig.QuietSuccess = true
 	logLevel := "debug"
 	pollInterval := 3 * time.Minute
+	pendingCIQuietPeriod := 45 * time.Second
 	sessionTTL := 12 * time.Hour
 
 	_, err := s.store.UpdateRuntimeSettings(s.ctx, storage.RuntimeSettingsChange{
-		BotConfig:             botConfig,
-		LogLevel:              &logLevel,
-		PollInterval:          &pollInterval,
-		SessionTTL:            &sessionTTL,
-		EffectivePollInterval: pollInterval,
-		EffectiveSessionTTL:   sessionTTL,
-		ExpectedRevision:      0,
-		ActorAccountID:        s.root.ID,
-		ChangedAt:             s.now.Add(5 * time.Minute),
+		BotConfig:                     botConfig,
+		LogLevel:                      &logLevel,
+		PollInterval:                  &pollInterval,
+		PendingCIQuietPeriod:          &pendingCIQuietPeriod,
+		SessionTTL:                    &sessionTTL,
+		EffectivePollInterval:         pollInterval,
+		EffectivePendingCIQuietPeriod: pendingCIQuietPeriod,
+		EffectiveSessionTTL:           sessionTTL,
+		ExpectedRevision:              0,
+		ActorAccountID:                s.root.ID,
+		ChangedAt:                     s.now.Add(5 * time.Minute),
 	})
 
 	return err

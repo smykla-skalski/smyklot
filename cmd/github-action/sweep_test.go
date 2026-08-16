@@ -109,7 +109,8 @@ var _ = Describe("Reaction sweep [Unit]", func() {
 
 		service.ApplyRuntimeSettings(adminpanel.RuntimeValues{
 			BotConfig: config.Default(), LogLevel: slog.LevelInfo,
-			PollInterval: 10 * time.Millisecond, SessionTTL: time.Hour,
+			PollInterval: 10 * time.Millisecond, PendingCIQuietPeriod: 30 * time.Second,
+			SessionTTL: time.Hour,
 		})
 		Eventually(func() int {
 			return stub.countCalls(http.MethodGet, "/app/installations")

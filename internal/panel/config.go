@@ -10,18 +10,20 @@ import (
 	"strings"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
 const (
-	DefaultBasePath   = "/panel"
-	DefaultSessionTTL = 12 * time.Hour
-	DefaultStateTTL   = 10 * time.Minute
-	DefaultPageSize   = 20
-	MaxPageSize       = 100
-	MaxSessions       = 5
-	httpScheme        = "http"
-	httpsScheme       = "https"
+	DefaultBasePath             = "/panel"
+	DefaultPendingCIQuietPeriod = pendingci.DefaultPassingQuiet
+	DefaultSessionTTL           = 12 * time.Hour
+	DefaultStateTTL             = 10 * time.Minute
+	DefaultPageSize             = 20
+	MaxPageSize                 = 100
+	MaxSessions                 = 5
+	httpScheme                  = "http"
+	httpsScheme                 = "https"
 )
 
 var errInvalidConfig = errors.New("invalid panel configuration")
@@ -49,6 +51,7 @@ type Config struct {
 	WebhookPath              string
 	LogLevel                 slog.Level
 	PollInterval             time.Duration
+	PendingCIQuietPeriod     time.Duration
 	SessionTTL               time.Duration
 	StateTTL                 time.Duration
 	ProcessConfig            *config.Config
@@ -85,6 +88,9 @@ func (c Config) validated() (Config, error) {
 	if c.SessionTTL == 0 {
 		c.SessionTTL = DefaultSessionTTL
 	}
+	if c.PendingCIQuietPeriod == 0 {
+		c.PendingCIQuietPeriod = DefaultPendingCIQuietPeriod
+	}
 	if c.StateTTL == 0 {
 		c.StateTTL = DefaultStateTTL
 	}
@@ -93,6 +99,15 @@ func (c Config) validated() (Config, error) {
 	}
 	if c.PollInterval < 0 {
 		return Config{}, fmt.Errorf("%w: reaction sweep interval cannot be negative", errInvalidConfig)
+	}
+	if c.PendingCIQuietPeriod < pendingci.MinPassingQuiet ||
+		c.PendingCIQuietPeriod > pendingci.MaxPassingQuiet {
+		return Config{}, fmt.Errorf(
+			"%w: merge-after-CI quiet period must be between %s and %s",
+			errInvalidConfig,
+			pendingci.MinPassingQuiet,
+			pendingci.MaxPassingQuiet,
+		)
 	}
 	if c.ProcessConfig == nil {
 		c.ProcessConfig = config.Default()

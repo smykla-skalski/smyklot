@@ -21,6 +21,7 @@ var serveEnv = []string{
 	envAdminAddress,
 	envWebhookPath,
 	envPollInterval,
+	envPendingCIQuietPeriod,
 	envLogFormat,
 	envLogLevel,
 	envDatabase,
@@ -64,6 +65,11 @@ func loadServe(env map[string]string, args ...string) (*serveConfig, error) {
 	cmd.Flags().String(flagAdminListen, defaultAdminAddress, descAdminListen)
 	cmd.Flags().String(flagWebhookPath, defaultWebhookPath, descWebhookPath)
 	cmd.Flags().Duration(flagPollInterval, defaultPollInterval, descPollInterval)
+	cmd.Flags().Duration(
+		flagPendingCIQuietPeriod,
+		defaultPendingCIQuietPeriod,
+		descPendingCIQuietPeriod,
+	)
 	cmd.Flags().String(flagLogFormat, defaultLogFormat, descLogFormat)
 	cmd.Flags().String(flagLogLevel, defaultLogLevel, descLogLevel)
 	cmd.Flags().String(flagDatabase, defaultState, descDatabase)
@@ -96,6 +102,7 @@ var _ = Describe("Serve configuration [Unit]", func() {
 		Expect(cfg.listenAddress).To(Equal(defaultListenAddress))
 		Expect(cfg.webhookPath).To(Equal(defaultWebhookPath))
 		Expect(cfg.pollInterval).To(Equal(defaultPollInterval))
+		Expect(cfg.pendingCIQuietPeriod).To(Equal(defaultPendingCIQuietPeriod))
 		Expect(cfg.botUsername).To(Equal(defaultBotUsername))
 		Expect(cfg.database).To(Equal(defaultState))
 	})
@@ -120,12 +127,13 @@ var _ = Describe("Serve configuration [Unit]", func() {
 	Context("precedence", func() {
 		It("should take settings from the environment", func() {
 			cfg, err := loadServe(map[string]string{
-				envListenAddress: "127.0.0.1:9000",
-				envAdminAddress:  "127.0.0.1:9001",
-				envWebhookPath:   "/hooks/smyklot",
-				envPollInterval:  "90s",
-				envLogFormat:     "text",
-				envLogLevel:      "debug",
+				envListenAddress:        "127.0.0.1:9000",
+				envAdminAddress:         "127.0.0.1:9001",
+				envWebhookPath:          "/hooks/smyklot",
+				envPollInterval:         "90s",
+				envPendingCIQuietPeriod: "45s",
+				envLogFormat:            "text",
+				envLogLevel:             "debug",
 			})
 			Expect(err).NotTo(HaveOccurred())
 
@@ -133,6 +141,7 @@ var _ = Describe("Serve configuration [Unit]", func() {
 			Expect(cfg.adminAddress).To(Equal("127.0.0.1:9001"))
 			Expect(cfg.webhookPath).To(Equal("/hooks/smyklot"))
 			Expect(cfg.pollInterval).To(Equal(90 * time.Second))
+			Expect(cfg.pendingCIQuietPeriod).To(Equal(45 * time.Second))
 			Expect(cfg.logFormat).To(Equal(logging.FormatText))
 			Expect(cfg.logLevel).To(Equal(slog.LevelDebug))
 		})
@@ -140,16 +149,19 @@ var _ = Describe("Serve configuration [Unit]", func() {
 		It("should let an explicit flag beat the environment", func() {
 			cfg, err := loadServe(
 				map[string]string{
-					envListenAddress: "127.0.0.1:9000",
-					envPollInterval:  "90s",
+					envListenAddress:        "127.0.0.1:9000",
+					envPollInterval:         "90s",
+					envPendingCIQuietPeriod: "45s",
 				},
 				"--listen", "127.0.0.1:9999",
 				"--poll-interval", "30s",
+				"--pending-ci-quiet-period", "20s",
 			)
 			Expect(err).NotTo(HaveOccurred())
 
 			Expect(cfg.listenAddress).To(Equal("127.0.0.1:9999"))
 			Expect(cfg.pollInterval).To(Equal(30 * time.Second))
+			Expect(cfg.pendingCIQuietPeriod).To(Equal(20 * time.Second))
 		})
 	})
 
@@ -163,6 +175,15 @@ var _ = Describe("Serve configuration [Unit]", func() {
 			_, err := loadServe(map[string]string{envPollInterval: "every-so-often"})
 			Expect(err).To(MatchError(ErrInvalidPollInterval))
 		})
+
+		DescribeTable("should reject an unsupported pending-CI quiet period", func(value string) {
+			_, err := loadServe(map[string]string{envPendingCIQuietPeriod: value})
+			Expect(err).To(MatchError(ErrInvalidPendingCIQuietPeriod))
+		},
+			Entry("zero", "0"),
+			Entry("sub-second", "500ms"),
+			Entry("over one day", "25h"),
+		)
 
 		// Turning the sweep off is a legitimate choice for an operator running
 		// it out of band

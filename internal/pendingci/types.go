@@ -7,6 +7,16 @@ import (
 	"time"
 )
 
+const (
+	// MinPassingQuiet is the shortest supported stable-passing window.
+	MinPassingQuiet = time.Second
+	// DefaultPassingQuiet is how long a stable passing observation must remain
+	// unchanged before a pending-CI request may merge.
+	DefaultPassingQuiet = 30 * time.Second
+	// MaxPassingQuiet keeps runtime settings representable by every API client.
+	MaxPassingQuiet = 24 * time.Hour
+)
+
 type Lifecycle string
 
 const (

@@ -16,56 +16,60 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage/open"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/logging"
 )
 
 const (
-	flagListen           = "listen"
-	flagAdminListen      = "admin-listen"
-	flagWebhookPath      = "webhook-path"
-	flagPollInterval     = "poll-interval"
-	flagLogFormat        = "log-format"
-	flagLogLevel         = "log-level"
-	flagDatabase         = "database-url"
-	flagState            = "state-path"
-	flagPanelOrigin      = "panel-public-origin"
-	flagPanelBase        = "panel-base-path"
-	flagPanelState       = "panel-state-path" // Deprecated compatibility alias.
-	flagPanelSuperRootID = "panel-super-root-id"
-	flagPanelTTL         = "panel-session-ttl"
+	flagListen               = "listen"
+	flagAdminListen          = "admin-listen"
+	flagWebhookPath          = "webhook-path"
+	flagPollInterval         = "poll-interval"
+	flagPendingCIQuietPeriod = "pending-ci-quiet-period"
+	flagLogFormat            = "log-format"
+	flagLogLevel             = "log-level"
+	flagDatabase             = "database-url"
+	flagState                = "state-path"
+	flagPanelOrigin          = "panel-public-origin"
+	flagPanelBase            = "panel-base-path"
+	flagPanelState           = "panel-state-path" // Deprecated compatibility alias.
+	flagPanelSuperRootID     = "panel-super-root-id"
+	flagPanelTTL             = "panel-session-ttl"
 
-	descListen           = "Address to listen on"
-	descAdminListen      = "Address to serve probes, metrics and recent failures on"
-	descWebhookPath      = "Path GitHub delivers webhooks to"
-	descPollInterval     = "How often to sweep reactions and pending-CI PRs (0 disables)"
-	descLogFormat        = "Log format: json or text"
-	descLogLevel         = "Log level: debug, info, warn or error"
-	descDatabase         = "Database to store service state in: a postgres:// URL or a file path"
-	descState            = "Deprecated alias for --database-url"
-	descPanelOrigin      = "Public origin for the panel (empty disables it)"
-	descPanelBase        = "Path subtree that serves the panel"
-	descPanelState       = "Deprecated alias for --database-url"
-	descPanelSuperRootID = "Numeric GitHub user ID assigned as the panel Super Root"
-	descPanelTTL         = "How long a signed-in panel session remains valid"
+	descListen               = "Address to listen on"
+	descAdminListen          = "Address to serve probes, metrics and recent failures on"
+	descWebhookPath          = "Path GitHub delivers webhooks to"
+	descPollInterval         = "How often to sweep reactions and pending-CI PRs (0 disables)"
+	descPendingCIQuietPeriod = "How long CI must remain unchanged and passing before merge"
+	descLogFormat            = "Log format: json or text"
+	descLogLevel             = "Log level: debug, info, warn or error"
+	descDatabase             = "Database to store service state in: a postgres:// URL or a file path"
+	descState                = "Deprecated alias for --database-url"
+	descPanelOrigin          = "Public origin for the panel (empty disables it)"
+	descPanelBase            = "Path subtree that serves the panel"
+	descPanelState           = "Deprecated alias for --database-url"
+	descPanelSuperRootID     = "Numeric GitHub user ID assigned as the panel Super Root"
+	descPanelTTL             = "How long a signed-in panel session remains valid"
 
-	envListenAddress    = "SMYKLOT_LISTEN_ADDRESS"
-	envAdminAddress     = "SMYKLOT_ADMIN_ADDRESS"
-	envWebhookPath      = "SMYKLOT_WEBHOOK_PATH"
-	envWebhookSecret    = "SMYKLOT_WEBHOOK_SECRET" //nolint:gosec // Environment variable name, not a credential
-	envPollInterval     = "SMYKLOT_POLL_INTERVAL"
-	envLogFormat        = "SMYKLOT_LOG_FORMAT"
-	envLogLevel         = "SMYKLOT_LOG_LEVEL"
-	envDatabase         = "SMYKLOT_DATABASE_URL"
-	envState            = "SMYKLOT_STATE_PATH"
-	envPanelOrigin      = "SMYKLOT_PANEL_PUBLIC_ORIGIN"
-	envPanelBase        = "SMYKLOT_PANEL_BASE_PATH"
-	envPanelState       = "SMYKLOT_PANEL_STATE_PATH" // Deprecated compatibility alias.
-	envPanelSuperRootID = "SMYKLOT_PANEL_SUPER_ROOT_ID"
-	envPanelTTL         = "SMYKLOT_PANEL_SESSION_TTL"
-	envGitHubAuthURL    = "SMYKLOT_GITHUB_AUTHORIZE_URL"
-	envGitHubTokenURL   = "SMYKLOT_GITHUB_TOKEN_URL" //nolint:gosec // Environment variable name, not a credential
+	envListenAddress        = "SMYKLOT_LISTEN_ADDRESS"
+	envAdminAddress         = "SMYKLOT_ADMIN_ADDRESS"
+	envWebhookPath          = "SMYKLOT_WEBHOOK_PATH"
+	envWebhookSecret        = "SMYKLOT_WEBHOOK_SECRET" //nolint:gosec // Environment variable name, not a credential
+	envPollInterval         = "SMYKLOT_POLL_INTERVAL"
+	envPendingCIQuietPeriod = "SMYKLOT_PENDING_CI_QUIET_PERIOD"
+	envLogFormat            = "SMYKLOT_LOG_FORMAT"
+	envLogLevel             = "SMYKLOT_LOG_LEVEL"
+	envDatabase             = "SMYKLOT_DATABASE_URL"
+	envState                = "SMYKLOT_STATE_PATH"
+	envPanelOrigin          = "SMYKLOT_PANEL_PUBLIC_ORIGIN"
+	envPanelBase            = "SMYKLOT_PANEL_BASE_PATH"
+	envPanelState           = "SMYKLOT_PANEL_STATE_PATH" // Deprecated compatibility alias.
+	envPanelSuperRootID     = "SMYKLOT_PANEL_SUPER_ROOT_ID"
+	envPanelTTL             = "SMYKLOT_PANEL_SESSION_TTL"
+	envGitHubAuthURL        = "SMYKLOT_GITHUB_AUTHORIZE_URL"
+	envGitHubTokenURL       = "SMYKLOT_GITHUB_TOKEN_URL" //nolint:gosec // Environment variable name, not a credential
 
 	// Panel sign-in deliberately does not reuse the App's OAuth credentials.
 	// Authorizing a GitHub App shows the consent screen the App registration
@@ -77,10 +81,11 @@ const (
 	envPanelClientID     = "SMYKLOT_PANEL_CLIENT_ID"
 	envPanelClientSecret = "SMYKLOT_PANEL_CLIENT_SECRET" //nolint:gosec // Environment variable name, not a credential
 
-	defaultListenAddress = ":8080"
-	defaultAdminAddress  = ":9090"
-	defaultWebhookPath   = "/webhook"
-	defaultPollInterval  = 5 * time.Minute
+	defaultListenAddress        = ":8080"
+	defaultAdminAddress         = ":9090"
+	defaultWebhookPath          = "/webhook"
+	defaultPollInterval         = 5 * time.Minute
+	defaultPendingCIQuietPeriod = pendingci.DefaultPassingQuiet
 
 	// defaultLogFormat is JSON because the service's lines are read by a query,
 	// not by a person. The Action keeps writing for a person to read
@@ -113,6 +118,9 @@ var (
 
 	// ErrInvalidPollInterval is returned when the poll interval is unparseable
 	ErrInvalidPollInterval = errors.New("invalid poll interval")
+
+	// ErrInvalidPendingCIQuietPeriod is returned for an invalid stability window.
+	ErrInvalidPendingCIQuietPeriod = errors.New("invalid pending-CI quiet period")
 
 	// ErrStateConfig is returned when mandatory durable state cannot be configured.
 	ErrStateConfig = errors.New("invalid service state configuration")
@@ -160,6 +168,11 @@ func init() {
 	serveCmd.Flags().String(flagAdminListen, defaultAdminAddress, descAdminListen)
 	serveCmd.Flags().String(flagWebhookPath, defaultWebhookPath, descWebhookPath)
 	serveCmd.Flags().Duration(flagPollInterval, defaultPollInterval, descPollInterval)
+	serveCmd.Flags().Duration(
+		flagPendingCIQuietPeriod,
+		defaultPendingCIQuietPeriod,
+		descPendingCIQuietPeriod,
+	)
 	serveCmd.Flags().String(flagLogFormat, defaultLogFormat, descLogFormat)
 	serveCmd.Flags().String(flagLogLevel, defaultLogLevel, descLogLevel)
 	serveCmd.Flags().String(flagDatabase, defaultState, descDatabase)
@@ -181,10 +194,11 @@ func init() {
 
 // serveConfig is everything the service needs to start.
 type serveConfig struct {
-	listenAddress string
-	webhookPath   string
-	webhookSecret []byte
-	pollInterval  time.Duration
+	listenAddress        string
+	webhookPath          string
+	webhookSecret        []byte
+	pollInterval         time.Duration
+	pendingCIQuietPeriod time.Duration
 
 	// adminAddress carries the probes, metrics and recent failures, on its own
 	// port because the webhook port is reachable from the internet
@@ -326,7 +340,7 @@ func applyPanelFlags(cmd *cobra.Command, cfg *serveConfig) error {
 	if err != nil {
 		return err
 	}
-	ttl, err = flagOrEnvDuration(cmd, flagPanelTTL, ttl, envPanelTTL)
+	ttl, err = flagOrEnvDuration(cmd, flagPanelTTL, ttl, envPanelTTL, ErrPanelConfig)
 	if err != nil {
 		return fmt.Errorf("%w: invalid session TTL", ErrPanelConfig)
 	}
@@ -459,9 +473,29 @@ func applyServeFlags(cmd *cobra.Command, cfg *serveConfig) error {
 		return err
 	}
 
-	cfg.pollInterval, err = flagOrEnvDuration(cmd, flagPollInterval, interval, envPollInterval)
+	cfg.pollInterval, err = flagOrEnvDuration(
+		cmd, flagPollInterval, interval, envPollInterval, ErrInvalidPollInterval,
+	)
 	if err != nil {
 		return err
+	}
+	quietPeriod, err := cmd.Flags().GetDuration(flagPendingCIQuietPeriod)
+	if err != nil {
+		return err
+	}
+	cfg.pendingCIQuietPeriod, err = flagOrEnvDuration(
+		cmd,
+		flagPendingCIQuietPeriod,
+		quietPeriod,
+		envPendingCIQuietPeriod,
+		ErrInvalidPendingCIQuietPeriod,
+	)
+	if err != nil {
+		return err
+	}
+	if cfg.pendingCIQuietPeriod < pendingci.MinPassingQuiet ||
+		cfg.pendingCIQuietPeriod > pendingci.MaxPassingQuiet {
+		return ErrInvalidPendingCIQuietPeriod
 	}
 
 	return applyLogFlags(cmd, cfg)
@@ -561,6 +595,7 @@ func flagOrEnvDuration(
 	flagName string,
 	flagValue time.Duration,
 	envVar string,
+	invalid error,
 ) (time.Duration, error) {
 	if cmd.Flags().Changed(flagName) {
 		return flagValue, nil
@@ -573,7 +608,7 @@ func flagOrEnvDuration(
 
 	parsed, err := time.ParseDuration(raw)
 	if err != nil {
-		return 0, NewInputError(ErrInvalidPollInterval, raw, err.Error())
+		return 0, NewInputError(invalid, raw, err.Error())
 	}
 
 	return parsed, nil
