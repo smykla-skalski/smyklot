@@ -55,7 +55,16 @@ func (s *server) applySyncPlans(ctx context.Context) error {
 		Now:    finishedAt,
 
 		Applied: outcome.Applied,
-	}); err != nil {
+	}); errors.Is(err, storage.ErrConflict) {
+		// Somebody changed the configuration while this ran, so the plan was
+		// marked stale underneath it. The work that happened is recorded against
+		// each action; what is refused is the claim that the repositories now
+		// match, because they match a scope that has since moved.
+		logging.From(ctx).Warn("sync plan went stale while it was being applied",
+			"actions", len(outcome.Actions))
+
+		return nil
+	} else if err != nil {
 		return fmt.Errorf("finish sync plan: %w", err)
 	}
 

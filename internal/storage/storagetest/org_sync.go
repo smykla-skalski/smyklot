@@ -70,6 +70,25 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 		return plan
 	}
 
+	// approveAndLease puts a plan into the state an executor holds it in, which
+	// is the only state it may be closed from.
+	approveAndLease := func(
+		ctx context.Context, store storage.Store, actor, planID, digest string, now time.Time,
+	) orgsync.PlanLease {
+		GinkgoHelper()
+
+		_, err := store.ApproveSyncPlan(ctx, orgsync.PlanApproval{
+			PlanID: planID, Digest: digest, ActorID: actor, Now: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		lease, err := store.LeaseSyncPlan(ctx, now, now.Add(time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(lease.Found).To(BeTrue())
+
+		return lease
+	}
+
 	action := func(repo string, operation orgsync.Operation, subject string) orgsync.Action {
 		return orgsync.Action{
 			RepositoryID: repo, Kind: orgsync.KindLabels,
@@ -234,12 +253,26 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 			ctx, store, now := runtime()
 			account := seed(ctx, store, now)
 			planFor(ctx, store, "plan-1", account.ID, "digest-1", now, nil)
+			approveAndLease(ctx, store, account.ID, "plan-1", "digest-1", now)
 
 			Expect(store.FinishSyncPlan(ctx, orgsync.PlanOutcome{
 				PlanID: "plan-1", State: orgsync.PlanApplied, Now: now,
 			})).To(Succeed())
 
 			planFor(ctx, store, "plan-2", account.ID, "digest-1", now, nil)
+		})
+
+		// Only the executor holding it may close a plan. Anything else is a
+		// caller finishing work it never started
+		It("refuses to close a plan nobody is applying", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			planFor(ctx, store, "plan-1", account.ID, "digest-1", now, nil)
+
+			err := store.FinishSyncPlan(ctx, orgsync.PlanOutcome{
+				PlanID: "plan-1", State: orgsync.PlanApplied, Now: now,
+			})
+			Expect(errors.Is(err, storage.ErrConflict)).To(BeTrue())
 		})
 
 		It("approves a plan whose fingerprint still matches", func() {
@@ -338,6 +371,42 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 			// And the slot is free, so the next planner can compute against
 			// what the configuration now says
 			planFor(ctx, store, "plan-2", account.ID, "digest-2", now, nil)
+		})
+
+		// The dangerous direction: a plan that went stale while an executor was
+		// applying it must not go on to record what each repository now has.
+		// Those digests are what the next reconcile trusts, and they would
+		// describe a scope that has since moved - so every repository needing
+		// exactly the change nobody applied would be skipped for ever.
+		It("refuses to record a scope for a plan that went stale mid-flight", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			config := writeConfig(ctx, store, account.ID, now, `{"labels":[]}`, 0)
+			planFor(ctx, store, "plan-1", account.ID, config.Digest, now, nil)
+			approveAndLease(ctx, store, account.ID, "plan-1", config.Digest, now)
+
+			// Somebody saves while the work is running.
+			writeConfig(ctx, store, account.ID, now.Add(time.Minute),
+				`{"labels":[{"name":"bug"}]}`, config.Revision)
+
+			err := store.FinishSyncPlan(ctx, orgsync.PlanOutcome{
+				PlanID: "plan-1", State: orgsync.PlanApplied, Now: now,
+				Applied: []orgsync.RepositoryState{{
+					RepositoryID: repoA, Kind: orgsync.KindLabels,
+					AppliedDigest: "digest-from-the-old-scope", AppliedAt: now,
+				}},
+			})
+			Expect(errors.Is(err, storage.ErrConflict)).To(BeTrue())
+
+			// The plan stays stale rather than being reported as applied, and
+			// the repository is left looking un-synchronised, which it is
+			read, _, err := store.GetSyncPlan(ctx, "plan-1")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(read.State).To(Equal(orgsync.PlanStale))
+
+			state, err := store.ListSyncRepositoryState(ctx, target)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(state).To(BeEmpty())
 		})
 
 		// Turning a kind off for one repository removes its actions just as
@@ -507,6 +576,7 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 
 			later := now.Add(time.Hour)
 			planFor(ctx, store, "plan-2", account.ID, "digest-2", later, nil)
+			approveAndLease(ctx, store, account.ID, "plan-2", "digest-2", later)
 			applied[0].AppliedDigest = "digest-2"
 			applied[0].AppliedAt = later
 			Expect(store.FinishSyncPlan(ctx, orgsync.PlanOutcome{

@@ -423,20 +423,31 @@ func (s *Store) FinishSyncPlan(ctx context.Context, outcome orgsync.PlanOutcome)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	result, err := tx.ExecContext(ctx, `
-UPDATE sync_plans SET state = ?, finished_at = ?, lease_expires_at = NULL WHERE id = ?`,
-		outcome.State, outcome.Now, outcome.PlanID,
-	)
+	// Only a plan this executor still holds. A configuration saved while the
+	// work was running marks it stale, and closing it anyway would report
+	// "applied" for a plan the service had already decided was out of date -
+	// and, worse, record what each repository now has from a scope that has
+	// since moved, so the next reconcile would skip repositories that need
+	// exactly the change nobody applied.
+	var state orgsync.PlanState
+	err = tx.QueryRowContext(ctx,
+		`SELECT state FROM sync_plans WHERE id = ?`+s.dialect.RowLock(), outcome.PlanID,
+	).Scan(&state)
+	if errors.Is(err, sql.ErrNoRows) {
+		return storage.ErrNotFound
+	}
 	if err != nil {
-		return fmt.Errorf("finish sync plan: %w", err)
+		return fmt.Errorf("read sync plan to finish: %w", err)
+	}
+	if state != orgsync.PlanApplying {
+		return storage.ErrConflict
 	}
 
-	affected, err := result.RowsAffected()
-	if err != nil {
+	if _, err := tx.ExecContext(ctx, `
+UPDATE sync_plans SET state = ?, finished_at = ?, lease_expires_at = NULL WHERE id = ?`,
+		outcome.State, outcome.Now, outcome.PlanID,
+	); err != nil {
 		return fmt.Errorf("finish sync plan: %w", err)
-	}
-	if affected == 0 {
-		return storage.ErrNotFound
 	}
 
 	for _, state := range outcome.Applied {
