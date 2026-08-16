@@ -9,6 +9,8 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
+func ptr[T any](value T) *T { return &value }
+
 // parseAs adapts ParsePatch to the one-argument shape the format table shares
 // with ParseStoredPatch, whose format is not something a caller may name.
 func parseAs(format config.Format) func([]byte) (config.Patch, error) {
@@ -285,6 +287,43 @@ var _ = Describe("RenderTOML [Unit]", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(read).To(Equal(patch))
 	})
+
+	// The migration converts a repository's file by rendering what it read, so
+	// a value TOML has to quote differently from YAML is where it would
+	// silently change meaning. A dotted alias key in particular: bare keys
+	// cannot hold a dot, and one written unquoted would read back as a nested
+	// table rather than as the alias somebody wrote.
+	//
+	// What is compared is the configuration the file resolves to, not the patch
+	// it decodes into. Those are not the same assertion: go-toml reads an empty
+	// table as a non-nil pointer to a nil map, where the patch that produced it
+	// held an empty one. Both mean "this repository sets no aliases", both
+	// resolve identically, and holding the decoder to the stricter reading
+	// would be testing go-toml rather than the migration.
+	DescribeTable("round trips a value that has to be quoted",
+		func(patch config.Patch) {
+			content, err := config.RenderTOML(patch)
+			Expect(err).NotTo(HaveOccurred())
+
+			read, err := config.ParsePatch(config.FormatTOML, content)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(read.SetKeys()).To(Equal(patch.SetKeys()))
+			Expect(config.ApplyPatch(config.Default(), read)).
+				To(Equal(config.ApplyPatch(config.Default(), patch)))
+		},
+		Entry("an empty list", config.Patch{AllowedCommands: &[]string{}}),
+		Entry("an empty mapping", config.Patch{CommandAliases: &map[string]string{}}),
+		Entry("a prefix of quotes and backslashes",
+			config.Patch{CommandPrefix: ptr(`"\ !`)}),
+		Entry("alias names TOML cannot spell bare", config.Patch{
+			CommandAliases: &map[string]string{
+				"a.b":        "approve",
+				"with space": "merge",
+				"":           "help",
+			},
+		}),
+	)
 
 	// A file says what a repository chose. Writing out the settings it did not
 	// choose would pin twelve defaults it never asked for, and the next time a
