@@ -14,7 +14,7 @@ Smyklot is a GitHub App that automates pull request approvals and merges by vali
 - Reaction-based commands - use 👍 to approve, 🚀 to merge, or ❤️ to cleanup
 - Cleanup command - removes all bot reactions, approvals, and comments with a single command
 - Approval deduplication - prevents duplicate approvals with smart reaction handling
-- Flexible configuration - configure via `SMYKLOT_CONFIG` JSON, individual variables, or environment variables
+- Flexible configuration - a TOML file in the repository, one `SMYKLOT_CONFIG` document, individual variables, or flags
 - Emoji feedback - instant visual confirmation with ✅ (success), ❌ (error), or ⚠️ (warning)
 - Comment edit/delete handling - reacts to command edits and posts a notice when an approve/merge command comment is deleted
 - Reaction removal tracking - automatically removes approvals/merges when reactions are removed
@@ -198,29 +198,28 @@ The environment document sits below the individual variables so that changing on
 
 That block is generated from `config.PrecedenceDoc`, and a test fails if this copy of it goes stale.
 
-#### Option 1: Full JSON configuration (recommended)
+#### Option 1: A whole configuration in one variable
 
-Set a `SMYKLOT_CONFIG` repository variable with your complete configuration:
+Set a `SMYKLOT_CONFIG` repository variable to a TOML document:
 
-```json
-{
-  "quiet_success": false,
-  "quiet_reactions": false,
-  "quiet_pending": false,
-  "allowed_commands": ["approve", "merge"],
-  "command_aliases": {
-    "ok": "approve",
-    "ship": "merge"
-  },
-  "command_prefix": "/",
-  "disable_mentions": false,
-  "disable_bare_commands": false,
-  "disable_unapprove": false,
-  "disable_reactions": false,
-  "disable_deleted_comments": false,
-  "allow_self_approval": false
-}
+```toml
+quiet_success = false
+quiet_reactions = false
+quiet_pending = false
+allowed_commands = ["approve", "merge"]
+command_aliases = { ok = "approve", ship = "merge" }
+command_prefix = "/"
+disable_mentions = false
+disable_bare_commands = false
+disable_unapprove = false
+disable_reactions = false
+disable_deleted_comments = false
+allow_self_approval = false
 ```
+
+A variable still holding the JSON object this used to be is read as before, and Smyklot warns at startup. It cannot open a pull request migrating that one: the App has no permission to write Actions variables.
+
+An unknown key refuses to start. A typo in `allowed_commands` used to be dropped without a word, which left every command allowed.
 
 #### Option 2: Repository config file
 
@@ -266,6 +265,10 @@ Configure individual settings via repository variables or environment variables 
 | `SMYKLOT_RUNNER`                   | string  | `service`      | Which entry point acts: `service` or `action`; the other stands down       |
 | `SMYKLOT_BOT_USERNAME`             | string  | `smyklot[bot]` | Bot username for cleanup operations (GitHub App format: `{app-slug}[bot]`) |
 | `SMYKLOT_GITHUB_API_URL`           | string  | public API     | REST API base URL for a proxy or mirror (Enterprise is not supported)      |
+
+A list is separated by commas or whitespace, and a map is written `name=value` pairs the same way: `SMYKLOT_COMMAND_ALIASES="ok=approve,ship=merge"`. A variable set to nothing counts as unset, so a workflow forwarding an input nobody filled in changes nothing.
+
+Every setting except `runner` also takes a command-line flag named after it, and `--config-file` names a TOML file of them.
 
 #### Configuration examples
 

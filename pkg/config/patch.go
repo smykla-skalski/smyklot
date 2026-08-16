@@ -4,6 +4,7 @@ package config
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -26,6 +27,12 @@ const (
 	// layered the same way, so a repository that has not migrated keeps
 	// working. Nothing new is written in it.
 	FormatYAML Format = "yaml"
+
+	// formatJSON is the shape SMYKLOT_CONFIG used to be written in. It is
+	// unexported because no file may be written in it: it exists for one
+	// variable that is already deployed, and FormatOf must never hand it back
+	// for a path.
+	formatJSON Format = "json"
 )
 
 // FormatOf reports how the file at path is written.
@@ -197,6 +204,16 @@ func decode(format Format, content []byte, patch *Patch) error {
 
 		return rejectLaterSettings(decoder)
 
+	case formatJSON:
+		decoder := json.NewDecoder(bytes.NewReader(content))
+		decoder.DisallowUnknownFields()
+
+		if err := emptyIsNothing(decoder.Decode(patch)); err != nil {
+			return err
+		}
+
+		return rejectTrailingDocument(decoder)
+
 	default:
 		return fmt.Errorf("%w: %q", ErrUnknownFormat, format)
 	}
@@ -231,6 +248,19 @@ func rejectLaterSettings(decoder *yaml.Decoder) error {
 			return fmt.Errorf("%w: %s", ErrMultipleDocuments, strings.Join(later.SetKeys(), ", "))
 		}
 	}
+}
+
+// rejectTrailingDocument refuses JSON with anything after the first value.
+//
+// A decoder stops at the end of that value and says nothing about what
+// follows, so two documents in one variable would silently be one - the same
+// hole rejectLaterSettings closes for YAML.
+func rejectTrailingDocument(decoder *json.Decoder) error {
+	if err := decoder.Decode(new(json.RawMessage)); !errors.Is(err, io.EOF) {
+		return ErrTrailingContent
+	}
+
+	return nil
 }
 
 // emptyIsNothing reads "the decoder found no values" as setting nothing.

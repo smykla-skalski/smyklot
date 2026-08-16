@@ -1,10 +1,7 @@
 package config
 
 import (
-	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -190,22 +187,35 @@ func documentPatch() (Patch, error) {
 		return Patch{}, nil
 	}
 
-	var patch Patch
+	return ParsePatch(documentFormat(raw), []byte(raw))
+}
 
-	decoder := json.NewDecoder(strings.NewReader(raw))
-	decoder.DisallowUnknownFields()
-
-	if err := decoder.Decode(&patch); err != nil {
-		return Patch{}, fmt.Errorf("decode %s: %w", EnvConfig, err)
+// documentFormat reports how SMYKLOT_CONFIG is written.
+//
+// Everywhere else in this package the format is told rather than sniffed,
+// because a caller always knows which file it read. Here there is nothing to
+// tell it with: one variable, and the older spelling already deployed in
+// repositories Smyklot cannot edit. A first non-space byte of `{` is
+// unambiguous - no TOML document can begin that way, and no JSON object can
+// begin any other way.
+func documentFormat(raw string) Format {
+	if strings.HasPrefix(strings.TrimSpace(raw), "{") {
+		return formatJSON
 	}
 
-	// A decoder stops at the end of the first value and says nothing about
-	// what follows it, so two documents in one variable would silently be one.
-	if err := decoder.Decode(new(json.RawMessage)); !errors.Is(err, io.EOF) {
-		return Patch{}, fmt.Errorf("decode %s: %w", EnvConfig, ErrTrailingContent)
-	}
+	return FormatTOML
+}
 
-	return patch, nil
+// DocumentIsLegacyJSON reports a SMYKLOT_CONFIG still written as JSON.
+//
+// A repository's configuration file can be migrated by pull request. This
+// cannot: it may be an Actions variable, and the App has no permission to
+// write those. So the entry points say so at startup and leave the rewrite to
+// whoever owns the variable.
+func DocumentIsLegacyJSON() bool {
+	raw := os.Getenv(EnvConfig)
+
+	return strings.TrimSpace(raw) != "" && documentFormat(raw) == formatJSON
 }
 
 // parseBool reads a variable that is either on or off.

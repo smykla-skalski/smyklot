@@ -528,6 +528,17 @@ func loadBotConfig(cmd *cobra.Command) (*config.Config, error) {
 		return nil, NewConfigError(ErrConfigLoad, err)
 	}
 
+	// The one thing Smyklot cannot migrate for anyone. A repository's
+	// configuration file gets a pull request; this variable may be an Actions
+	// variable, which the App has no permission to write, so saying so is all
+	// there is to do
+	if config.DocumentIsLegacyJSON() {
+		logging.From(cmd.Context()).Warn(
+			"SMYKLOT_CONFIG is written as JSON; rewrite it as TOML",
+			"variable", config.EnvConfig,
+		)
+	}
+
 	return bc, nil
 }
 

@@ -290,6 +290,27 @@ allowed_commands = ["approve", "merge"]
 	})
 
 	Describe("the process document", func() {
+		It("reads a TOML document", func() {
+			setEnv(config.EnvConfig, `
+quiet_success = true
+command_aliases = { app = "approve" }
+`)
+
+			cfg, err := config.LoadProcess(nil)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.QuietSuccess).To(BeTrue())
+			Expect(cfg.CommandAliases).To(HaveKeyWithValue("app", "approve"))
+		})
+
+		It("refuses a setting a TOML document does not name correctly", func() {
+			setEnv(config.EnvConfig, `not_a_setting = true`)
+
+			_, err := config.LoadProcess(nil)
+			Expect(err).To(MatchError(config.ErrUnknownSetting))
+		})
+
+		// The variable is already deployed in repositories Smyklot has no
+		// permission to edit, so the older spelling has to keep working
 		It("reads a JSON document", func() {
 			setEnv(config.EnvConfig, `{"quiet_success": true, "command_aliases": {"app": "approve"}}`)
 
@@ -337,6 +358,21 @@ allowed_commands = ["approve", "merge"]
 			_, err := config.LoadProcess(nil)
 			Expect(err).To(MatchError(config.ErrTrailingContent))
 		})
+
+		DescribeTable("tells the two spellings apart",
+			func(raw string, legacy bool) {
+				setEnv(config.EnvConfig, raw)
+
+				Expect(config.DocumentIsLegacyJSON()).To(Equal(legacy))
+			},
+			Entry("an object", `{"quiet_success": true}`, true),
+			Entry("an object behind whitespace", "\n  {\"quiet_success\": true}", true),
+			Entry("a TOML assignment", `quiet_success = true`, false),
+			// No TOML document can open with a brace, and no JSON object can
+			// open with anything else, which is what makes the sniff safe
+			Entry("a TOML comment", "# nothing set yet", false),
+			Entry("nothing", "", false),
+		)
 	})
 
 	Describe("the process environment", func() {
