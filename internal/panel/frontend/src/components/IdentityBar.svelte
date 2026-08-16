@@ -75,11 +75,30 @@
   let targetQuery = $state('');
   let mobileNavigationOpen = $state(false);
   let unreadCount = $state(0);
-  /** Read rather than assumed: placement is measured now, so the breakpoint the
-      stylesheet uses has to be a value the placement can see too. */
-  let viewportWidth = $state(0);
+  /**
+   * The stylesheet's own breakpoint, asked of the browser rather than reproduced.
+   *
+   * Placement is measured now, so where these menus open is decided in script
+   * while the rail around them is still laid out by a media query - and the two
+   * have to change over at the same width. Comparing `innerWidth` to 768 only
+   * agrees with `48rem` while the root font size is exactly 16px; anyone who has
+   * changed it in their browser would get the mobile layout with the desktop
+   * placement, or the reverse. `matchMedia` resolves the same units the
+   * stylesheet does, so there is one breakpoint rather than two that usually
+   * agree.
+   */
+  let narrow = $state(false);
 
-  const narrow = $derived(viewportWidth > 0 && viewportWidth <= 768);
+  $effect(() => {
+    const breakpoint = window.matchMedia('(max-width: 48rem)');
+    const sync = (): void => {
+      narrow = breakpoint.matches;
+    };
+
+    sync();
+    breakpoint.addEventListener('change', sync);
+    return () => breakpoint.removeEventListener('change', sync);
+  });
 
   const handle = $derived(
     viewer === null ? null : readHandle(viewer.account.provider, viewer.account.login),
@@ -180,7 +199,7 @@
   }
 </script>
 
-<svelte:window bind:innerWidth={viewportWidth} onkeydown={closeFromKeyboard} />
+<svelte:window onkeydown={closeFromKeyboard} />
 <svelte:document onpointerdown={closeFromOutside} />
 
 <aside
