@@ -3,6 +3,7 @@ package orgsync
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"io"
 	"sort"
 	"strconv"
 )
@@ -87,8 +88,6 @@ func describeOverride(enabled *bool) string {
 	return strconv.FormatBool(*enabled)
 }
 
-type sink interface{ Write([]byte) (int, error) }
-
 // writeField length-prefixes a value so that a sequence of them can only be
 // read one way.
 //
@@ -98,7 +97,7 @@ type sink interface{ Write([]byte) (int, error) }
 // kinds are a closed set and a digest is hexadecimal - but the framing costs
 // two bytes and its absence is the one kind of fault a fingerprint cannot
 // report about itself.
-func writeField(into sink, value string) {
+func writeField(into io.Writer, value string) {
 	_, _ = into.Write([]byte(strconv.Itoa(len(value))))
 	_, _ = into.Write([]byte{0})
 	_, _ = into.Write([]byte(value))

@@ -198,6 +198,16 @@ type Store interface {
 
 	ListSyncRepositoryState(context.Context, string) ([]RepositoryState, error)
 
+	// RecordSyncRepositoryState writes what repositories have, for the ones a
+	// planner found already matching.
+	//
+	// A repository that matches produces no actions, so it appears in no plan
+	// and would never be recorded by an apply - and the planner would then ask
+	// GitHub about it again on every tick, for ever, which is exactly the cost
+	// the recorded digest exists to avoid. Reading its labels and computing no
+	// work is proof that it matches, so that is when it is written down.
+	RecordSyncRepositoryState(context.Context, []RepositoryState) error
+
 	CreateSyncPlan(context.Context, PlanCreate) (Plan, error)
 
 	// GetSyncPlan reads one plan, scoped to the installation it belongs to.

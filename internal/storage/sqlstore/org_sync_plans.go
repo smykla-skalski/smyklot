@@ -365,10 +365,19 @@ WHERE id = ?`, now, until, plan.ID,
 		return orgsync.PlanLease{}, fmt.Errorf("lease sync plan: %w", err)
 	}
 
+	// Every action, not only the pending ones.
+	//
+	// A retry after a lease ran out needs to see what the previous attempt
+	// finished, for two reasons. It must not do that work again - re-creating a
+	// label GitHub already made is a 422 that fails a repository for having
+	// succeeded - and it must still record the digest for a kind that finished,
+	// which it can only do if that kind still appears in the work. Filtering to
+	// pending here made an interrupted plan leave a repository looking
+	// permanently unsynchronised, and re-read from GitHub on every tick after.
 	rows, err := tx.QueryContext(ctx, `
 SELECT`+syncActionColumns+`
 FROM sync_plan_actions
-WHERE plan_id = ? AND state = 'pending'
+WHERE plan_id = ?
 ORDER BY repository_id, kind, id`, plan.ID)
 	if err != nil {
 		return orgsync.PlanLease{}, fmt.Errorf("read leased sync actions: %w", err)
@@ -468,6 +477,38 @@ UPDATE sync_plans SET state = ?, finished_at = ?, lease_expires_at = NULL WHERE 
 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit sync plan finish: %w", err)
+	}
+
+	return nil
+}
+
+// RecordSyncRepositoryState writes what repositories have, outside any plan.
+//
+// One transaction for the batch, because a planner records everything it found
+// matching in one pass and a half-written batch would leave some of them asking
+// GitHub again next tick while the rest did not.
+func (s *Store) RecordSyncRepositoryState(
+	ctx context.Context,
+	states []orgsync.RepositoryState,
+) error {
+	if len(states) == 0 {
+		return nil
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin sync repository state: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	for _, state := range states {
+		if err := upsertSyncRepositoryState(ctx, tx, state); err != nil {
+			return err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit sync repository state: %w", err)
 	}
 
 	return nil

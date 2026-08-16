@@ -140,7 +140,11 @@ func (s *server) planSyncActions(
 
 	scope := newSyncScope(labels, overrides, applied)
 
-	var actions []orgsync.Action
+	var (
+		actions []orgsync.Action
+		matched []orgsync.RepositoryState
+		now     = time.Now().UTC()
+	)
 
 	for _, repository := range repositories {
 		if !scope.covers(repository) {
@@ -160,9 +164,29 @@ func (s *server) planSyncActions(
 			continue
 		}
 
-		actions = append(actions, orgsync.PlanLabels(
+		found := orgsync.PlanLabels(
 			repository.ID, config, asCurrentLabels(current), config.Exclusions(),
-		)...)
+		)
+		if len(found) == 0 {
+			// Nothing to do, which is a fact worth keeping. It appears in no
+			// plan, so an apply would never record it, and without a record
+			// this repository is read from GitHub again on every tick for ever
+			// - the cost the recorded digest exists to remove.
+			matched = append(matched, orgsync.RepositoryState{
+				RepositoryID:  repository.ID,
+				Kind:          orgsync.KindLabels,
+				AppliedDigest: scope.digestFor(repository.ID),
+				AppliedAt:     now,
+			})
+
+			continue
+		}
+
+		actions = append(actions, found...)
+	}
+
+	if err := s.store.RecordSyncRepositoryState(ctx, matched); err != nil {
+		return nil, err
 	}
 
 	return actions, nil
@@ -233,8 +257,14 @@ func (s syncScope) covers(repository storage.Repository) bool {
 		return false
 	}
 
-	return s.applied[repository.ID] !=
-		orgsync.DigestRepositoryKind(s.config.Digest, s.overrides[repository.ID])
+	return s.applied[repository.ID] != s.digestFor(repository.ID)
+}
+
+// digestFor is what a repository would record once it matches, and what covers
+// compares against. One expression, so the value written and the value tested
+// cannot drift into disagreeing about whether a repository is settled.
+func (s syncScope) digestFor(repositoryID string) string {
+	return orgsync.DigestRepositoryKind(s.config.Digest, s.overrides[repositoryID])
 }
 
 func syncConfigOf(configs []orgsync.Config, kind orgsync.Kind) (orgsync.Config, bool) {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"time"
 
@@ -163,6 +164,29 @@ var _ = Describe("Label sync [Unit]", func() {
 
 			_, _, err := service.store.GetLiveSyncPlan(GinkgoT().Context(), target.ID)
 			Expect(err).To(MatchError(storage.ErrNotFound))
+		})
+
+		// A repository that already matches appears in no plan, so an apply
+		// would never record it - and without a record it is read from GitHub
+		// again on every tick for ever, which is the whole cost the recorded
+		// digest exists to remove. Reading its labels and finding no work is
+		// the proof, so that is when it is written down
+		It("stops asking GitHub about a repository that already matches", func() {
+			target := seed()
+			stub.repoLabels = `[{"name":"bug","color":"d73a4a","description":""}]`
+			configure(target, `{"labels":[{"name":"bug","color":"d73a4a"}]}`)
+
+			plan(target)
+
+			state, err := service.store.ListSyncRepositoryState(GinkgoT().Context(), target.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(state).To(HaveLen(1))
+
+			// And the next tick asks GitHub nothing at all about it
+			reads := stub.countCalls(http.MethodGet, "/repos/smykla-skalski/smyklot/labels")
+			plan(target)
+			Expect(stub.countCalls(http.MethodGet, "/repos/smykla-skalski/smyklot/labels")).
+				To(Equal(reads))
 		})
 
 		// A reconcile that changed nothing is not an event, and one row a tick

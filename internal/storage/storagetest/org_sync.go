@@ -560,8 +560,16 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 			Expect(actions[1].Blocker).To(Equal(orgsync.KindLabels))
 		})
 
-		// A second lease must not re-offer work the first one finished
-		It("leases only the work still pending", func() {
+		// A retry sees everything, with what already happened recorded on it.
+		//
+		// Two things need that. It must not do finished work again - recreating
+		// a label GitHub already made is a 422 that fails a repository for
+		// having succeeded - and it must still be able to record the digest for
+		// a kind that completed, which it can only do if that kind is still in
+		// the work. Leasing only the pending actions dropped the second, so an
+		// interrupted plan left the repository looking permanently
+		// unsynchronised and re-read from GitHub on every tick after
+		It("leases every action, carrying what an earlier attempt settled", func() {
 			ctx, store, now := runtime()
 			account := seed(ctx, store, now)
 			lease := leaseOne(ctx, store, account.ID, now, []orgsync.Action{
@@ -574,8 +582,14 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 
 			again, err := store.LeaseSyncPlan(ctx, now.Add(time.Minute), now.Add(2*time.Minute))
 			Expect(err).NotTo(HaveOccurred())
-			Expect(again.Actions).To(HaveLen(1))
-			Expect(again.Actions[0].Subject).To(Equal("chore"))
+			Expect(again.Actions).To(HaveLen(2))
+
+			bySubject := map[string]orgsync.ActionState{}
+			for _, action := range again.Actions {
+				bySubject[action.Subject] = action.State
+			}
+			Expect(bySubject["bug"]).To(Equal(orgsync.ActionApplied))
+			Expect(bySubject["chore"]).To(Equal(orgsync.ActionPending))
 		})
 
 		// The digests are what the next reconcile trusts, so they are written

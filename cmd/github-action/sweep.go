@@ -199,6 +199,18 @@ func (s *server) sweepMode(ctx context.Context, pollReactions bool) error {
 	}
 
 	var sweepErr error
+
+	// Once per tick rather than once per installation. Retiring plans nobody
+	// acted on names no installation, so running it inside the loop below issued
+	// the same table-wide statement once for every account the App is installed
+	// on and changed nothing after the first.
+	if s.panel != nil {
+		if err := s.store.ExpireSyncPlans(ctx, time.Now().UTC()); err != nil {
+			logging.From(ctx).Error("could not retire expired sync plans", "error", err)
+			sweepErr = errors.Join(sweepErr, err)
+		}
+	}
+
 	for _, installation := range installations {
 		installCtx := logging.With(ctx,
 			"installation", installation.ID, "account", installation.Account)
@@ -277,10 +289,6 @@ func (s *server) reconcileInstallationSync(
 	}
 
 	targetID := installationStorageID(installation.ID)
-
-	if err := s.store.ExpireSyncPlans(ctx, time.Now().UTC()); err != nil {
-		return err
-	}
 
 	if err := s.planInstallationSync(ctx, client, targetID, orgsync.TriggerReconcile); err != nil {
 		return err

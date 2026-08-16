@@ -192,6 +192,9 @@ func (s *server) applyRepositoryWork(
 	for _, kind := range work.Kinds {
 		if blocker != "" {
 			for _, action := range kind.Actions {
+				if action.State != orgsync.ActionPending {
+					continue
+				}
 				outcome.Skip(action, blocker)
 				s.recordSyncAction(ctx, action, orgsync.ActionSkipped, "", blocker)
 			}
@@ -235,6 +238,16 @@ func (s *server) applyKind(
 	succeeded := true
 
 	for _, action := range work.Actions {
+		// Work an earlier attempt already settled. A lease carries every action
+		// so a retry can still record the digest for a kind that finished, and
+		// this is what keeps it from doing that kind's work a second time -
+		// re-creating a label GitHub already made is a 422.
+		if action.State != orgsync.ActionPending {
+			succeeded = succeeded && action.State == orgsync.ActionApplied
+
+			continue
+		}
+
 		err := s.applyAction(ctx, client, owner, name, action)
 		if err != nil {
 			logging.From(ctx).Warn("sync action failed",
