@@ -289,6 +289,47 @@ describe('personal routes', () => {
     expect(parsePanelRoute('', '/root/inbox')).toBeNull();
   });
 
+  /* The name is only read in the first segment, so an account called `inbox` is
+     still an account. Reading it anywhere else would take a workspace away from
+     whoever owns that name. */
+  it('leaves an account of the same name alone', () => {
+    expect(parsePanelRoute('', '/i/inbox/settings')).toEqual({
+      account: 'inbox',
+      view: 'settings',
+    });
+    expect(parsePanelRoute('', '/root/installations/inbox/repositories')).toEqual({
+      rootView: 'installation',
+      account: 'inbox',
+      view: 'repositories',
+    });
+  });
+
+  /* The Root user table offers no history - decisions are made inside an
+     installation - so an address naming one does not resolve, rather than
+     resolving to the table with nothing open on it. */
+  it('refuses a Root user history that nothing opens', () => {
+    expect(parsePanelRoute('', '/root/access/users/octocat/history')).toBeNull();
+    expect(parsePanelRoute('', '/root/access/users/octocat/ban')).toEqual({
+      rootView: 'access-users',
+      dialog: { name: 'root-user-action', params: { user: 'octocat', action: 'ban' } },
+    });
+    // The same person inside an installation still has one.
+    expect(parsePanelRoute('', '/root/installations/acme/users/octocat/history')).toEqual({
+      rootView: 'installation',
+      account: 'acme',
+      view: 'users',
+      dialog: { name: 'decision-history', params: { user: 'octocat' } },
+    });
+  });
+
+  it('drops a stale dialog query when it lands on the page it names', () => {
+    const fixture = fakeBrowser('/panel/inbox', '?dialog=security-notifications');
+    const router = createPanelRouter('/panel', fixture.browser);
+
+    router.replace({ personal: 'inbox' });
+    expect(fixture.url()).toBe('/panel/inbox');
+  });
+
   /* Replacing normally keeps the query, because it names the dialog open on the
      view being tidied. A personal page hosts none, so a query carried onto one
      would name something nothing there will ever open. */

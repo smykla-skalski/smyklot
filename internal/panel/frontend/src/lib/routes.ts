@@ -244,7 +244,6 @@ export function createPanelRouter(basePath: string, browser: BrowserNavigation):
 
   function write(route: PanelRoute, replace: boolean): void {
     const next = panelRoutePath(basePath, route);
-    if (next === browser.location.pathname) return;
 
     /* The query belongs to the view, and says which dialog is open on top of it.
        Walking somewhere else leaves that behind, which is what a reader means by
@@ -257,6 +256,11 @@ export function createPanelRouter(basePath: string, browser: BrowserNavigation):
        preserve, and carrying a query onto one would leave `?dialog=` naming
        something no part of the page will ever open. */
     const url = replace && !('personal' in route) ? next + browser.location.search : next;
+    /* Compared as the whole address rather than as the path alone. On the path
+       alone, arriving at a personal view that is already the current path left a
+       query behind that this call exists to drop, and the dialog router went on
+       reading a dialog nothing would open. */
+    if (url === browser.location.pathname + browser.location.search) return;
     const method = replace ? browser.history.replaceState : browser.history.pushState;
     method.call(browser.history, browser.history.state, '', url);
   }

@@ -24,8 +24,12 @@
 
 export const REPOSITORY_SECTIONS = ['file', 'behavior', 'commands'] as const;
 export const USER_ACTIONS = ['history', 'suspend', 'restore', 'remove'] as const;
+/* No `history` here, unlike an installation's user table: decisions are made
+   inside an installation, so the Root table offers no history and nothing
+   renders one. The grammar used to accept the segment anyway, which made
+   `/root/access/users/<login>/history` resolve to the table with nothing open
+   instead of saying the address does not exist. */
 export const ROOT_USER_ACTIONS = [
-  'history',
   'promote-root',
   'demote-root',
   'restore',
@@ -76,13 +80,7 @@ export function parseDialogSegments(host: DialogHost, segments: string[]): Route
     case 'users':
       return parseUserDialog(decoded, 'user-action', 'decision-history', 'add-user', USER_ACTIONS);
     case 'access-users':
-      return parseUserDialog(
-        decoded,
-        'root-user-action',
-        'root-user-history',
-        null,
-        ROOT_USER_ACTIONS,
-      );
+      return parseUserDialog(decoded, 'root-user-action', null, null, ROOT_USER_ACTIONS);
     case 'invitations':
       return parseInvitationDialog(decoded, 'invitation-action');
     case 'access-invitations':
@@ -105,7 +103,6 @@ export function dialogSegments(host: DialogHost, dialog: RouteDialog | null): st
       return section === undefined || section === 'file' ? [repository] : [repository, section];
     }
     case 'decision-history':
-    case 'root-user-history':
       return subjectSegments(dialog.params.user, 'history');
     case 'user-action':
     case 'root-user-action':
@@ -142,7 +139,8 @@ function parseRepositoryDialog(segments: string[]): RouteDialog | null {
 function parseUserDialog(
   segments: string[],
   actionName: string,
-  historyName: string,
+  /** `null` for a table with no history to open, which is what the Root one is. */
+  historyName: string | null,
   addName: string | null,
   actions: readonly string[],
 ): RouteDialog | null {
@@ -154,7 +152,7 @@ function parseUserDialog(
   const [user, verb] = segments;
   if (user === undefined || user === '' || verb === undefined) return null;
   if (!actions.some((known) => known === verb)) return null;
-  if (verb === 'history') return { name: historyName, params: { user } };
+  if (verb === 'history') return historyName === null ? null : { name: historyName, params: { user } };
 
   return { name: actionName, params: { user, action: fromSegment(verb) } };
 }
