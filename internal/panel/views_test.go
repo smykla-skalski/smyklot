@@ -112,10 +112,34 @@ func TestEveryBrowserViewHasSomethingToRender(t *testing.T) {
 		}
 
 		for _, view := range browserPanelViews(t, surface.declared) {
-			if !strings.Contains(string(source), "view === '"+view+"'") {
+			if !rendersView(string(source), view) {
 				t.Errorf("%s has a %q view and %s renders nothing for it",
 					surface.declared, view, surface.page)
 			}
 		}
 	}
+}
+
+// rendersView reports a page whose markup branches on a view.
+//
+// The branch, not the name anywhere in the file. A nav row highlights itself by
+// comparing the same two things, so a bare search found "invitations" in the
+// console's tab styling and would have waved through the deletion of the branch
+// that renders it - which is the exact bug this test is here for, passing.
+//
+// A condition split across lines fails this rather than passing it. That is the
+// safe direction for a guard: a false alarm is read, and a guard that quietly
+// stops seeing its subject is not.
+func rendersView(source, view string) bool {
+	for line := range strings.Lines(source) {
+		branch := strings.TrimSpace(line)
+		if !strings.HasPrefix(branch, "{#if ") && !strings.HasPrefix(branch, "{:else if ") {
+			continue
+		}
+		if strings.Contains(branch, "view === '"+view+"'") {
+			return true
+		}
+	}
+
+	return false
 }
