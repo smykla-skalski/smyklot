@@ -484,6 +484,45 @@ var _ = Describe("Settings planning [Unit]", func() {
 		}))
 	})
 
+	// GitHub disables what depends on a feature when that feature is disabled,
+	// so a plan naming only the setting somebody typed describes less than
+	// approving it does - and describing what it does is the whole of what a
+	// plan is for
+	It("says what GitHub switches off along with the change", func() {
+		actions := orgsync.PlanSettings(repo,
+			orgsync.SettingsConfig{AdvancedSecurity: disabled()},
+			orgsync.CurrentSettings{
+				AdvancedSecurity:             orgsync.FeatureOn,
+				SecretScanning:               orgsync.FeatureOn,
+				SecretScanningPushProtection: orgsync.FeatureOn,
+			},
+		)
+
+		// Both of them, because what follows has dependants of its own
+		Expect(actions[0].After).To(ContainSubstring("secret_scanning"))
+		Expect(actions[0].After).To(ContainSubstring("secret_scanning_push_protection"))
+		Expect(actions[0].After).To(ContainSubstring("GitHub also switches off"))
+
+		// And it is still not sent: the endpoint replaces what it is given, and
+		// nobody configured these
+		sent := body(actions)
+		Expect(sent["security_and_analysis"]).To(Equal(map[string]any{
+			"advanced_security": map[string]any{"status": "disabled"},
+		}))
+	})
+
+	It("says nothing about a feature that was already off", func() {
+		actions := orgsync.PlanSettings(repo,
+			orgsync.SettingsConfig{AdvancedSecurity: disabled()},
+			orgsync.CurrentSettings{
+				AdvancedSecurity: orgsync.FeatureOn,
+				SecretScanning:   orgsync.FeatureOff,
+			},
+		)
+
+		Expect(actions[0].After).NotTo(ContainSubstring("secret_scanning"))
+	})
+
 	// The plan half of the same rule. A repository whose advanced security has
 	// lapsed still has secret scanning on, and turning that off is a change
 	// nothing refuses - withholding it would leave the feature enforced on a

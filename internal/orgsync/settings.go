@@ -496,6 +496,18 @@ type SettingsChange struct {
 	// feature took the rest of the run down with it. Withholding can only leave
 	// a setting as it was; sending can undo the ones beside it.
 	Withheld []Withholding
+
+	// Follows names what GitHub switches off along with something in this
+	// change: nobody configured it, this does not send it, and it goes off
+	// anyway.
+	//
+	// Disabling advanced security disables what depends on it - GitHub
+	// documents that and does it - so a plan naming only the setting somebody
+	// typed would understate what approving it does, which is the one thing a
+	// plan exists to get right. Reported rather than sent: the endpoint
+	// replaces what it is given, and putting a key nobody configured into the
+	// body is the rule the rest of this file is built to keep.
+	Follows []string
 }
 
 // Withholding is one setting left alone, and the reason a person needs in order
@@ -526,31 +538,11 @@ const (
 func DiffSettings(config SettingsConfig, current CurrentSettings) (SettingsChange, bool) {
 	change := SettingsChange{Body: map[string]any{}}
 	fields := settingsFields()
+	repository := judge(fields, config, current)
 
-	// What each boolean would be once this change lands, which is the state
-	// GitHub judges a dependent setting against, and which of them this
-	// repository does not have at all.
-	resulting := make(map[string]bool, len(fields))
-	absent := make(map[string]bool, len(fields))
-
-	for _, field := range fields {
-		if field.on != nil {
-			resulting[field.name] = field.on(config, current)
-		}
-		if field.available != nil && !field.available(current) {
-			absent[field.name] = true
-		}
-	}
-
-	// Whether this repository would still have a way to merge afterwards.
-	//
-	// Only the repository can answer it. A configuration turning two methods
-	// off is legal - a repository whose third is on takes it - so the pair that
-	// gets refused is that configuration meeting a repository that already had
-	// the third one off, and nothing checked before this point has both halves.
-	mergeable := !noMergeMethod(fields, func(field settingsField) (bool, bool) {
-		return resulting[field.name], true
-	})
+	// What this change switches off, which is what anything depending on it
+	// goes off with.
+	switchedOff := make(map[string]bool, len(fields))
 
 	for _, field := range fields {
 		value, want, configured := field.want(config)
@@ -566,51 +558,157 @@ func DiffSettings(config SettingsConfig, current CurrentSettings) (SettingsChang
 			continue
 		}
 
-		// A feature the repository does not have comes first, because nothing
-		// configured here can change that: it is a plan or a licence, and every
-		// run would otherwise try again and be refused again.
-		if absent[field.name] {
-			change.withhold(field.name, becauseUnavailable)
-
-			continue
-		}
-
-		// Only on the way up, and only where the dependency is something this
-		// repository has.
-		//
-		// GitHub refuses a feature being switched on while what it needs is
-		// off; switching it off asks nothing of anything. And a dependency the
-		// repository does not have is not one it is failing - a public
-		// repository has secret scanning without advanced security and GitHub
-		// reports no advanced security there at all, so reading that absence as
-		// "off" would withhold a setting nothing was going to refuse.
-		if field.requires != "" && askingValue(value) &&
-			!resulting[field.requires] && !absent[field.requires] {
-			change.withhold(field.name, becauseUnmet)
-
-			continue
-		}
-
-		// Every merge method the change would switch off, not an arbitrary one
-		// of them: turning off one of a pair and keeping the other would leave
-		// a repository half-way to a policy it can never reach, and which half
-		// depended on the order of this table.
-		if field.merges && !mergeable {
-			change.withhold(field.name, becauseUnmergeable)
+		if reason := repository.withholds(field, value); reason != "" {
+			change.withhold(field.name, reason)
 
 			continue
 		}
 
 		change.Fields = append(change.Fields, field.name)
 		field.put(change.Body, value)
+
+		if enabled, boolean := value.(bool); boolean && !enabled {
+			switchedOff[field.name] = true
+		}
 	}
 
+	change.Follows = follows(fields, config, current, repository.absent, switchedOff)
+
 	sort.Strings(change.Fields)
+	sort.Strings(change.Follows)
 	sort.Slice(change.Withheld, func(i, j int) bool {
 		return change.Withheld[i].Field < change.Withheld[j].Field
 	})
 
 	return change, len(change.Fields) > 0
+}
+
+// verdict is what one repository's own state says about a change: what each
+// setting would end up as, which settings it does not have at all, and whether
+// it would still have a way to merge.
+//
+// Read once and asked many times. Every rule below needs the same three
+// answers, and computing them per field is how two of them would come to
+// disagree about the same repository.
+type verdict struct {
+	resulting map[string]bool
+	absent    map[string]bool
+	mergeable bool
+}
+
+func judge(fields []settingsField, config SettingsConfig, current CurrentSettings) verdict {
+	answer := verdict{
+		resulting: make(map[string]bool, len(fields)),
+		absent:    make(map[string]bool, len(fields)),
+	}
+
+	for _, field := range fields {
+		if field.on != nil {
+			answer.resulting[field.name] = field.on(config, current)
+		}
+		if field.available != nil && !field.available(current) {
+			answer.absent[field.name] = true
+		}
+	}
+
+	// Whether this repository would still have a way to merge afterwards.
+	//
+	// Only the repository can answer it. A configuration turning two methods
+	// off is legal - a repository whose third is on takes it - so the pair that
+	// gets refused is that configuration meeting a repository that already had
+	// the third one off, and neither half alone is enough to see it.
+	answer.mergeable = !noMergeMethod(fields, func(field settingsField) (bool, bool) {
+		return answer.resulting[field.name], true
+	})
+
+	return answer
+}
+
+// withholds reports why a setting cannot be sent to this repository, and is
+// empty where it can.
+//
+// One place, in the order the reasons matter. Each of them is a 422 on the
+// whole request, so what is caught here is every other setting in the same
+// change surviving.
+func (v verdict) withholds(field settingsField, value any) string {
+	switch {
+	// A feature the repository does not have comes first, because nothing
+	// configured here can change that: it is a plan or a licence, and every run
+	// would otherwise try again and be refused again.
+	case v.absent[field.name]:
+		return becauseUnavailable
+
+	// Only on the way up, and only where the dependency is something this
+	// repository has. GitHub refuses a feature being switched on while what it
+	// needs is off; switching it off asks nothing of anything. And a public
+	// repository has secret scanning without advanced security and is told of
+	// no advanced security at all, so reading that absence as "off" would
+	// withhold a setting nothing was going to refuse.
+	case field.requires != "" && askingValue(value) &&
+		!v.resulting[field.requires] && !v.absent[field.requires]:
+		return becauseUnmet
+
+	// Every merge method the change would switch off, not an arbitrary one of
+	// them: turning off one of a pair and keeping the other would leave a
+	// repository half-way to a policy it can never reach, and which half
+	// depended on the order of the table.
+	case field.merges && !v.mergeable:
+		return becauseUnmergeable
+
+	default:
+		return ""
+	}
+}
+
+// follows names what GitHub switches off along with this change.
+//
+// Nobody configured these and nothing here sends them. GitHub disables what
+// depends on a feature when that feature is disabled, so a plan that named only
+// the setting somebody typed would be describing less than approving it does -
+// and a plan describing less than it does is the failure the whole plan-then-
+// apply split exists to prevent.
+//
+// Repeated until nothing more follows, because a dependency has dependants of
+// its own: advanced security carries secret scanning, which carries push
+// protection.
+func follows(
+	fields []settingsField,
+	config SettingsConfig,
+	current CurrentSettings,
+	absent map[string]bool,
+	switchedOff map[string]bool,
+) []string {
+	var carried []string
+
+	for spreading := true; spreading; {
+		spreading = false
+
+		for _, field := range fields {
+			switch {
+			case field.requires == "" || !switchedOff[field.requires]:
+				continue
+			case switchedOff[field.name] || absent[field.name]:
+				// Already going off by itself, or not here to go off.
+				continue
+			}
+
+			// Configured settings are the change's own business; this is about
+			// the ones nobody mentioned. And a setting already off does not
+			// follow anything anywhere.
+			if _, _, configured := field.want(config); configured {
+				continue
+			}
+			if field.on == nil || !field.on(config, current) {
+				continue
+			}
+
+			carried = append(carried, field.name)
+			switchedOff[field.name] = true
+			spreading = true
+		}
+	}
+
+	return carried
 }
 
 func (c *SettingsChange) withhold(field, reason string) {
@@ -658,9 +756,14 @@ func PlanSettings(
 // it. A setting that is configured, differs, and is being left alone anyway is
 // not something to discover from a repository that never changed.
 func describeChange(change SettingsChange) string {
-	parts := make([]string, 0, len(change.Withheld)+1)
+	parts := make([]string, 0, len(change.Withheld)+2)
 	if len(change.Fields) > 0 {
 		parts = append(parts, strings.Join(change.Fields, ", "))
+	}
+
+	if len(change.Follows) > 0 {
+		parts = append(parts,
+			"GitHub also switches off "+strings.Join(change.Follows, ", "))
 	}
 
 	for _, withheld := range change.Withheld {
