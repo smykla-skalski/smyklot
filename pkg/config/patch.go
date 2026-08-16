@@ -166,14 +166,25 @@ func ParsePatch(format Format, content []byte) (Patch, error) {
 	return patch, nil
 }
 
+// byteOrderMark is what several editors write at the start of a UTF-8 file.
+//
+// It is metadata rather than content, and invisible to whoever saved the file.
+// go-toml reads it as the first character of a key and refuses the document
+// with "invalid character at start of key: U+00EF", which under a fail-closed
+// file means a repository goes quiet over a mark nobody can see. go-yaml skips
+// it, so stripping it here is also what keeps the two formats agreeing.
+var byteOrderMark = []byte{0xEF, 0xBB, 0xBF}
+
 // decode reads content into patch.
 //
 // A document that sets nothing - blank, or nothing but comments - is not an
-// error. Both decoders report it as io.EOF, having found no values, and a file
-// somebody created and has not filled in yet has to read as "nothing set". It
-// used to be an error, which meant a repository that commented its settings out
-// was told its configuration was invalid and had every command refused.
+// error. The YAML decoder reports it as io.EOF, having found no values, and a
+// file somebody created and has not filled in yet has to read as "nothing set".
+// It used to be an error, which meant a repository that commented its settings
+// out was told its configuration was invalid and had every command refused.
 func decode(format Format, content []byte, patch *Patch) error {
+	content = bytes.TrimPrefix(content, byteOrderMark)
+
 	switch format {
 	case FormatTOML:
 		decoder := toml.NewDecoder(bytes.NewReader(content))
@@ -227,6 +238,14 @@ func rejectLaterSettings(decoder *yaml.Decoder) error {
 	}
 }
 
+// emptyIsNothing reads "the decoder found no values" as setting nothing.
+//
+// Only a genuinely empty or comment-only document produces io.EOF; every
+// truncated or malformed one reports a real error, which is what makes this
+// safe. Reading a broken file as "nothing configured" would hand back every
+// command the file was there to take away. go-toml answers an empty document
+// with nil rather than io.EOF, so for TOML this is a no-op - it is applied to
+// both so the two formats cannot drift apart.
 func emptyIsNothing(err error) error {
 	if errors.Is(err, io.EOF) {
 		return nil

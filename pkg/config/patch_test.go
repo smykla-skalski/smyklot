@@ -106,6 +106,21 @@ command_prefix = ""
 			Expect(err).To(MatchError(config.ErrUnknownFormat))
 		})
 
+		// Several editors write a byte-order mark and show nothing for it.
+		// go-toml read it as the first character of a key and refused the file
+		// with "invalid character at start of key: U+00EF", so a repository
+		// went quiet over a mark whoever saved the file could not see.
+		DescribeTable("ignores a byte-order mark",
+			func(format config.Format, document string) {
+				patch, err := config.ParsePatch(format, []byte("\xef\xbb\xbf"+document))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(patch.QuietSuccess).NotTo(BeNil())
+				Expect(*patch.QuietSuccess).To(BeTrue())
+			},
+			Entry("toml", config.FormatTOML, "quiet_success = true\n"),
+			Entry("yaml", config.FormatYAML, "quiet_success: true\n"),
+		)
+
 		// A decoder reads one document. Everything after a `---` was dropped
 		// without a word, so a file that narrowed allowed_commands in its
 		// second document narrowed nothing at all.
