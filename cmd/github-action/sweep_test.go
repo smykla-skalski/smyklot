@@ -265,6 +265,44 @@ var _ = Describe("Reaction sweep [Unit]", func() {
 			)))
 	})
 
+	It("should inspect orphan fences while durable handoff cleanup is pending", func() {
+		stub.installations = `[{"id":987,"account":{"login":"smykla-skalski"}}]`
+		stub.repos = `{"total_count":1,"repositories":[{
+			"id":123456,
+			"name":"smyklot",
+			"full_name":"smykla-skalski/smyklot",
+			"owner":{"login":"smykla-skalski"}
+		}]}`
+		stub.repoConfig = "runner: action\n"
+		stub.openPRs = `[
+			{
+				"number":42,
+				"state":"open",
+				"head":{"sha":"command-head"},
+				"base":{"ref":"main"},
+				"labels":[{"name":"smyklot:pending:ci:squash"}]
+			},
+			{
+				"number":43,
+				"state":"open",
+				"head":{"sha":"orphan-head"},
+				"base":{"ref":"main"},
+				"labels":[]
+			}
+		]`
+		stub.prReactions = `[
+			{"id":99,"content":"hooray","user":{"login":"smyklot[bot]"}}
+		]`
+		start()
+		_ = armWebhookTestRequest(service)
+
+		Expect(service.sweep(GinkgoT().Context())).To(Succeed())
+
+		Expect(stub.countCalls(
+			http.MethodDelete, "/issues/43/reactions/99",
+		)).To(Equal(1))
+	})
+
 	It("should remove orphaned service ownership and safely drain its method label", func() {
 		stub.installations = `[{"id":111,"account":{"login":"smykla-skalski"}}]`
 		stub.repos = `{"total_count":1,"repositories":[{
