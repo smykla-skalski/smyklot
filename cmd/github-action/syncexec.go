@@ -47,10 +47,12 @@ func (s *server) applySyncPlans(ctx context.Context) error {
 		return err
 	}
 
+	finishedAt := time.Now().UTC()
+
 	if err := s.store.FinishSyncPlan(ctx, orgsync.PlanOutcome{
 		PlanID: lease.Plan.ID,
 		State:  outcome.State(),
-		Now:    time.Now().UTC(),
+		Now:    finishedAt,
 
 		Applied: outcome.Applied,
 	}); err != nil {
@@ -60,7 +62,43 @@ func (s *server) applySyncPlans(ctx context.Context) error {
 	logging.From(ctx).Info("sync plan applied",
 		"state", outcome.State(), "actions", len(outcome.Actions))
 
-	return nil
+	return s.recordSyncOutcomeAudit(ctx, lease.Plan, outcome, finishedAt)
+}
+
+// recordSyncOutcomeAudit writes what a plan did, and separately what it removed.
+//
+// Deletion gets its own entry rather than a number inside the outcome, because
+// it is off by default and it is the one thing that destroys something somebody
+// may have made by hand. A reader scanning actions should not have to notice a
+// count to learn that anything was removed.
+func (s *server) recordSyncOutcomeAudit(
+	ctx context.Context,
+	plan orgsync.Plan,
+	outcome orgsync.Outcome,
+	at time.Time,
+) error {
+	if err := s.store.RecordSyncAudit(ctx, orgsync.AuditEntry{
+		TargetID: plan.TargetID, PlanID: plan.ID, ActorID: plan.ActorAccountID,
+		Action:  orgsync.AuditFinished,
+		Summary: fmt.Sprintf("%d applied, %d failed", outcome.Succeeded, outcome.Failed),
+		Counts:  plan.Counts,
+		Failed:  outcome.Failed,
+		Now:     at,
+	}); err != nil {
+		return err
+	}
+
+	if outcome.Deleted == 0 {
+		return nil
+	}
+
+	return s.store.RecordSyncAudit(ctx, orgsync.AuditEntry{
+		TargetID: plan.TargetID, PlanID: plan.ID, ActorID: plan.ActorAccountID,
+		Action:  orgsync.AuditDeleted,
+		Summary: fmt.Sprintf("%d removed", outcome.Deleted),
+		Counts:  orgsync.Counts{Delete: outcome.Deleted},
+		Now:     at,
+	})
 }
 
 // applySyncPlan drives one plan's work through GitHub.

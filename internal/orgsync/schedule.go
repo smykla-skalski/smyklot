@@ -68,12 +68,21 @@ type Outcome struct {
 	// recording its digest would be recording work that was not done.
 	Applied []RepositoryState
 
-	failed bool
+	// Deleted counts the removals that actually happened, which is audited on
+	// its own. Deletion is off by default and destroys something somebody may
+	// have made by hand, so a reader should not have to notice a number inside
+	// a summary to learn that anything was removed.
+	Deleted int
+
+	// Succeeded and Failed count what became of the work, so closing a plan
+	// does not mean walking its actions again.
+	Succeeded int
+	Failed    int
 }
 
 // Fail records an action that could not be applied.
 func (o *Outcome) Fail(action Action, reason string) {
-	o.failed = true
+	o.Failed++
 	o.Actions = append(o.Actions, ActionOutcome{
 		ActionID: action.ID, State: ActionFailed, Error: reason,
 	})
@@ -81,6 +90,10 @@ func (o *Outcome) Fail(action Action, reason string) {
 
 // Apply records an action that succeeded.
 func (o *Outcome) Apply(action Action) {
+	o.Succeeded++
+	if action.Operation == OperationDelete {
+		o.Deleted++
+	}
 	o.Actions = append(o.Actions, ActionOutcome{ActionID: action.ID, State: ActionApplied})
 }
 
@@ -91,19 +104,16 @@ func (o *Outcome) Apply(action Action) {
 // lease would pick up and try - and trying the files of a repository whose
 // labels just failed is exactly what this ordering exists to prevent.
 func (o *Outcome) Skip(action Action, blocker Kind) {
-	o.failed = true
+	o.Failed++
 	o.Actions = append(o.Actions, ActionOutcome{
 		ActionID: action.ID, State: ActionSkipped, Blocker: blocker,
 	})
 }
 
-// Failed reports whether anything failed or was skipped, which is what decides
-// the plan's own state.
-func (o *Outcome) Failed() bool { return o.failed }
-
-// State is the state to close the plan in.
+// State is the state to close the plan in. Anything failed or skipped makes the
+// whole plan failed: a plan that did most of its work is not a plan that did it.
 func (o *Outcome) State() PlanState {
-	if o.failed {
+	if o.Failed > 0 {
 		return PlanFailed
 	}
 

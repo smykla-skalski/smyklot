@@ -12,6 +12,12 @@ const (
 	AuditCategoryElevation     AuditCategory = "elevation"
 	AuditCategoryNotification  AuditCategory = "notification"
 	AuditCategoryRuntime       AuditCategory = "runtime"
+
+	// AuditCategorySync is org-wide synchronization, kept apart from
+	// configuration - which means somebody changed a setting in the panel -
+	// because the filter is how an operator finds what happened and one chip
+	// covering both would make each harder to read.
+	AuditCategorySync AuditCategory = "sync"
 )
 
 // AppAuditEvent is one normalized application-wide audit event.

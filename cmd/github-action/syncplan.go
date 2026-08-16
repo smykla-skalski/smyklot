@@ -94,7 +94,23 @@ func (s *server) planInstallationSync(
 	logging.From(ctx).Info("sync plan computed",
 		"sync_plan", plan.ID, "trigger", trigger, "actions", len(actions))
 
-	return nil
+	// Only now, with a plan that has something in it. Every path above that
+	// returns early returns without writing an entry, which is the rule: a
+	// reconcile that found nothing is not an event.
+	return s.store.RecordSyncAudit(ctx, orgsync.AuditEntry{
+		TargetID: targetID, PlanID: plan.ID, ActorID: plan.ActorAccountID,
+		Action:  orgsync.AuditPlanned,
+		Summary: syncPlanSummary(plan.Counts),
+		Counts:  plan.Counts,
+		Now:     plan.ComputedAt,
+	})
+}
+
+// syncPlanSummary says what a plan would do, for somebody reading a history
+// page rather than a plan.
+func syncPlanSummary(counts orgsync.Counts) string {
+	return fmt.Sprintf("%d to add, %d to change, %d to remove",
+		counts.Create, counts.Update, counts.Delete)
 }
 
 // planSyncActions asks each repository in scope what it would take to match.

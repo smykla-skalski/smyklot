@@ -72,7 +72,7 @@ var _ = Describe("Scheduling [Unit]", func() {
 			var outcome orgsync.Outcome
 			outcome.Apply(orgsync.Action{ID: 1})
 
-			Expect(outcome.Failed()).To(BeFalse())
+			Expect(outcome.Failed).To(BeZero())
 			Expect(outcome.State()).To(Equal(orgsync.PlanApplied))
 			Expect(outcome.Actions).To(HaveLen(1))
 			Expect(outcome.Actions[0].State).To(Equal(orgsync.ActionApplied))
@@ -82,7 +82,7 @@ var _ = Describe("Scheduling [Unit]", func() {
 			var outcome orgsync.Outcome
 			outcome.Fail(orgsync.Action{ID: 1}, "422 invalid color")
 
-			Expect(outcome.Failed()).To(BeTrue())
+			Expect(outcome.Failed).To(Equal(1))
 			Expect(outcome.State()).To(Equal(orgsync.PlanFailed))
 			Expect(outcome.Actions[0].Error).To(Equal("422 invalid color"))
 		})
@@ -97,7 +97,18 @@ var _ = Describe("Scheduling [Unit]", func() {
 
 			Expect(outcome.Actions[0].State).To(Equal(orgsync.ActionSkipped))
 			Expect(outcome.Actions[0].Blocker).To(Equal(orgsync.KindLabels))
-			Expect(outcome.Failed()).To(BeTrue())
+			Expect(outcome.Failed).To(Equal(1))
+		})
+
+		// Deletion is off by default and destroys something somebody may have
+		// made by hand, so it is counted on its own and audited on its own
+		It("counts a removal separately from the rest", func() {
+			var outcome orgsync.Outcome
+			outcome.Apply(orgsync.Action{ID: 1, Operation: orgsync.OperationCreate})
+			outcome.Apply(orgsync.Action{ID: 2, Operation: orgsync.OperationDelete})
+
+			Expect(outcome.Succeeded).To(Equal(2))
+			Expect(outcome.Deleted).To(Equal(1))
 		})
 	})
 })

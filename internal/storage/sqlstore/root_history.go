@@ -123,7 +123,8 @@ func validAuditCategory(category storage.AuditCategory) bool {
 	switch category {
 	case storage.AuditCategoryConfiguration, storage.AuditCategoryAccess,
 		storage.AuditCategoryOwnership, storage.AuditCategoryElevation,
-		storage.AuditCategoryNotification, storage.AuditCategoryRuntime:
+		storage.AuditCategoryNotification, storage.AuditCategoryRuntime,
+		storage.AuditCategorySync:
 		return true
 	default:
 		return false

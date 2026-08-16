@@ -135,6 +135,37 @@ type PlanOutcome struct {
 	Applied []RepositoryState
 }
 
+// AuditAction names what a sync audit entry records.
+//
+// Four, and no more. A plan writes one when it is computed, one when somebody
+// approves it, and one when it finishes; the deletion entry is written beside
+// the outcome when anything was removed, because deletion is off by default and
+// should never be the part nobody was told about.
+type AuditAction string
+
+const (
+	AuditPlanned  AuditAction = "sync.plan.computed"
+	AuditApproved AuditAction = "sync.plan.approved"
+	AuditFinished AuditAction = "sync.plan.finished"
+	AuditDeleted  AuditAction = "sync.deleted"
+)
+
+// AuditEntry is one thing worth recording about a plan.
+type AuditEntry struct {
+	TargetID string
+	PlanID   string
+	ActorID  string
+	Action   AuditAction
+	Summary  string
+	Counts   Counts
+
+	// Failed is how many actions did not apply, which is what makes a finished
+	// entry worth reading rather than merely present.
+	Failed int
+
+	Now time.Time
+}
+
 // Store is what org sync needs from the database.
 //
 // Its own interface, embedded into storage.Store, following internal/pendingci:
@@ -179,6 +210,14 @@ type Store interface {
 
 	RecordSyncActionOutcome(context.Context, ActionOutcome) error
 	FinishSyncPlan(context.Context, PlanOutcome) error
+
+	// RecordSyncAudit writes one entry and mirrors it into the audit trunk in
+	// the same transaction, exactly as every other detail table does.
+	//
+	// Nothing is written for a plan that found nothing to do. A reconcile that
+	// changed nothing is not an event, and one row a tick would be on the order
+	// of a hundred and seventy-five thousand a year per installation saying so.
+	RecordSyncAudit(context.Context, AuditEntry) error
 
 	// ExpireSyncPlans retires plans nobody acted on. Swept rather than only
 	// checked, so a plan does not sit in the one live slot for ever - but

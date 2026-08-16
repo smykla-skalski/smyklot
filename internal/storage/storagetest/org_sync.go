@@ -520,6 +520,47 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 		})
 	})
 
+	Describe("audit", func() {
+		// A sync entry has to reach the trunk as well as its own table, or the
+		// history page cannot see it. Every other detail table does the same,
+		// in the same transaction, for the same reason
+		It("mirrors an entry into the audit trunk", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			planFor(ctx, store, "plan-1", account.ID, "digest-1", now, nil)
+
+			Expect(store.RecordSyncAudit(ctx, orgsync.AuditEntry{
+				TargetID: target, PlanID: "plan-1", ActorID: account.ID,
+				Action: orgsync.AuditPlanned, Summary: "3 to add, 0 to change, 0 to remove",
+				Counts: orgsync.Counts{Create: 3}, Now: now,
+			})).To(Succeed())
+
+			page, err := store.ListRootAudit(ctx, storage.RootAuditPageRequest{
+				HistoryPageRequest: storage.HistoryPageRequest{Limit: 10},
+				Categories:         []storage.AuditCategory{storage.AuditCategorySync},
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(page.Items).To(HaveLen(1))
+			Expect(page.Items[0].Action).To(Equal(string(orgsync.AuditPlanned)))
+			Expect(page.Items[0].Summary).To(ContainSubstring("3 to add"))
+			Expect(page.Items[0].Category).To(Equal(storage.AuditCategorySync))
+		})
+
+		// The widened CHECK is the whole point of the migration that rebuilt
+		// the largest table in the schema, so it is worth asserting rather than
+		// assuming
+		It("accepts the sync category the trunk was widened for", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			planFor(ctx, store, "plan-1", account.ID, "digest-1", now, nil)
+
+			Expect(store.RecordSyncAudit(ctx, orgsync.AuditEntry{
+				TargetID: target, PlanID: "plan-1", ActorID: account.ID,
+				Action: orgsync.AuditFinished, Summary: "3 applied, 0 failed", Now: now,
+			})).To(Succeed())
+		})
+	})
+
 	Describe("refusals", func() {
 		DescribeTable("refuses a plan that could not be applied safely",
 			func(mutate func(*orgsync.PlanCreate)) {
