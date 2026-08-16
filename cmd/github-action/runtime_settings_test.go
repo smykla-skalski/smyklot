@@ -45,4 +45,10 @@ func TestApplyRuntimeSettingsUpdatesAndWakesPendingCI(t *testing.T) {
 	default:
 		t.Fatal("pending-CI scheduler was not woken after a quiet-period change")
 	}
+	scheduler.retuneMu.Lock()
+	retune := scheduler.retune
+	scheduler.retuneMu.Unlock()
+	if retune == nil || retune.PassingQuiet != 45*time.Second {
+		t.Fatalf("pending-CI retune = %#v, want 45s", retune)
+	}
 }

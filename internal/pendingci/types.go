@@ -173,6 +173,13 @@ type LeaseResult struct {
 	AvailableAt *time.Time
 }
 
+// RetuneQuietPeriodRequest moves every unleased passing request to the
+// deadline implied by the current stable-passing window.
+type RetuneQuietPeriodRequest struct {
+	PassingQuiet time.Duration
+	ChangedAt    time.Time
+}
+
 type WakeRequest struct {
 	RepositoryID    string
 	PullRequest     int
@@ -356,6 +363,7 @@ type Store interface {
 	Get(context.Context, int64) (Request, error)
 	GetArmed(context.Context, string, int) (Request, error)
 	LeaseDue(context.Context, time.Time, time.Time) (LeaseResult, error)
+	RetuneQuietPeriod(context.Context, RetuneQuietPeriodRequest) (int64, error)
 	Wake(context.Context, WakeRequest) (bool, error)
 	WakeByHead(context.Context, WakeHeadRequest) (int64, error)
 	CheckNow(context.Context, CheckNowRequest) (Request, error)

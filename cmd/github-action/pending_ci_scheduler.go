@@ -17,6 +17,7 @@ const (
 
 type pendingCILeaseStore interface {
 	LeaseDue(context.Context, time.Time, time.Time) (pendingci.LeaseResult, error)
+	RetuneQuietPeriod(context.Context, pendingci.RetuneQuietPeriodRequest) (int64, error)
 }
 
 type pendingCIProcessor interface {
@@ -31,6 +32,9 @@ type pendingCIScheduler struct {
 	logger    *slog.Logger
 	now       func() time.Time
 	wake      chan struct{}
+	retuneMu  sync.Mutex
+	retune    *pendingci.RetuneQuietPeriodRequest
+	retuneGen uint64
 }
 
 func newPendingCIScheduler(
@@ -51,6 +55,20 @@ func (scheduler *pendingCIScheduler) Wake() {
 	}
 }
 
+// RetunePassingQuiet durably reschedules stable-passing requests. The latest
+// value wins, and a storage failure remains pending for the dispatcher's retry
+// loop instead of leaving rows on their old deadlines.
+func (scheduler *pendingCIScheduler) RetunePassingQuiet(value time.Duration) {
+	scheduler.retuneMu.Lock()
+	scheduler.retuneGen++
+	scheduler.retune = &pendingci.RetuneQuietPeriodRequest{
+		PassingQuiet: value,
+		ChangedAt:    scheduler.now(),
+	}
+	scheduler.retuneMu.Unlock()
+	scheduler.Wake()
+}
+
 func (scheduler *pendingCIScheduler) Run(ctx context.Context) {
 	jobs := make(chan pendingci.Request, pendingCIWorkerCount)
 	var workers sync.WaitGroup
@@ -69,6 +87,14 @@ func (scheduler *pendingCIScheduler) dispatch(
 ) {
 	for {
 		now := scheduler.now()
+		if err := scheduler.applyQuietPeriodRetune(ctx); err != nil {
+			scheduler.logger.Error("pending CI quiet-period retune failed", "error", err)
+			retryAt := now.Add(pendingCIRetryDelay)
+			if !scheduler.wait(ctx, &retryAt) {
+				return
+			}
+			continue
+		}
 		lease, err := scheduler.store.LeaseDue(ctx, now, now.Add(pendingCILease))
 		if err != nil {
 			scheduler.logger.Error("pending CI lease failed", "error", err)
@@ -90,6 +116,38 @@ func (scheduler *pendingCIScheduler) dispatch(
 			return
 		}
 	}
+}
+
+func (scheduler *pendingCIScheduler) applyQuietPeriodRetune(ctx context.Context) error {
+	scheduler.retuneMu.Lock()
+	if scheduler.retune == nil {
+		scheduler.retuneMu.Unlock()
+
+		return nil
+	}
+	request := *scheduler.retune
+	generation := scheduler.retuneGen
+	scheduler.retuneMu.Unlock()
+
+	changed, err := scheduler.store.RetuneQuietPeriod(ctx, request)
+	if err != nil {
+		return err
+	}
+	if changed > 0 {
+		scheduler.logger.Info(
+			"retuned pending CI quiet-period deadlines",
+			"requests", changed,
+			"quiet_period", request.PassingQuiet,
+		)
+	}
+
+	scheduler.retuneMu.Lock()
+	if scheduler.retuneGen == generation {
+		scheduler.retune = nil
+	}
+	scheduler.retuneMu.Unlock()
+
+	return nil
 }
 
 func (scheduler *pendingCIScheduler) worker(

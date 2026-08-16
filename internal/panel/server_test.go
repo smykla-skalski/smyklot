@@ -1347,13 +1347,32 @@ func TestPanelRootRuntimeSettings(t *testing.T) {
 	if want := harness.now.Add(time.Hour); !shortened.ExpiresAt.Equal(want) {
 		t.Fatalf("session expiry = %s, want %s", shortened.ExpiresAt, want)
 	}
+	legacyContent, err := json.Marshal(map[string]any{
+		"bot_config":                     behavior,
+		"log_level":                      "debug",
+		"reaction_poll_interval_seconds": 90,
+		"session_ttl_seconds":            3600,
+		"expected_revision":              1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyUpdated := harness.request(
+		t, http.MethodPut, "/panel/api/v1/root/settings",
+		bytes.NewReader(legacyContent), rootSession,
+	)
+	requireResponse(
+		t, legacyUpdated, "preserve settings omitted by an older client", http.StatusOK,
+		`"merge_after_ci_quiet_period":{"deployment_seconds":30,"override_seconds":45,"effective_seconds":45}`,
+		`"revision":2`,
+	)
 	disabledContent, err := json.Marshal(map[string]any{
 		"bot_config":                          behavior,
 		"log_level":                           "debug",
 		"reaction_poll_interval_seconds":      0,
 		"merge_after_ci_quiet_period_seconds": 45,
 		"session_ttl_seconds":                 3600,
-		"expected_revision":                   1,
+		"expected_revision":                   2,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1365,7 +1384,7 @@ func TestPanelRootRuntimeSettings(t *testing.T) {
 	requireResponse(
 		t, disabled, "disable reaction sweep", http.StatusOK,
 		`"reaction_poll_interval":{"deployment_seconds":300,"override_seconds":0,"effective_seconds":0}`,
-		`"revision":2`,
+		`"revision":3`,
 	)
 	if harness.runtime.values.PollInterval != 0 {
 		t.Fatalf("disabled reaction sweep = %s", harness.runtime.values.PollInterval)
@@ -1379,13 +1398,13 @@ func TestPanelRootRuntimeSettings(t *testing.T) {
 			"reaction_poll_interval_seconds":null,
 			"merge_after_ci_quiet_period_seconds":null,
             "session_ttl_seconds":null,
-            "expected_revision":2
+			"expected_revision":3
         }`),
 		rootSession,
 	)
 	requireResponse(
 		t, reset, "reset Root runtime settings", http.StatusOK,
-		`"override":null`, `"override_seconds":null`, `"revision":3`,
+		`"override":null`, `"override_seconds":null`, `"revision":4`,
 	)
 	if harness.runtime.values.BotConfig.QuietSuccess ||
 		harness.runtime.values.LogLevel != slog.LevelInfo ||
@@ -1412,7 +1431,7 @@ func TestPanelRootRuntimeSettings(t *testing.T) {
 			"reaction_poll_interval_seconds":null,
 			"merge_after_ci_quiet_period_seconds":0,
             "session_ttl_seconds":null,
-            "expected_revision":3
+			"expected_revision":4
         }`),
 		rootSession,
 	)
@@ -1429,7 +1448,7 @@ func TestPanelRootRuntimeSettings(t *testing.T) {
 			"reaction_poll_interval_seconds":null,
 			"merge_after_ci_quiet_period_seconds":86401,
             "session_ttl_seconds":null,
-            "expected_revision":3
+			"expected_revision":4
         }`),
 		rootSession,
 	)

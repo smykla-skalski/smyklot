@@ -51,11 +51,60 @@ func TestPendingCISchedulerWakePreemptsFallbackTimer(t *testing.T) {
 	}
 }
 
+func TestPendingCISchedulerRetunesBeforeLeasing(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.August, 15, 12, 0, 0, 0, time.UTC)
+	store := &schedulerTestStore{
+		now: now, firstLease: make(chan struct{}),
+		retuned: make(chan pendingci.RetuneQuietPeriodRequest, 1),
+	}
+	scheduler := newPendingCIScheduler(
+		store,
+		&schedulerTestProcessor{processed: make(chan pendingci.Request, 1)},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+	)
+	scheduler.now = func() time.Time { return now }
+	scheduler.RetunePassingQuiet(45 * time.Second)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		scheduler.Run(ctx)
+		close(done)
+	}()
+
+	select {
+	case request := <-store.retuned:
+		if request.PassingQuiet != 45*time.Second || request.ChangedAt != now {
+			t.Fatalf("retune request = %#v", request)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("scheduler did not retune durable quiet-period deadlines")
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("scheduler did not stop")
+	}
+}
+
 type schedulerTestStore struct {
 	mu         sync.Mutex
 	now        time.Time
 	calls      int
 	firstLease chan struct{}
+	retuned    chan pendingci.RetuneQuietPeriodRequest
+}
+
+func (store *schedulerTestStore) RetuneQuietPeriod(
+	_ context.Context,
+	request pendingci.RetuneQuietPeriodRequest,
+) (int64, error) {
+	if store.retuned != nil {
+		store.retuned <- request
+	}
+
+	return 1, nil
 }
 
 func (store *schedulerTestStore) LeaseDue(

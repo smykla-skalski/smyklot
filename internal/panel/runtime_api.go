@@ -1,6 +1,8 @@
 package panel
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -18,12 +20,36 @@ const (
 )
 
 type runtimeSettingsRequest struct {
-	BotConfig                   *config.Config `json:"bot_config"`
-	LogLevel                    *string        `json:"log_level"`
-	PollIntervalSeconds         *int64         `json:"reaction_poll_interval_seconds"`
-	PendingCIQuietPeriodSeconds *int64         `json:"merge_after_ci_quiet_period_seconds"`
-	SessionTTLSeconds           *int64         `json:"session_ttl_seconds"`
-	ExpectedRevision            *int64         `json:"expected_revision"`
+	BotConfig           *config.Config `json:"bot_config"`
+	LogLevel            *string        `json:"log_level"`
+	PollIntervalSeconds *int64         `json:"reaction_poll_interval_seconds"`
+	// This field needs presence as well as value: clients released before the
+	// setting existed omit it, while an explicit null deliberately inherits.
+	PendingCIQuietPeriodSeconds optionalRuntimeSeconds `json:"merge_after_ci_quiet_period_seconds"`
+	SessionTTLSeconds           *int64                 `json:"session_ttl_seconds"`
+	ExpectedRevision            *int64                 `json:"expected_revision"`
+}
+
+type optionalRuntimeSeconds struct {
+	value   *int64
+	present bool
+}
+
+func (value *optionalRuntimeSeconds) UnmarshalJSON(data []byte) error {
+	value.present = true
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		value.value = nil
+
+		return nil
+	}
+
+	var seconds int64
+	if err := json.Unmarshal(data, &seconds); err != nil {
+		return err
+	}
+	value.value = &seconds
+
+	return nil
 }
 
 func (s *Server) getRootRuntimeSettings(w http.ResponseWriter, r *http.Request) {
@@ -53,7 +79,20 @@ func (s *Server) putRootRuntimeSettings(w http.ResponseWriter, r *http.Request) 
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	change, proposed, err := s.runtimeSettingsChange(actor, input)
+	var currentPendingCIQuietPeriod *time.Duration
+	if !input.PendingCIQuietPeriodSeconds.present {
+		current, err := s.store.GetRuntimeSettings(r.Context())
+		if err != nil {
+			s.writeStorageError(w, err)
+			return
+		}
+		currentPendingCIQuietPeriod = current.PendingCIQuietPeriod
+	}
+	change, proposed, err := s.runtimeSettingsChange(
+		actor,
+		input,
+		currentPendingCIQuietPeriod,
+	)
 	if err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid_runtime_settings", err.Error())
 		return
@@ -85,6 +124,7 @@ func (s *Server) putRootRuntimeSettings(w http.ResponseWriter, r *http.Request) 
 func (s *Server) runtimeSettingsChange(
 	actor storage.Account,
 	input runtimeSettingsRequest,
+	currentPendingCIQuietPeriod *time.Duration,
 ) (storage.RuntimeSettingsChange, storage.RuntimeSettings, error) {
 	if input.ExpectedRevision == nil || *input.ExpectedRevision < 0 {
 		return storage.RuntimeSettingsChange{}, storage.RuntimeSettings{},
@@ -109,14 +149,17 @@ func (s *Server) runtimeSettingsChange(
 	if err != nil {
 		return storage.RuntimeSettingsChange{}, storage.RuntimeSettings{}, err
 	}
-	pendingCIQuietPeriod, err := runtimeDuration(
-		input.PendingCIQuietPeriodSeconds,
-		pendingci.MinPassingQuiet,
-		pendingci.MaxPassingQuiet,
-		"merge-after-CI quiet period",
-	)
-	if err != nil {
-		return storage.RuntimeSettingsChange{}, storage.RuntimeSettings{}, err
+	pendingCIQuietPeriod := currentPendingCIQuietPeriod
+	if input.PendingCIQuietPeriodSeconds.present {
+		pendingCIQuietPeriod, err = runtimeDuration(
+			input.PendingCIQuietPeriodSeconds.value,
+			pendingci.MinPassingQuiet,
+			pendingci.MaxPassingQuiet,
+			"merge-after-CI quiet period",
+		)
+		if err != nil {
+			return storage.RuntimeSettingsChange{}, storage.RuntimeSettings{}, err
+		}
 	}
 	if input.LogLevel != nil {
 		if _, err := logging.ParseLevel(*input.LogLevel); err != nil {

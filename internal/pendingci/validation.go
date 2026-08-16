@@ -125,6 +125,21 @@ func (request ClaimMergeRequest) Validate() error {
 	return nil
 }
 
+func (request RetuneQuietPeriodRequest) Validate() error {
+	if request.PassingQuiet < MinPassingQuiet || request.PassingQuiet > MaxPassingQuiet {
+		return invalid(
+			"passing quiet period must be between %s and %s",
+			MinPassingQuiet,
+			MaxPassingQuiet,
+		)
+	}
+	if request.ChangedAt.IsZero() {
+		return invalid("quiet period change time is required")
+	}
+
+	return nil
+}
+
 func (request RescheduleRequest) Validate() error {
 	if request.ID <= 0 || request.ExpectedRevision <= 0 {
 		return invalid("request identity and revision must be positive")

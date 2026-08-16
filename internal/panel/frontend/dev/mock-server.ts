@@ -1480,8 +1480,10 @@ async function handle(
       if (input.expected_revision !== state.runtime.revision) {
         throw new MockApiError(409, 'conflict', 'runtime settings changed; reload and try again');
       }
+      const quietPeriodPresent = Object.hasOwn(input, 'merge_after_ci_quiet_period_seconds');
       const quietPeriod = input.merge_after_ci_quiet_period_seconds;
       if (
+        quietPeriodPresent &&
         quietPeriod !== null &&
         (!Number.isInteger(quietPeriod) || quietPeriod < 1 || quietPeriod > 86_400)
       ) {
@@ -1494,7 +1496,7 @@ async function handle(
       state.runtime.behaviorOverride = copyOptionalConfig(input.bot_config);
       state.runtime.logLevelOverride = input.log_level;
       state.runtime.pollIntervalOverride = input.reaction_poll_interval_seconds;
-      state.runtime.pendingCIQuietPeriodOverride = quietPeriod;
+      if (quietPeriodPresent) state.runtime.pendingCIQuietPeriodOverride = quietPeriod;
       state.runtime.sessionTTLOverride = input.session_ttl_seconds;
       state.runtime.revision += 1;
       state.runtime.updatedAt = new Date().toISOString();

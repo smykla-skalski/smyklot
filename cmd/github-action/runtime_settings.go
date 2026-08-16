@@ -27,7 +27,7 @@ func (s *server) ApplyRuntimeSettings(values adminpanel.RuntimeValues) {
 		}
 	}
 	if quietPeriodChanged && s.pendingCI != nil {
-		s.pendingCI.Wake()
+		s.pendingCI.RetunePassingQuiet(values.PendingCIQuietPeriod)
 	}
 }
 

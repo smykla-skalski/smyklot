@@ -78,7 +78,18 @@ async function signIn(browser: Browser, origin: string): Promise<string> {
   const page = await browser.newPage();
   try {
     await page.goto(`${origin}/?scenario=default`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(SETTLE_MS);
+    try {
+      await page.waitForURL(
+        (url) =>
+          /^\/i\/[^/]+\//u.test(url.pathname) ||
+          url.pathname === '/root' ||
+          url.pathname.startsWith('/root/'),
+        { timeout: 30_000 },
+      );
+    } catch {
+      // The error below reports the actual landing path, which is more useful
+      // than Playwright's generic navigation timeout.
+    }
     const landing = new URL(page.url()).pathname;
     const match = /^\/i\/([^/]+)\//u.exec(landing);
     if (match?.[1] !== undefined) return decodeURIComponent(match[1]);

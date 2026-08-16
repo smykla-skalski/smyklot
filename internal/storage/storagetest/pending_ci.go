@@ -13,6 +13,56 @@ import (
 )
 
 func declarePendingCISpecs(runtime func() (context.Context, storage.Store, time.Time)) {
+	It("retunes durable passing deadlines when the quiet period changes", func() {
+		ctx, store, now := runtime()
+		armed, err := store.Arm(ctx, pendingCIArm(now, 196, 99, "retune-head"))
+		Expect(err).NotTo(HaveOccurred())
+		lease, err := store.LeaseDue(ctx, now, now.Add(time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		_, err = store.Reschedule(ctx, pendingci.RescheduleRequest{
+			ID: lease.Request.ID, ExpectedRevision: lease.Request.Revision,
+			Schedule: pendingci.ScheduleActive, HeadSHA: armed.Request.HeadSHA,
+			NextCheckAt: now.Add(24 * time.Hour), NextCheckTrigger: pendingci.TriggerQuietPeriod,
+			LastProgressAt: now, LastObservedState: string(pendingci.ObservedPassing),
+			LastFingerprint: "passing:1:1", CheckedAt: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		changedAt := now.Add(2 * time.Second)
+		changed, err := store.RetuneQuietPeriod(ctx, pendingci.RetuneQuietPeriodRequest{
+			PassingQuiet: time.Second,
+			ChangedAt:    changedAt,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(changed).To(Equal(int64(1)))
+		lease, err = store.LeaseDue(ctx, changedAt, changedAt.Add(time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(lease.Request).NotTo(BeNil())
+		Expect(lease.Request.ID).To(Equal(armed.Request.ID))
+
+		progressAt := changedAt
+		_, err = store.Reschedule(ctx, pendingci.RescheduleRequest{
+			ID: lease.Request.ID, ExpectedRevision: lease.Request.Revision,
+			Schedule: pendingci.ScheduleActive, HeadSHA: armed.Request.HeadSHA,
+			NextCheckAt:      progressAt.Add(time.Second),
+			NextCheckTrigger: pendingci.TriggerQuietPeriod,
+			LastProgressAt:   progressAt, LastObservedState: string(pendingci.ObservedPassing),
+			LastFingerprint: "passing:1:1", CheckedAt: progressAt,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		changedAt = progressAt.Add(500 * time.Millisecond)
+		changed, err = store.RetuneQuietPeriod(ctx, pendingci.RetuneQuietPeriodRequest{
+			PassingQuiet: time.Hour,
+			ChangedAt:    changedAt,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(changed).To(Equal(int64(1)))
+		notDue, err := store.LeaseDue(ctx, progressAt.Add(time.Minute), changedAt.Add(time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(notDue.Request).To(BeNil())
+		Expect(notDue.AvailableAt).To(HaveValue(Equal(progressAt.Add(time.Hour))))
+	})
+
 	It("records webhook causality and completed pending CI history", func() {
 		ctx, store, now := runtime()
 		armed, err := store.Arm(ctx, pendingCIArm(now, 197, 100, "audit-head"))

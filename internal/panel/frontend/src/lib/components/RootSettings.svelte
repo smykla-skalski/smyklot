@@ -1,5 +1,6 @@
 <script lang="ts">
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
+  import { untrack } from 'svelte';
 
   import { formatBytes, formatElapsed, formatLatency } from '../format';
   import type {
@@ -60,6 +61,11 @@
     onSuccess: (updated) => queryClient.setQueryData(['root-settings'], updated),
   }));
   const settings = $derived<RootRuntimeSettings | null>(settingsQuery.data ?? null);
+  const settingsRevision = $derived(settings?.revision ?? -1);
+  // Duration controls are editable drafts. A refetch can legitimately return
+  // a new response object with the same revision (for example, new uptime),
+  // so only a committed revision change may replace those drafts.
+  const draftSettings = $derived.by(() => (settingsRevision < 0 ? null : untrack(() => settings)));
   const loading = $derived(settingsQuery.isPending);
   const saving = $derived(settingsMutation.isPending);
   let actionFailure = $state<string | null>(null);
@@ -72,27 +78,27 @@
           : String(settingsQuery.error)),
   );
   const sessionSeconds = $derived(
-    settings?.session_lifetime.override_seconds ??
-      settings?.session_lifetime.effective_seconds ??
+    draftSettings?.session_lifetime.override_seconds ??
+      draftSettings?.session_lifetime.effective_seconds ??
       SESSION_UNITS.days,
   );
   const sessionDisplay = $derived(durationParts(sessionSeconds));
   let sessionSource = $derived<'default' | 'custom'>(
-    settings?.session_lifetime.override_seconds == null ? 'default' : 'custom',
+    draftSettings?.session_lifetime.override_seconds == null ? 'default' : 'custom',
   );
   let sessionAmount = $derived(sessionDisplay.amount);
   let sessionUnit = $derived<SessionUnit>(sessionDisplay.unit);
 
   const pollSeconds = $derived(
-    settings?.reaction_poll_interval.override_seconds ??
-      settings?.reaction_poll_interval.effective_seconds ??
+    draftSettings?.reaction_poll_interval.override_seconds ??
+      draftSettings?.reaction_poll_interval.effective_seconds ??
       POLL_UNITS.minutes * 5,
   );
   const pollDisplay = $derived(pollDurationParts(pollSeconds));
   let pollSource = $derived<'default' | 'disabled' | 'custom'>(
-    settings?.reaction_poll_interval.override_seconds == null
+    draftSettings?.reaction_poll_interval.override_seconds == null
       ? 'default'
-      : settings.reaction_poll_interval.override_seconds === 0
+      : draftSettings.reaction_poll_interval.override_seconds === 0
         ? 'disabled'
         : 'custom',
   );
@@ -100,13 +106,13 @@
   let pollUnit = $derived<PollUnit>(pollDisplay.unit);
 
   const quietPeriodSeconds = $derived(
-    settings?.merge_after_ci_quiet_period.override_seconds ??
-      settings?.merge_after_ci_quiet_period.effective_seconds ??
+    draftSettings?.merge_after_ci_quiet_period.override_seconds ??
+      draftSettings?.merge_after_ci_quiet_period.effective_seconds ??
       30,
   );
   const quietPeriodDisplay = $derived(pollDurationParts(quietPeriodSeconds));
   let quietPeriodSource = $derived<'default' | 'custom'>(
-    settings?.merge_after_ci_quiet_period.override_seconds == null ? 'default' : 'custom',
+    draftSettings?.merge_after_ci_quiet_period.override_seconds == null ? 'default' : 'custom',
   );
   let quietPeriodAmount = $derived(quietPeriodDisplay.amount);
   let quietPeriodUnit = $derived<PollUnit>(quietPeriodDisplay.unit);

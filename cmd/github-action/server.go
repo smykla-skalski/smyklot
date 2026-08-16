@@ -270,6 +270,7 @@ func newServer(cfg *serveConfig) (*server, error) {
 	)
 	srv.pendingCIReconciler = pendingCIReconciler
 	srv.pendingCI = newPendingCIScheduler(srv.store, pendingCIReconciler, srv.logger)
+	srv.pendingCI.RetunePassingQuiet(cfg.pendingCIQuietPeriod)
 	srv.pendingCIHandoff = &pendingCIHandoff{
 		store: srv.store, coordinator: pendingCICoordinator, wake: srv.pendingCI.Wake,
 	}
