@@ -12,6 +12,8 @@
 
   import type { SyncAction, SyncConfig, SyncConfigInput, SyncPlan } from '$lib/types';
 
+  import SyncSettingsForm from './SyncSettingsForm.svelte';
+
   const {
     targetId,
     readOnly,
@@ -28,14 +30,17 @@
     approvePlan: (targetId: string, planId: string, digest: string) => Promise<{ plan: SyncPlan }>;
   } = $props();
 
-  // The kind this view has a form for. Settings, rulesets and files are
-  // configurable through the API and have no form here yet, so naming the one
-  // this page means is better than a parameter nothing varies.
+  // The kinds this view has a form for. Rulesets and files are configurable
+  // through the API and have none here yet, so naming the ones this page means
+  // is better than a parameter nothing varies.
   const LABELS = 'labels';
+  const SETTINGS = 'settings';
 
   let config = $state<SyncConfig | null>(null);
+  let settings = $state<SyncConfig | null>(null);
   let plan = $state<SyncPlan | null>(null);
   let saving = $state(false);
+  let savingSettings = $state(false);
   let approving = $state(false);
   let error = $state<string | null>(null);
 
@@ -51,11 +56,13 @@
   async function load(id: string): Promise<void> {
     error = null;
     try {
-      const [loadedConfig, loadedPlan] = await Promise.all([
+      const [loadedConfig, loadedSettings, loadedPlan] = await Promise.all([
         fetchConfig(id, LABELS),
+        fetchConfig(id, SETTINGS),
         fetchPlan(id),
       ]);
       config = loadedConfig;
+      settings = loadedSettings;
       plan = loadedPlan.plan;
     } catch (cause) {
       error = messageOf(cause);
@@ -84,6 +91,35 @@
       error = messageOf(cause);
     } finally {
       saving = false;
+    }
+  }
+
+  /**
+   * The settings are saved whole, unlike the labels switch beside them: a
+   * repository's settings are one request that succeeds or fails together, so
+   * a control that saved on every click would send a dozen half-formed
+   * policies and compute a plan for each.
+   */
+  async function onSaveSettings(wanted: boolean, document: Record<string, unknown>): Promise<void> {
+    const current = settings;
+    if (current === null) return;
+
+    savingSettings = true;
+    error = null;
+    try {
+      settings = await saveConfig(targetId, SETTINGS, {
+        enabled: wanted,
+        labels: [],
+        allow_removal: false,
+        excludes: [],
+        document,
+        expected_revision: current.revision,
+      });
+      plan = (await fetchPlan(targetId)).plan;
+    } catch (cause) {
+      error = messageOf(cause);
+    } finally {
+      savingSettings = false;
     }
   }
 
@@ -219,13 +255,28 @@
       {/each}
     </ul>
   {/if}
+</section>
 
+{#if settings !== null}
+  <SyncSettingsForm
+    stored={settings.document}
+    enabled={settings.enabled}
+    unreadable={settings.unreadable}
+    {readOnly}
+    saving={savingSettings}
+    onSave={onSaveSettings}
+  />
+{/if}
+
+<section class="sync" aria-labelledby="sync-plan-heading">
   <header class="sync-header">
-    <h3 id="sync-plan-heading">What would change</h3>
+    <h2 id="sync-plan-heading">What would change</h2>
   </header>
 
   {#if plan === null}
-    <p class="sync-empty">Nothing to do. Every repository already carries what is listed above.</p>
+    <p class="sync-empty">
+      Nothing to do. Every repository already matches what is configured above.
+    </p>
   {:else}
     <p class="sync-note">{planNote}</p>
     <p class="sync-counts">
@@ -236,6 +287,9 @@
       {#each plan.actions as action (action.repository + action.kind + action.subject)}
         <li class="sync-action" class:sync-removal={action.operation === 'delete'}>
           <span class="sync-operation">{operationLabel(action)}</span>
+          <!-- Which of the sections above this row came from. One list covers
+               them all, and "change repository" says nothing on its own. -->
+          <span class="sync-kind">{action.kind}</span>
           <span class="sync-subject">{action.subject}</span>
           {#if action.after}
             <span class="sync-after">{action.after}</span>
@@ -324,7 +378,8 @@
 
   .sync-description,
   .sync-after,
-  .sync-counts {
+  .sync-counts,
+  .sync-kind {
     color: var(--text-muted);
   }
 

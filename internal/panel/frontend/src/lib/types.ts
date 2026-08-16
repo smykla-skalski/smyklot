@@ -664,6 +664,12 @@ export interface SyncConfigInput {
   allow_removal: boolean;
   excludes: string[];
   expected_revision: number;
+  /**
+   * The kind's own document, for every kind but labels. Labels travel in the
+   * typed fields above because the panel has a form built out of them; anything
+   * else is sent as it is, so a kind is configurable before it has one.
+   */
+  document?: Record<string, unknown>;
 }
 
 /** One change a plan would make. */

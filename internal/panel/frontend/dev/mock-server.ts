@@ -1413,6 +1413,10 @@ async function handle(
           labels: input.labels ?? [],
           allow_removal: input.allow_removal,
           excludes: input.excludes ?? [],
+          // Kept as it is sent, like the server keeps it: the kinds that have
+          // no form here are configured entirely through this field, and a
+          // mock that dropped it would show every save as a no-op.
+          document: input.document ?? config.document,
           revision: config.revision + 1,
           updated_at: new Date().toISOString(),
         });
