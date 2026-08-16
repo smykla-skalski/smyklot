@@ -209,9 +209,18 @@ export function createPanelApi(
     console.error(`[smyklot] ${floodMessage(flood)}`);
   };
 
+  /* Counted here rather than in `request`, because `request` is not the only way
+     out: the session probe goes straight to fetch, since a 401 there is the
+     ordinary way of asking whether anyone is signed in rather than a failure. A
+     loop on that one would have gone unreported. */
+  const counted: FetchLike = (url, init) => {
+    reportFlood(rate.record(url));
+
+    return fetchImpl(url, init);
+  };
+
   const request = async (path: string, init?: RequestInit): Promise<Response> => {
-    reportFlood(rate.record(path));
-    const response = await fetchImpl(panelUrl(base, path), {
+    const response = await counted(panelUrl(base, path), {
       ...init,
       credentials: 'same-origin',
     });
@@ -270,7 +279,7 @@ export function createPanelApi(
 
   return {
     async fetchViewer(): Promise<PanelViewer | null> {
-      const response = await fetchImpl(panelUrl(base, '/api/v1/session'), {
+      const response = await counted(panelUrl(base, '/api/v1/session'), {
         credentials: 'same-origin',
       });
       if (response.status === 401) {
