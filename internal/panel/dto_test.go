@@ -112,15 +112,7 @@ func TestPatchSizeCountsEverySetting(t *testing.T) {
 // Every key the patch can carry has to be countable, or patchSize is back to
 // enumerating a subset - just generated rather than hand-written.
 func TestPatchSizeCountsAFullPatch(t *testing.T) {
-	full := config.Patch{}
-	value := reflect.ValueOf(&full).Elem()
-
-	for index := range value.NumField() {
-		field := value.Field(index)
-		field.Set(reflect.New(field.Type().Elem()))
-	}
-
-	if got, want := patchSize(full), len(config.Keys()); got != want {
+	if got, want := patchSize(fullPatch(t)), len(config.Keys()); got != want {
 		t.Errorf("patchSize(full patch) = %d, want %d", got, want)
 	}
 }
