@@ -52,7 +52,9 @@ jobs:
           - area: panel
             dirs: ./internal/panel ./internal/panelassets ./internal/storage/transfer
           - area: storage
-            dirs: ./internal/storage/sqlite ./internal/storage/postgres
+            dirs: >-
+              ./internal/storage ./internal/storage/sqlite
+              ./internal/storage/postgres
           - area: packages
             dirs: >-
               ./pkg ./internal/pendingci ./internal/orgsync ./internal/configgen
