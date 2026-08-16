@@ -1,9 +1,12 @@
 <script lang="ts">
+  import { getContext } from 'svelte';
   import type { PanelApi } from '../api';
   import { formatDateTime } from '../format';
   import { fuzzyCandidates } from '../fuzzy';
   import { monogram } from '../identity';
+  import { onInvalidate } from '../on-invalidate';
   import type { HistorySection, RootRoute, ScopedPanelView } from '../routes';
+  import type { PanelSession } from '../session.svelte';
   import type { RootInstallation } from '../types';
   import Chip from './Chip.svelte';
   import Icon from './Icon.svelte';
@@ -15,7 +18,6 @@
   const {
     route,
     api,
-    refreshVersion,
     rootRole,
     actorLogin,
     listHref,
@@ -27,7 +29,6 @@
   }: {
     route: RootRoute;
     api: PanelApi;
-    refreshVersion: number;
     rootRole: string;
     actorLogin: string;
     listHref: string;
@@ -38,6 +39,8 @@
     onHistorySection: (section: HistorySection) => void;
   } = $props();
 
+  const session = getContext<PanelSession>('panel-session');
+
   let installations = $state<RootInstallation[]>([]);
   let loading = $state(true);
   let failure = $state<string | null>(null);
@@ -45,7 +48,6 @@
   let syncing = $state(false);
   let syncProblem = $state<string | null>(null);
   let syncFeedback = $state('');
-  let sequence = 0;
 
   const selected = $derived(
     route.rootView === 'installation'
@@ -67,19 +69,15 @@
     ).map((candidate) => candidate.installation),
   );
 
-  async function load(version = refreshVersion): Promise<void> {
-    const current = ++sequence;
+  async function load(): Promise<void> {
     loading = true;
     failure = null;
     try {
-      const loaded = await api.fetchRootInstallations();
-      if (current !== sequence || version !== refreshVersion) return;
-      installations = loaded;
+      installations = await api.fetchRootInstallations();
     } catch (error) {
-      if (current !== sequence || version !== refreshVersion) return;
       failure = error instanceof Error ? error.message : String(error);
     } finally {
-      if (current === sequence) loading = false;
+      loading = false;
     }
   }
 
@@ -143,8 +141,10 @@
   }
 
   $effect(() => {
-    void load(refreshVersion);
+    void load();
   });
+
+  onInvalidate(session.queryClient, ['root-installations'], () => void load());
 </script>
 
 {#if route.rootView === 'installation' && selected !== null}
@@ -154,7 +154,6 @@
       view={route.view}
       {api}
       {actorLogin}
-      {refreshVersion}
       {listHref}
       {hrefFor}
       {onList}

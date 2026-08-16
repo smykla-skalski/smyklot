@@ -13,7 +13,6 @@
 >
   <RootSettings
     rootRole={session.rootRole}
-    refreshVersion={session.runtimeSettingsVersion}
     fetchSettings={session.api.fetchRootRuntimeSettings}
     updateSettings={session.api.updateRootRuntimeSettings}
   />

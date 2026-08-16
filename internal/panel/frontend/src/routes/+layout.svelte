@@ -9,6 +9,7 @@
   import { readPanelBuild } from '$lib/base';
   import { readPanelFailure } from '$lib/panel-error';
   import { PanelSession } from '$lib/session.svelte';
+  import { createPanelQueryClient } from '$lib/query-client';
   import { applyDocumentTheme } from '$lib/preferences';
   import { panelRoutePath } from '$lib/routes';
   import { prefText } from '$lib/preferences-sync';
@@ -31,7 +32,7 @@
   const build = readPanelBuild(document);
   const pageFailure = readPanelFailure(document);
 
-  const session = new PanelSession(api, build);
+  const session = new PanelSession(api, build, createPanelQueryClient());
   setContext('panel-session', session);
 
   const { children } = $props();

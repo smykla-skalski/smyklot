@@ -9,7 +9,7 @@
   } from '@tanstack/svelte-table';
   import type { ColumnFiltersState, SortingState, Updater } from '@tanstack/svelte-table';
   import { createVirtualizer } from '@tanstack/svelte-virtual';
-  import { untrack } from 'svelte';
+  import { getContext, untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import { get } from 'svelte/store';
 
@@ -18,6 +18,7 @@
   import { formatDateTime, formatRelative, formatTimestamp, formatUntil } from '../format';
   import { monogram } from '../identity';
   import type { FilterSection } from '../filter-menu';
+  import { onInvalidate } from '../on-invalidate';
   import {
     EPHEMERAL_PREFS,
     prefList,
@@ -25,6 +26,7 @@
     prefText,
     type PrefsAccessor,
   } from '../preferences-sync';
+  import type { PanelSession } from '../session.svelte';
   import type {
     AccessDecision,
     AddTargetInvitationInput,
@@ -153,7 +155,6 @@
     targetName,
     actorLogin,
     actorTargetRole,
-    refreshVersion = 0,
     readOnly = false,
     onSection,
     fetchTargetUsers,
@@ -173,7 +174,6 @@
     /** The signed-in login, so the one refusal the panel can make for itself is made here. */
     actorLogin: string;
     actorTargetRole: InstallationRole;
-    refreshVersion?: number;
     readOnly?: boolean;
     onSection: (section: ManagementSection) => void;
     fetchTargetUsers: (targetId: string, request: PanelUserPageRequest) => Promise<Page<PanelUser>>;
@@ -201,6 +201,8 @@
     revokeInvitation: (targetId: string, invitationId: string) => Promise<PanelInvitation>;
     fetchUserDecisions: (accountId: string, targetId: string) => Promise<AccessDecision[]>;
   } = $props();
+
+  const session = getContext<PanelSession>('panel-session');
 
   // Table state deliberately captures the preferences at mount; remote
   // changes apply on the next remount instead of mid-interaction.
@@ -347,8 +349,6 @@
   let userScroll = $state<HTMLTableSectionElement>();
   let invitationScroll = $state<HTMLTableSectionElement>();
 
-  let userLoadVersion = 0;
-  let invitationLoadVersion = 0;
   // Ticks so "5 minutes ago" keeps aging in a long session; a captured
   // timestamp would freeze every relative time at first render.
   let now = $state(Date.now());
@@ -414,15 +414,7 @@
     addRoles().map((role) => ({ value: role, label: roleLabel(role), icon: roleIcon(role) })),
   );
   const userRequestKey = $derived(
-    JSON.stringify([
-      targetId,
-      userQuery,
-      userSort,
-      userRoles,
-      userStatuses,
-      userLimit,
-      refreshVersion,
-    ]),
+    JSON.stringify([targetId, userQuery, userSort, userRoles, userStatuses, userLimit]),
   );
   const invitationRequestKey = $derived(
     JSON.stringify([
@@ -432,7 +424,6 @@
       invitationRoles,
       invitationStatuses,
       invitationLimit,
-      refreshVersion,
     ]),
   );
   const userStatusFilterSections = $derived<FilterSection[]>([
@@ -561,6 +552,11 @@
     void loadInvitations(undefined, false, requestKey);
   });
 
+  onInvalidate(session.queryClient, ['users', targetId], () => {
+    void loadUsers(undefined, false);
+    void loadInvitations(undefined, false);
+  });
+
   $effect(() => {
     const rows = userTableRows;
     get(userVirtualizer).setOptions({
@@ -598,7 +594,6 @@
     _requestKey = userRequestKey,
   ): Promise<void> {
     if (_requestKey !== userRequestKey) return;
-    const version = ++userLoadVersion;
     const requestedTarget = targetId;
     loadingUsers = true;
     if (!append) userFailure = null;
@@ -613,18 +608,17 @@
     };
     try {
       const listed = await fetchTargetUsers(requestedTarget, request);
-      if (version !== userLoadVersion) return;
+      if (_requestKey !== userRequestKey) return;
       userPage =
         append && userPage !== null
           ? { ...listed, items: [...userPage.items, ...listed.items] }
           : listed;
     } catch (error) {
-      if (version === userLoadVersion) {
-        if (append) userLoadMoreFailure = errorMessage(error);
-        else userFailure = errorMessage(error);
-      }
+      if (_requestKey !== userRequestKey) return;
+      if (append) userLoadMoreFailure = errorMessage(error);
+      else userFailure = errorMessage(error);
     } finally {
-      if (version === userLoadVersion) loadingUsers = false;
+      if (_requestKey === userRequestKey) loadingUsers = false;
     }
   }
 
@@ -634,7 +628,6 @@
     _requestKey = invitationRequestKey,
   ): Promise<void> {
     if (_requestKey !== invitationRequestKey) return;
-    const version = ++invitationLoadVersion;
     const requestedTarget = targetId;
     loadingInvitations = true;
     if (!append) invitationFailure = null;
@@ -649,18 +642,17 @@
     };
     try {
       const listed = await fetchTargetInvitations(requestedTarget, request);
-      if (version !== invitationLoadVersion) return;
+      if (_requestKey !== invitationRequestKey) return;
       invitationPage =
         append && invitationPage !== null
           ? { ...listed, items: [...invitationPage.items, ...listed.items] }
           : listed;
     } catch (error) {
-      if (version === invitationLoadVersion) {
-        if (append) invitationLoadMoreFailure = errorMessage(error);
-        else invitationFailure = errorMessage(error);
-      }
+      if (_requestKey !== invitationRequestKey) return;
+      if (append) invitationLoadMoreFailure = errorMessage(error);
+      else invitationFailure = errorMessage(error);
     } finally {
-      if (version === invitationLoadVersion) loadingInvitations = false;
+      if (_requestKey === invitationRequestKey) loadingInvitations = false;
     }
   }
 

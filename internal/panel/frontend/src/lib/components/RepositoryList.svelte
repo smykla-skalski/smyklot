@@ -11,7 +11,7 @@
   } from '@tanstack/svelte-table';
   import type { ColumnFiltersState, SortingState, Updater } from '@tanstack/svelte-table';
   import { createVirtualizer } from '@tanstack/svelte-virtual';
-  import { tick, untrack } from 'svelte';
+  import { getContext, tick, untrack } from 'svelte';
   import { MediaQuery, SvelteSet } from 'svelte/reactivity';
   import { get } from 'svelte/store';
 
@@ -19,6 +19,7 @@
   import { dialogRoute } from '../dialog-route.svelte';
   import type { FilterSection } from '../filter-menu';
   import { formatRelative, formatTimestamp } from '../format';
+  import { onInvalidate } from '../on-invalidate';
   import {
     decodeRepositorySettingFilter,
     encodeRepositorySettingFilter,
@@ -34,6 +35,7 @@
     shouldReplaceFailureWithReadError,
   } from '../repository';
   import type { RepositoryFailureSource } from '../repository';
+  import type { PanelSession } from '../session.svelte';
   import type {
     ConfigPatch,
     ConfigKey,
@@ -175,7 +177,6 @@
   ]);
   const {
     targetId,
-    refreshVersion,
     defaultEnabled,
     fetchPage,
     onLoad,
@@ -185,7 +186,6 @@
     prefs = EPHEMERAL_PREFS,
   }: {
     targetId: string;
-    refreshVersion: number;
     defaultEnabled: boolean;
     fetchPage: (request: RepositoryPageRequest) => Promise<Page<RepositorySummary>>;
     onLoad: (repositoryId: string) => Promise<RepositoryDetail>;
@@ -194,6 +194,8 @@
     readOnly?: boolean;
     prefs?: PrefsAccessor;
   } = $props();
+
+  const session = getContext<PanelSession>('panel-session');
 
   // Table state deliberately captures the preferences at mount; remote
   // changes apply on the next remount instead of mid-interaction.
@@ -249,8 +251,6 @@
   const working = new SvelteSet<string>();
   const pendingRefreshes = new SvelteSet<string>();
   let now = $state(Date.now());
-  let requestSequence = 0;
-  let observedRefreshVersion: number | undefined;
   let repositoryResults = $state<HTMLDivElement>();
   let repositoryScroll = $state<HTMLTableSectionElement>();
   /** Names learned from a repository read by name, so the id is known next time. */
@@ -377,6 +377,11 @@
     void resetAndLoad(filterKey);
   });
 
+  onInvalidate(session.queryClient, ['repositories', targetId], () => {
+    void resetAndLoad(filterKey);
+    refreshVisibleRepository();
+  });
+
   $effect(() => {
     const rows = repositoryRows;
     get(repositoryVirtualizer).setOptions({
@@ -400,20 +405,6 @@
     return () => clearInterval(tick);
   });
 
-  $effect(() => {
-    const version = refreshVersion;
-    if (observedRefreshVersion === undefined) {
-      observedRefreshVersion = version;
-      return;
-    }
-    if (version === observedRefreshVersion) return;
-    observedRefreshVersion = version;
-    untrack(() => {
-      void resetAndLoad(filterKey);
-      refreshVisibleRepository(version);
-    });
-  });
-
   async function resetAndLoad(key: string): Promise<void> {
     loadMoreProblem = null;
     scrollResultsToTop();
@@ -421,7 +412,6 @@
   }
 
   async function loadPage(cursor: string | undefined, key: string, append: boolean): Promise<void> {
-    const sequence = ++requestSequence;
     loading = true;
     if (!append) problem = null;
     else loadMoreProblem = null;
@@ -435,17 +425,17 @@
         files: fileFilters,
         setting: settingFilter,
       });
-      if (sequence !== requestSequence || key !== filterKey) return;
+      if (key !== filterKey) return;
       page =
         append && page !== null ? { ...loaded, items: [...page.items, ...loaded.items] } : loaded;
     } catch (error) {
-      if (sequence === requestSequence && key === filterKey) {
+      if (key === filterKey) {
         const message = error instanceof Error ? error.message : String(error);
         if (append) loadMoreProblem = message;
         else problem = message;
       }
     } finally {
-      if (sequence === requestSequence && key === filterKey) {
+      if (key === filterKey) {
         loading = false;
       }
     }
@@ -537,8 +527,7 @@
     settingFilter = { mode: 'all' };
   }
 
-  function refreshVisibleRepository(version: number): void {
-    if (!Number.isSafeInteger(version)) return;
+  function refreshVisibleRepository(): void {
     untrack(() => {
       for (const repositoryId of visibleDetails) requestRefresh(repositoryId);
     });

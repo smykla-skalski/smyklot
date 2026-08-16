@@ -1,9 +1,11 @@
 <script lang="ts">
-  import { untrack, type Snippet } from 'svelte';
+  import { getContext, untrack, type Snippet } from 'svelte';
   import { PanelApiError } from '../api';
   import { dialogRoute } from '../dialog-route.svelte';
   import { formatDateTime, formatRelative, formatTimestamp, formatUntil } from '../format';
   import type { FilterSection } from '../filter-menu';
+  import { onInvalidate } from '../on-invalidate';
+  import type { PanelSession } from '../session.svelte';
   import type {
     AddRootInvitationInput,
     InvitationDays,
@@ -43,7 +45,6 @@
 
   const {
     fetchPage,
-    refreshVersion,
     create,
     reissue,
     revoke,
@@ -52,7 +53,6 @@
     navigation,
   }: {
     fetchPage: (request: InvitationPageRequest) => Promise<Page<PanelInvitation>>;
-    refreshVersion: number;
     create: (input: AddRootInvitationInput) => Promise<PanelInvitation>;
     reissue: (invitationId: string, expiresInDays: InvitationDays) => Promise<PanelInvitation>;
     revoke: (invitationId: string) => Promise<PanelInvitation>;
@@ -61,6 +61,8 @@
     actorLogin: string;
     navigation?: Snippet;
   } = $props();
+
+  const session = getContext<PanelSession>('panel-session');
 
   let page = $state<Page<PanelInvitation> | null>(null);
   // Ticks so the pending countdown and relative Created column keep aging.
@@ -72,7 +74,6 @@
   let loading = $state(false);
   let problem = $state<string | null>(null);
   let loadMoreProblem = $state<string | null>(null);
-  let sequence = 0;
 
   let createTrigger = $state<HTMLElement | null>(null);
   let login = $state('');
@@ -104,7 +105,7 @@
   let actionProblem = $state<string | null>(null);
 
   const limit = 20;
-  const requestKey = $derived(JSON.stringify([query, sort, statuses, limit, refreshVersion]));
+  const requestKey = $derived(JSON.stringify([query, sort, statuses, limit]));
   const invitations = $derived(page?.items ?? []);
   const hasFilters = $derived(query !== '' || statuses.length > 0);
 
@@ -148,13 +149,14 @@
     });
   });
 
+  onInvalidate(session.queryClient, ['root-access'], () => void loadPage(undefined, false));
+
   async function loadPage(
     cursor: string | undefined,
     append: boolean,
     key = requestKey,
   ): Promise<void> {
     if (key !== requestKey || loading) return;
-    const version = ++sequence;
     loading = true;
     if (append) loadMoreProblem = null;
     else problem = null;
@@ -167,16 +169,16 @@
         roles: [],
         statuses,
       });
-      if (version !== sequence || key !== requestKey) return;
+      if (key !== requestKey) return;
       page =
         append && page !== null ? { ...loaded, items: [...page.items, ...loaded.items] } : loaded;
     } catch (error) {
-      if (version !== sequence || key !== requestKey) return;
+      if (key !== requestKey) return;
       const message = error instanceof Error ? error.message : String(error);
       if (append) loadMoreProblem = message;
       else problem = message;
     } finally {
-      if (version === sequence) loading = false;
+      if (key === requestKey) loading = false;
     }
   }
 

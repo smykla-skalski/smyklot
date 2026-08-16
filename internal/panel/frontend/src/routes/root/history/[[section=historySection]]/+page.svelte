@@ -19,7 +19,6 @@
     rootRole={session.rootRole}
     {section}
     onSection={(s: 'audit' | 'failures') => session.selectRootHistorySection(s)}
-    refreshVersion={session.rootDataVersion}
     fetchAudit={session.api.fetchRootAudit}
     fetchFailures={session.api.fetchRootFailures}
   />

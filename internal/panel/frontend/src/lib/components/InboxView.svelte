@@ -1,9 +1,11 @@
 <script lang="ts">
-  import { untrack } from 'svelte';
+  import { getContext, untrack } from 'svelte';
 
   import type { PanelApi } from '../api';
   import { formatRelative, formatTimestamp } from '../format';
   import { LatestRequest } from '../latest-request';
+  import { onInvalidate } from '../on-invalidate';
+  import type { PanelSession } from '../session.svelte';
   import type { SecurityNotification } from '../types';
   import Chip from './Chip.svelte';
   import Icon from './Icon.svelte';
@@ -13,15 +15,15 @@
   const {
     fetchPage,
     markRead,
-    refreshVersion = 0,
     onUnread,
   }: {
     fetchPage: PanelApi['fetchNotifications'];
     markRead: PanelApi['markNotificationRead'];
-    refreshVersion?: number;
     /** Reports the count back, so the sidebar's badge answers to what was read here. */
     onUnread?: (unread: number) => void;
   } = $props();
+
+  const session = getContext<PanelSession>('panel-session');
 
   const PAGE_SIZE = 20;
 
@@ -176,8 +178,10 @@
    * screen because the next attempt cleared it before it could render.
    */
   $effect(() => {
-    if (refreshVersion >= 0) untrack(() => void load());
+    untrack(() => void load());
   });
+
+  onInvalidate(session.queryClient, ['notifications'], () => void load());
 
   /* Only once there is a count to report. `unread` starts at zero because nothing
      has been read yet, not because everything has been read, and reporting that

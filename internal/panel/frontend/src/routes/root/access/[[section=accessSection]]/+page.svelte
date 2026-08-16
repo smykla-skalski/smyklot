@@ -16,7 +16,6 @@
   <RootAccess
     rootRole={session.rootRole}
     {section}
-    refreshVersion={session.rootDataVersion}
     onSection={(s: 'users' | 'invitations') => session.selectRootAccessSection(s)}
     fetchUsers={session.api.fetchRootUsers}
     updateUser={session.api.updateRootUser}

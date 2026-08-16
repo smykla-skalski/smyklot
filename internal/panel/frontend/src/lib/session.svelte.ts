@@ -11,6 +11,8 @@ import { base } from '$app/paths';
 import { page } from '$app/state';
 import { MediaQuery } from 'svelte/reactivity';
 
+import type { QueryClient } from '@tanstack/svelte-query';
+
 import type { PanelApi } from './api';
 import type { PanelBuild } from './base';
 import type { SessionEnded } from './panel-session';
@@ -29,7 +31,6 @@ import {
   type RouteDialog,
   type ScopedPanelView,
 } from './routes';
-import { LatestRequest } from './latest-request';
 import type { PanelTarget, PanelViewer, TargetSettingsInput } from './types';
 
 type FailureSource = 'load' | 'sign-out' | 'stream';
@@ -40,19 +41,14 @@ export class PanelSession {
   readonly build: PanelBuild;
   readonly prefs: PrefsSync;
   readonly base: string;
+  readonly queryClient: QueryClient;
 
   loading = $state(true);
   viewer = $state<PanelViewer | null>(null);
   targets = $state<PanelTarget[]>([]);
   selectedId = $state<string | null>(null);
   failure = $state<PanelFailure | null>(null);
-  historyVersion = $state(0);
-  repositoryDetailsVersion = $state(0);
-  userVersion = $state(0);
-  notificationVersion = $state(0);
   notificationUnread = $state(0);
-  runtimeSettingsVersion = $state(0);
-  rootDataVersion = $state(0);
   streamReady = $state(false);
   sessionEnded = $state<SessionEnded | null>(null);
   identityBar = $state<ReturnType<typeof import('./components/IdentityBar.svelte').default> | null>(
@@ -65,13 +61,11 @@ export class PanelSession {
   readonly narrowRail = new MediaQuery('(min-width: 48.0625rem) and (max-width: 72rem)');
   readonly systemDarkTheme = new MediaQuery('prefers-color-scheme: dark');
 
-  private targetReads = new LatestRequest();
-  private streamRefreshes = new LatestRequest();
-
-  constructor(api: PanelApi, build: PanelBuild) {
+  constructor(api: PanelApi, build: PanelBuild, queryClient: QueryClient) {
     this.api = api;
     this.build = build;
     this.base = base;
+    this.queryClient = queryClient;
     this.prefs = createPrefsSync();
     this.sidebarCollapsed = this.prefs.get('sidebar') === 'collapsed';
     this.theme = this.storedTheme();
@@ -196,7 +190,7 @@ export class PanelSession {
   async load(): Promise<void> {
     this.loading = this.viewer === null;
     this.streamReady = false;
-    this.streamRefreshes.invalidate();
+    this.queryClient.clear();
     this.failure = null;
     try {
       this.viewer = await this.api.fetchViewer();
@@ -207,8 +201,7 @@ export class PanelSession {
       }
       this.sessionEnded = null;
       this.prefs.adoptAccount(this.viewer.account.id);
-      if (!(await this.refreshTargets())) return;
-      this.historyVersion += 1;
+      await this.refreshTargets();
       this.streamReady = true;
     } catch (error) {
       this.setFailure('load', error);
@@ -218,20 +211,16 @@ export class PanelSession {
   }
 
   async refreshTargets(): Promise<boolean> {
-    const read = this.targetReads.begin();
-    let listed: PanelTarget[];
     try {
-      listed = await this.api.fetchTargets();
-    } catch (error) {
-      if (!this.targetReads.isCurrent(read)) return false;
-      throw error;
+      const listed = await this.api.fetchTargets();
+      this.targets = listed;
+      if (this.selectedId !== null && !listed.some((t) => t.id === this.selectedId)) {
+        this.selectedId = null;
+      }
+      return true;
+    } catch {
+      return false;
     }
-    if (!this.targetReads.isCurrent(read)) return false;
-    this.targets = listed;
-    if (this.selectedId !== null && !listed.some((t) => t.id === this.selectedId)) {
-      this.selectedId = null;
-    }
-    return true;
   }
 
   // --- Target selection ---
@@ -369,55 +358,40 @@ export class PanelSession {
     const target = this.selectedTarget;
     if (target === null) return;
     const updated = await this.api.updateTargetSettings(target.id, input);
-    this.targetReads.invalidate();
     this.targets = this.targets.map((e) => (e.id === updated.id ? updated : e));
-    this.repositoryDetailsVersion += 1;
-    this.historyVersion += 1;
-    this.userVersion += 1;
+    this.invalidateTargetData(target.id);
   }
 
   repositoryChanged(targetId: string): void {
     if (this.viewer === null) return;
-    if (this.selectedId === targetId) this.repositoryDetailsVersion += 1;
-    this.historyVersion += 1;
+    this.invalidateTargetData(targetId);
     this.refreshFromStreamSafely();
   }
 
   // --- Stream ---
 
   async refreshFromStream(refreshViewer = false): Promise<void> {
-    const refresh = this.streamRefreshes.begin();
     try {
       if (refreshViewer) {
         const currentViewer = await this.api.fetchViewer();
-        if (!this.streamRefreshes.isCurrent(refresh)) return;
         if (currentViewer === null) {
           this.revokeAccess({ code: 'access_revoked', reason: '' });
           return;
         }
         this.viewer = currentViewer;
       }
-      if (!(await this.refreshTargets()) || !this.streamRefreshes.isCurrent(refresh)) return;
+      await this.refreshTargets();
       if (this.isRootMode && this.viewer?.system_role === 'none') {
         goto(this.routePath(this.routeFor(this.selectedTarget ?? this.targets[0]!, 'settings')), {
           replaceState: true,
         });
-      } else if (this.selectedId === null) {
-        // stay on current route
-      } else if (this.selectedTarget !== null) {
-        this.prefs.set('last_installation', this.selectedTarget.account.login);
       }
-      if (this.selectedId !== null) {
-        this.repositoryDetailsVersion += 1;
-        this.historyVersion += 1;
-        this.userVersion += 1;
-      }
+      // Invalidate everything the stream could have changed. Each component
+      // subscribes to its own key and refetches only what it needs.
+      this.queryClient.invalidateQueries();
       this.clearFailure('stream');
-      this.notificationVersion += 1;
-      this.runtimeSettingsVersion += 1;
-      this.rootDataVersion += 1;
     } catch (error) {
-      if (this.streamRefreshes.isCurrent(refresh)) this.setFailure('stream', error);
+      this.setFailure('stream', error);
     }
   }
 
@@ -435,8 +409,7 @@ export class PanelSession {
     this.targets = [];
     this.selectedId = null;
     this.streamReady = false;
-    this.targetReads.invalidate();
-    this.streamRefreshes.invalidate();
+    this.queryClient.clear();
   }
 
   async signOut(): Promise<void> {
@@ -449,8 +422,7 @@ export class PanelSession {
       this.targets = [];
       this.selectedId = null;
       this.streamReady = false;
-      this.targetReads.invalidate();
-      this.streamRefreshes.invalidate();
+      this.queryClient.clear();
       await this.load();
     } catch (error) {
       this.setFailure('sign-out', error);
@@ -479,6 +451,14 @@ export class PanelSession {
 
   private routePath(route: PanelRoute): string {
     return panelRoutePath('', route);
+  }
+
+  private invalidateTargetData(targetId: string): void {
+    this.queryClient.invalidateQueries({ queryKey: ['repositories', targetId] });
+    this.queryClient.invalidateQueries({ queryKey: ['audit', targetId] });
+    this.queryClient.invalidateQueries({ queryKey: ['failures', targetId] });
+    this.queryClient.invalidateQueries({ queryKey: ['users', targetId] });
+    this.queryClient.invalidateQueries({ queryKey: ['invitations', targetId] });
   }
 
   private routeFor(

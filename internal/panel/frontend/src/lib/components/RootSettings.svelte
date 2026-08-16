@@ -1,7 +1,9 @@
 <script lang="ts">
-  import { untrack } from 'svelte';
+  import { getContext, untrack } from 'svelte';
 
   import { formatBytes, formatElapsed, formatLatency } from '../format';
+  import { onInvalidate } from '../on-invalidate';
+  import type { PanelSession } from '../session.svelte';
   import type {
     ConfigPatch,
     ConfigValues,
@@ -41,16 +43,16 @@
   type PollUnit = keyof typeof POLL_UNITS;
 
   const {
-    refreshVersion,
     rootRole,
     fetchSettings,
     updateSettings,
   }: {
-    refreshVersion: number;
     rootRole: string;
     fetchSettings: () => Promise<RootRuntimeSettings>;
     updateSettings: (input: RootRuntimeSettingsInput) => Promise<RootRuntimeSettings>;
   } = $props();
+
+  const session = getContext<PanelSession>('panel-session');
 
   let settings = $state<RootRuntimeSettings | null>(null);
   let loading = $state(true);
@@ -79,8 +81,10 @@
      fresh object every time - so each completed read scheduled another one. The
      page asked the server about 1500 times a second. */
   $effect(() => {
-    untrack(() => void load(refreshVersion));
+    untrack(() => void load());
   });
+
+  onInvalidate(session.queryClient, ['root-settings'], () => void load());
 
   $effect(() => {
     if (settings === null || settings.revision === receivedRevision) return;
@@ -104,17 +108,15 @@
     }
   });
 
-  async function load(version: number): Promise<void> {
+  async function load(): Promise<void> {
     loading = settings === null;
     failure = null;
     try {
-      const current = await fetchSettings();
-      if (version !== refreshVersion) return;
-      settings = current;
+      settings = await fetchSettings();
     } catch (error) {
-      if (version === refreshVersion) failure = errorMessage(error);
+      failure = errorMessage(error);
     } finally {
-      if (version === refreshVersion) loading = false;
+      loading = false;
     }
   }
 
@@ -277,7 +279,7 @@
     <div class="settings-state settings-error" role="alert">
       <strong>Runtime settings are unavailable</strong>
       <span>{failure}</span>
-      <button class="btn" type="button" onclick={() => void load(refreshVersion)}>Try again</button>
+      <button class="btn" type="button" onclick={() => void load()}>Try again</button>
     </div>
   {:else}
     {@const current = settings}

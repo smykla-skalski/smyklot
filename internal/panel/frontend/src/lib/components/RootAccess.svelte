@@ -1,9 +1,11 @@
 <script lang="ts">
-  import { untrack } from 'svelte';
+  import { getContext, untrack } from 'svelte';
 
   import { dialogRoute } from '../dialog-route.svelte';
   import { formatRelative, formatTimestamp } from '../format';
   import type { FilterSection } from '../filter-menu';
+  import { onInvalidate } from '../on-invalidate';
+  import type { PanelSession } from '../session.svelte';
   import type {
     Page,
     AddTargetUserInput,
@@ -73,7 +75,6 @@
   const {
     rootRole,
     section,
-    refreshVersion,
     onSection,
     fetchUsers,
     updateUser,
@@ -90,7 +91,6 @@
   }: {
     rootRole: string;
     section: AccessSection;
-    refreshVersion: number;
     onSection: (section: AccessSection) => void;
     fetchUsers: (request: RootPanelUserPageRequest) => Promise<Page<RootPanelUser>>;
     updateUser: (accountId: string, input: UpdateRootUserInput) => Promise<void>;
@@ -110,6 +110,8 @@
     suggestUsers: (targetId: string, query: string) => Promise<PanelAccount[]>;
     onOpenInstallationAccess: (account: string) => void;
   } = $props();
+
+  const session = getContext<PanelSession>('panel-session');
 
   let page = $state<Page<RootPanelUser> | null>(null);
   let search = $state('');
@@ -136,13 +138,10 @@
   let addSaving = $state(false);
   let addProblem = $state<string | null>(null);
   let feedback = $state('');
-  let sequence = 0;
   const limit = 20;
   // Ticks so relative login times keep aging in a long Root session.
   let now = $state(Date.now());
-  const requestKey = $derived(
-    JSON.stringify([query, sort, systemRoles, statuses, limit, refreshVersion]),
-  );
+  const requestKey = $derived(JSON.stringify([query, sort, systemRoles, statuses, limit]));
   const users = $derived(page?.items ?? []);
   const hasFilters = $derived(query !== '' || systemRoles.length > 0 || statuses.length > 0);
 
@@ -201,6 +200,8 @@
     });
   });
 
+  onInvalidate(session.queryClient, ['root-access'], () => void loadPage(undefined, false));
+
   function selectSection(value: string): void {
     if (value === 'users' || value === 'invitations') onSection(value);
   }
@@ -239,7 +240,6 @@
     key = requestKey,
   ): Promise<void> {
     if (key !== requestKey || loading) return;
-    const version = ++sequence;
     loading = true;
     if (append) loadMoreProblem = null;
     else problem = null;
@@ -252,16 +252,16 @@
         systemRoles,
         statuses,
       });
-      if (version !== sequence || key !== requestKey) return;
+      if (key !== requestKey) return;
       page =
         append && page !== null ? { ...loaded, items: [...page.items, ...loaded.items] } : loaded;
     } catch (error) {
-      if (version !== sequence || key !== requestKey) return;
+      if (key !== requestKey) return;
       const message = error instanceof Error ? error.message : String(error);
       if (append) loadMoreProblem = message;
       else problem = message;
     } finally {
-      if (version === sequence) loading = false;
+      if (key === requestKey) loading = false;
     }
   }
 
@@ -526,7 +526,6 @@
   {#if section === 'invitations'}
     <RootInvitations
       bind:this={invitations}
-      {refreshVersion}
       fetchPage={fetchInvitations}
       create={createInvitation}
       reissue={reissueInvitation}

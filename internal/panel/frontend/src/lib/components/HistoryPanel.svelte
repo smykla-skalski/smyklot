@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getContext } from 'svelte';
   import {
     columnFilteringFeature,
     createColumnHelper,
@@ -14,8 +15,10 @@
 
   import { formatDateTime, formatRelative, formatTimestamp } from '../format';
   import type { FilterSection } from '../filter-menu';
+  import { onInvalidate } from '../on-invalidate';
   import type { TimeDisplay } from '../preferences';
   import { EPHEMERAL_PREFS, prefOption, prefText, type PrefsAccessor } from '../preferences-sync';
+  import type { PanelSession } from '../session.svelte';
   import type {
     AuditEntry,
     AuditCategory,
@@ -123,7 +126,6 @@
 
   const {
     targetId,
-    refreshVersion,
     fetchAudit,
     fetchFailures,
     context = 'installation',
@@ -133,7 +135,6 @@
     prefs = EPHEMERAL_PREFS,
   }: {
     targetId: string;
-    refreshVersion: number;
     fetchAudit: (request: AuditHistoryRequest) => Promise<Page<AuditEntry>>;
     fetchFailures: (request: FailureHistoryRequest) => Promise<Page<DeliveryFailure>>;
     context?: HistoryContext;
@@ -142,6 +143,8 @@
     onSection?: (section: HistoryType) => void;
     prefs?: PrefsAccessor;
   } = $props();
+
+  const session = getContext<PanelSession>('panel-session');
 
   // Table state deliberately captures the preferences at mount; remote
   // changes apply on the next remount instead of mid-interaction.
@@ -202,8 +205,6 @@
   let problem = $state<string | null>(null);
   let loadMoreProblem = $state<string | null>(null);
   let now = $state(Date.now());
-  let requestSequence = 0;
-  let failureWarmupSequence = 0;
   let historyResults = $state<HTMLDivElement>();
   let auditScroll = $state<HTMLTableSectionElement>();
   let failureScroll = $state<HTMLTableSectionElement>();
@@ -229,7 +230,6 @@
   const requestKey = $derived(
     [
       targetId,
-      refreshVersion,
       historyType,
       appliedQuery,
       sort,
@@ -350,26 +350,21 @@
     void resetAndLoad(requestKey);
   });
 
-  /* Warms the other table while this one is being read, so switching to it is
-     instant.
+  onInvalidate(session.queryClient, ['history', targetId], () => void resetAndLoad(requestKey));
 
-     effect settles: it reads `failurePage` and its answer fills it, so the run
-     that the answer triggers stops at the guard below. One extra run, then
-     nothing - unlike a ring whose answer clears the flag that let it start,
-     which is the shape `tests/effect-cycles` exists to keep out. */
+  /* Warms the other table while this one is being read, so switching to it is
+      instant.
+
+      effect settles: it reads `failurePage` and its answer fills it, so the run
+      that the answer triggers stops at the guard below. One extra run, then
+      nothing - unlike a ring whose answer clears the flag that let it start,
+      which is the shape `tests/effect-cycles` exists to keep out. */
   $effect(() => {
-    const version = ++failureWarmupSequence;
     const expectedTarget = targetId;
-    const expectedRefresh = refreshVersion;
     if (failurePage !== null || historyType !== 'audit') return;
     void fetchFailures({ query: '', sort: 'newest', limit, kind: 'all' })
       .then((loaded) => {
-        if (
-          version === failureWarmupSequence &&
-          targetId === expectedTarget &&
-          refreshVersion === expectedRefresh &&
-          failurePage === null
-        ) {
+        if (targetId === expectedTarget && failurePage === null) {
           failurePage = loaded;
         }
       })
@@ -630,7 +625,6 @@
   }
 
   async function loadPage(cursor: string | undefined, key: string, append: boolean): Promise<void> {
-    const sequence = ++requestSequence;
     loading = true;
     if (!append) problem = null;
     else loadMoreProblem = null;
@@ -645,7 +639,7 @@
           change: auditChange,
           categories: context === 'root' ? auditCategories : undefined,
         });
-        if (sequence === requestSequence && key === requestKey) {
+        if (key === requestKey) {
           auditPage =
             append && auditPage !== null
               ? { ...loaded, items: [...auditPage.items, ...loaded.items] }
@@ -659,7 +653,7 @@
           limit,
           kind: failureKind,
         });
-        if (sequence === requestSequence && key === requestKey) {
+        if (key === requestKey) {
           failurePage =
             append && failurePage !== null
               ? { ...loaded, items: [...failurePage.items, ...loaded.items] }
@@ -667,13 +661,13 @@
         }
       }
     } catch (error) {
-      if (sequence === requestSequence && key === requestKey) {
+      if (key === requestKey) {
         const message = error instanceof Error ? error.message : String(error);
         if (append) loadMoreProblem = message;
         else problem = message;
       }
     } finally {
-      if (sequence === requestSequence && key === requestKey) {
+      if (key === requestKey) {
         loading = false;
       }
     }

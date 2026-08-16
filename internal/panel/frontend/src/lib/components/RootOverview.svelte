@@ -1,5 +1,8 @@
 <script lang="ts">
+  import { getContext } from 'svelte';
   import type { PanelApi } from '../api';
+  import { onInvalidate } from '../on-invalidate';
+  import type { PanelSession } from '../session.svelte';
   import {
     formatBytes,
     formatElapsed,
@@ -16,7 +19,6 @@
 
   const {
     api,
-    refreshVersion,
     rootRole,
     installationsHref,
     elevationsHref,
@@ -28,20 +30,18 @@
     onOpenInbox,
   }: {
     api: PanelApi;
-    refreshVersion: number;
     rootRole: string;
     installationsHref: string;
-    /** Elevations are audited events, so the card opens the audit table. */
     elevationsHref: string;
-    /** Delivery health's "View all" - the failure table, not a metric card. */
     failuresHref: string;
     onOpenInstallations: () => void;
     onOpenElevations: () => void;
     onOpenFailures: () => void;
-    /** Unread security events ARE the inbox, so that card leads to it. */
     inboxHref: string;
     onOpenInbox: () => void;
   } = $props();
+
+  const session = getContext<PanelSession>('panel-session');
 
   /* The hrefs are real addresses - middle-click, Cmd-click and Copy link all
      work - so a plain click is the only one the router takes over. */
@@ -81,7 +81,6 @@
   let loading = $state(true);
   let failure = $state<string | null>(null);
   let now = $state(Date.now());
-  let sequence = 0;
 
   const ownershipTotal = $derived(
     overview === null
@@ -98,20 +97,16 @@
     overview === null ? 0 : overview.ownership.permission_pending + overview.ownership.error,
   );
 
-  async function load(version = refreshVersion): Promise<void> {
-    const current = ++sequence;
+  async function load(): Promise<void> {
     loading = true;
     failure = null;
     try {
-      const loaded = await api.fetchRootOverview();
-      if (current !== sequence || version !== refreshVersion) return;
-      overview = loaded;
+      overview = await api.fetchRootOverview();
       now = Date.now();
     } catch (error) {
-      if (current !== sequence || version !== refreshVersion) return;
       failure = error instanceof Error ? error.message : String(error);
     } finally {
-      if (current === sequence) loading = false;
+      loading = false;
     }
   }
 
@@ -144,8 +139,10 @@
   }
 
   $effect(() => {
-    void load(refreshVersion);
+    void load();
   });
+
+  onInvalidate(session.queryClient, ['root-overview'], () => void load());
 </script>
 
 <RootPageHeader
@@ -166,7 +163,7 @@
         <strong>Operational state is unavailable</strong>
         <p>{failure}</p>
       </div>
-      <button class="btn" type="button" onclick={() => void load(refreshVersion)}>Try again</button>
+      <button class="btn" type="button" onclick={() => void load()}>Try again</button>
     </div>
   {:else if loading && overview === null}
     <div class="overview-loading" role="status">
@@ -330,12 +327,7 @@
       </a>
     </div>
 
-    <PendingCIQueue
-      {api}
-      queue={overview.pending_ci}
-      {now}
-      onChanged={() => load(refreshVersion)}
-    />
+    <PendingCIQueue {api} queue={overview.pending_ci} {now} onChanged={() => load()} />
 
     <div class="overview-columns">
       <article class="overview-panel ownership-panel">

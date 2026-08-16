@@ -16,7 +16,6 @@
     api={session.api}
     rootRole={session.rootRole}
     actorLogin={session.viewer?.account.login ?? ''}
-    refreshVersion={session.rootDataVersion}
     listHref={session.rootInstallationsHref()}
     hrefFor={(a: string, v: string) => session.rootInstallationHref(a, v as never)}
     onList={() => session.selectRootInstallations()}

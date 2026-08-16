@@ -53,7 +53,6 @@
         <RepositoryList
           targetId={session.selectedTarget.id}
           defaultEnabled={session.selectedTarget.repository_default_enabled}
-          refreshVersion={session.repositoryDetailsVersion}
           fetchPage={fetchRepositories}
           onLoad={loadRepository}
           onUpdate={updateRepository}
@@ -73,7 +72,6 @@
           targetName={session.selectedTarget.account.display_name}
           actorLogin={session.viewer?.account.login ?? ''}
           actorTargetRole={session.selectedTarget.effective_role}
-          refreshVersion={session.userVersion}
           onSection={(s: 'users' | 'invitations') => session.selectUserSection(s)}
           fetchTargetUsers={session.api.fetchTargetUsers}
           addTargetUser={session.api.addTargetUser}
@@ -92,7 +90,6 @@
       {#key session.selectedTarget.id}
         <HistoryPanel
           targetId={session.selectedTarget.id}
-          refreshVersion={session.historyVersion}
           section={session.currentHistorySection}
           onSection={(s: 'audit' | 'failures') => session.selectHistorySection(s)}
           fetchAudit={(request: Parameters<typeof session.api.fetchAudit>[1]) =>

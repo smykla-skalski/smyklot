@@ -14,7 +14,6 @@
   <RootOverview
     api={session.api}
     rootRole={session.rootRole}
-    refreshVersion={session.rootDataVersion}
     installationsHref={session.rootInstallationsHref()}
     elevationsHref={session.rootAuditHref()}
     failuresHref={session.rootFailuresHref()}

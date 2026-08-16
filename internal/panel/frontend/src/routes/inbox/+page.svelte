@@ -7,16 +7,13 @@
 </script>
 
 <div id="inbox-panel">
-  {#key session.notificationVersion}
-    <InboxView
-      fetchPage={session.api.fetchNotifications}
-      markRead={session.api.markNotificationRead}
-      refreshVersion={session.notificationVersion}
-      onUnread={(count: number) => {
-        session.notificationUnread = count;
-      }}
-    />
-  {/key}
+  <InboxView
+    fetchPage={session.api.fetchNotifications}
+    markRead={session.api.markNotificationRead}
+    onUnread={(count: number) => {
+      session.notificationUnread = count;
+    }}
+  />
 </div>
 
 <style>

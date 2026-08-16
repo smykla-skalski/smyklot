@@ -1,9 +1,12 @@
 <script lang="ts">
+  import { getContext } from 'svelte';
   import { PanelApiError, type PanelApi } from '../api';
   import { dialogRoute } from '../dialog-route.svelte';
   import { formatTimestamp } from '../format';
   import { monogram } from '../identity';
+  import { onInvalidate } from '../on-invalidate';
   import type { HistorySection, ScopedPanelView } from '../routes';
+  import type { PanelSession } from '../session.svelte';
   import type {
     PanelTarget,
     RepositoryDetail,
@@ -28,7 +31,6 @@
     historySection,
     onHistorySection,
     api,
-    refreshVersion,
     listHref,
     hrefFor,
     onList,
@@ -38,7 +40,6 @@
     view: ScopedPanelView;
     api: PanelApi;
     actorLogin: string;
-    refreshVersion: number;
     listHref: string;
     hrefFor: (account: string, view: ScopedPanelView) => string;
     onList: () => void;
@@ -46,6 +47,8 @@
     historySection: HistorySection;
     onHistorySection: (section: HistorySection) => void;
   } = $props();
+
+  const session = getContext<PanelSession>('panel-session');
 
   /** Names the dialog in the address, and is the `id` the dialog carries. */
   const ELEVATION_DIALOG = 'root-elevation';
@@ -63,8 +66,6 @@
   let elevationPending = $state(false);
   let elevationTrigger = $state<HTMLButtonElement | null>(null);
   let now = $state(Date.now());
-  let repositoryVersion = $state(0);
-  let loadSequence = 0;
 
   const remainingSeconds = $derived(
     elevation === null
@@ -80,24 +81,20 @@
   const ownsInstallation = $derived(target?.access_source === 'owner');
   const canWrite = $derived(target?.capabilities.write === true);
 
-  async function load(version = refreshVersion): Promise<void> {
-    const current = ++loadSequence;
+  async function load(): Promise<void> {
     loading = true;
     try {
       const currentTarget = await api.fetchRootTargetSettings(installation.id);
       const currentElevation = await loadElevation();
-      if (current !== loadSequence || version !== refreshVersion) return;
       target = currentTarget;
       elevation = currentElevation;
       // Cleared here rather than up front: a retry keeps the failure on screen
       // until there is something to put in its place.
       failure = null;
-      repositoryVersion += 1;
     } catch (error) {
-      if (current !== loadSequence || version !== refreshVersion) return;
       failure = message(error);
     } finally {
-      if (current === loadSequence) loading = false;
+      loading = false;
     }
   }
 
@@ -165,7 +162,6 @@
       await api.endRootElevation(current.id);
       elevation = null;
       target = await api.fetchRootTargetSettings(installation.id);
-      repositoryVersion += 1;
     } catch (error) {
       elevationFailure = message(error);
     } finally {
@@ -178,7 +174,6 @@
     elevation = null;
     try {
       target = await api.fetchRootTargetSettings(installation.id);
-      repositoryVersion += 1;
     } catch (error) {
       failure = message(error);
     }
@@ -186,7 +181,6 @@
 
   async function updateTarget(input: TargetSettingsInput): Promise<void> {
     target = await api.updateRootTargetSettings(installation.id, input);
-    repositoryVersion += 1;
   }
 
   function fetchRepositories(request: RepositoryPageRequest) {
@@ -214,8 +208,10 @@
   }
 
   $effect(() => {
-    void load(refreshVersion);
+    void load();
   });
+
+  onInvalidate(session.queryClient, ['root-installations'], () => void load());
 
   $effect(() => {
     if (elevation === null) return;
@@ -327,7 +323,7 @@
       title="Could not refresh this installation"
       problem={failure}
       busy={loading}
-      onRetry={() => void load(refreshVersion)}
+      onRetry={() => void load()}
       overContent
     />
   {/if}
@@ -340,12 +336,7 @@
     <div class="root-loading problem" role="alert">
       <strong>Could not load this installation</strong>
       <p>{failure}</p>
-      <button
-        class="btn"
-        type="button"
-        onclick={() => void load(refreshVersion)}
-        disabled={loading}
-      >
+      <button class="btn" type="button" onclick={() => void load()} disabled={loading}>
         {loading ? 'Trying again…' : 'Try again'}
       </button>
     </div>
@@ -355,11 +346,10 @@
     <RepositoryList
       targetId={installation.id}
       defaultEnabled={target.repository_default_enabled}
-      refreshVersion={repositoryVersion}
       fetchPage={fetchRepositories}
       onLoad={loadRepository}
       onUpdate={updateRepository}
-      onChanged={() => (repositoryVersion += 1)}
+      onChanged={() => {}}
       readOnly={!canWrite}
     />
   {:else if target !== null && (view === 'users' || view === 'invitations')}
@@ -369,7 +359,6 @@
       targetName={installation.account.display_name}
       {actorLogin}
       actorTargetRole={canWrite ? 'owner' : 'none'}
-      refreshVersion={repositoryVersion}
       readOnly={!canWrite}
       onSection={selectAccessSection}
       fetchTargetUsers={api.fetchRootTargetUsers}
@@ -385,7 +374,6 @@
   {:else if target !== null && view === 'history'}
     <HistoryPanel
       targetId={installation.id}
-      refreshVersion={repositoryVersion}
       section={historySection}
       onSection={onHistorySection}
       fetchAudit={(request) => api.fetchRootTargetAudit(installation.id, request)}
