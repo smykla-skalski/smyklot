@@ -717,8 +717,11 @@
      until somebody else is signed in. */
   const viewerAccountId = $derived(viewer?.account.id ?? null);
 
+  /* Not while the inbox is open. The page reads the same endpoint and reports the
+     same count back, so asking here as well is the one request that answers a
+     question already being answered - twice over on every stream event. */
   $effect(() => {
-    if (viewerAccountId === null || notificationVersion < 0) return;
+    if (viewerAccountId === null || personalView === 'inbox' || notificationVersion < 0) return;
     void refreshNotificationUnread();
   });
 

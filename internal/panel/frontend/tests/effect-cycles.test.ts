@@ -49,6 +49,12 @@ describe('effects that feed themselves [Unit]', () => {
     ]);
   });
 
+  /* The guard read moved into a closure the loader declares - a refactor that
+     changes nothing about the ring, and hid it from the first version of this. */
+  it('catches a guard read through a closure inside the loader', () => {
+    expect(findEffectCycles(NESTED_GUARD_FIXTURE)).toEqual([{ state: 'loading', through: 'load' }]);
+  });
+
   it('catches a loader the effect declares for itself', () => {
     expect(findEffectCycles(INNER_FUNCTION_FIXTURE)).toEqual([
       { state: 'loading', through: 'run' },
@@ -148,6 +154,27 @@ const ONE_STATEMENT_FIXTURE = `<script lang="ts">
     if (!loading) {
       loading = true;
       items = await fetch('/x').then((response) => response.json());
+      loading = false;
+    }
+  }
+
+  $effect(() => {
+    if (version >= 0) void load();
+  });
+</script>`;
+
+const NESTED_GUARD_FIXTURE = `<script lang="ts">
+  const { version }: { version: number } = $props();
+  let loading = $state(false);
+  let items = $state<string[]>([]);
+
+  async function load(): Promise<void> {
+    const busy = (): boolean => loading;
+    if (busy()) return;
+    loading = true;
+    try {
+      items = await fetch('/x').then((response) => response.json());
+    } finally {
       loading = false;
     }
   }

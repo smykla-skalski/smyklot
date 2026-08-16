@@ -152,7 +152,8 @@ function parseUserDialog(
   const [user, verb] = segments;
   if (user === undefined || user === '' || verb === undefined) return null;
   if (!actions.some((known) => known === verb)) return null;
-  if (verb === 'history') return historyName === null ? null : { name: historyName, params: { user } };
+  if (verb === 'history')
+    return historyName === null ? null : { name: historyName, params: { user } };
 
   return { name: actionName, params: { user, action: fromSegment(verb) } };
 }
