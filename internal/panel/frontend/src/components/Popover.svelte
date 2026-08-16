@@ -241,13 +241,17 @@
     onclose?.();
   }
 
+  /*
+   * The one place an open or a close is acted on, whoever started it.
+   *
+   * Not conditional on `open` having changed here: a caller that opens the layer
+   * itself - the picker does, on an arrow key - has already set `open` to true by
+   * the time this runs, and treating that as "no change" skipped placing and
+   * focusing it. The event fires once per real transition, so acting on it every
+   * time is both sufficient and correct.
+   */
   function toggled(event: ToggleEvent): void {
     const nowOpen = event.newState === 'open';
-    if (nowOpen === open) {
-      // Reflow from the platform's side rather than a change of mind.
-      if (nowOpen) place();
-      return;
-    }
     open = nowOpen;
     if (nowOpen) opened();
     else closed();
