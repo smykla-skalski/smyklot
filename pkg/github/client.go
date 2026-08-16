@@ -103,8 +103,10 @@ func newClient(token, baseURL, authScheme string) (*Client, error) {
 	// would produce a double slash in the request URL
 	baseURL = strings.TrimSuffix(baseURL, "/")
 
+	// No Timeout here: it would bound the whole RoundTrip, and retry now lives
+	// inside the transport. The deadline is applied per attempt instead, in
+	// retryTransport.attempt.
 	httpClient := &http.Client{
-		Timeout: defaultTimeout,
 		Transport: authTransport{
 			base: retryTransport{base: sharedTransport},
 

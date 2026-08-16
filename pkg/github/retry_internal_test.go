@@ -305,6 +305,54 @@ func TestRetryTransportReplaysTheRequestBody(t *testing.T) {
 	}
 }
 
+// A body that cannot be rewound means one attempt, and that has to be decided
+// before anything is sent. Deciding it after a failure would mean the sleep had
+// already happened and the answer worth returning had already been drained -
+// and an earlier draft then issued a *fourth* request with a spent body.
+func TestRetryTransportSendsUnreplayableBodyExactlyOnce(t *testing.T) {
+	var attempts int
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		_, _ = io.Copy(io.Discard, r.Body)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	var waits []time.Duration
+
+	client := &http.Client{Transport: newTestRetry(http.DefaultTransport, &waits)}
+
+	// An opaque stream: http.NewRequestWithContext cannot derive GetBody from
+	// a reader it does not recognise.
+	req, err := http.NewRequestWithContext(
+		context.Background(), http.MethodPost, server.URL,
+		struct{ io.Reader }{strings.NewReader(`{"labels":["kind/bug"]}`)},
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	defer func() { _ = resp.Body.Close() }()
+
+	if attempts != 1 {
+		t.Fatalf("attempts = %d, want 1 - the body cannot be replayed", attempts)
+	}
+
+	if len(waits) != 0 {
+		t.Fatalf("waits = %v, want none - nothing was going to be retried", waits)
+	}
+
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500 - the real answer, not a later one", resp.StatusCode)
+	}
+}
+
 func TestRetryTransportSkipsRetryWhenDisabled(t *testing.T) {
 	var attempts int
 
@@ -335,6 +383,91 @@ func TestRetryTransportSkipsRetryWhenDisabled(t *testing.T) {
 	if attempts != 1 {
 		t.Fatalf("attempts = %d, want 1 - a readiness probe wants the current answer", attempts)
 	}
+}
+
+// Each attempt carries its own deadline, so a first attempt that burns most of
+// one does not leave the retries with nothing. A single shared budget - which
+// is what an http.Client.Timeout would give, now that retry lives inside the
+// transport - would let one slow response spend the whole allowance.
+func TestRetryTransportGivesEachAttemptItsOwnDeadline(t *testing.T) {
+	var deadlines []time.Time
+
+	base := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		deadline, ok := req.Context().Deadline()
+		if !ok {
+			t.Error("attempt had no deadline")
+		}
+
+		deadlines = append(deadlines, deadline)
+
+		return &http.Response{
+			StatusCode: http.StatusInternalServerError,
+			Body:       io.NopCloser(strings.NewReader("")),
+			Header:     http.Header{},
+		}, nil
+	})
+
+	var waits []time.Duration
+
+	client := &http.Client{Transport: newTestRetry(base, &waits)}
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://example.invalid", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	defer func() { _ = resp.Body.Close() }()
+
+	if len(deadlines) != maxRetries {
+		t.Fatalf("attempts = %d, want %d", len(deadlines), maxRetries)
+	}
+
+	// A shared budget would make every deadline the same instant.
+	for index := 1; index < len(deadlines); index++ {
+		if !deadlines[index].After(deadlines[index-1]) {
+			t.Fatalf("attempt %d reused the previous deadline - the budget is shared", index)
+		}
+	}
+}
+
+// The body outlives RoundTrip, so its attempt's context must too. Cancelling on
+// return would make every response body fail to read.
+func TestRetryTransportBodyOutlivesItsAttempt(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+
+	var waits []time.Duration
+
+	client := &http.Client{Transport: newTestRetry(http.DefaultTransport, &waits)}
+
+	resp, err := client.Get(server.URL) //nolint:noctx // the transport under test reads the request context
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading the body failed: %v", err)
+	}
+
+	if string(body) != `{"ok":true}` {
+		t.Fatalf("body = %q", body)
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
 }
 
 func TestRetryTransportStopsWhenTheCallerGivesUp(t *testing.T) {

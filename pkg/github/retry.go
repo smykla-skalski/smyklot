@@ -2,7 +2,6 @@ package github
 
 import (
 	"context"
-	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -20,7 +19,10 @@ const (
 	// secondary rate limit can name minutes, and a request path holding a
 	// worker that long is worse than failing and letting the delivery layer
 	// retry with its own, much longer, schedule.
-	maxRetryAfter = 30 * time.Second
+	maxRetryAfter = 10 * time.Second
+
+	// attemptTimeout bounds one attempt, not the call. See retryTransport.attempt.
+	attemptTimeout = defaultTimeout
 )
 
 // retryTransport retries the requests that can succeed on a second attempt.
@@ -60,71 +62,95 @@ func retriesDisabled(ctx context.Context) bool {
 }
 
 func (t retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if retriesDisabled(req.Context()) {
+	if retriesDisabled(req.Context()) || !replayable(req) {
 		return t.base.RoundTrip(req)
 	}
 
-	attempts := t.attempts
-	if attempts <= 0 {
-		attempts = maxRetries
-	}
+	last := t.attemptCount() - 1
 
-	var lastErr error
+	for attempt := 0; ; attempt++ {
+		resp, err := t.attempt(req)
 
-	for attempt := range attempts {
-		if attempt > 0 {
-			// A request whose body cannot be rewound cannot be replayed.
-			// go-github builds bodies from a bytes.Reader, so GetBody is set;
-			// a caller that hands over an opaque stream gets one attempt.
-			if err := rewind(req); err != nil {
-				break
-			}
-		}
+		// Every path out of this loop is a return, so the caller always gets
+		// either the last response or the last error - never a fresh request
+		// made after the budget was spent.
+		switch {
+		case err != nil && attempt >= last:
+			return nil, err
 
-		resp, err := t.base.RoundTrip(req)
-		if err != nil {
-			lastErr = err
-
-			if !t.wait(req, attempt, nil) {
+		case err != nil:
+			if t.wait(req, attempt, nil) != nil || rewind(req) != nil {
 				return nil, err
 			}
 
-			continue
-		}
-
-		if !retryableStatus(resp) {
+		case !retryableStatus(resp) || attempt >= last:
 			return resp, nil
+
+		default:
+			if t.wait(req, attempt, resp) != nil || rewind(req) != nil {
+				return resp, nil
+			}
+
+			// Only now is the response certainly being abandoned. Draining it
+			// is what lets the connection go back to the pool instead of being
+			// torn down, which matters most here: a retry is about to want one.
+			drain(resp)
 		}
-
-		if !t.wait(req, attempt, resp) {
-			return resp, nil
-		}
-
-		// The response is being abandoned. Draining it first is what lets the
-		// connection go back to the pool instead of being torn down, which
-		// matters most in exactly this case: a retry is about to open another.
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
-		_ = resp.Body.Close()
 	}
-
-	if lastErr != nil {
-		return nil, lastErr
-	}
-
-	return t.base.RoundTrip(req)
 }
 
-// wait sleeps before the next attempt and reports whether there is one.
-func (t retryTransport) wait(req *http.Request, attempt int, resp *http.Response) bool {
-	attempts := t.attempts
-	if attempts <= 0 {
-		attempts = maxRetries
+// attempt sends the request once, under its own deadline.
+//
+// The deadline is per attempt rather than per call. An http.Client.Timeout
+// would cover the whole RoundTrip, and since retry now lives inside the
+// transport that would mean three attempts and their backoffs sharing one
+// budget - so a first attempt that hung would leave the retries no time to run
+// and the backoff would be spent waiting for a request that could never be
+// made. The hand-rolled client gave each attempt a fresh timeout by sitting
+// above the client rather than inside it; this keeps that.
+//
+// The cancel cannot fire when this returns, because the body is read by the
+// caller afterwards. It is tied to the body instead, which is the same thing
+// http.Client.Timeout does internally.
+func (t retryTransport) attempt(req *http.Request) (*http.Response, error) {
+	ctx, cancel := context.WithTimeout(req.Context(), attemptTimeout)
+
+	resp, err := t.base.RoundTrip(req.WithContext(ctx))
+	if err != nil {
+		cancel()
+
+		return nil, err
 	}
 
-	if attempt >= attempts-1 {
-		return false
+	resp.Body = cancelOnClose{ReadCloser: resp.Body, cancel: cancel}
+
+	return resp, nil
+}
+
+// cancelOnClose releases an attempt's context once its body is done with.
+type cancelOnClose struct {
+	io.ReadCloser
+
+	cancel context.CancelFunc
+}
+
+func (b cancelOnClose) Close() error {
+	err := b.ReadCloser.Close()
+	b.cancel()
+
+	return err
+}
+
+func (t retryTransport) attemptCount() int {
+	if t.attempts > 0 {
+		return t.attempts
 	}
 
+	return maxRetries
+}
+
+// wait sleeps for as long as the next attempt should be delayed.
+func (t retryTransport) wait(req *http.Request, attempt int, resp *http.Response) error {
 	delay := retryBaseDelay << attempt
 	if after, ok := retryAfter(resp); ok {
 		delay = after
@@ -135,16 +161,23 @@ func (t retryTransport) wait(req *http.Request, attempt int, resp *http.Response
 		sleep = sleepContext
 	}
 
-	return sleep(req, delay) == nil
+	return sleep(req, delay)
+}
+
+// replayable reports whether this request can be sent a second time.
+//
+// go-github builds bodies from a bytes.Reader, so GetBody is set and every
+// request it makes can be replayed. A caller handing over an opaque stream gets
+// one attempt, decided here rather than after a failure - discovering it later
+// would mean having already slept, and having drained the answer that should
+// have been returned.
+func replayable(req *http.Request) bool {
+	return req.Body == nil || req.GetBody != nil
 }
 
 func rewind(req *http.Request) error {
 	if req.Body == nil || req.GetBody == nil {
-		if req.Body == nil {
-			return nil
-		}
-
-		return errors.New("request body cannot be replayed")
+		return nil
 	}
 
 	body, err := req.GetBody()
@@ -155,6 +188,13 @@ func rewind(req *http.Request) error {
 	req.Body = body
 
 	return nil
+}
+
+// drain reads what is left of an abandoned response so its connection can be
+// reused, bounded so a large error page cannot make this expensive.
+func drain(resp *http.Response) {
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
+	_ = resp.Body.Close()
 }
 
 // retryableStatus reports whether repeating this request could plausibly
