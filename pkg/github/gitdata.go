@@ -107,6 +107,22 @@ func (c *Client) GetCommitTree(ctx context.Context, owner, repo, commit string) 
 	return found.GetTree().GetSHA(), nil
 }
 
+// UpdateRef moves an existing reference to a commit.
+//
+// force replaces whatever the reference pointed at rather than requiring the
+// new commit to descend from it, which is the only way to reuse a branch whose
+// history is being rebuilt rather than added to.
+func (c *Client) UpdateRef(ctx context.Context, owner, repo, ref, sha string, force bool) error {
+	path := fmt.Sprintf("/repos/%s/%s/git/refs/%s", owner, repo, ref)
+
+	_, _, err := c.gh.Git.UpdateRef(ctx, owner, repo, "refs/"+ref, gogithub.UpdateRef{
+		SHA:   sha,
+		Force: gogithub.Ptr(force),
+	})
+
+	return wrapError(ErrAPIRequest, http.MethodPatch, path, err)
+}
+
 // CreateBlob stores a file's contents and returns the object.
 func (c *Client) CreateBlob(ctx context.Context, owner, repo string, content []byte) (string, error) {
 	path := fmt.Sprintf("/repos/%s/%s/git/blobs", owner, repo)

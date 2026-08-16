@@ -66,9 +66,17 @@ func (s *server) proposeConfigMigration(
 		return nil
 	}
 
-	_, repository, err := s.repositoryControls(ctx, targetID, repositoryStorageID(repo.ID))
+	target, repository, err := s.repositoryControls(ctx, targetID, repositoryStorageID(repo.ID))
 	if err != nil {
 		return err
+	}
+
+	// Its own precondition rather than the caller's. A repository somebody
+	// turned off is not one to open a pull request at, and this no longer sits
+	// behind the sweep's own enablement check - it runs before the stand-down
+	// that check follows.
+	if !repositoryEnabled(target, repository) {
+		return nil
 	}
 
 	switch nextMigrationStep(repository, file) {
@@ -85,9 +93,21 @@ func (s *server) proposeConfigMigration(
 
 	default:
 		return s.stopIfRefused(
-			ctx, targetID, repo, s.openConfigMigration(ctx, client, targetID, repo, file),
+			ctx, targetID, repo, s.openConfigMigration(ctx, targetID, client, repo, file),
 		)
 	}
+}
+
+// repositoryEnabled reports a repository Smyklot has been left switched on for.
+func repositoryEnabled(target storage.Target, repository storage.Repository) bool {
+	if !target.Available || !repository.Available {
+		return false
+	}
+	if repository.EnabledOverride != nil {
+		return *repository.EnabledOverride
+	}
+
+	return target.RepositoryDefaultEnabled
 }
 
 // stopIfRefused turns a refusal from GitHub into a durable state rather than
@@ -261,78 +281,35 @@ func (s *server) followUpConfigMigration(
 // Smyklot read one file while whoever is reviewing reads the other.
 func (s *server) openConfigMigration(
 	ctx context.Context,
-	client *github.Client,
 	targetID string,
+	client *github.Client,
 	repo github.Repository,
 	file repositoryConfigFile,
 ) error {
 	// One reference lookup answers "have I already done this". A branch that
-	// exists means an earlier tick got as far as pushing it, whether or not it
-	// got as far as the pull request, so this hands over to the follow-up
-	// rather than pushing a second time.
+	// exists means an earlier tick got as far as pushing it, and what to do
+	// about that depends on whether anything is still open against it.
 	existing, err := client.GetRef(ctx, repo.Owner, repo.Name, "heads/"+migrationBranch)
 	if err != nil {
 		return err
 	}
+
 	if existing != "" {
-		return s.adoptConfigMigration(ctx, client, targetID, repo)
+		adopted, err := s.adoptConfigMigration(ctx, targetID, client, repo)
+		if err != nil || adopted {
+			return err
+		}
+		// Nothing open against the branch: an earlier tick pushed it and never
+		// opened anything, or the proposal was closed and an operator has since
+		// asked for it again. Either way the branch is stale and gets rebuilt.
 	}
 
-	content, err := config.RenderTOML(file.patch)
-	if err != nil {
+	commit, branch, err := s.buildConfigMigration(ctx, client, repo, file)
+	if err != nil || commit == "" {
 		return err
 	}
 
-	// The branch the file was read from, since that is the branch the
-	// configuration takes effect on. A repository whose default GitHub did not
-	// report is one this cannot safely guess at.
-	branch := repo.DefaultBranch
-	if branch == "" {
-		return nil
-	}
-
-	base, err := client.GetRef(ctx, repo.Owner, repo.Name, "heads/"+branch)
-	if err != nil {
-		return err
-	}
-	if base == "" {
-		// An empty repository has no configuration file to move.
-		return nil
-	}
-
-	// The tree the base commit records, because that is what a tree is built
-	// from. A reference points at a commit, and CreateTree wants the thing the
-	// commit points at.
-	baseTree, err := client.GetCommitTree(ctx, repo.Owner, repo.Name, base)
-	if err != nil {
-		return err
-	}
-
-	blob, err := client.CreateBlob(
-		ctx, repo.Owner, repo.Name, append([]byte(migrationHeader), content...),
-	)
-	if err != nil {
-		return err
-	}
-
-	tree, err := client.CreateTree(ctx, repo.Owner, repo.Name, baseTree, []github.TreeChange{
-		{Path: migrationTarget, Blob: blob},
-		{Path: file.path},
-	})
-	if err != nil {
-		return err
-	}
-
-	commit, err := client.CreateCommit(
-		ctx, repo.Owner, repo.Name, migrationCommit, tree, base,
-	)
-	if err != nil {
-		return err
-	}
-
-	if err := client.CreateRef(
-		ctx, repo.Owner, repo.Name, "heads/"+migrationBranch, commit,
-	); err != nil {
+	if err := s.pushConfigMigration(ctx, client, repo, commit, existing != ""); err != nil {
 		return err
 	}
 
@@ -358,31 +335,108 @@ func (s *server) openConfigMigration(
 	)
 }
 
-// adoptConfigMigration records a proposal an earlier tick opened and did not
-// get to write down.
-func (s *server) adoptConfigMigration(
+// buildConfigMigration writes the converted file as a commit on the default
+// branch, and reports the commit and the branch it was built on.
+//
+// An empty commit means there is nothing to build on - a repository whose
+// default branch GitHub did not name, or which has no commits at all.
+func (s *server) buildConfigMigration(
 	ctx context.Context,
 	client *github.Client,
-	targetID string,
 	repo github.Repository,
-) error {
-	pull, err := client.FindPullRequestByHead(ctx, repo.Owner, repo.Name, migrationBranch)
+	file repositoryConfigFile,
+) (commit, branch string, err error) {
+	content, err := config.RenderTOML(file.patch)
 	if err != nil {
-		return err
-	}
-	if pull == nil {
-		// The branch is there and nothing was opened from it. Leaving the
-		// state alone means the next tick tries again, which is what should
-		// happen once whoever is holding the branch has finished with it.
-		return nil
+		return "", "", err
 	}
 
-	state := storage.ConfigMigrationProposed
-	if pull.State == github.PullRequestClosed && !pull.Merged {
-		state = storage.ConfigMigrationDeclined
+	// The branch the file was read from, since that is the branch the
+	// configuration takes effect on. A repository whose default GitHub did not
+	// report is one this cannot safely guess at.
+	branch = repo.DefaultBranch
+	if branch == "" {
+		return "", "", nil
 	}
 
-	return s.recordConfigMigration(ctx, targetID, repo, state, &pull.Number)
+	base, err := client.GetRef(ctx, repo.Owner, repo.Name, "heads/"+branch)
+	if err != nil || base == "" {
+		// An empty repository has no configuration file to move.
+		return "", "", err
+	}
+
+	// The tree the base commit records, because that is what a tree is built
+	// from. A reference points at a commit, and CreateTree wants the thing the
+	// commit points at.
+	baseTree, err := client.GetCommitTree(ctx, repo.Owner, repo.Name, base)
+	if err != nil {
+		return "", "", err
+	}
+
+	blob, err := client.CreateBlob(
+		ctx, repo.Owner, repo.Name, append([]byte(migrationHeader), content...),
+	)
+	if err != nil {
+		return "", "", err
+	}
+
+	tree, err := client.CreateTree(ctx, repo.Owner, repo.Name, baseTree, []github.TreeChange{
+		{Path: migrationTarget, Blob: blob},
+		{Path: file.path},
+	})
+	if err != nil {
+		return "", "", err
+	}
+
+	commit, err = client.CreateCommit(ctx, repo.Owner, repo.Name, migrationCommit, tree, base)
+
+	return commit, branch, err
+}
+
+// pushConfigMigration puts the commit on the migration branch.
+//
+// Replacing an existing branch is a force, and it is safe here for a reason
+// worth stating: this is only reached when nothing is open against the branch,
+// so there is no review in progress to lose. A branch with an open proposal is
+// adopted rather than pushed over, which is what keeps somebody's fixup commit
+// from being thrown away - the failure that made file sync's force-push
+// dangerous in the tool this replaces.
+func (s *server) pushConfigMigration(
+	ctx context.Context,
+	client *github.Client,
+	repo github.Repository,
+	commit string,
+	exists bool,
+) error {
+	if !exists {
+		return client.CreateRef(ctx, repo.Owner, repo.Name, "heads/"+migrationBranch, commit)
+	}
+
+	return client.UpdateRef(ctx, repo.Owner, repo.Name, "heads/"+migrationBranch, commit, true)
+}
+
+// adoptConfigMigration records a proposal that is still open, and reports
+// whether there was one.
+//
+// Only an open one. A closed proposal is not something to adopt: either an
+// operator has cleared the refusal and is asking for it again, or nobody ever
+// opened anything from the branch. Reading a closed one as "declined" here is
+// what made the panel's only way back from a refusal silently undo itself on
+// the next sweep tick.
+func (s *server) adoptConfigMigration(
+	ctx context.Context,
+	targetID string,
+	client *github.Client,
+	repo github.Repository,
+) (bool, error) {
+	pull, err := client.FindPullRequestByHead(ctx, repo.Owner, repo.Name, migrationBranch)
+	if err != nil || pull == nil || pull.State != github.PullRequestOpen {
+		return false, err
+	}
+
+	return true, s.recordConfigMigration(
+		ctx, targetID, repo, storage.ConfigMigrationProposed, &pull.Number,
+	)
 }
 
 func (s *server) recordConfigMigration(

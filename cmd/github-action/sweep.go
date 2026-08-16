@@ -311,6 +311,20 @@ func (s *server) sweepRepo(
 		return err
 	}
 
+	// Offered before the stand-down check, deliberately. Standing down is about
+	// who answers comments; the file's format is not that question, and the
+	// service is the only entry point with a database to remember a refusal in.
+	// Left after the check, every repository that had pinned itself to the
+	// Action would keep its legacy file for ever and nothing could migrate it.
+	//
+	// A failure is logged rather than returned: the sweep's job is to answer
+	// reactions, and an unsolicited pull request failing to open must not stop
+	// that.
+	if err := s.migrateRepositoryConfig(ctx, client, targetID, repo); err != nil {
+		logging.From(ctx).Warn("could not propose the configuration migration",
+			"repo", repoFullName(repo.Owner, repo.Name), "error", err)
+	}
+
 	// Checked before CODEOWNERS is read, so a repository left to the Action
 	// costs the sweep one request rather than two
 	if serviceStandsDown(logging.With(ctx, "repo", repoFullName(repo.Owner, repo.Name)), bc) {
@@ -351,20 +365,6 @@ func (s *server) sweepRepo(
 		ctx, client, targetID, installationID, repo, prs, cleaned,
 	); err != nil {
 		return err
-	}
-
-	// From the sweep and from nowhere else. A repository is offered the move to
-	// TOML on a timer, not as a side effect of somebody asking for an approval.
-	//
-	// The file comes from the same cache serviceConfig has just filled, so this
-	// costs nothing, and taking it as an argument is what lets the decision be
-	// exercised against a file rather than against a clock.
-	//
-	// A failure here is logged rather than returned: the sweep's job is to
-	// answer reactions, and an unsolicited pull request failing to open must
-	// not stop that.
-	if err := s.migrateRepositoryConfig(ctx, client, targetID, repo); err != nil {
-		logging.From(ctx).Warn("could not propose the configuration migration", "error", err)
 	}
 	if !pollReactions {
 		return nil

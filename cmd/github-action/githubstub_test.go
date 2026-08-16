@@ -30,6 +30,10 @@ type githubStub struct {
 	// migrationRef is the migration branch, empty until something pushes it.
 	migrationRef string
 
+	// forcedPushes counts the times the branch was replaced rather than
+	// created, which must only happen when nothing is open against it.
+	forcedPushes int
+
 	// refuseBranchPush is an App that was never granted write access here.
 	refuseBranchPush bool
 
@@ -486,6 +490,13 @@ func (s *githubStub) serveGitData(w http.ResponseWriter, r *http.Request) {
 	case strings.HasSuffix(r.URL.Path, "/git/commits"):
 		w.WriteHeader(http.StatusCreated)
 		_, _ = io.WriteString(w, `{"sha":"commitsha"}`)
+
+	case strings.Contains(r.URL.Path, "/git/refs/heads/"):
+		s.mu.Lock()
+		s.migrationRef = "commitsha"
+		s.forcedPushes++
+		s.mu.Unlock()
+		_, _ = io.WriteString(w, `{"object":{"sha":"commitsha"}}`)
 
 	case strings.HasSuffix(r.URL.Path, "/git/refs"):
 		if s.refuseBranchPush {

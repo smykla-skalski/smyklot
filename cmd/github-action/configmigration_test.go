@@ -59,13 +59,30 @@ var _ = Describe("Configuration migration [Unit]", func() {
 		DeferCleanup(service.Close)
 	})
 
-	// seed puts one repository in the catalog and returns its target.
+	// seed puts one repository in the catalog, switched on, and returns its
+	// target. Repositories arrive disabled, and a repository nobody has turned
+	// on is not one to open a pull request at.
 	seed := func() string {
 		GinkgoHelper()
 
 		targetIDs, err := service.SyncCatalog(GinkgoT().Context())
 		Expect(err).NotTo(HaveOccurred())
 		Expect(targetIDs).To(HaveLen(1))
+
+		target, err := service.store.GetTarget(GinkgoT().Context(), targetIDs[0])
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = service.store.UpdateTargetSettings(
+			GinkgoT().Context(),
+			storage.TargetSettingsChange{
+				TargetID:                 target.ID,
+				ActorAccountID:           target.Account.ID,
+				RepositoryDefaultEnabled: true,
+				ExpectedRevision:         target.Revision,
+				ChangedAt:                time.Now().UTC(),
+			},
+		)
+		Expect(err).NotTo(HaveOccurred())
 
 		return targetIDs[0]
 	}
@@ -188,8 +205,7 @@ var _ = Describe("Configuration migration [Unit]", func() {
 
 		// An earlier tick got as far as pushing the branch and no further, so
 		// the state on disk says nothing has happened while GitHub disagrees
-		It("adopts a branch it pushed before rather than pushing a second one", func() {
-			seed()
+		It("adopts a branch with an open proposal rather than pushing over it", func() {
 			stub.migrationRef = "commitsha"
 			stub.branchPRs = `[{"number":77,"state":"open","merged":false}]`
 
@@ -198,6 +214,52 @@ var _ = Describe("Configuration migration [Unit]", func() {
 
 			Expect(stub.createdTrees).To(BeEmpty())
 			Expect(stub.createdPRs).To(BeEmpty())
+			Expect(stub.forcedPushes).To(BeZero(),
+				"somebody's review was pushed over")
+			Expect(repository(targetID).ConfigMigration).
+				To(Equal(storage.ConfigMigrationProposed))
+		})
+
+		// An earlier tick pushed the branch and never opened anything from it.
+		// Adopting that as "in progress" left it a dead end no tick could
+		// leave, because nothing re-drove the proposal from a branch that
+		// already existed
+		It("proposes from a branch nothing was opened from", func() {
+			stub.migrationRef = "commitsha"
+
+			targetID := seed()
+			propose(targetID)
+
+			Expect(stub.createdPRs).To(HaveLen(1))
+			Expect(stub.forcedPushes).To(Equal(1))
+			Expect(repository(targetID).ConfigMigration).
+				To(Equal(storage.ConfigMigrationProposed))
+		})
+
+		// The panel's only way back from a refusal. It used to undo itself on
+		// the next sweep tick: the branch was still there, the closed proposal
+		// was still findable, and adopting it wrote the refusal straight back
+		It("asks again after an operator clears a refusal", func() {
+			targetID := seed()
+			propose(targetID)
+
+			stub.branchPRs = `[{"number":77,"state":"closed","merged":false}]`
+			propose(targetID)
+			Expect(repository(targetID).ConfigMigration).
+				To(Equal(storage.ConfigMigrationDeclined))
+
+			Expect(service.store.SetRepositoryConfigMigration(
+				GinkgoT().Context(),
+				storage.RepositoryConfigMigration{
+					TargetID:     targetID,
+					RepositoryID: "github:repository:41",
+					State:        storage.ConfigMigrationNone,
+				},
+			)).To(Succeed())
+
+			propose(targetID)
+
+			Expect(stub.createdPRs).To(HaveLen(2), "the reset did not survive a sweep tick")
 			Expect(repository(targetID).ConfigMigration).
 				To(Equal(storage.ConfigMigrationProposed))
 		})
@@ -268,6 +330,46 @@ var _ = Describe("Configuration migration [Unit]", func() {
 		targetID := seed()
 		propose(targetID)
 
+		Expect(stub.createdPRs).To(BeEmpty())
+	})
+
+	// The migration used to sit after the sweep's stand-down check, so a
+	// repository that had pinned itself to the Action was silently and
+	// permanently excluded - and the Action cannot migrate it either, having
+	// nowhere to remember a refusal. It keeps its legacy file for ever.
+	It("reaches a repository that has stood the service down", func() {
+		stub.repoConfig = "quiet_success: true\nrunner: action\n"
+		targetID := seed()
+
+		client, err := github.NewClient("installation-token", endpoint.URL)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(service.sweepRepo(
+			GinkgoT().Context(),
+			client,
+			targetID,
+			411,
+			github.Repository{
+				ID: 41, Owner: "smykla-skalski", Name: "smyklot", DefaultBranch: "main",
+			},
+			true,
+		)).To(Succeed())
+
+		Expect(stub.createdPRs).To(HaveLen(1))
+		Expect(repository(targetID).ConfigMigration).
+			To(Equal(storage.ConfigMigrationProposed))
+	})
+
+	// A repository nobody has switched on is not one to open a pull request at.
+	// This used to follow from where the call sat in the sweep; the call moved
+	// above the stand-down check so that repositories pinned to the Action can
+	// be migrated too, so the rule is the migration's own now
+	It("leaves a repository nobody has switched on alone", func() {
+		stub.repoConfig = "quiet_success: true\n"
+
+		targetIDs, err := service.SyncCatalog(GinkgoT().Context())
+		Expect(err).NotTo(HaveOccurred())
+
+		propose(targetIDs[0])
 		Expect(stub.createdPRs).To(BeEmpty())
 	})
 
