@@ -1178,6 +1178,15 @@
       --bar-height: 3.75rem;
       --bar-control: 2.125rem;
 
+      /* The right-hand controls, measured from the screen's edge inwards. Each
+         one starts where the one outside it ended, plus the gap, so the row
+         packs itself and there is no offset written twice. The two widths are
+         the avatar sizes their markup asks for. */
+      --bar-gap: var(--space-5);
+      --bar-slot-account: var(--space-4);
+      --bar-slot-switcher: calc(var(--bar-slot-account) + 2rem + var(--bar-gap));
+      --bar-slot-menu: calc(var(--bar-slot-switcher) + 1.75rem + var(--bar-gap));
+
       border-bottom: 1px solid var(--sidebar-border);
       border-right: 0;
       display: block;
@@ -1190,11 +1199,17 @@
       display: none;
     }
 
+    /* No bottom margin. It separates the brand row from the navigation under it
+       in the rail, and there is no navigation under it here - the drawer is a
+       layer. Left in, it was 8px of nothing between the row and the bar's own
+       rule, so the bar measured 69px while its contents centred on the row's 60:
+       everything in it sat 4px above the line the reader sees it against. */
     .brand-row,
     .collapsed .brand-row {
       flex-direction: row;
       height: var(--bar-height);
       justify-content: space-between;
+      margin-bottom: 0;
       min-height: 0;
       padding: 0 var(--space-4);
     }
@@ -1207,9 +1222,17 @@
       display: flex;
       margin: 0;
       position: absolute;
-      right: 7.25rem;
+      right: var(--bar-slot-menu);
       /* Centred on the bar by subtraction, like the two beside it. */
       top: calc((var(--bar-height) - 1.75rem) / 2);
+    }
+
+    /* The Root console has no workspace to switch, so the switcher is not
+       rendered and its slot would otherwise stay empty - the menu button hung
+       68px off the account avatar with nothing between them. It moves out to
+       take the vacant slot, keeping the row packed against the edge. */
+    .panel-sidebar:not(:has(.target-trigger)) .mobile-navigation-trigger {
+      right: var(--bar-slot-switcher);
     }
 
     .navigation-shell {
@@ -1242,11 +1265,11 @@
     }
 
     .target-trigger {
-      right: 4.25rem;
+      right: var(--bar-slot-switcher);
     }
 
     .account-card {
-      right: var(--space-4);
+      right: var(--bar-slot-account);
     }
 
     .target-trigger,
