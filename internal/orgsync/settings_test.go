@@ -540,6 +540,37 @@ var _ = Describe("Settings planning [Unit]", func() {
 		}))
 	})
 
+	// A chain has to be judged against what will happen rather than what was
+	// asked for. Secret scanning withheld because advanced security is off is
+	// secret scanning that stays off - and push protection sent on its own into
+	// exactly the 422 withholding exists to avoid
+	It("withholds what depends on a setting that was itself withheld", func() {
+		actions := orgsync.PlanSettings(repo,
+			orgsync.SettingsConfig{
+				SecretScanning:               enabled(),
+				SecretScanningPushProtection: enabled(),
+				HasWiki:                      disabled(),
+			},
+			orgsync.CurrentSettings{
+				AdvancedSecurity:             orgsync.FeatureOff,
+				SecretScanning:               orgsync.FeatureOff,
+				SecretScanningPushProtection: orgsync.FeatureOff,
+				HasWiki:                      true,
+			},
+		)
+
+		sent := body(actions)
+		Expect(sent).To(HaveKeyWithValue("has_wiki", false))
+		Expect(sent).NotTo(HaveKey("security_and_analysis"))
+
+		// Both of them, each with the reason: the one whose dependency is off,
+		// and the one whose dependency is now known not to be changing
+		Expect(actions[0].After).
+			To(ContainSubstring("leaving secret_scanning alone: the setting it needs is off"))
+		Expect(actions[0].After).
+			To(ContainSubstring("leaving secret_scanning_push_protection alone"))
+	})
+
 	It("sends secret scanning with the advanced security the same change turns on", func() {
 		sent := body(orgsync.PlanSettings(repo,
 			orgsync.SettingsConfig{AdvancedSecurity: enabled(), SecretScanning: enabled()},

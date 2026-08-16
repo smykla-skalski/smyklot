@@ -232,6 +232,11 @@ type settingsField struct {
 	// the subject of a requires.
 	on func(SettingsConfig, CurrentSettings) bool
 
+	// now is the same setting as the repository has it, which is what it keeps
+	// when the change to it is withheld. Nil beside a nil on, for the same
+	// reason.
+	now func(CurrentSettings) bool
+
 	// available reports the repository having this setting at all, for the ones
 	// it may not. Nil where every repository has it, which is all of them
 	// except the security features.
@@ -344,13 +349,8 @@ func securityField(
 		},
 		have:      func(s CurrentSettings) string { return string(have(s)) },
 		available: func(s CurrentSettings) bool { return have(s).Reported() },
-		on: func(c SettingsConfig, s CurrentSettings) bool {
-			if value := want(c); value != nil {
-				return *value
-			}
-
-			return have(s) == FeatureOn
-		},
+		now:       func(s CurrentSettings) bool { return have(s) == FeatureOn },
+		on:        resulting(want, func(s CurrentSettings) bool { return have(s) == FeatureOn }),
 		put: func(body map[string]any, value any) {
 			section, nested := body[securitySection].(map[string]any)
 			if !nested {
@@ -395,19 +395,29 @@ func boolField(
 			return *value, describeBool(*value), true
 		},
 		have: func(s CurrentSettings) string { return describeBool(have(s)) },
-		on: func(c SettingsConfig, s CurrentSettings) bool {
-			// What the repository would be left with: what this change says, or
-			// what it already has where the change says nothing. The resulting
-			// repository is what GitHub judges a dependent setting against, so
-			// switching a strategy on in the same request is what makes the
-			// wording sent beside it legal.
-			if value := want(c); value != nil {
-				return *value
-			}
+		now:  have,
+		on:   resulting(want, have),
+		put:  flatly(name),
+	}
+}
 
-			return have(s)
-		},
-		put: flatly(name),
+// resulting answers what a setting would be left as: what this change says, or
+// what the repository already has where the change says nothing.
+//
+// The resulting repository is what GitHub judges a dependent setting against,
+// so switching a strategy on in the same request is what makes the wording sent
+// beside it legal - and the same expression read the other way is what the
+// repository keeps when a change is withheld.
+func resulting(
+	want func(SettingsConfig) *bool,
+	now func(CurrentSettings) bool,
+) func(SettingsConfig, CurrentSettings) bool {
+	return func(c SettingsConfig, s CurrentSettings) bool {
+		if value := want(c); value != nil {
+			return *value
+		}
+
+		return now(s)
 	}
 }
 
@@ -560,6 +570,7 @@ func DiffSettings(config SettingsConfig, current CurrentSettings) (SettingsChang
 
 		if reason := repository.withholds(field, value); reason != "" {
 			change.withhold(field.name, reason)
+			repository.keeps(field, current)
 
 			continue
 		}
@@ -622,6 +633,23 @@ func judge(fields []settingsField, config SettingsConfig, current CurrentSetting
 	})
 
 	return answer
+}
+
+// keeps records a setting that is not changing after all.
+//
+// Everything below it in the table is judged against what the repository will
+// have, and a withheld change means that is what it has now rather than what
+// was asked for. Without this, a chain reads its own intent: secret scanning
+// withheld because advanced security is off still counted as "on" for push
+// protection, which was then sent alone into the 422 that withholding exists to
+// avoid. The table names a dependency before whatever depends on it, so one
+// correction here is seen by everything that needs it.
+func (v verdict) keeps(field settingsField, current CurrentSettings) {
+	if field.now == nil {
+		return
+	}
+
+	v.resulting[field.name] = field.now(current)
 }
 
 // withholds reports why a setting cannot be sent to this repository, and is
