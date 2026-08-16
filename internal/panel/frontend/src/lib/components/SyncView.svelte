@@ -274,8 +274,12 @@
   </header>
 
   {#if plan === null}
+    <!-- Deliberately not "nothing to do". Nothing is waiting, which is also
+         what it looks like a moment after saving, before any reconcile has
+         read a repository - and telling somebody their new configuration
+         needs no changes would be a claim nothing here has checked. -->
     <p class="sync-empty">
-      Nothing to do. Every repository already matches what is configured above.
+      Nothing waiting. A reconcile runs on a timer and proposes whatever differs.
     </p>
   {:else}
     <p class="sync-note">{planNote}</p>
