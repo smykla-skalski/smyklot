@@ -292,6 +292,12 @@ func (s *server) handler() http.Handler {
 
 	verify := webhook.Middleware(s.cfg.webhookSecret, webhook.WithErrorHandler(s.rejectUnsigned))
 	mux.Handle("POST "+s.cfg.webhookPath, verify(http.HandlerFunc(s.handleDelivery)))
+
+	// At the root rather than under the panel, and served whether or not a
+	// panel is configured: a schema is published documentation, and its address
+	// is written into repositories that will still be reading it long after
+	// whoever set the deployment up has moved on.
+	mux.HandleFunc("GET "+schemaRoot+"/{schema}", serveSchema)
 	if s.panel != nil {
 		if s.cfg.panel.basePath == "" {
 			mux.Handle("/", s.panel.Handler())

@@ -66,6 +66,26 @@ type Config struct {
 	Runner Runner `json:"runner"`
 }
 
+// Where the schema for this configuration is, spelled by the generator that
+// wrote both it and this file.
+//
+// Generated rather than written twice, because three things have to agree: the
+// document's own $id, the path the service answers at, and the directive the
+// migration writes into a repository. A schema advertising an address nothing
+// serves is the rot this generator exists to prevent.
+const (
+	// SchemaName is the schema document's file name.
+	SchemaName = "repository-v1.json"
+
+	// SchemaPath is where the service serves it, at the root of its origin
+	// rather than under the panel: a schema is published documentation, and it
+	// is served whether or not a deployment runs a panel at all.
+	SchemaPath = "/schema/repository-v1.json"
+
+	// SchemaURL is the published address, and what an editor is pointed at.
+	SchemaURL = "https://smyklot.com/schema/repository-v1.json"
+)
+
 // The key every setting is addressed by, in a file, an environment variable,
 // a command-line flag and the schema alike.
 const (

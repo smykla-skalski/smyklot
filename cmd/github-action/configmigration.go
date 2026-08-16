@@ -32,9 +32,14 @@ const (
 	//
 	// It goes on the file the migration writes rather than into RenderTOML,
 	// because it is context for a human reading an unsolicited change, not part
-	// of serialising settings. It is also where the schema directive will go
-	// once there is a URL that will not rot.
-	migrationHeader = "# Smyklot reads this file from the default branch.\n" +
+	// of serialising settings.
+	//
+	// The schema directive is first because that is the only line taplo reads
+	// it on, and it names the published URL rather than this deployment's own:
+	// the file is somebody else's, and it has to resolve from a laptop that has
+	// never heard of the installation that wrote it.
+	migrationHeader = "#:schema " + config.SchemaURL + "\n" +
+		"# Smyklot reads this file from the default branch.\n" +
 		"# https://github.com/smykla-skalski/smyklot#bot-configuration\n\n"
 )
 

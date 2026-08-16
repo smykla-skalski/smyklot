@@ -507,8 +507,11 @@ var _ = Describe("Configuration migration [Unit]", func() {
 		Expect(string(content)).To(HaveSuffix("quiet_success = true\n"))
 
 		// The file has to say what it is to somebody who was not here when the
-		// pull request arrived, and still parse as the settings it carries
-		Expect(string(content)).To(HavePrefix("# Smyklot reads this file"))
+		// pull request arrived, and still parse as the settings it carries.
+		// The schema directive goes first because that is the only line taplo
+		// reads it on
+		Expect(string(content)).To(HavePrefix("#:schema " + config.SchemaURL + "\n"))
+		Expect(string(content)).To(ContainSubstring("# Smyklot reads this file"))
 
 		patch, err := config.ParsePatch(config.FormatTOML, content)
 		Expect(err).NotTo(HaveOccurred())

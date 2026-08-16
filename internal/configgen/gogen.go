@@ -66,6 +66,26 @@ type Config struct {
 {{ end -}}
 }
 
+// Where the schema for this configuration is, spelled by the generator that
+// wrote both it and this file.
+//
+// Generated rather than written twice, because three things have to agree: the
+// document's own $id, the path the service answers at, and the directive the
+// migration writes into a repository. A schema advertising an address nothing
+// serves is the rot this generator exists to prevent.
+const (
+	// SchemaName is the schema document's file name.
+	SchemaName = {{ quote .SchemaName }}
+
+	// SchemaPath is where the service serves it, at the root of its origin
+	// rather than under the panel: a schema is published documentation, and it
+	// is served whether or not a deployment runs a panel at all.
+	SchemaPath = {{ quote .SchemaPath }}
+
+	// SchemaURL is the published address, and what an editor is pointed at.
+	SchemaURL = {{ quote .SchemaID }}
+)
+
 // The key every setting is addressed by, in a file, an environment variable,
 // a command-line flag and the schema alike.
 const (
@@ -257,7 +277,13 @@ func RenderGo(model Model) ([]byte, error) {
 		Std        []string
 		ThirdParty []string
 		Fields     []Field
-	}{Header: goHeader, Std: std, ThirdParty: thirdParty, Fields: model.Fields}
+		SchemaName string
+		SchemaPath string
+		SchemaID   string
+	}{
+		Header: goHeader, Std: std, ThirdParty: thirdParty, Fields: model.Fields,
+		SchemaName: SchemaName, SchemaPath: SchemaPath, SchemaID: SchemaID,
+	}
 
 	if err := goTemplate.Execute(&buffer, data); err != nil {
 		return nil, fmt.Errorf("render go: %w", err)

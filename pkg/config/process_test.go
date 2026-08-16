@@ -222,6 +222,16 @@ var _ = Describe("Precedence [Unit]", func() {
 		}
 	})
 
+	// The address is written into other people's repositories, so a README
+	// naming a different one teaches an editor to fetch something nothing
+	// serves - and nothing would fail, it would just stop understanding the
+	// file
+	It("publishes the schema at the address the README gives out", func() {
+		content, err := os.ReadFile(filepath.Join("..", "..", "README.md"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(content)).To(ContainSubstring("#:schema " + config.SchemaURL))
+	})
+
 	// A flag carries its default whether or not anyone passed it, so a
 	// resolver reading the value rather than asking whether it changed would
 	// let the command line silently outrank every layer below it

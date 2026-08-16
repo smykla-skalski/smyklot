@@ -9,17 +9,35 @@ import (
 )
 
 const (
-	// SchemaFile is where RenderSchema's output belongs, relative to the
-	// repository root. The name carries a version because the document is
-	// published and an editor pins it: changing what v1 means underneath a
-	// repository is how a schema comes to describe a type that has moved on.
-	SchemaFile = "pkg/config/schema/repository-v1.json"
+	// SchemaDir is where RenderSchema's output belongs, relative to the
+	// repository root. pkg/config embeds it, so what the service publishes is
+	// what the binary was built from.
+	SchemaDir = "pkg/config/schema"
 
-	// SchemaID is where the document is served from. dotsync's pointed at a
-	// file on a branch of another repository, which is how it came to describe
-	// types that no longer existed. This one is served by the binary that
-	// validates against it.
-	SchemaID = "https://smyklot.com/schema/repository-v1.json"
+	// SchemaName carries a version because the document is published and an
+	// editor pins it: changing what v1 means underneath a repository is how a
+	// schema comes to describe a type that has moved on.
+	SchemaName = "repository-v1.json"
+
+	// SchemaFile is where RenderSchema's output belongs.
+	SchemaFile = SchemaDir + "/" + SchemaName
+
+	// SchemaOrigin is the host the document is published from. Fixed rather
+	// than read from a deployment's own origin, because the URL is written into
+	// other people's repositories and has to resolve from a laptop that has
+	// never heard of the installation that wrote it.
+	SchemaOrigin = "https://smyklot.com"
+
+	// SchemaPath is where the service serves the document, and the last
+	// segments of its $id. One constant, so a schema cannot advertise an
+	// address the service does not answer at.
+	SchemaPath = "/schema/" + SchemaName
+
+	// SchemaID is where the document says it lives. dotsync's pointed at a file
+	// on a branch of another repository, which is how it came to describe types
+	// that no longer existed. This one is served by the binary that validates
+	// against it.
+	SchemaID = SchemaOrigin + SchemaPath
 
 	// SchemaDialect is the JSON Schema version the document declares.
 	SchemaDialect = "https://json-schema.org/draft/2020-12/schema"

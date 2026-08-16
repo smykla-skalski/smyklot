@@ -242,6 +242,14 @@ TOML is what Smyklot asks for now, at `.smyklot.toml`, `.smyklot/config.toml` or
 
 When a repository carries more than one of these, the first in that order wins and the panel names the others.
 
+Editors complete and check the file from a published JSON Schema. Point one at it with a directive on the first line, which is what the migration pull request writes:
+
+```toml
+#:schema https://smyklot.com/schema/repository-v1.json
+```
+
+Smyklot serves that document itself, from the same build that reads the file, so the two cannot describe different settings.
+
 This is the only per-repository configuration the [service](#running-as-a-service) can see - it has no access to a repository's Actions variables. The Action reads the same file, so a repository gets the same behaviour whichever one handles the comment.
 
 The file is read from the **default branch**, so a pull request cannot change how its own commands are handled.

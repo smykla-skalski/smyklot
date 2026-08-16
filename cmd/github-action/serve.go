@@ -349,7 +349,9 @@ func applyPanelFlags(cmd *cobra.Command, cfg *serveConfig) error {
 	if cfg.panel.superRootID <= 0 || ttl <= 0 {
 		return ErrPanelConfig
 	}
-	if cfg.panel.basePath == cfg.webhookPath || cfg.panel.basePath == healthPath {
+	if cfg.panel.basePath == cfg.webhookPath ||
+		cfg.panel.basePath == healthPath ||
+		cfg.panel.basePath == schemaRoot {
 		return fmt.Errorf("%w: panel base path conflicts with a public service route", ErrPanelConfig)
 	}
 
