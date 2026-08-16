@@ -139,4 +139,56 @@ describe('the palette', () => {
       .sort();
     expect(orphans).toEqual([]);
   });
+
+  it('re-skins a segmented control completely, or not at all', () => {
+    /* A surface block on this control is a whole palette, not a patch. `fieldset` declares the nine
+       variables the rest of the stylesheet paints with, and `fieldset.on-sidebar` and
+       `fieldset.on-night` each re-point all nine at the family their ground belongs to. Leave one
+       out and it does not fall back to something neutral - it keeps the *page's* answer, which is
+       a different ground entirely.
+
+       `--seg-text` was left out of the sidebar block. It is only read for the hover ink on an
+       unchecked option, so three palettes looked fine and the fourth put the light theme's
+       near-black label on the Root menu's near-black track at 1.09:1. Nothing else in the block
+       was wrong, and the one that was is the one nobody reads until they hover. */
+    const control = readFileSync(
+      new URL('../src/components/SegmentedControl.svelte', import.meta.url),
+      'utf8',
+    );
+    const body = (selector: string): string => {
+      const start = control.indexOf(`\n  ${selector} {`);
+      if (start === -1) throw new Error(`SegmentedControl has no \`${selector}\` rule`);
+      const open = control.indexOf('{', start);
+      const end = control.indexOf('\n  }', open);
+      if (end === -1) throw new Error(`\`${selector}\` is unterminated`);
+      return control.slice(open, end);
+    };
+    const variables = (rule: string): Set<string> =>
+      new Set(
+        [...body(rule).matchAll(/^\s*--(?<name>[\w-]+):/gmu)].map(
+          (match) => match.groups?.name ?? '',
+        ),
+      );
+
+    const base = variables('fieldset');
+    const surfaces = [
+      ...new Set(
+        [...control.matchAll(/^\s{2}(?<rule>fieldset\.on-[\w-]+) \{/gmu)].map(
+          (match) => match.groups?.rule ?? '',
+        ),
+      ),
+    ];
+
+    // Preconditions, so a stylesheet this can no longer parse fails rather than passes empty.
+    expect(base.size, 'the base fieldset rule declares no variables').toBeGreaterThan(5);
+    expect(surfaces.length, 'no fieldset.on-* surfaces were found').toBeGreaterThan(1);
+
+    for (const surface of surfaces) {
+      const missing = [...base].filter((name) => !variables(surface).has(name)).sort();
+      expect(
+        missing,
+        `${surface} leaves ${missing.join(', ')} pointing at the page it stands on`,
+      ).toEqual([]);
+    }
+  });
 });

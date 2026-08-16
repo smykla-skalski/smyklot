@@ -248,6 +248,11 @@
     --seg-border: var(--sidebar-seg-border);
     --seg-shadow: var(--sidebar-seg-shadow);
     --seg-muted: var(--sidebar-menu-muted);
+    /* The menu's ink, not the page's. The Root console's sidebar is dark in both themes while the
+       page behind it is not, so `--seg-text` inherited from the base rule put the light theme's
+       near-black label on the menu's near-black track: 1.09:1, which is a label that is not there.
+       Every other ink in this block already comes from the sidebar family - this one was missed. */
+    --seg-text: var(--sidebar-menu-text);
     --selected-bg: var(--sidebar-seg-thumb);
     --selected-text: var(--sidebar-menu-text);
   }

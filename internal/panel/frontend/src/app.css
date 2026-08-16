@@ -583,16 +583,29 @@ body {
   /* Aliases substitute where they are declared, so the :root copies were
      computed against panel values and inherit here already resolved.
      Re-declaring them on the shell makes them re-resolve against the Root
-     palette (and, via the cascade, against the dark Root block below). */
+     palette (and, via the cascade, against the dark Root block below).
+
+     Which of them need repeating is not a judgement call, and it is not kept
+     by hand any more: `tests/palette-aliases.test.ts` reads every `--x: var(--y)`
+     out of :root and fails when this shell moves a token and leaves the alias
+     behind. It was kept by hand, and five had gone stale - --dim ran the panel's
+     petrol grey through fifty rules of a violet console, and --spectrum was a
+     teal. Nothing pointed at a wrong colour; the palette was only mostly
+     applied, which is why it read as random. */
   --rule: var(--border-subtle);
   --well: var(--surface-inset);
   --strip: var(--surface-base);
   --strip-lift: var(--surface-raised);
+  --ink: var(--canvas);
   --neutral-tint: var(--surface-inset);
+  --text: var(--text-primary);
+  --text-soft: var(--text-secondary);
+  --dim: var(--text-muted);
   --accent: var(--brand-action);
   --accent-tint: var(--brand-action-tint);
   --admin: var(--brand-action);
   --on-admin: var(--on-brand-action);
+  --spectrum: var(--brand-action);
   --brand: var(--focus);
   --table-header-bg: var(--surface-inset);
   --table-footer-bg: var(--surface-inset);
