@@ -17,7 +17,6 @@ func TestPendingCICommandRecognizesExistingArtifactOwnership(t *testing.T) {
 		request pendingci.Request
 		err     error
 		label   string
-		comment int
 		owned   pendingCIArtifactOwnership
 	}{
 		{
@@ -25,9 +24,9 @@ func TestPendingCICommandRecognizesExistingArtifactOwnership(t *testing.T) {
 			request: pendingci.Request{
 				Label: "smyklot:pending:ci:squash", SourceCommentID: 101,
 			},
-			label: "smyklot:pending:ci:squash", comment: 101,
+			label: "smyklot:pending:ci:squash",
 			owned: pendingCIArtifactOwnership{
-				label: true, reaction: true,
+				label: true, serviceFence: true,
 			},
 		},
 		{
@@ -35,20 +34,20 @@ func TestPendingCICommandRecognizesExistingArtifactOwnership(t *testing.T) {
 			request: pendingci.Request{
 				Label: "smyklot:pending:ci:squash", SourceCommentID: 202,
 			},
-			label: "smyklot:pending:ci:squash", comment: 101,
-			owned: pendingCIArtifactOwnership{label: true},
+			label: "smyklot:pending:ci:squash",
+			owned: pendingCIArtifactOwnership{label: true, serviceFence: true},
 		},
 		{
 			name: "different label with same comment",
 			request: pendingci.Request{
 				Label: "smyklot:pending:ci:rebase", SourceCommentID: 101,
 			},
-			label: "smyklot:pending:ci:squash", comment: 101,
-			owned: pendingCIArtifactOwnership{reaction: true},
+			label: "smyklot:pending:ci:squash",
+			owned: pendingCIArtifactOwnership{serviceFence: true},
 		},
 		{
 			name: "no armed request", err: storage.ErrNotFound,
-			label: "smyklot:pending:ci:squash", comment: 101,
+			label: "smyklot:pending:ci:squash",
 		},
 	}
 	for _, test := range tests {
@@ -59,7 +58,7 @@ func TestPendingCICommandRecognizesExistingArtifactOwnership(t *testing.T) {
 				repositoryID: "repository:7",
 			}
 			owned, err := command.armedArtifactOwnership(
-				t.Context(), 198, test.label, test.comment,
+				t.Context(), 198, test.label,
 			)
 			if err != nil {
 				t.Fatal(err)
@@ -79,7 +78,7 @@ func TestPendingCICommandReportsLabelOwnershipReadFailure(t *testing.T) {
 		repositoryID: "repository:7",
 	}
 	_, err := command.armedArtifactOwnership(
-		t.Context(), 198, "smyklot:pending:ci:squash", 101,
+		t.Context(), 198, "smyklot:pending:ci:squash",
 	)
 	if !errors.Is(err, readErr) {
 		t.Fatalf("ownership error = %v, want database error", err)

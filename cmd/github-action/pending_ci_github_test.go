@@ -50,9 +50,7 @@ func TestActionRecognizesServicePendingCIOwnership(t *testing.T) {
 			_, _ = w.Write([]byte(
 				`{"state":"open","head":{"sha":"head"},"base":{"ref":"main"},"labels":[]}`,
 			))
-		case "/repos/owner/repository/issues/42/comments":
-			_, _ = w.Write([]byte(`[{"id":101}]`))
-		case "/repos/owner/repository/issues/comments/101/reactions":
+		case "/repos/owner/repository/issues/42/reactions":
 			_, _ = w.Write([]byte(`[{"content":"hooray","user":{"login":"smyklot[bot]"}}]`))
 		default:
 			t.Fatalf("unexpected GitHub path %q", r.URL.Path)
@@ -127,16 +125,20 @@ func TestPendingCICleanupScopePreservesReplacementArtifacts(t *testing.T) {
 			current: pendingci.Request{
 				Label: "smyklot:pending:ci:rebase", SourceCommentID: 202,
 			},
-			scope: pendingCICleanupScope{label: true, reaction: true},
+			scope: pendingCICleanupScope{label: true, sourceReaction: true},
 		},
 		{
 			name: "replacement no longer armed", err: storage.ErrNotFound,
-			scope: pendingCICleanupScope{label: true, reaction: true},
+			scope: pendingCICleanupScope{
+				label: true, sourceReaction: true, serviceFence: true,
+			},
 		},
 		{
 			name: "another terminal request retains ownership", err: storage.ErrNotFound,
 			otherCleanup: true,
-			scope:        pendingCICleanupScope{label: true, reaction: true},
+			scope: pendingCICleanupScope{
+				label: true, sourceReaction: true, serviceFence: true,
+			},
 		},
 	}
 	for _, test := range tests {

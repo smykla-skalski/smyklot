@@ -171,7 +171,7 @@ func pendingCIKnownServiceReaction(
 	if !inspect {
 		return false, nil
 	}
-	found, err := client.HasPullRequestCommentReaction(
+	found, err := client.HasPullRequestReaction(
 		ctx, repository.Owner, repository.Name, pullRequest,
 		botUsername, github.ReactionPendingCIService,
 	)
@@ -237,7 +237,7 @@ func (s *server) reconcilePendingCIServiceArtifactLocked(
 	}
 	serviceOwned := legacy || knownReaction
 	if !serviceOwned {
-		serviceOwned, err = client.HasPullRequestCommentReaction(
+		serviceOwned, err = client.HasPullRequestReaction(
 			ctx, repository.Owner, repository.Name, pullRequest,
 			s.cfg.botUsername, github.ReactionPendingCIService,
 		)
@@ -267,13 +267,11 @@ func migrateArmedPendingCIServiceArtifact(
 	if !legacy {
 		return nil
 	}
-	if request.SourceCommentID > 0 {
-		if err := client.AddReaction(
-			ctx, repository.Owner, repository.Name,
-			int(request.SourceCommentID), github.ReactionPendingCIService,
-		); err != nil {
-			return fmt.Errorf("migrate pending CI service reaction: %w", err)
-		}
+	if err := client.AddPullRequestReaction(
+		ctx, repository.Owner, repository.Name,
+		request.PullRequest, github.ReactionPendingCIService,
+	); err != nil {
+		return fmt.Errorf("migrate pending CI service fence: %w", err)
 	}
 
 	return cleanupGitHubError(
@@ -302,11 +300,17 @@ func cleanupOrphanPendingCIServiceArtifacts(
 			return err
 		}
 	}
+	if err := client.RemovePullRequestReactionByUser(
+		ctx, repository.Owner, repository.Name, pullRequest,
+		botUsername, github.ReactionPendingCIService,
+	); err != nil {
+		return fmt.Errorf("remove orphan pending CI service fence: %w", err)
+	}
 	if err := client.RemovePullRequestCommentReactionsByUser(
 		ctx, repository.Owner, repository.Name, pullRequest,
 		botUsername, github.ReactionPendingCIService,
 	); err != nil {
-		return fmt.Errorf("remove orphan pending CI service reaction: %w", err)
+		return fmt.Errorf("remove legacy pending CI service reaction: %w", err)
 	}
 	if !legacy {
 		return nil

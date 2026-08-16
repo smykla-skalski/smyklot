@@ -22,15 +22,14 @@ type pendingCICommandStore interface {
 }
 
 type pendingCIArtifactOwnership struct {
-	label    bool
-	reaction bool
+	label        bool
+	serviceFence bool
 }
 
 func (command *pendingCICommand) armedArtifactOwnership(
 	ctx context.Context,
 	pullRequest int,
 	label string,
-	commentID int,
 ) (pendingCIArtifactOwnership, error) {
 	request, err := command.store.GetArmed(ctx, command.repositoryID, pullRequest)
 	if errors.Is(err, storage.ErrNotFound) {
@@ -43,7 +42,7 @@ func (command *pendingCICommand) armedArtifactOwnership(
 	}
 
 	return pendingCIArtifactOwnership{
-		label: request.Label == label, reaction: request.SourceCommentID == int64(commentID),
+		label: request.Label == label, serviceFence: true,
 	}, nil
 }
 

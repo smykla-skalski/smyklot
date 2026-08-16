@@ -38,11 +38,10 @@ func TestPendingCIActivationRollsBackOnlyUnownedArtifacts(t *testing.T) {
 			},
 		},
 		{
-			name: "prior request owns only the label",
+			name: "prior request owns the shared service fence",
 			current: pendingci.Request{
 				Label: "smyklot:pending:ci:squash", SourceCommentID: 202,
 			},
-			wantReactionCount: 1,
 		},
 		{
 			name: "no prior request owns artifacts", getErr: storage.ErrNotFound,
@@ -187,7 +186,7 @@ func TestPendingCIActivationStopsWhenWaitingReactionCannotBePublished(t *testing
 			artifacts.addedLabels, artifacts.removedLabels,
 		)
 	}
-	if len(artifacts.removedReactions) != 1 || artifacts.removedReactions[0] != 101 {
+	if len(artifacts.removedReactions) != 1 || artifacts.removedReactions[0] != 198 {
 		t.Fatalf(
 			"removed reactions = %v, want ambiguous reaction cleanup",
 			artifacts.removedReactions,
@@ -620,7 +619,7 @@ func (stub *pendingCIArtifactsStub) RemoveLabel(
 	return stub.removeLabelErrors[label]
 }
 
-func (stub *pendingCIArtifactsStub) AddReaction(
+func (stub *pendingCIArtifactsStub) AddPullRequestReaction(
 	context.Context,
 	string,
 	string,
@@ -630,14 +629,14 @@ func (stub *pendingCIArtifactsStub) AddReaction(
 	return stub.addReactionErr
 }
 
-func (stub *pendingCIArtifactsStub) RemoveReactionByUser(
+func (stub *pendingCIArtifactsStub) RemovePullRequestReactionByUser(
 	_ context.Context,
 	_, _ string,
-	commentID int,
-	_ github.ReactionType,
+	pullRequest int,
 	_ string,
+	_ github.ReactionType,
 ) error {
-	stub.removedReactions = append(stub.removedReactions, commentID)
+	stub.removedReactions = append(stub.removedReactions, pullRequest)
 
 	return nil
 }

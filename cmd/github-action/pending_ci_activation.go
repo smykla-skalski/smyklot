@@ -15,14 +15,14 @@ type pendingCIArtifacts interface {
 	GetLabels(context.Context, string, string, int) ([]string, error)
 	AddLabel(context.Context, string, string, int, string) error
 	RemoveLabel(context.Context, string, string, int, string) error
-	AddReaction(context.Context, string, string, int, github.ReactionType) error
-	RemoveReactionByUser(
+	AddPullRequestReaction(context.Context, string, string, int, github.ReactionType) error
+	RemovePullRequestReactionByUser(
 		context.Context,
 		string,
 		string,
 		int,
-		github.ReactionType,
 		string,
+		github.ReactionType,
 	) error
 }
 
@@ -129,12 +129,12 @@ func addPendingCIServiceReaction(
 	ownership pendingCIArtifactOwnership,
 	failures *pendingCIActivationErrors,
 ) (bool, error) {
-	if ownership.reaction {
+	if ownership.serviceFence {
 		return false, nil
 	}
-	failures.reaction = artifacts.AddReaction(
+	failures.reaction = artifacts.AddPullRequestReaction(
 		ctx, request.owner, request.repository,
-		request.commentID, github.ReactionPendingCIService,
+		request.pullRequest, github.ReactionPendingCIService,
 	)
 	if failures.reaction == nil {
 		return false, nil
@@ -200,7 +200,7 @@ func preparePendingCIActivation(
 		return pendingCIArtifactOwnership{}, true, err
 	}
 	ownership, err := command.armedArtifactOwnership(
-		ctx, request.pullRequest, request.label, request.commentID,
+		ctx, request.pullRequest, request.label,
 	)
 	if err != nil {
 		failures.command = err
@@ -363,12 +363,15 @@ func rollbackPendingCIArtifacts(
 			rollbackErr = errors.Join(rollbackErr, err)
 		}
 	}
-	if !ownership.reaction {
-		if err := artifacts.RemoveReactionByUser(
+	if !ownership.serviceFence {
+		if err := artifacts.RemovePullRequestReactionByUser(
 			ctx, request.owner, request.repository,
-			request.commentID, github.ReactionPendingCIService, request.runtime.BotUsername,
+			request.pullRequest, request.runtime.BotUsername, github.ReactionPendingCIService,
 		); err != nil {
-			rollbackErr = errors.Join(rollbackErr, fmt.Errorf("remove pending reaction: %w", err))
+			rollbackErr = errors.Join(
+				rollbackErr,
+				fmt.Errorf("remove pending CI service fence: %w", err),
+			)
 		}
 	}
 	return rollbackErr

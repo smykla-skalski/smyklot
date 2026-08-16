@@ -14,7 +14,7 @@ type pendingCIRequirementReader interface {
 
 type pendingCIOwnershipReader interface {
 	GetPullRequestState(context.Context, string, string, int) (github.PullRequestState, error)
-	HasPullRequestCommentReaction(
+	HasPullRequestReaction(
 		context.Context, string, string, int, string, github.ReactionType,
 	) (bool, error)
 }
@@ -47,7 +47,7 @@ func pendingCIServiceOwnedForState(
 	if hasLabel(state.Labels, github.LegacyLabelPendingCIServiceOwner) {
 		return true, nil
 	}
-	owned, err := reader.HasPullRequestCommentReaction(
+	owned, err := reader.HasPullRequestReaction(
 		ctx, owner, repository, pullRequest, botUsername,
 		github.ReactionPendingCIService,
 	)

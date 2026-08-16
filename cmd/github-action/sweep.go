@@ -395,7 +395,7 @@ func (s *server) handoffPendingCIToAction(
 		return NewGitHubError(ErrGetPRs, err)
 	}
 
-	_, err = s.reconcilePendingCIServiceArtifacts(ctx, client, repo, prs, false)
+	_, err = s.reconcilePendingCIServiceArtifacts(ctx, client, repo, prs, true)
 
 	return err
 }

@@ -36,6 +36,7 @@ type githubStub struct {
 
 	issueComments    map[int64]issueCommentRecord
 	commentReactions map[int64]string
+	prReactions      string
 
 	// installations is what GET /app/installations reports, and repos what
 	// each installation can reach. Both are empty unless a spec sweeps
@@ -77,6 +78,7 @@ func newGitHubStub() *githubStub {
 			},
 		},
 		commentReactions: map[int64]string{},
+		prReactions:      `[]`,
 		installations:    `[]`,
 		repos:            `{"total_count": 0, "repositories": []}`,
 		members:          `[]`,
@@ -195,15 +197,9 @@ func (s *githubStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		strings.Contains(r.URL.Path, "/reactions"):
 		s.writeCommentReactions(w, r)
 
-	case strings.HasSuffix(r.URL.Path, "/reactions"):
-		if r.Method == http.MethodGet {
-			_, _ = w.Write([]byte(`[]`))
-
-			return
-		}
-
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"id": 1}`))
+	case strings.Contains(r.URL.Path, "/issues/") &&
+		strings.Contains(r.URL.Path, "/reactions"):
+		s.writePullRequestReactions(w, r)
 
 	case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/issues/comments/"):
 		s.writeIssueComment(w, r.URL.Path)
@@ -309,6 +305,23 @@ func (s *githubStub) writeCommentReactions(w http.ResponseWriter, r *http.Reques
 		if reactions == "" {
 			reactions = `[]`
 		}
+		_, _ = io.WriteString(w, reactions)
+	case http.MethodPost:
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"id":1}`))
+	case http.MethodDelete:
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *githubStub) writePullRequestReactions(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	reactions := s.prReactions
+	s.mu.Unlock()
+	switch r.Method {
+	case http.MethodGet:
 		_, _ = io.WriteString(w, reactions)
 	case http.MethodPost:
 		w.WriteHeader(http.StatusCreated)

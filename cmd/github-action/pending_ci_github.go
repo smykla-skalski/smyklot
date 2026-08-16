@@ -25,8 +25,9 @@ type pendingCICurrentStore interface {
 }
 
 type pendingCICleanupScope struct {
-	label    bool
-	reaction bool
+	label          bool
+	sourceReaction bool
+	serviceFence   bool
 }
 
 var errNoRequiredStatusChecks = errors.New("base branch has no required status checks")
@@ -69,15 +70,13 @@ func (backend *githubPendingCIBackend) Observe(
 			State:        pendingci.ObservedIndeterminate, ObservedAt: observedAt,
 		}, nil
 	}
-	if request.SourceCommentID > 0 {
-		if err := client.AddReaction(
-			ctx, owner, repository, int(request.SourceCommentID),
-			github.ReactionPendingCIService,
-		); err != nil {
-			return pendingci.Observation{}, fmt.Errorf(
-				"restore pending CI service handoff reaction: %w", err,
-			)
-		}
+	if err := client.AddPullRequestReaction(
+		ctx, owner, repository, request.PullRequest,
+		github.ReactionPendingCIService,
+	); err != nil {
+		return pendingci.Observation{}, fmt.Errorf(
+			"restore pending CI service handoff fence: %w", err,
+		)
 	}
 	if err := removeConflictingPendingCILabelsFrom(
 		state.Labels,
@@ -183,20 +182,24 @@ func (backend *githubPendingCIBackend) cleanupArtifactsExclusive(
 		)
 		cleanupErr = errors.Join(cleanupErr, labelErr)
 	}
+	if scope.serviceFence {
+		cleanupErr = errors.Join(cleanupErr, cleanupGitHubError(
+			"remove pending CI service fence",
+			client.RemovePullRequestReactionByUser(
+				ctx, owner, repository, request.PullRequest,
+				backend.server.cfg.botUsername, github.ReactionPendingCIService,
+			),
+		))
+	}
 	commentID := int(request.SourceCommentID)
-	if scope.reaction {
-		for _, reaction := range []github.ReactionType{
-			github.ReactionPendingCIService,
-			github.ReactionPendingCI,
-		} {
-			cleanupErr = errors.Join(cleanupErr, cleanupGitHubError(
-				"remove pending CI reaction",
-				client.RemoveReactionByUser(
-					ctx, owner, repository, commentID,
-					reaction, backend.server.cfg.botUsername,
-				),
-			))
-		}
+	if scope.sourceReaction {
+		cleanupErr = errors.Join(cleanupErr, cleanupGitHubError(
+			"remove pending CI reaction",
+			client.RemoveReactionByUser(
+				ctx, owner, repository, commentID,
+				github.ReactionPendingCI, backend.server.cfg.botUsername,
+			),
+		))
 	}
 	if lifecycle == pendingci.LifecycleMerged && request.SourceCommentID > 0 {
 		cleanupErr = errors.Join(cleanupErr, cleanupGitHubError(
@@ -215,7 +218,7 @@ func (backend *githubPendingCIBackend) cleanupScope(
 	current, err := backend.current.GetArmed(ctx, request.RepositoryID, request.PullRequest)
 	if errors.Is(err, storage.ErrNotFound) {
 		return pendingCICleanupScope{
-			label: true, reaction: request.SourceCommentID > 0,
+			label: true, sourceReaction: request.SourceCommentID > 0, serviceFence: true,
 		}, nil
 	}
 	if err != nil {
@@ -226,7 +229,7 @@ func (backend *githubPendingCIBackend) cleanupScope(
 
 	return pendingCICleanupScope{
 		label: current.Label != request.Label,
-		reaction: request.SourceCommentID > 0 &&
+		sourceReaction: request.SourceCommentID > 0 &&
 			current.SourceCommentID != request.SourceCommentID,
 	}, nil
 }

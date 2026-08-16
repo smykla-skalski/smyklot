@@ -308,6 +308,9 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 							},
 						})
 
+					case r.URL.Path == "/repos/owner/repo/issues/42/reactions" && r.Method == "GET":
+						_, _ = w.Write([]byte(`[]`))
+
 					case r.URL.Path == "/repos/owner/repo/issues/42/comments" && r.Method == "GET":
 						w.WriteHeader(http.StatusOK)
 						_, _ = w.Write([]byte(`[]`))
@@ -369,15 +372,13 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 								"name": github.LabelPendingCISquash,
 							}},
 						})
-					case r.URL.Path == "/repos/owner/repo/issues/42/comments":
+					case r.URL.Path == "/repos/owner/repo/issues/42/reactions":
 						ownershipReads++
 						if ownershipReads > 1 {
-							_, _ = w.Write([]byte(`[{"id":101}]`))
+							_, _ = w.Write([]byte(`[{"content":"hooray","user":{"login":"smyklot[bot]"}}]`))
 						} else {
 							_, _ = w.Write([]byte(`[]`))
 						}
-					case r.URL.Path == "/repos/owner/repo/issues/comments/101/reactions":
-						_, _ = w.Write([]byte(`[{"content":"hooray","user":{"login":"smyklot[bot]"}}]`))
 					case r.URL.Path == "/repos/owner/repo/commits/abc123/status":
 						_ = json.NewEncoder(w).Encode(map[string]interface{}{
 							"total_count": 0, "statuses": []map[string]interface{}{},
@@ -448,6 +449,9 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 								{"status": "completed", "conclusion": "failure"},
 							},
 						})
+
+					case r.URL.Path == "/repos/owner/repo/issues/42/reactions" && r.Method == "GET":
+						_, _ = w.Write([]byte(`[]`))
 
 					case r.URL.Path == "/repos/owner/repo/issues/42/comments" && r.Method == "GET":
 						w.WriteHeader(http.StatusOK)
@@ -522,6 +526,9 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 							},
 						})
 
+					case r.URL.Path == "/repos/owner/repo/issues/42/reactions" && r.Method == "GET":
+						_, _ = w.Write([]byte(`[]`))
+
 					case r.URL.Path == "/repos/owner/repo/issues/42/comments" && r.Method == "GET":
 						w.WriteHeader(http.StatusOK)
 						_, _ = w.Write([]byte(`[]`))
@@ -589,6 +596,9 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 								{"status": "completed", "conclusion": "success"},
 							},
 						})
+
+					case r.URL.Path == "/repos/owner/repo/issues/42/reactions" && r.Method == "GET":
+						_, _ = w.Write([]byte(`[]`))
 
 					case r.URL.Path == "/repos/owner/repo/issues/42/comments" && r.Method == "GET":
 						w.WriteHeader(http.StatusOK)

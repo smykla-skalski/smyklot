@@ -150,9 +150,9 @@ var _ = Describe("Reaction sweep [Unit]", func() {
 				stub.countCalls(http.MethodPost, "/issues/42/comments"),
 			}
 		}).Within(eventuallyWindow).Should(Equal([]int{1, 1, 1, 1}))
-		Consistently(func() int {
+		Eventually(func() int {
 			return stub.countCalls(http.MethodGet, "/issues/42/reactions")
-		}, 30*time.Millisecond).Should(BeZero())
+		}, 30*time.Millisecond).Should(Equal(1))
 
 		cancel()
 		Eventually(stopped).Should(BeClosed())
@@ -311,7 +311,7 @@ var _ = Describe("Reaction sweep [Unit]", func() {
 			"base":{"ref":"main"},
 			"labels":[{"name":"smyklot:pending:ci:squash"}]
 		}]`
-		stub.commentReactions[555] = `[
+		stub.prReactions = `[
 			{"id":99,"content":"hooray","user":{"login":"smyklot[bot]"}}
 		]`
 		start()
@@ -322,9 +322,38 @@ var _ = Describe("Reaction sweep [Unit]", func() {
 			http.MethodDelete, "/issues/42/labels/smyklot:pending:ci:squash",
 		)).To(Equal(1))
 		Expect(stub.countCalls(
-			http.MethodDelete, "/issues/comments/555/reactions/99",
+			http.MethodDelete, "/issues/42/reactions/99",
 		)).To(Equal(1))
 		Expect(stub.countCalls(http.MethodPost, "/issues/42/comments")).To(Equal(1))
+	})
+
+	It("should clean a reaction-only activation interrupted before Action handoff", func() {
+		stub.installations = `[{"id":111,"account":{"login":"smykla-skalski"}}]`
+		stub.repos = `{"total_count":1,"repositories":[{
+			"id":123456,
+			"name":"smyklot",
+			"full_name":"smykla-skalski/smyklot",
+			"owner":{"login":"smykla-skalski"}
+		}]}`
+		stub.repoConfig = "runner: action\n"
+		stub.openPRs = `[{
+			"number":42,
+			"state":"open",
+			"head":{"sha":"orphan-head"},
+			"base":{"ref":"main"},
+			"labels":[]
+		}]`
+		stub.prReactions = `[
+			{"id":99,"content":"hooray","user":{"login":"smyklot[bot]"}}
+		]`
+		start()
+
+		Expect(service.sweep(GinkgoT().Context())).To(Succeed())
+
+		Expect(stub.countCalls(
+			http.MethodDelete, "/issues/42/reactions/99",
+		)).To(Equal(1))
+		Expect(stub.countCalls(http.MethodPost, "/issues/42/comments")).To(BeZero())
 	})
 
 	It("should preserve ownership for an armed service request", func() {
