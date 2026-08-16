@@ -606,9 +606,6 @@
                       selected={systemRoles}
                       multiple
                       align="end"
-                      showIcon
-                      iconOnly
-                      placement="header"
                       onChange={selectRoles}
                     />
                   </div>
@@ -626,9 +623,6 @@
                       selected={statuses}
                       multiple
                       align="end"
-                      showIcon
-                      iconOnly
-                      placement="header"
                       onChange={selectStatuses}
                     />
                   </div>

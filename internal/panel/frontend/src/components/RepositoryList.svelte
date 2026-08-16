@@ -937,9 +937,6 @@
                     fallbackValue="all"
                     align="start"
                     wide
-                    showIcon
-                    iconOnly
-                    placement="header"
                     onChange={(values) =>
                       repositoryTable.getColumn('overrides')?.setFilterValue(values)}
                   />
@@ -961,9 +958,6 @@
                     selected={fileFilters}
                     multiple
                     align="end"
-                    showIcon
-                    iconOnly
-                    placement="header"
                     onChange={(values) => repositoryTable.getColumn('file')?.setFilterValue(values)}
                   />
                 </div>
@@ -994,9 +988,6 @@
                     selected={[stateFilter]}
                     fallbackValue="all"
                     align="end"
-                    showIcon
-                    iconOnly
-                    placement="header"
                     onChange={(values) =>
                       repositoryTable.getColumn('enablement')?.setFilterValue(values[0])}
                   />

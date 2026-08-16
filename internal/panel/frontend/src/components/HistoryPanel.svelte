@@ -830,9 +830,6 @@
                       selected={[auditScope]}
                       fallbackValue="all"
                       align="end"
-                      showIcon
-                      iconOnly
-                      placement="header"
                       onChange={(values) =>
                         auditTable.getColumn('target')?.setFilterValue(values[0])}
                     />
@@ -865,9 +862,6 @@
                       fallbackValue="all"
                       align="end"
                       multiple
-                      showIcon
-                      iconOnly
-                      placement="header"
                       onChange={(values) => auditTable.getColumn('change')?.setFilterValue(values)}
                     />
                   {:else}
@@ -879,9 +873,6 @@
                       selected={[auditChange]}
                       fallbackValue="all"
                       align="end"
-                      showIcon
-                      iconOnly
-                      placement="header"
                       onChange={(values) =>
                         auditTable.getColumn('change')?.setFilterValue(values[0])}
                     />
@@ -1025,9 +1016,6 @@
                     selected={[failureKind]}
                     fallbackValue="all"
                     align="end"
-                    showIcon
-                    iconOnly
-                    placement="header"
                     onChange={(values) =>
                       failureTable.getColumn('status')?.setFilterValue(values[0])}
                   />
