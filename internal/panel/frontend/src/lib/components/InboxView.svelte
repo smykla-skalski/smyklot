@@ -1,10 +1,10 @@
 <script lang="ts">
   import { untrack } from 'svelte';
 
-  import type { PanelApi } from '../lib/api';
-  import { formatRelative, formatTimestamp } from '../lib/format';
-  import { LatestRequest } from '../lib/latest-request';
-  import type { SecurityNotification } from '../lib/types';
+  import type { PanelApi } from '../api';
+  import { formatRelative, formatTimestamp } from '../format';
+  import { LatestRequest } from '../latest-request';
+  import type { SecurityNotification } from '../types';
   import Chip from './Chip.svelte';
   import Icon from './Icon.svelte';
   import PanelHeader from './PanelHeader.svelte';

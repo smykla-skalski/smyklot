@@ -50,6 +50,7 @@ export class PanelSession {
   repositoryDetailsVersion = $state(0);
   userVersion = $state(0);
   notificationVersion = $state(0);
+  notificationUnread = $state(0);
   runtimeSettingsVersion = $state(0);
   rootDataVersion = $state(0);
   streamReady = $state(false);
@@ -118,6 +119,12 @@ export class PanelSession {
 
   get isRootMode(): boolean {
     return page.url.pathname.startsWith(`${this.base}/root`);
+  }
+
+  get isInbox(): boolean {
+    return (
+      page.url.pathname === `${this.base}/inbox` || page.url.pathname === `${this.base}/inbox/`
+    );
   }
 
   get currentView(): PanelView {
@@ -346,6 +353,14 @@ export class PanelSession {
     return this.returnTarget === null
       ? '#'
       : panelRoutePath(this.base, this.routeFor(this.returnTarget, this.currentView));
+  }
+
+  inboxHref(): string {
+    return panelRoutePath(this.base, { personal: 'inbox' });
+  }
+
+  openInbox(): void {
+    goto(this.inboxHref());
   }
 
   // --- Mutations ---

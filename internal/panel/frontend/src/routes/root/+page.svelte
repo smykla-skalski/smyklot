@@ -18,9 +18,10 @@
     installationsHref={session.rootInstallationsHref()}
     elevationsHref={session.rootAuditHref()}
     failuresHref={session.rootFailuresHref()}
+    inboxHref={session.inboxHref()}
     onOpenInstallations={() => session.selectRootInstallations()}
     onOpenElevations={() => session.selectRootHistorySection('audit')}
     onOpenFailures={() => session.selectRootHistorySection('failures')}
-    onOpenInbox={() => session.identityBar?.openInbox()}
+    onOpenInbox={() => session.openInbox()}
   />
 </section>

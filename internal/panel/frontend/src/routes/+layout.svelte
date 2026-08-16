@@ -158,6 +158,7 @@
       viewHref={(v: PanelView) => session.viewHref(v)}
       onSelectView={(v: PanelView) => session.selectView(v)}
       showUsers={session.selectedTarget?.capabilities.manage_target_users === true}
+      showViews={session.selectedTarget !== null || session.isRootMode}
       showNavigation={session.viewer !== null &&
         (session.isRootMode || session.selectedTarget !== null)}
       collapsed={session.effectiveSidebarCollapsed}
@@ -172,9 +173,10 @@
       onEnterRoot={() => session.enterRoot()}
       returnHref={session.returnHref()}
       onReturnToPanel={() => session.returnToPanel()}
-      fetchNotifications={api.fetchNotifications}
-      markNotificationRead={api.markNotificationRead}
-      notificationVersion={session.notificationVersion}
+      inboxHref={session.inboxHref()}
+      inboxActive={session.isInbox}
+      onSelectInbox={() => session.openInbox()}
+      unreadCount={session.notificationUnread}
     />
 
     <div class="workspace" class:table-scroll-view={session.tableScrollView}>
