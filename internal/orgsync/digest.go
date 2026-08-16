@@ -1,0 +1,85 @@
+package orgsync
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"sort"
+	"strconv"
+)
+
+// DigestConfig fingerprints one kind's configuration.
+//
+// What it covers is what would change the work: whether the kind is on, and
+// what it says. Who saved it and when are deliberately outside, because a
+// configuration re-saved unchanged must not invalidate a plan somebody is
+// halfway through reading.
+func DigestConfig(enabled bool, document []byte) string {
+	sum := sha256.New()
+
+	writeField(sum, strconv.FormatBool(enabled))
+	writeField(sum, string(document))
+
+	return hex.EncodeToString(sum.Sum(nil))
+}
+
+// DigestScope fingerprints everything a plan for one installation was computed
+// from: each kind's configuration, and every repository override that decides
+// whether a repository is in scope at all.
+//
+// Both halves, because either one changing changes the answer. Turning a kind
+// off for one repository removes its actions just as surely as removing a
+// label does, and a plan computed before that must not still be approvable.
+func DigestScope(configs []Config, overrides []RepositoryOverride) string {
+	entries := make([]string, 0, len(configs)+len(overrides))
+
+	for _, config := range configs {
+		entries = append(entries, "config\x00"+string(config.Kind)+"\x00"+config.Digest)
+	}
+
+	for _, override := range overrides {
+		entries = append(entries,
+			"override\x00"+override.RepositoryID+"\x00"+string(override.Kind)+
+				"\x00"+describeOverride(override.Enabled))
+	}
+
+	// Sorted, because neither list arrives in a guaranteed order and a digest
+	// that depended on one would mark every plan stale the first time a query
+	// planner changed its mind.
+	sort.Strings(entries)
+
+	sum := sha256.New()
+	for _, entry := range entries {
+		writeField(sum, entry)
+	}
+
+	return hex.EncodeToString(sum.Sum(nil))
+}
+
+// describeOverride spells the three states of a nullable boolean apart.
+// Rendering nil as "false" would make "inherits, and the installation says no"
+// identical to "this repository says no", which are different configurations
+// that stop being different the moment the installation changes its mind.
+func describeOverride(enabled *bool) string {
+	if enabled == nil {
+		return "inherit"
+	}
+
+	return strconv.FormatBool(*enabled)
+}
+
+type sink interface{ Write([]byte) (int, error) }
+
+// writeField length-prefixes a value so that a sequence of them can only be
+// read one way.
+//
+// Concatenating instead would let two different sequences hash the same,
+// because nothing marks where one value ends: ["ab", "c"] and ["a", "bc"] are
+// one string. Nothing that reaches DigestScope today can construct that - the
+// kinds are a closed set and a digest is hexadecimal - but the framing costs
+// two bytes and its absence is the one kind of fault a fingerprint cannot
+// report about itself.
+func writeField(into sink, value string) {
+	_, _ = into.Write([]byte(strconv.Itoa(len(value))))
+	_, _ = into.Write([]byte{0})
+	_, _ = into.Write([]byte(value))
+}
