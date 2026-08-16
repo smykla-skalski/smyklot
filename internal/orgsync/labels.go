@@ -25,6 +25,11 @@ type Label struct {
 }
 
 // LabelConfig is the labels an installation expects its repositories to carry.
+//
+// This is the whole stored document, and the only type it decodes into. It was
+// briefly two - this, and a second shape in the panel that carried the
+// exclusions - and the planner decoded the one without them, so every exclusion
+// somebody configured was silently ignored. One document, one type.
 type LabelConfig struct {
 	Labels []Label `json:"labels"`
 
@@ -32,7 +37,15 @@ type LabelConfig struct {
 	// not name. Off by default, and even on it only ever proposes: a deletion
 	// reaches the plan before it reaches GitHub.
 	AllowRemoval bool `json:"allow_removal"`
+
+	// Excludes are the labels to leave alone entirely, neither created nor
+	// removed. They travel with the labels because they only mean anything
+	// beside them.
+	Excludes []string `json:"excludes,omitempty"`
 }
+
+// Exclusions is what the planner matches against.
+func (c LabelConfig) Exclusions() Excludes { return Excludes{Patterns: c.Excludes} }
 
 // Names returns every configured label name, in configuration order.
 func (c LabelConfig) Names() []string {
@@ -59,6 +72,10 @@ const (
 // where a single bad entry returned 422 and abandoned every label after it on
 // that repository. None of them need GitHub to answer to detect.
 func (c LabelConfig) Validate() error {
+	if err := c.Exclusions().Validate(); err != nil {
+		return err
+	}
+
 	seen := make(map[string]string, len(c.Labels))
 
 	for index, label := range c.Labels {

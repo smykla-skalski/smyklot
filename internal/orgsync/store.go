@@ -100,6 +100,16 @@ type PlanCreate struct {
 // somebody saving a label colour while the plan is on screen must not have
 // their change applied under an approval given for something else.
 type PlanApproval struct {
+	// TargetID is the installation the approver was authorized against, and it
+	// is checked rather than carried for information.
+	//
+	// A plan identifier is a second name for something the caller did not have
+	// to prove access to. Without this the panel's own check - "may you write to
+	// this installation" - is satisfied by naming your own installation while
+	// approving somebody else's plan, and the work then runs against their
+	// repositories.
+	TargetID string
+
 	PlanID  string
 	Digest  string
 	ActorID string
@@ -189,7 +199,14 @@ type Store interface {
 	ListSyncRepositoryState(context.Context, string) ([]RepositoryState, error)
 
 	CreateSyncPlan(context.Context, PlanCreate) (Plan, error)
-	GetSyncPlan(context.Context, string) (Plan, []Action, error)
+
+	// GetSyncPlan reads one plan, scoped to the installation it belongs to.
+	//
+	// The installation is a parameter rather than something to check afterwards,
+	// because a plan identifier names something the caller may never have been
+	// authorized against. Reading by identifier alone is how one installation's
+	// plan is shown to somebody who has rights over another.
+	GetSyncPlan(context.Context, string, string) (Plan, []Action, error)
 
 	// GetLiveSyncPlan answers the one plan an installation may have in flight,
 	// or storage.ErrNotFound. It is what makes pressing "sync now" twice

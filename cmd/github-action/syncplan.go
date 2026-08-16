@@ -161,7 +161,7 @@ func (s *server) planSyncActions(
 		}
 
 		actions = append(actions, orgsync.PlanLabels(
-			repository.ID, config, asCurrentLabels(current), orgsync.Excludes{},
+			repository.ID, config, asCurrentLabels(current), config.Exclusions(),
 		)...)
 	}
 

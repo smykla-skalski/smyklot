@@ -466,7 +466,8 @@ func (s *seeder) seedFinishedSyncPlan(digest string) error {
 	}
 
 	if _, err := s.store.ApproveSyncPlan(s.ctx, orgsync.PlanApproval{
-		PlanID: "sync-plan-done", Digest: digest, ActorID: s.owner.ID, Now: s.now,
+		TargetID: s.target.TargetID, PlanID: "sync-plan-done", Digest: digest,
+		ActorID: s.owner.ID, Now: s.now,
 	}); err != nil {
 		return err
 	}

@@ -128,21 +128,21 @@ func (s *Server) putSyncConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	config := orgsync.LabelConfig{Labels: input.Labels, AllowRemoval: input.AllowRemoval}
+	config := orgsync.LabelConfig{
+		Labels:       input.Labels,
+		AllowRemoval: input.AllowRemoval,
+		Excludes:     input.Excludes,
+	}
 	if err := config.Validate(); err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid_sync_config", err.Error())
 
 		return
 	}
-	if err := (orgsync.Excludes{Patterns: input.Excludes}).Validate(); err != nil {
-		s.writeError(w, http.StatusBadRequest, "invalid_sync_config", err.Error())
 
-		return
-	}
-
-	document, err := json.Marshal(syncDocument{
-		Labels: config.Labels, AllowRemoval: config.AllowRemoval, Excludes: input.Excludes,
-	})
+	// The stored document is the domain type itself, so what the planner reads
+	// is what the panel wrote. A second shape here is what made every configured
+	// exclusion a silent no-op: the planner decoded the type without them.
+	document, err := json.Marshal(config)
 	if err != nil {
 		s.writeInternal(w, err)
 
@@ -172,16 +172,6 @@ func (s *Server) putSyncConfig(w http.ResponseWriter, r *http.Request) {
 // names it by.
 const syncPlanKey = "plan"
 
-// syncDocument is the stored shape of a label configuration.
-//
-// Its own type rather than orgsync.LabelConfig, because the excludes travel
-// with it and the planner takes them separately. One document, one decode.
-type syncDocument struct {
-	Labels       []orgsync.Label `json:"labels"`
-	AllowRemoval bool            `json:"allow_removal"`
-	Excludes     []string        `json:"excludes"`
-}
-
 func syncConfigToDTO(config orgsync.Config) syncConfigDTO {
 	dto := syncConfigDTO{
 		Kind:      string(config.Kind),
@@ -194,7 +184,7 @@ func syncConfigToDTO(config orgsync.Config) syncConfigDTO {
 		Digest:    config.Digest,
 	}
 
-	var document syncDocument
+	var document orgsync.LabelConfig
 	if err := json.Unmarshal(config.Document, &document); err != nil {
 		// The page still renders - a panel that will not load is a panel nobody
 		// can use to fix anything - but it says so, and it says so because the
@@ -265,7 +255,8 @@ func (s *Server) postSyncPlanApproval(w http.ResponseWriter, r *http.Request) {
 	}
 
 	plan, err := s.store.ApproveSyncPlan(r.Context(), orgsync.PlanApproval{
-		PlanID:  r.PathValue(syncPlanKey),
+		TargetID: target.ID,
+		PlanID:   r.PathValue(syncPlanKey),
 		Digest:  input.Digest,
 		ActorID: account.ID,
 		Now:     s.now().UTC(),
@@ -298,7 +289,7 @@ func (s *Server) postSyncPlanApproval(w http.ResponseWriter, r *http.Request) {
 
 	s.Announce(target.ID, "")
 
-	_, actions, err := s.store.GetSyncPlan(r.Context(), plan.ID)
+	_, actions, err := s.store.GetSyncPlan(r.Context(), target.ID, plan.ID)
 	if err != nil {
 		s.writeStorageError(w, err)
 

@@ -211,13 +211,18 @@ func countActions(actions []orgsync.Action) orgsync.Counts {
 	return counts
 }
 
-// GetSyncPlan reads a plan and its actions.
+// GetSyncPlan reads a plan and its actions, scoped to its installation.
+//
+// Both, always. A plan identifier is a name for something the caller may never
+// have been authorized against, so reading by identifier alone is how one
+// installation's plan reaches somebody who has rights over another.
 func (s *Store) GetSyncPlan(
 	ctx context.Context,
+	targetID string,
 	planID string,
 ) (orgsync.Plan, []orgsync.Action, error) {
 	plan, err := scanSyncPlan(s.db.QueryRowContext(ctx, `
-SELECT`+syncPlanColumns+` FROM sync_plans WHERE id = ?`, planID))
+SELECT`+syncPlanColumns+` FROM sync_plans WHERE id = ? AND target_id = ?`, planID, targetID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return orgsync.Plan{}, nil, storage.ErrNotFound
 	}
@@ -280,8 +285,13 @@ func (s *Store) ApproveSyncPlan(
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	// Scoped to the installation the approver was authorized against. The plan
+	// identifier alone would let somebody with rights over one installation
+	// approve another's work, which then runs against that other's repositories.
 	plan, err := scanSyncPlan(tx.QueryRowContext(ctx, `
-SELECT`+syncPlanColumns+` FROM sync_plans WHERE id = ?`+s.dialect.RowLock(), approval.PlanID))
+SELECT`+syncPlanColumns+`
+FROM sync_plans
+WHERE id = ? AND target_id = ?`+s.dialect.RowLock(), approval.PlanID, approval.TargetID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return orgsync.Plan{}, storage.ErrNotFound
 	}

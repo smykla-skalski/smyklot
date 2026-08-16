@@ -78,7 +78,7 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 		GinkgoHelper()
 
 		_, err := store.ApproveSyncPlan(ctx, orgsync.PlanApproval{
-			PlanID: planID, Digest: digest, ActorID: actor, Now: now,
+			TargetID: target, PlanID: planID, Digest: digest, ActorID: actor, Now: now,
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -212,7 +212,7 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 			Expect(plan.Counts).To(Equal(orgsync.Counts{Create: 1, Update: 1, Delete: 1}))
 			Expect(plan.State).To(Equal(orgsync.PlanComputed))
 
-			read, actions, err := store.GetSyncPlan(ctx, plan.ID)
+			read, actions, err := store.GetSyncPlan(ctx, target, plan.ID)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(read.Counts).To(Equal(plan.Counts))
 			Expect(read.ComputedAt).To(BeTemporally("==", now))
@@ -281,11 +281,47 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 			planFor(ctx, store, "plan-1", account.ID, "digest-1", now, nil)
 
 			approved, err := store.ApproveSyncPlan(ctx, orgsync.PlanApproval{
-				PlanID: "plan-1", Digest: "digest-1", ActorID: account.ID, Now: now,
+				TargetID: target, PlanID: "plan-1", Digest: "digest-1",
+				ActorID: account.ID, Now: now,
 			})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(approved.State).To(Equal(orgsync.PlanApproved))
 			Expect(approved.ApprovedAt).To(HaveValue(BeTemporally("==", now)))
+		})
+
+		// A plan identifier is a name for something the caller may never have
+		// been authorized against. The panel checks "may you write to this
+		// installation" and then names a plan; without the installation in the
+		// query, somebody with rights over their own installation approves
+		// another's work and it runs against that other's repositories
+		It("refuses an approval that names another installation's plan", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			planFor(ctx, store, "plan-1", account.ID, "digest-1", now, nil)
+
+			_, err := store.ApproveSyncPlan(ctx, orgsync.PlanApproval{
+				TargetID: "github:installation:999", PlanID: "plan-1",
+				Digest: "digest-1", ActorID: account.ID, Now: now,
+			})
+			Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
+
+			// And the plan is untouched, rather than approved and merely
+			// reported as missing
+			read, _, err := store.GetSyncPlan(ctx, target, "plan-1")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(read.State).To(Equal(orgsync.PlanComputed))
+		})
+
+		// The same second identifier, on the read side. Answering this would
+		// hand one installation's repository names and labels to somebody with
+		// no rights over it at all
+		It("refuses to read another installation's plan", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			planFor(ctx, store, "plan-1", account.ID, "digest-1", now, nil)
+
+			_, _, err := store.GetSyncPlan(ctx, "github:installation:999", "plan-1")
+			Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
 		})
 
 		// The fingerprint is the only thing standing between what somebody
@@ -296,7 +332,8 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 			planFor(ctx, store, "plan-1", account.ID, "digest-1", now, nil)
 
 			_, err := store.ApproveSyncPlan(ctx, orgsync.PlanApproval{
-				PlanID: "plan-1", Digest: "digest-stale", ActorID: account.ID, Now: now,
+				TargetID: target, PlanID: "plan-1", Digest: "digest-stale",
+				ActorID: account.ID, Now: now,
 			})
 			Expect(errors.Is(err, orgsync.ErrStalePlan)).To(BeTrue())
 		})
@@ -309,8 +346,8 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 			planFor(ctx, store, "plan-1", account.ID, "digest-1", now, nil)
 
 			_, err := store.ApproveSyncPlan(ctx, orgsync.PlanApproval{
-				PlanID: "plan-1", Digest: "digest-1", ActorID: account.ID,
-				Now: now.Add(2 * time.Hour),
+				TargetID: target, PlanID: "plan-1", Digest: "digest-1",
+				ActorID: account.ID, Now: now.Add(2 * time.Hour),
 			})
 			Expect(errors.Is(err, orgsync.ErrStalePlan)).To(BeTrue())
 		})
@@ -322,7 +359,7 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 
 			Expect(store.ExpireSyncPlans(ctx, now.Add(2*time.Hour))).To(Succeed())
 
-			read, _, err := store.GetSyncPlan(ctx, "plan-1")
+			read, _, err := store.GetSyncPlan(ctx, target, "plan-1")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(read.State).To(Equal(orgsync.PlanExpired))
 
@@ -337,7 +374,8 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 			account := seed(ctx, store, now)
 			planFor(ctx, store, "plan-1", account.ID, "digest-1", now, nil)
 			_, err := store.ApproveSyncPlan(ctx, orgsync.PlanApproval{
-				PlanID: "plan-1", Digest: "digest-1", ActorID: account.ID, Now: now,
+				TargetID: target, PlanID: "plan-1", Digest: "digest-1",
+				ActorID: account.ID, Now: now,
 			})
 			Expect(err).NotTo(HaveOccurred())
 			_, err = store.LeaseSyncPlan(ctx, now, now.Add(time.Minute))
@@ -345,7 +383,7 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 
 			Expect(store.ExpireSyncPlans(ctx, now.Add(2*time.Hour))).To(Succeed())
 
-			read, _, err := store.GetSyncPlan(ctx, "plan-1")
+			read, _, err := store.GetSyncPlan(ctx, target, "plan-1")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(read.State).To(Equal(orgsync.PlanApplying))
 		})
@@ -364,7 +402,7 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 			writeConfig(ctx, store, account.ID, now.Add(time.Minute),
 				`{"labels":[{"name":"bug"}]}`, config.Revision)
 
-			read, _, err := store.GetSyncPlan(ctx, "plan-1")
+			read, _, err := store.GetSyncPlan(ctx, target, "plan-1")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(read.State).To(Equal(orgsync.PlanStale))
 
@@ -400,7 +438,7 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 
 			// The plan stays stale rather than being reported as applied, and
 			// the repository is left looking un-synchronised, which it is
-			read, _, err := store.GetSyncPlan(ctx, "plan-1")
+			read, _, err := store.GetSyncPlan(ctx, target, "plan-1")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(read.State).To(Equal(orgsync.PlanStale))
 
@@ -423,7 +461,7 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			read, _, err := store.GetSyncPlan(ctx, "plan-1")
+			read, _, err := store.GetSyncPlan(ctx, target, "plan-1")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(read.State).To(Equal(orgsync.PlanStale))
 		})
@@ -438,7 +476,8 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 
 			planFor(ctx, store, "plan-1", account, "digest-1", now, actions)
 			_, err := store.ApproveSyncPlan(ctx, orgsync.PlanApproval{
-				PlanID: "plan-1", Digest: "digest-1", ActorID: account, Now: now,
+				TargetID: target, PlanID: "plan-1", Digest: "digest-1",
+				ActorID: account, Now: now,
 			})
 			Expect(err).NotTo(HaveOccurred())
 
@@ -513,7 +552,7 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 				Blocker: orgsync.KindLabels,
 			})).To(Succeed())
 
-			_, actions, err := store.GetSyncPlan(ctx, "plan-1")
+			_, actions, err := store.GetSyncPlan(ctx, target, "plan-1")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(actions[0].State).To(Equal(orgsync.ActionFailed))
 			Expect(actions[0].Error).To(Equal("422 invalid color"))

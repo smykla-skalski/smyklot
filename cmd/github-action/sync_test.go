@@ -116,7 +116,7 @@ var _ = Describe("Label sync [Unit]", func() {
 		GinkgoHelper()
 
 		_, err := service.store.ApproveSyncPlan(GinkgoT().Context(), orgsync.PlanApproval{
-			PlanID: plan.ID, Digest: plan.Digest,
+			TargetID: plan.TargetID, PlanID: plan.ID, Digest: plan.Digest,
 			ActorID: plan.ActorAccountID, Now: time.Now().UTC(),
 		})
 		Expect(err).NotTo(HaveOccurred())
@@ -187,6 +187,35 @@ var _ = Describe("Label sync [Unit]", func() {
 				To(ConsistOf(string(orgsync.AuditPlanned)))
 		})
 
+		// An exclusion has to survive the round trip through storage and reach
+		// the planner. It did not: the stored document had one shape and the
+		// planner decoded another, so every exclusion somebody configured was
+		// dropped on the way in and the planner ran with none
+		It("leaves an excluded label alone", func() {
+			target := seed()
+			configure(target, `{"labels":[{"name":"ci/lint","color":"d73a4a"}],`+
+				`"excludes":["ci/*"]}`)
+
+			plan(target)
+
+			_, _, err := service.store.GetLiveSyncPlan(GinkgoT().Context(), target.ID)
+			Expect(err).To(MatchError(storage.ErrNotFound))
+		})
+
+		// And the dangerous direction: with removal switched on, an exclusion
+		// that did not reach the planner means a label somebody protected by
+		// hand is deleted
+		It("does not remove an excluded label", func() {
+			target := seed()
+			stub.repoLabels = `[{"name":"ci/lint","color":"ffffff","description":""}]`
+			configure(target, `{"labels":[],"allow_removal":true,"excludes":["ci/*"]}`)
+
+			plan(target)
+
+			_, _, err := service.store.GetLiveSyncPlan(GinkgoT().Context(), target.ID)
+			Expect(err).To(MatchError(storage.ErrNotFound))
+		})
+
 		// Pressing "sync now" beside a running reconcile has to be harmless,
 		// which is what the one-live-plan index buys
 		It("leaves a plan already in flight alone", func() {
@@ -218,7 +247,8 @@ var _ = Describe("Label sync [Unit]", func() {
 			Expect(stub.labelWrites[0]).To(ContainSubstring(`"name":"bug"`))
 			Expect(stub.labelWrites[0]).To(ContainSubstring(`"color":"d73a4a"`))
 
-			applied, _, err := service.store.GetSyncPlan(GinkgoT().Context(), computed.ID)
+			applied, _, err := service.store.GetSyncPlan(
+				GinkgoT().Context(), target.ID, computed.ID)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(applied.State).To(Equal(orgsync.PlanApplied))
 		})
@@ -300,7 +330,8 @@ var _ = Describe("Label sync [Unit]", func() {
 
 			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
 
-			applied, actions, err := service.store.GetSyncPlan(GinkgoT().Context(), computed.ID)
+			applied, actions, err := service.store.GetSyncPlan(
+				GinkgoT().Context(), target.ID, computed.ID)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(applied.State).To(Equal(orgsync.PlanFailed))
 			Expect(actions[0].State).To(Equal(orgsync.ActionFailed))
@@ -329,13 +360,13 @@ var _ = Describe("Label sync [Unit]", func() {
 		})
 		Expect(err).NotTo(HaveOccurred())
 
-		stale, _, err := service.store.GetSyncPlan(GinkgoT().Context(), computed.ID)
+		stale, _, err := service.store.GetSyncPlan(GinkgoT().Context(), target.ID, computed.ID)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(stale.State).To(Equal(orgsync.PlanStale))
 
 		// And approving it is refused, rather than applying what nobody read
 		_, err = service.store.ApproveSyncPlan(GinkgoT().Context(), orgsync.PlanApproval{
-			PlanID: computed.ID, Digest: computed.Digest,
+			TargetID: target.ID, PlanID: computed.ID, Digest: computed.Digest,
 			ActorID: target.Account.ID, Now: time.Now().UTC(),
 		})
 		Expect(err).To(HaveOccurred())
