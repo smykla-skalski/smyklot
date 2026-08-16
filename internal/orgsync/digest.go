@@ -22,6 +22,26 @@ func DigestConfig(enabled bool, document []byte) string {
 	return hex.EncodeToString(sum.Sum(nil))
 }
 
+// DigestRepositoryKind fingerprints what decides one repository's work for one
+// kind: the kind's own configuration, and that repository's answer about it.
+//
+// This is what sync_repository_state stores and what the planner compares
+// against, which is why a steady-state reconcile costs nothing: where the two
+// match, the repository already has what the configuration asks for and there
+// is no reason to ask GitHub what it looks like.
+//
+// The planner and the executor both call this, so the value recorded is the
+// value the next plan will test - two spellings of the same idea would drift
+// and the drift would look like a repository that never settles.
+func DigestRepositoryKind(configDigest string, enabled *bool) string {
+	sum := sha256.New()
+
+	writeField(sum, configDigest)
+	writeField(sum, describeOverride(enabled))
+
+	return hex.EncodeToString(sum.Sum(nil))
+}
+
 // DigestScope fingerprints everything a plan for one installation was computed
 // from: each kind's configuration, and every repository override that decides
 // whether a repository is in scope at all.

@@ -441,6 +441,7 @@ func (s *seeder) seedOrgSync() error {
 			RepositoryID: "repo-1", Kind: orgsync.KindLabels,
 			Operation: orgsync.OperationUpdate, Subject: "seeded",
 			Before: "seeded #000000", After: "seeded #d73a4a",
+			Payload: []byte(`{"name":"seeded","color":"d73a4a","description":"seeded"}`),
 		}},
 	})
 
@@ -457,7 +458,8 @@ func (s *seeder) seedFinishedSyncPlan(digest string) error {
 		Actions: []orgsync.Action{{
 			RepositoryID: "repo-1", Kind: orgsync.KindLabels,
 			Operation: orgsync.OperationCreate, Subject: "seeded",
-			After: "seeded #d73a4a",
+			After:   "seeded #d73a4a",
+			Payload: []byte(`{"name":"seeded","color":"d73a4a","description":"seeded"}`),
 		}},
 	}); err != nil {
 		return err

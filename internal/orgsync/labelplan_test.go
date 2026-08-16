@@ -53,6 +53,55 @@ var _ = Describe("Label planning [Unit]", func() {
 		)).To(BeEmpty())
 	})
 
+	// The action is the contract between what somebody read and what runs, so
+	// it has to carry the whole answer. Re-reading the configuration when the
+	// work runs would apply what it says then, not what was approved
+	It("carries what to apply on the action", func() {
+		actions := plan(
+			orgsync.LabelConfig{Labels: []orgsync.Label{
+				{Name: "bug", Color: "D73A4A", Description: text("Broken")},
+			}},
+			nil, orgsync.Excludes{},
+		)
+
+		label, err := orgsync.DecodeLabel(actions[0].Payload)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(label).To(Equal(orgsync.ResolvedLabel{
+			Name: "bug", Color: "d73a4a", Description: "Broken",
+		}))
+	})
+
+	// "Leave the description alone" is turned into a value here rather than at
+	// apply time, because the endpoint replaces whatever it is sent - so the
+	// description that will be sent has to be one somebody can read in the plan
+	It("resolves a description it was told to leave alone", func() {
+		actions := plan(
+			orgsync.LabelConfig{Labels: []orgsync.Label{{Name: "bug", Color: "000000"}}},
+			[]orgsync.CurrentLabel{
+				{Name: "bug", Color: "d73a4a", Description: "written by somebody here"},
+			},
+			orgsync.Excludes{},
+		)
+
+		Expect(actions).To(HaveLen(1))
+		label, err := orgsync.DecodeLabel(actions[0].Payload)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(label.Description).To(Equal("written by somebody here"))
+		Expect(actions[0].After).To(Equal("bug #000000 - written by somebody here"))
+	})
+
+	// The subject is the whole of the instruction, and a payload would be a
+	// second answer nothing reads
+	It("carries no payload on a deletion", func() {
+		actions := plan(
+			orgsync.LabelConfig{AllowRemoval: true},
+			[]orgsync.CurrentLabel{{Name: "wontfix", Color: "ffffff"}},
+			orgsync.Excludes{},
+		)
+
+		Expect(actions[0].Payload).To(BeEmpty())
+	})
+
 	It("updates a label whose colour drifted", func() {
 		actions := plan(
 			orgsync.LabelConfig{Labels: []orgsync.Label{{Name: "bug", Color: "d73a4a"}}},

@@ -88,6 +88,14 @@ CREATE TABLE sync_plan_actions (
     -- read. Empty before a creation and after a deletion.
     before_state TEXT NOT NULL DEFAULT '',
     after_state TEXT NOT NULL DEFAULT '',
+    -- What to apply, as the kind that owns it spells it.
+    --
+    -- Carried on the action rather than re-read from the configuration when
+    -- the work runs, because the plan is the contract between what somebody
+    -- reviewed and what happens. Reading the configuration again at apply time
+    -- would apply what it says then, which is precisely what the plan exists
+    -- to stop.
+    payload TEXT NOT NULL DEFAULT '',
     state TEXT NOT NULL CHECK (state IN ('pending', 'applied', 'failed', 'skipped')),
     error TEXT NOT NULL DEFAULT '',
     -- blocker names the earlier kind whose failure meant this was never tried.

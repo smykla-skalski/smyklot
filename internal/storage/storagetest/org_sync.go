@@ -74,6 +74,7 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 		return orgsync.Action{
 			RepositoryID: repo, Kind: orgsync.KindLabels,
 			Operation: operation, Subject: subject, After: subject,
+			Payload: []byte(`{"name":"` + subject + `","color":"d73a4a"}`),
 		}
 	}
 
@@ -199,6 +200,14 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 			Expect(actions).To(HaveLen(3))
 			Expect(actions[0].State).To(Equal(orgsync.ActionPending))
 			Expect(actions[0].RepositoryID).To(Equal(repoA))
+
+			// The payload is what the executor applies, so it has to survive
+			// storage exactly. An action that lost it would be an action the
+			// executor could only guess at, and guessing applies something
+			// nobody approved
+			label, err := orgsync.DecodeLabel(actions[0].Payload)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(label.Color).To(Equal("d73a4a"))
 
 			live, _, err := store.GetLiveSyncPlan(ctx, target)
 			Expect(err).NotTo(HaveOccurred())

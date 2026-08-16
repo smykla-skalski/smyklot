@@ -52,14 +52,24 @@ func scanSyncPlan(scanner rowScanner) (orgsync.Plan, error) {
 }
 
 func scanSyncAction(scanner rowScanner) (orgsync.Action, error) {
-	var action orgsync.Action
+	var (
+		action  orgsync.Action
+		payload []byte
+	)
 
 	if err := scanner.Scan(
 		&action.ID, &action.PlanID, &action.RepositoryID, &action.Kind,
 		&action.Operation, &action.Subject, &action.Before, &action.After,
-		&action.State, &action.Error, &action.Blocker,
+		&payload, &action.State, &action.Error, &action.Blocker,
 	); err != nil {
 		return orgsync.Action{}, fmt.Errorf("scan sync action: %w", err)
+	}
+
+	// An empty column is a deletion, which carries no payload. Left nil rather
+	// than an empty slice so a caller that decodes gets a clear failure instead
+	// of a zero value that looks like a label called "".
+	if len(payload) > 0 {
+		action.Payload = payload
 	}
 
 	return action, nil
@@ -67,7 +77,7 @@ func scanSyncAction(scanner rowScanner) (orgsync.Action, error) {
 
 const syncActionColumns = `
     id, plan_id, repository_id, kind, operation, subject,
-    before_state, after_state, state, error, blocker`
+    before_state, after_state, payload, state, error, blocker`
 
 // invalidateLivePlans marks every plan an installation could still apply as
 // stale.
@@ -135,10 +145,10 @@ INSERT INTO sync_plans (
 		if _, err := tx.ExecContext(ctx, `
 INSERT INTO sync_plan_actions (
     plan_id, repository_id, kind, operation, subject,
-    before_state, after_state, state, error, blocker
-) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', '', '')`,
+    before_state, after_state, payload, state, error, blocker
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', '', '')`,
 			create.ID, action.RepositoryID, action.Kind, action.Operation,
-			action.Subject, action.Before, action.After,
+			action.Subject, action.Before, action.After, string(action.Payload),
 		); err != nil {
 			return orgsync.Plan{}, fmt.Errorf("insert sync plan action: %w", err)
 		}

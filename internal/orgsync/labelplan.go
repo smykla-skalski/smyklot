@@ -1,6 +1,7 @@
 package orgsync
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -55,29 +56,31 @@ func PlanLabels(
 
 		existing, present := have[folded]
 		if !present {
+			wanted := resolved(label, "")
 			actions = append(actions, Action{
 				RepositoryID: repositoryID,
 				Kind:         KindLabels,
 				Operation:    OperationCreate,
 				Subject:      label.Name,
-				After:        describeLabel(label.Name, label.Color, described(label)),
+				After:        describeLabel(wanted),
+				Payload:      encodeLabel(wanted),
 				State:        ActionPending,
 			})
 
 			continue
 		}
 
-		if after, changed := labelChange(label, existing); changed {
+		wanted := resolved(label, existing.Description)
+		if changed(wanted, existing) {
 			actions = append(actions, Action{
 				RepositoryID: repositoryID,
 				Kind:         KindLabels,
 				Operation:    OperationUpdate,
 				Subject:      label.Name,
-				Before: describeLabel(
-					existing.Name, existing.Color, existing.Description,
-				),
-				After:  after,
-				State:  ActionPending,
+				Before:       describeLabel(ResolvedLabel(existing)),
+				After:        describeLabel(wanted),
+				Payload:      encodeLabel(wanted),
+				State:        ActionPending,
 			})
 		}
 	}
@@ -107,7 +110,7 @@ func PlanLabels(
 			Kind:         KindLabels,
 			Operation:    OperationDelete,
 			Subject:      label.Name,
-			Before:       describeLabel(label.Name, label.Color, label.Description),
+			Before:       describeLabel(ResolvedLabel(label)),
 			State:        ActionPending,
 		})
 	}
@@ -115,42 +118,71 @@ func PlanLabels(
 	return actions
 }
 
-// labelChange reports what an existing label would become, and whether that
-// differs from what it is.
+// ResolvedLabel is a label with every question answered: what it is called,
+// what colour it is, and what it says. It is what an action carries and what
+// the executor applies, with nothing left to look up.
+type ResolvedLabel struct {
+	Name        string `json:"name"`
+	Color       string `json:"color"`
+	Description string `json:"description"`
+}
+
+// DecodeLabel reads what an action says to apply.
+func DecodeLabel(payload []byte) (ResolvedLabel, error) {
+	var label ResolvedLabel
+	if err := json.Unmarshal(payload, &label); err != nil {
+		return ResolvedLabel{}, fmt.Errorf("%w: %w", ErrInvalidPlan, err)
+	}
+
+	return label, nil
+}
+
+// resolved answers every question about a label, taking the description a
+// repository already has where configuration declines to say.
 //
-// A configuration that says nothing about the description leaves it alone,
-// which is what the pointer on Label is for. Comparing against the empty string
-// instead would call every label with a description "changed" for ever, and
-// then clear it.
-func labelChange(want Label, have CurrentLabel) (string, bool) {
-	description := have.Description
+// This is where "leave it alone" is turned into a value, and it happens at plan
+// time on purpose: the executor sends a whole label to an endpoint that
+// replaces what it is given, so somebody reading the plan has to be able to see
+// the description that will be sent.
+func resolved(want Label, current string) ResolvedLabel {
+	description := current
 	if want.Description != nil {
 		description = *want.Description
 	}
 
-	// Case-insensitively equal names can still differ in case, and GitHub keeps
-	// what it was given. Renaming to the configured spelling is a real change.
-	changed := want.Name != have.Name ||
-		!strings.EqualFold(want.Color, have.Color) ||
-		description != have.Description
-
-	return describeLabel(want.Name, strings.ToLower(want.Color), description), changed
+	return ResolvedLabel{
+		Name: want.Name, Color: strings.ToLower(want.Color), Description: description,
+	}
 }
 
-func described(label Label) string {
-	if label.Description == nil {
-		return ""
-	}
+// changed reports a label that would differ from what the repository has.
+//
+// The colour case-insensitively, because GitHub answers in whatever case it
+// stored and configuration is whatever somebody typed - treating those as
+// different would rewrite the same label every tick for ever. The name
+// case-sensitively, because GitHub keeps the case it was given and renaming to
+// the configured spelling is real work.
+func changed(want ResolvedLabel, have CurrentLabel) bool {
+	return want.Name != have.Name ||
+		!strings.EqualFold(want.Color, have.Color) ||
+		want.Description != have.Description
+}
 
-	return *label.Description
+func encodeLabel(label ResolvedLabel) []byte {
+	// A struct of three strings cannot fail to encode, and a planner that
+	// returned an error here would make every caller handle one that cannot
+	// happen.
+	payload, _ := json.Marshal(label)
+
+	return payload
 }
 
 // describeLabel renders a label for a person reading the plan. It is display,
 // never a value anything branches on.
-func describeLabel(name, color, description string) string {
-	if description == "" {
-		return fmt.Sprintf("%s #%s", name, color)
+func describeLabel(label ResolvedLabel) string {
+	if label.Description == "" {
+		return fmt.Sprintf("%s #%s", label.Name, label.Color)
 	}
 
-	return fmt.Sprintf("%s #%s - %s", name, color, description)
+	return fmt.Sprintf("%s #%s - %s", label.Name, label.Color, label.Description)
 }

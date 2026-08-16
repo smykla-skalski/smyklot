@@ -115,6 +115,15 @@ type Action struct {
 	Before string
 	After  string
 
+	// Payload is what to apply, as the kind that owns it spells it.
+	//
+	// Carried here rather than re-read from the configuration when the work
+	// runs. The plan is the contract between what somebody reviewed and what
+	// happens, and reading the configuration again at apply time would apply
+	// what it says then - which is exactly what the plan exists to stop.
+	// Deletions carry none: the subject is the whole of the instruction.
+	Payload []byte
+
 	State ActionState
 
 	// Error is why the action failed, empty otherwise. Actions fail alone: no
