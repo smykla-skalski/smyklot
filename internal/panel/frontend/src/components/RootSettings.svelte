@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
+
   import { formatBytes, formatElapsed, formatLatency } from '../lib/format';
   import type {
     ConfigPatch,
@@ -71,8 +73,13 @@
         ),
   );
 
+  /* `untrack` because `load` reads `settings` before its first await, to decide
+     whether this is a first read or a refresh over settings already on screen.
+     That read is inside this effect, and `load` also writes `settings` - with a
+     fresh object every time - so each completed read scheduled another one. The
+     page asked the server about 1500 times a second. */
   $effect(() => {
-    void load(refreshVersion);
+    untrack(() => void load(refreshVersion));
   });
 
   $effect(() => {
