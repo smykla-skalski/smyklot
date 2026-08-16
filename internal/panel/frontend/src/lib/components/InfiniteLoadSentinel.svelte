@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { useIntersectionObserver } from 'runed';
+
   const {
     active,
     cursor,
@@ -11,21 +13,16 @@
 
   let sentinel = $state<HTMLDivElement>();
 
-  $effect(() => {
-    if (!active || cursor == null || sentinel === undefined) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) onVisible();
-      },
-      { rootMargin: '384px 0px' },
-    );
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  });
+  useIntersectionObserver(
+    () => sentinel,
+    (entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) onVisible();
+    },
+    { rootMargin: '384px 0px' },
+  );
 </script>
 
-{#if active}
+{#if active && cursor != null}
   <div class="infinite-load-sentinel" bind:this={sentinel} aria-hidden="true"></div>
 {/if}
 

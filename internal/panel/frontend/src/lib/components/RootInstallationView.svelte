@@ -1,5 +1,6 @@
 <script lang="ts">
   import { getContext } from 'svelte';
+  import { useInterval } from 'runed';
   import { PanelApiError, type PanelApi } from '../api';
   import { dialogRoute } from '../dialog-route.svelte';
   import { formatTimestamp } from '../format';
@@ -216,8 +217,8 @@
   $effect(() => {
     if (elevation === null) return;
     now = Date.now();
-    const timer = window.setInterval(() => (now = Date.now()), 1_000);
-    return () => window.clearInterval(timer);
+    const interval = useInterval(1_000, { callback: () => (now = Date.now()) });
+    return () => interval.pause();
   });
 
   $effect(() => {

@@ -14,6 +14,7 @@
   import { getContext, tick, untrack } from 'svelte';
   import { MediaQuery, SvelteSet } from 'svelte/reactivity';
   import { get } from 'svelte/store';
+  import { useDebounce, useInterval } from 'runed';
 
   import { BOOLEAN_FIELDS } from '../config';
   import { dialogRoute } from '../dialog-route.svelte';
@@ -365,12 +366,12 @@
         })),
   );
 
+  const debouncedSearch = useDebounce((query: string) => {
+    appliedQuery = query;
+  }, 250);
+
   $effect(() => {
-    const nextQuery = search.trim();
-    const timer = window.setTimeout(() => {
-      appliedQuery = nextQuery;
-    }, 250);
-    return () => window.clearTimeout(timer);
+    debouncedSearch(search.trim());
   });
 
   $effect(() => {
@@ -399,10 +400,8 @@
   });
 
   $effect(() => {
-    const tick = setInterval(() => {
-      now = Date.now();
-    }, 30_000);
-    return () => clearInterval(tick);
+    const interval = useInterval(30_000, { callback: () => (now = Date.now()) });
+    return () => interval.pause();
   });
 
   async function resetAndLoad(key: string): Promise<void> {
