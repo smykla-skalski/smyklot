@@ -859,11 +859,18 @@ body {
   opacity: 0.85;
 }
 
+/* One card, everywhere: the surface, its keyline, its corner and the lift that
+   separates it from the canvas behind it. `--shadow-plate` is a single 1px drop
+   at 10% - not a glow, and not enough to read as a raised object; it is what
+   stops a card whose border is 1.4:1 against the page from having only that
+   border to say where it ends. It was `none` here while the approved design
+   draws it, so every card in the product sat flat and every table wrapper that
+   wanted the lift had to ask for it again. */
 .plate {
   background: var(--strip);
   border: 1px solid var(--rule);
   border-radius: var(--r-strip);
-  box-shadow: none;
+  box-shadow: var(--shadow-plate);
   margin-bottom: var(--space-4);
   overflow: visible;
 }
@@ -1523,14 +1530,41 @@ code {
   text-box: trim-both cap alphabetic;
 }
 
-/* And a heading that is nothing but a word - no sort, no filter - is trimmed
-   where it stands, since there is no element inside it to ask. Safe on the whole
-   header row because a heading holds either bare words or a control: a cell whose
-   content is a block or a flex row has no line boxes of its own, so this is a
-   no-op there. It is NOT safe on `tbody`, where a cell can hold anything - tried,
-   and it threw the body rows 5.41px apart. */
+/* A sortable heading is a button, and the UA stylesheet resets a form control's
+   letter-spacing and text-transform rather than letting it inherit - `font:
+   inherit` does not cover either. So the four headings that can be sorted stayed
+   in sentence case while the two that cannot went uppercase with the rest. */
+.table-sort-button {
+  letter-spacing: inherit;
+  text-transform: inherit;
+}
+
+/* One column heading, for all six tables.
+   ------------------------------------------------------------------------
+   Each of them kept its own copy of this and the copies had drifted: two inks
+   (`--dim` in four, `--text-muted` in one), three line-heights, and a weight of
+   650 that is not a weight anything else in the product uses. Uppercase micro at
+   700 is what the approved design draws, and it is what tells a heading apart
+   from the row under it without a second colour - so the ink can be the stronger
+   `--text-soft` rather than the muted one it takes to make sentence case read as
+   a label.
+
+   Height stays with each table. `.history-table` puts its 2.5rem on the layout
+   inside the cell rather than on the cell, so its rule sits under the band
+   instead of inside it, and a height here would fold that back in.
+
+   The trim is safe on the whole header row because a heading holds either bare
+   words or a control: a cell whose content is a block or a flex row has no line
+   boxes of its own, so it is a no-op there. It is NOT safe on `tbody`, where a
+   cell can hold anything - tried, and it threw the body rows 5.41px apart. */
 thead th {
+  background: var(--table-header-bg);
+  color: var(--text-soft);
+  font: 700 var(--font-size-micro) / 1 var(--sans);
+  letter-spacing: 0.08em;
+  text-align: left;
   text-box: trim-both cap alphabetic;
+  text-transform: uppercase;
 }
 
 /* A cell centres its CONTENT BOX, since `vertical-align: middle` is what a table

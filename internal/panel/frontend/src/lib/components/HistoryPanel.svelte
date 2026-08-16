@@ -1227,10 +1227,6 @@
      on the th instead would fold the border into it and leave the band 1px
      shallower than the other four tables. */
   .history-table th {
-    background: var(--table-header-bg);
-    color: var(--dim);
-    font: 650 var(--font-size-compact) / 1.2 var(--sans);
-    letter-spacing: 0.02em;
     padding: 0;
   }
 

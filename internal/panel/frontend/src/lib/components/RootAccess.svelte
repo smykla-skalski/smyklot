@@ -1083,12 +1083,10 @@
     padding-left: var(--space-4);
   }
 
+  /* Typography and ground come from `thead th` in `app.css`, shared with the
+     other five tables. Only the band's height is this table's own. */
   th {
-    background: var(--table-header-bg);
-    color: var(--dim);
-    font: 650 var(--font-size-compact) / 1.2 var(--sans);
     height: 2.5rem;
-    letter-spacing: 0.02em;
   }
 
   th:has(.table-sort-button) {

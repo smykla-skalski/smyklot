@@ -402,11 +402,7 @@
      widths, and under content-box the header's percentages stop including its
      24px of padding, so the two grids drift apart by a whole cell. */
   thead th {
-    background: var(--table-header-bg);
-    color: var(--dim);
-    font: 650 var(--font-size-compact) / 1.2 var(--sans);
     height: calc(2.5rem + 1px);
-    letter-spacing: 0.02em;
     padding-block: 0;
   }
 

@@ -1457,13 +1457,9 @@
     vertical-align: middle;
   }
 
-  th {
-    background: var(--table-header-bg);
-    color: var(--text-muted);
-    font-size: var(--font-size-compact);
-    font-weight: 650;
-    letter-spacing: 0.02em;
-  }
+  /* Typography and ground come from `thead th` in `app.css`. This one used
+     `--text-muted` where the other five used `--dim`, which is the drift the
+     shared rule exists to end. */
 
   th:first-child {
     width: 27%;
