@@ -17,14 +17,12 @@
     value,
     options,
     disabled = false,
-    variant = 'compact',
     onSelect,
   }: {
     label: string;
     value: string;
     options: readonly RolePickerOption[];
     disabled?: boolean;
-    variant?: 'compact' | 'field';
     onSelect: (value: string) => void;
   } = $props();
 
@@ -55,7 +53,7 @@
   focusSelector="[aria-selected='true']"
 >
   {#snippet trigger(attributes)}
-    <div class="role-picker" class:field={variant === 'field'}>
+    <div class="role-picker">
       <button
         class="role-trigger"
         type="button"
@@ -114,17 +112,6 @@
       background-color var(--duration-fast) var(--ease-out),
       border-color var(--duration-fast) var(--ease-out),
       transform var(--duration-press) var(--ease-out);
-  }
-
-  .field,
-  .field .role-trigger {
-    width: 100%;
-  }
-
-  .field .role-trigger {
-    font-size: var(--font-size-body);
-    height: var(--control-height);
-    padding-inline: var(--space-3);
   }
 
   .role-trigger:hover:not(:disabled),
