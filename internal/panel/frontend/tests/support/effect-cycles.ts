@@ -22,6 +22,13 @@
  * The fix is usually to wrap the call in `untrack`, so the effect depends on what
  * it is watching rather than on the machinery of the work it starts.
  *
+ * What it cannot see, so that nobody reads a pass here as a proof: it follows
+ * calls to functions written in the same component - by name, declared inside a
+ * body, or run where they stand - and stops at a call through anything else. A
+ * ring closed by `store.load()`, where the read lives in another module, is
+ * beyond a rule that reads one file. `lib/request-rate` is the backstop for that
+ * one: it watches what the panel actually asks for, whatever the cause.
+ *
  * Some rings are meant to be there and settle by themselves: the effect that
  * warms the failure table reads `failurePage` and its answer fills it, and the
  * second run stops at the guard because the answer is now there. Whether a ring
@@ -119,6 +126,12 @@ function collect(body: Node, name: string, walk: Walk): void {
     if (offsetOf(current) >= boundary) return;
     immediate.add(current);
     if (isRead(current, walk.reactive, notReads)) walk.depends.add(String(current.name));
+    /* A function called where it is written runs now, so what it reads is the
+       effect's. Nothing else would look into it: the walk steps over a function
+       body, which is right for a callback somebody else will run and wrong for
+       one being run on the spot. */
+    const invoked = calledInPlace(current);
+    if (invoked !== null) collect(invoked, name, { ...walk, functions });
     const called = calledLocal(current, functions);
     if (called === null || walk.seen.has(called)) return;
     walk.seen.add(called);
@@ -217,6 +230,14 @@ function assigned(current: Node, reactive: Set<string>): string[] {
   const name = String(target.name);
 
   return reactive.has(name) ? [name] : [];
+}
+
+/** The function this node calls where it stands, for `(async () => { … })()`. */
+function calledInPlace(current: Node): Node | null {
+  if (current.type !== 'CallExpression') return null;
+  const callee = node(current, 'callee');
+
+  return callee !== null && isFunction(callee) ? callee : null;
 }
 
 /** The name of a locally declared function this node calls, if it calls one. */

@@ -55,6 +55,10 @@ describe('effects that feed themselves [Unit]', () => {
     expect(findEffectCycles(NESTED_GUARD_FIXTURE)).toEqual([{ state: 'loading', through: 'load' }]);
   });
 
+  it('catches a loader the effect runs where it stands', () => {
+    expect(findEffectCycles(IIFE_FIXTURE)).toEqual([{ state: 'loading', through: 'the effect' }]);
+  });
+
   it('catches a loader the effect declares for itself', () => {
     expect(findEffectCycles(INNER_FUNCTION_FIXTURE)).toEqual([
       { state: 'loading', through: 'run' },
@@ -196,6 +200,20 @@ const INNER_FUNCTION_FIXTURE = `<script lang="ts">
       loading = false;
     };
     void run();
+  });
+</script>`;
+
+const IIFE_FIXTURE = `<script lang="ts">
+  let loading = $state(false);
+  let items = $state<string[]>([]);
+
+  $effect(() => {
+    void (async (): Promise<void> => {
+      if (loading) return;
+      loading = true;
+      items = await fetch('/x').then((response) => response.json());
+      loading = false;
+    })();
   });
 </script>`;
 
