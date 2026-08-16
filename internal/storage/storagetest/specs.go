@@ -954,6 +954,19 @@ func DeclareSpecs(harness Harness) {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(settings.ConfigMigration).To(Equal(storage.ConfigMigrationDeclined))
 
+		// GitHub refusing the push is durable for a different reason than
+		// somebody closing the pull request, and both engines have to accept it
+		Expect(store.SetRepositoryConfigMigration(ctx, storage.RepositoryConfigMigration{
+			TargetID:     target.TargetID,
+			RepositoryID: "repo-1",
+			State:        storage.ConfigMigrationBlocked,
+		})).To(Succeed())
+
+		repository, err = store.GetRepository(ctx, target.TargetID, "repo-1")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(repository.ConfigMigration).To(Equal(storage.ConfigMigrationBlocked))
+		Expect(repository.ConfigMigrationPR).To(BeNil())
+
 		Expect(store.SetRepositoryConfigMigration(ctx, storage.RepositoryConfigMigration{
 			TargetID:     target.TargetID,
 			RepositoryID: "absent",

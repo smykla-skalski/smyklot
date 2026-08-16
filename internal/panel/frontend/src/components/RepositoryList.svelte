@@ -1240,9 +1240,11 @@
                       Smyklot proposed moving this to TOML{#if detail.config_migration_pr !== undefined}&nbsp;in
                         #{detail.config_migration_pr}{/if}
                     </p>
-                  {:else if detail.config_migration === 'declined'}
+                  {:else if detail.config_migration !== 'none'}
                     <p class="f-note">
-                      The TOML migration was closed, so Smyklot will not ask again
+                      {detail.config_migration === 'declined'
+                        ? 'The TOML migration was closed, so Smyklot will not ask again'
+                        : 'GitHub refused the TOML migration, so Smyklot will not ask again'}
                       <button
                         type="button"
                         class="f-again"

@@ -133,12 +133,19 @@ var _ = Describe("Configuration migration [Unit]", func() {
 			Expect(stub.createdTrees).To(HaveLen(1))
 
 			var tree struct {
-				Tree []struct {
+				BaseTree string `json:"base_tree"`
+				Tree     []struct {
 					Path string  `json:"path"`
 					SHA  *string `json:"sha"`
 				} `json:"tree"`
 			}
 			Expect(json.Unmarshal([]byte(stub.createdTrees[0]), &tree)).To(Succeed())
+
+			// The tree the base commit records, not the commit. The API
+			// documents base_tree as a tree object, and a reference points at a
+			// commit - building on the wrong one is a 422 nobody would see
+			// until a repository was offered the migration for real
+			Expect(tree.BaseTree).To(Equal("basetree"))
 			Expect(tree.Tree).To(HaveLen(2))
 			Expect(tree.Tree[0].Path).To(Equal(migrationTarget))
 			Expect(tree.Tree[0].SHA).NotTo(BeNil())
@@ -194,6 +201,48 @@ var _ = Describe("Configuration migration [Unit]", func() {
 			Expect(repository(targetID).ConfigMigration).
 				To(Equal(storage.ConfigMigrationProposed))
 		})
+	})
+
+	// Seven requests to discover, and a permission nobody has granted will not
+	// appear because the bot asked again twelve times an hour
+	It("stops asking when GitHub refuses the push outright", func() {
+		stub.repoConfig = "quiet_success: true\n"
+		stub.refuseBranchPush = true
+		targetID := seed()
+
+		propose(targetID)
+		Expect(repository(targetID).ConfigMigration).
+			To(Equal(storage.ConfigMigrationBlocked))
+
+		// And spends nothing more on it
+		spent := len(stub.createdTrees)
+		propose(targetID)
+		Expect(stub.createdTrees).To(HaveLen(spent))
+	})
+
+	// A rate limit is the same request worth making again, so it must not be
+	// mistaken for a permission that will never be granted
+	It("keeps asking when GitHub is only busy", func() {
+		stub.repoConfig = "quiet_success: true\n"
+		stub.busyOnBranchPush = true
+		targetID := seed()
+
+		client, err := github.NewClient("installation-token", endpoint.URL)
+		Expect(err).NotTo(HaveOccurred())
+		file, err := fetchRepositoryConfig(
+			GinkgoT().Context(), client, "smykla-skalski", "smyklot", nil,
+		)
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(service.proposeConfigMigration(
+			GinkgoT().Context(), client, targetID,
+			github.Repository{
+				ID: 41, Owner: "smykla-skalski", Name: "smyklot", DefaultBranch: "main",
+			},
+			file,
+		)).NotTo(Succeed())
+
+		Expect(repository(targetID).ConfigMigration).To(Equal(storage.ConfigMigrationNone))
 	})
 
 	// Converting a file that does not parse would launder a broken file into a

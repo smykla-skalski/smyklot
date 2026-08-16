@@ -30,6 +30,13 @@ type githubStub struct {
 	// migrationRef is the migration branch, empty until something pushes it.
 	migrationRef string
 
+	// refuseBranchPush is an App that was never granted write access here.
+	refuseBranchPush bool
+
+	// busyOnBranchPush is GitHub rate-limiting the push, which is the same
+	// request worth making again rather than a permission that will not come.
+	busyOnBranchPush bool
+
 	// createdPRs and createdTrees are what the migration sent, because a pull
 	// request nobody asked for is judged entirely on what it contains.
 	createdPRs   []string
@@ -461,6 +468,11 @@ func (s *githubStub) serveGitData(w http.ResponseWriter, r *http.Request) {
 	case strings.Contains(r.URL.Path, "/git/ref/"):
 		_, _ = io.WriteString(w, `{"object":{"sha":"basecommit"}}`)
 
+	// A commit and the tree it records are different objects, and the tree is
+	// what a new one is built from
+	case strings.HasSuffix(r.URL.Path, "/git/commits/basecommit"):
+		_, _ = io.WriteString(w, `{"sha":"basecommit","tree":{"sha":"basetree"}}`)
+
 	case strings.HasSuffix(r.URL.Path, "/git/blobs"):
 		s.record(&s.createdBlobs, r)
 		w.WriteHeader(http.StatusCreated)
@@ -476,6 +488,21 @@ func (s *githubStub) serveGitData(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, `{"sha":"commitsha"}`)
 
 	case strings.HasSuffix(r.URL.Path, "/git/refs"):
+		if s.refuseBranchPush {
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = io.WriteString(w,
+				`{"message": "Resource not accessible by integration"}`)
+
+			return
+		}
+		if s.busyOnBranchPush {
+			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = io.WriteString(w, `{"message": "API rate limit exceeded"}`)
+
+			return
+		}
+
 		s.mu.Lock()
 		s.migrationRef = "commitsha"
 		s.mu.Unlock()

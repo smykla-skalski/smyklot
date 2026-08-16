@@ -397,10 +397,9 @@ func (s *server) migrateRepositoryConfig(
 	targetID string,
 	repo github.Repository,
 ) error {
-	if s.panel == nil {
-		return nil
-	}
-
+	// The read is the same one serviceConfig has already made for this
+	// repository, so it costs a map lookup whether or not there is a panel to
+	// remember an answer in. proposeConfigMigration is where that is decided.
 	file, err := s.configs.GetByKey(
 		ctx, client, repositoryStorageID(repo.ID), repo.Owner, repo.Name,
 	)

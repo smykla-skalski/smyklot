@@ -422,6 +422,13 @@ const (
 	// merging. It is durable and never expires: asking again would be the bot
 	// arguing with a decision a person already made.
 	ConfigMigrationDeclined ConfigMigrationState = "declined"
+
+	// ConfigMigrationBlocked is GitHub refusing the work - most often an App
+	// that was never granted write access to this repository. Durable for a
+	// different reason than a refusal: finding out costs seven requests, and a
+	// permission nobody has granted will not appear because the bot asked
+	// again twelve times an hour.
+	ConfigMigrationBlocked ConfigMigrationState = "blocked"
 )
 
 // RepositoryConfigMigration records what came of proposing the move to TOML.

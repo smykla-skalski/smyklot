@@ -182,6 +182,38 @@ var _ = Describe("Repository configuration discovery [Unit]", func() {
 		Expect(asked).To(Equal(github.RepoConfigPaths))
 	})
 
+	// What is watched has to cover what is searched, or a file changes and the
+	// cache goes on serving the answer from before it did. Nothing sets a
+	// preferred path yet, and the first thing to do so would otherwise have
+	// found this out in production
+	It("watches the root of every path it searches", func() {
+		var asked []string
+
+		server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			asked = append(asked, r.URL.Path)
+			_, _ = w.Write([]byte(`[
+				{"name":".smyklot.toml","sha":"a"},
+				{"name":".smyklot","sha":"b"},
+				{"name":".github","sha":"c"},
+				{"name":"config","sha":"d"}
+			]`))
+		}))
+
+		client, err := github.NewClient("test-token", server.URL)
+		Expect(err).NotTo(HaveOccurred())
+
+		standard, err := client.RepoConfigFingerprint(context.Background(), "acme", "web", "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(standard).NotTo(ContainSubstring("config="))
+
+		chosen, err := client.RepoConfigFingerprint(
+			context.Background(), "acme", "web", "config/smyklot.toml",
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(chosen).To(ContainSubstring("config=d"))
+		Expect(chosen).NotTo(Equal(standard))
+	})
+
 	It("surfaces a read failure rather than trying the next path", func() {
 		var asked []string
 
@@ -219,7 +251,7 @@ var _ = Describe("Repository configuration discovery [Unit]", func() {
 			client, err := github.NewClient("test-token", server.URL)
 			Expect(err).NotTo(HaveOccurred())
 
-			fingerprint, err := client.RepoConfigFingerprint(context.Background(), "acme", "web")
+			fingerprint, err := client.RepoConfigFingerprint(context.Background(), "acme", "web", "")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(fingerprint).To(ContainSubstring(".github=bbb"))
 			Expect(fingerprint).NotTo(ContainSubstring("aaa"))
@@ -238,7 +270,7 @@ var _ = Describe("Repository configuration discovery [Unit]", func() {
 			client, err := github.NewClient("test-token", server.URL)
 			Expect(err).NotTo(HaveOccurred())
 
-			fingerprint, err := client.RepoConfigFingerprint(context.Background(), "acme", "web")
+			fingerprint, err := client.RepoConfigFingerprint(context.Background(), "acme", "web", "")
 			Expect(err).NotTo(HaveOccurred())
 
 			return fingerprint
@@ -276,7 +308,7 @@ var _ = Describe("Repository configuration discovery [Unit]", func() {
 			client, err := github.NewClient("test-token", server.URL)
 			Expect(err).NotTo(HaveOccurred())
 
-			fingerprint, err := client.RepoConfigFingerprint(context.Background(), "acme", "web")
+			fingerprint, err := client.RepoConfigFingerprint(context.Background(), "acme", "web", "")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(fingerprint).To(BeEmpty())
 		})
@@ -290,7 +322,7 @@ var _ = Describe("Repository configuration discovery [Unit]", func() {
 			client, err := github.NewClient("test-token", server.URL)
 			Expect(err).NotTo(HaveOccurred())
 
-			_, err = client.RepoConfigFingerprint(context.Background(), "acme", "web")
+			_, err = client.RepoConfigFingerprint(context.Background(), "acme", "web", "")
 			Expect(err).To(HaveOccurred())
 		})
 

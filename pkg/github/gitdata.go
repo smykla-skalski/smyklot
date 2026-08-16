@@ -90,6 +90,23 @@ func (c *Client) CreateRef(ctx context.Context, owner, repo, ref, sha string) er
 	return wrapError(ErrAPIRequest, http.MethodPost, path, err)
 }
 
+// GetCommitTree resolves a commit to the tree it records.
+//
+// CreateTree's base is a tree, not a commit - the API documents base_tree as
+// "the SHA1 of an existing Git tree object", and a reference points at a
+// commit. Peeling one to the other is a request rather than an assumption
+// about what GitHub will accept.
+func (c *Client) GetCommitTree(ctx context.Context, owner, repo, commit string) (string, error) {
+	path := fmt.Sprintf("/repos/%s/%s/git/commits/%s", owner, repo, commit)
+
+	found, _, err := c.gh.Git.GetCommit(ctx, owner, repo, commit)
+	if err != nil {
+		return "", wrapError(ErrAPIRequest, http.MethodGet, path, err)
+	}
+
+	return found.GetTree().GetSHA(), nil
+}
+
 // CreateBlob stores a file's contents and returns the object.
 func (c *Client) CreateBlob(ctx context.Context, owner, repo string, content []byte) (string, error) {
 	path := fmt.Sprintf("/repos/%s/%s/git/blobs", owner, repo)
@@ -110,8 +127,9 @@ func (c *Client) CreateBlob(ctx context.Context, owner, repo string, content []b
 
 // CreateTree builds a tree from base with the given paths changed.
 //
-// Every path not named is inherited from base, so this describes a change
-// rather than a whole repository.
+// base is a tree, which GetCommitTree resolves from a commit. Every path not
+// named is inherited from it, so this describes a change rather than a whole
+// repository.
 func (c *Client) CreateTree(
 	ctx context.Context,
 	owner, repo, base string,

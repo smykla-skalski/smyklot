@@ -94,10 +94,26 @@ func candidatePaths(preferred string) []string {
 	return paths
 }
 
-// configRoots are the entries at the repository root that a configuration file
-// can be reached through: the file itself, and the two directories one may sit
-// in.
-var configRoots = []string{".smyklot.toml", ".smyklot", ".github"}
+// configRoots reports the entries at the repository root that a configuration
+// file could be reached through, derived from the paths that are actually
+// searched rather than listed a second time.
+//
+// Derived, because the two must agree: a path searched but not watched is one
+// whose edits never invalidate the cache, so the file would change and Smyklot
+// would go on reading the old one. Nothing passes a preferred path today, and
+// the first thing to do so would otherwise have found that out in production.
+func configRoots(preferred string) []string {
+	roots := make([]string, 0, len(RepoConfigPaths)+1)
+
+	for _, path := range candidatePaths(preferred) {
+		root, _, _ := strings.Cut(path, "/")
+		if root != "" && !slices.Contains(roots, root) {
+			roots = append(roots, root)
+		}
+	}
+
+	return roots
+}
 
 // RepoConfigFingerprint identifies the state of everything a configuration file
 // could be read from, in one request.
@@ -115,9 +131,17 @@ var configRoots = []string{".smyklot.toml", ".smyklot", ".github"}
 // this bot exists to serve. A blob SHA and two tree SHAs move only when
 // something that could be the configuration moves.
 //
+// preferred is the path an operator set in the panel, and is watched alongside
+// the standard ones for the same reason it is searched.
+//
 // A repository with no commits, or one Smyklot cannot read, fingerprints as
 // empty, which never compares equal - so it is re-read rather than assumed.
-func (c *Client) RepoConfigFingerprint(ctx context.Context, owner, repo string) (string, error) {
+func (c *Client) RepoConfigFingerprint(
+	ctx context.Context,
+	owner, repo, preferred string,
+) (string, error) {
+	roots := configRoots(preferred)
+
 	path := fmt.Sprintf("/repos/%s/%s/contents", owner, repo)
 
 	entries, err := doJSON[[]struct {
@@ -134,10 +158,10 @@ func (c *Client) RepoConfigFingerprint(ctx context.Context, owner, repo string) 
 		return "", err
 	}
 
-	found := make(map[string]string, len(configRoots))
+	found := make(map[string]string, len(roots))
 
 	for _, entry := range entries {
-		if slices.Contains(configRoots, entry.Name) {
+		if slices.Contains(roots, entry.Name) {
 			found[entry.Name] = entry.SHA
 		}
 	}
@@ -147,7 +171,7 @@ func (c *Client) RepoConfigFingerprint(ctx context.Context, owner, repo string) 
 	// one rather than just missing from the middle of a string.
 	var builder strings.Builder
 
-	for _, name := range configRoots {
+	for _, name := range roots {
 		builder.WriteString(name)
 		builder.WriteByte('=')
 		builder.WriteString(found[name])

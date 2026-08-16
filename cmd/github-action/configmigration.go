@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/smykla-skalski/smyklot/internal/storage"
@@ -73,8 +74,46 @@ func (s *server) proposeConfigMigration(
 		return s.followUpConfigMigration(ctx, client, targetID, repo)
 
 	default:
-		return s.openConfigMigration(ctx, client, targetID, repo, file)
+		return s.stopIfRefused(
+			ctx, targetID, repo, s.openConfigMigration(ctx, client, targetID, repo, file),
+		)
 	}
+}
+
+// stopIfRefused turns a refusal from GitHub into a durable state rather than
+// something to retry on a timer.
+//
+// A proposal costs seven requests to build, and the last of them - pushing the
+// branch - is the first that needs write access. An App that was never granted
+// it fails there every tick, forever, spending all seven each time. A
+// permission nobody has granted will not appear because the bot asked again
+// twelve times an hour, so this stops asking and says so in the panel, where
+// somebody can grant it and clear the state.
+//
+// Only a refusal. A rate limit, a timeout or a 5xx is the same request worth
+// making again, and APIError.Retryable is the one place that distinction is
+// drawn.
+func (s *server) stopIfRefused(
+	ctx context.Context,
+	targetID string,
+	repo github.Repository,
+	err error,
+) error {
+	var apiErr *github.APIError
+	if err == nil || !errors.As(err, &apiErr) || apiErr.Retryable() {
+		return err
+	}
+
+	logging.From(ctx).Warn(
+		"configuration migration refused by GitHub; not asking again",
+		"status", apiErr.StatusCode,
+		"error", err,
+	)
+
+	// The refusal is swallowed once it is written down. Returning it as well
+	// would have the sweep log the same thing twice, and there is nothing left
+	// to retry.
+	return s.recordConfigMigration(ctx, targetID, repo, storage.ConfigMigrationBlocked, nil)
 }
 
 type migrationStep int
@@ -111,7 +150,7 @@ func nextMigrationStep(
 	}
 
 	switch repository.ConfigMigration {
-	case storage.ConfigMigrationDeclined:
+	case storage.ConfigMigrationDeclined, storage.ConfigMigrationBlocked:
 		return migrationStepNothing
 
 	case storage.ConfigMigrationProposed:
@@ -221,12 +260,20 @@ func (s *server) openConfigMigration(
 		return nil
 	}
 
+	// The tree the base commit records, because that is what a tree is built
+	// from. A reference points at a commit, and CreateTree wants the thing the
+	// commit points at.
+	baseTree, err := client.GetCommitTree(ctx, repo.Owner, repo.Name, base)
+	if err != nil {
+		return err
+	}
+
 	blob, err := client.CreateBlob(ctx, repo.Owner, repo.Name, content)
 	if err != nil {
 		return err
 	}
 
-	tree, err := client.CreateTree(ctx, repo.Owner, repo.Name, base, []github.TreeChange{
+	tree, err := client.CreateTree(ctx, repo.Owner, repo.Name, baseTree, []github.TreeChange{
 		{Path: migrationTarget, Blob: blob},
 		{Path: file.path},
 	})

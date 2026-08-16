@@ -49,7 +49,11 @@ func fetchRepositoryConfig(
 	owner, repository string,
 	previous *repositoryConfigFile,
 ) (repositoryConfigFile, error) {
-	fingerprint, err := client.RepoConfigFingerprint(ctx, owner, repository)
+	// The same preferred path goes into both, so what is watched cannot drift
+	// from what is searched
+	const preferred = ""
+
+	fingerprint, err := client.RepoConfigFingerprint(ctx, owner, repository, preferred)
 	if err != nil {
 		return repositoryConfigFile{}, NewConfigError(ErrConfigLoad, err)
 	}
@@ -60,7 +64,7 @@ func fetchRepositoryConfig(
 		return *previous, nil
 	}
 
-	found, err := client.FindRepoConfig(ctx, owner, repository, "")
+	found, err := client.FindRepoConfig(ctx, owner, repository, preferred)
 	if err != nil {
 		return repositoryConfigFile{}, NewConfigError(ErrConfigLoad, err)
 	}
