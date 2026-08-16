@@ -2624,3 +2624,66 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 }
 
 var _ fs.FS = fstest.MapFS{}
+
+// A refusal is durable and never expires, so this endpoint is the only way back
+// from one. If it does not work, "declined" is a state only a database edit can
+// leave.
+func TestConfigMigrationResetPutsItBackOnTheTable(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+	session := harness.signIn(t)
+
+	const (
+		target     = "github:installation:10"
+		repository = "repository-20"
+		path       = "/panel/api/v1/targets/" + target +
+			"/repositories/" + repository + "/config-migration"
+	)
+
+	proposal := 12
+	if err := harness.store.SetRepositoryConfigMigration(
+		t.Context(),
+		storage.RepositoryConfigMigration{
+			TargetID:     target,
+			RepositoryID: repository,
+			State:        storage.ConfigMigrationDeclined,
+			PullRequest:  &proposal,
+		},
+	); err != nil {
+		t.Fatalf("seed a refusal: %v", err)
+	}
+
+	response := harness.request(t, http.MethodPost, path, strings.NewReader(`{}`), session)
+	if response.Code != http.StatusOK {
+		t.Fatalf("reset = %d %s", response.Code, response.Body.String())
+	}
+
+	var detail repositoryDetailResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &detail); err != nil {
+		t.Fatal(err)
+	}
+	if detail.ConfigMigration != storage.ConfigMigrationNone {
+		t.Errorf("after reset the state is %q", detail.ConfigMigration)
+	}
+	if detail.ConfigMigrationPR != nil {
+		t.Errorf("after reset the proposal is still #%d", *detail.ConfigMigrationPR)
+	}
+
+	// Somebody decided this, so it is written down where decisions are
+	audit, err := harness.store.ListAudit(t.Context(), target, storage.AuditPageRequest{
+		HistoryPageRequest: storage.HistoryPageRequest{Limit: 50},
+		Scope:              storage.AuditAll,
+	})
+	if err != nil {
+		t.Fatalf("read audit: %v", err)
+	}
+
+	var recorded bool
+	for _, entry := range audit.Items {
+		if strings.Contains(entry.Summary, "TOML migration") {
+			recorded = true
+		}
+	}
+	if !recorded {
+		t.Error("the reset left no audit entry")
+	}
+}
