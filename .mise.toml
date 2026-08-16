@@ -18,6 +18,7 @@ CGO_ENABLED = "0"
 
 [tasks.test]
 description = "Run the complete Smyklot test suite with race detection and coverage"
+depends = ["panel:assets:generate"]
 env = { CGO_ENABLED = "1" }
 run = '''
 mkdir -p tmp/coverage
@@ -27,6 +28,7 @@ go tool cover -html=tmp/coverage/coverage.out -o tmp/coverage/coverage.html
 
 [tasks."test:unit"]
 description = "Run Smyklot unit tests with race detection and coverage"
+depends = ["panel:assets:generate"]
 env = { CGO_ENABLED = "1" }
 run = '''
 mkdir -p tmp/coverage/unit
@@ -36,6 +38,7 @@ ginkgo -r --focus='\[Unit\]' --fail-on-empty --cover --race \
 
 [tasks."test:watch"]
 description = "Run tests in watch mode"
+depends = ["panel:assets:generate"]
 env = { CGO_ENABLED = "1" }
 run = "ginkgo watch -r"
 
@@ -50,6 +53,7 @@ run = "ginkgo -r --race --fail-on-empty ./internal/storage"
 
 [tasks."test:storage:postgres"]
 description = "Run the storage suite against PostgreSQL, failing if it skipped"
+depends = ["panel:assets:generate"]
 env = { CGO_ENABLED = "1" }
 run = '''
 set -eu
@@ -204,7 +208,7 @@ sources = [
   "cmd/**/*.go",
   "internal/**/*.go",
   "pkg/**/*.go",
-  "internal/panelassets/bundle.zip",
+  "internal/panelassets/generated/bundle.zip",
 ]
 outputs = ["bin/smyklot-github-action"]
 run = "go build -o bin/smyklot-github-action ./cmd/github-action"
@@ -239,6 +243,7 @@ run = '''
 repo_root="$(git rev-parse --show-toplevel)"
 test -n "$repo_root" && test "$PWD" = "$repo_root"
 rm -rf -- bin tmp/coverage dist internal/panel/frontend/dist
+rm -f -- internal/panelassets/generated/bundle.zip
 '''
 
 [tasks."dev:setup"]
@@ -314,7 +319,7 @@ run = "npm test"
 description = "Build and package panel assets for Go embedding"
 depends = ["panel:frontend:build"]
 sources = ["internal/panel/frontend/dist/**/*", "internal/panelassets/cmd/generate/**/*.go"]
-outputs = ["internal/panelassets/bundle.zip"]
+outputs = ["internal/panelassets/generated/bundle.zip"]
 run = "go run ./internal/panelassets/cmd/generate"
 
 [tasks."panel:dev"]

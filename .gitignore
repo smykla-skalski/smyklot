@@ -4,6 +4,11 @@ tmp
 bin/
 *.test
 
+# Built from the panel frontend and embedded into the Go binary. Keeping this
+# generated archive out of Git prevents every frontend change from conflicting
+# on the same binary file.
+internal/panelassets/generated/bundle.zip
+
 # The dev mock server keeps your panel preferences here so a restart does not reset them.
 internal/panel/frontend/dev/.mock-preferences.json
 

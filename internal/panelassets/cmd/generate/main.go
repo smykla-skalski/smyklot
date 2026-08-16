@@ -16,7 +16,7 @@ import (
 
 const (
 	sourceDirectory = "internal/panel/frontend/dist"
-	outputPath      = "internal/panelassets/bundle.zip"
+	outputPath      = "internal/panelassets/generated/bundle.zip"
 )
 
 func main() {
