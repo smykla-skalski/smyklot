@@ -68,11 +68,20 @@ export function findEffectCycles(source: string): EffectCycle[] {
   const functions = declaredFunctions(script);
   const cycles: EffectCycle[] = [];
 
-  for (const effect of effectBodies(script)) {
-    if (settles(source, effect)) continue;
+  let previousEnd = 0;
+  for (const effect of effectCalls(script)) {
+    const excused = settles(source, effect, previousEnd);
+    previousEnd = offsetOf(effect.call, 'end');
+    if (excused) continue;
     const depends = new Set<string>();
     const writes = new Map<string, string>();
-    collect(effect, 'the effect', { depends, functions, reactive, seen: new Set(), writes });
+    collect(effect.body, 'the effect', {
+      depends,
+      functions,
+      reactive,
+      seen: new Set(),
+      writes,
+    });
     for (const state of depends) {
       const through = writes.get(state);
       if (through !== undefined) cycles.push({ state, through });
@@ -85,11 +94,20 @@ export function findEffectCycles(source: string): EffectCycle[] {
 /** How far above an effect its own commentary is taken to reach. */
 const PREAMBLE = 600;
 
-/** Whether the author has said, above this effect, that its ring reaches a fixed point. */
-function settles(source: string, effect: Node): boolean {
-  const start = typeof effect.start === 'number' ? effect.start : 0;
+/**
+ * Whether the author has said, above this effect, that its ring reaches a fixed
+ * point.
+ *
+ * The window stops at the end of the effect before it, as well as at `PREAMBLE`
+ * characters. Without that stop, a marker written for one effect excused the
+ * next one silently - which is the one failure a rule like this must not have,
+ * since nothing would ever report the effect that got away.
+ */
+function settles(source: string, effect: EffectCall, previousEnd: number): boolean {
+  const start = offsetOf(effect.call, 'start');
+  const from = Math.max(previousEnd, start - PREAMBLE, 0);
 
-  return source.slice(Math.max(0, start - PREAMBLE), start).includes(SETTLES);
+  return source.slice(from, start).includes(SETTLES);
 }
 
 interface Walk {
@@ -169,8 +187,16 @@ function awaitsWithin(current: Node): boolean {
   return firstAwait(current) !== Number.POSITIVE_INFINITY;
 }
 
-function offsetOf(current: Node): number {
-  return typeof current.start === 'number' ? current.start : 0;
+function offsetOf(current: Node, edge: 'start' | 'end' = 'start'): number {
+  const value = current[edge];
+
+  return typeof value === 'number' ? value : 0;
+}
+
+/** An effect, as the call that declares it and the body it runs. */
+interface EffectCall {
+  body: Node;
+  call: Node;
 }
 
 /** The statements of a block body, or none for an expression body. */
@@ -341,17 +367,20 @@ function declaredFunctions(script: Node[]): Map<string, Node> {
 }
 
 /** The callback of every `$effect(...)` and `$effect.pre(...)` in the script. */
-function effectBodies(script: Node[]): Node[] {
-  const bodies: Node[] = [];
+/** Every `$effect(...)` in the script, in the order they are written. */
+function effectCalls(script: Node[]): EffectCall[] {
+  const calls: EffectCall[] = [];
   for (const statement of script) {
     walkAll(statement, (current) => {
       if (current.type !== 'CallExpression' || !isEffect(current)) return;
       const first = nodes(current, 'arguments')[0];
-      if (first !== undefined && isFunction(first)) bodies.push(first);
+      if (first !== undefined && isFunction(first)) calls.push({ body: first, call: current });
     });
   }
 
-  return bodies;
+  /* Sorted, because what counts as "above this effect" is a position in the
+     source, and the walk reaches a nested one before its neighbour. */
+  return calls.sort((left, right) => offsetOf(left.call, 'start') - offsetOf(right.call, 'start'));
 }
 
 function isEffect(current: Node): boolean {

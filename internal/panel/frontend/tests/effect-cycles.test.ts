@@ -94,6 +94,13 @@ describe('effects that feed themselves [Unit]', () => {
     expect(findEffectCycles(SETTLED_FIXTURE)).toEqual([]);
     expect(SETTLED_FIXTURE).toContain(SETTLES);
   });
+
+  /* One effect's excuse must not cover the next one. A marker that reaches
+     downwards is the one failure this rule cannot have: nothing would report the
+     effect that got away, and the reason it got away would be invisible. */
+  it('stops the excuse at the effect it was written for', () => {
+    expect(findEffectCycles(MARKER_LEAK_FIXTURE)).toEqual([{ state: 'loading', through: 'load' }]);
+  });
 });
 
 function describeCycle(cycle: { state: string; through: string }): string {
@@ -255,6 +262,36 @@ const SETTLED_FIXTURE = `<script lang="ts">
       .then((loaded) => {
         page = loaded;
       });
+  });
+</script>`;
+
+const MARKER_LEAK_FIXTURE = `<script lang="ts">
+  let page = $state<string[] | null>(null);
+  let loading = $state(false);
+  let items = $state<string[]>([]);
+
+  async function load(): Promise<void> {
+    if (loading) return;
+    loading = true;
+    try {
+      items = await fetch('/y').then((response) => response.json());
+    } finally {
+      loading = false;
+    }
+  }
+
+  /* effect settles: the read fills the page it is guarded by. */
+  $effect(() => {
+    if (page !== null) return;
+    void fetch('/x')
+      .then((response) => response.json())
+      .then((loaded) => {
+        page = loaded;
+      });
+  });
+
+  $effect(() => {
+    void load();
   });
 </script>`;
 
