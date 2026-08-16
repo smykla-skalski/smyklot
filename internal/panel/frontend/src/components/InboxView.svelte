@@ -37,9 +37,15 @@
   let expandedAuditId = $state<string | null>(null);
   const groups = $derived(groupNotifications(items));
   const reads = new LatestRequest();
-  /* How many times a read has replaced the list. Not state: nothing renders it,
-     and it is read inside the effect that starts the reads. */
-  let listVersion = 0;
+  /**
+   * The count is guarded apart from the list, because the two are answered by
+   * different requests.
+   *
+   * A read of the list carries a count with it, and a read of the count carries
+   * no list. Whichever was asked for last is the one to believe, and that is not
+   * the same question as which list is on screen.
+   */
+  const counts = new LatestRequest();
 
   async function load(reset = true): Promise<void> {
     if (reset ? loading : loadingMore) return;
@@ -49,6 +55,7 @@
        after the page it was racing and take the earlier events away again,
        leaving a reader who pressed the button watching it undo itself. */
     const read = reads.begin();
+    const count = counts.begin();
     if (reset) loading = true;
     else loadingMore = true;
     problem = null;
@@ -57,17 +64,14 @@
         ...(reset || nextCursor === null ? {} : { cursor: nextCursor }),
         limit: PAGE_SIZE,
       });
+      if (counts.isCurrent(count)) {
+        unread = page.unread;
+        total = page.total;
+      }
       if (!reads.isCurrent(read)) return;
       items = reset ? page.items : merge(items, page.items);
-      unread = page.unread;
-      total = page.total;
       nextCursor = page.next_cursor;
       loaded = true;
-      /* Counts a list that has actually replaced what was on screen, which is
-         what tells a mark-read still in the air that its own subtraction has
-         already been made for it. Started reads do not count: one that began
-         before the mark-read may answer without it. */
-      listVersion += 1;
       /* Stamped from the answer rather than at mount: every relative time on the
          page is measured against the same instant, and a reader who leaves the
          tab open does not come back to a list that says "now" about yesterday. */
@@ -91,18 +95,38 @@
 
   async function read(notification: SecurityNotification): Promise<void> {
     if (notification.read_at !== undefined) return;
-    const countedAgainst = listVersion;
     try {
       const updated = await markRead(notification.id);
-      // Always: the row is read whoever else has said so since.
       items = items.map((item) => (item.id === updated.id ? updated : item));
-      /* The count only while it is still the count this was subtracted from. A
-         list that arrived first was counted by the server with this read already
-         in it, and subtracting again puts the total one below the truth - with
-         nothing to correct it until the next read. */
-      if (listVersion === countedAgainst) unread = Math.max(0, unread - 1);
+      await refreshCount();
     } catch (error) {
       problem = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  /**
+   * Asks what the count is now, rather than working it out.
+   *
+   * Subtracting one locally is wrong in both directions and a client cannot tell
+   * which: a list that arrives while the read is in flight may have been counted
+   * by the server with the read already in it, or from a moment before it, and
+   * the two are indistinguishable from here. Guessing left the total one below
+   * the truth in the first case and one above it in the second, with nothing to
+   * correct either until some other read happened to run.
+   *
+   * So the count is read. It costs one small request per press of a button
+   * somebody deliberately pressed, and it is right whatever else is in the air.
+   */
+  async function refreshCount(): Promise<void> {
+    const count = counts.begin();
+    try {
+      const page = await fetchPage({ limit: 1 });
+      if (!counts.isCurrent(count)) return;
+      unread = page.unread;
+      total = page.total;
+    } catch {
+      /* A count is not worth a failure of its own over a list that is fine. The
+         next read of either settles it. */
     }
   }
 
