@@ -35,9 +35,17 @@ func marshalPatch(patch config.Patch) (string, error) {
 	return string(content), nil
 }
 
+// unmarshalPatch reads a stored patch, refusing one it cannot vouch for.
+//
+// It was a bare json.Unmarshal, which accepts an unknown key without a word
+// and any string at all for the runner. A row saying `{"runner": "workflow"}` -
+// written before the panel refused that key, or by hand - resolved to a runner
+// neither entry point matches, so both stood down and the repository went
+// silent. The file layer has always been fail-closed; this is the same rule for
+// the layer beside it.
 func unmarshalPatch(content string) (config.Patch, error) {
-	var patch config.Patch
-	if err := json.Unmarshal([]byte(content), &patch); err != nil {
+	patch, err := config.ParseStoredPatch([]byte(content))
+	if err != nil {
 		return config.Patch{}, fmt.Errorf("decode config patch: %w", err)
 	}
 

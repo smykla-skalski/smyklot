@@ -168,6 +168,21 @@ func ParsePatch(format Format, content []byte) (Patch, error) {
 	return patch, nil
 }
 
+// ParseStoredPatch reads a patch back out of the panel's storage.
+//
+// JSON, because that is the encoding a JSONB column and a browser share, and
+// it is the only surface no human writes. It is held to the same rules as a
+// file all the same: a row written by an older version, by a bug, or by hand
+// is exactly the row that most needs checking, and it is read straight into
+// Resolve.
+//
+// The runner is what makes this more than tidiness. A stored value naming no
+// entry point compares equal to neither, so both stand down and the repository
+// goes silent with nothing anywhere to say why.
+func ParseStoredPatch(content []byte) (Patch, error) {
+	return ParsePatch(formatJSON, content)
+}
+
 // RenderTOML writes a patch as the file Smyklot asks repositories to keep.
 //
 // Only what the patch sets is written, because that is what the file means: a

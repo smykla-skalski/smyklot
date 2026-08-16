@@ -9,6 +9,14 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
+// parseAs adapts ParsePatch to the one-argument shape the format table shares
+// with ParseStoredPatch, whose format is not something a caller may name.
+func parseAs(format config.Format) func([]byte) (config.Patch, error) {
+	return func(content []byte) (config.Patch, error) {
+		return config.ParsePatch(format, content)
+	}
+}
+
 var _ = Describe("Patch [Unit]", func() {
 	// TOML is what a repository writes now and YAML is what it may already
 	// have. Both are decoded into the same type by the same rules, so the
@@ -47,13 +55,16 @@ command_prefix = ""
 		// "fields in the document are missing in the target struct", which
 		// names neither the key nor anything they could act on.
 		DescribeTable("rejects unknown settings, naming them",
-			func(format config.Format, document string) {
-				_, err := config.ParsePatch(format, []byte(document))
+			func(parse func([]byte) (config.Patch, error), document string) {
+				_, err := parse([]byte(document))
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("unexpected_setting"))
 			},
-			Entry("yaml", config.FormatYAML, "unexpected_setting: true\n"),
-			Entry("toml", config.FormatTOML, "unexpected_setting = true\n"),
+			Entry("yaml", parseAs(config.FormatYAML), "unexpected_setting: true\n"),
+			Entry("toml", parseAs(config.FormatTOML), "unexpected_setting = true\n"),
+			// The stored form, which no human writes but which is read straight
+			// into Resolve and so is held to the same rule
+			Entry("stored json", config.ParseStoredPatch, `{"unexpected_setting":true}`),
 		)
 
 		It("names every unknown setting, not only the first", func() {

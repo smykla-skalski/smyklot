@@ -12,9 +12,11 @@ var (
 	// format Smyklot does not read, or named with an extension it cannot place
 	ErrUnknownFormat = errors.New("unknown configuration format")
 
-	// ErrUnknownSetting is returned for a document naming a setting that does
-	// not exist. It is fail-closed on purpose: the file is where a repository
-	// narrows allowed_commands, so a typo must not quietly restore a default
+	// ErrUnknownSetting restates go-toml's refusal so it names the keys, which
+	// its own wording does not. Every format refuses an unknown setting -
+	// fail-closed on purpose, since the file is where a repository narrows
+	// allowed_commands and a typo must not quietly restore a default - but the
+	// other two decoders already say which key, so only this one is rewritten
 	ErrUnknownSetting = errors.New("unknown setting")
 
 	// ErrMultipleDocuments is returned for a YAML file that carries settings
