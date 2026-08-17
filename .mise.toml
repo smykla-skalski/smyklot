@@ -389,6 +389,40 @@ depends = ["panel:frontend:install"]
 dir = "internal/panel/frontend"
 run = 'npm run test:browser -- {{arg(name="files", var=true, default="")}}'
 
+# The browser suites CI does not run, gathered so that not running them is a
+# decision somebody can read rather than a gap nobody notices.
+#
+# The Test workflow gives a runner to the sweeps and the budgets: the checks that
+# fail on code whose author was not thinking about them, across pages they were
+# not looking at. These are the other kind. Each drives one screen's own
+# behaviour, and the person who changes that screen is the person who will run
+# it - on every push to every branch, a runner re-proving the queue's columns to
+# somebody editing the sidebar buys nothing.
+#
+# `mise run ci` still runs the whole suite, so nothing here is unproven before a
+# release; `scripts/check-test-matrix.sh` fails if a file is in neither list or
+# in both.
+#
+#   empty-states      what six tables say when they have no rows
+#   filter-vocabulary that a filter menu offers the states its column draws
+#   queue-columns     the Queue table against the approved design, to the pixel
+#   queue-live        the queue re-sorting under a reader, and holding still
+#   repository-page   a repository opened from its row, and its three panes
+#   signed-out-layout the sign-in page, and what is not drawn behind it
+[tasks."panel:frontend:test:browser:local"]
+description = "Drive the browser suites CI leaves to a developer"
+depends = ["panel:frontend:install"]
+dir = "internal/panel/frontend"
+run = '''
+npm run test:browser -- \
+  tests/browser/empty-states.test.ts \
+  tests/browser/filter-vocabulary.test.ts \
+  tests/browser/queue-columns.test.ts \
+  tests/browser/queue-live.test.ts \
+  tests/browser/repository-page.test.ts \
+  tests/browser/signed-out-layout.test.ts
+'''
+
 [tasks."panel:assets:generate"]
 description = "Build and package panel assets for Go embedding"
 depends = ["panel:frontend:build"]

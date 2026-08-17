@@ -264,15 +264,24 @@ jobs:
   # files one at a time, so giving each area its own runner is the only
   # parallelism available between them.
   #
-  # Four areas because of the tail rather than the total. Every file pays for a
-  # dev server, a Chrome and a sign-in before it measures anything, which is
-  # about nine seconds here, so the areas do not cost what they cost on a
-  # laptop: measured one file per runner they are 43s for `mobile-layout` down
-  # to 10s for `icon-geometry`. Three areas puts the largest at the minute this
-  # is trying to stay under; four leaves ten seconds in hand.
+  # Areas because of the tail rather than the total. Every file pays for a dev
+  # server, a Chrome and a sign-in before it measures anything, which is about
+  # nine seconds here, so the areas do not cost what they cost on a laptop:
+  # measured one file per runner they run from 74s for `table-columns` down to
+  # 10s for `icon-geometry`. `table-columns` has an area to itself because it is
+  # the only file that would set the length of any area it joined.
   #
-  # `scripts/check-test-matrix.sh` fails when a file here runs in no area, or in
-  # more than one.
+  # NOT EVERY FILE IS HERE, and which are missing is a decision rather than an
+  # oversight. This job runs the sweeps and the budgets - the checks that fail on
+  # code nobody was thinking about when they wrote it, across pages they were not
+  # looking at. A test that exercises one screen's own behaviour is left to
+  # `mise run panel:frontend:test:browser:local`, which names them and says why:
+  # whoever changes that screen is the person who will run it, and paying a
+  # runner to re-prove it on every push to every branch buys nothing.
+  #
+  # `scripts/check-test-matrix.sh` fails when a file runs in no area and is not
+  # in that local list either, when it is in both, or when one area names it
+  # twice. A new file cannot quietly run nowhere.
   browser:
     name: browser (${{ matrix.area }})
     runs-on: ubuntu-24.04
@@ -283,14 +292,26 @@ jobs:
           # Nineteen routes at two widths, so half the suite's pages are here.
           - area: phone
             files: tests/browser/mobile-layout.test.ts
+          # Where the words sit, and whether any of them is cut off getting there.
           - area: type
             files: >-
               tests/browser/vertical-alignment.test.ts
               tests/browser/table-headers.test.ts
+              tests/browser/text-clipping.test.ts
+          # Every cell of every table given a run longer than the service can
+          # produce. Alone, at 74s: it found the same fault in five tables at
+          # once, which is what a sweep is for and what it costs.
+          - area: tables
+            files: tests/browser/table-columns.test.ts
+          # How much the panel asks for. `cached-navigation` is here rather than
+          # with the queue it was written against: what it guards is an effect
+          # ring reopening the stream on every navigation, which is the same
+          # silent, unbounded class `request-budget` exists for.
           - area: requests
             files: >-
               tests/browser/request-budget.test.ts
               tests/browser/runtime-settings.test.ts
+              tests/browser/cached-navigation.test.ts
           - area: controls
             files: >-
               tests/browser/segmented-control.test.ts

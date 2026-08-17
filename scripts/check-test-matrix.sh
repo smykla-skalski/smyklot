@@ -73,18 +73,39 @@ echo "every Go suite is named exactly once by the go matrix in $workflow"
 # way to go wrong the Go one does not: a file named twice runs twice, on two
 # runners, and the only symptom is a job that got slower for no reason anybody
 # can see. So both directions are checked.
+#
+# CI deliberately does not run every browser file - the sweeps and the budgets
+# earn a runner, one screen's own behaviour does not, and the rest are gathered
+# in the `panel:frontend:test:browser:local` task with the reasoning beside them.
+# That makes "not in CI" an answer rather than an omission, so both lists are
+# read here and a file has to be in exactly one of them. A file in neither is the
+# case this check was written for: it runs nowhere and nothing says so.
 browser="internal/panel/frontend"
-listed="$(yq -r '.jobs.browser.strategy.matrix.include[].files' "$workflow" | tr ' ' '\n' | grep -v '^$')"
+tasks=".mise.toml"
+onCI="$(yq -r '.jobs.browser.strategy.matrix.include[].files' "$workflow" | tr ' ' '\n' | grep -v '^$')"
+# `-oy` only to silence yq's warning that it is guessing an output format from
+# the extension; the value read is a plain string either way.
+local_only="$(
+  yq -p toml -oy -r '.tasks."panel:frontend:test:browser:local".run' "$tasks" |
+    tr ' ' '\n' | grep '^tests/browser/.*\.test\.ts$' || true
+)"
 
-if [ -z "$listed" ]; then
+if [ -z "$onCI" ]; then
   echo "read no files out of the browser matrix in $workflow" >&2
   exit 1
 fi
 
+if [ -z "$local_only" ]; then
+  echo "read no files out of panel:frontend:test:browser:local in $tasks" >&2
+  exit 1
+fi
+
+listed="$(printf '%s\n%s\n' "$onCI" "$local_only")"
 twice="$(printf '%s\n' "$listed" | sort | uniq -d)"
 if [ -n "$twice" ]; then
-  echo "the browser matrix in $workflow runs these on more than one runner:" >&2
+  echo "these browser suites are named more than once, by $workflow and/or $tasks:" >&2
   printf '%s\n' "$twice" | sed 's|^|  |' >&2
+  echo "a file runs on one runner, or locally, and never both" >&2
   exit 1
 fi
 
@@ -93,16 +114,16 @@ missing="$(comm -23 <(printf '%s\n' "$present") <(printf '%s\n' "$listed" | sort
 gone="$(comm -13 <(printf '%s\n' "$present") <(printf '%s\n' "$listed" | sort))"
 
 if [ -n "$missing" ]; then
-  echo "the browser matrix in $workflow runs nothing in:" >&2
+  echo "nothing runs these browser suites:" >&2
   printf '%s\n' "$missing" | sed 's|^|  |' >&2
-  echo "add each to an existing area, or give it one of its own" >&2
+  echo "add each to an area in $workflow, or to the local task in $tasks" >&2
   exit 1
 fi
 
 if [ -n "$gone" ]; then
-  echo "the browser matrix in $workflow names files that do not exist:" >&2
+  echo "$workflow or $tasks names browser suites that do not exist:" >&2
   printf '%s\n' "$gone" | sed 's|^|  |' >&2
   exit 1
 fi
 
-echo "every browser suite is named exactly once by the browser matrix in $workflow"
+echo "every browser suite is named exactly once, by $workflow or by $tasks"
