@@ -89,10 +89,22 @@ describe('the components that float a layer', () => {
     ['ActionMenu.svelte', 'DropdownMenu'],
     ['LoginField.svelte', 'Combobox'],
     ['AppTooltip.svelte', 'Tooltip'],
-    ['HelpTip.svelte', 'Tooltip'],
   ])('%s uses the Bits UI %s primitive', (file, primitive) => {
     const source = read(file);
     expect(source).toContain(`import { ${primitive} } from 'bits-ui'`);
     expect(source).toContain(`<${primitive}.Root`);
+  });
+
+  /**
+   * A help tip is a tooltip with a question mark in front of it, so it is one:
+   * wiring its own put a second tooltip appearance in the panel, and that one was
+   * painted in a token nothing declares - unreadable in both themes, for as long
+   * as it has existed.
+   */
+  it('HelpTip.svelte gets its tip from the shared tooltip', () => {
+    const source = read('HelpTip.svelte');
+
+    expect(source).toMatch(/<AppTooltip[\s\n]/u);
+    expect(source).not.toContain("from 'bits-ui'");
   });
 });

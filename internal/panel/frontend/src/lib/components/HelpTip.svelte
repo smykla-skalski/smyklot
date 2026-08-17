@@ -1,5 +1,17 @@
 <script lang="ts">
-  import { Tooltip } from 'bits-ui';
+  /**
+   * The question mark beside a control, and the sentence it holds.
+   *
+   * The tip itself is `AppTooltip`, which is the panel's one tooltip: this used
+   * to wire up its own Bits UI tooltip and paint it in reverse - dark ground,
+   * `var(--surface)` text - and `--surface` is a token nothing declares. An
+   * unresolvable custom property is invalid at computed-value time, so the colour
+   * fell back to the one it inherits, which on that ground is the ground: every
+   * help tip in the panel has been a black rectangle with its sentence painted
+   * inside it in black. Nobody had ever read one, so there is no look here to
+   * keep, and one tooltip is better than two.
+   */
+  import AppTooltip from './AppTooltip.svelte';
   import Icon from './Icon.svelte';
 
   const {
@@ -16,25 +28,13 @@
 </script>
 
 <span class="help-tip" class:align-start={align === 'start'}>
-  <Tooltip.Provider delayDuration={250}>
-    <Tooltip.Root>
-      <Tooltip.Trigger class="help-trigger" aria-label={label}>
+  <AppTooltip {id} {text} {align}>
+    {#snippet children(props)}
+      <button {...props} type="button" class="help-trigger" aria-label={label}>
         <Icon name="info" size={14} strokeWidth={2} />
-      </Tooltip.Trigger>
-      <Tooltip.Portal to=".app-shell">
-        <Tooltip.Content
-          {id}
-          class="help-content"
-          side="top"
-          {align}
-          sideOffset={6}
-          collisionPadding={8}
-        >
-          {text}
-        </Tooltip.Content>
-      </Tooltip.Portal>
-    </Tooltip.Root>
-  </Tooltip.Provider>
+      </button>
+    {/snippet}
+  </AppTooltip>
 </span>
 
 <style>
@@ -42,7 +42,7 @@
     display: inline-flex;
   }
 
-  :global(.help-trigger) {
+  .help-trigger {
     background: transparent;
     border: 0;
     border-radius: var(--r-ctl);
@@ -55,18 +55,8 @@
     width: 1.125rem;
   }
 
-  :global(.help-trigger:hover),
-  :global(.help-trigger:focus-visible) {
+  .help-trigger:hover,
+  .help-trigger:focus-visible {
     color: var(--signal);
-  }
-
-  :global(.help-content) {
-    background: var(--text-primary);
-    border-radius: var(--radius-control);
-    color: var(--surface);
-    font-size: var(--font-size-meta);
-    max-width: 18rem;
-    padding: var(--space-2) var(--space-3);
-    z-index: var(--layer-tooltip);
   }
 </style>
