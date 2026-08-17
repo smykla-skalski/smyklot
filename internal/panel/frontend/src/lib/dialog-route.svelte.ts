@@ -8,7 +8,7 @@
  */
 
 import { page } from '$app/state';
-import { goto, pushState, replaceState } from '$app/navigation';
+import { pushState, replaceState } from '$app/navigation';
 import { base, resolve } from '$app/paths';
 import type { Pathname } from '$app/types';
 import { SvelteURLSearchParams } from 'svelte/reactivity';
@@ -197,13 +197,27 @@ class DialogRouter {
       return;
     }
 
+    /**
+     * The address the dialog hung off: the bare host path when the dialog was
+     * segments of the path, and this address without its query when it was one.
+     *
+     * Shallow either way. The path form used to close with a `goto`, and that is
+     * a navigation from the route that hosts a dialog to the route that does not
+     * - two page components, so everything under the dialog was torn down and
+     * built again. A reader who pressed Escape and started typing lost what they
+     * typed, because the table they typed into was replaced by a new one seeded
+     * from the last stored search, and their place in the list went with it.
+     *
+     * Nothing about the address decides which page component is mounted, and the
+     * panel reads its route from the pathname rather than from `page.params`, so
+     * the one already mounted renders the view underneath exactly as the other
+     * would. A reload lands on the plain address and mounts that route properly.
+     */
     const rest = page.params.rest;
     const path = bareHostPath();
-    if (typeof rest === 'string' && rest !== '' && path !== null) {
-      goto(resolve(path as Pathname), { replaceState: true, state: withoutDialogState() });
-    } else {
-      replaceState(resolve(currentPanelPath('') as Pathname), withoutDialogState());
-    }
+    const target =
+      typeof rest === 'string' && rest !== '' && path !== null ? path : currentPanelPath('');
+    replaceState(resolve(target as Pathname), withoutDialogState());
   }
 }
 

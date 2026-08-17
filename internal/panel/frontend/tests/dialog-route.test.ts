@@ -91,7 +91,15 @@ describe('SvelteKit dialog route adapter', () => {
     );
   });
 
-  it('closes a cold deep link by replacing it with the host route', () => {
+  /**
+   * Shallow, and the assertion that it is not a navigation is the point of the
+   * test rather than a detail of it. A `goto` here leaves the route that hosts a
+   * dialog for the route that does not, and those are two page components: the
+   * view underneath was torn down and built again on every close, so a search
+   * half typed into the table went back to the last stored one and the reader's
+   * place in the list went with it.
+   */
+  it('closes a cold deep link without leaving the route it is on', () => {
     routePage.url = new URL('https://panel.example/i/acme/repositories/api-gateway/file');
     routePage.params = {
       account: 'acme',
@@ -101,10 +109,14 @@ describe('SvelteKit dialog route adapter', () => {
 
     dialogRoute.close();
 
-    expect(navigation.goto).toHaveBeenCalledWith('/i/acme/repositories', {
-      replaceState: true,
-      state: expect.objectContaining({ smyklotDialogClosed: true }),
-    });
+    expect(navigation.replaceState).toHaveBeenCalledWith(
+      '/i/acme/repositories',
+      expect.objectContaining({ smyklotDialogClosed: true }),
+    );
+    expect(navigation.goto).not.toHaveBeenCalled();
+    // The route's own parameters still name the dialog, because nothing
+    // re-resolved them. What says the dialog is shut is the state above.
+    expect(dialogRoute.current).toBeNull();
   });
 
   it('keeps a pathless dialog in the query across reloads', () => {
