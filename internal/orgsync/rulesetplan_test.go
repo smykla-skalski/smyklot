@@ -1,0 +1,295 @@
+package orgsync_test
+
+import (
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
+	"github.com/smykla-skalski/smyklot/internal/orgsync"
+)
+
+var _ = Describe("Planning rulesets [Unit]", func() {
+	// onGitHub is the same ruleset as protection(), as GitHub would answer
+	// about it: whole, at the repository's own level, with an id.
+	onGitHub := func(id int64, change func(*orgsync.Ruleset)) orgsync.CurrentRuleset {
+		defined := protection()
+		if change != nil {
+			change(&defined)
+		}
+
+		return orgsync.CurrentRuleset{ID: id, Name: defined.Name, Defined: &defined}
+	}
+
+	plan := func(
+		config orgsync.RulesetConfig, current ...orgsync.CurrentRuleset,
+	) []orgsync.Action {
+		return orgsync.PlanRulesets("repo-1", config, current, config.Exclusions())
+	}
+
+	wanted := orgsync.RulesetConfig{Rulesets: []orgsync.Ruleset{protection()}}
+
+	Describe("a ruleset the repository does not have", func() {
+		It("plans creating it, with everything it will enforce", func() {
+			actions := plan(wanted)
+
+			Expect(actions).To(HaveLen(1))
+			Expect(actions[0].Kind).To(Equal(orgsync.KindRulesets))
+			Expect(actions[0].Operation).To(Equal(orgsync.OperationCreate))
+			Expect(actions[0].Subject).To(Equal("main-branch-protection"))
+			Expect(actions[0].Before).To(BeEmpty())
+			Expect(actions[0].After).To(SatisfyAll(
+				ContainSubstring("branch, active"),
+				ContainSubstring("on refs/heads/main"),
+				ContainSubstring("no deletion"),
+				ContainSubstring("1 approving review"),
+				ContainSubstring("checks test, up to date"),
+				ContainSubstring("bypassed by OrganizationAdmin 5 always"),
+			))
+		})
+
+		// The executor writes what the plan carries, and a create has no
+		// ruleset to write to yet
+		It("carries the whole ruleset and no id", func() {
+			resolved, err := orgsync.DecodeRulesetAction(plan(wanted)[0].Payload)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(resolved.ID).To(BeZero())
+			Expect(resolved.Ruleset).To(Equal(protection()))
+		})
+	})
+
+	Describe("a ruleset the repository already matches", func() {
+		It("plans nothing", func() {
+			Expect(plan(wanted, onGitHub(7, nil))).To(BeEmpty())
+		})
+
+		// GitHub answers with the order it stored, and configuration is
+		// whatever somebody typed. Comparing those literally rewrites a
+		// matching repository on every tick for ever, which is the cost the
+		// recorded digest exists to remove
+		It("plans nothing when only the order differs", func() {
+			shuffled := orgsync.RulesetConfig{Rulesets: []orgsync.Ruleset{
+				with(func(r *orgsync.Ruleset) {
+					r.Rules.PullRequest.AllowedMergeMethods = []string{"squash", "merge"}
+					r.Conditions.IncludeRefs = []string{"refs/heads/main", "refs/heads/next"}
+					r.Rules.RequiredStatusChecks.Checks = []orgsync.RulesetStatusCheck{
+						{Context: "lint"}, {Context: "test"},
+					}
+				}),
+			}}
+
+			current := onGitHub(7, func(r *orgsync.Ruleset) {
+				r.Rules.PullRequest.AllowedMergeMethods = []string{"merge", "squash"}
+				r.Conditions.IncludeRefs = []string{"refs/heads/next", "refs/heads/main"}
+				r.Rules.RequiredStatusChecks.Checks = []orgsync.RulesetStatusCheck{
+					{Context: "test"}, {Context: "lint"},
+				}
+			})
+
+			Expect(plan(shuffled, current)).To(BeEmpty())
+		})
+
+		// GitHub answers with an empty list where configuration left the field
+		// out, and the two say the same thing
+		It("plans nothing when one side spells absent as empty", func() {
+			current := onGitHub(7, func(r *orgsync.Ruleset) {
+				r.Conditions.ExcludeRefs = []string{}
+			})
+
+			Expect(plan(wanted, current)).To(BeEmpty())
+		})
+	})
+
+	Describe("a ruleset that has drifted", func() {
+		It("plans replacing it, and says what is there now", func() {
+			current := onGitHub(7, func(r *orgsync.Ruleset) {
+				r.Rules.PullRequest.RequiredApprovingReviewCount = 0
+				r.Rules.RequiredSignatures = false
+			})
+
+			actions := plan(wanted, current)
+
+			Expect(actions).To(HaveLen(1))
+			Expect(actions[0].Operation).To(Equal(orgsync.OperationUpdate))
+			Expect(actions[0].Before).To(ContainSubstring("0 approving review"))
+			Expect(actions[0].Before).NotTo(ContainSubstring("signed commits"))
+			Expect(actions[0].After).To(ContainSubstring("1 approving review"))
+			Expect(actions[0].After).To(ContainSubstring("signed commits"))
+		})
+
+		// A ruleset is written by replacement, at an id GitHub minted. Looking
+		// the id up again when the work runs would find whatever holds the name
+		// by then, which is not what anybody approved
+		It("carries the id of the ruleset it would replace", func() {
+			current := onGitHub(7, func(r *orgsync.Ruleset) { r.Enforcement = "disabled" })
+
+			resolved, err := orgsync.DecodeRulesetAction(plan(wanted, current)[0].Payload)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(resolved.ID).To(BeEquivalentTo(7))
+			Expect(resolved.Enforcement).To(Equal(orgsync.RulesetEnforcementActive))
+		})
+
+		// The whole of the blind full replace this chunk exists to remove: a
+		// request computed from an answer nobody received, dropping every rule,
+		// condition and actor the repository has
+		It("plans nothing against a ruleset nothing read", func() {
+			unread := orgsync.CurrentRuleset{ID: 7, Name: "main-branch-protection"}
+
+			Expect(plan(wanted, unread)).To(BeEmpty())
+		})
+	})
+
+	Describe("a ruleset the organization already applies", func() {
+		// The two do not replace each other, they both enforce, and GitHub
+		// takes the union. Refusing to write would decide on somebody's behalf
+		// that the organization's is the one they meant; saying so puts it in
+		// front of whoever approves the plan, at the moment the stack is made
+		It("plans the repository's own and says the organization's applies too", func() {
+			inherited := orgsync.CurrentRuleset{
+				ID: 99, Name: "main-branch-protection", Inherited: true,
+			}
+
+			actions := plan(wanted, inherited)
+
+			Expect(actions).To(HaveLen(1))
+			Expect(actions[0].Operation).To(Equal(orgsync.OperationCreate))
+			Expect(actions[0].After).To(ContainSubstring(
+				"an organization ruleset of this name also applies here"))
+		})
+
+		// It is not this repository's to change and not its to delete. A
+		// request that tried would report a repository failing at something
+		// nobody asked for
+		It("never proposes removing one", func() {
+			inherited := orgsync.CurrentRuleset{ID: 99, Name: "org-wide", Inherited: true}
+
+			removing := wanted
+			removing.AllowRemoval = true
+
+			Expect(plan(removing, inherited)).To(HaveLen(1))
+			Expect(plan(removing, inherited)[0].Operation).To(Equal(orgsync.OperationCreate))
+		})
+
+		// An inherited ruleset is not the one to update, so a repository with
+		// only the inherited copy needs its own created
+		It("does not mistake it for the repository's own", func() {
+			inherited := orgsync.CurrentRuleset{
+				ID: 99, Name: "main-branch-protection", Inherited: true,
+				Defined: func() *orgsync.Ruleset { r := protection(); return &r }(),
+			}
+
+			Expect(plan(wanted, inherited)[0].Operation).To(Equal(orgsync.OperationCreate))
+		})
+	})
+
+	// GitHub permits two rulesets with one name, and the tool this replaces
+	// made them: it read one page of thirty, created what it could not see, and
+	// from then on updated whichever came back first
+	Describe("two rulesets of the same name on one repository", func() {
+		drifted := func(id int64) orgsync.CurrentRuleset {
+			return onGitHub(id, func(r *orgsync.Ruleset) { r.Enforcement = "disabled" })
+		}
+
+		It("plans nothing rather than writing to an arbitrary one", func() {
+			Expect(plan(wanted, drifted(7), drifted(8))).To(BeEmpty())
+		})
+
+		// The one that catches an implementation reaching for the first of
+		// them: writing to the drifted copy leaves the matching one enforcing
+		// beside it, and the plan would have said the repository was fixed
+		It("plans nothing even where one of the two already matches", func() {
+			Expect(plan(wanted, drifted(7), onGitHub(8, nil))).To(BeEmpty())
+			Expect(plan(wanted, onGitHub(8, nil), drifted(7))).To(BeEmpty())
+		})
+	})
+
+	Describe("a ruleset configuration no longer names", func() {
+		surplus := orgsync.CurrentRuleset{ID: 9, Name: "old-protection"}
+
+		It("leaves it alone while removal is off", func() {
+			Expect(plan(wanted, onGitHub(7, nil), surplus)).To(BeEmpty())
+		})
+
+		It("proposes removing it once removal is on", func() {
+			removing := wanted
+			removing.AllowRemoval = true
+
+			actions := plan(removing, onGitHub(7, nil), surplus)
+
+			Expect(actions).To(HaveLen(1))
+			Expect(actions[0].Operation).To(Equal(orgsync.OperationDelete))
+			Expect(actions[0].Subject).To(Equal("old-protection"))
+			Expect(actions[0].After).To(BeEmpty())
+		})
+
+		// Nothing read it whole, so its name is the only certain thing about
+		// it. Printing an empty ruleset would read as one that enforced nothing
+		It("says only what it knows about a ruleset nothing read", func() {
+			removing := wanted
+			removing.AllowRemoval = true
+
+			Expect(plan(removing, surplus)[1].Before).To(
+				Equal("old-protection, whatever it enforces"))
+		})
+
+		It("carries the id to remove", func() {
+			removing := wanted
+			removing.AllowRemoval = true
+
+			resolved, err := orgsync.DecodeRulesetAction(plan(removing, surplus)[1].Payload)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(resolved.ID).To(BeEquivalentTo(9))
+			Expect(resolved.Name).To(Equal("old-protection"))
+		})
+
+		// Two plans of the same state have to be the same plan, or the digest
+		// comparison means nothing and two runs cannot be told apart
+		It("removes in a fixed order whatever order GitHub listed them in", func() {
+			removing := wanted
+			removing.AllowRemoval = true
+
+			one := orgsync.CurrentRuleset{ID: 3, Name: "beta"}
+			two := orgsync.CurrentRuleset{ID: 2, Name: "alpha"}
+			three := orgsync.CurrentRuleset{ID: 1, Name: "beta"}
+
+			subjects := func(actions []orgsync.Action) []string {
+				var named []string
+				for _, action := range actions {
+					named = append(named, action.Subject)
+				}
+
+				return named
+			}
+
+			forwards := plan(removing, one, two, three)
+			backwards := plan(removing, three, two, one)
+
+			Expect(subjects(forwards)).To(Equal(subjects(backwards)))
+			Expect(subjects(forwards)).To(Equal([]string{
+				"main-branch-protection", "alpha", "beta", "beta",
+			}))
+			Expect(forwards).To(Equal(backwards))
+		})
+	})
+
+	Describe("a ruleset somebody asked to be left alone", func() {
+		excluded := orgsync.RulesetConfig{
+			Rulesets:     []orgsync.Ruleset{protection()},
+			AllowRemoval: true,
+			Excludes:     []string{"main-*", "hand-made"},
+		}
+
+		It("neither writes it nor removes it", func() {
+			handMade := orgsync.CurrentRuleset{ID: 4, Name: "hand-made"}
+
+			Expect(plan(excluded, handMade)).To(BeEmpty())
+		})
+
+		It("leaves a configured one alone once it is excluded", func() {
+			drifted := onGitHub(7, func(r *orgsync.Ruleset) { r.Enforcement = "disabled" })
+
+			Expect(plan(excluded, drifted)).To(BeEmpty())
+		})
+	})
+})

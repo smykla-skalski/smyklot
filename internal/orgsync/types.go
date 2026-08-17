@@ -185,7 +185,11 @@ type Action struct {
 	// runs. The plan is the contract between what somebody reviewed and what
 	// happens, and reading the configuration again at apply time would apply
 	// what it says then - which is exactly what the plan exists to stop.
-	// Deletions carry none: the subject is the whole of the instruction.
+	//
+	// A deletion carries one only where the subject is not enough to address
+	// the thing. A label is deleted by name; a ruleset is deleted by an id
+	// GitHub minted, and looking that id up again at apply time would find
+	// whatever holds the name by then.
 	Payload []byte
 
 	State ActionState

@@ -1,9 +1,6 @@
 package orgsync
 
-import (
-	"fmt"
-	"strings"
-)
+import "strings"
 
 // Label is one label as configuration describes it.
 type Label struct {
@@ -76,29 +73,25 @@ func (c LabelConfig) Validate() error {
 		return err
 	}
 
-	seen := make(map[string]string, len(c.Labels))
-
 	for index, label := range c.Labels {
 		if err := label.validate(index); err != nil {
 			return err
 		}
+	}
 
-		// Case-insensitively, because GitHub is. It stores the case you give it
-		// and refuses to create "Bug" alongside "bug", so a configuration
-		// carrying both is one that cannot be applied - and it would fail on
-		// whichever came second, differently per repository.
-		folded := strings.ToLower(label.Name)
-		if first, duplicate := seen[folded]; duplicate {
-			if first == label.Name {
-				return invalid("label %q is listed twice", label.Name)
-			}
-
-			return invalid(
-				"labels %q and %q differ only in case, and GitHub treats them as one",
-				first, label.Name,
-			)
+	// Case-insensitively, because GitHub is. It stores the case you give it and
+	// refuses to create "Bug" alongside "bug", so a configuration carrying both
+	// is one that cannot be applied - and it would fail on whichever came
+	// second, differently per repository.
+	if first, second, clashed := firstFoldClash(c.Names()); clashed {
+		if first == second {
+			return invalid("label %q is listed twice", first)
 		}
-		seen[folded] = label.Name
+
+		return invalid(
+			"labels %q and %q differ only in case, and GitHub treats them as one",
+			first, second,
+		)
 	}
 
 	return nil
@@ -162,8 +155,4 @@ func validateColor(name, color string) error {
 	}
 
 	return nil
-}
-
-func invalid(format string, args ...any) error {
-	return fmt.Errorf("%w: %s", ErrInvalidConfig, fmt.Sprintf(format, args...))
 }
