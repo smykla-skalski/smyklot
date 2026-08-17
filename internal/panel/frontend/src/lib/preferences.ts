@@ -14,18 +14,28 @@ const THEME_DISPLAY_KEY = 'smyklot.panel.theme';
 
 type PreferenceReader = Pick<Storage, 'getItem'>;
 
+/**
+ * Which of the two the value should outlive.
+ *
+ * `local` is the browser's: a preference is the reader's answer everywhere they open the
+ * panel. `session` is the tab's: where one tab came from is a fact about that journey,
+ * and two tabs sitting in two places must not overwrite each other's.
+ */
+export type StorageLifetime = 'local' | 'session';
+
 // Exported for the specs: the rule it states - unusable storage reads as null - is invisible from
 // the readers, which catch the resulting failure either way.
-export function browserStorage(): Storage | null {
+export function browserStorage(lifetime: StorageLifetime = 'local'): Storage | null {
   if (typeof window === 'undefined') return null;
 
   try {
-    // lib.dom types this as a plain `Storage`, but a host can leave the accessor answering
+    // lib.dom types these as a plain `Storage`, but a host can leave the accessor answering
     // undefined instead of throwing - Node's own Web Storage does exactly that unless the process
     // was given `--localstorage-file`, and it shadows the storage jsdom would otherwise install.
     // Every caller guards on `null`, so anything unusable has to become null here; returning it
     // would slip past that guard and only be caught by the `catch` around the first `getItem`.
-    const storage = window.localStorage as Storage | null | undefined;
+    const storage = (lifetime === 'local' ? window.localStorage : window.sessionStorage) as
+      Storage | null | undefined;
     if (storage === null || storage === undefined) return null;
 
     return typeof storage.getItem === 'function' ? storage : null;

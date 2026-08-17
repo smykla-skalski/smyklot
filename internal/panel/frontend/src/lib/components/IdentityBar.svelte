@@ -32,7 +32,7 @@
     rootValue,
     rootHrefFor,
     onSelectRoot,
-    rootDashboardHref,
+    rootEntryHref,
     onEnterRoot,
     returnHref,
     onReturnToPanel,
@@ -62,7 +62,7 @@
     rootValue: RootSection;
     rootHrefFor: (section: RootSection) => string;
     onSelectRoot: (section: RootSection) => void;
-    rootDashboardHref: string;
+    rootEntryHref: string;
     onEnterRoot: () => void;
     returnHref: string;
     onReturnToPanel: () => void;
@@ -349,7 +349,7 @@
         {rootValue}
         {rootHrefFor}
         onSelectRoot={selectRoot}
-        {rootDashboardHref}
+        {rootEntryHref}
         onEnterRoot={enterRoot}
         {returnHref}
         onReturnToPanel={returnToPanel}

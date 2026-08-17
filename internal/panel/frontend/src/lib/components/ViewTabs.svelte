@@ -16,7 +16,7 @@
     rootValue,
     rootHrefFor,
     onSelectRoot,
-    rootDashboardHref,
+    rootEntryHref,
     onEnterRoot,
     returnHref,
     onReturnToPanel,
@@ -43,7 +43,7 @@
     rootValue: RootSection;
     rootHrefFor: (section: RootSection) => string;
     onSelectRoot: (section: RootSection) => void;
-    rootDashboardHref: string;
+    rootEntryHref: string;
     onEnterRoot: () => void;
     returnHref: string;
     onReturnToPanel: () => void;
@@ -405,7 +405,7 @@
       {:else if rootEnabled}
         <a
           class="foot-entry root-entry"
-          href={rootDashboardHref}
+          href={rootEntryHref}
           aria-label={collapsed ? 'Root console' : undefined}
           onclick={enterRootFromClick}
         >

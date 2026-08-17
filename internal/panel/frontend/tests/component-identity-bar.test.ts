@@ -48,7 +48,7 @@ describe('IdentityBar [Component]', () => {
       rootValue: 'overview',
       rootHrefFor: (section) => `/root/${section}`,
       onSelectRoot: vi.fn(),
-      rootDashboardHref: '/root',
+      rootEntryHref: '/root',
       onEnterRoot: vi.fn(),
       returnHref: '/i/acme/repositories',
       onReturnToPanel: vi.fn(),

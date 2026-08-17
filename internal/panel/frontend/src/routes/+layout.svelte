@@ -270,7 +270,7 @@
         rootValue={session.rootValue}
         rootHrefFor={(s: RootSection) => session.rootHrefFor(s)}
         onSelectRoot={(s: RootSection) => session.selectRootSection(s)}
-        rootDashboardHref={session.rootDashboardHref()}
+        rootEntryHref={session.rootEntryHref()}
         onEnterRoot={() => session.enterRoot()}
         returnHref={session.returnHref()}
         onReturnToPanel={() => session.returnToPanel()}

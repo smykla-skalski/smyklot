@@ -35,7 +35,7 @@ class TestMediaQueryList extends EventTarget implements MediaQueryList {
 }
 
 /**
- * A `Storage` for the session to keep preferences in.
+ * A `Storage` for the session to keep preferences and the page it left in.
  *
  * jsdom has one, but Vitest 4 does not carry it out onto the environment's
  * globals, so `localStorage` is undefined here and on `window` both. The
@@ -72,8 +72,10 @@ describe('PanelSession [Unit]', () => {
     vi.stubGlobal('matchMedia', () => new TestMediaQueryList());
     vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
     // A fresh one per test rather than one cleared between them, so nothing can
-    // be carried over by a key this file does not know to remove.
+    // be carried over by a key this file does not know to remove. Both, because
+    // the page a reader left is the tab's rather than the browser's.
     vi.stubGlobal('localStorage', memoryStorage());
+    vi.stubGlobal('sessionStorage', memoryStorage());
   });
 
   afterEach(() => {
@@ -155,6 +157,84 @@ describe('PanelSession [Unit]', () => {
     expect(session.returnHref()).toBe(`${basePath}/i/acme/repositories`);
   });
 
+  it('returns from Root to the repository page it left, not to the list', () => {
+    const session = createSession();
+    session.viewer = { system_role: 'root' } as PanelViewer;
+    session.targets = [{ id: 'target-1', account: { login: 'acme' } } as PanelTarget];
+    session.selectedId = 'target-1';
+    openRepository(session);
+
+    session.enterRoot();
+    routePage.url = at('/root/installations/acme/settings');
+    routePage.params = { account: 'acme', view: 'settings' };
+    routePage.route = { id: '/root/installations/[account]/[view=rootInstallationView]' };
+    session.syncRouteContext();
+
+    expect(session.returnHref()).toBe(`${basePath}/i/acme/repositories/api-gateway/commands`);
+  });
+
+  it('still knows the page it left when the console is reloaded', () => {
+    openRepository(createSession());
+
+    // A reload builds the session again from nothing but the tab's storage.
+    const reloaded = createSession();
+    reloaded.targets = [{ id: 'target-1', account: { login: 'acme' } } as PanelTarget];
+    routePage.url = at('/root');
+    routePage.params = {};
+    routePage.route = { id: '/root' };
+
+    expect(reloaded.returnHref()).toBe(`${basePath}/i/acme/repositories/api-gateway/commands`);
+  });
+
+  it('ignores a remembered page whose installation is not this reader’s', () => {
+    openRepository(createSession());
+
+    const reloaded = createSession();
+    reloaded.targets = [{ id: 'target-2', account: { login: 'other-org' } } as PanelTarget];
+    routePage.url = at('/root');
+    routePage.params = {};
+    routePage.route = { id: '/root' };
+
+    expect(reloaded.returnHref()).toBe(`${basePath}/i/other-org/settings`);
+  });
+
+  it('opens the console on the page it was last left on', () => {
+    const session = createSession();
+    session.viewer = { system_role: 'root' } as PanelViewer;
+    session.targets = [{ id: 'target-1', account: { login: 'acme' } } as PanelTarget];
+    session.selectedId = 'target-1';
+
+    // Nothing is remembered on the first crossing, so the console opens at its front.
+    session.enterRoot();
+    expect(navigation.goto).toHaveBeenLastCalledWith(`${basePath}/root`, { replace: false });
+
+    openConsoleQueue(session);
+    openRepository(session);
+
+    expect(session.rootEntryHref()).toBe(`${basePath}/root/queue/recent`);
+    session.enterRoot();
+    expect(navigation.goto).toHaveBeenLastCalledWith(`${basePath}/root/queue/recent`, {
+      replace: false,
+    });
+  });
+
+  it('keeps each side of the crossing pointing at its own page', () => {
+    const session = createSession();
+    session.viewer = { system_role: 'root' } as PanelViewer;
+    session.targets = [{ id: 'target-1', account: { login: 'acme' } } as PanelTarget];
+    session.selectedId = 'target-1';
+    openRepository(session);
+    openConsoleQueue(session);
+
+    // A reload of either side reads both back, and neither has overwritten the other.
+    const reloaded = createSession();
+    reloaded.viewer = { system_role: 'root' } as PanelViewer;
+    reloaded.targets = [{ id: 'target-1', account: { login: 'acme' } } as PanelTarget];
+
+    expect(reloaded.rootEntryHref()).toBe(`${basePath}/root/queue/recent`);
+    expect(reloaded.returnHref()).toBe(`${basePath}/i/acme/repositories/api-gateway/commands`);
+  });
+
   it('retains and can reopen the workspace view while the inbox is open', async () => {
     const session = createSession();
     session.targets = [{ id: 'target-1', account: { login: 'acme' } } as PanelTarget];
@@ -206,6 +286,26 @@ describe('PanelSession [Unit]', () => {
     );
   });
 });
+
+/** Puts a session on one repository's Commands pane, which is the page Return has to name. */
+function openRepository(session: PanelSession): PanelSession {
+  routePage.url = at('/i/acme/repositories/api-gateway/commands');
+  routePage.params = { account: 'acme', repository: 'api-gateway', section: 'commands' };
+  routePage.route = { id: '/i/[account]/repositories/[repository]/[[section=repositorySection]]' };
+  session.syncRouteContext();
+
+  return session;
+}
+
+/** And on a console page that is not its front one, which is what Root console has to name. */
+function openConsoleQueue(session: PanelSession): PanelSession {
+  routePage.url = at('/root/queue/recent');
+  routePage.params = {};
+  routePage.route = { id: '/root/queue/recent' };
+  session.syncRouteContext();
+
+  return session;
+}
 
 function createSession(queryClient = new QueryClient()): PanelSession {
   const session = new PanelSession({} as PanelApi, {} as PanelBuild, queryClient);

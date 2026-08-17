@@ -41,6 +41,7 @@ function at(segment: string): boolean {
 }
 import type { PanelChangeEvent } from './events';
 import type { SessionEnded } from './panel-session';
+import { readLastConsolePage, readLastWorkspacePage, writeLastPage } from './last-page';
 import { DEFAULT_THEME_DISPLAY, isThemeDisplay, type ThemeDisplay } from './preferences';
 import { createPrefsSync, type PrefsSync } from './preferences-sync';
 import type { StreamLiveness } from './query-client';
@@ -97,6 +98,16 @@ export class PanelSession {
   sidebarCollapsed = $state(false);
   private lastScopedView = $state<PanelView>('settings');
   private lastScopedHistorySection = $state<HistorySection>('audit');
+  /**
+   * The whole page each side was last on, which is where crossing to it goes back to.
+   *
+   * The two fields above answer a different question - what a reader was looking at, so
+   * that another installation opens on the same view - and neither can answer this one.
+   * A repository page is the repositories view, so remembering only the view brought
+   * somebody who left one back to the list they had opened it from.
+   */
+  private lastWorkspacePage = $state.raw<InstallationRoute | null>(null);
+  private lastConsolePage = $state.raw<RootRoute | null>(null);
 
   readonly narrowRail = new MediaQuery('(min-width: 48.0625rem) and (max-width: 72rem)');
   readonly systemDarkTheme = new MediaQuery('prefers-color-scheme: dark');
@@ -116,6 +127,8 @@ export class PanelSession {
     this.prefs = createPrefsSync();
     this.sidebarCollapsed = this.prefs.get('sidebar') === 'collapsed';
     this.theme = this.storedTheme();
+    this.lastWorkspacePage = readLastWorkspacePage();
+    this.lastConsolePage = readLastConsolePage();
   }
 
   // --- Derived ---
@@ -243,13 +256,24 @@ export class PanelSession {
     // it, so Return would otherwise take them somewhere they had not been. `page.error`
     // covers every load failure rather than the one shape this used to test for.
     if (page.error !== null) return;
-    if (this.isRootMode || this.isInbox || this.isInvitation) return;
+    if (this.isInbox || this.isInvitation) return;
     const route = this.parsedRoute;
-    if (route === null || !('view' in route)) return;
+    if (route === null || 'personal' in route) return;
+    // Each side records only its own page, so entering one never overwrites where the
+    // other was left. The route says which side this is; `isRootMode` answers for the
+    // chrome, which is a wider question - it is still the console while a page under it
+    // is failing to load, and nothing is recorded from one of those.
+    if ('rootView' in route) {
+      this.lastConsolePage = route;
+      writeLastPage('console', page.route.id, page.params);
+      return;
+    }
     this.lastScopedView = route.view;
     if (route.view === 'history' && route.section !== undefined) {
       this.lastScopedHistorySection = route.section;
     }
+    this.lastWorkspacePage = route;
+    writeLastPage('workspace', page.route.id, page.params);
   }
 
   /**
@@ -488,23 +512,23 @@ export class PanelSession {
 
   enterRoot(): void {
     if (this.viewer?.system_role === 'none') return;
-    void this.navigate({ rootView: 'overview' });
+    void this.navigate(this.consoleRoute());
     this.resetPageScroll();
   }
 
   returnToPanel(replace = false): void {
-    const target = this.returnTarget;
-    if (target === null) {
+    const route = this.returnRoute();
+    if (route === null) {
       void goto(this.returnHref(), { replace: true });
       return;
     }
-    void this.navigate(this.returnRoute(target), replace);
+    void this.navigate(route, replace);
   }
 
   // --- Hrefs ---
 
   targetHref(target: PanelTarget): string {
-    return panelAddress(this.returnRoute(target));
+    return panelAddress(this.targetRoute(target));
   }
 
   viewHref(nextView: PanelView): string {
@@ -516,8 +540,9 @@ export class PanelSession {
     return panelAddress(rootSectionRoute(section));
   }
 
-  rootDashboardHref(): string {
-    return panelAddress({ rootView: 'overview' });
+  /** Where the console opens: the page it was left on, or its front page the first time. */
+  rootEntryHref(): string {
+    return panelAddress(this.consoleRoute());
   }
 
   rootInstallationsHref(): string {
@@ -545,9 +570,9 @@ export class PanelSession {
   }
 
   returnHref(): string {
-    return this.returnTarget === null
-      ? resolve('/')
-      : panelAddress(this.returnRoute(this.returnTarget));
+    const route = this.returnRoute();
+
+    return route === null ? resolve('/') : panelAddress(route);
   }
 
   inboxHref(): string {
@@ -685,7 +710,43 @@ export class PanelSession {
     return typeof value === 'string' && isThemeDisplay(value) ? value : DEFAULT_THEME_DISPLAY;
   }
 
-  private returnRoute(target: PanelTarget): PanelRoute {
+  /**
+   * Where Return goes: the page the reader left, while it is still theirs to open.
+   *
+   * A remembered page outlives the tab's reloads, and can outlive the reader too - the
+   * next person to sign in on this tab has their own installations. So it is offered only
+   * while the account it names is one of them, and anything else falls back to what the
+   * panel answered before it remembered anything: the selected installation, on the view
+   * that was last looked at.
+   */
+  private returnRoute(): PanelRoute | null {
+    const remembered = this.lastWorkspacePage;
+    if (remembered !== null && this.installed(remembered.account)) return remembered;
+    const target = this.returnTarget;
+
+    return target === null ? null : this.targetRoute(target);
+  }
+
+  /**
+   * Where the console opens.
+   *
+   * No check against what exists, unlike the workspace side. Whoever may enter the
+   * console may read every installation in it, so a page here is only ever stale in the
+   * way a bookmark is - and the one reader it could have belonged to instead, a Root
+   * whose role has since been taken away, is turned back at the door by `enterRoot`.
+   */
+  private consoleRoute(): RootRoute {
+    return this.lastConsolePage ?? { rootView: 'overview' };
+  }
+
+  private installed(account: string): boolean {
+    const folded = account.toLowerCase();
+
+    return this.targets.some((target) => target.account.login.toLowerCase() === folded);
+  }
+
+  /** The same view on another installation, which is what its own link promises. */
+  private targetRoute(target: PanelTarget): PanelRoute {
     return this.routeFor(target, this.lastScopedView, this.lastScopedHistorySection);
   }
 
