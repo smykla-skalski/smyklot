@@ -369,6 +369,12 @@ WHERE repository_id = ? AND kind = ?`,
 	return current + 1, nil
 }
 
+// syncStateColumns is what both state reads select, spelled once so neither can
+// drift from scanSyncRepositoryState. Aliased, because both go through the
+// repositories join that scopes them to an installation.
+const syncStateColumns = `
+    s.repository_id, s.kind, s.applied_digest, s.applied_at, s.problem`
+
 // ListSyncRepositoryState reads what is known about each repository: what it
 // has already had applied, or why nothing could be.
 func (s *Store) ListSyncRepositoryState(
@@ -376,7 +382,7 @@ func (s *Store) ListSyncRepositoryState(
 	targetID string,
 ) ([]orgsync.RepositoryState, error) {
 	rows, err := s.db.QueryContext(ctx, `
-SELECT s.repository_id, s.kind, s.applied_digest, s.applied_at, s.problem
+SELECT`+syncStateColumns+`
 FROM sync_repository_state s
 JOIN repositories r ON r.id = s.repository_id
 WHERE r.target_id = ?
@@ -402,7 +408,7 @@ func (s *Store) GetSyncRepositoryState(
 	kind orgsync.Kind,
 ) (orgsync.RepositoryState, error) {
 	row := s.db.QueryRowContext(ctx, `
-SELECT s.repository_id, s.kind, s.applied_digest, s.applied_at, s.problem
+SELECT`+syncStateColumns+`
 FROM sync_repository_state s
 JOIN repositories r ON r.id = s.repository_id
 WHERE r.target_id = ? AND s.repository_id = ? AND s.kind = ?`,

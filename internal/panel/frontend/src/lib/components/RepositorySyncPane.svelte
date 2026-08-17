@@ -266,8 +266,8 @@
     />
   </div>
 
-  <label class="sync-pane-field">
-    <span class="sync-pane-field-label">Files to leave alone here</span>
+  <label class="entry-field">
+    <span class="entry-field-label">Files to leave alone here</span>
     <textarea
       rows="2"
       {disabled}
@@ -286,10 +286,10 @@
   {/if}
 
   {#each drafts as draft, index (rowKey(index))}
-    <article class="sync-merge">
+    <article class="entry-card sync-merge">
       <div class="sync-pane-row">
         <label class="sync-merge-path">
-          <span class="sync-pane-field-label">File</span>
+          <span class="entry-field-label">File</span>
           <input
             type="text"
             value={draft.merge.path}
@@ -320,10 +320,10 @@
         {/if}
       </div>
 
-      <label class="sync-pane-field">
-        <span class="sync-pane-field-label">What this repository sets</span>
+      <label class="entry-field">
+        <span class="entry-field-label">What this repository sets</span>
         <textarea
-          class="sync-merge-overrides"
+          class="entry-code sync-merge-overrides"
           rows="6"
           {disabled}
           aria-describedby="repository-sync-overrides-note"
@@ -407,45 +407,13 @@
     flex: 1;
   }
 
-  .sync-pane-field {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    margin-top: var(--space-4);
-  }
-
-  .sync-merge .sync-pane-field {
-    margin-top: 0;
-  }
-
-  .sync-pane-field-label {
-    font-size: var(--font-size-micro);
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-  }
-
-  .sync-merge {
-    background: var(--surface-inset);
-    border-radius: var(--r-ctl);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-    margin-top: var(--space-4);
-    padding: var(--space-3);
-  }
-
+  /* Narrower than the shared-files form's, because an adjustment names a path
+     the installation already lists rather than one somebody is typing out. */
   .sync-merge-path {
     display: flex;
     flex: 1;
     flex-direction: column;
     gap: 0.25rem;
     min-width: 12rem;
-  }
-
-  /* JSON is read as code, so it is shown as code. */
-  .sync-merge-overrides {
-    font-family: var(--mono);
-    font-size: var(--font-size-meta);
   }
 </style>

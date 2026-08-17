@@ -2272,6 +2272,48 @@ code {
   margin-top: var(--space-5);
 }
 
+/* One entry of a list somebody edits, as a card: a path and the whole of its
+   contents is more than a row. The shared-files form and the repository's own
+   sync pane draw the same card for the same reason and had written it out under
+   two sets of names, so a change to the inset, the radius or the gap moved one
+   screen and not the one beside it. */
+.entry-card {
+  background: var(--surface-inset);
+  border-radius: var(--r-ctl);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  padding: var(--space-3);
+}
+
+.entry-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: var(--space-4);
+}
+
+/* Inside a card the field is already spaced by the card's gap, so the margin
+   above would double it. */
+.entry-card .entry-field {
+  margin-top: 0;
+}
+
+.entry-field-label {
+  font-size: var(--font-size-micro);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* A template or a patch is read as code, so it is shown as code: proportional
+   type turns an aligned table in a Markdown file into a ragged one. */
+.entry-code {
+  font-family: var(--mono);
+  font-size: var(--font-size-meta);
+}
+
 /* A mark beside a label centres on the CAP band the trimmed label gives it, and
    stays there whatever letters the word turns out to contain.
    ------------------------------------------------------------------------

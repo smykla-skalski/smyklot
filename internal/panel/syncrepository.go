@@ -349,13 +349,8 @@ func syncOverrideToDTO(kind orgsync.Kind, override *orgsync.RepositoryOverride) 
 		UpdatedAt: &override.UpdatedAt,
 	}
 
-	// Bytes that are not JSON, before they are carried anywhere. A
-	// json.RawMessage is validated as it is copied out, so holding one that
-	// does not parse fails the whole response rather than this field.
-	if !json.Valid(dto.Document) {
-		dto.Document = emptyDocument
-		dto.Unreadable = true
-	}
+	document, readable := readableDocument(dto.Document)
+	dto.Document, dto.Unreadable = document, !readable
 
 	return dto
 }

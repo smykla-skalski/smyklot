@@ -126,8 +126,8 @@
     </button>
   {/snippet}
 
-  <label class="file-field">
-    <span class="file-field-label">Paths to remove</span>
+  <label class="entry-field">
+    <span class="entry-field-label">Paths to remove</span>
     <textarea
       rows="2"
       {disabled}
@@ -136,13 +136,13 @@
       placeholder=".github/workflows/sync-trigger.yml"
       onchange={(event) => (retired = asList(event.currentTarget.value))}></textarea>
   </label>
-  <p class="file-note" id="files-retired-note">
+  <p class="form-note file-note" id="files-retired-note">
     One path per line. These are deleted wherever a repository still has them, and this is the only
     thing here that deletes anything.
   </p>
 
-  <label class="file-field">
-    <span class="file-field-label">Paths to leave alone</span>
+  <label class="entry-field">
+    <span class="entry-field-label">Paths to leave alone</span>
     <textarea
       rows="2"
       {disabled}
@@ -151,20 +151,20 @@
       placeholder="LICENSE"
       onchange={(event) => (excludes = asList(event.currentTarget.value))}></textarea>
   </label>
-  <p class="file-note" id="files-excludes-note">
+  <p class="form-note file-note" id="files-excludes-note">
     One path or pattern per line, where <code>*</code> stands for any run of characters. These are neither
     written nor removed, whatever the lists say.
   </p>
 
   {#if drafts.length === 0}
-    <p class="files-empty">No files yet.</p>
+    <p class="form-note files-empty">No files yet.</p>
   {/if}
 
   {#each drafts as file, index (rowKey(index))}
-    <article class="file">
+    <article class="entry-card">
       <div class="file-row">
         <label class="file-path">
-          <span class="file-field-label">Path</span>
+          <span class="entry-field-label">Path</span>
           <input
             type="text"
             value={file.path}
@@ -181,10 +181,10 @@
         {/if}
       </div>
 
-      <label class="file-field">
-        <span class="file-field-label">Content</span>
+      <label class="entry-field">
+        <span class="entry-field-label">Content</span>
         <textarea
-          class="file-content"
+          class="entry-code"
           rows="8"
           {disabled}
           aria-describedby="files-content-note"
@@ -195,7 +195,7 @@
     </article>
   {/each}
 
-  <p class="file-note" id="files-content-note">
+  <p class="form-note file-note" id="files-content-note">
     <code>{'{{DEFAULT_BRANCH}}'}</code> is filled in with whatever each repository calls its default branch.
     Anything else in braces is refused, so a template cannot reach a repository with a placeholder nobody
     fills in.
@@ -203,30 +203,15 @@
 </SyncDocumentForm>
 
 <style>
+  /* The global rule has no margin. These notes sit directly under the control
+     they describe, and the sliver of side inset lines them up with the field's
+     own text. */
   .file-note {
-    color: var(--dim);
-    font-size: var(--font-size-meta);
     margin: 0.25rem 0.125rem 0;
-    max-width: 60ch;
   }
 
   .files-empty {
-    color: var(--dim);
-    font-size: var(--font-size-meta);
     margin: var(--space-4) 0 0;
-  }
-
-  /* A card per file, because a path and the whole of its contents is more than
-     a row: the rulesets beside this are grouped the same way and for the same
-     reason. */
-  .file {
-    background: var(--surface-inset);
-    border-radius: var(--r-ctl);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-    margin-top: var(--space-4);
-    padding: var(--space-3);
   }
 
   .file-row {
@@ -242,32 +227,5 @@
     flex-direction: column;
     gap: 0.25rem;
     min-width: 14rem;
-  }
-
-  .file-field {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    margin-top: var(--space-4);
-  }
-
-  /* Inside a card the field is already spaced by the card's gap, so the margin
-     above would double it. */
-  .file .file-field {
-    margin-top: 0;
-  }
-
-  .file-field-label {
-    font-size: var(--font-size-micro);
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-  }
-
-  /* A template is read as code, so it is shown as code: proportional type turns
-     an aligned table in a Markdown file into a ragged one. */
-  .file-content {
-    font-family: var(--mono);
-    font-size: var(--font-size-meta);
   }
 </style>

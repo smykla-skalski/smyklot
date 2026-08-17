@@ -301,6 +301,22 @@ func documentOrEmpty(document json.RawMessage) json.RawMessage {
 	return document
 }
 
+// readableDocument answers what to carry out and whether the stored bytes could
+// be read at all.
+//
+// Checked before they are carried anywhere. A json.RawMessage is validated as
+// it is copied out, so holding one that does not parse fails the whole response
+// rather than this one field - and a row this version cannot decode has to
+// render as itself rather than as a configuration that adjusts nothing, which
+// is what somebody would then save over.
+func readableDocument(document json.RawMessage) (json.RawMessage, bool) {
+	if !json.Valid(document) {
+		return emptyDocument, false
+	}
+
+	return document, true
+}
+
 // syncConfigAnswer is one kind's configuration together with whether the
 // installation may act on it.
 //
@@ -330,17 +346,13 @@ func syncConfigToDTO(config orgsync.Config) syncConfigDTO {
 		Document:  documentOrEmpty(config.Document),
 	}
 
-	// Bytes that are not JSON at all, before they are carried anywhere.
-	//
-	// A json.RawMessage is copied out verbatim and validated as it goes, so
-	// holding one that does not parse fails the whole response rather than this
-	// field - and the answer somebody would get is a truncated body, not the
-	// message below saying what is wrong. The row is still there; nothing here
-	// pretends to have read it.
-	if !json.Valid(dto.Document) {
-		dto.Document = emptyDocument
-		dto.Unreadable = true
+	// The row is still there; nothing here pretends to have read it, and the
+	// answer somebody would otherwise get is a truncated body rather than the
+	// message saying what is wrong.
+	carried, readable := readableDocument(dto.Document)
+	dto.Document, dto.Unreadable = carried, !readable
 
+	if !readable {
 		return dto
 	}
 
