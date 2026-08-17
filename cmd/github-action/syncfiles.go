@@ -284,12 +284,12 @@ func proposeFiles(
 		return err
 	}
 
-	commit, err := commitFiles(ctx, client, target, proposal, branch, files)
+	changed, err := commitFiles(ctx, client, target, proposal, branch, files)
 	if err != nil {
 		return err
 	}
 
-	if commit == "" && branch.BuildOn == "" {
+	if !changed && branch.BuildOn == "" {
 		// Built on the default branch and changed nothing, so the default
 		// branch already says what it should: somebody landed the same change
 		// between the plan and now, or a merged proposal is being replayed.
@@ -369,8 +369,8 @@ func readProposal(
 	}
 }
 
-// commitFiles writes the change and moves the branch to it, answering with the
-// commit or with nothing where what it would build on already said it.
+// commitFiles writes the change and moves the branch to it, answering whether
+// there was anything to write - what it would build on may already say it.
 func commitFiles(
 	ctx context.Context,
 	client *github.Client,
@@ -378,17 +378,18 @@ func commitFiles(
 	proposal string,
 	branch proposalBranch,
 	files []plannedFile,
-) (string, error) {
+) (changed bool, err error) {
 	parent := branch.BuildOn
 	if parent == "" {
 		base, err := client.GetRef(
 			ctx, target.Owner, target.Name, "heads/"+target.DefaultBranch)
 		if err != nil {
-			return "", err
+			return false, err
 		}
 
 		if base == "" {
-			return "", fmt.Errorf("%w: the default branch has no commits", errSyncFilesUnreadable)
+			return false, fmt.Errorf(
+				"%w: the default branch has no commits", errSyncFilesUnreadable)
 		}
 
 		parent = base
@@ -398,17 +399,17 @@ func commitFiles(
 	// one to the other is a request rather than a guess at what GitHub accepts.
 	parentCommit, err := client.GetCommit(ctx, target.Owner, target.Name, parent)
 	if err != nil {
-		return "", err
+		return false, err
 	}
 
 	wanted, err := stillNeeded(ctx, client, target, parentCommit.Tree, files)
 	if err != nil {
-		return "", err
+		return false, err
 	}
 
 	changes, err := writeBlobs(ctx, client, target, wanted)
 	if err != nil {
-		return "", err
+		return false, err
 	}
 
 	if len(changes) == 0 {
@@ -420,19 +421,19 @@ func commitFiles(
 		// as required, so a tree built from none of them either fails or hands
 		// back the tree it was given, and a repository's proposal should not
 		// turn on which - the answer is known without the request.
-		return "", nil
+		return false, nil
 	}
 
 	tree, err := client.CreateTree(
 		ctx, target.Owner, target.Name, parentCommit.Tree, changes)
 	if err != nil {
-		return "", err
+		return false, err
 	}
 
 	if tree == parentCommit.Tree {
 		// Everything this would write is already there. Committing anyway would
 		// add an empty commit to somebody's branch on every reconcile.
-		return "", nil
+		return false, nil
 	}
 
 	// Both, where a spent branch is being built past. GitHub squashes and
@@ -451,10 +452,10 @@ func commitFiles(
 	commit, err := client.CreateCommit(
 		ctx, target.Owner, target.Name, fileCommitMessage, tree, parents...)
 	if err != nil {
-		return "", err
+		return false, err
 	}
 
-	return commit, moveProposal(ctx, client, target, proposal, branch.Head, commit)
+	return true, moveProposal(ctx, client, target, proposal, branch.Head, commit)
 }
 
 // moveProposal points the branch at the new commit.
@@ -486,8 +487,9 @@ func moveProposal(
 // afterwards. So every question the plan asked of the default branch is asked
 // again here, of the tree the commit is actually made from.
 //
-// Walked rather than listed, because the answer has to be exact for exactly
-// the paths in the plan, and a repository is asked about a handful of them.
+// Read the same way the planner reads the default branch - one listing, walked
+// a level at a time only where GitHub declines to finish it - so the two cannot
+// come to different answers about the same tree.
 func stillNeeded(
 	ctx context.Context,
 	client *github.Client,

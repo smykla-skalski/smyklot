@@ -107,6 +107,40 @@ func splitPath(path, rest string) ([]string, error) {
 	return append(keys, current.String()), nil
 }
 
+// overrideListFor reads the list a rule works on out of the overrides, which is
+// the same preflight for every rule wherever it is asked.
+//
+// Three places ask: Validate, where somebody typed the rule, and the JSON and
+// YAML merges, which check again because a spec reaching them unvalidated
+// should fail rather than quietly replace a list with nothing. Written out at
+// each of them, the three had already stopped agreeing on what to call a list.
+//
+// The sentinel is the caller's, because the same fact is a bad configuration
+// where it is typed and a merge that addresses nothing where it is run.
+func overrideListFor(
+	override map[string]any,
+	rule ArrayRule,
+	sentinel error,
+) (keys []string, items []any, err error) {
+	if keys, err = parsePath(rule.Path); err != nil {
+		return nil, nil, err
+	}
+
+	value, present := valueAt(override, keys)
+	if !present {
+		return nil, nil, fmt.Errorf("%w: no override sets %s, so there is no list to %s",
+			sentinel, rule.Path, rule.Strategy)
+	}
+
+	items, isList := value.([]any)
+	if !isList {
+		return nil, nil, fmt.Errorf("%w: the override at %s is not a list",
+			sentinel, rule.Path)
+	}
+
+	return keys, items, nil
+}
+
 // valueAt reads what a document holds at a path, and whether it holds anything.
 func valueAt(document map[string]any, keys []string) (any, bool) {
 	current, found := parentAt(document, keys)

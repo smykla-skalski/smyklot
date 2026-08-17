@@ -14,24 +14,11 @@ import (
 // override's own items are built fresh.
 func applyYAMLArrayRules(merged, before *yaml.Node, override map[string]any, spec Spec) error {
 	for _, rule := range spec.Arrays {
-		// Parsed rather than trusted: Validate has already read every path, and
-		// a spec reaching here unvalidated should fail rather than skip.
-		keys, err := parsePath(rule.Path)
+		// Read rather than trusted: Validate has already read every path, and a
+		// spec reaching here unvalidated should fail rather than skip.
+		keys, overrideItems, err := overrideListFor(override, rule, ErrNothingAddressed)
 		if err != nil {
 			return err
-		}
-
-		overrideValue, present := valueAt(override, keys)
-		if !present {
-			return fmt.Errorf(
-				"%w: no override sets %s, so there is no array to %s",
-				ErrNothingAddressed, rule.Path, rule.Strategy)
-		}
-
-		overrideItems, isArray := overrideValue.([]any)
-		if !isArray {
-			return fmt.Errorf(
-				"%w: the override at %s is not a list", ErrNothingAddressed, rule.Path)
 		}
 
 		written, err := sequenceNode(overrideItems)

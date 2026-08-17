@@ -265,10 +265,10 @@ func (s *server) applyKind(
 	work orgsync.KindWork,
 	outcome *orgsync.Outcome,
 ) bool {
-	// Files are one change, not a list of them. Every path a repository needs
-	// goes into one commit behind one pull request, so they are applied
-	// together and share whatever becomes of it.
-	if work.Kind == orgsync.KindFiles {
+	// A kind that proposes is one change, not a list of them. Every path a
+	// repository needs goes into one commit behind one pull request, so they
+	// are applied together and share whatever becomes of it.
+	if work.Kind.Proposes() {
 		return s.applyFileKind(ctx, client, target, work, outcome)
 	}
 

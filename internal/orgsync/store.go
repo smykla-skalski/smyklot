@@ -78,6 +78,19 @@ func (o RepositoryOverride) AdjustsNothing() bool {
 	return document == "" || document == "{}"
 }
 
+// Disabled reports a repository that has said no to this kind.
+//
+// A pointer receiver and nil-safe, because the three places asking are asking
+// about a row that may not exist: a repository that has never answered inherits
+// the installation's switch. Enabled is three-state, and reading a three-state
+// pointer as a two-state answer is the kind of test that gets copied wrong once
+// - the planner decides whether to look at a repository with it, the sweep
+// decides whether a recorded refusal is still current, and the panel decides
+// whether to show one. Disagreeing means a refusal the panel states for ever.
+func (o *RepositoryOverride) Disabled() bool {
+	return o != nil && o.Enabled != nil && !*o.Enabled
+}
+
 // RepositoryOverrideChange writes one, or clears it back to inheriting by
 // passing a nil Enabled and an empty Document.
 type RepositoryOverrideChange struct {

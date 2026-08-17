@@ -193,25 +193,15 @@ func refuseRepeatedKeys(node *yaml.Node) error {
 // something still refers to it. Refusing beats opening a pull request that
 // turns somebody's workflow into a file GitHub will not load.
 func refuseDanglingAliases(root *yaml.Node) error {
-	anchors := map[string]struct{}{}
-	collectAnchors(root, anchors)
+	defined := map[string][]*yaml.Node{}
+	collectDefinitions(root, defined)
 
-	return findDanglingAlias(root, anchors)
+	return findDanglingAlias(root, defined)
 }
 
-func collectAnchors(node *yaml.Node, into map[string]struct{}) {
-	if node.Anchor != "" {
-		into[node.Anchor] = struct{}{}
-	}
-
-	for _, child := range node.Content {
-		collectAnchors(child, into)
-	}
-}
-
-func findDanglingAlias(node *yaml.Node, anchors map[string]struct{}) error {
+func findDanglingAlias(node *yaml.Node, defined map[string][]*yaml.Node) error {
 	if node.Kind == yaml.AliasNode {
-		if _, held := anchors[node.Value]; !held {
+		if _, held := defined[node.Value]; !held {
 			return fmt.Errorf(
 				"%w: it would leave %q referring to an anchor the merge removed",
 				ErrUnwritable, "*"+node.Value)
@@ -219,7 +209,7 @@ func findDanglingAlias(node *yaml.Node, anchors map[string]struct{}) error {
 	}
 
 	for _, child := range node.Content {
-		if err := findDanglingAlias(child, anchors); err != nil {
+		if err := findDanglingAlias(child, defined); err != nil {
 			return err
 		}
 	}
@@ -361,8 +351,8 @@ func standIn(root, mapping *yaml.Node, key string, existing *yaml.Node, own bool
 //
 // The anchors themselves are left alone here. Two definitions of one name is a
 // document whose meaning depends on where a reader is standing, and
-// renameDuplicateAnchors settles that at the end, once every copy the merge is
-// going to make has been made.
+// renameCopiedAnchors settles that for each copy as standIn makes it - which is
+// the only moment the copy's aliases can be told from the template's.
 func copyForMerge(node *yaml.Node) *yaml.Node {
 	within := map[*yaml.Node]*yaml.Node{}
 	copied := cloneWithin(node, within)
@@ -433,8 +423,13 @@ func renameCopiedAnchors(root, copied *yaml.Node) {
 		return
 	}
 
+	inDocument := map[string][]*yaml.Node{}
+	collectDefinitions(root, inDocument)
+
 	taken := map[string]struct{}{}
-	collectAnchors(root, taken)
+	for name := range inDocument {
+		taken[name] = struct{}{}
+	}
 
 	for name, nodes := range anchored {
 		if _, clashes := taken[name]; !clashes {

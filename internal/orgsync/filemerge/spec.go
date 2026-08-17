@@ -279,16 +279,24 @@ func (s Spec) validateArrays(document map[string]any) error {
 				ErrInvalidSpec, index+1, rule.Strategy)
 		}
 
-		keys, err := parsePath(rule.Path)
-		if err != nil {
-			return err
-		}
-
 		if _, repeated := seen[rule.Path]; repeated {
 			return fmt.Errorf("%w: %s has two list rules", ErrInvalidSpec, rule.Path)
 		}
 
 		seen[rule.Path] = struct{}{}
+
+		// The same reading the merge does, against the one document a spec
+		// already holds: its own overrides. A rule says what to do with the
+		// repository's list where the template has one, so a rule whose path no
+		// override sets has no list to work with - for every template, always.
+		// Left to Apply, that lands as a warning in the service log that stops
+		// the repository's whole file sync, so a typo in one path silently
+		// stops every managed file. Here it lands under the box somebody typed
+		// it into.
+		keys, _, err := overrideListFor(document, rule, ErrInvalidSpec)
+		if err != nil {
+			return err
+		}
 
 		// A shallow merge replaces a top-level key with the override's value
 		// whole, so nothing below one is ever merged and a rule pointing there
@@ -298,34 +306,6 @@ func (s Spec) validateArrays(document map[string]any) error {
 				"%w: %s is below the top level, and a shallow merge replaces "+
 					"top-level keys whole", ErrInvalidSpec, rule.Path)
 		}
-
-		if err := ruleReachesAnOverride(document, keys, rule); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// ruleReachesAnOverride checks a list rule against the one document a spec
-// already holds: its own overrides.
-//
-// A rule says what to do with the repository's list where the template has one
-// of its own, so a rule whose path no override sets has no list to work with
-// and refuses the merge - for every template, always. Left to Apply, that lands
-// as a warning in the service log that stops the repository's whole file sync,
-// so a typo in one path silently stops every managed file. Here it lands under
-// the box somebody typed it into.
-func ruleReachesAnOverride(document map[string]any, keys []string, rule ArrayRule) error {
-	value, present := valueAt(document, keys)
-	if !present {
-		return fmt.Errorf("%w: no override sets %s, so there is no list to %s",
-			ErrInvalidSpec, rule.Path, rule.Strategy)
-	}
-
-	if _, isList := value.([]any); !isList {
-		return fmt.Errorf("%w: the override at %s is not a list",
-			ErrInvalidSpec, rule.Path)
 	}
 
 	return nil

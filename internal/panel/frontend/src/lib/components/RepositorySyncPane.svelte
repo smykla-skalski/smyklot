@@ -13,7 +13,7 @@
    * customization it described.
    */
   import { canonicalStringify } from '#lib/preferences-sync.js';
-  import { asList, lines, rowKeys } from '#lib/form-lists.js';
+  import { asList, lines, rowKeys, storedList, withoutAt } from '#lib/form-lists.js';
   import { formatRelative } from '#lib/format.js';
   import type { SyncFileMerge, SyncOverride } from '#lib/types.js';
 
@@ -73,7 +73,7 @@
   /* Derived from what is saved and written over as somebody edits, so a save
      landing from anywhere reseeds it. */
   let drafts = $derived<Draft[]>(storedDrafts(stored.document));
-  let excludes = $derived<string[]>(storedExcludes(stored.document));
+  let excludes = $derived<string[]>(storedList<string>(stored.document, 'excludes'));
   let wanted = $derived<boolean | null>(stored.enabled);
 
   const disabled = $derived(saving || readOnly || stored.unreadable);
@@ -187,16 +187,10 @@
   }
 
   function storedDrafts(from: Record<string, unknown>): Draft[] {
-    const merges = Array.isArray(from?.merges) ? (from.merges as SyncFileMerge[]) : [];
-
-    return merges.map((merge) => ({
+    return storedList<SyncFileMerge>(from, 'merges').map((merge) => ({
       merge,
       text: merge.overrides === undefined ? '' : JSON.stringify(merge.overrides, null, 2),
     }));
-  }
-
-  function storedExcludes(from: Record<string, unknown>): string[] {
-    return Array.isArray(from?.excludes) ? (from.excludes as string[]) : [];
   }
 
   function patch(index: number, change: Partial<SyncFileMerge>): void {
@@ -216,7 +210,7 @@
   }
 
   function remove(index: number): void {
-    drafts = drafts.filter((_, at) => at !== index);
+    drafts = withoutAt(drafts, index);
   }
 
   const rowKey = rowKeys('merge');

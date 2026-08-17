@@ -43,3 +43,33 @@ export function asList(text: string): string[] {
 export function rowKeys(prefix: string): (index: number) => string {
   return (index) => `${prefix}-${index}`;
 }
+
+/**
+ * What a saved document holds under a key, as a list.
+ *
+ * A document that has nothing for a key leaves it out entirely, and a document
+ * a newer version of the service wrote may hold something else there. Both read
+ * as an empty list rather than as a crash on the page.
+ */
+export function storedList<T>(from: Record<string, unknown> | undefined, key: string): T[] {
+  return Array.isArray(from?.[key]) ? (from[key] as T[]) : [];
+}
+
+/**
+ * One row of a list, changed or removed, as a new list.
+ *
+ * Every one of these forms edits rows: files, rulesets, merges, a ruleset's
+ * bypass actors, a code-scanning rule's tools. Written out each time they were
+ * six copies of the same index arithmetic.
+ *
+ * New lists rather than edits in place, because a draft is compared against
+ * what was saved to decide whether Save is offered, and a list mutated where it
+ * stands compares equal to itself.
+ */
+export function patchedAt<T>(items: T[], at: number, change: Partial<T>): T[] {
+  return items.map((item, index) => (index === at ? { ...item, ...change } : item));
+}
+
+export function withoutAt<T>(items: T[], at: number): T[] {
+  return items.filter((_, index) => index !== at);
+}

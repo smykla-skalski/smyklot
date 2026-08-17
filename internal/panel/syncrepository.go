@@ -80,43 +80,24 @@ func (s *Server) getSyncOverride(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.writeSyncOverride(w, r, repository.ID, kind, saved)
+	// Reporting an unreadable state row, because on a read it is the one thing
+	// this page exists to show.
+	s.answerSyncOverride(w, r, repository.ID, kind, saved, true)
 }
 
-// writeSyncOverride answers with what this repository says about one kind and
+// answerSyncOverride answers with what this repository says about one kind and
 // what the planner last made of it.
 //
 // Two rows and one question. The override is what somebody asked for; the state
 // row is what came of it, and a pane showing only the first would show a
 // repository that looks configured and is being skipped.
-func (s *Server) writeSyncOverride(
-	w http.ResponseWriter,
-	r *http.Request,
-	repositoryID string,
-	kind orgsync.Kind,
-	override *orgsync.RepositoryOverride,
-) {
-	s.answerSyncOverride(w, r, repositoryID, kind, override, true)
-}
-
-// writeSavedSyncOverride is the same answer after a save has landed.
 //
-// The difference is what an unreadable state row means. On a read it is the one
-// thing the page exists to show, so it is reported; after a save it is a second
-// read on the way out of a write that already committed, and reporting it would
-// answer 500 for a change that landed - which the form reads as a failed save,
-// so it keeps the revision it came in with and every retry is answered 409 for
-// a change the person made themselves.
-func (s *Server) writeSavedSyncOverride(
-	w http.ResponseWriter,
-	r *http.Request,
-	repositoryID string,
-	kind orgsync.Kind,
-	override *orgsync.RepositoryOverride,
-) {
-	s.answerSyncOverride(w, r, repositoryID, kind, override, false)
-}
-
+// reportUnreadableState is what separates the two callers. On a read, a refusal
+// this page could not read is the one thing it exists to show, so the request
+// fails. After a save it is a second read on the way out of a write that has
+// already committed, and failing there would answer 500 for a change that
+// landed - which the form reads as a failed save, so it keeps the revision it
+// came in with and every retry is answered 409 for the person's own change.
 func (s *Server) answerSyncOverride(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -127,7 +108,7 @@ func (s *Server) answerSyncOverride(
 ) {
 	dto := syncOverrideToDTO(kind, override)
 
-	if switchedOff(override) {
+	if override.Disabled() {
 		// Switched off here, so the planner is not looking - and a row is only
 		// rewritten while it is. Whatever reason was recorded last is frozen at
 		// the moment somebody turned the kind off, which is usually the moment
@@ -161,12 +142,6 @@ func (s *Server) answerSyncOverride(
 	}
 
 	writeJSON(w, http.StatusOK, dto)
-}
-
-// switchedOff reports a repository that has said no to this kind, which is the
-// one answer the planner reads before it reads anything else.
-func switchedOff(override *orgsync.RepositoryOverride) bool {
-	return override != nil && override.Enabled != nil && !*override.Enabled
 }
 
 // putSyncOverride saves it.
@@ -235,7 +210,8 @@ func (s *Server) putSyncOverride(w http.ResponseWriter, r *http.Request) {
 	// planner is what decides that, and it has not looked yet - saying so with
 	// the time it was last looked at is honest, where dropping the notice would
 	// tell somebody their fix worked before anything had tried it.
-	s.writeSavedSyncOverride(w, r, repository.ID, kind, &saved)
+	// Not reporting an unreadable state row: the save has already committed.
+	s.answerSyncOverride(w, r, repository.ID, kind, &saved, false)
 }
 
 // syncOverrideDocument checks a repository's adjustments against what the

@@ -18,7 +18,7 @@
    * can close.
    */
   import { canonicalStringify } from '#lib/preferences-sync.js';
-  import { asList, lines, rowKeys } from '#lib/form-lists.js';
+  import { asList, lines, patchedAt, rowKeys, storedList, withoutAt } from '#lib/form-lists.js';
   import type { SyncFile } from '#lib/types.js';
 
   import SyncDocumentForm from './SyncDocumentForm.svelte';
@@ -46,9 +46,9 @@
   /* Derived from what is saved and written over as somebody edits, so a save
      landing from anywhere reseeds it rather than leaving the screen describing
      a document that is gone. */
-  let drafts = $derived<SyncFile[]>(storedFiles(stored));
-  let retired = $derived<string[]>(storedList(stored, 'retired'));
-  let excludes = $derived<string[]>(storedList(stored, 'excludes'));
+  let drafts = $derived<SyncFile[]>(storedList<SyncFile>(stored, 'files'));
+  let retired = $derived<string[]>(storedList<string>(stored, 'retired'));
+  let excludes = $derived<string[]>(storedList<string>(stored, 'excludes'));
   let wanted = $derived(enabled);
 
   const disabled = $derived(saving || readOnly || unreadable);
@@ -67,9 +67,9 @@
   const untouched = $derived(
     canonicalStringify(
       asDocument(
-        storedFiles(stored),
-        storedList(stored, 'retired'),
-        storedList(stored, 'excludes'),
+        storedList<SyncFile>(stored, 'files'),
+        storedList<string>(stored, 'retired'),
+        storedList<string>(stored, 'excludes'),
       ),
     ),
   );
@@ -85,16 +85,8 @@
     return { ...stored, files, retired: retiredPaths, excludes: excluded };
   }
 
-  function storedFiles(from: Record<string, unknown>): SyncFile[] {
-    return Array.isArray(from.files) ? (from.files as SyncFile[]) : [];
-  }
-
-  function storedList(from: Record<string, unknown>, key: string): string[] {
-    return Array.isArray(from[key]) ? (from[key] as string[]) : [];
-  }
-
   function patch(index: number, change: Partial<SyncFile>): void {
-    drafts = drafts.map((file, at) => (at === index ? { ...file, ...change } : file));
+    drafts = patchedAt(drafts, index, change);
   }
 
   function add(): void {
@@ -102,7 +94,7 @@
   }
 
   function remove(index: number): void {
-    drafts = drafts.filter((_, at) => at !== index);
+    drafts = withoutAt(drafts, index);
   }
 
   const rowKey = rowKeys('file');

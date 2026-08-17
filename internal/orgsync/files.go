@@ -379,8 +379,15 @@ const workflowDirectory = ".github/workflows/"
 // workflowPermission is GitHub's own spelling for being allowed to.
 const workflowPermission = "workflows"
 
-// PathPermission is what writing one path needs beyond the files kind's own
-// Contents access, or empty where nothing more is needed.
+// PathPermission is what writing one path needs beyond the kind's own, or empty
+// where nothing more is needed.
+//
+// On the kind, because which kinds are addressed by a path in a repository is
+// the kind's own business: a label somebody named after a directory is still a
+// label. Asked in two places - of a configuration before anything is planned,
+// and of an action's subject before it is applied - and a second path-addressed
+// kind knowing about only one of them is a plan somebody approves that GitHub
+// then refuses.
 //
 // GitHub keeps workflow files behind a permission of their own and enforces it
 // when the ref moves: a commit that creates or updates anything under
@@ -392,8 +399,8 @@ const workflowPermission = "workflows"
 //
 // An exact prefix, because GitHub's is: a workflow is a file in that directory
 // spelled that way and nowhere else.
-func PathPermission(path string) string {
-	if strings.HasPrefix(path, workflowDirectory) {
+func (k Kind) PathPermission(path string) string {
+	if k == KindFiles && strings.HasPrefix(path, workflowDirectory) {
 		return workflowPermission
 	}
 
@@ -421,7 +428,7 @@ func (c FileConfig) Permissions() []string {
 			continue
 		}
 
-		if permission := PathPermission(path); permission != "" &&
+		if permission := KindFiles.PathPermission(path); permission != "" &&
 			!slices.Contains(wanted, permission) {
 			wanted = append(wanted, permission)
 		}

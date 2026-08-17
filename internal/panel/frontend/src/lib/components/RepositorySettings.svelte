@@ -122,12 +122,19 @@
     return count === 0 ? undefined : count;
   }
 
+  /* What each pane is called, and by being a record rather than a growing chain,
+     which panes there are. A fifth is one line here instead of an alternative in
+     one condition and a branch in one ternary. */
+  const SECTION_LABELS: Record<RepositorySection, string> = {
+    file: 'File',
+    behavior: 'Behavior',
+    commands: 'Commands',
+    sync: 'Sync',
+  };
+
   /** Names the pane for a screen reader, which the switch above it does not. */
   function sectionLabel(pane: RepositorySection): string {
-    if (pane === 'file') return 'File';
-    if (pane === 'behavior') return 'Behavior';
-
-    return pane === 'commands' ? 'Commands' : 'Sync';
+    return SECTION_LABELS[pane];
   }
 </script>
 

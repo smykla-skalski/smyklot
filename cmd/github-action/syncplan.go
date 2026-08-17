@@ -55,26 +55,31 @@ func (s *server) planInstallationSync(
 
 	active := activeSyncKinds(ctx, configs, target)
 
-	overrides, err := s.store.ListSyncRepositoryOverrides(ctx, targetID)
-	if err != nil {
-		return fmt.Errorf("read sync overrides: %w", err)
-	}
-
-	repositories, err := s.store.ListRepositories(ctx, targetID)
-	if err != nil {
-		return fmt.Errorf("read sync repositories: %w", err)
-	}
-
 	applied, err := s.store.ListSyncRepositoryState(ctx, targetID)
 	if err != nil {
 		return fmt.Errorf("read sync repository state: %w", err)
 	}
 
-	// Before the early returns below, and that is the whole reason these three
-	// reads are up here: a refusal is only worth keeping while the planner is
-	// still looking, and the ways it stops looking include the kind being
-	// switched off - which is the case that returns first.
-	if err := s.clearStaleSyncProblems(ctx, active, repositories, overrides, applied); err != nil {
+	// The state is read first and the rest of the catalog only where something
+	// is going to use it. An installation with sync switched off returns below
+	// having read one table, which is what it did before a refusal had to be
+	// cleared - and a refusal to clear is the exception, not the tick.
+	if len(active) == 0 && !anyRefused(applied) {
+		return nil
+	}
+
+	held, err := s.syncInventoryFor(ctx, targetID, applied)
+	if err != nil {
+		return err
+	}
+
+	scopes := syncScopesFor(active, held)
+
+	// Before the early returns below, and that is the whole reason this runs
+	// here: a refusal is only worth keeping while the planner is still looking,
+	// and the ways it stops looking include the kind being switched off, which
+	// is the case that returns first.
+	if err := s.clearStaleSyncProblems(ctx, scopes, held); err != nil {
 		return err
 	}
 
@@ -93,11 +98,7 @@ func (s *server) planInstallationSync(
 		return fmt.Errorf("read live sync plan: %w", err)
 	}
 
-	actions, err := s.planSyncActions(ctx, client, active, syncInventory{
-		repositories: repositories,
-		overrides:    overrides,
-		applied:      applied,
-	})
+	actions, err := s.planSyncActions(ctx, client, active, scopes, held)
 	if err != nil {
 		return err
 	}
@@ -113,7 +114,7 @@ func (s *server) planInstallationSync(
 		TargetID:  targetID,
 		Trigger:   trigger,
 		ActorID:   syncActor(active),
-		Digest:    orgsync.DigestScope(configs, overrides),
+		Digest:    orgsync.DigestScope(configs, held.overrides),
 		Actions:   actions,
 		Now:       time.Now().UTC(),
 		ExpiresAt: time.Now().UTC().Add(syncPlanTTL),
@@ -208,6 +209,52 @@ type syncInventory struct {
 	applied      []orgsync.RepositoryState
 }
 
+// syncInventoryFor reads the rest of the catalog around state already in hand.
+func (s *server) syncInventoryFor(
+	ctx context.Context,
+	targetID string,
+	applied []orgsync.RepositoryState,
+) (syncInventory, error) {
+	repositories, err := s.store.ListRepositories(ctx, targetID)
+	if err != nil {
+		return syncInventory{}, fmt.Errorf("read sync repositories: %w", err)
+	}
+
+	overrides, err := s.store.ListSyncRepositoryOverrides(ctx, targetID)
+	if err != nil {
+		return syncInventory{}, fmt.Errorf("read sync overrides: %w", err)
+	}
+
+	return syncInventory{
+		repositories: repositories,
+		overrides:    overrides,
+		applied:      applied,
+	}, nil
+}
+
+// anyRefused reports state worth reading the rest of the catalog for.
+func anyRefused(applied []orgsync.RepositoryState) bool {
+	return slices.ContainsFunc(applied, func(state orgsync.RepositoryState) bool {
+		return state.Problem != ""
+	})
+}
+
+// syncScopesFor indexes what each active kind covers, once.
+//
+// Once, because two things ask: the planner, per repository, and the sweep
+// clearing refusals nothing is going to rewrite. Building it twice is what let
+// them answer the same question differently.
+func syncScopesFor(active []orgsync.Config, held syncInventory) map[orgsync.Kind]syncScope {
+	now := time.Now().UTC()
+	scopes := make(map[orgsync.Kind]syncScope, len(active))
+
+	for _, config := range active {
+		scopes[config.Kind] = newSyncScope(config, held.overrides, held.applied, now)
+	}
+
+	return scopes
+}
+
 // clearStaleSyncProblems takes a recorded refusal off a repository the planner
 // has stopped looking at.
 //
@@ -224,30 +271,41 @@ type syncInventory struct {
 // sweep either way.
 func (s *server) clearStaleSyncProblems(
 	ctx context.Context,
-	active []orgsync.Config,
-	repositories []storage.Repository,
-	overrides []orgsync.RepositoryOverride,
-	applied []orgsync.RepositoryState,
+	scopes map[orgsync.Kind]syncScope,
+	held syncInventory,
 ) error {
 	var (
 		now     = time.Now().UTC()
 		cleared []orgsync.RepositoryState
+		holding = map[string]storage.Repository{}
 	)
 
-	for _, state := range applied {
+	for _, repository := range held.repositories {
+		holding[repository.ID] = repository
+	}
+
+	for _, state := range held.applied {
 		if state.Problem == "" {
 			continue
 		}
 
-		if syncRunsOn(active, repositories, overrides, state) {
+		// An absent scope is a kind nothing is syncing - switched off for the
+		// installation, or waiting on a permission.
+		scope, syncing := scopes[state.Kind]
+		if !syncing {
+			cleared = append(cleared, clearedState(state, now))
+
 			continue
 		}
 
-		cleared = append(cleared, orgsync.RepositoryState{
-			RepositoryID: state.RepositoryID,
-			Kind:         state.Kind,
-			AppliedAt:    now,
-		})
+		// An absent repository is one the installation no longer holds, and the
+		// zero value it reads as is unavailable, which is what watches answers
+		// no to.
+		if scope.watches(holding[state.RepositoryID]) {
+			continue
+		}
+
+		cleared = append(cleared, clearedState(state, now))
 	}
 
 	if len(cleared) == 0 {
@@ -261,31 +319,16 @@ func (s *server) clearStaleSyncProblems(
 	return s.store.RecordSyncRepositoryState(ctx, cleared)
 }
 
-// syncRunsOn reports a kind the planner will look at this repository for, which
-// is the whole of what makes a recorded refusal current.
-func syncRunsOn(
-	active []orgsync.Config,
-	repositories []storage.Repository,
-	overrides []orgsync.RepositoryOverride,
-	state orgsync.RepositoryState,
-) bool {
-	if !slices.ContainsFunc(active, func(config orgsync.Config) bool {
-		return config.Kind == state.Kind
-	}) {
-		return false
+// clearedState is the row a repository keeps once its refusal is taken off:
+// what it is, with nothing known about it. Not a digest, because nothing has
+// looked, and not a deletion, because the row is what a repository has for a
+// kind and it is planned again either way once it comes back into scope.
+func clearedState(state orgsync.RepositoryState, now time.Time) orgsync.RepositoryState {
+	return orgsync.RepositoryState{
+		RepositoryID: state.RepositoryID,
+		Kind:         state.Kind,
+		AppliedAt:    now,
 	}
-
-	if !slices.ContainsFunc(repositories, func(repository storage.Repository) bool {
-		return repository.ID == state.RepositoryID && repository.Available
-	}) {
-		return false
-	}
-
-	return !slices.ContainsFunc(overrides, func(override orgsync.RepositoryOverride) bool {
-		return override.RepositoryID == state.RepositoryID &&
-			override.Kind == state.Kind &&
-			override.Enabled != nil && !*override.Enabled
-	})
 }
 
 // planSyncActions asks each repository in scope what it would take to match.
@@ -293,19 +336,19 @@ func (s *server) planSyncActions(
 	ctx context.Context,
 	client *github.Client,
 	active []orgsync.Config,
+	scopes map[orgsync.Kind]syncScope,
 	held syncInventory,
 ) ([]orgsync.Action, error) {
 	var (
 		actions []orgsync.Action
 		matched []orgsync.RepositoryState
-		now     = time.Now().UTC()
 	)
 
 	// Kind by kind, because each has its own configuration, its own fingerprint
 	// and its own record of what a repository already has. A repository settled
 	// for its labels may be out of date for its settings.
 	for _, config := range active {
-		scope := newSyncScope(config, held.overrides, held.applied, now)
+		scope := scopes[config.Kind]
 
 		ask, err := repositoryPlanner(client, config, scope.overrides)
 		if err != nil {
@@ -714,21 +757,29 @@ func newSyncScope(
 	return scope
 }
 
+// watches reports a repository this kind is being synced on at all.
+//
+// Everything about scope except how recently the repository was read, which is
+// the half the sweep asks on its own: a refusal is only worth keeping while
+// something is still going to rewrite it, and what stops that is a repository
+// leaving scope rather than a repository being up to date. Written once so the
+// two askers cannot come to different answers - a reason to fall out of scope
+// that only one of them knew about would leave a refusal nothing rewrites and
+// the panel stating it for ever.
+func (s syncScope) watches(repository storage.Repository) bool {
+	return repository.Available && !s.overrides[repository.ID].Disabled()
+}
+
 // covers reports a repository worth asking GitHub about.
 //
-// Two reasons to skip. A repository that turned this off, and a repository
-// whose recorded digest already matches what the configuration asks for and was
-// read recently enough for that to still mean something - the second is what
-// keeps a steady-state reconcile at zero API calls rather than one per
-// repository, which is the difference between a sweep that costs nothing and
-// one that spends an installation's whole hourly budget.
+// Two reasons to skip. A repository this kind is not synced on at all, and a
+// repository whose recorded digest already matches what the configuration asks
+// for and was read recently enough for that to still mean something - the
+// second is what keeps a steady-state reconcile at zero API calls rather than
+// one per repository, which is the difference between a sweep that costs
+// nothing and one that spends an installation's whole hourly budget.
 func (s syncScope) covers(repository storage.Repository) bool {
-	if !repository.Available {
-		return false
-	}
-
-	if override := s.overrides[repository.ID]; override != nil &&
-		override.Enabled != nil && !*override.Enabled {
+	if !s.watches(repository) {
 		return false
 	}
 

@@ -62,7 +62,7 @@ func equal(one, other any) bool {
 	case map[string]any:
 		right, ok := other.(map[string]any)
 
-		return ok && equalObjects(left, right)
+		return ok && equalMaps(left, right)
 
 	case map[any]any:
 		// go-yaml answers with this for any mapping that has a key which is not
@@ -70,7 +70,7 @@ func equal(one, other any) bool {
 		// which is a run-time panic rather than a wrong answer.
 		right, ok := other.(map[any]any)
 
-		return ok && equalAnyObjects(left, right)
+		return ok && equalMaps(left, right)
 
 	case []any:
 		right, ok := other.([]any)
@@ -78,7 +78,7 @@ func equal(one, other any) bool {
 		return ok && equalLists(left, right)
 
 	default:
-		if !comparable(one) || !comparable(other) {
+		if !canCompare(one) || !canCompare(other) {
 			// Nothing left that can be compared with ==, and reaching it would
 			// take the process down. Two values this cannot read are not the
 			// same value, which for a deduplication means both are kept.
@@ -89,11 +89,15 @@ func equal(one, other any) bool {
 	}
 }
 
-// comparable reports a value == will not panic on.
+// canCompare reports a value == will not panic on.
 //
 // A whitelist rather than a list of what to avoid: a shape nobody anticipated
 // answers false and is kept, where a blacklist would answer true and crash.
-func comparable(value any) bool {
+//
+// Not named for the builtin constraint it sounds like: this is a question about
+// one runtime value, and shadowing `comparable` puts the constraint out of
+// reach of every generic function in the package.
+func canCompare(value any) bool {
 	switch value.(type) {
 	case nil, bool, string, int, int64, uint64, float64, json.Number:
 		return true
@@ -103,22 +107,12 @@ func comparable(value any) bool {
 	}
 }
 
-func equalAnyObjects(one, other map[any]any) bool {
-	if len(one) != len(other) {
-		return false
-	}
-
-	for key, value := range one {
-		counterpart, present := other[key]
-		if !present || !equal(value, counterpart) {
-			return false
-		}
-	}
-
-	return true
-}
-
-func equalObjects(one, other map[string]any) bool {
+// equalMaps compares two objects key by key.
+//
+// Generic over the key, because a document arrives with string keys from JSON
+// and, where go-yaml met a key that is not a string, with any keys from YAML.
+// The comparison is the same one either way.
+func equalMaps[K comparable](one, other map[K]any) bool {
 	if len(one) != len(other) {
 		return false
 	}

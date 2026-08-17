@@ -112,9 +112,12 @@ var _ = Describe("Validating a merge [Unit]", func() {
 				},
 			},
 			"renovate.json", "the override at $.labels is not a list"),
+		// The overrides reach the path, so the shallow rule is the only thing
+		// wrong with this one.
 		Entry("a nested list under a shallow merge, which replaces the level above it",
 			filemerge.Spec{
-				Strategy: filemerge.StrategyShallow,
+				Strategy:  filemerge.StrategyShallow,
+				Overrides: overrides(`{"a": {"b": ["x"]}}`),
 				Arrays: []filemerge.ArrayRule{
 					{Path: "$.a.b", Strategy: filemerge.ArrayAppend},
 				},
