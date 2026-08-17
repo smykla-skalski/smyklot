@@ -115,5 +115,54 @@ var _ = Describe("Digests [Unit]", func() {
 				override("r3", orgsync.KindLabels, &yes),
 			))).NotTo(Equal(orgsync.DigestScope(configs, overrides)))
 		})
+
+		// A repository that edits its own adjustments and nothing else has to
+		// be planned again. Leaving them out is how it would keep the file it
+		// had while the configuration said something new.
+		It("changes when a repository changes what it adjusts", func() {
+			adjusting := func(document string) []orgsync.RepositoryOverride {
+				return []orgsync.RepositoryOverride{{
+					RepositoryID: "r1", Kind: orgsync.KindFiles, Document: []byte(document),
+				}}
+			}
+
+			Expect(orgsync.DigestScope(configs, adjusting(`{"excludes":["a"]}`))).
+				NotTo(Equal(orgsync.DigestScope(configs, adjusting(`{"excludes":["b"]}`))))
+		})
+	})
+
+	Describe("a repository and one kind", func() {
+		adjusting := func(document string) *orgsync.RepositoryOverride {
+			return &orgsync.RepositoryOverride{Document: []byte(document)}
+		}
+
+		It("is the same fingerprint for the same answer", func() {
+			Expect(orgsync.DigestRepositoryKind("aaa", adjusting(`{"a":1}`))).
+				To(Equal(orgsync.DigestRepositoryKind("aaa", adjusting(`{"a":1}`))))
+		})
+
+		It("changes when the installation's configuration changes", func() {
+			Expect(orgsync.DigestRepositoryKind("aaa", nil)).
+				NotTo(Equal(orgsync.DigestRepositoryKind("bbb", nil)))
+		})
+
+		// The value this writes when a repository settles is the value the next
+		// plan tests it against, so an adjustment left out here is a repository
+		// that never notices its own change.
+		It("changes when the repository changes what it adjusts", func() {
+			Expect(orgsync.DigestRepositoryKind("aaa", adjusting(`{"a":1}`))).
+				NotTo(Equal(orgsync.DigestRepositoryKind("aaa", adjusting(`{"a":2}`))))
+		})
+
+		It("changes when the repository switches the kind off", func() {
+			Expect(orgsync.DigestRepositoryKind("aaa", nil)).
+				NotTo(Equal(orgsync.DigestRepositoryKind(
+					"aaa", &orgsync.RepositoryOverride{Enabled: &no})))
+		})
+
+		It("reads a row that answers nothing as a repository that inherits", func() {
+			Expect(orgsync.DigestRepositoryKind("aaa", nil)).
+				To(Equal(orgsync.DigestRepositoryKind("aaa", &orgsync.RepositoryOverride{})))
+		})
 	})
 })

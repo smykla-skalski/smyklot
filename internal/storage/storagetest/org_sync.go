@@ -184,6 +184,50 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 			Expect(listed[0].Enabled).To(BeNil())
 		})
 
+		It("keeps what a repository adjusts, byte for byte", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+
+			// Spaced and ordered the way somebody typed it. The bytes are what
+			// the digest beside them is taken from, so an engine that
+			// re-rendered the document would disagree with the other about
+			// whether a repository has settled.
+			document := []byte(`{"merges":[{"path":"renovate.json",` +
+				`"overrides":{"timezone":"Europe/Warsaw"}}]}`)
+
+			written, err := store.SetSyncRepositoryOverride(
+				ctx, orgsync.RepositoryOverrideChange{
+					RepositoryID: repoA, Kind: orgsync.KindFiles, Document: document,
+					ActorID: account.ID, Now: now,
+				})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(written.Document)).To(Equal(string(document)))
+
+			listed, err := store.ListSyncRepositoryOverrides(ctx, target)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(listed).To(HaveLen(1))
+			Expect(string(listed[0].Document)).To(Equal(string(document)))
+			Expect(listed[0].Enabled).To(BeNil())
+		})
+
+		It("reads a repository that adjusts nothing as adjusting nothing", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			yes := true
+
+			written, err := store.SetSyncRepositoryOverride(
+				ctx, orgsync.RepositoryOverrideChange{
+					RepositoryID: repoA, Kind: orgsync.KindFiles, Enabled: &yes,
+					ActorID: account.ID, Now: now,
+				})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(written.Document)).To(Equal("{}"))
+
+			listed, err := store.ListSyncRepositoryOverrides(ctx, target)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(listed[0].Document)).To(Equal("{}"))
+		})
+
 		It("refuses an override for a repository nothing knows about", func() {
 			ctx, store, now := runtime()
 			seed(ctx, store, now)

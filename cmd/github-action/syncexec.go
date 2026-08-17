@@ -364,7 +364,7 @@ func unavailableForTarget(
 // work lands.
 type syncDigestIndex struct {
 	configs   map[orgsync.Kind]string
-	overrides map[string]map[orgsync.Kind]*bool
+	overrides map[string]map[orgsync.Kind]*orgsync.RepositoryOverride
 }
 
 func (i syncDigestIndex) of(repositoryID string, kind orgsync.Kind) string {
@@ -386,7 +386,7 @@ func (s *server) syncDigests(ctx context.Context, targetID string) (syncDigestIn
 
 	index := syncDigestIndex{
 		configs:   make(map[orgsync.Kind]string, len(configs)),
-		overrides: map[string]map[orgsync.Kind]*bool{},
+		overrides: map[string]map[orgsync.Kind]*orgsync.RepositoryOverride{},
 	}
 
 	for _, config := range configs {
@@ -394,9 +394,10 @@ func (s *server) syncDigests(ctx context.Context, targetID string) (syncDigestIn
 	}
 	for _, override := range overrides {
 		if index.overrides[override.RepositoryID] == nil {
-			index.overrides[override.RepositoryID] = map[orgsync.Kind]*bool{}
+			index.overrides[override.RepositoryID] =
+				map[orgsync.Kind]*orgsync.RepositoryOverride{}
 		}
-		index.overrides[override.RepositoryID][override.Kind] = override.Enabled
+		index.overrides[override.RepositoryID][override.Kind] = &override
 	}
 
 	return index, nil

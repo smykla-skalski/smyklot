@@ -34,11 +34,11 @@ func DigestConfig(enabled bool, document []byte) string {
 // The planner and the executor both call this, so the value recorded is the
 // value the next plan will test - two spellings of the same idea would drift
 // and the drift would look like a repository that never settles.
-func DigestRepositoryKind(configDigest string, enabled *bool) string {
+func DigestRepositoryKind(configDigest string, override *RepositoryOverride) string {
 	sum := sha256.New()
 
 	writeField(sum, configDigest)
-	writeField(sum, describeOverride(enabled))
+	writeField(sum, describeOverride(override))
 
 	return hex.EncodeToString(sum.Sum(nil))
 }
@@ -60,7 +60,7 @@ func DigestScope(configs []Config, overrides []RepositoryOverride) string {
 	for _, override := range overrides {
 		entries = append(entries,
 			"override\x00"+override.RepositoryID+"\x00"+string(override.Kind)+
-				"\x00"+describeOverride(override.Enabled))
+				"\x00"+describeOverride(&override))
 	}
 
 	// Sorted, because neither list arrives in a guaranteed order and a digest
@@ -76,16 +76,33 @@ func DigestScope(configs []Config, overrides []RepositoryOverride) string {
 	return hex.EncodeToString(sum.Sum(nil))
 }
 
-// describeOverride spells the three states of a nullable boolean apart.
-// Rendering nil as "false" would make "inherits, and the installation says no"
-// identical to "this repository says no", which are different configurations
-// that stop being different the moment the installation changes its mind.
-func describeOverride(enabled *bool) string {
-	if enabled == nil {
+// describeOverride renders a repository's whole answer about one kind: whether
+// it runs, and what the repository adjusts about it.
+//
+// Both halves, because either one changing changes the work. A repository that
+// edits its own adjustments and nothing else has to be planned again, and
+// leaving them out is how it would keep the file it had while the configuration
+// said something new.
+//
+// A nil override is one the repository has never given, which is not the same
+// as one that says no: rendering it as "false" would make "inherits, and the
+// installation says no" identical to "this repository says no", and those stop
+// being the same the moment the installation changes its mind.
+func describeOverride(override *RepositoryOverride) string {
+	if override == nil {
 		return "inherit"
 	}
 
-	return strconv.FormatBool(*enabled)
+	enabled := "inherit"
+	if override.Enabled != nil {
+		enabled = strconv.FormatBool(*override.Enabled)
+	}
+
+	if len(override.Document) == 0 {
+		return enabled
+	}
+
+	return enabled + "\x00" + string(override.Document)
 }
 
 // writeField length-prefixes a value so that a sequence of them can only be

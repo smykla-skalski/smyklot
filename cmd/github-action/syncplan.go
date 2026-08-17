@@ -446,7 +446,7 @@ const syncRecheckInterval = 6 * time.Hour
 // syncScope answers which repositories a plan covers.
 type syncScope struct {
 	config    orgsync.Config
-	overrides map[string]*bool
+	overrides map[string]*orgsync.RepositoryOverride
 	applied   map[string]orgsync.RepositoryState
 	now       time.Time
 }
@@ -459,7 +459,7 @@ func newSyncScope(
 ) syncScope {
 	scope := syncScope{
 		config:    config,
-		overrides: map[string]*bool{},
+		overrides: map[string]*orgsync.RepositoryOverride{},
 		applied:   map[string]orgsync.RepositoryState{},
 		now:       now,
 	}
@@ -471,7 +471,7 @@ func newSyncScope(
 	// wrong one's answer.
 	for _, override := range overrides {
 		if override.Kind == config.Kind {
-			scope.overrides[override.RepositoryID] = override.Enabled
+			scope.overrides[override.RepositoryID] = &override
 		}
 	}
 	for _, state := range applied {
@@ -496,8 +496,8 @@ func (s syncScope) covers(repository storage.Repository) bool {
 		return false
 	}
 
-	enabled, overridden := s.overrides[repository.ID]
-	if overridden && enabled != nil && !*enabled {
+	if override := s.overrides[repository.ID]; override != nil &&
+		override.Enabled != nil && !*override.Enabled {
 		return false
 	}
 

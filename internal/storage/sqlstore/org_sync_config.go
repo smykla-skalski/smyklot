@@ -184,11 +184,12 @@ func scanSyncOverride(scanner rowScanner) (orgsync.RepositoryOverride, error) {
 	var (
 		override orgsync.RepositoryOverride
 		enabled  sql.NullBool
+		document string
 		updated  StoredTime
 	)
 
 	if err := scanner.Scan(
-		&override.RepositoryID, &override.Kind, &enabled,
+		&override.RepositoryID, &override.Kind, &enabled, &document,
 		&override.Revision, &override.UpdatedBy, &updated,
 	); err != nil {
 		return orgsync.RepositoryOverride{}, fmt.Errorf("scan sync override: %w", err)
@@ -197,9 +198,21 @@ func scanSyncOverride(scanner rowScanner) (orgsync.RepositoryOverride, error) {
 	if enabled.Valid {
 		override.Enabled = &enabled.Bool
 	}
+
+	override.Document = []byte(document)
 	override.UpdatedAt = updated.Time()
 
 	return override, nil
+}
+
+// syncDocumentColumn is what a document column holds where a caller passed
+// nothing, so the value stored and the column's own default agree.
+func syncDocumentColumn(document []byte) string {
+	if len(document) == 0 {
+		return emptyDocument
+	}
+
+	return string(document)
 }
 
 // ListSyncRepositoryOverrides reads every repository answer in an installation.
@@ -212,7 +225,8 @@ func (s *Store) ListSyncRepositoryOverrides(
 	targetID string,
 ) ([]orgsync.RepositoryOverride, error) {
 	rows, err := s.db.QueryContext(ctx, `
-SELECT o.repository_id, o.kind, o.enabled_override, o.revision, o.updated_by, o.updated_at
+SELECT o.repository_id, o.kind, o.enabled_override, o.document,
+       o.revision, o.updated_by, o.updated_at
 FROM sync_repository_overrides o
 JOIN repositories r ON r.id = o.repository_id
 WHERE r.target_id = ?
@@ -271,6 +285,7 @@ func (s *Store) SetSyncRepositoryOverride(
 		RepositoryID: change.RepositoryID,
 		Kind:         change.Kind,
 		Enabled:      change.Enabled,
+		Document:     []byte(syncDocumentColumn(change.Document)),
 		Revision:     revision,
 		UpdatedBy:    change.ActorID,
 		UpdatedAt:    change.Now,
@@ -297,10 +312,10 @@ WHERE repository_id = ? AND kind = ?`+s.dialect.RowLock(),
 
 		if _, err := tx.ExecContext(ctx, `
 INSERT INTO sync_repository_overrides (
-    repository_id, kind, enabled_override, revision, updated_by, updated_at
-) VALUES (?, ?, ?, 1, ?, ?)`,
+    repository_id, kind, enabled_override, document, revision, updated_by, updated_at
+) VALUES (?, ?, ?, ?, 1, ?, ?)`,
 			change.RepositoryID, change.Kind, change.Enabled,
-			change.ActorID, change.Now,
+			syncDocumentColumn(change.Document), change.ActorID, change.Now,
 		); err != nil {
 			return 0, fmt.Errorf("insert sync override: %w", err)
 		}
@@ -316,9 +331,10 @@ INSERT INTO sync_repository_overrides (
 
 	if _, err := tx.ExecContext(ctx, `
 UPDATE sync_repository_overrides SET
-    enabled_override = ?, revision = revision + 1, updated_by = ?, updated_at = ?
+    enabled_override = ?, document = ?,
+    revision = revision + 1, updated_by = ?, updated_at = ?
 WHERE repository_id = ? AND kind = ?`,
-		change.Enabled, change.ActorID, change.Now,
+		change.Enabled, syncDocumentColumn(change.Document), change.ActorID, change.Now,
 		change.RepositoryID, change.Kind,
 	); err != nil {
 		return 0, fmt.Errorf("update sync override: %w", err)

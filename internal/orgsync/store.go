@@ -49,17 +49,28 @@ type RepositoryOverride struct {
 	RepositoryID string
 	Kind         Kind
 	Enabled      *bool
-	Revision     int64
-	UpdatedBy    string
-	UpdatedAt    time.Time
+
+	// Document is what this repository adjusts about the kind, as the kind
+	// spells it. Empty where it adjusts nothing.
+	//
+	// Against the repository's own row rather than keyed by name inside the
+	// installation's document, so a rename cannot orphan an adjustment: a file
+	// sync that quietly stopped applying one would write the plain template
+	// over exactly the customization it described.
+	Document []byte
+
+	Revision  int64
+	UpdatedBy string
+	UpdatedAt time.Time
 }
 
 // RepositoryOverrideChange writes one, or clears it back to inheriting by
-// passing a nil Enabled.
+// passing a nil Enabled and an empty Document.
 type RepositoryOverrideChange struct {
 	RepositoryID string
 	Kind         Kind
 	Enabled      *bool
+	Document     []byte
 	ActorID      string
 	Now          time.Time
 	Revision     int64

@@ -1,0 +1,20 @@
+-- What one repository adjusts about one kind of sync.
+--
+-- Until now a repository could only answer whether a kind ran for it. That is
+-- enough for labels, settings and rulesets, which are the same everywhere the
+-- installation switches them on. Files are not: a repository knows things the
+-- template cannot, and three repositories in the organization this replaces a
+-- tool for already keep local adjustments to their Renovate configuration.
+--
+-- Against the repository's own row rather than keyed by name inside the
+-- installation's document, so a rename cannot orphan an adjustment. A file sync
+-- that quietly stopped applying one would write the plain template over exactly
+-- the customization it described.
+--
+-- TEXT rather than JSONB for the reason every other document here is: nothing
+-- queries into it, it is read whole, and a column that re-renders its contents
+-- makes the two engines hand back different bytes for the same row.
+--
+-- Empty by default, which every kind reads as "this repository adjusts
+-- nothing".
+ALTER TABLE sync_repository_overrides ADD COLUMN document TEXT NOT NULL DEFAULT '{}';

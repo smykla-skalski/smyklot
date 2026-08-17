@@ -430,6 +430,19 @@ func (s *seeder) seedOrgSync() error {
 		return err
 	}
 
+	// A second override, carrying a document rather than an answer about
+	// whether the kind runs. Both halves of the row are filled, so a copy
+	// between engines is proven on one that has something in every column
+	// rather than on one that is empty on both sides.
+	if _, err := s.store.SetSyncRepositoryOverride(
+		s.ctx, orgsync.RepositoryOverrideChange{
+			RepositoryID: "repo-1", Kind: orgsync.KindFiles,
+			Document: []byte(`{"excludes":["renovate.json"]}`),
+			ActorID:  s.owner.ID, Now: s.now,
+		}); err != nil {
+		return err
+	}
+
 	if err := s.seedFinishedSyncPlan(config.Digest); err != nil {
 		return err
 	}

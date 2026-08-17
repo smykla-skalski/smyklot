@@ -67,6 +67,11 @@ func unmarshalPatch(content string) (config.Patch, error) {
 	return patch, nil
 }
 
+// emptyDocument is how absence is written into a JSON column: one shape, so a
+// reader gets "nothing here" from one thing rather than from two. It matches
+// what the columns themselves default to.
+const emptyDocument = "{}"
+
 // marshalPermissions encodes what an installation granted.
 //
 // An empty map is stored as an empty object rather than as null, so a reader
@@ -74,7 +79,7 @@ func unmarshalPatch(content string) (config.Patch, error) {
 // how a caller comes to handle one and not the other.
 func marshalPermissions(permissions map[string]string) (string, error) {
 	if len(permissions) == 0 {
-		return "{}", nil
+		return emptyDocument, nil
 	}
 
 	content, err := json.Marshal(permissions)
