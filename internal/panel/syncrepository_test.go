@@ -2,6 +2,7 @@ package panel
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -228,6 +229,79 @@ func TestSyncOverrideSaysWhyAnAdjustmentCannotBeChecked(t *testing.T) {
 	}
 }
 
+// TestSyncOverrideStillSavesWhatARepositoryAlreadyHad keeps the off switch
+// reachable.
+//
+// The form sends the whole document on every save, so an adjustment saved
+// earlier rides along with a save that only touched the switch. Checked against
+// the installation's configuration like a new one, that made the repository
+// whose adjustment no longer fits - the one somebody has come to clean up or
+// switch off - the one repository that cannot be changed at all, and the way
+// out was to delete the customization to reach the switch.
+func TestSyncOverrideStillSavesWhatARepositoryAlreadyHad(t *testing.T) {
+	for name, moved := range map[string]string{
+		"the file left the installation's list": `{"files":[
+			{"path":"CONTRIBUTING.md","content":"# Contributing\n"}]}`,
+		"the installation's document cannot be read": `{"files": [ this is not json`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			harness := newPanelHarness(t, "owner")
+			session := harness.signIn(t)
+
+			configured := harness.request(t, http.MethodPut, configPath+"files",
+				strings.NewReader(`{"enabled":true,"expected_revision":0,"document":{"files":[
+					{"path":"renovate.json","content":"{}"}]}}`), session)
+			if configured.Code != http.StatusOK {
+				t.Fatalf("configuring the files = %d %s",
+					configured.Code, configured.Body.String())
+			}
+
+			saved := harness.request(t, http.MethodPut, overridePath+"files",
+				strings.NewReader(
+					`{"enabled":null,"expected_revision":0,"document":{"merges":[
+						{"path":"renovate.json","overrides":{"timezone":"Europe/Warsaw"}}]}}`),
+				session)
+			if saved.Code != http.StatusOK {
+				t.Fatalf("saving the adjustment = %d %s", saved.Code, saved.Body.String())
+			}
+
+			// The installation moves underneath, which is nothing this
+			// repository did. Written past the panel for the unreadable case,
+			// which is the only way one gets in.
+			if _, err := harness.store.SetSyncConfig(t.Context(), orgsync.ConfigChange{
+				TargetID: "github:installation:10", Kind: orgsync.KindFiles, Enabled: true,
+				Document: []byte(moved), ActorID: "github:test:user:1",
+				Now: time.Now().UTC(), Revision: 1,
+			}); err != nil {
+				t.Fatal(err)
+			}
+
+			// The switch, with the stored adjustment riding along exactly as the
+			// form sends it.
+			off := harness.request(t, http.MethodPut, overridePath+"files",
+				strings.NewReader(
+					`{"enabled":false,"expected_revision":1,"document":{"merges":[
+						{"path":"renovate.json","overrides":{"timezone":"Europe/Warsaw"}}]}}`),
+				session)
+			if off.Code != http.StatusOK {
+				t.Fatalf("switching the sync off = %d %s", off.Code, off.Body.String())
+			}
+
+			// And a genuinely new adjustment is still checked, so this excuses
+			// what was already there rather than the check itself.
+			added := harness.request(t, http.MethodPut, overridePath+"files",
+				strings.NewReader(
+					`{"enabled":false,"expected_revision":2,"document":{"merges":[
+						{"path":"renovate.json","overrides":{"timezone":"Europe/Warsaw"}},
+						{"path":"package.json"}]}}`),
+				session)
+			if added.Code != http.StatusBadRequest {
+				t.Fatalf("adding an adjustment = %d %s", added.Code, added.Body.String())
+			}
+		})
+	}
+}
+
 // TestSyncOverrideAnswersAKindNobodyHasAdjusted keeps the shape one thing for a
 // browser: a repository that has never answered reads the same way as one that
 // has, rather than as a 404 it would have to guard against.
@@ -398,6 +472,54 @@ func TestSyncOverrideKeepsARefusalThroughASave(t *testing.T) {
 
 	if answer.Problem == "" {
 		t.Error("a save reported the repository as fine, and nothing had looked at it")
+	}
+}
+
+// TestSyncConfigTakesTheTemplatesItValidates keeps the limit that is checked
+// reachable through the only writer there is.
+//
+// The files kind allows a megabyte of templates in total, and the request body
+// was capped at 64 KiB - so a dozen medium workflow files pasted into the form
+// were truncated and refused as invalid JSON, sending whoever pasted them
+// looking for a syntax error in a YAML file that has none.
+func TestSyncConfigTakesTheTemplatesItValidates(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+	session := harness.signIn(t)
+
+	// Comfortably past the old cap and inside what FileConfig allows.
+	document := fmt.Sprintf(
+		`{"enabled":true,"expected_revision":0,"document":{"files":[
+			{"path":"CONTRIBUTING.md","content":%q}]}}`,
+		strings.Repeat("a line of a shared template\n", 4000))
+
+	saved := harness.request(t, http.MethodPut, configPath+"files",
+		strings.NewReader(document), session)
+	if saved.Code != http.StatusOK {
+		t.Fatalf("saving %d bytes of templates = %d %s",
+			len(document), saved.Code, saved.Body.String())
+	}
+}
+
+// And the other half: past the bound it is a refusal that says so, rather than
+// one that blames the JSON.
+func TestSyncConfigSaysWhenTheRequestIsTooLarge(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+	session := harness.signIn(t)
+
+	document := fmt.Sprintf(
+		`{"enabled":true,"expected_revision":0,"document":{"files":[
+			{"path":"CONTRIBUTING.md","content":%q}]}}`,
+		strings.Repeat("x", 5<<20))
+
+	refused := harness.request(t, http.MethodPut, configPath+"files",
+		strings.NewReader(document), session)
+	if refused.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("saving an oversized document = %d %s",
+			refused.Code, refused.Body.String())
+	}
+	if !strings.Contains(refused.Body.String(), "larger than") {
+		t.Errorf("refusal = %s, wanted it to say the request is too large",
+			refused.Body.String())
 	}
 }
 

@@ -285,6 +285,30 @@ describe('PanelSession [Unit]', () => {
       ]),
     );
   });
+
+  /**
+   * Keys match by prefix, and what a repository says about a kind of sync is
+   * under one of its own, so none of the keys above reaches it. Left out, a
+   * colleague's save leaves this browser rendering the document it already had
+   * and sending the revision that came with it, so every Save it tries is
+   * answered 409 "settings changed in another session" until the page is
+   * reloaded.
+   */
+  it('refreshes what a repository adjusts after a remote repository change', () => {
+    const queryClient = new QueryClient();
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue();
+    const session = createSession(queryClient);
+
+    session.invalidateChange({
+      version: 1,
+      type: 'repository.changed',
+      target_id: 'target-1',
+      repository_id: 'repository-1',
+    });
+
+    const keys = invalidate.mock.calls.map(([filters]) => filters?.queryKey);
+    expect(keys).toEqual(expect.arrayContaining([['sync-override', 'target-1']]));
+  });
 });
 
 /** Puts a session on one repository's Commands pane, which is the page Return has to name. */

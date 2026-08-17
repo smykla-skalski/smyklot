@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
@@ -143,8 +144,11 @@ func (s *Server) putSyncOverride(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A repository's adjustments are overrides rather than whole files, but they
+	// are read against the same document, and a limit that differed between the
+	// two would refuse a save the page that made it thought it could make.
 	var input syncOverrideRequest
-	if !decodeJSON(w, r, &input) {
+	if !decodeJSONWithin(w, r, &input, maxDocumentBody) {
 		return
 	}
 	if !input.Enabled.Present || input.ExpectedRevision == nil {
@@ -154,7 +158,8 @@ func (s *Server) putSyncOverride(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	document, err := s.syncOverrideDocument(r, target.ID, kind, input.Document)
+	document, err := s.syncOverrideDocument(
+		r, target.ID, repository.ID, kind, input.Document)
 	if err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid_sync_override", err.Error())
 
@@ -189,7 +194,7 @@ func (s *Server) putSyncOverride(w http.ResponseWriter, r *http.Request) {
 // installation synchronizes, and answers what to store.
 func (s *Server) syncOverrideDocument(
 	r *http.Request,
-	targetID string,
+	targetID, repositoryID string,
 	kind orgsync.Kind,
 	document json.RawMessage,
 ) ([]byte, error) {
@@ -211,15 +216,22 @@ func (s *Server) syncOverrideDocument(
 		return nil, err
 	}
 
+	keeping := s.alreadyAdjusted(r, targetID, repositoryID)
+
 	// An adjustment is checked against the files the installation
-	// synchronizes, so those are read where there is an adjustment to check
-	// and not otherwise. What a repository wants left alone names paths rather
-	// than fitting them, so it saves whether or not that page can be read -
-	// taking the one control that narrows sync away because of a problem on
-	// somebody else's would take it away at the worst moment.
+	// synchronizes, so those are read where this save introduces one to check
+	// and not otherwise.
+	//
+	// Two things are not introduced. What a repository wants left alone names
+	// paths rather than fitting them, and an adjustment it already had was
+	// checked when it was saved. Neither should turn on a page that may be
+	// unreadable for reasons on somebody else's screen: taking the one control
+	// that narrows sync away because of a problem elsewhere would take it away
+	// at the worst moment, and the form always re-sends the whole document, so
+	// every save carried every stored adjustment back through this.
 	var config orgsync.FileConfig
 
-	if len(adjustments.Merges) > 0 {
+	if adjustsBeyond(adjustments, keeping) {
 		read, err := s.syncFileConfig(r, targetID)
 		if err != nil {
 			return nil, err
@@ -228,11 +240,46 @@ func (s *Server) syncOverrideDocument(
 		config = read
 	}
 
-	if err := adjustments.Validate(config); err != nil {
+	if err := adjustments.ValidateAgainst(config, keeping); err != nil {
 		return nil, err
 	}
 
 	return json.Marshal(adjustments)
+}
+
+// adjustsBeyond reports a save naming a path this repository was not already
+// adjusting, which is the only thing the installation's configuration decides.
+func adjustsBeyond(adjustments orgsync.FileOverride, keeping []string) bool {
+	for _, path := range adjustments.Adjusted() {
+		if !slices.Contains(keeping, path) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// alreadyAdjusted is what this repository's saved answer adjusts.
+//
+// Nothing where there is no row, or where the row holds a document this
+// version cannot read. That is the safe direction: the save is then checked as
+// though every adjustment in it were new.
+func (s *Server) alreadyAdjusted(
+	r *http.Request,
+	targetID, repositoryID string,
+) []string {
+	stored, err := s.store.GetSyncRepositoryOverride(
+		r.Context(), targetID, repositoryID, orgsync.KindFiles)
+	if err != nil {
+		return nil
+	}
+
+	var saved orgsync.FileOverride
+	if err := json.Unmarshal(stored.Document, &saved); err != nil {
+		return nil
+	}
+
+	return saved.Adjusted()
 }
 
 // syncFileConfig reads what the installation synchronizes.

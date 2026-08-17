@@ -432,12 +432,41 @@ func parentPath(filePath string) string {
 	return parent
 }
 
+// Adjusted is every path this override adjusts, in the order it names them.
+func (o FileOverride) Adjusted() []string {
+	paths := make([]string, 0, len(o.Merges))
+	for _, merge := range o.Merges {
+		paths = append(paths, merge.Path)
+	}
+
+	return paths
+}
+
 // Validate reports a repository's own adjustments that could never be applied.
 //
 // Checked against the installation's files, because an adjustment to a file
 // nobody syncs is the same silence as a mistyped path: it reads as configured
 // and does nothing.
 func (o FileOverride) Validate(config FileConfig) error {
+	return o.ValidateAgainst(config, nil)
+}
+
+// ValidateAgainst is the same check with the paths a repository already adjusts
+// excused from one part of it.
+//
+// One part, and only one: whether the path is among the files the installation
+// synchronizes. That is the single check here that turns on somebody else's
+// configuration, and a repository that saved an adjustment while it did fit
+// cannot be held to a document that moved underneath afterwards. Refusing the
+// save takes this page away from the one person who needs it, because the
+// repository whose adjustment no longer fits is exactly the one somebody has
+// come to clean up or switch off - and the way out was to delete the
+// customization to reach the switch.
+//
+// The path's shape, the duplicates, and whether the merge is one the file it
+// names could take are checked as always. None of them is about the
+// installation.
+func (o FileOverride) ValidateAgainst(config FileConfig, keeping []string) error {
 	if err := o.Exclusions().Validate(); err != nil {
 		return err
 	}
@@ -454,7 +483,7 @@ func (o FileOverride) Validate(config FileConfig) error {
 			return invalid("%q is adjusted twice", earlier)
 		}
 
-		if !slices.Contains(paths, merge.Path) {
+		if !slices.Contains(paths, merge.Path) && !slices.Contains(keeping, merge.Path) {
 			return invalid("%q is adjusted here and is not one of the files synchronized",
 				merge.Path)
 		}

@@ -171,8 +171,10 @@ func (s *Server) putSyncConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The one request here measured in files: a files configuration carries
+	// every template the organization keeps in step.
 	var input syncConfigRequest
-	if !decodeJSON(w, r, &input) {
+	if !decodeJSONWithin(w, r, &input, maxDocumentBody) {
 		return
 	}
 	if input.Enabled == nil || input.ExpectedRevision == nil {
