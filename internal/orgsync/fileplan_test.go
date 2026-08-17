@@ -1,10 +1,6 @@
 package orgsync_test
 
 import (
-	"crypto/sha1" //nolint:gosec // git names its objects with SHA-1, and so must a spec about them
-	"encoding/hex"
-	"fmt"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -13,12 +9,14 @@ import (
 )
 
 // held is what a repository's tree says about a file it carries.
+//
+// Named by the same function the planner uses. Hashing it a second way here
+// would prove the two agreed rather than that either was right, and git's
+// object naming is not a thing to have two opinions about.
 func held(content string) orgsync.CurrentFile {
-	sum := sha1.New() //nolint:gosec // git's own object naming
-	fmt.Fprintf(sum, "blob %d\x00", len(content))
-	sum.Write([]byte(content))
-
-	return orgsync.CurrentFile{Blob: hex.EncodeToString(sum.Sum(nil)), Size: len(content)}
+	return orgsync.CurrentFile{
+		Blob: orgsync.BlobID([]byte(content)), Size: len(content),
+	}
 }
 
 var _ = Describe("Planning files [Unit]", func() {

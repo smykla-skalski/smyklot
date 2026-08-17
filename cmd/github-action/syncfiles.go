@@ -67,7 +67,7 @@ func readRepositoryFiles(
 	// requests, for the handful of repositories that are that large.
 	logging.From(ctx).Info(
 		"this repository's tree is too large to list, so its files are read one at a time",
-		"paths", len(config.Files)+len(config.Retired))
+		"paths", len(config.Managed()))
 
 	return readFilesOneAtATime(ctx, client, target, config)
 }

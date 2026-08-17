@@ -18,7 +18,7 @@
    * can close.
    */
   import { canonicalStringify } from '#lib/preferences-sync.js';
-  import { asList, lines } from '#lib/text-lines.js';
+  import { asList, lines, rowKeys } from '#lib/form-lists.js';
   import type { SyncFile } from '#lib/types.js';
 
   import SyncDocumentForm from './SyncDocumentForm.svelte';
@@ -103,10 +103,7 @@
     drafts = drafts.filter((_, at) => at !== index);
   }
 
-  /** A stable handle for a row nobody has named yet, so typing does not remount it. */
-  function rowKey(index: number): string {
-    return `file-${index}`;
-  }
+  const rowKey = rowKeys('file');
 </script>
 
 <SyncDocumentForm

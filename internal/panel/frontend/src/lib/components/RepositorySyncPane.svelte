@@ -13,7 +13,7 @@
    * customization it described.
    */
   import { canonicalStringify } from '#lib/preferences-sync.js';
-  import { asList, lines } from '#lib/text-lines.js';
+  import { asList, lines, rowKeys } from '#lib/form-lists.js';
   import type { SyncFileMerge, SyncOverride } from '#lib/types.js';
 
   import InheritControl from './InheritControl.svelte';
@@ -65,8 +65,13 @@
 
   const disabled = $derived(saving || readOnly || stored.unreadable);
 
+  /* Read once per draft rather than once per question. Both the refusal below
+     and the payload need to know what a box says, and parsing it twice for
+     that is parsing every adjustment twice on every keystroke. */
+  const values = $derived(drafts.map((draft) => parsed(draft.text)));
+
   /** The first adjustment whose overrides are not JSON, or nothing. */
-  const malformed = $derived(drafts.findIndex((draft) => parsed(draft.text) === undefined));
+  const malformed = $derived(values.findIndex((value) => value === undefined));
 
   const payload = $derived(asDocument());
 
@@ -91,7 +96,7 @@
     const document: Record<string, unknown> = { ...stored.document };
 
     if (drafts.length > 0) {
-      document.merges = drafts.map(withOverrides);
+      document.merges = drafts.map((draft, at) => withOverrides(draft, values[at]));
     } else {
       delete document.merges;
     }
@@ -118,8 +123,7 @@
     );
   }
 
-  function withOverrides(draft: Draft): SyncFileMerge {
-    const value = parsed(draft.text);
+  function withOverrides(draft: Draft, value: Record<string, unknown> | undefined): SyncFileMerge {
     if (value !== undefined && Object.keys(value).length > 0) {
       return { ...draft.merge, overrides: value };
     }
@@ -180,9 +184,7 @@
     drafts = drafts.filter((_, at) => at !== index);
   }
 
-  function rowKey(index: number): string {
-    return `merge-${index}`;
-  }
+  const rowKey = rowKeys('merge');
 
   function enablementValue(): string | null {
     if (wanted === null) return null;

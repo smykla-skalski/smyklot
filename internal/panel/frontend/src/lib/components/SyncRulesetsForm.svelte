@@ -12,7 +12,7 @@
    * point of there being one.
    */
   import { canonicalStringify } from '#lib/preferences-sync.js';
-  import { asList, lines } from '#lib/text-lines.js';
+  import { asList, lines, rowKeys } from '#lib/form-lists.js';
   import type {
     SyncRuleset,
     SyncRulesetBypassActor,
@@ -324,10 +324,7 @@
     });
   }
 
-  /** A stable handle for a row nobody has named yet, so typing does not remount it. */
-  function rowKey(index: number): string {
-    return `ruleset-${index}`;
-  }
+  const rowKey = rowKeys('ruleset');
 </script>
 
 <!--
