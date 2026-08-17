@@ -369,13 +369,14 @@ WHERE repository_id = ? AND kind = ?`,
 	return current + 1, nil
 }
 
-// ListSyncRepositoryState reads what each repository has already had applied.
+// ListSyncRepositoryState reads what is known about each repository: what it
+// has already had applied, or why nothing could be.
 func (s *Store) ListSyncRepositoryState(
 	ctx context.Context,
 	targetID string,
 ) ([]orgsync.RepositoryState, error) {
 	rows, err := s.db.QueryContext(ctx, `
-SELECT s.repository_id, s.kind, s.applied_digest, s.applied_at
+SELECT s.repository_id, s.kind, s.applied_digest, s.applied_at, s.problem
 FROM sync_repository_state s
 JOIN repositories r ON r.id = s.repository_id
 WHERE r.target_id = ?
@@ -384,18 +385,39 @@ ORDER BY s.repository_id, s.kind`, targetID)
 		return nil, fmt.Errorf("list sync repository state: %w", err)
 	}
 
-	return collectRows(rows, func(scanner rowScanner) (orgsync.RepositoryState, error) {
-		var (
-			state   orgsync.RepositoryState
-			applied StoredTime
-		)
-		if err := scanner.Scan(
-			&state.RepositoryID, &state.Kind, &state.AppliedDigest, &applied,
-		); err != nil {
-			return orgsync.RepositoryState{}, fmt.Errorf("scan sync repository state: %w", err)
-		}
-		state.AppliedAt = applied.Time()
+	return collectRows(rows, scanSyncRepositoryState)
+}
 
-		return state, nil
-	})
+// GetSyncRepositoryState reads one repository's row for one kind.
+func (s *Store) GetSyncRepositoryState(
+	ctx context.Context,
+	repositoryID string,
+	kind orgsync.Kind,
+) (orgsync.RepositoryState, error) {
+	row := s.db.QueryRowContext(ctx, `
+SELECT repository_id, kind, applied_digest, applied_at, problem
+FROM sync_repository_state
+WHERE repository_id = ? AND kind = ?`, repositoryID, kind)
+
+	state, err := scanSyncRepositoryState(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return orgsync.RepositoryState{}, storage.ErrNotFound
+	}
+
+	return state, err
+}
+
+func scanSyncRepositoryState(scanner rowScanner) (orgsync.RepositoryState, error) {
+	var (
+		state   orgsync.RepositoryState
+		applied StoredTime
+	)
+	if err := scanner.Scan(
+		&state.RepositoryID, &state.Kind, &state.AppliedDigest, &applied, &state.Problem,
+	); err != nil {
+		return orgsync.RepositoryState{}, fmt.Errorf("scan sync repository state: %w", err)
+	}
+	state.AppliedAt = applied.Time()
+
+	return state, nil
 }

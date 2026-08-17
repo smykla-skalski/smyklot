@@ -738,6 +738,123 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 		})
 	})
 
+	// What is known about one repository for one kind, which is either what it
+	// has had applied or why nothing could be. One row holds both, so the two
+	// cannot be true at once.
+	Describe("repository state", func() {
+		It("keeps why a repository could not be synced", func() {
+			ctx, store, now := runtime()
+			seed(ctx, store, now)
+
+			Expect(store.RecordSyncRepositoryState(ctx, []orgsync.RepositoryState{{
+				RepositoryID: repoA, Kind: orgsync.KindFiles, AppliedAt: now,
+				Problem:      "these files cannot be composed: docs is not a directory here",
+			}})).To(Succeed())
+
+			read, err := store.GetSyncRepositoryState(ctx, repoA, orgsync.KindFiles)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(read.Problem).To(Equal(
+				"these files cannot be composed: docs is not a directory here"))
+			Expect(read.AppliedAt).To(BeTemporally("==", now))
+
+			// And with no digest, which is what keeps a refusal from reading as
+			// a repository that matches: the planner compares the stored digest
+			// against the configured one, and an empty one matches nothing
+			Expect(read.AppliedDigest).To(BeEmpty())
+		})
+
+		// A repository nothing has looked at is not a repository with a
+		// problem, and a page that read the two the same way would report a
+		// refusal on every repository in a fresh installation
+		It("answers not-found where nothing has looked yet", func() {
+			ctx, store, now := runtime()
+			seed(ctx, store, now)
+
+			_, err := store.GetSyncRepositoryState(ctx, repoA, orgsync.KindFiles)
+			Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
+		})
+
+		// The one that matters most: a repository that was refused and then
+		// settles must not keep the refusal. It is the same row, so writing the
+		// digest is what clears it - nothing has to remember to
+		It("clears a refusal when the repository settles", func() {
+			ctx, store, now := runtime()
+			seed(ctx, store, now)
+
+			Expect(store.RecordSyncRepositoryState(ctx, []orgsync.RepositoryState{{
+				RepositoryID: repoA, Kind: orgsync.KindFiles, AppliedAt: now,
+				Problem:      "the adjustments saved for this repository cannot be used",
+			}})).To(Succeed())
+
+			later := now.Add(time.Hour)
+			Expect(store.RecordSyncRepositoryState(ctx, []orgsync.RepositoryState{{
+				RepositoryID: repoA, Kind: orgsync.KindFiles,
+				AppliedDigest: "digest-1", AppliedAt: later,
+			}})).To(Succeed())
+
+			read, err := store.GetSyncRepositoryState(ctx, repoA, orgsync.KindFiles)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(read.Problem).To(BeEmpty())
+			Expect(read.AppliedDigest).To(Equal("digest-1"))
+		})
+
+		// A repository decides each kind on its own, and so does a refusal.
+		// Reading one kind's row for another is how a repository whose files
+		// cannot be composed would be reported as refusing its labels too
+		It("keeps one kind's refusal out of another's", func() {
+			ctx, store, now := runtime()
+			seed(ctx, store, now)
+
+			Expect(store.RecordSyncRepositoryState(ctx, []orgsync.RepositoryState{
+				{
+					RepositoryID: repoA, Kind: orgsync.KindFiles, AppliedAt: now,
+					Problem: "these files cannot be composed",
+				},
+				{
+					RepositoryID: repoA, Kind: orgsync.KindLabels,
+					AppliedDigest: "digest-1", AppliedAt: now,
+				},
+			})).To(Succeed())
+
+			labels, err := store.GetSyncRepositoryState(ctx, repoA, orgsync.KindLabels)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(labels.Problem).To(BeEmpty())
+			Expect(labels.AppliedDigest).To(Equal("digest-1"))
+
+			files, err := store.GetSyncRepositoryState(ctx, repoA, orgsync.KindFiles)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(files.Problem).To(Equal("these files cannot be composed"))
+		})
+
+		// Applying is the other way a repository settles, and it has to clear a
+		// refusal too - otherwise a repository whose pull request landed would
+		// go on saying its files could not be composed
+		It("clears a refusal when a plan finishes against it", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+
+			Expect(store.RecordSyncRepositoryState(ctx, []orgsync.RepositoryState{{
+				RepositoryID: repoA, Kind: orgsync.KindLabels, AppliedAt: now,
+				Problem:      "something stopped it",
+			}})).To(Succeed())
+
+			planFor(ctx, store, "plan-1", account.ID, "digest-1", now, nil)
+			approveAndLease(ctx, store, account.ID, "plan-1", "digest-1", now)
+
+			Expect(store.FinishSyncPlan(ctx, orgsync.PlanOutcome{
+				PlanID: "plan-1", State: orgsync.PlanApplied, Now: now,
+				Applied: []orgsync.RepositoryState{{
+					RepositoryID: repoA, Kind: orgsync.KindLabels,
+					AppliedDigest: "digest-1", AppliedAt: now,
+				}},
+			})).To(Succeed())
+
+			read, err := store.GetSyncRepositoryState(ctx, repoA, orgsync.KindLabels)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(read.Problem).To(BeEmpty())
+		})
+	})
+
 	Describe("audit", func() {
 		// A sync entry has to reach the trunk as well as its own table, or the
 		// history page cannot see it. Every other detail table does the same,

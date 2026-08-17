@@ -1,0 +1,17 @@
+-- Why a repository is not being synced for one kind.
+--
+-- Until now the only trace was a line in the service log. A repository whose
+-- own adjustments name a file the installation no longer syncs, or whose files
+-- cannot be composed, is refused fail-closed and rightly so - but nothing a
+-- person could look at said so, and the panel showed it looking like every
+-- other repository.
+--
+-- On this row rather than in a table of its own, because settled and refused
+-- are one question answered two ways. Two tables could hold both answers at
+-- once, and then nothing decides which of them is true.
+--
+-- A refusal carries no digest, and that is what makes it read as unsettled:
+-- the planner skips a repository whose stored digest matches the configured
+-- one, an empty digest matches nothing, so a refused repository is read again
+-- every sweep until whoever owns it resolves what is wrong.
+ALTER TABLE sync_repository_state ADD COLUMN problem TEXT NOT NULL DEFAULT '';

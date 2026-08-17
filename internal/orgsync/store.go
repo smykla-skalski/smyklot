@@ -90,15 +90,26 @@ type RepositoryOverrideChange struct {
 	Revision     int64
 }
 
-// RepositoryState is what a repository has already had applied for one kind,
-// and the reason a steady-state reconcile costs nothing: where the stored
-// digest matches the configured one, the planner does not need to ask GitHub
-// what the repository looks like.
+// RepositoryState is what is known about one repository for one kind: what it
+// has already had applied, or why nothing could be.
+//
+// The applied half is the reason a steady-state reconcile costs nothing. Where
+// the stored digest matches the configured one, the planner does not need to
+// ask GitHub what the repository looks like.
 type RepositoryState struct {
 	RepositoryID  string
 	Kind          Kind
 	AppliedDigest string
 	AppliedAt     time.Time
+
+	// Problem is why this kind is not being synced here, in words somebody
+	// reading the panel can act on, or empty where nothing is wrong.
+	//
+	// Never set beside a digest. A repository is settled or it is refused, and
+	// a refusal is written with no digest so that it can never be read as a
+	// repository that matches: the planner compares the stored digest against
+	// the configured one, and an empty digest matches nothing.
+	Problem string
 }
 
 // PlanCreate records a computed plan and its actions together.
@@ -235,14 +246,30 @@ type Store interface {
 
 	ListSyncRepositoryState(context.Context, string) ([]RepositoryState, error)
 
-	// RecordSyncRepositoryState writes what repositories have, for the ones a
-	// planner found already matching.
+	// GetSyncRepositoryState reads one repository's row for one kind, answering
+	// ErrNotFound where nothing has looked at it yet.
+	//
+	// Beside the listing for the same reason the override read is: a planner
+	// wants a whole installation at once, and a page about one repository wants
+	// one row.
+	GetSyncRepositoryState(
+		context.Context, string, Kind,
+	) (RepositoryState, error)
+
+	// RecordSyncRepositoryState writes what a planner learned about the
+	// repositories that produced no plan: the ones already matching, and the
+	// ones nothing could be done for.
 	//
 	// A repository that matches produces no actions, so it appears in no plan
 	// and would never be recorded by an apply - and the planner would then ask
 	// GitHub about it again on every tick, for ever, which is exactly the cost
 	// the recorded digest exists to avoid. Reading its labels and computing no
 	// work is proof that it matches, so that is when it is written down.
+	//
+	// A refused one produces no actions either, and for the same reason has
+	// nowhere else to be said. It is written with its reason and no digest, so
+	// it is still asked about every sweep - the record is there to be read, not
+	// to save the work.
 	RecordSyncRepositoryState(context.Context, []RepositoryState) error
 
 	CreateSyncPlan(context.Context, PlanCreate) (Plan, error)

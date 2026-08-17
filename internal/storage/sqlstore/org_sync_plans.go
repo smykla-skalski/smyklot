@@ -533,9 +533,9 @@ DELETE FROM sync_repository_state WHERE repository_id = ? AND kind = ?`,
 	}
 
 	if _, err := tx.ExecContext(ctx, `
-INSERT INTO sync_repository_state (repository_id, kind, applied_digest, applied_at)
-VALUES (?, ?, ?, ?)`,
-		state.RepositoryID, state.Kind, state.AppliedDigest, state.AppliedAt,
+INSERT INTO sync_repository_state (repository_id, kind, applied_digest, applied_at, problem)
+VALUES (?, ?, ?, ?, ?)`,
+		state.RepositoryID, state.Kind, state.AppliedDigest, state.AppliedAt, state.Problem,
 	); err != nil {
 		return fmt.Errorf("record sync repository state: %w", err)
 	}

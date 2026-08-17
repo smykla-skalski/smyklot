@@ -500,14 +500,25 @@ func (s *seeder) seedFinishedSyncPlan(digest string) error {
 		}
 	}
 
-	return s.store.FinishSyncPlan(s.ctx, orgsync.PlanOutcome{
+	if err := s.store.FinishSyncPlan(s.ctx, orgsync.PlanOutcome{
 		PlanID: "sync-plan-done", State: orgsync.PlanApplied,
 		Now: s.now.Add(30 * time.Second),
 		Applied: []orgsync.RepositoryState{{
 			RepositoryID: "repo-1", Kind: orgsync.KindLabels,
 			AppliedDigest: digest, AppliedAt: s.now.Add(30 * time.Second),
 		}},
-	})
+	}); err != nil {
+		return err
+	}
+
+	// And one repository refused, so a copy is proven on a state row that says
+	// why rather than only on one that says a digest. A column every seeded row
+	// leaves at its default is a column a copy cannot be shown to carry.
+	return s.store.RecordSyncRepositoryState(s.ctx, []orgsync.RepositoryState{{
+		RepositoryID: "repo-2", Kind: orgsync.KindFiles,
+		AppliedAt: s.now.Add(30 * time.Second),
+		Problem:   "these files cannot be composed: docs is not a directory here",
+	}})
 }
 
 // derive makes a second account from the first, so the seeded people differ in
