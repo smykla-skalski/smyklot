@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
-import { queueState } from '../src/lib/queue';
+import { queueState, shortAge, sinceLabel } from '../src/lib/queue';
 import type { PendingCIRequest } from '../src/lib/types';
 
 /**
@@ -170,5 +170,42 @@ describe('the queue vocabulary [Unit]', () => {
     if (insert === '') throw new Error('no pending-CI insert found');
 
     expect(insert).not.toContain('last_observed_state');
+  });
+});
+
+/**
+ * How long ago, said twice: once as a measure and once as a phrase.
+ *
+ * The column's form has to be a number and a unit, because a column is sized by its
+ * widest value and "just now" is half again as wide as any of the rest - it alone set
+ * the width of the Armed column and the Finished one. The phrase is still what a
+ * sentence takes, so the two forms diverge on the first minute and nowhere else, and
+ * that is what these hold: `sinceLabel` is written on top of `shortAge` and used to be
+ * written on top of the words it returned.
+ */
+describe('the age a queue row shows [Unit]', () => {
+  const now = Date.parse('2026-08-17T12:00:00Z');
+  const ago = (ms: number): string => new Date(now - ms).toISOString();
+
+  it.each([
+    ['the first minute', 30_000, 'now'],
+    ['minutes', 59 * 60_000, '59 min'],
+    ['hours', 23 * 3_600_000, '23 hr'],
+    ['days', 6 * 86_400_000, '6 d'],
+    ['weeks', 99 * 7 * 86_400_000, '99 wk'],
+  ])('measures %s', (_case, elapsed, expected) => {
+    expect(shortAge(ago(elapsed), now)).toBe(expected);
+  });
+
+  it('says the first minute in words where there is room for them', () => {
+    expect(sinceLabel(ago(30_000), now)).toBe('just now');
+    expect(sinceLabel(ago(59 * 60_000), now)).toBe('59 min ago');
+  });
+
+  it('takes no preposition on a timestamp it cannot read', () => {
+    expect(shortAge('not a time', now)).toBe('not a time');
+    expect(sinceLabel('not a time', now)).toBe('not a time');
+    // The word the first minute is measured as, arriving as the value itself.
+    expect(sinceLabel('now', now)).toBe('now');
   });
 });

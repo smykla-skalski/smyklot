@@ -26,6 +26,20 @@ import { addressOf, startPanel, visit, type Panel } from './harness';
 const STEP = 4;
 
 /**
+ * The two widths this table is laid out for, both measured rather than one.
+ *
+ * Below 64rem four of these columns give up their heading's word for a symbol and are
+ * sized by what is left, and every one of those numbers is written by hand. A reading at
+ * one width sees none of them: the Cleanup column shipped at 3.5rem under a heading that
+ * needs 8.5rem, drew "CLEANI" across the top of it, and this suite stayed green.
+ *
+ * 820px rather than 1023: it sits inside the band and clear of the 48rem this table
+ * becomes cards under, so moving either boundary still leaves this measuring a table.
+ */
+const WIDE = 1280;
+const NARROW = 820;
+
+/**
  * Every value each column can hold, beside where it comes from.
  *
  * `queueState` falls through to "Scheduled" for a state it does not know, and
@@ -60,14 +74,14 @@ const VOCABULARY = {
       'The regular safety net',
     ],
     /** `shortAge` at each of its steps. */
-    age: ['just now', '59 min', '23 hr', '6 d', '99 wk'],
+    age: ['now', '59 min', '23 hr', '6 d', '99 wk'],
   },
   recent: {
     /** `outcomeState`. A request reaches this table with one of these three. */
     outcome: ['Merged', 'Cancelled', 'Superseded'],
     /** `cleanupState`. */
     cleanup: ['Done', 'Pending', 'Failed'],
-    age: ['just now', '59 min', '23 hr', '6 d', '99 wk'],
+    age: ['now', '59 min', '23 hr', '6 d', '99 wk'],
     /* `endReason`: the panel's own four, then every string the service writes into
        `reason` - `policy.go`, and the cancellation reasons in
        `pending_ci_github.go`. */
@@ -104,8 +118,18 @@ interface ChipReading {
   cellDrift: number;
 }
 
+/** A heading as it was drawn: its word, or the symbol standing where the word was. */
+interface HeadingReading {
+  column: string;
+  /** The word's box against the word's own width, `null` where no word is drawn. */
+  word: { shown: number; needs: number } | null;
+  /** Whether a symbol is drawn in its place. */
+  symbol: boolean;
+}
+
 interface Reading {
   columns: ColumnReading[];
+  headings: HeadingReading[];
   /** Rows that grew: a value that did not fit wrapped, and one row is now taller. */
   heights: number[];
   /** Reasons that needed more than the two lines the row stands at. */
@@ -117,8 +141,8 @@ interface Reading {
 let panel: Panel;
 const readings = new Map<string, Reading>();
 
-async function read(section: 'waiting' | 'recent'): Promise<Reading> {
-  const page = await panel.browser.newPage({ viewport: { width: 1280, height: 900 } });
+async function read(section: 'waiting' | 'recent', width = WIDE): Promise<Reading> {
+  const page = await panel.browser.newPage({ viewport: { width, height: 900 } });
   try {
     const route = section === 'waiting' ? 'root/queue' : 'root/queue/recent';
     await visit(page, addressOf(panel, route), { ready: 'tbody td' });
@@ -261,6 +285,26 @@ async function read(section: 'waiting' | 'recent'): Promise<Reading> {
         const heads = [...(table.tHead?.rows[0]?.cells ?? [])];
         const shipped = heads.map((head) => head.getBoundingClientRect().width);
 
+        /* Read before the columns are loosened, because what a heading shows is
+           the question and its width is the answer: a word squeezed to nothing by
+           its own column reports a box narrower than the letters in it. */
+        const headings = heads.map((head) => {
+          const word = head.querySelector('.table-heading-label');
+          const symbol = head.querySelector('.heading-symbol');
+
+          return {
+            column: (head.textContent ?? '').trim() || 'Actions',
+            word:
+              word === null || !word.checkVisibility()
+                ? null
+                : {
+                    shown: Math.round(word.getBoundingClientRect().width * 100) / 100,
+                    needs: word.scrollWidth,
+                  },
+            symbol: symbol !== null && symbol.checkVisibility(),
+          };
+        });
+
         /* Read two: what each column would take if it were free. Auto layout
            gives every column its own max-content, over the heading AND every cell
            - which is the researched rule, computed by the engine rather than
@@ -275,6 +319,7 @@ async function read(section: 'waiting' | 'recent'): Promise<Reading> {
         loosen.remove();
 
         return {
+          headings,
           columns: heads.map((head, index) => ({
             column: (head.textContent ?? '').trim() || 'Actions',
             shipped: Math.round((shipped[index] ?? 0) * 100) / 100,
@@ -296,6 +341,8 @@ beforeAll(async () => {
   panel = await startPanel();
   readings.set('waiting', await read('waiting'));
   readings.set('recent', await read('recent'));
+  readings.set('waiting narrow', await read('waiting', NARROW));
+  readings.set('recent narrow', await read('recent', NARROW));
 }, 300_000);
 
 afterAll(async () => {
@@ -360,5 +407,54 @@ describe('the Queue table columns [Integration]', () => {
       );
 
     expect(off, `these chips are not centred:\n  ${off.join('\n  ')}`).toEqual([]);
+  });
+});
+
+/**
+ * The same table under 64rem, where four headings trade their word for a symbol.
+ *
+ * Every column width there is written by hand against a heading whose contents have just
+ * changed, which is the one place this table has been wrong twice: a column sized for the
+ * badge under it and not for the heading over it drew a heading cut in half, and a badge
+ * whose word was hidden kept the gap the word had been sitting in.
+ */
+describe('the Queue table columns under 64rem [Integration]', () => {
+  it.each(['waiting', 'recent'])('never cuts a heading in %s', (section) => {
+    const cut = (readings.get(`${section} narrow`)?.headings ?? [])
+      .filter((one) => one.word !== null && one.word.shown + 0.5 < one.word.needs)
+      .map((one) => `${one.column}: ${one.word?.shown}px shown, ${one.word?.needs}px of word`);
+
+    expect(cut, `these headings are cut short:\n  ${cut.join('\n  ')}`).toEqual([]);
+  });
+
+  /* A column that gives up its word has to say what it holds some other way, and the
+     symbol is that way. Without this the rule above is satisfied by hiding every word. */
+  it.each(['waiting', 'recent'])('names every column it narrows in %s', (section) => {
+    const wide = new Map(
+      (readings.get(section)?.headings ?? []).map((one) => [one.column, one] as const),
+    );
+    const mute = (readings.get(`${section} narrow`)?.headings ?? [])
+      .filter((one) => one.word === null && !one.symbol)
+      .filter((one) => wide.get(one.column)?.word != null)
+      .map((one) => one.column);
+
+    expect(mute, `these columns lost their name:\n  ${mute.join('\n  ')}`).toEqual([]);
+  });
+
+  it.each(['waiting', 'recent'])('holds every value the %s section can show', (section) => {
+    const narrow = (readings.get(`${section} narrow`)?.columns ?? [])
+      .filter((one) => !EXEMPT.has(one.column))
+      .filter((one) => one.shipped + 0.5 < one.needs)
+      .map((one) => `${one.column}: ${one.shipped}px given, ${one.needs}px needed`);
+
+    expect(narrow, `these columns cut a value off:\n  ${narrow.join('\n  ')}`).toEqual([]);
+  });
+
+  it.each(['waiting', 'recent'])('keeps every row in %s the same height', (section) => {
+    expect(readings.get(`${section} narrow`)?.heights ?? []).toHaveLength(1);
+  });
+
+  it('shows every reason a request ended in full', () => {
+    expect(readings.get('recent narrow')?.clipped ?? []).toEqual([]);
   });
 });

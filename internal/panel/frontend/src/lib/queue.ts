@@ -133,18 +133,22 @@ function triggerReason(request: PendingCIRequest): string {
 }
 
 /**
- * How long ago, in the width a 6.5rem column has.
+ * How long ago, in the width a column has.
  *
  * "24 minutes ago" does not fit and wraps to two lines, which makes one row taller than the rest
  * and breaks the scan the whole page is for. The full timestamp is on the element's `title`, so
  * nothing is lost - this is the glanceable form, and the exact one is a hover away.
+ *
+ * Every other value here is a number and a unit, and the first minute was the one exception: "just
+ * now" is half again as wide as "59 min" and set the width of two columns on its own. `now` is the
+ * same fact in the same grammar. The phrase survives where it belongs, in `sinceLabel`.
  */
 export function shortAge(value: string, nowMs: number): string {
   const parsed = Date.parse(value);
   if (Number.isNaN(parsed)) return value;
   const elapsed = Math.max(0, nowMs - parsed);
   const minutes = Math.floor(elapsed / 60_000);
-  if (minutes < 1) return 'just now';
+  if (minutes < 1) return 'now';
   if (minutes < 60) return `${minutes} min`;
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours} hr`;
@@ -163,8 +167,11 @@ export function shortAge(value: string, nowMs: number): string {
  */
 export function sinceLabel(value: string, nowMs: number): string {
   const age = shortAge(value, nowMs);
-  // An unparseable value comes back untouched, and takes no preposition either.
-  if (age === 'just now' || age === value) return age;
+  // An unparseable value comes back untouched, and takes no preposition either. Asked
+  // first, so a value that IS the word below is still answered as the value it is.
+  if (age === value) return age;
+  // A sentence has the room the column did not, so the first minute reads as a phrase here.
+  if (age === 'now') return 'just now';
 
   return `${age} ago`;
 }

@@ -436,6 +436,32 @@
     return slash === -1 ? '' : `${request.repository_full_name.slice(0, slash)}/`;
   }
 
+  /**
+   * The org's name in two pieces, so what is cut out of it is cut from the middle.
+   *
+   * The end of an org name is what tells two of them apart - `kong` and `kong-labs`
+   * differ there - so a name cut at its end reads as a different org, where one cut in
+   * the middle reads as the same one, shortened. These last five characters are the
+   * slash and the four before it, held back from the shrink; everything before them
+   * gives way first, and the ellipsis lands where they meet.
+   *
+   * Nothing to hold back on a name short enough that all of it fits in the width four
+   * characters would take, which is what the length test says.
+   */
+  const OWNER_TAIL = 5;
+
+  function ownerHead(request: PendingCIRequest): string {
+    const owner = ownerOf(request);
+
+    return owner.length > OWNER_TAIL * 2 ? owner.slice(0, -OWNER_TAIL) : owner;
+  }
+
+  function ownerTail(request: PendingCIRequest): string {
+    const owner = ownerOf(request);
+
+    return owner.length > OWNER_TAIL * 2 ? owner.slice(-OWNER_TAIL) : '';
+  }
+
   function repositoryOf(request: PendingCIRequest): string {
     const slash = request.repository_full_name.lastIndexOf('/');
     return slash === -1
@@ -646,14 +672,24 @@
   >
     <thead>
       <tr>
-        <th scope="col" aria-sort={sortDirection(section === 'recent' ? 'outcome' : 'checks')}>
+        <th
+          scope="col"
+          class:checks-column={section === 'waiting'}
+          aria-sort={sortDirection(section === 'recent' ? 'outcome' : 'checks')}
+        >
           <div class="table-heading">
             <button
               class="table-sort-button"
               type="button"
+              aria-label={section === 'recent' ? 'Outcome' : 'Checks'}
               onclick={() => toggleSort(section === 'recent' ? 'outcome' : 'checks')}
             >
               <span class="table-heading-label">{section === 'recent' ? 'Outcome' : 'Checks'}</span>
+              {#if section === 'waiting'}
+                <!-- Only this section's: an outcome's own column keeps its word,
+                     because the words under it are what set its width anyway. -->
+                <span class="heading-symbol"><Icon name="check" size={14} strokeWidth={2} /></span>
+              {/if}
               <SortIndicator />
             </button>
             <FilterMenu
@@ -695,8 +731,17 @@
         {#if section === 'recent'}
           <th scope="col" class="cleanup-column" aria-sort={sortDirection('cleanup')}>
             <div class="table-heading">
-              <button class="table-sort-button" type="button" onclick={() => toggleSort('cleanup')}>
+              <!-- The word where there is room for it and the symbol where there is
+                   not; `aria-label` names the column either way, so the button keeps
+                   one name rather than gaining and losing one with the viewport. -->
+              <button
+                class="table-sort-button"
+                type="button"
+                aria-label="Cleanup"
+                onclick={() => toggleSort('cleanup')}
+              >
                 <span class="table-heading-label">Cleanup</span>
+                <span class="heading-symbol"><Icon name="trash" size={14} strokeWidth={2} /></span>
                 <SortIndicator />
               </button>
               <FilterMenu
@@ -714,14 +759,17 @@
           <th scope="col">
             <div class="table-heading"><span class="table-heading-label">Why it ended</span></div>
           </th>
-          <th scope="col" aria-sort={sortDirection('finished')}>
+          <th scope="col" class="finished-column" aria-sort={sortDirection('finished')}>
             <div class="table-heading">
               <button
                 class="table-sort-button"
                 type="button"
+                aria-label="Finished"
                 onclick={() => toggleSort('finished')}
               >
                 <span class="table-heading-label">Finished</span>
+                <span class="heading-symbol"><Icon name="history" size={14} strokeWidth={2} /></span
+                >
                 <SortIndicator />
               </button>
             </div>
@@ -750,10 +798,17 @@
                the name is written, on the Pull request heading - the mock put it
                here, which would have been the same values behind a second trigger
                in a column that never shows them. -->
-          <th scope="col" aria-sort={sortDirection('armed')}>
+          <th scope="col" class="armed-column" aria-sort={sortDirection('armed')}>
             <div class="table-heading">
-              <button class="table-sort-button" type="button" onclick={() => toggleSort('armed')}>
+              <button
+                class="table-sort-button"
+                type="button"
+                aria-label="Armed"
+                onclick={() => toggleSort('armed')}
+              >
                 <span class="table-heading-label">Armed</span>
+                <span class="heading-symbol"><Icon name="history" size={14} strokeWidth={2} /></span
+                >
                 <SortIndicator />
               </button>
             </div>
@@ -809,7 +864,10 @@
           onclick={(event) => openRow(event, request)}
           onkeydown={(event) => openFromKeyboard(event, request)}
         >
-          <td data-label={section === 'recent' ? 'Outcome' : 'Checks'}>
+          <td
+            class:checks-column={section === 'waiting'}
+            data-label={section === 'recent' ? 'Outcome' : 'Checks'}
+          >
             <!-- Keyed on the words, so a state the reconciler changed arrives
                  rather than being swapped: the chip is the whole answer this
                  column gives, and a silent substitution is the one change a
@@ -828,7 +886,11 @@
               target="_blank"
               title={`${request.repository_full_name} #${request.pull_request} on GitHub`}
             >
-              <span class="pr-owner">{ownerOf(request)}</span>
+              <span class="pr-owner"
+                ><span class="owner-head">{ownerHead(request)}</span><span class="owner-tail"
+                  >{ownerTail(request)}</span
+                ></span
+              >
               <span class="pr-repo">{repositoryOf(request)}</span>
               <span class="pr-num">#{request.pull_request}</span>
               <Icon name="link" size={14} strokeWidth={2} />
@@ -850,14 +912,17 @@
             <AppTooltip text={cleanup.detail}>
               {#snippet children(props)}
                 <td {...props} class="cleanup-column" data-label="Cleanup">
-                  <Chip tone={cleanup.tone} icon={cleanup.icon} small>
-                    <span class="cleanup-label">{cleanup.label}</span>
-                  </Chip>
+                  <Chip tone={cleanup.tone} icon={cleanup.icon} small>{cleanup.label}</Chip>
                 </td>
               {/snippet}
             </AppTooltip>
-            <td data-label="Why it ended"><div class="reason">{endReason(request)}</div></td>
-            <td data-label="Finished">
+            <!-- The sentence on the cell as well as in it. Nothing here is cut,
+                 and this is for the reader who would rather not lean in: the type
+                 is the smallest in the row. -->
+            <td data-label="Why it ended" title={endReason(request)}>
+              <div class="reason">{endReason(request)}</div>
+            </td>
+            <td class="finished-column" data-label="Finished">
               {#if request.finished_at === undefined}
                 <!-- Armed again while this table was being held still, so it has
                      no finish to report. The age of its last update would read as
@@ -910,7 +975,7 @@
               </div>
               <div class="next-sub">{next.sub}</div>
             </td>
-            <td data-label="Armed">
+            <td class="armed-column" data-label="Armed">
               <span class="age band-trim" title={formatTimestamp(request.requested_at)}
                 >{shortAge(request.requested_at, now)}</span
               >
@@ -1077,8 +1142,7 @@
     width: 12.25rem;
   }
 
-  /* "just now" is wider than any age this abbreviates to, and this heading has
-     no controls of its own. */
+  /* The heading with its arrow, which is wider than any age below it. */
   .waiting-table :is(th, td):nth-child(4) {
     width: 5.75rem;
   }
@@ -1164,6 +1228,11 @@
     gap: 0.15rem;
     min-width: 0;
     text-decoration: none;
+    /* As wide as its words and never wider than the cell. `fit-content` alone
+       sizes the row to its own max-content and overflows: nothing inside it ever
+       reaches the point of shrinking, so the whole line was cut at the cell's
+       edge - number and all - instead of the org giving way. */
+    max-width: 100%;
     width: fit-content;
   }
 
@@ -1172,17 +1241,52 @@
     text-box: trim-both cap alphabetic;
   }
 
+  /* Gives up its room before anything beside it does: which org a pull request is
+     in matters less than which repository and which number, and in a column this
+     narrow something has to give. A shrink factor rather than a rule, because
+     flexbox takes the reduction from every item at once in proportion to it - at
+     three the repository still lost a sixth of its name to a name nobody was
+     reading. This high, the org is spent down to its last letters first, and only
+     what it cannot cover falls to the repository.
+
+     Its two pieces sit on the same baseline as everything else on the line, so
+     the trim is theirs and not this box's: a flex container has no line of its
+     own to trim. */
   .pr-owner {
+    align-items: baseline;
     color: var(--dim);
-    flex: none;
+    display: flex;
+    flex: 0 999 auto;
+    min-width: 0;
   }
 
+  .pr-owner > span {
+    line-height: 1;
+    text-box: trim-both cap alphabetic;
+  }
+
+  /* The end of the name, held back from the shrink so the ellipsis lands before
+     it rather than after everything. */
+  .owner-tail {
+    flex: none;
+    white-space: pre;
+  }
+
+  /* Never shrinks, so it is never the thing that gives: the org beside it is spent
+     first and this keeps every letter. Not even a fraction of one - flexbox takes
+     its reduction from every shrinkable item, and the 0.02px this was losing to a
+     999-to-1 split was still enough to put an ellipsis through the word.
+
+     The cap is what a name long enough to fill the line on its own runs into, and
+     it is where the ellipsis this still carries comes back. */
   .pr-repo {
     color: var(--text);
+    flex: 0 0 auto;
     font-weight: 700;
+    max-width: 100%;
   }
 
-  .pr-owner,
+  .owner-head,
   .pr-repo,
   .contract {
     min-width: 0;
@@ -1360,17 +1464,87 @@
     text-box: trim-both cap alphabetic;
   }
 
-  /* The label goes and the mark stays where the column has run out of room. The
-     whole sentence is on the cell's tooltip either way, so nothing is lost by
-     the words leaving - and a mark that can be hovered beats a word cut short. */
+  /* A heading's own symbol, for the widths where its word does not fit. Drawn
+     only there: a word says what a column holds and a glyph only suggests it, so
+     the glyph is what a narrow screen gets instead of the word rather than an
+     ornament standing beside it. */
+  .heading-symbol {
+    display: none;
+  }
+
+  /* The word goes and the symbol arrives where the column has run out of room -
+     in the heading and in every cell under it, which is the same trade the two
+     ends of the column have to make together. It was made in the cells alone:
+     the heading kept a word that needs 136px in a column of 56 and drew
+     "CLEANI", and the badge kept the gap its hidden label had been sitting in.
+
+     The whole sentence is on the cell's tooltip and the column's name is on the
+     heading's, so nothing is lost by the words leaving - and a mark that can be
+     hovered beats a word cut short. */
   @media (max-width: 64rem) {
-    .cleanup-label {
+    .queue-table .table-heading .heading-symbol {
+      align-items: center;
+      display: inline-flex;
+    }
+
+    .queue-table
+      :is(.checks-column, .armed-column, .cleanup-column, .finished-column)
+      .table-heading-label {
       display: none;
     }
 
-    .queue-table :is(th, td).cleanup-column {
-      width: 3.5rem;
+    /* The label's box and not the words inside it: a hidden child leaves the box
+       behind, and the box still takes the gap between it and the mark - the dead
+       space on the closing edge of every badge in this column. */
+    .cleanup-column :global(.chip-label) {
+      display: none;
     }
+
+    /* A mark with a word after it starts its ink where the padding says, which is
+       what the chip pulls it over for. A mark on its own is the whole badge, so it
+       centres instead - by the difference between its own two bearings, which is
+       nothing at all for a glyph drawn symmetrically. */
+    .cleanup-column :global(.chip > svg) {
+      margin-inline-start: calc((var(--icon-ink-end, 0px) - var(--icon-ink-start, 0px)) / 2);
+    }
+
+    /* The other way round in the first column: the word stays and the mark goes.
+       These states are named in full and the mark only repeats what the word and
+       the tone already say, so it is the part worth spending on the columns that
+       have nothing to give up. */
+    .waiting-table td:first-child :global(.chip > svg) {
+      display: none;
+    }
+
+    /* Each is now the wider of two much smaller numbers: the heading it is left
+       with - 12px, the mark, the 8px the button sets between its own two children,
+       the arrow, the 2rem a filter is given where there is one, 12px - and the
+       widest value under it. Cleanup is set by its heading; Checks by its widest
+       state now that the badge has no mark to carry; and the two age columns by
+       "59 min", which is what the narrow reading in `queue-columns.test.ts`
+       answered when 3.75rem was guessed at from the heading alone. */
+    .queue-table :is(th, td).checks-column {
+      width: 7.25rem;
+    }
+
+    .queue-table :is(th, td).armed-column {
+      width: 4.25rem;
+    }
+
+    .queue-table :is(th, td).cleanup-column {
+      width: 5.75rem;
+    }
+
+    .queue-table :is(th, td).finished-column {
+      width: 4.25rem;
+    }
+
+    /* "Why it ended" keeps all 12rem of it, and this note is here because it was
+       narrowed and put back. The four symbol columns give this table 92px between
+       them, which is more than it was going to take from the reasons; and the only
+       way to hold two lines in less than 12rem is to clamp them, which is measured
+       and rejected where `.reason` is defined - the clamp needs an overflow this
+       box cannot carry without standing 2.50px off the cells beside it. */
   }
 
   /* A phone gets the cards the other tables give it, for the reason measured in
@@ -1484,11 +1658,14 @@
       content: none;
     }
 
-    .cleanup-label {
+    /* A card has the room the band did not, so the badge says its state in words
+       again. The heading's own symbol needs no undoing: there are no headings
+       here at all. */
+    .cleanup-column :global(.chip-label) {
       display: inline;
     }
 
-    .queue-table :is(th, td).cleanup-column {
+    .queue-table :is(th, td):is(.cleanup-column, .finished-column) {
       width: auto;
     }
   }
