@@ -487,6 +487,7 @@ export function seed(
     sync: new Map([
       [`${organization.value.id}/labels`, syncLabelsSeed(iso)],
       [`${organization.value.id}/rulesets`, syncRulesetsSeed(iso)],
+      [`${organization.value.id}/files`, syncFilesSeed(iso)],
     ]),
     syncPlans: new Map([[organization.value.id, syncPlanSeed(iso)]]),
     // Replaced by install() with the running server's own page.
@@ -563,6 +564,43 @@ export function syncRulesetsSeed(iso: (offsetMs: number) => string): SyncConfig 
       ],
       allow_removal: false,
       excludes: ['hand-made-*'],
+    },
+    unreadable: false,
+    unavailable: '',
+  };
+}
+
+/**
+ * The files an organization keeps in step, seeded for the reason the two above
+ * are: a form nobody can look at except empty drifts out of the design unseen,
+ * and this one draws a card per file whose height is the template's.
+ */
+export function syncFilesSeed(iso: (offsetMs: number) => string): SyncConfig {
+  return {
+    kind: 'files',
+    enabled: true,
+    labels: [],
+    allow_removal: false,
+    excludes: [],
+    revision: 4,
+    updated_by: 'bart',
+    updated_at: iso(-9 * 60 * 60_000),
+    digest: 'sha256:files',
+    document: {
+      files: [
+        {
+          path: 'CONTRIBUTING.md',
+          content:
+            '# Contributing\n\nOpen a pull request against `{{DEFAULT_BRANCH}}`.\n' +
+            'Every change needs a review from a code owner.\n',
+        },
+        {
+          path: 'renovate.json',
+          content: '{\n  "extends": ["config:recommended"],\n  "timezone": "UTC"\n}\n',
+        },
+      ],
+      retired: ['.github/workflows/sync-trigger.yml'],
+      excludes: ['LICENSE'],
     },
     unreadable: false,
     unavailable: '',

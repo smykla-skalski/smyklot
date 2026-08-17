@@ -17,6 +17,7 @@
   import PageHeader from './PageHeader.svelte';
   import Plate from './Plate.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
+  import SyncFilesForm from './SyncFilesForm.svelte';
   import SyncRulesetsForm from './SyncRulesetsForm.svelte';
   import SyncSettingsForm from './SyncSettingsForm.svelte';
 
@@ -42,19 +43,19 @@
     approvePlan: (targetId: string, planId: string, digest: string) => Promise<{ plan: SyncPlan }>;
   } = $props();
 
-  // The kinds this view has a form for. Files are configurable through the API
-  // and have none here yet, so naming the ones this page means is better than a
-  // parameter nothing varies.
+  // The kinds this view has a form for, named rather than taken as a parameter
+  // nothing varies.
   const LABELS = 'labels';
   const SETTINGS = 'settings';
   const RULESETS = 'rulesets';
+  const FILES = 'files';
 
   /**
    * The kinds whose whole configuration is one document. Labels are not one of
    * them: their form was built out of typed fields before there was a second
    * kind, and everything since travels as a document.
    */
-  type DocumentKind = typeof SETTINGS | typeof RULESETS;
+  type DocumentKind = typeof SETTINGS | typeof RULESETS | typeof FILES;
 
   let config = $state<SyncConfig | null>(null);
   let plan = $state<SyncPlan | null>(null);
@@ -68,10 +69,12 @@
   let documents = $state<Record<DocumentKind, SyncConfig | null>>({
     settings: null,
     rulesets: null,
+    files: null,
   });
   let savingDocument = $state<Record<DocumentKind, boolean>>({
     settings: false,
     rulesets: false,
+    files: false,
   });
 
   /* One failure per thing that can fail, because the forms are saved
@@ -82,6 +85,7 @@
   let documentError = $state<Record<DocumentKind, string | null>>({
     settings: null,
     rulesets: null,
+    files: null,
   });
 
   /* Every document, because each is only meaningful beside the plan: a plan
@@ -95,16 +99,18 @@
 
   async function load(id: string): Promise<void> {
     error = null;
-    documentError = { settings: null, rulesets: null };
+    documentError = { settings: null, rulesets: null, files: null };
     try {
-      const [loadedConfig, loadedSettings, loadedRulesets, loadedPlan] = await Promise.all([
-        fetchConfig(id, LABELS),
-        fetchConfig(id, SETTINGS),
-        fetchConfig(id, RULESETS),
-        fetchPlan(id),
-      ]);
+      const [loadedConfig, loadedSettings, loadedRulesets, loadedFiles, loadedPlan] =
+        await Promise.all([
+          fetchConfig(id, LABELS),
+          fetchConfig(id, SETTINGS),
+          fetchConfig(id, RULESETS),
+          fetchConfig(id, FILES),
+          fetchPlan(id),
+        ]);
       config = loadedConfig;
-      documents = { settings: loadedSettings, rulesets: loadedRulesets };
+      documents = { settings: loadedSettings, rulesets: loadedRulesets, files: loadedFiles };
       plan = loadedPlan.plan;
     } catch (cause) {
       error = messageOf(cause);
@@ -346,6 +352,19 @@
       {readOnly}
       saving={savingDocument.rulesets}
       onSave={(wanted, document) => onSaveDocument(RULESETS, wanted, document)}
+    />
+  {/if}
+
+  {#if documents.files !== null}
+    <SyncFilesForm
+      stored={documents.files.document}
+      enabled={documents.files.enabled}
+      unreadable={documents.files.unreadable}
+      unavailable={documents.files.unavailable}
+      problem={documentError.files}
+      {readOnly}
+      saving={savingDocument.files}
+      onSave={(wanted, document) => onSaveDocument(FILES, wanted, document)}
     />
   {/if}
 

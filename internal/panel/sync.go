@@ -242,6 +242,9 @@ func syncDocumentFor(kind orgsync.Kind, input syncConfigRequest) ([]byte, error)
 	case orgsync.KindRulesets:
 		return validatedDocument[orgsync.RulesetConfig](input.Document)
 
+	case orgsync.KindFiles:
+		return validatedDocument[orgsync.FileConfig](input.Document)
+
 	default:
 		return nil, fmt.Errorf("%w: Smyklot cannot synchronize %s yet",
 			orgsync.ErrInvalidConfig, kind)

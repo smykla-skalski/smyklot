@@ -71,6 +71,7 @@ func panelWireNameProbePaths() []string {
 		"/panel/api/v1/targets/" + target,
 		"/panel/api/v1/targets/" + target + "/repositories",
 		"/panel/api/v1/targets/" + target + "/repositories/" + repository,
+		"/panel/api/v1/targets/" + target + "/repositories/" + repository + "/sync/labels",
 		"/panel/api/v1/targets/" + target + "/users",
 		"/panel/api/v1/targets/" + target + "/users/" + account + "/decisions",
 		"/panel/api/v1/targets/" + target + "/user-suggestions",

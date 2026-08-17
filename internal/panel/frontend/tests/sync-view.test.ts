@@ -55,8 +55,13 @@ describe('SyncView [Component]', () => {
    * rulesets form the settings answer - which renders a second notice and makes
    * the assertions below ambiguous rather than wrong.
    */
-  function mount(labels: SyncConfig, settings: SyncConfig, rulesets = config('rulesets')) {
-    const answers: Record<string, SyncConfig> = { labels, settings, rulesets };
+  function mount(
+    labels: SyncConfig,
+    settings: SyncConfig,
+    rulesets = config('rulesets'),
+    files = config('files'),
+  ) {
+    const answers: Record<string, SyncConfig> = { labels, settings, rulesets, files };
 
     return render(SyncView, {
       targetId: 'target-1',
@@ -106,6 +111,31 @@ describe('SyncView [Component]', () => {
     await screen.findByRole('heading', { name: 'Rulesets' });
 
     expect(asked).toContain('rulesets');
+  });
+
+  /**
+   * And a fourth. The page fetches by name, so a kind it never asks for is a
+   * form nobody mounts however complete the form is.
+   */
+  it('asks for the files kind and mounts its form', async () => {
+    const asked: string[] = [];
+
+    render(SyncView, {
+      targetId: 'target-1',
+      readOnly: false,
+      fetchConfig: (_id: string, kind: string) => {
+        asked.push(kind);
+
+        return Promise.resolve(config(kind));
+      },
+      saveConfig: () => Promise.resolve(config('labels')),
+      fetchPlan: () => Promise.resolve({ plan: null }),
+      approvePlan: () => Promise.reject(new Error('not in this test')),
+    });
+
+    await screen.findByRole('heading', { name: 'Shared files' });
+
+    expect(asked).toContain('files');
   });
 
   /** Nobody asked for the kind, so nothing is waiting on the permission. */

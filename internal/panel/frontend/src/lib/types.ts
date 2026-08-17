@@ -716,6 +716,55 @@ export interface SyncRulesetCodeScanningTool {
   security_alerts_threshold: string;
 }
 
+/**
+ * One file every repository is expected to carry, and what it should say.
+ *
+ * The content is configuration rather than a file in another repository, which
+ * is what stops a template going missing between the place it is kept and the
+ * repository it is written to.
+ */
+export interface SyncFile {
+  path: string;
+  content: string;
+}
+
+/**
+ * What one repository adjusts about the files, which is the layer a template
+ * cannot know about: one repository ignores a directory the others do not.
+ */
+export interface SyncFileOverride {
+  merges?: SyncFileMerge[];
+  excludes?: string[];
+}
+
+/** How one repository composes its copy of one template. */
+export interface SyncFileMerge {
+  path: string;
+  /** deep-merge, shallow-merge or markdown. Empty lets the extension decide. */
+  strategy?: string;
+  overrides?: Record<string, unknown>;
+}
+
+/** What one repository says about one kind of sync. */
+export interface SyncOverride {
+  kind: string;
+  /** null where the repository inherits the installation's answer. */
+  enabled: boolean | null;
+  document: Record<string, unknown>;
+  revision: number;
+  updated_by?: string;
+  updated_at?: string;
+  /** A stored document this version cannot read, so nothing here was shown. */
+  unreadable: boolean;
+}
+
+/** What a repository's answer is saved as. */
+export interface SyncOverrideInput {
+  enabled: boolean | null;
+  document: Record<string, unknown>;
+  expected_revision: number;
+}
+
 /** An installation's label sync configuration, as saved. */
 export interface SyncConfig {
   kind: string;
