@@ -242,13 +242,41 @@ jobs:
       - name: Test the panel
         run: mise run panel:frontend:test
 
-  # The panel driven in Chrome, counting what it asks the server for. Its own
-  # job because it costs ten times what the unit tests cost, and because it is
-  # the only check here that needs a browser: the runner image ships Chrome, so
-  # nothing is downloaded to get one.
-  budget:
-    name: request budget
+  # The panel driven in Chrome. Its own job because it costs ten times what the
+  # unit tests cost, and because it is the only check here that needs a browser:
+  # the runner image ships Chrome, so nothing is downloaded to get one.
+  #
+  # Split like the Go matrix above, and for the same reason: vitest runs these
+  # files one at a time, so giving each area its own runner is the only
+  # parallelism available between them. The areas are cost first and meaning
+  # second - `mobile-layout` alone opens seventy-six pages, which is more than
+  # the other eight files put together, so it gets an area with only the two
+  # cheapest for company.
+  #
+  # `scripts/check-test-matrix.sh` fails when a file here runs in no area, or in
+  # more than one.
+  browser:
+    name: browser (${{ matrix.area }})
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - area: pages
+            files: >-
+              tests/browser/mobile-layout.test.ts
+              tests/browser/sidebar-selection.test.ts
+              tests/browser/icon-geometry.test.ts
+          - area: requests
+            files: >-
+              tests/browser/request-budget.test.ts
+              tests/browser/config-migration.test.ts
+          - area: styling
+            files: >-
+              tests/browser/vertical-alignment.test.ts
+              tests/browser/segmented-control.test.ts
+              tests/browser/table-headers.test.ts
+              tests/browser/runtime-settings.test.ts
 
     steps:
       - name: Checkout code
@@ -265,5 +293,5 @@ jobs:
           path: internal/panel/frontend/node_modules
           key: ${{ runner.os }}-panel-npm-${{ hashFiles('internal/panel/frontend/package-lock.json') }}
 
-      - name: Count what the panel asks for
-        run: mise run panel:frontend:test:browser
+      - name: Drive the panel in Chrome
+        run: mise run panel:frontend:test:browser ${{ matrix.files }}

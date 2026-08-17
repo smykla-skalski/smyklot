@@ -21,7 +21,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { SETTLE_MS, startPanel, type Panel } from './harness';
+import { inLanes, startPanel, visit, type Panel } from './harness';
 
 /** The narrowest phone still in use, and the common one. */
 const WIDTHS = [320, 375] as const;
@@ -88,14 +88,25 @@ function routes(account: string): ReadonlyArray<readonly [string, string]> {
 beforeAll(async () => {
   panel = await startPanel();
 
-  for (const width of WIDTHS) {
-    for (const [name, path] of routes(panel.account)) {
-      measured.set(`${name} at ${width}`, await measure(path, width));
-    }
+  /* Thirty-eight pages, and each one is a navigation followed by a wait. Swept in lanes because
+     the wait is nearly all of it and nothing measured below has a clock in it: a layout viewport
+     is the width the content asked for, and a page under load asks for the same width it would
+     have asked for alone. */
+  const pages = WIDTHS.flatMap((width) =>
+    routes(panel.account).map(([name, path]) => ({ key: `${name} at ${width}`, path, width })),
+  );
+  for (const { key, reading } of await inLanes(pages, async ({ key, path, width }) => ({
+    key,
+    reading: await measure(path, width),
+  }))) {
+    measured.set(key, reading);
   }
 
-  for (const [name, selector] of BAR_CONTROLS) {
-    targets.set(name, await measureTarget(selector, name === 'the menu button'));
+  for (const { name, target } of await inLanes(BAR_CONTROLS, async ([name, selector]) => ({
+    name,
+    target: await measureTarget(selector, name === 'the menu button'),
+  }))) {
+    targets.set(name, target);
   }
 }, 300_000);
 
@@ -115,8 +126,7 @@ async function measure(path: string, width: number): Promise<Measured> {
   });
 
   try {
-    await page.goto(`${panel.origin}${path}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(SETTLE_MS);
+    await visit(page, `${panel.origin}${path}`);
 
     return await page.evaluate((device: number) => {
       const describe_ = (element: Element): string => {
@@ -257,10 +267,7 @@ async function measureTarget(selector: string, pressCorner: boolean): Promise<Ta
   });
 
   try {
-    await page.goto(`${panel.origin}/i/${panel.account}/settings`, {
-      waitUntil: 'domcontentloaded',
-    });
-    await page.waitForTimeout(SETTLE_MS);
+    await visit(page, `${panel.origin}/i/${panel.account}/settings`);
 
     const measurement = await page.evaluate((target: string) => {
       const control = document.querySelector(target);

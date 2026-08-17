@@ -3,7 +3,7 @@ import { writeFileSync } from 'node:fs';
 import type { Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { startPanel, type Panel, SETTLE_MS } from './harness';
+import { inLanes, startPanel, visit, type Panel } from './harness';
 
 /**
  * Where a row says it centres its contents, the contents are centred by eye.
@@ -433,21 +433,29 @@ beforeAll(async () => {
   rows = [];
   fields = [];
   examined = {};
-  const page = await panel.browser.newPage();
-  try {
-    for (const route of ROUTES) {
-      const address = route.startsWith('i/')
-        ? `${panel.origin}/i/${panel.account}/${route.slice(2)}`
-        : `${panel.origin}/${route}`;
-      await page.goto(address, { waitUntil: 'domcontentloaded' });
-      await page.waitForTimeout(SETTLE_MS);
-      const reading = await rowsOn(page);
-      examined[route] = reading.examined;
-      rows.push(...reading.found.map((row) => ({ ...row, route })));
-      fields.push(...reading.fields.map((field) => ({ ...field, route })));
+
+  /* A page each, and several at once. One page walked in sequence was the arrangement, and it made
+     this file wait fourteen times for a route to load. Nothing read below is a timing: a cap height
+     comes from the engine's own trim and a padding from the computed style, and both answer the
+     same on a busy machine as on an idle one. */
+  const readings = await inLanes(ROUTES, async (route) => {
+    const address = route.startsWith('i/')
+      ? `${panel.origin}/i/${panel.account}/${route.slice(2)}`
+      : `${panel.origin}/${route}`;
+    const page = await panel.browser.newPage();
+    try {
+      await visit(page, address);
+
+      return { route, ...(await rowsOn(page)) };
+    } finally {
+      await page.close();
     }
-  } finally {
-    await page.close();
+  });
+
+  for (const reading of readings) {
+    examined[reading.route] = reading.examined;
+    rows.push(...reading.found.map((row) => ({ ...row, route: reading.route })));
+    fields.push(...reading.fields.map((field) => ({ ...field, route: reading.route })));
   }
 }, 300_000);
 

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { SETTLE_MS, startPanel, type Panel } from './harness';
+import { inLanes, startPanel, visit, type Panel } from './harness';
 
 /**
  * Every table in the product draws one column heading.
@@ -49,31 +49,39 @@ let headings: Record<string, Heading | string>;
 beforeAll(async () => {
   panel = await startPanel();
   headings = {};
-  const page = await panel.browser.newPage();
-  try {
-    for (const { route } of TABLES) {
-      const address = route.startsWith('i/')
-        ? `${panel.origin}/i/${panel.account}/${route.slice(2)}`
-        : `${panel.origin}/${route}`;
-      await page.goto(address, { waitUntil: 'domcontentloaded' });
-      await page.waitForTimeout(SETTLE_MS);
-      headings[route] = await page.evaluate(() => {
-        const th = document.querySelector('thead th');
-        if (th === null) return 'this route rendered no table header';
-        const style = getComputedStyle(th);
-        return {
-          font: style.font,
-          letterSpacing: style.letterSpacing,
-          textTransform: style.textTransform,
-          color: style.color,
-          background: style.backgroundColor,
-          borderBottom: style.borderBottom,
-        };
-      });
+
+  /* A page each, and several at once: ten routes read one after another is ten waits for a route
+     to load, and a computed style is the same style whatever else the machine is doing. */
+  const read = await inLanes(TABLES, async ({ route }) => {
+    const address = route.startsWith('i/')
+      ? `${panel.origin}/i/${panel.account}/${route.slice(2)}`
+      : `${panel.origin}/${route}`;
+    const page = await panel.browser.newPage();
+    try {
+      await visit(page, address);
+
+      return {
+        route,
+        heading: await page.evaluate((): Heading | string => {
+          const th = document.querySelector('thead th');
+          if (th === null) return 'this route rendered no table header';
+          const style = getComputedStyle(th);
+          return {
+            font: style.font,
+            letterSpacing: style.letterSpacing,
+            textTransform: style.textTransform,
+            color: style.color,
+            background: style.backgroundColor,
+            borderBottom: style.borderBottom,
+          };
+        }),
+      };
+    } finally {
+      await page.close();
     }
-  } finally {
-    await page.close();
-  }
+  });
+
+  for (const { route, heading } of read) headings[route] = heading;
 }, 300_000);
 
 afterAll(async () => {

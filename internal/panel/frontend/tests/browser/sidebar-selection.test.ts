@@ -15,7 +15,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Page } from 'playwright-core';
 
-import { SETTLE_MS, startPanel, type Panel } from './harness';
+import { SETTLE_MS, startPanel, visit, type Panel } from './harness';
 
 /** A box in the viewport's coordinates, which is the only ruler both of these share. */
 interface Box {
@@ -40,9 +40,8 @@ let moved: Selection;
 beforeAll(async () => {
   panel = await startPanel();
   page = await panel.browser.newPage({ viewport: VIEWPORT });
-  await page.goto(`${panel.origin}/root`, { waitUntil: 'domcontentloaded' });
+  await visit(page, `${panel.origin}/root`);
   await page.locator('.view-links a.active').waitFor({ state: 'visible', timeout: 30_000 });
-  await page.waitForTimeout(SETTLE_MS);
   landed = await measure(page);
 
   /* Then somewhere else, because arriving and travelling are two different writes of the same two

@@ -8,7 +8,7 @@
  * does a developer's machine. There is no skip if it is missing - a guard that stands down when it
  * cannot run is not a guard.
  */
-import type { Browser } from 'playwright-core';
+import type { Browser, Page } from 'playwright-core';
 import { chromium } from 'playwright-core';
 import { createServer, defaultClientConditions, type ViteDevServer } from 'vite';
 
@@ -72,6 +72,138 @@ export async function startPanel(): Promise<Panel> {
     throw failure;
   }
 }
+
+/**
+ * Opens a route and waits for it to be finished rather than for a fixed length of time.
+ *
+ * Every sweep in this directory used to `goto` and then sleep `SETTLE_MS`, which is two guesses at
+ * once: too long for the routes that are ready in a third of it - and every file here walks ten to
+ * forty routes, so that guess is most of what this suite costs - and too short for whichever route
+ * is slowest on a loaded machine, where the reward for guessing wrong is a measurement taken of a
+ * page that had not drawn yet.
+ *
+ * What the sweeps are actually waiting for is the route's data, so that is what this waits for.
+ * Two phases, because they fail differently:
+ *
+ *  - The panel has to mount before it can ask for anything, and between `DOMContentLoaded` and the
+ *    first request there is a gap that looks exactly like a settled page. So the first API call is
+ *    the starting gun, and it is given a long deadline: on a cold dev server the client chunks are
+ *    still being compiled, and that is slow rather than broken.
+ *  - Then the page counts as settled once nothing has been in flight for `QUIET_MS`. A response
+ *    that arrives late restarts the window, which is what makes this cover a route that loads a
+ *    list and then a page of it.
+ *
+ * Neither phase throws on running out of time. The measurement is taken anyway, and every file
+ * here already states its own precondition - a heading, a table header, five rows - which says far
+ * more about what went wrong than a navigation timeout does.
+ */
+export async function visit(page: Page, url: string, options: Settle = {}): Promise<void> {
+  const quiet = options.quiet ?? QUIET_MS;
+  const ceiling = options.ceiling ?? QUIET_CEILING_MS;
+
+  let inFlight = 0;
+  let mounted = false;
+  let last = Date.now();
+
+  const asked = (request: { url: () => string }): void => {
+    inFlight += 1;
+    last = Date.now();
+    if (request.url().includes('/api/')) mounted = true;
+  };
+  const answered = (): void => {
+    inFlight = Math.max(0, inFlight - 1);
+    last = Date.now();
+  };
+
+  page.on('request', asked);
+  page.on('requestfinished', answered);
+  page.on('requestfailed', answered);
+
+  try {
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+
+    const mountBy = Date.now() + (options.mount ?? MOUNT_MS);
+    while (!mounted && Date.now() < mountBy) await page.waitForTimeout(POLL_MS);
+
+    const settleBy = Date.now() + ceiling;
+    while (Date.now() < settleBy) {
+      if (inFlight === 0 && Date.now() - last >= quiet) break;
+      await page.waitForTimeout(POLL_MS);
+    }
+
+    /* Text is measured cap-to-baseline in more than one file here, and a fallback face has
+       different metrics from the one the page ends up drawing. Cheap when the faces are already
+       resolved, which after the wait above they almost always are. */
+    await page.evaluate(async () => {
+      await document.fonts.ready;
+    });
+  } finally {
+    page.off('request', asked);
+    page.off('requestfinished', answered);
+    page.off('requestfailed', answered);
+  }
+}
+
+export interface Settle {
+  /** How long nothing may be in flight before the route counts as loaded. */
+  quiet?: number;
+  /** Longest to wait for that quiet before measuring anyway. */
+  ceiling?: number;
+  /** Longest to wait for the panel to mount and reach the API. */
+  mount?: number;
+}
+
+const QUIET_MS = 250;
+const QUIET_CEILING_MS = 8000;
+const MOUNT_MS = 30_000;
+const POLL_MS = 25;
+
+/**
+ * Measures many routes at once, each in its own page.
+ *
+ * A route measurement is a navigation and then a wait, and the wait is nearly all of it. Taken one
+ * after another that wait is paid once per route; taken together it is paid once. `request-budget`
+ * has always done this - it opens every address at the same time and says why: a count does not
+ * change under load, only how long a page takes to reach it does. The same holds for everything
+ * else measured here, because it is all geometry and computed style, and neither has a clock in
+ * it. What load does change is the settling, and `visit` above waits for that rather than assuming
+ * it, which is what makes running them together safe.
+ *
+ * Bounded rather than unbounded: the dev server compiling modules for thirty pages at once is the
+ * one way this could make a route slower to settle than the ceiling allows.
+ */
+export async function inLanes<T, R>(
+  items: readonly T[],
+  measure: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = Array.from({ length: items.length }) as R[];
+  let next = 0;
+
+  const lane = async (): Promise<void> => {
+    for (;;) {
+      const index = next++;
+      if (index >= items.length) return;
+      results[index] = await measure(items[index]!);
+    }
+  };
+
+  await Promise.all(Array.from({ length: Math.min(LANES, items.length) }, lane));
+
+  return results;
+}
+
+/**
+ * How many pages are measured at once.
+ *
+ * Not derived from the core count, because cores are not what a lane spends its time on: a route
+ * loads for a few hundred milliseconds and then waits, and it is the waiting that overlaps. Six is
+ * where the return flattens on a four-core runner - past it the bound stops being the machine and
+ * becomes the single thread serving the modules, and every lane simply queues behind it.
+ *
+ * `SMYKLOT_BROWSER_LANES=1` puts any of these files back to one page at a time, which is what to
+ * reach for when a failure needs to be watched rather than reproduced.
+ */
+export const LANES = Math.max(1, Number.parseInt(process.env.SMYKLOT_BROWSER_LANES ?? '', 10) || 6);
 
 /** Signs in against the mock and reports a workspace the viewer owns. */
 async function signIn(browser: Browser, origin: string): Promise<string> {

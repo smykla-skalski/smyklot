@@ -379,11 +379,15 @@ run = "npm test"
 # together, and `npm test` is a loop worth running on every save. It drives
 # Chrome through Playwright's `channel`, so nothing is downloaded - the runner
 # image ships Chrome and so does a developer's machine.
+#
+# Named files rather than all of them is how the workflow splits this across
+# runners. Vitest fails on a filter that matches nothing, so a bucket naming a
+# file that has been renamed goes red rather than quietly running less.
 [tasks."panel:frontend:test:browser"]
 description = "Drive the panel in Chrome and fail on an address asked for too often"
 depends = ["panel:frontend:install"]
 dir = "internal/panel/frontend"
-run = "npm run test:browser"
+run = 'npm run test:browser -- {{arg(name="files", var=true, default="")}}'
 
 [tasks."panel:assets:generate"]
 description = "Build and package panel assets for Go embedding"
