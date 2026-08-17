@@ -1810,6 +1810,57 @@ var _ = Describe("Org sync [Unit]", func() {
 			],"truncated":false}`),
 		)
 
+		// A refusal is rewritten every sweep until the repository can be synced,
+		// which is what makes it worth reading - and nothing rewrites it once
+		// the repository leaves the planner's scope. Left there it states, for
+		// ever, a reason nobody can act on, and usually the very reason
+		// somebody switched the kind off.
+		DescribeTable("takes a refusal off what it has stopped looking at",
+			func(leave func(target storage.Target)) {
+				target := grantContents()
+				stub.repoTree = `{"sha":"basetree","tree":[
+					{"path":"docs","type":"blob","mode":"100644","sha":"b1","size":4}
+				],"truncated":false}`
+				configureKind(target, orgsync.KindFiles,
+					`{"files":[{"path":"docs/guide.md","content":"# Guide\n"}]}`)
+
+				plan(target)
+
+				state, err := service.store.ListSyncRepositoryState(
+					GinkgoT().Context(), target.ID)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(state).To(HaveLen(1))
+				Expect(state[0].Problem).NotTo(BeEmpty())
+
+				leave(target)
+				plan(target)
+
+				state, err = service.store.ListSyncRepositoryState(
+					GinkgoT().Context(), target.ID)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(state).To(HaveLen(1))
+				Expect(state[0].Problem).To(BeEmpty())
+			},
+			Entry("the repository switches the kind off", func(target storage.Target) {
+				override(target, orgsync.KindFiles, false)
+			}),
+			Entry("the installation switches the kind off", func(target storage.Target) {
+				GinkgoHelper()
+
+				stored, err := service.store.GetSyncConfig(
+					GinkgoT().Context(), target.ID, orgsync.KindFiles)
+				Expect(err).NotTo(HaveOccurred())
+
+				_, err = service.store.SetSyncConfig(
+					GinkgoT().Context(), orgsync.ConfigChange{
+						TargetID: target.ID, Kind: orgsync.KindFiles, Enabled: false,
+						Document: stored.Document, ActorID: target.Account.ID,
+						Now: time.Now().UTC(), Revision: stored.Revision,
+					})
+				Expect(err).NotTo(HaveOccurred())
+			}),
+		)
+
 		// The other end of the same record. A repository that plans work is a
 		// repository nothing is stopping any more, and a refusal left standing
 		// would have the panel saying the files are not being synced here while

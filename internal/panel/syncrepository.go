@@ -96,6 +96,35 @@ func (s *Server) writeSyncOverride(
 	kind orgsync.Kind,
 	override *orgsync.RepositoryOverride,
 ) {
+	s.answerSyncOverride(w, r, repositoryID, kind, override, true)
+}
+
+// writeSavedSyncOverride is the same answer after a save has landed.
+//
+// The difference is what an unreadable state row means. On a read it is the one
+// thing the page exists to show, so it is reported; after a save it is a second
+// read on the way out of a write that already committed, and reporting it would
+// answer 500 for a change that landed - which the form reads as a failed save,
+// so it keeps the revision it came in with and every retry is answered 409 for
+// a change the person made themselves.
+func (s *Server) writeSavedSyncOverride(
+	w http.ResponseWriter,
+	r *http.Request,
+	repositoryID string,
+	kind orgsync.Kind,
+	override *orgsync.RepositoryOverride,
+) {
+	s.answerSyncOverride(w, r, repositoryID, kind, override, false)
+}
+
+func (s *Server) answerSyncOverride(
+	w http.ResponseWriter,
+	r *http.Request,
+	repositoryID string,
+	kind orgsync.Kind,
+	override *orgsync.RepositoryOverride,
+	reportUnreadableState bool,
+) {
 	dto := syncOverrideToDTO(kind, override)
 
 	if switchedOff(override) {
@@ -115,13 +144,15 @@ func (s *Server) writeSyncOverride(
 	case errors.Is(err, storage.ErrNotFound):
 		// Nothing has planned this repository for this kind yet, which is the
 		// ordinary answer on a fresh installation and says nothing is wrong.
-	case err != nil:
+	case err != nil && reportUnreadableState:
 		// Reported rather than left out. A refusal this page could not read is
 		// the one thing it exists to show, and rendering the pane without it
 		// would say the repository is fine.
 		s.writeStorageError(w, err)
 
 		return
+	case err != nil:
+		// Left out, because the save this is answering has already landed.
 	default:
 		dto.Problem = state.Problem
 		if state.Problem != "" {
@@ -204,7 +235,7 @@ func (s *Server) putSyncOverride(w http.ResponseWriter, r *http.Request) {
 	// planner is what decides that, and it has not looked yet - saying so with
 	// the time it was last looked at is honest, where dropping the notice would
 	// tell somebody their fix worked before anything had tried it.
-	s.writeSyncOverride(w, r, repository.ID, kind, &saved)
+	s.writeSavedSyncOverride(w, r, repository.ID, kind, &saved)
 }
 
 // syncOverrideDocument checks a repository's adjustments against what the

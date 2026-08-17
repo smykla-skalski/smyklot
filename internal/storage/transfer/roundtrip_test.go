@@ -213,6 +213,13 @@ func requireSameState(t *testing.T, ctx context.Context, source, destination sto
 		{"repositories", func(s storage.Store) (any, error) {
 			return s.ListRepositories(ctx, "github:installation:100")
 		}},
+		// What is known about each repository for each kind of sync, which is
+		// the one table here holding a column that is empty in most rows: the
+		// seed leaves one repository refused, and without reading the rows back
+		// only the count of them was ever proven to survive the copy.
+		{"sync repository state", func(s storage.Store) (any, error) {
+			return s.ListSyncRepositoryState(ctx, "github:installation:100")
+		}},
 		{"session", func(s storage.Store) (any, error) {
 			return s.GetSession(ctx, "seed-root-session", seededAt.Add(11*time.Minute))
 		}},
