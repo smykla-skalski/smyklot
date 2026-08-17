@@ -64,14 +64,58 @@ func equal(one, other any) bool {
 
 		return ok && equalObjects(left, right)
 
+	case map[any]any:
+		// go-yaml answers with this for any mapping that has a key which is not
+		// a string. Without it the comparison fell through to == on two maps,
+		// which is a run-time panic rather than a wrong answer.
+		right, ok := other.(map[any]any)
+
+		return ok && equalAnyObjects(left, right)
+
 	case []any:
 		right, ok := other.([]any)
 
 		return ok && equalLists(left, right)
 
 	default:
+		if !comparable(one) || !comparable(other) {
+			// Nothing left that can be compared with ==, and reaching it would
+			// take the process down. Two values this cannot read are not the
+			// same value, which for a deduplication means both are kept.
+			return false
+		}
+
 		return one == other
 	}
+}
+
+// comparable reports a value == will not panic on.
+//
+// A whitelist rather than a list of what to avoid: a shape nobody anticipated
+// answers false and is kept, where a blacklist would answer true and crash.
+func comparable(value any) bool {
+	switch value.(type) {
+	case nil, bool, string, int, int64, uint64, float64, json.Number:
+		return true
+
+	default:
+		return false
+	}
+}
+
+func equalAnyObjects(one, other map[any]any) bool {
+	if len(one) != len(other) {
+		return false
+	}
+
+	for key, value := range one {
+		counterpart, present := other[key]
+		if !present || !equal(value, counterpart) {
+			return false
+		}
+	}
+
+	return true
 }
 
 func equalObjects(one, other map[string]any) bool {

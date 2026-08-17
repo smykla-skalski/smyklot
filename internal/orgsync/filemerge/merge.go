@@ -8,8 +8,17 @@ import (
 
 // mergeStructured composes a JSON or YAML template with a repository's
 // overrides.
+//
+// YAML goes through its own path, which edits the document's nodes. JSON is
+// decoded and re-encoded: its numbers survive that because the decoder is told
+// to keep them as text, and it has no comments to lose. YAML survives neither,
+// which is why it is not read this way.
 func mergeStructured(format Format, template []byte, spec Spec) ([]byte, error) {
-	base, err := parseDocument(format, template)
+	if format == FormatYAML {
+		return mergeYAML(template, spec)
+	}
+
+	base, err := parseJSON(template)
 	if err != nil {
 		return nil, err
 	}
@@ -32,7 +41,7 @@ func mergeStructured(format Format, template []byte, spec Spec) ([]byte, error) 
 		return nil, err
 	}
 
-	return renderDocument(format, merged)
+	return renderJSON(merged)
 }
 
 // decodeOverrides reads the adjustments, which are stored as JSON whatever the

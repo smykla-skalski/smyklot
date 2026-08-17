@@ -2,6 +2,7 @@ package filemerge_test
 
 import (
 	"encoding/json"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -270,6 +271,163 @@ var _ = Describe("Merging a structured file [Unit]", func() {
 
 		Expect(filemerge.Apply("CONTRIBUTING.md", template, filemerge.Spec{})).
 			To(Equal(template))
+	})
+
+	// A YAML file decoded into Go values and encoded back is not the file that
+	// was read. Every plain scalar goes through the resolver on the way in and
+	// strconv on the way out, and none of what follows needs the merge to have
+	// gone anywhere near it: one changed key re-rendered the whole document.
+	//
+	// A workflow whose Go version silently became 1.2 is a workflow that no
+	// longer builds, put there by a bot, in a pull request whose description
+	// says it changed something else.
+	Describe("a YAML template the merge did not touch", func() {
+		template := []byte(`# What every repository builds with.
+name: build
+on: push
+jobs:
+  build:
+    # The oldest release this still supports.
+    go-version: 1.20
+    mode: 0644
+    since: 2024-01-01
+    retries: 1.0
+    verbose: yes
+    steps:
+      - uses: actions/checkout@v4
+`)
+
+		merged := func() string {
+			GinkgoHelper()
+
+			out, err := filemerge.Apply(".github/workflows/ci.yaml", template,
+				filemerge.Spec{Overrides: overrides(`{"name": "release"}`)})
+			Expect(err).NotTo(HaveOccurred())
+
+			return string(out)
+		}
+
+		DescribeTable("writes every value back as it was written",
+			func(line string) {
+				Expect(merged()).To(ContainSubstring(line))
+			},
+
+			// 1.20 read as a float and formatted with %g comes back 1.2
+			Entry("a version that reads as a number", "go-version: 1.20"),
+			// go-yaml v3 keeps YAML 1.1 octals, so this decoded as 420
+			Entry("a mode with a leading zero", "mode: 0644"),
+			// A bare date decodes to time.Time and re-encodes with a clock
+			Entry("a date", "since: 2024-01-01"),
+			Entry("a float that is a whole number", "retries: 1.0"),
+			Entry("a word that reads as a boolean", "verbose: yes"),
+			Entry("a key that reads as a boolean", "on: push"),
+		)
+
+		It("keeps the comments somebody wrote", func() {
+			Expect(merged()).To(ContainSubstring("# What every repository builds with."))
+			Expect(merged()).To(ContainSubstring("# The oldest release this still supports."))
+		})
+
+		It("keeps the order the file was written in", func() {
+			out := merged()
+
+			Expect(strings.Index(out, "name:")).To(BeNumerically("<", strings.Index(out, "on:")))
+			Expect(strings.Index(out, "on:")).To(BeNumerically("<", strings.Index(out, "jobs:")))
+		})
+
+		It("still makes the change it was asked for", func() {
+			Expect(merged()).To(ContainSubstring("name: release"))
+			Expect(merged()).NotTo(ContainSubstring("name: build"))
+		})
+	})
+
+	Describe("a YAML template the merge does touch", func() {
+		It("writes a string that reads as a number as a string", func() {
+			merged, err := filemerge.Apply("ci.yaml", []byte("go-version: 1.19\n"),
+				filemerge.Spec{Overrides: overrides(`{"go-version": "1.20"}`)})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(merged)).To(MatchRegexp(`go-version: ["']1\.20["']`))
+		})
+
+		It("keeps a large identifier's digits", func() {
+			merged, err := filemerge.Apply("ci.yaml", []byte("app: 1\n"),
+				filemerge.Spec{Overrides: overrides(`{"app": 9007199254740995}`)})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(merged)).To(ContainSubstring("app: 9007199254740995"))
+		})
+
+		It("leaves the rest of a mapping alone when one key below it changes", func() {
+			merged, err := filemerge.Apply("ci.yaml",
+				[]byte("jobs:\n  build:\n    go-version: 1.20\n    timeout: 5\n"),
+				filemerge.Spec{Overrides: overrides(
+					`{"jobs": {"build": {"timeout": 30}}}`)})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(merged)).To(ContainSubstring("go-version: 1.20"))
+			Expect(string(merged)).To(ContainSubstring("timeout: 30"))
+		})
+
+		It("keeps a list item the template wrote as the template wrote it", func() {
+			merged, err := filemerge.Apply("ci.yaml",
+				[]byte("versions:\n  # supported\n  - 1.20\n"),
+				filemerge.Spec{
+					Overrides: overrides(`{"versions": ["1.21"]}`),
+					Arrays: []filemerge.ArrayRule{
+						{Path: "$.versions", Strategy: filemerge.ArrayAppend},
+					},
+				})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(merged)).To(ContainSubstring("- 1.20"))
+			Expect(string(merged)).To(ContainSubstring("# supported"))
+			Expect(string(merged)).To(MatchRegexp(`- ["']1\.21["']`))
+		})
+
+		// Two spellings of one value, which is what the deduplication is for.
+		It("removes a repeat written two ways", func() {
+			merged, err := filemerge.Apply("ci.yaml",
+				[]byte("ports:\n  - 8080\n"),
+				filemerge.Spec{
+					Overrides:   overrides(`{"ports": [8080, 9090]}`),
+					Deduplicate: true,
+					Arrays: []filemerge.ArrayRule{
+						{Path: "$.ports", Strategy: filemerge.ArrayAppend},
+					},
+				})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(strings.Count(string(merged), "8080")).To(Equal(1))
+			Expect(string(merged)).To(ContainSubstring("9090"))
+		})
+
+		// A mapping with a key that is not a string decodes to a Go map nothing
+		// else here handles, and comparing two of them took the process down.
+		It("deduplicates beside a mapping whose keys are not strings", func() {
+			merged, err := filemerge.Apply("ci.yaml",
+				[]byte("matrix:\n  - 1: a\n"),
+				filemerge.Spec{
+					Overrides:   overrides(`{"matrix": [{"go": "1.21"}]}`),
+					Deduplicate: true,
+					Arrays: []filemerge.ArrayRule{
+						{Path: "$.matrix", Strategy: filemerge.ArrayAppend},
+					},
+				})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(merged)).To(ContainSubstring("1: a"))
+			Expect(string(merged)).To(ContainSubstring("go:"))
+		})
+
+		It("removes a key an override sets to null", func() {
+			merged, err := filemerge.Apply("ci.yaml", []byte("keep: 1\ndrop: 2\n"),
+				filemerge.Spec{Overrides: overrides(`{"drop": null}`)})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(merged)).To(ContainSubstring("keep: 1"))
+			Expect(string(merged)).NotTo(ContainSubstring("drop"))
+		})
 	})
 
 	DescribeTable("refuses a file it cannot read",
