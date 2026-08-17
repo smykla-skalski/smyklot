@@ -1,5 +1,6 @@
 <script lang="ts">
   import { createQuery } from '@tanstack/svelte-query';
+  import { useInterval } from 'runed';
 
   import type { PanelApi } from '#lib/api.js';
   import { formatTimestamp } from '#lib/format.js';
@@ -58,12 +59,10 @@
   );
   const next = $derived(request === null ? null : queueNext(request, now));
 
-  $effect(() => {
-    const tick = setInterval(() => {
-      now = Date.now();
-    }, 1000);
-    return () => clearInterval(tick);
-  });
+  /* Every second, because the countdown beside a waiting request is drawn in them.
+     The tables the panel already had tick at thirty - see `RepositoryList` - which is
+     the right rate for "4 minutes ago" and the wrong one for a clock running out. */
+  useInterval(1000, { callback: () => (now = Date.now()) });
 
   async function load(): Promise<void> {
     actionProblem = null;

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { createQuery } from '@tanstack/svelte-query';
+  import { useDebounce, useInterval } from 'runed';
   import { untrack } from 'svelte';
   import { flip } from 'svelte/animate';
   import { MediaQuery } from 'svelte/reactivity';
@@ -414,17 +415,18 @@
     ascending = own.ascending;
   });
 
-  $effect(() => {
-    const tick = setInterval(() => {
-      now = Date.now();
-    }, 1000);
-    return () => clearInterval(tick);
-  });
+  /* Every second, because the ring beside a waiting request counts one down. The
+     tables the panel already had tick at thirty - see `RepositoryList` - which is the
+     right rate for "4 minutes ago" and the wrong one for a clock running out. */
+  useInterval(1000, { callback: () => (now = Date.now()) });
+
+  const applySearch = useDebounce((next: string) => {
+    query = next;
+  }, 180);
 
   $effect(() => {
     const next = search.trim();
-    const timeout = window.setTimeout(() => (query = next), 180);
-    return () => window.clearTimeout(timeout);
+    untrack(() => void applySearch(next));
   });
 
   async function load(): Promise<void> {
