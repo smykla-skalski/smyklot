@@ -147,8 +147,27 @@
     return Array.isArray(from.excludes) ? (from.excludes as string[]) : [];
   }
 
+  /**
+   * A list with one entry changed, and a list without one, both as new lists.
+   *
+   * Every edit on this page is one of the two, at three depths: the rulesets,
+   * a ruleset's bypass actors, a code-scanning rule's tools. Written out each
+   * time they were six copies of the same index arithmetic.
+   *
+   * New lists rather than edits in place, because the draft is compared against
+   * what was saved to decide whether Save is offered, and a list mutated where
+   * it stands compares equal to itself.
+   */
+  function patchedAt<T>(items: T[], at: number, change: Partial<T>): T[] {
+    return items.map((item, index) => (index === at ? { ...item, ...change } : item));
+  }
+
+  function withoutAt<T>(items: T[], at: number): T[] {
+    return items.filter((_, index) => index !== at);
+  }
+
   function patch(index: number, change: Partial<SyncRuleset>): void {
-    drafts = drafts.map((ruleset, at) => (at === index ? { ...ruleset, ...change } : ruleset));
+    drafts = patchedAt(drafts, index, change);
   }
 
   function patchRules(index: number, change: Partial<SyncRulesetRules>): void {
@@ -172,7 +191,7 @@
   }
 
   function remove(index: number): void {
-    drafts = drafts.filter((_, at) => at !== index);
+    drafts = withoutAt(drafts, index);
   }
 
   /** One ref or context per line, which is how somebody writes a list. */
@@ -185,10 +204,6 @@
       .split('\n')
       .map((line) => line.trim())
       .filter((line) => line !== '');
-  }
-
-  function ruleOn(ruleset: SyncRuleset, key: keyof SyncRulesetRules): string {
-    return ruleset.rules?.[key] === true ? ON : OFF;
   }
 
   /**
@@ -268,11 +283,7 @@
   }
 
   function patchActor(index: number, at: number, change: Partial<SyncRulesetBypassActor>): void {
-    patch(index, {
-      bypass_actors: actors(drafts[index]).map((actor, position) =>
-        position === at ? { ...actor, ...change } : actor,
-      ),
-    });
+    patch(index, { bypass_actors: patchedAt(actors(drafts[index]), at, change) });
   }
 
   function addActor(index: number): void {
@@ -285,9 +296,7 @@
   }
 
   function removeActor(index: number, at: number): void {
-    patch(index, {
-      bypass_actors: actors(drafts[index]).filter((_, position) => position !== at),
-    });
+    patch(index, { bypass_actors: withoutAt(actors(drafts[index]), at) });
   }
 
   function tools(ruleset: SyncRuleset): SyncRulesetCodeScanningTool[] {
@@ -300,11 +309,7 @@
     change: Partial<SyncRulesetCodeScanningTool>,
   ): void {
     patchRules(index, {
-      code_scanning: {
-        code_scanning_tools: tools(drafts[index]).map((tool, position) =>
-          position === at ? { ...tool, ...change } : tool,
-        ),
-      },
+      code_scanning: { code_scanning_tools: patchedAt(tools(drafts[index]), at, change) },
     });
   }
 
@@ -325,9 +330,7 @@
 
   function removeTool(index: number, at: number): void {
     patchRules(index, {
-      code_scanning: {
-        code_scanning_tools: tools(drafts[index]).filter((_, position) => position !== at),
-      },
+      code_scanning: { code_scanning_tools: withoutAt(tools(drafts[index]), at) },
     });
   }
 
@@ -496,7 +499,7 @@
           {@render toggleRow(
             rule.label,
             `${rowKey(index)}-${rule.key}`,
-            ruleOn(ruleset, rule.key),
+            flagOn(ruleset.rules, rule.key),
             (chosen: string) => patchRules(index, { [rule.key]: chosen === ON }),
           )}
         {/each}
