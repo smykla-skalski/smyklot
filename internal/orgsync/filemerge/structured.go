@@ -183,9 +183,11 @@ func asYAML(value any) any {
 
 // asYAMLNumber reads a JSON number as the Go type go-yaml writes it back as.
 //
-// An integer too large for int64 keeps its digits by staying text: converting
-// it to float64 would write a different number, and a number nobody can
-// represent is better left as the literal somebody typed.
+// An integer too large for int64 comes out as a quoted string, and that is the
+// least bad of the three answers available: converting it to float64 would
+// write a different number into somebody's file, refusing it would refuse a
+// value JSON allows, and a quoted literal keeps every digit and says on the
+// face of it that something unusual happened.
 func asYAMLNumber(value json.Number) any {
 	if integer, ok := new(big.Int).SetString(value.String(), 10); ok {
 		if integer.IsInt64() {

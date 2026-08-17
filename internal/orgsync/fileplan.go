@@ -243,6 +243,7 @@ func resolveFiles(
 	exclude Excludes,
 ) ([]desiredFile, error) {
 	resolved := make([]desiredFile, 0, len(config.Files))
+	total := 0
 
 	for _, file := range config.Files {
 		if exclude.Matches(file.Path) {
@@ -259,6 +260,17 @@ func resolveFiles(
 		)
 		if err != nil {
 			return nil, fmt.Errorf("composing %s: %w", file.Path, err)
+		}
+
+		// What a repository adjusts is added to the template, so the bound the
+		// configuration was held to is not a bound on what comes out of the
+		// merge - and what comes out is what a plan carries, once per
+		// repository. Checked again here, against the same numbers.
+		total += len(content)
+		if len(content) > largestFileContent || total > largestFileTotal {
+			return nil, fmt.Errorf(
+				"%w: composing %s came to more than this repository may be sent",
+				ErrInvalidConfig, file.Path)
 		}
 
 		resolved = append(resolved, desiredFile{

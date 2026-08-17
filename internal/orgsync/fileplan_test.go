@@ -1,6 +1,8 @@
 package orgsync_test
 
 import (
+	"strings"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -102,6 +104,26 @@ var _ = Describe("Planning files [Unit]", func() {
 			Expect(string(written.Content)).To(ContainSubstring("Europe/Warsaw"))
 			Expect(string(written.Content)).To(ContainSubstring("config:recommended"))
 			Expect(actions[0].After).To(HaveSuffix("adjusted for this repository"))
+		})
+
+		// The bound the configuration was held to is not a bound on what comes
+		// out of the merge, and what comes out is what a plan carries - once
+		// per repository it would write it to.
+		It("refuses one that composes more than a repository may be sent", func() {
+			_, err := orgsync.PlanFiles("repo-1", orgsync.FileConfig{
+				Files: []orgsync.File{file("renovate.json", `{"a":1}`)},
+			}, orgsync.FileOverride{
+				Merges: []orgsync.FileMerge{{
+					Path: "renovate.json",
+					Spec: filemerge.Spec{
+						Overrides: []byte(
+							`{"big":"` + strings.Repeat("x", 1_200_000) + `"}`),
+					},
+				}},
+			}, "main", nil)
+
+			Expect(err).To(MatchError(orgsync.ErrInvalidConfig))
+			Expect(err.Error()).To(ContainSubstring("more than this repository may be sent"))
 		})
 
 		// Fail-closed. The tool this replaces reported the same condition as a

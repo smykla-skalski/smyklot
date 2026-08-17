@@ -82,6 +82,11 @@ var _ = Describe("File configuration [Unit]", func() {
 		Entry("a path written with backslashes",
 			orgsync.FileConfig{Files: []orgsync.File{file(`.github\ci.yaml`, "x")}},
 			"git separates paths with /"),
+		// Invisible in the box somebody typed it into, and every other check
+		// here waves it through: not a separator, not a dot, not whitespace.
+		Entry("a path with a byte nobody can see",
+			orgsync.FileConfig{Files: []orgsync.File{file("a\x00b.md", "x")}},
+			"cannot be printed"),
 		Entry("a path with a doubled separator",
 			orgsync.FileConfig{Files: []orgsync.File{file(".github//ci.yaml", "x")}},
 			"is not a plain path"),

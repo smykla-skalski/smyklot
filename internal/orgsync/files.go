@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync/filemerge"
@@ -252,6 +253,15 @@ func validateFilePath(noun string, index int, filePath string) error {
 		return invalid("%s %q has a backslash in it; git separates paths with /",
 			noun, filePath)
 
+	case strings.ContainsFunc(filePath, unprintable):
+		// A NUL or a control character survives every check above - it is not
+		// a separator, not a dot, not whitespace path.Clean touches - and
+		// reaches GitHub as an argument nothing sensible can be done with. It
+		// is also invisible in the box somebody typed it into, which is the
+		// part worth answering.
+		return invalid("%s %q has a character in it that cannot be printed",
+			noun, filePath)
+
 	case cleaned == ".." || strings.HasPrefix(cleaned, "../"):
 		// Asked of the cleaned path, so a traversal spelled the long way round
 		// is answered as a traversal rather than as untidy punctuation.
@@ -270,6 +280,9 @@ func validateFilePath(noun string, index int, filePath string) error {
 
 	return nil
 }
+
+// unprintable reports a rune that has no business in a path a person typed.
+func unprintable(character rune) bool { return !unicode.IsPrint(character) }
 
 // Paths returns every configured file path, in configuration order.
 func (c FileConfig) Paths() []string {
