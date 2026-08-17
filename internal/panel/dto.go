@@ -80,11 +80,33 @@ type targetResponse struct {
 	EffectiveConfig          config.Config            `json:"effective_config"`
 	ConfigSources            map[string]config.Source `json:"config_sources"`
 	Revision                 int64                    `json:"revision"`
-	RepositoryCounts         storage.RepositoryCounts `json:"repository_counts"`
+	RepositoryCounts         repositoryCountsResponse `json:"repository_counts"`
 	EffectiveRole            storage.InstallationRole `json:"effective_role"`
 	AccessSource             storage.AccessSource     `json:"access_source"`
 	Capabilities             capabilityResponse       `json:"capabilities"`
 	SuspensionReason         *string                  `json:"suspension_reason,omitempty"`
+}
+
+// The repository tallies, named the way every other field on this wire is named.
+//
+// storage.RepositoryCounts used to go out as itself. It carries no struct tags -
+// nothing below the port needs any - so it marshalled under its Go field names, and
+// the panel, reading the lower-case names it uses everywhere else, got undefined for
+// each of them. Two undefined numbers added together are what put "of NaN enabled"
+// on the Root console's installations table. The development fixture spelled them
+// the way the panel reads them, so the page was only ever wrong against the service.
+type repositoryCountsResponse struct {
+	Total    int `json:"total"`
+	Enabled  int `json:"enabled"`
+	Disabled int `json:"disabled"`
+}
+
+func newRepositoryCountsResponse(counts storage.RepositoryCounts) repositoryCountsResponse {
+	return repositoryCountsResponse{
+		Total:    counts.Total,
+		Enabled:  counts.Enabled,
+		Disabled: counts.Disabled,
+	}
 }
 
 type repositorySummaryResponse struct {
@@ -222,7 +244,7 @@ func targetDTO(
 		EffectiveConfig:          resolved.Values,
 		ConfigSources:            resolved.Sources,
 		Revision:                 target.Revision,
-		RepositoryCounts:         target.RepositoryCounts,
+		RepositoryCounts:         newRepositoryCountsResponse(target.RepositoryCounts),
 		EffectiveRole:            access.Role,
 		AccessSource:             access.Source,
 		Capabilities:             capabilitiesDTO(access.Capabilities),

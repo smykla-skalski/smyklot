@@ -33,7 +33,7 @@ type rootInstallationResponse struct {
 	Account          accountResponse          `json:"account"`
 	Available        bool                     `json:"available"`
 	OwnedByViewer    bool                     `json:"owned_by_viewer"`
-	RepositoryCounts storage.RepositoryCounts `json:"repository_counts"`
+	RepositoryCounts repositoryCountsResponse `json:"repository_counts"`
 	DeliveryHealth   deliveryHealthResponse   `json:"delivery_health"`
 	Ownership        ownershipResponse        `json:"ownership"`
 }
@@ -253,7 +253,7 @@ func rootInstallationDTO(
 		ID: target.ID, InstallationID: target.InstallationID, Type: target.Kind,
 		Account: accountDTO(target.Account), Available: target.Available,
 		OwnedByViewer:    ownedByViewer,
-		RepositoryCounts: target.RepositoryCounts,
+		RepositoryCounts: newRepositoryCountsResponse(target.RepositoryCounts),
 		DeliveryHealth: deliveryHealthResponse{
 			Failed: target.DeliveryHealth.Failed, LastFailureAt: target.DeliveryHealth.LastFailureAt,
 		},
