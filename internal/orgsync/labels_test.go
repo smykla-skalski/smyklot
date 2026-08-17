@@ -95,6 +95,22 @@ var _ = Describe("Label configuration [Unit]", func() {
 		Expect(err.Error()).To(ContainSubstring("differ only in case"))
 	})
 
+	// A document with more than one thing wrong is refused for the first of
+	// them, so somebody fixing it top to bottom is not sent to line nine for a
+	// mistake that is also on line two. Both existing clash specs carry two
+	// labels and nothing else wrong, so neither would notice the order moving
+	It("reports the first thing wrong, not the first of one kind of thing", func() {
+		err := config(
+			orgsync.Label{Name: "bug", Color: "d73a4a"},
+			orgsync.Label{Name: "Bug", Color: "000000"},
+			orgsync.Label{Name: "chore", Color: "zzzzzz"},
+		).Validate()
+
+		Expect(err).To(MatchError(orgsync.ErrInvalidConfig))
+		Expect(err.Error()).To(ContainSubstring("differ only in case"))
+		Expect(err.Error()).NotTo(ContainSubstring("zzzzzz"))
+	})
+
 	It("names which entry is wrong when the name is missing", func() {
 		err := config(
 			orgsync.Label{Name: "bug", Color: "d73a4a"},

@@ -37,8 +37,7 @@ func validateName(noun string, index int, name string, longest int) error {
 	return nil
 }
 
-// firstFoldClash reports the first two names that differ at most in case, in
-// configuration order.
+// foldedNames remembers the names a document has used so far.
 //
 // Shared because every kind is keyed by a name somebody typed, and answered
 // separately by each because the reason differs. Labels clash because GitHub
@@ -46,19 +45,22 @@ func validateName(noun string, index int, name string, longest int) error {
 // happily hold both, and then nothing downstream can say which one a
 // configuration entry meant.
 //
-// first equals second when the two are spelled identically, which is the plain
-// duplicate rather than a case collision.
-func firstFoldClash(names []string) (first, second string, clashed bool) {
-	seen := make(map[string]string, len(names))
+// Asked one name at a time rather than handed the whole list, so a document
+// with more than one thing wrong reports the first of them in configuration
+// order. Checking the list afterwards was tidier to read and reported a
+// mistake on line nine ahead of the one on line two.
+type foldedNames map[string]string
 
-	for _, name := range names {
-		folded := strings.ToLower(name)
-		if earlier, found := seen[folded]; found {
-			return earlier, name, true
-		}
-
-		seen[folded] = name
+// clash records a name and reports the earlier one it cannot be told apart
+// from. earlier equals the name itself where the two are spelled identically,
+// which is the plain duplicate rather than a case collision.
+func (n foldedNames) clash(name string) (earlier string, clashed bool) {
+	folded := strings.ToLower(name)
+	if first, found := n[folded]; found {
+		return first, true
 	}
 
-	return "", "", false
+	n[folded] = name
+
+	return "", false
 }

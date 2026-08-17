@@ -231,6 +231,18 @@ var _ = Describe("Ruleset configuration [Unit]", func() {
 			}),
 			"the status check \"test\" twice"),
 
+		// A check is satisfied by a report arriving under exactly this string,
+		// so one with a space on the end is a check nothing will ever report -
+		// and it sits beside its unpadded twin as a second requirement neither
+		// of them is
+		Entry("a status check with a space on the end",
+			with(func(r *orgsync.Ruleset) {
+				r.Rules.RequiredStatusChecks.Checks = []orgsync.RulesetStatusCheck{
+					{Context: "test"}, {Context: "test "},
+				}
+			}),
+			"leading or trailing whitespace"),
+
 		Entry("code scanning with no tool",
 			with(func(r *orgsync.Ruleset) {
 				r.Rules.CodeScanning = &orgsync.RulesetCodeScanningRule{}

@@ -220,36 +220,29 @@ func (c RulesetConfig) Validate() error {
 		return err
 	}
 
+	seen := foldedNames{}
+
 	for index, ruleset := range c.Rulesets {
 		if err := ruleset.validate(index); err != nil {
 			return err
 		}
-	}
 
-	// Name is the only handle sync has on a ruleset. GitHub permits two with
-	// the same name, so nothing but this stops a configuration from naming one
-	// the planner could not then tell apart from the other. Folded, because two
-	// entries differing only in case are a distinction nobody intends and a
-	// plan nobody can read.
-	if first, second, clashed := firstFoldClash(c.Names()); clashed {
-		if first == second {
+		// Name is the only handle sync has on a ruleset. GitHub permits two
+		// with the same name, so nothing but this stops a configuration from
+		// naming one the planner could not then tell apart from the other.
+		// Folded, because two entries differing only in case are a distinction
+		// nobody intends and a plan nobody can read.
+		first, clashed := seen.clash(ruleset.Name)
+		switch {
+		case !clashed:
+		case first == ruleset.Name:
 			return invalid("ruleset %q is listed twice", first)
+		default:
+			return invalid("rulesets %q and %q differ only in case", first, ruleset.Name)
 		}
-
-		return invalid("rulesets %q and %q differ only in case", first, second)
 	}
 
 	return nil
-}
-
-// Names returns every configured ruleset name, in configuration order.
-func (c RulesetConfig) Names() []string {
-	names := make([]string, 0, len(c.Rulesets))
-	for _, ruleset := range c.Rulesets {
-		names = append(names, ruleset.Name)
-	}
-
-	return names
 }
 
 func (r Ruleset) validate(index int) error {
@@ -447,14 +440,25 @@ func (r RulesetStatusChecksRule) validate(name string) error {
 	seen := make(map[string]bool, len(r.Checks))
 
 	for _, check := range r.Checks {
-		context := strings.TrimSpace(check.Context)
-		if context == "" {
+		trimmed := strings.TrimSpace(check.Context)
+		switch {
+		case trimmed == "":
 			return invalid("ruleset %q requires a status check with no name", name)
-		}
-		if seen[check.Context] {
+
+		// Refused rather than trimmed, for the reason a padded name is: a check
+		// is satisfied by a report arriving under exactly this string, and one
+		// with a space on the end is a check nothing will ever report. Trimming
+		// it silently would also let it sit beside its unpadded twin as a
+		// second requirement neither of them is.
+		case trimmed != check.Context:
+			return invalid("ruleset %q requires the status check %q, which has "+
+				"leading or trailing whitespace", name, check.Context)
+
+		case seen[check.Context]:
 			return invalid("ruleset %q requires the status check %q twice",
 				name, check.Context)
 		}
+
 		seen[check.Context] = true
 	}
 

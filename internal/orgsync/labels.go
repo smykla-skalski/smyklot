@@ -73,25 +73,31 @@ func (c LabelConfig) Validate() error {
 		return err
 	}
 
+	seen := foldedNames{}
+
 	for index, label := range c.Labels {
 		if err := label.validate(index); err != nil {
 			return err
 		}
-	}
 
-	// Case-insensitively, because GitHub is. It stores the case you give it and
-	// refuses to create "Bug" alongside "bug", so a configuration carrying both
-	// is one that cannot be applied - and it would fail on whichever came
-	// second, differently per repository.
-	if first, second, clashed := firstFoldClash(c.Names()); clashed {
-		if first == second {
+		// Case-insensitively, because GitHub is. It stores the case you give it
+		// and refuses to create "Bug" alongside "bug", so a configuration
+		// carrying both is one that cannot be applied - and it would fail on
+		// whichever came second, differently per repository.
+		//
+		// Asked here rather than over the whole list afterwards, so the first
+		// thing wrong with a document is the thing it is refused for.
+		first, clashed := seen.clash(label.Name)
+		switch {
+		case !clashed:
+		case first == label.Name:
 			return invalid("label %q is listed twice", first)
+		default:
+			return invalid(
+				"labels %q and %q differ only in case, and GitHub treats them as one",
+				first, label.Name,
+			)
 		}
-
-		return invalid(
-			"labels %q and %q differ only in case, and GitHub treats them as one",
-			first, second,
-		)
 	}
 
 	return nil
