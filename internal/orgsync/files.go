@@ -88,13 +88,21 @@ type FileMerge struct {
 
 // The limits a file configuration is held to.
 //
-// The size is what the tool this replaces silently dropped a file for, counting
-// it in no statistic and reporting the run as a success. It is a template
-// somebody typed into a panel, so a megabyte is far past anything real and the
-// refusal arrives beside the field.
+// The per-file size is what the tool this replaces silently dropped a file for,
+// counting it in no statistic and reporting the run as a success. It is a
+// template somebody typed into a panel, so a megabyte is far past anything
+// real and the refusal arrives beside the field.
+//
+// The total is bounded for a different reason: a plan carries what it will
+// write, once per repository it would write it to, so an installation of two
+// hundred repositories multiplies this by two hundred. A megabyte all together
+// is fifty times what the organization this replaces a tool for actually
+// synchronizes, and it is what keeps that multiplication a number somebody
+// could have predicted.
 const (
 	longestFilePath    = 255
 	largestFileContent = 1 << 20
+	largestFileTotal   = 1 << 20
 )
 
 // placeholder finds what a template asks to have filled in.
@@ -138,10 +146,16 @@ func (c FileConfig) Validate() error {
 	}
 
 	seen := foldedNames{}
+	total := 0
 
 	for index, file := range c.Files {
 		if err := file.validate(index, seen); err != nil {
 			return err
+		}
+
+		total += len(file.Content)
+		if total > largestFileTotal {
+			return invalid("the files come to more than %d bytes together", largestFileTotal)
 		}
 	}
 

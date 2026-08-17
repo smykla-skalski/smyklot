@@ -1,6 +1,8 @@
 package orgsync_test
 
 import (
+	"strings"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -115,6 +117,21 @@ var _ = Describe("File configuration [Unit]", func() {
 			orgsync.FileConfig{Excludes: []string{"  "}},
 			"exclusion 1 is empty"),
 	)
+
+	// A plan carries what it will write, once per repository it would write it
+	// to, so an installation of two hundred repositories multiplies this by two
+	// hundred. Bounded together as well as one at a time, so that number is one
+	// somebody could have predicted.
+	It("refuses files that come to more than a megabyte together", func() {
+		half := strings.Repeat("x", 600_000)
+
+		err := orgsync.FileConfig{Files: []orgsync.File{
+			file("one.md", half), file("two.md", half),
+		}}.Validate()
+
+		Expect(err).To(MatchError(orgsync.ErrInvalidConfig))
+		Expect(err.Error()).To(ContainSubstring("come to more than"))
+	})
 
 	Describe("a repository's own adjustments", func() {
 		config := orgsync.FileConfig{Files: []orgsync.File{
