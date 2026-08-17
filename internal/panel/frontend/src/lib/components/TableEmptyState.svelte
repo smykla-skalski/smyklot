@@ -14,8 +14,10 @@
   } = $props();
 </script>
 
-<div class="table-empty-state">
-  <span class="empty-symbol" aria-hidden="true"><Icon name="search" size={22} /></span>
+<!-- The shape is `.table-notice` in app.css, shared with the failure that stands
+     in the same place. All this decides is the glyph and the words. -->
+<div class="table-notice">
+  <span class="table-notice-mark" aria-hidden="true"><Icon name="search" size={22} /></span>
   <strong>{title}</strong>
   <span>{description}</span>
   {#if actionLabel !== undefined && onAction !== undefined}
@@ -28,50 +30,3 @@
     </button>
   {/if}
 </div>
-
-<style>
-  .table-empty-state {
-    align-items: center;
-    color: var(--text-muted);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    justify-content: center;
-    /* Narrower than the cell it sits in, so it has to place itself. Every caller
-       used to do this, which meant every caller could forget - and the queue did,
-       leaving its empty state flush against the first column while the cell it
-       filled was centred. Auto margins also absorb free space in a flex parent,
-       so the tables that centre by making the cell a flex container still agree. */
-    margin-inline: auto;
-    max-width: 24rem;
-    text-align: center;
-  }
-
-  .empty-symbol {
-    align-items: center;
-    background: var(--surface-inset);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-control);
-    color: var(--brand-action-text);
-    display: flex;
-    height: 2.75rem;
-    justify-content: center;
-    margin-bottom: var(--space-1);
-    width: 2.75rem;
-  }
-
-  strong {
-    color: var(--text-primary);
-    font-size: var(--font-size-body);
-    line-height: 1.25;
-  }
-
-  .table-empty-state > span:not(.empty-symbol) {
-    font-size: var(--font-size-meta);
-    line-height: 1.4;
-  }
-
-  button {
-    margin-top: var(--space-1);
-  }
-</style>

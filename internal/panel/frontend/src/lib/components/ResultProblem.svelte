@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Icon from './Icon.svelte';
+
   const {
     title,
     problem,
@@ -35,7 +37,13 @@
     {@render retry()}
   </div>
 {:else}
-  <div class="result-state" role="alert">
+  <!-- The same shape the empty state has, because it stands in the same place and
+       answers the same question. Only the mark's tone and glyph differ: this one
+       is a thing that went wrong rather than a thing that is not there. -->
+  <div class="table-notice" role="alert">
+    <span class="table-notice-mark alarmed" aria-hidden="true"
+      ><Icon name="warning" size={22} /></span
+    >
     <strong>{title}</strong>
     <span>{problem}</span>
     {@render retry()}
@@ -43,24 +51,6 @@
 {/if}
 
 <style>
-  /* Nothing loaded: the failure is the view, so it fills the space the content
-     would have taken and does not resize when it arrives. */
-  .result-state {
-    align-items: center;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    justify-content: center;
-    min-height: 10rem;
-    padding: var(--space-6);
-    text-align: center;
-  }
-
-  .result-state span {
-    color: var(--text-secondary);
-    font-size: var(--font-size-meta);
-  }
-
   /* Over content: one line, sized to itself, so what is already on screen keeps
      its place. */
   .result-notice {

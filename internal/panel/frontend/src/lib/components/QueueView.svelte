@@ -125,25 +125,121 @@
           ? overviewQuery.error.message
           : String(overviewQuery.error)),
   );
+  /* Chips, because the Cleanup column draws chips, and the same three words. */
+  const CLEANUP_FILTERS = [
+    {
+      options: [
+        { value: 'done', label: 'Done', tone: 'valid', icon: 'check' },
+        { value: 'pending', label: 'Pending', tone: 'bypassed', icon: 'pending' },
+        { value: 'failed', label: 'Failed', tone: 'invalid', icon: 'alert' },
+      ],
+    },
+  ] satisfies readonly FilterSection[];
+
   let search = $state('');
   let query = $state('');
   let states = $state<string[]>([]);
   let schedules = $state<string[]>([]);
+  let pullRequests = $state<string[]>([]);
+  let cleanups = $state<string[]>([]);
   let pendingAction = $state<string | null>(null);
   /* Ticks so a countdown counts. One second, because the last ten of a merge are
      the point of the column and a minute's granularity would miss them. */
   let now = $state(Date.now());
 
+  /** What this section is holding, which is what the section's own filters offer. */
+  const section_rows = $derived<PendingCIRequest[]>(section === 'waiting' ? waiting : recent);
+
+  /**
+   * The four things a Pull request cell says, filtered from where they are drawn.
+   *
+   * The cell is not one value: it is the repository and the number on the first line, then the
+   * merge contract, the commit and whoever armed it on the second. A menu on that heading that
+   * offered only the repository could not find "everything @lin has rebasing", which is the
+   * question the cell is laid out to answer.
+   *
+   * The values are namespaced because one menu carries one selection, and the facets have to AND
+   * across while OR-ing within: two repositories and one author means either repository, by that
+   * author. Everything except the contract is taken from the data, so nothing is offered that
+   * selects nothing, and no list needs keeping the day a workspace gains a repository.
+   */
+  function facet(prefix: string, values: readonly string[], label?: string): FilterSection {
+    return {
+      ...(label === undefined ? {} : { label }),
+      options: [...new Set(values)]
+        .sort((first, second) => first.localeCompare(second))
+        .map((value) => ({ value: `${prefix}:${value}`, label: value })),
+    };
+  }
+
+  const PULL_REQUEST_FILTERS = $derived<readonly FilterSection[]>([
+    facet(
+      'repository',
+      section_rows.map((request) => request.repository_full_name),
+      'Repository',
+    ),
+    facet(
+      'method',
+      section_rows.map(
+        (request) =>
+          `${request.merge_method.slice(0, 1).toUpperCase()}${request.merge_method.slice(1)}`,
+      ),
+      'Merge method',
+    ),
+    facet(
+      'author',
+      section_rows.map((request) => `@${request.requester}`),
+      'Armed by',
+    ),
+    facet(
+      'checks',
+      section_rows.map((request) =>
+        request.required_checks_only ? 'Required only' : 'All checks',
+      ),
+      'Checks it waits on',
+    ),
+  ]);
+
+  /** What a request answers for each facet, in the same words the menu offers. */
+  function facetsOf(request: PendingCIRequest): string[] {
+    const method = `${request.merge_method.slice(0, 1).toUpperCase()}${request.merge_method.slice(1)}`;
+    return [
+      `repository:${request.repository_full_name}`,
+      `method:${method}`,
+      `author:@${request.requester}`,
+      `checks:${request.required_checks_only ? 'Required only' : 'All checks'}`,
+    ];
+  }
+
+  /**
+   * Selected within a facet is OR, across facets is AND.
+   *
+   * A flat `includes` would have made every facet an OR of everything, so choosing a repository and
+   * an author would widen the table rather than narrow it.
+   */
+  function matchesPullRequest(request: PendingCIRequest): boolean {
+    if (pullRequests.length === 0) return true;
+    const answers = facetsOf(request);
+    const prefixes = [...new Set(pullRequests.map((one) => one.slice(0, one.indexOf(':'))))];
+
+    return prefixes.every((prefix) =>
+      pullRequests
+        .filter((one) => one.startsWith(`${prefix}:`))
+        .some((one) => answers.includes(one)),
+    );
+  }
+
   const rows = $derived.by(() => {
-    const source = section === 'waiting' ? waiting : recent;
     const needle = query.trim().toLocaleLowerCase();
-    return source
+    return section_rows
       .filter(
         (request) =>
           states.length === 0 ||
           states.includes(section === 'recent' ? request.lifecycle : request.last_observed_state),
       )
       .filter((request) => schedules.length === 0 || schedules.includes(request.schedule))
+      .filter(matchesPullRequest)
+      .filter((request) => cleanups.length === 0 || cleanups.includes(cleanupState(request).value))
       .filter(
         (request) =>
           needle === '' ||
@@ -154,7 +250,13 @@
       .sort(section === 'recent' ? byMostRecent : bySoonest);
   });
 
-  const hasFilters = $derived(query !== '' || states.length > 0 || schedules.length > 0);
+  const hasFilters = $derived(
+    query !== '' ||
+      states.length > 0 ||
+      schedules.length > 0 ||
+      pullRequests.length > 0 ||
+      cleanups.length > 0,
+  );
 
   $effect(() => {
     const tick = setInterval(() => {
@@ -282,6 +384,8 @@
     query = '';
     states = [];
     schedules = [];
+    pullRequests = [];
+    cleanups = [];
   }
 </script>
 
@@ -347,19 +451,19 @@
   >
 </div>
 
-{#if problem !== null}
-  <!-- Over the table rather than in place of it: a refresh that fails has not
-       made the rows already on screen wrong. -->
-  <ResultProblem
-    title="The queue could not be read"
-    {problem}
-    onRetry={() => void load()}
-    busy={loading}
-    overContent={rows.length > 0}
-  />
-{/if}
-
 <div class="table-card queue-card">
+  {#if problem !== null && rows.length > 0}
+    <!-- Inside the card, above the headings: a refresh that fails has not made
+         the rows already on screen wrong, so the failure is a band over the table
+         it belongs to rather than a slab floating above the card. -->
+    <ResultProblem
+      title="The queue could not be read"
+      {problem}
+      onRetry={() => void load()}
+      busy={loading}
+      overContent
+    />
+  {/if}
   <table
     class="queue-table"
     class:waiting-table={section === 'waiting'}
@@ -386,11 +490,44 @@
             />
           </div>
         </th>
-        <th scope="col"><span class="heading-label band-trim">Pull request</span></th>
+        <th scope="col">
+          <div class="heading-layout">
+            <span class="heading-label band-trim">Pull request</span>
+            <!-- Everything the cell under it says, in four sections: the
+                 repository, the merge contract, whoever armed it and what it is
+                 waiting on. A menu here that offered only the repository could not
+                 answer "everything @lin has rebasing", which is what having all of
+                 it on one line is for. `wide`, because four sections of full
+                 repository names do not fit the narrow layer. -->
+            <FilterMenu
+              label="Pull request"
+              summary={pullRequests.length === 0 ? 'Everything' : `${pullRequests.length} selected`}
+              hint="Only what this queue is holding"
+              sections={PULL_REQUEST_FILTERS}
+              selected={pullRequests}
+              multiple
+              wide
+              align="start"
+              onChange={(values) => (pullRequests = values)}
+            />
+          </div>
+        </th>
         {#if section === 'recent'}
-          <th scope="col" class="cleanup-column"
-            ><span class="heading-label band-trim">Cleanup</span></th
-          >
+          <th scope="col" class="cleanup-column">
+            <div class="heading-layout">
+              <span class="heading-label band-trim">Cleanup</span>
+              <FilterMenu
+                label="Cleanup"
+                summary={cleanups.length === 0 ? 'Any state' : `${cleanups.length} selected`}
+                hint="The label and the reactions the bot leaves behind"
+                sections={CLEANUP_FILTERS}
+                selected={cleanups}
+                multiple
+                align="start"
+                onChange={(values) => (cleanups = values)}
+              />
+            </div>
+          </th>
           <th scope="col"><span class="heading-label band-trim">Why it ended</span></th>
           <th scope="col"><span class="heading-label band-trim">Finished</span></th>
         {:else}
@@ -409,6 +546,10 @@
               />
             </div>
           </th>
+          <!-- No filter: this column draws an age, and who armed it is filtered
+               where the name is written, on the Pull request heading. The mock put
+               "who armed it" here, which would have been the same values behind a
+               second trigger in a column that never shows them. -->
           <th scope="col"><span class="heading-label band-trim">Armed</span></th>
         {/if}
         <th scope="col"><span class="visually-hidden">Actions</span></th>
@@ -547,11 +688,24 @@
       {:else}
         <tr class="empty-row">
           <td class="empty-cell" colspan={section === 'recent' ? 6 : 5}>
-            <!-- Qualified with `!loaded`: a refresh that is in flight over rows
+            <!-- One of three, never two. A queue that could not be read used to
+                 put its failure above the card AND "Nothing has finished yet"
+                 inside it, which are contradictory answers to the same question -
+                 the reader was told both that the table is empty and that the
+                 table is unknown.
+
+                 Qualified with `!loaded`: a refresh that is in flight over rows
                  already on screen must not replace them with a placeholder, and
                  an empty queue that HAS loaded is a real answer rather than a
                  wait. `tests/loading-placeholders.test.ts` asks for this. -->
-            {#if loading && !loaded}
+            {#if problem !== null}
+              <ResultProblem
+                title="The queue could not be read"
+                {problem}
+                onRetry={() => void load()}
+                busy={loading}
+              />
+            {:else if loading && !loaded}
               Reading the queue…
             {:else}
               <TableEmptyState
@@ -654,7 +808,8 @@
     width: 12.25rem;
   }
 
-  /* "just now" is wider than any age this abbreviates to. */
+  /* "just now" is wider than any age this abbreviates to, and this heading has
+     no controls of its own. */
   .waiting-table :is(th, td):nth-child(4) {
     width: 4.75rem;
   }
@@ -668,9 +823,9 @@
     width: 5.5rem;
   }
 
-  /* The heading is wider than "Pending", so the heading sets this one. */
+  /* The heading with its filter, wider than any of Done, Pending or Failed. */
   .recent-table :is(th, td):nth-child(3) {
-    width: 6.25rem;
+    width: 7.25rem;
   }
 
   /* The one column here whose text has no bound, so it is sized like the
@@ -1098,9 +1253,19 @@
     width: fit-content;
   }
 
-  .empty-cell {
+  /* No vertical padding: what fills this cell brings its own air now, and the
+     cell's own on top of it was room the empty state did not ask for. Qualified
+     with the table, because `.queue-table td` sets the padding every cell shares
+     and a bare `.empty-cell` loses to it. */
+  .queue-table td.empty-cell {
     color: var(--dim);
-    padding: var(--space-6) var(--space-4);
+    padding: 0 var(--space-4);
     text-align: center;
+  }
+
+  /* Except for the waiting line, which is a bare string with no component of its
+     own to bring any. */
+  .queue-table td.empty-cell:not(:has(*)) {
+    padding-block: var(--space-8);
   }
 </style>
