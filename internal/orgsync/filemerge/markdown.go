@@ -321,28 +321,42 @@ func headings(lines []string) []heading {
 	return found
 }
 
-// underline reads a line as the underline of a heading written the second way.
-func underline(text string) (level int, ok bool) {
+// afterIndent is a line past the leading spaces a heading or a fence may carry,
+// and whether it carries few enough of them to be one.
+//
+// Four spaces makes it an indented code block, and a code block is not a
+// heading or a fence however much it looks like one. That is one CommonMark
+// rule, and the three readers below it were each enforcing their own copy - two
+// of which had already stopped being the same copy.
+func afterIndent(text string) (rest string, ok bool) {
 	indent := 0
 	for indent < len(text) && text[indent] == ' ' {
 		indent++
 	}
 
-	// Four spaces makes it an indented code block, the same as it does for the
-	// other form.
 	if indent > widestIndent || indent == len(text) {
+		return "", false
+	}
+
+	return text[indent:], true
+}
+
+// underline reads a line as the underline of a heading written the second way.
+func underline(text string) (level int, ok bool) {
+	rest, indented := afterIndent(text)
+	if !indented {
 		return 0, false
 	}
 
-	character := text[indent]
+	character := rest[0]
 	if character != '=' && character != '-' {
 		return 0, false
 	}
 
 	// A run of the one character, and then nothing but the whitespace a line
 	// may end with.
-	rest := strings.TrimRight(text[indent:], " \t")
-	if strings.Trim(rest, string(character)) != "" {
+	run := strings.TrimRight(rest, " \t")
+	if strings.Trim(run, string(character)) != "" {
 		return 0, false
 	}
 
@@ -374,21 +388,17 @@ func opensFence(character byte, rest string) bool {
 // and inverted the rest of the document - and every heading after that point
 // stopped existing.
 func fenceAt(text string) (character byte, run int, rest string, ok bool) {
-	indent := 0
-	for indent < len(text) && text[indent] == ' ' {
-		indent++
-	}
-
-	if indent > widestIndent || indent == len(text) {
+	line, indented := afterIndent(text)
+	if !indented {
 		return 0, 0, "", false
 	}
 
-	character = text[indent]
+	character = line[0]
 	if character != '`' && character != '~' {
 		return 0, 0, "", false
 	}
 
-	for indent+run < len(text) && text[indent+run] == character {
+	for run < len(line) && line[run] == character {
 		run++
 	}
 
@@ -396,23 +406,16 @@ func fenceAt(text string) (character byte, run int, rest string, ok bool) {
 		return 0, 0, "", false
 	}
 
-	return character, run, text[indent+run:], true
+	return character, run, line[run:], true
 }
 
 // parseHeading reads a line as an ATX heading.
 func parseHeading(text string) (level int, title string, ok bool) {
-	indent := 0
-	for indent < len(text) && text[indent] == ' ' {
-		indent++
-	}
-
-	// Four spaces makes it an indented code block, and a code block is not a
-	// heading however much it looks like one.
-	if indent > widestIndent {
+	rest, indented := afterIndent(text)
+	if !indented {
 		return 0, "", false
 	}
 
-	rest := text[indent:]
 	for level < len(rest) && rest[level] == '#' {
 		level++
 	}

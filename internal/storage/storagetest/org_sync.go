@@ -751,7 +751,7 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 				Problem: "these files cannot be composed: docs is not a directory here",
 			}})).To(Succeed())
 
-			read, err := store.GetSyncRepositoryState(ctx, repoA, orgsync.KindFiles)
+			read, err := store.GetSyncRepositoryState(ctx, target, repoA, orgsync.KindFiles)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(read.Problem).To(Equal(
 				"these files cannot be composed: docs is not a directory here"))
@@ -770,7 +770,7 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 			ctx, store, now := runtime()
 			seed(ctx, store, now)
 
-			_, err := store.GetSyncRepositoryState(ctx, repoA, orgsync.KindFiles)
+			_, err := store.GetSyncRepositoryState(ctx, target, repoA, orgsync.KindFiles)
 			Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
 		})
 
@@ -792,7 +792,7 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 				AppliedDigest: "digest-1", AppliedAt: later,
 			}})).To(Succeed())
 
-			read, err := store.GetSyncRepositoryState(ctx, repoA, orgsync.KindFiles)
+			read, err := store.GetSyncRepositoryState(ctx, target, repoA, orgsync.KindFiles)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(read.Problem).To(BeEmpty())
 			Expect(read.AppliedDigest).To(Equal("digest-1"))
@@ -816,12 +816,12 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 				},
 			})).To(Succeed())
 
-			labels, err := store.GetSyncRepositoryState(ctx, repoA, orgsync.KindLabels)
+			labels, err := store.GetSyncRepositoryState(ctx, target, repoA, orgsync.KindLabels)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(labels.Problem).To(BeEmpty())
 			Expect(labels.AppliedDigest).To(Equal("digest-1"))
 
-			files, err := store.GetSyncRepositoryState(ctx, repoA, orgsync.KindFiles)
+			files, err := store.GetSyncRepositoryState(ctx, target, repoA, orgsync.KindFiles)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(files.Problem).To(Equal("these files cannot be composed"))
 		})
@@ -849,7 +849,7 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 				}},
 			})).To(Succeed())
 
-			read, err := store.GetSyncRepositoryState(ctx, repoA, orgsync.KindLabels)
+			read, err := store.GetSyncRepositoryState(ctx, target, repoA, orgsync.KindLabels)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(read.Problem).To(BeEmpty())
 		})

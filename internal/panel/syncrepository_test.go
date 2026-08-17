@@ -609,7 +609,7 @@ type unreadableStateStore struct {
 }
 
 func (unreadableStateStore) GetSyncRepositoryState(
-	context.Context, string, orgsync.Kind,
+	context.Context, string, string, orgsync.Kind,
 ) (orgsync.RepositoryState, error) {
 	return orgsync.RepositoryState{}, errors.New("the database did not answer")
 }

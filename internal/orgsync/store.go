@@ -264,9 +264,11 @@ type Store interface {
 	//
 	// Beside the listing for the same reason the override read is: a planner
 	// wants a whole installation at once, and a page about one repository wants
-	// one row.
+	// one row. The installation is a parameter for the same reason it is on
+	// every other read here - a repository identifier names something the
+	// caller may never have been authorized against.
 	GetSyncRepositoryState(
-		context.Context, string, Kind,
+		context.Context, string, string, Kind,
 	) (RepositoryState, error)
 
 	// RecordSyncRepositoryState writes what a planner learned about the

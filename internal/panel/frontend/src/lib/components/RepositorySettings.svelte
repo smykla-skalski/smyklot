@@ -1,6 +1,6 @@
 <script lang="ts">
   import { BOOLEAN_FIELDS } from '../config';
-  import type { RepositorySection } from '../routes';
+  import { availableRepositorySections, type RepositorySection } from '../routes';
   import type {
     ConfigKey,
     ConfigPatch,
@@ -118,19 +118,30 @@
     return keys.filter((key) => Object.hasOwn(one.config_patch, key)).length;
   }
 
-  function badge(count: number): number | undefined {
+  /* How many of this repository's own settings a pane holds, where the number
+     is worth a badge. The file pane counts a broken file rather than settings,
+     and sync has nothing to count - what it holds is one switch and a list. */
+  function sectionBadge(one: RepositoryDetail, pane: RepositorySection): number | undefined {
+    if (pane === 'file') return one.config_file_error === undefined ? undefined : 1;
+    if (pane === 'sync') return undefined;
+
+    const count = sectionCount(one, pane);
+
     return count === 0 ? undefined : count;
   }
 
-  /* What each pane is called, and by being a record rather than a growing chain,
-     which panes there are. A fifth is one line here instead of an alternative in
-     one condition and a branch in one ternary. */
+  /* What each pane is called, and by being a record rather than a chain of
+     alternatives, which panes there are. Everything that names a pane reads
+     this: the label under the switch and the switch's own options. A fifth is
+     one line. */
   const SECTION_LABELS: Record<RepositorySection, string> = {
     file: 'File',
     behavior: 'Behavior',
     commands: 'Commands',
     sync: 'Sync',
   };
+
+  const availableSections = $derived(availableRepositorySections(syncOffered));
 
   /** Names the pane for a screen reader, which the switch above it does not. */
   function sectionLabel(pane: RepositorySection): string {
@@ -152,24 +163,11 @@
           name="repository-{repository.id}-section"
           label="Settings for {repository.name}"
           compact
-          options={[
-            {
-              value: 'file',
-              label: 'File',
-              badge: detail.config_file_error === undefined ? undefined : 1,
-            },
-            {
-              value: 'behavior',
-              label: 'Behavior',
-              badge: badge(sectionCount(detail, 'behavior')),
-            },
-            {
-              value: 'commands',
-              label: 'Commands',
-              badge: badge(sectionCount(detail, 'commands')),
-            },
-            ...(syncOffered ? [{ value: 'sync', label: 'Sync' }] : []),
-          ]}
+          options={availableSections.map((pane) => ({
+            value: pane,
+            label: SECTION_LABELS[pane],
+            badge: sectionBadge(detail, pane),
+          }))}
           value={section}
           onSelect={(next) => onSection(next as RepositorySection)}
         />

@@ -70,6 +70,19 @@ export const ACCESS_SECTIONS = ['users', 'invitations'] as const;
 export const REPOSITORY_SECTIONS = ['file', 'behavior', 'commands', 'sync'] as const;
 export type RepositorySection = (typeof REPOSITORY_SECTIONS)[number];
 
+/**
+ * Which of the panes a surface can offer.
+ *
+ * Root manages somebody else's installation and sync has no Root address, so
+ * whether there is anywhere to ask is what says the pane can be opened. Asked
+ * once, here, rather than paired with `sync` at each of the places that would
+ * otherwise have to remember: the switch's options, the label under it, and the
+ * fallback an address naming a pane this surface has no answer for lands on.
+ */
+export function availableRepositorySections(syncOffered: boolean): readonly RepositorySection[] {
+  return REPOSITORY_SECTIONS.filter((section) => section !== 'sync' || syncOffered);
+}
+
 /** One repository, opened on one of its panes. */
 export interface RepositoryPage {
   /** Named the way a person names it - `api-gateway`, never an id. */

@@ -169,6 +169,13 @@ func (t RepositoryTree) At(filePath string) TreePath {
 }
 
 // parentPath is the directory a path sits in, empty at the repository root.
+//
+// The same answer orgsync.parentPath gives, written twice because the client
+// must not import what decides what to sync. The two have to stay in step:
+// RepositoryTree.At uses this to decide a path is blocked by its parent, and
+// FileConfig.validateNesting uses the other to decide two configured paths
+// contradict each other, so a divergence is the planner and the client
+// disagreeing about the same pair of paths.
 func parentPath(filePath string) string {
 	parent := path.Dir(filePath)
 	if parent == "." || parent == "/" || parent == filePath {

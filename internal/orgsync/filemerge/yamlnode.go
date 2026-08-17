@@ -423,13 +423,11 @@ func renameCopiedAnchors(root, copied *yaml.Node) {
 		return
 	}
 
-	inDocument := map[string][]*yaml.Node{}
-	collectDefinitions(root, inDocument)
-
-	taken := map[string]struct{}{}
-	for name := range inDocument {
-		taken[name] = struct{}{}
-	}
+	// The document's own names, which a fresh one has to miss. A name minted
+	// here goes in beside them with no nodes under it: what the map answers at
+	// this point is only whether a name is spoken for.
+	taken := map[string][]*yaml.Node{}
+	collectDefinitions(root, taken)
 
 	for name, nodes := range anchored {
 		if _, clashes := taken[name]; !clashes {
@@ -438,7 +436,7 @@ func renameCopiedAnchors(root, copied *yaml.Node) {
 
 		for _, node := range nodes {
 			fresh := unusedAnchor(name, taken)
-			taken[fresh] = struct{}{}
+			taken[fresh] = nil
 
 			renameAliases(copied, node, fresh)
 			node.Anchor = fresh
@@ -460,7 +458,7 @@ func collectDefinitions(node *yaml.Node, into map[string][]*yaml.Node) {
 
 // unusedAnchor is the first name of the form `name-2`, `name-3` that nothing in
 // the document has already taken.
-func unusedAnchor(name string, taken map[string]struct{}) string {
+func unusedAnchor(name string, taken map[string][]*yaml.Node) string {
 	for suffix := 2; ; suffix++ {
 		fresh := name + "-" + strconv.Itoa(suffix)
 		if _, used := taken[fresh]; !used {

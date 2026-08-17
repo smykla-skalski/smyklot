@@ -171,12 +171,6 @@ func (s *Server) putSyncConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Files are the one kind measured in files: a files configuration carries
-	// every template the organization keeps in step, and FileConfig bounds the
-	// total at a megabyte. Nothing else here has a ceiling of its own - a label
-	// document bounds each name and colour and not how many - so the ordinary
-	// bound is what stops a save nobody meant from becoming an action per label
-	// per repository.
 	var input syncConfigRequest
 	if !decodeJSONWithin(w, r, &input, bodyBoundFor(kind)) {
 		return

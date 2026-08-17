@@ -524,11 +524,6 @@ func rulesetPlanner(client *github.Client, config orgsync.Config) (repositoryQue
 			// A ruleset nothing can address produces no action, so a plan
 			// cannot carry it and a person reading one would see a repository
 			// that looks finished.
-			logging.From(ctx).Warn(
-				"a repository holds more than one ruleset of a configured name, "+
-					"so those are left alone",
-				"repo", repository.FullName, "rulesets", strings.Join(ambiguous, ", "))
-
 			return nil, "more than one ruleset here carries a configured name (" +
 				strings.Join(ambiguous, ", ") +
 				"), so nothing can say which one the configuration means", nil
@@ -579,19 +574,12 @@ func planRepositoryFiles(
 		// GitHub names no branch for one. Said here rather than discovered
 		// against the API, which would spend a request per repository per tick
 		// learning it again.
-		logging.From(ctx).Info(
-			"this repository has no default branch, so its files are left alone",
-			"repo", repository.FullName)
-
 		return nil, "this repository has no default branch, " +
 			"so there is nowhere to propose a change", nil
 	}
 
 	adjustments, err := decodeFileOverride(override, config)
 	if err != nil {
-		logging.From(ctx).Warn("this repository's file adjustments cannot be used",
-			"repo", repository.FullName, "error", err)
-
 		return nil, "the adjustments saved for this repository cannot be used: " +
 			err.Error(), nil
 	}
@@ -619,10 +607,6 @@ func planRepositoryFiles(
 		// 404 for a repository with no commits, for a branch that was renamed
 		// since the catalog last looked, and for one this installation can no
 		// longer read, and the read cannot tell them apart.
-		logging.From(ctx).Info(
-			"this repository has no tree at its default branch, so its files are left alone",
-			"repo", repository.FullName, "branch", target.DefaultBranch)
-
 		return nil, "there is nothing at " + target.DefaultBranch +
 			" to propose against: this repository has no commits, the branch was " +
 			"renamed, or Smyklot can no longer read it", nil
@@ -633,9 +617,6 @@ func planRepositoryFiles(
 	if err != nil {
 		// A merge that cannot be applied. Fail-closed: no actions, and no
 		// digest, so the repository is asked again once somebody fixes it.
-		logging.From(ctx).Warn("this repository's files cannot be composed",
-			"repo", repository.FullName, "error", err)
-
 		return nil, "these files cannot be composed: " + err.Error(), nil
 	}
 
@@ -884,6 +865,16 @@ func (s syncScope) ask(
 		// it resolves what is wrong, and meanwhile the panel can say why
 		// nothing is happening. The kinds beside this one are untouched: this
 		// is one kind on one repository.
+		//
+		// Logged here rather than where each reason is decided, because here is
+		// where the repository and the kind are both in hand. Written out at
+		// each of the sites that produce one, four of the five left the kind off
+		// and two of them chose a different level for the same class of event -
+		// and a sixth reason added later would have been silent unless whoever
+		// wrote it remembered.
+		logging.From(ctx).Warn("this kind is not being synced on this repository",
+			"repo", repository.FullName, "kind", s.config.Kind, "reason", problem)
+
 		state.Problem = problem
 
 		return nil, []orgsync.RepositoryState{state}

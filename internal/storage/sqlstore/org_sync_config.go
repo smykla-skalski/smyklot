@@ -389,15 +389,24 @@ ORDER BY s.repository_id, s.kind`, targetID)
 }
 
 // GetSyncRepositoryState reads one repository's row for one kind.
+//
+// Carrying its installation, and joining on it, like every other read of these
+// tables: the scope of an installation is the catalog's, so a query that reads
+// one of these rows without going through repositories is one that could read
+// another installation's. The caller here happens to resolve the repository
+// against the target first - and a caller holding a repository id off a plan
+// action, a stream event or the Root console would not.
 func (s *Store) GetSyncRepositoryState(
 	ctx context.Context,
-	repositoryID string,
+	targetID, repositoryID string,
 	kind orgsync.Kind,
 ) (orgsync.RepositoryState, error) {
 	row := s.db.QueryRowContext(ctx, `
-SELECT repository_id, kind, applied_digest, applied_at, problem
-FROM sync_repository_state
-WHERE repository_id = ? AND kind = ?`, repositoryID, kind)
+SELECT s.repository_id, s.kind, s.applied_digest, s.applied_at, s.problem
+FROM sync_repository_state s
+JOIN repositories r ON r.id = s.repository_id
+WHERE r.target_id = ? AND s.repository_id = ? AND s.kind = ?`,
+		targetID, repositoryID, kind)
 
 	state, err := scanSyncRepositoryState(row)
 	if errors.Is(err, sql.ErrNoRows) {

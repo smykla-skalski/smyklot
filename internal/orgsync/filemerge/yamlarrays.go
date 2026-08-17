@@ -107,7 +107,7 @@ func deduplicatedNodes(items []*yaml.Node) ([]*yaml.Node, error) {
 			return nil, err
 		}
 
-		if slicesContainsEqual(seen, value) {
+		if holdsEqual(seen, value) {
 			continue
 		}
 
@@ -116,16 +116,6 @@ func deduplicatedNodes(items []*yaml.Node) ([]*yaml.Node, error) {
 	}
 
 	return kept, nil
-}
-
-func slicesContainsEqual(values []any, wanted any) bool {
-	for _, value := range values {
-		if equal(value, wanted) {
-			return true
-		}
-	}
-
-	return false
 }
 
 // decodedNode reads a node as a plain value, for comparing one against another.

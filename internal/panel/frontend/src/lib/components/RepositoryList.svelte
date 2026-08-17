@@ -22,7 +22,7 @@
   import type { FilterSection } from '../filter-menu';
   import type { VirtualRenderRow } from '../virtual-rows.js';
   import { formatRelative, formatTimestamp } from '../format';
-  import type { RepositorySection } from '../routes';
+  import { availableRepositorySections, type RepositorySection } from '../routes';
   import { getPanelSession } from '../session.svelte';
   import { pressableRow, rowOpensOn } from '../table-row';
   import {
@@ -621,11 +621,10 @@
     });
   });
 
-  /** Whether this surface offers a pane at all - see `onLoadSyncOverride`. */
   function offeredSection(section: RepositorySection): RepositorySection {
-    if (section === 'sync' && onLoadSyncOverride === null) return 'file';
-
-    return section;
+    return availableRepositorySections(onLoadSyncOverride !== null).includes(section)
+      ? section
+      : 'file';
   }
 
   function toggleNameSort(): void {

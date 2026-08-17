@@ -13,7 +13,7 @@
    * customization it described.
    */
   import { canonicalStringify } from '#lib/preferences-sync.js';
-  import { asList, lines, rowKeys, storedList, withoutAt } from '#lib/form-lists.js';
+  import { asList, lines, patchedAt, rowKeys, storedList, withoutAt } from '#lib/form-lists.js';
   import { formatRelative } from '#lib/format.js';
   import type { SyncFileMerge, SyncOverride } from '#lib/types.js';
 
@@ -194,15 +194,13 @@
   }
 
   function patch(index: number, change: Partial<SyncFileMerge>): void {
-    edit(index, (draft) => ({ ...draft, merge: { ...draft.merge, ...change } }));
+    drafts = patchedAt(drafts, index, {
+      merge: { ...drafts[index].merge, ...change },
+    });
   }
 
   function setText(index: number, text: string): void {
-    edit(index, (draft) => ({ ...draft, text }));
-  }
-
-  function edit(index: number, change: (draft: Draft) => Draft): void {
-    drafts = drafts.map((draft, at) => (at === index ? change(draft) : draft));
+    drafts = patchedAt(drafts, index, { text });
   }
 
   function add(): void {

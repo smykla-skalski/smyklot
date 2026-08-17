@@ -82,7 +82,7 @@ func (s *Server) getSyncOverride(w http.ResponseWriter, r *http.Request) {
 
 	// Reporting an unreadable state row, because on a read it is the one thing
 	// this page exists to show.
-	s.answerSyncOverride(w, r, repository.ID, kind, saved, true)
+	s.answerSyncOverride(w, r, target.ID, repository.ID, kind, saved, true)
 }
 
 // answerSyncOverride answers with what this repository says about one kind and
@@ -101,7 +101,7 @@ func (s *Server) getSyncOverride(w http.ResponseWriter, r *http.Request) {
 func (s *Server) answerSyncOverride(
 	w http.ResponseWriter,
 	r *http.Request,
-	repositoryID string,
+	targetID, repositoryID string,
 	kind orgsync.Kind,
 	override *orgsync.RepositoryOverride,
 	reportUnreadableState bool,
@@ -119,7 +119,7 @@ func (s *Server) answerSyncOverride(
 		return
 	}
 
-	state, err := s.store.GetSyncRepositoryState(r.Context(), repositoryID, kind)
+	state, err := s.store.GetSyncRepositoryState(r.Context(), targetID, repositoryID, kind)
 
 	switch {
 	case errors.Is(err, storage.ErrNotFound):
@@ -212,7 +212,7 @@ func (s *Server) putSyncOverride(w http.ResponseWriter, r *http.Request) {
 	// the time it was last looked at is honest, where dropping the notice would
 	// tell somebody their fix worked before anything had tried it.
 	// Not reporting an unreadable state row: the save has already committed.
-	s.answerSyncOverride(w, r, repository.ID, kind, &saved, false)
+	s.answerSyncOverride(w, r, target.ID, repository.ID, kind, &saved, false)
 }
 
 // syncOverrideDocument checks a repository's adjustments against what the

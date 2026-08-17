@@ -1,6 +1,7 @@
 package orgsync
 
 import (
+	"encoding/json"
 	"path"
 	"regexp"
 	"slices"
@@ -405,6 +406,35 @@ func (k Kind) PathPermission(path string) string {
 	}
 
 	return ""
+}
+
+// decodeFilePaths reads which files a stored document names, and nothing else.
+//
+// Beside FileConfig because it mirrors FileConfig's own tags, and a shape that
+// copies another's tags from a different file is a shape that stops matching
+// it. The templates are left undecoded on purpose: they are the bulk of the
+// document - up to a megabyte - and the one caller reads this on every sweep
+// tick of every installation, whether or not anything gets planned, to learn at
+// most one permission name.
+func decodeFilePaths(document []byte) (FileConfig, error) {
+	var named struct {
+		Files []struct {
+			Path string `json:"path"`
+		} `json:"files"`
+		Retired  []string `json:"retired"`
+		Excludes []string `json:"excludes"`
+	}
+
+	if err := json.Unmarshal(document, &named); err != nil {
+		return FileConfig{}, err
+	}
+
+	config := FileConfig{Retired: named.Retired, Excludes: named.Excludes}
+	for _, file := range named.Files {
+		config.Files = append(config.Files, File{Path: file.Path})
+	}
+
+	return config, nil
 }
 
 // Permissions is what an installation must have granted for this configuration

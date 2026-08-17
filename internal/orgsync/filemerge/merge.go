@@ -200,17 +200,7 @@ func deduplicated(values []any) []any {
 	kept := make([]any, 0, len(values))
 
 	for _, value := range values {
-		seen := false
-
-		for _, already := range kept {
-			if equal(value, already) {
-				seen = true
-
-				break
-			}
-		}
-
-		if !seen {
+		if !holdsEqual(kept, value) {
 			kept = append(kept, value)
 		}
 	}

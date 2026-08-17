@@ -3,6 +3,7 @@ package filemerge
 import (
 	"encoding/json"
 	"math/big"
+	"slices"
 )
 
 // clone copies a decoded document so the result shares nothing with it.
@@ -105,6 +106,19 @@ func canCompare(value any) bool {
 	default:
 		return false
 	}
+}
+
+// holdsEqual reports a value already among these, by the same comparison the
+// merge uses everywhere else.
+//
+// Written out where both deduplications need it, because they are one rule -
+// what counts as the same entry - and the JSON half and the YAML half judging
+// it differently is a list deduplicated one way in one file and another way in
+// the next.
+func holdsEqual(values []any, wanted any) bool {
+	return slices.ContainsFunc(values, func(value any) bool {
+		return equal(value, wanted)
+	})
 }
 
 // equalMaps compares two objects key by key.

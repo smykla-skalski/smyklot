@@ -19,29 +19,27 @@ import (
 
 const maxRequestBody = 64 << 10
 
-// maxDocumentBody bounds a request carrying a sync document, which is the one
-// thing somebody sends here measured in files rather than in fields.
+// maxDocumentBody bounds a request carrying templates. See bodyBoundFor, which
+// is the only thing that hands it out.
 //
-// The files kind allows a megabyte of templates in total, and a cap below that
-// makes the limit that is validated unreachable through the only writer there
-// is: a dozen medium workflow files pasted into the shared-files form were
-// truncated at 64 KiB and refused as invalid JSON, which sends whoever pasted
-// them looking for a syntax error in a YAML file that has none.
-//
-// Well above the megabyte rather than at it, because a megabyte of file content
-// is more than a megabyte of JSON: every newline, quote and backslash in it is
-// escaped on the way.
+// Well above the megabyte FileConfig allows rather than at it, because a
+// megabyte of file content is more than a megabyte of JSON: every newline,
+// quote and backslash in it is escaped on the way.
 const maxDocumentBody = 4 << 20
 
 // bodyBoundFor is how large a request carrying one kind's configuration may be.
 //
 // The larger bound only where something validates against a limit that needs
-// it. Files do: FileConfig allows a megabyte of templates in total, so a cap
+// it. Files do: FileConfig allows a megabyte of templates in total, and a cap
 // below that makes the documented limit unreachable through the only writer
-// there is. No other kind has a total of its own - a label document bounds each
-// name, colour and description and not how many there are - so raising the
-// bound for them raises nothing but the size of a mistake, and a label document
-// is an action per label per repository once it is planned.
+// there is - a dozen medium workflow files pasted into the shared-files form
+// were truncated at 64 KiB and refused as invalid JSON, which sends whoever
+// pasted them looking for a syntax error in a YAML file that has none.
+//
+// No other kind has a total of its own. A label document bounds each name,
+// colour and description and not how many there are, so raising the bound for
+// them raises nothing but the size of a mistake - and a label document is an
+// action per label per repository once it is planned.
 func bodyBoundFor(kind orgsync.Kind) int64 {
 	if kind == orgsync.KindFiles {
 		return maxDocumentBody

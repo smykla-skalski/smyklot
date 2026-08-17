@@ -14,7 +14,6 @@
 package orgsync
 
 import (
-	"encoding/json"
 	"fmt"
 	"slices"
 	"time"
@@ -154,34 +153,17 @@ func UnpermittedConfig(grantor Grantor, config Config) (Unavailable, bool) {
 // through on that: a kind whose document does not decode plans no work at all,
 // which the planner reports one step later and in better words than a
 // permission check could find.
-//
-// The paths are decoded rather than the whole document. What is being asked is
-// which files the configuration names, and the templates beside them are the
-// bulk of it - up to a megabyte, read on every sweep tick of every installation
-// whether or not anything gets planned.
 func configPermissions(config Config) []string {
 	if config.Kind != KindFiles {
 		return nil
 	}
 
-	var named struct {
-		Files []struct {
-			Path string `json:"path"`
-		} `json:"files"`
-		Retired  []string `json:"retired"`
-		Excludes []string `json:"excludes"`
-	}
-
-	if err := json.Unmarshal(config.Document, &named); err != nil {
+	named, err := decodeFilePaths(config.Document)
+	if err != nil {
 		return nil
 	}
 
-	files := FileConfig{Retired: named.Retired, Excludes: named.Excludes}
-	for _, file := range named.Files {
-		files.Files = append(files.Files, File{Path: file.Path})
-	}
-
-	return files.Permissions()
+	return named.Permissions()
 }
 
 // Operation is what an action does to its subject.
