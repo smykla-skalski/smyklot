@@ -53,7 +53,8 @@ func (s *server) planInstallationSync(
 		return fmt.Errorf("read sync installation: %w", err)
 	}
 
-	active := activeSyncKinds(ctx, configs, target)
+	switchedOn := switchedOnSyncKinds(configs)
+	active := activeSyncKinds(ctx, switchedOn, target)
 
 	applied, err := s.store.ListSyncRepositoryState(ctx, targetID)
 	if err != nil {
@@ -73,7 +74,10 @@ func (s *server) planInstallationSync(
 		return err
 	}
 
-	scopes := syncScopesFor(active, held)
+	// Scoped by what is switched on rather than by what can act, so a kind
+	// waiting on a permission keeps its refusals rather than having them read
+	// as nothing being wrong.
+	scopes := syncScopesFor(switchedOn, held)
 
 	// Before the early returns below, and that is the whole reason this runs
 	// here: a refusal is only worth keeping while the planner is still looking,
@@ -151,24 +155,41 @@ func syncPlanSummary(counts orgsync.Counts) string {
 		counts.Create, counts.Update, counts.Delete)
 }
 
-// activeSyncKinds is what an installation has switched on and been permitted.
+// switchedOnSyncKinds is what an installation has asked for, permitted or not.
 //
-// Both, in one place. A kind switched on but not granted is reported and left
-// out, so the rest of the sweep proceeds: an installation that has approved
-// labels and not settings should get its labels, not a plan that fails on
-// everything because one kind is waiting on somebody.
-func activeSyncKinds(
-	ctx context.Context,
-	configs []orgsync.Config,
-	grantor orgsync.Grantor,
-) []orgsync.Config {
-	active := make([]orgsync.Config, 0, len(configs))
+// Told apart from what it can act on, because the difference decides what
+// happens to a repository's recorded refusal. A kind switched off is a kind
+// nothing is going to look at again, so a refusal recorded under it is stale
+// and goes. A kind switched on and waiting on a permission is one somebody is
+// still expecting to run: its refusals are as true as they were, and clearing
+// them would answer "nothing is wrong here" on the one page built to say what
+// is - while the reason nothing is happening sits on a different page.
+func switchedOnSyncKinds(configs []orgsync.Config) []orgsync.Config {
+	switchedOn := make([]orgsync.Config, 0, len(configs))
 
 	for _, config := range configs {
-		if !config.Enabled {
-			continue
+		if config.Enabled {
+			switchedOn = append(switchedOn, config)
 		}
+	}
 
+	return switchedOn
+}
+
+// activeSyncKinds narrows those to the ones an installation has been permitted.
+//
+// A kind switched on but not granted is reported and left out, so the rest of
+// the sweep proceeds: an installation that has approved labels and not settings
+// should get its labels, not a plan that fails on everything because one kind
+// is waiting on somebody.
+func activeSyncKinds(
+	ctx context.Context,
+	switchedOn []orgsync.Config,
+	grantor orgsync.Grantor,
+) []orgsync.Config {
+	active := make([]orgsync.Config, 0, len(switchedOn))
+
+	for _, config := range switchedOn {
 		if unavailable, missing := orgsync.UnpermittedConfig(grantor, config); missing {
 			logging.From(ctx).Info("sync is configured but not permitted",
 				"kind", unavailable.Kind, "permission", unavailable.Permission)

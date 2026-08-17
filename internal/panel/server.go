@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 )
@@ -31,6 +32,23 @@ const maxRequestBody = 64 << 10
 // is more than a megabyte of JSON: every newline, quote and backslash in it is
 // escaped on the way.
 const maxDocumentBody = 4 << 20
+
+// bodyBoundFor is how large a request carrying one kind's configuration may be.
+//
+// The larger bound only where something validates against a limit that needs
+// it. Files do: FileConfig allows a megabyte of templates in total, so a cap
+// below that makes the documented limit unreachable through the only writer
+// there is. No other kind has a total of its own - a label document bounds each
+// name, colour and description and not how many there are - so raising the
+// bound for them raises nothing but the size of a mistake, and a label document
+// is an action per label per repository once it is planned.
+func bodyBoundFor(kind orgsync.Kind) int64 {
+	if kind == orgsync.KindFiles {
+		return maxDocumentBody
+	}
+
+	return maxRequestBody
+}
 
 type catalogSyncer interface {
 	SyncCatalog(context.Context) ([]string, error)

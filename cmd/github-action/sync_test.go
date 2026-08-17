@@ -1895,7 +1895,61 @@ var _ = Describe("Org sync [Unit]", func() {
 					})
 				Expect(err).NotTo(HaveOccurred())
 			}),
+
+			// The row survives because a repository is soft-deleted rather than
+			// removed, so the foreign key holds and the listing still carries
+			// it - which is what makes this reachable at all.
+			Entry("the repository leaves the installation", func(_ storage.Target) {
+				GinkgoHelper()
+
+				stub.repos = `{"total_count":0,"repositories":[]}`
+				_, err := service.SyncCatalog(GinkgoT().Context())
+				Expect(err).NotTo(HaveOccurred())
+			}),
 		)
+
+		// A kind waiting on a permission is one somebody is still expecting to
+		// run, and its refusals are as true as they were. Cleared, the pane
+		// built to say why nothing is happening answers "nothing is wrong" -
+		// while the reason sits on a page the reader is not looking at.
+		It("keeps a refusal while the kind waits on a permission", func() {
+			target := grantContents()
+			stub.repoTree = `{"sha":"basetree","tree":[
+				{"path":"docs","type":"blob","mode":"100644","sha":"b1","size":4}
+			],"truncated":false}`
+			configureKind(target, orgsync.KindFiles,
+				`{"files":[{"path":"docs/guide.md","content":"# Guide\n"}]}`)
+
+			plan(target)
+
+			state, err := service.store.ListSyncRepositoryState(GinkgoT().Context(), target.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(state).To(HaveLen(1))
+			Expect(state[0].Problem).NotTo(BeEmpty())
+
+			// The organization adds a workflow, which needs a permission this
+			// installation has not granted, so the whole kind stands down.
+			stored, err := service.store.GetSyncConfig(
+				GinkgoT().Context(), target.ID, orgsync.KindFiles)
+			Expect(err).NotTo(HaveOccurred())
+
+			_, err = service.store.SetSyncConfig(GinkgoT().Context(), orgsync.ConfigChange{
+				TargetID: target.ID, Kind: orgsync.KindFiles, Enabled: true,
+				Document: []byte(`{"files":[
+					{"path":"docs/guide.md","content":"# Guide\n"},
+					{"path":".github/workflows/ci.yaml","content":"name: CI\n"}]}`),
+				ActorID: target.Account.ID, Now: time.Now().UTC(),
+				Revision: stored.Revision,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			plan(target)
+
+			state, err = service.store.ListSyncRepositoryState(GinkgoT().Context(), target.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(state).To(HaveLen(1))
+			Expect(state[0].Problem).NotTo(BeEmpty())
+		})
 
 		// The other end of the same record. A repository that plans work is a
 		// repository nothing is stopping any more, and a refusal left standing

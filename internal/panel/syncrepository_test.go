@@ -1,7 +1,9 @@
 package panel
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -9,6 +11,7 @@ import (
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
+	"github.com/smykla-skalski/smyklot/internal/storage"
 )
 
 // TestSyncDocumentRefusesFilesGitHubOrGitWould keeps the answer beside the
@@ -500,6 +503,35 @@ func TestSyncConfigTakesTheTemplatesItValidates(t *testing.T) {
 	}
 }
 
+// TestSyncConfigKeepsTheOrdinaryBoundOnEveryOtherKind is the other half of the
+// same decision.
+//
+// Files earned the larger bound because FileConfig validates a total. No other
+// kind has one - a label document bounds each name and colour and not how many
+// - so raising it for them raises nothing but the size of a mistake, and a
+// label document becomes an action per label per repository once it is planned.
+func TestSyncConfigKeepsTheOrdinaryBoundOnEveryOtherKind(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+	session := harness.signIn(t)
+
+	labels := make([]string, 0, 4000)
+	for index := range cap(labels) {
+		labels = append(labels,
+			fmt.Sprintf(`{"name":"label-%05d","color":"ff0000"}`, index))
+	}
+
+	document := fmt.Sprintf(
+		`{"enabled":true,"expected_revision":0,"labels":[%s],"excludes":[]}`,
+		strings.Join(labels, ","))
+
+	refused := harness.request(t, http.MethodPut, configPath+"labels",
+		strings.NewReader(document), session)
+	if refused.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("saving %d bytes of labels = %d %s",
+			len(document), refused.Code, refused.Body.String())
+	}
+}
+
 // And the other half: past the bound it is a refusal that says so, rather than
 // one that blames the JSON.
 func TestSyncConfigSaysWhenTheRequestIsTooLarge(t *testing.T) {
@@ -567,6 +599,63 @@ func TestSyncOverrideDropsARefusalOnceTheKindIsOff(t *testing.T) {
 	if after.Problem != "" {
 		t.Errorf("problem = %q, wanted none: this repository has the kind switched off",
 			after.Problem)
+	}
+}
+
+// unreadableStateStore answers everything the real store does, except the one
+// read that decorates the response after a save has already committed.
+type unreadableStateStore struct {
+	storage.Store
+}
+
+func (unreadableStateStore) GetSyncRepositoryState(
+	context.Context, string, orgsync.Kind,
+) (orgsync.RepositoryState, error) {
+	return orgsync.RepositoryState{}, errors.New("the database did not answer")
+}
+
+// TestSyncOverrideStillAnswersASaveThatLanded keeps a committed write from
+// being reported as a failure.
+//
+// The state row is read on the way out of the save, to carry whatever refusal
+// still stands. Reporting a failure there answers 500 for a change that landed:
+// the form reads that as a failed save, keeps the revision it came in with, and
+// every retry is then answered 409 for the person's own change.
+func TestSyncOverrideStillAnswersASaveThatLanded(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+	session := harness.signIn(t)
+
+	configured := harness.request(t, http.MethodPut, configPath+"files", strings.NewReader(
+		`{"enabled":true,"expected_revision":0,"document":{"files":[
+			{"path":"renovate.json","content":"{}"}]}}`), session)
+	if configured.Code != http.StatusOK {
+		t.Fatalf("configuring the files = %d %s", configured.Code, configured.Body.String())
+	}
+
+	harness.server.store = unreadableStateStore{Store: harness.store}
+
+	// Inheriting rather than switched off, so the state read is reached at all.
+	saved := harness.request(t, http.MethodPut, overridePath+"files", strings.NewReader(
+		`{"enabled":null,"expected_revision":0,"document":{}}`), session)
+	if saved.Code != http.StatusOK {
+		t.Fatalf("saving = %d %s", saved.Code, saved.Body.String())
+	}
+
+	var answer syncOverrideDTO
+	if err := json.Unmarshal(saved.Body.Bytes(), &answer); err != nil {
+		t.Fatal(err)
+	}
+
+	// And the write is the one that landed, not a stale read of it.
+	if answer.Revision != 1 {
+		t.Errorf("revision = %d, wanted 1: the save committed", answer.Revision)
+	}
+
+	// A read is the other way round: an unreadable refusal is the one thing the
+	// pane exists to show, so that one reports it.
+	read := harness.request(t, http.MethodGet, overridePath+"files", nil, session)
+	if read.Code == http.StatusOK {
+		t.Error("a read answered as though the state row were readable")
 	}
 }
 

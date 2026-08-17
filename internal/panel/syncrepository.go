@@ -167,11 +167,12 @@ func (s *Server) putSyncOverride(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// A repository's adjustments are overrides rather than whole files, but they
-	// are read against the same document, and a limit that differed between the
-	// two would refuse a save the page that made it thought it could make.
+	// The ordinary bound, because a repository's adjustments are not templates.
+	// FileOverride bounds neither how many merges it carries nor how large an
+	// overrides object is, so the larger bound would buy a per-repository row of
+	// several megabytes that the planner then refuses to compose anyway.
 	var input syncOverrideRequest
-	if !decodeJSONWithin(w, r, &input, maxDocumentBody) {
+	if !decodeJSON(w, r, &input) {
 		return
 	}
 	if !input.Enabled.Present || input.ExpectedRevision == nil {
