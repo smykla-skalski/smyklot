@@ -774,6 +774,26 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 			Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
 		})
 
+		// A repository identifier names something the caller may never have
+		// been authorized against, so the installation is a parameter here
+		// rather than a check somebody remembers to make first. Asked with a
+		// row that exists and an installation that does not own it, because the
+		// suite seeds one installation and every other read in it would pass
+		// with the scoping deleted.
+		It("does not read a repository through another installation", func() {
+			ctx, store, now := runtime()
+			seed(ctx, store, now)
+
+			Expect(store.RecordSyncRepositoryState(ctx, []orgsync.RepositoryState{{
+				RepositoryID: repoA, Kind: orgsync.KindFiles, AppliedAt: now,
+				Problem:      "these files cannot be composed",
+			}})).To(Succeed())
+
+			_, err := store.GetSyncRepositoryState(
+				ctx, "github:installation:999", repoA, orgsync.KindFiles)
+			Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
+		})
+
 		// The one that matters most: a repository that was refused and then
 		// settles must not keep the refusal. It is the same row, so writing the
 		// digest is what clears it - nothing has to remember to
