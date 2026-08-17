@@ -54,6 +54,14 @@ const (
 	SectionDelete SectionAction = "delete"
 
 	// SectionPatch substitutes text inside a section, below its heading.
+	//
+	// Every occurrence, code blocks included. Which section a patch belongs to
+	// is decided by reading the document's headings, and that reading skips
+	// fenced code so a heading inside one is not mistaken for a real one - but
+	// what to replace once the section is found is a literal substitution over
+	// its text. A command in a fenced block is one of the most useful things
+	// to patch, and a substitution that stopped at a fence would leave the
+	// repository with the template's version of it and say nothing.
 	SectionPatch SectionAction = "patch"
 
 	// SectionAppend puts content at the end of the document.

@@ -126,6 +126,23 @@ Somebody reads it.
 		Expect(result).To(Equal("## Setup\n\nInstallation is easy.\n"))
 	})
 
+	// Which section a patch belongs to is decided by reading the headings, and
+	// that reading skips fenced code. What to replace once the section is found
+	// is a literal substitution over its text, fences included: a command in a
+	// code block is one of the most useful things to patch, and stopping at a
+	// fence would leave the repository with the template's version of it and
+	// say nothing.
+	It("substitutes inside a code block as well as outside one", func() {
+		result, err := merged("## Setup\n\nRun it.\n\n```sh\nmake install\n```\n",
+			filemerge.Section{
+				Action: filemerge.SectionPatch, Heading: "## Setup",
+				Patches: []filemerge.Patch{{Find: "install", Replace: "build"}},
+			})
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result).To(ContainSubstring("make build"))
+	})
+
 	Describe("code fences", func() {
 		// The engine this replaces toggled one flag on any line starting with
 		// three backticks or three tildes, whichever it was. A backtick fence

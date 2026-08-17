@@ -1143,6 +1143,56 @@ var _ = Describe("Org sync [Unit]", func() {
 			Expect(state[0].Kind).To(Equal(orgsync.KindFiles))
 		})
 
+		// After a merge everything the branch says is in the default branch, so
+		// a pull request from it would have no diff at all and GitHub refuses
+		// to open one. Taking it away is what lets the next change start from
+		// the default branch.
+		It("starts again from the default branch once a proposal has merged", func() {
+			target := grantContents()
+			configureKind(target, orgsync.KindFiles, contributing)
+
+			plan(target)
+			computed, actions := livePlan(target)
+			approve(computed)
+
+			written, err := orgsync.DecodeFile(actions[0].Payload)
+			Expect(err).NotTo(HaveOccurred())
+			stub.branchRefs[written.Proposal] = "mergedcommit"
+			stub.branchPRs = `[{"number":9,"state":"closed","merged":true,` +
+				`"merged_at":"2026-08-17T00:00:00Z","head":{"sha":"mergedcommit"}}]`
+
+			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+
+			Expect(stub.deletedRefs).To(ConsistOf(written.Proposal))
+			Expect(stub.forcedPushes).To(BeZero())
+		})
+
+		// The same branch with a commit pushed to it after the merge. That
+		// commit is the whole of what a pull request from there would carry,
+		// and taking the branch away takes it with it.
+		It("builds on a merged branch somebody has pushed to since", func() {
+			target := grantContents()
+			configureKind(target, orgsync.KindFiles, contributing)
+
+			plan(target)
+			computed, actions := livePlan(target)
+			approve(computed)
+
+			written, err := orgsync.DecodeFile(actions[0].Payload)
+			Expect(err).NotTo(HaveOccurred())
+			stub.branchRefs[written.Proposal] = "theircommit"
+			stub.migrationTipTree = "their-tree"
+			stub.branchPRs = `[{"number":9,"state":"closed","merged":true,` +
+				`"merged_at":"2026-08-17T00:00:00Z","head":{"sha":"mergedcommit"}}]`
+
+			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+
+			Expect(stub.deletedRefs).To(BeEmpty())
+			Expect(stub.createdTrees[0]).To(ContainSubstring(`"base_tree":"their-tree"`))
+			Expect(stub.createdCommits[0]).To(ContainSubstring(`"theircommit"`))
+			Expect(stub.forcedPushes).To(BeZero())
+		})
+
 		It("keeps an open pull request rather than opening a second", func() {
 			target := grantContents()
 			configureKind(target, orgsync.KindFiles, contributing)

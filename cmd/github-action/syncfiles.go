@@ -335,10 +335,12 @@ func (s *server) readProposal(
 	}
 
 	switch {
-	case pull.Merged:
-		// The branch is already in the default branch, so building on it would
-		// propose a diff against something that has moved. Starting again from
-		// the default branch is what an ordinary branch does after a merge.
+	case pull.Merged && head == pull.Head:
+		// Merged, and nothing has been pushed since. Everything the branch says
+		// is in the default branch now, so a pull request from it would have no
+		// diff at all and GitHub refuses to open one. Taking it away is what
+		// lets the next change start from the default branch, which is what an
+		// ordinary branch does after a merge.
 		if head != "" {
 			if err := client.DeleteRef(
 				ctx, target.Owner, target.Name, "heads/"+proposal); err != nil {
@@ -347,6 +349,17 @@ func (s *server) readProposal(
 		}
 
 		return "", nil, nil
+
+	case pull.Merged:
+		// Merged, and somebody has pushed to it since. Their commit is the
+		// whole of what a pull request from here would carry, and taking the
+		// branch away would take it with them. Built on, like every other
+		// branch that has something on it.
+		logging.From(ctx).Info(
+			"the merged proposal branch has moved since; building on it rather than replacing it",
+			"branch", proposal)
+
+		return head, nil, nil
 
 	case pull.State == github.PullRequestClosed:
 		return "", nil, fmt.Errorf("%w: pull request %d", errSyncFilesRefused, pull.Number)

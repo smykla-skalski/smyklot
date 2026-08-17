@@ -53,6 +53,13 @@ type PullRequest struct {
 	State  string
 	Merged bool
 	URL    string
+
+	// Head is the commit the branch pointed at when this was last read.
+	//
+	// Carried because it is the only way to tell a branch that has nothing left
+	// to say from one somebody has pushed to since. Deleting the first is
+	// tidying up; deleting the second destroys their commit.
+	Head string
 }
 
 // GetRef resolves a git reference to the commit it points at.
@@ -266,5 +273,6 @@ func asPullRequest(pull *gogithub.PullRequest) PullRequest {
 		State:  pull.GetState(),
 		Merged: pull.GetMerged() || !pull.GetMergedAt().IsZero(),
 		URL:    pull.GetHTMLURL(),
+		Head:   pull.GetHead().GetSHA(),
 	}
 }

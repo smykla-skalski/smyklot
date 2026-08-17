@@ -2,6 +2,8 @@ package panel
 
 import (
 	"encoding/json"
+	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -67,6 +69,155 @@ func TestSyncDocumentStoresTheFilesType(t *testing.T) {
 	}
 	if len(stored.Excludes) != 1 {
 		t.Errorf("excludes = %v, wanted the one that was sent", stored.Excludes)
+	}
+}
+
+// overridePath addresses what one repository says about one kind, through the
+// route rather than through the function behind it.
+const overridePath = "/panel/api/v1/targets/github:installation:10" +
+	"/repositories/repository-20/sync/"
+
+// configPath is the installation's own configuration for a kind, which is what
+// a repository's adjustments have to fit.
+const configPath = "/panel/api/v1/targets/github:installation:10/sync/config/"
+
+// TestSyncOverrideRoundTripsThroughTheEndpoint drives the addresses rather than
+// the helpers behind them.
+//
+// The helpers were the whole of what these specs used to reach, so the
+// validation the endpoint does - and the fitting of an adjustment against what
+// the installation synchronizes - was covered by nothing.
+func TestSyncOverrideRoundTripsThroughTheEndpoint(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+	session := harness.signIn(t)
+
+	configured := harness.request(t, http.MethodPut, configPath+"files", strings.NewReader(
+		`{"enabled":true,"expected_revision":0,"document":{"files":[
+			{"path":"renovate.json","content":"{}"}]}}`), session)
+	if configured.Code != http.StatusOK {
+		t.Fatalf("configuring the files = %d %s", configured.Code, configured.Body.String())
+	}
+
+	saved := harness.request(t, http.MethodPut, overridePath+"files", strings.NewReader(
+		`{"enabled":null,"expected_revision":0,"document":{"merges":[
+			{"path":"renovate.json","overrides":{"timezone":"Europe/Warsaw"}}]}}`), session)
+	if saved.Code != http.StatusOK {
+		t.Fatalf("saving the adjustment = %d %s", saved.Code, saved.Body.String())
+	}
+
+	read := harness.request(t, http.MethodGet, overridePath+"files", nil, session)
+	if read.Code != http.StatusOK {
+		t.Fatalf("reading it back = %d %s", read.Code, read.Body.String())
+	}
+
+	var answer syncOverrideDTO
+	if err := json.Unmarshal(read.Body.Bytes(), &answer); err != nil {
+		t.Fatal(err)
+	}
+
+	if answer.Enabled != nil {
+		t.Errorf("enabled = %v, wanted nothing: this repository inherits", *answer.Enabled)
+	}
+	if !strings.Contains(string(answer.Document), "Europe/Warsaw") {
+		t.Errorf("document = %s, wanted the adjustment that was sent", answer.Document)
+	}
+	if answer.Revision != 1 {
+		t.Errorf("revision = %d, wanted 1", answer.Revision)
+	}
+}
+
+// TestSyncOverrideRefusesWhatCouldNeverApply covers the endpoint's own
+// validation, which nothing reached before.
+func TestSyncOverrideRefusesWhatCouldNeverApply(t *testing.T) {
+	for name, request := range map[string]struct {
+		kind string
+		body string
+	}{
+		// An adjustment naming a file nobody synchronizes reads as configured
+		// and quietly leaves the repository with the plain template.
+		"a file the installation does not synchronize": {
+			kind: "files",
+			body: `{"enabled":null,"expected_revision":0,"document":{"merges":[
+				{"path":"package.json"}]}}`,
+		},
+		"a merge the file could not take": {
+			kind: "files",
+			body: `{"enabled":null,"expected_revision":0,"document":{"merges":[
+				{"path":"renovate.json","strategy":"markdown"}]}}`,
+		},
+		"a key this version does not know": {
+			kind: "files",
+			body: `{"enabled":null,"expected_revision":0,"document":{"merges":[],
+				"delete_everything":true}}`,
+		},
+		// Every kind but files is the same everywhere the installation
+		// switches it on, so storing a document for one nothing reads is worse
+		// than refusing it.
+		"a document for a kind with nothing to adjust": {
+			kind: "labels",
+			body: `{"enabled":null,"expected_revision":0,"document":{"merges":[]}}`,
+		},
+		"a repository that will not say whether the kind runs": {
+			kind: "files",
+			body: `{"expected_revision":0,"document":{}}`,
+		},
+		"a repository that will not say what it replaces": {
+			kind: "files",
+			body: `{"enabled":null,"document":{}}`,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			harness := newPanelHarness(t, "owner")
+			session := harness.signIn(t)
+
+			configured := harness.request(t, http.MethodPut, configPath+"files",
+				strings.NewReader(`{"enabled":true,"expected_revision":0,"document":{"files":[
+					{"path":"renovate.json","content":"{}"}]}}`), session)
+			if configured.Code != http.StatusOK {
+				t.Fatalf("configuring the files = %d %s",
+					configured.Code, configured.Body.String())
+			}
+
+			refused := harness.request(t, http.MethodPut,
+				overridePath+request.kind, strings.NewReader(request.body), session)
+			if refused.Code != http.StatusBadRequest {
+				t.Fatalf("%s = %d %s", name, refused.Code, refused.Body.String())
+			}
+		})
+	}
+}
+
+// TestSyncOverrideAnswersAKindNobodyHasAdjusted keeps the shape one thing for a
+// browser: a repository that has never answered reads the same way as one that
+// has, rather than as a 404 it would have to guard against.
+func TestSyncOverrideAnswersAKindNobodyHasAdjusted(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+	session := harness.signIn(t)
+
+	read := harness.request(t, http.MethodGet, overridePath+"files", nil, session)
+	if read.Code != http.StatusOK {
+		t.Fatalf("reading an answer nobody gave = %d %s", read.Code, read.Body.String())
+	}
+
+	var answer syncOverrideDTO
+	if err := json.Unmarshal(read.Body.Bytes(), &answer); err != nil {
+		t.Fatal(err)
+	}
+
+	if answer.Kind != "files" || answer.Enabled != nil || string(answer.Document) != "{}" {
+		t.Errorf("answer = %+v, wanted an empty one for the files kind", answer)
+	}
+}
+
+// TestSyncOverrideRefusesAKindNothingSynchronizes is the same refusal the
+// installation's own configuration makes, at the same address shape.
+func TestSyncOverrideRefusesAKindNothingSynchronizes(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+	session := harness.signIn(t)
+
+	read := harness.request(t, http.MethodGet, overridePath+"widgets", nil, session)
+	if read.Code != http.StatusNotFound {
+		t.Fatalf("reading a kind nothing syncs = %d %s", read.Code, read.Body.String())
 	}
 }
 
