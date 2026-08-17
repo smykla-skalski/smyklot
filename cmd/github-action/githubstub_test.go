@@ -27,7 +27,9 @@ type githubStub struct {
 
 	// branchPRs answers a pull request listing filtered by head branch, which
 	// is how the configuration migration asks what became of its proposal.
-	branchPRs string
+	// refuseEmptyPR is GitHub declining to open one that would carry nothing.
+	branchPRs     string
+	refuseEmptyPR bool
 
 	// branchRefs are the branches Smyklot has pushed: content-addressed
 	// proposals, whether of a configuration migration or of a file sync. A
@@ -506,6 +508,18 @@ func (s *githubStub) servePullRequest(w http.ResponseWriter, r *http.Request) {
 func (s *githubStub) servePulls(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		s.record(&s.createdPRs, r)
+
+		// GitHub's own refusal to open one that would carry nothing, in its own
+		// words: a spec that made this up would be asserting against a message
+		// nobody sends.
+		if s.refuseEmptyPR {
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_, _ = io.WriteString(w, `{"message":"Validation Failed","errors":[`+
+				`{"message":"No commits between main and the head branch"}]}`)
+
+			return
+		}
+
 		w.WriteHeader(http.StatusCreated)
 		_, _ = io.WriteString(w, `{"number":77,"state":"open"}`)
 

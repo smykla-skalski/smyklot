@@ -1157,6 +1157,41 @@ var _ = Describe("Org sync [Unit]", func() {
 			Expect(stub.createdPRs).To(HaveLen(1))
 		})
 
+		// A merged proposal whose branch was left in place, whose content is
+		// therefore already in the default branch, and which this attempt adds
+		// nothing to. Reached by replaying an action a crash left recorded as
+		// pending after somebody merged: GitHub refuses to open a pull request
+		// that would carry nothing, and that refusal is the answer rather than
+		// a failure.
+		It("proposes nothing where the branch is already in the default branch", func() {
+			target := grantContents()
+			configureKind(target, orgsync.KindFiles, contributing)
+
+			plan(target)
+			computed, actions := livePlan(target)
+			approve(computed)
+
+			written, err := orgsync.DecodeFile(actions[0].Payload)
+			Expect(err).NotTo(HaveOccurred())
+			stub.branchRefs[written.Proposal] = "mergedcommit"
+			stub.branchPRs = `[{"number":9,"state":"closed","merged":true,` +
+				`"merged_at":"2026-08-17T00:00:00Z"}]`
+
+			// The branch already says what the files should, so nothing is
+			// committed, and GitHub will not open a pull request from it
+			stub.createdTreeSHA = "branchtree"
+			stub.migrationTipTree = "branchtree"
+			stub.refuseEmptyPR = true
+
+			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+
+			applied, _, err := service.store.GetSyncPlan(
+				GinkgoT().Context(), target.ID, computed.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(applied.State).To(Equal(orgsync.PlanApplied))
+			Expect(stub.createdCommits).To(BeEmpty())
+		})
+
 		// Nothing here removes a branch. GitHub's delete has no
 		// compare-and-swap - unlike the move, which it refuses when it is not a
 		// fast-forward - so a commit landing between reading a branch and

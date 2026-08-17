@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"slices"
 	"strings"
 
@@ -560,6 +561,24 @@ func (s *server) openOrUpdateProposal(
 			Head:  proposal,
 			Base:  target.DefaultBranch,
 		})
+
+	if nothingToPropose(err) {
+		// The branch carries nothing the default branch does not, which is
+		// where a merged proposal that was left in place ends up: its content
+		// landed, and this attempt added nothing to it.
+		//
+		// Asked of GitHub rather than worked out here. Whether a branch is
+		// ahead of another is a question about two histories, and the answers
+		// available locally - is the tip the one that merged, did this attempt
+		// commit - are each right for some of the ways a branch gets here and
+		// wrong for the rest.
+		logging.From(ctx).Info(
+			"the proposal branch is already in the default branch; nothing proposed",
+			"branch", proposal)
+
+		return nil
+	}
+
 	if err != nil {
 		return err
 	}
@@ -567,6 +586,23 @@ func (s *server) openOrUpdateProposal(
 	logging.From(ctx).Info("files proposed", "pull_request", opened.Number)
 
 	return nil
+}
+
+// nothingToPropose reads GitHub refusing to open a pull request that would
+// carry nothing.
+//
+// Matched on what GitHub said rather than on the status alone, because 422 is
+// also how it answers a base branch that does not exist - a configuration
+// problem somebody needs to see. If the wording ever changes this stops
+// recognising it and the action fails with GitHub's own message, which is the
+// safe direction to be wrong in.
+func nothingToPropose(err error) bool {
+	var apiErr *github.APIError
+	if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusUnprocessableEntity {
+		return false
+	}
+
+	return strings.Contains(strings.ToLower(apiErr.Detail), "no commits between")
 }
 
 // fileProposalBody says what the proposal does, and what closing it means.
