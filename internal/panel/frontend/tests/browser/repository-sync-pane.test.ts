@@ -71,6 +71,40 @@ describe('the repository sync pane in the development panel', () => {
   });
 
   /**
+   * The pane an address names is somebody else's text, and `constructor` is the
+   * shape that catches a guard written as `value in LABELS`: `in` walks the
+   * prototype chain, so a key every object has reads as a pane, and the page
+   * renders the empty box its fallback exists to avoid with `Object` itself in
+   * the pane's accessible name.
+   *
+   * A pane is a path segment now, matched against `REPOSITORY_SECTIONS` by a
+   * regex the param matcher derives from that list, and the Go server is handed
+   * the same pattern - so the address does not resolve at either end and never
+   * reaches a guard at all. Asserted here rather than trusted, because the two
+   * copies of the list drifting is exactly how the sync view came to 404.
+   */
+  it('refuses an address naming a pane that does not exist', async () => {
+    // No crash assertion here, unlike its neighbours: the dev server serves the
+    // bundle from the root and the worker registers relative to the address, so
+    // an address the server refuses also has no worker under it. That 404 is
+    // the harness, not the panel.
+    const page: Page = await panel.browser.newPage({
+      viewport: { width: 1280, height: 900 },
+    });
+
+    try {
+      await page.goto(`${panel.origin}/i/${panel.account}/repositories/smyklot/constructor`, {
+        waitUntil: 'domcontentloaded',
+      });
+      await page.locator('.error-body').waitFor({ state: 'visible', timeout: 30_000 });
+
+      expect(await page.locator('body').innerText()).toContain('Not found');
+    } finally {
+      await page.close();
+    }
+  });
+
+  /**
    * A repository the planner refuses receives none of the organization's files.
    * Everything about that lives on a second row the pane reads beside the
    * adjustments, so a component spec handed a value proves none of it - this
