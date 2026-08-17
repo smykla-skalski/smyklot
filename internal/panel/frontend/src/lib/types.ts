@@ -729,15 +729,12 @@ export interface SyncFile {
 }
 
 /**
- * What one repository adjusts about the files, which is the layer a template
- * cannot know about: one repository ignores a directory the others do not.
+ * How one repository composes its copy of one template.
+ *
+ * There is deliberately no type for the whole adjustment document. The pane
+ * reads it as an open record and writes it back the same way, so a key a later
+ * version of the service adds survives a save by somebody running this one.
  */
-export interface SyncFileOverride {
-  merges?: SyncFileMerge[];
-  excludes?: string[];
-}
-
-/** How one repository composes its copy of one template. */
 export interface SyncFileMerge {
   path: string;
   /** deep-merge, shallow-merge or markdown. Empty lets the extension decide. */

@@ -137,6 +137,64 @@ var _ = Describe("Repository files [Unit]", func() {
 		})
 	})
 
+	// A listing and a level walk answer the same question, so they answer it
+	// in the same type. Held apart, the two came to different conclusions
+	// about a retired path whose parent had become a file.
+	Describe("RepositoryTree.At", func() {
+		held := github.RepositoryTree{Entries: map[string]github.TreeEntry{
+			".github":         {Mode: "040000", Blob: "d1"},
+			".github/ci.yaml": {Mode: "100644", Blob: "b1", Size: 42},
+			"latest":          {Mode: "120000", Blob: "b3", Size: 9},
+			"vendor":          {Mode: "160000", Blob: "c1"},
+			"notes":           {Mode: "100644", Blob: "b4", Size: 3},
+		}}
+
+		DescribeTable("says what a repository holds at a path",
+			func(filePath string, expected github.TreePath) {
+				Expect(held.At(filePath)).To(Equal(expected))
+			},
+
+			Entry("an ordinary file", ".github/ci.yaml", github.TreePath{
+				Entry: github.TreeEntry{Mode: "100644", Blob: "b1", Size: 42}, Found: true,
+			}),
+			Entry("a directory", ".github", github.TreePath{
+				Entry: github.TreeEntry{Mode: "040000", Blob: "d1"}, Found: true,
+			}),
+			Entry("a symbolic link", "latest", github.TreePath{
+				Entry: github.TreeEntry{Mode: "120000", Blob: "b3", Size: 9}, Found: true,
+			}),
+			Entry("a submodule", "vendor", github.TreePath{
+				Entry: github.TreeEntry{Mode: "160000", Blob: "c1"}, Found: true,
+			}),
+			Entry("nothing at all", "CONTRIBUTING.md", github.TreePath{}),
+			Entry("nothing at all, several levels down", "a/b/c.md", github.TreePath{}),
+
+			// The path does not exist and cannot: git puts a blob or a tree at
+			// a name, never both, so writing here replaces the file above.
+			Entry("under a file", "notes/today.md", github.TreePath{Blocked: "notes"}),
+			Entry("under a file, several levels down",
+				"notes/2026/today.md", github.TreePath{Blocked: "notes"}),
+			Entry("under a link", "latest/ci.yaml", github.TreePath{Blocked: "latest"}),
+			Entry("under a submodule", "vendor/go.mod", github.TreePath{Blocked: "vendor"}),
+		)
+
+		// Whichever way it was read. The service compares the two against one
+		// repository, and a difference between them is a repository answered
+		// differently depending on how large it is.
+		It("agrees with the level walk about a path under a file", func() {
+			server = record(map[string]string{
+				"/git/trees/main": `{"tree":[{"path":"notes","type":"blob",` +
+					`"mode":"100644","sha":"b4"}]}`,
+			})
+
+			walked, err := client().ResolveTreePaths(
+				context.Background(), "acme", "web", "main", []string{"notes/today.md"})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(walked["notes/today.md"]).To(Equal(held.At("notes/today.md")))
+		})
+	})
+
 	// Only reached where a whole-tree listing came back truncated, and exact
 	// where that listing cannot be. Asking the contents API instead would
 	// answer 404 for a path whose parent is a file, which reads as "nothing is

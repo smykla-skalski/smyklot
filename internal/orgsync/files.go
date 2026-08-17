@@ -1,7 +1,6 @@
 package orgsync
 
 import (
-	"maps"
 	"path"
 	"regexp"
 	"slices"
@@ -160,11 +159,11 @@ func (c FileConfig) Validate() error {
 		}
 	}
 
-	if err := c.validateRetired(slices.Collect(maps.Keys(seen))); err != nil {
+	if err := c.validateRetired(seen); err != nil {
 		return err
 	}
 
-	return c.validateNesting()
+	return c.validateNesting(seen)
 }
 
 // validateNesting refuses a path that sits under another managed path.
@@ -175,21 +174,19 @@ func (c FileConfig) Validate() error {
 // conflict checks compare a path to what a repository already holds - and a
 // repository that has neither of these yet holds nothing to compare against.
 // It reaches GitHub as a tree nobody can build, on every reconcile.
-func (c FileConfig) validateNesting() error {
-	managed := c.Managed()
-
-	// Folded, and looked up by every ancestor of every path rather than
-	// between neighbours in a sorted list: "docs", "docs-2.md" and
-	// "docs/index.md" sort in that order, so the pair that is wrong is not the
-	// pair that is adjacent.
-	above := make(map[string]string, len(managed))
-	for _, managedPath := range managed {
-		above[strings.ToLower(managedPath)] = managedPath
-	}
-
-	for _, managedPath := range managed {
-		for parent := ParentPath(managedPath); parent != ""; parent = ParentPath(parent) {
-			if owner, held := above[strings.ToLower(parent)]; held {
+// It reads the index the rules above filled in rather than building its own:
+// what "the same name" means is one decision, in one place, in the function
+// whose whole job is names that only differ by folding.
+//
+// Every ancestor of every path is looked up, rather than neighbours in a sorted
+// list compared: "docs", "docs-2.md" and "docs/index.md" sort in that order, so
+// the pair that is wrong is not the pair that is adjacent. Walked in
+// configuration order, so which of two violations is reported does not depend
+// on map iteration.
+func (c FileConfig) validateNesting(managed foldedNames) error {
+	for _, managedPath := range c.Managed() {
+		for parent := parentPath(managedPath); parent != ""; parent = parentPath(parent) {
+			if owner, held := managed[strings.ToLower(parent)]; held {
 				return invalid(
 					"%q sits under %q, so git would have to record %q as a file and "+
 						"as a directory at once", managedPath, owner, owner)
@@ -200,7 +197,9 @@ func (c FileConfig) validateNesting() error {
 	return nil
 }
 
-func (c FileConfig) validateRetired(files []string) error {
+// validateRetired checks the retired list against itself and against the files,
+// and folds it into the index it was handed so the nesting rule reads one thing.
+func (c FileConfig) validateRetired(files foldedNames) error {
 	retired := foldedNames{}
 
 	for index, retiredPath := range c.Retired {
@@ -208,6 +207,9 @@ func (c FileConfig) validateRetired(files []string) error {
 			return err
 		}
 
+		// Asked of the retired list first, so a path written twice there is
+		// reported as that rather than as a collision with the file it is
+		// about to be folded in beside.
 		if earlier, clashed := retired.clash(retiredPath); clashed {
 			return invalid("retired path %q is listed twice", earlier)
 		}
@@ -215,11 +217,13 @@ func (c FileConfig) validateRetired(files []string) error {
 		// A path cannot be both written and removed. Which one won would depend
 		// on the order the two lists happened to be walked in, and the answer
 		// somebody meant is not knowable from the document.
-		if slices.Contains(files, strings.ToLower(retiredPath)) {
+		if _, isFile := files[strings.ToLower(retiredPath)]; isFile {
 			return invalid(
 				"%q is configured as a file and as a retired path, so it would be "+
 					"written and removed by the same change", retiredPath)
 		}
+
+		files[strings.ToLower(retiredPath)] = retiredPath
 	}
 
 	return nil
@@ -335,14 +339,18 @@ func (c FileConfig) Paths() []string {
 // whole of what it asks a repository about.
 func (c FileConfig) Managed() []string { return slices.Concat(c.Paths(), c.Retired) }
 
-// ParentPath is the directory a path sits in, empty at the repository root.
-func ParentPath(filePath string) string {
-	cut := strings.LastIndex(filePath, "/")
-	if cut < 0 {
+// parentPath is the directory a path sits in, empty at the repository root.
+//
+// Every path reaching this has been through validateFilePath, so it is
+// relative, cleaned and free of "..", which is what makes path.Dir the whole
+// answer rather than most of it.
+func parentPath(filePath string) string {
+	parent := path.Dir(filePath)
+	if parent == "." || parent == "/" || parent == filePath {
 		return ""
 	}
 
-	return filePath[:cut]
+	return parent
 }
 
 // Validate reports a repository's own adjustments that could never be applied.

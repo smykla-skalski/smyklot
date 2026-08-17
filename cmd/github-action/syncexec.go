@@ -360,7 +360,7 @@ func (s *server) applyFileKind(
 		return succeeded
 	}
 
-	err := s.applyFileActions(ctx, client, target, work.Actions)
+	err := applyFileActions(ctx, client, target, work.Actions)
 	if err != nil {
 		logging.From(ctx).Warn("sync files failed", "error", err)
 	}

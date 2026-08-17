@@ -1,6 +1,7 @@
 package filemerge
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"path"
@@ -328,13 +329,15 @@ func (s Section) validate(index int) error {
 
 	switch s.Action {
 	case SectionBefore, SectionAfter, SectionReplace:
-		return firstError(s.needsHeading(position), s.needsContent(position))
+		// The first problem rather than all of them, so a section with two
+		// mistakes reports the earlier one.
+		return cmp.Or(s.needsHeading(position), s.needsContent(position))
 
 	case SectionDelete:
 		return s.needsHeading(position)
 
 	case SectionPatch:
-		return firstError(s.needsHeading(position), s.needsPatches(position))
+		return cmp.Or(s.needsHeading(position), s.needsPatches(position))
 
 	case SectionAppend, SectionPrepend:
 		if s.Heading != "" || s.Occurrence != 0 {
@@ -384,18 +387,6 @@ func (s Section) needsPatches(position int) error {
 		if patch.Find == "" {
 			return fmt.Errorf("%w: section %d patch %d finds nothing",
 				ErrInvalidSpec, position, index+1)
-		}
-	}
-
-	return nil
-}
-
-// firstError answers with the first problem rather than all of them, so a
-// document with two mistakes reports the earlier one.
-func firstError(errs ...error) error {
-	for _, err := range errs {
-		if err != nil {
-			return err
 		}
 	}
 

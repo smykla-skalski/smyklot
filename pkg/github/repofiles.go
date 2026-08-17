@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"path"
 	"strings"
 
 	gogithub "github.com/google/go-github/v90/github"
@@ -120,6 +121,43 @@ type TreePath struct {
 	// Blocked names a directory on the way there that is not a directory at
 	// all, so nothing can sit at the path without replacing it.
 	Blocked string
+}
+
+// At reads what this listing records at a path.
+//
+// The same answer a level walk gives, in the same type, so a caller that has a
+// whole listing and a caller that had to walk are not two callers. The two used
+// to work the question out separately and had to be kept agreeing about what a
+// link, a submodule and a file-shaped parent mean.
+//
+// Only meaningful on a listing GitHub finished. A path missing from a truncated
+// one is a path that was not reached, not a path a repository does not have,
+// which is what ResolveTreePaths exists for.
+func (t RepositoryTree) At(filePath string) TreePath {
+	// Ancestors first, descending, which is the order the walk meets them in:
+	// nothing can sit under a path that is not a directory, so what is at the
+	// path itself is not the question any more.
+	for parent := parentPath(filePath); parent != ""; parent = parentPath(parent) {
+		if entry, held := t.Entries[parent]; held && !entry.Directory() {
+			return TreePath{Blocked: parent}
+		}
+	}
+
+	if entry, held := t.Entries[filePath]; held {
+		return TreePath{Entry: entry, Found: true}
+	}
+
+	return TreePath{}
+}
+
+// parentPath is the directory a path sits in, empty at the repository root.
+func parentPath(filePath string) string {
+	parent := path.Dir(filePath)
+	if parent == "." || parent == "/" || parent == filePath {
+		return ""
+	}
+
+	return parent
 }
 
 // ResolveTreePaths reads what a ref records at each of several paths, walking

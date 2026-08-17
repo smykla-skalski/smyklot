@@ -81,10 +81,6 @@ func readRepositoryFiles(
 // own files, and carrying the rest of the tree here made this hand the planner
 // a map four orders of magnitude larger than the one the level walk hands it
 // for the same repository.
-//
-// The conflicts are worked out here rather than in the planner because this is
-// where the whole tree is: the planner is handed one entry per path it asked
-// about and has no way to see that the path above one of them is a file.
 func asCurrentFiles(
 	tree github.RepositoryTree,
 	config orgsync.FileConfig,
@@ -93,41 +89,12 @@ func asCurrentFiles(
 	current := make(map[string]orgsync.CurrentFile, len(managed))
 
 	for _, path := range managed {
-		if conflict := conflictAt(tree, path); conflict != "" {
-			current[path] = orgsync.CurrentFile{Conflict: conflict}
-
-			continue
-		}
-
-		// No conflict, so anything here is an ordinary file with an ordinary
-		// path above it.
-		if entry, held := tree.Entries[path]; held {
-			current[path] = orgsync.CurrentFile{Blob: entry.Blob, Size: entry.Size}
+		if held, has := currentFileAt(path, tree.At(path)); has {
+			current[path] = held
 		}
 	}
 
 	return current
-}
-
-// conflictAt says why a repository cannot hold an ordinary file at a path, or
-// nothing.
-//
-// git will let a commit put a blob where a directory, a link or a submodule is
-// and say nothing about what it replaced, and it will let one put a directory
-// where a file is. Both are silent destruction, and both are visible here for
-// the cost of a map lookup per path segment.
-func conflictAt(tree github.RepositoryTree, path string) string {
-	if entry, held := tree.Entries[path]; held && !entry.OrdinaryFile() {
-		return notAnOrdinaryFile(path, entry.Mode)
-	}
-
-	for parent := orgsync.ParentPath(path); parent != ""; parent = orgsync.ParentPath(parent) {
-		if entry, held := tree.Entries[parent]; held && !entry.Directory() {
-			return blockedByFile(path, parent)
-		}
-	}
-
-	return ""
 }
 
 // The two ways a repository can be unable to hold a file where the
@@ -237,7 +204,7 @@ type plannedFile struct {
 // rather than have to be handled: the tool this replaces scheduled its
 // deletions before it had fetched what would replace them, so a fetch that
 // failed left a repository with neither. A commit lands whole or not at all.
-func (s *server) applyFileActions(
+func applyFileActions(
 	ctx context.Context,
 	client *github.Client,
 	target syncTarget,
@@ -278,7 +245,7 @@ func (s *server) applyFileActions(
 		return fmt.Errorf("%w: no branch to propose the files on", orgsync.ErrInvalidPlan)
 	}
 
-	return s.proposeFiles(ctx, client, target, proposal, files)
+	return proposeFiles(ctx, client, target, proposal, files)
 }
 
 // proposeFiles builds the commit and the pull request that carries it.
@@ -289,7 +256,7 @@ func (s *server) applyFileActions(
 // tool this replaces rebuilt the branch from the default branch on every run
 // and force-updated the reference, which destroyed anything anybody had pushed
 // to it - with no error and no trace.
-func (s *server) proposeFiles(
+func proposeFiles(
 	ctx context.Context,
 	client *github.Client,
 	target syncTarget,
@@ -300,12 +267,12 @@ func (s *server) proposeFiles(
 		return fmt.Errorf("%w: GitHub named no default branch", errSyncFilesUnreadable)
 	}
 
-	head, pull, err := s.readProposal(ctx, client, target, proposal)
+	head, pull, err := readProposal(ctx, client, target, proposal)
 	if err != nil {
 		return err
 	}
 
-	commit, err := s.commitFiles(ctx, client, target, proposal, head, files)
+	commit, err := commitFiles(ctx, client, target, proposal, head, files)
 	if err != nil {
 		return err
 	}
@@ -318,12 +285,12 @@ func (s *server) proposeFiles(
 		return nil
 	}
 
-	return s.openOrUpdateProposal(ctx, client, target, proposal, pull, files)
+	return openOrUpdateProposal(ctx, client, target, proposal, pull, files)
 }
 
 // readProposal answers where a repository's proposal branch stands, resolving
 // the states a previous run can have left behind.
-func (s *server) readProposal(
+func readProposal(
 	ctx context.Context,
 	client *github.Client,
 	target syncTarget,
@@ -369,7 +336,7 @@ func (s *server) readProposal(
 
 // commitFiles writes the change and moves the branch to it, answering with the
 // commit or with nothing where the branch already said what it should.
-func (s *server) commitFiles(
+func commitFiles(
 	ctx context.Context,
 	client *github.Client,
 	target syncTarget,
@@ -400,12 +367,12 @@ func (s *server) commitFiles(
 		return "", err
 	}
 
-	wanted, err := s.stillNeeded(ctx, client, target, parentCommit.Tree, files)
+	wanted, err := stillNeeded(ctx, client, target, parentCommit.Tree, files)
 	if err != nil {
 		return "", err
 	}
 
-	changes, err := s.writeBlobs(ctx, client, target, wanted)
+	changes, err := writeBlobs(ctx, client, target, wanted)
 	if err != nil {
 		return "", err
 	}
@@ -428,7 +395,7 @@ func (s *server) commitFiles(
 		return "", err
 	}
 
-	return commit, s.moveProposal(ctx, client, target, proposal, head, commit)
+	return commit, moveProposal(ctx, client, target, proposal, head, commit)
 }
 
 // moveProposal points the branch at the new commit.
@@ -437,7 +404,7 @@ func (s *server) commitFiles(
 // read it, so GitHub accepts the move - and refuses it if somebody pushed in
 // between, which is exactly the answer that should stop this from overwriting
 // them. The next reconcile builds on what they pushed.
-func (s *server) moveProposal(
+func moveProposal(
 	ctx context.Context,
 	client *github.Client,
 	target syncTarget,
@@ -460,7 +427,7 @@ func (s *server) moveProposal(
 //
 // Walked rather than listed, because the answer has to be exact for exactly
 // the paths in the plan, and a repository is asked about a handful of them.
-func (s *server) stillNeeded(
+func stillNeeded(
 	ctx context.Context,
 	client *github.Client,
 	target syncTarget,
@@ -504,7 +471,7 @@ func (s *server) stillNeeded(
 	return wanted, nil
 }
 
-func (s *server) writeBlobs(
+func writeBlobs(
 	ctx context.Context,
 	client *github.Client,
 	target syncTarget,
@@ -531,7 +498,7 @@ func (s *server) writeBlobs(
 	return changes, nil
 }
 
-func (s *server) openOrUpdateProposal(
+func openOrUpdateProposal(
 	ctx context.Context,
 	client *github.Client,
 	target syncTarget,
