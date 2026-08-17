@@ -63,6 +63,11 @@ export function addressOf(panel: Panel, route: string): string {
 
 export async function startPanel(): Promise<Panel> {
   process.env.SMYKLOT_PANEL_DEV_MOCK = '1';
+  /* The mock's queue runs its own reconciler, so that a deadline in development expires the way it
+     expires in production and the merge can be watched. A sweep that measures a table cannot also
+     have the table re-sort itself half way through the measurement, so it asks for the queue to
+     hold still. Nothing else about the mock changes. */
+  process.env.SMYKLOT_PANEL_DEV_MOCK_FROZEN = '1';
   // Bound to the address the browser is told to use. Vite's default host resolves to the IPv6
   // loopback on some machines and the IPv4 one on others, and it reports the same port either way,
   // so naming one is the difference between a measurement and a connection refused.

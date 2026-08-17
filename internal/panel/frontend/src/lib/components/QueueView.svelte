@@ -1,6 +1,9 @@
 <script lang="ts">
   import { createQuery } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
+  import { flip } from 'svelte/animate';
+  import { MediaQuery } from 'svelte/reactivity';
+  import { fade } from 'svelte/transition';
 
   import type { PanelApi } from '#lib/api.js';
   import type { FilterSection } from '#lib/filter-menu.js';
@@ -34,6 +37,35 @@
      From `internal/pendingci/policy.go`; a request that has passed waits this
      long without anything changing, and then it merges. */
   const QUIET_SECONDS = 30;
+
+  /**
+   * How the rows move when the reconciler moves them.
+   *
+   * This table is the one place in the panel that changes while it is being read: a deadline runs
+   * out, the service acts, the stream says so and the rows re-sort under the reader's eyes. Without
+   * this they teleport, and a row that has merged is indistinguishable from a row that was never
+   * there - which is the one thing the reader needed to see.
+   *
+   * `flip` returns a `css` animation, so it plays as a web animation off the main thread rather
+   * than as a per-frame callback. That matters more here than anywhere else: whatever the queue is
+   * doing, it is doing it while a countdown ticks every second beside it.
+   *
+   * Under `prefers-reduced-motion` the duration goes to zero rather than the directive coming off:
+   * the row still lands where it belongs, it just gets there at once.
+   */
+  const stillness = new MediaQuery('prefers-reduced-motion: reduce');
+  const rowMotion = $derived({ duration: stillness.current ? 0 : 220 });
+  /* Leaving is quicker than arriving, and quicker than the re-sort that follows it: a row that has
+     merged should be out of the way before the rows below it start closing the gap, or the two
+     movements read as one confused one. */
+  const rowLeaving = $derived({ duration: stillness.current ? 0 : 140 });
+  const rowArriving = $derived({
+    duration: stillness.current ? 0 : 260,
+    delay: stillness.current ? 0 : 80,
+  });
+  /* The chip, when the reconciler changes what a row says. Slower than the row's own motion,
+     because it is a different fact arriving in a place the eye is already resting on. */
+  const stateChange = $derived({ duration: stillness.current ? 0 : 300 });
 
   const {
     api,
@@ -264,7 +296,7 @@
     );
   }
 
-  const rows = $derived.by(() => {
+  const live = $derived.by(() => {
     const needle = query.trim().toLocaleLowerCase();
     return section_rows
       .filter(
@@ -290,6 +322,78 @@
         return (ascending ? order : -order) || first.id.localeCompare(second.id);
       });
   });
+
+  /**
+   * The table holds still while it is being read.
+   *
+   * A row that re-sorts or leaves under the pointer takes the button the reader was reaching for
+   * with it. That is not a nuisance here, it is a wrong action: the kebab beside a merged request
+   * offers Cancel, and the row that slid into its place is a different pull request. So while a
+   * pointer is inside the table - or a row holds focus, which is the keyboard's version of the same
+   * thing - the ORDER and the MEMBERSHIP of the list are pinned to what the reader is looking at.
+   *
+   * What is pinned is only the arrangement. Every row's contents come from the live record, so a
+   * request that merges while it is being read says Merged where it stands, and its Next column
+   * says where it is going rather than counting down to something that has happened. Held rows say
+   * something true; they just say it without moving.
+   *
+   * It releases on the way out, and everything that accumulated arrives at once with the animations
+   * it would have had.
+   */
+  let pointerInside = $state(false);
+  let focusInside = $state(false);
+  let menuOpen = $state(false);
+  let held = $state<readonly string[] | null>(null);
+  /** Every request the queue knows about, whichever section it now belongs to. */
+  const everything = $derived(
+    new Map([...waiting, ...recent].map((request) => [request.id, request])),
+  );
+  /* Three ways a row can be in use, and all three have to hold it. The menu is the one that cannot
+     be inferred: it opens in a portal, so by the time it is showing, neither the pointer nor focus
+     is anywhere near the row it belongs to. */
+  const reading = $derived(pointerInside || focusInside || menuOpen || pendingAction !== null);
+
+  const rows = $derived.by(() => {
+    if (held === null) return live;
+
+    const kept = held
+      .map((id) => everything.get(id))
+      .filter((request): request is PendingCIRequest => request !== undefined);
+    /* Anything that arrived while the table was held goes on the END, in the order it would have
+       sorted into. Held back entirely it would be invisible for as long as somebody kept reading -
+       a queue that hides new work is worse than one that moves - and sorted into place it would
+       push the row under the pointer down, which is the whole thing being prevented. Appended, it
+       is on screen, it is countable, and it displaces nothing. It takes its proper place when the
+       reader looks away. */
+    const already = new Set(held);
+
+    return [...kept, ...live.filter((request) => !already.has(request.id))];
+  });
+
+  /* Pins on the way in and lets go on the way out. `untrack` on the pinning, because what it reads
+     is the very list it is about to fix: without it this re-pins on every tick of the clock and the
+     table is never actually held. */
+  $effect(() => {
+    if (!reading) {
+      held = null;
+      return;
+    }
+    if (untrack(() => held) === null) untrack(() => (held = rows.map((request) => request.id)));
+  });
+
+  /** Whether a row is only still on this screen because somebody is reading it. */
+  function passingThrough(request: PendingCIRequest): boolean {
+    return section === 'waiting' ? request.lifecycle !== 'armed' : request.lifecycle === 'armed';
+  }
+
+  /* Focus has to be checked rather than assumed: `focusout` fires as focus moves BETWEEN two rows,
+     and letting go there would re-sort the table under the very key press moving through it. */
+  function focusLeft(event: FocusEvent): void {
+    const leaving = event.currentTarget as HTMLElement;
+    const next = event.relatedTarget;
+    if (next instanceof Node && leaving.contains(next)) return;
+    focusInside = false;
+  }
 
   const hasFilters = $derived(
     query !== '' ||
@@ -536,18 +640,6 @@
 </div>
 
 <div class="table-card queue-card">
-  {#if problem !== null && rows.length > 0}
-    <!-- Inside the card, above the headings: a refresh that fails has not made
-         the rows already on screen wrong, so the failure is a band over the table
-         it belongs to rather than a slab floating above the card. -->
-    <ResultProblem
-      title="The queue could not be read"
-      {problem}
-      onRetry={() => void load()}
-      busy={loading}
-      overContent
-    />
-  {/if}
   <table
     class="queue-table"
     class:waiting-table={section === 'waiting'}
@@ -671,18 +763,63 @@
         <th scope="col"><span class="visually-hidden">Actions</span></th>
       </tr>
     </thead>
-    <tbody>
+    <!-- While a pointer or focus is in here the list holds its arrangement - see `held` above.
+         `pointerenter`/`pointerleave` rather than `mouseover`: they do not fire for the crossings
+         between one cell and the next, so this asks the question once at each edge of the table
+         rather than on every cell boundary inside it. -->
+    <tbody
+      data-held={held === null ? undefined : held.length}
+      onpointerenter={() => (pointerInside = true)}
+      onpointerleave={() => (pointerInside = false)}
+      onfocusin={() => (focusInside = true)}
+      onfocusout={focusLeft}
+    >
+      {#if problem !== null && rows.length > 0}
+        <!-- A row of the table, under its headings: a refresh that fails has not
+             made the rows already on screen wrong, so the failure belongs over
+             them rather than above the whole table where it reads as a banner
+             about the page. -->
+        <tr class="notice-row">
+          <td colspan={section === 'recent' ? 6 : 5}>
+            <ResultProblem
+              title="The queue could not be read"
+              {problem}
+              onRetry={() => void load()}
+              busy={loading}
+              overContent
+            />
+          </td>
+        </tr>
+      {/if}
       {#each rows as request (request.id)}
-        {@const state = section === 'waiting' ? queueState(request) : outcomeState(request)}
+        <!-- A row that has changed section while it was being read keeps its place and stops
+             pretending: `outcomeState` is what a finished request is, whichever table it is
+             standing in, and `queueState` is what an armed one is. Neither table asks the other's
+             question of it. -->
+        {@const leaving = passingThrough(request)}
+        {@const state =
+          section === 'waiting' && !leaving ? queueState(request) : outcomeState(request)}
         {@const next = queueNext(request, now)}
         <tr
           class="queue-row data-row"
+          class:leaving
           tabindex="0"
+          animate:flip={rowMotion}
+          in:fade={rowArriving}
+          out:fade={rowLeaving}
           onclick={(event) => openRow(event, request)}
           onkeydown={(event) => openFromKeyboard(event, request)}
         >
           <td data-label={section === 'recent' ? 'Outcome' : 'Checks'}>
-            <Chip tone={state.tone} icon={state.icon}>{state.label}</Chip>
+            <!-- Keyed on the words, so a state the reconciler changed arrives
+                 rather than being swapped: the chip is the whole answer this
+                 column gives, and a silent substitution is the one change a
+                 reader watching the row can miss. -->
+            {#key state.label}
+              <span class="state-chip" in:fade={stateChange} out:fade={stateChange}>
+                <Chip tone={state.tone} icon={state.icon}>{state.label}</Chip>
+              </span>
+            {/key}
           </td>
           <td data-label="Pull request">
             <a
@@ -722,11 +859,16 @@
             </AppTooltip>
             <td data-label="Why it ended"><div class="reason">{endReason(request)}</div></td>
             <td data-label="Finished">
-              <span
-                class="age band-trim"
-                title={formatTimestamp(request.finished_at ?? request.updated_at)}
-                >{shortAge(request.finished_at ?? request.updated_at, now)}</span
-              >
+              {#if request.finished_at === undefined}
+                <!-- Armed again while this table was being held still, so it has
+                     no finish to report. The age of its last update would read as
+                     one, which is the column's own question answered wrongly. -->
+                <span class="age band-trim" title="Armed again, and running now">Running</span>
+              {:else}
+                <span class="age band-trim" title={formatTimestamp(request.finished_at)}
+                  >{shortAge(request.finished_at, now)}</span
+                >
+              {/if}
             </td>
           {:else}
             <td data-label="Next">
@@ -797,6 +939,7 @@
                 label={`Actions for ${request.repository_full_name} #${request.pull_request}`}
                 items={actionsFor(request)}
                 onSelect={(action) => void choose(request, action)}
+                onOpenChange={(open) => (menuOpen = open)}
               />
             </div>
           </td>
@@ -1379,5 +1522,40 @@
      own to bring any. */
   .queue-table td.empty-cell:not(:has(*)) {
     padding-block: var(--space-8);
+  }
+
+  /* The failed-refresh band is a row of the table, under the headings and over
+     the rows it is about - so it takes none of a row's furniture: no stated
+     height, no rule under it, and no cell padding, because the notice inside
+     brings its own. */
+  .queue-table .notice-row td {
+    border-bottom: 0;
+    height: auto;
+    padding: 0 0 var(--space-3);
+  }
+
+  /* The two chips of a state change share one cell, so the one arriving and the
+     one leaving cross rather than queue. Keyed alone they did queue - the old
+     chip was gone before the new one started - and the column sat empty for the
+     length of the fade, which is the one moment a reader watching that column is
+     actually looking at it. A grid rather than a stack of absolutes: the cell
+     keeps its own height from the row, and the chip keeps its place in it. */
+  .queue-table td:has(> .state-chip) {
+    align-items: center;
+    display: grid;
+    grid-template-areas: 'state';
+    justify-items: start;
+  }
+
+  .queue-table .state-chip {
+    grid-area: state;
+  }
+
+  /* A row that finished while it was being read. It is on its way out and is
+     staying only because the reader has hold of it, so it says so quietly rather
+     than dressing up as one of the rows that belong here. The ink stays: what it
+     now says is the thing worth reading, and a faded row would hide it. */
+  .queue-table .queue-row.leaving {
+    background-image: linear-gradient(var(--strip-lift), var(--strip-lift));
   }
 </style>

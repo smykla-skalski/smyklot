@@ -160,6 +160,15 @@ interface MockState {
   elevations: Map<string, RootElevation>;
   notifications: SecurityNotification[];
   pendingCI: PendingCIRequest[];
+  /**
+   * The requests this process has watched all the way through, and may therefore arm again.
+   *
+   * The reconciler recycles what it finishes, so the loop can be watched more than once. What it did
+   * not finish is the past: the three seeded outcomes are what the Recent table exists to show, and
+   * a past that arms itself again is not a past. Keyed off the trigger instead, one of them matched
+   * - `pending-ci-3` merged two hours before the process started - and Recent quietly lost a row.
+   */
+  queueLoop: Set<string>;
   runtime: {
     behaviorOverride: ConfigValues | null;
     logLevelOverride: string | null;
@@ -600,6 +609,7 @@ function seed(): MockState {
     elevations: new Map(),
     notifications,
     pendingCI: pendingCISeeds(iso),
+    queueLoop: new Set(),
     runtime: {
       behaviorOverride: null,
       logLevelOverride: null,
@@ -1238,6 +1248,164 @@ function install(httpServer: DevHttpServer | undefined, middlewares: Connect.Ser
   state.shell = () => fetchShell(server);
   server.on('upgrade', (request, socket) => handleUpgrade(state, request, socket));
   middlewares.use((req, res, next) => void handle(state, req, res, next));
+  runReconciler(state);
+}
+
+/**
+ * The reconciler, as far as the queue can see it.
+ *
+ * A deadline in this table is the only thing on the Root console that moves on its own, and the
+ * mock used to stop it: a seeded quiet period was pushed forward every time the page asked, so the
+ * countdown never reached zero and no reader ever saw what happens when it does. The whole point of
+ * the Next column is the moment after that, and it was the one moment development could not show.
+ *
+ * So the deadlines run. Every second the mock does what `internal/pendingci` does - looks at what is
+ * due, moves it on, and tells whoever is listening - and the panel finds out the way it finds out in
+ * production, over the stream. Nothing here is a fixture being edited: the sequence of states is the
+ * service's own, so what a reader watches is the shape of the real thing at a speed a person can sit
+ * through.
+ *
+ * The tick is unreferenced, so it does not hold the dev server open on its own. And it does not run
+ * at all under `SMYKLOT_PANEL_DEV_MOCK_FROZEN`, which is what the browser sweeps set: a suite
+ * measuring a table cannot have the table re-sort itself half way through the measurement.
+ */
+function runReconciler(state: MockState): void {
+  if (process.env.SMYKLOT_PANEL_DEV_MOCK_FROZEN === '1') return;
+  setInterval(() => reconcile(state), 1_000).unref();
+}
+
+/** How long a finished request rests in Recent before it is armed again, so the loop can be watched twice. */
+const REARM_AFTER_MS = 25_000;
+
+function reconcile(state: MockState): void {
+  const now = Date.now();
+  let changed = false;
+
+  for (const [index, request] of state.pendingCI.entries()) {
+    const next =
+      request.lifecycle === 'armed'
+        ? advanceArmed(request, now)
+        : advanceFinished(request, now, state.queueLoop.has(request.id));
+    if (next === request) continue;
+    if (next.lifecycle !== 'armed' && request.lifecycle === 'armed') {
+      state.queueLoop.add(request.id);
+    }
+    state.pendingCI[index] = next;
+    changed = true;
+  }
+
+  if (changed) broadcast(state, { type: 'resync' });
+}
+
+/**
+ * One armed request, one deadline.
+ *
+ * The states follow the service's: a request arrives with nothing observed, the first look finds
+ * checks running, a later one finds them green, and green starts the quiet period whose expiry IS
+ * the merge. Failing and no-checks stay where they are and are looked at again, because that is what
+ * the service does with them - it is the pull request that has to change, not the reconciler.
+ */
+function advanceArmed(request: PendingCIRequest, now: number): PendingCIRequest {
+  if (Date.parse(request.next_check_at) > now) return request;
+
+  const at = (offsetMs: number) => new Date(now + offsetMs).toISOString();
+  const looked = {
+    ...request,
+    updated_at: at(0),
+    revision: request.revision + 1,
+  };
+
+  if (request.next_check_trigger === 'quiet_period' && request.last_observed_state === 'passing') {
+    return {
+      ...looked,
+      lifecycle: 'merged',
+      finished_at: at(0),
+      next_check_at: at(0),
+      next_check_trigger: 'cleanup',
+      reason: 'Checks passed and stayed quiet for 30 s',
+      /* Merged first, tidied after: the label and the reactions come off in a later pass, which is
+         why the Cleanup column has a Pending state to draw at all. */
+      cleanup_pending: true,
+    };
+  }
+
+  /* Green starts the quiet period, whose expiry is the merge above. Everything else converges on
+     running: checks appear where there were none, a run that could not be read is read on the next
+     look, and a red one goes green because somebody pushed a fix. That last step is the mock taking
+     a liberty - the service would find it red again - and it is the liberty that makes every row
+     here move, so that every row can be watched all the way round and every button on one does
+     something the reader can see. */
+  if (request.last_observed_state === 'pending') {
+    return {
+      ...looked,
+      last_observed_state: 'passing',
+      next_check_at: at(QUIET_PERIOD_MS),
+      next_check_trigger: 'quiet_period',
+    };
+  }
+
+  return {
+    ...looked,
+    last_observed_state: 'pending',
+    next_check_at: at(12_000),
+    next_check_trigger: 'fallback',
+  };
+}
+
+/** The quiet period the service holds a passing request for, from `internal/pendingci/policy.go`. */
+const QUIET_PERIOD_MS = 30_000;
+
+/**
+ * What happens to a request after it has finished: its cleanup completes, and then, so the loop can
+ * be watched more than once, somebody pushes again and it is armed afresh.
+ */
+function advanceFinished(
+  request: PendingCIRequest,
+  now: number,
+  recyclable: boolean,
+): PendingCIRequest {
+  const finished = request.finished_at === undefined ? undefined : Date.parse(request.finished_at);
+  if (finished === undefined || Number.isNaN(finished)) return request;
+
+  const at = (offsetMs: number) => new Date(now + offsetMs).toISOString();
+
+  if (request.cleanup_pending && now - finished > 6_000) {
+    return {
+      ...request,
+      cleanup_pending: false,
+      updated_at: at(0),
+      revision: request.revision + 1,
+    };
+  }
+
+  // Only what this process watched finish - see `queueLoop` on `MockState`.
+  if (!recyclable || now - finished < REARM_AFTER_MS) return request;
+
+  return {
+    ...request,
+    lifecycle: 'armed',
+    schedule: 'active',
+    head_sha: nextHeadSHA(request.head_sha),
+    last_observed_state: '',
+    reason: '',
+    requested_at: at(0),
+    updated_at: at(0),
+    finished_at: undefined,
+    next_check_at: at(10_000),
+    next_check_trigger: 'command',
+    cleanup_pending: false,
+    revision: request.revision + 1,
+  };
+}
+
+/** A new commit on the same branch, drawn from the old one so the short sha visibly changes. */
+function nextHeadSHA(sha: string): string {
+  const digits = [...'0123456789abcdef'];
+  const rolled = [...sha.slice(0, 7)]
+    .map((character) => cycled(digits, digits.indexOf(character) + 1))
+    .join('');
+
+  return `${rolled}${sha.slice(7)}`;
 }
 
 /**
@@ -1898,7 +2066,8 @@ async function handle(
     const installationFailures = failures ?? rootTargetFailures;
 
     if (rootPendingCICheck && method === 'POST') {
-      const request = findPendingCI(state, rootPendingCICheck.groups?.request ?? '');
+      const id = rootPendingCICheck.groups?.request ?? '';
+      const request = findPendingCI(state, id);
       const input = await readBody<{ expected_revision: number }>(req);
       requirePendingCIRevision(request, input.expected_revision);
       const now = new Date().toISOString();
@@ -1907,8 +2076,12 @@ async function handle(
       request.next_check_trigger = 'manual';
       request.updated_at = now;
       request.revision += 1;
-      broadcast(state, { type: 'resync' });
-      respond(res, 200, structuredClone(request));
+      /* "Check now" means now. The deadline above is what the service moves; the look that follows
+         it is what the reader pressed the button for, and waiting up to a second for the next tick
+         to notice made the button look like it had done nothing. Reconciling here also broadcasts,
+         so the row that answers is the row the check produced rather than the one before it. */
+      reconcile(state);
+      respond(res, 200, structuredClone(findPendingCI(state, id)));
       return;
     }
 
@@ -2666,10 +2839,13 @@ function rootOverviewValue(state: MockState): RootOverview {
       (notification) => notification.read_at === undefined,
     ).length,
     recent_failures: recentFailures,
+    /* Read straight off the state, which the reconciler above is moving on its own. This used to
+       push an expired quiet period forward on the way out, so the countdown never reached zero and
+       the merge it counts down TO could not be watched. */
     pending_ci: {
-      active: state.pendingCI
-        .filter((request) => request.lifecycle === 'armed' && request.schedule === 'active')
-        .map(liveQuietPeriod),
+      active: state.pendingCI.filter(
+        (request) => request.lifecycle === 'armed' && request.schedule === 'active',
+      ),
       deferred: state.pendingCI.filter(
         (request) => request.lifecycle === 'armed' && request.schedule === 'deferred',
       ),
@@ -2879,23 +3055,7 @@ function findPendingCI(state: MockState, encodedID: string): PendingCIRequest {
   if (request === undefined) {
     throw new MockApiError(404, 'not_found', 'pending CI request not found');
   }
-  return liveQuietPeriod(request);
-}
-
-/**
- * Keeps a seeded quiet period from having expired before anybody could look at it.
- *
- * The seed is written once when the process starts and the period is 30 seconds long, so by the
- * time a page opens it has always run out and the countdown sits at 0:00 for ever. Only the mock
- * does this: a real deadline in the past means the merge is happening.
- */
-export function liveQuietPeriod(request: PendingCIRequest): PendingCIRequest {
-  if (request.lifecycle !== 'armed' || request.next_check_trigger !== 'quiet_period') {
-    return request;
-  }
-  if (Date.parse(request.next_check_at) > Date.now()) return request;
-
-  return { ...request, next_check_at: new Date(Date.now() + 30_000).toISOString() };
+  return request;
 }
 
 function requirePendingCIRevision(request: PendingCIRequest, revision: number): void {

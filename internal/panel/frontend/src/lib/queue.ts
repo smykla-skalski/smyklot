@@ -76,6 +76,19 @@ export interface QueueNext {
 }
 
 export function queueNext(request: PendingCIRequest, nowMs: number): QueueNext {
+  /* A request that has finished has no next look, and a countdown on one is a lie about something
+     that has already happened. It can still be on the waiting table: the queue holds its
+     arrangement while somebody is reading it, so a request that merges under the pointer keeps its
+     place until the pointer leaves. What it says there has to be what it now is. */
+  if (request.lifecycle !== 'armed') {
+    return {
+      lead: 'Moves to Recent',
+      sub: 'It finished while you were reading it',
+      merging: false,
+      seconds: null,
+    };
+  }
+
   const left = remainingMs(request.next_check_at, nowMs);
   const seconds = left === null ? null : Math.max(0, Math.round(left / 1000));
 
@@ -238,6 +251,11 @@ export function cleanupState(request: PendingCIRequest): CleanupState {
  * lifecycle means, since a row with an empty cell says nothing about what happened to it.
  */
 export function endReason(request: PendingCIRequest): string {
+  /* Armed again, which is what a new commit on the same pull request does. It can be read here for
+     as long as somebody is holding the Recent table still - and "Still waiting" over a row whose
+     Outcome column says Scheduled reads as a stall rather than as a fresh start. Checked before the
+     stored reason, because that reason belongs to the run that ENDED and this is the next one. */
+  if (request.lifecycle === 'armed') return 'Armed again by a new commit';
   if (request.reason !== '') return request.reason;
   if (request.lifecycle === 'merged') return 'Checks passed and stayed quiet for 30 s';
   if (request.lifecycle === 'cancelled') return 'Cancelled before it could merge';

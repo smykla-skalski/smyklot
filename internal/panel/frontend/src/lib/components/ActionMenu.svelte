@@ -15,16 +15,27 @@
     label,
     items,
     onSelect,
+    onOpenChange,
   }: {
     label: string;
     items: readonly ActionMenuItem[];
     onSelect: (id: string, trigger: HTMLElement | null) => void;
+    /**
+     * Whether the layer is showing. The menu lives in a portal, so a list that has to hold still
+     * while one of its rows is being operated cannot tell from focus or from the pointer - both
+     * have left the row by then.
+     */
+    onOpenChange?: (open: boolean) => void;
   } = $props();
 
   /* Handed back to the caller on select, which is how a dialog opened from here
      knows what to put focus on once it closes. */
   let triggerButton = $state<HTMLButtonElement | null>(null);
   let open = $state(false);
+
+  $effect(() => {
+    onOpenChange?.(open);
+  });
 
   function choose(item: ActionMenuItem): void {
     if (item.disabled === true) return;
