@@ -55,10 +55,17 @@ func readTreePaths(
 	target syncTarget,
 	ref string,
 	paths []string,
-) (map[string]orgsync.CurrentFile, error) {
+) (treeContents, error) {
 	tree, err := client.ListRepositoryTree(ctx, target.Owner, target.Name, ref)
 	if err != nil {
-		return nil, err
+		return treeContents{}, err
+	}
+
+	if tree.Missing {
+		// No tree at all, which is not the same as a tree holding none of these
+		// paths. Said rather than flattened into "every file is absent",
+		// because the caller deciding what to do about it needs the difference.
+		return treeContents{Missing: true}, nil
 	}
 
 	if tree.Truncated {
@@ -85,7 +92,17 @@ func readTreePaths(
 		}
 	}
 
-	return current, nil
+	return treeContents{Files: current}, nil
+}
+
+// treeContents is what a ref holds at the paths asked about, and whether it
+// holds anything at all.
+type treeContents struct {
+	Files map[string]orgsync.CurrentFile
+
+	// Missing is there being no tree at that ref: a repository with no commits,
+	// or a branch nothing has pushed to.
+	Missing bool
 }
 
 // The two ways a repository can be unable to hold a file where the
@@ -106,11 +123,11 @@ func walkTreePaths(
 	target syncTarget,
 	ref string,
 	paths []string,
-) (map[string]orgsync.CurrentFile, error) {
+) (treeContents, error) {
 	resolved, err := client.ResolveTreePaths(
 		ctx, target.Owner, target.Name, ref, paths)
 	if err != nil {
-		return nil, err
+		return treeContents{}, err
 	}
 
 	current := make(map[string]orgsync.CurrentFile, len(resolved))
@@ -121,7 +138,7 @@ func walkTreePaths(
 		}
 	}
 
-	return current, nil
+	return treeContents{Files: current}, nil
 }
 
 // currentFileAt reads one resolved tree path as what the planner compares
@@ -394,6 +411,18 @@ func commitFiles(
 		return "", err
 	}
 
+	if len(changes) == 0 {
+		// Nothing left to write: every path this would change already says what
+		// it should on the tree being built from, which is what a proposal
+		// branch that already carries the whole change looks like.
+		//
+		// Answered here rather than by asking. GitHub documents the entry list
+		// as required, so a tree built from none of them either fails or hands
+		// back the tree it was given, and a repository's proposal should not
+		// turn on which - the answer is known without the request.
+		return "", nil
+	}
+
 	tree, err := client.CreateTree(
 		ctx, target.Owner, target.Name, parentCommit.Tree, changes)
 	if err != nil {
@@ -481,7 +510,7 @@ func stillNeeded(
 	wanted := make([]plannedFile, 0, len(files))
 
 	for _, file := range files {
-		held, has := current[file.path]
+		held, has := current.Files[file.path]
 
 		// A removal has nothing to remove where the path is gone or unreachable,
 		// and it is left out rather than refused: a tree entry removing a path

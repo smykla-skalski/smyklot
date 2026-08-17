@@ -63,6 +63,16 @@ type RepositoryTree struct {
 	// did not say" is the difference between creating a file and overwriting
 	// one.
 	Truncated bool
+
+	// Missing is there being no such tree: at the root of a ref, a repository
+	// with no commits, or a branch nothing has pushed to yet.
+	//
+	// Carried for the same reason Truncated is. An empty tree and no tree read
+	// the same way to a caller asking which of its files are there - all of
+	// them absent - and they are not the same thing to a caller deciding what
+	// to do about it. There is nothing to propose against a branch that does
+	// not exist.
+	Missing bool
 }
 
 // ListRepositoryTree reads every file a ref points at, in one request.
@@ -98,7 +108,7 @@ func (c *Client) readTree(
 
 		var apiErr *APIError
 		if errors.As(wrapped, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
-			return RepositoryTree{Entries: map[string]TreeEntry{}}, nil
+			return RepositoryTree{Entries: map[string]TreeEntry{}, Missing: true}, nil
 		}
 
 		return RepositoryTree{}, wrapped

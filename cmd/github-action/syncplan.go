@@ -437,8 +437,28 @@ func planRepositoryFiles(
 		return nil, "", err
 	}
 
+	if current.Missing {
+		// A repository with no commits. GitHub names a default branch for one
+		// anyway - the name is configuration, and it is there long before the
+		// branch is - so the name says nothing about whether there is anything
+		// to propose against. The tree read does, and it is a read the planner
+		// makes already.
+		//
+		// Said rather than planned. Every managed path is absent from a
+		// repository with no commits, so the planner would emit a create for
+		// each, a person would approve them, and the apply would refuse for
+		// want of a branch to build on - which spends the installation's one
+		// live plan slot and marks every plan riding with it failed.
+		logging.From(ctx).Info(
+			"this repository has no commits, so its files are left alone",
+			"repo", repository.FullName, "branch", target.DefaultBranch)
+
+		return nil, "this repository has no commits on " + target.DefaultBranch +
+			", so there is nowhere to propose a change", nil
+	}
+
 	plan, err := orgsync.PlanFiles(
-		repository.ID, config, adjustments, target.DefaultBranch, current)
+		repository.ID, config, adjustments, target.DefaultBranch, current.Files)
 	if err != nil {
 		// A merge that cannot be applied. Fail-closed: no actions, and no
 		// digest, so the repository is asked again once somebody fixes it.

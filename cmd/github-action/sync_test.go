@@ -1091,6 +1091,42 @@ var _ = Describe("Org sync [Unit]", func() {
 			Expect(stub.createdPRs[0]).To(ContainSubstring(".renovaterc"))
 		})
 
+		// The same again with nothing else in the change, so every entry is
+		// dropped and there is no tree left to build. GitHub documents the
+		// entry list as required, so asking it to build a tree from none of
+		// them either fails or hands back the tree it was given - and a
+		// repository's proposal should not turn on which. The answer is known
+		// without the request.
+		It("asks for no tree where the branch already carries the whole change", func() {
+			target := grantContents()
+			stub.repoTree = `{"sha":"basetree","tree":[{"path":".renovaterc",` +
+				`"type":"blob","mode":"100644","sha":"old","size":2}],"truncated":false}`
+			configureKind(target, orgsync.KindFiles,
+				`{"files":[],"retired":[".renovaterc"]}`)
+
+			plan(target)
+			computed, actions := livePlan(target)
+			approve(computed)
+
+			written, err := orgsync.DecodeFile(actions[0].Payload)
+			Expect(err).NotTo(HaveOccurred())
+			stub.branchRefs[written.Proposal] = "earliercommit"
+			stub.migrationTipTree = "branchtree"
+			stub.repoTrees = map[string]string{
+				"branchtree": `{"tree":[],"truncated":false}`,
+			}
+
+			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+
+			Expect(stub.createdTrees).To(BeEmpty())
+			Expect(stub.createdCommits).To(BeEmpty())
+
+			// And the proposal is still kept current, because it is what the
+			// branch does to the default branch rather than what one commit
+			// added to it.
+			Expect(stub.createdPRs).NotTo(BeEmpty())
+		})
+
 		// Nothing is ever force-pushed. The tool this replaces rebuilt the
 		// branch from the default branch on every run and force-updated the
 		// reference, so a reviewer's fixup was gone on the next sync with no
@@ -1578,6 +1614,62 @@ var _ = Describe("Org sync [Unit]", func() {
 
 			_, _, err := service.store.GetLiveSyncPlan(GinkgoT().Context(), target.ID)
 			Expect(err).To(MatchError(storage.ErrNotFound))
+		})
+
+		// A repository with no commits has nowhere to propose against, and
+		// GitHub names a default branch for one anyway - the name is
+		// configuration and is there long before the branch is. Read as a
+		// repository that simply has none of the managed files, the planner
+		// emitted a create for each, a person approved them, and the apply
+		// refused for want of a branch to build on - which spends the
+		// installation's one live plan slot and marks every plan riding with it
+		// failed, on every reconcile, for ever.
+		It("leaves a repository with no commits alone, and says why", func() {
+			target := grantContents()
+			stub.emptyRepository = true
+			configureKind(target, orgsync.KindFiles, contributing)
+
+			plan(target)
+
+			_, _, err := service.store.GetLiveSyncPlan(GinkgoT().Context(), target.ID)
+			Expect(err).To(MatchError(storage.ErrNotFound))
+
+			state, err := service.store.ListSyncRepositoryState(GinkgoT().Context(), target.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(state).To(HaveLen(1))
+			Expect(state[0].AppliedDigest).To(BeEmpty())
+			Expect(state[0].Problem).To(ContainSubstring("no commits"))
+		})
+
+		// GitHub refuses to open a pull request for a branch carrying nothing
+		// the base does not, and reaching that means the planner found the
+		// default branch wanting - so it says the branch is stale, never that
+		// the files are right. Read as success, it recorded a repository as
+		// matching while what it should hold was missing, and the branch is
+		// named after the outcome, so nothing would ever ask again.
+		It("fails rather than reading an empty pull request as done", func() {
+			target := grantContents()
+			configureKind(target, orgsync.KindFiles, contributing)
+			plan(target)
+			computed, _ := livePlan(target)
+			approve(computed)
+
+			stub.refuseEmptyPR = true
+
+			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+
+			applied, actions, err := service.store.GetSyncPlan(
+				GinkgoT().Context(), target.ID, computed.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(applied.State).To(Equal(orgsync.PlanFailed))
+			Expect(actions[0].State).To(Equal(orgsync.ActionFailed))
+			Expect(actions[0].Error).To(ContainSubstring("No commits between"))
+
+			// And nothing recorded, so the repository is asked again rather
+			// than left looking finished behind a proposal that was refused
+			state, err := service.store.ListSyncRepositoryState(GinkgoT().Context(), target.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(state).To(BeEmpty())
 		})
 
 		// GitHub keeps workflow files behind a permission of their own and
