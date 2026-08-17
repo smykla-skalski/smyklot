@@ -1169,13 +1169,67 @@ var _ = Describe("Org sync [Unit]", func() {
 			Expect(stub.createdPRs).To(HaveLen(1))
 		})
 
-		// A merged proposal whose branch was left in place, whose content is
-		// therefore already in the default branch, and which this attempt adds
-		// nothing to. Reached by replaying an action a crash left recorded as
-		// pending after somebody merged: GitHub refuses to open a pull request
-		// that would carry nothing, and that refusal is the answer rather than
-		// a failure.
-		It("proposes nothing where the branch is already in the default branch", func() {
+		// GitHub leaves a merged branch in place by default, and the branch is
+		// named after the outcome, so the same one comes round again the moment
+		// somebody changes the file back. Its tip is already in the default
+		// branch, so building on it once more would produce a commit carrying
+		// nothing and a pull request GitHub refuses to open - and reading that
+		// refusal as "the files are right" recorded the repository as matching
+		// while the file was gone, for ever, because nothing would ask again.
+		It("proposes again where a merged branch was left and the file changed back", func() {
+			target := grantContents()
+			configureKind(target, orgsync.KindFiles, contributing)
+
+			plan(target)
+			computed, actions := livePlan(target)
+			approve(computed)
+
+			// The branch is still there, pointing at what merged, and the
+			// default branch no longer holds the file - which is why the
+			// planner produced a create action at all
+			written, err := orgsync.DecodeFile(actions[0].Payload)
+			Expect(err).NotTo(HaveOccurred())
+			stub.branchRefs[written.Proposal] = "mergedcommit"
+			stub.branchPRs = `[{"number":9,"state":"closed","merged":true,` +
+				`"merged_at":"2026-08-17T00:00:00Z"}]`
+
+			// The merged tip already holds exactly what is being proposed, so a
+			// commit built on it would produce the tree it started from and
+			// carry nothing at all
+			stub.migrationTipTree = "branchtree"
+			stub.createdTreeSHA = "branchtree"
+			stub.repoTrees = map[string]string{
+				"branchtree": fmt.Sprintf(
+					`{"tree":[{"path":"CONTRIBUTING.md","type":"blob","mode":"100644",`+
+						`"sha":%q,"size":16}],"truncated":false}`,
+					orgsync.BlobID([]byte("# Contributing\n"))),
+			}
+
+			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+
+			// Built past the merged tip, on the default branch, so the commit
+			// carries something and the proposal opens. Built on the tip, the
+			// tree would be the one it started from and nothing would be
+			// committed at all - which is the shape that reported success with
+			// the file still missing.
+			Expect(stub.createdTrees).To(HaveLen(1))
+			Expect(stub.createdTrees[0]).To(ContainSubstring(`"base_tree":"basetree"`))
+			Expect(stub.createdCommits).To(HaveLen(1))
+			Expect(stub.createdPRs).To(HaveLen(1))
+			Expect(stub.forcedPushes).To(BeZero())
+
+			applied, _, err := service.store.GetSyncPlan(
+				GinkgoT().Context(), target.ID, computed.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(applied.State).To(Equal(orgsync.PlanApplied))
+		})
+
+		// The other side of it: a plan replayed after somebody merged, where
+		// the default branch does hold the file. Built on the default branch,
+		// the tree is the one it started from, so there is nothing to commit
+		// and nothing to open - answered here rather than by asking GitHub to
+		// open a pull request and reading its refusal.
+		It("proposes nothing where the default branch already says it", func() {
 			target := grantContents()
 			configureKind(target, orgsync.KindFiles, contributing)
 
@@ -1189,26 +1243,31 @@ var _ = Describe("Org sync [Unit]", func() {
 			stub.branchPRs = `[{"number":9,"state":"closed","merged":true,` +
 				`"merged_at":"2026-08-17T00:00:00Z"}]`
 
-			// The branch already says what the files should, so nothing is
-			// committed, and GitHub will not open a pull request from it
-			stub.createdTreeSHA = "branchtree"
-			stub.migrationTipTree = "branchtree"
-			stub.refuseEmptyPR = true
+			// The default branch now holds exactly what was proposed
+			stub.repoTrees = map[string]string{
+				"basetree": fmt.Sprintf(
+					`{"tree":[{"path":"CONTRIBUTING.md","type":"blob","mode":"100644",`+
+						`"sha":%q,"size":16}],"truncated":false}`,
+					orgsync.BlobID([]byte("# Contributing\n"))),
+			}
+			stub.createdTreeSHA = "basetree"
 
 			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+
+			Expect(stub.createdCommits).To(BeEmpty())
+			Expect(stub.createdPRs).To(BeEmpty())
 
 			applied, _, err := service.store.GetSyncPlan(
 				GinkgoT().Context(), target.ID, computed.ID)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(applied.State).To(Equal(orgsync.PlanApplied))
-			Expect(stub.createdCommits).To(BeEmpty())
 		})
 
 		// Nothing here removes a branch. GitHub's delete has no
 		// compare-and-swap - unlike the move, which it refuses when it is not a
 		// fast-forward - so a commit landing between reading a branch and
 		// removing it would be gone with no error and no trace.
-		It("builds on a merged branch rather than taking it away", func() {
+		It("builds past a merged branch rather than taking it away", func() {
 			target := grantContents()
 			configureKind(target, orgsync.KindFiles, contributing)
 
@@ -1227,9 +1286,14 @@ var _ = Describe("Org sync [Unit]", func() {
 			// would fail here rather than pass quietly
 			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
 
-			Expect(stub.createdTrees[0]).To(ContainSubstring(`"base_tree":"their-tree"`))
-			Expect(stub.createdCommits[0]).To(ContainSubstring(`"theircommit"`))
+			// On the default branch, not on the merged tip: what merged is in
+			// the default branch, so a commit built on the tip again would
+			// carry nothing. The move is still a fast-forward, because a commit
+			// on the default branch descends from what merged into it.
+			Expect(stub.createdTrees[0]).To(ContainSubstring(`"base_tree":"basetree"`))
+			Expect(stub.createdCommits[0]).To(ContainSubstring(`"basecommit"`))
 			Expect(stub.forcedPushes).To(BeZero())
+			Expect(stub.branchRefs).To(HaveKey(written.Proposal))
 		})
 
 		// The plan refused a retired path that was a directory on the default
@@ -1301,13 +1365,13 @@ var _ = Describe("Org sync [Unit]", func() {
 			Expect(planActions[0].Error).To(ContainSubstring("not an ordinary file"))
 		})
 
-		// A removal whose parent the branch has turned into a file. The path is
-		// gone, so a tree entry removing it would be a 422 - but the reason it
-		// is gone is that somebody destroyed the directory holding it, which is
-		// the state the plan refuses a repository for on the default branch.
-		// Dropping the removal quietly and committing the rest would answer one
-		// tree state two ways.
-		It("refuses to remove from under a path the branch has turned into a file", func() {
+		// A removal whose parent the branch has turned into a file. Nothing is
+		// there to remove - git puts a blob or a directory at a name, never
+		// both - so the removal is left out and the rest of the change is
+		// committed. Refusing instead would stop a repository over a path it
+		// does not have, which is the answer a write in the same place gets
+		// because a write would take the file in the way with it.
+		It("leaves out a removal from under a path the branch made a file", func() {
 			target := grantContents()
 			stub.repoTree = `{"sha":"basetree","tree":[{"path":"docs",` +
 				`"type":"tree","mode":"040000","sha":"d1"},{"path":"docs/old.md",` +
@@ -1325,8 +1389,8 @@ var _ = Describe("Org sync [Unit]", func() {
 			stub.branchRefs[written.Proposal] = "earliercommit"
 			stub.migrationTipTree = "branchtree"
 
-			// And read the long way round, so the apply path proves the same
-			// refusal whether GitHub listed the branch's tree or declined to
+			// And read the long way round, so the apply path answers the same
+			// whether GitHub listed the branch's tree or declined to
 			stub.repoTrees = map[string]string{"branchtree": `{"tree":[],"truncated":true}`}
 			stub.repoLevels = map[string]string{
 				"branchtree": `{"tree":[{"path":"docs","type":"blob",` +
@@ -1335,13 +1399,35 @@ var _ = Describe("Org sync [Unit]", func() {
 
 			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
 
-			Expect(stub.createdTrees).To(BeEmpty())
+			Expect(stub.createdTrees).To(HaveLen(1))
+			Expect(stub.createdTrees[0]).NotTo(ContainSubstring("docs/old.md"))
+			Expect(stub.createdTrees[0]).To(ContainSubstring("CONTRIBUTING.md"))
 
-			applied, planActions, err := service.store.GetSyncPlan(
+			applied, _, err := service.store.GetSyncPlan(
 				GinkgoT().Context(), target.ID, computed.ID)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(applied.State).To(Equal(orgsync.PlanFailed))
-			Expect(planActions[0].Error).To(ContainSubstring("is not a directory"))
+			Expect(applied.State).To(Equal(orgsync.PlanApplied))
+		})
+
+		// The organization retires one path for every repository, and one of
+		// them happens to keep a file where that path's directory would be. It
+		// never had the retired file and no commit could remove it, so it is
+		// synchronized like any other - where refusing put the whole repository
+		// out of sync for ever over a path it does not have.
+		It("syncs a repository holding a file where a retired path would sit", func() {
+			target := grantContents()
+			stub.repoTree = `{"sha":"basetree","tree":[{"path":"docs",` +
+				`"type":"blob","mode":"100644","sha":"b1","size":4}],"truncated":false}`
+			configureKind(target, orgsync.KindFiles,
+				`{"files":[{"path":"CONTRIBUTING.md","content":"# Contributing\n"}],`+
+					`"retired":["docs/old.md"]}`)
+
+			plan(target)
+			_, actions := livePlan(target)
+
+			Expect(actions).To(HaveLen(1))
+			Expect(actions[0].Subject).To(Equal("CONTRIBUTING.md"))
+			Expect(actions[0].Operation).To(Equal(orgsync.OperationCreate))
 		})
 
 		// And of the directory above it. A tree entry at a/b.md where a is a

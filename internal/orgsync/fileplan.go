@@ -32,6 +32,18 @@ type CurrentFile struct {
 	// the alternative - leaving that one path alone - is the silence this
 	// whole port exists to remove.
 	Conflict string
+
+	// Blocked is a Conflict of one particular shape: something on the way to
+	// this path is not a directory, so nothing is here and nothing can be
+	// without replacing what is in the way.
+	//
+	// Told apart because writing and removing answer it differently. A write
+	// would destroy the file in the way, so it is refused. A removal has
+	// nothing to remove - a path under a file does not exist - so it is left
+	// out rather than refused. Refusing it would stop the whole sync of a
+	// repository that merely happens to have a file where an organization-wide
+	// retired path names a directory, for ever, over a path it never had.
+	Blocked bool
 }
 
 // FilePlan is what one repository's files would take.
@@ -314,11 +326,15 @@ func retiredManaged(config FileConfig, exclude Excludes) []string {
 }
 
 // present narrows paths to the ones a repository still has.
+//
+// A blocked path is not one of them. Something on the way to it is a file, so
+// the path does not exist and no commit could remove it - and the entry saying
+// so is there to refuse a write, not to describe a file.
 func present(paths []string, current map[string]CurrentFile) []string {
 	held := make([]string, 0, len(paths))
 
 	for _, path := range paths {
-		if _, has := current[path]; has {
+		if at, has := current[path]; has && !at.Blocked {
 			held = append(held, path)
 		}
 	}

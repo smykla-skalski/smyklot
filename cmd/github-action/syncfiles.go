@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"slices"
 	"strings"
 
@@ -136,7 +135,10 @@ func walkTreePaths(
 func currentFileAt(filePath string, found github.TreePath) (orgsync.CurrentFile, bool) {
 	switch {
 	case found.Blocked != "":
-		return orgsync.CurrentFile{Conflict: blockedByFile(filePath, found.Blocked)}, true
+		return orgsync.CurrentFile{
+			Conflict: blockedByFile(filePath, found.Blocked),
+			Blocked:  true,
+		}, true
 
 	case !found.Found:
 		return orgsync.CurrentFile{}, false
@@ -260,25 +262,49 @@ func proposeFiles(
 		return fmt.Errorf("%w: GitHub named no default branch", errSyncFilesUnreadable)
 	}
 
-	head, pull, err := readProposal(ctx, client, target, proposal)
+	branch, err := readProposal(ctx, client, target, proposal)
 	if err != nil {
 		return err
 	}
 
-	commit, err := commitFiles(ctx, client, target, proposal, head, files)
+	commit, err := commitFiles(ctx, client, target, proposal, branch, files)
 	if err != nil {
 		return err
 	}
 
-	if commit == "" && head == "" {
-		// Somebody landed the same change on the default branch between the
-		// plan and now, so there is nothing to propose and nothing to open.
+	if commit == "" && branch.BuildOn == "" {
+		// Built on the default branch and changed nothing, so the default
+		// branch already says what it should: somebody landed the same change
+		// between the plan and now, or a merged proposal is being replayed.
+		// There is nothing to propose and nothing to open.
 		logging.From(ctx).Info("the files already say what they should; nothing proposed")
 
 		return nil
 	}
 
-	return openOrUpdateProposal(ctx, client, target, proposal, pull, files)
+	return openOrUpdateProposal(ctx, client, target, proposal, branch.Pull, files)
+}
+
+// proposalBranch is where a repository's file work stands.
+type proposalBranch struct {
+	// Head is what the branch points at, empty where there is no branch. It is
+	// what the move is made against, so a push that lands in between is
+	// refused rather than overwritten.
+	Head string
+
+	// BuildOn is the commit the next one descends from, empty for the default
+	// branch.
+	//
+	// The branch's own tip wherever there is work on it to keep, and the
+	// default branch wherever the branch has been merged. What merged is in
+	// the default branch already, so building on the tip again produces a
+	// commit carrying nothing and a pull request GitHub will not open - and
+	// reading that refusal as "the files are right" recorded a repository as
+	// matching while its default branch had since been changed back.
+	BuildOn string
+
+	// Pull is the open pull request to keep describing, if there is one.
+	Pull *github.PullRequest
 }
 
 // readProposal answers where a repository's proposal branch stands, resolving
@@ -288,57 +314,54 @@ func readProposal(
 	client *github.Client,
 	target syncTarget,
 	proposal string,
-) (head string, pull *github.PullRequest, err error) {
-	head, err = client.GetRef(ctx, target.Owner, target.Name, "heads/"+proposal)
+) (proposalBranch, error) {
+	head, err := client.GetRef(ctx, target.Owner, target.Name, "heads/"+proposal)
 	if err != nil {
-		return "", nil, err
+		return proposalBranch{}, err
 	}
 
-	pull, err = client.FindPullRequestByHead(ctx, target.Owner, target.Name, proposal)
+	pull, err := client.FindPullRequestByHead(ctx, target.Owner, target.Name, proposal)
 	if err != nil {
-		return "", nil, err
+		return proposalBranch{}, err
 	}
 
 	if pull == nil {
 		// A branch with no pull request is what an earlier run that pushed and
 		// then died leaves behind. It is built on rather than abandoned.
-		return head, nil, nil
+		return proposalBranch{Head: head, BuildOn: head}, nil
 	}
 
 	switch {
 	case pull.State == github.PullRequestClosed && !pull.Merged:
-		return "", nil, fmt.Errorf("%w: pull request %d", errSyncFilesRefused, pull.Number)
+		return proposalBranch{}, fmt.Errorf(
+			"%w: pull request %d", errSyncFilesRefused, pull.Number)
 
 	case pull.Merged:
-		// Merged, and the branch is built on rather than taken away wherever a
-		// repository has not tidied it up itself.
-		//
-		// Nothing here removes a branch. GitHub's delete has no
-		// compare-and-swap - unlike the move below, which it refuses when it is
-		// not a fast-forward - so a commit landing between reading the branch
-		// and removing it would be gone with no error and no trace, which is
-		// the failure this whole port exists to stop. Building on it costs
-		// nothing: what merged is already in the default branch, so the pull
-		// request this opens carries only what is new.
-		return head, nil, nil
+		// The branch stays where it is - nothing here removes one. GitHub's
+		// delete has no compare-and-swap, unlike the move below, which it
+		// refuses when it is not a fast-forward, so a commit landing between
+		// reading a branch and removing it would be gone with no error and no
+		// trace. It is left alone and built past instead: a commit on the
+		// default branch tip still descends from a merged tip, so the move is
+		// a fast-forward and nothing on the branch is lost.
+		return proposalBranch{Head: head}, nil
 
 	default:
-		return head, pull, nil
+		return proposalBranch{Head: head, BuildOn: head, Pull: pull}, nil
 	}
 }
 
 // commitFiles writes the change and moves the branch to it, answering with the
-// commit or with nothing where the branch already said what it should.
+// commit or with nothing where what it would build on already said it.
 func commitFiles(
 	ctx context.Context,
 	client *github.Client,
 	target syncTarget,
-	proposal, head string,
+	proposal string,
+	branch proposalBranch,
 	files []plannedFile,
 ) (string, error) {
-	// Built on the branch where there is one, so nothing that was pushed to it
-	// is lost, and on the default branch where there is not.
-	parent := head
+	parent := branch.BuildOn
 	if parent == "" {
 		base, err := client.GetRef(
 			ctx, target.Owner, target.Name, "heads/"+target.DefaultBranch)
@@ -388,13 +411,15 @@ func commitFiles(
 		return "", err
 	}
 
-	return commit, moveProposal(ctx, client, target, proposal, head, commit)
+	return commit, moveProposal(ctx, client, target, proposal, branch.Head, commit)
 }
 
 // moveProposal points the branch at the new commit.
 //
 // Never forced. The commit descends from what the branch pointed at when this
-// read it, so GitHub accepts the move - and refuses it if somebody pushed in
+// read it - directly where it was built on the branch, and through the default
+// branch where a merged tip was built past, since the default branch holds that
+// tip already. So GitHub accepts the move, and refuses it if somebody pushed in
 // between, which is exactly the answer that should stop this from overwriting
 // them. The next reconcile builds on what they pushed.
 func moveProposal(
@@ -444,17 +469,18 @@ func stillNeeded(
 	for _, file := range files {
 		held, has := current[file.path]
 
-		if held.Conflict != "" {
-			return nil, fmt.Errorf("%w: %s", orgsync.ErrRepositoryConflict, held.Conflict)
+		// A removal has nothing to remove where the path is gone or unreachable,
+		// and it is left out rather than refused: a tree entry removing a path
+		// that is not in the tree it is built from is a 422, so a repository
+		// with a retired path an earlier tick removed would fail every time its
+		// proposal came round again. A write in the same place is refused,
+		// because writing there would take what is in the way with it.
+		if file.remove && (!has || held.Blocked) {
+			continue
 		}
 
-		// A removal the tree has already made is the branch agreeing rather
-		// than disagreeing, and it is left out: a tree entry removing a path
-		// that is not in the tree it is built from is a 422, so a repository
-		// with a retired path an earlier tick removed would fail every time
-		// its proposal came round again.
-		if file.remove && !has {
-			continue
+		if held.Conflict != "" {
+			return nil, fmt.Errorf("%w: %s", orgsync.ErrRepositoryConflict, held.Conflict)
 		}
 
 		wanted = append(wanted, file)
@@ -516,47 +542,20 @@ func openOrUpdateProposal(
 			Base:  target.DefaultBranch,
 		})
 
-	if nothingToPropose(err) {
-		// The branch carries nothing the default branch does not, which is
-		// where a merged proposal that was left in place ends up: its content
-		// landed, and this attempt added nothing to it.
-		//
-		// Asked of GitHub rather than worked out here. Whether a branch is
-		// ahead of another is a question about two histories, and the answers
-		// available locally - is the tip the one that merged, did this attempt
-		// commit - are each right for some of the ways a branch gets here and
-		// wrong for the rest.
-		logging.From(ctx).Info(
-			"the proposal branch is already in the default branch; nothing proposed",
-			"branch", proposal)
-
-		return nil
-	}
-
 	if err != nil {
+		// A branch carrying nothing the default branch does not is refused
+		// here, and that refusal is a failure rather than an answer. Reaching
+		// this means the planner found the default branch wanting, so "there
+		// is nothing between them" says the branch is stale, never that the
+		// files are right - reading it as success recorded a repository as
+		// matching while what it should hold was missing, and the branch is
+		// named after the outcome, so nothing would ever ask again.
 		return err
 	}
 
 	logging.From(ctx).Info("files proposed", "pull_request", opened.Number)
 
 	return nil
-}
-
-// nothingToPropose reads GitHub refusing to open a pull request that would
-// carry nothing.
-//
-// Matched on what GitHub said rather than on the status alone, because 422 is
-// also how it answers a base branch that does not exist - a configuration
-// problem somebody needs to see. If the wording ever changes this stops
-// recognising it and the action fails with GitHub's own message, which is the
-// safe direction to be wrong in.
-func nothingToPropose(err error) bool {
-	var apiErr *github.APIError
-	if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusUnprocessableEntity {
-		return false
-	}
-
-	return strings.Contains(strings.ToLower(apiErr.Detail), "no commits between")
 }
 
 // fileProposalBody says what the proposal does, and what closing it means.
