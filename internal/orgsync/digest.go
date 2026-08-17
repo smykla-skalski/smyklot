@@ -98,7 +98,7 @@ func describeOverride(override *RepositoryOverride) string {
 		enabled = strconv.FormatBool(*override.Enabled)
 	}
 
-	if len(override.Document) == 0 {
+	if override.AdjustsNothing() {
 		return enabled
 	}
 

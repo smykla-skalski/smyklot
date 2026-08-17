@@ -1000,7 +1000,7 @@ var _ = Describe("Org sync [Unit]", func() {
 			target := grantContents()
 			stub.repoTree = fmt.Sprintf(
 				`{"sha":"basetree","tree":[{"path":"CONTRIBUTING.md","type":"blob",`+
-					`"sha":%q,"size":16}],"truncated":false}`,
+					`"mode":"100644","sha":%q,"size":16}],"truncated":false}`,
 				orgsync.BlobID([]byte("# Contributing\n")))
 			configureKind(target, orgsync.KindFiles, contributing)
 
@@ -1012,8 +1012,8 @@ var _ = Describe("Org sync [Unit]", func() {
 
 		It("puts every path into one commit behind one pull request", func() {
 			target := grantContents()
-			stub.repoTree = `{"sha":"basetree","tree":[` +
-				`{"path":".renovaterc","type":"blob","sha":"old","size":2}],"truncated":false}`
+			stub.repoTree = `{"sha":"basetree","tree":[{"path":".renovaterc",` +
+				`"type":"blob","mode":"100644","sha":"old","size":2}],"truncated":false}`
 			configureKind(target, orgsync.KindFiles, `{"files":[`+
 				`{"path":"CONTRIBUTING.md","content":"# Contributing\n"},`+
 				`{"path":"SECURITY.md","content":"# Security\n"}],`+
@@ -1148,6 +1148,57 @@ var _ = Describe("Org sync [Unit]", func() {
 
 			_, _, err := service.store.GetLiveSyncPlan(GinkgoT().Context(), target.ID)
 			Expect(err).To(MatchError(storage.ErrNotFound))
+		})
+
+		// git puts a blob wherever a tree entry names one, and says nothing
+		// about what it replaced. A configured path that is a directory in one
+		// repository, or that sits under a file there, is a change that would
+		// destroy something - so that repository is refused whole rather than
+		// having the one path quietly skipped.
+		DescribeTable("refuses a repository whose contents the change would destroy",
+			func(tree string) {
+				target := grantContents()
+				stub.repoTree = tree
+				configureKind(target, orgsync.KindFiles,
+					`{"files":[{"path":"docs/guide.md","content":"# Guide\n"}]}`)
+
+				plan(target)
+
+				_, _, err := service.store.GetLiveSyncPlan(GinkgoT().Context(), target.ID)
+				Expect(err).To(MatchError(storage.ErrNotFound))
+
+				// And nothing is recorded, so it is answered again the moment
+				// somebody resolves it rather than left looking finished
+				state, err := service.store.ListSyncRepositoryState(
+					GinkgoT().Context(), target.ID)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(state).To(BeEmpty())
+			},
+			Entry("the path is a directory there", `{"sha":"basetree","tree":[
+				{"path":"docs","type":"tree","mode":"040000","sha":"d1"},
+				{"path":"docs/guide.md","type":"tree","mode":"040000","sha":"d2"}
+			],"truncated":false}`),
+			Entry("the path is a symbolic link there", `{"sha":"basetree","tree":[
+				{"path":"docs","type":"tree","mode":"040000","sha":"d1"},
+				{"path":"docs/guide.md","type":"blob","mode":"120000","sha":"b1","size":9}
+			],"truncated":false}`),
+			Entry("a directory on the way to it is a file there", `{"sha":"basetree","tree":[
+				{"path":"docs","type":"blob","mode":"100644","sha":"b1","size":4}
+			],"truncated":false}`),
+		)
+
+		It("writes a path whose directory is a directory", func() {
+			target := grantContents()
+			stub.repoTree = `{"sha":"basetree","tree":[` +
+				`{"path":"docs","type":"tree","mode":"040000","sha":"d1"}],"truncated":false}`
+			configureKind(target, orgsync.KindFiles,
+				`{"files":[{"path":"docs/guide.md","content":"# Guide\n"}]}`)
+
+			plan(target)
+			_, actions := livePlan(target)
+
+			Expect(actions).To(HaveLen(1))
+			Expect(actions[0].Subject).To(Equal("docs/guide.md"))
 		})
 	})
 

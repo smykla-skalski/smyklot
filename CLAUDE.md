@@ -31,6 +31,7 @@ Go + Ginkgo/Gomega, deployed as Docker-based GitHub Action.
 - `pkg/webhook/` — parses `issue_comment` deliveries and de-duplicates them; re-exports signature verification from `go-githubauth/webhook`
 - `pkg/logging/` — builds the `slog` logger, carries it on the context, and redacts known secrets from every line
 - `pkg/metrics/` — the Prometheus collectors the service reports, on a registry it owns rather than the default one
+- `internal/orgsync/filemerge/` — builds the copy of a shared template one repository should hold, from bytes and a spec. Reaches nothing, remembers nothing, and returns an error rather than a fallback wherever it cannot do what it was asked
 - `internal/storage/` — the port: `Store`, the models, the sentinel errors. No `database/sql`, no driver, no engine name
 - `internal/storage/sqlstore/` — every query, written once and parameterized by a `Dialect`. Both engines run this
 - `internal/storage/sqlite/`, `internal/storage/postgres/` — a driver, a DSN, a dialect and a migration series each, embedding `*sqlstore.Store`

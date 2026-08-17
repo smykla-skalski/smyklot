@@ -70,12 +70,16 @@ var _ = Describe("Repository files [Unit]", func() {
 	}
 
 	Describe("ListRepositoryTree", func() {
-		It("reads every file, and what is at each of them", func() {
+		// The directories are kept, and so is every mode. A path holding
+		// anything but an ordinary file cannot be written to without
+		// destroying what is there, and git does that without a word.
+		It("reads every path, and what git records at each of them", func() {
 			server = record(map[string]string{
 				"/git/trees/main": `{"sha":"t1","tree":[
-					{"path":".github","type":"tree","sha":"d1"},
-					{"path":".github/ci.yaml","type":"blob","sha":"b1","size":42},
-					{"path":"README.md","type":"blob","sha":"b2","size":7}
+					{"path":".github","type":"tree","mode":"040000","sha":"d1"},
+					{"path":".github/ci.yaml","type":"blob","mode":"100644","sha":"b1","size":42},
+					{"path":"README.md","type":"blob","mode":"100644","sha":"b2","size":7},
+					{"path":"latest","type":"blob","mode":"120000","sha":"b3","size":9}
 				],"truncated":false}`,
 			})
 
@@ -84,10 +88,16 @@ var _ = Describe("Repository files [Unit]", func() {
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(tree.Truncated).To(BeFalse())
-			Expect(tree.Blobs).To(Equal(map[string]github.TreeBlob{
-				".github/ci.yaml": {Blob: "b1", Size: 42},
-				"README.md":       {Blob: "b2", Size: 7},
+			Expect(tree.Entries).To(Equal(map[string]github.TreeEntry{
+				".github":         {Mode: "040000", Blob: "d1"},
+				".github/ci.yaml": {Mode: "100644", Blob: "b1", Size: 42},
+				"README.md":       {Mode: "100644", Blob: "b2", Size: 7},
+				"latest":          {Mode: "120000", Blob: "b3", Size: 9},
 			}))
+
+			Expect(tree.Entries["README.md"].OrdinaryFile()).To(BeTrue())
+			Expect(tree.Entries[".github"].OrdinaryFile()).To(BeFalse())
+			Expect(tree.Entries["latest"].OrdinaryFile()).To(BeFalse())
 		})
 
 		It("asks for the whole tree rather than one level of it", func() {
@@ -124,7 +134,7 @@ var _ = Describe("Repository files [Unit]", func() {
 				context.Background(), "acme", "web", "main")
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(tree.Blobs).To(BeEmpty())
+			Expect(tree.Entries).To(BeEmpty())
 		})
 	})
 
@@ -192,6 +202,29 @@ var _ = Describe("Repository files [Unit]", func() {
 
 			Expect(methods["/repos/acme/web/git/refs/heads/gone"]).
 				To(Equal(http.MethodDelete))
+		})
+
+		// The question is about the end state, and a branch already gone is
+		// that end state: a repository with delete_branch_on_merge removed it
+		// the moment the pull request landed.
+		It("reads a reference that is already gone as removed", func() {
+			server = record(nil)
+
+			Expect(client().DeleteRef(
+				context.Background(), "acme", "web", "heads/gone",
+			)).To(Succeed())
+		})
+
+		It("still reports a refusal", func() {
+			server = httptest.NewServer(http.HandlerFunc(
+				func(w http.ResponseWriter, _ *http.Request) {
+					w.WriteHeader(http.StatusForbidden)
+					_, _ = io.WriteString(w, `{"message":"Resource not accessible"}`)
+				}))
+
+			Expect(client().DeleteRef(
+				context.Background(), "acme", "web", "heads/gone",
+			)).NotTo(Succeed())
 		})
 	})
 })

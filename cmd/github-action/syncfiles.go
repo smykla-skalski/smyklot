@@ -58,7 +58,7 @@ func readRepositoryFiles(
 	}
 
 	if !tree.Truncated {
-		return asCurrentFiles(tree.Blobs), nil
+		return asCurrentFiles(tree, config), nil
 	}
 
 	// GitHub declines to list a tree past a hundred thousand entries, and a
@@ -72,13 +72,67 @@ func readRepositoryFiles(
 	return readFilesOneAtATime(ctx, client, target, config)
 }
 
-func asCurrentFiles(blobs map[string]github.TreeBlob) map[string]orgsync.CurrentFile {
-	current := make(map[string]orgsync.CurrentFile, len(blobs))
-	for path, blob := range blobs {
-		current[path] = orgsync.CurrentFile{Blob: blob.Blob, Size: blob.Size}
+// asCurrentFiles reads a repository's tree as what the planner compares
+// against, and names what it cannot write.
+//
+// The conflicts are worked out here rather than in the planner because this is
+// where the whole tree is: the planner is handed one entry per path it asked
+// about and has no way to see that the path above one of them is a file.
+func asCurrentFiles(
+	tree github.RepositoryTree,
+	config orgsync.FileConfig,
+) map[string]orgsync.CurrentFile {
+	current := make(map[string]orgsync.CurrentFile, len(tree.Entries))
+
+	for path, entry := range tree.Entries {
+		if entry.OrdinaryFile() {
+			current[path] = orgsync.CurrentFile{Blob: entry.Blob, Size: entry.Size}
+		}
+	}
+
+	// Only the paths configuration names. Every other conflict in a repository
+	// is somebody else's arrangement of their own files.
+	for _, path := range slices.Concat(config.Paths(), config.Retired) {
+		if conflict := conflictAt(tree, path); conflict != "" {
+			current[path] = orgsync.CurrentFile{Conflict: conflict}
+		}
 	}
 
 	return current
+}
+
+// conflictAt says why a repository cannot hold an ordinary file at a path, or
+// nothing.
+//
+// git will let a commit put a blob where a directory, a link or a submodule is
+// and say nothing about what it replaced, and it will let one put a directory
+// where a file is. Both are silent destruction, and both are visible here for
+// the cost of a map lookup per path segment.
+func conflictAt(tree github.RepositoryTree, path string) string {
+	if entry, held := tree.Entries[path]; held && !entry.OrdinaryFile() {
+		return fmt.Sprintf(
+			"%s is not an ordinary file in this repository; git records it as %s",
+			path, entry.Mode)
+	}
+
+	for parent := parentOf(path); parent != ""; parent = parentOf(parent) {
+		if entry, held := tree.Entries[parent]; held && entry.OrdinaryFile() {
+			return fmt.Sprintf(
+				"%s cannot be written because %s is a file in this repository", path, parent)
+		}
+	}
+
+	return ""
+}
+
+// parentOf is the directory a path sits in, empty at the repository root.
+func parentOf(path string) string {
+	cut := strings.LastIndex(path, "/")
+	if cut < 0 {
+		return ""
+	}
+
+	return path[:cut]
 }
 
 func readFilesOneAtATime(
@@ -117,7 +171,7 @@ func decodeFileOverride(
 	override *orgsync.RepositoryOverride,
 	config orgsync.FileConfig,
 ) (orgsync.FileOverride, error) {
-	if override == nil || len(override.Document) == 0 {
+	if override == nil || override.AdjustsNothing() {
 		return orgsync.FileOverride{}, nil
 	}
 

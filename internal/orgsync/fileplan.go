@@ -22,6 +22,17 @@ import (
 type CurrentFile struct {
 	Blob string
 	Size int
+
+	// Conflict says why this repository cannot hold an ordinary file at this
+	// path, and is empty for every ordinary case.
+	//
+	// A path that is a directory there, one whose parent is a file, a symbolic
+	// link, an executable, a submodule: git will let a commit replace any of
+	// them with a file and say nothing, and what it replaced is gone. The
+	// answer is to refuse the repository until somebody resolves it, because
+	// the alternative - leaving that one path alone - is the silence this
+	// whole port exists to remove.
+	Conflict string
 }
 
 // FilePlan is what one repository's files would take.
@@ -90,6 +101,11 @@ func PlanFiles(
 	}
 
 	retired := retiredPresent(config, exclude, current)
+
+	if err := refuseConflicts(desired, retired, current); err != nil {
+		return FilePlan{}, err
+	}
+
 	proposal := fileProposal(desired, retired)
 
 	plan := FilePlan{Proposal: proposal}
@@ -138,6 +154,36 @@ func PlanFiles(
 	}
 
 	return plan, nil
+}
+
+// refuseConflicts stops before writing a path this repository cannot hold an
+// ordinary file at.
+//
+// The whole repository rather than the one path. Leaving that path alone would
+// be a file the configuration names, the panel shows, and nothing ever writes,
+// which is the silence this port exists to remove; refusing puts it in a log
+// with the reason and leaves the repository unsettled, so it is answered again
+// the moment somebody resolves it.
+func refuseConflicts(
+	desired []ResolvedFile,
+	retired []string,
+	current map[string]CurrentFile,
+) error {
+	for _, file := range desired {
+		if conflict := current[file.Path].Conflict; conflict != "" {
+			return fmt.Errorf("%w: %s", ErrRepositoryConflict, conflict)
+		}
+	}
+
+	// Removing one matters just as much: a tree entry naming a directory with
+	// no object removes the whole directory, not the file somebody retired.
+	for _, path := range retired {
+		if conflict := current[path].Conflict; conflict != "" {
+			return fmt.Errorf("%w: %s", ErrRepositoryConflict, conflict)
+		}
+	}
+
+	return nil
 }
 
 // resolveFiles answers what every managed path should say for one repository.

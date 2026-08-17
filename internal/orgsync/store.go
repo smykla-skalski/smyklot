@@ -2,6 +2,7 @@ package orgsync
 
 import (
 	"context"
+	"strings"
 	"time"
 )
 
@@ -62,6 +63,19 @@ type RepositoryOverride struct {
 	Revision  int64
 	UpdatedBy string
 	UpdatedAt time.Time
+}
+
+// AdjustsNothing reports a repository that changes nothing about the kind.
+//
+// Two spellings arrive here and they mean the same thing: no document at all,
+// and the empty object the column defaults to. Telling them apart would make a
+// repository that has only ever answered about enablement carry a different
+// fingerprint from one that has never answered at all, and re-plan it for a
+// difference nobody made.
+func (o RepositoryOverride) AdjustsNothing() bool {
+	document := strings.TrimSpace(string(o.Document))
+
+	return document == "" || document == "{}"
 }
 
 // RepositoryOverrideChange writes one, or clears it back to inheriting by
