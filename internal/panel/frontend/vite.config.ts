@@ -65,16 +65,6 @@ export default defineConfig({
     mockServer(),
     checkSentinels(),
   ],
-  // The service worker cannot read `version` from `$app/env`: SvelteKit builds that
-  // environment with `consumer: 'client'`, so `$app/env` resolves to its browser
-  // branch and reads the client payload, which only the page bootstrap ever fills -
-  // in a worker it stays empty and `version` is `undefined`. The cache name then
-  // never changes between deployments and the worker stops rotating its caches.
-  // Reported upstream; until it is fixed the worker reads this instead, which is
-  // the same string SvelteKit is given above and the same one the Go server rewrites.
-  define: {
-    __SMYKLOT_PANEL_VERSION__: JSON.stringify(panelVersion),
-  },
   server: {
     port: 5175,
     strictPort: true,

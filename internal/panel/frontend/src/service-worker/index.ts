@@ -2,9 +2,6 @@
 
 declare const self: ServiceWorkerGlobalScope;
 
-/** The deployment version, substituted at build time by Vite's `define`. */
-declare const __SMYKLOT_PANEL_VERSION__: string;
-
 /**
  * SvelteKit native service worker.
  *
@@ -23,26 +20,44 @@ import { basePath } from '#lib/paths.js';
 // answered, once, for the worker and the app alike.
 const SCOPE_PATH = `${basePath}/`;
 const CACHE_PREFIX = `smyklot-panel:${encodeURIComponent(SCOPE_PATH)}:`;
-// Not `version` from `$app/env`, which is `undefined` inside a service worker - see
-// the `define` in `vite.config.ts` for why. This is the same value, reaching the
-// worker through Vite instead.
-//
-// Concatenated, never interpolated. The server substitutes its placeholders only where
-// one stands as a complete string literal, and interpolating this into a template lets
-// the minifier fold the value inside it, leaving the placeholder with no opening
-// delimiter. The rewrite then misses it and the server refuses to start, which is what
-// `TestShippedBundleRewritesEverySentinel` exists to catch.
-const CACHE = CACHE_PREFIX + __SMYKLOT_PANEL_VERSION__;
 // `$app/manifest` reports the built bundle and the static directory relative to the
 // base path; the `$service-worker` module it replaces reported them already prefixed.
 const ASSETS = new Set([...immutable, ...assets].map((file) => panelUrl(basePath, file.path)));
+
+/**
+ * The cache this build owns, named after the build itself.
+ *
+ * Every entry in `immutable` carries a content hash, so the list changes exactly when
+ * the app does - it is already the identity, and this only shortens it to fit a name.
+ * The deployment version is deliberately not used: SvelteKit 3 does not give a worker
+ * one (`$app/env` reads a payload nothing fills there), and the ways around that ran
+ * through a build-time define whose emitted shape the server then had to be able to
+ * rewrite. Naming the cache after the assets it holds needs none of that, and two
+ * releases that ship identical assets now keep their cache instead of rotating for
+ * nothing.
+ *
+ * A promise because the digest is: `crypto.subtle` is asynchronous, and every reader
+ * here is already inside one.
+ */
+const CACHE = (async () => {
+  const identity = [...immutable]
+    .map((file) => file.path)
+    .sort()
+    .join('\n');
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(identity));
+
+  return (
+    CACHE_PREFIX +
+    Array.from(new Uint8Array(digest, 0, 8), (byte) => byte.toString(16).padStart(2, '0')).join('')
+  );
+})();
 const IMMUTABLE_PATH = panelUrl(basePath, '_app/immutable/');
 const SHELL_REQUEST = new Request(SCOPE_PATH, { credentials: 'same-origin' });
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     (async () => {
-      const cache = await caches.open(CACHE);
+      const cache = await caches.open(await CACHE);
       await cache.addAll([...ASSETS, SHELL_REQUEST]);
       await self.skipWaiting();
     })(),
@@ -52,14 +67,17 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     (async () => {
+      const current = await CACHE;
       const keys = await caches.keys();
       const scoped = keys.filter((key) => key.startsWith(CACHE_PREFIX));
       // CacheStorage.keys() is creation-ordered. Keep the immediately previous
       // build so a tab claimed during deployment can still lazy-load chunks
       // named by the document it already has open.
-      const previous = scoped.filter((key) => key !== CACHE).at(-1);
+      const previous = scoped.filter((key) => key !== current).at(-1);
       await Promise.all(
-        scoped.filter((key) => key !== CACHE && key !== previous).map((key) => caches.delete(key)),
+        scoped
+          .filter((key) => key !== current && key !== previous)
+          .map((key) => caches.delete(key)),
       );
       await self.clients.claim();
     })(),
@@ -86,12 +104,12 @@ self.addEventListener('fetch', (event) => {
         // CacheStorage round trip on the path every chunk takes.
         const cached = url.pathname.startsWith(IMMUTABLE_PATH)
           ? await caches.match(url.pathname)
-          : await (await caches.open(CACHE)).match(url.pathname);
+          : await (await caches.open(await CACHE)).match(url.pathname);
         if (cached) return cached;
 
         const fetched = await fetch(request);
         if (fetched.ok && fetched.type === 'basic') {
-          const cache = await caches.open(CACHE);
+          const cache = await caches.open(await CACHE);
           await cache.put(url.pathname, fetched.clone());
         }
         return fetched;
@@ -105,7 +123,7 @@ self.addEventListener('fetch', (event) => {
   if (request.mode === 'navigate') {
     event.respondWith(
       (async () => {
-        const cache = await caches.open(CACHE);
+        const cache = await caches.open(await CACHE);
         try {
           const fetched = await fetch(request);
           const contentType = fetched.headers.get('content-type')?.toLowerCase() ?? '';

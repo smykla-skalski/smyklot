@@ -5,26 +5,33 @@ const source = readFileSync(new URL('../src/service-worker/index.ts', import.met
 const NativeRequest = Request;
 
 /**
- * The version the worker builds its cache name from, substituted by Vite's `define`.
+ * The cache name this build owns, which is a digest of the assets it holds.
  *
- * Read here rather than written out, so this suite proves the worker uses the
- * configured version. It used to come from `$app/env`, which reads the client payload
- * that nothing fills in a worker - so `version` was `undefined`, every deployment
- * shared one cache name, and the rotation below silently never ran. A mocked module
- * handed the worker a version the real bundle did not have, which is why the suite
- * passed throughout.
+ * Computed the same way the worker does rather than written out, because the value is
+ * the build's own identity and changes with it. It used to be the deployment version,
+ * which SvelteKit 3 does not give a worker at all.
  */
-declare const __SMYKLOT_PANEL_VERSION__: string;
-const VERSION = __SMYKLOT_PANEL_VERSION__;
+async function cacheName(scope: string, paths: string[]): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode([...paths].sort().join('\n')),
+  );
+
+  return (
+    `smyklot-panel:${encodeURIComponent(scope)}:` +
+    Array.from(new Uint8Array(digest, 0, 8), (byte) => byte.toString(16).padStart(2, '0')).join('')
+  );
+}
 
 describe('the panel service worker', () => {
-  it('builds its cache name from a version that exists', () => {
-    // `undefined` here is not cosmetic: every deployment would share one cache name,
-    // so `activate` would find a single key, delete nothing, and grow the store
-    // without bound while the offline shell waited to be evicted with it.
-    expect(VERSION).toBeTypeOf('string');
-    expect(VERSION).not.toBe('');
-    expect(VERSION).not.toBe('undefined');
+  it('names its cache after the assets it holds', async () => {
+    // A name that does not change between builds is not cosmetic: `activate` would
+    // find a single key, delete nothing, and grow the store without bound while the
+    // offline shell waited to be evicted with it.
+    const one = await cacheName('/panel/', ['_app/immutable/a.js']);
+    const other = await cacheName('/panel/', ['_app/immutable/b.js']);
+    expect(one).not.toBe(other);
+    expect(one).toMatch(/^smyklot-panel:%2Fpanel%2F:[0-9a-f]{16}$/u);
   });
 
   it('names caches within its panel scope', () => {
@@ -106,11 +113,8 @@ describe('a panel service-worker upgrade', () => {
     await dispatchExtended(listeners, 'install');
     await dispatchExtended(listeners, 'activate');
 
-    expect([...stored.keys()]).toEqual([
-      'unrelated',
-      'smyklot-panel:%2Fpanel%2F:v1',
-      `smyklot-panel:%2Fpanel%2F:${VERSION}`,
-    ]);
+    const current = await cacheName('/panel/', ['_app/immutable/current.js']);
+    expect([...stored.keys()]).toEqual(['unrelated', 'smyklot-panel:%2Fpanel%2F:v1', current]);
     expect(deleted).toEqual(['smyklot-panel:%2Fpanel%2F:v0']);
     expect(claim).toHaveBeenCalledOnce();
 
@@ -124,17 +128,16 @@ describe('a panel service-worker upgrade', () => {
 
     const currentStatic = await dispatchFetch(
       listeners,
-      new Request(`https://panel.example/panel/theme-boot.js?v=${VERSION}`),
+      new Request('https://panel.example/panel/theme-boot.js?v=1'),
     );
     expect(await currentStatic.text()).toBe('cached /panel/theme-boot.js');
     expect(network).not.toHaveBeenCalled();
   });
 });
 
-// The modules SvelteKit 3 split `$service-worker` into. `resolve` joins its argument
-// to the base path with a separator, so `resolve('')` is the worker's scope, and the
-// manifest reports every path relative to that base. The version does not come from
-// `$app/env` - see `VERSION` above.
+// The modules SvelteKit 3 split `$service-worker` into. `resolve` joins its argument to
+// the base path with a separator, so `resolve('')` is the worker's scope, and the
+// manifest reports every path relative to that base - and names the cache, see above.
 vi.mock('$app/manifest', () => ({
   immutable: [{ path: '_app/immutable/current.js' }],
   assets: [{ path: 'theme-boot.js' }],
