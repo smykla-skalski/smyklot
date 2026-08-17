@@ -15,6 +15,7 @@
   import PanelHeader from './PanelHeader.svelte';
   import Plate from './Plate.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
+  import SyncRulesetsForm from './SyncRulesetsForm.svelte';
   import SyncSettingsForm from './SyncSettingsForm.svelte';
 
   /** The same two words the settings page puts on the same decision. */
@@ -39,29 +40,51 @@
     approvePlan: (targetId: string, planId: string, digest: string) => Promise<{ plan: SyncPlan }>;
   } = $props();
 
-  // The kinds this view has a form for. Rulesets and files are configurable
-  // through the API and have none here yet, so naming the ones this page means
-  // is better than a parameter nothing varies.
+  // The kinds this view has a form for. Files are configurable through the API
+  // and have none here yet, so naming the ones this page means is better than a
+  // parameter nothing varies.
   const LABELS = 'labels';
   const SETTINGS = 'settings';
+  const RULESETS = 'rulesets';
+
+  /**
+   * The kinds whose whole configuration is one document. Labels are not one of
+   * them: their form was built out of typed fields before there was a second
+   * kind, and everything since travels as a document.
+   */
+  type DocumentKind = typeof SETTINGS | typeof RULESETS;
 
   let config = $state<SyncConfig | null>(null);
-  let settings = $state<SyncConfig | null>(null);
   let plan = $state<SyncPlan | null>(null);
   let saving = $state(false);
-  let savingSettings = $state(false);
   let approving = $state(false);
 
-  /* One failure per thing that can fail, because the two forms are saved
-     independently and neither disables the other. A single field let a settings
+  /* Kept per kind rather than as a field each, because every kind after labels
+     has the same three: what is saved, whether a save is in flight, and what
+     went wrong. Three fields per kind is how the third one comes to reuse the
+     second one's by accident. */
+  let documents = $state<Record<DocumentKind, SyncConfig | null>>({
+    settings: null,
+    rulesets: null,
+  });
+  let savingDocument = $state<Record<DocumentKind, boolean>>({
+    settings: false,
+    rulesets: false,
+  });
+
+  /* One failure per thing that can fail, because the forms are saved
+     independently and none disables the others. A single field let a settings
      save clear a labels failure the moment it started - the label switch had
      already sprung back and nothing on the page said why. */
   let error = $state<string | null>(null);
-  let settingsError = $state<string | null>(null);
+  let documentError = $state<Record<DocumentKind, string | null>>({
+    settings: null,
+    rulesets: null,
+  });
 
-  /* Both documents, because the second is only meaningful beside the first: a
-     plan says what would change, and what it would change to is what the
-     configuration lists. untrack keeps the writes below from feeding back into
+  /* Every document, because each is only meaningful beside the plan: a plan
+     says what would change, and what it would change to is what the
+     configurations list. untrack keeps the writes below from feeding back into
      the read that caused them. */
   $effect(() => {
     const id = targetId;
@@ -70,15 +93,16 @@
 
   async function load(id: string): Promise<void> {
     error = null;
-    settingsError = null;
+    documentError = { settings: null, rulesets: null };
     try {
-      const [loadedConfig, loadedSettings, loadedPlan] = await Promise.all([
+      const [loadedConfig, loadedSettings, loadedRulesets, loadedPlan] = await Promise.all([
         fetchConfig(id, LABELS),
         fetchConfig(id, SETTINGS),
+        fetchConfig(id, RULESETS),
         fetchPlan(id),
       ]);
       config = loadedConfig;
-      settings = loadedSettings;
+      documents = { settings: loadedSettings, rulesets: loadedRulesets };
       plan = loadedPlan.plan;
     } catch (cause) {
       error = messageOf(cause);
@@ -111,28 +135,33 @@
   }
 
   /**
-   * The settings are saved whole, unlike the labels switch beside them: a
-   * repository's settings are one request that succeeds or fails together, so
-   * a control that saved on every click would send a dozen half-formed
-   * policies and compute a plan for each.
+   * A document kind is saved whole, unlike the labels switch beside it: a
+   * repository's settings are one request that succeeds or fails together, and
+   * a ruleset is written by replacement, so a control that saved on every click
+   * would send a dozen half-formed policies and compute a plan for each.
    */
-  async function onSaveSettings(wanted: boolean, document: Record<string, unknown>): Promise<void> {
-    const current = settings;
+  async function onSaveDocument(
+    kind: DocumentKind,
+    wanted: boolean,
+    document: Record<string, unknown>,
+  ): Promise<void> {
+    const current = documents[kind];
     if (current === null) return;
 
-    savingSettings = true;
-    settingsError = null;
+    savingDocument = { ...savingDocument, [kind]: true };
+    documentError = { ...documentError, [kind]: null };
     try {
-      settings = await saveConfig(targetId, SETTINGS, {
+      const saved = await saveConfig(targetId, kind, {
         enabled: wanted,
         document,
         expected_revision: current.revision,
       });
+      documents = { ...documents, [kind]: saved };
       plan = (await fetchPlan(targetId)).plan;
     } catch (cause) {
-      settingsError = messageOf(cause);
+      documentError = { ...documentError, [kind]: messageOf(cause) };
     } finally {
-      savingSettings = false;
+      savingDocument = { ...savingDocument, [kind]: false };
     }
   }
 
@@ -292,16 +321,29 @@
     {/if}
   </Plate>
 
-  {#if settings !== null}
+  {#if documents.settings !== null}
     <SyncSettingsForm
-      stored={settings.document}
-      enabled={settings.enabled}
-      unreadable={settings.unreadable}
-      unavailable={settings.unavailable}
-      problem={settingsError}
+      stored={documents.settings.document}
+      enabled={documents.settings.enabled}
+      unreadable={documents.settings.unreadable}
+      unavailable={documents.settings.unavailable}
+      problem={documentError.settings}
       {readOnly}
-      saving={savingSettings}
-      onSave={onSaveSettings}
+      saving={savingDocument.settings}
+      onSave={(wanted, document) => onSaveDocument(SETTINGS, wanted, document)}
+    />
+  {/if}
+
+  {#if documents.rulesets !== null}
+    <SyncRulesetsForm
+      stored={documents.rulesets.document}
+      enabled={documents.rulesets.enabled}
+      unreadable={documents.rulesets.unreadable}
+      unavailable={documents.rulesets.unavailable}
+      problem={documentError.rulesets}
+      {readOnly}
+      saving={savingDocument.rulesets}
+      onSave={(wanted, document) => onSaveDocument(RULESETS, wanted, document)}
     />
   {/if}
 

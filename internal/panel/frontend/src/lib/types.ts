@@ -631,6 +631,91 @@ export interface SyncLabel {
   description?: string;
 }
 
+/**
+ * One ruleset an installation expects its repositories to enforce.
+ *
+ * Values rather than optionals wherever GitHub has no third state, because a
+ * ruleset is written by replacement: the request defines the whole object and
+ * what it does not carry is not enforced. There is no request meaning "leave
+ * this rule as it is", so a form that could express one would be promising
+ * something the endpoint cannot do.
+ */
+export interface SyncRuleset {
+  name: string;
+  /** branch or tag. */
+  target: string;
+  /** active, evaluate or disabled. */
+  enforcement: string;
+  conditions: SyncRulesetConditions;
+  bypass_actors?: SyncRulesetBypassActor[];
+  rules: SyncRulesetRules;
+}
+
+/** Which refs a ruleset applies to, as patterns rather than branch names. */
+export interface SyncRulesetConditions {
+  include?: string[];
+  exclude?: string[];
+}
+
+/** Somebody who may step around a ruleset. */
+export interface SyncRulesetBypassActor {
+  actor_id: number;
+  /** Integration, OrganizationAdmin, RepositoryRole, Team or DeployKey. */
+  actor_type: string;
+  /** always, pull_request or exempt. */
+  bypass_mode: string;
+}
+
+/** What a ruleset enforces. */
+export interface SyncRulesetRules {
+  creation?: boolean;
+  deletion?: boolean;
+  non_fast_forward?: boolean;
+  required_linear_history?: boolean;
+  required_signatures?: boolean;
+  update?: SyncRulesetUpdateRule;
+  pull_request?: SyncRulesetPullRequestRule;
+  required_status_checks?: SyncRulesetStatusChecksRule;
+  code_scanning?: SyncRulesetCodeScanningRule;
+}
+
+export interface SyncRulesetUpdateRule {
+  update_allows_fetch_and_merge?: boolean;
+}
+
+export interface SyncRulesetPullRequestRule {
+  required_approving_review_count?: number;
+  dismiss_stale_reviews_on_push?: boolean;
+  require_code_owner_review?: boolean;
+  require_last_push_approval?: boolean;
+  required_review_thread_resolution?: boolean;
+  /** merge, squash or rebase. GitHub needs at least one. */
+  allowed_merge_methods: string[];
+}
+
+export interface SyncRulesetStatusChecksRule {
+  /** GitHub refuses an empty list, so a rule with no check is no rule. */
+  required_status_checks: SyncRulesetStatusCheck[];
+  strict_required_status_checks_policy?: boolean;
+  do_not_enforce_on_create?: boolean;
+}
+
+export interface SyncRulesetStatusCheck {
+  context: string;
+  /** Pins the check to the App reporting it. Absent leaves it unpinned. */
+  integration_id?: number;
+}
+
+export interface SyncRulesetCodeScanningRule {
+  code_scanning_tools: SyncRulesetCodeScanningTool[];
+}
+
+export interface SyncRulesetCodeScanningTool {
+  tool: string;
+  alerts_threshold: string;
+  security_alerts_threshold: string;
+}
+
 /** An installation's label sync configuration, as saved. */
 export interface SyncConfig {
   kind: string;
