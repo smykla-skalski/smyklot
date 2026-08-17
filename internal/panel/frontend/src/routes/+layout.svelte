@@ -1,8 +1,8 @@
 <script lang="ts">
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
-  import { base, resolve } from '$app/paths';
-  import type { Pathname } from '$app/types';
+  import { resolve } from '$app/paths';
+  import type { Path } from '$app/types';
   import { createQuery, QueryClientProvider } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 
@@ -30,7 +30,7 @@
 
   initializePanel(document);
 
-  const api = createPanelApi(base, (input, init) => fetch(input, init));
+  const api = createPanelApi(resolve(''), (input, init) => fetch(input, init));
   const build = readPanelBuild(document);
   const pageFailure = readPanelFailure(document);
 
@@ -176,7 +176,7 @@
   // Bookmarks from when the inbox was a dialog still lead to the inbox page.
   $effect(() => {
     if (!legacyInboxRoute(page.url.search) || session.isInbox) return;
-    void goto(resolve('/inbox' as Pathname), { replaceState: true });
+    void goto(resolve('/inbox' as Path), { replaceState: true });
   });
 </script>
 
@@ -188,7 +188,7 @@
 
 <QueryClientProvider client={queryClient}>
   {#if pageFailure !== null}
-    <ErrorPage {api} {base} {build} failure={pageFailure} />
+    <ErrorPage {api} base={resolve('')} {build} failure={pageFailure} />
   {:else if session.isInvitation}
     {@render children()}
   {:else if session.signedOut}

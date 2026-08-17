@@ -7,9 +7,9 @@
  */
 
 import { goto } from '$app/navigation';
-import { base, resolve } from '$app/paths';
+import { resolve } from '$app/paths';
 import { page } from '$app/state';
-import type { Pathname } from '$app/types';
+import type { Path } from '$app/types';
 import { createContext } from 'svelte';
 import { MediaQuery } from 'svelte/reactivity';
 
@@ -79,7 +79,7 @@ export class PanelSession {
   constructor(api: PanelApi, build: PanelBuild, queryClient: QueryClient) {
     this.api = api;
     this.build = build;
-    this.base = base;
+    this.base = resolve('');
     this.queryClient = queryClient;
     this.prefs = createPrefsSync();
     this.sidebarCollapsed = this.prefs.get('sidebar') === 'collapsed';
@@ -215,12 +215,14 @@ export class PanelSession {
       if (route.rootView === 'installation') {
         return ['repositories', 'users', 'invitations', 'history'].includes(route.view);
       }
+
       return (
         this.rootValue === 'history' ||
         this.rootValue === 'access' ||
         route.rootView === 'installations'
       );
     }
+
     return (
       this.selectedTarget !== null &&
       ['repositories', 'users', 'invitations', 'history'].includes(this.currentView)
@@ -380,7 +382,7 @@ export class PanelSession {
   returnToPanel(replaceState = false): void {
     const target = this.returnTarget;
     if (target === null) {
-      void goto(resolve(this.returnHref() as Pathname), { replaceState: true });
+      void goto(resolve(this.returnHref() as Path), { replaceState: true });
       return;
     }
     void this.navigate(this.returnRoute(target), replaceState);
@@ -565,7 +567,7 @@ export class PanelSession {
   }
 
   private navigate(route: PanelRoute, replaceState = false): Promise<void> {
-    return goto(resolve(this.routePath(route) as Pathname), { replaceState });
+    return goto(resolve(this.routePath(route) as Path), { replaceState });
   }
 
   invalidateTargetData(targetId: string): void {

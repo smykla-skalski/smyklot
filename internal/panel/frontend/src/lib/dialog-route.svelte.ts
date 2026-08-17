@@ -9,8 +9,8 @@
 
 import { page } from '$app/state';
 import { pushState, replaceState } from '$app/navigation';
-import { base, resolve } from '$app/paths';
-import type { Pathname } from '$app/types';
+import { resolve } from '$app/paths';
+import type { Path } from '$app/types';
 import { SvelteURLSearchParams } from 'svelte/reactivity';
 
 import {
@@ -50,13 +50,13 @@ function withoutDialogState(): App.PageState {
 }
 
 function isRootInstallation(): boolean {
-  return page.url.pathname.startsWith(`${base}/root/installations/`);
+  return page.url.pathname.startsWith(resolve(`root/installations/`));
 }
 
 function currentPanelPath(search = page.url.search): string {
   const pathname =
-    base !== '' && page.url.pathname.startsWith(base)
-      ? page.url.pathname.slice(base.length)
+    resolve('') !== '' && page.url.pathname.startsWith(resolve(''))
+      ? page.url.pathname.slice(resolve('').length)
       : page.url.pathname;
   return `${pathname}${search}${page.url.hash}`;
 }
@@ -119,7 +119,7 @@ function pathForDialog(host: DialogHost, dialog: RouteDialog): string | null {
 
 function bareHostPath(): string | null {
   const section = page.params.section;
-  if (typeof section === 'string' && page.url.pathname.startsWith(`${base}/root/access/`)) {
+  if (typeof section === 'string' && page.url.pathname.startsWith(resolve(`root/access/`))) {
     return `/root/access/${section}`;
   }
 
@@ -173,7 +173,7 @@ class DialogRouter {
     };
     delete state.smyklotDialogClosed;
     const navigate = replacing ? replaceState : pushState;
-    navigate(resolve((path ?? currentPanelPath(dialogSearch(dialog))) as Pathname), state);
+    navigate(resolve((path ?? currentPanelPath(dialogSearch(dialog))) as Path), state);
   }
 
   update(name: string, params: Readonly<Record<string, string>>): void {
@@ -187,7 +187,7 @@ class DialogRouter {
       ...(dialogState().smyklotDialogEntry === true ? { smyklotDialogEntry: true } : {}),
     };
     delete state.smyklotDialogClosed;
-    replaceState(resolve((path ?? currentPanelPath(dialogSearch(next))) as Pathname), state);
+    replaceState(resolve((path ?? currentPanelPath(dialogSearch(next))) as Path), state);
   }
 
   close(): void {
@@ -217,7 +217,7 @@ class DialogRouter {
     const path = bareHostPath();
     const target =
       typeof rest === 'string' && rest !== '' && path !== null ? path : currentPanelPath('');
-    replaceState(resolve(target as Pathname), withoutDialogState());
+    replaceState(resolve(target as Path), withoutDialogState());
   }
 }
 
