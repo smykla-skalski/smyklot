@@ -188,28 +188,12 @@ func (c *Client) EditPullRequest(
 	return wrapError(ErrAPIRequest, http.MethodPatch, path, err)
 }
 
-// DeleteRef removes a reference, and reports success where there was none.
+// There is deliberately no way to remove a reference here.
 //
-// Used on a branch whose proposal has been merged: the next change starts from
-// the default branch rather than from a tip that is already in it. A branch
-// already gone is that outcome rather than a failure - a repository with
-// delete_branch_on_merge removed it the moment the pull request landed, and so
-// did anybody who tidied up by hand. GetRef reads a 404 the same way, for the
-// same reason: the question is about the end state.
-func (c *Client) DeleteRef(ctx context.Context, owner, repo, ref string) error {
-	path := fmt.Sprintf("/repos/%s/%s/git/refs/%s", owner, repo, ref)
-
-	_, err := c.gh.Git.DeleteRef(ctx, owner, repo, "refs/"+ref)
-	if err == nil {
-		return nil
-	}
-
-	wrapped := wrapError(ErrAPIRequest, http.MethodDelete, path, err)
-
-	var apiErr *APIError
-	if errors.As(wrapped, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
-		return nil
-	}
-
-	return wrapped
-}
+// GitHub's delete has no compare-and-swap, where its move refuses anything that
+// is not a fast-forward. A branch read and then removed is a branch somebody
+// could have pushed to in between, and their commit would be gone with no error
+// and no trace - which is the failure this whole area exists to stop. Nothing
+// smyklot proposes needs a branch taken away: a merged one is built on, and
+// what merged is already in the default branch, so the next pull request from
+// it carries only what is new.

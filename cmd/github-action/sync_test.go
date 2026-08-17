@@ -1143,33 +1143,8 @@ var _ = Describe("Org sync [Unit]", func() {
 			Expect(state[0].Kind).To(Equal(orgsync.KindFiles))
 		})
 
-		// After a merge everything the branch says is in the default branch, so
-		// a pull request from it would have no diff at all and GitHub refuses
-		// to open one. Taking it away is what lets the next change start from
-		// the default branch.
-		It("starts again from the default branch once a proposal has merged", func() {
-			target := grantContents()
-			configureKind(target, orgsync.KindFiles, contributing)
-
-			plan(target)
-			computed, actions := livePlan(target)
-			approve(computed)
-
-			written, err := orgsync.DecodeFile(actions[0].Payload)
-			Expect(err).NotTo(HaveOccurred())
-			stub.branchRefs[written.Proposal] = "mergedcommit"
-			stub.branchPRs = `[{"number":9,"state":"closed","merged":true,` +
-				`"merged_at":"2026-08-17T00:00:00Z","head":{"sha":"mergedcommit"}}]`
-
-			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
-
-			Expect(stub.deletedRefs).To(ConsistOf(written.Proposal))
-			Expect(stub.forcedPushes).To(BeZero())
-		})
-
 		// A repository with delete_branch_on_merge took the branch away the
-		// moment the pull request landed, so there is nothing to tidy and
-		// nothing to build on.
+		// moment the pull request landed, so there is nothing to build on.
 		It("starts from the default branch where a merged one was tidied away", func() {
 			target := grantContents()
 			configureKind(target, orgsync.KindFiles, contributing)
@@ -1178,15 +1153,15 @@ var _ = Describe("Org sync [Unit]", func() {
 
 			applied(target)
 
-			Expect(stub.deletedRefs).To(BeEmpty())
 			Expect(stub.createdTrees[0]).To(ContainSubstring(`"base_tree":"basetree"`))
 			Expect(stub.createdPRs).To(HaveLen(1))
 		})
 
-		// The same branch with a commit pushed to it after the merge. That
-		// commit is the whole of what a pull request from there would carry,
-		// and taking the branch away takes it with it.
-		It("builds on a merged branch somebody has pushed to since", func() {
+		// Nothing here removes a branch. GitHub's delete has no
+		// compare-and-swap - unlike the move, which it refuses when it is not a
+		// fast-forward - so a commit landing between reading a branch and
+		// removing it would be gone with no error and no trace.
+		It("builds on a merged branch rather than taking it away", func() {
 			target := grantContents()
 			configureKind(target, orgsync.KindFiles, contributing)
 
@@ -1201,9 +1176,10 @@ var _ = Describe("Org sync [Unit]", func() {
 			stub.branchPRs = `[{"number":9,"state":"closed","merged":true,` +
 				`"merged_at":"2026-08-17T00:00:00Z","head":{"sha":"mergedcommit"}}]`
 
+			// The stub answers a delete with a 500, so an apply that tried one
+			// would fail here rather than pass quietly
 			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
 
-			Expect(stub.deletedRefs).To(BeEmpty())
 			Expect(stub.createdTrees[0]).To(ContainSubstring(`"base_tree":"their-tree"`))
 			Expect(stub.createdCommits[0]).To(ContainSubstring(`"theircommit"`))
 			Expect(stub.forcedPushes).To(BeZero())
@@ -1279,16 +1255,45 @@ var _ = Describe("Org sync [Unit]", func() {
 			}
 		})
 
+		// One opened between the plan and the apply, which is the window the
+		// planner cannot close. The proposal is adopted rather than doubled.
 		It("keeps an open pull request rather than opening a second", func() {
 			target := grantContents()
 			configureKind(target, orgsync.KindFiles, contributing)
+
+			plan(target)
+			computed, _ := livePlan(target)
+			approve(computed)
+
 			stub.branchPRs = `[{"number":9,"state":"open"}]`
 
-			applied(target)
+			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
 
 			Expect(stub.createdPRs).To(BeEmpty())
 			Expect(stub.editedPRs).To(HaveLen(1))
 			Expect(stub.editedPRs[0]).To(ContainSubstring("CONTRIBUTING.md"))
+		})
+
+		// A proposal already in front of a repository is a question already
+		// asked. Planning it again would produce the same plan, needing the
+		// same approval, adopting the same pull request, once every horizon for
+		// as long as it sat there.
+		It("plans nothing more while a proposal is open", func() {
+			target := grantContents()
+			configureKind(target, orgsync.KindFiles, contributing)
+			stub.branchPRs = `[{"number":9,"state":"open"}]`
+
+			plan(target)
+
+			_, _, err := service.store.GetLiveSyncPlan(GinkgoT().Context(), target.ID)
+			Expect(err).To(MatchError(storage.ErrNotFound))
+
+			// And it is written down as settled, so the repository is not read
+			// again until the horizon or a configuration change
+			state, err := service.store.ListSyncRepositoryState(GinkgoT().Context(), target.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(state).To(HaveLen(1))
+			Expect(state[0].Kind).To(Equal(orgsync.KindFiles))
 		})
 
 		It("writes what a repository adjusts rather than the plain template", func() {

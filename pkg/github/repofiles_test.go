@@ -237,39 +237,4 @@ var _ = Describe("Repository files [Unit]", func() {
 		})
 	})
 
-	Describe("DeleteRef", func() {
-		It("removes the reference", func() {
-			server = record(map[string]string{"/git/refs/heads/gone": `{}`})
-
-			Expect(client().DeleteRef(
-				context.Background(), "acme", "web", "heads/gone",
-			)).To(Succeed())
-
-			Expect(methods["/repos/acme/web/git/refs/heads/gone"]).
-				To(Equal(http.MethodDelete))
-		})
-
-		// The question is about the end state, and a branch already gone is
-		// that end state: a repository with delete_branch_on_merge removed it
-		// the moment the pull request landed.
-		It("reads a reference that is already gone as removed", func() {
-			server = record(nil)
-
-			Expect(client().DeleteRef(
-				context.Background(), "acme", "web", "heads/gone",
-			)).To(Succeed())
-		})
-
-		It("still reports a refusal", func() {
-			server = httptest.NewServer(http.HandlerFunc(
-				func(w http.ResponseWriter, _ *http.Request) {
-					w.WriteHeader(http.StatusForbidden)
-					_, _ = io.WriteString(w, `{"message":"Resource not accessible"}`)
-				}))
-
-			Expect(client().DeleteRef(
-				context.Background(), "acme", "web", "heads/gone",
-			)).NotTo(Succeed())
-		})
-	})
 })

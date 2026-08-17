@@ -482,18 +482,19 @@ func planRepositoryFiles(
 		return nil, true, nil
 	}
 
-	refused, err := proposalRefused(ctx, client, target, plan.Proposal)
+	asked, err := proposalOutstanding(ctx, client, target, plan.Proposal)
 	if err != nil {
 		return nil, false, err
 	}
 
-	if refused {
-		// The repository has answered, so it is settled rather than asked
-		// again every tick. The branch is named after what the files should end
-		// up saying, so a configuration that changes is a different branch and
-		// the question is put once more.
+	if asked {
+		// Already asked, so there is nothing to plan and the repository is
+		// settled rather than asked again on every horizon. This is the whole
+		// of what a file sync can do: propose. The branch is named after what
+		// the files should end up saying, so a configuration that changes is a
+		// different branch and the question is put once more.
 		logging.From(ctx).Info(
-			"this repository closed the pull request for this change, so it is left alone",
+			"this repository already has this change in front of it, so it is left alone",
 			"repo", repository.FullName, "branch", plan.Proposal)
 
 		return nil, true, nil
@@ -502,13 +503,16 @@ func planRepositoryFiles(
 	return plan.Actions, true, nil
 }
 
-// proposalRefused reports a change this repository has already declined.
+// proposalOutstanding reports a change this repository has already been asked
+// about and not resolved.
 //
-// Whatever state, because the answer decides whether to propose again: an open
-// one is still being considered, a merged one landed, and a closed one was
-// refused. Asking only about the open ones would read a refusal as "nobody has
-// been asked yet" and ask forever.
-func proposalRefused(
+// Whatever state, because the answer decides whether to propose again. An open
+// one is being considered and a closed one was refused, and both mean the
+// asking is done - a plan computed for either would be the same plan, approved
+// again, adopting the same pull request, once every horizon for as long as it
+// sat there. A merged one is not outstanding: the change landed, and files that
+// still differ after it are a new question.
+func proposalOutstanding(
 	ctx context.Context,
 	client *github.Client,
 	target syncTarget,
@@ -519,7 +523,7 @@ func proposalRefused(
 		return false, err
 	}
 
-	return pull.State == github.PullRequestClosed && !pull.Merged, nil
+	return !pull.Merged, nil
 }
 
 // syncDocument is a kind's configuration: something to decode, and something

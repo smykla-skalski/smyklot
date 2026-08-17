@@ -48,11 +48,9 @@ type githubStub struct {
 	repoLevels map[string]string
 
 	// Branch updates keep both the wire body and whether one asked GitHub to
-	// discard non-fast-forward work. deletedRefs is what was taken away, which
-	// is the same address and only the method tells them apart.
+	// discard non-fast-forward work.
 	branchUpdates []string
 	forcedPushes  int
-	deletedRefs   []string
 
 	// repoLabels is what a repository's own label list answers, and
 	// labelWrites is every create, update and delete sync sent - which is the
@@ -629,16 +627,14 @@ func (s *githubStub) serveGitData(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, `{"sha":"commitsha"}`)
 
 	// Removing a branch and moving one are the same address, and only the
-	// method tells them apart - so a stub that read every write as a move would
-	// have recorded a deletion as an update and asserted nothing about it.
+	// method tells them apart. Nothing may send the first: GitHub's delete has
+	// no compare-and-swap, so a branch read and then removed is a branch
+	// somebody could have pushed to in between. The stub refuses it loudly
+	// rather than answering it, so a call that appeared would be a failing
+	// spec rather than a silent destruction.
 	case strings.Contains(r.URL.Path, "/git/refs/heads/") && r.Method == http.MethodDelete:
-		branch := r.URL.Path[strings.Index(r.URL.Path, "/git/refs/heads/")+
-			len("/git/refs/heads/"):]
-		s.mu.Lock()
-		s.deletedRefs = append(s.deletedRefs, branch)
-		delete(s.branchRefs, branch)
-		s.mu.Unlock()
-		w.WriteHeader(http.StatusNoContent)
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = fmt.Fprintf(w, `{"message": "nothing may delete %s"}`, r.URL.Path)
 
 	case strings.Contains(r.URL.Path, "/git/refs/heads/"):
 		body, _ := io.ReadAll(r.Body)

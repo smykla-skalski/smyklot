@@ -335,39 +335,21 @@ func (s *server) readProposal(
 	}
 
 	switch {
-	case pull.Merged && head == "":
-		// Merged and already tidied away, which is what a repository with
-		// delete_branch_on_merge does the moment the pull request lands. There
-		// is nothing to take away and nothing to build on, so the next change
-		// starts from the default branch.
-		return "", nil, nil
-
-	case pull.Merged && head == pull.Head:
-		// Merged, and nothing has been pushed since. Everything the branch says
-		// is in the default branch now, so a pull request from it would have no
-		// diff at all and GitHub refuses to open one. Taking it away is what
-		// lets the next change start from the default branch, which is what an
-		// ordinary branch does after a merge.
-		if err := client.DeleteRef(
-			ctx, target.Owner, target.Name, "heads/"+proposal); err != nil {
-			return "", nil, err
-		}
-
-		return "", nil, nil
+	case pull.State == github.PullRequestClosed && !pull.Merged:
+		return "", nil, fmt.Errorf("%w: pull request %d", errSyncFilesRefused, pull.Number)
 
 	case pull.Merged:
-		// Merged, and somebody has pushed to it since. Their commit is the
-		// whole of what a pull request from here would carry, and taking the
-		// branch away would take it with them. Built on, like every other
-		// branch that has something on it.
-		logging.From(ctx).Info(
-			"the merged proposal branch has moved since; building on it rather than replacing it",
-			"branch", proposal)
-
+		// Merged, and the branch is built on rather than taken away wherever a
+		// repository has not tidied it up itself.
+		//
+		// Nothing here removes a branch. GitHub's delete has no
+		// compare-and-swap - unlike the move below, which it refuses when it is
+		// not a fast-forward - so a commit landing between reading the branch
+		// and removing it would be gone with no error and no trace, which is
+		// the failure this whole port exists to stop. Building on it costs
+		// nothing: what merged is already in the default branch, so the pull
+		// request this opens carries only what is new.
 		return head, nil, nil
-
-	case pull.State == github.PullRequestClosed:
-		return "", nil, fmt.Errorf("%w: pull request %d", errSyncFilesRefused, pull.Number)
 
 	default:
 		return head, pull, nil
