@@ -281,6 +281,10 @@ func (c FileConfig) Paths() []string {
 	return paths
 }
 
+// Managed is every path this configuration writes or removes, which is the
+// whole of what it asks a repository about.
+func (c FileConfig) Managed() []string { return slices.Concat(c.Paths(), c.Retired) }
+
 // Validate reports a repository's own adjustments that could never be applied.
 //
 // Checked against the installation's files, because an adjustment to a file

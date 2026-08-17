@@ -12,6 +12,7 @@
    * point of there being one.
    */
   import { canonicalStringify } from '#lib/preferences-sync.js';
+  import { asList, lines } from '#lib/text-lines.js';
   import type {
     SyncRuleset,
     SyncRulesetBypassActor,
@@ -193,18 +194,6 @@
 
   function remove(index: number): void {
     drafts = withoutAt(drafts, index);
-  }
-
-  /** One ref or context per line, which is how somebody writes a list. */
-  function lines(values: readonly string[] | undefined): string {
-    return (values ?? []).join('\n');
-  }
-
-  function asList(text: string): string[] {
-    return text
-      .split('\n')
-      .map((line) => line.trim())
-      .filter((line) => line !== '');
   }
 
   /**

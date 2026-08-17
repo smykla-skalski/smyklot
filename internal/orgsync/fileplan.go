@@ -55,6 +55,13 @@ type FilePlan struct {
 type ResolvedFile struct {
 	Path string `json:"path"`
 
+	// blob is the name git would give this content, worked out once when the
+	// file is resolved. It is asked for twice - to name the proposal and to
+	// tell a file that already matches from one that does not - and hashing a
+	// megabyte of templates twice per repository per tick is a cost with
+	// nothing behind it.
+	blob string
+
 	// Content is bytes rather than a string, so that whatever a template holds
 	// survives being written down. A string would be re-encoded as UTF-8 and
 	// anything that was not would come back as replacement characters.
@@ -151,7 +158,7 @@ func writeActions(
 				State:        ActionPending,
 			})
 
-		case held.Blob != BlobID(file.Content):
+		case held.Blob != file.blob:
 			actions = append(actions, Action{
 				RepositoryID: repositoryID,
 				Kind:         KindFiles,
@@ -247,7 +254,9 @@ func resolveFiles(
 			return nil, fmt.Errorf("composing %s: %w", file.Path, err)
 		}
 
-		resolved = append(resolved, ResolvedFile{Path: file.Path, Content: content})
+		resolved = append(resolved, ResolvedFile{
+			Path: file.Path, Content: content, blob: BlobID(content),
+		})
 	}
 
 	return resolved, nil
@@ -307,7 +316,7 @@ func fileProposal(desired []ResolvedFile, retired []string) string {
 	for _, file := range sorted {
 		writeField(sum, "file")
 		writeField(sum, file.Path)
-		writeField(sum, BlobID(file.Content))
+		writeField(sum, file.blob)
 	}
 
 	for _, path := range retired {

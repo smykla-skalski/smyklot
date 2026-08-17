@@ -109,19 +109,23 @@ func splitPath(path, rest string) ([]string, error) {
 
 // valueAt reads what a document holds at a path, and whether it holds anything.
 func valueAt(document map[string]any, keys []string) (any, bool) {
+	current, found := parentAt(document, keys)
+	if !found {
+		return nil, false
+	}
+
+	value, held := current[keys[len(keys)-1]]
+
+	return value, held
+}
+
+// parentAt walks to the object the last key sits in, if every level on the way
+// is one.
+func parentAt(document map[string]any, keys []string) (map[string]any, bool) {
 	current := document
 
-	for index, key := range keys {
-		value, present := current[key]
-		if !present {
-			return nil, false
-		}
-
-		if index == len(keys)-1 {
-			return value, true
-		}
-
-		nested, isMap := value.(map[string]any)
+	for _, key := range keys[:len(keys)-1] {
+		nested, isMap := current[key].(map[string]any)
 		if !isMap {
 			return nil, false
 		}
@@ -129,7 +133,7 @@ func valueAt(document map[string]any, keys []string) (any, bool) {
 		current = nested
 	}
 
-	return nil, false
+	return current, true
 }
 
 // setValueAt writes a value at a path, reporting whether the path was there to
@@ -139,15 +143,9 @@ func valueAt(document map[string]any, keys []string) (any, bool) {
 // document already has; creating the branches on the way to one it does not
 // would write a key nothing asked for into somebody's file.
 func setValueAt(document map[string]any, keys []string, value any) bool {
-	current := document
-
-	for _, key := range keys[:len(keys)-1] {
-		nested, isMap := current[key].(map[string]any)
-		if !isMap {
-			return false
-		}
-
-		current = nested
+	current, found := parentAt(document, keys)
+	if !found {
+		return false
 	}
 
 	current[keys[len(keys)-1]] = value

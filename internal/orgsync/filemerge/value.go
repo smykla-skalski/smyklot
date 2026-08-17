@@ -36,6 +36,17 @@ func clone(value any) any {
 	}
 }
 
+// cloneOf is a document to build a merge on: every key of the original, none
+// of them still pointing at it, and room for what is about to be added.
+func cloneOf(document map[string]any, extra int) map[string]any {
+	copied := make(map[string]any, len(document)+extra)
+	for key, value := range document {
+		copied[key] = clone(value)
+	}
+
+	return copied
+}
+
 // equal reports two decoded values as saying the same thing.
 //
 // Numbers compare by value rather than by Go type, and that is the whole reason

@@ -92,7 +92,7 @@ func asCurrentFiles(
 
 	// Only the paths configuration names. Every other conflict in a repository
 	// is somebody else's arrangement of their own files.
-	for _, path := range slices.Concat(config.Paths(), config.Retired) {
+	for _, path := range config.Managed() {
 		if conflict := conflictAt(tree, path); conflict != "" {
 			current[path] = orgsync.CurrentFile{Conflict: conflict}
 		}
@@ -152,7 +152,7 @@ func readFilesOneAtATime(
 ) (map[string]orgsync.CurrentFile, error) {
 	current := map[string]orgsync.CurrentFile{}
 
-	for _, path := range slices.Concat(config.Paths(), config.Retired) {
+	for _, path := range config.Managed() {
 		found, err := client.ResolveTreePath(
 			ctx, target.Owner, target.Name, target.DefaultBranch, path)
 		if err != nil {

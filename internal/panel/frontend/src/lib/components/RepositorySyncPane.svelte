@@ -13,6 +13,7 @@
    * customization it described.
    */
   import { canonicalStringify } from '#lib/preferences-sync.js';
+  import { asList, lines } from '#lib/text-lines.js';
   import type { SyncFileMerge, SyncOverride } from '#lib/types.js';
 
   import InheritControl from './InheritControl.svelte';
@@ -157,17 +158,6 @@
 
   function storedExcludes(from: Record<string, unknown>): string[] {
     return Array.isArray(from?.excludes) ? (from.excludes as string[]) : [];
-  }
-
-  function lines(values: readonly string[]): string {
-    return values.join('\n');
-  }
-
-  function asList(text: string): string[] {
-    return text
-      .split('\n')
-      .map((line) => line.trim())
-      .filter((line) => line !== '');
   }
 
   function patch(index: number, change: Partial<SyncFileMerge>): void {

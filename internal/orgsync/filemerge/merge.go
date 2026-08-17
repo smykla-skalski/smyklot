@@ -65,10 +65,7 @@ func decodeOverrides(overrides json.RawMessage) (map[string]any, error) {
 // float64 - so an identifier past 2^53 came back as a different number, and a
 // deduplicated array compared int(1) against float64(1) and kept both.
 func mergePatch(base, patch map[string]any) map[string]any {
-	merged := make(map[string]any, len(base)+len(patch))
-	for key, value := range base {
-		merged[key] = clone(value)
-	}
+	merged := cloneOf(base, len(patch))
 
 	for key, value := range patch {
 		if value == nil {
@@ -106,10 +103,7 @@ func mergePatch(base, patch map[string]any) map[string]any {
 // below the top level: what it writes there is the override's value, whole and
 // exactly as it was written.
 func mergeShallow(base, override map[string]any) map[string]any {
-	merged := make(map[string]any, len(base)+len(override))
-	for key, value := range base {
-		merged[key] = clone(value)
-	}
+	merged := cloneOf(base, len(override))
 
 	for key, value := range override {
 		if value == nil {

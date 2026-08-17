@@ -18,6 +18,7 @@
    * can close.
    */
   import { canonicalStringify } from '#lib/preferences-sync.js';
+  import { asList, lines } from '#lib/text-lines.js';
   import type { SyncFile } from '#lib/types.js';
 
   import SyncDocumentForm from './SyncDocumentForm.svelte';
@@ -88,18 +89,6 @@
 
   function storedList(from: Record<string, unknown>, key: string): string[] {
     return Array.isArray(from[key]) ? (from[key] as string[]) : [];
-  }
-
-  /** One path per line, which is how somebody writes a list. */
-  function lines(values: readonly string[]): string {
-    return values.join('\n');
-  }
-
-  function asList(text: string): string[] {
-    return text
-      .split('\n')
-      .map((line) => line.trim())
-      .filter((line) => line !== '');
   }
 
   function patch(index: number, change: Partial<SyncFile>): void {
