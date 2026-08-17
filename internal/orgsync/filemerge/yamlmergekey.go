@@ -26,10 +26,6 @@ const mostMergeKeyHops = 100
 // name too - so writing into it writes into all of them, and replacing it drops
 // every sibling the inheritance carried.
 func keyValue(mapping *yaml.Node, key string) (value *yaml.Node, own bool) {
-	return keyValueWithin(mapping, key, 0)
-}
-
-func keyValueWithin(mapping *yaml.Node, key string, hops int) (*yaml.Node, bool) {
 	if mapping == nil || mapping.Kind != yaml.MappingNode {
 		return nil, false
 	}
@@ -38,7 +34,7 @@ func keyValueWithin(mapping *yaml.Node, key string, hops int) (*yaml.Node, bool)
 		return mapping.Content[at+1], true
 	}
 
-	return inheritedValue(mapping, key, hops), false
+	return inheritedValue(mapping, key, 0), false
 }
 
 // inheritedValue is what a mapping's merge keys give it under a key, taking no
@@ -47,7 +43,7 @@ func keyValueWithin(mapping *yaml.Node, key string, hops int) (*yaml.Node, bool)
 // Asked on its own where a removal has to know whether taking the literal key
 // off would leave the mapping still holding one.
 func inheritedValue(mapping *yaml.Node, key string, hops int) *yaml.Node {
-	if mapping == nil || mapping.Kind != yaml.MappingNode || hops >= mostMergeKeyHops {
+	if hops >= mostMergeKeyHops {
 		return nil
 	}
 
@@ -56,8 +52,15 @@ func inheritedValue(mapping *yaml.Node, key string, hops int) *yaml.Node {
 			continue
 		}
 
+		// What a merged mapping spells out itself, and failing that what its
+		// own merge keys give it. mergedMappings answers only mappings, so
+		// there is nothing else to guard against here.
 		for _, merged := range mergedMappings(mapping.Content[at+1]) {
-			if found, _ := keyValueWithin(merged, key, hops+1); found != nil {
+			if found := keyIndex(merged, key); found >= 0 {
+				return merged.Content[found+1]
+			}
+
+			if found := inheritedValue(merged, key, hops+1); found != nil {
 				return found
 			}
 		}

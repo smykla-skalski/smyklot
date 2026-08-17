@@ -16,6 +16,7 @@ package orgsync
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
 )
 
@@ -111,50 +112,46 @@ type Grantor interface {
 	Grants(permission string) bool
 }
 
-// Unpermitted reports a kind the grantor has not granted the permission for.
-func Unpermitted(grantor Grantor, kind Kind) (Unavailable, bool) {
-	permission := kind.RequiredPermission()
-	if permission == "" || grantor.Grants(permission) {
-		return Unavailable{}, false
-	}
-
-	return Unavailable{Kind: kind, Permission: permission}, true
-}
-
-// UnpermittedPath is the same question asked about work on one path, which can
-// need more than its kind does. See PathPermission.
-func UnpermittedPath(grantor Grantor, kind Kind, path string) (Unavailable, bool) {
-	if unavailable, missing := Unpermitted(grantor, kind); missing {
-		return unavailable, true
-	}
-
-	permission := PathPermission(path)
-	if kind != KindFiles || permission == "" || grantor.Grants(permission) {
-		return Unavailable{}, false
-	}
-
-	return Unavailable{Kind: kind, Permission: permission}, true
-}
-
-// UnpermittedConfig is the same question asked about a whole configuration: the
-// kind's own permission, and whatever the paths it names need on top of it.
+// unpermitted reports the first permission a grantor has not granted for a
+// kind's work: the kind's own, and then whatever else the work needs.
 //
-// Asked before anything is planned, because the alternative is a plan somebody
-// approves and GitHub then refuses - which is the thing repositoryPlanner
-// states as its own rule: a plan holding work GitHub is going to refuse asks
-// somebody to approve a promise it cannot keep.
-func UnpermittedConfig(grantor Grantor, config Config) (Unavailable, bool) {
-	if unavailable, missing := Unpermitted(grantor, config.Kind); missing {
-		return unavailable, true
-	}
-
-	for _, permission := range configPermissions(config) {
-		if !grantor.Grants(permission) {
-			return Unavailable{Kind: config.Kind, Permission: permission}, true
+// The kind's own first, because it is the one to grant first - being told to
+// approve Workflows while Contents is still missing is advice that does not
+// help.
+func unpermitted(grantor Grantor, kind Kind, extra ...string) (Unavailable, bool) {
+	for _, permission := range slices.Concat([]string{kind.RequiredPermission()}, extra) {
+		if permission == "" || grantor.Grants(permission) {
+			continue
 		}
+
+		return Unavailable{Kind: kind, Permission: permission}, true
 	}
 
 	return Unavailable{}, false
+}
+
+// UnpermittedPath reports a permission an installation has not granted for work
+// on one path, which can need more than its kind does. See PathPermission.
+func UnpermittedPath(grantor Grantor, kind Kind, path string) (Unavailable, bool) {
+	if kind != KindFiles {
+		// Nothing else is addressed by a path in a repository, and a label
+		// somebody named after one is still a label.
+		return unpermitted(grantor, kind)
+	}
+
+	return unpermitted(grantor, kind, PathPermission(path))
+}
+
+// UnpermittedConfig reports a permission an installation has not granted for a
+// whole configuration: the kind's own, and whatever the paths it names need on
+// top of it.
+//
+// Asked before anything is planned, because the alternative is a plan somebody
+// approves and GitHub then refuses - which is the rule repositoryPlanner states
+// for itself: a plan holding work GitHub is going to refuse asks somebody to
+// approve a promise it cannot keep.
+func UnpermittedConfig(grantor Grantor, config Config) (Unavailable, bool) {
+	return unpermitted(grantor, config.Kind, configPermissions(config)...)
 }
 
 // configPermissions is what a configuration's own contents need.
