@@ -244,8 +244,8 @@ func (s Spec) validateStructured() error {
 			"%w: sections edit Markdown headings, and this file has none", ErrInvalidSpec)
 	}
 
+	var document map[string]any
 	if len(s.Overrides) > 0 {
-		var document map[string]any
 		if err := json.Unmarshal(s.Overrides, &document); err != nil {
 			return fmt.Errorf("%w: the overrides are not an object: %w", ErrInvalidSpec, err)
 		}
@@ -265,10 +265,10 @@ func (s Spec) validateStructured() error {
 			"%w: nothing is merged without overrides or a list rule", ErrInvalidSpec)
 	}
 
-	return s.validateArrays()
+	return s.validateArrays(document)
 }
 
-func (s Spec) validateArrays() error {
+func (s Spec) validateArrays(document map[string]any) error {
 	seen := make(map[string]struct{}, len(s.Arrays))
 
 	for index, rule := range s.Arrays {
@@ -298,6 +298,34 @@ func (s Spec) validateArrays() error {
 				"%w: %s is below the top level, and a shallow merge replaces "+
 					"top-level keys whole", ErrInvalidSpec, rule.Path)
 		}
+
+		if err := ruleReachesAnOverride(document, keys, rule); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// ruleReachesAnOverride checks a list rule against the one document a spec
+// already holds: its own overrides.
+//
+// A rule says what to do with the repository's list where the template has one
+// of its own, so a rule whose path no override sets has no list to work with
+// and refuses the merge - for every template, always. Left to Apply, that lands
+// as a warning in the service log that stops the repository's whole file sync,
+// so a typo in one path silently stops every managed file. Here it lands under
+// the box somebody typed it into.
+func ruleReachesAnOverride(document map[string]any, keys []string, rule ArrayRule) error {
+	value, present := valueAt(document, keys)
+	if !present {
+		return fmt.Errorf("%w: no override sets %s, so there is no list to %s",
+			ErrInvalidSpec, rule.Path, rule.Strategy)
+	}
+
+	if _, isList := value.([]any); !isList {
+		return fmt.Errorf("%w: the override at %s is not a list",
+			ErrInvalidSpec, rule.Path)
 	}
 
 	return nil

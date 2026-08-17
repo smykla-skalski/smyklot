@@ -224,6 +224,11 @@ var _ = Describe("Merging a structured file [Unit]", func() {
 	// Every one of these was silence in the engine this replaces: a rule that
 	// matched nothing left the list replaced and said so nowhere, so a mistyped
 	// path read as a file that needed no merging.
+	//
+	// Refused as a spec rather than as a merge, because neither depends on the
+	// template: a rule the overrides do not reach could never work on any file,
+	// which is why Validate answers it and this covers that it still does
+	// through the whole entry point.
 	DescribeTable("refuses a list rule that addresses nothing",
 		func(rule filemerge.ArrayRule, template, override, because string) {
 			_, err := filemerge.Apply("renovate.json", []byte(template), filemerge.Spec{
@@ -231,7 +236,7 @@ var _ = Describe("Merging a structured file [Unit]", func() {
 				Arrays:    []filemerge.ArrayRule{rule},
 			})
 
-			Expect(err).To(MatchError(filemerge.ErrNothingAddressed))
+			Expect(err).To(MatchError(filemerge.ErrInvalidSpec))
 			Expect(err.Error()).To(ContainSubstring(because))
 		},
 		Entry("a path no override sets",
@@ -482,6 +487,107 @@ jobs:
 			Expect(strings.Count(string(merged), "- 9999")).To(Equal(1))
 		})
 
+		// A merge key is an alias spelled differently: the mapping holds every
+		// key the anchor does, without spelling one of them out. Read for its
+		// literal keys it looks very nearly empty, which is how a deep merge
+		// came to replace what a job inherited rather than adding to it - and
+		// the files this synchronizes are written this way constantly.
+		It("merges into what a merge key gives a mapping, rather than over it", func() {
+			merged, err := filemerge.Apply("ci.yaml",
+				[]byte("common: &c\n  with:\n    node: 18\n    cache: npm\n"+
+					"job:\n  <<: *c\n  name: build\n"),
+				filemerge.Spec{Overrides: overrides(`{"job": {"with": {"node": "20"}}}`)})
+
+			Expect(err).NotTo(HaveOccurred())
+
+			// Read back rather than matched, because what a mapping holds is
+			// what a reader resolves and not what any one line says.
+			var back struct {
+				Job map[string]any `yaml:"job"`
+			}
+			Expect(yaml.Unmarshal(merged, &back)).To(Succeed())
+			Expect(back.Job).To(HaveKeyWithValue("name", "build"))
+			Expect(back.Job).To(HaveKeyWithValue("with", map[string]any{
+				"node": "20", "cache": "npm",
+			}))
+
+			// Into a copy: what the anchor names is shared, and the template's
+			// own `common` still says 18.
+			Expect(string(merged)).To(ContainSubstring("node: 18"))
+		})
+
+		It("appends to a list a merge key gives a mapping", func() {
+			merged, err := filemerge.Apply("ci.yaml",
+				[]byte("base: &b\n  ports:\n    - 80\nuse:\n  <<: *b\n"),
+				filemerge.Spec{
+					Overrides: overrides(`{"use": {"ports": [443]}}`),
+					Arrays: []filemerge.ArrayRule{
+						{Path: "$.use.ports", Strategy: filemerge.ArrayAppend},
+					},
+				})
+
+			Expect(err).NotTo(HaveOccurred())
+
+			var back struct {
+				Use map[string]any `yaml:"use"`
+			}
+			Expect(yaml.Unmarshal(merged, &back)).To(Succeed())
+			Expect(back.Use).To(HaveKeyWithValue("ports", []any{80, 443}))
+		})
+
+		// A key a mapping only inherits is not that mapping's to remove: it
+		// lives where the anchor is, which other places name too. Nor is the
+		// literal one, where a merge key carries the same key - removing it
+		// does not remove the key, it lets the inherited value back through, so
+		// a removal lands as a change of value. Both were silence.
+		DescribeTable("refuses to remove a key a merge key carries",
+			func(template string) {
+				_, err := filemerge.Apply("ci.yaml", []byte(template),
+					filemerge.Spec{Overrides: overrides(`{"job": {"a": null}}`)})
+
+				Expect(err).To(MatchError(filemerge.ErrUnwritable))
+				Expect(err.Error()).To(ContainSubstring(`"<<"`))
+			},
+			Entry("the key is only inherited",
+				"defaults: &d\n  a: 1\n  b: 2\njob:\n  <<: *d\n"),
+			Entry("the mapping shadows the inherited key",
+				"defaults: &d\n  a: 1\njob:\n  <<: *d\n  a: 5\n"),
+		)
+
+		// `<<` is not a key, it is how YAML spells inheritance, and an override
+		// setting it would write one whose value is not an anchor - a file a
+		// good many readers refuse outright.
+		It("refuses an override that writes a merge key itself", func() {
+			_, err := filemerge.Apply("ci.yaml", []byte("job:\n  name: build\n"),
+				filemerge.Spec{Overrides: overrides(`{"job": {"<<": {"a": 1}}}`)})
+
+			Expect(err).To(MatchError(filemerge.ErrUnwritable))
+		})
+
+		// An alias binds to the nearest definition above it, so a copy that
+		// kept its anchors would take every later `*name` with it. This one
+		// changes `x.inner`, and `later` names the same anchor - it has to go
+		// on meaning what the template anchored.
+		It("does not redefine an anchor nested inside what it copies", func() {
+			merged, err := filemerge.Apply("ci.yaml",
+				[]byte("common: &c\n  inner: &i\n    k: 1\nx: *c\nlater: *i\n"),
+				filemerge.Spec{Overrides: overrides(`{"x": {"inner": {"k": 2}}}`)})
+
+			Expect(err).NotTo(HaveOccurred())
+
+			var back struct {
+				X     map[string]any `yaml:"x"`
+				Later map[string]any `yaml:"later"`
+			}
+			Expect(yaml.Unmarshal(merged, &back)).To(Succeed())
+			Expect(back.X).To(HaveKeyWithValue("inner", map[string]any{"k": 2}))
+			Expect(back.Later).To(HaveKeyWithValue("k", 1))
+
+			// One definition, because two is a document whose meaning depends
+			// on where a reader is standing.
+			Expect(strings.Count(string(merged), "&i")).To(Equal(1))
+		})
+
 		// The tag comes off so the line is written plainly, and a merge key
 		// written plainly is still a merge key on the way back in - which is
 		// the half that matters and the half a substring assertion cannot see.
@@ -544,6 +650,36 @@ jobs:
 			// YAML 1.1 reads this as the number 750.
 			Entry("a time", "12:30"),
 		)
+
+		// The same rule on the other half of the line, which nothing applied.
+		// `on:` is the commonest key in a workflow file, and written bare a
+		// YAML 1.1 reader takes it for the boolean true - so actionlint, and
+		// GitHub's own parser on the older spelling, read a workflow with no
+		// triggers at all.
+		DescribeTable("writes a key an older reader would take for something else as a string",
+			func(key string) {
+				merged, err := filemerge.Apply("ci.yaml", []byte("name: build\n"),
+					filemerge.Spec{Overrides: overrides(
+						fmt.Sprintf(`{%q: "x"}`, key))})
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(merged)).To(ContainSubstring(fmt.Sprintf("%q:", key)))
+			},
+
+			Entry("on", "on"), Entry("off", "off"),
+			Entry("no", "no"), Entry("yes", "yes"),
+			Entry("a time", "12:30"),
+		)
+
+		// The same key inside an object the override writes fresh, which is
+		// built by a different function and was bare there too.
+		It("writes a nested key an older reader would misread as a string", func() {
+			merged, err := filemerge.Apply("ci.yaml", []byte("name: build\n"),
+				filemerge.Spec{Overrides: overrides(`{"jobs": {"on": "x"}}`)})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(merged)).To(ContainSubstring(`"on":`))
+		})
 
 		It("keeps a large identifier's digits", func() {
 			merged, err := filemerge.Apply("ci.yaml", []byte("app: 1\n"),

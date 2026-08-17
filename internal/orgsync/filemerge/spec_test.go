@@ -10,7 +10,7 @@ import (
 var _ = Describe("Validating a merge [Unit]", func() {
 	It("accepts a structured merge", func() {
 		Expect(filemerge.Spec{
-			Overrides:   overrides(`{"timezone": "Europe/Warsaw"}`),
+			Overrides:   overrides(`{"timezone": "Europe/Warsaw", "labels": ["chore"]}`),
 			Arrays:      []filemerge.ArrayRule{{Path: "$.labels", Strategy: filemerge.ArrayAppend}},
 			Deduplicate: true,
 		}.Validate("renovate.json")).To(Succeed())
@@ -82,11 +82,36 @@ var _ = Describe("Validating a merge [Unit]", func() {
 			filemerge.Spec{Arrays: []filemerge.ArrayRule{{Path: "$.a", Strategy: "merge"}}},
 			"renovate.json", `unknown strategy "merge"`),
 		Entry("two rules for one list",
-			filemerge.Spec{Arrays: []filemerge.ArrayRule{
-				{Path: "$.a", Strategy: filemerge.ArrayAppend},
-				{Path: "$.a", Strategy: filemerge.ArrayPrepend},
-			}},
+			filemerge.Spec{
+				Overrides: overrides(`{"a": ["x"]}`),
+				Arrays: []filemerge.ArrayRule{
+					{Path: "$.a", Strategy: filemerge.ArrayAppend},
+					{Path: "$.a", Strategy: filemerge.ArrayPrepend},
+				},
+			},
 			"renovate.json", "$.a has two list rules"),
+
+		// A rule says what to do with the repository's list, so one whose path
+		// no override sets has no list to work with - for every template,
+		// always. Left to apply time it lands as a warning in a log that stops
+		// that repository's whole file sync, so a typo in one path silently
+		// stops every managed file.
+		Entry("a list rule no override reaches",
+			filemerge.Spec{
+				Overrides: overrides(`{"timezone": "Europe/Warsaw"}`),
+				Arrays: []filemerge.ArrayRule{
+					{Path: "$.labels", Strategy: filemerge.ArrayAppend},
+				},
+			},
+			"renovate.json", "no override sets $.labels"),
+		Entry("a list rule whose override is not a list",
+			filemerge.Spec{
+				Overrides: overrides(`{"labels": "chore"}`),
+				Arrays: []filemerge.ArrayRule{
+					{Path: "$.labels", Strategy: filemerge.ArrayAppend},
+				},
+			},
+			"renovate.json", "the override at $.labels is not a list"),
 		Entry("a nested list under a shallow merge, which replaces the level above it",
 			filemerge.Spec{
 				Strategy: filemerge.StrategyShallow,

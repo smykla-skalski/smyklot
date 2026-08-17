@@ -142,7 +142,7 @@ var _ = Describe("Planning files [Unit]", func() {
 				}},
 			}, "main", nil)
 
-			Expect(err).To(MatchError(filemerge.ErrNothingAddressed))
+			Expect(err).To(MatchError(filemerge.ErrInvalidSpec))
 		})
 	})
 

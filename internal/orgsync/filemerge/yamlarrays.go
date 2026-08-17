@@ -152,9 +152,10 @@ func decodedNode(node *yaml.Node) (any, error) {
 	return value, nil
 }
 
-// nodeAt walks a path of keys into a document, following an alias on the way.
+// nodeAt walks a path of keys into a document, following an alias and a merge
+// key on the way, and changing nothing.
 //
-// Following it, because an alias is what the template says is at that path: a
+// Following both, because either is what the template says is at that path: a
 // list rule addressing something reached through one found no mapping, read the
 // template as carrying no list, and appended the repository's items to nothing -
 // which is a replacement, silently, for a rule that says append.
@@ -166,7 +167,8 @@ func nodeAt(root *yaml.Node, keys []string) *yaml.Node {
 			return nil
 		}
 
-		at = resolveAlias(valueNode(at, key))
+		found, _ := keyValue(at, key)
+		at = resolveAlias(found)
 	}
 
 	return at
@@ -192,12 +194,27 @@ const mostAliasHops = 100
 
 // setNodeAt writes a value at a path of keys, reporting whether the path was
 // there to write to.
+//
+// Written into a copy wherever a step of the path is somebody else's - an alias,
+// or a key a merge key gives the mapping. Walking with nodeAt and writing where
+// it landed would have written into the anchor itself, which is to say into
+// every other place in the document that names it.
 func setNodeAt(root *yaml.Node, keys []string, value *yaml.Node) bool {
 	if len(keys) == 0 {
 		return false
 	}
 
-	parent := nodeAt(root, keys[:len(keys)-1])
+	parent := resolveAlias(root)
+
+	for _, key := range keys[:len(keys)-1] {
+		if parent == nil || parent.Kind != yaml.MappingNode {
+			return false
+		}
+
+		found, own := keyValue(parent, key)
+		parent = resolveAlias(standIn(parent, key, found, own))
+	}
+
 	if parent == nil || parent.Kind != yaml.MappingNode {
 		return false
 	}

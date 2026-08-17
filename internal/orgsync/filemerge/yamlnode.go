@@ -261,76 +261,134 @@ func encodeYAMLDocument(root *yaml.Node) ([]byte, error) {
 // one file, whatever order Go happened to range its map in.
 func mergeIntoMapping(mapping *yaml.Node, override map[string]any, deep bool) error {
 	for _, key := range sortedKeys(override) {
-		value := override[key]
-
-		if value == nil {
-			deleteKey(mapping, key)
-
-			continue
+		if key == mergeKey {
+			// Not a key: it is how YAML spells inheritance, and an override
+			// setting it would write a `<<` whose value is not an anchor, which
+			// is a file half the readers of these files refuse outright.
+			return fmt.Errorf("%w: an override cannot set %q, which is how YAML "+
+				"spells one mapping inheriting another", ErrUnwritable, mergeKey)
 		}
 
-		nested, isObject := value.(map[string]any)
-		existing := valueNode(mapping, key)
-
-		if deep && isObject {
-			existing = standIn(mapping, key, existing)
-		}
-
-		if deep && isObject && existing != nil && existing.Kind == yaml.MappingNode {
-			if err := mergeIntoMapping(existing, nested, true); err != nil {
-				return err
-			}
-
-			continue
-		}
-
-		// An object patched onto anything that is not an object replaces it,
-		// and the nulls inside the patch remove nothing because there is
-		// nothing there to remove. That is what RFC 7396 says, and it is the
-		// only reading that keeps a null meaning one thing. A shallow merge
-		// writes what it was given, nulls and all, because it does not look
-		// below the top level.
-		written := value
-		if deep && isObject {
-			written = withoutNulls(nested)
-		}
-
-		built, err := nodeFor(written)
-		if err != nil {
+		if err := mergeKeyInto(mapping, key, override[key], deep); err != nil {
 			return err
 		}
-
-		setKey(mapping, key, built)
 	}
 
 	return nil
 }
 
-// standIn writes out what an alias stands for, so a deep merge has a mapping to
-// merge into, and answers with what to merge into.
-//
-// An alias stands for the mapping it names. Read as the node it literally is,
-// it is not a mapping, so a deep merge replaced the whole thing - and every key
-// the alias carried that the override did not mention went with it.
-//
-// A copy, put where the alias was, rather than the anchor itself: what an
-// anchor names is shared, and merging into it would change every other place
-// naming it.
-func standIn(mapping *yaml.Node, key string, existing *yaml.Node) *yaml.Node {
-	if existing == nil || existing.Kind != yaml.AliasNode {
-		return existing
+// mergeKeyInto applies one of an override's keys to a mapping.
+func mergeKeyInto(mapping *yaml.Node, key string, value any, deep bool) error {
+	if value == nil {
+		return removeKey(mapping, key)
 	}
 
+	nested, isObject := value.(map[string]any)
+
+	if deep && isObject {
+		existing, own := keyValue(mapping, key)
+
+		if stood := standIn(mapping, key, existing, own); stood != nil &&
+			stood.Kind == yaml.MappingNode {
+			return mergeIntoMapping(stood, nested, true)
+		}
+
+		// An object patched onto anything that is not an object replaces it,
+		// and the nulls inside the patch remove nothing because there is
+		// nothing there to remove. That is what RFC 7396 says, and it is the
+		// only reading that keeps a null meaning one thing.
+		value = withoutNulls(nested)
+	}
+
+	// A shallow merge arrives here for everything, and writes what it was given,
+	// nulls and all, because it does not look below the top level.
+	built, err := nodeFor(value)
+	if err != nil {
+		return err
+	}
+
+	setKey(mapping, key, built)
+
+	return nil
+}
+
+// standIn writes out what a mapping does not hold itself, so a deep merge has a
+// mapping of its own to merge into, and answers with what to merge into.
+//
+// Two ways to arrive at somebody else's node. An alias stands for the mapping it
+// names: read as the node it literally is, it is not a mapping at all, so a deep
+// merge replaced the whole thing and every key the alias carried went with it. A
+// merge key is the same thing spelled differently - the mapping inherits keys it
+// does not spell out, and reading only the literal ones finds them absent.
+//
+// A copy in either case, put where the merge can see it, rather than the node
+// itself: what an anchor names is shared, and merging into it would change every
+// other place naming it.
+func standIn(mapping *yaml.Node, key string, existing *yaml.Node, own bool) *yaml.Node {
 	stood := resolveAlias(existing)
 	if stood == nil || stood.Kind != yaml.MappingNode {
 		return existing
 	}
 
+	// The mapping's own mapping node, spelled out where it is. Nothing else
+	// names it, so the merge goes straight into it.
+	if own && existing.Kind == yaml.MappingNode {
+		return existing
+	}
+
 	copied := cloneNode(stood)
-	copied.Anchor = ""
+	forgetAnchors(copied)
 	setKey(mapping, key, copied)
 
 	return copied
+}
+
+// forgetAnchors strips the anchors from a copy, at every depth.
+//
+// One that kept them would define them a second time, and an alias binds to the
+// nearest definition above it - so every `*name` written after the copy would
+// name the copy rather than what the template anchored, and a merge into one key
+// would change values nothing addressed. Clearing the copied node alone was not
+// enough: an anchor nested inside it does the same thing one level down.
+//
+// The aliases inside the copy still resolve. What they name is defined where it
+// always was, above the copy, and that is also what they meant before the merge.
+func forgetAnchors(node *yaml.Node) {
+	if node == nil {
+		return
+	}
+
+	node.Anchor = ""
+
+	// Content only, never Alias: that pointer leads out of the copy and into the
+	// document the copy was taken from, where the anchors have to stay.
+	for _, child := range node.Content {
+		forgetAnchors(child)
+	}
+}
+
+// removeKey takes a key off a mapping, refusing where the mapping would go on
+// holding it.
+//
+// A key that arrives through a merge key is not this mapping's to remove. It
+// lives in the mapping the anchor names, which other places name too, and
+// unpicking the inheritance - writing out every key it carries but this one -
+// would leave a mapping that no longer follows the anchor it was written to
+// follow, which is a change nobody asked for.
+//
+// Removing the literal key is worse still where a merge key gives the same one:
+// the key does not go, it goes back to what was inherited, so a removal lands as
+// a change of value.
+func removeKey(mapping *yaml.Node, key string) error {
+	if inheritedValue(mapping, key, 0) != nil {
+		return fmt.Errorf(
+			"%w: %q here comes from a %q, so removing it would mean unpicking "+
+				"what this mapping inherits", ErrUnwritable, key, mergeKey)
+	}
+
+	deleteKey(mapping, key)
+
+	return nil
 }
 
 // withoutNulls drops the keys an object patch sets to null, at every depth.
@@ -350,15 +408,6 @@ func withoutNulls(value map[string]any) map[string]any {
 	}
 
 	return kept
-}
-
-// valueNode is what a mapping records under a key, or nothing.
-func valueNode(mapping *yaml.Node, key string) *yaml.Node {
-	if at := keyIndex(mapping, key); at >= 0 {
-		return mapping.Content[at+1]
-	}
-
-	return nil
 }
 
 // keyIndex is where a key sits in a mapping's content, which holds a key and
@@ -387,8 +436,20 @@ func setKey(mapping *yaml.Node, key string, value *yaml.Node) {
 		return
 	}
 
-	mapping.Content = append(mapping.Content,
-		&yaml.Node{Kind: yaml.ScalarNode, Tag: tagString, Value: key}, value)
+	mapping.Content = append(mapping.Content, keyNode(key), value)
+}
+
+// keyNode is a key written fresh into a mapping.
+//
+// Quoted by the same rule the values are, and for the same reason: a key of
+// `on`, `no`, `off` or `12:30` written bare comes back from a YAML 1.1 reader as
+// `true`, `false`, `false` and `750`. That reader is compose, PyYAML, actionlint
+// or yamllint, and the key it mangles is the one that decides when a workflow
+// runs - `on:` is the commonest key in the files this synchronizes.
+func keyNode(key string) *yaml.Node {
+	return &yaml.Node{
+		Kind: yaml.ScalarNode, Tag: tagString, Value: key, Style: styleFor(key),
+	}
 }
 
 func deleteKey(mapping *yaml.Node, key string) {
@@ -498,8 +559,7 @@ func mappingNode(values map[string]any) (*yaml.Node, error) {
 			return nil, err
 		}
 
-		node.Content = append(node.Content,
-			&yaml.Node{Kind: yaml.ScalarNode, Tag: tagString, Value: key}, child)
+		node.Content = append(node.Content, keyNode(key), child)
 	}
 
 	return node, nil
