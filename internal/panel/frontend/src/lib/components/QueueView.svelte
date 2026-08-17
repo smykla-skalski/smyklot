@@ -395,7 +395,7 @@
         {@const state = section === 'waiting' ? queueState(request) : outcomeState(request)}
         {@const next = queueNext(request, now)}
         <tr
-          class="queue-row"
+          class="queue-row data-row"
           tabindex="0"
           onclick={(event) => openRow(event, request)}
           onkeydown={(event) => openFromKeyboard(event, request)}
@@ -659,10 +659,6 @@
   .queue-row {
     cursor: pointer;
     transition: background-color var(--duration-fast) var(--ease-out);
-  }
-
-  .queue-row:hover {
-    background: var(--table-row-hover);
   }
 
   .queue-row:active {

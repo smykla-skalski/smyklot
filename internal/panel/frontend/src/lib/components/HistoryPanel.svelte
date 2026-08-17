@@ -875,6 +875,7 @@
               {@const entry = auditEntryAt(virtualRow.index)}
               <tr
                 class:virtual-row={virtualRow.virtual}
+                class:data-row={true}
                 style:height={virtualRow.virtual ? `${virtualRow.size}px` : undefined}
                 style:transform={virtualRow.virtual
                   ? `translateY(${virtualRow.start}px)`
@@ -1017,7 +1018,7 @@
             {#each failureRenderRows as virtualRow (virtualRow.key)}
               {@const failure = failureAt(virtualRow.index)}
               <tr
-                class={['failure-row', virtualRow.virtual && 'virtual-row']}
+                class={['failure-row data-row', virtualRow.virtual && 'virtual-row']}
                 style:height={virtualRow.virtual ? `${virtualRow.size}px` : undefined}
                 style:transform={virtualRow.virtual
                   ? `translateY(${virtualRow.start}px)`
@@ -1208,10 +1209,6 @@
     transition: background-color var(--duration-fast) var(--ease-standard);
   }
 
-  .history-table tbody tr:hover {
-    background: var(--table-row-hover);
-  }
-
   @media (min-width: 64.001rem) {
     .history-results {
       min-height: 0;
@@ -1260,10 +1257,6 @@
     /* The grid rows above repaint the row ground at a higher specificity than the plain
          `:hover` rule outside this block, so the pointer state has to be restated here or it never
          reaches the screen. */
-    .history-table tbody tr:not(.virtual-spacer):hover {
-      background: var(--table-row-hover);
-    }
-
     .history-table tbody tr:not(.virtual-spacer) {
       background: var(--surface-base);
       /* Pin the grid track to the row's fixed height: auto-sizing would take

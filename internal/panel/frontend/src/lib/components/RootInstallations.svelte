@@ -219,7 +219,7 @@
         <tbody data-panel-scroll>
           {#each visibleInstallations as installation (installation.id)}
             <tr
-              class="installation-row"
+              class="installation-row data-row"
               tabindex="0"
               onclick={(event) => clickRow(event, installation)}
               onkeydown={(event) => keyRow(event, installation)}
@@ -422,10 +422,6 @@
     cursor: pointer;
     height: 3.75rem;
     transition: background-color var(--duration-fast) var(--ease-standard);
-  }
-
-  .installation-row:hover {
-    background: var(--table-row-hover);
   }
 
   .installation-row:focus-visible {

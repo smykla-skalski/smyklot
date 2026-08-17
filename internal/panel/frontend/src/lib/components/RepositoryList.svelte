@@ -22,6 +22,7 @@
   import { formatRelative, formatTimestamp } from '../format';
   import type { RepositorySection } from '../routes';
   import { getPanelSession } from '../session.svelte';
+  import { pressableRow, rowOpensOn } from '../table-row.svelte';
   import {
     decodeRepositorySettingFilter,
     encodeRepositorySettingFilter,
@@ -532,35 +533,6 @@
     session.openRepository(repository.name);
   }
 
-  /**
-   * Everything in a row that is already something to press.
-   *
-   * `label` is in this list because of what the enablement column is made of: a
-   * radio and a label per option, and a click on the WORD "Disabled" has the
-   * label as its target. Without it the row opened the repository and set its
-   * enablement from one press. `a` is here so the name in the first cell stays
-   * an ordinary link and the router handles it - which is what makes a modified
-   * click open a new tab rather than being swallowed here.
-   */
-  const ROW_CONTROLS = 'a, button, input, label, select, summary, textarea, [role="button"]';
-
-  /**
-   * A press on the rest of the row opens it.
-   *
-   * The row is the background its controls sit on, not a layer over them, so
-   * anything that was already something to press keeps its press. A modified
-   * click is the reader asking for a new tab, and there is a real link in the
-   * row to give them one.
-   */
-  function openRow(event: MouseEvent, repository: RepositorySummary): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    if (event.target instanceof Element && event.target.closest(ROW_CONTROLS) !== null) return;
-
-    openRepository(repository);
-  }
-
   function closeRepository(): void {
     session.closeRepository();
   }
@@ -1027,12 +999,13 @@
                      can press to the whole row, so there is no second control to
                      give a key handler to and no role to claim. -->
                 <tr
-                  class={['repository-row', virtualRow.virtual && 'virtual-row']}
+                  class={['repository-row data-row', virtualRow.virtual && 'virtual-row']}
                   style:height={virtualRow.virtual ? `${virtualRow.size}px` : undefined}
-                  style:transform={virtualRow.virtual
-                    ? `translateY(${virtualRow.start}px)`
-                    : undefined}
-                  onclick={(event) => openRow(event, repository)}
+                  style:--row-y={virtualRow.virtual ? `${virtualRow.start}px` : '0px'}
+                  onclick={(event) => {
+                    if (rowOpensOn(event)) openRepository(repository);
+                  }}
+                  use:pressableRow
                 >
                   <td>
                     <!-- The whole row opens the repository, and the name is the
@@ -1471,13 +1444,9 @@
        and a message explaining that there are no rows is not one. It also put the
        message's text on the hover ground, which is not a pairing any contrast was
        chosen for. */
-    .repositories tbody tr:not(.virtual-spacer, .empty-row):hover,
-    .repositories tbody tr:not(.virtual-spacer, .empty-row):has(:focus-visible) {
-      background: var(--table-row-hover);
-    }
-
-    .repositories tbody tr:not(.virtual-spacer) {
-      background: var(--surface-base);
+    /* No `background` - `.data-row` in `app.css` carries the resting ground and
+       every state with it. */
+    .repositories tbody tr:where(:not(.virtual-spacer)) {
       /* Pin the grid track to the row's fixed height: auto-sizing would take
          the tallest cell's border-box, push the bottom border one pixel past
          the virtual row, and let the next row paint over every separator. */
@@ -1519,6 +1488,8 @@
       top: 0;
     }
 
+    /* Restated at the virtual row's own specificity: the rule above that places
+       it carries a class, an element and a class, and out-ranked the press. */
     .repositories tbody .virtual-spacer {
       background: transparent;
       border: 0;
@@ -1532,28 +1503,10 @@
     }
   }
 
-  /* The whole row is the way in, so the whole row answers a pointer - and says
-     so before it is pressed, which a row that only highlights does not. */
+  /* Hover, press and focus come from `.data-row` in `app.css`; this only says
+     the row is a way in. */
   .repository-row {
     cursor: pointer;
-  }
-
-  .repository-row:hover {
-    background: var(--table-row-hover);
-  }
-
-  /* The keyboard's target is the name, so the row it is in takes the same wash a
-     pointer gets. Otherwise tabbing down the table moves a focus ring through
-     rows that never light up, and the row being read is the one thing on screen
-     with no indication that it is.
-
-     `:has(:focus-visible)` and not a bare `:focus-within`: a CLICK focuses the
-     link too, so the bare form left the row washed after the pointer had gone -
-     a hover that stuck to whichever row was pressed last, which reads as the
-     name having a hover of its own. `:focus-visible` is the engine's own answer
-     to "was this reached by keyboard", which is the only case that needs it. */
-  .repository-row:has(:focus-visible) {
-    background: var(--table-row-hover);
   }
 
   /* The row's way in, at the end of the row where a reader looks for one. */
@@ -1618,7 +1571,10 @@
     text-decoration: none;
   }
 
-  .repo-copy:hover {
+  /* `:not(:active)` so this only cancels the HOVER wash. Without it the rule
+     also outranked `a[href]:active`, which is what paints the press - so the
+     name, and therefore the row, gave no feedback when pressed. */
+  .repo-copy:hover:not(:active) {
     background-image: none;
   }
 

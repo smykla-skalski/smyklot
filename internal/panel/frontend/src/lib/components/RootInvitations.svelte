@@ -1004,10 +1004,6 @@
       background: var(--surface-base);
       transition: background-color var(--duration-fast) var(--ease-standard);
     }
-
-    tbody tr:not(.empty-row):hover {
-      background: var(--table-row-hover);
-    }
   }
 
   /* Only where the column headings are not: the Status heading carries the same

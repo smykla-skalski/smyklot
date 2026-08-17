@@ -140,6 +140,12 @@
      sends hover and press in opposite directions on dark. */
   --danger-hover: color-mix(in srgb, var(--danger) 88%, black);
   --neutral-tint: var(--primitive-light-inset);
+  /* These are the measured hover grounds, and they are measured ALONE: the steps
+     `tests/control-states.test.ts` pins - 2.51 and 5.09 dE00 on light, 5.07 and
+     8.92 on dark - are the distance from each track to the value written here.
+     A blanket `button:hover` layer used to paint a second coat of 5.5% over all
+     of them, which put the sidebar's hover at 8.92 dE00 against a ceiling of 6.
+     That rule is gone; do not reintroduce it, here or globally. */
   --interactive-hover: #f1f5f3;
   /* One state change and two, as overlays so the step is the same on any ground.
      Sized against the sidebar's approved pair - 2.51 and 5.09 dE00 - rather than picked:
@@ -971,6 +977,40 @@ body {
    are outside the box by construction - hiding the block axis shaves them off.
    `clip` is the only value that can be set per axis, because a box hidden on one
    and visible on the other resolves both to something that clips. */
+/*
+ * A row you can press.
+ * -------------------
+ * One set of rules for every table that has them, because two tables grew this
+ * separately and each had to rediscover the same two traps - see
+ * `lib/table-row.svelte.ts`, which is the other half.
+ *
+ * The transform is composed HERE, from `--row-y`, so a virtualised row's offset
+ * and a press scale can coexist. Written to the element's `style` instead, the
+ * offset is an inline transform, nothing can extend it, and the scale is
+ * silently dropped. Every rule below carries the same specificity, so order
+ * decides and the states stack in the order they are written.
+ */
+.data-row {
+  /* The resting ground lives here too, with the states. A component that sets it
+     instead wins by a hair - Svelte appends its scope class to the rule, which
+     lifts it above anything written here - and the states then never paint. */
+  background: var(--surface-base);
+  transform: translateY(var(--row-y, 0px));
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+
+.data-row:hover,
+.data-row:has(:focus-visible) {
+  background: var(--table-row-hover);
+}
+
+/* A row is a wide surface, so it takes the smallest of the three press scales:
+   a full-width strip moving as far as a button reads as the table lurching. */
+.data-row.pressing {
+  background: var(--table-row-pressed);
+  transform: translateY(var(--row-y, 0px)) scale(var(--press-scale-surface));
+}
+
 .table-card :is(th, td) {
   overflow-x: clip;
   overflow-y: visible;
@@ -1034,16 +1074,6 @@ a[href] {
   -webkit-tap-highlight-color: transparent;
 }
 
-@media (hover: hover) {
-  button:hover:not(:disabled),
-  a[href]:hover {
-    background-image: linear-gradient(
-      var(--interactive-hover-layer),
-      var(--interactive-hover-layer)
-    );
-  }
-}
-
 button:active:not(:disabled),
 a[href]:active {
   background-image: linear-gradient(var(--press), var(--press));
@@ -1052,6 +1082,21 @@ a[href]:active {
 
 /* Hover mixes from ink rather than using --interactive-hover: that token is
    near-identical to the header background it would sit on. */
+/* The heading's own hover, stated here rather than inherited from a blanket rule
+   over every button and link. That rule is gone: it washed things that should
+   not wash - a repository name inside a row that already washes - and it stacked
+   with any control that set a hover of its own, which is what made this heading
+   read too dark. Same ink and same strength as before, now only where it is
+   wanted. */
+@media (hover: hover) {
+  .table-sort-button:hover {
+    background-image: linear-gradient(
+      var(--interactive-hover-layer),
+      var(--interactive-hover-layer)
+    );
+  }
+}
+
 /* A heading does not light up. What answers the pointer is the arrow beside the
    word - see `.sort-indicator` below - and the note above says why: a tinted
    header slab jumps between columns, fails contrast at 12px in light mode, and

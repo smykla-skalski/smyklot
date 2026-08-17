@@ -17,6 +17,7 @@
 
   import { PanelApiError } from '../api';
   import { dialogRoute } from '../dialog-route.svelte';
+  import { pressableRow } from '../table-row.svelte';
   import { formatDateTime, formatRelative, formatTimestamp, formatUntil } from '../format';
   import { monogram } from '../identity';
   import type { FilterSection } from '../filter-menu';
@@ -1018,21 +1019,6 @@
     return user.status === 'banned' || user.target_access?.suspended === true;
   }
 
-  /* Which row is being held down. `:active` on a `<tr>` matches but does not
-     repaint it - the row stayed on its hover colour with `matches(':active')`
-     already true - so the state is carried as a class the row can be styled by
-     like anything else. */
-  let pressedRow = $state<string | null>(null);
-
-  function holdRow(user: PanelUser): void {
-    if (!hasDecisionHistory(user)) return;
-    pressedRow = user.account.id;
-  }
-
-  function releaseRow(): void {
-    pressedRow = null;
-  }
-
   function openHistory(user: PanelUser, trigger: HTMLElement): void {
     if (!hasDecisionHistory(user)) return;
     historyTrigger = trigger;
@@ -1466,16 +1452,13 @@
                     <tr
                       class:virtual-row={virtualRow.virtual}
                       class:history-row={hasDecisionHistory(user)}
-                      class:pressing={pressedRow === user.account.id}
+                      class:data-row={hasDecisionHistory(user)}
                       style:height={virtualRow.virtual ? `${virtualRow.size}px` : undefined}
                       style:--row-y={virtualRow.virtual ? `${virtualRow.start}px` : '0px'}
                       tabindex={hasDecisionHistory(user) ? 0 : undefined}
                       onclick={(event) => clickHistoryRow(event, user)}
                       onkeydown={(event) => keyHistoryRow(event, user)}
-                      onpointerdown={() => holdRow(user)}
-                      onpointerup={releaseRow}
-                      onpointercancel={releaseRow}
-                      onpointerleave={releaseRow}
+                      use:pressableRow
                     >
                       <th scope="row">
                         <span class="user-identity">
@@ -2325,19 +2308,11 @@
 
   /* The arrow's own rules are shared - see `.sort-indicator` in `app.css`. */
 
-  .user-table tbody tr:hover {
-    background: var(--table-row-hover);
-  }
-
   .user-table tbody tr.history-row {
     cursor: pointer;
     transition:
       background-color var(--duration-fast) var(--ease-standard),
       transform var(--duration-press) var(--ease-standard);
-  }
-
-  .user-table tbody tr.history-row:hover {
-    background: var(--table-row-hover);
   }
 
   /* A row that can be pressed acknowledges the press the way every other control
@@ -2348,11 +2323,6 @@
   .user-table tbody tr.history-row {
     transform: translateY(var(--row-y, 0px));
     transform-origin: center;
-  }
-
-  .user-table tbody tr.history-row.pressing {
-    background: var(--table-row-pressed);
-    transform: translateY(var(--row-y, 0px)) scale(var(--press-scale-surface));
   }
 
   .user-table tbody tr.history-row:focus-visible {
@@ -2422,18 +2392,10 @@
          `:hover` rule outside this block, so the pointer state has to be restated here or it never
          reaches the screen. */
     /* Not the empty state - see the same rule in RepositoryList. */
-    .user-table tbody tr:not(.virtual-spacer, .empty-row):hover {
-      background: var(--table-row-hover);
-    }
-
     /* And the press with it, for the same reason and one more: the rule above is
        later in the sheet than the one that paints a held row, and carries the same
        specificity, so without this the row kept its hover colour under the pointer
        while the scale went ahead - which reads as the press half working. */
-    .user-table tbody tr.history-row.pressing {
-      background: var(--table-row-pressed);
-    }
-
     .user-table tbody tr:not(.virtual-spacer) {
       background: var(--surface-base);
       /* Pin the grid track to the row's fixed height: auto-sizing would take
