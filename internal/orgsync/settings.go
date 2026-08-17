@@ -583,7 +583,7 @@ func DiffSettings(config SettingsConfig, current CurrentSettings) (SettingsChang
 		}
 	}
 
-	change.Follows = follows(fields, config, current, repository.absent, switchedOff)
+	change.Follows = follows(fields, current, repository.absent, switchedOff)
 
 	sort.Strings(change.Fields)
 	sort.Strings(change.Follows)
@@ -698,41 +698,47 @@ func (v verdict) withholds(field settingsField, value any) string {
 //
 // Repeated until nothing more follows, because a dependency has dependants of
 // its own: advanced security carries secret scanning, which carries push
-// protection.
+// protection. One round per field is the bound rather than a condition to be
+// got right, because every round that carries on names a field no round before
+// it named, and there are only so many fields.
 func follows(
 	fields []settingsField,
-	config SettingsConfig,
 	current CurrentSettings,
 	absent map[string]bool,
 	switchedOff map[string]bool,
 ) []string {
 	var carried []string
 
-	for spreading := true; spreading; {
-		spreading = false
+	for round := 0; round < len(fields); round++ {
+		spreading := false
 
 		for _, field := range fields {
 			switch {
 			case field.requires == "" || !switchedOff[field.requires]:
 				continue
-			case switchedOff[field.name] || absent[field.name]:
-				// Already going off by itself, or not here to go off.
-				continue
-			}
 
-			// Configured settings are the change's own business; this is about
-			// the ones nobody mentioned. And a setting already off does not
-			// follow anything anywhere.
-			if _, _, configured := field.want(config); configured {
+			// Already going off by itself, already named by an earlier round,
+			// or not here to go off at all. Saying it once is the point, and
+			// the round that names nothing new is the one that ends the spread.
+			case switchedOff[field.name] || absent[field.name]:
 				continue
-			}
-			if field.on == nil || !field.on(config, current) {
+
+			// What the repository has now, not what the configuration asked
+			// for. A setting already off follows nothing anywhere - and one
+			// configured to what it already has is a change nothing sends, so
+			// nothing else in this answer names it. That is exactly the setting
+			// somebody asked to keep on and is about to lose.
+			case field.now == nil || !field.now(current):
 				continue
 			}
 
 			carried = append(carried, field.name)
 			switchedOff[field.name] = true
 			spreading = true
+		}
+
+		if !spreading {
+			break
 		}
 	}
 

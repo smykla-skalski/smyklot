@@ -498,10 +498,12 @@ var _ = Describe("Settings planning [Unit]", func() {
 			},
 		)
 
-		// Both of them, because what follows has dependants of its own
-		Expect(actions[0].After).To(ContainSubstring("secret_scanning"))
-		Expect(actions[0].After).To(ContainSubstring("secret_scanning_push_protection"))
-		Expect(actions[0].After).To(ContainSubstring("GitHub also switches off"))
+		// Both of them, because what follows has dependants of its own - and
+		// each said once, whole, because a dependant reached twice is a spread
+		// that never settles
+		Expect(actions[0].After).To(Equal(
+			"advanced_security; GitHub also switches off " +
+				"secret_scanning, secret_scanning_push_protection"))
 
 		// And it is still not sent: the endpoint replaces what it is given, and
 		// nobody configured these
@@ -509,6 +511,26 @@ var _ = Describe("Settings planning [Unit]", func() {
 		Expect(sent["security_and_analysis"]).To(Equal(map[string]any{
 			"advanced_security": map[string]any{"status": "disabled"},
 		}))
+	})
+
+	// The one that reads worst: a feature somebody explicitly asked to have on,
+	// already on, and switched off by GitHub because this change takes what it
+	// depends on away. Nothing sends it and nothing refuses it, so unless the
+	// plan says so the only account of it is the repository afterwards
+	It("says what goes off even where the configuration asked for it", func() {
+		actions := orgsync.PlanSettings(repo,
+			orgsync.SettingsConfig{
+				AdvancedSecurity:             disabled(),
+				SecretScanningPushProtection: enabled(),
+			},
+			orgsync.CurrentSettings{
+				AdvancedSecurity:             orgsync.FeatureOn,
+				SecretScanning:               orgsync.FeatureOn,
+				SecretScanningPushProtection: orgsync.FeatureOn,
+			},
+		)
+
+		Expect(actions[0].After).To(ContainSubstring("secret_scanning_push_protection"))
 	})
 
 	It("says nothing about a feature that was already off", func() {
