@@ -896,14 +896,47 @@ describe('history and authentication routes', () => {
     });
   });
 
-  it('falls back to the HTTP status for a non-envelope failure', async () => {
+  /* A gateway, a proxy or a crash page answers with a status and a body the panel cannot read, and
+     the sentence it falls back to goes straight into a red banner in front of a reader. It used to
+     be `panel request failed with status 502`, which is a line from a log. */
+  it('says what happened when a failure carries no envelope', async () => {
     const stub = stubFetch([new Response('<html>bad gateway</html>', { status: 502 })]);
 
     await expect(createPanelApi('', stub.fetch).fetchTargets()).rejects.toEqual(
       expect.objectContaining<Partial<PanelApiError>>({
         status: 502,
         code: 'unknown',
-        message: 'panel request failed with status 502',
+        message: 'the service could not answer',
+      }),
+    );
+  });
+
+  it.each([
+    [404, 'the service does not recognise this request'],
+    [403, 'this account is not allowed to see it'],
+    [409, 'it changed while this page was open'],
+    [418, 'the service refused the request'],
+  ])('says what happened for a bare %i', async (status, said) => {
+    const stub = stubFetch([new Response('nope', { status })]);
+
+    await expect(createPanelApi('', stub.fetch).fetchTargets()).rejects.toMatchObject({
+      status,
+      message: said,
+    });
+  });
+
+  /* The one failure with no status to phrase from. `fetch` REJECTS when the host is down or the
+     connection is refused - which is what a reader gets while the service restarts under them - and
+     `TypeError: Failed to fetch` reached the banner verbatim. */
+  it('turns a request that reached nobody into an error the views know', async () => {
+    const api = createPanelApi('', () => Promise.reject(new TypeError('Failed to fetch')));
+
+    await expect(api.fetchTargets()).rejects.toEqual(
+      expect.objectContaining<Partial<PanelApiError>>({
+        name: 'PanelApiError',
+        status: 0,
+        code: 'unreachable',
+        message: 'the service could not be reached',
       }),
     );
   });

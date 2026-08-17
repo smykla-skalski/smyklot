@@ -231,7 +231,12 @@ export function createPanelApi(
   const counted: FetchLike = (url, init) => {
     reportFlood(rate.record(url));
 
-    return fetchImpl(url, init);
+    /* A rejection here is a request that never reached anybody, and it is the one
+       failure the panel cannot phrase from a status. Turned into the same error
+       every other failure is, so a view that already handles one handles this. */
+    return Promise.resolve(fetchImpl(url, init)).catch((cause: unknown) => {
+      throw unreachable(cause);
+    });
   };
 
   const request = async (path: string, init?: RequestInit): Promise<Response> => {
@@ -852,9 +857,48 @@ function pathSegment(value: string): string {
   return encodeURIComponent(value).replace(/\./g, '%2E');
 }
 
+/**
+ * What to say when the answer carries no words of its own.
+ *
+ * The service sends an envelope with a sentence in it, and that sentence is
+ * always preferred. Nothing else does: a proxy, a crash page, a gateway, a dev
+ * server that lost its API middleware - each answers with a status and a body the
+ * panel cannot read, and the fallback used to be `panel request failed with
+ * status 404`, which is a line from a log put in front of a reader inside a red
+ * banner. These say what happened instead, and none of them ends in a stop: the
+ * views that show them compose them after a subject of their own.
+ */
+function describeStatus(status: number): string {
+  if (status === 0) return 'the service could not be reached';
+  if (status === 401) return 'this session is no longer signed in';
+  if (status === 403) return 'this account is not allowed to see it';
+  if (status === 404) return 'the service does not recognise this request';
+  if (status === 409) return 'it changed while this page was open';
+  if (status === 429) return 'too many requests went out at once';
+  if (status >= 500) return 'the service could not answer';
+
+  return 'the service refused the request';
+}
+
+/**
+ * A request that never reached anybody.
+ *
+ * `fetch` rejects rather than resolving when the host is down, the network is
+ * gone, or the connection is refused - which is exactly what a reader sees when
+ * the service restarts under them. Untranslated, `TypeError: Failed to fetch`
+ * reached the banner verbatim. Status 0 because there was no response to take one
+ * from, and every caller already branches on `PanelApiError` rather than on the
+ * shape of whatever `fetch` threw.
+ */
+export function unreachable(cause: unknown): PanelApiError {
+  const failure = new PanelApiError(0, 'unreachable', describeStatus(0));
+
+  return Object.assign(failure, { cause });
+}
+
 async function readError(response: Response): Promise<PanelApiError> {
   let code = 'unknown';
-  let message = `panel request failed with status ${response.status}`;
+  let message = describeStatus(response.status);
   try {
     const body = (await response.json()) as Partial<PanelErrorBody>;
     if (body.error?.code !== undefined) {
