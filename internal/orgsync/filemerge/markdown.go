@@ -50,13 +50,15 @@ func applySection(lines []string, section Section) ([]string, error) {
 	}
 
 	// Everything below addresses a heading.
-	found, err := locate(lines, section)
+	written := headings(lines)
+
+	found, err := locate(written, section)
 	if err != nil {
 		return nil, err
 	}
 
-	start := found.line
-	end := sectionEnd(headings(lines), found.index, len(lines))
+	start := written[found].line
+	end := sectionEnd(written, found, len(lines))
 
 	switch section.Action {
 	case SectionBefore:
@@ -79,42 +81,36 @@ func applySection(lines []string, section Section) ([]string, error) {
 	}
 }
 
-// located is a heading a section addressed, and where it sits.
-type located struct {
-	index int // position in the document's list of headings
-	line  int // line the heading is written on
-}
-
-// locate finds the one heading a section addresses.
+// locate answers which of a document's headings a section addresses, as an
+// index into them.
 //
 // A heading that appears more than once is refused unless the section says
 // which occurrence it means. The engine this replaces took the first and said
 // nothing, so a section operation aimed at the second "## Usage" in a document
 // silently rewrote the first - and a heading match that ignored the level made
 // "## Usage" and "### Usage" the same heading.
-func locate(lines []string, section Section) (located, error) {
+func locate(written []heading, section Section) (int, error) {
 	level, title, ok := parseHeading(section.Heading)
 	if !ok {
-		return located{}, fmt.Errorf(
+		return 0, fmt.Errorf(
 			"%w: %q is not a heading; write it with its # marks",
 			ErrInvalidSpec, section.Heading)
 	}
 
-	var matches []located
+	var matches []int
 
-	for index, candidate := range headings(lines) {
+	for index, candidate := range written {
 		if candidate.level == level && strings.EqualFold(candidate.title, title) {
-			matches = append(matches, located{index: index, line: candidate.line})
+			matches = append(matches, index)
 		}
 	}
 
 	switch {
 	case len(matches) == 0:
-		return located{}, fmt.Errorf(
-			"%w: no heading %q", ErrNothingAddressed, section.Heading)
+		return 0, fmt.Errorf("%w: no heading %q", ErrNothingAddressed, section.Heading)
 
 	case section.Occurrence == 0 && len(matches) > 1:
-		return located{}, fmt.Errorf(
+		return 0, fmt.Errorf(
 			"%w: %q appears %d times and nothing says which one is meant",
 			ErrNothingAddressed, section.Heading, len(matches))
 
@@ -122,7 +118,7 @@ func locate(lines []string, section Section) (located, error) {
 		return matches[0], nil
 
 	case section.Occurrence > len(matches):
-		return located{}, fmt.Errorf(
+		return 0, fmt.Errorf(
 			"%w: %q appears %d times, so there is no occurrence %d",
 			ErrNothingAddressed, section.Heading, len(matches), section.Occurrence)
 
