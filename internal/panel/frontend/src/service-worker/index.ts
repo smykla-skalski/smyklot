@@ -57,14 +57,15 @@ const SHELL_REQUEST = new Request(SCOPE_PATH, { credentials: 'same-origin' });
 self.addEventListener('install', (event) => {
   event.waitUntil(
     (async () => {
-      const name = await CACHE;
-      // Dropped and remade rather than reopened, so that `CacheStorage.keys()` really is
-      // in the order the builds were installed. A name is a digest of the bundle now, so
-      // it repeats when a release is rolled back - and reopening an existing cache leaves
-      // it where it was, which would have `activate` below read the rolled-back build as
-      // the oldest and delete the one that is live.
-      await caches.delete(name);
-      const cache = await caches.open(name);
+      // Opened, never dropped first. Dropping it would put `CacheStorage.keys()` back in
+      // true install order, which `activate` below would rather have - a name is a digest
+      // of the bundle now, so it repeats when a release is rolled back and reopening
+      // leaves it where it was. It is not worth what it costs: this worker is not part of
+      // the bundle it hashes, so changing this file alone installs a new worker with the
+      // same name, and dropping the cache would empty the one the running worker is
+      // serving from. `addAll` is one transaction, so a reader who is offline when that
+      // happens would be left with no shell at all - which is the thing this exists for.
+      const cache = await caches.open(await CACHE);
       await cache.addAll([...ASSETS, SHELL_REQUEST]);
       await self.skipWaiting();
     })(),

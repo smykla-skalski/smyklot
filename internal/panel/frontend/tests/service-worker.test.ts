@@ -137,6 +137,20 @@ describe('a panel service-worker upgrade', () => {
   // built bundle - so a release that changes only a static file leaves both alone, and a
   // cached copy would stand forever. The reader is answered from cache and the copy is
   // replaced behind them.
+  // This worker is not part of the bundle it hashes, so changing this file alone gives a
+  // new worker with the same cache name. Emptying the cache first - which would put
+  // CacheStorage.keys() back in install order - would take the running worker's shell
+  // with it, and `addAll` is one transaction, so a reader offline at that moment would
+  // be left with nothing.
+  it('does not empty a cache the running worker is serving from', async () => {
+    const current = await cacheName('/panel/', ['_app/immutable/current.js']);
+    stored.set(current, new Map([['/panel/', new Response('the running shell')]]));
+
+    await dispatchExtended(listeners, 'install');
+
+    expect(deleted, 'install dropped the cache it was about to refill').not.toContain(current);
+  });
+
   it('replaces a static file it answered from cache', async () => {
     network.mockImplementation(async () => sameOrigin('fresh static'));
     await dispatchExtended(listeners, 'install');
