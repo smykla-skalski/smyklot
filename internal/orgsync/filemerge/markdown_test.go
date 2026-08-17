@@ -311,4 +311,100 @@ Somebody reads it.
 			},
 			"does not find"),
 	)
+
+	// The other way CommonMark writes a heading. Read only for the `#` sort, a
+	// section ran to the end of the file, and replacing one deleted every
+	// underlined section below it - the silent destruction this engine was
+	// rewritten to stop, arriving through the half nobody had looked at.
+	Describe("a heading written with an underline", func() {
+		const underlined = `## Setup
+
+Run the installer.
+
+Release
+-------
+
+Tag it.
+
+Support
+=======
+
+Ask in chat.
+`
+
+		It("bounds the section above it", func() {
+			out, err := merged(underlined, filemerge.Section{
+				Action: filemerge.SectionReplace, Heading: "## Setup",
+				Content: "## Setup\n\nRun the new installer.\n",
+			})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(out).To(ContainSubstring("Run the new installer."))
+			Expect(out).To(ContainSubstring("Release\n-------"))
+			Expect(out).To(ContainSubstring("Tag it."))
+			Expect(out).To(ContainSubstring("Support\n======="))
+			Expect(out).To(ContainSubstring("Ask in chat."))
+		})
+
+		It("is addressed by its level and its words", func() {
+			out, err := merged(underlined, filemerge.Section{
+				Action: filemerge.SectionReplace, Heading: "## Release",
+				Content: "## Release\n\nTag it twice.\n",
+			})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(out).To(ContainSubstring("Tag it twice."))
+			Expect(out).NotTo(ContainSubstring("Release\n-------"))
+			Expect(out).To(ContainSubstring("Support\n======="))
+		})
+
+		It("bounds a section at its own level and above", func() {
+			out, err := merged(underlined, filemerge.Section{
+				Action: filemerge.SectionDelete, Heading: "# Support",
+			})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(out).NotTo(ContainSubstring("Ask in chat."))
+			Expect(out).To(ContainSubstring("Tag it."))
+		})
+
+		// A patch works below the whole heading. Able to see the underline, it
+		// could substitute over it and leave the heading an ordinary paragraph -
+		// so a patch looking for the only dashes in the section finds nothing,
+		// which is the refusal that says they are not in reach.
+		It("keeps the underline out of what a patch substitutes over", func() {
+			_, err := merged(underlined, filemerge.Section{
+				Action: filemerge.SectionPatch, Heading: "## Release",
+				Patches: []filemerge.Patch{{Find: "---", Replace: "+++"}},
+			})
+
+			Expect(err).To(MatchError(filemerge.ErrNothingAddressed))
+		})
+
+		It("patches the body under it as it does any other", func() {
+			out, err := merged(underlined, filemerge.Section{
+				Action: filemerge.SectionPatch, Heading: "## Release",
+				Patches: []filemerge.Patch{{Find: "Tag it.", Replace: "Tag it twice."}},
+			})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(out).To(ContainSubstring("Release\n-------"))
+			Expect(out).To(ContainSubstring("Tag it twice."))
+		})
+
+		// After a blank line the same characters are a thematic break, which is
+		// not a heading and must not bound anything.
+		It("is not a rule between paragraphs", func() {
+			out, err := merged("## Setup\n\nold\n\n---\n\n## Later\n\nkeep me\n",
+				filemerge.Section{
+					Action: filemerge.SectionReplace, Heading: "## Setup",
+					Content: "## Setup\n\nnew\n",
+				})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(out).To(ContainSubstring("new"))
+			Expect(out).To(ContainSubstring("## Later"))
+			Expect(out).To(ContainSubstring("keep me"))
+		})
+	})
 })

@@ -75,7 +75,10 @@ func applySection(lines []string, section Section) ([]string, error) {
 		return trimRuns(append(append([]string{}, lines[:start]...), lines[end:]...)), nil
 
 	case SectionPatch:
-		return patchBody(lines, start, end, section)
+		// Below the whole heading, which is two lines where it was written
+		// with an underline: a patch that could see the underline could
+		// substitute over it and leave the heading a paragraph.
+		return patchBody(lines, start+written[found].span, end, section)
 
 	default:
 		return nil, fmt.Errorf("%w: unknown action %q", ErrInvalidSpec, section.Action)
@@ -133,22 +136,22 @@ func locate(written []heading, section Section) (int, error) {
 // Below it, because the heading is how the section is addressed: the engine
 // this replaces included the heading line in the text it substituted over, so a
 // patch whose find string appeared in the heading renamed the section it had
-// just been asked to edit.
-func patchBody(lines []string, start, end int, section Section) ([]string, error) {
-	body := strings.Join(lines[start+1:end], "\n")
+// just been asked to edit. body is where that heading ends.
+func patchBody(lines []string, body, end int, section Section) ([]string, error) {
+	text := strings.Join(lines[body:end], "\n")
 
 	for index, patch := range section.Patches {
-		if !strings.Contains(body, patch.Find) {
+		if !strings.Contains(text, patch.Find) {
 			return nil, fmt.Errorf("%w: patch %d does not find %q under %q",
 				ErrNothingAddressed, index+1, patch.Find, section.Heading)
 		}
 
-		body = strings.ReplaceAll(body, patch.Find, patch.Replace)
+		text = strings.ReplaceAll(text, patch.Find, patch.Replace)
 	}
 
 	patched := make([]string, 0, len(lines))
-	patched = append(patched, lines[:start+1]...)
-	patched = append(patched, splitLines(body)...)
+	patched = append(patched, lines[:body]...)
+	patched = append(patched, splitLines(text)...)
 	patched = append(patched, lines[end:]...)
 
 	return patched, nil
@@ -231,20 +234,39 @@ func replaceRange(lines []string, start, end int, content []string) []string {
 	return trimRuns(joined)
 }
 
-// heading is an ATX heading and where it was written.
+// heading is a heading and where it was written.
 type heading struct {
 	level int
 	title string
 	line  int
+
+	// span is how many lines the heading itself occupies: one for `## Setup`,
+	// and the paragraph plus its underline for the form written as
+	//
+	//	Setup
+	//	-----
+	//
+	// It is what tells a section's heading from a section's body, and the two
+	// forms differ only in that.
+	span int
 }
 
 // headings reads every heading in a document, skipping fenced code.
+//
+// Both forms CommonMark has. Reading only the `#` sort left a document's
+// underlined headings invisible, so a section ran to the end of the file and
+// replacing one deleted every underlined section below it - which is the
+// silent destruction this whole engine was rewritten to stop.
 func headings(lines []string) []heading {
 	var (
 		found  []heading
 		fence  byte
 		length int
 		open   bool
+
+		// Where the run of ordinary lines above this one started, or -1. A
+		// heading written with an underline is that run, and the line under it.
+		paragraph = -1
 	)
 
 	for index, text := range lines {
@@ -259,17 +281,80 @@ func headings(lines []string) []heading {
 		}
 
 		if isFence && opensFence(character, rest) {
-			open, fence, length = true, character, run
+			open, fence, length, paragraph = true, character, run, -1
 
 			continue
 		}
 
 		if level, title, ok := parseHeading(text); ok {
-			found = append(found, heading{level: level, title: title, line: index})
+			found = append(found, heading{level: level, title: title, line: index, span: 1})
+			paragraph = -1
+
+			continue
+		}
+
+		// Only under a paragraph. The same line after a blank one is a
+		// thematic break, which is not a heading and must not bound a section.
+		if level, ok := underline(text); ok && paragraph >= 0 {
+			found = append(found, heading{
+				level: level,
+				title: strings.TrimSpace(strings.Join(lines[paragraph:index], " ")),
+				line:  paragraph,
+				span:  index - paragraph + 1,
+			})
+			paragraph = -1
+
+			continue
+		}
+
+		if strings.TrimSpace(text) == "" {
+			paragraph = -1
+
+			continue
+		}
+
+		if paragraph < 0 {
+			paragraph = index
 		}
 	}
 
 	return found
+}
+
+// underline reads a line as the underline of a heading written the second way.
+func underline(text string) (level int, ok bool) {
+	indent := 0
+	for indent < len(text) && text[indent] == ' ' {
+		indent++
+	}
+
+	// Four spaces makes it an indented code block, the same as it does for the
+	// other form.
+	if indent > widestIndent || indent == len(text) {
+		return 0, false
+	}
+
+	character := text[indent]
+	if character != '=' && character != '-' {
+		return 0, false
+	}
+
+	// A run of the one character, and then nothing but the whitespace a line
+	// may end with.
+	rest := strings.TrimRight(text[indent:], " \t")
+	if strings.Trim(rest, string(character)) != "" {
+		return 0, false
+	}
+
+	return levelOf(character), true
+}
+
+func levelOf(character byte) int {
+	if character == '=' {
+		return 1
+	}
+
+	return 2
 }
 
 // opensFence tells a fence that starts a block from a line that only looks like
