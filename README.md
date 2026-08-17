@@ -425,7 +425,7 @@ Run `mise run panel:dev:mock` to inspect every panel state with deterministic lo
 
 ### Organization sync
 
-The service can keep every repository in an installation carrying the same labels and set to the same repository settings. Both are configured in the panel, per installation, and each is switched on separately.
+The service can keep every repository in an installation carrying the same labels, set to the same repository settings, and enforcing the same rulesets. All three are configured in the panel, per installation, and each is switched on separately.
 
 Nothing is changed without being shown first. A reconcile works out what would differ, stores it as a plan, and waits: the panel lists every change against every repository, and applying is a second act. A plan is invalidated the moment the configuration behind it changes, so nobody can approve a screen that has gone stale.
 
@@ -433,7 +433,9 @@ A repository may opt out of one kind and keep the others. Removal is off unless 
 
 Settings carry a rule labels do not. Every one of them has three states - on, off, and not configured - and the third means the repository keeps whatever it has. Some combinations GitHub refuses outright, with a 422 on the whole request, so those are found before they are sent: a commit wording whose merge strategy would be off, a change that would leave a repository with no way to merge at all, and a security feature the repository does not have. Each is left alone and named in the plan with the reason, rather than costing the repository every other setting in the same change.
 
-Labels need the **Issues** write access the bot already holds. Settings need **Administration** write, and an installation that has not approved it is not an error: that kind stands down, says which permission it wants, and the rest of the sync carries on.
+Rulesets are how branch protection is expressed here, because a ruleset takes a ref pattern - `refs/heads/release/*` protects the release branch cut tomorrow, where the branch-protection endpoint takes one concrete branch and protects only what exists today. A ruleset the configuration names is owned whole: GitHub writes one by replacement, so what the configuration does not say stops being enforced, and the plan says what would go before it goes. A ruleset the configuration no longer names can be removed, which is the one thing here that destroys something somebody may have made by hand, so it needs removal switched on and it appears in a plan first. A ruleset the organization defines is read but never written: it is not the repository's to change, and the plan says when a repository-level one would be enforced beside it.
+
+Labels need the **Issues** write access the bot already holds. Settings and rulesets need **Administration** write, and an installation that has not approved it is not an error: that kind stands down, says which permission it wants, and the rest of the sync carries on.
 
 A repository that already matches is not read again for six hours. That is what keeps a steady sweep at almost no cost, and the horizon is what lets it still notice a label renamed by hand.
 
