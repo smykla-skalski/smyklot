@@ -556,15 +556,13 @@
     <thead>
       <tr>
         <th scope="col" aria-sort={sortDirection(section === 'recent' ? 'outcome' : 'checks')}>
-          <div class="heading-layout">
+          <div class="table-heading">
             <button
               class="table-sort-button"
               type="button"
               onclick={() => toggleSort(section === 'recent' ? 'outcome' : 'checks')}
             >
-              <span class="heading-label band-trim"
-                >{section === 'recent' ? 'Outcome' : 'Checks'}</span
-              >
+              <span class="table-heading-label">{section === 'recent' ? 'Outcome' : 'Checks'}</span>
               <SortIndicator />
             </button>
             <FilterMenu
@@ -582,8 +580,8 @@
           </div>
         </th>
         <th scope="col">
-          <div class="heading-layout">
-            <span class="heading-label band-trim">Pull request</span>
+          <div class="table-heading">
+            <span class="table-heading-label">Pull request</span>
             <!-- Everything the cell under it says, in four sections: the
                  repository, the merge contract, whoever armed it and what it is
                  waiting on. A menu here that offered only the repository could not
@@ -605,9 +603,9 @@
         </th>
         {#if section === 'recent'}
           <th scope="col" class="cleanup-column" aria-sort={sortDirection('cleanup')}>
-            <div class="heading-layout">
+            <div class="table-heading">
               <button class="table-sort-button" type="button" onclick={() => toggleSort('cleanup')}>
-                <span class="heading-label band-trim">Cleanup</span>
+                <span class="table-heading-label">Cleanup</span>
                 <SortIndicator />
               </button>
               <FilterMenu
@@ -622,18 +620,26 @@
               />
             </div>
           </th>
-          <th scope="col"><span class="heading-label band-trim">Why it ended</span></th>
+          <th scope="col">
+            <div class="table-heading"><span class="table-heading-label">Why it ended</span></div>
+          </th>
           <th scope="col" aria-sort={sortDirection('finished')}>
-            <button class="table-sort-button" type="button" onclick={() => toggleSort('finished')}>
-              <span class="heading-label band-trim">Finished</span>
-              <SortIndicator />
-            </button>
+            <div class="table-heading">
+              <button
+                class="table-sort-button"
+                type="button"
+                onclick={() => toggleSort('finished')}
+              >
+                <span class="table-heading-label">Finished</span>
+                <SortIndicator />
+              </button>
+            </div>
           </th>
         {:else}
           <th scope="col" aria-sort={sortDirection('next')}>
-            <div class="heading-layout">
+            <div class="table-heading">
               <button class="table-sort-button" type="button" onclick={() => toggleSort('next')}>
-                <span class="heading-label band-trim">Next</span>
+                <span class="table-heading-label">Next</span>
                 <SortIndicator />
               </button>
               <FilterMenu
@@ -654,10 +660,12 @@
                here, which would have been the same values behind a second trigger
                in a column that never shows them. -->
           <th scope="col" aria-sort={sortDirection('armed')}>
-            <button class="table-sort-button" type="button" onclick={() => toggleSort('armed')}>
-              <span class="heading-label band-trim">Armed</span>
-              <SortIndicator />
-            </button>
+            <div class="table-heading">
+              <button class="table-sort-button" type="button" onclick={() => toggleSort('armed')}>
+                <span class="table-heading-label">Armed</span>
+                <SortIndicator />
+              </button>
+            </div>
           </th>
         {/if}
         <th scope="col"><span class="visually-hidden">Actions</span></th>
@@ -879,18 +887,12 @@
     width: 100%;
   }
 
-  /* The padding is published rather than applied, so that whatever fills the cell
-     can take it: a sortable heading's target has to reach the cell's own edges,
-     which it cannot do while the cell holds the padding outside it. The history
-     table already does this - its `th` has none and its button carries it - and
-     the two looked different because of it. `--heading-pad-start` keeps the first
-     column's wider inset, so the word still begins where the values under it do. */
+  /* The shape of a heading - no padding on the cell, the button carrying it, the
+     filter riding over the target - is `thead th` and `.table-heading` in
+     `app.css`, shared with the five other tables. All this table states is the
+     band's height and the wider inset its outermost columns take. */
   .queue-table th {
-    --heading-pad-start: var(--space-3);
-    --heading-pad-end: var(--space-3);
-
     height: 2.5rem;
-    padding: 0;
   }
 
   .queue-table th:first-child {
@@ -899,16 +901,6 @@
 
   .queue-table th:last-child {
     --heading-pad-end: var(--space-4);
-  }
-
-  .queue-table th > :is(.heading-layout, .table-sort-button, .heading-label) {
-    padding-inline: var(--heading-pad-start) var(--heading-pad-end);
-  }
-
-  /* Inside a layout the padding belongs to the layout, not to the button within
-     it - otherwise the filter beside it would sit inside the button's inset. */
-  .queue-table th > .heading-layout > .table-sort-button {
-    padding-inline: 0;
   }
 
   /* Column widths as rules rather than a `<colgroup>`: a `style` attribute in
@@ -987,28 +979,8 @@
     padding-left: var(--space-4);
   }
 
-  .queue-table th:last-child,
   .queue-table td:last-child {
     padding-right: var(--space-4);
-  }
-
-  /* A block-level flex row, so the cell holds no anonymous line box and the
-     table's own font cannot place the baseline. An inline label in a 15px cell
-     sat 1.81px below where its 13px box said it was. */
-  /* `height: 100%` because the sort button inside it fills what it is given, and
-     what it is given here is this row: without it the button was 14px tall in a
-     40px cell, so a heading in this table answered the pointer over a third of the
-     area the same heading answers over in the history table. */
-  .heading-layout {
-    align-items: center;
-    display: flex;
-    gap: 0.3rem;
-    height: 100%;
-    min-width: 0;
-  }
-
-  .heading-layout :global(.header-filter) {
-    margin-inline-start: auto;
   }
 
   /* The row height is stated, and the content is centred in it. Padding is the

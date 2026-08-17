@@ -24,6 +24,7 @@
   import Modal from './Modal.svelte';
   import ResultProblem from './ResultProblem.svelte';
   import SearchField from './SearchField.svelte';
+  import SortIndicator from './SortIndicator.svelte';
   import TableToolsMenu from './TableToolsMenu.svelte';
   import TableEmptyState from './TableEmptyState.svelte';
 
@@ -421,14 +422,24 @@
           <thead>
             <tr>
               <th scope="col" aria-sort={sortDirection('name')}>
-                <button class="table-sort-button" type="button" onclick={() => toggleSort('name')}>
-                  <span>Invitee</span><Icon name="sort" size={14} />
-                </button>
+                <div class="table-heading">
+                  <button
+                    class="table-sort-button"
+                    type="button"
+                    onclick={() => toggleSort('name')}
+                  >
+                    <span class="table-heading-label">Invitee</span><SortIndicator />
+                  </button>
+                </div>
               </th>
-              <th scope="col">System role</th>
               <th scope="col">
-                <div class="heading-layout">
-                  <span class="heading-label band-trim">Status</span>
+                <div class="table-heading">
+                  <span class="table-heading-label">System role</span>
+                </div>
+              </th>
+              <th scope="col">
+                <div class="table-heading">
+                  <span class="table-heading-label">Status</span>
                   <FilterMenu
                     label="Invitation status"
                     summary={statuses.length === 0 ? 'All statuses' : `${statuses.length} selected`}
@@ -442,22 +453,26 @@
                 </div>
               </th>
               <th scope="col" aria-sort={sortDirection('expiry')}>
-                <button
-                  class="table-sort-button"
-                  type="button"
-                  onclick={() => toggleSort('expiry')}
-                >
-                  <span>Expires</span><Icon name="sort" size={14} />
-                </button>
+                <div class="table-heading">
+                  <button
+                    class="table-sort-button"
+                    type="button"
+                    onclick={() => toggleSort('expiry')}
+                  >
+                    <span class="table-heading-label">Expires</span><SortIndicator />
+                  </button>
+                </div>
               </th>
               <th scope="col" aria-sort={sortDirection('created')}>
-                <button
-                  class="table-sort-button"
-                  type="button"
-                  onclick={() => toggleSort('created')}
-                >
-                  <span>Created</span><Icon name="sort" size={14} />
-                </button>
+                <div class="table-heading">
+                  <button
+                    class="table-sort-button"
+                    type="button"
+                    onclick={() => toggleSort('created')}
+                  >
+                    <span class="table-heading-label">Created</span><SortIndicator />
+                  </button>
+                </div>
               </th>
               <th scope="col"><span class="visually-hidden">Actions</span></th>
             </tr>
@@ -740,27 +755,28 @@
 
   th,
   td {
-    padding: 0.625rem 0.75rem;
     text-align: left;
     vertical-align: middle;
   }
 
-  th:first-child,
+  /* `td` alone: a heading's padding belongs to whatever fills it - see `thead th`
+     in `app.css` - and a class-scoped rule here takes it back without saying so. */
+  td {
+    padding: 0.625rem 0.75rem;
+  }
+
   td:first-child {
     padding-left: var(--space-4);
   }
 
-  thead th:first-child .table-sort-button {
-    padding-left: var(--space-4);
-  }
-
-  /* Typography and ground come from `thead th` in `app.css`. */
-  th {
+  /* Typography, ground and the heading's whole shape come from `app.css`. Only
+     the band's height and the first column's wider inset are this table's own. */
+  thead th {
     height: 2.5rem;
   }
 
-  th:has(.table-sort-button) {
-    padding: 0;
+  thead th:first-child {
+    --heading-pad-start: var(--space-4);
   }
 
   th:first-child,
@@ -788,52 +804,12 @@
     width: 3rem;
   }
 
-  .table-sort-button,
-  .heading-layout {
-    align-items: center;
-    display: flex;
-    height: 100%;
-  }
-
-  .table-sort-button {
-    background: transparent;
-    border: 0;
-    color: inherit;
-    font: inherit;
-    gap: var(--space-2);
-    justify-content: flex-start;
-    padding: 0.625rem 0.75rem;
-    width: 100%;
-  }
-
-  .table-sort-button :global(svg) {
-    opacity: 0;
-    transition:
-      opacity var(--duration-fast) var(--ease-standard),
-      transform var(--duration-fast) var(--ease-standard);
-  }
-
-  .table-sort-button:hover :global(svg),
-  .table-sort-button:focus-visible :global(svg) {
-    opacity: 0.55;
-  }
-
-  th[aria-sort='ascending'] .table-sort-button :global(svg),
-  th[aria-sort='descending'] .table-sort-button :global(svg) {
-    opacity: 1;
-  }
-
-  th[aria-sort='descending'] .table-sort-button :global(svg) {
-    transform: rotate(180deg);
-  }
-
-  .heading-layout {
-    justify-content: space-between;
-  }
-
-  .heading-layout :global(.header-filter) {
-    margin-inline: var(--space-1);
-  }
+  /* The heading's row, its button and its arrow are shared - see `.table-heading`,
+     `.table-sort-button` and `.sort-indicator` in `app.css`. This table kept the
+     worst copy of all three: a `background: transparent` that outranked the shared
+     hover and removed it, arrow rules written against the raw `<svg>`, and the
+     rotationally-symmetric `sort` glyph, which says a column can be sorted and
+     never which way it is. */
 
   .identity {
     align-items: center;

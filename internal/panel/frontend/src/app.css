@@ -1086,6 +1086,66 @@ a[href]:active {
   transform: scale(var(--press-scale));
 }
 
+/* One column heading, for every table.
+   ------------------------------------------------------------------------
+   A heading is a cell, a row inside it, and either a word or a button holding
+   that word - with, in four columns, a filter trigger at the end. Six tables
+   drew this and six kept a copy: two names for the row, a `.sort-button` beside
+   the shared class carrying the other half of its reset, and five rules
+   addressed to a `.header-filter` class nothing has rendered since the popover
+   was shared. The whole pattern is here, so a seventh table gets it by writing
+   the markup rather than by remembering.
+
+   WHERE THE PADDING LIVES is the point of it. Polaris, Carbon and Ant Design
+   all arrived at the same answer after shipping the same bug: a heading that
+   tints under the pointer but only answers it over the words. The cell gives up
+   its padding to whatever fills it, so the target IS the cell and the words
+   still begin where the values under them do.
+   https://github.com/Shopify/polaris/pull/1273 */
+thead th {
+  --heading-pad-start: var(--space-3);
+  --heading-pad-end: var(--space-3);
+  --heading-filter-room: 0rem;
+
+  padding: 0;
+  /* The containing block for the filter trigger, which rides over the sort
+     target rather than sitting beside it. */
+  position: relative;
+}
+
+/* The row inside the cell, with no inset of its own: it is the button that has
+   to carry that, or the button is inset from the very cell it stands for. */
+.table-heading {
+  align-items: center;
+  display: flex;
+  height: 100%;
+  min-width: 0;
+}
+
+.table-heading > :is(.table-sort-button, .table-heading-label) {
+  padding-inline: var(--heading-pad-start) calc(var(--heading-pad-end) + var(--heading-filter-room));
+}
+
+.table-heading-label {
+  min-width: 0;
+  text-box: trim-both cap alphabetic;
+}
+
+/* The filter is a lid on the sort target, not a sibling taking a third of it.
+   The room it needs comes out of the button's end padding, so the arrow never
+   slides under the funnel; `margin-block: auto` against a filled block inset
+   centres a fixed-height box in the cell without a number in it. */
+thead th:has(.filter-trigger) {
+  --heading-filter-room: 2rem;
+}
+
+.table-heading > .filter-trigger {
+  inset-block: 0;
+  inset-inline-end: var(--heading-pad-end);
+  margin-block: auto;
+  position: absolute;
+}
+
 /* Hover mixes from ink rather than using --interactive-hover: that token is
    near-identical to the header background it would sit on. */
 /* The heading's own hover, stated here rather than inherited from a blanket rule
@@ -1093,9 +1153,20 @@ a[href]:active {
    not wash - a repository name inside a row that already washes - and it stacked
    with any control that set a hover of its own, which is what made this heading
    read too dark. Same ink and same strength as before, now only where it is
-   wanted. */
+   wanted.
+
+   Asked of the CELL, not of the button. The two are the same box, but the filter
+   trigger sits over the button without being inside it, so a pointer crossing the
+   funnel left the button's `:hover` and the whole heading dropped its tint - the
+   one gap in a target that is otherwise the full cell.
+
+   Except on the funnel itself, which lights alone. The tint says what the pointer
+   would act on, and on the funnel that is the menu, not the sort - so a heading
+   that lit up whole while the pointer sat on its filter was naming the wrong
+   control. Everywhere else in the cell, including the ground behind the funnel,
+   the heading is what would answer and the heading is what lights. */
 @media (hover: hover) {
-  .table-sort-button:hover {
+  thead th:hover:not(:has(.filter-trigger:hover)) .table-sort-button {
     background-image: linear-gradient(
       var(--interactive-hover-layer),
       var(--interactive-hover-layer)
@@ -1115,7 +1186,7 @@ a[href]:active {
    pointer ran into as it crossed the header row. Removing the reset made every
    heading wash instead, which is the same fault the other way up. Neither is
    what the deployed panel draws, and neither is what the design asks for. */
-.table-sort-button:hover {
+thead th:hover:not(:has(.filter-trigger:hover)) .table-sort-button {
   color: var(--text-primary);
 }
 
@@ -1149,9 +1220,14 @@ a[href]:active {
  * then descending, then ascending again - so the offer is always the opposite of
  * what is showing, and a column with no sort offers ascending.
  *
+ * It trails the word. Leading it was tried - a pair of chevrons drawn always,
+ * the sorted one lit, which is what AG Grid and Ant Design draw - and read as
+ * clutter at this type size; Bart's call is the single arrow, after the word.
+ *
  * One copy, here. Three tables had one each and they had drifted: one keyed off
  * `aria-sort` on the cell, one off classes on the indicator, one off both, with
- * two different transition timings between them.
+ * two different transition timings between them - and a fourth drew the
+ * rotationally-symmetric `sort` glyph and rotated it, which changed nothing.
  */
 .sort-indicator {
   color: var(--text-muted);
@@ -1166,7 +1242,14 @@ a[href]:active {
 /* An unsorted column says nothing until it is asked, and then only faintly: this
    is an offer, not a state. Held in `:where()` so it stays weaker than the
    sorted column's own arrow below - at full specificity it outranked it, and
-   hovering the sorted heading faded the very thing it was pointing with. */
+   hovering the sorted heading faded the very thing it was pointing with.
+
+   Asked of the BUTTON, unlike the tint below, which is asked of the cell. The
+   two questions are different: the tint says where the pointer is, and the cell
+   is where it is even when the funnel is under it; the arrow says what a press
+   would do, and a press on the funnel opens a menu. An arrow that turned over as
+   the pointer reached the filter was offering something that trigger does not
+   give. */
 .table-sort-button:where(:hover, :focus-visible) .sort-indicator {
   opacity: 0.55;
 }
@@ -1182,7 +1265,8 @@ th[aria-sort='descending'] .sort-indicator {
 }
 
 /* The offer: turned the other way, because that is what pressing would do. It
-   turns rather than swaps, so the change reads as the same arrow moving. */
+   turns rather than swaps, so the change reads as the same arrow moving. On the
+   button, for the reason above - the funnel is not what would turn it. */
 th[aria-sort='ascending'] .table-sort-button:where(:hover, :focus-visible) .sort-indicator {
   transform: rotate(180deg);
 }
@@ -1219,11 +1303,12 @@ th[aria-sort='descending'] .table-sort-button:where(:hover, :focus-visible) .sor
   text-align: left;
   text-transform: inherit;
 
-  /* The target is the space its cell gives it, which is what makes the hover the
-     same size in every table. Measured before this, the queue's heading answered
-     over 54% of its cell's width and 35% of its height - the words and nothing
-     else - while the history table's covered all of it. The cell keeps its own
-     padding, so the words still start where the values under them do. */
+  /* The target is the whole cell, which is what makes the hover the same size in
+     every table. Measured before this, the queue's heading answered over 54% of
+     its cell's width and 35% of its height - the words and nothing else - while
+     the history table's covered all of it. The inset comes from the rule above,
+     not from the cell, so the words still begin where the values under them do
+     and the ground beside them still answers the pointer. */
   flex: 1;
   height: 100%;
   width: 100%;
@@ -1316,6 +1401,13 @@ th[aria-sort='descending'] .table-sort-button:where(:hover, :focus-visible) .sor
   justify-content: center;
   line-height: 1;
   padding: 0;
+  /* So a badge can ride the corner - the filter trigger's count does. Stated
+     here rather than in each caller: a component that positions ITSELF cannot be
+     placed by the layout around it, because Svelte's scoping adds a class to the
+     component's own selector and a shared rule of the same shape then loses.
+     That is how the queue's filter stayed in flow, taking 28px of a 136px cell
+     out of the sort target underneath it. */
+  position: relative;
   transition:
     background-color var(--duration-fast) var(--ease-out),
     color var(--duration-fast) var(--ease-out),

@@ -780,23 +780,25 @@
           <thead>
             <tr>
               <th scope="col" aria-sort={sortDirection('actor')}>
-                <button
-                  class="sort-button table-sort-button"
-                  type="button"
-                  onclick={() => toggleSort('actor')}
-                >
-                  <span class="cap-trim">Actor</span>
-                  <SortIndicator />
-                </button>
+                <div class="table-heading">
+                  <button
+                    class="table-sort-button"
+                    type="button"
+                    onclick={() => toggleSort('actor')}
+                  >
+                    <span class="table-heading-label">Actor</span>
+                    <SortIndicator />
+                  </button>
+                </div>
               </th>
               <th scope="col" aria-sort={sortDirection('target')}>
-                <div class="table-heading-layout">
+                <div class="table-heading">
                   <button
-                    class="sort-button table-sort-button"
+                    class="table-sort-button"
                     type="button"
                     onclick={() => toggleSort('target')}
                   >
-                    <span class="cap-trim">Target</span>
+                    <span class="table-heading-label">Target</span>
                     <SortIndicator />
                   </button>
                   {#if context === 'installation'}
@@ -815,13 +817,13 @@
                 </div>
               </th>
               <th scope="col" aria-sort={sortDirection('change')}>
-                <div class="table-heading-layout">
+                <div class="table-heading">
                   <button
-                    class="sort-button table-sort-button"
+                    class="table-sort-button"
                     type="button"
                     onclick={() => toggleSort('change')}
                   >
-                    <span class="cap-trim">Change</span>
+                    <span class="table-heading-label">Change</span>
                     <SortIndicator />
                   </button>
                   {#if context === 'root'}
@@ -852,14 +854,16 @@
                 </div>
               </th>
               <th scope="col" aria-sort={sortDirection('when')}>
-                <button
-                  class="sort-button table-sort-button"
-                  type="button"
-                  onclick={() => toggleSort('when')}
-                >
-                  <span class="cap-trim">When</span>
-                  <SortIndicator />
-                </button>
+                <div class="table-heading">
+                  <button
+                    class="table-sort-button"
+                    type="button"
+                    onclick={() => toggleSort('when')}
+                  >
+                    <span class="table-heading-label">When</span>
+                    <SortIndicator />
+                  </button>
+                </div>
               </th>
             </tr>
           </thead>
@@ -960,13 +964,13 @@
           <thead>
             <tr>
               <th scope="col" aria-sort={sortDirection('status')}>
-                <div class="table-heading-layout">
+                <div class="table-heading">
                   <button
-                    class="sort-button table-sort-button"
+                    class="table-sort-button"
                     type="button"
                     onclick={() => toggleSort('status')}
                   >
-                    <span class="cap-trim">Status</span>
+                    <span class="table-heading-label">Status</span>
                     <SortIndicator />
                   </button>
                   <FilterMenu
@@ -983,27 +987,31 @@
                 </div>
               </th>
               <th scope="col" aria-sort={sortDirection('repository')}>
-                <button
-                  class="sort-button table-sort-button"
-                  type="button"
-                  onclick={() => toggleSort('repository')}
-                >
-                  <span class="cap-trim">Repository</span>
-                  <SortIndicator />
-                </button>
+                <div class="table-heading">
+                  <button
+                    class="table-sort-button"
+                    type="button"
+                    onclick={() => toggleSort('repository')}
+                  >
+                    <span class="table-heading-label">Repository</span>
+                    <SortIndicator />
+                  </button>
+                </div>
               </th>
               <th scope="col">
-                <div class="table-heading-layout"><span class="cap-trim">Failure</span></div>
+                <div class="table-heading"><span class="table-heading-label">Failure</span></div>
               </th>
               <th scope="col" aria-sort={sortDirection('when')}>
-                <button
-                  class="sort-button table-sort-button"
-                  type="button"
-                  onclick={() => toggleSort('when')}
-                >
-                  <span class="cap-trim">When</span>
-                  <SortIndicator />
-                </button>
+                <div class="table-heading">
+                  <button
+                    class="table-sort-button"
+                    type="button"
+                    onclick={() => toggleSort('when')}
+                  >
+                    <span class="table-heading-label">When</span>
+                    <SortIndicator />
+                  </button>
+                </div>
               </th>
             </tr>
           </thead>
@@ -1190,19 +1198,11 @@
 
   /* The header band is 2.5rem of content plus its own rule. Putting the height
      on the th instead would fold the border into it and leave the band 1px
-     shallower than the other four tables. */
-  .history-table th {
-    padding: 0;
-  }
-
-  .history-table thead .table-heading-layout,
-  .history-table thead .sort-button {
+     shallower than the other four tables. The rest of the heading - the cell
+     with no padding, the button carrying it, the inset a wordless heading takes
+     - is shared, in `thead th` and `.table-heading` in `app.css`. */
+  .history-table thead .table-heading {
     height: 2.5rem;
-  }
-
-  /* A header with nothing to press still carries the row's inset. */
-  .history-table th:not(:has(.sort-button)) .table-heading-layout {
-    padding-inline: var(--space-3);
   }
 
   .history-table tbody tr {
@@ -1337,54 +1337,19 @@
     }
   }
 
-  .table-heading-layout {
-    align-items: center;
-    display: flex;
-    height: 100%;
-    justify-content: space-between;
-    min-width: 0;
-  }
-
-  .table-heading-layout :global(.header-filter) {
-    margin-inline: var(--space-1);
-  }
-
-  /* No `background` here - it is reset once on `.table-sort-button` in
-     `app.css`. A component-scoped `transparent` ties with the shared `:hover`
-     on specificity and comes later, so it silently removed the hover. */
-  .sort-button {
-    align-items: center;
-    border: 0;
-    color: inherit;
-    display: flex;
-    font: inherit;
-    gap: var(--space-2);
-    height: 100%;
-    justify-content: flex-start;
-    letter-spacing: inherit;
-    padding: 0 var(--space-3);
-    text-align: left;
-    text-transform: inherit;
-    min-width: 0;
-    overflow: hidden;
-    width: 100%;
-  }
-
-  .table-heading-layout .sort-button {
-    flex: 1;
-    width: auto;
-  }
-
-  .history-table th:last-child .sort-button {
-    /* Right-aligned sortable column: the indicator leads (row-reverse), the
-       main start is the right edge, and the inset matches the cells' space-3
-       padding, so the label ink lands on the same edge as the times below. */
+  /* The heading's row, its button and its arrow are all shared now - see
+     `.table-heading`, `.table-sort-button` and `.sort-indicator` in `app.css`.
+     What was here was a second copy of the reset, a `:global(.header-filter)`
+     addressed to a class the popover stopped rendering, and a `flex: 1` the
+     shared class states itself. */
+  .history-table th:last-child .table-sort-button {
+    /* Right-aligned sortable column: the indicator leads, so the label ink lands
+       on the same edge as the times below it. Which side the arrow takes follows
+       the column's alignment - the one rule every design system agrees on, and
+       the reason an end-aligned heading does not read as indented. */
     flex-direction: row-reverse;
     justify-content: flex-start;
-    padding-right: var(--space-3);
   }
-
-  /* The arrow's own rules are shared - see `.sort-indicator` in `app.css`. */
 
   /* One repository token for the whole panel: the audit table's Target and the
      failure table's Repository name the same thing, so they wear the same mono
@@ -1634,7 +1599,7 @@
       padding: 0;
     }
 
-    .history-table thead th:not(:has(.sort-button)) {
+    .history-table thead th:not(:has(.table-sort-button)) {
       clip-path: inset(50%);
       height: 1px;
       overflow: hidden;
@@ -1643,17 +1608,33 @@
       width: 1px;
     }
 
-    .history-table thead .sort-button {
+    /* On a phone a heading is a chip in a wrapped row, not a band, so it takes a
+       real ground and its own width - which is the one place the shared full-cell
+       target does not apply, because there is no cell left to fill. The funnel
+       goes back into the flow beside the words for the same reason: there is no
+       cell for it to ride. */
+    .history-table thead .table-heading,
+    .history-table thead .table-sort-button {
+      height: var(--control-height-compact);
+      width: auto;
+    }
+
+    .history-table thead :global(.filter-trigger) {
+      inset: auto;
+      margin-block: 0;
+      position: relative;
+    }
+
+    .history-table thead .table-sort-button {
       background: var(--control-bg);
       border: 1px solid var(--control-border);
       border-radius: var(--radius-control);
       color: var(--dim);
-      height: var(--control-height-compact);
-      padding: 0 var(--space-3);
+      padding-inline: var(--space-3);
     }
 
-    .history-table thead .sort-button:hover,
-    .history-table thead .sort-button:focus-visible {
+    .history-table thead .table-sort-button:hover,
+    .history-table thead .table-sort-button:focus-visible {
       background: var(--control-bg-hover);
       color: var(--text);
     }

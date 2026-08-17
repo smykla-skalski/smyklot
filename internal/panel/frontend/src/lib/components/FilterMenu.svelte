@@ -167,13 +167,14 @@
 <style>
   /* No `position: relative` on an ancestor and no z-index: the layer is in the
      top layer, which nothing in the page can be stacked over or clipped by. The
-     trigger is positioned only so the count can ride its corner. */
+     positioning the count needs to ride the trigger's corner is `.icon-button`'s
+     own, in app.css. It was here, and Svelte's scoping made it a rule no layout
+     could beat: a column heading that placed this trigger over its sort target
+     got a `position: absolute` of equal specificity and lost, so the funnel
+     stayed in flow and took 28px of a 136px cell away from the target. */
   /* Shape, ink and states come from `.icon-button` in app.css - this trigger is
      the same square control as the menu trigger in the row below it. All that is
      left here is the one thing only a filter has: a fill that says it is on. */
-  .filter-trigger {
-    position: relative;
-  }
 
   /* Each of these is the shorthand, which clears the layer `.icon-button` paints
      for its own hover and press. That is deliberate: a filter that is on states

@@ -1272,8 +1272,8 @@
 </script>
 
 {#snippet sortButton(label: string, onSelect: () => void)}
-  <button class="sort-button table-sort-button" type="button" onclick={onSelect}>
-    <span class="cap-trim">{label}</span>
+  <button class="table-sort-button" type="button" onclick={onSelect}>
+    <span class="table-heading-label">{label}</span>
     <SortIndicator />
   </button>
 {/snippet}
@@ -1377,10 +1377,12 @@
                 <thead>
                   <tr>
                     <th aria-sort={userSortDirection('name')}>
-                      {@render sortButton('User', () => selectUserSort('name'))}
+                      <div class="table-heading">
+                        {@render sortButton('User', () => selectUserSort('name'))}
+                      </div>
                     </th>
                     <th aria-sort={userSortDirection('role')}>
-                      <div class="table-heading-layout">
+                      <div class="table-heading">
                         {@render sortButton('Role', () => selectUserSort('role'))}
                         <FilterMenu
                           label="Role"
@@ -1395,8 +1397,8 @@
                       </div>
                     </th>
                     <th class="filterable-heading">
-                      <div class="table-heading-layout">
-                        <span class="cap-trim">Status</span>
+                      <div class="table-heading">
+                        <span class="table-heading-label">Status</span>
                         <FilterMenu
                           label="Status"
                           summary={filterSummary(userStatuses.length)}
@@ -1411,7 +1413,9 @@
                       </div>
                     </th>
                     <th aria-sort={userSortDirection('last_login')}>
-                      {@render sortButton('Last login', () => selectUserSort('last_login'))}
+                      <div class="table-heading">
+                        {@render sortButton('Last login', () => selectUserSort('last_login'))}
+                      </div>
                     </th>
                     <th><span class="visually-hidden">Actions</span></th>
                   </tr>
@@ -1612,10 +1616,12 @@
                 <thead>
                   <tr>
                     <th aria-sort={invitationSortDirection('name')}>
-                      {@render sortButton('Invitee', () => selectInvitationSort('name'))}
+                      <div class="table-heading">
+                        {@render sortButton('Invitee', () => selectInvitationSort('name'))}
+                      </div>
                     </th>
                     <th aria-sort={invitationSortDirection('role')}>
-                      <div class="table-heading-layout">
+                      <div class="table-heading">
                         {@render sortButton('Role', () => selectInvitationSort('role'))}
                         <FilterMenu
                           label="Role"
@@ -1631,8 +1637,8 @@
                       </div>
                     </th>
                     <th class="filterable-heading">
-                      <div class="table-heading-layout">
-                        <span class="cap-trim">Status</span>
+                      <div class="table-heading">
+                        <span class="table-heading-label">Status</span>
                         <FilterMenu
                           label="Status"
                           summary={filterSummary(invitationStatuses.length)}
@@ -1647,10 +1653,12 @@
                       </div>
                     </th>
                     <th class="sent-heading">
-                      <div class="table-heading-layout"><span class="cap-trim">Sent</span></div>
+                      <div class="table-heading"><span class="table-heading-label">Sent</span></div>
                     </th>
                     <th aria-sort={invitationSortDirection('expires')}>
-                      {@render sortButton('Expires', () => selectInvitationSort('expires'))}
+                      <div class="table-heading">
+                        {@render sortButton('Expires', () => selectInvitationSort('expires'))}
+                      </div>
                     </th>
                     <th><span class="visually-hidden">Actions</span></th>
                   </tr>
@@ -2229,84 +2237,33 @@
 
   .user-table th,
   .user-table td {
-    padding: var(--space-2) var(--space-3);
     text-align: left;
     vertical-align: middle;
   }
 
-  .user-table th:first-child,
+  /* `td` alone: a heading's padding belongs to what fills it - see `thead th` in
+     `app.css` - and a class selector here would quietly take it back. */
+  .user-table td {
+    padding: var(--space-2) var(--space-3);
+  }
+
   .user-table td:first-child {
     padding-left: var(--space-3);
   }
 
-  .user-table th:last-child,
   .user-table td:last-child {
     padding-right: var(--space-3);
   }
 
-  /* Typography and ground come from `thead th` in `app.css`. */
+  /* Typography, ground and the heading's whole shape come from `app.css`. Only
+     the band's height and the first column's wider inset are this table's. */
   .user-table thead th {
     height: 2.5rem;
   }
 
-  .user-table thead th:has(.sort-button) {
-    padding: 0;
+  .user-table thead th:first-child {
+    --heading-pad-start: var(--space-4);
   }
-
-  .user-table thead th:first-child .sort-button {
-    padding-left: var(--space-4);
-  }
-
-  .filterable-heading {
-    padding-block: 0 !important;
-  }
-
-  .table-heading-layout {
-    align-items: center;
-    display: flex;
-    height: 100%;
-    justify-content: space-between;
-    min-width: 0;
-  }
-
-  .table-heading-layout :global(.header-filter) {
-    margin-inline: var(--space-1);
-  }
-
-  /* No `background` here - it is reset once on `.table-sort-button` in
-     `app.css`. A component-scoped `transparent` ties with the shared `:hover`
-     on specificity and comes later, so it silently removed the hover. */
-  .sort-button {
-    align-items: center;
-    border: 0;
-    color: inherit;
-    display: flex;
-    font: inherit;
-    gap: 0.45rem;
-    height: 100%;
-    justify-content: flex-start;
-    letter-spacing: inherit;
-    padding: var(--space-2) var(--space-3);
-    text-align: left;
-    text-transform: inherit;
-    transition:
-      background-color 120ms ease-out,
-      color 120ms ease-out;
-    min-width: 0;
-    overflow: hidden;
-    width: 100%;
-  }
-
-  .table-heading-layout .sort-button {
-    flex: 1;
-    width: auto;
-  }
-
-  .sent-heading {
-    padding-block: 0 !important;
-  }
-
-  /* The arrow's own rules are shared - see `.sort-indicator` in `app.css`. */
 
   .user-table tbody tr.history-row {
     cursor: pointer;
@@ -2980,7 +2937,7 @@
        has no sort button, only a funnel, and hiding it took the funnel with it
        - on a phone there was no way to filter users or invitations by status at
        all. The control was still in the page, focusable, in a 1px box. */
-    .user-table thead th:not(:has(.sort-button)):not(:has(.filter-trigger)) {
+    .user-table thead th:not(:has(.table-sort-button)):not(:has(.filter-trigger)) {
       clip-path: inset(50%);
       height: 1px;
       overflow: hidden;
@@ -2989,28 +2946,48 @@
       width: 1px;
     }
 
+    /* A heading is a chip here, not a band, so there is no cell for the funnel to
+       ride and it goes back into the flow beside the words. This is the one place
+       the shared full-cell target does not apply - see `.table-heading` in
+       `app.css` - because the chip IS the control. */
+    .user-table thead .table-heading,
+    .user-table thead .table-sort-button {
+      height: var(--control-height-compact);
+      width: auto;
+    }
+
+    .user-table thead :global(.filter-trigger) {
+      inset: auto;
+      margin-block: 0;
+      position: relative;
+    }
+
+    /* The chip carries the inset now, so the label inside it must not carry it
+       twice. */
+    .user-table thead .table-heading > .table-heading-label {
+      padding-inline: 0;
+    }
+
     /* Dressed as the sort chips beside it: it does the same job in the same row,
        and the border is what makes either read as something to press. */
-    .user-table thead th.filterable-heading .table-heading-layout {
+    .user-table thead th.filterable-heading .table-heading {
       background: var(--control-bg);
       border: 1px solid var(--control-border);
       border-radius: var(--radius-control);
       gap: var(--space-1);
-      height: var(--control-height-compact);
       padding-inline: var(--space-3) var(--space-1);
     }
 
-    .user-table thead .sort-button {
+    .user-table thead .table-sort-button {
       background: var(--control-bg);
       border: 1px solid var(--control-border);
       border-radius: var(--radius-control);
       color: var(--dim);
-      height: var(--control-height-compact);
-      padding: 0 var(--space-3);
+      padding-inline: var(--space-3);
     }
 
-    .user-table thead .sort-button:hover,
-    .user-table thead .sort-button:focus-visible {
+    .user-table thead .table-sort-button:hover,
+    .user-table thead .table-sort-button:focus-visible {
       background: var(--control-bg-hover);
       color: var(--text);
     }

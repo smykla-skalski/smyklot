@@ -891,9 +891,9 @@
             <thead>
               <tr>
                 <th class="sortable-heading" aria-sort={sortDirection('name')}>
-                  <div class="table-heading-layout">
-                    <button class="sort-heading table-sort-button" onclick={toggleNameSort}>
-                      <span class="cap-trim">Repository</span>
+                  <div class="table-heading">
+                    <button class="table-sort-button" onclick={toggleNameSort}>
+                      <span class="table-heading-label">Repository</span>
                       <SortIndicator />
                     </button>
                     <FilterMenu
@@ -912,9 +912,9 @@
                   </div>
                 </th>
                 <th class="sortable-heading" aria-sort={sortDirection('file')}>
-                  <div class="table-heading-layout">
-                    <button class="sort-heading table-sort-button" onclick={toggleFileSort}>
-                      <span class="cap-trim">File state</span>
+                  <div class="table-heading">
+                    <button class="table-sort-button" onclick={toggleFileSort}>
+                      <span class="table-heading-label">File state</span>
                       <SortIndicator />
                     </button>
                     <FilterMenu
@@ -931,15 +931,17 @@
                   </div>
                 </th>
                 <th class="sortable-heading" aria-sort={sortDirection('updated')}>
-                  <button class="sort-heading table-sort-button" onclick={toggleUpdatedSort}>
-                    <span class="cap-trim">Updated</span>
-                    <SortIndicator />
-                  </button>
+                  <div class="table-heading">
+                    <button class="table-sort-button" onclick={toggleUpdatedSort}>
+                      <span class="table-heading-label">Updated</span>
+                      <SortIndicator />
+                    </button>
+                  </div>
                 </th>
                 <th class="filterable-heading enablement-heading">
-                  <div class="table-heading-layout">
-                    <span class="heading-with-help">
-                      <span class="cap-trim">Enablement</span>
+                  <div class="table-heading">
+                    <span class="table-heading-label heading-with-help">
+                      <span class="table-heading-label">Enablement</span>
                       <HelpTip
                         id="repository-enablement-help"
                         label="About enablement"
@@ -1249,11 +1251,17 @@
      not. A `th, td` font-size here outranks `thead th` in `app.css` - a class
      selector beats two element ones - so this table's heading was rendering at
      13px while the other five were at 11. */
+  /* `td` alone: a `th`'s padding is the heading's to give away - see `thead th`
+     in `app.css` - and a class selector here would take it back without saying
+     so. */
   th,
   td {
-    padding: var(--space-2) var(--space-3);
     text-align: left;
     vertical-align: middle;
+  }
+
+  td {
+    padding: var(--space-2) var(--space-3);
   }
 
   td {
@@ -1295,38 +1303,22 @@
     width: var(--action-column);
   }
 
-  th:first-child,
   td:first-child {
     padding-left: var(--space-3);
   }
 
-  th:last-child,
   td:last-child {
     padding-right: var(--space-3);
   }
 
-  .sortable-heading {
-    padding: 0;
-  }
-
-  .filterable-heading {
-    padding-block: 0;
-  }
-
-  .table-heading-layout {
-    align-items: center;
-    display: flex;
+  /* The heading's shape - the cell with no padding, the row inside it, the
+     button carrying the inset and the filter over it - is shared, in `thead th`
+     and `.table-heading` in `app.css`. What was here was a second copy of the
+     button's reset, a `:global(.header-filter)` addressed to a class the popover
+     stopped rendering, and a `justify-content: space-between` that stopped
+     mattering when the filter came out of the flow. */
+  .repositories thead .table-heading {
     height: 2.5rem;
-    justify-content: space-between;
-    min-width: 0;
-  }
-
-  .table-heading-layout :global(.header-filter) {
-    margin-inline: var(--space-1);
-  }
-
-  .filterable-heading .table-heading-layout {
-    gap: var(--space-1);
   }
 
   /* Label and help mark on one centred row - the same 0.35rem the approved
@@ -1336,42 +1328,6 @@
     display: flex;
     gap: 0.35rem;
   }
-
-  .sortable-heading:first-child {
-    padding-left: 0;
-  }
-
-  /* No `background` here. A button's own ground is reset once, on
-     `.table-sort-button` in `app.css`, and a component-scoped `transparent`
-     carries two classes - exactly what `.table-sort-button:hover` carries - so
-     coming later in the cascade it won, and these headings had no hover at all.
-     The sorted one appeared to, because the brand rule that used to sit beside
-     it carried a third. That difference is what read as "the sorted column
-     hovers differently". */
-  .sort-heading {
-    align-items: center;
-    border: 0;
-    color: inherit;
-    display: flex;
-    font: inherit;
-    gap: var(--space-2);
-    height: 2.5rem;
-    letter-spacing: inherit;
-    margin: 0;
-    padding: 0 var(--space-3);
-    text-transform: inherit;
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    white-space: nowrap;
-    width: 100%;
-  }
-
-  .sortable-heading:first-child .sort-heading {
-    padding-left: var(--space-3);
-  }
-
-  /* The arrow's own rules are shared - see `.sort-indicator` in `app.css`. */
 
   .repository-row {
     transition: background-color var(--duration-fast) var(--ease-standard);

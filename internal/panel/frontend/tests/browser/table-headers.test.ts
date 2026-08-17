@@ -43,12 +43,40 @@ interface Heading {
   borderBottom: string;
 }
 
+/** One sortable heading: what it presses over, against the cell it stands in. */
+interface Target {
+  label: string;
+  /** Cell width minus the button's, in CSS pixels. Zero is the whole cell. */
+  narrowerBy: number;
+  /** Cell height minus the button's, less the rule under the band. */
+  shorterBy: number;
+  /** Whether a filter trigger shares the cell. */
+  filtered: boolean;
+}
+
 let panel: Panel;
 let headings: Record<string, Heading | string>;
+let targets: Record<string, Target[]>;
+/** One heading with a filter, read with the pointer on its words and then on its funnel. */
+interface HeadingHover {
+  label: string;
+  /** Whether the heading lit when the pointer was on the words. */
+  litFromWords: boolean;
+  /** Whether it lit when the pointer was on the funnel. It should not. */
+  litFromFunnel: boolean;
+  /** Whether the funnel itself lit when the pointer was on it. */
+  triggerLit: boolean;
+  /** Whether the sort arrow answered a pointer on the funnel. It should not. */
+  arrowMoved: boolean;
+}
+
+let behindTheFilter: Record<string, HeadingHover[]>;
 
 beforeAll(async () => {
   panel = await startPanel();
   headings = {};
+  targets = {};
+  behindTheFilter = {};
 
   /* A page each, and several at once: ten routes read one after another is ten waits for a route
      to load, and a computed style is the same style whatever else the machine is doing. */
@@ -62,28 +90,104 @@ beforeAll(async () => {
       // route that never draws one is measured anyway and reported by name.
       await visit(page, address, { ready: 'thead th' });
 
-      return {
-        route,
-        heading: await page.evaluate((): Heading | string => {
-          const th = document.querySelector('thead th');
-          if (th === null) return 'this route rendered no table header';
-          const style = getComputedStyle(th);
-          return {
-            font: style.font,
-            letterSpacing: style.letterSpacing,
-            textTransform: style.textTransform,
-            color: style.color,
-            background: style.backgroundColor,
-            borderBottom: style.borderBottom,
-          };
-        }),
+      const heading = await page.evaluate((): Heading | string => {
+        const th = document.querySelector('thead th');
+        if (th === null) return 'this route rendered no table header';
+        const style = getComputedStyle(th);
+        return {
+          font: style.font,
+          letterSpacing: style.letterSpacing,
+          textTransform: style.textTransform,
+          color: style.color,
+          background: style.backgroundColor,
+          borderBottom: style.borderBottom,
+        };
+      });
+
+      const measured = await page.evaluate((): Target[] =>
+        [...document.querySelectorAll('thead th')]
+          .map((th) => {
+            const button = th.querySelector('.table-sort-button');
+            if (button === null) return null;
+            const cell = th.getBoundingClientRect();
+            const target = button.getBoundingClientRect();
+            // The rule under the band is the cell's border, not room the button declined.
+            const rule = Number.parseFloat(getComputedStyle(th).borderBottomWidth) || 0;
+            return {
+              label: (th.textContent ?? '').trim().slice(0, 24),
+              narrowerBy: Number((cell.width - target.width).toFixed(2)),
+              shorterBy: Number((cell.height - rule - target.height).toFixed(2)),
+              filtered: th.querySelector('.filter-trigger') !== null,
+            };
+          })
+          .filter((one): one is Target => one !== null),
+      );
+
+      /* One heading, two pointer positions. On the words the whole cell has to light, including
+         the ground behind the funnel - that is the target being the cell. On the funnel only the
+         funnel lights, because the tint names what a press would act on and a press there opens a
+         menu rather than sorting. The arrow answers the second question the same way, and must not
+         move at all while the pointer is on the trigger.
+
+         Read as paint rather than as a rule, so the answer holds however the tint is drawn. */
+      const painted: HeadingHover[] = [];
+      const funnels = await page.$$('thead th:has(.table-sort-button) .filter-trigger');
+      const state = (trigger: Element) => {
+        const th = trigger.closest('th');
+        const button = th?.querySelector('.table-sort-button');
+        const indicator = th?.querySelector('.sort-indicator');
+        const style =
+          indicator === null || indicator === undefined ? null : getComputedStyle(indicator);
+        return {
+          label: (th?.textContent ?? '').trim().slice(0, 24),
+          headingLit:
+            button !== null &&
+            button !== undefined &&
+            getComputedStyle(button).backgroundImage !== 'none',
+          triggerLit: getComputedStyle(trigger).backgroundImage !== 'none',
+          arrow: style === null ? '' : `${style.opacity} ${style.transform}`,
+        };
       };
+
+      for (const funnel of funnels) {
+        // Away first, so what the arrow does untouched is the thing it is compared against.
+        await page.mouse.move(0, 0);
+        await page.waitForTimeout(250);
+        const resting = await funnel.evaluate(state);
+
+        // The words: the far end of the heading, well clear of the trigger.
+        const cell = await funnel.evaluate((trigger) => {
+          const box = trigger.closest('th')!.getBoundingClientRect();
+          return { x: box.left + 8, y: box.top + box.height / 2 };
+        });
+        await page.mouse.move(cell.x, cell.y);
+        await page.waitForTimeout(250);
+        const onWords = await funnel.evaluate(state);
+
+        await funnel.hover();
+        await page.waitForTimeout(250);
+        const onFunnel = await funnel.evaluate(state);
+
+        painted.push({
+          label: resting.label,
+          litFromWords: onWords.headingLit,
+          litFromFunnel: onFunnel.headingLit,
+          triggerLit: onFunnel.triggerLit,
+          arrowMoved: onFunnel.arrow !== resting.arrow,
+        });
+      }
+
+      return { route, heading, measured, painted };
     } finally {
       await page.close();
     }
   });
 
-  for (const { route, heading } of read) headings[route] = heading;
+  for (const { route, heading, measured, painted } of read) {
+    headings[route] = heading;
+    targets[route] = measured;
+    behindTheFilter[route] = painted;
+  }
 }, 300_000);
 
 afterAll(async () => {
@@ -146,5 +250,69 @@ describe('the column heading [Integration]', () => {
       .map(([route]) => route);
 
     expect(without, `no rule under the heading:\n  ${without.join('\n  ')}`).toEqual([]);
+  });
+});
+
+/**
+ * What a sortable heading answers the pointer over.
+ *
+ * The fault this exists for is the oldest one in the pattern: a heading that lights up over the
+ * whole cell and only presses over the words. Polaris shipped it, Carbon shipped it, and the queue
+ * shipped it - measured at 54% of its cell's width and 35% of its height against the audit table's
+ * 100%. The remedy is the same everywhere: the cell gives its padding to the button, so the target
+ * IS the cell.
+ *
+ * It is a test rather than a rule because the way it comes back is by accident. A component that
+ * positions its own filter trigger gets a Svelte scoping class, which beats a shared rule of the
+ * same shape - and the funnel goes back into the flow, taking 28px of a 136px cell out of the
+ * target with nothing anywhere looking wrong.
+ */
+describe('a sortable heading [Integration]', () => {
+  it('is drawn on the routes that sort', () => {
+    const sortable = Object.entries(targets).filter(([, found]) => found.length > 0);
+    expect(sortable.length, 'no route drew a sortable heading at all').toBeGreaterThan(4);
+  });
+
+  it('presses over the whole cell', () => {
+    const short = Object.entries(targets).flatMap(([route, found]) =>
+      found
+        .filter((one) => one.narrowerBy > 0.5 || one.shorterBy > 0.5)
+        .map(
+          (one) =>
+            `${route} "${one.label}": ${one.narrowerBy}px of width and ${one.shorterBy}px of height are not pressable`,
+        ),
+    );
+
+    expect(
+      short,
+      `a heading lights up over more than it answers:\n  ${short.join('\n  ')}`,
+    ).toEqual([]);
+  });
+
+  it('lights from anywhere in the cell', () => {
+    const dark = Object.entries(behindTheFilter).flatMap(([route, found]) =>
+      found.filter((one) => !one.litFromWords).map((one) => `${route} "${one.label}"`),
+    );
+
+    expect(dark, `a heading did not answer its own words:\n  ${dark.join('\n  ')}`).toEqual([]);
+  });
+
+  /* The three things a pointer on the funnel must do, which are all one decision: the tint names
+     what a press would act on, and a press there opens a menu rather than sorting. */
+  it('hands the whole hover to the filter trigger, and nothing else', () => {
+    const wrong = Object.entries(behindTheFilter).flatMap(([route, found]) =>
+      found
+        .filter((one) => one.litFromFunnel || !one.triggerLit || one.arrowMoved)
+        .map((one) => {
+          const faults = [
+            one.litFromFunnel && 'the heading lit too',
+            !one.triggerLit && 'the trigger did not light',
+            one.arrowMoved && 'the sort arrow moved',
+          ].filter(Boolean);
+          return `${route} "${one.label}": ${faults.join(', ')}`;
+        }),
+    );
+
+    expect(wrong, `with the pointer on the funnel:\n  ${wrong.join('\n  ')}`).toEqual([]);
   });
 });

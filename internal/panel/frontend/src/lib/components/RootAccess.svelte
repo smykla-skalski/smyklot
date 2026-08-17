@@ -590,22 +590,24 @@
             <thead>
               <tr>
                 <th scope="col" aria-sort={sortDirection('name')}>
-                  <button
-                    class="table-sort-button"
-                    type="button"
-                    onclick={() => toggleSort('name')}
-                  >
-                    <span>User</span><SortIndicator />
-                  </button>
+                  <div class="table-heading">
+                    <button
+                      class="table-sort-button"
+                      type="button"
+                      onclick={() => toggleSort('name')}
+                    >
+                      <span class="table-heading-label">User</span><SortIndicator />
+                    </button>
+                  </div>
                 </th>
                 <th scope="col" aria-sort={sortDirection('role')}>
-                  <div class="heading-layout">
+                  <div class="table-heading">
                     <button
                       class="table-sort-button"
                       type="button"
                       onclick={() => toggleSort('role')}
                     >
-                      <span>System role</span><SortIndicator />
+                      <span class="table-heading-label">System role</span><SortIndicator />
                     </button>
                     <FilterMenu
                       label="System role"
@@ -622,8 +624,8 @@
                   </div>
                 </th>
                 <th scope="col">
-                  <div class="heading-layout">
-                    <span class="heading-label band-trim">Status</span>
+                  <div class="table-heading">
+                    <span class="table-heading-label">Status</span>
                     <FilterMenu
                       label="Status"
                       summary={statuses.length === 0
@@ -638,15 +640,21 @@
                     />
                   </div>
                 </th>
-                <th scope="col">Installations</th>
+                <th scope="col">
+                  <div class="table-heading">
+                    <span class="table-heading-label">Installations</span>
+                  </div>
+                </th>
                 <th scope="col" aria-sort={sortDirection('last_login')}>
-                  <button
-                    class="table-sort-button"
-                    type="button"
-                    onclick={() => toggleSort('last_login')}
-                  >
-                    <span>Last login</span><SortIndicator />
-                  </button>
+                  <div class="table-heading">
+                    <button
+                      class="table-sort-button"
+                      type="button"
+                      onclick={() => toggleSort('last_login')}
+                    >
+                      <span class="table-heading-label">Last login</span><SortIndicator />
+                    </button>
+                  </div>
                 </th>
                 <th scope="col"><span class="visually-hidden">Actions</span></th>
               </tr>
@@ -1088,9 +1096,16 @@
 
   th,
   td {
-    padding: var(--cell-pad-block) 0.75rem;
     text-align: left;
     vertical-align: middle;
+  }
+
+  /* `td` alone: a heading's padding belongs to whatever fills it - see `thead th`
+     in `app.css` - and a class-scoped rule here takes it back without saying so,
+     which is how this table's sort target came out 24px narrower and 20px
+     shorter than the cell it lights up. */
+  td {
+    padding: var(--cell-pad-block) 0.75rem;
   }
 
   /* Stated, not inherited from whatever the tallest cell happens to hold.
@@ -1105,23 +1120,19 @@
     height: calc(var(--control-height) + 2 * var(--cell-pad-block) + 1px);
   }
 
-  th:first-child,
   td:first-child {
     padding-left: var(--space-4);
   }
 
-  thead th:first-child .table-sort-button {
-    padding-left: var(--space-4);
-  }
-
-  /* Typography and ground come from `thead th` in `app.css`, shared with the
-     other five tables. Only the band's height is this table's own. */
-  th {
+  /* Typography, ground and the heading's whole shape come from `app.css`, shared
+     with the other five tables. Only the band's height and the first column's
+     wider inset are this table's own. */
+  thead th {
     height: 2.5rem;
   }
 
-  th:has(.table-sort-button) {
-    padding: 0;
+  thead th:first-child {
+    --heading-pad-start: var(--space-4);
   }
 
   th:first-child,
@@ -1150,8 +1161,13 @@
     width: 16%;
   }
 
+  /* An end-aligned column: the words meet the same edge the values below them do,
+     and the arrow leads rather than trails, which is what keeps it off that edge.
+     Every design system states this rule the same way - a heading follows its
+     column's alignment, and the sort mark moves to the other side to let it. */
   th:nth-child(5) .table-sort-button {
-    justify-content: flex-end;
+    flex-direction: row-reverse;
+    justify-content: flex-start;
   }
 
   th:last-child,
@@ -1160,47 +1176,11 @@
     width: 3rem;
   }
 
-  .table-sort-button,
-  .heading-layout {
-    align-items: center;
-    display: flex;
-    height: 100%;
-  }
-
-  /* No `background` here - reset once on `.table-sort-button` in `app.css`. A
-     component-scoped `transparent` ties with the shared `:hover` on specificity
-     and comes after it, so this heading had no hover at all. */
-  .table-sort-button {
-    border: 0;
-    color: inherit;
-    font: inherit;
-    gap: var(--space-2);
-    justify-content: flex-start;
-    padding: 0.625rem 0.75rem;
-    width: 100%;
-  }
-
-  /* The arrow's own rules are shared - see `.sort-indicator` in `app.css`. This
-     was a fourth copy of them, written against the raw `<svg>` inside the
-     button. */
-
-  .heading-layout {
-    justify-content: space-between;
-  }
-
-  .heading-layout .table-sort-button {
-    flex: 1;
-    min-width: 0;
-    width: auto;
-  }
-
-  .heading-layout :global(.header-filter) {
-    margin-inline: var(--space-1);
-  }
-
-  .heading-label {
-    padding-left: 0;
-  }
+  /* The heading's row, its button and its arrow are shared - see `.table-heading`,
+     `.table-sort-button` and `.sort-indicator` in `app.css`. What was here was a
+     second copy of the button's reset, a fourth copy of the arrow's rules written
+     against a raw `<svg>`, and a `:global(.header-filter)` addressed to a class
+     the popover stopped rendering. */
 
   .identity {
     align-items: center;
