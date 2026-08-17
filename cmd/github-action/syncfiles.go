@@ -389,7 +389,12 @@ func (s *server) commitFiles(
 		return "", err
 	}
 
-	changes, err := s.writeBlobs(ctx, client, target, files)
+	wanted, err := s.stillNeeded(ctx, client, target, parentCommit.Tree, files)
+	if err != nil {
+		return "", err
+	}
+
+	changes, err := s.writeBlobs(ctx, client, target, wanted)
 	if err != nil {
 		return "", err
 	}
@@ -432,6 +437,50 @@ func (s *server) moveProposal(
 	}
 
 	return client.UpdateRef(ctx, target.Owner, target.Name, "heads/"+proposal, commit, false)
+}
+
+// stillNeeded leaves out a removal the tree being built on has already made.
+//
+// The plan is computed against the default branch and the commit is built on
+// the proposal branch, which already carries whatever an earlier tick put
+// there. A tree entry removing a path that is not in the tree it is built from
+// is a 422, so a repository with a retired path would fail every time its
+// proposal came round again - which it does, on the reconcile horizon, for as
+// long as the pull request sits unmerged.
+//
+// Only the removals. A blob written for a file the tree already has is a
+// request for nothing, and the tree it produces is the one it started from, so
+// it costs a request rather than an outcome.
+func (s *server) stillNeeded(
+	ctx context.Context,
+	client *github.Client,
+	target syncTarget,
+	tree string,
+	files []plannedFile,
+) ([]plannedFile, error) {
+	wanted := make([]plannedFile, 0, len(files))
+
+	for _, file := range files {
+		if !file.remove {
+			wanted = append(wanted, file)
+
+			continue
+		}
+
+		// Walked rather than listed, because the answer has to be exact for
+		// exactly the paths being removed, and there are rarely more than a
+		// couple of them.
+		found, err := client.ResolveTreePath(ctx, target.Owner, target.Name, tree, file.path)
+		if err != nil {
+			return nil, err
+		}
+
+		if found.Found {
+			wanted = append(wanted, file)
+		}
+	}
+
+	return wanted, nil
 }
 
 func (s *server) writeBlobs(

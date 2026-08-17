@@ -1010,10 +1010,16 @@ var _ = Describe("Org sync [Unit]", func() {
 			Expect(err).To(MatchError(storage.ErrNotFound))
 		})
 
+		// The tree the commit is built from still has the retired path, so the
+		// removal goes into it.
+		holdingRenovaterc := `{"tree":[{"path":".renovaterc","type":"blob",` +
+			`"mode":"100644","sha":"old","size":2}]}`
+
 		It("puts every path into one commit behind one pull request", func() {
 			target := grantContents()
 			stub.repoTree = `{"sha":"basetree","tree":[{"path":".renovaterc",` +
 				`"type":"blob","mode":"100644","sha":"old","size":2}],"truncated":false}`
+			stub.repoLevels = map[string]string{"basetree": holdingRenovaterc}
 			configureKind(target, orgsync.KindFiles, `{"files":[`+
 				`{"path":"CONTRIBUTING.md","content":"# Contributing\n"},`+
 				`{"path":"SECURITY.md","content":"# Security\n"}],`+
@@ -1026,8 +1032,55 @@ var _ = Describe("Org sync [Unit]", func() {
 			applied(target)
 
 			Expect(stub.createdCommits).To(HaveLen(1))
+			Expect(stub.createdTrees).To(HaveLen(1))
+
+			// All three in the one tree, and the removal spelled the way git
+			// spells one: an entry with no object
+			Expect(stub.createdTrees[0]).To(ContainSubstring(`"CONTRIBUTING.md"`))
+			Expect(stub.createdTrees[0]).To(ContainSubstring(`"SECURITY.md"`))
+			Expect(stub.createdTrees[0]).To(ContainSubstring(`".renovaterc"`))
+			Expect(stub.createdTrees[0]).To(ContainSubstring(`"sha":null`))
+
 			Expect(stub.createdPRs).To(HaveLen(1))
 			Expect(stub.createdPRs[0]).To(ContainSubstring("CONTRIBUTING.md"))
+			Expect(stub.createdPRs[0]).To(ContainSubstring(".renovaterc"))
+		})
+
+		// The plan is computed against the default branch and the commit is
+		// built on the proposal branch, which already carries what an earlier
+		// tick put there. A tree entry removing a path that is not in the tree
+		// it is built from is a 422 - and the proposal comes round again on the
+		// reconcile horizon for as long as it sits unmerged, so this failed
+		// every six hours rather than once.
+		It("does not remove again what the branch has already removed", func() {
+			target := grantContents()
+			stub.repoTree = `{"sha":"basetree","tree":[{"path":".renovaterc",` +
+				`"type":"blob","mode":"100644","sha":"old","size":2}],"truncated":false}`
+			configureKind(target, orgsync.KindFiles,
+				`{"files":[{"path":"CONTRIBUTING.md","content":"# Contributing\n"}],`+
+					`"retired":[".renovaterc"]}`)
+
+			plan(target)
+			computed, actions := livePlan(target)
+			approve(computed)
+
+			// The branch is there with an earlier tick's commit, whose tree has
+			// already taken the file out
+			written, err := orgsync.DecodeFile(actions[0].Payload)
+			Expect(err).NotTo(HaveOccurred())
+			stub.branchRefs[written.Proposal] = "earliercommit"
+			stub.migrationTipTree = "branchtree"
+			stub.repoLevels = map[string]string{"branchtree": `{"tree":[]}`}
+
+			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+
+			Expect(stub.createdTrees).To(HaveLen(1))
+			Expect(stub.createdTrees[0]).NotTo(ContainSubstring(".renovaterc"))
+			Expect(stub.createdTrees[0]).To(ContainSubstring("CONTRIBUTING.md"))
+
+			// The pull request still says the file goes, because the proposal
+			// is what the branch does to the default branch rather than what
+			// this one commit adds to it
 			Expect(stub.createdPRs[0]).To(ContainSubstring(".renovaterc"))
 		})
 
