@@ -108,21 +108,44 @@
      a document that is gone. */
   let drafts = $derived<SyncRuleset[]>(storedRulesets(stored));
   let removal = $derived(stored.allow_removal === true);
+  let excludes = $derived<string[]>(storedExcludes(stored));
   let wanted = $derived(enabled);
 
   const disabled = $derived(saving || readOnly || unreadable);
 
-  /* The whole document rather than the rulesets alone. Exclusions and anything
-     a later version adds are stored here too, and a form that rebuilt the
-     document from its own controls would drop every key it has no control for
-     - which is the failure this chunk indicts the old tool for. */
-  const payload = $derived({ ...stored, rulesets: drafts, allow_removal: removal });
+  /* The whole document rather than the parts with controls. Anything a later
+     version adds is stored here too, and a form that rebuilt the document from
+     its own controls would drop every key it has no control for - which is the
+     failure this chunk indicts the old tool for. */
+  const payload = $derived(asDocument(drafts, removal, excludes));
 
-  const saved = $derived(canonicalStringify(stored));
-  const changed = $derived(wanted !== enabled || canonicalStringify(payload) !== saved);
+  /* What a save would send if nobody touched anything, rather than the stored
+     document itself. The two differ on a kind nobody has configured, where the
+     document is empty and this is three keys with their defaults, and comparing
+     against the wrong one offers a save the moment the page loads. */
+  const untouched = $derived(
+    canonicalStringify(
+      asDocument(storedRulesets(stored), stored.allow_removal === true, storedExcludes(stored)),
+    ),
+  );
+
+  const changed = $derived(wanted !== enabled || canonicalStringify(payload) !== untouched);
+
+  /** Named asDocument rather than document, which is a global this would hide. */
+  function asDocument(
+    rulesets: SyncRuleset[],
+    allowRemoval: boolean,
+    excluded: string[],
+  ): Record<string, unknown> {
+    return { ...stored, rulesets, allow_removal: allowRemoval, excludes: excluded };
+  }
 
   function storedRulesets(from: Record<string, unknown>): SyncRuleset[] {
     return Array.isArray(from.rulesets) ? (from.rulesets as SyncRuleset[]) : [];
+  }
+
+  function storedExcludes(from: Record<string, unknown>): string[] {
+    return Array.isArray(from.excludes) ? (from.excludes as string[]) : [];
   }
 
   function patch(index: number, change: Partial<SyncRuleset>): void {
@@ -355,6 +378,27 @@
     </label>
   </div>
 
+  <!-- The safety valve beside the switch above, and the reason it is here
+       rather than only in the API: a person who can turn removal on from this
+       page has to be able to protect something from this page too. -->
+  <label class="ruleset-field">
+    <span>Rulesets to leave alone</span>
+    <!-- The note is a sibling rather than a child, because everything inside a
+         label becomes part of the control's name and a reader would hear the
+         whole paragraph before reaching the box. -->
+    <textarea
+      rows="2"
+      {disabled}
+      aria-describedby="rulesets-excludes-note"
+      value={lines(excludes)}
+      placeholder="hand-made-*"
+      onchange={(event) => (excludes = asList(event.currentTarget.value))}></textarea>
+  </label>
+  <p class="ruleset-note" id="rulesets-excludes-note">
+    One name or pattern per line, where <code>*</code> stands for any run of characters. These are neither
+    written nor removed, whatever the list above says.
+  </p>
+
   {#if drafts.length === 0}
     <p class="rulesets-empty">No rulesets yet.</p>
   {/if}
@@ -411,6 +455,7 @@
         <textarea
           rows="2"
           {disabled}
+          aria-describedby="{rowKey(index)}-include-note"
           value={lines(ruleset.conditions?.include)}
           placeholder="refs/heads/main"
           onchange={(event) =>
@@ -420,11 +465,11 @@
                 include: asList(event.currentTarget.value),
               },
             })}></textarea>
-        <span class="ruleset-note">
-          One pattern per line. <code>~DEFAULT_BRANCH</code> covers whatever each repository calls
-          its default branch, and <code>~ALL</code> covers every ref.
-        </span>
       </label>
+      <p class="ruleset-note" id="{rowKey(index)}-include-note">
+        One pattern per line. <code>~DEFAULT_BRANCH</code> covers whatever each repository calls its
+        default branch, and <code>~ALL</code> covers every ref.
+      </p>
 
       <label class="ruleset-field">
         <span>Refs it leaves out</span>
@@ -567,12 +612,13 @@
                 ),
               )}
               placeholder="build"
+              aria-describedby="{rowKey(index)}-checks-note"
               onchange={(event) => setChecks(index, asList(event.currentTarget.value))}></textarea>
-            <span class="ruleset-note">
-              One per line. GitHub refuses a rule that names none, so a save with this empty comes
-              back refused rather than quietly dropping the rule.
-            </span>
           </label>
+          <p class="ruleset-note" id="{rowKey(index)}-checks-note">
+            One per line. GitHub refuses a rule that names none, so a save with this empty comes
+            back refused rather than quietly dropping the rule.
+          </p>
 
           <div class="ruleset-rows">
             <div class="ruleset-row">

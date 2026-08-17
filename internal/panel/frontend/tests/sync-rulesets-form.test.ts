@@ -195,6 +195,35 @@ describe('SyncRulesetsForm [Component]', () => {
   });
 
   /**
+   * A kind nobody has configured holds an empty document, and what this form
+   * would send is three keys with their defaults. Comparing the two directly
+   * offers a save the moment the page loads, on a page nobody has touched.
+   */
+  it('offers no save on a kind nobody has configured', () => {
+    render(SyncRulesetsForm, { ...base, stored: {} });
+
+    expect(save().hasAttribute('disabled')).toBe(true);
+  });
+
+  /**
+   * The safety valve beside the removal switch. A person who can turn removal
+   * on from this page has to be able to protect something from it here too,
+   * or the only way to keep a hand-made ruleset is to leave removal off
+   * entirely.
+   */
+  it('carries the rulesets somebody asked to be left alone', async () => {
+    const onSave = vi.fn();
+    render(SyncRulesetsForm, { ...base, stored: stored(), onSave });
+
+    await fireEvent.change(screen.getByLabelText('Rulesets to leave alone'), {
+      target: { value: 'hand-made-*\n  \nrelease-freeze' },
+    });
+    await fireEvent.click(save());
+
+    expect(onSave.mock.calls[0]?.[1].excludes).toEqual(['hand-made-*', 'release-freeze']);
+  });
+
+  /**
    * The same rule the settings form follows: an unreadable document shows
    * nothing, which is also what an unconfigured installation looks like, and a
    * save from that form would send the emptiness back.
