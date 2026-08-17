@@ -187,6 +187,47 @@ func TestSyncOverrideRefusesWhatCouldNeverApply(t *testing.T) {
 	}
 }
 
+// TestSyncOverrideSaysWhyAnAdjustmentCannotBeChecked keeps the message about
+// the real cause.
+//
+// An adjustment is checked against the files the installation synchronizes, so
+// one cannot be saved while those cannot be read - and being told the file is
+// "not one of the files synchronized" would send somebody looking in the wrong
+// place. What a repository wants left alone still saves: it names paths rather
+// than fitting them.
+func TestSyncOverrideSaysWhyAnAdjustmentCannotBeChecked(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+	session := harness.signIn(t)
+
+	// Written past the panel, which is the only way a document this version
+	// cannot read gets in.
+	if _, err := harness.store.SetSyncConfig(t.Context(), orgsync.ConfigChange{
+		TargetID: "github:installation:10", Kind: orgsync.KindFiles, Enabled: true,
+		Document: []byte(`{"files": [ this is not json`),
+		ActorID:  "github:test:user:1", Now: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	refused := harness.request(t, http.MethodPut, overridePath+"files", strings.NewReader(
+		`{"enabled":null,"expected_revision":0,"document":{"merges":[
+			{"path":"renovate.json"}]}}`), session)
+	if refused.Code != http.StatusBadRequest {
+		t.Fatalf("adjusting against an unreadable configuration = %d %s",
+			refused.Code, refused.Body.String())
+	}
+	if !strings.Contains(refused.Body.String(), "cannot read") {
+		t.Errorf("refusal = %s, wanted it to name the real cause", refused.Body.String())
+	}
+
+	kept := harness.request(t, http.MethodPut, overridePath+"files", strings.NewReader(
+		`{"enabled":null,"expected_revision":0,"document":{"excludes":["renovate.json"]}}`),
+		session)
+	if kept.Code != http.StatusOK {
+		t.Fatalf("keeping a file out = %d %s", kept.Code, kept.Body.String())
+	}
+}
+
 // TestSyncOverrideAnswersAKindNobodyHasAdjusted keeps the shape one thing for a
 // browser: a repository that has never answered reads the same way as one that
 // has, rather than as a 404 it would have to guard against.

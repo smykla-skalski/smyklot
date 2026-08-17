@@ -152,7 +152,13 @@ func (s *Server) syncOverrideDocument(
 	}
 
 	config, err := s.syncFileConfig(r, targetID)
-	if err != nil {
+
+	// An adjustment is checked against the files the installation
+	// synchronizes, so one cannot be saved while those cannot be read. What a
+	// repository wants left alone can: it names paths rather than fitting them,
+	// and taking the one control that narrows sync away because of a problem
+	// on somebody else's page would be taking it away at the worst moment.
+	if err != nil && len(adjustments.Merges) > 0 {
 		return nil, err
 	}
 
@@ -163,15 +169,13 @@ func (s *Server) syncOverrideDocument(
 	return json.Marshal(adjustments)
 }
 
-// syncFileConfig reads what the installation synchronizes, leniently.
-//
-// Leniently, because this is not where that document is edited: a stored
-// configuration this version cannot read is a problem on the installation's own
-// page, and refusing to save a repository's exclusion because of it would take
-// the one control that narrows sync away at exactly the wrong moment.
+// syncFileConfig reads what the installation synchronizes.
 func (s *Server) syncFileConfig(r *http.Request, targetID string) (orgsync.FileConfig, error) {
 	stored, err := s.store.GetSyncConfig(r.Context(), targetID, orgsync.KindFiles)
 	if errors.Is(err, storage.ErrNotFound) {
+		// Nothing configured, which is not an error: an adjustment naming a
+		// file is then refused for naming one nobody synchronizes, which is the
+		// truth.
 		return orgsync.FileConfig{}, nil
 	}
 	if err != nil {
@@ -179,7 +183,12 @@ func (s *Server) syncFileConfig(r *http.Request, targetID string) (orgsync.FileC
 	}
 
 	var config orgsync.FileConfig
-	_ = json.Unmarshal(stored.Document, &config)
+	if err := json.Unmarshal(stored.Document, &config); err != nil {
+		return orgsync.FileConfig{}, fmt.Errorf(
+			"%w: the files this installation synchronizes are stored in a form this "+
+				"version cannot read, so an adjustment cannot be checked against them",
+			orgsync.ErrInvalidConfig)
+	}
 
 	return config, nil
 }
