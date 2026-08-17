@@ -74,9 +74,9 @@
   const { children } = $props();
 
   $effect(() => {
-    // Reads the path itself, so it does not depend on which of the view routes
-    // matched or what that route happens to call its parameters.
-    void page.url.pathname;
+    // `syncRouteContext` reads the route and its parameters, so tracking them is what
+    // this depends on. It used to read the pathname, and named that here so nobody
+    // reintroduced a dependency on which of the view routes had matched.
     session.syncRouteContext();
   });
 

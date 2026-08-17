@@ -185,9 +185,13 @@ function cacheStorage(stored: Map<string, Map<string, Response>>, deleted: strin
         },
       } as Cache;
     },
+    // Recorded only when there was something to delete, which is what the platform
+    // reports: `CacheStorage.delete` answers false for a name it does not hold.
     delete: async (name: string) => {
-      deleted.push(name);
-      return stored.delete(name);
+      const held = stored.delete(name);
+      if (held) deleted.push(name);
+
+      return held;
     },
     match: async (request: RequestInfo | URL) => {
       const path = cachePath(request);

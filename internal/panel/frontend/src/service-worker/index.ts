@@ -57,7 +57,14 @@ const SHELL_REQUEST = new Request(SCOPE_PATH, { credentials: 'same-origin' });
 self.addEventListener('install', (event) => {
   event.waitUntil(
     (async () => {
-      const cache = await caches.open(await CACHE);
+      const name = await CACHE;
+      // Dropped and remade rather than reopened, so that `CacheStorage.keys()` really is
+      // in the order the builds were installed. A name is a digest of the bundle now, so
+      // it repeats when a release is rolled back - and reopening an existing cache leaves
+      // it where it was, which would have `activate` below read the rolled-back build as
+      // the oldest and delete the one that is live.
+      await caches.delete(name);
+      const cache = await caches.open(name);
       await cache.addAll([...ASSETS, SHELL_REQUEST]);
       await self.skipWaiting();
     })(),

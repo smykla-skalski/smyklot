@@ -130,9 +130,14 @@ export class PanelSession {
    *
    * A route id is what SvelteKit matched, so it carries no base and no trailing slash -
    * both of which these had to spell out when they read the pathname.
+   *
+   * The address is still the answer when nothing matched. The server decides what to
+   * serve from the decoded path and the router matches on the undecoded one, so the two
+   * disagree about `/root%2Finstallations`: the server answers it with the console, the
+   * router matches no route, and the console would otherwise not know it was the console.
    */
   get isRootMode(): boolean {
-    return page.route.id?.startsWith('/root') ?? false;
+    return page.route.id?.startsWith('/root') ?? page.url.pathname.startsWith(`${this.base}/root`);
   }
 
   get isInbox(): boolean {

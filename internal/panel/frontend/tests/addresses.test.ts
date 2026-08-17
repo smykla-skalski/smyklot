@@ -1,3 +1,4 @@
+import type { RouteId } from '$app/types';
 import { describe, expect, it } from 'vitest';
 
 import { panelAddress, panelRouteAt } from '../src/lib/addresses.ts';
@@ -8,12 +9,13 @@ import { parsePanelRoute, type PanelRoute } from '../src/lib/routes.ts';
  * Every shape the panel can be looking at, with the route SvelteKit matches it to.
  *
  * Written out rather than derived, because deriving it would mean re-running the very
- * mapping under test. What proves the ids are the ones SvelteKit actually reports is the
+ * mapping under test - but typed as `RouteId`, so an id that no longer names a route
+ * fails the type check rather than sitting here as a string nobody compares. What proves the ids are the ones SvelteKit actually reports is the
  * browser suite, which drives real navigation; what this proves is that reading a route
  * back gives the shape that wrote it, and that the reading agrees with the hand parser
  * the mock server still uses. Two implementations, checked against each other.
  */
-const CASES: Array<{ route: PanelRoute; id: string; params: Record<string, string> }> = [
+const CASES: Array<{ route: PanelRoute; id: RouteId; params: Record<string, string> }> = [
   { route: { personal: 'inbox' }, id: '/inbox', params: {} },
   {
     route: { account: 'acme', view: 'repositories' },

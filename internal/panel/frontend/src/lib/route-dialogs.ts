@@ -73,14 +73,11 @@ export function isDialogHost(view: string): view is DialogHost {
 }
 
 /**
- * Reads the segments that follow a view.
- *
- * `null` means these segments are not a dialog this view knows, which the caller
- * treats as an address that does not resolve rather than as a view with nothing
- * open - a mistyped repository name should say so, not silently show the list.
- */
-/**
  * Reads a dialog out of the segments that follow a view.
+ *
+ * `null` means these segments are not a dialog this view knows, which the caller treats
+ * as an address that does not resolve rather than as a view with nothing open - a
+ * mistyped repository name should say so, not silently show the list.
  *
  * The segments arrive **decoded**, because that is how the router hands them over:
  * `page.params.rest` has already been through it. Decoding here as well would mean

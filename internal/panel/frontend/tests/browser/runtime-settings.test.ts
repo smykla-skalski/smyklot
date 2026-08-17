@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Page, Request } from 'playwright-core';
 
-import { startPanel, type Panel } from './harness';
+import { startPanel, visit, type Panel } from './harness';
 
 let panel: Panel;
 
@@ -103,6 +103,32 @@ describe('Root merge-after-CI timing', () => {
       });
       await page.getByText('Effective: 30 seconds').waitFor({ state: 'visible' });
       expect(crashes).toEqual([]);
+    } finally {
+      await page.close();
+    }
+  });
+});
+
+/**
+ * An address the panel has no route for.
+ *
+ * The server answers one with the panel's own shell and an error to render, so the app
+ * boots where `page.route.id` is null and every getter reading the route gets nothing.
+ * The panel reads its route from the router now rather than from the pathname, so this
+ * is the case where the two differ, and it had no test.
+ */
+describe('an address that resolves to nothing', () => {
+  it('shows what happened and stays there', async () => {
+    const page = await panel.browser.newPage({ viewport: { width: 1280, height: 900 } });
+
+    try {
+      await visit(page, `${panel.origin}/root/definitely-not-a-page`, {
+        ready: '.error-body',
+        mount: 5_000,
+      });
+
+      expect(await page.locator('body').innerText()).toContain('Not found');
+      expect(new URL(page.url()).pathname).toBe('/root/definitely-not-a-page');
     } finally {
       await page.close();
     }

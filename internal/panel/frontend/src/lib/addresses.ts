@@ -1,4 +1,5 @@
 import { resolve } from '$app/paths';
+import type { RouteId } from '$app/types';
 
 import {
   dialogSegments,
@@ -8,6 +9,7 @@ import {
   type RouteDialog,
 } from './route-dialogs.ts';
 import {
+  HISTORY_SECTIONS,
   isScopedPanelView,
   isRootInstallationView,
   type HistorySection,
@@ -137,7 +139,7 @@ function dialogRest(host: DialogHost, dialog: RouteDialog): string | null {
  * is a compile error on both sides instead of a silent mismatch on one.
  */
 export function panelRouteAt(
-  id: string | null,
+  id: RouteId | null,
   params: Readonly<Record<string, string | undefined>>,
 ): PanelRoute | null {
   const account = params.account ?? '';
@@ -211,7 +213,7 @@ function rootInstallation(
 }
 
 function asSection(value: string | undefined): HistorySection | undefined {
-  return value === 'audit' || value === 'failures' ? value : undefined;
+  return HISTORY_SECTIONS.find((section) => section === value);
 }
 
 /** The dialog the trailing segments name, or none when they name nothing this host has. */
