@@ -325,6 +325,27 @@ func repositoryPlanner(
 			), nil
 		}, nil
 
+	case orgsync.KindRulesets:
+		rulesets, err := decodeSyncDocument[orgsync.RulesetConfig](config)
+		if err != nil {
+			return nil, err
+		}
+
+		return func(
+			ctx context.Context, repository storage.Repository,
+		) ([]orgsync.Action, error) {
+			owner, name := splitFullName(repository.FullName)
+
+			current, err := readRulesets(ctx, client, owner, name, rulesets)
+			if err != nil {
+				return nil, err
+			}
+
+			return orgsync.PlanRulesets(
+				repository.ID, rulesets, current, rulesets.Exclusions(),
+			), nil
+		}, nil
+
 	default:
 		return nil, fmt.Errorf("%w: %s", errSyncKindUnsupported, config.Kind)
 	}

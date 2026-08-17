@@ -316,9 +316,12 @@ func (s *server) applyAction(
 	case orgsync.KindSettings:
 		return applySettingsAction(ctx, client, owner, name, action)
 
+	case orgsync.KindRulesets:
+		return applyRulesetAction(ctx, client, owner, name, action)
+
 	default:
-		// Rulesets and files arrive in later work. Refusing loudly beats
-		// silently reporting an action applied that nothing performed.
+		// Files arrive in later work. Refusing loudly beats silently reporting
+		// an action applied that nothing performed.
 		return fmt.Errorf("%w: %s", errSyncKindUnsupported, action.Kind)
 	}
 }
