@@ -58,7 +58,9 @@ beforeAll(async () => {
       : `${panel.origin}/${route}`;
     const page = await panel.browser.newPage();
     try {
-      await visit(page, address);
+      // The heading itself, because that is what is read below. Not an assertion in disguise: a
+      // route that never draws one is measured anyway and reported by name.
+      await visit(page, address, { ready: 'thead th' });
 
       return {
         route,

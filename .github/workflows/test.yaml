@@ -214,9 +214,21 @@ jobs:
       - name: Test panel dependency cache restoration
         run: mise run test:panel-install
 
+  # Two jobs rather than one step after the other, because together they were
+  # 67s of the last release and either one alone is half of that. They share
+  # nothing but the restored `node_modules`, so there was never an order between
+  # them - only a runner.
   frontend:
-    name: frontend
+    name: frontend (${{ matrix.area }})
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - area: lint
+            task: panel:frontend:lint
+          - area: unit
+            task: panel:frontend:test
 
     steps:
       - name: Checkout code
@@ -236,11 +248,8 @@ jobs:
           path: internal/panel/frontend/node_modules
           key: ${{ runner.os }}-panel-npm-${{ hashFiles('internal/panel/frontend/package-lock.json') }}
 
-      - name: Lint the panel
-        run: mise run panel:frontend:lint
-
-      - name: Test the panel
-        run: mise run panel:frontend:test
+      - name: Check the panel
+        run: mise run ${{ matrix.task }}
 
   # The panel driven in Chrome. Its own job because it costs ten times what the
   # unit tests cost, and because it is the only check here that needs a browser:
@@ -262,21 +271,24 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - area: pages
-            files: >-
-              tests/browser/mobile-layout.test.ts
-              tests/browser/sidebar-selection.test.ts
-              tests/browser/icon-geometry.test.ts
-          - area: requests
-            files: >-
-              tests/browser/request-budget.test.ts
-              tests/browser/config-migration.test.ts
-          - area: styling
-            files: >-
-              tests/browser/vertical-alignment.test.ts
-              tests/browser/segmented-control.test.ts
-              tests/browser/table-headers.test.ts
-              tests/browser/runtime-settings.test.ts
+          - area: mobile-layout
+            files: tests/browser/mobile-layout.test.ts
+          - area: sidebar-selection
+            files: tests/browser/sidebar-selection.test.ts
+          - area: icon-geometry
+            files: tests/browser/icon-geometry.test.ts
+          - area: request-budget
+            files: tests/browser/request-budget.test.ts
+          - area: config-migration
+            files: tests/browser/config-migration.test.ts
+          - area: vertical-alignment
+            files: tests/browser/vertical-alignment.test.ts
+          - area: segmented-control
+            files: tests/browser/segmented-control.test.ts
+          - area: table-headers
+            files: tests/browser/table-headers.test.ts
+          - area: runtime-settings
+            files: tests/browser/runtime-settings.test.ts
 
     steps:
       - name: Checkout code

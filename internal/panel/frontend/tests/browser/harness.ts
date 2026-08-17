@@ -83,19 +83,25 @@ export async function startPanel(): Promise<Panel> {
  * page that had not drawn yet.
  *
  * What the sweeps are actually waiting for is the route's data, so that is what this waits for.
- * Two phases, because they fail differently:
+ * Three things have to be true, and they fail differently:
  *
  *  - The panel has to mount before it can ask for anything, and between `DOMContentLoaded` and the
  *    first request there is a gap that looks exactly like a settled page. So the first API call is
  *    the starting gun, and it is given a long deadline: on a cold dev server the client chunks are
- *    still being compiled, and that is slow rather than broken.
- *  - Then the page counts as settled once nothing has been in flight for `QUIET_MS`. A response
- *    that arrives late restarts the window, which is what makes this cover a route that loads a
- *    list and then a page of it.
+ *    still being compiled, and that is slow rather than broken. A caller measuring one particular
+ *    thing can name it as `ready` instead, which is a stronger gun than any request.
+ *  - Nothing may have been in flight for `QUIET_MS`. A response that arrives late restarts the
+ *    window, which is what makes this cover a route that loads a list and then a page of it.
+ *  - Nothing on the page may still say it is loading. Quiet alone is not enough and CI proved it:
+ *    a view whose query has resolved but whose next one has not yet been issued is quiet, and
+ *    `i/users` was measured in exactly that gap - the table header it renders was still a skeleton,
+ *    and the run reported the panel drawing no table header at all. The panel announces the state
+ *    itself, in `aria-busy` and in the skeleton it puts up in place of rows, so that announcement
+ *    is what gets read rather than a longer guess at how big the gap might be.
  *
- * Neither phase throws on running out of time. The measurement is taken anyway, and every file
- * here already states its own precondition - a heading, a table header, five rows - which says far
- * more about what went wrong than a navigation timeout does.
+ * None of them throws on running out of time. The measurement is taken anyway, and every file here
+ * already states its own precondition - a heading, a table header, five rows - which says far more
+ * about what went wrong than a navigation timeout does.
  */
 export async function visit(page: Page, url: string, options: Settle = {}): Promise<void> {
   const quiet = options.quiet ?? QUIET_MS;
@@ -123,11 +129,23 @@ export async function visit(page: Page, url: string, options: Settle = {}): Prom
     await page.goto(url, { waitUntil: 'domcontentloaded' });
 
     const mountBy = Date.now() + (options.mount ?? MOUNT_MS);
-    while (!mounted && Date.now() < mountBy) await page.waitForTimeout(POLL_MS);
+    if (options.ready === undefined) {
+      while (!mounted && Date.now() < mountBy) await page.waitForTimeout(POLL_MS);
+    } else {
+      await page
+        .locator(options.ready)
+        .first()
+        .waitFor({ state: 'attached', timeout: mountBy - Date.now() })
+        .catch(() => {
+          // Reported by the caller's own precondition, which names the route as well as the thing.
+        });
+    }
 
     const settleBy = Date.now() + ceiling;
     while (Date.now() < settleBy) {
-      if (inFlight === 0 && Date.now() - last >= quiet) break;
+      // The page is asked only once the network has gone quiet, so a lane costs one round trip to
+      // settle rather than one every `POLL_MS`.
+      if (inFlight === 0 && Date.now() - last >= quiet && (await drawn(page))) break;
       await page.waitForTimeout(POLL_MS);
     }
 
@@ -144,7 +162,22 @@ export async function visit(page: Page, url: string, options: Settle = {}): Prom
   }
 }
 
+/** Whether the panel has stopped saying it is loading. */
+function drawn(page: Page): Promise<boolean> {
+  return page.evaluate(
+    () =>
+      document.querySelector('[aria-busy="true"], [class*="skeleton"]') === null &&
+      // A view that draws no skeleton says the same thing by rendering nothing yet.
+      document.querySelector('main, [role="main"]') !== null,
+  );
+}
+
 export interface Settle {
+  /**
+   * What the caller is about to measure, as a selector. A far better starting gun than the first
+   * API call when there is one to name: the request only says the panel asked.
+   */
+  ready?: string;
   /** How long nothing may be in flight before the route counts as loaded. */
   quiet?: number;
   /** Longest to wait for that quiet before measuring anyway. */

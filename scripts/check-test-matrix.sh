@@ -67,7 +67,7 @@ fi
 twice="$(printf '%s\n' "$listed" | sort | uniq -d)"
 if [ -n "$twice" ]; then
   echo "the browser matrix in $workflow runs these on more than one runner:" >&2
-  printf '  %s\n' $twice >&2
+  printf '%s\n' "$twice" | sed 's|^|  |' >&2
   exit 1
 fi
 
@@ -77,14 +77,14 @@ gone="$(comm -13 <(printf '%s\n' "$present") <(printf '%s\n' "$listed" | sort))"
 
 if [ -n "$missing" ]; then
   echo "the browser matrix in $workflow runs nothing in:" >&2
-  printf '  %s\n' $missing >&2
+  printf '%s\n' "$missing" | sed 's|^|  |' >&2
   echo "add each to an existing area, or give it one of its own" >&2
   exit 1
 fi
 
 if [ -n "$gone" ]; then
   echo "the browser matrix in $workflow names files that do not exist:" >&2
-  printf '  %s\n' $gone >&2
+  printf '%s\n' "$gone" | sed 's|^|  |' >&2
   exit 1
 fi
 
