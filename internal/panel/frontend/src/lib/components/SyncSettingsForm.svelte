@@ -20,6 +20,7 @@
     stored,
     enabled,
     unreadable,
+    unavailable = '',
     problem = null,
     readOnly,
     saving,
@@ -28,6 +29,14 @@
     stored: Record<string, unknown>;
     enabled: boolean;
     unreadable: boolean;
+    /**
+     * What this kind needs and the installation has not granted, or empty.
+     * Saving is still allowed - configuring before granting is the ordinary
+     * order - but a switch that is on while this is set changes nothing, and
+     * the plan list below says the same thing it says while waiting for a
+     * sweep. This is the only place the difference is visible.
+     */
+    unavailable?: string;
     /**
      * What went wrong saving these settings, which belongs beside them. The
      * labels form on the same page saves separately and neither waits for the
@@ -197,6 +206,17 @@
     </p>
   {/if}
 
+  <!-- Only while the switch is on, because that is when the difference shows:
+       a kind nobody asked for is not waiting on anything. Bound to the switch
+       rather than to what was saved, so somebody turning it on is told before
+       they press save rather than after. -->
+  {#if unavailable !== '' && wanted}
+    <p class="settings-notice" role="status">
+      {unavailable}. Nothing here will be planned or changed until an owner grants it on the
+      installation's page on GitHub. The settings below can be saved in the meantime.
+    </p>
+  {/if}
+
   <div class="settings-switch">
     <label>
       <input
@@ -272,7 +292,8 @@
     margin: 0;
   }
 
-  .settings-error {
+  .settings-error,
+  .settings-notice {
     background: var(--surface-inset);
     border-radius: var(--radius-control);
     color: var(--text-strong);

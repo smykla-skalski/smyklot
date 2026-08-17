@@ -58,6 +58,18 @@ type syncConfigDTO struct {
 	// tell those apart would offer an empty form somebody saves, wiping a label
 	// set that was never shown to them.
 	Unreadable bool `json:"unreadable"`
+
+	// Unavailable says what this kind needs and the installation has not
+	// granted, or is empty.
+	//
+	// Saving before the permission is approved is the ordinary order during a
+	// rollout, so nothing here refuses the save. What it prevents is the answer
+	// afterwards: a kind switched on that the installation cannot act on plans
+	// nothing and fails at nothing, and an empty plan list reads exactly like a
+	// sweep that has not come round yet. Settings sync is the first kind to
+	// need a permission no existing installation has, which makes this the
+	// ordinary first-use answer rather than a corner of one.
+	Unavailable string `json:"unavailable"`
 }
 
 // emptyDocument is what a kind nobody has configured answers with. An object
@@ -128,21 +140,17 @@ func (s *Server) getSyncConfig(w http.ResponseWriter, r *http.Request) {
 	config, err := s.store.GetSyncConfig(r.Context(), target.ID, kind)
 	if errors.Is(err, storage.ErrNotFound) {
 		// Never configured, which is not an error and not the same as
-		// configured and switched off. An empty answer says so.
-		writeJSON(w, http.StatusOK, syncConfigDTO{
-			Kind: string(kind), Labels: []orgsync.Label{}, Excludes: []string{},
-			Document: emptyDocument,
-		})
-
-		return
-	}
-	if err != nil {
+		// configured and switched off. A configuration with nothing in it says
+		// so, through the same answer as any other, so what a browser reads of
+		// a kind nobody has touched has one shape rather than two.
+		config = orgsync.Config{Kind: kind}
+	} else if err != nil {
 		s.writeStorageError(w, err)
 
 		return
 	}
 
-	writeJSON(w, http.StatusOK, syncConfigToDTO(config))
+	writeJSON(w, http.StatusOK, syncConfigAnswer(config, target))
 }
 
 // putSyncConfig saves it.
@@ -197,7 +205,7 @@ func (s *Server) putSyncConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.Announce(target.ID, "")
-	writeJSON(w, http.StatusOK, syncConfigToDTO(saved))
+	writeJSON(w, http.StatusOK, syncConfigAnswer(saved, target))
 }
 
 // syncPlanKey is the JSON key a plan arrives under, and the wildcard the route
@@ -273,6 +281,22 @@ func documentOrEmpty(document json.RawMessage) json.RawMessage {
 	return document
 }
 
+// syncConfigAnswer is one kind's configuration together with whether the
+// installation may act on it.
+//
+// Two questions in one answer because they are read as one: a switch that is on
+// means nothing without the permission behind it, and the panel asks for the
+// configuration at exactly the moment somebody wants to know why nothing is
+// happening.
+func syncConfigAnswer(config orgsync.Config, target storage.Target) syncConfigDTO {
+	dto := syncConfigToDTO(config)
+	if unavailable, missing := orgsync.Unpermitted(target, config.Kind); missing {
+		dto.Unavailable = unavailable.Reason()
+	}
+
+	return dto
+}
+
 func syncConfigToDTO(config orgsync.Config) syncConfigDTO {
 	dto := syncConfigDTO{
 		Kind:      string(config.Kind),
@@ -307,8 +331,11 @@ func syncConfigToDTO(config orgsync.Config) syncConfigDTO {
 		return dto
 	}
 
+	// What was checked just above, rather than what it was read from: a kind
+	// nobody has configured holds no document at all, and decoding those bytes
+	// would report a row that does not exist as one this version cannot read.
 	var document orgsync.LabelConfig
-	if err := json.Unmarshal(config.Document, &document); err != nil {
+	if err := json.Unmarshal(dto.Document, &document); err != nil {
 		// The page still renders - a panel that will not load is a panel nobody
 		// can use to fix anything - but it says so, and it says so because the
 		// alternative is worse than a blank screen. An empty list that looks

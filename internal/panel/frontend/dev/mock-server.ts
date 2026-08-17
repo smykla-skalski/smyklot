@@ -202,6 +202,7 @@ function mockSyncConfig(state: MockState, key: string, kind: string): SyncConfig
     digest: '',
     document: {},
     unreadable: false,
+    unavailable: '',
   };
   state.sync.set(key, fresh);
 

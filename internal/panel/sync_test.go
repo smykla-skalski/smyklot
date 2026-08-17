@@ -2,10 +2,12 @@ package panel
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
+	"github.com/smykla-skalski/smyklot/internal/storage"
 )
 
 // TestSyncConfigReportsADocumentItCannotRead is the guard on the difference
@@ -156,5 +158,60 @@ func TestSyncConfigNeverAnswersNullLists(t *testing.T) {
 	}
 	if dto.Excludes == nil {
 		t.Error("excludes came back null rather than empty")
+	}
+}
+
+// TestSyncConfigReadsAKindNobodyConfigured is the difference between a row that
+// holds nothing and a row this version cannot read.
+//
+// A kind nobody has touched has no document at all, and "unreadable" is what
+// puts the form beyond editing and tells somebody their labels are stored in a
+// shape this version does not understand. Saying that about a configuration
+// that was never written is a page nobody can use to write one.
+func TestSyncConfigReadsAKindNobodyConfigured(t *testing.T) {
+	dto := syncConfigToDTO(orgsync.Config{Kind: orgsync.KindLabels})
+
+	if dto.Unreadable {
+		t.Error("a kind nobody configured was reported as one this version cannot read")
+	}
+	if string(dto.Document) != string(emptyDocument) {
+		t.Errorf("document = %s, wanted an empty object", dto.Document)
+	}
+}
+
+// TestSyncConfigSaysWhatThePermissionIsMissing is the guard on the answer an
+// operator gets when they switch a kind on and nothing happens.
+//
+// Settings sync is the first kind needing a permission no existing installation
+// has granted. Without the permission the sweep leaves the kind out and says so
+// in a server log nobody reading the panel can see, so the page shows an empty
+// plan list - which is also exactly what a sweep that has not come round yet
+// looks like. The one thing the operator has to do is the one thing the page
+// never said.
+func TestSyncConfigSaysWhatThePermissionIsMissing(t *testing.T) {
+	ungranted := storage.Target{Permissions: map[string]string{"issues": "write"}}
+
+	dto := syncConfigAnswer(
+		orgsync.Config{Kind: orgsync.KindSettings, Enabled: true}, ungranted)
+
+	if dto.Unavailable == "" {
+		t.Fatal("a kind the installation cannot act on was answered as though it could")
+	}
+	if !strings.Contains(dto.Unavailable, "administration") {
+		t.Errorf("unavailable = %q, wanted the permission somebody has to grant named",
+			dto.Unavailable)
+	}
+}
+
+// And the other half: a granted permission must not be reported as missing, or
+// every installation would be told to grant what it already has.
+func TestSyncConfigSaysNothingOfAPermissionItHas(t *testing.T) {
+	granted := storage.Target{Permissions: map[string]string{"administration": "write"}}
+
+	dto := syncConfigAnswer(
+		orgsync.Config{Kind: orgsync.KindSettings, Enabled: true}, granted)
+
+	if dto.Unavailable != "" {
+		t.Errorf("unavailable = %q, wanted nothing: the permission is granted", dto.Unavailable)
 	}
 }

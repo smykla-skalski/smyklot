@@ -155,4 +155,53 @@ describe('SyncSettingsForm [Component]', () => {
       true,
     );
   });
+
+  /**
+   * Settings sync is the first kind needing a permission no existing
+   * installation has granted, so this is the ordinary first-use answer. Without
+   * it the switch goes on, the save succeeds, and the plan list says the same
+   * thing it says while waiting for a sweep - forever.
+   */
+  it('says which permission is missing while the switch is on', () => {
+    render(SyncSettingsForm, {
+      ...base,
+      enabled: true,
+      unavailable: 'Smyklot has not been granted administration access, which settings sync needs',
+    });
+
+    expect(screen.getByRole('status').textContent).toContain('administration');
+  });
+
+  /** Nobody asked for this kind, so nothing is waiting on the permission. */
+  it('says nothing of a permission while the switch is off', () => {
+    render(SyncSettingsForm, {
+      ...base,
+      enabled: false,
+      unavailable: 'Smyklot has not been granted administration access, which settings sync needs',
+    });
+
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  /**
+   * And the save is still offered: configuring first and granting after is the
+   * ordinary order, and a form that refused would leave somebody nothing to do
+   * but wait for a permission they may be the one to ask for.
+   */
+  it('still saves what it is given while the permission is missing', async () => {
+    const onSave = vi.fn();
+    render(SyncSettingsForm, {
+      ...base,
+      unavailable: 'Smyklot has not been granted administration access, which settings sync needs',
+      onSave,
+    });
+
+    await fireEvent.click(screen.getByRole('checkbox'));
+
+    expect(screen.getByRole('status').textContent).toContain('administration');
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+
+    expect(onSave.mock.calls[0]?.[0]).toBe(true);
+  });
 });

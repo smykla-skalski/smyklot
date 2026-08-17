@@ -655,6 +655,13 @@ export interface SyncConfig {
    * the view refuses.
    */
   unreadable: boolean;
+  /**
+   * What this kind needs and the installation has not granted, or empty. A
+   * switch that is on means nothing without the permission behind it: the sweep
+   * leaves the kind out, nothing is planned and nothing fails, and an empty
+   * plan list looks exactly like a sweep that has not come round yet.
+   */
+  unavailable: string;
 }
 
 /** What a save sends. The revision is what it believes it is replacing. */

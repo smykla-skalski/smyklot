@@ -155,6 +155,14 @@
   const unreadable = $derived(config?.unreadable === true);
 
   /**
+   * What labels sync needs and this installation has not granted. Empty for
+   * nearly every installation - labelling is what the bot was let in to do -
+   * but the answer carries it for every kind, and a page that read it for one
+   * kind and not the other would go quiet on whichever one was missed next.
+   */
+  const unavailable = $derived(config?.unavailable ?? '');
+
+  /**
    * A plan is only worth approving while it is waiting for somebody. The other
    * states are reported rather than acted on, which is why the button is bound
    * to this and not merely to a plan existing.
@@ -226,6 +234,15 @@
     </p>
   {/if}
 
+  <!-- Only while the switch is on: a kind nobody asked for is not waiting on
+       anything, and the permission is somebody else's to grant. -->
+  {#if unavailable !== '' && enabled}
+    <p class="sync-notice" role="status">
+      {unavailable}. Nothing here will be planned or changed until an owner grants it on the
+      installation's page on GitHub.
+    </p>
+  {/if}
+
   <div class="sync-switch">
     <label>
       <input
@@ -266,6 +283,7 @@
     stored={settings.document}
     enabled={settings.enabled}
     unreadable={settings.unreadable}
+    unavailable={settings.unavailable}
     problem={settingsError}
     {readOnly}
     saving={savingSettings}
@@ -346,7 +364,8 @@
     margin: 0;
   }
 
-  .sync-error {
+  .sync-error,
+  .sync-notice {
     background: var(--surface-inset);
     border-radius: var(--radius-control);
     color: var(--text-strong);
