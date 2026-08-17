@@ -221,21 +221,6 @@
      state - and is also what the filler paints, so a hovered row and a dead cell were the same
      colour. */
   --table-row-hover: color-mix(in srgb, var(--text-primary) 5.4%, var(--surface-base));
-  /* The wash a column heading takes under a pointer, and the deeper one it takes
-     under a press. The neutral ink, which is what the deployed panel draws and
-     what the design shows: a heading is a control, but it is a control made of
-     the table's own furniture, and tinting it with the action ink made the
-     sorted column read as a different, darker slab from its neighbours.
-
-     Every heading now takes these. Before, the sorted one took a brand tint and
-     the rest took this, which is the difference a pointer ran into as it crossed
-     the header row.
-
-     Redeclared per palette for the reason `--table-row-hover` above is: a mix
-     computes where it is declared, so one in `:root` would carry the light
-     theme's ink into all four. */
-  --table-heading-hover: color-mix(in srgb, var(--text-primary) 7%, transparent);
-  --table-heading-pressed: color-mix(in srgb, var(--text-primary) 12%, transparent);
   /* A row that can be pressed acknowledges the press, like every other control.
      The step from hover is the one the controls use - 5.3% to 10.9% there, so
      roughly double - rather than a figure picked for this one surface. */
@@ -513,21 +498,6 @@
   /* Lifts rather than drops: on a dark ground the pointer raises what it is over, as it does on
      every other control here. 5.09 dE00. */
   --table-row-hover: color-mix(in srgb, #ffffff 6.8%, var(--surface-base));
-  /* The wash a column heading takes under a pointer, and the deeper one it takes
-     under a press. The neutral ink, which is what the deployed panel draws and
-     what the design shows: a heading is a control, but it is a control made of
-     the table's own furniture, and tinting it with the action ink made the
-     sorted column read as a different, darker slab from its neighbours.
-
-     Every heading now takes these. Before, the sorted one took a brand tint and
-     the rest took this, which is the difference a pointer ran into as it crossed
-     the header row.
-
-     Redeclared per palette for the reason `--table-row-hover` above is: a mix
-     computes where it is declared, so one in `:root` would carry the light
-     theme's ink into all four. */
-  --table-heading-hover: color-mix(in srgb, var(--text-primary) 7%, transparent);
-  --table-heading-pressed: color-mix(in srgb, var(--text-primary) 12%, transparent);
   --table-row-pressed: color-mix(in srgb, #ffffff 12.4%, var(--surface-base));
   --spectrum: var(--brand-action);
 
@@ -641,21 +611,6 @@ body {
      hue: 4.60:1 on the inset against the panel's 4.58:1 on its own. */
   --text-muted: #6c6876;
   --table-row-hover: color-mix(in srgb, var(--text-primary) 5.3%, var(--surface-base));
-  /* The wash a column heading takes under a pointer, and the deeper one it takes
-     under a press. The neutral ink, which is what the deployed panel draws and
-     what the design shows: a heading is a control, but it is a control made of
-     the table's own furniture, and tinting it with the action ink made the
-     sorted column read as a different, darker slab from its neighbours.
-
-     Every heading now takes these. Before, the sorted one took a brand tint and
-     the rest took this, which is the difference a pointer ran into as it crossed
-     the header row.
-
-     Redeclared per palette for the reason `--table-row-hover` above is: a mix
-     computes where it is declared, so one in `:root` would carry the light
-     theme's ink into all four. */
-  --table-heading-hover: color-mix(in srgb, var(--text-primary) 7%, transparent);
-  --table-heading-pressed: color-mix(in srgb, var(--text-primary) 12%, transparent);
   --table-row-pressed: color-mix(in srgb, var(--text-primary) 10.9%, var(--surface-base));
   /* Aliases substitute where they are declared, so the :root copies were
      computed against panel values and inherit here already resolved.
@@ -764,21 +719,6 @@ body {
   --brand-action-text: #c4b5fd;
   --on-brand-action: #1c1329;
   --table-row-hover: color-mix(in srgb, #ffffff 6.7%, var(--surface-base));
-  /* The wash a column heading takes under a pointer, and the deeper one it takes
-     under a press. The neutral ink, which is what the deployed panel draws and
-     what the design shows: a heading is a control, but it is a control made of
-     the table's own furniture, and tinting it with the action ink made the
-     sorted column read as a different, darker slab from its neighbours.
-
-     Every heading now takes these. Before, the sorted one took a brand tint and
-     the rest took this, which is the difference a pointer ran into as it crossed
-     the header row.
-
-     Redeclared per palette for the reason `--table-row-hover` above is: a mix
-     computes where it is declared, so one in `:root` would carry the light
-     theme's ink into all four. */
-  --table-heading-hover: color-mix(in srgb, var(--text-primary) 7%, transparent);
-  --table-heading-pressed: color-mix(in srgb, var(--text-primary) 12%, transparent);
   --table-row-pressed: color-mix(in srgb, #ffffff 12.4%, var(--surface-base));
   /* The Root shell keeps its own thumb rather than inheriting the panel's #2b3541: a blue-grey
      thumb at hue 253 inside a violet shell at hue 300 reads as another product's control, the
@@ -1112,8 +1052,19 @@ a[href]:active {
 
 /* Hover mixes from ink rather than using --interactive-hover: that token is
    near-identical to the header background it would sit on. */
+/* A heading does not light up. What answers the pointer is the arrow beside the
+   word - see `.sort-indicator` below - and the note above says why: a tinted
+   header slab jumps between columns, fails contrast at 12px in light mode, and
+   stays petrol inside the violet Root shell.
+
+   There were wash rules here and they only ever fired on the sorted column: a
+   component-scoped `background: transparent` on the button ties with a bare
+   `:hover` on specificity and came later, so the plain wash never landed and the
+   sorted column's higher-specificity one did. That accident IS the difference a
+   pointer ran into as it crossed the header row. Removing the reset made every
+   heading wash instead, which is the same fault the other way up. Neither is
+   what the deployed panel draws, and neither is what the design asks for. */
 .table-sort-button:hover {
-  background-color: var(--table-heading-hover);
   color: var(--text-primary);
 }
 
@@ -1197,10 +1148,6 @@ th[aria-sort='descending'] .table-sort-button:where(:hover, :focus-visible) .sor
      with a ground of its own, and the three tables that undid it locally undid
      the shared hover with it. */
   background: none;
-}
-
-.table-sort-button:active {
-  background-color: var(--table-heading-pressed);
 }
 
 .table-sort-button:focus-visible {

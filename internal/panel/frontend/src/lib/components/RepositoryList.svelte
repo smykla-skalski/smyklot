@@ -1472,7 +1472,7 @@
        message's text on the hover ground, which is not a pairing any contrast was
        chosen for. */
     .repositories tbody tr:not(.virtual-spacer, .empty-row):hover,
-    .repositories tbody tr:not(.virtual-spacer, .empty-row):focus-within {
+    .repositories tbody tr:not(.virtual-spacer, .empty-row):has(:focus-visible) {
       background: var(--table-row-hover);
     }
 
@@ -1545,8 +1545,14 @@
   /* The keyboard's target is the name, so the row it is in takes the same wash a
      pointer gets. Otherwise tabbing down the table moves a focus ring through
      rows that never light up, and the row being read is the one thing on screen
-     with no indication that it is. */
-  .repository-row:focus-within {
+     with no indication that it is.
+
+     `:has(:focus-visible)` and not a bare `:focus-within`: a CLICK focuses the
+     link too, so the bare form left the row washed after the pointer had gone -
+     a hover that stuck to whichever row was pressed last, which reads as the
+     name having a hover of its own. `:focus-visible` is the engine's own answer
+     to "was this reached by keyboard", which is the only case that needs it. */
+  .repository-row:has(:focus-visible) {
     background: var(--table-row-hover);
   }
 
@@ -1568,7 +1574,7 @@
   }
 
   .repository-row:hover .row-chevron,
-  .repository-row:focus-within .row-chevron {
+  .repository-row:has(:focus-visible) .row-chevron {
     color: var(--text-primary);
   }
 
@@ -1590,7 +1596,19 @@
      drift centred, 0.00 here. */
   /* A link that reads as the name it is. The row around it carries the press
      affordance, so underlining this too would draw a second control inside a
-     control - the colour is inherited and only the focus ring marks it out. */
+     control - the colour is inherited and only the focus ring marks it out.
+
+     `background-image: none` cancels the product's global hover layer, which
+     `app.css` paints on every `a[href]:hover`. That rule is right for a link
+     standing on its own and wrong for this one: the whole row is the target, the
+     row already washes, and a second wash on the name drew a lighter patch
+     around the words - a hover inside a hover. It is a `background-image` and
+     not a colour, which is the only reason it survived this long: every probe
+     that went looking for it read `backgroundColor` and found nothing.
+
+     Stated on `:hover` rather than on the link, because that is what it has to
+     outrank: `a[href]:hover` carries a pseudo-class, and a plain declaration
+     here loses to it. */
   .repo-copy {
     align-items: baseline;
     color: inherit;
@@ -1598,6 +1616,10 @@
     gap: var(--space-2);
     min-width: 0;
     text-decoration: none;
+  }
+
+  .repo-copy:hover {
+    background-image: none;
   }
 
   /* Around the name, not around the cell: the ring should sit on the thing that
@@ -1613,7 +1635,10 @@
      a hidden overflow would shave the descenders off "api-gateway". The clip
      margin lets ink outside the box survive while the ellipsis still fires. */
   .repo-copy strong {
-    font: 600 var(--font-size-meta) / 1 var(--mono);
+    /* Not bold. The name is the row's subject, and the row is already the thing
+       being pressed - weight on top of that made every name read as its own
+       control in a table of them. */
+    font: 400 var(--font-size-meta) / 1 var(--mono);
     letter-spacing: 0;
     min-width: 0;
     overflow: clip;

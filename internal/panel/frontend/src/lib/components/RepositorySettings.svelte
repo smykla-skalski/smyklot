@@ -12,6 +12,7 @@
   import ConfigEditor from './ConfigEditor.svelte';
   import HelpTip from './HelpTip.svelte';
   import Icon from './Icon.svelte';
+  import BackLink from './BackLink.svelte';
   import PanelHeader from './PanelHeader.svelte';
   import Plate from './Plate.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
@@ -100,26 +101,10 @@
 
     return pane === 'behavior' ? 'Behavior' : 'Commands';
   }
-
-  /* A modified click is the reader asking for a new tab or window, and a
-     navigation that answers it in this one takes that away. Everything else is
-     handled in the panel, so the page does not reload to move one pane. */
-  function follow(event: MouseEvent, go: () => void): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    go();
-  }
 </script>
 
 <section class="repository-page" aria-labelledby={titleId}>
-  <!-- The way back is a link, so it can be opened in a new tab and reads as an
-       address rather than as a button that happens to undo something. -->
-  <a class="back-link" href={backHref} onclick={(event) => follow(event, onBack)}>
-    <Icon name="chevron-left" size={14} />
-    <span class="cap-trim">Repositories</span>
-  </a>
+  <BackLink href={backHref} label="Repositories" onNavigate={onBack} />
 
   <PanelHeader
     id={titleId}
@@ -295,21 +280,6 @@
 
   /* The same way back the console's installation page draws, so the two detail
      pages read as one anatomy: a chevron, a word, and the list it returns to. */
-  .back-link {
-    align-items: center;
-    align-self: start;
-    color: var(--text-secondary);
-    display: inline-flex;
-    font-size: var(--font-size-meta);
-    gap: var(--space-1);
-    margin-bottom: var(--space-3);
-    text-decoration: none;
-  }
-
-  .back-link:hover {
-    color: var(--text-primary);
-  }
-
   /* The page is titled by the repository name, which is code, so it sets in
      mono. `PanelHeader` stamps the id on the heading itself. */
   :global(#repository-page-title) {
@@ -397,10 +367,18 @@
     text-box: trim-both cap alphabetic;
   }
 
+  /* Trimmed like the two lines above it, and for the same reason: the card
+     centres its copy block as a BOX, so the block's box has to equal its ink or
+     the centring is of something the reader cannot see. Untrimmed, this third
+     line carried its own leading and descender room below the words and pulled
+     the block 2.49px off the icon beside it - measured by the alignment sweep
+     once the repository page was added to the routes it walks. */
   .f-copy p {
     color: var(--danger);
     font-size: var(--font-size-compact);
-    margin: 0.15rem 0 0;
+    line-height: 1;
+    margin: 0.5rem 0 0;
+    text-box: trim-both cap alphabetic;
   }
 
   /* A file the repository still carries and Smyklot is not reading is worth

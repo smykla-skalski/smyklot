@@ -35,6 +35,10 @@ export interface Panel {
 export const PANEL_ROUTES = [
   'i/settings',
   'i/repositories',
+  /* One repository's own page, which is a route in its own right and was in none
+     of these sweeps: it has a header, a switch, a way back and three panes, and
+     every rule the others are held to applies to it too. */
+  'i/repositories/api-gateway',
   'i/sync',
   'i/users',
   'i/invitations',

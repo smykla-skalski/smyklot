@@ -17,6 +17,7 @@
     RootInstallation,
     TargetSettingsInput,
   } from '../types';
+  import BackLink from './BackLink.svelte';
   import Icon from './Icon.svelte';
   import HistoryPanel from './HistoryPanel.svelte';
   import Modal from './Modal.svelte';
@@ -136,12 +137,6 @@
     onNavigate(installation.account.login, section);
   }
 
-  function returnToList(event: MouseEvent): void {
-    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey) return;
-    event.preventDefault();
-    onList();
-  }
-
   function openElevation(): void {
     elevationAcknowledged = false;
     elevationReason = '';
@@ -246,10 +241,7 @@
 <section class="installation-view" aria-labelledby="root-page-heading">
   <header class="installation-heading">
     <div class="installation-title">
-      <a class="back-link" href={listHref} onclick={returnToList}>
-        <Icon name="chevron-left" size={14} />
-        <span class="cap-trim">Installations</span>
-      </a>
+      <BackLink href={listHref} label="Installations" onNavigate={onList} />
       <div>
         <span class="installation-mark">
           <span class="cap-trim">
@@ -502,22 +494,6 @@
   }
 
   /* The back link sits where a kicker sits, so it dresses like one. */
-  .back-link {
-    align-items: center;
-    color: var(--brand-action-text);
-    display: inline-flex;
-    font: 700 var(--font-size-micro) / 1 var(--sans);
-    gap: var(--space-1);
-    letter-spacing: 0.08em;
-    text-decoration: none;
-    text-transform: uppercase;
-    width: fit-content;
-  }
-
-  .back-link:hover {
-    color: var(--text-primary);
-  }
-
   .installation-mark,
   .elevation-icon {
     align-items: center;
