@@ -52,6 +52,17 @@ type githubStub struct {
 	repoSettings   string
 	settingsWrites []string
 
+	// repoRulesets is what a repository's ruleset listing answers, and
+	// rulesetBodies is what each id answers when read whole. Two fields because
+	// GitHub answers them differently: the listing carries identity and no
+	// rules at all, which is why sync reads twice.
+	repoRulesets  string
+	rulesetBodies map[int64]string
+
+	// rulesetWrites is every create, replace and delete sync sent, which is the
+	// whole of what applying a ruleset plan does.
+	rulesetWrites []string
+
 	// refuseBranchPush is an App that was never granted write access here.
 	refuseBranchPush bool
 
@@ -125,6 +136,8 @@ func newGitHubStub() *githubStub {
 		createdTreeSHA:   "treesha",
 		repoLabels:       `[]`,
 		repoSettings:     `{}`,
+		repoRulesets:     `[]`,
+		rulesetBodies:    map[int64]string{},
 
 		prAuthor:   "author",
 		prLabels:   `[]`,
@@ -203,6 +216,11 @@ func (s *githubStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(s.membersStatus)
 		}
 		_, _ = io.WriteString(w, s.members)
+
+	// A repository's rulesets, which is a path under the repository and so has
+	// to be matched before the repository itself.
+	case strings.Contains(r.URL.Path, "/rulesets"):
+		s.serveRepositoryRulesets(w, r)
 
 	// A repository itself, which settings sync reads and writes. Matched last
 	// among the /repos routes because every other one is a path under it.
@@ -635,6 +653,65 @@ func (s *githubStub) serveRepositorySettings(w http.ResponseWriter, r *http.Requ
 	s.mu.Unlock()
 
 	_, _ = io.WriteString(w, `{}`)
+}
+
+// serveRepositoryRulesets answers and records the repository ruleset endpoints.
+//
+// The listing and one whole ruleset are different answers on purpose, because
+// they are different answers on GitHub: the listing carries identity and no
+// rules, so a stub that returned the whole object from both would let a planner
+// that never asked for the second one pass.
+func (s *githubStub) serveRepositoryRulesets(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		s.mu.Lock()
+		listing, bodies := s.repoRulesets, s.rulesetBodies
+		s.mu.Unlock()
+
+		id, whole := rulesetPathID(r.URL.Path)
+		if !whole {
+			_, _ = io.WriteString(w, listing)
+
+			return
+		}
+
+		body, known := bodies[id]
+		if !known {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = fmt.Fprintf(w, `{"message": "no stubbed ruleset %d"}`, id)
+
+			return
+		}
+
+		_, _ = io.WriteString(w, body)
+
+		return
+	}
+
+	body, _ := io.ReadAll(r.Body)
+
+	s.mu.Lock()
+	s.rulesetWrites = append(s.rulesetWrites,
+		r.Method+" "+r.URL.EscapedPath()+" "+string(body))
+	s.mu.Unlock()
+
+	w.WriteHeader(http.StatusCreated)
+	_, _ = io.WriteString(w, `{"id":1}`)
+}
+
+// rulesetPathID reads the id from /repos/{owner}/{repo}/rulesets/{id}, and
+// reports false for the listing above it.
+func rulesetPathID(path string) (int64, bool) {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) != 5 {
+		return 0, false
+	}
+
+	id, err := strconv.ParseInt(parts[4], 10, 64)
+	if err != nil {
+		return 0, false
+	}
+
+	return id, true
 }
 
 // serveRepositoryLabels answers and records the repository label endpoints.
