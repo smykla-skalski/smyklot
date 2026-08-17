@@ -1,7 +1,7 @@
 import { defineParams } from '@sveltejs/kit/params';
 
 import { DIALOG_HOST_VIEWS } from './lib/route-dialogs.ts';
-import { PANEL_VIEWS, ROOT_INSTALLATION_VIEWS } from './lib/routes.ts';
+import { HISTORY_SECTIONS, PANEL_VIEWS, ROOT_INSTALLATION_VIEWS } from './lib/routes.ts';
 
 /**
  * Every parameter matcher, written as the expression it accepts.
@@ -21,7 +21,7 @@ import { PANEL_VIEWS, ROOT_INSTALLATION_VIEWS } from './lib/routes.ts';
  * The two lists are imported by path rather than through `#lib`, because the build
  * reads this module with plain Node, which knows nothing of SvelteKit's aliases.
  */
-const PATTERNS = {
+export const patterns = {
   /** The tables the Root console's access page is split into. */
   accessSection: '^(?:users|invitations)$',
 
@@ -52,7 +52,7 @@ const PATTERNS = {
   dialogPath: '^(?:[^/]+(?:/[^/]+)?)?$',
 
   /** The two tables history is read through. */
-  historySection: '^(?:audit|failures)$',
+  historySection: `^(?:${HISTORY_SECTIONS.join('|')})$`,
 
   /**
    * An invitation token: 32 bytes, base64url, so 43 characters and no padding.
@@ -86,29 +86,22 @@ const PATTERNS = {
 } as const satisfies Record<string, string>;
 
 /** The name of a matcher, as a route spells it in `[view=panelView]`. */
-type ParamName = keyof typeof PATTERNS;
-
-/** Read by `build/route-manifest.ts`, which hands each one to the Go server. */
-export const patterns: Readonly<Record<ParamName, string>> = PATTERNS;
+type ParamName = keyof typeof patterns;
 
 /**
- * Derives a matcher from its pattern.
+ * The matchers themselves, one per pattern and derived from it.
  *
- * SvelteKit 3 matchers return the parsed parameter or `undefined`; these parse nothing,
+ * Derived rather than listed a second time, for the reason above: a list written twice
+ * is a list that drifts, and the compiler cannot tell that the second one is short. A
+ * SvelteKit 3 matcher returns the parsed parameter or `undefined`; these parse nothing,
  * so an accepted parameter comes back as it arrived.
  */
-function accepts(name: ParamName): (param: string) => string | undefined {
-  const accepted = new RegExp(PATTERNS[name]);
+export const params = defineParams(
+  Object.fromEntries(
+    Object.entries(patterns).map(([name, pattern]) => {
+      const accepted = new RegExp(pattern);
 
-  return (param) => (accepted.test(param) ? param : undefined);
-}
-
-export const params = defineParams({
-  accessSection: accepts('accessSection'),
-  dialogHostView: accepts('dialogHostView'),
-  dialogPath: accepts('dialogPath'),
-  historySection: accepts('historySection'),
-  invitationToken: accepts('invitationToken'),
-  panelView: accepts('panelView'),
-  rootInstallationView: accepts('rootInstallationView'),
-});
+      return [name, (param: string) => (accepted.test(param) ? param : undefined)];
+    }),
+  ) as { [K in ParamName]: (param: string) => string | undefined },
+);

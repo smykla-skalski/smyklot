@@ -104,8 +104,9 @@ async function matcherPatterns(
   names: Iterable<string>,
   modulePath: string,
 ): Promise<Map<string, string>> {
-  const module: unknown = await import(pathToFileURL(modulePath).href);
-  const declared = (module as { patterns?: unknown }).patterns;
+  const { patterns: declared } = (await import(pathToFileURL(modulePath).href)) as {
+    patterns?: Record<string, unknown>;
+  };
   if (typeof declared !== 'object' || declared === null) {
     throw new Error(
       `${modulePath} must export a \`patterns\` record, so the route manifest can hand ` +
@@ -115,7 +116,7 @@ async function matcherPatterns(
 
   const patterns = new Map<string, string>();
   for (const name of new Set(names)) {
-    const pattern = (declared as Record<string, unknown>)[name];
+    const pattern = declared[name];
     if (typeof pattern !== 'string' || pattern === '') {
       throw new Error(
         `param matcher "${name}" must declare a non-empty pattern in \`patterns\`, so ` +

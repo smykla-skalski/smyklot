@@ -11,18 +11,14 @@ import {
   routeSegmentLabel,
   type PanelRoute,
 } from '../src/lib/routes';
-import { params } from '../src/params.ts';
+import { patterns } from '../src/params.ts';
 
 /**
- * Runs a matcher the way the router does. SvelteKit 3 matchers are Standard
- * Schemas: an accepted parameter comes back as a value, a refused one as issues.
+ * Asks the matcher's pattern, which is the same string the route manifest hands the Go
+ * server - so this asserts what both the router and the server will do, not one of them.
  */
-function accepts(name: keyof typeof params, value: string): boolean {
-  const result = params[name]['~standard'].validate(value);
-  if (result instanceof Promise) {
-    throw new Error('the panel declares no asynchronous matchers');
-  }
-  return result.issues === undefined;
+function accepts(name: keyof typeof patterns, value: string): boolean {
+  return new RegExp(patterns[name]).test(value);
 }
 
 describe('panel routes', () => {

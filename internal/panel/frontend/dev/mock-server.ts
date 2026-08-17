@@ -6,8 +6,6 @@ import type { Duplex } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import type { Connect, Plugin } from 'vite';
 
-import { rewriteMockHtml } from './mock-html.ts';
-
 import type {
   AuditEntry,
   AccessDecision,

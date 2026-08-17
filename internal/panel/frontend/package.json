@@ -11,7 +11,7 @@
     "build": "vite build",
     "dev": "vite",
     "dev:mock": "SMYKLOT_PANEL_DEV_MOCK=1 vite",
-    "lint": "eslint . && prettier --check . && svelte-check --tsconfig ./tsconfig.json",
+    "lint": "eslint . && prettier --check . && svelte-check --tsconfig ./tsconfig.json && tsc --noEmit -p src/service-worker/tsconfig.json",
     "format": "prettier --write .",
     "test": "NODE_OPTIONS=--no-experimental-webstorage vitest run",
     "prepare": "svelte-kit sync",
@@ -54,7 +54,6 @@
     }
   },
   "imports": {
-    "#lib": "./src/lib/index.js",
     "#lib/*": "./src/lib/*"
   }
 }

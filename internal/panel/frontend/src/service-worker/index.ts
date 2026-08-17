@@ -21,7 +21,7 @@ const CACHE_PREFIX = `smyklot-panel:${encodeURIComponent(SCOPE_PATH)}:`;
 const CACHE = `${CACHE_PREFIX}${version}`;
 // `$app/manifest` reports the built bundle and the static directory relative to the
 // base path; the `$service-worker` module it replaces reported them already prefixed.
-const ASSETS = [...immutable, ...assets].map((file) => `${SCOPE_PATH}${file.path}`);
+const ASSETS = new Set([...immutable, ...assets].map((file) => `${SCOPE_PATH}${file.path}`));
 const IMMUTABLE_PATH = `${SCOPE_PATH}_app/immutable/`;
 const SHELL_REQUEST = new Request(SCOPE_PATH, { credentials: 'same-origin' });
 
@@ -64,7 +64,7 @@ self.addEventListener('fetch', (event) => {
   // Immutable chunk names carry their content hash, so a cross-version lookup
   // cannot return the wrong bytes. Static files may keep the same name between
   // builds and must be read from the current cache only.
-  if (ASSETS.includes(url.pathname) || url.pathname.startsWith(IMMUTABLE_PATH)) {
+  if (url.pathname.startsWith(IMMUTABLE_PATH) || ASSETS.has(url.pathname)) {
     event.respondWith(
       (async () => {
         const cache = await caches.open(CACHE);

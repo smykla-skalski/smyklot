@@ -3,7 +3,13 @@ import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-import { normalizeBasePath, panelUrl, readBasePath, readPanelBuild } from '../src/lib/base';
+import {
+  normalizeBasePath,
+  panelUrl,
+  readBasePath,
+  readPanelBuild,
+  type MetaSource,
+} from '../src/lib/base';
 
 const SOURCE_ROOT = fileURLToPath(new URL('../src', import.meta.url));
 
@@ -16,14 +22,14 @@ const BASE_PATH_SENTINEL = '/__smyklot_panel_base__';
 const VERSION_SENTINEL = '__smyklot_panel_version__';
 const SERVICE_SENTINEL = '__smyklot_panel_service__';
 
-function documentWithMeta(tags: Record<string, string | null>): Document {
+function documentWithMeta(tags: Record<string, string | null>): MetaSource {
   return {
     querySelector(selector: string) {
       const name = /^meta\[name="(?<name>[^"]+)"\]$/u.exec(selector)?.groups?.name;
       if (name === undefined || !(name in tags)) return null;
       return { getAttribute: () => tags[name] };
     },
-  } as unknown as Document;
+  };
 }
 
 function sourceFiles(directory: string): string[] {

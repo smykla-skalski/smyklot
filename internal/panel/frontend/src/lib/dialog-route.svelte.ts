@@ -160,44 +160,48 @@ class DialogRouter {
     return current?.name === name ? current.params[key] : undefined;
   }
 
-  open(name: string, params: Readonly<Record<string, string>> = {}): void {
-    const replacing = this.current !== null;
+  /**
+   * Writes a dialog into the address as a shallow entry.
+   *
+   * `owned` marks an entry this panel pushed itself, which `close` reads to decide
+   * between stepping back through history and replacing the address.
+   */
+  private commit(dialog: OpenDialog, replace: boolean, owned: boolean): void {
     const host = dialogHostFromPage();
-    const dialog: RouteDialog = { name, params };
     const path = host === null ? null : pathForDialog(host, dialog);
     const state: DialogPageState = {
       ...page.state,
-      dialog: { name, params },
-      ...(!replacing || dialogState().smyklotDialogEntry === true
-        ? { smyklotDialogEntry: true as const }
-        : {}),
+      dialog,
+      ...(owned ? { smyklotDialogEntry: true as const } : {}),
     };
     delete state.smyklotDialogClosed;
-    // Replacing when a dialog is already open, so the pair does not leave two entries
-    // for one overlay; pushing otherwise, so Back closes it.
     goto(resolve((path ?? currentPanelPath(dialogSearch(dialog))) as Path), {
       shallow: true,
-      replace: replacing,
+      replace,
       state,
     });
   }
 
+  open(name: string, params: Readonly<Record<string, string>> = {}): void {
+    // Replacing when a dialog is already open, so the pair does not leave two entries
+    // for one overlay; pushing otherwise, so Back closes it.
+    const replacing = this.current !== null;
+
+    this.commit(
+      { name, params },
+      replacing,
+      !replacing || dialogState().smyklotDialogEntry === true,
+    );
+  }
+
   update(name: string, params: Readonly<Record<string, string>>): void {
     if (this.current?.name !== name) return;
-    const next: OpenDialog = { name, params: { ...this.current.params, ...params } };
-    const host = dialogHostFromPage();
-    const path = host === null ? null : pathForDialog(host, next);
-    const state: DialogPageState = {
-      ...page.state,
-      dialog: next,
-      ...(dialogState().smyklotDialogEntry === true ? { smyklotDialogEntry: true } : {}),
-    };
-    delete state.smyklotDialogClosed;
-    goto(resolve((path ?? currentPanelPath(dialogSearch(next))) as Path), {
-      shallow: true,
-      replace: true,
-      state,
-    });
+
+    this.commit(
+      { name, params: { ...this.current.params, ...params } },
+      true,
+      dialogState().smyklotDialogEntry === true,
+    );
   }
 
   close(): void {
