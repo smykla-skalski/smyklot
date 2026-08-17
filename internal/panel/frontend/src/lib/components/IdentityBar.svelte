@@ -450,7 +450,11 @@
     align-items: center;
     display: flex;
     justify-content: space-between;
-    margin-bottom: var(--space-2);
+    /* The whole gap under the mark, rather than half of it here and half on the
+       switcher below. Split, it only measured 16px on a surface that has a switcher:
+       the console has none, so its navigation stood 8px under the mark - close enough
+       to the 3px between two navigation items to read as one more of them. */
+    margin-bottom: var(--space-4);
     min-height: 2.375rem;
     /* No padding on the closing edge: it held the collapse trigger 8px inside the right edge every
        navigation row below it lines up on. The mark keeps its own inset on the opening edge.
@@ -552,7 +556,8 @@
     display: grid;
     gap: 0.625rem;
     grid-template-columns: auto minmax(0, 1fr) auto;
-    margin: var(--space-2) 0 var(--space-3);
+    /* Nothing on top: the row above owns the space under the mark. */
+    margin: 0 0 var(--space-3);
     min-height: 3.25rem;
     padding: var(--space-2) 0.625rem;
     position: relative;
