@@ -698,24 +698,10 @@ func mappingNode(values map[string]any) (*yaml.Node, error) {
 // its anchor in the tree it was read from, and this copies that pointer, so a
 // copy follows an alias straight back into the original. It is used to move
 // list items into a list being built, where the anchors they may name are still
-// in the document those items are going into.
+// in the document those items are going into. Where the copy has to stand on
+// its own, copyForMerge is what re-points them.
 func cloneNode(node *yaml.Node) *yaml.Node {
-	if node == nil {
-		return nil
-	}
-
-	copied := *node
-	copied.Content = make([]*yaml.Node, len(node.Content))
-
-	for index, child := range node.Content {
-		copied.Content[index] = cloneNode(child)
-	}
-
-	if len(node.Content) == 0 {
-		copied.Content = nil
-	}
-
-	return &copied
+	return cloneWithin(node, map[*yaml.Node]*yaml.Node{})
 }
 
 func sortedKeys(values map[string]any) []string {
