@@ -64,19 +64,17 @@ function rootAddress(route: RootRoute): string {
     case 'settings':
       return resolve('/root/settings');
     case 'history-audit':
-      return resolve('/root/history/[[section=historySection]]', { section: 'audit' });
     case 'history-failures':
-      return resolve('/root/history/[[section=historySection]]', { section: 'failures' });
-    case 'access-users':
-      return resolve('/root/access/[section=accessSection]/[...rest=dialogPath]', {
-        section: 'users',
-        rest: route.dialog === undefined ? '' : (dialogRest('access-users', route.dialog) ?? ''),
+      return resolve('/root/history/[[section=historySection]]', {
+        section: route.rootView === 'history-audit' ? 'audit' : 'failures',
       });
+    // `rootView` is the dialog host's own name here, so it names both the section the
+    // address takes and the host any dialog standing on it belongs to.
+    case 'access-users':
     case 'access-invitations':
       return resolve('/root/access/[section=accessSection]/[...rest=dialogPath]', {
-        section: 'invitations',
-        rest:
-          route.dialog === undefined ? '' : (dialogRest('access-invitations', route.dialog) ?? ''),
+        section: route.rootView === 'access-users' ? 'users' : 'invitations',
+        rest: route.dialog === undefined ? '' : (dialogRest(route.rootView, route.dialog) ?? ''),
       });
     case 'installation':
       return rootInstallationAddress(route);

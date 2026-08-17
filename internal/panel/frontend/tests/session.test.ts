@@ -12,10 +12,9 @@ vi.mock('$app/navigation', () => navigation);
 vi.mock('$app/state', () => ({ page: routePage }));
 
 import { basePath } from '../src/lib/paths.ts';
+import { at } from './support/addresses.ts';
 import { PanelSession } from '../src/lib/session.svelte.ts';
 
-/** Addresses carry the configured base, because SvelteKit resolves them now. */
-const at = (path: string) => new URL(`https://panel.example${basePath}${path}`);
 import type { PanelApi } from '../src/lib/api.ts';
 import type { PanelBuild } from '../src/lib/base.ts';
 import type { PanelChangeEvent } from '../src/lib/events.ts';

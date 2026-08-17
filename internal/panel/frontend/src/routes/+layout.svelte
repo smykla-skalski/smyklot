@@ -1,8 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
-  import { resolve } from '$app/paths';
-  import type { Path } from '$app/types';
   import { createQuery, QueryClientProvider } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 
@@ -177,7 +175,7 @@
   // Bookmarks from when the inbox was a dialog still lead to the inbox page.
   $effect(() => {
     if (!legacyInboxRoute(page.url.search) || session.isInbox) return;
-    void goto(resolve('/inbox' as Path), { replace: true });
+    void goto(session.inboxHref(), { replace: true });
   });
 </script>
 

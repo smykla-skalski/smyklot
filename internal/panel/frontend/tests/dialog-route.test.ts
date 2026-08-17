@@ -7,6 +7,9 @@ const navigation = vi.hoisted(() => ({ goto: vi.fn() }));
 const routePage = vi.hoisted(() => ({
   url: new URL('https://panel.example/'),
   params: { account: 'acme', view: 'repositories' } as Record<string, string>,
+  // The route the address matched. Base-free by definition, which is why the adapter
+  // asks it rather than the pathname whether this is a Root installation.
+  route: { id: null } as { id: string | null },
   state: {} as Record<string, unknown>,
 }));
 
@@ -14,14 +17,8 @@ vi.mock('$app/navigation', () => navigation);
 vi.mock('$app/state', () => ({ page: routePage }));
 
 import { basePath } from '../src/lib/paths.ts';
+import { at } from './support/addresses.ts';
 import { dialogRoute, legacyInboxRoute, parseDialog } from '../src/lib/dialog-route.svelte';
-
-/**
- * The fixtures carry the configured base, because `panelAddress` resolves through
- * SvelteKit now and SvelteKit adds it. An address without one would be an address the
- * panel never sees.
- */
-const at = (path: string) => new URL(`https://panel.example${basePath}${path}`);
 
 describe('SvelteKit dialog route adapter', () => {
   beforeEach(() => {
@@ -31,6 +28,7 @@ describe('SvelteKit dialog route adapter', () => {
     });
     routePage.url = at('/i/acme/repositories');
     routePage.params = { account: 'acme', view: 'repositories' };
+    routePage.route = { id: '/i/[account]/[view=dialogHostView]/[...rest=dialogPath]' };
     routePage.state = {};
   });
 
@@ -66,6 +64,7 @@ describe('SvelteKit dialog route adapter', () => {
   });
 
   it('replaces an open reissue confirmation with its generated-link dialog', () => {
+    routePage.route = { id: '/root/access/[section=accessSection]/[...rest=dialogPath]' };
     routePage.url = at('/root/access/invitations/invitation-1/reissue');
     routePage.params = {
       section: 'invitations',
@@ -122,6 +121,7 @@ describe('SvelteKit dialog route adapter', () => {
   it('keeps a pathless dialog in the query across reloads', () => {
     routePage.url = at('/root/installations/acme/settings');
     routePage.params = { account: 'acme', view: 'settings' };
+    routePage.route = { id: '/root/installations/[account]/[view=rootInstallationView]' };
 
     dialogRoute.open('root-elevation', { reason: 'change settings' });
 

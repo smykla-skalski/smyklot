@@ -21,6 +21,17 @@ export const MOCK_VERSION = 'dev';
  * page asking for `/__smyklot_panel_base__/theme-boot.js`.
  */
 export const MOCK_BASE = '';
+
+/**
+ * Whether the mock API is serving.
+ *
+ * Read from the process rather than through `$app/env/private`, which the Vite config
+ * and the mock server cannot reach. `src/env.ts` declares the same variable for the one
+ * reader that can.
+ */
+export function mockEnabled(): boolean {
+  return process.env.SMYKLOT_PANEL_DEV_MOCK === '1';
+}
 const SERVICE_SENTINEL = '__smyklot_panel_service__';
 const ERROR_SENTINEL = '__smyklot_panel_error__';
 const NOSCRIPT_SENTINEL = '__smyklot_panel_noscript__';

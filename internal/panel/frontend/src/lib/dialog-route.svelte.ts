@@ -60,7 +60,7 @@ function isRootInstallation(): boolean {
  * so the two are the same kind of thing and either can be navigated to directly. This
  * used to strip the base off so the caller could put it back on.
  */
-function currentPanelAddress(search = page.url.search): string {
+function currentPanelAddress(search: string): string {
   return `${page.url.pathname}${search}${page.url.hash}`;
 }
 
@@ -220,7 +220,7 @@ class DialogRouter {
     const rest = page.params.rest;
     const path = bareHostPath();
     const target =
-      typeof rest === 'string' && rest !== '' && path !== null ? path : currentPanelAddress('');
+      rest !== undefined && rest !== '' && path !== null ? path : currentPanelAddress('');
     goto(target, { shallow: true, replace: true, state: withoutDialogState() });
   }
 }

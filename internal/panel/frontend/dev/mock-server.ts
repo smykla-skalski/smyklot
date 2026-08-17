@@ -6,6 +6,8 @@ import type { Duplex } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import type { Connect, Plugin } from 'vite';
 
+import { mockEnabled as enabled } from './mock-html.ts';
+
 import type {
   AuditEntry,
   AccessDecision,
@@ -212,10 +214,6 @@ type ShellSource = () => Promise<string>;
 
 /** Marks the error renderer's own request for a shell, so `handle` stands aside. */
 const SHELL_REQUEST_HEADER = 'x-smyklot-mock-shell';
-
-function enabled(): boolean {
-  return process.env.SMYKLOT_PANEL_DEV_MOCK === '1';
-}
 
 /**
  * Whether starting the server should also raise a browser.

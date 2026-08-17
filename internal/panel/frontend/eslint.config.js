@@ -47,6 +47,14 @@ export default tseslint.config(
       'no-restricted-imports': [
         'error',
         {
+          patterns: [
+            {
+              group: ['$lib', '$lib/*'],
+              message:
+                'SvelteKit 3 removed `$lib`. Use the `#lib` subpath declared in package.json, ' +
+                'with a file extension - `#lib/session.svelte.js`.',
+            },
+          ],
           paths: [
             {
               name: 'runed/kit',

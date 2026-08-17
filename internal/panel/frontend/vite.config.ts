@@ -6,13 +6,14 @@ import { defineConfig } from 'vitest/config';
 import { configDefaults } from 'vitest/config';
 
 import { withRouteManifest } from './build/route-manifest.ts';
-import { MOCK_BASE, MOCK_VERSION } from './dev/mock-html.ts';
+import { checkSentinels } from './build/sentinels.ts';
+import { MOCK_BASE, MOCK_VERSION, mockEnabled } from './dev/mock-html.ts';
 import { mockServer } from './dev/mock-server.ts';
 
 // In dev the mock server mounts at /, so SvelteKit's router must not enforce
 // the production base. The build keeps the sentinel so the Go server can
 // resolve it at startup.
-const isMockDev = process.env.SMYKLOT_PANEL_DEV_MOCK === '1';
+const isMockDev = mockEnabled();
 
 // The deployment version, which the Go server resolves from the sentinel in every
 // text asset it serves. The mock answers for itself - see `MOCK_VERSION`.
@@ -62,6 +63,7 @@ export default defineConfig({
     }),
     svelteTesting(),
     mockServer(),
+    checkSentinels(),
   ],
   // The service worker cannot read `version` from `$app/env`: SvelteKit builds that
   // environment with `consumer: 'client'`, so `$app/env` resolves to its browser

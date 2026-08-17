@@ -16,23 +16,16 @@ import {
  * or typed a parameter wider than the list allows, cannot be written this way.
  */
 function oneOf<T extends readonly string[]>(values: T) {
-  const pattern = `^(?:${values.join('|')})$`;
-  const accepted = new RegExp(pattern);
-
-  return {
-    pattern,
-    match: (param: string): T[number] | undefined =>
-      accepted.test(param) ? (param as T[number]) : undefined,
-  };
+  return matching<T[number]>(`^(?:${values.join('|')})$`);
 }
 
 /** A matcher over a shape rather than a list, where there is nothing to enumerate. */
-function matching(pattern: string) {
+function matching<T extends string = string>(pattern: string) {
   const accepted = new RegExp(pattern);
 
   return {
     pattern,
-    match: (param: string): string | undefined => (accepted.test(param) ? param : undefined),
+    match: (param: string): T | undefined => (accepted.test(param) ? (param as T) : undefined),
   };
 }
 
@@ -118,10 +111,20 @@ const MATCHERS = {
   rootInstallationView: oneOf(ROOT_INSTALLATION_VIEWS),
 };
 
-/** Read by `build/route-manifest.ts`, which hands each one to the Go server. */
-export const patterns = Object.fromEntries(
-  Object.entries(MATCHERS).map(([name, matcher]) => [name, matcher.pattern]),
-) as { [K in keyof typeof MATCHERS]: string };
+/** One half of every matcher, keyed the way `MATCHERS` is. */
+function each<K extends 'pattern' | 'match'>(half: K) {
+  return Object.fromEntries(
+    Object.entries(MATCHERS).map(([name, matcher]) => [name, matcher[half]]),
+  ) as { [N in keyof typeof MATCHERS]: (typeof MATCHERS)[N][K] };
+}
+
+/**
+ * Read by `build/route-manifest.ts`, which hands each one to the Go server.
+ *
+ * Marked pure so the bundler drops it: nothing in the browser reads it, but it cannot
+ * prove that of an `Object.fromEntries` on its own and would ship the fold.
+ */
+export const patterns = /* @__PURE__ */ each('pattern');
 
 /**
  * The matchers the router runs, which are the same objects the patterns came from.
@@ -131,8 +134,4 @@ export const patterns = Object.fromEntries(
  * the union of the views rather than as `string`, and the casts that used to stand at
  * every route component are gone.
  */
-export const params = defineParams(
-  Object.fromEntries(Object.entries(MATCHERS).map(([name, matcher]) => [name, matcher.match])) as {
-    [K in keyof typeof MATCHERS]: (typeof MATCHERS)[K]['match'];
-  },
-);
+export const params = defineParams(each('match'));
