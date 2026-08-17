@@ -344,7 +344,6 @@
   let pointerInside = $state(false);
   let focusInside = $state(false);
   let menuOpen = $state(false);
-  let held = $state<readonly string[] | null>(null);
   /** Every request the queue knows about, whichever section it now belongs to. */
   const everything = $derived(
     new Map([...waiting, ...recent].map((request) => [request.id, request])),
@@ -353,6 +352,15 @@
      be inferred: it opens in a portal, so by the time it is showing, neither the pointer nor focus
      is anywhere near the row it belongs to. */
   const reading = $derived(pointerInside || focusInside || menuOpen || pendingAction !== null);
+
+  /* The arrangement as it stood the moment reading began, and `null` the rest of the time.
+     `untrack` on the list, because what is wanted is a snapshot rather than a subscription: read
+     plainly, this would recompute on every tick of the clock and the table would never be held at
+     all. It reads `live` rather than `rows` so that `rows` can read this - the two would otherwise
+     each be waiting on the other. */
+  const held = $derived.by(() =>
+    reading ? untrack(() => live.map((request) => request.id)) : null,
+  );
 
   const rows = $derived.by(() => {
     if (held === null) return live;
@@ -369,17 +377,6 @@
     const already = new Set(held);
 
     return [...kept, ...live.filter((request) => !already.has(request.id))];
-  });
-
-  /* Pins on the way in and lets go on the way out. `untrack` on the pinning, because what it reads
-     is the very list it is about to fix: without it this re-pins on every tick of the clock and the
-     table is never actually held. */
-  $effect(() => {
-    if (!reading) {
-      held = null;
-      return;
-    }
-    if (untrack(() => held) === null) untrack(() => (held = rows.map((request) => request.id)));
   });
 
   /** Whether a row is only still on this screen because somebody is reading it. */
