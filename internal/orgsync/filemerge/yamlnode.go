@@ -117,9 +117,43 @@ func parseYAMLDocument(template []byte) (file, root *yaml.Node, err error) {
 		return nil, nil, fmt.Errorf("%w: it holds no object", ErrUnreadable)
 	}
 
+	if err := refuseRepeatedKeys(root); err != nil {
+		return nil, nil, err
+	}
+
 	unwriteMergeTags(root)
 
 	return &document, root, nil
+}
+
+// refuseRepeatedKeys stops on a mapping that names a key twice.
+//
+// A reader takes the last of them, and this edits the first, so an override
+// applied to such a file would be written down and then overruled by the line
+// under it - the repository's own adjustment, ignored, with the file looking
+// like it had been applied. YAML calls a repeated key an error; go-yaml only
+// enforces that when decoding into a struct, and this reads nodes.
+func refuseRepeatedKeys(node *yaml.Node) error {
+	if node.Kind == yaml.MappingNode {
+		seen := make(map[string]struct{}, len(node.Content)/2)
+
+		for at := 0; at+1 < len(node.Content); at += 2 {
+			key := node.Content[at].Value
+			if _, repeated := seen[key]; repeated {
+				return fmt.Errorf("%w: it names %q twice", ErrUnreadable, key)
+			}
+
+			seen[key] = struct{}{}
+		}
+	}
+
+	for _, child := range node.Content {
+		if err := refuseRepeatedKeys(child); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // unwriteMergeTags takes the resolved tag off a merge key.

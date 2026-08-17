@@ -152,20 +152,43 @@ func decodedNode(node *yaml.Node) (any, error) {
 	return value, nil
 }
 
-// nodeAt walks a path of keys into a document.
+// nodeAt walks a path of keys into a document, following an alias on the way.
+//
+// Following it, because an alias is what the template says is at that path: a
+// list rule addressing something reached through one found no mapping, read the
+// template as carrying no list, and appended the repository's items to nothing -
+// which is a replacement, silently, for a rule that says append.
 func nodeAt(root *yaml.Node, keys []string) *yaml.Node {
-	at := root
+	at := resolveAlias(root)
 
 	for _, key := range keys {
 		if at == nil || at.Kind != yaml.MappingNode {
 			return nil
 		}
 
-		at = valueNode(at, key)
+		at = resolveAlias(valueNode(at, key))
 	}
 
 	return at
 }
+
+// resolveAlias is what a node refers to, which is the node itself unless it is
+// an alias. Bounded, because a self-referential alias would otherwise not
+// return - go-yaml refuses to decode one, and this does not rely on that.
+func resolveAlias(node *yaml.Node) *yaml.Node {
+	for hops := 0; node != nil && node.Kind == yaml.AliasNode; hops++ {
+		if hops >= mostAliasHops {
+			return nil
+		}
+
+		node = node.Alias
+	}
+
+	return node
+}
+
+// mostAliasHops is how far an alias is followed before this gives up.
+const mostAliasHops = 100
 
 // setNodeAt writes a value at a path of keys, reporting whether the path was
 // there to write to.

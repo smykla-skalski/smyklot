@@ -368,6 +368,30 @@ jobs:
 			Entry("a quoted key", "name: build\n\"on\": push\n"),
 		)
 
+		// An alias is what the template says is at that path. Read as the node
+		// it literally is, a list rule addressing something reached through one
+		// found no mapping, took the template as carrying no list, and appended
+		// the repository's items to nothing - a replacement, silently, for a
+		// rule that says append.
+		It("appends to a list the template reached through an alias", func() {
+			merged, err := filemerge.Apply("ci.yaml",
+				[]byte("base: &b\n  ports:\n    - 80\nuse: *b\n"),
+				filemerge.Spec{
+					Overrides: overrides(`{"use": {"ports": [443]}}`),
+					Arrays: []filemerge.ArrayRule{
+						{Path: "$.use.ports", Strategy: filemerge.ArrayAppend},
+					},
+				})
+
+			Expect(err).NotTo(HaveOccurred())
+
+			// Counted rather than matched: the template's own list is still in
+			// the file under the anchor, so a substring finds "- 80" whether or
+			// not the append reached it.
+			Expect(strings.Count(string(merged), "- 80")).To(Equal(2))
+			Expect(string(merged)).To(ContainSubstring("- 443"))
+		})
+
 		// The tag comes off so the line is written plainly, and a merge key
 		// written plainly is still a merge key on the way back in - which is
 		// the half that matters and the half a substring assertion cannot see.
@@ -505,6 +529,13 @@ jobs:
 		// silence a second YAML document was dropped in before this.
 		Entry("JSON holding two documents", "f.json", `{"a":1}{"b":2}`),
 		Entry("YAML holding two documents", "f.yaml", "a: 1\n---\nb: 2\n"),
+
+		// A reader takes the last of two keys with one name and this edits the
+		// first, so an override applied to such a file would be written down
+		// and then overruled by the line under it - the repository's own
+		// adjustment ignored, with the file looking like it had been applied.
+		Entry("YAML naming a key twice", "f.yaml", "a: 1\na: 2\n"),
+		Entry("YAML naming a nested key twice", "f.yaml", "outer:\n  a: 1\n  a: 2\n"),
 	)
 })
 
