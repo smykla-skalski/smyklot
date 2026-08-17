@@ -55,13 +55,6 @@ type FilePlan struct {
 type ResolvedFile struct {
 	Path string `json:"path"`
 
-	// blob is the name git would give this content, worked out once when the
-	// file is resolved. It is asked for twice - to name the proposal and to
-	// tell a file that already matches from one that does not - and hashing a
-	// megabyte of templates twice per repository per tick is a cost with
-	// nothing behind it.
-	blob string
-
 	// Content is bytes rather than a string, so that whatever a template holds
 	// survives being written down. A string would be re-encoded as UTF-8 and
 	// anything that was not would come back as replacement characters.
@@ -72,6 +65,20 @@ type ResolvedFile struct {
 	// and re-deriving it at apply time would derive it from a configuration
 	// that may have moved.
 	Proposal string `json:"proposal"`
+}
+
+// desiredFile is a resolved file with the name git would give its contents.
+//
+// Beside the file rather than in it, because the id is the planner's working
+// and the file is what an action carries: a field that is filled in on the way
+// out and empty on the way back is a field somebody reads at the wrong end.
+// Worked out once, because it is asked for twice - to name the proposal and to
+// tell a file that already matches from one that does not - and hashing a
+// megabyte of templates twice per repository per tick buys nothing.
+type desiredFile struct {
+	ResolvedFile
+
+	blob string
 }
 
 // DecodeFile reads what an action says to write.
@@ -134,7 +141,7 @@ func PlanFiles(
 // should. A file that already says it produces nothing.
 func writeActions(
 	repositoryID, proposal string,
-	desired []ResolvedFile,
+	desired []desiredFile,
 	override FileOverride,
 	current map[string]CurrentFile,
 ) []Action {
@@ -154,7 +161,7 @@ func writeActions(
 				Operation:    OperationCreate,
 				Subject:      file.Path,
 				After:        after,
-				Payload:      encodeFile(file),
+				Payload:      encodeFile(file.ResolvedFile),
 				State:        ActionPending,
 			})
 
@@ -166,7 +173,7 @@ func writeActions(
 				Subject:      file.Path,
 				Before:       describeSize(held.Size),
 				After:        after,
-				Payload:      encodeFile(file),
+				Payload:      encodeFile(file.ResolvedFile),
 				State:        ActionPending,
 			})
 		}
@@ -207,7 +214,7 @@ func removeActions(
 // with the reason and leaves the repository unsettled, so it is answered again
 // the moment somebody resolves it.
 func refuseConflicts(
-	desired []ResolvedFile,
+	desired []desiredFile,
 	retired []string,
 	current map[string]CurrentFile,
 ) error {
@@ -234,8 +241,8 @@ func resolveFiles(
 	override FileOverride,
 	defaultBranch string,
 	exclude Excludes,
-) ([]ResolvedFile, error) {
-	resolved := make([]ResolvedFile, 0, len(config.Files))
+) ([]desiredFile, error) {
+	resolved := make([]desiredFile, 0, len(config.Files))
 
 	for _, file := range config.Files {
 		if exclude.Matches(file.Path) {
@@ -254,8 +261,9 @@ func resolveFiles(
 			return nil, fmt.Errorf("composing %s: %w", file.Path, err)
 		}
 
-		resolved = append(resolved, ResolvedFile{
-			Path: file.Path, Content: content, blob: BlobID(content),
+		resolved = append(resolved, desiredFile{
+			ResolvedFile: ResolvedFile{Path: file.Path, Content: content},
+			blob:         BlobID(content),
 		})
 	}
 
@@ -305,9 +313,9 @@ func present(paths []string, current map[string]CurrentFile) []string {
 // two runs against one configuration the same proposal - and makes a
 // configuration that has changed a different one, so a pull request somebody
 // closed does not suppress the next thing they are asked about.
-func fileProposal(desired []ResolvedFile, retired []string) string {
+func fileProposal(desired []desiredFile, retired []string) string {
 	sorted := slices.Clone(desired)
-	slices.SortFunc(sorted, func(one, other ResolvedFile) int {
+	slices.SortFunc(sorted, func(one, other desiredFile) int {
 		return strings.Compare(one.Path, other.Path)
 	})
 
