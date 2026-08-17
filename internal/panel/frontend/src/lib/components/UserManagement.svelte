@@ -17,7 +17,7 @@
 
   import { PanelApiError } from '../api';
   import { dialogRoute } from '../dialog-route.svelte';
-  import { pressableRow } from '../table-row.svelte';
+  import { pressableRow } from '../table-row';
   import { formatDateTime, formatRelative, formatTimestamp, formatUntil } from '../format';
   import { monogram } from '../identity';
   import type { FilterSection } from '../filter-menu';
@@ -1462,7 +1462,7 @@
                       tabindex={hasDecisionHistory(user) ? 0 : undefined}
                       onclick={(event) => clickHistoryRow(event, user)}
                       onkeydown={(event) => keyHistoryRow(event, user)}
-                      use:pressableRow
+                      {@attach pressableRow}
                     >
                       <th scope="row">
                         <span class="user-identity">

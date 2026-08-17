@@ -12,9 +12,12 @@
  *    the stylesheet, where the press can extend it.
  *
  * Both are solved once here and in `.data-row` in `app.css`. A table opts a row
- * in with the class and this action; everything else it already draws stays its
- * own business.
+ * in with the class and this attachment; everything else it already draws stays
+ * its own business.
  */
+
+import type { Attachment } from 'svelte/attachments';
+import { on } from 'svelte/events';
 
 /**
  * Everything in a row that is already something to press.
@@ -53,25 +56,26 @@ export function rowOpensOn(event: MouseEvent): boolean {
  * The class is added here rather than bound through component state because it
  * belongs to the element, not to the list: a virtualised table reuses rows, and
  * an index-keyed `pressedRow` follows whichever record lands in that slot next.
+ *
+ * An attachment rather than an action, which is what Svelte says to reach for
+ * from 5.29 on, and what the night sky's canvases already use. `on` from
+ * `svelte/events` rather than `addEventListener`, because a handler added that
+ * way jumps ahead of every `onclick` the row's own cells declare - those are
+ * delegated, and delegation runs after anything bound directly to the element.
  */
-export function pressableRow(node: HTMLElement): { destroy: () => void } {
+export const pressableRow: Attachment<HTMLElement> = (node) => {
   const hold = (event: PointerEvent): void => {
     if (onRowControl(event.target)) return;
     node.classList.add('pressing');
   };
   const release = (): void => node.classList.remove('pressing');
 
-  node.addEventListener('pointerdown', hold);
-  node.addEventListener('pointerup', release);
-  node.addEventListener('pointercancel', release);
-  node.addEventListener('pointerleave', release);
+  const listening = [
+    on(node, 'pointerdown', hold),
+    on(node, 'pointerup', release),
+    on(node, 'pointercancel', release),
+    on(node, 'pointerleave', release),
+  ];
 
-  return {
-    destroy() {
-      node.removeEventListener('pointerdown', hold);
-      node.removeEventListener('pointerup', release);
-      node.removeEventListener('pointercancel', release);
-      node.removeEventListener('pointerleave', release);
-    },
-  };
-}
+  return () => listening.forEach((off) => off());
+};

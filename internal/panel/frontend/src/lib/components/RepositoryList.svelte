@@ -22,7 +22,7 @@
   import { formatRelative, formatTimestamp } from '../format';
   import type { RepositorySection } from '../routes';
   import { getPanelSession } from '../session.svelte';
-  import { pressableRow, rowOpensOn } from '../table-row.svelte';
+  import { pressableRow, rowOpensOn } from '../table-row';
   import {
     decodeRepositorySettingFilter,
     encodeRepositorySettingFilter,
@@ -1007,7 +1007,7 @@
                   onclick={(event) => {
                     if (rowOpensOn(event)) openRepository(repository);
                   }}
-                  use:pressableRow
+                  {@attach pressableRow}
                 >
                   <td>
                     <!-- The whole row opens the repository, and the name is the

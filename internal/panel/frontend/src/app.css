@@ -1093,7 +1093,7 @@ body {
  * -------------------
  * One set of rules for every table that has them, because two tables grew this
  * separately and each had to rediscover the same two traps - see
- * `lib/table-row.svelte.ts`, which is the other half.
+ * `lib/table-row.ts`, which is the other half.
  *
  * The transform is composed HERE, from `--row-y`, so a virtualised row's offset
  * and a press scale can coexist. Written to the element's `style` instead, the
