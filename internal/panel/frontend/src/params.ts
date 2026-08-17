@@ -9,6 +9,34 @@ import {
 } from './lib/routes.ts';
 
 /**
+ * A matcher over a fixed list of segments.
+ *
+ * The list gives both halves at once: the expression the Go server is handed, and the
+ * type the router hands the page. A matcher that accepted something outside the list,
+ * or typed a parameter wider than the list allows, cannot be written this way.
+ */
+function oneOf<T extends readonly string[]>(values: T) {
+  const pattern = `^(?:${values.join('|')})$`;
+  const accepted = new RegExp(pattern);
+
+  return {
+    pattern,
+    match: (param: string): T[number] | undefined =>
+      accepted.test(param) ? (param as T[number]) : undefined,
+  };
+}
+
+/** A matcher over a shape rather than a list, where there is nothing to enumerate. */
+function matching(pattern: string) {
+  const accepted = new RegExp(pattern);
+
+  return {
+    pattern,
+    match: (param: string): string | undefined => (accepted.test(param) ? param : undefined),
+  };
+}
+
+/**
  * Every parameter matcher, written as the expression it accepts.
  *
  * The pattern is the declaration and the matcher is derived from it, because the same
@@ -26,9 +54,9 @@ import {
  * The two lists are imported by path rather than through `#lib`, because the build
  * reads this module with plain Node, which knows nothing of SvelteKit's aliases.
  */
-export const patterns = {
+const MATCHERS = {
   /** The tables the Root console's access page is split into. */
-  accessSection: `^(?:${ACCESS_SECTIONS.join('|')})$`,
+  accessSection: oneOf(ACCESS_SECTIONS),
 
   /**
    * The views that have anything after them in an address.
@@ -39,7 +67,7 @@ export const patterns = {
    * at all, and the server answers 404 with the panel's own page rather than 200 with
    * a not-found drawn after the shell has booted.
    */
-  dialogHostView: `^(?:${DIALOG_HOST_VIEWS.join('|')})$`,
+  dialogHostView: oneOf(DIALOG_HOST_VIEWS),
 
   /**
    * What a view may carry after it: nothing, or the one or two segments of a dialog
@@ -54,10 +82,10 @@ export const patterns = {
    * the separator rather than a single segment. Empty is the common case: it is what a
    * view with no dialog open passes.
    */
-  dialogPath: '^(?:[^/]+(?:/[^/]+)?)?$',
+  dialogPath: matching('^(?:[^/]+(?:/[^/]+)?)?$'),
 
   /** The two tables history is read through. */
-  historySection: `^(?:${HISTORY_SECTIONS.join('|')})$`,
+  historySection: oneOf(HISTORY_SECTIONS),
 
   /**
    * An invitation token: 32 bytes, base64url, so 43 characters and no padding.
@@ -67,7 +95,7 @@ export const patterns = {
    * would spend a round trip to say so. The Go server refuses the same shape from this
    * pattern, which is where it used to be spelled a second time by hand.
    */
-  invitationToken: '^[A-Za-z0-9_-]{43}$',
+  invitationToken: matching('^[A-Za-z0-9_-]{43}$'),
 
   /**
    * The views an installation address may name, taken from the list itself.
@@ -76,7 +104,7 @@ export const patterns = {
    * other list and this one still refused it, so the row in the navigation led to the
    * not-found page and a reload of the address did too.
    */
-  panelView: `^(?:${PANEL_VIEWS.join('|')})$`,
+  panelView: oneOf(PANEL_VIEWS),
 
   /**
    * The views the Root console renders for an installation, which are fewer than the
@@ -87,23 +115,24 @@ export const patterns = {
    * page rather than with a shell that says the view is unavailable, which reads as a
    * fault. The two lists used to be told apart by a third copy of both, written in Go.
    */
-  rootInstallationView: `^(?:${ROOT_INSTALLATION_VIEWS.join('|')})$`,
-} satisfies Record<string, string>;
+  rootInstallationView: oneOf(ROOT_INSTALLATION_VIEWS),
+};
+
+/** Read by `build/route-manifest.ts`, which hands each one to the Go server. */
+export const patterns = Object.fromEntries(
+  Object.entries(MATCHERS).map(([name, matcher]) => [name, matcher.pattern]),
+) as { [K in keyof typeof MATCHERS]: string };
 
 /**
- * The matchers themselves, one per pattern and derived from it.
+ * The matchers the router runs, which are the same objects the patterns came from.
  *
- * Derived rather than listed a second time, for the reason above: a list written twice
- * is a list that drifts, and the compiler cannot tell that the second one is short. A
- * SvelteKit 3 matcher returns the parsed parameter or `undefined`; these parse nothing,
- * so an accepted parameter comes back as it arrived.
+ * A SvelteKit 3 matcher returns the parsed parameter rather than a boolean, and that
+ * return type is what the router gives `page.params`. So `page.params.view` arrives as
+ * the union of the views rather than as `string`, and the casts that used to stand at
+ * every route component are gone.
  */
 export const params = defineParams(
-  Object.fromEntries(
-    Object.entries(patterns).map(([name, pattern]) => {
-      const accepted = new RegExp(pattern);
-
-      return [name, (param: string) => (accepted.test(param) ? param : undefined)];
-    }),
-  ) as Record<keyof typeof patterns, (param: string) => string | undefined>,
+  Object.fromEntries(Object.entries(MATCHERS).map(([name, matcher]) => [name, matcher.match])) as {
+    [K in keyof typeof MATCHERS]: (typeof MATCHERS)[K]['match'];
+  },
 );

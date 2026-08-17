@@ -1,10 +1,13 @@
 <script lang="ts">
-  import { page } from '$app/state';
   import { getPanelSession } from '#lib/session.svelte.js';
   import HistoryPanel from '#lib/components/HistoryPanel.svelte';
 
+  import type { PageProps } from './$types';
+
+  const { params }: PageProps = $props();
   const session = getPanelSession();
-  const section = $derived((page.params.section ?? 'audit') as 'audit' | 'failures');
+  // History opens on its first table when the address does not name one.
+  const section = $derived(params.section ?? 'audit');
 </script>
 
 <section

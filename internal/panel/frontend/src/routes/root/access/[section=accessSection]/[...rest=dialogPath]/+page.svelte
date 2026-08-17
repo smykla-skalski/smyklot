@@ -1,10 +1,12 @@
 <script lang="ts">
-  import { page } from '$app/state';
   import { getPanelSession } from '#lib/session.svelte.js';
   import RootAccess from '#lib/components/RootAccess.svelte';
 
+  import type { PageProps } from './$types';
+
+  const { params }: PageProps = $props();
   const session = getPanelSession();
-  const section = $derived(page.params.section as 'users' | 'invitations');
+  const section = $derived(params.section);
 </script>
 
 <section
