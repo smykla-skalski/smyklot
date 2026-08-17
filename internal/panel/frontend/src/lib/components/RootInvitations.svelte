@@ -896,10 +896,6 @@
     height: 10rem;
   }
 
-  .empty-row td :global(.table-empty-state) {
-    margin-inline: auto;
-  }
-
   .table-skeleton {
     min-height: 10rem;
   }

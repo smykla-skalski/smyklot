@@ -1389,10 +1389,6 @@
     height: 12rem;
   }
 
-  .empty-row td :global(.table-empty-state) {
-    margin-inline: auto;
-  }
-
   .table-skeleton {
     display: grid;
   }

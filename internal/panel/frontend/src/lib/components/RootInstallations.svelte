@@ -534,10 +534,6 @@
     text-align: center;
   }
 
-  .empty-cell :global(.table-empty-state) {
-    margin-inline: auto;
-  }
-
   .state-row:hover {
     background: transparent;
   }

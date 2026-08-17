@@ -31,6 +31,12 @@
     flex-direction: column;
     gap: var(--space-2);
     justify-content: center;
+    /* Narrower than the cell it sits in, so it has to place itself. Every caller
+       used to do this, which meant every caller could forget - and the queue did,
+       leaving its empty state flush against the first column while the cell it
+       filled was centred. Auto margins also absorb free space in a flex parent,
+       so the tables that centre by making the cell a flex container still agree. */
+    margin-inline: auto;
     max-width: 24rem;
     text-align: center;
   }
