@@ -82,7 +82,7 @@ var _ = Describe("GitHub App Client [Unit]", func() {
 				_, _ = w.Write([]byte(`[{"id": 111, "account": {"login": "acme"},
 					"permissions": {"issues": "write", "administration": "read",
 					"contents": "write", "pull_requests": "write",
-					"single_file": "read"}}]`))
+					"workflows": "write", "single_file": "read"}}]`))
 			}))
 
 			client, err := github.NewAppClient("test-jwt", server.URL)
@@ -94,10 +94,16 @@ var _ = Describe("GitHub App Client [Unit]", func() {
 
 			// Only the ones Smyklot acts on. Carrying every permission GitHub
 			// has would be a map nothing reads and a line to maintain each time
-			// GitHub adds one
+			// GitHub adds one.
+			//
+			// Workflows is one of them, and the least obvious: it is the one
+			// directory Contents write does not cover, so an installation that
+			// granted it and had it dropped here would be told for ever that it
+			// had not - and told to grant what it already had.
 			Expect(installations[0].Permissions).To(Equal(map[string]string{
 				"issues": "write", "administration": "read",
 				"contents": "write", "pull_requests": "write",
+				"workflows": "write",
 			}))
 
 			Expect(installations[0].Grants("issues")).To(BeTrue())

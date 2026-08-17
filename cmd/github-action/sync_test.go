@@ -1580,6 +1580,103 @@ var _ = Describe("Org sync [Unit]", func() {
 			Expect(err).To(MatchError(storage.ErrNotFound))
 		})
 
+		// GitHub keeps workflow files behind a permission of their own and
+		// enforces it where the ref moves, so a plan that did not check would be
+		// read and approved by a person and refused by GitHub at its last step -
+		// and because the apply failed, nothing is recorded, so the same plan is
+		// computed, approved and refused again on every reconcile after it.
+		It("stands down where a workflow is configured and not permitted", func() {
+			target := grantContents()
+			configureKind(target, orgsync.KindFiles, `{"files":[
+				{"path":".github/workflows/ci.yaml","content":"name: CI\n"}]}`)
+
+			plan(target)
+
+			_, _, err := service.store.GetLiveSyncPlan(GinkgoT().Context(), target.ID)
+			Expect(err).To(MatchError(storage.ErrNotFound))
+		})
+
+		// Removing one is writing the tree that no longer holds it, which GitHub
+		// refuses for the same reason it refuses adding one.
+		//
+		// The repository holds the path, so there is a removal to plan: without
+		// it the plan would be empty whatever the permission said, and this
+		// would pass with the check taken out.
+		It("stands down where a retired path is a workflow", func() {
+			target := grantContents()
+			stub.repoTree = `{"sha":"basetree","tree":[
+				{"path":".github","type":"tree","mode":"040000","sha":"d1"},
+				{"path":".github/workflows","type":"tree","mode":"040000","sha":"d2"},
+				{"path":".github/workflows/old.yaml","type":"blob","mode":"100644",
+				 "sha":"old","size":2}],"truncated":false}`
+			configureKind(target, orgsync.KindFiles,
+				`{"files":[],"retired":[".github/workflows/old.yaml"]}`)
+
+			plan(target)
+
+			_, _, err := service.store.GetLiveSyncPlan(GinkgoT().Context(), target.ID)
+			Expect(err).To(MatchError(storage.ErrNotFound))
+		})
+
+		It("plans the removal of a retired workflow once permitted", func() {
+			target := granting(`{"issues":"write","contents":"write","workflows":"write"}`)
+			stub.repoTree = `{"sha":"basetree","tree":[
+				{"path":".github","type":"tree","mode":"040000","sha":"d1"},
+				{"path":".github/workflows","type":"tree","mode":"040000","sha":"d2"},
+				{"path":".github/workflows/old.yaml","type":"blob","mode":"100644",
+				 "sha":"old","size":2}],"truncated":false}`
+			configureKind(target, orgsync.KindFiles,
+				`{"files":[],"retired":[".github/workflows/old.yaml"]}`)
+
+			plan(target)
+
+			_, actions := livePlan(target)
+			Expect(actions).To(HaveLen(1))
+			Expect(actions[0].Operation).To(Equal(orgsync.OperationDelete))
+		})
+
+		It("proposes a workflow once the installation permits it", func() {
+			target := granting(`{"issues":"write","contents":"write","workflows":"write"}`)
+			configureKind(target, orgsync.KindFiles, `{"files":[
+				{"path":".github/workflows/ci.yaml","content":"name: CI\n"}]}`)
+
+			plan(target)
+
+			_, actions := livePlan(target)
+			Expect(actions).To(HaveLen(1))
+			Expect(actions[0].Subject).To(Equal(".github/workflows/ci.yaml"))
+		})
+
+		// The apply is where GitHub enforces it, so the apply is where being
+		// wrong costs a commit built and a ref refused. A permission can be
+		// withdrawn between the plan being approved and being applied, which is
+		// what revoking one is for.
+		It("refuses to apply a workflow whose permission was revoked", func() {
+			target := granting(`{"issues":"write","contents":"write","workflows":"write"}`)
+			configureKind(target, orgsync.KindFiles, `{"files":[
+				{"path":".github/workflows/ci.yaml","content":"name: CI\n"}]}`)
+			plan(target)
+			computed, _ := livePlan(target)
+			approve(computed)
+
+			stub.installations = `[{"id":411,"account":` +
+				`{"id":7,"login":"smykla-skalski","type":"Organization"},` +
+				`"permissions":{"issues":"write","contents":"write"}}]`
+			_, err := service.SyncCatalog(GinkgoT().Context())
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(service.applySyncPlans(GinkgoT().Context())).To(HaveOccurred())
+
+			// Nothing built and nothing pushed: the commit is what GitHub
+			// refuses, and a branch left behind would be a proposal for a change
+			// no pull request could carry.
+			Expect(stub.createdCommits).To(BeEmpty())
+			held, _, err := service.store.GetSyncPlan(
+				GinkgoT().Context(), target.ID, computed.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(held.State).To(Equal(orgsync.PlanApplying))
+		})
+
 		// git puts a blob wherever a tree entry names one, and says nothing
 		// about what it replaced. A configured path that is a directory in one
 		// repository, or that sits under a file there, is a change that would

@@ -447,6 +447,8 @@ A repository refused that way receives none of the organization's files, and the
 
 Labels need the **Issues** write access the bot already holds. Settings and rulesets need **Administration** write, files need **Contents** write, and an installation that has not approved one is not an error: that kind stands down, says which permission it wants, and the rest of the sync carries on.
 
+Files under `.github/workflows/` need **Workflows** write on top of Contents. GitHub keeps them behind a permission of their own and enforces it where the branch moves, so a configuration naming one is checked before anything is planned rather than after somebody has approved it - and a retired workflow counts, since removing one is writing the tree that no longer holds it.
+
 A repository that already matches is not read again for six hours. That is what keeps a steady sweep at almost no cost, and the horizon is what lets it still notice a label renamed by hand.
 
 ### Watching a running service

@@ -428,24 +428,24 @@ var (
 	errSyncNotPermitted = errors.New("this installation has not permitted that sync")
 )
 
-// unavailableForTarget reports the first kind in a plan that the installation
+// unavailableForTarget reports the first action in a plan that the installation
 // no longer permits.
 //
 // The first, because a plan stops at one: there is no useful partial answer
 // between "apply this" and "somebody has to grant something".
+//
+// Asked of every action rather than once per kind, because what an action needs
+// is not the kind's alone: a file under .github/workflows needs a permission of
+// its own, and GitHub enforces that where the ref moves - which is after the
+// commit has been built and after somebody approved the plan.
 func unavailableForTarget(
 	target storage.Target,
 	actions []orgsync.Action,
 ) (orgsync.Unavailable, bool) {
-	seen := map[orgsync.Kind]struct{}{}
-
 	for _, action := range actions {
-		if _, checked := seen[action.Kind]; checked {
-			continue
-		}
-		seen[action.Kind] = struct{}{}
-
-		if unavailable, missing := orgsync.Unpermitted(target, action.Kind); missing {
+		if unavailable, missing := orgsync.UnpermittedPath(
+			target, action.Kind, action.Subject,
+		); missing {
 			return unavailable, true
 		}
 	}

@@ -372,6 +372,52 @@ func (c FileConfig) Paths() []string {
 // whole of what it asks a repository about.
 func (c FileConfig) Managed() []string { return slices.Concat(c.Paths(), c.Retired) }
 
+// workflowDirectory is where GitHub keeps a repository's workflows, and the one
+// place in a repository that Contents access is not enough to write.
+const workflowDirectory = ".github/workflows/"
+
+// workflowPermission is GitHub's own spelling for being allowed to.
+const workflowPermission = "workflows"
+
+// PathPermission is what writing one path needs beyond the files kind's own
+// Contents access, or empty where nothing more is needed.
+//
+// GitHub keeps workflow files behind a permission of their own and enforces it
+// when the ref moves: a commit that creates or updates anything under
+// .github/workflows is refused with a 422 naming `workflows`, however much
+// Contents access the App holds. Unchecked, that lands after a person has read
+// the plan and approved it - and because the apply failed, nothing is recorded,
+// so the same plan is computed, approved and refused again on every reconcile
+// after it, for ever.
+//
+// An exact prefix, because GitHub's is: a workflow is a file in that directory
+// spelled that way and nowhere else.
+func PathPermission(path string) string {
+	if strings.HasPrefix(path, workflowDirectory) {
+		return workflowPermission
+	}
+
+	return ""
+}
+
+// Permissions is what an installation must have granted for this configuration
+// to run, beyond what the files kind itself needs.
+//
+// Retired paths count. Removing a workflow is writing the tree that no longer
+// holds it, which GitHub refuses for the same reason it refuses adding one.
+func (c FileConfig) Permissions() []string {
+	var wanted []string
+
+	for _, path := range c.Managed() {
+		if permission := PathPermission(path); permission != "" &&
+			!slices.Contains(wanted, permission) {
+			wanted = append(wanted, permission)
+		}
+	}
+
+	return wanted
+}
+
 // parentPath is the directory a path sits in, empty at the repository root.
 //
 // Every path reaching this has been through validateFilePath, so it is

@@ -372,6 +372,12 @@ func installationPermissions(granted *gogithub.InstallationPermissions) map[stri
 		"contents":       granted.GetContents(),
 		"issues":         granted.GetIssues(),
 		"pull_requests":  granted.GetPullRequests(),
+
+		// Contents is not enough for one directory. GitHub keeps workflow files
+		// behind this and refuses the push that writes one without it, so an
+		// installation that granted it and had it dropped here would be told
+		// for ever that it had not.
+		"workflows": granted.GetWorkflows(),
 	} {
 		if level != "" {
 			permissions[name] = level

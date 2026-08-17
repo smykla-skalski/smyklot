@@ -310,7 +310,7 @@ func documentOrEmpty(document json.RawMessage) json.RawMessage {
 // happening.
 func syncConfigAnswer(config orgsync.Config, target storage.Target) syncConfigDTO {
 	dto := syncConfigToDTO(config)
-	if unavailable, missing := orgsync.Unpermitted(target, config.Kind); missing {
+	if unavailable, missing := orgsync.UnpermittedConfig(target, config); missing {
 		dto.Unavailable = unavailable.Reason()
 	}
 

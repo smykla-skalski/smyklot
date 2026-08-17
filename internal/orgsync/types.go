@@ -14,6 +14,7 @@
 package orgsync
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 )
@@ -118,6 +119,61 @@ func Unpermitted(grantor Grantor, kind Kind) (Unavailable, bool) {
 	}
 
 	return Unavailable{Kind: kind, Permission: permission}, true
+}
+
+// UnpermittedPath is the same question asked about work on one path, which can
+// need more than its kind does. See PathPermission.
+func UnpermittedPath(grantor Grantor, kind Kind, path string) (Unavailable, bool) {
+	if unavailable, missing := Unpermitted(grantor, kind); missing {
+		return unavailable, true
+	}
+
+	permission := PathPermission(path)
+	if kind != KindFiles || permission == "" || grantor.Grants(permission) {
+		return Unavailable{}, false
+	}
+
+	return Unavailable{Kind: kind, Permission: permission}, true
+}
+
+// UnpermittedConfig is the same question asked about a whole configuration: the
+// kind's own permission, and whatever the paths it names need on top of it.
+//
+// Asked before anything is planned, because the alternative is a plan somebody
+// approves and GitHub then refuses - which is the thing repositoryPlanner
+// states as its own rule: a plan holding work GitHub is going to refuse asks
+// somebody to approve a promise it cannot keep.
+func UnpermittedConfig(grantor Grantor, config Config) (Unavailable, bool) {
+	if unavailable, missing := Unpermitted(grantor, config.Kind); missing {
+		return unavailable, true
+	}
+
+	for _, permission := range configPermissions(config) {
+		if !grantor.Grants(permission) {
+			return Unavailable{Kind: config.Kind, Permission: permission}, true
+		}
+	}
+
+	return Unavailable{}, false
+}
+
+// configPermissions is what a configuration's own contents need.
+//
+// A document this version cannot read contributes nothing, and nothing slips
+// through on that: a kind whose document does not decode plans no work at all,
+// which the planner reports one step later and in better words than a
+// permission check could find.
+func configPermissions(config Config) []string {
+	if config.Kind != KindFiles {
+		return nil
+	}
+
+	var files FileConfig
+	if err := json.Unmarshal(config.Document, &files); err != nil {
+		return nil
+	}
+
+	return files.Permissions()
 }
 
 // Operation is what an action does to its subject.

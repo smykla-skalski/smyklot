@@ -145,7 +145,7 @@ func activeSyncKinds(
 			continue
 		}
 
-		if unavailable, missing := orgsync.Unpermitted(grantor, config.Kind); missing {
+		if unavailable, missing := orgsync.UnpermittedConfig(grantor, config); missing {
 			logging.From(ctx).Info("sync is configured but not permitted",
 				"kind", unavailable.Kind, "permission", unavailable.Permission)
 

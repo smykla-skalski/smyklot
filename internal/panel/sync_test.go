@@ -292,3 +292,38 @@ func TestSyncConfigSaysNothingOfAPermissionItHas(t *testing.T) {
 		t.Errorf("unavailable = %q, wanted nothing: the permission is granted", dto.Unavailable)
 	}
 }
+
+// A kind can need more than its own permission, and the files kind is the one
+// that does: GitHub keeps workflow files behind a permission of their own, so a
+// configuration that names one needs Contents and Workflows both. Answered from
+// the configuration rather than the kind, because a files configuration naming
+// no workflow needs nothing extra.
+func TestSyncConfigSaysWhenAWorkflowNeedsMore(t *testing.T) {
+	contents := storage.Target{Permissions: map[string]string{"contents": "write"}}
+	workflow := orgsync.Config{
+		Kind: orgsync.KindFiles, Enabled: true,
+		Document: []byte(`{"files":[{"path":".github/workflows/ci.yaml","content":"x"}]}`),
+	}
+
+	dto := syncConfigAnswer(workflow, contents)
+	if !strings.Contains(dto.Unavailable, "workflows") {
+		t.Errorf("unavailable = %q, wanted the workflows permission named", dto.Unavailable)
+	}
+
+	ordinary := orgsync.Config{
+		Kind: orgsync.KindFiles, Enabled: true,
+		Document: []byte(`{"files":[{"path":"CONTRIBUTING.md","content":"x"}]}`),
+	}
+	if answer := syncConfigAnswer(ordinary, contents); answer.Unavailable != "" {
+		t.Errorf("unavailable = %q, wanted nothing: no workflow is configured",
+			answer.Unavailable)
+	}
+
+	granted := storage.Target{
+		Permissions: map[string]string{"contents": "write", "workflows": "write"},
+	}
+	if answer := syncConfigAnswer(workflow, granted); answer.Unavailable != "" {
+		t.Errorf("unavailable = %q, wanted nothing: the permission is granted",
+			answer.Unavailable)
+	}
+}
