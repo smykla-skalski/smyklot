@@ -255,10 +255,9 @@
   let details = $state<Record<string, RepositoryDetail>>({});
   let failures = $state<Record<string, RepositoryFailure>>({});
 
-  /* What each repository says about the files, read when its sync pane is
-     opened. Its own three fields for the same reason the sync page keeps three
-     per kind: what is saved, whether a save is in flight, and what went wrong. */
-  let overrides = $state<Record<string, SyncOverride>>({});
+  /* Whether a save is in flight and what went wrong, which are this page's own
+     and belong to the moment. What a repository says about the files is server
+     state and is read as one - see syncOverrideQuery. */
   let savingOverride = $state<Record<string, boolean>>({});
   let overrideProblem = $state<Record<string, string | null>>({});
   let pendingEnablement = $state<Record<string, RepositoryEnablement>>({});
@@ -354,6 +353,32 @@
       null
     );
   });
+  /**
+   * What a repository says about the files.
+   *
+   * A query rather than a field this component fills in once, so the stream
+   * saying something changed invalidates it with everything else. Kept in a
+   * record it was read the first time the pane opened and never again - and the
+   * revision it held is what the next save sends as the one it expects, so a
+   * colleague saving first left this page unable to save at all until the whole
+   * thing was reloaded.
+   *
+   * Only when the pane is opened. Most visits to this page are about the
+   * repository's own configuration file, and reading this with the rest of the
+   * detail would be a second request per repository for a pane nobody looked at.
+   */
+  const syncOverrideKey = (repositoryId: string) => ['sync-override', targetId, repositoryId];
+  const syncOverrideQuery = createQuery(() => ({
+    queryKey: syncOverrideKey(activeRepositoryId ?? ''),
+    enabled: onLoadSyncOverride !== null && activeRepositoryId !== null && activeSection === 'sync',
+    queryFn: () => {
+      if (onLoadSyncOverride === null || activeRepositoryId === null) {
+        throw new Error('open a repository first');
+      }
+
+      return onLoadSyncOverride(activeRepositoryId);
+    },
+  }));
   const activeRepository = $derived(
     activeRepositoryId === null
       ? null
@@ -596,17 +621,6 @@
     });
   });
 
-  /* What a repository adjusts is read when its pane is asked for, and not
-     before. Most visits to this page are about the configuration file, and
-     reading it with the rest of the detail would be a second request per
-     repository for a pane nobody opened. */
-  $effect(() => {
-    const repositoryId = activeRepositoryId;
-    if (repositoryId === null || activeSection !== 'sync') return;
-
-    untrack(() => void loadSyncOverride(repositoryId));
-  });
-
   /** Whether this surface offers a pane at all - see `onLoadSyncOverride`. */
   function offeredSection(section: RepositorySection): RepositorySection {
     if (section === 'sync' && onLoadSyncOverride === null) return 'file';
@@ -657,29 +671,17 @@
   }
 
   /**
-   * Reads what a repository says about the files, once per page.
+   * Saves what a repository says about the files.
    *
-   * Only when the pane is opened. Most visits to this page are about the
-   * configuration file, and reading this with the rest of the detail would be a
-   * second request per repository for a pane nobody looked at.
+   * The revision it sends is the one the read produced, so what the save
+   * answers with is put where the read looks rather than left to a refetch.
    */
-  async function loadSyncOverride(repositoryId: string): Promise<void> {
-    if (onLoadSyncOverride === null || overrides[repositoryId] !== undefined) return;
-
-    overrideProblem = { ...overrideProblem, [repositoryId]: null };
-    try {
-      overrides = { ...overrides, [repositoryId]: await onLoadSyncOverride(repositoryId) };
-    } catch (cause) {
-      overrideProblem = { ...overrideProblem, [repositoryId]: errorMessage(cause) };
-    }
-  }
-
   async function saveSyncOverride(
     repositoryId: string,
     enabled: boolean | null,
     document: Record<string, unknown>,
   ): Promise<void> {
-    const current = overrides[repositoryId];
+    const current = syncOverrideQuery.data;
     if (onSaveSyncOverride === null || current === undefined) return;
 
     savingOverride = { ...savingOverride, [repositoryId]: true };
@@ -690,18 +692,13 @@
         document,
         expected_revision: current.revision,
       });
-      overrides = { ...overrides, [repositoryId]: saved };
+
+      queryClient.setQueryData(syncOverrideKey(repositoryId), saved);
     } catch (cause) {
       overrideProblem = { ...overrideProblem, [repositoryId]: errorMessage(cause) };
     } finally {
       savingOverride = { ...savingOverride, [repositoryId]: false };
     }
-  }
-
-  /* The sync pane keeps its own message rather than sharing the page's, so a
-     failed save there is not wiped by the next thing the file pane does. */
-  function problemOf(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
   }
 
   function rememberDetail(detail: RepositoryDetail, requested: string): void {
@@ -904,9 +901,11 @@
     onSaveConfig={(patch) => setConfig(repository.id, patch)}
     onResetMigration={() => resetConfigMigration(repository.id)}
     syncOffered={onLoadSyncOverride !== null}
-    syncOverride={overrides[repository.id]}
+    syncOverride={syncOverrideQuery.data}
     syncSaving={savingOverride[repository.id] === true}
-    syncProblem={overrideProblem[repository.id] ?? null}
+    syncProblem={syncOverrideQuery.error === null
+      ? (overrideProblem[repository.id] ?? null)
+      : errorMessage(syncOverrideQuery.error)}
     onSaveSync={(enabled, document) => void saveSyncOverride(repository.id, enabled, document)}
   />
 {:else}

@@ -53,9 +53,11 @@
 
   const disabled = $derived(saving || readOnly || unreadable);
 
-  /* The whole document rather than the parts with controls. Anything a later
-     version adds is stored here too, and a form that rebuilt the document from
-     its own controls would drop every key it has no control for. */
+  /* The whole document rather than the parts with controls, so a key a newer
+     version of the service wrote is sent back rather than dropped by a browser
+     running an older build of this page. The server refuses it by name, which
+     is the point: after a rollback somebody is told the document holds
+     something this version does not understand, rather than saving over it. */
   const payload = $derived(asDocument(drafts, retired, excludes));
 
   /* What a save would send if nobody touched anything, rather than the stored

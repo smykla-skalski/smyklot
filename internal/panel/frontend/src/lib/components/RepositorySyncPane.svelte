@@ -84,9 +84,14 @@
   );
 
   /**
-   * The whole document rather than the parts with controls. Anything a later
-   * version adds is stored here too, and rebuilding from the controls alone
-   * would drop every key this has no control for.
+   * The whole document rather than the parts with controls, so a key a newer
+   * version of the service wrote is sent back rather than dropped by a browser
+   * running an older build of this page.
+   *
+   * The server refuses it by name - it decodes what it is sent strictly - which
+   * is the point: after a rollback, somebody editing this pane is told that the
+   * document holds something this version does not understand, rather than
+   * saving over it and finding out when they roll forward again.
    *
    * An empty list is left out rather than written as an empty one, so a
    * repository that adjusts nothing says so in the one shape everything else
