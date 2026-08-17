@@ -3,10 +3,17 @@ import { resolve } from '$app/paths';
 import {
   dialogSegments,
   isDialogHost,
+  parseDialogSegments,
   type DialogHost,
   type RouteDialog,
 } from './route-dialogs.ts';
-import type { PanelRoute, RootRoute } from './routes.ts';
+import {
+  isScopedPanelView,
+  isRootInstallationView,
+  type HistorySection,
+  type PanelRoute,
+  type RootRoute,
+} from './routes.ts';
 
 /**
  * Where a route lives, resolved by SvelteKit against its own route tree.
@@ -118,4 +125,100 @@ function dialogRest(host: DialogHost, dialog: RouteDialog): string | null {
   if (segments === null) return null;
 
   return segments.map((segment) => encodeURIComponent(segment)).join('/');
+}
+
+/**
+ * The route an address matched, read back into the panel's own vocabulary.
+ *
+ * The inverse of `panelAddress`, and the reason both live here: the panel says what is
+ * being looked at, SvelteKit says where it is written down, and the translation belongs
+ * in one place going each way. This reads what the router already decided - `page.route.id`
+ * and `page.params` - rather than parsing the pathname a second time, so a renamed route
+ * is a compile error on both sides instead of a silent mismatch on one.
+ */
+export function panelRouteAt(
+  id: string | null,
+  params: Readonly<Record<string, string | undefined>>,
+): PanelRoute | null {
+  const account = params.account ?? '';
+  const section = params.section;
+
+  switch (id) {
+    case '/inbox':
+      return { personal: 'inbox' };
+
+    case '/i/[account]/[view=panelView]':
+      return withView(account, params.view);
+    case '/i/[account]/[view=dialogHostView]/[...rest=dialogPath]':
+      return withView(account, params.view, undefined, dialogAt(params.view, params.rest));
+    case '/i/[account]/history/[[section=historySection]]':
+      return withView(account, 'history', asSection(section));
+
+    case '/root':
+      return { rootView: 'overview' };
+    case '/root/installations':
+      return { rootView: 'installations' };
+    case '/root/queue':
+      return { rootView: 'queue' };
+    case '/root/queue/recent':
+      return { rootView: 'queue-recent' };
+    case '/root/queue/request/[id]':
+      return { rootView: 'queue-request', request: params.id ?? '' };
+    case '/root/settings':
+      return { rootView: 'settings' };
+    case '/root/history/[[section=historySection]]':
+      return { rootView: section === 'failures' ? 'history-failures' : 'history-audit' };
+
+    // `/root/access` redirects to a section, so it only ever shows the first one.
+    case '/root/access':
+      return { rootView: 'access-users' };
+    case '/root/access/[section=accessSection]/[...rest=dialogPath]': {
+      const host = section === 'invitations' ? 'access-invitations' : 'access-users';
+
+      return { rootView: host, dialog: dialogAt(host, params.rest) };
+    }
+
+    case '/root/installations/[account]/[view=rootInstallationView]':
+      return rootInstallation(account, params.view);
+    case '/root/installations/[account]/[view=dialogHostView]/[...rest=dialogPath]':
+      return rootInstallation(account, params.view, undefined, dialogAt(params.view, params.rest));
+    case '/root/installations/[account]/history/[[section=historySection]]':
+      return rootInstallation(account, 'history', asSection(section));
+
+    default:
+      return null;
+  }
+}
+
+function withView(
+  account: string,
+  view: string | undefined,
+  section?: HistorySection,
+  dialog?: RouteDialog,
+): PanelRoute | null {
+  return isScopedPanelView(view) ? { account, view, section, dialog } : null;
+}
+
+function rootInstallation(
+  account: string,
+  view: string | undefined,
+  section?: HistorySection,
+  dialog?: RouteDialog,
+): PanelRoute | null {
+  return isRootInstallationView(view)
+    ? { rootView: 'installation', account, view, section, dialog }
+    : null;
+}
+
+function asSection(value: string | undefined): HistorySection | undefined {
+  return value === 'audit' || value === 'failures' ? value : undefined;
+}
+
+/** The dialog the trailing segments name, or none when they name nothing this host has. */
+function dialogAt(view: string | undefined, rest: string | undefined): RouteDialog | undefined {
+  if (view === undefined || !isDialogHost(view)) return undefined;
+  const segments = rest?.split('/').filter((segment) => segment !== '') ?? [];
+  if (segments.length === 0) return undefined;
+
+  return parseDialogSegments(view, segments) ?? undefined;
 }

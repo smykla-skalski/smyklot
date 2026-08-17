@@ -240,11 +240,11 @@ export function rootSectionRoute(section: RootSection): RootRoute {
   return { rootView: section };
 }
 
-function isScopedPanelView(value: string): value is ScopedPanelView {
+export function isScopedPanelView(value: string | undefined): value is ScopedPanelView {
   return PANEL_VIEWS.some((view) => view === value);
 }
 
-function isRootInstallationView(value: string): value is RootInstallationView {
+export function isRootInstallationView(value: string | undefined): value is RootInstallationView {
   return ROOT_INSTALLATION_VIEWS.some((view) => view === value);
 }
 

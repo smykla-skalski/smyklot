@@ -16,7 +16,7 @@ import type { QueryClient } from '@tanstack/svelte-query';
 
 import type { PanelApi } from './api';
 import type { PanelBuild } from './base';
-import { panelAddress } from './addresses';
+import { panelAddress, panelRouteAt } from './addresses';
 import { basePath } from './paths';
 import type { PanelChangeEvent } from './events';
 import type { SessionEnded } from './panel-session';
@@ -24,7 +24,6 @@ import { DEFAULT_THEME_DISPLAY, isThemeDisplay, type ThemeDisplay } from './pref
 import { createPrefsSync, type PrefsSync } from './preferences-sync';
 import {
   panelDocumentTitle,
-  parsePanelRoute,
   rootSection,
   rootSectionRoute,
   type HistorySection,
@@ -126,36 +125,43 @@ export class PanelSession {
     return this.theme;
   }
 
+  /**
+   * Which part of the panel is open, asked of the route rather than the address.
+   *
+   * A route id is what SvelteKit matched, so it carries no base and no trailing slash -
+   * both of which these had to spell out when they read the pathname.
+   */
   get isRootMode(): boolean {
-    return page.url.pathname.startsWith(`${this.base}/root`);
+    return page.route.id?.startsWith('/root') ?? false;
   }
 
   get isInbox(): boolean {
-    return (
-      page.url.pathname === `${this.base}/inbox` || page.url.pathname === `${this.base}/inbox/`
-    );
+    return page.route.id === '/inbox';
   }
 
   get isInvitation(): boolean {
-    return page.url.pathname.startsWith(`${this.base}/invite/`);
+    return page.route.id === '/invite/[token=invitationToken]';
   }
 
   /**
-   * The address, read from the path rather than from the route's parameters.
+   * What is being looked at, read from the route SvelteKit matched.
    *
-   * A parameter is only there if the route that matched happens to name one, and
-   * which route matched is a detail of how `src/routes` is laid out: a view that
-   * hosts a dialog is routed with the segments after it, one that hosts none is
-   * routed without them, and history is routed by name with its section. Reading
-   * `params.view` tied these getters to that shape and broke the moment it
-   * changed - the installation's history came back as `settings`, and the
-   * console's came back as the Root console's own history page.
+   * The id and the parameters together, never the parameters alone. A parameter is only
+   * there if the matched route names one, and which route matched is a detail of how
+   * `src/routes` is laid out: a view hosting a dialog is routed with the segments after
+   * it, one hosting none is routed without them, and history is routed by name with its
+   * section. Reading `params.view` on its own tied these getters to that shape and broke
+   * the moment it changed - the installation's history came back as `settings`, and the
+   * console's came back as the Root console's own history page. The id says which shape
+   * it is, so `panelRouteAt` can read every one of them correctly.
    *
-   * The path says the same thing under every shape, and `parsePanelRoute` is the
-   * panel's one reading of it.
+   * This used to parse the pathname a second time, with the route tree written out by
+   * hand. That copy is still there for the mock server, which runs under plain Node - but
+   * the panel no longer reads it, so a renamed route cannot mean one thing to the router
+   * and another to the panel.
    */
   private get parsedRoute(): PanelRoute | null {
-    return parsePanelRoute(this.base, page.url.pathname);
+    return panelRouteAt(page.route.id, page.params);
   }
 
   get currentView(): PanelView {

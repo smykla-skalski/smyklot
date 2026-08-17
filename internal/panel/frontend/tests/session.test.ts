@@ -5,6 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const navigation = vi.hoisted(() => ({ goto: vi.fn() }));
 const routePage = vi.hoisted(() => ({
   params: {} as Record<string, string>,
+  // The route SvelteKit matched. The panel reads what is open from this and the params
+  // together, so a fixture that sets one without the other is not an address.
+  route: { id: null } as { id: string | null },
   url: new URL('https://panel.example/'),
 }));
 
@@ -62,6 +65,7 @@ describe('PanelSession [Unit]', () => {
   beforeEach(() => {
     navigation.goto.mockReset();
     routePage.params = {};
+    routePage.route = { id: '/root' };
     routePage.url = at('/root');
     vi.stubGlobal('matchMedia', () => new TestMediaQueryList());
     vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
@@ -105,6 +109,7 @@ describe('PanelSession [Unit]', () => {
     session.selectedId = 'target-1';
     routePage.url = at('/i/acme/repositories');
     routePage.params = { account: 'acme', view: 'repositories' };
+    routePage.route = { id: '/i/[account]/[view=panelView]' };
     session.syncRouteContext();
 
     session.enterRoot();
@@ -114,6 +119,7 @@ describe('PanelSession [Unit]', () => {
     // workspace context the Return action promises to restore.
     routePage.url = at('/root/installations/acme/settings');
     routePage.params = { account: 'acme', view: 'settings' };
+    routePage.route = { id: '/root/installations/[account]/[view=rootInstallationView]' };
     session.syncRouteContext();
     session.returnToPanel();
 
@@ -128,10 +134,12 @@ describe('PanelSession [Unit]', () => {
     session.targets = [{ id: 'target-1', account: { login: 'acme' } } as PanelTarget];
     session.selectedId = 'target-1';
     routePage.url = at('/i/acme/history/failures');
-    routePage.params = { account: 'acme', view: 'history', rest: 'failures' };
+    routePage.params = { account: 'acme', section: 'failures' };
+    routePage.route = { id: '/i/[account]/history/[[section=historySection]]' };
     session.syncRouteContext();
     routePage.url = at('/inbox');
     routePage.params = {};
+    routePage.route = { id: '/inbox' };
 
     expect(session.targetHref(session.targets[0]!)).toBe(`${basePath}/i/acme/history/failures`);
     expect(session.returnHref()).toBe(`${basePath}/i/acme/history/failures`);
