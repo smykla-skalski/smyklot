@@ -263,10 +263,12 @@
           </div>
         </Plate>
       {:else if section === 'sync'}
-        {#if syncOverride === undefined}
-          <p class="detail-loading dim" role="status">
-            {syncProblem ?? 'Reading what this repository adjusts…'}
-          </p>
+        {#if syncOverride === undefined && syncProblem !== null}
+          <!-- A read that failed is not a read still going, and the two read
+               identically in a dim line saying "Reading…". -->
+          <p class="form-error" role="alert">{syncProblem}</p>
+        {:else if syncOverride === undefined}
+          <p class="detail-loading dim" role="status">Reading what this repository adjusts…</p>
         {:else}
           <RepositorySyncPane
             stored={syncOverride}
