@@ -147,6 +147,83 @@ func TestSyncDocumentStoresTheSettingsType(t *testing.T) {
 	}
 }
 
+// TestSyncDocumentRefusesRulesetsGitHubWould is the panel half of the ruleset
+// rules.
+//
+// The last two entries are the ones worth having. GitHub accepts a branch
+// ruleset pointed at tag refs and a status-check rule naming no check, and then
+// the first protects nothing while reading exactly like protection and the
+// second disappears - which is how the tool this replaces removed a repository's
+// required checks with no log and no error.
+func TestSyncDocumentRefusesRulesetsGitHubWould(t *testing.T) {
+	for _, invalid := range []struct {
+		name     string
+		document string
+	}{
+		{"a target nobody defined", `{"rulesets":[
+			{"name":"main","target":"brnach","enforcement":"active"}]}`},
+		{"an enforcement nobody defined", `{"rulesets":[
+			{"name":"main","target":"branch","enforcement":"on"}]}`},
+		{"a bypass mode nobody defined", `{"rulesets":[
+			{"name":"main","target":"branch","enforcement":"active",
+			 "bypass_actors":[{"actor_id":5,"actor_type":"Team",
+			                   "bypass_mode":"sometimes"}]}]}`},
+		{"a key this version does not know", `{"rulesets":[
+			{"name":"main","target":"branch","enforcement":"active",
+			 "do_not_enforce":true}]}`},
+		{"a branch ruleset aimed at tags", `{"rulesets":[
+			{"name":"main","target":"branch","enforcement":"active",
+			 "conditions":{"include":["refs/tags/v*"]}}]}`},
+		{"required checks that name none", `{"rulesets":[
+			{"name":"main","target":"branch","enforcement":"active",
+			 "rules":{"required_status_checks":{
+			   "strict_required_status_checks_policy":true}}}]}`},
+	} {
+		t.Run(invalid.name, func(t *testing.T) {
+			_, err := syncDocumentFor(orgsync.KindRulesets, syncConfigRequest{
+				Document: []byte(invalid.document),
+			})
+			if err == nil {
+				t.Fatalf("%s was accepted", invalid.name)
+			}
+		})
+	}
+}
+
+// TestSyncDocumentStoresTheRulesetsType keeps what is stored the type the
+// planner decodes, which is the same guard the settings and labels kinds carry
+// and for the same reason: two shapes is how chunk 3's exclusions came to be
+// saved and never read.
+func TestSyncDocumentStoresTheRulesetsType(t *testing.T) {
+	document, err := syncDocumentFor(orgsync.KindRulesets, syncConfigRequest{
+		Document: []byte(`{"rulesets":[{"name":"main","target":"branch",
+			"enforcement":"active","conditions":{"include":["refs/heads/main"]},
+			"rules":{"deletion":true}}],
+			"allow_removal":true,"excludes":["hand-made"]}`),
+	})
+	if err != nil {
+		t.Fatalf("a ruleset document GitHub accepts was refused: %v", err)
+	}
+
+	var stored orgsync.RulesetConfig
+	if err := json.Unmarshal(document, &stored); err != nil {
+		t.Fatalf("what was stored is not a ruleset configuration: %v", err)
+	}
+
+	if len(stored.Rulesets) != 1 || stored.Rulesets[0].Name != "main" {
+		t.Errorf("rulesets = %v, wanted the one that was sent", stored.Rulesets)
+	}
+	if !stored.Rulesets[0].Rules.Deletion {
+		t.Error("the deletion rule did not survive the round trip")
+	}
+	if !stored.AllowRemoval {
+		t.Error("allow_removal did not survive the round trip")
+	}
+	if len(stored.Excludes) != 1 || stored.Excludes[0] != "hand-made" {
+		t.Errorf("excludes = %v, wanted the one that was sent", stored.Excludes)
+	}
+}
+
 // TestSyncConfigNeverAnswersNullLists guards the shape rather than the values.
 // A JSON null where the browser expects a list is a crash in the view, and an
 // installation that has configured nothing is the ordinary case.

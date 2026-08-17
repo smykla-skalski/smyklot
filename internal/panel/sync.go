@@ -237,20 +237,37 @@ func syncDocumentFor(kind orgsync.Kind, input syncConfigRequest) ([]byte, error)
 		return json.Marshal(config)
 
 	case orgsync.KindSettings:
-		var config orgsync.SettingsConfig
-		if err := decodeStrictly(input.Document, &config); err != nil {
-			return nil, err
-		}
-		if err := config.Validate(); err != nil {
-			return nil, err
-		}
+		return validatedDocument[orgsync.SettingsConfig](input.Document)
 
-		return json.Marshal(config)
+	case orgsync.KindRulesets:
+		return validatedDocument[orgsync.RulesetConfig](input.Document)
 
 	default:
 		return nil, fmt.Errorf("%w: Smyklot cannot synchronize %s yet",
 			orgsync.ErrInvalidConfig, kind)
 	}
+}
+
+// validatedDocument reads a kind whose whole configuration travels as one
+// document, checks it, and answers what to store.
+//
+// Labels are the exception rather than the rule here: they arrive as typed
+// fields on the request because the form was built before there was a second
+// kind. Everything since carries a document, so this is the shape a new kind
+// takes.
+func validatedDocument[T interface{ Validate() error }](
+	document json.RawMessage,
+) ([]byte, error) {
+	var config T
+	if err := decodeStrictly(document, &config); err != nil {
+		return nil, err
+	}
+
+	if err := config.Validate(); err != nil {
+		return nil, err
+	}
+
+	return json.Marshal(config)
 }
 
 // decodeStrictly reads a kind's document, refusing a key this version does not
