@@ -826,7 +826,10 @@
   .who-text {
     display: flex;
     flex-direction: column;
-    gap: 0.3rem;
+    /* The whole of the space between the two lines. It used to be 0.3rem with
+       the handle pulled 0.2rem back up into it, which is a nudge standing in
+       for a measurement. */
+    gap: 0.1rem;
     min-width: 0;
     text-align: left;
   }
@@ -836,22 +839,37 @@
     font-size: var(--font-size-meta);
     font-weight: 600;
     line-height: 1.2;
-    overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  /* No text-box trim and no tight line-height here: with overflow hidden they
-     clip the descenders of the handle ("@", "y", "g") at the bottom edge. */
   .who-handle {
     color: var(--sidebar-text-muted);
     font-size: var(--font-size-micro);
     font-weight: 500;
     line-height: 1.35;
-    margin-top: -0.2rem;
-    overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* Truncate sideways, and only sideways.
+     -------------------------------------
+     `.band-trim-stack` trims this pair to the cap above and the baseline below,
+     which is what centres the ink in the card rather than the line boxes around
+     it. The ascenders and descenders still paint - trimming moves the box, not
+     the glyphs - so `overflow: hidden` cut the tail off the handle's "@" and
+     "y" along the bottom edge, and would take the accent off a capital in a
+     name. Chrome is the only engine that implements the trim, so it was the
+     only one showing it.
+
+     Clipping one axis leaves the other alone, which `hidden` cannot do: a box
+     that is hidden on one axis and visible on the other resolves both to
+     something clipping. The ellipsis needs the horizontal clip and nothing
+     needs the vertical one. */
+  .who-name,
+  .who-handle {
+    overflow-x: clip;
+    overflow-y: visible;
   }
 
   .account-header {
@@ -961,8 +979,8 @@
 
   .account-action:hover,
   .account-action:focus-visible {
-    background: var(--stop-tint);
-    color: var(--stop);
+    background: var(--sidebar-stop-tint);
+    color: var(--sidebar-stop);
   }
 
   .account-action:active {
@@ -979,7 +997,7 @@
 
   .account-action:hover .action-icon,
   .account-action:focus-visible .action-icon {
-    color: var(--stop);
+    color: var(--sidebar-stop);
   }
 
   .action-text {
