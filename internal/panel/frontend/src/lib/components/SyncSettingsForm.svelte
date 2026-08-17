@@ -15,14 +15,7 @@
   import { canonicalStringify } from '$lib/preferences-sync';
 
   import InheritControl from './InheritControl.svelte';
-  import Plate from './Plate.svelte';
-  import SegmentedControl from './SegmentedControl.svelte';
-
-  /** The same two words the settings page puts on the same decision. */
-  const SYNC_OPTIONS = [
-    { value: 'enabled', label: 'Enabled' },
-    { value: 'disabled', label: 'Disabled' },
-  ] as const;
+  import SyncDocumentForm from './SyncDocumentForm.svelte';
 
   const {
     stored,
@@ -37,20 +30,7 @@
     stored: Record<string, unknown>;
     enabled: boolean;
     unreadable: boolean;
-    /**
-     * What this kind needs and the installation has not granted, or empty.
-     * Saving is still allowed - configuring before granting is the ordinary
-     * order - but a switch that is on while this is set changes nothing, and
-     * the plan list below says the same thing it says while waiting for a
-     * sweep. This is the only place the difference is visible.
-     */
     unavailable?: string;
-    /**
-     * What went wrong saving these settings, which belongs beside them. The
-     * labels form on the same page saves separately and neither waits for the
-     * other, so one shared message is one form's failure wiped by the other's
-     * next click.
-     */
     problem?: string | null;
     readOnly: boolean;
     saving: boolean;
@@ -194,47 +174,22 @@
   }
 </script>
 
-<Plate label="Repository settings">
-  {#snippet status()}
-    <SegmentedControl
-      name="sync-settings-switch"
-      label="Settings sync"
-      descriptionId="sync-settings-help"
-      options={SYNC_OPTIONS}
-      value={wanted ? 'enabled' : 'disabled'}
-      compact
-      {disabled}
-      onSelect={(selection) => (wanted = selection === 'enabled')}
-    />
-  {/snippet}
-
-  <p class="settings-lead" id="sync-settings-help">
-    What every repository in this installation should be set to. Anything left following its
-    repository is not touched at all, which is not the same as setting it off
-  </p>
-
-  {#if problem !== null}
-    <p class="form-error" role="alert">{problem}</p>
-  {/if}
-
-  {#if unreadable}
-    <p class="settings-notice" role="alert">
-      These settings are stored in a form this version of Smyklot cannot read, so they are not shown
-      and nothing here can be changed. Nothing has been lost.
-    </p>
-  {/if}
-
-  <!-- Only while the switch is on, because that is when the difference shows:
-       a kind nobody asked for is not waiting on anything. Bound to the switch
-       rather than to what was saved, so somebody turning it on is told before
-       they press save rather than after. -->
-  {#if unavailable !== '' && wanted}
-    <p class="settings-notice" role="status">
-      {unavailable}. Nothing here will be planned or changed until an owner grants it on the
-      installation's page on GitHub. The settings below can be saved in the meantime.
-    </p>
-  {/if}
-
+<SyncDocumentForm
+  heading="Repository settings"
+  noun="settings"
+  lead="What every repository in this installation should be set to. Anything left following its
+        repository is not touched at all, which is not the same as setting it off"
+  enabled={wanted}
+  {unreadable}
+  {unavailable}
+  {problem}
+  {readOnly}
+  {saving}
+  {changed}
+  {disabled}
+  onToggle={(value) => (wanted = value)}
+  onSave={() => onSave(wanted, draft)}
+>
   {#each GROUPS as group (group.title)}
     <section class="settings-group" aria-labelledby="sync-group-{group.id}">
       <header class="settings-group-heading">
@@ -263,43 +218,14 @@
       </div>
     </section>
   {/each}
-
-  {#if !readOnly}
-    <div class="settings-actions">
-      <button
-        class="btn btn-signal"
-        type="button"
-        disabled={disabled || !changed}
-        onclick={() => onSave(wanted, draft)}
-      >
-        {saving ? 'Saving' : 'Save settings'}
-      </button>
-      {#if changed}
-        <p class="settings-note">Nothing is changed on GitHub until a plan is approved</p>
-      {/if}
-    </div>
-  {/if}
-</Plate>
+</SyncDocumentForm>
 
 <style>
-  .settings-lead,
   .settings-note {
     color: var(--dim);
     font-size: var(--font-size-meta);
     margin: 0;
     max-width: 60ch;
-  }
-
-  .settings-notice {
-    background: var(--surface-inset);
-    border-radius: var(--r-ctl);
-    font-size: var(--font-size-meta);
-    margin: var(--space-3) 0 0;
-    padding: var(--space-2) var(--space-3);
-  }
-
-  .form-error {
-    margin: var(--space-3) 0 0;
   }
 
   /* The configuration editor's group rhythm: an eyebrow naming the group, a line
@@ -361,13 +287,5 @@
      under its own name at a narrow width instead of far off to the right. */
   .settings-spacer {
     flex: 1;
-  }
-
-  .settings-actions {
-    align-items: center;
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-3);
-    margin-top: var(--space-5);
   }
 </style>

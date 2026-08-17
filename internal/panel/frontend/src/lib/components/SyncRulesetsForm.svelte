@@ -21,6 +21,7 @@
   } from '$lib/types';
 
   import SegmentedControl from './SegmentedControl.svelte';
+  import SyncDocumentForm from './SyncDocumentForm.svelte';
 
   const {
     stored,
@@ -35,13 +36,7 @@
     stored: Record<string, unknown>;
     enabled: boolean;
     unreadable: boolean;
-    /**
-     * What this kind needs and the installation has not granted, or empty.
-     * Saving is still allowed - configuring before granting is the ordinary
-     * order - but a switch that is on while this is set changes nothing.
-     */
     unavailable?: string;
-    /** What went wrong saving these rulesets, which belongs beside them. */
     problem?: string | null;
     readOnly: boolean;
     saving: boolean;
@@ -322,61 +317,35 @@
   }
 </script>
 
-<section class="rulesets" aria-labelledby="sync-rulesets-heading">
-  <header class="rulesets-header">
-    <h2 id="sync-rulesets-heading">Rulesets</h2>
-    <p class="rulesets-lead">
-      What every repository in this installation should enforce on its branches and tags. A ruleset
-      named here is owned whole: what it does not say stops being enforced, and the plan says so
-      before anything changes.
-    </p>
-  </header>
-
-  {#if problem !== null}
-    <p class="rulesets-error" role="alert">{problem}</p>
-  {/if}
-
-  {#if unreadable}
-    <p class="rulesets-error" role="alert">
-      These rulesets are stored in a form this version of Smyklot cannot read, so they are not shown
-      and nothing here can be changed. Nothing has been lost.
-    </p>
-  {/if}
-
-  <!-- Only while the switch is on: a kind nobody asked for is not waiting on
-       anything. Bound to the switch rather than to what was saved, so somebody
-       turning it on is told before they press save rather than after. -->
-  {#if unavailable !== '' && wanted}
-    <p class="rulesets-notice" role="status">
-      {unavailable}. Nothing here will be planned or changed until an owner grants it on the
-      installation's page on GitHub. The rulesets below can be saved in the meantime.
-    </p>
-  {/if}
-
-  <div class="rulesets-switches">
-    <label>
-      <input
-        type="checkbox"
-        checked={wanted}
-        {disabled}
-        onchange={(event) => (wanted = event.currentTarget.checked)}
-      />
-      Keep these rulesets in step across every repository
-    </label>
-
-    <!-- The one control here that destroys something. A ruleset removed from
-         this list goes on enforcing for ever unless this is on, and turning it
-         on removes anything a repository has that is not named above. -->
-    <label>
-      <input
-        type="checkbox"
-        checked={removal}
-        {disabled}
-        onchange={(event) => (removal = event.currentTarget.checked)}
-      />
-      Remove rulesets this list does not name
-    </label>
-  </div>
+<SyncDocumentForm
+  heading="Rulesets"
+  noun="rulesets"
+  lead="What every repository in this installation should enforce on its branches and tags. A
+        ruleset named here is owned whole: what it does not say stops being enforced, and the plan
+        says so before anything changes."
+  enabled={wanted}
+  {unreadable}
+  {unavailable}
+  {problem}
+  {readOnly}
+  {saving}
+  {changed}
+  {disabled}
+  onToggle={(value) => (wanted = value)}
+  onSave={() => onSave(wanted, payload)}
+>
+  <!-- The one control here that destroys something. A ruleset removed from
+       this list goes on enforcing for ever unless this is on, and turning it
+       on removes anything a repository has that is not named above. -->
+  <label class="rulesets-removal">
+    <input
+      type="checkbox"
+      checked={removal}
+      {disabled}
+      onchange={(event) => (removal = event.currentTarget.checked)}
+    />
+    Remove rulesets this list does not name
+  </label>
 
   <!-- The safety valve beside the switch above, and the reason it is here
        rather than only in the API: a person who can turn removal on from this
@@ -795,55 +764,16 @@
     </article>
   {/each}
 
-  {#if !readOnly}
-    <div class="rulesets-actions">
-      <button class="btn btn-quiet" type="button" {disabled} onclick={add}>Add a ruleset</button>
-      <button
-        class="btn btn-signal"
-        type="button"
-        disabled={disabled || !changed}
-        onclick={() => onSave(wanted, payload)}
-      >
-        {saving ? 'Saving' : 'Save rulesets'}
-      </button>
-      {#if changed}
-        <p class="rulesets-note">Nothing is changed on GitHub until a plan is approved.</p>
-      {/if}
-    </div>
-  {/if}
-</section>
+  {#snippet actions()}
+    <button class="btn btn-quiet" type="button" {disabled} onclick={add}>Add a ruleset</button>
+  {/snippet}
+</SyncDocumentForm>
 
 <style>
-  .rulesets {
-    display: grid;
-    gap: var(--space-3);
-  }
-
-  .rulesets-header {
-    display: grid;
-    gap: var(--space-1);
-  }
-
-  .rulesets-lead,
-  .rulesets-note,
   .rulesets-empty,
   .ruleset-note {
     color: var(--text-muted);
     margin: 0;
-  }
-
-  .rulesets-error,
-  .rulesets-notice {
-    background: var(--surface-inset);
-    border-radius: var(--radius-control);
-    color: var(--text-strong);
-    margin: 0;
-    padding: var(--space-2) var(--space-3);
-  }
-
-  .rulesets-switches {
-    display: grid;
-    gap: var(--space-1);
   }
 
   .ruleset {
@@ -913,12 +843,5 @@
 
   .ruleset-count {
     inline-size: 5rem;
-  }
-
-  .rulesets-actions {
-    align-items: center;
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
   }
 </style>

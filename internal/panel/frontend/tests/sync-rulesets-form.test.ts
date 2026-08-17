@@ -180,9 +180,7 @@ describe('SyncRulesetsForm [Component]', () => {
     const onSave = vi.fn();
     render(SyncRulesetsForm, { ...base, stored: stored(), onSave });
 
-    await fireEvent.click(
-      screen.getByLabelText('Keep these rulesets in step across every repository'),
-    );
+    await fireEvent.click(screen.getByRole('radio', { name: 'Enabled' }));
     await fireEvent.click(save());
 
     expect(onSave.mock.calls[0]?.[0]).toBe(true);
