@@ -12,7 +12,16 @@
 
   import type { SyncAction, SyncConfig, SyncConfigInput, SyncPlan } from '$lib/types';
 
+  import PanelHeader from './PanelHeader.svelte';
+  import Plate from './Plate.svelte';
+  import SegmentedControl from './SegmentedControl.svelte';
   import SyncSettingsForm from './SyncSettingsForm.svelte';
+
+  /** The same two words the settings page puts on the same decision. */
+  const SYNC_OPTIONS = [
+    { value: 'enabled', label: 'Enabled' },
+    { value: 'disabled', label: 'Disabled' },
+  ] as const;
 
   const {
     targetId,
@@ -214,183 +223,206 @@
   }
 </script>
 
-<section class="sync" aria-labelledby="sync-heading">
-  <header class="sync-header">
-    <h2 id="sync-heading">Labels</h2>
-    <p class="sync-lead">
-      The labels every repository in this installation should carry. Smyklot works out what would
-      change and asks before changing anything.
-    </p>
-  </header>
-
-  {#if error !== null}
-    <p class="sync-error" role="alert">{error}</p>
-  {/if}
-
-  {#if unreadable}
-    <p class="sync-error" role="alert">
-      This installation's labels are stored in a form this version of Smyklot cannot read, so they
-      are not shown and nothing here can be changed. Nothing has been lost.
-    </p>
-  {/if}
-
-  <!-- Only while the switch is on: a kind nobody asked for is not waiting on
-       anything, and the permission is somebody else's to grant. -->
-  {#if unavailable !== '' && enabled}
-    <p class="sync-notice" role="status">
-      {unavailable}. Nothing here will be planned or changed until an owner grants it on the
-      installation's page on GitHub.
-    </p>
-  {/if}
-
-  <div class="sync-switch">
-    <label>
-      <input
-        type="checkbox"
-        checked={enabled}
-        disabled={saving || readOnly || unreadable || config === null}
-        onchange={(event) => onSave(event.currentTarget.checked)}
-      />
-      Keep these labels in step across every repository
-    </label>
-  </div>
-
-  {#if unreadable}
-    <!-- Deliberately not "no labels yet". An empty list here would be the panel
-         inventing an answer it does not have. -->
-  {:else if labels.length === 0}
-    <p class="sync-empty">No labels yet.</p>
-  {:else}
-    <ul class="sync-labels">
-      {#each labels as label (label.name)}
-        <li class="sync-label">
-          <!-- The colour is the label's own, so it is set as a custom property
-               rather than an inline style: the panel serves style-src 'self',
-               under which a style attribute is parsed and then discarded. -->
-          <span class="sync-swatch" style:--swatch="#{label.color}" aria-hidden="true"></span>
-          <span class="sync-name">{label.name}</span>
-          {#if label.description}
-            <span class="sync-description">{label.description}</span>
-          {/if}
-        </li>
-      {/each}
-    </ul>
-  {/if}
-</section>
-
-{#if settings !== null}
-  <SyncSettingsForm
-    stored={settings.document}
-    enabled={settings.enabled}
-    unreadable={settings.unreadable}
-    unavailable={settings.unavailable}
-    problem={settingsError}
-    {readOnly}
-    saving={savingSettings}
-    onSave={onSaveSettings}
+<section class="sync-page" aria-labelledby="sync-heading">
+  <PanelHeader
+    id="sync-heading"
+    title="Sync"
+    description="What every repository in this installation should look like, and what Smyklot would change to make that true"
   />
-{/if}
 
-<section class="sync" aria-labelledby="sync-plan-heading">
-  <header class="sync-header">
-    <h2 id="sync-plan-heading">What would change</h2>
-  </header>
+  <Plate label="Labels">
+    {#snippet status()}
+      <SegmentedControl
+        name="sync-labels-{targetId}"
+        label="Label sync"
+        descriptionId="sync-labels-help"
+        options={SYNC_OPTIONS}
+        value={enabled ? 'enabled' : 'disabled'}
+        compact
+        disabled={saving || readOnly || unreadable || config === null}
+        onSelect={(selection) => void onSave(selection === 'enabled')}
+      />
+    {/snippet}
 
-  {#if plan === null}
-    <!-- Deliberately not "nothing to do". Nothing is waiting, which is also
-         what it looks like a moment after saving, before any reconcile has
-         read a repository - and telling somebody their new configuration
-         needs no changes would be a claim nothing here has checked. -->
-    <p class="sync-empty">
-      Nothing waiting. A reconcile runs on a timer and proposes whatever differs.
+    <p class="sync-lead" id="sync-labels-help">
+      The labels every repository in this installation should carry. Smyklot works out what would
+      change and asks before changing anything
     </p>
-  {:else}
-    <p class="sync-note">{planNote}</p>
-    <p class="sync-counts">
-      {plan.counts.create} to add, {plan.counts.update} to change, {plan.counts.delete} to remove
-    </p>
 
-    <ul class="sync-actions">
-      {#each plan.actions as action (action.repository + action.kind + action.subject)}
-        <li class="sync-action" class:sync-removal={action.operation === 'delete'}>
-          <span class="sync-operation">{operationLabel(action)}</span>
-          <!-- Which of the sections above this row came from. One list covers
-               them all, and "change repository" says nothing on its own. -->
-          <span class="sync-kind">{action.kind}</span>
-          <span class="sync-subject">{action.subject}</span>
-          {#if action.after}
-            <span class="sync-after">{action.after}</span>
-          {:else if action.before}
-            <span class="sync-after">{action.before}</span>
-          {/if}
-          {#if action.error}
-            <span class="sync-failure">{action.error}</span>
-          {:else if action.blocker}
-            <span class="sync-failure">not tried: {action.blocker} failed first</span>
-          {/if}
-        </li>
-      {/each}
-    </ul>
-
-    {#if approvable && !readOnly}
-      {@const approved = plan}
-      <button
-        class="btn btn-signal"
-        type="button"
-        disabled={approving}
-        onclick={() => onApprove(approved.id, approved.digest)}
-      >
-        {approving ? 'Approving' : 'Apply these changes'}
-      </button>
+    {#if error !== null}
+      <p class="form-error" role="alert">{error}</p>
     {/if}
+
+    {#if unreadable}
+      <p class="sync-notice" role="alert">
+        This installation's labels are stored in a form this version of Smyklot cannot read, so they
+        are not shown and nothing here can be changed. Nothing has been lost.
+      </p>
+    {/if}
+
+    <!-- Only while the switch is on: a kind nobody asked for is not waiting on
+         anything, and the permission is somebody else's to grant. -->
+    {#if unavailable !== '' && enabled}
+      <p class="sync-notice" role="status">
+        {unavailable}. Nothing here will be planned or changed until an owner grants it on the
+        installation's page on GitHub.
+      </p>
+    {/if}
+
+    {#if unreadable}
+      <!-- Deliberately not "no labels yet". An empty list here would be the panel
+           inventing an answer it does not have. -->
+    {:else if labels.length === 0}
+      <p class="sync-empty">No labels yet</p>
+    {:else}
+      <ul class="sync-rows">
+        {#each labels as label (label.name)}
+          <li class="sync-row">
+            <!-- The colour is the label's own, so it is set as a custom property
+                 rather than an inline style: the panel serves style-src 'self',
+                 under which a style attribute is parsed and then discarded. -->
+            <span class="sync-swatch" style:--swatch="#{label.color}" aria-hidden="true"></span>
+            <span class="sync-name">{label.name}</span>
+            {#if label.description}
+              <span class="sync-description">{label.description}</span>
+            {/if}
+          </li>
+        {/each}
+      </ul>
+    {/if}
+  </Plate>
+
+  {#if settings !== null}
+    <SyncSettingsForm
+      stored={settings.document}
+      enabled={settings.enabled}
+      unreadable={settings.unreadable}
+      unavailable={settings.unavailable}
+      problem={settingsError}
+      {readOnly}
+      saving={savingSettings}
+      onSave={onSaveSettings}
+    />
   {/if}
+
+  <Plate label="What would change">
+    {#if plan === null}
+      <!-- Deliberately not "nothing to do". Nothing is waiting, which is also
+           what it looks like a moment after saving, before any reconcile has
+           read a repository - and telling somebody their new configuration
+           needs no changes would be a claim nothing here has checked. -->
+      <p class="sync-lead">
+        Nothing waiting. A reconcile runs on a timer and proposes whatever differs
+      </p>
+    {:else}
+      <p class="sync-lead">{planNote}</p>
+      <p class="sync-counts">
+        {plan.counts.create} to add, {plan.counts.update} to change, {plan.counts.delete} to remove
+      </p>
+
+      <ul class="sync-rows">
+        {#each plan.actions as action (action.repository + action.kind + action.subject)}
+          <li class="sync-row" class:sync-removal={action.operation === 'delete'}>
+            <span class="sync-operation">{operationLabel(action)}</span>
+            <!-- Which of the sections above this row came from. One list covers
+                 them all, and "change repository" says nothing on its own. -->
+            <span class="sync-kind">{action.kind}</span>
+            <span class="sync-name">{action.subject}</span>
+            {#if action.after}
+              <span class="sync-description">{action.after}</span>
+            {:else if action.before}
+              <span class="sync-description">{action.before}</span>
+            {/if}
+            {#if action.error}
+              <span class="sync-failure">{action.error}</span>
+            {:else if action.blocker}
+              <span class="sync-failure">not tried: {action.blocker} failed first</span>
+            {/if}
+          </li>
+        {/each}
+      </ul>
+
+      {#if approvable && !readOnly}
+        {@const approved = plan}
+        <div class="sync-actions">
+          <button
+            class="btn btn-signal"
+            type="button"
+            disabled={approving}
+            onclick={() => onApprove(approved.id, approved.digest)}
+          >
+            {approving ? 'Approving' : 'Apply these changes'}
+          </button>
+        </div>
+      {/if}
+    {/if}
+  </Plate>
 </section>
 
 <style>
-  .sync {
-    display: grid;
-    gap: var(--space-3);
+  /* The settings page's plates, on the settings page's ground. */
+  .sync-page :global(.plate) {
+    background: var(--surface-base);
   }
 
-  .sync-header {
-    display: grid;
-    gap: var(--space-1);
-  }
-
-  .sync-lead,
-  .sync-note,
-  .sync-empty {
-    color: var(--text-muted);
+  /* A plate's opening line, which the body's own padding already places. */
+  .sync-lead {
+    color: var(--dim);
+    font-size: var(--font-size-meta);
     margin: 0;
+    max-width: 60ch;
   }
 
-  .sync-error,
+  /* The same line, further down a plate, so it carries the gap itself. */
+  .sync-counts,
+  .sync-empty {
+    color: var(--dim);
+    font-size: var(--font-size-meta);
+    margin: var(--space-3) 0 0;
+    max-width: 60ch;
+  }
+
   .sync-notice {
     background: var(--surface-inset);
-    border-radius: var(--radius-control);
-    color: var(--text-strong);
-    margin: 0;
+    border-radius: var(--r-ctl);
+    font-size: var(--font-size-meta);
+    margin: var(--space-3) 0 0;
     padding: var(--space-2) var(--space-3);
   }
 
-  .sync-labels,
-  .sync-actions {
-    display: grid;
-    gap: var(--space-1);
+  .form-error {
+    margin: var(--space-3) 0 0;
+  }
+
+  /* The rows the configuration editor draws: hairlines between, no box around,
+     because the plate is already the box. A bordered list inside a bordered card
+     reads as two cards, which is what this page used to look like. */
+  .sync-rows {
     list-style: none;
-    margin: 0;
+    margin: var(--space-3) 0 0;
     padding: 0;
   }
 
-  .sync-label,
-  .sync-action {
+  .sync-row {
     align-items: baseline;
-    background: var(--surface-inset);
-    border-radius: var(--radius-control);
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-2);
-    padding: var(--space-2) var(--space-3);
+    gap: var(--space-3);
+    padding-block: 0.7rem;
+  }
+
+  .sync-row + .sync-row {
+    border-top: 1px solid var(--rule);
+  }
+
+  /* The plate's own padding closes the list; the row's would double it. */
+  .sync-rows > .sync-row:last-child {
+    padding-bottom: 0.15rem;
+  }
+
+  .sync-name {
+    font-size: 0.875rem;
+    font-weight: 600;
   }
 
   /* The swatch sits on the text baseline rather than centred on the line box, so
@@ -405,18 +437,14 @@
   }
 
   .sync-description,
-  .sync-after,
-  .sync-counts,
   .sync-kind {
-    color: var(--text-muted);
-  }
-
-  .sync-counts {
-    margin: 0;
+    color: var(--dim);
+    font-size: var(--font-size-meta);
   }
 
   .sync-operation {
-    color: var(--text-muted);
+    color: var(--dim);
+    font-size: var(--font-size-meta);
     font-variant-numeric: tabular-nums;
     min-width: 4.5rem;
   }
@@ -425,12 +453,17 @@
      something somebody may have made by hand, and it is off unless an operator
      switched it on. */
   .sync-removal .sync-operation {
-    color: var(--text-strong);
+    color: var(--text-primary);
     font-weight: 600;
   }
 
   .sync-failure {
-    color: var(--text-strong);
+    color: var(--stop);
     flex-basis: 100%;
+    font-size: var(--font-size-meta);
+  }
+
+  .sync-actions {
+    margin-top: var(--space-4);
   }
 </style>

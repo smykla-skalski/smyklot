@@ -113,7 +113,7 @@ describe('SyncSettingsForm [Component]', () => {
     const onSave = vi.fn();
     render(SyncSettingsForm, { ...base, stored: { has_wiki: false }, onSave });
 
-    await fireEvent.click(screen.getByRole('checkbox'));
+    await fireEvent.click(screen.getByRole('radio', { name: 'Enabled' }));
     await fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
 
     expect(onSave.mock.calls[0]?.[0]).toBe(true);
@@ -196,7 +196,7 @@ describe('SyncSettingsForm [Component]', () => {
       onSave,
     });
 
-    await fireEvent.click(screen.getByRole('checkbox'));
+    await fireEvent.click(screen.getByRole('radio', { name: 'Enabled' }));
 
     expect(screen.getByRole('status').textContent).toContain('administration');
 

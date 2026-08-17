@@ -15,6 +15,14 @@
   import { canonicalStringify } from '$lib/preferences-sync';
 
   import InheritControl from './InheritControl.svelte';
+  import Plate from './Plate.svelte';
+  import SegmentedControl from './SegmentedControl.svelte';
+
+  /** The same two words the settings page puts on the same decision. */
+  const SYNC_OPTIONS = [
+    { value: 'enabled', label: 'Enabled' },
+    { value: 'disabled', label: 'Disabled' },
+  ] as const;
 
   const {
     stored,
@@ -186,21 +194,31 @@
   }
 </script>
 
-<section class="settings" aria-labelledby="sync-settings-heading">
-  <header class="settings-header">
-    <h2 id="sync-settings-heading">Repository settings</h2>
-    <p class="settings-lead">
-      What every repository in this installation should be set to. Anything left following its
-      repository is not touched at all, which is not the same as setting it off.
-    </p>
-  </header>
+<Plate label="Repository settings">
+  {#snippet status()}
+    <SegmentedControl
+      name="sync-settings-switch"
+      label="Settings sync"
+      descriptionId="sync-settings-help"
+      options={SYNC_OPTIONS}
+      value={wanted ? 'enabled' : 'disabled'}
+      compact
+      {disabled}
+      onSelect={(selection) => (wanted = selection === 'enabled')}
+    />
+  {/snippet}
+
+  <p class="settings-lead" id="sync-settings-help">
+    What every repository in this installation should be set to. Anything left following its
+    repository is not touched at all, which is not the same as setting it off
+  </p>
 
   {#if problem !== null}
-    <p class="settings-error" role="alert">{problem}</p>
+    <p class="form-error" role="alert">{problem}</p>
   {/if}
 
   {#if unreadable}
-    <p class="settings-error" role="alert">
+    <p class="settings-notice" role="alert">
       These settings are stored in a form this version of Smyklot cannot read, so they are not shown
       and nothing here can be changed. Nothing has been lost.
     </p>
@@ -216,18 +234,6 @@
       installation's page on GitHub. The settings below can be saved in the meantime.
     </p>
   {/if}
-
-  <div class="settings-switch">
-    <label>
-      <input
-        type="checkbox"
-        checked={wanted}
-        {disabled}
-        onchange={(event) => (wanted = event.currentTarget.checked)}
-      />
-      Keep these settings in step across every repository
-    </label>
-  </div>
 
   {#each GROUPS as group (group.title)}
     <section class="settings-group" aria-labelledby="sync-group-{group.id}">
@@ -269,59 +275,60 @@
         {saving ? 'Saving' : 'Save settings'}
       </button>
       {#if changed}
-        <p class="settings-note">Nothing is changed on GitHub until a plan is approved.</p>
+        <p class="settings-note">Nothing is changed on GitHub until a plan is approved</p>
       {/if}
     </div>
   {/if}
-</section>
+</Plate>
 
 <style>
-  .settings {
-    display: grid;
-    gap: var(--space-3);
-  }
-
-  .settings-header {
-    display: grid;
-    gap: var(--space-1);
-  }
-
   .settings-lead,
   .settings-note {
-    color: var(--text-muted);
+    color: var(--dim);
+    font-size: var(--font-size-meta);
     margin: 0;
+    max-width: 60ch;
   }
 
-  .settings-error,
   .settings-notice {
     background: var(--surface-inset);
-    border-radius: var(--radius-control);
-    color: var(--text-strong);
-    margin: 0;
+    border-radius: var(--r-ctl);
+    font-size: var(--font-size-meta);
+    margin: var(--space-3) 0 0;
     padding: var(--space-2) var(--space-3);
   }
 
+  .form-error {
+    margin: var(--space-3) 0 0;
+  }
+
+  /* The configuration editor's group rhythm: an eyebrow naming the group, a line
+     under it saying what it covers, and the rows. Written to the same numbers so
+     the two pages read as one - `ConfigEditor` is where they are decided. */
   .settings-group {
-    display: grid;
-    gap: var(--space-2);
+    margin-top: 1.375rem;
   }
 
   .settings-group-heading {
-    display: grid;
-    gap: var(--space-1);
+    margin: 0 0.125rem 0.625rem;
   }
 
   .settings-group-heading h3 {
+    color: var(--brand-action);
+    font-size: var(--font-size-micro);
+    font-weight: 700;
+    letter-spacing: 0.1em;
     margin: 0;
+    text-transform: uppercase;
   }
 
-  /* The rows the configuration editor uses, because they are the same kind of
-     row: a name, and one control that answers followed-or-overridden. */
-  .settings-rows {
-    border: 1px solid var(--rule);
-    border-radius: var(--r-ctl);
+  .settings-group-heading p {
+    margin: 0.1875rem 0 0;
   }
 
+  /* Hairlines between the rows and no box around them, because the plate is
+     already the box. Bordered, this list read as a second card inside the
+     first. */
   .settings-row + .settings-row {
     border-top: 1px solid var(--rule);
   }
@@ -330,20 +337,18 @@
      window scrolls down rather than across. */
   .settings-row {
     align-items: center;
-    background: var(--strip);
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-2);
-    min-height: 3.25rem;
-    padding: var(--space-2) 0.875rem;
+    gap: var(--space-3);
+    padding-block: 0.7rem;
   }
 
-  .settings-row:first-child {
-    border-radius: calc(var(--r-ctl) - 1px) calc(var(--r-ctl) - 1px) 0 0;
+  .settings-rows > .settings-row:first-child {
+    padding-top: 0.15rem;
   }
 
-  .settings-row:last-child {
-    border-radius: 0 0 calc(var(--r-ctl) - 1px) calc(var(--r-ctl) - 1px);
+  .settings-rows > .settings-row:last-child {
+    padding-bottom: 0.15rem;
   }
 
   .settings-label {
@@ -362,6 +367,7 @@
     align-items: center;
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-2);
+    gap: var(--space-3);
+    margin-top: var(--space-5);
   }
 </style>

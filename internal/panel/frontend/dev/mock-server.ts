@@ -598,10 +598,101 @@ function seed(): MockState {
     },
     streams: new Set(),
     prefs: loadPreferences(),
-    sync: new Map(),
-    syncPlans: new Map(),
+    /* Configured and waiting, because empty was the only state this page could
+       be looked at in: `mockSyncConfig` invents an empty document the first time
+       it is asked, and no plan was ever computed, so the label list and the plan
+       list rendered nowhere and drifted out of the design unseen. */
+    sync: new Map([[`${organization.value.id}/labels`, syncLabelsSeed(iso)]]),
+    syncPlans: new Map([[organization.value.id, syncPlanSeed(iso)]]),
     // Replaced by install() with the running server's own page.
     shell: () => Promise.reject(new Error('the mock dev server is not serving yet')),
+  };
+}
+
+/** A label set an organization has configured, switched on and being enforced. */
+function syncLabelsSeed(iso: (offsetMs: number) => string): SyncConfig {
+  return {
+    kind: 'labels',
+    enabled: true,
+    labels: [
+      { name: 'bug', color: 'd73a4a', description: 'Something is not working' },
+      { name: 'dependencies', color: '0366d6', description: 'Updates a dependency' },
+      // No description at all, which is not the same as an empty one: the row
+      // has to read without the second column.
+      { name: 'good first issue', color: '7057ff' },
+      { name: 'security', color: 'b60205', description: 'Needs a maintainer before anything else' },
+    ],
+    allow_removal: true,
+    excludes: ['smykla-skalski/archived-*'],
+    revision: 3,
+    updated_by: 'bart',
+    updated_at: iso(-3 * 60 * 60_000),
+    digest: 'sha256:labels',
+    document: {},
+    unreadable: false,
+    unavailable: '',
+  };
+}
+
+/**
+ * A plan waiting for somebody, carrying one of everything the list can draw: an
+ * addition, a change, a removal, a row that failed and a row that was never
+ * tried because another failed first.
+ */
+function syncPlanSeed(iso: (offsetMs: number) => string): SyncPlan {
+  return {
+    id: 'plan-1',
+    trigger: 'reconcile',
+    state: 'computed',
+    digest: 'sha256:plan',
+    counts: { create: 2, update: 1, delete: 1 },
+    actions: [
+      {
+        repository: 'smyklot',
+        kind: 'label',
+        operation: 'create',
+        subject: 'security',
+        after: 'b60205',
+        state: 'pending',
+      },
+      {
+        repository: 'platform-infra',
+        kind: 'label',
+        operation: 'update',
+        subject: 'bug',
+        before: 'ee0701',
+        after: 'd73a4a',
+        state: 'pending',
+      },
+      {
+        repository: 'platform-infra',
+        kind: 'label',
+        operation: 'delete',
+        subject: 'wontfix',
+        before: 'ffffff',
+        state: 'pending',
+      },
+      {
+        repository: 'design-tokens',
+        kind: 'repository',
+        operation: 'update',
+        subject: 'has_wiki',
+        after: 'false',
+        state: 'failed',
+        error: 'the app is not an administrator of this repository',
+      },
+      {
+        repository: 'design-tokens',
+        kind: 'label',
+        operation: 'create',
+        subject: 'good first issue',
+        after: '7057ff',
+        state: 'skipped',
+        blocker: 'has_wiki',
+      },
+    ],
+    computed_at: iso(-8 * 60_000),
+    expires_at: iso(52 * 60_000),
   };
 }
 
