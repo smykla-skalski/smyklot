@@ -58,6 +58,18 @@
       "rangeStrategy": "bump"
     },
     {
+      "allowedVersions": "<1.0.0",
+      "description": [
+        " The cookie override reaches the CVE-2024-47764 patch inside the line SvelteKit 2 declares,",
+        " so it is a decision about that release rather than a dependency to keep current. 2.x removed",
+        " parse and serialize, the two functions Kit imports, and the build dies on them; 1.x keeps",
+        " them only as untyped aliases that 2.x then deleted. Lift this when the panel moves to",
+        " SvelteKit 3, which asks for cookie 2 itself"
+      ],
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["cookie"]
+    },
+    {
       "description": "Smyklot action managed by sync-smyklot workflow",
       "enabled": false,
       "matchManagers": ["github-actions"],

@@ -89,6 +89,7 @@ Go + Ginkgo/Gomega, deployed as Docker-based GitHub Action.
 - Reactive utilities come from **runed**: `useIntersectionObserver` for infinite-load sentinels, `useDebounce` for searches, and `useInterval` for relative-time clocks
 - The service worker is **SvelteKit native** (`src/service-worker.ts` using `$service-worker` build/files/version). The old hand-written `static/sw.js` and `lib/service-worker.ts` registration helper are deleted. SvelteKit handles registration; the Go server serves `service-worker.js` with `no-cache`
 - `cookie` is held at `^0.7.0` by an npm **`overrides`** entry in `internal/panel/frontend/package.json`, and dropping it brings CVE-2024-47764 back. SvelteKit asks for `^0.6.0`, which excludes every patched release, so no version of Kit resolves a fixed one and no dependency bump closes the alert. Scope the override to `@sveltejs/kit` rather than the whole tree: a bare `cookie` key would also pin anything that later wants 1.x or 2.x, where `CookieSerializeOptions` no longer exists
+- The override above is a decision about SvelteKit 2, not a version to keep current, so `renovate.json` bounds `cookie` to `<1.0.0` — Renovate read it as a dependency and proposed 2.x, which removed `parse` and `serialize`, the two functions Kit imports. 1.x still exports them but declares neither, so it builds and type-checks today only because `skipLibCheck` skips Kit's `.d.ts`. The bound lifts at SvelteKit 3, which depends on cookie 2 itself
 
 ## Code Style
 
