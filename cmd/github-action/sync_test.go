@@ -804,6 +804,49 @@ var _ = Describe("Org sync [Unit]", func() {
 				To(BeNumerically(">", reads))
 		})
 
+		// The same silence at the other end. One ruleset here is unresolvable
+		// and another needs creating, so there is real work to plan - and a
+		// kind whose every action applied is a kind the executor records as
+		// settled, against the digest for the whole configuration. Acting on
+		// the half it can address would mark the half it cannot as up to date
+		It("plans nothing for a kind it cannot resolve, however much of it it can", func() {
+			target := granting(`{"issues":"write","administration":"write"}`)
+			stub.repoRulesets = `[
+				{"id":7,"name":"main-branch-protection","target":"branch",
+				 "enforcement":"active","source_type":"Repository"},
+				{"id":8,"name":"main-branch-protection","target":"branch",
+				 "enforcement":"active","source_type":"Repository"}]`
+
+			whole := `{"id":%d,"name":"main-branch-protection","target":"branch",
+				"enforcement":"active",
+				"conditions":{"ref_name":{"include":["refs/heads/main"],"exclude":[]}},
+				"rules":[{"type":"deletion"}]}`
+			stub.rulesetBodies = map[int64]string{
+				7: fmt.Sprintf(whole, 7),
+				8: fmt.Sprintf(whole, 8),
+			}
+
+			// The second one is unambiguous and this repository has none of it
+			configureKind(target, orgsync.KindRulesets, `{"rulesets":[
+				{"name":"main-branch-protection","target":"branch",
+				 "enforcement":"active",
+				 "conditions":{"include":["refs/heads/main"]},
+				 "rules":{"deletion":true}},
+				{"name":"release-protection","target":"branch",
+				 "enforcement":"active",
+				 "conditions":{"include":["refs/heads/release/*"]},
+				 "rules":{"non_fast_forward":true}}]}`)
+
+			plan(target)
+
+			_, _, err := service.store.GetLiveSyncPlan(GinkgoT().Context(), target.ID)
+			Expect(err).To(MatchError(storage.ErrNotFound))
+
+			state, err := service.store.ListSyncRepositoryState(GinkgoT().Context(), target.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(state).To(BeEmpty())
+		})
+
 		// The tool this replaces had no delete path at all, so a ruleset dropped
 		// from configuration went on enforcing for ever. The id comes off the
 		// plan rather than being looked up again, because by apply time the name

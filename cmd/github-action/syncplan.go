@@ -236,12 +236,22 @@ func (s *server) planSyncActions(
 			}
 
 			if !settled {
-				// Read, and the answer was that this cannot be managed rather
-				// than that it matches. Nothing is recorded, so it is asked
-				// again every sweep until whoever owns the repository resolves
-				// it - which is the only pressure there is.
-				actions = append(actions, found...)
-
+				// Read, and the answer was that this kind cannot be managed on
+				// this repository rather than that it matches.
+				//
+				// Its actions go with it, and that is the whole of the reason:
+				// a kind whose every action applied is a kind the executor
+				// records as settled, against the digest for the whole
+				// configuration. Send one action and the repository is marked
+				// up to date for everything the kind covers - including the
+				// part nothing could address, which then goes unlooked-at for
+				// six hours. Whichever end that silence is created at, it is
+				// the same silence.
+				//
+				// So nothing is planned and nothing is recorded, and the
+				// repository is read again every sweep until whoever owns it
+				// resolves what is wrong. The kinds beside this one are
+				// untouched: this is one kind on one repository.
 				continue
 			}
 
@@ -273,12 +283,15 @@ func (s *server) planSyncActions(
 
 // repositoryQuestion asks one repository what one kind would take.
 //
-// settled says whether no actions means the repository matches. Nearly always
-// it does, and for labels and settings it always does. A ruleset a repository
-// holds twice is the exception: nothing can say which one the configuration
-// meant, so there is no work to propose and no grounds to call it settled -
-// and recording it as settled is how a repository nothing manages comes to look
-// exactly like one that is up to date.
+// settled says whether the answer covers the whole of what this kind
+// configures. Nearly always it does, and for labels and settings it always
+// does. A ruleset a repository holds twice is the exception: nothing can say
+// which one the configuration meant, so part of the kind is unresolved however
+// much of the rest was worked out.
+//
+// False throws the actions away with it, because the executor records a kind
+// settled once its every action applied - so acting on the resolved part would
+// mark the unresolved part up to date too.
 type repositoryQuestion func(
 	context.Context, storage.Repository,
 ) (found []orgsync.Action, settled bool, err error)
