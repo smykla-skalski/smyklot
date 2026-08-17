@@ -3,7 +3,9 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import { ROOT_USER_ACTIONS } from '../src/lib/route-dialogs';
-import { panelRoutePath, parsePanelRoute } from '../src/lib/routes';
+import { panelAddress } from '../src/lib/addresses';
+import { basePath } from '../src/lib/paths';
+import { parsePanelRoute } from '../src/lib/routes';
 
 /**
  * The addresses dialogs are read from and written to.
@@ -16,7 +18,7 @@ function roundTrip(path: string): string {
   const route = parsePanelRoute('', path);
   expect(route).not.toBeNull();
 
-  return panelRoutePath('', route!);
+  return panelAddress(route!).slice(basePath.length);
 }
 
 describe('dialog addresses on a view [Unit]', () => {
@@ -117,13 +119,13 @@ describe('dialog addresses on a view [Unit]', () => {
   });
 
   it('escapes a repository name that needs it', () => {
-    const path = panelRoutePath('', {
+    const path = panelAddress({
       account: 'acme',
       view: 'repositories',
       dialog: { name: 'repository-settings', params: { repository: 'a b/c', section: 'file' } },
     });
-    expect(path).toBe('/i/acme/repositories/a%20b%2Fc');
-    expect(parsePanelRoute('', path)).toEqual({
+    expect(path).toBe(`${basePath}/i/acme/repositories/a%20b%2Fc`);
+    expect(parsePanelRoute(basePath, path)).toEqual({
       account: 'acme',
       view: 'repositories',
       dialog: { name: 'repository-settings', params: { repository: 'a b/c', section: 'file' } },

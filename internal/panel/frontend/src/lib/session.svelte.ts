@@ -9,7 +9,6 @@
 import { goto } from '$app/navigation';
 import { resolve } from '$app/paths';
 import { page } from '$app/state';
-import type { Path } from '$app/types';
 import { createContext } from 'svelte';
 import { MediaQuery } from 'svelte/reactivity';
 
@@ -17,6 +16,7 @@ import type { QueryClient } from '@tanstack/svelte-query';
 
 import type { PanelApi } from './api';
 import type { PanelBuild } from './base';
+import { panelAddress } from './addresses';
 import { basePath } from './paths';
 import type { PanelChangeEvent } from './events';
 import type { SessionEnded } from './panel-session';
@@ -24,7 +24,6 @@ import { DEFAULT_THEME_DISPLAY, isThemeDisplay, type ThemeDisplay } from './pref
 import { createPrefsSync, type PrefsSync } from './preferences-sync';
 import {
   panelDocumentTitle,
-  panelRoutePath,
   parsePanelRoute,
   rootSection,
   rootSectionRoute,
@@ -383,7 +382,7 @@ export class PanelSession {
   returnToPanel(replace = false): void {
     const target = this.returnTarget;
     if (target === null) {
-      void goto(resolve(this.returnHref() as Path), { replace: true });
+      void goto(this.returnHref(), { replace: true });
       return;
     }
     void this.navigate(this.returnRoute(target), replace);
@@ -392,54 +391,54 @@ export class PanelSession {
   // --- Hrefs ---
 
   targetHref(target: PanelTarget): string {
-    return panelRoutePath(this.base, this.returnRoute(target));
+    return panelAddress(this.returnRoute(target));
   }
 
   viewHref(nextView: PanelView): string {
     const target = this.selectedTarget;
-    return target === null ? '#' : panelRoutePath(this.base, this.routeFor(target, nextView));
+    return target === null ? '#' : panelAddress(this.routeFor(target, nextView));
   }
 
   rootHrefFor(section: RootSection): string {
-    return panelRoutePath(this.base, rootSectionRoute(section));
+    return panelAddress(rootSectionRoute(section));
   }
 
   rootDashboardHref(): string {
-    return panelRoutePath(this.base, { rootView: 'overview' });
+    return panelAddress({ rootView: 'overview' });
   }
 
   rootInstallationsHref(): string {
-    return panelRoutePath(this.base, { rootView: 'installations' });
+    return panelAddress({ rootView: 'installations' });
   }
 
   rootAuditHref(): string {
-    return panelRoutePath(this.base, { rootView: 'history-audit' });
+    return panelAddress({ rootView: 'history-audit' });
   }
 
   queueHref(): string {
-    return panelRoutePath(this.base, { rootView: 'queue' });
+    return panelAddress({ rootView: 'queue' });
   }
 
   queueRequestHref(request: string): string {
-    return panelRoutePath(this.base, { rootView: 'queue-request', request });
+    return panelAddress({ rootView: 'queue-request', request });
   }
 
   rootFailuresHref(): string {
-    return panelRoutePath(this.base, { rootView: 'history-failures' });
+    return panelAddress({ rootView: 'history-failures' });
   }
 
   rootInstallationHref(account: string, nextView: RootInstallationView): string {
-    return panelRoutePath(this.base, this.rootInstallationRoute(account, nextView));
+    return panelAddress(this.rootInstallationRoute(account, nextView));
   }
 
   returnHref(): string {
     return this.returnTarget === null
-      ? `${this.base}/`
-      : panelRoutePath(this.base, this.returnRoute(this.returnTarget));
+      ? resolve('/')
+      : panelAddress(this.returnRoute(this.returnTarget));
   }
 
   inboxHref(): string {
-    return panelRoutePath(this.base, { personal: 'inbox' });
+    return panelAddress({ personal: 'inbox' });
   }
 
   openInbox(): void {
@@ -559,16 +558,12 @@ export class PanelSession {
     return typeof value === 'string' && isThemeDisplay(value) ? value : DEFAULT_THEME_DISPLAY;
   }
 
-  private routePath(route: PanelRoute): string {
-    return panelRoutePath('', route);
-  }
-
   private returnRoute(target: PanelTarget): PanelRoute {
     return this.routeFor(target, this.lastScopedView, this.lastScopedHistorySection);
   }
 
   private navigate(route: PanelRoute, replace = false): Promise<void> {
-    return goto(resolve(this.routePath(route) as Path), { replace });
+    return goto(panelAddress(route), { replace });
   }
 
   invalidateTargetData(targetId: string): void {

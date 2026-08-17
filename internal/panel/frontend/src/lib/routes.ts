@@ -1,10 +1,5 @@
 import { normalizeBasePath } from './base.ts';
-import {
-  dialogSegments,
-  isDialogHost,
-  parseDialogSegments,
-  type RouteDialog,
-} from './route-dialogs.ts';
+import { isDialogHost, parseDialogSegments, type RouteDialog } from './route-dialogs.ts';
 
 export type { RouteDialog };
 
@@ -195,27 +190,6 @@ export function parseInvitationToken(basePath: string, pathname: string): string
   }
 }
 
-export function panelRoutePath(basePath: string, route: PanelRoute): string {
-  const base = normalizeBasePath(basePath);
-  if ('rootView' in route) return `${base}${rootRoutePath(route)}`;
-  if ('personal' in route) return `${base}/${route.personal}`;
-
-  return (
-    `${base}/i/${encodeURIComponent(route.account)}/${route.view}` +
-    sectionSuffix(route) +
-    dialogSuffix(route.view, route.dialog)
-  );
-}
-
-/** The path segments an open dialog adds, already escaped. */
-function dialogSuffix(view: string, dialog: RouteDialog | undefined): string {
-  if (dialog === undefined || !isDialogHost(view)) return '';
-  const segments = dialogSegments(view, dialog);
-  if (segments === null) return '';
-
-  return segments.map((segment) => `/${encodeURIComponent(segment)}`).join('');
-}
-
 export function panelDocumentTitle(route: PanelRoute): string {
   const rootConsole = 'rootView' in route;
   const segments = routeTitleSegments(route);
@@ -295,10 +269,6 @@ function parseSection(
   return HISTORY_SECTIONS.find((section) => section === raw) ?? 'invalid';
 }
 
-function sectionSuffix(route: { view: ScopedPanelView; section?: HistorySection }): string {
-  return route.view === 'history' && route.section !== undefined ? `/${route.section}` : '';
-}
-
 function parseRootRoute(parts: string[]): RootRoute | null {
   if (parts.length === 1) return { rootView: 'overview' };
   if (parts.length === 2 && parts[1] === 'installations') return { rootView: 'installations' };
@@ -359,28 +329,6 @@ function parseRootRoute(parts: string[]): RootRoute | null {
   const route: RootRoute = { rootView: 'installation', account, view };
   if (dialog !== undefined) return { ...route, dialog };
   return section === undefined ? route : { ...route, section };
-}
-
-function rootRoutePath(route: RootRoute): string {
-  if (route.rootView === 'installation')
-    return (
-      `/root/installations/${encodeURIComponent(route.account)}/${route.view}` +
-      sectionSuffix(route) +
-      dialogSuffix(route.view, route.dialog)
-    );
-  if (route.rootView === 'overview') return '/root';
-  if (route.rootView === 'installations') return '/root/installations';
-  if (route.rootView === 'access-users')
-    return `/root/access/users${dialogSuffix('access-users', route.dialog)}`;
-  if (route.rootView === 'access-invitations')
-    return `/root/access/invitations${dialogSuffix('access-invitations', route.dialog)}`;
-  if (route.rootView === 'history-audit') return '/root/history/audit';
-  if (route.rootView === 'history-failures') return '/root/history/failures';
-  if (route.rootView === 'queue') return '/root/queue';
-  if (route.rootView === 'queue-recent') return '/root/queue/recent';
-  if (route.rootView === 'queue-request')
-    return `/root/queue/request/${encodeURIComponent(route.request)}`;
-  return '/root/settings';
 }
 
 function findAccount(accounts: readonly string[], requested: string | null): string | undefined {

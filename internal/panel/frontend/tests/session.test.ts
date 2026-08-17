@@ -5,14 +5,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const navigation = vi.hoisted(() => ({ goto: vi.fn() }));
 const routePage = vi.hoisted(() => ({
   params: {} as Record<string, string>,
-  url: new URL('https://panel.example/root'),
+  url: new URL('https://panel.example/'),
 }));
 
 vi.mock('$app/navigation', () => navigation);
-vi.mock('$app/paths', () => ({ base: '', resolve: (path: string) => path }));
 vi.mock('$app/state', () => ({ page: routePage }));
 
+import { basePath } from '../src/lib/paths.ts';
 import { PanelSession } from '../src/lib/session.svelte.ts';
+
+/** Addresses carry the configured base, because SvelteKit resolves them now. */
+const at = (path: string) => new URL(`https://panel.example${basePath}${path}`);
 import type { PanelApi } from '../src/lib/api.ts';
 import type { PanelBuild } from '../src/lib/base.ts';
 import type { PanelChangeEvent } from '../src/lib/events.ts';
@@ -60,7 +63,7 @@ describe('PanelSession [Unit]', () => {
   beforeEach(() => {
     navigation.goto.mockReset();
     routePage.params = {};
-    routePage.url = new URL('https://panel.example/root');
+    routePage.url = at('/root');
     vi.stubGlobal('matchMedia', () => new TestMediaQueryList());
     vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
     // A fresh one per test rather than one cleared between them, so nothing can
@@ -78,8 +81,8 @@ describe('PanelSession [Unit]', () => {
 
     session.returnToPanel();
 
-    expect(navigation.goto).toHaveBeenCalledWith('/', { replace: true });
-    expect(session.returnHref()).toBe('/');
+    expect(navigation.goto).toHaveBeenCalledWith(`${basePath}/`, { replace: true });
+    expect(session.returnHref()).toBe(`${basePath}/`);
   });
 
   it('replaces an unauthorized Root route when an installation exists', () => {
@@ -93,7 +96,7 @@ describe('PanelSession [Unit]', () => {
 
     session.returnToPanel(true);
 
-    expect(navigation.goto).toHaveBeenCalledWith('/i/acme/settings', { replace: true });
+    expect(navigation.goto).toHaveBeenCalledWith(`${basePath}/i/acme/settings`, { replace: true });
   });
 
   it('returns from Root to the workspace view it left', () => {
@@ -101,46 +104,46 @@ describe('PanelSession [Unit]', () => {
     session.viewer = { system_role: 'root' } as PanelViewer;
     session.targets = [{ id: 'target-1', account: { login: 'acme' } } as PanelTarget];
     session.selectedId = 'target-1';
-    routePage.url = new URL('https://panel.example/i/acme/repositories');
+    routePage.url = at('/i/acme/repositories');
     routePage.params = { account: 'acme', view: 'repositories' };
     session.syncRouteContext();
 
     session.enterRoot();
-    expect(navigation.goto).toHaveBeenLastCalledWith('/root', { replace: false });
+    expect(navigation.goto).toHaveBeenLastCalledWith(`${basePath}/root`, { replace: false });
 
     // Visiting another installation view inside Root does not replace the
     // workspace context the Return action promises to restore.
-    routePage.url = new URL('https://panel.example/root/installations/acme/settings');
+    routePage.url = at('/root/installations/acme/settings');
     routePage.params = { account: 'acme', view: 'settings' };
     session.syncRouteContext();
     session.returnToPanel();
 
-    expect(navigation.goto).toHaveBeenLastCalledWith('/i/acme/repositories', {
+    expect(navigation.goto).toHaveBeenLastCalledWith(`${basePath}/i/acme/repositories`, {
       replace: false,
     });
-    expect(session.returnHref()).toBe('/i/acme/repositories');
+    expect(session.returnHref()).toBe(`${basePath}/i/acme/repositories`);
   });
 
   it('retains and can reopen the workspace view while the inbox is open', async () => {
     const session = createSession();
     session.targets = [{ id: 'target-1', account: { login: 'acme' } } as PanelTarget];
     session.selectedId = 'target-1';
-    routePage.url = new URL('https://panel.example/i/acme/history/failures');
+    routePage.url = at('/i/acme/history/failures');
     routePage.params = { account: 'acme', view: 'history', rest: 'failures' };
     session.syncRouteContext();
-    routePage.url = new URL('https://panel.example/inbox');
+    routePage.url = at('/inbox');
     routePage.params = {};
 
-    expect(session.targetHref(session.targets[0]!)).toBe('/i/acme/history/failures');
-    expect(session.returnHref()).toBe('/i/acme/history/failures');
+    expect(session.targetHref(session.targets[0]!)).toBe(`${basePath}/i/acme/history/failures`);
+    expect(session.returnHref()).toBe(`${basePath}/i/acme/history/failures`);
 
     session.selectView('history');
-    expect(navigation.goto).toHaveBeenLastCalledWith('/i/acme/history/failures', {
+    expect(navigation.goto).toHaveBeenLastCalledWith(`${basePath}/i/acme/history/failures`, {
       replace: false,
     });
 
     await session.selectTarget('target-1');
-    expect(navigation.goto).toHaveBeenLastCalledWith('/i/acme/history/failures', {
+    expect(navigation.goto).toHaveBeenLastCalledWith(`${basePath}/i/acme/history/failures`, {
       replace: false,
     });
   });

@@ -4,13 +4,14 @@ import {
   PANEL_VIEWS,
   panelDocumentTitle,
   panelViewSection,
-  panelRoutePath,
   parseInvitationToken,
   parsePanelRoute,
   resolvePanelRoute,
   routeSegmentLabel,
   type PanelRoute,
 } from '../src/lib/routes';
+import { panelAddress } from '../src/lib/addresses.ts';
+import { basePath } from '../src/lib/paths.ts';
 import { patterns } from '../src/params.ts';
 
 /**
@@ -99,26 +100,26 @@ describe('panel routes', () => {
   });
 
   it('encodes account slugs when building links', () => {
-    expect(panelRoutePath('', { account: 'smykla skalski', view: 'history' })).toBe(
-      '/i/smykla%20skalski/history',
+    expect(panelAddress({ account: 'smykla skalski', view: 'history' })).toBe(
+      `${basePath}/i/smykla%20skalski/history`,
     );
-    expect(panelRoutePath('/panel/', { account: 'bartsmykla', view: 'settings' })).toBe(
-      '/panel/i/bartsmykla/settings',
+    expect(panelAddress({ account: 'bartsmykla', view: 'settings' })).toBe(
+      `${basePath}/i/bartsmykla/settings`,
     );
-    expect(panelRoutePath('/panel', { account: 'bartsmykla', view: 'users' })).toBe(
-      '/panel/i/bartsmykla/users',
+    expect(panelAddress({ account: 'bartsmykla', view: 'users' })).toBe(
+      `${basePath}/i/bartsmykla/users`,
     );
-    expect(panelRoutePath('/panel', { rootView: 'overview' })).toBe('/panel/root');
-    expect(panelRoutePath('', { rootView: 'access-users' })).toBe('/root/access/users');
+    expect(panelAddress({ rootView: 'overview' })).toBe(`${basePath}/root`);
+    expect(panelAddress({ rootView: 'access-users' })).toBe(`${basePath}/root/access/users`);
     expect(
-      panelRoutePath('/panel', {
+      panelAddress({
         rootView: 'installation',
         account: 'smykla-skalski',
         view: 'history',
       }),
-    ).toBe('/panel/root/installations/smykla-skalski/history');
-    expect(panelRoutePath('/panel', { account: 'bartsmykla', view: 'invitations' })).toBe(
-      '/panel/i/bartsmykla/invitations',
+    ).toBe(`${basePath}/root/installations/smykla-skalski/history`);
+    expect(panelAddress({ account: 'bartsmykla', view: 'invitations' })).toBe(
+      `${basePath}/i/bartsmykla/invitations`,
     );
   });
 });
@@ -226,7 +227,7 @@ describe('personal routes', () => {
   it('reads the inbox at the top of the panel, under any mount', () => {
     expect(parsePanelRoute('', '/inbox')).toEqual({ personal: 'inbox' });
     expect(parsePanelRoute('/panel', '/panel/inbox/')).toEqual({ personal: 'inbox' });
-    expect(panelRoutePath('/panel', { personal: 'inbox' })).toBe('/panel/inbox');
+    expect(panelAddress({ personal: 'inbox' })).toBe(`${basePath}/inbox`);
   });
 
   it('refuses anything hanging off it, or scoped to a workspace', () => {
@@ -298,11 +299,11 @@ describe('history sections are addressable', () => {
   });
 
   it('writes the section back into the path', () => {
-    expect(panelRoutePath('', { account: 'acme', view: 'history', section: 'failures' })).toBe(
-      '/i/acme/history/failures',
+    expect(panelAddress({ account: 'acme', view: 'history', section: 'failures' })).toBe(
+      `${basePath}/i/acme/history/failures`,
     );
-    expect(panelRoutePath('', { account: 'acme', view: 'history' })).toBe('/i/acme/history');
-    expect(panelRoutePath('', { account: 'acme', view: 'settings' })).toBe('/i/acme/settings');
+    expect(panelAddress({ account: 'acme', view: 'history' })).toBe(`${basePath}/i/acme/history`);
+    expect(panelAddress({ account: 'acme', view: 'settings' })).toBe(`${basePath}/i/acme/settings`);
   });
 
   it('resolves a bare root section path to that section default', () => {
@@ -318,12 +319,12 @@ describe('history sections are addressable', () => {
       section: 'failures',
     });
     expect(
-      panelRoutePath('', {
+      panelAddress({
         rootView: 'installation',
         account: 'acme',
         view: 'history',
         section: 'failures',
       }),
-    ).toBe('/root/installations/acme/history/failures');
+    ).toBe(`${basePath}/root/installations/acme/history/failures`);
   });
 });

@@ -9,8 +9,6 @@
 
 import { page } from '$app/state';
 import { goto } from '$app/navigation';
-import { resolve } from '$app/paths';
-import type { Path } from '$app/types';
 import { SvelteURLSearchParams } from 'svelte/reactivity';
 
 import {
@@ -20,8 +18,9 @@ import {
   type DialogHost,
   type RouteDialog,
 } from './route-dialogs';
+import { panelAddress } from './addresses';
 import { basePath } from './paths';
-import { panelRoutePath, type PanelRoute, type RootRoute } from './routes';
+import type { PanelRoute, RootRoute } from './routes';
 
 export type { RouteDialog } from './route-dialogs';
 
@@ -54,12 +53,15 @@ function isRootInstallation(): boolean {
   return page.url.pathname.startsWith(`${basePath}/root/installations/`);
 }
 
-function currentPanelPath(search = page.url.search): string {
-  const pathname =
-    basePath !== '' && page.url.pathname.startsWith(basePath)
-      ? page.url.pathname.slice(basePath.length)
-      : page.url.pathname;
-  return `${pathname}${search}${page.url.hash}`;
+/**
+ * The address as it stands, with a different query.
+ *
+ * Whole, base and all: `panelAddress` returns addresses SvelteKit has already resolved,
+ * so the two are the same kind of thing and either can be navigated to directly. This
+ * used to strip the base off so the caller could put it back on.
+ */
+function currentPanelAddress(search = page.url.search): string {
+  return `${page.url.pathname}${search}${page.url.hash}`;
 }
 
 export function parseDialog(search: string): OpenDialog | null {
@@ -90,46 +92,45 @@ export function legacyInboxRoute(search: string): boolean {
 
 function dialogHostFromPage(): DialogHost | null {
   const view = page.params.view;
-  if (view !== undefined && isDialogHost(view)) return view as DialogHost;
+  if (view !== undefined && isDialogHost(view)) return view;
   const section = page.params.section;
   if (section !== undefined) {
     const host = `access-${section}`;
-    if (isDialogHost(host)) return host as DialogHost;
+    if (isDialogHost(host)) return host;
   }
   return null;
 }
 
 function pathForDialog(host: DialogHost, dialog: RouteDialog): string | null {
-  const segments = dialogSegments(host, dialog);
-  if (segments === null) return null;
+  if (dialogSegments(host, dialog) === null) return null;
 
-  const suffix = segments.map((segment) => `/${encodeURIComponent(segment)}`).join('');
-  const section = page.params.section;
-  if (typeof section === 'string' && (host === 'access-users' || host === 'access-invitations')) {
-    return `/root/access/${section}${suffix}`;
+  if (host === 'access-users' || host === 'access-invitations') {
+    return panelAddress({ rootView: host, dialog } as RootRoute);
   }
 
   const view = page.params.view;
   const account = page.params.account;
   if (view === undefined || account === undefined || !isDialogHost(view)) return null;
   if (isRootInstallation()) {
-    return panelRoutePath('', { rootView: 'installation', account, view, dialog } as RootRoute);
+    return panelAddress({ rootView: 'installation', account, view, dialog } as RootRoute);
   }
-  return panelRoutePath('', { account, view, dialog } as PanelRoute);
+  return panelAddress({ account, view, dialog } as PanelRoute);
 }
 
 function bareHostPath(): string | null {
   const section = page.params.section;
   if (typeof section === 'string' && page.url.pathname.startsWith(`${basePath}/root/access/`)) {
-    return `/root/access/${section}`;
+    return panelAddress({
+      rootView: section === 'users' ? 'access-users' : 'access-invitations',
+    } as RootRoute);
   }
 
   const view = page.params.view;
   const account = page.params.account;
   if (view === undefined || account === undefined) return null;
   return isRootInstallation()
-    ? panelRoutePath('', { rootView: 'installation', account, view } as RootRoute)
-    : panelRoutePath('', { account, view } as PanelRoute);
+    ? panelAddress({ rootView: 'installation', account, view } as RootRoute)
+    : panelAddress({ account, view } as PanelRoute);
 }
 
 class DialogRouter {
@@ -178,11 +179,7 @@ class DialogRouter {
       ...(owned ? { smyklotDialogEntry: true as const } : {}),
     };
     delete state.smyklotDialogClosed;
-    goto(resolve((path ?? currentPanelPath(dialogSearch(dialog))) as Path), {
-      shallow: true,
-      replace,
-      state,
-    });
+    goto(path ?? currentPanelAddress(dialogSearch(dialog)), { shallow: true, replace, state });
   }
 
   open(name: string, params: Readonly<Record<string, string>> = {}): void {
@@ -223,8 +220,8 @@ class DialogRouter {
     const rest = page.params.rest;
     const path = bareHostPath();
     const target =
-      typeof rest === 'string' && rest !== '' && path !== null ? path : currentPanelPath('');
-    goto(resolve(target as Path), { shallow: true, replace: true, state: withoutDialogState() });
+      typeof rest === 'string' && rest !== '' && path !== null ? path : currentPanelAddress('');
+    goto(target, { shallow: true, replace: true, state: withoutDialogState() });
   }
 }
 

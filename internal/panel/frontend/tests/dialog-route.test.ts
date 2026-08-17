@@ -2,17 +2,26 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const navigation = vi.hoisted(() => ({ goto: vi.fn() }));
 
+// Seeded with a placeholder: `vi.hoisted` runs before the imports `at()` needs, and
+// every spec sets the address it means in `beforeEach`.
 const routePage = vi.hoisted(() => ({
-  url: new URL('https://panel.example/i/acme/repositories'),
+  url: new URL('https://panel.example/'),
   params: { account: 'acme', view: 'repositories' } as Record<string, string>,
   state: {} as Record<string, unknown>,
 }));
 
 vi.mock('$app/navigation', () => navigation);
-vi.mock('$app/paths', () => ({ resolve: (path: string) => path }));
 vi.mock('$app/state', () => ({ page: routePage }));
 
+import { basePath } from '../src/lib/paths.ts';
 import { dialogRoute, legacyInboxRoute, parseDialog } from '../src/lib/dialog-route.svelte';
+
+/**
+ * The fixtures carry the configured base, because `panelAddress` resolves through
+ * SvelteKit now and SvelteKit adds it. An address without one would be an address the
+ * panel never sees.
+ */
+const at = (path: string) => new URL(`https://panel.example${basePath}${path}`);
 
 describe('SvelteKit dialog route adapter', () => {
   beforeEach(() => {
@@ -20,7 +29,7 @@ describe('SvelteKit dialog route adapter', () => {
     navigation.goto.mockImplementation((_url, options?: { state?: Record<string, unknown> }) => {
       if (options?.state !== undefined) routePage.state = options.state;
     });
-    routePage.url = new URL('https://panel.example/i/acme/repositories');
+    routePage.url = at('/i/acme/repositories');
     routePage.params = { account: 'acme', view: 'repositories' };
     routePage.state = {};
   });
@@ -28,7 +37,7 @@ describe('SvelteKit dialog route adapter', () => {
   it('opens a shareable path as an owned shallow entry', () => {
     dialogRoute.open('repository-settings', { repository: 'api-gateway' });
 
-    expect(navigation.goto).toHaveBeenCalledWith('/i/acme/repositories/api-gateway', {
+    expect(navigation.goto).toHaveBeenCalledWith(`${basePath}/i/acme/repositories/api-gateway`, {
       shallow: true,
       replace: false,
       state: expect.objectContaining({
@@ -57,7 +66,7 @@ describe('SvelteKit dialog route adapter', () => {
   });
 
   it('replaces an open reissue confirmation with its generated-link dialog', () => {
-    routePage.url = new URL('https://panel.example/root/access/invitations/invitation-1/reissue');
+    routePage.url = at('/root/access/invitations/invitation-1/reissue');
     routePage.params = {
       section: 'invitations',
       rest: 'invitation-1/reissue',
@@ -72,7 +81,7 @@ describe('SvelteKit dialog route adapter', () => {
 
     dialogRoute.open('root-invitation-create');
 
-    expect(navigation.goto).toHaveBeenCalledWith('/root/access/invitations/new', {
+    expect(navigation.goto).toHaveBeenCalledWith(`${basePath}/root/access/invitations/new`, {
       shallow: true,
       replace: true,
       state: expect.objectContaining({
@@ -91,7 +100,7 @@ describe('SvelteKit dialog route adapter', () => {
    * place in the list went with it.
    */
   it('closes a cold deep link without leaving the route it is on', () => {
-    routePage.url = new URL('https://panel.example/i/acme/repositories/api-gateway/file');
+    routePage.url = at('/i/acme/repositories/api-gateway/file');
     routePage.params = {
       account: 'acme',
       view: 'repositories',
@@ -100,7 +109,7 @@ describe('SvelteKit dialog route adapter', () => {
 
     dialogRoute.close();
 
-    expect(navigation.goto).toHaveBeenCalledWith('/i/acme/repositories', {
+    expect(navigation.goto).toHaveBeenCalledWith(`${basePath}/i/acme/repositories`, {
       shallow: true,
       replace: true,
       state: expect.objectContaining({ smyklotDialogClosed: true }),
@@ -111,13 +120,13 @@ describe('SvelteKit dialog route adapter', () => {
   });
 
   it('keeps a pathless dialog in the query across reloads', () => {
-    routePage.url = new URL('https://panel.example/root/installations/acme/settings');
+    routePage.url = at('/root/installations/acme/settings');
     routePage.params = { account: 'acme', view: 'settings' };
 
     dialogRoute.open('root-elevation', { reason: 'change settings' });
 
     expect(navigation.goto).toHaveBeenCalledWith(
-      '/root/installations/acme/settings?dialog=root-elevation&reason=change+settings',
+      `${basePath}/root/installations/acme/settings?dialog=root-elevation&reason=change+settings`,
       {
         shallow: true,
         replace: false,
@@ -129,8 +138,8 @@ describe('SvelteKit dialog route adapter', () => {
     );
 
     routePage.state = {};
-    routePage.url = new URL(
-      'https://panel.example/root/installations/acme/settings?dialog=root-elevation&reason=change+settings',
+    routePage.url = at(
+      '/root/installations/acme/settings?dialog=root-elevation&reason=change+settings',
     );
     expect(dialogRoute.current).toEqual({
       name: 'root-elevation',
@@ -139,14 +148,12 @@ describe('SvelteKit dialog route adapter', () => {
   });
 
   it('removes a cold query dialog from the address when it closes', () => {
-    routePage.url = new URL(
-      'https://panel.example/root/installations/acme/settings?dialog=root-elevation',
-    );
+    routePage.url = at('/root/installations/acme/settings?dialog=root-elevation');
     routePage.params = { account: 'acme', view: 'settings' };
 
     dialogRoute.close();
 
-    expect(navigation.goto).toHaveBeenCalledWith('/root/installations/acme/settings', {
+    expect(navigation.goto).toHaveBeenCalledWith(`${basePath}/root/installations/acme/settings`, {
       shallow: true,
       replace: true,
       state: expect.objectContaining({ smyklotDialogClosed: true }),
