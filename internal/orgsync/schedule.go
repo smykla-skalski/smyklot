@@ -91,7 +91,12 @@ func (o *Outcome) Fail(action Action, reason string) {
 // Apply records an action that succeeded.
 func (o *Outcome) Apply(action Action) {
 	o.Succeeded++
-	if action.Operation == OperationDelete {
+
+	// Only where applying it removed something. A kind that proposes has
+	// removed nothing yet - somebody has been asked - and the audit entry this
+	// count writes exists to make destruction visible, so recording one for a
+	// pull request nobody has merged would report a thing that did not happen.
+	if action.Operation == OperationDelete && !action.Kind.Proposes() {
 		o.Deleted++
 	}
 	o.Actions = append(o.Actions, ActionOutcome{ActionID: action.ID, State: ActionApplied})

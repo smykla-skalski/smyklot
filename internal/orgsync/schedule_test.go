@@ -130,5 +130,20 @@ var _ = Describe("Scheduling [Unit]", func() {
 			Expect(outcome.Succeeded).To(Equal(2))
 			Expect(outcome.Deleted).To(Equal(1))
 		})
+
+		// A file action opens or updates a pull request, so nothing has been
+		// removed from the repository yet. The count this feeds writes the
+		// audit entry that exists to make destruction visible, and reporting
+		// one for a proposal nobody merged is reporting a thing that did not
+		// happen.
+		It("counts nothing removed for a kind that only proposes", func() {
+			var outcome orgsync.Outcome
+			outcome.Apply(orgsync.Action{
+				ID: 1, Kind: orgsync.KindFiles, Operation: orgsync.OperationDelete,
+			})
+
+			Expect(outcome.Succeeded).To(Equal(1))
+			Expect(outcome.Deleted).To(BeZero())
+		})
 	})
 })

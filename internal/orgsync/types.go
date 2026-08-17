@@ -51,6 +51,14 @@ func (k Kind) Valid() bool {
 	return false
 }
 
+// Proposes reports a kind whose work reaches a repository as a pull request
+// rather than as a change to it.
+//
+// Files are the only one, and the difference is what an outcome means: applying
+// a file action opens or updates a proposal, so nothing has been written to the
+// repository and nothing has been removed from it until somebody merges.
+func (k Kind) Proposes() bool { return k == KindFiles }
+
 // RequiredPermission is what an installation must have granted for a kind to
 // run, in GitHub's own spelling.
 //
