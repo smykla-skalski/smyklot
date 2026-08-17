@@ -31,6 +31,15 @@ type CurrentRuleset struct {
 	// Defined is what the ruleset enforces, or nil where only the listing was
 	// read.
 	Defined *Ruleset
+
+	// Unmanaged names what this ruleset enforces that a Ruleset cannot carry.
+	//
+	// A replacement removes it, because a replacement removes everything the
+	// request does not repeat. Carried here so the plan can say which rules go,
+	// rather than describing a change out of the half of the ruleset it could
+	// read - somebody approving that would be approving a description with the
+	// destruction left out of it.
+	Unmanaged []string
 }
 
 // PlanRulesets answers what would have to change for a repository's rulesets to
@@ -164,7 +173,12 @@ func planRulesetUpdate(
 		return Action{}, false
 	}
 
-	if sameRuleset(want, *have.Defined) {
+	// A rule this version cannot carry counts as a difference, always. It is
+	// enforced now and a replacement removes it, so a repository holding one
+	// has never matched however well the rest lines up - and reporting it
+	// settled would leave the removal to happen the next time anything else
+	// changed, in a plan that said nothing about it.
+	if len(have.Unmanaged) == 0 && sameRuleset(want, *have.Defined) {
 		return Action{}, false
 	}
 
@@ -174,10 +188,24 @@ func planRulesetUpdate(
 		Operation:    OperationUpdate,
 		Subject:      want.Name,
 		Before:       describeRuleset(*have.Defined),
-		After:        describeRuleset(want) + note,
+		After:        describeRuleset(want) + dropped(have.Unmanaged) + note,
 		Payload:      encodeRuleset(withID(want, have.ID)),
 		State:        ActionPending,
 	}, true
+}
+
+// dropped names what a replacement takes away that this version never modelled.
+//
+// On After rather than Before, because After is what will be true and this is a
+// consequence of the change rather than a description of what is there now. The
+// answer for nearly every ruleset is nothing at all.
+func dropped(unmanaged []string) string {
+	if len(unmanaged) == 0 {
+		return ""
+	}
+
+	return "; this drops " + strings.Join(unmanaged, ", ") +
+		", which this version cannot express"
 }
 
 // removals proposes deleting the rulesets configuration no longer names.

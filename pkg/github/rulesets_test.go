@@ -279,6 +279,82 @@ var _ = Describe("Repository rulesets [Unit]", func() {
 			Expect(ruleset.Conditions).To(Equal(github.RulesetConditions{}))
 		})
 
+		// A ruleset is replaced whole, so a rule this version has no field for
+		// is a rule a replacement removes. Without reading it, the plan
+		// somebody approves cannot mention what it destroys - and GitHub adds
+		// rule types faster than this will follow them
+		It("names the rules it is enforcing that this cannot express", func() {
+			server = record(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = io.WriteString(w, `{
+					"id": 7, "name": "main", "target": "branch",
+					"enforcement": "active",
+					"rules": [
+						{"type": "deletion"},
+						{"type": "merge_queue", "parameters": {
+							"check_response_timeout_minutes": 60,
+							"grouping_strategy": "ALLGREEN",
+							"max_entries_to_build": 5,
+							"max_entries_to_merge": 5,
+							"merge_method": "SQUASH",
+							"min_entries_to_merge": 1,
+							"min_entries_to_merge_wait_minutes": 5}},
+						{"type": "commit_message_pattern", "parameters": {
+							"operator": "starts_with", "pattern": "feat"}}
+					]
+				}`)
+			})
+
+			ruleset, err := client().GetRepositoryRuleset(
+				context.Background(), "acme", "web", 7)
+			Expect(err).NotTo(HaveOccurred())
+
+			// In a fixed order, because a plan of the same state has to read
+			// the same way twice
+			Expect(ruleset.OtherRules).To(Equal([]string{
+				"merge_queue", "commit_message_pattern",
+			}))
+
+			// And what it does model is still read
+			Expect(ruleset.Rules.Deletion).To(BeTrue())
+		})
+
+		// Not a rule of its own but a parameter of one that is modelled, and
+		// dropped by a replacement exactly the same way
+		It("names required reviewers it cannot express", func() {
+			server = record(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = io.WriteString(w, `{
+					"id": 7, "name": "main", "target": "branch",
+					"enforcement": "active",
+					"rules": [{"type": "pull_request", "parameters": {
+						"required_approving_review_count": 1,
+						"required_reviewers": [
+							{"file_patterns": ["*.go"], "minimum_approvals": 1,
+							 "reviewer": {"id": 3, "type": "Team"}}]}}]
+				}`)
+			})
+
+			ruleset, err := client().GetRepositoryRuleset(
+				context.Background(), "acme", "web", 7)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(ruleset.OtherRules).To(Equal([]string{"pull_request.required_reviewers"}))
+		})
+
+		// The ordinary case, and the one that keeps the plan quiet about it
+		It("names nothing where it can express everything", func() {
+			server = record(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = io.WriteString(w,
+					`{"id":7,"name":"main","target":"branch","enforcement":"active",
+					  "rules":[{"type":"deletion"},{"type":"non_fast_forward"}]}`)
+			})
+
+			ruleset, err := client().GetRepositoryRuleset(
+				context.Background(), "acme", "web", 7)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(ruleset.OtherRules).To(BeEmpty())
+		})
+
 		It("reports a ruleset it cannot read", func() {
 			server = record(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusNotFound)

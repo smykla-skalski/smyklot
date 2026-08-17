@@ -61,6 +61,21 @@ type RepositoryRuleset struct {
 	Conditions   RulesetConditions
 	BypassActors []RulesetBypassActor
 	Rules        RulesetRules
+
+	// OtherRules names what GitHub is enforcing here that RulesetRules has no
+	// field for, in GitHub's own spelling.
+	//
+	// Read on purpose, and the only part of this type that describes what
+	// cannot be written. A ruleset is replaced whole, so a rule this version
+	// does not model is a rule a replacement removes - and without this it
+	// would be removed without ever having been read, so the plan somebody
+	// approved could not have mentioned it. GitHub adds rule types faster than
+	// anything here will follow, which makes that the ordinary case rather than
+	// a corner of one.
+	//
+	// Empty for the overwhelming majority of rulesets. Never a value anything
+	// branches on beyond "is there anything here"; it is words for a person.
+	OtherRules []string
 }
 
 // RulesetConditions is which refs a ruleset applies to.
@@ -321,8 +336,67 @@ func asRepositoryRuleset(raw *gogithub.RepositoryRuleset) RepositoryRuleset {
 	}
 
 	ruleset.Rules = asRulesetRules(raw.GetRules())
+	ruleset.OtherRules = unmodelledRules(raw.GetRules())
 
 	return ruleset
+}
+
+// unmodelledRules names every rule GitHub reported that RulesetRules cannot
+// carry, in GitHub's own spelling and in a fixed order.
+//
+// Written out rather than derived, because there is nothing to derive it from:
+// the shape is a struct of typed pointers, and a rule type added to it upstream
+// has to be either modelled or named here. That is the point - the list is
+// where somebody notices.
+//
+// The push and repository rules cannot appear on a branch or tag ruleset, which
+// is the only kind sync writes. They are here anyway, because a ruleset read is
+// whatever GitHub answers with and a silent omission is the failure this whole
+// function exists to prevent.
+func unmodelledRules(rules *gogithub.RepositoryRulesetRules) []string {
+	if rules == nil {
+		return nil
+	}
+
+	var found []string
+
+	for _, rule := range []struct {
+		present bool
+		name    string
+	}{
+		{rules.MergeQueue != nil, "merge_queue"},
+		{rules.RequiredDeployments != nil, "required_deployments"},
+		{rules.CommitMessagePattern != nil, "commit_message_pattern"},
+		{rules.CommitAuthorEmailPattern != nil, "commit_author_email_pattern"},
+		{rules.CommitterEmailPattern != nil, "committer_email_pattern"},
+		{rules.BranchNamePattern != nil, "branch_name_pattern"},
+		{rules.TagNamePattern != nil, "tag_name_pattern"},
+		{rules.Workflows != nil, "workflows"},
+		{rules.CopilotCodeReview != nil, "copilot_code_review"},
+
+		{rules.FileExtensionRestriction != nil, "file_extension_restriction"},
+		{rules.FilePathRestriction != nil, "file_path_restriction"},
+		{rules.MaxFilePathLength != nil, "max_file_path_length"},
+		{rules.MaxFileSize != nil, "max_file_size"},
+
+		{rules.RepositoryCreate != nil, "repository_create"},
+		{rules.RepositoryDelete != nil, "repository_delete"},
+		{rules.RepositoryName != nil, "repository_name"},
+		{rules.RepositoryTransfer != nil, "repository_transfer"},
+		{rules.RepositoryVisibility != nil, "repository_visibility"},
+
+		// Not a rule of its own but a parameter of one that is modelled, and
+		// dropped by a replacement exactly the same way. Named beside them
+		// because what matters to a person reading the plan is that it goes.
+		{len(rules.PullRequest.GetRequiredReviewers()) > 0,
+			"pull_request.required_reviewers"},
+	} {
+		if rule.present {
+			found = append(found, rule.name)
+		}
+	}
+
+	return found
 }
 
 func actorTypeOf(actor *gogithub.BypassActor) gogithub.BypassActorType {

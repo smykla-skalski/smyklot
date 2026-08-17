@@ -63,6 +63,7 @@ func readRulesets(
 
 			defined := asConfiguredRuleset(whole)
 			found.Defined = &defined
+			found.Unmanaged = whole.OtherRules
 		}
 
 		current = append(current, found)

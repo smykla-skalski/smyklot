@@ -727,6 +727,34 @@ var _ = Describe("Org sync [Unit]", func() {
 				To(Equal(reads))
 		})
 
+		// The whole way through, because a domain field the wiring never fills
+		// is a plan that reads exactly as it would if the rule were not there.
+		// Everything else about this ruleset matches, so nothing but the
+		// unreadable rule puts it in a plan at all
+		It("says what a replacement drops that this version cannot express", func() {
+			target := granting(`{"issues":"write","administration":"write"}`)
+			stub.repoRulesets = `[{"id":7,"name":"main-branch-protection",
+				"target":"branch","enforcement":"active","source_type":"Repository"}]`
+			stub.rulesetBodies = map[int64]string{7: `{"id":7,
+				"name":"main-branch-protection","target":"branch","enforcement":"active",
+				"conditions":{"ref_name":{"include":["refs/heads/main"],"exclude":[]}},
+				"rules":[{"type":"deletion"},
+				         {"type":"commit_message_pattern",
+				          "parameters":{"operator":"starts_with","pattern":"feat"}}]}`}
+			configureKind(target, orgsync.KindRulesets, `{"rulesets":[
+				{"name":"main-branch-protection","target":"branch",
+				 "enforcement":"active",
+				 "conditions":{"include":["refs/heads/main"]},
+				 "rules":{"deletion":true}}]}`)
+
+			plan(target)
+
+			_, actions := livePlan(target)
+			Expect(actions).To(HaveLen(1))
+			Expect(actions[0].Operation).To(Equal(orgsync.OperationUpdate))
+			Expect(actions[0].After).To(ContainSubstring("this drops commit_message_pattern"))
+		})
+
 		// The tool this replaces had no delete path at all, so a ruleset dropped
 		// from configuration went on enforcing for ever. The id comes off the
 		// plan rather than being looked up again, because by apply time the name

@@ -129,6 +129,40 @@ var _ = Describe("Planning rulesets [Unit]", func() {
 			Expect(resolved.Enforcement).To(Equal(orgsync.RulesetEnforcementActive))
 		})
 
+		// A rule this version has no field for is enforced now and gone after a
+		// replacement. Approving a plan that described the change out of the
+		// half of the ruleset it could read would be approving a description
+		// with the destruction left out of it
+		It("says what a replacement drops that it cannot express", func() {
+			current := onGitHub(7, nil)
+			current.Unmanaged = []string{"merge_queue", "commit_message_pattern"}
+
+			actions := plan(wanted, current)
+
+			Expect(actions).To(HaveLen(1))
+			Expect(actions[0].Operation).To(Equal(orgsync.OperationUpdate))
+			Expect(actions[0].After).To(ContainSubstring(
+				"this drops merge_queue, commit_message_pattern, " +
+					"which this version cannot express"))
+		})
+
+		// The one that stops the removal happening quietly later. Everything
+		// else about this ruleset already matches, so without this it settles -
+		// and the rule goes the next time anything at all changes, in a plan
+		// that never mentioned it
+		It("never calls a ruleset settled while it enforces something unreadable", func() {
+			current := onGitHub(7, nil)
+			current.Unmanaged = []string{"merge_queue"}
+
+			Expect(plan(wanted, current)).To(HaveLen(1))
+		})
+
+		It("says nothing of a drop where there is nothing to drop", func() {
+			current := onGitHub(7, func(r *orgsync.Ruleset) { r.Enforcement = "disabled" })
+
+			Expect(plan(wanted, current)[0].After).NotTo(ContainSubstring("drops"))
+		})
+
 		// The whole of the blind full replace this chunk exists to remove: a
 		// request computed from an answer nobody received, dropping every rule,
 		// condition and actor the repository has

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"slices"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -84,25 +85,46 @@ func TestARulesetSurvivesTheSeam(t *testing.T) {
 	noZeroFields(t, "orgsync.Ruleset", reflect.ValueOf(whole))
 
 	sent := asClientRuleset(whole)
-	noZeroFields(t, "github.RepositoryRuleset", reflect.ValueOf(sent))
+	noZeroFields(t, "github.RepositoryRuleset", reflect.ValueOf(sent), readOnlyAtTheSeam...)
 
 	if back := asConfiguredRuleset(sent); !reflect.DeepEqual(back, whole) {
 		t.Errorf("a ruleset did not survive the seam:\n sent %+v\n back %+v", whole, back)
 	}
+
+	// And the one read-only field stays read-only. A conversion that started
+	// filling it would be inventing an observation out of configuration, and
+	// the plan would then report a repository dropping rules it never had.
+	if sent.OtherRules != nil {
+		t.Errorf("OtherRules = %v, wanted nothing: it describes what GitHub has, "+
+			"not what configuration asks for", sent.OtherRules)
+	}
 }
+
+// readOnlyAtTheSeam is what the client type carries that configuration cannot
+// express, so a round trip proves nothing about it.
+//
+// One entry, and it earns its exception: OtherRules names the rules a
+// replacement would remove, which only makes sense read from GitHub. Everything
+// else on that type crosses in both directions and is held to it above.
+var readOnlyAtTheSeam = []string{"github.RepositoryRuleset.OtherRules"}
 
 // noZeroFields refuses a fixture that has left anything unsaid.
 //
 // Every leaf must differ from its zero, every pointer must be set and every
 // slice must hold something, because a field the fixture leaves empty is a
 // field the round trip cannot prove anything about.
-func noZeroFields(t *testing.T, path string, value reflect.Value) {
+func noZeroFields(t *testing.T, path string, value reflect.Value, skip ...string) {
 	t.Helper()
+
+	if slices.Contains(skip, path) {
+		return
+	}
 
 	switch value.Kind() {
 	case reflect.Struct:
 		for index := range value.NumField() {
-			noZeroFields(t, path+"."+value.Type().Field(index).Name, value.Field(index))
+			noZeroFields(t,
+				path+"."+value.Type().Field(index).Name, value.Field(index), skip...)
 		}
 
 	case reflect.Pointer:
@@ -112,7 +134,7 @@ func noZeroFields(t *testing.T, path string, value reflect.Value) {
 			return
 		}
 
-		noZeroFields(t, path, value.Elem())
+		noZeroFields(t, path, value.Elem(), skip...)
 
 	case reflect.Slice:
 		if value.Len() == 0 {
@@ -122,7 +144,8 @@ func noZeroFields(t *testing.T, path string, value reflect.Value) {
 		}
 
 		for index := range value.Len() {
-			noZeroFields(t, fmt.Sprintf("%s[%d]", path, index), value.Index(index))
+			noZeroFields(t,
+				fmt.Sprintf("%s[%d]", path, index), value.Index(index), skip...)
 		}
 
 	default:
