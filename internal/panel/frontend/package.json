@@ -47,5 +47,10 @@
     "@tanstack/svelte-virtual": "3.13.35",
     "bits-ui": "^2.18.1",
     "runed": "^0.37.1"
+  },
+  "overrides": {
+    "@sveltejs/kit": {
+      "cookie": "^0.7.0"
+    }
   }
 }
