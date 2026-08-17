@@ -163,6 +163,12 @@
   /* On #eef2f0: secondary 8.1:1, muted 5.8:1 (nav rows read at a glance). */
   --sidebar-text-secondary: #3d4b47;
   --sidebar-text-muted: #53615c;
+  /* Left where the design put them. Asked to hover harder, the sidebar has
+     nowhere to go: the band's ceiling is where a press begins, and moving both
+     up far enough to see runs the press past the selected item's own fill -
+     measured at 7.65 against the selection's 6.48 - so the selected row would
+     stop being the loudest thing in the column. That is a bigger change than a
+     hover, and not one to make sideways. */
   --sidebar-item-hover: #e2e8e5;
   --sidebar-item-pressed: #d6deda;
   --sidebar-item-active-text: #0d5c55;
