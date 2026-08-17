@@ -173,6 +173,12 @@
   --sidebar-menu-muted: #53615c;
   --sidebar-menu-hover: #eef2f0;
   --sidebar-menu-pressed: #dfe6e3;
+  /* Sign out is the one destructive row in a sidebar menu, and it has to take its
+     red from the surface it stands on rather than from the page. Reading `--stop`
+     put the light tint under it while the Root console's menu stayed dark in light
+     mode, which is a pale pink row on a near-black card. */
+  --sidebar-stop: var(--primitive-danger-light);
+  --sidebar-stop-tint: var(--primitive-danger-light-tint);
   /* The segmented control inside a sidebar popover: same rules as the one in the content area,
      against the popover's own surfaces. Hover and press step down, away from the thumb; the ring
      carries the selection where the fill alone would lose to a press on a neighbour. */
@@ -462,6 +468,8 @@
   --sidebar-menu-muted: #9caab5;
   --sidebar-menu-hover: #232d38;
   --sidebar-menu-pressed: #2c3844;
+  --sidebar-stop: var(--primitive-danger-dark);
+  --sidebar-stop-tint: var(--primitive-danger-dark-tint);
   --sidebar-seg-track: #151a21;
   --sidebar-seg-thumb: #2c3641;
   --sidebar-seg-border: #333d49;
@@ -667,6 +675,9 @@ body {
   --sidebar-menu-muted: #aca4bb;
   --sidebar-menu-hover: #2b2439;
   --sidebar-menu-pressed: #372e4b;
+  /* Dark in either Root theme, like everything else declared on this shell. */
+  --sidebar-stop: var(--primitive-danger-dark);
+  --sidebar-stop-tint: var(--primitive-danger-dark-tint);
   --sidebar-seg-track: #191524;
   --sidebar-seg-thumb: #362e4b;
   --sidebar-seg-border: #3f3656;
