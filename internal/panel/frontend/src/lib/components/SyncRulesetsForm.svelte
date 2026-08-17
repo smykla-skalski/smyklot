@@ -11,7 +11,7 @@
    * approved. What the replacement would drop is in that plan, which is the
    * point of there being one.
    */
-  import { canonicalStringify } from '$lib/preferences-sync';
+  import { canonicalStringify } from '#lib/preferences-sync.js';
   import type {
     SyncRuleset,
     SyncRulesetBypassActor,
@@ -19,7 +19,7 @@
     SyncRulesetPullRequestRule,
     SyncRulesetRules,
     SyncRulesetStatusCheck,
-  } from '$lib/types';
+  } from '#lib/types.js';
 
   import SegmentedControl from './SegmentedControl.svelte';
   import SyncDocumentForm from './SyncDocumentForm.svelte';
