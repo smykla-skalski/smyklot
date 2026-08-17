@@ -18,6 +18,13 @@ import type { PanelApi } from './api';
 import type { PanelBuild } from './base';
 import { panelAddress, panelRouteAt } from './addresses';
 import { basePath } from './paths';
+
+/** Whether the address is this segment or something below it, base and all. */
+function at(segment: string): boolean {
+  const pathname = page.url.pathname;
+
+  return pathname === `${basePath}${segment}` || pathname.startsWith(`${basePath}${segment}/`);
+}
 import type { PanelChangeEvent } from './events';
 import type { SessionEnded } from './panel-session';
 import { DEFAULT_THEME_DISPLAY, isThemeDisplay, type ThemeDisplay } from './preferences';
@@ -131,24 +138,24 @@ export class PanelSession {
    *
    * The address is still the answer when nothing matched. The server decides what to
    * serve from the decoded path and the router matches on the undecoded one, so the two
-   * disagree about `/root%2Finstallations`: the server answers it with the console, the
-   * router matches no route, and the console would otherwise not know it was the console.
+   * disagree about an address holding `%2F`: the server answers `/root%2Finstallations`
+   * with the console, the router matches no route, and the panel would otherwise wear the
+   * wrong chrome on a page the server had already named. All three ask the same way, and
+   * `at` compares whole segments so `/rootbeer` is not the console.
    */
   get isRootMode(): boolean {
-    const pathname = page.url.pathname;
-
-    return (
-      page.route.id?.startsWith('/root') ??
-      (pathname === `${basePath}/root` || pathname.startsWith(`${basePath}/root/`))
-    );
+    return page.route.id?.startsWith('/root') ?? at('/root');
   }
 
   get isInbox(): boolean {
-    return page.route.id === '/inbox';
+    return page.route.id === '/inbox' || (page.route.id === null && at('/inbox'));
   }
 
   get isInvitation(): boolean {
-    return page.route.id === '/invite/[token=invitationToken]';
+    return (
+      page.route.id === '/invite/[token=invitationToken]' ||
+      (page.route.id === null && at('/invite'))
+    );
   }
 
   /**

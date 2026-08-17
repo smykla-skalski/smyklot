@@ -151,6 +151,25 @@ describe('a panel service-worker upgrade', () => {
   // built bundle - so a release that changes only a static file leaves both alone, and a
   // cached copy would stand forever. The reader is answered from cache and the copy is
   // replaced behind them.
+  // A cache name is a digest of the bundle, so it repeats when a release is rolled back,
+  // and reopening one leaves it where it first appeared in `CacheStorage.keys()`. Rotating
+  // on that order reads the rolled-back build - the one the claimed tabs are running from
+  // - as the oldest and deletes it. Each cache records its own install time instead.
+  it('keeps the build installed most recently, not the one created last', async () => {
+    const rolledBack = 'smyklot-panel:%2Fpanel%2F:rolled-back';
+    const newerByCreation = 'smyklot-panel:%2Fpanel%2F:newer-by-creation';
+    stored.clear();
+    // Created first, installed last - which is what a rollback looks like.
+    stored.set(rolledBack, new Map([['/panel/__installed__', new Response('2000')]]));
+    stored.set(newerByCreation, new Map([['/panel/__installed__', new Response('1000')]]));
+
+    await dispatchExtended(listeners, 'install');
+    await dispatchExtended(listeners, 'activate');
+
+    expect(deleted, 'the rolled-back build was deleted').not.toContain(rolledBack);
+    expect(deleted).toContain(newerByCreation);
+  });
+
   it('replaces a static file it answered from cache', async () => {
     network.mockImplementation(async () => sameOrigin('fresh static'));
     await dispatchExtended(listeners, 'install');

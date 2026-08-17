@@ -52,6 +52,16 @@ const CACHE = (async () => {
   );
 })();
 const IMMUTABLE_PATH = panelUrl(basePath, '_app/immutable/');
+/**
+ * Where each cache records when it was last installed.
+ *
+ * `CacheStorage.keys()` is in creation order, which is not install order: a name is a
+ * digest of the bundle, so it repeats when a release is rolled back, and reopening an
+ * existing cache leaves it where it first appeared. Rotating on `keys()` therefore reads
+ * the rolled-back build - the one the claimed tabs are running from - as the oldest, and
+ * deletes it. The stamp is written on every install, so it says what `keys()` cannot.
+ */
+const STAMP_PATH = `${SCOPE_PATH}__installed__`;
 const SHELL_REQUEST = new Request(SCOPE_PATH, { credentials: 'same-origin' });
 
 self.addEventListener('install', (event) => {
@@ -67,6 +77,7 @@ self.addEventListener('install', (event) => {
       // happens would be left with no shell at all - which is the thing this exists for.
       const cache = await caches.open(await CACHE);
       await cache.addAll([...ASSETS, SHELL_REQUEST]);
+      await cache.put(STAMP_PATH, new Response(String(Date.now())));
       await self.skipWaiting();
     })(),
   );
@@ -77,20 +88,36 @@ self.addEventListener('activate', (event) => {
     (async () => {
       const current = await CACHE;
       const keys = await caches.keys();
-      const scoped = keys.filter((key) => key.startsWith(CACHE_PREFIX));
-      // CacheStorage.keys() is creation-ordered. Keep the immediately previous
-      // build so a tab claimed during deployment can still lazy-load chunks
-      // named by the document it already has open.
-      const previous = scoped.filter((key) => key !== current).at(-1);
+      const scoped = keys.filter((key) => key.startsWith(CACHE_PREFIX) && key !== current);
+      // Keep the build installed most recently before this one, so a tab claimed during a
+      // deployment can still lazy-load the chunks the document it already has names. Read
+      // from each cache's own stamp rather than from `keys()` - see `STAMP_PATH`.
+      const stamped = await Promise.all(
+        scoped.map(async (key) => ({ key, at: await installedAt(key) })),
+      );
+      const previous = stamped.reduce<{ key: string; at: number } | null>(
+        // `>=` so a tie falls back to creation order, which is what a cache written
+        // before stamps existed has to be judged on.
+        (newest, entry) => (newest === null || entry.at >= newest.at ? entry : newest),
+        null,
+      );
       await Promise.all(
-        scoped
-          .filter((key) => key !== current && key !== previous)
-          .map((key) => caches.delete(key)),
+        stamped
+          .filter((entry) => entry.key !== previous?.key)
+          .map((entry) => caches.delete(entry.key)),
       );
       await self.clients.claim();
     })(),
   );
 });
+
+/** When a cache was last installed, or zero for one written before stamps existed. */
+async function installedAt(name: string): Promise<number> {
+  const stamp = await (await caches.open(name)).match(STAMP_PATH);
+  if (stamp === undefined) return 0;
+
+  return Number.parseInt(await stamp.text(), 10) || 0;
+}
 
 /**
  * Replaces a cached static file with what the network has, after answering from cache.

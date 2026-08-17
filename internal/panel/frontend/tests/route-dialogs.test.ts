@@ -96,12 +96,15 @@ describe('dialog addresses on a view [Unit]', () => {
     });
     /* The panel's own word is `remove_access`; an address says it the way every
        other segment is written. */
-    expect(parsePanelRoute('', '/i/acme/users/octocat/remove')).toEqual({
+    expect(parsePanelRoute('', '/i/acme/users/octocat/remove-access')).toEqual({
       account: 'acme',
       view: 'users',
-      dialog: { name: 'user-action', params: { user: 'octocat', action: 'remove' } },
+      dialog: { name: 'user-action', params: { user: 'octocat', action: 'remove_access' } },
     });
     expect(roundTrip('/i/acme/users/octocat/suspend')).toBe('/i/acme/users/octocat/suspend');
+    expect(roundTrip('/i/acme/users/octocat/remove-access')).toBe(
+      '/i/acme/users/octocat/remove-access',
+    );
   });
 
   it('refuses a verb no dialog answers to', () => {

@@ -23,7 +23,12 @@
  */
 
 export const REPOSITORY_SECTIONS = ['file', 'behavior', 'commands'] as const;
-export const USER_ACTIONS = ['history', 'suspend', 'restore', 'remove'] as const;
+/* Segment spellings, like `ROOT_USER_ACTIONS` below, because that is what the parser
+   compares against. `remove-access` is the only action an installation's user table
+   offers besides suspending and restoring, and the list used to say `remove` - so the
+   address the panel wrote for it read back as nothing at all, and a reload or a pasted
+   link answered 404 for a dialog that had opened perfectly well in the session. */
+export const USER_ACTIONS = ['history', 'suspend', 'restore', 'remove-access'] as const;
 /* No `history` here, unlike an installation's user table: decisions are made
    inside an installation, so the Root table offers no history and nothing
    renders one. The grammar used to accept the segment anyway, which made
