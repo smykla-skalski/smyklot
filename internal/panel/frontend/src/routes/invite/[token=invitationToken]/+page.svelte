@@ -1,6 +1,5 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import { resolve } from '$app/paths';
   import { createPanelApi } from '#lib/api.js';
   import { readPanelBuild } from '#lib/base.js';
   import { basePath } from '#lib/paths.js';

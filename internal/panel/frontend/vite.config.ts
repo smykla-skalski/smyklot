@@ -6,6 +6,7 @@ import { defineConfig } from 'vitest/config';
 import { configDefaults } from 'vitest/config';
 
 import { withRouteManifest } from './build/route-manifest.ts';
+import { MOCK_VERSION } from './dev/mock-html.ts';
 import { mockServer } from './dev/mock-server.ts';
 
 // In dev the mock server mounts at /, so SvelteKit's router must not enforce
@@ -51,7 +52,12 @@ export default defineConfig({
       version: {
         // The Go server resolves this in every text asset, including the
         // generated service worker, from the runtime deployment version.
-        name: '__smyklot_panel_version__',
+        //
+        // Except under the mock, which answers for itself: SvelteKit hashes the
+        // inline bootstrap carrying this value into the CSP, so the mock's own
+        // rewrite would leave a hash describing a script that is no longer served.
+        // See `MOCK_VERSION`.
+        name: isMockDev ? MOCK_VERSION : '__smyklot_panel_version__',
       },
     }),
     svelteTesting(),

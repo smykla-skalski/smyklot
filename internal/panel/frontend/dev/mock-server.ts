@@ -1185,13 +1185,11 @@ function recomputeRepository(target: MockTarget, repository: MockRepository): vo
 export function mockServer(): Plugin {
   return {
     name: 'smyklot-panel-mock-server',
+    // Serve only. Nothing here has anything to say about a build.
+    apply: 'serve',
     config() {
       if (!enabled()) return;
       return { server: opensBrowser() ? { open: '/' } : {} };
-    },
-    transformIndexHtml(html) {
-      if (!enabled()) return html;
-      return rewriteMockHtml(html);
     },
     configureServer(server) {
       if (!enabled()) return;
