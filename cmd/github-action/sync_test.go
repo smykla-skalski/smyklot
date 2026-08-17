@@ -1245,6 +1245,40 @@ var _ = Describe("Org sync [Unit]", func() {
 			Expect(planActions[0].Error).To(ContainSubstring("not an ordinary file"))
 		})
 
+		// An attempt that died between recording one action and recording the
+		// next leaves the first saying something about a change the retry then
+		// makes whole. The retry replays everything, so its answer is every
+		// action's answer.
+		It("clears what an earlier attempt recorded once the retry lands", func() {
+			target := grantContents()
+			configureKind(target, orgsync.KindFiles, `{"files":[`+
+				`{"path":"CONTRIBUTING.md","content":"# Contributing\n"},`+
+				`{"path":"SECURITY.md","content":"# Security\n"}]}`)
+
+			plan(target)
+			computed, actions := livePlan(target)
+			approve(computed)
+
+			// One of them recorded failed, the other left where it was
+			Expect(service.store.RecordSyncActionOutcome(
+				GinkgoT().Context(), orgsync.ActionOutcome{
+					ActionID: actions[0].ID, State: orgsync.ActionFailed,
+					Error: "the process died here",
+				})).To(Succeed())
+
+			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+
+			applied, planActions, err := service.store.GetSyncPlan(
+				GinkgoT().Context(), target.ID, computed.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(applied.State).To(Equal(orgsync.PlanApplied))
+
+			for _, action := range planActions {
+				Expect(action.State).To(Equal(orgsync.ActionApplied))
+				Expect(action.Error).To(BeEmpty())
+			}
+		})
+
 		It("keeps an open pull request rather than opening a second", func() {
 			target := grantContents()
 			configureKind(target, orgsync.KindFiles, contributing)

@@ -366,21 +366,29 @@ func (s *server) applyFileKind(
 	}
 
 	for _, action := range work.Actions {
+		// Success covers every action, including ones an earlier attempt
+		// already recorded: this attempt replayed the whole change, so its
+		// answer is theirs. An attempt that died between recording one and
+		// recording the next would otherwise leave the first saying "failed"
+		// about a change that is now in the repository's proposal.
+		if err == nil {
+			outcome.Apply(action)
+			s.recordSyncAction(ctx, action, orgsync.ActionApplied, "", "")
+
+			continue
+		}
+
+		// Failure does not reach back the same way. The change did not land
+		// this time, which says nothing about a commit an earlier attempt got
+		// as far as making.
 		if action.State != orgsync.ActionPending {
 			outcome.Carry(action)
 
 			continue
 		}
 
-		if err != nil {
-			outcome.Fail(action, err.Error())
-			s.recordSyncAction(ctx, action, orgsync.ActionFailed, err.Error(), "")
-
-			continue
-		}
-
-		outcome.Apply(action)
-		s.recordSyncAction(ctx, action, orgsync.ActionApplied, "", "")
+		outcome.Fail(action, err.Error())
+		s.recordSyncAction(ctx, action, orgsync.ActionFailed, err.Error(), "")
 	}
 
 	return err == nil
