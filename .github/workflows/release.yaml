@@ -42,14 +42,16 @@ jobs:
 
   # The gate is the Test workflow itself, called rather than copied. It had been
   # copied, and the copy had already drifted: it ran the suites above the port
-  # against SQLite only, and it ran neither the browser budget nor the chart,
+  # against SQLite only, and it ran neither the browser suite nor the chart,
   # shell, workflow and deploy checks, so a release could publish what a pull
   # request would have refused.
   #
-  # It is also almost the whole of the wait before semantic-release. Eleven jobs
-  # in parallel cost about what the slowest one costs, where the single job they
-  # replace cost the sum of every suite: 3m20s of a 7m25s release, against the
-  # 1m20s the same checks take on a pull request.
+  # It is also almost the whole of the wait before semantic-release, and what it
+  # costs is what its slowest job costs rather than what all of them cost: the
+  # single job they replace cost the sum of every suite. Which job that is moves
+  # as they are split, so the number worth keeping here is the shape and not a
+  # measurement - one long job sets the release's floor, and the way to lower it
+  # is to divide that job rather than to hurry the rest.
   test:
     needs: check
     name: Test
