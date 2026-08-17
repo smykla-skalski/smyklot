@@ -1352,7 +1352,7 @@
       <div id="users-list-panel" aria-label="Users">
         <div
           class:loading={loadingUsers}
-          class="user-results"
+          class="user-results table-region"
           bind:this={userResults}
           aria-busy={loadingUsers}
         >
@@ -1592,7 +1592,7 @@
       <div id="invitations-list-panel" aria-label="Invitations">
         <div
           class:loading={loadingInvitations}
-          class="invitation-results"
+          class="invitation-results table-region"
           bind:this={invitationResults}
           aria-busy={loadingInvitations}
         >
@@ -2165,18 +2165,10 @@
     padding: 0 0 var(--space-3);
   }
 
+  /* Layout, keyline and corner come from `.table-region` in `app.css`. */
   .user-results,
   .invitation-results {
-    background: var(--table-filler-bg);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-surface);
-    display: flex;
-    flex-direction: column;
-    flex: 1;
     margin-top: 0;
-    min-height: 0;
-    overflow: hidden;
-    position: relative;
   }
 
   .user-results.loading,

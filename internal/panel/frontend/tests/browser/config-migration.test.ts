@@ -39,6 +39,10 @@ async function resetMigration(path: string, repository: string): Promise<void> {
     // the refused state from a cached detail response.
     await page.keyboard.press('Escape');
     await dialog.waitFor({ state: 'detached' });
+    // The list is virtualised and, now that the view is no taller than the window,
+    // it renders only the rows in view - so a repository further down the list is
+    // not in the page to be clicked. Narrow to it the way a reader would.
+    await page.getByPlaceholder('Search repositories').fill(repository);
     await page.getByRole('button', { name: `Configure smykla-skalski/${repository}` }).click();
     await dialog.waitFor({ state: 'visible' });
     await page.waitForTimeout(SETTLE_MS);

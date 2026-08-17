@@ -385,7 +385,7 @@
     />
   </div>
 
-  <div class:loading class="invitation-results" aria-busy={loading}>
+  <div class:loading class="invitation-results table-region" aria-busy={loading}>
     <!-- A refresh that failed over a loaded table has not made the table wrong. -->
     {#if problem !== null && page !== null}
       <ResultProblem
@@ -709,16 +709,9 @@
     padding-bottom: var(--space-3);
   }
 
+  /* Layout, keyline and corner come from `.table-region` in `app.css`. */
   .invitation-results {
-    background: var(--table-filler-bg);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-surface);
-    display: flex;
-    flex: 1;
-    flex-direction: column;
     min-height: 8rem;
-    overflow: hidden;
-    position: relative;
   }
 
   /* Surface, keyline, corner and lift come from `.table-card` in `app.css`. */

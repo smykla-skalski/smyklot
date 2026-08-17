@@ -726,7 +726,12 @@
     <HistoryDisplayMenu value={timeDisplay} onSelect={selectTimeDisplay} />
   </div>
 
-  <div class:loading class="history-results" bind:this={historyResults} aria-busy={loading}>
+  <div
+    class:loading
+    class="history-results table-region"
+    bind:this={historyResults}
+    aria-busy={loading}
+  >
     <!-- A refresh that failed over a loaded table has not made the table wrong. -->
     {#if problem !== null && currentPage !== null}
       <ResultProblem
@@ -1149,16 +1154,9 @@
     padding: 0 0 var(--space-3);
   }
 
+  /* Layout, keyline and corner come from `.table-region` in `app.css`. */
   .history-results {
-    background: var(--table-filler-bg);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-surface);
-    display: flex;
-    flex-direction: column;
-    flex: 1;
     min-height: 5rem;
-    overflow: hidden;
-    position: relative;
   }
 
   .load-more-alert {

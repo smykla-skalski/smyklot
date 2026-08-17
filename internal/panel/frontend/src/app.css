@@ -776,6 +776,26 @@ body {
   }
 }
 
+/* The wrapper every Root page is, and the one link the height chain was missing.
+   ----------------------------------------------------------------------------
+   A table scrolls inside itself, which only works if every box between the window
+   and that scroller agrees to be no taller than the window. `.workspace-content`
+   says so, and each panel inside says so, but this element sat between them saying
+   nothing: an unstyled block is a flex item with `min-height: auto`, which means
+   "no smaller than my content", so it grew to the full height of the rows and
+   `.workspace-content` clipped whatever did not fit. On the audit history that was
+   the bottom third of the table, unreachable - the page could not scroll, because
+   nothing on it was overflowing anything that would offer a scrollbar.
+
+   It is written here rather than in each page because it is one rule and there are
+   eight pages wearing the class, which is how it came to be missing from all of
+   them at once. */
+.root-workspace {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .workspace-content:focus {
   outline: 0;
 }
@@ -892,6 +912,26 @@ body {
    `overflow` is not `visible` here, which is what clips the header's corners to
    the radius; naming the x axis is enough, since the y axis follows it out of
    `visible` on its own. */
+/* The room a table is given, holding exactly one `.table-card`.
+   ------------------------------------------------------------
+   Four views wrote this box out for themselves, and all four drew a surface with
+   it - a background, a keyline and a corner - around a `.table-card` that draws
+   the same three. Two concentric rounded keylines a pixel apart is the double
+   border on the access and history tables. The card is the surface, as the
+   comment in every one of those views already said; this is only the room it
+   sits in, and what it contributes is the ability to shrink (`min-height: 0`, so
+   the card's scroller gets the height rather than the rows setting it), a
+   positioning context for the overlay a loading or empty table raises, and the
+   clip that keeps that overlay inside. */
+.table-region {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+
 .table-card {
   background: var(--surface-base);
   border: 1px solid var(--border-subtle);
