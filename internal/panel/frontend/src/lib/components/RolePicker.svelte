@@ -139,8 +139,13 @@
     width: 1.125rem;
   }
 
+  /* `clip` and not `hidden`, like every other truncating line in the product:
+     this span carries `.band-trim`, so its box ends on the cap and the baseline,
+     and the ascender of the `d` in Admin stands above the cap by construction.
+     `hidden` clips both axes and shaved the top off it. */
   .role-trigger > span:not(.role-chevron, .role-icon) {
-    overflow: hidden;
+    overflow: clip;
+    overflow-clip-margin: 0.35em;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
