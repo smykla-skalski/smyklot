@@ -243,7 +243,19 @@ func (s *server) applyFileActions(
 			return err
 		}
 
-		proposal = planned.Proposal
+		// Every action of one repository's file work names the same branch,
+		// because one planner call wrote them all. Two that disagree is a plan
+		// nothing can carry out, and taking whichever came last would split one
+		// change across two pull requests without saying so.
+		switch {
+		case proposal == "":
+			proposal = planned.Proposal
+
+		case planned.Proposal != proposal:
+			return fmt.Errorf("%w: this repository's file work names two branches, %s and %s",
+				orgsync.ErrInvalidPlan, proposal, planned.Proposal)
+		}
+
 		files = append(files, plannedFile{
 			path:    planned.Path,
 			content: planned.Content,

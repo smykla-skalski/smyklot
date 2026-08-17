@@ -31,9 +31,17 @@ var _ = Describe("File configuration [Unit]", func() {
 			To(Equal("See trunk for more."))
 	})
 
-	It("leaves a template alone where GitHub named no branch", func() {
+	It("leaves a placeholder alone where GitHub named no branch", func() {
 		Expect(orgsync.Render("See {{DEFAULT_BRANCH}}.", "")).
 			To(Equal("See {{DEFAULT_BRANCH}}."))
+	})
+
+	// Smyklot writes LF. A template pasted from an editor that writes CRLF is
+	// one file changed once rather than a file whose every line reads as
+	// changed each time something else about it moves.
+	It("settles the line endings, whether or not there is a branch to fill in", func() {
+		Expect(orgsync.Render("one\r\ntwo\r\n", "main")).To(Equal("one\ntwo\n"))
+		Expect(orgsync.Render("one\r\ntwo\r\n", "")).To(Equal("one\ntwo\n"))
 	})
 
 	// The tool this replaces validated the file list not at all: no empty path,

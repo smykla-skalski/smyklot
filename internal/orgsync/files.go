@@ -111,7 +111,14 @@ var placeholders = map[string]struct{}{
 }
 
 // Render fills a template in for one repository.
+//
+// Line endings are settled here too, and for every file rather than only the
+// ones a merge touches: Smyklot writes LF, so a template somebody pasted from
+// an editor that writes CRLF becomes one file changed once rather than a file
+// whose every line reads as changed each time something else about it moves.
 func Render(content, defaultBranch string) string {
+	content = strings.ReplaceAll(content, "\r\n", "\n")
+
 	if defaultBranch == "" {
 		return content
 	}
