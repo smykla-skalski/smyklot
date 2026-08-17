@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -766,6 +767,19 @@ var _ = Describe("Org sync [Unit]", func() {
 				 "enforcement":"active","source_type":"Repository"},
 				{"id":8,"name":"main-branch-protection","target":"branch",
 				 "enforcement":"active","source_type":"Repository"}]`
+
+			// Both readable, and both already matching. Without them the read
+			// fails and this spec passes on the error path instead, proving
+			// nothing about the ambiguity it is named for
+			whole := `{"id":%d,"name":"main-branch-protection","target":"branch",
+				"enforcement":"active",
+				"conditions":{"ref_name":{"include":["refs/heads/main"],"exclude":[]}},
+				"rules":[{"type":"deletion"}]}`
+			stub.rulesetBodies = map[int64]string{
+				7: fmt.Sprintf(whole, 7),
+				8: fmt.Sprintf(whole, 8),
+			}
+
 			configureKind(target, orgsync.KindRulesets, `{"rulesets":[
 				{"name":"main-branch-protection","target":"branch",
 				 "enforcement":"active",
