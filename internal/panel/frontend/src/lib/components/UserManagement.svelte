@@ -2349,20 +2349,22 @@
       min-height: 12rem;
     }
 
-    /* The grid rows above repaint the row ground at a higher specificity than the plain
-         `:hover` rule outside this block, so the pointer state has to be restated here or it never
-         reaches the screen. */
-    /* Not the empty state - see the same rule in RepositoryList. */
-    /* And the press with it, for the same reason and one more: the rule above is
-       later in the sheet than the one that paints a held row, and carries the same
-       specificity, so without this the row kept its hover colour under the pointer
-       while the scale went ahead - which reads as the press half working. */
+    /* Pin the grid track to the row's fixed height: auto-sizing would take the
+       tallest cell's border-box, push the bottom border one pixel past the
+       virtual row, and let the next row paint over every separator. */
     .user-table tbody tr:not(.virtual-spacer) {
-      background: var(--surface-base);
-      /* Pin the grid track to the row's fixed height: auto-sizing would take
-         the tallest cell's border-box, push the bottom border one pixel past
-         the virtual row, and let the next row paint over every separator. */
       grid-template-rows: 100%;
+    }
+
+    /* The rows this component paints are the ones it does not hand to
+       `.data-row`. They have to be opaque - the tbody behind them is the scroll
+       container and carries the filler that fills the space under the last row -
+       and painting them all here is what beat the shared hover, because a
+       component's rule carries its scope class and outranks `app.css` by one.
+       A row that opens something keeps its ground and every state from
+       `.data-row`, which is the whole point of wearing the class. */
+    .user-table tbody tr:not(.virtual-spacer, .data-row) {
+      background: var(--surface-base);
     }
 
     .user-table tbody tr:not(.virtual-spacer) > th,

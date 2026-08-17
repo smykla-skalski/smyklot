@@ -1254,15 +1254,19 @@
       width: 100%;
     }
 
-    /* The grid rows above repaint the row ground at a higher specificity than the plain
-         `:hover` rule outside this block, so the pointer state has to be restated here or it never
-         reaches the screen. */
+    /* Pin the grid track to the row's fixed height: auto-sizing would take the
+       tallest cell's border-box, push the bottom border one pixel past the
+       virtual row, and let the next row paint over every separator. */
     .history-table tbody tr:not(.virtual-spacer) {
-      background: var(--surface-base);
-      /* Pin the grid track to the row's fixed height: auto-sizing would take
-         the tallest cell's border-box, push the bottom border one pixel past
-         the virtual row, and let the next row paint over every separator. */
       grid-template-rows: 100%;
+    }
+
+    /* Only the rows not handed to `.data-row` - see the same pair in
+       `UserManagement`. Painted here, a row wearing the class never showed the
+       shared hover, because this rule carries the component's scope class and
+       outranks `app.css` by one. */
+    .history-table tbody tr:not(.virtual-spacer, .data-row) {
+      background: var(--surface-base);
     }
 
     .history-table tbody tr:not(.virtual-spacer) td {
