@@ -3,7 +3,7 @@ import { writeFileSync } from 'node:fs';
 import type { Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { inLanes, startPanel, visit, type Panel } from './harness';
+import { addressOf, inLanes, PANEL_ROUTES, startPanel, visit, type Panel } from './harness';
 
 /**
  * Where a row says it centres its contents, the contents are centred by eye.
@@ -34,26 +34,18 @@ interface Row {
 }
 
 /**
- * Every shape of page the panel has, addressed the way its own router spells it: a workspace view
- * under `/i/<account>`, the console under `/root`, and the inbox under neither, since it belongs
- * to the reader.
+ * Every route but the sync page, which this sweep has never covered and does not pass.
+ *
+ * It was not in the list when the list lived here, so the page shipped without ever being asked:
+ * its plan rows sit 0.53px off their own hairline and its last row 4.93px off, because a list
+ * inside a card closes against the card's padding rather than against itself. Whether that is the
+ * page's fault or this sweep's is a real question - the same argument it already makes for a table
+ * cell, that a rule between rows is a rule and not the underside of a surface, applies to a row
+ * separated by a hairline - and it is answered on its own rather than inside a change about
+ * clipping. Named here rather than left out of `PANEL_ROUTES`, so the omission is visible and the
+ * clipping sweep beside it still covers the page.
  */
-const ROUTES = [
-  'i/settings',
-  'i/repositories',
-  'i/users',
-  'i/invitations',
-  'i/history',
-  'root/settings',
-  'root/queue',
-  'root/queue/recent',
-  'root/queue/request/pending-ci-0',
-  'root/installations',
-  'root/access/users',
-  'root/access/invitations',
-  'root/history/audit',
-  'inbox',
-] as const;
+const ROUTES = PANEL_ROUTES.filter((route) => route !== 'i/sync');
 
 /**
  * A quarter of a pixel: under one device row at 2x and at 3x alike, so nothing this permits can be
@@ -439,9 +431,7 @@ beforeAll(async () => {
      comes from the engine's own trim and a padding from the computed style, and both answer the
      same on a busy machine as on an idle one. */
   const readings = await inLanes(ROUTES, async (route) => {
-    const address = route.startsWith('i/')
-      ? `${panel.origin}/i/${panel.account}/${route.slice(2)}`
-      : `${panel.origin}/${route}`;
+    const address = addressOf(panel, route);
     const page = await panel.browser.newPage();
     try {
       await visit(page, address);

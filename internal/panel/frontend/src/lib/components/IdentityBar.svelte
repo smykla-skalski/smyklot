@@ -593,12 +593,17 @@
     text-transform: uppercase;
   }
 
+  /* Trimmed to the baseline by `.band-trim-stack`, so the descenders in a workspace
+     name paint below the box and `overflow: hidden` took them off. The account card
+     below solves the same thing by opening the block axis; here the room is bounded
+     instead, because the switcher sits in a rail whose neighbours are close. */
   .target-trigger-copy strong {
     color: var(--sidebar-text);
     font-size: var(--font-size-meta);
     font-weight: 600;
     line-height: 1.2;
-    overflow: hidden;
+    overflow: clip;
+    overflow-clip-margin: 0.4em;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
