@@ -40,7 +40,7 @@
   import ResultProblem from './ResultProblem.svelte';
   import RootPageHeader from './RootPageHeader.svelte';
   import SearchField from './SearchField.svelte';
-  import NavigationTabs from './NavigationTabs.svelte';
+  import SegmentedControl from './SegmentedControl.svelte';
   import TableEmptyState from './TableEmptyState.svelte';
 
   type HistoryType = 'audit' | 'failures';
@@ -709,8 +709,10 @@
   <!-- The table switch sits at the head of the controls row, left of the
        search, the same place Access puts its Users/Invitations switch. -->
   <div class="history-tools">
-    <NavigationTabs
+    <SegmentedControl
+      name="history-type"
       label="History type"
+      variant="navigation"
       options={HISTORY_TYPES}
       value={historyType}
       onSelect={selectHistoryType}

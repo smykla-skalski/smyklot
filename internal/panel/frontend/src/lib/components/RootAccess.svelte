@@ -37,7 +37,7 @@
   import RootPageHeader from './RootPageHeader.svelte';
   import SearchField from './SearchField.svelte';
   import TableToolsMenu from './TableToolsMenu.svelte';
-  import NavigationTabs from './NavigationTabs.svelte';
+  import SegmentedControl from './SegmentedControl.svelte';
   import TableEmptyState from './TableEmptyState.svelte';
 
   type AccessSection = 'users' | 'invitations';
@@ -466,8 +466,10 @@
 </script>
 
 {#snippet sectionSwitch()}
-  <NavigationTabs
+  <SegmentedControl
+    name="root-access-section"
     label="Root access lists"
+    variant="navigation"
     options={SECTIONS}
     value={section}
     onSelect={selectSection}

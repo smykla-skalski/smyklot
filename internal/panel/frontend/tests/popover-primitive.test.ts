@@ -90,7 +90,6 @@ describe('the components that float a layer', () => {
     ['LoginField.svelte', 'Combobox'],
     ['AppTooltip.svelte', 'Tooltip'],
     ['HelpTip.svelte', 'Tooltip'],
-    ['NavigationTabs.svelte', 'Tabs'],
   ])('%s uses the Bits UI %s primitive', (file, primitive) => {
     const source = read(file);
     expect(source).toContain(`import { ${primitive} } from 'bits-ui'`);

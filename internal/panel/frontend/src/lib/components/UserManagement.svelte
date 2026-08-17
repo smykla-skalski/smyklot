@@ -59,7 +59,7 @@
   import ResultProblem from './ResultProblem.svelte';
   import RolePicker, { type RolePickerOption } from './RolePicker.svelte';
   import SearchField from './SearchField.svelte';
-  import NavigationTabs from './NavigationTabs.svelte';
+  import SegmentedControl from './SegmentedControl.svelte';
   import TableEmptyState from './TableEmptyState.svelte';
 
   type ManagementSection = 'users' | 'invitations';
@@ -1322,8 +1322,10 @@
 
   <div class="user-management-body">
     <div class="management-navigation">
-      <NavigationTabs
+      <SegmentedControl
+        name="user-management-section"
         label="User management lists"
+        variant="navigation"
         options={sectionOptions}
         value={activeSection}
         onSelect={selectSection}
