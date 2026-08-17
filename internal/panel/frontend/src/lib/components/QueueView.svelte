@@ -1,12 +1,11 @@
 <script lang="ts">
   import { createQuery } from '@tanstack/svelte-query';
+  import { untrack } from 'svelte';
 
   import type { PanelApi } from '#lib/api.js';
   import type { FilterSection } from '#lib/filter-menu.js';
   import { formatTimestamp } from '#lib/format.js';
   import {
-    byMostRecent,
-    bySoonest,
     cleanupState,
     endReason,
     outcomeState,
@@ -25,6 +24,7 @@
   import RootPageHeader from './RootPageHeader.svelte';
   import SearchField from './SearchField.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
+  import SortIndicator from './SortIndicator.svelte';
   import TableEmptyState from './TableEmptyState.svelte';
   import TableToolsMenu from './TableToolsMenu.svelte';
 
@@ -136,12 +136,47 @@
     },
   ] satisfies readonly FilterSection[];
 
+  /**
+   * What each section can be ordered by, and what each column means as an order.
+   *
+   * Only the columns whose values HAVE an order: a repository name sorts as well as any string
+   * and says nothing, and the reason a request ended is a sentence. The two the table opens on -
+   * what happens soonest, and what finished last - are the two the mock marks as sorted.
+   */
+  const ORDERS = {
+    checks: (request: PendingCIRequest) => queueState(request).label,
+    next: (request: PendingCIRequest) => request.next_check_at,
+    armed: (request: PendingCIRequest) => request.requested_at,
+    outcome: (request: PendingCIRequest) => outcomeState(request).label,
+    cleanup: (request: PendingCIRequest) => cleanupState(request).label,
+    finished: (request: PendingCIRequest) => request.finished_at ?? request.updated_at,
+  } as const;
+
+  type SortColumn = keyof typeof ORDERS;
+
+  interface SectionOrder {
+    columns: readonly SortColumn[];
+    opens: SortColumn;
+    ascending: boolean;
+  }
+
+  /** Which of them each section actually draws, and the one it opens on. */
+  const SECTION_ORDERS: Record<QueueSection, SectionOrder> = {
+    waiting: { columns: ['checks', 'next', 'armed'], opens: 'next', ascending: true },
+    recent: { columns: ['outcome', 'cleanup', 'finished'], opens: 'finished', ascending: false },
+  };
+
   let search = $state('');
   let query = $state('');
   let states = $state<string[]>([]);
   let schedules = $state<string[]>([]);
   let pullRequests = $state<string[]>([]);
   let cleanups = $state<string[]>([]);
+  /* The order each section opens on: soonest first for what is still to happen, newest first for
+     what already has. Reading the waiting order onto the past puts the oldest outcome at the top,
+     which is the opposite of what somebody scanning for "what just happened" wants. */
+  let sortColumn = $state<SortColumn>('next');
+  let ascending = $state(true);
   let pendingAction = $state<string | null>(null);
   /* Ticks so a countdown counts. One second, because the last ten of a merge are
      the point of the column and a minute's granularity would miss them. */
@@ -247,7 +282,13 @@
             (field) => field.toLocaleLowerCase().includes(needle),
           ),
       )
-      .sort(section === 'recent' ? byMostRecent : bySoonest);
+      .sort((first, second) => {
+        const read = ORDERS[sortColumn];
+        const order = read(first).localeCompare(read(second));
+        /* A stable tie-break, so two requests that share an order do not swap places on every
+           tick of the countdown clock. */
+        return (ascending ? order : -order) || first.id.localeCompare(second.id);
+      });
   });
 
   const hasFilters = $derived(
@@ -257,6 +298,17 @@
       pullRequests.length > 0 ||
       cleanups.length > 0,
   );
+
+  /* The two sections carry different columns, so an order set on one can be an order the other
+     does not draw - and a table sorted by a heading that is not on it has no way back. Switching
+     sections therefore returns to that section's own opening order, and only when the current one
+     is not among its columns: a reader who sorted Recent by Outcome and stepped away keeps it. */
+  $effect(() => {
+    const own = SECTION_ORDERS[section];
+    if (own.columns.includes(untrack(() => sortColumn))) return;
+    sortColumn = own.opens;
+    ascending = own.ascending;
+  });
 
   $effect(() => {
     const tick = setInterval(() => {
@@ -379,6 +431,28 @@
     onOpenRequest(request.id);
   }
 
+  /**
+   * A press on the column already sorted turns it round; a press on another takes it over.
+   *
+   * A new column starts ascending except where descending is what the column is for: the last
+   * thing to finish is what somebody scanning the past is looking for, and offering it oldest-first
+   * makes them press twice to get there.
+   */
+  function toggleSort(column: SortColumn): void {
+    if (sortColumn === column) {
+      ascending = !ascending;
+      return;
+    }
+    sortColumn = column;
+    ascending = column !== 'finished';
+  }
+
+  function sortDirection(column: SortColumn): 'ascending' | 'descending' | undefined {
+    if (sortColumn !== column) return undefined;
+
+    return ascending ? 'ascending' : 'descending';
+  }
+
   function clearFilters(): void {
     search = '';
     query = '';
@@ -414,6 +488,16 @@
     value={search}
     onInput={(next) => (search = next)}
   />
+  {#if hasFilters}
+    <!-- Only while there is something to clear, and quiet while it is there: the
+         way out of a narrowed table should be beside the thing that narrowed it,
+         not somewhere in the headings, and it should not compete with the search
+         for attention. `btn-quiet` is the product's own no-fill, no-border
+         variant - it is a word until it is hovered. -->
+    <button class="btn btn-quiet btn-row" type="button" onclick={clearFilters}>
+      <span class="button-label">Clear filters</span>
+    </button>
+  {/if}
   <!-- The same two filters the headings carry, for the widths where there are no
        headings to carry them. Below 48rem the table is a stack of cards and the
        band is hidden, and both menus live inside it - so the page offered a
@@ -471,11 +555,18 @@
   >
     <thead>
       <tr>
-        <th scope="col">
+        <th scope="col" aria-sort={sortDirection(section === 'recent' ? 'outcome' : 'checks')}>
           <div class="heading-layout">
-            <span class="heading-label band-trim"
-              >{section === 'recent' ? 'Outcome' : 'Checks'}</span
+            <button
+              class="table-sort-button"
+              type="button"
+              onclick={() => toggleSort(section === 'recent' ? 'outcome' : 'checks')}
             >
+              <span class="heading-label band-trim"
+                >{section === 'recent' ? 'Outcome' : 'Checks'}</span
+              >
+              <SortIndicator />
+            </button>
             <FilterMenu
               label={section === 'recent' ? 'Outcome' : 'Checks'}
               summary={states.length === 0 ? 'All states' : `${states.length} selected`}
@@ -513,9 +604,12 @@
           </div>
         </th>
         {#if section === 'recent'}
-          <th scope="col" class="cleanup-column">
+          <th scope="col" class="cleanup-column" aria-sort={sortDirection('cleanup')}>
             <div class="heading-layout">
-              <span class="heading-label band-trim">Cleanup</span>
+              <button class="table-sort-button" type="button" onclick={() => toggleSort('cleanup')}>
+                <span class="heading-label band-trim">Cleanup</span>
+                <SortIndicator />
+              </button>
               <FilterMenu
                 label="Cleanup"
                 summary={cleanups.length === 0 ? 'Any state' : `${cleanups.length} selected`}
@@ -529,11 +623,19 @@
             </div>
           </th>
           <th scope="col"><span class="heading-label band-trim">Why it ended</span></th>
-          <th scope="col"><span class="heading-label band-trim">Finished</span></th>
+          <th scope="col" aria-sort={sortDirection('finished')}>
+            <button class="table-sort-button" type="button" onclick={() => toggleSort('finished')}>
+              <span class="heading-label band-trim">Finished</span>
+              <SortIndicator />
+            </button>
+          </th>
         {:else}
-          <th scope="col">
+          <th scope="col" aria-sort={sortDirection('next')}>
             <div class="heading-layout">
-              <span class="heading-label band-trim">Next</span>
+              <button class="table-sort-button" type="button" onclick={() => toggleSort('next')}>
+                <span class="heading-label band-trim">Next</span>
+                <SortIndicator />
+              </button>
               <FilterMenu
                 label="Schedule"
                 summary={schedules.length === 0 ? 'Any schedule' : `${schedules.length} selected`}
@@ -546,11 +648,17 @@
               />
             </div>
           </th>
-          <!-- No filter: this column draws an age, and who armed it is filtered
-               where the name is written, on the Pull request heading. The mock put
-               "who armed it" here, which would have been the same values behind a
-               second trigger in a column that never shows them. -->
-          <th scope="col"><span class="heading-label band-trim">Armed</span></th>
+          <!-- Sorted but not filtered: this column draws an age, which has an
+               order and no values worth listing. Who armed it is filtered where
+               the name is written, on the Pull request heading - the mock put it
+               here, which would have been the same values behind a second trigger
+               in a column that never shows them. -->
+          <th scope="col" aria-sort={sortDirection('armed')}>
+            <button class="table-sort-button" type="button" onclick={() => toggleSort('armed')}>
+              <span class="heading-label band-trim">Armed</span>
+              <SortIndicator />
+            </button>
+          </th>
         {/if}
         <th scope="col"><span class="visually-hidden">Actions</span></th>
       </tr>
@@ -771,9 +879,36 @@
     width: 100%;
   }
 
+  /* The padding is published rather than applied, so that whatever fills the cell
+     can take it: a sortable heading's target has to reach the cell's own edges,
+     which it cannot do while the cell holds the padding outside it. The history
+     table already does this - its `th` has none and its button carries it - and
+     the two looked different because of it. `--heading-pad-start` keeps the first
+     column's wider inset, so the word still begins where the values under it do. */
   .queue-table th {
+    --heading-pad-start: var(--space-3);
+    --heading-pad-end: var(--space-3);
+
     height: 2.5rem;
-    padding: 0 var(--space-3);
+    padding: 0;
+  }
+
+  .queue-table th:first-child {
+    --heading-pad-start: var(--space-4);
+  }
+
+  .queue-table th:last-child {
+    --heading-pad-end: var(--space-4);
+  }
+
+  .queue-table th > :is(.heading-layout, .table-sort-button, .heading-label) {
+    padding-inline: var(--heading-pad-start) var(--heading-pad-end);
+  }
+
+  /* Inside a layout the padding belongs to the layout, not to the button within
+     it - otherwise the filter beside it would sit inside the button's inset. */
+  .queue-table th > .heading-layout > .table-sort-button {
+    padding-inline: 0;
   }
 
   /* Column widths as rules rather than a `<colgroup>`: a `style` attribute in
@@ -796,11 +931,11 @@
      difference at the front of every row of whichever section did not need it,
      which is the defect these numbers exist to end. */
   .waiting-table :is(th, td):first-child {
-    width: 8.25rem;
+    width: 8.5rem;
   }
 
   .recent-table :is(th, td):first-child {
-    width: 8.5rem;
+    width: 9.25rem;
   }
 
   /* "Checks again in 59 minutes" over "First look since it was armed". */
@@ -811,7 +946,7 @@
   /* "just now" is wider than any age this abbreviates to, and this heading has
      no controls of its own. */
   .waiting-table :is(th, td):nth-child(4) {
-    width: 4.75rem;
+    width: 5.75rem;
   }
 
   /* Two 1.75rem buttons, the gap between them, and the cell's own 12px and 16px:
@@ -825,7 +960,7 @@
 
   /* The heading with its filter, wider than any of Done, Pending or Failed. */
   .recent-table :is(th, td):nth-child(3) {
-    width: 7.25rem;
+    width: 8.75rem;
   }
 
   /* The one column here whose text has no bound, so it is sized like the
@@ -840,7 +975,7 @@
 
   /* The heading again: "Finished" is wider than "just now". */
   .recent-table :is(th, td):nth-child(5) {
-    width: 5.25rem;
+    width: 6.5rem;
   }
 
   /* One button, and the same 12px and 16px the waiting table's pair get. */
@@ -848,7 +983,6 @@
     width: 3.5rem;
   }
 
-  .queue-table th:first-child,
   .queue-table td:first-child {
     padding-left: var(--space-4);
   }
@@ -861,10 +995,16 @@
   /* A block-level flex row, so the cell holds no anonymous line box and the
      table's own font cannot place the baseline. An inline label in a 15px cell
      sat 1.81px below where its 13px box said it was. */
+  /* `height: 100%` because the sort button inside it fills what it is given, and
+     what it is given here is this row: without it the button was 14px tall in a
+     40px cell, so a heading in this table answered the pointer over a third of the
+     area the same heading answers over in the history table. */
   .heading-layout {
     align-items: center;
     display: flex;
     gap: 0.3rem;
+    height: 100%;
+    min-width: 0;
   }
 
   .heading-layout :global(.header-filter) {

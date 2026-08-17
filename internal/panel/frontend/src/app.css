@@ -1195,10 +1195,38 @@ th[aria-sort='descending'] .table-sort-button:where(:hover, :focus-visible) .sor
   /* A header runs the width of its column, so it takes the surface figure. */
   --press-scale: var(--press-scale-surface);
 
-  /* The button reset, here rather than in each table: a bare `<button>` comes
-     with a ground of its own, and the three tables that undid it locally undid
-     the shared hover with it. */
+  /* The WHOLE button reset, here rather than in each table. It was half here and
+     half in a `.sort-button` each table wrote for itself, so this class alone drew
+     a heading inside a UA border with its own font - the two tables that had the
+     other half looked right and the third did not. A sortable heading is one class
+     now.
+
+     `font` and the two the UA stylesheet resets rather than inherits: a form
+     control does not take `letter-spacing` or `text-transform` from its cell, so a
+     sortable heading stayed in sentence case while the ones beside it went
+     uppercase with the rest. */
+  align-items: center;
   background: none;
+  border: 0;
+  color: inherit;
+  display: flex;
+  font: inherit;
+  gap: var(--space-2);
+  justify-content: flex-start;
+  letter-spacing: inherit;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+  text-transform: inherit;
+
+  /* The target is the space its cell gives it, which is what makes the hover the
+     same size in every table. Measured before this, the queue's heading answered
+     over 54% of its cell's width and 35% of its height - the words and nothing
+     else - while the history table's covered all of it. The cell keeps its own
+     padding, so the words still start where the values under them do. */
+  flex: 1;
+  height: 100%;
+  width: 100%;
 }
 
 .table-sort-button:focus-visible {
@@ -1863,15 +1891,6 @@ code {
 .table-sort-button > span,
 .button-label {
   text-box: trim-both cap alphabetic;
-}
-
-/* A sortable heading is a button, and the UA stylesheet resets a form control's
-   letter-spacing and text-transform rather than letting it inherit - `font:
-   inherit` does not cover either. So the four headings that can be sorted stayed
-   in sentence case while the two that cannot went uppercase with the rest. */
-.table-sort-button {
-  letter-spacing: inherit;
-  text-transform: inherit;
 }
 
 /* One column heading, for all six tables.
