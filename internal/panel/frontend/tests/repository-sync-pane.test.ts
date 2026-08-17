@@ -45,7 +45,10 @@ describe('RepositorySyncPane [Component]', () => {
     };
   }
 
-  const base = { readOnly: false, saving: false, onSave: () => {} };
+  /** A fixed clock, so a relative time reads the same on every run. */
+  const now = Date.parse('2026-08-09T10:00:00Z');
+
+  const base = { readOnly: false, saving: false, now, onSave: () => {} };
 
   async function save(): Promise<void> {
     await fireEvent.click(screen.getByRole('button', { name: 'Save' }));
@@ -206,5 +209,34 @@ describe('RepositorySyncPane [Component]', () => {
 
     expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Adjust a file' })).toBeNull();
+  });
+
+  /**
+   * A repository the planner refuses is receiving none of the organization's
+   * files. Before this notice it looked here exactly like one receiving all of
+   * them, and the only account of why was a line in the service log.
+   */
+  it('says why this repository is getting none of the files', () => {
+    render(RepositorySyncPane, {
+      ...base,
+      stored: override({
+        problem: 'these files cannot be composed: docs is not a directory in this repository',
+        problem_at: '2026-08-09T09:57:00Z',
+      }),
+    });
+
+    const notice = screen.getByRole('status');
+    expect(notice.textContent).toContain('are not being synced here');
+    expect(notice.textContent).toContain('docs is not a directory in this repository');
+
+    // And when it was found, so a fix saved a minute ago can be told from one
+    // this notice already knows about.
+    expect(notice.textContent).toContain('3 minutes ago');
+  });
+
+  it('says nothing where the planner found nothing wrong', () => {
+    render(RepositorySyncPane, { ...base, stored: override() });
+
+    expect(screen.queryByRole('status')).toBeNull();
   });
 });

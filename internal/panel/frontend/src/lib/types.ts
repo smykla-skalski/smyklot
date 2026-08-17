@@ -753,6 +753,12 @@ export interface SyncOverride {
   updated_at?: string;
   /** A stored document this version cannot read, so nothing here was shown. */
   unreadable: boolean;
+  /**
+   * Why this kind is not being synced here, and when the planner last found
+   * that. Absent where nothing is wrong.
+   */
+  problem?: string;
+  problem_at?: string;
 }
 
 /** What a repository's answer is saved as. */

@@ -14,6 +14,7 @@
    */
   import { canonicalStringify } from '#lib/preferences-sync.js';
   import { asList, lines, rowKeys } from '#lib/form-lists.js';
+  import { formatRelative } from '#lib/format.js';
   import type { SyncFileMerge, SyncOverride } from '#lib/types.js';
 
   import InheritControl from './InheritControl.svelte';
@@ -23,13 +24,25 @@
     stored,
     readOnly,
     saving,
-    problem = null,
+    now,
+    saveProblem = null,
     onSave,
   }: {
     stored: SyncOverride;
     readOnly: boolean;
     saving: boolean;
-    problem?: string | null;
+    /**
+     * The list's clock, so a refusal can say how long ago it was found. Passed
+     * rather than read here, because a second timer in a dialog the list
+     * already ticks for would say a different thing on the same screen.
+     */
+    now: number;
+    /**
+     * Why the last save did not land, which is this dialog's own and belongs to
+     * the moment. Not to be confused with `stored.problem`, which is why the
+     * planner is not syncing this repository at all.
+     */
+    saveProblem?: string | null;
     onSave: (enabled: boolean | null, document: Record<string, unknown>) => void;
   } = $props();
 
@@ -64,6 +77,23 @@
   let wanted = $derived<boolean | null>(stored.enabled);
 
   const disabled = $derived(saving || readOnly || stored.unreadable);
+
+  /**
+   * Why the planner is not syncing this repository at all, and how long ago it
+   * found that. Null where nothing is wrong.
+   *
+   * Nothing here can be edited away in every case - a repository with no
+   * commits has nowhere to propose against - so it reads as a standing notice
+   * rather than as a validation message on a field.
+   */
+  const notSyncing = $derived.by(() => {
+    if (stored.problem === undefined || stored.problem === '') return null;
+
+    return {
+      reason: stored.problem,
+      when: stored.problem_at === undefined ? null : formatRelative(stored.problem_at, now),
+    };
+  });
 
   /* Read once per draft rather than once per question. Both the refusal below
      and the payload need to know what a box says, and parsing it twice for
@@ -204,8 +234,21 @@
     them. Nothing reaches GitHub until a plan is approved
   </p>
 
-  {#if problem !== null}
-    <p class="form-error" role="alert">{problem}</p>
+  {#if saveProblem !== null}
+    <p class="form-error" role="alert">{saveProblem}</p>
+  {/if}
+
+  <!-- What the planner made of this repository, which is the question somebody
+       opening this pane came to ask. A refusal is fail-closed and correct, and
+       before this the only account of it was a line in the service log. -->
+  {#if notSyncing !== null}
+    <p class="form-notice sync-pane-standdown" role="status">
+      <strong>The organization's files are not being synced here</strong>
+      <span>{notSyncing.reason}</span>
+      {#if notSyncing.when !== null}
+        <span class="sync-pane-standdown-when">Last looked at {notSyncing.when}</span>
+      {/if}
+    </p>
   {/if}
 
   {#if stored.unreadable}
@@ -337,6 +380,19 @@
      lines them up with the field's own text. */
   .form-note {
     margin: 0.25rem 0.125rem 0;
+  }
+
+  /* Three lines rather than one run-on paragraph: what is happening, the
+     planner's own words for why, and how long ago it found that. The reason is
+     an error string and can run long, so it gets a line of its own. */
+  .sync-pane-standdown {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .sync-pane-standdown-when {
+    color: var(--dim);
   }
 
   .sync-pane-row {

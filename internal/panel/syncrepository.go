@@ -38,6 +38,16 @@ type syncOverrideDTO struct {
 	UpdatedBy  string          `json:"updated_by,omitempty"`
 	UpdatedAt  *time.Time      `json:"updated_at,omitempty"`
 	Unreadable bool            `json:"unreadable"`
+
+	// Problem is why this kind is not being synced here, and ProblemAt is when
+	// the planner last found that. Absent where nothing is wrong.
+	//
+	// Read beside the override rather than left to the log, because this pane
+	// is where somebody comes to ask why their repository is not getting the
+	// organization's files - and, for two of the three reasons, it holds the
+	// control that fixes it.
+	Problem   string     `json:"problem,omitempty"`
+	ProblemAt *time.Time `json:"problem_at,omitempty"`
 }
 
 // getSyncOverride reads what one repository says about one kind.
@@ -60,19 +70,54 @@ func (s *Server) getSyncOverride(w http.ResponseWriter, r *http.Request) {
 
 	// A repository that has said nothing about a kind inherits, which is an
 	// answer this renders rather than a failure it reports.
+	saved := &override
 	if errors.Is(err, storage.ErrNotFound) {
-		writeJSON(w, http.StatusOK, syncOverrideToDTO(kind, nil))
-
-		return
-	}
-
-	if err != nil {
+		saved = nil
+	} else if err != nil {
 		s.writeStorageError(w, err)
 
 		return
 	}
 
-	writeJSON(w, http.StatusOK, syncOverrideToDTO(kind, &override))
+	s.writeSyncOverride(w, r, repository.ID, kind, saved)
+}
+
+// writeSyncOverride answers with what this repository says about one kind and
+// what the planner last made of it.
+//
+// Two rows and one question. The override is what somebody asked for; the state
+// row is what came of it, and a pane showing only the first would show a
+// repository that looks configured and is being skipped.
+func (s *Server) writeSyncOverride(
+	w http.ResponseWriter,
+	r *http.Request,
+	repositoryID string,
+	kind orgsync.Kind,
+	override *orgsync.RepositoryOverride,
+) {
+	dto := syncOverrideToDTO(kind, override)
+
+	state, err := s.store.GetSyncRepositoryState(r.Context(), repositoryID, kind)
+
+	switch {
+	case errors.Is(err, storage.ErrNotFound):
+		// Nothing has planned this repository for this kind yet, which is the
+		// ordinary answer on a fresh installation and says nothing is wrong.
+	case err != nil:
+		// Reported rather than left out. A refusal this page could not read is
+		// the one thing it exists to show, and rendering the pane without it
+		// would say the repository is fine.
+		s.writeStorageError(w, err)
+
+		return
+	default:
+		dto.Problem = state.Problem
+		if state.Problem != "" {
+			dto.ProblemAt = &state.AppliedAt
+		}
+	}
+
+	writeJSON(w, http.StatusOK, dto)
 }
 
 // putSyncOverride saves it.
@@ -132,7 +177,12 @@ func (s *Server) putSyncOverride(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.Announce(target.ID, repository.ID)
-	writeJSON(w, http.StatusOK, syncOverrideToDTO(kind, &saved))
+
+	// Carrying whatever refusal still stands, which a save does not clear. The
+	// planner is what decides that, and it has not looked yet - saying so with
+	// the time it was last looked at is honest, where dropping the notice would
+	// tell somebody their fix worked before anything had tried it.
+	s.writeSyncOverride(w, r, repository.ID, kind, &saved)
 }
 
 // syncOverrideDocument checks a repository's adjustments against what the

@@ -517,6 +517,23 @@ export function seed(
           unreadable: false,
         },
       ],
+      /* And one the planner refuses, because a repository receiving none of the
+         organization's files reads here exactly like one receiving all of them
+         unless the notice that says so is on a screen somebody looks at. */
+      [
+        '4002/files',
+        {
+          kind: 'files',
+          enabled: null,
+          document: {},
+          revision: 0,
+          unreadable: false,
+          problem:
+            'these files cannot be composed: docs/guide.md cannot be written ' +
+            'because docs is not a directory in this repository',
+          problem_at: iso(-4 * 60_000),
+        },
+      ],
     ]),
     syncPlans: new Map([[organization.value.id, syncPlanSeed(iso)]]),
     // Replaced by install() with the running server's own page.

@@ -903,9 +903,11 @@
     syncOffered={onLoadSyncOverride !== null}
     syncOverride={syncOverrideQuery.data}
     syncSaving={savingOverride[repository.id] === true}
-    syncProblem={syncOverrideQuery.error === null
-      ? (overrideProblem[repository.id] ?? null)
+    syncReadProblem={syncOverrideQuery.error === null
+      ? null
       : errorMessage(syncOverrideQuery.error)}
+    syncSaveProblem={overrideProblem[repository.id] ?? null}
+    {now}
     onSaveSync={(enabled, document) => void saveSyncOverride(repository.id, enabled, document)}
   />
 {:else}

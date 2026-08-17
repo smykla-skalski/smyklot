@@ -316,3 +316,109 @@ func TestSyncOverrideKeepsWhatARepositoryAdjusts(t *testing.T) {
 		t.Errorf("document = %s, wanted %s", dto.Document, document)
 	}
 }
+
+// TestSyncOverrideSaysWhyARepositoryIsNotBeingSynced is the whole point of the
+// recorded refusal: before it, a repository receiving none of the
+// organization's files looked on this page exactly like one receiving all of
+// them, and the only account of why was a line in the service log.
+func TestSyncOverrideSaysWhyARepositoryIsNotBeingSynced(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+	session := harness.signIn(t)
+
+	refused := time.Date(2026, time.August, 9, 9, 30, 0, 0, time.UTC)
+	if err := harness.store.RecordSyncRepositoryState(
+		t.Context(), []orgsync.RepositoryState{{
+			RepositoryID: "repository-20", Kind: orgsync.KindFiles,
+			AppliedAt: refused,
+			Problem:   "these files cannot be composed: docs is not a directory here",
+		}},
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	read := harness.request(t, http.MethodGet, overridePath+"files", nil, session)
+	if read.Code != http.StatusOK {
+		t.Fatalf("reading the adjustment = %d %s", read.Code, read.Body.String())
+	}
+
+	var answer syncOverrideDTO
+	if err := json.Unmarshal(read.Body.Bytes(), &answer); err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(answer.Problem, "docs is not a directory here") {
+		t.Errorf("problem = %q, wanted the reason the planner recorded", answer.Problem)
+	}
+
+	// With when it was found, so a fix saved a minute ago can be told from one
+	// this notice already knows about.
+	if answer.ProblemAt == nil || !answer.ProblemAt.Equal(refused) {
+		t.Errorf("problem_at = %v, wanted %v", answer.ProblemAt, refused)
+	}
+}
+
+// TestSyncOverrideKeepsARefusalThroughASave keeps a save from reading as a fix.
+//
+// Saving an adjustment does not plan anything, so whatever stopped this
+// repository still stands until the next sweep looks. Dropping the notice from
+// the answer would tell somebody their change worked before anything had tried
+// it.
+func TestSyncOverrideKeepsARefusalThroughASave(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+	session := harness.signIn(t)
+
+	configured := harness.request(t, http.MethodPut, configPath+"files", strings.NewReader(
+		`{"enabled":true,"expected_revision":0,"document":{"files":[
+			{"path":"renovate.json","content":"{}"}]}}`), session)
+	if configured.Code != http.StatusOK {
+		t.Fatalf("configuring the files = %d %s", configured.Code, configured.Body.String())
+	}
+
+	if err := harness.store.RecordSyncRepositoryState(
+		t.Context(), []orgsync.RepositoryState{{
+			RepositoryID: "repository-20", Kind: orgsync.KindFiles,
+			AppliedAt: harness.now,
+			Problem:   "the adjustments saved for this repository cannot be used",
+		}},
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	saved := harness.request(t, http.MethodPut, overridePath+"files", strings.NewReader(
+		`{"enabled":null,"expected_revision":0,"document":{"merges":[
+			{"path":"renovate.json","overrides":{"timezone":"Europe/Warsaw"}}]}}`), session)
+	if saved.Code != http.StatusOK {
+		t.Fatalf("saving the adjustment = %d %s", saved.Code, saved.Body.String())
+	}
+
+	var answer syncOverrideDTO
+	if err := json.Unmarshal(saved.Body.Bytes(), &answer); err != nil {
+		t.Fatal(err)
+	}
+
+	if answer.Problem == "" {
+		t.Error("a save reported the repository as fine, and nothing had looked at it")
+	}
+}
+
+// TestSyncOverrideReportsNoProblemWhereNothingHasLooked keeps a fresh
+// installation quiet. A repository nothing has planned yet is not a repository
+// with something wrong with it.
+func TestSyncOverrideReportsNoProblemWhereNothingHasLooked(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+	session := harness.signIn(t)
+
+	read := harness.request(t, http.MethodGet, overridePath+"files", nil, session)
+	if read.Code != http.StatusOK {
+		t.Fatalf("reading the adjustment = %d %s", read.Code, read.Body.String())
+	}
+
+	var answer syncOverrideDTO
+	if err := json.Unmarshal(read.Body.Bytes(), &answer); err != nil {
+		t.Fatal(err)
+	}
+
+	if answer.Problem != "" || answer.ProblemAt != nil {
+		t.Errorf("problem = %q at %v, wanted none", answer.Problem, answer.ProblemAt)
+	}
+}

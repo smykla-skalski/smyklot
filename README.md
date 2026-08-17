@@ -443,6 +443,8 @@ Deletion is a named list of retired paths and nothing else: a path named there i
 
 git will put a file wherever a commit names one and say nothing about what it replaced, so a path a repository holds as a directory, a link or a submodule, or one whose parent is a file, refuses that repository whole rather than being written over - and it says which path and what git records there. Configuring a path and another path inside it is refused where it is typed, since no repository could hold both.
 
+A repository refused that way receives none of the organization's files, and the panel says so on its Sync pane: what stopped it, in the words the planner used, and when it last looked. A refusal is asked again every sweep rather than held for the six hours a settled repository is, so a fix clears the notice on the next pass without anybody retrying anything.
+
 Labels need the **Issues** write access the bot already holds. Settings and rulesets need **Administration** write, files need **Contents** write, and an installation that has not approved one is not an error: that kind stands down, says which permission it wants, and the rest of the sync carries on.
 
 A repository that already matches is not read again for six hours. That is what keeps a steady sweep at almost no cost, and the horizon is what lets it still notice a label renamed by hand.

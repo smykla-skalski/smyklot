@@ -69,4 +69,42 @@ describe('the repository sync pane in the development panel', () => {
       await page.close();
     }
   });
+
+  /**
+   * A repository the planner refuses receives none of the organization's files.
+   * Everything about that lives on a second row the pane reads beside the
+   * adjustments, so a component spec handed a value proves none of it - this
+   * asks the browser, through the real read.
+   */
+  it('says why a repository is getting none of the files', async () => {
+    const page: Page = await panel.browser.newPage({
+      viewport: { width: 1280, height: 900 },
+    });
+    const crashes: string[] = [];
+    page.on('pageerror', (error) => crashes.push(error.message));
+
+    try {
+      await page.goto(`${panel.origin}/i/${panel.account}/repositories/platform-infra`, {
+        waitUntil: 'domcontentloaded',
+      });
+
+      const dialog = page.getByRole('dialog', { name: 'platform-infra' });
+      await dialog.waitFor({ state: 'visible', timeout: 30_000 });
+      await page.waitForTimeout(SETTLE_MS);
+
+      await dialog.getByRole('radio', { name: 'Sync' }).locator('xpath=ancestor::label[1]').click();
+
+      const notice = dialog.getByRole('status');
+      await notice.waitFor({ state: 'visible', timeout: 30_000 });
+
+      const said = await notice.textContent();
+      expect(said).toContain('are not being synced here');
+      expect(said).toContain('docs is not a directory in this repository');
+      expect(said).toContain('Last looked at');
+
+      expect(crashes).toEqual([]);
+    } finally {
+      await page.close();
+    }
+  });
 });

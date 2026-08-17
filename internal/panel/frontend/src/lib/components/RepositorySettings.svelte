@@ -56,7 +56,9 @@
     syncOffered = false,
     syncOverride = undefined,
     syncSaving = false,
-    syncProblem = null,
+    syncReadProblem = null,
+    syncSaveProblem = null,
+    now = 0,
     onSaveSync = () => {},
   }: {
     repository: RepositorySummary;
@@ -83,7 +85,13 @@
     /** Undefined until the pane is opened and the read comes back. */
     syncOverride?: SyncOverride | undefined;
     syncSaving?: boolean;
-    syncProblem?: string | null;
+    /* Two problems, because they belong to different things: a read that did
+       not answer leaves the pane with nothing to draw, and a save that was
+       refused leaves it drawing what the reader typed. */
+    syncReadProblem?: string | null;
+    syncSaveProblem?: string | null;
+    /** The clock the pane's relative times are read against. */
+    now?: number;
     onSaveSync?: (enabled: boolean | null, document: Record<string, unknown>) => void;
   } = $props();
 
@@ -263,18 +271,19 @@
           </div>
         </Plate>
       {:else if section === 'sync'}
-        {#if syncOverride === undefined && syncProblem !== null}
+        {#if syncOverride === undefined && syncReadProblem !== null}
           <!-- A read that failed is not a read still going, and the two read
                identically in a dim line saying "Reading…". -->
-          <p class="form-error" role="alert">{syncProblem}</p>
+          <p class="form-error" role="alert">{syncReadProblem}</p>
         {:else if syncOverride === undefined}
           <p class="detail-loading dim" role="status">Reading what this repository adjusts…</p>
         {:else}
           <RepositorySyncPane
             stored={syncOverride}
             {readOnly}
+            {now}
             saving={syncSaving}
-            problem={syncProblem}
+            saveProblem={syncSaveProblem}
             onSave={onSaveSync}
           />
         {/if}
