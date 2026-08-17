@@ -71,7 +71,7 @@ async function measure(page: Page, route: string): Promise<Reading> {
            switch and a word, and replacing all of them measures markup this
            table will never render. Making the one run of real text as long as it
            can be is what widens the cell. */
-        for (const cell of table.querySelectorAll('tbody td')) {
+        for (const cell of table.querySelectorAll('tbody :is(th, td)')) {
           const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
           let node = walker.nextNode();
           while (node !== null) {
@@ -89,13 +89,20 @@ async function measure(page: Page, route: string): Promise<Reading> {
             !row.classList.contains('virtual-spacer') &&
             !row.classList.contains('empty-row') &&
             !row.classList.contains('visually-hidden') &&
-            row.querySelectorAll('td').length === headings.length,
+            /* `:is(th, td)`, because a row's first cell is a `th scope="row"` wherever
+               the row is about a person or a repository. Counting only `td` skipped every
+               such row, which is how a whole table stayed outside this sweep. */
+            row.querySelectorAll(':is(th, td)').length === headings.length,
         );
         if (rows.length === 0 || headings.length === 0) continue;
         columns += headings.length;
 
+        /** The room a box keeps before whatever it holds. */
+        const inset = (element: Element): number =>
+          Number.parseFloat(getComputedStyle(element).paddingLeft) || 0;
+
         for (const row of rows) {
-          const cells = [...row.querySelectorAll('td')];
+          const cells = [...row.querySelectorAll(':is(th, td)')];
 
           // 1. The heading and the cells under it start in the same place.
           for (const [index, cell] of cells.entries()) {
@@ -108,6 +115,21 @@ async function measure(page: Page, route: string): Promise<Reading> {
               faults.push({
                 table: label,
                 detail: `column ${index + 1} (${head.textContent?.trim().slice(0, 18)}) heading is ${drift.toFixed(1)}px from its cells`,
+              });
+            }
+
+            /* And they keep the same room before what they hold. A heading gives its
+               padding to the control inside it, so the boxes lining up no longer means
+               the contents do - two columns can share an edge to the pixel and still
+               read as a step. This is the measurement that caught a row header left on
+               the browser's own 1px under a heading inset by 16. */
+            const word = head.querySelector('.table-sort-button, .table-heading-label');
+            if (word === null) continue;
+            const step = Math.abs(inset(word) - inset(cell));
+            if (step > tolerance) {
+              faults.push({
+                table: label,
+                detail: `column ${index + 1} (${head.textContent?.trim().slice(0, 18)}) insets its cells by ${inset(cell).toFixed(1)}px under a heading inset by ${inset(word).toFixed(1)}px`,
               });
             }
           }

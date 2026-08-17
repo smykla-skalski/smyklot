@@ -1527,7 +1527,7 @@
                             title="No actions available"
                             aria-hidden="true"
                           >
-                            <Icon name="more" size={22} />
+                            <Icon name="more" size={14} strokeWidth={2} />
                           </span>
                         {/if}
                         <!-- After the actions rather than before, and always
@@ -1761,7 +1761,7 @@
                             title="No actions available"
                             aria-hidden="true"
                           >
-                            <Icon name="more" size={22} />
+                            <Icon name="more" size={14} strokeWidth={2} />
                           </span>
                         {/if}
                       </td>
@@ -2241,17 +2241,21 @@
     vertical-align: middle;
   }
 
-  /* `td` alone: a heading's padding belongs to what fills it - see `thead th` in
-     `app.css` - and a class selector here would quietly take it back. */
-  .user-table td {
+  /* `tbody` rather than `td`: a heading's padding belongs to what fills it - see
+     `thead th` in `app.css` - and a class selector here would quietly take it
+     back. Saying `td` said that too, and said something else besides: the first
+     cell of every row in this table is a `th scope="row"`, so it kept no padding
+     at all and started its words 15px left of the heading's. The line is thead
+     against tbody, never th against td. */
+  .user-table tbody :is(th, td) {
     padding: var(--space-2) var(--space-3);
   }
 
-  .user-table td:first-child {
-    padding-left: var(--space-3);
+  .user-table tbody :is(th, td):first-child {
+    padding-left: var(--space-4);
   }
 
-  .user-table td:last-child {
+  .user-table tbody :is(th, td):last-child {
     padding-right: var(--space-3);
   }
 
@@ -2540,14 +2544,20 @@
     transform: translateX(2px);
   }
 
+  /* The same box as the trigger it stands in for, because that is the whole job:
+     a row with no actions still has to put its mark where every other row puts
+     one. At 2.5rem against the trigger's 1.75rem it was 12px wider and started
+     12px further left, so the owner's row broke the column of dots it was meant
+     to keep. The glyph matches too - 22px beside everyone else's 14 read as a
+     different symbol rather than the same one, quieted. */
   .action-slot-empty {
     align-items: center;
     color: var(--text-muted);
     display: inline-flex;
-    height: 2.5rem;
+    height: 1.75rem;
     justify-content: center;
     opacity: 0.3;
-    width: 2.5rem;
+    width: 1.75rem;
   }
 
   .cell-dash {
