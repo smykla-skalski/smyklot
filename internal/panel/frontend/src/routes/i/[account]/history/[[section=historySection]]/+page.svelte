@@ -1,5 +1,5 @@
 <script lang="ts">
-  import InstallationView from '$lib/components/InstallationView.svelte';
+  import InstallationView from '#lib/components/InstallationView.svelte';
 </script>
 
 <!-- History is routed by name because what follows it is a section rather than a

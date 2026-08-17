@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { getPanelSession } from '$lib/session.svelte';
-  import type { RootInstallationView } from '$lib/routes';
-  import RootInstallations from '$lib/components/RootInstallations.svelte';
+  import { getPanelSession } from '#lib/session.svelte.js';
+  import type { RootInstallationView } from '#lib/routes.js';
+  import RootInstallations from '#lib/components/RootInstallations.svelte';
 
   const session = getPanelSession();
 </script>

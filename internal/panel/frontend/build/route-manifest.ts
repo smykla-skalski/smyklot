@@ -17,7 +17,8 @@ import type { Adapter, Builder } from '@sveltejs/kit';
  * `src/routes` - the same one the client router is built from - and `route.pattern`
  * is the very regular expression it matches URLs with. Both cross into the manifest
  * unaltered. What does not cross by itself is the matchers, because those are code;
- * each declares its `pattern`, and this reads it from the module the router loads.
+ * `src/params.ts` declares each one's `pattern`, and this reads them from the very
+ * module the router loads.
  *
  * Nothing here decides anything about routing. If this file has to be edited to add
  * a route, it is wrong.
@@ -93,24 +94,32 @@ function parametersOf(id: string): Array<{ name: string; matcher: string | null 
 }
 
 /**
- * Reads a matcher's declared pattern from the module the router itself imports.
+ * Reads the matchers' declared patterns from the module the router itself imports.
  *
- * Deliberately the module and not the file's text: a matcher that stopped declaring
- * a pattern has to fail the build rather than parse as having none, which would
- * quietly widen the server to every value of that parameter.
+ * Deliberately the module and not the file's text: a matcher missing from `patterns`
+ * has to fail the build rather than parse as having none, which would quietly widen
+ * the server to every value of that parameter.
  */
 async function matcherPatterns(
   names: Iterable<string>,
-  directory: string,
+  modulePath: string,
 ): Promise<Map<string, string>> {
+  const module: unknown = await import(pathToFileURL(modulePath).href);
+  const declared = (module as { patterns?: unknown }).patterns;
+  if (typeof declared !== 'object' || declared === null) {
+    throw new Error(
+      `${modulePath} must export a \`patterns\` record, so the route manifest can hand ` +
+        'the same rules to the Go server',
+    );
+  }
+
   const patterns = new Map<string, string>();
   for (const name of new Set(names)) {
-    const module: unknown = await import(pathToFileURL(join(directory, `${name}.ts`)).href);
-    const pattern = (module as { pattern?: unknown }).pattern;
+    const pattern = (declared as Record<string, unknown>)[name];
     if (typeof pattern !== 'string' || pattern === '') {
       throw new Error(
-        `param matcher "${name}" must export a non-empty \`pattern\` string, so the ` +
-          'route manifest can hand the same rule to the Go server',
+        `param matcher "${name}" must declare a non-empty pattern in \`patterns\`, so ` +
+          'the route manifest can hand the same rule to the Go server',
       );
     }
     new RegExp(pattern); // Throws here rather than at the server's startup.
@@ -120,7 +129,7 @@ async function matcherPatterns(
   return patterns;
 }
 
-export async function routeManifest(builder: Builder, paramsDirectory: string) {
+export async function routeManifest(builder: Builder, paramsModule: string) {
   // A route without a page renders nothing, so the shell would be served for an
   // address that resolves to no document.
   const pages = builder.routes.filter((route) => route.page.methods.includes('GET'));
@@ -133,7 +142,7 @@ export async function routeManifest(builder: Builder, paramsDirectory: string) {
       .map((parameter) => parameter.matcher)
       .filter((matcher): matcher is string => matcher !== null),
   );
-  const patterns = await matcherPatterns(declared, paramsDirectory);
+  const patterns = await matcherPatterns(declared, paramsModule);
 
   const routes = pages
     .map((route) => {

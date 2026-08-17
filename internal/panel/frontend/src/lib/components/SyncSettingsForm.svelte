@@ -12,7 +12,7 @@
    * repository and the whole of it succeeds or fails together, so a control
    * that saved on every click would send a dozen half-formed policies.
    */
-  import { canonicalStringify } from '$lib/preferences-sync';
+  import { canonicalStringify } from '#lib/preferences-sync.js';
 
   import InheritControl from './InheritControl.svelte';
   import SyncDocumentForm from './SyncDocumentForm.svelte';

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import InstallationView from '$lib/components/InstallationView.svelte';
+  import InstallationView from '#lib/components/InstallationView.svelte';
 </script>
 
 <!-- A view on its own. Nothing follows it here, which is what makes an address

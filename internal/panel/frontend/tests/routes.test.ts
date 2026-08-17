@@ -11,7 +11,19 @@ import {
   routeSegmentLabel,
   type PanelRoute,
 } from '../src/lib/routes';
-import { match } from '../src/params/panelView';
+import { params } from '../src/params.ts';
+
+/**
+ * Runs a matcher the way the router does. SvelteKit 3 matchers are Standard
+ * Schemas: an accepted parameter comes back as a value, a refused one as issues.
+ */
+function accepts(name: keyof typeof params, value: string): boolean {
+  const result = params[name]['~standard'].validate(value);
+  if (result instanceof Promise) {
+    throw new Error('the panel declares no asynchronous matchers');
+  }
+  return result.issues === undefined;
+}
 
 describe('panel routes', () => {
   it('reads installation routes at the public root', () => {
@@ -164,13 +176,13 @@ describe('panel document titles', () => {
 describe('the panel view matcher', () => {
   it('accepts every view the panel has', () => {
     for (const view of PANEL_VIEWS) {
-      expect(match(view), `the router refuses the ${view} view`).toBe(true);
+      expect(accepts('panelView', view), `the router refuses the ${view} view`).toBe(true);
     }
   });
 
   it('refuses a segment that is not a view', () => {
-    expect(match('everything')).toBe(false);
-    expect(match('')).toBe(false);
+    expect(accepts('panelView', 'everything')).toBe(false);
+    expect(accepts('panelView', '')).toBe(false);
   });
 });
 

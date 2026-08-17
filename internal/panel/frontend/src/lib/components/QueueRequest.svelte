@@ -1,10 +1,10 @@
 <script lang="ts">
   import { createQuery } from '@tanstack/svelte-query';
 
-  import type { PanelApi } from '$lib/api';
-  import { formatTimestamp } from '$lib/format';
-  import { cleanupState, outcomeState, queueNext, queueState, sinceLabel } from '$lib/queue';
-  import type { PendingCIEvent } from '$lib/types';
+  import type { PanelApi } from '#lib/api.js';
+  import { formatTimestamp } from '#lib/format.js';
+  import { cleanupState, outcomeState, queueNext, queueState, sinceLabel } from '#lib/queue.js';
+  import type { PendingCIEvent } from '#lib/types.js';
   import Chip from './Chip.svelte';
   import Icon, { type IconName } from './Icon.svelte';
   import ResultProblem from './ResultProblem.svelte';

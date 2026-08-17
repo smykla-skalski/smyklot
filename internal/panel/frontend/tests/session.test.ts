@@ -78,7 +78,7 @@ describe('PanelSession [Unit]', () => {
 
     session.returnToPanel();
 
-    expect(navigation.goto).toHaveBeenCalledWith('/', { replaceState: true });
+    expect(navigation.goto).toHaveBeenCalledWith('/', { replace: true });
     expect(session.returnHref()).toBe('/');
   });
 
@@ -93,7 +93,7 @@ describe('PanelSession [Unit]', () => {
 
     session.returnToPanel(true);
 
-    expect(navigation.goto).toHaveBeenCalledWith('/i/acme/settings', { replaceState: true });
+    expect(navigation.goto).toHaveBeenCalledWith('/i/acme/settings', { replace: true });
   });
 
   it('returns from Root to the workspace view it left', () => {
@@ -106,7 +106,7 @@ describe('PanelSession [Unit]', () => {
     session.syncRouteContext();
 
     session.enterRoot();
-    expect(navigation.goto).toHaveBeenLastCalledWith('/root', { replaceState: false });
+    expect(navigation.goto).toHaveBeenLastCalledWith('/root', { replace: false });
 
     // Visiting another installation view inside Root does not replace the
     // workspace context the Return action promises to restore.
@@ -116,7 +116,7 @@ describe('PanelSession [Unit]', () => {
     session.returnToPanel();
 
     expect(navigation.goto).toHaveBeenLastCalledWith('/i/acme/repositories', {
-      replaceState: false,
+      replace: false,
     });
     expect(session.returnHref()).toBe('/i/acme/repositories');
   });
@@ -136,12 +136,12 @@ describe('PanelSession [Unit]', () => {
 
     session.selectView('history');
     expect(navigation.goto).toHaveBeenLastCalledWith('/i/acme/history/failures', {
-      replaceState: false,
+      replace: false,
     });
 
     await session.selectTarget('target-1');
     expect(navigation.goto).toHaveBeenLastCalledWith('/i/acme/history/failures', {
-      replaceState: false,
+      replace: false,
     });
   });
 

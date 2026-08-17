@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
-  import { getPanelSession, type PanelSession } from '$lib/session.svelte';
-  import type { TargetSettingsInput } from '$lib/types';
+  import { getPanelSession, type PanelSession } from '#lib/session.svelte.js';
+  import type { TargetSettingsInput } from '#lib/types.js';
   import Plate from './Plate.svelte';
 
   /**

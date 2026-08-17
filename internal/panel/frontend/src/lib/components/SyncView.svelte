@@ -10,7 +10,7 @@
    */
   import { untrack } from 'svelte';
 
-  import type { SyncAction, SyncConfig, SyncConfigInput, SyncPlan } from '$lib/types';
+  import type { SyncAction, SyncConfig, SyncConfigInput, SyncPlan } from '#lib/types.js';
 
   import PanelHeader from './PanelHeader.svelte';
   import Plate from './Plate.svelte';

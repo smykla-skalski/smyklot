@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getPanelSession } from '$lib/session.svelte';
+  import { getPanelSession } from '#lib/session.svelte.js';
 
   const session = getPanelSession();
 

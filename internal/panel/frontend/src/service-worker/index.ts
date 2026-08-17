@@ -1,4 +1,3 @@
-/// <reference types="@sveltejs/kit" />
 /// <reference lib="webworker" />
 
 declare const self: ServiceWorkerGlobalScope;
@@ -6,18 +5,24 @@ declare const self: ServiceWorkerGlobalScope;
 /**
  * SvelteKit native service worker.
  *
- * Replaces the hand-written sw.js. Uses $service-worker's `build`, `files`,
- * and `version` for precaching, with a cache-first strategy for hashed
- * assets and a network-first strategy for navigation requests.
+ * Replaces the hand-written sw.js. Precaches the built bundle and the static
+ * directory, with a cache-first strategy for hashed assets and a network-first
+ * strategy for navigation requests.
  */
 
-import { base, build, files, version } from '$service-worker';
+import { version } from '$app/env';
+import { assets, immutable } from '$app/manifest';
+import { resolve } from '$app/paths';
 
-const SCOPE_PATH = `${base}/`;
+// `resolve('')` is the base path carrying its separator, which is the scope this
+// worker is registered at. SvelteKit 3 removed the `base` export it used to read.
+const SCOPE_PATH = resolve('');
 const CACHE_PREFIX = `smyklot-panel:${encodeURIComponent(SCOPE_PATH)}:`;
 const CACHE = `${CACHE_PREFIX}${version}`;
-const ASSETS = [...build, ...files];
-const IMMUTABLE_PATH = `${base}/_app/immutable/`;
+// `$app/manifest` reports the built bundle and the static directory relative to the
+// base path; the `$service-worker` module it replaces reported them already prefixed.
+const ASSETS = [...immutable, ...assets].map((file) => `${SCOPE_PATH}${file.path}`);
+const IMMUTABLE_PATH = `${SCOPE_PATH}_app/immutable/`;
 const SHELL_REQUEST = new Request(SCOPE_PATH, { credentials: 'same-origin' });
 
 self.addEventListener('install', (event) => {

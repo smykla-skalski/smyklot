@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { getPanelSession } from '$lib/session.svelte';
-  import RootOverview from '$lib/components/RootOverview.svelte';
+  import { getPanelSession } from '#lib/session.svelte.js';
+  import RootOverview from '#lib/components/RootOverview.svelte';
 
   const session = getPanelSession();
 </script>

@@ -56,6 +56,7 @@ export function normalizeBasePath(raw: string): string {
   return trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
 }
 
+
 export function panelUrl(base: string, path: string): string {
   const suffix = path.startsWith('/') ? path : `/${path}`;
   return `${normalizeBasePath(base)}${suffix}`;

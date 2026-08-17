@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const source = readFileSync(new URL('../src/service-worker.ts', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../src/service-worker/index.ts', import.meta.url), 'utf8');
 const NativeRequest = Request;
 
 describe('the panel service worker', () => {
@@ -75,7 +75,7 @@ describe('a panel service-worker upgrade', () => {
       clients: { claim },
     });
 
-    await import('../src/service-worker');
+    await import('../src/service-worker/index.ts');
   });
 
   afterEach(() => vi.unstubAllGlobals());
@@ -109,12 +109,15 @@ describe('a panel service-worker upgrade', () => {
   });
 });
 
-vi.mock('$service-worker', () => ({
-  base: '/panel',
-  build: ['/panel/_app/immutable/current.js'],
-  files: ['/panel/theme-boot.js'],
-  version: 'v2',
+// The three modules SvelteKit 3 split `$service-worker` into. `resolve` joins its
+// argument to the base path with a separator, so `resolve('')` is the worker's scope,
+// and the manifest reports every path relative to that base.
+vi.mock('$app/env', () => ({ version: 'v2' }));
+vi.mock('$app/manifest', () => ({
+  immutable: [{ path: '_app/immutable/current.js' }],
+  assets: [{ path: 'theme-boot.js' }],
 }));
+vi.mock('$app/paths', () => ({ resolve: (path: string) => `/panel/${path}` }));
 
 function cacheStorage(stored: Map<string, Map<string, Response>>, deleted: string[]): CacheStorage {
   return {

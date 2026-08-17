@@ -27,7 +27,7 @@ export default defineConfig({
           assets: 'dist',
           fallback: 'index.html',
         }),
-        { out: 'dist', params: 'src/params' },
+        { out: 'dist', params: 'src/params.ts' },
       ),
       csp: {
         mode: 'hash',

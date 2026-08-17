@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { getPanelSession } from '$lib/session.svelte';
-  import InboxView from '$lib/components/InboxView.svelte';
+  import { getPanelSession } from '#lib/session.svelte.js';
+  import InboxView from '#lib/components/InboxView.svelte';
 
   const session = getPanelSession();
 </script>

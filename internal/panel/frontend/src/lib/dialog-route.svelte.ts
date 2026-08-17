@@ -8,7 +8,7 @@
  */
 
 import { page } from '$app/state';
-import { pushState, replaceState } from '$app/navigation';
+import { goto } from '$app/navigation';
 import { resolve } from '$app/paths';
 import type { Path } from '$app/types';
 import { SvelteURLSearchParams } from 'svelte/reactivity';
@@ -20,6 +20,7 @@ import {
   type DialogHost,
   type RouteDialog,
 } from './route-dialogs';
+import { basePath } from './paths';
 import { panelRoutePath, type PanelRoute, type RootRoute } from './routes';
 
 export type { RouteDialog } from './route-dialogs';
@@ -50,13 +51,13 @@ function withoutDialogState(): App.PageState {
 }
 
 function isRootInstallation(): boolean {
-  return page.url.pathname.startsWith(resolve(`root/installations/`));
+  return page.url.pathname.startsWith(`${basePath}/root/installations/`);
 }
 
 function currentPanelPath(search = page.url.search): string {
   const pathname =
-    resolve('') !== '' && page.url.pathname.startsWith(resolve(''))
-      ? page.url.pathname.slice(resolve('').length)
+    basePath !== '' && page.url.pathname.startsWith(basePath)
+      ? page.url.pathname.slice(basePath.length)
       : page.url.pathname;
   return `${pathname}${search}${page.url.hash}`;
 }
@@ -119,7 +120,7 @@ function pathForDialog(host: DialogHost, dialog: RouteDialog): string | null {
 
 function bareHostPath(): string | null {
   const section = page.params.section;
-  if (typeof section === 'string' && page.url.pathname.startsWith(resolve(`root/access/`))) {
+  if (typeof section === 'string' && page.url.pathname.startsWith(`${basePath}/root/access/`)) {
     return `/root/access/${section}`;
   }
 
@@ -172,8 +173,13 @@ class DialogRouter {
         : {}),
     };
     delete state.smyklotDialogClosed;
-    const navigate = replacing ? replaceState : pushState;
-    navigate(resolve((path ?? currentPanelPath(dialogSearch(dialog))) as Path), state);
+    // Replacing when a dialog is already open, so the pair does not leave two entries
+    // for one overlay; pushing otherwise, so Back closes it.
+    goto(resolve((path ?? currentPanelPath(dialogSearch(dialog))) as Path), {
+      shallow: true,
+      replace: replacing,
+      state,
+    });
   }
 
   update(name: string, params: Readonly<Record<string, string>>): void {
@@ -187,7 +193,11 @@ class DialogRouter {
       ...(dialogState().smyklotDialogEntry === true ? { smyklotDialogEntry: true } : {}),
     };
     delete state.smyklotDialogClosed;
-    replaceState(resolve((path ?? currentPanelPath(dialogSearch(next))) as Path), state);
+    goto(resolve((path ?? currentPanelPath(dialogSearch(next))) as Path), {
+      shallow: true,
+      replace: true,
+      state,
+    });
   }
 
   close(): void {
@@ -217,7 +227,7 @@ class DialogRouter {
     const path = bareHostPath();
     const target =
       typeof rest === 'string' && rest !== '' && path !== null ? path : currentPanelPath('');
-    replaceState(resolve(target as Path), withoutDialogState());
+    goto(resolve(target as Path), { shallow: true, replace: true, state: withoutDialogState() });
   }
 }
 

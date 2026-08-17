@@ -1,9 +1,9 @@
 <script lang="ts">
   import { createQuery } from '@tanstack/svelte-query';
 
-  import type { PanelApi } from '$lib/api';
-  import type { FilterSection } from '$lib/filter-menu';
-  import { formatTimestamp } from '$lib/format';
+  import type { PanelApi } from '#lib/api.js';
+  import type { FilterSection } from '#lib/filter-menu.js';
+  import { formatTimestamp } from '#lib/format.js';
   import {
     byMostRecent,
     bySoonest,
@@ -13,8 +13,8 @@
     queueNext,
     queueState,
     shortAge,
-  } from '$lib/queue';
-  import type { PendingCIRequest } from '$lib/types';
+  } from '#lib/queue.js';
+  import type { PendingCIRequest } from '#lib/types.js';
   import ActionMenu, { type ActionMenuItem } from './ActionMenu.svelte';
   import AppTooltip from './AppTooltip.svelte';
   import Chip from './Chip.svelte';

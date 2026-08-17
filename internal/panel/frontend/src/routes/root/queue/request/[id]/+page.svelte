@@ -1,7 +1,7 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import QueueRequest from '$lib/components/QueueRequest.svelte';
-  import { getPanelSession } from '$lib/session.svelte';
+  import QueueRequest from '#lib/components/QueueRequest.svelte';
+  import { getPanelSession } from '#lib/session.svelte.js';
 
   const session = getPanelSession();
   const requestId = $derived(page.params.id ?? '');

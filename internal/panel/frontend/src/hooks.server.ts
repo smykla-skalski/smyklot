@@ -1,6 +1,5 @@
+import type { Handle } from '@sveltejs/kit/hooks';
 import { SMYKLOT_PANEL_DEV_MOCK } from '$app/env/private';
-import type { Handle } from '@sveltejs/kit';
-
 import { rewriteMockHtml } from '../dev/mock-html';
 
 export const handle: Handle = ({ event, resolve }) => {

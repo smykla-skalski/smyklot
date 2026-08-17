@@ -6,31 +6,32 @@
   import { createQuery, QueryClientProvider } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 
-  import { initializePanel } from '$lib/boot';
-  import { createPanelApi } from '$lib/api';
-  import { readPanelBuild } from '$lib/base';
-  import { legacyInboxRoute } from '$lib/dialog-route.svelte';
-  import { readPanelFailure } from '$lib/panel-error';
-  import { PanelSession, setPanelSession } from '$lib/session.svelte';
-  import { createPanelQueryClient } from '$lib/query-client';
-  import { applyDocumentTheme } from '$lib/preferences';
-  import { prefText } from '$lib/preferences-sync';
-  import type { PanelTarget } from '$lib/types';
-  import type { PanelView, RootSection } from '$lib/routes';
-  import type { ThemeDisplay } from '$lib/preferences';
+  import { initializePanel } from '#lib/boot.js';
+  import { createPanelApi } from '#lib/api.js';
+  import { readPanelBuild } from '#lib/base.js';
+  import { basePath } from '#lib/paths.js';
+  import { legacyInboxRoute } from '#lib/dialog-route.svelte.js';
+  import { readPanelFailure } from '#lib/panel-error.js';
+  import { PanelSession, setPanelSession } from '#lib/session.svelte.js';
+  import { createPanelQueryClient } from '#lib/query-client.js';
+  import { applyDocumentTheme } from '#lib/preferences.js';
+  import { prefText } from '#lib/preferences-sync.js';
+  import type { PanelTarget } from '#lib/types.js';
+  import type { PanelView, RootSection } from '#lib/routes.js';
+  import type { ThemeDisplay } from '#lib/preferences.js';
 
-  import ErrorPage from '$lib/components/ErrorPage.svelte';
-  import IdentityBar from '$lib/components/IdentityBar.svelte';
-  import PageFooter from '$lib/components/PageFooter.svelte';
-  import Plate from '$lib/components/Plate.svelte';
-  import SignInPage from '$lib/components/SignInPage.svelte';
-  import NightPage from '$lib/components/NightPage.svelte';
+  import ErrorPage from '#lib/components/ErrorPage.svelte';
+  import IdentityBar from '#lib/components/IdentityBar.svelte';
+  import PageFooter from '#lib/components/PageFooter.svelte';
+  import Plate from '#lib/components/Plate.svelte';
+  import SignInPage from '#lib/components/SignInPage.svelte';
+  import NightPage from '#lib/components/NightPage.svelte';
 
   import '../app.css';
 
   initializePanel(document);
 
-  const api = createPanelApi(resolve(''), (input, init) => fetch(input, init));
+  const api = createPanelApi(basePath, (input, init) => fetch(input, init));
   const build = readPanelBuild(document);
   const pageFailure = readPanelFailure(document);
 
@@ -176,7 +177,7 @@
   // Bookmarks from when the inbox was a dialog still lead to the inbox page.
   $effect(() => {
     if (!legacyInboxRoute(page.url.search) || session.isInbox) return;
-    void goto(resolve('/inbox' as Path), { replaceState: true });
+    void goto(resolve('/inbox' as Path), { replace: true });
   });
 </script>
 
@@ -188,7 +189,7 @@
 
 <QueryClientProvider client={queryClient}>
   {#if pageFailure !== null}
-    <ErrorPage {api} base={resolve('')} {build} failure={pageFailure} />
+    <ErrorPage {api} base={basePath} {build} failure={pageFailure} />
   {:else if session.isInvitation}
     {@render children()}
   {:else if session.signedOut}

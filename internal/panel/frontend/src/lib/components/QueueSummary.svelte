@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { bySoonest, queueNext, queueState } from '$lib/queue';
-  import type { PendingCIRequest, RootOverview } from '$lib/types';
+  import { bySoonest, queueNext, queueState } from '#lib/queue.js';
+  import type { PendingCIRequest, RootOverview } from '#lib/types.js';
   import Chip from './Chip.svelte';
   import Icon from './Icon.svelte';
 

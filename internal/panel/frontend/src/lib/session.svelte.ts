@@ -17,6 +17,7 @@ import type { QueryClient } from '@tanstack/svelte-query';
 
 import type { PanelApi } from './api';
 import type { PanelBuild } from './base';
+import { basePath } from './paths';
 import type { PanelChangeEvent } from './events';
 import type { SessionEnded } from './panel-session';
 import { DEFAULT_THEME_DISPLAY, isThemeDisplay, type ThemeDisplay } from './preferences';
@@ -79,7 +80,7 @@ export class PanelSession {
   constructor(api: PanelApi, build: PanelBuild, queryClient: QueryClient) {
     this.api = api;
     this.build = build;
-    this.base = resolve('');
+    this.base = basePath;
     this.queryClient = queryClient;
     this.prefs = createPrefsSync();
     this.sidebarCollapsed = this.prefs.get('sidebar') === 'collapsed';
@@ -297,8 +298,8 @@ export class PanelSession {
     await this.openTarget(target);
   }
 
-  openTarget(target: PanelTarget, replaceState = false): Promise<void> {
-    return this.navigate(this.routeFor(target, this.currentView), replaceState);
+  openTarget(target: PanelTarget, replace = false): Promise<void> {
+    return this.navigate(this.routeFor(target, this.currentView), replace);
   }
 
   selectView(nextView: PanelView): void {
@@ -379,13 +380,13 @@ export class PanelSession {
     this.resetPageScroll();
   }
 
-  returnToPanel(replaceState = false): void {
+  returnToPanel(replace = false): void {
     const target = this.returnTarget;
     if (target === null) {
-      void goto(resolve(this.returnHref() as Path), { replaceState: true });
+      void goto(resolve(this.returnHref() as Path), { replace: true });
       return;
     }
-    void this.navigate(this.returnRoute(target), replaceState);
+    void this.navigate(this.returnRoute(target), replace);
   }
 
   // --- Hrefs ---
@@ -566,8 +567,8 @@ export class PanelSession {
     return this.routeFor(target, this.lastScopedView, this.lastScopedHistorySection);
   }
 
-  private navigate(route: PanelRoute, replaceState = false): Promise<void> {
-    return goto(resolve(this.routePath(route) as Path), { replaceState });
+  private navigate(route: PanelRoute, replace = false): Promise<void> {
+    return goto(resolve(this.routePath(route) as Path), { replace });
   }
 
   invalidateTargetData(targetId: string): void {

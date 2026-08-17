@@ -1,6 +1,6 @@
 <script lang="ts">
-  import QueueView from '$lib/components/QueueView.svelte';
-  import { getPanelSession } from '$lib/session.svelte';
+  import QueueView from '#lib/components/QueueView.svelte';
+  import { getPanelSession } from '#lib/session.svelte.js';
 
   const session = getPanelSession();
 </script>
