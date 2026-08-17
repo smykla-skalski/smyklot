@@ -96,3 +96,28 @@ describe("the Root console rail's selection", () => {
     expect(Math.abs(moved.thumb.height - moved.row.height)).toBeLessThan(0.05);
   });
 });
+
+/**
+ * An address the panel has no route for.
+ *
+ * The server answers one with the panel's own shell and an error to render, so the app
+ * boots at an address that matched no route at all - `page.route.id` is null and every
+ * getter that reads the route gets nothing. The panel reads its route from the router
+ * now rather than from the pathname, so this is the case where the two would differ, and
+ * it had no test before.
+ */
+describe('an address that resolves to nothing', () => {
+  it('shows what happened and stays there', async () => {
+    const page: Page = await panel.browser.newPage({ viewport: { width: 1280, height: 900 } });
+
+    try {
+      await visit(page, `${panel.origin}/root/definitely-not-a-page`);
+      await page.waitForTimeout(SETTLE_MS);
+
+      expect(await page.locator('body').innerText()).toContain('Not found');
+      expect(new URL(page.url()).pathname).toBe('/root/definitely-not-a-page');
+    } finally {
+      await page.close();
+    }
+  });
+});
