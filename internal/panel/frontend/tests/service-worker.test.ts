@@ -4,7 +4,30 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const source = readFileSync(new URL('../src/service-worker/index.ts', import.meta.url), 'utf8');
 const NativeRequest = Request;
 
+/**
+ * The version the worker builds its cache name from, substituted by Vite's `define`.
+ *
+ * Read here rather than written out, so this suite proves the worker uses the
+ * configured version. It used to come from `$app/env`, which reads the client payload
+ * that nothing fills in a worker - so `version` was `undefined`, every deployment
+ * shared one cache name, and the rotation below silently never ran. A mocked module
+ * handed the worker a version the real bundle did not have, which is why the suite
+ * passed throughout.
+ */
+declare const __SMYKLOT_PANEL_VERSION__: string;
+const VERSION = __SMYKLOT_PANEL_VERSION__;
+
 describe('the panel service worker', () => {
+  it('builds its cache name from a version that exists', () => {
+    // `undefined` here is not cosmetic: every deployment would share one cache name,
+    // so `activate` would find a single key, delete nothing, and grow the store
+    // without bound while the offline shell waited to be evicted with it.
+    expect(VERSION).toBeTypeOf('string');
+    expect(VERSION).not.toBe('');
+    expect(VERSION).not.toBe('undefined');
+    expect(source).toContain('${CACHE_PREFIX}${__SMYKLOT_PANEL_VERSION__}');
+  });
+
   it('names caches within its panel scope', () => {
     expect(source).toContain('smyklot-panel:${encodeURIComponent(SCOPE_PATH)}:');
     expect(source).toContain('key.startsWith(CACHE_PREFIX)');
@@ -87,7 +110,7 @@ describe('a panel service-worker upgrade', () => {
     expect([...stored.keys()]).toEqual([
       'unrelated',
       'smyklot-panel:%2Fpanel%2F:v1',
-      'smyklot-panel:%2Fpanel%2F:v2',
+      `smyklot-panel:%2Fpanel%2F:${VERSION}`,
     ]);
     expect(deleted).toEqual(['smyklot-panel:%2Fpanel%2F:v0']);
     expect(claim).toHaveBeenCalledOnce();
@@ -102,17 +125,17 @@ describe('a panel service-worker upgrade', () => {
 
     const currentStatic = await dispatchFetch(
       listeners,
-      new Request('https://panel.example/panel/theme-boot.js?v=v2'),
+      new Request(`https://panel.example/panel/theme-boot.js?v=${VERSION}`),
     );
     expect(await currentStatic.text()).toBe('cached /panel/theme-boot.js');
     expect(network).not.toHaveBeenCalled();
   });
 });
 
-// The three modules SvelteKit 3 split `$service-worker` into. `resolve` joins its
-// argument to the base path with a separator, so `resolve('')` is the worker's scope,
-// and the manifest reports every path relative to that base.
-vi.mock('$app/env', () => ({ version: 'v2' }));
+// The modules SvelteKit 3 split `$service-worker` into. `resolve` joins its argument
+// to the base path with a separator, so `resolve('')` is the worker's scope, and the
+// manifest reports every path relative to that base. The version does not come from
+// `$app/env` - see `VERSION` above.
 vi.mock('$app/manifest', () => ({
   immutable: [{ path: '_app/immutable/current.js' }],
   assets: [{ path: 'theme-boot.js' }],

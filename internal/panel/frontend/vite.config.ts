@@ -14,6 +14,10 @@ import { mockServer } from './dev/mock-server.ts';
 // resolve it at startup.
 const isMockDev = process.env.SMYKLOT_PANEL_DEV_MOCK === '1';
 
+// The deployment version, which the Go server resolves from the sentinel in every
+// text asset it serves. The mock answers for itself - see `MOCK_VERSION`.
+const panelVersion = isMockDev ? MOCK_VERSION : '__smyklot_panel_version__';
+
 // The mock no-ops unless `SMYKLOT_PANEL_DEV_MOCK=1`, so the build and the
 // default dev server are unaffected by it being listed here.
 export default defineConfig({
@@ -50,19 +54,25 @@ export default defineConfig({
         base: isMockDev ? MOCK_BASE : '/__smyklot_panel_base__',
       },
       version: {
-        // The Go server resolves this in every text asset, including the
-        // generated service worker, from the runtime deployment version.
-        //
-        // Except under the mock, which answers for itself: SvelteKit hashes the
-        // inline bootstrap carrying this value into the CSP, so the mock's own
-        // rewrite would leave a hash describing a script that is no longer served.
-        // See `MOCK_VERSION`.
-        name: isMockDev ? MOCK_VERSION : '__smyklot_panel_version__',
+        // Under the mock this is configured rather than rewritten: SvelteKit hashes
+        // the inline bootstrap carrying it into the CSP, so a rewrite afterwards
+        // would leave a hash describing a script that is no longer served.
+        name: panelVersion,
       },
     }),
     svelteTesting(),
     mockServer(),
   ],
+  // The service worker cannot read `version` from `$app/env`: SvelteKit builds that
+  // environment with `consumer: 'client'`, so `$app/env` resolves to its browser
+  // branch and reads the client payload, which only the page bootstrap ever fills -
+  // in a worker it stays empty and `version` is `undefined`. The cache name then
+  // never changes between deployments and the worker stops rotating its caches.
+  // Reported upstream; until it is fixed the worker reads this instead, which is
+  // the same string SvelteKit is given above and the same one the Go server rewrites.
+  define: {
+    __SMYKLOT_PANEL_VERSION__: JSON.stringify(panelVersion),
+  },
   server: {
     port: 5175,
     strictPort: true,

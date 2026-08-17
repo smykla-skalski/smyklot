@@ -2,6 +2,9 @@
 
 declare const self: ServiceWorkerGlobalScope;
 
+/** The deployment version, substituted at build time by Vite's `define`. */
+declare const __SMYKLOT_PANEL_VERSION__: string;
+
 /**
  * SvelteKit native service worker.
  *
@@ -10,7 +13,6 @@ declare const self: ServiceWorkerGlobalScope;
  * strategy for navigation requests.
  */
 
-import { version } from '$app/env';
 import { assets, immutable } from '$app/manifest';
 
 import { panelUrl } from '#lib/base.js';
@@ -21,7 +23,10 @@ import { basePath } from '#lib/paths.js';
 // answered, once, for the worker and the app alike.
 const SCOPE_PATH = `${basePath}/`;
 const CACHE_PREFIX = `smyklot-panel:${encodeURIComponent(SCOPE_PATH)}:`;
-const CACHE = `${CACHE_PREFIX}${version}`;
+// Not `version` from `$app/env`, which is `undefined` inside a service worker - see
+// the `define` in `vite.config.ts` for why. This is the same value, reaching the
+// worker through Vite instead.
+const CACHE = `${CACHE_PREFIX}${__SMYKLOT_PANEL_VERSION__}`;
 // `$app/manifest` reports the built bundle and the static directory relative to the
 // base path; the `$service-worker` module it replaces reported them already prefixed.
 const ASSETS = new Set([...immutable, ...assets].map((file) => panelUrl(basePath, file.path)));
