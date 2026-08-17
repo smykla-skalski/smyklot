@@ -1256,6 +1256,72 @@ var _ = Describe("Org sync [Unit]", func() {
 			Expect(planActions[0].Error).To(ContainSubstring("not an ordinary file"))
 		})
 
+		// The same question asked of a write. Anybody with push rights can put
+		// a directory on the bot's own branch, and a blob written where one is
+		// takes everything under it with no record that it was ever there.
+		It("refuses to write a path the branch has turned into a directory", func() {
+			target := grantContents()
+			stub.repoTree = `{"sha":"basetree","tree":[],"truncated":false}`
+			configureKind(target, orgsync.KindFiles,
+				`{"files":[{"path":"docs.md","content":"# Docs\n"}]}`)
+
+			plan(target)
+			computed, actions := livePlan(target)
+			approve(computed)
+
+			written, err := orgsync.DecodeFile(actions[0].Payload)
+			Expect(err).NotTo(HaveOccurred())
+			stub.branchRefs[written.Proposal] = "earliercommit"
+			stub.migrationTipTree = "branchtree"
+			stub.repoLevels = map[string]string{
+				"branchtree": `{"tree":[{"path":"docs.md","type":"tree",` +
+					`"mode":"040000","sha":"d1"}]}`,
+			}
+
+			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+
+			Expect(stub.createdTrees).To(BeEmpty())
+
+			applied, planActions, err := service.store.GetSyncPlan(
+				GinkgoT().Context(), target.ID, computed.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(applied.State).To(Equal(orgsync.PlanFailed))
+			Expect(planActions[0].Error).To(ContainSubstring("not an ordinary file"))
+		})
+
+		// And of the directory above it. A tree entry at a/b.md where a is a
+		// blob replaces the blob with a directory, which is the same silent
+		// destruction from the other side.
+		It("refuses to write under a path the branch has turned into a file", func() {
+			target := grantContents()
+			stub.repoTree = `{"sha":"basetree","tree":[],"truncated":false}`
+			configureKind(target, orgsync.KindFiles,
+				`{"files":[{"path":"docs/index.md","content":"# Docs\n"}]}`)
+
+			plan(target)
+			computed, actions := livePlan(target)
+			approve(computed)
+
+			written, err := orgsync.DecodeFile(actions[0].Payload)
+			Expect(err).NotTo(HaveOccurred())
+			stub.branchRefs[written.Proposal] = "earliercommit"
+			stub.migrationTipTree = "branchtree"
+			stub.repoLevels = map[string]string{
+				"branchtree": `{"tree":[{"path":"docs","type":"blob",` +
+					`"mode":"100644","sha":"b1","size":3}]}`,
+			}
+
+			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+
+			Expect(stub.createdTrees).To(BeEmpty())
+
+			applied, planActions, err := service.store.GetSyncPlan(
+				GinkgoT().Context(), target.ID, computed.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(applied.State).To(Equal(orgsync.PlanFailed))
+			Expect(planActions[0].Error).To(ContainSubstring("is not a directory"))
+		})
+
 		// An attempt that died between recording one action and recording the
 		// next leaves the first saying something about a change the retry then
 		// makes whole. The retry replays everything, so its answer is every

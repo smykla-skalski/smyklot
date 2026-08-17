@@ -114,7 +114,7 @@ func conflictAt(tree github.RepositoryTree, path string) string {
 		return notAnOrdinaryFile(path, entry.Mode)
 	}
 
-	for parent := parentOf(path); parent != ""; parent = parentOf(parent) {
+	for parent := orgsync.ParentPath(path); parent != ""; parent = orgsync.ParentPath(parent) {
 		if entry, held := tree.Entries[parent]; held && !entry.Directory() {
 			return blockedByFile(path, parent)
 		}
@@ -133,16 +133,6 @@ func notAnOrdinaryFile(path, mode string) string {
 func blockedByFile(path, parent string) string {
 	return fmt.Sprintf(
 		"%s cannot be written because %s is not a directory in this repository", path, parent)
-}
-
-// parentOf is the directory a path sits in, empty at the repository root.
-func parentOf(path string) string {
-	cut := strings.LastIndex(path, "/")
-	if cut < 0 {
-		return ""
-	}
-
-	return path[:cut]
 }
 
 func readFilesOneAtATime(
@@ -440,18 +430,16 @@ func (s *server) moveProposal(
 	return client.UpdateRef(ctx, target.Owner, target.Name, "heads/"+proposal, commit, false)
 }
 
-// stillNeeded leaves out a removal the tree being built on has already made.
+// stillNeeded narrows the plan to what the tree being built on can still take.
 //
 // The plan is computed against the default branch and the commit is built on
-// the proposal branch, which already carries whatever an earlier tick put
-// there. A tree entry removing a path that is not in the tree it is built from
-// is a 422, so a repository with a retired path would fail every time its
-// proposal came round again - which it does, on the reconcile horizon, for as
-// long as the pull request sits unmerged.
+// the proposal branch, which is a different tree: it carries whatever an
+// earlier tick put there, and whatever anybody with push rights put there
+// afterwards. So every question the plan asked of the default branch is asked
+// again here, of the tree the commit is actually made from.
 //
-// Only the removals. A blob written for a file the tree already has is a
-// request for nothing, and the tree it produces is the one it started from, so
-// it costs a request rather than an outcome.
+// Walked rather than listed, because the answer has to be exact for exactly
+// the paths in the plan, and a repository is asked about a handful of them.
 func (s *server) stillNeeded(
 	ctx context.Context,
 	client *github.Client,
@@ -459,54 +447,83 @@ func (s *server) stillNeeded(
 	tree string,
 	files []plannedFile,
 ) ([]plannedFile, error) {
-	removing := make([]string, 0, len(files))
-
+	paths := make([]string, 0, len(files))
 	for _, file := range files {
-		if file.remove {
-			removing = append(removing, file.path)
-		}
+		paths = append(paths, file.path)
 	}
 
-	// Walked rather than listed, because the answer has to be exact for
-	// exactly the paths being removed, and there are rarely more than a couple
-	// of them. Nothing is read at all where there are none.
-	resolved := map[string]github.TreePath{}
-
-	if len(removing) > 0 {
-		var err error
-		if resolved, err = client.ResolveTreePaths(
-			ctx, target.Owner, target.Name, tree, removing); err != nil {
-			return nil, err
-		}
+	resolved, err := client.ResolveTreePaths(
+		ctx, target.Owner, target.Name, tree, paths)
+	if err != nil {
+		return nil, err
 	}
 
 	wanted := make([]plannedFile, 0, len(files))
 
 	for _, file := range files {
+		found := resolved[file.path]
+
 		if !file.remove {
+			if err := writable(file.path, found); err != nil {
+				return nil, err
+			}
+
 			wanted = append(wanted, file)
 
 			continue
 		}
 
-		found := resolved[file.path]
-		if !found.Found {
-			continue
+		keep, err := removable(file.path, found)
+		if err != nil {
+			return nil, err
 		}
 
-		// The plan refused a retired path that was a directory on the default
-		// branch. The tree this builds on is the proposal branch, which is a
-		// different tree and can hold a different thing there - and a tree
-		// entry removing a directory removes everything under it.
-		if !found.Entry.OrdinaryFile() {
-			return nil, fmt.Errorf("%w: %s", orgsync.ErrRepositoryConflict,
-				notAnOrdinaryFile(file.path, found.Entry.Mode))
+		if keep {
+			wanted = append(wanted, file)
 		}
-
-		wanted = append(wanted, file)
 	}
 
 	return wanted, nil
+}
+
+// writable refuses a path this tree holds something else at.
+//
+// The same two conflicts the plan refuses a repository for, asked of the
+// branch. git will let a commit put a blob where a directory is, and a
+// directory where a blob is, and say nothing about what it replaced.
+func writable(filePath string, found github.TreePath) error {
+	switch {
+	case found.Blocked != "":
+		return fmt.Errorf("%w: %s", orgsync.ErrRepositoryConflict,
+			blockedByFile(filePath, found.Blocked))
+
+	case found.Found && !found.Entry.OrdinaryFile():
+		return fmt.Errorf("%w: %s", orgsync.ErrRepositoryConflict,
+			notAnOrdinaryFile(filePath, found.Entry.Mode))
+	}
+
+	return nil
+}
+
+// removable reports whether a removal still has anything to remove, and
+// refuses one that would take more than the file with it.
+//
+// A tree entry removing a path that is not in the tree it is built from is a
+// 422, so a repository with a retired path an earlier tick already removed
+// would fail every time its proposal came round again - which it does, on the
+// reconcile horizon, for as long as the pull request sits unmerged.
+func removable(filePath string, found github.TreePath) (bool, error) {
+	if found.Blocked != "" || !found.Found {
+		return false, nil
+	}
+
+	// A tree entry removing a directory removes everything under it.
+	if !found.Entry.OrdinaryFile() {
+		return false, fmt.Errorf("%w: %s", orgsync.ErrRepositoryConflict,
+			notAnOrdinaryFile(filePath, found.Entry.Mode))
+	}
+
+	return true, nil
 }
 
 func (s *server) writeBlobs(
