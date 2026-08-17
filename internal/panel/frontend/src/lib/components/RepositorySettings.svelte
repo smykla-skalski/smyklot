@@ -7,6 +7,7 @@
     RepositoryDetail,
     RepositoryFileStatus,
     RepositorySummary,
+    SyncOverride,
   } from '../types';
   import Chip, { type ChipTone } from './Chip.svelte';
   import ConfigEditor from './ConfigEditor.svelte';
@@ -15,6 +16,7 @@
   import BackLink from './BackLink.svelte';
   import PageHeader from './PageHeader.svelte';
   import Plate from './Plate.svelte';
+  import RepositorySyncPane from './RepositorySyncPane.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
 
   /**
@@ -51,6 +53,11 @@
     onBypass,
     onSaveConfig,
     onResetMigration,
+    syncOffered = false,
+    syncOverride = undefined,
+    syncSaving = false,
+    syncProblem = null,
+    onSaveSync = () => {},
   }: {
     repository: RepositorySummary;
     detail: RepositoryDetail | undefined;
@@ -66,6 +73,18 @@
        promise is part of the contract rather than something to fire and drop. */
     onSaveConfig: (patch: ConfigPatch) => Promise<void>;
     onResetMigration: () => void;
+    /**
+     * Whether this surface has a sync pane at all. False in the Root view of
+     * somebody else's installation: sync is configured on the installation's
+     * own page and has no Root address, so a pane offering to edit it there
+     * would be a pane whose every save is a 404.
+     */
+    syncOffered?: boolean;
+    /** Undefined until the pane is opened and the read comes back. */
+    syncOverride?: SyncOverride | undefined;
+    syncSaving?: boolean;
+    syncProblem?: string | null;
+    onSaveSync?: (enabled: boolean | null, document: Record<string, unknown>) => void;
   } = $props();
 
   const disabled = $derived(readOnly || busy);
@@ -98,8 +117,9 @@
   /** Names the pane for a screen reader, which the switch above it does not. */
   function sectionLabel(pane: RepositorySection): string {
     if (pane === 'file') return 'File';
+    if (pane === 'behavior') return 'Behavior';
 
-    return pane === 'behavior' ? 'Behavior' : 'Commands';
+    return pane === 'commands' ? 'Commands' : 'Sync';
   }
 </script>
 
@@ -133,6 +153,7 @@
               label: 'Commands',
               badge: badge(sectionCount(detail, 'commands')),
             },
+            ...(syncOffered ? [{ value: 'sync', label: 'Sync' }] : []),
           ]}
           value={section}
           onSelect={(next) => onSection(next as RepositorySection)}
@@ -241,6 +262,20 @@
             {/if}
           </div>
         </Plate>
+      {:else if section === 'sync'}
+        {#if syncOverride === undefined}
+          <p class="detail-loading dim" role="status">
+            {syncProblem ?? 'Reading what this repository adjusts…'}
+          </p>
+        {:else}
+          <RepositorySyncPane
+            stored={syncOverride}
+            {readOnly}
+            saving={syncSaving}
+            problem={syncProblem}
+            onSave={onSaveSync}
+          />
+        {/if}
       {:else}
         {@const count = sectionCount(detail, section)}
         <Plate label={section === 'behavior' ? 'Behavior overrides' : 'Command overrides'}>

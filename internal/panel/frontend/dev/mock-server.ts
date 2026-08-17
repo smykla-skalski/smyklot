@@ -35,6 +35,8 @@ import type {
   RootInstallation,
   RootOverview,
   SyncConfigInput,
+  SyncOverride,
+  SyncOverrideInput,
   RootRuntimeSettings,
   RootRuntimeSettingsInput,
   TargetSettingsInput,
@@ -987,6 +989,46 @@ async function handle(
           updated_at: new Date().toISOString(),
         });
         respond(res, 200, mockSyncConfig(state, `${targetId}/${kind}`, kind));
+        return;
+      }
+    }
+
+    const syncOverrideMatch =
+      /^\/api\/v1\/targets\/([^/]+)\/repositories\/([^/]+)\/sync\/([^/]+)$/.exec(
+        path.slice(route('').length),
+      );
+    if (syncOverrideMatch) {
+      // Keyed by repository and kind, because a repository answers each kind on
+      // its own and the server stores one row per pair.
+      const repositoryId = decodeURIComponent(syncOverrideMatch[2] ?? '');
+      const kind = decodeURIComponent(syncOverrideMatch[3] ?? '');
+      const key = `${repositoryId}/${kind}`;
+      const override = state.syncOverrides.get(key) ?? {
+        kind,
+        enabled: null,
+        document: {},
+        revision: 0,
+        unreadable: false,
+      };
+      if (method === 'GET') {
+        respond(res, 200, override);
+        return;
+      }
+      if (method === 'PUT') {
+        const input = await readBody<SyncOverrideInput>(req);
+        if (input.expected_revision !== override.revision) {
+          throw new MockApiError(409, 'conflict', 'this repository changed; reload and try again');
+        }
+        const saved: SyncOverride = {
+          ...override,
+          enabled: input.enabled,
+          document: input.document,
+          revision: override.revision + 1,
+          updated_by: 'bart',
+          updated_at: new Date().toISOString(),
+        };
+        state.syncOverrides.set(key, saved);
+        respond(res, 200, saved);
         return;
       }
     }

@@ -40,6 +40,8 @@ import type {
   SecurityNotification,
   SyncConfig,
   SyncConfigInput,
+  SyncOverride,
+  SyncOverrideInput,
   SyncPlan,
   TargetSettingsInput,
   InvitationDays,
@@ -170,6 +172,13 @@ export interface PanelApi {
   resetRootConfigMigration(targetId: string, repositoryId: string): Promise<RepositoryDetail>;
   fetchSyncConfig(targetId: string, kind: string): Promise<SyncConfig>;
   saveSyncConfig(targetId: string, kind: string, input: SyncConfigInput): Promise<SyncConfig>;
+  fetchSyncOverride(targetId: string, repositoryId: string, kind: string): Promise<SyncOverride>;
+  saveSyncOverride(
+    targetId: string,
+    repositoryId: string,
+    kind: string,
+    input: SyncOverrideInput,
+  ): Promise<SyncOverride>;
   fetchSyncPlan(targetId: string): Promise<{ plan: SyncPlan | null }>;
   approveSyncPlan(targetId: string, planId: string, digest: string): Promise<{ plan: SyncPlan }>;
   fetchAudit(targetId: string, request: AuditHistoryRequest): Promise<Page<AuditEntry>>;
@@ -706,6 +715,26 @@ export function createPanelApi(
     saveSyncConfig(targetId: string, kind: string, input: SyncConfigInput): Promise<SyncConfig> {
       return putJson(
         `/api/v1/targets/${pathSegment(targetId)}/sync/config/${pathSegment(kind)}`,
+        input,
+      );
+    },
+
+    fetchSyncOverride(targetId: string, repositoryId: string, kind: string): Promise<SyncOverride> {
+      return jsonRequest(
+        `/api/v1/targets/${pathSegment(targetId)}/repositories/` +
+          `${pathSegment(repositoryId)}/sync/${pathSegment(kind)}`,
+      );
+    },
+
+    saveSyncOverride(
+      targetId: string,
+      repositoryId: string,
+      kind: string,
+      input: SyncOverrideInput,
+    ): Promise<SyncOverride> {
+      return putJson(
+        `/api/v1/targets/${pathSegment(targetId)}/repositories/` +
+          `${pathSegment(repositoryId)}/sync/${pathSegment(kind)}`,
         input,
       );
     },

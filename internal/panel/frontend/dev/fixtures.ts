@@ -42,6 +42,7 @@ import type {
   RepositorySummary,
   RootElevation,
   SyncConfig,
+  SyncOverride,
   SyncPlan,
   SecurityNotification,
   InvitationStatus,
@@ -170,6 +171,9 @@ export interface MockState {
   prefs: { values: Record<string, unknown>; rev: number };
   /** Label sync, per installation: what is configured and what is in flight. */
   sync: Map<string, SyncConfig>;
+
+  /** What each repository adjusts, keyed by repository and kind together. */
+  syncOverrides: Map<string, SyncOverride>;
   syncPlans: Map<string, SyncPlan>;
 }
 
@@ -488,6 +492,31 @@ export function seed(
       [`${organization.value.id}/labels`, syncLabelsSeed(iso)],
       [`${organization.value.id}/rulesets`, syncRulesetsSeed(iso)],
       [`${organization.value.id}/files`, syncFilesSeed(iso)],
+    ]),
+    /* One repository that adjusts a template, because the pane that shows one
+       has a card per adjustment and a form nobody can look at except empty is
+       a form that drifts out of the design unseen. */
+    syncOverrides: new Map([
+      [
+        '4001/files',
+        {
+          kind: 'files',
+          enabled: null,
+          document: {
+            merges: [
+              {
+                path: 'renovate.json',
+                strategy: 'deep-merge',
+                overrides: { timezone: 'Europe/Warsaw', schedule: ['* 4 * * 6'] },
+              },
+            ],
+          },
+          revision: 1,
+          updated_by: 'bart',
+          updated_at: iso(-2 * 60 * 60_000),
+          unreadable: false,
+        },
+      ],
     ]),
     syncPlans: new Map([[organization.value.id, syncPlanSeed(iso)]]),
     // Replaced by install() with the running server's own page.

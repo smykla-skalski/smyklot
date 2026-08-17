@@ -67,7 +67,7 @@ export const ACCESS_SECTIONS = ['users', 'invitations'] as const;
  * repository already means it, and an address that says so twice is one a reader
  * would have to be told to ignore.
  */
-export const REPOSITORY_SECTIONS = ['file', 'behavior', 'commands'] as const;
+export const REPOSITORY_SECTIONS = ['file', 'behavior', 'commands', 'sync'] as const;
 export type RepositorySection = (typeof REPOSITORY_SECTIONS)[number];
 
 /** One repository, opened on one of its panes. */
