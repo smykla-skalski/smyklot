@@ -204,7 +204,9 @@ func (s *server) planSyncActions(
 	// and its own record of what a repository already has. A repository settled
 	// for its labels may be out of date for its settings.
 	for _, config := range active {
-		ask, err := repositoryPlanner(client, config)
+		scope := newSyncScope(config, overrides, applied, now)
+
+		ask, err := repositoryPlanner(client, config, scope.overrides)
 		if err != nil {
 			// A stored document this version cannot use. Every repository would
 			// answer the same way, so the kind stands down rather than failing
@@ -216,8 +218,6 @@ func (s *server) planSyncActions(
 
 			continue
 		}
-
-		scope := newSyncScope(config, overrides, applied, now)
 
 		for _, repository := range repositories {
 			if !scope.covers(repository) {
@@ -312,85 +312,214 @@ type repositoryQuestion func(
 func repositoryPlanner(
 	client *github.Client,
 	config orgsync.Config,
+	overrides map[string]*orgsync.RepositoryOverride,
 ) (repositoryQuestion, error) {
 	switch config.Kind {
 	case orgsync.KindLabels:
-		labels, err := decodeSyncDocument[orgsync.LabelConfig](config)
-		if err != nil {
-			return nil, err
-		}
-
-		return func(
-			ctx context.Context, repository storage.Repository,
-		) ([]orgsync.Action, bool, error) {
-			owner, name := splitFullName(repository.FullName)
-
-			current, err := client.ListRepositoryLabels(ctx, owner, name)
-			if err != nil {
-				return nil, false, err
-			}
-
-			return orgsync.PlanLabels(
-				repository.ID, labels, asCurrentLabels(current), labels.Exclusions(),
-			), true, nil
-		}, nil
+		return labelPlanner(client, config)
 
 	case orgsync.KindSettings:
-		settings, err := decodeSyncDocument[orgsync.SettingsConfig](config)
-		if err != nil {
-			return nil, err
-		}
-
-		return func(
-			ctx context.Context, repository storage.Repository,
-		) ([]orgsync.Action, bool, error) {
-			owner, name := splitFullName(repository.FullName)
-
-			current, err := client.GetRepositorySettings(ctx, owner, name)
-			if err != nil {
-				return nil, false, err
-			}
-
-			return orgsync.PlanSettings(
-				repository.ID, settings, asCurrentSettings(current),
-			), true, nil
-		}, nil
+		return settingsPlanner(client, config)
 
 	case orgsync.KindRulesets:
-		rulesets, err := decodeSyncDocument[orgsync.RulesetConfig](config)
-		if err != nil {
-			return nil, err
-		}
+		return rulesetPlanner(client, config)
 
-		return func(
-			ctx context.Context, repository storage.Repository,
-		) ([]orgsync.Action, bool, error) {
-			owner, name := splitFullName(repository.FullName)
-
-			current, err := readRulesets(ctx, client, owner, name, rulesets)
-			if err != nil {
-				return nil, false, err
-			}
-
-			actions, ambiguous := orgsync.PlanRulesets(
-				repository.ID, rulesets, current, rulesets.Exclusions())
-			if len(ambiguous) > 0 {
-				// Said here rather than swallowed, because it is the only place
-				// it can be said: a ruleset nothing can address produces no
-				// action, so a plan cannot carry it and a person reading one
-				// would see a repository that looks finished.
-				logging.From(ctx).Warn(
-					"a repository holds more than one ruleset of a configured name, "+
-						"so those are left alone",
-					"repo", repository.FullName, "rulesets", strings.Join(ambiguous, ", "))
-			}
-
-			return actions, len(ambiguous) == 0, nil
-		}, nil
+	case orgsync.KindFiles:
+		return filePlanner(client, config, overrides)
 
 	default:
 		return nil, fmt.Errorf("%w: %s", errSyncKindUnsupported, config.Kind)
 	}
+}
+
+func labelPlanner(client *github.Client, config orgsync.Config) (repositoryQuestion, error) {
+	labels, err := decodeSyncDocument[orgsync.LabelConfig](config)
+	if err != nil {
+		return nil, err
+	}
+
+	return func(
+		ctx context.Context, repository storage.Repository,
+	) ([]orgsync.Action, bool, error) {
+		owner, name := splitFullName(repository.FullName)
+
+		current, err := client.ListRepositoryLabels(ctx, owner, name)
+		if err != nil {
+			return nil, false, err
+		}
+
+		return orgsync.PlanLabels(
+			repository.ID, labels, asCurrentLabels(current), labels.Exclusions(),
+		), true, nil
+	}, nil
+}
+
+func settingsPlanner(client *github.Client, config orgsync.Config) (repositoryQuestion, error) {
+	settings, err := decodeSyncDocument[orgsync.SettingsConfig](config)
+	if err != nil {
+		return nil, err
+	}
+
+	return func(
+		ctx context.Context, repository storage.Repository,
+	) ([]orgsync.Action, bool, error) {
+		owner, name := splitFullName(repository.FullName)
+
+		current, err := client.GetRepositorySettings(ctx, owner, name)
+		if err != nil {
+			return nil, false, err
+		}
+
+		return orgsync.PlanSettings(
+			repository.ID, settings, asCurrentSettings(current),
+		), true, nil
+	}, nil
+}
+
+func rulesetPlanner(client *github.Client, config orgsync.Config) (repositoryQuestion, error) {
+	rulesets, err := decodeSyncDocument[orgsync.RulesetConfig](config)
+	if err != nil {
+		return nil, err
+	}
+
+	return func(
+		ctx context.Context, repository storage.Repository,
+	) ([]orgsync.Action, bool, error) {
+		owner, name := splitFullName(repository.FullName)
+
+		current, err := readRulesets(ctx, client, owner, name, rulesets)
+		if err != nil {
+			return nil, false, err
+		}
+
+		actions, ambiguous := orgsync.PlanRulesets(
+			repository.ID, rulesets, current, rulesets.Exclusions())
+		if len(ambiguous) > 0 {
+			// Said here rather than swallowed, because it is the only place it
+			// can be said: a ruleset nothing can address produces no action, so
+			// a plan cannot carry it and a person reading one would see a
+			// repository that looks finished.
+			logging.From(ctx).Warn(
+				"a repository holds more than one ruleset of a configured name, "+
+					"so those are left alone",
+				"repo", repository.FullName, "rulesets", strings.Join(ambiguous, ", "))
+		}
+
+		return actions, len(ambiguous) == 0, nil
+	}, nil
+}
+
+func filePlanner(
+	client *github.Client,
+	config orgsync.Config,
+	overrides map[string]*orgsync.RepositoryOverride,
+) (repositoryQuestion, error) {
+	files, err := decodeSyncDocument[orgsync.FileConfig](config)
+	if err != nil {
+		return nil, err
+	}
+
+	return func(
+		ctx context.Context, repository storage.Repository,
+	) ([]orgsync.Action, bool, error) {
+		return planRepositoryFiles(ctx, client, repository, files, overrides[repository.ID])
+	}, nil
+}
+
+// planRepositoryFiles answers what one repository's files would take, and
+// whether the answer covers the whole of what the kind configures.
+//
+// Not settled where the repository cannot be read at all or its own
+// adjustments cannot be used. Both are conditions somebody has to resolve, and
+// recording a digest against either would say the repository matches for six
+// hours when nothing has looked at it.
+func planRepositoryFiles(
+	ctx context.Context,
+	client *github.Client,
+	repository storage.Repository,
+	config orgsync.FileConfig,
+	override *orgsync.RepositoryOverride,
+) ([]orgsync.Action, bool, error) {
+	target := syncTargetFor(repository)
+
+	if target.DefaultBranch == "" {
+		// A repository with no commits has nowhere to propose against, and
+		// GitHub names no branch for one. Said here rather than discovered
+		// against the API, which would spend a request per repository per tick
+		// learning it again.
+		logging.From(ctx).Info(
+			"this repository has no default branch, so its files are left alone",
+			"repo", repository.FullName)
+
+		return nil, false, nil
+	}
+
+	adjustments, err := decodeFileOverride(override, config)
+	if err != nil {
+		logging.From(ctx).Warn("this repository's file adjustments cannot be used",
+			"repo", repository.FullName, "error", err)
+
+		return nil, false, nil
+	}
+
+	current, err := readRepositoryFiles(ctx, client, target, config)
+	if err != nil {
+		return nil, false, err
+	}
+
+	plan, err := orgsync.PlanFiles(
+		repository.ID, config, adjustments, target.DefaultBranch, current)
+	if err != nil {
+		// A merge that cannot be applied. Fail-closed: no actions, and nothing
+		// recorded, so the repository is asked again once somebody fixes it.
+		logging.From(ctx).Warn("this repository's files cannot be composed",
+			"repo", repository.FullName, "error", err)
+
+		return nil, false, nil
+	}
+
+	if len(plan.Actions) == 0 {
+		return nil, true, nil
+	}
+
+	refused, err := proposalRefused(ctx, client, target, plan.Proposal)
+	if err != nil {
+		return nil, false, err
+	}
+
+	if refused {
+		// The repository has answered, so it is settled rather than asked
+		// again every tick. The branch is named after what the files should end
+		// up saying, so a configuration that changes is a different branch and
+		// the question is put once more.
+		logging.From(ctx).Info(
+			"this repository closed the pull request for this change, so it is left alone",
+			"repo", repository.FullName, "branch", plan.Proposal)
+
+		return nil, true, nil
+	}
+
+	return plan.Actions, true, nil
+}
+
+// proposalRefused reports a change this repository has already declined.
+//
+// Whatever state, because the answer decides whether to propose again: an open
+// one is still being considered, a merged one landed, and a closed one was
+// refused. Asking only about the open ones would read a refusal as "nobody has
+// been asked yet" and ask forever.
+func proposalRefused(
+	ctx context.Context,
+	client *github.Client,
+	target syncTarget,
+	proposal string,
+) (bool, error) {
+	pull, err := client.FindPullRequestByHead(ctx, target.Owner, target.Name, proposal)
+	if err != nil || pull == nil {
+		return false, err
+	}
+
+	return pull.State == github.PullRequestClosed && !pull.Merged, nil
 }
 
 // syncDocument is a kind's configuration: something to decode, and something

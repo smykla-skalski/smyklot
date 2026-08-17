@@ -195,7 +195,7 @@ func (s *server) applyRepositoryWork(
 	digests syncDigestIndex,
 	outcome *orgsync.Outcome,
 ) {
-	owner, name := splitFullName(repository.FullName)
+	target := syncTargetFor(repository)
 	ctx = logging.With(ctx, "repo", repository.FullName)
 
 	var blocker orgsync.Kind
@@ -215,7 +215,7 @@ func (s *server) applyRepositoryWork(
 			continue
 		}
 
-		applied := s.applyKind(ctx, client, owner, name, kind, outcome)
+		applied := s.applyKind(ctx, client, target, kind, outcome)
 		if !applied {
 			blocker = kind.Kind
 
@@ -234,6 +234,22 @@ func (s *server) applyRepositoryWork(
 	}
 }
 
+// syncTarget is the repository one piece of sync work runs against.
+type syncTarget struct {
+	Owner string
+	Name  string
+
+	// DefaultBranch is what a file proposal is opened against, and empty where
+	// GitHub named none - a repository with no commits at all.
+	DefaultBranch string
+}
+
+func syncTargetFor(repository storage.Repository) syncTarget {
+	owner, name := splitFullName(repository.FullName)
+
+	return syncTarget{Owner: owner, Name: name, DefaultBranch: repository.DefaultBranch}
+}
+
 // applyKind runs one kind's actions and reports whether every one succeeded.
 //
 // Each outcome is written as it happens rather than accumulated and written at
@@ -244,10 +260,17 @@ func (s *server) applyRepositoryWork(
 func (s *server) applyKind(
 	ctx context.Context,
 	client *github.Client,
-	owner, name string,
+	target syncTarget,
 	work orgsync.KindWork,
 	outcome *orgsync.Outcome,
 ) bool {
+	// Files are one change, not a list of them. Every path a repository needs
+	// goes into one commit behind one pull request, so they are applied
+	// together and share whatever becomes of it.
+	if work.Kind == orgsync.KindFiles {
+		return s.applyFileKind(ctx, client, target, work, outcome)
+	}
+
 	succeeded := true
 
 	for _, action := range work.Actions {
@@ -262,7 +285,7 @@ func (s *server) applyKind(
 			continue
 		}
 
-		err := s.applyAction(ctx, client, owner, name, action)
+		err := s.applyAction(ctx, client, target, action)
 		if err != nil {
 			logging.From(ctx).Warn("sync action failed",
 				"kind", action.Kind, "operation", action.Operation,
@@ -302,26 +325,91 @@ func (s *server) recordSyncAction(
 	}
 }
 
+// applyFileKind puts a repository's whole file change behind one pull request,
+// and gives every action the same answer.
+//
+// The same answer, because it is one piece of work: the commit lands or it does
+// not, and an action recorded as applied beside one recorded as failed would
+// describe a repository that half-received a commit.
+//
+// Every action is replayed on a retry, including the ones an earlier attempt
+// already recorded, because the change is what is being applied rather than the
+// paths one at a time. It is safe to replay: the branch is named after what the
+// files should say, so a second run builds the same tree, finds nothing to
+// commit and adopts the pull request that is already open.
+func (s *server) applyFileKind(
+	ctx context.Context,
+	client *github.Client,
+	target syncTarget,
+	work orgsync.KindWork,
+	outcome *orgsync.Outcome,
+) bool {
+	pending := make([]orgsync.Action, 0, len(work.Actions))
+
+	for _, action := range work.Actions {
+		if action.State == orgsync.ActionPending {
+			pending = append(pending, action)
+		}
+	}
+
+	if len(pending) == 0 {
+		succeeded := true
+
+		for _, action := range work.Actions {
+			outcome.Carry(action)
+			succeeded = succeeded && action.State == orgsync.ActionApplied
+		}
+
+		return succeeded
+	}
+
+	err := s.applyFileActions(ctx, client, target, work.Actions)
+	if err != nil {
+		logging.From(ctx).Warn("sync files failed", "error", err)
+	}
+
+	for _, action := range work.Actions {
+		if action.State != orgsync.ActionPending {
+			outcome.Carry(action)
+
+			continue
+		}
+
+		if err != nil {
+			outcome.Fail(action, err.Error())
+			s.recordSyncAction(ctx, action, orgsync.ActionFailed, err.Error(), "")
+
+			continue
+		}
+
+		outcome.Apply(action)
+		s.recordSyncAction(ctx, action, orgsync.ActionApplied, "", "")
+	}
+
+	return err == nil
+}
+
 // applyAction performs one action against GitHub.
 func (s *server) applyAction(
 	ctx context.Context,
 	client *github.Client,
-	owner, name string,
+	target syncTarget,
 	action orgsync.Action,
 ) error {
 	switch action.Kind {
 	case orgsync.KindLabels:
-		return s.applyLabelAction(ctx, client, owner, name, action)
+		return s.applyLabelAction(ctx, client, target.Owner, target.Name, action)
 
 	case orgsync.KindSettings:
-		return applySettingsAction(ctx, client, owner, name, action)
+		return applySettingsAction(ctx, client, target.Owner, target.Name, action)
 
 	case orgsync.KindRulesets:
-		return applyRulesetAction(ctx, client, owner, name, action)
+		return applyRulesetAction(ctx, client, target.Owner, target.Name, action)
 
 	default:
-		// Files arrive in later work. Refusing loudly beats silently reporting
-		// an action applied that nothing performed.
+		// Files never reach here: applyKind sends the whole kind through one
+		// pull request rather than one action at a time. Refusing loudly beats
+		// silently reporting an action applied that nothing performed.
 		return fmt.Errorf("%w: %s", errSyncKindUnsupported, action.Kind)
 	}
 }

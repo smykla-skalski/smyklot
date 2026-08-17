@@ -942,6 +942,215 @@ var _ = Describe("Org sync [Unit]", func() {
 		})
 	})
 
+	Describe("files", func() {
+		const contributing = `{"files":[` +
+			`{"path":"CONTRIBUTING.md","content":"# Contributing\n"}]}`
+
+		// Files need contents, which is a permission of its own.
+		grantContents := func() storage.Target {
+			GinkgoHelper()
+
+			return granting(`{"issues":"write","contents":"write"}`)
+		}
+
+		// adjusting is what one repository changes about its files, which is
+		// the layer the merge engine exists for.
+		adjusting := func(target storage.Target, document string) {
+			GinkgoHelper()
+
+			repositories, err := service.store.ListRepositories(GinkgoT().Context(), target.ID)
+			Expect(err).NotTo(HaveOccurred())
+
+			_, err = service.store.SetSyncRepositoryOverride(
+				GinkgoT().Context(), orgsync.RepositoryOverrideChange{
+					RepositoryID: repositories[0].ID, Kind: orgsync.KindFiles,
+					Document: []byte(document),
+					ActorID:  target.Account.ID, Now: time.Now().UTC(),
+				})
+			Expect(err).NotTo(HaveOccurred())
+		}
+
+		applied := func(target storage.Target) {
+			GinkgoHelper()
+
+			plan(target)
+			computed, _ := livePlan(target)
+			approve(computed)
+			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+		}
+
+		It("proposes a file the repository does not have", func() {
+			target := grantContents()
+			configureKind(target, orgsync.KindFiles, contributing)
+
+			plan(target)
+			_, actions := livePlan(target)
+
+			Expect(actions).To(HaveLen(1))
+			Expect(actions[0].Kind).To(Equal(orgsync.KindFiles))
+			Expect(actions[0].Operation).To(Equal(orgsync.OperationCreate))
+			Expect(actions[0].Subject).To(Equal("CONTRIBUTING.md"))
+		})
+
+		// One request per repository. git names an object by hashing its
+		// contents, so a listing of the tree answers whether every managed file
+		// already says what it should - the tool this replaces downloaded each
+		// of them from each repository on every run.
+		It("leaves a repository whose files already match alone", func() {
+			target := grantContents()
+			stub.repoTree = fmt.Sprintf(
+				`{"sha":"basetree","tree":[{"path":"CONTRIBUTING.md","type":"blob",`+
+					`"sha":%q,"size":16}],"truncated":false}`,
+				orgsync.BlobID([]byte("# Contributing\n")))
+			configureKind(target, orgsync.KindFiles, contributing)
+
+			plan(target)
+
+			_, _, err := service.store.GetLiveSyncPlan(GinkgoT().Context(), target.ID)
+			Expect(err).To(MatchError(storage.ErrNotFound))
+		})
+
+		It("puts every path into one commit behind one pull request", func() {
+			target := grantContents()
+			stub.repoTree = `{"sha":"basetree","tree":[` +
+				`{"path":".renovaterc","type":"blob","sha":"old","size":2}],"truncated":false}`
+			configureKind(target, orgsync.KindFiles, `{"files":[`+
+				`{"path":"CONTRIBUTING.md","content":"# Contributing\n"},`+
+				`{"path":"SECURITY.md","content":"# Security\n"}],`+
+				`"retired":[".renovaterc"]}`)
+
+			plan(target)
+			_, actions := livePlan(target)
+			Expect(actions).To(HaveLen(3))
+
+			applied(target)
+
+			Expect(stub.createdCommits).To(HaveLen(1))
+			Expect(stub.createdPRs).To(HaveLen(1))
+			Expect(stub.createdPRs[0]).To(ContainSubstring("CONTRIBUTING.md"))
+			Expect(stub.createdPRs[0]).To(ContainSubstring(".renovaterc"))
+		})
+
+		// Nothing is ever force-pushed. The tool this replaces rebuilt the
+		// branch from the default branch on every run and force-updated the
+		// reference, so a reviewer's fixup was gone on the next sync with no
+		// error and no trace.
+		It("never asks GitHub to discard what is on the branch", func() {
+			target := grantContents()
+			configureKind(target, orgsync.KindFiles, contributing)
+
+			applied(target)
+
+			Expect(stub.forcedPushes).To(BeZero())
+		})
+
+		It("builds on the branch rather than rebuilding it", func() {
+			target := grantContents()
+			configureKind(target, orgsync.KindFiles, contributing)
+
+			plan(target)
+			computed, actions := livePlan(target)
+			approve(computed)
+
+			// The branch is already there, carrying somebody's commit
+			written, err := orgsync.DecodeFile(actions[0].Payload)
+			Expect(err).NotTo(HaveOccurred())
+			stub.branchRefs[written.Proposal] = "humancommit"
+			stub.migrationTipTree = "human-tree"
+			stub.createdTreeSHA = "newtree"
+
+			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+
+			// Built from the branch's own tree, so what is on it survives
+			Expect(stub.createdTrees).To(HaveLen(1))
+			Expect(stub.createdTrees[0]).To(ContainSubstring(`"base_tree":"human-tree"`))
+			Expect(stub.createdCommits[0]).To(ContainSubstring(`"humancommit"`))
+			Expect(stub.forcedPushes).To(BeZero())
+		})
+
+		// A refusal has to be durable, or the repository is asked the same
+		// question every reconcile forever. The branch is named after what the
+		// files should end up saying, so a closed pull request answers for this
+		// change and a configuration that moves asks again.
+		It("leaves a repository that closed the pull request alone", func() {
+			target := grantContents()
+			configureKind(target, orgsync.KindFiles, contributing)
+			stub.branchPRs = `[{"number":9,"state":"closed","merged_at":null}]`
+
+			plan(target)
+
+			_, _, err := service.store.GetLiveSyncPlan(GinkgoT().Context(), target.ID)
+			Expect(err).To(MatchError(storage.ErrNotFound))
+
+			// And it is written down as settled, so the next reconcile does not
+			// read the repository again
+			state, err := service.store.ListSyncRepositoryState(GinkgoT().Context(), target.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(state).To(HaveLen(1))
+			Expect(state[0].Kind).To(Equal(orgsync.KindFiles))
+		})
+
+		It("keeps an open pull request rather than opening a second", func() {
+			target := grantContents()
+			configureKind(target, orgsync.KindFiles, contributing)
+			stub.branchPRs = `[{"number":9,"state":"open"}]`
+
+			applied(target)
+
+			Expect(stub.createdPRs).To(BeEmpty())
+			Expect(stub.editedPRs).To(HaveLen(1))
+			Expect(stub.editedPRs[0]).To(ContainSubstring("CONTRIBUTING.md"))
+		})
+
+		It("writes what a repository adjusts rather than the plain template", func() {
+			target := grantContents()
+			configureKind(target, orgsync.KindFiles,
+				`{"files":[{"path":"renovate.json",`+
+					`"content":"{\"extends\":[\"config:recommended\"]}"}]}`)
+			adjusting(target, `{"merges":[{"path":"renovate.json",`+
+				`"overrides":{"timezone":"Europe/Warsaw"}}]}`)
+
+			plan(target)
+			_, actions := livePlan(target)
+
+			written, err := orgsync.DecodeFile(actions[0].Payload)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(written.Content)).To(ContainSubstring("Europe/Warsaw"))
+			Expect(string(written.Content)).To(ContainSubstring("config:recommended"))
+		})
+
+		// Fail-closed. The tool this replaces reported a failed merge as a
+		// warning and wrote the raw template over the repository's file, so a
+		// broken adjustment destroyed the customization it described.
+		It("proposes nothing where a repository's adjustment cannot be used", func() {
+			target := grantContents()
+			configureKind(target, orgsync.KindFiles,
+				`{"files":[{"path":"renovate.json","content":"{}"}]}`)
+			adjusting(target, `{"merges":[{"path":"package.json"}]}`)
+
+			plan(target)
+
+			_, _, err := service.store.GetLiveSyncPlan(GinkgoT().Context(), target.ID)
+			Expect(err).To(MatchError(storage.ErrNotFound))
+
+			// And nothing is recorded, so it is asked again once somebody fixes
+			// it rather than left looking finished for six hours
+			state, err := service.store.ListSyncRepositoryState(GinkgoT().Context(), target.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(state).To(BeEmpty())
+		})
+
+		It("stands down without the permission it needs", func() {
+			target := granting(`{"issues":"write"}`)
+			configureKind(target, orgsync.KindFiles, contributing)
+
+			plan(target)
+
+			_, _, err := service.store.GetLiveSyncPlan(GinkgoT().Context(), target.ID)
+			Expect(err).To(MatchError(storage.ErrNotFound))
+		})
+	})
+
 	// Saving while a plan is on screen has to invalidate it, or somebody can
 	// approve work they never saw
 	It("retires a plan when the configuration changes underneath it", func() {

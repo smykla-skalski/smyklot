@@ -111,7 +111,7 @@ func PlanFiles(
 				State:        ActionPending,
 			})
 
-		case held.Blob != blobID(file.Content):
+		case held.Blob != BlobID(file.Content):
 			plan.Actions = append(plan.Actions, Action{
 				RepositoryID: repositoryID,
 				Kind:         KindFiles,
@@ -220,7 +220,7 @@ func fileProposal(desired []ResolvedFile, retired []string) string {
 	for _, file := range sorted {
 		writeField(sum, "file")
 		writeField(sum, file.Path)
-		writeField(sum, blobID(file.Content))
+		writeField(sum, BlobID(file.Content))
 	}
 
 	for _, path := range retired {
@@ -228,14 +228,14 @@ func fileProposal(desired []ResolvedFile, retired []string) string {
 		writeField(sum, path)
 	}
 
-	return fileBranchPrefix + hex.EncodeToString(sum.Sum(nil))[:fileBranchDigits]
+	return FileBranchPrefix + hex.EncodeToString(sum.Sum(nil))[:fileBranchDigits]
 }
 
 const (
-	// fileBranchPrefix is where every file proposal goes. Under smyklot/ so a
+	// FileBranchPrefix is where every file proposal goes. Under smyklot/ so a
 	// repository can tell at a glance whose branch it is, and so a ruleset can
 	// name the namespace rather than a branch at a time.
-	fileBranchPrefix = "smyklot/files-"
+	FileBranchPrefix = "smyklot/files-"
 
 	// fileBranchDigits is how much of the fingerprint the branch carries. Twelve
 	// hexadecimal digits is 48 bits: enough that two configurations colliding is
@@ -243,13 +243,13 @@ const (
 	fileBranchDigits = 12
 )
 
-// blobID is the name git would give a file's contents.
+// BlobID is the name git would give a file's contents.
 //
 // git hashes the type and length before the bytes, which is why this is not
 // the SHA-1 of the file. Computing it here is what lets one listing of a
 // repository's tree answer whether every managed file already says what it
 // should, without downloading any of them.
-func blobID(content []byte) string {
+func BlobID(content []byte) string {
 	sum := sha1.New() //nolint:gosec // the algorithm is git's, and this is an address
 	_, _ = fmt.Fprintf(sum, "blob %d\x00", len(content))
 	_, _ = sum.Write(content)

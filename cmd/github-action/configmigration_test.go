@@ -232,7 +232,7 @@ var _ = Describe("Configuration migration [Unit]", func() {
 		// An earlier tick got as far as pushing the branch and no further, so
 		// the state on disk says nothing has happened while GitHub disagrees
 		It("adopts a branch with an open proposal rather than pushing over it", func() {
-			stub.migrationRefs[migrationBranchFor("treesha")] = "commitsha"
+			stub.branchRefs[migrationBranchFor("treesha")] = "commitsha"
 			stub.branchPRs = `[{"number":77,"state":"open","merged":false}]`
 
 			targetID := seed()
@@ -250,7 +250,7 @@ var _ = Describe("Configuration migration [Unit]", func() {
 		// leave, because nothing re-drove the proposal from a branch that
 		// already existed
 		It("proposes from a branch nothing was opened from", func() {
-			stub.migrationRefs[migrationBranchFor("treesha")] = "commitsha"
+			stub.branchRefs[migrationBranchFor("treesha")] = "commitsha"
 
 			targetID := seed()
 			propose(targetID)
@@ -267,7 +267,7 @@ var _ = Describe("Configuration migration [Unit]", func() {
 		// proposal, pushed a fixup and had an operator clear the refusal would
 		// have watched their commit disappear with no error and no trace
 		It("leaves a branch somebody else pushed to alone", func() {
-			stub.migrationRefs[migrationBranchFor("treesha")] = "humancommit"
+			stub.branchRefs[migrationBranchFor("treesha")] = "humancommit"
 			stub.migrationTipTree = "human-tree"
 
 			targetID := seed()
