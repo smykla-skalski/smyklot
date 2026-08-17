@@ -310,8 +310,10 @@ func (s *server) clearStaleSyncProblems(
 			continue
 		}
 
-		// An absent scope is a kind nothing is syncing - switched off for the
-		// installation, or waiting on a permission.
+		// An absent scope is a kind switched off for the installation. One
+		// waiting on a permission has a scope, because scopes are built from
+		// what is switched on - somebody is still expecting it to run, so its
+		// refusals are kept rather than answered as nothing being wrong.
 		scope, syncing := scopes[state.Kind]
 		if !syncing {
 			cleared = append(cleared, clearedState(state, now))

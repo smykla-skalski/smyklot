@@ -197,6 +197,48 @@ func setNodeAt(root *yaml.Node, keys []string, value *yaml.Node) bool {
 	}
 
 	setKey(parent, keys[len(keys)-1], value)
+	dropRedefinedAnchors(root, value)
 
 	return true
+}
+
+// dropRedefinedAnchors clears an anchor the written list carries that the
+// document already defines somewhere else.
+//
+// The items come from a second reading of the template, so they arrive with
+// whatever anchors the template wrote on them. Where the write replaces the
+// list those anchors came from, the copy is the only definition left and has to
+// keep them - every `*name` in the file is naming it. Where the write lands
+// beside that list instead, which is what appending through an alias or a merge
+// key does, the file ends up defining one name twice: valid YAML saying the
+// same thing twice, and a duplicate anchor is what the rename in yamlnode.go
+// exists to keep out of these files and what a linter in the repository would
+// stop on.
+//
+// Counted after the write rather than reasoned about before it, because which
+// of the two happened is exactly what the document says afterwards.
+func dropRedefinedAnchors(root, written *yaml.Node) {
+	defined := map[string][]*yaml.Node{}
+	collectDefinitions(root, defined)
+
+	clearAnchors(written, func(name string) bool {
+		return len(defined[name]) > 1
+	})
+}
+
+// clearAnchors takes the anchor off every node under one that answers true.
+// Content only: an alias's own pointer leads out, into the tree it was copied
+// from.
+func clearAnchors(node *yaml.Node, redefined func(name string) bool) {
+	if node == nil {
+		return
+	}
+
+	if node.Anchor != "" && redefined(node.Anchor) {
+		node.Anchor = ""
+	}
+
+	for _, child := range node.Content {
+		clearAnchors(child, redefined)
+	}
 }

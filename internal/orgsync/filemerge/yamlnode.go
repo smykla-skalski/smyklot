@@ -283,6 +283,15 @@ func mergeKeyInto(root, mapping *yaml.Node, key string, value any, deep bool) er
 	if deep && isObject {
 		existing, own := keyValue(mapping, key)
 
+		// An empty patch changes nothing, which RFC 7396 says and which the
+		// merge would otherwise say only where the key is spelled out already.
+		// Where a merge key feeds it, standIn would write the inherited mapping
+		// out as literal keys - a change nobody asked for, proposed as a pull
+		// request, for a spec that adjusts nothing.
+		if len(nested) == 0 && resolveAlias(existing) != nil {
+			return nil
+		}
+
 		if stood := standIn(root, mapping, key, existing, own); stood != nil &&
 			stood.Kind == yaml.MappingNode {
 			return mergeIntoMapping(root, stood, nested, true)

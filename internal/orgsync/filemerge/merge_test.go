@@ -691,6 +691,82 @@ jobs:
 			Expect(back.Alias).To(HaveKeyWithValue("x", 1))
 		})
 
+		// A list written beside what it was copied from rather than over it
+		// carries the copies' anchors, so the file defines one twice. Both say
+		// the same thing and it reloads, but a duplicate anchor is what the
+		// rename beside this exists to keep out of these files, and a linter in
+		// the repository would stop on it.
+		It("does not define an anchor twice when it appends through a merge key", func() {
+			merged, err := filemerge.Apply("ci.yaml",
+				[]byte("defaults: &d\n  labels:\n    - &x keep\nthing:\n  <<: *d\nafter: *x\n"),
+				filemerge.Spec{
+					Overrides: overrides(`{"thing": {"labels": ["extra"]}}`),
+					Arrays: []filemerge.ArrayRule{
+						{Path: "$.thing.labels", Strategy: filemerge.ArrayAppend},
+					},
+				})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(strings.Count(string(merged), "&x")).To(Equal(1))
+
+			var back struct {
+				Thing map[string]any `yaml:"thing"`
+				After string         `yaml:"after"`
+			}
+			Expect(yaml.Unmarshal(merged, &back)).To(Succeed())
+			Expect(back.Thing).To(HaveKeyWithValue("labels", []any{"keep", "extra"}))
+			Expect(back.After).To(Equal("keep"))
+		})
+
+		// The list this replaces is the one the anchor was defined in, so the
+		// copy has to keep it: dropping it would leave `after` naming nothing.
+		It("keeps an anchor when the list it defines is the one being replaced", func() {
+			merged, err := filemerge.Apply("ci.yaml",
+				[]byte("labels:\n  - &x keep\nafter: *x\n"),
+				filemerge.Spec{
+					Overrides: overrides(`{"labels": ["extra"]}`),
+					Arrays: []filemerge.ArrayRule{
+						{Path: "$.labels", Strategy: filemerge.ArrayAppend},
+					},
+				})
+
+			Expect(err).NotTo(HaveOccurred())
+
+			var back struct {
+				Labels []any  `yaml:"labels"`
+				After  string `yaml:"after"`
+			}
+			Expect(yaml.Unmarshal(merged, &back)).To(Succeed())
+			Expect(back.Labels).To(Equal([]any{"keep", "extra"}))
+			Expect(back.After).To(Equal("keep"))
+		})
+
+		// RFC 7396: an empty object patch changes nothing. Written out, the
+		// mapping a merge key was feeding became literal keys - a change nobody
+		// asked for, proposed as a pull request, for a spec that adjusts
+		// nothing.
+		It("changes nothing for an empty patch on a key a merge key feeds", func() {
+			template := "base: &b\n  nested:\n    a: 1\n    b: 2\nthing:\n  <<: *b\n"
+
+			merged, err := filemerge.Apply("ci.yaml", []byte(template),
+				filemerge.Spec{Overrides: overrides(`{"thing": {"nested": {}}}`)})
+
+			// The whole file, byte for byte. A substring would match the
+			// template's own copy of the inherited keys and pass either way.
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(merged)).To(Equal(template))
+		})
+
+		// And where nothing is there to leave alone, an empty object is what
+		// the key becomes - which is also what RFC 7396 says.
+		It("writes an empty object where the key is not there at all", func() {
+			merged, err := filemerge.Apply("ci.yaml", []byte("name: build\n"),
+				filemerge.Spec{Overrides: overrides(`{"jobs": {}}`)})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(merged)).To(ContainSubstring("jobs: {}"))
+		})
+
 		// The tag comes off so the line is written plainly, and a merge key
 		// written plainly is still a merge key on the way back in - which is
 		// the half that matters and the half a substring assertion cannot see.

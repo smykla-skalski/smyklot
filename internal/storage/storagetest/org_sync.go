@@ -786,7 +786,7 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 
 			Expect(store.RecordSyncRepositoryState(ctx, []orgsync.RepositoryState{{
 				RepositoryID: repoA, Kind: orgsync.KindFiles, AppliedAt: now,
-				Problem:      "these files cannot be composed",
+				Problem: "these files cannot be composed",
 			}})).To(Succeed())
 
 			_, err := store.GetSyncRepositoryState(
