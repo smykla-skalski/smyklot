@@ -98,18 +98,8 @@ func (c LabelConfig) Validate() error {
 }
 
 func (l Label) validate(index int) error {
-	name := strings.TrimSpace(l.Name)
-	if name == "" {
-		return invalid("label %d has no name", index+1)
-	}
-	if name != l.Name {
-		// GitHub trims it silently, so a configured " bug" would be created as
-		// "bug" and then look missing on the next reconcile, which would create
-		// it again for ever.
-		return invalid("label %q has leading or trailing whitespace", l.Name)
-	}
-	if len(l.Name) > maxLabelName {
-		return invalid("label %q is longer than %d characters", l.Name, maxLabelName)
+	if err := validateName("label", index, l.Name, maxLabelName); err != nil {
+		return err
 	}
 
 	if err := validateColor(l.Name, l.Color); err != nil {

@@ -11,6 +11,32 @@ func invalid(format string, args ...any) error {
 	return fmt.Errorf("%w: %s", ErrInvalidConfig, fmt.Sprintf(format, args...))
 }
 
+// validateName refuses a name GitHub would not keep as it was written.
+//
+// The whitespace check is the one that is not obvious. GitHub trims silently,
+// so a configured " bug" is created as "bug", looks missing on the next
+// reconcile, and is created again - for ever, once per tick, on every
+// repository.
+//
+// index is where it sits in configuration, counted from zero. It is only used
+// to name something that has no name yet.
+func validateName(noun string, index int, name string, longest int) error {
+	trimmed := strings.TrimSpace(name)
+
+	switch {
+	case trimmed == "":
+		return invalid("%s %d has no name", noun, index+1)
+
+	case trimmed != name:
+		return invalid("%s %q has leading or trailing whitespace", noun, name)
+
+	case len(name) > longest:
+		return invalid("%s %q is longer than %d characters", noun, name, longest)
+	}
+
+	return nil
+}
+
 // firstFoldClash reports the first two names that differ at most in case, in
 // configuration order.
 //

@@ -333,28 +333,10 @@ func canonicalRuleset(ruleset Ruleset) Ruleset {
 		ExcludeRefs: sorted(ruleset.Conditions.ExcludeRefs),
 	}
 
-	ruleset.BypassActors = canonicalActors(ruleset.BypassActors)
+	ruleset.BypassActors = sortedBy(ruleset.BypassActors, actorKey)
 	ruleset.Rules = canonicalRules(ruleset.Rules)
 
 	return ruleset
-}
-
-func canonicalActors(actors []RulesetBypassActor) []RulesetBypassActor {
-	if len(actors) == 0 {
-		return nil
-	}
-
-	canonical := slices.Clone(actors)
-	sort.Slice(canonical, func(i, j int) bool {
-		return actorKey(canonical[i]) < actorKey(canonical[j])
-	})
-
-	return canonical
-}
-
-func actorKey(actor RulesetBypassActor) string {
-	return actor.ActorType + "\x00" + strconv.FormatInt(actor.ActorID, 10) +
-		"\x00" + actor.Mode
 }
 
 func canonicalRules(rules RulesetRules) RulesetRules {
@@ -366,40 +348,50 @@ func canonicalRules(rules RulesetRules) RulesetRules {
 
 	if checks := rules.RequiredStatusChecks; checks != nil {
 		canonical := *checks
-		canonical.Checks = slices.Clone(checks.Checks)
-		sort.Slice(canonical.Checks, func(i, j int) bool {
-			return canonical.Checks[i].Context < canonical.Checks[j].Context
-		})
-		if len(canonical.Checks) == 0 {
-			canonical.Checks = nil
-		}
+		canonical.Checks = sortedBy(checks.Checks,
+			func(check RulesetStatusCheck) string { return check.Context })
 		rules.RequiredStatusChecks = &canonical
 	}
 
 	if scanning := rules.CodeScanning; scanning != nil {
 		canonical := *scanning
-		canonical.Tools = slices.Clone(scanning.Tools)
-		sort.Slice(canonical.Tools, func(i, j int) bool {
-			return canonical.Tools[i].Tool < canonical.Tools[j].Tool
-		})
-		if len(canonical.Tools) == 0 {
-			canonical.Tools = nil
-		}
+		canonical.Tools = sortedBy(scanning.Tools,
+			func(tool RulesetCodeScanningTool) string { return tool.Tool })
 		rules.CodeScanning = &canonical
 	}
 
 	return rules
 }
 
-func sorted(values []string) []string {
+// sortedBy is one list in the one spelling used for comparison: a copy, in the
+// order of a key, with empty spelled as nil rather than as a list of nothing.
+//
+// The copy matters. Everything reaching this is either the stored configuration
+// or what GitHub answered, and sorting either in place would leave the plan
+// carrying a payload in an order nobody wrote.
+func sortedBy[T any](values []T, key func(T) string) []T {
 	if len(values) == 0 {
 		return nil
 	}
 
 	canonical := slices.Clone(values)
-	sort.Strings(canonical)
+	sort.Slice(canonical, func(i, j int) bool {
+		return key(canonical[i]) < key(canonical[j])
+	})
 
 	return canonical
+}
+
+func sorted(values []string) []string {
+	return sortedBy(values, func(value string) string { return value })
+}
+
+// actorKey orders bypass actors by everything about them, because nothing about
+// them is unique on its own: one actor may appear twice under two modes, and
+// two actor types share an id space.
+func actorKey(actor RulesetBypassActor) string {
+	return actor.ActorType + "\x00" + strconv.FormatInt(actor.ActorID, 10) +
+		"\x00" + actor.Mode
 }
 
 // describeRuleset renders a ruleset for a person reading the plan. It is

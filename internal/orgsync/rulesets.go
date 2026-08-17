@@ -253,14 +253,8 @@ func (c RulesetConfig) Names() []string {
 }
 
 func (r Ruleset) validate(index int) error {
-	name := strings.TrimSpace(r.Name)
-	switch {
-	case name == "":
-		return invalid("ruleset %d has no name", index+1)
-	case name != r.Name:
-		return invalid("ruleset %q has leading or trailing whitespace", r.Name)
-	case len(r.Name) > maxRulesetNameLen:
-		return invalid("ruleset %q is longer than %d characters", r.Name, maxRulesetNameLen)
+	if err := validateName("ruleset", index, r.Name, maxRulesetNameLen); err != nil {
+		return err
 	}
 
 	prefix, known := rulesetTargets[r.Target]

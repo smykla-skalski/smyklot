@@ -16,6 +16,7 @@
     SyncRuleset,
     SyncRulesetBypassActor,
     SyncRulesetCodeScanningTool,
+    SyncRulesetPullRequestRule,
     SyncRulesetRules,
     SyncRulesetStatusCheck,
   } from '$lib/types';
@@ -91,7 +92,10 @@
     { key: 'required_signatures', label: 'Require signed commits' },
   ];
 
-  const REVIEW_FLAGS: readonly { key: string; label: string }[] = [
+  const REVIEW_FLAGS: readonly {
+    key: keyof SyncRulesetPullRequestRule;
+    label: string;
+  }[] = [
     { key: 'require_code_owner_review', label: 'From code owners' },
     { key: 'dismiss_stale_reviews_on_push', label: 'Dismissed on push' },
     { key: 'require_last_push_approval', label: 'Covering the last push' },
@@ -187,7 +191,12 @@
     return ruleset.rules?.[key] === true ? ON : OFF;
   }
 
-  function flagOn(rule: Record<string, unknown> | undefined, key: string): string {
+  /**
+   * Typed on the rule it reads rather than on a bag of unknowns, so a field
+   * name that stops existing is a compile error rather than a control that
+   * quietly shows Off for ever.
+   */
+  function flagOn<T>(rule: T | undefined, key: keyof T): string {
     return rule?.[key] === true ? ON : OFF;
   }
 
@@ -327,6 +336,23 @@
     return `ruleset-${index}`;
   }
 </script>
+
+<!--
+  Every rule below is one row asking one on-or-off question, and the words
+  beside the control are the same words the control answers to. Written out nine
+  times they were typed twice each and kept in step by hand, which is how a row
+  comes to read one thing and announce another.
+
+  Declared out here rather than inside the form: a snippet that is a component's
+  direct child is one of its props, and this one belongs to nobody but the rows.
+-->
+{#snippet toggleRow(label: string, name: string, value: string, onSelect: (chosen: string) => void)}
+  <div class="ruleset-row">
+    <span class="ruleset-label">{label}</span>
+    <span class="ruleset-spacer"></span>
+    <SegmentedControl {name} {label} options={SWITCH} {value} {disabled} {onSelect} />
+  </div>
+{/snippet}
 
 <SyncDocumentForm
   heading="Rulesets"
@@ -468,66 +494,37 @@
 
       <div class="ruleset-rows">
         {#each SIMPLE_RULES as rule (rule.key)}
-          <div class="ruleset-row">
-            <span class="ruleset-label">{rule.label}</span>
-            <span class="ruleset-spacer"></span>
-            <SegmentedControl
-              name="{rowKey(index)}-{rule.key}"
-              label={rule.label}
-              options={SWITCH}
-              value={ruleOn(ruleset, rule.key)}
-              {disabled}
-              onSelect={(value) => patchRules(index, { [rule.key]: value === ON })}
-            />
-          </div>
+          {@render toggleRow(
+            rule.label,
+            `${rowKey(index)}-${rule.key}`,
+            ruleOn(ruleset, rule.key),
+            (chosen: string) => patchRules(index, { [rule.key]: chosen === ON }),
+          )}
         {/each}
 
-        <div class="ruleset-row">
-          <span class="ruleset-label">Restrict updates</span>
-          <span class="ruleset-spacer"></span>
-          <SegmentedControl
-            name="{rowKey(index)}-update"
-            label="Restrict updates"
-            options={SWITCH}
-            value={ruleset.rules?.update === undefined ? OFF : ON}
-            {disabled}
-            onSelect={(value) => toggleUpdate(index, value === ON)}
-          />
-        </div>
+        {@render toggleRow(
+          'Restrict updates',
+          `${rowKey(index)}-update`,
+          ruleset.rules?.update === undefined ? OFF : ON,
+          (chosen: string) => toggleUpdate(index, chosen === ON),
+        )}
 
         {#if ruleset.rules?.update !== undefined}
-          <div class="ruleset-row">
-            <span class="ruleset-label">Still allow fetch and merge</span>
-            <span class="ruleset-spacer"></span>
-            <SegmentedControl
-              name="{rowKey(index)}-fetch-and-merge"
-              label="Still allow fetch and merge"
-              options={SWITCH}
-              value={flagOn(
-                ruleset.rules.update as unknown as Record<string, unknown>,
-                'update_allows_fetch_and_merge',
-              )}
-              {disabled}
-              onSelect={(value) =>
-                patchRules(index, {
-                  update: { update_allows_fetch_and_merge: value === ON },
-                })}
-            />
-          </div>
+          {@render toggleRow(
+            'Still allow fetch and merge',
+            `${rowKey(index)}-fetch-and-merge`,
+            flagOn(ruleset.rules.update, 'update_allows_fetch_and_merge'),
+            (chosen: string) =>
+              patchRules(index, { update: { update_allows_fetch_and_merge: chosen === ON } }),
+          )}
         {/if}
 
-        <div class="ruleset-row">
-          <span class="ruleset-label">Require a pull request</span>
-          <span class="ruleset-spacer"></span>
-          <SegmentedControl
-            name="{rowKey(index)}-pull-request"
-            label="Require a pull request"
-            options={SWITCH}
-            value={ruleset.rules?.pull_request === undefined ? OFF : ON}
-            {disabled}
-            onSelect={(value) => togglePullRequest(index, value === ON)}
-          />
-        </div>
+        {@render toggleRow(
+          'Require a pull request',
+          `${rowKey(index)}-pull-request`,
+          ruleset.rules?.pull_request === undefined ? OFF : ON,
+          (chosen: string) => togglePullRequest(index, chosen === ON),
+        )}
       </div>
 
       {#if ruleset.rules?.pull_request !== undefined}
@@ -552,27 +549,15 @@
           </div>
 
           {#each REVIEW_FLAGS as flag (flag.key)}
-            <div class="ruleset-row">
-              <span class="ruleset-label">{flag.label}</span>
-              <span class="ruleset-spacer"></span>
-              <SegmentedControl
-                name="{rowKey(index)}-{flag.key}"
-                label={flag.label}
-                options={SWITCH}
-                value={flagOn(
-                  ruleset.rules.pull_request as unknown as Record<string, unknown>,
-                  flag.key,
-                )}
-                {disabled}
-                onSelect={(value) =>
-                  patchRules(index, {
-                    pull_request: {
-                      ...ruleset.rules.pull_request!,
-                      [flag.key]: value === ON,
-                    },
-                  })}
-              />
-            </div>
+            {@render toggleRow(
+              flag.label,
+              `${rowKey(index)}-${flag.key}`,
+              flagOn(ruleset.rules.pull_request, flag.key),
+              (chosen: string) =>
+                patchRules(index, {
+                  pull_request: { ...ruleset.rules.pull_request!, [flag.key]: chosen === ON },
+                }),
+            )}
           {/each}
 
           <!-- GitHub needs at least one, so the plan would be refused with
@@ -599,18 +584,12 @@
       {/if}
 
       <div class="ruleset-rows">
-        <div class="ruleset-row">
-          <span class="ruleset-label">Require status checks</span>
-          <span class="ruleset-spacer"></span>
-          <SegmentedControl
-            name="{rowKey(index)}-checks"
-            label="Require status checks"
-            options={SWITCH}
-            value={ruleset.rules?.required_status_checks === undefined ? OFF : ON}
-            {disabled}
-            onSelect={(value) => toggleChecks(index, value === ON)}
-          />
-        </div>
+        {@render toggleRow(
+          'Require status checks',
+          `${rowKey(index)}-checks`,
+          ruleset.rules?.required_status_checks === undefined ? OFF : ON,
+          (chosen: string) => toggleChecks(index, chosen === ON),
+        )}
       </div>
 
       {#if ruleset.rules?.required_status_checks !== undefined}
@@ -635,66 +614,42 @@
           </p>
 
           <div class="ruleset-rows">
-            <div class="ruleset-row">
-              <span class="ruleset-label">Branch up to date</span>
-              <span class="ruleset-spacer"></span>
-              <SegmentedControl
-                name="{rowKey(index)}-strict"
-                label="Branch up to date"
-                options={SWITCH}
-                value={flagOn(
-                  ruleset.rules.required_status_checks as unknown as Record<string, unknown>,
-                  'strict_required_status_checks_policy',
-                )}
-                {disabled}
-                onSelect={(value) =>
-                  patchRules(index, {
-                    required_status_checks: {
-                      ...ruleset.rules.required_status_checks!,
-                      strict_required_status_checks_policy: value === ON,
-                    },
-                  })}
-              />
-            </div>
+            {@render toggleRow(
+              'Branch up to date',
+              `${rowKey(index)}-strict`,
+              flagOn(ruleset.rules.required_status_checks, 'strict_required_status_checks_policy'),
+              (chosen: string) =>
+                patchRules(index, {
+                  required_status_checks: {
+                    ...ruleset.rules.required_status_checks!,
+                    strict_required_status_checks_policy: chosen === ON,
+                  },
+                }),
+            )}
 
-            <div class="ruleset-row">
-              <span class="ruleset-label">Not on a new branch</span>
-              <span class="ruleset-spacer"></span>
-              <SegmentedControl
-                name="{rowKey(index)}-on-create"
-                label="Not on a new branch"
-                options={SWITCH}
-                value={flagOn(
-                  ruleset.rules.required_status_checks as unknown as Record<string, unknown>,
-                  'do_not_enforce_on_create',
-                )}
-                {disabled}
-                onSelect={(value) =>
-                  patchRules(index, {
-                    required_status_checks: {
-                      ...ruleset.rules.required_status_checks!,
-                      do_not_enforce_on_create: value === ON,
-                    },
-                  })}
-              />
-            </div>
+            {@render toggleRow(
+              'Not on a new branch',
+              `${rowKey(index)}-on-create`,
+              flagOn(ruleset.rules.required_status_checks, 'do_not_enforce_on_create'),
+              (chosen: string) =>
+                patchRules(index, {
+                  required_status_checks: {
+                    ...ruleset.rules.required_status_checks!,
+                    do_not_enforce_on_create: chosen === ON,
+                  },
+                }),
+            )}
           </div>
         </div>
       {/if}
 
       <div class="ruleset-rows">
-        <div class="ruleset-row">
-          <span class="ruleset-label">Require code scanning</span>
-          <span class="ruleset-spacer"></span>
-          <SegmentedControl
-            name="{rowKey(index)}-scanning"
-            label="Require code scanning"
-            options={SWITCH}
-            value={ruleset.rules?.code_scanning === undefined ? OFF : ON}
-            {disabled}
-            onSelect={(value) => toggleScanning(index, value === ON)}
-          />
-        </div>
+        {@render toggleRow(
+          'Require code scanning',
+          `${rowKey(index)}-scanning`,
+          ruleset.rules?.code_scanning === undefined ? OFF : ON,
+          (chosen: string) => toggleScanning(index, chosen === ON),
+        )}
       </div>
 
       {#if ruleset.rules?.code_scanning !== undefined}
