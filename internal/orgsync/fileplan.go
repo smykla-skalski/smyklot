@@ -100,13 +100,19 @@ func PlanFiles(
 		return FilePlan{}, err
 	}
 
-	retired := retiredPresent(config, exclude, current)
+	// What the configuration says to remove, and then the part of it this
+	// repository still has. The first names the proposal and the second is the
+	// work: naming it after what is left to do would rename the branch the
+	// moment somebody deleted one of them by hand, abandoning the pull request
+	// open for the rest.
+	managed := retiredManaged(config, exclude)
+	retired := present(managed, current)
 
 	if err := refuseConflicts(desired, retired, current); err != nil {
 		return FilePlan{}, err
 	}
 
-	proposal := fileProposal(desired, retired)
+	proposal := fileProposal(desired, managed)
 
 	plan := FilePlan{Proposal: proposal}
 
@@ -218,35 +224,41 @@ func resolveFiles(
 	return resolved, nil
 }
 
-// retiredPresent is the retired paths a repository still has, sorted.
+// retiredManaged is the retired paths this repository has not asked to keep,
+// sorted.
 //
-// Sorted, because the answer must not depend on the order a tree happened to
-// arrive in: two plans of one state have to be one plan, or the digest that
-// decides whether a repository has settled means nothing.
-func retiredPresent(
-	config FileConfig,
-	exclude Excludes,
-	current map[string]CurrentFile,
-) []string {
-	present := make([]string, 0, len(config.Retired))
+// Sorted, because the answer must not depend on the order anything arrived in:
+// two plans of one state have to be one plan, or the digest that decides
+// whether a repository has settled means nothing.
+func retiredManaged(config FileConfig, exclude Excludes) []string {
+	managed := make([]string, 0, len(config.Retired))
 
 	for _, path := range config.Retired {
-		if exclude.Matches(path) {
-			// A repository that asked for a path to be left alone asked about
-			// that path, not about why it is being touched. The tool this
-			// replaces checked its exclusion list when writing files and not
-			// when removing them.
-			continue
-		}
-
-		if _, held := current[path]; held {
-			present = append(present, path)
+		// A repository that asked for a path to be left alone asked about that
+		// path, not about why it is being touched. The tool this replaces
+		// checked its exclusion list when writing files and not when removing
+		// them.
+		if !exclude.Matches(path) {
+			managed = append(managed, path)
 		}
 	}
 
-	slices.Sort(present)
+	slices.Sort(managed)
 
-	return present
+	return managed
+}
+
+// present narrows paths to the ones a repository still has.
+func present(paths []string, current map[string]CurrentFile) []string {
+	held := make([]string, 0, len(paths))
+
+	for _, path := range paths {
+		if _, has := current[path]; has {
+			held = append(held, path)
+		}
+	}
+
+	return held
 }
 
 // fileProposal names the branch a repository's file work goes on.

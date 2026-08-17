@@ -234,6 +234,27 @@ var _ = Describe("Planning files [Unit]", func() {
 				NotTo(Equal(plan(config, orgsync.FileOverride{}, current).Proposal))
 		})
 
+		// The same property as above, from the other side: naming the branch
+		// after what is left to do would rename it the moment somebody deleted
+		// one of the retired paths by hand, abandoning the pull request that is
+		// open for the rest.
+		It("does not move when a retired path is already gone", func() {
+			retiring := config
+			retiring.Retired = []string{".renovaterc", ".renovaterc.json"}
+
+			both := plan(retiring, orgsync.FileOverride{}, map[string]orgsync.CurrentFile{
+				".renovaterc":      held("{}"),
+				".renovaterc.json": held("{}"),
+			})
+			one := plan(retiring, orgsync.FileOverride{}, map[string]orgsync.CurrentFile{
+				".renovaterc": held("{}"),
+			})
+
+			Expect(subjects(both.Actions)).To(ContainElement(".renovaterc.json"))
+			Expect(subjects(one.Actions)).NotTo(ContainElement(".renovaterc.json"))
+			Expect(one.Proposal).To(Equal(both.Proposal))
+		})
+
 		It("differs where a repository adjusts the file", func() {
 			renovate := orgsync.FileConfig{Files: []orgsync.File{
 				file("renovate.json", `{"timezone": "UTC"}`),
