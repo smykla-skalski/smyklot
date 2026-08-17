@@ -1209,6 +1209,42 @@ var _ = Describe("Org sync [Unit]", func() {
 			Expect(stub.forcedPushes).To(BeZero())
 		})
 
+		// The plan refused a retired path that was a directory on the default
+		// branch. The tree the commit is built on is the proposal branch, a
+		// different tree that can hold a different thing there - and a tree
+		// entry removing a directory removes everything under it.
+		It("refuses to remove a path the branch has turned into a directory", func() {
+			target := grantContents()
+			stub.repoTree = `{"sha":"basetree","tree":[{"path":".renovaterc",` +
+				`"type":"blob","mode":"100644","sha":"old","size":2}],"truncated":false}`
+			configureKind(target, orgsync.KindFiles,
+				`{"files":[{"path":"CONTRIBUTING.md","content":"# Contributing\n"}],`+
+					`"retired":[".renovaterc"]}`)
+
+			plan(target)
+			computed, actions := livePlan(target)
+			approve(computed)
+
+			written, err := orgsync.DecodeFile(actions[0].Payload)
+			Expect(err).NotTo(HaveOccurred())
+			stub.branchRefs[written.Proposal] = "earliercommit"
+			stub.migrationTipTree = "branchtree"
+			stub.repoLevels = map[string]string{
+				"branchtree": `{"tree":[{"path":".renovaterc","type":"tree",` +
+					`"mode":"040000","sha":"d1"}]}`,
+			}
+
+			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+
+			Expect(stub.createdTrees).To(BeEmpty())
+
+			applied, planActions, err := service.store.GetSyncPlan(
+				GinkgoT().Context(), target.ID, computed.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(applied.State).To(Equal(orgsync.PlanFailed))
+			Expect(planActions[0].Error).To(ContainSubstring("not an ordinary file"))
+		})
+
 		It("keeps an open pull request rather than opening a second", func() {
 			target := grantContents()
 			configureKind(target, orgsync.KindFiles, contributing)

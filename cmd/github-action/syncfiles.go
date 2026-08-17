@@ -493,9 +493,20 @@ func (s *server) stillNeeded(
 			return nil, err
 		}
 
-		if found.Found {
-			wanted = append(wanted, file)
+		if !found.Found {
+			continue
 		}
+
+		// The plan refused a retired path that was a directory on the default
+		// branch. The tree this builds on is the proposal branch, which is a
+		// different tree and can hold a different thing there - and a tree
+		// entry removing a directory removes everything under it.
+		if !found.Entry.OrdinaryFile() {
+			return nil, fmt.Errorf("%w: %s", orgsync.ErrRepositoryConflict,
+				notAnOrdinaryFile(file.path, found.Entry.Mode))
+		}
+
+		wanted = append(wanted, file)
 	}
 
 	return wanted, nil
