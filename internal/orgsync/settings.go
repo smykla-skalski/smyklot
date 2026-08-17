@@ -118,31 +118,58 @@ func (c SettingsConfig) Validate() error {
 		return invalid("a repository must allow at least one way to merge")
 	}
 
-	// A wording no repository could ever accept. GitHub judges a commit
-	// wording against the merge strategy beside it and refuses the pair as a
-	// 422 on the whole request, so DiffSettings withholds one from a repository
-	// that has the strategy off - which is what keeps a squash-only repository
-	// from losing its whole settings change over a merge commit title. A
-	// configuration that turns the strategy off itself is asking for something
-	// impossible everywhere, and the place to say so is beside the field
-	// somebody typed rather than in every plan, silently.
+	// A setting no repository could ever accept. GitHub judges a commit wording
+	// against the merge strategy beside it, and a security feature against what
+	// it is built on, and refuses the pair as a 422 on the whole request - so
+	// DiffSettings withholds one from a repository that has the other off,
+	// which is what keeps a squash-only repository from losing its whole
+	// settings change over a merge commit title. A configuration that turns the
+	// other off itself is asking for something impossible everywhere, and the
+	// place to say so is beside the field somebody typed rather than in every
+	// plan, silently.
 
 	for _, field := range fields {
-		if field.requires == "" || !field.asking(c) {
+		if !field.asking(c) {
 			continue
 		}
 
-		strategy, known := byName[field.requires]
-		if !known {
-			continue
-		}
-		if value, _, configured := strategy.want(c); configured && value == false {
+		if under := turnedOff(byName, c, field); under != "" {
 			return invalid("%s needs %s, which this configuration turns off",
-				field.name, field.requires)
+				field.name, under)
 		}
 	}
 
 	return nil
+}
+
+// turnedOff names the first setting under this one that the configuration
+// switches off, however far under it that is.
+//
+// A chain is no more reachable for its length: push protection needs secret
+// scanning, which needs advanced security, and a configuration turning that
+// last one off puts the first out of reach as surely as turning off the one
+// directly beneath it. What is named is what was turned off rather than the
+// link in between, because that is the line somebody has to change.
+func turnedOff(
+	byName map[string]settingsField, config SettingsConfig, field settingsField,
+) string {
+	// One step per field in the table. A chain reaches each of them at most
+	// once, and a table that ever described a circle would hang here rather
+	// than answer.
+	for range byName {
+		under, known := byName[field.requires]
+		if !known {
+			return ""
+		}
+
+		if value, _, configured := under.want(config); configured && value == false {
+			return under.name
+		}
+
+		field = under
+	}
+
+	return ""
 }
 
 // CurrentSettings is a repository's settings as GitHub reports them.

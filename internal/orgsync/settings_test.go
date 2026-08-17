@@ -102,6 +102,15 @@ var _ = Describe("Settings configuration [Unit]", func() {
 		Entry("push protection with secret scanning off", orgsync.SettingsConfig{
 			SecretScanning: disabled(), SecretScanningPushProtection: enabled(),
 		}, "secret_scanning_push_protection needs secret_scanning"),
+
+		// And the far end of the chain, which is no more reachable for the
+		// distance: turning advanced security off takes secret scanning with
+		// it, and push protection goes with that. The answer names what the
+		// configuration turned off rather than the link in between, because
+		// that is the line somebody has to change
+		Entry("push protection with advanced security off", orgsync.SettingsConfig{
+			AdvancedSecurity: disabled(), SecretScanningPushProtection: enabled(),
+		}, "secret_scanning_push_protection needs advanced_security"),
 	)
 
 	// Only one direction needs anything underneath it. GitHub refuses a feature
