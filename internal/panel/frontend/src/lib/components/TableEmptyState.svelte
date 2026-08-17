@@ -19,7 +19,13 @@
   <strong>{title}</strong>
   <span>{description}</span>
   {#if actionLabel !== undefined && onAction !== undefined}
-    <button class="btn" type="button" onclick={onAction}>{actionLabel}</button>
+    <!-- The label is wrapped so `app.css` can trim it: a button centres its label
+         BOX, and the box carries the leading above the capitals and the room under
+         the baseline, which are never equal. Bare, this word sat 0.47px above the
+         middle of its own surface. -->
+    <button class="btn" type="button" onclick={onAction}>
+      <span class="button-label">{actionLabel}</span>
+    </button>
   {/if}
 </div>
 

@@ -1322,22 +1322,32 @@
       justify-items: end;
     }
 
+    /* In flow, and tall enough to be seen.
+       ------------------------------------
+       This used to fill the body it sits in - `position: absolute; inset: 0` -
+       which works only while something else is giving that body a height. Nothing
+       does: the rows are the height, they are what is missing, and the workspace
+       is sized to its content rather than to the window on purpose. So the body
+       measured zero, the row measured zero inside it, and a search that matched
+       nothing answered with a column header and a strip of background. Both
+       sections, and it was the failures one that got looked at.
+
+       The row carries the height itself now, which is also what makes the card
+       around it the size of an answer rather than the size of a header. */
     .history-table tbody .empty-row {
       background: var(--surface-base);
       border: 0;
       display: flex;
-      inset: 0;
-      position: absolute;
+      min-height: 9rem;
     }
 
     .history-table tbody .empty-row .empty-cell {
       align-items: center;
       display: flex;
+      flex: 1;
       grid-column: 1 / -1;
-      height: 100%;
       justify-content: center;
       padding: var(--space-6);
-      width: 100%;
     }
 
     .history-table tbody .virtual-row {
