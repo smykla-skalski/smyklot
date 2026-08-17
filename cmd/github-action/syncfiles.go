@@ -405,8 +405,21 @@ func commitFiles(
 		return "", nil
 	}
 
+	// Both, where a spent branch is being built past. GitHub squashes and
+	// rebases as well as merging, and after either of those the branch's tip is
+	// not in the default branch at all - so a commit built on the default
+	// branch does not descend from it, and moving the branch there is not a
+	// fast-forward. GitHub refuses that, and the repository is then stuck for
+	// ever, re-planning and re-failing every horizon. Naming the old tip as a
+	// second parent is what makes the move a fast-forward whichever way the
+	// repository merged, without forcing anything or removing anything.
+	parents := []string{parent}
+	if branch.BuildOn == "" && branch.Head != "" {
+		parents = append(parents, branch.Head)
+	}
+
 	commit, err := client.CreateCommit(
-		ctx, target.Owner, target.Name, fileCommitMessage, tree, parent)
+		ctx, target.Owner, target.Name, fileCommitMessage, tree, parents...)
 	if err != nil {
 		return "", err
 	}

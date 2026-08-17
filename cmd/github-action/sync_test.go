@@ -1288,12 +1288,18 @@ var _ = Describe("Org sync [Unit]", func() {
 
 			// On the default branch, not on the merged tip: what merged is in
 			// the default branch, so a commit built on the tip again would
-			// carry nothing. The move is still a fast-forward, because a commit
-			// on the default branch descends from what merged into it.
+			// carry nothing.
 			Expect(stub.createdTrees[0]).To(ContainSubstring(`"base_tree":"basetree"`))
 			Expect(stub.createdCommits[0]).To(ContainSubstring(`"basecommit"`))
 			Expect(stub.forcedPushes).To(BeZero())
 			Expect(stub.branchRefs).To(HaveKey(written.Proposal))
+
+			// And on the old tip as well, which is what makes moving the branch
+			// there a fast-forward. GitHub squashes and rebases as well as
+			// merging, and after either of those the tip is not in the default
+			// branch at all - so without this the move is refused and the
+			// repository is stuck re-planning and re-failing for ever.
+			Expect(stub.createdCommits[0]).To(ContainSubstring(`"theircommit"`))
 		})
 
 		// The plan refused a retired path that was a directory on the default

@@ -368,6 +368,49 @@ jobs:
 			Entry("a quoted key", "name: build\n\"on\": push\n"),
 		)
 
+		// An anchor belongs to the place rather than to the value that was
+		// there. Dropped by a replacement, every `*alias` naming it referred to
+		// nothing - so the merge produced a file that is not YAML at all, and
+		// the bot opened a pull request turning somebody's workflow into a file
+		// GitHub will not load.
+		DescribeTable("keeps a file readable when it replaces an anchored value",
+			func(template string, spec filemerge.Spec) {
+				merged, err := filemerge.Apply("ci.yaml", []byte(template), spec)
+				Expect(err).NotTo(HaveOccurred())
+
+				// Read back rather than matched: a dangling alias is a file
+				// that parses nowhere, and only parsing it says so.
+				var back any
+				Expect(yaml.Unmarshal(merged, &back)).To(Succeed())
+			},
+
+			Entry("a scalar",
+				"version: &v \"1.2.3\"\nimage: my/app\ntag: *v\n",
+				filemerge.Spec{Overrides: overrides(`{"version": "2.0.0"}`)}),
+			Entry("a list, through a rule",
+				"labels: &l\n  - a\nother: *l\n",
+				filemerge.Spec{
+					Overrides: overrides(`{"labels": ["c"]}`),
+					Arrays: []filemerge.ArrayRule{
+						{Path: "$.labels", Strategy: filemerge.ArrayAppend},
+					},
+				}),
+			Entry("a mapping",
+				"defaults: &d\n  runs-on: ubuntu\nuse: *d\n",
+				filemerge.Spec{Overrides: overrides(`{"defaults": {"runs-on": "macos"}}`)}),
+		)
+
+		// Nothing can keep this one: the key carrying the anchor is gone, and
+		// what referred to it cannot be left naming nothing.
+		It("refuses to remove an anchor something still refers to", func() {
+			_, err := filemerge.Apply("ci.yaml",
+				[]byte("defaults: &d\n  runs-on: ubuntu\njobs:\n  build:\n    <<: *d\n"),
+				filemerge.Spec{Overrides: overrides(`{"defaults": null}`)})
+
+			Expect(err).To(MatchError(filemerge.ErrUnwritable))
+			Expect(err.Error()).To(ContainSubstring(`"*d"`))
+		})
+
 		// An alias is what the template says is at that path. Read as the node
 		// it literally is, a list rule addressing something reached through one
 		// found no mapping, took the template as carrying no list, and appended

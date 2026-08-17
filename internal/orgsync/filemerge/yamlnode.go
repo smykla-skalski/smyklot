@@ -77,6 +77,10 @@ func mergeYAML(template []byte, spec Spec) ([]byte, error) {
 		return nil, err
 	}
 
+	if err := refuseDanglingAliases(document); err != nil {
+		return nil, err
+	}
+
 	return encodeYAMLDocument(file)
 }
 
@@ -161,6 +165,49 @@ func refuseRepeatedKeys(node *yaml.Node) error {
 
 	for _, child := range node.Content {
 		if err := refuseRepeatedKeys(child); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// refuseDanglingAliases stops on an alias whose anchor the merge took away.
+//
+// A file is written with `&name` in one place and `*name` in another, and an
+// override that removes the first leaves the second naming nothing - which is
+// not a YAML file at all. A replacement keeps the anchor where it was, so what
+// reaches here is what nothing could keep: a key deleted outright while
+// something still refers to it. Refusing beats opening a pull request that
+// turns somebody's workflow into a file GitHub will not load.
+func refuseDanglingAliases(root *yaml.Node) error {
+	anchors := map[string]struct{}{}
+	collectAnchors(root, anchors)
+
+	return findDanglingAlias(root, anchors)
+}
+
+func collectAnchors(node *yaml.Node, into map[string]struct{}) {
+	if node.Anchor != "" {
+		into[node.Anchor] = struct{}{}
+	}
+
+	for _, child := range node.Content {
+		collectAnchors(child, into)
+	}
+}
+
+func findDanglingAlias(node *yaml.Node, anchors map[string]struct{}) error {
+	if node.Kind == yaml.AliasNode {
+		if _, held := anchors[node.Value]; !held {
+			return fmt.Errorf(
+				"%w: it would leave %q referring to an anchor the merge removed",
+				ErrUnwritable, "*"+node.Value)
+		}
+	}
+
+	for _, child := range node.Content {
+		if err := findDanglingAlias(child, anchors); err != nil {
 			return err
 		}
 	}
@@ -293,6 +340,11 @@ func keyIndex(mapping *yaml.Node, key string) int {
 // that whatever was written beside it stays written beside it.
 func setKey(mapping *yaml.Node, key string, value *yaml.Node) {
 	if at := keyIndex(mapping, key); at >= 0 {
+		// The anchor belongs to the place rather than to the value that was
+		// there: aliases elsewhere in the file name it, and a replacement that
+		// dropped it left them naming nothing - which is a file that does not
+		// parse, written into somebody's repository by a bot.
+		value.Anchor = mapping.Content[at+1].Anchor
 		mapping.Content[at+1] = value
 
 		return

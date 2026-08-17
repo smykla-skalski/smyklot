@@ -111,7 +111,15 @@ const (
 // something nobody implements would otherwise be written into a repository with
 // the braces still in it, which is how the tool this replaces would have
 // handled a typo in the one placeholder it had.
-var placeholder = regexp.MustCompile(`\{\{[^{}]*\}\}`)
+//
+// Shaped like the placeholders this has rather than like every pair of braces,
+// because doubled braces are ordinary text in the files an organization shares
+// most: `${{ github.sha }}` in a workflow, `{{depName}}` in a Renovate
+// configuration, `{{ .Values.image }}` in a chart. Read as placeholders those
+// were refused, so the one kind of file this feature exists for could not be
+// configured at all. Upper case and underscores, and never after a `$`, which
+// is what tells Smyklot's own from somebody else's.
+var placeholder = regexp.MustCompile(`(\$?)\{\{([A-Z][A-Z0-9_]*)\}\}`)
 
 // placeholders are what a template may ask for.
 var placeholders = map[string]struct{}{
@@ -263,9 +271,16 @@ func (f File) validate(index int, seen foldedNames) error {
 }
 
 func validatePlaceholders(file File) error {
-	for _, found := range placeholder.FindAllString(file.Content, -1) {
-		if _, known := placeholders[found]; !known {
-			return invalid("file %q asks for %s, which nothing fills in", file.Path, found)
+	for _, found := range placeholder.FindAllStringSubmatch(file.Content, -1) {
+		// A `$` in front makes it somebody else's expression - a workflow's
+		// `${{ GITHUB_TOKEN }}` reaches the repository as it is written.
+		if found[1] == "$" {
+			continue
+		}
+
+		if _, known := placeholders["{{"+found[2]+"}}"]; !known {
+			return invalid(
+				"file %q asks for {{%s}}, which nothing fills in", file.Path, found[2])
 		}
 	}
 

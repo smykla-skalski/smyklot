@@ -28,6 +28,42 @@ var _ = Describe("File configuration [Unit]", func() {
 		}.Validate()).To(Succeed())
 	})
 
+	// Doubled braces are ordinary text in the files an organization shares
+	// most. Read as placeholders, they were refused - so a workflow, which is
+	// the canonical shared file and the one this feature exists for, could not
+	// be configured at all.
+	DescribeTable("accepts braces that are somebody else's",
+		func(path, content string) {
+			Expect(orgsync.FileConfig{Files: []orgsync.File{file(path, content)}}.Validate()).
+				To(Succeed())
+		},
+
+		Entry("a workflow expression", ".github/workflows/ci.yaml",
+			"jobs:\n  build:\n    steps:\n      - run: echo ${{ github.sha }}\n"),
+		Entry("a workflow secret", ".github/workflows/ci.yaml",
+			"        token: ${{ secrets.GITHUB_TOKEN }}\n"),
+		Entry("a Renovate commit message", "renovate.json",
+			`{"commitMessage": "chore: {{depName}} to {{newVersion}}"}`),
+		Entry("a chart value", "chart.yaml", "image: {{ .Values.image }}\n"),
+		Entry("a Go template", "README.md", "Hello {{ .Name }}\n"),
+
+		// Smyklot's own, spelled the way somebody else's expression is. The `$`
+		// is what says whose it is.
+		Entry("the branch placeholder inside an expression", ".github/workflows/ci.yaml",
+			"        ref: ${{ DEFAULT_BRANCH }}\n"),
+	)
+
+	// The typo this rule is for is still caught: shaped like one of Smyklot's,
+	// spelled as none of them.
+	It("refuses a placeholder of its own shape that it cannot fill", func() {
+		err := orgsync.FileConfig{
+			Files: []orgsync.File{file("README.md", "See {{DEFAULT_BRANC}}.")},
+		}.Validate()
+
+		Expect(err).To(MatchError(orgsync.ErrInvalidConfig))
+		Expect(err.Error()).To(ContainSubstring("asks for {{DEFAULT_BRANC}}"))
+	})
+
 	It("fills in the branch a repository calls its own", func() {
 		Expect(orgsync.Render("See {{DEFAULT_BRANCH}} for more.", "trunk")).
 			To(Equal("See trunk for more."))
