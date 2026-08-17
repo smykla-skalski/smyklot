@@ -160,9 +160,13 @@ var _ = Describe("File configuration [Unit]", func() {
 				"is not one of the files synchronized"),
 			Entry("two for one file",
 				orgsync.FileOverride{Merges: []orgsync.FileMerge{
-					{Path: "renovate.json"}, {Path: "renovate.json"},
+					{Path: "renovate.json", Spec: filemerge.Spec{Overrides: []byte(`{"a":1}`)}},
+					{Path: "renovate.json", Spec: filemerge.Spec{Overrides: []byte(`{"b":2}`)}},
 				}},
 				"is adjusted twice"),
+			Entry("one that merges nothing",
+				orgsync.FileOverride{Merges: []orgsync.FileMerge{{Path: "renovate.json"}}},
+				"nothing is merged without overrides"),
 			Entry("a merge the file could not take",
 				orgsync.FileOverride{Merges: []orgsync.FileMerge{{
 					Path: "renovate.json",

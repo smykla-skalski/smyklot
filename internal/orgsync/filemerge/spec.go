@@ -129,8 +129,21 @@ type Spec struct {
 // Empty reports a spec that composes nothing, so the template is what the
 // repository should hold.
 func (s Spec) Empty() bool {
-	return s.Strategy == "" && len(s.Overrides) == 0 &&
+	return s.Strategy == "" && !s.adjusts() &&
 		len(s.Arrays) == 0 && !s.Deduplicate && len(s.Sections) == 0
+}
+
+// adjusts reports overrides that say something.
+//
+// Three spellings arrive for saying nothing - absent, null, and the empty
+// object - and all three mean the same thing. Reading one of them as an
+// adjustment would run the merge for it, and running the merge re-renders the
+// file: a YAML template would come back with its keys reordered and its
+// comments gone, proposed to a repository as a change nobody asked for.
+func (s Spec) adjusts() bool {
+	document := strings.TrimSpace(string(s.Overrides))
+
+	return document != "" && document != "null" && document != "{}"
 }
 
 // Apply builds the copy of a template a repository should hold.
@@ -241,6 +254,14 @@ func (s Spec) validateStructured() error {
 		return fmt.Errorf(
 			"%w: nothing is deduplicated without a list rule, because a list with no "+
 				"rule is replaced whole", ErrInvalidSpec)
+	}
+
+	// A merge that merges nothing is a row somebody filled in half of. Refused
+	// rather than run: running it would re-render the file and propose a
+	// reordered, comment-stripped copy of it as a change.
+	if !s.adjusts() && len(s.Arrays) == 0 {
+		return fmt.Errorf(
+			"%w: nothing is merged without overrides or a list rule", ErrInvalidSpec)
 	}
 
 	return s.validateArrays()

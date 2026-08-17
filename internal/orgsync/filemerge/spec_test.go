@@ -69,6 +69,15 @@ var _ = Describe("Validating a merge [Unit]", func() {
 		Entry("deduplication with no list to deduplicate",
 			filemerge.Spec{Overrides: overrides(`{}`), Deduplicate: true},
 			"renovate.json", "nothing is deduplicated without a list rule"),
+
+		// Running it would re-render the file and propose a reordered,
+		// comment-stripped copy of it as a change nobody asked for.
+		Entry("a merge with nothing to merge",
+			filemerge.Spec{Strategy: filemerge.StrategyDeep},
+			"renovate.json", "nothing is merged without overrides"),
+		Entry("overrides that say nothing",
+			filemerge.Spec{Strategy: filemerge.StrategyDeep, Overrides: overrides(`null`)},
+			"renovate.json", "nothing is merged without overrides"),
 		Entry("a list strategy this version does not know",
 			filemerge.Spec{Arrays: []filemerge.ArrayRule{{Path: "$.a", Strategy: "merge"}}},
 			"renovate.json", `unknown strategy "merge"`),
