@@ -2667,22 +2667,6 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 		"/panel/inbox/",
 		"/panel/i/smykla-skalski/history/audit/",
 		"/panel/root/access/users/",
-		// These four the router matches and `route-guard.ts` then refuses, so the
-		// shell is served and the panel renders its own not-found page.
-		//
-		// The server used to refuse them outright, from a second copy of the route
-		// grammar written in Go - the copy that also cost the queue its reloads,
-		// because a route added to `src/routes` was needed in two places and landed
-		// in one. The copy is gone and the router's own table decides, which is
-		// exact for every address the panel links to and coarser than the guard for
-		// these: a view takes a trailing segment here, and the guard is what knows
-		// that settings hosts no dialog and history has two sections. The reader
-		// still gets the right page; what is lost is the 404 on the wire for an
-		// address that has to be typed by hand to reach.
-		"/panel/i/smykla-skalski/settings/anything",
-		"/panel/i/smykla-skalski/history/unknown",
-		"/panel/root/installations/smykla-skalski/settings/anything",
-		"/panel/root/installations/smykla-skalski/history/unknown",
 	} {
 		response := harness.request(t, http.MethodGet, path, nil, nil)
 		body := response.Body.String()
@@ -2731,6 +2715,15 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 		"/panel/i/smykla-skalski/repositories/api-gateway/file/extra",
 		"/panel/root/access/users/octocat/ban/extra",
 		"/panel/smykla-skalski/repositories",
+		// Nothing follows a view that hosts no dialog, and history takes one of
+		// two sections. Both are the route tree's to say, and it says them: there
+		// is no route these resolve to, so the refusal is on the wire rather than
+		// drawn by the panel after a 200.
+		"/panel/i/smykla-skalski/settings/anything",
+		"/panel/i/smykla-skalski/sync/anything",
+		"/panel/i/smykla-skalski/history/unknown",
+		"/panel/root/installations/smykla-skalski/settings/anything",
+		"/panel/root/installations/smykla-skalski/history/unknown",
 		"/panel/auth/settings",
 		"/panel/webhook/history",
 		"/panel/i/smykla-skalski/help",

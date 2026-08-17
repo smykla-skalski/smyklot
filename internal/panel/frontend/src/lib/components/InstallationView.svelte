@@ -1,13 +1,22 @@
 <script lang="ts">
-  import { page } from '$app/state';
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
   import { getPanelSession, type PanelSession } from '$lib/session.svelte';
   import type { TargetSettingsInput } from '$lib/types';
-  import Plate from '$lib/components/Plate.svelte';
+  import Plate from './Plate.svelte';
+
+  /**
+   * Which of an installation's views to draw.
+   *
+   * Passed in rather than read from the address, because there is no longer one
+   * address that reaches all of these: a view that hosts a dialog is routed with
+   * the segments that follow it, one that hosts none is routed without them, and
+   * history is routed with its section. That is what makes an address like
+   * `/i/acme/settings/anything` resolve to nothing and answer 404 from the wire.
+   */
+  const { view }: { view: string } = $props();
 
   const session = getPanelSession();
   const queryClient = useQueryClient();
-  const view = $derived(page.params.view as string);
   const targetSettingsMutation = createMutation(() => ({
     mutationFn: ({ targetId, input }: { targetId: string; input: TargetSettingsInput }) =>
       session.api.updateTargetSettings(targetId, input),
@@ -58,7 +67,7 @@
 {#if session.selectedTarget !== null}
   {#if view === 'settings'}
     <div id="settings-panel">
-      {#await import('$lib/components/TargetSettings.svelte')}
+      {#await import('./TargetSettings.svelte')}
         {@render loadingView('settings')}
       {:then { default: TargetSettings }}
         {#key session.selectedTarget.id}
@@ -74,7 +83,7 @@
     </div>
   {:else if view === 'repositories'}
     <div id="repositories-panel">
-      {#await import('$lib/components/RepositoryList.svelte')}
+      {#await import('./RepositoryList.svelte')}
         {@render loadingView('repositories')}
       {:then { default: RepositoryList }}
         {#key session.selectedTarget.id}
@@ -97,7 +106,7 @@
     </div>
   {:else if view === 'sync'}
     <div id="sync-panel">
-      {#await import('$lib/components/SyncView.svelte')}
+      {#await import('./SyncView.svelte')}
         {@render loadingView('sync')}
       {:then { default: SyncView }}
         {#key session.selectedTarget.id}
@@ -116,7 +125,7 @@
     </div>
   {:else if view === 'users' || view === 'invitations'}
     <div id="access-panel">
-      {#await import('$lib/components/UserManagement.svelte')}
+      {#await import('./UserManagement.svelte')}
         {@render loadingView('access')}
       {:then { default: UserManagement }}
         {#key session.selectedTarget.id}
@@ -145,7 +154,7 @@
     </div>
   {:else if view === 'history'}
     <div id="history-panel">
-      {#await import('$lib/components/HistoryPanel.svelte')}
+      {#await import('./HistoryPanel.svelte')}
         {@render loadingView('history')}
       {:then { default: HistoryPanel }}
         {#key session.selectedTarget.id}

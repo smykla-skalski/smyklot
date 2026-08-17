@@ -44,23 +44,32 @@ export interface RouteDialog {
 }
 
 /**
- * The views a dialog can hang off, named as the panel's own routes name them.
+ * The installation views a dialog can hang off.
  *
- * `access-users` and `access-invitations` are the Root console's tables. They
- * take the same grammar as an installation's, because they list the same things
- * and a Root reading a link should not have to learn a second shape.
+ * A list rather than a predicate because the routes are built from it: a view
+ * that hosts no dialog has no route with anything after it, so an address that
+ * puts something there resolves to nothing and is answered 404 by the server
+ * rather than 200 and a not-found page drawn by the browser.
  */
-export type DialogHost =
-  'repositories' | 'users' | 'invitations' | 'access-users' | 'access-invitations';
+export const DIALOG_HOST_VIEWS = ['repositories', 'users', 'invitations'] as const;
+
+/**
+ * The Root console's own tables, which take the same grammar as an
+ * installation's because they list the same things and a Root reading a link
+ * should not have to learn a second shape.
+ */
+export const ACCESS_DIALOG_HOSTS = ['access-users', 'access-invitations'] as const;
+
+/** The views a dialog can hang off, named as the panel's own routes name them. */
+export type DialogHost = (typeof DIALOG_HOST_VIEWS)[number] | (typeof ACCESS_DIALOG_HOSTS)[number];
+
+const dialogHosts: ReadonlySet<string> = new Set<string>([
+  ...DIALOG_HOST_VIEWS,
+  ...ACCESS_DIALOG_HOSTS,
+]);
 
 export function isDialogHost(view: string): view is DialogHost {
-  return (
-    view === 'repositories' ||
-    view === 'users' ||
-    view === 'invitations' ||
-    view === 'access-users' ||
-    view === 'access-invitations'
-  );
+  return dialogHosts.has(view);
 }
 
 /**

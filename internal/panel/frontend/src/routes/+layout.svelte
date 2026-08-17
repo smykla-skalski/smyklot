@@ -75,7 +75,10 @@
   const { children } = $props();
 
   $effect(() => {
-    session.syncRouteContext(page.params.view, page.params.rest);
+    // Reads the path itself, so it does not depend on which of the view routes
+    // matched or what that route happens to call its parameters.
+    void page.url.pathname;
+    session.syncRouteContext();
   });
 
   $effect(() => {

@@ -189,6 +189,13 @@ func TestPanelRoutesServeEveryPanelAddress(t *testing.T) {
 		"/i/acme/repositories//file",
 		"/i/acme/repositories/api-gateway/file/extra",
 		"/i/acme/inbox",
+		// A view that hosts no dialog has no route with anything after it, and
+		// history's section has to be one of the two there are.
+		"/i/acme/settings/anything",
+		"/i/acme/sync/anything",
+		"/i/acme/history/everything",
+		"/root/installations/acme/settings/anything",
+		"/root/installations/acme/history/everything",
 		"/invite/" + strings.Repeat("a", 42),
 		"/invite/" + strings.Repeat("!", 43),
 		"/nowhere",

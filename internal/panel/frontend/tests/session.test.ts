@@ -103,7 +103,7 @@ describe('PanelSession [Unit]', () => {
     session.selectedId = 'target-1';
     routePage.url = new URL('https://panel.example/i/acme/repositories');
     routePage.params = { account: 'acme', view: 'repositories' };
-    session.syncRouteContext(routePage.params.view, routePage.params.rest);
+    session.syncRouteContext();
 
     session.enterRoot();
     expect(navigation.goto).toHaveBeenLastCalledWith('/root', { replaceState: false });
@@ -112,7 +112,7 @@ describe('PanelSession [Unit]', () => {
     // workspace context the Return action promises to restore.
     routePage.url = new URL('https://panel.example/root/installations/acme/settings');
     routePage.params = { account: 'acme', view: 'settings' };
-    session.syncRouteContext(routePage.params.view, routePage.params.rest);
+    session.syncRouteContext();
     session.returnToPanel();
 
     expect(navigation.goto).toHaveBeenLastCalledWith('/i/acme/repositories', {
@@ -127,7 +127,7 @@ describe('PanelSession [Unit]', () => {
     session.selectedId = 'target-1';
     routePage.url = new URL('https://panel.example/i/acme/history/failures');
     routePage.params = { account: 'acme', view: 'history', rest: 'failures' };
-    session.syncRouteContext('history', 'failures');
+    session.syncRouteContext();
     routePage.url = new URL('https://panel.example/inbox');
     routePage.params = {};
 

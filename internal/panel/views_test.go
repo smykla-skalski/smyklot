@@ -104,7 +104,9 @@ func TestEveryBrowserViewHasSomethingToRender(t *testing.T) {
 	}{
 		{
 			"PANEL_VIEWS",
-			"frontend/src/routes/i/[account]/[view=panelView]/[...rest=dialogPath]/+page.svelte",
+			// The routes are thin now - three of them, one per shape of address -
+			// and the switch they all render lives here.
+			"frontend/src/lib/components/InstallationView.svelte",
 		},
 		{
 			"ROOT_INSTALLATION_VIEWS",

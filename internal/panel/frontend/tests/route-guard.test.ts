@@ -1,36 +1,50 @@
 import { describe, expect, it } from 'vitest';
 
-import { guardPanelViewRest, guardRootAccessRest } from '../src/lib/route-guard.ts';
+import {
+  guardDialogRest,
+  guardHistorySection,
+  guardRootAccessRest,
+} from '../src/lib/route-guard.ts';
 
-describe('panel view route guard', () => {
-  it('accepts base views and known path dialogs', () => {
-    expect(() => guardPanelViewRest('settings', undefined, '/i/acme/settings')).not.toThrow();
-    expect(() =>
-      guardPanelViewRest(
-        'repositories',
-        'api-gateway/commands',
-        '/i/acme/repositories/api-gateway/commands',
-      ),
-    ).not.toThrow();
-    expect(() =>
-      guardPanelViewRest('users', 'octocat/history', '/i/acme/users/octocat/history'),
-    ).not.toThrow();
+/**
+ * What the guards are left with, now that the routes carry the rest.
+ *
+ * A view that hosts no dialog has no route with anything after it, and history's
+ * section is matched by the route rather than read here - so those addresses no
+ * longer reach a load function at all, and the server refuses them from the
+ * generated manifest before the panel loads. `server_test.go` is where that is
+ * checked. What is still this side's to decide is whether the segments name a
+ * dialog the host actually knows, because that is made of names people chose.
+ */
+describe('panel dialog route guard', () => {
+  it('accepts a host with no dialog open and the dialogs it knows', () => {
+    expect(() => guardDialogRest('repositories', undefined)).not.toThrow();
+    expect(() => guardDialogRest('repositories', 'api-gateway/commands')).not.toThrow();
+    expect(() => guardDialogRest('users', 'octocat/history')).not.toThrow();
   });
 
-  it('rejects trailing segments a view cannot render', () => {
-    expect(() => guardPanelViewRest('settings', 'extra', '/i/acme/settings/extra')).toThrow();
-    expect(() =>
-      guardPanelViewRest(
-        'repositories',
-        'api-gateway/unknown',
-        '/i/acme/repositories/api-gateway/unknown',
-      ),
-    ).toThrow();
-    expect(() => guardPanelViewRest('history', 'unknown', '/i/acme/history/unknown')).toThrow();
+  it('rejects segments the host cannot open', () => {
+    expect(() => guardDialogRest('repositories', 'api-gateway/unknown')).toThrow();
+    expect(() => guardDialogRest('users', 'octocat/not-an-action')).toThrow();
   });
 
-  it('redirects bare history to its canonical audit address', () => {
-    expect(() => guardPanelViewRest('history', undefined, '/i/acme/history')).toThrow();
+  /* The route already refuses these, so the guard is never asked. It answers
+     the same way regardless, because a guard that depends on its caller having
+     checked first is a guard that stops being true when the caller moves. */
+  it('rejects a view that hosts no dialog', () => {
+    expect(() => guardDialogRest('settings', 'extra')).toThrow();
+    expect(() => guardDialogRest('history', 'unknown')).toThrow();
+  });
+});
+
+describe('history section guard', () => {
+  it('sends a bare history address to its first table', () => {
+    expect(() => guardHistorySection(undefined, '/i/acme/history')).toThrow();
+  });
+
+  it('leaves a named section alone', () => {
+    expect(() => guardHistorySection('audit', '/i/acme/history/audit')).not.toThrow();
+    expect(() => guardHistorySection('failures', '/i/acme/history/failures')).not.toThrow();
   });
 });
 

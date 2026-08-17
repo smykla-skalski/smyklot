@@ -22,10 +22,9 @@ import type { SessionEnded } from './panel-session';
 import { DEFAULT_THEME_DISPLAY, isThemeDisplay, type ThemeDisplay } from './preferences';
 import { createPrefsSync, type PrefsSync } from './preferences-sync';
 import {
-  PANEL_VIEWS,
-  ROOT_INSTALLATION_VIEWS,
   panelDocumentTitle,
   panelRoutePath,
+  parsePanelRoute,
   rootSection,
   rootSectionRoute,
   type HistorySection,
@@ -141,63 +140,59 @@ export class PanelSession {
     return page.url.pathname.startsWith(`${this.base}/invite/`);
   }
 
+  /**
+   * The address, read from the path rather than from the route's parameters.
+   *
+   * A parameter is only there if the route that matched happens to name one, and
+   * which route matched is a detail of how `src/routes` is laid out: a view that
+   * hosts a dialog is routed with the segments after it, one that hosts none is
+   * routed without them, and history is routed by name with its section. Reading
+   * `params.view` tied these getters to that shape and broke the moment it
+   * changed - the installation's history came back as `settings`, and the
+   * console's came back as the Root console's own history page.
+   *
+   * The path says the same thing under every shape, and `parsePanelRoute` is the
+   * panel's one reading of it.
+   */
+  private get parsedRoute(): PanelRoute | null {
+    return parsePanelRoute(this.base, page.url.pathname);
+  }
+
   get currentView(): PanelView {
-    return (page.params.view as PanelView | undefined) ?? this.lastScopedView;
+    const route = this.parsedRoute;
+
+    return route !== null && 'view' in route ? route.view : this.lastScopedView;
   }
 
   get currentHistorySection(): HistorySection {
-    const section = page.params.section as HistorySection | undefined;
-    if (section === 'audit' || section === 'failures') return section;
-    const rest = page.params.rest;
-    if (typeof rest === 'string' && (rest === 'audit' || rest === 'failures')) return rest;
+    const route = this.parsedRoute;
+    if (route !== null && 'section' in route && route.section !== undefined) return route.section;
+
     return this.lastScopedHistorySection;
   }
 
-  syncRouteContext(view: string | undefined, rest: string | undefined): void {
+  syncRouteContext(): void {
     if (this.isRootMode || this.isInbox || this.isInvitation) return;
-    const scoped = PANEL_VIEWS.find((candidate) => candidate === view);
-    if (scoped === undefined) return;
-    this.lastScopedView = scoped;
-    if (view === 'history' && (rest === 'audit' || rest === 'failures')) {
-      this.lastScopedHistorySection = rest;
+    const route = this.parsedRoute;
+    if (route === null || !('view' in route)) return;
+    this.lastScopedView = route.view;
+    if (route.view === 'history' && route.section !== undefined) {
+      this.lastScopedHistorySection = route.section;
     }
   }
 
+  /**
+   * Read from the path, for the reason `parsedRoute` gives: which parameters
+   * exist depends on which route matched, and the console's addresses are now
+   * spread across three of them. Reading `params.section` sent an installation's
+   * history to the Root console's own history page, because both routes call
+   * that parameter `section`.
+   */
   get currentRootRoute(): RootRoute {
     if (!this.isRootMode) return { rootView: 'overview' };
-    const params = page.params;
-    if (params.view !== undefined) {
-      const account = params.account as string;
-      // The console renders a subset of an installation's views; anything
-      // outside it is not an address here, so the catalog is where that lands.
-      const view = ROOT_INSTALLATION_VIEWS.find((candidate) => candidate === params.view);
-      if (view === undefined) return { rootView: 'installations' };
+    const route = this.parsedRoute;
 
-      const route: RootRoute = { rootView: 'installation', account, view };
-      if (params.rest !== undefined) {
-        const rest = params.rest as string;
-        if (view === 'history' && (rest === 'audit' || rest === 'failures')) {
-          return { ...route, section: rest };
-        }
-      }
-      return route;
-    }
-    if (params.section === 'users') return { rootView: 'access-users' };
-    if (params.section === 'invitations') return { rootView: 'access-invitations' };
-    if (params.section === 'audit') return { rootView: 'history-audit' };
-    if (params.section === 'failures') return { rootView: 'history-failures' };
-    if (page.url.pathname === `${this.base}/root/installations`)
-      return { rootView: 'installations' };
-    if (page.url.pathname === `${this.base}/root/settings`) return { rootView: 'settings' };
-    /* The queue's three addresses. `params.id` alone would be enough to name the
-       request page, but every other branch here reads the path, and one of these
-       three has no parameter at all - so they are read the same way, together. */
-    if (page.url.pathname === `${this.base}/root/queue`) return { rootView: 'queue' };
-    if (page.url.pathname === `${this.base}/root/queue/recent`) return { rootView: 'queue-recent' };
-    if (page.url.pathname.startsWith(`${this.base}/root/queue/request/`)) {
-      return { rootView: 'queue-request', request: (page.params.id as string | undefined) ?? '' };
-    }
-    return { rootView: 'overview' };
+    return route !== null && 'rootView' in route ? route : { rootView: 'overview' };
   }
 
   get rootValue(): RootSection {

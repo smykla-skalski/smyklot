@@ -3496,6 +3496,19 @@ async function respondError(
   res.end(page);
 }
 
+/**
+ * Deliberately still reading Sec-Fetch-Dest as authoritative, unlike
+ * `wantsDocument` in `internal/panel/error_page.go`, which was corrected because a
+ * service worker forwarding a navigation loses the destination.
+ *
+ * Matching it here would be right, and it is what should happen - but it would
+ * route dev navigations into `renderErrorDocument`, which has not worked since the
+ * SvelteKit migration: it renders `src/app.html`, and that file now carries
+ * SvelteKit's own `%sveltekit.head%` and `%sveltekit.body%` placeholders, which only
+ * SvelteKit substitutes. The page it produces boots nothing. Answering with JSON is
+ * the wrong shape; answering with a shell that cannot run is worse, so this stays as
+ * it is until the mock can borrow the dev server's rendered shell.
+ */
 function wantsDocument(req: IncomingMessage): boolean {
   const destination = req.headers['sec-fetch-dest'];
   if (typeof destination === 'string' && destination !== '') return destination === 'document';
