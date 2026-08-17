@@ -13,19 +13,24 @@ import (
 // an address is answered with, which is why the two have to agree.
 const panelViewsSource = "frontend/src/lib/routes.ts"
 
-// TestEveryBrowserViewIsServedOnReload holds this package's grammar to the
+// TestEveryBrowserViewIsServedOnReload holds what the server answers to the
 // frontend's list of views.
 //
-// Three copies of that list exist by necessity - the browser's, the SvelteKit
-// param matcher's, and this one - and the matcher already derives from the
-// first. This is the third, and it drifted: the sync view was built, routed and
-// tested in the browser while a reload of its address answered with the
-// not-found page, because nothing held the two lists together.
+// There used to be three copies of that list - the browser's, the SvelteKit
+// param matcher's, and a grammar written out in Go - and the third drifted: the
+// sync view was built, routed and tested in the browser while a reload of its
+// address answered with the not-found page. The Go copy is gone now, and the
+// server matches the route table the build generates from `src/routes`, so this
+// asks the question of that table.
+//
+// It is still worth asking. The table is only as right as the matchers behind
+// it, and those are what carry the difference this checks.
 func TestEveryBrowserViewIsServedOnReload(t *testing.T) {
+	table := shippedRouteTable(t)
 	installation := browserPanelViews(t, "PANEL_VIEWS")
 
 	for _, view := range installation {
-		if !isPanelViewPath(view, nil) {
+		if !table.matches("/i/acme/" + view) {
 			t.Errorf("the browser has a %q view and a reload of it is refused", view)
 		}
 	}
@@ -36,7 +41,7 @@ func TestEveryBrowserViewIsServedOnReload(t *testing.T) {
 	// unavailable reads as a fault rather than a boundary.
 	console := browserPanelViews(t, "ROOT_INSTALLATION_VIEWS")
 	for _, view := range console {
-		if !isRootNavigationPath([]string{panelRootPath, panelInstallationsResource, "acme", view}) {
+		if !table.matches("/root/installations/acme/" + view) {
 			t.Errorf("the console has a %q view and a reload of it is refused", view)
 		}
 	}
@@ -45,7 +50,7 @@ func TestEveryBrowserViewIsServedOnReload(t *testing.T) {
 		if slices.Contains(console, view) {
 			continue
 		}
-		if isRootNavigationPath([]string{panelRootPath, panelInstallationsResource, "acme", view}) {
+		if table.matches("/root/installations/acme/" + view) {
 			t.Errorf("the console renders no %q view and its address is served anyway", view)
 		}
 	}
@@ -99,7 +104,7 @@ func TestEveryBrowserViewHasSomethingToRender(t *testing.T) {
 	}{
 		{
 			"PANEL_VIEWS",
-			"frontend/src/routes/i/[account]/[view=panelView]/[...rest]/+page.svelte",
+			"frontend/src/routes/i/[account]/[view=panelView]/[...rest=dialogPath]/+page.svelte",
 		},
 		{
 			"ROOT_INSTALLATION_VIEWS",
@@ -136,17 +141,25 @@ func TestRendersViewReadsTheBranchAndItsContents(t *testing.T) {
 		{"a branch with something in it", "{#if view === 'sync'}\n  <SyncView />\n{/if}\n", true},
 		{"a later branch", "{#if view === 'settings'}\n  <A />\n" +
 			"{:else if view === 'sync'}\n  <B />\n{/if}\n", true},
-		{"a branch shared with another view",
-			"{:else if view === 'users' || view === 'sync'}\n  <B />\n{/if}\n", true},
+		{
+			"a branch shared with another view",
+			"{:else if view === 'users' || view === 'sync'}\n  <B />\n{/if}\n", true,
+		},
 		{"a branch with nothing in it", "{#if view === 'sync'}\n{/if}\n", false},
-		{"a branch holding only a comment",
-			"{#if view === 'sync'}\n  <!-- one day -->\n{/if}\n", false},
-		{"a branch holding a comment that runs on",
-			"{#if view === 'sync'}\n  <!-- one\n  day -->\n{/if}\n", false},
+		{
+			"a branch holding only a comment",
+			"{#if view === 'sync'}\n  <!-- one day -->\n{/if}\n", false,
+		},
+		{
+			"a branch holding a comment that runs on",
+			"{#if view === 'sync'}\n  <!-- one\n  day -->\n{/if}\n", false,
+		},
 		{"the name in a nav row", "  class:active={view === 'sync'}\n", false},
 		{"another view's branch", "{#if view === 'settings'}\n  <A />\n{/if}\n", false},
-		{"a following branch's contents",
-			"{#if view === 'sync'}\n{:else if view === 'settings'}\n  <A />\n{/if}\n", false},
+		{
+			"a following branch's contents",
+			"{#if view === 'sync'}\n{:else if view === 'settings'}\n  <A />\n{/if}\n", false,
+		},
 	} {
 		if rendersView(markup.source, "sync") != markup.renders {
 			t.Errorf("%s: renders = %t, wanted %t", markup.name, !markup.renders, markup.renders)

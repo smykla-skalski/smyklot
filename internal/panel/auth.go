@@ -28,6 +28,23 @@ const (
 	inviteContext     = "smyklot-panel-invitation"
 )
 
+// validInvitationToken reports whether a token could be one this server issued:
+// tokenBytes of randomness, base64url, unpadded.
+//
+// Deliberately its own check rather than the route table's matcher for the same
+// shape. This one guards a query parameter and a signed cookie, which arrive
+// whatever the panel's routes happen to be, and a security check that reads its
+// rule out of the frontend's build output is a security check with a build step
+// between it and the thing it protects.
+func validInvitationToken(token string) bool {
+	if len(token) != base64.RawURLEncoding.EncodedLen(tokenBytes) {
+		return false
+	}
+	_, err := base64.RawURLEncoding.DecodeString(token)
+
+	return err == nil
+}
+
 type invitationAction string
 
 const (

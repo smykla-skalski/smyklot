@@ -20,16 +20,10 @@ const (
 	basePathSentinel           = "/__smyklot_panel_base__"
 	versionSentinel            = "__smyklot_panel_version__"
 	serviceSentinel            = "__smyklot_panel_service__"
-	panelHistoryPath           = "history"
 	panelHistoryAuditPath      = "audit"
 	panelHistoryFailuresPath   = "failures"
-	panelInboxPath             = "inbox"
 	panelInvitationsPath       = "invitations"
 	panelInstallationsResource = "installations"
-	panelRepositoriesPath      = "repositories"
-	panelRootPath              = "root"
-	panelSettingsPath          = "settings"
-	panelSyncPath              = "sync"
 )
 
 // The documents the panel serves by name rather than as plain static files.
@@ -56,6 +50,9 @@ type assetBundle struct {
 	files     map[string][]byte
 	index     []byte
 	indexETag string
+	// The addresses the panel's router has a page for. Generated into the bundle
+	// from `src/routes`; see routes.go.
+	routes *routeTable
 	// The index with the error and noscript placeholders still in it, so an
 	// error response can fill them per request. Kept apart from index rather
 	// than re-derived: index is served on the hot path and must not carry them.
@@ -82,6 +79,19 @@ func newAssetBundle(cfg Config) (*assetBundle, error) {
 	served := strings.NewReplacer(errorSentinel, "", noscriptSentinel, defaultNoscript).
 		Replace(indexRaw)
 
+	// The route table is read out of the bundle, never served from it. A build that
+	// did not write one leaves the server unable to tell a panel address from a
+	// typing mistake, so refuse to start rather than guess at either.
+	manifest, ok := files[routeManifestAsset]
+	if !ok {
+		return nil, fmt.Errorf("panel bundle has no %s", routeManifestAsset)
+	}
+	routes, err := loadRouteTable(manifest)
+	if err != nil {
+		return nil, err
+	}
+	delete(files, routeManifestAsset)
+
 	// index.html is served via writeIndex, not from the file map.
 	delete(files, indexAsset)
 
@@ -98,6 +108,7 @@ func newAssetBundle(cfg Config) (*assetBundle, error) {
 		files:     files,
 		index:     []byte(served),
 		indexETag: fmt.Sprintf(`"%x"`, sha256.Sum256([]byte(served))),
+		routes:    routes,
 		errorPage: indexRaw,
 	}, nil
 }
@@ -259,7 +270,8 @@ func (s *Server) serveAsset(w http.ResponseWriter, r *http.Request) {
 	}
 	content, ok := s.assets.files[relative]
 	if !ok {
-		if isPanelNavigationPath(relative) {
+		// The generated patterns are written against an absolute, base-relative path.
+		if s.assets.routes.matches("/" + relative) {
 			s.writeIndex(w, r)
 		} else {
 			s.writePageError(w, r, http.StatusNotFound, "not_found", "panel route not found")
@@ -280,117 +292,6 @@ func (s *Server) serveAsset(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(content) //nolint:gosec // Content comes only from the generated embedded bundle.
-}
-
-func isPanelNavigationPath(relative string) bool {
-	parts := strings.Split(strings.Trim(relative, "/"), "/")
-	if isRootNavigationPath(parts) {
-		return true
-	}
-	// A page of the reader's own is the whole address; nothing hangs off it.
-	if len(parts) == 1 && parts[0] == panelInboxPath {
-		return true
-	}
-	if len(parts) == 2 && parts[0] == "invite" && validInvitationToken(parts[1]) {
-		return true
-	}
-	if len(parts) < 3 || parts[0] != "i" || parts[1] == "" {
-		return false
-	}
-
-	return isPanelViewPath(parts[2], parts[3:])
-}
-
-// A view, and whatever the panel writes after it: history's table, or the
-// segments of a dialog standing on the view.
-//
-// The dialog segments are counted rather than read. Their grammar lives in the
-// frontend's route-dialogs, where a name is a repository somebody chose or a
-// login somebody registered, and a second copy of it here is a copy that drifts
-// - which is exactly what happened: every dialog address the panel writes was
-// refused by this function, so a link to one, or a reload of one, answered with
-// the not-found page. What is still checked is the part that is ours to know:
-// the view has to be a view, and a dialog is one segment or two.
-func isPanelViewPath(view string, trailing []string) bool {
-	switch view {
-	case panelSettingsPath, panelSyncPath:
-		return len(trailing) == 0
-	case panelHistoryPath:
-		return len(trailing) == 0 || (len(trailing) == 1 && isPanelHistorySection(trailing[0]))
-	case panelRepositoriesPath, panelUsersResource, panelInvitationsPath:
-		return isDialogSegments(trailing)
-	default:
-		return false
-	}
-}
-
-func isDialogSegments(trailing []string) bool {
-	if len(trailing) > 2 {
-		return false
-	}
-	for _, segment := range trailing {
-		if segment == "" {
-			return false
-		}
-	}
-
-	return true
-}
-
-func isRootNavigationPath(parts []string) bool {
-	if parts[0] != panelRootPath {
-		return false
-	}
-	if len(parts) == 1 {
-		return true
-	}
-	switch parts[1] {
-	case panelSettingsPath:
-		return len(parts) == 2
-	case panelHistoryPath:
-		return len(parts) == 2 || (len(parts) == 3 && isPanelHistorySection(parts[2]))
-	case "access":
-		if len(parts) == 2 {
-			return true
-		}
-		if parts[2] != panelUsersResource && parts[2] != panelInvitationsPath {
-			return false
-		}
-
-		// The console's tables take the same dialog grammar as an installation's.
-		return isDialogSegments(parts[3:])
-	case panelInstallationsResource:
-		if len(parts) == 2 {
-			return true
-		}
-		if len(parts) < 4 || parts[2] == "" {
-			return false
-		}
-
-		// The console renders a subset of an installation's views: what an
-		// organization's repositories should carry is configured by elevating
-		// into the installation, through the endpoints its own members use. An
-		// address the console has no page for is refused here rather than
-		// served a shell that says the view is unavailable.
-		if parts[3] == panelSyncPath {
-			return false
-		}
-
-		return isPanelViewPath(parts[3], parts[4:])
-	default:
-		return false
-	}
-}
-
-func isPanelHistorySection(value string) bool {
-	return value == panelHistoryAuditPath || value == panelHistoryFailuresPath
-}
-
-func validInvitationToken(token string) bool {
-	return len(token) == 43 && !strings.ContainsFunc(token, func(r rune) bool {
-		return r != '-' && r != '_' && (r < '0' || r > '9') &&
-			(r < 'A' || r > 'Z') && (r < 'a' || r > 'z')
-	})
 }
 
 func (s *Server) writeIndex(w http.ResponseWriter, r *http.Request) {

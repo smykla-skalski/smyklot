@@ -8,54 +8,45 @@ import (
 	"testing/fstest"
 )
 
-// The grammar the shell is served for, checked at the function rather than
-// through a request.
-//
-// TestPanelServesRewrittenAssetsAndSPAFallback covers what a browser asks for.
-// Two cases cannot be reached that way: an address with an empty segment is
-// refused by fs.ValidPath before this function is consulted, and the shape of
-// the refusal is worth pinning anyway, because this function has to be right on
-// its own rather than because of what the caller happens to check first.
-func TestPanelNavigationGrammar(t *testing.T) {
-	served := []string{
-		"inbox",
-		"root",
-		"root/installations",
-		"root/access",
-		"root/access/users/octocat/ban",
-		"root/access/invitations/new",
-		"root/installations/acme/history/audit",
-		"root/installations/acme/repositories/api-gateway/file",
-		"i/acme/settings",
-		"i/acme/history",
-		"i/acme/history/failures",
-		"i/acme/repositories/api-gateway",
-		"i/acme/users/add",
-		"i/acme/invitations/inv-1/revoke",
+// A bundle whose build wrote no route table cannot be served: the server would
+// have no way to tell a panel address from a typing mistake, and would have to
+// guess the same answer for both. It refuses to start instead.
+func TestPanelAssetBundleRequiresARouteManifest(t *testing.T) {
+	_, err := newAssetBundle(Config{
+		BasePath: "/panel",
+		Assets: fstest.MapFS{
+			"index.html": &fstest.MapFile{Data: []byte(
+				`<!doctype html><meta content="__smyklot_panel_error__">` +
+					`<noscript>__smyklot_panel_noscript__</noscript>`,
+			)},
+		},
+	})
+	if err == nil {
+		t.Fatal("bundle built without a route manifest")
 	}
-	refused := []string{
-		"",
-		"inbox/security",
-		"root/installations/acme",
-		"root/installations//repositories",
-		"root/access/owners",
-		"root/access/users/octocat/ban/extra",
-		"i/acme/settings/anything",
-		"i/acme/history/everything",
-		"i//repositories",
-		"i/acme/repositories//file",
-		"i/acme/repositories/api-gateway/file/extra",
-		"i/acme/inbox",
+}
+
+// The manifest is read out of the bundle, never served from it - it describes the
+// panel's addresses and is not one of them.
+func TestPanelDoesNotServeTheRouteManifest(t *testing.T) {
+	bundle, err := newAssetBundle(Config{
+		BasePath: "/panel",
+		Assets: fstest.MapFS{
+			"index.html": &fstest.MapFile{Data: []byte(
+				`<!doctype html><meta content="__smyklot_panel_error__">` +
+					`<noscript>__smyklot_panel_noscript__</noscript>`,
+			)},
+			routeManifestAsset: &fstest.MapFile{Data: testRouteManifest()},
+		},
+	})
+	if err != nil {
+		t.Fatalf("newAssetBundle() error = %v", err)
 	}
-	for _, path := range served {
-		if !isPanelNavigationPath(path) {
-			t.Errorf("panel navigation path %q was refused", path)
-		}
+	if _, ok := bundle.files[routeManifestAsset]; ok {
+		t.Errorf("%s is served to readers", routeManifestAsset)
 	}
-	for _, path := range refused {
-		if isPanelNavigationPath(path) {
-			t.Errorf("panel navigation path %q was served", path)
-		}
+	if !bundle.routes.matches("/root") {
+		t.Error("the bundle did not read its route manifest")
 	}
 }
 
@@ -70,6 +61,7 @@ func TestPanelAssetRewriteUsesTheDestinationSyntax(t *testing.T) {
 			"index.html":        &fstest.MapFile{Data: []byte(`<!doctype html><meta content="/__smyklot_panel_base__"><meta content="__smyklot_panel_version__"><meta content="__smyklot_panel_service__"><meta content="__smyklot_panel_error__"><noscript>__smyklot_panel_noscript__</noscript>`)},
 			"service-worker.js": &fstest.MapFile{Data: []byte("const version = `__smyklot_panel_version__`; const service = '__smyklot_panel_service__';")},
 			"_app/version.json": &fstest.MapFile{Data: []byte(`{"version":"__smyklot_panel_version__"}`)},
+			routeManifestAsset:  &fstest.MapFile{Data: testRouteManifest()},
 		},
 	})
 	if err != nil {
@@ -113,9 +105,12 @@ func TestPanelAssetRewriteRefreshesInlineScriptCSPHash(t *testing.T) {
 		`<meta content="__smyklot_panel_service__"><meta content="__smyklot_panel_error__">` +
 		`<script>` + originalScript + `</script><noscript>__smyklot_panel_noscript__</noscript>`
 	bundle, err := newAssetBundle(Config{
-		BasePath:    "/panel",
-		Version:     "test",
-		Assets:      fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte(index)}},
+		BasePath: "/panel",
+		Version:  "test",
+		Assets: fstest.MapFS{
+			"index.html":       &fstest.MapFile{Data: []byte(index)},
+			routeManifestAsset: &fstest.MapFile{Data: testRouteManifest()},
+		},
 		ServiceHost: "localhost",
 	})
 	if err != nil {

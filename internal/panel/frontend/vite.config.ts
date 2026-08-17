@@ -5,6 +5,7 @@ import { svelteTesting } from '@testing-library/svelte/vite';
 import { defineConfig } from 'vitest/config';
 import { configDefaults } from 'vitest/config';
 
+import { withRouteManifest } from './build/route-manifest.ts';
 import { mockServer } from './dev/mock-server.ts';
 
 // In dev the mock server mounts at /, so SvelteKit's router must not enforce
@@ -18,11 +19,16 @@ export default defineConfig({
   plugins: [
     sveltekit({
       preprocess: vitePreprocess(),
-      adapter: adapter({
-        pages: 'dist',
-        assets: 'dist',
-        fallback: 'index.html',
-      }),
+      // The manifest ships beside the bundle so the Go server answers the same
+      // addresses this router does. See `build/route-manifest.ts`.
+      adapter: withRouteManifest(
+        adapter({
+          pages: 'dist',
+          assets: 'dist',
+          fallback: 'index.html',
+        }),
+        { out: 'dist', params: 'src/params' },
+      ),
       csp: {
         mode: 'hash',
         directives: {

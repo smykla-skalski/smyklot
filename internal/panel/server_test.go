@@ -14,18 +14,38 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"testing/fstest"
 	"time"
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
+	"github.com/smykla-skalski/smyklot/internal/panelassets"
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/internal/storage/open"
 	"github.com/smykla-skalski/smyklot/internal/storage/storagetest"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 )
+
+// The route table the frontend build generated, so the requests below are answered
+// against the addresses the panel really has rather than a fixture's account of
+// them - which is the copy that drifted and cost the queue its reloads.
+//
+// Panics rather than skips: `mise run test` builds the bundle before the suite.
+var testPanelRouteManifest = sync.OnceValue(func() []byte {
+	assets, err := panelassets.Open()
+	if err != nil {
+		panic("open the panel bundle (mise run panel:assets:generate): " + err.Error())
+	}
+	document, err := fs.ReadFile(assets, routeManifestAsset)
+	if err != nil {
+		panic("the built bundle carries no " + routeManifestAsset + ": " + err.Error())
+	}
+
+	return document
+})
 
 type fakeSignIn struct {
 	account storage.Account
@@ -168,6 +188,7 @@ func newPanelHarnessForSubject(t *testing.T, login, subjectID string) *panelHarn
 		"_app/app.js":       &fstest.MapFile{Data: []byte("const base='__smyklot_panel_base__';")},
 		"service-worker.js": &fstest.MapFile{Data: []byte(`const version='__smyklot_panel_version__';`)},
 		"theme-boot.js":     &fstest.MapFile{Data: []byte(`document.documentElement.dataset.theme = "dark";`)},
+		routeManifestAsset:  &fstest.MapFile{Data: testPanelRouteManifest()},
 	}
 	randomBytes := make([]byte, 0, tokenBytes*32)
 	for index := range 32 {
@@ -2616,6 +2637,10 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 		"/panel/root/installations",
 		"/panel/root/access",
 		"/panel/root/history",
+		// The three the queue shipped with, and that a reload answered 404 for.
+		"/panel/root/queue",
+		"/panel/root/queue/recent",
+		"/panel/root/queue/request/pending-ci-1",
 		"/panel/root/installations/smykla-skalski/repositories",
 		"/panel/root/installations/smykla-skalski/history/audit",
 		"/panel/root/installations/smykla-skalski/history/failures",
@@ -2642,6 +2667,22 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 		"/panel/inbox/",
 		"/panel/i/smykla-skalski/history/audit/",
 		"/panel/root/access/users/",
+		// These four the router matches and `route-guard.ts` then refuses, so the
+		// shell is served and the panel renders its own not-found page.
+		//
+		// The server used to refuse them outright, from a second copy of the route
+		// grammar written in Go - the copy that also cost the queue its reloads,
+		// because a route added to `src/routes` was needed in two places and landed
+		// in one. The copy is gone and the router's own table decides, which is
+		// exact for every address the panel links to and coarser than the guard for
+		// these: a view takes a trailing segment here, and the guard is what knows
+		// that settings hosts no dialog and history has two sections. The reader
+		// still gets the right page; what is lost is the 404 on the wire for an
+		// address that has to be typed by hand to reach.
+		"/panel/i/smykla-skalski/settings/anything",
+		"/panel/i/smykla-skalski/history/unknown",
+		"/panel/root/installations/smykla-skalski/settings/anything",
+		"/panel/root/installations/smykla-skalski/history/unknown",
 	} {
 		response := harness.request(t, http.MethodGet, path, nil, nil)
 		body := response.Body.String()
@@ -2687,21 +2728,17 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 		"/panel/i/smykla-skalski/inbox",
 		// A view still has to be a view, and a dialog is one segment or two.
 		"/panel/root/installations/smykla-skalski",
-		"/panel/i/smykla-skalski/settings/anything",
 		"/panel/i/smykla-skalski/repositories/api-gateway/file/extra",
 		"/panel/root/access/users/octocat/ban/extra",
-		"/panel/root/installations/smykla-skalski/settings/anything",
 		"/panel/smykla-skalski/repositories",
 		"/panel/auth/settings",
 		"/panel/webhook/history",
 		"/panel/i/smykla-skalski/help",
 		"/panel/i/smykla-skalski/unknown",
-		"/panel/i/smykla-skalski/history/unknown",
 		"/panel/root/unknown",
 		"/panel/root/access/owners",
 		"/panel/root/history/unknown",
 		"/panel/root/installations/smykla-skalski/unknown",
-		"/panel/root/installations/smykla-skalski/history/unknown",
 		"/panel/@smykla-skalski/repositories",
 		"/panel/invite/too-short",
 		"/panel/invite/abcdefghijklmnopqrstuvwxyzABCDEFGH.01234567",

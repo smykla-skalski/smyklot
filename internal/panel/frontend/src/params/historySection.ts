@@ -1,3 +1,8 @@
 import type { ParamMatcher } from '@sveltejs/kit';
 
-export const match: ParamMatcher = (param) => param === 'audit' || param === 'failures';
+/** The two tables history is read through. See `panelView` for why this is a pattern. */
+export const pattern = '^(?:audit|failures)$';
+
+const accepted = new RegExp(pattern);
+
+export const match: ParamMatcher = (param) => accepted.test(param);
