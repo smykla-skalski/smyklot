@@ -25,13 +25,28 @@ func TestPanelErrorDocumentServedToBrowsersOnly(t *testing.T) {
 			page:    true,
 		},
 		{
-			// Script cannot set Sec-Fetch-Dest, so this is the exact signal.
+			// Nothing but a browser can say "document", so it settles the question.
 			name:    "the panel's own fetch",
 			headers: map[string]string{"Sec-Fetch-Dest": "empty", "Accept": "*/*"},
 		},
 		{
 			name:    "an event stream",
 			headers: map[string]string{"Sec-Fetch-Dest": "empty", "Accept": "text/event-stream"},
+		},
+		{
+			// A reload of any panel page, once the service worker has installed.
+			// The worker answers navigations by passing the request back through
+			// fetch(), which does not carry the destination over - so a real
+			// navigation arrives saying "empty" and still asking for a document.
+			// Reading the absence of "document" as a denial served this reader the
+			// JSON error body as text, which is what smyklot.com was doing.
+			name: "a navigation a service worker forwarded",
+			headers: map[string]string{
+				"Sec-Fetch-Dest": "empty",
+				"Sec-Fetch-Mode": "same-origin",
+				"Accept":         "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+			},
+			page: true,
 		},
 		{
 			// Older clients that send no Sec-Fetch headers fall back to Accept.

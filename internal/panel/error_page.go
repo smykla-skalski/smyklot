@@ -42,14 +42,24 @@ func (s *Server) writePageInternal(w http.ResponseWriter, r *http.Request, _ err
 
 // wantsDocument reports whether this request is a browser navigating to a page.
 //
-// Sec-Fetch-Dest is the exact answer where it is sent: the browser sets it, script
-// cannot, and a fetch or an EventSource never carries "document". Accept is the
-// fallback for the clients that do not send it, and it is matched as a whole media
-// type - fetch's default `*/*` must not count as asking for a page, or every API
-// caller would be handed HTML it cannot parse.
+// Sec-Fetch-Dest: document settles it. The browser sets that header and script
+// cannot, so nothing else can claim to be a navigation.
+//
+// Its absence settles nothing, which is the part this got wrong. A service worker
+// that forwards a navigation - which the panel's does, on every reload of every
+// page - passes the request back through fetch(), and fetch() builds its request
+// afresh: the destination is not carried over, so what reaches the server is a
+// navigation wearing Sec-Fetch-Dest: empty. Read as authoritative, that turned the
+// panel's own not-found page into a JSON error body rendered as text, on smyklot.com
+// and only for readers whose worker had installed - which is why it looked like a
+// caching fault rather than a header one.
+//
+// Accept survives that round trip intact, so it decides the rest. It is matched as a
+// whole media type: fetch's default `*/*` must not count as asking for a page, or an
+// API caller would be handed HTML it cannot parse.
 func wantsDocument(r *http.Request) bool {
-	if destination := r.Header.Get("Sec-Fetch-Dest"); destination != "" {
-		return destination == "document"
+	if r.Header.Get("Sec-Fetch-Dest") == "document" {
+		return true
 	}
 
 	return acceptsHTML(r.Header.Get("Accept"))
