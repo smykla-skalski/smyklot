@@ -216,6 +216,18 @@ type Store interface {
 	// or the plan stays approvable and applies work nobody reviewed.
 	SetSyncConfig(context.Context, ConfigChange) (Config, error)
 
+	// GetSyncRepositoryOverride reads what one repository says about one kind,
+	// answering ErrNotFound where it has said nothing.
+	//
+	// Beside the listing rather than instead of it: a planner wants every
+	// answer in an installation and reads them once, and a page about one
+	// repository wants one row. Reading the whole installation to pick a row
+	// out of it costs the same on the first repository and two hundred times as
+	// much across the pane being opened on each of them.
+	GetSyncRepositoryOverride(
+		context.Context, string, string, Kind,
+	) (RepositoryOverride, error)
+
 	ListSyncRepositoryOverrides(context.Context, string) ([]RepositoryOverride, error)
 	SetSyncRepositoryOverride(
 		context.Context, RepositoryOverrideChange,

@@ -215,6 +215,30 @@ func syncDocumentColumn(document []byte) string {
 	return string(document)
 }
 
+// GetSyncRepositoryOverride reads one repository's answer about one kind.
+//
+// Scoped through the installation as well as the repository, so a caller
+// holding an identifier from one installation cannot read a row belonging to
+// another - the same join the listing goes through, for the same reason.
+func (s *Store) GetSyncRepositoryOverride(
+	ctx context.Context,
+	targetID, repositoryID string,
+	kind orgsync.Kind,
+) (orgsync.RepositoryOverride, error) {
+	override, err := scanSyncOverride(s.db.QueryRowContext(ctx, `
+SELECT o.repository_id, o.kind, o.enabled_override, o.document,
+       o.revision, o.updated_by, o.updated_at
+FROM sync_repository_overrides o
+JOIN repositories r ON r.id = o.repository_id
+WHERE r.target_id = ? AND o.repository_id = ? AND o.kind = ?`,
+		targetID, repositoryID, kind))
+	if errors.Is(err, sql.ErrNoRows) {
+		return orgsync.RepositoryOverride{}, storage.ErrNotFound
+	}
+
+	return override, err
+}
+
 // ListSyncRepositoryOverrides reads every repository answer in an installation.
 //
 // Joined through repositories rather than filtered on a target column of its

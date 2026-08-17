@@ -79,6 +79,12 @@ type desiredFile struct {
 	ResolvedFile
 
 	blob string
+
+	// adjusted is whether this repository composed the file rather than taking
+	// the template. Recorded where the answer is already in hand, because it is
+	// only wanted to describe the change and looking it up again means walking
+	// the repository's merges a second time.
+	adjusted bool
 }
 
 // DecodeFile reads what an action says to write.
@@ -131,7 +137,7 @@ func PlanFiles(
 	return FilePlan{
 		Proposal: proposal,
 		Actions: append(
-			writeActions(repositoryID, proposal, desired, override, current),
+			writeActions(repositoryID, proposal, desired, current),
 			removeActions(repositoryID, proposal, retired, current)...,
 		),
 	}, nil
@@ -142,14 +148,13 @@ func PlanFiles(
 func writeActions(
 	repositoryID, proposal string,
 	desired []desiredFile,
-	override FileOverride,
 	current map[string]CurrentFile,
 ) []Action {
 	var actions []Action
 
 	for _, file := range desired {
 		file.Proposal = proposal
-		after := describeFile(len(file.Content), override.MergeFor(file.Path))
+		after := describeFile(len(file.Content), file.adjusted)
 
 		held, exists := current[file.Path]
 
@@ -250,13 +255,15 @@ func resolveFiles(
 			continue
 		}
 
+		spec := override.MergeFor(file.Path)
+
 		// Rendered before it is composed, so a template's placeholders are
 		// filled in whether or not a repository adjusts the file. What a
 		// repository writes in its own adjustments is taken literally.
 		content, err := filemerge.Apply(
 			file.Path,
 			[]byte(Render(file.Content, defaultBranch)),
-			override.MergeFor(file.Path),
+			spec,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("composing %s: %w", file.Path, err)
@@ -276,6 +283,7 @@ func resolveFiles(
 		resolved = append(resolved, desiredFile{
 			ResolvedFile: ResolvedFile{Path: file.Path, Content: content},
 			blob:         BlobID(content),
+			adjusted:     !spec.Empty(),
 		})
 	}
 
@@ -384,12 +392,12 @@ func encodeFile(file ResolvedFile) []byte {
 
 // describeFile renders what a file would become, for somebody reading the plan.
 // It is display, never a value anything branches on.
-func describeFile(size int, spec filemerge.Spec) string {
-	if spec.Empty() {
-		return describeSize(size) + " from the template"
+func describeFile(size int, adjusted bool) string {
+	if adjusted {
+		return describeSize(size) + ", adjusted for this repository"
 	}
 
-	return describeSize(size) + ", adjusted for this repository"
+	return describeSize(size) + " from the template"
 }
 
 const bytesPerKilobyte = 1024

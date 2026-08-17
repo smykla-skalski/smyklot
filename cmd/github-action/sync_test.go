@@ -1121,27 +1121,37 @@ var _ = Describe("Org sync [Unit]", func() {
 			Expect(stub.forcedPushes).To(BeZero())
 		})
 
-		// A refusal has to be durable, or the repository is asked the same
-		// question every reconcile forever. The branch is named after what the
-		// files should end up saying, so a closed pull request answers for this
-		// change and a configuration that moves asks again.
-		It("leaves a repository that closed the pull request alone", func() {
-			target := grantContents()
-			configureKind(target, orgsync.KindFiles, contributing)
-			stub.branchPRs = `[{"number":9,"state":"closed","merged_at":null}]`
+		// A proposal in front of a repository is a question already asked, and
+		// settles it whichever way it went. Planning it again would produce the
+		// same plan, needing the same approval, adopting or re-asking the same
+		// pull request, once every horizon for as long as it sat there - and a
+		// refusal that is not durable is a repository asked forever. The branch
+		// is named after what the files should end up saying, so this answers
+		// for this change and a configuration that moves asks again.
+		DescribeTable("plans nothing more while a proposal is outstanding",
+			func(pulls string) {
+				target := grantContents()
+				configureKind(target, orgsync.KindFiles, contributing)
+				stub.branchPRs = pulls
 
-			plan(target)
+				plan(target)
 
-			_, _, err := service.store.GetLiveSyncPlan(GinkgoT().Context(), target.ID)
-			Expect(err).To(MatchError(storage.ErrNotFound))
+				_, _, err := service.store.GetLiveSyncPlan(GinkgoT().Context(), target.ID)
+				Expect(err).To(MatchError(storage.ErrNotFound))
 
-			// And it is written down as settled, so the next reconcile does not
-			// read the repository again
-			state, err := service.store.ListSyncRepositoryState(GinkgoT().Context(), target.ID)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(state).To(HaveLen(1))
-			Expect(state[0].Kind).To(Equal(orgsync.KindFiles))
-		})
+				// And it is written down as settled, so the next reconcile does
+				// not read the repository again
+				state, err := service.store.ListSyncRepositoryState(
+					GinkgoT().Context(), target.ID)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(state).To(HaveLen(1))
+				Expect(state[0].Kind).To(Equal(orgsync.KindFiles))
+			},
+
+			Entry("one still open", `[{"number":9,"state":"open"}]`),
+			Entry("one the repository closed",
+				`[{"number":9,"state":"closed","merged_at":null}]`),
+		)
 
 		// A repository with delete_branch_on_merge took the branch away the
 		// moment the pull request landed, so there is nothing to build on.
@@ -1373,28 +1383,6 @@ var _ = Describe("Org sync [Unit]", func() {
 			Expect(stub.createdPRs).To(BeEmpty())
 			Expect(stub.editedPRs).To(HaveLen(1))
 			Expect(stub.editedPRs[0]).To(ContainSubstring("CONTRIBUTING.md"))
-		})
-
-		// A proposal already in front of a repository is a question already
-		// asked. Planning it again would produce the same plan, needing the
-		// same approval, adopting the same pull request, once every horizon for
-		// as long as it sat there.
-		It("plans nothing more while a proposal is open", func() {
-			target := grantContents()
-			configureKind(target, orgsync.KindFiles, contributing)
-			stub.branchPRs = `[{"number":9,"state":"open"}]`
-
-			plan(target)
-
-			_, _, err := service.store.GetLiveSyncPlan(GinkgoT().Context(), target.ID)
-			Expect(err).To(MatchError(storage.ErrNotFound))
-
-			// And it is written down as settled, so the repository is not read
-			// again until the horizon or a configuration change
-			state, err := service.store.ListSyncRepositoryState(GinkgoT().Context(), target.ID)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(state).To(HaveLen(1))
-			Expect(state[0].Kind).To(Equal(orgsync.KindFiles))
 		})
 
 		It("writes what a repository adjusts rather than the plain template", func() {

@@ -228,6 +228,57 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 			Expect(string(listed[0].Document)).To(Equal("{}"))
 		})
 
+		It("reads one repository's answer without reading the installation's", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			no := false
+
+			_, err := store.SetSyncRepositoryOverride(
+				ctx, orgsync.RepositoryOverrideChange{
+					RepositoryID: repoA, Kind: orgsync.KindLabels, Enabled: &no,
+					ActorID: account.ID, Now: now,
+				})
+			Expect(err).NotTo(HaveOccurred())
+
+			read, err := store.GetSyncRepositoryOverride(
+				ctx, target, repoA, orgsync.KindLabels)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(read.RepositoryID).To(Equal(repoA))
+			Expect(read.Kind).To(Equal(orgsync.KindLabels))
+			Expect(read.Enabled).To(HaveValue(BeFalse()))
+
+			// A kind this repository has said nothing about, and a repository
+			// that has said nothing at all. Both are inheriting, which the
+			// caller renders rather than reports.
+			_, err = store.GetSyncRepositoryOverride(
+				ctx, target, repoA, orgsync.KindFiles)
+			Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
+
+			_, err = store.GetSyncRepositoryOverride(
+				ctx, target, repoB, orgsync.KindLabels)
+			Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
+		})
+
+		// The row is keyed by repository, and the installation is reached
+		// through the catalog. An identifier from one installation naming a
+		// repository in another has to answer nothing rather than answer.
+		It("will not read an override through the wrong installation", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			no := false
+
+			_, err := store.SetSyncRepositoryOverride(
+				ctx, orgsync.RepositoryOverrideChange{
+					RepositoryID: repoA, Kind: orgsync.KindLabels, Enabled: &no,
+					ActorID: account.ID, Now: now,
+				})
+			Expect(err).NotTo(HaveOccurred())
+
+			_, err = store.GetSyncRepositoryOverride(
+				ctx, "github:test:target:absent", repoA, orgsync.KindLabels)
+			Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
+		})
+
 		It("refuses an override for a repository nothing knows about", func() {
 			ctx, store, now := runtime()
 			seed(ctx, store, now)

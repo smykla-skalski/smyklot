@@ -55,14 +55,24 @@ func (s *Server) getSyncOverride(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	overrides, err := s.store.ListSyncRepositoryOverrides(r.Context(), target.ID)
+	override, err := s.store.GetSyncRepositoryOverride(
+		r.Context(), target.ID, repository.ID, kind)
+
+	// A repository that has said nothing about a kind inherits, which is an
+	// answer this renders rather than a failure it reports.
+	if errors.Is(err, storage.ErrNotFound) {
+		writeJSON(w, http.StatusOK, syncOverrideToDTO(kind, nil))
+
+		return
+	}
+
 	if err != nil {
 		s.writeStorageError(w, err)
 
 		return
 	}
 
-	writeJSON(w, http.StatusOK, syncOverrideToDTO(kind, findOverride(overrides, repository.ID, kind)))
+	writeJSON(w, http.StatusOK, syncOverrideToDTO(kind, &override))
 }
 
 // putSyncOverride saves it.
@@ -193,19 +203,6 @@ func (s *Server) syncFileConfig(r *http.Request, targetID string) (orgsync.FileC
 	return config, nil
 }
 
-func findOverride(
-	overrides []orgsync.RepositoryOverride,
-	repositoryID string,
-	kind orgsync.Kind,
-) *orgsync.RepositoryOverride {
-	for _, override := range overrides {
-		if override.RepositoryID == repositoryID && override.Kind == kind {
-			return &override
-		}
-	}
-
-	return nil
-}
 
 // syncOverrideToDTO renders a repository's answer, including the one it has
 // never given.
