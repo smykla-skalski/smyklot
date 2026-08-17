@@ -426,8 +426,12 @@
         </label>
 
         {#if !readOnly}
+          <!-- Every bare word inside a button is wrapped, here and below: a button is
+               a flex container, so its text sits in an anonymous box no selector can
+               reach, and `text-box` on the button itself never touches it. See
+               `.button-label` in `app.css`. Unwrapped, each of these sat 0.47px high. -->
           <button class="btn btn-quiet" type="button" {disabled} onclick={() => remove(index)}>
-            Remove
+            <span class="button-label">Remove</span>
           </button>
         {/if}
       </div>
@@ -694,7 +698,7 @@
                   {disabled}
                   onclick={() => removeTool(index, at)}
                 >
-                  Remove
+                  <span class="button-label">Remove</span>
                 </button>
               {/if}
             </div>
@@ -702,7 +706,7 @@
 
           {#if !readOnly}
             <button class="btn btn-quiet" type="button" {disabled} onclick={() => addTool(index)}>
-              Add a tool
+              <span class="button-label">Add a tool</span>
             </button>
           {/if}
         </div>
@@ -754,7 +758,7 @@
                 {disabled}
                 onclick={() => removeActor(index, at)}
               >
-                Remove
+                <span class="button-label">Remove</span>
               </button>
             {/if}
           </div>
@@ -762,7 +766,7 @@
 
         {#if !readOnly}
           <button class="btn btn-quiet" type="button" {disabled} onclick={() => addActor(index)}>
-            Add an actor
+            <span class="button-label">Add an actor</span>
           </button>
         {/if}
       </div>
@@ -770,7 +774,9 @@
   {/each}
 
   {#snippet actions()}
-    <button class="btn btn-quiet" type="button" {disabled} onclick={add}>Add a ruleset</button>
+    <button class="btn btn-quiet" type="button" {disabled} onclick={add}>
+      <span class="button-label">Add a ruleset</span>
+    </button>
   {/snippet}
 </SyncDocumentForm>
 
