@@ -53,18 +53,21 @@ type CurrentRuleset struct {
 // name, so the tool this replaces - which read one page of thirty, missed the
 // rest, and created what it could not see - ended up updating whichever
 // duplicate came back first.
+//
+// The second answer is the configured names this repository holds more than one
+// of. Nothing here can say which one the configuration meant, so they produce
+// no action - and a caller that read that as "nothing to do" would record the
+// repository as matching and stop looking at it, which is the same silence in
+// a different place.
 func PlanRulesets(
 	repositoryID string,
 	config RulesetConfig,
 	current []CurrentRuleset,
 	exclude Excludes,
-) []Action {
+) (actions []Action, ambiguous []string) {
 	have := indexRulesets(current)
 
-	var (
-		actions []Action
-		wanted  = make(map[string]struct{}, len(config.Rulesets))
-	)
+	wanted := make(map[string]struct{}, len(config.Rulesets))
 
 	for _, ruleset := range config.Rulesets {
 		folded := strings.ToLower(ruleset.Name)
@@ -74,12 +77,20 @@ func PlanRulesets(
 			continue
 		}
 
+		if len(have[folded].Own) > 1 {
+			ambiguous = append(ambiguous, ruleset.Name)
+
+			continue
+		}
+
 		if action, planned := planRuleset(repositoryID, ruleset, have[folded]); planned {
 			actions = append(actions, action)
 		}
 	}
 
-	return append(actions, removals(repositoryID, config, current, wanted, exclude)...)
+	actions = append(actions, removals(repositoryID, config, current, wanted, exclude)...)
+
+	return actions, ambiguous
 }
 
 // rulesetsNamed is every ruleset a repository has under one folded name.
@@ -110,11 +121,9 @@ func indexRulesets(current []CurrentRuleset) map[string]rulesetsNamed {
 	return have
 }
 
-// planRuleset answers what one configured ruleset would take.
-//
-// Three of the four answers are actions. The fourth is nothing at all, and it
-// covers two cases worth keeping apart in the reading: a repository that
-// already matches, and one this cannot safely act on.
+// planRuleset answers what one configured ruleset would take, for a repository
+// holding at most one of that name. More than one is answered by the caller,
+// because there is no action that would say it.
 func planRuleset(
 	repositoryID string,
 	want Ruleset,
@@ -142,20 +151,8 @@ func planRuleset(
 			State:        ActionPending,
 		}, true
 
-	case 1:
-		return planRulesetUpdate(repositoryID, want, have.Own[0], note)
-
 	default:
-		// More than one of this name, on this repository. Nothing here can say
-		// which one the configuration meant, and writing to either leaves the
-		// other enforcing whatever it enforces - which is the state the tool
-		// this replaces created, by making duplicates and then updating an
-		// arbitrary one of them for ever.
-		//
-		// So: nothing. The repository does not settle for this kind, which
-		// costs it a re-read each sweep and means the next one picks it up the
-		// moment somebody removes the copy.
-		return Action{}, false
+		return planRulesetUpdate(repositoryID, want, have.Own[0], note)
 	}
 }
 

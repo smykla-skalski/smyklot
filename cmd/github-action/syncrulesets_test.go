@@ -285,20 +285,49 @@ var _ = Describe("Ruleset sync [Unit]", func() {
 				GinkgoT().Context(), client(), "acme", "web", action)
 		}
 
-		It("creates a ruleset the repository does not have", func() {
-			serve(`[]`, nil)
-
-			Expect(apply(orgsync.Action{
+		creating := func() orgsync.Action {
+			return orgsync.Action{
 				Kind:      orgsync.KindRulesets,
 				Operation: orgsync.OperationCreate,
-				Subject:   "main",
+				Subject:   "main-branch-protection",
 				Payload: payload(orgsync.ResolvedRuleset{
 					Ruleset: everyRulesetField(),
 				}),
-			})).To(Succeed())
+			}
+		}
 
-			Expect(requests[0]).To(HavePrefix("POST /repos/acme/web/rulesets "))
-			Expect(requests[0]).To(ContainSubstring(`"name":"main-branch-protection"`))
+		It("creates a ruleset the repository does not have", func() {
+			serve(`[]`, nil)
+
+			Expect(apply(creating())).To(Succeed())
+
+			Expect(requests[1]).To(HavePrefix("POST /repos/acme/web/rulesets "))
+			Expect(requests[1]).To(ContainSubstring(`"name":"main-branch-protection"`))
+		})
+
+		// A create carries no id because there is nothing yet to carry, and
+		// GitHub permits two rulesets of one name - so a name claimed between
+		// approval and apply would be answered with a second copy, which is the
+		// state nothing downstream can address
+		It("refuses to create a name that has been taken since the plan", func() {
+			serve(`[{"id":7,"name":"main-branch-protection","source_type":"Repository"}]`, nil)
+
+			Expect(apply(creating())).To(MatchError(errSyncRulesetTaken))
+
+			// Read and refused, and nothing written
+			Expect(requests).To(HaveLen(1))
+			Expect(requests[0]).To(HavePrefix("GET "))
+		})
+
+		// It is the organization's, not the repository's, and the two enforce
+		// side by side rather than colliding. Refusing here would leave the
+		// repository unable to have its own for ever
+		It("creates beside an inherited ruleset of the same name", func() {
+			serve(`[{"id":9,"name":"main-branch-protection","source_type":"Organization"}]`, nil)
+
+			Expect(apply(creating())).To(Succeed())
+
+			Expect(requests[1]).To(HavePrefix("POST /repos/acme/web/rulesets "))
 		})
 
 		It("replaces the ruleset the plan addressed", func() {

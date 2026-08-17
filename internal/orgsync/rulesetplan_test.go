@@ -19,10 +19,27 @@ var _ = Describe("Planning rulesets [Unit]", func() {
 		return orgsync.CurrentRuleset{ID: id, Name: defined.Name, Defined: &defined}
 	}
 
+	// plan is the answer a caller acts on. The ambiguous names have their own
+	// specs below; everywhere else, a plan that reported any would be a plan
+	// this helper is the wrong shape for.
 	plan := func(
 		config orgsync.RulesetConfig, current ...orgsync.CurrentRuleset,
 	) []orgsync.Action {
-		return orgsync.PlanRulesets("repo-1", config, current, config.Exclusions())
+		GinkgoHelper()
+
+		actions, ambiguous := orgsync.PlanRulesets(
+			"repo-1", config, current, config.Exclusions())
+		Expect(ambiguous).To(BeEmpty())
+
+		return actions
+	}
+
+	ambiguity := func(
+		config orgsync.RulesetConfig, current ...orgsync.CurrentRuleset,
+	) []string {
+		_, ambiguous := orgsync.PlanRulesets("repo-1", config, current, config.Exclusions())
+
+		return ambiguous
 	}
 
 	wanted := orgsync.RulesetConfig{Rulesets: []orgsync.Ruleset{protection()}}
@@ -225,15 +242,42 @@ var _ = Describe("Planning rulesets [Unit]", func() {
 		}
 
 		It("plans nothing rather than writing to an arbitrary one", func() {
-			Expect(plan(wanted, drifted(7), drifted(8))).To(BeEmpty())
+			actions, ambiguous := orgsync.PlanRulesets(
+				"repo-1", wanted, []orgsync.CurrentRuleset{drifted(7), drifted(8)},
+				wanted.Exclusions())
+
+			Expect(actions).To(BeEmpty())
+			Expect(ambiguous).To(Equal([]string{"main-branch-protection"}))
 		})
 
 		// The one that catches an implementation reaching for the first of
 		// them: writing to the drifted copy leaves the matching one enforcing
 		// beside it, and the plan would have said the repository was fixed
 		It("plans nothing even where one of the two already matches", func() {
-			Expect(plan(wanted, drifted(7), onGitHub(8, nil))).To(BeEmpty())
-			Expect(plan(wanted, onGitHub(8, nil), drifted(7))).To(BeEmpty())
+			Expect(ambiguity(wanted, drifted(7), onGitHub(8, nil))).
+				To(Equal([]string{"main-branch-protection"}))
+			Expect(ambiguity(wanted, onGitHub(8, nil), drifted(7))).
+				To(Equal([]string{"main-branch-protection"}))
+		})
+
+		// The whole reason it is answered separately. An empty plan is what a
+		// repository that already matches produces, so a caller reading only
+		// the actions records this one as settled and stops looking at it -
+		// and a ruleset nothing manages ends up indistinguishable from one
+		// that is up to date
+		It("says which name it could not answer for", func() {
+			Expect(ambiguity(wanted, drifted(7), drifted(8))).NotTo(BeEmpty())
+			Expect(ambiguity(wanted, onGitHub(7, nil))).To(BeEmpty())
+		})
+
+		// An inherited ruleset of the same name is not a second copy: it is not
+		// this repository's, and the repository's own one is unambiguous
+		It("is not confused by an inherited ruleset of the name", func() {
+			inherited := orgsync.CurrentRuleset{
+				ID: 99, Name: "main-branch-protection", Inherited: true,
+			}
+
+			Expect(ambiguity(wanted, drifted(7), inherited)).To(BeEmpty())
 		})
 	})
 

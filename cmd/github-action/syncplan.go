@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
@@ -223,13 +224,23 @@ func (s *server) planSyncActions(
 				continue
 			}
 
-			found, err := ask(ctx, repository)
+			found, settled, err := ask(ctx, repository)
 			if err != nil {
 				// One repository refusing must not stop the rest. It will be
 				// planned again on the next tick, and reporting a plan that
 				// silently omitted it would be worse than a shorter one.
 				logging.From(ctx).Warn("could not read a repository while planning",
 					"repo", repository.FullName, "kind", config.Kind, "error", err)
+
+				continue
+			}
+
+			if !settled {
+				// Read, and the answer was that this cannot be managed rather
+				// than that it matches. Nothing is recorded, so it is asked
+				// again every sweep until whoever owns the repository resolves
+				// it - which is the only pressure there is.
+				actions = append(actions, found...)
 
 				continue
 			}
@@ -261,9 +272,16 @@ func (s *server) planSyncActions(
 }
 
 // repositoryQuestion asks one repository what one kind would take.
+//
+// settled says whether no actions means the repository matches. Nearly always
+// it does, and for labels and settings it always does. A ruleset a repository
+// holds twice is the exception: nothing can say which one the configuration
+// meant, so there is no work to propose and no grounds to call it settled -
+// and recording it as settled is how a repository nothing manages comes to look
+// exactly like one that is up to date.
 type repositoryQuestion func(
 	context.Context, storage.Repository,
-) ([]orgsync.Action, error)
+) (found []orgsync.Action, settled bool, err error)
 
 // repositoryPlanner reads a kind's stored document and returns what to ask each
 // repository with it.
@@ -291,17 +309,17 @@ func repositoryPlanner(
 
 		return func(
 			ctx context.Context, repository storage.Repository,
-		) ([]orgsync.Action, error) {
+		) ([]orgsync.Action, bool, error) {
 			owner, name := splitFullName(repository.FullName)
 
 			current, err := client.ListRepositoryLabels(ctx, owner, name)
 			if err != nil {
-				return nil, err
+				return nil, false, err
 			}
 
 			return orgsync.PlanLabels(
 				repository.ID, labels, asCurrentLabels(current), labels.Exclusions(),
-			), nil
+			), true, nil
 		}, nil
 
 	case orgsync.KindSettings:
@@ -312,17 +330,17 @@ func repositoryPlanner(
 
 		return func(
 			ctx context.Context, repository storage.Repository,
-		) ([]orgsync.Action, error) {
+		) ([]orgsync.Action, bool, error) {
 			owner, name := splitFullName(repository.FullName)
 
 			current, err := client.GetRepositorySettings(ctx, owner, name)
 			if err != nil {
-				return nil, err
+				return nil, false, err
 			}
 
 			return orgsync.PlanSettings(
 				repository.ID, settings, asCurrentSettings(current),
-			), nil
+			), true, nil
 		}, nil
 
 	case orgsync.KindRulesets:
@@ -333,17 +351,28 @@ func repositoryPlanner(
 
 		return func(
 			ctx context.Context, repository storage.Repository,
-		) ([]orgsync.Action, error) {
+		) ([]orgsync.Action, bool, error) {
 			owner, name := splitFullName(repository.FullName)
 
 			current, err := readRulesets(ctx, client, owner, name, rulesets)
 			if err != nil {
-				return nil, err
+				return nil, false, err
 			}
 
-			return orgsync.PlanRulesets(
-				repository.ID, rulesets, current, rulesets.Exclusions(),
-			), nil
+			actions, ambiguous := orgsync.PlanRulesets(
+				repository.ID, rulesets, current, rulesets.Exclusions())
+			if len(ambiguous) > 0 {
+				// Said here rather than swallowed, because it is the only place
+				// it can be said: a ruleset nothing can address produces no
+				// action, so a plan cannot carry it and a person reading one
+				// would see a repository that looks finished.
+				logging.From(ctx).Warn(
+					"a repository holds more than one ruleset of a configured name, "+
+						"so those are left alone",
+					"repo", repository.FullName, "rulesets", strings.Join(ambiguous, ", "))
+			}
+
+			return actions, len(ambiguous) == 0, nil
 		}, nil
 
 	default:

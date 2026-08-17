@@ -755,6 +755,41 @@ var _ = Describe("Org sync [Unit]", func() {
 			Expect(actions[0].After).To(ContainSubstring("this drops commit_message_pattern"))
 		})
 
+		// A ruleset nothing can address produces no action, and an empty answer
+		// is what a repository that already matches produces too. Recorded as
+		// settled it would look finished and be left alone for six hours, so
+		// the one repository nothing manages would be the one nothing looks at
+		It("never records a repository holding two of a name as settled", func() {
+			target := granting(`{"issues":"write","administration":"write"}`)
+			stub.repoRulesets = `[
+				{"id":7,"name":"main-branch-protection","target":"branch",
+				 "enforcement":"active","source_type":"Repository"},
+				{"id":8,"name":"main-branch-protection","target":"branch",
+				 "enforcement":"active","source_type":"Repository"}]`
+			configureKind(target, orgsync.KindRulesets, `{"rulesets":[
+				{"name":"main-branch-protection","target":"branch",
+				 "enforcement":"active",
+				 "conditions":{"include":["refs/heads/main"]},
+				 "rules":{"deletion":true}}]}`)
+
+			plan(target)
+
+			// No plan, because there is no action anything could take
+			_, _, err := service.store.GetLiveSyncPlan(GinkgoT().Context(), target.ID)
+			Expect(err).To(MatchError(storage.ErrNotFound))
+
+			// And nothing recorded, so the next sweep reads it again rather
+			// than believing it matches
+			state, err := service.store.ListSyncRepositoryState(GinkgoT().Context(), target.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(state).To(BeEmpty())
+
+			reads := stub.countCalls(http.MethodGet, "/repos/smykla-skalski/smyklot/rulesets")
+			plan(target)
+			Expect(stub.countCalls(http.MethodGet, "/repos/smykla-skalski/smyklot/rulesets")).
+				To(BeNumerically(">", reads))
+		})
+
 		// The tool this replaces had no delete path at all, so a ruleset dropped
 		// from configuration went on enforcing for ever. The id comes off the
 		// plan rather than being looked up again, because by apply time the name

@@ -19,6 +19,12 @@ import (
 // second ruleset of the name, is a coin toss nobody approved.
 var errSyncRulesetUnaddressed = errors.New("the plan does not say which ruleset to change")
 
+// errSyncRulesetTaken is a name that was free when the plan was computed and is
+// not any more. The action fails, the next reconcile reads what is there, and
+// what happens then depends on what it finds - one ruleset it can manage, or
+// two it cannot.
+var errSyncRulesetTaken = errors.New("a ruleset of that name already exists")
+
 // readRulesets answers what a repository has, at the two levels of detail the
 // planner needs.
 //
@@ -95,8 +101,7 @@ func applyRulesetAction(
 
 	switch action.Operation {
 	case orgsync.OperationCreate:
-		return client.CreateRepositoryRuleset(
-			ctx, owner, name, asClientRuleset(resolved.Ruleset))
+		return createRuleset(ctx, client, owner, name, resolved.Ruleset)
 
 	case orgsync.OperationUpdate:
 		if resolved.ID == 0 {
@@ -116,6 +121,44 @@ func applyRulesetAction(
 	default:
 		return fmt.Errorf("%w: %s", errSyncOperationUnknown, action.Operation)
 	}
+}
+
+// createRuleset adds a ruleset, unless the repository has grown one of that
+// name since the plan was computed.
+//
+// The one place a re-read is right. Everything else about an action is decided
+// at plan time on purpose, but a create carries no id - there is nothing to
+// carry - and GitHub permits two rulesets with one name, so a name claimed
+// between approval and apply would be answered with a second copy rather than
+// a refusal. Two of a name is the state nothing downstream can address, which
+// is the failure this whole chunk indicts the tool before it for.
+//
+// It does not close the window; nothing can, because GitHub offers no
+// conditional create. It narrows it from however long a plan waits for somebody
+// to the time between these two requests, and it turns the outcome from a
+// silent duplicate into a failed action that says why.
+func createRuleset(
+	ctx context.Context,
+	client *github.Client,
+	owner, name string,
+	ruleset orgsync.Ruleset,
+) error {
+	listed, err := client.ListRepositoryRulesets(ctx, owner, name)
+	if err != nil {
+		return err
+	}
+
+	for _, existing := range listed {
+		if existing.Source.Inherited() {
+			continue
+		}
+
+		if strings.EqualFold(existing.Name, ruleset.Name) {
+			return fmt.Errorf("%w: %q was created since this plan", errSyncRulesetTaken, ruleset.Name)
+		}
+	}
+
+	return client.CreateRepositoryRuleset(ctx, owner, name, asClientRuleset(ruleset))
 }
 
 // asClientRuleset carries a ruleset from the sync domain to the GitHub client,
