@@ -602,7 +602,10 @@ function seed(): MockState {
        be looked at in: `mockSyncConfig` invents an empty document the first time
        it is asked, and no plan was ever computed, so the label list and the plan
        list rendered nowhere and drifted out of the design unseen. */
-    sync: new Map([[`${organization.value.id}/labels`, syncLabelsSeed(iso)]]),
+    sync: new Map([
+      [`${organization.value.id}/labels`, syncLabelsSeed(iso)],
+      [`${organization.value.id}/rulesets`, syncRulesetsSeed(iso)],
+    ]),
     syncPlans: new Map([[organization.value.id, syncPlanSeed(iso)]]),
     // Replaced by install() with the running server's own page.
     shell: () => Promise.reject(new Error('the mock dev server is not serving yet')),
@@ -629,6 +632,57 @@ function syncLabelsSeed(iso: (offsetMs: number) => string): SyncConfig {
     updated_at: iso(-3 * 60 * 60_000),
     digest: 'sha256:labels',
     document: {},
+    unreadable: false,
+    unavailable: '',
+  };
+}
+
+/**
+ * The ruleset an organization actually runs, seeded for the same reason the
+ * labels above are: a form nobody can look at except empty is a form that
+ * drifts out of the design unseen, and this one has nested rows that only
+ * appear once a rule carrying parameters is switched on.
+ */
+function syncRulesetsSeed(iso: (offsetMs: number) => string): SyncConfig {
+  return {
+    kind: 'rulesets',
+    enabled: true,
+    labels: [],
+    allow_removal: false,
+    excludes: [],
+    revision: 2,
+    updated_by: 'bart',
+    updated_at: iso(-5 * 60 * 60_000),
+    digest: 'sha256:rulesets',
+    document: {
+      rulesets: [
+        {
+          name: 'main-branch-protection',
+          target: 'branch',
+          enforcement: 'active',
+          conditions: { include: ['~DEFAULT_BRANCH'], exclude: [] },
+          bypass_actors: [{ actor_id: 5, actor_type: 'OrganizationAdmin', bypass_mode: 'always' }],
+          rules: {
+            deletion: true,
+            non_fast_forward: true,
+            required_linear_history: true,
+            required_signatures: true,
+            pull_request: {
+              required_approving_review_count: 1,
+              require_code_owner_review: true,
+              dismiss_stale_reviews_on_push: true,
+              allowed_merge_methods: ['squash'],
+            },
+            required_status_checks: {
+              required_status_checks: [{ context: 'test' }, { context: 'lint' }],
+              strict_required_status_checks_policy: true,
+            },
+          },
+        },
+      ],
+      allow_removal: false,
+      excludes: ['hand-made-*'],
+    },
     unreadable: false,
     unavailable: '',
   };

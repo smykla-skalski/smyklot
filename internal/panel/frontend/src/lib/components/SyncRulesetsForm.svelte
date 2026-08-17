@@ -371,24 +371,23 @@
   onToggle={(value) => (wanted = value)}
   onSave={() => onSave(wanted, payload)}
 >
-  <!-- The one control here that destroys something. A ruleset removed from
-       this list goes on enforcing for ever unless this is on, and turning it
-       on removes anything a repository has that is not named above. -->
-  <label class="rulesets-removal">
-    <input
-      type="checkbox"
-      checked={removal}
-      {disabled}
-      onchange={(event) => (removal = event.currentTarget.checked)}
-    />
-    Remove rulesets this list does not name
-  </label>
+  <div class="ruleset-rows">
+    <!-- The one control here that destroys something. A ruleset removed from
+         this list goes on enforcing for ever unless this is on, and turning it
+         on removes anything a repository has that is not named below. -->
+    {@render toggleRow(
+      'Remove rulesets this list does not name',
+      'rulesets-removal',
+      removal ? ON : OFF,
+      (chosen: string) => (removal = chosen === ON),
+    )}
+  </div>
 
   <!-- The safety valve beside the switch above, and the reason it is here
        rather than only in the API: a person who can turn removal on from this
        page has to be able to protect something from this page too. -->
   <label class="ruleset-field">
-    <span>Rulesets to leave alone</span>
+    <span class="ruleset-field-label">Rulesets to leave alone</span>
     <!-- The note is a sibling rather than a child, because everything inside a
          label becomes part of the control's name and a reader would hear the
          whole paragraph before reaching the box. -->
@@ -413,7 +412,7 @@
     <article class="ruleset">
       <div class="ruleset-row">
         <label class="ruleset-name">
-          <span>Name</span>
+          <span class="ruleset-field-label">Name</span>
           <input
             type="text"
             value={ruleset.name}
@@ -457,7 +456,7 @@
       </div>
 
       <label class="ruleset-field">
-        <span>Refs it covers</span>
+        <span class="ruleset-field-label">Refs it covers</span>
         <textarea
           rows="2"
           {disabled}
@@ -478,7 +477,7 @@
       </p>
 
       <label class="ruleset-field">
-        <span>Refs it leaves out</span>
+        <span class="ruleset-field-label">Refs it leaves out</span>
         <textarea
           rows="2"
           {disabled}
@@ -595,7 +594,7 @@
       {#if ruleset.rules?.required_status_checks !== undefined}
         <div class="ruleset-nested">
           <label class="ruleset-field">
-            <span>Checks that must pass</span>
+            <span class="ruleset-field-label">Checks that must pass</span>
             <textarea
               rows="2"
               {disabled}
@@ -706,8 +705,11 @@
         </div>
       {/if}
 
-      <div class="ruleset-nested">
-        <span class="ruleset-label">Who may step around it</span>
+      <!-- A property of the ruleset rather than of the rule above it, so it is
+           set off with a heading of its own. Run on, it read as one more
+           option of whatever rule happened to come last. -->
+      <div class="ruleset-section">
+        <h4 class="ruleset-eyebrow">Who may step around it</h4>
 
         {#each actors(ruleset) as actor, at (at)}
           <div class="ruleset-row">
@@ -770,23 +772,55 @@
 </SyncDocumentForm>
 
 <style>
-  .rulesets-empty,
-  .ruleset-note {
-    color: var(--text-muted);
-    margin: 0;
+  /* The settings form's group eyebrow, one level down: a ruleset is several
+     things at once, and without a name over each block they run together into
+     one long list of switches. `ConfigEditor` is where these numbers live. */
+  .ruleset-eyebrow {
+    color: var(--brand-action);
+    font-size: var(--font-size-micro);
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    margin: 0 0 0.375rem;
+    text-transform: uppercase;
   }
 
+  .ruleset-section {
+    display: grid;
+    gap: var(--space-2);
+    margin-top: var(--space-3);
+  }
+
+  /* A button is a grid child here and would otherwise stretch the width of the
+     card. Only the buttons: the rows beside them are meant to run the full
+     width, which is what puts every control at the same right edge. */
+  .ruleset-section > .btn,
+  .ruleset-nested > .btn {
+    justify-self: start;
+  }
+
+  .ruleset-field-label {
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+
+  .rulesets-empty,
+  .ruleset-note {
+    color: var(--dim);
+    font-size: var(--font-size-meta);
+    margin: 0;
+    max-width: 60ch;
+  }
+
+  /* One box per ruleset and none inside it, which is the settings form's rule
+     one level down: there the plate is the box, and here the ruleset is. A
+     list that is genuinely several things does need them told apart. */
   .ruleset {
     border: 1px solid var(--rule);
     border-radius: var(--r-ctl);
     display: grid;
     gap: var(--space-2);
+    margin-top: var(--space-3);
     padding: var(--space-3);
-  }
-
-  .ruleset-rows {
-    border: 1px solid var(--rule);
-    border-radius: var(--r-ctl);
   }
 
   .ruleset-rows > .ruleset-row + .ruleset-row {
@@ -794,18 +828,14 @@
   }
 
   /* One line where there is room and two where there is not, so a narrow
-     window scrolls down rather than across. */
+     window scrolls down rather than across. Written to the settings form's
+     numbers, because the two sit on the same page. */
   .ruleset-row {
     align-items: center;
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-2);
-    min-height: 3.25rem;
-    padding: var(--space-2) 0.875rem;
-  }
-
-  .ruleset-rows > .ruleset-row {
-    background: var(--strip);
+    gap: var(--space-3);
+    padding-block: 0.7rem;
   }
 
   .ruleset-label {
@@ -827,11 +857,13 @@
     flex: 1;
   }
 
+  /* Set in from its rule, and ruled down the side, so a nested block reads as
+     belonging to the row above it rather than as another rule of its own.
+     Indentation alone was not enough to see at this row height. */
   .ruleset-nested {
+    border-inline-start: 1px solid var(--rule);
     display: grid;
     gap: var(--space-2);
-    /* Set in from its rule so a nested block reads as belonging to the row
-       above it rather than as another rule of its own. */
     padding-inline-start: var(--space-3);
   }
 

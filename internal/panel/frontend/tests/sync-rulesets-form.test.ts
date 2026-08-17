@@ -210,12 +210,27 @@ describe('SyncRulesetsForm [Component]', () => {
     const onSave = vi.fn();
     const { container } = render(SyncRulesetsForm, { ...base, stored: stored(), onSave });
 
-    expect(screen.getByLabelText('Remove rulesets this list does not name')).toBeTruthy();
+    expect(radio(container, 'Remove rulesets this list does not name', 'off').checked).toBe(true);
 
     await fireEvent.click(radio(container, 'Block creation', 'on'));
     await fireEvent.click(save());
 
     expect(onSave.mock.calls[0]?.[1].allow_removal).toBe(false);
+  });
+
+  /**
+   * And it is reachable, because it is the one control on this page that
+   * destroys something: a ruleset dropped from the list goes on enforcing for
+   * ever until somebody turns this on.
+   */
+  it('offers the removal switch', async () => {
+    const onSave = vi.fn();
+    const { container } = render(SyncRulesetsForm, { ...base, stored: stored(), onSave });
+
+    await fireEvent.click(radio(container, 'Remove rulesets this list does not name', 'on'));
+    await fireEvent.click(save());
+
+    expect(onSave.mock.calls[0]?.[1].allow_removal).toBe(true);
   });
 
   it('carries the switch that says whether any of this is enforced', async () => {
