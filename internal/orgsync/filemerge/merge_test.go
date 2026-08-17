@@ -555,19 +555,77 @@ jobs:
 		)
 
 		// `<<` is not a key, it is how YAML spells inheritance, and an override
-		// setting it would write one whose value is not an anchor - a file a
-		// good many readers refuse outright.
-		It("refuses an override that writes a merge key itself", func() {
-			_, err := filemerge.Apply("ci.yaml", []byte("job:\n  name: build\n"),
-				filemerge.Spec{Overrides: overrides(`{"job": {"<<": {"a": 1}}}`)})
+		// setting it writes one whose value is an ordinary object, string or
+		// number - a file that does not load at all: "map merge requires map or
+		// sequence of maps as the value".
+		//
+		// Read off the override rather than caught where a mapping is merged,
+		// because there are four ways one reaches the file and only the first
+		// goes through that code.
+		DescribeTable("refuses an override that writes a merge key itself",
+			func(template, override string) {
+				_, err := filemerge.Apply("ci.yaml", []byte(template),
+					filemerge.Spec{Overrides: overrides(override)})
 
-			Expect(err).To(MatchError(filemerge.ErrUnwritable))
+				Expect(err).To(MatchError(filemerge.ErrUnwritable))
+				Expect(err.Error()).To(ContainSubstring(`"<<"`))
+			},
+			Entry("merged into a mapping the template has",
+				"job:\n  name: build\n", `{"job": {"<<": {"a": 1}}}`),
+			Entry("in an object built fresh",
+				"name: build\n", `{"jobs": {"<<": {"a": 1}}}`),
+			Entry("in an object replacing a scalar",
+				"job: 5\n", `{"job": {"<<": "x"}}`),
+			Entry("in a list item",
+				"name: build\n", `{"steps": [{"<<": "x"}]}`),
+		)
+
+		// Plain is what makes a merge key one. Read as inheritance, a quoted
+		// `"<<"` had a removal refused for a key the mapping does not have.
+		It("reads a quoted merge key as the ordinary key it is", func() {
+			merged, err := filemerge.Apply("ci.yaml",
+				[]byte("d: &d\n  a: 1\nj:\n  \"<<\": *d\n  a: 2\n"),
+				filemerge.Spec{Overrides: overrides(`{"j": {"a": null}}`)})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(merged)).To(ContainSubstring(`"<<": *d`))
+			Expect(string(merged)).NotTo(ContainSubstring("a: 2"))
 		})
 
-		// An alias binds to the nearest definition above it, so a copy that
-		// kept its anchors would take every later `*name` with it. This one
-		// changes `x.inner`, and `later` names the same anchor - it has to go
-		// on meaning what the template anchored.
+		// A merge key can name several mappings, so the walk branches, and a
+		// depth bound leaves the work exponential in the depth. This template
+		// is twenty-one bytes and used never to return, on a sync worker with
+		// no timeout - a wedged goroutine rather than a failed sync.
+		//
+		// The override has to name a key the mapping does not spell out, since
+		// that is what sends the read looking through the inheritance - a key
+		// the mapping has is answered without walking anything.
+		DescribeTable("answers a merge key that names itself",
+			func(override string) {
+				done := make(chan struct{})
+
+				go func() {
+					defer GinkgoRecover()
+					defer close(done)
+
+					_, err := filemerge.Apply("ci.yaml",
+						[]byte("a: &a\n  <<: [*a, *a]\n"),
+						filemerge.Spec{Overrides: overrides(override)})
+					Expect(err).NotTo(HaveOccurred())
+
+					_ = err
+				}()
+
+				Eventually(done, "5s").Should(BeClosed())
+			},
+			Entry("an object under a key it does not have", `{"a": {"k": {"deep": 1}}}`),
+			Entry("a removal of a key it does not have", `{"a": {"k": null}}`),
+		)
+
+		// An alias binds to the nearest definition above it, so a copy that kept
+		// the template's anchor names would take every later `*name` with it.
+		// This one changes `x.inner`, and `later` names the same anchor - it has
+		// to go on meaning what the template anchored.
 		It("does not redefine an anchor nested inside what it copies", func() {
 			merged, err := filemerge.Apply("ci.yaml",
 				[]byte("common: &c\n  inner: &i\n    k: 1\nx: *c\nlater: *i\n"),
@@ -583,9 +641,54 @@ jobs:
 			Expect(back.X).To(HaveKeyWithValue("inner", map[string]any{"k": 2}))
 			Expect(back.Later).To(HaveKeyWithValue("k", 1))
 
-			// One definition, because two is a document whose meaning depends
-			// on where a reader is standing.
-			Expect(strings.Count(string(merged), "&i")).To(Equal(1))
+			// One definition of the name, because two is a document whose
+			// meaning depends on where the reader is standing.
+			Expect(strings.Count(string(merged), "&i\n")).To(Equal(1))
+		})
+
+		// The other side of the same copy. `from` means "whatever img is", and
+		// that is what the template guarantees inside `zcommon` and therefore
+		// inside anything standing for it - so the copy's pair has to keep
+		// pointing at each other rather than back at the template's.
+		It("keeps a copied alias following the copy it was taken with", func() {
+			merged, err := filemerge.Apply("compose.yaml",
+				[]byte("zcommon: &c\n  img: &i alpine\n  from: *i\nx: *c\n"),
+				filemerge.Spec{Overrides: overrides(`{"x": {"img": "debian"}}`)})
+
+			Expect(err).NotTo(HaveOccurred())
+
+			var back struct {
+				Zcommon map[string]any `yaml:"zcommon"`
+				X       map[string]any `yaml:"x"`
+			}
+			Expect(yaml.Unmarshal(merged, &back)).To(Succeed())
+
+			Expect(back.X).To(HaveKeyWithValue("img", "debian"))
+			Expect(back.X).To(HaveKeyWithValue("from", "debian"))
+
+			// And the template's own pair is untouched, which is the half that
+			// keeping the anchor names would have broken.
+			Expect(back.Zcommon).To(HaveKeyWithValue("img", "alpine"))
+			Expect(back.Zcommon).To(HaveKeyWithValue("from", "alpine"))
+		})
+
+		// The copy keeps a name of its own, so merging the template's own
+		// definition away in the same override leaves the copy readable rather
+		// than refused for an anchor that went with it.
+		It("keeps a copy readable when the anchor it came from is removed", func() {
+			merged, err := filemerge.Apply("ci.yaml",
+				[]byte("zbase: &t\n  q: &i 5\n  r: *i\nalias: *t\n"),
+				filemerge.Spec{Overrides: overrides(`{"alias": {"x": 1}, "zbase": null}`)})
+
+			Expect(err).NotTo(HaveOccurred())
+
+			var back struct {
+				Alias map[string]any `yaml:"alias"`
+			}
+			Expect(yaml.Unmarshal(merged, &back)).To(Succeed())
+			Expect(back.Alias).To(HaveKeyWithValue("q", 5))
+			Expect(back.Alias).To(HaveKeyWithValue("r", 5))
+			Expect(back.Alias).To(HaveKeyWithValue("x", 1))
 		})
 
 		// The tag comes off so the line is written plainly, and a merge key

@@ -212,7 +212,7 @@ func setNodeAt(root *yaml.Node, keys []string, value *yaml.Node) bool {
 		}
 
 		found, own := keyValue(parent, key)
-		parent = resolveAlias(standIn(parent, key, found, own))
+		parent = resolveAlias(standIn(root, parent, key, found, own))
 	}
 
 	if parent == nil || parent.Kind != yaml.MappingNode {

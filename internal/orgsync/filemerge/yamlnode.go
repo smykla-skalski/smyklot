@@ -58,6 +58,10 @@ func mergeYAML(template []byte, spec Spec) ([]byte, error) {
 		return nil, err
 	}
 
+	if err := refuseMergeKeyOverride(override); err != nil {
+		return nil, err
+	}
+
 	// The template as it arrived, for the list rules: the merge edits the
 	// document in place, so what a list is appended to has to be taken before
 	// that happens.
@@ -75,7 +79,9 @@ func mergeYAML(template []byte, spec Spec) ([]byte, error) {
 		}
 	}
 
-	if err := mergeIntoMapping(document, override, spec.Strategy != StrategyShallow); err != nil {
+	if err := mergeIntoMapping(
+		document, document, override, spec.Strategy != StrategyShallow,
+	); err != nil {
 		return nil, err
 	}
 
@@ -259,17 +265,16 @@ func encodeYAMLDocument(root *yaml.Node) ([]byte, error) {
 //
 // The keys are walked in sorted order so that one override document produces
 // one file, whatever order Go happened to range its map in.
-func mergeIntoMapping(mapping *yaml.Node, override map[string]any, deep bool) error {
+//
+// root is the whole document, carried down because a copy the merge writes has
+// to be given anchor names the rest of the document is not already using.
+func mergeIntoMapping(
+	root, mapping *yaml.Node,
+	override map[string]any,
+	deep bool,
+) error {
 	for _, key := range sortedKeys(override) {
-		if key == mergeKey {
-			// Not a key: it is how YAML spells inheritance, and an override
-			// setting it would write a `<<` whose value is not an anchor, which
-			// is a file half the readers of these files refuse outright.
-			return fmt.Errorf("%w: an override cannot set %q, which is how YAML "+
-				"spells one mapping inheriting another", ErrUnwritable, mergeKey)
-		}
-
-		if err := mergeKeyInto(mapping, key, override[key], deep); err != nil {
+		if err := mergeKeyInto(root, mapping, key, override[key], deep); err != nil {
 			return err
 		}
 	}
@@ -278,7 +283,7 @@ func mergeIntoMapping(mapping *yaml.Node, override map[string]any, deep bool) er
 }
 
 // mergeKeyInto applies one of an override's keys to a mapping.
-func mergeKeyInto(mapping *yaml.Node, key string, value any, deep bool) error {
+func mergeKeyInto(root, mapping *yaml.Node, key string, value any, deep bool) error {
 	if value == nil {
 		return removeKey(mapping, key)
 	}
@@ -288,9 +293,9 @@ func mergeKeyInto(mapping *yaml.Node, key string, value any, deep bool) error {
 	if deep && isObject {
 		existing, own := keyValue(mapping, key)
 
-		if stood := standIn(mapping, key, existing, own); stood != nil &&
+		if stood := standIn(root, mapping, key, existing, own); stood != nil &&
 			stood.Kind == yaml.MappingNode {
-			return mergeIntoMapping(stood, nested, true)
+			return mergeIntoMapping(root, stood, nested, true)
 		}
 
 		// An object patched onto anything that is not an object replaces it,
@@ -324,46 +329,163 @@ func mergeKeyInto(mapping *yaml.Node, key string, value any, deep bool) error {
 // A copy in either case, put where the merge can see it, rather than the node
 // itself: what an anchor names is shared, and merging into it would change every
 // other place naming it.
-func standIn(mapping *yaml.Node, key string, existing *yaml.Node, own bool) *yaml.Node {
+func standIn(root, mapping *yaml.Node, key string, existing *yaml.Node, own bool) *yaml.Node {
 	stood := resolveAlias(existing)
 	if stood == nil || stood.Kind != yaml.MappingNode {
 		return existing
 	}
 
-	// The mapping's own mapping node, spelled out where it is. Nothing else
-	// names it, so the merge goes straight into it.
+	// The mapping's own mapping node, spelled out where it is. Whatever else
+	// names it means it, so the merge goes straight into it.
 	if own && existing.Kind == yaml.MappingNode {
 		return existing
 	}
 
-	copied := cloneNode(stood)
-	forgetAnchors(copied)
+	copied := copyForMerge(stood)
+	copied.Anchor = ""
+
+	renameCopiedAnchors(root, copied)
 	setKey(mapping, key, copied)
 
 	return copied
 }
 
-// forgetAnchors strips the anchors from a copy, at every depth.
+// copyForMerge copies a subtree for the merge to write into, keeping the pairs
+// inside it pointing at each other.
 //
-// One that kept them would define them a second time, and an alias binds to the
-// nearest definition above it - so every `*name` written after the copy would
-// name the copy rather than what the template anchored, and a merge into one key
-// would change values nothing addressed. Clearing the copied node alone was not
-// enough: an anchor nested inside it does the same thing one level down.
+// cloneNode copies each alias's pointer, which leads back into the tree the copy
+// was taken from - so `img: &i alpine` beside `from: *i`, copied, gave a `from`
+// that went on meaning the original's `img` however the copy's changed. What
+// the template said is that the two are the same value, and a copy has to say
+// that too.
 //
-// The aliases inside the copy still resolve. What they name is defined where it
-// always was, above the copy, and that is also what they meant before the merge.
-func forgetAnchors(node *yaml.Node) {
+// The anchors themselves are left alone here. Two definitions of one name is a
+// document whose meaning depends on where a reader is standing, and
+// renameDuplicateAnchors settles that at the end, once every copy the merge is
+// going to make has been made.
+func copyForMerge(node *yaml.Node) *yaml.Node {
+	within := map[*yaml.Node]*yaml.Node{}
+	copied := cloneWithin(node, within)
+
+	repointAliases(copied, within)
+
+	return copied
+}
+
+// cloneWithin copies a subtree and records what each node was copied to.
+func cloneWithin(node *yaml.Node, within map[*yaml.Node]*yaml.Node) *yaml.Node {
 	if node == nil {
+		return nil
+	}
+
+	copied := *node
+	within[node] = &copied
+
+	copied.Content = make([]*yaml.Node, len(node.Content))
+	for index, child := range node.Content {
+		copied.Content[index] = cloneWithin(child, within)
+	}
+
+	if len(node.Content) == 0 {
+		copied.Content = nil
+	}
+
+	return &copied
+}
+
+// repointAliases sends an alias inside a copy at the copy's own node, where the
+// thing it named was copied too. One naming something outside is left as it is:
+// what it means did not move.
+func repointAliases(node *yaml.Node, within map[*yaml.Node]*yaml.Node) {
+	if node.Kind == yaml.AliasNode {
+		if moved, copied := within[node.Alias]; copied {
+			node.Alias = moved
+		}
+	}
+
+	for _, child := range node.Content {
+		repointAliases(child, within)
+	}
+}
+
+// renameCopiedAnchors gives every anchor in a fresh copy a name the document
+// does not already use, and points the copy's own aliases at the new names.
+//
+// Two definitions of one name is a document whose meaning depends on where the
+// reader is standing: an alias binds to the nearest definition above it, so a
+// copy keeping the template's anchors captures every `*name` written after it -
+// a merge into one key changing values nothing addressed. Stripping them
+// instead breaks the copy from the inside, because an alias the copy carries
+// then names the template's node and stops following the copy's own.
+//
+// Renaming is the reading that keeps both. Done here rather than in one pass at
+// the end, because here is the only moment the copy's aliases can be told from
+// the template's: they point at the copy's nodes, and setKey will replace some
+// of those nodes as the merge writes into them.
+//
+// Called before the copy is attached, so the document's taken names are the
+// document's own.
+func renameCopiedAnchors(root, copied *yaml.Node) {
+	anchored := map[string][]*yaml.Node{}
+	collectDefinitions(copied, anchored)
+
+	if len(anchored) == 0 {
 		return
 	}
 
-	node.Anchor = ""
+	taken := map[string]struct{}{}
+	collectAnchors(root, taken)
 
-	// Content only, never Alias: that pointer leads out of the copy and into the
-	// document the copy was taken from, where the anchors have to stay.
+	for name, nodes := range anchored {
+		if _, clashes := taken[name]; !clashes {
+			continue
+		}
+
+		for _, node := range nodes {
+			fresh := unusedAnchor(name, taken)
+			taken[fresh] = struct{}{}
+
+			renameAliases(copied, node, fresh)
+			node.Anchor = fresh
+		}
+	}
+}
+
+// collectDefinitions records every anchored node under a root, keyed by the
+// name it defines.
+func collectDefinitions(node *yaml.Node, into map[string][]*yaml.Node) {
+	if node.Anchor != "" {
+		into[node.Anchor] = append(into[node.Anchor], node)
+	}
+
 	for _, child := range node.Content {
-		forgetAnchors(child)
+		collectDefinitions(child, into)
+	}
+}
+
+// unusedAnchor is the first name of the form `name-2`, `name-3` that nothing in
+// the document has already taken.
+func unusedAnchor(name string, taken map[string]struct{}) string {
+	for suffix := 2; ; suffix++ {
+		fresh := name + "-" + strconv.Itoa(suffix)
+		if _, used := taken[fresh]; !used {
+			return fresh
+		}
+	}
+}
+
+// renameAliases points every alias naming one definition at its new name.
+//
+// An alias is written out by its own Value, not by what its pointer leads to,
+// so this is what actually moves it. The pointer is what says which definition
+// it belongs to.
+func renameAliases(node *yaml.Node, definition *yaml.Node, fresh string) {
+	if node.Kind == yaml.AliasNode && node.Alias == definition {
+		node.Value = fresh
+	}
+
+	for _, child := range node.Content {
+		renameAliases(child, definition, fresh)
 	}
 }
 
@@ -380,7 +502,7 @@ func forgetAnchors(node *yaml.Node) {
 // the key does not go, it goes back to what was inherited, so a removal lands as
 // a change of value.
 func removeKey(mapping *yaml.Node, key string) error {
-	if inheritedValue(mapping, key, 0) != nil {
+	if inheritedValue(mapping, key) != nil {
 		return fmt.Errorf(
 			"%w: %q here comes from a %q, so removing it would mean unpicking "+
 				"what this mapping inherits", ErrUnwritable, key, mergeKey)
