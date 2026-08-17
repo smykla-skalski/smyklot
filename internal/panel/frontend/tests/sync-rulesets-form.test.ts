@@ -50,6 +50,19 @@ describe('SyncRulesetsForm [Component]', () => {
           require_code_owner_review: true,
           allowed_merge_methods: ['squash'],
         },
+        // Configured through the API rather than here: the form can switch
+        // code scanning on and off and edit its tools, but nothing in the
+        // fixture below touches it, so it is what a save has to carry through
+        // untouched.
+        code_scanning: {
+          code_scanning_tools: [
+            {
+              tool: 'CodeQL',
+              alerts_threshold: 'errors',
+              security_alerts_threshold: 'high_or_higher',
+            },
+          ],
+        },
       },
       ...over,
     };
@@ -114,8 +127,37 @@ describe('SyncRulesetsForm [Component]', () => {
     expect(ruleset.bypass_actors).toEqual([
       { actor_id: 5, actor_type: 'OrganizationAdmin', bypass_mode: 'always' },
     ]);
-    expect((ruleset.rules as Record<string, unknown>).required_signatures).toBe(true);
-    expect((ruleset.rules as Record<string, unknown>).deletion).toBe(true);
+
+    const rules = ruleset.rules as Record<string, unknown>;
+    expect(rules.required_signatures).toBe(true);
+    expect(rules.deletion).toBe(true);
+    expect(rules.code_scanning).toEqual({
+      code_scanning_tools: [
+        {
+          tool: 'CodeQL',
+          alerts_threshold: 'errors',
+          security_alerts_threshold: 'high_or_higher',
+        },
+      ],
+    });
+  });
+
+  /**
+   * Modelled everywhere else and reachable from nowhere here, which is a rule
+   * somebody can read in a plan and not change on the page that produced it.
+   */
+  it('offers the rule that restricts updates', async () => {
+    const onSave = vi.fn();
+    const { container } = render(SyncRulesetsForm, { ...base, stored: stored(), onSave });
+
+    await fireEvent.click(radio(container, 'Restrict updates', 'on'));
+    await fireEvent.click(radio(container, 'Still allow fetch and merge', 'off'));
+    await fireEvent.click(save());
+
+    const ruleset = (onSave.mock.calls[0]?.[1].rulesets as Record<string, unknown>[])[0];
+    expect((ruleset.rules as Record<string, unknown>).update).toEqual({
+      update_allows_fetch_and_merge: false,
+    });
   });
 
   /**

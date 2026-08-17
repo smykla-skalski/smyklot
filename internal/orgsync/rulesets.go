@@ -291,6 +291,15 @@ func (r Ruleset) validate(index int) error {
 }
 
 func (c RulesetConditions) validate(name, target, prefix string) error {
+	// A ruleset that includes no ref matches no ref, and GitHub takes it
+	// happily: it appears on the repository's rules page, reads as protection
+	// everywhere, and enforces nothing on anything. The same silence every
+	// other emptiness in this file is refused for.
+	if len(c.IncludeRefs) == 0 {
+		return invalid("ruleset %q covers no refs, so it would enforce nothing; "+
+			"name a pattern, %s or %s", name, refEverything, refDefaultBranch)
+	}
+
 	for _, refs := range []struct {
 		what     string
 		patterns []string
@@ -318,7 +327,20 @@ func (c RulesetConditions) validate(name, target, prefix string) error {
 // shape, silently protecting nothing whenever its glob was wrong.
 func validateRefPattern(name, target, prefix, what, pattern string) error {
 	switch {
-	case pattern == refEverything || pattern == refDefaultBranch:
+	// Every ref of whatever this ruleset targets, so it means something on
+	// either one.
+	case pattern == refEverything:
+		return nil
+
+	// A branch, and only ever a branch. A tag ruleset naming it is the
+	// wrong-prefix case wearing a different hat: GitHub takes it, no tag is
+	// ever the default branch, and the ruleset enforces nothing.
+	case pattern == refDefaultBranch:
+		if target != RulesetTargetBranch {
+			return invalid("ruleset %q targets %s and %s %s, which no %s can ever be",
+				name, target, what, refDefaultBranch, target)
+		}
+
 		return nil
 
 	case strings.TrimSpace(pattern) == "":

@@ -208,6 +208,17 @@
     });
   }
 
+  /**
+   * Restricting updates is a rule of its own rather than one of the plain
+   * switches above, because it carries a parameter: whether a push that only
+   * fast-forwards the ref to its own base is still allowed.
+   */
+  function toggleUpdate(index: number, on: boolean): void {
+    patchRules(index, {
+      update: on ? { update_allows_fetch_and_merge: true } : undefined,
+    });
+  }
+
   /** Turning a rule that carries parameters on gives it the smallest legal shape. */
   function togglePullRequest(index: number, on: boolean): void {
     patchRules(index, {
@@ -470,6 +481,40 @@
             />
           </div>
         {/each}
+
+        <div class="ruleset-row">
+          <span class="ruleset-label">Restrict updates</span>
+          <span class="ruleset-spacer"></span>
+          <SegmentedControl
+            name="{rowKey(index)}-update"
+            label="Restrict updates"
+            options={SWITCH}
+            value={ruleset.rules?.update === undefined ? OFF : ON}
+            {disabled}
+            onSelect={(value) => toggleUpdate(index, value === ON)}
+          />
+        </div>
+
+        {#if ruleset.rules?.update !== undefined}
+          <div class="ruleset-row">
+            <span class="ruleset-label">Still allow fetch and merge</span>
+            <span class="ruleset-spacer"></span>
+            <SegmentedControl
+              name="{rowKey(index)}-fetch-and-merge"
+              label="Still allow fetch and merge"
+              options={SWITCH}
+              value={flagOn(
+                ruleset.rules.update as unknown as Record<string, unknown>,
+                'update_allows_fetch_and_merge',
+              )}
+              {disabled}
+              onSelect={(value) =>
+                patchRules(index, {
+                  update: { update_allows_fetch_and_merge: value === ON },
+                })}
+            />
+          </div>
+        {/if}
 
         <div class="ruleset-row">
           <span class="ruleset-label">Require a pull request</span>

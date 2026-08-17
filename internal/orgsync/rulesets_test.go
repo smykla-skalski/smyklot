@@ -68,6 +68,8 @@ var _ = Describe("Ruleset configuration [Unit]", func() {
 		}}.Validate()).To(Succeed())
 	})
 
+	// The one special value that means something on either target: every
+	// branch of a branch ruleset, every tag of a tag one
 	It("accepts a ruleset that applies to every ref", func() {
 		Expect(orgsync.RulesetConfig{Rulesets: []orgsync.Ruleset{
 			with(func(r *orgsync.Ruleset) {
@@ -75,6 +77,15 @@ var _ = Describe("Ruleset configuration [Unit]", func() {
 					IncludeRefs: []string{"~ALL"},
 					ExcludeRefs: []string{"refs/heads/tmp/*"},
 				}
+			}),
+		}}.Validate()).To(Succeed())
+	})
+
+	It("accepts every ref of a tag ruleset too", func() {
+		Expect(orgsync.RulesetConfig{Rulesets: []orgsync.Ruleset{
+			with(func(r *orgsync.Ruleset) {
+				r.Target = orgsync.RulesetTargetTag
+				r.Conditions = orgsync.RulesetConditions{IncludeRefs: []string{"~ALL"}}
 			}),
 		}}.Validate()).To(Succeed())
 	})
@@ -140,6 +151,21 @@ var _ = Describe("Ruleset configuration [Unit]", func() {
 		Entry("an empty ref pattern",
 			with(func(r *orgsync.Ruleset) { r.Conditions.IncludeRefs = []string{"  "} }),
 			"an empty ref pattern"),
+
+		// The same silence as the wrong-prefix case, one step earlier: GitHub
+		// takes it, the rules page shows it, and no ref matches
+		Entry("a ruleset that covers no refs at all",
+			with(func(r *orgsync.Ruleset) { r.Conditions.IncludeRefs = nil }),
+			"covers no refs"),
+
+		// It names a branch, and no tag is ever the default branch. The one
+		// special value that is not target-generic
+		Entry("the default branch on a tag ruleset",
+			with(func(r *orgsync.Ruleset) {
+				r.Target = orgsync.RulesetTargetTag
+				r.Conditions.IncludeRefs = []string{"~DEFAULT_BRANCH"}
+			}),
+			"no tag can ever be"),
 
 		Entry("a bypass actor with no id",
 			with(func(r *orgsync.Ruleset) {
