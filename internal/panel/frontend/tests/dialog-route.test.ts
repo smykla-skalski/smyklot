@@ -26,22 +26,22 @@ describe('SvelteKit dialog route adapter', () => {
     navigation.goto.mockImplementation((_url, options?: { state?: Record<string, unknown> }) => {
       if (options?.state !== undefined) routePage.state = options.state;
     });
-    routePage.url = at('/i/acme/repositories');
-    routePage.params = { account: 'acme', view: 'repositories' };
+    routePage.url = at('/i/acme/users');
+    routePage.params = { account: 'acme', view: 'users' };
     routePage.route = { id: '/i/[account]/[view=dialogHostView]/[...rest=dialogPath]' };
     routePage.state = {};
   });
 
   it('opens a shareable path as an owned shallow entry', () => {
-    dialogRoute.open('repository-settings', { repository: 'api-gateway' });
+    dialogRoute.open('user-action', { user: 'octocat', action: 'suspend' });
 
-    expect(navigation.goto).toHaveBeenCalledWith(`${basePath}/i/acme/repositories/api-gateway`, {
+    expect(navigation.goto).toHaveBeenCalledWith(`${basePath}/i/acme/users/octocat/suspend`, {
       shallow: true,
       replace: false,
       state: expect.objectContaining({
         dialog: {
-          name: 'repository-settings',
-          params: { repository: 'api-gateway' },
+          name: 'user-action',
+          params: { user: 'octocat', action: 'suspend' },
         },
         smyklotDialogEntry: true,
       }),
@@ -52,7 +52,7 @@ describe('SvelteKit dialog route adapter', () => {
     const back = vi.fn();
     vi.stubGlobal('history', { back });
     routePage.state = {
-      dialog: { name: 'repository-settings', params: { repository: 'api-gateway' } },
+      dialog: { name: 'user-action', params: { user: 'octocat', action: 'suspend' } },
       smyklotDialogEntry: true,
     };
 
@@ -99,16 +99,16 @@ describe('SvelteKit dialog route adapter', () => {
    * place in the list went with it.
    */
   it('closes a cold deep link without leaving the route it is on', () => {
-    routePage.url = at('/i/acme/repositories/api-gateway/file');
+    routePage.url = at('/i/acme/users/octocat/suspend');
     routePage.params = {
       account: 'acme',
-      view: 'repositories',
-      rest: 'api-gateway/file',
+      view: 'users',
+      rest: 'octocat/suspend',
     };
 
     dialogRoute.close();
 
-    expect(navigation.goto).toHaveBeenCalledWith(`${basePath}/i/acme/repositories`, {
+    expect(navigation.goto).toHaveBeenCalledWith(`${basePath}/i/acme/users`, {
       shallow: true,
       replace: true,
       state: expect.objectContaining({ smyklotDialogClosed: true }),

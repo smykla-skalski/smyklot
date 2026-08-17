@@ -55,6 +55,28 @@ export const HISTORY_SECTIONS = ['audit', 'failures'] as const;
 /** The tables the Root console's access page is split into. */
 export const ACCESS_SECTIONS = ['users', 'invitations'] as const;
 
+/**
+ * The panes of one repository's own page.
+ *
+ * A repository is reached at `/i/acme/repositories/api-gateway`, and the pane it
+ * opens on rides the address the same way history's table does, so a link points
+ * at the commands a colleague was asked to look at rather than at the file pane
+ * everyone starts on.
+ *
+ * `file` is not written into the path. It is where the page opens, so the bare
+ * repository already means it, and an address that says so twice is one a reader
+ * would have to be told to ignore.
+ */
+export const REPOSITORY_SECTIONS = ['file', 'behavior', 'commands'] as const;
+export type RepositorySection = (typeof REPOSITORY_SECTIONS)[number];
+
+/** One repository, opened on one of its panes. */
+export interface RepositoryPage {
+  /** Named the way a person names it - `api-gateway`, never an id. */
+  name: string;
+  section: RepositorySection;
+}
+
 export type PanelView = (typeof PANEL_VIEWS)[number];
 
 /**
@@ -96,6 +118,7 @@ export type RootRoute =
       account: string;
       view: RootInstallationView;
       section?: HistorySection;
+      repository?: RepositoryPage;
       dialog?: RouteDialog;
     };
 
@@ -103,6 +126,12 @@ export type InstallationRoute = {
   account: string;
   view: ScopedPanelView;
   section?: HistorySection;
+  /**
+   * One repository's own page, which is a place inside the repositories view
+   * rather than something standing over it - the navigation still reads
+   * Repositories, and leaving the page returns to the list.
+   */
+  repository?: RepositoryPage;
   /** What is open on top of the view; see `route-dialogs`. */
   dialog?: RouteDialog;
 };
@@ -142,15 +171,19 @@ export function parsePanelRoute(basePath: string, pathname: string): PanelRoute 
   )
     return null;
 
-  /* Everything past the view is either history's table or a dialog. A view that
-     hosts dialogs never has a section, and one that has a section hosts none, so
-     the two grammars cannot be confused for each other. */
+  /* Everything past the view is history's table, a repository's page, or a
+     dialog. Each view takes exactly one of the three, so the grammars can never
+     be confused for each other. */
   const trailing = parts.slice(3);
-  const dialog = parseTrailingDialog(rawView, trailing);
+  const repository = parseTrailingRepository(rawView, trailing);
+  if (repository === 'invalid') return null;
+
+  const dialog = repository === undefined ? parseTrailingDialog(rawView, trailing) : undefined;
   if (dialog === 'invalid') return null;
 
-  const section = parseSection(rawView, dialog === undefined ? trailing[0] : undefined);
-  if (section === 'invalid' || (dialog === undefined && trailing.length > 1)) return null;
+  const consumed = repository !== undefined || dialog !== undefined;
+  const section = parseSection(rawView, consumed ? undefined : trailing[0]);
+  if (section === 'invalid' || (!consumed && trailing.length > 1)) return null;
 
   let account: string;
   try {
@@ -161,8 +194,43 @@ export function parsePanelRoute(basePath: string, pathname: string): PanelRoute 
 
   if (account.trim() === '') return null;
   const route: InstallationRoute = { account, view: rawView };
+  if (repository !== undefined) return { ...route, repository };
   if (dialog !== undefined) return { ...route, dialog };
   return section === undefined ? route : { ...route, section };
+}
+
+/**
+ * Reads the segments past the repositories view as one repository's page.
+ *
+ * `undefined` for any other view or a path with nothing after it; `'invalid'`
+ * for segments that were meant to be a repository and are not, which is an
+ * address that does not resolve - a mistyped pane should say so rather than
+ * quietly opening the file pane of a repository whose name was read as one.
+ */
+function parseTrailingRepository(
+  view: string,
+  segments: string[],
+): RepositoryPage | undefined | 'invalid' {
+  if (segments.length === 0 || view !== 'repositories') return undefined;
+  if (segments.length > 2) return 'invalid';
+
+  const [encodedName, rawSection] = segments;
+  if (encodedName === undefined || encodedName === '') return 'invalid';
+
+  let name: string;
+  try {
+    name = decodeURIComponent(encodedName);
+  } catch {
+    return 'invalid';
+  }
+  if (name.trim() === '') return 'invalid';
+  /* A name is only ever read in the first position, so the repository called
+     `behavior` is reachable, and `.../behavior/behavior` is its Behavior pane. */
+  if (rawSection === undefined) return { name, section: 'file' };
+
+  const section = REPOSITORY_SECTIONS.find((known) => known === rawSection);
+
+  return section === undefined ? 'invalid' : { name, section };
 }
 
 /**
@@ -332,11 +400,15 @@ function parseRootRoute(parts: string[]): RootRoute | null {
 
   const view = parts[3] as RootInstallationView;
   const trailing = parts.slice(4);
-  const dialog = parseTrailingDialog(view, trailing);
+  const repository = parseTrailingRepository(view, trailing);
+  if (repository === 'invalid') return null;
+
+  const dialog = repository === undefined ? parseTrailingDialog(view, trailing) : undefined;
   if (dialog === 'invalid') return null;
 
-  const section = parseSection(view, dialog === undefined ? trailing[0] : undefined);
-  if (section === 'invalid' || (dialog === undefined && trailing.length > 1)) return null;
+  const consumed = repository !== undefined || dialog !== undefined;
+  const section = parseSection(view, consumed ? undefined : trailing[0]);
+  if (section === 'invalid' || (!consumed && trailing.length > 1)) return null;
 
   let account: string;
   try {
@@ -346,6 +418,7 @@ function parseRootRoute(parts: string[]): RootRoute | null {
   }
   if (account.trim() === '') return null;
   const route: RootRoute = { rootView: 'installation', account, view };
+  if (repository !== undefined) return { ...route, repository };
   if (dialog !== undefined) return { ...route, dialog };
   return section === undefined ? route : { ...route, section };
 }

@@ -20,11 +20,14 @@ async function resetMigration(path: string, repository: string): Promise<void> {
 
   try {
     await page.goto(`${panel.origin}${path}`, { waitUntil: 'domcontentloaded' });
-    const dialog = page.getByRole('dialog', { name: repository });
-    await dialog.waitFor({ state: 'visible', timeout: 30_000 });
+    // A page now, reached by the address it had as a dialog. What proves it is a
+    // page is that nothing stands over the list: no dialog role, and the list is
+    // not underneath it.
+    const title = page.getByRole('heading', { name: repository, exact: true });
+    await title.waitFor({ state: 'visible', timeout: 30_000 });
+    expect(await page.getByRole('dialog').count()).toBe(0);
 
-    expect(await dialog.getByRole('button', { name: 'Close dialog' }).count()).toBe(0);
-    const reset = dialog.getByRole('button', { name: 'Let it ask' });
+    const reset = page.getByRole('button', { name: 'Let it ask' });
     await reset.waitFor({ state: 'visible' });
     const response = page.waitForResponse(
       (candidate) =>
@@ -35,24 +38,28 @@ async function resetMigration(path: string, repository: string): Promise<void> {
     expect((await response).status()).toBe(200);
     await reset.waitFor({ state: 'detached' });
 
-    // Closing and reopening inside the query stale window must not resurrect
+    // Leaving and coming back inside the query stale window must not resurrect
     // the refused state from a cached detail response.
-    await page.keyboard.press('Escape');
-    await dialog.waitFor({ state: 'detached' });
-    // The list is virtualised and, now that the view is no taller than the window,
-    // it renders only the rows in view - so a repository further down the list is
-    // not in the page to be clicked. Narrow to it the way a reader would.
-    //
-    // Typed straight after the close, which is the part worth keeping: closing a
-    // dialog reached by its own address used to be a navigation from the route
-    // that hosts one to the route that does not, and those are two page
-    // components, so this list was torn down and built again from the last stored
-    // search - and what had just been typed into it went with it.
+    await page.getByRole('link', { name: 'Repositories', exact: true }).first().click();
+    await title.waitFor({ state: 'detached' });
+
+    /* The list is virtualised and renders only the rows in view, so a repository
+       further down is not in the page to be pressed. Narrow to it the way a
+       reader would.
+
+       Typed straight after coming back, which is the part worth keeping: the
+       list is the same component the page was drawn inside, so it is still
+       mounted with the reader's place in it - it used to be torn down and built
+       again from the last stored search, and what had just been typed went with
+       it. */
     await page.getByPlaceholder('Search repositories').fill(repository);
-    await page.getByRole('button', { name: `Configure smykla-skalski/${repository}` }).click();
-    await dialog.waitFor({ state: 'visible' });
+    /* Not `exact`: the row's link is the name AND the override count beside it,
+       so its accessible name is "search-indexer 2 overrides" for any repository
+       that has overrides - which is most of the ones worth opening. */
+    await page.getByRole('link', { name: repository }).click();
+    await title.waitFor({ state: 'visible' });
     await page.waitForTimeout(SETTLE_MS);
-    expect(await dialog.getByRole('button', { name: 'Let it ask' }).count()).toBe(0);
+    expect(await page.getByRole('button', { name: 'Let it ask' }).count()).toBe(0);
     expect(crashes).toEqual([]);
   } finally {
     await page.close();
@@ -60,7 +67,7 @@ async function resetMigration(path: string, repository: string): Promise<void> {
 }
 
 describe('the TOML migration reset in the development panel', () => {
-  it('works in an installation and keeps the modal presentation', async () => {
+  it('works in an installation and keeps the page presentation', async () => {
     await resetMigration(`/i/${panel.account}/repositories/migration-demo`, 'migration-demo');
   });
 

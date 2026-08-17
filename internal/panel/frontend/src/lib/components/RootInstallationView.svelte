@@ -474,8 +474,15 @@
   }
 
   /* Embedded child views ship their own page headers; the pill navigation
-     already names the section, so content starts immediately. */
-  .installation-view :global(.panel-header) {
+     already names the section, so content starts immediately.
+
+     Except a page that names one RECORD rather than the section it is in. The
+     repository page's header carries the repository's name and the switch
+     between its panes, and neither is anywhere else on the screen - hidden, the
+     console showed a file card belonging to a repository it never named, with no
+     way to reach the other two panes. The pill nav says which section; it does
+     not say which row of it. */
+  .installation-view :global(*:not(.repository-page) > .panel-header) {
     display: none;
   }
 

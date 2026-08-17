@@ -10,10 +10,13 @@ import {
 } from './route-dialogs.ts';
 import {
   HISTORY_SECTIONS,
+  REPOSITORY_SECTIONS,
   isScopedPanelView,
   isRootInstallationView,
   type HistorySection,
   type PanelRoute,
+  type RepositoryPage,
+  type RepositorySection,
   type RootRoute,
 } from './routes.ts';
 
@@ -41,6 +44,14 @@ export function panelAddress(route: PanelRoute): string {
     return resolve('/i/[account]/history/[[section=historySection]]', {
       account,
       section: route.section,
+    });
+  }
+
+  if (route.view === 'repositories' && named(route.repository)) {
+    return resolve('/i/[account]/repositories/[repository]/[[section=repositorySection]]', {
+      account,
+      repository: encodeURIComponent(route.repository.name),
+      section: writtenSection(route.repository),
     });
   }
 
@@ -99,6 +110,17 @@ function rootInstallationAddress(route: RootRoute & { rootView: 'installation' }
     });
   }
 
+  if (route.view === 'repositories' && named(route.repository)) {
+    return resolve(
+      '/root/installations/[account]/repositories/[repository]/[[section=repositorySection]]',
+      {
+        account,
+        repository: encodeURIComponent(route.repository.name),
+        section: writtenSection(route.repository),
+      },
+    );
+  }
+
   if (route.dialog !== undefined && isDialogHost(route.view)) {
     const rest = dialogRest(route.view, route.dialog);
     if (rest !== null) {
@@ -114,6 +136,26 @@ function rootInstallationAddress(route: RootRoute & { rootView: 'installation' }
     account,
     view: route.view,
   });
+}
+
+/**
+ * Whether a route names one repository rather than the list.
+ *
+ * An unnamed one is the list: the panel carries a repository on the route it is a place
+ * inside, and a blank name is that route with nothing chosen yet.
+ */
+function named(repository: RepositoryPage | undefined): repository is RepositoryPage {
+  return repository !== undefined && repository.name !== '';
+}
+
+/**
+ * The pane an address spells out, which is none for the one the page opens on.
+ *
+ * `file` is where a repository starts, so the bare address already means it, and one
+ * that says so as well is an address a reader would have to be told to ignore.
+ */
+function writtenSection(repository: RepositoryPage): RepositorySection | undefined {
+  return repository.section === 'file' ? undefined : repository.section;
 }
 
 /**
@@ -155,6 +197,8 @@ export function panelRouteAt(
       return withView(account, params.view, undefined, dialogAt(params.view, params.rest));
     case '/i/[account]/history/[[section=historySection]]':
       return withView(account, 'history', asSection(section));
+    case '/i/[account]/repositories/[repository]/[[section=repositorySection]]':
+      return { account, view: 'repositories', repository: repositoryAt(params) };
 
     case '/root':
       return { rootView: 'overview' };
@@ -186,6 +230,13 @@ export function panelRouteAt(
       return rootInstallation(account, params.view, undefined, dialogAt(params.view, params.rest));
     case '/root/installations/[account]/history/[[section=historySection]]':
       return rootInstallation(account, 'history', asSection(section));
+    case '/root/installations/[account]/repositories/[repository]/[[section=repositorySection]]':
+      return {
+        rootView: 'installation',
+        account,
+        view: 'repositories',
+        repository: repositoryAt(params),
+      };
 
     default:
       return null;
@@ -214,6 +265,20 @@ function rootInstallation(
 
 function asSection(value: string | undefined): HistorySection | undefined {
   return HISTORY_SECTIONS.find((section) => section === value);
+}
+
+/**
+ * The repository an address names, opened on the pane it spells out.
+ *
+ * The name comes back the way the reader wrote it: the router has already decoded the
+ * segment, which is the half `panelAddress` encoded. A missing pane is the one the page
+ * opens on rather than no pane at all - the address leaves `file` unwritten.
+ */
+function repositoryAt(params: Readonly<Record<string, string | undefined>>): RepositoryPage {
+  return {
+    name: params.repository ?? '',
+    section: REPOSITORY_SECTIONS.find((pane) => pane === params.section) ?? 'file',
+  };
 }
 
 /**

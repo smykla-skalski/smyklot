@@ -18,14 +18,19 @@ import {
  */
 describe('panel dialog route guard', () => {
   it('accepts a host with no dialog open and the dialogs it knows', () => {
-    expect(() => guardDialogRest('repositories', undefined)).not.toThrow();
-    expect(() => guardDialogRest('repositories', 'api-gateway/commands')).not.toThrow();
+    expect(() => guardDialogRest('users', undefined)).not.toThrow();
     expect(() => guardDialogRest('users', 'octocat/history')).not.toThrow();
+    expect(() => guardDialogRest('invitations', 'inv-1/revoke')).not.toThrow();
   });
 
   it('rejects segments the host cannot open', () => {
-    expect(() => guardDialogRest('repositories', 'api-gateway/unknown')).toThrow();
     expect(() => guardDialogRest('users', 'octocat/not-an-action')).toThrow();
+    expect(() => guardDialogRest('invitations', 'inv-1/not-an-action')).toThrow();
+    /* The repositories view stopped hosting dialogs when one repository became a
+       page, so its own segments are the page's and this guard never sees them.
+       Asked anyway, it has to refuse: a view that hosts no dialog carrying two
+       segments is an address that does not resolve. */
+    expect(() => guardDialogRest('repositories', 'api-gateway/commands')).toThrow();
   });
 
   /* The route already refuses these, so the guard is never asked. It answers

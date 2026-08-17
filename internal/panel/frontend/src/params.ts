@@ -5,6 +5,7 @@ import {
   ACCESS_SECTIONS,
   HISTORY_SECTIONS,
   PANEL_VIEWS,
+  REPOSITORY_SECTIONS,
   ROOT_INSTALLATION_VIEWS,
 } from './lib/routes.ts';
 
@@ -98,6 +99,16 @@ const MATCHERS = {
    * not-found page and a reload of the address did too.
    */
   panelView: oneOf(PANEL_VIEWS),
+
+  /**
+   * The panes one repository's page can open on.
+   *
+   * The segment is optional in the route, so what makes it worth matching is the segment
+   * that is not one: `/i/acme/repositories/api-gateway/nonsense` resolves to no route at
+   * all and is answered 404 from the wire, rather than reaching the page and quietly
+   * opening the pane it starts on.
+   */
+  repositorySection: oneOf(REPOSITORY_SECTIONS),
 
   /**
    * The views the Root console renders for an installation, which are fewer than the

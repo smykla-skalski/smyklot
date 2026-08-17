@@ -11,16 +11,17 @@
   } from '@tanstack/svelte-table';
   import type { ColumnFiltersState, SortingState, Updater } from '@tanstack/svelte-table';
   import { createVirtualizer } from '@tanstack/svelte-virtual';
-  import { tick, untrack } from 'svelte';
+  import { untrack } from 'svelte';
   import { MediaQuery, SvelteSet } from 'svelte/reactivity';
   import { get } from 'svelte/store';
   import { useDebounce, useInterval } from 'runed';
   import { createInfiniteQuery, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { BOOLEAN_FIELDS } from '../config';
-  import { dialogRoute } from '../dialog-route.svelte';
   import type { FilterSection } from '../filter-menu';
   import { formatRelative, formatTimestamp } from '../format';
+  import type { RepositorySection } from '../routes';
+  import { getPanelSession } from '../session.svelte';
   import {
     decodeRepositorySettingFilter,
     encodeRepositorySettingFilter,
@@ -45,44 +46,28 @@
     RepositoryStateFilter,
     RepositorySummary,
   } from '../types';
-  import Chip, { type ChipTone } from './Chip.svelte';
-  import ConfigEditor from './ConfigEditor.svelte';
+  import Chip from './Chip.svelte';
   import FileStatusIndicator from './FileStatusIndicator.svelte';
   import FilterMenu from './FilterMenu.svelte';
   import HelpTip from './HelpTip.svelte';
   import Icon from './Icon.svelte';
   import InfiniteLoadSentinel from './InfiniteLoadSentinel.svelte';
   import InheritControl from './InheritControl.svelte';
-  import Modal from './Modal.svelte';
   import PanelHeader from './PanelHeader.svelte';
+  import RepositorySettings from './RepositorySettings.svelte';
   import ResultProblem from './ResultProblem.svelte';
   import SearchField from './SearchField.svelte';
   import TableToolsMenu from './TableToolsMenu.svelte';
-  import SegmentedControl from './SegmentedControl.svelte';
   import TableEmptyState from './TableEmptyState.svelte';
 
   type RepositoryEnablement = 'inherit' | 'enabled' | 'disabled';
   type RepositoryFailure = { message: string; source: RepositoryFailureSource };
-  type RepositoryDetailSection = 'file' | 'behavior' | 'commands';
-
-  /** Names the dialog in the address, and is the `id` the dialog carries. */
-  const REPOSITORY_DIALOG = 'repository-settings';
 
   const REPOSITORY_VALUE_OPTIONS = [
     { value: 'enabled', label: 'Enabled' },
     { value: 'disabled', label: 'Disabled' },
   ] as const;
-  const FILE_MODE_OPTIONS = [
-    { value: 'observe', label: 'Observe' },
-    { value: 'bypass', label: 'Bypass' },
-  ] as const;
   const FILE_STATUSES = ['valid', 'missing', 'invalid', 'bypassed'] as const;
-  const FILE_STATUS_TONES = {
-    valid: 'clear',
-    missing: 'neutral',
-    invalid: 'stop',
-    bypassed: 'warning',
-  } as const satisfies Record<RepositoryFileStatus, ChipTone>;
   const CONFIG_FILTER_KEYS: readonly ConfigKey[] = [
     ...BOOLEAN_FIELDS.map((field) => field.key),
     'command_prefix',
@@ -194,6 +179,12 @@
     prefs?: PrefsAccessor;
   } = $props();
 
+  /* Data comes in as props, because a workspace and the console read the same
+     repositories through different endpoints. Where the reader IS does not: one
+     repository has one address in each surface, and the session is what knows
+     which surface this is being drawn in. */
+  const session = getPanelSession();
+
   // Table state deliberately captures the preferences at mount; remote
   // changes apply on the next remount instead of mid-interaction.
   // svelte-ignore state_referenced_locally
@@ -239,7 +230,6 @@
   let details = $state<Record<string, RepositoryDetail>>({});
   let failures = $state<Record<string, RepositoryFailure>>({});
   let pendingEnablement = $state<Record<string, RepositoryEnablement>>({});
-  let repositoryReturnFocus = $state<HTMLElement | null>(null);
   const working = new SvelteSet<string>();
   const queryClient = useQueryClient();
   let now = $state(Date.now());
@@ -290,7 +280,7 @@
     repositoryQuery.isFetchNextPageError ? errorMessage(repositoryQuery.error) : null,
   );
 
-  /* The dialog is whatever the address names, not a click the component
+  /* The open repository is whatever the address names, not a click the component
      remembers, so a reload lands back on the repository that was open.
 
      It is named the way a person would name it - `api-gateway`, not an id - and
@@ -299,7 +289,8 @@
      response carries the summary the header needs. Names are unique within an
      installation and every read is scoped to one, so two organizations owning a
      repository of the same name never meet. */
-  const activeRepositoryKey = $derived(dialogRoute.param(REPOSITORY_DIALOG, 'repository') ?? null);
+  const activeRepositoryKey = $derived(session.currentRepository?.name ?? null);
+  const activeSection = $derived<RepositorySection>(session.currentRepository?.section ?? 'file');
   const repositoryDetailQuery = createQuery(() => ({
     queryKey: ['repository', targetId, activeRepositoryKey],
     enabled: activeRepositoryKey !== null,
@@ -536,13 +527,41 @@
     settingFilter = { mode: 'all' };
   }
 
-  function openRepository(repository: RepositorySummary, trigger: HTMLElement): void {
-    repositoryReturnFocus = trigger;
-    dialogRoute.open(REPOSITORY_DIALOG, { repository: repository.name });
+  function openRepository(repository: RepositorySummary): void {
+    session.openRepository(repository.name);
+  }
+
+  /**
+   * Everything in a row that is already something to press.
+   *
+   * `label` is in this list because of what the enablement column is made of: a
+   * radio and a label per option, and a click on the WORD "Disabled" has the
+   * label as its target. Without it the row opened the repository and set its
+   * enablement from one press. `a` is here so the name in the first cell stays
+   * an ordinary link and the router handles it - which is what makes a modified
+   * click open a new tab rather than being swallowed here.
+   */
+  const ROW_CONTROLS = 'a, button, input, label, select, summary, textarea, [role="button"]';
+
+  /**
+   * A press on the rest of the row opens it.
+   *
+   * The row is the background its controls sit on, not a layer over them, so
+   * anything that was already something to press keeps its press. A modified
+   * click is the reader asking for a new tab, and there is a real link in the
+   * row to give them one.
+   */
+  function openRow(event: MouseEvent, repository: RepositorySummary): void {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+      return;
+    }
+    if (event.target instanceof Element && event.target.closest(ROW_CONTROLS) !== null) return;
+
+    openRepository(repository);
   }
 
   function closeRepository(): void {
-    dialogRoute.close();
+    session.closeRepository();
   }
 
   /* Whatever the address names has to be on screen, however it got there: a click
@@ -563,74 +582,10 @@
       }
 
       const repositoryId = detail.repository.id;
-      const firstRead = details[repositoryId] === undefined;
       rememberDetail(detail, key);
       if (failures[repositoryId]?.source === 'read') clearFailure(repositoryId);
-      if (firstRead) {
-        void tick().then(() => {
-          if (activeRepositoryId !== repositoryId) return;
-          /* The switch only exists once the detail is in, so this is the first
-             moment there is anything inside the dialog to land on. */
-          document
-            .querySelector<HTMLInputElement>(
-              `input[name="repository-${repositoryId}-section"]:checked`,
-            )
-            ?.focus();
-        });
-      }
     });
   });
-
-  /* The pane the dialog is showing rides the address too, so a link points at the
-     commands a colleague was asked to look at rather than at the file pane
-     everyone starts on. It replaces rather than pushes: flipping the switch is
-     part of reading one repository, not a second place to come back from. */
-  function detailSection(repository: RepositorySummary): RepositoryDetailSection {
-    if (repository.id === activeRepositoryId) {
-      const requested = dialogRoute.param(REPOSITORY_DIALOG, 'section');
-      if (requested !== undefined && isDetailSection(requested)) return requested;
-    }
-    // The file section leads: it orients the dialog around the repository's own
-    // configuration before overrides.
-    return 'file';
-  }
-
-  function isDetailSection(value: string): value is RepositoryDetailSection {
-    return value === 'file' || value === 'behavior' || value === 'commands';
-  }
-
-  function selectDetailSection(
-    repository: RepositorySummary,
-    section: RepositoryDetailSection,
-  ): void {
-    dialogRoute.update(REPOSITORY_DIALOG, { repository: repository.name, section });
-  }
-
-  /* Names the pane for the reader, now that the switch above it is a control with
-     its own label rather than a strip of tabs the pane could point back at. */
-  function sectionLabel(section: RepositoryDetailSection): string {
-    if (section === 'file') return 'File';
-    return section === 'behavior' ? 'Behavior' : 'Commands';
-  }
-
-  /* The repository-file pane lists the behavior settings this repository
-     actually overrides, the way the approved mock draws it: the file card, the
-     bypass control, then whatever this repo has changed, with its own save bar.
-     Someone reading the file tab is asking "what does this repository do
-     differently", and the answer belongs on the same screen as the file. */
-  function overriddenBehaviorKeys(detail: RepositoryDetail): ConfigKey[] {
-    return BOOLEAN_FIELDS.map((field) => field.key).filter((key) =>
-      Object.hasOwn(detail.config_patch, key),
-    );
-  }
-
-  function configSectionCount(detail: RepositoryDetail, section: 'behavior' | 'commands'): number {
-    const keys: readonly ConfigKey[] =
-      section === 'behavior'
-        ? BOOLEAN_FIELDS.map((field) => field.key)
-        : ['command_prefix', 'allowed_commands', 'command_aliases'];
-    return keys.filter((key) => Object.hasOwn(detail.config_patch, key)).length;
-  }
 
   function toggleNameSort(): void {
     toggleColumnSort('repository');
@@ -847,480 +802,333 @@
   }
 </script>
 
-<section class="plate repository-panel" aria-labelledby="repositories-heading">
-  <PanelHeader
-    id="repositories-heading"
-    title="Repositories"
-    description="Enablement and settings for every repository in this workspace"
-  />
+<!-- One repository's page stands in place of the list rather than over it: the
+     address names a place inside this view, so the navigation still reads
+     Repositories and leaving the page returns to the rows.
 
-  <div class="repository-tools">
-    <SearchField
-      label="Search repositories"
-      placeholder="Search repositories"
-      value={search}
-      onInput={(value) => (search = value)}
+     The list is not unmounted while the page is open - it is the same component,
+     so its query, its scroll position and its filters are all still there when
+     the reader comes back, and coming back costs no request. -->
+{#if activeRepository !== null}
+  {@const repository = activeRepository}
+  <RepositorySettings
+    {repository}
+    detail={details[repository.id]}
+    section={activeSection}
+    failure={failures[repository.id]?.message ?? null}
+    {readOnly}
+    busy={working.has(repository.id)}
+    backHref={session.repositoriesHref()}
+    onBack={closeRepository}
+    onSection={(section) => session.selectRepositorySection(section)}
+    onBypass={(bypass) => setBypass(repository.id, bypass)}
+    onSaveConfig={(patch) => setConfig(repository.id, patch)}
+    onResetMigration={() => resetConfigMigration(repository.id)}
+  />
+{:else}
+  <section class="plate repository-panel" aria-labelledby="repositories-heading">
+    <PanelHeader
+      id="repositories-heading"
+      title="Repositories"
+      description="Enablement and settings for every repository in this workspace"
     />
-    <!-- Everything the column headings carry, for the widths where there are no
+
+    <div class="repository-tools">
+      <SearchField
+        label="Search repositories"
+        placeholder="Search repositories"
+        value={search}
+        onInput={(value) => (search = value)}
+      />
+      <!-- Everything the column headings carry, for the widths where there are no
          column headings: the table becomes a stack of cards on a phone and its
          three sorts and three filters went with the `thead`, leaving the search
          field alone on the page. Sharing the same state as the headings rather
          than a copy of it. -->
-    <TableToolsMenu
-      sorts={[
-        { label: 'Repository', direction: sortDirection('name'), onToggle: toggleNameSort },
-        { label: 'File state', direction: sortDirection('file'), onToggle: toggleFileSort },
-        { label: 'Updated', direction: sortDirection('updated'), onToggle: toggleUpdatedSort },
-      ]}
-      filters={[
-        {
-          label: 'Overrides',
-          hint: 'Match any selected repository override',
-          sections: SETTING_FILTER_SECTIONS,
-          selected: settingSelection,
-          multiple: true,
-          fallbackValue: 'all',
-          onChange: (values) => repositoryTable.getColumn('overrides')?.setFilterValue(values),
-        },
-        {
-          label: 'File state',
-          hint: 'Select one or more file states',
-          sections: FILE_FILTER_SECTIONS,
-          selected: fileFilters,
-          multiple: true,
-          onChange: (values) => repositoryTable.getColumn('file')?.setFilterValue(values),
-        },
-        {
-          label: 'Enablement',
-          hint: "Filter by Smyklot's effective state",
-          sections: STATE_FILTER_SECTIONS,
-          selected: [stateFilter],
-          fallbackValue: 'all',
-          onChange: (values) => repositoryTable.getColumn('enablement')?.setFilterValue(values[0]),
-        },
-      ]}
-    />
-  </div>
-
-  <div
-    class={['repository-results table-region', loading && 'loading']}
-    bind:this={repositoryResults}
-    aria-busy={loading}
-  >
-    <!-- A refresh that failed over a loaded table has not made the table wrong. -->
-    {#if problem !== null && page !== null}
-      <ResultProblem
-        title="Repositories could not be loaded"
-        {problem}
-        busy={loading}
-        onRetry={() => retry()}
-        overContent
+      <TableToolsMenu
+        sorts={[
+          { label: 'Repository', direction: sortDirection('name'), onToggle: toggleNameSort },
+          { label: 'File state', direction: sortDirection('file'), onToggle: toggleFileSort },
+          { label: 'Updated', direction: sortDirection('updated'), onToggle: toggleUpdatedSort },
+        ]}
+        filters={[
+          {
+            label: 'Overrides',
+            hint: 'Match any selected repository override',
+            sections: SETTING_FILTER_SECTIONS,
+            selected: settingSelection,
+            multiple: true,
+            fallbackValue: 'all',
+            onChange: (values) => repositoryTable.getColumn('overrides')?.setFilterValue(values),
+          },
+          {
+            label: 'File state',
+            hint: 'Select one or more file states',
+            sections: FILE_FILTER_SECTIONS,
+            selected: fileFilters,
+            multiple: true,
+            onChange: (values) => repositoryTable.getColumn('file')?.setFilterValue(values),
+          },
+          {
+            label: 'Enablement',
+            hint: "Filter by Smyklot's effective state",
+            sections: STATE_FILTER_SECTIONS,
+            selected: [stateFilter],
+            fallbackValue: 'all',
+            onChange: (values) =>
+              repositoryTable.getColumn('enablement')?.setFilterValue(values[0]),
+          },
+        ]}
       />
-    {/if}
+    </div>
 
-    {#if problem !== null && page === null}
-      <ResultProblem
-        title="Repositories could not be loaded"
-        {problem}
-        busy={loading}
-        onRetry={() => retry()}
-      />
-    {:else if loading && page === null}
-      <div class="table-skeleton" aria-hidden="true">
-        {#each [0, 1, 2, 3, 4, 5] as index (index)}
-          <span></span>
-        {/each}
-      </div>
-      <p class="visually-hidden" role="status">Loading repositories</p>
-    {:else}
-      <div class="repository-table-scroll table-card">
-        <table class="repositories">
-          <thead>
-            <tr>
-              <th class="sortable-heading" aria-sort={sortDirection('name')}>
-                <div class="table-heading-layout">
-                  <button class="sort-heading table-sort-button" onclick={toggleNameSort}>
-                    <span class="cap-trim">Repository</span>
-                    <span class="sort-indicator" aria-hidden="true"
-                      ><Icon name="sort" size={14} /></span
-                    >
-                  </button>
-                  <FilterMenu
-                    label="Overrides"
-                    summary={settingSummary}
-                    hint="Match any selected repository override"
-                    sections={SETTING_FILTER_SECTIONS}
-                    selected={settingSelection}
-                    multiple
-                    fallbackValue="all"
-                    align="start"
-                    wide
-                    onChange={(values) =>
-                      repositoryTable.getColumn('overrides')?.setFilterValue(values)}
-                  />
-                </div>
-              </th>
-              <th class="sortable-heading" aria-sort={sortDirection('file')}>
-                <div class="table-heading-layout">
-                  <button class="sort-heading table-sort-button" onclick={toggleFileSort}>
-                    <span class="cap-trim">File state</span>
-                    <span class="sort-indicator" aria-hidden="true"
-                      ><Icon name="sort" size={14} /></span
-                    >
-                  </button>
-                  <FilterMenu
-                    label="File state"
-                    summary={fileSummary}
-                    hint="Select one or more file states"
-                    sections={FILE_FILTER_SECTIONS}
-                    selected={fileFilters}
-                    multiple
-                    align="end"
-                    onChange={(values) => repositoryTable.getColumn('file')?.setFilterValue(values)}
-                  />
-                </div>
-              </th>
-              <th class="sortable-heading" aria-sort={sortDirection('updated')}>
-                <button class="sort-heading table-sort-button" onclick={toggleUpdatedSort}>
-                  <span class="cap-trim">Updated</span>
-                  <span class="sort-indicator" aria-hidden="true"
-                    ><Icon name="sort" size={14} /></span
-                  >
-                </button>
-              </th>
-              <th class="filterable-heading enablement-heading">
-                <div class="table-heading-layout">
-                  <span class="heading-with-help">
-                    <span class="cap-trim">Enablement</span>
-                    <HelpTip
-                      id="repository-enablement-help"
-                      label="About enablement"
-                      text="Enabled and Disabled filter the effective state. A linked chain means the value is inherited from Unconfigured repositories in Settings. Open a repository to configure repository-specific settings"
-                    />
-                  </span>
-                  <FilterMenu
-                    label="Enablement"
-                    summary={stateSummary}
-                    hint="Filter by Smyklot's effective state"
-                    sections={STATE_FILTER_SECTIONS}
-                    selected={[stateFilter]}
-                    fallbackValue="all"
-                    align="end"
-                    onChange={(values) =>
-                      repositoryTable.getColumn('enablement')?.setFilterValue(values[0])}
-                  />
-                </div>
-              </th>
-              <th class="action-heading">
-                <!-- The column has a heading for the row's action, said only to a
-                     screen reader: a word over a column of identical buttons is
-                     noise to anyone who can see them. -->
-                <span class="visually-hidden">Settings</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody bind:this={repositoryScroll} data-panel-scroll>
-            {#if repositories.length === 0}
-              <tr class="empty-row">
-                <td colspan="5">
-                  <TableEmptyState
-                    title={hasFilters ? 'No repositories match' : 'No repositories installed'}
-                    description={hasFilters
-                      ? 'Try another search or clear the active filters'
-                      : 'Repositories will appear after the installation catalog is refreshed'}
-                    actionLabel={hasFilters ? 'Clear filters' : undefined}
-                    onAction={hasFilters ? clearFilters : undefined}
-                  />
-                </td>
-              </tr>
-            {/if}
-            {#if desktopTableLayout.current}
-              <tr
-                class="virtual-spacer"
-                aria-hidden="true"
-                style:height={`${$repositoryVirtualizer.getTotalSize()}px`}
-                ><td colspan="5"></td></tr
-              >
-            {/if}
-            {#each repositoryRenderRows as virtualRow (virtualRow.key)}
-              {@const repository = repositoryAt(virtualRow.index)}
-              {@const repositoryFailure = failures[repository.id]}
-              <tr
-                class={['repository-row', virtualRow.virtual && 'virtual-row']}
-                style:height={virtualRow.virtual ? `${virtualRow.size}px` : undefined}
-                style:transform={virtualRow.virtual
-                  ? `translateY(${virtualRow.start}px)`
-                  : undefined}
-              >
-                <td>
-                  <!-- The name is a name. What opens the dialog is the button at
-                       the end of the row, where a reader looks for something to
-                       press, rather than a cell that gives no sign of being one
-                       until the pointer is already on it. -->
-                  <span class="repo-copy">
-                    <strong>{repository.name}</strong>
-                    {#if repository.config_override_count > 0}
-                      <span class="override-chip">
-                        {repository.config_override_count}
-                        {repository.config_override_count === 1 ? 'override' : 'overrides'}
-                      </span>
-                    {/if}
-                  </span>
-                </td>
-                <td data-label="File state">
-                  <FileStatusIndicator
-                    id="file-status-{repository.id}"
-                    status={repository.config_file_status}
-                    showLabel
-                  />
-                </td>
-                <td data-label="Updated">
-                  <time
-                    class="updated"
-                    datetime={repository.updated_at}
-                    title={formatTimestamp(repository.updated_at)}
-                  >
-                    <span class="cap-trim">{formatRelative(repository.updated_at, now)}</span>
-                  </time>
-                </td>
-                <td data-label="Enablement">
-                  {#if !repository.available}
-                    <Chip small>Unavailable</Chip>
-                  {:else}
-                    {@const enablement =
-                      pendingEnablement[repository.id] ?? enabledValue(repository)}
-                    <InheritControl
-                      label="Enablement for {repository.full_name}"
-                      source="Unconfigured repositories in Settings"
-                      inheritedValue={defaultEnabled ? 'enabled' : 'disabled'}
-                      inheritedLabel={defaultEnabled ? 'Enabled' : 'Disabled'}
-                      value={enablement === 'inherit' ? null : enablement}
-                      options={REPOSITORY_VALUE_OPTIONS}
-                      disabled={readOnly || working.has(repository.id)}
-                      onSelect={(value) => void setEnabled(repository, value)}
-                      onRestore={() => void setEnabled(repository, 'inherit')}
-                    />
-                  {/if}
-                </td>
-                <td class="row-action" data-label="Settings">
-                  <button
-                    class="btn btn-row btn-quiet configure"
-                    aria-haspopup="dialog"
-                    aria-label={`Configure ${repository.full_name}`}
-                    onclick={(event) => openRepository(repository, event.currentTarget)}
-                  >
-                    <span class="cap-trim">Configure</span>
-                  </button>
-                </td>
-              </tr>
-
-              {#if repositoryFailure !== undefined && activeRepository?.id !== repository.id}
-                <tr class="visually-hidden">
-                  <td colspan="5"><span role="alert">{repositoryFailure.message}</span></td>
-                </tr>
-              {/if}
-            {/each}
-          </tbody>
-        </table>
-      </div>
-      <InfiniteLoadSentinel
-        active={!desktopTableLayout.current &&
-          !loading &&
-          loadMoreProblem === null &&
-          page?.next_cursor != null}
-        cursor={page?.next_cursor}
-        onVisible={() => void loadNextPage()}
-      />
-    {/if}
-    {#if loadMoreProblem !== null}
-      <div class="load-more-alert" role="alert">
-        <span>{loadMoreProblem}</span>
-        <button class="btn" type="button" onclick={() => void loadNextPage()}>Try again</button>
-      </div>
-    {/if}
-  </div>
-</section>
-
-{#if activeRepository !== null}
-  {@const repository = activeRepository}
-  {@const detail = details[repository.id]}
-  {@const repositoryFailure = failures[repository.id]}
-  {@const activeSection = detailSection(repository)}
-  <Modal
-    id={REPOSITORY_DIALOG}
-    open
-    title={repository.name}
-    description="Repository settings override workspace defaults and repository-file values"
-    returnFocus={repositoryReturnFocus}
-    onClose={closeRepository}
-  >
-    <!-- Beside the title, where every other switch in the product sits, and the
-         product's own switch rather than a set of buttons dressed as one. -->
-    {#snippet headerExtra()}
-      {#if detail !== undefined}
-        <SegmentedControl
-          name="repository-{repository.id}-section"
-          label="Settings for {repository.name}"
-          compact
-          options={[
-            {
-              value: 'file',
-              label: 'File',
-              badge: detail.config_file_error === undefined ? undefined : 1,
-            },
-            {
-              value: 'behavior',
-              label: 'Behavior',
-              badge:
-                configSectionCount(detail, 'behavior') === 0
-                  ? undefined
-                  : configSectionCount(detail, 'behavior'),
-            },
-            {
-              value: 'commands',
-              label: 'Commands',
-              badge:
-                configSectionCount(detail, 'commands') === 0
-                  ? undefined
-                  : configSectionCount(detail, 'commands'),
-            },
-          ]}
-          value={detailSection(repository)}
-          onSelect={(next) => selectDetailSection(repository, next as RepositoryDetailSection)}
+    <div
+      class={['repository-results table-region', loading && 'loading']}
+      bind:this={repositoryResults}
+      aria-busy={loading}
+    >
+      <!-- A refresh that failed over a loaded table has not made the table wrong. -->
+      {#if problem !== null && page !== null}
+        <ResultProblem
+          title="Repositories could not be loaded"
+          {problem}
+          busy={loading}
+          onRetry={() => retry()}
+          overContent
         />
       {/if}
-    {/snippet}
-    {#if repositoryFailure !== undefined}
-      <p class="form-error repository-modal-error" role="alert">{repositoryFailure.message}</p>
-    {/if}
 
-    <div class="repository-detail">
-      {#if detail === undefined}
-        <p class="detail-loading dim">Reading repository settings…</p>
+      {#if problem !== null && page === null}
+        <ResultProblem
+          title="Repositories could not be loaded"
+          {problem}
+          busy={loading}
+          onRetry={() => retry()}
+        />
+      {:else if loading && page === null}
+        <div class="table-skeleton" aria-hidden="true">
+          {#each [0, 1, 2, 3, 4, 5] as index (index)}
+            <span></span>
+          {/each}
+        </div>
+        <p class="visually-hidden" role="status">Loading repositories</p>
       {:else}
-        <!-- Keyboard focus lets a reader scroll a pane taller than the dialog. -->
-        <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-        <div
-          class="repository-detail-content"
-          id="repository-{repository.id}-detail-panel"
-          role="group"
-          aria-label="{sectionLabel(activeSection)} settings for {repository.name}"
-          tabindex="0"
-        >
-          {#if activeSection === 'file'}
-            <section class="file-pane" aria-labelledby="repository-{repository.id}-file-heading">
-              <h3 id="repository-{repository.id}-file-heading" class="visually-hidden">
-                Repository file
-              </h3>
-              <div class={['file-card', detail.config_file_error !== undefined && 'file-problem']}>
-                <!-- 14px glyph in an 18px slot, the same pairing every other
-                     icon slot in the product uses; 16px here was the one
-                     outlier, in the approved card as well. -->
-                <span class="file-card-icon status-{detail.repository.config_file_status}">
-                  <Icon name="file" size={14} />
-                </span>
-                <div class="f-copy">
-                  <strong>Configuration path</strong>
-                  <!-- The file is looked for in four places plus a chosen one,
-                       so this names the one that won rather than the one that
-                       used to be the only candidate. -->
-                  <div><code class="mono">{detail.config_file_path || '—'}</code></div>
-                  {#if detail.config_file_superseded !== undefined}
-                    <p class="f-note">
-                      Also present and not read: {detail.config_file_superseded.join(', ')}
-                    </p>
-                  {/if}
-                  {#if detail.config_file_error !== undefined}
-                    <p>{detail.config_file_error}</p>
-                  {/if}
-                  {#if detail.config_migration === 'proposed'}
-                    <p class="f-note">
-                      Smyklot proposed moving this to TOML{#if detail.config_migration_pr !== undefined}&nbsp;in
-                        #{detail.config_migration_pr}{/if}
-                    </p>
-                  {:else if detail.config_migration !== 'none'}
-                    <p class="f-note">
-                      {detail.config_migration === 'declined'
-                        ? 'The TOML migration was closed, so Smyklot will not ask again'
-                        : 'GitHub refused the TOML migration, so Smyklot will not ask again'}
-                      <button
-                        type="button"
-                        class="f-again"
-                        disabled={readOnly || working.has(repository.id)}
-                        onclick={() => resetConfigMigration(repository.id)}>Let it ask</button
+        <div class="repository-table-scroll table-card">
+          <table class="repositories">
+            <thead>
+              <tr>
+                <th class="sortable-heading" aria-sort={sortDirection('name')}>
+                  <div class="table-heading-layout">
+                    <button class="sort-heading table-sort-button" onclick={toggleNameSort}>
+                      <span class="cap-trim">Repository</span>
+                      <span class="sort-indicator" aria-hidden="true"
+                        ><Icon name="sort" size={14} /></span
                       >
-                    </p>
-                  {/if}
-                </div>
-                <Chip tone={FILE_STATUS_TONES[detail.repository.config_file_status]} dot>
-                  {detail.repository.config_file_status.slice(0, 1).toUpperCase() +
-                    detail.repository.config_file_status.slice(1)}
-                </Chip>
-              </div>
-              <div class="override-row">
-                <span class="o-label">
-                  <!-- Trimmed, so the words centre against the 18px help slot
-                       on their caps rather than on a taller line box. -->
-                  <span class="cap-trim">Bypass file</span>
-                  <HelpTip
-                    id="repository-bypass-help-{repository.id}"
-                    label="About bypassing the repository file"
-                    text="Repository-file settings are ignored and the exception is recorded in Audit"
-                  />
-                </span>
-                <SegmentedControl
-                  name="repository-bypass-{repository.id}"
-                  label="Repository file handling"
-                  options={FILE_MODE_OPTIONS}
-                  value={detail.ignore_repository_file ? 'bypass' : 'observe'}
-                  disabled={readOnly || working.has(repository.id)}
-                  compact
-                  onSelect={(value) => setBypass(repository.id, value === 'bypass')}
-                />
-              </div>
-              {#if overriddenBehaviorKeys(detail).length > 0}
-                <ConfigEditor
-                  patch={detail.config_patch}
-                  inherited={detail.inherited_config}
-                  scope="repository"
-                  idPrefix="{repository.id}-file"
-                  section="behavior"
-                  only={overriddenBehaviorKeys(detail)}
-                  disabled={readOnly || working.has(repository.id)}
-                  onSave={(patch) => setConfig(repository.id, patch)}
-                />
+                    </button>
+                    <FilterMenu
+                      label="Overrides"
+                      summary={settingSummary}
+                      hint="Match any selected repository override"
+                      sections={SETTING_FILTER_SECTIONS}
+                      selected={settingSelection}
+                      multiple
+                      fallbackValue="all"
+                      align="start"
+                      wide
+                      onChange={(values) =>
+                        repositoryTable.getColumn('overrides')?.setFilterValue(values)}
+                    />
+                  </div>
+                </th>
+                <th class="sortable-heading" aria-sort={sortDirection('file')}>
+                  <div class="table-heading-layout">
+                    <button class="sort-heading table-sort-button" onclick={toggleFileSort}>
+                      <span class="cap-trim">File state</span>
+                      <span class="sort-indicator" aria-hidden="true"
+                        ><Icon name="sort" size={14} /></span
+                      >
+                    </button>
+                    <FilterMenu
+                      label="File state"
+                      summary={fileSummary}
+                      hint="Select one or more file states"
+                      sections={FILE_FILTER_SECTIONS}
+                      selected={fileFilters}
+                      multiple
+                      align="end"
+                      onChange={(values) =>
+                        repositoryTable.getColumn('file')?.setFilterValue(values)}
+                    />
+                  </div>
+                </th>
+                <th class="sortable-heading" aria-sort={sortDirection('updated')}>
+                  <button class="sort-heading table-sort-button" onclick={toggleUpdatedSort}>
+                    <span class="cap-trim">Updated</span>
+                    <span class="sort-indicator" aria-hidden="true"
+                      ><Icon name="sort" size={14} /></span
+                    >
+                  </button>
+                </th>
+                <th class="filterable-heading enablement-heading">
+                  <div class="table-heading-layout">
+                    <span class="heading-with-help">
+                      <span class="cap-trim">Enablement</span>
+                      <HelpTip
+                        id="repository-enablement-help"
+                        label="About enablement"
+                        text="Enabled and Disabled filter the effective state. A linked chain means the value is inherited from Unconfigured repositories in Settings. Open a repository to configure repository-specific settings"
+                      />
+                    </span>
+                    <FilterMenu
+                      label="Enablement"
+                      summary={stateSummary}
+                      hint="Filter by Smyklot's effective state"
+                      sections={STATE_FILTER_SECTIONS}
+                      selected={[stateFilter]}
+                      fallbackValue="all"
+                      align="end"
+                      onChange={(values) =>
+                        repositoryTable.getColumn('enablement')?.setFilterValue(values[0])}
+                    />
+                  </div>
+                </th>
+                <th class="action-heading">
+                  <!-- The column has a heading for the row's action, said only to a
+                     screen reader: a word over a column of identical buttons is
+                     noise to anyone who can see them. -->
+                  <span class="visually-hidden">Settings</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody bind:this={repositoryScroll} data-panel-scroll>
+              {#if repositories.length === 0}
+                <tr class="empty-row">
+                  <td colspan="5">
+                    <TableEmptyState
+                      title={hasFilters ? 'No repositories match' : 'No repositories installed'}
+                      description={hasFilters
+                        ? 'Try another search or clear the active filters'
+                        : 'Repositories will appear after the installation catalog is refreshed'}
+                      actionLabel={hasFilters ? 'Clear filters' : undefined}
+                      onAction={hasFilters ? clearFilters : undefined}
+                    />
+                  </td>
+                </tr>
               {/if}
-            </section>
-          {:else}
-            <div class="override-heading">
-              <div>
-                <strong
-                  >{activeSection === 'behavior'
-                    ? 'Behavior overrides'
-                    : 'Command overrides'}</strong
+              {#if desktopTableLayout.current}
+                <tr
+                  class="virtual-spacer"
+                  aria-hidden="true"
+                  style:height={`${$repositoryVirtualizer.getTotalSize()}px`}
+                  ><td colspan="5"></td></tr
                 >
-                <p>Only values changed here override inherited configuration</p>
-              </div>
-              <HelpTip
-                id="repository-overrides-{repository.id}-{activeSection}"
-                label="About repository overrides"
-                text="Only settings changed here override configuration defaults from Settings and repository-file settings"
-              />
-            </div>
-            <ConfigEditor
-              patch={detail.config_patch}
-              inherited={detail.inherited_config}
-              scope="repository"
-              idPrefix={repository.id}
-              section={activeSection}
-              disabled={readOnly || working.has(repository.id)}
-              onSave={(patch) => setConfig(repository.id, patch)}
-            />
-          {/if}
+              {/if}
+              {#each repositoryRenderRows as virtualRow (virtualRow.key)}
+                {@const repository = repositoryAt(virtualRow.index)}
+                {@const repositoryFailure = failures[repository.id]}
+                <!-- The keyboard reaches this row through the link in its first
+                     cell, which is the element that carries the address and the
+                     accessible name. The handler here only widens what a POINTER
+                     can press to the whole row, so there is no second control to
+                     give a key handler to and no role to claim. -->
+                <tr
+                  class={['repository-row', virtualRow.virtual && 'virtual-row']}
+                  style:height={virtualRow.virtual ? `${virtualRow.size}px` : undefined}
+                  style:transform={virtualRow.virtual
+                    ? `translateY(${virtualRow.start}px)`
+                    : undefined}
+                  onclick={(event) => openRow(event, repository)}
+                >
+                  <td>
+                    <!-- The whole row opens the repository, and the name is the
+                       link that says so: it carries the address, so it can be
+                       opened in a new tab, and the row's own handler defers to
+                       it. What the pointer presses is 56px tall; what a reader
+                       tabs to and a crawler follows is one link, not five. -->
+                    <a class="repo-copy" href={session.repositoryHref(repository.name)}>
+                      <strong>{repository.name}</strong>
+                      {#if repository.config_override_count > 0}
+                        <span class="override-chip">
+                          {repository.config_override_count}
+                          {repository.config_override_count === 1 ? 'override' : 'overrides'}
+                        </span>
+                      {/if}
+                    </a>
+                  </td>
+                  <td data-label="File state">
+                    <FileStatusIndicator
+                      id="file-status-{repository.id}"
+                      status={repository.config_file_status}
+                      showLabel
+                    />
+                  </td>
+                  <td data-label="Updated">
+                    <time
+                      class="updated"
+                      datetime={repository.updated_at}
+                      title={formatTimestamp(repository.updated_at)}
+                    >
+                      <span class="cap-trim">{formatRelative(repository.updated_at, now)}</span>
+                    </time>
+                  </td>
+                  <td data-label="Enablement">
+                    {#if !repository.available}
+                      <Chip small>Unavailable</Chip>
+                    {:else}
+                      {@const enablement =
+                        pendingEnablement[repository.id] ?? enabledValue(repository)}
+                      <InheritControl
+                        label="Enablement for {repository.full_name}"
+                        source="Unconfigured repositories in Settings"
+                        inheritedValue={defaultEnabled ? 'enabled' : 'disabled'}
+                        inheritedLabel={defaultEnabled ? 'Enabled' : 'Disabled'}
+                        value={enablement === 'inherit' ? null : enablement}
+                        options={REPOSITORY_VALUE_OPTIONS}
+                        disabled={readOnly || working.has(repository.id)}
+                        onSelect={(value) => void setEnabled(repository, value)}
+                        onRestore={() => void setEnabled(repository, 'inherit')}
+                      />
+                    {/if}
+                  </td>
+                  <td class="row-action" data-label="Settings">
+                    <!-- The chevron the Root console's cards carry, for the same
+                       reason: it marks the row as a way in without claiming to
+                       be the thing pressed, which the whole row is. Nothing to
+                       focus - the name is the row's one link, and a second stop
+                       on the same address is a stop a keyboard reader has to
+                       pass for nothing. -->
+                    <span class="row-chevron" aria-hidden="true">
+                      <Icon name="chevron-right" size={16} />
+                    </span>
+                  </td>
+                </tr>
+
+                {#if repositoryFailure !== undefined}
+                  <tr class="visually-hidden">
+                    <td colspan="5"><span role="alert">{repositoryFailure.message}</span></td>
+                  </tr>
+                {/if}
+              {/each}
+            </tbody>
+          </table>
+        </div>
+        <InfiniteLoadSentinel
+          active={!desktopTableLayout.current &&
+            !loading &&
+            loadMoreProblem === null &&
+            page?.next_cursor != null}
+          cursor={page?.next_cursor}
+          onVisible={() => void loadNextPage()}
+        />
+      {/if}
+      {#if loadMoreProblem !== null}
+        <div class="load-more-alert" role="alert">
+          <span>{loadMoreProblem}</span>
+          <button class="btn" type="button" onclick={() => void loadNextPage()}>Try again</button>
         </div>
       {/if}
     </div>
-  </Modal>
+  </section>
 {/if}
 
 <style>
@@ -1328,10 +1136,13 @@
     --local-control-height: var(--control-height-compact);
 
     /* What the two control columns actually measure: the inheritance marker plus
-       the Enabled/Disabled switch, and the Configure button, each with the
-       cell's own left and right padding. */
+       the Enabled/Disabled switch, and the chevron, each with the cell's own
+       left and right padding. */
     --enablement-column: 13.25rem;
-    --action-column: 6.8125rem;
+    /* A 16px chevron and the cell's own padding either side. It was 6.8125rem
+       for a button carrying the word "Configure"; the word is gone, and a column
+       still reserving room for it is 69px of nothing at the end of every row. */
+    --action-column: 2.5rem;
 
     background: transparent;
     border: 0;
@@ -1494,8 +1305,7 @@
     padding: 0;
   }
 
-  .filterable-heading,
-  .plain-heading {
+  .filterable-heading {
     padding-block: 0;
   }
 
@@ -1639,7 +1449,8 @@
        and a message explaining that there are no rows is not one. It also put the
        message's text on the hover ground, which is not a pairing any contrast was
        chosen for. */
-    .repositories tbody tr:not(.virtual-spacer, .empty-row):hover {
+    .repositories tbody tr:not(.virtual-spacer, .empty-row):hover,
+    .repositories tbody tr:not(.virtual-spacer, .empty-row):focus-within {
       background: var(--table-row-hover);
     }
 
@@ -1699,28 +1510,44 @@
     }
   }
 
+  /* The whole row is the way in, so the whole row answers a pointer - and says
+     so before it is pressed, which a row that only highlights does not. */
+  .repository-row {
+    cursor: pointer;
+  }
+
   .repository-row:hover {
     background: var(--table-row-hover);
   }
 
-  /* The row's action, at the end of the row where a reader looks for one. */
+  /* The keyboard's target is the name, so the row it is in takes the same wash a
+     pointer gets. Otherwise tabbing down the table moves a focus ring through
+     rows that never light up, and the row being read is the one thing on screen
+     with no indication that it is. */
+  .repository-row:focus-within {
+    background: var(--table-row-hover);
+  }
+
+  /* The row's way in, at the end of the row where a reader looks for one. */
   .row-action {
     justify-content: flex-end;
   }
 
-  /* Quiet until it is wanted. One of these in every row, and drawn as a button
-     each time, they became a column of frames competing with the data they sit
-     beside. It carries its word only, and takes its edges when a pointer is on
-     it or a keyboard reaches it. */
-  .configure {
-    border-color: transparent;
+  /* The mark, not the target: the row is what gets pressed, and a chevron that
+     lit up on its own hover would promise a smaller hit area than there is. It
+     follows the row instead - dim at rest, and the row's own text colour once
+     the row is under a pointer or holds focus. */
+  .row-chevron {
+    align-items: center;
+    color: var(--text-muted);
+    display: inline-flex;
+    justify-content: center;
+    transition: color var(--duration-fast) var(--ease-standard);
   }
 
-  .configure:hover:not(:disabled),
-  .configure:focus-visible {
-    background: var(--surface-control);
-    border-color: var(--control-border);
-    color: var(--text);
+  .repository-row:hover .row-chevron,
+  .repository-row:focus-within .row-chevron {
+    color: var(--text-primary);
   }
 
   /* The word starts where the controls under it start. Every cell in this column
@@ -1739,11 +1566,25 @@
      12px badge, cap heights 9.69 and 8.76) puts the smaller one's baseline above
      the larger one's and the badge reads as floating. Measured: 0.36px of baseline
      drift centred, 0.00 here. */
+  /* A link that reads as the name it is. The row around it carries the press
+     affordance, so underlining this too would draw a second control inside a
+     control - the colour is inherited and only the focus ring marks it out. */
   .repo-copy {
     align-items: baseline;
+    color: inherit;
     display: flex;
     gap: var(--space-2);
     min-width: 0;
+    text-decoration: none;
+  }
+
+  /* Around the name, not around the cell: the ring should sit on the thing that
+     was reached, and a cell-wide ring in a virtualised row is a rectangle whose
+     right edge is wherever the column happens to end. */
+  .repo-copy:focus-visible {
+    border-radius: var(--r-chip);
+    outline: 2px solid var(--focus);
+    outline-offset: 3px;
   }
 
   /* `clip` rather than `hidden`: the cap trim ends the box at the baseline, so
@@ -1773,13 +1614,6 @@
     white-space: nowrap;
   }
 
-  .cell-symbol {
-    display: grid;
-    flex: none;
-    place-items: center;
-    width: 1.125rem;
-  }
-
   .updated {
     align-items: center;
     color: var(--text-muted);
@@ -1794,212 +1628,6 @@
     margin-left: 0;
   }
 
-  .repository-detail {
-    display: grid;
-    gap: 0.875rem;
-  }
-
-  .repository-modal-error {
-    margin: 0 0 var(--space-3);
-  }
-
-  .detail-loading {
-    margin: 0;
-    padding: var(--space-4);
-  }
-
-  /* The dialog is titled by the repository name — code, so it sets in mono.
-     The Modal stamps its id on the h2 itself as `<modal id>-title`. */
-  :global(#repository-settings-title) {
-    font-family: var(--mono);
-  }
-
-  .repository-detail-content {
-    min-width: 0;
-    outline: 0;
-  }
-
-  /* The card keeps its 71px stature whatever its copy measures: trimming the
-     two lines to their ink took 14px out of the content, and the card's height
-     is a shape decision, not a consequence of the leading. */
-  .file-card {
-    align-items: center;
-    background: var(--surface-raised);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-surface);
-    display: flex;
-    gap: var(--space-3);
-    min-height: 4.4375rem;
-    padding: var(--space-3) var(--space-4);
-  }
-
-  /* In a rounded plate of its own, like every other symbol that stands beside a
-     title inside a card - the installation prompt's `+`, the add dialog's
-     workspace mark. Bare, it was a 14px glyph floating in the card's padding
-     with nothing to sit in, and it read as an icon that had lost its button.
-
-     The plate is keyed to the glyph's own colour, so it carries the file's
-     state - valid, invalid, bypassed - rather than a fixed brand tint. */
-  .file-card-icon {
-    align-items: center;
-    background: color-mix(in srgb, currentcolor 10%, transparent);
-    border: 1px solid color-mix(in srgb, currentcolor 24%, transparent);
-    border-radius: var(--radius-control);
-    color: var(--dim);
-    display: inline-flex;
-    flex: none;
-    height: 2.25rem;
-    justify-content: center;
-    width: 2.25rem;
-  }
-
-  .file-card-icon.status-valid {
-    color: var(--success);
-  }
-
-  .file-card-icon.status-invalid {
-    color: var(--danger);
-  }
-
-  .file-card-icon.status-bypassed {
-    color: var(--warning);
-  }
-
-  .f-copy {
-    flex: 1;
-    min-width: 0;
-  }
-
-  /* Both lines are trimmed to cap..baseline and spaced by an explicit step, so
-     the copy block's BOX equals its ink and the card's flex centring centres
-     what the eye reads. Untrimmed, the first line's leading and the last line's
-     descender are not symmetric and the text sat 3.36px below the card's
-     middle - measured, and the approved card had it too. 0.8rem keeps the
-     baseline-to-baseline distance the two lines already had (21.75px). */
-  .f-copy strong {
-    display: block;
-    font-size: var(--font-size-meta);
-    line-height: 1;
-    text-box: trim-both cap alphabetic;
-  }
-
-  .f-copy code {
-    color: var(--dim);
-    display: block;
-    font-size: var(--font-size-compact);
-    line-height: 1;
-    margin-top: 0.8rem;
-    text-box: trim-both cap alphabetic;
-  }
-
-  .f-copy p {
-    color: var(--danger);
-    font-size: var(--font-size-compact);
-    margin: 0.15rem 0 0;
-  }
-
-  /* A file the repository still carries and Smyklot is not reading is worth
-     saying, and is not a failure - so it wears the dim tone the path above it
-     wears rather than the danger tone the parse error does. */
-  .f-copy p.f-note {
-    color: var(--dim);
-  }
-
-  /* An inline continuation of the sentence above it, not a control in its own
-     right: it sits on the same line, at the same size, and is underlined the
-     way a link in prose is. Giving it a button's chrome would make refusing a
-     migration look like it had a button to undo it, which is the opposite of
-     what a durable refusal means. */
-  .f-again {
-    background: none;
-    border: 0;
-    color: var(--text);
-    cursor: pointer;
-    font: inherit;
-    margin-left: 0.35rem;
-    padding: 0;
-    text-decoration: underline;
-    text-underline-offset: 0.15em;
-  }
-
-  .f-again:disabled {
-    color: var(--dim);
-    cursor: default;
-    text-decoration: none;
-  }
-
-  /* The file pane's override rows wear the same boxed shape as the bypass row
-     above them, not the flush list style the Behavior tab uses - on this pane
-     they are cards in a stack, not rows in a table. */
-  /* 0.875rem, the same step the override row above it uses - the pane's stack
-     rhythm, not the editor's own. */
-  .file-pane :global(.config-editor) {
-    margin-top: 0.875rem;
-  }
-
-  .file-pane :global(.config-editor .rows-plain) {
-    display: grid;
-    gap: var(--space-3);
-  }
-
-  .file-pane :global(.config-editor .row) {
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--r-ctl);
-    min-height: 3.25rem;
-    padding: var(--space-2) 0.875rem;
-  }
-
-  .file-pane .override-row {
-    align-items: center;
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--r-ctl);
-    display: flex;
-    gap: var(--space-3);
-    justify-content: space-between;
-    margin-top: 0.875rem;
-    min-height: 3.25rem;
-    padding: var(--space-2) 0.875rem;
-  }
-
-  .o-label {
-    align-items: center;
-    display: inline-flex;
-    font-size: 0.875rem;
-    font-weight: 600;
-    gap: 0.45rem;
-  }
-
-  .override-heading {
-    align-items: center;
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: var(--space-3);
-  }
-
-  .override-heading strong {
-    font-size: var(--font-size-title);
-  }
-
-  .override-heading p {
-    color: var(--text-muted);
-    font-size: var(--font-size-meta);
-    margin: var(--space-1) 0 0;
-  }
-
-  .file-problem strong,
-  .form-error {
-    color: var(--stop);
-  }
-
-  .warning {
-    background: var(--warning-tint);
-    border: 1px solid color-mix(in srgb, var(--warning) 28%, transparent);
-    border-radius: var(--r-well);
-    color: var(--warning);
-    font-size: 0.8125rem;
-    padding: 0.75rem;
-  }
-
   @media (max-width: 74rem) {
     .repository-tools {
       grid-template-columns: 1fr 1fr;
@@ -2007,10 +1635,6 @@
 
     .repository-tools :global(.search-field) {
       grid-column: 1 / -1;
-    }
-
-    .repository-detail-content {
-      padding-inline: var(--space-4);
     }
   }
 
@@ -2126,11 +1750,6 @@
       margin-bottom: calc(var(--heading-room) - var(--space-1) - var(--space-2));
       padding-block: calc(var(--heading-room) - var(--card-inset)) var(--heading-room);
     }
-
-    .file-status {
-      align-items: flex-start;
-      flex-direction: column;
-    }
   }
 
   /* Its edge is drawn on hover, which on a device that cannot hover means never:
@@ -2138,9 +1757,5 @@
      say it could be pressed. Keyed on `hover: none` rather than on a width,
      because the absence of hover is the whole reason it was invisible. */
   @media (hover: none) {
-    .configure {
-      border-color: var(--control-border);
-      color: var(--text);
-    }
   }
 </style>

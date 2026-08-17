@@ -48,8 +48,11 @@ import {
   rootSection,
   rootSectionRoute,
   type HistorySection,
+  type InstallationRoute,
   type PanelRoute,
   type PanelView,
+  type RepositoryPage,
+  type RepositorySection,
   type RootInstallationView,
   type RootRoute,
   type RootSection,
@@ -206,6 +209,23 @@ export class PanelSession {
     return this.lastScopedHistorySection;
   }
 
+  /**
+   * The repository the address names, or `null` for the list.
+   *
+   * One getter for both surfaces. A workspace and the console reach the same
+   * page by different paths, and the only thing either of them draws differently
+   * is the chrome around it, so what is open is worth asking once.
+   */
+  get currentRepository(): RepositoryPage | null {
+    const route = this.parsedRoute;
+    if (route === null || 'personal' in route) return null;
+    if ('rootView' in route) {
+      return route.rootView === 'installation' ? (route.repository ?? null) : null;
+    }
+
+    return route.repository ?? null;
+  }
+
   syncRouteContext(): void {
     // Nothing is recorded from a page that failed to load. The address still names a view
     // and the chrome still shows it, but a reader who pasted a broken link was never on
@@ -343,7 +363,14 @@ export class PanelSession {
 
   selectView(nextView: PanelView): void {
     const target = this.selectedTarget;
-    if (target === null || (this.currentView === nextView && !this.isInbox)) return;
+    if (target === null) return;
+    /* Pressing the view you are already in is nothing to do - unless you are
+       inside a record of it. The repository page IS the repositories view, so
+       the navigation still reads Repositories while you are on one, and this is
+       how a reader who presses it expects to reach the list. Without the second
+       clause the item was inert on exactly the screen it was most needed. */
+    const alreadyThere = this.currentView === nextView && this.currentRepository === null;
+    if (alreadyThere && !this.isInbox) return;
     void this.navigate(this.routeFor(target, nextView));
   }
 
@@ -351,6 +378,41 @@ export class PanelSession {
     const target = this.selectedTarget;
     if (target === null || this.currentHistorySection === section) return;
     void this.navigate(this.routeFor(target, 'history', section));
+  }
+
+  // --- One repository ---
+
+  /** Opening a repository is a place to come back from, so it pushes. */
+  openRepository(name: string): void {
+    void this.navigate(this.repositoryRoute({ name, section: 'file' }));
+    this.resetPageScroll();
+  }
+
+  /**
+   * The pane rides the address too, so a link points at the commands a colleague
+   * was asked to look at. It replaces rather than pushes: moving between the
+   * panes is part of reading one repository, not a second place to come back
+   * from, and Back should leave for the list rather than walk the panes.
+   */
+  selectRepositorySection(section: RepositorySection): void {
+    const open = this.currentRepository;
+    if (open === null || open.section === section) return;
+    void this.navigate(this.repositoryRoute({ name: open.name, section }), true);
+  }
+
+  /** Back to the list. A push, so it pairs with the push that opened the page. */
+  closeRepository(): void {
+    void this.navigate(this.repositoryRoute(null));
+    this.resetPageScroll();
+  }
+
+  repositoryHref(name: string, section: RepositorySection = 'file'): string {
+    return panelAddress(this.repositoryRoute({ name, section }));
+  }
+
+  /** The list this page was opened from, in whichever surface that was. */
+  repositoriesHref(): string {
+    return panelAddress(this.repositoryRoute(null));
   }
 
   selectUserSection(section: 'users' | 'invitations'): void {
@@ -632,6 +694,33 @@ export class PanelSession {
         ? { account: target.account.login, view: nextView, section }
         : { account: target.account.login, view: nextView };
     return dialog === undefined ? route : { ...route, dialog };
+  }
+
+  /**
+   * The repositories address of whichever surface the reader is already in.
+   *
+   * `null` for the list itself. Built from the current route rather than from a
+   * flag passed down, so a component that lists repositories can offer the link
+   * without knowing whether it is being drawn in a workspace or in the console.
+   */
+  private repositoryRoute(repository: RepositoryPage | null): PanelRoute {
+    const root = this.currentRootRoute;
+    if (this.isRootMode && root.rootView === 'installation') {
+      const route: RootRoute = {
+        rootView: 'installation',
+        account: root.account,
+        view: 'repositories',
+      };
+
+      return repository === null ? route : { ...route, repository };
+    }
+
+    const route: InstallationRoute = {
+      account: this.selectedTarget?.account.login ?? '',
+      view: 'repositories',
+    };
+
+    return repository === null ? route : { ...route, repository };
   }
 
   private rootInstallationRoute(

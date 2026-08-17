@@ -3,10 +3,10 @@
  *
  * A dialog stands on top of a view and is nearly always about one row of it, so
  * it reads as part of that view's path rather than as a parameter bolted onto
- * it: `/i/acme/repositories/api-gateway/file`, not
- * `/i/acme/repositories?dialog=repository-settings&repository=4005`. The first
- * says what a person would say out loud, survives being pasted into a message,
- * and is the same shape as every other address the panel writes.
+ * it: `/i/acme/users/octocat/history`, not
+ * `/i/acme/users?dialog=decision-history&user=4005`. The first says what a
+ * person would say out loud, survives being pasted into a message, and is the
+ * same shape as every other address the panel writes.
  *
  * Two rules keep the grammar unambiguous, which matters because the segments
  * that follow a view are mostly names people chose:
@@ -15,14 +15,17 @@
  *   them is read. `/users/add` is one segment and is always the add dialog;
  *   every dialog about a person is two, so somebody whose login is `add` is
  *   still reachable at `/users/add/history`.
- * - A name is only ever read in the first position. `/repositories/file/file` is
- *   the repository called `file`, opened on its File pane.
+ * - A name is only ever read in the first position.
+ *
+ * A repository used to be here and is a page now, at the same address it had as
+ * a dialog. What decided it was how much of one there is: three panes, a save
+ * bar in each, and a file card - a screen someone works in, not a thing that
+ * stands over the list for a moment. `routes.ts` parses those segments.
  *
  * Dialogs with no row and no view to sit on are not here. They keep the query
  * string, which is where the inbox lived until it became a page of its own.
  */
 
-export const REPOSITORY_SECTIONS = ['file', 'behavior', 'commands'] as const;
 /* Segment spellings, like `ROOT_USER_ACTIONS` below, because that is what the parser
    compares against. `remove-access` is the only action an installation's user table
    offers besides suspending and restoring, and the list used to say `remove` - so the
@@ -56,7 +59,7 @@ export interface RouteDialog {
  * puts something there resolves to nothing and is answered 404 by the server
  * rather than 200 and a not-found page drawn by the browser.
  */
-export const DIALOG_HOST_VIEWS = ['repositories', 'users', 'invitations'] as const;
+export const DIALOG_HOST_VIEWS = ['users', 'invitations'] as const;
 
 /**
  * The Root console's own tables, which take the same grammar as an
@@ -94,8 +97,6 @@ export function parseDialogSegments(host: DialogHost, decoded: string[]): RouteD
   if (decoded.length === 0) return null;
 
   switch (host) {
-    case 'repositories':
-      return parseRepositoryDialog(decoded);
     case 'users':
       return parseUserDialog(decoded, 'user-action', 'decision-history', 'add-user', USER_ACTIONS);
     case 'access-users':
@@ -118,15 +119,6 @@ export function dialogSegments(host: DialogHost, dialog: RouteDialog | null): st
   if (dialog === null) return null;
 
   switch (dialog.name) {
-    case 'repository-settings': {
-      const repository = dialog.params.repository ?? '';
-      if (repository === '') return null;
-      const section = dialog.params.section;
-      /* The File pane is where the dialog opens, so its address is the bare
-         repository. A section is written only when it is not the one a reader
-         would have landed on anyway. */
-      return section === undefined || section === 'file' ? [repository] : [repository, section];
-    }
     case 'decision-history':
       return subjectSegments(dialog.params.user, 'history');
     case 'user-action':
@@ -150,17 +142,6 @@ function subjectSegments(subject: string | undefined, verb: string | undefined):
   if (subject === undefined || subject === '' || verb === undefined || verb === '') return null;
 
   return [subject, toSegment(verb)];
-}
-
-function parseRepositoryDialog(segments: string[]): RouteDialog | null {
-  const [repository, section] = segments;
-  if (segments.length > 2 || repository === undefined || repository === '') return null;
-  if (section === undefined) {
-    return { name: 'repository-settings', params: { repository, section: 'file' } };
-  }
-  if (!REPOSITORY_SECTIONS.some((known) => known === section)) return null;
-
-  return { name: 'repository-settings', params: { repository, section } };
 }
 
 function parseUserDialog(

@@ -22,57 +22,6 @@ function roundTrip(path: string): string {
 }
 
 describe('dialog addresses on a view [Unit]', () => {
-  it('reads a repository dialog as part of the repositories path', () => {
-    expect(parsePanelRoute('', '/i/acme/repositories/api-gateway')).toEqual({
-      account: 'acme',
-      view: 'repositories',
-      dialog: {
-        name: 'repository-settings',
-        params: { repository: 'api-gateway', section: 'file' },
-      },
-    });
-    expect(parsePanelRoute('', '/i/acme/repositories/api-gateway/commands')).toEqual({
-      account: 'acme',
-      view: 'repositories',
-      dialog: {
-        name: 'repository-settings',
-        params: { repository: 'api-gateway', section: 'commands' },
-      },
-    });
-  });
-
-  it('writes the pane only when it is not the one the dialog opens on', () => {
-    expect(roundTrip('/i/acme/repositories/api-gateway')).toBe('/i/acme/repositories/api-gateway');
-    expect(roundTrip('/i/acme/repositories/api-gateway/file')).toBe(
-      '/i/acme/repositories/api-gateway',
-    );
-    expect(roundTrip('/i/acme/repositories/api-gateway/behavior')).toBe(
-      '/i/acme/repositories/api-gateway/behavior',
-    );
-  });
-
-  it('reads a repository named like a pane', () => {
-    /* A name is only ever read in the first position, so a repository called
-       `file` is not mistaken for the File pane of nothing. */
-    expect(parsePanelRoute('', '/i/acme/repositories/file/file')).toEqual({
-      account: 'acme',
-      view: 'repositories',
-      dialog: { name: 'repository-settings', params: { repository: 'file', section: 'file' } },
-    });
-    expect(parsePanelRoute('', '/i/acme/repositories/file')).toEqual({
-      account: 'acme',
-      view: 'repositories',
-      dialog: { name: 'repository-settings', params: { repository: 'file', section: 'file' } },
-    });
-  });
-
-  it('refuses a pane that is not one', () => {
-    // An address that does not resolve, rather than the bare list with nothing
-    // open - a mistyped pane should say so.
-    expect(parsePanelRoute('', '/i/acme/repositories/api-gateway/nonsense')).toBeNull();
-    expect(parsePanelRoute('', '/i/acme/repositories/api-gateway/file/extra')).toBeNull();
-  });
-
   it('separates the add dialog from a person by how many segments follow', () => {
     expect(parsePanelRoute('', '/i/acme/users/add')).toEqual({
       account: 'acme',
@@ -131,17 +80,17 @@ describe('dialog addresses on a view [Unit]', () => {
     });
   });
 
-  it('escapes a repository name that needs it', () => {
+  it('escapes a login that needs it', () => {
     const path = panelAddress({
       account: 'acme',
-      view: 'repositories',
-      dialog: { name: 'repository-settings', params: { repository: 'a b/c', section: 'file' } },
+      view: 'users',
+      dialog: { name: 'user-action', params: { user: 'a b/c', action: 'suspend' } },
     });
-    expect(path).toBe(`${basePath}/i/acme/repositories/a%20b%2Fc`);
+    expect(path).toBe(`${basePath}/i/acme/users/a%20b%2Fc/suspend`);
     expect(parsePanelRoute(basePath, path)).toEqual({
       account: 'acme',
-      view: 'repositories',
-      dialog: { name: 'repository-settings', params: { repository: 'a b/c', section: 'file' } },
+      view: 'users',
+      dialog: { name: 'user-action', params: { user: 'a b/c', action: 'suspend' } },
     });
   });
 });
@@ -180,16 +129,11 @@ describe('dialog addresses in the Root console [Unit]', () => {
   });
 
   it('carries a dialog on an installation seen through the Root console', () => {
-    expect(
-      parsePanelRoute('', '/root/installations/acme/repositories/api-gateway/behavior'),
-    ).toEqual({
+    expect(parsePanelRoute('', '/root/installations/acme/users/octocat/suspend')).toEqual({
       rootView: 'installation',
       account: 'acme',
-      view: 'repositories',
-      dialog: {
-        name: 'repository-settings',
-        params: { repository: 'api-gateway', section: 'behavior' },
-      },
+      view: 'users',
+      dialog: { name: 'user-action', params: { user: 'octocat', action: 'suspend' } },
     });
     expect(roundTrip('/root/installations/acme/users/octocat/history')).toBe(
       '/root/installations/acme/users/octocat/history',

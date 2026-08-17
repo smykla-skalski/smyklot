@@ -40,18 +40,24 @@ const CASES: Array<{ route: PanelRoute; id: RouteId; params: Record<string, stri
     params: { account: 'acme', section: 'failures' },
   },
   {
+    // A bare repository segment means the pane the page opens on, which reading it back
+    // says out loud - so the shape that comes out is the normalised one.
     route: {
       account: 'acme',
       view: 'repositories',
-      // A bare repository segment means the dialog's first section, which reading it
-      // back says out loud - so the shape that comes out is the normalised one.
-      dialog: {
-        name: 'repository-settings',
-        params: { repository: 'api-gateway', section: 'file' },
-      },
+      repository: { name: 'api-gateway', section: 'file' },
     },
-    id: '/i/[account]/[view=dialogHostView]/[...rest=dialogPath]',
-    params: { account: 'acme', view: 'repositories', rest: 'api-gateway' },
+    id: '/i/[account]/repositories/[repository]/[[section=repositorySection]]',
+    params: { account: 'acme', repository: 'api-gateway' },
+  },
+  {
+    route: {
+      account: 'acme',
+      view: 'repositories',
+      repository: { name: 'api-gateway', section: 'commands' },
+    },
+    id: '/i/[account]/repositories/[repository]/[[section=repositorySection]]',
+    params: { account: 'acme', repository: 'api-gateway', section: 'commands' },
   },
   {
     route: {
@@ -115,13 +121,10 @@ const CASES: Array<{ route: PanelRoute; id: RouteId; params: Record<string, stri
       rootView: 'installation',
       account: 'acme',
       view: 'repositories',
-      dialog: {
-        name: 'repository-settings',
-        params: { repository: 'api-gateway', section: 'file' },
-      },
+      repository: { name: 'api-gateway', section: 'behavior' },
     },
-    id: '/root/installations/[account]/[view=dialogHostView]/[...rest=dialogPath]',
-    params: { account: 'acme', view: 'repositories', rest: 'api-gateway' },
+    id: '/root/installations/[account]/repositories/[repository]/[[section=repositorySection]]',
+    params: { account: 'acme', repository: 'api-gateway', section: 'behavior' },
   },
 ];
 
@@ -153,27 +156,47 @@ describe('panel addresses [Unit]', () => {
   });
 
   it('carries a name through the address without decoding it twice', () => {
-    // The router hands `rest` over decoded. Decoding it again loses a per-cent sign and
-    // throws outright when the two characters after it are not hexadecimal, so the
-    // dialog came back as none and the address resolved to the bare view.
+    // The router hands its parameters over decoded. Decoding them again loses a per-cent
+    // sign and throws outright when the two characters after it are not hexadecimal, so
+    // the dialog came back as none and the address resolved to the bare view.
+    const route: PanelRoute = {
+      account: 'acme',
+      view: 'users',
+      dialog: { name: 'decision-history', params: { user: 'a%b' } },
+    };
+    const address = panelAddress(route);
+
+    expect(address).toBe(`${basePath}/i/acme/users/a%25b/history`);
+    expect(
+      defined(
+        panelRouteAt('/i/[account]/[view=dialogHostView]/[...rest=dialogPath]', {
+          account: 'acme',
+          view: 'users',
+          rest: 'a%b/history',
+        }),
+      ),
+    ).toEqual(route);
+    // The hand parser still holds a raw pathname, so it decodes and agrees.
+    expect(parsePanelRoute(basePath, address)).toEqual(route);
+  });
+
+  it('carries a repository name the same way, as a segment of its own', () => {
     const route: PanelRoute = {
       account: 'acme',
       view: 'repositories',
-      dialog: { name: 'repository-settings', params: { repository: 'a%b', section: 'file' } },
+      repository: { name: 'a%b', section: 'file' },
     };
     const address = panelAddress(route);
 
     expect(address).toBe(`${basePath}/i/acme/repositories/a%25b`);
     expect(
       defined(
-        panelRouteAt('/i/[account]/[view=dialogHostView]/[...rest=dialogPath]', {
+        panelRouteAt('/i/[account]/repositories/[repository]/[[section=repositorySection]]', {
           account: 'acme',
-          view: 'repositories',
-          rest: 'a%b',
+          repository: 'a%b',
         }),
       ),
     ).toEqual(route);
-    // The hand parser still holds a raw pathname, so it decodes and agrees.
     expect(parsePanelRoute(basePath, address)).toEqual(route);
   });
 
@@ -186,11 +209,11 @@ describe('panel addresses [Unit]', () => {
       defined(
         panelRouteAt('/i/[account]/[view=dialogHostView]/[...rest=dialogPath]', {
           account: 'acme',
-          view: 'repositories',
+          view: 'users',
           rest: 'bogus/bogus2',
         }),
       ),
-    ).toEqual({ account: 'acme', view: 'repositories' });
+    ).toEqual({ account: 'acme', view: 'users' });
     expect(
       defined(
         panelRouteAt('/root/access/[section=accessSection]/[...rest=dialogPath]', {
