@@ -12,7 +12,8 @@
    * stopped applying one would write the plain template over exactly the
    * customization it described.
    */
-  import type { SyncFileMerge, SyncFileOverride, SyncOverride } from '#lib/types.js';
+  import { canonicalStringify } from '#lib/preferences-sync.js';
+  import type { SyncFileMerge, SyncOverride } from '#lib/types.js';
 
   import InheritControl from './InheritControl.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
@@ -61,22 +62,40 @@
   const malformed = $derived(texts.findIndex((text) => parsed(text) === undefined));
 
   const payload = $derived(asDocument());
-  const untouched = $derived(JSON.stringify(stored.document ?? {}));
+
+  /* Two documents that would be saved the same way have to compare the same
+     way, whatever order their keys happen to be in. Comparing the raw text put
+     Save live the moment the page loaded, for a document nobody had touched. */
+  const untouched = $derived(canonicalStringify(stored.document ?? {}));
   const changed = $derived(
-    wanted !== stored.enabled || JSON.stringify(payload) !== untouched || textsDiffer(),
+    wanted !== stored.enabled || canonicalStringify(payload) !== untouched || textsDiffer(),
   );
 
+  /**
+   * The whole document rather than the parts with controls. Anything a later
+   * version adds is stored here too, and rebuilding from the controls alone
+   * would drop every key this has no control for.
+   *
+   * An empty list is left out rather than written as an empty one, so a
+   * repository that adjusts nothing says so in the one shape everything else
+   * reads as nothing.
+   */
   function asDocument(): Record<string, unknown> {
-    const document: SyncFileOverride = {};
+    const document: Record<string, unknown> = { ...stored.document };
 
     if (merges.length > 0) {
       document.merges = merges.map((merge, index) => withOverrides(merge, texts[index]));
-    }
-    if (excludes.length > 0) {
-      document.excludes = excludes;
+    } else {
+      delete document.merges;
     }
 
-    return document as Record<string, unknown>;
+    if (excludes.length > 0) {
+      document.excludes = excludes;
+    } else {
+      delete document.excludes;
+    }
+
+    return document;
   }
 
   /**

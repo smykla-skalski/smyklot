@@ -147,6 +147,46 @@ describe('RepositorySyncPane [Component]', () => {
   });
 
   /**
+   * Two documents that would be saved the same way have to compare the same
+   * way, whatever order their keys arrived in. Comparing the raw text put Save
+   * live the moment the page loaded, for a document nobody had touched.
+   */
+  it('offers no save for a document whose keys arrived in another order', () => {
+    render(RepositorySyncPane, {
+      ...base,
+      stored: override({
+        document: {
+          excludes: ['LICENSE'],
+          merges: [{ path: 'renovate.json', overrides: { timezone: 'UTC' } }],
+        },
+      }),
+    });
+
+    expect(screen.getByRole('button', { name: 'Save' }).hasAttribute('disabled')).toBe(true);
+  });
+
+  /**
+   * Anything a later version adds is stored in the same document, and a form
+   * that rebuilt it from its own controls would drop every key it has no
+   * control for.
+   */
+  it('carries through a key it has no control for', async () => {
+    const { sent, onSave } = saved();
+    render(RepositorySyncPane, {
+      ...base,
+      stored: override({ document: { something_later: { deep: true } } }),
+      onSave,
+    });
+
+    await fireEvent.change(screen.getByLabelText('Files to leave alone here'), {
+      target: { value: 'LICENSE' },
+    });
+    await save();
+
+    expect(sent[0].document.something_later).toEqual({ deep: true });
+  });
+
+  /**
    * A document this version cannot read renders as a repository adjusting
    * nothing, which is what somebody would then save over.
    */
