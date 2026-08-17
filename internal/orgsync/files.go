@@ -119,7 +119,11 @@ const (
 // were refused, so the one kind of file this feature exists for could not be
 // configured at all. Upper case and underscores, and never after a `$`, which
 // is what tells Smyklot's own from somebody else's.
-var placeholder = regexp.MustCompile(`(\$?)\{\{([A-Z][A-Z0-9_]*)\}\}`)
+// The spacing is matched too, so `{{ DEFAULT_BRANCH }}` is refused rather than
+// waved through: Render substitutes the exact spelling, so a spaced one passes
+// validation and is then committed to every repository with its braces still
+// on - which is the failure this check exists for, spelled the other way.
+var placeholder = regexp.MustCompile(`(\$?)\{\{\s*([A-Z][A-Z0-9_]*)\s*\}\}`)
 
 // placeholders are what a template may ask for.
 var placeholders = map[string]struct{}{
@@ -278,9 +282,14 @@ func validatePlaceholders(file File) error {
 			continue
 		}
 
-		if _, known := placeholders["{{"+found[2]+"}}"]; !known {
-			return invalid(
-				"file %q asks for {{%s}}, which nothing fills in", file.Path, found[2])
+		// The exact spelling, because Render substitutes that and nothing else:
+		// `{{ DEFAULT_BRANCH }}` known but not substituted is braces committed
+		// to every repository, which is what this check is here to stop.
+		canonical := "{{" + found[2] + "}}"
+
+		if _, known := placeholders[canonical]; !known || found[0] != canonical {
+			return invalid("file %q asks for %s, which nothing fills in",
+				file.Path, canonical)
 		}
 	}
 

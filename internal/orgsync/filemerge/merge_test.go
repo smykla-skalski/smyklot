@@ -2,6 +2,7 @@ package filemerge_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	yaml "go.yaml.in/yaml/v3"
@@ -400,6 +401,30 @@ jobs:
 				filemerge.Spec{Overrides: overrides(`{"defaults": {"runs-on": "macos"}}`)}),
 		)
 
+		// An alias stands for the mapping it names. Read as the node it
+		// literally is, it was not a mapping, so a deep merge replaced the
+		// whole thing - and every key the alias carried that the override did
+		// not mention went with it.
+		It("merges into what an alias stands for, rather than over it", func() {
+			merged, err := filemerge.Apply("ci.yaml",
+				[]byte("common: &c\n  labels:\n    - a\n  owner: platform\nx: *c\n"),
+				filemerge.Spec{Overrides: overrides(`{"x": {"labels": ["b"]}}`)})
+
+			Expect(err).NotTo(HaveOccurred())
+
+			var back struct {
+				X map[string]any `yaml:"x"`
+			}
+			Expect(yaml.Unmarshal(merged, &back)).To(Succeed())
+			Expect(back.X).To(HaveKeyWithValue("owner", "platform"))
+			Expect(back.X).To(HaveKey("labels"))
+
+			// Into a copy, not into the anchor: what it names is shared, so
+			// merging there would change every other place naming it.
+			Expect(string(merged)).To(ContainSubstring("common: &c"))
+			Expect(string(merged)).To(ContainSubstring("- a"))
+		})
+
 		// Nothing can keep this one: the key carrying the anchor is gone, and
 		// what referred to it cannot be left naming nothing.
 		It("refuses to remove an anchor something still refers to", func() {
@@ -495,6 +520,30 @@ jobs:
 			Expect(err).NotTo(HaveOccurred())
 			Expect(string(merged)).To(MatchRegexp(`go-version: ["']1\.20["']`))
 		})
+
+		// go-yaml decides what to quote against YAML 1.2, and the readers of
+		// these files have not all moved. A repository setting `restart: "no"`
+		// in a compose file got `restart: no`, and compose reads YAML 1.1,
+		// where that is false - a string turned into a boolean on the way into
+		// somebody's repository.
+		DescribeTable("writes a word an older reader would take for a boolean as a string",
+			func(value string) {
+				merged, err := filemerge.Apply("compose.yaml", []byte("restart: keep\n"),
+					filemerge.Spec{Overrides: overrides(
+						fmt.Sprintf(`{"restart": %q}`, value))})
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(merged)).To(Equal(fmt.Sprintf("restart: %q\n", value)))
+			},
+
+			Entry("no", "no"), Entry("yes", "yes"),
+			Entry("on", "on"), Entry("off", "off"),
+			Entry("a capitalised one", "Off"),
+			Entry("the one-letter forms", "n"),
+
+			// YAML 1.1 reads this as the number 750.
+			Entry("a time", "12:30"),
+		)
 
 		It("keeps a large identifier's digits", func() {
 			merged, err := filemerge.Apply("ci.yaml", []byte("app: 1\n"),

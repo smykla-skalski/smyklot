@@ -519,7 +519,8 @@ func proposalOutstanding(
 	target syncTarget,
 	proposal string,
 ) (bool, error) {
-	pull, err := client.FindPullRequestByHead(ctx, target.Owner, target.Name, proposal)
+	pull, err := client.FindPullRequestByHead(
+		ctx, target.Owner, target.Name, proposal, target.DefaultBranch)
 	if err != nil || pull == nil {
 		return false, err
 	}

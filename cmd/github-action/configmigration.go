@@ -469,7 +469,7 @@ func (s *server) adoptConfigMigration(
 	repo github.Repository,
 	branch string,
 ) (bool, error) {
-	pull, err := client.FindPullRequestByHead(ctx, repo.Owner, repo.Name, branch)
+	pull, err := client.FindPullRequestByHead(ctx, repo.Owner, repo.Name, branch, repo.DefaultBranch)
 	if err != nil || pull == nil || pull.State != github.PullRequestOpen {
 		return false, err
 	}

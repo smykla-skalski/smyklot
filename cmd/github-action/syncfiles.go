@@ -320,7 +320,8 @@ func readProposal(
 		return proposalBranch{}, err
 	}
 
-	pull, err := client.FindPullRequestByHead(ctx, target.Owner, target.Name, proposal)
+	pull, err := client.FindPullRequestByHead(
+		ctx, target.Owner, target.Name, proposal, target.DefaultBranch)
 	if err != nil {
 		return proposalBranch{}, err
 	}

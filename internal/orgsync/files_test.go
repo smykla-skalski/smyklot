@@ -53,6 +53,17 @@ var _ = Describe("File configuration [Unit]", func() {
 			"        ref: ${{ DEFAULT_BRANCH }}\n"),
 	)
 
+	// Render substitutes the exact spelling, so a spaced one would pass and
+	// then be committed to every repository with its braces still on.
+	It("refuses its own placeholder written with spaces", func() {
+		err := orgsync.FileConfig{
+			Files: []orgsync.File{file("README.md", "See {{ DEFAULT_BRANCH }}.")},
+		}.Validate()
+
+		Expect(err).To(MatchError(orgsync.ErrInvalidConfig))
+		Expect(err.Error()).To(ContainSubstring("asks for {{DEFAULT_BRANCH}}"))
+	})
+
 	// The typo this rule is for is still caught: shaped like one of Smyklot's,
 	// spelled as none of them.
 	It("refuses a placeholder of its own shape that it cannot fill", func() {

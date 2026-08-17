@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -39,8 +40,13 @@ const (
 // asked to have one key changed in.
 //
 // So the template's own nodes are kept and only what an override names is
-// replaced. What nobody mentioned comes out byte for byte as it went in,
-// comments and ordering included.
+// replaced: every value nobody mentioned comes back as it was written, with the
+// comments beside it and the keys in the order they were in.
+//
+// Not byte for byte. The document is written out again, so a leading `---` goes,
+// sequences come back at this indent whatever indent they had, and a folded
+// scalar is refolded. That is a first sync landing as a whole-file reformat -
+// worth knowing, and a different thing from a value that changed meaning.
 func mergeYAML(template []byte, spec Spec) ([]byte, error) {
 	file, document, err := parseYAMLDocument(template)
 	if err != nil {
@@ -263,9 +269,13 @@ func mergeIntoMapping(mapping *yaml.Node, override map[string]any, deep bool) er
 			continue
 		}
 
+		nested, isObject := value.(map[string]any)
 		existing := valueNode(mapping, key)
 
-		nested, isObject := value.(map[string]any)
+		if deep && isObject {
+			existing = standIn(mapping, key, existing)
+		}
+
 		if deep && isObject && existing != nil && existing.Kind == yaml.MappingNode {
 			if err := mergeIntoMapping(existing, nested, true); err != nil {
 				return err
@@ -294,6 +304,33 @@ func mergeIntoMapping(mapping *yaml.Node, override map[string]any, deep bool) er
 	}
 
 	return nil
+}
+
+// standIn writes out what an alias stands for, so a deep merge has a mapping to
+// merge into, and answers with what to merge into.
+//
+// An alias stands for the mapping it names. Read as the node it literally is,
+// it is not a mapping, so a deep merge replaced the whole thing - and every key
+// the alias carried that the override did not mention went with it.
+//
+// A copy, put where the alias was, rather than the anchor itself: what an
+// anchor names is shared, and merging into it would change every other place
+// naming it.
+func standIn(mapping *yaml.Node, key string, existing *yaml.Node) *yaml.Node {
+	if existing == nil || existing.Kind != yaml.AliasNode {
+		return existing
+	}
+
+	stood := resolveAlias(existing)
+	if stood == nil || stood.Kind != yaml.MappingNode {
+		return existing
+	}
+
+	copied := cloneNode(stood)
+	copied.Anchor = ""
+	setKey(mapping, key, copied)
+
+	return copied
 }
 
 // withoutNulls drops the keys an object patch sets to null, at every depth.
@@ -377,9 +414,17 @@ func nodeFor(value any) (*yaml.Node, error) {
 		}, nil
 
 	case string:
-		// Left unstyled, so the encoder quotes a string that would otherwise
-		// read back as a number, a date or a boolean, and leaves the rest bare.
-		return &yaml.Node{Kind: yaml.ScalarNode, Tag: tagString, Value: typed}, nil
+		// Mostly left unstyled, so the encoder quotes what would otherwise read
+		// back as a number or a date and leaves the rest bare. It decides that
+		// against YAML 1.2, which is not what reads these files: a repository
+		// setting `restart: "no"` in a compose file got `restart: no`, and
+		// compose reads YAML 1.1, where that is false.
+		return &yaml.Node{
+			Kind:  yaml.ScalarNode,
+			Tag:   tagString,
+			Style: styleFor(typed),
+			Value: typed,
+		}, nil
 
 	case json.Number:
 		return &yaml.Node{
@@ -396,6 +441,29 @@ func nodeFor(value any) (*yaml.Node, error) {
 		return nil, fmt.Errorf(
 			"%w: an override holds %T, which has no YAML spelling", ErrUnwritable, value)
 	}
+}
+
+// oldBooleans are the words YAML 1.1 reads as true or false, which YAML 1.2
+// dropped and go-yaml therefore writes bare. The readers of the files this
+// synchronizes have not all moved: compose, PyYAML and a good deal of CI still
+// read the old spelling, so a string that is one of these is quoted.
+var oldBooleans = map[string]struct{}{
+	"y": {}, "n": {}, "yes": {}, "no": {}, "on": {}, "off": {},
+}
+
+// sexagesimal is the other thing YAML 1.1 reads and 1.2 does not: `12:30` as
+// the number 750.
+var sexagesimal = regexp.MustCompile(`^[-+]?[0-9][0-9_]*(:[0-5]?[0-9])+$`)
+
+// styleFor says how a string has to be written to come back as that string.
+func styleFor(value string) yaml.Style {
+	if _, old := oldBooleans[strings.ToLower(value)]; old || sexagesimal.MatchString(value) {
+		return yaml.DoubleQuotedStyle
+	}
+
+	// Everything else is left to the encoder, which quotes what YAML 1.2 would
+	// resolve - numbers, dates, true, false, null and the rest.
+	return 0
 }
 
 func numberTag(value json.Number) string {

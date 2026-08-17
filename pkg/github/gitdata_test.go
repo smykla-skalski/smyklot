@@ -18,10 +18,14 @@ var _ = Describe("Git data [Unit]", func() {
 	var (
 		server *httptest.Server
 		bodies map[string]json.RawMessage
+
+		// What was asked for, which for a read is the whole of what it does.
+		asked []string
 	)
 
 	BeforeEach(func() {
 		bodies = map[string]json.RawMessage{}
+		asked = nil
 	})
 
 	AfterEach(func() {
@@ -34,6 +38,8 @@ var _ = Describe("Git data [Unit]", func() {
 	// because what these methods put on the wire is the whole of what they do.
 	record := func(answers map[string]string) *httptest.Server {
 		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			asked = append(asked, r.URL.RequestURI())
+
 			if r.Body != nil {
 				body, _ := io.ReadAll(r.Body)
 				if len(body) > 0 {
@@ -180,7 +186,7 @@ var _ = Describe("Git data [Unit]", func() {
 			})
 
 			pull, err := client().FindPullRequestByHead(
-				context.Background(), "acme", "web", "smyklot/x",
+				context.Background(), "acme", "web", "smyklot/x", "main",
 			)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(pull).NotTo(BeNil())
@@ -189,11 +195,25 @@ var _ = Describe("Git data [Unit]", func() {
 			Expect(pull.Merged).To(BeFalse())
 		})
 
+		// A pull request from the same branch to somewhere else is somebody
+		// else's. Read as this one, closing it would be read as the repository
+		// refusing a change it was never shown.
+		It("asks only about the branch it was proposed to", func() {
+			server = record(map[string]string{"/pulls": `[]`})
+
+			_, err := client().FindPullRequestByHead(
+				context.Background(), "acme", "web", "smyklot/x", "main",
+			)
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(asked).To(ContainElement(ContainSubstring("base=main")))
+		})
+
 		It("reports nothing for a branch nobody opened one from", func() {
 			server = record(map[string]string{"/pulls": `[]`})
 
 			pull, err := client().FindPullRequestByHead(
-				context.Background(), "acme", "web", "smyklot/x",
+				context.Background(), "acme", "web", "smyklot/x", "main",
 			)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(pull).To(BeNil())

@@ -246,13 +246,20 @@ func (c *Client) CreatePullRequest(
 // "nobody has asked yet" and ask forever.
 func (c *Client) FindPullRequestByHead(
 	ctx context.Context,
-	owner, repo, branch string,
+	owner, repo, branch, base string,
 ) (*PullRequest, error) {
-	path := fmt.Sprintf("/repos/%s/%s/pulls?head=%s:%s&state=all", owner, repo, owner, branch)
+	path := fmt.Sprintf("/repos/%s/%s/pulls?head=%s:%s&base=%s&state=all",
+		owner, repo, owner, branch, base)
 
 	pulls, _, err := c.gh.PullRequests.List(ctx, owner, repo, &gogithub.PullRequestListOptions{
-		State:       "all",
-		Head:        owner + ":" + branch,
+		State: "all",
+		Head:  owner + ":" + branch,
+
+		// Narrowed to where the proposal was made, because a pull request from
+		// the same branch to somewhere else is somebody else's: read as this
+		// one, closing it would be read as the repository refusing a change it
+		// was never shown.
+		Base:        base,
 		Sort:        "created",
 		Direction:   "desc",
 		ListOptions: gogithub.ListOptions{PerPage: 1},
