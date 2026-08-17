@@ -103,7 +103,27 @@ export async function startPanel(): Promise<Panel> {
  * already states its own precondition - a heading, a table header, five rows - which says far more
  * about what went wrong than a navigation timeout does.
  */
-export async function visit(page: Page, url: string, options: Settle = {}): Promise<void> {
+export function visit(page: Page, url: string, options: Settle = {}): Promise<void> {
+  return settle(
+    page,
+    async () => void (await page.goto(url, { waitUntil: 'domcontentloaded' })),
+    options,
+  );
+}
+
+/**
+ * The same wait, around something other than a page load.
+ *
+ * Entering a route by pressing a link is the arrangement two files here need - it mounts on top of
+ * what is already there, which is where both of the request loops that shipped lived - and it is a
+ * navigation the browser never reports. The watchers have to be attached before the press either
+ * way, so the press is handed over rather than made first.
+ */
+export async function settle(
+  page: Page,
+  act: () => Promise<void>,
+  options: Settle = {},
+): Promise<void> {
   const quiet = options.quiet ?? QUIET_MS;
   const ceiling = options.ceiling ?? QUIET_CEILING_MS;
 
@@ -126,7 +146,7 @@ export async function visit(page: Page, url: string, options: Settle = {}): Prom
   page.on('requestfailed', answered);
 
   try {
-    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await act();
 
     const mountBy = Date.now() + (options.mount ?? MOUNT_MS);
     if (options.ready === undefined) {
@@ -182,7 +202,12 @@ export interface Settle {
   quiet?: number;
   /** Longest to wait for that quiet before measuring anyway. */
   ceiling?: number;
-  /** Longest to wait for the panel to mount and reach the API. */
+  /**
+   * Longest to wait for the starting gun. The default is generous because a cold dev server
+   * compiling for six lanes at once is slow rather than broken - but a route entered by pressing a
+   * link has its modules already, and a route svelte-query answers from cache fires no request at
+   * all, so a caller pressing links should name a short one rather than wait out this.
+   */
   mount?: number;
 }
 

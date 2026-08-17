@@ -46,6 +46,8 @@ beforeAll(async () => {
 
   /* Then somewhere else, because arriving and travelling are two different writes of the same two
      values and only one of them is covered by the state the page loads in. */
+  // Slept through rather than waited out: the indicator travels on a transition, and no request
+  // reports the end of one.
   await page.locator('.view-links a:not(.active)').first().click();
   await page.waitForTimeout(SETTLE_MS);
   moved = await measure(page);

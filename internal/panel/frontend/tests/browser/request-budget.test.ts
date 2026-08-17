@@ -16,7 +16,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Page } from 'playwright-core';
 
-import { SETTLE_MS, startPanel, type Panel } from './harness';
+import { SETTLE_MS, settle, startPanel, type Panel } from './harness';
 
 /**
  * How many times one address may be asked for while a page settles.
@@ -135,8 +135,12 @@ async function walk(): Promise<Measurement> {
     ]) {
       const link = page.locator(`a[href$="${path}"]`).first();
       if ((await link.count()) === 0) throw new Error(`nothing in the panel links to ${path}`);
-      await link.click();
-      await page.waitForTimeout(SETTLE_MS);
+      /* Waited out rather than slept through, unlike the windows above and below: nothing here is
+         being measured yet - the counts are cleared once the walk is over - so what this needs is
+         for the route to have arrived, and a route that takes longer than a flat second and a half
+         to arrive was being walked past. A short deadline because the modules are already loaded
+         by now, and because a route svelte-query answers from cache asks for nothing at all. */
+      await settle(page, async () => link.click(), { mount: 5_000 });
     }
 
     const visited = watcher.counts.size;
