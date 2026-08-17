@@ -104,7 +104,7 @@ func (c LabelConfig) Validate() error {
 }
 
 func (l Label) validate(index int) error {
-	if err := validateName("label", index, l.Name, maxLabelName); err != nil {
+	if err := validateName("label", "name", index, l.Name, maxLabelName); err != nil {
 		return err
 	}
 

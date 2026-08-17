@@ -246,7 +246,7 @@ func (c RulesetConfig) Validate() error {
 }
 
 func (r Ruleset) validate(index int) error {
-	if err := validateName("ruleset", index, r.Name, maxRulesetNameLen); err != nil {
+	if err := validateName("ruleset", "name", index, r.Name, maxRulesetNameLen); err != nil {
 		return err
 	}
 

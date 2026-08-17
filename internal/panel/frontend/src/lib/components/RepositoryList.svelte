@@ -670,7 +670,7 @@
     try {
       overrides = { ...overrides, [repositoryId]: await onLoadSyncOverride(repositoryId) };
     } catch (cause) {
-      overrideProblem = { ...overrideProblem, [repositoryId]: problemOf(cause) };
+      overrideProblem = { ...overrideProblem, [repositoryId]: errorMessage(cause) };
     }
   }
 
@@ -692,7 +692,7 @@
       });
       overrides = { ...overrides, [repositoryId]: saved };
     } catch (cause) {
-      overrideProblem = { ...overrideProblem, [repositoryId]: problemOf(cause) };
+      overrideProblem = { ...overrideProblem, [repositoryId]: errorMessage(cause) };
     } finally {
       savingOverride = { ...savingOverride, [repositoryId]: false };
     }

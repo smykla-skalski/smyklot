@@ -20,12 +20,16 @@ func invalid(format string, args ...any) error {
 //
 // index is where it sits in configuration, counted from zero. It is only used
 // to name something that has no name yet.
-func validateName(noun string, index int, name string, longest int) error {
+//
+// what is the word for what the name is - a name for a label, a path for a
+// file - because a message that arrives beside the field somebody typed has to
+// use their word for what they typed.
+func validateName(noun, what string, index int, name string, longest int) error {
 	trimmed := strings.TrimSpace(name)
 
 	switch {
 	case trimmed == "":
-		return invalid("%s %d has no name", noun, index+1)
+		return invalid("%s %d has no %s", noun, index+1, what)
 
 	case trimmed != name:
 		return invalid("%s %q has leading or trailing whitespace", noun, name)

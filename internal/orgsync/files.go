@@ -217,19 +217,19 @@ func validatePlaceholders(file File) error {
 }
 
 // validateFilePath refuses a path that would not land where it reads as landing.
+//
+// The first three questions - is there anything there, is it wrapped in
+// whitespace, is it too long - are the ones every named thing here is asked,
+// and they are asked in one place so a path and a label are refused in the same
+// words.
 func validateFilePath(noun string, index int, filePath string) error {
+	if err := validateName(noun, "path", index, filePath, longestFilePath); err != nil {
+		return err
+	}
+
 	cleaned := path.Clean(filePath)
 
 	switch {
-	case strings.TrimSpace(filePath) == "":
-		return invalid("%s %d has no path", noun, index+1)
-
-	case strings.TrimSpace(filePath) != filePath:
-		return invalid("%s %q has leading or trailing whitespace", noun, filePath)
-
-	case len(filePath) > longestFilePath:
-		return invalid("%s %q is longer than %d characters", noun, filePath, longestFilePath)
-
 	case strings.HasPrefix(filePath, "/"):
 		return invalid("%s %q starts at the root; paths are relative to the repository",
 			noun, filePath)

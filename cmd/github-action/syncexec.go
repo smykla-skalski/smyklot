@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"time"
 
@@ -344,15 +345,11 @@ func (s *server) applyFileKind(
 	work orgsync.KindWork,
 	outcome *orgsync.Outcome,
 ) bool {
-	pending := make([]orgsync.Action, 0, len(work.Actions))
+	pending := slices.ContainsFunc(work.Actions, func(action orgsync.Action) bool {
+		return action.State == orgsync.ActionPending
+	})
 
-	for _, action := range work.Actions {
-		if action.State == orgsync.ActionPending {
-			pending = append(pending, action)
-		}
-	}
-
-	if len(pending) == 0 {
+	if !pending {
 		succeeded := true
 
 		for _, action := range work.Actions {

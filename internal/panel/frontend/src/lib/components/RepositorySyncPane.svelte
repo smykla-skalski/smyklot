@@ -44,22 +44,28 @@
     { value: 'disabled', label: 'Disabled' },
   ] as const;
 
+  /**
+   * One adjustment as it is being edited.
+   *
+   * The overrides ride along as text rather than as a parsed value, because a
+   * half-typed object is not an object and a form that reparsed on every
+   * keystroke would blank the box the moment a brace was opened. Text and merge
+   * travel together in one draft: two lists indexed in step are two lists that
+   * every add, remove and edit has to keep in step, and the first one to forget
+   * puts one repository's overrides on another repository's file.
+   */
+  type Draft = { merge: SyncFileMerge; text: string };
+
   /* Derived from what is saved and written over as somebody edits, so a save
      landing from anywhere reseeds it. */
-  let merges = $derived<SyncFileMerge[]>(storedMerges(stored.document));
+  let drafts = $derived<Draft[]>(storedDrafts(stored.document));
   let excludes = $derived<string[]>(storedExcludes(stored.document));
   let wanted = $derived<boolean | null>(stored.enabled);
-
-  /* The overrides are arbitrary JSON, so they are edited as JSON. Kept as text
-     rather than as a parsed value: a half-typed object is not an object, and a
-     form that reparsed on every keystroke would blank the box the moment a
-     brace was opened. */
-  let texts = $derived<string[]>(storedMerges(stored.document).map(overridesText));
 
   const disabled = $derived(saving || readOnly || stored.unreadable);
 
   /** The first adjustment whose overrides are not JSON, or nothing. */
-  const malformed = $derived(texts.findIndex((text) => parsed(text) === undefined));
+  const malformed = $derived(drafts.findIndex((draft) => parsed(draft.text) === undefined));
 
   const payload = $derived(asDocument());
 
@@ -83,8 +89,8 @@
   function asDocument(): Record<string, unknown> {
     const document: Record<string, unknown> = { ...stored.document };
 
-    if (merges.length > 0) {
-      document.merges = merges.map((merge, index) => withOverrides(merge, texts[index]));
+    if (drafts.length > 0) {
+      document.merges = drafts.map(withOverrides);
     } else {
       delete document.merges;
     }
@@ -104,21 +110,23 @@
    * nothing to the payload and would otherwise read as no change at all.
    */
   function textsDiffer(): boolean {
-    const saved = storedMerges(stored.document).map(overridesText);
+    const saved = storedDrafts(stored.document);
 
-    return texts.length !== saved.length || texts.some((text, at) => text !== saved[at]);
+    return (
+      drafts.length !== saved.length || drafts.some((draft, at) => draft.text !== saved[at].text)
+    );
   }
 
-  function withOverrides(merge: SyncFileMerge, text: string): SyncFileMerge {
-    const value = parsed(text);
+  function withOverrides(draft: Draft): SyncFileMerge {
+    const value = parsed(draft.text);
     if (value !== undefined && Object.keys(value).length > 0) {
-      return { ...merge, overrides: value };
+      return { ...draft.merge, overrides: value };
     }
 
     // An empty box sets nothing, which is the absence of the key rather than an
     // empty object: the two mean the same thing to the merge and only one of
     // them reads that way in the stored document.
-    const rest = { ...merge };
+    const rest = { ...draft.merge };
     delete rest.overrides;
 
     return rest;
@@ -138,12 +146,13 @@
     }
   }
 
-  function overridesText(merge: SyncFileMerge): string {
-    return merge.overrides === undefined ? '' : JSON.stringify(merge.overrides, null, 2);
-  }
+  function storedDrafts(from: Record<string, unknown>): Draft[] {
+    const merges = Array.isArray(from?.merges) ? (from.merges as SyncFileMerge[]) : [];
 
-  function storedMerges(from: Record<string, unknown>): SyncFileMerge[] {
-    return Array.isArray(from?.merges) ? (from.merges as SyncFileMerge[]) : [];
+    return merges.map((merge) => ({
+      merge,
+      text: merge.overrides === undefined ? '' : JSON.stringify(merge.overrides, null, 2),
+    }));
   }
 
   function storedExcludes(from: Record<string, unknown>): string[] {
@@ -162,21 +171,23 @@
   }
 
   function patch(index: number, change: Partial<SyncFileMerge>): void {
-    merges = merges.map((merge, at) => (at === index ? { ...merge, ...change } : merge));
+    edit(index, (draft) => ({ ...draft, merge: { ...draft.merge, ...change } }));
   }
 
   function setText(index: number, text: string): void {
-    texts = texts.map((current, at) => (at === index ? text : current));
+    edit(index, (draft) => ({ ...draft, text }));
+  }
+
+  function edit(index: number, change: (draft: Draft) => Draft): void {
+    drafts = drafts.map((draft, at) => (at === index ? change(draft) : draft));
   }
 
   function add(): void {
-    merges = [...merges, { path: '' }];
-    texts = [...texts, ''];
+    drafts = [...drafts, { merge: { path: '' }, text: '' }];
   }
 
   function remove(index: number): void {
-    merges = merges.filter((_, at) => at !== index);
-    texts = texts.filter((_, at) => at !== index);
+    drafts = drafts.filter((_, at) => at !== index);
   }
 
   function rowKey(index: number): string {
@@ -238,18 +249,18 @@
     it.
   </p>
 
-  {#if merges.length === 0}
+  {#if drafts.length === 0}
     <p class="sync-pane-note">This repository takes every file as the organization writes it.</p>
   {/if}
 
-  {#each merges as merge, index (rowKey(index))}
+  {#each drafts as draft, index (rowKey(index))}
     <article class="sync-merge">
       <div class="sync-pane-row">
         <label class="sync-merge-path">
           <span class="sync-pane-field-label">File</span>
           <input
             type="text"
-            value={merge.path}
+            value={draft.merge.path}
             {disabled}
             placeholder="renovate.json"
             onchange={(event) => patch(index, { path: event.currentTarget.value })}
@@ -258,10 +269,10 @@
 
         <SegmentedControl
           name="repository-sync-strategy-{index}"
-          label="How {merge.path || 'this file'} is composed"
+          label="How {draft.merge.path || 'this file'} is composed"
           compact
           options={STRATEGIES}
-          value={merge.strategy ?? ''}
+          value={draft.merge.strategy ?? ''}
           {disabled}
           onSelect={(selection) => patch(index, { strategy: selection })}
         />
@@ -284,7 +295,7 @@
           rows="6"
           {disabled}
           aria-describedby="repository-sync-overrides-note"
-          value={texts[index] ?? ''}
+          value={draft.text}
           placeholder={'{\n  "timezone": "Europe/Warsaw"\n}'}
           onchange={(event) => setText(index, event.currentTarget.value)}></textarea>
       </label>
@@ -297,7 +308,7 @@
 
   {#if malformed >= 0}
     <p class="form-error" role="alert">
-      What this repository sets for {merges[malformed]?.path || 'a file'} is not a JSON object.
+      What this repository sets for {drafts[malformed]?.merge.path || 'a file'} is not a JSON object.
     </p>
   {/if}
 

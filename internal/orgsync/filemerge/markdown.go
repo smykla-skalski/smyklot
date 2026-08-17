@@ -2,6 +2,7 @@ package filemerge
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -201,7 +202,7 @@ func endsWith(lines, tail []string) bool {
 		return false
 	}
 
-	return slicesEqual(lines[len(lines)-len(tail):], tail)
+	return slices.Equal(lines[len(lines)-len(tail):], tail)
 }
 
 func startsWith(lines, head []string) bool {
@@ -209,33 +210,13 @@ func startsWith(lines, head []string) bool {
 		return false
 	}
 
-	return slicesEqual(lines[:len(head)], head)
+	return slices.Equal(lines[:len(head)], head)
 }
 
-func slicesEqual(one, other []string) bool {
-	if len(one) != len(other) {
-		return false
-	}
-
-	for index := range one {
-		if one[index] != other[index] {
-			return false
-		}
-	}
-
-	return true
-}
-
-// insert puts content at a line, with a blank line on either side of it.
+// insert puts content at a line, with a blank line on either side of it, which
+// is replacing nothing with it.
 func insert(lines []string, at int, content []string) []string {
-	joined := make([]string, 0, len(lines)+len(content)+mostBlankLines)
-	joined = append(joined, lines[:at]...)
-	joined = endBlank(joined)
-	joined = append(joined, content...)
-	joined = append(joined, "")
-	joined = append(joined, lines[at:]...)
-
-	return trimRuns(joined)
+	return replaceRange(lines, at, at, content)
 }
 
 // replaceRange puts content where a run of lines was.
