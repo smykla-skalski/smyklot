@@ -903,7 +903,7 @@
   </div>
 
   <div
-    class={['repository-results', loading && 'loading']}
+    class={['repository-results table-region', loading && 'loading']}
     bind:this={repositoryResults}
     aria-busy={loading}
   >
@@ -1368,18 +1368,10 @@
     }
   }
 
-  .repository-results {
-    background: var(--table-filler-bg);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-surface);
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    min-height: 0;
-    overflow: hidden;
-    position: relative;
-  }
-
+  /* Layout, keyline and corner come from `.table-region` in `app.css`. This drew
+     its own keyline and its own corner around a card that already has both, so
+     the one table given a border before the rest was the one that ended up with
+     two. The filler behind a short table is `tbody`'s, below. */
   .repository-results.loading {
     cursor: progress;
   }
@@ -1591,10 +1583,6 @@
   }
 
   @media (min-width: 64.001rem) {
-    .repository-results {
-      overflow: hidden;
-    }
-
     .repository-table-scroll {
       display: flex;
       flex: 1;

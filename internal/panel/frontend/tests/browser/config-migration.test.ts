@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Page } from 'playwright-core';
 
-import { SETTLE_MS, startPanel, type Panel } from './harness';
+import { SETTLE_MS, settle, startPanel, type Panel } from './harness';
 
 let panel: Panel;
 
@@ -37,11 +37,20 @@ async function resetMigration(path: string, repository: string): Promise<void> {
 
     // Closing and reopening inside the query stale window must not resurrect
     // the refused state from a cached detail response.
-    await page.keyboard.press('Escape');
+    await settle(page, () => page.keyboard.press('Escape'), {
+      ready: '.repository-row',
+      mount: 5_000,
+    });
     await dialog.waitFor({ state: 'detached' });
     // The list is virtualised and, now that the view is no taller than the window,
     // it renders only the rows in view - so a repository further down the list is
     // not in the page to be clicked. Narrow to it the way a reader would.
+    //
+    // Settled first, and not out of caution: closing the dialog leaves one route
+    // for another, so the list is a new instance, and it seeds its search from the
+    // synced preferences. Typed into before that lands, what is typed is replaced
+    // by what was stored - the field goes back to empty, the row is scrolled out
+    // of the virtualised window, and the button below is never in the page.
     await page.getByPlaceholder('Search repositories').fill(repository);
     await page.getByRole('button', { name: `Configure smykla-skalski/${repository}` }).click();
     await dialog.waitFor({ state: 'visible' });
