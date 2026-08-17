@@ -175,6 +175,36 @@ describe('panel addresses [Unit]', () => {
     expect(parsePanelRoute(basePath, address)).toEqual(route);
   });
 
+  it('has no route where the segments name no dialog the host has', () => {
+    // The view is real and the segments after it are not, which is an address that does
+    // not resolve rather than the bare view. Reading it as the view would highlight it in
+    // the sidebar and record it as the one the reader was last on, so Return would land
+    // there instead of where they actually were.
+    expect(
+      panelRouteAt('/i/[account]/[view=dialogHostView]/[...rest=dialogPath]', {
+        account: 'acme',
+        view: 'repositories',
+        rest: 'bogus/bogus2',
+      }),
+    ).toBeNull();
+    expect(
+      panelRouteAt('/root/access/[section=accessSection]/[...rest=dialogPath]', {
+        section: 'users',
+        rest: 'octocat/befriend',
+      }),
+    ).toBeNull();
+    // The same address with nothing after the view still reads as the view.
+    expect(
+      defined(
+        panelRouteAt('/i/[account]/[view=dialogHostView]/[...rest=dialogPath]', {
+          account: 'acme',
+          view: 'repositories',
+          rest: '',
+        }),
+      ),
+    ).toEqual({ account: 'acme', view: 'repositories' });
+  });
+
   it('has no route for an address outside the panel', () => {
     expect(panelRouteAt('/', {})).toBeNull();
     expect(panelRouteAt('/invite/[token=invitationToken]', { token: 'x' })).toBeNull();

@@ -151,8 +151,11 @@ export function panelRouteAt(
 
     case '/i/[account]/[view=panelView]':
       return withView(account, params.view);
-    case '/i/[account]/[view=dialogHostView]/[...rest=dialogPath]':
-      return withView(account, params.view, undefined, dialogAt(params.view, params.rest));
+    case '/i/[account]/[view=dialogHostView]/[...rest=dialogPath]': {
+      const dialog = dialogAt(params.view, params.rest);
+
+      return dialog === 'invalid' ? null : withView(account, params.view, undefined, dialog);
+    }
     case '/i/[account]/history/[[section=historySection]]':
       return withView(account, 'history', asSection(section));
 
@@ -176,14 +179,20 @@ export function panelRouteAt(
       return { rootView: 'access-users' };
     case '/root/access/[section=accessSection]/[...rest=dialogPath]': {
       const host = section === 'invitations' ? 'access-invitations' : 'access-users';
+      const dialog = dialogAt(host, params.rest);
 
-      return { rootView: host, dialog: dialogAt(host, params.rest) };
+      return dialog === 'invalid' ? null : { rootView: host, dialog };
     }
 
     case '/root/installations/[account]/[view=rootInstallationView]':
       return rootInstallation(account, params.view);
-    case '/root/installations/[account]/[view=dialogHostView]/[...rest=dialogPath]':
-      return rootInstallation(account, params.view, undefined, dialogAt(params.view, params.rest));
+    case '/root/installations/[account]/[view=dialogHostView]/[...rest=dialogPath]': {
+      const dialog = dialogAt(params.view, params.rest);
+
+      return dialog === 'invalid'
+        ? null
+        : rootInstallation(account, params.view, undefined, dialog);
+    }
     case '/root/installations/[account]/history/[[section=historySection]]':
       return rootInstallation(account, 'history', asSection(section));
 
@@ -216,11 +225,21 @@ function asSection(value: string | undefined): HistorySection | undefined {
   return HISTORY_SECTIONS.find((section) => section === value);
 }
 
-/** The dialog the trailing segments name, or none when they name nothing this host has. */
-function dialogAt(view: string | undefined, rest: string | undefined): RouteDialog | undefined {
+/**
+ * The dialog the trailing segments name.
+ *
+ * `undefined` when there are none, and `'invalid'` when there are some and they name no
+ * dialog this host has - which is an address that does not resolve rather than the bare
+ * view. A mistyped repository name should say so, not quietly show the list, and the
+ * view underneath should not be recorded as the one the reader was last on.
+ */
+function dialogAt(
+  view: string | undefined,
+  rest: string | undefined,
+): RouteDialog | undefined | 'invalid' {
   if (view === undefined || !isDialogHost(view)) return undefined;
   const segments = rest?.split('/').filter((segment) => segment !== '') ?? [];
   if (segments.length === 0) return undefined;
 
-  return parseDialogSegments(view, segments) ?? undefined;
+  return parseDialogSegments(view, segments) ?? 'invalid';
 }
