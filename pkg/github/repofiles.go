@@ -122,29 +122,60 @@ type TreePath struct {
 	Blocked string
 }
 
-// ResolveTreePath reads what a ref records at one path, a level at a time.
+// ResolveTreePaths reads what a ref records at each of several paths, walking
+// the tree a level at a time.
 //
 // Needed where a whole-tree listing came back truncated, and exact where that
-// listing cannot be: one request per path segment, each answering what git
-// holds there rather than whether a file can be downloaded from it. Asking the
-// contents API instead would answer 404 for a path whose parent is a file,
-// which reads as "nothing is there" - and nothing-is-there is what turns a
-// write into a create that takes the parent out.
-func (c *Client) ResolveTreePath(
+// listing cannot be: each level answers what git holds there rather than
+// whether a file can be downloaded from it. Asking the contents API instead
+// would answer 404 for a path whose parent is a file, which reads as "nothing
+// is there" - and nothing-is-there is what turns a write into a create that
+// takes the parent out.
+//
+// Several at once because they share their levels. Every managed path passes
+// through the root, and most of them through the same two or three directories
+// after it, so reading one path at a time reads the root once per path.
+func (c *Client) ResolveTreePaths(
+	ctx context.Context,
+	owner, repo, ref string,
+	paths []string,
+) (map[string]TreePath, error) {
+	levels := map[string]RepositoryTree{}
+	found := make(map[string]TreePath, len(paths))
+
+	for _, filePath := range paths {
+		resolved, err := c.resolveTreePath(ctx, owner, repo, ref, filePath, levels)
+		if err != nil {
+			return nil, err
+		}
+
+		found[filePath] = resolved
+	}
+
+	return found, nil
+}
+
+func (c *Client) resolveTreePath(
 	ctx context.Context,
 	owner, repo, ref, filePath string,
+	levels map[string]RepositoryTree,
 ) (TreePath, error) {
 	segments := strings.Split(filePath, "/")
 	at := ref
 
 	for index, segment := range segments {
-		listing, err := c.readTree(ctx, owner, repo, at, false)
-		if err != nil {
-			return TreePath{}, err
+		listing, read := levels[at]
+		if !read {
+			var err error
+			if listing, err = c.readTree(ctx, owner, repo, at, false); err != nil {
+				return TreePath{}, err
+			}
+
+			levels[at] = listing
 		}
 
-		entry, found := listing.Entries[segment]
-		if !found {
+		entry, held := listing.Entries[segment]
+		if !held {
 			if listing.Truncated {
 				return TreePath{}, fmt.Errorf(
 					"%w: GitHub would not list all of %s", ErrResponseParse, at)

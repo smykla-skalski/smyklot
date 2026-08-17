@@ -142,7 +142,7 @@ var _ = Describe("Repository files [Unit]", func() {
 	// answer 404 for a path whose parent is a file, which reads as "nothing is
 	// there" - and that is what turns a write into a create that takes the
 	// parent out.
-	Describe("ResolveTreePath", func() {
+	Describe("ResolveTreePaths", func() {
 		// One level per segment, so the fixtures are keyed by the tree each
 		// request asks for rather than by the path.
 		levels := func(root, docs string) map[string]string {
@@ -152,6 +152,16 @@ var _ = Describe("Repository files [Unit]", func() {
 			}
 		}
 
+		resolve := func(paths ...string) map[string]github.TreePath {
+			GinkgoHelper()
+
+			found, err := client().ResolveTreePaths(
+				context.Background(), "acme", "web", "main", paths)
+			Expect(err).NotTo(HaveOccurred())
+
+			return found
+		}
+
 		It("reads what git holds at a nested path", func() {
 			server = record(levels(
 				`{"tree":[{"path":"docs","type":"tree","mode":"040000","sha":"d1"}]}`,
@@ -159,10 +169,8 @@ var _ = Describe("Repository files [Unit]", func() {
 					`"sha":"b1","size":12}]}`,
 			))
 
-			found, err := client().ResolveTreePath(
-				context.Background(), "acme", "web", "main", "docs/guide.md")
+			found := resolve("docs/guide.md")["docs/guide.md"]
 
-			Expect(err).NotTo(HaveOccurred())
 			Expect(found.Found).To(BeTrue())
 			Expect(found.Blocked).To(BeEmpty())
 			Expect(found.Entry).To(Equal(github.TreeEntry{
@@ -176,10 +184,8 @@ var _ = Describe("Repository files [Unit]", func() {
 				`{"tree":[]}`,
 			))
 
-			found, err := client().ResolveTreePath(
-				context.Background(), "acme", "web", "main", "docs/guide.md")
+			found := resolve("docs/guide.md")["docs/guide.md"]
 
-			Expect(err).NotTo(HaveOccurred())
 			Expect(found.Found).To(BeFalse())
 			Expect(found.Blocked).To(BeEmpty())
 		})
@@ -190,10 +196,8 @@ var _ = Describe("Repository files [Unit]", func() {
 					`"mode":"100644","sha":"b1","size":4}]}`,
 			})
 
-			found, err := client().ResolveTreePath(
-				context.Background(), "acme", "web", "main", "docs/guide.md")
+			found := resolve("docs/guide.md")["docs/guide.md"]
 
-			Expect(err).NotTo(HaveOccurred())
 			Expect(found.Found).To(BeFalse())
 			Expect(found.Blocked).To(Equal("docs"))
 		})
@@ -201,11 +205,7 @@ var _ = Describe("Repository files [Unit]", func() {
 		It("reads a repository with no commits as holding nothing", func() {
 			server = record(nil)
 
-			found, err := client().ResolveTreePath(
-				context.Background(), "acme", "web", "main", "README.md")
-
-			Expect(err).NotTo(HaveOccurred())
-			Expect(found.Found).To(BeFalse())
+			Expect(resolve("README.md")["README.md"].Found).To(BeFalse())
 		})
 
 		// A level that stops early cannot say a path is absent, and absent is
@@ -216,10 +216,30 @@ var _ = Describe("Repository files [Unit]", func() {
 					`"mode":"100644","sha":"b1"}],"truncated":true}`,
 			})
 
-			_, err := client().ResolveTreePath(
-				context.Background(), "acme", "web", "main", "README.md")
+			_, err := client().ResolveTreePaths(
+				context.Background(), "acme", "web", "main", []string{"README.md"})
 
 			Expect(err).To(HaveOccurred())
+		})
+
+		// Every managed path goes through the root, and most of them through
+		// the same directory after it. Reading one path at a time read the
+		// root once per path.
+		It("reads each level once however many paths pass through it", func() {
+			server = record(levels(
+				`{"tree":[{"path":"docs","type":"tree","mode":"040000","sha":"d1"}]}`,
+				`{"tree":[{"path":"one.md","type":"blob","mode":"100644","sha":"b1"},`+
+					`{"path":"two.md","type":"blob","mode":"100644","sha":"b2"}]}`,
+			))
+
+			found := resolve("docs/one.md", "docs/two.md")
+
+			Expect(found).To(HaveLen(2))
+			Expect(found["docs/one.md"].Entry.Blob).To(Equal("b1"))
+			Expect(found["docs/two.md"].Entry.Blob).To(Equal("b2"))
+
+			Expect(requests).To(ConsistOf(
+				ContainSubstring("/git/trees/main"), ContainSubstring("/git/trees/d1")))
 		})
 	})
 

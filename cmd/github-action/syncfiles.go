@@ -150,15 +150,15 @@ func readFilesOneAtATime(
 	target syncTarget,
 	config orgsync.FileConfig,
 ) (map[string]orgsync.CurrentFile, error) {
-	current := map[string]orgsync.CurrentFile{}
+	resolved, err := client.ResolveTreePaths(
+		ctx, target.Owner, target.Name, target.DefaultBranch, config.Managed())
+	if err != nil {
+		return nil, err
+	}
 
-	for _, path := range config.Managed() {
-		found, err := client.ResolveTreePath(
-			ctx, target.Owner, target.Name, target.DefaultBranch, path)
-		if err != nil {
-			return nil, err
-		}
+	current := make(map[string]orgsync.CurrentFile, len(resolved))
 
+	for path, found := range resolved {
 		switch {
 		case found.Blocked != "":
 			current[path] = orgsync.CurrentFile{Conflict: blockedByFile(path, found.Blocked)}
@@ -458,6 +458,27 @@ func (s *server) stillNeeded(
 	tree string,
 	files []plannedFile,
 ) ([]plannedFile, error) {
+	removing := make([]string, 0, len(files))
+
+	for _, file := range files {
+		if file.remove {
+			removing = append(removing, file.path)
+		}
+	}
+
+	// Walked rather than listed, because the answer has to be exact for
+	// exactly the paths being removed, and there are rarely more than a couple
+	// of them. Nothing is read at all where there are none.
+	resolved := map[string]github.TreePath{}
+
+	if len(removing) > 0 {
+		var err error
+		if resolved, err = client.ResolveTreePaths(
+			ctx, target.Owner, target.Name, tree, removing); err != nil {
+			return nil, err
+		}
+	}
+
 	wanted := make([]plannedFile, 0, len(files))
 
 	for _, file := range files {
@@ -467,14 +488,7 @@ func (s *server) stillNeeded(
 			continue
 		}
 
-		// Walked rather than listed, because the answer has to be exact for
-		// exactly the paths being removed, and there are rarely more than a
-		// couple of them.
-		found, err := client.ResolveTreePath(ctx, target.Owner, target.Name, tree, file.path)
-		if err != nil {
-			return nil, err
-		}
-
+		found := resolved[file.path]
 		if !found.Found {
 			continue
 		}
