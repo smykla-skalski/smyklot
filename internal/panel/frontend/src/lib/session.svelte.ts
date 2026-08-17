@@ -19,9 +19,23 @@ import type { PanelBuild } from './base';
 import { panelAddress, panelRouteAt } from './addresses';
 import { basePath } from './paths';
 
-/** Whether the address is this segment or something below it, base and all. */
+/**
+ * Whether the address is this segment or something below it, base and all.
+ *
+ * Decoded first, because this only ever answers for an address the router matched no route
+ * for - and the reason it matched none is that the server decided what to serve from the
+ * decoded path while the router reads the raw one. `/root%2Finstallations` is the console
+ * to the server and nothing to the router, so it has to be the console here too. Whole
+ * segments, so `/rootbeer` is not.
+ */
 function at(segment: string): boolean {
-  const pathname = page.url.pathname;
+  let pathname = page.url.pathname;
+  try {
+    pathname = decodeURIComponent(pathname);
+  } catch {
+    // A malformed escape is not an address the server would have served either.
+    return false;
+  }
 
   return pathname === `${basePath}${segment}` || pathname.startsWith(`${basePath}${segment}/`);
 }
@@ -193,6 +207,11 @@ export class PanelSession {
   }
 
   syncRouteContext(): void {
+    // Nothing is recorded from a page that failed to load. The address still names a view
+    // and the chrome still shows it, but a reader who pasted a broken link was never on
+    // it, so Return would otherwise take them somewhere they had not been. `page.error`
+    // covers every load failure rather than the one shape this used to test for.
+    if (page.error !== null) return;
     if (this.isRootMode || this.isInbox || this.isInvitation) return;
     const route = this.parsedRoute;
     if (route === null || !('view' in route)) return;

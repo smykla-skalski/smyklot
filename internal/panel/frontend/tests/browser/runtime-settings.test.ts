@@ -110,15 +110,16 @@ describe('Root merge-after-CI timing', () => {
 });
 
 /**
- * An address the panel has no route for.
+ * Addresses the panel has no route for, which come in two shapes.
  *
- * The server answers one with the panel's own shell and an error to render, so the app
- * boots where `page.route.id` is null and every getter reading the route gets nothing.
- * The panel reads its route from the router now rather than from the pathname, so this
- * is the case where the two differ, and it had no test.
+ * One the server refuses, answering with its own error document. One it serves - because
+ * it decides from the decoded path, while the router matches on the raw one, so a
+ * percent-encoded separator means the console to the server and nothing to the router.
+ * The panel reads its route from the router now, so the second shape is where reading the
+ * route and reading the address disagree, and it is the reason the getters fall back.
  */
 describe('an address that resolves to nothing', () => {
-  it('shows what happened and stays there', async () => {
+  it('shows what happened when the server refuses it', async () => {
     const page = await panel.browser.newPage({ viewport: { width: 1280, height: 900 } });
 
     try {
@@ -129,6 +130,22 @@ describe('an address that resolves to nothing', () => {
 
       expect(await page.locator('body').innerText()).toContain('Not found');
       expect(new URL(page.url()).pathname).toBe('/root/definitely-not-a-page');
+    } finally {
+      await page.close();
+    }
+  });
+
+  it('stays put when the server serves it and no route matches', async () => {
+    const page = await panel.browser.newPage({ viewport: { width: 1280, height: 900 } });
+
+    try {
+      await visit(page, `${panel.origin}/root%2Finstallations`, { mount: 5_000 });
+
+      // Without the fallback the console does not know it is the console, and the
+      // workspace resolver replaces this address with an installation.
+      expect(new URL(page.url()).pathname, 'the panel navigated away').toBe(
+        '/root%2Finstallations',
+      );
     } finally {
       await page.close();
     }

@@ -177,38 +177,28 @@ describe('panel addresses [Unit]', () => {
     expect(parsePanelRoute(basePath, address)).toEqual(route);
   });
 
-  it('has no route where the segments name no dialog the host has', () => {
-    // The view is real and the segments after it are not, which is an address that does
-    // not resolve rather than the bare view. Reading it as the view would highlight it in
-    // the sidebar and record it as the one the reader was last on, so Return would land
-    // there instead of where they actually were.
-    expect(
-      panelRouteAt('/i/[account]/[view=dialogHostView]/[...rest=dialogPath]', {
-        account: 'acme',
-        view: 'repositories',
-        rest: 'bogus/bogus2',
-      }),
-    ).toBeNull();
-    expect(
-      panelRouteAt('/root/access/[section=accessSection]/[...rest=dialogPath]', {
-        section: 'users',
-        rest: 'octocat/befriend',
-      }),
-    ).toBeNull();
-    // The parser this replaced answers the same, which is the agreement the rest of this
-    // file rests on - and the corpus above holds no address that resolves to nothing.
-    expect(parsePanelRoute(basePath, `${basePath}/i/acme/repositories/bogus/bogus2`)).toBeNull();
-    expect(parsePanelRoute(basePath, `${basePath}/root/access/users/octocat/befriend`)).toBeNull();
-    // The same address with nothing after the view still reads as the view.
+  it('names the view even when the segments after it name no dialog', () => {
+    // The tail names nothing, but the address still names the view underneath, and that is
+    // what the chrome around the page shows. Whether the page resolved is SvelteKit's
+    // answer: the load guard raises 404 and `page.error` carries it, which is what stops
+    // the view being recorded as one the reader was on.
     expect(
       defined(
         panelRouteAt('/i/[account]/[view=dialogHostView]/[...rest=dialogPath]', {
           account: 'acme',
           view: 'repositories',
-          rest: '',
+          rest: 'bogus/bogus2',
         }),
       ),
     ).toEqual({ account: 'acme', view: 'repositories' });
+    expect(
+      defined(
+        panelRouteAt('/root/access/[section=accessSection]/[...rest=dialogPath]', {
+          section: 'users',
+          rest: 'octocat/befriend',
+        }),
+      ),
+    ).toEqual({ rootView: 'access-users' });
   });
 
   it('has no route for an address outside the panel', () => {

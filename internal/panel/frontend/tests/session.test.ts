@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const navigation = vi.hoisted(() => ({ goto: vi.fn() }));
 const routePage = vi.hoisted(() => ({
   params: {} as Record<string, string>,
+  /** What SvelteKit says went wrong loading this page, which gates what is recorded. */
+  error: null as { message: string } | null,
   // The route SvelteKit matched. The panel reads what is open from this and the params
   // together, so a fixture that sets one without the other is not an address.
   route: { id: null } as { id: string | null },
@@ -100,6 +102,30 @@ describe('PanelSession [Unit]', () => {
     session.returnToPanel(true);
 
     expect(navigation.goto).toHaveBeenCalledWith(`${basePath}/i/acme/settings`, { replace: true });
+  });
+
+  it('records nothing from a page that failed to load', () => {
+    const session = createSession();
+    session.targets = [{ id: 'target-1', account: { login: 'acme' } } as PanelTarget];
+    session.selectedId = 'target-1';
+    routePage.url = at('/i/acme/history/failures');
+    routePage.params = { account: 'acme', section: 'failures' };
+    routePage.route = { id: '/i/[account]/history/[[section=historySection]]' };
+    session.syncRouteContext();
+
+    // A pasted link naming a dialog that does not exist. The address names the
+    // repositories view and the chrome shows it, but the reader was never on it, so
+    // Return has to take them back to where they actually were.
+    routePage.url = at('/i/acme/repositories/bogus/bogus2');
+    routePage.params = { account: 'acme', view: 'repositories', rest: 'bogus/bogus2' };
+    routePage.route = { id: '/i/[account]/[view=dialogHostView]/[...rest=dialogPath]' };
+    routePage.error = { message: 'Panel view not found' };
+    session.syncRouteContext();
+
+    expect(session.currentView, 'the chrome should still name the address').toBe('repositories');
+    expect(session.returnHref()).toBe(`${basePath}/i/acme/history/failures`);
+
+    routePage.error = null;
   });
 
   it('returns from Root to the workspace view it left', () => {

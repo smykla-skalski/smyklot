@@ -1178,6 +1178,21 @@ function recomputeRepository(target: MockTarget, repository: MockRepository): vo
   if (detail.ignore_repository_file) detail.repository.config_file_status = 'bypassed';
 }
 
+/**
+ * A path the way Go hands it to the panel server, or `null` when it is not a path at all.
+ *
+ * `net/http` fills `r.URL.Path` with the decoded form, so `%2F` arrives as a separator and
+ * `serveAsset` matches on that. Node leaves `URL.pathname` encoded, and a malformed escape
+ * throws where Go answers 400, which is the same refusal.
+ */
+function decodedPath(path: string): string | null {
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    return null;
+  }
+}
+
 export function mockServer(): Plugin {
   return {
     name: 'smyklot-panel-mock-server',
@@ -1480,8 +1495,10 @@ async function handle(
    * this asks the router the app itself uses rather than keeping a second list in step.
    */
   if (method === 'GET' && wantsDocument(req)) {
+    const served = decodedPath(path);
     const navigable =
-      parsePanelRoute('/', path) !== null || parseInvitationToken('/', path) !== null;
+      served !== null &&
+      (parsePanelRoute('/', served) !== null || parseInvitationToken('/', served) !== null);
     if (!navigable) {
       await respondError(state, req, res, 404, 'not_found', 'panel route not found');
       return;
