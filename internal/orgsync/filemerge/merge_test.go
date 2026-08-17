@@ -284,6 +284,12 @@ var _ = Describe("Merging a structured file [Unit]", func() {
 		Entry("JSON whose top level is a list", "f.json", `[1, 2]`),
 		Entry("YAML whose top level is a scalar", "f.yaml", "hello\n"),
 		Entry("an empty file", "f.json", ""),
+
+		// A decoder reads one value and stops, so a file holding two would be
+		// merged as its first and written back without the rest - the same
+		// silence a second YAML document was dropped in before this.
+		Entry("JSON holding two documents", "f.json", `{"a":1}{"b":2}`),
+		Entry("YAML holding two documents", "f.yaml", "a: 1\n---\nb: 2\n"),
 	)
 })
 

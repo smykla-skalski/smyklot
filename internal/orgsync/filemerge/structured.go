@@ -3,7 +3,9 @@ package filemerge
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"math/big"
 
 	yaml "go.yaml.in/yaml/v3"
@@ -20,6 +22,9 @@ const (
 // yamlIndent matches what the templates in the organization are written with,
 // and what go-yaml would otherwise pick for itself, which is four.
 const yamlIndent = 2
+
+// errTrailingContent is a file holding more than the one document this reads.
+var errTrailingContent = errors.New("it holds more than one document")
 
 // parseDocument reads a structured file into a document.
 //
@@ -41,10 +46,16 @@ func parseDocument(format Format, data []byte) (map[string]any, error) {
 		// number, and the file this writes is the one the repository keeps.
 		decoder.UseNumber()
 
-		err = decoder.Decode(&document)
+		if err = decoder.Decode(&document); err == nil && decoder.More() {
+			// A decoder reads one value and stops, so a file holding two would
+			// be merged as its first and written back without the rest. That
+			// is the same silence a second YAML document was dropped in before
+			// this, and the file it produces is one nobody wrote.
+			err = errTrailingContent
+		}
 
 	case FormatYAML:
-		err = yaml.Unmarshal(data, &document)
+		err = decodeYAML(data, &document)
 
 	default:
 		return nil, fmt.Errorf("%w: %s", ErrUnsupportedFormat, format)
@@ -59,6 +70,40 @@ func parseDocument(format Format, data []byte) (map[string]any, error) {
 	}
 
 	return document, nil
+}
+
+// decodeYAML reads the one document a file should hold.
+//
+// go-yaml's Unmarshal takes the first document and says nothing about the rest,
+// so a file with a --- in it would be merged as its first half and written back
+// without the second. That is the silence a repository's settings were dropped
+// in before the configuration was reworked, arriving here through a different
+// door.
+func decodeYAML(data []byte, document *map[string]any) error {
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+
+	if err := decoder.Decode(document); err != nil {
+		if errors.Is(err, io.EOF) {
+			// No document at all, which the caller reports as holding no
+			// object rather than as unreadable punctuation.
+			return nil
+		}
+
+		return err
+	}
+
+	var second any
+
+	switch err := decoder.Decode(&second); {
+	case errors.Is(err, io.EOF):
+		return nil
+
+	case err != nil:
+		return err
+
+	default:
+		return errTrailingContent
+	}
 }
 
 // renderDocument writes a document back out.
