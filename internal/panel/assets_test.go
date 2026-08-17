@@ -6,7 +6,37 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/smykla-skalski/smyklot/internal/panelassets"
 )
+
+// The bundle the server actually ships, rewritten the way the server rewrites it.
+//
+// Every other test here builds its assets from a MapFS, so none of them sees what the
+// bundler emits - and the bundler is what breaks this. A sentinel is substituted only
+// where it stands as a complete string literal, so one inlined into a template
+// (`${prefix}__smyklot_panel_version__`) is left behind, the fail-closed check rejects
+// the bundle, and the service refuses to start.
+//
+// That shipped once. The service worker took its version from a Vite `define`, the
+// minifier folded the literal into the template around it, and both guards written for
+// that very bug passed anyway: one asserted the sentinel was present, which is the
+// failure state, and the other read the source rather than the build.
+func TestShippedBundleRewritesEverySentinel(t *testing.T) {
+	assets, err := panelassets.Open()
+	if err != nil {
+		t.Fatalf("open the panel bundle (mise run panel:assets:generate): %v", err)
+	}
+
+	if _, err := newAssetBundle(Config{
+		BasePath:    "/panel",
+		Version:     "1.36.0",
+		ServiceHost: "smyklot.com",
+		Assets:      assets,
+	}); err != nil {
+		t.Fatalf("the shipped bundle cannot be served: %v", err)
+	}
+}
 
 // A bundle whose build wrote no route table cannot be served: the server would
 // have no way to tell a panel address from a typing mistake, and would have to

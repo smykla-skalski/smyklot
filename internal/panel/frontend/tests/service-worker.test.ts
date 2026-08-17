@@ -25,7 +25,9 @@ describe('the panel service worker', () => {
     expect(VERSION).toBeTypeOf('string');
     expect(VERSION).not.toBe('');
     expect(VERSION).not.toBe('undefined');
-    expect(source).toContain('${CACHE_PREFIX}${__SMYKLOT_PANEL_VERSION__}');
+    // Concatenated, not interpolated: a template folds the value in and the server's
+    // rewrite then misses the sentinel. See the comment beside this line in the worker.
+    expect(source).toContain('CACHE_PREFIX + __SMYKLOT_PANEL_VERSION__');
   });
 
   it('names caches within its panel scope', () => {

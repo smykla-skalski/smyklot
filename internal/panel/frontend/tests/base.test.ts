@@ -3,13 +3,7 @@ import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-import {
-  normalizeBasePath,
-  panelUrl,
-  readBasePath,
-  readPanelBuild,
-  type MetaSource,
-} from '../src/lib/base';
+import { normalizeBasePath, panelUrl, readPanelBuild, type MetaSource } from '../src/lib/base';
 
 const SOURCE_ROOT = fileURLToPath(new URL('../src', import.meta.url));
 
@@ -48,17 +42,6 @@ describe('panel base path', () => {
     }
     expect(normalizeBasePath('/')).toBe('');
     expect(panelUrl('/panel', 'api/v1/session')).toBe('/panel/api/v1/session');
-  });
-
-  it('reads root and sentinel mount points', () => {
-    expect(readBasePath(documentWithMeta({ 'smyklot-panel-base': '' }))).toBe('');
-    expect(readBasePath(documentWithMeta({ 'smyklot-panel-base': BASE_PATH_SENTINEL }))).toBe(
-      BASE_PATH_SENTINEL,
-    );
-  });
-
-  it('fails when the server did not inject panel metadata', () => {
-    expect(() => readBasePath(documentWithMeta({}))).toThrow(/smyklot-panel-base/);
   });
 });
 

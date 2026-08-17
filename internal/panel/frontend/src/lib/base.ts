@@ -1,4 +1,3 @@
-const BASE_META_NAME = 'smyklot-panel-base';
 const VERSION_META_NAME = 'smyklot-panel-version';
 const SERVICE_META_NAME = 'smyklot-panel-service';
 
@@ -34,15 +33,6 @@ export interface MetaSource {
 export interface PanelBuild {
   version: string | null;
   serviceHost: string | null;
-}
-
-export function readBasePath(source: MetaSource): string {
-  const meta = source.querySelector(`meta[name="${BASE_META_NAME}"]`);
-  const content = meta?.getAttribute('content');
-  if (content === null || content === undefined) {
-    throw new Error(`the panel page is missing its <meta name="${BASE_META_NAME}"> element`);
-  }
-  return normalizeBasePath(content);
 }
 
 export function readPanelBuild(source: MetaSource): PanelBuild {

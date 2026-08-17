@@ -26,7 +26,13 @@ const CACHE_PREFIX = `smyklot-panel:${encodeURIComponent(SCOPE_PATH)}:`;
 // Not `version` from `$app/env`, which is `undefined` inside a service worker - see
 // the `define` in `vite.config.ts` for why. This is the same value, reaching the
 // worker through Vite instead.
-const CACHE = `${CACHE_PREFIX}${__SMYKLOT_PANEL_VERSION__}`;
+//
+// Concatenated, never interpolated. The server substitutes its placeholders only where
+// one stands as a complete string literal, and interpolating this into a template lets
+// the minifier fold the value inside it, leaving the placeholder with no opening
+// delimiter. The rewrite then misses it and the server refuses to start, which is what
+// `TestShippedBundleRewritesEverySentinel` exists to catch.
+const CACHE = CACHE_PREFIX + __SMYKLOT_PANEL_VERSION__;
 // `$app/manifest` reports the built bundle and the static directory relative to the
 // base path; the `$service-worker` module it replaces reported them already prefixed.
 const ASSETS = new Set([...immutable, ...assets].map((file) => panelUrl(basePath, file.path)));

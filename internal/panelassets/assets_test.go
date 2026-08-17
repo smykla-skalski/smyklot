@@ -70,8 +70,15 @@ func TestServiceWorkerCarriesVersionSentinel(t *testing.T) {
 	if !bytes.Contains(worker, sentinel) {
 		t.Fatalf("service-worker.js carries no %q, so every release would share a cache name", sentinel)
 	}
-	if bytes.Contains(worker, []byte(":${undefined}")) || bytes.Contains(worker, []byte(":undefined`")) {
-		t.Error("service-worker.js builds its cache name from an undefined version")
+
+	// Present is not enough: the server substitutes a sentinel only where it stands as a
+	// complete string literal, so one the minifier folded into a template is left behind
+	// and the bundle is refused. Checked here as well as end to end in
+	// TestShippedBundleRewritesEverySentinel, because this names the file.
+	for _, offset := range sentinelOffsets(worker, sentinel) {
+		if offset == 0 || !bytes.ContainsRune([]byte(`"'`+"`"), rune(worker[offset-1])) {
+			t.Errorf("service-worker.js has %q without an opening delimiter, so the rewrite skips it", sentinel)
+		}
 	}
 }
 
@@ -102,5 +109,18 @@ func TestBundleCarriesExecutableStaticCSP(t *testing.T) {
 	}
 	if !bytes.Contains(themeBoot, []byte("document.documentElement.dataset.theme")) {
 		t.Error("theme-boot.js does not set the document theme")
+	}
+}
+
+// Every offset at which needle appears in content.
+func sentinelOffsets(content, needle []byte) []int {
+	var offsets []int
+	for at := 0; ; {
+		found := bytes.Index(content[at:], needle)
+		if found < 0 {
+			return offsets
+		}
+		offsets = append(offsets, at+found)
+		at += found + len(needle)
 	}
 }
