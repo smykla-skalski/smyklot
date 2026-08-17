@@ -76,6 +76,12 @@ func readRepositoryFiles(
 // asCurrentFiles reads a repository's tree as what the planner compares
 // against, and names what it cannot write.
 //
+// Only the paths configuration names, which is all the planner ever indexes.
+// Every other conflict in a repository is somebody else's arrangement of their
+// own files, and carrying the rest of the tree here made this hand the planner
+// a map four orders of magnitude larger than the one the level walk hands it
+// for the same repository.
+//
 // The conflicts are worked out here rather than in the planner because this is
 // where the whole tree is: the planner is handed one entry per path it asked
 // about and has no way to see that the path above one of them is a file.
@@ -83,19 +89,20 @@ func asCurrentFiles(
 	tree github.RepositoryTree,
 	config orgsync.FileConfig,
 ) map[string]orgsync.CurrentFile {
-	current := make(map[string]orgsync.CurrentFile, len(tree.Entries))
+	managed := config.Managed()
+	current := make(map[string]orgsync.CurrentFile, len(managed))
 
-	for path, entry := range tree.Entries {
-		if entry.OrdinaryFile() {
-			current[path] = orgsync.CurrentFile{Blob: entry.Blob, Size: entry.Size}
-		}
-	}
-
-	// Only the paths configuration names. Every other conflict in a repository
-	// is somebody else's arrangement of their own files.
-	for _, path := range config.Managed() {
+	for _, path := range managed {
 		if conflict := conflictAt(tree, path); conflict != "" {
 			current[path] = orgsync.CurrentFile{Conflict: conflict}
+
+			continue
+		}
+
+		// No conflict, so anything here is an ordinary file with an ordinary
+		// path above it.
+		if entry, held := tree.Entries[path]; held {
+			current[path] = orgsync.CurrentFile{Blob: entry.Blob, Size: entry.Size}
 		}
 	}
 
@@ -150,25 +157,38 @@ func readFilesOneAtATime(
 	current := make(map[string]orgsync.CurrentFile, len(resolved))
 
 	for path, found := range resolved {
-		switch {
-		case found.Blocked != "":
-			current[path] = orgsync.CurrentFile{Conflict: blockedByFile(path, found.Blocked)}
-
-		case !found.Found:
-
-		case !found.Entry.OrdinaryFile():
-			current[path] = orgsync.CurrentFile{
-				Conflict: notAnOrdinaryFile(path, found.Entry.Mode),
-			}
-
-		default:
-			current[path] = orgsync.CurrentFile{
-				Blob: found.Entry.Blob, Size: found.Entry.Size,
-			}
+		if held, has := currentFileAt(path, found); has {
+			current[path] = held
 		}
 	}
 
 	return current, nil
+}
+
+// currentFileAt reads one resolved tree path as what the planner compares
+// against, answering false where the repository has nothing there at all.
+//
+// One function, because a path has to mean the same thing wherever it was
+// read: from a whole listing, walked a level at a time, or looked at again on
+// the branch a commit is built on. Written out three times it came to two
+// answers - a retired path whose parent had become a file refused the whole
+// repository at plan time and was quietly skipped at apply time.
+func currentFileAt(filePath string, found github.TreePath) (orgsync.CurrentFile, bool) {
+	switch {
+	case found.Blocked != "":
+		return orgsync.CurrentFile{Conflict: blockedByFile(filePath, found.Blocked)}, true
+
+	case !found.Found:
+		return orgsync.CurrentFile{}, false
+
+	case !found.Entry.OrdinaryFile():
+		return orgsync.CurrentFile{
+			Conflict: notAnOrdinaryFile(filePath, found.Entry.Mode),
+		}, true
+
+	default:
+		return orgsync.CurrentFile{Blob: found.Entry.Blob, Size: found.Entry.Size}, true
+	}
 }
 
 // decodeFileOverride reads what one repository adjusts about its files.
@@ -461,69 +481,27 @@ func (s *server) stillNeeded(
 	wanted := make([]plannedFile, 0, len(files))
 
 	for _, file := range files {
-		found := resolved[file.path]
+		held, has := currentFileAt(file.path, resolved[file.path])
 
-		if !file.remove {
-			if err := writable(file.path, found); err != nil {
-				return nil, err
-			}
+		// Read the same way the planner reads the default branch, so the two
+		// cannot come to different answers about one tree state.
+		if held.Conflict != "" {
+			return nil, fmt.Errorf("%w: %s", orgsync.ErrRepositoryConflict, held.Conflict)
+		}
 
-			wanted = append(wanted, file)
-
+		// A removal the tree has already made is the branch agreeing rather
+		// than disagreeing, and it is left out: a tree entry removing a path
+		// that is not in the tree it is built from is a 422, so a repository
+		// with a retired path an earlier tick removed would fail every time
+		// its proposal came round again.
+		if file.remove && !has {
 			continue
 		}
 
-		keep, err := removable(file.path, found)
-		if err != nil {
-			return nil, err
-		}
-
-		if keep {
-			wanted = append(wanted, file)
-		}
+		wanted = append(wanted, file)
 	}
 
 	return wanted, nil
-}
-
-// writable refuses a path this tree holds something else at.
-//
-// The same two conflicts the plan refuses a repository for, asked of the
-// branch. git will let a commit put a blob where a directory is, and a
-// directory where a blob is, and say nothing about what it replaced.
-func writable(filePath string, found github.TreePath) error {
-	switch {
-	case found.Blocked != "":
-		return fmt.Errorf("%w: %s", orgsync.ErrRepositoryConflict,
-			blockedByFile(filePath, found.Blocked))
-
-	case found.Found && !found.Entry.OrdinaryFile():
-		return fmt.Errorf("%w: %s", orgsync.ErrRepositoryConflict,
-			notAnOrdinaryFile(filePath, found.Entry.Mode))
-	}
-
-	return nil
-}
-
-// removable reports whether a removal still has anything to remove, and
-// refuses one that would take more than the file with it.
-//
-// A tree entry removing a path that is not in the tree it is built from is a
-// 422, so a repository with a retired path an earlier tick already removed
-// would fail every time its proposal came round again - which it does, on the
-// reconcile horizon, for as long as the pull request sits unmerged.
-func removable(filePath string, found github.TreePath) (bool, error) {
-	if found.Blocked != "" || !found.Found {
-		return false, nil
-	}
-
-	// A tree entry removing a directory removes everything under it.
-	if !found.Entry.OrdinaryFile() {
-		return false, fmt.Errorf("%w: %s", orgsync.ErrRepositoryConflict,
-			notAnOrdinaryFile(filePath, found.Entry.Mode))
-	}
-
-	return true, nil
 }
 
 func (s *server) writeBlobs(

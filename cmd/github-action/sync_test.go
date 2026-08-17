@@ -1299,6 +1299,45 @@ var _ = Describe("Org sync [Unit]", func() {
 			Expect(planActions[0].Error).To(ContainSubstring("not an ordinary file"))
 		})
 
+		// A removal whose parent the branch has turned into a file. The path is
+		// gone, so a tree entry removing it would be a 422 - but the reason it
+		// is gone is that somebody destroyed the directory holding it, which is
+		// the state the plan refuses a repository for on the default branch.
+		// Dropping the removal quietly and committing the rest would answer one
+		// tree state two ways.
+		It("refuses to remove from under a path the branch has turned into a file", func() {
+			target := grantContents()
+			stub.repoTree = `{"sha":"basetree","tree":[{"path":"docs",` +
+				`"type":"tree","mode":"040000","sha":"d1"},{"path":"docs/old.md",` +
+				`"type":"blob","mode":"100644","sha":"old","size":2}],"truncated":false}`
+			configureKind(target, orgsync.KindFiles,
+				`{"files":[{"path":"CONTRIBUTING.md","content":"# Contributing\n"}],`+
+					`"retired":["docs/old.md"]}`)
+
+			plan(target)
+			computed, actions := livePlan(target)
+			approve(computed)
+
+			written, err := orgsync.DecodeFile(actions[0].Payload)
+			Expect(err).NotTo(HaveOccurred())
+			stub.branchRefs[written.Proposal] = "earliercommit"
+			stub.migrationTipTree = "branchtree"
+			stub.repoLevels = map[string]string{
+				"branchtree": `{"tree":[{"path":"docs","type":"blob",` +
+					`"mode":"100644","sha":"b1","size":3}]}`,
+			}
+
+			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+
+			Expect(stub.createdTrees).To(BeEmpty())
+
+			applied, planActions, err := service.store.GetSyncPlan(
+				GinkgoT().Context(), target.ID, computed.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(applied.State).To(Equal(orgsync.PlanFailed))
+			Expect(planActions[0].Error).To(ContainSubstring("is not a directory"))
+		})
+
 		// And of the directory above it. A tree entry at a/b.md where a is a
 		// blob replaces the blob with a directory, which is the same silent
 		// destruction from the other side.
