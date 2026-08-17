@@ -462,7 +462,8 @@ func planRepositoryFiles(
 		return nil, false, nil
 	}
 
-	current, err := readRepositoryFiles(ctx, client, target, config)
+	current, err := readTreePaths(
+		ctx, client, target, target.DefaultBranch, config.Managed())
 	if err != nil {
 		return nil, false, err
 	}

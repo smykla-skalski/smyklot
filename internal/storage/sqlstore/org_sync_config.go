@@ -15,6 +15,16 @@ import (
 const syncConfigColumns = `
     target_id, kind, enabled, document, digest, revision, updated_by, updated_at`
 
+// syncOverrideFrom is the same for a repository's answer, and it carries its
+// join: the scope of an installation is the catalog's, so a query that reads
+// one of these without going through repositories is one that could read
+// another installation's row.
+const syncOverrideFrom = `
+SELECT o.repository_id, o.kind, o.enabled_override, o.document,
+       o.revision, o.updated_by, o.updated_at
+FROM sync_repository_overrides o
+JOIN repositories r ON r.id = o.repository_id`
+
 func scanSyncConfig(scanner rowScanner) (orgsync.Config, error) {
 	var (
 		config   orgsync.Config
@@ -225,11 +235,7 @@ func (s *Store) GetSyncRepositoryOverride(
 	targetID, repositoryID string,
 	kind orgsync.Kind,
 ) (orgsync.RepositoryOverride, error) {
-	override, err := scanSyncOverride(s.db.QueryRowContext(ctx, `
-SELECT o.repository_id, o.kind, o.enabled_override, o.document,
-       o.revision, o.updated_by, o.updated_at
-FROM sync_repository_overrides o
-JOIN repositories r ON r.id = o.repository_id
+	override, err := scanSyncOverride(s.db.QueryRowContext(ctx, syncOverrideFrom+`
 WHERE r.target_id = ? AND o.repository_id = ? AND o.kind = ?`,
 		targetID, repositoryID, kind))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -248,11 +254,7 @@ func (s *Store) ListSyncRepositoryOverrides(
 	ctx context.Context,
 	targetID string,
 ) ([]orgsync.RepositoryOverride, error) {
-	rows, err := s.db.QueryContext(ctx, `
-SELECT o.repository_id, o.kind, o.enabled_override, o.document,
-       o.revision, o.updated_by, o.updated_at
-FROM sync_repository_overrides o
-JOIN repositories r ON r.id = o.repository_id
+	rows, err := s.db.QueryContext(ctx, syncOverrideFrom+`
 WHERE r.target_id = ?
 ORDER BY o.repository_id, o.kind`, targetID)
 	if err != nil {

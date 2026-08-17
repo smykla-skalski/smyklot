@@ -135,34 +135,10 @@
 </Plate>
 
 <style>
-  .form-lead,
-  .form-note {
-    color: var(--dim);
-    font-size: var(--font-size-meta);
-    margin: 0;
-    max-width: 60ch;
-  }
-
-  .form-notice {
-    background: var(--surface-inset);
-    border-radius: var(--r-ctl);
-    font-size: var(--font-size-meta);
-    margin: var(--space-3) 0 0;
-    padding: var(--space-2) var(--space-3);
-  }
-
   /* The global rule has no margin, because most of the places it appears sit in
      a gapped grid. This one sits in a plate's flow, under the line explaining
      the kind. */
   :global(.form-error) {
     margin: var(--space-3) 0 0;
-  }
-
-  .form-actions {
-    align-items: center;
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-3);
-    margin-top: var(--space-5);
   }
 </style>

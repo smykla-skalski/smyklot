@@ -161,15 +161,21 @@ func (s *Server) syncOverrideDocument(
 		return nil, err
 	}
 
-	config, err := s.syncFileConfig(r, targetID)
-
 	// An adjustment is checked against the files the installation
-	// synchronizes, so one cannot be saved while those cannot be read. What a
-	// repository wants left alone can: it names paths rather than fitting them,
-	// and taking the one control that narrows sync away because of a problem
-	// on somebody else's page would be taking it away at the worst moment.
-	if err != nil && len(adjustments.Merges) > 0 {
-		return nil, err
+	// synchronizes, so those are read where there is an adjustment to check
+	// and not otherwise. What a repository wants left alone names paths rather
+	// than fitting them, so it saves whether or not that page can be read -
+	// taking the one control that narrows sync away because of a problem on
+	// somebody else's would take it away at the worst moment.
+	var config orgsync.FileConfig
+
+	if len(adjustments.Merges) > 0 {
+		read, err := s.syncFileConfig(r, targetID)
+		if err != nil {
+			return nil, err
+		}
+
+		config = read
 	}
 
 	if err := adjustments.Validate(config); err != nil {
@@ -202,7 +208,6 @@ func (s *Server) syncFileConfig(r *http.Request, targetID string) (orgsync.FileC
 
 	return config, nil
 }
-
 
 // syncOverrideToDTO renders a repository's answer, including the one it has
 // never given.

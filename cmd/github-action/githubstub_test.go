@@ -46,7 +46,12 @@ type githubStub struct {
 	// file sync learns what it already has. repoLevels answers one level at a
 	// time, keyed by the tree asked for, which is the walk file sync falls back
 	// to when the whole listing comes back truncated.
+	//
+	// repoTrees answers the whole listing for one named ref, for a spec that
+	// needs a proposal branch to hold something the default branch does not -
+	// which is the state a commit is built on and the plan never saw.
 	repoTree   string
+	repoTrees  map[string]string
 	repoLevels map[string]string
 
 	// Branch updates keep both the wire body and whether one asked GitHub to
@@ -149,6 +154,7 @@ func newGitHubStub() *githubStub {
 		migrationTipTree: "treesha",
 		createdTreeSHA:   "treesha",
 		repoTree:         `{"sha":"basetree","tree":[],"truncated":false}`,
+		repoTrees:        map[string]string{},
 		repoLevels:       map[string]string{},
 		repoLabels:       `[]`,
 		repoSettings:     `{}`,
@@ -589,16 +595,22 @@ func (s *githubStub) serveGitData(w http.ResponseWriter, r *http.Request) {
 	// lets a spec make the whole listing truncated and still be walked.
 	case strings.Contains(r.URL.Path, "/git/trees/"):
 		s.mu.Lock()
-		tree, levels := s.repoTree, s.repoLevels
+		tree, trees, levels := s.repoTree, s.repoTrees, s.repoLevels
 		s.mu.Unlock()
 
+		at := r.URL.Path[strings.LastIndex(r.URL.Path, "/")+1:]
+
 		if r.URL.Query().Get("recursive") == "1" {
-			_, _ = io.WriteString(w, tree)
+			named, known := trees[at]
+			if !known {
+				named = tree
+			}
+
+			_, _ = io.WriteString(w, named)
 
 			return
 		}
 
-		at := r.URL.Path[strings.LastIndex(r.URL.Path, "/")+1:]
 		if level, known := levels[at]; known {
 			_, _ = io.WriteString(w, level)
 

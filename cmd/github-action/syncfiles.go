@@ -39,62 +39,54 @@ var (
 	errSyncFilesRefused = errors.New("this repository closed the pull request for this change")
 )
 
-// readRepositoryFiles reads what a repository currently has at every path the
-// configuration cares about.
+// readTreePaths reads what a ref holds at each of several paths.
 //
 // One request. git names an object by hashing its contents, so a listing of the
 // tree answers whether each managed file already says what it should - where
 // the tool this replaces downloaded every file from every repository on every
 // run, and treated a failed download as a file to skip.
-func readRepositoryFiles(
+//
+// One function for both refs a file sync asks about. The default branch is what
+// the plan is computed from and the proposal branch is what the commit is built
+// on, and they are the same question about a different ref: reading them two
+// ways is how they came to two answers.
+func readTreePaths(
 	ctx context.Context,
 	client *github.Client,
 	target syncTarget,
-	config orgsync.FileConfig,
+	ref string,
+	paths []string,
 ) (map[string]orgsync.CurrentFile, error) {
-	tree, err := client.ListRepositoryTree(
-		ctx, target.Owner, target.Name, target.DefaultBranch)
+	tree, err := client.ListRepositoryTree(ctx, target.Owner, target.Name, ref)
 	if err != nil {
 		return nil, err
 	}
 
-	if !tree.Truncated {
-		return asCurrentFiles(tree, config), nil
+	if tree.Truncated {
+		// GitHub declines to list a tree past a hundred thousand entries, and a
+		// path missing from a listing that stopped early is not a path a
+		// repository does not have. Walking each path settles it: a handful of
+		// requests, for the handful of repositories that are that large.
+		logging.From(ctx).Info(
+			"this tree is too large to list, so its paths are walked a level at a time",
+			"ref", ref, "paths", len(paths))
+
+		return walkTreePaths(ctx, client, target, ref, paths)
 	}
 
-	// GitHub declines to list a tree past a hundred thousand entries, and a
-	// path missing from a listing that stopped early is not a path a repository
-	// does not have. Reading each managed path settles it: a handful of
-	// requests, for the handful of repositories that are that large.
-	logging.From(ctx).Info(
-		"this repository's tree is too large to list, so its files are read one at a time",
-		"paths", len(config.Managed()))
+	// Only the paths asked about. Every other conflict in a repository is
+	// somebody else's arrangement of their own files, and carrying the rest of
+	// the tree here handed the planner a map four orders of magnitude larger
+	// than the walk hands it for the same repository.
+	current := make(map[string]orgsync.CurrentFile, len(paths))
 
-	return readFilesOneAtATime(ctx, client, target, config)
-}
-
-// asCurrentFiles reads a repository's tree as what the planner compares
-// against, and names what it cannot write.
-//
-// Only the paths configuration names, which is all the planner ever indexes.
-// Every other conflict in a repository is somebody else's arrangement of their
-// own files, and carrying the rest of the tree here made this hand the planner
-// a map four orders of magnitude larger than the one the level walk hands it
-// for the same repository.
-func asCurrentFiles(
-	tree github.RepositoryTree,
-	config orgsync.FileConfig,
-) map[string]orgsync.CurrentFile {
-	managed := config.Managed()
-	current := make(map[string]orgsync.CurrentFile, len(managed))
-
-	for _, path := range managed {
+	for _, path := range paths {
 		if held, has := currentFileAt(path, tree.At(path)); has {
 			current[path] = held
 		}
 	}
 
-	return current
+	return current, nil
 }
 
 // The two ways a repository can be unable to hold a file where the
@@ -109,14 +101,15 @@ func blockedByFile(path, parent string) string {
 		"%s cannot be written because %s is not a directory in this repository", path, parent)
 }
 
-func readFilesOneAtATime(
+func walkTreePaths(
 	ctx context.Context,
 	client *github.Client,
 	target syncTarget,
-	config orgsync.FileConfig,
+	ref string,
+	paths []string,
 ) (map[string]orgsync.CurrentFile, error) {
 	resolved, err := client.ResolveTreePaths(
-		ctx, target.Owner, target.Name, target.DefaultBranch, config.Managed())
+		ctx, target.Owner, target.Name, ref, paths)
 	if err != nil {
 		return nil, err
 	}
@@ -439,8 +432,9 @@ func stillNeeded(
 		paths = append(paths, file.path)
 	}
 
-	resolved, err := client.ResolveTreePaths(
-		ctx, target.Owner, target.Name, tree, paths)
+	// Read the same way the planner reads the default branch, so the two
+	// cannot come to different answers about one tree state.
+	current, err := readTreePaths(ctx, client, target, tree, paths)
 	if err != nil {
 		return nil, err
 	}
@@ -448,10 +442,8 @@ func stillNeeded(
 	wanted := make([]plannedFile, 0, len(files))
 
 	for _, file := range files {
-		held, has := currentFileAt(file.path, resolved[file.path])
+		held, has := current[file.path]
 
-		// Read the same way the planner reads the default branch, so the two
-		// cannot come to different answers about one tree state.
 		if held.Conflict != "" {
 			return nil, fmt.Errorf("%w: %s", orgsync.ErrRepositoryConflict, held.Conflict)
 		}

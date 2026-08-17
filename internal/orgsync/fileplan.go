@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
-	"strings"
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync/filemerge"
 )
@@ -334,14 +333,11 @@ func present(paths []string, current map[string]CurrentFile) []string {
 // configuration that has changed a different one, so a pull request somebody
 // closed does not suppress the next thing they are asked about.
 func fileProposal(desired []desiredFile, retired []string) string {
-	sorted := slices.Clone(desired)
-	slices.SortFunc(sorted, func(one, other desiredFile) int {
-		return strings.Compare(one.Path, other.Path)
-	})
-
 	sum := sha256.New()
 
-	for _, file := range sorted {
+	for _, file := range sortedBy(desired, func(file desiredFile) string {
+		return file.Path
+	}) {
 		writeField(sum, "file")
 		writeField(sum, file.Path)
 		writeField(sum, file.blob)

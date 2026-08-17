@@ -194,7 +194,7 @@
 </script>
 
 <section class="sync-pane">
-  <p class="sync-pane-lead">
+  <p class="form-lead">
     Whether the organization's files are kept in step here, and what this repository changes about
     them. Nothing reaches GitHub until a plan is approved
   </p>
@@ -204,7 +204,7 @@
   {/if}
 
   {#if stored.unreadable}
-    <p class="sync-pane-notice" role="alert">
+    <p class="form-notice" role="alert">
       What this repository adjusts is stored in a form this version of Smyklot cannot read, so it is
       not shown and nothing here can be changed. Nothing has been lost
     </p>
@@ -236,13 +236,13 @@
       placeholder="renovate.json"
       onchange={(event) => (excludes = asList(event.currentTarget.value))}></textarea>
   </label>
-  <p class="sync-pane-note" id="repository-sync-excludes-note">
+  <p class="form-note" id="repository-sync-excludes-note">
     One path or pattern per line. These narrow what the installation synchronizes; they never widen
     it.
   </p>
 
   {#if drafts.length === 0}
-    <p class="sync-pane-note">This repository takes every file as the organization writes it.</p>
+    <p class="form-note">This repository takes every file as the organization writes it.</p>
   {/if}
 
   {#each drafts as draft, index (rowKey(index))}
@@ -294,7 +294,7 @@
     </article>
   {/each}
 
-  <p class="sync-pane-note" id="repository-sync-overrides-note">
+  <p class="form-note" id="repository-sync-overrides-note">
     A JSON object, merged onto the organization's template. <code>null</code> removes a key.
   </p>
 
@@ -305,7 +305,7 @@
   {/if}
 
   {#if !readOnly}
-    <div class="sync-pane-actions">
+    <div class="form-actions">
       <button class="btn btn-quiet" type="button" {disabled} onclick={add}>
         <span class="button-label">Adjust a file</span>
       </button>
@@ -327,24 +327,11 @@
     flex-direction: column;
   }
 
-  .sync-pane-lead,
-  .sync-pane-note {
-    color: var(--dim);
-    font-size: var(--font-size-meta);
-    margin: 0;
-    max-width: 60ch;
-  }
-
-  .sync-pane-note {
+  /* The global rule has no margin. These notes sit directly under the control
+     they describe rather than in a gapped column, and the sliver of side inset
+     lines them up with the field's own text. */
+  .form-note {
     margin: 0.25rem 0.125rem 0;
-  }
-
-  .sync-pane-notice {
-    background: var(--surface-inset);
-    border-radius: var(--r-ctl);
-    font-size: var(--font-size-meta);
-    margin: var(--space-3) 0 0;
-    padding: var(--space-2) var(--space-3);
   }
 
   .sync-pane-row {
@@ -407,13 +394,5 @@
   .sync-merge-overrides {
     font-family: var(--mono);
     font-size: var(--font-size-meta);
-  }
-
-  .sync-pane-actions {
-    align-items: center;
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-3);
-    margin-top: var(--space-5);
   }
 </style>

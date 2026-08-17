@@ -2243,6 +2243,35 @@ code {
   margin: 0;
 }
 
+/* The rest of a form's furniture, beside the error that was already here. Two
+   forms had written these out under their own names and the copies were
+   byte-identical, which is how a form comes to look like a form on one page and
+   nearly like one on the next. A component that needs a different margin
+   overrides the one rule locally. */
+.form-lead,
+.form-note {
+  color: var(--dim);
+  font-size: var(--font-size-meta);
+  margin: 0;
+  max-width: 60ch;
+}
+
+.form-notice {
+  background: var(--surface-inset);
+  border-radius: var(--r-ctl);
+  font-size: var(--font-size-meta);
+  margin: var(--space-3) 0 0;
+  padding: var(--space-2) var(--space-3);
+}
+
+.form-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+
 /* A mark beside a label centres on the CAP band the trimmed label gives it, and
    stays there whatever letters the word turns out to contain.
    ------------------------------------------------------------------------

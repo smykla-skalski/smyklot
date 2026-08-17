@@ -1070,7 +1070,9 @@ var _ = Describe("Org sync [Unit]", func() {
 			Expect(err).NotTo(HaveOccurred())
 			stub.branchRefs[written.Proposal] = "earliercommit"
 			stub.migrationTipTree = "branchtree"
-			stub.repoLevels = map[string]string{"branchtree": `{"tree":[]}`}
+			stub.repoTrees = map[string]string{
+				"branchtree": `{"tree":[],"truncated":false}`,
+			}
 
 			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
 
@@ -1250,9 +1252,9 @@ var _ = Describe("Org sync [Unit]", func() {
 			Expect(err).NotTo(HaveOccurred())
 			stub.branchRefs[written.Proposal] = "earliercommit"
 			stub.migrationTipTree = "branchtree"
-			stub.repoLevels = map[string]string{
+			stub.repoTrees = map[string]string{
 				"branchtree": `{"tree":[{"path":".renovaterc","type":"tree",` +
-					`"mode":"040000","sha":"d1"}]}`,
+					`"mode":"040000","sha":"d1"}],"truncated":false}`,
 			}
 
 			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
@@ -1283,9 +1285,9 @@ var _ = Describe("Org sync [Unit]", func() {
 			Expect(err).NotTo(HaveOccurred())
 			stub.branchRefs[written.Proposal] = "earliercommit"
 			stub.migrationTipTree = "branchtree"
-			stub.repoLevels = map[string]string{
+			stub.repoTrees = map[string]string{
 				"branchtree": `{"tree":[{"path":"docs.md","type":"tree",` +
-					`"mode":"040000","sha":"d1"}]}`,
+					`"mode":"040000","sha":"d1"}],"truncated":false}`,
 			}
 
 			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
@@ -1322,6 +1324,10 @@ var _ = Describe("Org sync [Unit]", func() {
 			Expect(err).NotTo(HaveOccurred())
 			stub.branchRefs[written.Proposal] = "earliercommit"
 			stub.migrationTipTree = "branchtree"
+
+			// And read the long way round, so the apply path proves the same
+			// refusal whether GitHub listed the branch's tree or declined to
+			stub.repoTrees = map[string]string{"branchtree": `{"tree":[],"truncated":true}`}
 			stub.repoLevels = map[string]string{
 				"branchtree": `{"tree":[{"path":"docs","type":"blob",` +
 					`"mode":"100644","sha":"b1","size":3}]}`,
@@ -1355,9 +1361,9 @@ var _ = Describe("Org sync [Unit]", func() {
 			Expect(err).NotTo(HaveOccurred())
 			stub.branchRefs[written.Proposal] = "earliercommit"
 			stub.migrationTipTree = "branchtree"
-			stub.repoLevels = map[string]string{
+			stub.repoTrees = map[string]string{
 				"branchtree": `{"tree":[{"path":"docs","type":"blob",` +
-					`"mode":"100644","sha":"b1","size":3}]}`,
+					`"mode":"100644","sha":"b1","size":3}],"truncated":false}`,
 			}
 
 			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
