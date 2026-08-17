@@ -1231,6 +1231,21 @@ thead th {
   padding-inline: var(--heading-pad-start) calc(var(--heading-pad-end) + var(--heading-filter-room));
 }
 
+/* One line, in every heading of every table. A heading is a label for the column
+   under it, and a label that breaks becomes two lines of type where its
+   neighbours have one - the band grows to fit the tallest of them, so a single
+   wrapped word costs every heading in the table its rhythm. "System role" in the
+   Root console's access table was the one that broke, and it broke only at the
+   widths a narrower window gives it.
+
+   Nowrap rather than a width: in a table laid out automatically, an unbreakable
+   heading is a floor under its own column, so the column cannot be squeezed
+   below the word it is named by. Nothing is chosen by hand and nothing has to be
+   revisited when a column is renamed. */
+:is(.table-sort-button, .table-heading-label) {
+  white-space: nowrap;
+}
+
 .table-heading-label {
   min-width: 0;
   text-box: trim-both cap alphabetic;
