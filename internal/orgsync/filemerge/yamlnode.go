@@ -53,9 +53,21 @@ func mergeYAML(template []byte, spec Spec) ([]byte, error) {
 	}
 
 	// The template as it arrived, for the list rules: the merge edits the
-	// document in place, so what a list is being appended to has to be taken
-	// before that happens.
-	before := cloneNode(document)
+	// document in place, so what a list is appended to has to be taken before
+	// that happens.
+	//
+	// Read again rather than copied. A copy of a node tree copies each alias's
+	// pointer, and an alias points at its anchor in the tree it was read from -
+	// so a copy followed an alias back into the document being edited, and a
+	// rule appending to a list reached through one appended to what the merge
+	// had already put there. Read only where a rule needs it.
+	var before *yaml.Node
+
+	if len(spec.Arrays) > 0 {
+		if _, before, err = parseYAMLDocument(template); err != nil {
+			return nil, err
+		}
+	}
 
 	if err := mergeIntoMapping(document, override, spec.Strategy != StrategyShallow); err != nil {
 		return nil, err
@@ -374,6 +386,12 @@ func mappingNode(values map[string]any) (*yaml.Node, error) {
 }
 
 // cloneNode copies a node tree so that editing one does not edit the other.
+//
+// Not a way to take a document aside and keep it: an alias carries a pointer to
+// its anchor in the tree it was read from, and this copies that pointer, so a
+// copy follows an alias straight back into the original. It is used to move
+// list items into a list being built, where the anchors they may name are still
+// in the document those items are going into.
 func cloneNode(node *yaml.Node) *yaml.Node {
 	if node == nil {
 		return nil

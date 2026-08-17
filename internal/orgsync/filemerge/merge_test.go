@@ -392,6 +392,28 @@ jobs:
 			Expect(string(merged)).To(ContainSubstring("- 443"))
 		})
 
+		// A list is appended to what the template held, and the same override
+		// replacing the anchored list must not change that. Taking the template
+		// aside by copying its nodes did: a copy carries each alias's pointer to
+		// the anchor in the tree it came from, so following one led back into
+		// the document being edited and the append landed on what the merge had
+		// already written there.
+		It("appends to what the template held, not to what the merge wrote", func() {
+			merged, err := filemerge.Apply("ci.yaml",
+				[]byte("base: &b\n  ports:\n    - 80\nuse: *b\n"),
+				filemerge.Spec{
+					Overrides: overrides(
+						`{"base": {"ports": [9999]}, "use": {"ports": [443]}}`),
+					Arrays: []filemerge.ArrayRule{
+						{Path: "$.use.ports", Strategy: filemerge.ArrayAppend},
+					},
+				})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(merged)).To(ContainSubstring("- 80"))
+			Expect(strings.Count(string(merged), "- 9999")).To(Equal(1))
+		})
+
 		// The tag comes off so the line is written plainly, and a merge key
 		// written plainly is still a merge key on the way back in - which is
 		// the half that matters and the half a substring assertion cannot see.
