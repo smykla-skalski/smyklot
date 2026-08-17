@@ -84,6 +84,23 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+/**
+ * Replaces a cached static file with what the network has, after answering from cache.
+ *
+ * The cache is named after the built bundle, so a release that changes only a file in
+ * `static` - whose name carries no content hash - leaves the name alone and the cached
+ * copy would otherwise stand forever. Answering from cache first keeps `theme-boot.js`
+ * off the critical path, where it blocks the first paint; the refresh lands for the
+ * next load. A failure here is not one worth reporting: the reader already has an answer.
+ */
+async function refreshStatic(request: Request, path: string): Promise<void> {
+  const fetched = await fetch(request).catch(() => null);
+  if (fetched === null || !fetched.ok || fetched.type !== 'basic') return;
+
+  const cache = await caches.open(await CACHE);
+  await cache.put(path, fetched);
+}
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;
@@ -93,19 +110,24 @@ self.addEventListener('fetch', (event) => {
   // Same-origin only.
   if (url.origin !== location.origin || !url.pathname.startsWith(SCOPE_PATH)) return;
 
-  // Immutable chunk names carry their content hash, so a cross-version lookup
-  // cannot return the wrong bytes. Static files may keep the same name between
-  // builds and must be read from the current cache only.
-  if (url.pathname.startsWith(IMMUTABLE_PATH) || ASSETS.has(url.pathname)) {
+  // Immutable chunk names carry their content hash, so a cross-version lookup cannot
+  // return the wrong bytes. A file in `static` keeps its name between builds, so a
+  // cached copy of one can be stale - see `refreshStatic`.
+  const immutable = url.pathname.startsWith(IMMUTABLE_PATH);
+  if (immutable || ASSETS.has(url.pathname)) {
     event.respondWith(
       (async () => {
         // A hashed chunk may be answered from any version's cache, and that is the
         // common case, so it is served without opening this version's - one fewer
         // CacheStorage round trip on the path every chunk takes.
-        const cached = url.pathname.startsWith(IMMUTABLE_PATH)
+        const cached = immutable
           ? await caches.match(url.pathname)
           : await (await caches.open(await CACHE)).match(url.pathname);
-        if (cached) return cached;
+        if (cached) {
+          if (!immutable) event.waitUntil(refreshStatic(request, url.pathname));
+
+          return cached;
+        }
 
         const fetched = await fetch(request);
         if (fetched.ok && fetched.type === 'basic') {

@@ -148,6 +148,31 @@ describe('panel addresses [Unit]', () => {
     }
   });
 
+  it('carries a name through the address without decoding it twice', () => {
+    // The router hands `rest` over decoded. Decoding it again loses a per-cent sign and
+    // throws outright when the two characters after it are not hexadecimal, so the
+    // dialog came back as none and the address resolved to the bare view.
+    const route: PanelRoute = {
+      account: 'acme',
+      view: 'repositories',
+      dialog: { name: 'repository-settings', params: { repository: 'a%b', section: 'file' } },
+    };
+    const address = panelAddress(route);
+
+    expect(address).toBe(`${basePath}/i/acme/repositories/a%25b`);
+    expect(
+      defined(
+        panelRouteAt('/i/[account]/[view=dialogHostView]/[...rest=dialogPath]', {
+          account: 'acme',
+          view: 'repositories',
+          rest: 'a%b',
+        }),
+      ),
+    ).toEqual(route);
+    // The hand parser still holds a raw pathname, so it decodes and agrees.
+    expect(parsePanelRoute(basePath, address)).toEqual(route);
+  });
+
   it('has no route for an address outside the panel', () => {
     expect(panelRouteAt('/', {})).toBeNull();
     expect(panelRouteAt('/invite/[token=invitationToken]', { token: 'x' })).toBeNull();

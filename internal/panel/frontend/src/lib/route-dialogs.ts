@@ -79,9 +79,17 @@ export function isDialogHost(view: string): view is DialogHost {
  * treats as an address that does not resolve rather than as a view with nothing
  * open - a mistyped repository name should say so, not silently show the list.
  */
-export function parseDialogSegments(host: DialogHost, segments: string[]): RouteDialog | null {
-  const decoded = decodeSegments(segments);
-  if (decoded === null || decoded.length === 0) return null;
+/**
+ * Reads a dialog out of the segments that follow a view.
+ *
+ * The segments arrive **decoded**, because that is how the router hands them over:
+ * `page.params.rest` has already been through it. Decoding here as well would mean
+ * decoding twice, which loses a name holding a per-cent sign - and throws on one where
+ * the two characters after it are not hexadecimal. Whoever holds a raw pathname decodes
+ * it before calling, which is what `decodeSegments` is exported for.
+ */
+export function parseDialogSegments(host: DialogHost, decoded: string[]): RouteDialog | null {
+  if (decoded.length === 0) return null;
 
   switch (host) {
     case 'repositories':
@@ -194,7 +202,8 @@ function parseInvitationDialog(
   return { name: actionName, params: { invitation, action: verb } };
 }
 
-function decodeSegments(segments: string[]): string[] | null {
+/** Decodes path segments, or `null` when one of them is not a valid escape. */
+export function decodeSegments(segments: string[]): string[] | null {
   const decoded: string[] = [];
   for (const segment of segments) {
     try {

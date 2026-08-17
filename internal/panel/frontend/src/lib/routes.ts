@@ -1,5 +1,11 @@
 import { normalizeBasePath } from './base.ts';
-import { isDialogHost, parseDialogSegments, type RouteDialog } from './route-dialogs.ts';
+import {
+  decodeSegments,
+  isDialogHost,
+  parseDialogSegments,
+  type DialogHost,
+  type RouteDialog,
+} from './route-dialogs.ts';
 
 export type { RouteDialog };
 
@@ -173,7 +179,20 @@ function parseTrailingDialog(
 ): RouteDialog | undefined | 'invalid' {
   if (segments.length === 0 || !isDialogHost(view)) return undefined;
 
-  return parseDialogSegments(view, segments) ?? 'invalid';
+  return dialogFromPath(view, segments) ?? 'invalid';
+}
+
+/**
+ * Reads a dialog out of raw pathname segments.
+ *
+ * Everything in this module holds a pathname the router never saw, so the segments
+ * arrive encoded and are decoded here. `parseDialogSegments` takes them decoded, which
+ * is how the router hands its own over - decoding there as well would do it twice.
+ */
+function dialogFromPath(host: DialogHost, segments: string[]): RouteDialog | null {
+  const decoded = decodeSegments(segments);
+
+  return decoded === null ? null : parseDialogSegments(host, decoded);
 }
 
 export function parseInvitationToken(basePath: string, pathname: string): string | null {
@@ -279,7 +298,7 @@ function parseRootRoute(parts: string[]): RootRoute | null {
     const host = parts[2] === 'users' ? 'access-users' : 'access-invitations';
     if (parts[2] === 'users' || parts[2] === 'invitations') {
       if (parts.length === 3) return { rootView: host };
-      const dialog = parseDialogSegments(host, parts.slice(3));
+      const dialog = dialogFromPath(host, parts.slice(3));
 
       return dialog === null ? null : { rootView: host, dialog };
     }

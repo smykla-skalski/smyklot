@@ -118,6 +118,16 @@ describe('dialog addresses on a view [Unit]', () => {
     expect(parsePanelRoute('', '/i/acme/history/octocat')).toBeNull();
   });
 
+  // Both halves of this module read a raw pathname, so both decode. One of them stopped
+  // when the decode moved out of `parseDialogSegments`, and the Root console's own tables
+  // were the half that stopped.
+  it('decodes a name in the Root console the same way', () => {
+    expect(parsePanelRoute('', '/root/access/users/oct%40cat/ban')).toEqual({
+      rootView: 'access-users',
+      dialog: { name: 'root-user-action', params: { user: 'oct@cat', action: 'ban' } },
+    });
+  });
+
   it('escapes a repository name that needs it', () => {
     const path = panelAddress({
       account: 'acme',

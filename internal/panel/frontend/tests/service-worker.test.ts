@@ -131,7 +131,25 @@ describe('a panel service-worker upgrade', () => {
       new Request('https://panel.example/panel/theme-boot.js?v=1'),
     );
     expect(await currentStatic.text()).toBe('cached /panel/theme-boot.js');
-    expect(network).not.toHaveBeenCalled();
+  });
+
+  // A file in `static` keeps its name between builds, and the cache is named after the
+  // built bundle - so a release that changes only a static file leaves both alone, and a
+  // cached copy would stand forever. The reader is answered from cache and the copy is
+  // replaced behind them.
+  it('replaces a static file it answered from cache', async () => {
+    network.mockImplementation(async () => sameOrigin('fresh static'));
+    await dispatchExtended(listeners, 'install');
+
+    const answered = await dispatchFetch(
+      listeners,
+      new Request('https://panel.example/panel/theme-boot.js'),
+    );
+    expect(await answered.text()).toBe('cached /panel/theme-boot.js');
+
+    const current = await cacheName('/panel/', ['_app/immutable/current.js']);
+    const refreshed = await stored.get(current)?.get('/panel/theme-boot.js')?.text();
+    expect(refreshed, 'the cached static file was not replaced').toBe('fresh static');
   });
 });
 
@@ -199,15 +217,35 @@ async function dispatchExtended(
   await completion;
 }
 
+/**
+ * A response shaped like one a same-origin fetch returns.
+ *
+ * `new Response()` is `type: 'default'`; the worker only caches `'basic'`, which is what
+ * the platform gives a same-origin request. A stub without it is quietly never cached.
+ */
+function sameOrigin(body: string): Response {
+  const response = new Response(body, { headers: { 'Content-Type': 'text/javascript' } });
+
+  return Object.defineProperty(response, 'type', { value: 'basic' });
+}
+
 async function dispatchFetch(
   listeners: Map<string, (event: ExtendableEvent | FetchEvent) => void>,
   request: Request,
 ): Promise<Response> {
+  // `waitUntil` is what the worker keeps background work alive with, so the caller has
+  // to be able to wait for it too - otherwise a specification races the refresh it means
+  // to observe.
+  const pending: Promise<unknown>[] = [];
   let response: Promise<Response> | undefined;
   listeners.get('fetch')?.({
     request,
     respondWith: (value: Response | PromiseLike<Response>) => (response = Promise.resolve(value)),
+    waitUntil: (value: Promise<unknown>) => pending.push(value),
   } as unknown as FetchEvent);
   if (response === undefined) throw new Error('fetch was not intercepted');
-  return response;
+  const answered = await response;
+  await Promise.all(pending);
+
+  return answered;
 }
