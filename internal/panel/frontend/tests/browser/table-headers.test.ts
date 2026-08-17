@@ -60,7 +60,11 @@ let targets: Record<string, Target[]>;
 /** One heading with a filter, read with the pointer on its words and then on its funnel. */
 interface HeadingHover {
   label: string;
-  /** Whether the heading lit when the pointer was on the words. */
+  /** Whether the table is sorted by this column, which is a colour of its own. */
+  sorted: boolean;
+  /** Whether its untouched ground is the same as an unsorted heading's. */
+  restingIsPlain: boolean;
+  /** Whether the heading changed colour when the pointer was on the words. */
   litFromWords: boolean;
   /** Whether it lit when the pointer was on the funnel. It should not. */
   litFromFunnel: boolean;
@@ -91,7 +95,11 @@ beforeAll(async () => {
       await visit(page, address, { ready: 'thead th' });
 
       const heading = await page.evaluate((): Heading | string => {
-        const th = document.querySelector('thead th');
+        /* An UNSORTED heading, because the sorted one now has a ground of its own and comparing
+           grounds across tables would otherwise be asking whether the same column happens to be
+           sorted in each. */
+        const th =
+          document.querySelector('thead th:not([aria-sort])') ?? document.querySelector('thead th');
         if (th === null) return 'this route rendered no table header';
         const style = getComputedStyle(th);
         return {
@@ -138,13 +146,21 @@ beforeAll(async () => {
         const indicator = th?.querySelector('.sort-indicator');
         const style =
           indicator === null || indicator === undefined ? null : getComputedStyle(indicator);
+        /* Read off the CELL, which is where the colour is painted: the target is the cell, and the
+           colour says which cell the pointer would act on. Each state is a stated colour rather
+           than a wash over the one before it, so what is compared is the colour itself. */
+        const plain = document.querySelector('thead th:not([aria-sort])');
         return {
           label: (th?.textContent ?? '').trim().slice(0, 24),
-          headingLit:
-            button !== null &&
-            button !== undefined &&
-            getComputedStyle(button).backgroundImage !== 'none',
-          triggerLit: getComputedStyle(trigger).backgroundImage !== 'none',
+          sorted: th?.hasAttribute('aria-sort') === true,
+          ground: th === null ? '' : getComputedStyle(th).backgroundColor,
+          /* An unsorted, untouched heading, for the sorted column to be different FROM. Read from
+             the same page rather than hard-coded: every shell picks its own. */
+          plainGround: plain === null ? '' : getComputedStyle(plain).backgroundColor,
+          hasButton: button !== null && button !== undefined,
+          /* The funnel's own ground, read the same way as the cell's: it lights with a colour off
+             the same ramp now rather than with a grey wash over whatever is behind it. */
+          triggerGround: getComputedStyle(trigger).backgroundColor,
           arrow: style === null ? '' : `${style.opacity} ${style.transform}`,
         };
       };
@@ -170,9 +186,11 @@ beforeAll(async () => {
 
         painted.push({
           label: resting.label,
-          litFromWords: onWords.headingLit,
-          litFromFunnel: onFunnel.headingLit,
-          triggerLit: onFunnel.triggerLit,
+          sorted: resting.sorted,
+          restingIsPlain: resting.ground === resting.plainGround,
+          litFromWords: onWords.ground !== resting.ground,
+          litFromFunnel: onFunnel.ground !== resting.ground,
+          triggerLit: onFunnel.triggerGround !== resting.triggerGround,
           arrowMoved: onFunnel.arrow !== resting.arrow,
         });
       }
@@ -204,8 +222,10 @@ describe('the column heading [Integration]', () => {
   });
 
   /* Type is the shell's business to keep identical: it comes from one rule and no palette changes
-     it, so all ten routes must agree exactly. */
-  it.each(['font', 'letterSpacing', 'textTransform', 'color'] as const)(
+     it, so all ten routes must agree exactly. The INK is not on this list any more - it is mixed
+     from the shell's own action colour now, so it is petrol in the panel and violet in the Root
+     console, and it belongs with the ground below. */
+  it.each(['font', 'letterSpacing', 'textTransform'] as const)(
     'draws the same %s in every table',
     (property) => {
       const values = new Map<string, string[]>();
@@ -223,9 +243,9 @@ describe('the column heading [Integration]', () => {
     },
   );
 
-  /* The ground and the rule are palette-bound, so they agree within a shell rather than across
-     both - the Root console re-skins them on purpose. */
-  it.each(['background', 'borderBottom'] as const)(
+  /* The ground, the ink and the rule are palette-bound, so they agree within a shell rather than
+     across both - the Root console re-skins them on purpose. */
+  it.each(['background', 'color', 'borderBottom'] as const)(
     'draws the same %s within a shell',
     (property) => {
       for (const shell of ['panel', 'root'] as const) {
@@ -289,12 +309,30 @@ describe('a sortable heading [Integration]', () => {
     ).toEqual([]);
   });
 
-  it('lights from anywhere in the cell', () => {
+  it('changes colour from anywhere in the cell', () => {
     const dark = Object.entries(behindTheFilter).flatMap(([route, found]) =>
       found.filter((one) => !one.litFromWords).map((one) => `${route} "${one.label}"`),
     );
 
     expect(dark, `a heading did not answer its own words:\n  ${dark.join('\n  ')}`).toEqual([]);
+  });
+
+  /* The column the table is ordered by says so before it is touched. It is the one question a
+     reader who has never thought about sorting still has - why is the list in this order - and a
+     mark that only appears under a pointer cannot answer it. */
+  it('colours the column the table is sorted by', () => {
+    const wrong = Object.entries(behindTheFilter).flatMap(([route, found]) =>
+      found
+        .filter((one) => one.sorted === one.restingIsPlain)
+        .map(
+          (one) =>
+            `${route} "${one.label}": ${one.sorted ? 'sorted, and the same colour as the rest' : 'coloured without being sorted'}`,
+        ),
+    );
+
+    expect(wrong, `the sorted column is not the coloured one:\n  ${wrong.join('\n  ')}`).toEqual(
+      [],
+    );
   });
 
   /* The three things a pointer on the funnel must do, which are all one decision: the tint names
@@ -305,7 +343,7 @@ describe('a sortable heading [Integration]', () => {
         .filter((one) => one.litFromFunnel || !one.triggerLit || one.arrowMoved)
         .map((one) => {
           const faults = [
-            one.litFromFunnel && 'the heading lit too',
+            one.litFromFunnel && 'the heading changed colour too',
             !one.triggerLit && 'the trigger did not light',
             one.arrowMoved && 'the sort arrow moved',
           ].filter(Boolean);
