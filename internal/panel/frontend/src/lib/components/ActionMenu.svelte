@@ -40,12 +40,12 @@
 <DropdownMenu.Root bind:open>
   <span class="action-menu">
     <DropdownMenu.Trigger
-      class="action-trigger"
+      class="icon-button action-trigger"
       bind:ref={triggerButton}
       aria-label={label}
       title={label}
     >
-      <Icon name="more" size={22} />
+      <Icon name="more" size={14} strokeWidth={2} />
     </DropdownMenu.Trigger>
   </span>
 
@@ -74,31 +74,9 @@
     display: inline-flex;
   }
 
-  :global(.action-trigger) {
-    align-items: center;
-    background: transparent;
-    border: 0;
-    border-radius: var(--radius-control);
-    color: var(--text-primary);
-    display: flex;
-    height: 2.5rem;
-    justify-content: center;
-    width: 2.5rem;
-  }
-
-  :global(.action-trigger:hover) {
-    background: var(--interactive-hover);
-    color: var(--text-primary);
-  }
-
-  /* Presses like every other control in the product: it takes the colour and it
-     gets smaller. A round target of this size takes the disc scale, the one the
-     avatar and the icon buttons use, because the same ratio on a 2.5rem square
-     reads as no movement at all. */
-  :global(.action-trigger:active) {
-    background: var(--interactive-pressed-bg);
-    scale: var(--press-scale-disc);
-  }
+  /* The trigger's shape, ink and states are `.icon-button` in app.css, shared
+     with the quick actions beside it and the filter triggers above it. The class
+     that remains names the control for whoever goes looking for it. */
 
   /* Inside the layer: the surface and where it sits are the layer's, everything
      within it is this component's. */

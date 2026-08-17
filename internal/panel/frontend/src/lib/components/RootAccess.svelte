@@ -69,7 +69,7 @@
       options: [
         { value: 'active', label: 'Active', tone: 'valid' },
         { value: 'banned', label: 'Banned', tone: 'invalid' },
-        { value: 'removed', label: 'Removed', tone: 'default' },
+        { value: 'removed', label: 'Removed', tone: 'neutral' },
       ],
     },
   ] satisfies readonly FilterSection[];

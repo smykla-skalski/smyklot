@@ -20,6 +20,7 @@
   import Chip from './Chip.svelte';
   import FilterMenu from './FilterMenu.svelte';
   import Icon from './Icon.svelte';
+  import IconButton from './IconButton.svelte';
   import ResultProblem from './ResultProblem.svelte';
   import RootPageHeader from './RootPageHeader.svelte';
   import SearchField from './SearchField.svelte';
@@ -50,16 +51,26 @@
 
   /* Each value carries the glyph its column carries, so the menu and the table
      say the same state the same way - and so no state here is told apart by hue
-     alone, which three of these five pairs cannot survive under one dichromacy or
-     another. */
+     alone, which three of these six pairs cannot survive under one dichromacy or
+     another.
+
+     Every state the column can DRAW is offered, which is what the last entry is
+     for: a request carries no observed state between the command and its first
+     reconciliation, the column reads that as "Scheduled", and the menu offered
+     five values while the table showed six. `tests/queue-vocabulary.test.ts`
+     compares the two lists so they cannot part again. Filtering is on the value
+     the service sent, so the empty string is the value here - a state the panel
+     does not recognise draws as Scheduled too, and is not reachable from this
+     menu, which is the honest answer: there is nothing to name it by. */
   const STATE_FILTERS = [
     {
       options: [
         { value: 'passing', label: 'Passing', tone: 'valid', icon: 'success' },
-        { value: 'pending', label: 'Running', tone: 'default', icon: 'pending' },
+        { value: 'pending', label: 'Running', tone: 'neutral', icon: 'pending' },
         { value: 'failing', label: 'Failing', tone: 'invalid', icon: 'failure' },
         { value: 'indeterminate', label: 'Unreadable', tone: 'bypassed', icon: 'alert' },
-        { value: 'no_checks', label: 'No checks', tone: 'missing', icon: 'circle-dashed' },
+        { value: 'no_checks', label: 'No checks', tone: 'missing', icon: 'minus-circle' },
+        { value: '', label: 'Scheduled', tone: 'neutral', icon: 'circle-dashed' },
       ],
     },
   ] satisfies readonly FilterSection[];
@@ -71,7 +82,7 @@
     {
       options: [
         { value: 'merged', label: 'Merged', tone: 'valid', icon: 'success' },
-        { value: 'cancelled', label: 'Cancelled', tone: 'default', icon: 'circle-dashed' },
+        { value: 'cancelled', label: 'Cancelled', tone: 'neutral', icon: 'circle-dashed' },
         { value: 'superseded', label: 'Superseded', tone: 'bypassed', icon: 'alert' },
       ],
     },
@@ -185,15 +196,28 @@
     return `https://github.com/${request.repository_full_name}/pull/${request.pull_request}`;
   }
 
+  /**
+   * Whether a request can still be acted on.
+   *
+   * Held while a mutation is in flight, because every action carries the revision it was drawn
+   * with. A second Cancel sends the same one, the row has already moved past it, and the store
+   * answers 409 - so the reader is shown a red banner over a cancel that worked.
+   */
+  function actionable(request: PendingCIRequest): boolean {
+    return request.lifecycle === 'armed' && pendingAction === null;
+  }
+
+  /** The key `pendingAction` holds while this request's own check is in flight. */
+  function checkKey(request: PendingCIRequest): string {
+    return `check:${request.id}`;
+  }
+
   /* Destructive weight is inverted from the old panel: a filled danger button
      appears once, on the confirmation, and never in a row. Here Cancel is a menu
      item like any other, and it is simply not offered on a request that has
      already finished. */
   function actionsFor(request: PendingCIRequest): ActionMenuItem[] {
-    /* Held while a mutation is in flight, because both of these carry the revision they were
-       drawn with. A second Cancel sends the same one, the row has already moved past it, and the
-       store answers 409 - so the reader is shown a red banner over a cancel that worked. */
-    const armed = request.lifecycle === 'armed' && pendingAction === null;
+    const armed = actionable(request);
     return [
       {
         id: 'open',
@@ -224,7 +248,7 @@
       onOpenRequest(request.id);
       return;
     }
-    const key = `${action}:${request.id}`;
+    const key = action === 'check' ? checkKey(request) : `${action}:${request.id}`;
     pendingAction = key;
     actionProblem = null;
     try {
@@ -495,11 +519,29 @@
             </td>
           {/if}
           <td class="row-actions" data-label="Actions">
-            <ActionMenu
-              label={`Actions for ${request.repository_full_name} #${request.pull_request}`}
-              items={actionsFor(request)}
-              onSelect={(action) => void choose(request, action)}
-            />
+            <div class="row-action-group">
+              <!-- The one action worth a press of its own. Reading the checks
+                   again is what a reader comes to this table to do when a run
+                   has just finished and the queue has not noticed yet, and
+                   burying it under a menu costs two presses for the thing they
+                   came for. It stays in the menu as well, where it can say what
+                   it does. Only on a waiting request: nothing on the Recent
+                   table has checks left to read. -->
+              {#if section === 'waiting'}
+                <IconButton
+                  icon="refresh"
+                  label={`Check ${request.repository_full_name} #${request.pull_request} now`}
+                  disabled={!actionable(request)}
+                  busy={pendingAction === checkKey(request)}
+                  onclick={() => void choose(request, 'check')}
+                />
+              {/if}
+              <ActionMenu
+                label={`Actions for ${request.repository_full_name} #${request.pull_request}`}
+                items={actionsFor(request)}
+                onSelect={(action) => void choose(request, action)}
+              />
+            </div>
           </td>
         </tr>
       {:else}
@@ -585,37 +627,68 @@
      table would have laid itself out however it liked in production while
      looking right in development. `tests/csp-safety.test.ts` catches it.
 
-     The pull request takes what is left - it is the one column whose content
-     has no bound - and every other column is the width of its own worst case.
-     The two sections carry different columns, so each states its own. */
-  .queue-table :is(th, td):first-child {
-    width: 9.5rem;
+     The pull request takes what is left - it is the one column whose content has
+     no bound - and every other column is the wider of what its heading needs
+     with its own controls and what the widest value the SERVICE can produce
+     needs, plus the cell's padding, rounded up to the next quarter rem. Every
+     number below was measured that way in the browser rather than chosen, with
+     each column's whole vocabulary put through it; `tests/browser/
+     queue-columns.test.ts` measures the same thing again and fails if a value
+     stops fitting.
+
+     The two sections carry different columns AND different worst cases, so each
+     states its own: 8.25rem where the widest state is "Unreadable", 8.5rem where
+     the widest outcome is "Superseded". Holding them equal would put the
+     difference at the front of every row of whichever section did not need it,
+     which is the defect these numbers exist to end. */
+  .waiting-table :is(th, td):first-child {
+    width: 8.25rem;
   }
 
+  .recent-table :is(th, td):first-child {
+    width: 8.5rem;
+  }
+
+  /* "Checks again in 59 minutes" over "First look since it was armed". */
   .waiting-table :is(th, td):nth-child(3) {
-    width: 13.5rem;
+    width: 12.25rem;
   }
 
+  /* "just now" is wider than any age this abbreviates to. */
   .waiting-table :is(th, td):nth-child(4) {
-    width: 6.5rem;
+    width: 4.75rem;
   }
 
+  /* Two 1.75rem buttons, the gap between them, and the cell's own 12px and 16px:
+     88px exactly. The mock states 5rem here and flex-shrinks its two buttons to
+     24.8px wide to fit them, which leaves a pair of rounded rectangles where two
+     squares were drawn. Better to give the column the 8px than to keep the
+     number and lose the shape. */
   .waiting-table :is(th, td):nth-child(5) {
-    width: 5rem;
+    width: 5.5rem;
   }
 
+  /* The heading is wider than "Pending", so the heading sets this one. */
   .recent-table :is(th, td):nth-child(3) {
-    width: 9.5rem;
+    width: 6.25rem;
   }
 
+  /* The one column here whose text has no bound, so it is sized like the
+     repository name is: a floor with a stated reason rather than a worst case.
+     12rem is where every reason the service can write today fits inside the two
+     lines the row already has - the longest, "pull request merged outside
+     pending CI reconciliation", needs 160px of content and gets 164px. One line
+     for all of them would have taken 20.75rem. */
   .recent-table :is(th, td):nth-child(4) {
-    width: 15rem;
+    width: 12rem;
   }
 
+  /* The heading again: "Finished" is wider than "just now". */
   .recent-table :is(th, td):nth-child(5) {
-    width: 6.5rem;
+    width: 5.25rem;
   }
 
+  /* One button, and the same 12px and 16px the waiting table's pair get. */
   .recent-table :is(th, td):nth-child(6) {
     width: 3.5rem;
   }
@@ -863,6 +936,15 @@
     font-size: var(--font-size-meta);
   }
 
+  /* Not clamped, and that is the measured answer rather than the lazy one. A
+     `-webkit-line-clamp` needs `overflow: clip` with a clip margin, because
+     `text-box: trim-both` ends this box at the baseline and a bare `hidden`
+     shaves the descenders off - and the margin then inflates the box unevenly
+     enough to put the cell 2.50px off the cells beside it, which
+     `tests/browser/vertical-alignment.test.ts` reports in every row of this
+     table. Nothing needs the clamp: the column is 12rem because that is where
+     every reason the service writes fits inside two lines, so the cap is the
+     WIDTH, and it is enforced by `tests/browser/queue-columns.test.ts`. */
   .reason {
     color: var(--dim);
     font-size: var(--font-size-compact);
@@ -942,7 +1024,8 @@
 
     /* Every column width above is stated against a band that is gone; left
        standing they would size the cards instead. */
-    .queue-table :is(th, td):first-child,
+    .waiting-table :is(th, td):first-child,
+    .recent-table :is(th, td):first-child,
     .waiting-table :is(th, td):nth-child(3),
     .waiting-table :is(th, td):nth-child(4),
     .waiting-table :is(th, td):nth-child(5),
@@ -1003,6 +1086,16 @@
 
   .row-actions {
     text-align: right;
+  }
+
+  /* Block-level and pushed over, not inline: an inline-flex inside a cell rides
+     the table's own strut rather than the cell's centre, which is the trap the
+     whole alignment sweep exists to close. */
+  .row-action-group {
+    display: flex;
+    gap: var(--space-1);
+    margin-left: auto;
+    width: fit-content;
   }
 
   .empty-cell {

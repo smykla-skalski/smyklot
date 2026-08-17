@@ -177,7 +177,7 @@
                 >
                   {#if isSelected}<span></span>{/if}
                 </span>
-                {#if option.tone !== undefined && option.tone !== 'default'}
+                {#if option.tone !== undefined}
                   <span class="tone tone-{option.tone}" aria-hidden="true"></span>
                 {/if}
                 <span class="option-copy">
@@ -381,6 +381,16 @@
 
   .tone-bypassed {
     background: var(--warning);
+  }
+
+  /* Every member of `FilterTone` needs a fill here: a tone with no rule is a dot
+     with no background, which is a hole in the row rather than a colour. */
+  .tone-neutral {
+    background: var(--text-muted);
+  }
+
+  .tone-signal {
+    background: var(--brand-action);
   }
 
   .option-copy {

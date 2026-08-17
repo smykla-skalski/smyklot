@@ -18,7 +18,7 @@ import type { PendingCIRequest, PendingCITrigger } from './types';
 /** How a state is drawn: a tone, a distinct shape, and a word. Never the tone alone. */
 export interface QueueState {
   tone: 'clear' | 'stop' | 'neutral' | 'warning' | 'absent';
-  icon: 'success' | 'failure' | 'pending' | 'alert' | 'circle-dashed';
+  icon: 'success' | 'failure' | 'pending' | 'alert' | 'circle-dashed' | 'minus-circle';
   label: string;
 }
 
@@ -40,10 +40,28 @@ export function queueState(request: PendingCIRequest): QueueState {
       return { tone: 'neutral', icon: 'pending', label: 'Running' };
     case 'indeterminate':
       return { tone: 'warning', icon: 'alert', label: 'Unreadable' };
+    /* A circle with a bar through it: nothing to wait for, said as a closed
+       shape. It used to be the dashed circle, which is the shape below - two
+       states drawn identically in one column, which is the exact thing the note
+       at the top of this function forbids. The mock names this glyph here too. */
     case 'no_checks':
-      return { tone: 'absent', icon: 'circle-dashed', label: 'No checks' };
+      return { tone: 'absent', icon: 'minus-circle', label: 'No checks' };
+    /* A request between the command and its first reconciliation. Not a fallback
+       for a value nobody expects: `last_observed_state` is `NOT NULL DEFAULT ''`
+       and `sqlstore.Arm` does not set it, so every request wears this until the
+       reconciler first looks. One word, because it is the widest label the column
+       carries and the column is sized for its widest label - "Awaiting first
+       check" cost 2.75rem in every row of the table, for a state that lasts
+       minutes. "Scheduled" is a check that is coming rather than one that is
+       missing, which is what "No checks" beside it already means.
+
+       Drawn as an outline not yet filled in, and toned like Running rather than
+       like No checks - a look is coming, so it belongs with the state that has
+       one in flight. Every pair in this column now differs in at least two of the
+       three the note above requires: this one shares a tone with Running and
+       nothing else, and no two share a glyph. */
     default:
-      return { tone: 'absent', icon: 'circle-dashed', label: 'Awaiting first check' };
+      return { tone: 'neutral', icon: 'circle-dashed', label: 'Scheduled' };
   }
 }
 

@@ -2741,6 +2741,71 @@ function pendingCISeeds(iso: (offsetMs: number) => string): PendingCIRequest[] {
       cleanup_pending: false,
       revision: 7,
     },
+    /* The three states the first three do not cover, so that every value the
+       Checks column can draw is on the screen at once. Without them the column
+       was measured, and looked at, against three of its six. */
+    {
+      id: 'pending-ci-6',
+      repository_full_name: 'smykla-skalski/docs',
+      pull_request: 311,
+      head_sha: 'd41d8cd98f00b204e9800998ecf8427e6a1b3f5c',
+      merge_method: 'merge',
+      required_checks_only: false,
+      requester: 'operator',
+      lifecycle: 'armed',
+      schedule: 'active',
+      next_check_at: iso(9 * 60_000),
+      next_check_trigger: 'fallback',
+      last_observed_state: 'indeterminate',
+      reason: '',
+      requested_at: iso(-42 * 60_000),
+      updated_at: iso(-9 * 60_000),
+      cleanup_pending: false,
+      revision: 2,
+    },
+    {
+      id: 'pending-ci-7',
+      repository_full_name: 'smykla-skalski/charts',
+      pull_request: 18,
+      head_sha: '7c9f0a1e5b3d68427ac0f19e34d5b8027fa6cd11',
+      merge_method: 'squash',
+      required_checks_only: false,
+      requester: 'lin',
+      lifecycle: 'armed',
+      schedule: 'active',
+      next_check_at: iso(2 * 60_000),
+      next_check_trigger: 'fallback',
+      last_observed_state: 'no_checks',
+      reason: '',
+      requested_at: iso(-3 * 60_000),
+      updated_at: iso(-3 * 60_000),
+      cleanup_pending: false,
+      revision: 1,
+    },
+    /* Armed a moment ago and never yet reconciled, which is what an empty
+       `last_observed_state` means - the column reads it as "Scheduled". The
+       service writes no state at arm time (`last_observed_state` is
+       `NOT NULL DEFAULT ''` and `sqlstore.Arm` leaves it), so every request
+       passes through this and the mock has to be able to show it. */
+    {
+      id: 'pending-ci-8',
+      repository_full_name: 'smykla-skalski/actions',
+      pull_request: 7,
+      head_sha: 'b52e7d3016fa94c8e0d271b6a4f8c3915de027ab',
+      merge_method: 'rebase',
+      required_checks_only: false,
+      requester: 'bart',
+      lifecycle: 'armed',
+      schedule: 'active',
+      next_check_at: iso(30_000),
+      next_check_trigger: 'command',
+      last_observed_state: '',
+      reason: '',
+      requested_at: iso(-20_000),
+      updated_at: iso(-20_000),
+      cleanup_pending: false,
+      revision: 1,
+    },
     /* Three that have finished, so `/root/queue/recent` has its own rows: one of
        each way a request can end, and one with cleanup still outstanding so the
        column that reports it has something to report. */

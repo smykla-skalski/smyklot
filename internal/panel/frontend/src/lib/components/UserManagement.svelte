@@ -110,10 +110,10 @@
     {
       label: 'Status',
       options: [
-        { value: 'pending', label: 'Pending', tone: 'default' },
+        { value: 'pending', label: 'Pending', tone: 'signal' },
         { value: 'accepted', label: 'Accepted', tone: 'valid' },
         { value: 'expired', label: 'Expired', tone: 'bypassed' },
-        { value: 'declined', label: 'Declined', tone: 'default' },
+        { value: 'declined', label: 'Declined', tone: 'neutral' },
         { value: 'revoked', label: 'Revoked', tone: 'invalid' },
       ],
     },

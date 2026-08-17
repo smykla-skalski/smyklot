@@ -1206,6 +1206,62 @@ th[aria-sort='descending'] .table-sort-button:where(:hover, :focus-visible) .sor
   outline: 0;
 }
 
+/* One square icon-only control: a row's quick action, a row's menu trigger, a
+   column's filter. Three components drew their own and disagreed on all three of
+   size, ink and press.
+
+   It is 1.75rem because that is what the filter triggers in the same header row
+   already are, and because the action column is sized for it: a 2.5rem trigger
+   overflowed its cell's own padding and sat 12px proud of every other column's
+   right edge, in the Queue, Recent, Access and Installations tables alike.
+
+   The states are LAYERS rather than fills. This button sits inside a row that
+   hovers underneath it, so a flat colour either matches the row's own hover or
+   fights it; a translucent layer steps up from whatever it happens to land on,
+   which is the same reason the sort headings above use one. */
+.icon-button {
+  align-items: center;
+  background-color: transparent;
+  background-image: none;
+  border: 0;
+  border-radius: var(--radius-control);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  flex: none;
+  height: 1.75rem;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    transform var(--duration-press) var(--ease-standard);
+  user-select: none;
+  width: 1.75rem;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* An open menu keeps its trigger lit, so the reader can see what the layer
+   belongs to. `data-state` is what Bits UI writes; `aria-expanded` is what a
+   hand-rolled trigger writes. */
+.icon-button:where(:hover, [aria-expanded='true'], [data-state='open']):not(:disabled) {
+  background-image: linear-gradient(var(--interactive-hover-layer), var(--interactive-hover-layer));
+  color: var(--text-primary);
+}
+
+/* The disc scale, like every other round-ish target of this size. */
+.icon-button:active:not(:disabled) {
+  background-image: linear-gradient(var(--press), var(--press));
+  color: var(--text-primary);
+  transform: scale(var(--press-scale-disc));
+}
+
+.icon-button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
 select:not(:disabled),
 input[type='checkbox']:not(:disabled),
 input[type='radio']:not(:disabled) {

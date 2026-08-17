@@ -88,6 +88,20 @@ describe('the queue vocabulary [Unit]', () => {
     expect(queueState(requestWith(state)).label).not.toBe(UNNAMED);
   });
 
+  /* The note on `queueState` says a state is a tone AND a distinct shape AND a word, because three
+     of the pairs in this column collapse under one dichromacy or another. It was not true: a
+     request with no observation yet and one whose repository has no CI at all were both a grey
+     dashed circle, so two of the six were one drawing with two captions. No two may share a glyph,
+     and a shared tone is only allowed where the glyph differs. */
+  it('draws no two states of the Checks column the same way', () => {
+    const drawn = [...declared, ''].map((state) => queueState(requestWith(state)));
+    const glyphs = drawn.map((one) => one.icon);
+    const both = drawn.map((one) => `${one.tone} ${one.icon}`);
+
+    expect(new Set(glyphs).size, `glyphs: ${glyphs.join(', ')}`).toBe(drawn.length);
+    expect(new Set(both).size, `tone and glyph: ${both.join(', ')}`).toBe(drawn.length);
+  });
+
   it('invents no state the service cannot emit', () => {
     const invented = handledStates().filter((state) => !declared.includes(state));
 
@@ -104,8 +118,57 @@ describe('the queue vocabulary [Unit]', () => {
       (match) => match.groups?.state ?? '',
     );
     if (seeded.length === 0) throw new Error('no pending-CI seeds found in the mock server');
-    const invented = [...new Set(seeded.filter((state) => !declared.includes(state)))];
+    /* The empty string is not one of the constants and is still a state the service sends: it is
+       the column's own default, and a request carries it from the command until the reconciler
+       first looks. It is the sixth thing the Checks column can draw, so the fixture seeds it. */
+    const invented = [
+      ...new Set(seeded.filter((state) => state !== '' && !declared.includes(state))),
+    ];
 
     expect(invented, `seeded but never emitted:\n  ${invented.join('\n  ')}`).toEqual([]);
+  });
+
+  /* A filter that cannot name a state the column draws is a row nobody can reach. The Checks menu
+     offered the five constants and the table showed six, because a request between the command and
+     its first reconciliation carries no state at all - so the one row that most wants finding, the
+     one nothing has looked at yet, was the one the filter could not select. The two lists are
+     written apart, so they are compared here. */
+  it('offers every state the Checks column can draw', () => {
+    const source = readFileSync(
+      new URL('../src/lib/components/QueueView.svelte', import.meta.url),
+      'utf8',
+    );
+    const block = source.slice(
+      source.indexOf('const STATE_FILTERS'),
+      source.indexOf('satisfies', source.indexOf('const STATE_FILTERS')),
+    );
+    const offered = [...block.matchAll(/label: '(?<label>[^']+)'/gu)].map(
+      (match) => match.groups?.label ?? '',
+    );
+    if (offered.length === 0) throw new Error('no options parsed out of STATE_FILTERS');
+
+    /* What the column can draw: one per declared state, plus whatever the default arm names for a
+       request that has none. Read from the code both times rather than listed here. */
+    const drawn = [...declared.map((state) => queueState(requestWith(state)).label), UNNAMED];
+
+    expect([...offered].sort()).toEqual([...new Set(drawn)].sort());
+  });
+
+  /* And the reason the line above is allowed to say that. `Arm` names its columns and
+     `last_observed_state` is not among them, so the row takes the migration's `DEFAULT ''`. The day
+     the insert starts setting a state, this seed is a view of the product nobody will see - and
+     `queueState`'s default arm stops being reachable. */
+  it('leaves the first observed state to the column default', () => {
+    const arm = readFileSync(
+      new URL('../../../storage/sqlstore/pending_ci.go', import.meta.url),
+      'utf8',
+    );
+    const insert = arm.slice(
+      arm.indexOf('INSERT INTO pending_ci_requests'),
+      arm.indexOf('RETURNING id', arm.indexOf('INSERT INTO pending_ci_requests')),
+    );
+    if (insert === '') throw new Error('no pending-CI insert found');
+
+    expect(insert).not.toContain('last_observed_state');
   });
 });

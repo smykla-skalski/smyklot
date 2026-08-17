@@ -82,7 +82,7 @@
          chevron and a visible summary, that could not be reached from anywhere
          and so could not be seen to have rotted. -->
     <button
-      class="filter-trigger"
+      class="icon-button filter-trigger"
       class:filtered={canClear}
       type="button"
       bind:this={triggerButton}
@@ -132,7 +132,7 @@
                 {#if isSelected}<span></span>{/if}
               </span>
               <span class="option-copy">
-                {#if option.tone !== undefined && option.tone !== 'default'}
+                {#if option.tone !== undefined}
                   <!-- The value drawn the way its column draws it, at the size
                        its column draws it: the menu shows exactly what the table
                        shows. Shrunk to `small` it stops being the same object and
@@ -168,40 +168,17 @@
   /* No `position: relative` on an ancestor and no z-index: the layer is in the
      top layer, which nothing in the page can be stacked over or clipped by. The
      trigger is positioned only so the count can ride its corner. */
+  /* Shape, ink and states come from `.icon-button` in app.css - this trigger is
+     the same square control as the menu trigger in the row below it. All that is
+     left here is the one thing only a filter has: a fill that says it is on. */
   .filter-trigger {
-    align-items: center;
-    background: transparent;
-    border: 0;
-    border-radius: var(--radius-control);
-    color: var(--text-muted);
-    cursor: pointer;
-    display: flex;
-    flex: none;
-    height: 1.75rem;
-    justify-content: center;
-    line-height: 1;
-    padding: 0;
     position: relative;
-    transition:
-      background-color var(--duration-fast) var(--ease-out),
-      color var(--duration-fast) var(--ease-out),
-      transform var(--duration-press) var(--ease-standard);
-    user-select: none;
-    width: 1.75rem;
   }
 
-  .filter-trigger:hover,
-  .filter-trigger[aria-expanded='true'] {
-    background: color-mix(in srgb, var(--text-primary) 8%, transparent);
-    color: var(--text-primary);
-  }
-
-  .filter-trigger:active {
-    background: color-mix(in srgb, var(--text-primary) 14%, transparent);
-    color: var(--text-primary);
-    transform: scale(var(--press-scale-disc));
-  }
-
+  /* Each of these is the shorthand, which clears the layer `.icon-button` paints
+     for its own hover and press. That is deliberate: a filter that is on states
+     its whole state in the fill, and a layer over the brand colour would say the
+     same thing twice, dimly. */
   .filter-trigger.filtered {
     background: var(--brand-action);
     color: var(--on-brand-action);
