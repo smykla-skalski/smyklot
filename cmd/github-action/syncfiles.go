@@ -335,17 +335,22 @@ func (s *server) readProposal(
 	}
 
 	switch {
+	case pull.Merged && head == "":
+		// Merged and already tidied away, which is what a repository with
+		// delete_branch_on_merge does the moment the pull request lands. There
+		// is nothing to take away and nothing to build on, so the next change
+		// starts from the default branch.
+		return "", nil, nil
+
 	case pull.Merged && head == pull.Head:
 		// Merged, and nothing has been pushed since. Everything the branch says
 		// is in the default branch now, so a pull request from it would have no
 		// diff at all and GitHub refuses to open one. Taking it away is what
 		// lets the next change start from the default branch, which is what an
 		// ordinary branch does after a merge.
-		if head != "" {
-			if err := client.DeleteRef(
-				ctx, target.Owner, target.Name, "heads/"+proposal); err != nil {
-				return "", nil, err
-			}
+		if err := client.DeleteRef(
+			ctx, target.Owner, target.Name, "heads/"+proposal); err != nil {
+			return "", nil, err
 		}
 
 		return "", nil, nil
