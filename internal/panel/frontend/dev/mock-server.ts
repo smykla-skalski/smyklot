@@ -176,7 +176,7 @@ interface MockState {
   /** Label sync, per installation: what is configured and what is in flight. */
   sync: Map<string, SyncConfig>;
   syncPlans: Map<string, SyncPlan>;
-  transformIndex: IndexTransform;
+  shell: ShellSource;
 }
 
 /**
@@ -209,8 +209,11 @@ function mockSyncConfig(state: MockState, key: string, kind: string): SyncConfig
   return fresh;
 }
 
-/** How a served `index.html` reaches its final form: Vite's own dev transform. */
-type IndexTransform = (url: string, html: string) => Promise<string> | string;
+/** Where the page the panel boots comes from, so the error renderer can patch it. */
+type ShellSource = () => Promise<string>;
+
+/** Marks the error renderer's own request for a shell, so `handle` stands aside. */
+const SHELL_REQUEST_HEADER = 'x-smyklot-mock-shell';
 
 function enabled(): boolean {
   return process.env.SMYKLOT_PANEL_DEV_MOCK === '1';
@@ -238,7 +241,6 @@ function opensBrowser(): boolean {
  * again. Only the preference document is kept: the rest of the mock is fixture data, and a fixture
  * that drifts across restarts is worse than one that resets.
  */
-const FRONTEND_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PREFERENCES_FILE = resolve(dirname(fileURLToPath(import.meta.url)), '.mock-preferences.json');
 
 interface DevState {
@@ -598,8 +600,8 @@ function seed(): MockState {
     prefs: loadPreferences(),
     sync: new Map(),
     syncPlans: new Map(),
-    // Replaced by install() with the running server's own transform.
-    transformIndex: (_url, html) => html,
+    // Replaced by install() with the running server's own page.
+    shell: () => Promise.reject(new Error('the mock dev server is not serving yet')),
   };
 }
 
@@ -1048,28 +1050,69 @@ export function mockServer(): Plugin {
     },
     configureServer(server) {
       if (!enabled()) return;
-      install(server.httpServer as DevHttpServer, server.middlewares, (url, html) =>
-        server.transformIndexHtml(url, html),
-      );
+      install(server.httpServer as DevHttpServer, server.middlewares);
     },
     configurePreviewServer(server) {
       if (enabled()) {
-        install(server.httpServer as DevHttpServer, server.middlewares, (_url, html) => html);
+        install(server.httpServer as DevHttpServer, server.middlewares);
       }
     },
   };
 }
 
-function install(
-  httpServer: DevHttpServer | undefined,
-  middlewares: Connect.Server,
-  transform: IndexTransform,
-): void {
+function install(httpServer: DevHttpServer | undefined, middlewares: Connect.Server): void {
   if (httpServer === undefined) throw new Error('the mock dev server has no HTTP server');
+  const server = httpServer;
   const state = seed();
-  state.transformIndex = transform;
-  httpServer.on('upgrade', (request, socket) => handleUpgrade(state, request, socket));
+  state.shell = () => fetchShell(server);
+  server.on('upgrade', (request, socket) => handleUpgrade(state, request, socket));
   middlewares.use((req, res, next) => void handle(state, req, res, next));
+}
+
+/**
+ * The page the panel boots, borrowed from the server that is already serving it.
+ *
+ * Production patches its error descriptor into the built `index.html`, which
+ * SvelteKit finished at build time. Dev has no such file: `src/app.html` is a
+ * template, and its `%sveltekit.head%` and `%sveltekit.body%` are filled in by
+ * SvelteKit as it answers a request and by nothing else - Vite's own
+ * `transformIndexHtml` leaves them alone. Rendering the template here produced a
+ * document carrying those two placeholders as text, which booted no panel at all.
+ *
+ * So the mock asks itself for the panel root, an address every route table has,
+ * and patches what comes back. Which address produced the page does not matter:
+ * the panel is client-rendered, and its router reads the location it boots at,
+ * which is the one the reader asked for.
+ */
+async function fetchShell(httpServer: DevHttpServer): Promise<string> {
+  const response = await fetch(new URL('/', selfOrigin(httpServer)), {
+    headers: { accept: 'text/html', [SHELL_REQUEST_HEADER]: '1' },
+  });
+  if (!response.ok) {
+    throw new Error(`the mock dev server answered ${response.status} for its own page`);
+  }
+
+  return await response.text();
+}
+
+/** Loopback for the addresses that name every interface rather than one. */
+const LOOPBACK: Record<string, string> = { '::': '::1', '0.0.0.0': '127.0.0.1' };
+
+/**
+ * Where to reach this server from inside it.
+ *
+ * Its own bound address rather than the `Host` header the reader arrived with:
+ * that header can name a tunnel or a machine, and a request meant to stay in this
+ * process would leave it.
+ */
+function selfOrigin(httpServer: DevHttpServer): string {
+  const address = httpServer.address();
+  if (address === null || typeof address === 'string') {
+    throw new Error('the mock dev server is not listening on a port');
+  }
+  const host = LOOPBACK[address.address] ?? address.address;
+
+  return `http://${address.family === 'IPv6' ? `[${host}]` : host}:${address.port}`;
 }
 
 function handleUpgrade(state: MockState, request: IncomingMessage, socket: Duplex): void {
@@ -1250,6 +1293,15 @@ async function handle(
   res: ServerResponse,
   next: Connect.NextFunction,
 ): Promise<void> {
+  /**
+   * The error renderer asking for a page to patch. It has to reach SvelteKit
+   * untouched: `/` applies whatever scenario the query string names, and resetting
+   * the scenario is the last thing you want while looking at the error it produced.
+   */
+  if (req.headers[SHELL_REQUEST_HEADER] !== undefined) {
+    next();
+    return;
+  }
   if (req.headers.host !== undefined) devOrigin = `http://${req.headers.host}`;
   const parsed = new URL(req.url ?? '/', 'http://localhost');
   const path = parsed.pathname.replace(/^\/__smyklot_panel_base__/, '');
@@ -1288,7 +1340,7 @@ async function handle(
    * `isPanelNavigationPath`; the same decision is `parsePanelRoute` plus the invitation form, so
    * this asks the router the app itself uses rather than keeping a second list in step.
    */
-  if (method === 'GET' && (req.headers.accept ?? '').includes('text/html')) {
+  if (method === 'GET' && wantsDocument(req)) {
     const navigable =
       parsePanelRoute('/', path) !== null || parseInvitationToken('/', path) !== null;
     if (!navigable) {
@@ -3489,7 +3541,17 @@ async function respondError(
     respond(res, status, { error: { code, message } });
     return;
   }
-  const page = await renderErrorDocument(state, req.url ?? '/', status, code, message);
+  let page: string;
+  try {
+    page = await renderErrorDocument(state, status, code, message);
+  } catch (error) {
+    /* Loud rather than quiet. A mock that cannot borrow a page and answers with
+       JSON instead looks exactly like a mock that decided the caller wanted JSON,
+       which is the shape this spent a release wearing. */
+    const reason = error instanceof Error ? error.message : String(error);
+    respond(res, 500, { error: { code: 'mock_page_unavailable', message: reason } });
+    return;
+  }
   res.statusCode = status;
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
@@ -3497,21 +3559,14 @@ async function respondError(
 }
 
 /**
- * Deliberately still reading Sec-Fetch-Dest as authoritative, unlike
- * `wantsDocument` in `internal/panel/error_page.go`, which was corrected because a
- * service worker forwarding a navigation loses the destination.
- *
- * Matching it here would be right, and it is what should happen - but it would
- * route dev navigations into `renderErrorDocument`, which has not worked since the
- * SvelteKit migration: it renders `src/app.html`, and that file now carries
- * SvelteKit's own `%sveltekit.head%` and `%sveltekit.body%` placeholders, which only
- * SvelteKit substitutes. The page it produces boots nothing. Answering with JSON is
- * the wrong shape; answering with a shell that cannot run is worse, so this stays as
- * it is until the mock can borrow the dev server's rendered shell.
+ * Mirrors `wantsDocument` in `internal/panel/error_page.go`, down to why it is not
+ * a single header: `Sec-Fetch-Dest: document` settles a navigation, but its absence
+ * settles nothing, because a service worker forwarding one through `fetch()` builds
+ * a fresh request that carries no destination. The panel registers such a worker
+ * here too, so this is not a production-only distinction.
  */
 function wantsDocument(req: IncomingMessage): boolean {
-  const destination = req.headers['sec-fetch-dest'];
-  if (typeof destination === 'string' && destination !== '') return destination === 'document';
+  if (req.headers['sec-fetch-dest'] === 'document') return true;
 
   return (req.headers.accept ?? '')
     .split(',')
@@ -3520,16 +3575,13 @@ function wantsDocument(req: IncomingMessage): boolean {
 
 async function renderErrorDocument(
   state: MockState,
-  url: string,
   status: number,
   code: string,
   message: string,
 ): Promise<string> {
-  const source = readFileSync(resolve(FRONTEND_DIR, 'src/app.html'), 'utf8');
-  const transformed = await state.transformIndex(url, source);
   const descriptor = escapeHtml(JSON.stringify({ status, code, message }));
 
-  return transformed
+  return (await state.shell())
     .replace(
       /(<meta name="smyklot-panel-error" content=")[^"]*(")/u,
       (_match, head: string, tail: string) => `${head}${descriptor}${tail}`,
