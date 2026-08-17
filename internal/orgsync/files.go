@@ -327,6 +327,15 @@ func validateFilePath(noun string, index int, filePath string) error {
 		return invalid("%s %q names the repository rather than a file in it",
 			noun, filePath)
 
+	case strings.EqualFold(cleaned, ".git") ||
+		strings.HasPrefix(strings.ToLower(cleaned), ".git/"):
+		// git's own directory, which is not part of a checkout's contents. A
+		// tree entry naming one is at best ignored and at worst a hook this
+		// would be installing, so it is refused where it is typed rather than
+		// discovered in somebody's repository. Folded, because a checkout on a
+		// case-insensitive filesystem cannot tell .GIT from .git.
+		return invalid("%s %q is inside git's own directory", noun, filePath)
+
 	case cleaned != filePath:
 		// A trailing separator, a doubled one, or a "./" - each is a way of
 		// writing a path that is not the way git writes it.
