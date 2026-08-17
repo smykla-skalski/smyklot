@@ -52,13 +52,15 @@ type githubStub struct {
 	// which is the state a commit is built on and the plan never saw.
 	repoTree   string
 	repoTrees  map[string]string
-
-	// emptyRepository is a repository with no commits, which answers 404 for
-	// its tree in GitHub's own words. GitHub names a default branch for one
-	// anyway - the name is configuration and is there long before the branch
-	// is - so this read is the only one that tells the two apart.
-	emptyRepository bool
 	repoLevels map[string]string
+
+	// treeNotFound is a tree GitHub has none of: a repository with no commits,
+	// a branch that was renamed, or one this installation can no longer read.
+	// GitHub names a default branch whatever the case - the name is
+	// configuration and is there long before the branch is - so this read is
+	// the only one that tells them from a repository holding none of the
+	// managed files.
+	treeNotFound bool
 
 	// Branch updates keep both the wire body and whether one asked GitHub to
 	// discard non-fast-forward work.
@@ -602,7 +604,7 @@ func (s *githubStub) serveGitData(w http.ResponseWriter, r *http.Request) {
 	case strings.Contains(r.URL.Path, "/git/trees/"):
 		s.mu.Lock()
 		tree, trees, levels := s.repoTree, s.repoTrees, s.repoLevels
-		empty := s.emptyRepository
+		empty := s.treeNotFound
 		s.mu.Unlock()
 
 		if empty {

@@ -438,11 +438,20 @@ var (
 // is not the kind's alone: a file under .github/workflows needs a permission of
 // its own, and GitHub enforces that where the ref moves - which is after the
 // commit has been built and after somebody approved the plan.
+//
+// Of the pending ones only. An action that already applied is not work this
+// attempt is going to do, and holding the plan on its account is how a lease
+// that expired after the workflow landed came back, refused, and left the
+// installation's one live slot filled by a plan nothing could finish or expire.
 func unavailableForTarget(
 	target storage.Target,
 	actions []orgsync.Action,
 ) (orgsync.Unavailable, bool) {
 	for _, action := range actions {
+		if action.State != orgsync.ActionPending {
+			continue
+		}
+
 		if unavailable, missing := orgsync.UnpermittedPath(
 			target, action.Kind, action.Subject,
 		); missing {

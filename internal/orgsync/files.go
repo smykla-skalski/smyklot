@@ -405,10 +405,22 @@ func PathPermission(path string) string {
 //
 // Retired paths count. Removing a workflow is writing the tree that no longer
 // holds it, which GitHub refuses for the same reason it refuses adding one.
+//
+// Excluded paths do not. The planner skips them everywhere, so a workflow the
+// configuration names and then excludes is never written - and asking for a
+// permission on its account stands the whole kind down for the whole
+// installation, over a file nothing was going to touch.
 func (c FileConfig) Permissions() []string {
-	var wanted []string
+	var (
+		wanted  []string
+		leftOut = c.Exclusions()
+	)
 
 	for _, path := range c.Managed() {
+		if leftOut.Matches(path) {
+			continue
+		}
+
 		if permission := PathPermission(path); permission != "" &&
 			!slices.Contains(wanted, permission) {
 			wanted = append(wanted, permission)

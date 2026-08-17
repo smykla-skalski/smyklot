@@ -108,6 +108,20 @@ var _ = Describe("Repository files [Unit]", func() {
 			Expect(requests).To(ConsistOf(ContainSubstring("recursive=1")))
 		})
 
+		// This endpoint takes exactly one path segment where a branch name can
+		// hold several, so a repository whose default branch is `release/main`
+		// asked for a route GitHub does not have and was answered 404 - which
+		// reads as a repository with nothing in it.
+		It("escapes a ref that carries a slash", func() {
+			server = record(map[string]string{"/git/trees": `{"tree":[]}`})
+
+			_, err := client().ListRepositoryTree(
+				context.Background(), "acme", "web", "release/main")
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(requests).To(ConsistOf(ContainSubstring("/git/trees/release%2Fmain")))
+		})
+
 		// The difference between "this repository does not have that file" and
 		// "GitHub did not say" is the difference between creating a file and
 		// overwriting one, so the answer carries which it was.

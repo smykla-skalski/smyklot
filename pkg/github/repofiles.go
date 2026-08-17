@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"path"
 	"strings"
 
@@ -89,14 +90,21 @@ func (c *Client) ListRepositoryTree(
 
 // readTree reads a tree object: everything under it, or the one level it names.
 //
-// A tree that is not there answers 404, which is an empty one rather than an
-// error - an empty repository is a repository, and every managed file is
-// missing from it.
+// A tree that is not there answers 404, which is a tree the caller is told is
+// missing rather than an error - an empty repository is a repository, and every
+// managed file is missing from it.
+//
+// The ref is escaped, because this endpoint takes exactly one path segment
+// where a branch name may hold several: a repository whose default branch is
+// `release/main` asked GitHub for a route it does not have and was answered 404
+// - read, before this, as a repository with no commits.
 func (c *Client) readTree(
 	ctx context.Context,
 	owner, repo, at string,
 	whole bool,
 ) (RepositoryTree, error) {
+	at = url.PathEscape(at)
+
 	path := fmt.Sprintf("/repos/%s/%s/git/trees/%s", owner, repo, at)
 	if whole {
 		path += "?recursive=1"

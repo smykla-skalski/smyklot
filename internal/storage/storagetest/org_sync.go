@@ -748,7 +748,7 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 
 			Expect(store.RecordSyncRepositoryState(ctx, []orgsync.RepositoryState{{
 				RepositoryID: repoA, Kind: orgsync.KindFiles, AppliedAt: now,
-				Problem:      "these files cannot be composed: docs is not a directory here",
+				Problem: "these files cannot be composed: docs is not a directory here",
 			}})).To(Succeed())
 
 			read, err := store.GetSyncRepositoryState(ctx, repoA, orgsync.KindFiles)
@@ -783,7 +783,7 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 
 			Expect(store.RecordSyncRepositoryState(ctx, []orgsync.RepositoryState{{
 				RepositoryID: repoA, Kind: orgsync.KindFiles, AppliedAt: now,
-				Problem:      "the adjustments saved for this repository cannot be used",
+				Problem: "the adjustments saved for this repository cannot be used",
 			}})).To(Succeed())
 
 			later := now.Add(time.Hour)
@@ -835,7 +835,7 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 
 			Expect(store.RecordSyncRepositoryState(ctx, []orgsync.RepositoryState{{
 				RepositoryID: repoA, Kind: orgsync.KindLabels, AppliedAt: now,
-				Problem:      "something stopped it",
+				Problem: "something stopped it",
 			}})).To(Succeed())
 
 			planFor(ctx, store, "plan-1", account.ID, "digest-1", now, nil)

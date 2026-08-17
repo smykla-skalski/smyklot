@@ -539,23 +539,29 @@ func planRepositoryFiles(
 	}
 
 	if current.Missing {
-		// A repository with no commits. GitHub names a default branch for one
-		// anyway - the name is configuration, and it is there long before the
-		// branch is - so the name says nothing about whether there is anything
-		// to propose against. The tree read does, and it is a read the planner
-		// makes already.
+		// There is no tree at that branch. GitHub names a default branch
+		// whatever the case - the name is configuration, and it is there long
+		// before the branch is - so the name says nothing about whether there
+		// is anything to propose against. The tree read does, and it is a read
+		// the planner makes already.
 		//
 		// Said rather than planned. Every managed path is absent from a
-		// repository with no commits, so the planner would emit a create for
-		// each, a person would approve them, and the apply would refuse for
-		// want of a branch to build on - which spends the installation's one
-		// live plan slot and marks every plan riding with it failed.
+		// repository with no tree, so the planner would emit a create for each,
+		// a person would approve them, and the apply would refuse for want of a
+		// branch to build on - which spends the installation's one live plan
+		// slot and marks every plan riding with it failed.
+		//
+		// The reason lists the causes rather than picking one. GitHub answers
+		// 404 for a repository with no commits, for a branch that was renamed
+		// since the catalog last looked, and for one this installation can no
+		// longer read, and the read cannot tell them apart.
 		logging.From(ctx).Info(
-			"this repository has no commits, so its files are left alone",
+			"this repository has no tree at its default branch, so its files are left alone",
 			"repo", repository.FullName, "branch", target.DefaultBranch)
 
-		return nil, "this repository has no commits on " + target.DefaultBranch +
-			", so there is nowhere to propose a change", nil
+		return nil, "there is nothing at " + target.DefaultBranch +
+			" to propose against: this repository has no commits, the branch was " +
+			"renamed, or Smyklot can no longer read it", nil
 	}
 
 	plan, err := orgsync.PlanFiles(

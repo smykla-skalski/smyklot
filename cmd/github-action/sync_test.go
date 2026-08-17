@@ -1626,7 +1626,7 @@ var _ = Describe("Org sync [Unit]", func() {
 		// failed, on every reconcile, for ever.
 		It("leaves a repository with no commits alone, and says why", func() {
 			target := grantContents()
-			stub.emptyRepository = true
+			stub.treeNotFound = true
 			configureKind(target, orgsync.KindFiles, contributing)
 
 			plan(target)
@@ -1725,6 +1725,42 @@ var _ = Describe("Org sync [Unit]", func() {
 			_, actions := livePlan(target)
 			Expect(actions).To(HaveLen(1))
 			Expect(actions[0].Operation).To(Equal(orgsync.OperationDelete))
+		})
+
+		// An excluded path is skipped everywhere the planner looks, so asking
+		// for a permission on its account stands the whole kind down for the
+		// whole installation over a file nothing was going to touch.
+		It("asks for nothing extra for a workflow it excludes", func() {
+			target := grantContents()
+			configureKind(target, orgsync.KindFiles, `{"files":[
+				{"path":".github/workflows/ci.yaml","content":"name: CI\n"},
+				{"path":"CONTRIBUTING.md","content":"# Contributing\n"}],
+				"excludes":[".github/workflows/*"]}`)
+
+			plan(target)
+
+			_, actions := livePlan(target)
+			Expect(actions).To(HaveLen(1))
+			Expect(actions[0].Subject).To(Equal("CONTRIBUTING.md"))
+		})
+
+		// A 404 on the tree read is not only a repository with no commits: a
+		// branch renamed since the catalog looked, and one this installation can
+		// no longer read, answer the same way. Naming one of them as the cause
+		// puts a claim in front of somebody that the read cannot support.
+		It("does not name a cause the read cannot tell apart", func() {
+			target := grantContents()
+			stub.treeNotFound = true
+			configureKind(target, orgsync.KindFiles, contributing)
+
+			plan(target)
+
+			state, err := service.store.ListSyncRepositoryState(GinkgoT().Context(), target.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(state).To(HaveLen(1))
+			Expect(state[0].Problem).To(ContainSubstring("no commits"))
+			Expect(state[0].Problem).To(ContainSubstring("renamed"))
+			Expect(state[0].Problem).To(ContainSubstring("no longer read"))
 		})
 
 		It("proposes a workflow once the installation permits it", func() {
