@@ -45,6 +45,10 @@ var _ = Describe("Planning rulesets [Unit]", func() {
 	wanted := orgsync.RulesetConfig{Rulesets: []orgsync.Ruleset{protection()}}
 
 	Describe("a ruleset the repository does not have", func() {
+		// Pinned whole rather than by fragments, because what is being checked
+		// is that a person can read it. A rule carrying a list of its own -
+		// the reviews, the checks - has to be told apart from its neighbours,
+		// and a fragment match cannot see that they have run together
 		It("plans creating it, with everything it will enforce", func() {
 			actions := plan(wanted)
 
@@ -53,13 +57,13 @@ var _ = Describe("Planning rulesets [Unit]", func() {
 			Expect(actions[0].Operation).To(Equal(orgsync.OperationCreate))
 			Expect(actions[0].Subject).To(Equal("main-branch-protection"))
 			Expect(actions[0].Before).To(BeEmpty())
-			Expect(actions[0].After).To(SatisfyAll(
-				ContainSubstring("branch, active"),
-				ContainSubstring("on refs/heads/main"),
-				ContainSubstring("no deletion"),
-				ContainSubstring("1 approving review"),
-				ContainSubstring("checks test, up to date"),
-				ContainSubstring("bypassed by OrganizationAdmin 5 always"),
+			Expect(actions[0].After).To(Equal(
+				"branch, active; on refs/heads/main; " +
+					"no deletion, no force pushes, linear history, signed commits, " +
+					"pull requests (1 approving review, from code owners, " +
+					"dismissed on push, merged by squash), " +
+					"checks (test, branch up to date); " +
+					"bypassed by OrganizationAdmin 5 always",
 			))
 		})
 
@@ -127,7 +131,7 @@ var _ = Describe("Planning rulesets [Unit]", func() {
 
 			Expect(actions).To(HaveLen(1))
 			Expect(actions[0].Operation).To(Equal(orgsync.OperationUpdate))
-			Expect(actions[0].Before).To(ContainSubstring("0 approving review"))
+			Expect(actions[0].Before).To(ContainSubstring("no approving review"))
 			Expect(actions[0].Before).NotTo(ContainSubstring("signed commits"))
 			Expect(actions[0].After).To(ContainSubstring("1 approving review"))
 			Expect(actions[0].After).To(ContainSubstring("signed commits"))

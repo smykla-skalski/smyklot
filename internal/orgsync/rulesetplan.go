@@ -471,18 +471,35 @@ func describeRules(rules RulesetRules) string {
 	}
 
 	if scanning := rules.CodeScanning; scanning != nil {
+		tools := make([]string, 0, len(scanning.Tools))
 		for _, tool := range scanning.Tools {
-			described = append(described, fmt.Sprintf("%s at %s, security %s",
+			tools = append(tools, fmt.Sprintf("%s at %s, security %s",
 				tool.Tool, tool.AlertsThreshold, tool.SecurityAlertsThreshold))
 		}
+
+		described = append(described, within("code scanning", tools))
 	}
 
 	return strings.Join(described, ", ")
 }
 
+// within puts a rule's own list inside brackets under its name.
+//
+// Everything here is a comma list, and a rule that carries one of its own -
+// the reviews a pull request needs, the checks that must pass, the tools -
+// would otherwise run its items into its neighbours. `linear history, 1
+// approving review, from code owners, no force pushes` reads as four rules and
+// is two.
+func within(rule string, parts []string) string {
+	if len(parts) == 0 {
+		return rule
+	}
+
+	return rule + " (" + strings.Join(parts, ", ") + ")"
+}
+
 func describePullRequest(rule RulesetPullRequestRule) string {
-	described := []string{fmt.Sprintf("%d approving review(s)",
-		rule.RequiredApprovingReviewCount)}
+	described := []string{reviews(rule.RequiredApprovingReviewCount)}
 
 	for _, flag := range []struct {
 		on   bool
@@ -503,24 +520,36 @@ func describePullRequest(rule RulesetPullRequestRule) string {
 			"merged by "+strings.Join(rule.AllowedMergeMethods, " or "))
 	}
 
-	return strings.Join(described, ", ")
+	return within("pull requests", described)
+}
+
+// reviews counts approvals in words a person would use. "1 approving
+// review(s)" is the shape of a rendering nobody read back.
+func reviews(count int) string {
+	switch count {
+	case 0:
+		return "no approving review"
+	case 1:
+		return "1 approving review"
+	default:
+		return fmt.Sprintf("%d approving reviews", count)
+	}
 }
 
 func describeChecks(rule RulesetStatusChecksRule) string {
-	contexts := make([]string, 0, len(rule.Checks))
+	described := make([]string, 0, len(rule.Checks)+2)
 	for _, check := range rule.Checks {
-		contexts = append(contexts, check.Context)
+		described = append(described, check.Context)
 	}
 
-	described := "checks " + strings.Join(contexts, ", ")
 	if rule.Strict {
-		described += ", up to date"
+		described = append(described, "branch up to date")
 	}
 	if rule.DoNotEnforceOnCreate {
-		described += ", not on creation"
+		described = append(described, "not on a new branch")
 	}
 
-	return described
+	return within("checks", described)
 }
 
 func describeActors(actors []RulesetBypassActor) string {
