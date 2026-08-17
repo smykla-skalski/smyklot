@@ -100,6 +100,49 @@ var _ = Describe("File configuration [Unit]", func() {
 				file("Readme.md", "x"), file("README.md", "y"),
 			}},
 			"differ only in case"),
+		// A repository that has neither path yet passes every conflict check,
+		// because those read what it holds and it holds nothing here. The two
+		// entries then reach one commit, asking git for a path that is a file
+		// and a directory at once.
+		Entry("a file inside another file",
+			orgsync.FileConfig{Files: []orgsync.File{
+				file("docs", "x"), file("docs/index.md", "y"),
+			}},
+			`"docs/index.md" sits under "docs"`),
+		Entry("a file inside another file, ordered the other way",
+			orgsync.FileConfig{Files: []orgsync.File{
+				file("docs/index.md", "y"), file("docs", "x"),
+			}},
+			`"docs/index.md" sits under "docs"`),
+		Entry("a file inside another file, several levels down",
+			orgsync.FileConfig{Files: []orgsync.File{
+				file(".github", "x"), file(".github/workflows/ci.yaml", "y"),
+			}},
+			`".github/workflows/ci.yaml" sits under ".github"`),
+		// Sorting alone would put these three in this order and compare only
+		// the neighbours, which is the pair that is fine.
+		Entry("a file inside another file, with a name between them",
+			orgsync.FileConfig{Files: []orgsync.File{
+				file("docs", "x"), file("docs-2.md", "y"), file("docs/index.md", "z"),
+			}},
+			`"docs/index.md" sits under "docs"`),
+		Entry("a file inside another file, differing in case",
+			orgsync.FileConfig{Files: []orgsync.File{
+				file("Docs", "x"), file("docs/index.md", "y"),
+			}},
+			`"docs/index.md" sits under "Docs"`),
+		Entry("a retired path inside a file",
+			orgsync.FileConfig{
+				Files:   []orgsync.File{file("docs", "x")},
+				Retired: []string{"docs/old.md"},
+			},
+			`"docs/old.md" sits under "docs"`),
+		Entry("a file inside a retired path",
+			orgsync.FileConfig{
+				Files:   []orgsync.File{file("docs/index.md", "x")},
+				Retired: []string{"docs"},
+			},
+			`"docs/index.md" sits under "docs"`),
 		Entry("a file with nothing in it",
 			orgsync.FileConfig{Files: []orgsync.File{file("README.md", "")}},
 			"has no content"),

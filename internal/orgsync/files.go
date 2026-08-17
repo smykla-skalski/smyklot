@@ -160,7 +160,44 @@ func (c FileConfig) Validate() error {
 		}
 	}
 
-	return c.validateRetired(slices.Collect(maps.Keys(seen)))
+	if err := c.validateRetired(slices.Collect(maps.Keys(seen))); err != nil {
+		return err
+	}
+
+	return c.validateNesting()
+}
+
+// validateNesting refuses a path that sits under another managed path.
+//
+// git records a path as a file or as the directory holding one, never both, so
+// the two entries are one commit contradicting itself. Nothing else catches
+// it: the duplicate rules compare a path to an identical path, and the
+// conflict checks compare a path to what a repository already holds - and a
+// repository that has neither of these yet holds nothing to compare against.
+// It reaches GitHub as a tree nobody can build, on every reconcile.
+func (c FileConfig) validateNesting() error {
+	managed := c.Managed()
+
+	// Folded, and looked up by every ancestor of every path rather than
+	// between neighbours in a sorted list: "docs", "docs-2.md" and
+	// "docs/index.md" sort in that order, so the pair that is wrong is not the
+	// pair that is adjacent.
+	above := make(map[string]string, len(managed))
+	for _, managedPath := range managed {
+		above[strings.ToLower(managedPath)] = managedPath
+	}
+
+	for _, managedPath := range managed {
+		for parent := ParentPath(managedPath); parent != ""; parent = ParentPath(parent) {
+			if owner, held := above[strings.ToLower(parent)]; held {
+				return invalid(
+					"%q sits under %q, so git would have to record %q as a file and "+
+						"as a directory at once", managedPath, owner, owner)
+			}
+		}
+	}
+
+	return nil
 }
 
 func (c FileConfig) validateRetired(files []string) error {
@@ -297,6 +334,16 @@ func (c FileConfig) Paths() []string {
 // Managed is every path this configuration writes or removes, which is the
 // whole of what it asks a repository about.
 func (c FileConfig) Managed() []string { return slices.Concat(c.Paths(), c.Retired) }
+
+// ParentPath is the directory a path sits in, empty at the repository root.
+func ParentPath(filePath string) string {
+	cut := strings.LastIndex(filePath, "/")
+	if cut < 0 {
+		return ""
+	}
+
+	return filePath[:cut]
+}
 
 // Validate reports a repository's own adjustments that could never be applied.
 //
