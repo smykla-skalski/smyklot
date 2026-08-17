@@ -114,41 +114,70 @@ func PlanFiles(
 
 	proposal := fileProposal(desired, managed)
 
-	plan := FilePlan{Proposal: proposal}
+	return FilePlan{
+		Proposal: proposal,
+		Actions: append(
+			writeActions(repositoryID, proposal, desired, override, current),
+			removeActions(repositoryID, proposal, retired, current)...,
+		),
+	}, nil
+}
+
+// writeActions is what it would take to make every managed file say what it
+// should. A file that already says it produces nothing.
+func writeActions(
+	repositoryID, proposal string,
+	desired []ResolvedFile,
+	override FileOverride,
+	current map[string]CurrentFile,
+) []Action {
+	var actions []Action
 
 	for _, file := range desired {
 		file.Proposal = proposal
+		after := describeFile(len(file.Content), override.MergeFor(file.Path))
 
-		held, present := current[file.Path]
+		held, exists := current[file.Path]
 
 		switch {
-		case !present:
-			plan.Actions = append(plan.Actions, Action{
+		case !exists:
+			actions = append(actions, Action{
 				RepositoryID: repositoryID,
 				Kind:         KindFiles,
 				Operation:    OperationCreate,
 				Subject:      file.Path,
-				After:        describeFile(len(file.Content), override.MergeFor(file.Path)),
+				After:        after,
 				Payload:      encodeFile(file),
 				State:        ActionPending,
 			})
 
 		case held.Blob != BlobID(file.Content):
-			plan.Actions = append(plan.Actions, Action{
+			actions = append(actions, Action{
 				RepositoryID: repositoryID,
 				Kind:         KindFiles,
 				Operation:    OperationUpdate,
 				Subject:      file.Path,
 				Before:       describeSize(held.Size),
-				After:        describeFile(len(file.Content), override.MergeFor(file.Path)),
+				After:        after,
 				Payload:      encodeFile(file),
 				State:        ActionPending,
 			})
 		}
 	}
 
+	return actions
+}
+
+// removeActions takes away the retired paths a repository still has.
+func removeActions(
+	repositoryID, proposal string,
+	retired []string,
+	current map[string]CurrentFile,
+) []Action {
+	actions := make([]Action, 0, len(retired))
+
 	for _, path := range retired {
-		plan.Actions = append(plan.Actions, Action{
+		actions = append(actions, Action{
 			RepositoryID: repositoryID,
 			Kind:         KindFiles,
 			Operation:    OperationDelete,
@@ -159,7 +188,7 @@ func PlanFiles(
 		})
 	}
 
-	return plan, nil
+	return actions
 }
 
 // refuseConflicts stops before writing a path this repository cannot hold an
