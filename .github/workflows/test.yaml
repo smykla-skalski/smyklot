@@ -324,6 +324,7 @@ jobs:
             files: >-
               tests/browser/segmented-control.test.ts
               tests/browser/config-migration.test.ts
+              tests/browser/repository-sync-pane.test.ts
               tests/browser/sidebar-selection.test.ts
               tests/browser/icon-geometry.test.ts
 

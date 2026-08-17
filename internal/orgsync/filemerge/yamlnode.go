@@ -24,6 +24,7 @@ const (
 	tagNull   = "!!null"
 	tagSeq    = "!!seq"
 	tagMap    = "!!map"
+	tagMerge  = "!!merge"
 )
 
 // mergeYAML composes a YAML template with a repository's overrides, editing the
@@ -41,7 +42,7 @@ const (
 // replaced. What nobody mentioned comes out byte for byte as it went in,
 // comments and ordering included.
 func mergeYAML(template []byte, spec Spec) ([]byte, error) {
-	document, err := parseYAMLDocument(template)
+	file, document, err := parseYAMLDocument(template)
 	if err != nil {
 		return nil, err
 	}
@@ -64,21 +65,26 @@ func mergeYAML(template []byte, spec Spec) ([]byte, error) {
 		return nil, err
 	}
 
-	return encodeYAMLDocument(document)
+	return encodeYAMLDocument(file)
 }
 
 // parseYAMLDocument reads the one document a file should hold, as nodes.
-func parseYAMLDocument(template []byte) (*yaml.Node, error) {
+//
+// Both the document and the mapping inside it: the mapping is what a merge
+// edits, and the document is what is written back. Writing the mapping instead
+// drops whatever was attached to the document - the comment at the top of a
+// file, which is where the line saying who generated it lives.
+func parseYAMLDocument(template []byte) (file, root *yaml.Node, err error) {
 	decoder := yaml.NewDecoder(bytes.NewReader(template))
 
 	var document yaml.Node
 
 	if err := decoder.Decode(&document); err != nil {
 		if errors.Is(err, io.EOF) {
-			return nil, fmt.Errorf("%w: it holds no object", ErrUnreadable)
+			return nil, nil, fmt.Errorf("%w: it holds no object", ErrUnreadable)
 		}
 
-		return nil, fmt.Errorf("%w: %w", ErrUnreadable, err)
+		return nil, nil, fmt.Errorf("%w: %w", ErrUnreadable, err)
 	}
 
 	// A decoder reads one document and stops, so a file holding two would be
@@ -89,16 +95,16 @@ func parseYAMLDocument(template []byte) (*yaml.Node, error) {
 	case errors.Is(err, io.EOF):
 
 	case err != nil:
-		return nil, fmt.Errorf("%w: %w", ErrUnreadable, err)
+		return nil, nil, fmt.Errorf("%w: %w", ErrUnreadable, err)
 
 	default:
-		return nil, fmt.Errorf("%w: %w", ErrUnreadable, errTrailingContent)
+		return nil, nil, fmt.Errorf("%w: %w", ErrUnreadable, errTrailingContent)
 	}
 
-	root := &document
+	root = &document
 	if root.Kind == yaml.DocumentNode {
 		if len(root.Content) == 0 {
-			return nil, fmt.Errorf("%w: it holds no object", ErrUnreadable)
+			return nil, nil, fmt.Errorf("%w: it holds no object", ErrUnreadable)
 		}
 
 		root = root.Content[0]
@@ -108,10 +114,29 @@ func parseYAMLDocument(template []byte) (*yaml.Node, error) {
 	// with an empty document instead would write the overrides alone over
 	// whatever was there.
 	if root.Kind != yaml.MappingNode {
-		return nil, fmt.Errorf("%w: it holds no object", ErrUnreadable)
+		return nil, nil, fmt.Errorf("%w: it holds no object", ErrUnreadable)
 	}
 
-	return root, nil
+	unwriteMergeTags(root)
+
+	return &document, root, nil
+}
+
+// unwriteMergeTags takes the resolved tag off a merge key.
+//
+// go-yaml reads `<<` as a scalar tagged !!merge and writes that tag back out
+// explicitly, because !!merge is not one of the tags it treats as implied. The
+// file then gains a `!!merge <<:` nobody wrote. Reading is unaffected either
+// way - a plain `<<` is recognised as a merge key on the way in - so the tag is
+// dropped and the line is written the way it arrived.
+func unwriteMergeTags(node *yaml.Node) {
+	if node.Kind == yaml.ScalarNode && node.Tag == tagMerge && node.Value == "<<" {
+		node.Tag = ""
+	}
+
+	for _, child := range node.Content {
+		unwriteMergeTags(child)
+	}
 }
 
 func encodeYAMLDocument(root *yaml.Node) ([]byte, error) {
