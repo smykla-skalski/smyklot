@@ -110,19 +110,28 @@ func asCurrentFiles(
 // the cost of a map lookup per path segment.
 func conflictAt(tree github.RepositoryTree, path string) string {
 	if entry, held := tree.Entries[path]; held && !entry.OrdinaryFile() {
-		return fmt.Sprintf(
-			"%s is not an ordinary file in this repository; git records it as %s",
-			path, entry.Mode)
+		return notAnOrdinaryFile(path, entry.Mode)
 	}
 
 	for parent := parentOf(path); parent != ""; parent = parentOf(parent) {
-		if entry, held := tree.Entries[parent]; held && entry.OrdinaryFile() {
-			return fmt.Sprintf(
-				"%s cannot be written because %s is a file in this repository", path, parent)
+		if entry, held := tree.Entries[parent]; held && !entry.Directory() {
+			return blockedByFile(path, parent)
 		}
 	}
 
 	return ""
+}
+
+// The two ways a repository can be unable to hold a file where the
+// configuration puts one, said the same way whichever read found it.
+func notAnOrdinaryFile(path, mode string) string {
+	return fmt.Sprintf(
+		"%s is not an ordinary file in this repository; git records it as %s", path, mode)
+}
+
+func blockedByFile(path, parent string) string {
+	return fmt.Sprintf(
+		"%s cannot be written because %s is not a directory in this repository", path, parent)
 }
 
 // parentOf is the directory a path sits in, empty at the repository root.
@@ -144,15 +153,26 @@ func readFilesOneAtATime(
 	current := map[string]orgsync.CurrentFile{}
 
 	for _, path := range slices.Concat(config.Paths(), config.Retired) {
-		content, found, err := client.GetRepositoryFile(
+		found, err := client.ResolveTreePath(
 			ctx, target.Owner, target.Name, target.DefaultBranch, path)
 		if err != nil {
 			return nil, err
 		}
 
-		if found {
+		switch {
+		case found.Blocked != "":
+			current[path] = orgsync.CurrentFile{Conflict: blockedByFile(path, found.Blocked)}
+
+		case !found.Found:
+
+		case !found.Entry.OrdinaryFile():
 			current[path] = orgsync.CurrentFile{
-				Blob: orgsync.BlobID(content), Size: len(content),
+				Conflict: notAnOrdinaryFile(path, found.Entry.Mode),
+			}
+
+		default:
+			current[path] = orgsync.CurrentFile{
+				Blob: found.Entry.Blob, Size: found.Entry.Size,
 			}
 		}
 	}

@@ -40,9 +40,12 @@ type githubStub struct {
 	createdTreeSHA   string
 	migrationPRState string
 
-	// repoTree is what a repository's own tree listing answers, which is how
-	// file sync learns what it already has.
-	repoTree string
+	// repoTree is what a repository's whole tree listing answers, which is how
+	// file sync learns what it already has. repoLevels answers one level at a
+	// time, keyed by the tree asked for, which is the walk file sync falls back
+	// to when the whole listing comes back truncated.
+	repoTree   string
+	repoLevels map[string]string
 
 	// Branch updates keep both the wire body and whether one asked GitHub to
 	// discard non-fast-forward work.
@@ -144,6 +147,7 @@ func newGitHubStub() *githubStub {
 		migrationTipTree: "treesha",
 		createdTreeSHA:   "treesha",
 		repoTree:         `{"sha":"basetree","tree":[],"truncated":false}`,
+		repoLevels:       map[string]string{},
 		repoLabels:       `[]`,
 		repoSettings:     `{}`,
 		repoRulesets:     `[]`,
@@ -565,14 +569,29 @@ func (s *githubStub) serveGitData(w http.ResponseWriter, r *http.Request) {
 	case strings.Contains(r.URL.Path, "/git/ref/"):
 		_, _ = io.WriteString(w, `{"object":{"sha":"basecommit"}}`)
 
-	// Reading a repository's whole tree, which is how file sync learns what a
-	// repository already has.
+	// Reading a repository's tree, which is how file sync learns what it
+	// already has. Whole where the read asks for it, and one level otherwise -
+	// the two are the same address and differ only by the query, which is what
+	// lets a spec make the whole listing truncated and still be walked.
 	case strings.Contains(r.URL.Path, "/git/trees/"):
 		s.mu.Lock()
-		tree := s.repoTree
+		tree, levels := s.repoTree, s.repoLevels
 		s.mu.Unlock()
 
-		_, _ = io.WriteString(w, tree)
+		if r.URL.Query().Get("recursive") == "1" {
+			_, _ = io.WriteString(w, tree)
+
+			return
+		}
+
+		at := r.URL.Path[strings.LastIndex(r.URL.Path, "/")+1:]
+		if level, known := levels[at]; known {
+			_, _ = io.WriteString(w, level)
+
+			return
+		}
+
+		_, _ = io.WriteString(w, `{"tree":[]}`)
 
 	// A commit and the tree it records are different objects, and the tree is
 	// what a new one is built from

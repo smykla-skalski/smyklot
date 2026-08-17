@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	gogithub "github.com/google/go-github/v90/github"
 )
@@ -32,14 +33,27 @@ type TreeEntry struct {
 	Size int
 }
 
+// directoryMode is the mode git records a directory under.
+const directoryMode = "040000"
+
 // OrdinaryFile reports the one thing this writes: a regular, non-executable
 // file.
 func (e TreeEntry) OrdinaryFile() bool { return e.Mode == FileMode }
 
-// RepositoryTree is everything a commit's tree records.
+// Directory reports an entry that has things under it, which is the one kind
+// that can be descended into.
+func (e TreeEntry) Directory() bool { return e.Mode == directoryMode }
+
+func asTreeEntry(entry *gogithub.TreeEntry) TreeEntry {
+	return TreeEntry{Mode: entry.GetMode(), Blob: entry.GetSHA(), Size: entry.GetSize()}
+}
+
+// RepositoryTree is what a tree records, whole or one level of it.
 type RepositoryTree struct {
-	// Entries is keyed by path, relative to the repository root, and includes
-	// the directories: a directory is exactly what must not be written over.
+	// Entries is keyed by the name each one carries in what was read: a path
+	// from the repository root for a whole listing, a plain name for one level.
+	// Directories are in it either way, because a directory is exactly what
+	// must not be written over.
 	Entries map[string]TreeEntry
 
 	// Truncated is GitHub declining to list the whole thing, which it does past
@@ -59,9 +73,25 @@ func (c *Client) ListRepositoryTree(
 	ctx context.Context,
 	owner, repo, ref string,
 ) (RepositoryTree, error) {
-	path := fmt.Sprintf("/repos/%s/%s/git/trees/%s?recursive=1", owner, repo, ref)
+	return c.readTree(ctx, owner, repo, ref, true)
+}
 
-	tree, _, err := c.gh.Git.GetTree(ctx, owner, repo, ref, true)
+// readTree reads a tree object: everything under it, or the one level it names.
+//
+// A tree that is not there answers 404, which is an empty one rather than an
+// error - an empty repository is a repository, and every managed file is
+// missing from it.
+func (c *Client) readTree(
+	ctx context.Context,
+	owner, repo, at string,
+	whole bool,
+) (RepositoryTree, error) {
+	path := fmt.Sprintf("/repos/%s/%s/git/trees/%s", owner, repo, at)
+	if whole {
+		path += "?recursive=1"
+	}
+
+	tree, _, err := c.gh.Git.GetTree(ctx, owner, repo, at, whole)
 	if err != nil {
 		wrapped := wrapError(ErrAPIRequest, http.MethodGet, path, err)
 
@@ -74,43 +104,67 @@ func (c *Client) ListRepositoryTree(
 	}
 
 	entries := make(map[string]TreeEntry, len(tree.Entries))
-
 	for _, entry := range tree.Entries {
-		entries[entry.GetPath()] = TreeEntry{
-			Mode: entry.GetMode(), Blob: entry.GetSHA(), Size: entry.GetSize(),
-		}
+		entries[entry.GetPath()] = asTreeEntry(entry)
 	}
 
 	return RepositoryTree{Entries: entries, Truncated: tree.GetTruncated()}, nil
 }
 
-// maxSyncedFile is the largest file this will read back out of a repository.
-//
-// The same bound configuration is held to, so a file this cannot read is one
-// nothing here could have written.
-const maxSyncedFile = 1 << 20
+// TreePath is what a ref records on the way to one path.
+type TreePath struct {
+	// Entry is what sits at the path, when anything does.
+	Entry TreeEntry
+	Found bool
 
-// GetRepositoryFile reads one file at a ref, reporting whether it is there.
+	// Blocked names a directory on the way there that is not a directory at
+	// all, so nothing can sit at the path without replacing it.
+	Blocked string
+}
+
+// ResolveTreePath reads what a ref records at one path, a level at a time.
 //
-// Only needed where a tree came back truncated. Every other read goes through
-// the tree, which answers for every file at once.
-func (c *Client) GetRepositoryFile(
+// Needed where a whole-tree listing came back truncated, and exact where that
+// listing cannot be: one request per path segment, each answering what git
+// holds there rather than whether a file can be downloaded from it. Asking the
+// contents API instead would answer 404 for a path whose parent is a file,
+// which reads as "nothing is there" - and nothing-is-there is what turns a
+// write into a create that takes the parent out.
+func (c *Client) ResolveTreePath(
 	ctx context.Context,
 	owner, repo, ref, filePath string,
-) ([]byte, bool, error) {
-	content, err := c.getFileContentAtRef(ctx, owner, repo, filePath, ref, maxSyncedFile)
-	if err != nil {
-		return nil, false, err
+) (TreePath, error) {
+	segments := strings.Split(filePath, "/")
+	at := ref
+
+	for index, segment := range segments {
+		listing, err := c.readTree(ctx, owner, repo, at, false)
+		if err != nil {
+			return TreePath{}, err
+		}
+
+		entry, found := listing.Entries[segment]
+		if !found {
+			if listing.Truncated {
+				return TreePath{}, fmt.Errorf(
+					"%w: GitHub would not list all of %s", ErrResponseParse, at)
+			}
+
+			return TreePath{}, nil
+		}
+
+		if index == len(segments)-1 {
+			return TreePath{Entry: entry, Found: true}, nil
+		}
+
+		if !entry.Directory() {
+			return TreePath{Blocked: strings.Join(segments[:index+1], "/")}, nil
+		}
+
+		at = entry.Blob
 	}
 
-	// getFileContentAtRef answers a missing file with no content and no error,
-	// which is the shape every caller of it wants and the one this has to
-	// translate: a file that exists and is empty is not a file that is absent.
-	if content == nil {
-		return nil, false, nil
-	}
-
-	return content, true, nil
+	return TreePath{}, nil
 }
 
 // EditPullRequest rewrites a pull request's title and body.

@@ -1187,6 +1187,52 @@ var _ = Describe("Org sync [Unit]", func() {
 			],"truncated":false}`),
 		)
 
+		// GitHub declines to list a tree past a hundred thousand entries, and a
+		// path missing from a listing that stopped early is not a path a
+		// repository does not have. Reading it a level at a time settles it,
+		// and the levels answer what git holds rather than whether a file can
+		// be downloaded - which is the only read that can see a directory.
+		Describe("a repository too large to list", func() {
+			BeforeEach(func() {
+				stub.repoTree = `{"sha":"basetree","tree":[],"truncated":true}`
+			})
+
+			It("reads the paths it cares about a level at a time", func() {
+				target := grantContents()
+				stub.repoLevels = map[string]string{
+					"main": `{"tree":[{"path":"docs","type":"tree",` +
+						`"mode":"040000","sha":"d1"}]}`,
+					"d1": fmt.Sprintf(
+						`{"tree":[{"path":"guide.md","type":"blob","mode":"100644",`+
+							`"sha":%q,"size":8}]}`, orgsync.BlobID([]byte("# Guide\n"))),
+				}
+				configureKind(target, orgsync.KindFiles,
+					`{"files":[{"path":"docs/guide.md","content":"# Guide\n"}]}`)
+
+				plan(target)
+
+				// It already matches, so there is nothing to propose - which is
+				// the answer only an exact read can give
+				_, _, err := service.store.GetLiveSyncPlan(GinkgoT().Context(), target.ID)
+				Expect(err).To(MatchError(storage.ErrNotFound))
+			})
+
+			It("still sees a directory it would have written over", func() {
+				target := grantContents()
+				stub.repoLevels = map[string]string{
+					"main": `{"tree":[{"path":"docs","type":"blob",` +
+						`"mode":"100644","sha":"b1","size":4}]}`,
+				}
+				configureKind(target, orgsync.KindFiles,
+					`{"files":[{"path":"docs/guide.md","content":"# Guide\n"}]}`)
+
+				plan(target)
+
+				_, _, err := service.store.GetLiveSyncPlan(GinkgoT().Context(), target.ID)
+				Expect(err).To(MatchError(storage.ErrNotFound))
+			})
+		})
+
 		It("writes a path whose directory is a directory", func() {
 			target := grantContents()
 			stub.repoTree = `{"sha":"basetree","tree":[` +

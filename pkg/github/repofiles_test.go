@@ -2,7 +2,6 @@ package github_test
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -138,43 +137,89 @@ var _ = Describe("Repository files [Unit]", func() {
 		})
 	})
 
-	Describe("GetRepositoryFile", func() {
-		It("reads a file at a ref", func() {
+	// Only reached where a whole-tree listing came back truncated, and exact
+	// where that listing cannot be. Asking the contents API instead would
+	// answer 404 for a path whose parent is a file, which reads as "nothing is
+	// there" - and that is what turns a write into a create that takes the
+	// parent out.
+	Describe("ResolveTreePath", func() {
+		// One level per segment, so the fixtures are keyed by the tree each
+		// request asks for rather than by the path.
+		levels := func(root, docs string) map[string]string {
+			return map[string]string{
+				"/git/trees/main": root,
+				"/git/trees/d1":   docs,
+			}
+		}
+
+		It("reads what git holds at a nested path", func() {
+			server = record(levels(
+				`{"tree":[{"path":"docs","type":"tree","mode":"040000","sha":"d1"}]}`,
+				`{"tree":[{"path":"guide.md","type":"blob","mode":"100644",`+
+					`"sha":"b1","size":12}]}`,
+			))
+
+			found, err := client().ResolveTreePath(
+				context.Background(), "acme", "web", "main", "docs/guide.md")
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(found.Found).To(BeTrue())
+			Expect(found.Blocked).To(BeEmpty())
+			Expect(found.Entry).To(Equal(github.TreeEntry{
+				Mode: "100644", Blob: "b1", Size: 12,
+			}))
+		})
+
+		It("reports a path nothing is at", func() {
+			server = record(levels(
+				`{"tree":[{"path":"docs","type":"tree","mode":"040000","sha":"d1"}]}`,
+				`{"tree":[]}`,
+			))
+
+			found, err := client().ResolveTreePath(
+				context.Background(), "acme", "web", "main", "docs/guide.md")
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(found.Found).To(BeFalse())
+			Expect(found.Blocked).To(BeEmpty())
+		})
+
+		It("names a directory on the way there that is a file", func() {
 			server = record(map[string]string{
-				"/contents/README.md": `{"content":"` +
-					base64.StdEncoding.EncodeToString([]byte("hello\n")) + `"}`,
+				"/git/trees/main": `{"tree":[{"path":"docs","type":"blob",` +
+					`"mode":"100644","sha":"b1","size":4}]}`,
 			})
 
-			content, found, err := client().GetRepositoryFile(
-				context.Background(), "acme", "web", "main", "README.md")
+			found, err := client().ResolveTreePath(
+				context.Background(), "acme", "web", "main", "docs/guide.md")
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(found).To(BeTrue())
-			Expect(string(content)).To(Equal("hello\n"))
-			Expect(requests).To(ConsistOf(ContainSubstring("ref=main")))
+			Expect(found.Found).To(BeFalse())
+			Expect(found.Blocked).To(Equal("docs"))
 		})
 
-		It("reports a file that is not there", func() {
+		It("reads a repository with no commits as holding nothing", func() {
 			server = record(nil)
 
-			_, found, err := client().GetRepositoryFile(
+			found, err := client().ResolveTreePath(
 				context.Background(), "acme", "web", "main", "README.md")
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(found).To(BeFalse())
+			Expect(found.Found).To(BeFalse())
 		})
 
-		// A file that exists and is empty is not a file that is absent, and the
-		// read underneath answers both with no content.
-		It("reports an empty file as one that is there", func() {
-			server = record(map[string]string{"/contents/EMPTY": `{"content":""}`})
+		// A level that stops early cannot say a path is absent, and absent is
+		// the answer that becomes a create.
+		It("refuses to read absence out of a level GitHub cut short", func() {
+			server = record(map[string]string{
+				"/git/trees/main": `{"tree":[{"path":"other","type":"blob",` +
+					`"mode":"100644","sha":"b1"}],"truncated":true}`,
+			})
 
-			content, found, err := client().GetRepositoryFile(
-				context.Background(), "acme", "web", "main", "EMPTY")
+			_, err := client().ResolveTreePath(
+				context.Background(), "acme", "web", "main", "README.md")
 
-			Expect(err).NotTo(HaveOccurred())
-			Expect(found).To(BeTrue())
-			Expect(content).To(BeEmpty())
+			Expect(err).To(HaveOccurred())
 		})
 	})
 
