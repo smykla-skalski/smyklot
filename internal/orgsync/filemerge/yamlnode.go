@@ -446,6 +446,11 @@ func setKey(mapping *yaml.Node, key string, value *yaml.Node) {
 // `true`, `false`, `false` and `750`. That reader is compose, PyYAML, actionlint
 // or yamllint, and the key it mangles is the one that decides when a workflow
 // runs - `on:` is the commonest key in the files this synchronizes.
+//
+// Writing `"on":` into a workflow is the deliberate half of this. It is what
+// actionlint asks for and what GitHub's own parser reads the same way, and it
+// is the spelling that means one thing to every reader. Only keys an override
+// adds are affected: setKey reuses the key node a template already wrote.
 func keyNode(key string) *yaml.Node {
 	return &yaml.Node{
 		Kind: yaml.ScalarNode, Tag: tagString, Value: key, Style: styleFor(key),

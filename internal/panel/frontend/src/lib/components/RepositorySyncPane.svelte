@@ -82,9 +82,9 @@
    * Why the planner is not syncing this repository at all, and how long ago it
    * found that. Null where nothing is wrong.
    *
-   * Nothing here can be edited away in every case - a repository with no
-   * commits has nowhere to propose against - so it reads as a standing notice
-   * rather than as a validation message on a field.
+   * Not every reason can be edited away here - a repository with no commits
+   * has nowhere to propose against, whatever this form says - so it reads as a
+   * standing notice rather than as a validation message on a field.
    */
   const notSyncing = $derived.by(() => {
     if (stored.problem === undefined || stored.problem === '') return null;
