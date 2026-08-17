@@ -30,17 +30,27 @@ if [ -z "$named" ]; then
   exit 1
 fi
 
+# Twice is as wrong as never, and quieter. Because `-r` recurses, an area that
+# names a parent has already named everything under it: naming a child as well
+# runs that suite twice in the one job, and naming it from a second area runs it
+# again on a second runner. Both cost what the suite costs and neither reports
+# itself as anything but a job that got slower - which is how the storage area
+# came to run the SQLite conformance suite, its slowest, twice over.
 missing=""
+twice=""
 while read -r suite; do
   covered=""
-  while read -r dir; do
+  for dir in $named; do
     case "$suite/" in "$dir"/*)
-      covered="yes"
-      break
+      covered="${covered}${dir} "
       ;;
     esac
-  done <<<"$named"
-  [ -n "$covered" ] || missing="${missing}  ${suite}"$'\n'
+  done
+  if [ -z "$covered" ]; then
+    missing="${missing}  ${suite}"$'\n'
+  elif [ "$(echo "$covered" | wc -w)" -gt 1 ]; then
+    twice="${twice}  ${suite} is run by: ${covered}"$'\n'
+  fi
 done < <(git ls-files '*_test.go' | sed 's|/[^/]*$||' | sort -u)
 
 if [ -n "$missing" ]; then
@@ -50,7 +60,14 @@ if [ -n "$missing" ]; then
   exit 1
 fi
 
-echo "every Go suite is named by the go matrix in $workflow"
+if [ -n "$twice" ]; then
+  echo "the go matrix in $workflow runs these more than once:" >&2
+  printf '%s' "$twice" >&2
+  echo "ginkgo -r recurses, so drop whichever entry the other already covers" >&2
+  exit 1
+fi
+
+echo "every Go suite is named exactly once by the go matrix in $workflow"
 
 # The browser matrix names files rather than directories, and it has a second
 # way to go wrong the Go one does not: a file named twice runs twice, on two

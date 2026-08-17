@@ -70,6 +70,11 @@ runs:
           internal/panel/frontend/.svelte-kit/tsconfig.json
           internal/panel/frontend/dist
           internal/panelassets/generated/bundle.zip
+        # `tests/**` is excluded because vite never reads it: the browser suite
+        # drives the built panel, it is not built into it. Without that, a
+        # change to a test file rebuilt this bundle in all nine jobs that
+        # restore it, which is a quarter of a minute each for a file none of
+        # them compiles.
         key: >-
           ${{ runner.os }}-panel-bundle-${{ hashFiles(
             '.github/actions/toolchain/action.yaml',
@@ -78,6 +83,7 @@ runs:
             'internal/panel/frontend/**',
             '!internal/panel/frontend/node_modules/**',
             '!internal/panel/frontend/dist/**',
+            '!internal/panel/frontend/tests/**',
             'internal/panelassets/cmd/generate/**') }}
 
     # An archive carries the times its files had when it was written, and a

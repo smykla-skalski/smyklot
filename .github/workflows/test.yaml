@@ -40,6 +40,12 @@ jobs:
   # The areas are split by what they cost rather than by what they mean:
   # cmd/github-action and internal/panel are each about as expensive as
   # everything under pkg put together.
+  #
+  # `ginkgo -r` recurses from every directory it is given, so an area naming a
+  # parent has already named everything beneath it. Naming a child as well runs
+  # that child twice, and naming it from a second area runs it on a second
+  # runner - neither of which shows up as anything but a slow job.
+  # `scripts/check-test-matrix.sh` fails on both.
   go:
     name: go (${{ matrix.area }})
     runs-on: ubuntu-24.04
@@ -50,15 +56,12 @@ jobs:
           - area: service
             dirs: ./cmd/github-action
           - area: panel
-            dirs: ./internal/panel ./internal/panelassets ./internal/storage/transfer
+            dirs: ./internal/panel ./internal/panelassets
           - area: storage
-            dirs: >-
-              ./internal/storage ./internal/storage/sqlite
-              ./internal/storage/postgres
+            dirs: ./internal/storage
           - area: packages
             dirs: >-
               ./pkg ./internal/pendingci ./internal/orgsync ./internal/configgen
-              ./internal/storage/sqlstore
 
     steps:
       - name: Checkout code
