@@ -27,9 +27,11 @@ interface Selection {
   thumb: Box;
   row: Box;
   label: string;
+  /** Whether the rail is drawing its section headers, which is what puts the rows on a fraction. */
+  expanded: boolean;
 }
 
-/** Wide enough that the rail is expanded: it collapses itself below 1152px. */
+/** Wide enough that the rail is not collapsed for it: it collapses itself between 769 and 1152px. */
 const VIEWPORT = { width: 1500, height: 950 };
 
 let page: Page;
@@ -42,6 +44,7 @@ beforeAll(async () => {
   page = await panel.browser.newPage({ viewport: VIEWPORT });
   await visit(page, `${panel.origin}/root`);
   await page.locator('.view-links a.active').waitFor({ state: 'visible', timeout: 30_000 });
+  await expand(page);
   landed = await measure(page);
 
   /* Then somewhere else, because arriving and travelling are two different writes of the same two
@@ -57,6 +60,25 @@ afterAll(async () => {
   await panel?.close();
 });
 
+/**
+ * The rail as this is written about it: expanded.
+ *
+ * The viewport is not what decides that. The rail collapses itself between 769 and 1152px, and it
+ * collapses for a stored preference at any width - which the fixture account carries, so the
+ * console loaded here with a rail of icons whatever the viewport said. A collapsed rail draws no
+ * section headers, and the trimmed header is the whole reason the rows below it stand on a
+ * fraction, so the precondition below measured a whole pixel and the two checks after it passed
+ * over nothing. Expanded through the rail's own control rather than by seeding the preference: what
+ * a reader does to see this is what the test should do.
+ */
+async function expand(target: Page): Promise<void> {
+  const trigger = target.locator('.panel-sidebar .sidebar-collapse-trigger');
+  if ((await trigger.getAttribute('aria-expanded')) === 'true') return;
+  await trigger.click();
+  // The rail opens on a transition, and the thumb is measured onto a row that is still moving.
+  await target.waitForTimeout(SETTLE_MS);
+}
+
 async function measure(target: Page): Promise<Selection> {
   return target.evaluate(() => {
     const box = (element: Element | null): { top: number; height: number } => {
@@ -71,6 +93,7 @@ async function measure(target: Page): Promise<Selection> {
       thumb: box(document.querySelector('.panel-sidebar .nav-thumb')),
       row: box(row),
       label: row?.querySelector('.navigation-label')?.textContent ?? '',
+      expanded: document.querySelector('.panel-sidebar .panel-navigation.collapsed') === null,
     };
   });
 }
@@ -79,6 +102,9 @@ describe("the Root console rail's selection", () => {
   it('sits on a fraction of a pixel, which is what makes the rest of this worth asserting', () => {
     // The precondition, stated rather than assumed. Were the rows to land on whole pixels the
     // rounding below could not show, and every other check here would pass by measuring nothing.
+    // The rail is asserted first, because a collapsed one is the way this stops being true and
+    // "the rows are on whole pixels" does not say so.
+    expect(landed.expanded, 'the rail is collapsed, so it draws no section headers').toBe(true);
     expect(landed.row.top % 1, `the rows are on whole pixels: ${landed.row.top}`).not.toBe(0);
   });
 

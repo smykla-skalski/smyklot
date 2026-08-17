@@ -8,6 +8,10 @@
  * does a developer's machine. There is no skip if it is missing - a guard that stands down when it
  * cannot run is not a guard.
  */
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import type { Browser, Page } from 'playwright-core';
 import { chromium } from 'playwright-core';
 import { createServer, defaultClientConditions, type ViteDevServer } from 'vite';
@@ -63,6 +67,15 @@ export function addressOf(panel: Panel, route: string): string {
 
 export async function startPanel(): Promise<Panel> {
   process.env.SMYKLOT_PANEL_DEV_MOCK = '1';
+  /* A preference document of this run's own.
+     The mock keeps preferences in a file so a dev session survives a Vite restart, and that file
+     sits in the checkout. Every measurement here was therefore taken through whatever the developer
+     had last set in their own browser: the theme decides every colour this suite reads, and the
+     sidebar preference decides whether the rail draws section headers at all - which is how
+     `sidebar-selection` came to fail on a laptop and pass on CI, where no such file exists. An
+     empty directory is the state CI has, so it is the state to measure in. */
+  const preferences = mkdtempSync(join(tmpdir(), 'smyklot-panel-'));
+  process.env.SMYKLOT_PANEL_DEV_MOCK_PREFERENCES = join(preferences, 'preferences.json');
   /* The mock's queue runs its own reconciler, so that a deadline in development expires the way it
      expires in production and the merge can be watched. A sweep that measures a table cannot also
      have the table re-sort itself half way through the measurement, so it asks for the queue to
@@ -104,6 +117,7 @@ export async function startPanel(): Promise<Panel> {
       close: async () => {
         await launched.close();
         await server.close();
+        rmSync(preferences, { force: true, recursive: true });
       },
     };
   } catch (failure) {
@@ -112,6 +126,7 @@ export async function startPanel(): Promise<Panel> {
        otherwise skip the server behind it and leave the leak this exists to prevent, then report
        itself in place of the failure worth reading. */
     await Promise.allSettled([browser?.close(), server.close()]);
+    rmSync(preferences, { force: true, recursive: true });
     throw failure;
   }
 }

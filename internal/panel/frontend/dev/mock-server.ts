@@ -245,8 +245,24 @@ function opensBrowser(): boolean {
  * Vite restart, and each edit to this file, handed back a factory-fresh panel and you set them all
  * again. Only the preference document is kept: the rest of the mock is fixture data, and a fixture
  * that drifts across restarts is worse than one that resets.
+ *
+ * Which is why a test run must not read this one. The browser suite drives the same mock, so before
+ * this could be pointed elsewhere it measured the panel through whatever the developer had last set
+ * here - and one of those preferences is whether the rail is collapsed, which decides whether the
+ * rail draws section headers at all. `sidebar-selection` went red on a machine where a dev session
+ * had collapsed it and stayed green on CI, where the file does not exist. The theme is in here too,
+ * so every colour the suite measures was one dev preference away from being the other palette.
+ *
+ * Read on each call rather than resolved once: whether this module is imported before or after a
+ * caller sets the variable is a detail of Vite's plugin loading, and a value captured at import
+ * would make the isolation depend on it.
  */
-const PREFERENCES_FILE = resolve(dirname(fileURLToPath(import.meta.url)), '.mock-preferences.json');
+function preferencesFile(): string {
+  return (
+    process.env.SMYKLOT_PANEL_DEV_MOCK_PREFERENCES ??
+    resolve(dirname(fileURLToPath(import.meta.url)), '.mock-preferences.json')
+  );
+}
 
 interface DevState {
   prefs: MockState['prefs'];
@@ -257,7 +273,7 @@ interface DevState {
 
 function readDevState(): Partial<DevState> {
   try {
-    const parsed: unknown = JSON.parse(readFileSync(PREFERENCES_FILE, 'utf8'));
+    const parsed: unknown = JSON.parse(readFileSync(preferencesFile(), 'utf8'));
     return parsed !== null && typeof parsed === 'object' ? (parsed as Partial<DevState>) : {};
   } catch {
     // No file yet, or one this build cannot read. Starting clean beats refusing to serve.
@@ -267,7 +283,7 @@ function readDevState(): Partial<DevState> {
 
 function loadPreferences(): MockState['prefs'] {
   try {
-    const parsed: unknown = JSON.parse(readFileSync(PREFERENCES_FILE, 'utf8'));
+    const parsed: unknown = JSON.parse(readFileSync(preferencesFile(), 'utf8'));
     if (parsed === null || typeof parsed !== 'object') return { values: {}, rev: 0 };
     const { values, rev } = parsed as { values?: unknown; rev?: unknown };
     if (values === null || typeof values !== 'object') return { values: {}, rev: 0 };
@@ -311,7 +327,7 @@ const ISSUED_ID = /^mock-invitation-\d+$/u;
 function saveDevState(state: MockState): void {
   try {
     writeFileSync(
-      PREFERENCES_FILE,
+      preferencesFile(),
       `${JSON.stringify(
         {
           values: state.prefs.values,
