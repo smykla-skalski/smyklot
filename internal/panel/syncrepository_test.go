@@ -523,6 +523,53 @@ func TestSyncConfigSaysWhenTheRequestIsTooLarge(t *testing.T) {
 	}
 }
 
+// TestSyncOverrideDropsARefusalOnceTheKindIsOff keeps the pane from
+// contradicting its own switch.
+//
+// A state row is only rewritten while the planner is looking at the repository,
+// and it stops looking the moment the kind is switched off here - usually the
+// moment somebody switched it off *because* of the refusal. Left in, the reason
+// is rendered as a live notice directly under a control reading "Disabled".
+func TestSyncOverrideDropsARefusalOnceTheKindIsOff(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+	session := harness.signIn(t)
+
+	if err := harness.store.RecordSyncRepositoryState(
+		t.Context(), []orgsync.RepositoryState{{
+			RepositoryID: "repository-20", Kind: orgsync.KindFiles,
+			AppliedAt: harness.now, Problem: "these files cannot be composed",
+		}},
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	// Shown while the kind still runs here.
+	read := harness.request(t, http.MethodGet, overridePath+"files", nil, session)
+
+	var before syncOverrideDTO
+	if err := json.Unmarshal(read.Body.Bytes(), &before); err != nil {
+		t.Fatal(err)
+	}
+	if before.Problem == "" {
+		t.Fatal("a repository the planner refused was answered as though it were fine")
+	}
+
+	off := harness.request(t, http.MethodPut, overridePath+"files", strings.NewReader(
+		`{"enabled":false,"expected_revision":0,"document":{}}`), session)
+	if off.Code != http.StatusOK {
+		t.Fatalf("switching the sync off = %d %s", off.Code, off.Body.String())
+	}
+
+	var after syncOverrideDTO
+	if err := json.Unmarshal(off.Body.Bytes(), &after); err != nil {
+		t.Fatal(err)
+	}
+	if after.Problem != "" {
+		t.Errorf("problem = %q, wanted none: this repository has the kind switched off",
+			after.Problem)
+	}
+}
+
 // TestSyncOverrideReportsNoProblemWhereNothingHasLooked keeps a fresh
 // installation quiet. A repository nothing has planned yet is not a repository
 // with something wrong with it.

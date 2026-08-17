@@ -98,6 +98,17 @@ func (s *Server) writeSyncOverride(
 ) {
 	dto := syncOverrideToDTO(kind, override)
 
+	if switchedOff(override) {
+		// Switched off here, so the planner is not looking - and a row is only
+		// rewritten while it is. Whatever reason was recorded last is frozen at
+		// the moment somebody turned the kind off, which is usually the moment
+		// they turned it off *because* of, so it would be rendered as a live
+		// notice directly under a control reading "Disabled".
+		writeJSON(w, http.StatusOK, dto)
+
+		return
+	}
+
 	state, err := s.store.GetSyncRepositoryState(r.Context(), repositoryID, kind)
 
 	switch {
@@ -119,6 +130,12 @@ func (s *Server) writeSyncOverride(
 	}
 
 	writeJSON(w, http.StatusOK, dto)
+}
+
+// switchedOff reports a repository that has said no to this kind, which is the
+// one answer the planner reads before it reads anything else.
+func switchedOff(override *orgsync.RepositoryOverride) bool {
+	return override != nil && override.Enabled != nil && !*override.Enabled
 }
 
 // putSyncOverride saves it.
