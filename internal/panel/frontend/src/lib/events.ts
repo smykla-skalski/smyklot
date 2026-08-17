@@ -38,6 +38,15 @@ type PanelRevokedEvent = Extract<PanelStreamEvent, { type: 'session.revoked' }>;
 type PanelPrefsChangedEvent = Extract<PanelStreamEvent, { type: 'prefs.changed' }>;
 
 export interface PanelStreamHandlers {
+  /**
+   * Whether changes are currently arriving as they happen.
+   *
+   * `true` on the handshake reply, which is the first proof the socket is open
+   * and the server is talking; `false` when it closes, however it closed. What
+   * reads it decides how much to trust data with nothing correcting it - see
+   * `query-client`.
+   */
+  onLive?: (live: boolean) => void;
   onResync: () => void;
   onChange: (event: PanelChangeEvent) => void;
   onRevoked?: (event: Omit<PanelRevokedEvent, 'version' | 'type'>) => void;
@@ -106,6 +115,7 @@ export function openPanelStream(
       if (event.type === 'ready') {
         retryAttempt = 0;
         sendable = true;
+        handlers.onLive?.(true);
         handlers.onResync();
         if (event.prefs !== undefined) handlers.onPrefsReady?.(event.prefs);
         return;
@@ -135,6 +145,7 @@ export function openPanelStream(
       if (socket === opened) {
         socket = null;
         sendable = false;
+        handlers.onLive?.(false);
       }
       if (stopped || revoked || retryHandle !== undefined) return;
       const delay = Math.min(1_000 * 2 ** retryAttempt, 30_000);
@@ -152,6 +163,7 @@ export function openPanelStream(
       socket?.close(1000, 'panel closed');
       socket = null;
       sendable = false;
+      handlers.onLive?.(false);
     },
     send: (data: string): boolean => {
       if (socket === null || !sendable) return false;

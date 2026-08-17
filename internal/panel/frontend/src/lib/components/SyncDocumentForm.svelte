@@ -123,7 +123,10 @@
         {@render actions()}
       {/if}
       <button class="btn btn-signal" type="button" disabled={disabled || !changed} onclick={onSave}>
-        {saving ? 'Saving' : `Save ${noun}`}
+        <!-- Wrapped so `app.css` can trim it - see the same note in
+             `TableEmptyState`. Bare, this word sat 0.47px above the middle of
+             its own surface. -->
+        <span class="button-label">{saving ? 'Saving' : `Save ${noun}`}</span>
       </button>
       {#if changed}
         <p class="form-note">Nothing is changed on GitHub until a plan is approved</p>

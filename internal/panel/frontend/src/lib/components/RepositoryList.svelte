@@ -46,6 +46,7 @@
     RepositoryStateFilter,
     RepositorySummary,
   } from '../types';
+  import SortIndicator from './SortIndicator.svelte';
   import Chip from './Chip.svelte';
   import FileStatusIndicator from './FileStatusIndicator.svelte';
   import FilterMenu from './FilterMenu.svelte';
@@ -921,9 +922,7 @@
                   <div class="table-heading-layout">
                     <button class="sort-heading table-sort-button" onclick={toggleNameSort}>
                       <span class="cap-trim">Repository</span>
-                      <span class="sort-indicator" aria-hidden="true"
-                        ><Icon name="sort" size={14} /></span
-                      >
+                      <SortIndicator />
                     </button>
                     <FilterMenu
                       label="Overrides"
@@ -944,9 +943,7 @@
                   <div class="table-heading-layout">
                     <button class="sort-heading table-sort-button" onclick={toggleFileSort}>
                       <span class="cap-trim">File state</span>
-                      <span class="sort-indicator" aria-hidden="true"
-                        ><Icon name="sort" size={14} /></span
-                      >
+                      <SortIndicator />
                     </button>
                     <FilterMenu
                       label="File state"
@@ -964,9 +961,7 @@
                 <th class="sortable-heading" aria-sort={sortDirection('updated')}>
                   <button class="sort-heading table-sort-button" onclick={toggleUpdatedSort}>
                     <span class="cap-trim">Updated</span>
-                    <span class="sort-indicator" aria-hidden="true"
-                      ><Icon name="sort" size={14} /></span
-                    >
+                    <SortIndicator />
                   </button>
                 </th>
                 <th class="filterable-heading enablement-heading">
@@ -1045,7 +1040,17 @@
                        opened in a new tab, and the row's own handler defers to
                        it. What the pointer presses is 56px tall; what a reader
                        tabs to and a crawler follows is one link, not five. -->
-                    <a class="repo-copy" href={session.repositoryHref(repository.name)}>
+                    <!-- The full name on hover, because this one truncates and a
+                         reader who cannot read it has nowhere else to look. The
+                         native tooltip rather than the product's own: it is one
+                         per row for as many rows as the account has, and the
+                         accessible name already carries the whole string, so
+                         this is only for a pointer. -->
+                    <a
+                      class="repo-copy"
+                      href={session.repositoryHref(repository.name)}
+                      title={repository.name}
+                    >
                       <strong>{repository.name}</strong>
                       {#if repository.config_override_count > 0}
                         <span class="override-chip">
@@ -1135,14 +1140,34 @@
   .repository-panel {
     --local-control-height: var(--control-height-compact);
 
-    /* What the two control columns actually measure: the inheritance marker plus
-       the Enabled/Disabled switch, and the chevron, each with the cell's own
-       left and right padding. */
+    /*
+     * Four of these five columns hold something with a last value, so they are
+     * given exactly what that value measures and nothing flexes them. The
+     * repository name has no last value - GitHub allows a hundred characters -
+     * so it is the one that takes the slack, and the one that truncates.
+     *
+     * Each number below is the wider of two measurements taken in the browser:
+     * what the heading needs with its sort and filter controls in it, and what
+     * the widest cell content needs with the cell's own 12px of padding either
+     * side. A column sized to only one of those has a heading that wraps or a
+     * value that is cut off, depending on which one was forgotten.
+     */
+
+    /* Heading 152px; "Bypassed" with its dot is 84 + 24. */
+    --file-column: 9.5rem;
+    /* "15 September 2026" is 121 + 24, which beats the 123px heading. The cell
+       shows a relative time by default and a date when the reader asks for one,
+       so it is sized for the longer of the two rather than for today's. */
+    --updated-column: 9.25rem;
+    /* The inheritance marker plus the Enabled/Disabled switch, and the chevron,
+       each with the cell's own padding. The action column was 6.8125rem for a
+       button carrying the word "Configure"; the word is gone, and a column still
+       reserving room for it is 69px of nothing at the end of every row. */
     --enablement-column: 13.25rem;
-    /* A 16px chevron and the cell's own padding either side. It was 6.8125rem
-       for a button carrying the word "Configure"; the word is gone, and a column
-       still reserving room for it is 69px of nothing at the end of every row. */
     --action-column: 2.5rem;
+    /* Around 22 characters of the mono face - enough to tell two repositories
+       apart before the ellipsis, and above the 167px the heading needs. */
+    --repository-column-floor: 11rem;
 
     background: transparent;
     border: 0;
@@ -1267,28 +1292,34 @@
      `--text-muted` where the other five used `--dim`, which is the drift the
      shared rule exists to end. */
 
+  /* The same five widths the grid above uses, because they are the same five
+     columns: `table-layout: fixed` takes a length as readily as a percentage,
+     and a column's content does not change size because the layout algorithm
+     did. `auto` on the first is how a fixed table says "take what is left",
+     which is the same job the `1fr` does up there.
+
+     These were six percentages summing to 77%, for a table that has had five
+     columns for as long as this file has existed. The sixth never matched
+     anything, and a fixed table whose widths do not add up scales all of them to
+     fit - so every column here was 1.3 times the number written beside it. */
   th:first-child {
-    width: 27%;
+    width: auto;
   }
 
   th:nth-child(2) {
-    width: 11%;
+    width: var(--file-column);
   }
 
   th:nth-child(3) {
-    width: 12%;
+    width: var(--updated-column);
   }
 
   th:nth-child(4) {
-    width: 14%;
+    width: var(--enablement-column);
   }
 
   th:nth-child(5) {
-    width: 13%;
-  }
-
-  th:nth-child(6) {
-    width: 23%;
+    width: var(--action-column);
   }
 
   th:first-child,
@@ -1337,9 +1368,15 @@
     padding-left: 0;
   }
 
+  /* No `background` here. A button's own ground is reset once, on
+     `.table-sort-button` in `app.css`, and a component-scoped `transparent`
+     carries two classes - exactly what `.table-sort-button:hover` carries - so
+     coming later in the cascade it won, and these headings had no hover at all.
+     The sorted one appeared to, because the brand rule that used to sit beside
+     it carried a third. That difference is what read as "the sorted column
+     hovers differently". */
   .sort-heading {
     align-items: center;
-    background: transparent;
     border: 0;
     color: inherit;
     display: flex;
@@ -1361,32 +1398,7 @@
     padding-left: var(--space-3);
   }
 
-  .sort-indicator {
-    color: var(--text-muted);
-    display: grid;
-    opacity: 0;
-    place-items: center;
-    transition: opacity var(--duration-fast) var(--ease-standard);
-  }
-
-  .sort-heading:hover .sort-indicator,
-  .sort-heading:focus-visible .sort-indicator {
-    opacity: 0.55;
-  }
-
-  th[aria-sort='ascending'] .sort-indicator,
-  th[aria-sort='descending'] .sort-indicator {
-    opacity: 1;
-  }
-
-  th[aria-sort='ascending'] .sort-indicator {
-    color: var(--brand-action-text);
-  }
-
-  th[aria-sort='descending'] .sort-indicator {
-    color: var(--brand-action-text);
-    transform: rotate(180deg);
-  }
+  /* The arrow's own rules are shared - see `.sort-indicator` in `app.css`. */
 
   .repository-row {
     transition: background-color var(--duration-fast) var(--ease-standard);
@@ -1424,17 +1436,27 @@
     .repositories thead tr,
     .repositories tbody tr {
       display: grid;
-      /* The two columns on the right hold controls of a known size, so they get
-         exactly that and no share of the table: a fraction left the switch and
-         the button against a gap that grew with the window. Everything else goes
-         to the three text columns, in the approved catalog's 2:1:1.4.
+      /* One flexible track, and it is the one whose content has no limit.
+         Everything else is a fixed length - see the numbers and how they were
+         measured at the top of this block.
+
+         The floor on that track is the whole point. A bare `1fr` is
+         `minmax(auto, 1fr)`, and `auto` resolves to the track's min-content,
+         which for a `nowrap` mono name is the entire name: a hundred-character
+         repository took 812px of a 977px row and pushed the other four columns
+         off the end of it. With a floor the track can shrink instead, and the
+         cell's own clip-and-ellipsis does what it was written to do.
 
          Fixed lengths rather than `max-content`: every row is its own grid, so a
          content-sized track is measured per row and the header stopped agreeing
-         with the body about where a column began. The two numbers are the
-         controls' own widths plus the cell padding, and
-         tests/table-columns.test.ts holds them to that. */
-      grid-template-columns: 2fr 1fr 1.4fr var(--enablement-column) var(--action-column);
+         with the body about where a column began.
+         tests/browser/table-columns.test.ts holds every column to its content. */
+      grid-template-columns:
+        minmax(var(--repository-column-floor), 1fr)
+        var(--file-column)
+        var(--updated-column)
+        var(--enablement-column)
+        var(--action-column);
       width: 100%;
     }
 
@@ -1711,6 +1733,12 @@
       font-size: var(--font-size-body);
       font-weight: 700;
       overflow: visible;
+      /* A repository name has no spaces in it, so `normal` wrapping has nowhere
+         to break and the line simply runs on: a hundred-character name needed
+         423px of a 325px card and 98px of it was cut off - no ellipsis, because
+         nothing here truncates, just gone. `anywhere` breaks mid-run, which is
+         what a card can afford and a table row cannot. */
+      overflow-wrap: anywhere;
       text-box: trim-both cap alphabetic;
       white-space: normal;
     }

@@ -24,6 +24,7 @@
   import Plate from '#lib/components/Plate.svelte';
   import SignInPage from '#lib/components/SignInPage.svelte';
   import NightPage from '#lib/components/NightPage.svelte';
+  import PanelBoot from '#lib/components/PanelBoot.svelte';
 
   import '../app.css';
 
@@ -33,8 +34,12 @@
   const build = readPanelBuild(document);
   const pageFailure = readPanelFailure(document);
 
-  const queryClient = createPanelQueryClient();
-  const session = new PanelSession(api, build, queryClient);
+  /* One box, read by the query client and written by the stream below. It says
+     whether changes are arriving as they happen, which is what decides how long
+     an answer is trusted - see `query-client`. */
+  const streamLiveness = { live: false };
+  const queryClient = createPanelQueryClient(streamLiveness);
+  const session = new PanelSession(api, build, queryClient, streamLiveness);
   setPanelSession(session);
   const viewerQuery = createQuery(
     () => ({
@@ -129,24 +134,48 @@
   });
 
   // --- WebSocket stream ---
+  /**
+   * The stream belongs to the session, not to the route.
+   *
+   * This is the whole dependency, as a value rather than as the reads that
+   * produce it. The condition used to be written inside the effect, where
+   * `session.isInvitation` reads the pathname - so every navigation re-ran it,
+   * closed the socket and opened another. A new socket answers with `ready`, and
+   * `ready` is a full resync, so moving between two views refetched everything
+   * on both of them: the panel was telling itself its data was stale because it
+   * had just reconnected to say so. Measured at one new socket per navigation.
+   *
+   * A derived only propagates when its value changes, and this one stays `true`
+   * across every address the stream should be open on.
+   */
+  const streamWanted = $derived(session.streamReady && !session.isInvitation);
+
   $effect(() => {
-    if (!session.streamReady || session.isInvitation) return;
-    const stream = api.openStream(
-      {
-        onResync: () => session.refreshAccessFromStream(),
-        onChange: (event) => session.invalidateChange(event),
-        onRevoked: (event) => session.revokeAccess(event),
-        onPrefsReady: (info) => session.prefs.onPrefsReady(info),
-        onPrefsChanged: (event) => session.prefs.onPrefsChanged(event),
-        onPrefsRejected: (keys) => session.prefs.onPrefsRejected(keys),
-      },
-      session.prefs.dialQuery,
-    );
-    session.prefs.attach(stream.send);
-    return () => {
-      session.prefs.detach();
-      stream.stop();
-    };
+    if (!streamWanted) return;
+
+    /* Nothing inside is a dependency. `dialQuery` is read from the preference
+       state the stream itself then writes to, which is the other way this effect
+       could come to re-run on its own output. */
+    return untrack(() => {
+      const stream = api.openStream(
+        {
+          onLive: (live) => session.setStreamLive(live),
+          onResync: () => session.refreshAccessFromStream(),
+          onChange: (event) => session.invalidateChange(event),
+          onRevoked: (event) => session.revokeAccess(event),
+          onPrefsReady: (info) => session.prefs.onPrefsReady(info),
+          onPrefsChanged: (event) => session.prefs.onPrefsChanged(event),
+          onPrefsRejected: (keys) => session.prefs.onPrefsRejected(keys),
+        },
+        session.prefs.dialQuery,
+      );
+      session.prefs.attach(stream.send);
+
+      return () => {
+        session.prefs.detach();
+        stream.stop();
+      };
+    });
   });
 
   // --- Prefs live-sync to app-level controls ---
@@ -189,6 +218,10 @@
     <ErrorPage {api} base={basePath} {build} failure={pageFailure} />
   {:else if session.isInvitation}
     {@render children()}
+  {:else if session.loading}
+    <!-- Which layout this is has not been answered yet, so neither is drawn.
+         See `PanelBoot` for what the shell did instead. -->
+    <PanelBoot />
   {:else if session.signedOut}
     <SignInPage {api} {build} ended={session.sessionEnded} />
   {:else if session.awaitingInstallation}

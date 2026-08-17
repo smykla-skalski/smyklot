@@ -43,6 +43,7 @@ import type { PanelChangeEvent } from './events';
 import type { SessionEnded } from './panel-session';
 import { DEFAULT_THEME_DISPLAY, isThemeDisplay, type ThemeDisplay } from './preferences';
 import { createPrefsSync, type PrefsSync } from './preferences-sync';
+import type { StreamLiveness } from './query-client';
 import {
   panelDocumentTitle,
   rootSection,
@@ -85,6 +86,8 @@ export class PanelSession {
   failure = $state<PanelFailure | null>(null);
   notificationUnread = $state(0);
   streamReady = $state(false);
+  /** Set from the stream's handshake; see `StreamLiveness`. */
+  private readonly stream: StreamLiveness;
   sessionEnded = $state<SessionEnded | null>(null);
   identityBar = $state<ReturnType<typeof import('./components/IdentityBar.svelte').default> | null>(
     null,
@@ -98,10 +101,18 @@ export class PanelSession {
   readonly narrowRail = new MediaQuery('(min-width: 48.0625rem) and (max-width: 72rem)');
   readonly systemDarkTheme = new MediaQuery('prefers-color-scheme: dark');
 
-  constructor(api: PanelApi, build: PanelBuild, queryClient: QueryClient) {
+  constructor(
+    api: PanelApi,
+    build: PanelBuild,
+    queryClient: QueryClient,
+    /* The same box the query client reads. Handed in rather than owned here
+       because the client is built first and the two have to agree. */
+    stream: StreamLiveness = { live: false },
+  ) {
     this.api = api;
     this.build = build;
     this.queryClient = queryClient;
+    this.stream = stream;
     this.prefs = createPrefsSync();
     this.sidebarCollapsed = this.prefs.get('sidebar') === 'collapsed';
     this.theme = this.storedTheme();
@@ -563,6 +574,20 @@ export class PanelSession {
   }
 
   // --- Stream ---
+
+  /**
+   * The stream is up, or it is not.
+   *
+   * What reads this is how long an answer is trusted: with changes arriving as
+   * they happen there is nothing for a clock to add, and without them there is
+   * nothing else. Losing the socket therefore puts the panel back to catching up
+   * on its own, and getting it back stops that again - and the reconnect replies
+   * `ready`, which `onResync` turns into a full refresh, so nothing missed while
+   * it was down stays missed.
+   */
+  setStreamLive(live: boolean): void {
+    this.stream.live = live;
+  }
 
   refreshAccessFromStream(): void {
     void this.queryClient.invalidateQueries({ queryKey: ['viewer'] });

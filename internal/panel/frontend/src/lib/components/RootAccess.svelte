@@ -25,6 +25,7 @@
     UpdateRootUserInput,
   } from '../types';
   import ActionMenu, { type ActionMenuItem } from './ActionMenu.svelte';
+  import SortIndicator from './SortIndicator.svelte';
   import Avatar from './Avatar.svelte';
   import Chip, { type ChipTone } from './Chip.svelte';
   import FilterMenu from './FilterMenu.svelte';
@@ -594,7 +595,7 @@
                     type="button"
                     onclick={() => toggleSort('name')}
                   >
-                    <span>User</span><Icon name="sort" size={14} />
+                    <span>User</span><SortIndicator />
                   </button>
                 </th>
                 <th scope="col" aria-sort={sortDirection('role')}>
@@ -604,7 +605,7 @@
                       type="button"
                       onclick={() => toggleSort('role')}
                     >
-                      <span>System role</span><Icon name="sort" size={14} />
+                      <span>System role</span><SortIndicator />
                     </button>
                     <FilterMenu
                       label="System role"
@@ -644,7 +645,7 @@
                     type="button"
                     onclick={() => toggleSort('last_login')}
                   >
-                    <span>Last login</span><Icon name="sort" size={14} />
+                    <span>Last login</span><SortIndicator />
                   </button>
                 </th>
                 <th scope="col"><span class="visually-hidden">Actions</span></th>
@@ -1166,8 +1167,10 @@
     height: 100%;
   }
 
+  /* No `background` here - reset once on `.table-sort-button` in `app.css`. A
+     component-scoped `transparent` ties with the shared `:hover` on specificity
+     and comes after it, so this heading had no hover at all. */
   .table-sort-button {
-    background: transparent;
     border: 0;
     color: inherit;
     font: inherit;
@@ -1177,26 +1180,9 @@
     width: 100%;
   }
 
-  .table-sort-button :global(svg) {
-    opacity: 0;
-    transition:
-      opacity var(--duration-fast) var(--ease-standard),
-      transform var(--duration-fast) var(--ease-standard);
-  }
-
-  .table-sort-button:hover :global(svg),
-  .table-sort-button:focus-visible :global(svg) {
-    opacity: 0.55;
-  }
-
-  th[aria-sort='ascending'] .table-sort-button :global(svg),
-  th[aria-sort='descending'] .table-sort-button :global(svg) {
-    opacity: 1;
-  }
-
-  th[aria-sort='descending'] .table-sort-button :global(svg) {
-    transform: rotate(180deg);
-  }
+  /* The arrow's own rules are shared - see `.sort-indicator` in `app.css`. This
+     was a fourth copy of them, written against the raw `<svg>` inside the
+     button. */
 
   .heading-layout {
     justify-content: space-between;

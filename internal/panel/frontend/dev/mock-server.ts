@@ -417,6 +417,23 @@ function seed(): MockState {
       }),
     );
   }
+  /* The widest a repository name is allowed to be. GitHub caps a name at 100
+     characters, so this is not an unlikely value - it is the last one, and a
+     column sized for the names that happen to be in a demo is a column that has
+     never met the one that matters. `tests/browser/table-columns.test.ts` reads
+     this row: with the name column laid out in bare `fr` this pushed every other
+     column off the end of the row. */
+  organization.repositories.push(
+    repositorySeed(organization.value, {
+      id: '4099',
+      name: 'a'.repeat(46) + '-the-longest-name-github-will-accept-' + 'z'.repeat(18),
+      enabledOverride: null,
+      filePatch: {},
+      panelPatch: {},
+      bypass: false,
+      updatedAt: iso(-9 * 86_400_000),
+    }),
+  );
   organization.audit = [
     auditSeed(
       'audit-1',

@@ -31,6 +31,7 @@
     HistorySort,
     Page,
   } from '../types';
+  import SortIndicator from './SortIndicator.svelte';
   import Avatar from './Avatar.svelte';
   import FilterMenu from './FilterMenu.svelte';
   import HistoryDisplayMenu from './HistoryDisplayMenu.svelte';
@@ -785,13 +786,7 @@
                   onclick={() => toggleSort('actor')}
                 >
                   <span class="cap-trim">Actor</span>
-                  <span
-                    class:descending={sortDirection('actor') === 'descending'}
-                    class="sort-indicator"
-                    aria-hidden="true"
-                  >
-                    <Icon name="sort" size={14} />
-                  </span>
+                  <SortIndicator />
                 </button>
               </th>
               <th scope="col" aria-sort={sortDirection('target')}>
@@ -802,13 +797,7 @@
                     onclick={() => toggleSort('target')}
                   >
                     <span class="cap-trim">Target</span>
-                    <span
-                      class:descending={sortDirection('target') === 'descending'}
-                      class="sort-indicator"
-                      aria-hidden="true"
-                    >
-                      <Icon name="sort" size={14} />
-                    </span>
+                    <SortIndicator />
                   </button>
                   {#if context === 'installation'}
                     <FilterMenu
@@ -833,13 +822,7 @@
                     onclick={() => toggleSort('change')}
                   >
                     <span class="cap-trim">Change</span>
-                    <span
-                      class:descending={sortDirection('change') === 'descending'}
-                      class="sort-indicator"
-                      aria-hidden="true"
-                    >
-                      <Icon name="sort" size={14} />
-                    </span>
+                    <SortIndicator />
                   </button>
                   {#if context === 'root'}
                     <FilterMenu
@@ -875,13 +858,7 @@
                   onclick={() => toggleSort('when')}
                 >
                   <span class="cap-trim">When</span>
-                  <span
-                    class:descending={sortDirection('when') === 'descending'}
-                    class="sort-indicator"
-                    aria-hidden="true"
-                  >
-                    <Icon name="sort" size={14} />
-                  </span>
+                  <SortIndicator />
                 </button>
               </th>
             </tr>
@@ -989,13 +966,7 @@
                     onclick={() => toggleSort('status')}
                   >
                     <span class="cap-trim">Status</span>
-                    <span
-                      class:descending={sortDirection('status') === 'descending'}
-                      class="sort-indicator"
-                      aria-hidden="true"
-                    >
-                      <Icon name="sort" size={14} />
-                    </span>
+                    <SortIndicator />
                   </button>
                   <FilterMenu
                     label="Status"
@@ -1017,13 +988,7 @@
                   onclick={() => toggleSort('repository')}
                 >
                   <span class="cap-trim">Repository</span>
-                  <span
-                    class:descending={sortDirection('repository') === 'descending'}
-                    class="sort-indicator"
-                    aria-hidden="true"
-                  >
-                    <Icon name="sort" size={14} />
-                  </span>
+                  <SortIndicator />
                 </button>
               </th>
               <th scope="col">
@@ -1036,13 +1001,7 @@
                   onclick={() => toggleSort('when')}
                 >
                   <span class="cap-trim">When</span>
-                  <span
-                    class:descending={sortDirection('when') === 'descending'}
-                    class="sort-indicator"
-                    aria-hidden="true"
-                  >
-                    <Icon name="sort" size={14} />
-                  </span>
+                  <SortIndicator />
                 </button>
               </th>
             </tr>
@@ -1397,9 +1356,11 @@
     margin-inline: var(--space-1);
   }
 
+  /* No `background` here - it is reset once on `.table-sort-button` in
+     `app.css`. A component-scoped `transparent` ties with the shared `:hover`
+     on specificity and comes later, so it silently removed the hover. */
   .sort-button {
     align-items: center;
-    background: transparent;
     border: 0;
     color: inherit;
     display: flex;
@@ -1430,28 +1391,7 @@
     padding-right: var(--space-3);
   }
 
-  .sort-indicator {
-    color: var(--text-muted);
-    display: grid;
-    opacity: 0;
-    place-items: center;
-    transition: opacity var(--duration-fast) var(--ease-standard);
-  }
-
-  .sort-button:hover .sort-indicator,
-  .sort-button:focus-visible .sort-indicator {
-    opacity: 0.55;
-  }
-
-  th[aria-sort='ascending'] .sort-indicator,
-  th[aria-sort='descending'] .sort-indicator {
-    color: var(--brand-action-text);
-    opacity: 1;
-  }
-
-  .sort-indicator.descending {
-    transform: rotate(180deg);
-  }
+  /* The arrow's own rules are shared - see `.sort-indicator` in `app.css`. */
 
   /* One repository token for the whole panel: the audit table's Target and the
      failure table's Repository name the same thing, so they wear the same mono

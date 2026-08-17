@@ -393,7 +393,8 @@
             disabled={approving}
             onclick={() => onApprove(approved.id, approved.digest)}
           >
-            {approving ? 'Approving' : 'Apply these changes'}
+            <!-- Trimmed through `.button-label`; see `TableEmptyState`. -->
+            <span class="button-label">{approving ? 'Approving' : 'Apply these changes'}</span>
           </button>
         </div>
       {/if}

@@ -39,6 +39,25 @@ describe('Root merge-after-CI timing', () => {
     });
 
     try {
+      /* No stream, which is what makes the refetch below happen at all.
+         --------------------------------------------------------------
+         What this measures is that a refetch arriving under the reader does not
+         take away what they have typed, and the way it provokes one is to move
+         the clock past the staleness and raise a visibility change. Both of
+         those are the panel's fallback: while the stream is up it is told when
+         something changes, so nothing is stale on a timer and focus refetches
+         nothing - and this waited thirty seconds for a request that was never
+         going to be made.
+
+         Refusing the socket puts the panel back on the clock, which is the state
+         this was always testing. It also covers the fallback itself: with the
+         stream gone the panel has to start catching up on its own again.
+
+         `routeWebSocket`, not `route`: the latter is HTTP only and lets the
+         handshake straight through, so a socket "blocked" that way is a socket
+         that connected - which is exactly how this looked when it first failed,
+         a panel with a live stream refusing to refetch anything. */
+      await page.routeWebSocket(/\/api\/v1\/events/u, (socket) => socket.close());
       await page.goto(`${panel.origin}/root/settings`, { waitUntil: 'domcontentloaded' });
       const source = page.getByRole('group', {
         name: 'Merge-after-CI quiet period source',

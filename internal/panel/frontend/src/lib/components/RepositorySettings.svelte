@@ -13,6 +13,7 @@
   import HelpTip from './HelpTip.svelte';
   import Icon from './Icon.svelte';
   import PanelHeader from './PanelHeader.svelte';
+  import Plate from './Plate.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
 
   /**
@@ -168,106 +169,118 @@
       aria-label="{sectionLabel(section)} settings for {repository.name}"
     >
       {#if section === 'file'}
-        <section class="file-pane" aria-labelledby="repository-{repository.id}-file-heading">
-          <h3 id="repository-{repository.id}-file-heading" class="visually-hidden">
-            Repository file
-          </h3>
-          <div class={['file-card', detail.config_file_error !== undefined && 'file-problem']}>
-            <!-- 14px glyph in an 18px slot, the same pairing every other icon
+        <Plate label="Repository file">
+          {#snippet status()}
+            <div class="pane-status">
+              <Chip small tone={FILE_STATUS_TONES[detail.repository.config_file_status]} dot>
+                {detail.repository.config_file_status.slice(0, 1).toUpperCase() +
+                  detail.repository.config_file_status.slice(1)}
+              </Chip>
+              <HelpTip
+                id="repository-file-help-{repository.id}"
+                label="About the repository file"
+                text="Settings Smyklot reads from the repository itself, which override account defaults"
+              />
+            </div>
+          {/snippet}
+          <div class="file-pane">
+            <div class={['file-card', detail.config_file_error !== undefined && 'file-problem']}>
+              <!-- 14px glyph in an 18px slot, the same pairing every other icon
                  slot in the product uses. -->
-            <span class="file-card-icon status-{detail.repository.config_file_status}">
-              <Icon name="file" size={14} />
-            </span>
-            <div class="f-copy">
-              <strong>Configuration path</strong>
-              <!-- The file is looked for in four places plus a chosen one, so
+              <span class="file-card-icon status-{detail.repository.config_file_status}">
+                <Icon name="file" size={14} />
+              </span>
+              <div class="f-copy">
+                <strong>Configuration path</strong>
+                <!-- The file is looked for in four places plus a chosen one, so
                    this names the one that won rather than the one that used to
                    be the only candidate. -->
-              <div><code class="mono">{detail.config_file_path || '—'}</code></div>
-              {#if detail.config_file_superseded !== undefined}
-                <p class="f-note">
-                  Also present and not read: {detail.config_file_superseded.join(', ')}
-                </p>
-              {/if}
-              {#if detail.config_file_error !== undefined}
-                <p>{detail.config_file_error}</p>
-              {/if}
-              {#if detail.config_migration === 'proposed'}
-                <p class="f-note">
-                  Smyklot proposed moving this to TOML{#if detail.config_migration_pr !== undefined}&nbsp;in
-                    #{detail.config_migration_pr}{/if}
-                </p>
-              {:else if detail.config_migration !== 'none'}
-                <p class="f-note">
-                  {detail.config_migration === 'declined'
-                    ? 'The TOML migration was closed, so Smyklot will not ask again'
-                    : 'GitHub refused the TOML migration, so Smyklot will not ask again'}
-                  <button type="button" class="f-again" {disabled} onclick={onResetMigration}>
-                    Let it ask
-                  </button>
-                </p>
-              {/if}
+                <div><code class="mono">{detail.config_file_path || '—'}</code></div>
+                {#if detail.config_file_superseded !== undefined}
+                  <p class="f-note">
+                    Also present and not read: {detail.config_file_superseded.join(', ')}
+                  </p>
+                {/if}
+                {#if detail.config_file_error !== undefined}
+                  <p>{detail.config_file_error}</p>
+                {/if}
+                {#if detail.config_migration === 'proposed'}
+                  <p class="f-note">
+                    Smyklot proposed moving this to TOML{#if detail.config_migration_pr !== undefined}&nbsp;in
+                      #{detail.config_migration_pr}{/if}
+                  </p>
+                {:else if detail.config_migration !== 'none'}
+                  <p class="f-note">
+                    {detail.config_migration === 'declined'
+                      ? 'The TOML migration was closed, so Smyklot will not ask again'
+                      : 'GitHub refused the TOML migration, so Smyklot will not ask again'}
+                    <button type="button" class="f-again" {disabled} onclick={onResetMigration}>
+                      Let it ask
+                    </button>
+                  </p>
+                {/if}
+              </div>
             </div>
-            <Chip tone={FILE_STATUS_TONES[detail.repository.config_file_status]} dot>
-              {detail.repository.config_file_status.slice(0, 1).toUpperCase() +
-                detail.repository.config_file_status.slice(1)}
-            </Chip>
-          </div>
-          <div class="override-row">
-            <span class="o-label">
-              <!-- Trimmed, so the words centre against the 18px help slot on
+            <div class="override-row">
+              <span class="o-label">
+                <!-- Trimmed, so the words centre against the 18px help slot on
                    their caps rather than on a taller line box. -->
-              <span class="cap-trim">Bypass file</span>
-              <HelpTip
-                id="repository-bypass-help-{repository.id}"
-                label="About bypassing the repository file"
-                text="Repository-file settings are ignored and the exception is recorded in Audit"
+                <span class="cap-trim">Bypass file</span>
+                <HelpTip
+                  id="repository-bypass-help-{repository.id}"
+                  label="About bypassing the repository file"
+                  text="Repository-file settings are ignored and the exception is recorded in Audit"
+                />
+              </span>
+              <SegmentedControl
+                name="repository-bypass-{repository.id}"
+                label="Repository file handling"
+                options={FILE_MODE_OPTIONS}
+                value={detail.ignore_repository_file ? 'bypass' : 'observe'}
+                {disabled}
+                compact
+                onSelect={(value) => onBypass(value === 'bypass')}
               />
-            </span>
-            <SegmentedControl
-              name="repository-bypass-{repository.id}"
-              label="Repository file handling"
-              options={FILE_MODE_OPTIONS}
-              value={detail.ignore_repository_file ? 'bypass' : 'observe'}
-              {disabled}
-              compact
-              onSelect={(value) => onBypass(value === 'bypass')}
-            />
+            </div>
+            {#if overriddenBehaviorKeys(detail).length > 0}
+              <ConfigEditor
+                patch={detail.config_patch}
+                inherited={detail.inherited_config}
+                scope="repository"
+                idPrefix="{repository.id}-file"
+                section="behavior"
+                only={overriddenBehaviorKeys(detail)}
+                {disabled}
+                onSave={onSaveConfig}
+              />
+            {/if}
           </div>
-          {#if overriddenBehaviorKeys(detail).length > 0}
-            <ConfigEditor
-              patch={detail.config_patch}
-              inherited={detail.inherited_config}
-              scope="repository"
-              idPrefix="{repository.id}-file"
-              section="behavior"
-              only={overriddenBehaviorKeys(detail)}
-              {disabled}
-              onSave={onSaveConfig}
-            />
-          {/if}
-        </section>
+        </Plate>
       {:else}
-        <div class="override-heading">
-          <div>
-            <strong>{section === 'behavior' ? 'Behavior overrides' : 'Command overrides'}</strong>
-            <p>Only values changed here override inherited configuration</p>
-          </div>
-          <HelpTip
-            id="repository-overrides-{repository.id}-{section}"
-            label="About repository overrides"
-            text="Only settings changed here override configuration defaults from Settings and repository-file settings"
+        {@const count = sectionCount(detail, section)}
+        <Plate label={section === 'behavior' ? 'Behavior overrides' : 'Command overrides'}>
+          {#snippet status()}
+            <div class="pane-status">
+              {#if count > 0}
+                <Chip small>{count} {count === 1 ? 'override' : 'overrides'}</Chip>
+              {/if}
+              <HelpTip
+                id="repository-overrides-{repository.id}-{section}"
+                label="About repository overrides"
+                text="Only settings changed here override configuration defaults from Settings and repository-file settings"
+              />
+            </div>
+          {/snippet}
+          <ConfigEditor
+            patch={detail.config_patch}
+            inherited={detail.inherited_config}
+            scope="repository"
+            idPrefix={repository.id}
+            {section}
+            {disabled}
+            onSave={onSaveConfig}
           />
-        </div>
-        <ConfigEditor
-          patch={detail.config_patch}
-          inherited={detail.inherited_config}
-          scope="repository"
-          idPrefix={repository.id}
-          {section}
-          {disabled}
-          onSave={onSaveConfig}
-        />
+        </Plate>
       {/if}
     </div>
   {/if}
@@ -460,21 +473,13 @@
     gap: 0.45rem;
   }
 
-  .override-heading {
+  /* The status corner of a pane's plate: whatever the pane has to report, then
+     its help. The same shape the account's own Settings plate uses, because
+     these are the same settings one level down. */
+  .pane-status {
     align-items: center;
     display: flex;
-    justify-content: space-between;
-    margin-bottom: var(--space-3);
-  }
-
-  .override-heading strong {
-    font-size: var(--font-size-title);
-  }
-
-  .override-heading p {
-    color: var(--text-muted);
-    font-size: var(--font-size-meta);
-    margin: var(--space-1) 0 0;
+    gap: var(--space-2);
   }
 
   .file-problem strong,

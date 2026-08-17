@@ -556,6 +556,9 @@
   }
 
   .selection-indicator {
+    /* Hidden until something is selected - see the rule below the transition. */
+    display: none;
+
     background: var(--selected-bg);
     border-radius: calc(var(--r-ctl) - 2px);
     box-shadow: var(--seg-shadow);
@@ -575,6 +578,28 @@
 
   fieldset:not(.selection-ready) .selection-indicator {
     transition: none;
+  }
+
+  /* The thumb is drawn only when something is selected.
+     --------------------------------------------------
+     A control can legitimately have nothing chosen: the inherit state, where the
+     value comes from the account and the option that would apply is drawn as a
+     dashed outline instead. The thumb was still in the page for it, measured to
+     `--segment-width: 0px`.
+
+     Zero width is not invisible. The box keeps its background - which paints
+     nothing at zero - and its shadow, which does not: `0 0 0 0.5px` is a ring
+     around the box's edge, and around a box 0px wide and 28px tall that ring is
+     a 1px vertical line. It stood just inside the control's left edge on every
+     row of the repositories table that inherits its enablement.
+
+     Written as "hidden, then shown" rather than as `:not(:has(input:checked))`,
+     which is the way round it reads. The compiler drops that one: it prunes
+     selectors it cannot prove this component's own markup can match, and a
+     `:has()` inside a `:not()` defeats that analysis, so the rule never reached
+     the stylesheet at all - measured, not guessed. */
+  fieldset:has(input:checked) .selection-indicator {
+    display: block;
   }
 
   /* 2.5% and 5%, not 8% and 16%. At the larger pair the thumb's own states measured 4.07 and 8.27

@@ -46,6 +46,7 @@
     UpdateTargetUserInput,
   } from '../types';
   import ActionMenu, { type ActionMenuItem } from './ActionMenu.svelte';
+  import SortIndicator from './SortIndicator.svelte';
   import Avatar from './Avatar.svelte';
   import Chip, { type ChipTone } from './Chip.svelte';
   import CopyReceipt from './CopyReceipt.svelte';
@@ -1284,17 +1285,10 @@
   }
 </script>
 
-{#snippet sortButton(label: string, direction: SortDirection | undefined, onSelect: () => void)}
+{#snippet sortButton(label: string, onSelect: () => void)}
   <button class="sort-button table-sort-button" type="button" onclick={onSelect}>
     <span class="cap-trim">{label}</span>
-    <span
-      class:ascending={direction === 'ascending'}
-      class:descending={direction === 'descending'}
-      class="sort-indicator"
-      aria-hidden="true"
-    >
-      <Icon name="sort" size={14} />
-    </span>
+    <SortIndicator />
   </button>
 {/snippet}
 
@@ -1397,15 +1391,11 @@
                 <thead>
                   <tr>
                     <th aria-sort={userSortDirection('name')}>
-                      {@render sortButton('User', userSortDirection('name'), () =>
-                        selectUserSort('name'),
-                      )}
+                      {@render sortButton('User', () => selectUserSort('name'))}
                     </th>
                     <th aria-sort={userSortDirection('role')}>
                       <div class="table-heading-layout">
-                        {@render sortButton('Role', userSortDirection('role'), () =>
-                          selectUserSort('role'),
-                        )}
+                        {@render sortButton('Role', () => selectUserSort('role'))}
                         <FilterMenu
                           label="Role"
                           summary={filterSummary(userRoles.length)}
@@ -1435,9 +1425,7 @@
                       </div>
                     </th>
                     <th aria-sort={userSortDirection('last_login')}>
-                      {@render sortButton('Last login', userSortDirection('last_login'), () =>
-                        selectUserSort('last_login'),
-                      )}
+                      {@render sortButton('Last login', () => selectUserSort('last_login'))}
                     </th>
                     <th><span class="visually-hidden">Actions</span></th>
                   </tr>
@@ -1559,12 +1547,16 @@
                              drawn: it points out of the row, and it is what says
                              this row opens something where its neighbours do
                              not. Revealing it on hover only told a reader that
-                             after they had already guessed. -->
-                        {#if hasDecisionHistory(user)}
-                          <span class="row-go" aria-hidden="true">
+                             after they had already guessed.
+
+                             The SLOT is always here even when the arrow is not,
+                             so the menu beside it lands at the same x in every
+                             row - see `.row-go`. -->
+                        <span class="row-go" aria-hidden="true">
+                          {#if hasDecisionHistory(user)}
                             <Icon name="chevron-right" size={14} />
-                          </span>
-                        {/if}
+                          {/if}
+                        </span>
                       </td>
                     </tr>
                   {/each}
@@ -1637,15 +1629,11 @@
                 <thead>
                   <tr>
                     <th aria-sort={invitationSortDirection('name')}>
-                      {@render sortButton('Invitee', invitationSortDirection('name'), () =>
-                        selectInvitationSort('name'),
-                      )}
+                      {@render sortButton('Invitee', () => selectInvitationSort('name'))}
                     </th>
                     <th aria-sort={invitationSortDirection('role')}>
                       <div class="table-heading-layout">
-                        {@render sortButton('Role', invitationSortDirection('role'), () =>
-                          selectInvitationSort('role'),
-                        )}
+                        {@render sortButton('Role', () => selectInvitationSort('role'))}
                         <FilterMenu
                           label="Role"
                           summary={filterSummary(invitationRoles.length)}
@@ -1679,9 +1667,7 @@
                       <div class="table-heading-layout"><span class="cap-trim">Sent</span></div>
                     </th>
                     <th aria-sort={invitationSortDirection('expires')}>
-                      {@render sortButton('Expires', invitationSortDirection('expires'), () =>
-                        selectInvitationSort('expires'),
-                      )}
+                      {@render sortButton('Expires', () => selectInvitationSort('expires'))}
                     </th>
                     <th><span class="visually-hidden">Actions</span></th>
                   </tr>
@@ -2304,9 +2290,11 @@
     margin-inline: var(--space-1);
   }
 
+  /* No `background` here - it is reset once on `.table-sort-button` in
+     `app.css`. A component-scoped `transparent` ties with the shared `:hover`
+     on specificity and comes later, so it silently removed the hover. */
   .sort-button {
     align-items: center;
-    background: transparent;
     border: 0;
     color: inherit;
     display: flex;
@@ -2335,28 +2323,7 @@
     padding-block: 0 !important;
   }
 
-  .sort-indicator {
-    color: var(--text-muted);
-    display: grid;
-    opacity: 0;
-    place-items: center;
-    transition: opacity 120ms ease-out;
-  }
-
-  .sort-button:hover .sort-indicator,
-  .sort-button:focus-visible .sort-indicator {
-    opacity: 0.55;
-  }
-
-  .sort-indicator.ascending,
-  .sort-indicator.descending {
-    color: var(--brand-action-text);
-    opacity: 1;
-  }
-
-  .sort-indicator.descending {
-    transform: rotate(180deg);
-  }
+  /* The arrow's own rules are shared - see `.sort-indicator` in `app.css`. */
 
   .user-table tbody tr:hover {
     background: var(--table-row-hover);
@@ -2425,7 +2392,7 @@
       display: grid;
       grid-template-columns:
         minmax(16rem, 1.55fr) minmax(10rem, 1fr) minmax(8rem, 0.8fr) minmax(9rem, 0.9fr)
-        4.25rem;
+        var(--row-action-column);
       width: 100%;
     }
 
@@ -2433,7 +2400,7 @@
     .invitation-table tbody tr {
       grid-template-columns:
         minmax(13rem, 1.4fr) minmax(7.5rem, 0.9fr) minmax(7.5rem, 0.8fr) minmax(6.5rem, 0.7fr)
-        minmax(7.5rem, 0.8fr) 4.25rem;
+        minmax(7.5rem, 0.8fr) var(--row-action-column);
     }
 
     /* The last row keeps its separator - see the note on the same spot in
@@ -2592,10 +2559,37 @@
     width: 1.125rem;
   }
 
+  /*
+   * The action column is sized for the widest a cell in it gets, which is not
+   * the same in both tables - so each one says what its widest is and this reads
+   * it. A column of controls that changes width row to row is a column of
+   * controls that does not line up, and the eye follows the ragged edge rather
+   * than the values beside it.
+   *
+   * A user row can carry the menu AND the chevron; at 4.25rem - room for the
+   * menu alone - the pair pushed the menu 18px left and 2px outside its own
+   * cell, so the menus zig-zagged wherever a row could be opened. An invitation
+   * row never carries a chevron, and giving it room for one would be 14px of
+   * nothing at the end of every row.
+   */
+  .user-table {
+    /* The 14px chevron. Written once because two things measure it: the slot it
+       sits in, and the column that has to be wide enough to hold that slot
+       beside the menu. */
+    --row-go-width: 0.875rem;
+    --row-action-column: calc(
+      var(--space-3) + 2.5rem + var(--space-1) + var(--row-go-width) + var(--space-3)
+    );
+  }
+
+  .invitation-table {
+    --row-action-column: 4.25rem;
+  }
+
   .row-actions {
     gap: var(--space-1);
     text-align: right !important;
-    width: 4.25rem;
+    width: var(--row-action-column);
   }
 
   .row-actions :global(.action-menu) {
@@ -2606,11 +2600,16 @@
      you cannot, so hiding it until hover answered the question only for people who
      had already asked it. Quiet enough at rest that a column of them reads as a
      margin rather than as a column of arrows, and it leans out on hover. */
+  /* The slot is in every row; the arrow is only in the rows that open something.
+     Reserving the width is what puts the menu above it at the same x down the
+     whole column - the arrow's presence is the signal, its absence must not move
+     anything. */
   .row-go {
     color: var(--text-muted);
     display: inline-grid;
     opacity: 0.55;
     place-items: center;
+    width: var(--row-go-width);
     transition:
       opacity var(--duration-fast) var(--ease-standard),
       transform var(--duration-fast) var(--ease-standard);

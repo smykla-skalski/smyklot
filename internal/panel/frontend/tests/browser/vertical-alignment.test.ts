@@ -33,19 +33,11 @@ interface Row {
   parts: { label: string; centre: number; kind: string }[];
 }
 
-/**
- * Every route but the sync page, which this sweep has never covered and does not pass.
- *
- * It was not in the list when the list lived here, so the page shipped without ever being asked:
- * its plan rows sit 0.53px off their own hairline and its last row 4.93px off, because a list
- * inside a card closes against the card's padding rather than against itself. Whether that is the
- * page's fault or this sweep's is a real question - the same argument it already makes for a table
- * cell, that a rule between rows is a rule and not the underside of a surface, applies to a row
- * separated by a hairline - and it is answered on its own rather than inside a change about
- * clipping. Named here rather than left out of `PANEL_ROUTES`, so the omission is visible and the
- * clipping sweep beside it still covers the page.
- */
-const ROUTES = PANEL_ROUTES.filter((route) => route !== 'i/sync');
+/* Every route. The sync page was held out of this list while the question its rows asked was open
+   - a row with a hairline under it reported itself off-centre against its own box - and that is
+   answered where `separator` is defined below: the rule is the seam between two rows and not the
+   underside of either, which is the same argument this sweep already made for a table cell. */
+const ROUTES = PANEL_ROUTES;
 
 /**
  * A quarter of a pixel: under one device row at 2x and at 3x alike, so nothing this permits can be
@@ -166,6 +158,27 @@ async function rowsOn(page: Page): Promise<{
       if (inside === undefined) return color === 'transparent' ? 0 : 1;
       const parts = inside.split(/[\s,/]+/u).filter(Boolean);
       return parts.length > 3 ? Number(parts[3]) : 1;
+    };
+
+    /**
+     * Whether this is a row with a rule against it rather than a surface with a word on it.
+     *
+     * A surface is enclosed - a ground, a shadow, or a border the whole way round. A separator is
+     * a line on ONE edge and nothing else, which makes the box it draws asymmetric about its own
+     * content by construction: the rule is the seam between this row and the next, and it is not
+     * the underside of anything.
+     */
+    const separator = (element: Element, style: CSSStyleDeclaration): boolean => {
+      if (alphaOf(style.backgroundColor) > 0) return false;
+      if (style.backgroundImage !== 'none' || style.boxShadow !== 'none') return false;
+
+      const edges = (['Top', 'Right', 'Bottom', 'Left'] as const).filter(
+        (edge) =>
+          style[`border${edge}Style`] !== 'none' &&
+          Number.parseFloat(style[`border${edge}Width`]) > 0,
+      );
+
+      return edges.length === 1 && (edges[0] === 'Top' || edges[0] === 'Bottom');
     };
 
     /** Whether what the eye sees of this child is a surface rather than the words in it. */
@@ -358,11 +371,27 @@ async function rowsOn(page: Page): Promise<{
       // design - a text area, a card - is a surface with a layout inside it, not a label on a
       // ground, and the sweeps above already ask about that layout.
       if (control.tagName === 'TEXTAREA' || control.tagName === 'INPUT') continue;
-      /* A cell is not a control. Its bottom rule is a rule and not the underside of a surface, so
-         its border box is a half-pixel taller below the words by design - and the sweep above
-         already asks the question that matters about a cell, which is where its ink sits against
-         the ink beside it. */
+      /* A row separated by a rule is not a control.
+         ----------------------------------------
+         A surface is a thing with edges the reader can see all the way round, and a word belongs
+         on the middle of it. A rule under a row is one edge and it belongs to the SEAM between two
+         rows, not to either of them - so the box it makes is a half-pixel taller below the words
+         by design, and asking that box to centre them is asking the wrong box.
+
+         Table cells were named here for exactly this, and naming them was the narrow version of
+         the rule: the sync page's plan rows are the same anatomy drawn without a table, and they
+         reported 0.53px on every row and 4.93px on the last one for having a hairline under them.
+         So the test is what the element IS rather than what it is called - a border on one edge
+         and nothing else painted is a separator, whoever drew it.
+
+         The sweeps above still ask the question that matters about such a row, which is where its
+         ink sits against the ink beside it.
+
+         Cells stay named as well as tested. A heading cell carries a ground of its own, so the
+         shape test alone reads it as a surface and it is not one - it is a cell, and the same
+         argument applies to it whether or not somebody tinted the row it is in. */
       if (control.tagName === 'TH' || control.tagName === 'TD') continue;
+      if (separator(control, style)) continue;
       if (
         [...control.querySelectorAll('*')].some((inner) => painted(inner, getComputedStyle(inner)))
       )
