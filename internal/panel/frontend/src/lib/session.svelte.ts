@@ -52,7 +52,6 @@ export class PanelSession {
   readonly api: PanelApi;
   readonly build: PanelBuild;
   readonly prefs: PrefsSync;
-  readonly base: string;
   readonly queryClient: QueryClient;
 
   loading = $state(true);
@@ -78,7 +77,6 @@ export class PanelSession {
   constructor(api: PanelApi, build: PanelBuild, queryClient: QueryClient) {
     this.api = api;
     this.build = build;
-    this.base = basePath;
     this.queryClient = queryClient;
     this.prefs = createPrefsSync();
     this.sidebarCollapsed = this.prefs.get('sidebar') === 'collapsed';
@@ -137,7 +135,12 @@ export class PanelSession {
    * router matches no route, and the console would otherwise not know it was the console.
    */
   get isRootMode(): boolean {
-    return page.route.id?.startsWith('/root') ?? page.url.pathname.startsWith(`${this.base}/root`);
+    const pathname = page.url.pathname;
+
+    return (
+      page.route.id?.startsWith('/root') ??
+      (pathname === `${basePath}/root` || pathname.startsWith(`${basePath}/root/`))
+    );
   }
 
   get isInbox(): boolean {

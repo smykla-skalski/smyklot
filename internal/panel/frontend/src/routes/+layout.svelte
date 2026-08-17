@@ -75,8 +75,7 @@
 
   $effect(() => {
     // `syncRouteContext` reads the route and its parameters, so tracking them is what
-    // this depends on. It used to read the pathname, and named that here so nobody
-    // reintroduced a dependency on which of the view routes had matched.
+    // this depends on.
     session.syncRouteContext();
   });
 

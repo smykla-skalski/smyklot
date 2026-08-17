@@ -133,10 +133,6 @@ describe('a panel service-worker upgrade', () => {
     expect(await currentStatic.text()).toBe('cached /panel/theme-boot.js');
   });
 
-  // A file in `static` keeps its name between builds, and the cache is named after the
-  // built bundle - so a release that changes only a static file leaves both alone, and a
-  // cached copy would stand forever. The reader is answered from cache and the copy is
-  // replaced behind them.
   // This worker is not part of the bundle it hashes, so changing this file alone gives a
   // new worker with the same cache name. Emptying the cache first - which would put
   // CacheStorage.keys() back in install order - would take the running worker's shell
@@ -151,6 +147,10 @@ describe('a panel service-worker upgrade', () => {
     expect(deleted, 'install dropped the cache it was about to refill').not.toContain(current);
   });
 
+  // A file in `static` keeps its name between builds, and the cache is named after the
+  // built bundle - so a release that changes only a static file leaves both alone, and a
+  // cached copy would stand forever. The reader is answered from cache and the copy is
+  // replaced behind them.
   it('replaces a static file it answered from cache', async () => {
     network.mockImplementation(async () => sameOrigin('fresh static'));
     await dispatchExtended(listeners, 'install');
@@ -199,13 +199,10 @@ function cacheStorage(stored: Map<string, Map<string, Response>>, deleted: strin
         },
       } as Cache;
     },
-    // Recorded only when there was something to delete, which is what the platform
-    // reports: `CacheStorage.delete` answers false for a name it does not hold.
     delete: async (name: string) => {
-      const held = stored.delete(name);
-      if (held) deleted.push(name);
+      deleted.push(name);
 
-      return held;
+      return stored.delete(name);
     },
     match: async (request: RequestInfo | URL) => {
       const path = cachePath(request);

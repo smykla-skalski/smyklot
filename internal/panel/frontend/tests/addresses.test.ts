@@ -10,10 +10,12 @@ import { parsePanelRoute, type PanelRoute } from '../src/lib/routes.ts';
  *
  * Written out rather than derived, because deriving it would mean re-running the very
  * mapping under test - but typed as `RouteId`, so an id that no longer names a route
- * fails the type check rather than sitting here as a string nobody compares. What proves the ids are the ones SvelteKit actually reports is the
- * browser suite, which drives real navigation; what this proves is that reading a route
- * back gives the shape that wrote it, and that the reading agrees with the hand parser
- * the mock server still uses. Two implementations, checked against each other.
+ * fails the type check rather than sitting here as a string nobody compares.
+ *
+ * What proves the ids are the ones SvelteKit reports is the browser suite, which drives
+ * real navigation. What this proves is that reading a route back gives the shape that
+ * wrote it, and that the reading agrees with the hand parser the mock server still uses -
+ * two implementations, checked against each other.
  */
 const CASES: Array<{ route: PanelRoute; id: RouteId; params: Record<string, string> }> = [
   { route: { personal: 'inbox' }, id: '/inbox', params: {} },
@@ -193,6 +195,10 @@ describe('panel addresses [Unit]', () => {
         rest: 'octocat/befriend',
       }),
     ).toBeNull();
+    // The parser this replaced answers the same, which is the agreement the rest of this
+    // file rests on - and the corpus above holds no address that resolves to nothing.
+    expect(parsePanelRoute(basePath, `${basePath}/i/acme/repositories/bogus/bogus2`)).toBeNull();
+    expect(parsePanelRoute(basePath, `${basePath}/root/access/users/octocat/befriend`)).toBeNull();
     // The same address with nothing after the view still reads as the view.
     expect(
       defined(
