@@ -11,6 +11,16 @@ const VERSION_SENTINEL = '__smyklot_panel_version__';
  * Configuring the value means there is nothing left in that script to rewrite.
  */
 export const MOCK_VERSION = 'dev';
+
+/**
+ * The base the mock serves under, which `vite.config.ts` also hands SvelteKit.
+ *
+ * Empty, because the mock mounts at the root. Both halves have to agree: SvelteKit
+ * builds every address from the configured base, and this rewrite fills the sentinels
+ * `app.html` spells by hand, so a base configured here and not there would leave the
+ * page asking for `/__smyklot_panel_base__/theme-boot.js`.
+ */
+export const MOCK_BASE = '';
 const SERVICE_SENTINEL = '__smyklot_panel_service__';
 const ERROR_SENTINEL = '__smyklot_panel_error__';
 const NOSCRIPT_SENTINEL = '__smyklot_panel_noscript__';
@@ -19,7 +29,7 @@ const DEFAULT_NOSCRIPT = 'The Smyklot panel needs JavaScript to run.';
 
 export function rewriteMockHtml(html: string): string {
   return html
-    .replaceAll(BASE_SENTINEL, '')
+    .replaceAll(BASE_SENTINEL, MOCK_BASE)
     .replaceAll(VERSION_SENTINEL, MOCK_VERSION)
     .replaceAll(SERVICE_SENTINEL, 'local mock service')
     .replaceAll(ERROR_SENTINEL, '')

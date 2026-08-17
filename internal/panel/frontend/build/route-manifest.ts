@@ -104,19 +104,19 @@ async function matcherPatterns(
   names: Iterable<string>,
   modulePath: string,
 ): Promise<Map<string, string>> {
-  const { patterns: declared } = (await import(pathToFileURL(modulePath).href)) as {
+  const { patterns } = (await import(pathToFileURL(modulePath).href)) as {
     patterns?: Record<string, unknown>;
   };
-  if (typeof declared !== 'object' || declared === null) {
+  if (typeof patterns !== 'object' || patterns === null) {
     throw new Error(
       `${modulePath} must export a \`patterns\` record, so the route manifest can hand ` +
         'the same rules to the Go server',
     );
   }
 
-  const patterns = new Map<string, string>();
+  const resolved = new Map<string, string>();
   for (const name of new Set(names)) {
-    const pattern = declared[name];
+    const pattern = patterns[name];
     if (typeof pattern !== 'string' || pattern === '') {
       throw new Error(
         `param matcher "${name}" must declare a non-empty pattern in \`patterns\`, so ` +
@@ -124,10 +124,10 @@ async function matcherPatterns(
       );
     }
     new RegExp(pattern); // Throws here rather than at the server's startup.
-    patterns.set(name, toRE2(pattern, `matcher ${name}`));
+    resolved.set(name, toRE2(pattern, `matcher ${name}`));
   }
 
-  return patterns;
+  return resolved;
 }
 
 export async function routeManifest(builder: Builder, paramsModule: string) {
@@ -138,12 +138,12 @@ export async function routeManifest(builder: Builder, paramsModule: string) {
     throw new Error('the route manifest found no page routes, which cannot be right');
   }
 
-  const declared = pages.flatMap((route) =>
+  const matcherNames = pages.flatMap((route) =>
     parametersOf(route.id)
       .map((parameter) => parameter.matcher)
       .filter((matcher): matcher is string => matcher !== null),
   );
-  const patterns = await matcherPatterns(declared, paramsModule);
+  const patterns = await matcherPatterns(matcherNames, paramsModule);
 
   const routes = pages
     .map((route) => {

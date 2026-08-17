@@ -36,4 +36,27 @@ export default tseslint.config(
       'svelte/no-navigation-without-resolve': 'off',
     },
   },
+  {
+    // `package.json` retargets runed's declared `@sveltejs/kit` peer, which still
+    // names ^2.21.0, at whatever Kit the panel pins. That override is safe for one
+    // checkable reason: runed's only Kit-coupled module is `useSearchParams`, which
+    // still calls `goto` with SvelteKit 2's options (svecosystem/runed#428), and it
+    // reaches nothing here because runed's barrel does not re-export it. This holds
+    // that reason as a rule rather than as a paragraph somebody has to remember.
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'runed/kit',
+              message:
+                "runed/kit is built against SvelteKit 2's `goto` options. The `runed` " +
+                'peer override in package.json assumes nothing imports it - see CLAUDE.md.',
+            },
+          ],
+        },
+      ],
+    },
+  },
 );

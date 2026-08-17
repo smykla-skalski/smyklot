@@ -1,7 +1,12 @@
 import { defineParams } from '@sveltejs/kit/params';
 
 import { DIALOG_HOST_VIEWS } from './lib/route-dialogs.ts';
-import { HISTORY_SECTIONS, PANEL_VIEWS, ROOT_INSTALLATION_VIEWS } from './lib/routes.ts';
+import {
+  ACCESS_SECTIONS,
+  HISTORY_SECTIONS,
+  PANEL_VIEWS,
+  ROOT_INSTALLATION_VIEWS,
+} from './lib/routes.ts';
 
 /**
  * Every parameter matcher, written as the expression it accepts.
@@ -23,7 +28,7 @@ import { HISTORY_SECTIONS, PANEL_VIEWS, ROOT_INSTALLATION_VIEWS } from './lib/ro
  */
 export const patterns = {
   /** The tables the Root console's access page is split into. */
-  accessSection: '^(?:users|invitations)$',
+  accessSection: `^(?:${ACCESS_SECTIONS.join('|')})$`,
 
   /**
    * The views that have anything after them in an address.
@@ -83,10 +88,7 @@ export const patterns = {
    * fault. The two lists used to be told apart by a third copy of both, written in Go.
    */
   rootInstallationView: `^(?:${ROOT_INSTALLATION_VIEWS.join('|')})$`,
-} as const satisfies Record<string, string>;
-
-/** The name of a matcher, as a route spells it in `[view=panelView]`. */
-type ParamName = keyof typeof patterns;
+} satisfies Record<string, string>;
 
 /**
  * The matchers themselves, one per pattern and derived from it.
@@ -103,5 +105,5 @@ export const params = defineParams(
 
       return [name, (param: string) => (accepted.test(param) ? param : undefined)];
     }),
-  ) as { [K in ParamName]: (param: string) => string | undefined },
+  ) as Record<keyof typeof patterns, (param: string) => string | undefined>,
 );

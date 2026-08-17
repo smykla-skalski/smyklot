@@ -12,17 +12,20 @@ declare const self: ServiceWorkerGlobalScope;
 
 import { version } from '$app/env';
 import { assets, immutable } from '$app/manifest';
-import { resolve } from '$app/paths';
 
-// `resolve('')` is the base path carrying its separator, which is the scope this
-// worker is registered at. SvelteKit 3 removed the `base` export it used to read.
-const SCOPE_PATH = resolve('');
+import { panelUrl } from '#lib/base.js';
+import { basePath } from '#lib/paths.js';
+
+// The scope this worker is registered at. `basePath` carries no trailing separator -
+// see `#lib/paths.js`, which is where SvelteKit 3's removal of the `base` export is
+// answered, once, for the worker and the app alike.
+const SCOPE_PATH = `${basePath}/`;
 const CACHE_PREFIX = `smyklot-panel:${encodeURIComponent(SCOPE_PATH)}:`;
 const CACHE = `${CACHE_PREFIX}${version}`;
 // `$app/manifest` reports the built bundle and the static directory relative to the
 // base path; the `$service-worker` module it replaces reported them already prefixed.
-const ASSETS = new Set([...immutable, ...assets].map((file) => `${SCOPE_PATH}${file.path}`));
-const IMMUTABLE_PATH = `${SCOPE_PATH}_app/immutable/`;
+const ASSETS = new Set([...immutable, ...assets].map((file) => panelUrl(basePath, file.path)));
+const IMMUTABLE_PATH = panelUrl(basePath, '_app/immutable/');
 const SHELL_REQUEST = new Request(SCOPE_PATH, { credentials: 'same-origin' });
 
 self.addEventListener('install', (event) => {
@@ -67,14 +70,17 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname.startsWith(IMMUTABLE_PATH) || ASSETS.has(url.pathname)) {
     event.respondWith(
       (async () => {
-        const cache = await caches.open(CACHE);
+        // A hashed chunk may be answered from any version's cache, and that is the
+        // common case, so it is served without opening this version's - one fewer
+        // CacheStorage round trip on the path every chunk takes.
         const cached = url.pathname.startsWith(IMMUTABLE_PATH)
           ? await caches.match(url.pathname)
-          : await cache.match(url.pathname);
+          : await (await caches.open(CACHE)).match(url.pathname);
         if (cached) return cached;
 
         const fetched = await fetch(request);
         if (fetched.ok && fetched.type === 'basic') {
+          const cache = await caches.open(CACHE);
           await cache.put(url.pathname, fetched.clone());
         }
         return fetched;

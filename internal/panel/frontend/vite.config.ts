@@ -6,7 +6,7 @@ import { defineConfig } from 'vitest/config';
 import { configDefaults } from 'vitest/config';
 
 import { withRouteManifest } from './build/route-manifest.ts';
-import { MOCK_VERSION } from './dev/mock-html.ts';
+import { MOCK_BASE, MOCK_VERSION } from './dev/mock-html.ts';
 import { mockServer } from './dev/mock-server.ts';
 
 // In dev the mock server mounts at /, so SvelteKit's router must not enforce
@@ -47,7 +47,7 @@ export default defineConfig({
         },
       },
       paths: {
-        base: isMockDev ? '' : '/__smyklot_panel_base__',
+        base: isMockDev ? MOCK_BASE : '/__smyklot_panel_base__',
       },
       version: {
         // The Go server resolves this in every text asset, including the

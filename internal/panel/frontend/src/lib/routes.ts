@@ -51,6 +51,9 @@ export const ROOT_INSTALLATION_VIEWS = [
 
 export const HISTORY_SECTIONS = ['audit', 'failures'] as const;
 
+/** The tables the Root console's access page is split into. */
+export const ACCESS_SECTIONS = ['users', 'invitations'] as const;
+
 export type PanelView = (typeof PANEL_VIEWS)[number];
 
 /**

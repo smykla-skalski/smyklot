@@ -163,10 +163,13 @@ class DialogRouter {
   /**
    * Writes a dialog into the address as a shallow entry.
    *
-   * `owned` marks an entry this panel pushed itself, which `close` reads to decide
-   * between stepping back through history and replacing the address.
+   * An entry this panel pushed itself is marked as owned, which `close` reads to
+   * decide between stepping back through history and replacing the address. Pushing
+   * always owns the entry it just made; replacing inherits whatever the entry it
+   * lands on was.
    */
-  private commit(dialog: OpenDialog, replace: boolean, owned: boolean): void {
+  private commit(dialog: OpenDialog, replace: boolean): void {
+    const owned = !replace || dialogState().smyklotDialogEntry === true;
     const host = dialogHostFromPage();
     const path = host === null ? null : pathForDialog(host, dialog);
     const state: DialogPageState = {
@@ -185,23 +188,13 @@ class DialogRouter {
   open(name: string, params: Readonly<Record<string, string>> = {}): void {
     // Replacing when a dialog is already open, so the pair does not leave two entries
     // for one overlay; pushing otherwise, so Back closes it.
-    const replacing = this.current !== null;
-
-    this.commit(
-      { name, params },
-      replacing,
-      !replacing || dialogState().smyklotDialogEntry === true,
-    );
+    this.commit({ name, params }, this.current !== null);
   }
 
   update(name: string, params: Readonly<Record<string, string>>): void {
     if (this.current?.name !== name) return;
 
-    this.commit(
-      { name, params: { ...this.current.params, ...params } },
-      true,
-      dialogState().smyklotDialogEntry === true,
-    );
+    this.commit({ name, params: { ...this.current.params, ...params } }, true);
   }
 
   close(): void {
