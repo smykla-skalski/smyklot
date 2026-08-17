@@ -792,11 +792,14 @@ var _ = Describe("Org sync [Unit]", func() {
 			_, _, err := service.store.GetLiveSyncPlan(GinkgoT().Context(), target.ID)
 			Expect(err).To(MatchError(storage.ErrNotFound))
 
-			// And nothing recorded, so the next sweep reads it again rather
-			// than believing it matches
+			// And what is recorded is why, with no digest, so the next sweep
+			// reads it again rather than believing it matches
 			state, err := service.store.ListSyncRepositoryState(GinkgoT().Context(), target.ID)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(state).To(BeEmpty())
+			Expect(state).To(HaveLen(1))
+			Expect(state[0].AppliedDigest).To(BeEmpty())
+			Expect(state[0].Problem).To(ContainSubstring(
+				"more than one ruleset here carries a configured name"))
 
 			reads := stub.countCalls(http.MethodGet, "/repos/smykla-skalski/smyklot/rulesets")
 			plan(target)
@@ -844,7 +847,9 @@ var _ = Describe("Org sync [Unit]", func() {
 
 			state, err := service.store.ListSyncRepositoryState(GinkgoT().Context(), target.ID)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(state).To(BeEmpty())
+			Expect(state).To(HaveLen(1))
+			Expect(state[0].AppliedDigest).To(BeEmpty())
+			Expect(state[0].Problem).NotTo(BeEmpty())
 		})
 
 		// The tool this replaces had no delete path at all, so a ruleset dropped
@@ -1553,11 +1558,16 @@ var _ = Describe("Org sync [Unit]", func() {
 			_, _, err := service.store.GetLiveSyncPlan(GinkgoT().Context(), target.ID)
 			Expect(err).To(MatchError(storage.ErrNotFound))
 
-			// And nothing is recorded, so it is asked again once somebody fixes
-			// it rather than left looking finished for six hours
+			// And what is recorded is why, with no digest: asked again once
+			// somebody fixes it rather than left looking finished for six
+			// hours, and readable meanwhile by whoever has to fix it
 			state, err := service.store.ListSyncRepositoryState(GinkgoT().Context(), target.ID)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(state).To(BeEmpty())
+			Expect(state).To(HaveLen(1))
+			Expect(state[0].AppliedDigest).To(BeEmpty())
+			Expect(state[0].Problem).To(ContainSubstring(
+				"the adjustments saved for this repository cannot be used"))
+			Expect(state[0].Problem).To(ContainSubstring("package.json"))
 		})
 
 		It("stands down without the permission it needs", func() {
@@ -1587,12 +1597,16 @@ var _ = Describe("Org sync [Unit]", func() {
 				_, _, err := service.store.GetLiveSyncPlan(GinkgoT().Context(), target.ID)
 				Expect(err).To(MatchError(storage.ErrNotFound))
 
-				// And nothing is recorded, so it is answered again the moment
-				// somebody resolves it rather than left looking finished
+				// And what is recorded is why, with no digest, so it is answered
+				// again the moment somebody resolves it rather than left
+				// looking finished
 				state, err := service.store.ListSyncRepositoryState(
 					GinkgoT().Context(), target.ID)
 				Expect(err).NotTo(HaveOccurred())
-				Expect(state).To(BeEmpty())
+				Expect(state).To(HaveLen(1))
+				Expect(state[0].AppliedDigest).To(BeEmpty())
+				Expect(state[0].Problem).To(ContainSubstring("these files cannot be composed"))
+				Expect(state[0].Problem).To(ContainSubstring("docs/guide.md"))
 			},
 			Entry("the path is a directory there", `{"sha":"basetree","tree":[
 				{"path":"docs","type":"tree","mode":"040000","sha":"d1"},
@@ -1606,6 +1620,45 @@ var _ = Describe("Org sync [Unit]", func() {
 				{"path":"docs","type":"blob","mode":"100644","sha":"b1","size":4}
 			],"truncated":false}`),
 		)
+
+		// The other end of the same record. A repository that plans work is a
+		// repository nothing is stopping any more, and a refusal left standing
+		// would have the panel saying the files are not being synced here while
+		// a plan to sync them waited for approval.
+		It("takes a refusal off once the repository can be planned", func() {
+			target := grantContents()
+			stub.repoTree = `{"sha":"basetree","tree":[
+				{"path":"docs","type":"blob","mode":"100644","sha":"b1","size":4}
+			],"truncated":false}`
+			configureKind(target, orgsync.KindFiles,
+				`{"files":[{"path":"docs/guide.md","content":"# Guide\n"}]}`)
+
+			plan(target)
+
+			state, err := service.store.ListSyncRepositoryState(GinkgoT().Context(), target.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(state).To(HaveLen(1))
+			Expect(state[0].Problem).NotTo(BeEmpty())
+
+			// Somebody makes docs a directory, so the change composes
+			stub.repoTree = `{"sha":"basetree","tree":[
+				{"path":"docs","type":"tree","mode":"040000","sha":"d1"}
+			],"truncated":false}`
+
+			plan(target)
+
+			_, actions, err := service.store.GetLiveSyncPlan(GinkgoT().Context(), target.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(actions).NotTo(BeEmpty())
+
+			// The refusal is gone, and no digest has taken its place: nothing
+			// has been applied yet, and the executor is what records that
+			state, err = service.store.ListSyncRepositoryState(GinkgoT().Context(), target.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(state).To(HaveLen(1))
+			Expect(state[0].Problem).To(BeEmpty())
+			Expect(state[0].AppliedDigest).To(BeEmpty())
+		})
 
 		// GitHub declines to list a tree past a hundred thousand entries, and a
 		// path missing from a listing that stopped early is not a path a

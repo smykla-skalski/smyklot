@@ -224,53 +224,9 @@ func (s *server) planSyncActions(
 				continue
 			}
 
-			found, settled, err := ask(ctx, repository)
-			if err != nil {
-				// One repository refusing must not stop the rest. It will be
-				// planned again on the next tick, and reporting a plan that
-				// silently omitted it would be worse than a shorter one.
-				logging.From(ctx).Warn("could not read a repository while planning",
-					"repo", repository.FullName, "kind", config.Kind, "error", err)
-
-				continue
-			}
-
-			if !settled {
-				// Read, and the answer was that this kind cannot be managed on
-				// this repository rather than that it matches.
-				//
-				// Its actions go with it, and that is the whole of the reason:
-				// a kind whose every action applied is a kind the executor
-				// records as settled, against the digest for the whole
-				// configuration. Send one action and the repository is marked
-				// up to date for everything the kind covers - including the
-				// part nothing could address, which then goes unlooked-at for
-				// six hours. Whichever end that silence is created at, it is
-				// the same silence.
-				//
-				// So nothing is planned and nothing is recorded, and the
-				// repository is read again every sweep until whoever owns it
-				// resolves what is wrong. The kinds beside this one are
-				// untouched: this is one kind on one repository.
-				continue
-			}
-
-			if len(found) == 0 {
-				// Nothing to do, which is a fact worth keeping. It appears in
-				// no plan, so an apply would never record it, and without a
-				// record this repository is read from GitHub again on every
-				// tick for ever - the cost the digest exists to remove.
-				matched = append(matched, orgsync.RepositoryState{
-					RepositoryID:  repository.ID,
-					Kind:          config.Kind,
-					AppliedDigest: scope.digestFor(repository.ID),
-					AppliedAt:     now,
-				})
-
-				continue
-			}
-
+			found, learned := scope.ask(ctx, ask, repository)
 			actions = append(actions, found...)
+			matched = append(matched, learned...)
 		}
 	}
 
@@ -283,18 +239,23 @@ func (s *server) planSyncActions(
 
 // repositoryQuestion asks one repository what one kind would take.
 //
-// settled says whether the answer covers the whole of what this kind
-// configures. Nearly always it does, and for labels and settings it always
-// does. A ruleset a repository holds twice is the exception: nothing can say
-// which one the configuration meant, so part of the kind is unresolved however
-// much of the rest was worked out.
+// problem is empty where the answer covers the whole of what this kind
+// configures, which is nearly always, and for labels and settings is always. A
+// ruleset a repository holds twice is one exception: nothing can say which one
+// the configuration meant, so part of the kind is unresolved however much of
+// the rest was worked out. A file sync has three of its own.
 //
-// False throws the actions away with it, because the executor records a kind
-// settled once its every action applied - so acting on the resolved part would
-// mark the unresolved part up to date too.
+// A problem throws the actions away with it, because the executor records a
+// kind settled once its every action applied - so acting on the resolved part
+// would mark the unresolved part up to date too. It is words rather than a
+// flag because it is the only account of why this repository is not being
+// synced that anybody outside the service log ever sees.
+//
+// An error is different: the repository could not be read at all, which is
+// nobody's mistake to fix and is retried on the next tick.
 type repositoryQuestion func(
 	context.Context, storage.Repository,
-) (found []orgsync.Action, settled bool, err error)
+) (found []orgsync.Action, problem string, err error)
 
 // repositoryPlanner reads a kind's stored document and returns what to ask each
 // repository with it.
@@ -340,17 +301,17 @@ func labelPlanner(client *github.Client, config orgsync.Config) (repositoryQuest
 
 	return func(
 		ctx context.Context, repository storage.Repository,
-	) ([]orgsync.Action, bool, error) {
+	) ([]orgsync.Action, string, error) {
 		owner, name := splitFullName(repository.FullName)
 
 		current, err := client.ListRepositoryLabels(ctx, owner, name)
 		if err != nil {
-			return nil, false, err
+			return nil, "", err
 		}
 
 		return orgsync.PlanLabels(
 			repository.ID, labels, asCurrentLabels(current), labels.Exclusions(),
-		), true, nil
+		), "", nil
 	}, nil
 }
 
@@ -362,17 +323,17 @@ func settingsPlanner(client *github.Client, config orgsync.Config) (repositoryQu
 
 	return func(
 		ctx context.Context, repository storage.Repository,
-	) ([]orgsync.Action, bool, error) {
+	) ([]orgsync.Action, string, error) {
 		owner, name := splitFullName(repository.FullName)
 
 		current, err := client.GetRepositorySettings(ctx, owner, name)
 		if err != nil {
-			return nil, false, err
+			return nil, "", err
 		}
 
 		return orgsync.PlanSettings(
 			repository.ID, settings, asCurrentSettings(current),
-		), true, nil
+		), "", nil
 	}, nil
 }
 
@@ -384,28 +345,31 @@ func rulesetPlanner(client *github.Client, config orgsync.Config) (repositoryQue
 
 	return func(
 		ctx context.Context, repository storage.Repository,
-	) ([]orgsync.Action, bool, error) {
+	) ([]orgsync.Action, string, error) {
 		owner, name := splitFullName(repository.FullName)
 
 		current, err := readRulesets(ctx, client, owner, name, rulesets)
 		if err != nil {
-			return nil, false, err
+			return nil, "", err
 		}
 
 		actions, ambiguous := orgsync.PlanRulesets(
 			repository.ID, rulesets, current, rulesets.Exclusions())
 		if len(ambiguous) > 0 {
-			// Said here rather than swallowed, because it is the only place it
-			// can be said: a ruleset nothing can address produces no action, so
-			// a plan cannot carry it and a person reading one would see a
-			// repository that looks finished.
+			// A ruleset nothing can address produces no action, so a plan
+			// cannot carry it and a person reading one would see a repository
+			// that looks finished.
 			logging.From(ctx).Warn(
 				"a repository holds more than one ruleset of a configured name, "+
 					"so those are left alone",
 				"repo", repository.FullName, "rulesets", strings.Join(ambiguous, ", "))
+
+			return nil, "more than one ruleset here carries a configured name (" +
+				strings.Join(ambiguous, ", ") +
+				"), so nothing can say which one the configuration means", nil
 		}
 
-		return actions, len(ambiguous) == 0, nil
+		return actions, "", nil
 	}, nil
 }
 
@@ -421,25 +385,28 @@ func filePlanner(
 
 	return func(
 		ctx context.Context, repository storage.Repository,
-	) ([]orgsync.Action, bool, error) {
+	) ([]orgsync.Action, string, error) {
 		return planRepositoryFiles(ctx, client, repository, files, overrides[repository.ID])
 	}, nil
 }
 
-// planRepositoryFiles answers what one repository's files would take, and
-// whether the answer covers the whole of what the kind configures.
+// planRepositoryFiles answers what one repository's files would take, and where
+// it cannot answer, why.
 //
-// Not settled where the repository cannot be read at all or its own
-// adjustments cannot be used. Both are conditions somebody has to resolve, and
-// recording a digest against either would say the repository matches for six
-// hours when nothing has looked at it.
+// Three ways not to: a repository with nowhere to propose against, adjustments
+// that cannot be used, and files that cannot be composed. The last two are
+// somebody's to fix, and recording a digest against either would say the
+// repository matches for six hours when nothing has looked at it. All three are
+// returned in words, because the alternative is a repository that is quietly
+// receiving none of the organization's files and nothing anybody can read that
+// says so.
 func planRepositoryFiles(
 	ctx context.Context,
 	client *github.Client,
 	repository storage.Repository,
 	config orgsync.FileConfig,
 	override *orgsync.RepositoryOverride,
-) ([]orgsync.Action, bool, error) {
+) ([]orgsync.Action, string, error) {
 	target := syncTargetFor(repository)
 
 	if target.DefaultBranch == "" {
@@ -451,7 +418,8 @@ func planRepositoryFiles(
 			"this repository has no default branch, so its files are left alone",
 			"repo", repository.FullName)
 
-		return nil, false, nil
+		return nil, "this repository has no default branch, " +
+			"so there is nowhere to propose a change", nil
 	}
 
 	adjustments, err := decodeFileOverride(override, config)
@@ -459,33 +427,34 @@ func planRepositoryFiles(
 		logging.From(ctx).Warn("this repository's file adjustments cannot be used",
 			"repo", repository.FullName, "error", err)
 
-		return nil, false, nil
+		return nil, "the adjustments saved for this repository cannot be used: " +
+			err.Error(), nil
 	}
 
 	current, err := readTreePaths(
 		ctx, client, target, target.DefaultBranch, config.Managed())
 	if err != nil {
-		return nil, false, err
+		return nil, "", err
 	}
 
 	plan, err := orgsync.PlanFiles(
 		repository.ID, config, adjustments, target.DefaultBranch, current)
 	if err != nil {
-		// A merge that cannot be applied. Fail-closed: no actions, and nothing
-		// recorded, so the repository is asked again once somebody fixes it.
+		// A merge that cannot be applied. Fail-closed: no actions, and no
+		// digest, so the repository is asked again once somebody fixes it.
 		logging.From(ctx).Warn("this repository's files cannot be composed",
 			"repo", repository.FullName, "error", err)
 
-		return nil, false, nil
+		return nil, "these files cannot be composed: " + err.Error(), nil
 	}
 
 	if len(plan.Actions) == 0 {
-		return nil, true, nil
+		return nil, "", nil
 	}
 
 	asked, err := proposalOutstanding(ctx, client, target, plan.Proposal)
 	if err != nil {
-		return nil, false, err
+		return nil, "", err
 	}
 
 	if asked {
@@ -498,10 +467,10 @@ func planRepositoryFiles(
 			"this repository already has this change in front of it, so it is left alone",
 			"repo", repository.FullName, "branch", plan.Proposal)
 
-		return nil, true, nil
+		return nil, "", nil
 	}
 
-	return plan.Actions, true, nil
+	return plan.Actions, "", nil
 }
 
 // proposalOutstanding reports a change this repository has already been asked
@@ -636,8 +605,11 @@ func (s syncScope) covers(repository storage.Repository) bool {
 		return false
 	}
 
-	state, settled := s.applied[repository.ID]
-	if !settled || state.AppliedDigest != s.digestFor(repository.ID) {
+	// A refusal is recorded with no digest, which is what keeps it out of this:
+	// digestFor is a sha256 and never empty, so a refused repository never
+	// matches and is read again every sweep until it is fixed.
+	state, known := s.applied[repository.ID]
+	if !known || state.AppliedDigest != s.digestFor(repository.ID) {
 		return true
 	}
 
@@ -652,6 +624,92 @@ func (s syncScope) covers(repository storage.Repository) bool {
 // cannot drift into disagreeing about whether a repository is settled.
 func (s syncScope) digestFor(repositoryID string) string {
 	return orgsync.DigestRepositoryKind(s.config.Digest, s.overrides[repositoryID])
+}
+
+// refused reports a repository the last look could not manage this kind on.
+//
+// Asked where a repository plans work, and only there: a refusal that still
+// stands is rewritten with whatever the reason is now, and one that settles is
+// overwritten by the digest. Work planned is the one outcome that writes
+// nothing of its own, so it is the one that has to ask.
+func (s syncScope) refused(repositoryID string) bool {
+	return s.applied[repositoryID].Problem != ""
+}
+
+// ask puts the question to one repository and reads the answer as two things:
+// what to plan, and what is now known about the repository.
+//
+// Four answers, and only one of them plans anything. A repository that cannot
+// be read at all is left for the next tick; one this kind cannot be managed on
+// records why; one that matches records the digest that lets the next sweep
+// skip it; and one with work to do records nothing unless it is taking a
+// refusal off.
+func (s syncScope) ask(
+	ctx context.Context,
+	question repositoryQuestion,
+	repository storage.Repository,
+) (found []orgsync.Action, learned []orgsync.RepositoryState) {
+	// state is this repository's row for this kind, filled in by whichever
+	// answer writes one.
+	state := orgsync.RepositoryState{
+		RepositoryID: repository.ID,
+		Kind:         s.config.Kind,
+		AppliedAt:    s.now,
+	}
+
+	found, problem, err := question(ctx, repository)
+	if err != nil {
+		// One repository refusing must not stop the rest. It will be planned
+		// again on the next tick, and reporting a plan that silently omitted it
+		// would be worse than a shorter one.
+		logging.From(ctx).Warn("could not read a repository while planning",
+			"repo", repository.FullName, "kind", s.config.Kind, "error", err)
+
+		return nil, nil
+	}
+
+	if problem != "" {
+		// Read, and the answer was that this kind cannot be managed on this
+		// repository rather than that it matches.
+		//
+		// Its actions go with it, and that is the whole of the reason: a kind
+		// whose every action applied is a kind the executor records as settled,
+		// against the digest for the whole configuration. Send one action and
+		// the repository is marked up to date for everything the kind covers -
+		// including the part nothing could address, which then goes
+		// unlooked-at for six hours. Whichever end that silence is created at,
+		// it is the same silence.
+		//
+		// So nothing is planned, and what is recorded is the reason rather than
+		// a digest: the repository is read again every sweep until whoever owns
+		// it resolves what is wrong, and meanwhile the panel can say why
+		// nothing is happening. The kinds beside this one are untouched: this
+		// is one kind on one repository.
+		state.Problem = problem
+
+		return nil, []orgsync.RepositoryState{state}
+	}
+
+	if len(found) == 0 {
+		// Nothing to do, which is a fact worth keeping. It appears in no plan,
+		// so an apply would never record it, and without a record this
+		// repository is read from GitHub again on every tick for ever - the
+		// cost the digest exists to remove.
+		state.AppliedDigest = s.digestFor(repository.ID)
+
+		return nil, []orgsync.RepositoryState{state}
+	}
+
+	if s.refused(repository.ID) {
+		// Planned, so whatever stopped this repository last time no longer
+		// does. The digest is not written - the work has not been applied, and
+		// the executor records that when it lands - but a refusal left standing
+		// would have the panel saying the files are not being synced here while
+		// a plan to sync them waited for approval.
+		return found, []orgsync.RepositoryState{state}
+	}
+
+	return found, nil
 }
 
 // asCurrentSettings reads what GitHub said as what the planner compares.
