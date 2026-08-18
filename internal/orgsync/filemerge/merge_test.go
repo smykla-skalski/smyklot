@@ -441,6 +441,37 @@ jobs:
 			Expect(err.Error()).To(ContainSubstring(`"*d"`))
 		})
 
+		// The name still exists here - the list rule writes a fresh copy of the
+		// template's item, anchor and all - but it lands below the alias, and an
+		// alias reads upwards. Asking only whether the name is still somewhere
+		// in the document called this fine and wrote a file that will not load.
+		It("refuses where the surviving anchor lands below the alias", func() {
+			_, err := filemerge.Apply("ci.yaml",
+				[]byte("defaults: &d\n  labels:\n    - &x keep\nafter: *x\nthing:\n  <<: *d\n"),
+				filemerge.Spec{
+					Overrides: overrides(`{"defaults": {"labels": ["d"]}, "thing": {"labels": ["t"]}}`),
+					Arrays: []filemerge.ArrayRule{
+						{Path: "$.thing.labels", Strategy: filemerge.ArrayAppend},
+					},
+				})
+
+			Expect(err).To(MatchError(filemerge.ErrUnwritable))
+			Expect(err.Error()).To(ContainSubstring(`"*x"`))
+		})
+
+		// And a recursive anchor is not that: `&loop` is defined by the node the
+		// alias inside it names, so walking in writing order has to record the
+		// name before descending, or the merge refuses a document go-yaml reads
+		// and writes quite happily.
+		It("leaves an anchor named from inside itself alone", func() {
+			merged, err := filemerge.Apply("ci.yaml",
+				[]byte("loop: &loop\n  self: *loop\nname: build\n"),
+				filemerge.Spec{Overrides: overrides(`{"name": "test"}`)})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(merged)).To(ContainSubstring("self: *loop"))
+		})
+
 		// An alias is what the template says is at that path. Read as the node
 		// it literally is, a list rule addressing something reached through one
 		// found no mapping, took the template as carrying no list, and appended
@@ -695,76 +726,172 @@ jobs:
 		// carries the copies' anchors, so the file defines one twice. Both say
 		// the same thing and it reloads, but a duplicate anchor is what the
 		// rename beside this exists to keep out of these files, and a linter in
-		// the repository would stop on it.
-		It("does not define an anchor twice when it appends through a merge key", func() {
-			merged, err := filemerge.Apply("ci.yaml",
-				[]byte("defaults: &d\n  labels:\n    - &x keep\nthing:\n  <<: *d\nafter: *x\n"),
-				filemerge.Spec{
-					Overrides: overrides(`{"thing": {"labels": ["extra"]}}`),
-					Arrays: []filemerge.ArrayRule{
-						{Path: "$.thing.labels", Strategy: filemerge.ArrayAppend},
-					},
-				})
+		// the repository would stop on it. Written *over* it, the copy is the
+		// only definition left and has to keep the name, or `after` names
+		// nothing - so one name, however the write landed.
+		DescribeTable("leaves one definition of an anchor the written list carries",
+			func(template string) {
+				merged, err := filemerge.Apply("ci.yaml", []byte(template),
+					filemerge.Spec{
+						Overrides: overrides(`{"thing": {"labels": ["extra"]}}`),
+						Arrays: []filemerge.ArrayRule{
+							{Path: "$.thing.labels", Strategy: filemerge.ArrayAppend},
+						},
+					})
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(strings.Count(string(merged), "&x")).To(Equal(1))
+
+				var back struct {
+					Thing map[string]any `yaml:"thing"`
+					After string         `yaml:"after"`
+				}
+				Expect(yaml.Unmarshal(merged, &back)).To(Succeed())
+				Expect(back.Thing).To(HaveKeyWithValue("labels", []any{"keep", "extra"}))
+				Expect(back.After).To(Equal("keep"))
+			},
+			Entry("written beside the list it was copied from, through a merge key",
+				"defaults: &d\n  labels:\n    - &x keep\nthing:\n  <<: *d\nafter: *x\n"),
+			Entry("written over the list the anchor is defined in",
+				"thing:\n  labels:\n    - &x keep\nafter: *x\n"),
+		)
+
+		// A template that already defines one name twice. Counting definitions
+		// says two whatever the merge did, so the reading that clears a
+		// duplicate has to leave these alone - the second definition is not one
+		// this merge made, and which one an alias means depends on where the
+		// alias is written.
+		DescribeTable("leaves a name the template itself defines twice",
+			func(template, expected string) {
+				merged, err := filemerge.Apply("ci.yaml", []byte(template),
+					filemerge.Spec{
+						Overrides: overrides(`{"labels": ["extra"]}`),
+						Arrays: []filemerge.ArrayRule{
+							{Path: "$.labels", Strategy: filemerge.ArrayAppend},
+						},
+					})
+
+				// Read back, because the whole cost of getting this wrong is a
+				// file YAML will not load - an alias whose only definition
+				// above it was the one that got cleared.
+				Expect(err).NotTo(HaveOccurred())
+
+				var back map[string]any
+				Expect(yaml.Unmarshal(merged, &back)).To(Succeed())
+				Expect(back).To(HaveKeyWithValue("middle", expected))
+			},
+			Entry("the second definition written after the list",
+				"labels:\n  - &x keep\nmiddle: *x\nother: &x elsewhere\n", "keep"),
+			Entry("both definitions inside the list being written",
+				"labels:\n  - &x a\n  - &x b\nmiddle: *x\n", "b"),
+		)
+
+		// Merging into what a mapping inherits means writing the inherited keys
+		// out literally, and that is a change to the file whatever the merge
+		// then does to it. Where the merge asks for what the mapping already
+		// gets, the flattening is the only thing in the diff - a pull request
+		// proposing a change nobody asked for.
+		DescribeTable("changes nothing where an inherited mapping already says it",
+			func(override string) {
+				// The whole file, byte for byte. A substring would match the
+				// template's own copy of the inherited keys and pass either way.
+				template := "base: &b\n  nested:\n    a: 1\n    b: 2\nthing:\n  <<: *b\n"
+
+				merged, err := filemerge.Apply("ci.yaml", []byte(template),
+					filemerge.Spec{Overrides: overrides(override)})
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(merged)).To(Equal(template))
+			},
+			Entry("an empty patch", `{"thing": {"nested": {}}}`),
+			Entry("a value the template already sets", `{"thing": {"nested": {"a": 1}}}`),
+			Entry("every value it already sets", `{"thing": {"nested": {"a": 1, "b": 2}}}`),
+			Entry("a number written differently", `{"thing": {"nested": {"a": 1.0}}}`),
+			Entry("a null on a key it does not have", `{"thing": {"nested": {"c": null}}}`),
+		)
+
+		// One patch reaching two levels down, each level inherited, so the
+		// merge makes a copy inside a copy. A fresh anchor name is minted
+		// against what the document already defines, so the outer copy has to
+		// be in the document before the inner one is made - otherwise both mint
+		// `dup-2` and the file defines that twice.
+		//
+		// `dup` is defined twice in the template on purpose. That is legal YAML
+		// and it is what makes both copies carry a name that has to be renamed.
+		It("gives two copies made in one merge two anchor names", func() {
+			merged, err := filemerge.Apply("ci.yaml", []byte(
+				"leaf: &l\n  d: &dup 2\nmid: &m\n  b: *l\n  e: &dup 1\n"+
+					"base: &bs\n  a: *m\nthing:\n  <<: *bs\nkeep: *dup\n"),
+				filemerge.Spec{Overrides: overrides(`{"thing": {"a": {"b": {"c": 1}}}}`)})
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(strings.Count(string(merged), "&x")).To(Equal(1))
+			Expect(strings.Count(string(merged), "&dup-2")).To(Equal(1))
 
 			var back struct {
 				Thing map[string]any `yaml:"thing"`
-				After string         `yaml:"after"`
 			}
 			Expect(yaml.Unmarshal(merged, &back)).To(Succeed())
-			Expect(back.Thing).To(HaveKeyWithValue("labels", []any{"keep", "extra"}))
-			Expect(back.After).To(Equal("keep"))
+			Expect(back.Thing).To(HaveKeyWithValue("a", map[string]any{
+				"b": map[string]any{"c": 1, "d": 2},
+				"e": 1,
+			}))
 		})
 
-		// The list this replaces is the one the anchor was defined in, so the
-		// copy has to keep it: dropping it would leave `after` naming nothing.
-		It("keeps an anchor when the list it defines is the one being replaced", func() {
+		// And where the patch does say something new, the whole mapping is
+		// written out - the inheritance cannot express one key differing.
+		It("writes an inherited mapping out where the patch changes it", func() {
 			merged, err := filemerge.Apply("ci.yaml",
-				[]byte("labels:\n  - &x keep\nafter: *x\n"),
-				filemerge.Spec{
-					Overrides: overrides(`{"labels": ["extra"]}`),
-					Arrays: []filemerge.ArrayRule{
-						{Path: "$.labels", Strategy: filemerge.ArrayAppend},
-					},
-				})
+				[]byte("base: &b\n  nested:\n    a: 1\n    b: 2\nthing:\n  <<: *b\n"),
+				filemerge.Spec{Overrides: overrides(`{"thing": {"nested": {"a": 9}}}`)})
 
 			Expect(err).NotTo(HaveOccurred())
 
 			var back struct {
-				Labels []any  `yaml:"labels"`
-				After  string `yaml:"after"`
+				Base  map[string]any `yaml:"base"`
+				Thing map[string]any `yaml:"thing"`
 			}
 			Expect(yaml.Unmarshal(merged, &back)).To(Succeed())
-			Expect(back.Labels).To(Equal([]any{"keep", "extra"}))
-			Expect(back.After).To(Equal("keep"))
+			Expect(back.Thing).To(HaveKeyWithValue("nested", map[string]any{"a": 9, "b": 2}))
+			Expect(back.Base).To(HaveKeyWithValue("nested", map[string]any{"a": 1, "b": 2}))
 		})
 
-		// RFC 7396: an empty object patch changes nothing. Written out, the
-		// mapping a merge key was feeding became literal keys - a change nobody
-		// asked for, proposed as a pull request, for a spec that adjusts
-		// nothing.
-		It("changes nothing for an empty patch on a key a merge key feeds", func() {
-			template := "base: &b\n  nested:\n    a: 1\n    b: 2\nthing:\n  <<: *b\n"
+		// A mapping and nothing else. Anything a patch cannot merge into is
+		// replaced by it, empty or not - which is what RFC 7396 says and what
+		// the JSON side of this engine does with the same patch, so reading
+		// "an empty patch changes nothing" as a rule about the patch rather
+		// than about what it lands on would split the two apart.
+		DescribeTable("replaces what an empty patch cannot merge into",
+			func(template, expected string) {
+				merged, err := filemerge.Apply("ci.yaml", []byte(template),
+					filemerge.Spec{Overrides: overrides(`{"jobs": {}}`)})
 
-			merged, err := filemerge.Apply("ci.yaml", []byte(template),
-				filemerge.Spec{Overrides: overrides(`{"thing": {"nested": {}}}`)})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(merged)).To(ContainSubstring(expected))
+			},
+			Entry("a scalar", "jobs: 5\n", "jobs: {}"),
+			Entry("a sequence", "jobs:\n  - build\n", "jobs: {}"),
+			Entry("a key that is not there at all", "name: build\n", "jobs: {}"),
+		)
 
-			// The whole file, byte for byte. A substring would match the
-			// template's own copy of the inherited keys and pass either way.
+		// The same rule where a merge key is what put the value there. This is
+		// the pair to the spec above it: the guard that leaves an inherited
+		// mapping alone has to read what it is standing on, not merely that
+		// something is there, or an inherited scalar survives a patch that
+		// replaces the same scalar written literally.
+		It("replaces an inherited scalar with an empty patch", func() {
+			merged, err := filemerge.Apply("ci.yaml",
+				[]byte("base: &b\n  jobs: 5\nthing:\n  <<: *b\n"),
+				filemerge.Spec{Overrides: overrides(`{"thing": {"jobs": {}}}`)})
+
 			Expect(err).NotTo(HaveOccurred())
-			Expect(string(merged)).To(Equal(template))
-		})
 
-		// And where nothing is there to leave alone, an empty object is what
-		// the key becomes - which is also what RFC 7396 says.
-		It("writes an empty object where the key is not there at all", func() {
-			merged, err := filemerge.Apply("ci.yaml", []byte("name: build\n"),
-				filemerge.Spec{Overrides: overrides(`{"jobs": {}}`)})
-
-			Expect(err).NotTo(HaveOccurred())
-			Expect(string(merged)).To(ContainSubstring("jobs: {}"))
+			var back struct {
+				Base  map[string]any `yaml:"base"`
+				Thing map[string]any `yaml:"thing"`
+			}
+			Expect(yaml.Unmarshal(merged, &back)).To(Succeed())
+			Expect(back.Thing).To(HaveKeyWithValue("jobs", map[string]any{}))
+			Expect(back.Base).To(HaveKeyWithValue("jobs", 5))
 		})
 
 		// The tag comes off so the line is written plainly, and a merge key
