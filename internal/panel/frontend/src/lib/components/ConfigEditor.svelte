@@ -20,6 +20,7 @@
   import Select from './Select.svelte';
   import Button from './Button.svelte';
   import ChangedMarker from './ChangedMarker.svelte';
+  import CheckTile from './CheckTile.svelte';
   import HelpTip from './HelpTip.svelte';
   import Icon from './Icon.svelte';
   import InheritControl from './InheritControl.svelte';
@@ -346,18 +347,12 @@
             <div class="cmd-flow">
               {#each COMMANDS as command (command)}
                 {@const checked = commandIsAllowed(allowedList, command)}
-                <label class="check-tile">
-                  <input
-                    type="checkbox"
-                    {checked}
-                    disabled={editorDisabled || (checked && allowedCount === 1)}
-                    onchange={() => toggleCommand(command)}
-                  />
-                  <span class="check-box" aria-hidden="true">
-                    <svg viewBox="0 0 12 12"><path d="M2.2 6.4 4.9 9 9.8 3.2" /></svg>
-                  </span>
-                  <code>{command}</code>
-                </label>
+                <CheckTile
+                  label={command}
+                  {checked}
+                  disabled={editorDisabled || (checked && allowedCount === 1)}
+                  onchange={() => toggleCommand(command)}
+                />
               {/each}
             </div>
           </div>
@@ -641,96 +636,6 @@
     gap: var(--space-2);
   }
 
-  .check-tile {
-    align-items: center;
-    background: var(--strip-lift);
-    border: 1px solid var(--rule);
-    border-radius: var(--r-ctl);
-    cursor: pointer;
-    display: inline-flex;
-    gap: 0.5625rem;
-    min-height: 2.25rem;
-    padding: 0 0.8125rem 0 0.625rem;
-    transition:
-      background-color 120ms ease-out,
-      border-color 120ms ease-out;
-  }
-
-  .check-tile:hover:not(:has(input:disabled)) {
-    border-color: var(--border-strong);
-  }
-
-  .check-tile:has(input:disabled) {
-    cursor: default;
-  }
-
-  .check-tile input {
-    height: 1px;
-    opacity: 0;
-    position: absolute;
-    width: 1px;
-  }
-
-  .check-box {
-    background: var(--strip);
-    border: 1.5px solid var(--border-strong);
-    border-radius: 5px;
-    flex: none;
-    height: 1.125rem;
-    position: relative;
-    transition:
-      background-color 130ms ease-out,
-      border-color 130ms ease-out;
-    width: 1.125rem;
-  }
-
-  .check-box svg {
-    fill: none;
-    height: 12px;
-    inset: 0;
-    margin: auto;
-    position: absolute;
-    stroke: var(--on-admin);
-    stroke-dasharray: 14;
-    stroke-dashoffset: 14;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    stroke-width: 2.4;
-    transition: stroke-dashoffset 160ms var(--ease-standard) 40ms;
-    width: 12px;
-  }
-
-  .check-tile input:checked + .check-box {
-    background: var(--admin);
-    border-color: var(--admin);
-  }
-
-  .check-tile input:checked + .check-box svg {
-    stroke-dashoffset: 0;
-  }
-
-  .check-tile input:focus-visible + .check-box {
-    outline: 2px solid var(--brand);
-    outline-offset: 2px;
-  }
-
-  .check-tile input:disabled + .check-box {
-    opacity: 0.7;
-  }
-
-  .check-tile code {
-    background: transparent;
-    color: var(--dim);
-    font-size: var(--font-size-control);
-    padding: 0;
-    transition: color 120ms ease-out;
-  }
-
-  .check-tile input:checked ~ code {
-    color: var(--text);
-    font-weight: 500;
-  }
-
   .alias-flow {
     align-items: center;
     display: flex;
@@ -908,7 +813,6 @@
   .bar-ghost,
   .row-label .label-text,
   .row-label label,
-  .check-tile code,
   .chip-from,
   .chip-arrow,
   .chip-to,
@@ -1055,10 +959,6 @@
 
     .save-dot {
       animation: none;
-    }
-
-    .check-box svg {
-      transition: none;
     }
   }
 </style>
