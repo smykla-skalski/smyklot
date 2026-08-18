@@ -4,6 +4,7 @@
 
   import { createPanelQueryClient } from '#lib/query-client.js';
   import { PanelSession, setPanelSession } from '#lib/session.svelte.js';
+  import { TARGET } from '../stories/support/fixtures.js';
   import { applyDocumentTheme, resolveThemeDisplay } from '#lib/preferences.js';
   import type { ThemeDisplay } from '#lib/preferences.js';
 
@@ -33,13 +34,28 @@
    * preferences from, and a story that reached the network through it would be
    * reaching past its own fixtures. What each story wants ANSWERED it seeds.
    */
-  setPanelSession(
-    new PanelSession(
-      new Proxy({}, { get: () => () => Promise.reject(new Error('no api in a story')) }) as never,
-      { version: null, serviceHost: null },
-      queryClient,
-    ),
+  const session = new PanelSession(
+    new Proxy({}, { get: () => () => Promise.reject(new Error('no api in a story')) }) as never,
+    { version: null, serviceHost: null },
+    queryClient,
   );
+
+  /*
+   * A workspace, because a session with none cannot build an address.
+   * ----------------------------------------------------------------
+   * `session.repositoryHref()` resolves `/i/[account]/...` from
+   * `selectedTarget?.account.login ?? ''`, and SvelteKit refuses an empty parameter -
+   * so with no target selected every repository row throws "Missing parameter
+   * 'account'" BEFORE it renders, and the table draws its header over nothing. The
+   * error names a route, which sends you looking for a router; the cause is that
+   * nothing is selected.
+   *
+   * Worth knowing what does NOT fix it: `parameters.sveltekit_experimental.state.page`
+   * supplies `$app/state`, and this address never goes through it.
+   */
+  session.targets = [TARGET];
+  session.selectedId = TARGET.id;
+  setPanelSession(session);
 
   // The app's own function, so the toolbar and the panel can never disagree about
   // what a theme means. It writes `data-theme` on the document element and rewrites
