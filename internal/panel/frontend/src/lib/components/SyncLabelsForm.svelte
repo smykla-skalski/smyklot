@@ -13,6 +13,7 @@
    * row already has.
    */
   import { asList, lines, patchedAt, rowKeys, withoutAt } from '#lib/form-lists.js';
+  import { OFF, ON, SWITCH } from '#lib/form-switch.js';
   import { canonicalStringify } from '#lib/preferences-sync.js';
   import type { SyncLabel } from '#lib/types.js';
 
@@ -47,13 +48,6 @@
       excludes: string[],
     ) => void;
   } = $props();
-
-  const ON = 'on';
-  const OFF = 'off';
-  const SWITCH = [
-    { value: ON, label: 'On' },
-    { value: OFF, label: 'Off' },
-  ] as const;
 
   /* Derived from what is saved and written over as somebody edits, so a save
      landing from anywhere reseeds it rather than leaving the screen describing

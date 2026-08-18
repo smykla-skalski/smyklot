@@ -13,6 +13,7 @@
    */
   import { canonicalStringify } from '#lib/preferences-sync.js';
   import { asList, lines, patchedAt, rowKeys, storedList, withoutAt } from '#lib/form-lists.js';
+  import { OFF, ON, SWITCH } from '#lib/form-switch.js';
   import type {
     SyncRuleset,
     SyncRulesetBypassActor,
@@ -45,13 +46,6 @@
     saving: boolean;
     onSave: (enabled: boolean, document: Record<string, unknown>) => void;
   } = $props();
-
-  const ON = 'on';
-  const OFF = 'off';
-  const SWITCH = [
-    { value: ON, label: 'On' },
-    { value: OFF, label: 'Off' },
-  ] as const;
 
   const TARGETS = [
     { value: 'branch', label: 'Branches' },

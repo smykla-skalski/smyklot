@@ -12,6 +12,7 @@
    * request per repository whose whole succeeds or fails together, so a control
    * that saved on every click would send a dozen half-formed policies.
    */
+  import { OFF, ON, SWITCH } from '#lib/form-switch.js';
   import { canonicalStringify } from '#lib/preferences-sync.js';
 
   import InheritControl from './InheritControl.svelte';
@@ -46,13 +47,6 @@
     kind: 'switch' | 'choice';
     options: readonly Choice[];
   };
-
-  const ON = 'on';
-  const OFF = 'off';
-  const SWITCH: readonly Choice[] = [
-    { value: ON, label: 'On' },
-    { value: OFF, label: 'Off' },
-  ];
 
   function toggle(key: string, label: string): Field {
     return { key, label, kind: 'switch', options: SWITCH };

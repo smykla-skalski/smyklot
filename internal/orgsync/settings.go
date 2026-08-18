@@ -799,7 +799,10 @@ func PlanSettings(
 	config SettingsConfig,
 	current CurrentSettings,
 ) []Action {
-	actions := make([]Action, 0, 2)
+	// Declared rather than made, the way the label and ruleset planners beside
+	// this one do it: nothing appended is nil, which is what a caller reading
+	// "this repository needs no work" gets from all three.
+	var actions []Action
 
 	if action, planned := planSettingsChange(repositoryID, config, current); planned {
 		actions = append(actions, action)
@@ -807,10 +810,6 @@ func PlanSettings(
 
 	if action, planned := planDependabot(repositoryID, config, current); planned {
 		actions = append(actions, action)
-	}
-
-	if len(actions) == 0 {
-		return nil
 	}
 
 	return actions
