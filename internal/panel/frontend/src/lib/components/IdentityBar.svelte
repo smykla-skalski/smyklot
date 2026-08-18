@@ -9,6 +9,7 @@
   import Icon from './Icon.svelte';
   import AccountTrigger from './AccountTrigger.svelte';
   import SidebarTooltip from './SidebarTooltip.svelte';
+  import WorkspaceTrigger from './WorkspaceTrigger.svelte';
   import Popover from './Popover.svelte';
   import ThemeSwitch from './ThemeSwitch.svelte';
   import ViewTabs from './ViewTabs.svelte';
@@ -267,22 +268,7 @@
       onclose={() => (targetQuery = '')}
     >
       {#snippet trigger(attributes)}
-        <button
-          class="target-trigger"
-          type="button"
-          aria-label={`Switch workspace, currently ${selectedTarget.account.display_name}`}
-          {...attributes}
-        >
-          <Avatar account={selectedTarget.account} size={28} shape="workspace" />
-          <span class="target-trigger-copy band-trim-stack">
-            <span class="target-kicker">Workspace</span>
-            <strong>{selectedTarget.account.display_name}</strong>
-          </span>
-          <span class="menu-chevron" aria-hidden="true">
-            <Icon name="chevrons-up-down" size={14} strokeWidth={2} />
-          </span>
-          <SidebarTooltip text="Switch workspace" />
-        </button>
+        <WorkspaceTrigger account={selectedTarget.account} {attributes} />
       {/snippet}
 
       <!-- `rail`, not `collapsed`: scoped styles are scoped to the component and
@@ -524,73 +510,10 @@
   /* No stacking context of their own any more: both menus are in the top layer,
      which nothing in the page can be painted over. */
 
-  /* ---- workspace switcher: context selection lives at the top ---- */
-  .target-trigger {
-    align-items: center;
-    background: var(--switcher-card-bg);
-    border: 1px solid var(--switcher-card-border);
-    border-radius: var(--radius-control);
-    box-shadow: var(--sidebar-thumb-shadow);
-    cursor: pointer;
-    display: grid;
-    gap: 0.625rem;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    /* Nothing on top: the row above owns the space under the mark. */
-    margin: 0 0 var(--space-3);
-    min-height: 3.25rem;
-    padding: var(--space-2) 0.625rem;
-    position: relative;
-    width: 100%;
-    transition:
-      background-color var(--duration-fast) var(--ease-standard),
-      border-color var(--duration-fast) var(--ease-standard),
-      transform var(--duration-press) var(--ease-standard);
-    user-select: none;
-  }
-
-  .target-trigger:hover {
-    background: var(--switcher-card-hover);
-    border-color: color-mix(in srgb, var(--focus) 40%, var(--switcher-card-border));
-  }
-
-  .target-trigger[aria-expanded='true'] {
-    border-color: color-mix(in srgb, var(--focus) 55%, var(--switcher-card-border));
-  }
-
-  .target-trigger:active {
-    background: var(--sidebar-item-pressed);
-    box-shadow: none;
-  }
-
-  .target-trigger-copy {
-    display: grid;
-    gap: 0.3rem;
-    min-width: 0;
-    text-align: left;
-  }
-
-  .target-kicker {
-    color: var(--sidebar-text-muted);
-    font: 700 0.625rem / 1 var(--sans);
-    letter-spacing: 0.11em;
-    text-box: trim-both cap alphabetic;
-    text-transform: uppercase;
-  }
-
   /* Trimmed to the baseline by `.band-trim-stack`, so the descenders in a workspace
      name paint below the box and `overflow: hidden` took them off. The account card
      below solves the same thing by opening the block axis; here the room is bounded
      instead, because the switcher sits in a rail whose neighbours are close. */
-  .target-trigger-copy strong {
-    color: var(--sidebar-text);
-    font-size: var(--font-size-meta);
-    font-weight: 600;
-    line-height: 1.2;
-    overflow: clip;
-    overflow-clip-margin: 0.4em;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
 
   /* `:global`, because two triggers wear this and one of them - the account row - is
      `AccountTrigger`'s markup now. Four declarations shared by two triggers is a class
@@ -931,8 +854,8 @@
      only: the span is `SidebarTooltip`'s element, the triggers are this file's. */
   .collapsed .sidebar-collapse-trigger:hover :global(.sidebar-tooltip),
   .collapsed .sidebar-collapse-trigger:focus-visible :global(.sidebar-tooltip),
-  .collapsed .target-trigger:hover :global(.sidebar-tooltip),
-  .collapsed .target-trigger:focus-visible :global(.sidebar-tooltip),
+  .collapsed :global(.target-trigger:hover .sidebar-tooltip),
+  .collapsed :global(.target-trigger:focus-visible .sidebar-tooltip),
   .collapsed :global(.who:hover .sidebar-tooltip),
   .collapsed :global(.who:focus-visible .sidebar-tooltip) {
     opacity: 1;
@@ -941,7 +864,7 @@
   }
 
   /* A tooltip never fights the popover it would describe. */
-  .target-trigger[aria-expanded='true'] :global(.sidebar-tooltip),
+  :global(.target-trigger[aria-expanded='true'] .sidebar-tooltip),
   :global(.who[aria-expanded='true'] .sidebar-tooltip) {
     visibility: hidden !important;
   }
@@ -1062,13 +985,13 @@
   }
 
   .collapsed :global(.mark-copy),
-  .collapsed .target-trigger-copy,
+  .collapsed :global(.target-trigger-copy),
   .collapsed :global(.menu-chevron),
   .collapsed :global(.who-text) {
     display: none;
   }
 
-  .collapsed .target-trigger {
+  .collapsed :global(.target-trigger) {
     display: flex;
     justify-content: center;
     padding: var(--space-2) 0;
@@ -1147,7 +1070,7 @@
        rendered and its slot would otherwise stay empty - the menu button hung
        68px off the account avatar with nothing between them. It moves out to
        take the vacant slot, keeping the row packed against the edge. */
-    .panel-sidebar:not(:has(.target-trigger)) .mobile-navigation-trigger {
+    .panel-sidebar:not(:has(:global(.target-trigger))) .mobile-navigation-trigger {
       right: var(--bar-slot-switcher);
     }
 
@@ -1169,38 +1092,15 @@
       display: block;
     }
 
-    .target-trigger,
-    .collapsed .target-trigger {
-      border: 0;
-      margin: 0;
-      padding: 0;
-      position: absolute;
-      top: calc((var(--bar-height) - var(--bar-control)) / 2);
-    }
-
-    .target-trigger {
-      right: var(--bar-slot-switcher);
-    }
-
-    .target-trigger,
-    .collapsed .target-trigger {
-      background: transparent;
-      border: 0;
-      box-shadow: none;
-      display: flex;
-      min-height: var(--bar-control);
-      padding: 0;
-      /* Absolutely positioned up there, so it is sized by its contents rather
-         than by the rail it no longer sits in. */
-      width: auto;
-    }
+    /* The two triggers' own phone layouts are in `WorkspaceTrigger` and
+       `AccountTrigger`. Written here they would be a single class against each
+       component's class-plus-scope, and would lose. */
 
     /* `.who-text` and the account row's chevron are NOT here. They are
        `AccountTrigger`'s elements, and its own scoped rule - a class plus its scope
        class - outranks a bare `:global(.who-text)` written from out here, so this
        hid nothing and the account button stayed 146px wide on a phone. The row
        carries its own phone layout instead. */
-    .target-trigger-copy,
     :global(.menu-chevron) {
       display: none;
     }
@@ -1252,7 +1152,7 @@
      it won, and the menu button left the corner it is placed in. */
   @media (pointer: coarse) {
     .mobile-navigation-trigger::after,
-    .target-trigger::after,
+    :global(.target-trigger::after),
     :global(.who::after) {
       content: '';
       inset: calc((2.75rem - 100%) / -2) calc((2.75rem - 100%) / -2);
