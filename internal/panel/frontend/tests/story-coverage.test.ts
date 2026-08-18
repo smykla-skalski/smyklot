@@ -24,23 +24,19 @@ const stories = new URL('../stories/', import.meta.url);
 
 /** Components still owed a story. Only ever gets shorter. */
 /*
- * The three left, and they all want the same thing.
+ * Empty, and that is the state to hold.
  *
- * Every view already storied takes its data through ordinary props - a `fetchPage`, a
- * `fetchAudit` - so a story hands it a function and the query resolves against that.
- * These three do not: they read `session.api`, and `PanelShell` stubs that to reject
- * every call on purpose, so a story of one draws its shell over nothing.
+ * A name may only ever be ADDED here with a reason, and the reasons that were here are
+ * gone: `session.api` refusing every call (`PanelShell` backs it with `dev/fixtures.ts`
+ * now), and a session with no selected workspace, which made every repository row throw
+ * `Missing parameter 'account'` while resolving its own link.
  *
- * The fix is one change rather than three: back the shell's session API with
- * `dev/fixtures.ts` - the same data the dev server answers with - instead of a
- * rejecting Proxy. Do it there and not per story, or three stories grow three
- * different services.
- *
- * `IdentityBar` needs that too, since it draws the workspace switcher and the account
- * menu from the session, plus a decision about what a story of the shell's own
- * furniture should show at all. Worth asking before writing it.
+ * Two rules for whoever adds the next component. Seed a query cache only where the data
+ * arrives through `api`; if the view takes a `fetchPage`-shaped prop, hand it a function
+ * and the query resolves against that. And OPEN THE STORY IN A BROWSER - `svelte-check`
+ * and `eslint` both pass on a story that renders a blank frame.
  */
-const PENDING: readonly string[] = ['IdentityBar'];
+const PENDING: readonly string[] = [];
 
 function storyNames(): Set<string> {
   const found = new Set<string>();
