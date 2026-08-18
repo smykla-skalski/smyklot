@@ -1,5 +1,7 @@
 <script lang="ts" generics="Row">
   import type { Snippet } from 'svelte';
+  import { flip, type FlipParams } from 'svelte/animate';
+  import { fade, type FadeParams } from 'svelte/transition';
 
   /**
    * The shell every table in the panel shares.
@@ -84,25 +86,22 @@
    * beats a caller's at one, and CSS reports nothing when it wins. Prefer declining a
    * shared layout to fighting it.
    *
-   * ## The one table that cannot move, and why
+   * ## Row motion, and why it is a branch rather than a prop
    *
-   * `QueueView` keeps its own table. Its rows carry `animate:flip`, `in:fade` and
-   * `out:fade`, and those are **compile-time directives**: they cannot be spread
-   * through `rowAttrs` like an event handler, and a transition function cannot be
-   * passed in and applied - `in:{someProp}` is not a thing Svelte compiles. They have
-   * to be written on the element itself, by whoever writes the `{#each}` - and that is
-   * this component.
+   * `QueueView` animates: its rows carry `animate:flip`, `in:fade` and `out:fade`.
+   * Those are **compile-time directives**. They cannot be spread through `rowAttrs`
+   * like an event handler, and a transition function cannot be passed in and applied -
+   * `in:{someProp}` is not a thing Svelte compiles. They have to be written on the
+   * element itself, by whoever writes the `{#each}`, and that is this component.
    *
-   * The only way to absorb it would be for this component to apply `animate:flip` and
-   * a fade to **every** row of **every** table, with a zero duration where none is
-   * wanted. That is not free: flip measures each row's box before and after every
-   * update, so six tables that never animate would pay for the one that does. The
-   * queue is also the one table that is short by construction and has neither a pinned
-   * header nor a scrollport, so it shares the least of this shell to begin with.
+   * `animate:` also has to be on an element that is the *immediate* child of a keyed
+   * each block, so it cannot be hidden behind an `{#if}` inside one either. What is
+   * left is branching the `{#each}` itself, which is what the body below does.
    *
-   * Everything genuinely shared with it already moved: `.table-card`, `.data-row`,
-   * `thead th` and `.table-heading` in `app.css` are what it draws its surface, its row
-   * states and its headings from, exactly as the six here do.
+   * That branch is why the directives are not simply always applied with a zero
+   * duration: flip measures every row's box before and after every update, and eight
+   * of the nine tables never move a row. `motion` is how the ninth asks, and the other
+   * eight pay nothing.
    */
   /* `let`, not `const`: `body` is `$bindable`, and a bindable prop has to be
      assignable. */
@@ -123,12 +122,14 @@
     lead,
     bodyAttrs,
     colgroup,
+    columnWidths,
     afterRow,
     tableClass = '',
     body = $bindable(),
     scrollable = true,
     pinned = false,
     stacked = false,
+    motion,
   }: {
     rows: readonly Row[];
     /**
@@ -208,6 +209,19 @@
     /** A `<colgroup>`, for a table that declares its columns rather than sizing cells. */
     colgroup?: Snippet;
     /**
+     * One entry per column, in order, as a CSS length - `undefined` leaves a column
+     * to take what is left.
+     *
+     * This is where a column width belongs, and the reason is not tidiness. Written
+     * as CSS in the view, a width is a selector like `.my-table :is(th, td):nth-child(3)`
+     * - and the table it names is rendered by *this* component, so the view's scope
+     * class never lands on it and the rule dies without a word from the compiler.
+     * Every table that tried it lost its columns to an equal split. As data it cannot
+     * miss: this renders the `<colgroup>` itself, which is what `table-layout: fixed`
+     * reads before it looks at a single cell.
+     */
+    columnWidths?: readonly (string | undefined)[];
+    /**
      * A second `<tr>` after a row's own, when it has something to say.
      *
      * One table announces a per-row failure through a visually-hidden alert row, and
@@ -234,7 +248,28 @@
      * `app.css`, for the same reason `pinned` is: it reaches the cells.
      */
     stacked?: boolean;
+    /**
+     * Row motion, for a table whose rows move rather than being rebuilt. Omit it and
+     * the rows are static and cost nothing - see the note above on why this is a
+     * branch and not a set of directives applied to everything.
+     */
+    motion?: {
+      flip: FlipParams;
+      arriving: FadeParams;
+      leaving: FadeParams;
+    };
   } = $props();
+
+  /* Loud rather than silent. `animate:` requires the row to be the only child of its
+     keyed each block, so the animated branch cannot also render `afterRow`, and a
+     table that asked for both would quietly lose every second row. */
+  $effect(() => {
+    if (motion !== undefined && afterRow !== undefined) {
+      throw new Error(
+        'DataTable: `motion` and `afterRow` cannot be combined - an animated row must be the only child of its each block',
+      );
+    }
+  });
 </script>
 
 <!--
@@ -257,6 +292,21 @@
     <caption class="visually-hidden">{caption}</caption>
     {#if colgroup !== undefined}
       {@render colgroup()}
+    {:else if columnWidths !== undefined}
+      <!-- The width goes on through a spread rather than a literal `style=`, which
+           `tests/csp-safety.test.ts` refuses in this directory. -->
+      <colgroup>
+        {#each columnWidths as width, index (index)}
+          <!--
+            Through a variable rather than the value directly, because a `<col>`
+            width BEATS a cell width in fixed table layout - so a width written here
+            would silently outrank every responsive rule a table has for that column.
+            `--table-col-N` is where a media query retunes one, which is the same
+            knob-shaped seam the rest of this shell uses.
+          -->
+          <col {...{ style: `width:var(--table-col-${index + 1}, ${width ?? 'auto'})` }} />
+        {/each}
+      </colgroup>
     {/if}
     <thead>
       {#if head !== undefined}
@@ -285,14 +335,18 @@
       {#if lead !== undefined}
         {@render lead()}
       {/if}
-      {#each rows as row (rowKey(row))}
-        <tr class="data-row" {...rowAttrs?.(row) ?? {}}>
-          {@render cells(row)}
-        </tr>
-        {#if afterRow !== undefined}
-          {@render afterRow(row)}
-        {/if}
-      {:else}
+      <!--
+        Two `{#each}` blocks over the same rows, which is not duplication for its own
+        sake. `animate:` has to sit on an element that is the *immediate* child of a
+        keyed each, so it cannot be put behind an `{#if}` inside one, and a directive
+        is compile-time - it cannot travel through `rowAttrs` or arrive as a prop. The
+        only way to make row motion optional is to branch the block itself.
+
+        Optional is the point. `flip` measures every row's box before and after every
+        update, and one table animates. The branch is what lets the other eight pay
+        nothing for it.
+      -->
+      {#if rows.length === 0}
         {#if empty !== undefined}
           <tr class="state-row">
             <td colspan={columnCount ?? columns?.length ?? 1} class="empty-cell">
@@ -300,7 +354,31 @@
             </td>
           </tr>
         {/if}
-      {/each}
+      {:else if motion !== undefined}
+        <!-- No `afterRow` here, and the script above refuses the pair rather than
+             dropping it quietly: the compiler wants the animated row to be the ONLY
+             child of its keyed each, not merely the first. -->
+        {#each rows as row (rowKey(row))}
+          <tr
+            class="data-row"
+            animate:flip={motion.flip}
+            in:fade={motion.arriving}
+            out:fade={motion.leaving}
+            {...rowAttrs?.(row) ?? {}}
+          >
+            {@render cells(row)}
+          </tr>
+        {/each}
+      {:else}
+        {#each rows as row (rowKey(row))}
+          <tr class="data-row" {...rowAttrs?.(row) ?? {}}>
+            {@render cells(row)}
+          </tr>
+          {#if afterRow !== undefined}
+            {@render afterRow(row)}
+          {/if}
+        {/each}
+      {/if}
     </tbody>
   </table>
   {#if foot !== undefined}
@@ -333,18 +411,18 @@
     width: 100%;
   }
 
-  /* Only ever the headings this component draws itself: a `head` snippet's cells
-     carry the caller's scope, so that table keeps its own band rule - which is what
-     `app.css` means where it says the height stays with each table.
+  /* The band's height and its zero block padding moved to `.data-table thead th` in
+     `app.css`. Scoped here they reached only the headings this component renders
+     from `columns`, and six of the seven tables pass a `head` snippet whose cells
+     wear the caller's scope - so the rules missed them, the band was whatever its
+     contents happened to be, and the `--table-heading-height` three of them set was
+     never read.
 
-     2.5rem of band plus its own rule. NOT via `box-sizing: content-box` - the
-     sticky-header layout gives thead and tbody rows the same percentage column
-     widths, and under content-box the header's percentages stop including its 24px
-     of padding, so the two grids drift apart by a whole cell. */
-  thead th {
-    height: var(--table-heading-height, calc(2.5rem + 1px));
-    padding-block: 0;
-  }
+     The knob is still how a table asks for a different band. NOT via
+     `box-sizing: content-box` - the sticky-header layout gives thead and tbody rows
+     the same percentage column widths, and under content-box the header's
+     percentages stop including its 24px of padding, so the two grids drift apart by
+     a whole cell. */
 
   /* The one row that is not a row. Six tables declared this pair identically, and
      the two that also had to say `background: transparent` were the two whose row

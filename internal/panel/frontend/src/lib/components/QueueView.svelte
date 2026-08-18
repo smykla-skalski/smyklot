@@ -2,7 +2,6 @@
   import { createQuery } from '@tanstack/svelte-query';
   import { useDebounce, useInterval } from 'runed';
   import { untrack } from 'svelte';
-  import { flip } from 'svelte/animate';
   import { MediaQuery } from 'svelte/reactivity';
   import { fade } from 'svelte/transition';
 
@@ -23,6 +22,7 @@
   import Button from './Button.svelte';
   import AppTooltip from './AppTooltip.svelte';
   import Chip from './Chip.svelte';
+  import DataTable from './DataTable.svelte';
   import FilterMenu from './FilterMenu.svelte';
   import Icon from './Icon.svelte';
   import IconButton from './IconButton.svelte';
@@ -58,6 +58,47 @@
    */
   const stillness = new MediaQuery('prefers-reduced-motion: reduce');
   const rowMotion = $derived({ duration: stillness.current ? 0 : 220 });
+
+  /* Every column but the pull request, which takes what is left. Each number is the
+     wider of what the heading needs with its own controls and what the widest value
+     the SERVICE can produce needs, plus the cell's padding, rounded up to the next
+     quarter rem - measured in the browser rather than chosen, with each column's
+     whole vocabulary put through it. `tests/browser/queue-columns.test.ts` measures
+     the same thing again and fails when a value stops fitting.
+
+     Data rather than CSS: written as `:is(th, td):nth-child(3)` under the table's
+     own class, the rule names an element `DataTable` renders, so this component's
+     scope class never lands on it and the whole set died in silence - the columns
+     fell back to an equal split. `columnWidths` becomes a `<colgroup>`, which is
+     what `table-layout: fixed` reads first.
+
+     The two sections carry different columns AND different worst cases, so each
+     states its own: 8.5rem where the widest state is "Unreadable", 9.25rem where the
+     widest outcome is "Superseded". Holding them equal would put the difference at
+     the front of every row of whichever section did not need it. */
+  const WAITING_WIDTHS = [
+    '8.5rem', // Checks
+    undefined, // Pull request
+    '12.25rem', // "Checks again in 59 minutes" over "First look since it was armed"
+    '5.75rem', // The heading with its arrow, wider than any age below it
+    /* Two 1.75rem buttons, the gap, and the cell's own 12px and 16px: 88px exactly.
+       5rem would flex-shrink the pair to 24.8px and leave two rounded rectangles
+       where two squares were drawn. */
+    '5.5rem',
+  ];
+  const RECENT_WIDTHS = [
+    '9.25rem', // Outcome
+    undefined, // Pull request
+    '8.75rem', // The heading with its filter, wider than Done, Pending or Failed
+    /* The one column whose text has no bound, sized like the repository name is: a
+       floor with a stated reason rather than a worst case. 12rem is where every
+       reason the service writes today fits inside the two lines the row already has;
+       one line for all of them would have taken 20.75rem. */
+    '12rem',
+    '6.5rem', // "Finished" is wider than "just now"
+    '3.5rem', // One button, and the same 12px and 16px the pair get
+  ];
+
   /* Leaving is quicker than arriving, and quicker than the re-sort that follows it: a row that has
      merged should be out of the way before the rows below it start closing the gap, or the two
      movements read as one confused one. */
@@ -662,354 +703,352 @@
   <StatusPill dot live>Webhook driven</StatusPill>
 </div>
 
-<div class="table-card queue-card">
-  <table
-    class="queue-table"
-    class:waiting-table={section === 'waiting'}
-    class:recent-table={section === 'recent'}
-  >
-    <thead>
-      <tr>
-        <th
-          scope="col"
-          class:checks-column={section === 'waiting'}
-          aria-sort={sortDirection(section === 'recent' ? 'outcome' : 'checks')}
-        >
-          <div class="table-heading">
-            <button
-              class="table-sort-button"
-              type="button"
-              aria-label={section === 'recent' ? 'Outcome' : 'Checks'}
-              onclick={() => toggleSort(section === 'recent' ? 'outcome' : 'checks')}
-            >
-              <span class="table-heading-label">{section === 'recent' ? 'Outcome' : 'Checks'}</span>
-              {#if section === 'waiting'}
-                <!-- Only this section's: an outcome's own column keeps its word,
+<DataTable
+  class="queue-card"
+  tableClass="queue-table {section === 'waiting' ? 'waiting-table' : 'recent-table'}"
+  {rows}
+  rowKey={(request) => request.id}
+  caption={section === 'recent' ? 'Recently finished requests' : 'Requests waiting on checks'}
+  regionLabel={section === 'recent' ? 'Recently finished' : 'Waiting on checks'}
+  columnCount={section === 'recent' ? 6 : 5}
+  columnWidths={section === 'recent' ? RECENT_WIDTHS : WAITING_WIDTHS}
+  scrollable={false}
+  motion={{ flip: rowMotion, arriving: rowArriving, leaving: rowLeaving }}
+  bodyAttrs={{
+    'data-held': held === null ? undefined : held.length,
+    onpointerenter: () => (pointerInside = true),
+    onpointerleave: () => (pointerInside = false),
+    onfocusin: () => (focusInside = true),
+    onfocusout: focusLeft,
+  }}
+  rowAttrs={(request) => ({
+    class: `queue-row data-row${passingThrough(request) ? ' leaving' : ''}`,
+    tabindex: 0,
+    onclick: (event: MouseEvent) => openRow(event, request),
+    onkeydown: (event: KeyboardEvent) => openFromKeyboard(event, request),
+  })}
+>
+  {#snippet head()}
+    <tr>
+      <th
+        scope="col"
+        class:checks-column={section === 'waiting'}
+        aria-sort={sortDirection(section === 'recent' ? 'outcome' : 'checks')}
+      >
+        <div class="table-heading">
+          <button
+            class="table-sort-button"
+            type="button"
+            aria-label={section === 'recent' ? 'Outcome' : 'Checks'}
+            onclick={() => toggleSort(section === 'recent' ? 'outcome' : 'checks')}
+          >
+            <span class="table-heading-label">{section === 'recent' ? 'Outcome' : 'Checks'}</span>
+            {#if section === 'waiting'}
+              <!-- Only this section's: an outcome's own column keeps its word,
                      because the words under it are what set its width anyway. -->
-                <span class="heading-symbol"><Icon name="check" size={14} strokeWidth={2} /></span>
-              {/if}
-              <SortIndicator />
-            </button>
-            <FilterMenu
-              label={section === 'recent' ? 'Outcome' : 'Checks'}
-              summary={states.length === 0 ? 'All states' : `${states.length} selected`}
-              hint={section === 'recent'
-                ? 'Cancelled is not a failure: somebody chose it'
-                : 'Filter by what the checks last said'}
-              sections={section === 'recent' ? OUTCOME_FILTERS : STATE_FILTERS}
-              selected={states}
-              multiple
-              align="start"
-              onChange={(values) => (states = values)}
-            />
-          </div>
-        </th>
-        <th scope="col">
-          <div class="table-heading">
-            <span class="table-heading-label">Pull request</span>
-            <!-- Everything the cell under it says, in four sections: the
+              <span class="heading-symbol"><Icon name="check" size={14} strokeWidth={2} /></span>
+            {/if}
+            <SortIndicator />
+          </button>
+          <FilterMenu
+            label={section === 'recent' ? 'Outcome' : 'Checks'}
+            summary={states.length === 0 ? 'All states' : `${states.length} selected`}
+            hint={section === 'recent'
+              ? 'Cancelled is not a failure: somebody chose it'
+              : 'Filter by what the checks last said'}
+            sections={section === 'recent' ? OUTCOME_FILTERS : STATE_FILTERS}
+            selected={states}
+            multiple
+            align="start"
+            onChange={(values) => (states = values)}
+          />
+        </div>
+      </th>
+      <th scope="col">
+        <div class="table-heading">
+          <span class="table-heading-label">Pull request</span>
+          <!-- Everything the cell under it says, in four sections: the
                  repository, the merge contract, whoever armed it and what it is
                  waiting on. A menu here that offered only the repository could not
                  answer "everything @lin has rebasing", which is what having all of
                  it on one line is for. `wide`, because four sections of full
                  repository names do not fit the narrow layer. -->
+          <FilterMenu
+            label="Pull request"
+            summary={pullRequests.length === 0 ? 'Everything' : `${pullRequests.length} selected`}
+            hint="Only what this queue is holding"
+            sections={PULL_REQUEST_FILTERS}
+            selected={pullRequests}
+            multiple
+            wide
+            align="start"
+            onChange={(values) => (pullRequests = values)}
+          />
+        </div>
+      </th>
+      {#if section === 'recent'}
+        <th scope="col" class="cleanup-column" aria-sort={sortDirection('cleanup')}>
+          <div class="table-heading">
+            <!-- The word where there is room for it and the symbol where there is
+                   not; `aria-label` names the column either way, so the button keeps
+                   one name rather than gaining and losing one with the viewport. -->
+            <button
+              class="table-sort-button"
+              type="button"
+              aria-label="Cleanup"
+              onclick={() => toggleSort('cleanup')}
+            >
+              <span class="table-heading-label">Cleanup</span>
+              <span class="heading-symbol"><Icon name="trash" size={14} strokeWidth={2} /></span>
+              <SortIndicator />
+            </button>
             <FilterMenu
-              label="Pull request"
-              summary={pullRequests.length === 0 ? 'Everything' : `${pullRequests.length} selected`}
-              hint="Only what this queue is holding"
-              sections={PULL_REQUEST_FILTERS}
-              selected={pullRequests}
+              label="Cleanup"
+              summary={cleanups.length === 0 ? 'Any state' : `${cleanups.length} selected`}
+              hint="The label and the reactions the bot leaves behind"
+              sections={CLEANUP_FILTERS}
+              selected={cleanups}
               multiple
-              wide
               align="start"
-              onChange={(values) => (pullRequests = values)}
+              onChange={(values) => (cleanups = values)}
             />
           </div>
         </th>
-        {#if section === 'recent'}
-          <th scope="col" class="cleanup-column" aria-sort={sortDirection('cleanup')}>
-            <div class="table-heading">
-              <!-- The word where there is room for it and the symbol where there is
-                   not; `aria-label` names the column either way, so the button keeps
-                   one name rather than gaining and losing one with the viewport. -->
-              <button
-                class="table-sort-button"
-                type="button"
-                aria-label="Cleanup"
-                onclick={() => toggleSort('cleanup')}
-              >
-                <span class="table-heading-label">Cleanup</span>
-                <span class="heading-symbol"><Icon name="trash" size={14} strokeWidth={2} /></span>
-                <SortIndicator />
-              </button>
-              <FilterMenu
-                label="Cleanup"
-                summary={cleanups.length === 0 ? 'Any state' : `${cleanups.length} selected`}
-                hint="The label and the reactions the bot leaves behind"
-                sections={CLEANUP_FILTERS}
-                selected={cleanups}
-                multiple
-                align="start"
-                onChange={(values) => (cleanups = values)}
-              />
-            </div>
-          </th>
-          <th scope="col">
-            <div class="table-heading"><span class="table-heading-label">Why it ended</span></div>
-          </th>
-          <th scope="col" class="finished-column" aria-sort={sortDirection('finished')}>
-            <div class="table-heading">
-              <button
-                class="table-sort-button"
-                type="button"
-                aria-label="Finished"
-                onclick={() => toggleSort('finished')}
-              >
-                <span class="table-heading-label">Finished</span>
-                <span class="heading-symbol"><Icon name="history" size={14} strokeWidth={2} /></span
-                >
-                <SortIndicator />
-              </button>
-            </div>
-          </th>
-        {:else}
-          <th scope="col" aria-sort={sortDirection('next')}>
-            <div class="table-heading">
-              <button class="table-sort-button" type="button" onclick={() => toggleSort('next')}>
-                <span class="table-heading-label">Next</span>
-                <SortIndicator />
-              </button>
-              <FilterMenu
-                label="Schedule"
-                summary={schedules.length === 0 ? 'Any schedule' : `${schedules.length} selected`}
-                hint="Deferred means nothing has moved for an hour"
-                sections={SCHEDULE_FILTERS}
-                selected={schedules}
-                multiple
-                align="start"
-                onChange={(values) => (schedules = values)}
-              />
-            </div>
-          </th>
-          <!-- Sorted but not filtered: this column draws an age, which has an
+        <th scope="col">
+          <div class="table-heading"><span class="table-heading-label">Why it ended</span></div>
+        </th>
+        <th scope="col" class="finished-column" aria-sort={sortDirection('finished')}>
+          <div class="table-heading">
+            <button
+              class="table-sort-button"
+              type="button"
+              aria-label="Finished"
+              onclick={() => toggleSort('finished')}
+            >
+              <span class="table-heading-label">Finished</span>
+              <span class="heading-symbol"><Icon name="history" size={14} strokeWidth={2} /></span>
+              <SortIndicator />
+            </button>
+          </div>
+        </th>
+      {:else}
+        <th scope="col" aria-sort={sortDirection('next')}>
+          <div class="table-heading">
+            <button class="table-sort-button" type="button" onclick={() => toggleSort('next')}>
+              <span class="table-heading-label">Next</span>
+              <SortIndicator />
+            </button>
+            <FilterMenu
+              label="Schedule"
+              summary={schedules.length === 0 ? 'Any schedule' : `${schedules.length} selected`}
+              hint="Deferred means nothing has moved for an hour"
+              sections={SCHEDULE_FILTERS}
+              selected={schedules}
+              multiple
+              align="start"
+              onChange={(values) => (schedules = values)}
+            />
+          </div>
+        </th>
+        <!-- Sorted but not filtered: this column draws an age, which has an
                order and no values worth listing. Who armed it is filtered where
                the name is written, on the Pull request heading - the mock put it
                here, which would have been the same values behind a second trigger
                in a column that never shows them. -->
-          <th scope="col" class="armed-column" aria-sort={sortDirection('armed')}>
-            <div class="table-heading">
-              <button
-                class="table-sort-button"
-                type="button"
-                aria-label="Armed"
-                onclick={() => toggleSort('armed')}
-              >
-                <span class="table-heading-label">Armed</span>
-                <span class="heading-symbol"><Icon name="history" size={14} strokeWidth={2} /></span
-                >
-                <SortIndicator />
-              </button>
-            </div>
-          </th>
-        {/if}
-        <th scope="col"><span class="visually-hidden">Actions</span></th>
-      </tr>
-    </thead>
-    <!-- While a pointer or focus is in here the list holds its arrangement - see `held` above.
-         `pointerenter`/`pointerleave` rather than `mouseover`: they do not fire for the crossings
-         between one cell and the next, so this asks the question once at each edge of the table
-         rather than on every cell boundary inside it. -->
-    <tbody
-      data-held={held === null ? undefined : held.length}
-      onpointerenter={() => (pointerInside = true)}
-      onpointerleave={() => (pointerInside = false)}
-      onfocusin={() => (focusInside = true)}
-      onfocusout={focusLeft}
-    >
-      {#if problem !== null && rows.length > 0}
-        <!-- A row of the table, under its headings: a refresh that fails has not
+        <th scope="col" class="armed-column" aria-sort={sortDirection('armed')}>
+          <div class="table-heading">
+            <button
+              class="table-sort-button"
+              type="button"
+              aria-label="Armed"
+              onclick={() => toggleSort('armed')}
+            >
+              <span class="table-heading-label">Armed</span>
+              <span class="heading-symbol"><Icon name="history" size={14} strokeWidth={2} /></span>
+              <SortIndicator />
+            </button>
+          </div>
+        </th>
+      {/if}
+      <th scope="col"><span class="visually-hidden">Actions</span></th>
+    </tr>
+  {/snippet}
+
+  {#snippet lead()}
+    {#if problem !== null && rows.length > 0}
+      <!-- A row of the table, under its headings: a refresh that fails has not
              made the rows already on screen wrong, so the failure belongs over
              them rather than above the whole table where it reads as a banner
              about the page. -->
-        <tr class="notice-row">
-          <td colspan={section === 'recent' ? 6 : 5}>
-            <ResultProblem
-              title="The queue could not be read"
-              {problem}
-              onRetry={() => void load()}
-              busy={loading}
-              overContent
-            />
-          </td>
-        </tr>
-      {/if}
-      {#each rows as request (request.id)}
-        <!-- A row that has changed section while it was being read keeps its place and stops
+      <tr class="notice-row">
+        <td colspan={section === 'recent' ? 6 : 5}>
+          <ResultProblem
+            title="The queue could not be read"
+            {problem}
+            onRetry={() => void load()}
+            busy={loading}
+            overContent
+          />
+        </td>
+      </tr>
+    {/if}
+  {/snippet}
+
+  {#snippet cells(request)}
+    <!-- A row that has changed section while it was being read keeps its place and stops
              pretending: `outcomeState` is what a finished request is, whichever table it is
              standing in, and `queueState` is what an armed one is. Neither table asks the other's
              question of it. -->
-        {@const leaving = passingThrough(request)}
-        {@const state =
-          section === 'waiting' && !leaving ? queueState(request) : outcomeState(request)}
-        {@const next = queueNext(request, now)}
-        <tr
-          class="queue-row data-row"
-          class:leaving
-          tabindex="0"
-          animate:flip={rowMotion}
-          in:fade={rowArriving}
-          out:fade={rowLeaving}
-          onclick={(event) => openRow(event, request)}
-          onkeydown={(event) => openFromKeyboard(event, request)}
-        >
-          <td
-            class:checks-column={section === 'waiting'}
-            data-label={section === 'recent' ? 'Outcome' : 'Checks'}
-          >
-            <!-- Keyed on the words, so a state the reconciler changed arrives
+    {@const leaving = passingThrough(request)}
+    {@const state = section === 'waiting' && !leaving ? queueState(request) : outcomeState(request)}
+    {@const next = queueNext(request, now)}
+    <td
+      class:checks-column={section === 'waiting'}
+      data-label={section === 'recent' ? 'Outcome' : 'Checks'}
+    >
+      <!-- Keyed on the words, so a state the reconciler changed arrives
                  rather than being swapped: the chip is the whole answer this
                  column gives, and a silent substitution is the one change a
                  reader watching the row can miss. -->
-            {#key state.label}
-              <span class="state-chip" in:fade={stateChange} out:fade={stateChange}>
-                <Chip tone={state.tone} icon={state.icon}>{state.label}</Chip>
-              </span>
-            {/key}
-          </td>
-          <td data-label="Pull request">
-            <a
-              class="pr-name"
-              href={githubHref(request)}
-              rel="noreferrer"
-              target="_blank"
-              title={`${request.repository_full_name} #${request.pull_request} on GitHub`}
-            >
-              <span class="pr-owner"
-                ><span class="owner-head">{ownerHead(request)}</span><span class="owner-tail"
-                  >{ownerTail(request)}</span
-                ></span
-              >
-              <span class="pr-repo">{repositoryOf(request)}</span>
-              <span class="pr-num">#{request.pull_request}</span>
-              <Icon name="link" size={14} strokeWidth={2} />
-            </a>
-            <div class="pr-meta">
-              <span class="contract">{contractOf(request)}</span>
-              <span class="sep" aria-hidden="true">·</span>
-              <span class="sha">{request.head_sha.slice(0, 8)}</span>
-              <span class="sep" aria-hidden="true">·</span>
-              <span>@{request.requester}</span>
-            </div>
-          </td>
-          {#if section === 'recent'}
-            {@const cleanup = cleanupState(request)}
-            <!-- The words go and the mark stays below 64rem, with the whole
+      {#key state.label}
+        <span class="state-chip" in:fade={stateChange} out:fade={stateChange}>
+          <Chip tone={state.tone} icon={state.icon}>{state.label}</Chip>
+        </span>
+      {/key}
+    </td>
+    <td data-label="Pull request">
+      <a
+        class="pr-name"
+        href={githubHref(request)}
+        rel="noreferrer"
+        target="_blank"
+        title={`${request.repository_full_name} #${request.pull_request} on GitHub`}
+      >
+        <span class="pr-owner"
+          ><span class="owner-head">{ownerHead(request)}</span><span class="owner-tail"
+            >{ownerTail(request)}</span
+          ></span
+        >
+        <span class="pr-repo">{repositoryOf(request)}</span>
+        <span class="pr-num">#{request.pull_request}</span>
+        <Icon name="link" size={14} strokeWidth={2} />
+      </a>
+      <div class="pr-meta">
+        <span class="contract">{contractOf(request)}</span>
+        <span class="sep" aria-hidden="true">·</span>
+        <span class="sha">{request.head_sha.slice(0, 8)}</span>
+        <span class="sep" aria-hidden="true">·</span>
+        <span>@{request.requester}</span>
+      </div>
+    </td>
+    {#if section === 'recent'}
+      {@const cleanup = cleanupState(request)}
+      <!-- The words go and the mark stays below 64rem, with the whole
                  sentence on the tooltip: there is usually room to say "Cleanup
                  failed" in full, and where there is not, a mark that can be
                  hovered beats a truncated word. -->
-            <AppTooltip text={cleanup.detail}>
-              {#snippet children(props)}
-                <td {...props} class="cleanup-column" data-label="Cleanup">
-                  <Chip tone={cleanup.tone} icon={cleanup.icon} small>{cleanup.label}</Chip>
-                </td>
-              {/snippet}
-            </AppTooltip>
-            <!-- The sentence on the cell as well as in it. Nothing here is cut,
+      <AppTooltip text={cleanup.detail}>
+        {#snippet children(props)}
+          <td {...props} class="cleanup-column" data-label="Cleanup">
+            <Chip tone={cleanup.tone} icon={cleanup.icon} small>{cleanup.label}</Chip>
+          </td>
+        {/snippet}
+      </AppTooltip>
+      <!-- The sentence on the cell as well as in it. Nothing here is cut,
                  and this is for the reader who would rather not lean in: the type
                  is the smallest in the row. -->
-            <td data-label="Why it ended" title={endReason(request)}>
-              <div class="reason">{endReason(request)}</div>
-            </td>
-            <td class="finished-column" data-label="Finished">
-              {#if request.finished_at === undefined}
-                <!-- Armed again while this table was being held still, so it has
+      <td data-label="Why it ended" title={endReason(request)}>
+        <div class="reason">{endReason(request)}</div>
+      </td>
+      <td class="finished-column" data-label="Finished">
+        {#if request.finished_at === undefined}
+          <!-- Armed again while this table was being held still, so it has
                      no finish to report. The age of its last update would read as
                      one, which is the column's own question answered wrongly. -->
-                <span class="age band-trim" title="Armed again, and running now">Running</span>
-              {:else}
-                <span class="age band-trim" title={formatTimestamp(request.finished_at)}
-                  >{shortAge(request.finished_at, now)}</span
-                >
-              {/if}
-            </td>
-          {:else}
-            <td data-label="Next">
-              <div
-                class="next-lead"
-                class:due={next.merging}
-                class:idle={!next.merging}
-                class:imminent={next.merging && next.seconds !== null && next.seconds <= 10}
-                class:final={next.merging && next.seconds !== null && next.seconds <= 5}
-              >
-                {#if next.merging && next.seconds !== null}
-                  <!-- The quiet period drawn as what it is: a wait with an end.
+          <span class="age band-trim" title="Armed again, and running now">Running</span>
+        {:else}
+          <span class="age band-trim" title={formatTimestamp(request.finished_at)}
+            >{shortAge(request.finished_at, now)}</span
+          >
+        {/if}
+      </td>
+    {:else}
+      <td data-label="Next">
+        <div
+          class="next-lead"
+          class:due={next.merging}
+          class:idle={!next.merging}
+          class:imminent={next.merging && next.seconds !== null && next.seconds <= 10}
+          class:final={next.merging && next.seconds !== null && next.seconds <= 5}
+        >
+          {#if next.merging && next.seconds !== null}
+            <!-- The quiet period drawn as what it is: a wait with an end.
                        Circumference is 2πr at r=5.6, so the dash offset is the
                        part already spent - the ring empties as the merge nears.
                        Sized in `cap` units so it sits in the band of the words
                        beside it rather than making the line taller than them. -->
-                  <svg class="ring" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-                    <circle
-                      cx="7"
-                      cy="7"
-                      r="5.6"
-                      stroke="currentColor"
-                      stroke-opacity="0.25"
-                      stroke-width="1.8"
-                    />
-                    <circle
-                      cx="7"
-                      cy="7"
-                      r="5.6"
-                      stroke="currentColor"
-                      stroke-width="1.8"
-                      stroke-linecap="round"
-                      stroke-dasharray="35.2"
-                      stroke-dashoffset={35.2 * (1 - Math.min(1, next.seconds / QUIET_SECONDS))}
-                      transform="rotate(-90 7 7)"
-                    />
-                  </svg>
-                {/if}
-                <span class="band-trim">{next.lead}</span>
-              </div>
-              <div class="next-sub">{next.sub}</div>
-            </td>
-            <td class="armed-column" data-label="Armed">
-              <span class="age band-trim" title={formatTimestamp(request.requested_at)}
-                >{shortAge(request.requested_at, now)}</span
-              >
-            </td>
+            <svg class="ring" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <circle
+                cx="7"
+                cy="7"
+                r="5.6"
+                stroke="currentColor"
+                stroke-opacity="0.25"
+                stroke-width="1.8"
+              />
+              <circle
+                cx="7"
+                cy="7"
+                r="5.6"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-dasharray="35.2"
+                stroke-dashoffset={35.2 * (1 - Math.min(1, next.seconds / QUIET_SECONDS))}
+                transform="rotate(-90 7 7)"
+              />
+            </svg>
           {/if}
-          <td class="row-actions" data-label="Actions">
-            <div class="row-action-group">
-              <!-- The one action worth a press of its own. Reading the checks
+          <span class="band-trim">{next.lead}</span>
+        </div>
+        <div class="next-sub">{next.sub}</div>
+      </td>
+      <td class="armed-column" data-label="Armed">
+        <span class="age band-trim" title={formatTimestamp(request.requested_at)}
+          >{shortAge(request.requested_at, now)}</span
+        >
+      </td>
+    {/if}
+    <td class="row-actions" data-label="Actions">
+      <div class="row-action-group">
+        <!-- The one action worth a press of its own. Reading the checks
                    again is what a reader comes to this table to do when a run
                    has just finished and the queue has not noticed yet, and
                    burying it under a menu costs two presses for the thing they
                    came for. It stays in the menu as well, where it can say what
                    it does. Only on a waiting request: nothing on the Recent
                    table has checks left to read. -->
-              {#if section === 'waiting'}
-                <IconButton
-                  icon="refresh"
-                  label={`Check ${request.repository_full_name} #${request.pull_request} now`}
-                  disabled={!actionable(request)}
-                  busy={pendingAction === checkKey(request)}
-                  onclick={() => void choose(request, 'check')}
-                />
-              {/if}
-              <ActionMenu
-                label={`Actions for ${request.repository_full_name} #${request.pull_request}`}
-                items={actionsFor(request)}
-                onSelect={(action) => void choose(request, action)}
-                onOpenChange={(open) => (menuOpen = open)}
-              />
-            </div>
-          </td>
-        </tr>
-      {:else}
-        <tr class="empty-row">
-          <td class="empty-cell" colspan={section === 'recent' ? 6 : 5}>
-            <!-- One of three, never two. A queue that could not be read used to
+        {#if section === 'waiting'}
+          <IconButton
+            icon="refresh"
+            label={`Check ${request.repository_full_name} #${request.pull_request} now`}
+            disabled={!actionable(request)}
+            busy={pendingAction === checkKey(request)}
+            onclick={() => void choose(request, 'check')}
+          />
+        {/if}
+        <ActionMenu
+          label={`Actions for ${request.repository_full_name} #${request.pull_request}`}
+          items={actionsFor(request)}
+          onSelect={(action) => void choose(request, action)}
+          onOpenChange={(open) => (menuOpen = open)}
+        />
+      </div>
+    </td>
+  {/snippet}
+
+  {#snippet empty()}
+    <!-- One of three, never two. A queue that could not be read used to
                  put its failure above the card AND "Nothing has finished yet"
                  inside it, which are contradictory answers to the same question -
                  the reader was told both that the table is empty and that the
@@ -1019,46 +1058,38 @@
                  already on screen must not replace them with a placeholder, and
                  an empty queue that HAS loaded is a real answer rather than a
                  wait. `tests/loading-placeholders.test.ts` asks for this. -->
-            {#if problem !== null}
-              <ResultProblem
-                title="The queue could not be read"
-                {problem}
-                onRetry={() => void load()}
-                busy={loading}
-              />
-            {:else if loading && !loaded}
-              Reading the queue…
-            {:else}
-              <TableEmptyState
-                title={hasFilters
-                  ? 'Nothing matches'
-                  : section === 'recent'
-                    ? 'Nothing has finished yet'
-                    : 'Nothing is waiting'}
-                description={hasFilters
-                  ? 'No request here matches these filters'
-                  : section === 'recent'
-                    ? 'Requests appear here once they merge, are cancelled, or are replaced'
-                    : 'Every armed merge has been dealt with'}
-                actionLabel={hasFilters ? 'Clear filters' : undefined}
-                onAction={hasFilters ? clearFilters : undefined}
-              />
-            {/if}
-          </td>
-        </tr>
-      {/each}
-    </tbody>
-  </table>
-</div>
+    {#if problem !== null}
+      <ResultProblem
+        title="The queue could not be read"
+        {problem}
+        onRetry={() => void load()}
+        busy={loading}
+      />
+    {:else if loading && !loaded}
+      Reading the queue…
+    {:else}
+      <TableEmptyState
+        title={hasFilters
+          ? 'Nothing matches'
+          : section === 'recent'
+            ? 'Nothing has finished yet'
+            : 'Nothing is waiting'}
+        description={hasFilters
+          ? 'No request here matches these filters'
+          : section === 'recent'
+            ? 'Requests appear here once they merge, are cancelled, or are replaced'
+            : 'Every armed merge has been dealt with'}
+        actionLabel={hasFilters ? 'Clear filters' : undefined}
+        onAction={hasFilters ? clearFilters : undefined}
+      />
+    {/if}
+  {/snippet}
+</DataTable>
 
 <style>
   /* Stated once and read everywhere below: the row a two-line cell rests in, and
      the baseline-to-cap gap inside such a cell - a real gap now that both boxes
      end where their letters do. */
-  .queue-card {
-    --row-height: 3.75rem;
-    --line-gap: 0.5rem;
-  }
 
   .queue-toolbar {
     align-items: center;
@@ -1083,133 +1114,69 @@
     display: none;
   }
 
-  .queue-table {
-    /* Separated, not collapsed: a collapsed border is shared between adjacent
-       rows, so each cell owns half of it and every row box lands on a .5. */
-    border-collapse: separate;
-    border-spacing: 0;
-    table-layout: fixed;
-    width: 100%;
+  /* Every number this table does not share, said through `DataTable`'s knobs
+     rather than as rules on the elements it renders. `table-layout: fixed` was a
+     rule on `.queue-table` until this table moved onto the shell, and it went on
+     matching nothing in silence: the columns fell back to `auto`, so the widths
+     below stopped being honoured and `queue-columns` caught six columns either
+     starved or padded. Separated borders, `border-spacing: 0` and `width: 100%`
+     are the shell's own and no longer restated here. */
+  :global(.queue-card) {
+    /* Read everywhere below: the row a two-line cell rests in, and the
+       baseline-to-cap gap inside such a cell - a real gap now that both boxes end
+       where their letters do. */
+    --line-gap: 0.5rem;
+    --row-height: 3.75rem;
+
+    --table-heading-height: 2.5rem;
+    --table-layout: fixed;
   }
 
   /* The shape of a heading - no padding on the cell, the button carrying it, the
      filter riding over the target - is `thead th` and `.table-heading` in
      `app.css`, shared with the five other tables. All this table states is the
      band's height and the wider inset its outermost columns take. */
-  .queue-table th {
-    height: 2.5rem;
-  }
 
-  .queue-table th:first-child {
+  :global(.queue-table) th:first-child {
     --heading-pad-start: var(--space-4);
   }
 
-  .queue-table th:last-child {
+  :global(.queue-table) th:last-child {
     --heading-pad-end: var(--space-4);
   }
 
-  /* Column widths as rules rather than a `<colgroup>`: a `style` attribute in
-     Svelte markup is silently dropped by the panel's `style-src 'self'`, so the
-     table would have laid itself out however it liked in production while
-     looking right in development. `tests/csp-safety.test.ts` catches it.
-
-     The pull request takes what is left - it is the one column whose content has
-     no bound - and every other column is the wider of what its heading needs
-     with its own controls and what the widest value the SERVICE can produce
-     needs, plus the cell's padding, rounded up to the next quarter rem. Every
-     number below was measured that way in the browser rather than chosen, with
-     each column's whole vocabulary put through it; `tests/browser/
-     queue-columns.test.ts` measures the same thing again and fails if a value
-     stops fitting.
-
-     The two sections carry different columns AND different worst cases, so each
-     states its own: 8.25rem where the widest state is "Unreadable", 8.5rem where
-     the widest outcome is "Superseded". Holding them equal would put the
-     difference at the front of every row of whichever section did not need it,
-     which is the defect these numbers exist to end. */
-  .waiting-table :is(th, td):first-child {
-    width: 8.5rem;
-  }
-
-  .recent-table :is(th, td):first-child {
-    width: 9.25rem;
-  }
-
-  /* "Checks again in 59 minutes" over "First look since it was armed". */
-  .waiting-table :is(th, td):nth-child(3) {
-    width: 12.25rem;
-  }
-
-  /* The heading with its arrow, which is wider than any age below it. */
-  .waiting-table :is(th, td):nth-child(4) {
-    width: 5.75rem;
-  }
-
-  /* Two 1.75rem buttons, the gap between them, and the cell's own 12px and 16px:
-     88px exactly. The mock states 5rem here and flex-shrinks its two buttons to
-     24.8px wide to fit them, which leaves a pair of rounded rectangles where two
-     squares were drawn. Better to give the column the 8px than to keep the
-     number and lose the shape. */
-  .waiting-table :is(th, td):nth-child(5) {
-    width: 5.5rem;
-  }
-
-  /* The heading with its filter, wider than any of Done, Pending or Failed. */
-  .recent-table :is(th, td):nth-child(3) {
-    width: 8.75rem;
-  }
-
-  /* The one column here whose text has no bound, so it is sized like the
-     repository name is: a floor with a stated reason rather than a worst case.
-     12rem is where every reason the service can write today fits inside the two
-     lines the row already has - the longest, "pull request merged outside
-     pending CI reconciliation", needs 160px of content and gets 164px. One line
-     for all of them would have taken 20.75rem. */
-  .recent-table :is(th, td):nth-child(4) {
-    width: 12rem;
-  }
-
-  /* The heading again: "Finished" is wider than "just now". */
-  .recent-table :is(th, td):nth-child(5) {
-    width: 6.5rem;
-  }
-
-  /* One button, and the same 12px and 16px the waiting table's pair get. */
-  .recent-table :is(th, td):nth-child(6) {
-    width: 3.5rem;
-  }
-
-  .queue-table td:first-child {
+  :global(.queue-table) td:first-child {
     padding-left: var(--space-4);
   }
 
-  .queue-table td:last-child {
+  :global(.queue-table) td:last-child {
     padding-right: var(--space-4);
   }
 
   /* The row height is stated, and the content is centred in it. Padding is the
      floor for a cell that outgrows the row, not the thing that sets its size. */
-  .queue-table td {
-    border-bottom: 1px solid var(--rule);
+  :global(.queue-table) td {
     height: var(--row-height);
-    padding: var(--space-2) var(--space-3);
-    vertical-align: middle;
   }
 
-  .queue-table tbody tr:last-child td {
+  /* `tbody` and `tr` are `DataTable`'s elements, so this component's scope class
+     cannot land on them - the rule matched nothing until the ancestors went global.
+     The `td` is still this component's, which is what keeps the rule scoped at all.
+     `.queue-table` is on the table `DataTable` renders, from `tableClass`. */
+  :global(.queue-table tbody tr:last-child) td {
     border-bottom: 0;
   }
 
-  .queue-row {
+  :global(.queue-row) {
     cursor: pointer;
     transition: background-color var(--duration-fast) var(--ease-out);
   }
 
-  .queue-row:active {
+  :global(.queue-row):active {
     background: var(--table-row-pressed);
   }
 
-  .queue-row:focus-visible {
+  :global(.queue-row):focus-visible {
     outline: 2px solid var(--focus);
     outline-offset: -2px;
   }
@@ -1340,8 +1307,8 @@
     transition: opacity var(--duration-fast) var(--ease-out);
   }
 
-  .queue-row:hover .pr-name :global(svg),
-  .queue-row:focus-within .pr-name :global(svg) {
+  :global(.queue-row):hover .pr-name :global(svg),
+  :global(.queue-row):focus-within .pr-name :global(svg) {
     color: var(--accent);
     opacity: 1;
   }
@@ -1480,12 +1447,12 @@
      heading's, so nothing is lost by the words leaving - and a mark that can be
      hovered beats a word cut short. */
   @media (max-width: 64rem) {
-    .queue-table .table-heading .heading-symbol {
+    :global(.queue-table) .table-heading .heading-symbol {
       align-items: center;
       display: inline-flex;
     }
 
-    .queue-table
+    :global(.queue-table)
       :is(.checks-column, .armed-column, .cleanup-column, .finished-column)
       .table-heading-label {
       display: none;
@@ -1510,7 +1477,7 @@
        These states are named in full and the mark only repeats what the word and
        the tone already say, so it is the part worth spending on the columns that
        have nothing to give up. */
-    .waiting-table td:first-child :global(.chip > svg) {
+    :global(.waiting-table) td:first-child :global(.chip > svg) {
       display: none;
     }
 
@@ -1521,20 +1488,19 @@
        state now that the badge has no mark to carry; and the two age columns by
        "59 min", which is what the narrow reading in `queue-columns.test.ts`
        answered when 3.75rem was guessed at from the heading alone. */
-    .queue-table :is(th, td).checks-column {
-      width: 7.25rem;
+    /* Retuned through the shell's own column variables, not as width rules on the
+       cells: `DataTable` renders a `<colgroup>`, and in fixed table layout a `<col>`
+       width beats a cell's, so these had stopped being able to win. Set on the table
+       rather than the card because the two sections number their columns
+       differently and each carries only one of these pairs. */
+    :global(.waiting-table) {
+      --table-col-1: 7.25rem;
+      --table-col-4: 4.25rem;
     }
 
-    .queue-table :is(th, td).armed-column {
-      width: 4.25rem;
-    }
-
-    .queue-table :is(th, td).cleanup-column {
-      width: 5.75rem;
-    }
-
-    .queue-table :is(th, td).finished-column {
-      width: 4.25rem;
+    :global(.recent-table) {
+      --table-col-3: 5.75rem;
+      --table-col-5: 4.25rem;
     }
 
     /* "Why it ended" keeps all 12rem of it, and this note is here because it was
@@ -1576,12 +1542,14 @@
       display: inline-flex;
     }
 
-    .queue-table {
-      min-width: 0;
-      table-layout: auto;
+    :global(.queue-card) {
+      --table-layout: auto;
+      --table-min-width: 0;
     }
 
-    .queue-table thead {
+    /* Global for the same reason: `thead` is `DataTable`'s element. Nothing else
+       wears `.queue-table`, so the reach is this table and no other. */
+    :global(.queue-table thead) {
       display: none;
     }
 
@@ -1589,10 +1557,14 @@
        a block tbody gets an anonymous table of its own and shrinks to fit its
        words, so the card's default state - an idle queue - sat flush left in a
        box narrower than the card, centring its text in the wrong one. */
-    .queue-table,
-    .queue-table tbody,
-    .queue-table tr,
-    .queue-table td {
+    :global(.queue-table),
+    :global(.queue-table tbody),
+    :global(.queue-table tr) {
+      display: block;
+      width: 100%;
+    }
+
+    :global(.queue-table) td {
       display: block;
       width: 100%;
     }
@@ -1605,24 +1577,13 @@
 
     /* Every column width above is stated against a band that is gone; left
        standing they would size the cards instead. */
-    .waiting-table :is(th, td):first-child,
-    .recent-table :is(th, td):first-child,
-    .waiting-table :is(th, td):nth-child(3),
-    .waiting-table :is(th, td):nth-child(4),
-    .waiting-table :is(th, td):nth-child(5),
-    .recent-table :is(th, td):nth-child(3),
-    .recent-table :is(th, td):nth-child(4),
-    .recent-table :is(th, td):nth-child(5),
-    .recent-table :is(th, td):nth-child(6) {
-      width: auto;
-    }
 
-    .queue-row {
+    :global(.queue-row) {
       border-bottom: 1px solid var(--border-subtle);
       padding: var(--space-3);
     }
 
-    .queue-row td {
+    :global(.queue-row) td {
       align-items: center;
       border: 0;
       display: flex;
@@ -1633,7 +1594,7 @@
       text-align: left;
     }
 
-    .queue-row td[data-label]::before {
+    :global(.queue-row) td[data-label]::before {
       color: var(--text-muted);
       content: attr(data-label);
       flex: none;
@@ -1646,13 +1607,13 @@
     /* The pull request is the card's heading rather than a labelled row: it is
        what the card is about, and it is the one column whose text has no bound,
        so it wraps instead of being cut. */
-    .queue-row td:nth-child(2) {
+    :global(.queue-row) td:nth-child(2) {
       border-bottom: 1px solid var(--border-subtle);
       display: block;
       padding-bottom: var(--space-3);
     }
 
-    .queue-row td:nth-child(2)::before {
+    :global(.queue-row) td:nth-child(2)::before {
       content: none;
     }
 
@@ -1663,7 +1624,7 @@
       display: inline;
     }
 
-    .queue-table :is(th, td):is(.cleanup-column, .finished-column) {
+    :global(.queue-table) :is(th, td):is(.cleanup-column, .finished-column) {
       width: auto;
     }
   }
@@ -1686,7 +1647,7 @@
      cell's own on top of it was room the empty state did not ask for. Qualified
      with the table, because `.queue-table td` sets the padding every cell shares
      and a bare `.empty-cell` loses to it. */
-  .queue-table td.empty-cell {
+  :global(.queue-table) td.empty-cell {
     color: var(--dim);
     padding: 0 var(--space-4);
     text-align: center;
@@ -1694,7 +1655,7 @@
 
   /* Except for the waiting line, which is a bare string with no component of its
      own to bring any. */
-  .queue-table td.empty-cell:not(:has(*)) {
+  :global(.queue-table) td.empty-cell:not(:has(*)) {
     padding-block: var(--space-8);
   }
 
@@ -1702,7 +1663,7 @@
      the rows it is about - so it takes none of a row's furniture: no stated
      height, no rule under it, and no cell padding, because the notice inside
      brings its own. */
-  .queue-table .notice-row td {
+  :global(.queue-table) .notice-row td {
     border-bottom: 0;
     height: auto;
     padding: 0 0 var(--space-3);
@@ -1714,14 +1675,14 @@
      length of the fade, which is the one moment a reader watching that column is
      actually looking at it. A grid rather than a stack of absolutes: the cell
      keeps its own height from the row, and the chip keeps its place in it. */
-  .queue-table td:has(> .state-chip) {
+  :global(.queue-table) td:has(> .state-chip) {
     align-items: center;
     display: grid;
     grid-template-areas: 'state';
     justify-items: start;
   }
 
-  .queue-table .state-chip {
+  :global(.queue-table) .state-chip {
     grid-area: state;
   }
 
@@ -1729,7 +1690,7 @@
      staying only because the reader has hold of it, so it says so quietly rather
      than dressing up as one of the rows that belong here. The ink stays: what it
      now says is the thing worth reading, and a faded row would hide it. */
-  .queue-table .queue-row.leaving {
+  :global(.queue-table) .queue-row.leaving {
     background-image: linear-gradient(var(--strip-lift), var(--strip-lift));
   }
 </style>
