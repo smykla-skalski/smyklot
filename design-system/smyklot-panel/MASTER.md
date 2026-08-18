@@ -189,6 +189,27 @@ dividers instead of nested cards.
 - Right-edge filter menus align their right edge to the trigger so their content
   opens toward available space instead of being clipped by the viewport
 
+## Class or component
+
+Two questions the catalogue kept re-asking. Both were decided by looking, so neither
+needs asking again.
+
+**`cap-trim`, `band-trim` and `band-trim-stack` are utilities and stay utilities.**
+They appear on 58 elements across 17 files, and what they do is trim one box to its
+cap and baseline. A component cannot do that: the box that needs trimming is usually
+a caller's own `<span>` inside a flex row, and wrapping each one in a component would
+add an element per trimmed word — which is a box the trim then has to be applied to
+anyway. `.button-label` and `.table-heading-label` exist because those two boxes are
+drawn by a component that already owns them, not as exceptions to this.
+
+**A surface is a class; an anatomy is a component.** `.plate` in `app.css` is a
+ground, a keyline, a corner and a lift — nothing else. `Plate.svelte` is that surface
+*plus* a mandatory header and body. Six call sites wear `class="plate"` by hand and
+that is correct rather than a bypass: they want the surface under their own contents
+and have no header to give it. The same split holds for `.table-card` and
+`DataTable`, and it is the test to apply to the next one — if a caller needs the look
+and not the parts, the look is a class.
+
 ## Icon vocabulary
 
 Use SVG symbols from one Phosphor-style outline system.
