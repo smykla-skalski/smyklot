@@ -357,6 +357,7 @@
      `var(--space-3)`, which is the padding every cell already had, so all four
      were writing a value over itself. */
   :global(.installation-table-shell) {
+    --table-cell-font-size: var(--font-size-meta);
     --table-min-width: 52rem;
   }
 

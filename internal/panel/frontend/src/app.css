@@ -1133,8 +1133,17 @@ body {
  */
 .data-table :is(tbody th, td) {
   border-bottom: 1px solid var(--rule);
-  font-size: var(--font-size-meta);
-  padding: var(--space-2) var(--space-3);
+  /* A knob with no value of its own, and deliberately so. Four of the seven tables
+     state `--font-size-meta` on their cells and three let them inherit, which is a
+     real difference on screen - so picking one here would be a design decision
+     wearing a refactor's clothes. Each table keeps what it draws today and says so
+     in one line. Unifying them is worth doing; it is worth doing where it can be
+     looked at. */
+  font-size: var(--table-cell-font-size, inherit);
+  /* Same again: `0.625rem 0.75rem` in the tables whose row height is derived from
+     it, `var(--space-2) var(--space-3)` in the rest. The default is the common
+     case, and a table with a stated row height overrides it. */
+  padding: var(--table-cell-pad-block, var(--space-2)) var(--table-cell-pad-inline, var(--space-3));
   text-align: left;
   vertical-align: middle;
 }
@@ -1195,6 +1204,78 @@ body {
      every pinned table at once. */
   .data-table.pinned tbody tr {
     background: var(--surface-base);
+  }
+}
+
+/*
+ * The stacked table: below the breakpoint a row becomes a card and each cell
+ * carries its own label.
+ * -------------------------------------------------------------------------
+ * All six tables that have a mobile layout wrote this, and the label comes from
+ * `data-label` on the cell - which is why that attribute is on every `<td>` in
+ * every one of them and is not decoration. A cell without one stacks with a blank
+ * label rather than none, so the attribute is part of writing a `cells` snippet.
+ *
+ * `!important` on the two the column widths fight over, and it is load-bearing: a
+ * table that states `td:first-child { width: 28% }` outside a media query keeps
+ * that width here, where a cell is a block and 28% of the card is not a column.
+ * Two of the six had found this; the other four had column widths that happened to
+ * live inside a `min-width` query and so never collided.
+ */
+@media (max-width: 64rem) {
+  .data-table.stacked table {
+    min-width: 0;
+  }
+
+  .data-table.stacked thead {
+    display: none;
+  }
+
+  .data-table.stacked :is(tbody, tr, td) {
+    display: block;
+    width: 100% !important;
+  }
+
+  .data-table.stacked tbody tr {
+    border-bottom: 1px solid var(--rule);
+    padding: var(--space-3);
+  }
+
+  .data-table.stacked td {
+    align-items: center;
+    border: 0;
+    display: grid;
+    gap: var(--space-3);
+    grid-template-columns: 7rem minmax(0, 1fr);
+    padding: var(--space-2) 0;
+    text-align: left !important;
+  }
+
+  .data-table.stacked td::before {
+    color: var(--text-muted);
+    content: attr(data-label);
+    font: 650 var(--font-size-compact) / 1.2 var(--sans);
+  }
+
+  /* The empty row is one message, not a labelled field. */
+  .data-table.stacked .state-row td {
+    display: flex;
+    height: 12rem;
+    justify-content: center;
+  }
+
+  .data-table.stacked .state-row td::before {
+    content: none;
+  }
+}
+
+/* The label column is a fixed 7rem, which is affordable until it is not: at 320 it
+   left the value 90px and every name longer than "Ada Lovelace" was cut. The label
+   goes above the value rather than beside it. */
+@media (max-width: 22rem) {
+  .data-table.stacked td {
+    gap: var(--space-1);
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

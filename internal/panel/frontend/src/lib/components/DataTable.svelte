@@ -59,8 +59,10 @@
     empty,
     columnCount,
     class: extra = '',
+    onBodyScroll,
     scrollable = true,
     pinned = false,
+    stacked = false,
   }: {
     rows: readonly Row[];
     /** Stable identity, so a re-sort moves rows rather than rebuilding them. */
@@ -90,6 +92,14 @@
     columnCount?: number;
     /** Anything after the body - a sentinel, a load-more notice. */
     foot?: Snippet;
+    /**
+     * The body scrolled.
+     *
+     * On `tbody` rather than the card, because a pinned table scrolls its rows and
+     * not its shell - a listener on the outer element never fires there, which is
+     * how one table's load-on-scroll quietly stopped at the first page.
+     */
+    onBodyScroll?: (event: Event) => void;
     /** The caller's own layout for the shell. Never its surface, which is `.table-card`. */
     class?: string;
     /** Off for a table that is short by construction and should not own a scrollport. */
@@ -102,6 +112,14 @@
      * must state them, or its header and its body lay out independently.
      */
     pinned?: boolean;
+    /**
+     * Below 64rem a row becomes a card and each cell carries its own label.
+     *
+     * The label is `data-label` on the `<td>`, so a `cells` snippet for a stacked
+     * table has to set it - a cell without one stacks under a blank label. Layout in
+     * `app.css`, for the same reason `pinned` is: it reaches the cells.
+     */
+    stacked?: boolean;
   } = $props();
 </script>
 
@@ -116,6 +134,7 @@
   class="data-table table-card {extra}"
   class:scrollable
   class:pinned
+  class:stacked
   role="region"
   tabindex="0"
   aria-label={regionLabel}
@@ -145,7 +164,7 @@
       {/if}
     </thead>
     <!-- `data-panel-scroll` is what the panel's scroll bookkeeping looks for. -->
-    <tbody data-panel-scroll>
+    <tbody data-panel-scroll onscroll={onBodyScroll}>
       {#each rows as row (rowKey(row))}
         <tr class="data-row" {...rowAttrs?.(row) ?? {}}>
           {@render cells(row)}
@@ -185,6 +204,9 @@
        from 40rem to 52rem across the seven, which is a real difference and not a
        drift, so it stays a knob rather than becoming a floor. */
     min-width: var(--table-min-width, 0);
+    /* `fixed` in the tables that state column widths, `auto` in the ones that let
+       their content decide. Both are in use and both are right for their table. */
+    table-layout: var(--table-layout, auto);
     width: 100%;
   }
 
