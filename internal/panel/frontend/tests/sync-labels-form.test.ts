@@ -176,6 +176,23 @@ describe('SyncLabelsForm [Component]', () => {
       expect('description' in sent[0].labels[0]).toBe(false);
     });
 
+    /**
+     * Healing one on the way in must not read as somebody having edited it.
+     *
+     * The saved side is compared against the draft, and the draft is the healed
+     * one - so unless the saved side is healed the same way, a stored empty
+     * description puts Save live the moment the page opens, on a form nobody
+     * has touched. The healing still happens: it rides along with the next save
+     * made for any other reason.
+     */
+    it('does not offer a save just because it healed one', () => {
+      render(SyncLabelsForm, { ...base, labels: [bug({ description: '' })] });
+
+      expect(screen.getByRole('button', { name: 'Save labels' }).hasAttribute('disabled')).toBe(
+        true,
+      );
+    });
+
     it('is sent where somebody wrote one', async () => {
       const { sent, onSave } = saved();
       render(SyncLabelsForm, { ...base, labels: [undescribed()], onSave });

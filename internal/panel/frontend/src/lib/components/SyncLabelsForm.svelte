@@ -49,11 +49,19 @@
     ) => void;
   } = $props();
 
-  /* Derived from what is saved and written over as somebody edits, so a save
-     landing from anywhere reseeds it rather than leaving the screen describing
-     a document that is gone. Read through `described`, so a row arriving with an
-     empty description is held the same way as one this form emptied. */
-  let drafts = $derived<SyncLabel[]>(labels.map((label) => described(label, label.description)));
+  /* What the form was given, with the description rule already applied, so a row
+     that arrives carrying an empty one is held exactly like a row this form
+     emptied. Both the draft and the saved side below are read from this: healing
+     one on the way in is not somebody having edited it, and comparing a healed
+     draft against an unhealed saved side would put Save live the moment the page
+     opened. */
+  const arriving = $derived<SyncLabel[]>(
+    labels.map((label) => described(label, label.description)),
+  );
+
+  /* Written over as somebody edits, and reseeded by a save landing from
+     anywhere rather than left describing a document that is gone. */
+  let drafts = $derived<SyncLabel[]>(arriving);
   let removal = $derived(allowRemoval);
   let excludes = $derived<string[]>([...excluded]);
   let wanted = $derived(enabled);
@@ -64,7 +72,7 @@
      saved side is rendered from the props rather than from the draft's own
      starting value, so a save landing from another tab settles the button. */
   const untouched = $derived(
-    canonicalStringify({ labels, allow_removal: allowRemoval, excludes: excluded }),
+    canonicalStringify({ labels: arriving, allow_removal: allowRemoval, excludes: excluded }),
   );
   const changed = $derived(
     wanted !== enabled ||
