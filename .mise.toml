@@ -459,10 +459,10 @@ depends = ["panel:frontend:install"]
 dir = "internal/panel/frontend"
 run = "npm run dev:mock"
 
-# Deliberately not in `[tasks.ci]`. Storybook is a development tool here: nothing
-# builds or runs it on a pull request. What does hold the stories to account is
-# `panel:frontend:lint`, which type-checks and format-checks `stories/` and
-# `.storybook/` along with everything else in the directory.
+# Deliberately not in `[tasks.ci]`. Nothing builds or runs the catalogue on a pull
+# request: `pages.yaml` publishes it on a schedule, off `main`. What holds the
+# stories to account per pull request is `panel:frontend:lint`, which type-checks
+# and format-checks `stories/` and `.storybook/` with everything else there.
 #
 # Port 6008 rather than Storybook's 6006, so it never argues with anything else on
 # a developer's machine. It runs with the mock enabled, which is what resolves the
@@ -473,3 +473,12 @@ description = "Serve the panel component catalogue"
 depends = ["panel:frontend:install"]
 dir = "internal/panel/frontend"
 run = "npm run storybook"
+
+# What `pages.yaml` publishes. The build goes through a script rather than the npm
+# script directly because `storybook build` reports success on a bundle that throws
+# on its first module - the site it wrote is a spinner, and no other check here
+# loads it. The script builds and then reads the output back.
+[tasks."panel:storybook:build"]
+description = "Build the panel catalogue as a static site"
+depends = ["panel:frontend:install"]
+run = "./scripts/build-panel-storybook.sh"

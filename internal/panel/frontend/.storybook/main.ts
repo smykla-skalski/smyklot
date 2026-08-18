@@ -36,7 +36,7 @@ const config: StorybookConfig = {
   // and `app.html`, so the catalogue has to serve the same directory the app does.
   staticDirs: ['../static'],
 
-  viteFinal(config) {
+  viteFinal(config, { configType }) {
     // SvelteKit pins `server.fs.allow` to the directories an app is built from -
     // `src`, `src/lib`, `.svelte-kit`, `node_modules` - and Storybook adds `.storybook`
     // to it. `stories/` is on neither list, so every story module comes back 403 and
@@ -44,6 +44,18 @@ const config: StorybookConfig = {
     const server = (config.server ??= {});
     const fs = (server.fs ??= {});
     fs.allow = [...(fs.allow ?? []), stories];
+
+    // `vite-plugin-sveltekit-setup` declares `__SVELTEKIT_PAYLOAD__` in dev and not in
+    // a build, where Kit's own client config declares it instead - and that half never
+    // runs here, because `@storybook/sveltekit` drops the compile plugin that invokes
+    // it. `client/payload.js` reads the global at module scope as
+    // `__SVELTEKIT_PAYLOAD__ ?? {}`, and `??` does not rescue an *undeclared*
+    // identifier: it throws a ReferenceError that takes the whole preview bundle down
+    // before one story renders, while `storybook build` still exits 0. `undefined` is
+    // the literal Kit's own client build substitutes under the default split strategy.
+    if (configType === 'PRODUCTION') {
+      config.define = { ...config.define, __SVELTEKIT_PAYLOAD__: 'undefined' };
+    }
     return config;
   },
 };
