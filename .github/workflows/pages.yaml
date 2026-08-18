@@ -1,0 +1,78 @@
+# Publishes the panel's component catalogue to GitHub Pages.
+#
+# Not on push. The catalogue is a picture of `main`, and a branch that has not
+# merged is not that picture - publishing per push would mean the site said
+# whatever was pushed last rather than what is released. Daily keeps it honest
+# without asking anybody to remember, and the dispatch is there for the moment
+# somebody does want it now.
+name: Pages
+
+on:
+  schedule:
+    # 05:17 rather than the hour: GitHub queues scheduled runs by the minute they
+    # name, and the hour is where every repository puts them.
+    - cron: '17 5 * * *'
+  workflow_dispatch:
+
+# `pages` is the group the deploy itself contends on, and a queued publish is not
+# a stale one - it is the newer commit. Cancelling in progress would abandon a
+# deploy half applied, so a second run waits instead.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+
+      - name: Install the toolchain
+        uses: ./.github/actions/toolchain
+
+      # The install script stamps node_modules with the manifest it installed
+      # from, so a restored directory makes `npm ci` a no-op rather than a
+      # repeat. Same key as the frontend jobs, so this shares their archive.
+      - name: Restore the panel's dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: internal/panel/frontend/node_modules
+          key: ${{ runner.os }}-panel-npm-${{ hashFiles('internal/panel/frontend/package-lock.json') }}
+
+      - name: Build the catalogue
+        run: mise run panel:storybook:build
+
+      - name: Upload the catalogue
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: internal/panel/frontend/storybook-static
+
+  deploy:
+    name: deploy
+    needs: build
+    runs-on: ubuntu-24.04
+
+    # `pages: write` and `id-token: write` are what `deploy-pages` needs to mint
+    # its OIDC token, and they are on this job alone - the job that builds the
+    # site runs the repository's own npm dependencies and has no business holding
+    # a credential that can publish.
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+
+    steps:
+      - name: Deploy to Pages
+        id: deploy
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0
