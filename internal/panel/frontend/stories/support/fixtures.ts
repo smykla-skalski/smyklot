@@ -128,6 +128,12 @@ export const USERS = MOCK.users;
 /** Every repository the organisation installation reaches, as the mock seeds them. */
 export const REPOSITORIES = MOCK.targets[0]!.repositories.map((entry) => entry.detail.repository);
 
+/** The configuration changes the organisation installation has recorded. */
+export const AUDIT = MOCK.targets[0]!.audit;
+
+/** The delivery failures the organisation installation has recorded. */
+export const FAILURES = MOCK.targets[0]!.failures;
+
 /** The same people as the Root console sees them, counts and all. */
 export const ROOT_USERS = rootPanelUsers(MOCK);
 

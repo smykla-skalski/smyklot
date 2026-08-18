@@ -24,7 +24,6 @@ const stories = new URL('../stories/', import.meta.url);
 
 /** Components still owed a story. Only ever gets shorter. */
 const PENDING: readonly string[] = [
-  'HistoryPanel',
   'IdentityBar',
   'InstallationView',
   'RootInstallationView',
