@@ -141,6 +141,26 @@ func unmarshalPaths(content string) ([]string, error) {
 	return paths, nil
 }
 
+func marshalPendingCIBranchPatterns(patterns storage.PendingCIBranchPatterns) (string, error) {
+	content, err := json.Marshal(patterns)
+	if err != nil {
+		return "", fmt.Errorf("encode pending CI branch patterns: %w", err)
+	}
+
+	return string(content), nil
+}
+
+func unmarshalPendingCIBranchPatterns(content string) (storage.PendingCIBranchPatterns, error) {
+	var patterns storage.PendingCIBranchPatterns
+	if err := json.Unmarshal([]byte(content), &patterns); err != nil {
+		return storage.PendingCIBranchPatterns{}, fmt.Errorf(
+			"decode pending CI branch patterns: %w", err,
+		)
+	}
+
+	return patterns, nil
+}
+
 func intPointer(value sql.NullInt64) *int {
 	if !value.Valid {
 		return nil

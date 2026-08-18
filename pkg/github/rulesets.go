@@ -266,11 +266,33 @@ func (c *Client) CreateRepositoryRuleset(
 	owner, repo string,
 	ruleset RepositoryRuleset,
 ) error {
+	_, err := c.CreateRepositoryRulesetWithID(ctx, owner, repo, ruleset)
+
+	return err
+}
+
+// CreateRepositoryRulesetWithID creates a ruleset and returns the identity
+// GitHub assigned. Long-running reconcilers persist it so they never delete a
+// same-named ruleset they did not create.
+func (c *Client) CreateRepositoryRulesetWithID(
+	ctx context.Context,
+	owner, repo string,
+	ruleset RepositoryRuleset,
+) (int64, error) {
 	path := fmt.Sprintf("/repos/%s/%s/rulesets", owner, repo)
 
-	_, _, err := c.gh.Repositories.CreateRuleset(ctx, owner, repo, asGitHubRuleset(ruleset))
+	created, _, err := c.gh.Repositories.CreateRuleset(ctx, owner, repo, asGitHubRuleset(ruleset))
+	if err != nil {
+		return 0, wrapError(ErrAPIRequest, http.MethodPost, path, err)
+	}
+	if created.GetID() <= 0 {
+		return 0, NewAPIError(
+			ErrResponseParse, 0, http.MethodPost, path,
+			fmt.Errorf("created ruleset response has no id"),
+		)
+	}
 
-	return wrapError(ErrAPIRequest, http.MethodPost, path, err)
+	return created.GetID(), nil
 }
 
 // UpdateRepositoryRuleset replaces a ruleset a repository already has.

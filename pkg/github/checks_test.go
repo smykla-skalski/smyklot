@@ -111,6 +111,57 @@ var _ = Describe("GitHub CI status [Unit]", func() {
 		Expect(status.Failed).To(Equal(1))
 	})
 
+	It("excludes only the exact owned check run", func() {
+		owned := checkRun("Smyklot / merge after CI", 17, "in_progress", nil)
+		owned["external_id"] = "owned"
+		server := newCIServer(
+			[]map[string]interface{}{
+				owned,
+				checkRun("build", 7, "completed", "success"),
+			},
+			nil,
+		)
+		defer server.Close()
+
+		client, err := github.NewClient("test-token", server.URL)
+		Expect(err).NotTo(HaveOccurred())
+		appID := int64(17)
+		status, err := client.GetCheckStatusExcludingCheck(
+			context.Background(), "owner", "repo", "abc123",
+			[]github.RequiredCheck{
+				{Context: "Smyklot / merge after CI", AppID: &appID},
+				{Context: "build"},
+			},
+			github.OwnedCheck{
+				Name: "Smyklot / merge after CI", AppID: appID, ExternalID: "owned",
+			},
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(status.State).To(Equal(github.CIStatePassing))
+		Expect(status.Total).To(Equal(1))
+	})
+
+	It("blocks when another run uses the owned check context", func() {
+		owned := checkRun("Smyklot / merge after CI", 17, "in_progress", nil)
+		owned["external_id"] = "owned"
+		conflict := checkRun("Smyklot / merge after CI", 17, "completed", "success")
+		conflict["external_id"] = "not-owned"
+		server := newCIServer([]map[string]interface{}{owned, conflict}, nil)
+		defer server.Close()
+
+		client, err := github.NewClient("test-token", server.URL)
+		Expect(err).NotTo(HaveOccurred())
+		status, err := client.GetCheckStatusExcludingCheck(
+			context.Background(), "owner", "repo", "abc123", nil,
+			github.OwnedCheck{
+				Name: "Smyklot / merge after CI", AppID: 17, ExternalID: "owned",
+			},
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(status.State).To(Equal(github.CIStatePending))
+		Expect(status.AllPassing).To(BeFalse())
+	})
+
 	It("paginates Check Runs and commit statuses", func() {
 		server := paginatedCIServer()
 		defer server.Close()
@@ -167,7 +218,7 @@ func newCIServer(checkRuns, statuses []map[string]interface{}) *httptest.Server 
 		Expect(r.Header.Get("Authorization")).To(Equal("token test-token"))
 		switch r.URL.Path {
 		case "/repos/owner/repo/commits/abc123/check-runs":
-			Expect(r.URL.Query().Get("filter")).To(Equal("latest"))
+			Expect(r.URL.Query().Get("filter")).To(Or(Equal("latest"), Equal("all")))
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"total_count": len(checkRuns),
 				"check_runs":  checkRuns,

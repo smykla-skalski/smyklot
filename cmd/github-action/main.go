@@ -18,6 +18,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/smykla-skalski/smyklot/internal/pendingci"
+	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/commands"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/feedback"
@@ -388,7 +390,6 @@ func executeCommentWithEnvironment(
 		rc.CommentAuthor,
 		rc.RepoOwner,
 		rc.RepoName,
-		rootPath,
 	)
 	if err != nil {
 		return NewGitHubError(ErrPermissionCheck, err)
@@ -707,7 +708,7 @@ func checkUserPermission(
 	ctx context.Context,
 	client *github.Client,
 	checker *permissions.Checker,
-	username, owner, repo, rootPath string,
+	username, owner, repo string,
 ) (bool, error) {
 	// First check CODEOWNERS permissions
 	canApprove, err := checker.CanApprove(username, rootPath)
@@ -830,6 +831,31 @@ func executeMerge(
 			ctx, client, rc, bc, prNum, commentID, method, info,
 			requiredChecksOnly, environment,
 		)
+	}
+	if environment.pendingCI != nil {
+		var result *feedback.Feedback
+		accepted, err := environment.pendingCI.cancelAndRun(
+			ctx,
+			prNum,
+			"superseded by an immediate merge command",
+			func() error {
+				var operationErr error
+				result, operationErr = executeMerge(
+					ctx, client, rc, bc, prNum, commentID, method,
+					false, requiredChecksOnly, commandEnvironment{},
+				)
+
+				return operationErr
+			},
+		)
+		if err != nil {
+			return nil, err
+		}
+		if !accepted {
+			return nil, nil
+		}
+
+		return result, nil
 	}
 
 	// Check if PR is mergeable
@@ -1042,6 +1068,18 @@ func executePendingCIMerge(
 			return feedback.NewMergeFailed("failed to record the pending CI request: " + err.Error()), nil
 		}
 	} else {
+		mode := storage.PendingCIModeLabels
+		if environment.pendingCIMode != nil {
+			resolvedMode, modeErr := environment.pendingCIMode.PendingCIMode(ctx)
+			if modeErr != nil {
+				return feedback.NewMergeFailed(modeErr.Error()), nil
+			}
+			mode = resolvedMode
+		}
+		artifactKind := pendingci.ArtifactLabel
+		if mode == storage.PendingCIModeChecks {
+			artifactKind = pendingci.ArtifactCheck
+		}
 		failures, coordinationErr := activatePendingCI(
 			ctx, client, environment.pendingCI, environment.pendingCIActivation,
 			pendingCIActivationRequest{
@@ -1049,6 +1087,7 @@ func executePendingCIMerge(
 				pullRequest: prNum, commentID: commentID, headSHA: headRef,
 				baseBranch: info.BaseBranch, method: method,
 				requiredChecksOnly: requiredChecksOnly, label: label,
+				artifactKind: artifactKind,
 			},
 		)
 		if coordinationErr != nil {
@@ -1060,6 +1099,11 @@ func executePendingCIMerge(
 		if failures.label != nil {
 			return feedback.NewMergeFailed(
 				"failed to record the pending CI request: " + failures.label.Error(),
+			), nil
+		}
+		if failures.check != nil {
+			return feedback.NewMergeFailed(
+				"failed to record the pending CI check: " + failures.check.Error(),
 			), nil
 		}
 		if failures.reaction != nil {
@@ -1470,7 +1514,6 @@ func handleReactions(
 			reaction.User,
 			rc.RepoOwner,
 			rc.RepoName,
-			rootPath,
 		)
 		if err != nil || !canApprove {
 			continue
@@ -1506,7 +1549,6 @@ func handleReactions(
 			reaction.User,
 			rc.RepoOwner,
 			rc.RepoName,
-			rootPath,
 		)
 		if err != nil || !canApprove {
 			continue

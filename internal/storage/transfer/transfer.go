@@ -39,6 +39,8 @@ var tables = []string{
 	"target_owners",
 	"target_roles",
 	"repositories",
+	"pending_ci_repository_gates",
+	"pending_ci_check_slots",
 	"root_elevations",
 	"audit_entries",
 	"access_audit_entries",

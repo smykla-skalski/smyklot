@@ -43,6 +43,8 @@
     RepositoryDetail,
     RepositoryFileStatus,
     RepositoryPageRequest,
+    PendingCIBranchPatterns,
+    PendingCIMode,
     RepositorySettingsInput,
     RepositorySettingFilter,
     RepositorySort,
@@ -766,12 +768,9 @@
     pendingEnablement = { ...pendingEnablement, [repository.id]: value };
     try {
       const enabledOverride = value === 'inherit' ? null : value === 'enabled';
-      await save(repository.id, (detail) => ({
-        enabled_override: enabledOverride,
-        config_patch: detail.config_patch,
-        ignore_repository_file: detail.ignore_repository_file,
-        expected_revision: detail.revision,
-      }));
+      await save(repository.id, (detail) =>
+        repositorySettingsInput(detail, { enabled_override: enabledOverride }),
+      );
     } finally {
       const next = { ...pendingEnablement };
       delete next[repository.id];
@@ -780,12 +779,9 @@
   }
 
   async function setBypass(repositoryId: string, ignored: boolean): Promise<void> {
-    await save(repositoryId, (detail) => ({
-      enabled_override: detail.repository.enabled_override,
-      config_patch: detail.config_patch,
-      ignore_repository_file: ignored,
-      expected_revision: detail.revision,
-    }));
+    await save(repositoryId, (detail) =>
+      repositorySettingsInput(detail, { ignore_repository_file: ignored }),
+    );
   }
 
   // A refused migration is durable and never expires, so this is the only way
@@ -813,12 +809,40 @@
   }
 
   async function setConfig(repositoryId: string, configPatch: ConfigPatch): Promise<void> {
-    await save(repositoryId, (detail) => ({
+    await save(repositoryId, (detail) =>
+      repositorySettingsInput(detail, { config_patch: configPatch }),
+    );
+  }
+
+  async function setPendingCI(
+    repositoryId: string,
+    mode: PendingCIMode | null,
+    patterns: PendingCIBranchPatterns | null,
+    quiet: number | null,
+  ): Promise<void> {
+    await save(repositoryId, (detail) =>
+      repositorySettingsInput(detail, {
+        pending_ci_mode_override: mode,
+        pending_ci_branch_patterns_override: patterns,
+        pending_ci_quiet_period_seconds_override: quiet,
+      }),
+    );
+  }
+
+  function repositorySettingsInput(
+    detail: RepositoryDetail,
+    overrides: Partial<RepositorySettingsInput>,
+  ): RepositorySettingsInput {
+    return {
       enabled_override: detail.repository.enabled_override,
-      config_patch: configPatch,
+      pending_ci_mode_override: detail.pending_ci_mode_override,
+      pending_ci_branch_patterns_override: detail.pending_ci_branch_patterns_override,
+      pending_ci_quiet_period_seconds_override: detail.pending_ci_quiet_period_seconds_override,
+      config_patch: detail.config_patch,
       ignore_repository_file: detail.ignore_repository_file,
       expected_revision: detail.revision,
-    }));
+      ...overrides,
+    };
   }
 
   function setFailure(repositoryId: string, error: unknown, source: RepositoryFailureSource): void {
@@ -906,6 +930,7 @@
     onSection={(section) => session.selectRepositorySection(section)}
     onBypass={(bypass) => setBypass(repository.id, bypass)}
     onSaveConfig={(patch) => setConfig(repository.id, patch)}
+    onSavePendingCI={(mode, patterns, quiet) => setPendingCI(repository.id, mode, patterns, quiet)}
     onResetMigration={() => resetConfigMigration(repository.id)}
     sections={availableSections}
     syncOverride={syncOverrideQuery.data}

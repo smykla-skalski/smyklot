@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -28,6 +29,33 @@ type pendingCIObserver interface {
 type pendingCIEffects interface {
 	MergeAtHead(context.Context, pendingci.Request, string) error
 	CleanupArtifacts(context.Context, pendingci.Request, pendingci.Lifecycle) error
+}
+
+type pendingCICheckMergeEffects interface {
+	SatisfyCheck(context.Context, pendingci.Request) error
+	RestoreBlockingCheck(context.Context, pendingci.Request) error
+}
+
+type pendingCIMergePhaseStore interface {
+	MarkMergeCheckSucceeded(
+		context.Context,
+		pendingci.MarkMergeCheckSucceededRequest,
+	) (pendingci.Request, error)
+}
+
+type pendingCIReauthorizationStore interface {
+	RequireReauthorization(
+		context.Context,
+		pendingci.RequireReauthorizationRequest,
+	) (pendingci.Request, error)
+}
+
+type pendingCIReauthorizationEffects interface {
+	RequireReauthorizationCheck(
+		context.Context,
+		pendingci.Request,
+		string,
+	) (pendingci.CheckSlot, error)
 }
 
 // pendingCIReconciler combines live truth with the pure policy, then applies
@@ -80,6 +108,17 @@ func (reconciler *pendingCIReconciler) currentTiming() pendingci.Timing {
 	return reconciler.timing
 }
 
+func (reconciler *pendingCIReconciler) timingFor(
+	observation pendingci.Observation,
+) pendingci.Timing {
+	timing := reconciler.currentTiming()
+	if observation.PassingQuiet != nil {
+		timing.PassingQuiet = *observation.PassingQuiet
+	}
+
+	return timing
+}
+
 func (reconciler *pendingCIReconciler) Process(
 	ctx context.Context,
 	request pendingci.Request,
@@ -101,7 +140,7 @@ func (reconciler *pendingCIReconciler) processArmedExclusive(
 	if err != nil {
 		return fmt.Errorf("observe live GitHub state: %w", err)
 	}
-	decision, err := pendingci.Decide(request, observation, reconciler.currentTiming())
+	decision, err := pendingci.Decide(request, observation, reconciler.timingFor(observation))
 	if err != nil {
 		return fmt.Errorf("decide pending CI transition: %w", err)
 	}
@@ -109,6 +148,8 @@ func (reconciler *pendingCIReconciler) processArmedExclusive(
 	switch decision.Kind {
 	case pendingci.DecisionReschedule:
 		return reconciler.reschedule(ctx, request, decision, observation)
+	case pendingci.DecisionReauthorize:
+		return reconciler.requireReauthorization(ctx, request, decision, observation)
 	case pendingci.DecisionFinish:
 		return reconciler.finish(ctx, request, decision.Lifecycle, decision.Reason, observation.ObservedAt)
 	case pendingci.DecisionMerge:
@@ -116,6 +157,42 @@ func (reconciler *pendingCIReconciler) processArmedExclusive(
 	default:
 		return fmt.Errorf("unsupported pending CI decision %q", decision.Kind)
 	}
+}
+
+func (reconciler *pendingCIReconciler) requireReauthorization(
+	ctx context.Context,
+	request pendingci.Request,
+	decision pendingci.Decision,
+	observation pendingci.Observation,
+) error {
+	effects, ok := reconciler.effects.(pendingCIReauthorizationEffects)
+	if !ok {
+		return errors.New("pending CI reauthorization effects are unavailable")
+	}
+	store, ok := reconciler.store.(pendingCIReauthorizationStore)
+	if !ok {
+		return errors.New("pending CI reauthorization store is unavailable")
+	}
+	slot, err := effects.RequireReauthorizationCheck(
+		ctx,
+		request,
+		decision.CandidateHeadSHA,
+	)
+	if err != nil {
+		return fmt.Errorf("publish pending CI reauthorization check: %w", err)
+	}
+	_, err = store.RequireReauthorization(ctx, pendingci.RequireReauthorizationRequest{
+		ID: request.ID, ExpectedRevision: request.Revision,
+		CandidateHeadSHA: decision.CandidateHeadSHA,
+		CandidateBase:    decision.CandidateBase,
+		CandidateCheckID: slot.ID,
+		ObservedAt:       observation.ObservedAt,
+	})
+	if err != nil {
+		return fmt.Errorf("record pending CI reauthorization: %w", err)
+	}
+
+	return nil
 }
 
 func (reconciler *pendingCIReconciler) mergeExclusive(
@@ -126,12 +203,15 @@ func (reconciler *pendingCIReconciler) mergeExclusive(
 	if err != nil {
 		return fmt.Errorf("revalidate live GitHub state: %w", err)
 	}
-	decision, err := pendingci.Decide(request, observation, reconciler.currentTiming())
+	decision, err := pendingci.Decide(request, observation, reconciler.timingFor(observation))
 	if err != nil {
 		return fmt.Errorf("revalidate pending CI transition: %w", err)
 	}
 	if decision.Kind == pendingci.DecisionReschedule {
 		return reconciler.reschedule(ctx, request, decision, observation)
+	}
+	if decision.Kind == pendingci.DecisionReauthorize {
+		return reconciler.requireReauthorization(ctx, request, decision, observation)
 	}
 	if decision.Kind == pendingci.DecisionFinish {
 		return reconciler.finish(
@@ -148,6 +228,34 @@ func (reconciler *pendingCIReconciler) mergeExclusive(
 	})
 	if err != nil {
 		return fmt.Errorf("claim pending CI merge: %w", err)
+	}
+	if claimed.ArtifactKind == pendingci.ArtifactCheck {
+		checkEffects, ok := reconciler.effects.(pendingCICheckMergeEffects)
+		if !ok {
+			return errors.New("pending CI check merge effects are unavailable")
+		}
+		if err := checkEffects.SatisfyCheck(ctx, claimed); err != nil {
+			return fmt.Errorf("satisfy pending CI required check: %w", err)
+		}
+		phaseStore, ok := reconciler.store.(pendingCIMergePhaseStore)
+		if !ok {
+			return errors.New("pending CI merge phase store is unavailable")
+		}
+		claimed, err = phaseStore.MarkMergeCheckSucceeded(
+			ctx,
+			pendingci.MarkMergeCheckSucceededRequest{
+				ID: claimed.ID, ExpectedRevision: claimed.Revision,
+				MarkedAt: observation.ObservedAt,
+			},
+		)
+		if err != nil {
+			restoreErr := checkEffects.RestoreBlockingCheck(ctx, claimed)
+
+			return errors.Join(
+				fmt.Errorf("record successful pending CI required check: %w", err),
+				restoreErr,
+			)
+		}
 	}
 
 	return reconciler.merge(ctx, claimed, observation)
@@ -251,6 +359,12 @@ func (reconciler *pendingCIReconciler) merge(
 	observation pendingci.Observation,
 ) error {
 	if err := reconciler.effects.MergeAtHead(ctx, request, observation.HeadSHA); err != nil {
+		var restoreErr error
+		if request.ArtifactKind == pendingci.ArtifactCheck {
+			if checkEffects, ok := reconciler.effects.(pendingCICheckMergeEffects); ok {
+				restoreErr = checkEffects.RestoreBlockingCheck(ctx, request)
+			}
+		}
 		decision := pendingci.Decision{
 			Schedule: pendingci.ScheduleActive, HeadSHA: observation.HeadSHA,
 			NextCheckAt:       observation.ObservedAt.Add(reconciler.timing.ActiveInterval),
@@ -263,7 +377,7 @@ func (reconciler *pendingCIReconciler) merge(
 			return fmt.Errorf("merge failed: %v; reschedule failed: %w", err, scheduleErr)
 		}
 
-		return fmt.Errorf("merge failed and remains armed: %w", err)
+		return fmt.Errorf("merge failed and remains armed: %w", errors.Join(err, restoreErr))
 	}
 
 	return reconciler.finish(

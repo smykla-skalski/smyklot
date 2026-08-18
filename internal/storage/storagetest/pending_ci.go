@@ -13,6 +13,112 @@ import (
 )
 
 func declarePendingCISpecs(runtime func() (context.Context, storage.Store, time.Time)) {
+	seedCheckCatalog := func(ctx context.Context, store storage.Store, now time.Time) {
+		GinkgoHelper()
+		Expect(store.ReconcileInstallation(ctx, storage.InstallationSnapshot{
+			TargetID: "installation:77", InstallationID: "77", Kind: storage.TargetOrganization,
+			Account: storage.Account{
+				ID: "account:pending-ci", Provider: "github", SubjectID: "77",
+				Login: "owner", UpdatedAt: now,
+			},
+			Repositories: []storage.RepositorySnapshot{{
+				ID: "repository-20", Name: "repo", FullName: "owner/repo", DefaultBranch: "main",
+			}},
+			SyncedAt: now,
+		})).To(Succeed())
+		gate, err := store.GetPendingCIRepositoryGate(ctx, "repository-20")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(gate.DesiredMode).To(Equal(storage.PendingCIModeChecks))
+		Expect(gate.Readiness).To(Equal(storage.PendingCIProvisioning))
+	}
+	ensureSlot := func(
+		ctx context.Context,
+		store storage.Store,
+		at time.Time,
+		pullRequest int,
+		headSHA, suffix, digest string,
+	) pendingci.CheckSlot {
+		GinkgoHelper()
+		slot, err := store.EnsureCheckSlot(
+			ctx,
+			pendingCICheckSlot(at, pullRequest, headSHA, suffix, digest),
+		)
+		Expect(err).NotTo(HaveOccurred())
+
+		return slot
+	}
+
+	It("persists exact check reauthorization and idempotent action replay", func() {
+		ctx, store, now := runtime()
+		seedCheckCatalog(ctx, store, now)
+		first := ensureSlot(ctx, store, now, 198, "old-head", "old", "authorized")
+		bound, err := store.BindCheckRun(ctx, pendingci.BindCheckRunRequest{
+			ID: first.ID, ExpectedRevision: first.Revision, CheckRunID: 701,
+			CheckURL: "https://github.example/checks/701", BoundAt: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		applied, err := store.ApplyCheckSlot(ctx, pendingci.ApplyCheckSlotRequest{
+			ID: bound.ID, ExpectedRevision: bound.Revision, AppliedDigest: bound.DesiredDigest,
+			CheckRunID: 701, CheckURL: bound.CheckURL, AppliedAt: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(applied.State).To(Equal(pendingci.CheckSlotReady))
+		Expect(applied.AppliedDigest).To(Equal("authorized"))
+
+		arm := pendingCIArm(now, 198, 101, "old-head")
+		arm.RepositoryFullName = "owner/repo"
+		arm.ArtifactKind = pendingci.ArtifactCheck
+		arm.Label = ""
+		arm.CheckSlotID = &applied.ID
+		armed, err := store.Arm(ctx, arm)
+		Expect(err).NotTo(HaveOccurred())
+		second := ensureSlot(ctx, store, now.Add(time.Minute), 198, "new-head", "new", "reauthorize")
+		waiting, err := store.RequireReauthorization(ctx, pendingci.RequireReauthorizationRequest{
+			ID: armed.Request.ID, ExpectedRevision: armed.Request.Revision,
+			CandidateHeadSHA: "new-head", CandidateBase: "release",
+			CandidateCheckID: second.ID, ObservedAt: now.Add(time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(waiting.HeadSHA).To(Equal("old-head"))
+		Expect(waiting.CandidateHeadSHA).To(Equal("new-head"))
+		Expect(waiting.AuthorizationState).To(Equal(pendingci.AuthorizationReauthorizationNeeded))
+
+		change := pendingci.ReauthorizeRequest{
+			RepositoryID: arm.RepositoryID, PullRequest: arm.PullRequest,
+			HeadSHA: "new-head", BaseBranch: "release", CheckSlotID: second.ID,
+			Actor: "maintainer", EventKey: "check_run:701:requested_action:reauthorize",
+			DeliveryID: "delivery-701", AuthorizedAt: now.Add(2 * time.Minute),
+		}
+		reauthorized, err := store.Reauthorize(ctx, change)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(reauthorized).NotTo(BeNil())
+		Expect(reauthorized.HeadSHA).To(Equal("new-head"))
+		Expect(reauthorized.AuthorizedBy).To(Equal("maintainer"))
+		Expect(reauthorized.AuthorizationState).To(Equal(pendingci.AuthorizationAuthorized))
+		replayed, err := store.Reauthorize(ctx, change)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(replayed).NotTo(BeNil())
+		Expect(replayed.Revision).To(Equal(reauthorized.Revision))
+	})
+
+	It("rejects shared check heads and renews a long-running check durably", func() {
+		ctx, store, now := runtime()
+		seedCheckCatalog(ctx, store, now)
+		slot := ensureSlot(ctx, store, now, 42, "shared", "original", "digest")
+		_, err := store.EnsureCheckSlot(ctx, pendingCICheckSlot(now, 43, "shared", "other", "other"))
+		Expect(errors.Is(err, pendingci.ErrSharedHead)).To(BeTrue())
+		renewed, err := store.RenewCheckSlot(ctx, pendingci.RenewCheckSlotRequest{
+			ID: slot.ID, ExpectedRevision: slot.Revision,
+			ExternalID: "smyklot:merge-after-ci:repository-20:shared:g2",
+			RenewedAt:  now.Add(13 * 24 * time.Hour),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(renewed.Generation).To(Equal(int64(2)))
+		Expect(renewed.CheckRunID).To(BeNil())
+		Expect(renewed.AppliedDigest).To(BeEmpty())
+		Expect(renewed.State).To(Equal(pendingci.CheckSlotProvisioning))
+	})
+
 	It("retunes durable passing deadlines when the quiet period changes", func() {
 		ctx, store, now := runtime()
 		armed, err := store.Arm(ctx, pendingCIArm(now, 196, 99, "retune-head"))
@@ -266,6 +372,22 @@ func declarePendingCISpecs(runtime func() (context.Context, storage.Store, time.
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result.Accepted).To(BeFalse())
 	})
+}
+
+func pendingCICheckSlot(
+	now time.Time,
+	pullRequest int,
+	headSHA, suffix, digest string,
+) pendingci.EnsureCheckSlotRequest {
+	return pendingci.EnsureCheckSlotRequest{
+		TargetID: "installation:77", InstallationID: 77,
+		RepositoryID: "repository-20", RepositoryFullName: "owner/repo",
+		PullRequest: pullRequest, HeadSHA: headSHA, AppID: 17,
+		Name:          storage.PendingCICheckName,
+		ExternalID:    "smyklot:merge-after-ci:repository-20:" + suffix,
+		DesiredStatus: "in_progress", DesiredTitle: "Merge authorized",
+		DesiredSummary: "Waiting for CI", DesiredDigest: digest, ChangedAt: now,
+	}
 }
 
 func pendingCIArm(

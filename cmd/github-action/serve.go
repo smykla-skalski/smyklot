@@ -494,7 +494,8 @@ func applyServeFlags(cmd *cobra.Command, cfg *serveConfig) error {
 		return err
 	}
 	if cfg.pendingCIQuietPeriod < pendingci.MinPassingQuiet ||
-		cfg.pendingCIQuietPeriod > pendingci.MaxPassingQuiet {
+		cfg.pendingCIQuietPeriod > pendingci.MaxPassingQuiet ||
+		(cfg.pendingCIQuietPeriod > 0 && cfg.pendingCIQuietPeriod < time.Second) {
 		return ErrInvalidPendingCIQuietPeriod
 	}
 

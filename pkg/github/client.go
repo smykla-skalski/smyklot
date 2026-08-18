@@ -299,6 +299,27 @@ func (c *Client) Ping(ctx context.Context) error {
 	return doRequest(withoutRetry(ctx), c, http.MethodGet, "/app", nil)
 }
 
+// AppID returns the stable identity of the App represented by this App JWT.
+func (c *Client) AppID(ctx context.Context) (int64, error) {
+	response, err := doJSON[struct {
+		ID int64 `json:"id"`
+	}](ctx, c, http.MethodGet, "/app", nil)
+	if err != nil {
+		return 0, err
+	}
+	if response.ID <= 0 {
+		return 0, NewAPIError(
+			ErrResponseParse,
+			0,
+			http.MethodGet,
+			"/app",
+			errors.New("GitHub App response has no id"),
+		)
+	}
+
+	return response.ID, nil
+}
+
 // GetUser resolves a GitHub login to its stable numeric identity.
 func (c *Client) GetUser(ctx context.Context, login string) (User, error) {
 	login = strings.TrimSpace(login)
@@ -369,6 +390,7 @@ func installationPermissions(granted *gogithub.InstallationPermissions) map[stri
 	permissions := map[string]string{}
 	for name, level := range map[string]string{
 		"administration": granted.GetAdministration(),
+		"checks":         granted.GetChecks(),
 		"contents":       granted.GetContents(),
 		"issues":         granted.GetIssues(),
 		"pull_requests":  granted.GetPullRequests(),

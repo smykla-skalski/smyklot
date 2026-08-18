@@ -15,7 +15,9 @@ const pendingCISelect = `
 SELECT id, target_id, installation_id, repository_id, repository_full_name,
        pull_request, head_sha, base_branch, merge_method, required_checks_only,
        requester, source_comment_id, source_revision, source_sequence, source_order,
-	       label, lifecycle, schedule, next_check_trigger,
+	       artifact_kind, label, check_slot_id, authorization_state, gate_state,
+	       candidate_head_sha, candidate_base_branch, authorized_by, authorized_at,
+	       merge_phase, lifecycle, schedule, next_check_trigger,
        next_check_at, lease_expires_at, last_progress_at, last_observed_state,
        last_fingerprint, last_event_key, reason, requested_at, updated_at,
        finished_at, cleanup_pending, cleanup_artifacts_done,
@@ -26,6 +28,7 @@ FROM pending_ci_requests`
 // Callers use it before publishing external artifacts; Arm remains the final
 // atomic authority in case another process changes the order afterward.
 func (s *Store) CheckArm(ctx context.Context, arm pendingci.ArmRequest) error {
+	arm = normalizedArmRequest(arm)
 	if err := arm.Validate(); err != nil {
 		return err
 	}
@@ -46,6 +49,7 @@ func (s *Store) CheckArm(ctx context.Context, arm pendingci.ArmRequest) error {
 // Arm atomically supersedes the current request for a PR and records the last
 // authorized command as the only armed request.
 func (s *Store) Arm(ctx context.Context, arm pendingci.ArmRequest) (pendingci.ArmResult, error) {
+	arm = normalizedArmRequest(arm)
 	if err := arm.Validate(); err != nil {
 		return pendingci.ArmResult{}, err
 	}
@@ -133,6 +137,14 @@ WHERE id = ? AND lifecycle = ?`,
 	return resultValue, nil
 }
 
+func normalizedArmRequest(arm pendingci.ArmRequest) pendingci.ArmRequest {
+	if arm.ArtifactKind == "" {
+		arm.ArtifactKind = pendingci.ArtifactLabel
+	}
+
+	return arm
+}
+
 func insertArmedPendingCI(
 	ctx context.Context,
 	tx *transaction,
@@ -144,9 +156,10 @@ INSERT INTO pending_ci_requests (
     target_id, installation_id, repository_id, repository_full_name,
     pull_request, head_sha, base_branch, merge_method, required_checks_only,
     requester, source_comment_id, source_revision, source_sequence, source_order,
-		label, lifecycle, schedule, next_check_trigger,
+		artifact_kind, label, check_slot_id, authorized_by, authorized_at,
+		lifecycle, schedule, next_check_trigger,
     next_check_at, last_progress_at, requested_at, updated_at
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id`,
 		arm.TargetID,
 		arm.InstallationID,
@@ -162,7 +175,11 @@ RETURNING id`,
 		arm.SourceRevision,
 		arm.SourceSequence,
 		arm.SourceOrder,
-		arm.Label,
+		arm.ArtifactKind,
+		nullableString(arm.Label),
+		arm.CheckSlotID,
+		arm.Requester,
+		arm.RequestedAt,
 		pendingci.LifecycleArmed,
 		pendingci.ScheduleActive,
 		pendingci.TriggerCommand,
@@ -197,7 +214,11 @@ func armedRequest(id int64, arm pendingci.ArmRequest) pendingci.Request {
 		MergeMethod: arm.MergeMethod, RequiredChecksOnly: arm.RequiredChecksOnly,
 		Requester: arm.Requester, SourceCommentID: arm.SourceCommentID,
 		SourceRevision: arm.SourceRevision, SourceSequence: arm.SourceSequence,
-		SourceOrder: arm.SourceOrder, Label: arm.Label,
+		SourceOrder: arm.SourceOrder, ArtifactKind: arm.ArtifactKind,
+		Label: arm.Label, CheckSlotID: arm.CheckSlotID,
+		AuthorizationState: pendingci.AuthorizationAuthorized,
+		GateState:          pendingci.GateReady, AuthorizedBy: arm.Requester,
+		AuthorizedAt: arm.RequestedAt, MergePhase: pendingci.MergeWaiting,
 		Lifecycle: pendingci.LifecycleArmed, Schedule: pendingci.ScheduleActive,
 		NextCheckTrigger: pendingci.TriggerCommand,
 		NextCheckAt:      arm.RequestedAt, LastProgressAt: arm.RequestedAt,
@@ -243,7 +264,16 @@ func samePendingCICommand(request pendingci.Request, arm pendingci.ArmRequest) b
 		request.SourceCommentID == arm.SourceCommentID &&
 		request.SourceRevision == arm.SourceRevision && request.SourceSequence == arm.SourceSequence &&
 		request.SourceOrder == arm.SourceOrder &&
-		request.Label == arm.Label
+		request.ArtifactKind == arm.ArtifactKind && request.Label == arm.Label &&
+		equalInt64Pointers(request.CheckSlotID, arm.CheckSlotID)
+}
+
+func equalInt64Pointers(left, right *int64) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+
+	return *left == *right
 }
 
 func (s *Store) GetArmed(
@@ -466,7 +496,8 @@ func (s *Store) CheckNow(
 	}
 	return s.updatePendingCIWithEvents(ctx, wake.ID, "check pending CI request now", `
 UPDATE pending_ci_requests SET
-    schedule = ?, next_check_at = ?, lease_expires_at = NULL,
+    schedule = ?,
+    next_check_at = ?, lease_expires_at = NULL,
 	last_event_key = ?, next_check_trigger = ?, updated_at = ?, revision = revision + 1
 WHERE id = ? AND lifecycle = ? AND revision = ?`,
 		func(before, _ pendingci.Request) []pendingci.Event {
@@ -503,7 +534,7 @@ func (s *Store) ClaimMerge(
 	}
 	return s.updatePendingCIWithEvents(ctx, claim.ID, "claim pending CI merge", `
 UPDATE pending_ci_requests SET
-    updated_at = ?, revision = revision + 1
+	merge_phase = 'claimed', updated_at = ?, revision = revision + 1
 WHERE id = ? AND lifecycle = ? AND revision = ?
   AND lease_expires_at IS NOT NULL AND lease_expires_at > ?`,
 		func(before, _ pendingci.Request) []pendingci.Event {
@@ -537,6 +568,175 @@ WHERE id = ? AND lifecycle = ? AND revision = ?
 	)
 }
 
+func (s *Store) MarkMergeCheckSucceeded(
+	ctx context.Context,
+	change pendingci.MarkMergeCheckSucceededRequest,
+) (pendingci.Request, error) {
+	if err := change.Validate(); err != nil {
+		return pendingci.Request{}, err
+	}
+
+	return s.updatePendingCIWithEvents(ctx, change.ID, "mark pending CI check successful", `
+UPDATE pending_ci_requests SET
+	merge_phase = 'check_succeeded', updated_at = ?, revision = revision + 1
+WHERE id = ? AND lifecycle = ? AND revision = ? AND merge_phase = 'claimed'`,
+		nil,
+		change.MarkedAt,
+		change.ID,
+		pendingci.LifecycleArmed,
+		change.ExpectedRevision,
+	)
+}
+
+func (s *Store) RequireReauthorization(
+	ctx context.Context,
+	change pendingci.RequireReauthorizationRequest,
+) (pendingci.Request, error) {
+	if err := change.Validate(); err != nil {
+		return pendingci.Request{}, err
+	}
+
+	return s.updatePendingCIWithEvents(ctx, change.ID, "require pending CI reauthorization", `
+UPDATE pending_ci_requests SET
+    authorization_state = 'reauthorization_required',
+    candidate_head_sha = ?, candidate_base_branch = ?, check_slot_id = ?,
+    schedule = 'active', next_check_at = ?, lease_expires_at = NULL,
+    last_observed_state = '', last_fingerprint = '', merge_phase = 'waiting',
+    next_check_trigger = 'fallback', updated_at = ?, revision = revision + 1
+WHERE id = ? AND lifecycle = ? AND artifact_kind = 'check' AND revision = ?`,
+		func(before, _ pendingci.Request) []pendingci.Event {
+			return []pendingci.Event{pendingCIAuditEvent(
+				before.ID,
+				pendingci.EventChecksObserved,
+				pendingci.TriggerFallback,
+				string(pendingci.AuthorizationReauthorizationNeeded),
+				"Pull request revision changed; waiting for reauthorization",
+				change.ObservedAt,
+			)}
+		},
+		change.CandidateHeadSHA,
+		change.CandidateBase,
+		change.CandidateCheckID,
+		change.ObservedAt,
+		change.ObservedAt,
+		change.ID,
+		pendingci.LifecycleArmed,
+		change.ExpectedRevision,
+	)
+}
+
+func (s *Store) Reauthorize(
+	ctx context.Context,
+	change pendingci.ReauthorizeRequest,
+) (*pendingci.Request, error) {
+	if err := change.Validate(); err != nil {
+		return nil, err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin pending CI reauthorization: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	request, err := getArmedPendingCI(ctx, tx, change.RepositoryID, change.PullRequest)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read pending CI reauthorization target: %w", err)
+	}
+	if request.ArtifactKind == pendingci.ArtifactCheck &&
+		request.AuthorizationState == pendingci.AuthorizationAuthorized &&
+		request.HeadSHA == change.HeadSHA && request.BaseBranch == change.BaseBranch &&
+		request.CheckSlotID != nil && *request.CheckSlotID == change.CheckSlotID &&
+		request.LastEventKey == change.EventKey {
+		return &request, nil
+	}
+	if request.ArtifactKind != pendingci.ArtifactCheck ||
+		request.AuthorizationState != pendingci.AuthorizationReauthorizationNeeded ||
+		request.CandidateHeadSHA != change.HeadSHA ||
+		request.CandidateBaseBranch != change.BaseBranch ||
+		request.CheckSlotID == nil || *request.CheckSlotID != change.CheckSlotID {
+		return nil, nil
+	}
+	result, err := tx.ExecContext(ctx, `
+UPDATE pending_ci_requests SET
+    head_sha = candidate_head_sha, base_branch = candidate_base_branch,
+    candidate_head_sha = NULL, candidate_base_branch = NULL,
+    authorization_state = 'authorized', authorized_by = ?, authorized_at = ?,
+    schedule = 'active', next_check_at = ?, lease_expires_at = NULL,
+    last_progress_at = ?, last_observed_state = '', last_fingerprint = '',
+    last_event_key = ?, merge_phase = 'waiting', next_check_trigger = 'webhook',
+    updated_at = ?, revision = revision + 1
+WHERE id = ? AND revision = ? AND lifecycle = 'armed'
+  AND artifact_kind = 'check' AND authorization_state = 'reauthorization_required'
+  AND candidate_head_sha = ? AND candidate_base_branch = ? AND check_slot_id = ?`,
+		change.Actor,
+		change.AuthorizedAt,
+		change.AuthorizedAt,
+		change.AuthorizedAt,
+		change.EventKey,
+		change.AuthorizedAt,
+		request.ID,
+		request.Revision,
+		change.HeadSHA,
+		change.BaseBranch,
+		change.CheckSlotID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("reauthorize pending CI request: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return nil, fmt.Errorf("read pending CI reauthorization result: %w", err)
+	}
+	if changed != 1 {
+		return nil, nil
+	}
+	event := pendingCIAuditEvent(
+		request.ID,
+		pendingci.EventWakeReceived,
+		pendingci.TriggerWebhook,
+		string(pendingci.AuthorizationAuthorized),
+		fmt.Sprintf("%s reauthorized merge after CI for the current revision", change.Actor),
+		change.AuthorizedAt,
+	)
+	event.EventName = "check_run.requested_action"
+	event.EventKey = change.EventKey
+	event.DeliveryID = change.DeliveryID
+	if err := recordPendingCIEvent(ctx, tx, event); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit pending CI reauthorization: %w", err)
+	}
+
+	applyReauthorization(&request, change)
+
+	return &request, nil
+}
+
+func applyReauthorization(request *pendingci.Request, change pendingci.ReauthorizeRequest) {
+	request.HeadSHA = change.HeadSHA
+	request.BaseBranch = change.BaseBranch
+	request.CandidateHeadSHA = ""
+	request.CandidateBaseBranch = ""
+	request.AuthorizationState = pendingci.AuthorizationAuthorized
+	request.AuthorizedBy = change.Actor
+	request.AuthorizedAt = change.AuthorizedAt
+	request.Schedule = pendingci.ScheduleActive
+	request.NextCheckAt = change.AuthorizedAt
+	request.LeaseExpiresAt = nil
+	request.LastProgressAt = change.AuthorizedAt
+	request.LastObservedState = ""
+	request.LastFingerprint = ""
+	request.LastEventKey = change.EventKey
+	request.MergePhase = pendingci.MergeWaiting
+	request.NextCheckTrigger = pendingci.TriggerWebhook
+	request.UpdatedAt = change.AuthorizedAt
+	request.Revision++
+}
+
 func (s *Store) Reschedule(
 	ctx context.Context,
 	change pendingci.RescheduleRequest,
@@ -554,7 +754,9 @@ func (s *Store) Reschedule(
 	}
 	return s.updatePendingCIWithEvents(ctx, change.ID, "reschedule pending CI request", `
 UPDATE pending_ci_requests SET
-    schedule = ?, head_sha = ?, next_check_at = ?, lease_expires_at = NULL,
+	schedule = ?, head_sha = CASE WHEN artifact_kind = 'check' THEN head_sha ELSE ? END,
+	next_check_at = ?, lease_expires_at = NULL,
+	merge_phase = 'waiting',
     last_progress_at = ?, last_observed_state = ?, last_fingerprint = ?,
 	next_check_trigger = ?, updated_at = ?, revision = revision + 1
 WHERE id = ? AND lifecycle = ? AND revision = ?`,

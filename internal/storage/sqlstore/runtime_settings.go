@@ -124,14 +124,14 @@ func validateRuntimeSettingsChange(change storage.RuntimeSettingsChange) (*strin
 	if change.PollInterval != nil && *change.PollInterval < 0 {
 		return nil, errors.New("reaction sweep interval cannot be negative")
 	}
-	if change.PendingCIQuietPeriod != nil && *change.PendingCIQuietPeriod <= 0 {
-		return nil, errors.New("merge-after-CI quiet period must be positive")
+	if change.PendingCIQuietPeriod != nil && *change.PendingCIQuietPeriod < 0 {
+		return nil, errors.New("merge-after-CI quiet period cannot be negative")
 	}
 	if change.EffectivePollInterval < 0 {
 		return nil, errors.New("effective reaction sweep interval cannot be negative")
 	}
-	if change.EffectivePendingCIQuietPeriod <= 0 {
-		return nil, errors.New("effective merge-after-CI quiet period must be positive")
+	if change.EffectivePendingCIQuietPeriod < 0 {
+		return nil, errors.New("effective merge-after-CI quiet period cannot be negative")
 	}
 	if change.EffectiveSessionTTL < time.Minute {
 		return nil, errors.New("effective session lifetime must be at least one minute")

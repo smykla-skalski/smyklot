@@ -26,6 +26,7 @@ type pendingCICurrentStore interface {
 
 type pendingCICleanupScope struct {
 	label          bool
+	check          bool
 	sourceReaction bool
 	serviceFence   bool
 }
@@ -45,16 +46,12 @@ func (backend *githubPendingCIBackend) Observe(
 	if err != nil {
 		return pendingci.Observation{}, err
 	}
-	labelFound := hasLabel(state.Labels, request.Label)
-	if !state.Open || !labelFound {
-		return pendingci.Observation{
-			HeadSHA: state.HeadSHA, BaseBranch: state.BaseBranch, PullRequestOpen: state.Open,
-			PullRequestMerged: state.Merged, PendingLabelFound: labelFound,
-			State: pendingci.ObservedIndeterminate, ObservedAt: observedAt,
-		}, nil
-	}
-	if err := backend.requireCurrent(ctx, request); err != nil {
+	labelFound, stopped, err := backend.prepareObservation(ctx, request, state, observedAt)
+	if err != nil {
 		return pendingci.Observation{}, err
+	}
+	if stopped != nil {
+		return *stopped, nil
 	}
 	sourceReason, err := backend.source.CancellationReason(
 		ctx, client, request, owner, repository,
@@ -63,12 +60,10 @@ func (backend *githubPendingCIBackend) Observe(
 		return pendingci.Observation{}, err
 	}
 	if sourceReason != "" {
-		return pendingci.Observation{
-			HeadSHA: state.HeadSHA, BaseBranch: state.BaseBranch, PullRequestOpen: state.Open,
-			PullRequestMerged: state.Merged, PendingLabelFound: labelFound,
-			CancelReason: sourceReason,
-			State:        pendingci.ObservedIndeterminate, ObservedAt: observedAt,
-		}, nil
+		observation := pullRequestObservation(state, labelFound, observedAt)
+		observation.CancelReason = sourceReason
+
+		return observation, nil
 	}
 	if err := client.AddPullRequestReaction(
 		ctx, owner, repository, request.PullRequest,
@@ -94,22 +89,22 @@ func (backend *githubPendingCIBackend) Observe(
 		return pendingci.Observation{}, err
 	}
 	if cancelReason != "" {
-		return pendingci.Observation{
-			HeadSHA: state.HeadSHA, BaseBranch: state.BaseBranch, PullRequestOpen: state.Open,
-			PullRequestMerged: state.Merged, PendingLabelFound: labelFound,
-			CancelReason: cancelReason,
-			State:        pendingci.ObservedIndeterminate, ObservedAt: observedAt,
-		}, nil
+		observation := pullRequestObservation(state, labelFound, observedAt)
+		observation.CancelReason = cancelReason
+
+		return observation, nil
 	}
 	checks, err := backend.checks(ctx, client, request, state, owner, repository)
 	if errors.Is(err, errNoRequiredStatusChecks) {
-		return pendingci.Observation{
-			HeadSHA: state.HeadSHA, BaseBranch: state.BaseBranch, PullRequestOpen: state.Open,
-			PullRequestMerged: state.Merged, PendingLabelFound: labelFound,
-			CancelReason: errNoRequiredStatusChecks.Error(),
-			State:        pendingci.ObservedIndeterminate, ObservedAt: observedAt,
-		}, nil
+		observation := pullRequestObservation(state, labelFound, observedAt)
+		observation.CancelReason = errNoRequiredStatusChecks.Error()
+
+		return observation, nil
 	}
+	if err != nil {
+		return pendingci.Observation{}, err
+	}
+	passingQuiet, err := backend.passingQuiet(ctx, request)
 	if err != nil {
 		return pendingci.Observation{}, err
 	}
@@ -118,8 +113,116 @@ func (backend *githubPendingCIBackend) Observe(
 		HeadSHA: state.HeadSHA, BaseBranch: state.BaseBranch, PullRequestOpen: state.Open,
 		PullRequestMerged: state.Merged, PendingLabelFound: labelFound,
 		State: observedCIState(checks.State), Fingerprint: checkFingerprint(checks),
-		Summary: checks.Summary, ObservedAt: observedAt,
+		Summary: checks.Summary, ObservedAt: observedAt, PassingQuiet: passingQuiet,
 	}, nil
+}
+
+func (backend *githubPendingCIBackend) prepareObservation(
+	ctx context.Context,
+	request pendingci.Request,
+	state github.PullRequestState,
+	observedAt time.Time,
+) (bool, *pendingci.Observation, error) {
+	artifact := request.ArtifactKind
+	if artifact == "" {
+		artifact = pendingci.ArtifactLabel
+	}
+	labelFound := artifact == pendingci.ArtifactCheck || hasLabel(state.Labels, request.Label)
+	if !state.Open || !labelFound {
+		observation := pullRequestObservation(state, labelFound, observedAt)
+
+		return labelFound, &observation, nil
+	}
+	if err := backend.requireCurrent(ctx, request); err != nil {
+		return false, nil, err
+	}
+	if artifact != pendingci.ArtifactCheck {
+		return labelFound, nil, nil
+	}
+	ready, reason, err := backend.checkGateReady(ctx, request)
+	if err != nil {
+		return false, nil, err
+	}
+	if !ready {
+		observation := pullRequestObservation(state, true, observedAt)
+		observation.Summary = "Pending CI readiness paused: " + reason
+
+		return true, &observation, nil
+	}
+	if request.AuthorizationState == pendingci.AuthorizationAuthorized {
+		if err := backend.ensureAuthorizedCheck(ctx, request); err != nil {
+			return false, nil, err
+		}
+	}
+
+	return true, nil, nil
+}
+
+func pullRequestObservation(
+	state github.PullRequestState,
+	labelFound bool,
+	observedAt time.Time,
+) pendingci.Observation {
+	return pendingci.Observation{
+		HeadSHA: state.HeadSHA, BaseBranch: state.BaseBranch, PullRequestOpen: state.Open,
+		PullRequestMerged: state.Merged, PendingLabelFound: labelFound,
+		State: pendingci.ObservedIndeterminate, ObservedAt: observedAt,
+	}
+}
+
+func (backend *githubPendingCIBackend) ensureAuthorizedCheck(
+	ctx context.Context,
+	request pendingci.Request,
+) error {
+	target, repository, err := backend.server.repositoryControls(
+		ctx,
+		request.TargetID,
+		request.RepositoryID,
+	)
+	if err != nil {
+		return fmt.Errorf("read authorized check settings: %w", err)
+	}
+	slot, err := backend.server.pendingCIChecks.EnsureAuthorized(
+		ctx,
+		target,
+		repository,
+		request.PullRequest,
+		request.HeadSHA,
+		request.MergeMethod,
+		request.AuthorizedBy,
+	)
+	if err != nil {
+		return fmt.Errorf("restore authorized pending CI check: %w", err)
+	}
+	if request.CheckSlotID == nil || slot.ID != *request.CheckSlotID {
+		return errors.New("authorized pending CI request does not own its head check")
+	}
+
+	return nil
+}
+
+func (backend *githubPendingCIBackend) passingQuiet(
+	ctx context.Context,
+	request pendingci.Request,
+) (*time.Duration, error) {
+	if backend.server.panel == nil {
+		return nil, nil
+	}
+	target, repository, err := backend.server.repositoryControls(
+		ctx,
+		request.TargetID,
+		request.RepositoryID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("read pending CI quiet-period settings: %w", err)
+	}
+	_, _, quiet := storage.EffectivePendingCISettings(
+		target,
+		repository,
+		backend.server.pendingCIReconciler.currentTiming().PassingQuiet,
+	)
+
+	return &quiet, nil
 }
 
 func (backend *githubPendingCIBackend) requireCurrent(
@@ -153,6 +256,63 @@ func (backend *githubPendingCIBackend) MergeAtHead(
 	)
 }
 
+func (backend *githubPendingCIBackend) SatisfyCheck(
+	ctx context.Context,
+	request pendingci.Request,
+) error {
+	if request.CheckSlotID == nil {
+		return errors.New("pending CI check request has no durable check slot")
+	}
+	slot, err := backend.server.store.GetCheckSlot(ctx, *request.CheckSlotID)
+	if err != nil {
+		return fmt.Errorf("read pending CI check slot: %w", err)
+	}
+	_, err = backend.server.pendingCIChecks.EnsureMergeReady(ctx, slot)
+
+	return err
+}
+
+func (backend *githubPendingCIBackend) RestoreBlockingCheck(
+	ctx context.Context,
+	request pendingci.Request,
+) error {
+	target := storage.Target{
+		ID: request.TargetID, InstallationID: fmt.Sprint(request.InstallationID),
+	}
+	repository := storage.Repository{
+		ID: request.RepositoryID, FullName: request.RepositoryFullName,
+	}
+	_, err := backend.server.pendingCIChecks.EnsureAuthorized(
+		ctx, target, repository, request.PullRequest, request.HeadSHA,
+		request.MergeMethod, request.AuthorizedBy,
+	)
+
+	return err
+}
+
+func (backend *githubPendingCIBackend) RequireReauthorizationCheck(
+	ctx context.Context,
+	request pendingci.Request,
+	headSHA string,
+) (pendingci.CheckSlot, error) {
+	target, repository, err := backend.server.repositoryControls(
+		ctx,
+		request.TargetID,
+		request.RepositoryID,
+	)
+	if err != nil {
+		return pendingci.CheckSlot{}, fmt.Errorf("read reauthorization settings: %w", err)
+	}
+
+	return backend.server.pendingCIChecks.EnsureReauthorization(
+		ctx,
+		target,
+		repository,
+		request.PullRequest,
+		headSHA,
+	)
+}
+
 func (backend *githubPendingCIBackend) CleanupArtifacts(
 	ctx context.Context,
 	request pendingci.Request,
@@ -175,12 +335,31 @@ func (backend *githubPendingCIBackend) cleanupArtifactsExclusive(
 		return err
 	}
 	var cleanupErr error
-	if scope.label {
+	if scope.label && request.ArtifactKind != pendingci.ArtifactCheck {
 		labelErr := cleanupGitHubError(
 			"remove pending CI label",
 			client.RemoveLabel(ctx, owner, repository, request.PullRequest, request.Label),
 		)
 		cleanupErr = errors.Join(cleanupErr, labelErr)
+	}
+	if scope.check && request.ArtifactKind == pendingci.ArtifactCheck {
+		if request.CheckSlotID == nil {
+			cleanupErr = errors.Join(cleanupErr, errors.New("pending CI check cleanup has no slot"))
+		} else {
+			slot, slotErr := backend.server.store.GetCheckSlot(ctx, *request.CheckSlotID)
+			if slotErr == nil {
+				target := storage.Target{
+					ID: slot.TargetID, InstallationID: fmt.Sprint(slot.InstallationID),
+				}
+				repositorySettings := storage.Repository{
+					ID: slot.RepositoryID, FullName: slot.RepositoryFullName,
+				}
+				_, slotErr = backend.server.pendingCIChecks.EnsureBaseline(
+					ctx, target, repositorySettings, slot.PullRequest, slot.HeadSHA,
+				)
+			}
+			cleanupErr = errors.Join(cleanupErr, slotErr)
+		}
 	}
 	if scope.serviceFence {
 		cleanupErr = errors.Join(cleanupErr, cleanupGitHubError(
@@ -218,7 +397,9 @@ func (backend *githubPendingCIBackend) cleanupScope(
 	current, err := backend.current.GetArmed(ctx, request.RepositoryID, request.PullRequest)
 	if errors.Is(err, storage.ErrNotFound) {
 		return pendingCICleanupScope{
-			label: true, sourceReaction: request.SourceCommentID > 0, serviceFence: true,
+			label:          request.ArtifactKind != pendingci.ArtifactCheck,
+			check:          request.ArtifactKind == pendingci.ArtifactCheck,
+			sourceReaction: request.SourceCommentID > 0, serviceFence: true,
 		}, nil
 	}
 	if err != nil {
@@ -228,10 +409,32 @@ func (backend *githubPendingCIBackend) cleanupScope(
 	}
 
 	return pendingCICleanupScope{
-		label: current.Label != request.Label,
+		label: request.ArtifactKind != pendingci.ArtifactCheck && current.Label != request.Label,
+		check: request.ArtifactKind == pendingci.ArtifactCheck &&
+			!sameOptionalInt64(current.CheckSlotID, request.CheckSlotID),
 		sourceReaction: request.SourceCommentID > 0 &&
 			current.SourceCommentID != request.SourceCommentID,
 	}, nil
+}
+
+func (backend *githubPendingCIBackend) checkGateReady(
+	ctx context.Context,
+	request pendingci.Request,
+) (bool, string, error) {
+	gate, err := backend.server.store.GetPendingCIRepositoryGate(ctx, request.RepositoryID)
+	if err != nil {
+		return false, "", fmt.Errorf("read pending CI check readiness: %w", err)
+	}
+	if gate.EffectiveMode == storage.PendingCIEffectiveChecks &&
+		gate.Readiness == storage.PendingCIDraining &&
+		gate.DesiredMode == storage.PendingCIModeLabels {
+		return true, "", nil
+	}
+	if gate.Readiness != storage.PendingCIReady {
+		return false, gate.Reason, nil
+	}
+
+	return true, "", nil
 }
 
 func cleanupGitHubError(operation string, err error) error {
@@ -320,7 +523,24 @@ func (backend *githubPendingCIBackend) checks(
 		}
 	}
 
-	return client.GetCheckStatus(ctx, owner, repository, state.HeadSHA, required)
+	if request.ArtifactKind != pendingci.ArtifactCheck {
+		return client.GetCheckStatus(ctx, owner, repository, state.HeadSHA, required)
+	}
+	if request.CheckSlotID == nil {
+		return nil, errors.New("pending CI check request has no durable check slot")
+	}
+	slot, err := backend.server.store.GetCheckSlot(ctx, *request.CheckSlotID)
+	if err != nil {
+		return nil, fmt.Errorf("read pending CI check slot: %w", err)
+	}
+	appID := slot.AppID
+
+	return client.GetCheckStatusExcludingCheck(
+		ctx, owner, repository, state.HeadSHA, required,
+		github.OwnedCheck{
+			Name: storage.PendingCICheckName, AppID: appID, ExternalID: slot.ExternalID,
+		},
+	)
 }
 
 func observedCIState(state github.CIState) pendingci.ObservedState {
@@ -354,4 +574,12 @@ func hasLabel(labels []string, wanted string) bool {
 	}
 
 	return false
+}
+
+func sameOptionalInt64(left, right *int64) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+
+	return *left == *right
 }

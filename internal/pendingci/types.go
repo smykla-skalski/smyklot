@@ -9,7 +9,7 @@ import (
 
 const (
 	// MinPassingQuiet is the shortest supported stable-passing window.
-	MinPassingQuiet = time.Second
+	MinPassingQuiet = time.Duration(0)
 	// DefaultPassingQuiet is how long a stable passing observation must remain
 	// unchanged before a pending-CI request may merge.
 	DefaultPassingQuiet = 30 * time.Second
@@ -49,9 +49,10 @@ const (
 type DecisionKind string
 
 const (
-	DecisionReschedule DecisionKind = "reschedule"
-	DecisionMerge      DecisionKind = "merge"
-	DecisionFinish     DecisionKind = "finish"
+	DecisionReschedule  DecisionKind = "reschedule"
+	DecisionReauthorize DecisionKind = "reauthorize"
+	DecisionMerge       DecisionKind = "merge"
+	DecisionFinish      DecisionKind = "finish"
 )
 
 type MergeMethod string
@@ -60,6 +61,35 @@ const (
 	MergeMethodMerge  MergeMethod = "merge"
 	MergeMethodSquash MergeMethod = "squash"
 	MergeMethodRebase MergeMethod = "rebase"
+)
+
+type ArtifactKind string
+
+const (
+	ArtifactLabel ArtifactKind = "label"
+	ArtifactCheck ArtifactKind = "check"
+)
+
+type AuthorizationState string
+
+const (
+	AuthorizationAuthorized            AuthorizationState = "authorized"
+	AuthorizationReauthorizationNeeded AuthorizationState = "reauthorization_required"
+)
+
+type GateState string
+
+const (
+	GateReady            GateState = "ready"
+	GateReadinessBlocked GateState = "readiness_blocked"
+)
+
+type MergePhase string
+
+const (
+	MergeWaiting        MergePhase = "waiting"
+	MergeClaimed        MergePhase = "claimed"
+	MergeCheckSucceeded MergePhase = "check_succeeded"
 )
 
 type Request struct {
@@ -78,7 +108,16 @@ type Request struct {
 	SourceRevision       string
 	SourceSequence       int
 	SourceOrder          int64
+	ArtifactKind         ArtifactKind
 	Label                string
+	CheckSlotID          *int64
+	AuthorizationState   AuthorizationState
+	GateState            GateState
+	CandidateHeadSHA     string
+	CandidateBaseBranch  string
+	AuthorizedBy         string
+	AuthorizedAt         time.Time
+	MergePhase           MergePhase
 	Lifecycle            Lifecycle
 	Schedule             Schedule
 	NextCheckAt          time.Time
@@ -114,7 +153,9 @@ type ArmRequest struct {
 	SourceRevision     string
 	SourceSequence     int
 	SourceOrder        int64
+	ArtifactKind       ArtifactKind
 	Label              string
+	CheckSlotID        *int64
 	RequestedAt        time.Time
 }
 
@@ -211,6 +252,33 @@ type ClaimMergeRequest struct {
 	ExpectedRevision int64
 	Observation      Observation
 	ClaimedAt        time.Time
+}
+
+type MarkMergeCheckSucceededRequest struct {
+	ID               int64
+	ExpectedRevision int64
+	MarkedAt         time.Time
+}
+
+type RequireReauthorizationRequest struct {
+	ID               int64
+	ExpectedRevision int64
+	CandidateHeadSHA string
+	CandidateBase    string
+	CandidateCheckID int64
+	ObservedAt       time.Time
+}
+
+type ReauthorizeRequest struct {
+	RepositoryID string
+	PullRequest  int
+	HeadSHA      string
+	BaseBranch   string
+	CheckSlotID  int64
+	Actor        string
+	EventKey     string
+	DeliveryID   string
+	AuthorizedAt time.Time
 }
 
 type RescheduleRequest struct {
@@ -327,6 +395,7 @@ type Observation struct {
 	Fingerprint       string
 	Summary           string
 	ObservedAt        time.Time
+	PassingQuiet      *time.Duration
 }
 
 // Timing controls fallback frequency and the green stability window.
@@ -350,6 +419,8 @@ type Decision struct {
 	LastProgressAt    time.Time
 	LastObservedState string
 	LastFingerprint   string
+	CandidateHeadSHA  string
+	CandidateBase     string
 }
 
 // Store is the persistence port used by pending-CI commands, scheduling, and
@@ -371,6 +442,8 @@ type Store interface {
 	Reschedule(context.Context, RescheduleRequest) (Request, error)
 	Finish(context.Context, FinishRequest) (Request, error)
 	MarkCleanupArtifactsDone(context.Context, MarkCleanupArtifactsDoneRequest) (Request, error)
+	RequireReauthorization(context.Context, RequireReauthorizationRequest) (Request, error)
+	Reauthorize(context.Context, ReauthorizeRequest) (*Request, error)
 	CompleteCleanup(context.Context, CompleteCleanupRequest) (Request, error)
 	RetryCleanup(context.Context, RetryCleanupRequest) (Request, error)
 	CancelBySource(context.Context, CancelRequest) (*Request, error)

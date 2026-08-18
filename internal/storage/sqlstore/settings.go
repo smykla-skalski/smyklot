@@ -22,7 +22,7 @@ func (s *Store) UpdateTargetSettings(
 	ctx context.Context,
 	change storage.TargetSettingsChange,
 ) (storage.Target, error) {
-	patch, err := marshalPatch(change.ConfigPatch)
+	change, patch, branchPatterns, err := prepareTargetSettings(change)
 	if err != nil {
 		return storage.Target{}, err
 	}
@@ -50,11 +50,17 @@ func (s *Store) UpdateTargetSettings(
 	result, err := tx.ExecContext(ctx, `
 UPDATE targets SET
     repository_default_enabled = ?,
+	 pending_ci_mode_default = ?,
+	 pending_ci_branch_patterns_default = ?,
+	 pending_ci_quiet_period_seconds_override = ?,
     config_patch = ?,
     revision = revision + 1,
     settings_updated_at = ?
 WHERE id = ? AND revision = ?`,
 		change.RepositoryDefaultEnabled,
+		change.PendingCIModeDefault,
+		branchPatterns,
+		durationSeconds(change.PendingCIQuietPeriodOverride),
 		patch,
 		change.ChangedAt,
 		change.TargetID,
@@ -65,6 +71,9 @@ WHERE id = ? AND revision = ?`,
 	}
 
 	if err := checkTargetUpdate(ctx, tx, result, change.TargetID); err != nil {
+		return storage.Target{}, err
+	}
+	if err := ensurePendingCIGates(ctx, tx, change.TargetID, change.ChangedAt); err != nil {
 		return storage.Target{}, err
 	}
 
@@ -99,12 +108,47 @@ WHERE id = ? AND revision = ?`,
 	return target, nil
 }
 
+func prepareTargetSettings(
+	change storage.TargetSettingsChange,
+) (storage.TargetSettingsChange, string, string, error) {
+	if change.PendingCIModeDefault == "" {
+		change.PendingCIModeDefault = storage.PendingCIModeChecks
+	}
+	if len(change.PendingCIBranchPatternsDefault.Include) == 0 {
+		change.PendingCIBranchPatternsDefault = storage.DefaultPendingCIBranchPatterns()
+	}
+	if err := storage.ValidateTargetPendingCISettings(
+		change.PendingCIModeDefault,
+		change.PendingCIBranchPatternsDefault,
+		change.PendingCIQuietPeriodOverride,
+	); err != nil {
+		return storage.TargetSettingsChange{}, "", "", err
+	}
+	patch, err := marshalPatch(change.ConfigPatch)
+	if err != nil {
+		return storage.TargetSettingsChange{}, "", "", err
+	}
+	branchPatterns, err := marshalPendingCIBranchPatterns(change.PendingCIBranchPatternsDefault)
+	if err != nil {
+		return storage.TargetSettingsChange{}, "", "", err
+	}
+
+	return change, patch, branchPatterns, nil
+}
+
 // UpdateRepositorySettings changes local controls and appends immutable audit
 // in the same transaction.
 func (s *Store) UpdateRepositorySettings(
 	ctx context.Context,
 	change storage.RepositorySettingsChange,
 ) (storage.Repository, error) {
+	if err := storage.ValidateRepositoryPendingCISettings(
+		change.PendingCIModeOverride,
+		change.PendingCIBranchPatternsOverride,
+		change.PendingCIQuietPeriodOverride,
+	); err != nil {
+		return storage.Repository{}, err
+	}
 	patch, err := marshalPatch(change.ConfigPatch)
 	if err != nil {
 		return storage.Repository{}, err
@@ -136,6 +180,9 @@ func (s *Store) UpdateRepositorySettings(
 	}
 
 	if err := checkRepositoryUpdate(ctx, tx, result, change.TargetID, change.RepositoryID); err != nil {
+		return storage.Repository{}, err
+	}
+	if err := ensurePendingCIGates(ctx, tx, change.TargetID, change.ChangedAt); err != nil {
 		return storage.Repository{}, err
 	}
 
@@ -388,15 +435,29 @@ func updateRepositorySettings(
 	change storage.RepositorySettingsChange,
 	patch string,
 ) (sql.Result, error) {
+	var branchPatterns any
+	if change.PendingCIBranchPatternsOverride != nil {
+		encoded, err := marshalPendingCIBranchPatterns(*change.PendingCIBranchPatternsOverride)
+		if err != nil {
+			return nil, err
+		}
+		branchPatterns = encoded
+	}
 	result, err := tx.ExecContext(ctx, `
 UPDATE repositories SET
     enabled_override = ?,
+	 pending_ci_mode_override = ?,
+	 pending_ci_branch_patterns_override = ?,
+	 pending_ci_quiet_period_seconds_override = ?,
     config_patch = ?,
     ignore_repository_file = ?,
     revision = revision + 1,
     settings_updated_at = ?
 WHERE target_id = ? AND id = ? AND revision = ?`,
 		change.EnabledOverride,
+		change.PendingCIModeOverride,
+		branchPatterns,
+		durationSeconds(change.PendingCIQuietPeriodOverride),
 		patch,
 		change.IgnoreRepositoryFile,
 		change.ChangedAt,

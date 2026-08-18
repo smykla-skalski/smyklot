@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
+	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/github"
 )
 
@@ -37,6 +38,7 @@ type pendingCIActivationRequest struct {
 	method             github.MergeMethod
 	requiredChecksOnly bool
 	label              string
+	artifactKind       pendingci.ArtifactKind
 }
 
 type pendingCIActivationErrors struct {
@@ -44,6 +46,7 @@ type pendingCIActivationErrors struct {
 	label     error
 	reaction  error
 	command   error
+	check     error
 	stale     bool
 	ambiguous bool
 	stoodDown bool
@@ -163,6 +166,11 @@ func persistPendingCIActivation(
 
 		return errors.Join(err, rollbackErr)
 	}
+	if request.artifactKind == pendingci.ArtifactCheck {
+		return persistPendingCICheckActivation(
+			ctx, artifacts, command, request, ownership, failures,
+		)
+	}
 	failures.label = artifacts.AddLabel(
 		ctx, request.owner, request.repository, request.pullRequest, request.label,
 	)
@@ -176,6 +184,49 @@ func persistPendingCIActivation(
 		request.requiredChecksOnly, request.label,
 	)
 	if failures.command != nil {
+		return handlePendingCIArmFailure(
+			ctx, artifacts, command, request, ownership, failures,
+		)
+	}
+
+	return removeConflictingPendingCILabels(ctx, artifacts, request)
+}
+
+func persistPendingCICheckActivation(
+	ctx context.Context,
+	artifacts pendingCIArtifacts,
+	command *pendingCICommand,
+	request pendingCIActivationRequest,
+	ownership pendingCIArtifactOwnership,
+	failures *pendingCIActivationErrors,
+) error {
+	if command.checks == nil {
+		failures.check = errors.New("pending CI Check Run service is unavailable")
+		return rollbackPendingCIArtifacts(ctx, artifacts, request, ownership, false)
+	}
+	target := storage.Target{
+		ID: command.targetID, InstallationID: fmt.Sprint(command.installationID),
+	}
+	repository := storage.Repository{
+		ID: command.repositoryID, FullName: command.repositoryFullName,
+	}
+	slot, err := command.checks.EnsureAuthorized(
+		ctx, target, repository, request.pullRequest, request.headSHA,
+		pendingci.MergeMethod(request.method), request.runtime.CommentAuthor,
+	)
+	if err != nil {
+		failures.check = err
+		return rollbackPendingCIArtifacts(ctx, artifacts, request, ownership, false)
+	}
+	_, failures.command = command.armCheck(
+		ctx, request.runtime, request.pullRequest, request.commentID,
+		request.headSHA, request.baseBranch, request.method,
+		request.requiredChecksOnly, slot.ID,
+	)
+	if failures.command != nil {
+		_, failures.check = command.checks.EnsureBaseline(
+			ctx, target, repository, request.pullRequest, request.headSHA,
+		)
 		return handlePendingCIArmFailure(
 			ctx, artifacts, command, request, ownership, failures,
 		)

@@ -46,6 +46,8 @@ func SeededTables() []string {
 		"target_owners",
 		"target_roles",
 		"repositories",
+		"pending_ci_repository_gates",
+		"pending_ci_check_slots",
 		"root_elevations",
 		"audit_entries",
 		"access_audit_entries",
@@ -365,9 +367,23 @@ func (s *seeder) seedDelivery() error {
 	})
 }
 
-// seedPendingCI fills pending_ci_requests with one terminal exact-head request.
+// seedPendingCI fills the check slot and pending request tables with one
+// terminal exact-head request.
 func (s *seeder) seedPendingCI() error {
 	requestedAt := s.now.Add(11 * time.Minute)
+	checkSlot, err := s.store.EnsureCheckSlot(s.ctx, pendingci.EnsureCheckSlotRequest{
+		TargetID: s.target.TargetID, InstallationID: 77,
+		RepositoryID: "repo-1", RepositoryFullName: "smykla-skalski/smyklot",
+		PullRequest: 198, HeadSHA: "seed-head", AppID: 17,
+		Name:          storage.PendingCICheckName,
+		ExternalID:    "smyklot:merge-after-ci:repo-1:seed-head",
+		DesiredStatus: "in_progress", DesiredTitle: "Merge authorized",
+		DesiredSummary: "Waiting for CI", DesiredDigest: "seed-check",
+		ChangedAt: requestedAt,
+	})
+	if err != nil {
+		return err
+	}
 	claim, err := s.store.ClaimSourceRevision(s.ctx, pendingci.SourceRevisionRequest{
 		RepositoryID: "repo-1", PullRequest: 198, CommentID: 101,
 		Revision: requestedAt.Format(time.RFC3339Nano), Sequence: 1,
@@ -389,7 +405,8 @@ func (s *seeder) seedPendingCI() error {
 		Requester: "seed-owner", SourceCommentID: 101,
 		SourceRevision: requestedAt.Format(time.RFC3339Nano),
 		SourceSequence: 1, SourceOrder: claim.SourceOrder,
-		Label: "smyklot:pending:ci:squash:required", RequestedAt: requestedAt,
+		ArtifactKind: pendingci.ArtifactCheck, CheckSlotID: &checkSlot.ID,
+		RequestedAt: requestedAt,
 	})
 	if err != nil {
 		return err

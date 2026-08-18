@@ -368,7 +368,7 @@ Smyklot can run as a long-running process instead of a per-comment workflow. One
 smyklot serve
 ```
 
-Point the GitHub App's webhook at `https://your-host/webhook` and set the same secret the process reads. Subscribe the App to **Issue comment**, **Check run**, **Check suite**, **Status**, and **Pull request** events. The App needs read access to **Checks**, **Commit statuses**, and **Administration** in addition to its existing command permissions. Administration access lets Smyklot read the branch's required status checks. Existing installations must approve the new permissions before CI reconciliation can read live results.
+Point the GitHub App's webhook at `https://your-host/webhook` and set the same secret the process reads. Subscribe the App to **Issue comment**, **Check run**, **Check suite**, **Status**, and **Pull request** events. The App needs **Checks** write, **Commit statuses** read, and **Administration** write in addition to its existing command permissions. Checks write lets Smyklot publish the merge authorization; Administration write lets it own the required-status-check ruleset. Existing installations must approve the new permissions before check mode can become ready.
 
 ### Service configuration
 
@@ -409,6 +409,16 @@ Register the OAuth App under the same account or organization that owns the GitH
 
 The panel synchronizes every installation and repository visible to the App every five minutes. Personal-installation ownership follows the immutable GitHub user ID. Organization ownership follows organization members with the admin role and requires read-only **Members** organization permission on the GitHub App. Existing installations must approve that added permission before Owner synchronization succeeds. Regular access fails closed when an Owner snapshot is unavailable or more than 15 minutes old; Root diagnostics retain the installation record. New installations default to **Off**, so the service only handles repositories an administrator enables deliberately. Account settings act as defaults, and the panel is one of the eight layers listed under [Configuration](#configuration) - which is the only place that order is written down. A repository may explicitly bypass an invalid file; that exception is visible and audited.
 
+#### Merge after CI checks
+
+Panel-managed service installations default to check mode. The installation settings choose the default mode, protected branch patterns, and stable-passing quiet period; each repository may inherit or override them. The GitHub Action and a service running without the panel retain label mode.
+
+Check mode owns one repository ruleset named `Smyklot: merge after CI`. It requires the app-bound `Smyklot / merge after CI` context on the selected raw GitHub refs, whose default is `~DEFAULT_BRANCH`. Smyklot writes a successful baseline Check Run for every in-scope open pull request without an authorization, so the required context does not block ordinary work. A merge-after-CI command changes that exact head's check to in progress. After the other selected checks pass twice and remain unchanged for the configured quiet period, Smyklot marks its check successful and merges that exact head.
+
+A head or base change never inherits the old authorization. Smyklot publishes an `action_required` check on the new head with a **Reauthorize** action. A user who still has the command permission can approve the new revision with one click; repeated changes replace the candidate. A quiet period of zero removes the delay but still requires two matching observations.
+
+Readiness is fail-closed and visible on the repository settings page. Missing Checks or Administration write permission, a conflicting required context, two open pull requests sharing one head, or a merge queue prevents new check-mode commands. Saved settings remain in place while Smyklot retries reconciliation. Mode changes drain already-authorized work under its original label or check contract before new commands use the new mode; Smyklot removes only the ruleset whose ID it recorded as its own.
+
 State lives in SQLite or PostgreSQL, chosen by `SMYKLOT_DATABASE_URL`: a `postgres://` or `postgresql://` URL picks PostgreSQL, and a bare path or `sqlite://` URL picks SQLite. Both drivers are pure Go, so the image still builds with `CGO_ENABLED=0`. Nothing above the storage package knows which one is running, and a linter enforces that.
 
 The two engines are not a lowest common denominator. PostgreSQL stores timestamps as `timestamptz`, booleans as `boolean` and configuration patches as indexed `jsonb`; SQLite keeps the text and integer spellings it has always used. What they share is one set of queries, so a change lands in both at once, and one conformance suite, so parity is proven rather than assumed.
@@ -445,7 +455,7 @@ git will put a file wherever a commit names one and say nothing about what it re
 
 A repository refused that way receives none of the organization's files, and the panel says so on its Sync pane: what stopped it, in the words the planner used, and when it last looked. A refusal is asked again every sweep rather than held for the six hours a settled repository is, so a fix clears the notice on the next pass without anybody retrying anything.
 
-Labels need the **Issues** write access the bot already holds. Settings and rulesets need **Administration** write, files need **Contents** write, and an installation that has not approved one is not an error: that kind stands down, says which permission it wants, and the rest of the sync carries on.
+Labels need the **Issues** write access the bot already holds. Repository settings and configured organization-sync rulesets need **Administration** write, and files need **Contents** write. Merge-after-CI check mode separately needs **Checks** write and **Administration** write for its owned required-context ruleset. An installation that has not approved a permission is not an error: that operation stands down, says which permission it wants, and unrelated work carries on.
 
 Files under `.github/workflows/` need **Workflows** write on top of Contents. GitHub keeps them behind a permission of their own and enforces it where the branch moves, so a configuration naming one is checked before anything is planned rather than after somebody has approved it - and a retired workflow counts, since removing one is writing the tree that no longer holds it.
 

@@ -2,10 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
+	"github.com/smykla-skalski/smyklot/internal/storage"
+	"github.com/smykla-skalski/smyklot/pkg/github"
 	"github.com/smykla-skalski/smyklot/pkg/logging"
 	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
@@ -82,7 +86,126 @@ func (s *server) applyPendingCISignal(
 			EventName: eventName, EventKey: signal.EventKey,
 			DeliveryID: deliveryID, OccurredAt: occurredAt,
 		})
+	case webhook.SignalReauthorize:
+		changed, err := s.reauthorizePendingCI(
+			ctx,
+			repositoryID,
+			occurredAt,
+			deliveryID,
+			signal,
+		)
+		if changed {
+			return 1, err
+		}
+
+		return 0, err
 	default:
 		return 0, fmt.Errorf("unsupported signal kind %q", signal.Kind)
 	}
+}
+
+func (s *server) reauthorizePendingCI(
+	ctx context.Context,
+	repositoryID string,
+	authorizedAt time.Time,
+	deliveryID string,
+	signal webhook.PendingCISignal,
+) (bool, error) {
+	slot, err := s.store.GetCheckSlotByHead(ctx, repositoryID, signal.HeadSHA)
+	if errors.Is(err, storage.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("read requested-action check slot: %w", err)
+	}
+	if signal.PullRequest > 0 && signal.PullRequest != slot.PullRequest {
+		return false, nil
+	}
+	if slot.CheckRunID == nil || *slot.CheckRunID != signal.CheckRunID ||
+		slot.AppID != signal.AppID || slot.Name != signal.CheckName ||
+		slot.ExternalID != signal.ExternalID {
+		return false, nil
+	}
+	request, err := s.store.GetArmed(ctx, repositoryID, slot.PullRequest)
+	if errors.Is(err, storage.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("read requested-action pending CI request: %w", err)
+	}
+	if request.CheckSlotID == nil || *request.CheckSlotID != slot.ID ||
+		request.CandidateHeadSHA != signal.HeadSHA {
+		return false, nil
+	}
+	client, owner, repository, err := s.pendingCIRepositoryClient(slot)
+	if err != nil {
+		return false, err
+	}
+	checker, err := newPermissionChecker(ctx, client, owner, repository)
+	if err != nil {
+		return false, err
+	}
+	authorized, err := checkUserPermission(
+		ctx,
+		client,
+		checker,
+		signal.Actor,
+		owner,
+		repository,
+	)
+	if err != nil {
+		return false, NewGitHubError(ErrPermissionCheck, err)
+	}
+	if !authorized {
+		return false, nil
+	}
+	updated, err := s.store.Reauthorize(ctx, pendingci.ReauthorizeRequest{
+		RepositoryID: repositoryID, PullRequest: slot.PullRequest,
+		HeadSHA: signal.HeadSHA, BaseBranch: request.CandidateBaseBranch,
+		CheckSlotID: slot.ID, Actor: signal.Actor, EventKey: signal.EventKey,
+		DeliveryID: deliveryID, AuthorizedAt: authorizedAt,
+	})
+	if err != nil || updated == nil {
+		return false, err
+	}
+	target, repositorySettings, err := s.repositoryControls(
+		ctx,
+		updated.TargetID,
+		updated.RepositoryID,
+	)
+	if err != nil {
+		return false, err
+	}
+	if _, err := s.pendingCIChecks.EnsureAuthorized(
+		ctx,
+		target,
+		repositorySettings,
+		updated.PullRequest,
+		updated.HeadSHA,
+		updated.MergeMethod,
+		updated.AuthorizedBy,
+	); err != nil {
+		return false, fmt.Errorf("restore authorized pending CI check: %w", err)
+	}
+
+	return true, nil
+}
+
+func (s *server) pendingCIRepositoryClient(
+	slot pendingci.CheckSlot,
+) (*github.Client, string, string, error) {
+	token, err := s.tokens.InstallationToken(slot.InstallationID)
+	if err != nil {
+		return nil, "", "", NewGitHubError(ErrGitHubAppAuth, err)
+	}
+	client, err := github.NewClient(token, s.cfg.apiBaseURL)
+	if err != nil {
+		return nil, "", "", NewGitHubError(ErrGitHubClient, err)
+	}
+	owner, repository, found := strings.Cut(slot.RepositoryFullName, "/")
+	if !found || owner == "" || repository == "" || strings.Contains(repository, "/") {
+		return nil, "", "", fmt.Errorf("invalid repository name %q", slot.RepositoryFullName)
+	}
+
+	return client, owner, repository, nil
 }

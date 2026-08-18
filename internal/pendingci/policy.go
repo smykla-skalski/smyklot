@@ -23,13 +23,14 @@ func Decide(request Request, observation Observation, timing Timing) (Decision, 
 		}
 		return finishDecision("pull request is no longer open"), nil
 	}
-	if observation.HeadSHA != request.HeadSHA {
-		return finishDecision("pull request head changed after command authorization"), nil
+	artifact := request.ArtifactKind
+	if artifact == "" {
+		artifact = ArtifactLabel
 	}
-	if observation.BaseBranch != request.BaseBranch {
-		return finishDecision("pull request base changed after command authorization"), nil
+	if observation.HeadSHA != request.HeadSHA || observation.BaseBranch != request.BaseBranch {
+		return revisionChangeDecision(request, observation, timing, artifact), nil
 	}
-	if !observation.PendingLabelFound {
+	if artifact == ArtifactLabel && !observation.PendingLabelFound {
 		return finishDecision("pending CI label was removed"), nil
 	}
 
@@ -51,6 +52,37 @@ func Decide(request Request, observation Observation, timing Timing) (Decision, 
 	return rescheduleDecision(
 		observation, schedule, nextCheck, progressAt, TriggerFallback,
 	), nil
+}
+
+func revisionChangeDecision(
+	request Request,
+	observation Observation,
+	timing Timing,
+	artifact ArtifactKind,
+) Decision {
+	if artifact == ArtifactCheck {
+		if request.AuthorizationState != AuthorizationReauthorizationNeeded ||
+			request.CandidateHeadSHA != observation.HeadSHA ||
+			request.CandidateBaseBranch != observation.BaseBranch {
+			return Decision{
+				Kind: DecisionReauthorize, CandidateHeadSHA: observation.HeadSHA,
+				CandidateBase: observation.BaseBranch,
+			}
+		}
+
+		return rescheduleDecision(
+			observation,
+			ScheduleActive,
+			observation.ObservedAt.Add(timing.ActiveInterval),
+			observation.ObservedAt,
+			TriggerFallback,
+		)
+	}
+	if observation.HeadSHA != request.HeadSHA {
+		return finishDecision("pull request head changed after command authorization")
+	}
+
+	return finishDecision("pull request base changed after command authorization")
 }
 
 func passingDecision(
@@ -113,8 +145,8 @@ func validatePolicyInput(request Request, observation Observation, timing Timing
 		return invalid("unsupported observed state %q", observation.State)
 	}
 	if timing.ActiveInterval <= 0 || timing.DiscoveryGrace <= 0 || timing.DeferAfter <= 0 ||
-		timing.DeferredInterval <= 0 || timing.PassingQuiet <= 0 {
-		return fmt.Errorf("%w: policy timing values must be positive", ErrInvalidRequest)
+		timing.DeferredInterval <= 0 || timing.PassingQuiet < 0 {
+		return fmt.Errorf("%w: policy timing values are invalid", ErrInvalidRequest)
 	}
 
 	return nil

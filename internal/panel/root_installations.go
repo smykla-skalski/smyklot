@@ -43,11 +43,30 @@ func (s *Server) putRootTargetSettings(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, "invalid_config", err.Error())
 		return
 	}
+	mode := context.Target.PendingCIModeDefault
+	if input.PendingCIModeDefault != nil {
+		mode = *input.PendingCIModeDefault
+	}
+	patterns := context.Target.PendingCIBranchPatternsDefault
+	if input.PendingCIBranchPatternsDefault != nil {
+		patterns = *input.PendingCIBranchPatternsDefault
+	}
+	quiet := context.Target.PendingCIQuietPeriodOverride
+	if input.PendingCIQuietPeriodSeconds.Present {
+		quiet = pendingCIQuietDuration(input.PendingCIQuietPeriodSeconds.Value)
+	}
+	if err := storage.ValidateTargetPendingCISettings(mode, patterns, quiet); err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid_pending_ci_settings", err.Error())
+		return
+	}
 	updated, err := s.store.UpdateTargetSettings(r.Context(), storage.TargetSettingsChange{
 		TargetID: context.Target.ID, ActorAccountID: context.Account.ID,
 		ElevationID: elevationID(context.Elevation), SessionTokenHash: context.SessionHash,
-		RepositoryDefaultEnabled: *input.RepositoryDefaultEnabled,
-		ConfigPatch:              *input.ConfigPatch, ExpectedRevision: *input.ExpectedRevision,
+		RepositoryDefaultEnabled:       *input.RepositoryDefaultEnabled,
+		PendingCIModeDefault:           mode,
+		PendingCIBranchPatternsDefault: patterns,
+		PendingCIQuietPeriodOverride:   quiet,
+		ConfigPatch:                    *input.ConfigPatch, ExpectedRevision: *input.ExpectedRevision,
 		ChangedAt: s.now().UTC(),
 	})
 	if err != nil {
@@ -97,7 +116,8 @@ func (s *Server) putRootRepositorySettings(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
-	if _, ok := s.repository(w, r, context.Target); !ok {
+	repository, ok := s.repository(w, r, context.Target)
+	if !ok {
 		return
 	}
 	var input repositorySettingsRequest
@@ -113,15 +133,37 @@ func (s *Server) putRootRepositorySettings(w http.ResponseWriter, r *http.Reques
 		s.writeError(w, http.StatusBadRequest, "invalid_config", err.Error())
 		return
 	}
+	mode := repository.PendingCIModeOverride
+	if input.PendingCIModeOverride.Present {
+		mode = input.PendingCIModeOverride.Value
+	}
+	patterns := repository.PendingCIBranchPatternsOverride
+	if input.PendingCIBranchPatternsOverride.Present {
+		patterns = input.PendingCIBranchPatternsOverride.Value
+	}
+	quiet := repository.PendingCIQuietPeriodOverride
+	if input.PendingCIQuietPeriodSeconds.Present {
+		quiet = pendingCIQuietDuration(input.PendingCIQuietPeriodSeconds.Value)
+	}
+	if err := storage.ValidateRepositoryPendingCISettings(mode, patterns, quiet); err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid_pending_ci_settings", err.Error())
+		return
+	}
 	updated, err := s.store.UpdateRepositorySettings(r.Context(), storage.RepositorySettingsChange{
 		TargetID: context.Target.ID, RepositoryID: r.PathValue("repository"),
 		ActorAccountID: context.Account.ID, ElevationID: elevationID(context.Elevation),
 		SessionTokenHash: context.SessionHash, EnabledOverride: input.EnabledOverride.Value,
-		ConfigPatch: *input.ConfigPatch, IgnoreRepositoryFile: *input.IgnoreRepositoryFile,
+		PendingCIModeOverride:           mode,
+		PendingCIBranchPatternsOverride: patterns,
+		PendingCIQuietPeriodOverride:    quiet,
+		ConfigPatch:                     *input.ConfigPatch, IgnoreRepositoryFile: *input.IgnoreRepositoryFile,
 		ExpectedRevision: *input.ExpectedRevision, ChangedAt: s.now().UTC(),
 	})
 	if err != nil {
 		s.writeRootWriteError(w, err)
+		return
+	}
+	if !s.attachPendingCIGate(w, r, &updated) {
 		return
 	}
 	s.Announce(context.Target.ID, updated.ID)

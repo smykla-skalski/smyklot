@@ -18,9 +18,10 @@ const (
 )
 
 type checkRunSignal struct {
-	context string
-	appID   int64
-	outcome ciOutcome
+	context    string
+	appID      int64
+	externalID string
+	outcome    ciOutcome
 }
 
 type commitStatusSignal struct {
@@ -32,6 +33,7 @@ type checkRunResponse struct {
 	TotalCount *int `json:"total_count"`
 	CheckRuns  []struct {
 		Name       string `json:"name"`
+		ExternalID string `json:"external_id"`
 		Status     string `json:"status"`
 		Conclusion string `json:"conclusion"`
 		App        struct {
@@ -129,9 +131,51 @@ func (c *Client) GetCheckStatus(
 	owner, repo, ref string,
 	requiredOnly []RequiredCheck,
 ) (*CheckStatus, error) {
-	checkRuns, err := c.listCheckRuns(ctx, owner, repo, ref)
+	return c.getCheckStatus(ctx, owner, repo, ref, requiredOnly, nil)
+}
+
+// OwnedCheck identifies the one durable Check Run Smyklot may exclude from CI
+// aggregation while deciding whether that run can become successful.
+type OwnedCheck struct {
+	Name       string
+	AppID      int64
+	ExternalID string
+}
+
+// GetCheckStatusExcludingCheck ignores exactly one App-bound Check Run. A
+// required Smyklot gate must not wait on itself while deciding whether CI is
+// ready to satisfy that gate.
+func (c *Client) GetCheckStatusExcludingCheck(
+	ctx context.Context,
+	owner, repo, ref string,
+	requiredOnly []RequiredCheck,
+	excluded OwnedCheck,
+) (*CheckStatus, error) {
+	return c.getCheckStatus(ctx, owner, repo, ref, requiredOnly, &excluded)
+}
+
+func (c *Client) getCheckStatus(
+	ctx context.Context,
+	owner, repo, ref string,
+	requiredOnly []RequiredCheck,
+	excluded *OwnedCheck,
+) (*CheckStatus, error) {
+	filter := "latest"
+	if excluded != nil {
+		// Ownership is app/name/external-id, so the latest run alone cannot prove
+		// whether the durable run still exists or a duplicate is shadowing it.
+		filter = "all"
+	}
+	checkRuns, err := c.listCheckRuns(ctx, owner, repo, ref, filter)
 	if err != nil {
 		return nil, err
+	}
+	conflictingOwnedContext := false
+	if excluded != nil {
+		checkRuns, conflictingOwnedContext = excludeCheckRun(checkRuns, *excluded)
+		if requiredOnly != nil {
+			requiredOnly = excludeRequiredCheck(requiredOnly, *excluded)
+		}
 	}
 	commitStatuses, err := c.listCommitStatuses(ctx, owner, repo, ref)
 	if err != nil {
@@ -139,23 +183,70 @@ func (c *Client) GetCheckStatus(
 	}
 
 	if requiredOnly != nil {
-		return aggregateRequiredChecks(requiredOnly, checkRuns, commitStatuses), nil
+		status := aggregateRequiredChecks(requiredOnly, checkRuns, commitStatuses)
+		if conflictingOwnedContext {
+			markCheckStatusBlocked(status)
+		}
+
+		return status, nil
 	}
 
-	return aggregateAllChecks(checkRuns, commitStatuses), nil
+	status := aggregateAllChecks(checkRuns, commitStatuses)
+	if conflictingOwnedContext {
+		markCheckStatusBlocked(status)
+	}
+
+	return status, nil
+}
+
+func excludeCheckRun(signals []checkRunSignal, excluded OwnedCheck) ([]checkRunSignal, bool) {
+	filtered := signals[:0]
+	conflict := false
+	for _, signal := range signals {
+		if signal.context != excluded.Name {
+			filtered = append(filtered, signal)
+			continue
+		}
+		if signal.appID == excluded.AppID && signal.externalID == excluded.ExternalID {
+			continue
+		}
+		conflict = true
+		filtered = append(filtered, signal)
+	}
+
+	return filtered, conflict
+}
+
+func excludeRequiredCheck(required []RequiredCheck, excluded OwnedCheck) []RequiredCheck {
+	filtered := make([]RequiredCheck, 0, len(required))
+	for _, check := range required {
+		if check.Context == excluded.Name && check.AppID != nil && *check.AppID == excluded.AppID {
+			continue
+		}
+		filtered = append(filtered, check)
+	}
+
+	return filtered
+}
+
+func markCheckStatusBlocked(status *CheckStatus) {
+	status.State = CIStatePending
+	status.AllPassing = false
+	status.Pending = true
 }
 
 func (c *Client) listCheckRuns(
 	ctx context.Context,
-	owner, repo, ref string,
+	owner, repo, ref, filter string,
 ) ([]checkRunSignal, error) {
 	var signals []checkRunSignal
 	for page := 1; page <= maxPages; page++ {
 		path := fmt.Sprintf(
-			"/repos/%s/%s/commits/%s/check-runs?filter=latest&per_page=%d&page=%d",
+			"/repos/%s/%s/commits/%s/check-runs?filter=%s&per_page=%d&page=%d",
 			owner,
 			repo,
 			url.PathEscape(ref),
+			url.QueryEscape(filter),
 			pageSize,
 			page,
 		)
@@ -166,8 +257,7 @@ func (c *Client) listCheckRuns(
 
 		for _, run := range response.CheckRuns {
 			signals = append(signals, checkRunSignal{
-				context: run.Name,
-				appID:   run.App.ID,
+				context: run.Name, appID: run.App.ID, externalID: run.ExternalID,
 				outcome: classifyCheckRun(run.Status, run.Conclusion),
 			})
 		}

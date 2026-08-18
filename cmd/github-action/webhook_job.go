@@ -74,6 +74,11 @@ func issueCommentMetadata(event *webhook.IssueCommentEvent) webhook.Metadata {
 func relevantPendingCISignals(signals []webhook.PendingCISignal) []webhook.PendingCISignal {
 	relevant := make([]webhook.PendingCISignal, 0, len(signals))
 	for _, signal := range signals {
+		if signal.Kind == webhook.SignalReauthorize &&
+			(signal.ActionID != pendingCIReauthorizeAction ||
+				signal.CheckName != storage.PendingCICheckName) {
+			continue
+		}
 		if signal.Kind == webhook.SignalLabelRemoved {
 			_, _, label := parsePendingCILabel(signal.Label)
 			if label == "" {

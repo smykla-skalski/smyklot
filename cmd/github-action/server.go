@@ -141,6 +141,8 @@ type server struct {
 	pendingCIReconciler  *pendingCIReconciler
 	pendingCICoordinator pendingCIExclusive
 	pendingCIHandoff     *pendingCIHandoff
+	pendingCIChecks      *githubPendingCIChecks
+	pendingCIGates       *pendingCIGateReconciler
 
 	// queueMu makes worker shutdown idempotent. The dispatcher is stopped before
 	// jobs is closed, so it can never send to a closed channel.
@@ -191,11 +193,9 @@ type job struct {
 }
 
 func newServer(cfg *serveConfig) (*server, error) {
-	if cfg.pendingCIQuietPeriod == 0 {
-		cfg.pendingCIQuietPeriod = defaultPendingCIQuietPeriod
-	}
 	if cfg.pendingCIQuietPeriod < pendingci.MinPassingQuiet ||
-		cfg.pendingCIQuietPeriod > pendingci.MaxPassingQuiet {
+		cfg.pendingCIQuietPeriod > pendingci.MaxPassingQuiet ||
+		(cfg.pendingCIQuietPeriod > 0 && cfg.pendingCIQuietPeriod < time.Second) {
 		return nil, ErrInvalidPendingCIQuietPeriod
 	}
 	tokens, err := githubapp.NewTokenStore(
@@ -254,6 +254,14 @@ func newServer(cfg *serveConfig) (*server, error) {
 	srv.deliveryStore = srv.store
 	srv.deliveries = newDeliveryDispatcher(srv.deliveryStore, srv.jobs, srv.deliveryJob, srv.logger)
 	pendingCICoordinator := newPendingCICoordinator()
+	srv.pendingCIChecks = &githubPendingCIChecks{
+		store: srv.store, tokens: srv.tokens, apiBaseURL: cfg.apiBaseURL,
+		now: func() time.Time { return time.Now().UTC() },
+	}
+	srv.pendingCIGates = &pendingCIGateReconciler{
+		store: srv.store, checks: srv.pendingCIChecks,
+		now: func() time.Time { return time.Now().UTC() },
+	}
 	srv.pendingCICoordinator = pendingCICoordinator
 	pendingCIBackend := &githubPendingCIBackend{
 		server: srv, current: srv.store,

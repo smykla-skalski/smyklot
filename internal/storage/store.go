@@ -77,6 +77,18 @@ type ConfigStore interface {
 	UpdateRuntimeSettings(context.Context, RuntimeSettingsChange) (RuntimeSettings, error)
 }
 
+// PendingCIGateStore owns the desired/effective repository protection
+// transition. Saved settings may exist while GitHub permissions are missing;
+// only a ready effective mode may accept new merge-after-CI commands.
+type PendingCIGateStore interface {
+	GetPendingCIRepositoryGate(context.Context, string) (PendingCIRepositoryGate, error)
+	ListPendingCIRepositoryGates(context.Context, int) ([]PendingCIRepositoryGate, error)
+	UpdatePendingCIRepositoryGate(
+		context.Context,
+		PendingCIGateChange,
+	) (PendingCIRepositoryGate, error)
+}
+
 // DeliveryStore owns delivery claims, completion, failure, and retention.
 type DeliveryStore interface {
 	ClaimDelivery(context.Context, DeliveryClaim) (DeliveryClaimResult, error)
@@ -122,11 +134,13 @@ type Store interface {
 	InvitationStore
 	CatalogStore
 	ConfigStore
+	PendingCIGateStore
 	DeliveryStore
 	AuditReader
 	SecurityStore
 	PreferenceStore
 	pendingci.Store
+	pendingci.CheckStore
 	orgsync.Store
 
 	Ping(context.Context) error

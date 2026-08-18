@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
+	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/github"
 	"github.com/smykla-skalski/smyklot/pkg/logging"
 	"github.com/smykla-skalski/smyklot/pkg/metrics"
@@ -379,10 +380,21 @@ func (s *server) sweepRepo(
 		logging.From(ctx).Warn("could not propose the configuration migration",
 			"repo", repoFullName(repo.Owner, repo.Name), "error", err)
 	}
+	var target storage.Target
+	var repository storage.Repository
+	if s.panel != nil {
+		target, repository, err = s.repositoryControls(
+			ctx, targetID, repositoryStorageID(repo.ID),
+		)
+		if err != nil {
+			return err
+		}
+	}
 
 	// Checked before CODEOWNERS is read, so a repository left to the Action
 	// costs the sweep one request rather than two
 	if serviceStandsDown(logging.With(ctx, "repo", repoFullName(repo.Owner, repo.Name)), bc) {
+		s.reconcileInactivePendingCIGate(ctx, client, target, repository)
 		return s.handoffPendingCIToAction(ctx, client, repo)
 	}
 
@@ -398,22 +410,8 @@ func (s *server) sweepRepo(
 		return err
 	}
 
-	if s.panel != nil {
-		target, repository, controlsErr := s.repositoryControls(
-			ctx,
-			targetID,
-			repositoryStorageID(repo.ID),
-		)
-		if controlsErr != nil {
-			return controlsErr
-		}
-		enabled := target.RepositoryDefaultEnabled
-		if repository.EnabledOverride != nil {
-			enabled = *repository.EnabledOverride
-		}
-		if !enabled {
-			return nil
-		}
+	if !s.reconcileActivePendingCIGate(ctx, client, target, repository, prs) {
+		return nil
 	}
 
 	if err := s.drainLegacyPendingCILabels(
@@ -442,6 +440,43 @@ func (s *server) sweepRepo(
 		ctx, client, checker, bc, repo.Owner, repo.Name, s.cfg.botUsername, prs,
 		s.reactionCommandEnvironment(repositoryStorageID(repo.ID)), false,
 	)
+}
+
+func (s *server) reconcileInactivePendingCIGate(
+	ctx context.Context,
+	client *github.Client,
+	target storage.Target,
+	repository storage.Repository,
+) {
+	if s.panel == nil {
+		return
+	}
+	if err := s.pendingCIGates.Reconcile(ctx, client, target, repository, nil, false); err != nil {
+		logging.From(ctx).Warn("pending CI mode is not ready", "error", err)
+	}
+}
+
+func (s *server) reconcileActivePendingCIGate(
+	ctx context.Context,
+	client *github.Client,
+	target storage.Target,
+	repository storage.Repository,
+	prs []map[string]interface{},
+) bool {
+	if s.panel == nil {
+		return true
+	}
+	enabled := target.RepositoryDefaultEnabled
+	if repository.EnabledOverride != nil {
+		enabled = *repository.EnabledOverride
+	}
+	if err := s.pendingCIGates.Reconcile(
+		ctx, client, target, repository, prs, enabled,
+	); err != nil {
+		logging.From(ctx).Warn("pending CI mode is not ready", "error", err)
+	}
+
+	return enabled
 }
 
 // migrateRepositoryConfig reads the repository's configuration back out of the

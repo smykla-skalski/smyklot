@@ -4,15 +4,19 @@
   import type {
     ConfigKey,
     ConfigPatch,
+    PendingCIBranchPatterns,
+    PendingCIMode,
     RepositoryDetail,
     RepositoryFileStatus,
     RepositorySummary,
     SyncOverride,
   } from '../types';
   import Chip, { type ChipTone } from './Chip.svelte';
+  import Button from './Button.svelte';
   import ConfigEditor from './ConfigEditor.svelte';
   import HelpTip from './HelpTip.svelte';
   import Icon from './Icon.svelte';
+  import InheritControl from './InheritControl.svelte';
   import BackLink from './BackLink.svelte';
   import PageHeader from './PageHeader.svelte';
   import Plate from './Plate.svelte';
@@ -52,6 +56,7 @@
     onSection,
     onBypass,
     onSaveConfig,
+    onSavePendingCI,
     onResetMigration,
     sections = REPOSITORY_SECTIONS,
     syncOverride = undefined,
@@ -74,6 +79,11 @@
     /* The editor awaits this to know when its save bar can settle, so the
        promise is part of the contract rather than something to fire and drop. */
     onSaveConfig: (patch: ConfigPatch) => Promise<void>;
+    onSavePendingCI: (
+      mode: PendingCIMode | null,
+      patterns: PendingCIBranchPatterns | null,
+      quiet: number | null,
+    ) => Promise<void>;
     onResetMigration: () => void;
     /**
      * The panes this surface offers, in the order the switch shows them.
@@ -100,6 +110,60 @@
 
   const disabled = $derived(readOnly || busy);
   const titleId = 'repository-page-title';
+  const PENDING_CI_MODE_OPTIONS = [
+    { value: 'checks', label: 'Checks' },
+    { value: 'labels', label: 'Labels' },
+  ] as const;
+  const GATE_TONES = {
+    ready: 'clear',
+    provisioning: 'neutral',
+    draining: 'warning',
+    blocked: 'stop',
+  } as const satisfies Record<'ready' | 'provisioning' | 'draining' | 'blocked', ChipTone>;
+  let savingPendingCI = $state(false);
+  let pendingCIMode = $state<PendingCIMode | null>(null);
+  let overridePendingCIPatterns = $state(false);
+  let pendingCIIncludes = $state('');
+  let pendingCIExcludes = $state('');
+  let pendingCIQuiet = $state('');
+
+  $effect(() => {
+    if (detail === undefined || savingPendingCI) return;
+    pendingCIMode = detail.pending_ci_mode_override;
+    overridePendingCIPatterns = detail.pending_ci_branch_patterns_override !== null;
+    const patterns =
+      detail.pending_ci_branch_patterns_override ?? detail.pending_ci_branch_patterns_inherited;
+    pendingCIIncludes = patterns.include.join('\n');
+    pendingCIExcludes = patterns.exclude.join('\n');
+    pendingCIQuiet = detail.pending_ci_quiet_period_seconds_override?.toString() ?? '';
+  });
+
+  function pendingCILines(value: string): string[] {
+    return value
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line !== '');
+  }
+
+  async function savePendingCI(): Promise<void> {
+    if (detail === undefined || savingPendingCI) return;
+    const includes = pendingCILines(pendingCIIncludes);
+    if (overridePendingCIPatterns && includes.length === 0) return;
+    const quiet = pendingCIQuiet.trim() === '' ? null : Number(pendingCIQuiet);
+    if (quiet !== null && (!Number.isInteger(quiet) || quiet < 0 || quiet > 86_400)) return;
+    savingPendingCI = true;
+    try {
+      await onSavePendingCI(
+        pendingCIMode,
+        overridePendingCIPatterns
+          ? { include: includes, exclude: pendingCILines(pendingCIExcludes) }
+          : null,
+        quiet,
+      );
+    } finally {
+      savingPendingCI = false;
+    }
+  }
 
   /* The repository-file pane lists the behavior settings this repository
      actually overrides, the way the approved design draws it: the file card, the
@@ -183,6 +247,94 @@
   {#if detail === undefined}
     <p class="detail-loading dim" role="status">Reading repository settings…</p>
   {:else}
+    <Plate label="Merge after CI">
+      {#snippet status()}
+        {#if detail.pending_ci_gate !== undefined}
+          <Chip small tone={GATE_TONES[detail.pending_ci_gate.readiness]} dot>
+            {detail.pending_ci_gate.readiness.slice(0, 1).toUpperCase() +
+              detail.pending_ci_gate.readiness.slice(1)}
+          </Chip>
+        {/if}
+      {/snippet}
+      <form
+        class="pending-ci-form"
+        onsubmit={(event) => {
+          event.preventDefault();
+          void savePendingCI();
+        }}
+      >
+        <div class="pending-ci-row">
+          <div>
+            <strong>Repository protection</strong>
+            <p>
+              {pendingCIMode === null
+                ? `Inherited ${detail.pending_ci_mode_inherited} mode`
+                : 'This repository overrides the workspace mode'}
+            </p>
+          </div>
+          <InheritControl
+            label="Merge after CI representation"
+            source="workspace settings"
+            inheritedValue={detail.pending_ci_mode_inherited}
+            inheritedLabel={detail.pending_ci_mode_inherited}
+            value={pendingCIMode}
+            options={PENDING_CI_MODE_OPTIONS}
+            disabled={disabled || savingPendingCI}
+            onSelect={(value) => (pendingCIMode = value as PendingCIMode)}
+            onRestore={() => (pendingCIMode = null)}
+          />
+        </div>
+        {#if detail.pending_ci_gate !== undefined}
+          <p class:gate-problem={detail.pending_ci_gate.readiness === 'blocked'} class="gate-note">
+            {detail.pending_ci_gate.reason}
+          </p>
+        {/if}
+        <label class="override-check">
+          <input
+            type="checkbox"
+            bind:checked={overridePendingCIPatterns}
+            disabled={disabled || savingPendingCI}
+          />
+          Override protected branch patterns
+        </label>
+        <div class="pending-ci-grid">
+          <label>
+            <span>Protected refs</span>
+            <textarea
+              rows="3"
+              bind:value={pendingCIIncludes}
+              disabled={disabled || savingPendingCI || !overridePendingCIPatterns}></textarea>
+            <small>One raw GitHub ruleset pattern per line.</small>
+          </label>
+          <label>
+            <span>Excluded refs</span>
+            <textarea
+              rows="3"
+              bind:value={pendingCIExcludes}
+              disabled={disabled || savingPendingCI || !overridePendingCIPatterns}></textarea>
+          </label>
+          <label>
+            <span>Stable passing window</span>
+            <input
+              type="number"
+              min="0"
+              max="86400"
+              step="1"
+              bind:value={pendingCIQuiet}
+              disabled={disabled || savingPendingCI}
+              placeholder={detail.pending_ci_quiet_period_seconds_inherited?.toString() ??
+                'Global default'}
+            />
+            <small>Seconds; leave blank to inherit.</small>
+          </label>
+        </div>
+        <div class="pending-ci-actions">
+          <Button type="submit" tone="brand" disabled={disabled || savingPendingCI}>
+            {savingPendingCI ? 'Saving…' : 'Save merge settings'}
+          </Button>
+        </div>
+      </form>
+    </Plate>
     <div
       class="repository-detail-content"
       role="group"
@@ -349,6 +501,87 @@
 
   .repository-detail-content {
     min-width: 0;
+  }
+
+  .pending-ci-form,
+  .pending-ci-grid,
+  .pending-ci-grid label {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .pending-ci-form {
+    padding: var(--space-4);
+  }
+
+  .pending-ci-row {
+    align-items: center;
+    display: flex;
+    gap: var(--space-4);
+    justify-content: space-between;
+  }
+
+  .pending-ci-row p,
+  .gate-note,
+  .pending-ci-grid small {
+    color: var(--dim);
+    font-size: var(--font-size-meta);
+    margin: 0.25rem 0 0;
+  }
+
+  .gate-note {
+    background: var(--surface-inset);
+    border-radius: var(--radius-control);
+    padding: var(--space-3);
+    text-box: trim-both cap alphabetic;
+  }
+
+  .gate-note.gate-problem {
+    color: var(--danger);
+  }
+
+  .override-check {
+    align-items: center;
+    display: flex;
+    gap: var(--space-2);
+  }
+
+  .pending-ci-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pending-ci-grid label:last-child {
+    grid-column: 1 / -1;
+    max-width: 20rem;
+  }
+
+  .pending-ci-grid :is(textarea, input[type='number']) {
+    background: var(--surface-raised);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-control);
+    color: var(--text);
+    font: var(--font-size-body) / 1.4 var(--mono);
+    padding: 0.625rem 0.75rem;
+  }
+
+  .pending-ci-actions {
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  @media (max-width: 40rem) {
+    .pending-ci-row {
+      align-items: start;
+      flex-direction: column;
+    }
+
+    .pending-ci-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .pending-ci-grid label:last-child {
+      grid-column: auto;
+    }
   }
 
   /* The card keeps its 71px stature whatever its copy measures: trimming the two

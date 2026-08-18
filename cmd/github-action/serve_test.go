@@ -180,10 +180,15 @@ var _ = Describe("Serve configuration [Unit]", func() {
 			_, err := loadServe(map[string]string{envPendingCIQuietPeriod: value})
 			Expect(err).To(MatchError(ErrInvalidPendingCIQuietPeriod))
 		},
-			Entry("zero", "0"),
 			Entry("sub-second", "500ms"),
 			Entry("over one day", "25h"),
 		)
+
+		It("should accept a zero pending-CI quiet period", func() {
+			cfg, err := loadServe(map[string]string{envPendingCIQuietPeriod: "0"})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.pendingCIQuietPeriod).To(BeZero())
+		})
 
 		// Turning the sweep off is a legitimate choice for an operator running
 		// it out of band

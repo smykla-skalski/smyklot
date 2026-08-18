@@ -49,6 +49,7 @@ func (command *pendingCICommand) armedArtifactOwnership(
 type commandEnvironment struct {
 	pendingCI           *pendingCICommand
 	pendingCIActivation pendingCIActivationGuard
+	pendingCIMode       pendingCIModeResolver
 }
 
 // pendingCICommand translates an already-authorized command into durable
@@ -66,6 +67,7 @@ type pendingCICommand struct {
 	sourceSequence     int
 	sourceOrder        int64
 	now                func() time.Time
+	checks             *githubPendingCIChecks
 }
 
 func (command *pendingCICommand) arm(
@@ -81,6 +83,30 @@ func (command *pendingCICommand) arm(
 		runtime, pullRequest, commentID, headSHA, baseBranch,
 		method, requiredChecksOnly, label,
 	))
+	if err != nil {
+		return nil, fmt.Errorf("persist pending CI command: %w", err)
+	}
+	command.wake()
+
+	return result.Superseded, nil
+}
+
+func (command *pendingCICommand) armCheck(
+	ctx context.Context,
+	runtime *RuntimeConfig,
+	pullRequest, commentID int,
+	headSHA, baseBranch string,
+	method github.MergeMethod,
+	requiredChecksOnly bool,
+	checkSlotID int64,
+) (*pendingci.Request, error) {
+	request := command.armRequest(
+		runtime, pullRequest, commentID, headSHA, baseBranch,
+		method, requiredChecksOnly, "",
+	)
+	request.ArtifactKind = pendingci.ArtifactCheck
+	request.CheckSlotID = &checkSlotID
+	result, err := command.store.Arm(ctx, request)
 	if err != nil {
 		return nil, fmt.Errorf("persist pending CI command: %w", err)
 	}
@@ -121,8 +147,9 @@ func (command *pendingCICommand) armRequest(
 		MergeMethod: pendingci.MergeMethod(method), RequiredChecksOnly: requiredChecksOnly,
 		Requester: runtime.CommentAuthor, SourceCommentID: int64(commentID),
 		SourceRevision: command.sourceRevision, SourceSequence: command.sourceSequence,
-		SourceOrder: command.sourceOrder,
-		Label:       label, RequestedAt: requestedAt,
+		SourceOrder:  command.sourceOrder,
+		ArtifactKind: pendingci.ArtifactLabel,
+		Label:        label, RequestedAt: requestedAt,
 	}
 }
 
@@ -131,14 +158,16 @@ func (s *server) commandEnvironment(
 	event *webhook.IssueCommentEvent,
 	sourceOrder int64,
 ) commandEnvironment {
+	guard := githubPendingCIActivationGuard{
+		server: s, client: client,
+		targetID:     installationStorageID(event.Installation.ID),
+		repositoryID: repositoryStorageID(event.Repository.ID),
+		owner:        event.Repository.Owner.Login,
+		repository:   event.Repository.Name,
+	}
 	return commandEnvironment{
-		pendingCIActivation: githubPendingCIActivationGuard{
-			server: s, client: client,
-			targetID:     installationStorageID(event.Installation.ID),
-			repositoryID: repositoryStorageID(event.Repository.ID),
-			owner:        event.Repository.Owner.Login,
-			repository:   event.Repository.Name,
-		},
+		pendingCIActivation: guard,
+		pendingCIMode:       guard,
 		pendingCI: &pendingCICommand{
 			store: s.store, wake: s.pendingCI.Wake,
 			coordinator:        s.pendingCICoordinator,
@@ -151,6 +180,7 @@ func (s *server) commandEnvironment(
 			sourceSequence:     event.SourceSequence(),
 			sourceOrder:        sourceOrder,
 			now:                func() time.Time { return time.Now().UTC() },
+			checks:             s.pendingCIChecks,
 		},
 	}
 }
@@ -173,6 +203,11 @@ func (command *pendingCICommand) cancelAndRun(
 		if transitionErr != nil || !result.Accepted {
 			return transitionErr
 		}
+		if result.Request != nil && result.Request.ArtifactKind == pendingci.ArtifactCheck {
+			if err := command.releaseBlockingCheck(ctx, *result.Request); err != nil {
+				return err
+			}
+		}
 
 		return operation()
 	})
@@ -184,6 +219,34 @@ func (command *pendingCICommand) cancelAndRun(
 	}
 
 	return result.Accepted, nil
+}
+
+func (command *pendingCICommand) releaseBlockingCheck(
+	ctx context.Context,
+	request pendingci.Request,
+) error {
+	if command.checks == nil || request.CheckSlotID == nil {
+		return errors.New("pending CI check cleanup is unavailable")
+	}
+	slot, err := command.checks.store.GetCheckSlot(ctx, *request.CheckSlotID)
+	if err != nil {
+		return fmt.Errorf("read pending CI check cleanup slot: %w", err)
+	}
+	target := storage.Target{
+		ID: slot.TargetID, InstallationID: fmt.Sprint(slot.InstallationID),
+	}
+	repository := storage.Repository{ID: slot.RepositoryID, FullName: slot.RepositoryFullName}
+	if _, err := command.checks.EnsureBaseline(
+		ctx,
+		target,
+		repository,
+		slot.PullRequest,
+		slot.HeadSHA,
+	); err != nil {
+		return fmt.Errorf("release pending CI required check: %w", err)
+	}
+
+	return nil
 }
 
 func (command *pendingCICommand) cancelPullRequestLocked(

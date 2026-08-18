@@ -48,6 +48,32 @@ var _ = Describe("pending CI webhook notifications [Unit]", func() {
 		Expect(redelivery.Key).To(Equal(notification.Key))
 	})
 
+	It("correlates a requested reauthorization action to the exact check run", func() {
+		body := []byte(`{
+"action": "requested_action",
+"check_run": {
+  "id": 701,
+  "name": "Smyklot / merge after CI",
+  "external_id": "smyklot:merge-after-ci:9001:new-head",
+  "head_sha": "new-head",
+  "app": {"id": 17},
+  "pull_requests": [{"number": 198}]
+},
+"requested_action": {"identifier": "reauthorize"},
+"sender": {"login": "maintainer"},` + pendingCICommon + `}`)
+
+		notification, err := webhook.ParsePendingCINotification(webhook.EventCheckRun, body)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(notification.Action).To(Equal("requested_action"))
+		Expect(notification.Signals).To(ConsistOf(webhook.PendingCISignal{
+			Kind: webhook.SignalReauthorize, PullRequest: 198, HeadSHA: "new-head",
+			EventKey: notification.Key, Actor: "maintainer", CheckRunID: 701,
+			CheckName:  "Smyklot / merge after CI",
+			ExternalID: "smyklot:merge-after-ci:9001:new-head",
+			AppID:      17, ActionID: "reauthorize",
+		}))
+	})
+
 	It("falls back to matching a check suite by head SHA", func() {
 		body := []byte(`{
 "action": "completed",

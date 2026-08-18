@@ -70,21 +70,39 @@ type targetUserAccess struct {
 }
 
 type targetResponse struct {
-	ID                       string                   `json:"id"`
-	InstallationID           string                   `json:"installation_id"`
-	Type                     storage.TargetKind       `json:"type"`
-	Account                  accountResponse          `json:"account"`
-	RepositoryDefaultEnabled bool                     `json:"repository_default_enabled"`
-	ConfigPatch              config.Patch             `json:"config_patch"`
-	InheritedConfig          config.Config            `json:"inherited_config"`
-	EffectiveConfig          config.Config            `json:"effective_config"`
-	ConfigSources            map[string]config.Source `json:"config_sources"`
-	Revision                 int64                    `json:"revision"`
-	RepositoryCounts         repositoryCountsResponse `json:"repository_counts"`
-	EffectiveRole            storage.InstallationRole `json:"effective_role"`
-	AccessSource             storage.AccessSource     `json:"access_source"`
-	Capabilities             capabilityResponse       `json:"capabilities"`
-	SuspensionReason         *string                  `json:"suspension_reason,omitempty"`
+	ID                                  string                          `json:"id"`
+	InstallationID                      string                          `json:"installation_id"`
+	Type                                storage.TargetKind              `json:"type"`
+	Account                             accountResponse                 `json:"account"`
+	RepositoryDefaultEnabled            bool                            `json:"repository_default_enabled"`
+	PendingCIModeDefault                storage.PendingCIMode           `json:"pending_ci_mode_default"`
+	PendingCIBranchPatternsDefault      storage.PendingCIBranchPatterns `json:"pending_ci_branch_patterns_default"`
+	PendingCIQuietPeriodSecondsOverride *int64                          `json:"pending_ci_quiet_period_seconds_override"`
+	PendingCIPermissions                pendingCIPermissionsResponse    `json:"pending_ci_permissions"`
+	ConfigPatch                         config.Patch                    `json:"config_patch"`
+	InheritedConfig                     config.Config                   `json:"inherited_config"`
+	EffectiveConfig                     config.Config                   `json:"effective_config"`
+	ConfigSources                       map[string]config.Source        `json:"config_sources"`
+	Revision                            int64                           `json:"revision"`
+	RepositoryCounts                    repositoryCountsResponse        `json:"repository_counts"`
+	EffectiveRole                       storage.InstallationRole        `json:"effective_role"`
+	AccessSource                        storage.AccessSource            `json:"access_source"`
+	Capabilities                        capabilityResponse              `json:"capabilities"`
+	SuspensionReason                    *string                         `json:"suspension_reason,omitempty"`
+}
+
+type pendingCIPermissionsResponse struct {
+	ChecksWrite         bool `json:"checks_write"`
+	AdministrationWrite bool `json:"administration_write"`
+}
+
+type pendingCIGateResponse struct {
+	DesiredMode   storage.PendingCIMode          `json:"desired_mode"`
+	EffectiveMode storage.PendingCIEffectiveMode `json:"effective_mode"`
+	Readiness     storage.PendingCIReadiness     `json:"readiness"`
+	Reason        string                         `json:"reason"`
+	AppID         *int64                         `json:"app_id,omitempty"`
+	RulesetID     *int64                         `json:"ruleset_id,omitempty"`
 }
 
 // The repository tallies, named the way every other field on this wire is named.
@@ -119,25 +137,34 @@ type repositorySummaryResponse struct {
 	EnabledOverride     *bool                        `json:"enabled_override"`
 	EffectiveEnabled    bool                         `json:"effective_enabled"`
 	EnabledSource       string                       `json:"enabled_source"`
+	PendingCIMode       storage.PendingCIMode        `json:"pending_ci_mode"`
+	PendingCIModeSource string                       `json:"pending_ci_mode_source"`
 	ConfigOverrideCount int                          `json:"config_override_count"`
 	ConfigFileStatus    storage.RepositoryFileStatus `json:"config_file_status"`
 	UpdatedAt           time.Time                    `json:"updated_at"`
 }
 
 type repositoryDetailResponse struct {
-	Repository           repositorySummaryResponse    `json:"repository"`
-	ConfigPatch          config.Patch                 `json:"config_patch"`
-	InheritedConfig      config.Config                `json:"inherited_config"`
-	EffectiveConfig      config.Config                `json:"effective_config"`
-	ConfigSources        map[string]config.Source     `json:"config_sources"`
-	ConfigFilePatch      config.Patch                 `json:"config_file_patch"`
-	ConfigFileError      *string                      `json:"config_file_error,omitempty"`
-	ConfigFilePath       string                       `json:"config_file_path,omitempty"`
-	ConfigFileSuperseded []string                     `json:"config_file_superseded,omitempty"`
-	ConfigMigration      storage.ConfigMigrationState `json:"config_migration"`
-	ConfigMigrationPR    *int                         `json:"config_migration_pr,omitempty"`
-	IgnoreRepositoryFile bool                         `json:"ignore_repository_file"`
-	Revision             int64                        `json:"revision"`
+	Repository                           repositorySummaryResponse        `json:"repository"`
+	ConfigPatch                          config.Patch                     `json:"config_patch"`
+	InheritedConfig                      config.Config                    `json:"inherited_config"`
+	EffectiveConfig                      config.Config                    `json:"effective_config"`
+	ConfigSources                        map[string]config.Source         `json:"config_sources"`
+	ConfigFilePatch                      config.Patch                     `json:"config_file_patch"`
+	ConfigFileError                      *string                          `json:"config_file_error,omitempty"`
+	ConfigFilePath                       string                           `json:"config_file_path,omitempty"`
+	ConfigFileSuperseded                 []string                         `json:"config_file_superseded,omitempty"`
+	ConfigMigration                      storage.ConfigMigrationState     `json:"config_migration"`
+	ConfigMigrationPR                    *int                             `json:"config_migration_pr,omitempty"`
+	IgnoreRepositoryFile                 bool                             `json:"ignore_repository_file"`
+	PendingCIModeOverride                *storage.PendingCIMode           `json:"pending_ci_mode_override"`
+	PendingCIModeInherited               storage.PendingCIMode            `json:"pending_ci_mode_inherited"`
+	PendingCIBranchPatternsOverride      *storage.PendingCIBranchPatterns `json:"pending_ci_branch_patterns_override"`
+	PendingCIBranchPatternsInherited     storage.PendingCIBranchPatterns  `json:"pending_ci_branch_patterns_inherited"`
+	PendingCIQuietPeriodSecondsOverride  *int64                           `json:"pending_ci_quiet_period_seconds_override"`
+	PendingCIQuietPeriodSecondsInherited *int64                           `json:"pending_ci_quiet_period_seconds_inherited"`
+	PendingCIGate                        *pendingCIGateResponse           `json:"pending_ci_gate,omitempty"`
+	Revision                             int64                            `json:"revision"`
 }
 
 type auditResponse struct {
@@ -234,21 +261,28 @@ func targetDTO(
 	})
 
 	return targetResponse{
-		ID:                       target.ID,
-		InstallationID:           target.InstallationID,
-		Type:                     target.Kind,
-		Account:                  accountDTO(target.Account),
-		RepositoryDefaultEnabled: target.RepositoryDefaultEnabled,
-		ConfigPatch:              target.ConfigPatch,
-		InheritedConfig:          inherited.Values,
-		EffectiveConfig:          resolved.Values,
-		ConfigSources:            resolved.Sources,
-		Revision:                 target.Revision,
-		RepositoryCounts:         newRepositoryCountsResponse(target.RepositoryCounts),
-		EffectiveRole:            access.Role,
-		AccessSource:             access.Source,
-		Capabilities:             capabilitiesDTO(access.Capabilities),
-		SuspensionReason:         access.SuspensionReason,
+		ID:                                  target.ID,
+		InstallationID:                      target.InstallationID,
+		Type:                                target.Kind,
+		Account:                             accountDTO(target.Account),
+		RepositoryDefaultEnabled:            target.RepositoryDefaultEnabled,
+		PendingCIModeDefault:                target.PendingCIModeDefault,
+		PendingCIBranchPatternsDefault:      target.PendingCIBranchPatternsDefault,
+		PendingCIQuietPeriodSecondsOverride: durationSecondsDTO(target.PendingCIQuietPeriodOverride),
+		PendingCIPermissions: pendingCIPermissionsResponse{
+			ChecksWrite:         target.Grants("checks"),
+			AdministrationWrite: target.Grants("administration"),
+		},
+		ConfigPatch:      target.ConfigPatch,
+		InheritedConfig:  inherited.Values,
+		EffectiveConfig:  resolved.Values,
+		ConfigSources:    resolved.Sources,
+		Revision:         target.Revision,
+		RepositoryCounts: newRepositoryCountsResponse(target.RepositoryCounts),
+		EffectiveRole:    access.Role,
+		AccessSource:     access.Source,
+		Capabilities:     capabilitiesDTO(access.Capabilities),
+		SuspensionReason: access.SuspensionReason,
 	}
 }
 
@@ -262,6 +296,12 @@ func repositorySummaryDTO(
 		enabled = *repository.EnabledOverride
 		source = "repository"
 	}
+	mode := target.PendingCIModeDefault
+	modeSource := "target"
+	if repository.PendingCIModeOverride != nil {
+		mode = *repository.PendingCIModeOverride
+		modeSource = "repository"
+	}
 
 	return repositorySummaryResponse{
 		ID:                  repository.ID,
@@ -273,6 +313,8 @@ func repositorySummaryDTO(
 		EnabledOverride:     repository.EnabledOverride,
 		EffectiveEnabled:    enabled,
 		EnabledSource:       source,
+		PendingCIMode:       mode,
+		PendingCIModeSource: modeSource,
 		ConfigOverrideCount: patchSize(repository.ConfigPatch),
 		ConfigFileStatus:    repository.ConfigFileStatus,
 		UpdatedAt:           repository.UpdatedAt,
@@ -299,19 +341,47 @@ func repositoryDetailDTO(
 	resolved := config.Resolve(process, layers...)
 
 	return repositoryDetailResponse{
-		Repository:           repositorySummaryDTO(target, repository),
-		ConfigPatch:          repository.ConfigPatch,
-		InheritedConfig:      inherited.Values,
-		EffectiveConfig:      resolved.Values,
-		ConfigSources:        resolved.Sources,
-		ConfigFilePatch:      repository.ConfigFilePatch,
-		ConfigFileError:      repository.ConfigFileError,
-		ConfigFilePath:       repository.ConfigFilePath,
-		ConfigFileSuperseded: repository.ConfigFileSuperseded,
-		ConfigMigration:      migrationState(repository.ConfigMigration),
-		ConfigMigrationPR:    repository.ConfigMigrationPR,
-		IgnoreRepositoryFile: repository.IgnoreRepositoryFile,
-		Revision:             repository.Revision,
+		Repository:                           repositorySummaryDTO(target, repository),
+		ConfigPatch:                          repository.ConfigPatch,
+		InheritedConfig:                      inherited.Values,
+		EffectiveConfig:                      resolved.Values,
+		ConfigSources:                        resolved.Sources,
+		ConfigFilePatch:                      repository.ConfigFilePatch,
+		ConfigFileError:                      repository.ConfigFileError,
+		ConfigFilePath:                       repository.ConfigFilePath,
+		ConfigFileSuperseded:                 repository.ConfigFileSuperseded,
+		ConfigMigration:                      migrationState(repository.ConfigMigration),
+		ConfigMigrationPR:                    repository.ConfigMigrationPR,
+		IgnoreRepositoryFile:                 repository.IgnoreRepositoryFile,
+		PendingCIModeOverride:                repository.PendingCIModeOverride,
+		PendingCIModeInherited:               target.PendingCIModeDefault,
+		PendingCIBranchPatternsOverride:      repository.PendingCIBranchPatternsOverride,
+		PendingCIBranchPatternsInherited:     target.PendingCIBranchPatternsDefault,
+		PendingCIQuietPeriodSecondsOverride:  durationSecondsDTO(repository.PendingCIQuietPeriodOverride),
+		PendingCIQuietPeriodSecondsInherited: durationSecondsDTO(target.PendingCIQuietPeriodOverride),
+		PendingCIGate:                        pendingCIGateDTO(repository.PendingCIGate),
+		Revision:                             repository.Revision,
+	}
+}
+
+func durationSecondsDTO(value *time.Duration) *int64 {
+	if value == nil {
+		return nil
+	}
+	seconds := int64(*value / time.Second)
+
+	return &seconds
+}
+
+func pendingCIGateDTO(gate *storage.PendingCIRepositoryGate) *pendingCIGateResponse {
+	if gate == nil {
+		return nil
+	}
+
+	return &pendingCIGateResponse{
+		DesiredMode: gate.DesiredMode, EffectiveMode: gate.EffectiveMode,
+		Readiness: gate.Readiness, Reason: gate.Reason,
+		AppID: gate.AppID, RulesetID: gate.RulesetID,
 	}
 }
 

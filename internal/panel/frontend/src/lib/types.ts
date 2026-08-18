@@ -234,6 +234,10 @@ export interface PanelTarget {
   type: 'Organization' | 'User';
   account: PanelAccount;
   repository_default_enabled: boolean;
+  pending_ci_mode_default: PendingCIMode;
+  pending_ci_branch_patterns_default: PendingCIBranchPatterns;
+  pending_ci_quiet_period_seconds_override: number | null;
+  pending_ci_permissions: PendingCIPermissions;
   config_patch: ConfigPatch;
   inherited_config: ConfigValues;
   effective_config: ConfigValues;
@@ -473,6 +477,28 @@ export interface NotificationPageRequest {
 
 export type RepositoryFileStatus = 'missing' | 'valid' | 'invalid' | 'bypassed';
 
+export type PendingCIMode = 'labels' | 'checks';
+export type PendingCIReadiness = 'ready' | 'provisioning' | 'draining' | 'blocked';
+
+export interface PendingCIBranchPatterns {
+  include: string[];
+  exclude: string[];
+}
+
+export interface PendingCIPermissions {
+  checks_write: boolean;
+  administration_write: boolean;
+}
+
+export interface PendingCIGate {
+  desired_mode: PendingCIMode;
+  effective_mode: 'none' | PendingCIMode;
+  readiness: PendingCIReadiness;
+  reason: string;
+  app_id?: number;
+  ruleset_id?: number;
+}
+
 /** How far Smyklot has got with moving a repository's file to TOML. */
 export type ConfigMigrationState = 'none' | 'proposed' | 'declined' | 'blocked';
 export type RepositoryEnabledSource = 'target' | 'repository';
@@ -487,6 +513,8 @@ export interface RepositorySummary {
   enabled_override: boolean | null;
   effective_enabled: boolean;
   enabled_source: RepositoryEnabledSource;
+  pending_ci_mode: PendingCIMode;
+  pending_ci_mode_source: 'target' | 'repository';
   config_override_count: number;
   config_file_status: RepositoryFileStatus;
   updated_at: string;
@@ -505,6 +533,13 @@ export interface RepositoryDetail {
   config_migration: ConfigMigrationState;
   config_migration_pr?: number;
   ignore_repository_file: boolean;
+  pending_ci_mode_override: PendingCIMode | null;
+  pending_ci_mode_inherited: PendingCIMode;
+  pending_ci_branch_patterns_override: PendingCIBranchPatterns | null;
+  pending_ci_branch_patterns_inherited: PendingCIBranchPatterns;
+  pending_ci_quiet_period_seconds_override: number | null;
+  pending_ci_quiet_period_seconds_inherited: number | null;
+  pending_ci_gate?: PendingCIGate;
   revision: number;
 }
 
@@ -533,12 +568,18 @@ export interface RepositoryPageRequest {
 
 export interface TargetSettingsInput {
   repository_default_enabled: boolean;
+  pending_ci_mode_default?: PendingCIMode;
+  pending_ci_branch_patterns_default?: PendingCIBranchPatterns;
+  pending_ci_quiet_period_seconds_override?: number | null;
   config_patch: ConfigPatch;
   expected_revision: number;
 }
 
 export interface RepositorySettingsInput {
   enabled_override: boolean | null;
+  pending_ci_mode_override?: PendingCIMode | null;
+  pending_ci_branch_patterns_override?: PendingCIBranchPatterns | null;
+  pending_ci_quiet_period_seconds_override?: number | null;
   config_patch: ConfigPatch;
   ignore_repository_file: boolean;
   expected_revision: number;

@@ -1,6 +1,7 @@
 package sqlstore
 
 import (
+	"database/sql"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
@@ -10,6 +11,9 @@ func scanPendingCI(scanner rowScanner) (pendingci.Request, error) {
 	var request pendingci.Request
 	var nextCheckAt, leaseExpiresAt, lastProgressAt StoredTime
 	var requestedAt, updatedAt, finishedAt StoredTime
+	var label, candidateHead, candidateBase sql.NullString
+	var checkSlotID sql.NullInt64
+	var authorizedAt StoredTime
 
 	err := scanner.Scan(
 		&request.ID,
@@ -27,7 +31,16 @@ func scanPendingCI(scanner rowScanner) (pendingci.Request, error) {
 		&request.SourceRevision,
 		&request.SourceSequence,
 		&request.SourceOrder,
-		&request.Label,
+		&request.ArtifactKind,
+		&label,
+		&checkSlotID,
+		&request.AuthorizationState,
+		&request.GateState,
+		&candidateHead,
+		&candidateBase,
+		&request.AuthorizedBy,
+		&authorizedAt,
+		&request.MergePhase,
 		&request.Lifecycle,
 		&request.Schedule,
 		&request.NextCheckTrigger,
@@ -57,6 +70,13 @@ func scanPendingCI(scanner rowScanner) (pendingci.Request, error) {
 	request.UpdatedAt = updatedAt.Time()
 	request.LeaseExpiresAt = leaseExpiresAt.Pointer()
 	request.FinishedAt = finishedAt.Pointer()
+	request.Label = label.String
+	if checkSlotID.Valid {
+		request.CheckSlotID = &checkSlotID.Int64
+	}
+	request.CandidateHeadSHA = candidateHead.String
+	request.CandidateBaseBranch = candidateBase.String
+	request.AuthorizedAt = authorizedAt.Time()
 
 	return request, nil
 }

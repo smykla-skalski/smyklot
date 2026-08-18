@@ -36,6 +36,7 @@ func TestDecideCancelsWhenAuthorizedHeadChanges(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, time.August, 15, 12, 0, 0, 0, time.UTC)
 	request := policyRequest(now.Add(-2*time.Hour), ObservedPending, "old")
+	request.ArtifactKind = ArtifactLabel
 	observation := policyObservation(now, ObservedNoChecks, "none")
 	observation.HeadSHA = "new-head"
 	decision := mustDecide(t, request, observation)
@@ -48,11 +49,37 @@ func TestDecideCancelsWhenAuthorizedBaseChanges(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, time.August, 15, 12, 0, 0, 0, time.UTC)
 	request := policyRequest(now.Add(-2*time.Hour), ObservedPending, "old")
+	request.ArtifactKind = ArtifactLabel
 	observation := policyObservation(now, ObservedNoChecks, "none")
 	observation.BaseBranch = "release"
 	decision := mustDecide(t, request, observation)
 	if decision.Kind != DecisionFinish || decision.Lifecycle != LifecycleCancelled {
 		t.Fatalf("got %#v, want exact-base cancellation", decision)
+	}
+}
+
+func TestDecideRequiresCheckReauthorizationWhenAuthorizedRevisionChanges(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.August, 15, 12, 0, 0, 0, time.UTC)
+	request := policyRequest(now.Add(-2*time.Hour), ObservedPending, "old")
+	request.ArtifactKind = ArtifactCheck
+	request.AuthorizationState = AuthorizationAuthorized
+	observation := policyObservation(now, ObservedNoChecks, "none")
+	observation.HeadSHA = "new-head"
+	observation.BaseBranch = "release"
+
+	decision := mustDecide(t, request, observation)
+	if decision.Kind != DecisionReauthorize || decision.CandidateHeadSHA != "new-head" ||
+		decision.CandidateBase != "release" {
+		t.Fatalf("got %#v, want reauthorization for the observed revision", decision)
+	}
+
+	request.AuthorizationState = AuthorizationReauthorizationNeeded
+	request.CandidateHeadSHA = "new-head"
+	request.CandidateBaseBranch = "release"
+	decision = mustDecide(t, request, observation)
+	if decision.Kind != DecisionReschedule {
+		t.Fatalf("got %#v, want the existing candidate left pending", decision)
 	}
 }
 
@@ -71,6 +98,35 @@ func TestDecideRequiresStableGreen(t *testing.T) {
 	second := mustDecide(t, request, secondObservation)
 	if second.Kind != DecisionMerge || second.HeadSHA != request.HeadSHA {
 		t.Fatalf("stable green observation = %#v, want exact-head merge", second)
+	}
+}
+
+func TestDecideRequiresTwoGreenObservationsWithNoQuietDelay(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.August, 15, 12, 0, 0, 0, time.UTC)
+	request := policyRequest(now.Add(-time.Minute), ObservedPending, "pending")
+	observation := policyObservation(now, ObservedPassing, "green")
+	timing := Timing{
+		ActiveInterval: 5 * time.Minute, DiscoveryGrace: 10 * time.Minute,
+		DeferAfter: time.Hour, DeferredInterval: 6 * time.Hour, PassingQuiet: 0,
+	}
+
+	first, err := Decide(request, observation, timing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Kind != DecisionReschedule || !first.NextCheckAt.Equal(now) {
+		t.Fatalf("first green observation = %#v, want immediate second observation", first)
+	}
+	request.LastObservedState = first.LastObservedState
+	request.LastFingerprint = first.LastFingerprint
+	request.LastProgressAt = first.LastProgressAt
+	second, err := Decide(request, observation, timing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Kind != DecisionMerge {
+		t.Fatalf("second green observation = %#v, want merge", second)
 	}
 }
 

@@ -30,6 +30,9 @@ SELECT
     t.kind,
     t.available,
     t.repository_default_enabled,
+	 t.pending_ci_mode_default,
+	 t.pending_ci_branch_patterns_default,
+	 t.pending_ci_quiet_period_seconds_override,
     t.config_patch,
     t.revision,
     t.settings_updated_at,
@@ -162,8 +165,7 @@ func reconcileInstallation(
 			return err
 		}
 	}
-
-	return nil
+	return ensurePendingCIGates(ctx, tx, snapshot.TargetID, snapshot.SyncedAt)
 }
 
 func reconcileOwnership(
@@ -688,6 +690,8 @@ func scanTarget(scanner rowScanner) (storage.Target, error) {
 	var avatarURL, ownershipDetail sql.NullString
 	var lastFailureAt, targetUpdatedAt, accountUpdatedAt, ownershipSyncedAt StoredTime
 	var targetPatch, targetPermissions string
+	var branchPatterns string
+	var quietPeriod sql.NullInt64
 	var enabled int
 
 	err := scanner.Scan(
@@ -696,6 +700,9 @@ func scanTarget(scanner rowScanner) (storage.Target, error) {
 		&target.Kind,
 		&target.Available,
 		&target.RepositoryDefaultEnabled,
+		&target.PendingCIModeDefault,
+		&branchPatterns,
+		&quietPeriod,
 		&targetPatch,
 		&target.Revision,
 		&targetUpdatedAt,
@@ -728,6 +735,11 @@ func scanTarget(scanner rowScanner) (storage.Target, error) {
 	target.DeliveryHealth.LastFailureAt = lastFailureAt.Pointer()
 	target.Ownership.SyncedAt = ownershipSyncedAt.Time()
 	target.Permissions = unmarshalPermissions(targetPermissions)
+	target.PendingCIQuietPeriodOverride = durationPointer(quietPeriod)
+	target.PendingCIBranchPatternsDefault, err = unmarshalPendingCIBranchPatterns(branchPatterns)
+	if err != nil {
+		return storage.Target{}, err
+	}
 
 	return finishTarget(target, targetPatch, targetUpdatedAt, accountUpdatedAt)
 }
@@ -759,6 +771,9 @@ SELECT
     r.default_branch,
     r.available,
     r.enabled_override,
+	 r.pending_ci_mode_override,
+	 r.pending_ci_branch_patterns_override,
+	 r.pending_ci_quiet_period_seconds_override,
     r.config_patch,
     r.ignore_repository_file,
     r.config_file_status,
@@ -804,6 +819,8 @@ LIMIT 1`, targetID, repository, repository, repository))
 func scanRepository(scanner rowScanner) (storage.Repository, error) {
 	var repository storage.Repository
 	var enabledOverride sql.NullBool
+	var modeOverride, branchPatternsOverride sql.NullString
+	var quietPeriodOverride sql.NullInt64
 	var fileError sql.NullString
 	var panelPatch, filePatch, superseded string
 	var migrationPR sql.NullInt64
@@ -818,6 +835,9 @@ func scanRepository(scanner rowScanner) (storage.Repository, error) {
 		&repository.DefaultBranch,
 		&repository.Available,
 		&enabledOverride,
+		&modeOverride,
+		&branchPatternsOverride,
+		&quietPeriodOverride,
 		&panelPatch,
 		&repository.IgnoreRepositoryFile,
 		&repository.ConfigFileStatus,
@@ -835,6 +855,18 @@ func scanRepository(scanner rowScanner) (storage.Repository, error) {
 	}
 
 	repository.EnabledOverride = boolPointer(enabledOverride)
+	if modeOverride.Valid {
+		mode := storage.PendingCIMode(modeOverride.String)
+		repository.PendingCIModeOverride = &mode
+	}
+	if branchPatternsOverride.Valid {
+		patterns, err := unmarshalPendingCIBranchPatterns(branchPatternsOverride.String)
+		if err != nil {
+			return storage.Repository{}, err
+		}
+		repository.PendingCIBranchPatternsOverride = &patterns
+	}
+	repository.PendingCIQuietPeriodOverride = durationPointer(quietPeriodOverride)
 	repository.ConfigFileError = stringPointer(fileError)
 	repository.ConfigMigrationPR = intPointer(migrationPR)
 	if repository.IgnoreRepositoryFile {

@@ -4,11 +4,16 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/github"
 )
 
 type pendingCIActivationGuard interface {
 	AllowsActivation(context.Context) (bool, error)
+}
+
+type pendingCIModeResolver interface {
+	PendingCIMode(context.Context) (storage.PendingCIMode, error)
 }
 
 // githubPendingCIActivationGuard revalidates the repository's runner only
@@ -33,5 +38,41 @@ func (guard githubPendingCIActivationGuard) AllowsActivation(
 		return false, fmt.Errorf("read repository configuration: %w", err)
 	}
 
-	return !serviceStandsDown(ctx, botConfig), nil
+	if serviceStandsDown(ctx, botConfig) {
+		return false, nil
+	}
+	_, err = guard.PendingCIMode(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+func (guard githubPendingCIActivationGuard) PendingCIMode(
+	ctx context.Context,
+) (storage.PendingCIMode, error) {
+	// Merge-after-CI mode is installation policy owned by the panel. Keep
+	// panel-less service deployments on the legacy label contract because they
+	// have nowhere to provision or report check/ruleset readiness.
+	if guard.server.panel == nil {
+		return storage.PendingCIModeLabels, nil
+	}
+
+	gate, err := guard.server.store.GetPendingCIRepositoryGate(ctx, guard.repositoryID)
+	if err != nil {
+		return "", fmt.Errorf("read pending CI readiness: %w", err)
+	}
+	if gate.Readiness != storage.PendingCIReady ||
+		string(gate.EffectiveMode) != string(gate.DesiredMode) {
+		return "", fmt.Errorf("merge-after-CI mode is not ready: %s", gate.Reason)
+	}
+	switch gate.EffectiveMode {
+	case storage.PendingCIEffectiveLabels:
+		return storage.PendingCIModeLabels, nil
+	case storage.PendingCIEffectiveChecks:
+		return storage.PendingCIModeChecks, nil
+	default:
+		return "", fmt.Errorf("merge-after-CI mode is inactive: %s", gate.Reason)
+	}
 }

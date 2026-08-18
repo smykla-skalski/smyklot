@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/config"
@@ -15,6 +16,27 @@ import (
 type nullableBool struct {
 	Value   *bool
 	Present bool
+}
+
+type nullableValue[T any] struct {
+	Value   *T
+	Present bool
+}
+
+func (value *nullableValue[T]) UnmarshalJSON(data []byte) error {
+	value.Present = true
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		value.Value = nil
+
+		return nil
+	}
+	var decoded T
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	value.Value = &decoded
+
+	return nil
 }
 
 func (value *nullableBool) UnmarshalJSON(data []byte) error {
@@ -35,16 +57,22 @@ func (value *nullableBool) UnmarshalJSON(data []byte) error {
 }
 
 type targetSettingsRequest struct {
-	RepositoryDefaultEnabled *bool         `json:"repository_default_enabled"`
-	ConfigPatch              *config.Patch `json:"config_patch"`
-	ExpectedRevision         *int64        `json:"expected_revision"`
+	RepositoryDefaultEnabled       *bool                            `json:"repository_default_enabled"`
+	PendingCIModeDefault           *storage.PendingCIMode           `json:"pending_ci_mode_default"`
+	PendingCIBranchPatternsDefault *storage.PendingCIBranchPatterns `json:"pending_ci_branch_patterns_default"`
+	PendingCIQuietPeriodSeconds    nullableValue[int64]             `json:"pending_ci_quiet_period_seconds_override"`
+	ConfigPatch                    *config.Patch                    `json:"config_patch"`
+	ExpectedRevision               *int64                           `json:"expected_revision"`
 }
 
 type repositorySettingsRequest struct {
-	EnabledOverride      nullableBool  `json:"enabled_override"`
-	ConfigPatch          *config.Patch `json:"config_patch"`
-	IgnoreRepositoryFile *bool         `json:"ignore_repository_file"`
-	ExpectedRevision     *int64        `json:"expected_revision"`
+	EnabledOverride                 nullableBool                                   `json:"enabled_override"`
+	PendingCIModeOverride           nullableValue[storage.PendingCIMode]           `json:"pending_ci_mode_override"`
+	PendingCIBranchPatternsOverride nullableValue[storage.PendingCIBranchPatterns] `json:"pending_ci_branch_patterns_override"`
+	PendingCIQuietPeriodSeconds     nullableValue[int64]                           `json:"pending_ci_quiet_period_seconds_override"`
+	ConfigPatch                     *config.Patch                                  `json:"config_patch"`
+	IgnoreRepositoryFile            *bool                                          `json:"ignore_repository_file"`
+	ExpectedRevision                *int64                                         `json:"expected_revision"`
 }
 
 type configMigrationActor struct {
@@ -114,7 +142,7 @@ func (s *Server) putTargetSettings(w http.ResponseWriter, r *http.Request) {
 	if !s.requireSameOrigin(w, r) {
 		return
 	}
-	account, _, access, ok := s.requireTarget(w, r, true)
+	account, target, access, ok := s.requireTarget(w, r, true)
 	if !ok {
 		return
 	}
@@ -130,13 +158,32 @@ func (s *Server) putTargetSettings(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, "invalid_config", err.Error())
 		return
 	}
+	mode := target.PendingCIModeDefault
+	if input.PendingCIModeDefault != nil {
+		mode = *input.PendingCIModeDefault
+	}
+	patterns := target.PendingCIBranchPatternsDefault
+	if input.PendingCIBranchPatternsDefault != nil {
+		patterns = *input.PendingCIBranchPatternsDefault
+	}
+	quiet := target.PendingCIQuietPeriodOverride
+	if input.PendingCIQuietPeriodSeconds.Present {
+		quiet = pendingCIQuietDuration(input.PendingCIQuietPeriodSeconds.Value)
+	}
+	if err := storage.ValidateTargetPendingCISettings(mode, patterns, quiet); err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid_pending_ci_settings", err.Error())
+		return
+	}
 	updated, err := s.store.UpdateTargetSettings(r.Context(), storage.TargetSettingsChange{
-		TargetID:                 r.PathValue("target"),
-		ActorAccountID:           account.ID,
-		RepositoryDefaultEnabled: *input.RepositoryDefaultEnabled,
-		ConfigPatch:              *input.ConfigPatch,
-		ExpectedRevision:         *input.ExpectedRevision,
-		ChangedAt:                s.now().UTC(),
+		TargetID:                       r.PathValue("target"),
+		ActorAccountID:                 account.ID,
+		RepositoryDefaultEnabled:       *input.RepositoryDefaultEnabled,
+		PendingCIModeDefault:           mode,
+		PendingCIBranchPatternsDefault: patterns,
+		PendingCIQuietPeriodOverride:   quiet,
+		ConfigPatch:                    *input.ConfigPatch,
+		ExpectedRevision:               *input.ExpectedRevision,
+		ChangedAt:                      s.now().UTC(),
 	})
 	if err != nil {
 		s.writeStorageError(w, err)
@@ -185,7 +232,8 @@ func (s *Server) putRepositorySettings(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if _, ok := s.repository(w, r, target); !ok {
+	repository, ok := s.repository(w, r, target)
+	if !ok {
 		return
 	}
 	var input repositorySettingsRequest
@@ -201,22 +249,63 @@ func (s *Server) putRepositorySettings(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, "invalid_config", err.Error())
 		return
 	}
+	mode := repository.PendingCIModeOverride
+	if input.PendingCIModeOverride.Present {
+		mode = input.PendingCIModeOverride.Value
+	}
+	patterns := repository.PendingCIBranchPatternsOverride
+	if input.PendingCIBranchPatternsOverride.Present {
+		patterns = input.PendingCIBranchPatternsOverride.Value
+	}
+	quiet := repository.PendingCIQuietPeriodOverride
+	if input.PendingCIQuietPeriodSeconds.Present {
+		quiet = pendingCIQuietDuration(input.PendingCIQuietPeriodSeconds.Value)
+	}
+	if err := storage.ValidateRepositoryPendingCISettings(mode, patterns, quiet); err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid_pending_ci_settings", err.Error())
+		return
+	}
 	updated, err := s.store.UpdateRepositorySettings(r.Context(), storage.RepositorySettingsChange{
-		TargetID:             target.ID,
-		RepositoryID:         r.PathValue("repository"),
-		ActorAccountID:       account.ID,
-		EnabledOverride:      input.EnabledOverride.Value,
-		ConfigPatch:          *input.ConfigPatch,
-		IgnoreRepositoryFile: *input.IgnoreRepositoryFile,
-		ExpectedRevision:     *input.ExpectedRevision,
-		ChangedAt:            s.now().UTC(),
+		TargetID:                        target.ID,
+		RepositoryID:                    r.PathValue("repository"),
+		ActorAccountID:                  account.ID,
+		EnabledOverride:                 input.EnabledOverride.Value,
+		PendingCIModeOverride:           mode,
+		PendingCIBranchPatternsOverride: patterns,
+		PendingCIQuietPeriodOverride:    quiet,
+		ConfigPatch:                     *input.ConfigPatch,
+		IgnoreRepositoryFile:            *input.IgnoreRepositoryFile,
+		ExpectedRevision:                *input.ExpectedRevision,
+		ChangedAt:                       s.now().UTC(),
 	})
 	if err != nil {
 		s.writeStorageError(w, err)
 		return
 	}
+	if !s.attachPendingCIGate(w, r, &updated) {
+		return
+	}
 	s.Announce(target.ID, updated.ID)
 	writeJSON(w, http.StatusOK, repositoryDetailDTO(s.processConfig(), target, updated))
+}
+
+func pendingCIQuietDuration(seconds *int64) *time.Duration {
+	if seconds == nil {
+		return nil
+	}
+	if *seconds < 0 {
+		invalid := -time.Second
+
+		return &invalid
+	}
+	if *seconds > int64((24*time.Hour)/time.Second) {
+		invalid := 24*time.Hour + time.Second
+
+		return &invalid
+	}
+	duration := time.Duration(*seconds) * time.Second
+
+	return &duration
 }
 
 // postRepositoryConfigMigrationReset lets an operator put a refused
@@ -276,6 +365,9 @@ func (s *Server) resetConfigMigration(
 		writeError(w, err)
 		return
 	}
+	if !s.attachPendingCIGate(w, r, &updated) {
+		return
+	}
 	s.Announce(target.ID, updated.ID)
 	writeJSON(w, http.StatusOK, repositoryDetailDTO(s.processConfig(), target, updated))
 }
@@ -298,8 +390,26 @@ func (s *Server) repository(
 		s.writeError(w, http.StatusNotFound, "not_found", "repository not found")
 		return storage.Repository{}, false
 	}
+	if !s.attachPendingCIGate(w, r, &repository) {
+		return storage.Repository{}, false
+	}
 
 	return repository, true
+}
+
+func (s *Server) attachPendingCIGate(
+	w http.ResponseWriter,
+	r *http.Request,
+	repository *storage.Repository,
+) bool {
+	gate, err := s.store.GetPendingCIRepositoryGate(r.Context(), repository.ID)
+	if err != nil {
+		s.writeStorageError(w, err)
+		return false
+	}
+	repository.PendingCIGate = &gate
+
+	return true
 }
 
 func (s *Server) getAudit(w http.ResponseWriter, r *http.Request) {
