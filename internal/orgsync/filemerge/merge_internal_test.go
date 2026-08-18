@@ -95,6 +95,40 @@ func TestTheRebuildBudgetBindsWhereItSaysItDoes(t *testing.T) {
 	}
 }
 
+// TestTheRebuildBudgetStopsDepthMattering is the bound itself, asserted without
+// a clock.
+//
+// Bounded and exponential are three orders of magnitude apart in seconds, so a
+// deadline can say which one this is - but only loosely, because a threshold
+// tight enough to measure anything fails when the machine is busy. The work is
+// the thing that is actually bounded, and doubling the depth is the sharpest
+// question to ask of it: capped, the answer does not move at all; uncapped, the
+// second number is 2^40 times the first.
+func TestTheRebuildBudgetStopsDepthMattering(t *testing.T) {
+	t.Parallel()
+
+	deep, deeper := rebuildsAt(t, 40), rebuildsAt(t, 80)
+
+	if deep != deeper {
+		t.Errorf("doubling the depth changed the work from %d to %d, "+
+			"so something is no longer bounded by the budget", deep, deeper)
+	}
+
+	if deep != rebuildBudget {
+		t.Errorf("spent %d of the budget at depth 40, expected all %d of it - "+
+			"if this fell, the shape stopped reaching the bound and proves nothing",
+			deep, rebuildBudget)
+	}
+}
+
+func rebuildsAt(t *testing.T, depth int) int {
+	t.Helper()
+
+	template, override := recursiveDocument(depth)
+
+	return rebuildsFor(t, template, override)
+}
+
 // rebuildsFor merges a document and answers how much of the budget it spent.
 //
 // The steps of mergeYAML rather than a call to it, because what is wanted is
