@@ -139,6 +139,7 @@ func (s *Server) finishSignIn(w http.ResponseWriter, r *http.Request) {
 		s.writePageError(w, r, http.StatusBadGateway, "catalog_unavailable", "GitHub installations could not be synchronized")
 		return
 	}
+	s.wakePendingCIGates()
 	session, err := s.createSession(r, account.ID)
 	if err != nil {
 		s.writePageInternal(w, r, err)

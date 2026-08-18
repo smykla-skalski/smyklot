@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 )
 
@@ -33,6 +34,11 @@ func (s *Store) UpdateTargetSettings(
 	}
 
 	defer func() { _ = tx.Rollback() }()
+	if change.RetunePendingCIQuietPeriod {
+		if err := lockPendingCIPolicy(ctx, tx, s.dialect); err != nil {
+			return storage.Target{}, err
+		}
+	}
 
 	elevation, err := s.elevatedWrite(
 		ctx,
@@ -47,33 +53,9 @@ func (s *Store) UpdateTargetSettings(
 		return storage.Target{}, err
 	}
 
-	result, err := tx.ExecContext(ctx, `
-UPDATE targets SET
-    repository_default_enabled = ?,
-	 pending_ci_mode_default = ?,
-	 pending_ci_branch_patterns_default = ?,
-	 pending_ci_quiet_period_seconds_override = ?,
-    config_patch = ?,
-    revision = revision + 1,
-    settings_updated_at = ?
-WHERE id = ? AND revision = ?`,
-		change.RepositoryDefaultEnabled,
-		change.PendingCIModeDefault,
-		branchPatterns,
-		durationSeconds(change.PendingCIQuietPeriodOverride),
-		patch,
-		change.ChangedAt,
-		change.TargetID,
-		change.ExpectedRevision,
-	)
-	if err != nil {
-		return storage.Target{}, fmt.Errorf("update target settings: %w", err)
-	}
-
-	if err := checkTargetUpdate(ctx, tx, result, change.TargetID); err != nil {
-		return storage.Target{}, err
-	}
-	if err := ensurePendingCIGates(ctx, tx, change.TargetID, change.ChangedAt); err != nil {
+	if err := updateTargetSettingsRows(
+		ctx, tx, s.dialect, change, patch, branchPatterns,
+	); err != nil {
 		return storage.Target{}, err
 	}
 
@@ -106,6 +88,50 @@ WHERE id = ? AND revision = ?`,
 	}
 
 	return target, nil
+}
+
+func updateTargetSettingsRows(
+	ctx context.Context,
+	tx *transaction,
+	dialect Dialect,
+	change storage.TargetSettingsChange,
+	patch, branchPatterns string,
+) error {
+	result, err := tx.ExecContext(ctx, `
+UPDATE targets SET
+    repository_default_enabled = ?,
+	 pending_ci_mode_default = ?,
+	 pending_ci_branch_patterns_default = ?,
+	 pending_ci_quiet_period_seconds_override = ?,
+    config_patch = ?,
+    revision = revision + 1,
+    settings_updated_at = ?
+WHERE id = ? AND revision = ?`,
+		change.RepositoryDefaultEnabled,
+		change.PendingCIModeDefault,
+		branchPatterns,
+		durationSeconds(change.PendingCIQuietPeriodOverride),
+		patch,
+		change.ChangedAt,
+		change.TargetID,
+		change.ExpectedRevision,
+	)
+	if err != nil {
+		return fmt.Errorf("update target settings: %w", err)
+	}
+
+	if err := checkTargetUpdate(ctx, tx, result, change.TargetID); err != nil {
+		return err
+	}
+	if err := ensurePendingCIGates(ctx, tx, change.TargetID, change.ChangedAt); err != nil {
+		return err
+	}
+	if change.RetunePendingCIQuietPeriod {
+		if err := retuneTargetPendingCIQuietPeriod(ctx, tx, dialect, change); err != nil {
+			return err
+		}
+	}
+	return wakePendingCIRequestsForTarget(ctx, tx, change.TargetID, change.ChangedAt)
 }
 
 func prepareTargetSettings(
@@ -160,6 +186,16 @@ func (s *Store) UpdateRepositorySettings(
 	}
 
 	defer func() { _ = tx.Rollback() }()
+	if change.RetunePendingCIQuietPeriod {
+		if err := lockPendingCIPolicy(ctx, tx, s.dialect); err != nil {
+			return storage.Repository{}, err
+		}
+	}
+	if err := wakePendingCIRequestsForRepository(
+		ctx, tx, change.RepositoryID, change.ChangedAt,
+	); err != nil {
+		return storage.Repository{}, err
+	}
 
 	elevation, err := s.elevatedWrite(
 		ctx,
@@ -184,6 +220,11 @@ func (s *Store) UpdateRepositorySettings(
 	}
 	if err := ensurePendingCIGates(ctx, tx, change.TargetID, change.ChangedAt); err != nil {
 		return storage.Repository{}, err
+	}
+	if change.RetunePendingCIQuietPeriod {
+		if err := retuneRepositoryPendingCIQuietPeriod(ctx, tx, s.dialect, change); err != nil {
+			return storage.Repository{}, err
+		}
 	}
 
 	repository, err := getRepository(ctx, tx, change.TargetID, change.RepositoryID)
@@ -470,6 +511,93 @@ WHERE target_id = ? AND id = ? AND revision = ?`,
 	}
 
 	return result, nil
+}
+
+func retuneTargetPendingCIQuietPeriod(
+	ctx context.Context,
+	tx runner,
+	dialect Dialect,
+	change storage.TargetSettingsChange,
+) error {
+	target, err := getTarget(ctx, tx, change.TargetID)
+	if err != nil {
+		return fmt.Errorf("read target pending CI quiet policy: %w", err)
+	}
+	quiet, err := inheritedPendingCIQuietPeriod(
+		ctx, tx, change.DeploymentPendingCIQuietPeriod,
+	)
+	if err != nil {
+		return err
+	}
+	if target.PendingCIQuietPeriodOverride != nil {
+		quiet = *target.PendingCIQuietPeriodOverride
+	}
+	request := pendingci.RetuneQuietPeriodRequest{
+		PassingQuiet: quiet, ChangedAt: change.ChangedAt,
+		TargetID: change.TargetID, InheritedOnly: true,
+	}
+	if err := request.Validate(); err != nil {
+		return err
+	}
+	if _, err := retuneQuietPeriod(ctx, tx, dialect, request); err != nil {
+		return fmt.Errorf("retune target pending CI quiet period: %w", err)
+	}
+
+	return nil
+}
+
+func retuneRepositoryPendingCIQuietPeriod(
+	ctx context.Context,
+	tx runner,
+	dialect Dialect,
+	change storage.RepositorySettingsChange,
+) error {
+	target, err := getTarget(ctx, tx, change.TargetID)
+	if err != nil {
+		return fmt.Errorf("read repository target quiet policy: %w", err)
+	}
+	repository, err := getRepository(ctx, tx, change.TargetID, change.RepositoryID)
+	if err != nil {
+		return fmt.Errorf("read repository pending CI quiet policy: %w", err)
+	}
+	quiet, err := inheritedPendingCIQuietPeriod(
+		ctx, tx, change.DeploymentPendingCIQuietPeriod,
+	)
+	if err != nil {
+		return err
+	}
+	_, _, quiet = storage.EffectivePendingCISettings(target, repository, quiet)
+	request := pendingci.RetuneQuietPeriodRequest{
+		PassingQuiet: quiet, ChangedAt: change.ChangedAt,
+		TargetID: change.TargetID, RepositoryID: change.RepositoryID,
+	}
+	if err := request.Validate(); err != nil {
+		return err
+	}
+	if _, err := retuneQuietPeriod(ctx, tx, dialect, request); err != nil {
+		return fmt.Errorf("retune repository pending CI quiet period: %w", err)
+	}
+
+	return nil
+}
+
+func inheritedPendingCIQuietPeriod(
+	ctx context.Context,
+	tx runner,
+	deployment time.Duration,
+) (time.Duration, error) {
+	settings, err := getRuntimeSettings(ctx, tx)
+	if errors.Is(err, sql.ErrNoRows) {
+		return deployment, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("read runtime pending CI quiet policy: %w", err)
+	}
+	if settings.PendingCIQuietPeriod != nil {
+		return *settings.PendingCIQuietPeriod, nil
+	}
+
+	return deployment, nil
 }
 
 func checkTargetUpdate(

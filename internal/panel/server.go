@@ -69,6 +69,13 @@ type RuntimeController interface {
 type PendingCIController interface {
 	CheckNow(context.Context, pendingci.CheckNowRequest) (pendingci.Request, error)
 	Cancel(context.Context, pendingci.FinishRequest) (pendingci.Request, error)
+	Exclusive(context.Context, []string, func() error) error
+	ExclusiveCatalog(context.Context, func() error) error
+	Wake()
+}
+
+type PendingCIGateController interface {
+	WakePendingCIGates()
 }
 
 // Dependencies are the service capabilities used by panel handlers.
@@ -81,6 +88,7 @@ type Dependencies struct {
 	Now       func() time.Time
 	Runtime   RuntimeController
 	PendingCI PendingCIController
+	Gates     PendingCIGateController
 	// Candidates reads the roster logins are completed against. Optional: a
 	// panel without one offers no completion, which is what the dialogs did
 	// before there was any.
@@ -104,6 +112,7 @@ type Server struct {
 	runtime    RuntimeValues
 	controller RuntimeController
 	pendingCI  PendingCIController
+	gates      PendingCIGateController
 	// prefsMu spans each preference commit and its fan-out so announce order
 	// matches commit order (see applyPrefsPatch).
 	prefsMu sync.Mutex
@@ -165,7 +174,14 @@ func New(cfg Config, deps Dependencies) (*Server, error) {
 		runtime:    runtime,
 		controller: deps.Runtime,
 		pendingCI:  deps.PendingCI,
+		gates:      deps.Gates,
 	}, nil
+}
+
+func (s *Server) wakePendingCIGates() {
+	if s.gates != nil {
+		s.gates.WakePendingCIGates()
+	}
 }
 
 // Handler returns the complete panel HTTP surface at its configured base path.

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 )
 
@@ -34,29 +35,37 @@ FROM repositories r
 JOIN targets t ON t.id = r.target_id
 WHERE r.target_id = ?
 ON CONFLICT(repository_id) DO UPDATE SET
+	target_id = excluded.target_id,
     desired_mode = excluded.desired_mode,
     readiness = CASE
         WHEN pending_ci_repository_gates.desired_mode <> excluded.desired_mode
             THEN 'draining'
+		WHEN pending_ci_repository_gates.target_id <> excluded.target_id
+			THEN 'provisioning'
         ELSE pending_ci_repository_gates.readiness
     END,
     reason = CASE
         WHEN pending_ci_repository_gates.desired_mode <> excluded.desired_mode
             THEN 'Waiting for repository protection transition'
+		WHEN pending_ci_repository_gates.target_id <> excluded.target_id
+			THEN 'Waiting for repository ownership reconciliation'
         ELSE pending_ci_repository_gates.reason
     END,
     generation = CASE
-        WHEN pending_ci_repository_gates.desired_mode <> excluded.desired_mode
+		WHEN pending_ci_repository_gates.desired_mode <> excluded.desired_mode
+			OR pending_ci_repository_gates.target_id <> excluded.target_id
             THEN pending_ci_repository_gates.generation + 1
         ELSE pending_ci_repository_gates.generation
     END,
     updated_at = CASE
-        WHEN pending_ci_repository_gates.desired_mode <> excluded.desired_mode
+		WHEN pending_ci_repository_gates.desired_mode <> excluded.desired_mode
+			OR pending_ci_repository_gates.target_id <> excluded.target_id
             THEN excluded.updated_at
         ELSE pending_ci_repository_gates.updated_at
     END,
     revision = CASE
-        WHEN pending_ci_repository_gates.desired_mode <> excluded.desired_mode
+		WHEN pending_ci_repository_gates.desired_mode <> excluded.desired_mode
+			OR pending_ci_repository_gates.target_id <> excluded.target_id
             THEN pending_ci_repository_gates.revision + 1
         ELSE pending_ci_repository_gates.revision
     END`, changedAt, targetID)
@@ -127,7 +136,26 @@ func (s *Store) UpdatePendingCIRepositoryGate(
 			"invalid pending CI readiness %q", change.Readiness,
 		)
 	}
-	result, err := s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return storage.PendingCIRepositoryGate{}, fmt.Errorf("begin pending CI gate update: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	current, err := scanPendingCIGate(tx.QueryRowContext(
+		ctx,
+		pendingCIGateSelect+" WHERE repository_id = ?"+s.dialect.RowLock(),
+		change.RepositoryID,
+	))
+	if errors.Is(err, sql.ErrNoRows) {
+		return storage.PendingCIRepositoryGate{}, storage.ErrNotFound
+	}
+	if err != nil {
+		return storage.PendingCIRepositoryGate{}, fmt.Errorf("read pending CI gate for update: %w", err)
+	}
+	if current.Revision != change.ExpectedRevision {
+		return storage.PendingCIRepositoryGate{}, storage.ErrConflict
+	}
+	result, err := tx.ExecContext(ctx, `
 UPDATE pending_ci_repository_gates SET
     effective_mode = ?, readiness = ?, reason = ?, app_id = ?, ruleset_id = ?,
     ruleset_fingerprint = ?, observed_at = ?, updated_at = ?, revision = revision + 1
@@ -142,8 +170,114 @@ WHERE repository_id = ? AND revision = ?`,
 	if err := requireOneRow(result); err != nil {
 		return storage.PendingCIRepositoryGate{}, err
 	}
+	if current.Readiness != storage.PendingCIReady && change.Readiness == storage.PendingCIReady {
+		if err := wakePendingCIChecksForRepository(
+			ctx, tx, change.RepositoryID, change.ObservedAt,
+		); err != nil {
+			return storage.PendingCIRepositoryGate{}, err
+		}
+	}
+	updated, err := scanPendingCIGate(tx.QueryRowContext(
+		ctx,
+		pendingCIGateSelect+" WHERE repository_id = ?",
+		change.RepositoryID,
+	))
+	if err != nil {
+		return storage.PendingCIRepositoryGate{}, fmt.Errorf("read updated pending CI gate: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return storage.PendingCIRepositoryGate{}, fmt.Errorf("commit pending CI gate update: %w", err)
+	}
 
-	return s.GetPendingCIRepositoryGate(ctx, change.RepositoryID)
+	return updated, nil
+}
+
+func wakePendingCIChecksForRepository(
+	ctx context.Context,
+	tx runner,
+	repositoryID string,
+	readyAt time.Time,
+) error {
+	result, err := tx.ExecContext(ctx, `
+UPDATE pending_ci_requests SET
+    schedule = ?, next_check_at = ?, lease_expires_at = NULL,
+    next_check_trigger = ?, updated_at = ?, revision = revision + 1
+WHERE repository_id = ? AND lifecycle = ? AND artifact_kind = ? AND merge_phase = ?`,
+		pendingci.ScheduleActive,
+		readyAt,
+		pendingci.TriggerManual,
+		readyAt,
+		repositoryID,
+		pendingci.LifecycleArmed,
+		pendingci.ArtifactCheck,
+		pendingci.MergeWaiting,
+	)
+	if err != nil {
+		return fmt.Errorf("wake pending CI checks for ready gate: %w", err)
+	}
+	if _, err := result.RowsAffected(); err != nil {
+		return fmt.Errorf("read ready-gate pending CI wake result: %w", err)
+	}
+
+	return nil
+}
+
+func wakePendingCIRequestsForRepository(
+	ctx context.Context,
+	tx runner,
+	repositoryID string,
+	wakeAt time.Time,
+) error {
+	result, err := tx.ExecContext(ctx, `
+UPDATE pending_ci_requests SET
+    schedule = ?, next_check_at = ?, lease_expires_at = NULL,
+    next_check_trigger = ?, updated_at = ?, revision = revision + 1
+WHERE repository_id = ? AND lifecycle = ? AND merge_phase = ?`,
+		pendingci.ScheduleActive,
+		wakeAt,
+		pendingci.TriggerManual,
+		wakeAt,
+		repositoryID,
+		pendingci.LifecycleArmed,
+		pendingci.MergeWaiting,
+	)
+	if err != nil {
+		return fmt.Errorf("wake repository pending CI requests: %w", err)
+	}
+	if _, err := result.RowsAffected(); err != nil {
+		return fmt.Errorf("read repository pending CI wake result: %w", err)
+	}
+
+	return nil
+}
+
+func wakePendingCIRequestsForTarget(
+	ctx context.Context,
+	tx runner,
+	targetID string,
+	wakeAt time.Time,
+) error {
+	result, err := tx.ExecContext(ctx, `
+UPDATE pending_ci_requests SET
+    schedule = ?, next_check_at = ?, lease_expires_at = NULL,
+    next_check_trigger = ?, updated_at = ?, revision = revision + 1
+WHERE target_id = ? AND lifecycle = ? AND merge_phase = ?`,
+		pendingci.ScheduleActive,
+		wakeAt,
+		pendingci.TriggerManual,
+		wakeAt,
+		targetID,
+		pendingci.LifecycleArmed,
+		pendingci.MergeWaiting,
+	)
+	if err != nil {
+		return fmt.Errorf("wake target pending CI requests: %w", err)
+	}
+	if _, err := result.RowsAffected(); err != nil {
+		return fmt.Errorf("read target pending CI wake result: %w", err)
+	}
+
+	return nil
 }
 
 func scanPendingCIGate(scanner rowScanner) (storage.PendingCIRepositoryGate, error) {

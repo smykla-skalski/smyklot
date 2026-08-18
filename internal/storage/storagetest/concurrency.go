@@ -94,6 +94,10 @@ func declareConcurrencySpecs(current func() (context.Context, storage.Store, tim
 		Expect(target.Revision).To(Equal(int64(2)))
 	})
 
+	It("creates runtime settings once when many carry the initial revision", func() {
+		verifyConcurrentRuntimeSettingsCreate(current)
+	})
+
 	It("never keeps more sessions than the cap allows", func() {
 		const cap = 3
 
@@ -129,6 +133,44 @@ func declareConcurrencySpecs(current func() (context.Context, storage.Store, tim
 		Expect(live).To(BeNumerically("<=", cap))
 		Expect(live).To(BeNumerically(">", 0))
 	})
+}
+
+func verifyConcurrentRuntimeSettingsCreate(
+	current func() (context.Context, storage.Store, time.Time),
+) {
+	ctx, store, now := current()
+	account := testAccount(now)
+	Expect(store.UpsertAccount(ctx, account)).To(Succeed())
+
+	results := race(func(index int) (storage.RuntimeSettings, error) {
+		quiet := time.Duration(index) * time.Second
+
+		return store.UpdateRuntimeSettings(ctx, storage.RuntimeSettingsChange{
+			PendingCIQuietPeriod:          &quiet,
+			EffectivePollInterval:         5 * time.Minute,
+			EffectivePendingCIQuietPeriod: quiet,
+			EffectiveSessionTTL:           time.Hour,
+			ExpectedRevision:              0,
+			ActorAccountID:                account.ID,
+			ChangedAt:                     now.Add(time.Duration(index) * time.Second),
+		})
+	})
+
+	applied := 0
+	for _, result := range results {
+		if result.err == nil {
+			applied++
+			Expect(result.value.Revision).To(Equal(int64(1)))
+
+			continue
+		}
+		Expect(result.err).To(MatchError(storage.ErrConflict))
+	}
+	Expect(applied).To(Equal(1))
+
+	settings, err := store.GetRuntimeSettings(ctx)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(settings.Revision).To(Equal(int64(1)))
 }
 
 // outcome is what one racing caller returned.

@@ -18,11 +18,12 @@ import (
 )
 
 const (
-	pendingCIReauthorizeAction = "reauthorize"
-	pendingCICheckRenewAfter   = 13 * 24 * time.Hour
-	pendingCICheckInProgress   = "in_progress"
-	pendingCICheckCompleted    = "completed"
-	pendingCICheckSuccess      = "success"
+	pendingCIReauthorizeAction   = "reauthorize"
+	pendingCICheckRenewAfter     = 13 * 24 * time.Hour
+	pendingCICompletedRenewAfter = 365 * 24 * time.Hour
+	pendingCICheckInProgress     = "in_progress"
+	pendingCICheckCompleted      = "completed"
+	pendingCICheckSuccess        = "success"
 )
 
 type pendingCITokens interface {
@@ -35,6 +36,7 @@ type githubPendingCIChecks struct {
 	tokens     pendingCITokens
 	apiBaseURL string
 	now        func() time.Time
+	syncer     pendingCIExclusive
 
 	appMu sync.Mutex
 	appID int64
@@ -116,7 +118,7 @@ func (checks *githubPendingCIChecks) EnsureReauthorization(
 		Title:   "Reauthorization required",
 		Summary: "The pull request head or base changed. Reauthorize the merge-after-CI request for the current revision.",
 		Actions: []pendingci.CheckAction{{
-			Label: "Reauthorize", Description: "Authorize merge after CI for this revision",
+			Label: "Reauthorize", Description: "Authorize merge after CI for this commit",
 			Identifier: pendingCIReauthorizeAction,
 		}},
 	})
@@ -144,6 +146,39 @@ func (checks *githubPendingCIChecks) ensure(
 	headSHA string,
 	desired pendingCICheckDesired,
 ) (pendingci.CheckSlot, error) {
+	if checks.syncer == nil {
+		return pendingci.CheckSlot{}, errors.New("pending CI check coordinator is unavailable")
+	}
+	var slot pendingci.CheckSlot
+	err := checks.syncer.Exclusive(
+		ctx,
+		repository.ID+":"+headSHA,
+		func() error {
+			var ensureErr error
+			slot, ensureErr = checks.ensureExclusive(
+				ctx,
+				target,
+				repository,
+				pullRequest,
+				headSHA,
+				desired,
+			)
+
+			return ensureErr
+		},
+	)
+
+	return slot, err
+}
+
+func (checks *githubPendingCIChecks) ensureExclusive(
+	ctx context.Context,
+	target storage.Target,
+	repository storage.Repository,
+	pullRequest int,
+	headSHA string,
+	desired pendingCICheckDesired,
+) (pendingci.CheckSlot, error) {
 	appID, err := checks.AppID(ctx)
 	if err != nil {
 		return pendingci.CheckSlot{}, err
@@ -156,7 +191,7 @@ func (checks *githubPendingCIChecks) ensure(
 	if err != nil {
 		return pendingci.CheckSlot{}, err
 	}
-	slot, err := checks.store.EnsureCheckSlot(ctx, pendingci.EnsureCheckSlotRequest{
+	request := pendingci.EnsureCheckSlotRequest{
 		TargetID: target.ID, InstallationID: installationID,
 		RepositoryID: repository.ID, RepositoryFullName: repository.FullName,
 		PullRequest: pullRequest, HeadSHA: headSHA, AppID: appID,
@@ -165,12 +200,15 @@ func (checks *githubPendingCIChecks) ensure(
 		DesiredStatus: desired.Status, DesiredConclusion: desired.Conclusion,
 		DesiredTitle: desired.Title, DesiredSummary: desired.Summary,
 		DesiredActions: desired.Actions, DesiredDigest: digest, ChangedAt: checks.now(),
-	})
+	}
+	slot, err := checks.store.EnsureCheckSlot(ctx, request)
+	if errors.Is(err, pendingci.ErrSharedHead) {
+		slot, err = checks.reassignClosedPullRequestSlot(ctx, request)
+	}
 	if err != nil {
 		return pendingci.CheckSlot{}, err
 	}
-	if slot.DesiredStatus == pendingCICheckInProgress &&
-		!slot.UpdatedAt.After(checks.now().Add(-pendingCICheckRenewAfter)) {
+	if pendingCICheckNeedsRenewal(slot, checks.now()) {
 		slot, err = checks.store.RenewCheckSlot(ctx, pendingci.RenewCheckSlotRequest{
 			ID: slot.ID, ExpectedRevision: slot.Revision,
 			ExternalID: pendingCIRenewedExternalID(slot),
@@ -185,6 +223,88 @@ func (checks *githubPendingCIChecks) ensure(
 	}
 
 	return checks.sync(ctx, slot)
+}
+
+func (checks *githubPendingCIChecks) reassignClosedPullRequestSlot(
+	ctx context.Context,
+	request pendingci.EnsureCheckSlotRequest,
+) (pendingci.CheckSlot, error) {
+	current, err := checks.store.GetCheckSlotByHead(
+		ctx, request.RepositoryID, request.HeadSHA,
+	)
+	if err != nil {
+		return pendingci.CheckSlot{}, err
+	}
+	client, owner, repository, err := checks.client(current)
+	if err != nil {
+		return pendingci.CheckSlot{}, err
+	}
+	state, err := client.GetPullRequestState(ctx, owner, repository, current.PullRequest)
+	if err != nil {
+		return pendingci.CheckSlot{}, fmt.Errorf("read prior check pull request: %w", err)
+	}
+	if state.Open {
+		return pendingci.CheckSlot{}, pendingci.ErrSharedHead
+	}
+	_, err = checks.store.ReassignCheckSlot(ctx, pendingci.ReassignCheckSlotRequest{
+		ID: current.ID, ExpectedRevision: current.Revision,
+		PullRequest: request.PullRequest, ReassignedAt: request.ChangedAt,
+	})
+	if err != nil {
+		return pendingci.CheckSlot{}, fmt.Errorf("reassign closed pull request check: %w", err)
+	}
+
+	return checks.store.EnsureCheckSlot(ctx, request)
+}
+
+func (checks *githubPendingCIChecks) RefreshRerequest(
+	ctx context.Context,
+	repositoryID, headSHA string,
+	appID, checkRunID int64,
+	name, externalID string,
+	exactRun bool,
+) (bool, error) {
+	if checks == nil || checks.syncer == nil {
+		return false, nil
+	}
+	refreshed := false
+	err := checks.syncer.Exclusive(ctx, repositoryID+":"+headSHA, func() error {
+		slot, err := checks.store.GetCheckSlotByHead(ctx, repositoryID, headSHA)
+		if errors.Is(err, storage.ErrNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if slot.AppID != appID {
+			return nil
+		}
+		if exactRun && (slot.CheckRunID == nil || *slot.CheckRunID != checkRunID ||
+			slot.Name != name || slot.ExternalID != externalID) {
+			return nil
+		}
+		slot, err = checks.store.RefreshCheckSlot(ctx, pendingci.RefreshCheckSlotRequest{
+			ID: slot.ID, ExpectedRevision: slot.Revision, RefreshedAt: checks.now(),
+		})
+		if err != nil {
+			return fmt.Errorf("refresh rerequested pending CI check: %w", err)
+		}
+		if _, err := checks.sync(ctx, slot); err != nil {
+			return err
+		}
+		refreshed = true
+
+		return nil
+	})
+
+	return refreshed, err
+}
+
+func pendingCICheckNeedsRenewal(slot pendingci.CheckSlot, now time.Time) bool {
+	age := now.Sub(slot.UpdatedAt)
+
+	return (slot.DesiredStatus == pendingCICheckInProgress && age >= pendingCICheckRenewAfter) ||
+		(slot.DesiredStatus == pendingCICheckCompleted && age >= pendingCICompletedRenewAfter)
 }
 
 func pendingCIRenewedExternalID(slot pendingci.CheckSlot) string {
@@ -219,6 +339,15 @@ func (checks *githubPendingCIChecks) sync(
 	}
 	if err := validateOwnedCheckRun(run, slot); err != nil {
 		return pendingci.CheckSlot{}, checks.retry(ctx, slot, err)
+	}
+	if slot.CheckRunID == nil {
+		slot, err = checks.store.BindCheckRun(ctx, pendingci.BindCheckRunRequest{
+			ID: slot.ID, ExpectedRevision: slot.Revision,
+			CheckRunID: run.ID, CheckURL: run.HTMLURL, BoundAt: checks.now(),
+		})
+		if err != nil {
+			return pendingci.CheckSlot{}, fmt.Errorf("bind pending CI check run: %w", err)
+		}
 	}
 	applied, err := checks.store.ApplyCheckSlot(ctx, pendingci.ApplyCheckSlotRequest{
 		ID: slot.ID, ExpectedRevision: slot.Revision, AppliedDigest: slot.DesiredDigest,

@@ -15,7 +15,8 @@ const pendingCISelect = `
 SELECT id, target_id, installation_id, repository_id, repository_full_name,
        pull_request, head_sha, base_branch, merge_method, required_checks_only,
        requester, source_comment_id, source_revision, source_sequence, source_order,
-	       artifact_kind, label, check_slot_id, authorization_state, gate_state,
+	       artifact_kind, label, check_slot_id, retired_check_slot_id,
+	       authorization_state, gate_state,
 	       candidate_head_sha, candidate_base_branch, authorized_by, authorized_at,
 	       merge_phase, lifecycle, schedule, next_check_trigger,
        next_check_at, lease_expires_at, last_progress_at, last_observed_state,
@@ -599,11 +600,21 @@ func (s *Store) RequireReauthorization(
 	return s.updatePendingCIWithEvents(ctx, change.ID, "require pending CI reauthorization", `
 UPDATE pending_ci_requests SET
     authorization_state = 'reauthorization_required',
-    candidate_head_sha = ?, candidate_base_branch = ?, check_slot_id = ?,
+	candidate_head_sha = ?, candidate_base_branch = ?,
+	retired_check_slot_id = CASE
+		WHEN check_slot_id = ? THEN retired_check_slot_id
+		WHEN retired_check_slot_id = ? THEN check_slot_id
+		WHEN retired_check_slot_id IS NULL THEN check_slot_id
+		ELSE retired_check_slot_id
+	END,
+	check_slot_id = ?,
     schedule = 'active', next_check_at = ?, lease_expires_at = NULL,
     last_observed_state = '', last_fingerprint = '', merge_phase = 'waiting',
     next_check_trigger = 'fallback', updated_at = ?, revision = revision + 1
-WHERE id = ? AND lifecycle = ? AND artifact_kind = 'check' AND revision = ?`,
+WHERE id = ? AND lifecycle = ? AND artifact_kind = 'check' AND revision = ?
+  AND (
+	check_slot_id = ? OR retired_check_slot_id = ? OR retired_check_slot_id IS NULL
+  )`,
 		func(before, _ pendingci.Request) []pendingci.Event {
 			return []pendingci.Event{pendingCIAuditEvent(
 				before.ID,
@@ -617,11 +628,38 @@ WHERE id = ? AND lifecycle = ? AND artifact_kind = 'check' AND revision = ?`,
 		change.CandidateHeadSHA,
 		change.CandidateBase,
 		change.CandidateCheckID,
+		change.CandidateCheckID,
+		change.CandidateCheckID,
 		change.ObservedAt,
 		change.ObservedAt,
 		change.ID,
 		pendingci.LifecycleArmed,
 		change.ExpectedRevision,
+		change.CandidateCheckID,
+		change.CandidateCheckID,
+	)
+}
+
+func (s *Store) ClearRetiredCheckSlot(
+	ctx context.Context,
+	change pendingci.ClearRetiredCheckSlotRequest,
+) (pendingci.Request, error) {
+	if err := change.Validate(); err != nil {
+		return pendingci.Request{}, err
+	}
+
+	return s.updatePendingCIWithEvents(ctx, change.ID, "clear retired pending CI check", `
+UPDATE pending_ci_requests SET
+	retired_check_slot_id = NULL, next_check_at = ?, lease_expires_at = NULL,
+	next_check_trigger = 'fallback', updated_at = ?, revision = revision + 1
+WHERE id = ? AND revision = ? AND retired_check_slot_id = ?
+  AND (lifecycle = 'armed' OR cleanup_pending = TRUE)`,
+		func(_, _ pendingci.Request) []pendingci.Event { return nil },
+		change.ClearedAt,
+		change.ClearedAt,
+		change.ID,
+		change.ExpectedRevision,
+		change.CheckSlotID,
 	)
 }
 
@@ -831,7 +869,8 @@ func (s *Store) CompleteCleanup(
 UPDATE pending_ci_requests SET
     cleanup_pending = FALSE, cleanup_error = '', lease_expires_at = NULL,
     updated_at = ?, revision = revision + 1
-WHERE id = ? AND cleanup_pending = TRUE AND cleanup_artifacts_done = TRUE AND revision = ?`,
+WHERE id = ? AND cleanup_pending = TRUE AND cleanup_artifacts_done = TRUE
+  AND retired_check_slot_id IS NULL AND revision = ?`,
 		func(before, _ pendingci.Request) []pendingci.Event {
 			return []pendingci.Event{pendingCIAuditEvent(
 				before.ID, pendingci.EventCleanupCompleted, pendingci.TriggerCleanup,
@@ -1033,6 +1072,14 @@ func (s *Store) ListQueue(
 	}
 	query := pendingCISelect + " WHERE lifecycle = ?"
 	arguments := []any{pendingci.LifecycleArmed}
+	if filter.RepositoryID != "" {
+		query += " AND repository_id = ?"
+		arguments = append(arguments, filter.RepositoryID)
+	}
+	if filter.ArtifactKind != "" {
+		query += " AND artifact_kind = ?"
+		arguments = append(arguments, filter.ArtifactKind)
+	}
 	if filter.Schedule != nil {
 		query += " AND schedule = ?"
 		arguments = append(arguments, *filter.Schedule)

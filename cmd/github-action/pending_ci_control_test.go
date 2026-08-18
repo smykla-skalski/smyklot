@@ -60,6 +60,56 @@ func TestPendingCIControlSerializesCancellationWithRepositoryWork(t *testing.T) 
 	}
 }
 
+func TestPendingCIControlSerializesTargetSettingsWithEveryRepository(t *testing.T) {
+	t.Parallel()
+	coordinator := newPendingCICoordinator()
+	control := newPendingCIControl(&pendingCIControlStoreStub{}, coordinator, func() {})
+	held := make(chan struct{})
+	release := make(chan struct{})
+	ownerDone := make(chan error, 1)
+	go func() {
+		ownerDone <- coordinator.Exclusive(t.Context(), "repository:2", func() error {
+			close(held)
+			<-release
+
+			return nil
+		})
+	}()
+	<-held
+
+	settingsStarted := make(chan struct{})
+	settingsDone := make(chan error, 1)
+	go func() {
+		settingsDone <- control.Exclusive(
+			t.Context(),
+			[]string{"repository:2", "repository:1", "repository:2"},
+			func() error {
+				close(settingsStarted)
+
+				return nil
+			},
+		)
+	}()
+
+	select {
+	case <-settingsStarted:
+		t.Fatal("target settings bypassed repository gate work")
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(release)
+	if err := <-ownerDone; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-settingsDone; err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-settingsStarted:
+	default:
+		t.Fatal("target settings did not start after repository work finished")
+	}
+}
+
 type pendingCIControlStoreStub struct {
 	request  pendingci.Request
 	read     chan struct{}

@@ -58,6 +58,27 @@ type pendingCIReauthorizationEffects interface {
 	) (pendingci.CheckSlot, error)
 }
 
+type pendingCIRetiredCheckStore interface {
+	ClearRetiredCheckSlot(
+		context.Context,
+		pendingci.ClearRetiredCheckSlotRequest,
+	) (pendingci.Request, error)
+}
+
+type pendingCIRetiredCheckEffects interface {
+	GetPendingCICheckSlot(context.Context, int64) (pendingci.CheckSlot, error)
+	PendingCICheckSlotIsCurrent(
+		context.Context,
+		pendingci.Request,
+		pendingci.CheckSlot,
+	) (bool, error)
+	RestoreRetiredPendingCICheck(context.Context, pendingci.CheckSlot) error
+}
+
+type pendingCIGateWakeEffects interface {
+	WakePendingCIGates()
+}
+
 // pendingCIReconciler combines live truth with the pure policy, then applies
 // one optimistic durable transition. GitHub access stays behind narrow ports.
 type pendingCIReconciler struct {
@@ -144,6 +165,13 @@ func (reconciler *pendingCIReconciler) processArmedExclusive(
 	if err != nil {
 		return fmt.Errorf("decide pending CI transition: %w", err)
 	}
+	handled, err := reconciler.reconcileRetiredCheck(ctx, request, decision, observation.ObservedAt)
+	if err != nil {
+		return err
+	}
+	if handled {
+		return nil
+	}
 
 	switch decision.Kind {
 	case pendingci.DecisionReschedule:
@@ -157,6 +185,54 @@ func (reconciler *pendingCIReconciler) processArmedExclusive(
 	default:
 		return fmt.Errorf("unsupported pending CI decision %q", decision.Kind)
 	}
+}
+
+func (reconciler *pendingCIReconciler) reconcileRetiredCheck(
+	ctx context.Context,
+	request pendingci.Request,
+	decision pendingci.Decision,
+	clearedAt time.Time,
+) (bool, error) {
+	if request.RetiredCheckSlotID == nil {
+		return false, nil
+	}
+	effects, ok := reconciler.effects.(pendingCIRetiredCheckEffects)
+	if !ok {
+		return false, errors.New("pending CI retired-check effects are unavailable")
+	}
+	store, ok := reconciler.store.(pendingCIRetiredCheckStore)
+	if !ok {
+		return false, errors.New("pending CI retired-check store is unavailable")
+	}
+	slot, err := effects.GetPendingCICheckSlot(ctx, *request.RetiredCheckSlotID)
+	if err != nil {
+		return false, fmt.Errorf("read retired pending CI check: %w", err)
+	}
+	if slot.RepositoryID != request.RepositoryID || slot.PullRequest != request.PullRequest {
+		return false, errors.New("retired pending CI check does not belong to its request")
+	}
+	if decision.Kind == pendingci.DecisionReauthorize &&
+		decision.CandidateHeadSHA == slot.HeadSHA {
+		return false, nil
+	}
+	current, err := effects.PendingCICheckSlotIsCurrent(ctx, request, slot)
+	if err != nil {
+		return false, fmt.Errorf("read retired pending CI check ownership: %w", err)
+	}
+	if !current {
+		if err := effects.RestoreRetiredPendingCICheck(ctx, slot); err != nil {
+			return false, fmt.Errorf("restore retired pending CI check baseline: %w", err)
+		}
+	}
+	_, err = store.ClearRetiredCheckSlot(ctx, pendingci.ClearRetiredCheckSlotRequest{
+		ID: request.ID, ExpectedRevision: request.Revision,
+		CheckSlotID: slot.ID, ClearedAt: clearedAt,
+	})
+	if err != nil {
+		return false, fmt.Errorf("clear retired pending CI check: %w", err)
+	}
+
+	return true, nil
 }
 
 func (reconciler *pendingCIReconciler) requireReauthorization(
@@ -312,6 +388,20 @@ func (reconciler *pendingCIReconciler) cleanupExclusive(
 	request pendingci.Request,
 ) error {
 	current := request
+	if current.RetiredCheckSlotID != nil {
+		handled, err := reconciler.reconcileRetiredCheck(
+			ctx,
+			current,
+			pendingci.Decision{},
+			current.UpdatedAt,
+		)
+		if err != nil {
+			return reconciler.retryCleanup(ctx, current, err)
+		}
+		if handled {
+			return nil
+		}
+	}
 	if !current.CleanupArtifactsDone {
 		if err := reconciler.effects.CleanupArtifacts(ctx, current, current.Lifecycle); err != nil {
 			return reconciler.retryCleanup(ctx, current, err)
@@ -332,8 +422,14 @@ func (reconciler *pendingCIReconciler) cleanupExclusive(
 		ID: current.ID, ExpectedRevision: current.Revision,
 		CompletedAt: current.UpdatedAt,
 	})
+	if err != nil {
+		return err
+	}
+	if effects, ok := reconciler.effects.(pendingCIGateWakeEffects); ok {
+		effects.WakePendingCIGates()
+	}
 
-	return err
+	return nil
 }
 
 func (reconciler *pendingCIReconciler) retryCleanup(

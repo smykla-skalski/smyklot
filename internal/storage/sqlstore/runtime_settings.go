@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 )
@@ -44,6 +45,9 @@ func (s *Store) UpdateRuntimeSettings(
 		return storage.RuntimeSettings{}, fmt.Errorf("begin runtime settings update: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	if err := lockPendingCIPolicy(ctx, tx, s.dialect); err != nil {
+		return storage.RuntimeSettings{}, err
+	}
 
 	current, err := getRuntimeSettings(ctx, tx)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -55,43 +59,27 @@ func (s *Store) UpdateRuntimeSettings(
 		return storage.RuntimeSettings{}, storage.ErrConflict
 	}
 
-	if current.Revision == 0 {
-		_, err = tx.ExecContext(ctx, `
-INSERT INTO runtime_settings (
-    singleton, bot_config, log_level,
-    poll_interval_seconds, pending_ci_quiet_period_seconds, session_ttl_seconds,
-    revision, updated_at, updated_by_account_id
-) VALUES (1, ?, ?, ?, ?, ?, 1, ?, ?)`,
-			botConfig,
-			change.LogLevel,
-			durationSeconds(change.PollInterval),
-			durationSeconds(change.PendingCIQuietPeriod),
-			durationSeconds(change.SessionTTL),
-			change.ChangedAt,
-			change.ActorAccountID,
-		)
-	} else {
-		_, err = tx.ExecContext(ctx, `
-UPDATE runtime_settings SET
-    bot_config = ?, log_level = ?, poll_interval_seconds = ?,
-    pending_ci_quiet_period_seconds = ?, session_ttl_seconds = ?,
-    revision = revision + 1, updated_at = ?, updated_by_account_id = ?
-WHERE singleton = 1 AND revision = ?`,
-			botConfig,
-			change.LogLevel,
-			durationSeconds(change.PollInterval),
-			durationSeconds(change.PendingCIQuietPeriod),
-			durationSeconds(change.SessionTTL),
-			change.ChangedAt,
-			change.ActorAccountID,
-			change.ExpectedRevision,
-		)
-	}
-	if err != nil {
-		return storage.RuntimeSettings{}, fmt.Errorf("write runtime settings: %w", err)
+	if err := s.writeRuntimeSettings(ctx, tx, current, change, botConfig); err != nil {
+		return storage.RuntimeSettings{}, err
 	}
 	if err := shortenSessions(ctx, tx, change.EffectiveSessionTTL); err != nil {
 		return storage.RuntimeSettings{}, err
+	}
+	if !sameOptionalDuration(current.PendingCIQuietPeriod, change.PendingCIQuietPeriod) {
+		request := pendingci.RetuneQuietPeriodRequest{
+			PassingQuiet:  change.EffectivePendingCIQuietPeriod,
+			ChangedAt:     change.ChangedAt,
+			InheritedOnly: true,
+		}
+		if err := request.Validate(); err != nil {
+			return storage.RuntimeSettings{}, err
+		}
+		if _, err := retuneQuietPeriod(ctx, tx, s.dialect, request); err != nil {
+			return storage.RuntimeSettings{}, fmt.Errorf(
+				"retune runtime pending CI quiet period: %w",
+				err,
+			)
+		}
 	}
 	if _, err := insertAppAudit(ctx, tx, appAuditInsert{
 		Category:       string(storage.AuditCategoryRuntime),
@@ -112,6 +100,64 @@ WHERE singleton = 1 AND revision = ?`,
 	}
 
 	return updated, nil
+}
+
+func (s *Store) writeRuntimeSettings(
+	ctx context.Context,
+	tx runner,
+	current storage.RuntimeSettings,
+	change storage.RuntimeSettingsChange,
+	botConfig *string,
+) error {
+	var result sql.Result
+	var err error
+	if current.Revision == 0 {
+		result, err = tx.ExecContext(ctx, `
+INSERT INTO runtime_settings (
+    singleton, bot_config, log_level,
+    poll_interval_seconds, pending_ci_quiet_period_seconds, session_ttl_seconds,
+    revision, updated_at, updated_by_account_id
+) VALUES (1, ?, ?, ?, ?, ?, 1, ?, ?)`,
+			botConfig,
+			change.LogLevel,
+			durationSeconds(change.PollInterval),
+			durationSeconds(change.PendingCIQuietPeriod),
+			durationSeconds(change.SessionTTL),
+			change.ChangedAt,
+			change.ActorAccountID,
+		)
+	} else {
+		result, err = tx.ExecContext(ctx, `
+UPDATE runtime_settings SET
+    bot_config = ?, log_level = ?, poll_interval_seconds = ?,
+    pending_ci_quiet_period_seconds = ?, session_ttl_seconds = ?,
+    revision = revision + 1, updated_at = ?, updated_by_account_id = ?
+WHERE singleton = 1 AND revision = ?`,
+			botConfig,
+			change.LogLevel,
+			durationSeconds(change.PollInterval),
+			durationSeconds(change.PendingCIQuietPeriod),
+			durationSeconds(change.SessionTTL),
+			change.ChangedAt,
+			change.ActorAccountID,
+			change.ExpectedRevision,
+		)
+	}
+	if err != nil {
+		if s.dialect.UniqueViolation(err) {
+			return storage.ErrConflict
+		}
+		return fmt.Errorf("write runtime settings: %w", err)
+	}
+	return requireOneRow(result)
+}
+
+func sameOptionalDuration(left, right *time.Duration) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+
+	return *left == *right
 }
 
 func validateRuntimeSettingsChange(change storage.RuntimeSettingsChange) (*string, error) {

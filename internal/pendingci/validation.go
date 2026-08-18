@@ -155,6 +155,15 @@ func (request RequireReauthorizationRequest) Validate() error {
 	return nil
 }
 
+func (request ClearRetiredCheckSlotRequest) Validate() error {
+	if request.ID <= 0 || request.ExpectedRevision <= 0 || request.CheckSlotID <= 0 ||
+		request.ClearedAt.IsZero() {
+		return invalid("retired check identity, revision, and time are required")
+	}
+
+	return nil
+}
+
 func (request ReauthorizeRequest) Validate() error {
 	if empty(
 		request.RepositoryID,
@@ -180,6 +189,12 @@ func (request RetuneQuietPeriodRequest) Validate() error {
 	}
 	if request.ChangedAt.IsZero() {
 		return invalid("quiet period change time is required")
+	}
+	if request.RepositoryID != "" && request.TargetID == "" {
+		return invalid("repository quiet-period retune requires a target")
+	}
+	if request.RepositoryID != "" && request.InheritedOnly {
+		return invalid("repository quiet-period retune cannot be inheritance-only")
 	}
 
 	return nil
@@ -352,6 +367,10 @@ func (request RetryCleanupRequest) Validate() error {
 func (filter QueueFilter) Validate() error {
 	if filter.Schedule != nil && !filter.Schedule.valid() {
 		return invalid("unsupported schedule %q", *filter.Schedule)
+	}
+	if filter.ArtifactKind != "" && filter.ArtifactKind != ArtifactLabel &&
+		filter.ArtifactKind != ArtifactCheck {
+		return invalid("unsupported pending CI artifact %q", filter.ArtifactKind)
 	}
 
 	return nil

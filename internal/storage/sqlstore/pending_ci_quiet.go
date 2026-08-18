@@ -13,10 +13,23 @@ type pendingCIQuietDeadline struct {
 	lastProgressAt StoredTime
 }
 
+func lockPendingCIPolicy(ctx context.Context, tx runner, dialect Dialect) error {
+	var singleton int
+	if err := tx.QueryRowContext(
+		ctx,
+		"SELECT singleton FROM pending_ci_policy_lock WHERE singleton = 1"+dialect.RowLock(),
+	).Scan(&singleton); err != nil {
+		return fmt.Errorf("lock pending CI policy: %w", err)
+	}
+
+	return nil
+}
+
 // RetuneQuietPeriod rewrites durable passing deadlines after the runtime
-// quiet period changes. Actively leased rows are left to their worker, which
-// reads the new timing before its optimistic transition; touching them here
-// could invalidate a claim after its external merge has started.
+// quiet period changes. A leased row that has not claimed its merge is safe to
+// invalidate: either its optimistic write wins first and this retune follows,
+// or this revision bump makes that write retry with current policy. A claimed
+// merge is the intentional cutoff because its external effects have begun.
 func (s *Store) RetuneQuietPeriod(
 	ctx context.Context,
 	request pendingci.RetuneQuietPeriodRequest,
@@ -30,17 +43,60 @@ func (s *Store) RetuneQuietPeriod(
 		return 0, fmt.Errorf("begin pending CI quiet-period retune: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	if err := lockPendingCIPolicy(ctx, tx, s.dialect); err != nil {
+		return 0, err
+	}
 
-	rows, err := tx.QueryContext(ctx, `
-SELECT id, revision, last_progress_at
-FROM pending_ci_requests
-WHERE lifecycle = ? AND next_check_trigger = ?
-  AND (lease_expires_at IS NULL OR lease_expires_at <= ?)
-ORDER BY id`,
+	changed, err := retuneQuietPeriod(ctx, tx, s.dialect, request)
+	if err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit pending CI quiet-period retune: %w", err)
+	}
+
+	return changed, nil
+}
+
+func retuneQuietPeriod(
+	ctx context.Context,
+	tx runner,
+	dialect Dialect,
+	request pendingci.RetuneQuietPeriodRequest,
+) (int64, error) {
+	query := `
+SELECT p.id, p.revision, p.last_progress_at
+FROM pending_ci_requests p
+WHERE p.lifecycle = ? AND p.next_check_trigger = ? AND p.merge_phase = ?`
+	arguments := []any{
 		pendingci.LifecycleArmed,
 		pendingci.TriggerQuietPeriod,
-		request.ChangedAt,
-	)
+		pendingci.MergeWaiting,
+	}
+	if request.TargetID != "" {
+		query += " AND p.target_id = ?"
+		arguments = append(arguments, request.TargetID)
+	}
+	if request.RepositoryID != "" {
+		query += " AND p.repository_id = ?"
+		arguments = append(arguments, request.RepositoryID)
+	}
+	if request.InheritedOnly {
+		query += ` AND EXISTS (
+SELECT 1 FROM repositories r`
+		if request.TargetID == "" {
+			query += " JOIN targets t ON t.id = r.target_id"
+		}
+		query += `
+WHERE r.id = p.repository_id AND r.target_id = p.target_id
+  AND r.pending_ci_quiet_period_seconds_override IS NULL`
+		if request.TargetID == "" {
+			query += " AND t.pending_ci_quiet_period_seconds_override IS NULL"
+		}
+		query += ")"
+	}
+	query += " ORDER BY p.id" + dialect.RowLock()
+	rows, err := tx.QueryContext(ctx, query, arguments...)
 	if err != nil {
 		return 0, fmt.Errorf("read pending CI quiet-period deadlines: %w", err)
 	}
@@ -70,14 +126,14 @@ ORDER BY id`,
 UPDATE pending_ci_requests SET
     next_check_at = ?, lease_expires_at = NULL, updated_at = ?, revision = revision + 1
 WHERE id = ? AND lifecycle = ? AND next_check_trigger = ? AND revision = ?
-  AND (lease_expires_at IS NULL OR lease_expires_at <= ?)`,
+	AND merge_phase = ?`,
 			deadline.lastProgressAt.Time().Add(request.PassingQuiet),
 			request.ChangedAt,
 			deadline.id,
 			pendingci.LifecycleArmed,
 			pendingci.TriggerQuietPeriod,
 			deadline.revision,
-			request.ChangedAt,
+			pendingci.MergeWaiting,
 		)
 		if err != nil {
 			return 0, fmt.Errorf("retune pending CI quiet-period deadline: %w", err)
@@ -87,10 +143,6 @@ WHERE id = ? AND lifecycle = ? AND next_check_trigger = ? AND revision = ?
 			return 0, fmt.Errorf("read pending CI quiet-period retune result: %w", err)
 		}
 		changed += affected
-	}
-
-	if err := tx.Commit(); err != nil {
-		return 0, fmt.Errorf("commit pending CI quiet-period retune: %w", err)
 	}
 
 	return changed, nil

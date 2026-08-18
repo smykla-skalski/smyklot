@@ -488,6 +488,8 @@ export interface PendingCIBranchPatterns {
 export interface PendingCIPermissions {
   checks_write: boolean;
   administration_write: boolean;
+  merge_queues_read: boolean;
+  commit_statuses_read: boolean;
 }
 
 export interface PendingCIGate {

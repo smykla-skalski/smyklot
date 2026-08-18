@@ -13,7 +13,12 @@ import (
 
 type pendingCIActivationGuardFunc func(context.Context) (bool, error)
 
-func (guard pendingCIActivationGuardFunc) AllowsActivation(ctx context.Context) (bool, error) {
+func (guard pendingCIActivationGuardFunc) AllowsActivation(
+	ctx context.Context,
+	_ pendingci.ArtifactKind,
+	_ string,
+	_ bool,
+) (bool, error) {
 	return guard(ctx)
 }
 

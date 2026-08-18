@@ -368,7 +368,7 @@ Smyklot can run as a long-running process instead of a per-comment workflow. One
 smyklot serve
 ```
 
-Point the GitHub App's webhook at `https://your-host/webhook` and set the same secret the process reads. Subscribe the App to **Issue comment**, **Check run**, **Check suite**, **Status**, and **Pull request** events. The App needs **Checks** write, **Commit statuses** read, and **Administration** write in addition to its existing command permissions. Checks write lets Smyklot publish the merge authorization; Administration write lets it own the required-status-check ruleset. Existing installations must approve the new permissions before check mode can become ready.
+Point the GitHub App's webhook at `https://your-host/webhook` and set the same secret the process reads. Subscribe the App to **Issue comment**, **Check run**, **Check suite**, **Status**, and **Pull request** events. The App needs **Checks** write, **Commit statuses** read, **Administration** write, and **Merge queues** read in addition to its existing command permissions. Checks write lets Smyklot publish the merge authorization; Administration write lets it own the required-status-check ruleset; Merge queues read lets it fail closed on repositories whose queue commits Smyklot does not support. Existing installations must approve the new permissions before check mode can become ready.
 
 ### Service configuration
 
@@ -417,7 +417,7 @@ Check mode owns one repository ruleset named `Smyklot: merge after CI`. It requi
 
 A head or base change never inherits the old authorization. Smyklot publishes an `action_required` check on the new head with a **Reauthorize** action. A user who still has the command permission can approve the new revision with one click; repeated changes replace the candidate. A quiet period of zero removes the delay but still requires two matching observations.
 
-Readiness is fail-closed and visible on the repository settings page. Missing Checks or Administration write permission, a conflicting required context, two open pull requests sharing one head, or a merge queue prevents new check-mode commands. Saved settings remain in place while Smyklot retries reconciliation. Mode changes drain already-authorized work under its original label or check contract before new commands use the new mode; Smyklot removes only the ruleset whose ID it recorded as its own.
+Readiness is fail-closed and visible on the repository settings page. Missing Checks or Administration write permission, missing Commit statuses or Merge queues read permission, a conflicting required context, two open pull requests sharing one head, or a merge queue prevents new check-mode commands. Saved settings remain in place while Smyklot retries reconciliation. Switching from checks to labels drains authorized check work before Smyklot removes the required ruleset. Switching from labels to checks preserves existing label authorizations while new check commands begin only after baselines and the required ruleset are ready. Smyklot removes only the ruleset whose ID it recorded as its own.
 
 State lives in SQLite or PostgreSQL, chosen by `SMYKLOT_DATABASE_URL`: a `postgres://` or `postgresql://` URL picks PostgreSQL, and a bare path or `sqlite://` URL picks SQLite. Both drivers are pure Go, so the image still builds with `CGO_ENABLED=0`. Nothing above the storage package knows which one is running, and a linter enforces that.
 
@@ -455,7 +455,7 @@ git will put a file wherever a commit names one and say nothing about what it re
 
 A repository refused that way receives none of the organization's files, and the panel says so on its Sync pane: what stopped it, in the words the planner used, and when it last looked. A refusal is asked again every sweep rather than held for the six hours a settled repository is, so a fix clears the notice on the next pass without anybody retrying anything.
 
-Labels need the **Issues** write access the bot already holds. Repository settings and configured organization-sync rulesets need **Administration** write, and files need **Contents** write. Merge-after-CI check mode separately needs **Checks** write and **Administration** write for its owned required-context ruleset. An installation that has not approved a permission is not an error: that operation stands down, says which permission it wants, and unrelated work carries on.
+Labels need the **Issues** write access the bot already holds. Repository settings and configured organization-sync rulesets need **Administration** write, and files need **Contents** write. Merge-after-CI check mode separately needs **Checks** write and **Administration** write for its owned required-context ruleset, **Commit statuses** read to observe legacy contexts, and **Merge queues** read to refuse unsupported queue-backed branches. An installation that has not approved a permission is not an error: that operation stands down, says which permission it wants, and unrelated work carries on.
 
 Files under `.github/workflows/` need **Workflows** write on top of Contents. GitHub keeps them behind a permission of their own and enforces it where the branch moves, so a configuration naming one is checked before anything is planned rather than after somebody has approved it - and a retired workflow counts, since removing one is writing the tree that no longer holds it.
 

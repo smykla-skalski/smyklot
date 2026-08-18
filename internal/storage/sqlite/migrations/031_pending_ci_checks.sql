@@ -64,6 +64,14 @@ CHECK (
     pending_ci_quiet_period_seconds_override BETWEEN 0 AND 86400
 );
 
+-- PostgreSQL uses this row as a policy mutex. SQLite already serializes
+-- writers, but keeps the same schema and transaction path.
+CREATE TABLE pending_ci_policy_lock (
+    singleton INTEGER PRIMARY KEY CHECK (singleton = 1)
+);
+
+INSERT INTO pending_ci_policy_lock (singleton) VALUES (1);
+
 -- The external ruleset transition is durable and independent from repository
 -- settings. A saved desire can therefore survive missing GitHub permissions.
 CREATE TABLE pending_ci_repository_gates (
@@ -164,6 +172,7 @@ CREATE TABLE pending_ci_requests_v2 (
         CHECK (artifact_kind IN ('label', 'check')),
     label TEXT,
     check_slot_id INTEGER REFERENCES pending_ci_check_slots(id) ON DELETE SET NULL,
+    retired_check_slot_id INTEGER REFERENCES pending_ci_check_slots(id) ON DELETE SET NULL,
     authorization_state TEXT NOT NULL DEFAULT 'authorized'
         CHECK (authorization_state IN ('authorized', 'reauthorization_required')),
     gate_state TEXT NOT NULL DEFAULT 'ready'

@@ -9,9 +9,13 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/storage/sqlite"
 )
 
-// bookkeeping names the one table a copy must not carry. It describes how a
-// database was built, and the destination wrote its own while migrating.
-const bookkeeping = "schema_migrations"
+// schemaManaged names tables a copy must not carry. The destination creates
+// these singleton rows while migrating, so copying them would collide rather
+// than preserve service state.
+var schemaManaged = map[string]bool{
+	"pending_ci_policy_lock": true,
+	"schema_migrations":      true,
+}
 
 // TestTableListCoversSchema fails when the schema holds a table the copier does
 // not know about.
@@ -32,7 +36,7 @@ func TestTableListCoversSchema(t *testing.T) {
 
 	var missing []string
 	for _, name := range inSchema {
-		if name == bookkeeping {
+		if schemaManaged[name] {
 			if listed[name] {
 				t.Errorf("%q must not be copied: the destination wrote its own", name)
 			}

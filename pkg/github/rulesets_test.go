@@ -171,6 +171,19 @@ var _ = Describe("Repository rulesets [Unit]", func() {
 	})
 
 	Describe("reading one whole", func() {
+		It("reads inherited rulesets with parents included", func() {
+			server = record(func(w http.ResponseWriter, r *http.Request) {
+				Expect(r.URL.Query().Get("includes_parents")).To(Equal("true"))
+				_, _ = io.WriteString(w,
+					`{"id":7,"name":"org-wide","target":"branch","enforcement":"active","rules":[]}`)
+			})
+
+			ruleset, err := client().GetRepositoryRulesetIncludingParents(
+				context.Background(), "acme", "web", 7)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ruleset.Name).To(Equal("org-wide"))
+		})
+
 		// The listing carries identity and nothing else. Comparing
 		// configuration against a summary would find every rule absent and
 		// answer that every repository needs changing, for ever
@@ -367,6 +380,21 @@ var _ = Describe("Repository rulesets [Unit]", func() {
 	})
 
 	Describe("creating", func() {
+		It("does not retry an ambiguous create", func() {
+			server = record(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = io.WriteString(w, `{"message":"response lost after create"}`)
+			})
+
+			_, err := client().CreateRepositoryRulesetWithID(
+				context.Background(), "acme", "web", github.RepositoryRuleset{
+					Name: "Smyklot merge after CI", Target: "branch", Enforcement: "active",
+				},
+			)
+			Expect(err).To(HaveOccurred())
+			Expect(requests).To(HaveLen(1))
+		})
+
 		It("sends the whole ruleset in the shape GitHub takes", func() {
 			server = record(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusCreated)

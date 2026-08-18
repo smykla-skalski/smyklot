@@ -393,13 +393,15 @@ func installationPermissions(granted *gogithub.InstallationPermissions) map[stri
 		"checks":         granted.GetChecks(),
 		"contents":       granted.GetContents(),
 		"issues":         granted.GetIssues(),
+		"merge_queues":   granted.GetMergeQueues(),
 		"pull_requests":  granted.GetPullRequests(),
+		"statuses":       granted.GetStatuses(),
 
 		// Contents is not enough for one directory. GitHub keeps workflow files
 		// behind this and refuses the push that writes one without it, so an
 		// installation that granted it and had it dropped here would be told
 		// for ever that it had not.
-		"workflows": granted.GetWorkflows(),
+		rulesetWorkflows: granted.GetWorkflows(),
 	} {
 		if level != "" {
 			permissions[name] = level
@@ -740,36 +742,29 @@ func (c *Client) IsTeamMember(ctx context.Context, org, teamSlug, username strin
 	return state == "active", nil
 }
 
-// IsMergeQueueEnabled checks if merge queue is enabled for a branch
+// IsMergeQueueEnabled checks GitHub's branch-specific merge queue rather than
+// inferring one from unrelated branch-protection fields. Merge queues are a
+// GraphQL repository property and are absent when the branch has no queue.
 func (c *Client) IsMergeQueueEnabled(ctx context.Context, owner, repo, branch string) (bool, error) {
-	path := fmt.Sprintf("/repos/%s/%s/branches/%s/protection", owner, repo, branch)
-
-	protection, err := doJSON[map[string]interface{}](ctx, c, http.MethodGet, path, nil)
-	if err != nil {
-		// 404 means branch protection not enabled
-		var apiErr *APIError
-		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
-			return false, nil
+	const query = `query($owner: String!, $repo: String!, $branch: String!) {
+		repository(owner: $owner, name: $repo) {
+			mergeQueue(branch: $branch) { id }
 		}
-
+	}`
+	var response struct {
+		Repository struct {
+			MergeQueue *struct {
+				ID string `json:"id"`
+			} `json:"mergeQueue"`
+		} `json:"repository"`
+	}
+	if err := c.graphql(ctx, query, map[string]any{
+		"owner": owner, "repo": repo, "branch": branch,
+	}, &response); err != nil {
 		return false, err
 	}
 
-	// Check if merge queue is enabled
-	if mergeQueue, ok := protection["required_pull_request_reviews"].(map[string]interface{}); ok {
-		if enabled, ok := mergeQueue["require_last_push_approval"].(bool); ok && enabled {
-			return true, nil
-		}
-	}
-
-	// Also check for the merge_queue field directly
-	if mergeQueue, ok := protection["merge_queue"].(map[string]interface{}); ok {
-		if enabled, ok := mergeQueue["enabled"].(bool); ok {
-			return enabled, nil
-		}
-	}
-
-	return false, nil
+	return response.Repository.MergeQueue != nil, nil
 }
 
 // GetPRHeadRef retrieves the head commit SHA of a pull request

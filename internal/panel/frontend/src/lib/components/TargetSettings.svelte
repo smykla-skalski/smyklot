@@ -47,7 +47,9 @@
   const overrides = $derived(countOverrides(target.config_patch));
   const pendingCIPermissionsReady = $derived(
     target.pending_ci_permissions.checks_write &&
-      target.pending_ci_permissions.administration_write,
+      target.pending_ci_permissions.administration_write &&
+      target.pending_ci_permissions.merge_queues_read &&
+      target.pending_ci_permissions.commit_statuses_read,
   );
 
   $effect(() => {
@@ -211,8 +213,9 @@
       </div>
       {#if pendingCIMode === 'checks' && !pendingCIPermissionsReady}
         <p class="permission-note" role="status">
-          Grant Checks write and Administration write to activate checks mode. The setting can be
-          saved now; repositories remain blocked until GitHub approves both permissions.
+          Grant Checks write, Commit statuses read, Administration write, and Merge queues read to
+          activate checks mode. The setting can be saved now; repositories remain blocked until
+          GitHub approves all four permissions.
         </p>
       {/if}
       <div class="pending-ci-grid">

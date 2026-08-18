@@ -1011,16 +1011,24 @@ func executePendingCIMerge(
 			), nil
 		}
 	}
-	// The Action has no durable reconciler, so it delegates the wait to GitHub
-	// labels. The service records the request and enforces its own policy.
-	requiredChecks, err := pendingCIRequiredChecks(
-		ctx, client, rc.RepoOwner, rc.RepoName, info.BaseBranch, requiredChecksOnly,
-	)
-	if err != nil {
-		return feedback.NewMergeFailed(err.Error()), nil
+	mode := storage.PendingCIModeLabels
+	if environment.pendingCI != nil && environment.pendingCIMode != nil {
+		resolvedMode, modeErr := environment.pendingCIMode.PendingCIMode(ctx, info.BaseBranch)
+		if modeErr != nil {
+			return feedback.NewMergeFailed(modeErr.Error()), nil
+		}
+		mode = resolvedMode
 	}
-
 	if environment.pendingCI == nil {
+		// The Action has no durable reconciler, so it delegates the wait to
+		// GitHub labels. The service resolves App-bound requirements in its
+		// activation guard, where it can exclude only Smyklot's own check.
+		requiredChecks, err := pendingCIRequiredChecks(
+			ctx, client, rc.RepoOwner, rc.RepoName, info.BaseBranch, requiredChecksOnly,
+		)
+		if err != nil {
+			return feedback.NewMergeFailed(err.Error()), nil
+		}
 		checkStatus, err := client.GetCheckStatus(
 			ctx, rc.RepoOwner, rc.RepoName, headRef, requiredChecks,
 		)
@@ -1068,14 +1076,6 @@ func executePendingCIMerge(
 			return feedback.NewMergeFailed("failed to record the pending CI request: " + err.Error()), nil
 		}
 	} else {
-		mode := storage.PendingCIModeLabels
-		if environment.pendingCIMode != nil {
-			resolvedMode, modeErr := environment.pendingCIMode.PendingCIMode(ctx)
-			if modeErr != nil {
-				return feedback.NewMergeFailed(modeErr.Error()), nil
-			}
-			mode = resolvedMode
-		}
 		artifactKind := pendingci.ArtifactLabel
 		if mode == storage.PendingCIModeChecks {
 			artifactKind = pendingci.ArtifactCheck

@@ -74,7 +74,8 @@ func TestPendingCISchedulerRetunesBeforeLeasing(t *testing.T) {
 
 	select {
 	case request := <-store.retuned:
-		if request.PassingQuiet != 45*time.Second || request.ChangedAt != now {
+		if request.PassingQuiet != 45*time.Second || request.ChangedAt != now ||
+			!request.InheritedOnly {
 			t.Fatalf("retune request = %#v", request)
 		}
 	case <-time.After(time.Second):

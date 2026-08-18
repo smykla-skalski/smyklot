@@ -92,6 +92,46 @@ var _ = Describe("pending CI webhook notifications [Unit]", func() {
 		}))
 	})
 
+	It("distinguishes check run and suite rerequests for durable repair", func() {
+		checkRun := []byte(`{
+"action": "rerequested",
+"check_run": {
+  "id": 701,
+  "name": "Smyklot / merge after CI",
+  "external_id": "smyklot:merge-after-ci:9001:head",
+  "head_sha": "head",
+  "app": {"id": 17},
+  "pull_requests": [{"number": 198}]
+},` + pendingCICommon + `}`)
+		runNotification, err := webhook.ParsePendingCINotification(
+			webhook.EventCheckRun, checkRun,
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(runNotification.Signals).To(ConsistOf(webhook.PendingCISignal{
+			Kind: webhook.SignalRerequestCheck, PullRequest: 198,
+			HeadSHA: "head", MatchHead: true, EventKey: runNotification.Key,
+			CheckRunID: 701, CheckName: "Smyklot / merge after CI",
+			ExternalID: "smyklot:merge-after-ci:9001:head", AppID: 17,
+		}))
+
+		checkSuite := []byte(`{
+"action": "rerequested",
+"check_suite": {
+  "id": 801,
+  "head_sha": "head",
+  "app": {"id": 17},
+  "pull_requests": []
+},` + pendingCICommon + `}`)
+		suiteNotification, err := webhook.ParsePendingCINotification(
+			webhook.EventCheckSuite, checkSuite,
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(suiteNotification.Signals).To(ConsistOf(webhook.PendingCISignal{
+			Kind: webhook.SignalRerequestCheck, HeadSHA: "head",
+			EventKey: suiteNotification.Key, CheckRunID: 801, AppID: 17,
+		}))
+	})
+
 	It("maps legacy commit statuses by head SHA", func() {
 		body := []byte(`{
 "sha": "legacy-head",
@@ -125,6 +165,12 @@ var _ = Describe("pending CI webhook notifications [Unit]", func() {
 		)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(synchronized.Signals[0].Kind).To(Equal(webhook.SignalWakePullRequest))
+		opened, err := webhook.ParsePendingCINotification(
+			webhook.EventPullRequest,
+			payload("opened", "", false),
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(opened.Signals[0].Kind).To(Equal(webhook.SignalWakePullRequest))
 
 		closed, err := webhook.ParsePendingCINotification(
 			webhook.EventPullRequest,

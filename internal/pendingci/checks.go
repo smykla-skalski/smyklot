@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 var ErrSharedHead = errors.New("multiple pull requests share a pending CI head")
+
+const checkStatusCompleted = "completed"
 
 type CheckSlotState string
 
@@ -83,15 +86,22 @@ func (request EnsureCheckSlotRequest) Validate() error {
 		return invalid("check slot identity and desired output are required")
 	}
 	if request.DesiredStatus != "queued" && request.DesiredStatus != "in_progress" &&
-		request.DesiredStatus != "completed" {
+		request.DesiredStatus != checkStatusCompleted {
 		return invalid("unsupported check status %q", request.DesiredStatus)
 	}
-	if (request.DesiredStatus == "completed") != (request.DesiredConclusion != "") {
+	if (request.DesiredStatus == checkStatusCompleted) != (request.DesiredConclusion != "") {
 		return invalid("only completed checks require a conclusion")
 	}
 	for _, action := range request.DesiredActions {
-		if strings.TrimSpace(action.Label) == "" || strings.TrimSpace(action.Identifier) == "" {
-			return invalid("check actions require a label and identifier")
+		if strings.TrimSpace(action.Label) == "" ||
+			strings.TrimSpace(action.Description) == "" ||
+			strings.TrimSpace(action.Identifier) == "" {
+			return invalid("check actions require a label, description, and identifier")
+		}
+		if utf8.RuneCountInString(action.Label) > 20 ||
+			utf8.RuneCountInString(action.Description) > 40 ||
+			utf8.RuneCountInString(action.Identifier) > 20 {
+			return invalid("check action exceeds GitHub field limits")
 		}
 	}
 	if request.ChangedAt.IsZero() {
@@ -155,6 +165,36 @@ type RenewCheckSlotRequest struct {
 	RenewedAt        time.Time
 }
 
+type ReassignCheckSlotRequest struct {
+	ID               int64
+	ExpectedRevision int64
+	PullRequest      int
+	ReassignedAt     time.Time
+}
+
+type RefreshCheckSlotRequest struct {
+	ID               int64
+	ExpectedRevision int64
+	RefreshedAt      time.Time
+}
+
+func (request RefreshCheckSlotRequest) Validate() error {
+	return validateCheckTransition(request.ID, request.ExpectedRevision, request.RefreshedAt)
+}
+
+func (request ReassignCheckSlotRequest) Validate() error {
+	if err := validateCheckTransition(
+		request.ID, request.ExpectedRevision, request.ReassignedAt,
+	); err != nil {
+		return err
+	}
+	if request.PullRequest <= 0 {
+		return invalid("reassigned check pull request must be positive")
+	}
+
+	return nil
+}
+
 func (request RenewCheckSlotRequest) Validate() error {
 	if err := validateCheckTransition(request.ID, request.ExpectedRevision, request.RenewedAt); err != nil {
 		return err
@@ -194,4 +234,6 @@ type CheckStore interface {
 	ApplyCheckSlot(context.Context, ApplyCheckSlotRequest) (CheckSlot, error)
 	RetryCheckSlot(context.Context, RetryCheckSlotRequest) (CheckSlot, error)
 	RenewCheckSlot(context.Context, RenewCheckSlotRequest) (CheckSlot, error)
+	ReassignCheckSlot(context.Context, ReassignCheckSlotRequest) (CheckSlot, error)
+	RefreshCheckSlot(context.Context, RefreshCheckSlotRequest) (CheckSlot, error)
 }

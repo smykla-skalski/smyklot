@@ -46,7 +46,7 @@ func (validator githubPendingCISourceValidator) CancellationReason(
 
 		return "", fmt.Errorf("read pending CI source comment: %w", err)
 	}
-	botConfig, err := validator.server.serviceConfig(
+	botConfig, err := validator.server.serviceConfigWithoutCatalogRefresh(
 		ctx, client, request.TargetID, request.RepositoryID, owner, repository,
 	)
 	if err != nil {

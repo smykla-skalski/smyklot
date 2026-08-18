@@ -70,6 +70,7 @@ func (s *server) initPanel() error {
 		Assets:                   assets,
 	}, adminpanel.Dependencies{
 		Store: s.store, Catalog: s, Users: s, Runtime: s, Candidates: s,
+		Gates: s,
 		PendingCI: newPendingCIControl(
 			s.store, s.pendingCICoordinator, s.pendingCI.Wake,
 		),
@@ -298,11 +299,94 @@ func (s *server) syncCatalog(ctx context.Context) ([]string, error) {
 		snapshots = append(snapshots, snapshot)
 		targetIDs = append(targetIDs, snapshot.TargetID)
 	}
-	if err := s.store.ReconcileCatalog(ctx, snapshots); err != nil {
+	if err := s.reconcileCatalogSnapshots(ctx, snapshots); err != nil {
 		return nil, fmt.Errorf("persist GitHub installation catalog: %w", err)
 	}
 
 	return targetIDs, nil
+}
+
+func (s *server) reconcileCatalogSnapshots(
+	ctx context.Context,
+	snapshots []storage.InstallationSnapshot,
+) error {
+	err := s.pendingCICoordinator.Exclusive(
+		ctx, pendingCICatalogCoordinatorKey, func() error {
+			repositoryIDs, idsErr := s.catalogRepositoryIDs(ctx, snapshots)
+			if idsErr != nil {
+				return idsErr
+			}
+
+			return exclusivePendingCIRepositories(
+				ctx, s.pendingCICoordinator, repositoryIDs,
+				func() error { return s.store.ReconcileCatalog(ctx, snapshots) },
+			)
+		},
+	)
+	if err == nil && s.pendingCI != nil {
+		s.pendingCI.Wake()
+	}
+
+	return err
+}
+
+func (s *server) reconcileInstallationSnapshot(
+	ctx context.Context,
+	snapshot storage.InstallationSnapshot,
+) error {
+	return s.pendingCICoordinator.Exclusive(
+		ctx, pendingCICatalogCoordinatorKey, func() error {
+			repositoryIDs := snapshotRepositoryIDs([]storage.InstallationSnapshot{snapshot})
+			current, err := s.store.ListRepositories(ctx, snapshot.TargetID)
+			if err != nil {
+				return fmt.Errorf(
+					"list repositories for coordinated installation catalog: %w",
+					err,
+				)
+			}
+			for _, repository := range current {
+				repositoryIDs = append(repositoryIDs, repository.ID)
+			}
+
+			return exclusivePendingCIRepositories(
+				ctx, s.pendingCICoordinator, repositoryIDs,
+				func() error { return s.store.ReconcileInstallation(ctx, snapshot) },
+			)
+		},
+	)
+}
+
+func (s *server) catalogRepositoryIDs(
+	ctx context.Context,
+	snapshots []storage.InstallationSnapshot,
+) ([]string, error) {
+	targets, err := s.store.ListRootTargets(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list targets for coordinated catalog: %w", err)
+	}
+	repositoryIDs := snapshotRepositoryIDs(snapshots)
+	for _, target := range targets {
+		repositories, listErr := s.store.ListRepositories(ctx, target.ID)
+		if listErr != nil {
+			return nil, fmt.Errorf("list repositories for coordinated catalog: %w", listErr)
+		}
+		for _, repository := range repositories {
+			repositoryIDs = append(repositoryIDs, repository.ID)
+		}
+	}
+
+	return repositoryIDs, nil
+}
+
+func snapshotRepositoryIDs(snapshots []storage.InstallationSnapshot) []string {
+	var repositoryIDs []string
+	for _, snapshot := range snapshots {
+		for _, repository := range snapshot.Repositories {
+			repositoryIDs = append(repositoryIDs, repository.ID)
+		}
+	}
+
+	return repositoryIDs
 }
 
 func (s *server) loadInstallationSnapshot(

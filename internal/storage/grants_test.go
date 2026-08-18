@@ -53,3 +53,19 @@ func TestGrantsAgreeWithTheInstallationTheyWereReadFrom(t *testing.T) {
 		t.Error("permissions nobody could read were taken as granting something")
 	}
 }
+
+func TestTargetReadCapabilityAcceptsEveryGrantedLevel(t *testing.T) {
+	t.Parallel()
+	for _, level := range []string{"read", "write", "admin"} {
+		target := storage.Target{Permissions: map[string]string{"merge_queues": level}}
+		if !target.CanRead("merge_queues") {
+			t.Errorf("level %q did not grant read capability", level)
+		}
+	}
+	for _, level := range []string{"", "none"} {
+		target := storage.Target{Permissions: map[string]string{"merge_queues": level}}
+		if target.CanRead("merge_queues") {
+			t.Errorf("level %q granted read capability", level)
+		}
+	}
+}

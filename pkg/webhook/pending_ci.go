@@ -13,6 +13,7 @@ const (
 	SignalPullRequestDone SignalKind = "pull_request_done"
 	SignalLabelRemoved    SignalKind = "label_removed"
 	SignalReauthorize     SignalKind = "reauthorize"
+	SignalRerequestCheck  SignalKind = "rerequest_check"
 )
 
 type Metadata struct {
@@ -246,19 +247,41 @@ func checkNotification(
 		subject.UpdatedAt,
 	)
 	signals := make([]PendingCISignal, 0, max(1, len(subject.PullRequests)))
+	kind := SignalWakePullRequest
+	if action == "rerequested" {
+		if subject.App.ID <= 0 {
+			return nil, fmt.Errorf("%s rerequest is missing App identity", event)
+		}
+		kind = SignalRerequestCheck
+	}
 	for _, pullRequest := range subject.PullRequests {
 		if pullRequest.Number <= 0 {
 			continue
 		}
-		signals = append(signals, PendingCISignal{
-			Kind: SignalWakePullRequest, PullRequest: pullRequest.Number,
+		signal := PendingCISignal{
+			Kind: kind, PullRequest: pullRequest.Number,
 			HeadSHA: subject.HeadSHA, MatchHead: true, EventKey: key,
-		})
+		}
+		if kind == SignalRerequestCheck {
+			signal.CheckRunID = subject.ID
+			signal.CheckName = subject.Name
+			signal.ExternalID = subject.ExternalID
+			signal.AppID = subject.App.ID
+		}
+		signals = append(signals, signal)
 	}
 	if len(signals) == 0 {
-		signals = append(signals, PendingCISignal{
-			Kind: SignalWakeHead, HeadSHA: subject.HeadSHA, EventKey: key,
-		})
+		if kind == SignalRerequestCheck {
+			signals = append(signals, PendingCISignal{
+				Kind: kind, HeadSHA: subject.HeadSHA, EventKey: key,
+				CheckRunID: subject.ID, CheckName: subject.Name,
+				ExternalID: subject.ExternalID, AppID: subject.App.ID,
+			})
+		} else {
+			signals = append(signals, PendingCISignal{
+				Kind: SignalWakeHead, HeadSHA: subject.HeadSHA, EventKey: key,
+			})
+		}
 	}
 
 	return &PendingCINotification{
@@ -343,7 +366,7 @@ func parsePullRequest(
 	case "unlabeled":
 		signal.Kind = SignalLabelRemoved
 		signal.Label = payload.Label.Name
-	case "synchronize", "reopened", "ready_for_review", "converted_to_draft", "edited", "labeled",
+	case "opened", "synchronize", "reopened", "ready_for_review", "converted_to_draft", "edited", "labeled",
 		"unlocked", "enqueued", "dequeued":
 	default:
 		return &PendingCINotification{

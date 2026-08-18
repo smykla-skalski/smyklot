@@ -94,6 +94,8 @@ type targetResponse struct {
 type pendingCIPermissionsResponse struct {
 	ChecksWrite         bool `json:"checks_write"`
 	AdministrationWrite bool `json:"administration_write"`
+	MergeQueuesRead     bool `json:"merge_queues_read"`
+	CommitStatusesRead  bool `json:"commit_statuses_read"`
 }
 
 type pendingCIGateResponse struct {
@@ -272,6 +274,8 @@ func targetDTO(
 		PendingCIPermissions: pendingCIPermissionsResponse{
 			ChecksWrite:         target.Grants("checks"),
 			AdministrationWrite: target.Grants("administration"),
+			MergeQueuesRead:     target.CanRead("merge_queues"),
+			CommitStatusesRead:  target.CanRead("statuses"),
 		},
 		ConfigPatch:      target.ConfigPatch,
 		InheritedConfig:  inherited.Values,

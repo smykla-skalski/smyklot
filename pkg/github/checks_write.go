@@ -49,7 +49,7 @@ func (c *Client) CreateCheckRun(
 ) (CheckRun, error) {
 	path := fmt.Sprintf("/repos/%s/%s/check-runs", owner, repo)
 	raw, err := doJSON[checkRunWriteResponse](
-		ctx,
+		withoutRetry(ctx),
 		c,
 		http.MethodPost,
 		path,

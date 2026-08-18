@@ -135,6 +135,7 @@ func (s *Server) postRootInstallationSync(w http.ResponseWriter, r *http.Request
 		s.writeInternal(w, err)
 		return
 	}
+	s.wakePendingCIGates()
 	writeJSON(w, http.StatusOK, map[string]any{"target_ids": targetIDs})
 }
 
@@ -174,13 +175,15 @@ func (s *Server) putTargetSettings(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, "invalid_pending_ci_settings", err.Error())
 		return
 	}
-	updated, err := s.store.UpdateTargetSettings(r.Context(), storage.TargetSettingsChange{
+	updated, err := s.updateTargetSettings(r.Context(), storage.TargetSettingsChange{
 		TargetID:                       r.PathValue("target"),
 		ActorAccountID:                 account.ID,
 		RepositoryDefaultEnabled:       *input.RepositoryDefaultEnabled,
 		PendingCIModeDefault:           mode,
 		PendingCIBranchPatternsDefault: patterns,
 		PendingCIQuietPeriodOverride:   quiet,
+		RetunePendingCIQuietPeriod:     input.PendingCIQuietPeriodSeconds.Present,
+		DeploymentPendingCIQuietPeriod: s.cfg.PendingCIQuietPeriod,
 		ConfigPatch:                    *input.ConfigPatch,
 		ExpectedRevision:               *input.ExpectedRevision,
 		ChangedAt:                      s.now().UTC(),
@@ -189,6 +192,8 @@ func (s *Server) putTargetSettings(w http.ResponseWriter, r *http.Request) {
 		s.writeStorageError(w, err)
 		return
 	}
+	s.pendingCI.Wake()
+	s.wakePendingCIGates()
 	s.Announce(updated.ID, "")
 	writeJSON(w, http.StatusOK, targetDTO(s.processConfig(), updated, access))
 }
@@ -265,7 +270,7 @@ func (s *Server) putRepositorySettings(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, "invalid_pending_ci_settings", err.Error())
 		return
 	}
-	updated, err := s.store.UpdateRepositorySettings(r.Context(), storage.RepositorySettingsChange{
+	updated, err := s.updateRepositorySettings(r.Context(), storage.RepositorySettingsChange{
 		TargetID:                        target.ID,
 		RepositoryID:                    r.PathValue("repository"),
 		ActorAccountID:                  account.ID,
@@ -273,6 +278,8 @@ func (s *Server) putRepositorySettings(w http.ResponseWriter, r *http.Request) {
 		PendingCIModeOverride:           mode,
 		PendingCIBranchPatternsOverride: patterns,
 		PendingCIQuietPeriodOverride:    quiet,
+		RetunePendingCIQuietPeriod:      input.PendingCIQuietPeriodSeconds.Present,
+		DeploymentPendingCIQuietPeriod:  s.cfg.PendingCIQuietPeriod,
 		ConfigPatch:                     *input.ConfigPatch,
 		IgnoreRepositoryFile:            *input.IgnoreRepositoryFile,
 		ExpectedRevision:                *input.ExpectedRevision,
@@ -282,6 +289,8 @@ func (s *Server) putRepositorySettings(w http.ResponseWriter, r *http.Request) {
 		s.writeStorageError(w, err)
 		return
 	}
+	s.pendingCI.Wake()
+	s.wakePendingCIGates()
 	if !s.attachPendingCIGate(w, r, &updated) {
 		return
 	}

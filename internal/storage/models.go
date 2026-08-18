@@ -427,6 +427,18 @@ func (t Target) Grants(permission string) bool {
 	}
 }
 
+// CanRead reports whether the installation may inspect a GitHub capability.
+// Keep it separate from Grants: callers of Grants are about to write, while a
+// read grant is sufficient for policy discovery such as merge-queue presence.
+func (t Target) CanRead(permission string) bool {
+	switch t.Permissions[permission] {
+	case "read", "write", "admin":
+		return true
+	default:
+		return false
+	}
+}
+
 // RepositoryFileStatus is the most recently observed state of the repository
 // configuration file.
 type RepositoryFileStatus string
@@ -565,6 +577,8 @@ type TargetSettingsChange struct {
 	PendingCIModeDefault           PendingCIMode
 	PendingCIBranchPatternsDefault PendingCIBranchPatterns
 	PendingCIQuietPeriodOverride   *time.Duration
+	RetunePendingCIQuietPeriod     bool
+	DeploymentPendingCIQuietPeriod time.Duration
 	ConfigPatch                    config.Patch
 	ExpectedRevision               int64
 	ChangedAt                      time.Time
@@ -582,6 +596,8 @@ type RepositorySettingsChange struct {
 	PendingCIModeOverride           *PendingCIMode
 	PendingCIBranchPatternsOverride *PendingCIBranchPatterns
 	PendingCIQuietPeriodOverride    *time.Duration
+	RetunePendingCIQuietPeriod      bool
+	DeploymentPendingCIQuietPeriod  time.Duration
 	ConfigPatch                     config.Patch
 	IgnoreRepositoryFile            bool
 	ExpectedRevision                int64

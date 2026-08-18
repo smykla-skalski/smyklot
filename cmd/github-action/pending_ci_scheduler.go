@@ -62,8 +62,7 @@ func (scheduler *pendingCIScheduler) RetunePassingQuiet(value time.Duration) {
 	scheduler.retuneMu.Lock()
 	scheduler.retuneGen++
 	scheduler.retune = &pendingci.RetuneQuietPeriodRequest{
-		PassingQuiet: value,
-		ChangedAt:    scheduler.now(),
+		PassingQuiet: value, ChangedAt: scheduler.now(), InheritedOnly: true,
 	}
 	scheduler.retuneMu.Unlock()
 	scheduler.Wake()

@@ -47,6 +47,25 @@ func (control *pendingCIControl) Cancel(
 	})
 }
 
+func (control *pendingCIControl) Wake() {
+	control.wake()
+}
+
+func (control *pendingCIControl) Exclusive(
+	ctx context.Context,
+	repositoryIDs []string,
+	operation func() error,
+) error {
+	return exclusivePendingCIRepositories(ctx, control.coordinator, repositoryIDs, operation)
+}
+
+func (control *pendingCIControl) ExclusiveCatalog(
+	ctx context.Context,
+	operation func() error,
+) error {
+	return control.coordinator.Exclusive(ctx, pendingCICatalogCoordinatorKey, operation)
+}
+
 func (control *pendingCIControl) change(
 	ctx context.Context,
 	id int64,

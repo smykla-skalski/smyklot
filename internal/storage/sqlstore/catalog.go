@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -160,8 +161,14 @@ func reconcileInstallation(
 	); err != nil {
 		return fmt.Errorf("mark installation repositories unavailable: %w", err)
 	}
+	installationID, err := strconv.ParseInt(snapshot.InstallationID, 10, 64)
+	if err != nil || installationID <= 0 {
+		return fmt.Errorf("parse installation ID %q", snapshot.InstallationID)
+	}
 	for _, repository := range snapshot.Repositories {
-		if err := upsertRepository(ctx, tx, snapshot.TargetID, repository, snapshot.SyncedAt); err != nil {
+		if err := upsertRepository(
+			ctx, tx, snapshot.TargetID, installationID, repository, snapshot.SyncedAt,
+		); err != nil {
 			return err
 		}
 	}
@@ -641,6 +648,7 @@ func upsertRepository(
 	ctx context.Context,
 	tx runner,
 	targetID string,
+	installationID int64,
 	repository storage.RepositorySnapshot,
 	syncedAt time.Time,
 ) error {
@@ -671,6 +679,45 @@ ON CONFLICT(id) DO UPDATE SET
 	)
 	if err != nil {
 		return fmt.Errorf("upsert installation repository: %w", err)
+	}
+	return refreshPendingCIOwnership(
+		ctx, tx, targetID, installationID, repository, syncedAt,
+	)
+}
+
+func refreshPendingCIOwnership(
+	ctx context.Context,
+	tx runner,
+	targetID string,
+	installationID int64,
+	repository storage.RepositorySnapshot,
+	syncedAt time.Time,
+) error {
+	_, err := tx.ExecContext(ctx, `
+UPDATE pending_ci_requests SET
+    target_id = ?, installation_id = ?, repository_full_name = ?,
+    next_check_at = ?, lease_expires_at = NULL, next_check_trigger = 'fallback',
+    updated_at = ?, revision = revision + 1
+WHERE repository_id = ? AND (lifecycle = 'armed' OR cleanup_pending = TRUE)
+  AND (target_id <> ? OR installation_id <> ? OR repository_full_name <> ?)`,
+		targetID, installationID, repository.FullName,
+		syncedAt, syncedAt, repository.ID,
+		targetID, installationID, repository.FullName,
+	)
+	if err != nil {
+		return fmt.Errorf("refresh pending CI request ownership: %w", err)
+	}
+	_, err = tx.ExecContext(ctx, `
+UPDATE pending_ci_check_slots SET
+    target_id = ?, installation_id = ?, repository_full_name = ?,
+    updated_at = ?, revision = revision + 1
+WHERE repository_id = ?
+  AND (target_id <> ? OR installation_id <> ? OR repository_full_name <> ?)`,
+		targetID, installationID, repository.FullName, syncedAt, repository.ID,
+		targetID, installationID, repository.FullName,
+	)
+	if err != nil {
+		return fmt.Errorf("refresh pending CI check ownership: %w", err)
 	}
 
 	return nil

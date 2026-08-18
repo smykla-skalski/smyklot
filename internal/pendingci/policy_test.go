@@ -83,6 +83,23 @@ func TestDecideRequiresCheckReauthorizationWhenAuthorizedRevisionChanges(t *test
 	}
 }
 
+func TestDecideRetargetsReauthorizationWhenRevisionReturnsToAuthorizedHead(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.August, 18, 12, 0, 0, 0, time.UTC)
+	request := policyRequest(now.Add(-time.Hour), ObservedPending, "old")
+	request.ArtifactKind = ArtifactCheck
+	request.AuthorizationState = AuthorizationReauthorizationNeeded
+	request.CandidateHeadSHA = "candidate-head"
+	request.CandidateBaseBranch = "release"
+	observation := policyObservation(now, ObservedPending, "current")
+
+	decision := mustDecide(t, request, observation)
+	if decision.Kind != DecisionReauthorize || decision.CandidateHeadSHA != request.HeadSHA ||
+		decision.CandidateBase != request.BaseBranch {
+		t.Fatalf("got %#v, want candidate retargeted to the current revision", decision)
+	}
+}
+
 func TestDecideRequiresStableGreen(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, time.August, 15, 12, 0, 0, 0, time.UTC)

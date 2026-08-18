@@ -84,7 +84,12 @@ const TARGET: PanelTarget = {
   pending_ci_mode_default: 'checks',
   pending_ci_branch_patterns_default: { include: ['~DEFAULT_BRANCH'], exclude: [] },
   pending_ci_quiet_period_seconds_override: null,
-  pending_ci_permissions: { checks_write: true, administration_write: true },
+  pending_ci_permissions: {
+    checks_write: true,
+    administration_write: true,
+    merge_queues_read: true,
+    commit_statuses_read: true,
+  },
   config_patch: {},
   inherited_config: CONFIG,
   effective_config: CONFIG,

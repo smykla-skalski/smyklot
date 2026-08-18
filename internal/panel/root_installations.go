@@ -59,13 +59,15 @@ func (s *Server) putRootTargetSettings(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, "invalid_pending_ci_settings", err.Error())
 		return
 	}
-	updated, err := s.store.UpdateTargetSettings(r.Context(), storage.TargetSettingsChange{
+	updated, err := s.updateTargetSettings(r.Context(), storage.TargetSettingsChange{
 		TargetID: context.Target.ID, ActorAccountID: context.Account.ID,
 		ElevationID: elevationID(context.Elevation), SessionTokenHash: context.SessionHash,
 		RepositoryDefaultEnabled:       *input.RepositoryDefaultEnabled,
 		PendingCIModeDefault:           mode,
 		PendingCIBranchPatternsDefault: patterns,
 		PendingCIQuietPeriodOverride:   quiet,
+		RetunePendingCIQuietPeriod:     input.PendingCIQuietPeriodSeconds.Present,
+		DeploymentPendingCIQuietPeriod: s.cfg.PendingCIQuietPeriod,
 		ConfigPatch:                    *input.ConfigPatch, ExpectedRevision: *input.ExpectedRevision,
 		ChangedAt: s.now().UTC(),
 	})
@@ -73,6 +75,8 @@ func (s *Server) putRootTargetSettings(w http.ResponseWriter, r *http.Request) {
 		s.writeRootWriteError(w, err)
 		return
 	}
+	s.pendingCI.Wake()
+	s.wakePendingCIGates()
 	s.Announce(updated.ID, "")
 	writeJSON(w, http.StatusOK, targetDTO(s.processConfig(), updated, context.Access))
 }
@@ -149,13 +153,15 @@ func (s *Server) putRootRepositorySettings(w http.ResponseWriter, r *http.Reques
 		s.writeError(w, http.StatusBadRequest, "invalid_pending_ci_settings", err.Error())
 		return
 	}
-	updated, err := s.store.UpdateRepositorySettings(r.Context(), storage.RepositorySettingsChange{
+	updated, err := s.updateRepositorySettings(r.Context(), storage.RepositorySettingsChange{
 		TargetID: context.Target.ID, RepositoryID: r.PathValue("repository"),
 		ActorAccountID: context.Account.ID, ElevationID: elevationID(context.Elevation),
 		SessionTokenHash: context.SessionHash, EnabledOverride: input.EnabledOverride.Value,
 		PendingCIModeOverride:           mode,
 		PendingCIBranchPatternsOverride: patterns,
 		PendingCIQuietPeriodOverride:    quiet,
+		RetunePendingCIQuietPeriod:      input.PendingCIQuietPeriodSeconds.Present,
+		DeploymentPendingCIQuietPeriod:  s.cfg.PendingCIQuietPeriod,
 		ConfigPatch:                     *input.ConfigPatch, IgnoreRepositoryFile: *input.IgnoreRepositoryFile,
 		ExpectedRevision: *input.ExpectedRevision, ChangedAt: s.now().UTC(),
 	})
@@ -163,6 +169,8 @@ func (s *Server) putRootRepositorySettings(w http.ResponseWriter, r *http.Reques
 		s.writeRootWriteError(w, err)
 		return
 	}
+	s.pendingCI.Wake()
+	s.wakePendingCIGates()
 	if !s.attachPendingCIGate(w, r, &updated) {
 		return
 	}

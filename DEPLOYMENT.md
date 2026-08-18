@@ -226,7 +226,7 @@ In the App's settings:
 - **Webhook secret**: generate one and keep it
 - **Subscribe to events**: Issue comment, Check run, Check suite, Status, Pull request
 
-The App needs read access to **Checks**, **Commit statuses**, and **Administration** in addition to its command permissions. Administration access is required to read branch protection's required status checks. Existing installations must approve the new permissions after the App registration changes.
+The App needs **Checks** write, **Commit statuses** read, **Administration** write, and **Merge queues** read in addition to its command permissions. Checks write lets Smyklot publish the merge authorization; Administration write lets it own the required-status-check ruleset; Merge queues read lets it fail closed on repositories whose queue commits Smyklot does not support. Existing installations must approve the new permissions after the App registration changes.
 
 Organization sync asks for more. Label sync needs only the **Issues** write access the bot already holds, so it works the day it is switched on. Settings and ruleset sync need **Administration** write. File sync needs **Contents** write, and **Workflows** write on top of it wherever a synchronized path sits under `.github/workflows/` - GitHub keeps those behind a permission of their own and refuses the push without it. Until an installation approves one, that kind stands down and names the permission in the panel; the rest of the sync runs. Nothing is written to a repository on a permissions listing the service could not read.
 

@@ -27,6 +27,15 @@ func Decide(request Request, observation Observation, timing Timing) (Decision, 
 	if artifact == "" {
 		artifact = ArtifactLabel
 	}
+	if artifact == ArtifactCheck &&
+		request.AuthorizationState == AuthorizationReauthorizationNeeded &&
+		(request.CandidateHeadSHA != observation.HeadSHA ||
+			request.CandidateBaseBranch != observation.BaseBranch) {
+		return Decision{
+			Kind: DecisionReauthorize, CandidateHeadSHA: observation.HeadSHA,
+			CandidateBase: observation.BaseBranch,
+		}, nil
+	}
 	if observation.HeadSHA != request.HeadSHA || observation.BaseBranch != request.BaseBranch {
 		return revisionChangeDecision(request, observation, timing, artifact), nil
 	}

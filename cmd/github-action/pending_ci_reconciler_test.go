@@ -163,6 +163,9 @@ func TestPendingCIReconcilerCompletesDurableCleanup(t *testing.T) {
 	if store.cleanupArtifactsMarked == nil {
 		t.Fatal("cleanup did not persist artifact completion")
 	}
+	if effects.gateWakeCalls != 1 {
+		t.Fatalf("gate wake calls = %d, want 1", effects.gateWakeCalls)
+	}
 }
 
 func TestPendingCIReconcilerPersistsCleanupRetry(t *testing.T) {
@@ -230,6 +233,99 @@ func TestPendingCIReconcilerCoordinatesLiveObservation(t *testing.T) {
 	)
 	if !errors.Is(err, coordinationErr) {
 		t.Fatalf("observation error = %v, want coordination failure", err)
+	}
+}
+
+func TestPendingCIReconcilerRestoresRetiredCheckBeforeAdvancing(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.August, 18, 12, 0, 0, 0, time.UTC)
+	retiredID := int64(11)
+	store := &reconcilerTestStore{}
+	effects := &reconcilerTestEffects{retiredSlot: pendingci.CheckSlot{
+		ID: retiredID, RepositoryID: "repository", HeadSHA: "old-head",
+	}}
+	request := reconcilerRequest(now)
+	request.RetiredCheckSlotID = &retiredID
+	reconciler := newPendingCIReconciler(
+		store,
+		reconcilerTestObserver{observation: reconcilerObservation(now, pendingci.ObservedPending)},
+		effects,
+		newPendingCICoordinator(),
+		defaultPendingCITiming(),
+	)
+
+	if err := reconciler.Process(t.Context(), request); err != nil {
+		t.Fatal(err)
+	}
+	if effects.retiredRestored != 1 {
+		t.Fatalf("retired check restores = %d, want 1", effects.retiredRestored)
+	}
+	if store.retiredCleared == nil || store.retiredCleared.CheckSlotID != retiredID {
+		t.Fatalf("retired check clear = %#v", store.retiredCleared)
+	}
+	if store.rescheduled != nil {
+		t.Fatalf("request advanced before retired cleanup: %#v", store.rescheduled)
+	}
+}
+
+func TestPendingCIReconcilerKeepsReturningHeadForAtomicSwap(t *testing.T) {
+	t.Parallel()
+	retiredID := int64(11)
+	store := &reconcilerTestStore{}
+	effects := &reconcilerTestEffects{retiredSlot: pendingci.CheckSlot{
+		ID: retiredID, RepositoryID: "repository", HeadSHA: "head-a",
+	}}
+	request := reconcilerRequest(time.Now().UTC())
+	request.RetiredCheckSlotID = &retiredID
+	reconciler := newPendingCIReconciler(
+		store, reconcilerTestObserver{}, effects,
+		newPendingCICoordinator(), defaultPendingCITiming(),
+	)
+
+	handled, err := reconciler.reconcileRetiredCheck(
+		t.Context(), request,
+		pendingci.Decision{Kind: pendingci.DecisionReauthorize, CandidateHeadSHA: "head-a"},
+		time.Now().UTC(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if handled || effects.retiredRestored != 0 || store.retiredCleared != nil {
+		t.Fatalf(
+			"returning head was cleaned instead of swapped: handled=%t restores=%d clear=%#v",
+			handled, effects.retiredRestored, store.retiredCleared,
+		)
+	}
+}
+
+func TestPendingCIReconcilerDoesNotBaselineReplacementCurrentCheck(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.August, 18, 12, 0, 0, 0, time.UTC)
+	retiredID := int64(11)
+	store := &reconcilerTestStore{}
+	effects := &reconcilerTestEffects{
+		retiredSlot: pendingci.CheckSlot{
+			ID: retiredID, RepositoryID: "repository", HeadSHA: "old-head",
+		},
+		retiredCurrent: true,
+	}
+	request := reconcilerRequest(now)
+	request.Lifecycle = pendingci.LifecycleCancelled
+	request.CleanupPending = true
+	request.RetiredCheckSlotID = &retiredID
+	reconciler := newPendingCIReconciler(
+		store, reconcilerTestObserver{}, effects,
+		newPendingCICoordinator(), defaultPendingCITiming(),
+	)
+
+	if err := reconciler.Process(t.Context(), request); err != nil {
+		t.Fatal(err)
+	}
+	if effects.retiredRestored != 0 {
+		t.Fatalf("replacement current check was baselined %d times", effects.retiredRestored)
+	}
+	if store.retiredCleared == nil || store.retiredCleared.CheckSlotID != retiredID {
+		t.Fatalf("retired check clear = %#v", store.retiredCleared)
 	}
 }
 
@@ -315,8 +411,18 @@ type reconcilerTestStore struct {
 	cleanupArtifactsMarked *pendingci.MarkCleanupArtifactsDoneRequest
 	cleanupCompleted       *pendingci.CompleteCleanupRequest
 	cleanupRetried         *pendingci.RetryCleanupRequest
+	retiredCleared         *pendingci.ClearRetiredCheckSlotRequest
 	claimErr               error
 	completeErr            error
+}
+
+func (store *reconcilerTestStore) ClearRetiredCheckSlot(
+	_ context.Context,
+	request pendingci.ClearRetiredCheckSlotRequest,
+) (pendingci.Request, error) {
+	store.retiredCleared = &request
+
+	return pendingci.Request{ID: request.ID, Revision: request.ExpectedRevision + 1}, nil
 }
 
 func (store *reconcilerTestStore) ClaimMerge(
@@ -382,11 +488,44 @@ func (store *reconcilerTestStore) RetryCleanup(
 }
 
 type reconcilerTestEffects struct {
-	mergedHead   string
-	mergeErr     error
-	completed    pendingci.Lifecycle
-	completeErr  error
-	cleanupCalls int
+	mergedHead      string
+	mergeErr        error
+	completed       pendingci.Lifecycle
+	completeErr     error
+	cleanupCalls    int
+	retiredSlot     pendingci.CheckSlot
+	retiredRestored int
+	retiredErr      error
+	retiredCurrent  bool
+	gateWakeCalls   int
+}
+
+func (effects *reconcilerTestEffects) WakePendingCIGates() {
+	effects.gateWakeCalls++
+}
+
+func (effects *reconcilerTestEffects) GetPendingCICheckSlot(
+	context.Context,
+	int64,
+) (pendingci.CheckSlot, error) {
+	return effects.retiredSlot, nil
+}
+
+func (effects *reconcilerTestEffects) RestoreRetiredPendingCICheck(
+	context.Context,
+	pendingci.CheckSlot,
+) error {
+	effects.retiredRestored++
+
+	return effects.retiredErr
+}
+
+func (effects *reconcilerTestEffects) PendingCICheckSlotIsCurrent(
+	context.Context,
+	pendingci.Request,
+	pendingci.CheckSlot,
+) (bool, error) {
+	return effects.retiredCurrent, nil
 }
 
 func (effects *reconcilerTestEffects) MergeAtHead(

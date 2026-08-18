@@ -52,9 +52,9 @@ type noRetryKey struct{}
 
 // withoutRetry returns a context whose requests are sent exactly once.
 //
-// The readiness probe is the caller this exists for: it asks whether GitHub is
-// answering *now*, and a patient answer is the wrong answer. Retrying there
-// would keep the pod in service for the whole backoff while it is not.
+// Readiness probes use this because they ask whether GitHub is answering now.
+// Non-idempotent requests also use it when a lost response cannot be safely
+// distinguished from a completed operation.
 func withoutRetry(ctx context.Context) context.Context {
 	return context.WithValue(ctx, noRetryKey{}, true)
 }

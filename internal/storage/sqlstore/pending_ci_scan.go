@@ -12,7 +12,7 @@ func scanPendingCI(scanner rowScanner) (pendingci.Request, error) {
 	var nextCheckAt, leaseExpiresAt, lastProgressAt StoredTime
 	var requestedAt, updatedAt, finishedAt StoredTime
 	var label, candidateHead, candidateBase sql.NullString
-	var checkSlotID sql.NullInt64
+	var checkSlotID, retiredCheckSlotID sql.NullInt64
 	var authorizedAt StoredTime
 
 	err := scanner.Scan(
@@ -34,6 +34,7 @@ func scanPendingCI(scanner rowScanner) (pendingci.Request, error) {
 		&request.ArtifactKind,
 		&label,
 		&checkSlotID,
+		&retiredCheckSlotID,
 		&request.AuthorizationState,
 		&request.GateState,
 		&candidateHead,
@@ -73,6 +74,9 @@ func scanPendingCI(scanner rowScanner) (pendingci.Request, error) {
 	request.Label = label.String
 	if checkSlotID.Valid {
 		request.CheckSlotID = &checkSlotID.Int64
+	}
+	if retiredCheckSlotID.Valid {
+		request.RetiredCheckSlotID = &retiredCheckSlotID.Int64
 	}
 	request.CandidateHeadSHA = candidateHead.String
 	request.CandidateBaseBranch = candidateBase.String

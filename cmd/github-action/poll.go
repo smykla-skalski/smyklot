@@ -542,10 +542,17 @@ func processPendingCIPR(
 		if info.BaseBranch == "" {
 			return fmt.Errorf("cannot resolve base branch for required-check wait")
 		}
-		requiredChecks, err = client.GetRequiredStatusChecks(ctx, repoOwner, repoName, info.BaseBranch)
+		requirements, requirementsErr := client.GetRequiredCIRequirements(
+			ctx, repoOwner, repoName, info.BaseBranch,
+		)
+		err = requirementsErr
 		if err != nil {
 			return fmt.Errorf("failed to get required checks: %w", err)
 		}
+		if requirements.RequiredWorkflow {
+			return errRequiredWorkflowsUnsupported
+		}
+		requiredChecks = requirements.StatusChecks
 		if len(requiredChecks) == 0 {
 			return fmt.Errorf("base branch has no required status checks")
 		}

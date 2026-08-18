@@ -351,6 +351,23 @@ var _ = Describe("GitHub Client [Unit]", func() {
 				)
 				Expect(err).NotTo(HaveOccurred())
 			})
+
+			It("should not replay an exact-head merge after a server error", func() {
+				attempts := 0
+				server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					attempts++
+					w.WriteHeader(http.StatusInternalServerError)
+					_, _ = w.Write([]byte(`{"message":"server error"}`))
+				}))
+
+				client, err := github.NewClient("test-token", server.URL)
+				Expect(err).NotTo(HaveOccurred())
+				err = client.MergePRAtHead(
+					context.Background(), "owner", "repo", 1, github.MergeMethodSquash, "abc123",
+				)
+				Expect(err).To(HaveOccurred())
+				Expect(attempts).To(Equal(1))
+			})
 		})
 	})
 

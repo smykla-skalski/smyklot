@@ -3,12 +3,15 @@ package main
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sync"
 )
 
 type pendingCIExclusive interface {
 	Exclusive(context.Context, string, func() error) error
 }
+
+const pendingCICatalogCoordinatorKey = "pending-ci:catalog"
 
 // pendingCICoordinator serializes the few repository operations that cross
 // durable state and GitHub side effects. Policy, persistence, transport, and
@@ -21,6 +24,33 @@ type pendingCICoordinator struct {
 type pendingCIRepositoryGate struct {
 	ready chan struct{}
 	users int
+}
+
+func exclusivePendingCIRepositories(
+	ctx context.Context,
+	coordinator pendingCIExclusive,
+	repositoryIDs []string,
+	operation func() error,
+) error {
+	if coordinator == nil {
+		return operation()
+	}
+	ids := slices.Clone(repositoryIDs)
+	slices.Sort(ids)
+	ids = slices.Compact(ids)
+
+	var acquire func(int) error
+	acquire = func(index int) error {
+		if index == len(ids) {
+			return operation()
+		}
+
+		return coordinator.Exclusive(ctx, ids[index], func() error {
+			return acquire(index + 1)
+		})
+	}
+
+	return acquire(0)
 }
 
 func newPendingCICoordinator() *pendingCICoordinator {

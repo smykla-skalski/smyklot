@@ -77,6 +77,25 @@ type fakePendingCIController struct {
 	wakes int
 }
 
+func (controller *fakePendingCIController) Wake() {
+	controller.wakes++
+}
+
+func (controller *fakePendingCIController) Exclusive(
+	_ context.Context,
+	_ []string,
+	operation func() error,
+) error {
+	return operation()
+}
+
+func (controller *fakePendingCIController) ExclusiveCatalog(
+	_ context.Context,
+	operation func() error,
+) error {
+	return operation()
+}
+
 func (controller *fakePendingCIController) CheckNow(
 	ctx context.Context,
 	change pendingci.CheckNowRequest,
@@ -2176,6 +2195,33 @@ func TestRepositoryEnablementDistinguishesOmittedFromNull(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	session := harness.signIn(t)
 	settingsPath := "/panel/api/v1/targets/github:installation:10/repositories/repository-20/settings"
+	armed, err := harness.store.Arm(t.Context(), pendingci.ArmRequest{
+		TargetID: "github:installation:10", InstallationID: 10,
+		RepositoryID: "repository-20", RepositoryFullName: "smykla-skalski/smyklot",
+		PullRequest: 99, HeadSHA: "quiet-head", BaseBranch: "main",
+		MergeMethod: pendingci.MergeMethodSquash, RequiredChecksOnly: true,
+		Requester: "owner", SourceCommentID: 99,
+		SourceRevision: harness.now.Format(time.RFC3339Nano), SourceSequence: 1, SourceOrder: 99,
+		Label: "smyklot:pending:ci:squash:required", RequestedAt: harness.now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease, err := harness.store.LeaseDue(t.Context(), harness.now, harness.now.Add(time.Minute))
+	if err != nil || lease.Request == nil {
+		t.Fatalf("lease quiet-period request = %#v, %v", lease, err)
+	}
+	_, err = harness.store.Reschedule(t.Context(), pendingci.RescheduleRequest{
+		ID: lease.Request.ID, ExpectedRevision: lease.Request.Revision,
+		Schedule: pendingci.ScheduleActive, HeadSHA: armed.Request.HeadSHA,
+		NextCheckAt: harness.now.Add(24 * time.Hour), NextCheckTrigger: pendingci.TriggerQuietPeriod,
+		LastProgressAt: harness.now, LastObservedState: string(pendingci.ObservedPassing),
+		LastFingerprint: "passing:1:1", CheckedAt: harness.now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wakesBefore := harness.pendingCI.wakes
 
 	explicitOff := harness.request(
 		t,
@@ -2194,6 +2240,13 @@ func TestRepositoryEnablementDistinguishesOmittedFromNull(t *testing.T) {
 	)
 	if explicitOff.Code != http.StatusOK {
 		t.Fatalf("explicit Off = %d %s", explicitOff.Code, explicitOff.Body.String())
+	}
+	if harness.pendingCI.wakes != wakesBefore+1 {
+		t.Fatalf("quiet-period update wakes = %d, want %d", harness.pendingCI.wakes, wakesBefore+1)
+	}
+	lease, err = harness.store.LeaseDue(t.Context(), harness.now, harness.now.Add(time.Minute))
+	if err != nil || lease.Request == nil || lease.Request.ID != armed.Request.ID {
+		t.Fatalf("retuned quiet-period request = %#v, %v", lease, err)
 	}
 
 	omitted := harness.request(

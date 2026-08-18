@@ -95,7 +95,10 @@ func ensureExistingCheckSlot(
 			!strings.HasPrefix(current.ExternalID, request.ExternalID+":g")) {
 		return pendingci.CheckSlot{}, storage.ErrConflict
 	}
-	if current.DesiredDigest != request.DesiredDigest {
+	metadataChanged := current.TargetID != request.TargetID ||
+		current.InstallationID != request.InstallationID ||
+		current.RepositoryFullName != request.RepositoryFullName
+	if current.DesiredDigest != request.DesiredDigest || metadataChanged {
 		updated, err := updateCheckSlotDesired(ctx, tx, current, request, actions)
 		if err != nil {
 			return pendingci.CheckSlot{}, err
@@ -137,6 +140,92 @@ WHERE id = ? AND revision = ?`,
 	return s.GetCheckSlot(ctx, request.ID)
 }
 
+func (s *Store) ReassignCheckSlot(
+	ctx context.Context,
+	request pendingci.ReassignCheckSlotRequest,
+) (pendingci.CheckSlot, error) {
+	if err := request.Validate(); err != nil {
+		return pendingci.CheckSlot{}, err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return pendingci.CheckSlot{}, fmt.Errorf("begin check slot reassignment: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	current, err := scanPendingCICheckSlot(tx.QueryRowContext(
+		ctx,
+		pendingCICheckSlotSelect+" WHERE id = ?"+s.dialect.RowLock(),
+		request.ID,
+	))
+	if errors.Is(err, sql.ErrNoRows) {
+		return pendingci.CheckSlot{}, storage.ErrNotFound
+	}
+	if err != nil {
+		return pendingci.CheckSlot{}, fmt.Errorf("read check slot for reassignment: %w", err)
+	}
+	if current.Revision != request.ExpectedRevision {
+		return pendingci.CheckSlot{}, storage.ErrConflict
+	}
+	var referenced bool
+	err = tx.QueryRowContext(ctx, `
+SELECT EXISTS (
+    SELECT 1 FROM pending_ci_requests
+    WHERE (check_slot_id = ? OR retired_check_slot_id = ?)
+      AND (lifecycle = ? OR cleanup_pending = TRUE)
+)`, current.ID, current.ID, pendingci.LifecycleArmed).Scan(&referenced)
+	if err != nil {
+		return pendingci.CheckSlot{}, fmt.Errorf("read check slot request ownership: %w", err)
+	}
+	if referenced {
+		return pendingci.CheckSlot{}, storage.ErrConflict
+	}
+	result, err := tx.ExecContext(ctx, `
+UPDATE pending_ci_check_slots SET
+    pull_request = ?, updated_at = ?, revision = revision + 1
+WHERE id = ? AND revision = ?`,
+		request.PullRequest, request.ReassignedAt, request.ID, request.ExpectedRevision,
+	)
+	if err != nil {
+		return pendingci.CheckSlot{}, fmt.Errorf("reassign check slot: %w", err)
+	}
+	if err := requireOneRow(result); err != nil {
+		return pendingci.CheckSlot{}, err
+	}
+	updated, err := getPendingCICheckSlot(ctx, tx, request.ID)
+	if err != nil {
+		return pendingci.CheckSlot{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return pendingci.CheckSlot{}, fmt.Errorf("commit check slot reassignment: %w", err)
+	}
+
+	return updated, nil
+}
+
+func (s *Store) RefreshCheckSlot(
+	ctx context.Context,
+	request pendingci.RefreshCheckSlotRequest,
+) (pendingci.CheckSlot, error) {
+	if err := request.Validate(); err != nil {
+		return pendingci.CheckSlot{}, err
+	}
+	result, err := s.db.ExecContext(ctx, `
+UPDATE pending_ci_check_slots SET
+    state = 'provisioning', applied_digest = '', retry_at = NULL,
+    last_error = '', updated_at = ?, revision = revision + 1
+WHERE id = ? AND revision = ?`,
+		request.RefreshedAt, request.ID, request.ExpectedRevision,
+	)
+	if err != nil {
+		return pendingci.CheckSlot{}, fmt.Errorf("refresh check slot: %w", err)
+	}
+	if err := requireOneRow(result); err != nil {
+		return pendingci.CheckSlot{}, err
+	}
+
+	return s.GetCheckSlot(ctx, request.ID)
+}
+
 func updateCheckSlotDesired(
 	ctx context.Context,
 	tx *transaction,
@@ -146,11 +235,13 @@ func updateCheckSlotDesired(
 ) (pendingci.CheckSlot, error) {
 	result, err := tx.ExecContext(ctx, `
 UPDATE pending_ci_check_slots SET
-    desired_status = ?, desired_conclusion = ?, desired_title = ?,
+	target_id = ?, installation_id = ?, repository_full_name = ?,
+	desired_status = ?, desired_conclusion = ?, desired_title = ?,
     desired_summary = ?, desired_actions = ?, desired_digest = ?,
     state = 'provisioning', retry_at = NULL, last_error = '',
     updated_at = ?, revision = revision + 1
 WHERE id = ? AND revision = ?`,
+		request.TargetID, request.InstallationID, request.RepositoryFullName,
 		request.DesiredStatus, nullableString(request.DesiredConclusion),
 		request.DesiredTitle, request.DesiredSummary, actions, request.DesiredDigest,
 		request.ChangedAt, current.ID, current.Revision,

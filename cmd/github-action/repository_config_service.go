@@ -132,11 +132,16 @@ func (s *server) repositoryEnabled(
 	if !target.Available || !repository.Available {
 		return false, nil
 	}
+
+	return effectiveRepositoryEnabled(target, repository), nil
+}
+
+func effectiveRepositoryEnabled(target storage.Target, repository storage.Repository) bool {
 	if repository.EnabledOverride != nil {
-		return *repository.EnabledOverride, nil
+		return *repository.EnabledOverride
 	}
 
-	return target.RepositoryDefaultEnabled, nil
+	return target.RepositoryDefaultEnabled
 }
 
 func (s *server) repositoryControls(
@@ -199,6 +204,29 @@ func (s *server) serviceConfig(
 	client *github.Client,
 	targetID, repositoryID, owner, repositoryName string,
 ) (*config.Config, error) {
+	return s.serviceConfigWithControls(
+		ctx, client, targetID, repositoryID, owner, repositoryName,
+		s.repositoryControls,
+	)
+}
+
+func (s *server) serviceConfigWithoutCatalogRefresh(
+	ctx context.Context,
+	client *github.Client,
+	targetID, repositoryID, owner, repositoryName string,
+) (*config.Config, error) {
+	return s.serviceConfigWithControls(
+		ctx, client, targetID, repositoryID, owner, repositoryName,
+		s.readRepositoryControls,
+	)
+}
+
+func (s *server) serviceConfigWithControls(
+	ctx context.Context,
+	client *github.Client,
+	targetID, repositoryID, owner, repositoryName string,
+	controls func(context.Context, string, string) (storage.Target, storage.Repository, error),
+) (*config.Config, error) {
 	file, err := s.configs.GetByKey(
 		ctx, client, repositoryID, owner, repositoryName,
 	)
@@ -213,7 +241,7 @@ func (s *server) serviceConfig(
 		return config.ApplyPatch(s.botConfig(), file.patch), nil
 	}
 
-	target, repository, err := s.repositoryControls(ctx, targetID, repositoryID)
+	target, repository, err := controls(ctx, targetID, repositoryID)
 	if err != nil {
 		return nil, err
 	}

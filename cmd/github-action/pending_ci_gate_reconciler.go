@@ -10,6 +10,7 @@ import (
 	"path"
 	"reflect"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
@@ -21,6 +22,22 @@ type pendingCIGateReconciler struct {
 	store  storage.Store
 	checks *githubPendingCIChecks
 	now    func() time.Time
+	wake   func()
+}
+
+const (
+	pendingCIChecksReadyReason = "Checks and required context are ready"
+	pendingCIRulesetActive     = "active"
+	pendingCIRulesetBranch     = "branch"
+)
+
+type pendingCIGatePolicyError struct{ cause error }
+
+func (err pendingCIGatePolicyError) Error() string { return err.cause.Error() }
+func (err pendingCIGatePolicyError) Unwrap() error { return err.cause }
+
+func pendingCIGatePolicy(cause error) error {
+	return pendingCIGatePolicyError{cause: cause}
 }
 
 func (reconciler *pendingCIGateReconciler) Reconcile(
@@ -37,22 +54,69 @@ func (reconciler *pendingCIGateReconciler) Reconcile(
 	}
 	owner, name, err := parseRepo(repository.FullName)
 	if err != nil {
-		return reconciler.block(ctx, gate, err)
+		return reconciler.block(ctx, gate, pendingCIGatePolicy(err))
 	}
 	if !serviceEnabled {
-		return reconciler.reconcileInactive(ctx, client, gate, owner, name, "Repository is not active on the service")
+		return reconciler.reconcileInactive(
+			ctx,
+			client,
+			gate,
+			repository,
+			prs,
+			owner,
+			name,
+			"Repository is not active on the service",
+		)
+	}
+	drainingChecks := false
+	if gate.DesiredMode == storage.PendingCIModeLabels {
+		drainingChecks, err = reconciler.hasArmedCheckRequest(ctx, repository.ID)
+		if err != nil {
+			return reconciler.block(ctx, gate, err)
+		}
+	}
+	maintainChecks := pendingCIMustMaintainChecks(gate.DesiredMode, drainingChecks)
+	if maintainChecks {
+		if !target.Grants("checks") {
+			return reconciler.block(
+				ctx, gate, pendingCIGatePolicy(errors.New("checks write approval is missing")),
+			)
+		}
+		if !target.CanRead("statuses") {
+			return reconciler.block(
+				ctx, gate,
+				pendingCIGatePolicy(errors.New("commit statuses read approval is missing")),
+			)
+		}
+		patterns := target.PendingCIBranchPatternsDefault
+		if repository.PendingCIBranchPatternsOverride != nil {
+			patterns = *repository.PendingCIBranchPatternsOverride
+		}
+		if err := reconciler.ensureBaselines(ctx, target, repository, prs, patterns); err != nil {
+			return reconciler.block(ctx, gate, err)
+		}
 	}
 	if gate.DesiredMode == storage.PendingCIModeLabels {
-		return reconciler.reconcileLabels(ctx, client, gate, repository, prs, owner, name)
+		return reconciler.reconcileLabels(
+			ctx, client, gate, repository, prs, owner, name, drainingChecks,
+		)
 	}
-	if !target.Grants("checks") {
-		return reconciler.block(ctx, gate, errors.New("checks write approval is missing"))
+	if !target.CanRead("merge_queues") {
+		return reconciler.block(
+			ctx, gate, pendingCIGatePolicy(errors.New("merge queues read approval is missing")),
+		)
 	}
 	if !target.Grants("administration") {
-		return reconciler.block(ctx, gate, errors.New("administration write approval is missing"))
+		return reconciler.block(
+			ctx, gate, pendingCIGatePolicy(errors.New("administration write approval is missing")),
+		)
 	}
 
 	return reconciler.reconcileChecks(ctx, client, target, repository, gate, prs, owner, name)
+}
+
+func pendingCIMustMaintainChecks(desired storage.PendingCIMode, draining bool) bool {
+	return desired == storage.PendingCIModeChecks || draining
 }
 
 func (reconciler *pendingCIGateReconciler) reconcileChecks(
@@ -68,14 +132,13 @@ func (reconciler *pendingCIGateReconciler) reconcileChecks(
 	if err != nil {
 		return reconciler.block(ctx, gate, err)
 	}
-	if err := ensureNoMergeQueue(ctx, client, owner, name); err != nil {
-		return reconciler.block(ctx, gate, err)
-	}
 	patterns := target.PendingCIBranchPatternsDefault
 	if repository.PendingCIBranchPatternsOverride != nil {
 		patterns = *repository.PendingCIBranchPatternsOverride
 	}
-	if err := reconciler.ensureBaselines(ctx, target, repository, prs, patterns); err != nil {
+	if err := ensureNoMergeQueue(
+		ctx, client, owner, name, repository.DefaultBranch, prs, patterns,
+	); err != nil {
 		return reconciler.block(ctx, gate, err)
 	}
 	desired := pendingCIRuleset(patterns, appID)
@@ -109,17 +172,20 @@ func (reconciler *pendingCIGateReconciler) reconcileChecks(
 		return reconciler.block(ctx, gate, err)
 	}
 	if gate.EffectiveMode == storage.PendingCIEffectiveChecks &&
-		gate.Readiness == storage.PendingCIReady && gate.Reason == "Checks and required context are ready" {
+		gate.Readiness == storage.PendingCIReady && gate.Reason == pendingCIChecksReadyReason {
 		return nil
 	}
 	_, err = reconciler.store.UpdatePendingCIRepositoryGate(ctx, storage.PendingCIGateChange{
 		RepositoryID: repository.ID, ExpectedRevision: gate.Revision,
 		EffectiveMode: storage.PendingCIEffectiveChecks, Readiness: storage.PendingCIReady,
-		Reason: "Checks and required context are ready", AppID: &appID,
+		Reason: pendingCIChecksReadyReason, AppID: &appID,
 		RulesetID: &rulesetID, RulesetFingerprint: fingerprint, ObservedAt: reconciler.now(),
 	})
 	if err != nil && !errors.Is(err, storage.ErrConflict) {
 		return fmt.Errorf("mark pending CI checks ready: %w", err)
+	}
+	if err == nil && reconciler.wake != nil {
+		reconciler.wake()
 	}
 
 	return nil
@@ -164,11 +230,8 @@ func (reconciler *pendingCIGateReconciler) reconcileLabels(
 	repository storage.Repository,
 	prs []map[string]interface{},
 	owner, name string,
+	draining bool,
 ) error {
-	draining, err := reconciler.hasArmedCheckRequest(ctx, repository.ID, prs)
-	if err != nil {
-		return reconciler.block(ctx, gate, err)
-	}
 	if draining {
 		const reason = "Waiting for existing check-mode authorizations to finish"
 		if gate.EffectiveMode == storage.PendingCIEffectiveChecks &&
@@ -190,19 +253,15 @@ func (reconciler *pendingCIGateReconciler) reconcileLabels(
 	if err := removePendingCIRuleset(ctx, client, owner, name, gate); err != nil {
 		return reconciler.block(ctx, gate, err)
 	}
-	required, err := client.GetRequiredStatusChecks(ctx, owner, name, repository.DefaultBranch)
-	if err != nil {
+	if err := ensureNoPendingCIRequiredRulesets(ctx, client, owner, name); err != nil {
 		return reconciler.block(ctx, gate, err)
 	}
-	for _, check := range required {
-		if check.Context == storage.PendingCICheckName {
-			return reconciler.block(
-				ctx, gate,
-				errors.New("remove the required Smyklot check before enabling label mode"),
-			)
-		}
+	if err := ensureNoPendingCIRequiredContextOnBranches(
+		ctx, client, owner, name, repository.DefaultBranch, prs,
+	); err != nil {
+		return reconciler.block(ctx, gate, err)
 	}
-	_, err = reconciler.store.UpdatePendingCIRepositoryGate(ctx, storage.PendingCIGateChange{
+	_, err := reconciler.store.UpdatePendingCIRepositoryGate(ctx, storage.PendingCIGateChange{
 		RepositoryID: gate.RepositoryID, ExpectedRevision: gate.Revision,
 		EffectiveMode: storage.PendingCIEffectiveLabels, Readiness: storage.PendingCIReady,
 		Reason: "Label mode is ready", ObservedAt: reconciler.now(),
@@ -217,35 +276,64 @@ func (reconciler *pendingCIGateReconciler) reconcileLabels(
 func (reconciler *pendingCIGateReconciler) hasArmedCheckRequest(
 	ctx context.Context,
 	repositoryID string,
-	prs []map[string]interface{},
 ) (bool, error) {
-	for _, raw := range prs {
-		pullRequest, _, _, err := pendingCIPullRequestHead(raw)
-		if err != nil {
-			return false, err
-		}
-		armed, err := reconciler.store.GetArmed(ctx, repositoryID, pullRequest)
-		if err == nil && armed.ArtifactKind == pendingci.ArtifactCheck {
-			return true, nil
-		}
-		if err != nil && !errors.Is(err, storage.ErrNotFound) {
-			return false, fmt.Errorf("read draining check request for pull request %d: %w", pullRequest, err)
-		}
+	requests, err := reconciler.store.ListQueue(ctx, pendingci.QueueFilter{
+		RepositoryID: repositoryID,
+		ArtifactKind: pendingci.ArtifactCheck,
+		Limit:        1,
+	})
+	if err != nil {
+		return false, fmt.Errorf("read draining check requests: %w", err)
 	}
 
-	return false, nil
+	return len(requests) > 0, nil
 }
 
 func (reconciler *pendingCIGateReconciler) reconcileInactive(
 	ctx context.Context,
 	client *github.Client,
 	gate storage.PendingCIRepositoryGate,
+	repository storage.Repository,
+	prs []map[string]interface{},
 	owner, name, reason string,
 ) error {
 	if err := removePendingCIRuleset(ctx, client, owner, name, gate); err != nil {
 		return reconciler.block(ctx, gate, err)
 	}
-	_, err := reconciler.store.UpdatePendingCIRepositoryGate(ctx, storage.PendingCIGateChange{
+	cleaning, err := reconciler.store.HasPendingCleanup(ctx, pendingci.CleanupFilter{
+		RepositoryID: repository.ID, ArtifactsPendingOnly: true,
+	})
+	if err != nil {
+		return reconciler.block(ctx, gate, err)
+	}
+	if cleaning {
+		const drainingReason = "Waiting for existing service artifacts to be cleaned"
+		if gate.Readiness == storage.PendingCIDraining && gate.Reason == drainingReason {
+			return nil
+		}
+		_, err := reconciler.store.UpdatePendingCIRepositoryGate(
+			ctx,
+			storage.PendingCIGateChange{
+				RepositoryID: gate.RepositoryID, ExpectedRevision: gate.Revision,
+				EffectiveMode: gate.EffectiveMode, Readiness: storage.PendingCIDraining,
+				Reason: drainingReason, ObservedAt: reconciler.now(),
+			},
+		)
+		if err != nil && !errors.Is(err, storage.ErrConflict) {
+			return fmt.Errorf("mark pending CI service artifacts draining: %w", err)
+		}
+
+		return nil
+	}
+	if err := ensureNoPendingCIRequiredRulesets(ctx, client, owner, name); err != nil {
+		return reconciler.block(ctx, gate, err)
+	}
+	if err := ensureNoPendingCIRequiredContextOnBranches(
+		ctx, client, owner, name, repository.DefaultBranch, prs,
+	); err != nil {
+		return reconciler.block(ctx, gate, err)
+	}
+	_, err = reconciler.store.UpdatePendingCIRepositoryGate(ctx, storage.PendingCIGateChange{
 		RepositoryID: gate.RepositoryID, ExpectedRevision: gate.Revision,
 		EffectiveMode: storage.PendingCIEffectiveNone, Readiness: storage.PendingCIReady,
 		Reason: reason, ObservedAt: reconciler.now(),
@@ -271,6 +359,10 @@ func (reconciler *pendingCIGateReconciler) block(
 	if err != nil && !errors.Is(err, storage.ErrConflict) {
 		return fmt.Errorf("pending CI readiness failed: %v; persist blocker: %w", cause, err)
 	}
+	var policy pendingCIGatePolicyError
+	if errors.As(cause, &policy) {
+		return nil
+	}
 
 	return cause
 }
@@ -280,7 +372,8 @@ func pendingCIRuleset(
 	appID int64,
 ) github.RepositoryRuleset {
 	return github.RepositoryRuleset{
-		Name: storage.PendingCIRulesetName, Target: "branch", Enforcement: "active",
+		Name: storage.PendingCIRulesetName, Target: pendingCIRulesetBranch,
+		Enforcement: pendingCIRulesetActive,
 		Conditions: github.RulesetConditions{
 			IncludeRefs: append([]string(nil), patterns.Include...),
 			ExcludeRefs: append([]string(nil), patterns.Exclude...),
@@ -310,7 +403,9 @@ func reconcilePendingCIRuleset(
 		return adoptOrCreatePendingCIRuleset(ctx, client, owner, repository, summaries, desired)
 	}
 	if owned.Source.Inherited() {
-		return 0, errors.New("the recorded Smyklot ruleset is inherited and cannot be managed")
+		return 0, pendingCIGatePolicy(
+			errors.New("the recorded Smyklot ruleset is inherited and cannot be managed"),
+		)
 	}
 	actual, err := client.GetRepositoryRuleset(ctx, owner, repository, owned.ID)
 	if err != nil {
@@ -355,7 +450,9 @@ func adoptOrCreatePendingCIRuleset(
 		}
 	}
 	if len(named) > 1 || (len(named) == 1 && named[0].Source.Inherited()) {
-		return 0, errors.New("another ruleset already uses Smyklot's managed name")
+		return 0, pendingCIGatePolicy(
+			errors.New("another ruleset already uses Smyklot's managed name"),
+		)
 	}
 	if len(named) == 0 {
 		return client.CreateRepositoryRulesetWithID(ctx, owner, repository, desired)
@@ -365,7 +462,9 @@ func adoptOrCreatePendingCIRuleset(
 		return 0, err
 	}
 	if !samePendingCIRuleset(actual, desired) {
-		return 0, errors.New("an unmanaged ruleset already uses Smyklot's managed name")
+		return 0, pendingCIGatePolicy(
+			errors.New("an unmanaged ruleset already uses Smyklot's managed name"),
+		)
 	}
 
 	return named[0].ID, nil
@@ -417,7 +516,9 @@ func removePendingCIRuleset(
 	}
 	for _, summary := range summaries {
 		if summary.Name == storage.PendingCIRulesetName {
-			return errors.New("a same-named ruleset is not recorded as Smyklot-owned")
+			return pendingCIGatePolicy(
+				errors.New("a same-named ruleset is not recorded as Smyklot-owned"),
+			)
 		}
 	}
 
@@ -427,6 +528,35 @@ func removePendingCIRuleset(
 func ensureNoMergeQueue(
 	ctx context.Context,
 	client *github.Client,
+	owner, repository, defaultBranch string,
+	prs []map[string]interface{},
+	patterns storage.PendingCIBranchPatterns,
+) error {
+	branches, err := pendingCIBaseBranches(defaultBranch, prs)
+	if err != nil {
+		return err
+	}
+	for _, branch := range branches {
+		if !pendingCIBranchIncluded(branch, defaultBranch, patterns) {
+			continue
+		}
+		enabled, err := client.IsMergeQueueEnabled(ctx, owner, repository, branch)
+		if err != nil {
+			return err
+		}
+		if enabled {
+			return pendingCIGatePolicy(fmt.Errorf(
+				"merge queue on branch %s is not supported by merge-after-CI checks",
+				branch,
+			))
+		}
+	}
+	return nil
+}
+
+func ensureNoPendingCIRequiredRulesets(
+	ctx context.Context,
+	client *github.Client,
 	owner, repository string,
 ) error {
 	summaries, err := client.ListRepositoryRulesets(ctx, owner, repository)
@@ -434,12 +564,53 @@ func ensureNoMergeQueue(
 		return err
 	}
 	for _, summary := range summaries {
-		ruleset, err := client.GetRepositoryRuleset(ctx, owner, repository, summary.ID)
+		if summary.Target != pendingCIRulesetBranch ||
+			summary.Enforcement != pendingCIRulesetActive {
+			continue
+		}
+		ruleset, err := client.GetRepositoryRulesetIncludingParents(
+			ctx, owner, repository, summary.ID,
+		)
 		if err != nil {
 			return err
 		}
-		if slices.Contains(ruleset.OtherRules, "merge_queue") {
-			return errors.New("merge queues are not supported by merge-after-CI checks")
+		if ruleset.Rules.RequiredStatusChecks == nil {
+			continue
+		}
+		for _, check := range ruleset.Rules.RequiredStatusChecks.Checks {
+			if check.Context == storage.PendingCICheckName {
+				return pendingCIGatePolicy(
+					errors.New("remove the required Smyklot check before enabling label mode"),
+				)
+			}
+		}
+	}
+
+	return nil
+}
+
+func ensureNoPendingCIRequiredContextOnBranches(
+	ctx context.Context,
+	client *github.Client,
+	owner, repository, defaultBranch string,
+	prs []map[string]interface{},
+) error {
+	branches, err := pendingCIBaseBranches(defaultBranch, prs)
+	if err != nil {
+		return err
+	}
+	for _, branch := range branches {
+		required, err := client.GetRequiredStatusChecks(ctx, owner, repository, branch)
+		if err != nil {
+			return err
+		}
+		for _, check := range required {
+			if check.Context == storage.PendingCICheckName {
+				return pendingCIGatePolicy(fmt.Errorf(
+					"remove the required Smyklot check from branch %s before enabling label mode",
+					branch,
+				))
+			}
 		}
 	}
 
@@ -462,7 +633,9 @@ func ensureNoConflictingRequiredContext(
 			continue
 		}
 		if check.AppID == nil || *check.AppID != appID {
-			return errors.New("the Smyklot required context is not bound to this GitHub App")
+			return pendingCIGatePolicy(
+				errors.New("the Smyklot required context is not bound to this GitHub App"),
+			)
 		}
 		found = true
 	}
@@ -511,6 +684,29 @@ func ensurePendingCIRequiredContexts(
 	return nil
 }
 
+func pendingCIBaseBranches(
+	defaultBranch string,
+	prs []map[string]interface{},
+) ([]string, error) {
+	branches := map[string]struct{}{defaultBranch: {}}
+	for _, raw := range prs {
+		_, _, baseBranch, err := pendingCIPullRequestHead(raw)
+		if err != nil {
+			return nil, err
+		}
+		branches[baseBranch] = struct{}{}
+	}
+	result := make([]string, 0, len(branches))
+	for branch := range branches {
+		if branch != "" {
+			result = append(result, branch)
+		}
+	}
+	slices.Sort(result)
+
+	return result, nil
+}
+
 func pendingCIPullRequestHead(raw map[string]interface{}) (int, string, string, error) {
 	number, ok := raw["number"].(float64)
 	if !ok || number <= 0 {
@@ -545,8 +741,7 @@ func pendingCIBranchIncluded(
 		case "~DEFAULT_BRANCH":
 			return branch == defaultBranch
 		default:
-			matched, _ := path.Match(pattern, ref)
-			return matched
+			return githubRefPatternMatches(pattern, ref)
 		}
 	}
 	included := false
@@ -560,6 +755,71 @@ func pendingCIBranchIncluded(
 	}
 
 	return included
+}
+
+func githubRefPatternMatches(pattern, ref string) bool {
+	patterns := strings.Split(pattern, "/")
+	parts := strings.Split(ref, "/")
+	type position struct{ pattern, part int }
+	seen := make(map[position]bool)
+	known := make(map[position]bool)
+	var match func(int, int) bool
+	match = func(patternIndex, partIndex int) bool {
+		key := position{pattern: patternIndex, part: partIndex}
+		if known[key] {
+			return seen[key]
+		}
+		known[key] = true
+		var matched bool
+		switch {
+		case patternIndex == len(patterns):
+			matched = partIndex == len(parts)
+		case patterns[patternIndex] == "**" && patternIndex+1 < len(patterns):
+			matched = match(patternIndex+1, partIndex) ||
+				(partIndex < len(parts) && !strings.HasPrefix(parts[partIndex], ".") &&
+					match(patternIndex, partIndex+1))
+		case partIndex < len(parts):
+			segmentMatches, err := path.Match(
+				goPathPattern(patterns[patternIndex]),
+				parts[partIndex],
+			)
+			if strings.HasPrefix(parts[partIndex], ".") &&
+				!githubPatternExplicitlyMatchesDot(patterns[patternIndex]) {
+				segmentMatches = false
+			}
+			matched = err == nil && segmentMatches && match(patternIndex+1, partIndex+1)
+		}
+		seen[key] = matched
+
+		return matched
+	}
+
+	return match(0, 0)
+}
+
+func githubPatternExplicitlyMatchesDot(pattern string) bool {
+	return strings.HasPrefix(pattern, ".") || strings.HasPrefix(pattern, `\.`)
+}
+
+func goPathPattern(pattern string) string {
+	var translated strings.Builder
+	translated.Grow(len(pattern))
+	for index := 0; index < len(pattern); index++ {
+		if pattern[index] == '\\' && index+1 < len(pattern) {
+			translated.WriteByte(pattern[index])
+			index++
+			translated.WriteByte(pattern[index])
+			continue
+		}
+		if pattern[index] == '[' && index+1 < len(pattern) && pattern[index+1] == '!' {
+			translated.WriteString("[^")
+			index++
+			continue
+		}
+		translated.WriteByte(pattern[index])
+	}
+
+	return translated.String()
 }
 
 func pendingCIRulesetFingerprint(ruleset github.RepositoryRuleset) (string, error) {

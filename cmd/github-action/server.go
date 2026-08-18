@@ -143,6 +143,7 @@ type server struct {
 	pendingCIHandoff     *pendingCIHandoff
 	pendingCIChecks      *githubPendingCIChecks
 	pendingCIGates       *pendingCIGateReconciler
+	pendingCIGateChanged chan struct{}
 
 	// queueMu makes worker shutdown idempotent. The dispatcher is stopped before
 	// jobs is closed, so it can never send to a closed channel.
@@ -224,25 +225,26 @@ func newServer(cfg *serveConfig) (*server, error) {
 	level.Set(cfg.logLevel)
 	resolvedConfig := config.Resolve(cfg.botConfig)
 	srv := &server{
-		cfg:                 cfg,
-		tokens:              tokens,
-		logger:              logging.New(out, cfg.logFormat, level, redactor),
-		logLevel:            level,
-		redactor:            redactor,
-		runtimeBotConfig:    &resolvedConfig.Values,
-		runtimePollInterval: cfg.pollInterval,
-		pollIntervalChanged: make(chan struct{}, 1),
-		migrationRetryDelay: pendingCIRetryDelay,
-		registry:            registry,
-		metrics:             metrics.New(registry),
-		configs:             newRepoConfigCache(),
-		owners:              newRepoCache(codeownersTTL, fetchCodeowners),
-		readiness:           newReadiness(),
-		failures:            newFailureLog(maxRecordedFailures),
-		jobs:                make(chan job, queueDepth),
-		jobCtx:              context.Background(),
-		deliveryRetryCtx:    deliveryRetryCtx,
-		cancelDeliveryRetry: cancelDeliveryRetry,
+		cfg:                  cfg,
+		tokens:               tokens,
+		logger:               logging.New(out, cfg.logFormat, level, redactor),
+		logLevel:             level,
+		redactor:             redactor,
+		runtimeBotConfig:     &resolvedConfig.Values,
+		runtimePollInterval:  cfg.pollInterval,
+		pollIntervalChanged:  make(chan struct{}, 1),
+		pendingCIGateChanged: make(chan struct{}, 1),
+		migrationRetryDelay:  pendingCIRetryDelay,
+		registry:             registry,
+		metrics:              metrics.New(registry),
+		configs:              newRepoConfigCache(),
+		owners:               newRepoCache(codeownersTTL, fetchCodeowners),
+		readiness:            newReadiness(),
+		failures:             newFailureLog(maxRecordedFailures),
+		jobs:                 make(chan job, queueDepth),
+		jobCtx:               context.Background(),
+		deliveryRetryCtx:     deliveryRetryCtx,
+		cancelDeliveryRetry:  cancelDeliveryRetry,
 	}
 
 	metrics.RegisterQueue(registry, func() float64 { return float64(len(srv.jobs)) }, queueDepth)
@@ -256,7 +258,7 @@ func newServer(cfg *serveConfig) (*server, error) {
 	pendingCICoordinator := newPendingCICoordinator()
 	srv.pendingCIChecks = &githubPendingCIChecks{
 		store: srv.store, tokens: srv.tokens, apiBaseURL: cfg.apiBaseURL,
-		now: func() time.Time { return time.Now().UTC() },
+		now: func() time.Time { return time.Now().UTC() }, syncer: newPendingCICoordinator(),
 	}
 	srv.pendingCIGates = &pendingCIGateReconciler{
 		store: srv.store, checks: srv.pendingCIChecks,
@@ -278,6 +280,7 @@ func newServer(cfg *serveConfig) (*server, error) {
 	)
 	srv.pendingCIReconciler = pendingCIReconciler
 	srv.pendingCI = newPendingCIScheduler(srv.store, pendingCIReconciler, srv.logger)
+	srv.pendingCIGates.wake = srv.pendingCI.Wake
 	srv.pendingCI.RetunePassingQuiet(cfg.pendingCIQuietPeriod)
 	srv.pendingCIHandoff = &pendingCIHandoff{
 		store: srv.store, coordinator: pendingCICoordinator, wake: srv.pendingCI.Wake,

@@ -36,6 +36,14 @@ CHECK (
     pending_ci_quiet_period_seconds_override BETWEEN 0 AND 86400
 );
 
+-- One row serializes runtime, target, and repository quiet-policy changes so
+-- each transaction derives deadlines from a coherent inheritance chain.
+CREATE TABLE pending_ci_policy_lock (
+    singleton SMALLINT PRIMARY KEY CHECK (singleton = 1)
+);
+
+INSERT INTO pending_ci_policy_lock (singleton) VALUES (1);
+
 CREATE TABLE pending_ci_repository_gates (
     repository_id TEXT PRIMARY KEY REFERENCES repositories(id) ON DELETE CASCADE,
     target_id TEXT NOT NULL REFERENCES targets(id) ON DELETE CASCADE,
@@ -115,6 +123,9 @@ ALTER TABLE pending_ci_requests ALTER COLUMN label DROP NOT NULL;
 
 ALTER TABLE pending_ci_requests
 ADD COLUMN check_slot_id BIGINT REFERENCES pending_ci_check_slots(id) ON DELETE SET NULL;
+
+ALTER TABLE pending_ci_requests
+ADD COLUMN retired_check_slot_id BIGINT REFERENCES pending_ci_check_slots(id) ON DELETE SET NULL;
 
 ALTER TABLE pending_ci_requests
 ADD COLUMN authorization_state TEXT NOT NULL DEFAULT 'authorized'

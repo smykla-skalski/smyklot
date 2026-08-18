@@ -82,6 +82,7 @@ var _ = Describe("GitHub App Client [Unit]", func() {
 				_, _ = w.Write([]byte(`[{"id": 111, "account": {"login": "acme"},
 					"permissions": {"issues": "write", "administration": "read",
 					"contents": "write", "pull_requests": "write",
+					"merge_queues": "read", "statuses": "read",
 					"workflows": "write", "single_file": "read"}}]`))
 			}))
 
@@ -103,7 +104,7 @@ var _ = Describe("GitHub App Client [Unit]", func() {
 			Expect(installations[0].Permissions).To(Equal(map[string]string{
 				"issues": "write", "administration": "read",
 				"contents": "write", "pull_requests": "write",
-				"workflows": "write",
+				"merge_queues": "read", "statuses": "read", "workflows": "write",
 			}))
 
 			Expect(installations[0].Grants("issues")).To(BeTrue())

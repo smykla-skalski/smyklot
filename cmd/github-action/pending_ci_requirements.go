@@ -12,6 +12,15 @@ type pendingCIRequirementReader interface {
 	GetRequiredStatusChecks(context.Context, string, string, string) ([]github.RequiredCheck, error)
 }
 
+type pendingCIRequirementPolicyReader interface {
+	GetRequiredCIRequirements(
+		context.Context,
+		string,
+		string,
+		string,
+	) (github.RequiredCIRequirements, error)
+}
+
 type pendingCIOwnershipReader interface {
 	GetPullRequestState(context.Context, string, string, int) (github.PullRequestState, error)
 	HasPullRequestReaction(
@@ -97,7 +106,7 @@ func pendingCIRequiredChecks(
 	if baseBranch == "" {
 		return nil, errors.New("cannot resolve the base branch for required checks")
 	}
-	required, err := reader.GetRequiredStatusChecks(ctx, owner, repository, baseBranch)
+	required, err := requiredCIStatusChecks(ctx, reader, owner, repository, baseBranch)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get required checks: %w", err)
 	}
@@ -106,4 +115,26 @@ func pendingCIRequiredChecks(
 	}
 
 	return required, nil
+}
+
+func requiredCIStatusChecks(
+	ctx context.Context,
+	reader pendingCIRequirementReader,
+	owner, repository, baseBranch string,
+) ([]github.RequiredCheck, error) {
+	if policyReader, ok := reader.(pendingCIRequirementPolicyReader); ok {
+		requirements, err := policyReader.GetRequiredCIRequirements(
+			ctx, owner, repository, baseBranch,
+		)
+		if err != nil {
+			return nil, err
+		}
+		if requirements.RequiredWorkflow {
+			return nil, errRequiredWorkflowsUnsupported
+		}
+
+		return requirements.StatusChecks, nil
+	}
+
+	return reader.GetRequiredStatusChecks(ctx, owner, repository, baseBranch)
 }

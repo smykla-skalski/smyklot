@@ -111,6 +111,7 @@ type Request struct {
 	ArtifactKind         ArtifactKind
 	Label                string
 	CheckSlotID          *int64
+	RetiredCheckSlotID   *int64
 	AuthorizationState   AuthorizationState
 	GateState            GateState
 	CandidateHeadSHA     string
@@ -214,11 +215,17 @@ type LeaseResult struct {
 	AvailableAt *time.Time
 }
 
-// RetuneQuietPeriodRequest moves every unleased passing request to the
-// deadline implied by the current stable-passing window.
+// RetuneQuietPeriodRequest moves stable-passing requests to the deadline
+// implied by the current quiet policy. Empty identity fields select every
+// repository; InheritedOnly narrows that global scope to requests without a
+// target or repository override, or a target scope to repositories without an
+// override of their own.
 type RetuneQuietPeriodRequest struct {
-	PassingQuiet time.Duration
-	ChangedAt    time.Time
+	PassingQuiet  time.Duration
+	ChangedAt     time.Time
+	TargetID      string
+	RepositoryID  string
+	InheritedOnly bool
 }
 
 type WakeRequest struct {
@@ -267,6 +274,13 @@ type RequireReauthorizationRequest struct {
 	CandidateBase    string
 	CandidateCheckID int64
 	ObservedAt       time.Time
+}
+
+type ClearRetiredCheckSlotRequest struct {
+	ID               int64
+	ExpectedRevision int64
+	CheckSlotID      int64
+	ClearedAt        time.Time
 }
 
 type ReauthorizeRequest struct {
@@ -379,8 +393,10 @@ type RetryCleanupRequest struct {
 }
 
 type QueueFilter struct {
-	Schedule *Schedule
-	Limit    int
+	RepositoryID string
+	ArtifactKind ArtifactKind
+	Schedule     *Schedule
+	Limit        int
 }
 
 // Observation is live GitHub truth projected into the pending-CI domain.
@@ -443,6 +459,7 @@ type Store interface {
 	Finish(context.Context, FinishRequest) (Request, error)
 	MarkCleanupArtifactsDone(context.Context, MarkCleanupArtifactsDoneRequest) (Request, error)
 	RequireReauthorization(context.Context, RequireReauthorizationRequest) (Request, error)
+	ClearRetiredCheckSlot(context.Context, ClearRetiredCheckSlotRequest) (Request, error)
 	Reauthorize(context.Context, ReauthorizeRequest) (*Request, error)
 	CompleteCleanup(context.Context, CompleteCleanupRequest) (Request, error)
 	RetryCleanup(context.Context, RetryCleanupRequest) (Request, error)

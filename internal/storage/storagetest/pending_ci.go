@@ -47,6 +47,30 @@ func declarePendingCISpecs(runtime func() (context.Context, storage.Store, time.
 
 		return slot
 	}
+	deferRequest := func(
+		ctx context.Context,
+		store storage.Store,
+		arm pendingci.ArmRequest,
+	) pendingci.Request {
+		GinkgoHelper()
+		armed, err := store.Arm(ctx, arm)
+		Expect(err).NotTo(HaveOccurred())
+		lease, err := store.LeaseDue(ctx, arm.RequestedAt, arm.RequestedAt.Add(time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(lease.Request).NotTo(BeNil())
+		deferred, err := store.Reschedule(ctx, pendingci.RescheduleRequest{
+			ID: lease.Request.ID, ExpectedRevision: lease.Request.Revision,
+			Schedule: pendingci.ScheduleDeferred, HeadSHA: armed.Request.HeadSHA,
+			NextCheckAt:       arm.RequestedAt.Add(6 * time.Hour),
+			NextCheckTrigger:  pendingci.TriggerFallback,
+			LastProgressAt:    arm.RequestedAt.Add(-time.Hour),
+			LastObservedState: string(pendingci.ObservedIndeterminate),
+			LastFingerprint:   "deferred", CheckedAt: arm.RequestedAt,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		return deferred
+	}
 
 	It("persists exact check reauthorization and idempotent action replay", func() {
 		ctx, store, now := runtime()
@@ -82,6 +106,8 @@ func declarePendingCISpecs(runtime func() (context.Context, storage.Store, time.
 		Expect(waiting.HeadSHA).To(Equal("old-head"))
 		Expect(waiting.CandidateHeadSHA).To(Equal("new-head"))
 		Expect(waiting.AuthorizationState).To(Equal(pendingci.AuthorizationReauthorizationNeeded))
+		Expect(waiting.RetiredCheckSlotID).NotTo(BeNil())
+		Expect(*waiting.RetiredCheckSlotID).To(Equal(first.ID))
 
 		change := pendingci.ReauthorizeRequest{
 			RepositoryID: arm.RepositoryID, PullRequest: arm.PullRequest,
@@ -101,12 +127,56 @@ func declarePendingCISpecs(runtime func() (context.Context, storage.Store, time.
 		Expect(replayed.Revision).To(Equal(reauthorized.Revision))
 	})
 
-	It("rejects shared check heads and renews a long-running check durably", func() {
+	It("swaps a returning reauthorization head without losing the displaced cleanup", func() {
+		ctx, store, now := runtime()
+		seedCheckCatalog(ctx, store, now)
+		first := ensureSlot(ctx, store, now, 198, "head-a", "a", "authorized-a")
+		arm := pendingCIArm(now, 198, 101, "head-a")
+		arm.RepositoryFullName = "owner/repo"
+		arm.ArtifactKind = pendingci.ArtifactCheck
+		arm.Label = ""
+		arm.CheckSlotID = &first.ID
+		armed, err := store.Arm(ctx, arm)
+		Expect(err).NotTo(HaveOccurred())
+		second := ensureSlot(ctx, store, now.Add(time.Minute), 198, "head-b", "b", "reauthorize-b")
+		waiting, err := store.RequireReauthorization(ctx, pendingci.RequireReauthorizationRequest{
+			ID: armed.Request.ID, ExpectedRevision: armed.Request.Revision,
+			CandidateHeadSHA: "head-b", CandidateBase: "main",
+			CandidateCheckID: second.ID, ObservedAt: now.Add(time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		returned, err := store.RequireReauthorization(ctx, pendingci.RequireReauthorizationRequest{
+			ID: waiting.ID, ExpectedRevision: waiting.Revision,
+			CandidateHeadSHA: "head-a", CandidateBase: "main",
+			CandidateCheckID: first.ID, ObservedAt: now.Add(2 * time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(returned.CheckSlotID).NotTo(BeNil())
+		Expect(*returned.CheckSlotID).To(Equal(first.ID))
+		Expect(returned.RetiredCheckSlotID).NotTo(BeNil())
+		Expect(*returned.RetiredCheckSlotID).To(Equal(second.ID))
+
+		cleared, err := store.ClearRetiredCheckSlot(ctx, pendingci.ClearRetiredCheckSlotRequest{
+			ID: returned.ID, ExpectedRevision: returned.Revision,
+			CheckSlotID: second.ID, ClearedAt: now.Add(3 * time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cleared.RetiredCheckSlotID).To(BeNil())
+	})
+
+	It("rejects active shared heads, reassigns retired slots, and renews durably", func() {
 		ctx, store, now := runtime()
 		seedCheckCatalog(ctx, store, now)
 		slot := ensureSlot(ctx, store, now, 42, "shared", "original", "digest")
 		_, err := store.EnsureCheckSlot(ctx, pendingCICheckSlot(now, 43, "shared", "other", "other"))
 		Expect(errors.Is(err, pendingci.ErrSharedHead)).To(BeTrue())
+		reassigned, err := store.ReassignCheckSlot(ctx, pendingci.ReassignCheckSlotRequest{
+			ID: slot.ID, ExpectedRevision: slot.Revision,
+			PullRequest: 43, ReassignedAt: now.Add(time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(reassigned.PullRequest).To(Equal(43))
+		slot = reassigned
 		renewed, err := store.RenewCheckSlot(ctx, pendingci.RenewCheckSlotRequest{
 			ID: slot.ID, ExpectedRevision: slot.Revision,
 			ExternalID: "smyklot:merge-after-ci:repository-20:shared:g2",
@@ -117,6 +187,52 @@ func declarePendingCISpecs(runtime func() (context.Context, storage.Store, time.
 		Expect(renewed.CheckRunID).To(BeNil())
 		Expect(renewed.AppliedDigest).To(BeEmpty())
 		Expect(renewed.State).To(Equal(pendingci.CheckSlotProvisioning))
+	})
+
+	It("refreshes check ownership after a repository transfer", func() {
+		ctx, store, now := runtime()
+		seedCheckCatalog(ctx, store, now)
+		originalGate, err := store.GetPendingCIRepositoryGate(ctx, "repository-20")
+		Expect(err).NotTo(HaveOccurred())
+		original := ensureSlot(ctx, store, now, 42, "transfer-head", "transfer-head", "digest")
+		arm := pendingCIArm(now, 42, 101, "transfer-head")
+		arm.RepositoryFullName = "owner/repo"
+		arm.ArtifactKind = pendingci.ArtifactCheck
+		arm.Label = ""
+		arm.CheckSlotID = &original.ID
+		armed, err := store.Arm(ctx, arm)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(store.ReconcileInstallation(ctx, storage.InstallationSnapshot{
+			TargetID: "installation:88", InstallationID: "88", Kind: storage.TargetOrganization,
+			Account: storage.Account{
+				ID: "account:new-owner", Provider: "github", SubjectID: "88",
+				Login: "new-owner", UpdatedAt: now.Add(time.Minute),
+			},
+			Repositories: []storage.RepositorySnapshot{{
+				ID: "repository-20", Name: "repo", FullName: "new-owner/repo", DefaultBranch: "main",
+			}},
+			SyncedAt: now.Add(time.Minute),
+		})).To(Succeed())
+		refreshed, err := store.GetCheckSlot(ctx, original.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(refreshed.ID).To(Equal(original.ID))
+		Expect(refreshed.TargetID).To(Equal("installation:88"))
+		Expect(refreshed.InstallationID).To(Equal(int64(88)))
+		Expect(refreshed.RepositoryFullName).To(Equal("new-owner/repo"))
+		Expect(refreshed.Revision).To(BeNumerically(">", original.Revision))
+		request, err := store.GetArmed(ctx, arm.RepositoryID, arm.PullRequest)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(request.TargetID).To(Equal("installation:88"))
+		Expect(request.InstallationID).To(Equal(int64(88)))
+		Expect(request.RepositoryFullName).To(Equal("new-owner/repo"))
+		Expect(request.Revision).To(BeNumerically(">", armed.Request.Revision))
+		Expect(request.NextCheckAt).To(Equal(now.Add(time.Minute)))
+		Expect(request.LeaseExpiresAt).To(BeNil())
+		gate, err := store.GetPendingCIRepositoryGate(ctx, arm.RepositoryID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(gate.TargetID).To(Equal("installation:88"))
+		Expect(gate.Revision).To(BeNumerically(">", originalGate.Revision))
+		Expect(gate.Readiness).To(Equal(storage.PendingCIProvisioning))
 	})
 
 	It("retunes durable passing deadlines when the quiet period changes", func() {
@@ -145,6 +261,26 @@ func declarePendingCISpecs(runtime func() (context.Context, storage.Store, time.
 		Expect(err).NotTo(HaveOccurred())
 		Expect(lease.Request).NotTo(BeNil())
 		Expect(lease.Request.ID).To(Equal(armed.Request.ID))
+		staleLease := *lease.Request
+		changedAt = changedAt.Add(100 * time.Millisecond)
+		changed, err = store.RetuneQuietPeriod(ctx, pendingci.RetuneQuietPeriodRequest{
+			PassingQuiet: time.Second,
+			ChangedAt:    changedAt,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(changed).To(Equal(int64(1)))
+		_, err = store.Reschedule(ctx, pendingci.RescheduleRequest{
+			ID: staleLease.ID, ExpectedRevision: staleLease.Revision,
+			Schedule: pendingci.ScheduleActive, HeadSHA: staleLease.HeadSHA,
+			NextCheckAt: now.Add(24 * time.Hour), NextCheckTrigger: pendingci.TriggerQuietPeriod,
+			LastProgressAt: now, LastObservedState: string(pendingci.ObservedPassing),
+			LastFingerprint: "stale-worker", CheckedAt: changedAt,
+		})
+		Expect(errors.Is(err, storage.ErrConflict)).To(BeTrue())
+		lease, err = store.LeaseDue(ctx, changedAt, changedAt.Add(time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(lease.Request).NotTo(BeNil())
+		Expect(lease.Request.ID).To(Equal(armed.Request.ID))
 
 		progressAt := changedAt
 		_, err = store.Reschedule(ctx, pendingci.RescheduleRequest{
@@ -167,6 +303,138 @@ func declarePendingCISpecs(runtime func() (context.Context, storage.Store, time.
 		Expect(err).NotTo(HaveOccurred())
 		Expect(notDue.Request).To(BeNil())
 		Expect(notDue.AvailableAt).To(HaveValue(Equal(progressAt.Add(time.Hour))))
+	})
+
+	It("wakes deferred check requests when their repository gate recovers", func() {
+		ctx, store, now := runtime()
+		seedCheckCatalog(ctx, store, now)
+		slot := ensureSlot(ctx, store, now, 201, "gate-head", "gate", "authorized")
+		arm := pendingCIArm(now, 201, 104, "gate-head")
+		arm.RepositoryFullName = "owner/repo"
+		arm.ArtifactKind = pendingci.ArtifactCheck
+		arm.Label = ""
+		arm.CheckSlotID = &slot.ID
+		armed, err := store.Arm(ctx, arm)
+		Expect(err).NotTo(HaveOccurred())
+		lease, err := store.LeaseDue(ctx, now, now.Add(time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		_, err = store.Reschedule(ctx, pendingci.RescheduleRequest{
+			ID: lease.Request.ID, ExpectedRevision: lease.Request.Revision,
+			Schedule: pendingci.ScheduleDeferred, HeadSHA: armed.Request.HeadSHA,
+			NextCheckAt: now.Add(6 * time.Hour), NextCheckTrigger: pendingci.TriggerFallback,
+			LastProgressAt:    now.Add(-time.Hour),
+			LastObservedState: string(pendingci.ObservedIndeterminate),
+			LastFingerprint:   "gate:not-ready", CheckedAt: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		gate, err := store.GetPendingCIRepositoryGate(ctx, arm.RepositoryID)
+		Expect(err).NotTo(HaveOccurred())
+		readyAt := now.Add(time.Second)
+		appID := int64(17)
+		_, err = store.UpdatePendingCIRepositoryGate(ctx, storage.PendingCIGateChange{
+			RepositoryID: arm.RepositoryID, ExpectedRevision: gate.Revision,
+			EffectiveMode: storage.PendingCIEffectiveChecks, Readiness: storage.PendingCIReady,
+			Reason: "ready", AppID: &appID, ObservedAt: readyAt,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		lease, err = store.LeaseDue(ctx, readyAt, readyAt.Add(time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(lease.Request).NotTo(BeNil())
+		Expect(lease.Request.ID).To(Equal(armed.Request.ID))
+	})
+
+	It("wakes waiting check requests when branch settings change", func() {
+		ctx, store, now := runtime()
+		seedCheckCatalog(ctx, store, now)
+		slot := ensureSlot(ctx, store, now, 202, "settings-head", "settings", "authorized")
+		arm := pendingCIArm(now, 202, 105, "settings-head")
+		arm.RepositoryFullName = "owner/repo"
+		arm.ArtifactKind = pendingci.ArtifactCheck
+		arm.Label = ""
+		arm.CheckSlotID = &slot.ID
+		armed, err := store.Arm(ctx, arm)
+		Expect(err).NotTo(HaveOccurred())
+		lease, err := store.LeaseDue(ctx, now, now.Add(time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		_, err = store.Reschedule(ctx, pendingci.RescheduleRequest{
+			ID: lease.Request.ID, ExpectedRevision: lease.Request.Revision,
+			Schedule: pendingci.ScheduleDeferred, HeadSHA: armed.Request.HeadSHA,
+			NextCheckAt: now.Add(6 * time.Hour), NextCheckTrigger: pendingci.TriggerFallback,
+			LastProgressAt:    now.Add(-time.Hour),
+			LastObservedState: string(pendingci.ObservedIndeterminate),
+			LastFingerprint:   "waiting", CheckedAt: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		repository, err := store.GetRepository(ctx, arm.TargetID, arm.RepositoryID)
+		Expect(err).NotTo(HaveOccurred())
+		changedAt := now.Add(time.Second)
+		patterns := storage.PendingCIBranchPatterns{Include: []string{"refs/heads/release/*"}}
+		_, err = store.UpdateRepositorySettings(ctx, storage.RepositorySettingsChange{
+			TargetID: arm.TargetID, RepositoryID: arm.RepositoryID,
+			ActorAccountID:                  "account:pending-ci",
+			PendingCIBranchPatternsOverride: &patterns,
+			ExpectedRevision:                repository.Revision, ChangedAt: changedAt,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		lease, err = store.LeaseDue(ctx, changedAt, changedAt.Add(time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(lease.Request).NotTo(BeNil())
+		Expect(lease.Request.ID).To(Equal(armed.Request.ID))
+	})
+
+	It("wakes deferred label requests when a repository is disabled", func() {
+		ctx, store, now := runtime()
+		seedCheckCatalog(ctx, store, now)
+		labelMode := storage.PendingCIModeLabels
+		enabled := true
+		repository, err := store.UpdateRepositorySettings(ctx, storage.RepositorySettingsChange{
+			TargetID: "installation:77", RepositoryID: "repository-20",
+			ActorAccountID: "account:pending-ci", EnabledOverride: &enabled,
+			PendingCIModeOverride: &labelMode, ExpectedRevision: 1,
+			ChangedAt: now.Add(time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		arm := pendingCIArm(now.Add(2*time.Minute), 203, 106, "label-repository-head")
+		arm.RepositoryFullName = "owner/repo"
+		deferred := deferRequest(ctx, store, arm)
+		disabled := false
+		changedAt := now.Add(3 * time.Minute)
+		_, err = store.UpdateRepositorySettings(ctx, storage.RepositorySettingsChange{
+			TargetID: arm.TargetID, RepositoryID: arm.RepositoryID,
+			ActorAccountID: "account:pending-ci", EnabledOverride: &disabled,
+			PendingCIModeOverride: &labelMode, ExpectedRevision: repository.Revision,
+			ChangedAt: changedAt,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		lease, err := store.LeaseDue(ctx, changedAt, changedAt.Add(time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(lease.Request).NotTo(BeNil())
+		Expect(lease.Request.ID).To(Equal(deferred.ID))
+	})
+
+	It("wakes deferred label requests when an inherited target is disabled", func() {
+		ctx, store, now := runtime()
+		seedCheckCatalog(ctx, store, now)
+		target, err := store.UpdateTargetSettings(ctx, storage.TargetSettingsChange{
+			TargetID: "installation:77", ActorAccountID: "account:pending-ci",
+			RepositoryDefaultEnabled: true, PendingCIModeDefault: storage.PendingCIModeLabels,
+			ExpectedRevision: 1, ChangedAt: now.Add(time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		arm := pendingCIArm(now.Add(2*time.Minute), 204, 107, "label-target-head")
+		arm.RepositoryFullName = "owner/repo"
+		deferred := deferRequest(ctx, store, arm)
+		changedAt := now.Add(3 * time.Minute)
+		_, err = store.UpdateTargetSettings(ctx, storage.TargetSettingsChange{
+			TargetID: arm.TargetID, ActorAccountID: "account:pending-ci",
+			RepositoryDefaultEnabled: false, PendingCIModeDefault: storage.PendingCIModeLabels,
+			ExpectedRevision: target.Revision, ChangedAt: changedAt,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		lease, err := store.LeaseDue(ctx, changedAt, changedAt.Add(time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(lease.Request).NotTo(BeNil())
+		Expect(lease.Request.ID).To(Equal(deferred.ID))
 	})
 
 	It("records webhook causality and completed pending CI history", func() {
