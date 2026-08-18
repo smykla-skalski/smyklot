@@ -29,11 +29,18 @@ trap cleanup EXIT
 frontend="$work/frontend"
 fake_npm="$work/npm"
 npm_log="$work/npm.log"
-generated_output='internal/panel/frontend/.svelte-kit/tsconfig.json'
+# SvelteKit 3 writes the tsconfig every other one extends to `node_modules/$app`;
+# 2 wrote it to `.svelte-kit`. The directory really is called `$app`, so this is
+# single quoted and every shell below that names it quotes it too - unquoted it
+# expands to nothing and the path becomes `node_modules//tsconfig.json`, which is
+# a file nothing writes and every check then reports as missing.
+# shellcheck disable=SC2016 # `$app` is the directory's name, not an expansion.
+generated_relative='node_modules/$app/tsconfig.json'
+generated_output="internal/panel/frontend/$generated_relative"
 
 if ! mise tasks info panel:frontend:install --json |
   yq -e ".outputs | contains([\"$generated_output\"])" >/dev/null; then
-  echo 'panel:frontend:install does not declare .svelte-kit/tsconfig.json as an output' >&2
+  echo "panel:frontend:install does not declare $generated_relative as an output" >&2
   exit 1
 fi
 
@@ -42,16 +49,55 @@ cache_paths="$(
   yq -r '.runs.steps[] | select(.name == "Restore the panel bundle") | .with.path' "$toolchain"
 )"
 if ! command grep -Fqx -- "$generated_output" <<<"$cache_paths"; then
-  echo 'panel bundle cache does not preserve .svelte-kit/tsconfig.json' >&2
+  echo "panel bundle cache does not preserve $generated_relative" >&2
   exit 1
 fi
 mark_script="$(
   yq -r '.runs.steps[] | select(.name == "Mark the panel bundle as current") | .run' "$toolchain"
 )"
-if ! command grep -Fqx -- "touch $generated_output" <<<"$mark_script"; then
-  echo 'panel bundle cache does not mark .svelte-kit/tsconfig.json as current' >&2
-  exit 1
-fi
+
+# The mark step is run against a fake restored workspace rather than read for the
+# path it names, because what has to hold is behavioural: the output it exists to
+# out-date is newer afterwards. That covers every way of getting it wrong - a
+# dropped touch, and the quoting `$app` needs, where the step's own `set -u` turns
+# a bare one into an unbound variable and takes down every job that restores this
+# cache. Matching the spelling by text would also refuse a correct one:
+# `"...\$app/..."` is as right as `'...$app/...'`.
+#
+# All four outputs, not just the generated one: any of them left behind the
+# checkout puts the whole chain back, which is the half-minute per job this cache
+# exists to skip.
+marked="$work/marked"
+reference="$work/mark-reference"
+mkdir -p \
+  "$marked/$(command dirname "$generated_output")" \
+  "$marked/internal/panel/frontend/dist" \
+  "$marked/internal/panelassets/generated"
+: >"$marked/$generated_output"
+: >"$marked/internal/panel/frontend/node_modules/.package-lock.json"
+: >"$marked/internal/panel/frontend/dist/index.html"
+: >"$marked/internal/panelassets/generated/bundle.zip"
+# Older than the checkout the step exists to out-date, which the reference stands in
+# for: it is written after them, so anything the step misses stays behind it.
+command find "$marked" -type f -exec touch -t 200001010000 {} +
+: >"$reference"
+
+printf '%s\n' "$mark_script" >"$work/mark.sh"
+(
+  CDPATH='' command cd -- "$marked"
+  command bash "$work/mark.sh"
+)
+
+for output in \
+  "$generated_output" \
+  internal/panel/frontend/node_modules/.package-lock.json \
+  internal/panel/frontend/dist/index.html \
+  internal/panelassets/generated/bundle.zip; do
+  if [[ ! "$marked/$output" -nt "$reference" ]]; then
+    echo "panel bundle cache does not mark $output as current" >&2
+    exit 1
+  fi
+done
 
 mkdir -p "$frontend/node_modules"
 printf '{"name":"cache-hit"}\n' >"$frontend/package.json"
@@ -72,18 +118,20 @@ if [[ "$*" != 'run prepare' ]]; then
   printf 'unexpected npm command: %s\n' "$*" >&2
   exit 64
 fi
-mkdir -p .svelte-kit
-printf '{}\n' >.svelte-kit/tsconfig.json
+generated="${SMYKLOT_PANEL_GENERATED:?}"
+mkdir -p "$(dirname "$generated")"
+printf '{}\n' >"$generated"
 FAKE
 chmod +x "$fake_npm"
 
 SMYKLOT_PANEL_FRONTEND_DIR="$frontend" \
   SMYKLOT_PANEL_NPM="$fake_npm" \
   SMYKLOT_PANEL_NPM_LOG="$npm_log" \
+  SMYKLOT_PANEL_GENERATED="$generated_relative" \
   ./scripts/install-panel-frontend.sh
 
-if [[ ! -f "$frontend/.svelte-kit/tsconfig.json" ]]; then
-  echo 'cache hit did not regenerate .svelte-kit/tsconfig.json' >&2
+if [[ ! -f "$frontend/$generated_relative" ]]; then
+  echo "cache hit did not regenerate $generated_relative" >&2
   exit 1
 fi
 if [[ "$(command cat "$npm_log")" != 'run prepare' ]]; then
@@ -91,4 +139,4 @@ if [[ "$(command cat "$npm_log")" != 'run prepare' ]]; then
   exit 1
 fi
 
-echo 'cache hit regenerated .svelte-kit/tsconfig.json'
+echo "cache hit regenerated $generated_relative"

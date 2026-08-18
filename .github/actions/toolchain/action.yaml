@@ -58,16 +58,21 @@ runs:
     # decides them. mise skips a task whose outputs are newer than its sources,
     # so with these four present nothing in the chain runs. `.package-lock.json`
     # and SvelteKit's generated tsconfig are the install step's outputs. They
-    # are the only parts of node_modules and .svelte-kit anything here reads:
-    # when the key misses, npm ci runs and replaces the dependency directory
-    # wholesale, which is the only path that ever needs the rest of it.
+    # are the only parts of node_modules anything here reads: when the key
+    # misses, npm ci runs and replaces the dependency directory wholesale,
+    # which is the only path that ever needs the rest of it.
+    #
+    # SvelteKit 3 writes that tsconfig to `node_modules/$app`, where 2 wrote it
+    # to `.svelte-kit`. The directory is called `$app` on disk, so the touch
+    # below quotes it: that step runs under `set -u`, where a bare `$app` is an
+    # unbound variable and fails for every job restoring this cache.
     - name: Restore the panel bundle
       if: inputs.go-cache != ''
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: |
           internal/panel/frontend/node_modules/.package-lock.json
-          internal/panel/frontend/.svelte-kit/tsconfig.json
+          internal/panel/frontend/node_modules/$app/tsconfig.json
           internal/panel/frontend/dist
           internal/panelassets/generated/bundle.zip
         # `tests/**` is excluded because vite never reads it: the browser suite
@@ -101,6 +106,6 @@ runs:
         # In the order the chain produces them, so each output is newer than the
         # one it was made from as well as newer than the checkout.
         touch internal/panel/frontend/node_modules/.package-lock.json
-        touch internal/panel/frontend/.svelte-kit/tsconfig.json
+        touch 'internal/panel/frontend/node_modules/$app/tsconfig.json'
         find internal/panel/frontend/dist -exec touch {} +
         touch "$bundle"
