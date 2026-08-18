@@ -42,7 +42,7 @@ func applyYAMLArrayRules(merged, before *yaml.Node, override map[string]any, spe
 		// Writing it anyway would stand in for an inherited list - flattening
 		// the inheritance out as literal keys, which is the whole diff, for a
 		// rule that changed no value.
-		if sameNode(nodeAt(merged, keys), combined) {
+		if sameWriting(nodeAt(merged, keys), combined) {
 			continue
 		}
 

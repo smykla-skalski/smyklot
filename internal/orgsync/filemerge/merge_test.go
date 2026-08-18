@@ -815,6 +815,37 @@ jobs:
 		// Writing it stands in for the inherited list, and the flattening is
 		// then the whole of the pull request - the same change nobody asked for
 		// that the deep merge above refuses to propose, one level over.
+		// The deep merge writes the override's own list at the path first, and
+		// builds it fresh - so the anchors and the comments the template wrote
+		// are gone from it, and the rule's list, built from clones of the
+		// template's items, is what puts them back. A skip that asks whether
+		// the two say the same thing sees no difference and declines, leaving
+		// an alias with nothing above it and somebody's comments deleted.
+		DescribeTable("writes a rule's list back over one that lost what it carried",
+			func(template, expected string) {
+				merged, err := filemerge.Apply("ci.yaml", []byte(template),
+					filemerge.Spec{
+						Overrides:   overrides(`{"a": {"list": ["one", "two"]}}`),
+						Arrays:      []filemerge.ArrayRule{{Path: "$.a.list", Strategy: filemerge.ArrayAppend}},
+						Deduplicate: true,
+					})
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(merged)).To(ContainSubstring(expected))
+			},
+			// Refused outright before this: the anchor went and refuseDanglingAliases
+			// stopped the whole repository's plan on a file that merged cleanly
+			// one commit earlier.
+			Entry("an anchor an alias below it needs",
+				"a:\n  list:\n    - &A one\n    - two\nuse: *A\n", "&A one"),
+			Entry("a comment somebody wrote on an item",
+				"a:\n  list:\n    - one # keep me\n    - two\n", "# keep me"),
+		)
+
+		// The other half of the same question: where the rule's result really
+		// is what the file already holds, down to the anchors and the comments,
+		// writing it would stand in for the inherited list and the flattening
+		// would be the whole of the pull request.
 		It("leaves an inherited list alone where a rule changes none of it", func() {
 			template := "base: &base\n  list:\n    - t\na: *base\n"
 
@@ -835,10 +866,13 @@ jobs:
 		// gets, the flattening is the only thing in the diff - a pull request
 		// proposing a change nobody asked for.
 		DescribeTable("changes nothing where an inherited mapping already says it",
-			func(override string) {
+			func(override string, own ...string) {
 				// The whole file, byte for byte. A substring would match the
 				// template's own copy of the inherited keys and pass either way.
 				template := "base: &b\n  nested:\n    a: 1\n    b: 2\nthing:\n  <<: *b\n"
+				if len(own) > 0 {
+					template = own[0]
+				}
 
 				merged, err := filemerge.Apply("ci.yaml", []byte(template),
 					filemerge.Spec{Overrides: overrides(override)})
@@ -847,6 +881,13 @@ jobs:
 				Expect(string(merged)).To(Equal(template))
 			},
 			Entry("an empty patch", `{"thing": {"nested": {}}}`),
+			// The inherited subtree carries an anchor and an alias to it, which
+			// standInCopy renames as it copies. Counting that as a change made
+			// the guard answer "changed" for every template that has one, so an
+			// empty patch flattened a whole subtree and minted names for it.
+			Entry("an empty patch where the inheritance carries an anchor",
+				`{"thing": {"nested": {}}}`, "base: &b\n  nested:\n    inner: &i thing\n"+
+					"    ref: *i\nthing:\n  <<: *b\n"),
 			Entry("every value it already sets", `{"thing": {"nested": {"a": 1, "b": 2}}}`),
 			Entry("a null on a key it does not have", `{"thing": {"nested": {"c": null}}}`),
 		)
@@ -865,12 +906,20 @@ jobs:
 				Expect(err).NotTo(HaveOccurred())
 				Expect(string(merged)).To(ContainSubstring(expected))
 			},
+			// Nested a level down, and through an alias, because those are the
+			// shapes that reach the comparison at all: a scalar directly under
+			// a merge key is written by nodeFor without ever asking. Written
+			// flat, this whole table passed against the engine it was added
+			// to fix.
 			Entry("a string YAML 1.1 reads as a boolean",
-				"defaults: &d\n  restart: no\nservice:\n  <<: *d\n",
+				"defaults: &d\n  nested:\n    restart: no\nservice:\n  <<: *d\n",
+				`{"service": {"nested": {"restart": "no"}}}`, `restart: "no"`),
+			Entry("the same, where an alias is what puts it there",
+				"defaults: &d\n  restart: no\nservice: *d\n",
 				`{"service": {"restart": "no"}}`, `restart: "no"`),
 			Entry("a string YAML 1.1 reads as a sexagesimal number",
-				"defaults: &d\n  at: 12:30\njob:\n  <<: *d\n",
-				`{"job": {"at": "12:30"}}`, `at: "12:30"`),
+				"defaults: &d\n  nested:\n    at: 12:30\njob:\n  <<: *d\n",
+				`{"job": {"nested": {"at": "12:30"}}}`, `at: "12:30"`),
 			// The same override on a literal mapping was always honoured. One
 			// spec answering two ways depending on whether the key is inherited
 			// is the shape this whole comparison exists to keep out.
@@ -878,8 +927,8 @@ jobs:
 				"service:\n  restart: no\n",
 				`{"service": {"restart": "no"}}`, `restart: "no"`),
 			Entry("a number spelled differently, as the JSON half also writes it",
-				"defaults: &d\n  a: 1\nthing:\n  <<: *d\n",
-				`{"thing": {"a": 1.0}}`, "a: 1.0"),
+				"defaults: &d\n  nested:\n    a: 1\nthing:\n  <<: *d\n",
+				`{"thing": {"nested": {"a": 1.0}}}`, "a: 1.0"),
 		)
 
 		// Reading a value is what the comparison used to do, and a template

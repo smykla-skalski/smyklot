@@ -342,7 +342,7 @@ func standIn(root, mapping *yaml.Node, key string, existing *yaml.Node, own bool
 		return existing
 	}
 
-	copied := standInCopy(root, stood)
+	copied, _ := standInCopy(root, stood)
 	setKey(mapping, key, copied)
 
 	return copied
@@ -372,13 +372,11 @@ func inheritedMapping(existing *yaml.Node) *yaml.Node {
 // standInCopy is the copy a merge writes into instead of the node itself, with
 // its anchors settled against the document it is about to join. Attaching it is
 // the caller's.
-func standInCopy(root, stood *yaml.Node) *yaml.Node {
-	copied := copyForMerge(stood)
+func standInCopy(root, stood *yaml.Node) (copied *yaml.Node, renamed map[string]string) {
+	copied = copyForMerge(stood)
 	copied.Anchor = ""
 
-	renameCopiedAnchors(root, copied)
-
-	return copied
+	return copied, renameCopiedAnchors(root, copied)
 }
 
 // mergeIntoInherited merges into a copy of what a key inherits, and keeps the
@@ -401,7 +399,7 @@ func mergeIntoInherited(
 	stood *yaml.Node,
 	nested map[string]any,
 ) error {
-	copied := standInCopy(root, stood)
+	copied, renamed := standInCopy(root, stood)
 
 	held := slices.Clone(mapping.Content)
 	setKey(mapping, key, copied)
@@ -410,7 +408,7 @@ func mergeIntoInherited(
 		return err
 	}
 
-	if sameNode(copied, stood) {
+	if sameNode(copied, stood, renamed) {
 		mapping.Content = held
 	}
 
@@ -433,13 +431,70 @@ func mergeIntoInherited(
 // is a change. `1` patched over `1.0` writes `1.0`, which is what the JSON half
 // of this engine does with the same override.
 //
-// Anchors are ignored: standInCopy clears the copy's own and may rename those
-// under it, and neither is the merge changing what the mapping says. An alias
-// is compared by the name it holds rather than followed - following it walks
-// out of the copy, and where a template names itself it would not return.
-func sameNode(one, other *yaml.Node) bool {
+// Anchors are ignored, and an alias is read through the renaming the copy has
+// already had: standInCopy clears the copy's own anchor and renames any under
+// it that the document has spoken for, repointing the copy's aliases as it
+// goes. None of that is the merge changing what the mapping says, and counting
+// it made the answer always "changed" for any template with an anchor and an
+// alias to it inside - so the guard never fired for exactly the templates that
+// have one, and an empty patch flattened a whole subtree and minted names for
+// it. An alias is compared by the name it holds rather than followed: following
+// it walks out of the copy, and where a template names itself it would not
+// return.
+
+// sameWriting reports a value that would write out exactly what is already
+// there, anchors and comments included.
+//
+// The other question, and the one a list rule asks: not "does this say the same
+// thing" but "would writing it change the file". By the time a rule runs the
+// deep merge has written the override's own list at that path through nodeFor,
+// which keeps none of the template's item nodes - so the list there has lost
+// the anchors and the comments the template wrote, and the rule's own list,
+// built from clones of those items, is what puts them back. Judged by sameNode
+// the two look identical and the rule declines, leaving a file with an anchor
+// its aliases can no longer find and comments somebody wrote gone.
+func sameWriting(one, other *yaml.Node) bool {
 	if one == nil || other == nil {
 		return one == other
+	}
+
+	if one.Anchor != other.Anchor ||
+		one.HeadComment != other.HeadComment ||
+		one.LineComment != other.LineComment ||
+		one.FootComment != other.FootComment {
+		return false
+	}
+
+	if one.Kind != other.Kind ||
+		one.Tag != other.Tag ||
+		one.Value != other.Value ||
+		one.Style != other.Style ||
+		len(one.Content) != len(other.Content) {
+		return false
+	}
+
+	for at, child := range one.Content {
+		if !sameWriting(child, other.Content[at]) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func sameNode(one, other *yaml.Node, renamed map[string]string) bool {
+	if one == nil || other == nil {
+		return one == other
+	}
+
+	// An alias the copy carries names whatever its definition was renamed to,
+	// and the one it was copied from names the original. Read through the
+	// renaming rather than compared raw.
+	value := one.Value
+	if one.Kind == yaml.AliasNode {
+		if was, ok := renamed[other.Value]; ok && was == value {
+			value = other.Value
+		}
 	}
 
 	// Style, not only Tag: the parser reads `no` and `"no"` alike as !!str with
@@ -450,14 +505,14 @@ func sameNode(one, other *yaml.Node) bool {
 	// bug it guards against is an override silently dropped.
 	if one.Kind != other.Kind ||
 		one.Tag != other.Tag ||
-		one.Value != other.Value ||
+		value != other.Value ||
 		one.Style != other.Style ||
 		len(one.Content) != len(other.Content) {
 		return false
 	}
 
 	for at, child := range one.Content {
-		if !sameNode(child, other.Content[at]) {
+		if !sameNode(child, other.Content[at], renamed) {
 			return false
 		}
 	}
@@ -540,10 +595,12 @@ func repointAliases(node *yaml.Node, within map[*yaml.Node]*yaml.Node) {
 //
 // Called before the copy is attached, so the document's taken names are the
 // document's own.
-func renameCopiedAnchors(root, copied *yaml.Node) {
+func renameCopiedAnchors(root, copied *yaml.Node) map[string]string {
+	renamed := map[string]string{}
+
 	anchored := definitionsIn(copied)
 	if len(anchored) == 0 {
-		return
+		return renamed
 	}
 
 	// The document's own names, which a fresh one has to miss. A name minted
@@ -559,11 +616,14 @@ func renameCopiedAnchors(root, copied *yaml.Node) {
 		for _, node := range nodes {
 			fresh := unusedAnchor(name, taken)
 			taken[fresh] = nil
+			renamed[name] = fresh
 
 			renameAliases(copied, node, fresh)
 			node.Anchor = fresh
 		}
 	}
+
+	return renamed
 }
 
 // dropClonedAnchors clears the anchors on a value written beside the node it
