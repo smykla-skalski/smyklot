@@ -92,7 +92,9 @@ func mergeYAML(template []byte, spec Spec) ([]byte, error) {
 		return nil, err
 	}
 
-	edit.settle()
+	if err := edit.settle(); err != nil {
+		return nil, err
+	}
 
 	if err := refuseDanglingAliases(document); err != nil {
 		return nil, err
@@ -266,13 +268,12 @@ func encodeYAMLDocument(root *yaml.Node) ([]byte, error) {
 	return buffer.Bytes(), nil
 }
 
-// mergeIntoMapping applies an override object to a mapping node.
+// intoMapping applies an override object to a mapping node.
 //
 // The keys are walked in sorted order so that one override document produces
-// one file, whatever order Go happened to range its map in.
-//
-// root is the whole document, carried down because a copy the merge writes has
-// to be given anchor names the rest of the document is not already using.
+// one file, whatever order Go happened to range its map in. Which also means a
+// key can be merged before the anchor it inherits from - `services` before
+// `x-logging` - and is half of why nothing here decides anything until settle.
 func (m *merge) intoMapping(mapping *yaml.Node, override map[string]any) error {
 	for _, key := range sortedKeys(override) {
 		if err := m.keyInto(mapping, key, override[key]); err != nil {
@@ -307,8 +308,8 @@ func (m *merge) keyInto(mapping *yaml.Node, key string, value any) error {
 			return m.intoMapping(existing, nested)
 		}
 
-		if inheritedMapping(existing) != nil {
-			return m.intoInherited(mapping, key, existing, own, nested)
+		if stood := inheritedMapping(existing); stood != nil {
+			return m.intoInherited(mapping, key, existing, own, stood, nested)
 		}
 
 		// An object patched onto anything that is not an object replaces it,
@@ -374,8 +375,11 @@ type inheritedWrite struct {
 	// that difference is the whole of the remedy: a displaced alias goes back,
 	// and a key that was never there comes off.
 	before *yaml.Node
-	// The override this key was given, where it was a mapping. Held so the copy
-	// can be built again from what the anchor says at the end - see rederived.
+	// Set where the write made a copy of an inheritance, and holding the
+	// override that copy was given, so it can be built again from what the
+	// anchor says at the end - see rederived. Nil marks a key written outright,
+	// which is not every key whose override was a mapping: an object patched
+	// over a scalar replaces it and copies nothing.
 	nested map[string]any
 	// What the merge left at this key, so a later writer can be told from the
 	// merge itself. A list rule reaches into a copy by its own path, and taking
@@ -394,33 +398,82 @@ type inheritedWrite struct {
 // and reasoning about the order the records happen to be in is a claim in a
 // comment rather than a property of the code. Every step only ever removes,
 // and a key removed stays removed, so this terminates.
-func (m *merge) settle() {
+func (m *merge) settle() error {
 	for {
 		settled := true
 
-		for _, write := range m.written {
-			settled = settled && !m.take(write)
+		for at, write := range m.written {
+			// Not `settled && take(...)`: that short-circuits, so a pass would
+			// stop judging at its first removal and every later pass would
+			// rebuild each record ahead of it again.
+			took, err := m.take(write)
+			if err != nil {
+				return err
+			}
+
+			if !took {
+				continue
+			}
+
+			settled = false
+
+			// What this take just changed is inside some other record's copy,
+			// and that record remembers what the merge left there. The merge's
+			// own settle is not the later writer that memory is watching for,
+			// so it is brought up to date rather than read as one.
+			m.resnapshot(write.mapping, at)
 		}
 
 		if settled {
-			return
+			return nil
 		}
 	}
 }
 
-// take puts one written key back the way it was, where the mapping turns out to
-// inherit what the key says, and reports whether it did.
-func (m *merge) take(write inheritedWrite) bool {
-	spelled, own := keyValue(write.mapping, write.key)
-	if !own {
+// resnapshot brings every record's memory of what the merge left up to date,
+// where a take of its own has just changed something inside it.
+//
+// Skips the record that did the changing: it has just been put back the way it
+// was, and the guard that keeps this pass monotone is exactly that its copy no
+// longer matches what the merge wrote.
+func (m *merge) resnapshot(changed *yaml.Node, except int) {
+	for at, write := range m.written {
+		if at == except || write.asWritten == nil {
+			continue
+		}
+
+		spelled, own := keyValue(write.mapping, write.key)
+		if own && holds(spelled, changed) {
+			m.written[at].asWritten = cloneNode(spelled)
+		}
+	}
+}
+
+// holds reports a node somewhere under another, by identity.
+func holds(node, wanted *yaml.Node) bool {
+	if node == nil {
 		return false
 	}
 
-	// Already put back. Without this the pass is not monotone: rederived would
-	// replace the alias with a copy again, find it says nothing new again, and
-	// put it back again, for ever.
-	if spelled == write.before {
-		return false
+	if node == wanted {
+		return true
+	}
+
+	for _, child := range node.Content {
+		if holds(child, wanted) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// take puts one written key back the way it was, where the mapping turns out to
+// inherit what the key says, and reports whether it did.
+func (m *merge) take(write inheritedWrite) (bool, error) {
+	spelled, own := keyValue(write.mapping, write.key)
+	if !own {
+		return false, nil
 	}
 
 	// Read now, not when the write was made. An alias names whatever its anchor
@@ -432,25 +485,32 @@ func (m *merge) take(write inheritedWrite) bool {
 	}
 
 	if inherited == nil {
-		return false
+		return false, nil
 	}
 
 	// Somebody else has written here since. A list rule reaches into a copy
 	// through its own path, and its work is not in the override this would
 	// judge by - so the only safe reading is that this key is no longer the
 	// merge's alone to take back.
-	if write.asWritten != nil && !sameWriting(spelled, write.asWritten) {
-		return false
+	//
+	// This is also what keeps the pass monotone. A key already put back holds
+	// the alias it was put back to, which is not the mapping the merge wrote,
+	// so it never fires twice.
+	if !sameWriting(spelled, write.asWritten) {
+		return false, nil
 	}
 
 	// A copy is derived from what it was copied from, so a copy taken earlier
 	// says what the anchor said earlier. Built again from what the anchor says
 	// now, so every key the override never named goes on following it, and only
 	// the keys it did name can hold the copy in place.
-	spelled, renamed := m.rederived(write, spelled, inherited)
+	spelled, renamed, err := m.rederived(write, spelled, inherited)
+	if err != nil {
+		return false, err
+	}
 
 	if !sameNode(spelled, inherited, renamed) {
-		return false
+		return false, nil
 	}
 
 	if write.before != nil {
@@ -458,12 +518,12 @@ func (m *merge) take(write inheritedWrite) bool {
 		// what is there now onto an alias that cannot hold one.
 		write.mapping.Content[keyIndex(write.mapping, write.key)+1] = write.before
 
-		return true
+		return true, nil
 	}
 
 	deleteKey(write.mapping, write.key)
 
-	return true
+	return true, nil
 }
 
 // rederived is the copy this write would make if it ran now, for a write that
@@ -477,9 +537,9 @@ func (m *merge) take(write inheritedWrite) bool {
 func (m *merge) rederived(
 	write inheritedWrite,
 	spelled, inherited *yaml.Node,
-) (*yaml.Node, map[string]string) {
+) (*yaml.Node, map[string]string, error) {
 	if write.nested == nil {
-		return spelled, write.renamed
+		return spelled, nil, nil
 	}
 
 	fresh, renamed := standInCopy(m.root, inherited)
@@ -488,16 +548,27 @@ func (m *merge) rederived(
 	// what it holds has settled. Nothing is attached, so nothing it does can be
 	// seen unless this write keeps it.
 	inner := &merge{root: m.root, deep: true}
-	if err := inner.intoMapping(fresh, write.nested); err != nil {
-		return spelled, write.renamed
+
+	switch err := inner.intoMapping(fresh, write.nested); {
+	case errors.Is(err, errInheritedRemoval):
+		// A removal the file has since made impossible. That is an answer, not
+		// a fault: what the override asks for cannot be said about the anchor
+		// as it now stands, so the copy stays and says it instead. Refusing
+		// here would fail a whole file over a copy that never appears in it.
+		return spelled, write.renamed, nil
+
+	case err != nil:
+		return nil, nil, err
 	}
 
-	inner.settle()
+	if err := inner.settle(); err != nil {
+		return nil, nil, err
+	}
 
 	// Read, never written in. A list rule may have written into the copy that is
 	// there, and its work is not in the override this rebuilds from - putting
 	// the rebuild in would throw it away.
-	return fresh, renamed
+	return fresh, renamed, nil
 }
 
 // standIn writes out what a mapping does not hold itself, so a deep merge has a
@@ -513,24 +584,22 @@ func (m *merge) rederived(
 // itself: what an anchor names is shared, and merging into it would change every
 // other place naming it.
 //
-// Its caller is setNodeAt, walking a list rule's path, which always writes. A
-// deep merge takes the other route - mergeIntoInherited, which attaches the
-// same copy and can take it back off again.
-func standIn(
-	root, mapping *yaml.Node,
-	key string,
-	existing *yaml.Node,
-	own bool,
-) (*yaml.Node, map[string]string) {
+// Its one caller is setNodeAt, walking a list rule's path, which always writes.
+// A deep merge asks these two questions for itself and calls standInCopy
+// directly, so that the answers live in one place rather than being reached at
+// twice.
+func standIn(root, mapping *yaml.Node, key string, existing *yaml.Node, own bool) *yaml.Node {
 	stood := inheritedMapping(existing)
 	if stood == nil || heldOutright(existing, own) {
-		return existing, nil
+		return existing
 	}
 
-	copied, renamed := standInCopy(root, stood)
+	// The renaming is dropped: a list rule always writes, so there is nothing
+	// to judge later and nothing to read it back through.
+	copied, _ := standInCopy(root, stood)
 	setKey(mapping, key, copied)
 
-	return copied, renamed
+	return copied
 }
 
 // heldOutright reports the mapping's own mapping node, spelled out where it is.
@@ -564,8 +633,9 @@ func standInCopy(root, stood *yaml.Node) (copied *yaml.Node, renamed map[string]
 	return copied, renameCopiedAnchors(root, copied)
 }
 
-// mergeIntoInherited merges into a copy of what a key inherits, and keeps the
-// copy only where it says something the inheritance does not.
+// intoInherited merges into a copy of what a key inherits, and records it so
+// settle can keep the copy only where it says something the inheritance does
+// not.
 //
 // Standing in writes an inherited mapping out as literal keys, and that is a
 // change to the file whatever the merge then does to it. Where the merge asks
@@ -583,9 +653,15 @@ func (m *merge) intoInherited(
 	key string,
 	existing *yaml.Node,
 	own bool,
+	stood *yaml.Node,
 	nested map[string]any,
 ) error {
-	copied, renamed := standIn(m.root, mapping, key, existing, own)
+	// The copy itself, rather than through standIn: its caller has already
+	// settled both questions standIn asks, and asking them again would put the
+	// answer in two places. standIn keeps the one caller it is written for -
+	// setNodeAt, walking a list rule's path.
+	copied, renamed := standInCopy(m.root, stood)
+	setKey(mapping, key, copied)
 
 	if err := m.intoMapping(copied, nested); err != nil {
 		return err
@@ -945,7 +1021,8 @@ func removeKey(mapping *yaml.Node, key string) error {
 	if inheritedValue(mapping, key) != nil {
 		return fmt.Errorf(
 			"%w: %q here comes from a %q, so removing it would mean unpicking "+
-				"what this mapping inherits", ErrUnwritable, key, mergeKey)
+				"what this mapping inherits (%w)", ErrUnwritable, key, mergeKey,
+			errInheritedRemoval)
 	}
 
 	deleteKey(mapping, key)

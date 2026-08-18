@@ -33,6 +33,16 @@ var (
 	// ErrUnwritable is a merged document that will not marshal back.
 	ErrUnwritable = errors.New("cannot write the merged file")
 
+	// errInheritedRemoval is a null on a key a merge key gives, which cannot be
+	// honoured without unpicking the inheritance.
+	//
+	// Named apart from the rest of ErrUnwritable because settle asks the same
+	// question again once the file has stopped moving, against a copy that may
+	// never be written - and there, a refusal is an answer rather than a
+	// failure. Only this one is read that way; anything else the rebuild raises
+	// is a real fault and has to reach the caller.
+	errInheritedRemoval = errors.New("removing it would unpick an inheritance")
+
 	// ErrNothingAddressed is a merge whose configuration names something the
 	// file does not have: a path no override sets, or a heading no section
 	// carries.

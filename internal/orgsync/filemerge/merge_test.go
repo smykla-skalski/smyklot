@@ -842,6 +842,44 @@ jobs:
 				"a:\n  list:\n    - one # keep me\n    - two\n", "# keep me"),
 		)
 
+		// What the merge left at a key is remembered so a later writer can be
+		// told from the merge itself - but the merge's own settle edits inside
+		// those copies as it takes inner keys back, and reading that as a later
+		// writer blocked the copy around them for ever. Both of these are a
+		// flattening that is the whole of the diff.
+		DescribeTable("leaves a copy its own settle emptied",
+			func(template, override string) {
+				merged, err := filemerge.Apply("ci.yaml", []byte(template),
+					filemerge.Spec{Overrides: overrides(override)})
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(merged)).To(Equal(template))
+			},
+			Entry("an inner key a merge key gave back",
+				"zoth: &o\n  k: v\nbase: &b\n  inner:\n    <<: *o\nthing:\n  <<: *b\n",
+				`{"thing": {"inner": {"k": "v"}}}`),
+			Entry("an inner alias put back",
+				"val: &v\n  x: 1\nbase: &b\n  inner:\n    k: *v\nthing:\n  <<: *b\n",
+				`{"thing": {"inner": {"k": {"x": 1}}}}`),
+		)
+
+		// The same block, where what it holds in place is a value the override
+		// contradicts. Keys are merged in sorted order, so the copy is taken
+		// before `zbase` moves, and a reader of athing.inner.sib gets the old
+		// value for ever - byte-stable across sweeps, so it never repairs.
+		It("keeps a stale sibling in a copy its own settle emptied", func() {
+			merged, err := filemerge.Apply("ci.yaml",
+				[]byte("aoth: &o\n  k: v\nzbase: &b\n  inner:\n    <<: *o\n    sib: old\n"+
+					"athing:\n  <<: *b\n"),
+				filemerge.Spec{Overrides: overrides(
+					`{"athing": {"inner": {"k": "v"}}, "zbase": {"inner": {"sib": "new"}}}`)})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(merged)).To(Equal(
+				"aoth: &o\n  k: v\nzbase: &b\n  inner:\n    <<: *o\n    sib: new\n" +
+					"athing:\n  <<: *b\n"))
+		})
+
 		// Taking a copy back off takes everything in it, and a list rule reaches
 		// into a copy by its own path. Judged only against the override, the
 		// copy reads as saying nothing new and the rule's whole result goes
