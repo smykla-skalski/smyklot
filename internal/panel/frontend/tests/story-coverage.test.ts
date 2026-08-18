@@ -23,6 +23,23 @@ const components = new URL('../src/lib/components/', import.meta.url);
 const stories = new URL('../stories/', import.meta.url);
 
 /** Components still owed a story. Only ever gets shorter. */
+/*
+ * The three left, and they all want the same thing.
+ *
+ * Every view already storied takes its data through ordinary props - a `fetchPage`, a
+ * `fetchAudit` - so a story hands it a function and the query resolves against that.
+ * These three do not: they read `session.api`, and `PanelShell` stubs that to reject
+ * every call on purpose, so a story of one draws its shell over nothing.
+ *
+ * The fix is one change rather than three: back the shell's session API with
+ * `dev/fixtures.ts` - the same data the dev server answers with - instead of a
+ * rejecting Proxy. Do it there and not per story, or three stories grow three
+ * different services.
+ *
+ * `IdentityBar` needs that too, since it draws the workspace switcher and the account
+ * menu from the session, plus a decision about what a story of the shell's own
+ * furniture should show at all. Worth asking before writing it.
+ */
 const PENDING: readonly string[] = ['IdentityBar', 'InstallationView', 'RootInstallationView'];
 
 function storyNames(): Set<string> {
