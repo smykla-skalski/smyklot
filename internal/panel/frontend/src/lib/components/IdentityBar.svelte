@@ -5,10 +5,9 @@
   import type { PanelView, RootSection } from '../routes';
   import type { PanelTarget, PanelViewer } from '../types';
   import Avatar from './Avatar.svelte';
-  import BrandMark from './BrandMark.svelte';
   import Icon from './Icon.svelte';
   import AccountTrigger from './AccountTrigger.svelte';
-  import SidebarTooltip from './SidebarTooltip.svelte';
+  import BrandRow from './BrandRow.svelte';
   import WorkspaceTrigger from './WorkspaceTrigger.svelte';
   import Popover from './Popover.svelte';
   import ThemeSwitch from './ThemeSwitch.svelte';
@@ -219,40 +218,13 @@
     rootMode && 'root-mode',
   ]}
 >
-  <div class="brand-row">
-    <BrandMark part={rootMode ? 'ROOT MODE' : 'PANEL'} heading />
-
-    {#if showNavigation}
-      <button
-        class="sidebar-collapse-trigger"
-        type="button"
-        aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        aria-expanded={!collapsed}
-        onclick={onToggleCollapsed}
-      >
-        <Icon
-          name={collapsed ? 'sidebar-expand' : 'sidebar-collapse'}
-          size={16}
-          strokeWidth={1.75}
-        />
-        <SidebarTooltip text={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} />
-      </button>
-
-      <button
-        class="mobile-navigation-trigger"
-        type="button"
-        aria-label="Toggle panel navigation"
-        aria-expanded={mobileNavigationOpen}
-        aria-controls="panel-navigation-drawer"
-        onclick={() => (mobileNavigationOpen = !mobileNavigationOpen)}
-      >
-        <span aria-hidden="true"></span>
-        <span aria-hidden="true"></span>
-        <span aria-hidden="true"></span>
-        <span>Menu</span>
-      </button>
-    {/if}
-  </div>
+  <BrandRow
+    part={rootMode ? 'ROOT MODE' : 'PANEL'}
+    {showNavigation}
+    {collapsed}
+    {onToggleCollapsed}
+    bind:navigationOpen={mobileNavigationOpen}
+  />
 
   {#if !rootMode && selectedTarget !== null}
     <Popover
@@ -411,100 +383,15 @@
     z-index: var(--layer-sticky);
   }
 
-  .brand-row {
-    align-items: center;
-    display: flex;
-    justify-content: space-between;
-    /* The whole gap under the mark, rather than half of it here and half on the
-       switcher below. Split, it only measured 16px on a surface that has a switcher:
-       the console has none, so its navigation stood 8px under the mark - close enough
-       to the 3px between two navigation items to read as one more of them. */
-    margin-bottom: var(--space-4);
-    min-height: 2.375rem;
-    /* No padding on the closing edge: it held the collapse trigger 8px inside the right edge every
-       navigation row below it lines up on. The mark keeps its own inset on the opening edge.
-       Collapsed, the row zeroes this out and centres instead. */
-    padding: 0 0 0 var(--space-2);
-    position: relative;
-  }
-
   /* The mark itself is `BrandMark`, shared with the invitation page so the two
      cannot drift. What stays here is only what the rail does to it. */
   .panel-sidebar.root-mode :global(.mark-part) {
     color: var(--sidebar-root-accent);
   }
 
-  .sidebar-collapse-trigger,
-  .mobile-navigation-trigger {
-    align-items: center;
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: var(--radius-control);
-    color: var(--sidebar-text-muted);
-    display: flex;
-    flex: none;
-    height: 1.75rem;
-    justify-content: center;
-    padding: 0;
-    width: 1.75rem;
-  }
-
-  .sidebar-collapse-trigger {
-    /* A 28px square either way, so it takes the figure meant for a disc: the ordinary 0.98 would
-       move its edge a third of a pixel and read as nothing happening. */
-    --press-scale: var(--press-scale-disc);
-    cursor: pointer;
-    opacity: 0;
-    position: relative;
-    transition:
-      background-color var(--duration-fast) var(--ease-standard),
-      color var(--duration-fast) var(--ease-standard),
-      opacity var(--duration-fast) var(--ease-standard),
-      transform var(--duration-press) var(--ease-standard);
-    z-index: 2;
-  }
-
-  .panel-sidebar:hover .sidebar-collapse-trigger,
-  .sidebar-collapse-trigger:focus-visible {
+  .panel-sidebar:hover :global(.sidebar-collapse-trigger),
+  :global(.sidebar-collapse-trigger:focus-visible) {
     opacity: 1;
-  }
-
-  .sidebar-collapse-trigger:hover,
-  .sidebar-collapse-trigger:focus-visible,
-  .mobile-navigation-trigger:hover,
-  .mobile-navigation-trigger:focus-visible {
-    background: var(--sidebar-item-hover);
-    color: var(--sidebar-text);
-  }
-
-  .sidebar-collapse-trigger:active,
-  .mobile-navigation-trigger:active {
-    background: var(--sidebar-item-pressed);
-    transform: scale(var(--press-scale));
-  }
-
-  .mobile-navigation-trigger {
-    display: none;
-  }
-
-  .mobile-navigation-trigger > span[aria-hidden='true'] {
-    background: currentColor;
-    display: block;
-    height: 1px;
-    position: absolute;
-    width: 0.875rem;
-  }
-
-  .mobile-navigation-trigger > span[aria-hidden='true']:first-child {
-    transform: translateY(-4px);
-  }
-
-  .mobile-navigation-trigger > span[aria-hidden='true']:nth-child(3) {
-    transform: translateY(4px);
-  }
-
-  .mobile-navigation-trigger > span:last-child {
-    margin-left: 1.25rem;
   }
 
   /* No stacking context of their own any more: both menus are in the top layer,
@@ -852,8 +739,8 @@
   /* Which triggers show it stays here, because it is this component that knows the
      rail is collapsed and which row the pointer is on. `:global` on the tooltip half
      only: the span is `SidebarTooltip`'s element, the triggers are this file's. */
-  .collapsed .sidebar-collapse-trigger:hover :global(.sidebar-tooltip),
-  .collapsed .sidebar-collapse-trigger:focus-visible :global(.sidebar-tooltip),
+  .collapsed :global(.sidebar-collapse-trigger:hover .sidebar-tooltip),
+  .collapsed :global(.sidebar-collapse-trigger:focus-visible .sidebar-tooltip),
   .collapsed :global(.target-trigger:hover .sidebar-tooltip),
   .collapsed :global(.target-trigger:focus-visible .sidebar-tooltip),
   .collapsed :global(.who:hover .sidebar-tooltip),
@@ -880,7 +767,7 @@
   /* Same height as the expanded row, so the mark's centre does not move. Collapsing dropped
      min-height, the row shrank to the 34px mark inside it, and the mark's centre stepped from 35
      to 33 - a two-pixel hop in the middle of a width animation. */
-  .collapsed .brand-row {
+  .collapsed :global(.brand-row) {
     flex-direction: column;
     gap: var(--space-2);
     justify-content: center;
@@ -894,7 +781,7 @@
   /* The target is the whole row - the same reach the workspace tile below it has - while the disc
      stays the size of the halo it sits on. A 32px circle is a small thing to hit for the control
      that opens the sidebar. */
-  .collapsed .sidebar-collapse-trigger {
+  .collapsed :global(.sidebar-collapse-trigger) {
     border: 0;
     border-radius: var(--radius-control);
     box-shadow: none;
@@ -919,7 +806,7 @@
      edge is antialiased and lands on a fraction: an exactly-sized disc leaves a
      hairline of interior showing between the two. It is far less than the ring's
      own 2.26px, so the halo is not visibly eaten into. */
-  .collapsed .sidebar-collapse-trigger::before {
+  .collapsed :global(.sidebar-collapse-trigger::before) {
     border-radius: 50%;
     box-sizing: border-box;
     content: '';
@@ -931,7 +818,7 @@
     width: 28.3px;
   }
 
-  .collapsed .sidebar-collapse-trigger > :global(svg) {
+  .collapsed :global(.sidebar-collapse-trigger > svg) {
     position: relative;
     z-index: 1;
   }
@@ -942,37 +829,37 @@
      so a background on the button is a background over the halo - which is how
      hovering used to wipe the ring off the rail even before the disc was drawn.
      Every state belongs to the disc instead. */
-  .collapsed .sidebar-collapse-trigger,
-  .collapsed .sidebar-collapse-trigger:hover,
-  .collapsed .sidebar-collapse-trigger:focus-visible,
-  .collapsed .sidebar-collapse-trigger:active {
+  .collapsed :global(.sidebar-collapse-trigger),
+  .collapsed :global(.sidebar-collapse-trigger:hover),
+  .collapsed :global(.sidebar-collapse-trigger:focus-visible),
+  .collapsed :global(.sidebar-collapse-trigger:active) {
     background: transparent;
   }
 
   /* Opaque: the robot behind must not read through the glyph. */
-  .collapsed .sidebar-collapse-trigger::before {
+  .collapsed :global(.sidebar-collapse-trigger::before) {
     background: var(--sidebar-bg);
   }
 
-  .collapsed .sidebar-collapse-trigger:hover::before,
-  .collapsed .sidebar-collapse-trigger:focus-visible::before {
+  .collapsed :global(.sidebar-collapse-trigger:hover)::before,
+  .collapsed :global(.sidebar-collapse-trigger:focus-visible)::before {
     background: var(--sidebar-item-hover);
   }
 
-  .collapsed .sidebar-collapse-trigger:hover,
-  .collapsed .sidebar-collapse-trigger:focus-visible {
+  .collapsed :global(.sidebar-collapse-trigger:hover),
+  .collapsed :global(.sidebar-collapse-trigger:focus-visible) {
     color: var(--sidebar-text);
   }
 
-  .collapsed .sidebar-collapse-trigger:active::before {
+  .collapsed :global(.sidebar-collapse-trigger:active)::before {
     background: var(--sidebar-item-pressed);
   }
 
   /* The mark shrinks with the disc that covers it. They are concentric, so scaling only the disc
      let the halo underneath show past its own edge - a lit crescent at the bottom left, where the
      halo's stroke is thickest. Pressed, the logo and the ring over it are one object. */
-  .collapsed .brand-row:has(.sidebar-collapse-trigger:active) :global(.mark-icon),
-  .collapsed .sidebar-collapse-trigger:active {
+  .collapsed :global(.brand-row:has(.sidebar-collapse-trigger:active) .mark-icon),
+  .collapsed :global(.sidebar-collapse-trigger:active) {
     transform: scale(var(--press-scale-disc));
   }
 
@@ -1034,43 +921,23 @@
       padding: 0;
     }
 
-    .sidebar-collapse-trigger {
-      display: none;
-    }
-
     /* No bottom margin. It separates the brand row from the navigation under it
        in the rail, and there is no navigation under it here - the drawer is a
        layer. Left in, it was 8px of nothing between the row and the bar's own
        rule, so the bar measured 69px while its contents centred on the row's 60:
        everything in it sat 4px above the line the reader sees it against. */
-    .brand-row,
-    .collapsed .brand-row {
-      flex-direction: row;
-      height: var(--bar-height);
-      justify-content: space-between;
-      margin-bottom: 0;
-      min-height: 0;
-      padding: 0 var(--space-4);
-    }
+    /* The row's own phone shape is in `BrandRow`. Written here it would be one
+       class against that component's class-plus-scope, and would lose. */
 
     .collapsed :global(.mark-copy) {
       display: grid;
-    }
-
-    .mobile-navigation-trigger {
-      display: flex;
-      margin: 0;
-      position: absolute;
-      right: var(--bar-slot-menu);
-      /* Centred on the bar by subtraction, like the two beside it. */
-      top: calc((var(--bar-height) - 1.75rem) / 2);
     }
 
     /* The Root console has no workspace to switch, so the switcher is not
        rendered and its slot would otherwise stay empty - the menu button hung
        68px off the account avatar with nothing between them. It moves out to
        take the vacant slot, keeping the row packed against the edge. */
-    .panel-sidebar:not(:has(:global(.target-trigger))) .mobile-navigation-trigger {
+    .panel-sidebar:not(:has(:global(.target-trigger))) :global(.mobile-navigation-trigger) {
       right: var(--bar-slot-switcher);
     }
 
@@ -1123,8 +990,7 @@
   }
 
   @media (max-width: 30rem) {
-    .panel-sidebar :global(.mark-part),
-    .mobile-navigation-trigger > span:last-child {
+    .panel-sidebar :global(.mark-part) {
       display: none;
     }
   }
@@ -1151,7 +1017,7 @@
      same specificity as the drawer rule's `absolute` and later in the file, so
      it won, and the menu button left the corner it is placed in. */
   @media (pointer: coarse) {
-    .mobile-navigation-trigger::after,
+    :global(.mobile-navigation-trigger::after),
     :global(.target-trigger::after),
     :global(.who::after) {
       content: '';

@@ -45,7 +45,8 @@ describe('the brand mark', () => {
   it('is what the sidebar and the pages outside the panel both render', () => {
     // `NightPage` is the shell the invitation and the error pages share, so it stands the mark
     // up for both of them.
-    for (const file of ['IdentityBar.svelte', 'NightPage.svelte']) {
+    // `BrandRow` is the sidebar's top, split out of `IdentityBar`; the mark went with it.
+    for (const file of ['BrandRow.svelte', 'NightPage.svelte']) {
       expect(read(file)).toMatch(/<BrandMark\b/u);
     }
   });
@@ -53,13 +54,15 @@ describe('the brand mark', () => {
   it('is the page heading only in the sidebar', () => {
     // Two `h1`s on the invitation page would leave the reader guessing which one names it, so the
     // mark steps down there and the invitation's own title takes the heading.
-    expect(read('IdentityBar.svelte')).toMatch(/<BrandMark[^>]*\sheading\b/u);
+    expect(read('BrandRow.svelte')).toMatch(/<BrandMark[^>]*\sheading\b/u);
     expect(read('InvitationPage.svelte')).not.toMatch(/<BrandMark[^>]*\sheading\b/u);
   });
 
   it('keeps the rail styling the rail owns, reaching into the child', () => {
     // The collapsed sidebar hides the copy, centres the mark and scales the icon under a press.
-    // Those live in `IdentityBar`, so they have to cross the component boundary to land.
+    // Those depend on `.collapsed`, which is on the sidebar itself, so they stay in
+    // `IdentityBar` and now cross TWO component boundaries to land - through `BrandRow`
+    // and into `BrandMark`.
     const rail = read('IdentityBar.svelte');
     for (const selector of [':global(.mark-icon)', ':global(.mark-copy)', ':global(.mark)']) {
       expect(rail).toContain(selector);

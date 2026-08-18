@@ -59,7 +59,7 @@ describe('the collapsed rail overlay', () => {
     const ring = (stroke / box) * size;
     const disc = number(
       rail,
-      /\.collapsed \.sidebar-collapse-trigger::before[^}]*height:\s*([\d.]+)px/u,
+      /\.collapsed :global\(\.sidebar-collapse-trigger::before\)[^}]*height:\s*([\d.]+)px/u,
     );
 
     expect(
@@ -73,8 +73,8 @@ describe('the collapsed rail overlay', () => {
   it('has no ring of its own', () => {
     // The halo's ring is the ring. A second one drawn on top is what this replaced.
     const block =
-      /\.collapsed \.sidebar-collapse-trigger::before\s*\{(?<body>[^}]*)\}/u.exec(rail)?.groups
-        ?.body ?? '';
+      /\.collapsed :global\(\.sidebar-collapse-trigger::before\)\s*\{(?<body>[^}]*)\}/u.exec(rail)
+        ?.groups?.body ?? '';
 
     expect(block.length).toBeGreaterThan(0);
     // `border-radius` is what makes it a circle; any other border is a second ring.
@@ -85,7 +85,7 @@ describe('the collapsed rail overlay', () => {
     // The target is the whole row and is drawn over the mark, so a background on the button is a
     // background over the halo - which is how hovering wiped the ring off the rail.
     expect(rail).toMatch(
-      /\.collapsed \.sidebar-collapse-trigger:hover,[\s\S]{0,200}?\{\s*background: transparent;/u,
+      /\.collapsed :global\(\.sidebar-collapse-trigger:hover\),[\s\S]{0,200}?\{\s*background: transparent;/u,
     );
   });
 });
