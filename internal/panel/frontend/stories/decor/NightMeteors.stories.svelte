@@ -14,15 +14,12 @@
 <!--
   Only the meteors: the other two default to on, so naming this one changed nothing
   and the story drew all three.
+
+  **It takes a while.** The first shower is six to twenty-four seconds out, and that
+  wait is the point of it - see the note on the astronaut. Leave the story open.
 -->
 <Story name="Falling">
   {#snippet template()}
-    <NightSky
-      height="28rem"
-      meteors
-      rocket={false}
-      astronaut={false}
-      firstShower={{ after: 1, within: 2 }}
-    />
+    <NightSky height="28rem" meteors rocket={false} astronaut={false} />
   {/snippet}
 </Story>

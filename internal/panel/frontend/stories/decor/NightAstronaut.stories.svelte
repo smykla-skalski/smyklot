@@ -16,18 +16,14 @@
   meteors are turned off by name: all three default to on, so `astronaut` on its own
   named the one already running and left the other two running beside it.
 
-  The first crossing is brought forward too. On a page it is eight to thirty-five
-  seconds out, which is the whole point of it there and useless here - a story that
-  shows nothing for its first eight seconds is not showing what it describes.
+  **It takes a while.** The first crossing is eight to thirty-five seconds out, and
+  that wait is the whole point of the thing - a crossing that arrived on cue would be
+  a feature rather than a surprise. The timing is not a prop: an easter egg that a
+  caller can schedule is one somebody will schedule, and the component would then be
+  keeping a promise it exists to break. Leave the story open.
 -->
 <Story name="Adrift">
   {#snippet template()}
-    <NightSky
-      height="28rem"
-      astronaut
-      rocket={false}
-      meteors={false}
-      firstSighting={{ after: 1, within: 2 }}
-    />
+    <NightSky height="28rem" astronaut rocket={false} meteors={false} />
   {/snippet}
 </Story>
