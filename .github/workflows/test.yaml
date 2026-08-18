@@ -234,6 +234,14 @@ jobs:
             task: panel:frontend:lint
           - area: unit
             task: panel:frontend:test
+          # `storybook build` is the only thing that runs the catalogue's
+          # production bundle, and it exits 0 on one that throws before it
+          # renders. Without this the whole build-only failure class is green on
+          # every pull request and first reported by the next morning's cron on
+          # `main`, with `pages.yaml`'s deploy gated behind it so the published
+          # site silently stays stale. Ten seconds on a warm `node_modules`.
+          - area: catalogue
+            task: panel:storybook:build
 
     steps:
       - name: Checkout code
