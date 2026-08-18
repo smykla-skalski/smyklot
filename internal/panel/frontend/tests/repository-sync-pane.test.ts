@@ -239,4 +239,224 @@ describe('RepositorySyncPane [Component]', () => {
 
     expect(screen.queryByRole('status')).toBeNull();
   });
+
+  /**
+   * The three things the merge engine has always implemented and this pane
+   * could not say. Nine of the organization's thirteen repositories adjust a
+   * template, and six of them do it with a list rule or a heading - so without
+   * these the cutover writes the plain template over exactly those six.
+   */
+  describe('what a repository does beyond setting keys', () => {
+    it('appends to a list rather than replacing it', async () => {
+      const { sent, onSave } = saved();
+      render(RepositorySyncPane, {
+        ...base,
+        stored: override({ document: { merges: [{ path: 'renovate.json' }] } }),
+        onSave,
+      });
+
+      await fireEvent.click(screen.getByRole('button', { name: 'Add a list rule' }));
+      await fireEvent.change(screen.getByLabelText('List'), {
+        target: { value: '$.packageRules' },
+      });
+      await save();
+
+      expect(sent[0].document.merges).toEqual([
+        { path: 'renovate.json', arrays: [{ path: '$.packageRules', strategy: 'append' }] },
+      ]);
+    });
+
+    /*
+     * A list with no rule is replaced whole, so there is nothing left to
+     * deduplicate and the engine refuses the flag standing on its own.
+     */
+    it('offers deduplication only beside a list rule', async () => {
+      render(RepositorySyncPane, {
+        ...base,
+        stored: override({ document: { merges: [{ path: 'renovate.json' }] } }),
+      });
+
+      expect(screen.queryByText('Drop repeated entries')).toBeNull();
+
+      await fireEvent.click(screen.getByRole('button', { name: 'Add a list rule' }));
+
+      expect(screen.getByText('Drop repeated entries')).toBeTruthy();
+    });
+
+    it('writes deduplication beside the rule it belongs to', async () => {
+      const { sent, onSave } = saved();
+      render(RepositorySyncPane, {
+        ...base,
+        stored: override({
+          document: {
+            merges: [
+              { path: 'renovate.json', arrays: [{ path: '$.extends', strategy: 'append' }] },
+            ],
+          },
+        }),
+        onSave,
+      });
+
+      await fireEvent.click(screen.getByRole('radio', { name: 'On' }));
+      await save();
+
+      expect(sent[0].document.merges).toEqual([
+        {
+          path: 'renovate.json',
+          arrays: [{ path: '$.extends', strategy: 'append' }],
+          deduplicate: true,
+        },
+      ]);
+    });
+
+    it('never writes deduplication without the rule it belongs to', async () => {
+      const { sent, onSave } = saved();
+      render(RepositorySyncPane, {
+        ...base,
+        stored: override({
+          document: {
+            merges: [
+              {
+                path: 'renovate.json',
+                arrays: [{ path: '$.extends', strategy: 'append' }],
+                deduplicate: true,
+              },
+            ],
+          },
+        }),
+        onSave,
+      });
+
+      // The second: the first removes the adjustment, this one the rule inside it.
+      await fireEvent.click(screen.getAllByRole('button', { name: 'Remove' })[1]);
+      await save();
+
+      expect(sent[0].document.merges).toEqual([{ path: 'renovate.json' }]);
+    });
+
+    /*
+     * Which controls a row gets follows the engine's own reading: the strategy
+     * where it says one, the extension where it does not.
+     */
+    it('edits a Markdown file by its headings rather than by keys', () => {
+      render(RepositorySyncPane, {
+        ...base,
+        stored: override({ document: { merges: [{ path: 'CONTRIBUTING.md' }] } }),
+      });
+
+      expect(screen.queryByLabelText('What this repository sets')).toBeNull();
+      expect(screen.getByRole('button', { name: 'Edit a section' })).toBeTruthy();
+    });
+
+    it('writes a heading with the marks the document writes it with', async () => {
+      const { sent, onSave } = saved();
+      render(RepositorySyncPane, {
+        ...base,
+        stored: override({ document: { merges: [{ path: 'CONTRIBUTING.md' }] } }),
+        onSave,
+      });
+
+      await fireEvent.click(screen.getByRole('button', { name: 'Edit a section' }));
+      await fireEvent.change(screen.getByLabelText('Heading'), {
+        target: { value: '### Prerequisites' },
+      });
+      await fireEvent.change(screen.getByLabelText('What this repository writes'), {
+        target: { value: '### Project setup' },
+      });
+      await save();
+
+      expect(sent[0].document.merges).toEqual([
+        {
+          path: 'CONTRIBUTING.md',
+          sections: [
+            { action: 'after', heading: '### Prerequisites', content: '### Project setup' },
+          ],
+        },
+      ]);
+    });
+
+    /*
+     * Appending addresses the document rather than a heading, and the engine
+     * refuses one carrying a heading rather than ignoring it.
+     */
+    it('drops the heading where a section addresses the whole document', async () => {
+      const { sent, onSave } = saved();
+      render(RepositorySyncPane, {
+        ...base,
+        stored: override({
+          document: {
+            merges: [
+              {
+                path: 'CONTRIBUTING.md',
+                sections: [{ action: 'after', heading: '## Usage', content: 'Read this' }],
+              },
+            ],
+          },
+        }),
+        onSave,
+      });
+
+      await fireEvent.click(screen.getByRole('radio', { name: 'Append to document' }));
+      await save();
+
+      expect(sent[0].document.merges).toEqual([
+        { path: 'CONTRIBUTING.md', sections: [{ action: 'append', content: 'Read this' }] },
+      ]);
+    });
+
+    /*
+     * Markdown is edited by its headings, not by keys and lists, and a spec
+     * carrying both is refused. A row repointed at a `.md` file would otherwise
+     * save what it held as a JSON row and be refused by the planner instead.
+     */
+    it('leaves the keys behind when a row becomes a Markdown row', async () => {
+      const { sent, onSave } = saved();
+      render(RepositorySyncPane, {
+        ...base,
+        stored: override({
+          document: {
+            merges: [
+              {
+                path: 'renovate.json',
+                overrides: { timezone: 'Europe/Warsaw' },
+                arrays: [{ path: '$.extends', strategy: 'append' }],
+                deduplicate: true,
+              },
+            ],
+          },
+        }),
+        onSave,
+      });
+
+      await fireEvent.change(screen.getByLabelText('File'), {
+        target: { value: 'CONTRIBUTING.md' },
+      });
+      await save();
+
+      expect(sent[0].document.merges).toEqual([{ path: 'CONTRIBUTING.md' }]);
+    });
+
+    it('keeps a key a newer version of the service wrote on a merge', async () => {
+      const { sent, onSave } = saved();
+      render(RepositorySyncPane, {
+        ...base,
+        stored: override({
+          document: { merges: [{ path: 'renovate.json', rewrites_later: ['something'] }] },
+        }),
+        onSave,
+      });
+
+      await fireEvent.click(screen.getByRole('button', { name: 'Add a list rule' }));
+      await fireEvent.change(screen.getByLabelText('List'), { target: { value: '$.extends' } });
+      await save();
+
+      expect(sent[0].document.merges).toEqual([
+        {
+          path: 'renovate.json',
+          rewrites_later: ['something'],
+          arrays: [{ path: '$.extends', strategy: 'append' }],
+        },
+      ]);
+    });
+  });
 });

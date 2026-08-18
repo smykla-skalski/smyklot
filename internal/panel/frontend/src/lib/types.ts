@@ -740,6 +740,47 @@ export interface SyncFileMerge {
   /** deep-merge, shallow-merge or markdown. Empty lets the extension decide. */
   strategy?: string;
   overrides?: Record<string, unknown>;
+  /**
+   * What happens to the lists the template and the overrides both have.
+   *
+   * Ordered rather than keyed by path, because ranging a map gave two rules on
+   * one document no order and the file a repository ended up with depended on
+   * nothing anybody could see.
+   */
+  arrays?: SyncArrayRule[];
+  /** Only meaningful beside a list rule: a list with no rule is replaced whole. */
+  deduplicate?: boolean;
+  /** How a Markdown template is edited. Exclusive with the three above. */
+  sections?: SyncSection[];
+}
+
+/** What to do with the list at one path. */
+export interface SyncArrayRule {
+  path: string;
+  /** replace, append or prepend. */
+  strategy: string;
+}
+
+/** A literal substitution inside a section. */
+export interface SyncPatch {
+  find: string;
+  /** Empty removes the text found. */
+  replace: string;
+}
+
+/** One operation on a Markdown document. */
+export interface SyncSection {
+  /** before, after, replace, delete, patch, append or prepend. */
+  action: string;
+  /**
+   * Written the way the document writes it, marks and all: `## Usage`. The
+   * marks are how `## Usage` is told from `### Usage`.
+   */
+  heading?: string;
+  /** Which one, counting from one, where a heading appears more than once. */
+  occurrence?: number;
+  content?: string;
+  patches?: SyncPatch[];
 }
 
 /** What one repository says about one kind of sync. */
