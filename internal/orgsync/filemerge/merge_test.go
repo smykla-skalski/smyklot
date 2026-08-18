@@ -842,10 +842,62 @@ jobs:
 				"a:\n  list:\n    - one # keep me\n    - two\n", "# keep me"),
 		)
 
-		// The other half of the same question: where the rule's result really
-		// is what the file already holds, down to the anchors and the comments,
-		// writing it would stand in for the inherited list and the flattening
-		// would be the whole of the pull request.
+		// A copy is derived from what it was copied from, so a copy taken at
+		// merge time says what the anchor said at merge time. Judged later
+		// against an anchor the same run has moved, it differs for a reason
+		// nothing to do with the override - so it is kept, and the mapping
+		// stops inheriting: every key the copy dragged along is pinned to the
+		// old values, including keys the override never named. Judged against
+		// what the copy would be if it were taken now instead.
+		It("keeps tracking what an alias names when a rule moves it", func() {
+			merged, err := filemerge.Apply("ci.yaml",
+				[]byte("aaa: &a\n  k1: v1\n  list:\n    - t1\nddd:\n  x: *a\n"),
+				filemerge.Spec{
+					Overrides: overrides(`{"aaa": {"list": ["v3"]}, "ddd": {"x": {"k1": "v1"}}}`),
+					Arrays: []filemerge.ArrayRule{
+						{Path: "$.aaa.list", Strategy: filemerge.ArrayAppend},
+					},
+				})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(merged)).To(Equal(
+				"aaa: &a\n  k1: v1\n  list:\n    - t1\n    - v3\nddd:\n  x: *a\n"))
+		})
+
+		// The same, through a merge key and with no rule at all: keys run in
+		// sorted order, so `thing` is merged before the `zbase` it inherits
+		// from. `j` is never named by the override and must not be frozen at
+		// the value the template had when the copy was taken.
+		It("keeps tracking a merge key when a later override key moves it", func() {
+			merged, err := filemerge.Apply("ci.yaml",
+				[]byte("zbase: &b\n  inner:\n    k: v\n    j: w\nthing:\n  <<: *b\n"),
+				filemerge.Spec{Overrides: overrides(
+					`{"thing": {"inner": {"k": "v"}}, "zbase": {"inner": {"j": "changed"}}}`)})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(merged)).To(Equal(
+				"zbase: &b\n  inner:\n    k: v\n    j: changed\nthing:\n  <<: *b\n"))
+		})
+
+		// And where the override does say something the moved anchor does not,
+		// the copy stays: this is a repository pinning a value against a
+		// template that moved under it, which is the whole reason the pane
+		// offers adjustments.
+		It("keeps a pin the moved anchor disagrees with", func() {
+			merged, err := filemerge.Apply("ci.yaml",
+				[]byte("zbase: &b\n  inner:\n    k: v\nthing:\n  <<: *b\n"),
+				filemerge.Spec{Overrides: overrides(
+					`{"thing": {"inner": {"k": "v"}}, "zbase": {"inner": {"k": "other"}}}`)})
+
+			Expect(err).NotTo(HaveOccurred())
+
+			var back struct {
+				Thing map[string]any `yaml:"thing"`
+			}
+			Expect(yaml.Unmarshal(merged, &back)).To(Succeed())
+			Expect(back.Thing).To(HaveKeyWithValue("inner", map[string]any{"k": "v"}))
+		})
+
 		// Whether a key says anything the mapping does not already inherit is
 		// settled by the finished file, not by the moment the key was written.
 		// The override's own later keys still have to run - and they are run in
@@ -886,11 +938,15 @@ jobs:
 				"base: &b\n  list:\n    - t\n    - t\nthing:\n  <<: *b\n  list:\n    - t\n"))
 		})
 
-		// The anchor on the list itself, which setKey takes from the position
-		// rather than from the value - so the list a rule builds always arrives
-		// at the comparison without one, and comparing it read as a change on
-		// every sweep. What that change then wrote stood in for the
-		// inheritance, which is what this skip is here to refuse.
+		// The other half of the same question: where a rule's result really is
+		// what the file already holds, down to the anchors and the comments,
+		// writing it would stand in for the inherited list and the flattening
+		// would be the whole of the pull request.
+		//
+		// This pair carries the anchor on the list itself, which setKey takes
+		// from the position rather than from the value - so the list a rule
+		// builds always arrives at the comparison without one, and comparing it
+		// read as a change on every sweep.
 		It("leaves an inherited list alone where the template anchors it", func() {
 			template := "base: &base\n  list: &l\n    - t\na: *base\n"
 
@@ -950,6 +1006,10 @@ jobs:
 			// Two nodes under one name, which YAML allows. Recording the
 			// renaming by the original name keeps only the last of them, so
 			// every alias bound to the earlier one still read as a change.
+			Entry("an empty patch where the inheritance defines a name twice",
+				`{"thing": {"nested": {}}}`,
+				"base: &b\n  nested:\n    p: &x one\n    q: *x\n    r: &x two\n"+
+					"    s: *x\nthing:\n  <<: *b\n"),
 			// Not everything a merge key gives is a mapping. A list or a scalar
 			// took the other path, where the key is written out literally
 			// whatever it says - so `a:\n  <<: *base` grew a literal `list:`
@@ -961,10 +1021,6 @@ jobs:
 				"base: &b\n  list:\n    - t\nthing:\n  <<: *b\n"),
 			Entry("a scalar the merge key already gives",
 				`{"thing": {"a": 1}}`, "base: &b\n  a: 1\nthing:\n  <<: *b\n"),
-			Entry("an empty patch where the inheritance defines a name twice",
-				`{"thing": {"nested": {}}}`,
-				"base: &b\n  nested:\n    p: &x one\n    q: *x\n    r: &x two\n"+
-					"    s: *x\nthing:\n  <<: *b\n"),
 			Entry("every value it already sets", `{"thing": {"nested": {"a": 1, "b": 2}}}`),
 			Entry("a null on a key it does not have", `{"thing": {"nested": {"c": null}}}`),
 		)
