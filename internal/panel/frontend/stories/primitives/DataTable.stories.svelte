@@ -27,13 +27,6 @@
 </script>
 
 <!--
-  **Not the finished look.** The shell is here - the card, the caption, the scroll
-  region, the header and body - but the cell padding, the row height and the column
-  grid still live in each of the seven callers, which is why these rows look cramped.
-  Moving what is genuinely shared out of them and into `app.css`, and anchoring what
-  is genuinely per-table through the class each one passes in, IS the migration. See
-  the note in `DataTable.svelte`.
-
   The shell nine tables wrote by hand under six wrapper class names.
 
   The `<tr>` is rendered here and the caller supplies only the cells. That is not a

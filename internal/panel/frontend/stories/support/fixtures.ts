@@ -5,10 +5,21 @@
  * draw is relative - "4 minutes ago", a countdown running out - and a story showing a
  * duration has to say the same thing twice or it cannot be compared against anything.
  *
- * These are the shapes the dev mock seeds, kept small enough to read. The mock's own
- * seed data is still private to `dev/mock-server.ts`; when it is lifted into
- * `dev/fixtures.ts` these should import from there rather than restate it.
+ * Everything the mock itself seeds comes FROM the mock, through `dev/fixtures.ts` -
+ * the account, the config defaults, the users, the notifications, the pending-CI
+ * queue and the sync documents are the same objects the dev server hands the panel,
+ * built here at the fixed instant above. A story that restated them would agree with
+ * the service on the day it was written and drift from it after, which is how a
+ * catalogue comes to show a shape nothing sends any more.
+ *
+ * What is still declared below is what the mock has no seed for, because it is
+ * assembled per request rather than stored: `RootOverview` is counted from the state,
+ * and `NotificationPage`, `RepositorySummary` and `RepositoryDetail` are pages the
+ * handlers build. Those stay here, small enough to read, until there is a builder to
+ * call instead.
  */
+import { DEFAULT_CONFIG, seed, VIEWER } from '../../dev/fixtures.ts';
+
 import type {
   ConfigSources,
   ConfigValues,
@@ -28,6 +39,14 @@ import type {
 export const NOW = Date.UTC(2026, 7, 18);
 
 const at = (offsetMs: number): string => new Date(NOW + offsetMs).toISOString();
+
+/**
+ * The mock's whole state, at the fixed instant.
+ *
+ * No issued invitations and no stored preferences: both are things the dev server
+ * persists to disk between runs, and a story has neither and must not depend on one.
+ */
+const MOCK = seed(undefined, NOW);
 
 function request(over: Partial<PendingCIRequest> & { id: string }): PendingCIRequest {
   return {
@@ -51,6 +70,8 @@ function request(over: Partial<PendingCIRequest> & { id: string }): PendingCIReq
   } as PendingCIRequest;
 }
 
+/* Assembled per request by the handler rather than stored, so there is no seed to
+   call: `pending_ci` is a live split of the queue into active and recent. */
 export const QUEUE: RootOverview['pending_ci'] = {
   active: [
     request({ id: 'q-1', last_observed_state: 'passing', next_check_at: at(9_000) }),
@@ -90,51 +111,19 @@ export const QUEUE: RootOverview['pending_ci'] = {
   ],
 };
 
-export const ACCOUNT: PanelAccount = {
-  id: '2001',
-  provider: 'github:https://api.github.com',
-  subject_id: '2001',
-  login: 'smykla-skalski',
-  display_name: 'Smykla Skalski',
-  avatar_url: null,
-};
+/** The signed-in account, exactly as the mock serves it. */
+export const ACCOUNT: PanelAccount = VIEWER;
 
-export const CONFIG: ConfigValues = {
-  quiet_success: false,
-  quiet_reactions: false,
-  quiet_pending: false,
-  allowed_commands: ['approve', 'merge', 'squash'],
-  command_aliases: { ship: 'merge' },
-  command_prefix: '/smyklot ',
-  disable_mentions: false,
-  disable_bare_commands: false,
-  disable_unapprove: false,
-  disable_reactions: false,
-  disable_deleted_comments: false,
-  allow_self_approval: false,
-};
+/** The defaults the service ships, not a copy of them. */
+export const CONFIG: ConfigValues = DEFAULT_CONFIG;
 
 /** Every key resolves from the deployment unless a story says otherwise. */
 const SOURCES = Object.fromEntries(
   (Object.keys(CONFIG) as (keyof ConfigValues)[]).map((key) => [key, 'process' as const]),
 ) as ConfigSources;
 
-export const TARGET: PanelTarget = {
-  id: '2001',
-  installation_id: '3001',
-  type: 'Organization',
-  account: ACCOUNT,
-  repository_default_enabled: false,
-  config_patch: {},
-  inherited_config: CONFIG,
-  effective_config: CONFIG,
-  config_sources: SOURCES,
-  revision: 4,
-  repository_counts: { total: 5, enabled: 3, disabled: 2 },
-  effective_role: 'owner',
-  access_source: 'owner',
-  capabilities: { read: true, write: true, manage_target_users: true },
-};
+/** The organisation installation the mock seeds, not a second description of it. */
+export const TARGET: PanelTarget = MOCK.targets[0]!.value;
 
 export const OVERVIEW: RootOverview = {
   service: {

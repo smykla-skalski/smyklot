@@ -57,6 +57,16 @@
    * each - it is the check that catches a grid that stopped reaching the body, and at
    * ~74s it is the slowest in the suite for a reason.
    *
+   * ## What the band centres against
+   *
+   * A cell's separator is on its BOTTOM only, so a row's border box is 1px taller than
+   * the band a reader sees and its centre sits half a pixel below the visible one.
+   * Measure a row's contents against the border box and everything reads 0.5px high,
+   * every time, in every table - which looks exactly like a defect and is not one. The
+   * reference is the CONTENT box, above the rule: measured there, the identity stack
+   * and the chip land at 0.0000px and the heading label at -0.0039px, the remainder
+   * being the cap trim's own subpixel.
+   *
    * ## `pinned` and `stacked` are opt-in, and three tables decline
    *
    * They are shared layouts, not the layout. A table takes one only if its own is the
