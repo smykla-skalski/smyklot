@@ -21,6 +21,26 @@
    * happened to cancel - correct by luck rather than by construction, and only for
    * that pairing of fonts at that size. Here it is by construction.
    */
+  /**
+   * ## The sidebar's account row is NOT one of these, and that was decided by looking
+   *
+   * `IdentityBar`'s `.who` draws the same three things - avatar, name, handle - and is
+   * the obvious eighth call site. It stays as it is, because the two are only the same
+   * shape and not the same thing:
+   *
+   * - Its ink is `--sidebar-text` and `--sidebar-text-muted`, a palette the rail
+   *   re-declares. This row is written against the page's.
+   * - Its stack gap is 0.1rem, measured against the card it sits in. This one takes
+   *   `--space-2`, measured against a table row.
+   * - Its two lines are a step smaller, because the rail is 240px and a name has to
+   *   fit beside a 32px avatar with a chevron after it.
+   *
+   * Folding them together would change how the sidebar looks, which is a design
+   * decision wearing a refactor's clothes - the same call as the cell font size in
+   * `DataTable`. It is worth asking whether the sidebar should adopt this row's
+   * typography; it is worth asking where it can be looked at, not in a diff that
+   * claims to move nothing.
+   */
   const {
     mark,
     name,
