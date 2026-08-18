@@ -35,6 +35,10 @@ const config: StorybookConfig = {
   // `http://localhost:6008/mcp` - the port this catalogue serves on, not Storybook's
   // default 6006, which is what `.mcp.json` at the repository root points at.
   //
+  // It reaches `valibot` through `@storybook/mcp`, and the tree it asks for is
+  // vulnerable to GHSA-5qjj-4xww-7phc - `package.json` pins the fixed 1.4.2 with an
+  // `overrides` entry, which is the same narrow instrument the `runed` peer uses.
+  //
   // Its docs toolset is React-only today, so what a Svelte project gets from it is
   // the development half: which stories a local change touches, how this project
   // writes one, and a rendered preview. `run-story-tests` wants

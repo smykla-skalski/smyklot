@@ -21,11 +21,11 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
-    "@storybook/addon-a11y": "10.5.8",
-    "@storybook/addon-docs": "10.5.8",
+    "@storybook/addon-a11y": "10.5.9",
+    "@storybook/addon-docs": "10.5.9",
     "@storybook/addon-mcp": "0.7.0",
     "@storybook/addon-svelte-csf": "5.1.2",
-    "@storybook/sveltekit": "10.5.8",
+    "@storybook/sveltekit": "10.5.9",
     "@sveltejs/adapter-static": "4.0.0-next.4",
     "@sveltejs/kit": "3.0.0-next.23",
     "@sveltejs/vite-plugin-svelte": "7.3.0",
@@ -41,7 +41,7 @@
     "playwright-core": "1.62.1",
     "prettier": "3.9.6",
     "prettier-plugin-svelte": "4.1.1",
-    "storybook": "10.5.8",
+    "storybook": "10.5.9",
     "svelte": "5.56.9",
     "svelte-check": "4.7.6",
     "typescript": "npm:@typescript/typescript6@6.0.2",
@@ -59,7 +59,8 @@
   "overrides": {
     "runed": {
       "@sveltejs/kit": "$@sveltejs/kit"
-    }
+    },
+    "valibot": "^1.4.2"
   },
   "imports": {
     "#lib/*": "./src/lib/*"
