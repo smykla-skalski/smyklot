@@ -40,7 +40,7 @@ const stories = new URL('../stories/', import.meta.url);
  * menu from the session, plus a decision about what a story of the shell's own
  * furniture should show at all. Worth asking before writing it.
  */
-const PENDING: readonly string[] = ['IdentityBar', 'RootInstallationView'];
+const PENDING: readonly string[] = ['IdentityBar'];
 
 function storyNames(): Set<string> {
   const found = new Set<string>();
