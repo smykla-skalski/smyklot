@@ -34,7 +34,6 @@ import type {
   RootElevationInput,
   RootInstallation,
   RootOverview,
-  RootPanelUser,
   SyncConfigInput,
   RootRuntimeSettings,
   RootRuntimeSettingsInput,
@@ -54,6 +53,8 @@ import {
   MOCK_ORGANIZATION_ROSTER,
   mockSyncConfig,
   ROOT_READ_CAPABILITIES,
+  mockRootOwns,
+  rootPanelUsers,
   seed,
   targetAccess,
   VIEWER,
@@ -1841,10 +1842,6 @@ function findTarget(state: MockState, encodedId: string): MockTarget {
   return target;
 }
 
-function mockRootOwns(target: MockTarget): boolean {
-  return target.value.id === '2001' || target.value.id === '1001';
-}
-
 function rootInstallationValue(target: MockTarget): RootInstallation {
   const login = target.value.account.login;
   const permissionPending = login === 'team-01';
@@ -2163,27 +2160,6 @@ function rootAuditEntries(state: MockState): AuditEntry[] {
   return [...installationEvents, ...systemEvents].sort(
     (left, right) => Date.parse(right.created_at) - Date.parse(left.created_at),
   );
-}
-
-function rootPanelUsers(state: MockState): RootPanelUser[] {
-  return state.users.map((user) => ({
-    account: user.account,
-    system_role: user.system_role,
-    status: user.status,
-    ...(user.ban_reason === undefined ? {} : { ban_reason: user.ban_reason }),
-    ...(user.banned_at === undefined ? {} : { banned_at: user.banned_at }),
-    ...(user.last_login_at === undefined ? {} : { last_login_at: user.last_login_at }),
-    revision: user.revision,
-    owned_installations:
-      user.account.id === VIEWER.id
-        ? state.targets.filter((target) => mockRootOwns(target)).length
-        : 0,
-    assigned_installations: state.targets.filter((target) =>
-      state.targetAccess.get(target.value.id)?.has(user.account.id),
-    ).length,
-    manageable: user.account.id !== VIEWER.id && user.system_role === 'none',
-    can_manage_system_role: user.account.id !== VIEWER.id && user.system_role !== 'super_root',
-  }));
 }
 
 function activeMockElevation(state: MockState, targetId: string): RootElevation | undefined {

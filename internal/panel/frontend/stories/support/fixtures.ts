@@ -18,7 +18,7 @@
  * handlers build. Those stay here, small enough to read, until there is a builder to
  * call instead.
  */
-import { DEFAULT_CONFIG, seed, VIEWER } from '../../dev/fixtures.ts';
+import { DEFAULT_CONFIG, rootPanelUsers, seed, VIEWER } from '../../dev/fixtures.ts';
 
 import type {
   ConfigSources,
@@ -121,6 +121,12 @@ export const CONFIG: ConfigValues = DEFAULT_CONFIG;
 const SOURCES = Object.fromEntries(
   (Object.keys(CONFIG) as (keyof ConfigValues)[]).map((key) => [key, 'process' as const]),
 ) as ConfigSources;
+
+/** The panel accounts the mock seeds, across every system role and status. */
+export const USERS = MOCK.users;
+
+/** The same people as the Root console sees them, counts and all. */
+export const ROOT_USERS = rootPanelUsers(MOCK);
 
 /** The Root invitations the mock seeds, in every state one can be in. */
 export const INVITATIONS = MOCK.invitations;

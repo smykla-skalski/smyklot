@@ -29,7 +29,6 @@ const PENDING: readonly string[] = [
   'InstallationView',
   'QueueView',
   'RepositoryList',
-  'RootAccess',
   'RootInstallationView',
   'UserManagement',
 ];
