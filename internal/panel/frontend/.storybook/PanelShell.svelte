@@ -73,6 +73,13 @@
 </script>
 
 <!--
+  A `<div>`, where the app's own layout makes this a `<main>`. `.app-shell` is a
+  class and carries the palette either way, but the landmark is not the shell's to
+  claim here: fifteen stories are themselves pages with a `<main>` of their own, and
+  two mains in one document is three axe violations apiece - `landmark-unique`,
+  `landmark-no-duplicate-main` and `landmark-main-is-top-level`, 45 of the 54 the
+  catalogue had. The app has one `<main>` because it has one page in it.
+
   `.app-shell` is load-bearing twice over, which is why every story is inside one.
 
   It carries the Root console palette: `app.css` re-declares the entire alias set on
@@ -82,7 +89,7 @@
   catalogue would render unthemed or not at all.
 -->
 <QueryClientProvider client={queryClient}>
-  <main class="app-shell" class:root-mode={consoleMode === 'root'}>
+  <div class="app-shell" class:root-mode={consoleMode === 'root'}>
     {#if bleed}
       {@render children()}
     {:else}
@@ -92,7 +99,7 @@
         </div>
       </div>
     {/if}
-  </main>
+  </div>
 </QueryClientProvider>
 
 <style>
