@@ -24,6 +24,8 @@
     rocketSpeed = 70,
     rocketTrailLife = 7,
     astronaut = true,
+    firstSighting = undefined,
+    firstShower = undefined,
     meteors = true,
     slots = new SkySlots(),
     skyElement = $bindable(null),
@@ -64,6 +66,14 @@
      * theme's overlay), so the cap holds across both.
      */
     slots?: SkySlots;
+    /**
+     * Handed to the astronaut - see its own note. It exists for the catalogue, where
+     * a story about the astronaut that shows nothing for its first eight seconds is
+     * not showing what it describes. Omitting it leaves every page as it was.
+     */
+    firstSighting?: { after: number; within: number };
+    /** Handed to the meteors - see its own note. For the catalogue. */
+    firstShower?: { after: number; within: number };
     /**
      * The sky's own element, bindable out so the page can hand it to
      * overlay flights as the region that stays night on the light page.
@@ -128,8 +138,8 @@
       edges={BAND_EDGES}
       {slots}
     />
-    <NightAstronaut active={astronaut} edges={BAND_EDGES} {slots} />
-    <NightMeteors active={meteors} edges={BAND_EDGES} {slots} />
+    <NightAstronaut active={astronaut} edges={BAND_EDGES} {slots} {firstSighting} />
+    <NightMeteors active={meteors} edges={BAND_EDGES} {slots} {firstShower} />
   </span>
 </span>
 

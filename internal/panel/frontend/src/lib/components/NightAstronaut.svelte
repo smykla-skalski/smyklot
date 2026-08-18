@@ -35,6 +35,7 @@
     active = true,
     slots = undefined,
     sky = null,
+    firstSighting,
   }: {
     /**
      * The canvas edges a crossing may begin and end past. A crossing only
@@ -49,6 +50,16 @@
     active?: boolean;
     /** The shared seat budget capping how many easter eggs fly at once. */
     slots?: SkySlots;
+    /**
+     * Seconds before the first crossing may begin, and the span of the window it is
+     * drawn from. Left out, the pages get the sighting they want: soon enough to be
+     * a surprise, far enough off not to read as a feature.
+     *
+     * It exists for the catalogue, where a story about the astronaut that shows
+     * nothing for its first eight seconds is not showing what it describes. Omitting
+     * it leaves every page exactly as it was.
+     */
+    firstSighting?: { after: number; within: number };
     /**
      * The element that stays night on the light page. A crossing finishing
      * after a dark-to-light switch darkens its ink smoothly below this
@@ -313,7 +324,7 @@
       io.observe(canvas);
 
       reduce.addEventListener('change', onReduce);
-      schedule(FIRST_MIN_S, FIRST_SPAN_S);
+      schedule(firstSighting?.after ?? FIRST_MIN_S, firstSighting?.within ?? FIRST_SPAN_S);
 
       return () => {
         cancelAnimationFrame(raf);

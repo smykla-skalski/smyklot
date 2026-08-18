@@ -29,6 +29,7 @@
     edges,
     active = true,
     slots = undefined,
+    firstShower,
     sky = null,
   }: {
     /**
@@ -44,6 +45,13 @@
     active?: boolean;
     /** The shared seat budget capping how many easter eggs fly at once. */
     slots?: SkySlots;
+    /**
+     * Seconds before the first shower may fall, and the span it is drawn from. Left
+     * out, the pages get the wait they want. It exists for the catalogue, where a
+     * story about the meteors that shows nothing for its first six seconds is not
+     * showing what it describes.
+     */
+    firstShower?: { after: number; within: number };
     /**
      * The element that stays night on the light page. Streaks finishing
      * after a dark-to-light switch darken their ink smoothly below this
@@ -257,7 +265,7 @@
       io.observe(canvas);
 
       reduce.addEventListener('change', onReduce);
-      schedule(FIRST_MIN_S, FIRST_SPAN_S);
+      schedule(firstShower?.after ?? FIRST_MIN_S, firstShower?.within ?? FIRST_SPAN_S);
 
       return () => {
         cancelAnimationFrame(raf);
