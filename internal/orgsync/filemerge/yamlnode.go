@@ -288,11 +288,10 @@ func mergeKeyInto(root, mapping *yaml.Node, key string, value any, deep bool) er
 		return removeKey(mapping, key)
 	}
 
+	existing, own := keyValue(mapping, key)
 	nested, isObject := value.(map[string]any)
 
 	if deep && isObject {
-		existing, own := keyValue(mapping, key)
-
 		if heldOutright(existing, own) {
 			return mergeIntoMapping(root, existing, nested, true)
 		}
@@ -313,6 +312,14 @@ func mergeKeyInto(root, mapping *yaml.Node, key string, value any, deep bool) er
 	built, err := nodeFor(value)
 	if err != nil {
 		return err
+	}
+
+	// The same rule mergeIntoInherited keeps, for what a merge key gives that is
+	// not a mapping. Writing this spells the key out literally, and where the
+	// override asks for exactly what the inheritance already says, that
+	// flattening is the whole of the change - a pull request proposing nothing.
+	if deep && !own && sameNode(built, resolveAlias(existing), nil) {
+		return nil
 	}
 
 	setKey(mapping, key, built)

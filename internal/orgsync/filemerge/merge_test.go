@@ -910,6 +910,17 @@ jobs:
 			// Two nodes under one name, which YAML allows. Recording the
 			// renaming by the original name keeps only the last of them, so
 			// every alias bound to the earlier one still read as a change.
+			// Not everything a merge key gives is a mapping. A list or a scalar
+			// took the other path, where the key is written out literally
+			// whatever it says - so `a:\n  <<: *base` grew a literal `list:`
+			// for an override restating the template, while `a: *base` was left
+			// alone. One rule, two answers, decided by how the inheritance was
+			// spelled.
+			Entry("a list the merge key already gives",
+				`{"thing": {"list": ["t"]}}`,
+				"base: &b\n  list:\n    - t\nthing:\n  <<: *b\n"),
+			Entry("a scalar the merge key already gives",
+				`{"thing": {"a": 1}}`, "base: &b\n  a: 1\nthing:\n  <<: *b\n"),
 			Entry("an empty patch where the inheritance defines a name twice",
 				`{"thing": {"nested": {}}}`,
 				"base: &b\n  nested:\n    p: &x one\n    q: *x\n    r: &x two\n"+
