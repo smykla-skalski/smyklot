@@ -842,6 +842,56 @@ jobs:
 				"a:\n  list:\n    - one # keep me\n    - two\n", "# keep me"),
 		)
 
+		// Taking a copy back off takes everything in it, and a list rule reaches
+		// into a copy by its own path. Judged only against the override, the
+		// copy reads as saying nothing new and the rule's whole result goes
+		// with it - a rule configured, validated, run, and silently dropped.
+		It("keeps a copy a list rule has written into", func() {
+			merged, err := filemerge.Apply("ci.yaml",
+				[]byte("base: &base\n  list:\n    - t\na: *base\n"),
+				filemerge.Spec{
+					Overrides: overrides(`{"a": {"list": ["t"]}}`),
+					Arrays: []filemerge.ArrayRule{
+						{Path: "$.a.list", Strategy: filemerge.ArrayAppend},
+					},
+				})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(merged)).To(Equal(
+				"base: &base\n  list:\n    - t\na:\n  list:\n    - t\n    - t\n"))
+		})
+
+		// The rebuild runs a merge of its own, and a merge reads the live
+		// document - a removal asks whether the key is inherited. So it can
+		// refuse where the real merge did not, over a copy that never appears
+		// in any file. A rebuild that cannot be made cannot decide, and what
+		// cannot be decided is left alone.
+		It("does not fail a file over a rebuild it could not make", func() {
+			merged, err := filemerge.Apply("ci.yaml",
+				[]byte("zoth: &o\n  z: 1\nbase: &b\n  inner:\n    <<: *o\n    k: v\n"+
+					"thing:\n  <<: *b\n"),
+				filemerge.Spec{Overrides: overrides(
+					`{"thing": {"inner": {"c": null}}, "zoth": {"c": 2}}`)})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(merged)).To(Equal(
+				"zoth: &o\n  z: 1\n  c: 2\nbase: &b\n  inner:\n    <<: *o\n    k: v\n" +
+					"thing:\n  <<: *b\n"))
+		})
+
+		// A key the override adds outright is no candidate for anything, right
+		// up until a later key of the same override puts it on the anchor this
+		// mapping reads. Recorded either way, for the same reason everything
+		// else here is judged at the end rather than where it was written.
+		It("takes back a key a later override key made inherited", func() {
+			merged, err := filemerge.Apply("ci.yaml",
+				[]byte("zbase: &b\n  z: 1\nthing:\n  <<: *b\n"),
+				filemerge.Spec{Overrides: overrides(`{"thing": {"k": "v"}, "zbase": {"k": "v"}}`)})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(merged)).To(Equal("zbase: &b\n  z: 1\n  k: v\nthing:\n  <<: *b\n"))
+		})
+
 		// A copy is derived from what it was copied from, so a copy taken at
 		// merge time says what the anchor said at merge time. Judged later
 		// against an anchor the same run has moved, it differs for a reason
