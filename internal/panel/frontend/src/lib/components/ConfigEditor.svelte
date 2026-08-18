@@ -19,7 +19,7 @@
   import type { ConfigKey, ConfigPatch, ConfigValues } from '../types';
   import Select from './Select.svelte';
   import Button from './Button.svelte';
-  import AppTooltip from './AppTooltip.svelte';
+  import ChangedMarker from './ChangedMarker.svelte';
   import HelpTip from './HelpTip.svelte';
   import Icon from './Icon.svelte';
   import InheritControl from './InheritControl.svelte';
@@ -232,13 +232,7 @@
                    name it marks, so it rides the label's own 0.45rem gap
                    instead of the row's wider one. -->
               {#if changed}
-                <AppTooltip text="Unsaved">
-                  {#snippet children(props)}
-                    <span {...props} class="changed-marker" aria-label="Unsaved">
-                      <span class="changed-marker-dot"></span>
-                    </span>
-                  {/snippet}
-                </AppTooltip>
+                <ChangedMarker />
               {/if}
               <span class="label-text">{field.label}</span>
               <HelpTip
@@ -298,13 +292,7 @@
             </span>
             <span class="row-spacer"></span>
             {#if keyChanged('command_prefix')}
-              <AppTooltip text="Unsaved">
-                {#snippet children(props)}
-                  <span {...props} class="changed-marker" aria-label="Unsaved">
-                    <span class="changed-marker-dot"></span>
-                  </span>
-                {/snippet}
-              </AppTooltip>
+              <ChangedMarker />
             {/if}
             <input
               id="config-{scope}-{idPrefix}-prefix"
@@ -340,13 +328,7 @@
             </span>
             <span class="row-spacer"></span>
             {#if keyChanged('allowed_commands')}
-              <AppTooltip text="Unsaved">
-                {#snippet children(props)}
-                  <span {...props} class="changed-marker" aria-label="Unsaved">
-                    <span class="changed-marker-dot"></span>
-                  </span>
-                {/snippet}
-              </AppTooltip>
+              <ChangedMarker />
             {/if}
             <InheritControl
               label="Allowed commands source"
@@ -394,13 +376,7 @@
             </span>
             <span class="row-spacer"></span>
             {#if keyChanged('command_aliases')}
-              <AppTooltip text="Unsaved">
-                {#snippet children(props)}
-                  <span {...props} class="changed-marker" aria-label="Unsaved">
-                    <span class="changed-marker-dot"></span>
-                  </span>
-                {/snippet}
-              </AppTooltip>
+              <ChangedMarker />
             {/if}
             <InheritControl
               label="Command aliases source"
@@ -639,26 +615,6 @@
   .row.changed,
   .row-group.changed {
     background: color-mix(in srgb, var(--warning) 4%, var(--surface-base));
-  }
-
-  /* One marker per meaning: the broken chain marks the override, this ringed dot
-     marks the unsaved edit; the word lives in its tooltip. */
-  .changed-marker {
-    align-items: center;
-    border: 1px solid color-mix(in srgb, var(--warning) 45%, transparent);
-    border-radius: 999px;
-    color: var(--warning);
-    display: inline-flex;
-    flex: none;
-    padding: 4px;
-  }
-
-  .changed-marker-dot {
-    background: currentcolor;
-    border-radius: var(--r-chip);
-    display: block;
-    height: 0.35rem;
-    width: 0.35rem;
   }
 
   .prefix-input {
