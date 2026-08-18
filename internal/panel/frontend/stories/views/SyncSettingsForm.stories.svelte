@@ -68,4 +68,5 @@
       secret_scanning_push_protection: true,
       dependabot_security_updates: true,
     },
-  }} />
+  }}
+/>

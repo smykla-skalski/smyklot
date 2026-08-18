@@ -10,22 +10,16 @@
    */
   import { untrack } from 'svelte';
 
-  import type { SyncAction, SyncConfig, SyncConfigInput, SyncPlan } from '#lib/types.js';
+  import type { SyncAction, SyncConfig, SyncConfigInput, SyncLabel, SyncPlan } from '#lib/types.js';
 
-  import FormError from './FormError.svelte';
   import Button from './Button.svelte';
+  import FormError from './FormError.svelte';
   import PageHeader from './PageHeader.svelte';
   import Plate from './Plate.svelte';
-  import SegmentedControl from './SegmentedControl.svelte';
   import SyncFilesForm from './SyncFilesForm.svelte';
+  import SyncLabelsForm from './SyncLabelsForm.svelte';
   import SyncRulesetsForm from './SyncRulesetsForm.svelte';
   import SyncSettingsForm from './SyncSettingsForm.svelte';
-
-  /** The same two words the settings page puts on the same decision. */
-  const SYNC_OPTIONS = [
-    { value: 'enabled', label: 'Enabled' },
-    { value: 'disabled', label: 'Disabled' },
-  ] as const;
 
   const {
     targetId,
@@ -117,7 +111,12 @@
     }
   }
 
-  async function onSave(enabled: boolean): Promise<void> {
+  async function onSave(
+    enabled: boolean,
+    labels: SyncLabel[],
+    allowRemoval: boolean,
+    excludes: string[],
+  ): Promise<void> {
     const current = config;
     if (current === null) return;
 
@@ -126,9 +125,9 @@
     try {
       config = await saveConfig(targetId, LABELS, {
         enabled,
-        labels: current.labels,
-        allow_removal: current.allow_removal,
-        excludes: current.excludes,
+        labels,
+        allow_removal: allowRemoval,
+        excludes,
         expected_revision: current.revision,
       });
       // Saving invalidates any plan computed from the old configuration, so the
@@ -267,67 +266,27 @@
     description="What every repository in this installation should look like, and what Smyklot would change to make that true"
   />
 
-  <Plate label="Labels">
-    {#snippet status()}
-      <SegmentedControl
-        name="sync-labels-{targetId}"
-        label="Label sync"
-        descriptionId="sync-labels-help"
-        options={SYNC_OPTIONS}
-        value={enabled ? 'enabled' : 'disabled'}
-        compact
-        disabled={saving || readOnly || unreadable || config === null}
-        onSelect={(selection) => void onSave(selection === 'enabled')}
-      />
-    {/snippet}
-
-    <p class="sync-lead" id="sync-labels-help">
-      The labels every repository in this installation should carry. Smyklot works out what would
-      change and asks before changing anything
-    </p>
-
-    {#if error !== null}
-      <FormError message={error} />
-    {/if}
-
-    {#if unreadable}
-      <p class="sync-notice" role="alert">
-        This installation's labels are stored in a form this version of Smyklot cannot read, so they
-        are not shown and nothing here can be changed. Nothing has been lost.
-      </p>
-    {/if}
-
-    <!-- Only while the switch is on: a kind nobody asked for is not waiting on
-         anything, and the permission is somebody else's to grant. -->
-    {#if unavailable !== '' && enabled}
-      <p class="sync-notice" role="status">
-        {unavailable}. Nothing here will be planned or changed until an owner grants it on the
-        installation's page on GitHub.
-      </p>
-    {/if}
-
-    {#if unreadable}
-      <!-- Deliberately not "no labels yet". An empty list here would be the panel
-           inventing an answer it does not have. -->
-    {:else if labels.length === 0}
-      <p class="sync-empty">No labels yet</p>
-    {:else}
-      <ul class="sync-rows">
-        {#each labels as label (label.name)}
-          <li class="sync-row">
-            <!-- The colour is the label's own, so it is set as a custom property
-                 rather than an inline style: the panel serves style-src 'self',
-                 under which a style attribute is parsed and then discarded. -->
-            <span class="sync-swatch" style:--swatch="#{label.color}" aria-hidden="true"></span>
-            <span class="sync-name">{label.name}</span>
-            {#if label.description}
-              <span class="sync-description">{label.description}</span>
-            {/if}
-          </li>
-        {/each}
-      </ul>
-    {/if}
-  </Plate>
+  {#if config !== null}
+    <SyncLabelsForm
+      {labels}
+      allowRemoval={config.allow_removal}
+      excludes={config.excludes}
+      {enabled}
+      {unreadable}
+      {unavailable}
+      problem={error}
+      {readOnly}
+      {saving}
+      onSave={(wanted, edited, allowRemoval, excludes) =>
+        void onSave(wanted, edited, allowRemoval, excludes)}
+    />
+  {:else if error !== null}
+    <!-- Nothing loaded, so there is no form to hang this on. It used to hang on
+         the labels plate, which was the one part of this page drawn whether or
+         not anything had been read - and a failure with nowhere to go is a page
+         that comes up blank and says why nowhere. -->
+    <FormError message={error} />
+  {/if}
 
   {#if documents.settings !== null}
     <SyncSettingsForm
@@ -436,20 +395,11 @@
   }
 
   /* The same line, further down a plate, so it carries the gap itself. */
-  .sync-counts,
-  .sync-empty {
+  .sync-counts {
     color: var(--dim);
     font-size: var(--font-size-meta);
     margin: var(--space-3) 0 0;
     max-width: 60ch;
-  }
-
-  .sync-notice {
-    background: var(--surface-inset);
-    border-radius: var(--r-ctl);
-    font-size: var(--font-size-meta);
-    margin: var(--space-3) 0 0;
-    padding: var(--space-2) var(--space-3);
   }
 
   :global(.form-error) {
@@ -485,17 +435,6 @@
   .sync-name {
     font-size: 0.875rem;
     font-weight: 600;
-  }
-
-  /* The swatch sits on the text baseline rather than centred on the line box, so
-     a row whose description wraps does not leave it floating beside the gap. */
-  .sync-swatch {
-    background: var(--swatch);
-    border-radius: 50%;
-    display: inline-block;
-    height: 0.75em;
-    transform: translateY(0.05em);
-    width: 0.75em;
   }
 
   .sync-description,
