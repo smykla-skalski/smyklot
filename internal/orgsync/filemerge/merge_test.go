@@ -986,17 +986,16 @@ jobs:
 		})
 
 		// Judging a copy rebuilds it, that rebuild settles, and settling judges
-		// the copies inside it - so an override nested d inheritances deep costs
-		// 2^(d+1)-1 rebuilds. The override is one repository's data and the
-		// sweep merges a file for every repository, so unbounded this is a stall
-		// anybody who can write a repository's settings can ask for: 644 bytes
-		// at depth 22 took five and a half seconds, and 30 would have taken an
-		// hour.
+		// the copies inside it - so the work is exponential in how far into an
+		// inheritance the override walks. One alias per level costs 2^(d+1)-1
+		// rebuilds, and unbounded, 644 bytes at depth 22 took five and a half
+		// seconds while 30 would have taken about an hour.
 		//
 		// A wall clock rather than a rebuild count, because the count is the
-		// mechanism and the seconds are the harm. Loose enough that a slow
-		// machine does not fail it and tight enough that losing the bound does:
-		// unbounded, this shape is minutes.
+		// mechanism and the seconds are the harm - a rewrite that kept the
+		// counter and lost the bound would pass a spec written against the
+		// count. Loose enough that a slow machine does not fail it, tight enough
+		// that losing the bound does: unbounded, this shape is half a minute.
 		It("bounds a deep inheritance chain rather than working through it", func() {
 			var template, override strings.Builder
 
@@ -1025,6 +1024,48 @@ jobs:
 			// And the bound costs nothing here: every copy still comes off, so
 			// the file the repository already has is the file it keeps.
 			Expect(string(merged)).To(Equal(template.String()))
+		})
+
+		// The one that matters, because the template is innocent. An anchor that
+		// names itself is forty-three bytes and one level deep, and the depth
+		// comes from the override - which is one repository's data, on a sweep
+		// with no deadline and one replica. So the organization's file arms this
+		// and any repository can fire it, out of a few hundred bytes. Bounding
+		// by depth would have missed it, which is why the budget counts work.
+		//
+		// Deep enough that the budget runs out before the copies have all been
+		// taken back, which is the case worth writing down: what a bound cannot
+		// finish deciding it keeps. So this asserts what running out is allowed
+		// to cost rather than that it costs nothing.
+		It("bounds an override walking into an anchor that names itself", func() {
+			const (
+				depth    = 40
+				template = "a: &a\n  self: *a\n  leaf: base\ntop:\n  k: *a\n"
+			)
+
+			spec := filemerge.Spec{Overrides: overrides(`{"top": {"k": ` +
+				strings.Repeat(`{"self": `, depth) + `{"leaf": "base"}` +
+				strings.Repeat("}", depth) + `}}`)}
+
+			started := time.Now()
+			merged, err := filemerge.Apply("ci.yaml", []byte(template), spec)
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(time.Since(started)).To(BeNumerically("<", 2*time.Second))
+
+			// Nothing of the organization's file is lost - the flattening is
+			// verbose, not different, and it still ends at the anchor rather
+			// than expanding it for ever.
+			Expect(string(merged)).To(HavePrefix("a: &a\n  self: *a\n  leaf: base\ntop:\n"))
+			Expect(string(merged)).To(ContainSubstring("self: *a\n"))
+
+			// And it has converged. A bound that keeps a copy must not then
+			// propose a different file next sweep: that is a pull request
+			// reopening itself for ever, which is worse than the flattening.
+			again, err := filemerge.Apply("ci.yaml", merged, spec)
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(again)).To(Equal(string(merged)))
 		})
 
 		// A key the override adds outright is no candidate for anything, right

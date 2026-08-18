@@ -377,29 +377,38 @@ func newMerge(root *yaml.Node, deep bool) *merge {
 // them as they stand.
 //
 // Judging a copy runs a merge of its own, that merge settles, and settling
-// judges the copies inside it - so an override nested d inheritances deep costs
-// 2^(d+1)-1 rebuilds. Measured on a template of one alias per level: depth 11
-// is 4095 of them, and every level after that doubles. Unbounded, 644 bytes at
-// depth 22 took five and a half seconds and 30 would have taken an hour.
+// judges the copies inside it - so the work is exponential in how deep an
+// inheritance the override walks into. A template with one alias per level
+// costs 2^(d+1)-1 rebuilds, and unbounded, 644 bytes at depth 22 took five and
+// a half seconds while 30 would have taken about an hour.
 //
-// That override is one repository's data and the sweep merges a file for every
-// repository, so an unbounded one is a stall anybody who can write a
-// repository's settings can ask for. Bounded rather than made clever: a
+// The template does not have to be deep for that. One anchor that names itself
+// - 43 bytes - lets an override supply every level, so this is armed by the
+// organization's file and fired by one repository's data, on a sweep with no
+// deadline, one replica, and a file per repository.
+//
+// Bounded rather than made clever. Memoising the rebuild would need a cache of
+// node trees, and cached trees are what three rounds of this went wrong on; a
 // structural "does this say what it inherits" would be a third answer to a
-// question the two comparators here have each already got wrong twice.
+// question the two comparators here have each got wrong twice. A count of
+// rebuilds rather than a depth, because the recursive shape has depth 1.
 //
 // Running out is not a refusal. It falls back to judging the copy as it stands,
-// which is what a write that copied nothing gets anyway - so a copy still says
-// what the inheritance says is still taken back, and only a copy gone stale
-// against an anchor the same run moved is kept where a rebuild might have
+// which is what a write that copied nothing gets anyway - so a copy that still
+// says what the inheritance says is still taken back, and only a copy gone
+// stale against an anchor the same run moved is kept where a rebuild might have
 // removed it. That is a flattening in a pull request somebody can read and
-// close, in the one direction that never loses a repository's work. In practice
-// the fixpoint gets there regardless: depth 60 exhausts this sixty times over
-// and still collapses every copy, in four milliseconds.
+// close, in the one direction that never loses a repository's work.
 //
-// Far above anything real. The deepest merge in the whole spec suite spends
-// three.
-const rebuildBudget = 4096
+// Sized so it should never be reached rather than to be tight: the real
+// workflow file this syncs spends none of it, the whole spec suite's deepest
+// merge spends three, and three thousand randomized inheritance cases peaked at
+// 674. It first binds at sixteen nested aliases, or an override twenty-two
+// levels into a recursive one, and the answer is the same on both sides of
+// that. What it buys is a ceiling of about a tenth of a second per file however
+// deep the override goes - a rebuild costs around three microseconds, so this
+// number is a time budget written as a count.
+const rebuildBudget = 65536
 
 // rebuilding reports whether there is budget left to judge one more copy, and
 // spends it where there is.
