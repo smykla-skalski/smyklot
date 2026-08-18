@@ -780,8 +780,6 @@
         --skeleton-bar-b-width="min(16rem, 32%)"
       />
     {:else if historyType === 'audit'}
-      <!-- Keyboard focus lets users scroll columns that overflow the viewport. -->
-      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
       <DataTable
         class="table-scroll"
         tableClass="history-table audit-table"
@@ -956,8 +954,6 @@
         {/snippet}
       </DataTable>
     {:else}
-      <!-- Keyboard focus lets users scroll columns that overflow the viewport. -->
-      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
       <DataTable
         class="table-scroll"
         tableClass="history-table failure-table"
