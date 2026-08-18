@@ -24,11 +24,16 @@ const stories = new URL('../stories/', import.meta.url);
 
 /** Components still owed a story. Only ever gets shorter. */
 const PENDING: readonly string[] = [
+  /* Blocked on a route, not on fixtures. Each row builds its link with SvelteKit's
+     `resolve()` against `/i/[account]/...`, and a story has no route params - the row
+     throws "Missing parameter 'account'" before it renders and the table draws its
+     header over nothing. `@storybook/sveltekit` can supply them through
+     `parameters.sveltekit_experimental`; that is the next thing to try, and the same
+     block will unblock `InstallationView` and `RootInstallationView`. */
+  'RepositoryList',
   'HistoryPanel',
   'IdentityBar',
   'InstallationView',
-  'QueueView',
-  'RepositoryList',
   'RootInstallationView',
   'UserManagement',
 ];

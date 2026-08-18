@@ -3,6 +3,7 @@
   import type { Snippet } from 'svelte';
 
   import { createPanelQueryClient } from '#lib/query-client.js';
+  import { PanelSession, setPanelSession } from '#lib/session.svelte.js';
   import { applyDocumentTheme, resolveThemeDisplay } from '#lib/preferences.js';
   import type { ThemeDisplay } from '#lib/preferences.js';
 
@@ -18,6 +19,27 @@
   } = $props();
 
   const queryClient = createPanelQueryClient();
+
+  /*
+   * A session, because two components read one.
+   * ------------------------------------------
+   * `RepositoryList` and `InstallationView` call `getPanelSession()`, and a component
+   * that asks for a context nobody set does not degrade - Svelte throws
+   * `missing_context` and the story renders as a blank frame with the reason only in
+   * the console. It is set here rather than per story so a component that starts
+   * reading it later does not silently take a catalogue page down with it.
+   *
+   * The stub API rejects every call: a session is a place to read the theme and the
+   * preferences from, and a story that reached the network through it would be
+   * reaching past its own fixtures. What each story wants ANSWERED it seeds.
+   */
+  setPanelSession(
+    new PanelSession(
+      new Proxy({}, { get: () => () => Promise.reject(new Error('no api in a story')) }) as never,
+      { version: null, serviceHost: null },
+      queryClient,
+    ),
+  );
 
   // The app's own function, so the toolbar and the panel can never disagree about
   // what a theme means. It writes `data-theme` on the document element and rewrites

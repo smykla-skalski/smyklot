@@ -125,6 +125,9 @@ const SOURCES = Object.fromEntries(
 /** The panel accounts the mock seeds, across every system role and status. */
 export const USERS = MOCK.users;
 
+/** Every repository the organisation installation reaches, as the mock seeds them. */
+export const REPOSITORIES = MOCK.targets[0]!.repositories.map((entry) => entry.detail.repository);
+
 /** The same people as the Root console sees them, counts and all. */
 export const ROOT_USERS = rootPanelUsers(MOCK);
 
