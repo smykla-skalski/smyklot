@@ -11,6 +11,19 @@
  */
 import type { PanelApi } from '#lib/api.js';
 
+import {
+  AUDIT,
+  FAILURES,
+  INSTALLATIONS,
+  INVITATIONS,
+  NOTIFICATIONS,
+  OVERVIEW,
+  REPOSITORIES,
+  REPOSITORY_DETAIL,
+  TARGET,
+  USERS,
+} from './fixtures.js';
+
 function refuse(name: string) {
   return () =>
     Promise.reject(
@@ -31,4 +44,45 @@ export function stubApi(over: Partial<PanelApi> = {}): PanelApi {
       },
     },
   );
+}
+
+/**
+ * A `PanelApi` that answers from the mock's own fixtures.
+ *
+ * `stubApi` is right for a component that takes `api` as a prop: the story hands in
+ * exactly what that component reads, and anything else failing loudly is the point.
+ * It is wrong for a component that reads `session.api`, because there the story has no
+ * say in which methods get called - `InstallationView` alone reaches twenty of them,
+ * and refusing all twenty draws a shell over nothing.
+ *
+ * So the reads answer, out of `dev/fixtures.ts` - the same data the dev server serves,
+ * which is what stops the catalogue and the running app disagreeing. The writes still
+ * refuse, and that is deliberate: a story is a picture of a state, and one that let a
+ * mutation "succeed" against a fixture would show a result no service produced.
+ *
+ * Anything not listed refuses by name through `stubApi`, so the next method a view
+ * starts calling says so instead of silently resolving undefined.
+ */
+export function fixtureApi(over: Partial<PanelApi> = {}): PanelApi {
+  const page = <T>(items: readonly T[]) => ({
+    items: [...items],
+    next_cursor: null,
+    total: items.length,
+  });
+
+  return stubApi({
+    fetchTargets: async () => [TARGET],
+    fetchRepositories: async () => page(REPOSITORIES),
+    fetchRepository: async () => REPOSITORY_DETAIL,
+    fetchAudit: async () => page(AUDIT),
+    fetchFailures: async () => page(FAILURES),
+    fetchTargetUsers: async () => page(USERS),
+    fetchTargetInvitations: async () => page(INVITATIONS),
+    fetchUserDecisions: async () => [],
+    suggestUsers: async () => [],
+    fetchRootOverview: async () => OVERVIEW,
+    fetchRootInstallations: async () => INSTALLATIONS,
+    fetchNotifications: async () => NOTIFICATIONS,
+    ...over,
+  } as Partial<PanelApi>);
 }

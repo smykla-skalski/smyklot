@@ -5,6 +5,7 @@
   import { createPanelQueryClient } from '#lib/query-client.js';
   import { PanelSession, setPanelSession } from '#lib/session.svelte.js';
   import { TARGET } from '../stories/support/fixtures.js';
+  import { fixtureApi } from '../stories/support/api.js';
   import { applyDocumentTheme, resolveThemeDisplay } from '#lib/preferences.js';
   import type { ThemeDisplay } from '#lib/preferences.js';
 
@@ -30,15 +31,15 @@
    * the console. It is set here rather than per story so a component that starts
    * reading it later does not silently take a catalogue page down with it.
    *
-   * The stub API rejects every call: a session is a place to read the theme and the
-   * preferences from, and a story that reached the network through it would be
-   * reaching past its own fixtures. What each story wants ANSWERED it seeds.
+   * Its API answers from the mock's fixtures rather than refusing. A component that
+   * takes `api` as a prop gets whatever its story hands it, and refusing everything
+   * else is right there; but a component that reads `session.api` gives its story no
+   * say - `InstallationView` reaches twenty methods - so refusing drew a shell over
+   * nothing. Reads answer from the same data the dev server serves; writes still
+   * refuse, because a story is a picture of a state and a mutation that "succeeded"
+   * against a fixture would show a result no service produced.
    */
-  const session = new PanelSession(
-    new Proxy({}, { get: () => () => Promise.reject(new Error('no api in a story')) }) as never,
-    { version: null, serviceHost: null },
-    queryClient,
-  );
+  const session = new PanelSession(fixtureApi(), { version: null, serviceHost: null }, queryClient);
 
   /*
    * A workspace, because a session with none cannot build an address.
