@@ -22,7 +22,10 @@
 
 <AppTooltip text={label}>
   {#snippet children(props)}
-    <span {...props} class="changed-marker" aria-label={label}>
+    <!-- `role="img"` because the dot is the whole message and has no text of its
+         own: a bare `<span>` has no role, and ARIA forbids naming one - the label
+         was being dropped by every reader that follows the spec. -->
+    <span {...props} class="changed-marker" role="img" aria-label={label}>
       <span class="changed-marker-dot"></span>
     </span>
   {/snippet}

@@ -669,9 +669,14 @@
 
       <!-- A property of the ruleset rather than of the rule above it, so it is
            set off with a heading of its own. Run on, it read as one more
-           option of whatever rule happened to come last. -->
+           option of whatever rule happened to come last.
+
+           `h3`, not `h4`: nothing in this form emits an `h3`, so an `h4` skipped a
+           level and axe reported `heading-order` on every story of it. The outline
+           a reader tabs through has to be the one on the page, not the one the
+           class name suggests. -->
       <div class="ruleset-section">
-        <h4 class="ruleset-eyebrow">Who may step around it</h4>
+        <h3 class="ruleset-eyebrow">Who may step around it</h3>
 
         {#each actors(ruleset) as actor, at (at)}
           <div class="ruleset-row">

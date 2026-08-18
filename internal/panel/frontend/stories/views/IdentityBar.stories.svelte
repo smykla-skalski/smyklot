@@ -38,7 +38,7 @@
     rootValue: 'overview' as const,
     rootHrefFor: (section: string) => `#/root/${section}`,
     onSelectRoot: fn(),
-    rootDashboardHref: '#/root',
+    rootEntryHref: '#/root',
     onEnterRoot: fn(),
     returnHref: '#/',
     onReturnToPanel: fn(),

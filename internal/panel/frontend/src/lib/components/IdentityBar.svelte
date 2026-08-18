@@ -871,11 +871,24 @@
     justify-content: center;
   }
 
-  .collapsed :global(.mark-copy),
   .collapsed :global(.target-trigger-copy),
   .collapsed :global(.menu-chevron),
   .collapsed :global(.who-text) {
     display: none;
+  }
+
+  /* The wordmark goes out of sight and stays in the accessibility tree, because it
+     is the text of the page's `<h1>` - `display: none` took the name off the only
+     heading the panel has and left an empty one, which is what axe reports as
+     `empty-heading`. The others above are labels beside their own controls and are
+     named without them. */
+  .collapsed :global(.mark-copy) {
+    clip-path: inset(50%);
+    height: 1px;
+    overflow: hidden;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
   }
 
   .collapsed :global(.target-trigger) {
