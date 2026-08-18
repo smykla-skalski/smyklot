@@ -846,6 +846,46 @@ jobs:
 		// is what the file already holds, down to the anchors and the comments,
 		// writing it would stand in for the inherited list and the flattening
 		// would be the whole of the pull request.
+		// Whether a key says anything the mapping does not already inherit is
+		// settled by the finished file, not by the moment the key was written.
+		// The override's own later keys still have to run - and they are run in
+		// sorted order, so an anchor named `x-logging` is merged after the
+		// `services` that uses it, which is the compose convention exactly -
+		// and every list rule runs after all of them. Judged at the write, this
+		// dropped a repository's pin because the same sync moved the default it
+		// was pinning against, and it re-derived the same wrong file every
+		// sweep.
+		It("keeps an override the same run's other change would undo", func() {
+			merged, err := filemerge.Apply("compose.yaml",
+				[]byte("x-logging: &logging\n  driver: json-file\n"+
+					"services:\n  web:\n    logging:\n      <<: *logging\n"),
+				filemerge.Spec{Overrides: overrides(
+					`{"services": {"web": {"logging": {"driver": "json-file"}}},` +
+						` "x-logging": {"driver": "local"}}`)})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(merged)).To(Equal("x-logging: &logging\n  driver: local\n" +
+				"services:\n  web:\n    logging:\n      <<: *logging\n      driver: json-file\n"))
+		})
+
+		// The same, where a list rule is what moves the ground afterwards.
+		// Rules always run after the whole merge, so this one needs no ordering
+		// trick at all.
+		It("keeps an override a list rule on the anchor would undo", func() {
+			merged, err := filemerge.Apply("ci.yaml",
+				[]byte("base: &b\n  list:\n    - t\nthing:\n  <<: *b\n"),
+				filemerge.Spec{
+					Overrides: overrides(`{"base": {"list": ["t"]}, "thing": {"list": ["t"]}}`),
+					Arrays: []filemerge.ArrayRule{
+						{Path: "$.base.list", Strategy: filemerge.ArrayAppend},
+					},
+				})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(merged)).To(Equal(
+				"base: &b\n  list:\n    - t\n    - t\nthing:\n  <<: *b\n  list:\n    - t\n"))
+		})
+
 		// The anchor on the list itself, which setKey takes from the position
 		// rather than from the value - so the list a rule builds always arrives
 		// at the comparison without one, and comparing it read as a change on
