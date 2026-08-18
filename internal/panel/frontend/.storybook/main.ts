@@ -31,7 +31,21 @@ const config: StorybookConfig = {
   // through the panel's own `applyDocumentTheme`. An addon would set the data
   // attribute and stop there, leaving the `theme-color` metas saying the opposite
   // of what the page is painting.
-  addons: ['@storybook/addon-svelte-csf', '@storybook/addon-docs', '@storybook/addon-a11y'],
+  // `@storybook/addon-mcp` runs an MCP server inside the dev server, at
+  // `http://localhost:6008/mcp` - the port this catalogue serves on, not Storybook's
+  // default 6006, which is what `.mcp.json` at the repository root points at.
+  //
+  // Its docs toolset is React-only today, so what a Svelte project gets from it is
+  // the development half: which stories a local change touches, how this project
+  // writes one, and a rendered preview. `run-story-tests` wants
+  // `@storybook/addon-vitest`, which is an optional peer and not installed - the
+  // browser suites are where this repository measures.
+  addons: [
+    '@storybook/addon-svelte-csf',
+    '@storybook/addon-docs',
+    '@storybook/addon-a11y',
+    '@storybook/addon-mcp',
+  ],
   // `theme-boot.js`, the halo and the avatar are referenced by BrandMark, PageFooter
   // and `app.html`, so the catalogue has to serve the same directory the app does.
   staticDirs: ['../static'],
