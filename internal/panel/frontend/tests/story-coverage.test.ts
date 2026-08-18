@@ -23,12 +23,7 @@ const components = new URL('../src/lib/components/', import.meta.url);
 const stories = new URL('../stories/', import.meta.url);
 
 /** Components still owed a story. Only ever gets shorter. */
-const PENDING: readonly string[] = [
-  'IdentityBar',
-  'InstallationView',
-  'RootInstallationView',
-  'UserManagement',
-];
+const PENDING: readonly string[] = ['IdentityBar', 'InstallationView', 'RootInstallationView'];
 
 function storyNames(): Set<string> {
   const found = new Set<string>();
