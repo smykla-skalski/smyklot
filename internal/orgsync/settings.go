@@ -287,7 +287,15 @@ type settingsField struct {
 	put func(body map[string]any, value any)
 }
 
-// settingsFields is every setting, in the order a person reads them.
+// settingsFields is every setting the settings endpoint itself takes, in the
+// order a person reads them.
+//
+// Not quite every setting: DependabotSecurityUpdates is configured beside these
+// and is deliberately absent, because GitHub changes it somewhere else. That
+// makes this table the answer to "what goes in the one request", which is what
+// every reader of it wants - the merge-strategy rule, the dependency chains and
+// what a change switches off with it are all rules about that request. See
+// planDependabot for the setting that is not in it.
 //
 // One table rather than a comparison, a request body and a description written
 // separately. Those three drifting apart is how the tool this replaces came to

@@ -79,9 +79,13 @@
 
 <Story name="Read only" args={{ readOnly: true }} />
 
-<!-- The server refused the save, and the message belongs beside the form that sent it. -->
+<!--
+  The server refused the save, and the message belongs beside the form that sent it.
+  Named the way the settings and document forms name the same case; "Refused" is the
+  files form's name for something else, a planner refusal rather than a failed save.
+-->
 <Story
-  name="Refused"
+  name="With a problem"
   args={{
     problem: 'the color of "kind/bug" must not start with #, GitHub wants "d73a4a"',
   }}
