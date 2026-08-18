@@ -13,14 +13,6 @@ import (
 // wrote keep the comments and the quoting they were written with, and only the
 // override's own items are built fresh.
 func applyYAMLArrayRules(merged, before *yaml.Node, override map[string]any, spec Spec) error {
-	if len(spec.Arrays) == 0 {
-		return nil
-	}
-
-	// What the template already defined, read once. `before` is only parsed
-	// where there are rules, which is why this is past the return above.
-	inTemplate := definitionsIn(before)
-
 	for _, rule := range spec.Arrays {
 		// Read rather than trusted: Validate has already read every path, and a
 		// spec reaching here unvalidated should fail rather than skip.
@@ -46,6 +38,14 @@ func applyYAMLArrayRules(merged, before *yaml.Node, override map[string]any, spe
 			return err
 		}
 
+		// A rule whose result is what the file already says writes nothing.
+		// Writing it anyway would stand in for an inherited list - flattening
+		// the inheritance out as literal keys, which is the whole diff, for a
+		// rule that changed no value.
+		if sameNode(nodeAt(merged, keys), combined) {
+			continue
+		}
+
 		if !setNodeAt(merged, keys, combined) {
 			return fmt.Errorf(
 				"%w: nothing in the merged file holds %s", ErrNothingAddressed, rule.Path)
@@ -55,7 +55,9 @@ func applyYAMLArrayRules(merged, before *yaml.Node, override map[string]any, spe
 		// has no reason to know where it came from. This list is part clone of
 		// the template's, so the anchors needing settling are the ones the
 		// clone carried, and this is where that is known.
-		dropRedefinedAnchors(merged, combined, inTemplate)
+		if !spelledOutAt(before, keys) {
+			dropClonedAnchors(merged, combined)
+		}
 	}
 
 	return nil
@@ -213,4 +215,48 @@ func setNodeAt(root *yaml.Node, keys []string, value *yaml.Node) bool {
 	setKey(parent, keys[len(keys)-1], value)
 
 	return true
+}
+
+// spelledOutAt reports a path the template writes out itself, every step of it,
+// with no alias and no merge key anywhere along the way.
+//
+// This is the one question the written list's anchors turn on. A path spelled
+// out is a node the write takes the PLACE of, so the items cloned from it carry
+// the only definitions of their names left and have to keep them. A path that
+// goes through an alias or a merge key at any step names somebody else's node,
+// which the write leaves exactly where it was - so the clone's anchors are a
+// second definition of a name the document still has.
+//
+// Asked of the template rather than of the document being written, because by
+// the time the list rules run the merge has already written its own keys, and
+// a key it added looks from the merged document exactly like one the template
+// spelled out. That is what made this read as a replacement and keep a
+// duplicate. Counting definitions instead is what two rounds of review got
+// wrong from both ends: the count says two when the write replaced one of them,
+// and it says two for a name the template itself defines twice - where clearing
+// either one silently rebinds whichever aliases sit between them.
+func spelledOutAt(before *yaml.Node, keys []string) bool {
+	at := resolveAlias(before)
+	if at == nil || at.Kind == yaml.AliasNode {
+		return false
+	}
+
+	for index, key := range keys {
+		if at.Kind != yaml.MappingNode {
+			return false
+		}
+
+		value, own := keyValue(at, key)
+		if !own || value == nil || value.Kind == yaml.AliasNode {
+			return false
+		}
+
+		if index == len(keys)-1 {
+			return true
+		}
+
+		at = value
+	}
+
+	return false
 }

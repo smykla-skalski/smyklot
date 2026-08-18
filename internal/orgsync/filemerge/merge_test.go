@@ -786,6 +786,49 @@ jobs:
 				"labels:\n  - &x a\n  - &x b\nmiddle: *x\n", "b"),
 		)
 
+		// The other direction of the same question, and the one a rule reading
+		// "the template defines it twice, so leave it alone" got wrong: here
+		// the write lands BESIDE the definition it cloned, between an alias and
+		// the definition that alias binds to. Keeping the clone's name rebinds
+		// `use` to a different value - a change to a key no rule and no
+		// override named, in a file the merge reports as written, and one
+		// nothing can catch afterwards because the name is still bound.
+		It("does not rebind an alias by writing a clone above its definition", func() {
+			merged, err := filemerge.Apply("ci.yaml",
+				[]byte("defs: &base\n  - &a first\nafter: &a second\nlist: *base\nuse: *a\n"),
+				filemerge.Spec{
+					Overrides: overrides(`{"list": ["extra"]}`),
+					Arrays: []filemerge.ArrayRule{
+						{Path: "$.list", Strategy: filemerge.ArrayAppend},
+					},
+				})
+
+			Expect(err).NotTo(HaveOccurred())
+
+			var back map[string]any
+			Expect(yaml.Unmarshal(merged, &back)).To(Succeed())
+			Expect(back).To(HaveKeyWithValue("use", "second"))
+			Expect(back).To(HaveKeyWithValue("list", []any{"first", "extra"}))
+		})
+
+		// A rule whose result is what the file already says writes nothing.
+		// Writing it stands in for the inherited list, and the flattening is
+		// then the whole of the pull request - the same change nobody asked for
+		// that the deep merge above refuses to propose, one level over.
+		It("leaves an inherited list alone where a rule changes none of it", func() {
+			template := "base: &base\n  list:\n    - t\na: *base\n"
+
+			merged, err := filemerge.Apply("ci.yaml", []byte(template),
+				filemerge.Spec{
+					Overrides:   overrides(`{"a": {"list": ["t"]}}`),
+					Arrays:      []filemerge.ArrayRule{{Path: "$.a.list", Strategy: filemerge.ArrayAppend}},
+					Deduplicate: true,
+				})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(merged)).To(Equal(template))
+		})
+
 		// Merging into what a mapping inherits means writing the inherited keys
 		// out literally, and that is a change to the file whatever the merge
 		// then does to it. Where the merge asks for what the mapping already
@@ -806,9 +849,51 @@ jobs:
 			Entry("an empty patch", `{"thing": {"nested": {}}}`),
 			Entry("a value the template already sets", `{"thing": {"nested": {"a": 1}}}`),
 			Entry("every value it already sets", `{"thing": {"nested": {"a": 1, "b": 2}}}`),
-			Entry("a number written differently", `{"thing": {"nested": {"a": 1.0}}}`),
 			Entry("a null on a key it does not have", `{"thing": {"nested": {"c": null}}}`),
 		)
+
+		// Whether the copy says anything new is read off the nodes, not off
+		// what they decode to. go-yaml decodes as YAML 1.2 and the readers of
+		// these files are not: compose reads a bare `no` as false, which is why
+		// the merge quotes what it quotes. Comparing decoded values called
+		// these two the same and dropped the override, and the panel reported
+		// the sync applied.
+		DescribeTable("writes a respelling the inheritance does not already say",
+			func(template, override, expected string) {
+				merged, err := filemerge.Apply("compose.yaml", []byte(template),
+					filemerge.Spec{Overrides: overrides(override)})
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(merged)).To(ContainSubstring(expected))
+			},
+			Entry("a string YAML 1.1 reads as a boolean",
+				"defaults: &d\n  restart: no\nservice:\n  <<: *d\n",
+				`{"service": {"restart": "no"}}`, `restart: "no"`),
+			Entry("a string YAML 1.1 reads as a sexagesimal number",
+				"defaults: &d\n  at: 12:30\njob:\n  <<: *d\n",
+				`{"job": {"at": "12:30"}}`, `at: "12:30"`),
+			// The same override on a literal mapping was always honoured. One
+			// spec answering two ways depending on whether the key is inherited
+			// is the shape this whole comparison exists to keep out.
+			Entry("the same override where the key is spelled out",
+				"service:\n  restart: no\n",
+				`{"service": {"restart": "no"}}`, `restart: "no"`),
+			Entry("a number spelled differently, as the JSON half also writes it",
+				"defaults: &d\n  a: 1\nthing:\n  <<: *d\n",
+				`{"thing": {"a": 1.0}}`, "a: 1.0"),
+		)
+
+		// Reading a value is what the comparison used to do, and a template
+		// whose anchor names itself has no value to read - so a merge that
+		// never needed one failed, blaming the parse for a file that parsed.
+		It("merges into a template whose anchor names itself", func() {
+			merged, err := filemerge.Apply("ci.yaml",
+				[]byte("base: &base\n  self: *base\n  keep: 1\na: *base\nother: 0\n"),
+				filemerge.Spec{Overrides: overrides(`{"a": {"added": 2}}`)})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(merged)).To(ContainSubstring("added: 2"))
+		})
 
 		// One patch reaching two levels down, each level inherited, so the
 		// merge makes a copy inside a copy. A fresh anchor name is minted

@@ -396,33 +396,59 @@ func mergeIntoInherited(
 		return err
 	}
 
-	same, err := sameMeaning(copied, stood)
-	if err != nil {
-		return err
-	}
-
-	if same {
+	if sameNode(copied, stood) {
 		mapping.Content = held
 	}
 
 	return nil
 }
 
-// sameMeaning reports two nodes saying the same thing, whatever each is written
-// as - asked of a copy against what it was copied from, where the question is
-// whether the merge changed anything and not whether the two are written alike.
-func sameMeaning(one, other *yaml.Node) (bool, error) {
-	left, err := decodedNode(one)
-	if err != nil {
-		return false, err
+// sameNode reports a copy the merge did not change, asked against what it was
+// copied from.
+//
+// Read off the nodes rather than off what they decode to. Decoding is go-yaml
+// answering as YAML 1.2, and the readers of these files are not: `restart: no`
+// and `restart: "no"` decode alike and mean different things to compose, which
+// is the whole reason styleFor quotes what it quotes. Comparing the decoded
+// values dropped exactly those overrides and reported the sync applied. It also
+// refused a template whose anchor names itself, for a merge that never needed
+// to read a value at all.
+//
+// Written the same rather than worth the same, which is the question here:
+// this decides whether to put a change in a pull request, and a scalar respelt
+// is a change. `1` patched over `1.0` writes `1.0`, which is what the JSON half
+// of this engine does with the same override.
+//
+// Anchors are ignored: standInCopy clears the copy's own and may rename those
+// under it, and neither is the merge changing what the mapping says. An alias
+// is compared by the name it holds rather than followed - following it walks
+// out of the copy, and where a template names itself it would not return.
+func sameNode(one, other *yaml.Node) bool {
+	if one == nil || other == nil {
+		return one == other
 	}
 
-	right, err := decodedNode(other)
-	if err != nil {
-		return false, err
+	// Style, not only Tag: the parser reads `no` and `"no"` alike as !!str with
+	// the value "no", and quoting is the whole of the difference between them.
+	// A node the merge builds carries no tag yet, so today Tag catches that
+	// pair first and no spec can isolate this - it is here because the tags
+	// agreeing is a property of how nodeFor happens to build a scalar, and the
+	// bug it guards against is an override silently dropped.
+	if one.Kind != other.Kind ||
+		one.Tag != other.Tag ||
+		one.Value != other.Value ||
+		one.Style != other.Style ||
+		len(one.Content) != len(other.Content) {
+		return false
 	}
 
-	return equal(left, right), nil
+	for at, child := range one.Content {
+		if !sameNode(child, other.Content[at]) {
+			return false
+		}
+	}
+
+	return true
 }
 
 // copyForMerge copies a subtree for the merge to write into, keeping the pairs
@@ -526,36 +552,25 @@ func renameCopiedAnchors(root, copied *yaml.Node) {
 	}
 }
 
-// dropRedefinedAnchors clears an anchor a freshly written node carries that the
-// document already defines somewhere else.
+// dropClonedAnchors clears the anchors on a value written beside the node it
+// was cloned from, rather than over it.
 //
 // The other half of what renameCopiedAnchors settles, and the opposite answer,
 // because the two copies point opposite ways. copyForMerge re-points a copy's
 // aliases inside the copy, so its anchors are load-bearing and a clash is
 // settled by renaming. cloneNode, which is what an array rule's items come
 // through, deliberately leaves an alias pointing back out at the document - so
-// the clone's anchors say nothing the original does not, and a clash is settled
-// by dropping.
+// the clone's anchors say nothing the original does not, and a second copy of
+// them is a name the file now defines twice.
 //
-// Where the write replaces the list those anchors came from, the copy is the
-// only definition left and has to keep them: every `*name` in the file is
-// naming it. Where the write lands beside that list instead, which is what
-// appending through an alias or a merge key does, the file defines one name
-// twice - valid YAML saying the same thing twice, and a duplicate anchor is
-// what the rename above exists to keep out of these files and what a linter in
-// the repository would stop on.
-//
-// Counted after the write rather than reasoned about before it, because which
-// of the two happened is exactly what the document says afterwards. Only the
-// written subtree is the merge's to settle: a template redefining a name
-// halfway down is a document whose later aliases mean the second definition,
-// and a blanket first-one-wins pass would quietly rebind them.
-//
-// Which is also why a name the template already defines twice is left alone
-// entirely. Counting says "two definitions" for that name whatever the merge
-// did, and clearing on that reading took away the one an earlier alias binds
-// to - a file the merge reported as written and YAML will not load.
-func dropRedefinedAnchors(root, written *yaml.Node, inTemplate map[string][]*yaml.Node) {
+// Called only where setNodeAt reports the write did NOT take the place of what
+// the path named, which is the whole of the question. Counting definitions
+// instead is what two rounds of review got wrong from both ends: counting says
+// "two" when the write replaced one of them, and it says "two" for a name the
+// template already defined twice, where clearing either one rebinds whichever
+// aliases sit between them. Where a name binds is a question about position,
+// and the write site is the only place that knows.
+func dropClonedAnchors(root, written *yaml.Node) {
 	// Most written lists carry no anchor at all, and walking the list answers
 	// that far more cheaply than walking the document.
 	carried := definitionsIn(written)
@@ -563,10 +578,12 @@ func dropRedefinedAnchors(root, written *yaml.Node, inTemplate map[string][]*yam
 		return
 	}
 
+	// Still asked of the document, so a name nothing else defines is kept: the
+	// clone is then the only definition, whatever it was written beside.
 	defined := definitionsIn(root)
 
 	for name, nodes := range carried {
-		if len(defined[name]) <= 1 || len(inTemplate[name]) > 1 {
+		if len(defined[name]) <= 1 {
 			continue
 		}
 
