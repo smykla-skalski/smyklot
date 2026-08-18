@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -21,9 +22,18 @@ import (
 // endpoint is a change GitHub ignores and this records as made, which is the
 // failure the whole plan-then-apply split exists to prevent.
 var _ = Describe("Applying a settings action [Unit]", func() {
+	// Recorded in parts rather than as one line, so a spec asserts on the part
+	// it is about: which endpoint, which verb, and - where there is one - what
+	// was in the body.
+	type request struct {
+		method string
+		path   string
+		body   string
+	}
+
 	var (
 		server   *httptest.Server
-		requests []string
+		requests []request
 	)
 
 	BeforeEach(func() { requests = nil })
@@ -41,7 +51,9 @@ var _ = Describe("Applying a settings action [Unit]", func() {
 		server = httptest.NewServer(http.HandlerFunc(
 			func(w http.ResponseWriter, r *http.Request) {
 				body, _ := io.ReadAll(r.Body)
-				requests = append(requests, r.Method+" "+r.URL.Path+" "+string(body))
+				requests = append(requests, request{
+					method: r.Method, path: r.URL.Path, body: string(body),
+				})
 
 				if r.Method == http.MethodPut || r.Method == http.MethodDelete {
 					w.WriteHeader(http.StatusNoContent)
@@ -76,8 +88,17 @@ var _ = Describe("Applying a settings action [Unit]", func() {
 			Payload:   []byte(`{"has_wiki":false}`),
 		})).To(Succeed())
 
-		Expect(requests).To(ConsistOf(
-			"PATCH /repos/acme/web " + `{"has_wiki":false}` + "\n"))
+		// Decoded rather than compared as text. The body is built by
+		// go-github's encoder, which ends it with a newline, and pinning that
+		// here would tie this spec to how a dependency serializes rather than
+		// to which endpoint got which settings.
+		Expect(requests).To(HaveLen(1))
+		Expect(requests[0].method).To(Equal(http.MethodPatch))
+		Expect(requests[0].path).To(Equal("/repos/acme/web"))
+
+		var sent map[string]any
+		Expect(json.Unmarshal([]byte(requests[0].body), &sent)).To(Succeed())
+		Expect(sent).To(Equal(map[string]any{"has_wiki": false}))
 	})
 
 	DescribeTable("switches Dependabot with the verb GitHub reads as the instruction",
@@ -91,8 +112,12 @@ var _ = Describe("Applying a settings action [Unit]", func() {
 				Payload:   []byte(payload),
 			})).To(Succeed())
 
-			Expect(requests).To(ConsistOf(
-				method + " /repos/acme/web/automated-security-fixes "))
+			// No body at all: the verb is the whole instruction, and a request
+			// carrying one would mean the client had invented a shape GitHub
+			// does not read.
+			Expect(requests).To(ConsistOf(request{
+				method: method, path: "/repos/acme/web/automated-security-fixes",
+			}))
 		},
 		Entry("switching them on", `{"enabled":true}`, http.MethodPut),
 		Entry("switching them off", `{"enabled":false}`, http.MethodDelete),

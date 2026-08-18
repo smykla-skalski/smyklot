@@ -51,8 +51,9 @@
 
   /* Derived from what is saved and written over as somebody edits, so a save
      landing from anywhere reseeds it rather than leaving the screen describing
-     a document that is gone. */
-  let drafts = $derived<SyncLabel[]>(labels.map((label) => ({ ...label })));
+     a document that is gone. Read through `described`, so a row arriving with an
+     empty description is held the same way as one this form emptied. */
+  let drafts = $derived<SyncLabel[]>(labels.map((label) => described(label, label.description)));
   let removal = $derived(allowRemoval);
   let excludes = $derived<string[]>([...excluded]);
   let wanted = $derived(enabled);
@@ -75,40 +76,43 @@
   }
 
   /**
-   * An empty description box means "leave whatever each repository wrote".
+   * A description is either absent or has something in it. There is no third
+   * state here, and this is the one place that decides so.
    *
-   * The stored shape has three states - no key, a key with text, and a key with
+   * The stored shape does have three: no key, a key with text, and a key with
    * an empty string, which asks every repository to have its description
    * cleared. A text box has two, so one of the three has to give, and it is the
-   * clearing: nobody has asked to empty a description everywhere, and the state
-   * this box cannot express should be the one nothing needs.
+   * clearing - nobody has asked to empty a description across an organization,
+   * and the state a box cannot show should be the one nothing needs.
    *
-   * The alternative was to let an emptied box mean clearing, which reads the
-   * same on screen as leaving it alone and cannot be undone without reloading
-   * the page - a description typed and then thought better of would go out as
-   * an instruction to wipe that label's description across the organization.
+   * Letting an emptied box mean clearing was the alternative, and it is worse in
+   * both directions. A description typed and then thought better of would go out
+   * as an instruction to wipe that label's description everywhere. And a row
+   * that arrived already carrying an empty string would render as an empty box,
+   * identical to one that leaves each repository alone, with no way to tell and
+   * no way to fix it: an empty box that is left empty fires no change event, so
+   * nothing this form does could ever take the key back off, and every save
+   * would carry that standing instruction along with it.
    *
-   * Written by hand rather than through patchedAt, which merges and so cannot
-   * take a key back off; and by copying the row and deleting from the copy
-   * rather than by naming the keys to keep, which would drop whatever a later
-   * version of SyncLabel adds beside them.
+   * So this runs where a row arrives as well as where one is edited. Applied by
+   * copying the row and deleting from the copy rather than by naming the keys to
+   * keep, which would drop whatever a later version of SyncLabel adds beside
+   * them; and not through patchedAt, which merges and so cannot take a key off.
    */
+  function described(label: SyncLabel, value: string | undefined): SyncLabel {
+    const next = { ...label };
+
+    if (value === undefined || value === '') {
+      delete next.description;
+    } else {
+      next.description = value;
+    }
+
+    return next;
+  }
+
   function describe(index: number, value: string): void {
-    drafts = drafts.map((label, at) => {
-      if (at !== index) {
-        return label;
-      }
-
-      const next = { ...label };
-
-      if (value === '') {
-        delete next.description;
-      } else {
-        next.description = value;
-      }
-
-      return next;
-    });
+    drafts = drafts.map((label, at) => (at === index ? described(label, value) : label));
   }
 
   function add(): void {

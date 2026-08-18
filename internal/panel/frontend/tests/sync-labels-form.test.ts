@@ -153,6 +153,29 @@ describe('SyncLabelsForm [Component]', () => {
       expect('description' in sent[0].labels[0]).toBe(false);
     });
 
+    /**
+     * The state this form cannot show, arriving from somewhere that could write
+     * it - the API takes an empty string and means "clear it everywhere" by it.
+     *
+     * Rendered, it is an empty box, identical to one that leaves each repository
+     * alone. Nothing a person does to an empty box fires a change event, so
+     * without healing it on the way in there is no way to tell it is there and
+     * no way to take it off, and every save from this form would carry that
+     * standing instruction along with whatever else it changed.
+     */
+    it('takes an empty one off a row that arrived carrying it', async () => {
+      const { sent, onSave } = saved();
+      render(SyncLabelsForm, { ...base, labels: [bug({ description: '' })], onSave });
+
+      // Somewhere else on the row, so the save is about anything but this field.
+      await fireEvent.change(screen.getByPlaceholderText('d73a4a'), {
+        target: { value: 'fbca04' },
+      });
+      await save();
+
+      expect('description' in sent[0].labels[0]).toBe(false);
+    });
+
     it('is sent where somebody wrote one', async () => {
       const { sent, onSave } = saved();
       render(SyncLabelsForm, { ...base, labels: [undescribed()], onSave });
