@@ -122,6 +122,9 @@ const SOURCES = Object.fromEntries(
   (Object.keys(CONFIG) as (keyof ConfigValues)[]).map((key) => [key, 'process' as const]),
 ) as ConfigSources;
 
+/** The Root invitations the mock seeds, in every state one can be in. */
+export const INVITATIONS = MOCK.invitations;
+
 /** The organisation installation the mock seeds, not a second description of it. */
 export const TARGET: PanelTarget = MOCK.targets[0]!.value;
 
