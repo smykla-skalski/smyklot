@@ -321,6 +321,13 @@
      installation and every read is scoped to one, so two organizations owning a
      repository of the same name never meet. */
   const activeRepositoryKey = $derived(session.currentRepository?.name ?? null);
+
+  /* Which panes this surface has, worked out once here and handed to the page:
+     whether there is anywhere to ask about sync is this component's fact, and
+     the page reading `onLoadSyncOverride !== null` for itself would be the same
+     question asked in two places. */
+  const availableSections = $derived(availableRepositorySections(onLoadSyncOverride !== null));
+
   /* An address naming a pane this view cannot offer lands on the first one
      rather than on an empty box. Root manages somebody else's installation and
      sync has no Root address, so this is a link followed rather than a switch
@@ -388,6 +395,9 @@
             : null) ??
           details[activeRepositoryId]?.repository ??
           null),
+  );
+  const syncReadProblem = $derived(
+    syncOverrideQuery.error === null ? null : errorMessage(syncOverrideQuery.error),
   );
   const settingSelection = $derived(
     settingFilter.mode === 'keys' ? settingFilter.keys : [settingFilter.mode],
@@ -622,9 +632,7 @@
   });
 
   function offeredSection(section: RepositorySection): RepositorySection {
-    return availableRepositorySections(onLoadSyncOverride !== null).includes(section)
-      ? section
-      : 'file';
+    return availableSections.includes(section) ? section : 'file';
   }
 
   function toggleNameSort(): void {
@@ -899,12 +907,10 @@
     onBypass={(bypass) => setBypass(repository.id, bypass)}
     onSaveConfig={(patch) => setConfig(repository.id, patch)}
     onResetMigration={() => resetConfigMigration(repository.id)}
-    syncOffered={onLoadSyncOverride !== null}
+    sections={availableSections}
     syncOverride={syncOverrideQuery.data}
     syncSaving={savingOverride[repository.id] === true}
-    syncReadProblem={syncOverrideQuery.error === null
-      ? null
-      : errorMessage(syncOverrideQuery.error)}
+    {syncReadProblem}
     syncSaveProblem={overrideProblem[repository.id] ?? null}
     {now}
     onSaveSync={(enabled, document) => void saveSyncOverride(repository.id, enabled, document)}

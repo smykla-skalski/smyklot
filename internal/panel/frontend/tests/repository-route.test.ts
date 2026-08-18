@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import { panelAddress } from '../src/lib/addresses';
 import { basePath } from '../src/lib/paths';
-import { parsePanelRoute } from '../src/lib/routes';
+import {
+  REPOSITORY_SECTIONS,
+  availableRepositorySections,
+  parsePanelRoute,
+} from '../src/lib/routes';
 
 /**
  * The address of one repository's page.
@@ -134,5 +138,31 @@ describe('one repository through the Root console [Unit]', () => {
     expect(parsePanelRoute('', '/i/acme/settings/api-gateway')).toBeNull();
     expect(parsePanelRoute('', '/i/acme/sync/api-gateway')).toBeNull();
     expect(parsePanelRoute('', '/root/installations/acme/settings/api-gateway')).toBeNull();
+  });
+
+  /**
+   * Which panes a surface offers, as against which panes exist.
+   *
+   * The sync pane is reachable at a Root address - the router accepts the
+   * segment, because the router's list is the complete one and the Go server is
+   * handed the same pattern - and the console has nowhere to ask about sync, so
+   * the page lands on the first pane instead of drawing an empty box. That
+   * fallback had no test at either end, and it is the whole reason this
+   * function exists rather than the list being read directly.
+   */
+  describe('the panes a surface offers', () => {
+    it('offers every pane where sync can be asked about', () => {
+      expect(availableRepositorySections(true)).toEqual(['file', 'behavior', 'commands', 'sync']);
+    });
+
+    it('leaves sync out where there is nowhere to ask', () => {
+      expect(availableRepositorySections(false)).toEqual(['file', 'behavior', 'commands']);
+    });
+
+    /* Filtered from the router's own list rather than written out again, so a
+       fifth pane is offered without anybody remembering this file. */
+    it('offers panes the router knows, in the order it lists them', () => {
+      expect(availableRepositorySections(true)).toEqual([...REPOSITORY_SECTIONS]);
+    });
   });
 });

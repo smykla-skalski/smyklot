@@ -163,10 +163,16 @@ func TestPanelRoutesServeEveryPanelAddress(t *testing.T) {
 		"/root/access/invitations/new",
 		"/root/installations/acme/history/audit",
 		"/root/installations/acme/repositories/api-gateway/file",
+		// The console has no sync pane and the page falls back to the first
+		// one, but the segment is a section like any other and the server
+		// serves the shell for it. The matcher is generated from one list, and
+		// a second copy of that list is how the sync view came to answer 404.
+		"/root/installations/acme/repositories/api-gateway/sync",
 		"/i/acme/settings",
 		"/i/acme/history",
 		"/i/acme/history/failures",
 		"/i/acme/repositories/api-gateway",
+		"/i/acme/repositories/api-gateway/sync",
 		"/i/acme/users/add",
 		"/i/acme/invitations/inv-1/revoke",
 		"/invite/" + token,

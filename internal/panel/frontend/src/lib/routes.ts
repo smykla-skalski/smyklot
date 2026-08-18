@@ -76,8 +76,14 @@ export type RepositorySection = (typeof REPOSITORY_SECTIONS)[number];
  * Root manages somebody else's installation and sync has no Root address, so
  * whether there is anywhere to ask is what says the pane can be opened. Asked
  * once, here, rather than paired with `sync` at each of the places that would
- * otherwise have to remember: the switch's options, the label under it, and the
- * fallback an address naming a pane this surface has no answer for lands on.
+ * otherwise have to remember: the switch's options and the fallback an address
+ * naming a pane this surface has no answer for lands on.
+ *
+ * Takes what it needs as an argument and reaches for nothing. This module is
+ * imported by `src/params.ts`, which the route-manifest build runs under plain
+ * Node to write `routes.json` for the Go server - so a later pane answering
+ * this from a store or a session would break that build with an error nowhere
+ * near this file.
  */
 export function availableRepositorySections(syncOffered: boolean): readonly RepositorySection[] {
   return REPOSITORY_SECTIONS.filter((section) => section !== 'sync' || syncOffered);

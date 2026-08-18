@@ -293,14 +293,11 @@ func mergeKeyInto(root, mapping *yaml.Node, key string, value any, deep bool) er
 	if deep && isObject {
 		existing, own := keyValue(mapping, key)
 
-		if stood := resolveAlias(existing); stood != nil &&
-			stood.Kind == yaml.MappingNode {
-			// The mapping's own mapping node, spelled out where it is. Whatever
-			// else names it means it, so the merge goes straight into it.
-			if own && existing.Kind == yaml.MappingNode {
-				return mergeIntoMapping(root, existing, nested, true)
-			}
+		if heldOutright(existing, own) {
+			return mergeIntoMapping(root, existing, nested, true)
+		}
 
+		if stood := inheritedMapping(existing); stood != nil {
 			return mergeIntoInherited(root, mapping, key, stood, nested)
 		}
 
@@ -335,15 +332,13 @@ func mergeKeyInto(root, mapping *yaml.Node, key string, value any, deep bool) er
 // A copy in either case, put where the merge can see it, rather than the node
 // itself: what an anchor names is shared, and merging into it would change every
 // other place naming it.
+//
+// Its caller is setNodeAt, walking a list rule's path, which always writes. A
+// deep merge takes the other route - mergeIntoInherited, which attaches the
+// same copy and can take it back off again.
 func standIn(root, mapping *yaml.Node, key string, existing *yaml.Node, own bool) *yaml.Node {
-	stood := resolveAlias(existing)
-	if stood == nil || stood.Kind != yaml.MappingNode {
-		return existing
-	}
-
-	// The mapping's own mapping node, spelled out where it is. Whatever else
-	// names it means it, so the merge goes straight into it.
-	if own && existing.Kind == yaml.MappingNode {
+	stood := inheritedMapping(existing)
+	if stood == nil || heldOutright(existing, own) {
 		return existing
 	}
 
@@ -353,11 +348,30 @@ func standIn(root, mapping *yaml.Node, key string, existing *yaml.Node, own bool
 	return copied
 }
 
-// standInCopy is the copy a merge writes into instead of the node itself, with
-// its anchors settled against the document it is about to join.
+// heldOutright reports the mapping's own mapping node, spelled out where it is.
+// Whatever else names it means it, so a merge goes straight into it.
+func heldOutright(existing *yaml.Node, own bool) bool {
+	return own && existing != nil && existing.Kind == yaml.MappingNode
+}
+
+// inheritedMapping is the mapping a key stands for, or nil where it stands for
+// something that is not a mapping at all.
 //
-// Not attached here: mergeIntoInherited attaches it before merging and takes it
-// back off where the merge turns out to have changed nothing.
+// The two ways to arrive at somebody else's node, in one place because both
+// write paths split on it: an alias, and a merge key. Written out twice they
+// drifted apart the moment one of them grew a case.
+func inheritedMapping(existing *yaml.Node) *yaml.Node {
+	stood := resolveAlias(existing)
+	if stood == nil || stood.Kind != yaml.MappingNode {
+		return nil
+	}
+
+	return stood
+}
+
+// standInCopy is the copy a merge writes into instead of the node itself, with
+// its anchors settled against the document it is about to join. Attaching it is
+// the caller's.
 func standInCopy(root, stood *yaml.Node) *yaml.Node {
 	copied := copyForMerge(stood)
 	copied.Anchor = ""

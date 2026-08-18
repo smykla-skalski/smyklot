@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { Page } from 'playwright-core';
+import type { Locator, Page } from 'playwright-core';
 
-import { SETTLE_MS, startPanel, type Panel } from './harness';
+import { settle, startPanel, visit, type Panel } from './harness';
 
 /**
  * The Sync pane of a repository's own page, opened for real.
@@ -22,13 +22,29 @@ afterAll(async () => {
   await panel?.close();
 });
 
-/** The page, once its heading says it is the repository that was asked for. */
+/**
+ * Opens one repository's page and answers with it, once its heading says it is
+ * the repository that was asked for.
+ *
+ * Through the harness's `visit` rather than a goto and a fixed sleep: the sleep
+ * is a guess in both directions, and it is most of what this suite costs.
+ */
 async function repositoryPage(page: Page, name: string) {
+  await visit(page, `${panel.origin}/i/${panel.account}/repositories/${name}`, {
+    ready: '.repository-page',
+  });
   await page
     .getByRole('heading', { name, exact: true })
     .waitFor({ state: 'visible', timeout: 30_000 });
 
   return page.locator('.repository-page');
+}
+
+/** The pane switch is a radio under a label, and the label is what covers it. */
+async function openPane(page: Page, repository: Locator, name: string): Promise<void> {
+  await settle(page, async () => {
+    await repository.getByRole('radio', { name }).locator('xpath=ancestor::label[1]').click();
+  });
 }
 
 describe('the repository sync pane in the development panel', () => {
@@ -46,24 +62,13 @@ describe('the repository sync pane in the development panel', () => {
     });
 
     try {
-      await page.goto(`${panel.origin}/i/${panel.account}/repositories/smyklot`, {
-        waitUntil: 'domcontentloaded',
-      });
-
       const repository = await repositoryPage(page, 'smyklot');
-      await page.waitForTimeout(SETTLE_MS);
 
       // The page opens on the repository's own configuration, so nothing has
       // asked what it adjusts yet.
       expect(reads).toEqual([]);
 
-      // The label around the radio, which is what a reader clicks. The radio
-      // itself is covered by that label, so a click aimed at the input is a
-      // click the label intercepts.
-      await repository
-        .getByRole('radio', { name: 'Sync' })
-        .locator('xpath=ancestor::label[1]')
-        .click();
+      await openPane(page, repository, 'Sync');
 
       // The adjustment the mock seeds for this repository, which nothing but a
       // real read produces: the pane renders a card per merge, and an empty
@@ -96,28 +101,17 @@ describe('the repository sync pane in the development panel', () => {
     page.on('pageerror', (error) => crashes.push(error.message));
 
     try {
-      await page.goto(`${panel.origin}/i/${panel.account}/repositories/smyklot`, {
-        waitUntil: 'domcontentloaded',
-      });
-
       const repository = await repositoryPage(page, 'smyklot');
-      await page.waitForTimeout(SETTLE_MS);
-
-      await repository
-        .getByRole('radio', { name: 'Sync' })
-        .locator('xpath=ancestor::label[1]')
-        .click();
-      await page.waitForTimeout(SETTLE_MS);
+      await openPane(page, repository, 'Sync');
 
       // What the panel put in the address bar, reloaded as somebody pasting it
       // would get it.
       const written = page.url();
       expect(written).toContain('/sync');
 
-      await page.goto(written, { waitUntil: 'domcontentloaded' });
-      await page.waitForTimeout(SETTLE_MS);
+      await visit(page, written, { ready: '.repository-page' });
 
-      const reopened = await repositoryPage(page, 'smyklot');
+      const reopened = page.locator('.repository-page');
       expect(await reopened.getByRole('radio', { name: 'Sync' }).isChecked()).toBe(true);
 
       expect(crashes).toEqual([]);
@@ -174,17 +168,8 @@ describe('the repository sync pane in the development panel', () => {
     page.on('pageerror', (error) => crashes.push(error.message));
 
     try {
-      await page.goto(`${panel.origin}/i/${panel.account}/repositories/platform-infra`, {
-        waitUntil: 'domcontentloaded',
-      });
-
       const repository = await repositoryPage(page, 'platform-infra');
-      await page.waitForTimeout(SETTLE_MS);
-
-      await repository
-        .getByRole('radio', { name: 'Sync' })
-        .locator('xpath=ancestor::label[1]')
-        .click();
+      await openPane(page, repository, 'Sync');
 
       const notice = repository.getByRole('status');
       await notice.waitFor({ state: 'visible', timeout: 30_000 });

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { BOOLEAN_FIELDS } from '../config';
-  import { availableRepositorySections, type RepositorySection } from '../routes';
+  import { REPOSITORY_SECTIONS, type RepositorySection } from '../routes';
   import type {
     ConfigKey,
     ConfigPatch,
@@ -53,7 +53,7 @@
     onBypass,
     onSaveConfig,
     onResetMigration,
-    syncOffered = false,
+    sections = REPOSITORY_SECTIONS,
     syncOverride = undefined,
     syncSaving = false,
     syncReadProblem = null,
@@ -76,12 +76,15 @@
     onSaveConfig: (patch: ConfigPatch) => Promise<void>;
     onResetMigration: () => void;
     /**
-     * Whether this surface has a sync pane at all. False in the Root view of
-     * somebody else's installation: sync is configured on the installation's
+     * The panes this surface offers, in the order the switch shows them.
+     *
+     * Handed in rather than worked out here, because which panes there are is
+     * a fact about where this is being drawn. The Root view of somebody else's
+     * installation has no sync pane: sync is configured on the installation's
      * own page and has no Root address, so a pane offering to edit it there
      * would be a pane whose every save is a 404.
      */
-    syncOffered?: boolean;
+    sections?: readonly RepositorySection[];
     /** Undefined until the pane is opened and the read comes back. */
     syncOverride?: SyncOverride | undefined;
     syncSaving?: boolean;
@@ -130,18 +133,16 @@
     return count === 0 ? undefined : count;
   }
 
-  /* What each pane is called, and by being a record rather than a chain of
-     alternatives, which panes there are. Everything that names a pane reads
-     this: the label under the switch and the switch's own options. A fifth is
-     one line. */
+  /* What each pane is called. Which panes exist is REPOSITORY_SECTIONS, which
+     keys this record, so a fifth one is a compile error here rather than a
+     switch quietly missing an option. Both the label under the switch and the
+     switch's own options read it. */
   const SECTION_LABELS: Record<RepositorySection, string> = {
     file: 'File',
     behavior: 'Behavior',
     commands: 'Commands',
     sync: 'Sync',
   };
-
-  const availableSections = $derived(availableRepositorySections(syncOffered));
 
   /** Names the pane for a screen reader, which the switch above it does not. */
   function sectionLabel(pane: RepositorySection): string {
@@ -163,7 +164,7 @@
           name="repository-{repository.id}-section"
           label="Settings for {repository.name}"
           compact
-          options={availableSections.map((pane) => ({
+          options={sections.map((pane) => ({
             value: pane,
             label: SECTION_LABELS[pane],
             badge: sectionBadge(detail, pane),

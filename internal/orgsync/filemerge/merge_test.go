@@ -847,7 +847,6 @@ jobs:
 				Expect(string(merged)).To(Equal(template))
 			},
 			Entry("an empty patch", `{"thing": {"nested": {}}}`),
-			Entry("a value the template already sets", `{"thing": {"nested": {"a": 1}}}`),
 			Entry("every value it already sets", `{"thing": {"nested": {"a": 1, "b": 2}}}`),
 			Entry("a null on a key it does not have", `{"thing": {"nested": {"c": null}}}`),
 		)
@@ -946,16 +945,16 @@ jobs:
 		// "an empty patch changes nothing" as a rule about the patch rather
 		// than about what it lands on would split the two apart.
 		DescribeTable("replaces what an empty patch cannot merge into",
-			func(template, expected string) {
+			func(template string) {
 				merged, err := filemerge.Apply("ci.yaml", []byte(template),
 					filemerge.Spec{Overrides: overrides(`{"jobs": {}}`)})
 
 				Expect(err).NotTo(HaveOccurred())
-				Expect(string(merged)).To(ContainSubstring(expected))
+				Expect(string(merged)).To(ContainSubstring("jobs: {}"))
 			},
-			Entry("a scalar", "jobs: 5\n", "jobs: {}"),
-			Entry("a sequence", "jobs:\n  - build\n", "jobs: {}"),
-			Entry("a key that is not there at all", "name: build\n", "jobs: {}"),
+			Entry("a scalar", "jobs: 5\n"),
+			Entry("a sequence", "jobs:\n  - build\n"),
+			Entry("a key that is not there at all", "name: build\n"),
 		)
 
 		// The same rule where a merge key is what put the value there. This is
