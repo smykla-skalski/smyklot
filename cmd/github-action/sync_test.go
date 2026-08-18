@@ -656,6 +656,56 @@ var _ = Describe("Org sync [Unit]", func() {
 			Expect(actions[0].After).To(ContainSubstring("advanced_security"))
 		})
 
+		// Reported inside security_and_analysis with the rest and changed
+		// through an endpoint of its own, so it is a second action on the same
+		// kind. Proved end to end because this is the one place both halves are
+		// exercised: a settings body carrying the key would be ignored by
+		// GitHub and recorded here as applied
+		It("switches Dependabot security updates through their own endpoint", func() {
+			target := granting(`{"issues":"write","administration":"write"}`)
+			stub.repoSettings = `{"has_wiki":true,"security_and_analysis":{
+				"dependabot_security_updates":{"status":"disabled"}}}`
+			configureKind(target, orgsync.KindSettings,
+				`{"has_wiki":false,"dependabot_security_updates":true}`)
+
+			plan(target)
+			computed, actions := livePlan(target)
+			Expect(actions).To(HaveLen(2))
+			approve(computed)
+
+			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+
+			// The settings request carries the setting the endpoint takes, and
+			// nothing it does not
+			Expect(stub.settingsWrites).To(HaveLen(1))
+
+			var sent map[string]any
+			Expect(json.Unmarshal([]byte(stub.settingsWrites[0]), &sent)).To(Succeed())
+			Expect(sent).To(HaveKeyWithValue("has_wiki", false))
+			Expect(sent).To(HaveLen(1))
+
+			Expect(stub.dependabotWrites).To(Equal([]string{http.MethodPut}))
+		})
+
+		// A repository GitHub says nothing about cannot be given the feature,
+		// and the plan leaves it alone rather than proposing a request that can
+		// only be refused on this sweep and on every one after it
+		It("leaves Dependabot alone where the repository does not report it", func() {
+			target := granting(`{"issues":"write","administration":"write"}`)
+			stub.repoSettings = `{"has_wiki":true}`
+			configureKind(target, orgsync.KindSettings,
+				`{"has_wiki":false,"dependabot_security_updates":true}`)
+
+			plan(target)
+			computed, actions := livePlan(target)
+			Expect(actions).To(HaveLen(1))
+			Expect(actions[0].Subject).To(Equal(orgsync.SettingsSubject))
+			approve(computed)
+
+			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+			Expect(stub.dependabotWrites).To(BeEmpty())
+		})
+
 		// An installation may have approved one kind and not another, and the
 		// one it approved should still run
 		It("plans the permitted kind and leaves the other", func() {

@@ -46,6 +46,12 @@ type RepositorySecurity struct {
 	AdvancedSecurity             *SecurityFeature `json:"advanced_security"`
 	SecretScanning               *SecurityFeature `json:"secret_scanning"`
 	SecretScanningPushProtection *SecurityFeature `json:"secret_scanning_push_protection"`
+
+	// DependabotSecurityUpdates is reported here beside the others and cannot
+	// be changed here: the settings endpoint takes no such key, and
+	// SetAutomatedSecurityFixes is the only way to move it. Read in one place
+	// and written in another is GitHub's shape, not a choice made here.
+	DependabotSecurityUpdates *SecurityFeature `json:"dependabot_security_updates"`
 }
 
 // SecurityFeature is one feature's state, as GitHub spells it.
@@ -97,4 +103,28 @@ func (c *Client) UpdateRepositorySettings(
 	_, err := doJSON[RepositorySettings](ctx, c, http.MethodPatch, path, body)
 
 	return err
+}
+
+// SetAutomatedSecurityFixes turns Dependabot security updates on or off.
+//
+// A request of its own because GitHub gives it one. The feature is reported
+// inside security_and_analysis with the rest, and the endpoint that writes that
+// object takes no key for it - so a caller that grouped it with the others
+// would send a key the API ignores and record a change that never happened.
+//
+// The instruction is the verb rather than a body: PUT switches it on, DELETE
+// switches it off, and neither carries or returns anything.
+func (c *Client) SetAutomatedSecurityFixes(
+	ctx context.Context,
+	owner, repo string,
+	enabled bool,
+) error {
+	method := http.MethodDelete
+	if enabled {
+		method = http.MethodPut
+	}
+
+	path := fmt.Sprintf("/repos/%s/%s/automated-security-fixes", owner, repo)
+
+	return doRequest(ctx, c, method, path, nil)
 }

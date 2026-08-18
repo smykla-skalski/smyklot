@@ -30,6 +30,19 @@ func applySettingsAction(
 		return fmt.Errorf("%w: settings for %s/%s", errSyncPayloadMissing, owner, name)
 	}
 
+	// Which request this is comes off the subject, which is what the planner
+	// decided and what the plan showed. Reading the payload's shape instead
+	// would let a settings body with an "enabled" key in it reach the wrong
+	// endpoint.
+	if action.Subject == orgsync.DependabotSubject {
+		change, err := orgsync.DecodeDependabot(action.Payload)
+		if err != nil {
+			return err
+		}
+
+		return client.SetAutomatedSecurityFixes(ctx, owner, name, change.Enabled)
+	}
+
 	body, err := orgsync.DecodeSettings(action.Payload)
 	if err != nil {
 		return err

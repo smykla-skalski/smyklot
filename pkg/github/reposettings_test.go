@@ -188,4 +188,59 @@ var _ = Describe("Repository settings [Unit]", func() {
 			Expect(err.Error()).To(ContainSubstring("403"))
 		})
 	})
+
+	// Reported with the security features and changed nowhere near them. The
+	// settings endpoint takes no key for it, so sending one would be a change
+	// GitHub ignores and this records as made
+	Describe("Dependabot security updates", func() {
+		It("reads it beside the features it is reported with", func() {
+			server = serve(http.StatusOK, `{"security_and_analysis":{
+				"dependabot_security_updates": {"status": "enabled"}
+			}}`)
+
+			settings, err := client().GetRepositorySettings(
+				context.Background(), "acme", "web")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(settings.Security.DependabotSecurityUpdates.On()).To(BeTrue())
+		})
+
+		It("reads a repository that does not mention it as absent", func() {
+			server = serve(http.StatusOK, `{"security_and_analysis":{
+				"secret_scanning": {"status": "enabled"}
+			}}`)
+
+			settings, err := client().GetRepositorySettings(
+				context.Background(), "acme", "web")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(settings.Security.DependabotSecurityUpdates).To(BeNil())
+		})
+
+		// The verb is the instruction. Both directions are asserted because a
+		// method that always sent one of them would satisfy the other spec
+		DescribeTable("puts it where GitHub takes it",
+			func(enable bool, method string) {
+				server = serve(http.StatusNoContent, "")
+
+				Expect(client().SetAutomatedSecurityFixes(
+					context.Background(), "acme", "web", enable)).To(Succeed())
+
+				Expect(request.Method).To(Equal(method))
+				Expect(request.URL.Path).To(
+					Equal("/repos/acme/web/automated-security-fixes"))
+				Expect(body).To(BeEmpty())
+			},
+			Entry("switching it on", true, http.MethodPut),
+			Entry("switching it off", false, http.MethodDelete),
+		)
+
+		It("reports a refusal rather than swallowing it", func() {
+			server = serve(http.StatusUnprocessableEntity,
+				`{"message":"Dependabot alerts are disabled"}`)
+
+			err := client().SetAutomatedSecurityFixes(
+				context.Background(), "acme", "web", true)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("422"))
+		})
+	})
 })

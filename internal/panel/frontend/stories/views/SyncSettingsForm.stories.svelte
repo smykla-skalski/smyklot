@@ -52,3 +52,20 @@
 
 <!-- Nothing stored yet, so every field falls back to what GitHub already has. -->
 <Story name="Nothing stored" args={{ stored: {} }} />
+
+<!--
+  The security group, which is the one whose fields a repository may not have at all.
+  Dependabot security updates sit here with the rest and are applied on their own -
+  GitHub reports them inside security_and_analysis and takes no key for them there.
+-->
+<Story
+  name="Security configured"
+  args={{
+    stored: {
+      ...STORED,
+      advanced_security: true,
+      secret_scanning: true,
+      secret_scanning_push_protection: true,
+      dependabot_security_updates: true,
+    },
+  }} />

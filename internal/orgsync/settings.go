@@ -51,6 +51,12 @@ type SettingsConfig struct {
 	AdvancedSecurity             *bool `json:"advanced_security,omitempty"`
 	SecretScanning               *bool `json:"secret_scanning,omitempty"`
 	SecretScanningPushProtection *bool `json:"secret_scanning_push_protection,omitempty"`
+
+	// DependabotSecurityUpdates is configured here with the security features
+	// it belongs beside, and is not one of settingsFields: GitHub reports it
+	// inside security_and_analysis and refuses to change it there, so it is
+	// planned as an action of its own. See PlanSettings.
+	DependabotSecurityUpdates *bool `json:"dependabot_security_updates,omitempty"`
 }
 
 // The values GitHub accepts for how a commit is worded. Checked here because
@@ -200,6 +206,10 @@ type CurrentSettings struct {
 	AdvancedSecurity             FeatureState
 	SecretScanning               FeatureState
 	SecretScanningPushProtection FeatureState
+
+	// DependabotSecurityUpdates has the same three states as the others and is
+	// read from the same object. Only the writing is different.
+	DependabotSecurityUpdates FeatureState
 }
 
 // FeatureState is what a repository reports about a security feature.
@@ -777,24 +787,53 @@ func (c *SettingsChange) withhold(field, reason string) {
 }
 
 // PlanSettings answers what one repository's settings would need.
+//
+// Two actions at most, and they are two because GitHub takes two requests.
+// Everything the settings endpoint accepts is one action, since that endpoint
+// replaces what it is given and those settings land or fail together; Dependabot
+// security updates has an endpoint of its own, so it succeeds or fails on its
+// own. Folding it into the other action would report it applied whenever the
+// settings were, which is the one thing an action is there to get right.
 func PlanSettings(
 	repositoryID string,
 	config SettingsConfig,
 	current CurrentSettings,
 ) []Action {
+	actions := make([]Action, 0, 2)
+
+	if action, planned := planSettingsChange(repositoryID, config, current); planned {
+		actions = append(actions, action)
+	}
+
+	if action, planned := planDependabot(repositoryID, config, current); planned {
+		actions = append(actions, action)
+	}
+
+	if len(actions) == 0 {
+		return nil
+	}
+
+	return actions
+}
+
+func planSettingsChange(
+	repositoryID string,
+	config SettingsConfig,
+	current CurrentSettings,
+) (Action, bool) {
 	change, differs := DiffSettings(config, current)
 	if !differs {
-		return nil
+		return Action{}, false
 	}
 
 	payload, err := json.Marshal(change.Body)
 	if err != nil {
 		// A map of bools and strings cannot fail to encode, and returning an
 		// error would make every caller handle one that cannot happen.
-		return nil
+		return Action{}, false
 	}
 
-	return []Action{{
+	return Action{
 		RepositoryID: repositoryID,
 		Kind:         KindSettings,
 		Operation:    OperationUpdate,
@@ -808,7 +847,82 @@ func PlanSettings(
 		After:   describeChange(change),
 		Payload: payload,
 		State:   ActionPending,
-	}}
+	}, true
+}
+
+// planDependabot answers whether Dependabot security updates have to move.
+func planDependabot(
+	repositoryID string,
+	config SettingsConfig,
+	current CurrentSettings,
+) (Action, bool) {
+	want := config.DependabotSecurityUpdates
+	if want == nil {
+		return Action{}, false
+	}
+
+	have := current.DependabotSecurityUpdates
+
+	// A repository that does not report the feature has nothing to switch, and
+	// this is where that is decided. The request is its own, so nothing else in
+	// the plan is at risk from letting it run - but it could only ever be
+	// refused, and a refusal that repeats every sweep saying the same thing is
+	// how a person learns to stop reading them. Left alone in silence, which is
+	// what an unavailable security feature gets everywhere else here.
+	if !have.Reported() {
+		return Action{}, false
+	}
+
+	if (have == FeatureOn) == *want {
+		return Action{}, false
+	}
+
+	payload, err := json.Marshal(DependabotChange{Enabled: *want})
+	if err != nil {
+		// One boolean in a struct of its own cannot fail to encode.
+		return Action{}, false
+	}
+
+	return Action{
+		RepositoryID: repositoryID,
+		Kind:         KindSettings,
+		Operation:    OperationUpdate,
+		Subject:      DependabotSubject,
+		Before:       string(have),
+		After:        describeBool(*want),
+		Payload:      payload,
+		State:        ActionPending,
+	}, true
+}
+
+// DependabotSubject is what a Dependabot security updates action is about.
+//
+// Named for the setting rather than for the repository, which is what the
+// settings action beside it is called. Two actions of one kind on one
+// repository are told apart by their subject, and the plan reads as the two
+// requests it is going to make.
+const DependabotSubject = "dependabot_security_updates"
+
+// DependabotChange is what such an action carries.
+//
+// A payload rather than the operation, because the operation is "update" and
+// the instruction is "on". GitHub spells the instruction as the verb - PUT to
+// switch it on, DELETE to switch it off - but OperationDelete means something
+// else here: it removes what configuration no longer names, and it is gated on
+// removal being switched on for the kind. Reading "turn this off" out of it
+// would put a security feature behind a switch meant for tidying up.
+type DependabotChange struct {
+	Enabled bool `json:"enabled"`
+}
+
+// DecodeDependabot reads what such an action says to apply.
+func DecodeDependabot(payload []byte) (DependabotChange, error) {
+	var change DependabotChange
+	if err := json.Unmarshal(payload, &change); err != nil {
+		return DependabotChange{}, fmt.Errorf("%w: %w", ErrInvalidPlan, err)
+	}
+
+	return change, nil
 }
 
 // describeChange says what this repository is getting, and what it is not.

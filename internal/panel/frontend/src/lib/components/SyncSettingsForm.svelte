@@ -8,8 +8,8 @@
    * configuration editor uses - the chain says "following each repository", and
    * breaking it is what makes a value a policy.
    *
-   * Nothing here is sent until Save. A settings change is one request per
-   * repository and the whole of it succeeds or fails together, so a control
+   * Nothing here is sent until Save. Almost all of a settings change is one
+   * request per repository whose whole succeeds or fails together, so a control
    * that saved on every click would send a dozen half-formed policies.
    */
   import { canonicalStringify } from '#lib/preferences-sync.js';
@@ -125,11 +125,12 @@
     {
       id: 'security',
       title: 'Security',
-      note: 'A repository that does not have one of these is left alone rather than asked, and the plan says which.',
+      note: 'A repository that does not have one of these is left alone rather than asked. Dependabot security updates are applied on their own, so they appear in the plan as a second action.',
       fields: [
         toggle('advanced_security', 'Advanced security'),
         toggle('secret_scanning', 'Secret scanning'),
         toggle('secret_scanning_push_protection', 'Push protection'),
+        toggle('dependabot_security_updates', 'Dependabot security updates'),
       ],
     },
   ];

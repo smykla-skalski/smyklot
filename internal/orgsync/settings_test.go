@@ -662,3 +662,109 @@ var _ = Describe("Settings planning [Unit]", func() {
 		Expect(raw).To(HaveKeyWithValue("has_wiki", false))
 	})
 })
+
+// The one security feature GitHub reports with the others and refuses to change
+// with them. It is planned as an action of its own, and these specs are mostly
+// about that word "own": the settings request must not carry it, and applying
+// the settings must not be taken to have applied it.
+var _ = Describe("Dependabot security updates planning [Unit]", func() {
+	const repo = "github:repository:1"
+
+	only := func(actions []orgsync.Action) orgsync.Action {
+		GinkgoHelper()
+
+		Expect(actions).To(HaveLen(1))
+		Expect(actions[0].Subject).To(Equal(orgsync.DependabotSubject))
+
+		return actions[0]
+	}
+
+	wants := func(action orgsync.Action) bool {
+		GinkgoHelper()
+
+		change, err := orgsync.DecodeDependabot(action.Payload)
+		Expect(err).NotTo(HaveOccurred())
+
+		return change.Enabled
+	}
+
+	It("says nothing when nobody configured it", func() {
+		Expect(orgsync.PlanSettings(repo,
+			orgsync.SettingsConfig{},
+			orgsync.CurrentSettings{DependabotSecurityUpdates: orgsync.FeatureOff},
+		)).To(BeEmpty())
+	})
+
+	DescribeTable("proposes nothing where the repository already agrees",
+		func(want *bool, have orgsync.FeatureState) {
+			Expect(orgsync.PlanSettings(repo,
+				orgsync.SettingsConfig{DependabotSecurityUpdates: want},
+				orgsync.CurrentSettings{DependabotSecurityUpdates: have},
+			)).To(BeEmpty())
+		},
+		Entry("wanted on and on", enabled(), orgsync.FeatureOn),
+		Entry("wanted off and off", disabled(), orgsync.FeatureOff),
+	)
+
+	DescribeTable("moves it where the repository differs",
+		func(want *bool, have orgsync.FeatureState, before string) {
+			action := only(orgsync.PlanSettings(repo,
+				orgsync.SettingsConfig{DependabotSecurityUpdates: want},
+				orgsync.CurrentSettings{DependabotSecurityUpdates: have},
+			))
+
+			Expect(action.Kind).To(Equal(orgsync.KindSettings))
+			Expect(action.Operation).To(Equal(orgsync.OperationUpdate))
+			Expect(action.Before).To(Equal(before))
+			Expect(wants(action)).To(Equal(*want))
+		},
+		Entry("turning it on", enabled(), orgsync.FeatureOff, "off"),
+		Entry("turning it off", disabled(), orgsync.FeatureOn, "on"),
+	)
+
+	// The same silence an unavailable security feature gets everywhere else
+	// here. Its request is its own, so letting it run would put nothing else at
+	// risk - but GitHub can only refuse it, and a refusal repeated on every
+	// sweep is how somebody learns to stop reading them
+	It("leaves a repository that does not report the feature alone", func() {
+		Expect(orgsync.PlanSettings(repo,
+			orgsync.SettingsConfig{DependabotSecurityUpdates: enabled()},
+			orgsync.CurrentSettings{DependabotSecurityUpdates: orgsync.FeatureUnavailable},
+		)).To(BeEmpty())
+	})
+
+	// The whole reason it is not a settingsField. The settings endpoint takes
+	// no such key, so a body carrying one is a change GitHub ignores and this
+	// records as done
+	It("keeps it out of the settings request", func() {
+		actions := orgsync.PlanSettings(repo,
+			orgsync.SettingsConfig{
+				HasWiki:                   disabled(),
+				DependabotSecurityUpdates: enabled(),
+			},
+			orgsync.CurrentSettings{
+				HasWiki:                   true,
+				DependabotSecurityUpdates: orgsync.FeatureOff,
+			},
+		)
+
+		Expect(actions).To(HaveLen(2))
+
+		settings := actions[0]
+		Expect(settings.Subject).To(Equal(orgsync.SettingsSubject))
+		Expect(settings.After).NotTo(ContainSubstring("dependabot"))
+
+		sent, err := orgsync.DecodeSettings(settings.Payload)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(sent).To(HaveKeyWithValue("has_wiki", false))
+		Expect(sent).To(HaveLen(1))
+
+		Expect(actions[1].Subject).To(Equal(orgsync.DependabotSubject))
+		Expect(wants(actions[1])).To(BeTrue())
+	})
+
+	It("refuses a payload that is not one", func() {
+		_, err := orgsync.DecodeDependabot([]byte("not json"))
+		Expect(err).To(MatchError(orgsync.ErrInvalidPlan))
+	})
+})

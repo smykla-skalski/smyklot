@@ -78,6 +78,10 @@ type githubStub struct {
 	repoSettings   string
 	settingsWrites []string
 
+	// dependabotWrites is the method of every automated-security-fixes call,
+	// which is how that endpoint spells on and off.
+	dependabotWrites []string
+
 	// repoRulesets is what a repository's ruleset listing answers, and
 	// rulesetBodies is what each id answers when read whole. Two fields because
 	// GitHub answers them differently: the listing carries identity and no
@@ -251,6 +255,11 @@ func (s *githubStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// to be matched before the repository itself.
 	case strings.Contains(r.URL.Path, "/rulesets"):
 		s.serveRepositoryRulesets(w, r)
+
+	// Dependabot security updates, which are reported inside the repository's
+	// settings and changed here. Also under the repository, so also before it.
+	case strings.HasSuffix(r.URL.Path, "/automated-security-fixes"):
+		s.serveAutomatedSecurityFixes(w, r)
 
 	// A repository itself, which settings sync reads and writes. Matched last
 	// among the /repos routes because every other one is a path under it.
@@ -775,6 +784,21 @@ func (s *githubStub) serveRepositorySettings(w http.ResponseWriter, r *http.Requ
 	s.mu.Unlock()
 
 	_, _ = io.WriteString(w, `{}`)
+}
+
+// serveAutomatedSecurityFixes records which way Dependabot security updates
+// were switched.
+//
+// The method is recorded rather than a body, because the method is the whole
+// instruction: GitHub takes a PUT to switch them on and a DELETE to switch them
+// off, and neither carries anything. A stub that recorded only that a call
+// arrived would pass against a client that always sent the same verb.
+func (s *githubStub) serveAutomatedSecurityFixes(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	s.dependabotWrites = append(s.dependabotWrites, r.Method)
+	s.mu.Unlock()
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // serveRepositoryRulesets answers and records the repository ruleset endpoints.

@@ -933,6 +933,8 @@ func asCurrentSettings(settings github.RepositorySettings) orgsync.CurrentSettin
 		SecretScanning:   featureState(settings.Security.SecretScanning),
 		SecretScanningPushProtection: featureState(
 			settings.Security.SecretScanningPushProtection),
+		DependabotSecurityUpdates: featureState(
+			settings.Security.DependabotSecurityUpdates),
 	}
 }
 
