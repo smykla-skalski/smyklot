@@ -7,6 +7,7 @@
   import Avatar from './Avatar.svelte';
   import BrandMark from './BrandMark.svelte';
   import Icon from './Icon.svelte';
+  import AccountTrigger from './AccountTrigger.svelte';
   import SidebarTooltip from './SidebarTooltip.svelte';
   import Popover from './Popover.svelte';
   import ThemeSwitch from './ThemeSwitch.svelte';
@@ -374,30 +375,7 @@
       focusOnOpen={false}
     >
       {#snippet trigger(attributes)}
-        <div class="account-card">
-          <!-- No unread dot here any more. It marked a count that could only be
-               read by opening this menu; the count is on the Inbox row now, and a
-               second mark on a card holding nothing about notifications would
-               point at nothing. -->
-          <button
-            class="who"
-            type="button"
-            aria-label={`Account menu for ${viewer.account.display_name}`}
-            {...attributes}
-          >
-            <span class="who-avatar">
-              <Avatar account={viewer.account} size={32} />
-            </span>
-            <span class="who-text band-trim-stack">
-              <span class="who-name">{viewer.account.display_name}</span>
-              <span class="who-handle mono">{handle.handle}</span>
-            </span>
-            <span class="menu-chevron" aria-hidden="true">
-              <Icon name="chevron-up" size={14} strokeWidth={2} />
-            </span>
-            <SidebarTooltip text="Account" />
-          </button>
-        </div>
+        <AccountTrigger account={viewer.account} handle={handle.handle} {attributes} />
       {/snippet}
 
       <div class="account-body">
@@ -614,7 +592,11 @@
     white-space: nowrap;
   }
 
-  .menu-chevron {
+  /* `:global`, because two triggers wear this and one of them - the account row - is
+     `AccountTrigger`'s markup now. Four declarations shared by two triggers is a class
+     doing its job rather than a component waiting to be written; what it costs is
+     saying so here. */
+  :global(.menu-chevron) {
     color: var(--sidebar-text-secondary);
     display: grid;
     place-items: center;
@@ -795,73 +777,6 @@
      divider, 8px, this card. ---- */
   /* The rule and the gap above the card, not on it: a border on `.who` itself
      would follow its corner radius and sit inside its hover fill. */
-  .account-card {
-    border-top: 1px solid var(--sidebar-border);
-    margin-top: var(--space-2);
-    padding-top: var(--space-2);
-  }
-
-  .who {
-    align-items: center;
-    background: transparent;
-    border: 0;
-    border-radius: var(--radius-control);
-    cursor: pointer;
-    display: grid;
-    gap: 0.625rem;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    min-height: 3rem;
-    padding: var(--space-2) 0.625rem;
-    position: relative;
-    transition:
-      background-color var(--duration-fast) var(--ease-standard),
-      transform var(--duration-press) var(--ease-standard);
-    user-select: none;
-    width: 100%;
-  }
-
-  .who:hover,
-  .who[aria-expanded='true'] {
-    background: var(--sidebar-item-hover);
-  }
-
-  .who:active {
-    background: var(--sidebar-item-pressed);
-  }
-
-  .who-avatar {
-    display: inline-flex;
-    flex: none;
-  }
-
-  .who-text {
-    display: flex;
-    flex-direction: column;
-    /* The whole of the space between the two lines. It used to be 0.3rem with
-       the handle pulled 0.2rem back up into it, which is a nudge standing in
-       for a measurement. */
-    gap: 0.1rem;
-    min-width: 0;
-    text-align: left;
-  }
-
-  .who-name {
-    color: var(--sidebar-text);
-    font-size: var(--font-size-meta);
-    font-weight: 600;
-    line-height: 1.2;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .who-handle {
-    color: var(--sidebar-text-muted);
-    font-size: var(--font-size-micro);
-    font-weight: 500;
-    line-height: 1.35;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
 
   /* Truncate sideways, and only sideways.
      -------------------------------------
@@ -877,11 +792,6 @@
      that is hidden on one axis and visible on the other resolves both to
      something clipping. The ellipsis needs the horizontal clip and nothing
      needs the vertical one. */
-  .who-name,
-  .who-handle {
-    overflow-x: clip;
-    overflow-y: visible;
-  }
 
   .account-header {
     align-items: center;
@@ -1023,8 +933,8 @@
   .collapsed .sidebar-collapse-trigger:focus-visible :global(.sidebar-tooltip),
   .collapsed .target-trigger:hover :global(.sidebar-tooltip),
   .collapsed .target-trigger:focus-visible :global(.sidebar-tooltip),
-  .collapsed .who:hover :global(.sidebar-tooltip),
-  .collapsed .who:focus-visible :global(.sidebar-tooltip) {
+  .collapsed :global(.who:hover .sidebar-tooltip),
+  .collapsed :global(.who:focus-visible .sidebar-tooltip) {
     opacity: 1;
     transform: translate(0, -50%);
     visibility: visible;
@@ -1032,7 +942,7 @@
 
   /* A tooltip never fights the popover it would describe. */
   .target-trigger[aria-expanded='true'] :global(.sidebar-tooltip),
-  .who[aria-expanded='true'] :global(.sidebar-tooltip) {
+  :global(.who[aria-expanded='true'] .sidebar-tooltip) {
     visibility: hidden !important;
   }
 
@@ -1153,8 +1063,8 @@
 
   .collapsed :global(.mark-copy),
   .collapsed .target-trigger-copy,
-  .collapsed .menu-chevron,
-  .collapsed .who-text {
+  .collapsed :global(.menu-chevron),
+  .collapsed :global(.who-text) {
     display: none;
   }
 
@@ -1164,7 +1074,7 @@
     padding: var(--space-2) 0;
   }
 
-  .collapsed .who {
+  .collapsed :global(.who) {
     display: flex;
     justify-content: center;
     padding: var(--space-2) 0;
@@ -1260,9 +1170,7 @@
     }
 
     .target-trigger,
-    .account-card,
-    .collapsed .target-trigger,
-    .collapsed .account-card {
+    .collapsed .target-trigger {
       border: 0;
       margin: 0;
       padding: 0;
@@ -1274,14 +1182,8 @@
       right: var(--bar-slot-switcher);
     }
 
-    .account-card {
-      right: var(--bar-slot-account);
-    }
-
     .target-trigger,
-    .who,
-    .collapsed .target-trigger,
-    .collapsed .who {
+    .collapsed .target-trigger {
       background: transparent;
       border: 0;
       box-shadow: none;
@@ -1293,9 +1195,13 @@
       width: auto;
     }
 
-    .who-text,
+    /* `.who-text` and the account row's chevron are NOT here. They are
+       `AccountTrigger`'s elements, and its own scoped rule - a class plus its scope
+       class - outranks a bare `:global(.who-text)` written from out here, so this
+       hid nothing and the account button stayed 146px wide on a phone. The row
+       carries its own phone layout instead. */
     .target-trigger-copy,
-    .menu-chevron {
+    :global(.menu-chevron) {
       display: none;
     }
 
@@ -1347,7 +1253,7 @@
   @media (pointer: coarse) {
     .mobile-navigation-trigger::after,
     .target-trigger::after,
-    .who::after {
+    :global(.who::after) {
       content: '';
       inset: calc((2.75rem - 100%) / -2) calc((2.75rem - 100%) / -2);
       position: absolute;
