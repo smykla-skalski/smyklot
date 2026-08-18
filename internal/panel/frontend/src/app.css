@@ -1370,6 +1370,25 @@ thead th {
   position: relative;
 }
 
+/* The band's height, here rather than in `DataTable`.
+   ---------------------------------------------------
+   `DataTable` used to state this in its own `<style>`, which reached only the
+   headings it renders itself from `columns` - and six of the seven tables pass a
+   `head` snippet instead, because their headings carry a sort button and a filter.
+   Those cells are the caller's markup and wear the caller's scope, so the rule
+   never landed on them: three tables set `--table-heading-height` believing it was
+   read, and it was not. The band was whatever its contents happened to be.
+
+   The cell floor above is in this file for the same reason, and this belongs beside
+   it. One class and two elements, so a table that genuinely needs another band
+   states `--table-heading-height` rather than out-specifying a rule. */
+.data-table thead th {
+  height: var(--table-heading-height, calc(2.5rem + 1px));
+  /* The band is the height above; the inset is `.table-heading`'s. A cell that also
+     padded vertically added its own to both. */
+  padding-block: 0;
+}
+
 /* The row inside the cell, with no inset of its own: it is the button that has
    to carry that, or the button is inset from the very cell it stands for. */
 .table-heading {
