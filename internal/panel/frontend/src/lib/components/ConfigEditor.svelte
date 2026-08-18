@@ -20,6 +20,7 @@
   import Select from './Select.svelte';
   import Button from './Button.svelte';
   import ChangedMarker from './ChangedMarker.svelte';
+  import AliasChip from './AliasChip.svelte';
   import CheckTile from './CheckTile.svelte';
   import HelpTip from './HelpTip.svelte';
   import Icon from './Icon.svelte';
@@ -394,20 +395,13 @@
             aria-labelledby="config-{scope}-{idPrefix}-aliases-heading"
           >
             {#each aliasEntries as [name, command] (name)}
-              <span class="word-chip" class:added={savedAliases[name] !== command}>
-                <span class="chip-from">{name}</span>
-                <span class="chip-arrow" aria-hidden="true">→</span>
-                <span class="chip-to">{command}</span>
-                <button
-                  class="chip-x"
-                  aria-label="Delete alias {name}"
-                  title="Delete alias {name}"
-                  disabled={editorDisabled}
-                  onclick={() => removeAlias(name)}
-                >
-                  <Icon name="close" size={13} />
-                </button>
-              </span>
+              <AliasChip
+                from={name}
+                to={command}
+                added={savedAliases[name] !== command}
+                disabled={editorDisabled}
+                onRemove={() => removeAlias(name)}
+              />
             {:else}
               <span class="alias-empty">No aliases yet</span>
             {/each}
@@ -643,56 +637,6 @@
     gap: var(--space-2);
   }
 
-  .word-chip {
-    align-items: center;
-    background: var(--strip-lift);
-    border: 1px solid var(--rule);
-    border-radius: var(--r-chip);
-    display: inline-flex;
-    font: 500 var(--font-size-control) / 1 var(--mono);
-    gap: 0.4375rem;
-    min-height: 2rem;
-    padding: 0 0.375rem 0 0.875rem;
-  }
-
-  .word-chip.added {
-    background: var(--brand-action-tint);
-    border-color: var(--brand-action);
-  }
-
-  .chip-from {
-    color: var(--text);
-    font-weight: 500;
-  }
-
-  .chip-arrow {
-    color: var(--dim);
-    font-size: var(--font-size-micro);
-  }
-
-  .chip-to {
-    color: var(--brand-action-text);
-  }
-
-  .chip-x {
-    align-items: center;
-    background: none;
-    border: 0;
-    border-radius: 50%;
-    color: var(--dim);
-    cursor: pointer;
-    display: inline-flex;
-    height: 1.25rem;
-    justify-content: center;
-    padding: 0;
-    width: 1.25rem;
-  }
-
-  .chip-x:hover:not(:disabled) {
-    background: var(--stop-tint);
-    color: var(--stop);
-  }
-
   .alias-empty {
     color: var(--dim);
     font-size: var(--font-size-meta);
@@ -813,9 +757,6 @@
   .bar-ghost,
   .row-label .label-text,
   .row-label label,
-  .chip-from,
-  .chip-arrow,
-  .chip-to,
   .alias-empty,
   .add-chip span,
   .composer-ok {
