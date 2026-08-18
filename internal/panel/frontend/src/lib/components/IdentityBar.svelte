@@ -7,6 +7,7 @@
   import Avatar from './Avatar.svelte';
   import BrandMark from './BrandMark.svelte';
   import Icon from './Icon.svelte';
+  import SidebarTooltip from './SidebarTooltip.svelte';
   import Popover from './Popover.svelte';
   import ThemeSwitch from './ThemeSwitch.svelte';
   import ViewTabs from './ViewTabs.svelte';
@@ -232,7 +233,7 @@
           size={16}
           strokeWidth={1.75}
         />
-        <span class="sidebar-tooltip">{collapsed ? 'Expand sidebar' : 'Collapse sidebar'}</span>
+        <SidebarTooltip text={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} />
       </button>
 
       <button
@@ -279,7 +280,7 @@
           <span class="menu-chevron" aria-hidden="true">
             <Icon name="chevrons-up-down" size={14} strokeWidth={2} />
           </span>
-          <span class="sidebar-tooltip">Switch workspace</span>
+          <SidebarTooltip text="Switch workspace" />
         </button>
       {/snippet}
 
@@ -394,7 +395,7 @@
             <span class="menu-chevron" aria-hidden="true">
               <Icon name="chevron-up" size={14} strokeWidth={2} />
             </span>
-            <span class="sidebar-tooltip">Account</span>
+            <SidebarTooltip text="Account" />
           </button>
         </div>
       {/snippet}
@@ -1015,46 +1016,23 @@
   }
 
   /* ---- collapsed rail ---- */
-  .sidebar-tooltip {
-    background: var(--sidebar-popover-bg);
-    border: 1px solid var(--sidebar-popover-border);
-    border-radius: var(--radius-control);
-    box-shadow: var(--shadow-popover);
-    color: var(--sidebar-menu-text);
-    font-size: var(--font-size-meta);
-    font-weight: 500;
-    /* Clear of the sidebar rather than of the row it belongs to: the row stops one padding inside
-       the sidebar, so the same air on the outside is that padding, the border, and one more. The collapsed
-       rail pads by --space-2, which is the padding this has to match. */
-    left: calc(100% + var(--space-2) * 2 + 1px);
-    opacity: 0;
-    padding: var(--space-2) var(--space-3);
-    pointer-events: none;
-    position: absolute;
-    top: 50%;
-    transform: translate(-4px, -50%);
-    transition:
-      opacity var(--duration-fast) var(--ease-standard),
-      transform var(--duration-fast) var(--ease-standard);
-    visibility: hidden;
-    white-space: nowrap;
-    z-index: var(--layer-popover);
-  }
-
-  .collapsed .sidebar-collapse-trigger:hover .sidebar-tooltip,
-  .collapsed .sidebar-collapse-trigger:focus-visible .sidebar-tooltip,
-  .collapsed .target-trigger:hover .sidebar-tooltip,
-  .collapsed .target-trigger:focus-visible .sidebar-tooltip,
-  .collapsed .who:hover .sidebar-tooltip,
-  .collapsed .who:focus-visible .sidebar-tooltip {
+  /* Which triggers show it stays here, because it is this component that knows the
+     rail is collapsed and which row the pointer is on. `:global` on the tooltip half
+     only: the span is `SidebarTooltip`'s element, the triggers are this file's. */
+  .collapsed .sidebar-collapse-trigger:hover :global(.sidebar-tooltip),
+  .collapsed .sidebar-collapse-trigger:focus-visible :global(.sidebar-tooltip),
+  .collapsed .target-trigger:hover :global(.sidebar-tooltip),
+  .collapsed .target-trigger:focus-visible :global(.sidebar-tooltip),
+  .collapsed .who:hover :global(.sidebar-tooltip),
+  .collapsed .who:focus-visible :global(.sidebar-tooltip) {
     opacity: 1;
     transform: translate(0, -50%);
     visibility: visible;
   }
 
   /* A tooltip never fights the popover it would describe. */
-  .target-trigger[aria-expanded='true'] .sidebar-tooltip,
-  .who[aria-expanded='true'] .sidebar-tooltip {
+  .target-trigger[aria-expanded='true'] :global(.sidebar-tooltip),
+  .who[aria-expanded='true'] :global(.sidebar-tooltip) {
     visibility: hidden !important;
   }
 
@@ -1317,8 +1295,16 @@
 
     .who-text,
     .target-trigger-copy,
-    .menu-chevron,
-    .sidebar-tooltip {
+    .menu-chevron {
+      display: none;
+    }
+
+    /* Separately, and `:global`, because the span is `SidebarTooltip`'s element.
+       Folded into the list above it silently stopped matching, and a tooltip that
+       is only hidden by `visibility` still occupies its box: 396px of "Account"
+       hanging off a 320px screen, which Chrome answers by zooming the whole page
+       out to 79%. `tests/browser/mobile-layout.test.ts` caught it. */
+    :global(.sidebar-tooltip) {
       display: none;
     }
 
