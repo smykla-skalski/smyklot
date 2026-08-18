@@ -118,6 +118,59 @@ var _ = Describe("Planning rulesets [Unit]", func() {
 
 			Expect(plan(wanted, current)).To(BeEmpty())
 		})
+
+		// An organization admin is a role rather than somebody. Configuration
+		// has to carry an id because the create is refused without one, and
+		// GitHub answers with null however it was written. Comparing that id
+		// proposed the same replacement on every sweep, for ever, against every
+		// repository already enforcing exactly what was configured
+		It("plans nothing where GitHub returns no id for an organization admin", func() {
+			current := onGitHub(7, func(r *orgsync.Ruleset) {
+				r.BypassActors = []orgsync.RulesetBypassActor{{
+					ActorID: 0, ActorType: "OrganizationAdmin", Mode: "always",
+				}}
+			})
+
+			Expect(plan(wanted, current)).To(BeEmpty())
+		})
+
+		// The admin's id is dropped; nobody else's is. An app, a team, a role
+		// and a deploy key are all somebody GitHub hands back by id, so two
+		// that differ have to keep comparing different
+		DescribeTable("still plans a replacement where another actor's id differs",
+			func(actorType string) {
+				named := orgsync.RulesetConfig{Rulesets: []orgsync.Ruleset{
+					with(func(r *orgsync.Ruleset) {
+						r.BypassActors = []orgsync.RulesetBypassActor{{
+							ActorID: 5, ActorType: actorType, Mode: "always",
+						}}
+					}),
+				}}
+
+				current := onGitHub(7, func(r *orgsync.Ruleset) {
+					r.BypassActors = []orgsync.RulesetBypassActor{{
+						ActorID: 6, ActorType: actorType, Mode: "always",
+					}}
+				})
+
+				Expect(plan(named, current)).To(HaveLen(1))
+			},
+			Entry("an app", "Integration"),
+			Entry("a team", "Team"),
+			Entry("a repository role", "RepositoryRole"),
+			Entry("a deploy key", "DeployKey"),
+		)
+
+		// The mode is not the id, and dropping one must not drop the other
+		It("still plans a replacement where the admin's bypass mode differs", func() {
+			current := onGitHub(7, func(r *orgsync.Ruleset) {
+				r.BypassActors = []orgsync.RulesetBypassActor{{
+					ActorID: 0, ActorType: "OrganizationAdmin", Mode: "pull_request",
+				}}
+			})
+
+			Expect(plan(wanted, current)).To(HaveLen(1))
+		})
 	})
 
 	Describe("a ruleset that has drifted", func() {

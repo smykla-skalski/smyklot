@@ -330,10 +330,31 @@ func canonicalRuleset(ruleset Ruleset) Ruleset {
 		ExcludeRefs: sorted(ruleset.Conditions.ExcludeRefs),
 	}
 
-	ruleset.BypassActors = sortedBy(ruleset.BypassActors, actorKey)
+	ruleset.BypassActors = sortedBy(
+		mapped(ruleset.BypassActors, canonicalActor), actorKey)
 	ruleset.Rules = canonicalRules(ruleset.Rules)
 
 	return ruleset
+}
+
+// canonicalActor is one bypass actor in the one spelling used for comparison.
+//
+// An organization admin is a role rather than somebody, so GitHub answers with
+// no id for it however it was written - configuration has to carry one, because
+// the create is refused without it, and reading the ruleset back always gives
+// null. Comparing that id is how a repository already enforcing exactly the
+// configured ruleset is rewritten on every tick for ever: the write succeeds,
+// the read says null again, and the next sweep proposes the same change.
+//
+// Only this type. The other four name somebody GitHub can hand back - an app,
+// a team, a role, a deploy key - and dropping their ids would make two actors
+// that differ compare the same.
+func canonicalActor(actor RulesetBypassActor) RulesetBypassActor {
+	if actor.ActorType == bypassActorOrganizationAdmin {
+		actor.ActorID = 0
+	}
+
+	return actor
 }
 
 func canonicalRules(rules RulesetRules) RulesetRules {
@@ -381,6 +402,22 @@ func sortedBy[T any](values []T, key func(T) string) []T {
 
 func sorted(values []string) []string {
 	return sortedBy(values, func(value string) string { return value })
+}
+
+// mapped is every value through one function, empty spelled as nil to match
+// sortedBy. A copy for the same reason: what reaches here is the stored
+// configuration or GitHub's answer, and neither is this function's to rewrite.
+func mapped[T any](values []T, through func(T) T) []T {
+	if len(values) == 0 {
+		return nil
+	}
+
+	canonical := make([]T, 0, len(values))
+	for _, value := range values {
+		canonical = append(canonical, through(value))
+	}
+
+	return canonical
 }
 
 // actorKey orders bypass actors by everything about them, because nothing about

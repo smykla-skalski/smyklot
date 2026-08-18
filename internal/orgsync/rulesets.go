@@ -63,6 +63,11 @@ type RulesetConditions struct {
 	ExcludeRefs []string `json:"exclude,omitempty"`
 }
 
+// bypassActorOrganizationAdmin is the one bypass actor type that names a role
+// rather than somebody. GitHub reads it back with no id, so the comparison in
+// rulesetplan.go leaves its id out.
+const bypassActorOrganizationAdmin = "OrganizationAdmin"
+
 // RulesetBypassActor is somebody who may step around the rules.
 type RulesetBypassActor struct {
 	ActorID   int64  `json:"actor_id"`
@@ -167,11 +172,11 @@ var rulesetEnforcements = map[string]bool{
 // which is a real third choice beside always and pull_request.
 var (
 	bypassActorTypes = map[string]bool{
-		"Integration":       true,
-		"OrganizationAdmin": true,
-		"RepositoryRole":    true,
-		"Team":              true,
-		"DeployKey":         true,
+		"Integration":                true,
+		bypassActorOrganizationAdmin: true,
+		"RepositoryRole":             true,
+		"Team":                       true,
+		"DeployKey":                  true,
 	}
 
 	bypassModes = map[string]bool{
