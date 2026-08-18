@@ -767,7 +767,7 @@
 
             {#if shapeOf(section.action).heading}
               <div class="sync-pane-row">
-                <label class="sync-merge-path">
+                <label class="sync-merge-heading">
                   <span class="entry-field-label">Heading</span>
                   <input
                     type="text"
@@ -809,7 +809,7 @@
             {#if shapeOf(section.action).patches}
               {#each section.patches ?? [] as substitution, which (`${rowKey(index)}-patch-${at}-${which}`)}
                 <div class="sync-pane-row">
-                  <label class="sync-merge-path">
+                  <label class="sync-merge-find">
                     <span class="entry-field-label">Find</span>
                     <input
                       type="text"
@@ -821,7 +821,7 @@
                     />
                   </label>
 
-                  <label class="sync-merge-path">
+                  <label class="sync-merge-find">
                     <span class="entry-field-label">Replace with</span>
                     <input
                       type="text"
@@ -870,7 +870,7 @@
 
         {#each draft.merge.arrays ?? [] as rule, at (`${rowKey(index)}-rule-${at}`)}
           <div class="sync-pane-row">
-            <label class="sync-merge-path">
+            <label class="sync-merge-list">
               <span class="entry-field-label">List</span>
               <input
                 type="text"
@@ -992,8 +992,14 @@
   }
 
   /* Narrower than the shared-files form's, because an adjustment names a path
-     the installation already lists rather than one somebody is typing out. */
-  .sync-merge-path {
+     the installation already lists rather than one somebody is typing out.
+     The boxes beside it share the shape and not the name: `.sync-merge-path`
+     is the file this row adjusts, and a selector reaching for that must not
+     also find a list rule's path or a substitution. */
+  .sync-merge-path,
+  .sync-merge-heading,
+  .sync-merge-find,
+  .sync-merge-list {
     display: flex;
     flex: 1;
     flex-direction: column;
