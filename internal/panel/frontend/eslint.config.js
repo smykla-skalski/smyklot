@@ -28,6 +28,9 @@ export default tseslint.config(
       'tests/**/*.ts',
       'dev/**/*.ts',
       'build/**/*.ts',
+      // `.mjs` too: `check-catalogue.mjs` is run by `node` from the build script,
+      // never bundled, so it is Node's globals it wants and not the browser's.
+      'build/**/*.mjs',
       // `main.ts` is read by the Storybook CLI in Node; `preview.ts` is not, but it
       // sits beside it and nothing there wants the browser globals withheld.
       '.storybook/**/*.ts',

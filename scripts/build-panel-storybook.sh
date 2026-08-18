@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
-# Builds the panel's component catalogue as a static site, then proves it can
-# actually run. `storybook build` exits 0 on a bundle whose first module throws:
-# the catalogue it produced is a spinner and nothing else, and no other check in
-# this repository loads it.
+# Builds the panel's component catalogue as a static site, then reads it back and
+# runs it. `storybook build` exits 0 on a bundle whose first module throws: the
+# catalogue it produced is a spinner and nothing else, and nothing else in this
+# repository loads it.
 set -euo pipefail
 
 ROOT="$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)"
@@ -37,5 +37,14 @@ if [[ ! -f "$out/index.html" || ! -f "$out/iframe.html" ]]; then
   echo 'the catalogue is missing index.html or iframe.html' >&2
   exit 1
 fi
+
+# Reading the output is not the same as running it. Everything above asks whether
+# the bundle looks right; this opens every story in a browser and asks whether it
+# came out - which nothing else here does, because `eslint`, `svelte-check` and the
+# coverage ratchet all ask about the file rather than about the component.
+(
+  CDPATH='' command cd -- "$frontend"
+  command node build/check-catalogue.mjs "$out"
+)
 
 printf 'catalogue built: %s\n' "$out"
