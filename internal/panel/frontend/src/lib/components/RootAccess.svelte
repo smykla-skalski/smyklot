@@ -1044,6 +1044,7 @@
   :global(.table-scroll) {
     --cell-pad-block: 0.625rem;
     --table-cell-pad-block: var(--cell-pad-block);
+    --table-empty-height: 10rem;
     --table-cell-pad-inline: 0.75rem;
     --table-heading-height: 2.5rem;
     --table-layout: fixed;

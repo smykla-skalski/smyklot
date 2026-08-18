@@ -26,21 +26,32 @@
    *
    * ## Migrating a table onto this
    *
-   * The markup swap is easy; the **CSS is the whole job**, and it is why converting a
-   * table is not a five-minute change. Every rule a table writes against `table`,
-   * `thead`, `tbody`, `tr`, `th` or `td` stops matching the moment this component
-   * renders those elements - they carry this scope, not the caller's. Converting
-   * `RootInstallations` broke eighteen selectors at once, which is the honest measure
-   * of the work.
+   * The markup swap is easy; the **CSS is the whole job**. Exactly which rules break is
+   * worth knowing precisely, because the first guess is wrong in both directions:
    *
-   * There are only two good answers, and which one applies is per rule:
+   * - **Breaks:** every rule against `table`, `thead`, `tbody`, `tr` and the wrapper
+   *   class. This component renders those, so they carry its scope and not the
+   *   caller's. Rewrite each as `:global(.that-table tbody tr)`, anchored through the
+   *   class the caller passes, so it reaches that table's rows and no others.
+   * - **Survives:** rules against `th` and `td`. A `cells` or `head` snippet is written
+   *   in the caller's file, so its cells are the caller's markup and carry the caller's
+   *   scope. Column widths, per-cell alignment and `data-label` rules all keep working
+   *   untouched - which is most of what a table's stylesheet actually is.
    *
-   * - The rule is about **this shell** - heading colour, cell padding, the row grid.
-   *   It belongs in `app.css` beside `.table-card` and `.data-row`, where every table
-   *   already reads it from, or here if it is structural.
-   * - The rule is about **that table's columns** - a `grid-template-columns`, a
-   *   column's width, a cell that wraps differently. It stays with the caller and is
-   *   anchored through the class it passes in: `:global(.repositories thead)`.
+   * The trap is the other way round: a surviving `td` rule is only `td.svelte-caller`,
+   * one class, and `.data-table :is(tbody th, td)` in `app.css` is one class and two
+   * elements. **The shared floor outranks it.** So a table that padded its cells
+   * differently does not keep that padding by doing nothing - it has to say so through
+   * `--table-cell-pad-block` and `--table-cell-pad-inline`. That is why those are knobs.
+   *
+   * So each rule has one of three homes:
+   *
+   * - **This shell, every table** - the pinned layout, the stacked layout, the cell
+   *   separator. `app.css`, beside `.table-card` and `.data-row`.
+   * - **This shell, this table** - min-width, cell padding, band height, `table-layout`.
+   *   A custom property the caller sets on the class it passes.
+   * - **This table's columns** - widths, a cell that wraps differently. Stays exactly
+   *   where it is, in the caller.
    *
    * Do them one table at a time and run `tests/browser/table-columns.test.ts` between
    * each - it is the check that catches a grid that stopped reaching the body, and at
@@ -230,7 +241,11 @@
      gets `.data-row`, so nothing paints it in the first place. */
   .empty-cell {
     color: var(--text-secondary);
-    height: 12rem;
+    /* 12rem in the tables that had no rows to compare it against, 10rem in the two
+       whose empty state sits under a toolbar. Both are deliberate, so it is a knob:
+       folding them together would shift one of them by 32px on a page nobody would
+       think to re-check. */
+    height: var(--table-empty-height, 12rem);
     text-align: center;
   }
 </style>
