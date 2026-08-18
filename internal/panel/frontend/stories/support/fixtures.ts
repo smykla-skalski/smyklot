@@ -33,6 +33,9 @@ import type {
   RepositorySummary,
   RootRuntimeSettings,
   SecurityNotification,
+  SyncConfig,
+  SyncOverride,
+  SyncPlan,
 } from '#lib/types.js';
 
 /** 2026-08-18T00:00:00Z, so every relative label in a story is stable. */
@@ -142,6 +145,41 @@ export const INVITATIONS = MOCK.invitations;
 
 /** The organisation installation the mock seeds, not a second description of it. */
 export const TARGET: PanelTarget = MOCK.targets[0]!.value;
+
+/**
+ * What each sync kind has configured, keyed the way the mock keys it.
+ *
+ * Three of the four are seeded; `settings` is not, and the mock invents an empty
+ * document for it on first ask. That invention stamps `new Date()`, so it is rebuilt
+ * here at the fixed instant instead - a catalogue that showed a different "saved just
+ * now" on every reload would be comparing two of its own screenshots and finding a
+ * difference nothing put there.
+ */
+export const SYNC_CONFIGS: ReadonlyMap<string, SyncConfig> = MOCK.sync;
+
+/** The shape a kind nobody has configured comes back as. */
+export function emptySyncConfig(kind: string): SyncConfig {
+  return {
+    kind,
+    enabled: false,
+    labels: [],
+    allow_removal: false,
+    excludes: [],
+    revision: 0,
+    updated_by: '',
+    updated_at: at(0),
+    digest: '',
+    document: {},
+    unreadable: false,
+    unavailable: '',
+  };
+}
+
+/** What the mock would change to bring the organisation's repositories into step. */
+export const SYNC_PLAN: SyncPlan | null = MOCK.syncPlans.get(TARGET.id) ?? null;
+
+/** One repository's own answer about the files the organisation keeps in step. */
+export const SYNC_OVERRIDES: ReadonlyMap<string, SyncOverride> = MOCK.syncOverrides;
 
 export const OVERVIEW: RootOverview = {
   service: {

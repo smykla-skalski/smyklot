@@ -80,5 +80,11 @@
   }}
 />
 
-<!-- The installation is not synchronizing files at all, so there is nothing to set. -->
-<Story name="Unavailable" args={{ unavailable: 'this installation does not sync files' }} />
+<!--
+  The installation has not granted what file sync needs. The words are the server's own:
+  `Unavailable.Reason` names the permission so the notice can say which one to grant.
+-->
+<Story
+  name="Unavailable"
+  args={{ unavailable: 'Smyklot has not been granted contents access, which files sync needs' }}
+/>

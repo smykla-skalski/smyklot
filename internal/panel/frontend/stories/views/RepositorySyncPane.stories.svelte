@@ -125,3 +125,94 @@
 <Story name="Unreadable" args={{ stored: { ...STORED, unreadable: true } }} />
 
 <Story name="Read only" args={{ readOnly: true }} />
+
+<!--
+  A row naming a file and nothing else. `Spec.Empty()` does not rescue it - the short
+  circuit for an empty merge lives in `Apply`, not on the save path - so the engine
+  refuses it, and the pane says so under the box rather than after a round trip.
+-->
+<Story
+  name="Sets nothing"
+  args={{
+    stored: {
+      ...STORED,
+      document: { merges: [{ path: 'renovate.json', strategy: 'deep-merge' }] },
+    },
+  }}
+/>
+
+<!--
+  A list rule whose path is not a path. Nine refusals are written here and this is the
+  shape they share: which rule, of which file, and what is wrong with it in the words
+  somebody reading the row would use.
+-->
+<Story
+  name="A rule path that is not one"
+  args={{
+    stored: {
+      ...STORED,
+      document: {
+        merges: [
+          {
+            path: 'renovate.json',
+            strategy: 'deep-merge',
+            overrides: { ignorePaths: ['docs/**'] },
+            arrays: [{ path: '$ignorePaths', strategy: 'append' }],
+          },
+        ],
+      },
+    },
+  }}
+/>
+
+<!--
+  The refusal only this pane can make: a rule for a list the overrides never set. The
+  engine would refuse it for every template, always, and the pane holds both documents
+  so it can say which key is missing instead of naming the file and stopping.
+-->
+<Story
+  name="A rule with no list"
+  args={{
+    stored: {
+      ...STORED,
+      document: {
+        merges: [
+          {
+            path: 'renovate.json',
+            strategy: 'deep-merge',
+            overrides: { timezone: 'Europe/Warsaw' },
+            arrays: [{ path: '$.ignorePaths', strategy: 'append' }],
+          },
+        ],
+      },
+    },
+  }}
+/>
+
+<!--
+  Overrides that are not an object. Reached by typing rather than by a fixture, because
+  the stored document cannot hold it - the server decodes strictly, so this is a state
+  only the box in front of somebody can be in.
+-->
+<Story
+  name="Overrides that are not an object"
+  args={{
+    stored: {
+      ...STORED,
+      document: {
+        merges: [{ path: 'renovate.json', strategy: 'deep-merge', overrides: { timezone: 'UTC' } }],
+      },
+    },
+  }}
+  play={async ({ canvas, userEvent }) => {
+    const box = await canvas.findByLabelText('What this repository sets');
+
+    // Typed onto the end rather than over a cleared box. `clear()` leaves the element
+    // without the browser's dirty-value flag, and the box reports on `change` - so a
+    // cleared-then-retyped box blurs silently and the story shows nothing.
+    // `[[` is one literal bracket: userEvent reads a bare `[` as a key descriptor.
+    await userEvent.type(box, '[[1]');
+    // The refusal arrives when the caret leaves, not while somebody is still typing.
+    await userEvent.tab();
+  }}
+/>

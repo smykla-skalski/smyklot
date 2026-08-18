@@ -26,9 +26,18 @@
   {#snippet template(args)}<InstallationView {...args} />{/snippet}
 </Story>
 
-<!-- Who may act here, and the invitations still outstanding. -->
-<Story name="Access">
-  {#snippet template(args)}<InstallationView {...args} view="access" />{/snippet}
+<!--
+  Who may act here. `users`, not `access`: the pane is reached by two of the six
+  `PANEL_VIEWS` and neither is spelled that way, so the story used to match no branch
+  and draw a 48px empty frame - which `svelte-check` and `eslint` both pass.
+-->
+<Story name="Users">
+  {#snippet template(args)}<InstallationView {...args} view="users" />{/snippet}
+</Story>
+
+<!-- The other half of the same pane: invitations still outstanding. -->
+<Story name="Invitations">
+  {#snippet template(args)}<InstallationView {...args} view="invitations" />{/snippet}
 </Story>
 
 <!-- What changed and what failed to arrive. -->
@@ -39,4 +48,13 @@
 <!-- The account defaults every repository inherits until it overrides one. -->
 <Story name="Settings">
   {#snippet template(args)}<InstallationView {...args} view="settings" />{/snippet}
+</Story>
+
+<!--
+  What every repository here should share, and what would change to make it true. The
+  fifth view this component hosts, and the one it had no story for - so nothing showed
+  the sync page standing in the shell it is actually read in.
+-->
+<Story name="Sync">
+  {#snippet template(args)}<InstallationView {...args} view="sync" />{/snippet}
 </Story>

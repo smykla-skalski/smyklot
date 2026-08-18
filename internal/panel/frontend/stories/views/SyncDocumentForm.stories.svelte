@@ -93,3 +93,37 @@
     </SyncDocumentForm>
   {/snippet}
 </Story>
+
+<!--
+  A permission the installation has not granted. The shell owns this notice, so every
+  kind wears it the same way and none of them writes its own.
+-->
+<Story
+  name="Unavailable"
+  args={{ unavailable: 'Smyklot has not been granted issues access, which labels sync needs' }}
+>
+  {#snippet template({ children, ...args })}
+    <SyncDocumentForm {...args}>
+      <p>The document's own editor goes here.</p>
+    </SyncDocumentForm>
+  {/snippet}
+</Story>
+
+<!--
+  The same permission, with the switch off. The notice is bound to the switch rather
+  than to what was saved, so a kind nobody asked for says nothing about what it would
+  have needed.
+-->
+<Story
+  name="Unavailable and switched off"
+  args={{
+    enabled: false,
+    unavailable: 'Smyklot has not been granted issues access, which labels sync needs',
+  }}
+>
+  {#snippet template({ children, ...args })}
+    <SyncDocumentForm {...args}>
+      <p>The document's own editor goes here.</p>
+    </SyncDocumentForm>
+  {/snippet}
+</Story>

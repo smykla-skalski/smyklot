@@ -181,7 +181,6 @@
   );
 
   /** The first adjustment whose overrides are not JSON, or nothing. */
-  /** The first adjustment whose overrides are not JSON, or nothing. */
   const malformed = $derived(values.findIndex((value) => value === undefined));
 
   /**

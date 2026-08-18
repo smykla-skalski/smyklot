@@ -54,3 +54,24 @@
 <Story name="Unreadable" args={{ unreadable: true }} />
 
 <Story name="Read only" args={{ readOnly: true }} />
+
+<!--
+  The save was refused, and the message belongs beside this form rather than at the top
+  of the page. The four forms save independently, so a shared message is one form's
+  failure wiped by the next form's click.
+-->
+<Story
+  name="With a problem"
+  args={{ problem: 'GitHub refused the write: 422 invalid bypass actor' }}
+/>
+
+<!--
+  The installation has not granted what ruleset sync needs. Rulesets and settings ask
+  for the same permission, so granting it answers both at once.
+-->
+<Story
+  name="Unavailable"
+  args={{
+    unavailable: 'Smyklot has not been granted administration access, which rulesets sync needs',
+  }}
+/>

@@ -70,3 +70,15 @@
     },
   }}
 />
+
+<!--
+  The installation has not granted what settings sync needs. Saving is still allowed -
+  configuring before granting is the ordinary order - so the notice says so rather
+  than shutting the form.
+-->
+<Story
+  name="Unavailable"
+  args={{
+    unavailable: 'Smyklot has not been granted administration access, which settings sync needs',
+  }}
+/>

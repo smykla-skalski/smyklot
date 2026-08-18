@@ -13,6 +13,7 @@ import type { PanelApi } from '#lib/api.js';
 
 import {
   AUDIT,
+  emptySyncConfig,
   FAILURES,
   INSTALLATIONS,
   INVITATIONS,
@@ -20,6 +21,9 @@ import {
   OVERVIEW,
   REPOSITORIES,
   REPOSITORY_DETAIL,
+  SYNC_CONFIGS,
+  SYNC_OVERRIDES,
+  SYNC_PLAN,
   TARGET,
   USERS,
 } from './fixtures.js';
@@ -94,6 +98,21 @@ export function fixtureApi(over: Partial<PanelApi> = {}): PanelApi {
     fetchRootOverview: async () => OVERVIEW,
     fetchRootInstallations: async () => INSTALLATIONS,
     fetchNotifications: async () => NOTIFICATIONS,
+    /* The sync page reads four kinds at once through `Promise.all`, so one refusal
+       leaves the whole page as a stray error line above an empty plan. Three kinds
+       are seeded and `settings` is not, which is why the fallback is here rather
+       than a fourth seed pretending somebody configured it. */
+    fetchSyncConfig: async (targetId: string, kind: string) =>
+      SYNC_CONFIGS.get(`${targetId}/${kind}`) ?? emptySyncConfig(kind),
+    fetchSyncPlan: async () => ({ plan: SYNC_PLAN }),
+    fetchSyncOverride: async (_targetId: string, repositoryId: string, kind: string) =>
+      SYNC_OVERRIDES.get(`${repositoryId}/${kind}`) ?? {
+        kind,
+        enabled: null,
+        document: {},
+        revision: 0,
+        unreadable: false,
+      },
     ...over,
   } as Partial<PanelApi>);
 }
