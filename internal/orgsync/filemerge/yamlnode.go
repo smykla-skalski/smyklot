@@ -400,14 +400,19 @@ func newMerge(root *yaml.Node, deep bool) *merge {
 // removed it. That is a flattening in a pull request somebody can read and
 // close, in the one direction that never loses a repository's work.
 //
-// Sized so it should never be reached rather than to be tight: the real
-// workflow file this syncs spends none of it, the whole spec suite's deepest
-// merge spends three, and three thousand randomized inheritance cases peaked at
-// 674. It first binds at sixteen nested aliases, or an override twenty-two
-// levels into a recursive one, and the answer is the same on both sides of
-// that. What it buys is a ceiling of about a tenth of a second per file however
-// deep the override goes - a rebuild costs around three microseconds, so this
-// number is a time budget written as a count.
+// Sized so it should never be reached rather than to be tight. A rebuild costs
+// around three microseconds, so this is a ceiling of about a tenth of a second
+// per file written as a count - and the count is what can be bounded, because
+// the same tenth of a second is a different number of rebuilds on every
+// machine this runs on.
+//
+// The rest of that sizing is measured rather than asserted, in
+// merge_internal_test.go: a workflow file spends none of this, the deepest
+// inheritance any spec here writes spends one, and it first binds at sixteen
+// nested aliases or an override twenty-two levels into a self-naming one. Those
+// tests fail if a change to what a rebuild costs moves any of it, because a
+// measurement written only in a comment is right the day it is written and
+// quietly wrong afterwards.
 const rebuildBudget = 65536
 
 // rebuilding reports whether there is budget left to judge one more copy, and
