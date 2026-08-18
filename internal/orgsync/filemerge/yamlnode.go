@@ -82,7 +82,7 @@ func mergeYAML(template []byte, spec Spec) ([]byte, error) {
 	// The merge writes and records; settle decides. What a key inherits is only
 	// known once the whole file has - the override's own later keys and every
 	// list rule can move it.
-	edit := &merge{root: document, deep: spec.Strategy != StrategyShallow}
+	edit := newMerge(document, spec.Strategy != StrategyShallow)
 
 	if err := edit.intoMapping(document, override); err != nil {
 		return nil, err
@@ -360,6 +360,57 @@ type merge struct {
 	// work is not in the override settle would judge it by, so taking the copy
 	// takes the work with it.
 	attached map[*yaml.Node]struct{}
+	// How many copies are left to rebuild, shared by every rebuild under this
+	// one so the whole recursion draws on one pool. Held by pointer for that,
+	// and seeded by newMerge so no merge can be built without one.
+	budget *int
+}
+
+// newMerge starts a merge over a document.
+func newMerge(root *yaml.Node, deep bool) *merge {
+	rebuilds := rebuildBudget
+
+	return &merge{root: root, deep: deep, budget: &rebuilds}
+}
+
+// rebuildBudget is how many copies one merge rebuilds before it starts judging
+// them as they stand.
+//
+// Judging a copy runs a merge of its own, that merge settles, and settling
+// judges the copies inside it - so an override nested d inheritances deep costs
+// 2^(d+1)-1 rebuilds. Measured on a template of one alias per level: depth 11
+// is 4095 of them, and every level after that doubles. Unbounded, 644 bytes at
+// depth 22 took five and a half seconds and 30 would have taken an hour.
+//
+// That override is one repository's data and the sweep merges a file for every
+// repository, so an unbounded one is a stall anybody who can write a
+// repository's settings can ask for. Bounded rather than made clever: a
+// structural "does this say what it inherits" would be a third answer to a
+// question the two comparators here have each already got wrong twice.
+//
+// Running out is not a refusal. It falls back to judging the copy as it stands,
+// which is what a write that copied nothing gets anyway - so a copy still says
+// what the inheritance says is still taken back, and only a copy gone stale
+// against an anchor the same run moved is kept where a rebuild might have
+// removed it. That is a flattening in a pull request somebody can read and
+// close, in the one direction that never loses a repository's work. In practice
+// the fixpoint gets there regardless: depth 60 exhausts this sixty times over
+// and still collapses every copy, in four milliseconds.
+//
+// Far above anything real. The deepest merge in the whole spec suite spends
+// three.
+const rebuildBudget = 4096
+
+// rebuilding reports whether there is budget left to judge one more copy, and
+// spends it where there is.
+func (m *merge) rebuilding() bool {
+	if m.budget == nil || *m.budget <= 0 {
+		return false
+	}
+
+	*m.budget--
+
+	return true
 }
 
 // attach records a node a list rule put into the document.
@@ -536,6 +587,12 @@ func (m *merge) rederived(
 		return spelled, nil, nil
 	}
 
+	// Out of budget, so the copy is judged as it stands - which is what a write
+	// that copied nothing gets, and errs only towards keeping one.
+	if !m.rebuilding() {
+		return spelled, write.renamed, nil
+	}
+
 	fresh, renamed := standInCopy(m.root, inherited)
 
 	// Its own records, judged before this one: a copy is only redundant once
@@ -546,7 +603,10 @@ func (m *merge) rederived(
 	// node, so nothing a rule wrote is in here to be mistaken for the merge's -
 	// and a rebuild the caller may throw away should not be able to declare
 	// anything about the document either.
-	inner := &merge{root: m.root, deep: true}
+	//
+	// The budget is shared, though, because the cost this bounds is the whole
+	// recursion rather than any one merge in it.
+	inner := &merge{root: m.root, deep: true, budget: m.budget}
 
 	switch err := inner.intoMapping(fresh, write.nested); {
 	case errors.Is(err, errInheritedRemoval):

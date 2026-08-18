@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	yaml "go.yaml.in/yaml/v3"
 
@@ -982,6 +983,48 @@ jobs:
 			Expect(string(merged)).To(Equal(
 				"zoth: &o\n  z: 1\n  c: 2\nbase: &b\n  inner:\n    <<: *o\n    k: v\n" +
 					"thing:\n  <<: *b\n"))
+		})
+
+		// Judging a copy rebuilds it, that rebuild settles, and settling judges
+		// the copies inside it - so an override nested d inheritances deep costs
+		// 2^(d+1)-1 rebuilds. The override is one repository's data and the
+		// sweep merges a file for every repository, so unbounded this is a stall
+		// anybody who can write a repository's settings can ask for: 644 bytes
+		// at depth 22 took five and a half seconds, and 30 would have taken an
+		// hour.
+		//
+		// A wall clock rather than a rebuild count, because the count is the
+		// mechanism and the seconds are the harm. Loose enough that a slow
+		// machine does not fail it and tight enough that losing the bound does:
+		// unbounded, this shape is minutes.
+		It("bounds a deep inheritance chain rather than working through it", func() {
+			var template, override strings.Builder
+
+			const depth = 24
+
+			template.WriteString("lvl0: &lvl0\n  leaf: v\n")
+
+			for at := 1; at <= depth; at++ {
+				fmt.Fprintf(&template, "lvl%d: &lvl%d\n  down: *lvl%d\n", at, at, at-1)
+			}
+
+			fmt.Fprintf(&template, "top: *lvl%d\n", depth)
+
+			override.WriteString(strings.Repeat(`{"down": `, depth))
+			override.WriteString(`{"leaf": "v"}`)
+			override.WriteString(strings.Repeat("}", depth))
+
+			started := time.Now()
+
+			merged, err := filemerge.Apply("ci.yaml", []byte(template.String()),
+				filemerge.Spec{Overrides: overrides(`{"top": ` + override.String() + `}`)})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(time.Since(started)).To(BeNumerically("<", 2*time.Second))
+
+			// And the bound costs nothing here: every copy still comes off, so
+			// the file the repository already has is the file it keeps.
+			Expect(string(merged)).To(Equal(template.String()))
 		})
 
 		// A key the override adds outright is no candidate for anything, right
