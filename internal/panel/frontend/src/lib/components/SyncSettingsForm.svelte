@@ -195,7 +195,7 @@
       <div class="settings-rows">
         {#each group.fields as field (field.key)}
           <div class="settings-row">
-            <span class="settings-label">{field.label}</span>
+            <span class="sync-form-label">{field.label}</span>
             <span class="settings-spacer"></span>
             <InheritControl
               label={field.label}
@@ -270,11 +270,6 @@
 
   .settings-rows > .settings-row:last-child {
     padding-bottom: 0.15rem;
-  }
-
-  .settings-label {
-    font-size: 0.875rem;
-    font-weight: 600;
   }
 
   /* The control sits at the end of its row rather than at the end of the page:

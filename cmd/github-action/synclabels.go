@@ -12,6 +12,13 @@ import (
 var (
 	errSyncOperationUnknown = errors.New("unknown sync operation")
 
+	// errSyncSubjectUnknown is an action whose subject names no request this
+	// version can make. Like the operation above it, it cannot come from a plan
+	// this version computed - a kind whose actions are told apart by subject
+	// refuses an unknown one rather than falling through to whichever branch
+	// happens to be last.
+	errSyncSubjectUnknown = errors.New("unknown sync subject")
+
 	// errSyncPayloadMissing is an action that says to write something without
 	// saying what. It cannot happen from a plan this version computed, and it
 	// is refused rather than guessed at: guessing would apply something nobody

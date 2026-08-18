@@ -38,7 +38,7 @@ describe('SyncSettingsForm [Component]', () => {
   /** One setting's row, by the words beside it. */
   function row(container: HTMLElement, label: string): HTMLElement {
     const found = [...container.querySelectorAll<HTMLElement>('.settings-row')].find(
-      (candidate) => candidate.querySelector('.settings-label')?.textContent?.trim() === label,
+      (candidate) => candidate.querySelector('.sync-form-label')?.textContent?.trim() === label,
     );
     expect(found, `no row for ${label}`).toBeTruthy();
 

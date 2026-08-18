@@ -2307,6 +2307,18 @@ code {
   text-transform: uppercase;
 }
 
+/* The words naming a control on the sync forms, whether they sit beside it or
+   above it.
+   Here because four of those forms had written these same two declarations out
+   for themselves, and a fifth copy is how one of them comes to sit at a
+   different size from the control above it on the same page. Not merged with
+   .entry-field-label: that one shouts a field's name in small caps over its
+   box, which is a different job and deliberately a different size. */
+.sync-form-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
 /* A template or a patch is read as code, so it is shown as code: proportional
    type turns an aligned table in a Markdown file into a ragged one. */
 .entry-code {

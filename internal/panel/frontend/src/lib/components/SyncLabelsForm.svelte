@@ -74,6 +74,43 @@
     drafts = patchedAt(drafts, index, change);
   }
 
+  /**
+   * An empty description box means "leave whatever each repository wrote".
+   *
+   * The stored shape has three states - no key, a key with text, and a key with
+   * an empty string, which asks every repository to have its description
+   * cleared. A text box has two, so one of the three has to give, and it is the
+   * clearing: nobody has asked to empty a description everywhere, and the state
+   * this box cannot express should be the one nothing needs.
+   *
+   * The alternative was to let an emptied box mean clearing, which reads the
+   * same on screen as leaving it alone and cannot be undone without reloading
+   * the page - a description typed and then thought better of would go out as
+   * an instruction to wipe that label's description across the organization.
+   *
+   * Written by hand rather than through patchedAt, which merges and so cannot
+   * take a key back off; and by copying the row and deleting from the copy
+   * rather than by naming the keys to keep, which would drop whatever a later
+   * version of SyncLabel adds beside them.
+   */
+  function describe(index: number, value: string): void {
+    drafts = drafts.map((label, at) => {
+      if (at !== index) {
+        return label;
+      }
+
+      const next = { ...label };
+
+      if (value === '') {
+        delete next.description;
+      } else {
+        next.description = value;
+      }
+
+      return next;
+    });
+  }
+
   function add(): void {
     drafts = [...drafts, { name: '', color: '' }];
   }
@@ -126,7 +163,7 @@
        name goes on existing unless this is on, and turning it on proposes
        deleting every label a repository has that is not named below. -->
   <div class="label-switch">
-    <span class="label-switch-text">Remove labels this list does not name</span>
+    <span class="sync-form-label">Remove labels this list does not name</span>
     <SegmentedControl
       name="labels-removal"
       label="Remove labels this list does not name"
@@ -207,16 +244,16 @@
           {disabled}
           aria-describedby="labels-description-note"
           placeholder="Something isn't working"
-          onchange={(event) => patch(index, { description: event.currentTarget.value })}
+          onchange={(event) => describe(index, event.currentTarget.value)}
         />
       </label>
     </article>
   {/each}
 
   <p class="form-note label-note" id="labels-description-note">
-    Six hexadecimal digits for the colour, with no <code>#</code>, which is how GitHub stores it. A
-    description left untouched keeps whatever each repository wrote; emptying one that was set
-    clears it everywhere.
+    Six hexadecimal digits for the colour, with no <code>#</code>, which is how GitHub stores it. An
+    empty description leaves whatever each repository wrote, so a label is given one here only where
+    every repository should read the same.
   </p>
 </SyncDocumentForm>
 
@@ -238,13 +275,6 @@
     flex-wrap: wrap;
     gap: var(--space-3);
     justify-content: space-between;
-  }
-
-  /* The rulesets form's numbers, because its removal switch sits on the same
-     page and the two should not be two sizes. */
-  .label-switch-text {
-    font-size: 0.875rem;
-    font-weight: 600;
   }
 
   .label-row {

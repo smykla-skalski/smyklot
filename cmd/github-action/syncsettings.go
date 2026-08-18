@@ -34,19 +34,30 @@ func applySettingsAction(
 	// decided and what the plan showed. Reading the payload's shape instead
 	// would let a settings body with an "enabled" key in it reach the wrong
 	// endpoint.
-	if action.Subject == orgsync.DependabotSubject {
+	//
+	// A switch with a default rather than an if with a fallthrough, which is
+	// how the label and ruleset executors answer the same "which
+	// sub-instruction is this" question. The two spellings differ on the case
+	// that does not exist yet: a third subject falls through an if and is sent
+	// to GitHub as a settings body, and is refused by name here.
+	switch action.Subject {
+	case orgsync.DependabotSubject:
 		change, err := orgsync.DecodeDependabot(action.Payload)
 		if err != nil {
 			return err
 		}
 
 		return client.SetAutomatedSecurityFixes(ctx, owner, name, change.Enabled)
-	}
 
-	body, err := orgsync.DecodeSettings(action.Payload)
-	if err != nil {
-		return err
-	}
+	case orgsync.SettingsSubject:
+		body, err := orgsync.DecodeSettings(action.Payload)
+		if err != nil {
+			return err
+		}
 
-	return client.UpdateRepositorySettings(ctx, owner, name, body)
+		return client.UpdateRepositorySettings(ctx, owner, name, body)
+
+	default:
+		return fmt.Errorf("%w: settings %q", errSyncSubjectUnknown, action.Subject)
+	}
 }

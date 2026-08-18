@@ -75,7 +75,7 @@ describe('SyncRulesetsForm [Component]', () => {
   /** One radio of a segmented control, by the words beside the row it is in. */
   function radio(container: HTMLElement, label: string, value: string): HTMLInputElement {
     const row = [...container.querySelectorAll<HTMLElement>('.ruleset-row')].find(
-      (candidate) => candidate.querySelector('.ruleset-label')?.textContent?.trim() === label,
+      (candidate) => candidate.querySelector('.sync-form-label')?.textContent?.trim() === label,
     );
     expect(row, `no row for ${label}`).toBeTruthy();
 
