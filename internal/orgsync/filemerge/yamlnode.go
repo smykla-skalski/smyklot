@@ -415,6 +415,60 @@ func mergeIntoInherited(
 	return nil
 }
 
+// sameWriting reports a value that would write out exactly what is already
+// there, anchors and comments included.
+//
+// The other question, and the one a list rule asks: not "does this say the same
+// thing" but "would writing it change the file". By the time a rule runs the
+// deep merge has written the override's own list at that path through nodeFor,
+// which keeps none of the template's item nodes - so the list there has lost
+// the anchors and the comments the template wrote, and the rule's own list,
+// built from clones of those items, is what puts them back. Judged by sameNode
+// the two look identical and the rule declines, leaving a file with an anchor
+// its aliases can no longer find and comments somebody wrote gone.
+// The value's own anchor is not compared, because it is not the value's: setKey
+// carries the anchor of whatever it replaces onto what it writes, so a list
+// built for a rule always arrives here with none and would never match a
+// template that anchors its list. That read as a change on every sweep, and the
+// write it then made stood in for the inheritance - the flattening this skip
+// exists to refuse. Everything under it keeps its anchor, which is the half
+// this comparison was added for.
+func sameWriting(one, other *yaml.Node) bool {
+	return sameWritingWithin(one, other, false)
+}
+
+func sameWritingWithin(one, other *yaml.Node, anchored bool) bool {
+	if one == nil || other == nil {
+		return one == other
+	}
+
+	if anchored && one.Anchor != other.Anchor {
+		return false
+	}
+
+	if one.HeadComment != other.HeadComment ||
+		one.LineComment != other.LineComment ||
+		one.FootComment != other.FootComment {
+		return false
+	}
+
+	if one.Kind != other.Kind ||
+		one.Tag != other.Tag ||
+		one.Value != other.Value ||
+		one.Style != other.Style ||
+		len(one.Content) != len(other.Content) {
+		return false
+	}
+
+	for at, child := range one.Content {
+		if !sameWritingWithin(child, other.Content[at], true) {
+			return false
+		}
+	}
+
+	return true
+}
+
 // sameNode reports a copy the merge did not change, asked against what it was
 // copied from.
 //
@@ -441,47 +495,6 @@ func mergeIntoInherited(
 // it. An alias is compared by the name it holds rather than followed: following
 // it walks out of the copy, and where a template names itself it would not
 // return.
-
-// sameWriting reports a value that would write out exactly what is already
-// there, anchors and comments included.
-//
-// The other question, and the one a list rule asks: not "does this say the same
-// thing" but "would writing it change the file". By the time a rule runs the
-// deep merge has written the override's own list at that path through nodeFor,
-// which keeps none of the template's item nodes - so the list there has lost
-// the anchors and the comments the template wrote, and the rule's own list,
-// built from clones of those items, is what puts them back. Judged by sameNode
-// the two look identical and the rule declines, leaving a file with an anchor
-// its aliases can no longer find and comments somebody wrote gone.
-func sameWriting(one, other *yaml.Node) bool {
-	if one == nil || other == nil {
-		return one == other
-	}
-
-	if one.Anchor != other.Anchor ||
-		one.HeadComment != other.HeadComment ||
-		one.LineComment != other.LineComment ||
-		one.FootComment != other.FootComment {
-		return false
-	}
-
-	if one.Kind != other.Kind ||
-		one.Tag != other.Tag ||
-		one.Value != other.Value ||
-		one.Style != other.Style ||
-		len(one.Content) != len(other.Content) {
-		return false
-	}
-
-	for at, child := range one.Content {
-		if !sameWriting(child, other.Content[at]) {
-			return false
-		}
-	}
-
-	return true
-}
-
 func sameNode(one, other *yaml.Node, renamed map[string]string) bool {
 	if one == nil || other == nil {
 		return one == other
@@ -492,8 +505,10 @@ func sameNode(one, other *yaml.Node, renamed map[string]string) bool {
 	// renaming rather than compared raw.
 	value := one.Value
 	if one.Kind == yaml.AliasNode {
-		if was, ok := renamed[other.Value]; ok && was == value {
-			value = other.Value
+		// A fresh name reaches the copy only by that rename, so finding one
+		// here is enough - there is nothing to check it against.
+		if was, ok := renamed[value]; ok {
+			value = was
 		}
 	}
 
@@ -616,7 +631,12 @@ func renameCopiedAnchors(root, copied *yaml.Node) map[string]string {
 		for _, node := range nodes {
 			fresh := unusedAnchor(name, taken)
 			taken[fresh] = nil
-			renamed[name] = fresh
+
+			// Keyed by the fresh name, which is unique by construction. Keyed
+			// by the original, a template defining one name twice keeps only
+			// the last of them and every alias to the earlier one reads as a
+			// change the merge did not make.
+			renamed[fresh] = name
 
 			renameAliases(copied, node, fresh)
 			node.Anchor = fresh

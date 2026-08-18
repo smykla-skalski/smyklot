@@ -846,6 +846,25 @@ jobs:
 		// is what the file already holds, down to the anchors and the comments,
 		// writing it would stand in for the inherited list and the flattening
 		// would be the whole of the pull request.
+		// The anchor on the list itself, which setKey takes from the position
+		// rather than from the value - so the list a rule builds always arrives
+		// at the comparison without one, and comparing it read as a change on
+		// every sweep. What that change then wrote stood in for the
+		// inheritance, which is what this skip is here to refuse.
+		It("leaves an inherited list alone where the template anchors it", func() {
+			template := "base: &base\n  list: &l\n    - t\na: *base\n"
+
+			merged, err := filemerge.Apply("ci.yaml", []byte(template),
+				filemerge.Spec{
+					Overrides:   overrides(`{"a": {"list": ["t"]}}`),
+					Arrays:      []filemerge.ArrayRule{{Path: "$.a.list", Strategy: filemerge.ArrayAppend}},
+					Deduplicate: true,
+				})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(merged)).To(Equal(template))
+		})
+
 		It("leaves an inherited list alone where a rule changes none of it", func() {
 			template := "base: &base\n  list:\n    - t\na: *base\n"
 
@@ -888,6 +907,13 @@ jobs:
 			Entry("an empty patch where the inheritance carries an anchor",
 				`{"thing": {"nested": {}}}`, "base: &b\n  nested:\n    inner: &i thing\n"+
 					"    ref: *i\nthing:\n  <<: *b\n"),
+			// Two nodes under one name, which YAML allows. Recording the
+			// renaming by the original name keeps only the last of them, so
+			// every alias bound to the earlier one still read as a change.
+			Entry("an empty patch where the inheritance defines a name twice",
+				`{"thing": {"nested": {}}}`,
+				"base: &b\n  nested:\n    p: &x one\n    q: *x\n    r: &x two\n"+
+					"    s: *x\nthing:\n  <<: *b\n"),
 			Entry("every value it already sets", `{"thing": {"nested": {"a": 1, "b": 2}}}`),
 			Entry("a null on a key it does not have", `{"thing": {"nested": {"c": null}}}`),
 		)
