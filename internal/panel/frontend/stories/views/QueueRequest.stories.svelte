@@ -12,8 +12,19 @@
   const REQUEST = QUEUE.active[0]!;
   const KEY = ['root-pending-ci', REQUEST.id] as const;
 
+  /* `id` matters: `QueueRequest` keys its event list on it, so leaving it out made
+     every key `undefined` and Svelte threw `each_key_duplicate` - in a production
+     build as well as in dev. The `as PendingCIEvent` cast is what kept tsc quiet
+     about it. */
+  let nextEventId = 0;
   const event = (kind: string, offsetMs: number, over: Partial<PendingCIEvent> = {}) =>
-    ({ kind, trigger: 'poll', occurred_at: at(offsetMs), ...over }) as PendingCIEvent;
+    ({
+      id: (nextEventId += 1),
+      kind,
+      trigger: 'poll',
+      occurred_at: at(offsetMs),
+      ...over,
+    }) as PendingCIEvent;
 
   const DETAIL: PendingCIDetail = {
     request: REQUEST,

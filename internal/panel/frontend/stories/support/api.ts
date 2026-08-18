@@ -38,8 +38,19 @@ export function stubApi(over: Partial<PanelApi> = {}): PanelApi {
       ...over,
     } as PanelApi,
     {
-      get(target, property: string) {
+      get(target, property) {
         if (property in target) return target[property as keyof PanelApi];
+        /*
+         * Answer only what a `PanelApi` could be asked for. A trap that refuses
+         * *everything* also answers the protocol lookups the runtime makes on any
+         * object it handles: `JSON.stringify` finds a `toJSON` function and gets a
+         * rejected promise nothing is waiting on, which is what put 31 unhandled
+         * rejections into the catalogue when Storybook serialised story args. `then`
+         * is worse - answering it makes this thenable, so `await stubApi()` never
+         * settles.
+         */
+        if (typeof property !== 'string') return undefined;
+        if (property === 'toJSON' || property === 'then') return undefined;
         return refuse(property);
       },
     },
