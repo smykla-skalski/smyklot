@@ -11,6 +11,7 @@
    * means, and the one thing worth doing about it.
    */
   import type { ErrorContent } from '../panel-error';
+  import Button from './Button.svelte';
 
   const {
     content,
@@ -36,13 +37,13 @@
   <p class="error-note">{content.note}</p>
   {#if content.action !== null && actionHref !== null}
     <p class="error-action">
-      <a
-        class="btn btn-signal"
+      <Button
+        tone="signal"
         href={actionHref}
         rel={content.action.kind === 'sign-in' ? 'nofollow' : undefined}
       >
         {content.action.label}
-      </a>
+      </Button>
     </p>
   {/if}
 </div>

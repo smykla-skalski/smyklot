@@ -19,6 +19,8 @@
   } from '#lib/queue.js';
   import type { PendingCIRequest } from '#lib/types.js';
   import ActionMenu, { type ActionMenuItem } from './ActionMenu.svelte';
+  import StatusPill from './StatusPill.svelte';
+  import Button from './Button.svelte';
   import AppTooltip from './AppTooltip.svelte';
   import Chip from './Chip.svelte';
   import FilterMenu from './FilterMenu.svelte';
@@ -623,9 +625,7 @@
          not somewhere in the headings, and it should not compete with the search
          for attention. `btn-quiet` is the product's own no-fill, no-border
          variant - it is a word until it is hovered. -->
-    <button class="btn btn-quiet btn-row" type="button" onclick={clearFilters}>
-      <span class="button-label">Clear filters</span>
-    </button>
+    <Button tone="quiet" row onclick={clearFilters}>Clear filters</Button>
   {/if}
   <!-- The same two filters the headings carry, for the widths where there are no
        headings to carry them. Below 48rem the table is a stack of cards and the
@@ -659,9 +659,7 @@
   <span class="toolbar-spacer"></span>
   <!-- What actually moves this queue along, said once rather than implied by
        every row's timer. The timers are the safety net. -->
-  <span class="status-pill"
-    ><span class="status-pill-dot live"></span><span class="cap-trim">Webhook driven</span></span
-  >
+  <StatusPill dot live>Webhook driven</StatusPill>
 </div>
 
 <div class="table-card queue-card">

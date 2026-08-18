@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Icon from './Icon.svelte';
+  import Select from './Select.svelte';
 
   const PAGE_SIZES = [10, 20, 50] as const;
 
@@ -19,23 +19,20 @@
   }
 </script>
 
-<span class="select-wrap">
-  <select class="select-input page-size" {value} aria-label={label} onchange={select}>
-    {#each PAGE_SIZES as size (size)}
-      <option value={size}>{size}</option>
-    {/each}
-  </select>
-  <Icon name="chevron-down" size={14} strokeWidth={2} />
-</span>
+<Select class="page-size" {value} aria-label={label} onchange={select}>
+  {#each PAGE_SIZES as size (size)}
+    <option value={size}>{size}</option>
+  {/each}
+</Select>
 
 <style>
   /* The wrapper carries the width now that it, not the select, is the layout
-     box its row sees. */
-  .select-wrap {
+     box its row sees. `:global` because both elements are `Select`'s. */
+  :global(.select-wrap) {
     width: 4rem;
   }
 
-  .page-size {
+  :global(.page-size) {
     font-size: var(--font-size-meta);
     height: var(--local-control-height, var(--control-height));
     min-width: 4rem;

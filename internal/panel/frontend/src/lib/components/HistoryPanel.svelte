@@ -31,13 +31,15 @@
     HistorySort,
     Page,
   } from '../types';
+  import Skeleton from './Skeleton.svelte';
   import SortIndicator from './SortIndicator.svelte';
+  import Button from './Button.svelte';
   import Avatar from './Avatar.svelte';
   import FilterMenu from './FilterMenu.svelte';
   import HistoryDisplayMenu from './HistoryDisplayMenu.svelte';
   import Icon from './Icon.svelte';
   import InfiniteLoadSentinel from './InfiniteLoadSentinel.svelte';
-  import PanelHeader from './PanelHeader.svelte';
+  import PageHeader from './PageHeader.svelte';
   import ResultProblem from './ResultProblem.svelte';
   import RootPageHeader from './RootPageHeader.svelte';
   import SearchField from './SearchField.svelte';
@@ -704,7 +706,7 @@
   {#if context === 'root'}
     <RootPageHeader role={rootRole} title="History" subtitle={description} />
   {:else}
-    <PanelHeader id="history-heading" title="History" {description} />
+    <PageHeader id="history-heading" title="History" {description} />
   {/if}
 
   <!-- The table switch sits at the head of the controls row, left of the
@@ -754,12 +756,13 @@
         onRetry={() => retry()}
       />
     {:else if loading && currentPage === null}
-      <div class="table-skeleton" aria-hidden="true">
-        {#each [0, 1, 2, 3, 4, 5] as index (index)}
-          <span></span>
-        {/each}
-      </div>
-      <p class="visually-hidden" role="status">Loading history</p>
+      <Skeleton
+        label="Loading history"
+        --skeleton-row-height="3rem"
+        --skeleton-bar-a-width="min(12rem, 26%)"
+        --skeleton-bar-b-left="46%"
+        --skeleton-bar-b-width="min(16rem, 32%)"
+      />
     {:else if historyType === 'audit'}
       <!-- Keyboard focus lets users scroll columns that overflow the viewport. -->
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -1091,7 +1094,7 @@
     {#if loadMoreProblem !== null}
       <div class="load-more-alert" role="alert">
         <span>{loadMoreProblem}</span>
-        <button class="btn" type="button" onclick={() => void loadNextPage()}>Try again</button>
+        <Button onclick={() => void loadNextPage()}>Try again</Button>
       </div>
     {/if}
   </div>
@@ -1522,45 +1525,6 @@
   .empty-cell {
     height: 9rem;
     text-align: center !important;
-  }
-
-  .table-skeleton {
-    display: grid;
-  }
-
-  .table-skeleton span {
-    animation: history-skeleton-pulse 1.35s ease-in-out infinite alternate;
-    border-bottom: 1px solid var(--rule);
-    display: block;
-    height: 3rem;
-    position: relative;
-  }
-
-  .table-skeleton span::before,
-  .table-skeleton span::after {
-    background: var(--surface-inset);
-    border-radius: var(--radius-control);
-    content: '';
-    height: 0.75rem;
-    left: var(--space-4);
-    position: absolute;
-    top: 1rem;
-    width: min(12rem, 26%);
-  }
-
-  .table-skeleton span::after {
-    left: 46%;
-    width: min(16rem, 32%);
-  }
-
-  @keyframes history-skeleton-pulse {
-    from {
-      opacity: 0.48;
-    }
-
-    to {
-      opacity: 0.88;
-    }
   }
 
   @media (max-width: 48rem) {

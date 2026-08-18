@@ -17,6 +17,9 @@
     RootInstallation,
     TargetSettingsInput,
   } from '../types';
+  import FormError from './FormError.svelte';
+  import StatusPill from './StatusPill.svelte';
+  import Button from './Button.svelte';
   import BackLink from './BackLink.svelte';
   import Icon from './Icon.svelte';
   import HistoryPanel from './HistoryPanel.svelte';
@@ -257,24 +260,25 @@
 
     <div class="access-summary">
       {#if target !== null && ownsInstallation}
-        <span class="status-pill"
-          ><Icon name="shield" size={14} /><span class="cap-trim">Owner access</span></span
-        >
+        <StatusPill>
+          {#snippet icon()}<Icon name="shield" size={14} />{/snippet}
+          Owner access
+        </StatusPill>
       {:else if elevation !== null}
-        <span class="status-pill"
-          ><Icon name="warning" size={14} /><span class="cap-trim">Elevated</span></span
-        >
+        <StatusPill>
+          {#snippet icon()}<Icon name="warning" size={14} />{/snippet}
+          Elevated
+        </StatusPill>
       {:else}
-        <button
-          class="btn root-access-button"
-          type="button"
-          bind:this={elevationTrigger}
+        <Button
+          tone="brand"
+          bind:element={elevationTrigger}
           disabled={!canElevate || loading}
           onclick={openElevation}
         >
-          <Icon name="lock" size={16} />
+          {#snippet icon()}<Icon name="lock" size={16} />{/snippet}
           Request write access
-        </button>
+        </Button>
       {/if}
     </div>
   </header>
@@ -293,14 +297,12 @@
       <span class="elevation-countdown" title={`Ends ${formatTimestamp(elevation.expires_at)}`}>
         {countdown(remainingSeconds)}
       </span>
-      <button class="btn btn-stop" type="button" disabled={elevationPending} onclick={endElevation}>
-        End access
-      </button>
+      <Button tone="stop" disabled={elevationPending} onclick={endElevation}>End access</Button>
     </aside>
   {/if}
 
   {#if elevationFailure !== null}
-    <p class="form-error" role="alert">{elevationFailure}</p>
+    <FormError message={elevationFailure} />
   {/if}
 
   <nav
@@ -346,9 +348,9 @@
     <div class="root-loading problem" role="alert">
       <strong>Could not load this installation</strong>
       <p>{failure}</p>
-      <button class="btn" type="button" onclick={() => void load()} disabled={loading}>
+      <Button onclick={() => void load()} disabled={loading}>
         {loading ? 'Trying again…' : 'Try again'}
-      </button>
+      </Button>
     </div>
   {:else if target !== null && view === 'settings'}
     <TargetSettings {target} readOnly={!canWrite} onUpdate={updateTarget} />
@@ -415,7 +417,7 @@
   </div>
 
   <label class="acknowledgment">
-    <input type="checkbox" bind:checked={elevationAcknowledged} data-modal-focus />
+    <input type="checkbox" bind:checked={elevationAcknowledged} />
     <span>
       I understand the consequences and want to enter audited elevated access for this installation.
     </span>
@@ -432,21 +434,18 @@
   </label>
 
   {#if elevationFailure !== null}
-    <p class="form-error" role="alert">{elevationFailure}</p>
+    <FormError message={elevationFailure} />
   {/if}
 
   {#snippet footer()}
-    <button class="btn" type="button" disabled={elevationPending} onclick={closeElevation}
-      >Cancel</button
-    >
-    <button
-      class="btn root-confirm"
-      type="button"
+    <Button disabled={elevationPending} onclick={closeElevation}>Cancel</Button>
+    <Button
+      tone="brand"
       disabled={!elevationAcknowledged || elevationPending}
       onclick={beginElevation}
     >
       {elevationPending ? 'Starting access…' : 'Start 15-minute access'}
-    </button>
+    </Button>
   {/snippet}
 </Modal>
 
@@ -542,13 +541,6 @@
     margin-top: var(--space-1);
   }
 
-  .root-access-button,
-  .root-confirm {
-    background: color-mix(in srgb, var(--brand-action) 12%, var(--surface-base));
-    border-color: color-mix(in srgb, var(--brand-action) 45%, var(--control-border));
-    color: var(--brand-action-text);
-  }
-
   .access-hint {
     color: var(--text-secondary);
     font-size: var(--font-size-compact);
@@ -638,7 +630,7 @@
     border-color: color-mix(in srgb, var(--stop) 30%, var(--border-subtle));
   }
 
-  .root-loading .btn {
+  .root-loading :global(.btn) {
     margin-top: var(--space-4);
   }
 
@@ -711,8 +703,11 @@
       flex-direction: column;
     }
 
+    /* `:global` because the summary's children are components now - a scoped
+       `> *` requires the child to carry this component's scope class, and it
+       carries its own. */
     .access-summary,
-    .access-summary > * {
+    .access-summary > :global(*) {
       width: 100%;
     }
 

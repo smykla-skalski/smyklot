@@ -2,6 +2,7 @@
   import { createQuery } from '@tanstack/svelte-query';
   import { formatDate, formatTimestamp } from '../format';
   import type { AccessDecision } from '../types';
+  import Button from './Button.svelte';
   import Avatar from './Avatar.svelte';
   import Chip, { type ChipTone } from './Chip.svelte';
   import Modal from './Modal.svelte';
@@ -154,7 +155,7 @@
   </section>
 
   {#snippet footer()}
-    <button class="btn btn-ghost" type="button" data-modal-focus onclick={close}>Close</button>
+    <Button tone="ghost" onclick={close}>Close</Button>
   {/snippet}
 </Modal>
 

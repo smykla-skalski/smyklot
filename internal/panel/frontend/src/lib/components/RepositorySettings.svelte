@@ -13,7 +13,7 @@
   import HelpTip from './HelpTip.svelte';
   import Icon from './Icon.svelte';
   import BackLink from './BackLink.svelte';
-  import PanelHeader from './PanelHeader.svelte';
+  import PageHeader from './PageHeader.svelte';
   import Plate from './Plate.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
 
@@ -106,7 +106,7 @@
 <section class="repository-page" aria-labelledby={titleId}>
   <BackLink href={backHref} label="Repositories" onNavigate={onBack} />
 
-  <PanelHeader
+  <PageHeader
     id={titleId}
     title={repository.name}
     description="Repository settings override workspace defaults and repository-file values"
@@ -139,7 +139,7 @@
         />
       {/if}
     {/snippet}
-  </PanelHeader>
+  </PageHeader>
 
   {#if failure !== null}
     <p class="form-error repository-page-error" role="alert">{failure}</p>
@@ -281,7 +281,7 @@
   /* The same way back the console's installation page draws, so the two detail
      pages read as one anatomy: a chevron, a word, and the list it returns to. */
   /* The page is titled by the repository name, which is code, so it sets in
-     mono. `PanelHeader` stamps the id on the heading itself. */
+     mono. `PageHeader` stamps the id on the heading itself. */
   :global(#repository-page-title) {
     font-family: var(--mono);
   }

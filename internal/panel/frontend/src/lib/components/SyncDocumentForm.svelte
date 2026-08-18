@@ -14,6 +14,8 @@
    */
   import type { Snippet } from 'svelte';
 
+  import FormError from './FormError.svelte';
+  import Button from './Button.svelte';
   import Plate from './Plate.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
 
@@ -94,7 +96,7 @@
   <p class="form-lead" id={helpId}>{lead}</p>
 
   {#if problem !== null}
-    <p class="form-error" role="alert">{problem}</p>
+    <FormError message={problem} />
   {/if}
 
   {#if unreadable}
@@ -122,12 +124,9 @@
       {#if actions}
         {@render actions()}
       {/if}
-      <button class="btn btn-signal" type="button" disabled={disabled || !changed} onclick={onSave}>
-        <!-- Wrapped so `app.css` can trim it - see the same note in
-             `TableEmptyState`. Bare, this word sat 0.47px above the middle of
-             its own surface. -->
-        <span class="button-label">{saving ? 'Saving' : `Save ${noun}`}</span>
-      </button>
+      <Button tone="signal" disabled={disabled || !changed} onclick={onSave}>
+        {saving ? 'Saving' : `Save ${noun}`}
+      </Button>
       {#if changed}
         <p class="form-note">Nothing is changed on GitHub until a plan is approved</p>
       {/if}
@@ -155,7 +154,7 @@
   /* The global rule has no margin, because most of the places it appears sit in
      a gapped grid. This one sits in a plate's flow, under the line explaining
      the kind. */
-  .form-error {
+  :global(.form-error) {
     margin: var(--space-3) 0 0;
   }
 

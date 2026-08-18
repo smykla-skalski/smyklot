@@ -47,6 +47,14 @@
     UpdateTargetUserInput,
   } from '../types';
   import ActionMenu, { type ActionMenuItem } from './ActionMenu.svelte';
+  import CopyableLinkField from './CopyableLinkField.svelte';
+  import ConfirmDialog from './ConfirmDialog.svelte';
+  import FormError from './FormError.svelte';
+  import Select from './Select.svelte';
+  import Callout from './Callout.svelte';
+  import IdentityRow from './IdentityRow.svelte';
+  import Skeleton from './Skeleton.svelte';
+  import Button from './Button.svelte';
   import SortIndicator from './SortIndicator.svelte';
   import Avatar from './Avatar.svelte';
   import Chip, { type ChipTone } from './Chip.svelte';
@@ -57,7 +65,7 @@
   import InfiniteLoadSentinel from './InfiniteLoadSentinel.svelte';
   import LoginField from './LoginField.svelte';
   import Modal from './Modal.svelte';
-  import PanelHeader from './PanelHeader.svelte';
+  import PageHeader from './PageHeader.svelte';
   import ResultProblem from './ResultProblem.svelte';
   import RolePicker, { type RolePickerOption } from './RolePicker.svelte';
   import SearchField from './SearchField.svelte';
@@ -1286,14 +1294,14 @@
 {/snippet}
 
 {#snippet headerActions()}
-  <button class="btn btn-signal" type="button" bind:this={addButton} onclick={openAddModal}>
-    <Icon name="user-plus" size={14} strokeWidth={2} />
-    <span class="button-label">{invitingFirst ? 'Invite user' : 'Add user'}</span>
-  </button>
+  <Button tone="signal" bind:element={addButton} onclick={openAddModal}>
+    {#snippet icon()}<Icon name="user-plus" size={14} strokeWidth={2} />{/snippet}
+    {invitingFirst ? 'Invite user' : 'Add user'}
+  </Button>
 {/snippet}
 
 <section class="plate user-management" aria-labelledby="user-management-heading">
-  <PanelHeader
+  <PageHeader
     id="user-management-heading"
     title="Access"
     description="Roles, invitations, and access decisions for this workspace"
@@ -1328,7 +1336,7 @@
       {/if}
     </div>
 
-    {#if failure !== null}<p class="form-error" role="alert">{failure}</p>{/if}
+    <FormError message={failure} />
 
     {#if activeSection === 'users'}
       <div id="users-list-panel" aria-label="Users">
@@ -1339,12 +1347,11 @@
           aria-busy={loadingUsers}
         >
           {#if loadingUsers && userPage === null}
-            <div class="table-skeleton" aria-hidden="true">
-              {#each [0, 1, 2, 3, 4, 5] as index (index)}
-                <span></span>
-              {/each}
-            </div>
-            <p class="visually-hidden" role="status">Loading users</p>
+            <Skeleton
+              label="Loading users"
+              --skeleton-bar-top="1.15rem"
+              --skeleton-bar-a-width="min(13rem, 28%)"
+            />
           {:else if userFailure !== null && userPage === null}
             <ResultProblem
               title="Users could not be loaded"
@@ -1465,21 +1472,20 @@
                       {@attach pressableRow}
                     >
                       <th scope="row">
-                        <span class="user-identity">
-                          <Avatar account={user.account} size={32} />
-                          <!-- The hint sits outside the stack, not at the end of it:
-                               `.band-trim-stack` trims the last line's descender space, and a
-                               clipped span is a last child with no line to trim. -->
-                          {#if hasDecisionHistory(user)}
-                            <span class="visually-hidden">
-                              Select this row to review access decision history
-                            </span>
-                          {/if}
-                          <span class="band-trim-stack">
-                            <strong>{user.account.display_name}</strong>
+                        <IdentityRow>
+                          {#snippet mark()}<Avatar account={user.account} size={32} />{/snippet}
+                          {#snippet extra()}
+                            {#if hasDecisionHistory(user)}
+                              <span class="visually-hidden">
+                                Select this row to review access decision history
+                              </span>
+                            {/if}
+                          {/snippet}
+                          {#snippet name()}<strong>{user.account.display_name}</strong>{/snippet}
+                          {#snippet handle()}
                             <span class="user-login mono">@{user.account.login}</span>
-                          </span>
-                        </span>
+                          {/snippet}
+                        </IdentityRow>
                       </th>
                       <td data-label="Role">
                         {#if user.manageable && !readOnly}
@@ -1562,9 +1568,7 @@
           {#if userLoadMoreFailure !== null}
             <div class="load-more-alert" role="alert">
               <span>{userLoadMoreFailure}</span>
-              <button class="btn" type="button" onclick={() => void loadNextUsers()}
-                >Try again</button
-              >
+              <Button onclick={() => void loadNextUsers()}>Try again</Button>
             </div>
           {/if}
         </div>
@@ -1578,12 +1582,11 @@
           aria-busy={loadingInvitations}
         >
           {#if loadingInvitations && invitationPage === null}
-            <div class="table-skeleton" aria-hidden="true">
-              {#each [0, 1, 2, 3, 4, 5] as index (index)}
-                <span></span>
-              {/each}
-            </div>
-            <p class="visually-hidden" role="status">Loading invitations</p>
+            <Skeleton
+              label="Loading invitations"
+              --skeleton-bar-top="1.15rem"
+              --skeleton-bar-a-width="min(13rem, 28%)"
+            />
           {:else if invitationFailure !== null && invitationPage === null}
             <ResultProblem
               title="Invitations could not be loaded"
@@ -1782,9 +1785,7 @@
           {#if invitationLoadMoreFailure !== null}
             <div class="load-more-alert" role="alert">
               <span>{invitationLoadMoreFailure}</span>
-              <button class="btn" type="button" onclick={() => void loadNextInvitations()}
-                >Try again</button
-              >
+              <Button onclick={() => void loadNextInvitations()}>Try again</Button>
             </div>
           {/if}
         </div>
@@ -1837,8 +1838,8 @@
 >
   <form id="add-user-form" class="add-user-form" onsubmit={submitAdd}>
     {#if addStage === 'confirm'}
-      <div class="confirmation-note">
-        <span class="warning-mark" aria-hidden="true">!</span>
+      <Callout>
+        {#snippet icon()}<span class="warning-mark" aria-hidden="true">!</span>{/snippet}
         <div>
           <strong>Declining was an answer</strong>
           <p>
@@ -1846,7 +1847,7 @@
             the audit record.
           </p>
         </div>
-      </div>
+      </Callout>
     {:else if addStage === 'form'}
       <div class="add-scope-summary">
         <span class="add-scope-icon" aria-hidden="true">
@@ -1898,35 +1899,28 @@
         />
         <label class="form-field">
           <span>Role</span>
-          <span class="select-wrap">
-            <select
-              class="select-input"
-              value={addRole}
-              aria-label="Role"
-              onchange={(event) => (addRole = event.currentTarget.value as InstallationRole)}
-            >
-              {#each addRoleOptions as option (option.value)}
-                <option value={option.value}>{option.label}</option>
-              {/each}
-            </select>
-            <Icon name="chevron-down" size={14} strokeWidth={2} />
-          </span>
+          <Select
+            value={addRole}
+            aria-label="Role"
+            onchange={(event) => (addRole = event.currentTarget.value as InstallationRole)}
+          >
+            {#each addRoleOptions as option (option.value)}
+              <option value={option.value}>{option.label}</option>
+            {/each}
+          </Select>
         </label>
         {#if accessMethod === 'invite'}
           <label class="form-field">
             <span>Expires after</span>
-            <span class="select-wrap">
-              <select
-                class="select-input"
-                bind:value={expiresInDays}
-                aria-label="Invitation expiry"
-              >
-                <option value={1}>1 day</option>
-                <option value={7}>7 days</option>
-                <option value={30}>30 days</option>
-              </select>
-              <Icon name="chevron-down" size={14} strokeWidth={2} />
-            </span>
+            <Select
+              bind:value={expiresInDays}
+              aria-label="Invitation expiry"
+              options={[
+                { value: 1, label: '1 day' },
+                { value: 7, label: '7 days' },
+                { value: 30, label: '30 days' },
+              ]}
+            />
           </label>
         {/if}
       </div>
@@ -1938,41 +1932,29 @@
           <p>Share this single-use link with the invited GitHub user</p>
         </div>
       </div>
-      <label class="form-field">
-        <span>Invitation link</span>
-        <input class="text-input mono" readonly value={generatedLink} />
-      </label>
-      {#if linkCopied === 'failed'}
-        <p class="link-clipboard" role="alert">
-          <Icon name="alert" size={13} strokeWidth={2} />
-          Copy it from the field above, the clipboard was not available
-        </p>
-      {/if}
+      <CopyableLinkField
+        label="Invitation link"
+        value={generatedLink}
+        failed={linkCopied === 'failed'}
+      />
     {/if}
-    {#if addFailure !== null}<p class="form-error" role="alert">{addFailure}</p>{/if}
+    <FormError message={addFailure} />
   </form>
 
   {#snippet footer()}
     {#if addStage === 'confirm'}
-      <button class="btn btn-ghost" type="button" onclick={() => (declinedLogin = null)}>
-        Back
-      </button>
-      <button
-        class="btn btn-signal"
-        type="button"
-        disabled={adding}
-        onclick={() => void grantAccess(true)}
-      >
+      <Button tone="ghost" onclick={() => (declinedLogin = null)}>Back</Button>
+      <Button tone="signal" disabled={adding} onclick={() => void grantAccess(true)}>
         {adding ? 'Sending…' : 'Invite again'}
-      </button>
+      </Button>
     {:else}
-      <button class="btn btn-ghost" type="button" onclick={closeAddModal}>
+      <Button tone="ghost" onclick={closeAddModal}>
         {addStage === 'form' ? 'Cancel' : 'Done'}
-      </button>
+      </Button>
     {/if}
     {#if addStage === 'form'}
-      <button
-        class="btn btn-signal"
+      <Button
+        tone="signal"
         type="submit"
         form="add-user-form"
         disabled={adding || login.trim() === '' || namingSelf}
@@ -1984,26 +1966,25 @@
           : accessMethod === 'invite'
             ? 'Send invitation'
             : 'Add user'}
-      </button>
+      </Button>
     {:else if addStage === 'link'}
-      <button
-        class="btn btn-signal copy-button"
-        type="button"
-        onclick={() => void copyGeneratedLink()}
-      >
+      <Button tone="signal" class="copy-button" onclick={() => void copyGeneratedLink()}>
         Copy link
-      </button>
+      </Button>
     {/if}
   {/snippet}
 </Modal>
 
-<Modal
+<ConfirmDialog
   id={ACTION_DIALOG}
   open={actionUser !== null && pendingAction !== null}
   title={actionTitle()}
   description={actionDescription()}
   returnFocus={actionTrigger}
   onClose={cancelAction}
+  onConfirm={() => void confirmAction()}
+  confirmTone={pendingAction === 'restore' ? 'signal' : 'stop'}
+  busy={savingAccount !== null}
 >
   {#if pendingAction === 'suspend'}
     <label class="form-field">
@@ -2013,61 +1994,35 @@
         placeholder="Add context for other administrators"
         maxlength="500"
         rows="4"
-        bind:value={reason}
-        data-modal-focus></textarea>
+        bind:value={reason}></textarea>
       <small>{reason.length}/500 characters</small>
     </label>
   {:else}
-    <div class="confirmation-note">
-      <span class="warning-mark" aria-hidden="true">!</span>
+    <Callout>
+      {#snippet icon()}<span class="warning-mark" aria-hidden="true">!</span>{/snippet}
       <p>Review this change carefully before confirming</p>
-    </div>
+    </Callout>
   {/if}
+</ConfirmDialog>
 
-  {#snippet footer()}
-    <button class="btn btn-ghost" type="button" data-modal-focus onclick={cancelAction}
-      >Cancel</button
-    >
-    <button
-      class="btn"
-      class:btn-stop={pendingAction !== 'restore'}
-      class:btn-signal={pendingAction === 'restore'}
-      type="button"
-      disabled={savingAccount !== null}
-      onclick={() => void confirmAction()}
-    >
-      {savingAccount === null ? 'Confirm' : 'Saving…'}
-    </button>
-  {/snippet}
-</Modal>
-
-<Modal
+<ConfirmDialog
   id={INVITATION_DIALOG}
   open={pendingInvitation !== null}
   title={`Revoke invitation for @${pendingInvitation?.account.login ?? ''}`}
   description="The current link will stop working immediately and the audit record will remain"
   returnFocus={invitationActionTrigger}
   onClose={closeInvitationAction}
+  onConfirm={() => void revoke()}
+  confirmTone="stop"
+  confirmLabel="Revoke invitation"
+  busyLabel="Revoking…"
+  busy={invitationBusy !== null}
 >
-  <div class="confirmation-note">
-    <span class="warning-mark" aria-hidden="true">!</span>
+  <Callout>
+    {#snippet icon()}<span class="warning-mark" aria-hidden="true">!</span>{/snippet}
     <p>The user can only join if you create and share a new invitation</p>
-  </div>
-
-  {#snippet footer()}
-    <button class="btn btn-ghost" type="button" data-modal-focus onclick={closeInvitationAction}
-      >Cancel</button
-    >
-    <button
-      class="btn btn-stop"
-      type="button"
-      disabled={invitationBusy !== null}
-      onclick={() => void revoke()}
-    >
-      {invitationBusy === null ? 'Revoke invitation' : 'Revoking…'}
-    </button>
-  {/snippet}
-</Modal>
+  </Callout>
+</ConfirmDialog>
 
 <style>
   .user-management {
@@ -2158,45 +2113,6 @@
   .empty-row td {
     border-bottom: 0;
     height: 12rem;
-  }
-
-  .table-skeleton {
-    display: grid;
-  }
-
-  .table-skeleton span {
-    animation: user-skeleton-pulse 1.35s ease-in-out infinite alternate;
-    border-bottom: 1px solid var(--rule);
-    display: block;
-    height: 3.5rem;
-    position: relative;
-  }
-
-  .table-skeleton span::before,
-  .table-skeleton span::after {
-    background: var(--surface-inset);
-    border-radius: var(--radius-control);
-    content: '';
-    height: 0.75rem;
-    left: var(--space-4);
-    position: absolute;
-    top: 1.15rem;
-    width: min(13rem, 28%);
-  }
-
-  .table-skeleton span::after {
-    left: 46%;
-    width: min(8rem, 18%);
-  }
-
-  @keyframes user-skeleton-pulse {
-    from {
-      opacity: 0.48;
-    }
-
-    to {
-      opacity: 0.88;
-    }
   }
 
   /* Surface, keyline, corner and lift come from `.table-card` in `app.css`. */
@@ -2855,7 +2771,7 @@
   }
 
   .invitation-created p,
-  .confirmation-note p {
+  :global(.callout) p {
     color: var(--dim);
     font-size: 0.75rem;
     margin: 0.15rem 0 0;

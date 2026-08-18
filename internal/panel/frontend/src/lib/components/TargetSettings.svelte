@@ -1,10 +1,11 @@
 <script lang="ts">
   import { countOverrides } from '../config';
   import type { ConfigPatch, PanelTarget, TargetSettingsInput } from '../types';
+  import FormError from './FormError.svelte';
   import Chip from './Chip.svelte';
   import ConfigEditor from './ConfigEditor.svelte';
   import HelpTip from './HelpTip.svelte';
-  import PanelHeader from './PanelHeader.svelte';
+  import PageHeader from './PageHeader.svelte';
   import Plate from './Plate.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
 
@@ -68,7 +69,7 @@
 </script>
 
 <section class="settings-page" aria-labelledby="settings-heading">
-  <PanelHeader
+  <PageHeader
     id="settings-heading"
     title="Settings"
     description="Defaults every repository inherits unless a repository overrides them"
@@ -100,7 +101,7 @@
   </section>
 
   {#if failure !== null}
-    <p class="form-error" role="alert">{failure}</p>
+    <FormError message={failure} />
   {/if}
 
   <Plate label="Configuration defaults">
@@ -176,9 +177,9 @@
     opacity: 1;
   }
 
-  .form-error {
-    color: var(--stop);
-    font-size: 0.8125rem;
+  /* Pulled up against the section above it and given room below; the rest comes
+     from `app.css`. `:global` because `FormError` renders the paragraph. */
+  :global(.form-error) {
     margin: -0.5rem 0 1rem;
   }
 

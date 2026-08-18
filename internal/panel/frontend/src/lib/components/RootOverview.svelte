@@ -10,6 +10,8 @@
   } from '../format';
   import type { DependencyState, RootOverview } from '../types';
   import type { ChipTone } from './Chip.svelte';
+  import StatusPill from './StatusPill.svelte';
+  import Button from './Button.svelte';
   import Chip from './Chip.svelte';
   import Icon from './Icon.svelte';
   import QueueSummary from './QueueSummary.svelte';
@@ -155,9 +157,7 @@
   title="Overview"
   subtitle="Live service, catalog, ownership, and security state"
 >
-  <span class="status-pill"
-    ><span class="status-pill-dot live"></span><span class="cap-trim">WebSocket live</span></span
-  >
+  <StatusPill dot live>WebSocket live</StatusPill>
 </RootPageHeader>
 
 <section class="overview" aria-label="Root operational overview">
@@ -168,7 +168,7 @@
         <strong>Operational state is unavailable</strong>
         <p>{failure}</p>
       </div>
-      <button class="btn" type="button" onclick={() => void load()}>Try again</button>
+      <Button onclick={() => void load()}>Try again</Button>
     </div>
   {:else if loading && overview === null}
     <div class="overview-loading" role="status">
@@ -399,13 +399,14 @@
             GitHub Members permission approval is blocking Owner synchronization
           </p>
         {/if}
-        <a
-          class="btn panel-link"
+        <Button
+          class="panel-link"
           href={installationsHref}
           onclick={(event) => navigate(event, onOpenInstallations)}
         >
-          Review installations <Icon name="chevron-right" size={14} strokeWidth={2} />
-        </a>
+          Review installations
+          {#snippet trailing()}<Icon name="chevron-right" size={14} strokeWidth={2} />{/snippet}
+        </Button>
       </article>
 
       <article class="overview-panel failures-panel">
@@ -826,7 +827,7 @@
     width: 1.125rem;
   }
 
-  .panel-link {
+  .overview-panel :global(.panel-link) {
     align-self: flex-start;
     margin-top: var(--space-3);
   }

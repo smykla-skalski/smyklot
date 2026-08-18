@@ -47,7 +47,9 @@
     RepositoryStateFilter,
     RepositorySummary,
   } from '../types';
+  import Skeleton from './Skeleton.svelte';
   import SortIndicator from './SortIndicator.svelte';
+  import Button from './Button.svelte';
   import Chip from './Chip.svelte';
   import FileStatusIndicator from './FileStatusIndicator.svelte';
   import FilterMenu from './FilterMenu.svelte';
@@ -55,7 +57,7 @@
   import Icon from './Icon.svelte';
   import InfiniteLoadSentinel from './InfiniteLoadSentinel.svelte';
   import InheritControl from './InheritControl.svelte';
-  import PanelHeader from './PanelHeader.svelte';
+  import PageHeader from './PageHeader.svelte';
   import RepositorySettings from './RepositorySettings.svelte';
   import ResultProblem from './ResultProblem.svelte';
   import SearchField from './SearchField.svelte';
@@ -800,7 +802,7 @@
   />
 {:else}
   <section class="plate repository-panel" aria-labelledby="repositories-heading">
-    <PanelHeader
+    <PageHeader
       id="repositories-heading"
       title="Repositories"
       description="Enablement and settings for every repository in this workspace"
@@ -879,12 +881,11 @@
           onRetry={() => retry()}
         />
       {:else if loading && page === null}
-        <div class="table-skeleton" aria-hidden="true">
-          {#each [0, 1, 2, 3, 4, 5] as index (index)}
-            <span></span>
-          {/each}
-        </div>
-        <p class="visually-hidden" role="status">Loading repositories</p>
+        <Skeleton
+          label="Loading repositories"
+          --skeleton-bar-a-width="min(14rem, 32%)"
+          --skeleton-bar-b-left="48%"
+        />
       {:else}
         <div class="repository-table-scroll table-card">
           <table class="repositories">
@@ -1104,7 +1105,7 @@
       {#if loadMoreProblem !== null}
         <div class="load-more-alert" role="alert">
           <span>{loadMoreProblem}</span>
-          <button class="btn" type="button" onclick={() => void loadNextPage()}>Try again</button>
+          <Button onclick={() => void loadNextPage()}>Try again</Button>
         </div>
       {/if}
     </div>
@@ -1190,45 +1191,6 @@
   .empty-row td {
     border-bottom: 0;
     height: 12rem;
-  }
-
-  .table-skeleton {
-    display: grid;
-  }
-
-  .table-skeleton span {
-    animation: repository-skeleton-pulse 1.35s ease-in-out infinite alternate;
-    border-bottom: 1px solid var(--rule);
-    display: block;
-    height: 3.5rem;
-    position: relative;
-  }
-
-  .table-skeleton span::before,
-  .table-skeleton span::after {
-    background: var(--surface-inset);
-    border-radius: var(--radius-control);
-    content: '';
-    height: 0.75rem;
-    left: var(--space-4);
-    position: absolute;
-    top: 1rem;
-    width: min(14rem, 32%);
-  }
-
-  .table-skeleton span::after {
-    left: 48%;
-    width: min(8rem, 18%);
-  }
-
-  @keyframes repository-skeleton-pulse {
-    from {
-      opacity: 0.48;
-    }
-
-    to {
-      opacity: 0.88;
-    }
   }
 
   /* Surface, keyline, corner and lift come from `.table-card` in `app.css`. */

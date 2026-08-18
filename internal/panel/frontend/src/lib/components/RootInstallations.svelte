@@ -7,6 +7,7 @@
   import type { HistorySection, RootRoute, RootInstallationView } from '../routes';
   import type { RootInstallation } from '../types';
   import Chip from './Chip.svelte';
+  import DataTable from './DataTable.svelte';
   import Icon from './Icon.svelte';
   import RootPageHeader from './RootPageHeader.svelte';
   import SearchField from './SearchField.svelte';
@@ -135,6 +136,16 @@
     if (installation.ownership.stale) return 'neutral';
     return 'clear';
   }
+  /* Named once, so the count the empty row spans is counted rather than typed -
+     `colspan="5"` was a number that had to be remembered every time a column
+     moved. */
+  const COLUMNS = [
+    { label: 'Installation' },
+    { label: 'Repositories', class: 'count-heading' },
+    { label: 'Delivery' },
+    { label: 'Ownership' },
+    { label: 'Owners' },
+  ];
 </script>
 
 {#if route.rootView === 'installation' && selected !== null}
@@ -197,114 +208,96 @@
       />
     </div>
 
-    <!-- Keyboard focus lets users scroll columns that overflow the viewport. -->
-    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-    <div
-      class="installation-table-shell table-card"
-      role="region"
-      tabindex="0"
-      aria-label="Installation catalog table"
+    <DataTable
+      class="installation-table-shell"
+      pinned
+      caption="Installation catalog"
+      regionLabel="Installation catalog table"
+      rows={visibleInstallations}
+      rowKey={(installation) => installation.id}
+      columns={COLUMNS}
+      rowAttrs={(installation) => ({
+        class: 'installation-row data-row',
+        tabindex: 0,
+        onclick: (event: MouseEvent) => clickRow(event, installation),
+        onkeydown: (event: KeyboardEvent) => keyRow(event, installation),
+      })}
     >
-      <table>
-        <caption class="visually-hidden">Installation catalog</caption>
-        <thead>
-          <tr>
-            <th scope="col"><span class="cap-trim">Installation</span></th>
-            <th scope="col" class="count-heading"><span class="cap-trim">Repositories</span></th>
-            <th scope="col"><span class="cap-trim">Delivery</span></th>
-            <th scope="col"><span class="cap-trim">Ownership</span></th>
-            <th scope="col"><span class="cap-trim">Owners</span></th>
-          </tr>
-        </thead>
-        <tbody data-panel-scroll>
-          {#each visibleInstallations as installation (installation.id)}
-            <tr
-              class="installation-row data-row"
-              tabindex="0"
-              onclick={(event) => clickRow(event, installation)}
-              onkeydown={(event) => keyRow(event, installation)}
-            >
-              <th scope="row">
-                <span class="installation-identity">
-                  <span class="installation-icon">
-                    <span class="cap-trim">
-                      {monogram(installation.account.display_name, installation.account.login)}
-                    </span>
-                  </span>
-                  <span class="band-trim-stack">
-                    <a
-                      class="installation-link"
-                      href={hrefFor(installation.account.login, 'settings')}
-                      onclick={(event) => navigate(event, installation, 'settings')}
-                    >
-                      {installation.account.display_name}
-                    </a>
-                    <small>@{installation.account.login} · #{installation.installation_id}</small>
-                  </span>
-                </span>
-              </th>
-              <td class="count-cell">
-                {#if installation.repository_counts.total === 0}
-                  <span class="cell-dash band-trim" aria-label="No repositories">—</span>
-                {:else}
-                  <span class="repo-count band-trim">
-                    <b>{installation.repository_counts.enabled}</b>
-                    of {installation.repository_counts.enabled +
-                      installation.repository_counts.disabled} enabled
-                  </span>
-                {/if}
-              </td>
-              <td>
-                <span title={deliveryTitle(installation)}>
-                  <Chip tone={installation.delivery_health.failed === 0 ? 'clear' : 'stop'} dot>
-                    {installation.delivery_health.failed === 0
-                      ? 'Healthy'
-                      : `${installation.delivery_health.failed} failure${installation.delivery_health.failed === 1 ? '' : 's'}`}
-                  </Chip>
-                </span>
-              </td>
-              <td>
-                <!-- The reason rides on the chip rather than a second line: the
+      {#snippet cells(installation)}
+        <th scope="row">
+          <span class="installation-identity">
+            <span class="installation-icon">
+              <span class="cap-trim">
+                {monogram(installation.account.display_name, installation.account.login)}
+              </span>
+            </span>
+            <span class="band-trim-stack">
+              <a
+                class="installation-link"
+                href={hrefFor(installation.account.login, 'settings')}
+                onclick={(event) => navigate(event, installation, 'settings')}
+              >
+                {installation.account.display_name}
+              </a>
+              <small>@{installation.account.login} · #{installation.installation_id}</small>
+            </span>
+          </span>
+        </th>
+        <td class="count-cell">
+          {#if installation.repository_counts.total === 0}
+            <span class="cell-dash band-trim" aria-label="No repositories">—</span>
+          {:else}
+            <span class="repo-count band-trim">
+              <b>{installation.repository_counts.enabled}</b>
+              of {installation.repository_counts.enabled + installation.repository_counts.disabled} enabled
+            </span>
+          {/if}
+        </td>
+        <td>
+          <span title={deliveryTitle(installation)}>
+            <Chip tone={installation.delivery_health.failed === 0 ? 'clear' : 'stop'} dot>
+              {installation.delivery_health.failed === 0
+                ? 'Healthy'
+                : `${installation.delivery_health.failed} failure${installation.delivery_health.failed === 1 ? '' : 's'}`}
+            </Chip>
+          </span>
+        </td>
+        <td>
+          <!-- The reason rides on the chip rather than a second line: the
                      mock keeps every catalog row to one chip high, and the same
                      text is spelled out on the overview's ownership card. -->
-                <span class="chip-stack" title={installation.ownership.detail}>
-                  <Chip tone={ownershipTone(installation)} dot>
-                    {ownershipLabel(installation)}
-                  </Chip>
-                </span>
-              </td>
-              <td>
-                {#if installation.ownership.owner_count === 0}
-                  <span class="cell-dash band-trim" aria-label="No owners">—</span>
-                {:else}
-                  <span class="owners-line band-trim">
-                    {installation.ownership.owner_count} ·
-                    {installation.ownership.source === 'personal' ? 'Account owner' : 'Org admins'}
-                  </span>
-                {/if}
-              </td>
-            </tr>
+          <span class="chip-stack" title={installation.ownership.detail}>
+            <Chip tone={ownershipTone(installation)} dot>
+              {ownershipLabel(installation)}
+            </Chip>
+          </span>
+        </td>
+        <td>
+          {#if installation.ownership.owner_count === 0}
+            <span class="cell-dash band-trim" aria-label="No owners">—</span>
           {:else}
-            <tr class="state-row">
-              <td colspan="5" class="empty-cell">
-                {#if loading && installations.length === 0}
-                  Loading installation catalog…
-                {:else if failure !== null}
-                  <span role="alert">{failure}</span>
-                {:else}
-                  <TableEmptyState
-                    title="No installations match"
-                    description={`Nothing in the catalog matches “${query.trim()}”`}
-                    actionLabel="Clear search"
-                    onAction={() => (query = '')}
-                  />
-                {/if}
-              </td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-    </div>
+            <span class="owners-line band-trim">
+              {installation.ownership.owner_count} ·
+              {installation.ownership.source === 'personal' ? 'Account owner' : 'Org admins'}
+            </span>
+          {/if}
+        </td>
+      {/snippet}
+      {#snippet empty()}
+        {#if loading && installations.length === 0}
+          Loading installation catalog…
+        {:else if failure !== null}
+          <span role="alert">{failure}</span>
+        {:else}
+          <TableEmptyState
+            title="No installations match"
+            description={`Nothing in the catalog matches “${query.trim()}”`}
+            actionLabel="Clear search"
+            onAction={() => (query = '')}
+          />
+        {/if}
+      {/snippet}
+    </DataTable>
   </section>
 {/if}
 
@@ -355,76 +348,29 @@
     color: var(--stop);
   }
 
-  /* Surface, keyline, corner and lift come from `.table-card` in `app.css` -
-     this was the only table drawing them, and the other five were bare. */
-  .installation-table-shell {
-    overflow-y: auto;
+  /* Everything this block used to hold - the scroll shell, `border-collapse`, the
+     cell padding and separator, the band height, the row-header weight - is now
+     `DataTable` and the `.data-table` rules in `app.css`. What is left is this
+     table's own: its scroll floor, and the columns.
+
+     The first-child and last-child padding overrides went with it. They restated
+     `var(--space-3)`, which is the padding every cell already had, so all four
+     were writing a value over itself. */
+  :global(.installation-table-shell) {
+    --table-min-width: 52rem;
   }
 
-  /* `separate`, not `collapse`: a collapsed border is shared between adjacent
-     rows, so each cell ends up owning half of it and every row box lands on a
-     .5 - the header measured 40.5 against the approved table's 41, and every
-     row 59.5 inside a 60px row. Separated borders keep each box whole. */
-  table {
-    border-collapse: separate;
-    border-spacing: 0;
-    min-width: 52rem;
-    width: 100%;
-  }
-
-  /* The header's rule and its type come from `thead th` in `app.css`. A
-     `font-size` on `th` here would outrank it - a class selector beats two
-     element ones - and this table's heading would be the only 13px one. */
-  /* `tbody th` as well as `td`: the identity cell is a row header, and without
-     the separator it is a pixel taller than the cells beside it. */
-  td,
-  tbody th {
-    border-bottom: 1px solid var(--rule);
-    font-size: var(--font-size-meta);
-  }
-
-  th,
-  td {
-    padding: var(--space-2) var(--space-3);
-    text-align: left;
-    vertical-align: middle;
-  }
-
-  th:first-child,
-  td:first-child {
-    padding-left: var(--space-3);
-  }
-
-  th:last-child,
-  td:last-child {
-    padding-right: var(--space-3);
-  }
-
-  /* text-box only trims a block box, and a cell's label is inline by default. */
-  thead th .cap-trim {
-    display: block;
-  }
-
-  /* 2.5rem of band plus its own rule. NOT via box-sizing: content-box - the
-     sticky-header layout gives thead and tbody rows the same percentage column
-     widths, and under content-box the header's percentages stop including its
-     24px of padding, so the two grids drift apart by a whole cell. */
-  thead th {
-    height: calc(2.5rem + 1px);
-    padding-block: 0;
-  }
-
-  tbody th {
-    font-weight: inherit;
-  }
-
-  .installation-row {
+  /* `:global`, and it has to be: `.installation-row` is a class on a `<tr>` that
+     `DataTable` renders, so the row carries the component's scope class and not
+     this file's. Anchored through the class passed to `DataTable`, so it reaches
+     this table's rows and no others. */
+  :global(.installation-table-shell .installation-row) {
     cursor: pointer;
     height: 3.75rem;
     transition: background-color var(--duration-fast) var(--ease-standard);
   }
 
-  .installation-row:focus-visible {
+  :global(.installation-table-shell .installation-row:focus-visible) {
     outline: 2px solid var(--focus);
     outline-offset: -2px;
   }
@@ -432,8 +378,7 @@
   /* Left, like every other column. The mock reads this cell as a sentence
      ("10 of 28 enabled"), not as a figure to scan down, so right-aligning it
      put the header and the value on two different edges. */
-  .count-heading,
-  .count-cell {
+  :global(.installation-table-shell :is(.count-heading, .count-cell)) {
     text-align: left;
   }
 
@@ -536,76 +481,31 @@
     width: 2.25rem;
   }
 
-  .empty-cell {
-    color: var(--text-secondary);
-    height: 12rem;
-    text-align: center;
-  }
+  /* The layout is `pinned` on `DataTable` now; these are the part of it that could
+     not move - the explicit widths a fixed row-table needs so thead and tbody line
+     up. The approved catalog's 2fr 1.2fr 1.1fr 1.5fr 1fr, written as percentages of
+     the 6.8fr total so they hold at any table width.
 
-  .state-row:hover {
-    background: transparent;
-  }
-
-  /* Pinned table mode, matching the other table views: the view fills the
-     workspace, the column header stays put, and only the rows scroll. */
+     `:global` and anchored, because every element named here is one `DataTable`
+     renders. */
   @media (min-width: 64.001rem) {
-    .installation-table-shell,
-    table {
-      display: flex;
-      flex: 1;
-      flex-direction: column;
-      min-height: 0;
-    }
-
-    thead {
-      display: block;
-      flex: none;
-    }
-
-    tbody {
-      background: var(--table-filler-bg);
-      display: block;
-      flex: 1;
-      min-height: 0;
-      overflow-y: auto;
-    }
-
-    thead tr,
-    tbody tr {
-      display: table;
-      table-layout: fixed;
-      width: 100%;
-    }
-
-    tbody tr {
-      background: var(--surface-base);
-    }
-
-    /* Fixed row-tables need explicit widths so thead and tbody columns line up.
-       These are the approved catalog's 2fr 1.2fr 1.1fr 1.5fr 1fr, written as
-       percentages of the 6.8fr total so they hold at any table width. */
-    th:nth-child(1),
-    td:nth-child(1) {
+    :global(.installation-table-shell :is(th, td):nth-child(1)) {
       width: 29.412%;
     }
 
-    th:nth-child(2),
-    td:nth-child(2) {
+    :global(.installation-table-shell :is(th, td):nth-child(2)) {
       width: 17.647%;
     }
 
-    th:nth-child(3),
-    td:nth-child(3) {
+    :global(.installation-table-shell :is(th, td):nth-child(3)) {
       width: 16.176%;
     }
 
-    th:nth-child(4),
-    td:nth-child(4) {
+    :global(.installation-table-shell :is(th, td):nth-child(4)) {
       width: 22.059%;
     }
 
-    th:nth-child(5),
-    td:nth-child(5) {
+    :global(.installation-table-shell :is(th, td):nth-child(5)) {
       width: 14.706%;
     }
   }

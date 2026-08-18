@@ -11,9 +11,10 @@
   import type { PanelApi } from '../api';
   import { formatRelative, formatTimestamp } from '../format';
   import type { NotificationPage, SecurityNotification } from '../types';
+  import Button from './Button.svelte';
   import Chip from './Chip.svelte';
   import Icon from './Icon.svelte';
-  import PanelHeader from './PanelHeader.svelte';
+  import PageHeader from './PageHeader.svelte';
   import ResultProblem from './ResultProblem.svelte';
 
   const {
@@ -151,7 +152,7 @@
 </script>
 
 <section class="inbox-page" aria-labelledby="inbox-heading">
-  <PanelHeader
+  <PageHeader
     id="inbox-heading"
     title="Inbox"
     description="Audited Root activity on workspaces you own"
@@ -159,7 +160,7 @@
     {#snippet actions()}
       <Chip tone="accent">{unread === 0 ? 'All read' : `${unread} unread`} · {total} retained</Chip>
     {/snippet}
-  </PanelHeader>
+  </PageHeader>
 
   <div class="inbox-results" aria-busy={loading}>
     <!-- A refresh that failed over a list already read has not made the list wrong. -->
@@ -254,14 +255,13 @@
                   {/if}
                 </div>
                 {#if notification.read_at === undefined}
-                  <button
-                    class="btn mark-read"
-                    type="button"
+                  <Button
+                    class="mark-read"
                     aria-label={`Mark ${actionLabel(notification.action)} for ${notification.installation.display_name} as read`}
                     onclick={() => read(notification)}
                   >
-                    <span class="button-label">Mark read</span>
-                  </button>
+                    Mark read
+                  </Button>
                 {:else}
                   <span class="read-state"
                     ><span class="read-slot"><Icon name="check" size={14} /></span><span
@@ -282,14 +282,9 @@
       </div>
 
       {#if notificationsQuery.hasNextPage}
-        <button
-          class="btn load-more"
-          type="button"
-          disabled={loadingMore}
-          onclick={() => load(false)}
-        >
+        <Button class="load-more" disabled={loadingMore} onclick={() => load(false)}>
           {loadingMore ? 'Loading…' : 'Load earlier events'}
-        </button>
+        </Button>
       {/if}
     {/if}
   </div>
@@ -514,7 +509,11 @@
     overflow-wrap: anywhere;
   }
 
-  .mark-read,
+  /* `:global` because `Button` renders the control, so it wears that component's
+     scope class and a bare `.mark-read` no longer matches. Anchored to the list, so
+     it still reaches nothing outside this component. Load-bearing: without it the
+     control loses its vertical centring against the event beside it. */
+  .notification-list :global(.mark-read),
   .read-state {
     align-self: center;
   }
@@ -558,25 +557,20 @@
   }
 
   .inbox-skeleton span {
-    animation: inbox-skeleton-pulse 1.35s ease-in-out infinite alternate;
+    /* The panel's one placeholder pulse, from `app.css`. The endpoints stay this
+       placeholder's own - the eight copies of this keyframe had drifted into three
+       different ranges, and collapsing them was not allowed to move any of them. */
+    --skeleton-from: 0.52;
+    --skeleton-to: 0.9;
+    animation: skeleton-pulse 1.35s ease-in-out infinite alternate;
     background: var(--surface-inset);
     border-radius: var(--radius-control);
     display: block;
     height: 7.5rem;
   }
 
-  .load-more {
+  .inbox-results :global(.load-more) {
     margin: var(--space-4) auto 0;
-  }
-
-  @keyframes inbox-skeleton-pulse {
-    from {
-      opacity: 0.52;
-    }
-
-    to {
-      opacity: 0.9;
-    }
   }
 
   @media (max-width: 38rem) {

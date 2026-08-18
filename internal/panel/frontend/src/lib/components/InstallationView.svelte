@@ -2,6 +2,7 @@
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
   import { getPanelSession, type PanelSession } from '#lib/session.svelte.js';
   import type { TargetSettingsInput } from '#lib/types.js';
+  import Button from './Button.svelte';
   import Plate from './Plate.svelte';
 
   /**
@@ -60,7 +61,7 @@
 {#snippet failedView(label: string, error: unknown)}
   <Plate label="Problem" tone="alarm">
     <p>Could not load {label}: {chunkError(error)}</p>
-    <button class="btn" type="button" onclick={() => window.location.reload()}>Reload panel</button>
+    <Button onclick={() => window.location.reload()}>Reload panel</Button>
   </Plate>
 {/snippet}
 
@@ -185,9 +186,7 @@
           panel
         </p>
       </div>
-      <button class="btn btn-signal" type="button" onclick={() => void session.load()}>
-        Reload panel
-      </button>
+      <Button tone="signal" onclick={() => void session.load()}>Reload panel</Button>
     </div>
   </Plate>
 {/if}
@@ -233,7 +232,7 @@
       align-items: start;
       grid-template-columns: auto minmax(0, 1fr);
     }
-    .empty-panel-state .btn {
+    .empty-panel-state :global(.btn) {
       grid-column: 1 / -1;
       justify-self: start;
     }

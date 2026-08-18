@@ -15,10 +15,16 @@
     "format": "prettier --write .",
     "test": "NODE_OPTIONS=--no-experimental-webstorage vitest run",
     "prepare": "svelte-kit sync",
-    "test:browser": "vitest run --config vitest.browser.config.ts"
+    "test:browser": "vitest run --config vitest.browser.config.ts",
+    "storybook": "SMYKLOT_PANEL_DEV_MOCK=1 storybook dev -p 6008 --no-open",
+    "storybook:build": "SMYKLOT_PANEL_DEV_MOCK=1 storybook build"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@storybook/addon-a11y": "10.5.8",
+    "@storybook/addon-docs": "10.5.8",
+    "@storybook/addon-svelte-csf": "5.1.2",
+    "@storybook/sveltekit": "10.5.8",
     "@sveltejs/adapter-static": "4.0.0-next.4",
     "@sveltejs/kit": "3.0.0-next.23",
     "@sveltejs/vite-plugin-svelte": "7.3.0",
@@ -34,6 +40,7 @@
     "playwright-core": "1.62.1",
     "prettier": "3.9.6",
     "prettier-plugin-svelte": "4.1.1",
+    "storybook": "10.5.8",
     "svelte": "5.56.9",
     "svelte-check": "4.7.6",
     "typescript": "npm:@typescript/typescript6@6.0.2",

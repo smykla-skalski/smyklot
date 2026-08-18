@@ -25,6 +25,12 @@
     UpdateRootUserInput,
   } from '../types';
   import ActionMenu, { type ActionMenuItem } from './ActionMenu.svelte';
+  import Button, { type ButtonTone } from './Button.svelte';
+  import ConfirmDialog from './ConfirmDialog.svelte';
+  import Select from './Select.svelte';
+  import Callout from './Callout.svelte';
+  import IdentityRow from './IdentityRow.svelte';
+  import Skeleton from './Skeleton.svelte';
   import SortIndicator from './SortIndicator.svelte';
   import Avatar from './Avatar.svelte';
   import Chip, { type ChipTone } from './Chip.svelte';
@@ -172,6 +178,16 @@
   });
   const pendingAction = $derived(
     actionUser === null ? null : userAction(dialogRoute.param(ACTION_DIALOG, 'action')),
+  );
+  /* What the confirmation button reads as: taking something away is destructive,
+     giving something is the action the dialog is here for, and anything else is a
+     plain control. One value rather than two class toggles that could both be on. */
+  const confirmTone = $derived<ButtonTone>(
+    pendingAction === 'ban' || pendingAction === 'remove' || pendingAction === 'demote_root'
+      ? 'stop'
+      : pendingAction === 'promote_root' || pendingAction === 'restore'
+        ? 'signal'
+        : 'default',
   );
   const installationsQuery = createQuery(() => ({
     queryKey: ['root-installations'],
@@ -487,21 +503,20 @@
   >
     {#if section === 'invitations'}
       {#if canManageInvitations}
-        <button
-          class="btn btn-signal"
-          type="button"
-          bind:this={inviteTrigger}
+        <Button
+          tone="signal"
+          bind:element={inviteTrigger}
           onclick={() => invitations?.openCreate(inviteTrigger)}
         >
-          <Icon name="user-plus" size={14} strokeWidth={2} />
-          <span class="button-label">Invite Root user</span>
-        </button>
+          {#snippet icon()}<Icon name="user-plus" size={14} strokeWidth={2} />{/snippet}
+          Invite Root user
+        </Button>
       {/if}
     {:else}
-      <button class="btn btn-signal" type="button" bind:this={addTrigger} onclick={openAddUser}>
-        <Icon name="user-plus" size={14} strokeWidth={2} />
-        <span class="button-label">Add user</span>
-      </button>
+      <Button tone="signal" bind:element={addTrigger} onclick={openAddUser}>
+        {#snippet icon()}<Icon name="user-plus" size={14} strokeWidth={2} />{/snippet}
+        Add user
+      </Button>
     {/if}
   </RootPageHeader>
 
@@ -573,9 +588,7 @@
           onRetry={() => void loadPage(undefined, false)}
         />
       {:else if loading && page === null}
-        <div class="table-skeleton" aria-hidden="true">
-          {#each [0, 1, 2, 3, 4, 5] as index (index)}<span></span>{/each}
-        </div>
+        <Skeleton bars={false} --skeleton-min-height="10rem" />
       {:else}
         <!-- Keyboard focus lets users scroll columns that overflow the viewport. -->
         <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -663,14 +676,11 @@
               {#each users as user (user.account.id)}
                 <tr>
                   <td data-label="User">
-                    <span class="identity">
-                      <Avatar account={user.account} size={32} />
-                      <span
-                        ><strong>{user.account.display_name}</strong><span class="mono"
-                          >@{user.account.login}</span
-                        ></span
-                      >
-                    </span>
+                    <IdentityRow>
+                      {#snippet mark()}<Avatar account={user.account} size={32} />{/snippet}
+                      {#snippet name()}<strong>{user.account.display_name}</strong>{/snippet}
+                      {#snippet handle()}<span class="mono">@{user.account.login}</span>{/snippet}
+                    </IdentityRow>
                   </td>
                   <td data-label="System role">
                     <Chip tone={systemRoleTone(user.system_role)}
@@ -733,22 +743,23 @@
       />
       {#if loadMoreProblem !== null}
         <div class="load-more-alert" role="alert">
-          <span>{loadMoreProblem}</span><button class="btn" type="button" onclick={loadNext}
-            >Try again</button
-          >
+          <span>{loadMoreProblem}</span><Button onclick={loadNext}>Try again</Button>
         </div>
       {/if}
     </div>
   {/if}
 </section>
 
-<Modal
+<ConfirmDialog
   id={ACTION_DIALOG}
   open={actionUser !== null && pendingAction !== null}
   title={actionTitle()}
   description={actionDescription()}
   returnFocus={actionTrigger}
   onClose={closeUserAction}
+  onConfirm={() => void confirmUserAction()}
+  {confirmTone}
+  busy={saving}
 >
   {#if pendingAction === 'ban' || pendingAction === 'remove'}
     <label class="reason-field">
@@ -757,36 +768,19 @@
         placeholder="Add context to the immutable audit record"
         maxlength="500"
         rows="4"
-        bind:value={reason}
-        data-modal-focus></textarea>
+        bind:value={reason}></textarea>
       <small>{reason.length}/500 characters</small>
     </label>
   {:else}
-    <div class="confirmation-note" data-modal-focus tabindex="-1">
-      <Icon name={pendingAction === 'promote_root' ? 'warning' : 'info'} size={20} />
+    <Callout tabindex={-1}>
+      {#snippet icon()}
+        <Icon name={pendingAction === 'promote_root' ? 'warning' : 'info'} size={20} />
+      {/snippet}
       <span>Review the account and effect before confirming.</span>
-    </div>
+    </Callout>
   {/if}
   {#if actionProblem !== null}<p class="action-error" role="alert">{actionProblem}</p>{/if}
-
-  {#snippet footer()}
-    <button class="btn btn-ghost" type="button" data-modal-focus onclick={closeUserAction}
-      >Cancel</button
-    >
-    <button
-      class="btn"
-      class:btn-stop={pendingAction === 'ban' ||
-        pendingAction === 'remove' ||
-        pendingAction === 'demote_root'}
-      class:btn-signal={pendingAction === 'promote_root' || pendingAction === 'restore'}
-      type="button"
-      disabled={saving}
-      onclick={() => void confirmUserAction()}
-    >
-      {saving ? 'Saving…' : 'Confirm'}
-    </button>
-  {/snippet}
-</Modal>
+</ConfirmDialog>
 
 <Modal
   id={ADD_DIALOG}
@@ -832,11 +826,7 @@
       {:else if installationsProblem !== null}
         <div class="installation-state installation-problem" role="alert">
           <span>{installationsProblem}</span>
-          <button
-            class="btn btn-quiet"
-            type="button"
-            onclick={() => void installationsQuery.refetch()}>Try again</button
-          >
+          <Button tone="quiet" onclick={() => void installationsQuery.refetch()}>Try again</Button>
         </div>
       {:else if filteredInstallations.length === 0}
         <div class="installation-state">No installations match this search.</div>
@@ -877,34 +867,32 @@
 
     <label>
       <span>Installation role</span>
-      <span class="select-wrap">
-        <select class="select-input" bind:value={addRole}>
-          <option value="viewer">Viewer</option>
-          <option value="editor">Editor</option>
-          <option value="admin">Admin</option>
-        </select>
-        <Icon name="chevron-down" size={14} strokeWidth={2} />
-      </span>
+      <Select
+        bind:value={addRole}
+        options={[
+          { value: 'viewer', label: 'Viewer' },
+          { value: 'editor', label: 'Editor' },
+          { value: 'admin', label: 'Admin' },
+        ]}
+      />
     </label>
 
     {#if selectedInstallation !== null && !selectedInstallation.owned_by_viewer}
-      <div class="elevation-note">
-        <Icon name="warning" size={18} />
+      <Callout tone="warning">
+        {#snippet icon()}<Icon name="warning" size={18} />{/snippet}
         <span>
           This installation is not yours. Continue to its Access view to acknowledge and start the
           audited 15-minute elevation before adding the user.
         </span>
-      </div>
+      </Callout>
     {/if}
     {#if addProblem !== null}<p class="action-error" role="alert">{addProblem}</p>{/if}
   </form>
 
   {#snippet footer()}
-    <button class="btn btn-ghost" type="button" disabled={addSaving} onclick={closeAddUser}
-      >Cancel</button
-    >
-    <button
-      class="btn btn-signal"
+    <Button tone="ghost" disabled={addSaving} onclick={closeAddUser}>Cancel</Button>
+    <Button
+      tone="signal"
       type="submit"
       form="root-add-installation-user-form"
       disabled={addSaving ||
@@ -917,7 +905,7 @@
         : selectedInstallation?.owned_by_viewer === false
           ? 'Open audited access'
           : 'Add user'}
-    </button>
+    </Button>
   {/snippet}
 </Modal>
 
@@ -1049,18 +1037,6 @@
     text-align: center;
   }
 
-  .elevation-note {
-    align-items: flex-start;
-    background: var(--warning-tint);
-    border: 1px solid color-mix(in srgb, var(--warning) 30%, var(--warning-tint));
-    border-radius: var(--radius-control);
-    color: var(--text-secondary);
-    display: flex;
-    font-size: var(--font-size-compact);
-    gap: var(--space-2);
-    padding: var(--space-3);
-  }
-
   /* Layout, keyline and corner come from `.table-region` in `app.css`. */
   .user-results {
     min-height: 8rem;
@@ -1182,32 +1158,6 @@
      against a raw `<svg>`, and a `:global(.header-filter)` addressed to a class
      the popover stopped rendering. */
 
-  .identity {
-    align-items: center;
-    display: flex;
-    gap: var(--space-2);
-    min-width: 0;
-  }
-
-  .identity > span:last-child {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-  }
-
-  .identity strong,
-  .identity .mono {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .identity strong {
-    font-size: var(--font-size-body);
-    line-height: 1.2;
-  }
-
-  .identity .mono,
   .relationship-meta,
   time {
     color: var(--text-muted);
@@ -1260,17 +1210,6 @@
     resize: vertical;
   }
 
-  .confirmation-note {
-    align-items: center;
-    background: var(--interactive-hover);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-control);
-    color: var(--text-secondary);
-    display: flex;
-    gap: var(--space-3);
-    padding: var(--space-3);
-  }
-
   .action-error {
     color: var(--danger);
     font-size: var(--font-size-meta);
@@ -1279,29 +1218,6 @@
 
   .empty-row td {
     height: 10rem;
-  }
-
-  .table-skeleton {
-    min-height: 10rem;
-  }
-
-  .table-skeleton {
-    display: grid;
-  }
-
-  .table-skeleton span {
-    animation: root-access-pulse 1.35s ease-in-out infinite alternate;
-    border-bottom: 1px solid var(--rule);
-    height: 3.5rem;
-  }
-
-  @keyframes root-access-pulse {
-    from {
-      opacity: 0.48;
-    }
-    to {
-      opacity: 0.88;
-    }
   }
 
   @media (min-width: 64.001rem) {
@@ -1409,8 +1325,5 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .table-skeleton span {
-      animation: none;
-    }
   }
 </style>

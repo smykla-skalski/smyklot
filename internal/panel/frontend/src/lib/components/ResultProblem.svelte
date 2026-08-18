@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Button from './Button.svelte';
   import Icon from './Icon.svelte';
 
   const {
@@ -23,9 +24,9 @@
 </script>
 
 {#snippet retry()}
-  <button class="btn" type="button" onclick={onRetry} disabled={busy}>
+  <Button onclick={onRetry} disabled={busy}>
     {busy ? 'Trying again…' : 'Try again'}
-  </button>
+  </Button>
 {/snippet}
 
 {#if overContent}
@@ -78,7 +79,11 @@
     font-size: var(--font-size-meta);
   }
 
-  .result-notice .btn {
+  /* `:global` because `Button` renders the control, so it carries that component's
+     scope class rather than this one's and a plain `.btn` would stop matching. The
+     left-hand side still carries this component's scope, so the rule reaches no
+     button but the one in this notice. */
+  .result-notice :global(.btn) {
     flex: none;
   }
 </style>

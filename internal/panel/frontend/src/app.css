@@ -323,7 +323,6 @@
   --stop: var(--danger);
   --stop-tint: var(--danger-tint);
   --brand: var(--focus);
-  --spectrum: var(--brand-action);
   --press: var(--interactive-pressed);
   --shadow: var(--shadow-color);
 
@@ -579,7 +578,6 @@
      every other control here. 5.09 dE00. */
   --table-row-hover: color-mix(in srgb, #ffffff 6.8%, var(--surface-base));
   --table-row-pressed: color-mix(in srgb, #ffffff 12.4%, var(--surface-base));
-  --spectrum: var(--brand-action);
 
   /* The track is the inset surface here as it is in every other palette. It used to be the sidebar
      primitive, which sits 0.02 above the canvas in OKLCh lightness and so left the control no room
@@ -717,7 +715,6 @@ body {
   --accent-tint: var(--brand-action-tint);
   --admin: var(--brand-action);
   --on-admin: var(--on-brand-action);
-  --spectrum: var(--brand-action);
   /* The header ramp, re-resolved rather than re-decided: the expressions are the
      ones in `:root` and the only thing that changes is what `--brand-action` and
      `--table-header-bg` mean here. A custom property computes where it is
@@ -996,17 +993,6 @@ body {
   width: 1px;
 }
 
-.brand-rule {
-  background: var(--spectrum);
-  border-radius: 1px;
-  height: 2px;
-}
-
-.brand-rule-close {
-  height: 3px;
-  opacity: 0.85;
-}
-
 /* One card, everywhere: the surface, its keyline, its corner and the lift that
    separates it from the canvas behind it. `--shadow-plate` is a single 1px drop
    at 10% - not a glow, and not enough to read as a raised object; it is what
@@ -1125,6 +1111,91 @@ body {
 .table-card :is(th, td) {
   overflow-x: clip;
   overflow-y: visible;
+}
+
+/*
+ * The body every table draws the same way.
+ * ---------------------------------------
+ * Written here rather than inside `DataTable.svelte` for one reason, and it is
+ * the reason the whole migration is shaped the way it is: a `<th>` or `<td>`
+ * comes out of the CALLER's `cells` snippet, so it carries the caller's Svelte
+ * scope class and not the component's. A rule inside `DataTable` cannot reach
+ * its own cells. A global one can, and this is the only stylesheet that is one.
+ *
+ * Seven tables each wrote these five declarations by hand and four of them
+ * disagreed by a pixel somewhere. `thead` is deliberately absent - `thead th`
+ * further down already owns the band, and its padding is 0 so `.table-heading`
+ * can carry the inset instead. Overriding it from here would fold the sort and
+ * filter controls back out of the cell they ride in.
+ *
+ * A per-table rule outranks this by writing itself against the class the caller
+ * passes in - `:global(.repositories .count-cell)` is two classes against one.
+ */
+.data-table :is(tbody th, td) {
+  border-bottom: 1px solid var(--rule);
+  font-size: var(--font-size-meta);
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  vertical-align: middle;
+}
+
+/* A row header is a cell that happens to name its row, not a heading. */
+.data-table tbody th {
+  font-weight: inherit;
+}
+
+/*
+ * The pinned table: the view fills the workspace, the header band stays put, and
+ * only the rows scroll.
+ * ---------------------------------------------------------------------------
+ * Six of the seven tables wrote this same block, each behind its own copy of the
+ * comment "matching the other table views" - which is what a shared behaviour
+ * looks like when it has nowhere to live. The seventh is the queue, which is
+ * short by construction and scrolls with the page.
+ *
+ * `display: block` on a section of a table takes its cells out of the table's own
+ * column algorithm, which is why the rows below have to be told to be tables
+ * again and to lay out fixed. The one thing that CANNOT move here is the column
+ * widths: a fixed row-table needs explicit ones or thead and tbody stop lining
+ * up, and what they should be is the one genuinely per-table fact in the whole
+ * arrangement. Each caller states its own, anchored through the class it passes.
+ */
+@media (min-width: 64.001rem) {
+  .data-table.pinned,
+  .data-table.pinned table {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .data-table.pinned thead {
+    display: block;
+    flex: none;
+  }
+
+  /* The filler is what the reader sees below the last row - the ground of the
+     card rather than the ground of a row, so a table with three rows in it does
+     not look like a table with three rows and a blank one. */
+  .data-table.pinned tbody {
+    background: var(--table-filler-bg);
+    display: block;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .data-table.pinned :is(thead, tbody) tr {
+    display: table;
+    table-layout: fixed;
+    width: 100%;
+  }
+
+  /* One class, so `.data-row`'s states still outrank it - two would kill hover in
+     every pinned table at once. */
+  .data-table.pinned tbody tr {
+    background: var(--surface-base);
+  }
 }
 
 .plate-alarm {
@@ -1735,6 +1806,32 @@ select:disabled {
   background-image: linear-gradient(var(--press), var(--press));
 }
 
+/* The console's own action: tinted with whatever `--brand-action` is where it is
+   drawn, so it reads as the Root console's rather than the panel's.
+   Two class names in `RootInstallationView` carried this, one of them on a control
+   inside a portalled dialog - which leaves the component's DOM, so nothing there can
+   reach it by descent. A tone is the only home it can have. */
+.btn-brand {
+  background: color-mix(in srgb, var(--brand-action) 12%, var(--surface-base));
+  border-color: color-mix(in srgb, var(--brand-action) 45%, var(--control-border));
+  color: var(--brand-action-text);
+}
+
+/* Bordered danger: the tone is in the ink and the edge, and the one filled danger
+   control in a flow is the confirmation - so a page cannot end up holding two.
+   Lived in `QueueRequest` until `Button` gave the tones one home; it is a tone like
+   the others, and a tone declared in one component is a tone no other page can ask
+   for. */
+.btn-stop-quiet {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--control-border));
+  color: var(--danger);
+}
+
+.btn-stop-quiet:hover:not(:disabled) {
+  background: var(--danger-tint);
+  border-color: var(--danger);
+}
+
 .btn-quiet {
   background: transparent;
   border-color: transparent;
@@ -2025,58 +2122,6 @@ select:focus-visible {
   color: var(--dim);
 }
 
-.switch {
-  align-items: center;
-  cursor: pointer;
-  display: inline-flex;
-  min-height: var(--touch-target);
-  padding-inline: var(--space-1);
-}
-
-.switch input {
-  height: 1px;
-  opacity: 0;
-  position: absolute;
-  width: 1px;
-}
-
-.switch > span {
-  background: var(--rule);
-  border-radius: 999px;
-  display: inline-flex;
-  height: 1.25rem;
-  padding: 2px;
-  transition: background 120ms ease-out;
-  width: 2.25rem;
-}
-
-.switch > span::after {
-  background: var(--strip);
-  border-radius: 50%;
-  content: '';
-  height: 1rem;
-  transition: transform 120ms ease-out;
-  width: 1rem;
-}
-
-.switch input:checked + span {
-  background: var(--clear);
-}
-
-.switch input:checked + span::after {
-  transform: translateX(1rem);
-}
-
-.switch input:focus-visible + span {
-  box-shadow: none;
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
-}
-
-.switch input:focus-visible {
-  outline: 0;
-}
-
 /* Plain monospace, no filled chrome. The mock never boxes a bare <code>; where a
    value should read as a token it gets an explicit chip recipe instead, so the
    filled look stays a deliberate choice rather than an element default. */
@@ -2087,8 +2132,15 @@ code {
   max-width: 100%;
 }
 
+/* Four of the five callers restated the size and the reset margin, and three
+   restated the colour this rule already sets. `--stop` is `--danger`, and
+   `--font-size-meta` is the 0.8125rem one of them spelled out. What is genuinely
+   per-form - where the message sits in a grid, how far it stands off the field
+   above it - the caller still says, and only that. */
 .form-error {
   color: var(--stop);
+  font-size: var(--font-size-meta);
+  margin: 0;
 }
 
 /* A mark beside a label centres on the CAP band the trimmed label gives it, and
@@ -2280,6 +2332,26 @@ thead th .icon-button:active:not(:disabled) {
   white-space: nowrap;
 }
 
+/* A pill reporting on something that has a health, which today is the database.
+   Keyed on the attribute rather than on an extra class, because the attribute is
+   what `StatusPill` is given and the three words are the ones `databaseState`
+   decides - see the note beside `Store.Status` in CLAUDE.md. Beside the pill rather
+   than inside the component: these are palette values, and the palette lives here. */
+.status-pill[data-state='healthy'] {
+  background: var(--success-tint);
+  color: var(--success);
+}
+
+.status-pill[data-state='degraded'] {
+  background: var(--warning-tint);
+  color: var(--warning);
+}
+
+.status-pill[data-state='unavailable'] {
+  background: var(--danger-tint);
+  color: var(--danger);
+}
+
 .status-pill .status-pill-dot {
   background: currentcolor;
   border-radius: var(--radius-chip);
@@ -2301,6 +2373,27 @@ thead th .icon-button:active:not(:disabled) {
 
 .status-pill .status-pill-dot.live {
   animation: live-pulse 2.6s ease-out infinite;
+}
+
+/* One pulse for every placeholder in the panel.
+   ------------------------------------------------------------------------
+   Eight components declared this animation under eight names, and the copies had
+   drifted into three different opacity ranges - 0.48-0.88 under the six tables,
+   0.5-0.9 on the invitation, 0.52-0.9 in the inbox and the panel shell. The
+   endpoints are custom properties so each of those keeps exactly the range it had:
+   one keyframe, and nothing on screen moved.
+
+   Global rather than owned by `Skeleton`, because two placeholders are shaped
+   differently enough to keep their own markup - the invitation's person-and-action
+   stack and the panel shell's title-copy-control - and they animate with this too. */
+@keyframes skeleton-pulse {
+  from {
+    opacity: var(--skeleton-from, 0.48);
+  }
+
+  to {
+    opacity: var(--skeleton-to, 0.88);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

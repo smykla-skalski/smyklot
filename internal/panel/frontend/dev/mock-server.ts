@@ -1247,22 +1247,36 @@ export function mockServer(): Plugin {
     },
     configureServer(server) {
       if (!enabled()) return;
-      install(server.httpServer as DevHttpServer, server.middlewares);
+      install(server.httpServer as DevHttpServer | null, server.middlewares);
     },
     configurePreviewServer(server) {
       if (enabled()) {
-        install(server.httpServer as DevHttpServer, server.middlewares);
+        install(server.httpServer as DevHttpServer | null, server.middlewares);
       }
     },
   };
 }
 
-function install(httpServer: DevHttpServer | undefined, middlewares: Connect.Server): void {
-  if (httpServer === undefined) throw new Error('the mock dev server has no HTTP server');
-  const server = httpServer;
+/**
+ * Attaches the mock to a Vite server.
+ *
+ * `httpServer` is null when Vite runs in middleware mode - which is how Storybook
+ * hosts it. There is no socket to upgrade there and no shell to fetch, so the two
+ * things that need one are skipped rather than refused: the API middleware is the
+ * part a component catalogue wants, and it works either way.
+ *
+ * What is lost in that mode is the WebSocket stream at `/api/v1/events` and the
+ * error-page preview at `/__error/{status}/{code}`, which asks the server for a
+ * rendered shell. `state.shell` keeps the rejecting default it was seeded with, so
+ * asking for one says what is missing instead of reading as an empty page.
+ */
+function install(httpServer: DevHttpServer | null | undefined, middlewares: Connect.Server): void {
   const state = seed();
-  state.shell = () => fetchShell(server);
-  server.on('upgrade', (request, socket) => handleUpgrade(state, request, socket));
+  if (httpServer !== null && httpServer !== undefined) {
+    const server = httpServer;
+    state.shell = () => fetchShell(server);
+    server.on('upgrade', (request, socket) => handleUpgrade(state, request, socket));
+  }
   middlewares.use((req, res, next) => void handle(state, req, res, next));
   runReconciler(state);
 }

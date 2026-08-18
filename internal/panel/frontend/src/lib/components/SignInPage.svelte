@@ -15,6 +15,7 @@
   import type { PanelApi } from '../api';
   import type { PanelBuild } from '../base';
   import { describeSessionEnd, type SessionEnded } from '../panel-session';
+  import Button from './Button.svelte';
   import NightPage from './NightPage.svelte';
 
   const {
@@ -49,7 +50,7 @@
 
     {#if offersSignIn}
       <p class="sign-in-action">
-        <a class="btn btn-signal" href={api.signInUrl()} rel="nofollow">Sign in with GitHub</a>
+        <Button tone="signal" href={api.signInUrl()} rel="nofollow">Sign in with GitHub</Button>
       </p>
 
       <!-- The one thing worth saying on a page whose only button hands someone to

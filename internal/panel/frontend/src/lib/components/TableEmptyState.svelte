@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Button from './Button.svelte';
   import Icon from './Icon.svelte';
 
   const {
@@ -21,12 +22,10 @@
   <strong>{title}</strong>
   <span>{description}</span>
   {#if actionLabel !== undefined && onAction !== undefined}
-    <!-- The label is wrapped so `app.css` can trim it: a button centres its label
-         BOX, and the box carries the leading above the capitals and the room under
-         the baseline, which are never equal. Bare, this word sat 0.47px above the
-         middle of its own surface. -->
-    <button class="btn" type="button" onclick={onAction}>
-      <span class="button-label">{actionLabel}</span>
-    </button>
+    <!-- `Button` wraps the label so `app.css` can trim it: a button centres its
+         label BOX, and the box carries the leading above the capitals and the room
+         under the baseline, which are never equal. Bare, this word sat 0.47px above
+         the middle of its own surface. -->
+    <Button onclick={onAction}>{actionLabel}</Button>
   {/if}
 </div>

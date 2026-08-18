@@ -17,6 +17,8 @@
   import type { BooleanField } from '../config';
   import { COMMANDS } from '../types';
   import type { ConfigKey, ConfigPatch, ConfigValues } from '../types';
+  import Select from './Select.svelte';
+  import Button from './Button.svelte';
   import AppTooltip from './AppTooltip.svelte';
   import HelpTip from './HelpTip.svelte';
   import Icon from './Icon.svelte';
@@ -463,19 +465,16 @@
                 <label class="visually-hidden" for="config-{scope}-{idPrefix}-alias-command">
                   Command
                 </label>
-                <span class="select-wrap">
-                  <select
-                    id="config-{scope}-{idPrefix}-alias-command"
-                    class="select-input mono"
-                    bind:value={aliasCommand}
-                    disabled={editorDisabled}
-                  >
-                    {#each COMMANDS as command (command)}
-                      <option value={command}>{command}</option>
-                    {/each}
-                  </select>
-                  <Icon name="chevron-down" size={14} strokeWidth={2} />
-                </span>
+                <Select
+                  id="config-{scope}-{idPrefix}-alias-command"
+                  class="mono"
+                  bind:value={aliasCommand}
+                  disabled={editorDisabled}
+                >
+                  {#each COMMANDS as command (command)}
+                    <option value={command}>{command}</option>
+                  {/each}
+                </Select>
                 <button
                   type="submit"
                   class="composer-ok"
@@ -518,9 +517,9 @@
       <button class="bar-ghost" type="button" disabled={editorDisabled} onclick={discard}>
         Discard
       </button>
-      <button class="btn btn-signal" disabled={editorDisabled} onclick={save}>
-        <span class="btn-label">{saving ? 'Saving…' : 'Save'}</span>
-      </button>
+      <Button tone="signal" disabled={editorDisabled} onclick={save}>
+        {saving ? 'Saving…' : 'Save'}
+      </Button>
     </div>
   {/if}
 </div>
@@ -874,7 +873,7 @@
   }
 
   .composer input,
-  .composer select {
+  .composer :global(select) {
     background: var(--strip);
     border: 0;
     border-radius: var(--r-chip);
@@ -892,7 +891,7 @@
     outline: none;
   }
 
-  .composer select {
+  .composer :global(select) {
     padding: 0 0.375rem;
   }
 
@@ -947,9 +946,10 @@
   /* Trim text boxes to glyph bounds so flex centering is visually exact.
      Labels inside flex containers need their own span: trimming must happen
      on the flex item that holds the text, not on the container. */
+  /* The save button's own label is not in this list any more: `Button` wraps it in
+     `.button-label`, which `app.css` trims the same way. One copy, not two. */
   .save-count,
   .bar-ghost,
-  .save-bar .btn-label,
   .row-label .label-text,
   .row-label label,
   .check-tile code,

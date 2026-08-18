@@ -4,7 +4,7 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist/**', 'node_modules/**', '.svelte-kit/**'] },
+  { ignores: ['dist/**', 'node_modules/**', '.svelte-kit/**', 'storybook-static/**'] },
   js.configs.recommended,
   tseslint.configs.recommended,
   svelte.configs.recommended,
@@ -22,9 +22,29 @@ export default tseslint.config(
     },
   },
   {
-    files: ['*.config.ts', '*.config.js', 'tests/**/*.ts', 'dev/**/*.ts', 'build/**/*.ts'],
+    files: [
+      '*.config.ts',
+      '*.config.js',
+      'tests/**/*.ts',
+      'dev/**/*.ts',
+      'build/**/*.ts',
+      // `main.ts` is read by the Storybook CLI in Node; `preview.ts` is not, but it
+      // sits beside it and nothing there wants the browser globals withheld.
+      '.storybook/**/*.ts',
+    ],
     languageOptions: {
       globals: { ...globals.node },
+    },
+  },
+  {
+    // A story for a component with a required snippet prop has to take it out of
+    // the args spread, or `<Chip {...args}>Enabled</Chip>` sets `children` twice and
+    // the markup between the tags loses. `{ children, ...args }` is how that is
+    // written, and it leaves a binding nothing reads - which is exactly the case
+    // `ignoreRestSiblings` exists for.
+    files: ['stories/**/*.svelte'],
+    rules: {
+      '@typescript-eslint/no-unused-vars': ['error', { ignoreRestSiblings: true }],
     },
   },
   {

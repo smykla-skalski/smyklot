@@ -2,6 +2,7 @@ dist
 node_modules
 package-lock.json
 .svelte-kit
+storybook-static
 
 # Written by the dev mock server as the panel is used, so its shape is whatever
 # was stored last. Prettier does not read .gitignore, so without this the lint

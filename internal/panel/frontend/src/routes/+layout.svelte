@@ -18,6 +18,7 @@
   import type { PanelView, RootSection } from '#lib/routes.js';
   import type { ThemeDisplay } from '#lib/preferences.js';
 
+  import Button from '#lib/components/Button.svelte';
   import ErrorPage from '#lib/components/ErrorPage.svelte';
   import IdentityBar from '#lib/components/IdentityBar.svelte';
   import PageFooter from '#lib/components/PageFooter.svelte';
@@ -235,9 +236,7 @@
             panel
           </p>
         </div>
-        <button class="btn btn-signal" type="button" onclick={() => void session.load()}>
-          Reload panel
-        </button>
+        <Button tone="signal" onclick={() => void session.load()}>Reload panel</Button>
       </div>
     </NightPage>
   {:else}
@@ -285,7 +284,7 @@
           {#if session.failure !== null}
             <Plate label="Problem" tone="alarm">
               <p>{session.failure.message}</p>
-              <button class="btn" onclick={() => void session.load()}>Try again</button>
+              <Button onclick={() => void session.load()}>Try again</Button>
             </Plate>
           {/if}
           {#if session.loading && session.viewer === null}
@@ -316,6 +315,11 @@
     gap: var(--space-3);
   }
   .skeleton-line {
+    /* The panel's one placeholder pulse, from `app.css`. The endpoints stay this
+       placeholder's own - the eight copies of this keyframe had drifted into three
+       different ranges, and collapsing them was not allowed to move any of them. */
+    --skeleton-from: 0.52;
+    --skeleton-to: 0.9;
     animation: skeleton-pulse 1.35s ease-in-out infinite alternate;
     background: var(--surface-inset);
     border-radius: var(--radius-control);
@@ -364,13 +368,5 @@
     height: 3rem;
     justify-content: center;
     width: 3rem;
-  }
-  @keyframes skeleton-pulse {
-    from {
-      opacity: 0.52;
-    }
-    to {
-      opacity: 0.9;
-    }
   }
 </style>

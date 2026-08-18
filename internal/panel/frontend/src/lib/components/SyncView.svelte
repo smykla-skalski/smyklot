@@ -12,7 +12,9 @@
 
   import type { SyncAction, SyncConfig, SyncConfigInput, SyncPlan } from '#lib/types.js';
 
-  import PanelHeader from './PanelHeader.svelte';
+  import FormError from './FormError.svelte';
+  import Button from './Button.svelte';
+  import PageHeader from './PageHeader.svelte';
   import Plate from './Plate.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
   import SyncRulesetsForm from './SyncRulesetsForm.svelte';
@@ -253,7 +255,7 @@
 </script>
 
 <section class="sync-page" aria-labelledby="sync-heading">
-  <PanelHeader
+  <PageHeader
     id="sync-heading"
     title="Sync"
     description="What every repository in this installation should look like, and what Smyklot would change to make that true"
@@ -279,7 +281,7 @@
     </p>
 
     {#if error !== null}
-      <p class="form-error" role="alert">{error}</p>
+      <FormError message={error} />
     {/if}
 
     {#if unreadable}
@@ -387,15 +389,13 @@
       {#if approvable && !readOnly}
         {@const approved = plan}
         <div class="sync-actions">
-          <button
-            class="btn btn-signal"
-            type="button"
+          <Button
+            tone="signal"
             disabled={approving}
             onclick={() => onApprove(approved.id, approved.digest)}
           >
-            <!-- Trimmed through `.button-label`; see `TableEmptyState`. -->
-            <span class="button-label">{approving ? 'Approving' : 'Apply these changes'}</span>
-          </button>
+            {approving ? 'Approving' : 'Apply these changes'}
+          </Button>
         </div>
       {/if}
     {/if}
@@ -433,7 +433,7 @@
     padding: var(--space-2) var(--space-3);
   }
 
-  .form-error {
+  :global(.form-error) {
     margin: var(--space-3) 0 0;
   }
 

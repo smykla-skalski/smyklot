@@ -6,6 +6,7 @@
   import { formatTimestamp } from '#lib/format.js';
   import { cleanupState, outcomeState, queueNext, queueState, sinceLabel } from '#lib/queue.js';
   import type { PendingCIEvent } from '#lib/types.js';
+  import Button from './Button.svelte';
   import BackLink from './BackLink.svelte';
   import Chip from './Chip.svelte';
   import Icon, { type IconName } from './Icon.svelte';
@@ -171,15 +172,14 @@
     title={`${request.repository_full_name} #${request.pull_request}`}
     subtitle={`Armed ${sinceLabel(request.requested_at, now)} by @${request.requester}, bound to commit ${request.head_sha.slice(0, 8)}`}
   >
-    <a
-      class="btn"
+    <Button
       href={`https://github.com/${request.repository_full_name}/pull/${request.pull_request}`}
       rel="noreferrer"
       target="_blank"
     >
-      <Icon name="github" size={16} />
-      <span class="button-label">Open on GitHub</span>
-    </a>
+      {#snippet icon()}<Icon name="github" size={16} />{/snippet}
+      Open on GitHub
+    </Button>
   </RootPageHeader>
 
   {#if problem !== null}
@@ -239,26 +239,16 @@
       </div>
       {#if armed}
         <div class="card-actions">
-          <button
-            class="btn"
-            type="button"
-            disabled={acting !== null}
-            onclick={() => void act('check')}
-          >
-            <Icon name="refresh" size={14} strokeWidth={2} />
-            <span class="button-label">{acting === 'check' ? 'Checking…' : 'Check now'}</span>
-          </button>
+          <Button disabled={acting !== null} onclick={() => void act('check')}>
+            {#snippet icon()}<Icon name="refresh" size={14} strokeWidth={2} />{/snippet}
+            {acting === 'check' ? 'Checking…' : 'Check now'}
+          </Button>
           <!-- Bordered rather than filled: the one filled danger control in this
                flow is the confirmation, so a page cannot be left holding two. -->
-          <button
-            class="btn btn-stop-quiet"
-            type="button"
-            disabled={acting !== null}
-            onclick={() => void act('cancel')}
-          >
-            <Icon name="close" size={14} strokeWidth={2} />
-            <span class="button-label">{acting === 'cancel' ? 'Cancelling…' : 'Cancel'}</span>
-          </button>
+          <Button tone="stop-quiet" disabled={acting !== null} onclick={() => void act('cancel')}>
+            {#snippet icon()}<Icon name="close" size={14} strokeWidth={2} />{/snippet}
+            {acting === 'cancel' ? 'Cancelling…' : 'Cancel'}
+          </Button>
         </div>
       {/if}
     </div>
@@ -396,18 +386,6 @@
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-2);
-  }
-
-  /* Bordered danger: the tone is in the ink and the edge, and the one filled
-     danger control in this flow is the confirmation. */
-  .btn-stop-quiet {
-    border-color: color-mix(in srgb, var(--danger) 45%, var(--control-border));
-    color: var(--danger);
-  }
-
-  .btn-stop-quiet:hover:not(:disabled) {
-    background: var(--danger-tint);
-    border-color: var(--danger);
   }
 
   .next-lead {

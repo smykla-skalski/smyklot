@@ -9,9 +9,12 @@
     RootRuntimeSettings,
     RootRuntimeSettingsInput,
   } from '../types';
+  import DurationField from './DurationField.svelte';
+  import FormError from './FormError.svelte';
+  import StatusPill from './StatusPill.svelte';
+  import Button from './Button.svelte';
   import Chip from './Chip.svelte';
   import ConfigEditor from './ConfigEditor.svelte';
-  import Icon from './Icon.svelte';
   import InheritControl from './InheritControl.svelte';
   import Plate from './Plate.svelte';
   import RootPageHeader from './RootPageHeader.svelte';
@@ -303,10 +306,7 @@
     title="Settings"
     subtitle="Runtime behavior and deployment-backed defaults"
   >
-    <span class="status-pill"
-      ><span class="status-pill-dot live"></span><span class="cap-trim">Changes apply live</span
-      ></span
-    >
+    <StatusPill dot live>Changes apply live</StatusPill>
   </RootPageHeader>
   {#if loading && settings === null}
     <div class="settings-state" role="status">Loading runtime settings…</div>
@@ -314,12 +314,12 @@
     <div class="settings-state settings-error" role="alert">
       <strong>Runtime settings are unavailable</strong>
       <span>{failure}</span>
-      <button class="btn" type="button" onclick={() => void load()}>Try again</button>
+      <Button onclick={() => void load()}>Try again</Button>
     </div>
   {:else}
     {@const current = settings}
     {#if failure !== null}
-      <p class="form-error" role="alert">{failure}</p>
+      <FormError message={failure} />
     {/if}
 
     <Plate label="Behavior defaults">
@@ -367,38 +367,14 @@
             onRestore={() => void selectPollSource('default')}
           />
           {#if pollSource === 'custom'}
-            <form
-              class="duration-form"
-              aria-label="Custom reaction sweep interval"
-              onsubmit={(event) => {
-                event.preventDefault();
-                void savePollInterval();
-              }}
-            >
-              <label>
-                <span class="visually-hidden">Reaction sweep interval</span>
-                <input
-                  class="text-input duration-input"
-                  type="number"
-                  min="1"
-                  step="1"
-                  bind:value={pollAmount}
-                  disabled={saving}
-                />
-              </label>
-              <label>
-                <span class="visually-hidden">Reaction sweep interval unit</span>
-                <span class="select-wrap">
-                  <select class="select-input" bind:value={pollUnit} disabled={saving}>
-                    <option value="seconds">Seconds</option>
-                    <option value="minutes">Minutes</option>
-                    <option value="hours">Hours</option>
-                  </select>
-                  <Icon name="chevron-down" size={14} strokeWidth={2} />
-                </span>
-              </label>
-              <button class="btn btn-signal" type="submit" disabled={saving}>Apply</button>
-            </form>
+            <DurationField
+              label="Reaction sweep interval"
+              bind:amount={pollAmount}
+              bind:unit={pollUnit}
+              units={['seconds', 'minutes', 'hours']}
+              disabled={saving}
+              onApply={() => void savePollInterval()}
+            />
           {/if}
         </div>
       </Plate>
@@ -426,38 +402,14 @@
             onRestore={() => void selectQuietPeriodSource('default')}
           />
           {#if quietPeriodSource === 'custom'}
-            <form
-              class="duration-form"
-              aria-label="Custom merge-after-CI quiet period"
-              onsubmit={(event) => {
-                event.preventDefault();
-                void saveQuietPeriod();
-              }}
-            >
-              <label>
-                <span class="visually-hidden">Merge-after-CI quiet period</span>
-                <input
-                  class="text-input duration-input"
-                  type="number"
-                  min="1"
-                  step="1"
-                  bind:value={quietPeriodAmount}
-                  disabled={saving}
-                />
-              </label>
-              <label>
-                <span class="visually-hidden">Merge-after-CI quiet period unit</span>
-                <span class="select-wrap">
-                  <select class="select-input" bind:value={quietPeriodUnit} disabled={saving}>
-                    <option value="seconds">Seconds</option>
-                    <option value="minutes">Minutes</option>
-                    <option value="hours">Hours</option>
-                  </select>
-                  <Icon name="chevron-down" size={14} strokeWidth={2} />
-                </span>
-              </label>
-              <button class="btn btn-signal" type="submit" disabled={saving}>Apply</button>
-            </form>
+            <DurationField
+              label="Merge-after-CI quiet period"
+              bind:amount={quietPeriodAmount}
+              bind:unit={quietPeriodUnit}
+              units={['seconds', 'minutes', 'hours']}
+              disabled={saving}
+              onApply={() => void saveQuietPeriod()}
+            />
           {/if}
         </div>
       </Plate>
@@ -501,38 +453,14 @@
             onRestore={() => void selectSessionSource('default')}
           />
           {#if sessionSource === 'custom'}
-            <form
-              class="duration-form"
-              aria-label="Custom session lifetime"
-              onsubmit={(event) => {
-                event.preventDefault();
-                void saveSessionLifetime();
-              }}
-            >
-              <label>
-                <span class="visually-hidden">Session lifetime</span>
-                <input
-                  class="text-input duration-input"
-                  type="number"
-                  min="1"
-                  step="1"
-                  bind:value={sessionAmount}
-                  disabled={saving}
-                />
-              </label>
-              <label>
-                <span class="visually-hidden">Session lifetime unit</span>
-                <span class="select-wrap">
-                  <select class="select-input" bind:value={sessionUnit} disabled={saving}>
-                    <option value="minutes">Minutes</option>
-                    <option value="hours">Hours</option>
-                    <option value="days">Days</option>
-                  </select>
-                  <Icon name="chevron-down" size={14} strokeWidth={2} />
-                </span>
-              </label>
-              <button class="btn btn-signal" type="submit" disabled={saving}>Apply</button>
-            </form>
+            <DurationField
+              label="Session lifetime"
+              bind:amount={sessionAmount}
+              bind:unit={sessionUnit}
+              units={['minutes', 'hours', 'days']}
+              disabled={saving}
+              onApply={() => void saveSessionLifetime()}
+            />
           {/if}
         </div>
       </Plate>
@@ -548,11 +476,9 @@
          and endpoints named neither of them. -->
     <Plate label="Database">
       {#snippet status()}
-        <span class="status-pill service-health" data-state={current.service.database.state}
-          ><span class="status-pill-dot" aria-hidden="true"></span><span class="cap-trim"
-            >{current.service.database.state}</span
-          ></span
-        >
+        <StatusPill dot state={current.service.database.state}>
+          {current.service.database.state}
+        </StatusPill>
       {/snippet}
       <dl class="service-grid">
         <div>
@@ -679,17 +605,10 @@
   }
 
   .settings-state,
-  .duration-form,
   .credential-list,
   .section-intro,
   .updated-note {
     color: var(--text-secondary);
-    font-size: var(--font-size-meta);
-    margin: 0;
-  }
-
-  .form-error {
-    color: var(--stop);
     font-size: var(--font-size-meta);
     margin: 0;
   }
@@ -730,31 +649,6 @@
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-3);
-  }
-
-  .duration-form {
-    gap: var(--space-2);
-  }
-
-  .duration-input {
-    width: 6rem;
-  }
-
-  /* The pill carries the state, marker and word together - the same three states
-     the overview's storage value uses. */
-  .service-health[data-state='healthy'] {
-    background: var(--success-tint);
-    color: var(--success);
-  }
-
-  .service-health[data-state='degraded'] {
-    background: var(--warning-tint);
-    color: var(--warning);
-  }
-
-  .service-health[data-state='unavailable'] {
-    background: var(--danger-tint);
-    color: var(--danger);
   }
 
   /* A definition list, not a wall of boxed tiles: every other read-only key/value
@@ -847,21 +741,6 @@
 
     .service-grid .wide {
       grid-column: auto;
-    }
-
-    .duration-form {
-      align-items: stretch;
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-      width: 100%;
-    }
-
-    .duration-form .btn {
-      grid-column: 1 / -1;
-    }
-
-    .duration-input {
-      width: 100%;
     }
   }
 </style>

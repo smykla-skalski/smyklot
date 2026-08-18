@@ -1,0 +1,104 @@
+<script module lang="ts">
+  import { defineMeta } from '@storybook/addon-svelte-csf';
+  import { fn } from 'storybook/test';
+
+  import DataTable from '#lib/components/DataTable.svelte';
+  import Chip from '#lib/components/Chip.svelte';
+  import IdentityRow from '#lib/components/IdentityRow.svelte';
+  import TableEmptyState from '#lib/components/TableEmptyState.svelte';
+  import { INSTALLATIONS } from '../support/fixtures.js';
+
+  type Installation = (typeof INSTALLATIONS)[number];
+
+  const COLUMNS = [{ label: 'Installation' }, { label: 'Repositories' }, { label: 'Ownership' }];
+
+  const { Story } = defineMeta({
+    title: 'Primitives/DataTable',
+    component: DataTable,
+    /* `rows` and `rowKey` stay out of `args`: `DataTable` is generic in its row, and
+       Storybook's meta types the component as `unknown`, so the generic only infers
+       where the props are written on the element itself. */
+    args: {
+      caption: 'Installation catalog',
+      regionLabel: 'Installation catalog table',
+      columns: COLUMNS,
+    },
+  });
+</script>
+
+<!--
+  **Not the finished look.** The shell is here - the card, the caption, the scroll
+  region, the header and body - but the cell padding, the row height and the column
+  grid still live in each of the seven callers, which is why these rows look cramped.
+  Moving what is genuinely shared out of them and into `app.css`, and anchoring what
+  is genuinely per-table through the class each one passes in, IS the migration. See
+  the note in `DataTable.svelte`.
+
+  The shell nine tables wrote by hand under six wrapper class names.
+
+  The `<tr>` is rendered here and the caller supplies only the cells. That is not a
+  style choice: a `<tr>` rendered by a child carries the child's scope class, so every
+  `tbody tr` rule in the parent stops matching - measured once at headings sitting 3.4k
+  pixels from their cells.
+-->
+<Story name="Rows">
+  {#snippet template(args)}
+    <DataTable {...args} rows={INSTALLATIONS} rowKey={(row: Installation) => row.id}>
+      {#snippet cells(installation: Installation)}
+        <th scope="row">
+          <IdentityRow>
+            {#snippet mark()}<span class="mono">{installation.account.login.slice(0, 2)}</span
+              >{/snippet}
+            {#snippet name()}<strong>{installation.account.display_name}</strong>{/snippet}
+            {#snippet handle()}<span class="mono">@{installation.account.login}</span>{/snippet}
+          </IdentityRow>
+        </th>
+        <td>{installation.repository_counts.enabled} of {installation.repository_counts.total}</td>
+        <td>
+          <Chip tone={installation.ownership.stale ? 'neutral' : 'clear'} dot>
+            {installation.ownership.stale ? 'Stale' : 'Fresh'}
+          </Chip>
+        </td>
+      {/snippet}
+    </DataTable>
+  {/snippet}
+</Story>
+
+<!--
+  The empty row and its spanning cell are the shell's, not the caller's: nine tables
+  wrote that pair by hand, and the `colspan` has to agree with the column count or the
+  cell stops spanning.
+-->
+<Story name="Empty">
+  {#snippet template(args)}
+    <DataTable {...args} rows={[]} rowKey={(row: Installation) => row.id}>
+      {#snippet cells()}{/snippet}
+      {#snippet empty()}
+        <TableEmptyState
+          title="No installations match"
+          description="Nothing in the catalog matches this search"
+          actionLabel="Clear search"
+          onAction={fn()}
+        />
+      {/snippet}
+    </DataTable>
+  {/snippet}
+</Story>
+
+<!-- Rows that open something take their attributes from the caller, not their markup. -->
+<Story name="Clickable rows">
+  {#snippet template(args)}
+    <DataTable
+      {...args}
+      rows={INSTALLATIONS}
+      rowKey={(row: Installation) => row.id}
+      rowAttrs={() => ({ class: 'data-row', tabindex: 0, onclick: fn() })}
+    >
+      {#snippet cells(installation: Installation)}
+        <th scope="row">{installation.account.display_name}</th>
+        <td>{installation.repository_counts.total}</td>
+        <td><Chip tone="clear" dot>Fresh</Chip></td>
+      {/snippet}
+    </DataTable>
+  {/snippet}
+</Story>

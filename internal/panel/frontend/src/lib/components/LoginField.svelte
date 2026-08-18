@@ -21,6 +21,14 @@
     help?: string;
     refused?: boolean;
     suggest: (query: string) => Promise<PanelAccount[]>;
+    /**
+     * Takes focus once, when the dialog holding this field opens.
+     *
+     * It used to set a `data-modal-focus` attribute, which nothing read - not this
+     * app, not Bits UI, not a test - so the two dialogs that ask for it opened with
+     * the field unfocused and a reader had to reach for the mouse before typing the
+     * login the dialog exists to collect. The prop now does what it says.
+     */
     focusOnOpen?: boolean;
   } = $props();
 
@@ -36,6 +44,14 @@
       label: account.display_name || account.login,
     })),
   );
+
+  /* Once, on mount - which for this field means when the dialog around it opened.
+     `queueMicrotask` because the input is bound after the effect first runs, and it
+     is the same wait the selection handler below already uses. */
+  $effect(() => {
+    if (!focusOnOpen) return;
+    untrack(() => queueMicrotask(() => field?.focus()));
+  });
 
   const debouncedSuggest = useDebounce((query: string) => void load(query), 180);
   $effect(() => {
@@ -97,7 +113,6 @@
       placeholder="octocat"
       oninput={typed}
       required
-      data-modal-focus={focusOnOpen ? true : undefined}
     />
     <Combobox.Portal to=".app-shell">
       <Combobox.Content class="suggestion-content" sideOffset={4} collisionPadding={8}>

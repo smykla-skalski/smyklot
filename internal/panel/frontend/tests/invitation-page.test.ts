@@ -16,8 +16,19 @@ const page = readFileSync(
 );
 const rootLayout = readFileSync(new URL('../src/routes/+layout.svelte', import.meta.url), 'utf8');
 
-/** Every `<a …>` opening tag on the page, with its attributes. */
-const anchors = [...page.matchAll(/<a\b([^>]*)>/gsu)].map(([, attributes]) => attributes ?? '');
+/**
+ * Every link on the page, with its attributes.
+ *
+ * All three spellings, because a link here is written whichever way it has to look:
+ * `<Link>` for the two GitHub profiles in the details list, `<Button href={…}>` for
+ * the three that are controls, and a bare `<a>` for anything that is neither. Both
+ * components render an anchor, so the rules below apply to them exactly as they do to
+ * the literal tag - and reading only one of the spellings is how this check would go
+ * quiet without ever failing.
+ */
+const anchors = [...page.matchAll(/<(?:a|Button|Link)\b([^>]*)>/gsu)].map(
+  ([, attributes]) => attributes ?? '',
+);
 
 describe('the invitation page', () => {
   it('renders outside the authenticated panel shell', () => {

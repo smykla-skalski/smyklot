@@ -339,9 +339,14 @@ echo "Files: $(git ls-files '*.go' | wc -l | tr -d ' ')"
 [tasks."panel:frontend:install"]
 description = "Install the panel frontend's pinned dependencies"
 sources = ["internal/panel/frontend/package.json", "internal/panel/frontend/package-lock.json"]
+# SvelteKit 3 writes the tsconfig every other one extends to `node_modules/$app`,
+# not to `.svelte-kit` - so naming the old path made mise warn on every run that the
+# task had produced nothing, and treat an install that had worked as incomplete.
+# `svelte-kit sync` writes this on install, and any `npm install` or `npm uninstall`
+# removes it again.
 outputs = [
   "internal/panel/frontend/node_modules/.package-lock.json",
-  "internal/panel/frontend/.svelte-kit/tsconfig.json",
+  "internal/panel/frontend/node_modules/$app/tsconfig.json",
 ]
 run = "./scripts/install-panel-frontend.sh"
 
@@ -353,7 +358,18 @@ run = "./scripts/test-install-panel-frontend.sh"
 description = "Build the panel frontend"
 depends = ["panel:frontend:install"]
 dir = "internal/panel/frontend"
-sources = ["src/**/*", "package.json", "package-lock.json", "svelte.config.js", "vite.config.ts"]
+# Every real build input. `svelte.config.js` used to be listed and has never existed
+# here - all the Kit options are inlined into the `sveltekit()` call in
+# `vite.config.ts`. `build/` holds the route manifest and the sentinel check, both of
+# which the bundle depends on, and `static/` is copied into it wholesale.
+sources = [
+  "src/**/*",
+  "build/**/*",
+  "static/**/*",
+  "package.json",
+  "package-lock.json",
+  "vite.config.ts",
+]
 outputs = ["dist/**/*"]
 run = "npm run build"
 
@@ -442,3 +458,18 @@ description = "Serve the panel frontend with deterministic mock data"
 depends = ["panel:frontend:install"]
 dir = "internal/panel/frontend"
 run = "npm run dev:mock"
+
+# Deliberately not in `[tasks.ci]`. Storybook is a development tool here: nothing
+# builds or runs it on a pull request. What does hold the stories to account is
+# `panel:frontend:lint`, which type-checks and format-checks `stories/` and
+# `.storybook/` along with everything else in the directory.
+#
+# Port 6008 rather than Storybook's 6006, so it never argues with anything else on
+# a developer's machine. It runs with the mock enabled, which is what resolves the
+# base path to something real - and gives stories a working API for free, though
+# none of them lean on it.
+[tasks."panel:storybook"]
+description = "Serve the panel component catalogue"
+depends = ["panel:frontend:install"]
+dir = "internal/panel/frontend"
+run = "npm run storybook"

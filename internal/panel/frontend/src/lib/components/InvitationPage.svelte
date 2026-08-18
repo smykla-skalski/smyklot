@@ -5,6 +5,8 @@
   import { formatDateTime } from '../format';
   import { describeFailure } from '../panel-error';
   import type { PanelInvitation } from '../types';
+  import Button from './Button.svelte';
+  import Link from './Link.svelte';
   import Avatar from './Avatar.svelte';
   import Chip, { type ChipTone } from './Chip.svelte';
   import ErrorCard from './ErrorCard.svelte';
@@ -123,9 +125,9 @@
     />
   {:else if failure !== null}
     <p>{failure.message}</p>
-    <button class="btn" onclick={() => void invitationQuery.refetch()} disabled={loading}>
+    <Button onclick={() => void invitationQuery.refetch()} disabled={loading}>
       {loading ? 'Trying again…' : 'Try again'}
-    </button>
+    </Button>
   {:else if invitation !== null}
     <div class="invited-user">
       <Avatar account={invitation.account} size={48} />
@@ -149,14 +151,9 @@
           {#if invitation.target_login === undefined}
             <span>{invitation.target_name ?? 'Smyklot application'}</span>
           {:else}
-            <a
-              class="link"
-              href={githubProfile(invitation.target_login)}
-              target="_blank"
-              rel="noreferrer"
-            >
+            <Link href={githubProfile(invitation.target_login)} target="_blank" rel="noreferrer">
               {invitation.target_name ?? invitation.target_login}
-            </a>
+            </Link>
           {/if}
           {#if invitation.target_kind !== undefined}
             <span class="scope-kind">{invitation.target_kind}</span>
@@ -172,14 +169,9 @@
       <div>
         <dt>Invited by</dt>
         <dd>
-          <a
-            class="link"
-            href={githubProfile(invitation.created_by.login)}
-            target="_blank"
-            rel="noreferrer"
-          >
+          <Link href={githubProfile(invitation.created_by.login)} target="_blank" rel="noreferrer">
             @{invitation.created_by.login}
-          </a>
+          </Link>
         </dd>
       </div>
     </dl>
@@ -190,16 +182,16 @@
         pull requests{scopePhrase(invitation)}
       </p>
       <div class="invitation-actions">
-        <a class="btn btn-signal" href={api.signInUrl({ token, action: 'accept' })} rel="nofollow">
+        <Button tone="signal" href={api.signInUrl({ token, action: 'accept' })} rel="nofollow">
           Accept with GitHub
-        </a>
-        <a class="btn btn-quiet" href={api.signInUrl({ token, action: 'decline' })} rel="nofollow">
+        </Button>
+        <Button tone="quiet" href={api.signInUrl({ token, action: 'decline' })} rel="nofollow">
           Decline
-        </a>
+        </Button>
       </div>
     {:else if invitation.status === 'accepted'}
       <p>This invitation was accepted</p>
-      <a class="btn btn-signal" href={api.signInUrl()}>Open panel</a>
+      <Button tone="signal" href={api.signInUrl()}>Open panel</Button>
     {:else if invitation.status === 'declined'}
       <p>This invitation was declined</p>
     {:else if invitation.status === 'expired'}
@@ -290,7 +282,12 @@
   }
 
   .invitation-skeleton span {
-    animation: invitation-skeleton-pulse 1.35s ease-in-out infinite alternate;
+    /* The panel's one placeholder pulse, from `app.css`. The endpoints stay this
+       placeholder's own - the eight copies of this keyframe had drifted into three
+       different ranges, and collapsing them was not allowed to move any of them. */
+    --skeleton-from: 0.5;
+    --skeleton-to: 0.9;
+    animation: skeleton-pulse 1.35s ease-in-out infinite alternate;
     background: var(--surface-inset);
     border-radius: var(--radius-control);
     display: block;
@@ -307,16 +304,6 @@
     height: var(--control-height);
     margin-top: var(--space-2);
     width: 9rem;
-  }
-
-  @keyframes invitation-skeleton-pulse {
-    from {
-      opacity: 0.5;
-    }
-
-    to {
-      opacity: 0.9;
-    }
   }
 
   @media (max-width: 36rem) {
