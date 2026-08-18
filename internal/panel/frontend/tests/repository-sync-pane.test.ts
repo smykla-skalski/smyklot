@@ -251,7 +251,11 @@ describe('RepositorySyncPane [Component]', () => {
       const { sent, onSave } = saved();
       render(RepositorySyncPane, {
         ...base,
-        stored: override({ document: { merges: [{ path: 'renovate.json' }] } }),
+        stored: override({
+          document: {
+            merges: [{ path: 'renovate.json', overrides: { packageRules: [{ id: 'go' }] } }],
+          },
+        }),
         onSave,
       });
 
@@ -262,7 +266,11 @@ describe('RepositorySyncPane [Component]', () => {
       await save();
 
       expect(sent[0].document.merges).toEqual([
-        { path: 'renovate.json', arrays: [{ path: '$.packageRules', strategy: 'append' }] },
+        {
+          path: 'renovate.json',
+          overrides: { packageRules: [{ id: 'go' }] },
+          arrays: [{ path: '$.packageRules', strategy: 'append' }],
+        },
       ]);
     });
 
@@ -290,7 +298,11 @@ describe('RepositorySyncPane [Component]', () => {
         stored: override({
           document: {
             merges: [
-              { path: 'renovate.json', arrays: [{ path: '$.extends', strategy: 'append' }] },
+              {
+                path: 'renovate.json',
+                overrides: { extends: ['config:base'] },
+                arrays: [{ path: '$.extends', strategy: 'append' }],
+              },
             ],
           },
         }),
@@ -303,6 +315,7 @@ describe('RepositorySyncPane [Component]', () => {
       expect(sent[0].document.merges).toEqual([
         {
           path: 'renovate.json',
+          overrides: { extends: ['config:base'] },
           arrays: [{ path: '$.extends', strategy: 'append' }],
           deduplicate: true,
         },
@@ -318,6 +331,7 @@ describe('RepositorySyncPane [Component]', () => {
             merges: [
               {
                 path: 'renovate.json',
+                overrides: { extends: ['config:base'] },
                 arrays: [{ path: '$.extends', strategy: 'append' }],
                 deduplicate: true,
               },
@@ -331,7 +345,9 @@ describe('RepositorySyncPane [Component]', () => {
       await fireEvent.click(screen.getAllByRole('button', { name: 'Remove' })[1]);
       await save();
 
-      expect(sent[0].document.merges).toEqual([{ path: 'renovate.json' }]);
+      expect(sent[0].document.merges).toEqual([
+        { path: 'renovate.json', overrides: { extends: ['config:base'] } },
+      ]);
     });
 
     /*
@@ -436,12 +452,357 @@ describe('RepositorySyncPane [Component]', () => {
       expect(sent[0].document.merges).toEqual([{ path: 'CONTRIBUTING.md' }]);
     });
 
+    /*
+     * The strategy control cannot offer a pair the engine refuses, but retyping
+     * the path arrives at it from the other side: `validateStrategy` rejects a
+     * Markdown strategy on a `.json` path and a deep merge on a `.md` one.
+     */
+    it('drops a Markdown strategy when the path stops being Markdown', async () => {
+      render(RepositorySyncPane, {
+        ...base,
+        stored: override({
+          document: {
+            merges: [
+              {
+                path: 'CONTRIBUTING.md',
+                strategy: 'markdown',
+                sections: [{ action: 'after', heading: '## Usage', content: 'Read this' }],
+              },
+            ],
+          },
+        }),
+      });
+
+      await fireEvent.change(screen.getByLabelText('File'), {
+        target: { value: 'renovate.json' },
+      });
+
+      // The row is composed by keys again, which it can only be once the
+      // Markdown strategy it was carrying is gone.
+      expect(screen.getByLabelText('What this repository sets')).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Edit a section' })).toBeNull();
+    });
+
+    it('drops a keys-and-lists strategy when the path becomes Markdown', async () => {
+      render(RepositorySyncPane, {
+        ...base,
+        stored: override({
+          document: {
+            merges: [
+              {
+                path: 'renovate.json',
+                strategy: 'deep-merge',
+                overrides: { timezone: 'Europe/Warsaw' },
+              },
+            ],
+          },
+        }),
+      });
+
+      await fireEvent.change(screen.getByLabelText('File'), {
+        target: { value: 'CONTRIBUTING.md' },
+      });
+
+      expect(screen.getByRole('button', { name: 'Edit a section' })).toBeTruthy();
+      expect(screen.queryByLabelText('What this repository sets')).toBeNull();
+    });
+
+    /* A strategy the new path still allows is the row's answer, not noise. */
+    it('keeps a strategy the new path still allows', async () => {
+      const { sent, onSave } = saved();
+      render(RepositorySyncPane, {
+        ...base,
+        stored: override({
+          document: {
+            merges: [
+              {
+                path: 'renovate.json',
+                strategy: 'shallow-merge',
+                overrides: { timezone: 'Europe/Warsaw' },
+              },
+            ],
+          },
+        }),
+        onSave,
+      });
+
+      await fireEvent.change(screen.getByLabelText('File'), {
+        target: { value: '.github/settings.yml' },
+      });
+      await save();
+
+      expect(sent[0].document.merges).toEqual([
+        {
+          path: '.github/settings.yml',
+          strategy: 'shallow-merge',
+          overrides: { timezone: 'Europe/Warsaw' },
+        },
+      ]);
+    });
+
+    /*
+     * Markdown is edited by its headings, not by keys and lists, and a spec
+     * carrying both is refused. Saved once the row says what it does, so the
+     * document proves the keys were left behind rather than carried.
+     */
+    it('leaves the keys behind when a row becomes a Markdown row', async () => {
+      const { sent, onSave } = saved();
+      render(RepositorySyncPane, {
+        ...base,
+        stored: override({
+          document: {
+            merges: [
+              {
+                path: 'renovate.json',
+                overrides: { extends: ['config:base'] },
+                arrays: [{ path: '$.extends', strategy: 'append' }],
+                deduplicate: true,
+              },
+            ],
+          },
+        }),
+        onSave,
+      });
+
+      await fireEvent.change(screen.getByLabelText('File'), {
+        target: { value: 'CONTRIBUTING.md' },
+      });
+      await fireEvent.click(screen.getByRole('button', { name: 'Edit a section' }));
+      await fireEvent.change(screen.getByLabelText('Heading'), {
+        target: { value: '### Prerequisites' },
+      });
+      await fireEvent.change(screen.getByLabelText('What this repository writes'), {
+        target: { value: 'Run `mise install`' },
+      });
+      await save();
+
+      expect(sent[0].document.merges).toEqual([
+        {
+          path: 'CONTRIBUTING.md',
+          sections: [
+            { action: 'after', heading: '### Prerequisites', content: 'Run `mise install`' },
+          ],
+        },
+      ]);
+    });
+
+    /**
+     * Every merge is validated on save, and `Spec.Empty()` does not rescue a
+     * half-filled row: that short circuit lives in `Apply`, not on the save
+     * path. Without these, each new Add button makes a row the server refuses
+     * the moment it exists, answered by one flat sentence at the top of a pane
+     * that can hold several files.
+     */
+    describe('refusing what the engine would refuse', () => {
+      function refusal(): string {
+        return screen.getByRole('alert').textContent ?? '';
+      }
+
+      function savable(): boolean {
+        return !screen.getByRole('button', { name: 'Save' }).hasAttribute('disabled');
+      }
+
+      it('will not save a list rule with no list named', async () => {
+        render(RepositorySyncPane, {
+          ...base,
+          stored: override({
+            document: { merges: [{ path: 'renovate.json', overrides: { a: [1] } }] },
+          }),
+        });
+
+        await fireEvent.click(screen.getByRole('button', { name: 'Add a list rule' }));
+
+        expect(refusal()).toContain('names no list');
+        expect(savable()).toBe(false);
+      });
+
+      /*
+       * A rule says what to do with the repository's list where the template
+       * has one, so a rule whose path no override sets has no list to work
+       * with - for every template, always.
+       */
+      it('will not save a list rule the overrides do not set', async () => {
+        render(RepositorySyncPane, {
+          ...base,
+          stored: override({
+            document: {
+              merges: [
+                {
+                  path: 'renovate.json',
+                  overrides: { extends: ['config:base'] },
+                  arrays: [{ path: '$.packageRules', strategy: 'append' }],
+                },
+              ],
+            },
+          }),
+        });
+
+        expect(refusal()).toContain('No override sets $.packageRules');
+        expect(savable()).toBe(false);
+      });
+
+      it('will not save a list rule pointing at something that is not a list', async () => {
+        render(RepositorySyncPane, {
+          ...base,
+          stored: override({
+            document: {
+              merges: [
+                {
+                  path: 'renovate.json',
+                  overrides: { timezone: 'Europe/Warsaw' },
+                  arrays: [{ path: '$.timezone', strategy: 'append' }],
+                },
+              ],
+            },
+          }),
+        });
+
+        expect(refusal()).toContain('is not a list');
+        expect(savable()).toBe(false);
+      });
+
+      it('will not save two rules for one list', async () => {
+        render(RepositorySyncPane, {
+          ...base,
+          stored: override({
+            document: {
+              merges: [
+                {
+                  path: 'renovate.json',
+                  overrides: { extends: ['config:base'] },
+                  arrays: [
+                    { path: '$.extends', strategy: 'append' },
+                    { path: '$.extends', strategy: 'prepend' },
+                  ],
+                },
+              ],
+            },
+          }),
+        });
+
+        expect(refusal()).toContain('two rules for $.extends');
+        expect(savable()).toBe(false);
+      });
+
+      /* A shallow merge replaces a top-level key whole, so nothing below one
+         is ever merged and a rule pointing there describes work that cannot
+         happen. */
+      it('will not save a nested list rule under a shallow merge', async () => {
+        render(RepositorySyncPane, {
+          ...base,
+          stored: override({
+            document: {
+              merges: [
+                {
+                  path: 'renovate.json',
+                  strategy: 'shallow-merge',
+                  overrides: { host: { rules: [1] } },
+                  arrays: [{ path: '$.host.rules', strategy: 'append' }],
+                },
+              ],
+            },
+          }),
+        });
+
+        expect(refusal()).toContain('below the top level');
+        expect(savable()).toBe(false);
+      });
+
+      it('will not save a section with no heading', async () => {
+        render(RepositorySyncPane, {
+          ...base,
+          stored: override({ document: { merges: [{ path: 'CONTRIBUTING.md' }] } }),
+        });
+
+        await fireEvent.click(screen.getByRole('button', { name: 'Edit a section' }));
+
+        expect(refusal()).toContain('needs the heading it addresses');
+        expect(savable()).toBe(false);
+      });
+
+      it('will not save a patch that finds nothing', async () => {
+        render(RepositorySyncPane, {
+          ...base,
+          stored: override({
+            document: {
+              merges: [
+                {
+                  path: 'CONTRIBUTING.md',
+                  sections: [{ action: 'patch', heading: '### Making Changes' }],
+                },
+              ],
+            },
+          }),
+        });
+
+        expect(refusal()).toContain('substitutes nothing');
+        expect(savable()).toBe(false);
+      });
+
+      it('will not save a Markdown row that says nothing', () => {
+        render(RepositorySyncPane, {
+          ...base,
+          stored: override({ document: { merges: [{ path: 'CONTRIBUTING.md' }] } }),
+        });
+
+        expect(refusal()).toContain('no section says how');
+        expect(savable()).toBe(false);
+      });
+
+      it('will not save a row that merges nothing', () => {
+        render(RepositorySyncPane, {
+          ...base,
+          stored: override({ document: { merges: [{ path: 'renovate.json' }] } }),
+        });
+
+        expect(refusal()).toContain('sets nothing and has no list rule');
+        expect(savable()).toBe(false);
+      });
+
+      it('will not save a file with no extension the engine can merge', () => {
+        render(RepositorySyncPane, {
+          ...base,
+          stored: override({
+            document: { merges: [{ path: 'LICENSE', overrides: { a: 1 } }] },
+          }),
+        });
+
+        expect(refusal()).toContain('no extension this can merge');
+        expect(savable()).toBe(false);
+      });
+
+      it('will not save one file adjusted twice', () => {
+        render(RepositorySyncPane, {
+          ...base,
+          stored: override({
+            document: {
+              merges: [
+                { path: 'renovate.json', overrides: { a: 1 } },
+                { path: 'renovate.json', overrides: { b: 2 } },
+              ],
+            },
+          }),
+        });
+
+        expect(refusal()).toContain('adjusted twice');
+        expect(savable()).toBe(false);
+      });
+    });
+
     it('keeps a key a newer version of the service wrote on a merge', async () => {
       const { sent, onSave } = saved();
       render(RepositorySyncPane, {
         ...base,
         stored: override({
-          document: { merges: [{ path: 'renovate.json', rewrites_later: ['something'] }] },
+          document: {
+            merges: [
+              {
+                path: 'renovate.json',
+                overrides: { extends: ['config:base'] },
+                rewrites_later: ['something'],
+              },
+            ],
+          },
         }),
         onSave,
       });
@@ -453,6 +814,7 @@ describe('RepositorySyncPane [Component]', () => {
       expect(sent[0].document.merges).toEqual([
         {
           path: 'renovate.json',
+          overrides: { extends: ['config:base'] },
           rewrites_later: ['something'],
           arrays: [{ path: '$.extends', strategy: 'append' }],
         },
