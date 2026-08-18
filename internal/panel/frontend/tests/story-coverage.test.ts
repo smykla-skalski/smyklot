@@ -24,12 +24,13 @@ const stories = new URL('../stories/', import.meta.url);
 
 /** Components still owed a story. Only ever gets shorter. */
 const PENDING: readonly string[] = [
-  /* Blocked on a route, not on fixtures. Each row builds its link with SvelteKit's
-     `resolve()` against `/i/[account]/...`, and a story has no route params - the row
-     throws "Missing parameter 'account'" before it renders and the table draws its
-     header over nothing. `@storybook/sveltekit` can supply them through
-     `parameters.sveltekit_experimental`; that is the next thing to try, and the same
-     block will unblock `InstallationView` and `RootInstallationView`. */
+  /* Blocked on something other than fixtures, and it is NOT the query key - the rows
+     resolve fine without a seed, because `fetchPage` is a plain prop. Each row builds
+     its link with `resolve()` against `/i/[account]/...` and throws "Missing parameter
+     'account'" before rendering. Supplying `parameters.sveltekit_experimental.state.
+     page.params` was TRIED and did not fix it, so the param reaches `resolve()` by some
+     other path - find it before writing this story again. `InstallationView` and
+     `RootInstallationView` build the same links and will need the same answer. */
   'RepositoryList',
   'HistoryPanel',
   'IdentityBar',
