@@ -20,4 +20,5 @@
 
 <Story name="Its own words" args={{ message: 'Invitation link copied' }} />
 
-<Story name="Hidden" args={{ shown: false }} />
+<!-- Between copies, which is where this component spends its life. -->
+<Story name="Hidden" args={{ shown: false }} tags={['blank']} />

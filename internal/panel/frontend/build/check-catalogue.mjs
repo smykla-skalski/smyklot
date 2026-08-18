@@ -80,6 +80,14 @@ const base = `http://127.0.0.1:${address.port}`;
 
 const index = JSON.parse(await readFile(join(root, 'index.json'), 'utf8'));
 const ids = Object.keys(index.entries ?? {});
+/**
+ * The stories whose whole point is that nothing is drawn - a receipt not showing, a
+ * form with no error, a footer with nothing to report. Declared on the story with
+ * `tags={['blank']}` rather than listed here, so the claim sits beside the state it
+ * describes, and checked both ways below: a blank story that starts drawing is as
+ * much a surprise as a drawing one that stops.
+ */
+const blank = new Set(ids.filter((id) => (index.entries[id]?.tags ?? []).includes('blank')));
 if (ids.length === 0) {
   console.error('the catalogue has no stories in it');
   process.exit(1);
@@ -101,6 +109,8 @@ const browser = await chromium.launch({
 const broke = [];
 /** @type {string[]} */
 const bare = [];
+/** @type {string[]} */
+const filled = [];
 /** @type {string[]} */
 const wide = [];
 
@@ -149,19 +159,39 @@ await Promise.all(
          this many stories that is not nothing. */
       const seen = await page.evaluate(() => {
         const story = document.querySelector('#storybook-root');
-        /* Anything at all, anywhere inside. Not the root's own height: a backdrop is
-           positioned out of flow, so its root measures zero while the sky it drew is
-           448px - a check reading the root alone calls eight healthy stories empty. */
+        /* Below the decorator rather than at it. `PanelShell` is 48px tall with
+           nothing inside it, so a root measured whole is painted whether or not the
+           component came out - which is how a story passing `view="access"`, a value
+           `InstallationView` has no branch for, sat in the catalogue drawing an empty
+           frame and reporting as healthy.
+
+           Descendants only, never the container's own box, which is what the shell
+           and a backdrop have in common: a backdrop is positioned out of flow, so its
+           parent measures zero while the sky it drew is 448px - a check reading the
+           parent alone calls eight healthy stories empty. */
+        const shell = story?.querySelector('.app-shell') ?? story;
+        /* The shell's own two boxes are not the story. Everything else under it is,
+           portalled overlays included: `Modal` is `<Dialog.Portal to=".app-shell">`,
+           so a dialog's content is a sibling of the column rather than a child of
+           it, and a check reading the column alone calls every dialog empty. */
+        const chrome = new Set(
+          [
+            shell?.querySelector(':scope > .workspace'),
+            shell?.querySelector(':scope > .workspace > .workspace-content'),
+          ].filter((node) => node !== null && node !== undefined),
+        );
         const painted =
-          story !== null &&
-          (story.getBoundingClientRect().height > 1 ||
-            [...story.querySelectorAll('*')].some(
-              (node) => node.getBoundingClientRect().height > 1,
-            ));
+          shell !== null &&
+          [...shell.querySelectorAll('*')].some(
+            (node) => !chrome.has(node) && node.getBoundingClientRect().height > 1,
+          );
         return { painted, over: document.documentElement.scrollWidth - window.innerWidth };
       });
 
-      if (!seen.painted) bare.push(`${id} rendered nothing`);
+      if (!seen.painted && !blank.has(id)) bare.push(`${id} rendered nothing`);
+      if (seen.painted && blank.has(id)) {
+        filled.push(`${id} is tagged blank and drew something; drop the tag`);
+      }
       /* A pixel of slack for the rasteriser. A story that overflows does so by the
          width of whatever it laid out wrong, which is never one pixel. */
       if (seen.over > 1) wide.push(`${id} runs ${seen.over}px past the right of the window`);
@@ -174,16 +204,17 @@ await Promise.all(
 await browser.close();
 await new Promise((resolve) => server.close(() => resolve(undefined)));
 
-const wrong = [...broke, ...bare, ...wide];
+const wrong = [...broke, ...bare, ...wide, ...filled];
 if (wrong.length > 0) {
   for (const line of wrong) console.error(`  ${line}`);
   console.error(
     `\n${ids.length} stories: ${broke.length} threw, ${bare.length} drew nothing, ` +
-      `${wide.length} overflowed.`,
+      `${wide.length} overflowed, ${filled.length} drew while tagged blank.`,
   );
   process.exit(1);
 }
 
 console.log(
-  `catalogue checked: ${ids.length} stories, none throwing, all drawing, none overflowing`,
+  `catalogue checked: ${ids.length} stories, none throwing, ` +
+    `${ids.length - blank.size} drawing and ${blank.size} blank by declaration, none overflowing`,
 );

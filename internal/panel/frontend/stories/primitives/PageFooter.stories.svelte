@@ -19,4 +19,10 @@
 <Story name="Version only" args={{ build: { version: '1.37.0', serviceHost: null } }} />
 
 <!-- Nothing to say, so nothing is drawn. -->
-<Story name="Nothing to report" args={{ build: { version: null, serviceHost: null } }} />
+<!-- A build that named neither a version nor a host leaves the footer with nothing to
+     stand on, so it stands down rather than drawing an empty rule. -->
+<Story
+  name="Nothing to report"
+  args={{ build: { version: null, serviceHost: null } }}
+  tags={['blank']}
+/>

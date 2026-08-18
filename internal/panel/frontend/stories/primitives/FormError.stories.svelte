@@ -18,4 +18,5 @@
 <Story name="Message" />
 
 <!-- Nothing renders when there is nothing to say, so callers stop writing the guard. -->
-<Story name="Empty" args={{ message: null }} />
+<!-- No message, so nothing at all: the box is the message. -->
+<Story name="Empty" args={{ message: null }} tags={['blank']} />
