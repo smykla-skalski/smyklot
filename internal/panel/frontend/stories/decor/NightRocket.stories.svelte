@@ -4,7 +4,11 @@
   import NightSky from '#lib/components/NightSky.svelte';
   import NightRocket from '#lib/components/NightRocket.svelte';
 
-  const { Story } = defineMeta({ title: 'Decor/NightRocket', component: NightRocket });
+  const { Story } = defineMeta({
+    title: 'Decor/NightRocket',
+    component: NightRocket,
+    parameters: { bleed: true, layout: 'fullscreen' },
+  });
 </script>
 
 <!--

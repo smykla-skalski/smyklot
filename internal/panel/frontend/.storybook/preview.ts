@@ -52,6 +52,9 @@ const preview: Preview = {
       props: {
         theme: context.globals.theme,
         console: context.globals.console,
+        // `parameters: { bleed: true }` for the page backdrops, which are sized
+        // `100vw` and belong to the window rather than to the content column.
+        bleed: context.parameters.bleed === true,
       },
     }),
   ],

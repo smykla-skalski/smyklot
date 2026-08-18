@@ -4,7 +4,11 @@
   import NightSky from '#lib/components/NightSky.svelte';
   import NightMeteors from '#lib/components/NightMeteors.svelte';
 
-  const { Story } = defineMeta({ title: 'Decor/NightMeteors', component: NightMeteors });
+  const { Story } = defineMeta({
+    title: 'Decor/NightMeteors',
+    component: NightMeteors,
+    parameters: { bleed: true, layout: 'fullscreen' },
+  });
 </script>
 
 <Story name="Falling">

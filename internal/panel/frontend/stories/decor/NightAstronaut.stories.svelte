@@ -4,7 +4,11 @@
   import NightSky from '#lib/components/NightSky.svelte';
   import NightAstronaut from '#lib/components/NightAstronaut.svelte';
 
-  const { Story } = defineMeta({ title: 'Decor/NightAstronaut', component: NightAstronaut });
+  const { Story } = defineMeta({
+    title: 'Decor/NightAstronaut',
+    component: NightAstronaut,
+    parameters: { bleed: true, layout: 'fullscreen' },
+  });
 </script>
 
 <!-- Needs a sky to drift across, and a free slot to be allowed into. -->

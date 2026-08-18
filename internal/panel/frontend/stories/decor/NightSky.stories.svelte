@@ -12,6 +12,7 @@
       meteors: { control: 'boolean' },
     },
     args: { height: '28rem', rocket: false, astronaut: false, meteors: false },
+    parameters: { bleed: true, layout: 'fullscreen' },
   });
 </script>
 

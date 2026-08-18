@@ -25,5 +25,28 @@
   its trigger, positioned against the rail.
 -->
 <Story name="Hidden until hovered">
-  {#snippet template(args)}<SidebarTooltip {...args} />{/snippet}
+  {#snippet template(args)}
+    <!--
+      Standing in for the trigger. The tooltip is `position: absolute` at
+      `left: calc(100% + ...)`, so without a positioned parent it measures from
+      whatever box it lands in - in the catalogue that is the content column, and it
+      then reaches 153px past the right of the window. A rail-width relative box is
+      what it has in the app, and it is the smallest thing that makes the offset
+      mean what it means there.
+    -->
+    <span class="rail-slot"><SidebarTooltip {...args} /></span>
+  {/snippet}
 </Story>
+
+<style>
+  .rail-slot {
+    /* `--sidebar-collapsed` is the rail the offset is written against. */
+    background: var(--strip-lift);
+    block-size: 2.75rem;
+    border: 1px dashed var(--rule);
+    border-radius: var(--radius-2);
+    display: block;
+    inline-size: 2.75rem;
+    position: relative;
+  }
+</style>

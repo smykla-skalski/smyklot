@@ -15,6 +15,7 @@
       build: BUILD,
       busy: false,
     },
+    parameters: { bleed: true, layout: 'fullscreen' },
   });
 </script>
 

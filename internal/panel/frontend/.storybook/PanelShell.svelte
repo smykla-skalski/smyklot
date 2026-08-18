@@ -12,11 +12,17 @@
   const {
     theme,
     console: consoleMode,
+    bleed = false,
     children,
   }: {
     theme: ThemeDisplay;
     /** Which of the two consoles a story is standing in; they are different palettes. */
     console: 'panel' | 'root';
+    /**
+     * Render into the shell itself rather than the centred content column, for the
+     * page backdrops that are sized `100vw`. Set it with `parameters: { bleed: true }`.
+     */
+    bleed?: boolean;
     children: Snippet;
   } = $props();
 
@@ -77,11 +83,15 @@
 -->
 <QueryClientProvider client={queryClient}>
   <main class="app-shell" class:root-mode={consoleMode === 'root'}>
-    <div class="workspace">
-      <div class="workspace-content">
-        {@render children()}
+    {#if bleed}
+      {@render children()}
+    {:else}
+      <div class="workspace">
+        <div class="workspace-content">
+          {@render children()}
+        </div>
       </div>
-    </div>
+    {/if}
   </main>
 </QueryClientProvider>
 
@@ -99,6 +109,14 @@
     `.workspace-content`, so it gets the same padding, the same `--content-max` and
     the same centring as a real page, and a width measured here is a width the app
     would give it.
+
+    Unless it is a backdrop, which `bleed` is for. `.workspace-content` is a
+    centred `--content-max` column, so at a wide window it starts a couple of
+    hundred pixels in - and a component sized `100vw`, which is how the app's page
+    backdrops are drawn, then begins at that inset and hangs off the right by
+    exactly as much. Those components are not page content and the app never puts
+    them in this column: `NightPage` is the whole window. `bleed` renders them
+    straight into the shell, where `100vw` means what it says.
 
     These rules carry this component's scope class, which puts them above `app.css`
     by one class. That is the usual trap and here it is the point - but it is also
