@@ -31,6 +31,7 @@
     HistorySort,
     Page,
   } from '../types';
+  import DataTable from './DataTable.svelte';
   import Skeleton from './Skeleton.svelte';
   import SortIndicator from './SortIndicator.svelte';
   import Button from './Button.svelte';
@@ -337,7 +338,22 @@
     getScrollElement: () => failureScroll ?? null,
     overscan: 6,
   });
-  const auditRenderRows = $derived.by(() =>
+  /*
+   * One shape, not two.
+   * ------------------
+   * A ternary over two `.map()`s types as `A[] | B[]`, and a union of arrays cannot
+   * be the argument to a generic that wants `readonly Row[]` - it has no single
+   * element type to infer. Stating it collapses the union at the point where the two
+   * branches meet, which is also where a reader is asking what a render row is.
+   */
+  type RenderRow = {
+    index: number;
+    key: string | number | bigint;
+    size: number;
+    start: number;
+  } & ({ virtual: true } | { virtual: false });
+
+  const auditRenderRows: RenderRow[] = $derived.by(() =>
     desktopTableLayout.current
       ? $auditVirtualizer.getVirtualItems().map((row) => ({ ...row, virtual: true as const }))
       : auditTableRows.map((row, index) => ({
@@ -348,7 +364,7 @@
           virtual: false as const,
         })),
   );
-  const failureRenderRows = $derived.by(() =>
+  const failureRenderRows: RenderRow[] = $derived.by(() =>
     desktopTableLayout.current
       ? $failureVirtualizer.getVirtualItems().map((row) => ({ ...row, virtual: true as const }))
       : failureTableRows.map((row, index) => ({
@@ -766,322 +782,312 @@
     {:else if historyType === 'audit'}
       <!-- Keyboard focus lets users scroll columns that overflow the viewport. -->
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-      <div
-        class="table-scroll table-card"
-        role="region"
-        tabindex="0"
-        aria-label="Audit history table"
+      <DataTable
+        class="table-scroll"
+        tableClass="history-table audit-table"
+        caption="Audit history"
+        regionLabel="Audit history table"
+        rows={auditRenderRows}
+        rowKey={(virtualRow) => virtualRow.key}
+        columnCount={4}
+        bind:body={auditScroll}
+        rowAttrs={(virtualRow) =>
+          virtualRow.virtual
+            ? {
+                class: 'data-row virtual-row',
+                /* The offset travels as `--row-y`, never as an inline `transform`.
+                   `.data-row` composes the translate with the press scale in the
+                   stylesheet; an inline transform replaces the whole thing, and the
+                   scale is silently dropped. */
+                style: `height:${virtualRow.size}px;--row-y:${virtualRow.start}px`,
+              }
+            : { class: 'data-row' }}
       >
-        <table class="history-table audit-table">
-          <caption class="visually-hidden">Audit history</caption>
+        {#snippet colgroup()}
           <colgroup>
             <col class="actor-column" />
             <col class="target-column" />
             <col class="change-column" />
             <col class="time-column" />
           </colgroup>
-          <thead>
-            <tr>
-              <th scope="col" aria-sort={sortDirection('actor')}>
-                <div class="table-heading">
-                  <button
-                    class="table-sort-button"
-                    type="button"
-                    onclick={() => toggleSort('actor')}
-                  >
-                    <span class="table-heading-label">Actor</span>
-                    <SortIndicator />
-                  </button>
-                </div>
-              </th>
-              <th scope="col" aria-sort={sortDirection('target')}>
-                <div class="table-heading">
-                  <button
-                    class="table-sort-button"
-                    type="button"
-                    onclick={() => toggleSort('target')}
-                  >
-                    <span class="table-heading-label">Target</span>
-                    <SortIndicator />
-                  </button>
-                  {#if context === 'installation'}
-                    <FilterMenu
-                      label="Target"
-                      summary={auditScopeLabel()}
-                      hint="Choose which configuration changes to show"
-                      sections={AUDIT_SCOPE_FILTERS}
-                      selected={[auditScope]}
-                      fallbackValue="all"
-                      align="end"
-                      onChange={(values) =>
-                        auditTable.getColumn('target')?.setFilterValue(values[0])}
-                    />
-                  {/if}
-                </div>
-              </th>
-              <th scope="col" aria-sort={sortDirection('change')}>
-                <div class="table-heading">
-                  <button
-                    class="table-sort-button"
-                    type="button"
-                    onclick={() => toggleSort('change')}
-                  >
-                    <span class="table-heading-label">Change</span>
-                    <SortIndicator />
-                  </button>
-                  {#if context === 'root'}
-                    <FilterMenu
-                      label="Event category"
-                      summary={auditCategoryLabel()}
-                      hint="Choose which application events to show"
-                      sections={ROOT_AUDIT_CATEGORY_FILTERS}
-                      selected={auditCategories.length === 0 ? ['all'] : auditCategories}
-                      fallbackValue="all"
-                      align="end"
-                      multiple
-                      onChange={(values) => auditTable.getColumn('change')?.setFilterValue(values)}
-                    />
-                  {:else}
-                    <FilterMenu
-                      label="Change"
-                      summary={auditChangeLabel()}
-                      hint="Choose which configuration changes to show"
-                      sections={AUDIT_CHANGE_FILTERS}
-                      selected={[auditChange]}
-                      fallbackValue="all"
-                      align="end"
-                      onChange={(values) =>
-                        auditTable.getColumn('change')?.setFilterValue(values[0])}
-                    />
-                  {/if}
-                </div>
-              </th>
-              <th scope="col" aria-sort={sortDirection('when')}>
-                <div class="table-heading">
-                  <button
-                    class="table-sort-button"
-                    type="button"
-                    onclick={() => toggleSort('when')}
-                  >
-                    <span class="table-heading-label">When</span>
-                    <SortIndicator />
-                  </button>
-                </div>
-              </th>
-            </tr>
-          </thead>
-          <tbody bind:this={auditScroll} data-panel-scroll>
-            {#if desktopTableLayout.current}
-              <tr
-                class="virtual-spacer"
-                aria-hidden="true"
-                style:height={`${$auditVirtualizer.getTotalSize()}px`}><td colspan="4"></td></tr
-              >
-            {/if}
-            {#each auditRenderRows as virtualRow (virtualRow.key)}
-              {@const entry = auditEntryAt(virtualRow.index)}
-              <tr
-                class:virtual-row={virtualRow.virtual}
-                class:data-row={true}
-                style:height={virtualRow.virtual ? `${virtualRow.size}px` : undefined}
-                style:transform={virtualRow.virtual
-                  ? `translateY(${virtualRow.start}px)`
-                  : undefined}
-              >
-                <td data-label="Actor">
-                  <span class="actor">
-                    <Avatar account={entry.actor} size={24} />
-                    <span class="actor-copy">
-                      <strong>{entry.actor.display_name}</strong>
-                      <small class="actor-login mono">@{entry.actor.login}</small>
-                    </span>
-                  </span>
-                </td>
-                <td data-label="Target">
-                  {#if context === 'root' && entry.installation !== undefined}
-                    <span class="cell-primary" title={`@${entry.installation.login}`}>
-                      {entry.installation.display_name}
-                    </span>
-                  {:else if context === 'root'}
-                    <span class="cell-primary">Smyklot</span>
-                  {:else if entry.repository_full_name !== undefined}
-                    <code title={entry.repository_full_name}>
-                      {repositoryName(entry.repository_full_name)}
-                    </code>
-                  {:else}
-                    <span class="cell-primary">Account</span>
-                  {/if}
-                </td>
-                <td data-label="Change" title={auditDetail(entry)}>
-                  <span class="change-line">
-                    {#if entry.category !== undefined}
-                      <span class="category-tag" aria-hidden="true">{entry.category}</span>
-                    {/if}
-                    <span class="cell-primary band-trim">{auditSummary(entry.summary)}</span>
-                  </span>
-                </td>
-                <td data-label="When">
-                  <time
-                    class="table-time band-trim"
-                    datetime={entry.created_at}
-                    title={formatTimestamp(entry.created_at)}
-                  >
-                    {displayTime(entry.created_at)}
-                  </time>
-                </td>
-              </tr>
-            {:else}
-              <tr class="empty-row">
-                <td class="empty-cell" colspan="4">
-                  <TableEmptyState
-                    title="No configuration changes found"
-                    description={hasFilters
-                      ? 'Try another search or clear the active filters'
-                      : 'Configuration changes will appear here'}
-                    actionLabel={hasFilters ? 'Clear filters' : undefined}
-                    onAction={hasFilters ? clearFilters : undefined}
+        {/snippet}
+        {#snippet head()}
+          <tr>
+            <th scope="col" aria-sort={sortDirection('actor')}>
+              <div class="table-heading">
+                <button class="table-sort-button" type="button" onclick={() => toggleSort('actor')}>
+                  <span class="table-heading-label">Actor</span>
+                  <SortIndicator />
+                </button>
+              </div>
+            </th>
+            <th scope="col" aria-sort={sortDirection('target')}>
+              <div class="table-heading">
+                <button
+                  class="table-sort-button"
+                  type="button"
+                  onclick={() => toggleSort('target')}
+                >
+                  <span class="table-heading-label">Target</span>
+                  <SortIndicator />
+                </button>
+                {#if context === 'installation'}
+                  <FilterMenu
+                    label="Target"
+                    summary={auditScopeLabel()}
+                    hint="Choose which configuration changes to show"
+                    sections={AUDIT_SCOPE_FILTERS}
+                    selected={[auditScope]}
+                    fallbackValue="all"
+                    align="end"
+                    onChange={(values) => auditTable.getColumn('target')?.setFilterValue(values[0])}
                   />
-                </td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
+                {/if}
+              </div>
+            </th>
+            <th scope="col" aria-sort={sortDirection('change')}>
+              <div class="table-heading">
+                <button
+                  class="table-sort-button"
+                  type="button"
+                  onclick={() => toggleSort('change')}
+                >
+                  <span class="table-heading-label">Change</span>
+                  <SortIndicator />
+                </button>
+                {#if context === 'root'}
+                  <FilterMenu
+                    label="Event category"
+                    summary={auditCategoryLabel()}
+                    hint="Choose which application events to show"
+                    sections={ROOT_AUDIT_CATEGORY_FILTERS}
+                    selected={auditCategories.length === 0 ? ['all'] : auditCategories}
+                    fallbackValue="all"
+                    align="end"
+                    multiple
+                    onChange={(values) => auditTable.getColumn('change')?.setFilterValue(values)}
+                  />
+                {:else}
+                  <FilterMenu
+                    label="Change"
+                    summary={auditChangeLabel()}
+                    hint="Choose which configuration changes to show"
+                    sections={AUDIT_CHANGE_FILTERS}
+                    selected={[auditChange]}
+                    fallbackValue="all"
+                    align="end"
+                    onChange={(values) => auditTable.getColumn('change')?.setFilterValue(values[0])}
+                  />
+                {/if}
+              </div>
+            </th>
+            <th scope="col" aria-sort={sortDirection('when')}>
+              <div class="table-heading">
+                <button class="table-sort-button" type="button" onclick={() => toggleSort('when')}>
+                  <span class="table-heading-label">When</span>
+                  <SortIndicator />
+                </button>
+              </div>
+            </th>
+          </tr>
+        {/snippet}
+        {#snippet lead()}
+          {#if desktopTableLayout.current}
+            <tr
+              class="virtual-spacer"
+              aria-hidden="true"
+              style:height={`${$auditVirtualizer.getTotalSize()}px`}><td colspan="4"></td></tr
+            >
+          {/if}
+        {/snippet}
+        {#snippet cells(virtualRow)}
+          {@const entry = auditEntryAt(virtualRow.index)}
+          <td data-label="Actor">
+            <span class="actor">
+              <Avatar account={entry.actor} size={24} />
+              <span class="actor-copy">
+                <strong>{entry.actor.display_name}</strong>
+                <small class="actor-login mono">@{entry.actor.login}</small>
+              </span>
+            </span>
+          </td>
+          <td data-label="Target">
+            {#if context === 'root' && entry.installation !== undefined}
+              <span class="cell-primary" title={`@${entry.installation.login}`}>
+                {entry.installation.display_name}
+              </span>
+            {:else if context === 'root'}
+              <span class="cell-primary">Smyklot</span>
+            {:else if entry.repository_full_name !== undefined}
+              <code title={entry.repository_full_name}>
+                {repositoryName(entry.repository_full_name)}
+              </code>
+            {:else}
+              <span class="cell-primary">Account</span>
+            {/if}
+          </td>
+          <td data-label="Change" title={auditDetail(entry)}>
+            <span class="change-line">
+              {#if entry.category !== undefined}
+                <span class="category-tag" aria-hidden="true">{entry.category}</span>
+              {/if}
+              <span class="cell-primary band-trim">{auditSummary(entry.summary)}</span>
+            </span>
+          </td>
+          <td data-label="When">
+            <time
+              class="table-time band-trim"
+              datetime={entry.created_at}
+              title={formatTimestamp(entry.created_at)}
+            >
+              {displayTime(entry.created_at)}
+            </time>
+          </td>
+        {/snippet}
+        {#snippet empty()}
+          <TableEmptyState
+            title="No configuration changes found"
+            description={hasFilters
+              ? 'Try another search or clear the active filters'
+              : 'Configuration changes will appear here'}
+            actionLabel={hasFilters ? 'Clear filters' : undefined}
+            onAction={hasFilters ? clearFilters : undefined}
+          />
+        {/snippet}
+      </DataTable>
     {:else}
       <!-- Keyboard focus lets users scroll columns that overflow the viewport. -->
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-      <div
-        class="table-scroll table-card"
-        role="region"
-        tabindex="0"
-        aria-label="Delivery failure history table"
+      <DataTable
+        class="table-scroll"
+        tableClass="history-table failure-table"
+        caption="Delivery failure history"
+        regionLabel="Delivery failure history table"
+        rows={failureRenderRows}
+        rowKey={(virtualRow) => virtualRow.key}
+        columnCount={4}
+        bind:body={failureScroll}
+        rowAttrs={(virtualRow) =>
+          virtualRow.virtual
+            ? {
+                class: 'failure-row data-row virtual-row',
+                /* The offset travels as `--row-y`, never as an inline `transform`.
+                   `.data-row` composes the translate with the press scale in the
+                   stylesheet; an inline transform replaces the whole thing, and the
+                   scale is silently dropped. */
+                style: `height:${virtualRow.size}px;--row-y:${virtualRow.start}px`,
+              }
+            : { class: 'failure-row data-row' }}
       >
-        <table class="history-table failure-table">
-          <caption class="visually-hidden">Delivery failure history</caption>
+        {#snippet colgroup()}
           <colgroup>
             <col class="status-column" />
             <col class="repository-column" />
             <col class="failure-column" />
             <col class="time-column" />
           </colgroup>
-          <thead>
-            <tr>
-              <th scope="col" aria-sort={sortDirection('status')}>
-                <div class="table-heading">
-                  <button
-                    class="table-sort-button"
-                    type="button"
-                    onclick={() => toggleSort('status')}
-                  >
-                    <span class="table-heading-label">Status</span>
-                    <SortIndicator />
-                  </button>
-                  <FilterMenu
-                    label="Status"
-                    summary={failureKindLabel()}
-                    hint="Choose which delivery failures to show"
-                    sections={FAILURE_KIND_FILTERS}
-                    selected={[failureKind]}
-                    fallbackValue="all"
-                    align="end"
-                    onChange={(values) =>
-                      failureTable.getColumn('status')?.setFilterValue(values[0])}
-                  />
-                </div>
-              </th>
-              <th scope="col" aria-sort={sortDirection('repository')}>
-                <div class="table-heading">
-                  <button
-                    class="table-sort-button"
-                    type="button"
-                    onclick={() => toggleSort('repository')}
-                  >
-                    <span class="table-heading-label">Repository</span>
-                    <SortIndicator />
-                  </button>
-                </div>
-              </th>
-              <th scope="col">
-                <div class="table-heading"><span class="table-heading-label">Failure</span></div>
-              </th>
-              <th scope="col" aria-sort={sortDirection('when')}>
-                <div class="table-heading">
-                  <button
-                    class="table-sort-button"
-                    type="button"
-                    onclick={() => toggleSort('when')}
-                  >
-                    <span class="table-heading-label">When</span>
-                    <SortIndicator />
-                  </button>
-                </div>
-              </th>
-            </tr>
-          </thead>
-          <tbody bind:this={failureScroll} data-panel-scroll>
-            {#if desktopTableLayout.current}
-              <tr
-                class="virtual-spacer"
-                aria-hidden="true"
-                style:height={`${$failureVirtualizer.getTotalSize()}px`}><td colspan="4"></td></tr
-              >
-            {/if}
-            {#each failureRenderRows as virtualRow (virtualRow.key)}
-              {@const failure = failureAt(virtualRow.index)}
-              <tr
-                class={['failure-row data-row', virtualRow.virtual && 'virtual-row']}
-                style:height={virtualRow.virtual ? `${virtualRow.size}px` : undefined}
-                style:transform={virtualRow.virtual
-                  ? `translateY(${virtualRow.start}px)`
-                  : undefined}
-              >
-                <td data-label="Status">
-                  <span class={['failure-kind', failure.retryable ? 'retryable' : 'permanent']}>
-                    <span class="cell-symbol" aria-hidden="true">
-                      <Icon name={failure.retryable ? 'refresh' : 'failure'} size={14} />
-                    </span>
-                    <span class="cap-trim">{failure.retryable ? 'Retryable' : 'Permanent'}</span>
-                  </span>
-                </td>
-                <td data-label="Repository">
-                  <code
-                    title={failure.installation === undefined
-                      ? failure.repository_full_name
-                      : `${failure.repository_full_name} \u00b7 @${failure.installation.login}`}
-                  >
-                    {repositoryName(failure.repository_full_name)}
-                  </code>
-                </td>
-                <td data-label="Failure" title={failureDetail(failure)}>
-                  <span class="cell-primary">{sentenceCase(failure.reason)}</span>
-                </td>
-                <td data-label="When">
-                  <time
-                    class="table-time"
-                    datetime={failure.occurred_at}
-                    title={formatTimestamp(failure.occurred_at)}
-                  >
-                    {displayTime(failure.occurred_at)}
-                  </time>
-                </td>
-              </tr>
-            {:else}
-              <tr class="empty-row">
-                <td class="empty-cell" colspan="4">
-                  <TableEmptyState
-                    title="No delivery failures found"
-                    description={hasFilters
-                      ? 'Try another search or clear the active filters'
-                      : 'Delivery failures will appear here'}
-                    actionLabel={hasFilters ? 'Clear filters' : undefined}
-                    onAction={hasFilters ? clearFilters : undefined}
-                  />
-                </td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
+        {/snippet}
+        {#snippet head()}
+          <tr>
+            <th scope="col" aria-sort={sortDirection('status')}>
+              <div class="table-heading">
+                <button
+                  class="table-sort-button"
+                  type="button"
+                  onclick={() => toggleSort('status')}
+                >
+                  <span class="table-heading-label">Status</span>
+                  <SortIndicator />
+                </button>
+                <FilterMenu
+                  label="Status"
+                  summary={failureKindLabel()}
+                  hint="Choose which delivery failures to show"
+                  sections={FAILURE_KIND_FILTERS}
+                  selected={[failureKind]}
+                  fallbackValue="all"
+                  align="end"
+                  onChange={(values) => failureTable.getColumn('status')?.setFilterValue(values[0])}
+                />
+              </div>
+            </th>
+            <th scope="col" aria-sort={sortDirection('repository')}>
+              <div class="table-heading">
+                <button
+                  class="table-sort-button"
+                  type="button"
+                  onclick={() => toggleSort('repository')}
+                >
+                  <span class="table-heading-label">Repository</span>
+                  <SortIndicator />
+                </button>
+              </div>
+            </th>
+            <th scope="col">
+              <div class="table-heading"><span class="table-heading-label">Failure</span></div>
+            </th>
+            <th scope="col" aria-sort={sortDirection('when')}>
+              <div class="table-heading">
+                <button class="table-sort-button" type="button" onclick={() => toggleSort('when')}>
+                  <span class="table-heading-label">When</span>
+                  <SortIndicator />
+                </button>
+              </div>
+            </th>
+          </tr>
+        {/snippet}
+        {#snippet lead()}
+          {#if desktopTableLayout.current}
+            <tr
+              class="virtual-spacer"
+              aria-hidden="true"
+              style:height={`${$failureVirtualizer.getTotalSize()}px`}><td colspan="4"></td></tr
+            >
+          {/if}
+        {/snippet}
+        {#snippet cells(virtualRow)}
+          {@const failure = failureAt(virtualRow.index)}
+          <td data-label="Status">
+            <span class={['failure-kind', failure.retryable ? 'retryable' : 'permanent']}>
+              <span class="cell-symbol" aria-hidden="true">
+                <Icon name={failure.retryable ? 'refresh' : 'failure'} size={14} />
+              </span>
+              <span class="cap-trim">{failure.retryable ? 'Retryable' : 'Permanent'}</span>
+            </span>
+          </td>
+          <td data-label="Repository">
+            <code
+              title={failure.installation === undefined
+                ? failure.repository_full_name
+                : `${failure.repository_full_name} \u00b7 @${failure.installation.login}`}
+            >
+              {repositoryName(failure.repository_full_name)}
+            </code>
+          </td>
+          <td data-label="Failure" title={failureDetail(failure)}>
+            <span class="cell-primary">{sentenceCase(failure.reason)}</span>
+          </td>
+          <td data-label="When">
+            <time
+              class="table-time"
+              datetime={failure.occurred_at}
+              title={formatTimestamp(failure.occurred_at)}
+            >
+              {displayTime(failure.occurred_at)}
+            </time>
+          </td>
+        {/snippet}
+        {#snippet empty()}
+          <TableEmptyState
+            title="No delivery failures found"
+            description={hasFilters
+              ? 'Try another search or clear the active filters'
+              : 'Delivery failures will appear here'}
+            actionLabel={hasFilters ? 'Clear filters' : undefined}
+            onAction={hasFilters ? clearFilters : undefined}
+          />
+        {/snippet}
+      </DataTable>
     {/if}
     <InfiniteLoadSentinel
       active={!desktopTableLayout.current &&
@@ -1159,11 +1165,11 @@
   }
 
   /* Surface, keyline, corner and lift come from `.table-card` in `app.css`. */
-  .table-scroll {
+  :global(.table-scroll) {
     max-width: 100%;
   }
 
-  .history-table {
+  :global(.history-table) {
     background: var(--surface-base);
     /* Separated, not collapsed: a collapsed border is shared between adjacent
        rows, so each cell owns half of it and every row box lands on a .5. */
@@ -1176,7 +1182,7 @@
 
   /* The header's own rule comes from `thead th` in `app.css`, so every table in
      the product draws it the same. This is the separator between rows. */
-  .history-table td {
+  :global(.history-table td) {
     border-bottom: 1px solid var(--rule);
     font-size: var(--font-size-meta);
     padding: 0.625rem 0.75rem;
@@ -1184,18 +1190,18 @@
     vertical-align: middle;
   }
 
-  .history-table td:first-child {
+  :global(.history-table td:first-child) {
     padding-left: var(--space-3);
   }
 
-  .history-table td:last-child {
+  :global(.history-table td:last-child) {
     padding-right: var(--space-3);
   }
 
-  .failure-table th:last-child,
-  .failure-table td:last-child,
-  .audit-table th:last-child,
-  .audit-table td:last-child {
+  :global(.failure-table th:last-child),
+  :global(.failure-table td:last-child),
+  :global(.audit-table th:last-child),
+  :global(.audit-table td:last-child) {
     text-align: right;
   }
 
@@ -1204,11 +1210,11 @@
      shallower than the other four tables. The rest of the heading - the cell
      with no padding, the button carrying it, the inset a wordless heading takes
      - is shared, in `thead th` and `.table-heading` in `app.css`. */
-  .history-table thead .table-heading {
+  :global(.history-table thead .table-heading) {
     height: 2.5rem;
   }
 
-  .history-table tbody tr {
+  :global(.history-table tbody tr) {
     transition: background-color var(--duration-fast) var(--ease-standard);
   }
 
@@ -1218,30 +1224,30 @@
       overflow: hidden;
     }
 
-    .table-scroll {
+    :global(.table-scroll) {
       display: flex;
       flex: 1;
       min-height: 0;
       overflow-x: auto;
     }
 
-    .history-table {
+    :global(.history-table) {
       display: flex;
       flex: 1;
       flex-direction: column;
       min-height: 0;
     }
 
-    .history-table colgroup {
+    :global(.history-table colgroup) {
       display: none;
     }
 
-    .history-table thead {
+    :global(.history-table thead) {
       display: block;
       flex: none;
     }
 
-    .history-table tbody {
+    :global(.history-table tbody) {
       background: var(--table-filler-bg);
       display: block;
       flex: 1;
@@ -1250,8 +1256,8 @@
       position: relative;
     }
 
-    .history-table thead tr,
-    .history-table tbody tr {
+    :global(.history-table thead tr),
+    :global(.history-table tbody tr) {
       display: grid;
       grid-template-columns: var(--history-columns);
       width: 100%;
@@ -1260,24 +1266,23 @@
     /* Pin the grid track to the row's fixed height: auto-sizing would take the
        tallest cell's border-box, push the bottom border one pixel past the
        virtual row, and let the next row paint over every separator. */
-    .history-table tbody tr:not(.virtual-spacer) {
+    :global(.history-table tbody tr:not(.virtual-spacer)) {
       grid-template-rows: 100%;
     }
 
     /* Only the rows not handed to `.data-row` - see the same pair in
-       `UserManagement`. Painted here, a row wearing the class never showed the
-       shared hover, because this rule carries the component's scope class and
-       outranks `app.css` by one. */
-    .history-table tbody tr:not(.virtual-spacer, .data-row) {
+       `UserManagement`. Painted on every row, one wearing the class never showed
+       the shared hover, because this rule outranks `app.css` by a class. */
+    :global(.history-table tbody tr:not(.virtual-spacer, .data-row)) {
       background: var(--surface-base);
     }
 
-    .history-table tbody tr:not(.virtual-spacer) td {
+    :global(.history-table tbody tr:not(.virtual-spacer) td) {
       align-content: center;
       display: grid;
     }
 
-    .history-table tbody tr:not(.virtual-spacer) td:last-child {
+    :global(.history-table tbody tr:not(.virtual-spacer) td:last-child) {
       justify-items: end;
     }
 
@@ -1293,14 +1298,14 @@
 
        The row carries the height itself now, which is also what makes the card
        around it the size of an answer rather than the size of a header. */
-    .history-table tbody .empty-row {
+    :global(.history-table tbody .empty-row) {
       background: var(--surface-base);
       border: 0;
       display: flex;
       min-height: 9rem;
     }
 
-    .history-table tbody .empty-row .empty-cell {
+    :global(.history-table tbody .empty-row .empty-cell) {
       align-items: center;
       display: flex;
       flex: 1;
@@ -1309,13 +1314,13 @@
       padding: var(--space-6);
     }
 
-    .history-table tbody .virtual-row {
+    :global(.history-table tbody .virtual-row) {
       left: 0;
       position: absolute;
       top: 0;
     }
 
-    .history-table tbody .virtual-spacer {
+    :global(.history-table tbody .virtual-spacer) {
       background: transparent;
       border: 0;
       display: block;
@@ -1327,19 +1332,19 @@
       display: none;
     }
 
-    .audit-table {
+    :global(.audit-table) {
       --history-columns: minmax(13rem, 1.1fr) minmax(9rem, 0.8fr) minmax(0, 2.2fr) 7.5rem;
     }
 
-    .failure-table {
+    :global(.failure-table) {
       --history-columns: minmax(0, 1.1fr) minmax(0, 1.2fr) minmax(0, 2.4fr) minmax(0, 1fr);
     }
 
-    .absolute-time .audit-table {
+    :global(.absolute-time .audit-table) {
       --history-columns: minmax(13rem, 1.1fr) minmax(9rem, 0.8fr) minmax(0, 2.2fr) 9.5rem;
     }
 
-    .absolute-time .failure-table {
+    :global(.absolute-time .failure-table) {
       --history-columns: 8rem minmax(9rem, 0.9fr) minmax(0, 2.4fr) 9.5rem;
     }
   }
@@ -1349,7 +1354,7 @@
      What was here was a second copy of the reset, a `:global(.header-filter)`
      addressed to a class the popover stopped rendering, and a `flex: 1` the
      shared class states itself. */
-  .history-table th:last-child .table-sort-button {
+  :global(.history-table th:last-child .table-sort-button) {
     /* Right-aligned sortable column: the indicator leads, so the label ink lands
        on the same edge as the times below it. Which side the arrow takes follows
        the column's alignment - the one rule every design system agrees on, and
@@ -1363,7 +1368,7 @@
      chip the repositories pane uses rather than one chip and one bare string.
      `clip` rather than `hidden` - the trim ends the box at the baseline and a
      hidden overflow would shave the descenders. */
-  .history-table code {
+  :global(.history-table code) {
     background: var(--surface-inset);
     border-radius: var(--r-chip);
     color: var(--text-soft);
@@ -1522,23 +1527,28 @@
     width: fit-content;
   }
 
-  .empty-cell {
-    height: 9rem;
+  /* Shorter than the shared 12rem, because this panel's empty state sits under a
+     toolbar and a section switch and a full one pushed both off a laptop screen. */
+  :global(.table-scroll) {
+    --table-empty-height: 9rem;
+  }
+
+  :global(.table-scroll .empty-cell) {
     text-align: center !important;
   }
 
   @media (max-width: 48rem) {
-    .table-scroll {
+    :global(.table-scroll) {
       overflow: visible;
       padding: var(--space-3);
     }
 
-    .history-table {
+    :global(.history-table) {
       display: block;
       min-width: 0;
     }
 
-    .history-table colgroup {
+    :global(.history-table colgroup) {
       clip-path: inset(50%);
       height: 1px;
       overflow: hidden;
@@ -1547,7 +1557,7 @@
       width: 1px;
     }
 
-    .history-table thead {
+    :global(.history-table thead) {
       display: block;
     }
 
@@ -1555,7 +1565,7 @@
        fit one phone-width line, and a flex row justified to the end overflows
        backwards: the first chip - Actor - hung 52px off the left of the screen,
        where nothing can scroll to it and nothing says it is there. */
-    .history-table thead tr {
+    :global(.history-table thead tr) {
       border: 0;
       display: flex;
       flex-wrap: wrap;
@@ -1563,11 +1573,11 @@
       padding: 0 0 var(--space-3);
     }
 
-    .history-table thead th {
+    :global(.history-table thead th) {
       padding: 0;
     }
 
-    .history-table thead th:not(:has(.table-sort-button)) {
+    :global(.history-table thead th:not(:has(.table-sort-button))) {
       clip-path: inset(50%);
       height: 1px;
       overflow: hidden;
@@ -1581,19 +1591,19 @@
        target does not apply, because there is no cell left to fill. The funnel
        goes back into the flow beside the words for the same reason: there is no
        cell for it to ride. */
-    .history-table thead .table-heading,
-    .history-table thead .table-sort-button {
+    :global(.history-table thead .table-heading),
+    :global(.history-table thead .table-sort-button) {
       height: var(--control-height-compact);
       width: auto;
     }
 
-    .history-table thead :global(.filter-trigger) {
+    :global(.history-table thead .filter-trigger) {
       inset: auto;
       margin-block: 0;
       position: relative;
     }
 
-    .history-table thead .table-sort-button {
+    :global(.history-table thead .table-sort-button) {
       background: var(--control-bg);
       border: 1px solid var(--control-border);
       border-radius: var(--radius-control);
@@ -1601,18 +1611,18 @@
       padding-inline: var(--space-3);
     }
 
-    .history-table thead .table-sort-button:hover,
-    .history-table thead .table-sort-button:focus-visible {
+    :global(.history-table thead .table-sort-button:hover),
+    :global(.history-table thead .table-sort-button:focus-visible) {
       background: var(--control-bg-hover);
       color: var(--text);
     }
 
-    .history-table tbody {
+    :global(.history-table tbody) {
       display: grid;
       gap: var(--space-2);
     }
 
-    .history-table tbody tr {
+    :global(.history-table tbody tr) {
       background: var(--surface-raised);
       border: 1px solid var(--border-subtle);
       border-radius: var(--radius-control);
@@ -1622,7 +1632,7 @@
       padding: var(--space-3);
     }
 
-    .history-table td {
+    :global(.history-table td) {
       border: 0;
       display: grid;
       gap: var(--space-1);
@@ -1630,7 +1640,7 @@
       text-align: left !important;
     }
 
-    .history-table td::before {
+    :global(.history-table td::before) {
       color: var(--text-muted);
       content: attr(data-label);
       font: 650 var(--font-size-compact) / 1 var(--sans);
@@ -1643,27 +1653,27 @@
        category tag inside its own cell, the description had 30px: every audit
        entry on the Root console read "CONFIGURATION Up…" while the half of the
        card beside it was empty. */
-    .history-table td[data-label='Change'],
-    .history-table td[data-label='Failure'] {
+    :global(.history-table td[data-label='Change']),
+    :global(.history-table td[data-label='Failure']) {
       grid-column: 1 / -1;
     }
 
     /* A card has no column to keep to, so the line wraps rather than being cut.
        Truncation is a table's answer to a fixed column width, and there is no
        fixed column here. */
-    .history-table .cell-primary {
+    :global(.history-table .cell-primary) {
       overflow: visible;
       white-space: normal;
     }
 
-    .history-table .empty-cell {
+    :global(.history-table .empty-cell) {
       display: block;
       grid-column: 1 / -1;
       height: auto;
       padding: var(--space-5);
     }
 
-    .history-table .empty-cell::before {
+    :global(.history-table .empty-cell::before) {
       display: none;
     }
   }
@@ -1687,7 +1697,7 @@
       grid-column: auto;
     }
 
-    .history-table tbody tr {
+    :global(.history-table tbody tr) {
       grid-template-columns: minmax(0, 1fr);
     }
   }

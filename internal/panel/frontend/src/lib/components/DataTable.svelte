@@ -57,7 +57,9 @@
    * each - it is the check that catches a grid that stopped reaching the body, and at
    * ~74s it is the slowest in the suite for a reason.
    */
-  const {
+  /* `let`, not `const`: `body` is `$bindable`, and a bindable prop has to be
+     assignable. */
+  let {
     rows,
     rowKey,
     caption,
@@ -71,13 +73,23 @@
     columnCount,
     class: extra = '',
     onBodyScroll,
+    lead,
+    colgroup,
+    tableClass = '',
+    body = $bindable(),
     scrollable = true,
     pinned = false,
     stacked = false,
   }: {
     rows: readonly Row[];
-    /** Stable identity, so a re-sort moves rows rather than rebuilding them. */
-    rowKey: (row: Row) => string;
+    /**
+     * Stable identity, so a re-sort moves rows rather than rebuilding them.
+     *
+     * The return type is as wide as `{#each}`'s own key, which is what this feeds:
+     * `@tanstack/virtual` types its key as `string | number | bigint`, and narrowing
+     * to `string` here made two tables' keys a type error rather than a decision.
+     */
+    rowKey: (row: Row) => PropertyKey | bigint;
     /** Names the table for a screen reader; drawn only for one. */
     caption: string;
     /** Names the scroll region, which is focusable so a keyboard can pan it. */
@@ -111,8 +123,33 @@
      * how one table's load-on-scroll quietly stopped at the first page.
      */
     onBodyScroll?: (event: Event) => void;
+    /**
+     * The `<tbody>` element, for a virtualiser that has to measure and scroll it.
+     *
+     * `bind:body` rather than a callback: the virtualisers here take a
+     * `getScrollElement` that is read during setup, and a callback that fires after
+     * mount is one frame too late for the first measurement.
+     */
+    body?: HTMLTableSectionElement;
+    /**
+     * Rendered inside the body, before the rows.
+     *
+     * This exists for one thing: the virtual spacer, the aria-hidden row whose height
+     * is the full size of the list so the scrollport has something to scroll. It has
+     * to be inside `<tbody>` and it is not a row, so it is neither `rows` nor `head`.
+     */
+    lead?: Snippet;
     /** The caller's own layout for the shell. Never its surface, which is `.table-card`. */
     class?: string;
+    /**
+     * Classes for the `<table>` itself, distinct from the shell's.
+     *
+     * A table whose columns are declared in a `colgroup` names them from here, because
+     * a `<col>` is styled through the table and not through the card around it.
+     */
+    tableClass?: string;
+    /** A `<colgroup>`, for a table that declares its columns rather than sizing cells. */
+    colgroup?: Snippet;
     /** Off for a table that is short by construction and should not own a scrollport. */
     scrollable?: boolean;
     /**
@@ -150,8 +187,11 @@
   tabindex="0"
   aria-label={regionLabel}
 >
-  <table>
+  <table class={tableClass}>
     <caption class="visually-hidden">{caption}</caption>
+    {#if colgroup !== undefined}
+      {@render colgroup()}
+    {/if}
     <thead>
       {#if head !== undefined}
         {@render head()}
@@ -175,7 +215,10 @@
       {/if}
     </thead>
     <!-- `data-panel-scroll` is what the panel's scroll bookkeeping looks for. -->
-    <tbody data-panel-scroll onscroll={onBodyScroll}>
+    <tbody bind:this={body} data-panel-scroll onscroll={onBodyScroll}>
+      {#if lead !== undefined}
+        {@render lead()}
+      {/if}
       {#each rows as row (rowKey(row))}
         <tr class="data-row" {...rowAttrs?.(row) ?? {}}>
           {@render cells(row)}
