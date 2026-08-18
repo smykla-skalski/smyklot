@@ -56,6 +56,43 @@
    * Do them one table at a time and run `tests/browser/table-columns.test.ts` between
    * each - it is the check that catches a grid that stopped reaching the body, and at
    * ~74s it is the slowest in the suite for a reason.
+   *
+   * ## `pinned` and `stacked` are opt-in, and three tables decline
+   *
+   * They are shared layouts, not the layout. A table takes one only if its own is the
+   * same layout, and two here are not:
+   *
+   * - `UserManagement`'s pair lay a row out as a **grid** so the header and the body
+   *   can share one set of column tracks, where `pinned` says `display: table`. And
+   *   their filters live in the column headings with no tools menu behind them, so
+   *   `stacked` - which hides `thead` at 64rem - takes away the only way to filter.
+   *   Both faults were invisible to `svelte-check` and both were caught by a browser
+   *   suite: headings 195px from their cells, and no reachable filter at 320.
+   * - `RepositoryList` does the same with grid rows, at its own breakpoint.
+   *
+   * The lesson is the shape of every trap in this file: a shared rule at two classes
+   * beats a caller's at one, and CSS reports nothing when it wins. Prefer declining a
+   * shared layout to fighting it.
+   *
+   * ## The one table that cannot move, and why
+   *
+   * `QueueView` keeps its own table. Its rows carry `animate:flip`, `in:fade` and
+   * `out:fade`, and those are **compile-time directives**: they cannot be spread
+   * through `rowAttrs` like an event handler, and a transition function cannot be
+   * passed in and applied - `in:{someProp}` is not a thing Svelte compiles. They have
+   * to be written on the element itself, by whoever writes the `{#each}` - and that is
+   * this component.
+   *
+   * The only way to absorb it would be for this component to apply `animate:flip` and
+   * a fade to **every** row of **every** table, with a zero duration where none is
+   * wanted. That is not free: flip measures each row's box before and after every
+   * update, so six tables that never animate would pay for the one that does. The
+   * queue is also the one table that is short by construction and has neither a pinned
+   * header nor a scrollport, so it shares the least of this shell to begin with.
+   *
+   * Everything genuinely shared with it already moved: `.table-card`, `.data-row`,
+   * `thead th` and `.table-heading` in `app.css` are what it draws its surface, its row
+   * states and its headings from, exactly as the six here do.
    */
   /* `let`, not `const`: `body` is `$bindable`, and a bindable prop has to be
      assignable. */
@@ -74,6 +111,7 @@
     class: extra = '',
     onBodyScroll,
     lead,
+    bodyAttrs,
     colgroup,
     afterRow,
     tableClass = '',
@@ -124,6 +162,14 @@
      * how one table's load-on-scroll quietly stopped at the first page.
      */
     onBodyScroll?: (event: Event) => void;
+    /**
+     * Attributes for the `<tbody>`.
+     *
+     * The queue watches its body for a pointer or focus arriving and leaving, and asks
+     * the question at the edges of the table rather than at every cell boundary
+     * inside it - which is only possible on the body element itself.
+     */
+    bodyAttrs?: Record<string, unknown>;
     /**
      * The `<tbody>` element, for a virtualiser that has to measure and scroll it.
      *
@@ -225,7 +271,7 @@
       {/if}
     </thead>
     <!-- `data-panel-scroll` is what the panel's scroll bookkeeping looks for. -->
-    <tbody bind:this={body} data-panel-scroll onscroll={onBodyScroll}>
+    <tbody bind:this={body} data-panel-scroll onscroll={onBodyScroll} {...bodyAttrs ?? {}}>
       {#if lead !== undefined}
         {@render lead()}
       {/if}
