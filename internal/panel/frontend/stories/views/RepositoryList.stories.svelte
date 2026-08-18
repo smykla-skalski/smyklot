@@ -3,7 +3,8 @@
   import { fn } from 'storybook/test';
 
   import RepositoryList from '#lib/components/RepositoryList.svelte';
-  import { REPOSITORIES, REPOSITORY_DETAIL, TARGET } from '../support/fixtures.js';
+  import type { SyncOverride } from '#lib/types.js';
+  import { NOW, REPOSITORIES, REPOSITORY_DETAIL, TARGET } from '../support/fixtures.js';
 
   /*
    * No seeded cache, deliberately.
@@ -27,6 +28,27 @@
     onUpdate: () => Promise.resolve(REPOSITORY_DETAIL),
     onResetConfigMigration: () => Promise.resolve(REPOSITORY_DETAIL),
     onChanged: fn(),
+    /* `onLoadSyncOverride !== null` is what decides whether the opened repository is
+       offered a Sync pane at all - the list asks that question rather than being told
+       - so leaving these out is not "no data", it is a list whose fourth pane does not
+       exist. An installation's own page passes them; the Root view of somebody else's
+       does not, and `Without sync` below is that surface. */
+    onLoadSyncOverride: () => Promise.resolve(SYNC_OVERRIDE),
+    onSaveSyncOverride: () => Promise.resolve(SYNC_OVERRIDE),
+  };
+
+  const SYNC_OVERRIDE: SyncOverride = {
+    kind: 'files',
+    enabled: null,
+    document: {
+      merges: [
+        { path: 'renovate.json', strategy: 'deep-merge', overrides: { timezone: 'Europe/Warsaw' } },
+      ],
+    },
+    revision: 1,
+    updated_by: 'bart',
+    updated_at: new Date(NOW - 2 * 60 * 60_000).toISOString(),
+    unreadable: false,
   };
 
   const { Story } = defineMeta({
@@ -63,3 +85,11 @@
 <Story name="Read only">
   {#snippet template(args)}<RepositoryList {...args} readOnly />{/snippet}
 </Story>
+
+<!--
+  The Root view of somebody else's installation. Sync is configured on the
+  installation's own page and has no Root address, so the pane is not offered and the
+  switch inside an opened repository shows three rather than four - `RepositoryList`
+  reads that off these two being absent rather than being told separately.
+-->
+<Story name="Without sync" args={{ onLoadSyncOverride: null, onSaveSyncOverride: null }} />

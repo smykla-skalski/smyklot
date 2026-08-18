@@ -8,6 +8,21 @@
 
   const at = (offsetMs: number) => new Date(NOW + offsetMs).toISOString();
 
+  /* The files pane reads its own shape out of `document`, where labels and rulesets
+     read theirs off named fields - so a fixture that answered every kind with the same
+     empty document left the third tab drawing an empty form. This is the smallest
+     document that makes it a picture of something; `Views/SyncFilesForm` is where its
+     own states are laid out. */
+  const FILES_DOCUMENT = {
+    files: [
+      {
+        path: 'CONTRIBUTING.md',
+        content: '# Contributing\n\nOpen a pull request against `{{DEFAULT_BRANCH}}`.\n',
+      },
+    ],
+    retired: ['.github/stale.yml'],
+  };
+
   const config = (kind: string, over: Partial<SyncConfig> = {}): SyncConfig => ({
     kind,
     enabled: true,
@@ -21,7 +36,7 @@
     updated_by: 'bart',
     updated_at: at(-2 * 60 * 60_000),
     digest: 'sha256:9f2c',
-    document: {},
+    document: kind === 'files' ? FILES_DOCUMENT : {},
     unreadable: false,
     unavailable: '',
     ...over,
