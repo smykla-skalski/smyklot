@@ -38,12 +38,14 @@ async function emptyStateOn(page: Page): Promise<Verdict | null> {
   await page.waitForTimeout(1200);
 
   const verdict = await page.evaluate(() => {
-    const empty = document.querySelector('.empty-row, .table-empty-state');
+    const empty = document.querySelector('.empty-row, .state-row, .table-empty-state');
     const box = empty?.getBoundingClientRect();
 
     return {
       route: location.pathname,
-      rows: document.querySelectorAll('tbody tr:not(.empty-row):not(.virtual-spacer)').length,
+      rows: document.querySelectorAll(
+        'tbody tr:not(.empty-row):not(.state-row):not(.virtual-spacer)',
+      ).length,
       emptyHeight: box?.height ?? 0,
       text: (empty?.textContent ?? '').trim().slice(0, 60),
     };

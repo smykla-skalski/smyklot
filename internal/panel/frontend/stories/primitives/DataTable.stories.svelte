@@ -41,9 +41,24 @@
   `tbody tr` rule in the parent stops matching - measured once at headings sitting 3.4k
   pixels from their cells.
 -->
+<!--
+  These stories do not spread `args`, and that is deliberate rather than an oversight.
+  `DataTable` is generic in `Row`, and Storybook types a meta's args as the component's
+  props with the generic left at `unknown` - so spreading them pins `Row` to `unknown`
+  and every `rowKey` and `cells` written against a real type becomes an error. Each
+  story states its own props instead, which is also what makes them readable as
+  examples.
+-->
+
 <Story name="Rows">
-  {#snippet template(args)}
-    <DataTable {...args} rows={INSTALLATIONS} rowKey={(row: Installation) => row.id}>
+  {#snippet template()}
+    <DataTable
+      caption="Installation catalog"
+      regionLabel="Installation catalog table"
+      columns={COLUMNS}
+      rows={INSTALLATIONS}
+      rowKey={(row: Installation) => row.id}
+    >
       {#snippet cells(installation: Installation)}
         <th scope="row">
           <IdentityRow>
@@ -70,8 +85,14 @@
   cell stops spanning.
 -->
 <Story name="Empty">
-  {#snippet template(args)}
-    <DataTable {...args} rows={[]} rowKey={(row: Installation) => row.id}>
+  {#snippet template()}
+    <DataTable
+      caption="Installation catalog"
+      regionLabel="Installation catalog table"
+      columns={COLUMNS}
+      rows={[]}
+      rowKey={(row: Installation) => row.id}
+    >
       {#snippet cells()}{/snippet}
       {#snippet empty()}
         <TableEmptyState
@@ -87,9 +108,11 @@
 
 <!-- Rows that open something take their attributes from the caller, not their markup. -->
 <Story name="Clickable rows">
-  {#snippet template(args)}
+  {#snippet template()}
     <DataTable
-      {...args}
+      caption="Installation catalog"
+      regionLabel="Installation catalog table"
+      columns={COLUMNS}
       rows={INSTALLATIONS}
       rowKey={(row: Installation) => row.id}
       rowAttrs={() => ({ class: 'data-row', tabindex: 0, onclick: fn() })}

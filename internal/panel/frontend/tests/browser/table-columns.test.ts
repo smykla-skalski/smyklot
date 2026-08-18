@@ -87,7 +87,10 @@ async function measure(page: Page, route: string): Promise<Reading> {
         const rows = [...table.querySelectorAll('tbody tr')].filter(
           (row) =>
             !row.classList.contains('virtual-spacer') &&
+            // `DataTable` calls it `state-row`; the tables not yet moved onto it
+            // still say `empty-row`. Both mean "not a row of data".
             !row.classList.contains('empty-row') &&
+            !row.classList.contains('state-row') &&
             !row.classList.contains('visually-hidden') &&
             /* `:is(th, td)`, because a row's first cell is a `th scope="row"` wherever
                the row is about a person or a repository. Counting only `td` skipped every

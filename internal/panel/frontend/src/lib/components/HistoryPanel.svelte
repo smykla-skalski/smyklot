@@ -17,6 +17,7 @@
 
   import { formatDateTime, formatRelative, formatTimestamp } from '../format';
   import type { FilterSection } from '../filter-menu';
+  import type { VirtualRenderRow } from '../virtual-rows.js';
   import type { TimeDisplay } from '../preferences';
   import { EPHEMERAL_PREFS, prefOption, prefText, type PrefsAccessor } from '../preferences-sync';
   import type {
@@ -338,22 +339,7 @@
     getScrollElement: () => failureScroll ?? null,
     overscan: 6,
   });
-  /*
-   * One shape, not two.
-   * ------------------
-   * A ternary over two `.map()`s types as `A[] | B[]`, and a union of arrays cannot
-   * be the argument to a generic that wants `readonly Row[]` - it has no single
-   * element type to infer. Stating it collapses the union at the point where the two
-   * branches meet, which is also where a reader is asking what a render row is.
-   */
-  type RenderRow = {
-    index: number;
-    key: string | number | bigint;
-    size: number;
-    start: number;
-  } & ({ virtual: true } | { virtual: false });
-
-  const auditRenderRows: RenderRow[] = $derived.by(() =>
+  const auditRenderRows: VirtualRenderRow[] = $derived.by(() =>
     desktopTableLayout.current
       ? $auditVirtualizer.getVirtualItems().map((row) => ({ ...row, virtual: true as const }))
       : auditTableRows.map((row, index) => ({
@@ -364,7 +350,7 @@
           virtual: false as const,
         })),
   );
-  const failureRenderRows: RenderRow[] = $derived.by(() =>
+  const failureRenderRows: VirtualRenderRow[] = $derived.by(() =>
     desktopTableLayout.current
       ? $failureVirtualizer.getVirtualItems().map((row) => ({ ...row, virtual: true as const }))
       : failureTableRows.map((row, index) => ({
@@ -1294,14 +1280,14 @@
 
        The row carries the height itself now, which is also what makes the card
        around it the size of an answer rather than the size of a header. */
-    :global(.history-table tbody .empty-row) {
+    :global(.history-table tbody .state-row) {
       background: var(--surface-base);
       border: 0;
       display: flex;
       min-height: 9rem;
     }
 
-    :global(.history-table tbody .empty-row .empty-cell) {
+    :global(.history-table tbody .state-row .empty-cell) {
       align-items: center;
       display: flex;
       flex: 1;

@@ -12,6 +12,7 @@
   import type { ColumnFiltersState, SortingState, Updater } from '@tanstack/svelte-table';
   import { createVirtualizer } from '@tanstack/svelte-virtual';
   import { untrack } from 'svelte';
+  import { createAttachmentKey } from 'svelte/attachments';
   import { MediaQuery, SvelteSet } from 'svelte/reactivity';
   import { get } from 'svelte/store';
   import { useDebounce, useInterval } from 'runed';
@@ -19,6 +20,7 @@
 
   import { BOOLEAN_FIELDS } from '../config';
   import type { FilterSection } from '../filter-menu';
+  import type { VirtualRenderRow } from '../virtual-rows.js';
   import { formatRelative, formatTimestamp } from '../format';
   import type { RepositorySection } from '../routes';
   import { getPanelSession } from '../session.svelte';
@@ -51,6 +53,7 @@
   import SortIndicator from './SortIndicator.svelte';
   import Button from './Button.svelte';
   import Chip from './Chip.svelte';
+  import DataTable from './DataTable.svelte';
   import FileStatusIndicator from './FileStatusIndicator.svelte';
   import FilterMenu from './FilterMenu.svelte';
   import HelpTip from './HelpTip.svelte';
@@ -394,7 +397,7 @@
     getScrollElement: () => repositoryScroll ?? null,
     overscan: 6,
   });
-  const repositoryRenderRows = $derived.by(() =>
+  const repositoryRenderRows: VirtualRenderRow[] = $derived.by(() =>
     desktopTableLayout.current
       ? $repositoryVirtualizer.getVirtualItems().map((row) => ({ ...row, virtual: true as const }))
       : repositoryRows.map((row, index) => ({
@@ -775,6 +778,10 @@
   function isConfigKey(value: string): value is ConfigKey {
     return CONFIG_FILTER_KEYS.some((key) => key === value);
   }
+  /* One key for every row, created once: `createAttachmentKey` mints a fresh symbol
+     each call, and minting one per row would give each row a different key and leak
+     a property per render. */
+  const ROW_PRESS = createAttachmentKey();
 </script>
 
 <!-- One repository's page stands in place of the list rather than over it: the
@@ -887,212 +894,220 @@
           --skeleton-bar-b-left="48%"
         />
       {:else}
-        <div class="repository-table-scroll table-card">
-          <table class="repositories">
-            <thead>
-              <tr>
-                <th class="sortable-heading" aria-sort={sortDirection('name')}>
-                  <div class="table-heading">
-                    <button class="table-sort-button" onclick={toggleNameSort}>
-                      <span class="table-heading-label">Repository</span>
-                      <SortIndicator />
-                    </button>
-                    <FilterMenu
-                      label="Overrides"
-                      summary={settingSummary}
-                      hint="Match any selected repository override"
-                      sections={SETTING_FILTER_SECTIONS}
-                      selected={settingSelection}
-                      multiple
-                      fallbackValue="all"
-                      align="start"
-                      wide
-                      onChange={(values) =>
-                        repositoryTable.getColumn('overrides')?.setFilterValue(values)}
+        <DataTable
+          class="repository-table-scroll"
+          tableClass="repositories"
+          caption="Installed repositories"
+          regionLabel="Repositories table"
+          rows={repositoryRenderRows}
+          rowKey={(virtualRow) => virtualRow.key}
+          columnCount={5}
+          bind:body={repositoryScroll}
+          rowAttrs={(virtualRow) => ({
+            class: ['repository-row data-row', virtualRow.virtual && 'virtual-row']
+              .filter(Boolean)
+              .join(' '),
+            style: virtualRow.virtual
+              ? `height:${virtualRow.size}px;--row-y:${virtualRow.start}px`
+              : '--row-y:0px',
+            onclick: (event: MouseEvent) => {
+              if (rowOpensOn(event)) openRepository(repositoryAt(virtualRow.index));
+            },
+            /* An attachment reaches an element through a spread under a key from
+               `createAttachmentKey`, which is what `{@attach}` compiles to. The row
+               is `DataTable`'s element now, so this is the only way to put one on
+               it - and it is the supported way, not a way around anything. */
+            [ROW_PRESS]: pressableRow,
+          })}
+        >
+          {#snippet head()}
+            <tr>
+              <th class="sortable-heading" aria-sort={sortDirection('name')}>
+                <div class="table-heading">
+                  <button class="table-sort-button" onclick={toggleNameSort}>
+                    <span class="table-heading-label">Repository</span>
+                    <SortIndicator />
+                  </button>
+                  <FilterMenu
+                    label="Overrides"
+                    summary={settingSummary}
+                    hint="Match any selected repository override"
+                    sections={SETTING_FILTER_SECTIONS}
+                    selected={settingSelection}
+                    multiple
+                    fallbackValue="all"
+                    align="start"
+                    wide
+                    onChange={(values) =>
+                      repositoryTable.getColumn('overrides')?.setFilterValue(values)}
+                  />
+                </div>
+              </th>
+              <th class="sortable-heading" aria-sort={sortDirection('file')}>
+                <div class="table-heading">
+                  <button class="table-sort-button" onclick={toggleFileSort}>
+                    <span class="table-heading-label">File state</span>
+                    <SortIndicator />
+                  </button>
+                  <FilterMenu
+                    label="File state"
+                    summary={fileSummary}
+                    hint="Select one or more file states"
+                    sections={FILE_FILTER_SECTIONS}
+                    selected={fileFilters}
+                    multiple
+                    align="end"
+                    onChange={(values) => repositoryTable.getColumn('file')?.setFilterValue(values)}
+                  />
+                </div>
+              </th>
+              <th class="sortable-heading" aria-sort={sortDirection('updated')}>
+                <div class="table-heading">
+                  <button class="table-sort-button" onclick={toggleUpdatedSort}>
+                    <span class="table-heading-label">Updated</span>
+                    <SortIndicator />
+                  </button>
+                </div>
+              </th>
+              <th class="filterable-heading enablement-heading">
+                <div class="table-heading">
+                  <span class="table-heading-label heading-with-help">
+                    <span class="table-heading-label">Enablement</span>
+                    <HelpTip
+                      id="repository-enablement-help"
+                      label="About enablement"
+                      text="Enabled and Disabled filter the effective state. A linked chain means the value is inherited from Unconfigured repositories in Settings. Open a repository to configure repository-specific settings"
                     />
-                  </div>
-                </th>
-                <th class="sortable-heading" aria-sort={sortDirection('file')}>
-                  <div class="table-heading">
-                    <button class="table-sort-button" onclick={toggleFileSort}>
-                      <span class="table-heading-label">File state</span>
-                      <SortIndicator />
-                    </button>
-                    <FilterMenu
-                      label="File state"
-                      summary={fileSummary}
-                      hint="Select one or more file states"
-                      sections={FILE_FILTER_SECTIONS}
-                      selected={fileFilters}
-                      multiple
-                      align="end"
-                      onChange={(values) =>
-                        repositoryTable.getColumn('file')?.setFilterValue(values)}
-                    />
-                  </div>
-                </th>
-                <th class="sortable-heading" aria-sort={sortDirection('updated')}>
-                  <div class="table-heading">
-                    <button class="table-sort-button" onclick={toggleUpdatedSort}>
-                      <span class="table-heading-label">Updated</span>
-                      <SortIndicator />
-                    </button>
-                  </div>
-                </th>
-                <th class="filterable-heading enablement-heading">
-                  <div class="table-heading">
-                    <span class="table-heading-label heading-with-help">
-                      <span class="table-heading-label">Enablement</span>
-                      <HelpTip
-                        id="repository-enablement-help"
-                        label="About enablement"
-                        text="Enabled and Disabled filter the effective state. A linked chain means the value is inherited from Unconfigured repositories in Settings. Open a repository to configure repository-specific settings"
-                      />
-                    </span>
-                    <FilterMenu
-                      label="Enablement"
-                      summary={stateSummary}
-                      hint="Filter by Smyklot's effective state"
-                      sections={STATE_FILTER_SECTIONS}
-                      selected={[stateFilter]}
-                      fallbackValue="all"
-                      align="end"
-                      onChange={(values) =>
-                        repositoryTable.getColumn('enablement')?.setFilterValue(values[0])}
-                    />
-                  </div>
-                </th>
-                <th class="action-heading">
-                  <!-- The column has a heading for the row's action, said only to a
+                  </span>
+                  <FilterMenu
+                    label="Enablement"
+                    summary={stateSummary}
+                    hint="Filter by Smyklot's effective state"
+                    sections={STATE_FILTER_SECTIONS}
+                    selected={[stateFilter]}
+                    fallbackValue="all"
+                    align="end"
+                    onChange={(values) =>
+                      repositoryTable.getColumn('enablement')?.setFilterValue(values[0])}
+                  />
+                </div>
+              </th>
+              <th class="action-heading">
+                <!-- The column has a heading for the row's action, said only to a
                      screen reader: a word over a column of identical buttons is
                      noise to anyone who can see them. -->
-                  <span class="visually-hidden">Settings</span>
-                </th>
+                <span class="visually-hidden">Settings</span>
+              </th>
+            </tr>
+          {/snippet}
+          {#snippet lead()}
+            {#if desktopTableLayout.current}
+              <tr
+                class="virtual-spacer"
+                aria-hidden="true"
+                style:height={`${$repositoryVirtualizer.getTotalSize()}px`}
+                ><td colspan="5"></td></tr
+              >
+            {/if}
+          {/snippet}
+          {#snippet empty()}
+            <TableEmptyState
+              title={hasFilters ? 'No repositories match' : 'No repositories installed'}
+              description={hasFilters
+                ? 'Try another search or clear the active filters'
+                : 'Repositories will appear after the installation catalog is refreshed'}
+              actionLabel={hasFilters ? 'Clear filters' : undefined}
+              onAction={hasFilters ? clearFilters : undefined}
+            />
+          {/snippet}
+          {#snippet afterRow(virtualRow)}
+            {@const repositoryFailure = failures[repositoryAt(virtualRow.index).id]}
+            {#if repositoryFailure !== undefined}
+              <tr class="visually-hidden">
+                <td colspan="5"><span role="alert">{repositoryFailure.message}</span></td>
               </tr>
-            </thead>
-            <tbody bind:this={repositoryScroll} data-panel-scroll>
-              {#if repositories.length === 0}
-                <tr class="empty-row">
-                  <td colspan="5">
-                    <TableEmptyState
-                      title={hasFilters ? 'No repositories match' : 'No repositories installed'}
-                      description={hasFilters
-                        ? 'Try another search or clear the active filters'
-                        : 'Repositories will appear after the installation catalog is refreshed'}
-                      actionLabel={hasFilters ? 'Clear filters' : undefined}
-                      onAction={hasFilters ? clearFilters : undefined}
-                    />
-                  </td>
-                </tr>
-              {/if}
-              {#if desktopTableLayout.current}
-                <tr
-                  class="virtual-spacer"
-                  aria-hidden="true"
-                  style:height={`${$repositoryVirtualizer.getTotalSize()}px`}
-                  ><td colspan="5"></td></tr
-                >
-              {/if}
-              {#each repositoryRenderRows as virtualRow (virtualRow.key)}
-                {@const repository = repositoryAt(virtualRow.index)}
-                {@const repositoryFailure = failures[repository.id]}
-                <!-- The keyboard reaches this row through the link in its first
+            {/if}
+          {/snippet}
+          {#snippet cells(virtualRow)}
+            {@const repository = repositoryAt(virtualRow.index)}
+            <!-- The keyboard reaches this row through the link in its first
                      cell, which is the element that carries the address and the
                      accessible name. The handler here only widens what a POINTER
                      can press to the whole row, so there is no second control to
                      give a key handler to and no role to claim. -->
-                <tr
-                  class={['repository-row data-row', virtualRow.virtual && 'virtual-row']}
-                  style:height={virtualRow.virtual ? `${virtualRow.size}px` : undefined}
-                  style:--row-y={virtualRow.virtual ? `${virtualRow.start}px` : '0px'}
-                  onclick={(event) => {
-                    if (rowOpensOn(event)) openRepository(repository);
-                  }}
-                  {@attach pressableRow}
-                >
-                  <td>
-                    <!-- The whole row opens the repository, and the name is the
+            <td>
+              <!-- The whole row opens the repository, and the name is the
                        link that says so: it carries the address, so it can be
                        opened in a new tab, and the row's own handler defers to
                        it. What the pointer presses is 56px tall; what a reader
                        tabs to and a crawler follows is one link, not five. -->
-                    <!-- The full name on hover, because this one truncates and a
+              <!-- The full name on hover, because this one truncates and a
                          reader who cannot read it has nowhere else to look. The
                          native tooltip rather than the product's own: it is one
                          per row for as many rows as the account has, and the
                          accessible name already carries the whole string, so
                          this is only for a pointer. -->
-                    <a
-                      class="repo-copy"
-                      href={session.repositoryHref(repository.name)}
-                      title={repository.name}
-                    >
-                      <strong>{repository.name}</strong>
-                      {#if repository.config_override_count > 0}
-                        <span class="override-chip">
-                          {repository.config_override_count}
-                          {repository.config_override_count === 1 ? 'override' : 'overrides'}
-                        </span>
-                      {/if}
-                    </a>
-                  </td>
-                  <td data-label="File state">
-                    <FileStatusIndicator
-                      id="file-status-{repository.id}"
-                      status={repository.config_file_status}
-                      showLabel
-                    />
-                  </td>
-                  <td data-label="Updated">
-                    <time
-                      class="updated"
-                      datetime={repository.updated_at}
-                      title={formatTimestamp(repository.updated_at)}
-                    >
-                      <span class="cap-trim">{formatRelative(repository.updated_at, now)}</span>
-                    </time>
-                  </td>
-                  <td data-label="Enablement">
-                    {#if !repository.available}
-                      <Chip small>Unavailable</Chip>
-                    {:else}
-                      {@const enablement =
-                        pendingEnablement[repository.id] ?? enabledValue(repository)}
-                      <InheritControl
-                        label="Enablement for {repository.full_name}"
-                        source="Unconfigured repositories in Settings"
-                        inheritedValue={defaultEnabled ? 'enabled' : 'disabled'}
-                        inheritedLabel={defaultEnabled ? 'Enabled' : 'Disabled'}
-                        value={enablement === 'inherit' ? null : enablement}
-                        options={REPOSITORY_VALUE_OPTIONS}
-                        disabled={readOnly || working.has(repository.id)}
-                        onSelect={(value) => void setEnabled(repository, value)}
-                        onRestore={() => void setEnabled(repository, 'inherit')}
-                      />
-                    {/if}
-                  </td>
-                  <td class="row-action" data-label="Settings">
-                    <!-- The chevron the Root console's cards carry, for the same
+              <a
+                class="repo-copy"
+                href={session.repositoryHref(repository.name)}
+                title={repository.name}
+              >
+                <strong>{repository.name}</strong>
+                {#if repository.config_override_count > 0}
+                  <span class="override-chip">
+                    {repository.config_override_count}
+                    {repository.config_override_count === 1 ? 'override' : 'overrides'}
+                  </span>
+                {/if}
+              </a>
+            </td>
+            <td data-label="File state">
+              <FileStatusIndicator
+                id="file-status-{repository.id}"
+                status={repository.config_file_status}
+                showLabel
+              />
+            </td>
+            <td data-label="Updated">
+              <time
+                class="updated"
+                datetime={repository.updated_at}
+                title={formatTimestamp(repository.updated_at)}
+              >
+                <span class="cap-trim">{formatRelative(repository.updated_at, now)}</span>
+              </time>
+            </td>
+            <td data-label="Enablement">
+              {#if !repository.available}
+                <Chip small>Unavailable</Chip>
+              {:else}
+                {@const enablement = pendingEnablement[repository.id] ?? enabledValue(repository)}
+                <InheritControl
+                  label="Enablement for {repository.full_name}"
+                  source="Unconfigured repositories in Settings"
+                  inheritedValue={defaultEnabled ? 'enabled' : 'disabled'}
+                  inheritedLabel={defaultEnabled ? 'Enabled' : 'Disabled'}
+                  value={enablement === 'inherit' ? null : enablement}
+                  options={REPOSITORY_VALUE_OPTIONS}
+                  disabled={readOnly || working.has(repository.id)}
+                  onSelect={(value) => void setEnabled(repository, value)}
+                  onRestore={() => void setEnabled(repository, 'inherit')}
+                />
+              {/if}
+            </td>
+            <td class="row-action" data-label="Settings">
+              <!-- The chevron the Root console's cards carry, for the same
                        reason: it marks the row as a way in without claiming to
                        be the thing pressed, which the whole row is. Nothing to
                        focus - the name is the row's one link, and a second stop
                        on the same address is a stop a keyboard reader has to
                        pass for nothing. -->
-                    <span class="row-chevron" aria-hidden="true">
-                      <Icon name="chevron-right" size={16} />
-                    </span>
-                  </td>
-                </tr>
-
-                {#if repositoryFailure !== undefined}
-                  <tr class="visually-hidden">
-                    <td colspan="5"><span role="alert">{repositoryFailure.message}</span></td>
-                  </tr>
-                {/if}
-              {/each}
-            </tbody>
-          </table>
-        </div>
+              <span class="row-chevron" aria-hidden="true">
+                <Icon name="chevron-right" size={16} />
+              </span>
+            </td>
+          {/snippet}
+        </DataTable>
         <InfiniteLoadSentinel
           active={!desktopTableLayout.current &&
             !loading &&
@@ -1188,17 +1203,17 @@
     cursor: progress;
   }
 
-  .empty-row td {
+  :global(.repository-table-scroll .empty-cell) {
     border-bottom: 0;
     height: 12rem;
   }
 
   /* Surface, keyline, corner and lift come from `.table-card` in `app.css`. */
-  .repository-table-scroll {
+  :global(.repository-table-scroll) {
     max-width: 100%;
   }
 
-  .repositories {
+  :global(.repositories) {
     background: var(--surface-base);
     /* Separated, not collapsed: a collapsed border is shared between adjacent
        rows, so each cell owns half of it and every row box lands on a .5. */
@@ -1279,7 +1294,7 @@
      button's reset, a `:global(.header-filter)` addressed to a class the popover
      stopped rendering, and a `justify-content: space-between` that stopped
      mattering when the filter came out of the flow. */
-  .repositories thead .table-heading {
+  :global(.repositories thead .table-heading) {
     height: 2.5rem;
   }
 
@@ -1291,31 +1306,31 @@
     gap: 0.35rem;
   }
 
-  .repository-row {
+  :global(.repository-row) {
     transition: background-color var(--duration-fast) var(--ease-standard);
   }
 
   @media (min-width: 64.001rem) {
-    .repository-table-scroll {
+    :global(.repository-table-scroll) {
       display: flex;
       flex: 1;
       min-height: 0;
       overflow-x: auto;
     }
 
-    .repositories {
+    :global(.repositories) {
       display: flex;
       flex: 1;
       flex-direction: column;
       min-height: 0;
     }
 
-    .repositories thead {
+    :global(.repositories thead) {
       display: block;
       flex: none;
     }
 
-    .repositories tbody {
+    :global(.repositories tbody) {
       background: var(--table-filler-bg);
       display: block;
       flex: 1;
@@ -1324,8 +1339,8 @@
       position: relative;
     }
 
-    .repositories thead tr,
-    .repositories tbody tr {
+    :global(.repositories thead tr),
+    :global(.repositories tbody tr) {
       display: grid;
       /* One flexible track, and it is the one whose content has no limit.
          Everything else is a fixed length - see the numbers and how they were
@@ -1351,7 +1366,7 @@
       width: 100%;
     }
 
-    .repositories th {
+    :global(.repositories th) {
       width: auto;
     }
 
@@ -1364,14 +1379,14 @@
        chosen for. */
     /* No `background` - `.data-row` in `app.css` carries the resting ground and
        every state with it. */
-    .repositories tbody tr:where(:not(.virtual-spacer)) {
+    :global(.repositories tbody tr:where(:not(.virtual-spacer))) {
       /* Pin the grid track to the row's fixed height: auto-sizing would take
          the tallest cell's border-box, push the bottom border one pixel past
          the virtual row, and let the next row paint over every separator. */
       grid-template-rows: 100%;
     }
 
-    .repositories tbody tr:not(.virtual-spacer) td {
+    :global(.repositories tbody tr:not(.virtual-spacer) td) {
       align-items: center;
       display: flex;
     }
@@ -1383,7 +1398,7 @@
        table with its contents hanging out of it. A doubled hairline at rest is
        the smaller of the two faults. */
 
-    .repositories tbody td:last-child {
+    :global(.repositories tbody td:last-child) {
       /* The enablement control sits at the column start, under the header
          label — same left alignment as every other column. */
       justify-content: flex-start;
@@ -1394,13 +1409,13 @@
        pane; now that a table is as tall as its contents, the contents of an
        empty one is this, and something absolutely positioned contributes no
        height at all - the message vanished and left a bare header. */
-    .repositories tbody tr.empty-row {
+    :global(.repositories tbody tr.state-row) {
       align-content: center;
       grid-template-columns: minmax(0, 1fr);
       min-height: 12rem;
     }
 
-    .repositories tbody .virtual-row {
+    :global(.repositories tbody .virtual-row) {
       left: 0;
       position: absolute;
       top: 0;
@@ -1408,7 +1423,7 @@
 
     /* Restated at the virtual row's own specificity: the rule above that places
        it carries a class, an element and a class, and out-ranked the press. */
-    .repositories tbody .virtual-spacer {
+    :global(.repositories tbody .virtual-spacer) {
       background: transparent;
       border: 0;
       display: block;
@@ -1416,14 +1431,14 @@
       width: 1px;
     }
 
-    .virtual-spacer td {
+    :global(.virtual-spacer td) {
       display: none;
     }
   }
 
   /* Hover, press and focus come from `.data-row` in `app.css`; this only says
      the row is a way in. */
-  .repository-row {
+  :global(.repository-row) {
     cursor: pointer;
   }
 
@@ -1444,8 +1459,8 @@
     transition: color var(--duration-fast) var(--ease-standard);
   }
 
-  .repository-row:hover .row-chevron,
-  .repository-row:has(:focus-visible) .row-chevron {
+  :global(.repository-row:hover .row-chevron),
+  :global(.repository-row:has(:focus-visible) .row-chevron) {
     color: var(--text-primary);
   }
 
@@ -1570,28 +1585,28 @@
       grid-column: 1;
     }
 
-    .repositories {
+    :global(.repositories) {
       min-width: 0;
     }
 
-    .repositories thead {
+    :global(.repositories thead) {
       display: none;
     }
 
-    .repositories,
-    .repositories tbody,
-    .repository-row,
-    .repository-row td {
+    :global(.repositories),
+    :global(.repositories tbody),
+    :global(.repository-row),
+    :global(.repository-table-scroll .repository-row td) {
       display: block;
       width: 100%;
     }
 
-    .repository-row {
+    :global(.repository-row) {
       border-bottom: 1px solid var(--border-subtle);
       padding: var(--card-inset);
     }
 
-    .repository-row td {
+    :global(.repository-table-scroll .repository-row td) {
       align-items: center;
       border: 0;
       display: flex;
@@ -1599,11 +1614,11 @@
       padding: var(--space-2) 0;
     }
 
-    .repository-row td:first-child {
+    :global(.repository-table-scroll .repository-row td:first-child) {
       padding-top: 0;
     }
 
-    .repository-row td[data-label]::before {
+    :global(.repository-table-scroll .repository-row td[data-label]::before) {
       color: var(--text-muted);
       content: attr(data-label);
       font-size: var(--font-size-compact);
@@ -1650,7 +1665,7 @@
        spacings. Padding comes down as the floor goes up, so the rows that were
        bloated by their control end up shorter than before rather than everything
        ending up taller. */
-    .repository-row td[data-label] {
+    :global(.repository-table-scroll .repository-row td[data-label]) {
       min-height: calc(var(--control-height-compact) + var(--space-2));
       padding-block: var(--space-1);
     }
@@ -1660,12 +1675,12 @@
        top is that one figure less the padding already there and the bottom is
        the figure itself - written once, and equal by construction rather than
        by two numbers that happen to add up. */
-    .repository-row {
+    :global(.repository-row) {
       --card-inset: var(--space-3);
       --heading-room: var(--space-5);
     }
 
-    .repository-row td:first-child {
+    :global(.repository-table-scroll .repository-row td:first-child) {
       border-bottom: 1px solid var(--border-subtle);
       /* Below the rule as much as above it, measured in ink rather than in
          boxes. Taken as a margin because the rows all stand at one height and

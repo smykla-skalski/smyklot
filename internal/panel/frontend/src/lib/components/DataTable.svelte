@@ -75,6 +75,7 @@
     onBodyScroll,
     lead,
     colgroup,
+    afterRow,
     tableClass = '',
     body = $bindable(),
     scrollable = true,
@@ -150,6 +151,15 @@
     tableClass?: string;
     /** A `<colgroup>`, for a table that declares its columns rather than sizing cells. */
     colgroup?: Snippet;
+    /**
+     * A second `<tr>` after a row's own, when it has something to say.
+     *
+     * One table announces a per-row failure through a visually-hidden alert row, and
+     * an alert has to be its own row: put inside the row's last cell it is read as
+     * part of the last column, and put outside the table it is read away from the
+     * row it belongs to.
+     */
+    afterRow?: Snippet<[Row]>;
     /** Off for a table that is short by construction and should not own a scrollport. */
     scrollable?: boolean;
     /**
@@ -223,6 +233,9 @@
         <tr class="data-row" {...rowAttrs?.(row) ?? {}}>
           {@render cells(row)}
         </tr>
+        {#if afterRow !== undefined}
+          {@render afterRow(row)}
+        {/if}
       {:else}
         {#if empty !== undefined}
           <tr class="state-row">
