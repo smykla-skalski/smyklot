@@ -41,7 +41,13 @@ var (
 	// never be written - and there, a refusal is an answer rather than a
 	// failure. Only this one is read that way; anything else the rebuild raises
 	// is a real fault and has to reach the caller.
-	errInheritedRemoval = errors.New("removing it would unpick an inheritance")
+	//
+	// The whole clause, not a label for one: it is wrapped mid-sentence, and the
+	// message the Sync pane shows an operator is the only account of a refusal
+	// anyone ever sees. Saying it here and again around the wrap printed it
+	// twice, in two spellings free to drift apart.
+	errInheritedRemoval = errors.New(
+		"removing it would mean unpicking what this mapping inherits")
 
 	// ErrNothingAddressed is a merge whose configuration names something the
 	// file does not have: a path no override sets, or a heading no section

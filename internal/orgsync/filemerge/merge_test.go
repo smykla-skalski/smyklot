@@ -899,6 +899,73 @@ jobs:
 				"base: &base\n  list:\n    - t\na:\n  list:\n    - t\n    - t\n"))
 		})
 
+		// The same, where the copy also holds an inner key its own settle takes
+		// back. Reading provenance off the file cannot tell that take from a
+		// rule's write, and a memory refreshed to stop it blocking the copy for
+		// ever refreshed it from the copy - which by then held the rule's work,
+		// so the rule's write read as the merge's own and the copy went, taking
+		// the rule's result with it.
+		It("keeps a copy a rule wrote into, with an inner key settled", func() {
+			merged, err := filemerge.Apply("ci.yaml",
+				[]byte("oth: &o\n  k: v\nbase: &base\n  inner:\n    <<: *o\n"+
+					"  list:\n    - t\na: *base\n"),
+				filemerge.Spec{
+					Overrides: overrides(`{"a": {"inner": {"k": "v"}, "list": ["t"]}}`),
+					Arrays: []filemerge.ArrayRule{
+						{Path: "$.a.list", Strategy: filemerge.ArrayAppend},
+					},
+				})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(merged)).To(Equal(
+				"oth: &o\n  k: v\nbase: &base\n  inner:\n    <<: *o\n  list:\n    - t\n" +
+					"a:\n  inner:\n    <<: *o\n  list:\n    - t\n    - t\n"))
+		})
+
+		// The same loss where what goes is not a duplicate. Deduplicated, so the
+		// copy the rule appended into cannot be read as saying only what the
+		// anchor already says - and the item dropped is the template's own, from
+		// a rule that was told to append to it.
+		It("keeps the template's items a rule appended into a copy", func() {
+			merged, err := filemerge.Apply("ci.yaml",
+				[]byte("oth: &o\n  k: v\nbase: &base\n  inner:\n    <<: *o\n"+
+					"  list:\n    - old\na: *base\n"),
+				filemerge.Spec{
+					Overrides: overrides(
+						`{"a": {"inner": {"k": "v"}, "list": ["new"]}, ` +
+							`"base": {"list": ["new"]}}`),
+					Arrays: []filemerge.ArrayRule{
+						{Path: "$.a.list", Strategy: filemerge.ArrayAppend},
+					},
+					Deduplicate: true,
+				})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(merged)).To(Equal(
+				"oth: &o\n  k: v\nbase: &base\n  inner:\n    <<: *o\n  list:\n    - new\n" +
+					"a:\n  inner:\n    <<: *o\n  list:\n    - old\n    - new\n"))
+		})
+
+		// The other half of the same question. A rule pins the copy it wrote
+		// into, and nothing else - "a rule ran" is not an answer, because the
+		// second copy says nothing the anchor does not and flattening it is the
+		// change nobody asked for.
+		It("takes back a copy beside one a rule wrote into", func() {
+			merged, err := filemerge.Apply("ci.yaml",
+				[]byte("base: &base\n  list:\n    - t\n  k: v\na: *base\nb: *base\n"),
+				filemerge.Spec{
+					Overrides: overrides(`{"a": {"list": ["t"]}, "b": {"k": "v"}}`),
+					Arrays: []filemerge.ArrayRule{
+						{Path: "$.a.list", Strategy: filemerge.ArrayAppend},
+					},
+				})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(merged)).To(Equal(
+				"base: &base\n  list:\n    - t\n  k: v\n" +
+					"a:\n  list:\n    - t\n    - t\n  k: v\nb: *base\n"))
+		})
+
 		// The rebuild runs a merge of its own, and a merge reads the live
 		// document - a removal asks whether the key is inherited. So it can
 		// refuse where the real merge did not, over a copy that never appears

@@ -6,13 +6,18 @@ import (
 	yaml "go.yaml.in/yaml/v3"
 )
 
-// applyYAMLArrayRules re-merges the lists a spec names, which the merge patch
-// would otherwise have replaced.
+// applyArrayRules re-merges the lists a spec names, which the merge patch would
+// otherwise have replaced.
 //
 // The same rules the JSON path applies, over nodes: the items the template
 // wrote keep the comments and the quoting they were written with, and only the
 // override's own items are built fresh.
-func applyYAMLArrayRules(merged, before *yaml.Node, override map[string]any, spec Spec) error {
+//
+// A method rather than a pass beside the merge, because it is the merge's only
+// other writer and settle has to be able to tell the two apart. Every node this
+// puts into the document is declared as it goes, so that question is answered
+// by what happened rather than inferred afterwards from the shape of the file.
+func (m *merge) applyArrayRules(before *yaml.Node, override map[string]any, spec Spec) error {
 	for _, rule := range spec.Arrays {
 		// Read rather than trusted: Validate has already read every path, and a
 		// spec reaching here unvalidated should fail rather than skip.
@@ -42,11 +47,11 @@ func applyYAMLArrayRules(merged, before *yaml.Node, override map[string]any, spe
 		// Writing it anyway would stand in for an inherited list - flattening
 		// the inheritance out as literal keys, which is the whole diff, for a
 		// rule that changed no value.
-		if sameWriting(nodeAt(merged, keys), combined) {
+		if sameWriting(nodeAt(m.root, keys), combined) {
 			continue
 		}
 
-		if !setNodeAt(merged, keys, combined) {
+		if !m.setNodeAt(keys, combined) {
 			return fmt.Errorf(
 				"%w: nothing in the merged file holds %s", ErrNothingAddressed, rule.Path)
 		}
@@ -56,7 +61,7 @@ func applyYAMLArrayRules(merged, before *yaml.Node, override map[string]any, spe
 		// the template's, so the anchors needing settling are the ones the
 		// clone carried, and this is where that is known.
 		if !spelledOutAt(before, keys) {
-			dropClonedAnchors(merged, combined)
+			dropClonedAnchors(m.root, combined)
 		}
 	}
 
@@ -192,12 +197,18 @@ const mostAliasHops = 100
 // or a key a merge key gives the mapping. Walking with nodeAt and writing where
 // it landed would have written into the anchor itself, which is to say into
 // every other place in the document that names it.
-func setNodeAt(root *yaml.Node, keys []string, value *yaml.Node) bool {
+//
+// Declaring the value at the end declares the whole path. A copy standIn makes
+// on the way is attached to hold this write and nothing else, so the value ends
+// up inside it - and settle asks whether a rule wrote anywhere under a key, not
+// at it. Declaring those copies as well would be a second way of saying the
+// same thing, with no case that needs it.
+func (m *merge) setNodeAt(keys []string, value *yaml.Node) bool {
 	if len(keys) == 0 {
 		return false
 	}
 
-	parent := resolveAlias(root)
+	parent := resolveAlias(m.root)
 
 	for _, key := range keys[:len(keys)-1] {
 		if parent == nil || parent.Kind != yaml.MappingNode {
@@ -205,7 +216,7 @@ func setNodeAt(root *yaml.Node, keys []string, value *yaml.Node) bool {
 		}
 
 		found, own := keyValue(parent, key)
-		parent = resolveAlias(standIn(root, parent, key, found, own))
+		parent = resolveAlias(standIn(m.root, parent, key, found, own))
 	}
 
 	if parent == nil || parent.Kind != yaml.MappingNode {
@@ -213,6 +224,7 @@ func setNodeAt(root *yaml.Node, keys []string, value *yaml.Node) bool {
 	}
 
 	setKey(parent, keys[len(keys)-1], value)
+	m.attach(value)
 
 	return true
 }
