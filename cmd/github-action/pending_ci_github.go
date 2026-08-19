@@ -42,8 +42,10 @@ var (
 	)
 )
 
-const pendingCIRepositoryDisabledReason = "repository disabled in Smyklot"
-const pendingCIBranchExcludedReason = "base branch is outside Smyklot merge-after-CI checks"
+const (
+	pendingCIRepositoryDisabledReason = "repository disabled in Smyklot"
+	pendingCIBranchExcludedReason     = "base branch is outside Smyklot merge-after-CI checks"
+)
 
 func (backend *githubPendingCIBackend) Observe(
 	ctx context.Context,

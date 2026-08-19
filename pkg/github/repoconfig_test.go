@@ -382,6 +382,5 @@ var _ = Describe("Repository configuration discovery [Unit]", func() {
 			_, err = client.RepoConfigFingerprint(context.Background(), "acme", "web", "")
 			Expect(err).To(HaveOccurred())
 		})
-
 	})
 })

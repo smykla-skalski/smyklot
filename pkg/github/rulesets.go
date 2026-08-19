@@ -433,8 +433,10 @@ func unmodelledRules(rules *gogithub.RepositoryRulesetRules) []string {
 		// Not a rule of its own but a parameter of one that is modelled, and
 		// dropped by a replacement exactly the same way. Named beside them
 		// because what matters to a person reading the plan is that it goes.
-		{len(rules.PullRequest.GetRequiredReviewers()) > 0,
-			"pull_request.required_reviewers"},
+		{
+			len(rules.PullRequest.GetRequiredReviewers()) > 0,
+			"pull_request.required_reviewers",
+		},
 	} {
 		if rule.present {
 			found = append(found, rule.name)

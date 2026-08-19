@@ -473,5 +473,4 @@ var _ = Describe("Repository files [Unit]", func() {
 				`{"title":"New title","body":"New body"}`))
 		})
 	})
-
 })

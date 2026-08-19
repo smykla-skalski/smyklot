@@ -10,8 +10,11 @@
 -- whenever it is read again, and fifty thousand rows written per sweep to
 -- answer a question nobody asks between sweeps is a cost with no reader.
 --
--- The list is newline-joined rather than JSON: it is read as a whole, both
--- engines order text the same way, and a path cannot contain a newline.
+-- The list was newline-joined here, on the reasoning that it is read as a whole
+-- and a path cannot contain a newline. The second half of that is wrong: git
+-- permits a newline in a filename, and one such file came back as two paths
+-- that do not exist. Migration 035 empties the table and it holds JSON from
+-- there on. Left as it was written, because a migration is what ran.
 CREATE TABLE sync_repository_paths (
     repository_id TEXT PRIMARY KEY REFERENCES repositories(id) ON DELETE CASCADE,
     target_id TEXT NOT NULL REFERENCES targets(id) ON DELETE CASCADE,

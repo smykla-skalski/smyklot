@@ -89,16 +89,29 @@
 
   .target-trigger-copy {
     display: grid;
-    gap: 0.3rem;
+    /* Cap band to cap band, because both rows are trimmed through below. The
+       declared value used to be 0.3rem and the gap somebody saw was 12.4px. */
+    gap: 0.25rem;
     min-width: 0;
     text-align: left;
+  }
+
+  /* Both edges of both rows, which `band-trim-stack` deliberately does not do:
+     it trims the stack's OUTER edges so the block sits on the avatar beside it,
+     and leaves the inner ones alone. So the kicker kept the 1.3px under its
+     baseline, the name kept the 6.3px between its line box and its cap, and a
+     4.8px gap drew as 12.4. Written through `.target-trigger-copy` because the
+     rule in `app.css` carries two classes and `.target-kicker` alone ties with
+     it - which is why the trim already declared there never applied. */
+  .target-trigger-copy > .target-kicker,
+  .target-trigger-copy > strong {
+    text-box: trim-both cap alphabetic;
   }
 
   .target-kicker {
     color: var(--sidebar-text-muted);
     font: 700 0.625rem / 1 var(--sans);
     letter-spacing: 0.11em;
-    text-box: trim-both cap alphabetic;
     text-transform: uppercase;
   }
 

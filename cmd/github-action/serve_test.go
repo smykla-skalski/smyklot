@@ -289,7 +289,7 @@ var _ = Describe("Serve configuration [Unit]", func() {
 	})
 
 	Describe("Panel configuration", func() {
-		var enabledPanel = map[string]string{
+		enabledPanel := map[string]string{
 			envPanelOrigin:       "https://smyklot.example",
 			envPanelSuperRootID:  "42",
 			envPanelClientID:     "Ov23li.panel",

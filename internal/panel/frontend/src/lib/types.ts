@@ -872,7 +872,13 @@ export interface SyncPathIndex {
   paths: { path: string; repositories: number }[];
   /** How many repositories contributed to it. */
   repositories: number;
-  /** When the freshest of those was read. Absent before anything has been. */
+  /**
+   * When the STALEST of those was read. Absent before anything has been.
+   *
+   * The union is only as current as its oldest member, which is the same
+   * reading `partial` takes: one repository nobody has looked at in a week is
+   * a week-old answer, whatever the others say.
+   */
   observed_at?: string;
   /**
    * Whether GitHub declined to list one of those repositories whole, even

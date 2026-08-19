@@ -474,11 +474,14 @@ export class PanelSession {
    * address in the console at all.
    */
   syncHref(page: SyncPage): string {
-    return panelAddress({
-      account: this.selectedTarget?.account.login ?? '',
-      view: 'sync',
-      sync: page,
-    });
+    const target = this.selectedTarget;
+    /* Inert rather than broken, the way `historyHref` and `accessHref` beside
+       it answer the same question. An empty login is not a value `resolve`
+       refuses - it only refuses a leading or trailing slash - so it built
+       `/i//sync`, a link that looks live and 404s. */
+    if (target === null) return '#';
+
+    return panelAddress({ account: target.account.login, view: 'sync', sync: page });
   }
 
   repositoryHref(name: string, section: RepositorySection = 'file'): string {

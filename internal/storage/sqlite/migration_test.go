@@ -571,24 +571,30 @@ func seedAuditRelationship(t *testing.T, ctx context.Context, db *sql.DB, now st
 	}{
 		{`INSERT INTO accounts (id, provider, subject_id, login, display_name, updated_at)
           VALUES ('github:1', 'github', '1', 'smykla-skalski', 'Smykla', ?)`, []any{now}},
-		{`INSERT INTO targets (
+		{
+			`INSERT INTO targets (
               id, installation_id, kind, account_id, settings_updated_at, synced_at
           ) VALUES ('github:installation:1', '1', 'Organization', 'github:1', ?, ?)`,
-			[]any{now, now}},
-		{`INSERT INTO root_elevations (
+			[]any{now, now},
+		},
+		{
+			`INSERT INTO root_elevations (
               id, session_token_hash, root_account_id, target_id, reason,
               started_at, expires_at
           ) VALUES ('elev-1', 'hash', 'github:1', 'github:installation:1', 'why', ?, ?)`,
-			[]any{now, now}},
+			[]any{now, now},
+		},
 		{`INSERT INTO app_audit_events (
               category, source_kind, source_id, target_id, actor_account_id,
               elevation_id, action, summary, created_at
           ) VALUES ('elevation', 'elevation', 1, 'github:installation:1', 'github:1',
                     'elev-1', 'elevation.begin', 'began', ?)`, []any{now}},
-		{`INSERT INTO app_audit_events (
+		{
+			`INSERT INTO app_audit_events (
               category, actor_account_id, action, summary, created_at
           ) VALUES ('configuration', 'github:1', 'settings.update', 'changed', ?)`,
-			[]any{now}},
+			[]any{now},
+		},
 		{`INSERT INTO security_notifications (
               recipient_account_id, target_id, actor_account_id, elevation_id,
               audit_event_id, action, created_at

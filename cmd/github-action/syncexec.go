@@ -496,8 +496,7 @@ func (s *server) syncDigests(ctx context.Context, targetID string) (syncDigestIn
 	}
 	for _, override := range overrides {
 		if index.overrides[override.RepositoryID] == nil {
-			index.overrides[override.RepositoryID] =
-				map[orgsync.Kind]*orgsync.RepositoryOverride{}
+			index.overrides[override.RepositoryID] = map[orgsync.Kind]*orgsync.RepositoryOverride{}
 		}
 		index.overrides[override.RepositoryID][override.Kind] = &override
 	}

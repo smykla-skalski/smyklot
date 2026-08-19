@@ -397,12 +397,12 @@ type Target struct {
 	// does for everyone. Nil inherits.
 	PathIndexIntervalOverride *time.Duration
 
-	ConfigPatch config.Patch
-	Revision                       int64
-	UpdatedAt                      time.Time
-	RepositoryCounts               RepositoryCounts
-	DeliveryHealth                 DeliveryHealth
-	Ownership                      TargetOwnership
+	ConfigPatch      config.Patch
+	Revision         int64
+	UpdatedAt        time.Time
+	RepositoryCounts RepositoryCounts
+	DeliveryHealth   DeliveryHealth
+	Ownership        TargetOwnership
 
 	// Permissions is what the installation has granted. Kept here rather than
 	// asked of GitHub, because the two callers that need it cannot ask: the
@@ -524,12 +524,12 @@ type Repository struct {
 	// the installation, which inherits the process.
 	PathIndexIntervalOverride *time.Duration
 
-	PendingCIGate *PendingCIRepositoryGate
-	ConfigPatch                     config.Patch
-	IgnoreRepositoryFile            bool
-	ConfigFileStatus                RepositoryFileStatus
-	ConfigFilePatch                 config.Patch
-	ConfigFileError                 *string
+	PendingCIGate        *PendingCIRepositoryGate
+	ConfigPatch          config.Patch
+	IgnoreRepositoryFile bool
+	ConfigFileStatus     RepositoryFileStatus
+	ConfigFilePatch      config.Patch
+	ConfigFileError      *string
 
 	// ConfigFilePath is the file the configuration was read from, empty when
 	// the repository has none. Discovery looks in four places plus a

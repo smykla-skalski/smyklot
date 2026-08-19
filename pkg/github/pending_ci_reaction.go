@@ -76,10 +76,12 @@ type pendingCIReactionPage struct {
 	path  string
 }
 
-type pendingCIReactionPager func(int) (pendingCIReactionPage, error)
-type pendingCIReactionFetcher func(
-	*gogithub.ListReactionOptions,
-) ([]*gogithub.Reaction, *gogithub.Response, error)
+type (
+	pendingCIReactionPager   func(int) (pendingCIReactionPage, error)
+	pendingCIReactionFetcher func(
+		*gogithub.ListReactionOptions,
+	) ([]*gogithub.Reaction, *gogithub.Response, error)
+)
 
 type pendingCIReactionScan struct {
 	match       *gogithub.Reaction

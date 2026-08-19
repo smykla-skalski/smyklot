@@ -586,7 +586,6 @@ func openOrUpdateProposal(
 			Head:  proposal,
 			Base:  target.DefaultBranch,
 		})
-
 	if err != nil {
 		// A branch carrying nothing the default branch does not is refused
 		// here, and that refusal is a failure rather than an answer. Reaching

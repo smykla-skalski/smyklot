@@ -91,7 +91,12 @@ func (s *Server) listSyncPaths(w http.ResponseWriter, r *http.Request) {
 		partial  bool
 	)
 	for _, row := range rows {
-		if row.ObservedAt.After(observed) {
+		// The OLDEST, which is the same reading `partial` takes one line below:
+		// this answer is the union of every repository's list, so how far it can
+		// be trusted is decided by its weakest row rather than by its freshest.
+		// The newest would say "checked a minute ago" for a list holding one
+		// repository nothing has looked at in a week.
+		if observed.IsZero() || row.ObservedAt.Before(observed) {
 			observed = row.ObservedAt
 		}
 		// One repository GitHub would not finish listing makes the whole answer

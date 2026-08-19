@@ -182,6 +182,17 @@ linters:
           - unparam
           - staticcheck  # Ginkgo and Gomega are used as dot imports by design
 
+# Formatting is a lint, not a habit.
+#
+# golangci-lint v2 moved formatters out of `linters` into their own section, and
+# this file never grew one - so `lint (go)` reported 0 issues on a branch
+# carrying three unformatted files, and the only thing that would have caught
+# them was a local commit hook. gofumpt rather than gofmt because gofumpt is
+# what the repository is already written in.
+formatters:
+  enable:
+    - gofumpt
+
 issues:
   max-same-issues: 50
 

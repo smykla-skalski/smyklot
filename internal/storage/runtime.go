@@ -22,8 +22,8 @@ type RuntimeSettings struct {
 	PathIndexInterval *time.Duration
 
 	Revision  int64
-	UpdatedAt            *time.Time
-	UpdatedBy            *Account
+	UpdatedAt *time.Time
+	UpdatedBy *Account
 }
 
 // RuntimeSettingsChange atomically replaces every persisted runtime override

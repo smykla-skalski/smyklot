@@ -32,8 +32,7 @@ func Schedule(actions []Action) []RepositoryWork {
 		if byRepository[action.RepositoryID] == nil {
 			byRepository[action.RepositoryID] = map[Kind][]Action{}
 		}
-		byRepository[action.RepositoryID][action.Kind] =
-			append(byRepository[action.RepositoryID][action.Kind], action)
+		byRepository[action.RepositoryID][action.Kind] = append(byRepository[action.RepositoryID][action.Kind], action)
 	}
 
 	repositories := make([]string, 0, len(byRepository))

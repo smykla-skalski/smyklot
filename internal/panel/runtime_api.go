@@ -38,7 +38,7 @@ type runtimeSettingsRequest struct {
 	// omits it, and an explicit null deliberately falls back to the process.
 	PathIndexIntervalSeconds optionalRuntimeSeconds `json:"path_index_interval_seconds"`
 	SessionTTLSeconds        *int64                 `json:"session_ttl_seconds"`
-	ExpectedRevision            *int64                 `json:"expected_revision"`
+	ExpectedRevision         *int64                 `json:"expected_revision"`
 }
 
 type optionalRuntimeSeconds struct {
@@ -203,7 +203,7 @@ func (s *Server) runtimeSettingsChange(
 		SessionTTL:        sessionTTL,
 		PathIndexInterval: pathIndexInterval,
 		ExpectedRevision:  *input.ExpectedRevision,
-		ActorAccountID:   actor.ID, ChangedAt: s.now().UTC(),
+		ActorAccountID:    actor.ID, ChangedAt: s.now().UTC(),
 	}
 
 	return change, proposed, nil

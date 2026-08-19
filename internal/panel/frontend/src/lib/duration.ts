@@ -59,6 +59,15 @@ export function durationParts(
  * `null`, quietly turning an override back into inheriting.
  */
 export function durationSeconds(parts: DurationParts): number | null {
+  /* The emptied box is `null`, and `null * 3600` is 0 rather than NaN - so
+     checking the product caught `1e999` and let the case this was written for
+     straight through. The amount is checked before it is multiplied by
+     anything. `typeof` rather than a null test, because the type says `number`
+     and the value comes from a binding that does not have to agree. */
+  if (typeof parts.amount !== 'number' || !Number.isFinite(parts.amount) || parts.amount < 0) {
+    return null;
+  }
+
   const seconds = Math.round(parts.amount * UNIT_SECONDS[parts.unit]);
 
   return Number.isFinite(seconds) && seconds >= 0 ? seconds : null;
