@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  composeFile,
   derivePatch,
+  deriveOverrides,
   formatJson,
   markedLines,
   mergePatch,
@@ -173,5 +175,55 @@ describe('merge [Unit]', () => {
     expect(formatJson(composed)).toBe(
       '{\n  "__proto__": {\n    "kept": true\n  },\n  "added": 1\n}\n',
     );
+  });
+
+  /**
+   * Deriving walks a rule's path through the adjustment it is building, and a
+   * level that is not there yet is built on the way.
+   *
+   * `candidate.__proto__` is not a missing level - it answers the prototype
+   * every object in the page shares - so the walk arrived there and wrote the
+   * repository's list onto it: `({}).list` became an array for every object,
+   * and this reported success having stored nothing.
+   */
+  it('walks __proto__ as a key when it derives, not as a route to the prototype', () => {
+    // Written back unchanged on purpose: that is what leaves the derived patch
+    // empty, so the walk to the rule's list has no `__proto__` of its own to
+    // step onto and takes the one every object shares instead. A case where the
+    // repository does contribute something never reaches the defect, because
+    // deriving has already put the key there.
+    const held = parseJson('{"__proto__": {"list": ["theirs"]}}') as JsonValue;
+    const spec = { arrays: [{ path: '$.__proto__.list', strategy: 'append' }] };
+    const wanted = parseJson('{"__proto__": {"list": ["theirs"]}}') as JsonValue;
+
+    const derived = deriveOverrides(held, spec, wanted);
+
+    expect(Object.prototype).not.toHaveProperty('list');
+    expect(derived.ok ? formatJson(derived.overrides) : derived.reason).toBe(
+      '{\n  "__proto__": {\n    "list": []\n  }\n}\n',
+    );
+  });
+
+  /**
+   * The service refuses a shallow merge with a rule below the top level, so the
+   * panel refuses it too rather than drawing a file no repository will hold.
+   * Both halves matter: a shallow merge replaces a top-level key with the
+   * adjustment's value whole, which is also the one shape where writing the
+   * joined list back reached into the adjustment and grew it.
+   */
+  it('refuses a list rule below the top level of a shallow merge', () => {
+    const held = parseJson('{"a": {"list": ["theirs"]}}') as JsonValue;
+    const overrides = parseJson('{"a": {"list": ["ours"]}}') as JsonValue;
+    const spec = {
+      strategy: 'shallow-merge',
+      overrides,
+      arrays: [{ path: '$.a.list', strategy: 'append' }],
+    };
+
+    const composed = composeFile(held, spec);
+
+    expect(composed.ok).toBe(false);
+    expect(composed.ok ? '' : composed.reason).toContain('below the top level');
+    expect(formatJson(overrides)).toBe('{\n  "a": {\n    "list": [\n      "ours"\n    ]\n  }\n}\n');
   });
 });

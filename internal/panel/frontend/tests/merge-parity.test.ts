@@ -61,7 +61,20 @@ describe('merge parity [Unit]', () => {
         return;
       }
 
+      const asked = JSON.stringify(one.spec);
       const composed = composeFile(template as JsonValue, one.spec);
+
+      /* Composing is a question, so asking it twice answers the same thing.
+         It did not: a shallow merge stores the adjustment's value by reference
+         rather than a copy, so writing a rule's joined list back reached into
+         the adjustment it came from - the file grew the template's own entries
+         every time it was drawn, and the check `deriveOverrides` makes by
+         composing its candidate again passed because both sides of the
+         comparison were one object. Asserted for every case rather than for the
+         one that found it. */
+      const again = composeFile(template as JsonValue, one.spec);
+      expect(JSON.stringify(one.spec), 'composing changed the spec it was given').toBe(asked);
+      expect(again.ok && formatJson(again.value)).toBe(composed.ok && formatJson(composed.value));
 
       if (one.refused === true) {
         expect(composed.ok, 'this merge should have been refused').toBe(false);

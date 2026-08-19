@@ -14,21 +14,35 @@
       "name": "a deep merge, which is what a spec without a strategy gets",
       "path": "renovate.json",
       "template": "{\"extends\":[\"config:base\"],\"schedule\":\"before 5am\",\"packageRules\":[{\"matchManagers\":[\"npm\"]}]}",
-      "spec": { "overrides": { "schedule": "after 9pm" } },
+      "spec": {
+        "overrides": {
+          "schedule": "after 9pm"
+        }
+      },
       "expected": "{\n  \"extends\": [\n    \"config:base\"\n  ],\n  \"packageRules\": [\n    {\n      \"matchManagers\": [\n        \"npm\"\n      ]\n    }\n  ],\n  \"schedule\": \"after 9pm\"\n}\n"
     },
     {
       "name": "a deep merge reaches into a nested object",
       "path": "renovate.json",
       "template": "{\"hostRules\":{\"matchHost\":\"github.com\",\"timeout\":30}}",
-      "spec": { "overrides": { "hostRules": { "timeout": 60 } } },
+      "spec": {
+        "overrides": {
+          "hostRules": {
+            "timeout": 60
+          }
+        }
+      },
       "expected": "{\n  \"hostRules\": {\n    \"matchHost\": \"github.com\",\n    \"timeout\": 60\n  }\n}\n"
     },
     {
       "name": "a null removes the key it names",
       "path": "renovate.json",
       "template": "{\"extends\":[\"config:base\"],\"schedule\":\"before 5am\"}",
-      "spec": { "overrides": { "schedule": null } },
+      "spec": {
+        "overrides": {
+          "schedule": null
+        }
+      },
       "expected": "{\n  \"extends\": [\n    \"config:base\"\n  ]\n}\n"
     },
     {
@@ -37,7 +51,11 @@
       "template": "{\"hostRules\":{\"matchHost\":\"github.com\",\"timeout\":30}}",
       "spec": {
         "strategy": "shallow-merge",
-        "overrides": { "hostRules": { "timeout": 60 } }
+        "overrides": {
+          "hostRules": {
+            "timeout": 60
+          }
+        }
       },
       "expected": "{\n  \"hostRules\": {\n    \"timeout\": 60\n  }\n}\n"
     },
@@ -46,8 +64,17 @@
       "path": "renovate.json",
       "template": "{\"extends\":[\"config:base\",\"group:monorepos\"]}",
       "spec": {
-        "overrides": { "extends": ["local:house-style"] },
-        "arrays": [{ "path": "$.extends", "strategy": "append" }]
+        "overrides": {
+          "extends": [
+            "local:house-style"
+          ]
+        },
+        "arrays": [
+          {
+            "path": "$.extends",
+            "strategy": "append"
+          }
+        ]
       },
       "expected": "{\n  \"extends\": [\n    \"config:base\",\n    \"group:monorepos\",\n    \"local:house-style\"\n  ]\n}\n"
     },
@@ -56,8 +83,17 @@
       "path": "renovate.json",
       "template": "{\"extends\":[\"config:base\"]}",
       "spec": {
-        "overrides": { "extends": ["local:house-style"] },
-        "arrays": [{ "path": "$.extends", "strategy": "prepend" }]
+        "overrides": {
+          "extends": [
+            "local:house-style"
+          ]
+        },
+        "arrays": [
+          {
+            "path": "$.extends",
+            "strategy": "prepend"
+          }
+        ]
       },
       "expected": "{\n  \"extends\": [\n    \"local:house-style\",\n    \"config:base\"\n  ]\n}\n"
     },
@@ -66,8 +102,17 @@
       "path": "renovate.json",
       "template": "{\"extends\":[\"config:base\"]}",
       "spec": {
-        "overrides": { "extends": ["local:house-style"] },
-        "arrays": [{ "path": "$.extends", "strategy": "replace" }]
+        "overrides": {
+          "extends": [
+            "local:house-style"
+          ]
+        },
+        "arrays": [
+          {
+            "path": "$.extends",
+            "strategy": "replace"
+          }
+        ]
       },
       "expected": "{\n  \"extends\": [\n    \"local:house-style\"\n  ]\n}\n"
     },
@@ -76,8 +121,18 @@
       "path": "renovate.json",
       "template": "{\"extends\":[\"config:base\",\"group:monorepos\"]}",
       "spec": {
-        "overrides": { "extends": ["group:monorepos", "local:house-style"] },
-        "arrays": [{ "path": "$.extends", "strategy": "append" }],
+        "overrides": {
+          "extends": [
+            "group:monorepos",
+            "local:house-style"
+          ]
+        },
+        "arrays": [
+          {
+            "path": "$.extends",
+            "strategy": "append"
+          }
+        ],
         "deduplicate": true
       },
       "expected": "{\n  \"extends\": [\n    \"config:base\",\n    \"group:monorepos\",\n    \"local:house-style\"\n  ]\n}\n"
@@ -88,9 +143,26 @@
       "template": "{\"packageRules\":[{\"matchManagers\":[\"npm\"],\"enabled\":true}]}",
       "spec": {
         "overrides": {
-          "packageRules": [{ "enabled": true, "matchManagers": ["npm"] }, { "matchManagers": ["gomod"] }]
+          "packageRules": [
+            {
+              "enabled": true,
+              "matchManagers": [
+                "npm"
+              ]
+            },
+            {
+              "matchManagers": [
+                "gomod"
+              ]
+            }
+          ]
         },
-        "arrays": [{ "path": "$.packageRules", "strategy": "append" }],
+        "arrays": [
+          {
+            "path": "$.packageRules",
+            "strategy": "append"
+          }
+        ],
         "deduplicate": true
       },
       "expected": "{\n  \"packageRules\": [\n    {\n      \"enabled\": true,\n      \"matchManagers\": [\n        \"npm\"\n      ]\n    },\n    {\n      \"matchManagers\": [\n        \"gomod\"\n      ]\n    }\n  ]\n}\n"
@@ -100,8 +172,19 @@
       "path": "renovate.json",
       "template": "{\"customManagers\":{\"fileMatch\":[\"^Dockerfile$\"]}}",
       "spec": {
-        "overrides": { "customManagers": { "fileMatch": ["^Makefile$"] } },
-        "arrays": [{ "path": "$.customManagers.fileMatch", "strategy": "append" }]
+        "overrides": {
+          "customManagers": {
+            "fileMatch": [
+              "^Makefile$"
+            ]
+          }
+        },
+        "arrays": [
+          {
+            "path": "$.customManagers.fileMatch",
+            "strategy": "append"
+          }
+        ]
       },
       "expected": "{\n  \"customManagers\": {\n    \"fileMatch\": [\n      \"^Dockerfile$\",\n      \"^Makefile$\"\n    ]\n  }\n}\n"
     },
@@ -110,8 +193,17 @@
       "path": "renovate.json",
       "template": "{\"example.com\":[\"one\"]}",
       "spec": {
-        "overrides": { "example.com": ["two"] },
-        "arrays": [{ "path": "$.example\\.com", "strategy": "append" }]
+        "overrides": {
+          "example.com": [
+            "two"
+          ]
+        },
+        "arrays": [
+          {
+            "path": "$.example\\.com",
+            "strategy": "append"
+          }
+        ]
       },
       "expected": "{\n  \"example.com\": [\n    \"one\",\n    \"two\"\n  ]\n}\n"
     },
@@ -120,8 +212,17 @@
       "path": "renovate.json",
       "template": "{\"schedule\":\"before 5am\"}",
       "spec": {
-        "overrides": { "extends": ["local:house-style"] },
-        "arrays": [{ "path": "$.extends", "strategy": "append" }]
+        "overrides": {
+          "extends": [
+            "local:house-style"
+          ]
+        },
+        "arrays": [
+          {
+            "path": "$.extends",
+            "strategy": "append"
+          }
+        ]
       },
       "expected": "{\n  \"extends\": [\n    \"local:house-style\"\n  ],\n  \"schedule\": \"before 5am\"\n}\n"
     },
@@ -129,35 +230,59 @@
       "name": "numbers keep the digits they were written with",
       "path": "renovate.json",
       "template": "{\"appId\":12345678901234567890,\"rate\":1.50,\"kept\":1e3}",
-      "spec": { "overrides": { "schedule": "after 9pm" } },
+      "spec": {
+        "overrides": {
+          "schedule": "after 9pm"
+        }
+      },
       "expected": "{\n  \"appId\": 12345678901234567890,\n  \"kept\": 1e3,\n  \"rate\": 1.50,\n  \"schedule\": \"after 9pm\"\n}\n"
     },
     {
       "name": "keys come out sorted, because the service writes a map back out",
       "path": "renovate.json",
       "template": "{\"zulu\":1,\"alpha\":2,\"Mike\":3}",
-      "spec": { "overrides": { "bravo": 4 } },
+      "spec": {
+        "overrides": {
+          "bravo": 4
+        }
+      },
       "expected": "{\n  \"Mike\": 3,\n  \"alpha\": 2,\n  \"bravo\": 4,\n  \"zulu\": 1\n}\n"
     },
     {
       "name": "a key called __proto__ is a key",
       "path": "renovate.json",
       "template": "{\"__proto__\":{\"kept\":true},\"schedule\":\"before 5am\"}",
-      "spec": { "overrides": { "schedule": "after 9pm" } },
+      "spec": {
+        "overrides": {
+          "schedule": "after 9pm"
+        }
+      },
       "expected": "{\n  \"__proto__\": {\n    \"kept\": true\n  },\n  \"schedule\": \"after 9pm\"\n}\n"
     },
     {
       "name": "an override may set a key called __proto__ too",
       "path": "renovate.json",
       "template": "{\"schedule\":\"before 5am\"}",
-      "spec": { "overrides": { "__proto__": { "added": true } } },
+      "spec": {
+        "overrides": {
+          "__proto__": {
+            "added": true
+          }
+        }
+      },
       "expected": "{\n  \"__proto__\": {\n    \"added\": true\n  },\n  \"schedule\": \"before 5am\"\n}\n"
     },
     {
       "name": "an object replaces a scalar rather than merging into it",
       "path": "renovate.json",
       "template": "{\"hostRules\":\"none\"}",
-      "spec": { "overrides": { "hostRules": { "timeout": 60 } } },
+      "spec": {
+        "overrides": {
+          "hostRules": {
+            "timeout": 60
+          }
+        }
+      },
       "expected": "{\n  \"hostRules\": {\n    \"timeout\": 60\n  }\n}\n"
     },
     {
@@ -165,8 +290,15 @@
       "path": "renovate.json",
       "template": "{\"extends\":[\"config:base\"]}",
       "spec": {
-        "overrides": { "schedule": "after 9pm" },
-        "arrays": [{ "path": "$.extends", "strategy": "append" }]
+        "overrides": {
+          "schedule": "after 9pm"
+        },
+        "arrays": [
+          {
+            "path": "$.extends",
+            "strategy": "append"
+          }
+        ]
       },
       "refused": true
     },
@@ -175,8 +307,15 @@
       "path": "renovate.json",
       "template": "{\"extends\":[\"config:base\"]}",
       "spec": {
-        "overrides": { "extends": "config:base" },
-        "arrays": [{ "path": "$.extends", "strategy": "append" }]
+        "overrides": {
+          "extends": "config:base"
+        },
+        "arrays": [
+          {
+            "path": "$.extends",
+            "strategy": "append"
+          }
+        ]
       },
       "refused": true
     },
@@ -185,8 +324,17 @@
       "path": "renovate.json",
       "template": "{\"extends\":[\"config:base\"]}",
       "spec": {
-        "overrides": { "extends": ["local:house-style"] },
-        "arrays": [{ "path": "$.extends[0]", "strategy": "append" }]
+        "overrides": {
+          "extends": [
+            "local:house-style"
+          ]
+        },
+        "arrays": [
+          {
+            "path": "$.extends[0]",
+            "strategy": "append"
+          }
+        ]
       },
       "refused": true
     },
@@ -195,8 +343,17 @@
       "path": "renovate.json",
       "template": "{\"extends\":[\"config:base\"]}",
       "spec": {
-        "overrides": { "extends": ["local:house-style"] },
-        "arrays": [{ "path": "extends", "strategy": "append" }]
+        "overrides": {
+          "extends": [
+            "local:house-style"
+          ]
+        },
+        "arrays": [
+          {
+            "path": "extends",
+            "strategy": "append"
+          }
+        ]
       },
       "refused": true
     },
@@ -206,6 +363,49 @@
       "template": "{\"zulu\":1,\"alpha\":2}",
       "spec": {},
       "verbatim": true
+    },
+    {
+      "name": "a rule below the top level is refused under a shallow merge",
+      "path": "renovate.json",
+      "template": "{\"a\":{\"list\":[\"t\"]}}",
+      "spec": {
+        "strategy": "shallow-merge",
+        "overrides": {
+          "a": {
+            "list": [
+              "r"
+            ]
+          }
+        },
+        "arrays": [
+          {
+            "path": "$.a.list",
+            "strategy": "append"
+          }
+        ]
+      },
+      "refused": true
+    },
+    {
+      "name": "__proto__ is a key on the way to a list, not a route to the prototype",
+      "path": "renovate.json",
+      "template": "{\"__proto__\":{\"list\":[\"t\"]}}",
+      "spec": {
+        "overrides": {
+          "__proto__": {
+            "list": [
+              "r"
+            ]
+          }
+        },
+        "arrays": [
+          {
+            "path": "$.__proto__.list",
+            "strategy": "append"
+          }
+        ]
+      },
+      "expected": "{\n  \"__proto__\": {\n    \"list\": [\n      \"t\",\n      \"r\"\n    ]\n  }\n}\n"
     }
   ]
 }

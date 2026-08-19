@@ -95,6 +95,20 @@ function put(target: { [key: string]: JsonValue }, key: string, value: JsonValue
   });
 }
 
+/**
+ * Read a key without going up the prototype chain.
+ *
+ * The other half of `put`. `record.__proto__` is not a missing key - it answers
+ * `Object.prototype`, which is an object, so walking a path through a level the
+ * document does not have arrived at the prototype every object shares and wrote
+ * onto it: `$.__proto__.list` gave every object in the page a `list`. Every
+ * step through a document goes through here, so there is one rule rather than a
+ * guard at whichever call somebody remembered.
+ */
+function own(record: { [key: string]: JsonValue }, key: string): JsonValue | undefined {
+  return Object.prototype.hasOwnProperty.call(record, key) ? record[key] : undefined;
+}
+
 /** A shallow copy that keeps a `__proto__` key a key, for the same reason. */
 function copy(source: { [key: string]: JsonValue }): { [key: string]: JsonValue } {
   const result: { [key: string]: JsonValue } = {};
@@ -117,7 +131,7 @@ export function mergePatch(target: JsonValue, patch: JsonValue): JsonValue {
       delete result[key];
       continue;
     }
-    put(result, key, mergePatch(result[key] ?? null, value));
+    put(result, key, mergePatch(own(result, key) ?? null, value));
   }
 
   return result;
@@ -203,7 +217,7 @@ export function composeFile(template: JsonValue, spec: MergeSpec): Composed {
       : mergePatch(template, overrides);
 
   for (const rule of spec.arrays ?? []) {
-    const keys = parsePath(rule.path);
+    const keys = keysFor(spec, rule.path);
     if (typeof keys === 'string') return { ok: false, reason: keys };
 
     const wanted = valueAt(overrides, keys);
@@ -294,17 +308,36 @@ function parsePath(path: string): string[] | string {
   return keys;
 }
 
+/**
+ * The keys one rule's path names, for the merge the rule belongs to.
+ *
+ * A shallow merge replaces a top-level key whole, so nothing below one is ever
+ * merged and a rule pointing there describes work that cannot happen. The
+ * service refuses that spec rather than applying it (`Spec.validateArrays`), so
+ * composing it here would draw a file no repository is ever going to hold - and
+ * the composed value would alias the adjustment it came from, which is how one
+ * preview grew the list every time it was drawn.
+ */
+function keysFor(spec: MergeSpec, path: string): string[] | string {
+  const keys = parsePath(path);
+  if (typeof keys === 'string') return keys;
+  if (spec.strategy === 'shallow-merge' && keys.length > 1) {
+    return `${path} is below the top level, and a shallow merge replaces top-level keys whole`;
+  }
+
+  return keys;
+}
+
 /** What a document holds at a path, or undefined where it holds nothing. */
 function valueAt(document: JsonValue, keys: readonly string[]): JsonValue | undefined {
   let current: JsonValue = document;
   for (const key of keys.slice(0, -1)) {
     if (!isObject(current)) return undefined;
-    current = current[key] ?? null;
+    current = own(current, key) ?? null;
   }
   if (!isObject(current)) return undefined;
-  const last = keys[keys.length - 1] as string;
 
-  return Object.prototype.hasOwnProperty.call(current, last) ? current[last] : undefined;
+  return own(current, keys[keys.length - 1] as string);
 }
 
 /**
@@ -318,7 +351,7 @@ function setValueAt(document: JsonValue, keys: readonly string[], value: JsonVal
   let current: JsonValue = document;
   for (const key of keys.slice(0, -1)) {
     if (!isObject(current)) return false;
-    current = current[key] ?? null;
+    current = own(current, key) ?? null;
   }
   if (!isObject(current)) return false;
   put(current, keys[keys.length - 1] as string, value);
@@ -351,7 +384,7 @@ export function derivePatch(
     // The one value RFC 7396 cannot ask for: a `null` in a patch removes the
     // key rather than setting it to null. Already null is nothing to say.
     if (value === null) {
-      if (key in before && before[key] === null) continue;
+      if (own(before, key) === null) continue;
 
       return 'unsayable';
     }
@@ -359,7 +392,7 @@ export function derivePatch(
       put(patch, key, value);
       continue;
     }
-    const inner = derivePatch(before[key] ?? null, value);
+    const inner = derivePatch(own(before, key) ?? null, value);
     if (inner === 'unsayable') return 'unsayable';
     if (inner !== undefined) put(patch, key, inner);
   }
@@ -402,7 +435,7 @@ export function deriveOverrides(template: JsonValue, spec: MergeSpec, wanted: Js
      file ends up with, so the derived patch's list has to have the template's
      share taken back off it. */
   for (const rule of spec.arrays ?? []) {
-    const keys = parsePath(rule.path);
+    const keys = keysFor(spec, rule.path);
     if (typeof keys === 'string') return { ok: false, reason: keys };
 
     const result = valueAt(wanted, keys);
@@ -445,8 +478,8 @@ function deriveShallow(before: JsonValue, after: JsonValue): JsonValue | 'unsaya
   const patch: { [key: string]: JsonValue } = {};
   for (const key of Object.keys(after)) {
     const value = after[key] as JsonValue;
-    if (value === null && !(key in before && before[key] === null)) return 'unsayable';
-    if (!same(before[key] ?? undefined, value)) put(patch, key, value);
+    if (value === null && own(before, key) !== null) return 'unsayable';
+    if (!same(own(before, key), value)) put(patch, key, value);
   }
   for (const key of Object.keys(before)) {
     if (!Object.prototype.hasOwnProperty.call(after, key)) put(patch, key, null);
@@ -483,8 +516,8 @@ function plant(document: JsonValue, keys: readonly string[], value: JsonValue): 
   let current: JsonValue = document;
   for (const key of keys.slice(0, -1)) {
     if (!isObject(current)) return false;
-    if (!isObject(current[key])) put(current, key, {});
-    current = current[key] as JsonValue;
+    if (!isObject(own(current, key))) put(current, key, {});
+    current = own(current, key) as JsonValue;
   }
   if (!isObject(current)) return false;
   put(current, keys[keys.length - 1] as string, value);
@@ -544,7 +577,7 @@ export function sharedArrays(template: JsonValue, patch: JsonValue, prefix = '$'
   return Object.keys(patch).flatMap((key) => {
     const value = patch[key] as JsonValue;
     const path = `${prefix}.${escapeKey(key)}`;
-    const theirs = template[key];
+    const theirs = own(template, key);
     if (Array.isArray(value) && Array.isArray(theirs)) return [path];
 
     return sharedArrays(theirs ?? null, value, path);
