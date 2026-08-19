@@ -90,6 +90,11 @@
     );
   }
 
+  .is-link:active {
+    background-image: linear-gradient(var(--press), var(--press));
+    transform: scale(var(--press-scale-surface));
+  }
+
   .is-link:focus-visible {
     outline: 2px solid var(--focus);
     outline-offset: -1px;

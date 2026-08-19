@@ -241,6 +241,17 @@ export function seed(
       bypass: true,
       updatedAt: iso(-2 * 86_400_000),
     }),
+    /* The one repository the App can no longer see, so the board has a dashed
+       socket and the legend's fourth row is not permanently zero. */
+    repositorySeed(organization.value, {
+      id: '4005',
+      name: 'archived-tooling',
+      enabledOverride: null,
+      filePatch: {},
+      panelPatch: {},
+      available: false,
+      updatedAt: iso(-40 * 86_400_000),
+    }),
   ];
   const demoNames = [
     'api-gateway',
@@ -271,7 +282,7 @@ export function seed(
   for (const [index, name] of demoNames.entries()) {
     organization.repositories.push(
       repositorySeed(organization.value, {
-        id: `40${String(index + 5).padStart(2, '0')}`,
+        id: `40${String(index + 6).padStart(2, '0')}`,
         name,
         /* auth-service (index 1) INHERITS, which is what the approved table
            demos in its second row: an unbroken chain and a dashed target on the
@@ -716,25 +727,41 @@ export function syncFilesSeed(iso: (offsetMs: number) => string): SyncConfig {
  * addition, a change, a removal, a row that failed and a row that was never
  * tried because another failed first.
  */
+/**
+ * A plan against the repositories this fixture actually holds.
+ *
+ * Two things here are load-bearing and were both wrong. The `kind` is the
+ * service's own word - `labels`, `settings`, `rulesets`, `files` - and the
+ * panel filters by it to draw each kind card's strip; spelled `label` and
+ * `repository`, nothing matched and all four strips drew as if every
+ * repository were in step. And the `repository` has to be a name the fleet
+ * holds, or the board cannot mark it: `design-tokens` is in no seed, so the
+ * refusal showed in the out-of-step list and nowhere on the board.
+ *
+ * The spread is deliberate. Three repositories differ by different amounts so
+ * the tiles carry different numerals, one is refused, one is unwatched, and
+ * every kind owns at least one action so no strip is empty.
+ */
 export function syncPlanSeed(iso: (offsetMs: number) => string): SyncPlan {
   return {
     id: 'plan-1',
     trigger: 'reconcile',
     state: 'computed',
     digest: 'sha256:plan',
-    counts: { create: 2, update: 1, delete: 1 },
+    counts: { create: 7, update: 5, delete: 2 },
     actions: [
+      // smyklot: six changes across three kinds.
       {
         repository: 'smyklot',
-        kind: 'label',
+        kind: 'labels',
         operation: 'create',
         subject: 'security',
         after: 'b60205',
         state: 'pending',
       },
       {
-        repository: 'platform-infra',
-        kind: 'label',
+        repository: 'smyklot',
+        kind: 'labels',
         operation: 'update',
         subject: 'bug',
         before: 'ee0701',
@@ -742,16 +769,105 @@ export function syncPlanSeed(iso: (offsetMs: number) => string): SyncPlan {
         state: 'pending',
       },
       {
-        repository: 'platform-infra',
-        kind: 'label',
+        repository: 'smyklot',
+        kind: 'labels',
         operation: 'delete',
         subject: 'wontfix',
         before: 'ffffff',
         state: 'pending',
       },
       {
-        repository: 'design-tokens',
-        kind: 'repository',
+        repository: 'smyklot',
+        kind: 'settings',
+        operation: 'update',
+        subject: 'allow_squash_merge',
+        before: 'false',
+        after: 'true',
+        state: 'pending',
+      },
+      {
+        repository: 'smyklot',
+        kind: 'rulesets',
+        operation: 'update',
+        subject: 'main-branch-protection',
+        state: 'pending',
+      },
+      {
+        repository: 'smyklot',
+        kind: 'files',
+        operation: 'update',
+        subject: 'renovate.json',
+        state: 'pending',
+      },
+      // platform-infra: five, including the removal the foot line counts.
+      {
+        repository: 'platform-infra',
+        kind: 'labels',
+        operation: 'create',
+        subject: 'good first issue',
+        after: '7057ff',
+        state: 'pending',
+      },
+      {
+        repository: 'platform-infra',
+        kind: 'labels',
+        operation: 'delete',
+        subject: 'invalid',
+        before: 'e4e669',
+        state: 'pending',
+      },
+      {
+        repository: 'platform-infra',
+        kind: 'settings',
+        operation: 'update',
+        subject: 'delete_branch_on_merge',
+        before: 'false',
+        after: 'true',
+        state: 'pending',
+      },
+      {
+        repository: 'platform-infra',
+        kind: 'rulesets',
+        operation: 'create',
+        subject: 'release-tags',
+        state: 'pending',
+      },
+      {
+        repository: 'platform-infra',
+        kind: 'files',
+        operation: 'create',
+        subject: 'CONTRIBUTING.md',
+        state: 'pending',
+      },
+      // api-gateway: three.
+      {
+        repository: 'api-gateway',
+        kind: 'settings',
+        operation: 'update',
+        subject: 'has_wiki',
+        before: 'true',
+        after: 'false',
+        state: 'pending',
+      },
+      {
+        repository: 'api-gateway',
+        kind: 'files',
+        operation: 'update',
+        subject: 'renovate.json',
+        state: 'pending',
+      },
+      {
+        repository: 'api-gateway',
+        kind: 'labels',
+        operation: 'create',
+        subject: 'chore',
+        after: 'cfd3d7',
+        state: 'pending',
+      },
+      // legacy-service: refused, and the reason is the row's own words.
+      {
+        repository: 'legacy-service',
+        kind: 'settings',
         operation: 'update',
         subject: 'has_wiki',
         after: 'false',
@@ -759,8 +875,8 @@ export function syncPlanSeed(iso: (offsetMs: number) => string): SyncPlan {
         error: 'the app is not an administrator of this repository',
       },
       {
-        repository: 'design-tokens',
-        kind: 'label',
+        repository: 'legacy-service',
+        kind: 'labels',
         operation: 'create',
         subject: 'good first issue',
         after: '7057ff',
@@ -1033,6 +1149,10 @@ export function repositorySeed(
     fileError?: string;
     bypass?: boolean;
     private?: boolean;
+    /* Whether the App can still see it. False is a repository sync does not
+       watch, which the board draws as a dashed socket - a state the fixture
+       could not produce at all, so that leg of the legend was always zero. */
+    available?: boolean;
     updatedAt: string;
   },
 ): MockRepository {
@@ -1052,7 +1172,7 @@ export function repositorySeed(
     full_name: `${target.account.login}/${input.name}`,
     private: input.private ?? false,
     default_branch: Number(input.id.replace(/\D/g, '')) % 5 === 0 ? 'develop' : 'main',
-    available: true,
+    available: input.available ?? true,
     enabled_override: input.enabledOverride,
     effective_enabled: input.enabledOverride ?? target.repository_default_enabled,
     enabled_source: input.enabledOverride === null ? 'target' : 'repository',

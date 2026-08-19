@@ -60,7 +60,10 @@
   {#if onDiscard !== undefined}
     <Button tone="quiet" disabled={applying} onclick={() => onDiscard()}>Discard</Button>
   {/if}
-  <Button tone="brand" disabled={applying} onclick={() => onApply?.()}>
+  <!-- The last press before anything reaches GitHub, so it takes the filled
+       tone rather than the bordered one - the same weight the overview's
+       "Review the plan" carries at the other end of the same journey. -->
+  <Button tone="signal" disabled={applying} onclick={() => onApply?.()}>
     {applying ? 'Applying…' : `Apply to ${scope}`}
   </Button>
 </div>

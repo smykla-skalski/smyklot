@@ -87,8 +87,22 @@
     transition: background var(--duration-fast) var(--ease-standard);
   }
 
+  /* The same layer every other surface in the panel hovers with, rather than a
+     swap to another named ground: `--surface-raised` sits a hair off
+     `--surface-base` on three of the four palettes, which is a hover nobody
+     can see. */
   .kind-card:hover {
-    background: var(--surface-raised);
+    background-image: linear-gradient(
+      var(--interactive-hover-layer),
+      var(--interactive-hover-layer)
+    );
+  }
+
+  /* A card is a wide surface, so it takes the smallest press step - the same
+     one a table row takes. */
+  .kind-card:active {
+    background-image: linear-gradient(var(--press), var(--press));
+    transform: scale(var(--press-scale-surface));
   }
 
   .kind-card:hover .kind-open {
@@ -123,10 +137,24 @@
     z-index: 1;
   }
 
+  /*
+   * Two lines are reserved whether or not two are used.
+   *
+   * The summary is the only row that can wrap, and the strips have to line up
+   * across all four cards - so the slack from a one-line summary had nowhere to
+   * go but under that summary: 31.5px there against 12px on the card beside it,
+   * which reads as two correct cards and two broken ones. Reserving the second
+   * line takes the slack out of the row entirely, and the strips still line up
+   * because every card's summary is now the same height.
+   *
+   * `lh` rather than a measured number, so it follows the type rather than
+   * being re-tuned whenever the meta size moves.
+   */
   .kind-sum {
     align-self: start;
     color: var(--text-secondary);
     font-size: var(--font-size-meta);
+    min-block-size: 2lh;
   }
 
   /* The board's slots, at a quarter of the size: material, not decoration. */

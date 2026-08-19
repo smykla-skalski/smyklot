@@ -701,7 +701,11 @@
           if (repositoryHref !== undefined) window.location.assign(repositoryHref(repository.name));
         }}
       >
-        <Button href={sectionHref({ section: 'plan' })} tone="brand">Review the plan</Button>
+        <!-- Filled, not tinted. `brand` is the bordered tone, and the approved
+             mock draws this as a solid petrol button with white ink - which is
+             exactly what `signal` already is, so the page takes the app's own
+             filled tone rather than a new colour. -->
+        <Button href={sectionHref({ section: 'plan' })} tone="signal">Review the plan</Button>
       </SyncBoard>
 
       {#if unshown > 0}
@@ -1133,6 +1137,11 @@
 
   .attn-row:hover {
     background: var(--table-row-hover);
+  }
+
+  .attn-row:active {
+    background: var(--table-row-pressed);
+    transform: scale(var(--press-scale-surface));
   }
 
   .attn-repo {

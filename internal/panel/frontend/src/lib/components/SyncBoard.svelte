@@ -201,12 +201,29 @@
     padding: 0;
     position: relative;
     transition:
-      translate var(--duration-fast) var(--ease-standard),
+      background-image var(--duration-fast) var(--ease-standard),
+      transform var(--duration-fast) var(--ease-standard),
       opacity var(--duration-fast) var(--ease-out);
   }
 
+  /* The app's own two states, not a lift. A tile used to answer a hover only by
+     rising a pixel, which is nothing at all beside a repository name and is a
+     move no other control here makes - every interactive surface in the panel
+     answers in colour, over whatever ground it already has, and shrinks toward
+     its own centre when pressed. The layer goes on `background-image` because
+     `background` is what carries each tile's state colour. */
   .tile:hover {
-    translate: 0 -1px;
+    background-image: linear-gradient(
+      var(--interactive-hover-layer),
+      var(--interactive-hover-layer)
+    );
+  }
+
+  /* Compact rather than the default scale: a tile is a small square, and the
+     larger step reads as the whole board twitching. */
+  .tile:active {
+    background-image: linear-gradient(var(--press), var(--press));
+    transform: scale(var(--press-scale-compact));
   }
 
   /* The name, on hover and on focus alike - a tooltip only a mouse can reach
@@ -282,6 +299,11 @@
       var(--interactive-hover-layer),
       var(--interactive-hover-layer)
     );
+  }
+
+  .legend-row:active {
+    background-image: linear-gradient(var(--press), var(--press));
+    transform: scale(var(--press-scale-surface));
   }
 
   .legend-row[aria-pressed='true'] {
@@ -381,8 +403,10 @@
       transition: none;
     }
 
-    .tile:hover {
-      translate: none;
+    /* The colour still changes - what a reader needs is the state, and only the
+       movement is what motion sensitivity is about. */
+    .tile:active {
+      transform: none;
     }
   }
 </style>
