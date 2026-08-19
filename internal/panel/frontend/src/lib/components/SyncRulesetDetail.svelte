@@ -94,7 +94,7 @@
   import Button from './Button.svelte';
   import Chip from './Chip.svelte';
   import ChoiceCards from './ChoiceCards.svelte';
-  import Crumb from './Crumb.svelte';
+  import BackLink from './BackLink.svelte';
   import Icon from './Icon.svelte';
   import PageHeader from './PageHeader.svelte';
   import PatternList from './PatternList.svelte';
@@ -295,7 +295,7 @@
   });
 </script>
 
-<Crumb href={listHref} label="Rulesets" />
+<BackLink href={listHref} label="Rulesets" tone="quiet" />
 
 {#if ruleset === undefined}
   <PageHeader

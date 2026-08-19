@@ -1,6 +1,8 @@
 package panel
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -63,6 +65,38 @@ type syncPathDTO struct {
 	Repositories int    `json:"repositories"`
 }
 
+// heldPathIndex is one installation's aggregated path list, and the reading of
+// the stored rows it was built from.
+//
+// Held rather than rebuilt because building it is the expensive part: the union
+// of two hundred repositories is up to ten million map operations and a sort of
+// a couple of hundred thousand entries, and the rows behind it change about
+// once a day. `stamp` is what says whether they have - see pathIndexStamp.
+type heldPathIndex struct {
+	stamp  string
+	answer map[string]any
+}
+
+// pathIndexStamp fingerprints the stored rows without reading a single path.
+//
+// Every field a scan carries, which is exactly what changes when a list is
+// rewritten: a repository appears or goes, a tree is read at a new commit, a
+// row is stamped as still current, or GitHub's truncation verdict moves. The
+// paths themselves cannot change without the commit changing, because that is
+// the whole premise of the refresh - so a fingerprint that never reads them
+// still catches every rewrite.
+func pathIndexStamp(scans []orgsync.RepositoryPathScan) string {
+	digest := sha256.New()
+	for _, scan := range scans {
+		// A hash's Write never fails, which is why the error is dropped rather
+		// than carried up through a function that has nothing to report.
+		_, _ = fmt.Fprintf(digest, "%s\x00%d\x00%s\x00%t\x00",
+			scan.RepositoryID, scan.ObservedAt.UnixNano(), scan.HeadSHA, scan.Partial)
+	}
+
+	return hex.EncodeToString(digest.Sum(nil))
+}
+
 // listSyncPaths answers with every path this installation's repositories are
 // known to hold.
 //
@@ -72,10 +106,32 @@ type syncPathDTO struct {
 //
 // A picture rather than a fact - whatever each default branch held when it was
 // last looked at. The panel says so, and offers a path nobody holds yet anyway.
+//
+// Aggregated once per version of the rows rather than once per request. The
+// cheap scan read decides: it carries no paths, so asking whether anything has
+// changed costs a few hundred bytes where answering from scratch costs the
+// whole index. A held answer is immutable and handed out as it is - nothing
+// writes into it after it is built.
 func (s *Server) listSyncPaths(w http.ResponseWriter, r *http.Request) {
 	_, target, _, ok := s.requireTarget(w, r, false)
 	if !ok {
 		return
+	}
+
+	scans, err := s.store.ListSyncRepositoryPathScans(r.Context(), target.ID)
+	if err != nil {
+		s.writeStorageError(w, err)
+
+		return
+	}
+
+	stamp := pathIndexStamp(scans)
+	if held, found := s.pathIndex.Load(target.ID); found {
+		if cached, sound := held.(heldPathIndex); sound && cached.stamp == stamp {
+			writeJSON(w, http.StatusOK, cached.answer)
+
+			return
+		}
 	}
 
 	rows, err := s.store.ListSyncRepositoryPaths(r.Context(), target.ID)
@@ -129,6 +185,13 @@ func (s *Server) listSyncPaths(w http.ResponseWriter, r *http.Request) {
 	if !observed.IsZero() {
 		answer["observed_at"] = observed
 	}
+
+	// Stamped with what was read BEFORE the aggregation, so a sweep that wrote
+	// a row while this was building leaves a stamp that no longer matches and
+	// the next reader rebuilds. Storing the stamp of a fresher read would pin a
+	// stale answer to it.
+	s.pathIndex.Store(target.ID, heldPathIndex{stamp: stamp, answer: answer})
+
 	writeJSON(w, http.StatusOK, answer)
 }
 

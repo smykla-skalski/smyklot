@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { plainClick } from '#lib/follow.js';
   import { bySoonest, queueNext, queueState } from '#lib/queue.js';
   import type { PendingCIRequest, RootOverview } from '#lib/types.js';
   import Chip from './Chip.svelte';
@@ -52,26 +53,14 @@
     return slash === -1 ? fullName : fullName.slice(slash + 1);
   }
 
-  /** A plain left click routes in place; everything else is the browser's to handle. */
-  function plain(event: MouseEvent): boolean {
-    return (
-      event.button === 0 &&
-      !event.metaKey &&
-      !event.ctrlKey &&
-      !event.shiftKey &&
-      !event.altKey &&
-      !event.defaultPrevented
-    );
-  }
-
   function open(event: MouseEvent): void {
-    if (!plain(event)) return;
+    if (!plainClick(event)) return;
     event.preventDefault();
     onOpenQueue();
   }
 
   function openRequest(event: MouseEvent, requestId: string): void {
-    if (!plain(event)) return;
+    if (!plainClick(event)) return;
     event.preventDefault();
     onOpenRequest(requestId);
   }

@@ -50,7 +50,7 @@
   import ChoiceCards from './ChoiceCards.svelte';
   import CodeBlock, { type CodeLine } from './CodeBlock.svelte';
   import CodeEditor from './CodeEditor.svelte';
-  import Crumb from './Crumb.svelte';
+  import BackLink from './BackLink.svelte';
   import ObjectRow from './ObjectRow.svelte';
   import PageHeader from './PageHeader.svelte';
   import Plate from './Plate.svelte';
@@ -316,7 +316,7 @@
   }
 </script>
 
-<Crumb href={listHref} label="Files" />
+<BackLink href={listHref} label="Files" tone="quiet" />
 
 {#if file === undefined}
   <PageHeader

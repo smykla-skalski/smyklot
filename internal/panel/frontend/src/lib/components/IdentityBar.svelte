@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { plainClick } from '#lib/follow.js';
   import { fuzzyCandidates } from '../fuzzy';
   import { handleLabel, readHandle } from '../identity';
   import type { ThemeDisplay } from '../preferences';
@@ -173,8 +174,7 @@
   }
 
   function selectTarget(event: MouseEvent, targetId: string): void {
-    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
-      return;
+    if (!plainClick(event)) return;
     event.preventDefault();
     closeMenus();
     mobileNavigationOpen = false;

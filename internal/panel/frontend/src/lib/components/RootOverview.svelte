@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { plainClick } from '#lib/follow.js';
   import { createQuery } from '@tanstack/svelte-query';
   import type { PanelApi } from '../api';
   import {
@@ -54,15 +55,7 @@
   /* The hrefs are real addresses - middle-click, Cmd-click and Copy link all
      work - so a plain click is the only one the router takes over. */
   function navigate(event: MouseEvent, open: () => void): void {
-    if (
-      event.defaultPrevented ||
-      event.button !== 0 ||
-      event.metaKey ||
-      event.ctrlKey ||
-      event.shiftKey ||
-      event.altKey
-    )
-      return;
+    if (!plainClick(event)) return;
     event.preventDefault();
     open();
   }

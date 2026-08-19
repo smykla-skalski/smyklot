@@ -17,6 +17,7 @@
  */
 
 import type { Attachment } from 'svelte/attachments';
+import { plainClick } from './follow.js';
 import { on } from 'svelte/events';
 
 /**
@@ -43,9 +44,7 @@ export function onRowControl(target: EventTarget | null): boolean {
  * link can give them one, so it is left to the browser.
  */
 export function rowOpensOn(event: MouseEvent): boolean {
-  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
-    return false;
-  }
+  if (!plainClick(event)) return false;
 
   return !onRowControl(event.target);
 }

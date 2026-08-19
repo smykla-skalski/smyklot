@@ -116,6 +116,16 @@ type Server struct {
 	// prefsMu spans each preference commit and its fan-out so announce order
 	// matches commit order (see applyPrefsPatch).
 	prefsMu sync.Mutex
+
+	// pathIndex holds one aggregated path list per installation, keyed by a
+	// fingerprint of the rows it was built from (see pathIndexStamp).
+	//
+	// A `sync.Map` because the shape fits it exactly: written about once a day
+	// per installation, read on every finder open, and never iterated. One
+	// entry per installation this process has served, which is bounded by the
+	// installations it has - and each holds paths this process was going to
+	// send anyway.
+	pathIndex sync.Map
 }
 
 // New creates a production panel server.

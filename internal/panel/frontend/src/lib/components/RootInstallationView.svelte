@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { plainClick } from '#lib/follow.js';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
   import { useInterval } from 'runed';
@@ -131,7 +132,7 @@
   }
 
   function navigate(event: MouseEvent, next: RootInstallationView): void {
-    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey) return;
+    if (!plainClick(event)) return;
     event.preventDefault();
     onNavigate(installation.account.login, next);
   }

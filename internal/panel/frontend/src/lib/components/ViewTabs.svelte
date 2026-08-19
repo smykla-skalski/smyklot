@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { plainClick } from '#lib/follow.js';
   import { tick } from 'svelte';
 
   import { panelViewSection, routeSegmentLabel, type PanelView, type RootSection } from '../routes';
@@ -116,16 +117,6 @@
     if (!plainClick(event) || returnHref === '#') return;
     event.preventDefault();
     onReturnToPanel();
-  }
-
-  function plainClick(event: MouseEvent): boolean {
-    return !(
-      event.button !== 0 ||
-      event.metaKey ||
-      event.ctrlKey ||
-      event.shiftKey ||
-      event.altKey
-    );
   }
 
   function label(view: PanelView): string {

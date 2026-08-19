@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { plainClick } from '#lib/follow.js';
   import { createMutation, createQuery } from '@tanstack/svelte-query';
   import type { PanelApi } from '../api';
   import { formatDateTime } from '../format';
@@ -98,7 +99,7 @@
     installation: RootInstallation,
     view: RootInstallationView,
   ): void {
-    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey) return;
+    if (!plainClick(event)) return;
     event.preventDefault();
     onNavigate(installation.account.login, view);
   }

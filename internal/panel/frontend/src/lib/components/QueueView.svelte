@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { plainClick } from '#lib/follow.js';
   import { createQuery } from '@tanstack/svelte-query';
   import { useDebounce, useInterval } from 'runed';
   import { untrack } from 'svelte';
@@ -592,8 +593,7 @@
   }
 
   function openRow(event: MouseEvent, request: PendingCIRequest): void {
-    if (event.defaultPrevented || event.button !== 0) return;
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    if (!plainClick(event)) return;
     if ((event.target as HTMLElement).closest('a, button')) return;
     event.preventDefault();
     onOpenRequest(request.id);

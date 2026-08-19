@@ -151,3 +151,72 @@ func TestPathIndexReportsItsStalestReading(t *testing.T) {
 		t.Error("partial = false, wanted true: one of these lists is incomplete")
 	}
 }
+
+// TestPathIndexIsAggregatedOncePerVersionOfTheRows covers both halves of the
+// cache: that a second reader is answered from the first reader's work, and
+// that a sweep writing a row ends that.
+//
+// Aggregating is the expensive part - the union of two hundred repositories is
+// millions of map operations over lists the finder opens against - and the rows
+// behind it change about once a day. What decides is the scan read, which
+// carries no paths at all.
+func TestPathIndexIsAggregatedOncePerVersionOfTheRows(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+	seedPathIndex(t, harness,
+		orgsync.RepositoryPaths{
+			RepositoryID: "repository-20",
+			TargetID:     "github:installation:10",
+			Paths:        []string{"renovate.json"},
+			ObservedAt:   harness.now,
+			HeadSHA:      "abc123",
+		},
+		orgsync.RepositoryPaths{
+			RepositoryID: "repository-21",
+			TargetID:     "github:installation:10",
+			Paths:        []string{"README.md"},
+			ObservedAt:   harness.now,
+			HeadSHA:      "def456",
+		})
+
+	first := readPathIndex(t, harness)
+	if len(first.Paths) != 2 {
+		t.Fatalf("paths = %+v, wanted two", first.Paths)
+	}
+
+	// Written behind the endpoint's back. A reader answered from the held copy
+	// cannot see it; one that rebuilds can - which is what makes this a test of
+	// the cache rather than of the query.
+	if err := harness.store.SetSyncRepositoryPaths(t.Context(), orgsync.RepositoryPaths{
+		RepositoryID: "repository-21",
+		TargetID:     "github:installation:10",
+		Paths:        []string{"README.md", "CONTRIBUTING.md"},
+		ObservedAt:   harness.now,
+		// The same commit and the same moment, so ONLY the paths differ: the
+		// stamp must not notice, because the refresh never rewrites a list
+		// without the commit moving.
+		HeadSHA: "def456",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	held := readPathIndex(t, harness)
+	if len(held.Paths) != 2 {
+		t.Errorf("paths = %+v, wanted the two the held answer was built from", held.Paths)
+	}
+
+	// And a row read at a new commit, which is what a refresh really writes.
+	if err := harness.store.SetSyncRepositoryPaths(t.Context(), orgsync.RepositoryPaths{
+		RepositoryID: "repository-21",
+		TargetID:     "github:installation:10",
+		Paths:        []string{"README.md", "CONTRIBUTING.md"},
+		ObservedAt:   harness.now,
+		HeadSHA:      "moved789",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	rebuilt := readPathIndex(t, harness)
+	if len(rebuilt.Paths) != 3 {
+		t.Errorf("paths = %+v, wanted three: the rows moved and the answer should have", rebuilt.Paths)
+	}
+}
