@@ -216,10 +216,15 @@ describe('SyncLabelsForm [Component]', () => {
     const { sent, onSave } = saved();
     render(SyncLabelsForm, { ...base, labels: [bug()], onSave });
 
-    await fireEvent.click(screen.getByRole('radio', { name: 'On' }));
-    await fireEvent.change(screen.getByPlaceholderText('hand-made-*'), {
-      target: { value: 'hand-made-*\ndependencies' },
-    });
+    await fireEvent.click(
+      screen.getByRole('switch', { name: 'Remove labels this list does not name' }),
+    );
+    for (const pattern of ['hand-made-*', 'dependencies']) {
+      await fireEvent.click(screen.getByRole('button', { name: 'Add a pattern' }));
+      const field = screen.getByRole('textbox', { name: 'Add a pattern' });
+      await fireEvent.input(field, { target: { value: pattern } });
+      await fireEvent.keyDown(field, { key: 'Enter' });
+    }
     await save();
 
     expect(sent[0].allowRemoval).toBe(true);

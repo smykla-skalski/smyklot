@@ -12,13 +12,18 @@
    * after them. That is not a shape worth copying; it is the shape the stored
    * row already has.
    */
-  import { asList, lines, patchedAt, rowKeys, withoutAt } from '#lib/form-lists.js';
-  import { OFF, ON, SWITCH } from '#lib/form-switch.js';
+  import { untrack } from 'svelte';
+
+  import { patchedAt, rowKeys, withoutAt } from '#lib/form-lists.js';
   import { canonicalStringify } from '#lib/preferences-sync.js';
   import type { SyncLabel } from '#lib/types.js';
 
-  import SegmentedControl from './SegmentedControl.svelte';
-  import SyncDocumentForm from './SyncDocumentForm.svelte';
+  import Button from './Button.svelte';
+  import PatternList from './PatternList.svelte';
+  import Plate from './Plate.svelte';
+  import PolicyRow from './PolicyRow.svelte';
+  import Switch from './Switch.svelte';
+  import SyncKindHead from './SyncKindHead.svelte';
 
   const {
     labels,
@@ -59,12 +64,22 @@
     labels.map((label) => described(label, label.description)),
   );
 
-  /* Written over as somebody edits, and reseeded by a save landing from
-     anywhere rather than left describing a document that is gone. */
-  let drafts = $derived<SyncLabel[]>(arriving);
-  let removal = $derived(allowRemoval);
-  let excludes = $derived<string[]>([...excluded]);
-  let wanted = $derived(enabled);
+  /* Written over as somebody edits, and reseeded when what is SAVED changes -
+     never on every render. The switch beside the heading writes at once, like
+     every other kind's, and a draft derived straight from the props would throw
+     away whatever somebody had typed at the moment they flipped it. */
+  let drafts = $state<SyncLabel[]>([]);
+  let removal = $state(false);
+  let excludes = $state<string[]>([]);
+
+  $effect(() => {
+    void untouched;
+    untrack(() => {
+      drafts = arriving;
+      removal = allowRemoval;
+      excludes = [...excluded];
+    });
+  });
 
   const disabled = $derived(saving || readOnly || unreadable);
 
@@ -75,8 +90,7 @@
     canonicalStringify({ labels: arriving, allow_removal: allowRemoval, excludes: excluded }),
   );
   const changed = $derived(
-    wanted !== enabled ||
-      canonicalStringify({ labels: drafts, allow_removal: removal, excludes }) !== untouched,
+    canonicalStringify({ labels: drafts, allow_removal: removal, excludes }) !== untouched,
   );
 
   function patch(index: number, change: Partial<SyncLabel>): void {
@@ -146,63 +160,63 @@
   const rowKey = rowKeys('label');
 </script>
 
-<SyncDocumentForm
-  heading="Labels"
+<SyncKindHead
+  title="Labels"
+  lead="The labels every repository in this installation should carry. Smyklot works out what would change and asks before changing anything"
   noun="labels"
-  lead="The labels every repository in this installation should carry. Smyklot works out what would
-        change and asks before changing anything"
-  enabled={wanted}
+  {enabled}
   {unreadable}
   {unavailable}
   {problem}
   {readOnly}
   {saving}
-  {changed}
-  {disabled}
-  onToggle={(value) => (wanted = value)}
-  onSave={() => onSave(wanted, drafts, removal, excludes)}
->
-  {#snippet actions()}
-    <!-- Wrapped, like every bare word in a button here: a button is a flex
-         container, so its text sits in an anonymous box no selector reaches and
-         the `text-box` trim never touches it. See `.button-label` in app.css. -->
-    <button class="btn btn-quiet" type="button" {disabled} onclick={add}>
-      <span class="button-label">Add a label</span>
-    </button>
+  onToggle={(next) => onSave(next, arriving, allowRemoval, [...excluded])}
+/>
+
+<Plate label="{drafts.length} {drafts.length === 1 ? 'label' : 'labels'}">
+  {#snippet status()}
+    {#if !readOnly}
+      <Button tone="quiet" {disabled} onclick={add}>Add a label</Button>
+    {/if}
   {/snippet}
 
-  <!-- The one control here that destroys something. A label this list does not
-       name goes on existing unless this is on, and turning it on proposes
-       deleting every label a repository has that is not named below. -->
-  <div class="label-switch">
-    <span class="sync-form-label">Remove labels this list does not name</span>
-    <SegmentedControl
-      name="labels-removal"
-      label="Remove labels this list does not name"
-      options={SWITCH}
-      value={removal ? ON : OFF}
-      {disabled}
-      onSelect={(chosen) => (removal = chosen === ON)}
-    />
-  </div>
+  <div class="label-settings">
+    <PolicyRow
+      name="Remove labels this list does not name"
+      why="Off, a repository may keep labels of its own. On, everything unnamed is deleted"
+      value={removal ? 'On' : 'Off'}
+    >
+      {#snippet control()}
+        <!-- The one control here that destroys something. A label this list
+             does not name goes on existing unless this is on. -->
+        <Switch
+          checked={removal}
+          ariaLabel="Remove labels this list does not name"
+          {disabled}
+          onChange={(next) => (removal = next)}
+        />
+      {/snippet}
+    </PolicyRow>
 
-  <!-- The safety valve beside the switch above, and the reason it is here
-       rather than only in the API: somebody who can turn removal on from this
-       page has to be able to protect something from this page too. -->
-  <label class="entry-field">
-    <span class="entry-field-label">Labels to leave alone</span>
-    <textarea
-      rows="2"
-      {disabled}
-      aria-describedby="labels-excludes-note"
-      value={lines(excludes)}
-      placeholder="hand-made-*"
-      onchange={(event) => (excludes = asList(event.currentTarget.value))}></textarea>
-  </label>
-  <p class="form-note label-note" id="labels-excludes-note">
-    One name or pattern per line, where <code>*</code> stands for any run of characters. These are neither
-    written nor removed, whatever the list below says.
-  </p>
+    <PolicyRow
+      name="Labels to leave alone"
+      why="Name or pattern, where * stands for any run of characters. Neither written nor removed, whatever the list below says"
+    >
+      {#snippet control()}
+        <!-- The safety valve beside the switch above, and the reason it is here
+             rather than only in the API: somebody who can turn removal on from
+             this page has to be able to protect something from this page too. -->
+        <PatternList
+          values={excludes}
+          label="Labels to leave alone"
+          addLabel="Add a pattern"
+          placeholder="hand-made-*"
+          {disabled}
+          onChange={(next) => (excludes = next)}
+        />
+      {/snippet}
+    </PolicyRow>
+  </div>
 
   {#if drafts.length === 0}
     <p class="form-note labels-empty">No labels yet.</p>
@@ -267,9 +281,36 @@
     empty description leaves whatever each repository wrote, so a label is given one here only where
     every repository should read the same.
   </p>
-</SyncDocumentForm>
+
+  {#if !readOnly}
+    <!-- The one kind whose controls are free text, so this one waits for a
+         Save: a name written a character at a time would otherwise be sent, and
+         planned against, on every keystroke. -->
+    <div class="form-actions">
+      <Button
+        tone="signal"
+        disabled={disabled || !changed}
+        onclick={() => onSave(enabled, drafts, removal, excludes)}
+      >
+        {saving ? 'Saving' : 'Save labels'}
+      </Button>
+      {#if changed}
+        <p class="form-note">Nothing is changed on GitHub until a plan is approved</p>
+      {/if}
+    </div>
+  {/if}
+</Plate>
 
 <style>
+  .label-settings {
+    display: grid;
+    margin-bottom: var(--space-3);
+  }
+
+  .label-settings > :global(.policy-row + .policy-row) {
+    border-top: 1px solid var(--border-subtle);
+  }
+
   /* The global rule has no margin. These notes sit directly under the control
      they describe, and the sliver of side inset lines them up with the field's
      own text. */
@@ -279,14 +320,6 @@
 
   .labels-empty {
     margin: var(--space-4) 0 0;
-  }
-
-  .label-switch {
-    align-items: center;
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-3);
-    justify-content: space-between;
   }
 
   .label-row {
