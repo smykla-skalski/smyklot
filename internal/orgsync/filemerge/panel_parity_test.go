@@ -27,6 +27,11 @@ type parityCase struct {
 	// composes nothing, so the template is what the repository holds.
 	Refused  bool `json:"refused"`
 	Verbatim bool `json:"verbatim"`
+	// Unsupported is a merge this engine composes and the panel declines to,
+	// because the panel reads JSON and this also reads YAML and Markdown. Held
+	// to the same standard as any other composed case here - the verb says
+	// where the panel stops, not that anything about this side is uncertain.
+	Unsupported bool `json:"unsupported"`
 }
 
 var _ = Describe("Panel parity [Unit]", func() {

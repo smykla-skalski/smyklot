@@ -1,3 +1,5 @@
+import type { ArrayStrategy } from '#lib/merge.js';
+
 export const COMMANDS = [
   'approve',
   'merge',
@@ -815,8 +817,11 @@ export interface SyncFileMerge {
 /** What to do with the list at one path. */
 export interface SyncArrayRule {
   path: string;
-  /** replace, append or prepend. */
-  strategy: string;
+  /* The vocabulary rather than `string`: `filemerge` refuses a rule spelling
+     anything else, and the panel used to hand a Select's raw value straight
+     through - so the one place a typo could arrive is also the one place
+     nothing checked. */
+  strategy: ArrayStrategy;
 }
 
 /** A literal substitution inside a section. */

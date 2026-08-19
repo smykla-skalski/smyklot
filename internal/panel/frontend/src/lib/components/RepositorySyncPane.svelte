@@ -15,6 +15,7 @@
   import { canonicalStringify } from '#lib/preferences-sync.js';
   import { asList, lines, patchedAt, rowKeys, storedList, withoutAt } from '#lib/form-lists.js';
   import { formatRelative } from '#lib/format.js';
+  import { asArrayStrategy } from '#lib/merge.js';
   import { OFF, ON, SWITCH } from '#lib/form-switch.js';
   import type {
     SyncArrayRule,
@@ -521,6 +522,16 @@
     patch(index, { arrays: patchedAt(rulesOf(index), at, change) });
   }
 
+  /* A control hands back a string; a rule holds one of three words. An
+     unrecognised one leaves the rule alone rather than storing something the
+     engine refuses - it cannot arrive from ARRAY_STRATEGIES, and that is the
+     point: nothing here has to stay true for the model to. */
+  function strategyChange(selection: string): Partial<SyncArrayRule> {
+    const strategy = asArrayStrategy(selection);
+
+    return strategy === undefined ? {} : { strategy };
+  }
+
   function addRule(index: number): void {
     // Append, because appending is what every list rule in the organization
     // this was written for does, and a rule added with no strategy is one the
@@ -893,7 +904,7 @@
               options={ARRAY_STRATEGIES}
               value={rule.strategy}
               {disabled}
-              onSelect={(selection) => patchRule(index, at, { strategy: selection })}
+              onSelect={(selection) => patchRule(index, at, strategyChange(selection))}
             />
 
             {#if !readOnly}

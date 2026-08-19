@@ -428,6 +428,170 @@
         }
       },
       "expected": "{\n  \"back\": \"a\\bb\",\n  \"kept\": true,\n  \"sep\": \"a\\u2028b\",\n  \"tab\": \"a\\tb\"\n}\n"
+    },
+    {
+      "name": "a markdown strategy on a JSON path is refused, not deep-merged",
+      "path": "renovate.json",
+      "template": "{\"schedule\":\"before 5am\"}",
+      "spec": {
+        "strategy": "markdown",
+        "sections": [
+          {
+            "action": "replace",
+            "heading": "## Usage",
+            "content": "x"
+          }
+        ]
+      },
+      "refused": true
+    },
+    {
+      "name": "a strategy neither side knows is refused",
+      "path": "renovate.json",
+      "template": "{\"schedule\":\"before 5am\"}",
+      "spec": {
+        "strategy": "overlay",
+        "overrides": {
+          "schedule": "after 9pm"
+        }
+      },
+      "refused": true
+    },
+    {
+      "name": "sections on a file with no headings are refused",
+      "path": "renovate.json",
+      "template": "{\"schedule\":\"before 5am\"}",
+      "spec": {
+        "overrides": {
+          "schedule": "after 9pm"
+        },
+        "sections": [
+          {
+            "action": "delete",
+            "heading": "## Usage"
+          }
+        ]
+      },
+      "refused": true
+    },
+    {
+      "name": "deduplicating with no list rule is refused",
+      "path": "renovate.json",
+      "template": "{\"extends\":[\"config:base\"]}",
+      "spec": {
+        "overrides": {
+          "extends": [
+            "local"
+          ]
+        },
+        "deduplicate": true
+      },
+      "refused": true
+    },
+    {
+      "name": "two list rules on one path are refused",
+      "path": "renovate.json",
+      "template": "{\"extends\":[\"config:base\"]}",
+      "spec": {
+        "overrides": {
+          "extends": [
+            "local"
+          ]
+        },
+        "arrays": [
+          {
+            "path": "$.extends",
+            "strategy": "append"
+          },
+          {
+            "path": "$.extends",
+            "strategy": "prepend"
+          }
+        ]
+      },
+      "refused": true
+    },
+    {
+      "name": "a list strategy neither side knows is refused",
+      "path": "renovate.json",
+      "template": "{\"extends\":[\"config:base\"]}",
+      "spec": {
+        "overrides": {
+          "extends": [
+            "local"
+          ]
+        },
+        "arrays": [
+          {
+            "path": "$.extends",
+            "strategy": "merge"
+          }
+        ]
+      },
+      "refused": true
+    },
+    {
+      "name": "overrides that are not an object are refused",
+      "path": "renovate.json",
+      "template": "{\"schedule\":\"before 5am\"}",
+      "spec": {
+        "overrides": "after 9pm"
+      },
+      "refused": true
+    },
+    {
+      "name": "a prepend rule puts this repository's entries first",
+      "path": "renovate.json",
+      "template": "{\"extends\":[\"config:base\"]}",
+      "spec": {
+        "overrides": {
+          "extends": [
+            "local"
+          ]
+        },
+        "arrays": [
+          {
+            "path": "$.extends",
+            "strategy": "prepend"
+          }
+        ]
+      },
+      "expected": "{\n  \"extends\": [\n    \"local\",\n    \"config:base\"\n  ]\n}\n"
+    },
+    {
+      "name": "a replace rule drops the template's entries",
+      "path": "renovate.json",
+      "template": "{\"extends\":[\"config:base\"]}",
+      "spec": {
+        "overrides": {
+          "extends": [
+            "local"
+          ]
+        },
+        "arrays": [
+          {
+            "path": "$.extends",
+            "strategy": "replace"
+          }
+        ]
+      },
+      "expected": "{\n  \"extends\": [\n    \"local\"\n  ]\n}\n"
+    },
+    {
+      "name": "a Markdown merge the service runs and the panel declines by format",
+      "path": "README.md",
+      "template": "# Title\n\n## Usage\n\nold\n",
+      "spec": {
+        "sections": [
+          {
+            "action": "replace",
+            "heading": "## Usage",
+            "content": "## Usage\n\nnew\n"
+          }
+        ]
+      },
+      "expected": "# Title\n\n## Usage\n\nnew\n",
+      "unsupported": true
     }
   ]
 }

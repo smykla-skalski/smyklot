@@ -260,6 +260,49 @@ describe('SyncFileDetail [Component]', () => {
     expect((editor as HTMLTextAreaElement).value).toContain('"local:house-style"');
   });
 
+  /**
+   * Rules are an ordered list because two of them on one document have to
+   * resolve the same way twice, and answering the list question rewrote that
+   * order: the old rule was filtered out and the new one pushed on the end, so
+   * changing a strategy moved its rule behind every rule it used to run before.
+   * Nothing on screen said so - the control shows the word, not the position.
+   */
+  it('answers the list question in place, leaving the rules in their order', async () => {
+    const onSaveAdjustment = vi.fn();
+    render(SyncFileDetail, {
+      ...base,
+      onSaveAdjustment,
+      adjustments: [
+        adjustment({
+          document: {
+            merges: [
+              {
+                path: 'renovate.json',
+                overrides: { extends: ['local:house-style'], reviewers: ['af'] },
+                arrays: [
+                  { path: '$.extends', strategy: 'append' },
+                  { path: '$.reviewers', strategy: 'prepend' },
+                ],
+              },
+            ],
+          },
+        }),
+      ],
+    });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    const asked = screen.getByRole('radiogroup', { name: 'How the two lists combine' });
+    await fireEvent.click(within(asked).getByRole('radio', { name: /Prepend/u }));
+
+    const document_ = onSaveAdjustment.mock.calls[0]?.[1] as {
+      merges: { arrays: { path: string; strategy: string }[] }[];
+    };
+    expect(document_.merges[0]?.arrays).toEqual([
+      { path: '$.extends', strategy: 'prepend' },
+      { path: '$.reviewers', strategy: 'prepend' },
+    ]);
+  });
+
   /** And what it stores is the repository's share of that list, not the whole of it. */
   it('stores what a repository contributes to an appended list', async () => {
     const onSaveAdjustment = vi.fn();

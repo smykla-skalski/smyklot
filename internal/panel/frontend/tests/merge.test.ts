@@ -196,7 +196,7 @@ describe('merge [Unit]', () => {
     const spec = { arrays: [{ path: '$.__proto__.list', strategy: 'append' }] };
     const wanted = parseJson('{"__proto__": {"list": ["theirs"]}}') as JsonValue;
 
-    const derived = deriveOverrides(held, spec, wanted);
+    const derived = deriveOverrides('renovate.json', held, spec, wanted);
 
     expect(Object.prototype).not.toHaveProperty('list');
     expect(derived.ok ? formatJson(derived.overrides) : derived.reason).toBe(
@@ -220,7 +220,7 @@ describe('merge [Unit]', () => {
       arrays: [{ path: '$.a.list', strategy: 'append' }],
     };
 
-    const composed = composeFile(held, spec);
+    const composed = composeFile('renovate.json', held, spec);
 
     expect(composed.ok).toBe(false);
     expect(composed.ok ? '' : composed.reason).toContain('below the top level');

@@ -40,6 +40,8 @@
     parseJson,
     patchedKeys,
     sharedArrays,
+    asArrayStrategy,
+    type ArrayStrategy,
     type JsonValue,
     type MergeSpec,
   } from '#lib/merge.js';
@@ -162,7 +164,7 @@
     // A spec that says nothing is not composed at all - the service hands the
     // template's own bytes over, keys in the order they were written.
     if (composesNothing(specOf(merge))) return template;
-    const composed = composeFile(templateJson, specOf(merge));
+    const composed = composeFile(path, templateJson, specOf(merge));
 
     return composed.ok ? formatJson(composed.value) : undefined;
   }
@@ -170,7 +172,7 @@
   /** Why there is no composed file for this repository, where there is not one. */
   function refusalFor(merge: SyncFileMerge): string | undefined {
     if (templateJson === undefined || composesNothing(specOf(merge))) return undefined;
-    const composed = composeFile(templateJson, specOf(merge));
+    const composed = composeFile(path, templateJson, specOf(merge));
 
     return composed.ok ? undefined : composed.reason;
   }
@@ -238,7 +240,7 @@
     }
     if (templateJson === undefined || onSaveAdjustment === undefined) return;
 
-    const derived = deriveOverrides(templateJson, specOf(merge), wanted);
+    const derived = deriveOverrides(path, templateJson, specOf(merge), wanted);
     if (!derived.ok) {
       refused = derived.reason;
 
@@ -291,26 +293,34 @@
     { value: 'replace', title: 'Replace', why: "The repository's list stands alone" },
   ];
 
-  function ruleFor(merge: SyncFileMerge, jsonPath: string): string {
-    const arrays = (merge as unknown as { arrays?: { path: string; strategy: string }[] }).arrays;
-
-    return arrays?.find((rule) => rule.path === jsonPath)?.strategy ?? 'replace';
+  /* Replace is what a list with no rule gets, so it is also what the control
+     shows for one - the reader is choosing among three, not among three and an
+     absence. */
+  function ruleFor(merge: SyncFileMerge, jsonPath: string): ArrayStrategy {
+    return merge.arrays?.find((rule) => rule.path === jsonPath)?.strategy ?? 'replace';
   }
 
-  function setRule(
-    row: SyncOverrideRow,
-    merge: SyncFileMerge,
-    jsonPath: string,
-    strategy: string,
-  ): void {
-    if (onSaveAdjustment === undefined) return;
+  function setRule(row: SyncOverrideRow, jsonPath: string, chosen: string): void {
+    const strategy = asArrayStrategy(chosen);
+    if (onSaveAdjustment === undefined || strategy === undefined) return;
+
     const merges = storedList<SyncFileMerge>(row.document, 'merges').map((one) => {
       if (one.path !== path) return one;
-      const current =
-        (one as unknown as { arrays?: { path: string; strategy: string }[] }).arrays ?? [];
-      const rest = current.filter((rule) => rule.path !== jsonPath);
+      const rules = one.arrays ?? [];
+      const at = rules.findIndex((rule) => rule.path === jsonPath);
 
-      return { ...one, arrays: [...rest, { path: jsonPath, strategy }] };
+      /* In place where the rule is already there. Rules are an ordered list
+         because two of them on one document have to resolve the same way
+         twice, so dropping the old one and pushing the new on the end would
+         move a rule behind a rule it used to run before - changing a
+         strategy would quietly change which rule wins. */
+      return {
+        ...one,
+        arrays:
+          at < 0
+            ? [...rules, { path: jsonPath, strategy }]
+            : rules.with(at, { path: jsonPath, strategy }),
+      };
     });
     onSaveAdjustment(row.repository_id, { ...row.document, merges });
   }
@@ -452,7 +462,7 @@
                       options={LIST_RULES}
                       value={ruleFor(merge, question)}
                       {disabled}
-                      onSelect={(next) => setRule(row, merge, question, next)}
+                      onSelect={(next) => setRule(row, question, next)}
                     />
                   </div>
                 {/if}

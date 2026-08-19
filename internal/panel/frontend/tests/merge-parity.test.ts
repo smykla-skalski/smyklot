@@ -3,10 +3,12 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import {
+  composable,
   composeFile,
   composesNothing,
   formatJson,
   parseJson,
+  validateSpec,
   type JsonValue,
   type MergeSpec,
 } from '#lib/merge.js';
@@ -36,6 +38,15 @@ interface ParityCase {
   refused?: boolean;
   /** A spec that composes nothing, so the template is what the repository holds. */
   verbatim?: boolean;
+  /**
+   * A merge the service composes and the panel declines to, by format.
+   *
+   * The panel reads JSON; `filemerge` also reads YAML and edits Markdown by its
+   * headings. That gap is real and the table is where it is written down - a
+   * case with no verb would read as agreement, and one marked `refused` would
+   * claim the service refuses a merge it runs every sweep.
+   */
+  unsupported?: boolean;
 }
 
 const table = JSON.parse(
@@ -52,6 +63,16 @@ describe('merge parity [Unit]', () => {
 
   for (const one of table.cases) {
     it(one.name, () => {
+      if (one.unsupported === true) {
+        // Declined by format, and only by format: the reason names the file
+        // rather than anything in the spec, and `composable` is what the
+        // component asks before it draws a merge at all.
+        expect(composable(one.path), `${one.path} is one this composes`).toBe(false);
+        expect(validateSpec(one.path, one.spec)).toContain(one.path);
+
+        return;
+      }
+
       const template = parseJson(one.template);
       expect(template, 'the case template is not JSON').not.toBeUndefined();
 
@@ -62,7 +83,7 @@ describe('merge parity [Unit]', () => {
       }
 
       const asked = JSON.stringify(one.spec);
-      const composed = composeFile(template as JsonValue, one.spec);
+      const composed = composeFile(one.path, template as JsonValue, one.spec);
 
       /* Composing is a question, so asking it twice answers the same thing.
          It did not: a shallow merge stores the adjustment's value by reference
@@ -72,7 +93,7 @@ describe('merge parity [Unit]', () => {
          composing its candidate again passed because both sides of the
          comparison were one object. Asserted for every case rather than for the
          one that found it. */
-      const again = composeFile(template as JsonValue, one.spec);
+      const again = composeFile(one.path, template as JsonValue, one.spec);
       expect(JSON.stringify(one.spec), 'composing changed the spec it was given').toBe(asked);
       expect(again.ok && formatJson(again.value)).toBe(composed.ok && formatJson(composed.value));
 

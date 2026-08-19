@@ -8,25 +8,20 @@
    */
   type Choice = { value: string; label: string };
 
+  /**
+   * A switch carries no vocabulary of its own. It is a boolean in the document
+   * and renders as a Switch, so the two words beside it are the control's, not
+   * the setting's - a list here would be a copy nothing reads.
+   */
   export type SettingField = {
     key: string;
     label: string;
     /** What it means, in the reader's words rather than GitHub's. */
     why?: string;
-    /** A switch is a boolean in the document; a choice is one of GitHub's words. */
-    kind: 'switch' | 'choice';
-    options: readonly Choice[];
-  };
-
-  const ON = 'on';
-  const OFF = 'off';
-  const SWITCH: readonly Choice[] = [
-    { value: ON, label: 'On' },
-    { value: OFF, label: 'Off' },
-  ];
+  } & ({ kind: 'switch' } | { kind: 'choice'; options: readonly Choice[] });
 
   function toggle(key: string, label: string, why?: string): SettingField {
-    return { key, label, why, kind: 'switch', options: SWITCH };
+    return { key, label, why, kind: 'switch' };
   }
 
   function choice(key: string, label: string, options: readonly Choice[]): SettingField {
@@ -204,7 +199,7 @@
     return field.options.find((option) => option.value === value)?.label;
   }
 
-  function chosen(field: SettingField): string {
+  function chosen(field: Extract<SettingField, { kind: 'choice' }>): string {
     const value = stored[field.key];
 
     return typeof value === 'string' ? value : (field.options[0]?.value ?? '');

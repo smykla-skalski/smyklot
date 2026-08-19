@@ -192,19 +192,108 @@ export interface MergeSpec {
  * and the empty object - and all three mean the same thing.
  */
 export function composesNothing(spec: MergeSpec): boolean {
-  const overrides = spec.overrides;
-  const adjusts =
-    overrides !== undefined &&
-    overrides !== null &&
-    (!isObject(overrides) || Object.keys(overrides).length > 0);
-
   return (
     (spec.strategy ?? '') === '' &&
-    !adjusts &&
+    !adjusts(spec) &&
     (spec.arrays ?? []).length === 0 &&
     spec.deduplicate !== true &&
     (spec.sections ?? []).length === 0
   );
+}
+
+/** Overrides that say something, which absent, null and `{}` all do not. */
+function adjusts(spec: MergeSpec): boolean {
+  const overrides = spec.overrides;
+
+  return (
+    overrides !== undefined &&
+    overrides !== null &&
+    (!isObject(overrides) || Object.keys(overrides).length > 0)
+  );
+}
+
+/** The list rules the service knows, which is all three of them. */
+export const ARRAY_STRATEGIES = ['replace', 'append', 'prepend'] as const;
+
+export type ArrayStrategy = (typeof ARRAY_STRATEGIES)[number];
+
+/**
+ * One of the three, or nothing.
+ *
+ * A control hands back the `string` it is declared to hand back, and a rule
+ * holds one of three words - so somewhere the two have to meet. Here rather
+ * than at a cast, because a cast would let a fourth word through silently and
+ * the engine refuses the whole file sync over it.
+ */
+export function asArrayStrategy(value: string): ArrayStrategy | undefined {
+  return (ARRAY_STRATEGIES as readonly string[]).includes(value)
+    ? (value as ArrayStrategy)
+    : undefined;
+}
+
+/**
+ * A merge nobody should be able to configure, for the file it applies to - or
+ * nothing, where the spec is one the service would run.
+ *
+ * `filemerge.Spec.Validate` clause for clause. It exists because the two halves
+ * refuse in different places: the service refuses at plan time and the reader
+ * never sees the plan, so a spec it will not run has to be refused here too or
+ * the panel draws a composed file for a merge that is never going to happen.
+ * `markdown` on a JSON path was the one that showed - it fell through to a deep
+ * merge and drew a perfectly ordinary file.
+ *
+ * The file decides most of it: a strategy is only meaningful for the sort of
+ * document it edits.
+ */
+export function validateSpec(path: string, spec: MergeSpec): string | undefined {
+  if (!composable(path)) {
+    // Narrower than the service on purpose. `Validate` also accepts YAML and
+    // Markdown; this composes JSON, and the caller draws "cannot be composed
+    // here" rather than a file. Refused rather than assumed so a future caller
+    // that forgets the gate cannot get a JSON merge run over a YAML document.
+    return `${path} is not JSON, which is all this composes`;
+  }
+
+  const strategy =
+    spec.strategy === undefined || spec.strategy === '' ? 'deep-merge' : spec.strategy;
+  if (strategy === 'markdown') {
+    return `${path} is not Markdown, so it cannot be merged by its headings`;
+  }
+  if (strategy !== 'deep-merge' && strategy !== 'shallow-merge') {
+    return `Unknown strategy ${JSON.stringify(strategy)}`;
+  }
+
+  if ((spec.sections ?? []).length > 0) {
+    return 'Sections edit Markdown headings, and this file has none';
+  }
+
+  const overrides = spec.overrides;
+  if (overrides !== undefined && overrides !== null && !isObject(overrides)) {
+    return 'The overrides are not an object';
+  }
+
+  const rules = spec.arrays ?? [];
+  if (spec.deduplicate === true && rules.length === 0) {
+    return (
+      'Nothing is deduplicated without a list rule, because a list with no ' +
+      'rule is replaced whole'
+    );
+  }
+
+  if (!adjusts(spec) && rules.length === 0) {
+    return 'Nothing is merged without overrides or a list rule';
+  }
+
+  const seen = new Set<string>();
+  for (const [index, rule] of rules.entries()) {
+    if (!(ARRAY_STRATEGIES as readonly string[]).includes(rule.strategy)) {
+      return `List rule ${index + 1} has unknown strategy ${JSON.stringify(rule.strategy)}`;
+    }
+    if (seen.has(rule.path)) return `${rule.path} has two list rules`;
+    seen.add(rule.path);
+  }
+
+  return undefined;
 }
 
 /**
@@ -217,7 +306,10 @@ export function composesNothing(spec: MergeSpec): boolean {
 export type Composed = { ok: true; value: JsonValue } | { ok: false; reason: string };
 
 /** The file this repository ends up with, composed the way the service composes it. */
-export function composeFile(template: JsonValue, spec: MergeSpec): Composed {
+export function composeFile(path: string, template: JsonValue, spec: MergeSpec): Composed {
+  const refused = validateSpec(path, spec);
+  if (refused !== undefined) return { ok: false, reason: refused };
+
   const overrides = spec.overrides ?? {};
   const merged =
     spec.strategy === 'shallow-merge'
@@ -424,7 +516,12 @@ export type Derived = { ok: true; overrides: JsonValue } | { ok: false; reason: 
  * that cannot be proved is refused rather than stored. The check costs one more
  * compose of a file somebody is looking at.
  */
-export function deriveOverrides(template: JsonValue, spec: MergeSpec, wanted: JsonValue): Derived {
+export function deriveOverrides(
+  path: string,
+  template: JsonValue,
+  spec: MergeSpec,
+  wanted: JsonValue,
+): Derived {
   const patch =
     spec.strategy === 'shallow-merge'
       ? deriveShallow(template, wanted)
@@ -466,7 +563,7 @@ export function deriveOverrides(template: JsonValue, spec: MergeSpec, wanted: Js
     }
   }
 
-  const composed = composeFile(template, { ...spec, overrides: candidate });
+  const composed = composeFile(path, template, { ...spec, overrides: candidate });
   if (!composed.ok) return { ok: false, reason: composed.reason };
   if (!same(composed.value, wanted)) {
     return {
@@ -539,7 +636,10 @@ function same(left: JsonValue | undefined, right: JsonValue | undefined): boolea
 
 /** One spelling per value, so two of them can be compared as text. */
 function canonical(value: JsonValue | undefined): string {
-  if (value === undefined) return ' ';
+  // A byte no JSON text can hold, so no real value canonicalises to it. Spelled
+  // as an escape rather than typed: a raw NUL makes this module binary to grep,
+  // diff and every other text tool, and is invisible in an editor.
+  if (value === undefined) return '\u0000';
   if (isNumber(value)) return `#${value.rawJSON}`;
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
   if (isObject(value)) {

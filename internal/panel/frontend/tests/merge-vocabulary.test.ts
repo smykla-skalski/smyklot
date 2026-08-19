@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
+import { ARRAY_STRATEGIES } from '#lib/merge.js';
+
 /**
  * The repository's Sync pane spells a merge the way the engine spells one.
  *
@@ -41,14 +43,19 @@ function declared(type: string, floor: number): string[] {
   return found;
 }
 
-/** The values one option list in the pane offers, empty ones left out. */
-function offered(list: string, floor: number): string[] {
-  const source = readFileSync(PANE_SOURCE, 'utf8');
+/** The values one option list offers, empty ones left out. */
+function valuesOf(file: URL, list: string, floor: number): string[] {
+  const source = readFileSync(file, 'utf8');
   const start = source.indexOf(`const ${list} = [`);
 
   if (start < 0) throw new Error(`${list} is no longer declared as an array literal`);
 
-  const body = source.slice(start, source.indexOf('] as const', start));
+  // Whichever closes it first: one of these lists is `as const` and one is not,
+  // and a search for the wrong closer runs on into the next declaration.
+  const ends = ['] as const', '];']
+    .map((closer) => source.indexOf(closer, start))
+    .filter((at) => at > 0);
+  const body = source.slice(start, Math.min(...ends));
   const found = [...body.matchAll(/value: '(?<value>[a-z-]*)'/gu)]
     .map((match) => match.groups?.value ?? '')
     .filter((value) => value !== '');
@@ -58,6 +65,11 @@ function offered(list: string, floor: number): string[] {
   }
 
   return found;
+}
+
+/** The values one option list in the pane offers. */
+function offered(list: string, floor: number): string[] {
+  return valuesOf(PANE_SOURCE, list, floor);
 }
 
 describe('merge vocabulary [Unit]', () => {
@@ -72,10 +84,22 @@ describe('merge vocabulary [Unit]', () => {
     expect(both.toSorted()).toEqual(declared('Strategy', 3).toSorted());
   });
 
-  it('offers every list strategy the engine has', () => {
-    expect(offered('ARRAY_STRATEGIES', 3).toSorted()).toEqual(
-      declared('ArrayStrategy', 3).toSorted(),
-    );
+  /*
+   * Through `merge.ts` rather than pane-to-Go, because this list is now typed:
+   * `SyncArrayRule.strategy` is `ArrayStrategy`, so a fourth word cannot reach
+   * a stored rule without the compiler saying so. What is left to check is that
+   * the shared list still matches Go, and that each place a reader CHOOSES from
+   * offers all of it - a control missing `prepend` compiles perfectly.
+   */
+  it('shares one list strategy vocabulary with the engine', () => {
+    expect([...ARRAY_STRATEGIES].toSorted()).toEqual(declared('ArrayStrategy', 3).toSorted());
+  });
+
+  it.each([
+    ['ARRAY_STRATEGIES', PANE_SOURCE],
+    ['LIST_RULES', new URL('../src/lib/components/SyncFileDetail.svelte', import.meta.url)],
+  ])('offers every list strategy in %s', (list, source) => {
+    expect(valuesOf(source, list, 3).toSorted()).toEqual([...ARRAY_STRATEGIES].toSorted());
   });
 
   it('offers every section action the engine has', () => {
