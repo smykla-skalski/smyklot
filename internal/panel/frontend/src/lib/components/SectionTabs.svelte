@@ -111,25 +111,53 @@
     position: relative;
   }
 
+  /* The gap shrinks by what the links now take as padding, so the distance
+     between two labels is the 1.25rem it has always been - the padding moved
+     inside the target rather than adding to the strip. */
   ul {
     display: flex;
-    gap: var(--space-5);
+    gap: var(--space-1);
     list-style: none;
     margin: 0;
     padding: 0;
   }
 
+  /*
+   * The whole padded box is the target.
+   *
+   * It used to be the text and nothing else: the pointer changed to a hand only
+   * over the letters, and the gap between two tabs answered neither of them.
+   * The bar underneath still hugs the label rather than this box - it is
+   * measured from `.tab-word` - which is the one part of this that should not
+   * grow with the target.
+   */
   a {
     align-items: center;
+    border-radius: var(--r-ctl) var(--r-ctl) 0 0;
     color: var(--tab-muted);
     display: flex;
     gap: 0.45rem;
     font-size: var(--font-size-meta);
-    /* Symmetric, so the label sits on the middle of the strip's own box and
-       therefore on the middle of anything the strip shares a row with. */
-    padding: 0.7rem 0;
+    /* Symmetric down the block axis, so the label sits on the middle of the
+       strip's own box and therefore on the middle of anything the strip shares
+       a row with. */
+    padding: 0.7rem var(--space-2);
     position: relative;
     text-decoration: none;
+    transition: background-image var(--duration-fast) var(--ease-standard);
+  }
+
+  /* The app's own two states, over whatever ground the strip sits on. Square at
+     the bottom, because that edge is the seam the bar rides. */
+  a:hover {
+    background-image: linear-gradient(
+      var(--interactive-hover-layer),
+      var(--interactive-hover-layer)
+    );
+  }
+
+  a:active {
+    background-image: linear-gradient(var(--press), var(--press));
   }
 
   /* The reserved bold: a hidden copy at weight 600 sets the width, so the
@@ -151,7 +179,8 @@
     grid-area: 1 / 1;
   }
 
-  a:hover {
+  a:hover,
+  a:active {
     color: var(--tab-ink);
   }
 
@@ -220,6 +249,10 @@
 
   @media (prefers-reduced-motion: reduce) {
     .section-tabs-bar {
+      transition: none;
+    }
+
+    a {
       transition: none;
     }
   }

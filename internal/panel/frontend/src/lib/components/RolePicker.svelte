@@ -105,7 +105,9 @@
     display: inline-flex;
     font: 600 var(--font-size-compact) / 1 var(--sans);
     gap: var(--space-2);
-    height: 1.875rem;
+    /* The panel's compact control height, not a third one of its own: 1.875rem
+       is 30px, which lined up with nothing it ever sat beside. */
+    height: var(--control-height-compact);
     min-width: 7.25rem;
     padding: 0 0.5rem;
     transition:

@@ -72,12 +72,60 @@ describe('SyncLabelsForm [Component]', () => {
     await fireEvent.click(screen.getByRole('button', { name: 'Save labels' }));
   }
 
+  /**
+   * Opens the one row being edited.
+   *
+   * The list draws rows rather than a stack of open forms - twelve labels as
+   * twelve forms is a page nobody reads - so a field only exists once its row
+   * has been opened. `Add a label` opens the row it appends, so it needs no
+   * call.
+   */
+  async function edit(): Promise<void> {
+    await fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+  }
+
   it('shows the labels the installation configured', () => {
     render(SyncLabelsForm, { ...base, labels: [bug()] });
 
+    // Read as a row, not as a form: the fields belong to whichever row is open.
+    expect(screen.getByText('kind/bug')).toBeTruthy();
+    expect(screen.getByText("Something isn't working")).toBeTruthy();
+  });
+
+  it('opens one row at a time, in place', async () => {
+    render(SyncLabelsForm, { ...base, labels: [bug(), bug({ name: 'kind/chore' })] });
+
+    await fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]);
+
     expect(screen.getByDisplayValue('kind/bug')).toBeTruthy();
     expect(screen.getByDisplayValue('d73a4a')).toBeTruthy();
-    expect(screen.getByDisplayValue("Something isn't working")).toBeTruthy();
+    // The other row is still a row.
+    expect(screen.queryByDisplayValue('kind/chore')).toBeNull();
+    expect(screen.getByText('kind/chore')).toBeTruthy();
+  });
+
+  /* A row added and then cancelled was never a label, so it goes away rather
+     than staying behind as a nameless row somebody has to notice. */
+  it('takes an abandoned new row away again', async () => {
+    render(SyncLabelsForm, base);
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Add a label' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(screen.getByText('No labels yet.')).toBeTruthy();
+  });
+
+  it('puts back what a row held when Cancel is pressed', async () => {
+    render(SyncLabelsForm, { ...base, labels: [bug()] });
+
+    await edit();
+    await fireEvent.input(screen.getByPlaceholderText('kind/bug'), {
+      target: { value: 'kind/defect' },
+    });
+    await fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(screen.getByText('kind/bug')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Save labels' }).hasAttribute('disabled')).toBe(true);
   });
 
   it('says so where nothing is configured rather than showing an empty row', () => {
@@ -97,10 +145,10 @@ describe('SyncLabelsForm [Component]', () => {
     render(SyncLabelsForm, { ...base, onSave });
 
     await fireEvent.click(screen.getByRole('button', { name: 'Add a label' }));
-    await fireEvent.change(screen.getByPlaceholderText('kind/bug'), {
+    await fireEvent.input(screen.getByPlaceholderText('kind/bug'), {
       target: { value: 'area/ci' },
     });
-    await fireEvent.change(screen.getByPlaceholderText('d73a4a'), { target: { value: 'fbca04' } });
+    await fireEvent.input(screen.getByPlaceholderText('d73a4a'), { target: { value: 'fbca04' } });
     await save();
 
     expect(sent[0].labels).toEqual([{ name: 'area/ci', color: 'fbca04' }]);
@@ -132,7 +180,8 @@ describe('SyncLabelsForm [Component]', () => {
       const { sent, onSave } = saved();
       render(SyncLabelsForm, { ...base, labels: [undescribed()], onSave });
 
-      await fireEvent.change(screen.getByPlaceholderText('kind/bug'), {
+      await edit();
+      await fireEvent.input(screen.getByPlaceholderText('kind/bug'), {
         target: { value: 'kind/defect' },
       });
       await save();
@@ -145,7 +194,8 @@ describe('SyncLabelsForm [Component]', () => {
       const { sent, onSave } = saved();
       render(SyncLabelsForm, { ...base, labels: [bug()], onSave });
 
-      await fireEvent.change(screen.getByDisplayValue("Something isn't working"), {
+      await edit();
+      await fireEvent.input(screen.getByDisplayValue("Something isn't working"), {
         target: { value: '' },
       });
       await save();
@@ -167,8 +217,9 @@ describe('SyncLabelsForm [Component]', () => {
       const { sent, onSave } = saved();
       render(SyncLabelsForm, { ...base, labels: [bug({ description: '' })], onSave });
 
+      await edit();
       // Somewhere else on the row, so the save is about anything but this field.
-      await fireEvent.change(screen.getByPlaceholderText('d73a4a'), {
+      await fireEvent.input(screen.getByPlaceholderText('d73a4a'), {
         target: { value: 'fbca04' },
       });
       await save();
@@ -197,7 +248,8 @@ describe('SyncLabelsForm [Component]', () => {
       const { sent, onSave } = saved();
       render(SyncLabelsForm, { ...base, labels: [undescribed()], onSave });
 
-      await fireEvent.change(screen.getByPlaceholderText("Something isn't working"), {
+      await edit();
+      await fireEvent.input(screen.getByPlaceholderText("Something isn't working"), {
         target: { value: 'A defect' },
       });
       await save();

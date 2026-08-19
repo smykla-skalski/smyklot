@@ -306,6 +306,7 @@ jobs:
               tests/browser/vertical-alignment.test.ts
               tests/browser/table-headers.test.ts
               tests/browser/text-clipping.test.ts
+              tests/browser/control-heights.test.ts
           # Every cell of every table given a run longer than the service can
           # produce. Alone, at 74s: it found the same fault in five tables at
           # once, which is what a sweep is for and what it costs.

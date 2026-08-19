@@ -648,7 +648,10 @@
     display: inline-flex;
     font: 600 var(--font-size-compact) / 1 var(--sans);
     gap: 0.375rem;
-    min-height: 2rem;
+    /* The shared height, because this is the shared control: `.add-chip` also
+       lives in `app.css`, and a class that measures 24px on one page and 32 on
+       another is two controls wearing one name. */
+    min-height: var(--control-height-chip);
     padding: 0 0.875rem;
   }
 

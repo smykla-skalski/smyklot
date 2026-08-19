@@ -654,6 +654,14 @@
     padding: 0.625rem 0.75rem;
   }
 
+  /* A single-line field takes the panel's compact height like every other one.
+     The padding above is a textarea's, and on an input it made a 43px control
+     standing beside 34px buttons. */
+  .pending-ci-grid input {
+    block-size: var(--control-height-compact);
+    padding-block: 0;
+  }
+
   .pending-ci-actions {
     display: flex;
     justify-content: flex-end;

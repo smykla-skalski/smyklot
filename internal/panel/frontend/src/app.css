@@ -373,6 +373,14 @@
 
   --control-height: 40px;
   --control-height-compact: 34px;
+
+  /* Chips and the dashed add-chip beside them. A third height rather than a
+     third recipe: both were built out of padding, so each one ended up as tall
+     as whatever it happened to hold - 27.59px for a chip carrying a clear
+     button against 23.8px for the add-chip beside it, neither of them a whole
+     pixel. A control's height is a decision, not an outcome. */
+  --control-height-chip: 24px;
+  --control-height-chip-small: 20px;
   --touch-target: 44px;
   --control-inset: 2px;
   --icon-sm: 0.875rem;
@@ -2112,13 +2120,15 @@ select:disabled {
   display: inline-flex;
   font: 600 var(--font-size-compact) / 1 var(--sans);
   gap: 0.35rem;
-  padding: 0.4rem 0.55rem;
+  min-block-size: var(--control-height-chip);
+  padding: 0 0.55rem;
   white-space: nowrap;
 }
 
 .chip-small {
   font-size: var(--font-size-micro);
-  padding: 0.3rem 0.45rem;
+  min-block-size: var(--control-height-chip-small);
+  padding-inline: 0.45rem;
 }
 
 .chip-label {
@@ -2233,9 +2243,10 @@ select:disabled {
   display: inline-flex;
   font: 600 var(--font-size-compact) / 1 var(--sans);
   gap: 0.3rem;
+  min-block-size: var(--control-height-chip);
   outline: 1px dashed color-mix(in srgb, currentcolor 45%, transparent);
   outline-offset: -1px;
-  padding: 0.4rem 0.55rem;
+  padding: 0 0.55rem;
   white-space: nowrap;
 }
 

@@ -161,7 +161,7 @@
    * exactly what `.add-chip` is made of.
    */
   .pattern-field {
-    --local-control-height: calc(0.8rem + var(--font-size-compact));
+    --local-control-height: var(--control-height-chip);
 
     font-family: var(--mono);
     font-size: var(--font-size-compact);

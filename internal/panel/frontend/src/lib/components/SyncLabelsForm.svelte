@@ -137,11 +137,42 @@
     drafts = drafts.map((label, at) => (at === index ? described(label, value) : label));
   }
 
+  /**
+   * The one row being edited, by key rather than by index.
+   *
+   * One at a time, because a list of twelve labels opened as twelve forms is a
+   * page nobody reads - the approved design shows the list and lets one row
+   * become a form in place. By KEY because the row beside it can be removed
+   * while this one is open, and an index would then point at whatever moved up
+   * into its place.
+   */
+  let editing = $state<string | null>(null);
+
+  /** What the row held when it was opened, so Cancel has something to go back to. */
+  let opened = $state<SyncLabel | null>(null);
+
+  function open(index: number): void {
+    editing = rowKey(index);
+    opened = drafts[index] ?? null;
+  }
+
+  function cancel(index: number): void {
+    const before = opened;
+    // A row added and then cancelled was never a label: it goes away rather
+    // than staying behind as a nameless row somebody has to notice and remove.
+    if (before === null || before.name === '') drafts = withoutAt(drafts, index);
+    else drafts = drafts.map((label, at) => (at === index ? before : label));
+    editing = null;
+    opened = null;
+  }
+
   function add(): void {
     drafts = [...drafts, { name: '', color: '' }];
+    open(drafts.length - 1);
   }
 
   function remove(index: number): void {
+    if (editing === rowKey(index)) editing = null;
     drafts = withoutAt(drafts, index);
   }
 
@@ -158,6 +189,17 @@
   }
 
   const rowKey = rowKeys('label');
+
+  /* A row that arrives from a save is no longer the row being edited: the whole
+     list is reseeded, so an open editor would be showing a copy nothing writes
+     to. */
+  $effect(() => {
+    void untouched;
+    untrack(() => {
+      editing = null;
+      opened = null;
+    });
+  });
 </script>
 
 <SyncKindHead
@@ -180,104 +222,65 @@
     {/if}
   {/snippet}
 
-  <div class="label-settings">
-    <PolicyRow
-      name="Remove labels this list does not name"
-      why="Off, a repository may keep labels of its own. On, everything unnamed is deleted"
-      value={removal ? 'On' : 'Off'}
-    >
-      {#snippet control()}
-        <!-- The one control here that destroys something. A label this list
-             does not name goes on existing unless this is on. -->
-        <Switch
-          checked={removal}
-          ariaLabel="Remove labels this list does not name"
-          {disabled}
-          onChange={(next) => (removal = next)}
-        />
-      {/snippet}
-    </PolicyRow>
-
-    <PolicyRow
-      name="Labels to leave alone"
-      why="Name or pattern, where * stands for any run of characters. Neither written nor removed, whatever the list below says"
-    >
-      {#snippet control()}
-        <!-- The safety valve beside the switch above, and the reason it is here
-             rather than only in the API: somebody who can turn removal on from
-             this page has to be able to protect something from this page too. -->
-        <PatternList
-          values={excludes}
-          label="Labels to leave alone"
-          addLabel="Add a pattern"
-          placeholder="hand-made-*"
-          {disabled}
-          onChange={(next) => (excludes = next)}
-        />
-      {/snippet}
-    </PolicyRow>
-  </div>
-
   {#if drafts.length === 0}
     <p class="form-note labels-empty">No labels yet.</p>
+  {:else}
+    <ul class="label-rows">
+      {#each drafts as label, index (rowKey(index))}
+        <li class="label-row" class:is-editing={editing === rowKey(index)}>
+          <!-- The colour is the label's own, so it goes through a custom
+               property: the panel serves style-src 'self', under which a style
+               attribute is parsed and then discarded. -->
+          <span class="label-swatch" style:--swatch={swatch(label.color)} aria-hidden="true"></span>
+
+          {#if editing === rowKey(index)}
+            <span class="label-edit">
+              <input
+                class="text-inline"
+                type="text"
+                value={label.name}
+                {disabled}
+                placeholder="kind/bug"
+                aria-label="Label name"
+                oninput={(event) => patch(index, { name: event.currentTarget.value })}
+              />
+              <input
+                class="text-inline is-wide"
+                type="text"
+                value={label.description ?? ''}
+                {disabled}
+                placeholder="Something isn't working"
+                aria-label="Label description"
+                aria-describedby="labels-description-note"
+                oninput={(event) => describe(index, event.currentTarget.value)}
+              />
+              <input
+                class="text-inline is-color"
+                type="text"
+                value={label.color}
+                {disabled}
+                spellcheck="false"
+                placeholder="d73a4a"
+                aria-label="Label colour"
+                oninput={(event) => patch(index, { color: event.currentTarget.value })}
+              />
+              <Button tone="brand" {disabled} onclick={() => (editing = null)}>Done</Button>
+              <Button tone="quiet" {disabled} onclick={() => cancel(index)}>Cancel</Button>
+            </span>
+          {:else}
+            <span class="label-name">{label.name || 'Unnamed'}</span>
+            <span class="label-desc">{label.description ?? ''}</span>
+            {#if !readOnly}
+              <span class="label-acts">
+                <Button tone="quiet" {disabled} onclick={() => open(index)}>Edit</Button>
+                <Button tone="stop-quiet" {disabled} onclick={() => remove(index)}>Remove</Button>
+              </span>
+            {/if}
+          {/if}
+        </li>
+      {/each}
+    </ul>
   {/if}
-
-  {#each drafts as label, index (rowKey(index))}
-    <article class="entry-card">
-      <div class="label-row">
-        <label class="label-name">
-          <span class="entry-field-label">Name</span>
-          <input
-            class="text-input"
-            type="text"
-            value={label.name}
-            {disabled}
-            placeholder="kind/bug"
-            onchange={(event) => patch(index, { name: event.currentTarget.value })}
-          />
-        </label>
-
-        <label class="label-color">
-          <span class="entry-field-label">Colour</span>
-          <span class="label-color-field">
-            <!-- The colour is the label's own, so it goes through a custom
-                 property: the panel serves style-src 'self', under which a
-                 style attribute is parsed and then discarded. -->
-            <span class="label-swatch" style:--swatch={swatch(label.color)} aria-hidden="true"
-            ></span>
-            <input
-              class="text-input"
-              type="text"
-              value={label.color}
-              {disabled}
-              spellcheck="false"
-              placeholder="d73a4a"
-              onchange={(event) => patch(index, { color: event.currentTarget.value })}
-            />
-          </span>
-        </label>
-
-        {#if !readOnly}
-          <button class="btn btn-quiet" type="button" {disabled} onclick={() => remove(index)}>
-            <span class="button-label">Remove</span>
-          </button>
-        {/if}
-      </div>
-
-      <label class="entry-field">
-        <span class="entry-field-label">Description</span>
-        <input
-          class="text-input"
-          type="text"
-          value={label.description ?? ''}
-          {disabled}
-          aria-describedby="labels-description-note"
-          placeholder="Something isn't working"
-          onchange={(event) => describe(index, event.currentTarget.value)}
-        />
-      </label>
-    </article>
-  {/each}
 
   <p class="form-note label-note" id="labels-description-note">
     Six hexadecimal digits for the colour, with no <code>#</code>, which is how GitHub stores it. An
@@ -298,10 +301,58 @@
         {saving ? 'Saving' : 'Save labels'}
       </Button>
       {#if changed}
-        <p class="form-note">Nothing is changed on GitHub until a plan is approved</p>
+        <span class="form-note">Unsaved changes</span>
       {/if}
     </div>
   {/if}
+</Plate>
+
+<!--
+  The two policy controls, in a plate of their own.
+  ------------------------------------------------
+  They were at the top of the list's plate, above the labels they are about,
+  which put the destructive switch first and the thing it destroys second. They
+  are settings about the list rather than part of it, and the approved design
+  reads them after it.
+-->
+<Plate label="How the list is applied">
+  <div class="label-settings">
+    <PolicyRow
+      name="Remove labels this list does not name"
+      why="Off, a repository may keep labels of its own. On, everything unnamed is deleted"
+      value={removal ? 'On' : 'Off'}
+    >
+      {#snippet control()}
+        <!-- The one control here that destroys something. A label this list
+             does not name goes on existing unless this is on. -->
+        <Switch
+          checked={removal}
+          ariaLabel="Remove labels this list does not name"
+          {disabled}
+          onChange={(next) => (removal = next)}
+        />
+      {/snippet}
+    </PolicyRow>
+
+    <PolicyRow
+      name="Labels to leave alone"
+      why="Name or pattern, where * stands for any run of characters. Neither written nor removed, whatever the list above says"
+    >
+      {#snippet control()}
+        <!-- The safety valve beside the switch above, and the reason it is here
+             rather than only in the API: somebody who can turn removal on from
+             this page has to be able to protect something from this page too. -->
+        <PatternList
+          values={excludes}
+          label="Labels to leave alone"
+          addLabel="Add a pattern"
+          placeholder="hand-made-*"
+          {disabled}
+          onChange={(next) => (excludes = next)}
+        />
+      {/snippet}
+    </PolicyRow>
+  </div>
 </Plate>
 
 <style>
@@ -325,45 +376,123 @@
     margin: var(--space-4) 0 0;
   }
 
+  /*
+   * The list, as the approved design draws it: a row per label, hairlines
+   * between, and one row that becomes a form in place.
+   *
+   * `baseline` rather than `center`, because the three things on a row are all
+   * text and a reader lines text up by its feet. The swatch is sized in `cap`
+   * and sits on that same baseline, so it spans exactly the band the letters do
+   * with nothing to compute - and a row whose description wraps keeps the mark
+   * beside the first line rather than floating it beside the gap.
+   */
+  .label-rows {
+    display: grid;
+    list-style: none;
+    margin: var(--space-3) 0 0;
+    padding: 0;
+  }
+
   .label-row {
-    align-items: flex-end;
-    display: flex;
-    flex-wrap: wrap;
+    align-items: baseline;
+    display: grid;
     gap: var(--space-3);
+    grid-template-columns: auto 11rem 1fr auto;
+    min-block-size: 2.6rem;
+    padding: 0.4rem var(--space-2);
   }
 
-  .label-name {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    gap: 0.25rem;
-    min-width: 12rem;
+  .label-row + .label-row {
+    border-top: 1px solid var(--border-subtle);
   }
 
-  .label-color {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
+  /* The editor takes the whole row, so the columns collapse to the mark and it. */
+  .label-row.is-editing {
+    align-items: center;
+    grid-template-columns: auto 1fr;
   }
 
-  .label-color-field {
+  .label-edit {
     align-items: center;
     display: flex;
+    flex-wrap: wrap;
     gap: var(--space-2);
   }
 
-  .label-color input {
-    width: 8rem;
+  .label-name {
+    font-size: var(--font-size-meta);
+    font-weight: 600;
   }
 
-  /* A ring rather than a border, so a white label and a colour that will not
-     parse read as two things rather than as one pale square. */
+  .label-desc {
+    color: var(--text-muted);
+    font-size: var(--font-size-meta);
+  }
+
+  /* Kept in the layout at all times and revealed on hover, so a row never
+     changes size under the hand that is reaching for it. */
+  .label-acts {
+    display: flex;
+    gap: var(--space-1);
+    opacity: 0;
+    transition: opacity var(--duration-fast) var(--ease-standard);
+  }
+
+  .label-row:hover .label-acts,
+  .label-row:focus-within .label-acts {
+    opacity: 1;
+  }
+
+  /* Sized in the label's own cap and sitting on the shared baseline, so the mark
+     spans exactly the band the letters do. */
   .label-swatch {
     background: var(--swatch);
-    block-size: 1rem;
+    block-size: 1cap;
     border-radius: 50%;
     box-shadow: inset 0 0 0 1px var(--rule);
-    flex: none;
-    inline-size: 1rem;
+    inline-size: 1cap;
+  }
+
+  /* The inline fields the editing row holds. Narrower than a full control and
+     laid beside each other, because the row is a row and not a form. */
+  .text-inline {
+    background: var(--input-bg);
+    border: 1px solid var(--control-border);
+    border-radius: var(--r-ctl);
+    color: var(--text-primary);
+    font-size: var(--font-size-control);
+    min-block-size: var(--control-height-compact);
+    padding-inline: 0.55rem;
+    width: 11rem;
+  }
+
+  .text-inline.is-wide {
+    flex: 1;
+    min-width: 14rem;
+    width: auto;
+  }
+
+  .text-inline.is-color {
+    font-family: var(--mono);
+    width: 6.5rem;
+  }
+
+  @media (max-width: 44rem) {
+    /* The name and its description stack, so neither is squeezed to a column
+       too narrow to read. */
+    .label-row {
+      grid-template-columns: auto 1fr;
+    }
+
+    .label-row .label-desc,
+    .label-row .label-acts {
+      grid-column: 2;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .label-acts {
+      transition: none;
+    }
   }
 </style>
