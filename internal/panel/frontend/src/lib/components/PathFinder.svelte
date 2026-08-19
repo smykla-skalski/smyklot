@@ -87,11 +87,25 @@
   const parts = (match: PathMatch) => {
     const cut = match.path.lastIndexOf('/') + 1;
     const marked = new Set(match.positions);
-    const piece = (from: number, to: number) =>
-      [...match.path.slice(from, to)].map((character, index) => ({
-        character,
-        matched: marked.has(from + index),
-      }));
+    /* Whole characters out, code units counted.
+     *
+     * `positions` are code-unit offsets, because `matchPath` walks the path
+     * with `indexOf`. Spreading a string iterates by CODE POINT, so mapping the
+     * spread's own index onto those positions drifts by one for every astral
+     * character before it - a path holding an emoji painted the wrong letters
+     * as matched. Splitting by code unit instead would cut a surrogate pair in
+     * half and render two replacement characters, so the walk yields whole
+     * characters and advances the offset by what each one really occupies. */
+    const piece = (from: number, to: number) => {
+      const walked: { character: string; matched: boolean }[] = [];
+      let at = from;
+      for (const character of match.path.slice(from, to)) {
+        walked.push({ character, matched: marked.has(at) });
+        at += character.length;
+      }
+
+      return walked;
+    };
 
     return { directory: piece(0, cut), base: piece(cut, match.path.length) };
   };
