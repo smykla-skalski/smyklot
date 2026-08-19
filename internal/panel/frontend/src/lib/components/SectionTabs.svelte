@@ -148,6 +148,24 @@
   }
 
   /**
+   * A tab's ink: the label, and the count beside it where it carries one.
+   *
+   * The count is part of what the tab says - "Plan 16" is one phrase - so the
+   * bar covers both. Under the word alone it stopped short of the pill and read
+   * as underlining half a name.
+   */
+  function inkOf(link: HTMLElement): DOMRect | null {
+    const word = link.querySelector<HTMLElement>('.tab-word');
+    if (word === null) return null;
+    const box = word.getBoundingClientRect();
+    const count = link.querySelector<HTMLElement>('.tab-count');
+    if (count === null) return box;
+    const tail = count.getBoundingClientRect();
+
+    return new DOMRect(box.left, box.top, tail.right - box.left, box.height);
+  }
+
+  /**
    * Tell every tab how much of itself its label is, and where.
    *
    * The preview bar under an unopened tab does what the open one's does - it
@@ -159,13 +177,12 @@
    */
   function share(): void {
     for (const link of nav?.querySelectorAll<HTMLElement>('a') ?? []) {
-      const word = link.querySelector<HTMLElement>('.tab-word');
-      if (word === null) continue;
+      const ink = inkOf(link);
+      if (ink === null) continue;
       const box = link.getBoundingClientRect();
-      const wordBox = word.getBoundingClientRect();
       if (box.width === 0) continue;
-      link.style.setProperty('--word-share', String(wordBox.width / box.width));
-      const middle = ((wordBox.left + wordBox.width / 2 - box.left) / box.width) * 100;
+      link.style.setProperty('--word-share', String(ink.width / box.width));
+      const middle = ((ink.left + ink.width / 2 - box.left) / box.width) * 100;
       link.style.setProperty('--word-middle', `${middle}%`);
     }
   }
@@ -181,11 +198,11 @@
   async function place(motion: Motion, spread: boolean): Promise<void> {
     const link = nav?.querySelector<HTMLElement>("[aria-current='page']");
     if (link === null || link === undefined || nav === null) return;
-    /* The word reserves its bold width, so this is the same rect whether or not
-       the label is currently the bold one - which is what keeps a spread from
-       measuring one width on the way out and another on the way back. */
-    const word = link.querySelector<HTMLElement>('.tab-word');
-    const box = (spread || word === null ? link : word).getBoundingClientRect();
+    /* The word reserves its bold width, so the ink is the same rect whether or
+       not the label is currently the bold one - which is what keeps a spread
+       from measuring one width on the way out and another on the way back. */
+    const ink = inkOf(link);
+    const box = spread || ink === null ? link.getBoundingClientRect() : ink;
     if (box.width === 0) return;
     if (motion !== 'spread') share();
     const before = shown();

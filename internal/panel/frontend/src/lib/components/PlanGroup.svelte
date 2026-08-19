@@ -48,10 +48,21 @@
 </details>
 
 <style>
-  /* Clipped, so the summary's hover fill stops at the rounded corner instead of
+  /* A card, on the page's sunken ground, rather than an outline drawn on it.
+     An outline is all this was, and a border is the one part of a surface that
+     stops carrying it in a light palette: `--border-subtle` on the page ground
+     measures 0.00 dE00 of fill either side of it, so on dark the groups read as
+     boxes and on light they were four lines on a sheet of paper. The ground is
+     what the rest of the panel gives a card, and it is also what makes the row
+     states below correct - `--table-row-hover` is mixed against `--surface-base`,
+     so a row that rests on anything else moves 1.44 dE00 where every other row
+     in the product moves 2.5.
+
+     Clipped, so the summary's hover fill stops at the rounded corner instead of
      painting its own square one over it. `clip` rather than `hidden`: this is
      not a scroll container and should not become one. */
   .repo-group {
+    background: var(--surface-base);
     border: 1px solid var(--border-subtle);
     border-radius: var(--r-strip);
     overflow: clip;

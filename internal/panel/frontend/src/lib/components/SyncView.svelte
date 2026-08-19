@@ -1099,12 +1099,22 @@
     border-top: 1px solid var(--border-subtle);
   }
 
+  /* The layer rather than `--table-row-hover`, because this row rests on the
+     page and not on a card. That token is an opaque colour mixed against
+     `--surface-base`, so on the sunken ground it moved 1.44 dE00 in the light
+     palette against the 2.5 every other row in the panel moves, and 7.6 in the
+     dark one - too little and too much from the same declaration. A layer is
+     composited over whatever is actually behind it and lands on 2.5 / 5.0
+     either way. */
   .attn-row:hover {
-    background: var(--table-row-hover);
+    background-image: linear-gradient(
+      var(--interactive-hover-layer),
+      var(--interactive-hover-layer)
+    );
   }
 
   .attn-row:active {
-    background: var(--table-row-pressed);
+    background-image: linear-gradient(var(--press), var(--press));
     transform: scale(var(--press-scale-surface));
   }
 

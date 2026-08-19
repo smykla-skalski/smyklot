@@ -38,6 +38,7 @@
    * Colour is never the only channel. Settled carries a tick, refused a cross,
    * change a numeral, and off is a dashed socket with no fill at all.
    */
+  import AppTooltip from '#lib/components/AppTooltip.svelte';
   import Icon from '#lib/components/Icon.svelte';
 
   const {
@@ -102,27 +103,32 @@
   <div class="board-lay">
     <div class="board-well" role="group" aria-label={label}>
       {#each repositories as repository (repository.name)}
-        <svelte:element
-          this={hrefOf === undefined ? 'span' : 'a'}
-          role={hrefOf === undefined ? 'img' : undefined}
-          href={hrefOf?.(repository)}
-          class="tile is-{repository.state}"
-          class:is-link={hrefOf !== undefined}
-          class:is-dim={filter !== null && filter !== repository.state}
-          data-name={repository.name}
-          aria-label={said(repository)}
-        >
-          {#if repository.state === 'change'}
-            <!-- Wrapped, because a bare figure in a flex container is an
-                 anonymous box no selector reaches and the trim never lands on
-                 it - which put the count 0.39px above the middle of its tile. -->
-            <span class="cap-trim">{repository.changes ?? 0}</span>
-          {:else if repository.state === 'refused'}
-            <Icon name="failure" size={13} />
-          {:else if repository.state === 'settled'}
-            <Icon name="check" size={11} />
-          {/if}
-        </svelte:element>
+        <AppTooltip text={repository.name} mono>
+          {#snippet children(props)}
+            <svelte:element
+              this={hrefOf === undefined ? 'span' : 'a'}
+              {...props}
+              role={hrefOf === undefined ? 'img' : undefined}
+              href={hrefOf?.(repository)}
+              class="tile is-{repository.state}"
+              class:is-link={hrefOf !== undefined}
+              class:is-dim={filter !== null && filter !== repository.state}
+              aria-label={said(repository)}
+            >
+              {#if repository.state === 'change'}
+                <!-- Wrapped, because a bare figure in a flex container is an
+                     anonymous box no selector reaches and the trim never lands
+                     on it - which put the count 0.39px above the middle of its
+                     tile. -->
+                <span class="cap-trim">{repository.changes ?? 0}</span>
+              {:else if repository.state === 'refused'}
+                <Icon name="failure" size={13} />
+              {:else if repository.state === 'settled'}
+                <Icon name="check" size={11} />
+              {/if}
+            </svelte:element>
+          {/snippet}
+        </AppTooltip>
       {/each}
     </div>
 
@@ -244,27 +250,13 @@
     transform: scale(var(--press-scale-compact));
   }
 
-  /* The name, on hover and on focus alike - a tooltip only a mouse can reach
-     is a name only a mouse can read. The label carries it for a reader who
-     hears the page rather than sees it. */
-  .tile:hover::after,
-  .tile:focus-visible::after {
-    background: var(--popover-bg);
-    border: 1px solid var(--popover-border);
-    border-radius: 6px;
-    bottom: calc(100% + 5px);
-    box-shadow: var(--shadow-popover);
-    color: var(--text-primary);
-    content: attr(data-name);
-    font-family: var(--mono);
-    font-size: var(--font-size-micro);
-    left: 50%;
-    padding: 0.3rem 0.5rem;
-    position: absolute;
-    translate: -50% 0;
-    white-space: nowrap;
-    z-index: 2;
-  }
+  /* The name is `AppTooltip`'s now, not a `::after` on the tile.
+     A pseudo-element cannot leave the box that draws it in any useful way: it
+     was centred on its tile and never wrapped, so a repository with a long name
+     on the left of the board ran under the sidebar and was cut off there - the
+     one place a name is worth reading is the one place it could not be. The
+     primitive portals to `.app-shell`, wraps at 17rem, and keeps itself 8px
+     inside the viewport, which is the panel's rule for every other overlay. */
 
   .tile.is-settled {
     color: color-mix(in srgb, var(--text-muted) 42%, transparent);

@@ -24,7 +24,8 @@ import { SETTLE_MS, startPanel, visit, type Panel } from './harness';
 /** Widths, in the strip's own coordinates, of the three boxes that have to agree. */
 interface Reading {
   bar: number;
-  word: number;
+  /** The label, and the count beside it where the tab carries one. */
+  ink: number;
   tab: number;
   /** Where the bar starts, so a spread is told from a bar that merely grew rightwards. */
   left: number;
@@ -48,13 +49,15 @@ async function read(): Promise<Reading> {
     if (bar === null || tab === null || word === null || word === undefined) {
       throw new Error('the strip is missing its bar, its open tab, or that tab’s label');
     }
+    const count = tab.querySelector('[class*="tab-count"]');
     const origin = strip.getBoundingClientRect().left;
     const barBox = bar.getBoundingClientRect();
     const tabBox = tab.getBoundingClientRect();
+    const wordBox = word.getBoundingClientRect();
 
     return {
       bar: barBox.width,
-      word: word.getBoundingClientRect().width,
+      ink: (count ?? word).getBoundingClientRect().right - wordBox.left,
       tab: tabBox.width,
       left: barBox.left - origin,
       tabLeft: tabBox.left - origin,
@@ -82,14 +85,14 @@ afterAll(async () => {
 });
 
 describe('section tabs bar [Integration]', () => {
-  it('rests at the width of the open tab’s label', async () => {
+  it('rests at the width of the open tab’s ink', async () => {
     await page.mouse.move(NOWHERE.x, NOWHERE.y);
     const reading = await rest();
 
-    expect(reading.word).toBeGreaterThan(0);
-    expect(reading.bar).toBeCloseTo(reading.word, 1);
+    expect(reading.ink).toBeGreaterThan(0);
+    expect(reading.bar).toBeCloseTo(reading.ink, 1);
     // Not the whole tab: the padding is the difference, and it is what this rule is about.
-    expect(reading.tab - reading.word).toBeGreaterThan(8);
+    expect(reading.tab - reading.ink).toBeGreaterThan(8);
   });
 
   it('spreads to the whole tab under the pointer, and comes back', async () => {
@@ -102,7 +105,7 @@ describe('section tabs bar [Integration]', () => {
     await page.mouse.move(NOWHERE.x, NOWHERE.y);
     const back = await rest();
 
-    expect(back.bar).toBeCloseTo(back.word, 1);
+    expect(back.bar).toBeCloseTo(back.ink, 1);
   });
 
   it('arrives at a clicked tab already spread, because the pointer is on it', async () => {
@@ -118,7 +121,7 @@ describe('section tabs bar [Integration]', () => {
     await page.mouse.move(NOWHERE.x, NOWHERE.y);
     const settled = await rest();
 
-    expect(settled.bar).toBeCloseTo(settled.word, 1);
+    expect(settled.bar).toBeCloseTo(settled.ink, 1);
   });
 
   it('gives an unopened tab a preview that grows to the same width', async () => {
@@ -128,19 +131,22 @@ describe('section tabs bar [Integration]', () => {
     const preview = await other.evaluate((tab) => {
       const style = getComputedStyle(tab, '::after');
       const word = tab.querySelector('[class*="tab-word"]');
+      const count = tab.querySelector('[class*="tab-count"]');
+      const left = word?.getBoundingClientRect().left ?? 0;
+      const right = (count ?? word)?.getBoundingClientRect().right ?? 0;
 
       return {
         opacity: Number.parseFloat(style.opacity),
         scale: new DOMMatrixReadOnly(style.transform).a,
         share: Number.parseFloat(tab.style.getPropertyValue('--word-share')),
-        word: word?.getBoundingClientRect().width ?? 0,
+        ink: right - left,
         tab: tab.getBoundingClientRect().width,
       };
     });
 
     expect(preview.opacity).toBe(1);
     expect(preview.scale).toBeCloseTo(1, 2);
-    // And the share it rests at is that tab's own label, which is where it grew from.
-    expect(preview.share * preview.tab).toBeCloseTo(preview.word, 1);
+    // And the share it rests at is that tab's own ink, which is where it grew from.
+    expect(preview.share * preview.tab).toBeCloseTo(preview.ink, 1);
   });
 });
