@@ -36,10 +36,15 @@
   <summary>
     <Icon name="chevron-right" size={11} />
     <span class="repo-group-name band-trim">{repository}</span>
-    <span class="repo-group-counts band-trim">
-      {#if added > 0}<span class="count-add">+{added}</span>{/if}
-      {#if changed > 0}<span class="count-change">~{changed}</span>{/if}
-      {#if removed > 0}<span class="count-remove">−{removed}</span>{/if}
+    <!-- The trim goes on the figures rather than on the row holding them: this
+         is a flex container, and `text-box-trim` trims a block container's own
+         first and last line box, which a flex container does not have. Worn
+         here it changed nothing and the row read 0.27px high against the
+         caret beside it. -->
+    <span class="repo-group-counts">
+      {#if added > 0}<span class="count-add band-trim">+{added}</span>{/if}
+      {#if changed > 0}<span class="count-change band-trim">~{changed}</span>{/if}
+      {#if removed > 0}<span class="count-remove band-trim">−{removed}</span>{/if}
     </span>
   </summary>
   <div class="action-rows">

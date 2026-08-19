@@ -236,7 +236,7 @@
   {/snippet}
 
   {#if drafts.length === 0}
-    <p class="form-note labels-empty">No labels yet.</p>
+    <p class="form-note empty-note labels-empty">No labels yet.</p>
   {:else}
     <ul class="label-rows">
       {#each drafts as label, index (rowKey(index))}

@@ -723,7 +723,7 @@
             {/snippet}
           </PolicyRow>
         {:else}
-          <p class="actors-empty">Nobody. Every rule above holds for everybody</p>
+          <p class="empty-note actors-empty">Nobody. Every rule above holds for everybody</p>
         {/each}
       </div>
     </Plate>
@@ -791,13 +791,6 @@
   }
 
   .actors-note,
-  .actors-empty {
-    color: var(--text-muted);
-    font-size: var(--font-size-compact);
-    margin: 0;
-    max-width: 68ch;
-  }
-
   .actor-rows {
     display: grid;
   }

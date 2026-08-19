@@ -216,7 +216,7 @@
   {/snippet}
 
   {#if rulesets.length === 0}
-    <p class="rulesets-empty">
+    <p class="empty-note rulesets-empty">
       No rulesets yet. One named here is written to every repository this installation syncs
     </p>
   {:else}
@@ -300,13 +300,6 @@
 
   .ruleset-settings > :global(.policy-row + .policy-row) {
     border-top: 1px solid var(--border-subtle);
-  }
-
-  .rulesets-empty {
-    color: var(--dim);
-    font-size: var(--font-size-meta);
-    margin: 0;
-    max-width: 60ch;
   }
 
   /* An input with no ground, no edge and no focus ring at all: it carried a

@@ -191,6 +191,26 @@ async function rowsOn(page: Page): Promise<{
       style.boxShadow !== 'none' ||
       (style.borderTopStyle !== 'none' && Number.parseFloat(style.borderTopWidth) > 0);
 
+    /**
+     * Whether every painted thing inside this element sits within the band its
+     * own words draw.
+     *
+     * Half a pixel of tolerance, because a keyline drawn on the band's own edge
+     * is the band rather than something standing outside it.
+     */
+    const encloses = (element: Element, band: { top: number; bottom: number }): boolean => {
+      for (const inner of element.querySelectorAll('*')) {
+        const style = getComputedStyle(inner);
+        if (!painted(inner, style)) continue;
+        if (style.display === 'none' || style.visibility === 'hidden') continue;
+        const rect = inner.getBoundingClientRect();
+        if (rect.height === 0 || rect.width === 0) continue;
+        if (rect.top < band.top - 0.5 || rect.bottom > band.bottom + 0.5) return false;
+      }
+
+      return true;
+    };
+
     const label = (element: Element): string => {
       const classes = [...element.classList]
         .filter((one) => !one.startsWith('svelte-'))
@@ -240,7 +260,18 @@ async function rowsOn(page: Page): Promise<{
         const rect = child.getBoundingClientRect();
         if (rect.height === 0 || rect.width === 0) continue;
 
-        const band = painted(child, childStyle) ? null : bandOf(child);
+        /* A child is measured by its words unless what the eye sees of it is a
+           surface. `painted` asks that of the child itself, and there is a
+           third case it does not reach: a child that paints nothing but HOLDS
+           something painted which sizes one of its lines. A file row's name
+           sits on a line with chips, so the line is the chip's 20px and the
+           name's cap sits 5px below the top of it - the block's text band is
+           then not the block, and comparing it against the mark beside it
+           reported 2.80px on a row whose boxes are centred to a hundredth of a
+           pixel. Same shape in a plan group's counts. What a reader lines up
+           there is the box, because the painted thing is what they see. */
+        const written = painted(child, childStyle) ? null : bandOf(child);
+        const band = written !== null && encloses(child, written) ? written : null;
         if (band === null) {
           parts.push({
             label: label(child),

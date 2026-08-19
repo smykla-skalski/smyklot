@@ -180,7 +180,7 @@
   {/if}
 
   {#if files.length === 0}
-    <p class="files-empty">
+    <p class="empty-note files-empty">
       No templates yet. A path named here is written to every repository this installation syncs
     </p>
   {:else}
@@ -284,11 +284,16 @@
     border-top: 1px solid var(--border-subtle);
   }
 
-  .files-empty,
+  /* `.files-note` is the same copy in a different place, so it takes what
+     `.empty-note` gives an empty list; both want a little air above. */
   .files-note {
     color: var(--dim);
     font-size: var(--font-size-meta);
+    max-inline-size: 66ch;
+  }
+
+  .files-empty,
+  .files-note {
     margin: var(--space-3) 0 0;
-    max-width: 66ch;
   }
 </style>

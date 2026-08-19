@@ -349,7 +349,7 @@
   {/each}
 
   {#if groups.length === 0}
-    <p class="settings-empty">Nothing here matches that</p>
+    <p class="empty-note settings-empty">Nothing here matches that</p>
   {/if}
 </div>
 
@@ -371,12 +371,6 @@
   .setting-groups {
     display: grid;
     gap: var(--space-4);
-  }
-
-  .settings-empty {
-    color: var(--dim);
-    font-size: var(--font-size-meta);
-    margin: 0;
   }
 
   .rest-picks {

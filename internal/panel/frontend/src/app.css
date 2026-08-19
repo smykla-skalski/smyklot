@@ -2275,6 +2275,28 @@ select:disabled {
    place for something rather than something. It is a control, so it resets the
    UA button face itself; `.btn` is worn by anchors here and cannot be reused
    for a shape this small. */
+/* What a list says where its rows would have been.
+   ------------------------------------------------------------------------
+   One class rather than five: the sync pages each wrote their own -
+   `.settings-empty`, `.files-empty`, `.rulesets-empty`, `.labels-empty`,
+   `.actors-empty` - with the same three declarations under different names.
+   That is a cosmetic duplication until you notice what it cost: the browser
+   sweep that types a query nothing matches and looks for an answer knows the
+   shared markup by class, so a page inventing its own name reads to it as a
+   page with no empty state at all. `tests/browser/empty-states.test.ts` found
+   the sync settings page silent that way, and the copy had been there all
+   along. */
+.empty-note {
+  color: var(--dim);
+  font-size: var(--font-size-meta);
+  margin: 0;
+  max-inline-size: 66ch;
+  /* Room, because this stands where the rows would have been. One line of copy
+     against the edge of the pane reads as a seam rather than as the answer to
+     what was asked, which is the whole point of writing one. */
+  padding-block: var(--space-4);
+}
+
 /* An entry somebody typed, with a way to take it back off.
    ------------------------------------------------------------------------
    Distinct from `.chip`, which reports a state nobody can edit and is sized to
