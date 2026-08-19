@@ -370,10 +370,20 @@
     padding-top: var(--space-3);
   }
 
+  /* The gap the panel puts between a line and the line that explains it - the
+     same one `PageHeader` puts under a title.
+
+     The mock declares 4px here and the app took the number rather than the
+     distance. Both of these lines are trimmed to their cap band, so 4px IS the
+     gap between the letters; in the mock it is a gap between two line boxes,
+     each carrying its own half-leading, a descender under the first and the
+     ascender above the second's caps - about nine pixels of air the trim takes
+     away. A number copied across that difference draws a tighter pair than the
+     one it was copied from. */
   .board-foot-say {
     display: grid;
     flex: 1;
-    gap: var(--space-1);
+    gap: var(--space-3);
   }
 
   .board-foot-line {

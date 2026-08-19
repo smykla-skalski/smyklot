@@ -1099,13 +1099,18 @@
   /* The rule between two rows is drawn inside the row rather than as its top
      border. A border follows the box it belongs to, and this box is rounded for
      its hover ground, so the separator curved up at both ends - a straight line
-     between two rows, finished like a pill. Same 1px, same colour, square. */
+     between two rows, finished like a pill.
+
+     Inset by the row's own padding, so it runs from the first column to the
+     last and stops there. Full-bleed it reached the corners the hover ground
+     curves away from, and both ends stood outside the pill the moment one
+     appeared - a rule wider than the thing it divides. */
   .attn-row + .attn-row::before {
     background: var(--border-subtle);
     block-size: 1px;
     content: '';
     inset-block-start: 0;
-    inset-inline: 0;
+    inset-inline: var(--space-3);
     position: absolute;
   }
 
