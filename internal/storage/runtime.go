@@ -6,6 +6,18 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
+// MaxPathIndexInterval is as rarely as a repository's file list may be checked.
+//
+// A week, which is what "hardly ever" means for a list somebody types a path
+// against. There is no minimum and zero is every sweep: the check is the commit
+// the default branch points at, which is a few hundred bytes whatever the
+// repository holds, and the list itself is read only where that moved.
+//
+// Here rather than in the panel because the bound is also a CHECK constraint in
+// both migration series, and this is the lowest layer all three can agree
+// through. `TestPathIndexBound` asserts the SQL against it.
+const MaxPathIndexInterval = 7 * 24 * time.Hour
+
 // RuntimeSettings contains the persisted overrides layered over deployment
 // defaults. Nil fields keep the corresponding deployment value.
 type RuntimeSettings struct {

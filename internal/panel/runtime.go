@@ -95,10 +95,6 @@ func (s *Server) runtimeValues() RuntimeValues {
 	return values
 }
 
-func (s *Server) processConfig() *config.Config {
-	return s.runtimeValues().BotConfig
-}
-
 func (s *Server) sessionTTL() time.Duration {
 	return s.runtimeValues().SessionTTL
 }

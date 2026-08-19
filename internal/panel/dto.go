@@ -78,18 +78,23 @@ type targetResponse struct {
 	PendingCIModeDefault                storage.PendingCIMode           `json:"pending_ci_mode_default"`
 	PendingCIBranchPatternsDefault      storage.PendingCIBranchPatterns `json:"pending_ci_branch_patterns_default"`
 	PendingCIQuietPeriodSecondsOverride *int64                          `json:"pending_ci_quiet_period_seconds_override"`
-	PathIndexIntervalSecondsOverride    *int64                          `json:"path_index_interval_seconds_override"`
-	PendingCIPermissions                pendingCIPermissionsResponse    `json:"pending_ci_permissions"`
-	ConfigPatch                         config.Patch                    `json:"config_patch"`
-	InheritedConfig                     config.Config                   `json:"inherited_config"`
-	EffectiveConfig                     config.Config                   `json:"effective_config"`
-	ConfigSources                       map[string]config.Source        `json:"config_sources"`
-	Revision                            int64                           `json:"revision"`
-	RepositoryCounts                    repositoryCountsResponse        `json:"repository_counts"`
-	EffectiveRole                       storage.InstallationRole        `json:"effective_role"`
-	AccessSource                        storage.AccessSource            `json:"access_source"`
-	Capabilities                        capabilityResponse              `json:"capabilities"`
-	SuspensionReason                    *string                         `json:"suspension_reason,omitempty"`
+	// What this installation would use if it set nothing: the value the running
+	// service resolved, never null. A panel that only knew "nothing is set here"
+	// had to invent a prefill, and invented the same one on every deployment.
+	PendingCIQuietPeriodSecondsInherited int64                        `json:"pending_ci_quiet_period_seconds_inherited"`
+	PathIndexIntervalSecondsOverride     *int64                       `json:"path_index_interval_seconds_override"`
+	PathIndexIntervalSecondsInherited    int64                        `json:"path_index_interval_seconds_inherited"`
+	PendingCIPermissions                 pendingCIPermissionsResponse `json:"pending_ci_permissions"`
+	ConfigPatch                          config.Patch                 `json:"config_patch"`
+	InheritedConfig                      config.Config                `json:"inherited_config"`
+	EffectiveConfig                      config.Config                `json:"effective_config"`
+	ConfigSources                        map[string]config.Source     `json:"config_sources"`
+	Revision                             int64                        `json:"revision"`
+	RepositoryCounts                     repositoryCountsResponse     `json:"repository_counts"`
+	EffectiveRole                        storage.InstallationRole     `json:"effective_role"`
+	AccessSource                         storage.AccessSource         `json:"access_source"`
+	Capabilities                         capabilityResponse           `json:"capabilities"`
+	SuspensionReason                     *string                      `json:"suspension_reason,omitempty"`
 }
 
 type pendingCIPermissionsResponse struct {
@@ -165,9 +170,9 @@ type repositoryDetailResponse struct {
 	PendingCIBranchPatternsOverride      *storage.PendingCIBranchPatterns `json:"pending_ci_branch_patterns_override"`
 	PendingCIBranchPatternsInherited     storage.PendingCIBranchPatterns  `json:"pending_ci_branch_patterns_inherited"`
 	PendingCIQuietPeriodSecondsOverride  *int64                           `json:"pending_ci_quiet_period_seconds_override"`
-	PendingCIQuietPeriodSecondsInherited *int64                           `json:"pending_ci_quiet_period_seconds_inherited"`
+	PendingCIQuietPeriodSecondsInherited int64                            `json:"pending_ci_quiet_period_seconds_inherited"`
 	PathIndexIntervalSecondsOverride     *int64                           `json:"path_index_interval_seconds_override"`
-	PathIndexIntervalSecondsInherited    *int64                           `json:"path_index_interval_seconds_inherited"`
+	PathIndexIntervalSecondsInherited    int64                            `json:"path_index_interval_seconds_inherited"`
 	PendingCIGate                        *pendingCIGateResponse           `json:"pending_ci_gate,omitempty"`
 	Revision                             int64                            `json:"revision"`
 }
@@ -254,11 +259,19 @@ func capabilitiesDTO(capabilities storage.AccessCapabilities) capabilityResponse
 	}
 }
 
+// targetDTO renders one installation.
+//
+// It takes the whole of the running service's settings rather than its bot
+// config alone, because two of the durations below cascade through this level:
+// what an installation inherits is what the process resolved, and a panel told
+// only "nothing is set here" has to invent a number to prefill - which is how
+// every page below Root came to show one hour whatever the deployment ran.
 func targetDTO(
-	process *config.Config,
+	runtime RuntimeValues,
 	target storage.Target,
 	access storage.TargetAccess,
 ) targetResponse {
+	process := runtime.BotConfig
 	inherited := config.Resolve(process)
 	resolved := config.Resolve(process, config.Layer{
 		Source: config.SourceTarget,
@@ -274,7 +287,13 @@ func targetDTO(
 		PendingCIModeDefault:                target.PendingCIModeDefault,
 		PendingCIBranchPatternsDefault:      target.PendingCIBranchPatternsDefault,
 		PendingCIQuietPeriodSecondsOverride: durationSecondsDTO(target.PendingCIQuietPeriodOverride),
-		PathIndexIntervalSecondsOverride:    durationSecondsDTO(target.PathIndexIntervalOverride),
+		PendingCIQuietPeriodSecondsInherited: int64(
+			runtime.PendingCIQuietPeriod / time.Second,
+		),
+		PathIndexIntervalSecondsOverride: durationSecondsDTO(target.PathIndexIntervalOverride),
+		PathIndexIntervalSecondsInherited: int64(
+			runtime.PathIndexInterval / time.Second,
+		),
 		PendingCIPermissions: pendingCIPermissionsResponse{
 			ChecksWrite:         target.Grants("checks"),
 			AdministrationWrite: target.Grants("administration"),
@@ -329,11 +348,18 @@ func repositorySummaryDTO(
 	}
 }
 
+// repositoryDetailDTO renders one repository.
+//
+// Like `targetDTO`, it takes the whole of the running service's settings: a
+// duration this repository inherits is resolved through every level above it,
+// so a repository under an installation that sets nothing inherits what the
+// process runs with rather than nothing at all.
 func repositoryDetailDTO(
-	process *config.Config,
+	runtime RuntimeValues,
 	target storage.Target,
 	repository storage.Repository,
 ) repositoryDetailResponse {
+	process := runtime.BotConfig
 	layers := []config.Layer{{Source: config.SourceTarget, Patch: target.ConfigPatch}}
 	if !repository.IgnoreRepositoryFile {
 		layers = append(layers, config.Layer{
@@ -349,28 +375,32 @@ func repositoryDetailDTO(
 	resolved := config.Resolve(process, layers...)
 
 	return repositoryDetailResponse{
-		Repository:                           repositorySummaryDTO(target, repository),
-		ConfigPatch:                          repository.ConfigPatch,
-		InheritedConfig:                      inherited.Values,
-		EffectiveConfig:                      resolved.Values,
-		ConfigSources:                        resolved.Sources,
-		ConfigFilePatch:                      repository.ConfigFilePatch,
-		ConfigFileError:                      repository.ConfigFileError,
-		ConfigFilePath:                       repository.ConfigFilePath,
-		ConfigFileSuperseded:                 repository.ConfigFileSuperseded,
-		ConfigMigration:                      migrationState(repository.ConfigMigration),
-		ConfigMigrationPR:                    repository.ConfigMigrationPR,
-		IgnoreRepositoryFile:                 repository.IgnoreRepositoryFile,
-		PendingCIModeOverride:                repository.PendingCIModeOverride,
-		PendingCIModeInherited:               target.PendingCIModeDefault,
-		PendingCIBranchPatternsOverride:      repository.PendingCIBranchPatternsOverride,
-		PendingCIBranchPatternsInherited:     target.PendingCIBranchPatternsDefault,
-		PendingCIQuietPeriodSecondsOverride:  durationSecondsDTO(repository.PendingCIQuietPeriodOverride),
-		PendingCIQuietPeriodSecondsInherited: durationSecondsDTO(target.PendingCIQuietPeriodOverride),
-		PathIndexIntervalSecondsOverride:     durationSecondsDTO(repository.PathIndexIntervalOverride),
-		PathIndexIntervalSecondsInherited:    durationSecondsDTO(target.PathIndexIntervalOverride),
-		PendingCIGate:                        pendingCIGateDTO(repository.PendingCIGate),
-		Revision:                             repository.Revision,
+		Repository:                          repositorySummaryDTO(target, repository),
+		ConfigPatch:                         repository.ConfigPatch,
+		InheritedConfig:                     inherited.Values,
+		EffectiveConfig:                     resolved.Values,
+		ConfigSources:                       resolved.Sources,
+		ConfigFilePatch:                     repository.ConfigFilePatch,
+		ConfigFileError:                     repository.ConfigFileError,
+		ConfigFilePath:                      repository.ConfigFilePath,
+		ConfigFileSuperseded:                repository.ConfigFileSuperseded,
+		ConfigMigration:                     migrationState(repository.ConfigMigration),
+		ConfigMigrationPR:                   repository.ConfigMigrationPR,
+		IgnoreRepositoryFile:                repository.IgnoreRepositoryFile,
+		PendingCIModeOverride:               repository.PendingCIModeOverride,
+		PendingCIModeInherited:              target.PendingCIModeDefault,
+		PendingCIBranchPatternsOverride:     repository.PendingCIBranchPatternsOverride,
+		PendingCIBranchPatternsInherited:    target.PendingCIBranchPatternsDefault,
+		PendingCIQuietPeriodSecondsOverride: durationSecondsDTO(repository.PendingCIQuietPeriodOverride),
+		PendingCIQuietPeriodSecondsInherited: inheritedSecondsDTO(
+			target.PendingCIQuietPeriodOverride, runtime.PendingCIQuietPeriod,
+		),
+		PathIndexIntervalSecondsOverride: durationSecondsDTO(repository.PathIndexIntervalOverride),
+		PathIndexIntervalSecondsInherited: inheritedSecondsDTO(
+			target.PathIndexIntervalOverride, runtime.PathIndexInterval,
+		),
+		PendingCIGate: pendingCIGateDTO(repository.PendingCIGate),
+		Revision:      repository.Revision,
 	}
 }
 
@@ -381,6 +411,21 @@ func durationSecondsDTO(value *time.Duration) *int64 {
 	seconds := int64(*value / time.Second)
 
 	return &seconds
+}
+
+// inheritedSecondsDTO is what a level would use if it set nothing: the nearest
+// level above that did, or what the running service resolved.
+//
+// Never null, which is the whole point. The panel used to be told only whether
+// the level above had an override, so a repository under an installation that
+// set nothing had to invent its prefill - and invented the same hour whether
+// the deployment ran with fifteen minutes or a day.
+func inheritedSecondsDTO(above *time.Duration, process time.Duration) int64 {
+	if above != nil {
+		return int64(*above / time.Second)
+	}
+
+	return int64(process / time.Second)
 }
 
 func pendingCIGateDTO(gate *storage.PendingCIRepositoryGate) *pendingCIGateResponse {

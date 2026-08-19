@@ -84,7 +84,9 @@ const TARGET: PanelTarget = {
   pending_ci_mode_default: 'checks',
   pending_ci_branch_patterns_default: { include: ['~DEFAULT_BRANCH'], exclude: [] },
   pending_ci_quiet_period_seconds_override: null,
+  pending_ci_quiet_period_seconds_inherited: 30,
   path_index_interval_seconds_override: null,
+  path_index_interval_seconds_inherited: 3600,
   pending_ci_permissions: {
     checks_write: true,
     administration_write: true,
@@ -133,9 +135,9 @@ const DETAIL: RepositoryDetail = {
   pending_ci_branch_patterns_override: null,
   pending_ci_branch_patterns_inherited: { include: ['~DEFAULT_BRANCH'], exclude: [] },
   pending_ci_quiet_period_seconds_override: null,
-  pending_ci_quiet_period_seconds_inherited: null,
+  pending_ci_quiet_period_seconds_inherited: 30,
   path_index_interval_seconds_override: null,
-  path_index_interval_seconds_inherited: null,
+  path_index_interval_seconds_inherited: 3600,
   revision: 1,
 };
 

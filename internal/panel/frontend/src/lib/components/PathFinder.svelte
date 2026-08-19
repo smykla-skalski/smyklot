@@ -223,7 +223,16 @@
             <span class="finder-count">{counts.get(match.path) ?? 0} of {repositories}</span>
           </li>
         {:else}
-          <li class="finder-empty" role="presentation">No path here matches that</li>
+          <!-- The second line is the one rule that makes a path missing rather
+               than merely unmatched: the index holds ordinary files, because a
+               template has to be one - sync refuses to write an executable, a
+               symlink or a submodule. Said here because it is the only place
+               somebody would notice their script absent and have nothing to go
+               on. -->
+          <li class="finder-empty" role="presentation">
+            <span>No path here matches that</span>
+            <span class="finder-why">Executables, symlinks and submodules are never offered</span>
+          </li>
         {/each}
       </ul>
 
@@ -334,8 +343,17 @@
 
   .finder-empty {
     color: var(--text-muted);
+    display: grid;
     font-size: var(--font-size-compact);
+    gap: 0.2rem;
     padding: 0.55rem;
+  }
+
+  /* Quieter than the line above it: the reason is read second, by somebody who
+     has already taken in that nothing matched. */
+  .finder-why {
+    font-size: var(--font-size-micro);
+    opacity: 0.85;
   }
 
   .finder-path {

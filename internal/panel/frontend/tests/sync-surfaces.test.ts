@@ -34,21 +34,150 @@ function layer(palette: Palette, token: string): { color: string; alpha: number 
   return { color: paint.color, alpha: paint.alpha };
 }
 
+/** A component's source, read once per file rather than once per row. */
+const sources = new Map<string, string>();
+
+function sourceOf(file: string): string {
+  const known = sources.get(file);
+  if (known !== undefined) return known;
+
+  const text = readFileSync(new URL(`../src/lib/components/${file}`, import.meta.url), 'utf8');
+  sources.set(file, text);
+
+  return text;
+}
+
+/** What paints an inherited ground - a component, or the shared sheet the plates come from. */
+function hostSource(file: string): string {
+  return file.endsWith('.css')
+    ? readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8')
+    : sourceOf(file);
+}
+
+/**
+ * Every `background:` colour one class has AT REST, in declaration order.
+ *
+ * Per class rather than per file, because two of these surfaces live in one file and share its
+ * `<style>` - a whole-file scan reports the tile's ground against the legend row and passes.
+ *
+ * At rest, because a ground is what is under the state layer, and a class carries states as well:
+ * a pressed legend row paints a real background, and counting that would report a transparent row
+ * as painting its own ground. So a rule reaching the class through anything further - `:active`,
+ * `[aria-pressed]`, `.is-refused` - is a state and is not read here.
+ *
+ * `background-image` is not read either: that is where both state layers are painted, over
+ * whatever ground is already there, and counting them would report every pressable surface as
+ * painting its own.
+ */
+function grounds(source: string, className: string): string[] {
+  // `(?![\w-])` rather than `\b`, or `.tile` would claim `.tile-well`: a hyphen ends a word to a
+  // regular expression and does not end a class name. `(?![:.[])` is what leaves the states out.
+  const atRest = new RegExp(String.raw`\.${className}(?![\w-])(?![:.[])`);
+
+  const painted: string[] = [];
+  for (const rule of source.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    if (!atRest.test(rule[1] as string)) continue;
+    for (const declaration of (rule[2] as string).matchAll(/(?<!-)\bbackground:\s*([^;]+);/g)) {
+      painted.push((declaration[1] as string).trim());
+    }
+  }
+
+  return painted;
+}
+
 /**
  * The surfaces sync draws that a reader can press, and the ground each rests on.
  *
- * `ground` is the token the component paints itself with, not the page behind it: a hover layer is
- * composited over whatever is already there, so measuring against anything else measures a colour
- * nobody sees.
+ * `ground` is the colour actually under the state layer, not the page behind the card: a hover
+ * layer is composited over whatever is already there, so measuring against anything else measures
+ * a colour nobody sees.
+ *
+ * `paints` is how that ground arrives, and it is checked rather than trusted. Three of these four
+ * rows name the same token, so the colour arithmetic below is the same sum three times - which
+ * means the arithmetic alone cannot tell a component painting the right layer over the WRONG
+ * ground from one doing it properly. What separates them is this: a surface either declares its
+ * own ground, and the file has to say so, or it declares none and takes its host's, and then the
+ * file has to be transparent and the host has to paint what the row claims.
  */
-const SURFACES: readonly { what: string; file: string; ground: string }[] = [
-  { what: 'a board tile', file: 'SyncBoard.svelte', ground: 'tile-face' },
-  { what: 'a legend row', file: 'SyncBoard.svelte', ground: 'surface-base' },
-  { what: 'a kind card', file: 'SyncKindCard.svelte', ground: 'surface-base' },
-  { what: 'a named object row', file: 'ObjectRow.svelte', ground: 'surface-base' },
+const SURFACES: readonly {
+  what: string;
+  file: string;
+  /** The class the pressable surface wears, so two surfaces in one file are told apart. */
+  className: string;
+  ground: string;
+  /**
+   * `declared` - the class sets `background: var(--<ground>)` on itself.
+   * `inherited` - the class paints no ground at all, and `from` is what does.
+   */
+  paints: 'declared' | 'inherited';
+  /** Where an inherited ground comes from: a file, and the declaration in it. */
+  from?: { file: string; declares: string };
+}[] = [
+  {
+    what: 'a board tile',
+    file: 'SyncBoard.svelte',
+    className: 'tile',
+    ground: 'tile-face',
+    paints: 'declared',
+  },
+  {
+    // Transparent by design: the legend sits inside the board's own plate, and a second ground
+    // under it would draw a band across a card that is meant to read as one surface.
+    what: 'a legend row',
+    file: 'SyncBoard.svelte',
+    className: 'legend-row',
+    ground: 'surface-base',
+    paints: 'inherited',
+    from: { file: 'SyncBoard.svelte', declares: 'background: var(--surface-base)' },
+  },
+  {
+    what: 'a kind card',
+    file: 'SyncKindCard.svelte',
+    className: 'kind-card',
+    ground: 'surface-base',
+    paints: 'declared',
+  },
+  {
+    // A row inside somebody else's plate. `--strip` is `--surface-base` in both consoles, which is
+    // the fact this row rests on and the reason the alias is named rather than the token.
+    what: 'a named object row',
+    file: 'ObjectRow.svelte',
+    className: 'object-row',
+    ground: 'surface-base',
+    paints: 'inherited',
+    from: { file: 'app.css', declares: 'background: var(--strip)' },
+  },
 ];
 
 describe('sync surfaces [Unit]', () => {
+  /**
+   * The ground each row names is the ground its component actually has.
+   *
+   * Without this the colour arithmetic below proves only that `--surface-base` plus the hover layer
+   * lands in the band - which stays true after a component is changed to paint `--surface-raised`
+   * and quietly stops matching the row that measures it. Read from the source, per row, so a fourth
+   * surface cannot be added by copying a line.
+   */
+  describe('rests on the ground its row names', () => {
+    for (const surface of SURFACES) {
+      it(`${surface.what} paints its ground as ${surface.paints}`, () => {
+        const painted = grounds(sourceOf(surface.file), surface.className);
+
+        if (surface.paints === 'declared') {
+          expect(painted).toContain(`var(--${surface.ground})`);
+
+          return;
+        }
+
+        // Transparent: `background: none` is a declaration, and the only other one permitted.
+        expect(painted.filter((value) => value !== 'none')).toEqual([]);
+
+        const host = surface.from as { file: string; declares: string };
+        expect(hostSource(host.file)).toContain(host.declares);
+      });
+    }
+  });
+
   for (const palette of palettes) {
     describe(palette.name, () => {
       for (const surface of SURFACES) {

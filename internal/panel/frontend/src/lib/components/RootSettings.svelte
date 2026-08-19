@@ -131,7 +131,13 @@
   const pathIndexSeconds = $derived(
     draftSettings?.path_index_interval.override_seconds ??
       draftSettings?.path_index_interval.effective_seconds ??
-      3600,
+      0,
+  );
+  /* A week, until the service says otherwise - and it always does, on the same
+     response this page is drawn from. The fallback only stands while nothing
+     has loaded, where there is no box to check anything against. */
+  const pathIndexMax = $derived(
+    draftSettings?.path_index_interval.max_seconds ?? 7 * SESSION_UNITS.days,
   );
   const pathIndexDisplay = $derived(durationParts(pathIndexSeconds, SESSION_UNIT_NAMES));
   let pathIndexSource = $derived<'default' | 'custom'>(
@@ -219,8 +225,11 @@
   async function savePathIndexInterval(): Promise<void> {
     if (settings === null || saving || pathIndexSource !== 'custom') return;
     const seconds = durationSeconds({ amount: pathIndexAmount, unit: pathIndexUnit });
-    if (seconds === null || seconds > 7 * SESSION_UNITS.days) {
-      actionFailure = 'File list refresh interval must be between 0 seconds and 7 days';
+    // The ceiling comes off the wire. It is enforced by the service and by a
+    // CHECK constraint, and a third copy typed here is the one that goes stale
+    // without anything failing.
+    if (seconds === null || seconds > pathIndexMax) {
+      actionFailure = `File list refresh interval must be between 0 seconds and ${formatDuration(pathIndexMax)}`;
       return;
     }
     await update({ path_index_interval_seconds: seconds });

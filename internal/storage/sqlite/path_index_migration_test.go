@@ -25,7 +25,7 @@ func TestPathIndexMigrationDropsLegacyRows(t *testing.T) {
 
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "path-index.db")
-	db := openLegacyDatabase(t, ctx, path, "033_")
+	db := openLegacyDatabase(t, ctx, path, 33)
 	now := time.Date(2026, time.August, 19, 9, 0, 0, 0, time.UTC)
 
 	stamp := now.Format("2006-01-02T15:04:05.000000000Z")

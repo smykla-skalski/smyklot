@@ -239,8 +239,15 @@ export interface PanelTarget {
   pending_ci_mode_default: PendingCIMode;
   pending_ci_branch_patterns_default: PendingCIBranchPatterns;
   pending_ci_quiet_period_seconds_override: number | null;
+  /**
+   * What this installation would use if it set nothing: what the running
+   * service resolved. Never null, so the panel prefills the deployment's own
+   * answer rather than a number typed into a component.
+   */
+  pending_ci_quiet_period_seconds_inherited: number;
   /** How often this installation's repositories have their file lists checked. */
   path_index_interval_seconds_override: number | null;
+  path_index_interval_seconds_inherited: number;
   pending_ci_permissions: PendingCIPermissions;
   config_patch: ConfigPatch;
   inherited_config: ConfigValues;
@@ -431,6 +438,12 @@ export interface RootRuntimeSettings {
     deployment_seconds: number;
     override_seconds: number | null;
     effective_seconds: number;
+    /**
+     * The largest value this setting accepts. Sent rather than known here: the
+     * bound is enforced by the service and by a CHECK constraint, and a third
+     * copy typed into a component is the one that goes stale silently.
+     */
+    max_seconds: number;
   };
   session_lifetime: {
     deployment_seconds: number;
@@ -551,11 +564,15 @@ export interface RepositoryDetail {
   pending_ci_branch_patterns_override: PendingCIBranchPatterns | null;
   pending_ci_branch_patterns_inherited: PendingCIBranchPatterns;
   pending_ci_quiet_period_seconds_override: number | null;
-  pending_ci_quiet_period_seconds_inherited: number | null;
+  /**
+   * What this repository would use if it set nothing, resolved through every
+   * level above it. Never null: a page that had to invent a prefill invented
+   * the same one whatever the deployment ran with.
+   */
+  pending_ci_quiet_period_seconds_inherited: number;
   /** How often this repository's file list is checked; null inherits. */
   path_index_interval_seconds_override: number | null;
-  /** What it would inherit - the installation's answer, or null for the process's. */
-  path_index_interval_seconds_inherited: number | null;
+  path_index_interval_seconds_inherited: number;
   pending_ci_gate?: PendingCIGate;
   revision: number;
 }

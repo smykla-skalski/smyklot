@@ -53,6 +53,9 @@ import {
   capabilitiesFor,
   cycled,
   DEFAULT_CONFIG,
+  DEV_MAX_PATH_INDEX_SECONDS,
+  DEV_PATH_INDEX_SECONDS,
+  DEV_PENDING_CI_QUIET_SECONDS,
   MOCK_ORGANIZATION_ROSTER,
   mockRepositoryPaths,
   mockRepositoryScanAge,
@@ -1158,7 +1161,7 @@ async function handle(
       if (
         pathIndexPresent &&
         pathIndex !== null &&
-        (!Number.isInteger(pathIndex) || pathIndex < 0 || pathIndex > 604_800)
+        (!Number.isInteger(pathIndex) || pathIndex < 0 || pathIndex > DEV_MAX_PATH_INDEX_SECONDS)
       ) {
         throw new MockApiError(
           400,
@@ -2028,14 +2031,15 @@ function rootRuntimeSettingsValue(state: MockState): RootRuntimeSettings {
       effective_seconds: state.runtime.pollIntervalOverride ?? 300,
     },
     merge_after_ci_quiet_period: {
-      deployment_seconds: 30,
+      deployment_seconds: DEV_PENDING_CI_QUIET_SECONDS,
       override_seconds: state.runtime.pendingCIQuietPeriodOverride,
-      effective_seconds: state.runtime.pendingCIQuietPeriodOverride ?? 30,
+      effective_seconds: state.runtime.pendingCIQuietPeriodOverride ?? DEV_PENDING_CI_QUIET_SECONDS,
     },
     path_index_interval: {
-      deployment_seconds: 3_600,
+      deployment_seconds: DEV_PATH_INDEX_SECONDS,
       override_seconds: state.runtime.pathIndexIntervalOverride,
-      effective_seconds: state.runtime.pathIndexIntervalOverride ?? 3_600,
+      effective_seconds: state.runtime.pathIndexIntervalOverride ?? DEV_PATH_INDEX_SECONDS,
+      max_seconds: DEV_MAX_PATH_INDEX_SECONDS,
     },
     session_lifetime: {
       deployment_seconds: 86_400,

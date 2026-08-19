@@ -120,7 +120,7 @@ func (s *Server) getTargets(w http.ResponseWriter, r *http.Request) {
 			s.writeInternal(w, accessErr)
 			return
 		}
-		response = append(response, targetDTO(s.processConfig(), target, access))
+		response = append(response, targetDTO(s.runtimeValues(), target, access))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"targets": response})
 }
@@ -204,7 +204,7 @@ func (s *Server) putTargetSettings(w http.ResponseWriter, r *http.Request) {
 	s.pendingCI.Wake()
 	s.wakePendingCIGates()
 	s.Announce(updated.ID, "")
-	writeJSON(w, http.StatusOK, targetDTO(s.processConfig(), updated, access))
+	writeJSON(w, http.StatusOK, targetDTO(s.runtimeValues(), updated, access))
 }
 
 func (s *Server) getRepositories(w http.ResponseWriter, r *http.Request) {
@@ -235,7 +235,7 @@ func (s *Server) getRepository(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, repositoryDetailDTO(s.processConfig(), target, repository))
+	writeJSON(w, http.StatusOK, repositoryDetailDTO(s.runtimeValues(), target, repository))
 }
 
 func (s *Server) putRepositorySettings(w http.ResponseWriter, r *http.Request) {
@@ -311,7 +311,7 @@ func (s *Server) putRepositorySettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.Announce(target.ID, updated.ID)
-	writeJSON(w, http.StatusOK, repositoryDetailDTO(s.processConfig(), target, updated))
+	writeJSON(w, http.StatusOK, repositoryDetailDTO(s.runtimeValues(), target, updated))
 }
 
 // pathIndexOverride reads a refresh interval off the wire, keeping what is
@@ -418,7 +418,7 @@ func (s *Server) resetConfigMigration(
 		return
 	}
 	s.Announce(target.ID, updated.ID)
-	writeJSON(w, http.StatusOK, repositoryDetailDTO(s.processConfig(), target, updated))
+	writeJSON(w, http.StatusOK, repositoryDetailDTO(s.runtimeValues(), target, updated))
 }
 
 func (s *Server) repository(

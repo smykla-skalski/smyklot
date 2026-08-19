@@ -98,6 +98,19 @@ export const MOCK_ORGANIZATION_ROSTER: PanelAccount[] = [
   avatar_url: null,
 }));
 
+/**
+ * What the development deployment resolves for the durations that cascade.
+ *
+ * Named here rather than typed at each of the six places that need them: the
+ * mock has to agree with itself across the runtime settings, an installation
+ * and a repository, or the panel prefills one number and saves against another.
+ */
+export const DEV_PATH_INDEX_SECONDS = 3_600;
+export const DEV_PENDING_CI_QUIET_SECONDS = 30;
+
+/** The ceiling the service enforces - `panel.MaxPathIndexInterval`, in seconds. */
+export const DEV_MAX_PATH_INDEX_SECONDS = 604_800;
+
 export const OWNER_CAPABILITIES = {
   read: true,
   write: true,
@@ -1115,7 +1128,12 @@ export function targetSeed(input: {
       pending_ci_mode_default: 'checks',
       pending_ci_branch_patterns_default: { include: ['~DEFAULT_BRANCH'], exclude: [] },
       pending_ci_quiet_period_seconds_override: null,
+      // What the process resolved, which the service always sends and this mock
+      // has to send too - the panel prefills from it, so a null here is a page
+      // the mock renders differently from production.
+      pending_ci_quiet_period_seconds_inherited: DEV_PENDING_CI_QUIET_SECONDS,
       path_index_interval_seconds_override: null,
+      path_index_interval_seconds_inherited: DEV_PATH_INDEX_SECONDS,
       pending_ci_permissions: {
         checks_write: true,
         administration_write: true,
@@ -1230,9 +1248,13 @@ export function repositorySeed(
       pending_ci_branch_patterns_override: null,
       pending_ci_branch_patterns_inherited: target.pending_ci_branch_patterns_default,
       pending_ci_quiet_period_seconds_override: null,
-      pending_ci_quiet_period_seconds_inherited: target.pending_ci_quiet_period_seconds_override,
+      // The nearest level above that set one, or what the process resolved -
+      // the same fallback the service applies, never a bare null.
+      pending_ci_quiet_period_seconds_inherited:
+        target.pending_ci_quiet_period_seconds_override ?? DEV_PENDING_CI_QUIET_SECONDS,
       path_index_interval_seconds_override: null,
-      path_index_interval_seconds_inherited: target.path_index_interval_seconds_override,
+      path_index_interval_seconds_inherited:
+        target.path_index_interval_seconds_override ?? DEV_PATH_INDEX_SECONDS,
       pending_ci_gate: {
         desired_mode: target.pending_ci_mode_default,
         effective_mode: target.pending_ci_mode_default,

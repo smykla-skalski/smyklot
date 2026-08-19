@@ -159,7 +159,13 @@
     seededPathIndex = seconds;
     untrack(() => {
       pathIndexCustom = seconds !== null;
-      pathIndexDraft = durationParts(seconds ?? 3600, PATH_INDEX_UNITS);
+      /* What this repository inherits, resolved through the installation and
+         the process rather than a literal hour: a deployment running fifteen
+         minutes prefills fifteen minutes. */
+      pathIndexDraft = durationParts(
+        seconds ?? detail.path_index_interval_seconds_inherited,
+        PATH_INDEX_UNITS,
+      );
     });
   });
 
@@ -307,11 +313,12 @@
     <Plate label="File list refresh">
       {#snippet status()}
         <span class="dim">
+          <!-- The inherited value is always a number now, resolved through
+               every level above, so the bare word "Inherited" - which said
+               nothing about what would happen - is gone. -->
           {pathIndexCustom
             ? formatDuration(pathIndexDraft)
-            : detail.path_index_interval_seconds_inherited === null
-              ? 'Inherited'
-              : `Inherited - ${formatDuration(detail.path_index_interval_seconds_inherited)}`}
+            : `Inherited - ${formatDuration(detail.path_index_interval_seconds_inherited)}`}
         </span>
       {/snippet}
       <p class="dim">
@@ -421,8 +428,7 @@
               step="1"
               bind:value={pendingCIQuiet}
               disabled={disabled || savingPendingCI}
-              placeholder={detail.pending_ci_quiet_period_seconds_inherited?.toString() ??
-                'Global default'}
+              placeholder={detail.pending_ci_quiet_period_seconds_inherited.toString()}
             />
             <small>Seconds; leave blank to inherit.</small>
           </label>

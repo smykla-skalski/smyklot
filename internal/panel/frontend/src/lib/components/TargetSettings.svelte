@@ -60,9 +60,16 @@
   let pathIndexSource = $state<'inherited' | 'custom'>(
     target.path_index_interval_seconds_override == null ? 'inherited' : 'custom',
   );
+  /* Prefilled from what this installation inherits, which the service resolves
+     and sends: a deployment running fifteen minutes prefills fifteen minutes.
+     It was a literal hour here, so the box opened on a number nothing on the
+     system had ever agreed to. */
   // svelte-ignore state_referenced_locally
   let pathIndexDraft = $state(
-    durationParts(target.path_index_interval_seconds_override ?? 3600, PATH_INDEX_UNITS),
+    durationParts(
+      target.path_index_interval_seconds_override ?? target.path_index_interval_seconds_inherited,
+      PATH_INDEX_UNITS,
+    ),
   );
   let savingPathIndex = $state(false);
   const defaultEnabled = $derived(pendingDefault ?? target.repository_default_enabled);
@@ -88,7 +95,10 @@
     seededPathIndex = seconds;
     untrack(() => {
       pathIndexSource = seconds == null ? 'inherited' : 'custom';
-      pathIndexDraft = durationParts(seconds ?? 3600, PATH_INDEX_UNITS);
+      pathIndexDraft = durationParts(
+        seconds ?? target.path_index_interval_seconds_inherited,
+        PATH_INDEX_UNITS,
+      );
     });
   });
 

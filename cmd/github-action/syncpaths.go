@@ -345,6 +345,11 @@ func repositoryPaths(
 		return nil, false, true, nil
 	}
 
+	// Ordinary files only - mode 100644. An executable, a symlink and a submodule
+	// are all things sync itself refuses to write (`notAnOrdinaryFile`), so
+	// offering one would be offering a path that cannot be a template. The
+	// finder says so where a reader would otherwise wonder why their script is
+	// missing; this is the only place the rule is applied.
 	paths = make([]string, 0, len(tree.Entries))
 	for path, entry := range tree.Entries {
 		if entry.OrdinaryFile() {

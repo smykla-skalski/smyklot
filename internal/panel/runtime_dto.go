@@ -17,6 +17,11 @@ type runtimeDurationValueResponse struct {
 	DeploymentSeconds int64  `json:"deployment_seconds"`
 	OverrideSeconds   *int64 `json:"override_seconds"`
 	EffectiveSeconds  int64  `json:"effective_seconds"`
+	// The largest value this setting accepts, where it has a ceiling. Sent
+	// rather than known by the browser: the bound is enforced here and in a
+	// CHECK constraint, and a third copy typed into a Svelte component is the
+	// one that goes stale without anything failing.
+	MaxSeconds *int64 `json:"max_seconds,omitempty"`
 }
 
 type runtimeStringValueResponse struct {
@@ -82,20 +87,22 @@ func runtimeSettingsDTO(
 			Effective:  runtimeLogLevelName(effective.LogLevel),
 		},
 		PollInterval: runtimeDurationDTO(
-			cfg.PollInterval, settings.PollInterval, effective.PollInterval,
+			cfg.PollInterval, settings.PollInterval, effective.PollInterval, 0,
 		),
 		PendingCIQuietPeriod: runtimeDurationDTO(
 			cfg.PendingCIQuietPeriod,
 			settings.PendingCIQuietPeriod,
 			effective.PendingCIQuietPeriod,
+			0,
 		),
 		PathIndexInterval: runtimeDurationDTO(
 			cfg.PathIndexInterval,
 			settings.PathIndexInterval,
 			effective.PathIndexInterval,
+			MaxPathIndexInterval,
 		),
 		SessionLifetime: runtimeDurationDTO(
-			cfg.SessionTTL, settings.SessionTTL, effective.SessionTTL,
+			cfg.SessionTTL, settings.SessionTTL, effective.SessionTTL, 0,
 		),
 		Revision:  settings.Revision,
 		UpdatedAt: settings.UpdatedAt,
@@ -109,10 +116,16 @@ func runtimeSettingsDTO(
 	return response
 }
 
+// runtimeDurationDTO renders one duration setting.
+//
+// A max of zero means the setting has no ceiling, which is the shape three of
+// the four are in - the field is omitted for those rather than sent as a zero a
+// client would read as "nothing is allowed".
 func runtimeDurationDTO(
 	deployment time.Duration,
 	override *time.Duration,
 	effective time.Duration,
+	max time.Duration,
 ) runtimeDurationValueResponse {
 	response := runtimeDurationValueResponse{
 		DeploymentSeconds: int64(deployment / time.Second),
@@ -121,6 +134,10 @@ func runtimeDurationDTO(
 	if override != nil {
 		seconds := int64(*override / time.Second)
 		response.OverrideSeconds = &seconds
+	}
+	if max > 0 {
+		seconds := int64(max / time.Second)
+		response.MaxSeconds = &seconds
 	}
 
 	return response

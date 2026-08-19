@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"testing/fstest"
 )
 
 // migrationDir is the directory an engine embeds its schema changes under.
@@ -114,6 +115,42 @@ func migrationNames(fsys fs.FS) ([]string, error) {
 	}
 
 	return names, nil
+}
+
+// MigrationsBefore is the series as it stood before a given version.
+//
+// What a deployment holding real rows looks like when the next migration is
+// about to run - which is the only state a destructive migration can be proved
+// against, and the one the conformance suite never reaches because it builds
+// every database from nothing.
+//
+// Here rather than in each engine's tests because the ordering rule is this
+// file's: a helper that cut the series by string comparison would agree with
+// `Migrate` until the day a version reached three digits.
+func MigrationsBefore(fsys fs.FS, version int) (fs.FS, error) {
+	names, err := migrationNames(fsys)
+	if err != nil {
+		return nil, err
+	}
+
+	earlier := fstest.MapFS{}
+	for _, name := range names {
+		at, err := migrationVersion(name)
+		if err != nil {
+			return nil, err
+		}
+		if at >= version {
+			break
+		}
+
+		content, readErr := fs.ReadFile(fsys, migrationDir+"/"+name)
+		if readErr != nil {
+			return nil, fmt.Errorf("read migration %s: %w", name, readErr)
+		}
+		earlier[migrationDir+"/"+name] = &fstest.MapFile{Data: content}
+	}
+
+	return earlier, nil
 }
 
 func applyMigration(

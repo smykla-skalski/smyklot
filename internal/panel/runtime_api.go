@@ -21,11 +21,11 @@ const (
 
 // MaxPathIndexInterval is as rarely as a repository's file list may be checked.
 //
-// A week, which is what "hardly ever" means for a list somebody types a path
-// against. There is no minimum and zero is every sweep: the check is the commit
-// the default branch points at, which is a few hundred bytes whatever the
-// repository holds, and the list itself is read only where that moved.
-const MaxPathIndexInterval = 7 * 24 * time.Hour
+// The storage layer's, because the same bound is a CHECK constraint in both
+// migration series and a value the browser is sent: one number, asserted
+// against the SQL by `storage.TestPathIndexBound` and read off the wire by the
+// panel rather than typed into it a fourth time.
+const MaxPathIndexInterval = storage.MaxPathIndexInterval
 
 type runtimeSettingsRequest struct {
 	BotConfig           *config.Config `json:"bot_config"`

@@ -20,7 +20,7 @@ func (s *Server) getRootTargetSettings(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, targetDTO(s.processConfig(), context.Target, context.Access))
+	writeJSON(w, http.StatusOK, targetDTO(s.runtimeValues(), context.Target, context.Access))
 }
 
 func (s *Server) putRootTargetSettings(w http.ResponseWriter, r *http.Request) {
@@ -84,7 +84,7 @@ func (s *Server) putRootTargetSettings(w http.ResponseWriter, r *http.Request) {
 	s.pendingCI.Wake()
 	s.wakePendingCIGates()
 	s.Announce(updated.ID, "")
-	writeJSON(w, http.StatusOK, targetDTO(s.processConfig(), updated, context.Access))
+	writeJSON(w, http.StatusOK, targetDTO(s.runtimeValues(), updated, context.Access))
 }
 
 func (s *Server) getRootRepositories(w http.ResponseWriter, r *http.Request) {
@@ -115,7 +115,7 @@ func (s *Server) getRootRepository(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, repositoryDetailDTO(s.processConfig(), context.Target, repository))
+	writeJSON(w, http.StatusOK, repositoryDetailDTO(s.runtimeValues(), context.Target, repository))
 }
 
 func (s *Server) putRootRepositorySettings(w http.ResponseWriter, r *http.Request) {
@@ -188,7 +188,7 @@ func (s *Server) putRootRepositorySettings(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	s.Announce(context.Target.ID, updated.ID)
-	writeJSON(w, http.StatusOK, repositoryDetailDTO(s.processConfig(), context.Target, updated))
+	writeJSON(w, http.StatusOK, repositoryDetailDTO(s.runtimeValues(), context.Target, updated))
 }
 
 func (s *Server) postRootRepositoryConfigMigrationReset(w http.ResponseWriter, r *http.Request) {

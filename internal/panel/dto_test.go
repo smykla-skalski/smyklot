@@ -3,6 +3,7 @@ package panel
 import (
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/config"
@@ -25,7 +26,7 @@ func TestConfigurationDTOsExposeInheritedValues(t *testing.T) {
 		},
 	}
 
-	targetResponse := targetDTO(config.Default(), target, testOwnerAccess())
+	targetResponse := targetDTO(testRuntimeValues(), target, testOwnerAccess())
 	if targetResponse.InheritedConfig.CommandPrefix != config.DefaultCommandPrefix {
 		t.Fatalf("target inherited prefix = %q", targetResponse.InheritedConfig.CommandPrefix)
 	}
@@ -33,7 +34,7 @@ func TestConfigurationDTOsExposeInheritedValues(t *testing.T) {
 		t.Fatalf("target effective prefix = %q", targetResponse.EffectiveConfig.CommandPrefix)
 	}
 
-	repositoryResponse := repositoryDetailDTO(config.Default(), target, repository)
+	repositoryResponse := repositoryDetailDTO(testRuntimeValues(), target, repository)
 	if repositoryResponse.InheritedConfig.CommandPrefix != targetPrefix {
 		t.Fatalf(
 			"repository inherited prefix = %q",
@@ -60,9 +61,54 @@ func TestConfigurationDTOsExposeInheritedValues(t *testing.T) {
 	}
 }
 
+// TestDurationDTOsResolveWhatALevelInherits covers the two settings that
+// cascade as numbers rather than through `config.Resolve`.
+//
+// They used to be sent as "whatever the level above overrode, or null", so a
+// panel under an installation that set nothing had nothing to prefill with and
+// stood in an hour - on every deployment, whatever it was running. The DTO now
+// answers what would actually happen.
+func TestDurationDTOsResolveWhatALevelInherits(t *testing.T) {
+	runtime := testRuntimeValues()
+	target := storage.Target{}
+
+	response := targetDTO(runtime, target, testOwnerAccess())
+	if response.PathIndexIntervalSecondsInherited != 17*60 {
+		t.Fatalf(
+			"installation inherits %d seconds, want the process's 1020",
+			response.PathIndexIntervalSecondsInherited,
+		)
+	}
+	if response.PendingCIQuietPeriodSecondsInherited != 45 {
+		t.Fatalf(
+			"installation inherits a %d second quiet period, want the process's 45",
+			response.PendingCIQuietPeriodSecondsInherited,
+		)
+	}
+
+	// And a repository reads through the installation where that set one.
+	installationInterval := 5 * time.Minute
+	target.PathIndexIntervalOverride = &installationInterval
+	detail := repositoryDetailDTO(runtime, target, storage.Repository{})
+	if detail.PathIndexIntervalSecondsInherited != 300 {
+		t.Fatalf(
+			"repository inherits %d seconds, want the installation's 300",
+			detail.PathIndexIntervalSecondsInherited,
+		)
+	}
+	// The quiet period is untouched on this installation, so it still reads
+	// through to the process rather than stopping at the nil above it.
+	if detail.PendingCIQuietPeriodSecondsInherited != 45 {
+		t.Fatalf(
+			"repository inherits a %d second quiet period, want the process's 45",
+			detail.PendingCIQuietPeriodSecondsInherited,
+		)
+	}
+}
+
 func TestConfigurationDTOsExposeEmptyAllowedCommandsAsArray(t *testing.T) {
 	emptyCommands := []string{}
-	response := targetDTO(config.Default(), storage.Target{
+	response := targetDTO(testRuntimeValues(), storage.Target{
 		ConfigPatch: config.Patch{AllowedCommands: &emptyCommands},
 	}, testOwnerAccess())
 
@@ -71,6 +117,17 @@ func TestConfigurationDTOsExposeEmptyAllowedCommandsAsArray(t *testing.T) {
 	}
 	if response.EffectiveConfig.AllowedCommands == nil {
 		t.Fatal("target effective commands are nil; the panel requires an empty array")
+	}
+}
+
+// testRuntimeValues is what a running service would have resolved: the default
+// bot config, and one distinguishable number per cascading duration so a DTO
+// that carried the wrong one is visible rather than plausible.
+func testRuntimeValues() RuntimeValues {
+	return RuntimeValues{
+		BotConfig:            config.Default(),
+		PendingCIQuietPeriod: 45 * time.Second,
+		PathIndexInterval:    17 * time.Minute,
 	}
 }
 
@@ -122,7 +179,7 @@ func TestPatchSizeCountsAFullPatch(t *testing.T) {
 // one of five, so the pane has to be told which one won and which were passed
 // over.
 func TestRepositoryDetailNamesTheFileItRead(t *testing.T) {
-	response := repositoryDetailDTO(config.Default(), storage.Target{}, storage.Repository{
+	response := repositoryDetailDTO(testRuntimeValues(), storage.Target{}, storage.Repository{
 		ConfigFileStatus:     storage.RepositoryFileValid,
 		ConfigFilePath:       ".smyklot.toml",
 		ConfigFileSuperseded: []string{".github/smyklot.yaml"},
