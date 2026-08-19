@@ -71,6 +71,50 @@ export const REPOSITORY_SECTIONS = ['file', 'behavior', 'commands', 'sync'] as c
 export type RepositorySection = (typeof REPOSITORY_SECTIONS)[number];
 
 /**
+ * The sections sync is read through, one address each.
+ *
+ * Sync configures four different kinds of thing and then proposes changes to
+ * every repository at once. Stacked on one page that is five subjects deep
+ * enough to scroll past, with no address for any of them - nobody can link a
+ * colleague to the ruleset they are arguing about.
+ *
+ * `overview` is where the page opens, so the bare `/sync` already means it and
+ * an address that says it twice is one a reader would have to be told to
+ * ignore. That is the same rule a repository's `file` pane follows.
+ */
+export const SYNC_SECTIONS = [
+  'overview',
+  'labels',
+  'settings',
+  'rulesets',
+  'files',
+  'plan',
+] as const;
+export type SyncSection = (typeof SYNC_SECTIONS)[number];
+
+/**
+ * The sections whose address is a plain segment under `sync`.
+ *
+ * Rulesets and files are missing on purpose: each can name one of its own - a
+ * ruleset by name, a file by path - so each is a directory in the route tree
+ * rather than a value this matcher accepts. Keeping them out is what makes
+ * `/sync/files` and `/sync/files/.github/workflows/test.yaml` two routes that
+ * cannot both match the same address.
+ */
+export const SYNC_TAB_SECTIONS = ['labels', 'settings', 'plan'] as const;
+export type SyncTabSection = (typeof SYNC_TAB_SECTIONS)[number];
+
+/** Which section of sync is open, and which of its own it named. */
+export interface SyncPage {
+  section: SyncSection;
+  /**
+   * The one thing that section is opened on: a ruleset's name, or a file's path.
+   * Empty or absent is the section's own list.
+   */
+  item?: string;
+}
+
+/**
  * Which of the panes a surface can offer.
  *
  * Root manages somebody else's installation and sync has no Root address, so
@@ -151,6 +195,11 @@ export type InstallationRoute = {
    * Repositories, and leaving the page returns to the list.
    */
   repository?: RepositoryPage;
+  /**
+   * Which section of sync is open, which is a place inside the sync view the
+   * same way a repository is a place inside the repositories view.
+   */
+  sync?: SyncPage;
   /** What is open on top of the view; see `route-dialogs`. */
   dialog?: RouteDialog;
 };
@@ -197,10 +246,13 @@ export function parsePanelRoute(basePath: string, pathname: string): PanelRoute 
   const repository = parseTrailingRepository(rawView, trailing);
   if (repository === 'invalid') return null;
 
+  const sync = parseTrailingSync(rawView, trailing);
+  if (sync === 'invalid') return null;
+
   const dialog = repository === undefined ? parseTrailingDialog(rawView, trailing) : undefined;
   if (dialog === 'invalid') return null;
 
-  const consumed = repository !== undefined || dialog !== undefined;
+  const consumed = repository !== undefined || dialog !== undefined || sync !== undefined;
   const section = parseSection(rawView, consumed ? undefined : trailing[0]);
   if (section === 'invalid' || (!consumed && trailing.length > 1)) return null;
 
@@ -214,6 +266,7 @@ export function parsePanelRoute(basePath: string, pathname: string): PanelRoute 
   if (account.trim() === '') return null;
   const route: InstallationRoute = { account, view: rawView };
   if (repository !== undefined) return { ...route, repository };
+  if (sync !== undefined) return { ...route, sync };
   if (dialog !== undefined) return { ...route, dialog };
   return section === undefined ? route : { ...route, section };
 }
@@ -250,6 +303,47 @@ function parseTrailingRepository(
   const section = REPOSITORY_SECTIONS.find((known) => known === rawSection);
 
   return section === undefined ? 'invalid' : { name, section };
+}
+
+/**
+ * Reads the segments past the sync view as the section it opens on.
+ *
+ * Three shapes, because sync has three: a plain section, a ruleset that may
+ * name one of its own, and files, whose own is a path and therefore every
+ * segment that is left. Nothing before the file path is decoded twice - each
+ * segment arrives encoded here, because this module reads a pathname the router
+ * never saw.
+ *
+ * `'invalid'` rather than the bare view for a segment that names no section: a
+ * mistyped address should say so rather than quietly opening the overview,
+ * which is the same call the repository pane grammar makes.
+ */
+function parseTrailingSync(view: string, segments: string[]): SyncPage | undefined | 'invalid' {
+  if (segments.length === 0 || view !== 'sync') return undefined;
+
+  const decoded = decodeSegments(segments);
+  if (decoded === null) return 'invalid';
+
+  const [head, ...rest] = decoded;
+  if (head === 'files') {
+    const path = rest.join('/');
+
+    return path === '' ? { section: 'files' } : { section: 'files', item: path };
+  }
+
+  if (head === 'rulesets') {
+    if (rest.length > 1) return 'invalid';
+    const [name] = rest;
+
+    return name === undefined || name === ''
+      ? { section: 'rulesets' }
+      : { section: 'rulesets', item: name };
+  }
+
+  if (rest.length > 0) return 'invalid';
+  const section = SYNC_TAB_SECTIONS.find((known) => known === head);
+
+  return section === undefined ? 'invalid' : { section };
 }
 
 /**
@@ -300,7 +394,12 @@ export function panelDocumentTitle(route: PanelRoute): string {
   const rootConsole = 'rootView' in route;
   const segments = routeTitleSegments(route);
   if (rootConsole) segments.push('root-console');
-  return [...segments.map(routeSegmentLabel), 'SMYKLOT'].join(' | ');
+  /* The one segment that is a name rather than a word: a ruleset or a path is
+     spelled the way GitHub spells it, and `routeSegmentLabel` would title-case
+     `main-branch-protection` and cut `.github/workflows/ci.yaml` at its dots. */
+  const named = 'view' in route && route.view === 'sync' ? route.sync?.item : undefined;
+  const words = segments.map(routeSegmentLabel);
+  return [...(named === undefined ? [] : [named]), ...words, 'SMYKLOT'].join(' | ');
 }
 
 export function panelViewSection(view: ScopedPanelView): PanelSection {
@@ -360,6 +459,13 @@ function routeTitleSegments(route: PanelRoute): string[] {
     return route.rootView.split('-').reverse();
   }
   const view = route.view;
+  /* Sync's sections are what the tab strip names, so the title says the same
+     word the reader pressed. The one it opens on is the view's own name, and a
+     page about one named thing says that thing first - a browser holding three
+     rulesets open otherwise labels all three tabs "Rulesets". */
+  if (view === 'sync' && route.sync !== undefined && route.sync.section !== 'overview') {
+    return [route.sync.section, view];
+  }
   const section = panelViewSection(view);
   const leaf = route.section ?? view;
   return leaf === section ? [leaf] : [leaf, section];

@@ -173,6 +173,17 @@ func TestPanelRoutesServeEveryPanelAddress(t *testing.T) {
 		"/i/acme/history/failures",
 		"/i/acme/repositories/api-gateway",
 		"/i/acme/repositories/api-gateway/sync",
+		// Sync is six sections and two of them name one of their own. A file's
+		// path keeps its separators, which is why that one is a rest parameter:
+		// the server matches the decoded address, so a path travelling as
+		// `%2F` would arrive here as a path this table cannot find.
+		"/i/acme/sync",
+		"/i/acme/sync/labels",
+		"/i/acme/sync/plan",
+		"/i/acme/sync/rulesets",
+		"/i/acme/sync/rulesets/main-branch-protection",
+		"/i/acme/sync/files",
+		"/i/acme/sync/files/.github/workflows/test.yaml",
 		"/i/acme/users/add",
 		"/i/acme/invitations/inv-1/revoke",
 		"/invite/" + token,
@@ -199,6 +210,10 @@ func TestPanelRoutesServeEveryPanelAddress(t *testing.T) {
 		// history's section has to be one of the two there are.
 		"/i/acme/settings/anything",
 		"/i/acme/sync/anything",
+		// The overview is the bare address, so writing it is an address that
+		// says the same thing twice - and a ruleset is one name, never a path.
+		"/i/acme/sync/overview",
+		"/i/acme/sync/rulesets/main/extra",
 		"/i/acme/history/everything",
 		"/root/installations/acme/settings/anything",
 		"/root/installations/acme/history/everything",

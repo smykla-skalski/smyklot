@@ -59,6 +59,7 @@ import {
   type RootRoute,
   type RootSection,
   type RouteDialog,
+  type SyncPage,
 } from './routes';
 import type { NotificationPage, PanelTarget, PanelViewer } from './types';
 
@@ -250,6 +251,22 @@ export class PanelSession {
     return route.repository ?? null;
   }
 
+  /**
+   * Which section of sync the address names, and what it is opened on.
+   *
+   * The overview when the address names no section, which is what the bare
+   * `/sync` means - so a caller never has to tell "not on sync" apart from "on
+   * sync, no section chosen". Sync has no Root address, so this answers for a
+   * workspace only.
+   */
+  get currentSyncPage(): SyncPage {
+    const route = this.parsedRoute;
+    if (route === null || 'personal' in route || 'rootView' in route)
+      return { section: 'overview' };
+
+    return route.sync ?? { section: 'overview' };
+  }
+
   syncRouteContext(): void {
     // Nothing is recorded from a page that failed to load. The address still names a view
     // and the chrome still shows it, but a reader who pasted a broken link was never on
@@ -294,14 +311,22 @@ export class PanelSession {
     return rootSection(this.currentRootRoute);
   }
 
+  /**
+   * The title says where the reader is, which for two views is deeper than the
+   * view's own name: history is a table and sync is a section, and both are
+   * addresses somebody can be sent. The account is left empty because the title
+   * never carries it - the workspace is in the chrome.
+   */
   get documentTitle(): string {
     if (this.isInbox) return panelDocumentTitle({ personal: 'inbox' });
-    const active = this.isRootMode
-      ? this.currentRootRoute
-      : this.currentView === 'history'
-        ? { account: '', view: this.currentView, section: this.currentHistorySection }
-        : { account: '', view: this.currentView };
-    return panelDocumentTitle(active as PanelRoute);
+    if (this.isRootMode) return panelDocumentTitle(this.currentRootRoute);
+
+    const view = this.currentView;
+    const route: InstallationRoute = { account: '', view };
+    if (view === 'history') route.section = this.currentHistorySection;
+    if (view === 'sync') route.sync = this.currentSyncPage;
+
+    return panelDocumentTitle(route);
   }
 
   get tableScrollView(): boolean {
@@ -441,6 +466,21 @@ export class PanelSession {
     this.resetPageScroll();
   }
 
+  /**
+   * Where one of sync's sections lives.
+   *
+   * No Root branch, unlike the repository's: configuring what an organization's
+   * repositories carry is the installation's own business, so sync has no
+   * address in the console at all.
+   */
+  syncHref(page: SyncPage): string {
+    return panelAddress({
+      account: this.selectedTarget?.account.login ?? '',
+      view: 'sync',
+      sync: page,
+    });
+  }
+
   repositoryHref(name: string, section: RepositorySection = 'file'): string {
     return panelAddress(this.repositoryRoute({ name, section }));
   }
@@ -540,6 +580,36 @@ export class PanelSession {
     return panelAddress(rootSectionRoute(section));
   }
 
+  /**
+   * Where one of history's tables lives, and one of access's lists.
+   *
+   * Both were strips whose halves are addresses - one drawn as a segmented
+   * control, which is the control that changes what is on screen and saves
+   * nothing. A tab is a place, and a place has an href a person can middle-click
+   * and copy; these are what let the strips say so.
+   */
+  historyHref(section: HistorySection): string {
+    const target = this.selectedTarget;
+
+    return target === null ? '#' : panelAddress(this.routeFor(target, 'history', section));
+  }
+
+  accessHref(section: 'users' | 'invitations'): string {
+    const target = this.selectedTarget;
+
+    return target === null ? '#' : panelAddress(this.routeFor(target, section));
+  }
+
+  queueSectionHref(section: 'waiting' | 'recent'): string {
+    return panelAddress({ rootView: section === 'waiting' ? 'queue' : 'queue-recent' });
+  }
+
+  rootAccessHref(section: 'users' | 'invitations'): string {
+    return panelAddress({
+      rootView: section === 'users' ? 'access-users' : 'access-invitations',
+    });
+  }
+
   /** Where the console opens: the page it was left on, or its front page the first time. */
   rootEntryHref(): string {
     return panelAddress(this.consoleRoute());
@@ -565,8 +635,19 @@ export class PanelSession {
     return panelAddress({ rootView: 'history-failures' });
   }
 
-  rootInstallationHref(account: string, nextView: RootInstallationView): string {
-    return panelAddress(this.rootInstallationRoute(account, nextView));
+  /**
+   * Where one installation's view lives on the console.
+   *
+   * The history section is a parameter rather than always the current one:
+   * history's own strip is two addresses, and a builder that always answered
+   * with the section being looked at would give both tabs the same href.
+   */
+  rootInstallationHref(
+    account: string,
+    nextView: RootInstallationView,
+    section?: HistorySection,
+  ): string {
+    return panelAddress(this.rootInstallationRoute(account, nextView, section));
   }
 
   returnHref(): string {
@@ -820,7 +901,7 @@ export class PanelSession {
   private rootInstallationRoute(
     account: string,
     nextView: RootInstallationView,
-    section: HistorySection = this.currentHistorySection,
+    section: HistorySection | undefined = this.currentHistorySection,
   ): RootRoute {
     return nextView === 'history'
       ? { rootView: 'installation', account, view: nextView, section }

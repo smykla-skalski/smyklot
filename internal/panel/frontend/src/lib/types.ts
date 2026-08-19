@@ -846,6 +846,34 @@ export interface SyncOverride {
 }
 
 /** What a repository's answer is saved as. */
+/**
+ * Every path this installation's repositories are known to hold, and how many
+ * hold each.
+ *
+ * A picture rather than a fact - whatever each default branch held when it was
+ * last looked at. A path it does not know is still a path the finder accepts.
+ */
+export interface SyncPathIndex {
+  paths: { path: string; repositories: number }[];
+  /** How many repositories contributed to it. */
+  repositories: number;
+  /** When the freshest of those was read. Absent before anything has been. */
+  observed_at?: string;
+}
+
+/**
+ * One repository's answer, in a list of every repository's.
+ *
+ * The name travels with it because the page reading this is about a file rather
+ * than about a repository: "three repositories adjust renovate.json" is what
+ * this list answers, and ids would mean a request per row to turn each one back
+ * into a word.
+ */
+export interface SyncOverrideRow extends SyncOverride {
+  repository_id: string;
+  repository_name: string;
+}
+
 export interface SyncOverrideInput {
   enabled: boolean | null;
   document: Record<string, unknown>;

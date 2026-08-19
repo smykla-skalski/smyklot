@@ -42,6 +42,8 @@ import type {
   SyncConfigInput,
   SyncOverride,
   SyncOverrideInput,
+  SyncOverrideRow,
+  SyncPathIndex,
   SyncPlan,
   TargetSettingsInput,
   InvitationDays,
@@ -172,6 +174,8 @@ export interface PanelApi {
   resetRootConfigMigration(targetId: string, repositoryId: string): Promise<RepositoryDetail>;
   fetchSyncConfig(targetId: string, kind: string): Promise<SyncConfig>;
   saveSyncConfig(targetId: string, kind: string, input: SyncConfigInput): Promise<SyncConfig>;
+  fetchSyncPaths(targetId: string): Promise<SyncPathIndex>;
+  fetchSyncOverrides(targetId: string, kind: string): Promise<{ overrides: SyncOverrideRow[] }>;
   fetchSyncOverride(targetId: string, repositoryId: string, kind: string): Promise<SyncOverride>;
   saveSyncOverride(
     targetId: string,
@@ -716,6 +720,31 @@ export function createPanelApi(
       return putJson(
         `/api/v1/targets/${pathSegment(targetId)}/sync/config/${pathSegment(kind)}`,
         input,
+      );
+    },
+
+    /**
+     * Every repository's answer about one kind, in one request.
+     *
+     * The page that needs it is the one about a shared file - "who adjusts
+     * this, and how" is a question about the whole installation, and the
+     * per-repository endpoint can only answer it by being asked once per
+     * repository.
+     */
+    /**
+     * Every path this installation's repositories are known to hold.
+     *
+     * Fetched whole and matched in the browser: it is a list the installation
+     * already has, it changes about once a day, and a request per keystroke to
+     * filter it would be a request per keystroke.
+     */
+    fetchSyncPaths(targetId: string): Promise<SyncPathIndex> {
+      return jsonRequest(`/api/v1/targets/${pathSegment(targetId)}/sync/paths`);
+    },
+
+    fetchSyncOverrides(targetId: string, kind: string): Promise<{ overrides: SyncOverrideRow[] }> {
+      return jsonRequest(
+        `/api/v1/targets/${pathSegment(targetId)}/sync/overrides/${pathSegment(kind)}`,
       );
     },
 
