@@ -749,6 +749,7 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 			Expect(store.SetSyncRepositoryPaths(ctx, orgsync.RepositoryPaths{
 				RepositoryID: repoA, TargetID: target,
 				Paths: []string{"README.md", ".github/workflows/test.yaml"}, ObservedAt: now,
+				HeadSHA: "aaaa1111", Partial: true,
 			})).To(Succeed())
 			Expect(store.SetSyncRepositoryPaths(ctx, orgsync.RepositoryPaths{
 				RepositoryID: repoB, TargetID: target,
@@ -760,7 +761,16 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 			Expect(read).To(HaveLen(2))
 			Expect(read[0].Paths).To(Equal([]string{"README.md", ".github/workflows/test.yaml"}))
 			Expect(read[0].ObservedAt).To(BeTemporally("==", now))
+			// The commit the list was read at, which is what lets a refresh
+			// skip the tree. A row written without one reads back empty rather
+			// than as a commit nothing can match.
+			Expect(read[0].HeadSHA).To(Equal("aaaa1111"))
+			// GitHub having declined to list one repository whole. Nothing
+			// drops a path on purpose, so this is the only way a list is short.
+			Expect(read[0].Partial).To(BeTrue())
 			Expect(read[1].Paths).To(Equal([]string{"README.md"}))
+			Expect(read[1].HeadSHA).To(BeEmpty())
+			Expect(read[1].Partial).To(BeFalse())
 		})
 
 		// A picture of what a repository held, so a file somebody deleted stops

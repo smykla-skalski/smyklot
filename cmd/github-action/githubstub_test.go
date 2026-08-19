@@ -54,6 +54,12 @@ type githubStub struct {
 	repoTrees  map[string]string
 	repoLevels map[string]string
 
+	// repoHead is the commit every branch points at. Settable because moving
+	// it is how a spec says the repository has changed since it was last read:
+	// the path index reads this before it reads a tree, and reads no tree at
+	// all where it has not moved.
+	repoHead string
+
 	// treeNotFound is a tree GitHub has none of: a repository with no commits,
 	// a branch that was renamed, or one this installation can no longer read.
 	// GitHub names a default branch whatever the case - the name is
@@ -168,6 +174,7 @@ func newGitHubStub() *githubStub {
 		repoTree:         `{"sha":"basetree","tree":[],"truncated":false}`,
 		repoTrees:        map[string]string{},
 		repoLevels:       map[string]string{},
+		repoHead:         "basecommit",
 		repoLabels:       `[]`,
 		repoSettings:     `{}`,
 		repoRulesets:     `[]`,
@@ -604,7 +611,7 @@ func (s *githubStub) serveGitData(w http.ResponseWriter, r *http.Request) {
 		_, _ = fmt.Fprintf(w, `{"object":{"sha":%q}}`, sha)
 
 	case strings.Contains(r.URL.Path, "/git/ref/"):
-		_, _ = io.WriteString(w, `{"object":{"sha":"basecommit"}}`)
+		s.serveRef(w)
 
 	// Reading a repository's tree, which is how file sync learns what it
 	// already has. Whole where the read asks for it, and one level otherwise -
@@ -883,6 +890,25 @@ func (s *githubStub) serveRepositoryLabels(w http.ResponseWriter, r *http.Reques
 }
 
 // record keeps a request body for a spec to assert on.
+// serveRef answers where every branch points.
+//
+// No commit is no reference: a repository with nothing in it has a default
+// branch by name and no branch to point at.
+func (s *githubStub) serveRef(w http.ResponseWriter) {
+	s.mu.Lock()
+	head := s.repoHead
+	s.mu.Unlock()
+
+	if head == "" {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = io.WriteString(w, `{"message":"Not Found"}`)
+
+		return
+	}
+
+	_, _ = fmt.Fprintf(w, `{"object":{"sha":%q}}`, head)
+}
+
 func (s *githubStub) record(into *[]string, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

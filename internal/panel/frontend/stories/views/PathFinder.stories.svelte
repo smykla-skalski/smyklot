@@ -80,6 +80,21 @@
   {/snippet}
 </Story>
 
+<!--
+  The one way this list can be short. Nothing drops a path on purpose - the cap
+  that used to is gone, and a tree GitHub will not list whole is divided into
+  subtrees until it answers. What survives even that is said here, because a
+  short list that looks complete is what makes somebody believe a file they can
+  see in their own repository is not there.
+-->
+<Story name="A list GitHub would not finish">
+  {#snippet template()}
+    <div class="frame">
+      <PathFinder paths={KNOWN} repositories={25} partial label="Path in each repository" />
+    </div>
+  {/snippet}
+</Story>
+
 <style>
   /* Room for the list to open into, which a story otherwise has to be scrolled
      to see. */

@@ -86,11 +86,18 @@ func (s *Server) listSyncPaths(w http.ResponseWriter, r *http.Request) {
 	}
 
 	counts := map[string]int{}
-	var observed time.Time
+	var (
+		observed time.Time
+		partial  bool
+	)
 	for _, row := range rows {
 		if row.ObservedAt.After(observed) {
 			observed = row.ObservedAt
 		}
+		// One repository GitHub would not finish listing makes the whole answer
+		// some of what this installation holds. Said rather than left to look
+		// like a short list that is complete.
+		partial = partial || row.Partial
 		for _, path := range row.Paths {
 			counts[path]++
 		}
@@ -111,7 +118,9 @@ func (s *Server) listSyncPaths(w http.ResponseWriter, r *http.Request) {
 		return strings.Compare(left.Path, right.Path)
 	})
 
-	answer := map[string]any{"paths": paths, "repositories": len(rows)}
+	answer := map[string]any{
+		"paths": paths, "repositories": len(rows), "partial": partial,
+	}
 	if !observed.IsZero() {
 		answer["observed_at"] = observed
 	}

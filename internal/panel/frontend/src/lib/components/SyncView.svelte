@@ -94,7 +94,9 @@
     /** Writes one repository's adjustment, from the page about the file. */
     saveOverride?: (repositoryId: string, input: SyncOverrideInput) => Promise<unknown>;
     /** Every path this installation's repositories are known to hold. */
-    fetchPaths?: (targetId: string) => Promise<{ paths: KnownPath[]; repositories: number }>;
+    fetchPaths?: (
+      targetId: string,
+    ) => Promise<{ paths: KnownPath[]; repositories: number; partial?: boolean }>;
     fetchPlan: (targetId: string) => Promise<{ plan: SyncPlan | null }>;
     approvePlan: (targetId: string, planId: string, digest: string) => Promise<{ plan: SyncPlan }>;
   } = $props();
@@ -120,7 +122,10 @@
   /** Every repository's answer about files, which the files pages read. */
   let adjustments = $state<SyncOverrideRow[]>([]);
   /** Every path this installation's repositories hold, for the finder. */
-  let known = $state<{ paths: KnownPath[]; repositories: number }>({ paths: [], repositories: 0 });
+  let known = $state<{ paths: KnownPath[]; repositories: number; partial?: boolean }>({
+    paths: [],
+    repositories: 0,
+  });
   let saving = $state(false);
   let approving = $state(false);
 
@@ -906,6 +911,7 @@
         {adjustments}
         paths={known.paths}
         repositories={known.repositories === 0 ? population : known.repositories}
+        pathsPartial={known.partial === true}
         {now}
         markOf={(path) => subjectMark(FILES, path)}
         onSave={(wanted, document) => onSaveDocument(FILES, wanted, document)}

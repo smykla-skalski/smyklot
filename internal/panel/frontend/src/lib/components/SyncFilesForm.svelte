@@ -44,6 +44,7 @@
     adjustments = [],
     paths = [],
     repositories = 0,
+    pathsPartial = false,
     now = Date.now(),
     markOf,
     onSave,
@@ -63,6 +64,8 @@
     paths?: readonly KnownPath[];
     /** How many repositories the installation syncs, which the finder's counts are of. */
     repositories?: number;
+    /** Whether GitHub declined to list one of them whole, so the list is short. */
+    pathsPartial?: boolean;
     /** One clock for every relative time on the page. */
     now?: number;
     markOf?: (path: string) => { state: MarkState; label?: string } | undefined;
@@ -160,6 +163,7 @@
         bind:value={draft}
         {paths}
         {repositories}
+        partial={pathsPartial}
         label="Path of the file to manage"
         onChoose={add}
       />

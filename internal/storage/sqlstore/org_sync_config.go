@@ -449,7 +449,7 @@ func (s *Store) ListSyncRepositoryPaths(
 	targetID string,
 ) ([]orgsync.RepositoryPaths, error) {
 	rows, err := s.db.QueryContext(ctx, `
-SELECT p.repository_id, p.target_id, p.paths, p.observed_at
+SELECT p.repository_id, p.target_id, p.paths, p.observed_at, p.head_sha, p.partial
 FROM sync_repository_paths p
 JOIN repositories r ON r.id = p.repository_id
 WHERE r.target_id = ?
@@ -471,16 +471,22 @@ func (s *Store) SetSyncRepositoryPaths(
 	paths orgsync.RepositoryPaths,
 ) error {
 	_, err := s.db.ExecContext(ctx, `
-INSERT INTO sync_repository_paths (repository_id, target_id, paths, observed_at)
-VALUES (?, ?, ?, ?)
+INSERT INTO sync_repository_paths (
+    repository_id, target_id, paths, observed_at, head_sha, partial
+)
+VALUES (?, ?, ?, ?, ?, ?)
 ON CONFLICT (repository_id) DO UPDATE SET
     target_id = excluded.target_id,
     paths = excluded.paths,
-    observed_at = excluded.observed_at`,
+    observed_at = excluded.observed_at,
+    head_sha = excluded.head_sha,
+    partial = excluded.partial`,
 		paths.RepositoryID,
 		paths.TargetID,
 		strings.Join(paths.Paths, "\n"),
 		paths.ObservedAt,
+		paths.HeadSHA,
+		paths.Partial,
 	)
 	if err != nil {
 		return fmt.Errorf("set sync repository paths: %w", err)
@@ -495,7 +501,10 @@ func scanSyncRepositoryPaths(scanner rowScanner) (orgsync.RepositoryPaths, error
 		joined   string
 		observed StoredTime
 	)
-	if err := scanner.Scan(&paths.RepositoryID, &paths.TargetID, &joined, &observed); err != nil {
+	if err := scanner.Scan(
+		&paths.RepositoryID, &paths.TargetID, &joined, &observed,
+		&paths.HeadSHA, &paths.Partial,
+	); err != nil {
 		return orgsync.RepositoryPaths{}, fmt.Errorf("scan sync repository paths: %w", err)
 	}
 	// An empty list is a repository that was read and held nothing this cares

@@ -859,6 +859,12 @@ export interface SyncPathIndex {
   repositories: number;
   /** When the freshest of those was read. Absent before anything has been. */
   observed_at?: string;
+  /**
+   * Whether GitHub declined to list one of those repositories whole, even
+   * after the listing was divided around its refusal. Nothing drops a path on
+   * purpose, so this is the only way the list can be short.
+   */
+  partial?: boolean;
 }
 
 /**

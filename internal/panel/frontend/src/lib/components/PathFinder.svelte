@@ -35,6 +35,7 @@
   let {
     paths,
     repositories,
+    partial = false,
     value = $bindable(''),
     label,
     recents = [],
@@ -43,6 +44,13 @@
     paths: readonly KnownPath[];
     /** How many repositories the installation syncs, which the counts are of. */
     repositories: number;
+    /**
+     * Whether GitHub declined to list one of those repositories whole. Nothing
+     * here drops a path on purpose, so this is the only way the list can be
+     * short - and a short list that looks complete is what makes somebody
+     * believe a file they can see is not there.
+     */
+    partial?: boolean;
     /** The path being written. Bindable, because the field is the value. */
     value?: string;
     /** Names the field - "Path in each repository". */
@@ -199,6 +207,13 @@
         {/each}
       </ul>
 
+      {#if partial}
+        <p class="finder-partial">
+          GitHub would not list one of these repositories whole, so a path it holds may be missing
+          from this list. Typing one still works
+        </p>
+      {/if}
+
       {#if value !== '' && !exact}
         <div class="finder-new">
           <Icon name="plus" size={13} />
@@ -352,6 +367,17 @@
   .file-path {
     color: var(--text-primary);
     font-family: var(--mono);
+  }
+
+  /* A limit rather than a fault: nothing here drops a path on purpose, and this
+     is GitHub declining to list a very large repository whole even after the
+     listing was divided around it. */
+  .finder-partial {
+    border-top: 1px solid var(--border-subtle);
+    color: var(--text-muted);
+    font-size: var(--font-size-micro);
+    margin: 0;
+    padding: 0.55rem 0.75rem;
   }
 
   .finder-keys {

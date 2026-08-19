@@ -468,6 +468,7 @@ func (s *seeder) seedOrgSync() error {
 		RepositoryID: "repo-1", TargetID: s.target.TargetID,
 		Paths:      []string{"README.md", ".github/workflows/test.yaml"},
 		ObservedAt: s.now,
+		HeadSHA:    "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
 	}); err != nil {
 		return err
 	}
@@ -475,6 +476,7 @@ func (s *seeder) seedOrgSync() error {
 		RepositoryID: "repo-2", TargetID: s.target.TargetID,
 		Paths:      []string{"README.md"},
 		ObservedAt: s.now,
+		HeadSHA:    "8765432109f8e7d6c5b4a3928170695f4e3d2c1b",
 	}); err != nil {
 		return err
 	}

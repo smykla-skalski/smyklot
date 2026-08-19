@@ -140,6 +140,18 @@ type RepositoryPaths struct {
 	TargetID     string
 	Paths        []string
 	ObservedAt   time.Time
+
+	// HeadSHA is the commit the list was read at, so a refresh can tell that
+	// nothing has changed without reading the tree again. Empty is a list read
+	// before this was recorded, which is rescanned once.
+	HeadSHA string
+
+	// Partial records that GitHub declined to list the tree whole, so this is
+	// some of what the repository holds rather than all of it. Nothing here
+	// drops a path on purpose; this is the one limit that is not ours, and it
+	// is written down so the panel can say it instead of showing a short list
+	// that looks complete.
+	Partial bool
 }
 
 // PlanCreate records a computed plan and its actions together.
