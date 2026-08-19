@@ -102,7 +102,10 @@
           onclick={() => onSelect?.(repository)}
         >
           {#if repository.state === 'change'}
-            {repository.changes ?? 0}
+            <!-- Wrapped, because a bare figure in a flex container is an
+                 anonymous box no selector reaches and the trim never lands on
+                 it - which put the count 0.39px above the middle of its tile. -->
+            <span class="cap-trim">{repository.changes ?? 0}</span>
           {:else if repository.state === 'refused'}
             <Icon name="failure" size={13} />
           {:else if repository.state === 'settled'}
@@ -350,6 +353,10 @@
   .board-foot-when {
     color: var(--text-muted);
     font-size: var(--font-size-micro);
+    /* Both lines trimmed or neither: one untrimmed line leaves its leading and
+       descender inside the block, and the pair then reads 2.25px above the
+       button it sits beside. */
+    text-box: trim-both cap alphabetic;
   }
 
   /* The legend goes under the well rather than beside it: a 13rem column

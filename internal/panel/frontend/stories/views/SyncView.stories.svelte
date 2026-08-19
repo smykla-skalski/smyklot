@@ -4,6 +4,7 @@
   import SyncView from '#lib/components/SyncView.svelte';
   import Seeded from '../support/Seeded.svelte';
   import { NOW } from '../support/fixtures.js';
+  import type { SyncPage } from '#lib/routes.js';
   import type { SyncConfig, SyncPlan } from '#lib/types.js';
 
   const at = (offsetMs: number) => new Date(NOW + offsetMs).toISOString();
@@ -81,9 +82,15 @@
     ...over,
   });
 
+  /* Storybook has no router, so the strip is drawn as fragment addresses. Real
+     links either way: the point of the strip is that a section is a place. */
+  const sectionHref = ({ section, item }: SyncPage) =>
+    `#${section}${item ? `/${encodeURIComponent(item)}` : ''}`;
+
   const base = {
     targetId: '2001',
     readOnly: false,
+    sectionHref,
     fetchConfig: async (_id: string, kind: string) => config(kind),
     saveConfig: async (_id: string, kind: string) => config(kind),
     fetchPlan: async () => ({ plan: PLAN }),

@@ -101,8 +101,13 @@
 </nav>
 
 <style>
+  /* The rule is drawn as a shadow rather than a border, because it is the seam
+     under the strip and not the underside of it. A border joins the nav's own
+     box, which then stands a half-pixel lower than its words - and beside a
+     search field the grid centres those boxes, so the tab labels read 1.30px
+     high against the field they sit next to. */
   .section-tabs {
-    border-bottom: 1px solid var(--border-subtle);
+    box-shadow: 0 1px 0 var(--border-subtle);
     position: relative;
   }
 
@@ -120,7 +125,9 @@
     display: flex;
     gap: 0.45rem;
     font-size: var(--font-size-meta);
-    padding: 0.65rem 0 0.75rem;
+    /* Symmetric, so the label sits on the middle of the strip's own box and
+       therefore on the middle of anything the strip shares a row with. */
+    padding: 0.7rem 0;
     position: relative;
     text-decoration: none;
   }
@@ -158,7 +165,7 @@
     height: 2px;
     inset-inline: 0;
     position: absolute;
-    top: calc(100% + 0.75rem - 1px);
+    top: calc(100% + 0.7rem - 1px);
   }
 
   a[aria-current='page'] {
@@ -187,10 +194,17 @@
       width var(--duration-normal) var(--ease-standard);
   }
 
+  /* A flex container so the trimmed figure inside is a flex item and not an
+     inline box on a strut: a strut's half-leading is not the same above the cap
+     as below the baseline, which put the figure 0.52px above the middle of its
+     own pill. As a flex item the trimmed box IS the band, and the equal padding
+     centres it. */
   .tab-count {
+    align-items: center;
     background: var(--tab-count-bg);
     border-radius: 6px;
     color: var(--tab-count-ink);
+    display: inline-flex;
     font-family: var(--mono);
     font-size: var(--font-size-micro);
     font-variant-numeric: tabular-nums;

@@ -173,6 +173,9 @@
   .kind-when {
     color: var(--text-muted);
     font-size: var(--font-size-micro);
+    /* Trimmed so the flex row centres the words rather than the box that
+       carries their leading - untrimmed they sat 0.34px above the chevron. */
+    text-box: trim-both cap alphabetic;
   }
 
   .kind-open {
