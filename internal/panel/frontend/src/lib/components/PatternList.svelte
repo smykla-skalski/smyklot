@@ -85,7 +85,7 @@
     <input
       bind:this={field}
       bind:value={draft}
-      class="pattern-field"
+      class="text-input pattern-field"
       type="text"
       spellcheck="false"
       autocomplete="off"
@@ -150,11 +150,22 @@
     opacity: 1;
   }
 
+  /*
+   * The chip's own height, said in the chip's own terms.
+   *
+   * This was a bare `<input>`: no class, so it wore the UA's 2px inset border
+   * on white with square corners, and it stood 34px tall where the chip it
+   * replaces stands 23.8 - so opening it redrew the control as something from
+   * another application AND shifted everything below it by ten pixels. The
+   * height is `0.4rem` of padding either side of one compact line, which is
+   * exactly what `.add-chip` is made of.
+   */
   .pattern-field {
+    --local-control-height: calc(0.8rem + var(--font-size-compact));
+
     font-family: var(--mono);
     font-size: var(--font-size-compact);
     inline-size: 12rem;
-    min-block-size: var(--control-height-compact);
     padding-inline: 0.5rem;
   }
 </style>

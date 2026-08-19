@@ -255,13 +255,21 @@ describe('SyncView [Component]', () => {
     );
 
     const board = await screen.findByRole('group', { name: 'Repositories in this installation' });
-    const tiles = within(board).getAllByRole('button');
+    // Links, not buttons. A tile is an address, and it was navigated with
+    // `window.location.assign` - which throws the whole application away and
+    // loads it again to reach a page the client router could have drawn.
+    const tiles = within(board).getAllByRole('link');
 
     expect(tiles).toHaveLength(3);
     expect(tiles.map((tile) => tile.getAttribute('aria-label'))).toEqual([
       'smyklot - 1 change waiting',
       'platform-infra - 2 changes waiting',
       'archived - not watched here',
+    ]);
+    expect(tiles.map((tile) => tile.getAttribute('href'))).toEqual([
+      '/i/acme/repositories/smyklot',
+      '/i/acme/repositories/platform-infra',
+      '/i/acme/repositories/archived',
     ]);
   });
 

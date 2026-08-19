@@ -138,6 +138,19 @@
       .filter((line) => line !== '');
   }
 
+  /* Applied only where the field is asking for a number. An emptied box binds
+     to null and a value past the float range binds to Infinity, and both used
+     to save silently - as 0, "check every sweep", and as inheriting. */
+  async function applyPathIndex(): Promise<void> {
+    const seconds = durationSeconds(pathIndexDraft);
+    if (seconds === null) {
+      failure = 'File list refresh interval must be a whole number of minutes, hours or days';
+
+      return;
+    }
+    await updatePathIndex(seconds);
+  }
+
   /* The sweep asks how often to check this installation's file lists, and this
      is where it says so. Inheriting is a value, not an absence: a null clears
      the override and the process's answer applies again. */
@@ -334,7 +347,7 @@
           bind:unit={pathIndexDraft.unit}
           units={PATH_INDEX_UNITS}
           disabled={readOnly || savingPathIndex}
-          onApply={() => void updatePathIndex(durationSeconds(pathIndexDraft))}
+          onApply={() => void applyPathIndex()}
         />
       {/if}
     </div>

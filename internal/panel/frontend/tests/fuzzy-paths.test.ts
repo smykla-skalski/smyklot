@@ -94,4 +94,27 @@ describe('matchPaths [Unit]', () => {
     // quadratic, not a benchmark.
     expect(spent).toBeLessThan(250);
   });
+
+  /**
+   * A path whose lowercase is longer than itself.
+   *
+   * `positions` index the folded string and are read back against the original,
+   * so a fold that changes length makes every index past it point one place too
+   * far. `'I'.toLowerCase()` is two code units, so one Turkish-named file in one
+   * repository made a match near the end read `path[length]` - `undefined` -
+   * and `undefined.toLowerCase()` threw inside `bonusAt`, which took the finder
+   * down for the whole installation rather than for that one path.
+   */
+  describe('a path the case fold would lengthen', () => {
+    it('does not throw', () => {
+      expect(() => matchPath('İİİİa.md', 'a')).not.toThrow();
+      expect(() => matchPaths(['İstanbul.md', 'README.md'], 'md')).not.toThrow();
+    });
+
+    it('marks the characters it says it marked', () => {
+      const found = matchPath('İabc.md', 'b');
+
+      expect(found?.positions.map((at) => 'İabc.md'[at])).toEqual(['b']);
+    });
+  });
 });

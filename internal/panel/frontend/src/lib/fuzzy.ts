@@ -77,7 +77,31 @@ const FIRST_CHAR_MULTIPLIER = 2;
 /** A whole band, not a nudge: it must outrank any run of bonuses below it. */
 const BASENAME_BAND = 1000;
 
-const lower = (value: string): string => value.toLowerCase();
+/**
+ * Lowercased, and exactly as long as what went in.
+ *
+ * `positions` index this string and are then read against the original path -
+ * by `bonusAt`, by `scoreOf`, and by the finder painting which characters
+ * matched. `String.prototype.toLowerCase` does not promise to preserve length:
+ * `'I'.toLowerCase()` is two code units (`i` + U+0307), so one Turkish-named
+ * file made every index past it point one place too far, and a match near the
+ * end read `path[length]`, which is `undefined` - and `undefined.toLowerCase()`
+ * threw, taking the whole finder down for the installation that held it.
+ *
+ * A character whose lowercase is not one code unit keeps its own case. It then
+ * fails a case-insensitive comparison it would otherwise have passed, which
+ * costs one match on a rare character and is the trade this makes deliberately:
+ * indices that line up are worth more here than folding every alphabet.
+ */
+function lower(value: string): string {
+  let folded = '';
+  for (const character of value) {
+    const small = character.toLowerCase();
+    folded += small.length === character.length ? small : character;
+  }
+
+  return folded;
+}
 
 /** What the character before this one says about where this one sits. */
 function bonusAt(path: string, at: number): number {

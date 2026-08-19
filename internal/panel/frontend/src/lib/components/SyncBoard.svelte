@@ -45,7 +45,7 @@
     label,
     footLine,
     footWhen,
-    onSelect,
+    hrefOf,
     children,
   }: {
     repositories: readonly BoardRepository[];
@@ -55,7 +55,16 @@
     footLine?: string;
     /** When it was worked out, and what it is waiting on. */
     footWhen?: string;
-    onSelect?: (repository: BoardRepository) => void;
+    /**
+     * Where one repository's own page is.
+     *
+     * A href rather than a callback, because a tile is an address: the panel
+     * navigated it with `window.location.assign`, which throws the whole
+     * application away and loads it again - a white flash and every query
+     * refetched, to reach a page the client router could have drawn. A real
+     * link also copies, opens in a tab and answers the middle button.
+     */
+    hrefOf?: (repository: BoardRepository) => string;
     /** The foot's action - a link to the plan, usually. */
     children?: import('svelte').Snippet;
   } = $props();
@@ -93,13 +102,15 @@
   <div class="board-lay">
     <div class="board-well" role="group" aria-label={label}>
       {#each repositories as repository (repository.name)}
-        <button
-          type="button"
+        <svelte:element
+          this={hrefOf === undefined ? 'span' : 'a'}
+          role={hrefOf === undefined ? 'img' : undefined}
+          href={hrefOf?.(repository)}
           class="tile is-{repository.state}"
+          class:is-link={hrefOf !== undefined}
           class:is-dim={filter !== null && filter !== repository.state}
           data-name={repository.name}
           aria-label={said(repository)}
-          onclick={() => onSelect?.(repository)}
         >
           {#if repository.state === 'change'}
             <!-- Wrapped, because a bare figure in a flex container is an
@@ -111,7 +122,7 @@
           {:else if repository.state === 'settled'}
             <Icon name="check" size={11} />
           {/if}
-        </button>
+        </svelte:element>
       {/each}
     </div>
 
@@ -172,7 +183,7 @@
     padding: 10px;
   }
 
-  /* Neither of these is a `.btn`, and `app.css` resets buttons by class rather
+  /* The legend row is not a `.btn`, and `app.css` resets buttons by class rather
      than by element - so a bare one keeps the UA's own face, which under
      `color-scheme: dark` is a mid grey. */
   .tile,
@@ -181,9 +192,16 @@
     background: none;
     border: 0;
     color: inherit;
-    cursor: pointer;
     font: inherit;
     padding: 0;
+    text-decoration: none;
+  }
+
+  /* Only where it goes somewhere: a board drawn without a destination is a
+     picture, and a picture that answers the hand is a promise it cannot keep. */
+  .tile.is-link,
+  .legend-row {
+    cursor: pointer;
   }
 
   .tile {
@@ -212,7 +230,7 @@
      answers in colour, over whatever ground it already has, and shrinks toward
      its own centre when pressed. The layer goes on `background-image` because
      `background` is what carries each tile's state colour. */
-  .tile:hover {
+  .tile.is-link:hover {
     background-image: linear-gradient(
       var(--interactive-hover-layer),
       var(--interactive-hover-layer)
@@ -221,7 +239,7 @@
 
   /* Compact rather than the default scale: a tile is a small square, and the
      larger step reads as the whole board twitching. */
-  .tile:active {
+  .tile.is-link:active {
     background-image: linear-gradient(var(--press), var(--press));
     transform: scale(var(--press-scale-compact));
   }
@@ -405,7 +423,7 @@
 
     /* The colour still changes - what a reader needs is the state, and only the
        movement is what motion sensitivity is about. */
-    .tile:active {
+    .tile.is-link:active {
       transform: none;
     }
   }

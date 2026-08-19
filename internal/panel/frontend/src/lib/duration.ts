@@ -32,6 +32,11 @@ export function durationParts(
   units: readonly DurationUnit[] = ['seconds', 'minutes', 'hours', 'days'],
 ): DurationParts {
   const offered = [...units].sort((left, right) => UNIT_SECONDS[right] - UNIT_SECONDS[left]);
+  // Zero divides by every unit, so the loop below would answer with the largest
+  // one offered and render "0 days" - and then refuse to be applied, because
+  // the field asks for at least 1. Zero is a value the server accepts, so it is
+  // said in the smallest unit the caller offers.
+  if (seconds === 0) return { amount: 0, unit: offered.at(-1) ?? 'seconds' };
   for (const unit of offered) {
     if (seconds % UNIT_SECONDS[unit] === 0) {
       return { amount: seconds / UNIT_SECONDS[unit], unit };
@@ -42,8 +47,21 @@ export function durationParts(
   return { amount: seconds / UNIT_SECONDS[smallest], unit: smallest };
 }
 
-export function durationSeconds(parts: DurationParts): number {
-  return Math.round(parts.amount * UNIT_SECONDS[parts.unit]);
+/**
+ * The seconds a field is asking for, or null where it is not asking for any.
+ *
+ * Null rather than a number, because both ways of getting one are silent
+ * otherwise. Svelte binds an emptied `type="number"` box to `null`, and `min`
+ * without `required` does not stop the form submitting - so `null * 3600` was
+ * **0**, which the server reads as "check every sweep", the most expensive
+ * answer there is, saved by clearing a box. And `1e999` is a value that field
+ * accepts: it multiplies to `Infinity`, which `JSON.stringify` writes as
+ * `null`, quietly turning an override back into inheriting.
+ */
+export function durationSeconds(parts: DurationParts): number | null {
+  const seconds = Math.round(parts.amount * UNIT_SECONDS[parts.unit]);
+
+  return Number.isFinite(seconds) && seconds >= 0 ? seconds : null;
 }
 
 /** "1 hour", "3 days" - singular where the number is one. */

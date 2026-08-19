@@ -442,7 +442,7 @@
               <label class="rule-field">
                 <span>Approving reviews</span>
                 <input
-                  class="rule-count"
+                  class="text-input rule-count"
                   type="number"
                   min="0"
                   value={pull.required_approving_review_count ?? 0}
@@ -518,6 +518,7 @@
               {#each tools as tool, index (index)}
                 <div class="rule-tool">
                   <input
+                    class="text-input"
                     type="text"
                     value={tool.tool}
                     aria-label="Code scanning tool"
@@ -681,7 +682,7 @@
                   <label class="rule-field">
                     <span>Its id on GitHub</span>
                     <input
-                      class="rule-count"
+                      class="text-input rule-count"
                       type="number"
                       min="1"
                       value={actor.actor_id}

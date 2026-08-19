@@ -154,6 +154,15 @@
     });
   });
 
+  /* Applied only where the field is asking for a number: an emptied box binds
+     to null and a value past the float range to Infinity, and both used to save
+     silently - as 0, which is "check every sweep", and as inheriting. */
+  async function applyPathIndex(): Promise<void> {
+    const seconds = durationSeconds(pathIndexDraft);
+    if (seconds === null) return;
+    await savePathIndex(seconds);
+  }
+
   /* Inheriting is a value rather than an absence, so switching it off writes a
      null and the installation's answer applies again. */
   async function savePathIndex(seconds: number | null): Promise<void> {
@@ -322,7 +331,7 @@
             bind:unit={pathIndexDraft.unit}
             units={PATH_INDEX_UNITS}
             disabled={readOnly || savingPathIndex}
-            onApply={() => void savePathIndex(durationSeconds(pathIndexDraft))}
+            onApply={() => void applyPathIndex()}
           />
         {/if}
       </div>

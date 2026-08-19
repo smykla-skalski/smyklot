@@ -22,6 +22,7 @@
     SyncConfig,
     SyncConfigInput,
     SyncFile,
+    SyncLabel,
     SyncOverrideInput,
     SyncOverrideRow,
     SyncPlan,
@@ -31,18 +32,17 @@
   import FormError from './FormError.svelte';
   import Button from './Button.svelte';
   import PageHeader from './PageHeader.svelte';
-  import Plate from './Plate.svelte';
   import ApplyBar from './ApplyBar.svelte';
   import PlanAction, { type PlanOp } from './PlanAction.svelte';
   import PlanGroup from './PlanGroup.svelte';
   import type { KnownPath } from './PathFinder.svelte';
   import SectionTabs from './SectionTabs.svelte';
   import type { MarkState } from './StateMark.svelte';
-  import Switch from './Switch.svelte';
   import SyncBoard, { type BoardRepository, type BoardState } from './SyncBoard.svelte';
   import SyncFileDetail from './SyncFileDetail.svelte';
   import SyncFilesForm from './SyncFilesForm.svelte';
   import SyncKindCard from './SyncKindCard.svelte';
+  import SyncLabelsForm from './SyncLabelsForm.svelte';
   import SyncRulesetDetail from './SyncRulesetDetail.svelte';
   import SyncRulesetsForm from './SyncRulesetsForm.svelte';
   import SyncSettingsForm, { SETTING_KEYS } from './SyncSettingsForm.svelte';
@@ -252,7 +252,19 @@
     }
   }
 
-  async function onSave(enabled: boolean): Promise<void> {
+  /**
+   * Saves the labels an installation expects, and whether it syncs them at all.
+   *
+   * One call rather than two, because they are one document: the switch and the
+   * rows share a revision, and saving either has to send the other as it stands
+   * or the server's copy of it is replaced by whatever this page last read.
+   */
+  async function onSaveLabels(
+    enabled: boolean,
+    wanted?: SyncLabel[],
+    allowRemoval?: boolean,
+    excludes?: string[],
+  ): Promise<void> {
     const current = config;
     if (current === null) return;
 
@@ -261,9 +273,9 @@
     try {
       config = await saveConfig(targetId, LABELS, {
         enabled,
-        labels: current.labels,
-        allow_removal: current.allow_removal,
-        excludes: current.excludes,
+        labels: wanted ?? current.labels,
+        allow_removal: allowRemoval ?? current.allow_removal,
+        excludes: excludes ?? current.excludes,
         expected_revision: current.revision,
       });
       // Saving invalidates any plan computed from the old configuration, so the
@@ -697,9 +709,9 @@
         label="Repositories in this installation"
         footLine={waiting === 0 ? undefined : planLine}
         footWhen={planWhen}
-        onSelect={(repository) => {
-          if (repositoryHref !== undefined) window.location.assign(repositoryHref(repository.name));
-        }}
+        hrefOf={repositoryHref === undefined
+          ? undefined
+          : (repository) => repositoryHref(repository.name)}
       >
         <!-- Filled, not tinted. `brand` is the bordered tone, and the approved
              mock draws this as a solid petrol button with white ink - which is
@@ -766,7 +778,7 @@
         states={boardReadable ? strip('labels') : undefined}
         when={attribution(config)}
         {enabled}
-        onToggle={(next) => void onSave(next)}
+        onToggle={(next) => void onSaveLabels(next)}
       />
       <SyncKindCard
         name="Settings"
@@ -796,67 +808,19 @@
   {/if}
 
   {#if section === 'labels'}
-    <Plate label="Labels">
-      {#snippet status()}
-        <!-- A switch, because flipping it IS the act: it makes the kind
-             eligible for planning and nothing more, and nothing reaches GitHub
-             until a plan is approved. -->
-        <Switch
-          label="Syncing"
-          checked={enabled}
-          describedBy="sync-labels-help"
-          disabled={saving || readOnly || unreadable || config === null}
-          onChange={(next) => void onSave(next)}
-        />
-      {/snippet}
-
-      <p class="sync-lead" id="sync-labels-help">
-        The labels every repository in this installation should carry. Smyklot works out what would
-        change and asks before changing anything
-      </p>
-
-      {#if error !== null}
-        <FormError message={error} />
-      {/if}
-
-      {#if unreadable}
-        <p class="sync-notice" role="alert">
-          This installation's labels are stored in a form this version of Smyklot cannot read, so
-          they are not shown and nothing here can be changed. Nothing has been lost.
-        </p>
-      {/if}
-
-      <!-- Only while the switch is on: a kind nobody asked for is not waiting on
-         anything, and the permission is somebody else's to grant. -->
-      {#if unavailable !== '' && enabled}
-        <p class="sync-notice" role="status">
-          {unavailable}. Nothing here will be planned or changed until an owner grants it on the
-          installation's page on GitHub.
-        </p>
-      {/if}
-
-      {#if unreadable}
-        <!-- Deliberately not "no labels yet". An empty list here would be the panel
-           inventing an answer it does not have. -->
-      {:else if labels.length === 0}
-        <p class="sync-empty">No labels yet</p>
-      {:else}
-        <ul class="sync-rows">
-          {#each labels as label (label.name)}
-            <li class="sync-row">
-              <!-- The colour is the label's own, so it is set as a custom property
-                 rather than an inline style: the panel serves style-src 'self',
-                 under which a style attribute is parsed and then discarded. -->
-              <span class="sync-swatch" style:--swatch="#{label.color}" aria-hidden="true"></span>
-              <span class="sync-name">{label.name}</span>
-              {#if label.description}
-                <span class="sync-description">{label.description}</span>
-              {/if}
-            </li>
-          {/each}
-        </ul>
-      {/if}
-    </Plate>
+    <SyncLabelsForm
+      {labels}
+      allowRemoval={config?.allow_removal ?? false}
+      excludes={config?.excludes ?? []}
+      {enabled}
+      {unreadable}
+      {unavailable}
+      problem={error}
+      {readOnly}
+      {saving}
+      onSave={(wanted, wantedLabels, allowRemoval, excludes) =>
+        void onSaveLabels(wanted, wantedLabels, allowRemoval, excludes)}
+    />
   {/if}
 
   {#if section === 'settings' && documents.settings !== null}
@@ -1220,78 +1184,7 @@
     }
   }
 
-  /* A plate's opening line, which the body's own padding already places. */
-  .sync-lead {
-    color: var(--dim);
-    font-size: var(--font-size-meta);
-    margin: 0;
-    max-width: 60ch;
-  }
-
-  /* The same line, further down a plate, so it carries the gap itself. */
-  .sync-empty {
-    color: var(--dim);
-    font-size: var(--font-size-meta);
-    margin: var(--space-3) 0 0;
-    max-width: 60ch;
-  }
-
-  .sync-notice {
-    background: var(--surface-inset);
-    border-radius: var(--r-ctl);
-    font-size: var(--font-size-meta);
-    margin: var(--space-3) 0 0;
-    padding: var(--space-2) var(--space-3);
-  }
-
   :global(.form-error) {
     margin: var(--space-3) 0 0;
-  }
-
-  /* The rows the configuration editor draws: hairlines between, no box around,
-     because the plate is already the box. A bordered list inside a bordered card
-     reads as two cards, which is what this page used to look like. */
-  .sync-rows {
-    list-style: none;
-    margin: var(--space-3) 0 0;
-    padding: 0;
-  }
-
-  .sync-row {
-    align-items: baseline;
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-3);
-    padding-block: 0.7rem;
-  }
-
-  .sync-row + .sync-row {
-    border-top: 1px solid var(--rule);
-  }
-
-  /* The plate's own padding closes the list; the row's would double it. */
-  .sync-rows > .sync-row:last-child {
-    padding-bottom: 0.15rem;
-  }
-
-  .sync-name {
-    font-size: 0.875rem;
-    font-weight: 600;
-  }
-
-  /* The swatch sits on the text baseline rather than centred on the line box, so
-     a row whose description wraps does not leave it floating beside the gap. */
-  .sync-swatch {
-    background: var(--swatch);
-    border-radius: 50%;
-    display: inline-block;
-    height: 0.75em;
-    transform: translateY(0.05em);
-    width: 0.75em;
-  }
-
-  .sync-description {
-    color: var(--dim);
-    font-size: var(--font-size-meta);
   }
 </style>

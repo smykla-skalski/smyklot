@@ -48,9 +48,13 @@
 </details>
 
 <style>
+  /* Clipped, so the summary's hover fill stops at the rounded corner instead of
+     painting its own square one over it. `clip` rather than `hidden`: this is
+     not a scroll container and should not become one. */
   .repo-group {
     border: 1px solid var(--border-subtle);
     border-radius: var(--r-strip);
+    overflow: clip;
   }
 
   .repo-group + :global(.repo-group) {
@@ -72,6 +76,12 @@
 
   summary:hover {
     background: var(--table-row-hover);
+  }
+
+  /* The same press every other row in the panel takes. */
+  summary:active {
+    background: var(--table-row-pressed);
+    transform: scale(var(--press-scale-surface));
   }
 
   summary :global(svg) {

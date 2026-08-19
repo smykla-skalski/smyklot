@@ -228,6 +228,7 @@
         <label class="label-name">
           <span class="entry-field-label">Name</span>
           <input
+            class="text-input"
             type="text"
             value={label.name}
             {disabled}
@@ -245,6 +246,7 @@
             <span class="label-swatch" style:--swatch={swatch(label.color)} aria-hidden="true"
             ></span>
             <input
+              class="text-input"
               type="text"
               value={label.color}
               {disabled}
@@ -265,6 +267,7 @@
       <label class="entry-field">
         <span class="entry-field-label">Description</span>
         <input
+          class="text-input"
           type="text"
           value={label.description ?? ''}
           {disabled}
