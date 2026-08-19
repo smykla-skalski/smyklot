@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { plainClick } from '#lib/follow.js';
   import { tick } from 'svelte';
 
   /**
@@ -251,7 +252,7 @@
             if (hovered === item.id) hovered = null;
           }}
           onclick={(event) => {
-            if (onNavigate === undefined) return;
+            if (onNavigate === undefined || !plainClick(event)) return;
             event.preventDefault();
             onNavigate(item.id);
           }}

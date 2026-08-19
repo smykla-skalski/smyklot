@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { plainClick } from '#lib/follow.js';
   import Icon from './Icon.svelte';
 
   /**
@@ -18,7 +19,13 @@
     href: string;
     /** The parent's own name - "Rulesets", "Files". */
     label: string;
-    /** SPA navigation; the href stays real for middle-click and copy. */
+    /**
+     * SPA navigation; the href stays real for middle-click and copy.
+     *
+     * Which only holds because `plainClick` lets every other click through.
+     * This carried the sentence and not the guard, so a Cmd-click was answered
+     * with `preventDefault()` and the new tab never opened.
+     */
     onNavigate?: () => void;
   } = $props();
 </script>
@@ -27,7 +34,7 @@
   class="crumb"
   {href}
   onclick={(event) => {
-    if (onNavigate === undefined) return;
+    if (onNavigate === undefined || !plainClick(event)) return;
     event.preventDefault();
     onNavigate();
   }}

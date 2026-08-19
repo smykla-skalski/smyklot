@@ -831,6 +831,65 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 			Expect(read[0].Paths).To(Equal(awkward))
 		})
 
+		// What a refresh actually asks of a stored row, without reading the one
+		// column that can hold fifty thousand strings.
+		It("describes a stored list without reading it", func() {
+			ctx, store, now := runtime()
+			seed(ctx, store, now)
+
+			Expect(store.SetSyncRepositoryPaths(ctx, orgsync.RepositoryPaths{
+				RepositoryID: repoA, TargetID: target,
+				Paths:      []string{"a.md", "b.md"},
+				ObservedAt: now, HeadSHA: "abc123", Partial: true,
+			})).To(Succeed())
+
+			scans, err := store.ListSyncRepositoryPathScans(ctx, target)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(scans).To(HaveLen(1))
+			Expect(scans[0].RepositoryID).To(Equal(repoA))
+			Expect(scans[0].HeadSHA).To(Equal("abc123"))
+			Expect(scans[0].Partial).To(BeTrue())
+			Expect(scans[0].ObservedAt).To(BeTemporally("~", now, time.Second))
+		})
+
+		// The common branch of a sweep: the branch has not moved, so the list
+		// this row holds is still the list, and the only thing to record is
+		// that it was looked at. Writing that through the replace re-encoded
+		// every path to move one column.
+		It("records a list as current without rewriting it", func() {
+			ctx, store, now := runtime()
+			seed(ctx, store, now)
+
+			paths := []string{"a.md", "b.md"}
+			Expect(store.SetSyncRepositoryPaths(ctx, orgsync.RepositoryPaths{
+				RepositoryID: repoA, TargetID: target, Paths: paths,
+				ObservedAt: now.Add(-time.Hour), HeadSHA: "abc123",
+			})).To(Succeed())
+
+			Expect(store.TouchSyncRepositoryPaths(ctx, repoA, now)).To(Succeed())
+
+			read, err := store.ListSyncRepositoryPaths(ctx, target)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(read).To(HaveLen(1))
+			// The moment moved and nothing else did.
+			Expect(read[0].ObservedAt).To(BeTemporally("~", now, time.Second))
+			Expect(read[0].Paths).To(Equal(paths))
+			Expect(read[0].HeadSHA).To(Equal("abc123"))
+		})
+
+		// A repository nothing has scanned yet has no row to bring forward, and
+		// that is not a failure - the scan that follows writes one.
+		It("says nothing about a repository with no list yet", func() {
+			ctx, store, now := runtime()
+			seed(ctx, store, now)
+
+			Expect(store.TouchSyncRepositoryPaths(ctx, repoA, now)).To(Succeed())
+
+			read, err := store.ListSyncRepositoryPaths(ctx, target)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(read).To(BeEmpty())
+		})
+
 		// Nothing else removes these. The sweep writes a list per repository it
 		// reads, and a repository that left the installation, or was archived,
 		// or whose access was withdrawn is one it does not read - so its paths

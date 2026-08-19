@@ -154,6 +154,18 @@ type RepositoryPaths struct {
 	Partial bool
 }
 
+// RepositoryPathScan is one stored list described, rather than read.
+//
+// Everything in RepositoryPaths except the paths. A refresh decides what to do
+// with a row from these four fields alone, and the field it leaves out is the
+// only one that is ever large.
+type RepositoryPathScan struct {
+	RepositoryID string
+	ObservedAt   time.Time
+	HeadSHA      string
+	Partial      bool
+}
+
 // PlanCreate records a computed plan and its actions together.
 //
 // One call rather than a plan then its actions, because a plan with no actions
@@ -296,8 +308,30 @@ type Store interface {
 	// question asked once a day.
 	ListSyncRepositoryPaths(context.Context, string) ([]RepositoryPaths, error)
 
+	// ListSyncRepositoryPathScans reads when each list was taken and at which
+	// commit, without reading the lists.
+	//
+	// What a refresh actually asks of a stored row: whether it is old enough to
+	// look at again, and which commit it was read at. Both are scalars sitting
+	// beside a blob that holds every path a repository has - so answering them
+	// through the read above decoded up to fifty thousand strings per
+	// repository, per tick, and threw every one of them away.
+	ListSyncRepositoryPathScans(context.Context, string) ([]RepositoryPathScan, error)
+
 	// SetSyncRepositoryPaths replaces one repository's list.
 	SetSyncRepositoryPaths(context.Context, RepositoryPaths) error
+
+	// TouchSyncRepositoryPaths records that a list was checked and had not
+	// changed, without rewriting it.
+	//
+	// The common case by a long way: a branch that has not moved since the last
+	// tick still holds the list that was read then, and the only thing to say
+	// about it is when it was last looked at. Writing that through the replace
+	// above re-encoded and rewrote the whole list to change one column.
+	//
+	// A repository with no row is not an error. It is a repository nothing has
+	// scanned yet, and the next scan writes one.
+	TouchSyncRepositoryPaths(context.Context, string, time.Time) error
 
 	// PruneSyncRepositoryPaths drops the lists of repositories an installation
 	// no longer synchronizes, answering how many went.

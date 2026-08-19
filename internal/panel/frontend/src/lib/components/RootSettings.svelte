@@ -2,6 +2,7 @@
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 
+  import { durationParts, durationSeconds, formatDuration } from '#lib/duration.js';
   import { formatBytes, formatElapsed, formatLatency } from '../format';
   import type {
     ConfigPatch,
@@ -9,7 +10,7 @@
     RootRuntimeSettings,
     RootRuntimeSettingsInput,
   } from '../types';
-  import DurationField from './DurationField.svelte';
+  import DurationField, { type DurationUnit } from './DurationField.svelte';
   import FormError from './FormError.svelte';
   import StatusPill from './StatusPill.svelte';
   import Button from './Button.svelte';
@@ -41,8 +42,12 @@
     hours: 3_600,
     days: 86_400,
   } as const;
-  type SessionUnit = keyof typeof SESSION_UNITS;
-  type PollUnit = keyof typeof POLL_UNITS;
+  /* What each field offers, for the shared `durationParts`. The maps above stay
+     because `DurationField` reads them; these say which of the four units the
+     shared decomposition may answer with, so a poll interval is never said in
+     days and a session lifetime never in seconds. */
+  const SESSION_UNIT_NAMES = ['minutes', 'hours', 'days'] as const;
+  const POLL_UNIT_NAMES = ['seconds', 'minutes', 'hours'] as const;
 
   const {
     rootRole,
@@ -85,19 +90,19 @@
       draftSettings?.session_lifetime.effective_seconds ??
       SESSION_UNITS.days,
   );
-  const sessionDisplay = $derived(durationParts(sessionSeconds));
+  const sessionDisplay = $derived(durationParts(sessionSeconds, SESSION_UNIT_NAMES));
   let sessionSource = $derived<'default' | 'custom'>(
     draftSettings?.session_lifetime.override_seconds == null ? 'default' : 'custom',
   );
   let sessionAmount = $derived(sessionDisplay.amount);
-  let sessionUnit = $derived<SessionUnit>(sessionDisplay.unit);
+  let sessionUnit = $derived<DurationUnit>(sessionDisplay.unit);
 
   const pollSeconds = $derived(
     draftSettings?.reaction_poll_interval.override_seconds ??
       draftSettings?.reaction_poll_interval.effective_seconds ??
       POLL_UNITS.minutes * 5,
   );
-  const pollDisplay = $derived(pollDurationParts(pollSeconds));
+  const pollDisplay = $derived(durationParts(pollSeconds, POLL_UNIT_NAMES));
   let pollSource = $derived<'default' | 'disabled' | 'custom'>(
     draftSettings?.reaction_poll_interval.override_seconds == null
       ? 'default'
@@ -106,19 +111,19 @@
         : 'custom',
   );
   let pollAmount = $derived(pollDisplay.amount);
-  let pollUnit = $derived<PollUnit>(pollDisplay.unit);
+  let pollUnit = $derived<DurationUnit>(pollDisplay.unit);
 
   const quietPeriodSeconds = $derived(
     draftSettings?.merge_after_ci_quiet_period.override_seconds ??
       draftSettings?.merge_after_ci_quiet_period.effective_seconds ??
       30,
   );
-  const quietPeriodDisplay = $derived(pollDurationParts(quietPeriodSeconds));
+  const quietPeriodDisplay = $derived(durationParts(quietPeriodSeconds, POLL_UNIT_NAMES));
   let quietPeriodSource = $derived<'default' | 'custom'>(
     draftSettings?.merge_after_ci_quiet_period.override_seconds == null ? 'default' : 'custom',
   );
   let quietPeriodAmount = $derived(quietPeriodDisplay.amount);
-  let quietPeriodUnit = $derived<PollUnit>(quietPeriodDisplay.unit);
+  let quietPeriodUnit = $derived<DurationUnit>(quietPeriodDisplay.unit);
 
   /* Zero is every sweep rather than never, so the source has no "disabled"
      leg: what a check costs is the commit the branch points at, and the file
@@ -128,12 +133,17 @@
       draftSettings?.path_index_interval.effective_seconds ??
       3600,
   );
-  const pathIndexDisplay = $derived(durationParts(pathIndexSeconds));
+  const pathIndexDisplay = $derived(durationParts(pathIndexSeconds, SESSION_UNIT_NAMES));
   let pathIndexSource = $derived<'default' | 'custom'>(
     draftSettings?.path_index_interval.override_seconds == null ? 'default' : 'custom',
   );
   let pathIndexAmount = $derived(pathIndexDisplay.amount);
-  let pathIndexUnit = $derived<SessionUnit>(pathIndexDisplay.unit);
+  let pathIndexUnit = $derived<DurationUnit>(pathIndexDisplay.unit);
+
+  /* The same words as `formatDuration`, over the units a poll-shaped field
+     offers. Its own line rather than a second copy of the pluralisation. */
+  const formatPollDuration = (seconds: number): string =>
+    formatDuration(durationParts(seconds, POLL_UNIT_NAMES));
 
   const behaviorPatch = $derived(
     settings === null
@@ -200,10 +210,16 @@
     await update({ path_index_interval_seconds: null });
   }
 
+  /* Through `durationSeconds`, which answers null where the box is not asking
+     for a number. That is the case these guards existed for and the one they
+     missed: Svelte binds an emptied `type="number"` to null, `null * 86400` is
+     0 rather than NaN, so `Number.isFinite(0) && 0 >= 0` passed and the most
+     expensive interval there is - check every sweep, for every installation -
+     was saved by clearing a box. */
   async function savePathIndexInterval(): Promise<void> {
     if (settings === null || saving || pathIndexSource !== 'custom') return;
-    const seconds = Math.round(pathIndexAmount * SESSION_UNITS[pathIndexUnit]);
-    if (!Number.isFinite(seconds) || seconds < 0 || seconds > 7 * SESSION_UNITS.days) {
+    const seconds = durationSeconds({ amount: pathIndexAmount, unit: pathIndexUnit });
+    if (seconds === null || seconds > 7 * SESSION_UNITS.days) {
       actionFailure = 'File list refresh interval must be between 0 seconds and 7 days';
       return;
     }
@@ -212,8 +228,8 @@
 
   async function savePollInterval(): Promise<void> {
     if (settings === null || saving || pollSource !== 'custom') return;
-    const seconds = Math.round(pollAmount * POLL_UNITS[pollUnit]);
-    if (!Number.isFinite(seconds) || seconds < 1 || seconds > 24 * SESSION_UNITS.hours) {
+    const seconds = durationSeconds({ amount: pollAmount, unit: pollUnit });
+    if (seconds === null || seconds < 1 || seconds > 24 * SESSION_UNITS.hours) {
       actionFailure = 'Reaction sweep interval must be between 1 second and 24 hours';
       return;
     }
@@ -222,8 +238,8 @@
 
   async function saveQuietPeriod(): Promise<void> {
     if (settings === null || saving || quietPeriodSource !== 'custom') return;
-    const seconds = Math.round(quietPeriodAmount * POLL_UNITS[quietPeriodUnit]);
-    if (!Number.isFinite(seconds) || seconds < 1 || seconds > 24 * SESSION_UNITS.hours) {
+    const seconds = durationSeconds({ amount: quietPeriodAmount, unit: quietPeriodUnit });
+    if (seconds === null || seconds < 1 || seconds > 24 * SESSION_UNITS.hours) {
       actionFailure = 'Merge-after-CI quiet period must be between 1 second and 24 hours';
       return;
     }
@@ -232,8 +248,8 @@
 
   async function saveSessionLifetime(): Promise<void> {
     if (settings === null || saving || sessionSource !== 'custom') return;
-    const seconds = Math.round(sessionAmount * SESSION_UNITS[sessionUnit]);
-    if (!Number.isFinite(seconds) || seconds < 60 || seconds > 30 * SESSION_UNITS.days) {
+    const seconds = durationSeconds({ amount: sessionAmount, unit: sessionUnit });
+    if (seconds === null || seconds < 60 || seconds > 30 * SESSION_UNITS.days) {
       actionFailure = 'Session lifetime must be between 1 minute and 30 days';
       return;
     }
@@ -284,39 +300,6 @@
 
   function applyConfigPatch(deployment: ConfigValues, patch: ConfigPatch): ConfigValues {
     return structuredClone({ ...deployment, ...patch });
-  }
-
-  function durationParts(seconds: number): { amount: number; unit: SessionUnit } {
-    if (seconds % SESSION_UNITS.days === 0) {
-      return { amount: seconds / SESSION_UNITS.days, unit: 'days' };
-    }
-    if (seconds % SESSION_UNITS.hours === 0) {
-      return { amount: seconds / SESSION_UNITS.hours, unit: 'hours' };
-    }
-    return { amount: seconds / SESSION_UNITS.minutes, unit: 'minutes' };
-  }
-
-  function formatDuration(seconds: number): string {
-    const { amount, unit } = durationParts(seconds);
-    const label = amount === 1 ? unit.slice(0, -1) : unit;
-    return `${amount} ${label}`;
-  }
-
-  function pollDurationParts(seconds: number): { amount: number; unit: PollUnit } {
-    if (seconds % POLL_UNITS.hours === 0) {
-      return { amount: seconds / POLL_UNITS.hours, unit: 'hours' };
-    }
-    if (seconds % POLL_UNITS.minutes === 0) {
-      return { amount: seconds / POLL_UNITS.minutes, unit: 'minutes' };
-    }
-    return { amount: seconds, unit: 'seconds' };
-  }
-
-  function formatPollInterval(seconds: number): string {
-    if (seconds === 0) return 'Disabled';
-    const { amount, unit } = pollDurationParts(seconds);
-    const label = amount === 1 ? unit.slice(0, -1) : unit;
-    return `${amount} ${label}`;
   }
 
   function capitalize(value: string): string {
@@ -382,7 +365,7 @@
       <Plate label="Reaction sweep">
         {#snippet status()}
           <span class="effective-value">
-            Effective: {formatPollInterval(current.reaction_poll_interval.effective_seconds)}
+            Effective: {formatPollDuration(current.reaction_poll_interval.effective_seconds)}
           </span>
         {/snippet}
         <p class="section-intro">
@@ -395,7 +378,7 @@
             inheritedValue={current.reaction_poll_interval.deployment_seconds === 0
               ? 'disabled'
               : null}
-            inheritedLabel={formatPollInterval(current.reaction_poll_interval.deployment_seconds)}
+            inheritedLabel={formatPollDuration(current.reaction_poll_interval.deployment_seconds)}
             value={pollSource === 'default' ? null : pollSource}
             options={POLL_OPTIONS}
             disabled={saving}
@@ -418,7 +401,7 @@
       <Plate label="Merge after CI">
         {#snippet status()}
           <span class="effective-value">
-            Effective: {formatPollInterval(current.merge_after_ci_quiet_period.effective_seconds)}
+            Effective: {formatPollDuration(current.merge_after_ci_quiet_period.effective_seconds)}
           </span>
         {/snippet}
         <p class="section-intro">
@@ -428,7 +411,7 @@
           <InheritControl
             label="Merge-after-CI quiet period source"
             source={DEPLOYMENT_SOURCE}
-            inheritedLabel={formatPollInterval(
+            inheritedLabel={formatPollDuration(
               current.merge_after_ci_quiet_period.deployment_seconds,
             )}
             value={quietPeriodSource === 'default' ? null : 'custom'}

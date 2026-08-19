@@ -132,6 +132,13 @@
       }
       const step = event.key === 'ArrowDown' ? 1 : -1;
       active = (clamped + step + matches.length) % Math.max(matches.length, 1);
+      /* The list caps at 19rem and scrolls, and focus never leaves the field -
+         so arrowing past the fold moved `aria-activedescendant` onto an option
+         nobody could see. A pointer user's selection is always in view; the
+         keyboard user's has to be put there. */
+      requestAnimationFrame(() => {
+        document.getElementById(`finder-option-${active}`)?.scrollIntoView({ block: 'nearest' });
+      });
 
       return;
     }

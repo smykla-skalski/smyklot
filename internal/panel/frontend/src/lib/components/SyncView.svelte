@@ -794,7 +794,13 @@
 
     <!-- What each kind is doing, and the way into it. Each strip repeats the
          board's slots in the board's order, so a repository that is out of step
-         sits in the same column across all four. -->
+         sits in the same column across all four.
+
+         Every card's switch writes. Three of them were rendered without a
+         handler and `SyncKindCard` calls `onToggle?.()`, so pressing one moved
+         the thumb - a checkbox flips itself - and saved nothing, which told a
+         reader they had just switched ruleset sync off across the whole
+         installation. -->
     <div class="sync-kinds">
       <SyncKindCard
         name="Labels"
@@ -812,6 +818,7 @@
         states={boardReadable ? strip('settings') : undefined}
         when={attribution(documents.settings)}
         enabled={documents.settings?.enabled === true}
+        onToggle={(next) => void onSaveDocument(SETTINGS, next, documents.settings?.document ?? {})}
       />
       <SyncKindCard
         name="Rulesets"
@@ -820,6 +827,7 @@
         states={boardReadable ? strip('rulesets') : undefined}
         when={attribution(documents.rulesets)}
         enabled={documents.rulesets?.enabled === true}
+        onToggle={(next) => void onSaveDocument(RULESETS, next, documents.rulesets?.document ?? {})}
       />
       <SyncKindCard
         name="Files"
@@ -828,6 +836,7 @@
         states={boardReadable ? strip('files') : undefined}
         when={attribution(documents.files)}
         enabled={documents.files?.enabled === true}
+        onToggle={(next) => void onSaveDocument(FILES, next, documents.files?.document ?? {})}
       />
     </div>
   {/if}

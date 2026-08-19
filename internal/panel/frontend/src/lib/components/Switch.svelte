@@ -47,7 +47,19 @@
     {disabled}
     aria-label={label === undefined ? ariaLabel : undefined}
     aria-describedby={describedBy}
-    onchange={(event) => onChange(event.currentTarget.checked)}
+    onchange={(event) => {
+      const wanted = event.currentTarget.checked;
+      /* Put the box back where the value says, and let `checked` move it.
+         A checkbox flips ITSELF on a click, and Svelte re-applies an attribute
+         only when the value it holds has changed - so a save that is refused
+         leaves the prop exactly as it was, nothing is re-applied, and the
+         browser's own flip stays on screen saying the opposite of what is
+         stored. That is what makes this controlled rather than only described
+         as controlled: the accepted case changes `checked` and moves the thumb
+         a beat later, and the refused case has already been undone here. */
+      event.currentTarget.checked = checked;
+      onChange(wanted);
+    }}
   />
   <span class="switch-track" aria-hidden="true"></span>
 </label>

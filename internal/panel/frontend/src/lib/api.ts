@@ -329,6 +329,23 @@ export function createPanelApi(
       body: JSON.stringify(body),
     });
 
+  /**
+   * A PUT whose answer carries a document, read keeping every number's digits.
+   *
+   * The same read as `documentRequest`, on the way back out. A save answered
+   * through `putJson` came back through `response.json()`, so `12345678901234567890`
+   * returned as `...67000` and `1.50` as `1.5` - and the caller writes that
+   * answer straight into the query cache under the key the literal-preserving
+   * read fills, so one save degraded the document the pane then composed from
+   * and stored on the next one.
+   */
+  const putDocument = <T>(path: string, body: unknown): Promise<T> =>
+    documentRequest<T>(path, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
   const postJson = <T>(path: string, body: unknown): Promise<T> =>
     jsonRequest<T>(path, {
       method: 'POST',
@@ -736,14 +753,17 @@ export function createPanelApi(
       );
     },
 
+    /* Through `documentRequest`, like the two override reads: this is the
+       TEMPLATE, which is what `composeFile` starts from, so a number that lost
+       its digits here loses them in every repository's composed file. */
     fetchSyncConfig(targetId: string, kind: string): Promise<SyncConfig> {
-      return jsonRequest(
+      return documentRequest(
         `/api/v1/targets/${pathSegment(targetId)}/sync/config/${pathSegment(kind)}`,
       );
     },
 
     saveSyncConfig(targetId: string, kind: string, input: SyncConfigInput): Promise<SyncConfig> {
-      return putJson(
+      return putDocument(
         `/api/v1/targets/${pathSegment(targetId)}/sync/config/${pathSegment(kind)}`,
         input,
       );
@@ -787,7 +807,7 @@ export function createPanelApi(
       kind: string,
       input: SyncOverrideInput,
     ): Promise<SyncOverride> {
-      return putJson(
+      return putDocument(
         `/api/v1/targets/${pathSegment(targetId)}/repositories/` +
           `${pathSegment(repositoryId)}/sync/${pathSegment(kind)}`,
         input,

@@ -128,6 +128,44 @@ describe('SyncLabelsForm [Component]', () => {
     expect(screen.getByRole('button', { name: 'Save labels' }).hasAttribute('disabled')).toBe(true);
   });
 
+  /**
+   * Removing a row ABOVE an open one must not move the editor onto its
+   * neighbour.
+   *
+   * The row being edited was tracked as `label-${index}` under a comment
+   * explaining that an index would point at whatever moved up into its place -
+   * which is what that string is. Open the third of four and remove the first,
+   * and the editor was attached to the fourth; pressing Cancel then wrote the
+   * third row's values over it, so a label nobody had touched was destroyed and
+   * another appeared twice.
+   */
+  it('keeps the editor on the row it was opened on when one above is removed', async () => {
+    render(SyncLabelsForm, {
+      ...base,
+      labels: [
+        bug({ name: 'alpha' }),
+        bug({ name: 'bravo' }),
+        bug({ name: 'charlie' }),
+        bug({ name: 'delta' }),
+      ],
+    });
+
+    await fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[2]);
+    expect(screen.getByDisplayValue('charlie')).toBeTruthy();
+
+    await fireEvent.click(screen.getAllByRole('button', { name: 'Remove' })[0]);
+
+    // Still the row that was opened, now one place up the list.
+    expect(screen.getByDisplayValue('charlie')).toBeTruthy();
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    // And every remaining label is itself, exactly once.
+    for (const name of ['bravo', 'charlie', 'delta']) {
+      expect(screen.getAllByText(name)).toHaveLength(1);
+    }
+  });
+
   it('says so where nothing is configured rather than showing an empty row', () => {
     render(SyncLabelsForm, base);
 

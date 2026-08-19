@@ -59,11 +59,8 @@ func (s *Server) putRootTargetSettings(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, "invalid_pending_ci_settings", err.Error())
 		return
 	}
-	pathIndex := context.Target.PathIndexIntervalOverride
-	if input.PathIndexIntervalSeconds.Present {
-		pathIndex = pathIndexDuration(input.PathIndexIntervalSeconds.Value)
-	}
-	if err := validatePathIndexInterval(pathIndex); err != nil {
+	pathIndex, err := pathIndexOverride(context.Target.PathIndexIntervalOverride, input.PathIndexIntervalSeconds)
+	if err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid_path_index_interval", err.Error())
 		return
 	}
@@ -162,11 +159,9 @@ func (s *Server) putRootRepositorySettings(w http.ResponseWriter, r *http.Reques
 		s.writeError(w, http.StatusBadRequest, "invalid_pending_ci_settings", err.Error())
 		return
 	}
-	pathIndex := repository.PathIndexIntervalOverride
-	if input.PathIndexIntervalSeconds.Present {
-		pathIndex = pathIndexDuration(input.PathIndexIntervalSeconds.Value)
-	}
-	if err := validatePathIndexInterval(pathIndex); err != nil {
+	pathIndex, err := pathIndexOverride(
+		repository.PathIndexIntervalOverride, input.PathIndexIntervalSeconds)
+	if err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid_path_index_interval", err.Error())
 		return
 	}

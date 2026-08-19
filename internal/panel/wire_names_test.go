@@ -8,6 +8,9 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/smykla-skalski/smyklot/internal/orgsync"
+	"github.com/smykla-skalski/smyklot/internal/storage"
 )
 
 // Every name the panel API puts on the wire is lower_snake_case.
@@ -27,6 +30,7 @@ import (
 func TestPanelResponsesUseWireNames(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	session := harness.signIn(t)
+	seedPanelWireNameRows(t, harness)
 
 	paths := panelWireNameProbePaths()
 	read := 0
@@ -49,6 +53,68 @@ func TestPanelResponsesUseWireNames(t *testing.T) {
 	// while reading nothing at all.
 	if read < len(paths)/2 {
 		t.Fatalf("only %d of %d addresses answered 200; this proved almost nothing", read, len(paths))
+	}
+}
+
+// seedPanelWireNameRows gives the sync reads something to answer with.
+//
+// An empty list carries no field names, so a probe against one asserts that
+// nothing was spelled wrong in nothing. `/sync/paths` and
+// `/sync/overrides/{kind}` both answer `{"...": []}` on a bare harness, which
+// is how four new names - `path`, `repositories`, `repository_id` and
+// `repository_name` - sat in this list proving none of themselves.
+func seedPanelWireNameRows(t *testing.T, harness *panelHarness) {
+	t.Helper()
+
+	const (
+		target     = "github:installation:10"
+		repository = "repository-30"
+	)
+
+	// The repository the probe list names, which `routePlaceholders` shares
+	// with the authorization matrix. Without it in the catalog every address
+	// below it answers 404 and is skipped, so six probes proved nothing.
+	if err := harness.store.ReconcileInstallation(t.Context(), storage.InstallationSnapshot{
+		TargetID:       target,
+		InstallationID: "10",
+		Kind:           storage.TargetOrganization,
+		Account: storage.Account{
+			ID:          "github:test:account:2",
+			Provider:    "github:test",
+			SubjectID:   "2",
+			Login:       "smykla-skalski",
+			DisplayName: "Smykla Skalski",
+			UpdatedAt:   harness.now,
+		},
+		Repositories: []storage.RepositorySnapshot{
+			{ID: "repository-20", Name: "smyklot", FullName: "smykla-skalski/smyklot"},
+			{ID: repository, Name: "docs", FullName: "smykla-skalski/docs"},
+		},
+		SyncedAt: harness.now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := harness.store.SetSyncRepositoryPaths(t.Context(), orgsync.RepositoryPaths{
+		RepositoryID: repository,
+		TargetID:     target,
+		Paths:        []string{"renovate.json"},
+		ObservedAt:   harness.now,
+		HeadSHA:      "abc123",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := harness.store.SetSyncRepositoryOverride(
+		t.Context(), orgsync.RepositoryOverrideChange{
+			RepositoryID: repository,
+			Kind:         orgsync.KindLabels,
+			Document:     []byte(`{}`),
+			ActorID:      "github:test:user:1",
+			Now:          harness.now,
+		},
+	); err != nil {
+		t.Fatal(err)
 	}
 }
 

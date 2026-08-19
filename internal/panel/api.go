@@ -3,8 +3,6 @@ package panel
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -179,11 +177,9 @@ func (s *Server) putTargetSettings(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, "invalid_pending_ci_settings", err.Error())
 		return
 	}
-	pathIndex := target.PathIndexIntervalOverride
-	if input.PathIndexIntervalSeconds.Present {
-		pathIndex = pathIndexDuration(input.PathIndexIntervalSeconds.Value)
-	}
-	if err := validatePathIndexInterval(pathIndex); err != nil {
+	pathIndex, err := pathIndexOverride(
+		target.PathIndexIntervalOverride, input.PathIndexIntervalSeconds)
+	if err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid_path_index_interval", err.Error())
 		return
 	}
@@ -283,11 +279,9 @@ func (s *Server) putRepositorySettings(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, "invalid_pending_ci_settings", err.Error())
 		return
 	}
-	pathIndex := repository.PathIndexIntervalOverride
-	if input.PathIndexIntervalSeconds.Present {
-		pathIndex = pathIndexDuration(input.PathIndexIntervalSeconds.Value)
-	}
-	if err := validatePathIndexInterval(pathIndex); err != nil {
+	pathIndex, err := pathIndexOverride(
+		repository.PathIndexIntervalOverride, input.PathIndexIntervalSeconds)
+	if err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid_path_index_interval", err.Error())
 		return
 	}
@@ -320,56 +314,28 @@ func (s *Server) putRepositorySettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, repositoryDetailDTO(s.processConfig(), target, updated))
 }
 
-// pathIndexDuration reads a refresh interval off the wire.
+// pathIndexOverride reads a refresh interval off the wire, keeping what is
+// stored where the request does not mention it.
 //
-// Nil is inheriting, which is what an omitted or null value means. Anything
-// else is seconds, and validatePathIndexInterval decides whether it is a value
-// this will accept.
-func pathIndexDuration(seconds *int64) *time.Duration {
-	if seconds == nil {
-		return nil
-	}
-
-	// Range-checked as seconds, before the multiplication rather than after it.
-	// A Duration is int64 nanoseconds, so 18446744074 seconds multiplies to
-	// exactly 0 - a value the validator below then accepts, and 0 is "check
-	// every sweep", the most expensive answer there is, saved by typing a
-	// number nobody meant. The out-of-range cases are carried as a duration the
-	// validator refuses, which is how the quiet period does it.
-	switch {
-	case *seconds < 0:
-		invalid := -time.Second
-
-		return &invalid
-
-	case *seconds > int64(MaxPathIndexInterval/time.Second):
-		invalid := MaxPathIndexInterval + time.Second
-
-		return &invalid
-	}
-
-	value := time.Duration(*seconds) * time.Second
-
-	return &value
-}
-
-// validatePathIndexInterval refuses an interval outside what the column holds.
+// Four handlers decode a settings request carrying this field - an
+// installation's and one repository's, each from the panel and from the Root
+// console - and each spelled the same eight lines. The field lives on the
+// shared request struct and the check did not, so a fifth handler decoding
+// either struct would have accepted it with nothing looking at it.
 //
-// Zero is every sweep rather than an error: what a check costs is the commit
-// the branch points at, and the list is read only where that moved.
-func validatePathIndexInterval(value *time.Duration) error {
-	if value == nil {
-		return nil
-	}
-	if *value < 0 {
-		return errors.New("file list refresh interval cannot be negative")
-	}
-	if *value > MaxPathIndexInterval {
-		return fmt.Errorf(
-			"file list refresh interval cannot be longer than %s", MaxPathIndexInterval)
+// `runtimeDuration` does the work: it range-checks the seconds BEFORE
+// multiplying, which is the whole difficulty - a Duration is int64 nanoseconds,
+// so 18446744074 seconds multiplies to exactly 0, and 0 is "check every sweep",
+// the most expensive answer there is.
+func pathIndexOverride(
+	stored *time.Duration,
+	sent nullableValue[int64],
+) (*time.Duration, error) {
+	if !sent.Present {
+		return stored, nil
 	}
 
-	return nil
+	return runtimeDuration(sent.Value, 0, MaxPathIndexInterval, "file list refresh interval")
 }
 
 func pendingCIQuietDuration(seconds *int64) *time.Duration {

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/storage"
@@ -460,6 +461,52 @@ ORDER BY p.repository_id`, targetID)
 	return collectRows(rows, scanSyncRepositoryPaths)
 }
 
+// ListSyncRepositoryPathScans reads when each list was taken and at which
+// commit, without reading the lists.
+//
+// The same rows as above with the one large column left out. A refresh decides
+// what to do with a row from these four fields alone, so selecting `paths` to
+// answer them read - and decoded - every path in the installation on every
+// tick, then discarded all of it.
+func (s *Store) ListSyncRepositoryPathScans(
+	ctx context.Context,
+	targetID string,
+) ([]orgsync.RepositoryPathScan, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT p.repository_id, p.observed_at, p.head_sha, p.partial
+FROM sync_repository_paths p
+JOIN repositories r ON r.id = p.repository_id
+WHERE r.target_id = ?
+ORDER BY p.repository_id`, targetID)
+	if err != nil {
+		return nil, fmt.Errorf("list sync repository path scans: %w", err)
+	}
+
+	return collectRows(rows, scanSyncRepositoryPathScan)
+}
+
+// TouchSyncRepositoryPaths records that a list was checked and had not changed.
+//
+// An UPDATE rather than the insert-or-replace above, because the list is not
+// what is being written: a branch that has not moved still holds the paths that
+// were read from it, and re-encoding fifty thousand of them to move one
+// timestamp is the cost this avoids. A repository with no row yet matches
+// nothing, which is right - there is no list to still be current.
+func (s *Store) TouchSyncRepositoryPaths(
+	ctx context.Context,
+	repositoryID string,
+	observedAt time.Time,
+) error {
+	if _, err := s.db.ExecContext(ctx, `
+UPDATE sync_repository_paths SET observed_at = ? WHERE repository_id = ?`,
+		observedAt, repositoryID,
+	); err != nil {
+		return fmt.Errorf("touch sync repository paths: %w", err)
+	}
+
+	return nil
+}
+
 // PruneSyncRepositoryPaths drops the lists of repositories an installation no
 // longer synchronizes.
 //
@@ -531,6 +578,22 @@ ON CONFLICT (repository_id) DO UPDATE SET
 	}
 
 	return nil
+}
+
+func scanSyncRepositoryPathScan(scanner rowScanner) (orgsync.RepositoryPathScan, error) {
+	var (
+		scan     orgsync.RepositoryPathScan
+		observed StoredTime
+	)
+	if err := scanner.Scan(
+		&scan.RepositoryID, &observed, &scan.HeadSHA, &scan.Partial,
+	); err != nil {
+		return orgsync.RepositoryPathScan{}, fmt.Errorf("scan sync repository path scan: %w", err)
+	}
+
+	scan.ObservedAt = observed.Time()
+
+	return scan, nil
 }
 
 func scanSyncRepositoryPaths(scanner rowScanner) (orgsync.RepositoryPaths, error) {

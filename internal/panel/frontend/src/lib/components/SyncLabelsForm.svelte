@@ -138,21 +138,27 @@
   }
 
   /**
-   * The one row being edited, by key rather than by index.
+   * Which row is being edited, as its position, kept in step with the list.
    *
    * One at a time, because a list of twelve labels opened as twelve forms is a
    * page nobody reads - the approved design shows the list and lets one row
-   * become a form in place. By KEY because the row beside it can be removed
-   * while this one is open, and an index would then point at whatever moved up
-   * into its place.
+   * become a form in place.
+   *
+   * This said "by key rather than by index" and held `rowKey(index)`, which is
+   * the string `label-${index}` - the index with a prefix. So the hazard the
+   * sentence described was the behaviour: removing a row ABOVE an open one left
+   * the editor pointing at whatever moved up into its place, and Cancel then
+   * wrote the opened row's values over that one, destroying a label nobody had
+   * touched. A position is the honest thing to hold here, as long as removing a
+   * row before it moves it, which `remove` now does.
    */
-  let editing = $state<string | null>(null);
+  let editing = $state<number | null>(null);
 
   /** What the row held when it was opened, so Cancel has something to go back to. */
   let opened = $state<SyncLabel | null>(null);
 
   function open(index: number): void {
-    editing = rowKey(index);
+    editing = index;
     opened = drafts[index] ?? null;
   }
 
@@ -172,7 +178,14 @@
   }
 
   function remove(index: number): void {
-    if (editing === rowKey(index)) editing = null;
+    if (editing === index) {
+      editing = null;
+      opened = null;
+    } else if (editing !== null && index < editing) {
+      // The open row just moved up one. Left alone, the editor would be
+      // attached to its neighbour and Cancel would overwrite that neighbour.
+      editing -= 1;
+    }
     drafts = withoutAt(drafts, index);
   }
 
@@ -227,13 +240,13 @@
   {:else}
     <ul class="label-rows">
       {#each drafts as label, index (rowKey(index))}
-        <li class="label-row" class:is-editing={editing === rowKey(index)}>
+        <li class="label-row" class:is-editing={editing === index}>
           <!-- The colour is the label's own, so it goes through a custom
                property: the panel serves style-src 'self', under which a style
                attribute is parsed and then discarded. -->
           <span class="label-swatch" style:--swatch={swatch(label.color)} aria-hidden="true"></span>
 
-          {#if editing === rowKey(index)}
+          {#if editing === index}
             <span class="label-edit">
               <input
                 class="text-inline"

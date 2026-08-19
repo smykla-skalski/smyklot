@@ -50,7 +50,16 @@
 <div class="kind-card" class:is-off={!enabled}>
   <div class="kind-card-head">
     <a class="kind-name" {href}>{name}</a>
-    <Switch checked={enabled} ariaLabel="{name} sync" onChange={(next) => onToggle?.(next)} />
+    <!-- Disabled where nothing is listening, so the control cannot say it did
+         something it did not. `onToggle?.(next)` on a live switch is a thumb
+         that moves - a checkbox flips itself - over a save that never happens,
+         which is the most confident way to be wrong on this page. -->
+    <Switch
+      checked={enabled}
+      ariaLabel="{name} sync"
+      disabled={onToggle === undefined}
+      onChange={(next) => onToggle?.(next)}
+    />
   </div>
 
   <span class="kind-sum">{summary}</span>

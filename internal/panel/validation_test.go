@@ -14,9 +14,13 @@ import (
 // A refresh interval is range-checked as seconds, before it is multiplied.
 //
 // A Duration is int64 nanoseconds, so 18446744074 seconds multiplied first
-// comes to exactly 0 - which the validator then accepts, and 0 is "check every
-// sweep", the most expensive answer there is, reached by typing a number
-// nobody meant.
+// comes to exactly 0 - which a validator reading the product then accepts, and
+// 0 is "check every sweep", the most expensive answer there is, reached by
+// typing a number nobody meant.
+//
+// Asked of `pathIndexOverride` because that is what every handler calls: the
+// field rides on a request struct four of them decode, so a check that is not
+// on the path all four take is a check a fifth handler will not have.
 func TestPathIndexDurationRefusesWhatOverflows(t *testing.T) {
 	t.Parallel()
 
@@ -39,7 +43,9 @@ func TestPathIndexDurationRefusesWhatOverflows(t *testing.T) {
 			t.Parallel()
 
 			seconds := one.seconds
-			err := validatePathIndexInterval(pathIndexDuration(&seconds))
+			_, err := pathIndexOverride(nil, nullableValue[int64]{
+				Present: true, Value: &seconds,
+			})
 
 			if one.refused && err == nil {
 				t.Fatalf("%d seconds was accepted", one.seconds)
@@ -49,6 +55,32 @@ func TestPathIndexDurationRefusesWhatOverflows(t *testing.T) {
 				t.Fatalf("%d seconds was refused: %v", one.seconds, err)
 			}
 		})
+	}
+}
+
+// A request that does not mention the interval leaves the stored one alone,
+// which is what carries an installation's setting through a save of something
+// else on the same page.
+func TestPathIndexOverrideKeepsWhatIsStored(t *testing.T) {
+	t.Parallel()
+
+	stored := 42 * time.Minute
+	kept, err := pathIndexOverride(&stored, nullableValue[int64]{})
+	if err != nil {
+		t.Fatalf("carrying the stored value through: %v", err)
+	}
+	if kept == nil || *kept != stored {
+		t.Fatalf("kept = %v, wanted %s", kept, stored)
+	}
+
+	// And an explicit null is inheriting, which is a value rather than an
+	// absence: it takes the override off.
+	cleared, err := pathIndexOverride(&stored, nullableValue[int64]{Present: true})
+	if err != nil {
+		t.Fatalf("clearing the override: %v", err)
+	}
+	if cleared != nil {
+		t.Fatalf("cleared = %v, wanted nothing", *cleared)
 	}
 }
 

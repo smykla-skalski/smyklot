@@ -147,6 +147,24 @@
     patch({ rules: { ...rules, ...change } });
   }
 
+  /**
+   * Removes one bypass actor, keeping the open editor on the row it was opened
+   * on.
+   *
+   * `editing` holds `actor:${index}`, so removing a row ABOVE an open one left
+   * the editor attached to whatever moved up into its place - the reader is
+   * then editing a row they did not open, and with two actors it vanishes
+   * instead. Nothing is corrupted, because every write goes through
+   * `patchActor(index, …)` with the render-time index; the row under the open
+   * form is simply not the row they pressed Edit on.
+   */
+  function removeActor(index: number): void {
+    const open = editing?.startsWith('actor:') === true ? Number(editing.slice(6)) : null;
+    if (open === index) editing = null;
+    else if (open !== null && index < open) editing = `actor:${open - 1}`;
+    patch({ bypass_actors: withoutAt(actors, index) });
+  }
+
   function patchPullRequest(change: Record<string, unknown>): void {
     const pull = rules.pull_request;
     if (pull === undefined) return;
@@ -649,9 +667,7 @@
             why={actorWhy(actor.bypass_mode)}
             isOpen={editing === `actor:${index}`}
             clearLabel="Remove"
-            onStopManaging={readOnly
-              ? undefined
-              : () => patch({ bypass_actors: withoutAt(actors, index) })}
+            onStopManaging={readOnly ? undefined : () => removeActor(index)}
           >
             {#snippet control()}
               <Button

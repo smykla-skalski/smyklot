@@ -159,18 +159,28 @@ export function matchPath(path: string, query: string): PathMatch | null {
   const haystack = lower(path);
   const needle = lower(query);
 
+  /* The query as whole characters, walked the same way in both directions.
+   *
+   * The forward pass below iterated code POINTS and the backwards tightening
+   * iterated code UNITS, so a query holding an astral character - which git
+   * permits in a path, and somebody pastes to find one - looked backwards for
+   * a lone low surrogate, found nothing, and carried a -1 into `bonusAt`,
+   * where `path[-2]` is `undefined` and `lower(undefined)` throws. That took
+   * the whole finder down, because `matchPaths` runs inside a `$derived`. */
+  const wanted = [...needle];
+
   let best: PathMatch | null = null;
-  let from = haystack.indexOf(needle[0]);
+  let from = haystack.indexOf(wanted[0] as string);
   while (from >= 0) {
     let cursor = from;
     let complete = true;
-    for (const character of needle) {
+    for (const character of wanted) {
       const found = haystack.indexOf(character, cursor);
       if (found < 0) {
         complete = false;
         break;
       }
-      cursor = found + 1;
+      cursor = found + character.length;
     }
     // The first character has no later occurrence that completes the query,
     // and neither will any occurrence after it.
@@ -180,8 +190,8 @@ export function matchPath(path: string, query: string): PathMatch | null {
     // latest position it can hold. Consecutive characters end up adjacent.
     const positions: number[] = [];
     let end = cursor - 1;
-    for (let index = needle.length - 1; index >= 0; index -= 1) {
-      const found = haystack.lastIndexOf(needle[index], end);
+    for (let index = wanted.length - 1; index >= 0; index -= 1) {
+      const found = haystack.lastIndexOf(wanted[index] as string, end);
       positions.unshift(found);
       end = found - 1;
     }
@@ -189,7 +199,7 @@ export function matchPath(path: string, query: string): PathMatch | null {
     const score = scoreOf(path, query, positions);
     if (best === null || score > best.score) best = { path, score, positions };
 
-    from = haystack.indexOf(needle[0], from + 1);
+    from = haystack.indexOf(wanted[0] as string, from + 1);
   }
 
   return best;

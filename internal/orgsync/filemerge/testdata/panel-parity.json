@@ -406,6 +406,28 @@
         ]
       },
       "expected": "{\n  \"__proto__\": {\n    \"list\": [\n      \"t\",\n      \"r\"\n    ]\n  }\n}\n"
+    },
+    {
+      "name": "integer-like keys are sorted as text, the way a Go map is",
+      "path": "renovate.json",
+      "template": "{\"abc\":1,\"404\":2,\"2\":3,\"10\":4}",
+      "spec": {
+        "overrides": {
+          "abc": 9
+        }
+      },
+      "expected": "{\n  \"10\": 4,\n  \"2\": 3,\n  \"404\": 2,\n  \"abc\": 9\n}\n"
+    },
+    {
+      "name": "the line separator Go escapes and JavaScript does not",
+      "path": "renovate.json",
+      "template": "{\"tab\":\"a\\tb\",\"sep\":\"a\\u2028b\",\"back\":\"a\\bb\"}",
+      "spec": {
+        "overrides": {
+          "kept": true
+        }
+      },
+      "expected": "{\n  \"back\": \"a\\bb\",\n  \"kept\": true,\n  \"sep\": \"a\\u2028b\",\n  \"tab\": \"a\\tb\"\n}\n"
     }
   ]
 }

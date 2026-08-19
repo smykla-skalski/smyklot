@@ -59,9 +59,17 @@ declare global {
   }
 }
 
-/** A raw-JSON box, which is an object to `typeof` and a number to a reader. */
+/**
+ * A raw-JSON box, which is an object to `typeof` and a number to a reader.
+ *
+ * Guarded, because everything in this module goes through here - `isObject`
+ * calls it, and every entry point calls that. On an engine without the raw-JSON
+ * proposal an unguarded call is a `TypeError` from the first merge rather than
+ * a panel that composes with ordinary numbers, which is what the absence should
+ * cost: digits beyond what a double holds, and nothing else.
+ */
 function isNumber(value: unknown): value is JsonNumber {
-  return JSON.isRawJSON(value);
+  return typeof JSON.isRawJSON === 'function' && JSON.isRawJSON(value);
 }
 
 /**
@@ -604,7 +612,11 @@ export function composable(path: string): boolean {
 export function parseJson(text: string): JsonValue | undefined {
   try {
     return JSON.parse(text, function (_key: string, value: unknown, context?: { source?: string }) {
-      if (typeof value === 'number' && context?.source !== undefined) {
+      if (
+        typeof value === 'number' &&
+        context?.source !== undefined &&
+        typeof JSON.rawJSON === 'function'
+      ) {
         return JSON.rawJSON(context.source);
       }
 
@@ -622,18 +634,56 @@ export function parseJson(text: string): JsonValue | undefined {
  * back, and an encoder writes a map's keys sorted. Two spaces and a closing
  * newline for the same reason. A file whose keys are in the template's order is
  * not the file the repository is about to hold.
+ *
+ * Emitted here rather than handed to `JSON.stringify`, because sorting the keys
+ * into a new object does not decide the order they come out in: JavaScript
+ * enumerates an object's INTEGER-LIKE own keys first and in numeric order,
+ * whatever order they were inserted in. So a document holding `"2"` and `"10"`
+ * came out `2, 10` where Go, sorting the same keys as strings, writes `10, 2` -
+ * and every line between them read as changed.
  */
 export function formatJson(value: JsonValue): string {
-  return `${JSON.stringify(sorted(value), null, 2)}\n`;
+  return `${emit(value, '')}\n`;
 }
 
-function sorted(value: JsonValue): JsonValue {
-  if (Array.isArray(value)) return value.map(sorted);
-  if (!isObject(value)) return value;
-  const result: { [key: string]: JsonValue } = {};
-  for (const key of Object.keys(value).sort()) put(result, key, sorted(value[key] as JsonValue));
+/** One value, written the way Go's encoder writes it at this indent. */
+function emit(value: JsonValue, indent: string): string {
+  if (isNumber(value)) return value.rawJSON;
+  if (Array.isArray(value)) {
+    if (value.length === 0) return '[]';
+    const inner = indent + '  ';
 
-  return result;
+    return `[\n${value.map((one) => inner + emit(one, inner)).join(',\n')}\n${indent}]`;
+  }
+  if (!isObject(value)) return jsonString(value);
+
+  const keys = Object.keys(value).sort();
+  if (keys.length === 0) return '{}';
+  const inner = indent + '  ';
+
+  return `{\n${keys
+    .map((key) => `${inner}${quoted(key)}: ${emit(value[key] as JsonValue, inner)}`)
+    .join(',\n')}\n${indent}}`;
+}
+
+/** A scalar. Only a string needs deciding; the rest are one spelling each. */
+function jsonString(value: JsonValue): string {
+  return typeof value === 'string' ? quoted(value) : (JSON.stringify(value) ?? 'null');
+}
+
+/**
+ * A JSON string spelled the way Go spells it.
+ *
+ * Measured against the service's own encoder rather than assumed, because the
+ * assumption was wrong twice: the two agree on `\b`, `\f` and `\u0000`, and
+ * the service encodes with `SetEscapeHTML(false)` so `<`, `>` and `&` are left
+ * alone as well. The one difference is U+2028 and U+2029, which Go escapes and
+ * `JSON.stringify` writes as themselves - so everything goes through
+ * `JSON.stringify` and only those two are rewritten afterwards, which also
+ * means no other escape can drift out of step with it.
+ */
+function quoted(value: string): string {
+  return JSON.stringify(value).replaceAll('\u2028', '\\u2028').replaceAll('\u2029', '\\u2029');
 }
 
 /**

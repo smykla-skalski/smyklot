@@ -2110,11 +2110,28 @@ var _ = Describe("Org sync [Unit]", func() {
 	// the interval a choice rather than a budget.
 	Describe("the path index", func() {
 		var refresh func(storage.Target)
+		var indexed func() storage.Target
 
 		BeforeEach(func() {
 			stub.repoTree = `{"sha":"basetree","tree":[` +
 				`{"path":"README.md","type":"blob","mode":"100644","sha":"b1","size":7},` +
 				`{"path":"docs","type":"tree","mode":"040000","sha":"d1"}],"truncated":false}`
+
+			/* An installation that has configured nothing gets no index at
+			   all - the cost of one is a ref read per repository per interval
+			   and a whole tree wherever a branch has moved, and the majority of
+			   installations never use sync. So every spec here starts from one
+			   that HAS configured it, which is also the only state in which
+			   anybody is typing a path into the finder. */
+			indexed = func() storage.Target {
+				GinkgoHelper()
+
+				target := seed()
+				configureKind(target, orgsync.KindFiles,
+					`{"files":[{"path":"renovate.json","content":"{}\n"}]}`)
+
+				return target
+			}
 
 			refresh = func(target storage.Target) {
 				GinkgoHelper()
@@ -2140,7 +2157,7 @@ var _ = Describe("Org sync [Unit]", func() {
 		}
 
 		It("records the paths and the commit they were read at", func() {
-			target := seed()
+			target := indexed()
 
 			refresh(target)
 
@@ -2154,7 +2171,7 @@ var _ = Describe("Org sync [Unit]", func() {
 		})
 
 		It("reads no tree at all when the branch has not moved", func() {
-			target := seed()
+			target := indexed()
 			refresh(target)
 			due(target)
 
@@ -2171,7 +2188,7 @@ var _ = Describe("Org sync [Unit]", func() {
 		})
 
 		It("reads the tree again when the branch has moved", func() {
-			target := seed()
+			target := indexed()
 			refresh(target)
 			due(target)
 
@@ -2191,7 +2208,7 @@ var _ = Describe("Org sync [Unit]", func() {
 		// an empty string is not a commit anything can be level with. Read once
 		// more rather than believed for ever.
 		It("reads the tree when the stored commit is unknown", func() {
-			target := seed()
+			target := indexed()
 			refresh(target)
 			row := due(target)
 			row.HeadSHA = ""
@@ -2206,7 +2223,7 @@ var _ = Describe("Org sync [Unit]", func() {
 		// A repository with nothing in it has a default branch by name and no
 		// branch to point at. Nothing to offer, and nothing to say about it.
 		It("records an empty list for a repository with no commits", func() {
-			target := seed()
+			target := indexed()
 			stub.repoHead = ""
 			stub.treeNotFound = true
 
@@ -2226,7 +2243,7 @@ var _ = Describe("Org sync [Unit]", func() {
 			// The installation says hardly ever, so a repository due under the
 			// process's own interval is left alone.
 			It("takes the installation's interval over the process's", func() {
-				target := seed()
+				target := indexed()
 				refresh(target)
 				due(target)
 
@@ -2243,7 +2260,7 @@ var _ = Describe("Org sync [Unit]", func() {
 			// And the repository beats its installation, which is the level
 			// that exists for the one repository that is the exception.
 			It("takes the repository's interval over the installation's", func() {
-				target := seed()
+				target := indexed()
 				refresh(target)
 				due(target)
 
@@ -2295,7 +2312,7 @@ var _ = Describe("Org sync [Unit]", func() {
 			})
 
 			It("divides it and keeps every path", func() {
-				target := seed()
+				target := indexed()
 
 				refresh(target)
 

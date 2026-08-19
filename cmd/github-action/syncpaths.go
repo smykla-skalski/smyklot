@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
@@ -48,6 +47,29 @@ func (s *server) refreshSyncPaths(
 	client *github.Client,
 	targetID string,
 ) {
+	// An installation that has never configured sync gets no index at all.
+	//
+	// This is the majority of them, and the cost of indexing one is not small:
+	// a ref read per repository per interval, and a whole tree wherever a
+	// branch has moved - up to 500 requests for one repository, against an
+	// installation's 15,000 an hour. `planInstallationSync` already returns
+	// after a single table read for these; this is the same door, and reading
+	// the same table is what opens it.
+	//
+	// Configured rather than switched ON: the finder is what somebody types a
+	// path into while setting file sync up, so an index that arrived only once
+	// the thing was already running would be empty exactly when it is needed.
+	configs, err := s.store.ListSyncConfigs(ctx, targetID)
+	if err != nil {
+		logging.From(ctx).Warn("could not read the sync configuration for the path index",
+			"error", err)
+
+		return
+	}
+	if len(configs) == 0 {
+		return
+	}
+
 	repositories, err := s.store.ListRepositories(ctx, targetID)
 	if err != nil {
 		logging.From(ctx).Warn("could not read repositories for the path index", "error", err)
@@ -55,14 +77,17 @@ func (s *server) refreshSyncPaths(
 		return
 	}
 
-	stored, err := s.store.ListSyncRepositoryPaths(ctx, targetID)
+	// Described rather than read: what this needs from a stored row is when it
+	// was taken and at which commit, and reading the lists to learn that
+	// decoded every path in the installation on every tick and kept none of it.
+	stored, err := s.store.ListSyncRepositoryPathScans(ctx, targetID)
 	if err != nil {
 		logging.From(ctx).Warn("could not read the path index", "error", err)
 
 		return
 	}
 
-	known := make(map[string]orgsync.RepositoryPaths, len(stored))
+	known := make(map[string]orgsync.RepositoryPathScan, len(stored))
 	for _, row := range stored {
 		known[row.RepositoryID] = row
 	}
@@ -90,12 +115,17 @@ func (s *server) refreshSyncPaths(
 			repository.PathIndexIntervalOverride,
 		)
 
-		was, seen := known[repository.ID]
-		if seen && now.Sub(was.ObservedAt) < interval {
-			continue
+		// Nil is a repository nothing has scanned yet, which is what the two
+		// `seen &&` guards below used to spell with a second parameter.
+		var was *orgsync.RepositoryPathScan
+		if scan, seen := known[repository.ID]; seen {
+			if now.Sub(scan.ObservedAt) < interval {
+				continue
+			}
+			was = &scan
 		}
 
-		s.refreshRepositoryPaths(ctx, client, targetID, repository, was, seen, now)
+		s.refreshRepositoryPaths(ctx, client, targetID, repository, was, now)
 	}
 
 	// And what the installation no longer holds. A repository that left it, or
@@ -144,8 +174,7 @@ func (s *server) refreshRepositoryPaths(
 	client *github.Client,
 	targetID string,
 	repository storage.Repository,
-	was orgsync.RepositoryPaths,
-	seen bool,
+	was *orgsync.RepositoryPathScan,
 	now time.Time,
 ) {
 	head, err := repositoryHead(ctx, client, repository.FullName, repository.DefaultBranch)
@@ -162,9 +191,11 @@ func (s *server) refreshRepositoryPaths(
 	// an empty one is a repository with no commits at all on one side and a
 	// list written before this was recorded on the other, and neither is
 	// evidence that nothing has changed.
-	if seen && head != "" && head == was.HeadSHA {
-		was.ObservedAt = now
-		if err := s.store.SetSyncRepositoryPaths(ctx, was); err != nil {
+	if was != nil && head != "" && head == was.HeadSHA {
+		// The timestamp alone. The list this row holds is still the list that
+		// branch points at, and rewriting it to move one column re-encoded
+		// every path in the repository.
+		if err := s.store.TouchSyncRepositoryPaths(ctx, repository.ID, now); err != nil {
 			logging.From(ctx).Warn("could not record a repository's paths as current",
 				"repo", repository.FullName, "error", err)
 		}
@@ -172,11 +203,28 @@ func (s *server) refreshRepositoryPaths(
 		return
 	}
 
-	paths, partial, err := repositoryPaths(
+	paths, partial, missing, err := repositoryPaths(
 		ctx, client, repository.FullName, repository.DefaultBranch)
 	if err != nil {
 		logging.From(ctx).Warn("could not read a repository's paths",
 			"repo", repository.FullName, "error", err)
+
+		return
+	}
+
+	// A tree that is not there, under a branch that IS. Those two together are
+	// not a repository holding no files - a repository with no commits has no
+	// head either, and answers both reads empty, which is the case just below.
+	// This is a branch renamed between the two reads, or access withdrawn
+	// (GitHub answers 404, not 403, for a repository a token cannot see).
+	//
+	// So the stored list is kept rather than replaced with nothing. Overwriting
+	// took every path the repository contributes out of the finder, recorded
+	// the empty list as complete, and stuck: the row carried the new head, so
+	// every later tick took the unchanged-head path and only stamped the time.
+	if missing && head != "" {
+		logging.From(ctx).Warn("no tree under a branch that has one, keeping the stored paths",
+			"repo", repository.FullName, "branch", repository.DefaultBranch)
 
 		return
 	}
@@ -203,37 +251,65 @@ func repositoryHead(
 	client *github.Client,
 	fullName, branch string,
 ) (string, error) {
-	owner, repo, ok := strings.Cut(fullName, "/")
-	if !ok {
-		return "", fmt.Errorf("%w: repository name %q has no owner", ErrInvalidInput, fullName)
+	owner, repo, err := namedRepository(fullName)
+	if err != nil {
+		return "", err
 	}
 
 	return client.GetRef(ctx, owner, repo, "heads/"+branch)
 }
 
-// repositoryPaths reads every ordinary file one repository holds, and reports
-// whether GitHub listed them all.
+// namedRepository is `owner/repo` split, and refused where there is no owner.
+//
+// `splitFullName` answers an empty owner for a name carrying no slash, which is
+// what its own callers want - they are naming a repository in a sentence. These
+// two are building an API path, where an empty owner asks GitHub for a route
+// that does not exist and is answered 404, which reads as a repository holding
+// nothing. So they refuse it instead, in one place rather than two.
+func namedRepository(fullName string) (string, string, error) {
+	owner, repo := splitFullName(fullName)
+	if owner == "" {
+		return "", "", fmt.Errorf(
+			"%w: repository name %q has no owner", ErrInvalidInput, fullName)
+	}
+
+	return owner, repo, nil
+}
+
+// repositoryPaths reads every ordinary file one repository holds, reports
+// whether GitHub listed them all, and whether there was a tree to read at all.
 //
 // Ordinary files only: a directory is not something a template can be written
 // at, and a symbolic link or a submodule is a path that cannot be written to
 // without destroying what is there.
+//
+// The third answer is the one that costs something to get wrong. A tree that is
+// not there answers 404, which `RepositoryTree` reports as Missing rather than
+// as an error - and read as "this repository holds no files" it replaced a good
+// list with an empty one and recorded the empty one as complete. GitHub answers
+// 404 for a branch renamed between reading the ref and reading the tree, and
+// for a repository the token has lost access to, so this is not a rare shape.
+// Worse, it stuck: the row kept the new head, so every later tick took the
+// unchanged-head path and only stamped the time.
 func repositoryPaths(
 	ctx context.Context,
 	client *github.Client,
 	fullName, branch string,
-) ([]string, bool, error) {
-	owner, repo, ok := strings.Cut(fullName, "/")
-	if !ok {
-		return nil, false, fmt.Errorf(
-			"%w: repository name %q has no owner", ErrInvalidInput, fullName)
+) (paths []string, partial, missing bool, err error) {
+	owner, repo, err := namedRepository(fullName)
+	if err != nil {
+		return nil, false, false, err
 	}
 
 	tree, err := client.ListWholeRepositoryTree(ctx, owner, repo, branch)
 	if err != nil {
-		return nil, false, err
+		return nil, false, false, err
+	}
+	if tree.Missing {
+		return nil, false, true, nil
 	}
 
-	paths := make([]string, 0, len(tree.Entries))
+	paths = make([]string, 0, len(tree.Entries))
 	for path, entry := range tree.Entries {
 		if entry.OrdinaryFile() {
 			paths = append(paths, path)
@@ -241,5 +317,5 @@ func repositoryPaths(
 	}
 	sort.Strings(paths)
 
-	return paths, tree.Truncated, nil
+	return paths, tree.Truncated, false, nil
 }
