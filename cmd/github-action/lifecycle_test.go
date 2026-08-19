@@ -16,6 +16,24 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
+// returnBudget is how long Run gets to come back after its context is
+// cancelled.
+//
+// Comfortably above five seconds, because http.Server.Shutdown has a five
+// second floor and Run cannot get out from under it: a connection the server
+// has accepted but read no request header from counts as idle only once it is
+// five seconds old (net/http, golang/go#22682), and everything before then
+// keeps Shutdown polling. Nothing cancels that wait - shutdownCtx is built
+// from context.Background() on purpose, so the listeners drain whether the
+// service was asked to stop or died on its own.
+//
+// A budget of five seconds sat exactly on that floor and failed in CI on a
+// loaded runner. Every other step out of Run selects on ctx.Done(), so the
+// shutdown is the only place seconds can be spent, and a hang there still
+// fails loudly: Shutdown gives up after shutdownTimeout and Run reports the
+// deadline rather than nil.
+const returnBudget = 10 * time.Second
+
 // freePort asks the kernel for a port nothing is using, so a spec that binds a
 // real listener cannot collide with another
 func freePort() int {
@@ -95,7 +113,7 @@ var _ = Describe("Service lifecycle [Unit]", func() {
 
 		cancel()
 
-		Eventually(result, 5*time.Second).Should(Receive(BeNil()))
+		Eventually(result, returnBudget).Should(Receive(BeNil()))
 	})
 
 	It("should serve the admin routes on their own port", func() {
@@ -127,7 +145,7 @@ var _ = Describe("Service lifecycle [Unit]", func() {
 
 		cancel()
 
-		Eventually(result, 5*time.Second).Should(Receive(BeNil()))
+		Eventually(result, returnBudget).Should(Receive(BeNil()))
 	})
 
 	It("should report a listen address it cannot bind", func() {
