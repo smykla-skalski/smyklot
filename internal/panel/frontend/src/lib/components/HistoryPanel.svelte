@@ -45,15 +45,24 @@
   import ResultProblem from './ResultProblem.svelte';
   import RootPageHeader from './RootPageHeader.svelte';
   import SearchField from './SearchField.svelte';
-  import SegmentedControl from './SegmentedControl.svelte';
+  import SectionTabs from './SectionTabs.svelte';
   import TableEmptyState from './TableEmptyState.svelte';
 
   type HistoryType = 'audit' | 'failures';
   type HistoryContext = 'installation' | 'root';
 
+  /**
+   * The two tables, which are two addresses.
+   *
+   * Tabs rather than a segmented control: a segmented control changes what is
+   * on screen and saves nothing, and these survive a reload, can be linked and
+   * answer the browser's Back. Drawn as a strip of segments, the one thing a
+   * reader could not do with them was copy the address of the one they were
+   * looking at.
+   */
   const HISTORY_TYPES = [
-    { value: 'audit', label: 'Audit', tone: 'accent' },
-    { value: 'failures', label: 'Failures', tone: 'accent' },
+    { id: 'audit', label: 'Audit' },
+    { id: 'failures', label: 'Failures' },
   ] as const;
 
   const AUDIT_SCOPE_FILTERS = [
@@ -137,6 +146,7 @@
     rootRole = 'Root',
     section,
     onSection,
+    sectionHref,
     prefs = EPHEMERAL_PREFS,
   }: {
     targetId: string;
@@ -146,6 +156,8 @@
     rootRole?: string;
     section?: HistoryType;
     onSection?: (section: HistoryType) => void;
+    /** Where each table lives; the strip is a strip of addresses. */
+    sectionHref?: (section: HistoryType) => string;
     prefs?: PrefsAccessor;
   } = $props();
 
@@ -714,13 +726,14 @@
   <!-- The table switch sits at the head of the controls row, left of the
        search, the same place Access puts its Users/Invitations switch. -->
   <div class="history-tools">
-    <SegmentedControl
-      name="history-type"
+    <SectionTabs
+      items={HISTORY_TYPES.map((type) => ({
+        ...type,
+        href: sectionHref?.(type.id) ?? '#',
+      }))}
+      active={historyType}
       label="History type"
-      variant="navigation"
-      options={HISTORY_TYPES}
-      value={historyType}
-      onSelect={selectHistoryType}
+      onNavigate={selectHistoryType}
     />
 
     <SearchField

@@ -15,6 +15,7 @@
     rootRole={session.rootRole}
     section="recent"
     onSection={(next) => session.selectQueueSection(next)}
+    sectionHref={(next) => session.queueSectionHref(next)}
     onOpenRequest={(request) => session.openQueueRequest(request)}
   />
 </section>

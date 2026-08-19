@@ -45,7 +45,7 @@
   import RootPageHeader from './RootPageHeader.svelte';
   import SearchField from './SearchField.svelte';
   import TableToolsMenu from './TableToolsMenu.svelte';
-  import SegmentedControl from './SegmentedControl.svelte';
+  import SectionTabs from './SectionTabs.svelte';
   import TableEmptyState from './TableEmptyState.svelte';
 
   type AccessSection = 'users' | 'invitations';
@@ -58,9 +58,11 @@
   const ACTION_DIALOG = 'root-user-action';
   const ADD_DIALOG = 'root-add-installation-user';
 
+  /* Two lists, which are two addresses: tabs rather than a segmented control,
+     which changes what is on screen and saves nothing. */
   const SECTIONS = [
-    { value: 'users', label: 'Users', tone: 'accent' },
-    { value: 'invitations', label: 'Invitations', tone: 'accent' },
+    { id: 'users', label: 'Users' },
+    { id: 'invitations', label: 'Invitations' },
   ] as const;
   const ROLE_FILTERS = [
     {
@@ -85,6 +87,7 @@
     rootRole,
     section,
     onSection,
+    sectionHref,
     fetchUsers,
     updateUser,
     fetchInvitations,
@@ -101,6 +104,8 @@
     rootRole: string;
     section: AccessSection;
     onSection: (section: AccessSection) => void;
+    /** Where each list lives; the strip is a strip of addresses. */
+    sectionHref?: (section: AccessSection) => string;
     fetchUsers: (request: RootPanelUserPageRequest) => Promise<Page<RootPanelUser>>;
     updateUser: (accountId: string, input: UpdateRootUserInput) => Promise<void>;
     fetchInvitations: (request: InvitationPageRequest) => Promise<Page<PanelInvitation>>;
@@ -484,13 +489,11 @@
 </script>
 
 {#snippet sectionSwitch()}
-  <SegmentedControl
-    name="root-access-section"
+  <SectionTabs
+    items={SECTIONS.map((one) => ({ ...one, href: sectionHref?.(one.id) ?? '#' }))}
+    active={section}
     label="Root access lists"
-    variant="navigation"
-    options={SECTIONS}
-    value={section}
-    onSelect={selectSection}
+    onNavigate={selectSection}
   />
 {/snippet}
 

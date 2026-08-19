@@ -46,7 +46,7 @@
     api: PanelApi;
     actorLogin: string;
     listHref: string;
-    hrefFor: (account: string, view: RootInstallationView) => string;
+    hrefFor: (account: string, view: RootInstallationView, section?: HistorySection) => string;
     onList: () => void;
     onNavigate: (account: string, view: RootInstallationView) => void;
     historySection: HistorySection;
@@ -374,6 +374,7 @@
       actorTargetRole={canWrite ? 'owner' : 'none'}
       readOnly={!canWrite}
       onSection={selectAccessSection}
+      sectionHref={(next: 'users' | 'invitations') => hrefFor(installation.account.login, next)}
       fetchTargetUsers={api.fetchRootTargetUsers}
       addTargetUser={api.addRootTargetUser}
       suggestUsers={api.suggestRootTargetUsers}
@@ -389,6 +390,7 @@
       targetId={installation.id}
       section={historySection}
       onSection={onHistorySection}
+      sectionHref={(next: HistorySection) => hrefFor(installation.account.login, 'history', next)}
       fetchAudit={(request) => api.fetchRootTargetAudit(installation.id, request)}
       fetchFailures={(request) => api.fetchRootTargetFailures(installation.id, request)}
     />

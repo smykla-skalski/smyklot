@@ -1,6 +1,6 @@
 <script lang="ts">
   import { getPanelSession } from '#lib/session.svelte.js';
-  import type { RootInstallationView } from '#lib/routes.js';
+  import type { HistorySection, RootInstallationView } from '#lib/routes.js';
   import RootInstallations from '#lib/components/RootInstallations.svelte';
 
   const session = getPanelSession();
@@ -17,7 +17,8 @@
     rootRole={session.rootRole}
     actorLogin={session.viewer?.account.login ?? ''}
     listHref={session.rootInstallationsHref()}
-    hrefFor={(a: string, v: RootInstallationView) => session.rootInstallationHref(a, v)}
+    hrefFor={(a: string, v: RootInstallationView, s?: HistorySection) =>
+      session.rootInstallationHref(a, v, s)}
     onList={() => session.selectRootInstallations()}
     onNavigate={(a: string, v: RootInstallationView) => session.selectRootInstallation(a, v)}
     historySection={session.currentHistorySection}
