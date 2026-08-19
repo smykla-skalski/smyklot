@@ -660,7 +660,10 @@
         An actor here steps around every rule above, everywhere this ruleset applies
       </p>
 
-      <div class="actor-rows">
+      <!-- `.ruled-rows` draws the seam inset from the edges and clears it under
+           the pointer, which a `border-top` cannot - and these rows have a
+           hover ground for the line to be drawn across. -->
+      <div class="actor-rows ruled-rows">
         {#each actors as actor, index (index)}
           <PolicyRow
             name={actorName(actor.actor_type, actor.actor_id)}
@@ -793,10 +796,6 @@
   .actors-note,
   .actor-rows {
     display: grid;
-  }
-
-  .actor-rows > :global(.policy-row + .policy-row) {
-    border-top: 1px solid var(--border-subtle);
   }
 
   /* The two things that act on the whole ruleset, at the end where a page's own

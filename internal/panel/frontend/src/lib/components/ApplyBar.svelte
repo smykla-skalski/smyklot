@@ -45,7 +45,7 @@
   const scope = $derived(plural(repositories, 'repository', 'repositories'));
 </script>
 
-<div class="apply-bar">
+<div class="plate apply-bar">
   <p class="apply-note band-trim">
     <strong>{plural(changes, 'change', 'changes')} across {scope}</strong>{#if removals > 0},
       including <span class="is-removal">{plural(removals, 'removal', 'removals')}</span>{/if}.
@@ -69,16 +69,16 @@
 </div>
 
 <style>
+  /* `.plate` is the card - the ground, the keyline, the radius and the shadow -
+     and this had spelled all four out again through the aliases (`--strip` IS
+     `--surface-base`, `--rule` IS `--border-subtle`). What is left is what
+     makes this plate a BAR: a row, and one that stays with the reader. */
   .apply-bar {
     align-items: center;
-    background: var(--surface-base);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--r-strip);
     bottom: var(--space-4);
-    box-shadow: var(--shadow-plate);
     display: flex;
     gap: var(--space-4);
-    margin-top: var(--space-5);
+    margin-block: var(--space-5) 0;
     padding: var(--space-3) var(--space-4);
     position: sticky;
     z-index: var(--layer-sticky);

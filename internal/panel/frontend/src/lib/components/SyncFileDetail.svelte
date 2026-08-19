@@ -50,7 +50,7 @@
   import Button from './Button.svelte';
   import Chip from './Chip.svelte';
   import ChoiceCards from './ChoiceCards.svelte';
-  import CodeBlock, { type CodeLine } from './CodeBlock.svelte';
+  import CodeBlock, { codeLines } from './CodeBlock.svelte';
   import CodeEditor from './CodeEditor.svelte';
   import BackLink from './BackLink.svelte';
   import ObjectRow from './ObjectRow.svelte';
@@ -129,15 +129,6 @@
 
   const template = $derived(file?.content ?? '');
   const templateJson = $derived(composable(path) ? parseJson(template) : undefined);
-
-  function linesOf(text: string, marked: readonly number[] = []): CodeLine[] {
-    const set = new Set(marked);
-
-    return text
-      .split('\n')
-      .slice(0, text.endsWith('\n') ? -1 : undefined)
-      .map((line, index) => ({ text: line, number: index + 1, overridden: set.has(index + 1) }));
-  }
 
   /**
    * A stored merge entry, as the composer reads it.
@@ -408,7 +399,7 @@
           Nothing yet. Whatever is typed here is written to every repository that does not adjust it
         </p>
       {:else}
-        <CodeBlock lines={linesOf(template)} {language} label="{path} template" />
+        <CodeBlock lines={codeLines(template)} {language} label="{path} template" />
       {/if}
     </Plate>
 

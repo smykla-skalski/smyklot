@@ -12,6 +12,23 @@
     /** The line's number in the file. A diff leaves it off what it adds. */
     number?: number;
   }
+
+  /**
+   * A whole file's text, cut into the lines this draws.
+   *
+   * Here rather than in each caller because the trailing-newline rule is easy
+   * to write twice and get right once: a file ends with one, and splitting on
+   * it leaves a final empty piece that would be drawn as a line which is there
+   * and is not. The editor and the file page had a copy each.
+   */
+  export function codeLines(text: string, overridden: readonly number[] = []): CodeLine[] {
+    const marked = new Set(overridden);
+
+    return text
+      .split('\n')
+      .slice(0, text.endsWith('\n') ? -1 : undefined)
+      .map((line, at) => ({ text: line, number: at + 1, overridden: marked.has(at + 1) }));
+  }
 </script>
 
 <script lang="ts">

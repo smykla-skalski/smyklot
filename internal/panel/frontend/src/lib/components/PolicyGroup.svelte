@@ -17,6 +17,7 @@
    * settings group is not a new kind of surface, only a new thing to put on
    * one.
    */
+  import Button from '#lib/components/Button.svelte';
   import Plate from '#lib/components/Plate.svelte';
 
   const {
@@ -85,7 +86,11 @@
   {/if}
 
   {#if children !== undefined}
-    <div class="policy-rows">
+    <!-- `.ruled-rows` rather than a border of its own: it draws the seam as a
+         pseudo-element inset from the edges and clears it under the pointer,
+         which a `border-top` cannot do - and a policy row has a hover ground,
+         so the line was drawn across it. -->
+    <div class="policy-rows ruled-rows">
       {@render children()}
     </div>
   {/if}
@@ -105,7 +110,7 @@
       {#if picking && picker !== undefined}
         {@render picker()}
       {:else if onManage !== undefined}
-        <button type="button" class="manage" onclick={onManage}>Manage</button>
+        <Button tone="quiet" class="manage" onclick={onManage}>Manage</Button>
       {/if}
     </div>
   {/if}
@@ -131,12 +136,6 @@
     display: grid;
   }
 
-  /* Every row but the first is separated from the one above it. Written on the
-     container so a row knows nothing about its neighbours. */
-  .policy-rows > :global(.policy-row + .policy-row) {
-    border-top: 1px solid var(--border-subtle);
-  }
-
   .group-rest {
     align-items: center;
     border-top: 1px solid var(--border-subtle);
@@ -147,9 +146,14 @@
     padding-top: var(--space-3);
   }
 
+  /* Trimmed, because what stands beside it is a control and a control is a box:
+     `align-items: center` puts the two boxes on one centre, and an untrimmed
+     line's box is not its band - the sentence sat 0.47px off the button once
+     the button became a real one. */
   .rest-say {
     color: var(--text-muted);
     font-size: var(--font-size-compact);
+    text-box: trim-both cap alphabetic;
   }
 
   .rest-count {
@@ -157,25 +161,16 @@
     font-weight: 600;
   }
 
-  .manage {
-    appearance: none;
-    background: none;
-    border: 0;
-    border-radius: var(--r-ctl);
+  /* `Button` draws the control - the ground, the press, the hover overlay, and
+     the `.button-label` that puts the word on its own cap height, which eleven
+     hand-rolled declarations here did not. What is left is the one thing no
+     tone offers: quiet, in the action colour rather than in the dim one. */
+  /* `:global`, and anchored through the row, because a class handed to a child
+     component is not in this component's scope - Svelte scopes the markup it
+     renders itself, and the `<button>` is `Button`'s. */
+  .group-rest :global(.manage),
+  .group-rest :global(.manage:hover:not(:disabled)) {
     color: var(--brand-action-text);
-    cursor: pointer;
-    font: inherit;
-    font-size: var(--font-size-compact);
-    font-weight: 500;
-    padding: 0.35rem 0.5rem;
-    white-space: nowrap;
-  }
-
-  .manage:hover {
-    background-image: linear-gradient(
-      var(--interactive-hover-layer),
-      var(--interactive-hover-layer)
-    );
   }
 
   @media (max-width: 40rem) {

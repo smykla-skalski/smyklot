@@ -19,7 +19,7 @@
    * independent scrollers is how an overlay editor comes to draw one line and
    * hold another.
    */
-  import CodeBlock, { type CodeLine } from './CodeBlock.svelte';
+  import CodeBlock, { codeLines } from './CodeBlock.svelte';
   import type { Language } from '#lib/syntax.js';
 
   let {
@@ -45,17 +45,10 @@
 
   let frame = $state<HTMLDivElement | null>(null);
 
-  const marked = $derived(new Set(overridden));
-
-  /* The trailing newline every file ends with would otherwise draw an extra
-     empty line under the caret's last one, which reads as a line that is there
-     and is not. */
-  const lines = $derived<CodeLine[]>(
-    value
-      .split('\n')
-      .slice(0, value.endsWith('\n') ? -1 : undefined)
-      .map((text, at) => ({ text, number: at + 1, overridden: marked.has(at + 1) })),
-  );
+  /* `codeLines`, because the picture under the caret is drawn by `CodeBlock`
+     and cutting the text differently from it is how the two come to disagree
+     about how many lines there are. It owns the trailing-newline rule. */
+  const lines = $derived(codeLines(value, overridden));
 
   /** The picture follows the caret rather than scrolling on its own. */
   function follow(event: Event): void {
