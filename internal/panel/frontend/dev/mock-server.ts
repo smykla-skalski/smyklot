@@ -1010,13 +1010,22 @@ async function handle(
       respond(res, 200, {
         paths: [...counts]
           .map(([known, held]) => ({ path: known, repositories: held }))
-          .sort((left, right) =>
-            left.repositories === right.repositories
-              ? left.path.localeCompare(right.path)
-              : right.repositories - left.repositories,
-          ),
+          /* Held by most first, then by path - and by path the way the service
+             breaks that tie, which is `strings.Compare`, a byte comparison.
+             `localeCompare` puts `README.md` and `api.md` the other way round,
+             so the mock and the service disagreed about the order of the very
+             first rows a reader sees. */
+          .sort((left, right) => {
+            if (left.repositories !== right.repositories) {
+              return right.repositories - left.repositories;
+            }
+
+            return left.path < right.path ? -1 : left.path > right.path ? 1 : 0;
+          }),
         repositories: target.repositories.length,
         observed_at: new Date().toISOString(),
+        // Always sent by the service, so always sent here.
+        partial: false,
       });
       return;
     }
