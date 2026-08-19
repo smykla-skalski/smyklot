@@ -81,6 +81,13 @@ pollInterval: 5m
 # a merge-after-CI request is completed
 pendingCIQuietPeriod: 30s
 
+# pathIndexInterval is how often each repository's file list is checked for
+# changes, so the panel's path finder offers what exists. Only the commit its
+# default branch points at is read unless something moved, so this is cheap to
+# shorten. 0 checks on every sweep; an installation or one repository can
+# override it from the panel
+pathIndexInterval: 1h
+
 logFormat: json
 logLevel: info
 

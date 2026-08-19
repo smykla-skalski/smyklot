@@ -52,6 +52,7 @@ type Config struct {
 	LogLevel                 slog.Level
 	PollInterval             time.Duration
 	PendingCIQuietPeriod     time.Duration
+	PathIndexInterval        time.Duration
 	SessionTTL               time.Duration
 	StateTTL                 time.Duration
 	ProcessConfig            *config.Config

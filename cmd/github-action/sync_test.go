@@ -2133,7 +2133,7 @@ var _ = Describe("Org sync [Unit]", func() {
 			Expect(rows).To(HaveLen(1))
 
 			row := rows[0]
-			row.ObservedAt = time.Now().UTC().Add(-2 * pathIndexTTL)
+			row.ObservedAt = time.Now().UTC().Add(-2 * defaultPathIndexInterval)
 			Expect(service.store.SetSyncRepositoryPaths(GinkgoT().Context(), row)).To(Succeed())
 
 			return row
@@ -2219,6 +2219,62 @@ var _ = Describe("Org sync [Unit]", func() {
 			Expect(rows[0].HeadSHA).To(BeEmpty())
 		})
 
+		// How often the check happens, which is a choice because the check is
+		// cheap. Nearest wins: the repository if it says, then its
+		// installation, then the process.
+		Describe("how often it looks", func() {
+			// The installation says hardly ever, so a repository due under the
+			// process's own interval is left alone.
+			It("takes the installation's interval over the process's", func() {
+				target := seed()
+				refresh(target)
+				due(target)
+
+				_, err := service.store.UpdateTargetSettings(
+					GinkgoT().Context(), targetSettingsWithPathIndex(target, 6*24*time.Hour))
+				Expect(err).NotTo(HaveOccurred())
+
+				before := stub.countCalls(http.MethodGet, "/git/ref/heads/main")
+				refresh(target)
+
+				Expect(stub.countCalls(http.MethodGet, "/git/ref/heads/main")).To(Equal(before))
+			})
+
+			// And the repository beats its installation, which is the level
+			// that exists for the one repository that is the exception.
+			It("takes the repository's interval over the installation's", func() {
+				target := seed()
+				refresh(target)
+				due(target)
+
+				updated, err := service.store.UpdateTargetSettings(
+					GinkgoT().Context(), targetSettingsWithPathIndex(target, 6*24*time.Hour))
+				Expect(err).NotTo(HaveOccurred())
+
+				repositories, err := service.store.ListRepositories(
+					GinkgoT().Context(), updated.ID)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(repositories).To(HaveLen(1))
+
+				every := time.Duration(0)
+				_, err = service.store.UpdateRepositorySettings(
+					GinkgoT().Context(), storage.RepositorySettingsChange{
+						TargetID: updated.ID, RepositoryID: repositories[0].ID,
+						ActorAccountID:            updated.Account.ID,
+						PathIndexIntervalOverride: &every,
+						ExpectedRevision:          repositories[0].Revision,
+						ChangedAt:                 time.Now().UTC(),
+					})
+				Expect(err).NotTo(HaveOccurred())
+
+				before := stub.countCalls(http.MethodGet, "/git/ref/heads/main")
+				refresh(target)
+
+				Expect(stub.countCalls(http.MethodGet, "/git/ref/heads/main")).
+					To(Equal(before + 1))
+			})
+		})
+
 		// GitHub will not list a very large tree in one answer, and the list it
 		// does give says only that there is more. Divided rather than accepted:
 		// truncation is a property of a RESPONSE, so a subtree of a tree too
@@ -2280,6 +2336,25 @@ var _ = Describe("Org sync [Unit]", func() {
 		Expect(err).To(HaveOccurred())
 	})
 })
+
+// targetSettingsWithPathIndex says how often this installation's repositories
+// have their file lists checked, leaving its other settings as they are.
+func targetSettingsWithPathIndex(
+	target storage.Target,
+	every time.Duration,
+) storage.TargetSettingsChange {
+	return storage.TargetSettingsChange{
+		TargetID:                       target.ID,
+		ActorAccountID:                 target.Account.ID,
+		RepositoryDefaultEnabled:       target.RepositoryDefaultEnabled,
+		PendingCIModeDefault:           target.PendingCIModeDefault,
+		PendingCIBranchPatternsDefault: target.PendingCIBranchPatternsDefault,
+		PathIndexIntervalOverride:      &every,
+		ConfigPatch:                    target.ConfigPatch,
+		ExpectedRevision:               target.Revision,
+		ChangedAt:                      time.Now().UTC(),
+	}
+}
 
 // syncAuditActions reads which sync events an installation recorded.
 func syncAuditActions(service *server, target storage.Target) []string {

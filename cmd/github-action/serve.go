@@ -16,6 +16,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/smykla-skalski/smyklot/internal/panel"
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage/open"
 	"github.com/smykla-skalski/smyklot/pkg/config"
@@ -28,6 +29,7 @@ const (
 	flagWebhookPath          = "webhook-path"
 	flagPollInterval         = "poll-interval"
 	flagPendingCIQuietPeriod = "pending-ci-quiet-period"
+	flagPathIndexInterval    = "path-index-interval"
 	flagLogFormat            = "log-format"
 	flagLogLevel             = "log-level"
 	flagDatabase             = "database-url"
@@ -43,6 +45,7 @@ const (
 	descWebhookPath          = "Path GitHub delivers webhooks to"
 	descPollInterval         = "How often to sweep reactions and pending-CI PRs (0 disables)"
 	descPendingCIQuietPeriod = "How long CI must remain unchanged and passing before merge"
+	descPathIndexInterval    = "How often a repository's file list is checked for changes"
 	descLogFormat            = "Log format: json or text"
 	descLogLevel             = "Log level: debug, info, warn or error"
 	descDatabase             = "Database to store service state in: a postgres:// URL or a file path"
@@ -59,6 +62,7 @@ const (
 	envWebhookSecret        = "SMYKLOT_WEBHOOK_SECRET" //nolint:gosec // Environment variable name, not a credential
 	envPollInterval         = "SMYKLOT_POLL_INTERVAL"
 	envPendingCIQuietPeriod = "SMYKLOT_PENDING_CI_QUIET_PERIOD"
+	envPathIndexInterval    = "SMYKLOT_PATH_INDEX_INTERVAL"
 	envLogFormat            = "SMYKLOT_LOG_FORMAT"
 	envLogLevel             = "SMYKLOT_LOG_LEVEL"
 	envDatabase             = "SMYKLOT_DATABASE_URL"
@@ -86,6 +90,15 @@ const (
 	defaultWebhookPath          = "/webhook"
 	defaultPollInterval         = 5 * time.Minute
 	defaultPendingCIQuietPeriod = pendingci.DefaultPassingQuiet
+
+	// defaultPathIndexInterval is how often a repository's file list is checked
+	// for changes, before an installation or a repository says otherwise.
+	//
+	// An hour. What a check costs is the commit the default branch points at -
+	// a few hundred bytes whatever the repository holds - and the list itself
+	// is read only where that moved. It was a day when every check meant
+	// reading the whole tree.
+	defaultPathIndexInterval = time.Hour
 
 	// defaultLogFormat is JSON because the service's lines are read by a query,
 	// not by a person. The Action keeps writing for a person to read
@@ -121,6 +134,9 @@ var (
 
 	// ErrInvalidPendingCIQuietPeriod is returned for an invalid stability window.
 	ErrInvalidPendingCIQuietPeriod = errors.New("invalid pending-CI quiet period")
+
+	// ErrInvalidPathIndexInterval is returned for an unusable refresh interval.
+	ErrInvalidPathIndexInterval = errors.New("invalid path index interval")
 
 	// ErrStateConfig is returned when mandatory durable state cannot be configured.
 	ErrStateConfig = errors.New("invalid service state configuration")
@@ -173,6 +189,11 @@ func init() {
 		defaultPendingCIQuietPeriod,
 		descPendingCIQuietPeriod,
 	)
+	serveCmd.Flags().Duration(
+		flagPathIndexInterval,
+		defaultPathIndexInterval,
+		descPathIndexInterval,
+	)
 	serveCmd.Flags().String(flagLogFormat, defaultLogFormat, descLogFormat)
 	serveCmd.Flags().String(flagLogLevel, defaultLogLevel, descLogLevel)
 	serveCmd.Flags().String(flagDatabase, defaultState, descDatabase)
@@ -199,6 +220,7 @@ type serveConfig struct {
 	webhookSecret        []byte
 	pollInterval         time.Duration
 	pendingCIQuietPeriod time.Duration
+	pathIndexInterval    time.Duration
 
 	// adminAddress carries the probes, metrics and recent failures, on its own
 	// port because the webhook port is reachable from the internet
@@ -497,6 +519,24 @@ func applyServeFlags(cmd *cobra.Command, cfg *serveConfig) error {
 		cfg.pendingCIQuietPeriod > pendingci.MaxPassingQuiet ||
 		(cfg.pendingCIQuietPeriod > 0 && cfg.pendingCIQuietPeriod < time.Second) {
 		return ErrInvalidPendingCIQuietPeriod
+	}
+	pathIndex, err := cmd.Flags().GetDuration(flagPathIndexInterval)
+	if err != nil {
+		return err
+	}
+	cfg.pathIndexInterval, err = flagOrEnvDuration(
+		cmd,
+		flagPathIndexInterval,
+		pathIndex,
+		envPathIndexInterval,
+		ErrInvalidPathIndexInterval,
+	)
+	if err != nil {
+		return err
+	}
+	// Zero is every sweep, so only the ends are refused.
+	if cfg.pathIndexInterval < 0 || cfg.pathIndexInterval > panel.MaxPathIndexInterval {
+		return ErrInvalidPathIndexInterval
 	}
 
 	return applyLogFlags(cmd, cfg)

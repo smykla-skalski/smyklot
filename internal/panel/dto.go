@@ -78,6 +78,7 @@ type targetResponse struct {
 	PendingCIModeDefault                storage.PendingCIMode           `json:"pending_ci_mode_default"`
 	PendingCIBranchPatternsDefault      storage.PendingCIBranchPatterns `json:"pending_ci_branch_patterns_default"`
 	PendingCIQuietPeriodSecondsOverride *int64                          `json:"pending_ci_quiet_period_seconds_override"`
+	PathIndexIntervalSecondsOverride    *int64                          `json:"path_index_interval_seconds_override"`
 	PendingCIPermissions                pendingCIPermissionsResponse    `json:"pending_ci_permissions"`
 	ConfigPatch                         config.Patch                    `json:"config_patch"`
 	InheritedConfig                     config.Config                   `json:"inherited_config"`
@@ -165,6 +166,8 @@ type repositoryDetailResponse struct {
 	PendingCIBranchPatternsInherited     storage.PendingCIBranchPatterns  `json:"pending_ci_branch_patterns_inherited"`
 	PendingCIQuietPeriodSecondsOverride  *int64                           `json:"pending_ci_quiet_period_seconds_override"`
 	PendingCIQuietPeriodSecondsInherited *int64                           `json:"pending_ci_quiet_period_seconds_inherited"`
+	PathIndexIntervalSecondsOverride     *int64                           `json:"path_index_interval_seconds_override"`
+	PathIndexIntervalSecondsInherited    *int64                           `json:"path_index_interval_seconds_inherited"`
 	PendingCIGate                        *pendingCIGateResponse           `json:"pending_ci_gate,omitempty"`
 	Revision                             int64                            `json:"revision"`
 }
@@ -271,6 +274,7 @@ func targetDTO(
 		PendingCIModeDefault:                target.PendingCIModeDefault,
 		PendingCIBranchPatternsDefault:      target.PendingCIBranchPatternsDefault,
 		PendingCIQuietPeriodSecondsOverride: durationSecondsDTO(target.PendingCIQuietPeriodOverride),
+		PathIndexIntervalSecondsOverride:    durationSecondsDTO(target.PathIndexIntervalOverride),
 		PendingCIPermissions: pendingCIPermissionsResponse{
 			ChecksWrite:         target.Grants("checks"),
 			AdministrationWrite: target.Grants("administration"),
@@ -363,6 +367,8 @@ func repositoryDetailDTO(
 		PendingCIBranchPatternsInherited:     target.PendingCIBranchPatternsDefault,
 		PendingCIQuietPeriodSecondsOverride:  durationSecondsDTO(repository.PendingCIQuietPeriodOverride),
 		PendingCIQuietPeriodSecondsInherited: durationSecondsDTO(target.PendingCIQuietPeriodOverride),
+		PathIndexIntervalSecondsOverride:     durationSecondsDTO(repository.PathIndexIntervalOverride),
+		PathIndexIntervalSecondsInherited:    durationSecondsDTO(target.PathIndexIntervalOverride),
 		PendingCIGate:                        pendingCIGateDTO(repository.PendingCIGate),
 		Revision:                             repository.Revision,
 	}

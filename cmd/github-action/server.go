@@ -116,9 +116,15 @@ type server struct {
 	runtimeMu           sync.RWMutex
 	runtimeBotConfig    *config.Config
 	runtimePollInterval time.Duration
-	pollIntervalChanged chan struct{}
-	migrationRetryDelay time.Duration
-	sweepMu             sync.Mutex
+
+	// runtimePathIndexInterval is how often a repository's file list is checked
+	// for changes, for every installation that does not say otherwise. Held
+	// here rather than read from the panel each sweep, like the poll interval
+	// beside it.
+	runtimePathIndexInterval time.Duration
+	pollIntervalChanged      chan struct{}
+	migrationRetryDelay      time.Duration
+	sweepMu                  sync.Mutex
 
 	registry *prometheus.Registry
 	metrics  *metrics.Metrics
@@ -225,26 +231,27 @@ func newServer(cfg *serveConfig) (*server, error) {
 	level.Set(cfg.logLevel)
 	resolvedConfig := config.Resolve(cfg.botConfig)
 	srv := &server{
-		cfg:                  cfg,
-		tokens:               tokens,
-		logger:               logging.New(out, cfg.logFormat, level, redactor),
-		logLevel:             level,
-		redactor:             redactor,
-		runtimeBotConfig:     &resolvedConfig.Values,
-		runtimePollInterval:  cfg.pollInterval,
-		pollIntervalChanged:  make(chan struct{}, 1),
-		pendingCIGateChanged: make(chan struct{}, 1),
-		migrationRetryDelay:  pendingCIRetryDelay,
-		registry:             registry,
-		metrics:              metrics.New(registry),
-		configs:              newRepoConfigCache(),
-		owners:               newRepoCache(codeownersTTL, fetchCodeowners),
-		readiness:            newReadiness(),
-		failures:             newFailureLog(maxRecordedFailures),
-		jobs:                 make(chan job, queueDepth),
-		jobCtx:               context.Background(),
-		deliveryRetryCtx:     deliveryRetryCtx,
-		cancelDeliveryRetry:  cancelDeliveryRetry,
+		cfg:                      cfg,
+		tokens:                   tokens,
+		logger:                   logging.New(out, cfg.logFormat, level, redactor),
+		logLevel:                 level,
+		redactor:                 redactor,
+		runtimeBotConfig:         &resolvedConfig.Values,
+		runtimePollInterval:      cfg.pollInterval,
+		runtimePathIndexInterval: cfg.pathIndexInterval,
+		pollIntervalChanged:      make(chan struct{}, 1),
+		pendingCIGateChanged:     make(chan struct{}, 1),
+		migrationRetryDelay:      pendingCIRetryDelay,
+		registry:                 registry,
+		metrics:                  metrics.New(registry),
+		configs:                  newRepoConfigCache(),
+		owners:                   newRepoCache(codeownersTTL, fetchCodeowners),
+		readiness:                newReadiness(),
+		failures:                 newFailureLog(maxRecordedFailures),
+		jobs:                     make(chan job, queueDepth),
+		jobCtx:                   context.Background(),
+		deliveryRetryCtx:         deliveryRetryCtx,
+		cancelDeliveryRetry:      cancelDeliveryRetry,
 	}
 
 	metrics.RegisterQueue(registry, func() float64 { return float64(len(srv.jobs)) }, queueDepth)

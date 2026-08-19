@@ -829,6 +829,12 @@
     );
   }
 
+  async function setPathIndex(repositoryId: string, seconds: number | null): Promise<void> {
+    await save(repositoryId, (detail) =>
+      repositorySettingsInput(detail, { path_index_interval_seconds_override: seconds }),
+    );
+  }
+
   function repositorySettingsInput(
     detail: RepositoryDetail,
     overrides: Partial<RepositorySettingsInput>,
@@ -838,6 +844,7 @@
       pending_ci_mode_override: detail.pending_ci_mode_override,
       pending_ci_branch_patterns_override: detail.pending_ci_branch_patterns_override,
       pending_ci_quiet_period_seconds_override: detail.pending_ci_quiet_period_seconds_override,
+      path_index_interval_seconds_override: detail.path_index_interval_seconds_override,
       config_patch: detail.config_patch,
       ignore_repository_file: detail.ignore_repository_file,
       expected_revision: detail.revision,
@@ -931,6 +938,7 @@
     onBypass={(bypass) => setBypass(repository.id, bypass)}
     onSaveConfig={(patch) => setConfig(repository.id, patch)}
     onSavePendingCI={(mode, patterns, quiet) => setPendingCI(repository.id, mode, patterns, quiet)}
+    onSavePathIndex={(seconds) => setPathIndex(repository.id, seconds)}
     onResetMigration={() => resetConfigMigration(repository.id)}
     sections={availableSections}
     syncOverride={syncOverrideQuery.data}

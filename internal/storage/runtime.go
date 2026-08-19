@@ -14,7 +14,14 @@ type RuntimeSettings struct {
 	PollInterval         *time.Duration
 	PendingCIQuietPeriod *time.Duration
 	SessionTTL           *time.Duration
-	Revision             int64
+
+	// PathIndexInterval is how often a repository's file list is checked for
+	// changes, for every installation that does not say otherwise. Zero is
+	// every sweep: what a check costs is the commit the branch points at, and
+	// the list is read only where that moved.
+	PathIndexInterval *time.Duration
+
+	Revision  int64
 	UpdatedAt            *time.Time
 	UpdatedBy            *Account
 }
@@ -27,6 +34,7 @@ type RuntimeSettingsChange struct {
 	PollInterval                  *time.Duration
 	PendingCIQuietPeriod          *time.Duration
 	SessionTTL                    *time.Duration
+	PathIndexInterval             *time.Duration
 	EffectivePollInterval         time.Duration
 	EffectivePendingCIQuietPeriod time.Duration
 	EffectiveSessionTTL           time.Duration

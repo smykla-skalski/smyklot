@@ -1151,6 +1151,19 @@ async function handle(
       if (input.expected_revision !== state.runtime.revision) {
         throw new MockApiError(409, 'conflict', 'runtime settings changed; reload and try again');
       }
+      const pathIndexPresent = Object.hasOwn(input, 'path_index_interval_seconds');
+      const pathIndex = input.path_index_interval_seconds;
+      if (
+        pathIndexPresent &&
+        pathIndex !== null &&
+        (!Number.isInteger(pathIndex) || pathIndex < 0 || pathIndex > 604_800)
+      ) {
+        throw new MockApiError(
+          400,
+          'invalid_runtime_settings',
+          'file list refresh interval must be between 0 seconds and 7 days',
+        );
+      }
       const quietPeriodPresent = Object.hasOwn(input, 'merge_after_ci_quiet_period_seconds');
       const quietPeriod = input.merge_after_ci_quiet_period_seconds;
       if (
@@ -1168,6 +1181,7 @@ async function handle(
       state.runtime.logLevelOverride = input.log_level;
       state.runtime.pollIntervalOverride = input.reaction_poll_interval_seconds;
       if (quietPeriodPresent) state.runtime.pendingCIQuietPeriodOverride = quietPeriod;
+      if (pathIndexPresent) state.runtime.pathIndexIntervalOverride = pathIndex;
       state.runtime.sessionTTLOverride = input.session_ttl_seconds;
       state.runtime.revision += 1;
       state.runtime.updatedAt = new Date().toISOString();
@@ -1578,6 +1592,10 @@ async function handle(
       const input = await readBody<TargetSettingsInput>(req);
       requireRevision(target.value.revision, input.expected_revision);
       target.value.repository_default_enabled = input.repository_default_enabled;
+      if (Object.hasOwn(input, 'path_index_interval_seconds_override')) {
+        target.value.path_index_interval_seconds_override =
+          input.path_index_interval_seconds_override ?? null;
+      }
       target.value.config_patch = structuredClone(input.config_patch);
       target.value.revision += 1;
       recomputeTarget(target);
@@ -1602,6 +1620,10 @@ async function handle(
       const input = await readBody<RepositorySettingsInput>(req);
       requireRevision(stored.detail.revision, input.expected_revision);
       stored.detail.repository.enabled_override = input.enabled_override;
+      if (Object.hasOwn(input, 'path_index_interval_seconds_override')) {
+        stored.detail.path_index_interval_seconds_override =
+          input.path_index_interval_seconds_override ?? null;
+      }
       stored.detail.config_patch = structuredClone(input.config_patch);
       stored.detail.ignore_repository_file = input.ignore_repository_file;
       stored.detail.revision += 1;
@@ -1781,6 +1803,10 @@ async function handle(
       const input = await readBody<TargetSettingsInput>(req);
       requireRevision(target.value.revision, input.expected_revision);
       target.value.repository_default_enabled = input.repository_default_enabled;
+      if (Object.hasOwn(input, 'path_index_interval_seconds_override')) {
+        target.value.path_index_interval_seconds_override =
+          input.path_index_interval_seconds_override ?? null;
+      }
       target.value.config_patch = structuredClone(input.config_patch);
       target.value.revision += 1;
       recomputeTarget(target);
@@ -1805,6 +1831,10 @@ async function handle(
       const input = await readBody<RepositorySettingsInput>(req);
       requireRevision(stored.detail.revision, input.expected_revision);
       stored.detail.repository.enabled_override = input.enabled_override;
+      if (Object.hasOwn(input, 'path_index_interval_seconds_override')) {
+        stored.detail.path_index_interval_seconds_override =
+          input.path_index_interval_seconds_override ?? null;
+      }
       stored.detail.config_patch = structuredClone(input.config_patch);
       stored.detail.ignore_repository_file = input.ignore_repository_file;
       stored.detail.revision += 1;
@@ -1999,6 +2029,11 @@ function rootRuntimeSettingsValue(state: MockState): RootRuntimeSettings {
       deployment_seconds: 30,
       override_seconds: state.runtime.pendingCIQuietPeriodOverride,
       effective_seconds: state.runtime.pendingCIQuietPeriodOverride ?? 30,
+    },
+    path_index_interval: {
+      deployment_seconds: 3_600,
+      override_seconds: state.runtime.pathIndexIntervalOverride,
+      effective_seconds: state.runtime.pathIndexIntervalOverride ?? 3_600,
     },
     session_lifetime: {
       deployment_seconds: 86_400,

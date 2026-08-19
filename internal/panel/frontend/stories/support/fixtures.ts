@@ -287,6 +287,11 @@ export const RUNTIME: RootRuntimeSettings = {
     override_seconds: null,
     effective_seconds: 30,
   },
+  path_index_interval: {
+    deployment_seconds: 60 * 60,
+    override_seconds: null,
+    effective_seconds: 60 * 60,
+  },
   session_lifetime: {
     deployment_seconds: 12 * 60 * 60,
     override_seconds: null,
@@ -342,6 +347,8 @@ export const REPOSITORY_DETAIL: RepositoryDetail = {
   pending_ci_branch_patterns_inherited: { include: ['~DEFAULT_BRANCH'], exclude: [] },
   pending_ci_quiet_period_seconds_override: null,
   pending_ci_quiet_period_seconds_inherited: null,
+  path_index_interval_seconds_override: null,
+  path_index_interval_seconds_inherited: null,
   pending_ci_gate: {
     desired_mode: 'checks',
     effective_mode: 'checks',

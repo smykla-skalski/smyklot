@@ -19,6 +19,10 @@ type RuntimeValues struct {
 	PollInterval         time.Duration
 	PendingCIQuietPeriod time.Duration
 	SessionTTL           time.Duration
+
+	// PathIndexInterval is how often a repository's file list is checked for
+	// changes, before any installation or repository says otherwise.
+	PathIndexInterval time.Duration
 }
 
 func resolveRuntimeValues(cfg Config, persisted storage.RuntimeSettings) (RuntimeValues, error) {
@@ -28,6 +32,7 @@ func resolveRuntimeValues(cfg Config, persisted storage.RuntimeSettings) (Runtim
 		PollInterval:         cfg.PollInterval,
 		PendingCIQuietPeriod: cfg.PendingCIQuietPeriod,
 		SessionTTL:           cfg.SessionTTL,
+		PathIndexInterval:    cfg.PathIndexInterval,
 	}
 	if persisted.BotConfig != nil {
 		values.BotConfig = cloneRuntimeConfig(persisted.BotConfig)
@@ -48,6 +53,13 @@ func resolveRuntimeValues(cfg Config, persisted storage.RuntimeSettings) (Runtim
 	}
 	if persisted.SessionTTL != nil {
 		values.SessionTTL = *persisted.SessionTTL
+	}
+	if persisted.PathIndexInterval != nil {
+		values.PathIndexInterval = *persisted.PathIndexInterval
+	}
+	if values.PathIndexInterval < 0 ||
+		values.PathIndexInterval > MaxPathIndexInterval {
+		return RuntimeValues{}, fmt.Errorf("persisted runtime durations are invalid")
 	}
 	if values.PollInterval < 0 ||
 		values.PendingCIQuietPeriod < pendingci.MinPassingQuiet ||

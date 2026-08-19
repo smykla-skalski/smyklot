@@ -69,6 +69,8 @@ spec:
               value: {{ .Values.pollInterval | quote }}
             - name: SMYKLOT_PENDING_CI_QUIET_PERIOD
               value: {{ .Values.pendingCIQuietPeriod | quote }}
+            - name: SMYKLOT_PATH_INDEX_INTERVAL
+              value: {{ .Values.pathIndexInterval | quote }}
             - name: SMYKLOT_LOG_FORMAT
               value: {{ .Values.logFormat | quote }}
             - name: SMYKLOT_LOG_LEVEL

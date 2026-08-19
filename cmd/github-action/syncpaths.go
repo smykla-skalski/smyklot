@@ -13,16 +13,6 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/logging"
 )
 
-// pathIndexTTL is how long a repository's path list is believed.
-//
-// A day, because what it answers is "which paths exist to configure", and the
-// cost of being a day out of date is a finder that does not yet offer a file
-// somebody added this morning - which it says out loud, since a path it does
-// not know is still a path it will accept. The cost of being fresher is one
-// GitHub request per repository per tick, forever, for a list nobody reads
-// between visits to the panel.
-const pathIndexTTL = 24 * time.Hour
-
 // There is no cap on what one repository contributes.
 //
 // There was one, at five thousand paths, and it threw away 84% of a repository
@@ -77,6 +67,16 @@ func (s *server) refreshSyncPaths(
 		known[row.RepositoryID] = row
 	}
 
+	// The installation's answer, read once: it is the same for every repository
+	// under it, and the sweep is already holding the target.
+	target, err := s.store.GetTarget(ctx, targetID)
+	if err != nil {
+		logging.From(ctx).Warn("could not read the installation for the path index",
+			"error", err)
+
+		return
+	}
+
 	now := time.Now().UTC()
 	for _, repository := range repositories {
 		// Only what sync watches. A repository the installation does not
@@ -85,13 +85,36 @@ func (s *server) refreshSyncPaths(
 			continue
 		}
 
+		interval := pathIndexInterval(
+			s.pathIndexInterval(), target.PathIndexIntervalOverride,
+			repository.PathIndexIntervalOverride,
+		)
+
 		was, seen := known[repository.ID]
-		if seen && now.Sub(was.ObservedAt) < pathIndexTTL {
+		if seen && now.Sub(was.ObservedAt) < interval {
 			continue
 		}
 
 		s.refreshRepositoryPaths(ctx, client, targetID, repository, was, seen, now)
 	}
+}
+
+// pathIndexInterval is how often this repository's file list is checked.
+//
+// Nearest wins: the repository if it says, then its installation, then the
+// process. Three levels because the right answer is not the same everywhere -
+// an installation whose repositories are edited all day wants a fresher finder
+// than one holding archived services, and inside either there is usually one
+// repository that is the exception.
+func pathIndexInterval(process time.Duration, target, repository *time.Duration) time.Duration {
+	if repository != nil {
+		return *repository
+	}
+	if target != nil {
+		return *target
+	}
+
+	return process
 }
 
 // refreshRepositoryPaths brings one repository's list up to date.

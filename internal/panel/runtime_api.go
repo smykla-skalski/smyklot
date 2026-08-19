@@ -19,6 +19,14 @@ const (
 	maxRuntimeSessionTTL   = 30 * 24 * time.Hour
 )
 
+// MaxPathIndexInterval is as rarely as a repository's file list may be checked.
+//
+// A week, which is what "hardly ever" means for a list somebody types a path
+// against. There is no minimum and zero is every sweep: the check is the commit
+// the default branch points at, which is a few hundred bytes whatever the
+// repository holds, and the list itself is read only where that moved.
+const MaxPathIndexInterval = 7 * 24 * time.Hour
+
 type runtimeSettingsRequest struct {
 	BotConfig           *config.Config `json:"bot_config"`
 	LogLevel            *string        `json:"log_level"`
@@ -26,7 +34,10 @@ type runtimeSettingsRequest struct {
 	// This field needs presence as well as value: clients released before the
 	// setting existed omit it, while an explicit null deliberately inherits.
 	PendingCIQuietPeriodSeconds optionalRuntimeSeconds `json:"merge_after_ci_quiet_period_seconds"`
-	SessionTTLSeconds           *int64                 `json:"session_ttl_seconds"`
+	// Presence for the same reason: a client released before this existed
+	// omits it, and an explicit null deliberately falls back to the process.
+	PathIndexIntervalSeconds optionalRuntimeSeconds `json:"path_index_interval_seconds"`
+	SessionTTLSeconds        *int64                 `json:"session_ttl_seconds"`
 	ExpectedRevision            *int64                 `json:"expected_revision"`
 }
 
@@ -79,19 +90,21 @@ func (s *Server) putRootRuntimeSettings(w http.ResponseWriter, r *http.Request) 
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	var currentPendingCIQuietPeriod *time.Duration
-	if !input.PendingCIQuietPeriodSeconds.present {
+	var currentPendingCIQuietPeriod, currentPathIndexInterval *time.Duration
+	if !input.PendingCIQuietPeriodSeconds.present || !input.PathIndexIntervalSeconds.present {
 		current, err := s.store.GetRuntimeSettings(r.Context())
 		if err != nil {
 			s.writeStorageError(w, err)
 			return
 		}
 		currentPendingCIQuietPeriod = current.PendingCIQuietPeriod
+		currentPathIndexInterval = current.PathIndexInterval
 	}
 	change, proposed, err := s.runtimeSettingsChange(
 		actor,
 		input,
 		currentPendingCIQuietPeriod,
+		currentPathIndexInterval,
 	)
 	if err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid_runtime_settings", err.Error())
@@ -125,6 +138,7 @@ func (s *Server) runtimeSettingsChange(
 	actor storage.Account,
 	input runtimeSettingsRequest,
 	currentPendingCIQuietPeriod *time.Duration,
+	currentPathIndexInterval *time.Duration,
 ) (storage.RuntimeSettingsChange, storage.RuntimeSettings, error) {
 	if input.ExpectedRevision == nil || *input.ExpectedRevision < 0 {
 		return storage.RuntimeSettingsChange{}, storage.RuntimeSettings{},
@@ -161,6 +175,18 @@ func (s *Server) runtimeSettingsChange(
 			return storage.RuntimeSettingsChange{}, storage.RuntimeSettings{}, err
 		}
 	}
+	pathIndexInterval := currentPathIndexInterval
+	if input.PathIndexIntervalSeconds.present {
+		pathIndexInterval, err = runtimeDuration(
+			input.PathIndexIntervalSeconds.value,
+			0,
+			MaxPathIndexInterval,
+			"file list refresh interval",
+		)
+		if err != nil {
+			return storage.RuntimeSettingsChange{}, storage.RuntimeSettings{}, err
+		}
+	}
 	if input.LogLevel != nil {
 		if _, err := logging.ParseLevel(*input.LogLevel); err != nil {
 			return storage.RuntimeSettingsChange{}, storage.RuntimeSettings{}, err
@@ -169,13 +195,14 @@ func (s *Server) runtimeSettingsChange(
 	proposed := storage.RuntimeSettings{
 		BotConfig: botConfig, LogLevel: input.LogLevel,
 		PollInterval: pollInterval, PendingCIQuietPeriod: pendingCIQuietPeriod,
-		SessionTTL: sessionTTL,
+		SessionTTL: sessionTTL, PathIndexInterval: pathIndexInterval,
 	}
 	change := storage.RuntimeSettingsChange{
 		BotConfig: botConfig, LogLevel: input.LogLevel,
 		PollInterval: pollInterval, PendingCIQuietPeriod: pendingCIQuietPeriod,
-		SessionTTL:       sessionTTL,
-		ExpectedRevision: *input.ExpectedRevision,
+		SessionTTL:        sessionTTL,
+		PathIndexInterval: pathIndexInterval,
+		ExpectedRevision:  *input.ExpectedRevision,
 		ActorAccountID:   actor.ID, ChangedAt: s.now().UTC(),
 	}
 

@@ -1,5 +1,15 @@
+<script module lang="ts">
+  import type { DurationUnit } from './DurationField.svelte';
+
+  /* The same three a whole installation offers, so the two pages read alike. */
+  const PATH_INDEX_UNITS: readonly DurationUnit[] = ['minutes', 'hours', 'days'];
+</script>
+
 <script lang="ts">
+  import { untrack } from 'svelte';
+
   import { BOOLEAN_FIELDS } from '../config';
+  import { durationParts, durationSeconds, formatDuration, type DurationParts } from '../duration';
   import { REPOSITORY_SECTIONS, type RepositorySection } from '../routes';
   import type {
     ConfigKey,
@@ -19,7 +29,9 @@
   import InheritControl from './InheritControl.svelte';
   import BackLink from './BackLink.svelte';
   import PageHeader from './PageHeader.svelte';
+  import DurationField from './DurationField.svelte';
   import Plate from './Plate.svelte';
+  import Switch from './Switch.svelte';
   import RepositorySyncPane from './RepositorySyncPane.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
 
@@ -57,6 +69,7 @@
     onBypass,
     onSaveConfig,
     onSavePendingCI,
+    onSavePathIndex = async () => {},
     onResetMigration,
     sections = REPOSITORY_SECTIONS,
     syncOverride = undefined,
@@ -84,6 +97,8 @@
       patterns: PendingCIBranchPatterns | null,
       quiet: number | null,
     ) => Promise<void>;
+    /** How often this repository's file list is checked; null inherits. */
+    onSavePathIndex?: (seconds: number | null) => Promise<void>;
     onResetMigration: () => void;
     /**
      * The panes this surface offers, in the order the switch shows them.
@@ -126,6 +141,30 @@
   let pendingCIIncludes = $state('');
   let pendingCIExcludes = $state('');
   let pendingCIQuiet = $state('');
+  let pathIndexCustom = $state(false);
+  let pathIndexDraft = $state<DurationParts>({ amount: 1, unit: 'hours' });
+  let savingPathIndex = $state(false);
+
+  $effect(() => {
+    if (detail === undefined || savingPathIndex) return;
+    const seconds = detail.path_index_interval_seconds_override;
+    untrack(() => {
+      pathIndexCustom = seconds !== null;
+      pathIndexDraft = durationParts(seconds ?? 3600, PATH_INDEX_UNITS);
+    });
+  });
+
+  /* Inheriting is a value rather than an absence, so switching it off writes a
+     null and the installation's answer applies again. */
+  async function savePathIndex(seconds: number | null): Promise<void> {
+    if (detail === undefined || savingPathIndex) return;
+    savingPathIndex = true;
+    try {
+      await onSavePathIndex(seconds);
+    } finally {
+      savingPathIndex = false;
+    }
+  }
 
   $effect(() => {
     if (detail === undefined || savingPendingCI) return;
@@ -247,6 +286,48 @@
   {#if detail === undefined}
     <p class="detail-loading dim" role="status">Reading repository settings…</p>
   {:else}
+    <Plate label="File list refresh">
+      {#snippet status()}
+        <span class="dim">
+          {pathIndexCustom
+            ? formatDuration(pathIndexDraft)
+            : detail.path_index_interval_seconds_inherited === null
+              ? 'Inherited'
+              : `Inherited - ${formatDuration(detail.path_index_interval_seconds_inherited)}`}
+        </span>
+      {/snippet}
+      <p class="dim">
+        How often this repository's file list is checked, so the path finder offers what it holds.
+        Only the commit its branch points at is read unless something moved
+      </p>
+      <div class="path-index-editor">
+        <Switch
+          label="Set this for this repository"
+          checked={pathIndexCustom}
+          disabled={readOnly || savingPathIndex}
+          onChange={(on) => {
+            if (!on) {
+              pathIndexCustom = false;
+              void savePathIndex(null);
+
+              return;
+            }
+            pathIndexCustom = true;
+          }}
+        />
+        {#if pathIndexCustom}
+          <DurationField
+            label="File list refresh interval"
+            bind:amount={pathIndexDraft.amount}
+            bind:unit={pathIndexDraft.unit}
+            units={PATH_INDEX_UNITS}
+            disabled={readOnly || savingPathIndex}
+            onApply={() => void savePathIndex(durationSeconds(pathIndexDraft))}
+          />
+        {/if}
+      </div>
+    </Plate>
+
     <Plate label="Merge after CI">
       {#snippet status()}
         {#if detail.pending_ci_gate !== undefined}

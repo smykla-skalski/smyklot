@@ -62,6 +62,7 @@ func (s *server) initPanel() error {
 		LogLevel:                 s.cfg.logLevel,
 		PollInterval:             s.cfg.pollInterval,
 		PendingCIQuietPeriod:     s.cfg.pendingCIQuietPeriod,
+		PathIndexInterval:        s.cfg.pathIndexInterval,
 		SessionTTL:               s.cfg.panel.sessionTTL,
 		ProcessConfig:            s.cfg.botConfig,
 		WebhookCredentialPresent: len(s.cfg.webhookSecret) > 0,

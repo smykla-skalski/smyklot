@@ -70,6 +70,11 @@ func loadServe(env map[string]string, args ...string) (*serveConfig, error) {
 		defaultPendingCIQuietPeriod,
 		descPendingCIQuietPeriod,
 	)
+	cmd.Flags().Duration(
+		flagPathIndexInterval,
+		defaultPathIndexInterval,
+		descPathIndexInterval,
+	)
 	cmd.Flags().String(flagLogFormat, defaultLogFormat, descLogFormat)
 	cmd.Flags().String(flagLogLevel, defaultLogLevel, descLogLevel)
 	cmd.Flags().String(flagDatabase, defaultState, descDatabase)
@@ -103,6 +108,7 @@ var _ = Describe("Serve configuration [Unit]", func() {
 		Expect(cfg.webhookPath).To(Equal(defaultWebhookPath))
 		Expect(cfg.pollInterval).To(Equal(defaultPollInterval))
 		Expect(cfg.pendingCIQuietPeriod).To(Equal(defaultPendingCIQuietPeriod))
+		Expect(cfg.pathIndexInterval).To(Equal(defaultPathIndexInterval))
 		Expect(cfg.botUsername).To(Equal(defaultBotUsername))
 		Expect(cfg.database).To(Equal(defaultState))
 	})

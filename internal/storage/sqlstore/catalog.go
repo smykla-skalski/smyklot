@@ -34,6 +34,7 @@ SELECT
 	 t.pending_ci_mode_default,
 	 t.pending_ci_branch_patterns_default,
 	 t.pending_ci_quiet_period_seconds_override,
+	 t.path_index_interval_seconds_override,
     t.config_patch,
     t.revision,
     t.settings_updated_at,
@@ -738,7 +739,7 @@ func scanTarget(scanner rowScanner) (storage.Target, error) {
 	var lastFailureAt, targetUpdatedAt, accountUpdatedAt, ownershipSyncedAt StoredTime
 	var targetPatch, targetPermissions string
 	var branchPatterns string
-	var quietPeriod sql.NullInt64
+	var quietPeriod, pathIndexInterval sql.NullInt64
 	var enabled int
 
 	err := scanner.Scan(
@@ -750,6 +751,7 @@ func scanTarget(scanner rowScanner) (storage.Target, error) {
 		&target.PendingCIModeDefault,
 		&branchPatterns,
 		&quietPeriod,
+		&pathIndexInterval,
 		&targetPatch,
 		&target.Revision,
 		&targetUpdatedAt,
@@ -783,6 +785,7 @@ func scanTarget(scanner rowScanner) (storage.Target, error) {
 	target.Ownership.SyncedAt = ownershipSyncedAt.Time()
 	target.Permissions = unmarshalPermissions(targetPermissions)
 	target.PendingCIQuietPeriodOverride = durationPointer(quietPeriod)
+	target.PathIndexIntervalOverride = durationPointer(pathIndexInterval)
 	target.PendingCIBranchPatternsDefault, err = unmarshalPendingCIBranchPatterns(branchPatterns)
 	if err != nil {
 		return storage.Target{}, err
@@ -821,6 +824,7 @@ SELECT
 	 r.pending_ci_mode_override,
 	 r.pending_ci_branch_patterns_override,
 	 r.pending_ci_quiet_period_seconds_override,
+	 r.path_index_interval_seconds_override,
     r.config_patch,
     r.ignore_repository_file,
     r.config_file_status,
@@ -867,7 +871,7 @@ func scanRepository(scanner rowScanner) (storage.Repository, error) {
 	var repository storage.Repository
 	var enabledOverride sql.NullBool
 	var modeOverride, branchPatternsOverride sql.NullString
-	var quietPeriodOverride sql.NullInt64
+	var quietPeriodOverride, pathIndexOverride sql.NullInt64
 	var fileError sql.NullString
 	var panelPatch, filePatch, superseded string
 	var migrationPR sql.NullInt64
@@ -885,6 +889,7 @@ func scanRepository(scanner rowScanner) (storage.Repository, error) {
 		&modeOverride,
 		&branchPatternsOverride,
 		&quietPeriodOverride,
+		&pathIndexOverride,
 		&panelPatch,
 		&repository.IgnoreRepositoryFile,
 		&repository.ConfigFileStatus,
@@ -914,6 +919,7 @@ func scanRepository(scanner rowScanner) (storage.Repository, error) {
 		repository.PendingCIBranchPatternsOverride = &patterns
 	}
 	repository.PendingCIQuietPeriodOverride = durationPointer(quietPeriodOverride)
+	repository.PathIndexIntervalOverride = durationPointer(pathIndexOverride)
 	repository.ConfigFileError = stringPointer(fileError)
 	repository.ConfigMigrationPR = intPointer(migrationPR)
 	if repository.IgnoreRepositoryFile {

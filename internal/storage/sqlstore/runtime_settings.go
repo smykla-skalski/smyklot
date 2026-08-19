@@ -116,13 +116,15 @@ func (s *Store) writeRuntimeSettings(
 INSERT INTO runtime_settings (
     singleton, bot_config, log_level,
     poll_interval_seconds, pending_ci_quiet_period_seconds, session_ttl_seconds,
+    path_index_interval_seconds,
     revision, updated_at, updated_by_account_id
-) VALUES (1, ?, ?, ?, ?, ?, 1, ?, ?)`,
+) VALUES (1, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
 			botConfig,
 			change.LogLevel,
 			durationSeconds(change.PollInterval),
 			durationSeconds(change.PendingCIQuietPeriod),
 			durationSeconds(change.SessionTTL),
+			durationSeconds(change.PathIndexInterval),
 			change.ChangedAt,
 			change.ActorAccountID,
 		)
@@ -131,6 +133,7 @@ INSERT INTO runtime_settings (
 UPDATE runtime_settings SET
     bot_config = ?, log_level = ?, poll_interval_seconds = ?,
     pending_ci_quiet_period_seconds = ?, session_ttl_seconds = ?,
+    path_index_interval_seconds = ?,
     revision = revision + 1, updated_at = ?, updated_by_account_id = ?
 WHERE singleton = 1 AND revision = ?`,
 			botConfig,
@@ -138,6 +141,7 @@ WHERE singleton = 1 AND revision = ?`,
 			durationSeconds(change.PollInterval),
 			durationSeconds(change.PendingCIQuietPeriod),
 			durationSeconds(change.SessionTTL),
+			durationSeconds(change.PathIndexInterval),
 			change.ChangedAt,
 			change.ActorAccountID,
 			change.ExpectedRevision,
@@ -173,6 +177,9 @@ func validateRuntimeSettingsChange(change storage.RuntimeSettingsChange) (*strin
 	if change.PendingCIQuietPeriod != nil && *change.PendingCIQuietPeriod < 0 {
 		return nil, errors.New("merge-after-CI quiet period cannot be negative")
 	}
+	if change.PathIndexInterval != nil && *change.PathIndexInterval < 0 {
+		return nil, errors.New("file list refresh interval cannot be negative")
+	}
 	if change.EffectivePollInterval < 0 {
 		return nil, errors.New("effective reaction sweep interval cannot be negative")
 	}
@@ -203,12 +210,12 @@ func getRuntimeSettings(
 ) (storage.RuntimeSettings, error) {
 	var settings storage.RuntimeSettings
 	var botConfig, logLevel sql.NullString
-	var pollSeconds, pendingCIQuietSeconds, sessionSeconds sql.NullInt64
+	var pollSeconds, pendingCIQuietSeconds, sessionSeconds, pathIndexSeconds sql.NullInt64
 	var updatedByID string
 	var updatedAt StoredTime
 	err := queryer.QueryRowContext(ctx, `
 SELECT bot_config, log_level, poll_interval_seconds, pending_ci_quiet_period_seconds,
-       session_ttl_seconds,
+       session_ttl_seconds, path_index_interval_seconds,
        revision, updated_at, updated_by_account_id
 FROM runtime_settings WHERE singleton = 1`).Scan(
 		&botConfig,
@@ -216,6 +223,7 @@ FROM runtime_settings WHERE singleton = 1`).Scan(
 		&pollSeconds,
 		&pendingCIQuietSeconds,
 		&sessionSeconds,
+		&pathIndexSeconds,
 		&settings.Revision,
 		&updatedAt,
 		&updatedByID,
@@ -234,6 +242,7 @@ FROM runtime_settings WHERE singleton = 1`).Scan(
 	settings.PollInterval = durationPointer(pollSeconds)
 	settings.PendingCIQuietPeriod = durationPointer(pendingCIQuietSeconds)
 	settings.SessionTTL = durationPointer(sessionSeconds)
+	settings.PathIndexInterval = durationPointer(pathIndexSeconds)
 	settings.UpdatedAt = updatedAt.Pointer()
 	account, err := getAccount(ctx, queryer, updatedByID)
 	if err != nil {

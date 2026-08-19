@@ -59,6 +59,14 @@ func (s *Server) putRootTargetSettings(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, "invalid_pending_ci_settings", err.Error())
 		return
 	}
+	pathIndex := context.Target.PathIndexIntervalOverride
+	if input.PathIndexIntervalSeconds.Present {
+		pathIndex = pathIndexDuration(input.PathIndexIntervalSeconds.Value)
+	}
+	if err := validatePathIndexInterval(pathIndex); err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid_path_index_interval", err.Error())
+		return
+	}
 	updated, err := s.updateTargetSettings(r.Context(), storage.TargetSettingsChange{
 		TargetID: context.Target.ID, ActorAccountID: context.Account.ID,
 		ElevationID: elevationID(context.Elevation), SessionTokenHash: context.SessionHash,
@@ -66,6 +74,7 @@ func (s *Server) putRootTargetSettings(w http.ResponseWriter, r *http.Request) {
 		PendingCIModeDefault:           mode,
 		PendingCIBranchPatternsDefault: patterns,
 		PendingCIQuietPeriodOverride:   quiet,
+		PathIndexIntervalOverride:      pathIndex,
 		RetunePendingCIQuietPeriod:     input.PendingCIQuietPeriodSeconds.Present,
 		DeploymentPendingCIQuietPeriod: s.cfg.PendingCIQuietPeriod,
 		ConfigPatch:                    *input.ConfigPatch, ExpectedRevision: *input.ExpectedRevision,
@@ -153,6 +162,14 @@ func (s *Server) putRootRepositorySettings(w http.ResponseWriter, r *http.Reques
 		s.writeError(w, http.StatusBadRequest, "invalid_pending_ci_settings", err.Error())
 		return
 	}
+	pathIndex := repository.PathIndexIntervalOverride
+	if input.PathIndexIntervalSeconds.Present {
+		pathIndex = pathIndexDuration(input.PathIndexIntervalSeconds.Value)
+	}
+	if err := validatePathIndexInterval(pathIndex); err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid_path_index_interval", err.Error())
+		return
+	}
 	updated, err := s.updateRepositorySettings(r.Context(), storage.RepositorySettingsChange{
 		TargetID: context.Target.ID, RepositoryID: r.PathValue("repository"),
 		ActorAccountID: context.Account.ID, ElevationID: elevationID(context.Elevation),
@@ -160,6 +177,7 @@ func (s *Server) putRootRepositorySettings(w http.ResponseWriter, r *http.Reques
 		PendingCIModeOverride:           mode,
 		PendingCIBranchPatternsOverride: patterns,
 		PendingCIQuietPeriodOverride:    quiet,
+		PathIndexIntervalOverride:       pathIndex,
 		RetunePendingCIQuietPeriod:      input.PendingCIQuietPeriodSeconds.Present,
 		DeploymentPendingCIQuietPeriod:  s.cfg.PendingCIQuietPeriod,
 		ConfigPatch:                     *input.ConfigPatch, IgnoreRepositoryFile: *input.IgnoreRepositoryFile,

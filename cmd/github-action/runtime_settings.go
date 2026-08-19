@@ -16,6 +16,7 @@ func (s *server) ApplyRuntimeSettings(values adminpanel.RuntimeValues) {
 	pollIntervalChanged := s.runtimePollInterval != values.PollInterval
 	s.runtimeBotConfig = &resolved.Values
 	s.runtimePollInterval = values.PollInterval
+	s.runtimePathIndexInterval = values.PathIndexInterval
 	s.runtimeMu.Unlock()
 	s.logLevel.Set(values.LogLevel)
 	quietPeriodChanged := s.pendingCIReconciler != nil &&
@@ -44,4 +45,13 @@ func (s *server) pollInterval() time.Duration {
 	defer s.runtimeMu.RUnlock()
 
 	return s.runtimePollInterval
+}
+
+// pathIndexInterval is the process's answer, which an installation or one of
+// its repositories may override.
+func (s *server) pathIndexInterval() time.Duration {
+	s.runtimeMu.RLock()
+	defer s.runtimeMu.RUnlock()
+
+	return s.runtimePathIndexInterval
 }

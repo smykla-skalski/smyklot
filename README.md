@@ -380,6 +380,7 @@ Point the GitHub App's webhook at `https://your-host/webhook` and set the same s
 | `SMYKLOT_WEBHOOK_PATH`            | `--webhook-path`            | `/webhook`                       | Path GitHub delivers to                                                      |
 | `SMYKLOT_POLL_INTERVAL`           | `--poll-interval`           | `5m`                             | How often to sweep reactions and PRs waiting for CI; `0` disables            |
 | `SMYKLOT_PENDING_CI_QUIET_PERIOD` | `--pending-ci-quiet-period` | `30s`                            | How long passing CI must remain unchanged before Smyklot merges              |
+| `SMYKLOT_PATH_INDEX_INTERVAL`     | `--path-index-interval`     | `1h`                             | How often a repository's file list is checked; `0` checks every sweep        |
 | `SMYKLOT_LOG_FORMAT`              | `--log-format`              | `json`                           | `json` or `text`                                                             |
 | `SMYKLOT_LOG_LEVEL`               | `--log-level`               | `info`                           | `debug`, `info`, `warn` or `error`                                           |
 | `GITHUB_APP_PRIVATE_KEY`          | -                           | required                         | PEM-encoded App private key                                                  |

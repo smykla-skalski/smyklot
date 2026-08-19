@@ -391,7 +391,13 @@ type Target struct {
 	PendingCIModeDefault           PendingCIMode
 	PendingCIBranchPatternsDefault PendingCIBranchPatterns
 	PendingCIQuietPeriodOverride   *time.Duration
-	ConfigPatch                    config.Patch
+
+	// PathIndexIntervalOverride is how often this installation's repositories
+	// have their file lists checked, where it should not be what the process
+	// does for everyone. Nil inherits.
+	PathIndexIntervalOverride *time.Duration
+
+	ConfigPatch config.Patch
 	Revision                       int64
 	UpdatedAt                      time.Time
 	RepositoryCounts               RepositoryCounts
@@ -512,7 +518,13 @@ type Repository struct {
 	PendingCIModeOverride           *PendingCIMode
 	PendingCIBranchPatternsOverride *PendingCIBranchPatterns
 	PendingCIQuietPeriodOverride    *time.Duration
-	PendingCIGate                   *PendingCIRepositoryGate
+
+	// PathIndexIntervalOverride is how often this repository's file list is
+	// checked, where it should not be what its installation does. Nil inherits
+	// the installation, which inherits the process.
+	PathIndexIntervalOverride *time.Duration
+
+	PendingCIGate *PendingCIRepositoryGate
 	ConfigPatch                     config.Patch
 	IgnoreRepositoryFile            bool
 	ConfigFileStatus                RepositoryFileStatus
@@ -579,6 +591,7 @@ type TargetSettingsChange struct {
 	PendingCIQuietPeriodOverride   *time.Duration
 	RetunePendingCIQuietPeriod     bool
 	DeploymentPendingCIQuietPeriod time.Duration
+	PathIndexIntervalOverride      *time.Duration
 	ConfigPatch                    config.Patch
 	ExpectedRevision               int64
 	ChangedAt                      time.Time
@@ -598,6 +611,7 @@ type RepositorySettingsChange struct {
 	PendingCIQuietPeriodOverride    *time.Duration
 	RetunePendingCIQuietPeriod      bool
 	DeploymentPendingCIQuietPeriod  time.Duration
+	PathIndexIntervalOverride       *time.Duration
 	ConfigPatch                     config.Patch
 	IgnoreRepositoryFile            bool
 	ExpectedRevision                int64

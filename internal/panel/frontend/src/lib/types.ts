@@ -237,6 +237,8 @@ export interface PanelTarget {
   pending_ci_mode_default: PendingCIMode;
   pending_ci_branch_patterns_default: PendingCIBranchPatterns;
   pending_ci_quiet_period_seconds_override: number | null;
+  /** How often this installation's repositories have their file lists checked. */
+  path_index_interval_seconds_override: number | null;
   pending_ci_permissions: PendingCIPermissions;
   config_patch: ConfigPatch;
   inherited_config: ConfigValues;
@@ -422,6 +424,12 @@ export interface RootRuntimeSettings {
     override_seconds: number | null;
     effective_seconds: number;
   };
+  /** How often a repository's file list is checked for changes. */
+  path_index_interval: {
+    deployment_seconds: number;
+    override_seconds: number | null;
+    effective_seconds: number;
+  };
   session_lifetime: {
     deployment_seconds: number;
     override_seconds: number | null;
@@ -447,6 +455,7 @@ export interface RootRuntimeSettingsInput {
   log_level: string | null;
   reaction_poll_interval_seconds: number | null;
   merge_after_ci_quiet_period_seconds: number | null;
+  path_index_interval_seconds: number | null;
   session_ttl_seconds: number | null;
   expected_revision: number;
 }
@@ -541,6 +550,10 @@ export interface RepositoryDetail {
   pending_ci_branch_patterns_inherited: PendingCIBranchPatterns;
   pending_ci_quiet_period_seconds_override: number | null;
   pending_ci_quiet_period_seconds_inherited: number | null;
+  /** How often this repository's file list is checked; null inherits. */
+  path_index_interval_seconds_override: number | null;
+  /** What it would inherit - the installation's answer, or null for the process's. */
+  path_index_interval_seconds_inherited: number | null;
   pending_ci_gate?: PendingCIGate;
   revision: number;
 }
@@ -573,6 +586,7 @@ export interface TargetSettingsInput {
   pending_ci_mode_default?: PendingCIMode;
   pending_ci_branch_patterns_default?: PendingCIBranchPatterns;
   pending_ci_quiet_period_seconds_override?: number | null;
+  path_index_interval_seconds_override?: number | null;
   config_patch: ConfigPatch;
   expected_revision: number;
 }
@@ -582,6 +596,7 @@ export interface RepositorySettingsInput {
   pending_ci_mode_override?: PendingCIMode | null;
   pending_ci_branch_patterns_override?: PendingCIBranchPatterns | null;
   pending_ci_quiet_period_seconds_override?: number | null;
+  path_index_interval_seconds_override?: number | null;
   config_patch: ConfigPatch;
   ignore_repository_file: boolean;
   expected_revision: number;

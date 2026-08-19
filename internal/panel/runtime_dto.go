@@ -55,6 +55,7 @@ type runtimeSettingsResponse struct {
 	LogLevel             runtimeStringValueResponse   `json:"log_level"`
 	PollInterval         runtimeDurationValueResponse `json:"reaction_poll_interval"`
 	PendingCIQuietPeriod runtimeDurationValueResponse `json:"merge_after_ci_quiet_period"`
+	PathIndexInterval    runtimeDurationValueResponse `json:"path_index_interval"`
 	SessionLifetime      runtimeDurationValueResponse `json:"session_lifetime"`
 	Revision             int64                        `json:"revision"`
 	UpdatedAt            *time.Time                   `json:"updated_at,omitempty"`
@@ -87,6 +88,11 @@ func runtimeSettingsDTO(
 			cfg.PendingCIQuietPeriod,
 			settings.PendingCIQuietPeriod,
 			effective.PendingCIQuietPeriod,
+		),
+		PathIndexInterval: runtimeDurationDTO(
+			cfg.PathIndexInterval,
+			settings.PathIndexInterval,
+			effective.PathIndexInterval,
 		),
 		SessionLifetime: runtimeDurationDTO(
 			cfg.SessionTTL, settings.SessionTTL, effective.SessionTTL,

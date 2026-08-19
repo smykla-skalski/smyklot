@@ -120,6 +120,21 @@
   let quietPeriodAmount = $derived(quietPeriodDisplay.amount);
   let quietPeriodUnit = $derived<PollUnit>(quietPeriodDisplay.unit);
 
+  /* Zero is every sweep rather than never, so the source has no "disabled"
+     leg: what a check costs is the commit the branch points at, and the file
+     list is read only where that moved. */
+  const pathIndexSeconds = $derived(
+    draftSettings?.path_index_interval.override_seconds ??
+      draftSettings?.path_index_interval.effective_seconds ??
+      3600,
+  );
+  const pathIndexDisplay = $derived(durationParts(pathIndexSeconds));
+  let pathIndexSource = $derived<'default' | 'custom'>(
+    draftSettings?.path_index_interval.override_seconds == null ? 'default' : 'custom',
+  );
+  let pathIndexAmount = $derived(pathIndexDisplay.amount);
+  let pathIndexUnit = $derived<SessionUnit>(pathIndexDisplay.unit);
+
   const behaviorPatch = $derived(
     settings === null
       ? {}
@@ -176,6 +191,25 @@
     await update({ merge_after_ci_quiet_period_seconds: null });
   }
 
+  async function selectPathIndexSource(value: string): Promise<void> {
+    if (settings === null || saving || value === pathIndexSource) return;
+    if (value === 'custom') {
+      pathIndexSource = 'custom';
+      return;
+    }
+    await update({ path_index_interval_seconds: null });
+  }
+
+  async function savePathIndexInterval(): Promise<void> {
+    if (settings === null || saving || pathIndexSource !== 'custom') return;
+    const seconds = Math.round(pathIndexAmount * SESSION_UNITS[pathIndexUnit]);
+    if (!Number.isFinite(seconds) || seconds < 0 || seconds > 7 * SESSION_UNITS.days) {
+      actionFailure = 'File list refresh interval must be between 0 seconds and 7 days';
+      return;
+    }
+    await update({ path_index_interval_seconds: seconds });
+  }
+
   async function savePollInterval(): Promise<void> {
     if (settings === null || saving || pollSource !== 'custom') return;
     const seconds = Math.round(pollAmount * POLL_UNITS[pollUnit]);
@@ -215,6 +249,7 @@
         | 'reaction_poll_interval_seconds'
         | 'session_ttl_seconds'
         | 'merge_after_ci_quiet_period_seconds'
+        | 'path_index_interval_seconds'
       >
     >,
   ): Promise<void> {
@@ -226,6 +261,7 @@
         log_level: settings.log_level.override,
         reaction_poll_interval_seconds: settings.reaction_poll_interval.override_seconds,
         merge_after_ci_quiet_period_seconds: settings.merge_after_ci_quiet_period.override_seconds,
+        path_index_interval_seconds: settings.path_index_interval.override_seconds,
         session_ttl_seconds: settings.session_lifetime.override_seconds,
         expected_revision: settings.revision,
         ...change,
@@ -409,6 +445,40 @@
               units={['seconds', 'minutes', 'hours']}
               disabled={saving}
               onApply={() => void saveQuietPeriod()}
+            />
+          {/if}
+        </div>
+      </Plate>
+
+      <Plate label="File list refresh">
+        {#snippet status()}
+          <span class="effective-value">
+            Effective: {formatDuration(current.path_index_interval.effective_seconds)}
+          </span>
+        {/snippet}
+        <p class="section-intro">
+          How often a repository's file list is checked for changes, so the path finder offers what
+          exists. Only the commit its branch points at is read unless something moved
+        </p>
+        <div class="session-editor">
+          <InheritControl
+            label="File list refresh interval source"
+            source={DEPLOYMENT_SOURCE}
+            inheritedLabel={formatDuration(current.path_index_interval.deployment_seconds)}
+            value={pathIndexSource === 'default' ? null : 'custom'}
+            options={SESSION_OPTIONS}
+            disabled={saving}
+            onSelect={(selection) => void selectPathIndexSource(selection)}
+            onRestore={() => void selectPathIndexSource('default')}
+          />
+          {#if pathIndexSource === 'custom'}
+            <DurationField
+              label="File list refresh interval"
+              bind:amount={pathIndexAmount}
+              bind:unit={pathIndexUnit}
+              units={['minutes', 'hours', 'days']}
+              disabled={saving}
+              onApply={() => void savePathIndexInterval()}
             />
           {/if}
         </div>

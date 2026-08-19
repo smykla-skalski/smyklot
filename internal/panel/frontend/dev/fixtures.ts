@@ -162,6 +162,7 @@ export interface MockState {
     logLevelOverride: string | null;
     pollIntervalOverride: number | null;
     pendingCIQuietPeriodOverride: number | null;
+    pathIndexIntervalOverride: number | null;
     sessionTTLOverride: number | null;
     revision: number;
     updatedAt?: string;
@@ -479,6 +480,7 @@ export function seed(
       logLevelOverride: null,
       pollIntervalOverride: null,
       pendingCIQuietPeriodOverride: null,
+      pathIndexIntervalOverride: null,
       sessionTTLOverride: null,
       revision: 0,
       startedAt: now,
@@ -997,6 +999,7 @@ export function targetSeed(input: {
       pending_ci_mode_default: 'checks',
       pending_ci_branch_patterns_default: { include: ['~DEFAULT_BRANCH'], exclude: [] },
       pending_ci_quiet_period_seconds_override: null,
+      path_index_interval_seconds_override: null,
       pending_ci_permissions: {
         checks_write: true,
         administration_write: true,
@@ -1090,6 +1093,8 @@ export function repositorySeed(
       pending_ci_branch_patterns_inherited: target.pending_ci_branch_patterns_default,
       pending_ci_quiet_period_seconds_override: null,
       pending_ci_quiet_period_seconds_inherited: target.pending_ci_quiet_period_seconds_override,
+      path_index_interval_seconds_override: null,
+      path_index_interval_seconds_inherited: target.path_index_interval_seconds_override,
       pending_ci_gate: {
         desired_mode: target.pending_ci_mode_default,
         effective_mode: target.pending_ci_mode_default,

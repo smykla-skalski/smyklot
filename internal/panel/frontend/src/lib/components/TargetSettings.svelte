@@ -1,5 +1,16 @@
+<script module lang="ts">
+  import type { DurationUnit } from './DurationField.svelte';
+
+  /* Minutes at the fine end because the check is one small read, days at the
+     coarse end because a week is the ceiling the column holds. */
+  const PATH_INDEX_UNITS: readonly DurationUnit[] = ['minutes', 'hours', 'days'];
+</script>
+
 <script lang="ts">
+  import { untrack } from 'svelte';
+
   import { countOverrides } from '../config';
+  import { durationParts, durationSeconds, formatDuration } from '../duration';
   import type { ConfigPatch, PanelTarget, PendingCIMode, TargetSettingsInput } from '../types';
   import Button from './Button.svelte';
   import FormError from './FormError.svelte';
@@ -7,7 +18,9 @@
   import ConfigEditor from './ConfigEditor.svelte';
   import HelpTip from './HelpTip.svelte';
   import PageHeader from './PageHeader.svelte';
+  import DurationField from './DurationField.svelte';
   import Plate from './Plate.svelte';
+  import Switch from './Switch.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
 
   const REPOSITORY_DEFAULT_OPTIONS = [
@@ -43,6 +56,15 @@
   let pendingCIExcludes = $state(target.pending_ci_branch_patterns_default.exclude.join('\n'));
   // svelte-ignore state_referenced_locally
   let pendingCIQuiet = $state(target.pending_ci_quiet_period_seconds_override?.toString() ?? '');
+  // svelte-ignore state_referenced_locally
+  let pathIndexSource = $state<'inherited' | 'custom'>(
+    target.path_index_interval_seconds_override == null ? 'inherited' : 'custom',
+  );
+  // svelte-ignore state_referenced_locally
+  let pathIndexDraft = $state(
+    durationParts(target.path_index_interval_seconds_override ?? 3600, PATH_INDEX_UNITS),
+  );
+  let savingPathIndex = $state(false);
   const defaultEnabled = $derived(pendingDefault ?? target.repository_default_enabled);
   const overrides = $derived(countOverrides(target.config_patch));
   const pendingCIPermissionsReady = $derived(
@@ -51,6 +73,15 @@
       target.pending_ci_permissions.merge_queues_read &&
       target.pending_ci_permissions.commit_statuses_read,
   );
+
+  $effect(() => {
+    if (savingPathIndex) return;
+    const seconds = target.path_index_interval_seconds_override;
+    untrack(() => {
+      pathIndexSource = seconds == null ? 'inherited' : 'custom';
+      pathIndexDraft = durationParts(seconds ?? 3600, PATH_INDEX_UNITS);
+    });
+  });
 
   $effect(() => {
     if (savingPendingCI) return;
@@ -66,6 +97,7 @@
       pending_ci_mode_default: target.pending_ci_mode_default,
       pending_ci_branch_patterns_default: target.pending_ci_branch_patterns_default,
       pending_ci_quiet_period_seconds_override: target.pending_ci_quiet_period_seconds_override,
+      path_index_interval_seconds_override: target.path_index_interval_seconds_override,
       config_patch: target.config_patch,
       expected_revision: target.revision,
       ...overrides,
@@ -104,6 +136,21 @@
       .split('\n')
       .map((line) => line.trim())
       .filter((line) => line !== '');
+  }
+
+  /* The sweep asks how often to check this installation's file lists, and this
+     is where it says so. Inheriting is a value, not an absence: a null clears
+     the override and the process's answer applies again. */
+  async function updatePathIndex(override: number | null): Promise<void> {
+    savingPathIndex = true;
+    failure = null;
+    try {
+      await onUpdate(settingsInput({ path_index_interval_seconds_override: override }));
+    } catch (error) {
+      failure = error instanceof Error ? error.message : String(error);
+    } finally {
+      savingPathIndex = false;
+    }
   }
 
   async function updatePendingCI(): Promise<void> {
@@ -253,6 +300,44 @@
         </Button>
       </div>
     </form>
+  </Plate>
+
+  <Plate label="File list refresh">
+    {#snippet status()}
+      <span class="settings-note">
+        {pathIndexSource === 'inherited' ? 'Inherited' : formatDuration(pathIndexDraft)}
+      </span>
+    {/snippet}
+    <p class="section-intro">
+      How often each repository's file list is checked, so the path finder offers what exists. Only
+      the commit its branch points at is read unless something moved
+    </p>
+    <div class="path-index-editor">
+      <Switch
+        label="Set this for every repository here"
+        checked={pathIndexSource === 'custom'}
+        disabled={readOnly || savingPathIndex}
+        onChange={(on) => {
+          if (!on) {
+            pathIndexSource = 'inherited';
+            void updatePathIndex(null);
+
+            return;
+          }
+          pathIndexSource = 'custom';
+        }}
+      />
+      {#if pathIndexSource === 'custom'}
+        <DurationField
+          label="File list refresh interval"
+          bind:amount={pathIndexDraft.amount}
+          bind:unit={pathIndexDraft.unit}
+          units={PATH_INDEX_UNITS}
+          disabled={readOnly || savingPathIndex}
+          onApply={() => void updatePathIndex(durationSeconds(pathIndexDraft))}
+        />
+      {/if}
+    </div>
   </Plate>
 
   <Plate label="Configuration defaults">
