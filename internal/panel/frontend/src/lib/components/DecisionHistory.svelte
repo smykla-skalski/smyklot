@@ -140,7 +140,7 @@
             </span>
             <Chip tone={decisionTone(decision.action)}>{decisionLabel(decision.action)}</Chip>
             <time
-              class="decision-date mono"
+              class="decision-date mono band-trim"
               datetime={decision.created_at}
               title={formatTimestamp(decision.created_at)}
             >
@@ -289,7 +289,6 @@
     font-weight: 500;
     line-height: 1;
     min-width: 4.5rem;
-    text-box: trim-both cap alphabetic;
     white-space: nowrap;
   }
 

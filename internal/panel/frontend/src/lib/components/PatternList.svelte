@@ -63,7 +63,7 @@
 <span class="pattern-list">
   {#each values as value (value)}
     <span class="word-chip">
-      <span class="chip-label">{value}</span>
+      <span class="chip-label band-trim">{value}</span>
       {#if !disabled}
         <button
           type="button"
@@ -122,15 +122,6 @@
   .pattern-empty {
     color: var(--text-muted);
     font-size: var(--font-size-compact);
-  }
-
-  /* `.word-chip` rather than `.chip`: this is an entry somebody typed and can
-     take back, not a state they can only read - so it wears the editable-entry
-     control from `app.css`, at the height every other control in a pane has.
-     As a `.chip` it stood 24px beside the same thing at 32px in the settings
-     editor, and beside its own add at 24. */
-  .word-chip .chip-label {
-    text-box: trim-both cap alphabetic;
   }
 
   /* Quiet until the chip is under the hand: every chip carries one and almost

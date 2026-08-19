@@ -903,30 +903,32 @@
             <span class="actor">
               <Avatar account={entry.actor} size={24} />
               <span class="actor-copy">
-                <strong>{entry.actor.display_name}</strong>
-                <small class="actor-login mono">@{entry.actor.login}</small>
+                <strong class="band-trim">{entry.actor.display_name}</strong>
+                <small class="actor-login mono band-trim">@{entry.actor.login}</small>
               </span>
             </span>
           </td>
           <td data-label="Target">
             {#if context === 'root' && entry.installation !== undefined}
-              <span class="cell-primary" title={`@${entry.installation.login}`}>
+              <span class="cell-primary band-trim" title={`@${entry.installation.login}`}>
                 {entry.installation.display_name}
               </span>
             {:else if context === 'root'}
-              <span class="cell-primary">Smyklot</span>
+              <span class="cell-primary band-trim">Smyklot</span>
             {:else if entry.repository_full_name !== undefined}
-              <code title={entry.repository_full_name}>
+              <code class="band-trim" title={entry.repository_full_name}>
                 {repositoryName(entry.repository_full_name)}
               </code>
             {:else}
-              <span class="cell-primary">Account</span>
+              <span class="cell-primary band-trim">Account</span>
             {/if}
           </td>
           <td data-label="Change" title={auditDetail(entry)}>
             <span class="change-line">
               {#if entry.category !== undefined}
-                <span class="category-tag" aria-hidden="true">{entry.category}</span>
+                <!-- Symmetric about its own band, so the equal padding above and
+                     below is the whole of what centres the word on the tag. -->
+                <span class="category-tag band-trim" aria-hidden="true">{entry.category}</span>
               {/if}
               <span class="cell-primary band-trim">{auditSummary(entry.summary)}</span>
             </span>
@@ -1052,6 +1054,7 @@
           </td>
           <td data-label="Repository">
             <code
+              class="band-trim"
               title={failure.installation === undefined
                 ? failure.repository_full_name
                 : `${failure.repository_full_name} \u00b7 @${failure.installation.login}`}
@@ -1060,7 +1063,7 @@
             </code>
           </td>
           <td data-label="Failure" title={failureDetail(failure)}>
-            <span class="cell-primary">{sentenceCase(failure.reason)}</span>
+            <span class="cell-primary band-trim">{sentenceCase(failure.reason)}</span>
           </td>
           <td data-label="When">
             <time
@@ -1374,7 +1377,6 @@
     overflow: clip;
     overflow-clip-margin: 0.35em;
     padding: 0.34rem 0.5rem;
-    text-box: trim-both cap alphabetic;
     text-overflow: ellipsis;
     vertical-align: middle;
     white-space: nowrap;
@@ -1424,7 +1426,6 @@
        overflow would shave the descenders off a name like "Bart Smykla". */
     overflow: clip;
     overflow-clip-margin: 0.35em;
-    text-box: trim-both cap alphabetic;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -1437,7 +1438,6 @@
     min-width: 0;
     overflow: clip;
     overflow-clip-margin: 0.35em;
-    text-box: trim-both cap alphabetic;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -1483,9 +1483,6 @@
     font: 650 0.65rem / 1 var(--sans);
     letter-spacing: 0.04em;
     padding: 0.2rem 0.35rem;
-    /* Symmetric about its own band, so the equal padding above and below is the
-       whole of what centres the word on the tag. */
-    text-box: trim-both cap alphabetic;
     text-transform: uppercase;
   }
 
@@ -1504,7 +1501,6 @@
     overflow: clip;
     overflow-clip-margin: 0.35em;
     overflow-wrap: anywhere;
-    text-box: trim-both cap alphabetic;
     text-overflow: ellipsis;
     white-space: nowrap;
   }

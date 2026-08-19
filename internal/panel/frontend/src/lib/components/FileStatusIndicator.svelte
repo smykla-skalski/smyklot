@@ -49,7 +49,9 @@
       <button {...props} type="button" class="symbol" aria-label={label}>
         <Icon name={icon} size={14} />
         {#if showLabel}
-          <span class="status-label">{status.slice(0, 1).toUpperCase() + status.slice(1)}</span>
+          <span class="status-label band-trim"
+            >{status.slice(0, 1).toUpperCase() + status.slice(1)}</span
+          >
         {/if}
       </button>
     {/snippet}
@@ -70,7 +72,6 @@
   .status-label {
     color: currentColor;
     font: 600 var(--font-size-meta) / 1 var(--sans);
-    text-box: trim-both cap alphabetic;
   }
 
   .status-valid {

@@ -233,7 +233,7 @@
           start disabled, so nothing runs before you decide
         </p>
       </div>
-      <span class="saved-flash" class:show={savedFlash} role="status">
+      <span class="saved-flash band-trim" class:show={savedFlash} role="status">
         {savedFlash ? 'Saved ✓' : ''}
       </span>
       <SegmentedControl
@@ -502,7 +502,6 @@
     min-width: 3.5rem;
     opacity: 0;
     text-align: end;
-    text-box: trim-both cap alphabetic;
     transition: opacity 200ms ease-out;
   }
 

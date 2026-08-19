@@ -343,7 +343,7 @@
   >
     <span class="nav-thumb" aria-hidden="true"></span>
     {#if rootMode}
-      <p class="nav-label">Administration</p>
+      <p class="nav-label band-trim">Administration</p>
       {#each ROOT_SECTIONS as section (section)}
         <a
           href={rootHrefFor(section)}
@@ -353,7 +353,7 @@
           onclick={(event) => selectRootFromClick(event, section)}
         >
           <span class="navigation-icon"><Icon name={rootIcon(section)} size={20} /></span>
-          <span class="navigation-label">{rootLabel(section)}</span>
+          <span class="navigation-label band-trim">{rootLabel(section)}</span>
           <span class="navigation-tooltip">{rootLabel(section)}</span>
         </a>
       {/each}
@@ -368,7 +368,7 @@
           onclick={(event) => selectFromClick(event, destination(item))}
         >
           <span class="navigation-icon"><Icon name={icon(item)} size={20} /></span>
-          <span class="navigation-label">{label(item)}</span>
+          <span class="navigation-label band-trim">{label(item)}</span>
           <span class="navigation-tooltip">{label(item)}</span>
         </a>
       {/each}
@@ -390,7 +390,7 @@
           onclick={returnFromClick}
         >
           <span class="navigation-icon"><Icon name="chevron-left" size={20} /></span>
-          <span class="navigation-label">Exit Root</span>
+          <span class="navigation-label band-trim">Exit Root</span>
           <span class="navigation-tooltip">Exit Root</span>
         </a>
       {:else if rootEnabled}
@@ -401,7 +401,7 @@
           onclick={enterRootFromClick}
         >
           <span class="navigation-icon"><Icon name="shield" size={20} /></span>
-          <span class="navigation-label">Root console</span>
+          <span class="navigation-label band-trim">Root console</span>
           <span class="navigation-tooltip">Root console</span>
         </a>
       {/if}
@@ -418,7 +418,7 @@
           <Icon name="notifications" size={20} />
           {#if unreadCount > 0}<span class="unread-dot" aria-hidden="true"></span>{/if}
         </span>
-        <span class="navigation-label">Inbox</span>
+        <span class="navigation-label band-trim">Inbox</span>
         {#if unreadCount > 0}<span class="unread-count" aria-hidden="true"
             ><span class="cap-trim">{unreadLabel}</span></span
           >{/if}
@@ -464,7 +464,6 @@
     letter-spacing: 0.09em;
     margin: var(--space-4) 0 var(--space-2);
     padding-inline: var(--space-3);
-    text-box: trim-both cap alphabetic;
     text-transform: uppercase;
   }
 
@@ -625,18 +624,6 @@
     display: inline-flex;
     flex: none;
     justify-content: center;
-  }
-
-  /* Trimmed to its glyph bounds, cap height to baseline, so the box the row
-     centres IS the letters. The panel's rule everywhere else, and the reason for
-     it is here in miniature: this used to be a 1.25rem box with the text centred
-     inside it, which centres a line box - ascender to descender - and leaves the
-     letters sitting low by whatever the descender is worth in this font. The row
-     then carried a compensating 1px of top padding, which is the shape of a fix
-     that works at one size, in one font, for one row. Trimmed, `align-items:
-     center` puts the letters and the icon on the same middle at any size. */
-  .navigation-label {
-    text-box: trim-both cap alphabetic;
   }
 
   .navigation-tooltip {

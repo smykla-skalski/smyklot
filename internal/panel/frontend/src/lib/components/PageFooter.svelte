@@ -7,13 +7,13 @@
 {#if build.version !== null || build.serviceHost !== null}
   <footer class="foot">
     <span class="foot-mark" aria-hidden="true"></span>
-    <span class="foot-name">Panel</span>
+    <span class="foot-name band-trim">Panel</span>
     {#if build.version !== null}
-      <span class="foot-env">{build.version}</span>
+      <span class="foot-env band-trim">{build.version}</span>
     {/if}
     <span class="foot-spacer"></span>
     {#if build.serviceHost !== null}
-      <span class="foot-host mono">{build.serviceHost}</span>
+      <span class="foot-host mono band-trim">{build.serviceHost}</span>
     {/if}
   </footer>
 {/if}
@@ -48,7 +48,6 @@
     color: var(--text-secondary);
     font-weight: 700;
     letter-spacing: 0.08em;
-    text-box: trim-both cap alphabetic;
     text-transform: uppercase;
   }
 
@@ -59,7 +58,6 @@
     font: 600 0.65625rem / 1 var(--sans);
     letter-spacing: 0.05em;
     padding: 4px 8px;
-    text-box: trim-both cap alphabetic;
     text-transform: uppercase;
   }
 
@@ -71,6 +69,5 @@
     font-size: var(--font-size-compact);
     line-height: 1;
     overflow-wrap: anywhere;
-    text-box: trim-both cap alphabetic;
   }
 </style>

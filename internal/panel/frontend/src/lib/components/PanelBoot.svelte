@@ -22,7 +22,7 @@
 </script>
 
 <div class="panel-boot" role="status" aria-live="polite">
-  <span class="panel-boot-word">Loading</span>
+  <span class="panel-boot-word band-trim">Loading</span>
 </div>
 
 <style>
@@ -37,7 +37,6 @@
     animation: panel-boot-appear var(--duration-normal) var(--ease-standard) 300ms both;
     color: var(--text-muted);
     font-size: var(--font-size-meta);
-    text-box: trim-both cap alphabetic;
   }
 
   @keyframes panel-boot-appear {

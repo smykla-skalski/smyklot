@@ -307,7 +307,7 @@
   {/if}
 
   <nav
-    class="installation-navigation"
+    class="installation-navigation band-trim-kids"
     aria-label={`Root views for ${installation.account.display_name}`}
   >
     {#each ['settings', 'repositories', 'users', 'history'] as section (section)}
@@ -599,7 +599,6 @@
     font-weight: 650;
     line-height: 1;
     padding: 0.4375rem var(--space-3);
-    text-box: trim-both cap alphabetic;
     text-decoration: none;
     white-space: nowrap;
   }

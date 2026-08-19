@@ -34,9 +34,9 @@
 </script>
 
 <span class="word-chip" class:added>
-  <span class="chip-from">{from}</span>
-  <span class="chip-arrow" aria-hidden="true">→</span>
-  <span class="chip-to">{to}</span>
+  <span class="chip-from band-trim">{from}</span>
+  <span class="chip-arrow band-trim" aria-hidden="true">→</span>
+  <span class="chip-to band-trim">{to}</span>
   <button
     class="chip-x"
     aria-label="Delete alias {from}"
@@ -70,13 +70,5 @@
 
   .chip-to {
     color: var(--brand-action-text);
-  }
-
-  /* The trim the three words take. It sat in a list of every trimmed thing in the
-     editor, which is a list a chip in any other file would never have reached. */
-  .chip-from,
-  .chip-arrow,
-  .chip-to {
-    text-box: trim-both cap alphabetic;
   }
 </style>

@@ -42,10 +42,10 @@
 
 <div class="save-bar" class:save-bar-inline={inline} role="status">
   <span class="save-dot" aria-hidden="true"></span>
-  <span class="save-count">
+  <span class="save-count band-trim">
     {count} unsaved {count === 1 ? 'change' : 'changes'}
   </span>
-  <button class="bar-ghost" type="button" {disabled} onclick={() => onDiscard?.()}>
+  <button class="bar-ghost band-trim" type="button" {disabled} onclick={() => onDiscard?.()}>
     Discard
   </button>
   <Button tone="signal" {disabled} onclick={() => onSave?.()}>
@@ -162,14 +162,6 @@
 
   .save-bar-inline .bar-ghost:hover:not(:disabled) {
     background: var(--well);
-  }
-
-  /* The count and Discard take the trim every label in the product takes. The Save's
-     own label is not here: `Button` wraps it in `.button-label`, which `app.css` trims
-     the same way. One copy, not two. */
-  .save-count,
-  .bar-ghost {
-    text-box: trim-both cap alphabetic;
   }
 
   @media (prefers-reduced-motion: reduce) {

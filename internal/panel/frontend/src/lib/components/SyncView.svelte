@@ -766,9 +766,9 @@
       <!-- The verdict first, counted the way somebody arrives asking for it:
            how many need attention, not how many are fine. -->
       <div class="hero">
-        <p class="hero-eyebrow">{account} · sync</p>
+        <p class="hero-eyebrow band-trim">{account} · sync</p>
         <div>
-          <h2 class="verdict-line">
+          <h2 class="verdict-line band-trim">
             {#if planRepositories.length === 0}
               <strong>All {population}</strong> are in step
             {:else}
@@ -1071,7 +1071,6 @@
     grid-column: 1 / -1;
     letter-spacing: 0.08em;
     margin: 0;
-    text-box: trim-both cap alphabetic;
     text-transform: uppercase;
   }
 
@@ -1081,7 +1080,6 @@
     letter-spacing: -0.03em;
     line-height: round(1.1em, 1px);
     margin: 0;
-    text-box: trim-both cap alphabetic;
   }
 
   .is-drift {

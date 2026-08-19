@@ -98,7 +98,7 @@
   {/snippet}
 
   <div class="filter-body" class:wide>
-    <header>
+    <header class="band-trim-kids">
       <strong>{label}</strong>
       <span>{hint}</span>
     </header>
@@ -141,10 +141,10 @@
                     <Chip tone={chipToneOf(option.tone)} icon={option.icon}>{option.label}</Chip>
                   </span>
                 {:else}
-                  <strong>{option.label}</strong>
+                  <strong class="band-trim">{option.label}</strong>
                 {/if}
                 {#if option.description !== undefined}
-                  <span class="option-description">{option.description}</span>
+                  <span class="option-description band-trim">{option.description}</span>
                 {/if}
               </span>
             </button>
@@ -249,7 +249,6 @@
   .filter-body > header strong {
     font-size: var(--font-size-meta);
     line-height: 1;
-    text-box: trim-both cap alphabetic;
   }
 
   .filter-body > header span {
@@ -259,7 +258,6 @@
     /* A real step between the title and the line under it: at 0.1rem the two ran
        together and the hint read as a second line of the title. */
     margin-top: var(--space-2);
-    text-box: trim-both cap alphabetic;
   }
 
   /* `min-height: 0`, which is what lets a flex item scroll rather than push its
@@ -402,7 +400,6 @@
     grid-column: 2;
     justify-self: start;
     min-width: 0;
-    text-box: trim-both cap alphabetic;
   }
 
   .option-description {
@@ -411,7 +408,6 @@
     grid-column: 2 / -1;
     grid-row: 2;
     line-height: 1;
-    text-box: trim-both cap alphabetic;
   }
 
   /* The quiet way out sits on the left and the committing one on the right, and

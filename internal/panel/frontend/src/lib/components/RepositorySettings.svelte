@@ -391,7 +391,10 @@
           />
         </div>
         {#if detail.pending_ci_gate !== undefined}
-          <p class:gate-problem={detail.pending_ci_gate.readiness === 'blocked'} class="gate-note">
+          <p
+            class:gate-problem={detail.pending_ci_gate.readiness === 'blocked'}
+            class="gate-note band-trim"
+          >
             {detail.pending_ci_gate.reason}
           </p>
         {/if}
@@ -467,7 +470,14 @@
               <span class="file-card-icon status-{detail.repository.config_file_status}">
                 <Icon name="file" size={14} />
               </span>
-              <div class="f-copy">
+              <!-- Every line trimmed, and for one reason: the card centres this
+                   copy block as a BOX, so the block's box has to equal its ink
+                   or the centring is of something the reader cannot see. One
+                   untrimmed line carried its own leading and descender room and
+                   pulled the block 2.49px off the icon beside it - measured by
+                   the alignment sweep once the repository page was added to the
+                   routes it walks. -->
+              <div class="f-copy band-trim-kids">
                 <strong>Configuration path</strong>
                 <!-- The file is looked for in four places plus a chosen one, so
                    this names the one that won rather than the one that used to
@@ -638,7 +648,6 @@
     background: var(--surface-inset);
     border-radius: var(--radius-control);
     padding: var(--space-3);
-    text-box: trim-both cap alphabetic;
   }
 
   .gate-note.gate-problem {
@@ -753,7 +762,6 @@
     display: block;
     font-size: var(--font-size-meta);
     line-height: 1;
-    text-box: trim-both cap alphabetic;
   }
 
   .f-copy code {
@@ -762,21 +770,13 @@
     font-size: var(--font-size-compact);
     line-height: 1;
     margin-top: 0.8rem;
-    text-box: trim-both cap alphabetic;
   }
 
-  /* Trimmed like the two lines above it, and for the same reason: the card
-     centres its copy block as a BOX, so the block's box has to equal its ink or
-     the centring is of something the reader cannot see. Untrimmed, this third
-     line carried its own leading and descender room below the words and pulled
-     the block 2.49px off the icon beside it - measured by the alignment sweep
-     once the repository page was added to the routes it walks. */
   .f-copy p {
     color: var(--danger);
     font-size: var(--font-size-compact);
     line-height: 1;
     margin: 0.5rem 0 0;
-    text-box: trim-both cap alphabetic;
   }
 
   /* A file the repository still carries and Smyklot is not reading is worth

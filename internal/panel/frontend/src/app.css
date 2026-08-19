@@ -2665,6 +2665,23 @@ code {
   text-box: trim-both cap alphabetic;
 }
 
+/* And for a container whose LINES ARE NOT ITS OWN - a cell filled by a caller's
+   snippet, a modal heading, a name assembled from whatever a row was handed.
+   Every child gets the band, because there is no element here to hang a class
+   on: the markup belongs to somebody else.
+   ---------------------------------------------------------------------------
+   Nine components had written this as a descendant selector of their own -
+   `.pr-name > :global(*)`, `:global(.modal-panel h2)`, `.fact dt` - which is
+   the same rule nine times, and one of them reaching through `:global` into
+   another component's markup to set it. Asked for on the container instead, so
+   a tenth gets it by wearing the class.
+
+   `> *` rather than a descendant: a band is what a LINE has, and trimming every
+   node at every depth would trim the wrapper as well as the words in it. */
+.band-trim-kids > * {
+  text-box: trim-both cap alphabetic;
+}
+
 /* And for a STACK, where the lines are separate elements and the container has
    no text of its own to trim - a name over a handle, a label over a
    description. Only the outer edges go: the first line gives back the leading

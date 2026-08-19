@@ -352,7 +352,7 @@
 
     <Plate label="Behavior defaults">
       {#snippet status()}
-        <span class="source-label">
+        <span class="source-label band-trim">
           {current.behavior_defaults.override === null ? 'Deployment' : 'Runtime override'}
         </span>
       {/snippet}
@@ -373,7 +373,7 @@
     <div class="runtime-grid">
       <Plate label="Reaction sweep">
         {#snippet status()}
-          <span class="effective-value">
+          <span class="effective-value band-trim">
             Effective: {formatPollDuration(current.reaction_poll_interval.effective_seconds)}
           </span>
         {/snippet}
@@ -409,7 +409,7 @@
 
       <Plate label="Merge after CI">
         {#snippet status()}
-          <span class="effective-value">
+          <span class="effective-value band-trim">
             Effective: {formatPollDuration(current.merge_after_ci_quiet_period.effective_seconds)}
           </span>
         {/snippet}
@@ -444,7 +444,7 @@
 
       <Plate label="File list refresh">
         {#snippet status()}
-          <span class="effective-value">
+          <span class="effective-value band-trim">
             Effective: {formatDuration(current.path_index_interval.effective_seconds)}
           </span>
         {/snippet}
@@ -478,7 +478,9 @@
 
       <Plate label="Log level">
         {#snippet status()}
-          <span class="effective-value">Effective: {capitalize(current.log_level.effective)}</span>
+          <span class="effective-value band-trim"
+            >Effective: {capitalize(current.log_level.effective)}</span
+          >
         {/snippet}
         <p class="section-intro">Updates the process logger without restarting Smyklot</p>
         <InheritControl
@@ -496,7 +498,7 @@
 
       <Plate label="Panel sessions">
         {#snippet status()}
-          <span class="effective-value">
+          <span class="effective-value band-trim">
             Effective: {formatDuration(current.session_lifetime.effective_seconds)}
           </span>
         {/snippet}
@@ -686,7 +688,6 @@
     display: inline-block;
     font: 600 var(--font-size-compact) / 1 var(--sans);
     padding: 0.4rem 0.55rem;
-    text-box: trim-both cap alphabetic;
     white-space: nowrap;
   }
 

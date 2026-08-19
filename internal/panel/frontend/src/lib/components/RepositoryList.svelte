@@ -1193,9 +1193,9 @@
                 href={session.repositoryHref(repository.name)}
                 title={repository.name}
               >
-                <strong>{repository.name}</strong>
+                <strong class="band-trim">{repository.name}</strong>
                 {#if repository.config_override_count > 0}
-                  <span class="override-chip">
+                  <span class="override-chip band-trim">
                     {repository.config_override_count}
                     {repository.config_override_count === 1 ? 'override' : 'overrides'}
                   </span>
@@ -1673,7 +1673,6 @@
     min-width: 0;
     overflow: clip;
     overflow-clip-margin: 0.35em;
-    text-box: trim-both cap alphabetic;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -1687,7 +1686,6 @@
     flex: none;
     font: 500 var(--font-size-compact) / 1 var(--mono);
     padding: 0.34rem 0.5rem;
-    text-box: trim-both cap alphabetic;
     white-space: nowrap;
   }
 
@@ -1794,7 +1792,6 @@
          nothing here truncates, just gone. `anywhere` breaks mid-run, which is
          what a card can afford and a table row cannot. */
       overflow-wrap: anywhere;
-      text-box: trim-both cap alphabetic;
       white-space: normal;
     }
 

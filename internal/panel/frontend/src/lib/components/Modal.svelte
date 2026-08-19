@@ -53,7 +53,7 @@
         <header>
           <div class="modal-heading">
             <div class="heading-row">
-              <h2 id={`${id}-title`}>{title}</h2>
+              <h2 class="band-trim" id={`${id}-title`}>{title}</h2>
               {#if headerExtra !== undefined}
                 <span class="header-extra">{@render headerExtra()}</span>
               {/if}
@@ -174,7 +174,6 @@
     margin: 0;
     min-width: 0;
     overflow-wrap: anywhere;
-    text-box: trim-both cap alphabetic;
   }
 
   :global(.modal-panel header p) {

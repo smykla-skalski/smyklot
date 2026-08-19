@@ -42,7 +42,14 @@ function rule(selector: string): string {
 describe('a sidebar navigation row', () => {
   it('trims the label to its glyph bounds', () => {
     // The box the row centres has to BE the letters, or centring it centres something else.
-    expect(rule('.navigation-label')).toMatch(/text-box:\s*trim-both cap alphabetic/u);
+    //
+    // Asked for in the markup now: `.band-trim` in `app.css` is the one place the panel
+    // declares this, so what a row has to prove is that its label wears it. A rule of its own
+    // would pass this test and still be a copy of the shared one.
+    for (const label of tabs.matchAll(/class="navigation-label([^"]*)"/gu)) {
+      expect(label[1]).toMatch(/\bband-trim\b/u);
+    }
+    expect(tabs).toMatch(/class="navigation-label[^"]*\bband-trim\b/u);
   });
 
   it('gives the label no height of its own', () => {

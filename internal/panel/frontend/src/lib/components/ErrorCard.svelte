@@ -32,7 +32,14 @@
   <!-- Decorative: the sentence under it says the same thing in words, and a
        reader who is being read this page is better served by "this address does
        not lead anywhere" than by the number three digits at a time. -->
-  <p class="error-code" aria-hidden="true">{content.status}</p>
+  <!-- Trimmed to the digits themselves. At this size the font's leading is worth
+       most of a line above the numerals, and a centred block measured with that
+       leading in it sits visibly low: the gap a reader sees above the number came
+       out larger than the one under the button, because only one of the two had
+       empty space built into its box. Measured at 31px against 19px before the
+       trim and 28 against 30 after it, the two left being the cap metric rather
+       than the layout. The same trim the footer uses. -->
+  <p class="error-code band-trim" aria-hidden="true">{content.status}</p>
   <p class="error-lead">{content.lead}</p>
   <p class="error-note">{content.note}</p>
   {#if content.action !== null && actionHref !== null}
@@ -79,14 +86,6 @@
     letter-spacing: 0.04em;
     margin: 0 0 var(--space-1);
     opacity: var(--error-code-ink);
-    /* Trimmed to the digits themselves. At this size the font's leading is worth
-       most of a line above the numerals, and a centred block measured with that
-       leading in it sits visibly low: the gap a reader sees above the number came
-       out larger than the one under the button, because only one of the two had
-       empty space built into its box. Measured at 31px against 19px before the
-       trim and 28 against 30 after it, the two left being the cap metric rather
-       than the layout. The same trim the footer uses. */
-    text-box: trim-both cap alphabetic;
   }
 
   /* The sentence the number is a shorthand for. Sized as the card's own lead

@@ -255,7 +255,7 @@
 
     <dl class="facts">
       <div class="fact">
-        <dt>Method</dt>
+        <dt class="band-trim">Method</dt>
         <dd>
           <span class="cap-trim"
             >{request.merge_method.slice(0, 1).toUpperCase()}{request.merge_method.slice(1)}</span
@@ -263,7 +263,7 @@
         </dd>
       </div>
       <div class="fact">
-        <dt>Checks</dt>
+        <dt class="band-trim">Checks</dt>
         <dd>
           <span class="cap-trim"
             >{request.required_checks_only ? 'Required only' : 'All checks'}</span
@@ -271,11 +271,11 @@
         </dd>
       </div>
       <div class="fact">
-        <dt>Commit</dt>
+        <dt class="band-trim">Commit</dt>
         <dd class="mono"><span class="cap-trim">{request.head_sha.slice(0, 8)}</span></dd>
       </div>
       <div class="fact">
-        <dt>Armed</dt>
+        <dt class="band-trim">Armed</dt>
         <dd>
           <span class="cap-trim" title={formatTimestamp(request.requested_at)}
             >{sinceLabel(request.requested_at, now)}</span
@@ -283,7 +283,7 @@
         </dd>
       </div>
       <div class="fact">
-        <dt>Schedule</dt>
+        <dt class="band-trim">Schedule</dt>
         <dd>
           <Chip tone={request.schedule === 'active' ? 'neutral' : 'absent'} small
             >{request.schedule === 'active' ? 'Active' : 'Deferred'}</Chip
@@ -291,7 +291,7 @@
         </dd>
       </div>
       <div class="fact">
-        <dt>Cleanup</dt>
+        <dt class="band-trim">Cleanup</dt>
         <dd>
           {#if armed}
             <span class="cap-trim">Not yet</span>
@@ -304,8 +304,10 @@
     </dl>
   </section>
 
-  <h3 class="timeline-heading">Timeline</h3>
-  <p class="timeline-lede">Every durable event, newest last, with the delivery that caused it</p>
+  <h3 class="timeline-heading band-trim">Timeline</h3>
+  <p class="timeline-lede band-trim">
+    Every durable event, newest last, with the delivery that caused it
+  </p>
 
   <section class="plate timeline-plate" aria-label="Timeline">
     <ol class="timeline">
@@ -323,21 +325,26 @@
             <Icon name={mark.icon} size={14} strokeWidth={2} />
           </span>
           <div class="head">
-            <strong>{eventTitle(event)}</strong>
+            <strong class="band-trim">{eventTitle(event)}</strong>
             <Chip tone="neutral" small>{triggerLabel(event)}</Chip>
           </div>
-          <time datetime={event.created_at} title={formatTimestamp(event.created_at)}
-            >{clockOf(event.created_at)}</time
+          <!-- The same size as the title beside it: at 11px the two runs share a
+               line but their cap bands no longer share a centre, and the column
+               is a real datum rather than a footnote. -->
+          <time
+            class="band-trim"
+            datetime={event.created_at}
+            title={formatTimestamp(event.created_at)}>{clockOf(event.created_at)}</time
           >
           <div class="body">
-            <p>{event.summary}</p>
+            <p class="band-trim">{event.summary}</p>
             {#if event.event_key !== undefined || event.delivery_id !== undefined}
               <div class="facts-line">
                 {#if event.event_key !== undefined}
-                  <span class="key">{event.event_key}</span>
+                  <span class="key band-trim">{event.event_key}</span>
                 {/if}
                 {#if event.delivery_id !== undefined}
-                  <span class="key">delivery {event.delivery_id}</span>
+                  <span class="key band-trim">delivery {event.delivery_id}</span>
                 {/if}
               </div>
             {/if}
@@ -465,7 +472,6 @@
     color: var(--dim);
     font: 700 var(--font-size-micro) / 1 var(--sans);
     letter-spacing: 0.08em;
-    text-box: trim-both cap alphabetic;
     text-transform: uppercase;
   }
 
@@ -525,14 +531,12 @@
     font: 700 var(--font-size-card-title) / 1.3 var(--sans);
     letter-spacing: -0.02em;
     margin: var(--space-6) 0 var(--space-2);
-    text-box: trim-both cap alphabetic;
   }
 
   .timeline-lede {
     color: var(--text-soft);
     font-size: var(--font-size-meta);
     margin: 0 0 var(--space-4);
-    text-box: trim-both cap alphabetic;
   }
 
   /* `.plate` carries no padding of its own - each caller states what its content
@@ -649,18 +653,13 @@
     font-size: var(--font-size-meta);
     font-weight: 700;
     line-height: 1;
-    text-box: trim-both cap alphabetic;
   }
 
-  /* The same size as the title beside it: at 11px the two runs share a line but
-     their cap bands no longer share a centre, and the column is a real datum
-     rather than a footnote. */
   .timeline > li > time {
     align-self: center;
     color: var(--dim);
     font: 400 var(--font-size-meta) / 1 var(--mono);
     grid-area: 1 / 3 / 2 / 4;
-    text-box: trim-both cap alphabetic;
   }
 
   /* The entry's own padding carries the space between entries, so the body does
@@ -675,7 +674,6 @@
     color: var(--text-soft);
     font-size: var(--font-size-compact);
     margin: 0;
-    text-box: trim-both cap alphabetic;
   }
 
   .timeline .facts-line {
@@ -686,10 +684,10 @@
     margin-top: var(--space-2);
   }
 
-  /* Trimmed to its own band, so the equal padding above and below is the whole
-     of what centres the key on its ground. Untrimmed, the mono face put the
-     characters 0.52px above the middle of the chip they sit in - a device row at
-     2x, on every key in the record. */
+  /* `.band-trim` in the markup, so the equal padding above and below is the
+     whole of what centres the key on its ground. Untrimmed, the mono face put
+     the characters 0.52px above the middle of the chip they sit in - a device
+     row at 2x, on every key in the record. */
   .timeline .key {
     background: var(--well);
     border-radius: var(--r-chip);
@@ -699,7 +697,6 @@
     overflow: clip;
     overflow-clip-margin: 0.4em;
     padding: 0.3rem 0.4rem;
-    text-box: trim-both cap alphabetic;
     text-overflow: ellipsis;
     white-space: nowrap;
   }

@@ -174,7 +174,9 @@ describe('the pages that show it', () => {
 
     const holders = readdirSync(components)
       .filter((file) => file.endsWith('.svelte'))
-      .filter((file) => read(file).includes('class="error-code"'));
+      // The class list, not the whole attribute: `.error-code` wears `.band-trim` beside it now,
+      // and a test matching the exact attribute value is a test that fails on a second class.
+      .filter((file) => /class="[^"]*\berror-code\b/u.test(read(file)));
 
     expect(holders).toEqual(['ErrorCard.svelte']);
   });
@@ -188,6 +190,8 @@ describe('the pages that show it', () => {
 
   it('keeps the number out of the reading order', () => {
     // The sentence under it says the same thing, and better.
-    expect(read('ErrorCard.svelte')).toMatch(/class="error-code"\s+aria-hidden="true"/u);
+    expect(read('ErrorCard.svelte')).toMatch(
+      /class="[^"]*\berror-code\b[^"]*"\s+aria-hidden="true"/u,
+    );
   });
 });

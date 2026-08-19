@@ -49,7 +49,7 @@
   <span class={['mark-well', interior === 'solid' && 'grounded']}>
     <img class="mark-icon" src={haloUrl} alt="" width={size} height={size} decoding="async" />
   </span>
-  <span class="mark-copy">
+  <span class="mark-copy band-trim-kids">
     <span class="mark-name">Smyklot</span>
     {#if part !== undefined}
       <span class="mark-part">{part}</span>
@@ -114,7 +114,6 @@
     color: var(--sidebar-text);
     font: 700 0.8125rem / 1 var(--sans);
     letter-spacing: 0.11em;
-    text-box: trim-both cap alphabetic;
     text-transform: uppercase;
   }
 
@@ -122,7 +121,6 @@
     color: var(--sidebar-text-muted);
     font: 700 0.65625rem / 1 var(--sans);
     letter-spacing: 0.12em;
-    text-box: trim-both cap alphabetic;
   }
 
   /* Standing on its own rather than heading a rail: the icon carries the mark and

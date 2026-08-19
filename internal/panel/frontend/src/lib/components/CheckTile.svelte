@@ -38,7 +38,7 @@
   <span class="check-box" aria-hidden="true">
     <svg viewBox="0 0 12 12"><path d="M2.2 6.4 4.9 9 9.8 3.2" /></svg>
   </span>
-  <code>{label}</code>
+  <code class="band-trim">{label}</code>
 </label>
 
 <style>
@@ -130,12 +130,6 @@
   .check-tile input:checked ~ code {
     color: var(--text);
     font-weight: 500;
-  }
-
-  /* The trim its label takes, which used to sit in a list of every trimmed thing in
-     `ConfigEditor` - a list a tile in any other file would never have reached. */
-  .check-tile code {
-    text-box: trim-both cap alphabetic;
   }
 
   @media (prefers-reduced-motion: reduce) {

@@ -47,13 +47,18 @@
   {#if kicker !== undefined}
     <p class="page-kicker">{@render kicker()}</p>
   {/if}
-  <h2 {id}>{title}</h2>
+  <!-- The title's box IS its band, which is what lets the slot beside it centre
+       natively. There used to be a measured `translateY(round(0.0382em, 1px))`
+       on that slot instead, correcting for the room a line box keeps under the
+       baseline that the capitals never use. Trimmed, there is nothing to
+       correct. -->
+  <h2 class="band-trim" {id}>{title}</h2>
   {#if actions !== undefined}
     <div class="page-header-actions">
       {@render actions()}
     </div>
   {/if}
-  <p class="page-header-description">{description}</p>
+  <p class="page-header-description band-trim">{description}</p>
 </header>
 
 <style>
@@ -112,11 +117,6 @@
        line box. */
     line-height: round(1.2em, 1px);
     margin: 0;
-    /* The title's box IS its band, which is what lets the slot beside it centre
-       natively. There used to be a measured `translateY(round(0.0382em, 1px))` on
-       that slot instead, correcting for the room a line box keeps under the baseline
-       that the capitals never use. Trimmed, there is nothing to correct. */
-    text-box: trim-both cap alphabetic;
   }
 
   /* The meta size, as the approved design draws it: a description explains the
@@ -135,7 +135,6 @@
        two fonts happened to carry. */
     margin: var(--space-3) 0 0;
     max-width: 52rem;
-    text-box: trim-both cap alphabetic;
     text-wrap: balance;
   }
 

@@ -193,13 +193,16 @@
       />
       <span class="segment-label">
         {#if option.icon === undefined}
-          <span>{option.label}</span>
+          <!-- Trimmed so the label centres on its glyph bounds within the segment. -->
+          <span class="band-trim">{option.label}</span>
         {:else}
           <Icon name={option.icon} size={14} />
           <span class="visually-hidden">{option.label}</span>
         {/if}
         {#if option.detail !== undefined}
-          <span class="segment-detail detail-{option.detail.tone}">· {option.detail.text}</span>
+          <span class="segment-detail band-trim detail-{option.detail.tone}"
+            >· {option.detail.text}</span
+          >
         {/if}
         {#if option.badge !== undefined}
           <!-- A count beside its word, not a superscript of it. `sup` earned
@@ -487,12 +490,6 @@
       color 180ms ease-out,
       transform var(--duration-press) var(--ease-standard);
     z-index: 3;
-  }
-
-  /* Trim label text to glyph bounds so it centers visually in the segment. */
-  .segment-label > span:first-child,
-  .segment-detail {
-    text-box: trim-both cap alphabetic;
   }
 
   .segment-detail {
