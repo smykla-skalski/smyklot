@@ -78,6 +78,8 @@ func panelWireNameProbePaths() []string {
 		"/panel/api/v1/targets/" + target + "/invitations",
 		"/panel/api/v1/targets/" + target + "/sync/config",
 		"/panel/api/v1/targets/" + target + "/sync/config/labels",
+		"/panel/api/v1/targets/" + target + "/sync/overrides/labels",
+		"/panel/api/v1/targets/" + target + "/sync/paths",
 		"/panel/api/v1/targets/" + target + "/sync/plan",
 		"/panel/api/v1/targets/" + target + "/audit",
 		"/panel/api/v1/targets/" + target + "/failures",

@@ -125,6 +125,23 @@ type RepositoryState struct {
 	Problem string
 }
 
+// RepositoryPaths is every path one repository is known to hold.
+//
+// Read to answer the panel's path finder, which offers what exists rather than
+// asking somebody to type a string from memory that has to match, character for
+// character, something they cannot see.
+//
+// It is a picture rather than a fact: it is whatever the default branch held
+// when it was last looked at. Nothing is planned from it and nothing is
+// enforced with it - a path the finder does not know is still a path somebody
+// may configure.
+type RepositoryPaths struct {
+	RepositoryID string
+	TargetID     string
+	Paths        []string
+	ObservedAt   time.Time
+}
+
 // PlanCreate records a computed plan and its actions together.
 //
 // One call rather than a plan then its actions, because a plan with no actions
@@ -256,6 +273,19 @@ type Store interface {
 	SetSyncRepositoryOverride(
 		context.Context, RepositoryOverrideChange,
 	) (RepositoryOverride, error)
+
+	// ListSyncRepositoryPaths reads every path an installation's repositories
+	// are known to hold, one row per repository.
+	//
+	// What the panel's path finder offers. Aggregated by the reader rather than
+	// stored aggregated: a repository's list is replaced whole when it is read
+	// again, and an installation-wide count that had to be recomputed on every
+	// one of those writes would be a write per repository per sweep to answer a
+	// question asked once a day.
+	ListSyncRepositoryPaths(context.Context, string) ([]RepositoryPaths, error)
+
+	// SetSyncRepositoryPaths replaces one repository's list.
+	SetSyncRepositoryPaths(context.Context, RepositoryPaths) error
 
 	ListSyncRepositoryState(context.Context, string) ([]RepositoryState, error)
 

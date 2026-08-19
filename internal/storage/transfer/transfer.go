@@ -59,6 +59,7 @@ var tables = []string{
 	// from it, then the actions hanging off a plan.
 	"sync_configs",
 	"sync_repository_overrides",
+	"sync_repository_paths",
 	"sync_repository_state",
 	"sync_plans",
 	"sync_plan_actions",

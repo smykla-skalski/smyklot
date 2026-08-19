@@ -741,6 +741,83 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 	// What is known about one repository for one kind, which is either what it
 	// has had applied or why nothing could be. One row holds both, so the two
 	// cannot be true at once.
+	Describe("repository paths", func() {
+		It("keeps one list per repository and reads them back per installation", func() {
+			ctx, store, now := runtime()
+			seed(ctx, store, now)
+
+			Expect(store.SetSyncRepositoryPaths(ctx, orgsync.RepositoryPaths{
+				RepositoryID: repoA, TargetID: target,
+				Paths: []string{"README.md", ".github/workflows/test.yaml"}, ObservedAt: now,
+			})).To(Succeed())
+			Expect(store.SetSyncRepositoryPaths(ctx, orgsync.RepositoryPaths{
+				RepositoryID: repoB, TargetID: target,
+				Paths: []string{"README.md"}, ObservedAt: now,
+			})).To(Succeed())
+
+			read, err := store.ListSyncRepositoryPaths(ctx, target)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(read).To(HaveLen(2))
+			Expect(read[0].Paths).To(Equal([]string{"README.md", ".github/workflows/test.yaml"}))
+			Expect(read[0].ObservedAt).To(BeTemporally("==", now))
+			Expect(read[1].Paths).To(Equal([]string{"README.md"}))
+		})
+
+		// A picture of what a repository held, so a file somebody deleted stops
+		// being offered. Merging would remember it for ever.
+		It("replaces a list rather than merging into it", func() {
+			ctx, store, now := runtime()
+			seed(ctx, store, now)
+
+			Expect(store.SetSyncRepositoryPaths(ctx, orgsync.RepositoryPaths{
+				RepositoryID: repoA, TargetID: target,
+				Paths: []string{"gone.md", "README.md"}, ObservedAt: now,
+			})).To(Succeed())
+			Expect(store.SetSyncRepositoryPaths(ctx, orgsync.RepositoryPaths{
+				RepositoryID: repoA, TargetID: target,
+				Paths: []string{"README.md"}, ObservedAt: now.Add(time.Minute),
+			})).To(Succeed())
+
+			read, err := store.ListSyncRepositoryPaths(ctx, target)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(read).To(HaveLen(1))
+			Expect(read[0].Paths).To(Equal([]string{"README.md"}))
+		})
+
+		// A repository read and holding nothing is not a repository nobody has
+		// read, and a list that came back as one empty string would offer the
+		// finder a path called "".
+		It("reads an empty list back as no paths at all", func() {
+			ctx, store, now := runtime()
+			seed(ctx, store, now)
+
+			Expect(store.SetSyncRepositoryPaths(ctx, orgsync.RepositoryPaths{
+				RepositoryID: repoA, TargetID: target, ObservedAt: now,
+			})).To(Succeed())
+
+			read, err := store.ListSyncRepositoryPaths(ctx, target)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(read).To(HaveLen(1))
+			Expect(read[0].Paths).To(BeEmpty())
+		})
+
+		// The scope of an installation is the catalog's, like every other read
+		// of these tables.
+		It("answers nothing for an installation that owns none of it", func() {
+			ctx, store, now := runtime()
+			seed(ctx, store, now)
+
+			Expect(store.SetSyncRepositoryPaths(ctx, orgsync.RepositoryPaths{
+				RepositoryID: repoA, TargetID: target,
+				Paths: []string{"README.md"}, ObservedAt: now,
+			})).To(Succeed())
+
+			read, err := store.ListSyncRepositoryPaths(ctx, "github:installation:999")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(read).To(BeEmpty())
+		})
+	})
+
 	Describe("repository state", func() {
 		It("keeps why a repository could not be synced", func() {
 			ctx, store, now := runtime()

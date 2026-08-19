@@ -316,6 +316,10 @@ func (s *server) reconcileInstallationSync(
 		return err
 	}
 
+	// After the plan rather than before it: this feeds a control that helps
+	// somebody type a path, and nothing here is planned from it.
+	s.refreshSyncPaths(ctx, client, targetID)
+
 	return s.applySyncPlans(ctx)
 }
 

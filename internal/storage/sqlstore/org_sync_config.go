@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/storage"
@@ -435,4 +436,74 @@ func scanSyncRepositoryState(scanner rowScanner) (orgsync.RepositoryState, error
 	state.AppliedAt = applied.Time()
 
 	return state, nil
+}
+
+// ListSyncRepositoryPaths reads every path an installation's repositories are
+// known to hold, one row per repository.
+//
+// Through the repositories join like every other read of these tables: the
+// scope of an installation is the catalog's, and a repository that moves cannot
+// leave a path list behind describing it.
+func (s *Store) ListSyncRepositoryPaths(
+	ctx context.Context,
+	targetID string,
+) ([]orgsync.RepositoryPaths, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT p.repository_id, p.target_id, p.paths, p.observed_at
+FROM sync_repository_paths p
+JOIN repositories r ON r.id = p.repository_id
+WHERE r.target_id = ?
+ORDER BY p.repository_id`, targetID)
+	if err != nil {
+		return nil, fmt.Errorf("list sync repository paths: %w", err)
+	}
+
+	return collectRows(rows, scanSyncRepositoryPaths)
+}
+
+// SetSyncRepositoryPaths replaces one repository's list.
+//
+// Replaced whole rather than merged: this is a picture of what a repository
+// held when it was last looked at, and a merge would remember paths that have
+// since been deleted for ever.
+func (s *Store) SetSyncRepositoryPaths(
+	ctx context.Context,
+	paths orgsync.RepositoryPaths,
+) error {
+	_, err := s.db.ExecContext(ctx, `
+INSERT INTO sync_repository_paths (repository_id, target_id, paths, observed_at)
+VALUES (?, ?, ?, ?)
+ON CONFLICT (repository_id) DO UPDATE SET
+    target_id = excluded.target_id,
+    paths = excluded.paths,
+    observed_at = excluded.observed_at`,
+		paths.RepositoryID,
+		paths.TargetID,
+		strings.Join(paths.Paths, "\n"),
+		paths.ObservedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("set sync repository paths: %w", err)
+	}
+
+	return nil
+}
+
+func scanSyncRepositoryPaths(scanner rowScanner) (orgsync.RepositoryPaths, error) {
+	var (
+		paths    orgsync.RepositoryPaths
+		joined   string
+		observed StoredTime
+	)
+	if err := scanner.Scan(&paths.RepositoryID, &paths.TargetID, &joined, &observed); err != nil {
+		return orgsync.RepositoryPaths{}, fmt.Errorf("scan sync repository paths: %w", err)
+	}
+	// An empty list is a repository that was read and held nothing this cares
+	// about, which splits to one empty string rather than to nothing.
+	if joined != "" {
+		paths.Paths = strings.Split(joined, "\n")
+	}
+	paths.ObservedAt = observed.Time()
+
+	return paths, nil
 }

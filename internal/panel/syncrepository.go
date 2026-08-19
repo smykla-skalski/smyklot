@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
@@ -49,6 +50,142 @@ type syncOverrideDTO struct {
 	// control that fixes it.
 	Problem   string     `json:"problem,omitempty"`
 	ProblemAt *time.Time `json:"problem_at,omitempty"`
+}
+
+// syncPathDTO is one path and how many of this installation's repositories
+// already hold it.
+//
+// The count is the whole point of aggregating: the same file across twenty-five
+// repositories is one thing being configured, not twenty-five facts, and a
+// finder listing it once per repository would be a finder nobody could read.
+type syncPathDTO struct {
+	Path         string `json:"path"`
+	Repositories int    `json:"repositories"`
+}
+
+// listSyncPaths answers with every path this installation's repositories are
+// known to hold.
+//
+// Shipped whole and matched in the browser: it is a list this installation
+// already has, it changes about once a day, and a request per keystroke to
+// filter it would be a request per keystroke.
+//
+// A picture rather than a fact - whatever each default branch held when it was
+// last looked at. The panel says so, and offers a path nobody holds yet anyway.
+func (s *Server) listSyncPaths(w http.ResponseWriter, r *http.Request) {
+	_, target, _, ok := s.requireTarget(w, r, false)
+	if !ok {
+		return
+	}
+
+	rows, err := s.store.ListSyncRepositoryPaths(r.Context(), target.ID)
+	if err != nil {
+		s.writeStorageError(w, err)
+
+		return
+	}
+
+	counts := map[string]int{}
+	var observed time.Time
+	for _, row := range rows {
+		if row.ObservedAt.After(observed) {
+			observed = row.ObservedAt
+		}
+		for _, path := range row.Paths {
+			counts[path]++
+		}
+	}
+
+	paths := make([]syncPathDTO, 0, len(counts))
+	for path, held := range counts {
+		paths = append(paths, syncPathDTO{Path: path, Repositories: held})
+	}
+	// Held by most first, and by path where two are held by as many: the finder
+	// ranks by its own match, and this decides only which of two equal matches
+	// a reader sees first. Name order after that, so the list never shuffles.
+	slices.SortFunc(paths, func(left, right syncPathDTO) int {
+		if left.Repositories != right.Repositories {
+			return right.Repositories - left.Repositories
+		}
+
+		return strings.Compare(left.Path, right.Path)
+	})
+
+	answer := map[string]any{"paths": paths, "repositories": len(rows)}
+	if !observed.IsZero() {
+		answer["observed_at"] = observed
+	}
+	writeJSON(w, http.StatusOK, answer)
+}
+
+// syncOverrideRowDTO is one repository's answer, in a list of all of them.
+//
+// The name travels with it because the caller is a page about a file rather
+// than about a repository: "three repositories adjust renovate.json" is
+// answered by this list, and answering it with ids would mean a request per row
+// to turn each one back into a word.
+type syncOverrideRowDTO struct {
+	RepositoryID   string `json:"repository_id"`
+	RepositoryName string `json:"repository_name"`
+
+	syncOverrideDTO
+}
+
+// listSyncOverrides reads every repository's answer about one kind.
+//
+// One request rather than one per repository. The page that needs this is the
+// one about a shared file, which asks "who adjusts this, and how" - a question
+// about the whole installation that the per-repository endpoint can only answer
+// by being asked two hundred times.
+//
+// Repositories the installation no longer holds are left out by the store's own
+// join, so a name is always a repository somebody can still open.
+func (s *Server) listSyncOverrides(w http.ResponseWriter, r *http.Request) {
+	_, target, _, ok := s.requireTarget(w, r, false)
+	if !ok {
+		return
+	}
+	kind, ok := s.syncKind(w, r)
+	if !ok {
+		return
+	}
+
+	overrides, err := s.store.ListSyncRepositoryOverrides(r.Context(), target.ID)
+	if err != nil {
+		s.writeStorageError(w, err)
+
+		return
+	}
+
+	repositories, err := s.store.ListRepositories(r.Context(), target.ID)
+	if err != nil {
+		s.writeStorageError(w, err)
+
+		return
+	}
+
+	names := make(map[string]string, len(repositories))
+	for _, repository := range repositories {
+		names[repository.ID] = repository.Name
+	}
+
+	rows := make([]syncOverrideRowDTO, 0, len(overrides))
+	for _, override := range overrides {
+		if override.Kind != kind {
+			continue
+		}
+		name, known := names[override.RepositoryID]
+		if !known {
+			continue
+		}
+		rows = append(rows, syncOverrideRowDTO{
+			RepositoryID:    override.RepositoryID,
+			RepositoryName:  name,
+			syncOverrideDTO: syncOverrideToDTO(kind, &override),
+		})
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"overrides": rows})
 }
 
 // getSyncOverride reads what one repository says about one kind.

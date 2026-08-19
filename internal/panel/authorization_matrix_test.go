@@ -133,6 +133,8 @@ func regularRouteProbes(target string) []authorizationProbe {
 		{http.MethodPost, target + "/repositories/repository-30/config-migration"},
 		{http.MethodGet, target + "/repositories/repository-30/sync/labels"},
 		{http.MethodPut, target + "/repositories/repository-30/sync/labels"},
+		{http.MethodGet, target + "/sync/paths"},
+		{http.MethodGet, target + "/sync/overrides/labels"},
 		{http.MethodGet, target + "/sync/config/labels"},
 		{http.MethodPut, target + "/sync/config/labels"},
 		{http.MethodGet, target + "/sync/plan"},
