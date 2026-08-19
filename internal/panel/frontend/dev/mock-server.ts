@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import type { Connect, Plugin } from 'vite';
 
 import { mockEnabled as enabled } from './mock-html.ts';
+import { syncPathIndex } from './path-index.ts';
 
 import type {
   AuditEntry,
@@ -54,6 +55,7 @@ import {
   DEFAULT_CONFIG,
   MOCK_ORGANIZATION_ROSTER,
   mockRepositoryPaths,
+  mockRepositoryScanAge,
   mockSyncConfig,
   ROOT_READ_CAPABILITIES,
   mockRootOwns,
@@ -1001,32 +1003,23 @@ async function handle(
     );
     if (syncPathsMatch && method === 'GET') {
       const target = findTarget(state, decodeURIComponent(syncPathsMatch[1] ?? ''));
-      const counts = new Map<string, number>();
-      for (const repository of target.repositories) {
-        for (const known of mockRepositoryPaths(repository.detail.repository.name)) {
-          counts.set(known, (counts.get(known) ?? 0) + 1);
-        }
-      }
-      respond(res, 200, {
-        paths: [...counts]
-          .map(([known, held]) => ({ path: known, repositories: held }))
-          /* Held by most first, then by path - and by path the way the service
-             breaks that tie, which is `strings.Compare`, a byte comparison.
-             `localeCompare` puts `README.md` and `api.md` the other way round,
-             so the mock and the service disagreed about the order of the very
-             first rows a reader sees. */
-          .sort((left, right) => {
-            if (left.repositories !== right.repositories) {
-              return right.repositories - left.repositories;
-            }
+      const day = 24 * 60 * 60 * 1000;
 
-            return left.path < right.path ? -1 : left.path > right.path ? 1 : 0;
+      respond(
+        res,
+        200,
+        syncPathIndex(
+          target.repositories.map((repository) => {
+            const name = repository.detail.repository.name;
+
+            return {
+              repository_id: repository.detail.repository.id,
+              paths: mockRepositoryPaths(name),
+              observed_at: new Date(Date.now() - mockRepositoryScanAge(name) * day).toISOString(),
+            };
           }),
-        repositories: target.repositories.length,
-        observed_at: new Date().toISOString(),
-        // Always sent by the service, so always sent here.
-        partial: false,
-      });
+        ),
+      );
       return;
     }
 

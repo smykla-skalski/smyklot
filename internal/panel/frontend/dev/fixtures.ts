@@ -1650,3 +1650,17 @@ export function mockRepositoryPaths(name: string): string[] {
 
   return [...everywhere, ...some.filter((_, index) => (seed + index) % 3 !== 0)];
 }
+
+/**
+ * When this repository's tree was last read, as an offset in days.
+ *
+ * Not all the same, and one of them old: the panel's answer takes its STALEST
+ * row, so a fixture where every reading is fresh makes the notice above the
+ * finder unreachable in development - which is where a developer would
+ * otherwise see it.
+ */
+export function mockRepositoryScanAge(name: string): number {
+  const seed = [...name].reduce((total, letter) => total + letter.charCodeAt(0), 0);
+
+  return seed % 7 === 0 ? 9 : seed % 3;
+}

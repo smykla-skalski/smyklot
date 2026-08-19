@@ -1,0 +1,128 @@
+{
+  "cases": [
+    {
+      "name": "one row per path, carrying how many repositories hold it",
+      "rows": [
+        {
+          "repository_id": "r1",
+          "paths": ["renovate.json", "README.md"],
+          "observed_at": "2026-08-18T09:00:00Z"
+        },
+        {
+          "repository_id": "r2",
+          "paths": ["renovate.json"],
+          "observed_at": "2026-08-18T09:00:00Z"
+        }
+      ],
+      "expected": {
+        "paths": [
+          { "path": "renovate.json", "repositories": 2 },
+          { "path": "README.md", "repositories": 1 }
+        ],
+        "repositories": 2,
+        "partial": false,
+        "observed_at": "2026-08-18T09:00:00Z"
+      }
+    },
+    {
+      "name": "held by most first, then by byte order rather than by locale",
+      "rows": [
+        {
+          "repository_id": "r1",
+          "paths": ["api.md", "README.md", "renovate.json"],
+          "observed_at": "2026-08-18T09:00:00Z"
+        },
+        {
+          "repository_id": "r2",
+          "paths": ["renovate.json"],
+          "observed_at": "2026-08-18T09:00:00Z"
+        }
+      ],
+      "expected": {
+        "paths": [
+          { "path": "renovate.json", "repositories": 2 },
+          { "path": "README.md", "repositories": 1 },
+          { "path": "api.md", "repositories": 1 }
+        ],
+        "repositories": 2,
+        "partial": false,
+        "observed_at": "2026-08-18T09:00:00Z"
+      }
+    },
+    {
+      "name": "the stalest reading, not the freshest",
+      "rows": [
+        {
+          "repository_id": "r1",
+          "paths": ["renovate.json"],
+          "observed_at": "2026-08-18T09:00:00Z"
+        },
+        {
+          "repository_id": "r2",
+          "paths": ["README.md"],
+          "observed_at": "2026-08-11T09:00:00Z"
+        }
+      ],
+      "expected": {
+        "paths": [
+          { "path": "README.md", "repositories": 1 },
+          { "path": "renovate.json", "repositories": 1 }
+        ],
+        "repositories": 2,
+        "partial": false,
+        "observed_at": "2026-08-11T09:00:00Z"
+      }
+    },
+    {
+      "name": "one incomplete list makes the whole answer incomplete",
+      "rows": [
+        {
+          "repository_id": "r1",
+          "paths": ["renovate.json"],
+          "observed_at": "2026-08-18T09:00:00Z"
+        },
+        {
+          "repository_id": "r2",
+          "paths": ["README.md"],
+          "observed_at": "2026-08-18T09:00:00Z",
+          "partial": true
+        }
+      ],
+      "expected": {
+        "paths": [
+          { "path": "README.md", "repositories": 1 },
+          { "path": "renovate.json", "repositories": 1 }
+        ],
+        "repositories": 2,
+        "partial": true,
+        "observed_at": "2026-08-18T09:00:00Z"
+      }
+    },
+    {
+      "name": "repositories counts the rows read, not the installation's repositories",
+      "rows": [
+        {
+          "repository_id": "r1",
+          "paths": ["renovate.json"],
+          "observed_at": "2026-08-18T09:00:00Z"
+        },
+        {
+          "repository_id": "r2",
+          "paths": [],
+          "observed_at": "2026-08-18T09:00:00Z"
+        }
+      ],
+      "expected": {
+        "paths": [{ "path": "renovate.json", "repositories": 1 }],
+        "repositories": 2,
+        "partial": false,
+        "observed_at": "2026-08-18T09:00:00Z"
+      }
+    },
+    {
+      "name": "nothing looked at yet says so by leaving the reading out",
+      "rows": [],
+      "expected": { "paths": [], "repositories": 0, "partial": false }
+    }
+  ]
+}

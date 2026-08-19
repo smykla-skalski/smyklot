@@ -141,6 +141,29 @@ func (s *Server) listSyncPaths(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	answer := syncPathIndex(rows)
+
+	// Stamped with what was read BEFORE the aggregation, so a sweep that wrote
+	// a row while this was building leaves a stamp that no longer matches and
+	// the next reader rebuilds. Storing the stamp of a fresher read would pin a
+	// stale answer to it.
+	s.pathIndex.Store(target.ID, heldPathIndex{stamp: stamp, answer: answer})
+
+	writeJSON(w, http.StatusOK, answer)
+}
+
+// syncPathIndex folds every repository's stored list into the one answer the
+// finder reads.
+//
+// Its own function, and a pure one, because the panel is not the only thing
+// that answers this address: the dev mock does too, and the two disagreed on
+// the two fields nothing on screen shows plainly - what `repositories` counts,
+// and which reading `observed_at` takes. Both are read by the notice above the
+// finder, so a mock that got them wrong made the stale-index notice untestable
+// in development and, in one direction, unreachable. `testdata/path-index.json`
+// is the one table both sides are run against - the mechanism `filemerge`
+// already uses for the composer.
+func syncPathIndex(rows []orgsync.RepositoryPaths) map[string]any {
 	counts := map[string]int{}
 	var (
 		observed time.Time
@@ -179,6 +202,10 @@ func (s *Server) listSyncPaths(w http.ResponseWriter, r *http.Request) {
 		return strings.Compare(left.Path, right.Path)
 	})
 
+	// `repositories` counts the rows this was built FROM, not the installation's
+	// repositories: it is the denominator under "held by 4 of 6", and counting
+	// repositories nothing has ever looked at would put a ceiling there that no
+	// path can reach.
 	answer := map[string]any{
 		"paths": paths, "repositories": len(rows), "partial": partial,
 	}
@@ -186,13 +213,7 @@ func (s *Server) listSyncPaths(w http.ResponseWriter, r *http.Request) {
 		answer["observed_at"] = observed
 	}
 
-	// Stamped with what was read BEFORE the aggregation, so a sweep that wrote
-	// a row while this was building leaves a stamp that no longer matches and
-	// the next reader rebuilds. Storing the stamp of a fresher read would pin a
-	// stale answer to it.
-	s.pathIndex.Store(target.ID, heldPathIndex{stamp: stamp, answer: answer})
-
-	writeJSON(w, http.StatusOK, answer)
+	return answer
 }
 
 // syncOverrideRowDTO is one repository's answer, in a list of all of them.
