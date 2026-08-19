@@ -1,0 +1,107 @@
+<script lang="ts">
+  /**
+   * The bar that says what applying would do, and offers to do it.
+   *
+   * The sentence is the blast radius, said in the order a person needs it: how
+   * many changes, across how many repositories, how many of them take something
+   * away, and which of them reach GitHub directly rather than as a pull request.
+   * The button names the radius too - "Apply to 3 repositories", never "Apply" -
+   * because the button is what gets pressed, and a label that names its scope is
+   * the last chance to notice the scope is wrong.
+   *
+   * The wording lives here rather than at each caller so it stays one sentence
+   * that has been thought about once.
+   *
+   * Sticky rather than fixed: it belongs to the plan it sits under, and it stops
+   * where the plan stops instead of floating over whatever comes next.
+   */
+  import Button from '#lib/components/Button.svelte';
+
+  const {
+    changes,
+    repositories,
+    removals = 0,
+    asPullRequests = false,
+    applying = false,
+    onApply,
+    onDiscard,
+  }: {
+    changes: number;
+    repositories: number;
+    /** Counted out loud, in the danger ink: this is what approval is asked for. */
+    removals?: number;
+    /** Some of this lands as pull requests, which is a different promise. */
+    asPullRequests?: boolean;
+    applying?: boolean;
+    onApply?: () => void;
+    onDiscard?: () => void;
+  } = $props();
+
+  /* Both words, rather than an `s` bolted on: this sentence says "repositories"
+     and no rule that stems one word stems that one. */
+  const plural = (count: number, one: string, many: string) =>
+    `${count} ${count === 1 ? one : many}`;
+
+  const scope = $derived(plural(repositories, 'repository', 'repositories'));
+</script>
+
+<div class="apply-bar">
+  <p class="apply-note">
+    <strong>{plural(changes, 'change', 'changes')} across {scope}</strong>{#if removals > 0},
+      including <span class="is-removal">{plural(removals, 'removal', 'removals')}</span>{/if}.
+    {#if asPullRequests}
+      File changes open pull requests; the rest applies directly.
+    {:else}
+      Nothing reaches GitHub until you apply.
+    {/if}
+  </p>
+  <!-- Only where there is something to discard to. A control that answers a
+       press with nothing is worse than one that was never offered. -->
+  {#if onDiscard !== undefined}
+    <Button tone="quiet" disabled={applying} onclick={() => onDiscard()}>Discard</Button>
+  {/if}
+  <Button tone="brand" disabled={applying} onclick={() => onApply?.()}>
+    {applying ? 'Applying…' : `Apply to ${scope}`}
+  </Button>
+</div>
+
+<style>
+  .apply-bar {
+    align-items: center;
+    background: var(--surface-base);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--r-strip);
+    bottom: var(--space-4);
+    box-shadow: var(--shadow-plate);
+    display: flex;
+    gap: var(--space-4);
+    margin-top: var(--space-5);
+    padding: var(--space-3) var(--space-4);
+    position: sticky;
+    z-index: var(--layer-sticky);
+  }
+
+  .apply-note {
+    color: var(--text-secondary);
+    flex: 1;
+    font-size: var(--font-size-meta);
+    margin: 0;
+  }
+
+  .apply-note strong {
+    color: var(--text-primary);
+  }
+
+  .is-removal {
+    color: var(--danger);
+    font-weight: 600;
+  }
+
+  @media (max-width: 40rem) {
+    .apply-bar {
+      align-items: stretch;
+      flex-direction: column;
+      gap: var(--space-3);
+    }
+  }
+</style>

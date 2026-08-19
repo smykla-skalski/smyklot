@@ -1,19 +1,59 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import SyncFileDetail from '../src/lib/components/SyncFileDetail.svelte';
 import SyncFilesForm from '../src/lib/components/SyncFilesForm.svelte';
+import type { SyncOverrideRow } from '../src/lib/types.js';
 
-/** The segmented control measures itself to place a thumb; jsdom does not. */
+/** The segmented controls measure themselves to place a thumb; jsdom does not. */
 class TestResizeObserver {
   observe(): void {}
   disconnect(): void {}
 }
 
+const TEMPLATE = `{
+  "extends": ["config:recommended"],
+  "timezone": "UTC",
+  "automerge": false
+}
+`;
+
+const STORED = {
+  files: [
+    { path: 'renovate.json', content: TEMPLATE },
+    { path: 'CONTRIBUTING.md', content: '# Contributing\n' },
+  ],
+  retired: ['.github/stale.yml'],
+  excludes: ['LICENSE-*'],
+};
+
+function adjustment(over: Partial<SyncOverrideRow> = {}): SyncOverrideRow {
+  return {
+    repository_id: '4001',
+    repository_name: 'af',
+    kind: 'files',
+    enabled: null,
+    document: {
+      merges: [
+        {
+          path: 'renovate.json',
+          strategy: 'deep-merge',
+          overrides: { timezone: 'Europe/Warsaw' },
+        },
+      ],
+    },
+    revision: 1,
+    unreadable: false,
+    ...over,
+  } as SyncOverrideRow;
+}
+
 /**
- * The template a repository ends up carrying is whatever this form sends, so
- * anything it drops on the way to a save is a file that stops being
- * synchronized - reported by the plan as an ordinary change.
+ * Deletion here is a named list of retired paths and nothing else. The tool
+ * this replaces published a switch promising to delete every file not in the
+ * central configuration - which is every file in the repository - documented it
+ * as dangerous, and never implemented it.
  */
 describe('SyncFilesForm [Component]', () => {
   beforeEach(() => {
@@ -24,164 +64,209 @@ describe('SyncFilesForm [Component]', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   const base = {
-    stored: {},
-    enabled: false,
+    stored: STORED,
+    enabled: true,
     unreadable: false,
     readOnly: false,
     saving: false,
+    fileHref: (path: string) => `/sync/files/${path}`,
     onSave: () => {},
   };
 
-  function contributing(over: Record<string, unknown> = {}) {
-    return { path: 'CONTRIBUTING.md', content: '# Contributing\n', ...over };
-  }
+  it('draws a row per template, with the way into it', () => {
+    const { container } = render(SyncFilesForm, base);
 
-  function saved() {
-    const sent: { enabled: boolean; document: Record<string, unknown> }[] = [];
-
-    return {
-      sent,
-      onSave: (enabled: boolean, document: Record<string, unknown>) =>
-        sent.push({ enabled, document }),
-    };
-  }
-
-  async function save(): Promise<void> {
-    await fireEvent.click(screen.getByRole('button', { name: 'Save files' }));
-  }
-
-  it('shows the files the installation configured', () => {
-    render(SyncFilesForm, { ...base, stored: { files: [contributing()] } });
-
-    expect(screen.getByDisplayValue('CONTRIBUTING.md')).toBeTruthy();
-
-    // Read off the element rather than matched, because the matcher trims and
-    // a template's trailing newline is part of the file.
-    const content = screen.getByPlaceholderText('# Contributing') as HTMLTextAreaElement;
-    expect(content.value).toBe('# Contributing\n');
-  });
-
-  it('says so where nothing is configured rather than showing an empty row', () => {
-    render(SyncFilesForm, base);
-
-    expect(screen.getByText('No files yet.')).toBeTruthy();
+    const rows = [...container.querySelectorAll<HTMLAnchorElement>('a.object-row')];
+    expect(rows.map((row) => row.getAttribute('href'))).toEqual([
+      '/sync/files/renovate.json',
+      '/sync/files/CONTRIBUTING.md',
+    ]);
   });
 
   /**
-   * A kind nobody has configured must not offer a save on load. The stored
-   * document is empty and what a save would send is three keys with their
-   * defaults, so comparing against the wrong one puts Save live before anybody
-   * has touched anything.
+   * How a file arrives is decided by the repositories, not by the template: the
+   * installation says what the file should say, and a repository says how its
+   * own differs.
    */
-  it('offers no save until something changes', () => {
-    render(SyncFilesForm, base);
+  it('says a file replaces until a repository adjusts it', () => {
+    const { container } = render(SyncFilesForm, base);
+    expect(container.querySelector('a.object-row')?.textContent).toContain('replaces');
 
-    expect(screen.getByRole('button', { name: 'Save files' }).hasAttribute('disabled')).toBe(true);
+    const adjusted = render(SyncFilesForm, { ...base, adjustments: [adjustment()] });
+    const row = adjusted.container.querySelector('a.object-row');
+    expect(row?.textContent).toContain('merges · deep-merge');
+    expect(row?.textContent).toContain('1 repository adjusts it');
   });
 
-  it('sends a file somebody added', async () => {
-    const { sent, onSave } = saved();
-    render(SyncFilesForm, { ...base, onSave });
-
-    await fireEvent.click(screen.getByRole('button', { name: 'Add a file' }));
-    await fireEvent.change(screen.getByPlaceholderText('CONTRIBUTING.md'), {
-      target: { value: 'SECURITY.md' },
-    });
-    await fireEvent.change(screen.getByPlaceholderText('# Contributing'), {
-      target: { value: '# Security' },
-    });
-    await save();
-
-    expect(sent).toHaveLength(1);
-    expect(sent[0].document.files).toEqual([{ path: 'SECURITY.md', content: '# Security' }]);
-  });
-
-  it('sends a file somebody removed', async () => {
-    const { sent, onSave } = saved();
-    render(SyncFilesForm, { ...base, stored: { files: [contributing()] }, onSave });
-
-    await fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
-    await save();
-
-    expect(sent[0].document.files).toEqual([]);
-  });
-
-  /**
-   * The only thing on this page that deletes anything, and the reason there is
-   * no switch beside it: the tool this replaces published one promising to
-   * remove every file the configuration does not name, which is every file in
-   * the repository.
-   */
-  it('sends the paths to remove, one per line', async () => {
-    const { sent, onSave } = saved();
-    render(SyncFilesForm, { ...base, stored: { files: [contributing()] }, onSave });
-
-    await fireEvent.change(screen.getByPlaceholderText('.github/workflows/sync-trigger.yml'), {
-      target: { value: '.renovaterc\n\n  .github/workflows/sync-trigger.yml  \n' },
-    });
-    await save();
-
-    expect(sent[0].document.retired).toEqual(['.renovaterc', '.github/workflows/sync-trigger.yml']);
-  });
-
-  it('sends the paths to leave alone', async () => {
-    const { sent, onSave } = saved();
-    render(SyncFilesForm, { ...base, stored: { files: [contributing()] }, onSave });
-
-    await fireEvent.change(screen.getByPlaceholderText('LICENSE'), {
-      target: { value: 'LICENSE\n*.md' },
-    });
-    await save();
-
-    expect(sent[0].document.excludes).toEqual(['LICENSE', '*.md']);
-  });
-
-  /**
-   * Anything a later version adds is stored in the same document, and a form
-   * that rebuilt it from its own controls would drop every key it has no
-   * control for.
-   */
-  it('carries through a key it has no control for', async () => {
-    const { sent, onSave } = saved();
+  /** Every write carries the whole document, keys this version knows nothing of included. */
+  it('adds a path from the finder without dropping the rest', async () => {
+    const onSave = vi.fn();
     render(SyncFilesForm, {
       ...base,
-      stored: { files: [contributing()], something_later: { deep: true } },
+      stored: { ...STORED, some_future_key: 'kept' },
+      paths: [{ path: '.github/CODEOWNERS', repositories: 20 }],
+      repositories: 25,
       onSave,
     });
 
     await fireEvent.click(screen.getByRole('button', { name: 'Add a file' }));
-    await save();
+    const field = screen.getByRole('combobox', { name: 'Path of the file to manage' });
+    await fireEvent.focus(field);
+    await fireEvent.input(field, { target: { value: 'CODEOWNERS' } });
+    await fireEvent.click(screen.getByRole('option', { name: /CODEOWNERS/ }));
 
-    expect(sent[0].document.something_later).toEqual({ deep: true });
+    const document_ = onSave.mock.calls[0]?.[1] as { files: { path: string }[] };
+    expect(document_.files.map((file) => file.path)).toEqual([
+      'renovate.json',
+      'CONTRIBUTING.md',
+      '.github/CODEOWNERS',
+    ]);
+    expect(document_).toMatchObject({ some_future_key: 'kept' });
+  });
+
+  it('retires a path, which is the only thing here that deletes anything', async () => {
+    const onSave = vi.fn();
+    render(SyncFilesForm, { ...base, onSave });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Add a path' }));
+    const field = screen.getByRole('textbox', { name: 'Add a path' });
+    await fireEvent.input(field, { target: { value: '.github/old.yml' } });
+    await fireEvent.keyDown(field, { key: 'Enter' });
+
+    expect(onSave.mock.calls[0]?.[1]).toMatchObject({
+      retired: ['.github/stale.yml', '.github/old.yml'],
+    });
+  });
+
+  it('offers no way to add one while read only', () => {
+    render(SyncFilesForm, { ...base, readOnly: true });
+
+    expect(screen.queryByRole('button', { name: 'Add a file' })).toBeNull();
+  });
+});
+
+/**
+ * The RESULT is the editable surface, never the adjustment. Everything here is
+ * about that round trip holding: what somebody types is what the service will
+ * compose, or the page says it cannot be stored.
+ */
+describe('SyncFileDetail [Component]', () => {
+  beforeEach(() => {
+    vi.stubGlobal('ResizeObserver', TestResizeObserver);
+    document.body.innerHTML = '<main class="app-shell"></main>';
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  const base = {
+    stored: STORED,
+    path: 'renovate.json',
+    listHref: '/sync/files',
+    adjustments: [adjustment()],
+    repositories: 25,
+    readOnly: false,
+    saving: false,
+    unreadable: false,
+    onSave: () => {},
+  };
+
+  it('names what each repository changes', () => {
+    const { container } = render(SyncFileDetail, base);
+
+    expect(container.querySelector('.object-sum')?.textContent).toBe('changes 1 key — timezone');
+  });
+
+  /** The composed file, not the patch: that is the thing somebody came to read. */
+  it('opens the composed file for editing', async () => {
+    render(SyncFileDetail, base);
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+
+    const editor = screen.getByRole('textbox', { name: 'What af ends up with' });
+    expect((editor as HTMLTextAreaElement).value).toContain('"timezone": "Europe/Warsaw"');
+    expect((editor as HTMLTextAreaElement).value).toContain('"extends"');
+  });
+
+  it('stores what was typed as the difference from the template', async () => {
+    const onSaveAdjustment = vi.fn();
+    render(SyncFileDetail, { ...base, onSaveAdjustment });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    const editor = screen.getByRole('textbox', { name: 'What af ends up with' });
+    await fireEvent.input(editor, {
+      target: {
+        value:
+          '{\n  "extends": ["config:recommended"],\n  "timezone": "UTC",\n  "automerge": true\n}\n',
+      },
+    });
+    await fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(onSaveAdjustment).toHaveBeenCalledTimes(1);
+    const document_ = onSaveAdjustment.mock.calls[0]?.[1] as {
+      merges: { path: string; overrides: Record<string, unknown> }[];
+    };
+    // The timezone went back to the template's, so it stops being adjusted.
+    expect(document_.merges[0]?.overrides).toEqual({ automerge: true });
   });
 
   /**
-   * A document this version cannot read renders as no files at all, which is
-   * exactly what a repository configuring none looks like. Saving over it would
-   * send the emptiness the panel invented rather than the templates the row
-   * still holds.
+   * RFC 7396 reads a null in a patch as "remove this key", so storing one would
+   * mean something other than what somebody typed.
    */
-  it('changes nothing while the stored document cannot be read', () => {
-    render(SyncFilesForm, { ...base, unreadable: true });
+  it('refuses an edit a merge patch cannot say', async () => {
+    const onSaveAdjustment = vi.fn();
+    render(SyncFileDetail, { ...base, onSaveAdjustment });
 
-    expect(screen.getByRole('alert').textContent).toContain('cannot read');
-    expect(screen.getByRole('button', { name: 'Save files' }).hasAttribute('disabled')).toBe(true);
-  });
-
-  it('offers no save at all to somebody who may only read', () => {
-    render(SyncFilesForm, { ...base, readOnly: true, stored: { files: [contributing()] } });
-
-    expect(screen.queryByRole('button', { name: 'Save files' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull();
-  });
-
-  it('says which permission is missing while the switch is on', () => {
-    render(SyncFilesForm, {
-      ...base,
-      enabled: true,
-      unavailable: 'Smyklot has not been granted contents access, which files sync needs',
+    await fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    const editor = screen.getByRole('textbox', { name: 'What af ends up with' });
+    await fireEvent.input(editor, {
+      target: { value: '{\n  "extends": ["config:recommended"],\n  "timezone": null\n}\n' },
     });
+    await fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
-    expect(screen.getByRole('status').textContent).toContain('contents');
+    expect(onSaveAdjustment).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert').textContent).toContain('cannot set a key to null');
+  });
+
+  it('refuses what is not JSON at all', async () => {
+    const onSaveAdjustment = vi.fn();
+    render(SyncFileDetail, { ...base, onSaveAdjustment });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    await fireEvent.input(screen.getByRole('textbox', { name: 'What af ends up with' }), {
+      target: { value: '{oops' },
+    });
+    await fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(onSaveAdjustment).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert').textContent).toContain('not valid JSON');
+  });
+
+  /** Clearing an adjustment returns the template's own content, never a value of its own. */
+  it('stops adjusting without writing anything in its place', async () => {
+    const onSaveAdjustment = vi.fn();
+    const { container } = render(SyncFileDetail, { ...base, onSaveAdjustment });
+
+    const row = container.querySelector('.object-row') as HTMLElement;
+    await fireEvent.click(within(row).getByRole('button', { name: 'Stop adjusting' }));
+
+    expect(onSaveAdjustment.mock.calls[0]?.[1]).toEqual({ merges: [] });
+  });
+
+  /**
+   * A Markdown file is composed by rules a browser cannot reproduce, so an
+   * adjustment is named rather than drawn as a file that would be a guess.
+   */
+  it('offers no result surface for a file it cannot compose', () => {
+    render(SyncFileDetail, { ...base, path: 'CONTRIBUTING.md', adjustments: [] });
+
+    expect(screen.queryByRole('button', { name: 'Edit the template' })).not.toBeNull();
+    expect(document.body.textContent).toContain('cannot reproduce');
+  });
+
+  it('says so when no template has that path', () => {
+    render(SyncFileDetail, { ...base, path: 'renovate.json5' });
+
+    expect(document.body.textContent).toContain('No template here has that path');
   });
 });

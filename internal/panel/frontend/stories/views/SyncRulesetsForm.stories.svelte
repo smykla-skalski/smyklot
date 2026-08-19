@@ -3,18 +3,40 @@
   import { fn } from 'storybook/test';
 
   import SyncRulesetsForm from '#lib/components/SyncRulesetsForm.svelte';
+  import type { MarkState } from '#lib/components/StateMark.svelte';
 
   const STORED = {
     rulesets: [
       {
-        name: 'main',
+        name: 'main-branch-protection',
         target: 'branch',
         enforcement: 'active',
-        conditions: { ref_name: { include: ['~DEFAULT_BRANCH'], exclude: [] } },
-        rules: [{ type: 'pull_request' }, { type: 'deletion' }],
-        bypass_actors: [{ actor_id: 1, actor_type: 'OrganizationAdmin', bypass_mode: 'always' }],
+        conditions: { include: ['~DEFAULT_BRANCH'], exclude: [] },
+        rules: {
+          deletion: true,
+          non_fast_forward: true,
+          required_linear_history: true,
+          required_signatures: true,
+          pull_request: { required_approving_review_count: 1, allowed_merge_methods: ['squash'] },
+          required_status_checks: { required_status_checks: [{ context: 'test' }] },
+        },
+        bypass_actors: [{ actor_id: 0, actor_type: 'OrganizationAdmin', bypass_mode: 'always' }],
+      },
+      {
+        name: 'release-tags',
+        target: 'tag',
+        enforcement: 'evaluate',
+        conditions: { include: ['refs/tags/v*'], exclude: [] },
+        rules: { creation: true, deletion: true },
       },
     ],
+    allow_removal: false,
+    excludes: ['hand-made-*'],
+  };
+
+  const MARKS: Record<string, { state: MarkState; label?: string }> = {
+    'main-branch-protection': { state: 'change', label: '1 repository differs' },
+    'release-tags': { state: 'settled' },
   };
 
   const { Story } = defineMeta({
@@ -32,19 +54,26 @@
       unreadable: false,
       readOnly: false,
       saving: false,
+      rulesetHref: (name: string) => `#ruleset-${name}`,
+      markOf: (name: string) => MARKS[name],
       onSave: fn(),
     },
   });
 </script>
 
 <!--
-  The branch rulesets every repository in an installation should carry. A ruleset is
-  several things at once - what it applies to, what it requires, who may bypass it -
-  so each block is set off with a heading of its own rather than running together.
+  Two levels and no deeper: this page answers "which rulesets, and is each one
+  holding", and a row opens the ruleset's own page for everything else. The
+  whole configuration used to be one page - nine rules, their parameters, their
+  bypass actors and their ref patterns, per ruleset, unfolded.
 -->
-<Story name="One ruleset" />
+<Story name="Two rulesets" />
 
-<!-- Nothing configured yet: the form has to offer a way in rather than show a void. -->
+<!-- No plan has been worked out, so no row claims to be in step: a ruleset with
+     no action in a plan is settled, but with no plan it has not been looked at. -->
+<Story name="Before a plan" args={{ markOf: () => undefined }} />
+
+<!-- Nothing configured yet: the page has to offer a way in rather than a void. -->
 <Story name="Empty" args={{ stored: { rulesets: [] } }} />
 
 <Story name="Switched off" args={{ enabled: false }} />

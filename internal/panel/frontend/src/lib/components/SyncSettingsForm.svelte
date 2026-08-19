@@ -1,22 +1,167 @@
+<script module lang="ts">
+  /**
+   * The settings this installation can decide, and how each is said.
+   *
+   * At module scope because the count is a fact about the page rather than
+   * about one instance of it: the overview's card says "9 of 17 managed", and a
+   * second copy of the list to count is the copy that goes stale.
+   */
+  type Choice = { value: string; label: string };
+
+  export type SettingField = {
+    key: string;
+    label: string;
+    /** What it means, in the reader's words rather than GitHub's. */
+    why?: string;
+    /** A switch is a boolean in the document; a choice is one of GitHub's words. */
+    kind: 'switch' | 'choice';
+    options: readonly Choice[];
+  };
+
+  const ON = 'on';
+  const OFF = 'off';
+  const SWITCH: readonly Choice[] = [
+    { value: ON, label: 'On' },
+    { value: OFF, label: 'Off' },
+  ];
+
+  function toggle(key: string, label: string, why?: string): SettingField {
+    return { key, label, why, kind: 'switch', options: SWITCH };
+  }
+
+  function choice(key: string, label: string, options: readonly Choice[]): SettingField {
+    return { key, label, kind: 'choice', options };
+  }
+
+  /**
+   * The settings, grouped the way somebody thinks about them rather than the
+   * way the endpoint spells them. The keys are GitHub's own, because they are
+   * what the stored document holds and what a plan names.
+   */
+  const GROUPS: readonly {
+    id: string;
+    title: string;
+    /** Only where the rows cannot say it themselves; each carries its own why. */
+    note?: string;
+    fields: readonly SettingField[];
+  }[] = [
+    {
+      id: 'merging',
+      title: 'Merging',
+      fields: [
+        toggle('allow_merge_commit', 'Merge commits', 'A pull request may land as a merge commit'),
+        toggle(
+          'allow_squash_merge',
+          'Squash merging',
+          'A pull request may land squashed to one commit',
+        ),
+        toggle(
+          'allow_rebase_merge',
+          'Rebase merging',
+          'A pull request may land rebased onto the base',
+        ),
+        toggle(
+          'allow_auto_merge',
+          'Auto-merge',
+          'A pull request may be set to merge itself once checks pass',
+        ),
+        toggle(
+          'delete_branch_on_merge',
+          'Delete the branch on merge',
+          'The head branch goes as soon as its pull request lands',
+        ),
+        toggle(
+          'allow_update_branch',
+          'Offer to update the branch',
+          'A pull request behind its base offers a button to catch up',
+        ),
+      ],
+    },
+    {
+      id: 'wording',
+      title: 'Commit wording',
+      note: 'A wording is only sent where its merge strategy is on — anything else is withheld and the plan says so.',
+      fields: [
+        choice('squash_merge_commit_title', 'Squash commit title', [
+          { value: 'PR_TITLE', label: 'Pull request title' },
+          { value: 'COMMIT_OR_PR_TITLE', label: "Commit title, or the pull request's" },
+        ]),
+        choice('squash_merge_commit_message', 'Squash commit message', [
+          { value: 'PR_BODY', label: 'Pull request body' },
+          { value: 'COMMIT_MESSAGES', label: 'The commits, listed' },
+          { value: 'BLANK', label: 'Blank' },
+        ]),
+        choice('merge_commit_title', 'Merge commit title', [
+          { value: 'PR_TITLE', label: 'Pull request title' },
+          { value: 'MERGE_MESSAGE', label: 'Merge message' },
+        ]),
+        choice('merge_commit_message', 'Merge commit message', [
+          { value: 'PR_BODY', label: 'Pull request body' },
+          { value: 'PR_TITLE', label: 'Pull request title' },
+          { value: 'BLANK', label: 'Blank' },
+        ]),
+      ],
+    },
+    {
+      id: 'features',
+      title: 'Features',
+      fields: [
+        toggle('has_issues', 'Issues'),
+        toggle('has_projects', 'Projects'),
+        toggle('has_wiki', 'Wiki'),
+        toggle('has_discussions', 'Discussions'),
+      ],
+    },
+    {
+      id: 'security',
+      title: 'Security',
+      note: 'A repository that does not offer one of these is left alone rather than asked, and the plan names which.',
+      fields: [
+        toggle('advanced_security', 'Advanced security'),
+        toggle('secret_scanning', 'Secret scanning'),
+        toggle('secret_scanning_push_protection', 'Push protection'),
+      ],
+    },
+  ];
+
+  export const SETTING_GROUPS = GROUPS;
+
+  /** Every key a repository setting can be managed under. */
+  export const SETTING_KEYS: readonly string[] = GROUPS.flatMap((group) =>
+    group.fields.map((field) => field.key),
+  );
+</script>
+
 <script lang="ts">
   /**
    * What an installation expects its repositories to be set to.
    *
-   * Every setting has three states rather than two, and the third one is the
-   * important one: a setting nobody configured is left exactly as each
-   * repository has it. That is why the controls are the same linked ones the
-   * configuration editor uses - the chain says "following each repository", and
-   * breaking it is what makes a value a policy.
+   * The page is the policy. A settings page listing every switch GitHub has
+   * makes a reader work out which of seventeen rows this installation actually
+   * decides, and that answer - usually nine - is the only thing on the page
+   * worth knowing. So a managed setting is a row and the rest is one sentence
+   * per group naming them: enough to answer "is X managed?" without turning the
+   * page back into a form.
    *
-   * Nothing here is sent until Save. Almost all of a settings change is one
-   * request per repository whose whole succeeds or fails together, so a control
-   * that saved on every click would send a dozen half-formed policies.
+   * A setting has three states and the third one is the point: one nobody
+   * managed is left exactly as each repository has it, which is not the same as
+   * setting it off. The × on a row removes the management and never writes a
+   * value.
+   *
+   * Every control here lands at once. The document is the panel's own record of
+   * what should be true, and nothing reaches GitHub until a plan is approved -
+   * so there is nothing for a Save button to hold back, and a page of pending
+   * edits is a page whose switches disagree with the plan beside them.
    */
-  import { OFF, ON, SWITCH } from '#lib/form-switch.js';
-  import { canonicalStringify } from '#lib/preferences-sync.js';
-
-  import InheritControl from './InheritControl.svelte';
-  import SyncDocumentForm from './SyncDocumentForm.svelte';
+  import Button from './Button.svelte';
+  import Icon from './Icon.svelte';
+  import PolicyGroup from './PolicyGroup.svelte';
+  import PolicyRow from './PolicyRow.svelte';
+  import SearchField from './SearchField.svelte';
+  import SegmentedControl from './SegmentedControl.svelte';
+  import Select from './Select.svelte';
+  import Switch from './Switch.svelte';
+  import SyncKindHead from './SyncKindHead.svelte';
 
   const {
     stored,
@@ -38,244 +183,205 @@
     onSave: (enabled: boolean, document: Record<string, unknown>) => void;
   } = $props();
 
-  type Choice = { value: string; label: string };
-
-  type Field = {
-    key: string;
-    label: string;
-    /** A switch is a boolean in the document; a choice is one of GitHub's words. */
-    kind: 'switch' | 'choice';
-    options: readonly Choice[];
-  };
-
-  function toggle(key: string, label: string): Field {
-    return { key, label, kind: 'switch', options: SWITCH };
-  }
-
-  function choice(key: string, label: string, options: readonly Choice[]): Field {
-    return { key, label, kind: 'choice', options };
-  }
-
-  /**
-   * The settings, grouped the way somebody thinks about them rather than the
-   * way the endpoint spells them. The keys are GitHub's own, because they are
-   * what the stored document holds and what a plan names.
-   */
-  const GROUPS: readonly {
-    id: string;
-    title: string;
-    note: string;
-    fields: readonly Field[];
-  }[] = [
-    {
-      id: 'merging',
-      title: 'Merging',
-      note: 'How a pull request may be merged, and what happens afterwards.',
-      fields: [
-        toggle('allow_merge_commit', 'Merge commits'),
-        toggle('allow_squash_merge', 'Squash merging'),
-        toggle('allow_rebase_merge', 'Rebase merging'),
-        toggle('allow_auto_merge', 'Auto-merge'),
-        toggle('delete_branch_on_merge', 'Delete the branch on merge'),
-        toggle('allow_update_branch', 'Offer to update the branch'),
-      ],
-    },
-    {
-      id: 'wording',
-      title: 'Commit wording',
-      note: 'What a merge or squash commit is called. A repository that does not allow the strategy keeps its own.',
-      fields: [
-        choice('squash_merge_commit_title', 'Squash commit title', [
-          { value: 'PR_TITLE', label: 'PR title' },
-          { value: 'COMMIT_OR_PR_TITLE', label: 'Commit or PR' },
-        ]),
-        choice('squash_merge_commit_message', 'Squash commit message', [
-          { value: 'PR_BODY', label: 'PR body' },
-          { value: 'COMMIT_MESSAGES', label: 'Commits' },
-          { value: 'BLANK', label: 'Blank' },
-        ]),
-        choice('merge_commit_title', 'Merge commit title', [
-          { value: 'PR_TITLE', label: 'PR title' },
-          { value: 'MERGE_MESSAGE', label: 'Merge message' },
-        ]),
-        choice('merge_commit_message', 'Merge commit message', [
-          { value: 'PR_BODY', label: 'PR body' },
-          { value: 'PR_TITLE', label: 'PR title' },
-          { value: 'BLANK', label: 'Blank' },
-        ]),
-      ],
-    },
-    {
-      id: 'features',
-      title: 'Features',
-      note: 'Which tabs a repository offers.',
-      fields: [
-        toggle('has_issues', 'Issues'),
-        toggle('has_projects', 'Projects'),
-        toggle('has_wiki', 'Wiki'),
-        toggle('has_discussions', 'Discussions'),
-      ],
-    },
-    {
-      id: 'security',
-      title: 'Security',
-      note: 'A repository that does not have one of these is left alone rather than asked. Dependabot security updates are applied on their own, so they appear in the plan as a second action.',
-      fields: [
-        toggle('advanced_security', 'Advanced security'),
-        toggle('secret_scanning', 'Secret scanning'),
-        toggle('secret_scanning_push_protection', 'Push protection'),
-        toggle('dependabot_security_updates', 'Dependabot security updates'),
-      ],
-    },
-  ];
-
-  /* The draft is derived from what is saved and then written over as somebody
-     edits, so a save landing from anywhere - this form, another tab - reseeds
-     it rather than leaving the screen describing a document that is gone. */
-  let draft = $derived<Record<string, unknown>>({ ...stored });
-  let wanted = $derived(enabled);
-
   const disabled = $derived(saving || readOnly || unreadable);
 
-  /* Two documents that would be saved the same way compare the same way, which
-     is what the preferences sync already needed and already spells. The saved
-     side is rendered once per save rather than once per keystroke. */
-  const saved = $derived(canonicalStringify(stored));
-  const changed = $derived(wanted !== enabled || canonicalStringify(draft) !== saved);
+  /** Which group's picker is open, or null. One at a time, like a menu. */
+  let picking = $state<string | null>(null);
+  let query = $state('');
+  let show = $state<'managed' | 'all'>('managed');
 
-  /** What a control shows: null where nothing is configured. */
-  function valueOf(field: Field): string | null {
-    const value = draft[field.key];
+  const managed = $derived(SETTING_KEYS.filter((key) => stored[key] !== undefined).length);
 
-    if (field.kind === 'switch') {
-      return typeof value === 'boolean' ? (value ? ON : OFF) : null;
-    }
-
-    return typeof value === 'string' ? value : null;
+  function isManaged(field: SettingField): boolean {
+    return stored[field.key] !== undefined;
   }
 
-  function select(field: Field, selection: string): void {
-    draft = {
-      ...draft,
-      [field.key]: field.kind === 'switch' ? selection === ON : selection,
-    };
+  /** What a control shows, as the word a reader checks the column against. */
+  function wordOf(field: SettingField): string | undefined {
+    const value = stored[field.key];
+    if (field.kind === 'switch') return value === true ? 'On' : 'Off';
+
+    return field.options.find((option) => option.value === value)?.label;
+  }
+
+  function chosen(field: SettingField): string {
+    const value = stored[field.key];
+
+    return typeof value === 'string' ? value : (field.options[0]?.value ?? '');
+  }
+
+  /* The whole stored document rather than the keys with controls: anything a
+     newer version of the service wrote travels back untouched, rather than
+     being dropped by a browser running an older build of this page. */
+  function write(key: string, value: unknown): void {
+    onSave(enabled, { ...stored, [key]: value });
   }
 
   /** Following each repository again, which is the absence of a key. */
-  function restore(field: Field): void {
-    const rest = { ...draft };
-    delete rest[field.key];
-    draft = rest;
+  function stopManaging(key: string): void {
+    const rest = { ...stored };
+    delete rest[key];
+    onSave(enabled, rest);
   }
+
+  /** Managing one starts it at the value GitHub itself starts a repository on. */
+  function manage(field: SettingField): void {
+    picking = null;
+    write(field.key, field.kind === 'switch' ? true : (field.options[0]?.value ?? ''));
+  }
+
+  /* A search reaches settings that are not managed, because finding one is how
+     somebody comes to manage it - so it searches the whole vocabulary and the
+     Managed/Everything filter decides what an empty query shows. */
+  function matches(field: SettingField): boolean {
+    if (query === '') return show === 'all' || isManaged(field);
+
+    return field.label.toLowerCase().includes(query.trim().toLowerCase());
+  }
+
+  const groups = $derived(
+    GROUPS.map((group) => {
+      const shown = group.fields.filter(matches);
+
+      return {
+        ...group,
+        shown,
+        managed: group.fields.filter(isManaged).length,
+        unmanaged: group.fields.filter((field) => !isManaged(field)),
+      };
+    }).filter(
+      (group) => group.shown.length > 0 || (query === '' && group.managed < group.fields.length),
+    ),
+  );
 </script>
 
-<SyncDocumentForm
-  heading="Repository settings"
+<SyncKindHead
+  title="Repository settings"
+  lead="Manage a setting and every repository is held to its value. Anything unmanaged is left exactly as each repository has it, which is not the same as setting it off"
   noun="settings"
-  lead="What every repository in this installation should be set to. Anything left following its
-        repository is not touched at all, which is not the same as setting it off"
-  enabled={wanted}
+  {enabled}
   {unreadable}
   {unavailable}
   {problem}
   {readOnly}
   {saving}
-  {changed}
-  {disabled}
-  onToggle={(value) => (wanted = value)}
-  onSave={() => onSave(wanted, draft)}
->
-  {#each GROUPS as group (group.title)}
-    <section class="settings-group" aria-labelledby="sync-group-{group.id}">
-      <header class="settings-group-heading">
-        <h3 id="sync-group-{group.id}">{group.title}</h3>
-        <p class="settings-note">{group.note}</p>
-      </header>
+  onToggle={(next) => onSave(next, stored)}
+/>
 
-      <div class="settings-rows">
-        {#each group.fields as field (field.key)}
-          <div class="settings-row">
-            <span class="sync-form-label">{field.label}</span>
-            <span class="settings-spacer"></span>
-            <InheritControl
-              label={field.label}
-              source="each repository"
-              sourcePronoun="them"
-              inheritedLabel="whatever it has now"
-              value={valueOf(field)}
-              options={field.options}
-              {disabled}
-              onSelect={(selection) => select(field, selection)}
-              onRestore={() => restore(field)}
-            />
-          </div>
-        {/each}
-      </div>
-    </section>
+<div class="settings-tools">
+  <SearchField
+    label="Search settings"
+    placeholder="Search settings"
+    value={query}
+    onInput={(next) => (query = next)}
+  />
+  <!-- An instant filter over what is already on screen, which is the one thing
+       a segmented control is for: it saves nothing and the page never asks. -->
+  <SegmentedControl
+    name="sync-settings-show"
+    label="Show"
+    compact
+    options={[
+      { value: 'managed', label: 'Managed', badge: managed },
+      { value: 'all', label: 'Everything', badge: SETTING_KEYS.length },
+    ]}
+    value={show}
+    onSelect={(next) => (show = next as 'managed' | 'all')}
+  />
+</div>
+
+<div class="setting-groups">
+  {#each groups as group (group.id)}
+    <PolicyGroup
+      name={group.title}
+      note={group.note}
+      managed={group.managed}
+      total={group.fields.length}
+      unmanaged={group.unmanaged.map((field) => field.label)}
+      picking={picking === group.id}
+      onManage={disabled || readOnly ? undefined : () => (picking = group.id)}
+    >
+      {#each group.shown as field (field.key)}
+        {#if isManaged(field)}
+          <PolicyRow
+            name={field.label}
+            why={field.why}
+            value={field.kind === 'switch' ? wordOf(field) : undefined}
+            onStopManaging={readOnly ? undefined : () => stopManaging(field.key)}
+          >
+            {#snippet control()}
+              {#if field.kind === 'switch'}
+                <Switch
+                  checked={stored[field.key] === true}
+                  ariaLabel={field.label}
+                  {disabled}
+                  onChange={(next) => write(field.key, next)}
+                />
+              {:else}
+                <Select
+                  aria-label={field.label}
+                  options={field.options}
+                  value={chosen(field)}
+                  {disabled}
+                  onchange={(event) => write(field.key, event.currentTarget.value)}
+                />
+              {/if}
+            {/snippet}
+          </PolicyRow>
+        {:else}
+          <!-- Only reachable through Everything or a search: an unmanaged
+                 setting is a thing to start managing, not a value to read. -->
+          <PolicyRow name={field.label} why={field.why} value="Follows">
+            {#snippet control()}
+              <Button tone="quiet" {disabled} onclick={() => manage(field)}>Manage</Button>
+            {/snippet}
+          </PolicyRow>
+        {/if}
+      {/each}
+
+      {#snippet picker()}
+        <span class="rest-picks">
+          {#each group.unmanaged as field (field.key)}
+            <button type="button" class="add-chip" {disabled} onclick={() => manage(field)}>
+              <Icon name="plus" size={11} strokeWidth={2} />
+              <span class="cap-trim">{field.label}</span>
+            </button>
+          {/each}
+          <Button tone="quiet" onclick={() => (picking = null)}>Cancel</Button>
+        </span>
+      {/snippet}
+    </PolicyGroup>
   {/each}
-</SyncDocumentForm>
+
+  {#if groups.length === 0}
+    <p class="settings-empty">Nothing here matches that</p>
+  {/if}
+</div>
 
 <style>
-  .settings-note {
-    color: var(--dim);
-    font-size: var(--font-size-meta);
-    margin: 0;
-    max-width: 60ch;
-  }
-
-  /* The configuration editor's group rhythm: an eyebrow naming the group, a line
-     under it saying what it covers, and the rows. Written to the same numbers so
-     the two pages read as one - `ConfigEditor` is where they are decided. */
-  .settings-group {
-    margin-top: 1.375rem;
-  }
-
-  .settings-group-heading {
-    margin: 0 0.125rem 0.625rem;
-  }
-
-  .settings-group-heading h3 {
-    color: var(--brand-action);
-    font-size: var(--font-size-micro);
-    font-weight: 700;
-    letter-spacing: 0.1em;
-    margin: 0;
-    text-transform: uppercase;
-  }
-
-  .settings-group-heading p {
-    margin: 0.1875rem 0 0;
-  }
-
-  /* Hairlines between the rows and no box around them, because the plate is
-     already the box. Bordered, this list read as a second card inside the
-     first. */
-  .settings-row + .settings-row {
-    border-top: 1px solid var(--rule);
-  }
-
-  /* One line where there is room and two where there is not, so a narrow
-     window scrolls down rather than across. */
-  .settings-row {
+  .settings-tools {
     align-items: center;
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-3);
-    padding-block: 0.7rem;
+    margin-bottom: var(--space-4);
   }
 
-  .settings-rows > .settings-row:first-child {
-    padding-top: 0.15rem;
+  .setting-groups {
+    display: grid;
+    gap: var(--space-4);
   }
 
-  .settings-rows > .settings-row:last-child {
-    padding-bottom: 0.15rem;
+  .settings-empty {
+    color: var(--dim);
+    font-size: var(--font-size-meta);
+    margin: 0;
   }
 
-  /* The control sits at the end of its row rather than at the end of the page:
-     the spacer collapses when the row wraps, which is what puts the control
-     under its own name at a narrow width instead of far off to the right. */
-  .settings-spacer {
-    flex: 1;
+  .rest-picks {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
   }
 </style>

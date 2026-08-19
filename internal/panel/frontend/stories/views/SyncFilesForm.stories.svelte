@@ -3,6 +3,8 @@
   import { fn } from 'storybook/test';
 
   import SyncFilesForm from '#lib/components/SyncFilesForm.svelte';
+  import type { MarkState } from '#lib/components/StateMark.svelte';
+  import type { SyncOverrideRow } from '#lib/types.js';
 
   const STORED = {
     files: [
@@ -19,6 +21,43 @@
     ],
     retired: ['.github/workflows/sync-trigger.yml'],
     excludes: ['LICENSE'],
+  };
+
+  /* One repository adjusts a template, which is what makes a row say "merges"
+     rather than "replaces" - the strategy is decided by the repository, not by
+     the installation. */
+  const ADJUSTMENTS = [
+    {
+      repository_id: '4001',
+      repository_name: 'af',
+      kind: 'files',
+      enabled: null,
+      document: {
+        merges: [
+          {
+            path: 'renovate.json',
+            strategy: 'deep-merge',
+            overrides: { timezone: 'Europe/Warsaw' },
+          },
+        ],
+      },
+      revision: 1,
+      unreadable: false,
+      updated_at: '2026-08-18T09:00:00Z',
+    },
+  ] as unknown as SyncOverrideRow[];
+
+  const PATHS = [
+    { path: 'renovate.json', repositories: 24 },
+    { path: 'CONTRIBUTING.md', repositories: 12 },
+    { path: '.github/workflows/test.yaml', repositories: 25 },
+    { path: '.github/CODEOWNERS', repositories: 25 },
+    { path: 'LICENSE', repositories: 20 },
+  ];
+
+  const MARKS: Record<string, { state: MarkState; label?: string }> = {
+    'renovate.json': { state: 'change', label: '2 differ' },
+    'CONTRIBUTING.md': { state: 'settled' },
   };
 
   const { Story } = defineMeta({
@@ -38,17 +77,26 @@
       problem: null,
       readOnly: false,
       saving: false,
+      fileHref: (path: string) => `#file-${path}`,
+      adjustments: ADJUSTMENTS,
+      paths: PATHS,
+      repositories: 25,
+      markOf: (path: string) => MARKS[path],
       onSave: fn(),
     },
   });
 </script>
 
 <!--
-  The files an installation expects every repository to carry. A card per file, the
-  path above what it should say, so the height of a card is the height of the
-  template - which is the whole reason this is seeded rather than shown empty.
+  The files an installation expects every repository to carry, as a list of named
+  things: two levels and no deeper, and a row opens the file's own page. How a
+  file arrives is read from the repositories rather than from the template - the
+  installation says what it should say, and a repository says how its own differs.
 -->
 <Story name="Two files" />
+
+<!-- No plan has been worked out, so no row claims to be in step. -->
+<Story name="Before a plan" args={{ markOf: () => undefined }} />
 
 <!-- Nothing configured yet: the form has to offer a way in rather than show a void. -->
 <Story name="Empty" args={{ stored: {} }} />

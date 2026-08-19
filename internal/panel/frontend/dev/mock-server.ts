@@ -53,6 +53,7 @@ import {
   cycled,
   DEFAULT_CONFIG,
   MOCK_ORGANIZATION_ROSTER,
+  mockRepositoryPaths,
   mockSyncConfig,
   ROOT_READ_CAPABILITIES,
   mockRootOwns,
@@ -991,6 +992,60 @@ async function handle(
         respond(res, 200, mockSyncConfig(state, `${targetId}/${kind}`, kind));
         return;
       }
+    }
+
+    // What the path finder offers, aggregated the way the server aggregates it:
+    // one row per path, carrying how many repositories already hold it.
+    const syncPathsMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/paths$/.exec(
+      path.slice(route('').length),
+    );
+    if (syncPathsMatch && method === 'GET') {
+      const target = findTarget(state, decodeURIComponent(syncPathsMatch[1] ?? ''));
+      const counts = new Map<string, number>();
+      for (const repository of target.repositories) {
+        for (const known of mockRepositoryPaths(repository.detail.repository.name)) {
+          counts.set(known, (counts.get(known) ?? 0) + 1);
+        }
+      }
+      respond(res, 200, {
+        paths: [...counts]
+          .map(([known, held]) => ({ path: known, repositories: held }))
+          .sort((left, right) =>
+            left.repositories === right.repositories
+              ? left.path.localeCompare(right.path)
+              : right.repositories - left.repositories,
+          ),
+        repositories: target.repositories.length,
+        observed_at: new Date().toISOString(),
+      });
+      return;
+    }
+
+    // Every repository's answer about one kind, which is what the page about a
+    // shared file reads: "who adjusts this" is a question about the whole
+    // installation.
+    const syncOverridesMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/overrides\/([^/]+)$/.exec(
+      path.slice(route('').length),
+    );
+    if (syncOverridesMatch && method === 'GET') {
+      const targetId = decodeURIComponent(syncOverridesMatch[1] ?? '');
+      const kind = decodeURIComponent(syncOverridesMatch[2] ?? '');
+      const owned = new Map(
+        findTarget(state, targetId).repositories.map((repository) => [
+          repository.detail.repository.id,
+          repository.detail.repository.name,
+        ]),
+      );
+      respond(res, 200, {
+        overrides: [...state.syncOverrides.entries()]
+          .filter(([key, override]) => override.kind === kind && owned.has(key.split('/')[0] ?? ''))
+          .map(([key, override]) => ({
+            repository_id: key.split('/')[0] ?? '',
+            repository_name: owned.get(key.split('/')[0] ?? '') ?? '',
+            ...override,
+          })),
+      });
+      return;
     }
 
     const syncOverrideMatch =

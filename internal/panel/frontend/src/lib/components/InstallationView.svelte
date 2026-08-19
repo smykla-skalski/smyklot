@@ -37,6 +37,24 @@
     if (session.selectedTarget === null) throw new Error('select an installation first');
     return session.api.fetchRepositories(session.selectedTarget.id, request);
   }
+  /**
+   * The whole population the sync board draws, in one page.
+   *
+   * Sorted by name so the board's order is the same on every visit - a tile
+   * that moved between reloads would be a tile nobody could point at. The limit
+   * is a cap the board says out loud rather than a page it hides behind.
+   */
+  function fetchFleet(targetId: string) {
+    return session.api.fetchRepositories(targetId, {
+      query: '',
+      sort: 'name_asc',
+      limit: 200,
+      state: 'all',
+      files: [],
+      setting: { mode: 'all' },
+    });
+  }
+
   function loadRepository(repositoryId: string) {
     if (session.selectedTarget === null) throw new Error('select an installation first');
     return session.api.fetchRepository(session.selectedTarget.id, repositoryId);
@@ -129,8 +147,17 @@
           <SyncView
             targetId={session.selectedTarget.id}
             readOnly={!session.selectedTarget.capabilities.write}
+            account={session.selectedTarget.account.login}
+            section={session.currentSyncPage.section}
+            item={session.currentSyncPage.item}
+            sectionHref={(page) => session.syncHref(page)}
+            fetchRepositories={fetchFleet}
+            repositoryHref={(name) => session.repositoryHref(name)}
             fetchConfig={session.api.fetchSyncConfig}
             saveConfig={session.api.saveSyncConfig}
+            fetchOverrides={session.api.fetchSyncOverrides}
+            saveOverride={saveSyncOverride}
+            fetchPaths={session.api.fetchSyncPaths}
             fetchPlan={session.api.fetchSyncPlan}
             approvePlan={session.api.approveSyncPlan}
           />
@@ -153,6 +180,7 @@
             actorLogin={session.viewer?.account.login ?? ''}
             actorTargetRole={session.selectedTarget.effective_role}
             onSection={(s: 'users' | 'invitations') => session.selectUserSection(s)}
+            sectionHref={(s: 'users' | 'invitations') => session.accessHref(s)}
             fetchTargetUsers={session.api.fetchTargetUsers}
             addTargetUser={session.api.addTargetUser}
             suggestUsers={session.api.suggestUsers}
@@ -178,6 +206,7 @@
             targetId={session.selectedTarget.id}
             section={session.currentHistorySection}
             onSection={(s: 'audit' | 'failures') => session.selectHistorySection(s)}
+            sectionHref={(s: 'audit' | 'failures') => session.historyHref(s)}
             fetchAudit={(request: Parameters<typeof session.api.fetchAudit>[1]) =>
               session.api.fetchAudit(session.selectedTarget!.id, request)}
             fetchFailures={(request: Parameters<typeof session.api.fetchFailures>[1]) =>

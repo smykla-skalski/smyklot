@@ -1,6 +1,7 @@
 <script lang="ts">
   /**
-   * The files an installation expects its repositories to carry.
+   * The files an installation expects its repositories to carry, as a list of
+   * named things.
    *
    * The template is here rather than in a repository somewhere. The tool this
    * replaces kept them in one repository and fetched each of them per
@@ -9,19 +10,27 @@
    *
    * Deletion is a named list of retired paths and nothing else. There is no
    * switch: the tool this replaces published one promising to delete every file
-   * not in the central configuration, which is every file in the repository,
+   * not in the central configuration - which is every file in the repository -
    * documented it as dangerous, and never implemented it. Naming a path is the
    * only way to have it removed, and naming it is the consent.
    *
-   * Nothing is sent until Save, and nothing reaches GitHub until a plan is
-   * approved. What a repository would end up with arrives as a pull request it
-   * can close.
+   * Adding one goes through the finder rather than an empty box, because typing
+   * a path from memory is guessing at a string that has to match, character for
+   * character, something the reader cannot see.
    */
-  import { canonicalStringify } from '#lib/preferences-sync.js';
-  import { asList, lines, patchedAt, rowKeys, storedList, withoutAt } from '#lib/form-lists.js';
-  import type { SyncFile } from '#lib/types.js';
+  import { storedList } from '#lib/form-lists.js';
+  import { formatRelative } from '#lib/format.js';
+  import type { SyncFile, SyncFileMerge, SyncOverrideRow } from '#lib/types.js';
 
-  import SyncDocumentForm from './SyncDocumentForm.svelte';
+  import Chip from './Chip.svelte';
+  import Icon from './Icon.svelte';
+  import ObjectRow from './ObjectRow.svelte';
+  import PathFinder, { type KnownPath } from './PathFinder.svelte';
+  import PatternList from './PatternList.svelte';
+  import Plate from './Plate.svelte';
+  import PolicyRow from './PolicyRow.svelte';
+  import StateMark, { type MarkState } from './StateMark.svelte';
+  import SyncKindHead from './SyncKindHead.svelte';
 
   const {
     stored,
@@ -31,6 +40,12 @@
     problem = null,
     readOnly,
     saving,
+    fileHref,
+    adjustments = [],
+    paths = [],
+    repositories = 0,
+    now = Date.now(),
+    markOf,
     onSave,
   }: {
     stored: Record<string, unknown>;
@@ -40,192 +55,227 @@
     problem?: string | null;
     readOnly: boolean;
     saving: boolean;
+    /** Where one file's own page is. */
+    fileHref: (path: string) => string;
+    /** Every repository's answer about files, so a row can say who adjusts it. */
+    adjustments?: readonly SyncOverrideRow[];
+    /** Every path this installation's repositories are known to hold. */
+    paths?: readonly KnownPath[];
+    /** How many repositories the installation syncs, which the finder's counts are of. */
+    repositories?: number;
+    /** One clock for every relative time on the page. */
+    now?: number;
+    markOf?: (path: string) => { state: MarkState; label?: string } | undefined;
     onSave: (enabled: boolean, document: Record<string, unknown>) => void;
   } = $props();
 
-  /* Derived from what is saved and written over as somebody edits, so a save
-     landing from anywhere reseeds it rather than leaving the screen describing
-     a document that is gone. */
-  let drafts = $derived<SyncFile[]>(storedList<SyncFile>(stored, 'files'));
-  let retired = $derived<string[]>(storedList<string>(stored, 'retired'));
-  let excludes = $derived<string[]>(storedList<string>(stored, 'excludes'));
-  let wanted = $derived(enabled);
-
   const disabled = $derived(saving || readOnly || unreadable);
 
-  /* The whole document rather than the parts with controls, so a key a newer
-     version of the service wrote is sent back rather than dropped by a browser
-     running an older build of this page. The server refuses it by name, which
-     is the point: after a rollback somebody is told the document holds
-     something this version does not understand, rather than saving over it. */
-  const payload = $derived(asDocument(drafts, retired, excludes));
+  const files = $derived(storedList<SyncFile>(stored, 'files'));
+  const retired = $derived(storedList<string>(stored, 'retired'));
+  const excludes = $derived(storedList<string>(stored, 'excludes'));
 
-  /* What a save would send if nobody touched anything, rather than the stored
-     document. The two differ on a kind nobody has configured, where the
-     document is empty and this is three keys with their defaults, and comparing
-     against the wrong one offers a save the moment the page loads. */
-  const untouched = $derived(
-    canonicalStringify(
-      asDocument(
-        storedList<SyncFile>(stored, 'files'),
-        storedList<string>(stored, 'retired'),
-        storedList<string>(stored, 'excludes'),
-      ),
-    ),
-  );
+  let adding = $state(false);
+  let draft = $state('');
 
-  const changed = $derived(wanted !== enabled || canonicalStringify(payload) !== untouched);
-
-  /** Named asDocument rather than document, which is a global this would hide. */
-  function asDocument(
-    files: SyncFile[],
-    retiredPaths: string[],
-    excluded: string[],
-  ): Record<string, unknown> {
-    return { ...stored, files, retired: retiredPaths, excludes: excluded };
+  /* The whole stored document rather than the keys with controls, so a key a
+     newer version of the service wrote is sent back rather than dropped by a
+     browser running an older build of this page. */
+  function write(change: Record<string, unknown>): void {
+    onSave(enabled, { ...stored, ...change });
   }
 
-  function patch(index: number, change: Partial<SyncFile>): void {
-    drafts = patchedAt(drafts, index, change);
+  function add(path: string): void {
+    adding = false;
+    draft = '';
+    if (path === '' || files.some((file) => file.path === path)) return;
+    write({ files: [...files, { path, content: '' }] });
   }
 
-  function add(): void {
-    drafts = [...drafts, { path: '', content: '' }];
+  /** Every repository adjustment of one path, from the answers already read. */
+  function mergesOf(path: string): { repository: string; merge: SyncFileMerge }[] {
+    return adjustments.flatMap((row) =>
+      storedList<SyncFileMerge>(row.document, 'merges')
+        .filter((merge) => merge.path === path)
+        .map((merge) => ({ repository: row.repository_name, merge })),
+    );
   }
 
-  function remove(index: number): void {
-    drafts = withoutAt(drafts, index);
+  /**
+   * How a file arrives, in the two words that separate the cases: a template
+   * nobody adjusts is written whole, and one somebody adjusts is composed.
+   *
+   * Read from the repositories rather than from the template, because that is
+   * where a merge strategy is decided - the installation says what the file
+   * should say, and a repository says how its own differs.
+   */
+  function shapeOf(path: string): string {
+    const merges = mergesOf(path);
+    if (merges.length === 0) return 'replaces';
+    const strategies = [
+      ...new Set(merges.map(({ merge }) => merge.strategy).filter((one) => one !== undefined)),
+    ];
+
+    return strategies.length === 0 ? 'merges' : `merges · ${strategies.join(', ')}`;
   }
 
-  const rowKey = rowKeys('file');
+  function summaryOf(path: string): string {
+    const count = mergesOf(path).length;
+
+    return count === 0
+      ? 'no adjustments'
+      : `${count} ${count === 1 ? 'repository adjusts' : 'repositories adjust'} it`;
+  }
 </script>
 
-<SyncDocumentForm
-  heading="Shared files"
+<SyncKindHead
+  title="Shared files"
+  lead="What every repository should carry, and what it should say. A file that differs arrives as a pull request the repository can merge or close"
   noun="files"
-  lead="What every repository in this installation should carry, and what it should say. A file
-        that differs arrives as a pull request the repository can merge or close"
-  enabled={wanted}
+  {enabled}
   {unreadable}
   {unavailable}
   {problem}
   {readOnly}
   {saving}
-  {changed}
-  {disabled}
-  onToggle={(value) => (wanted = value)}
-  onSave={() => onSave(wanted, payload)}
->
-  {#snippet actions()}
-    <!-- Every bare word inside a button is wrapped, here and below: a button is
-         a flex container, so its text sits in an anonymous box no selector can
-         reach, and `text-box` on the button itself never touches it. See
-         `.button-label` in `app.css`. Unwrapped, each of these sat 0.47px high. -->
-    <button class="btn btn-quiet" type="button" {disabled} onclick={add}>
-      <span class="button-label">Add a file</span>
-    </button>
+  onToggle={(next) => onSave(next, stored)}
+/>
+
+<Plate label="{files.length} {files.length === 1 ? 'template' : 'templates'}">
+  {#snippet status()}
+    {#if !readOnly && !adding}
+      <button type="button" class="add-chip" {disabled} onclick={() => (adding = true)}>
+        <Icon name="plus" size={11} strokeWidth={2} />
+        <span class="cap-trim">Add a file</span>
+      </button>
+    {/if}
   {/snippet}
 
-  <label class="entry-field">
-    <span class="entry-field-label">Paths to remove</span>
-    <textarea
-      rows="2"
-      {disabled}
-      aria-describedby="files-retired-note"
-      value={lines(retired)}
-      placeholder=".github/workflows/sync-trigger.yml"
-      onchange={(event) => (retired = asList(event.currentTarget.value))}></textarea>
-  </label>
-  <p class="form-note file-note" id="files-retired-note">
-    One path per line. These are deleted wherever a repository still has them, and this is the only
-    thing here that deletes anything.
-  </p>
-
-  <label class="entry-field">
-    <span class="entry-field-label">Paths to leave alone</span>
-    <textarea
-      rows="2"
-      {disabled}
-      aria-describedby="files-excludes-note"
-      value={lines(excludes)}
-      placeholder="LICENSE"
-      onchange={(event) => (excludes = asList(event.currentTarget.value))}></textarea>
-  </label>
-  <p class="form-note file-note" id="files-excludes-note">
-    One path or pattern per line, where <code>*</code> stands for any run of characters. These are neither
-    written nor removed, whatever the lists say.
-  </p>
-
-  {#if drafts.length === 0}
-    <p class="form-note files-empty">No files yet.</p>
+  {#if adding}
+    <!-- The box answers with what exists: the same file across twenty-five
+         repositories is one row carrying a count, because that is the thing
+         being configured rather than twenty-five separate facts. -->
+    <div class="files-add">
+      <PathFinder
+        bind:value={draft}
+        {paths}
+        {repositories}
+        label="Path of the file to manage"
+        onChoose={add}
+      />
+      <button type="button" class="add-chip" onclick={() => add(draft)}>
+        <span class="cap-trim">Manage this path</span>
+      </button>
+    </div>
   {/if}
 
-  {#each drafts as file, index (rowKey(index))}
-    <article class="entry-card">
-      <div class="file-row">
-        <label class="file-path">
-          <span class="entry-field-label">Path</span>
-          <input
-            type="text"
-            value={file.path}
-            {disabled}
-            placeholder="CONTRIBUTING.md"
-            onchange={(event) => patch(index, { path: event.currentTarget.value })}
-          />
-        </label>
+  {#if files.length === 0}
+    <p class="files-empty">
+      No templates yet. A path named here is written to every repository this installation syncs
+    </p>
+  {:else}
+    <div class="object-list">
+      {#each files as file (file.path)}
+        {@const fleet = markOf?.(file.path)}
+        <ObjectRow name={file.path} href={fileHref(file.path)} summary={summaryOf(file.path)}>
+          {#snippet pill()}
+            <Chip tone="neutral" small>{shapeOf(file.path)}</Chip>
+          {/snippet}
+          {#snippet mark()}
+            {#if fleet !== undefined}
+              <StateMark state={fleet.state} label={fleet.label} />
+            {/if}
+          {/snippet}
+        </ObjectRow>
+      {/each}
+    </div>
+  {/if}
+</Plate>
 
-        {#if !readOnly}
-          <button class="btn btn-quiet" type="button" {disabled} onclick={() => remove(index)}>
-            <span class="button-label">Remove</span>
-          </button>
-        {/if}
-      </div>
-
-      <label class="entry-field">
-        <span class="entry-field-label">Content</span>
-        <textarea
-          class="entry-code"
-          rows="8"
+<Plate label="Paths this list does not write">
+  <div class="file-settings">
+    <PolicyRow
+      name="Paths to remove"
+      why="Deleted wherever a repository still has them. This is the only thing here that deletes anything"
+    >
+      {#snippet control()}
+        <PatternList
+          values={retired}
+          label="Paths to remove"
+          addLabel="Add a path"
+          placeholder=".github/stale.yml"
           {disabled}
-          aria-describedby="files-content-note"
-          value={file.content}
-          placeholder="# Contributing"
-          onchange={(event) => patch(index, { content: event.currentTarget.value })}></textarea>
-      </label>
-    </article>
-  {/each}
+          onChange={(next) => write({ retired: next })}
+        />
+      {/snippet}
+    </PolicyRow>
 
-  <p class="form-note file-note" id="files-content-note">
+    <PolicyRow
+      name="Paths to leave alone"
+      why="Path or pattern, where * stands for any run of characters. Neither written nor removed, whatever the lists say"
+    >
+      {#snippet control()}
+        <PatternList
+          values={excludes}
+          label="Paths to leave alone"
+          addLabel="Add a pattern"
+          placeholder="LICENSE-*"
+          {disabled}
+          onChange={(next) => write({ excludes: next })}
+        />
+      {/snippet}
+    </PolicyRow>
+  </div>
+
+  <p class="files-note">
     <code>{'{{DEFAULT_BRANCH}}'}</code> is filled in with whatever each repository calls its default branch.
     Anything else in braces is refused, so a template cannot reach a repository with a placeholder nobody
-    fills in.
+    fills in
   </p>
-</SyncDocumentForm>
+  {#if adjustments.length > 0}
+    <p class="files-note">
+      Last adjusted {formatRelative(
+        adjustments
+          .map((row) => row.updated_at ?? '')
+          .filter((at) => at !== '')
+          .sort()
+          .at(-1) ?? '',
+        now,
+      )}
+    </p>
+  {/if}
+</Plate>
 
 <style>
-  /* The global rule has no margin. These notes sit directly under the control
-     they describe, and the sliver of side inset lines them up with the field's
-     own text. */
-  .file-note {
-    margin: 0.25rem 0.125rem 0;
-  }
-
-  .files-empty {
-    margin: var(--space-4) 0 0;
-  }
-
-  .file-row {
-    align-items: flex-end;
+  .files-add {
+    align-items: center;
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-3);
+    margin-bottom: var(--space-3);
   }
 
-  .file-path {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    gap: 0.25rem;
-    min-width: 14rem;
+  .object-list {
+    display: grid;
+  }
+
+  .object-list > :global(.object-row + .object-row) {
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .file-settings {
+    display: grid;
+  }
+
+  .file-settings > :global(.policy-row + .policy-row) {
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .files-empty,
+  .files-note {
+    color: var(--dim);
+    font-size: var(--font-size-meta);
+    margin: var(--space-3) 0 0;
+    max-width: 66ch;
   }
 </style>

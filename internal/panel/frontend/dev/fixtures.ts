@@ -490,6 +490,7 @@ export function seed(
        list rendered nowhere and drifted out of the design unseen. */
     sync: new Map([
       [`${organization.value.id}/labels`, syncLabelsSeed(iso)],
+      [`${organization.value.id}/settings`, syncSettingsSeed(iso)],
       [`${organization.value.id}/rulesets`, syncRulesetsSeed(iso)],
       [`${organization.value.id}/files`, syncFilesSeed(iso)],
     ]),
@@ -582,6 +583,39 @@ export function syncLabelsSeed(iso: (offsetMs: number) => string): SyncConfig {
     updated_at: iso(-3 * 60 * 60_000),
     digest: 'sha256:labels',
     document: {},
+    unreadable: false,
+    unavailable: '',
+  };
+}
+
+/**
+ * Nine of the seventeen settings managed, which is the shape the page was
+ * designed against: a settings page is only worth reading when some of it is a
+ * policy and the rest follows each repository, and an empty one draws four
+ * cards that are all sentence and no row.
+ */
+export function syncSettingsSeed(iso: (offsetMs: number) => string): SyncConfig {
+  return {
+    kind: 'settings',
+    enabled: true,
+    labels: [],
+    allow_removal: false,
+    excludes: [],
+    revision: 6,
+    updated_by: 'bart',
+    updated_at: iso(-13 * 60 * 60_000),
+    digest: 'sha256:settings',
+    document: {
+      allow_squash_merge: true,
+      allow_merge_commit: false,
+      allow_auto_merge: true,
+      delete_branch_on_merge: true,
+      squash_merge_commit_title: 'PR_TITLE',
+      squash_merge_commit_message: 'COMMIT_MESSAGES',
+      has_issues: true,
+      has_wiki: false,
+      secret_scanning: true,
+    },
     unreadable: false,
     unavailable: '',
   };
@@ -1440,4 +1474,36 @@ export function rootPanelUsers(state: MockState): RootPanelUser[] {
     manageable: user.account.id !== VIEWER.id && user.system_role === 'none',
     can_manage_system_role: user.account.id !== VIEWER.id && user.system_role !== 'super_root',
   }));
+}
+
+/**
+ * What one repository holds, for the path finder to offer.
+ *
+ * Derived from the name rather than listed per repository, because the finder
+ * is worth looking at when the same path is in most of them and a few are not -
+ * which is the shape it has to rank, and the shape a hand-written fixture never
+ * quite has.
+ */
+export function mockRepositoryPaths(name: string): string[] {
+  const everywhere = [
+    'README.md',
+    'LICENSE',
+    '.github/CODEOWNERS',
+    '.github/workflows/test.yaml',
+    '.gitignore',
+  ];
+  const some = [
+    'renovate.json',
+    'CONTRIBUTING.md',
+    '.github/workflows/release.yaml',
+    'docs/guide.md',
+    'internal/storage/sqlstore/store.go',
+    'Makefile',
+  ];
+
+  // A stable spread: the same repository always holds the same paths, so a
+  // reader comparing two visits is comparing the same list.
+  const seed = [...name].reduce((total, letter) => total + letter.charCodeAt(0), 0);
+
+  return [...everywhere, ...some.filter((_, index) => (seed + index) % 3 !== 0)];
 }
