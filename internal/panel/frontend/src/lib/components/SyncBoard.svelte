@@ -143,8 +143,8 @@
           }}
         >
           <span class="legend-swatch is-{row.state}"></span>
-          <span class="legend-word">{row.word}</span>
-          <span class="legend-count">{counts[row.state]}</span>
+          <span class="legend-word band-trim">{row.word}</span>
+          <span class="legend-count band-trim">{counts[row.state]}</span>
         </button>
       {/each}
     </div>
@@ -153,9 +153,12 @@
   {#if footLine !== undefined}
     <div class="board-foot">
       <div class="board-foot-say">
-        <span class="board-foot-line">{footLine}</span>
+        <!-- Both lines trimmed or neither: one untrimmed line leaves its
+             leading and descender inside the block, and the pair then reads
+             2.25px above the button it sits beside. -->
+        <span class="board-foot-line band-trim">{footLine}</span>
         {#if footWhen !== undefined}
-          <span class="board-foot-when">{footWhen}</span>
+          <span class="board-foot-when band-trim">{footWhen}</span>
         {/if}
       </div>
       {@render children?.()}
@@ -350,7 +353,6 @@
   .legend-word {
     color: var(--text-secondary);
     font-size: var(--font-size-compact);
-    text-box: trim-both cap alphabetic;
   }
 
   .legend-count {
@@ -358,7 +360,6 @@
     font-family: var(--mono);
     font-size: var(--font-size-compact);
     font-variant-numeric: tabular-nums;
-    text-box: trim-both cap alphabetic;
   }
 
   .board-foot {
@@ -389,16 +390,11 @@
   .board-foot-line {
     font-size: var(--font-size-meta);
     font-weight: 600;
-    text-box: trim-both cap alphabetic;
   }
 
   .board-foot-when {
     color: var(--text-muted);
     font-size: var(--font-size-micro);
-    /* Both lines trimmed or neither: one untrimmed line leaves its leading and
-       descender inside the block, and the pair then reads 2.25px above the
-       button it sits beside. */
-    text-box: trim-both cap alphabetic;
   }
 
   /* The legend goes under the well rather than beside it: a 13rem column

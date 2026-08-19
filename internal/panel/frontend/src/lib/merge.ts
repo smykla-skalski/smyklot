@@ -126,10 +126,19 @@ function copy(source: { [key: string]: JsonValue }): { [key: string]: JsonValue 
 }
 
 /**
- * The file one repository ends up with under a deep merge: the template, with
- * its adjustment merged in key by key, all the way down. RFC 7396.
+ * The template with its adjustment merged in, one key at a time.
+ *
+ * `deep` is the only thing the two strategies disagree about, and it is one
+ * line: a deep merge recurses into a key both sides hold, a shallow one
+ * replaces it. Everything else - a non-object patch replacing whatever it
+ * lands on, a null removing a key, `__proto__` staying an ordinary key - is
+ * the same rule, and was written twice.
+ *
+ * A null removes a key under both. Below the top level a shallow merge never
+ * looks, so a null there is a null value rather than a removal - which falls
+ * out of not recursing rather than needing a rule of its own.
  */
-export function mergePatch(target: JsonValue, patch: JsonValue): JsonValue {
+function merge(target: JsonValue, patch: JsonValue, deep: boolean): JsonValue {
   if (!isObject(patch)) return patch;
 
   const result = isObject(target) ? copy(target) : {};
@@ -139,33 +148,20 @@ export function mergePatch(target: JsonValue, patch: JsonValue): JsonValue {
       delete result[key];
       continue;
     }
-    put(result, key, mergePatch(own(result, key) ?? null, value));
+    put(result, key, deep ? merge(own(result, key) ?? null, value, true) : value);
   }
 
   return result;
 }
 
-/**
- * A shallow merge replaces top-level keys rather than merging into them.
- *
- * A null at the top level removes the key, as it does in a deep merge. A null
- * anywhere below one is a null value, because a shallow merge does not look
- * below the top level.
- */
+/** A deep merge, key by key all the way down. RFC 7396. */
+export function mergePatch(target: JsonValue, patch: JsonValue): JsonValue {
+  return merge(target, patch, true);
+}
+
+/** A shallow merge replaces top-level keys rather than merging into them. */
 function mergeShallow(target: JsonValue, patch: JsonValue): JsonValue {
-  if (!isObject(patch)) return patch;
-
-  const result = isObject(target) ? copy(target) : {};
-  for (const key of Object.keys(patch)) {
-    const value = patch[key] as JsonValue;
-    if (value === null) {
-      delete result[key];
-      continue;
-    }
-    put(result, key, value);
-  }
-
-  return result;
+  return merge(target, patch, false);
 }
 
 /** How one repository composes its copy - the fields of a stored merge entry. */
@@ -574,7 +570,11 @@ export function deriveOverrides(
         } with the template's own entries, and this repository ${rule.strategy}s to that list`,
       };
     }
-    if (!setValueAt(candidate, keys, share) && !plant(candidate, keys, share)) {
+    // `plant` alone: it succeeds everywhere `setValueAt` does and builds the
+    // levels besides, so trying the stricter one first only ever wrote the same
+    // value to the same place. It fails on one thing - an adjustment that is not
+    // an object at all - which is what this reason is about.
+    if (!plant(candidate, keys, share)) {
       return { ok: false, reason: `Nothing in the adjustment holds ${rule.path}` };
     }
   }

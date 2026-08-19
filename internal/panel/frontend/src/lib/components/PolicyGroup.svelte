@@ -93,7 +93,7 @@
 <Plate label={name}>
   {#snippet status()}
     {#if total !== undefined}
-      <span class="group-tally">{managed ?? 0} of {total} {tallyWord}</span>
+      <span class="group-tally band-trim">{managed ?? 0} of {total} {tallyWord}</span>
     {/if}
   {/snippet}
 
@@ -117,7 +117,7 @@
            the page back into a form. Once the picker is open they are on the
            chips themselves, so the sentence says what the chips are for
            instead of naming them twice. -->
-      <span class="rest-say">
+      <span class="rest-say band-trim">
         <span class="rest-count"
           >{restSay ?? `${rest} follow${rest === 1 ? 's' : ''} each repository`}</span
         >{#if picking}&nbsp;— pick one to manage:{:else if unmanaged.length > 0}&nbsp;—
@@ -146,7 +146,6 @@
     font-family: var(--mono);
     font-size: var(--font-size-micro);
     font-variant-numeric: tabular-nums;
-    text-box: trim-both cap alphabetic;
   }
 
   .group-note {
@@ -170,14 +169,13 @@
     padding-top: var(--space-3);
   }
 
-  /* Trimmed, because what stands beside it is a control and a control is a box:
-     `align-items: center` puts the two boxes on one centre, and an untrimmed
-     line's box is not its band - the sentence sat 0.47px off the button once
-     the button became a real one. */
+  /* `.band-trim` in the markup, because what stands beside it is a control and
+     a control is a box: `align-items: center` puts the two boxes on one centre,
+     and an untrimmed line's box is not its band - the sentence sat 0.47px off
+     the button once the button became a real one. */
   .rest-say {
     color: var(--text-muted);
     font-size: var(--font-size-compact);
-    text-box: trim-both cap alphabetic;
   }
 
   .rest-count {

@@ -57,7 +57,7 @@
 
 <div class="kind-head">
   <div class="kind-head-say">
-    <h2 class="kind-title">{title}</h2>
+    <h2 class="kind-title band-trim">{title}</h2>
     <p class="kind-lead" id={helpId}>{lead}</p>
   </div>
   <Switch
@@ -103,7 +103,6 @@
     font-size: var(--font-size-title);
     font-weight: 600;
     margin: 0;
-    text-box: trim-both cap alphabetic;
   }
 
   .kind-lead {

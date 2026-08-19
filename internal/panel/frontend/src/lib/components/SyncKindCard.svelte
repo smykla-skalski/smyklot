@@ -49,7 +49,7 @@
 
 <div class="kind-card" class:is-off={!enabled}>
   <div class="kind-card-head">
-    <a class="kind-name" {href}>{name}</a>
+    <a class="kind-name band-trim" {href}>{name}</a>
     <!-- Disabled where nothing is listening, so the control cannot say it did
          something it did not. `onToggle?.(next)` on a live switch is a thumb
          that moves - a checkbox flips itself - over a save that never happens,
@@ -73,7 +73,9 @@
   {/if}
 
   <span class="kind-foot">
-    <span class="kind-when">{when ?? ''}</span>
+    <!-- Trimmed so the flex row centres the words rather than the box that
+         carries their leading - untrimmed they sat 0.34px above the chevron. -->
+    <span class="kind-when band-trim">{when ?? ''}</span>
     <a class="kind-open" {href} aria-label="Open {name}">
       <Icon name="chevron-right" size={12} />
     </a>
@@ -132,7 +134,6 @@
     color: var(--text-primary);
     font-size: var(--font-size-title);
     font-weight: 600;
-    text-box: trim-both cap alphabetic;
     text-decoration: none;
   }
 
@@ -213,9 +214,6 @@
   .kind-when {
     color: var(--text-muted);
     font-size: var(--font-size-micro);
-    /* Trimmed so the flex row centres the words rather than the box that
-       carries their leading - untrimmed they sat 0.34px above the chevron. */
-    text-box: trim-both cap alphabetic;
   }
 
   .kind-open {
