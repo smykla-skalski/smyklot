@@ -468,6 +468,79 @@
   --border-strong: #9aa89f;
 
   --pending-inverse: #a9bfcc;
+
+  /* Section tabs: navigation, so the indicator is ink, deliberately NOT the
+     brand colour - "you are here" is not "you can act". Hover previews the
+     same affordance in the border's voice; counts are quiet neutral pills. */
+  --tab-ink: var(--text-primary);
+  --tab-muted: var(--text-secondary);
+  --tab-indicator: var(--text-primary);
+  --tab-indicator-hover: var(--border-control);
+  --tab-count-bg: var(--surface-inset);
+  --tab-count-ink: var(--text-secondary);
+
+  /* Switch: an instant boolean. On wears brand, like every control that says
+     the product is acting; off is an inset track behind a strong border. */
+  --switch-track-off: var(--surface-inset);
+  --switch-track-off-border: var(--border-strong);
+  --switch-track-on: var(--brand-action);
+  --switch-thumb: #ffffff;
+
+  /* Syntax is a property of the LANGUAGE, not of the console, so these are
+     declared per theme and never re-decided per palette. Each clears 4.5:1 on
+     --surface-base, on --surface-inset and on both diff grounds below. */
+  --code-key: #0550ae;
+  --code-const: #6d3fc0;
+  --code-string: #8f3a1c;
+  /* A step deeper than the muted ink it is otherwise: --text-muted is tuned
+     against this theme's surfaces, and the removal ground is lighter than any
+     of them, where it lands at 4.36:1 - under AA on the one line a reader is
+     most likely to be squinting at. */
+  --code-comment: color-mix(in srgb, var(--text-muted) 85%, var(--text-primary));
+  --code-punct: var(--text-secondary);
+
+  /* Drift is the ink for "something that exists would change". The app's
+     --info is a caption slate and reads plain grey at tile size, which is the
+     size this is read at. --verb-add is a true green because --success is a
+     teal, and a teal on a code surface reads as the brand acting. */
+  --drift: #14498f;
+  --verb-add: #176a29;
+
+  /* Diff grounds are drawn for code rather than borrowed from the notice
+     tints: a tint tuned to sit under a sentence has too little separation
+     under a line of syntax. Word marks are one step deeper than the line. */
+  --diff-add-ink: var(--verb-add);
+  --diff-add-bg: #e4f3e6;
+  --diff-add-word: #c2e5c8;
+  --diff-del-ink: var(--danger);
+  --diff-del-bg: #fbe9e9;
+  --diff-del-word: #f4cbcb;
+  --diff-chg-ink: var(--drift);
+  --diff-chg-bg: color-mix(in srgb, var(--drift) 9%, var(--surface-base));
+
+  /* The managed gutter bar, worn by any setting this installation manages:
+     management is the product acting, so it wears brand. */
+  --managed-bar: var(--brand-action);
+
+  /* One repository's state on the board. Settled is quiet - only the states
+     that want a person speak. */
+  --cell-instep: var(--text-muted);
+  --cell-pending: var(--diff-chg-ink);
+  --cell-pending-bg: var(--diff-chg-bg);
+  --cell-refused: var(--danger);
+  --cell-refused-bg: var(--danger-tint);
+  --cell-off: var(--border-control);
+
+  /* Board material: a unit of the managed population, raised off its well by
+     a lightness step and a top edge. Never worn by navigation or an action. */
+  --tile-face: color-mix(in srgb, var(--surface-base) 92%, #ffffff);
+  --tile-edge: rgb(255 255 255 / 85%);
+  --tile-border: var(--border-subtle);
+  --tile-shadow: 0 1px 2px var(--shadow-color), 0 0.5px 0 var(--tile-edge) inset;
+  --tile-well: color-mix(in srgb, var(--text-primary) 4.5%, var(--surface-inset));
+
+  /* The characters a finder query matched, inside a path. */
+  --match-ink: var(--brand-action-text);
 }
 
 :root[data-theme='dark'] {
@@ -603,6 +676,33 @@
   --border-strong: #5b6a78;
 
   --pending-inverse: #526b7a;
+
+  /* The switch thumb is the one near-black in this theme: it rides the bright
+     brand track when on, so a light thumb would vanish into it. */
+  --switch-thumb: #10151b;
+
+  /* The same code roles, lifted for a dark ground. Only the two literal inks
+     and the two grounds change - the roles and their names do not. */
+  --code-key: #82b3f0;
+  --code-const: #c5a3f2;
+  --code-string: #ffb187;
+
+  --drift: #92c1ff;
+  --verb-add: #8ce0a2;
+
+  --diff-add-bg: #14301f;
+  --diff-add-word: #1f4c32;
+  --diff-del-bg: #3c1f24;
+  --diff-del-word: #5c2e35;
+  --diff-chg-bg: color-mix(in srgb, var(--drift) 16%, var(--surface-base));
+
+  /* A dark tile is lifted off its well rather than pressed into it, so the
+     well goes below the canvas and the edge is a thin highlight. */
+  --tile-face: color-mix(in srgb, var(--surface-raised) 88%, #ffffff);
+  --tile-edge: rgb(255 255 255 / 9%);
+  --tile-border: var(--border-control);
+  --tile-shadow: 0 1px 2px rgb(0 0 0 / 45%), 0 0.5px 0 var(--tile-edge) inset;
+  --tile-well: color-mix(in srgb, black 34%, var(--canvas));
 }
 
 *,
@@ -805,6 +905,31 @@ body {
   --sidebar-root-accent: #c4b5fd;
   --role-chip-bg: #372e50;
   --role-chip-text: #cfc0ff;
+
+  /* A var() inside a custom property resolves where the property is DECLARED,
+     so every derived token above rides the panel palette unless restated at
+     the element this class swaps the palette on. Restating the expression is
+     what makes the switch and the tab bar go violet with the console. */
+  --tab-ink: var(--text-primary);
+  --tab-muted: var(--text-secondary);
+  --tab-indicator: var(--text-primary);
+  --tab-indicator-hover: var(--border-control);
+  --tab-count-bg: var(--surface-inset);
+  --tab-count-ink: var(--text-secondary);
+  --switch-track-off: var(--surface-inset);
+  --switch-track-off-border: var(--border-strong);
+  --switch-track-on: var(--brand-action);
+  --code-comment: color-mix(in srgb, var(--text-muted) 85%, var(--text-primary));
+  --code-punct: var(--text-secondary);
+  --diff-chg-bg: color-mix(in srgb, var(--drift) 9%, var(--surface-base));
+  --managed-bar: var(--brand-action);
+  --cell-instep: var(--text-muted);
+  --cell-pending-bg: var(--diff-chg-bg);
+  --cell-off: var(--border-control);
+  --tile-face: color-mix(in srgb, var(--surface-base) 92%, #ffffff);
+  --tile-border: var(--border-subtle);
+  --tile-well: color-mix(in srgb, var(--text-primary) 4.5%, var(--surface-inset));
+  --match-ink: var(--brand-action-text);
   background: var(--canvas);
 }
 
@@ -840,6 +965,32 @@ body {
   --segment-thumb: #302b39;
   --segment-hover: color-mix(in srgb, var(--canvas) 65%, var(--segment-track));
   --segment-pressed: var(--canvas);
+
+  /* Same re-resolution as the light Root block above. */
+  --tab-ink: var(--text-primary);
+  --tab-muted: var(--text-secondary);
+  --tab-indicator: var(--text-primary);
+  --tab-indicator-hover: var(--border-control);
+  --tab-count-bg: var(--surface-inset);
+  --tab-count-ink: var(--text-secondary);
+  --switch-track-off: var(--surface-inset);
+  --switch-track-off-border: var(--border-strong);
+  --switch-track-on: var(--brand-action);
+  --code-comment: color-mix(in srgb, var(--text-muted) 85%, var(--text-primary));
+  --code-punct: var(--text-secondary);
+  --managed-bar: var(--brand-action);
+  --cell-instep: var(--text-muted);
+  --cell-off: var(--border-control);
+  --tile-border: var(--border-subtle);
+  --match-ink: var(--brand-action-text);
+  /* These four are the dark THEME's expressions, restated because the light
+     Root block above matches a dark Root console too - same specificity, and
+     it is written later - so without them a dark console would take the light
+     console's tile material and its change ground. */
+  --diff-chg-bg: color-mix(in srgb, var(--drift) 16%, var(--surface-base));
+  --cell-pending-bg: var(--diff-chg-bg);
+  --tile-face: color-mix(in srgb, var(--surface-raised) 88%, #ffffff);
+  --tile-well: color-mix(in srgb, black 34%, var(--canvas));
 }
 
 .workspace {
@@ -2064,6 +2215,43 @@ select:disabled {
 
 .chip-absent .chip-dot {
   background: var(--dim);
+}
+
+/* A chip that adds one - the shape a value will have, offered before it has a
+   value. Dashed like `.chip-absent` and for the same reason: what is drawn is a
+   place for something rather than something. It is a control, so it resets the
+   UA button face itself; `.btn` is worn by anchors here and cannot be reused
+   for a shape this small. */
+.add-chip {
+  align-items: center;
+  appearance: none;
+  background: none;
+  border: 0;
+  border-radius: var(--r-chip);
+  color: var(--brand-action-text);
+  cursor: pointer;
+  display: inline-flex;
+  font: 600 var(--font-size-compact) / 1 var(--sans);
+  gap: 0.3rem;
+  outline: 1px dashed color-mix(in srgb, currentcolor 45%, transparent);
+  outline-offset: -1px;
+  padding: 0.4rem 0.55rem;
+  white-space: nowrap;
+}
+
+.add-chip:hover {
+  background-image: linear-gradient(var(--interactive-hover-layer), var(--interactive-hover-layer));
+  outline-color: currentcolor;
+}
+
+.add-chip:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.add-chip:disabled {
+  color: var(--dim);
+  cursor: not-allowed;
 }
 
 /* The panel has no links to speak of - it is built from buttons - so this is a

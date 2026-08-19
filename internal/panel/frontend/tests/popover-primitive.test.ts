@@ -63,9 +63,17 @@ describe('the popover primitive', () => {
      * `<details>` was what three of them used, and it is why they were clipped:
      * its panel is an ordinary element in the page, so a scrolling ancestor cuts
      * it off. The top layer is the whole reason the primitive exists.
+     *
+     * What is banned is a LAYER built out of one. A disclosure that belongs to
+     * the document - a section of a plan folded until it is wanted - is what the
+     * element is for, and nothing can clip it because nothing is meant to float:
+     * it is found by the browser's own find, and it prints. Those are named here
+     * one at a time, with the reason, so the ban still holds everywhere else.
      */
+    const IN_FLOW = new Set(['PlanGroup.svelte']);
+
     const offenders = others
-      .filter(([, source]) => /<details[\s>]/u.test(source))
+      .filter(([file, source]) => !IN_FLOW.has(file) && /<details[\s>]/u.test(source))
       .map(([file]) => file);
 
     expect(offenders).toEqual([]);
