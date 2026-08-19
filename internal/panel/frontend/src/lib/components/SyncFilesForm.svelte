@@ -96,13 +96,34 @@
     write({ files: [...files, { path, content: '' }] });
   }
 
+  /**
+   * Every repository adjustment, gathered by the path it adjusts.
+   *
+   * One pass over the answers rather than a scan per question: each row asks
+   * two - what shape the file arrives in, and how many repositories adjust it -
+   * and each scan walked every adjustment of every repository.
+   */
+  const merges = $derived(
+    /* `Map.groupBy` builds it, so there is no Map here that this component
+       writes into after building - which is state Svelte cannot see, and what
+       `prefer-svelte-reactivity` is watching for. */
+    Map.groupBy(
+      adjustments.flatMap((row) =>
+        storedList<SyncFileMerge>(row.document, 'merges').map((merge) => ({
+          repository: row.repository_name,
+          merge,
+        })),
+      ),
+      (one) => one.merge.path,
+    ),
+  );
+
+  /** Shared, because every miss returns one and none of them is written to. */
+  const NO_MERGES: readonly { repository: string; merge: SyncFileMerge }[] = [];
+
   /** Every repository adjustment of one path, from the answers already read. */
-  function mergesOf(path: string): { repository: string; merge: SyncFileMerge }[] {
-    return adjustments.flatMap((row) =>
-      storedList<SyncFileMerge>(row.document, 'merges')
-        .filter((merge) => merge.path === path)
-        .map((merge) => ({ repository: row.repository_name, merge })),
-    );
+  function mergesOf(path: string): readonly { repository: string; merge: SyncFileMerge }[] {
+    return merges.get(path) ?? NO_MERGES;
   }
 
   /**

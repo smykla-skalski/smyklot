@@ -158,31 +158,65 @@
     };
   }
 
-  /** What one repository ends up with, composed the way the service composes it. */
-  function resultFor(merge: SyncFileMerge): string | undefined {
-    if (templateJson === undefined) return undefined;
-    // A spec that says nothing is not composed at all - the service hands the
-    // template's own bytes over, keys in the order they were written.
-    if (composesNothing(specOf(merge))) return template;
-    const composed = composeFile(path, templateJson, specOf(merge));
+  /**
+   * What each adjusting repository ends up with, composed once.
+   *
+   * A merge is a deep walk of two documents, and the row asks three questions
+   * of it - the file, the reason there is not one, and which lines this
+   * repository decides - each of which used to compose the whole thing again.
+   * Keyed by the repository, and rebuilt when the template or the adjustments
+   * move, which is when the answer can differ.
+   */
+  /** One repository's answer: the file, or why there is not one. */
+  type Composed = { result?: string; refusal?: string; overridden: number[] };
 
-    return composed.ok ? formatJson(composed.value) : undefined;
+  const composed: Map<string, Composed> = $derived(
+    /* Built from entries rather than by writing into a Map afterwards: a Map a
+       component mutates is state Svelte cannot see, which is what
+       `prefer-svelte-reactivity` is watching for. */
+    new Map(
+      templateJson === undefined
+        ? []
+        : adjusting.map(({ row, merge }): [string, Composed] => {
+            const spec = specOf(merge);
+            // A spec that says nothing is not composed at all - the service
+            // hands the template's own bytes over, in the order they were
+            // written.
+            if (composesNothing(spec)) {
+              return [row.repository_id, { result: template, overridden: [] }];
+            }
+
+            const built = composeFile(path, templateJson, spec);
+            const result = built.ok ? formatJson(built.value) : undefined;
+
+            return [
+              row.repository_id,
+              {
+                result,
+                refusal: built.ok ? undefined : built.reason,
+                overridden:
+                  result === undefined
+                    ? []
+                    : markedLines(result, (merge.overrides ?? {}) as JsonValue),
+              },
+            ];
+          }),
+    ),
+  );
+
+  /** What one repository ends up with, composed the way the service composes it. */
+  function resultFor(row: SyncOverrideRow): string | undefined {
+    return composed.get(row.repository_id)?.result;
   }
 
   /** Why there is no composed file for this repository, where there is not one. */
-  function refusalFor(merge: SyncFileMerge): string | undefined {
-    if (templateJson === undefined || composesNothing(specOf(merge))) return undefined;
-    const composed = composeFile(path, templateJson, specOf(merge));
-
-    return composed.ok ? undefined : composed.reason;
+  function refusalFor(row: SyncOverrideRow): string | undefined {
+    return composed.get(row.repository_id)?.refusal;
   }
 
   /** Which of the result's lines this repository decides rather than the template. */
-  function overriddenLines(merge: SyncFileMerge): number[] {
-    const result = resultFor(merge);
-    if (result === undefined) return [];
-
-    return markedLines(result, (merge.overrides ?? {}) as JsonValue);
+  function overriddenLines(row: SyncOverrideRow): number[] {
+    return composed.get(row.repository_id)?.overridden ?? [];
   }
 
   function openTemplate(): void {
@@ -192,8 +226,8 @@
     editingTemplate = true;
   }
 
-  function openRepository(row: SyncOverrideRow, merge: SyncFileMerge): void {
-    draft = resultFor(merge) ?? '';
+  function openRepository(row: SyncOverrideRow): void {
+    draft = resultFor(row) ?? '';
     refused = null;
     editingTemplate = false;
     editingRepository = row.repository_id;
@@ -267,8 +301,8 @@
   }
 
   /** What one repository changes, in the words its own row carries. */
-  function changesOf(merge: SyncFileMerge): string {
-    const refusal = refusalFor(merge);
+  function changesOf(row: SyncOverrideRow, merge: SyncFileMerge): string {
+    const refusal = refusalFor(row);
     // Said on the row, because a merge the service refuses is a repository that
     // gets no file at all, and the row is the only place this page names it.
     if (refusal !== undefined) return `cannot be composed — ${refusal.toLowerCase()}`;
@@ -394,13 +428,13 @@
       {:else}
         <div class="object-list">
           {#each adjusting as { row, merge } (row.repository_id)}
-            <ObjectRow name={row.repository_name} summary={changesOf(merge)}>
+            <ObjectRow name={row.repository_name} summary={changesOf(row, merge)}>
               {#snippet action()}
                 {#if !readOnly}
                   {#if editingRepository === row.repository_id}
                     <Button tone="quiet" onclick={() => (editingRepository = null)}>Close</Button>
                   {:else if composable(path)}
-                    <Button tone="quiet" {disabled} onclick={() => openRepository(row, merge)}>
+                    <Button tone="quiet" {disabled} onclick={() => openRepository(row)}>
                       Edit
                     </Button>
                   {/if}
@@ -430,7 +464,7 @@
                   bind:value={draft}
                   {language}
                   label="What {row.repository_name} ends up with"
-                  overridden={overriddenLines(merge)}
+                  overridden={overriddenLines(row)}
                   {disabled}
                 />
 

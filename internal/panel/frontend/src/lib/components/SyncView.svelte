@@ -196,27 +196,24 @@
        The same for the two the files pages read: a finder with no index is a
        plain field, and a file page with no adjustments says nobody adjusts it,
        which is what an installation where nobody does looks like anyway. */
-    if (fetchRepositories !== undefined) {
-      try {
-        fleet = await fetchRepositories(id);
-      } catch {
-        fleet = null;
-      }
-    }
-    if (fetchOverrides !== undefined) {
-      try {
-        adjustments = (await fetchOverrides(id, FILES)).overrides;
-      } catch {
-        adjustments = [];
-      }
-    }
-    if (fetchPaths !== undefined) {
-      try {
-        known = await fetchPaths(id);
-      } catch {
-        known = { paths: [], repositories: 0 };
-      }
-    }
+    /* Together, because none of the three needs another's answer and the page
+       cannot draw until the slowest has arrived either way - in turn it waited
+       for the sum of them. Each keeps its own landing, which is what lets the
+       page still draw the other two when one is the one that failed. */
+    await Promise.all([
+      fetchRepositories?.(id).then(
+        (answer) => (fleet = answer),
+        () => (fleet = null),
+      ),
+      fetchOverrides?.(id, FILES).then(
+        (answer) => (adjustments = answer.overrides),
+        () => (adjustments = []),
+      ),
+      fetchPaths?.(id).then(
+        (answer) => (known = answer),
+        () => (known = { paths: [], repositories: 0 }),
+      ),
+    ]);
   }
 
   /**
@@ -254,8 +251,14 @@
         document,
         expected_revision: row.revision,
       });
-      adjustments = (await fetchOverrides(targetId, FILES)).overrides;
-      plan = (await fetchPlan(targetId)).plan;
+      // Together: the plan is computed from what the service holds rather than
+      // from the list read back here, so neither answer waits on the other.
+      const [rows, computed] = await Promise.all([
+        fetchOverrides(targetId, FILES),
+        fetchPlan(targetId),
+      ]);
+      adjustments = rows.overrides;
+      plan = computed.plan;
 
       return true;
     } catch (cause) {
@@ -445,11 +448,52 @@
    */
   const boardReadable = $derived(plan !== null && fleet !== null);
 
+  /**
+   * The plan's actions, indexed the ways this page asks for them.
+   *
+   * Grouped once rather than scanned per question, and the page asks a lot of
+   * them: the board asks twice per repository, each strip once per repository
+   * per kind, and every ruleset and every shared file asks about its own
+   * subject. At two hundred repositories and eight hundred actions that was on
+   * the order of a million comparisons and a thousand throwaway arrays to draw
+   * the page once.
+   *
+   * Nested rather than keyed on a joined string, because a separator has to be
+   * a character neither half can hold and one half here is a file path, which
+   * can hold any of them. `Map.groupBy` builds each level, so nothing here is a
+   * Map a component writes into after building - which is worth avoiding on its
+   * own, since that is state Svelte cannot see.
+   */
+  const planIndex = $derived.by(() => {
+    const actions = plan?.actions ?? [];
+    const byRepository = Map.groupBy(actions, (action) => action.repository);
+    const byKind = Map.groupBy(actions, (action) => action.kind);
+
+    return {
+      byRepository,
+      byRepositoryKind: new Map(
+        [...byRepository].map(([repository, mine]) => [
+          repository,
+          Map.groupBy(mine, (action) => action.kind),
+        ]),
+      ),
+      bySubject: new Map(
+        [...byKind].map(([kind, mine]) => [kind, Map.groupBy(mine, (action) => action.subject)]),
+      ),
+    };
+  });
+
+  /** Shared, because every miss answers with one and none of them is written to. */
+  const NO_ACTIONS: readonly SyncAction[] = [];
+
   /** Every action against one repository, from the plan on screen. */
-  function actionsFor(repository: string, kind?: string): SyncAction[] {
-    return (plan?.actions ?? []).filter(
-      (action) => action.repository === repository && (kind === undefined || action.kind === kind),
-    );
+  function actionsFor(repository: string, kind?: string): readonly SyncAction[] {
+    const found =
+      kind === undefined
+        ? planIndex.byRepository.get(repository)
+        : planIndex.byRepositoryKind.get(repository)?.get(kind);
+
+    return found ?? NO_ACTIONS;
   }
 
   /**
@@ -497,9 +541,7 @@
     subject: string,
   ): { state: SyncState; label?: string } | undefined {
     if (plan === null) return undefined;
-    const mine = plan.actions.filter(
-      (action) => action.kind === kind && action.subject === subject,
-    );
+    const mine = planIndex.bySubject.get(kind)?.get(subject) ?? NO_ACTIONS;
     const refused = mine.filter((action) => action.error !== undefined && action.error !== '');
     if (refused.length > 0) return { state: 'refused', label: 'refused' };
     if (mine.length === 0) return { state: 'settled' };
@@ -525,21 +567,17 @@
    * tiles made the page contradict itself - five changes over two repositories,
    * beside a list of two carrying three between them.
    */
-  const planRepositories = $derived.by(() => {
-    const rows: { name: string; changes: number; kinds: string[]; reason?: string }[] = [];
-    for (const action of plan?.actions ?? []) {
-      let row = rows.find((known) => known.name === action.repository);
-      if (row === undefined) {
-        row = { name: action.repository, changes: 0, kinds: [] };
-        rows.push(row);
-      }
-      row.changes += 1;
-      if (!row.kinds.includes(action.kind)) row.kinds.push(action.kind);
-      if (action.error !== undefined && action.error !== '') row.reason = action.error;
-    }
-
-    return rows;
-  });
+  /* Off the same grouping the rest of the page reads, rather than a fresh walk
+     with `rows.find` inside it - which looked through every row gathered so far
+     for every action in the plan. */
+  const planRepositories = $derived(
+    [...planIndex.byRepository].map(([name, mine]) => ({
+      name,
+      changes: mine.length,
+      kinds: [...new Set(mine.map((action) => action.kind))],
+      reason: mine.find((action) => action.error !== undefined && action.error !== '')?.error,
+    })),
+  );
 
   /** Every repository the installation has, not just the page on the board. */
   const population = $derived(fleet?.total ?? 0);

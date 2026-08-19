@@ -6,6 +6,8 @@ import (
 	"sort"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/github"
@@ -39,6 +41,15 @@ import (
 // repository holding 8,229 files, the tree is 2.65 MB and 1.2s and its head
 // commit is 342 bytes.
 //
+// pathIndexConcurrency is how many repositories are read at once.
+//
+// Eight because the work is waiting rather than computing, and because the
+// ceiling that matters is GitHub's: an installation has 15,000 requests an
+// hour and a repository whose branch has moved costs a whole tree read, so the
+// aim is to overlap the latency of a handful, not to spend the budget of an
+// installation in one tick.
+const pathIndexConcurrency = 8
+
 // Never fatal. It feeds a control that helps somebody type; a reconcile that
 // failed because a tree could not be read would stop the sync it is beside for
 // the sake of an autocomplete.
@@ -103,6 +114,18 @@ func (s *server) refreshSyncPaths(
 	}
 
 	now := time.Now().UTC()
+
+	// A few at a time, because each due repository is at least one round trip to
+	// GitHub and they do not depend on each other. In turn, two hundred
+	// repositories was two hundred sequential reads - about thirty seconds of
+	// the sweep goroutine's tick, spent before any plan is applied, for an
+	// index that feeds an autocomplete.
+	//
+	// Bounded rather than unbounded: the point is to overlap the waiting, not to
+	// open an installation's whole catalog against GitHub's rate limit at once.
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.SetLimit(pathIndexConcurrency)
+
 	for _, repository := range repositories {
 		// Only what sync watches. A repository the installation does not
 		// synchronize contributes paths nobody can configure a file at.
@@ -125,7 +148,20 @@ func (s *server) refreshSyncPaths(
 			was = &scan
 		}
 
-		s.refreshRepositoryPaths(ctx, client, targetID, repository, was, now)
+		group.Go(func() error {
+			// Never an error: every failure inside is already a warning and a
+			// return, and one repository that cannot be read must not cancel
+			// the rest through the group's context.
+			s.refreshRepositoryPaths(groupCtx, client, targetID, repository, was, now)
+
+			return nil
+		})
+	}
+
+	// The only error a group with no failing member returns is its context's,
+	// and a cancelled sweep has nothing left to prune.
+	if err := group.Wait(); err != nil {
+		return
 	}
 
 	// And what the installation no longer holds. A repository that left it, or

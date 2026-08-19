@@ -140,9 +140,42 @@ function markdown(line: string): Token[] {
 
 const LANGUAGES: Record<Language, (line: string) => Token[]> = { json, yaml, toml, markdown };
 
-/** One line, coloured. An empty line comes back as an empty list. */
+/**
+ * The lines already coloured, so typing does not re-colour the file.
+ *
+ * An editor rebuilds its whole line list on every keystroke - a new object per
+ * line, so nothing downstream can tell which line actually changed - and every
+ * one of them was run through the regular expressions again. A five hundred
+ * line template meant five hundred colourings per key, of which one line's had
+ * changed.
+ *
+ * Bounded, and cleared whole when it fills: a line's colouring is worth keeping
+ * while a file is open and worth nothing afterwards, so the cheapest eviction
+ * is the right one. Keyed by language as well, because the same text is not the
+ * same tokens in YAML and in Markdown.
+ */
+const COLOURED = new Map<string, Token[]>();
+const COLOURED_MAX = 4000;
+
+/**
+ * One line, coloured. An empty line comes back as an empty list.
+ *
+ * The answer is shared rather than copied. Nothing here writes to a token -
+ * `tokenizeMarked` spreads each into a new object and the components only read
+ * - and copying every line on every read would give back what the memo saves.
+ */
 export function tokenize(line: string, language: Language): Token[] {
-  return line === '' ? [] : LANGUAGES[language](line);
+  if (line === '') return [];
+
+  const key = `${language}\u0000${line}`;
+  const known = COLOURED.get(key);
+  if (known !== undefined) return known;
+
+  const tokens = LANGUAGES[language](line);
+  if (COLOURED.size >= COLOURED_MAX) COLOURED.clear();
+  COLOURED.set(key, tokens);
+
+  return tokens;
 }
 
 /**
@@ -165,11 +198,14 @@ export function tokenizeMarked(
   const tokens = tokenize(line, language);
   if (marks.length === 0) return tokens.map((token) => ({ ...token, marked: false }));
 
-  const cuts = new Set<number>();
-  for (const [from, to] of marks) {
-    cuts.add(from);
-    cuts.add(to);
-  }
+  /* Sorted once, and walked with a pointer. It used to be spread, filtered and
+     sorted again inside the token loop, which is a fresh array and a sort per
+     token per line - on a file being typed into, per keystroke. The cuts are
+     the same set for every token on the line, and they come out in order. */
+  const cuts = [...new Set(marks.flatMap(([from, to]) => [from, to]))].sort(
+    (left, right) => left - right,
+  );
+  let cut = 0;
 
   const marked = (at: number): boolean => marks.some(([from, to]) => at >= from && at < to);
 
@@ -177,7 +213,11 @@ export function tokenizeMarked(
   let at = 0;
   for (const token of tokens) {
     const end = at + token.text.length;
-    const inside = [...cuts].filter((cut) => cut > at && cut < end).sort((a, b) => a - b);
+    while (cut < cuts.length && (cuts[cut] as number) <= at) cut += 1;
+    const inside: number[] = [];
+    for (let ahead = cut; ahead < cuts.length && (cuts[ahead] as number) < end; ahead += 1) {
+      inside.push(cuts[ahead] as number);
+    }
     let from = at;
     for (const cut of [...inside, end]) {
       out.push({
