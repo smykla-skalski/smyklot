@@ -5,18 +5,22 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/smykla-skalski/smyklot/internal/orgsync"
 )
 
-// TestPathIndexMigrationKeepsExistingRows migrates a database that already has
+// TestPathIndexMigrationDropsLegacyRows migrates a database that already has
 // path lists in it.
 //
 // The conformance suite builds every database from nothing, so it proves the
 // columns exist and says nothing about a deployment that already holds rows -
-// which is every deployment. A path list written before the commit and the
-// truncation flag were recorded has to come back readable, with the commit
-// empty rather than absent, because empty is what makes the next sweep read
-// that repository once more instead of believing a list it cannot date.
-func TestPathIndexMigrationKeepsExistingRows(t *testing.T) {
+// which is every deployment. These rows were written as one string with a
+// newline between every path, and they are dropped rather than converted: the
+// table is a cache of what GitHub answered, so the next sweep reads the list
+// again and writes it as JSON. The commit goes with them - left behind, a
+// repository would look settled at a commit whose file list is no longer
+// stored, and the finder would answer with nothing for ever.
+func TestPathIndexMigrationDropsLegacyRows(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -31,14 +35,18 @@ func TestPathIndexMigrationKeepsExistingRows(t *testing.T) {
 	}{
 		{`INSERT INTO accounts (id, provider, subject_id, login, display_name, updated_at)
           VALUES ('github:1', 'github', '1', 'smykla-skalski', 'Smykla', ?)`, []any{stamp}},
-		{`INSERT INTO targets (
+		{
+			`INSERT INTO targets (
               id, installation_id, kind, account_id, settings_updated_at, synced_at
           ) VALUES ('installation:77', '77', 'Organization', 'github:1', ?, ?)`,
-			[]any{stamp, stamp}},
-		{`INSERT INTO repositories (
+			[]any{stamp, stamp},
+		},
+		{
+			`INSERT INTO repositories (
               id, target_id, name, full_name, private, settings_updated_at, synced_at
           ) VALUES ('9001', 'installation:77', 'smyklot', 'smykla-skalski/smyklot', 0, ?, ?)`,
-			[]any{stamp, stamp}},
+			[]any{stamp, stamp},
+		},
 	} {
 		if _, err := db.ExecContext(ctx, seed.query, seed.arguments...); err != nil {
 			t.Fatalf("seed catalog: %v", err)
@@ -63,17 +71,26 @@ VALUES (?, ?, ?, ?)`,
 	if err != nil {
 		t.Fatalf("read migrated path list: %v", err)
 	}
-	if len(rows) != 1 {
-		t.Fatalf("want one row, got %d", len(rows))
+	if len(rows) != 0 {
+		t.Fatalf("want the legacy rows dropped, got %d", len(rows))
 	}
-	if got := len(rows[0].Paths); got != 2 {
-		t.Fatalf("want the two seeded paths, got %d", got)
+
+	// And the table takes what the next sweep writes, including the path that
+	// could not be stored before: git permits a newline in a filename.
+	awkward := []string{"README.md", "docs/a\nb.md"}
+	if err := store.SetSyncRepositoryPaths(ctx, orgsync.RepositoryPaths{
+		RepositoryID: "9001", TargetID: "installation:77", Paths: awkward, ObservedAt: now,
+		HeadSHA: "aaaa1111",
+	}); err != nil {
+		t.Fatalf("write a path list after the migration: %v", err)
 	}
-	if rows[0].HeadSHA != "" {
-		t.Fatalf("want no commit on a row written before one was recorded, got %q", rows[0].HeadSHA)
+
+	rows, err = store.ListSyncRepositoryPaths(ctx, "installation:77")
+	if err != nil {
+		t.Fatalf("read the rewritten path list: %v", err)
 	}
-	if rows[0].Partial {
-		t.Fatal("want a row written before truncation was recorded to read as complete")
+	if len(rows) != 1 || len(rows[0].Paths) != 2 || rows[0].Paths[1] != awkward[1] {
+		t.Fatalf("want the two paths back whole, got %#v", rows)
 	}
 
 	// And the three interval columns exist and default to inheriting, which is

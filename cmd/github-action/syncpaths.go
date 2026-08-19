@@ -97,6 +97,23 @@ func (s *server) refreshSyncPaths(
 
 		s.refreshRepositoryPaths(ctx, client, targetID, repository, was, seen, now)
 	}
+
+	// And what the installation no longer holds. A repository that left it, or
+	// was archived, or whose access was withdrawn, is skipped by the loop above
+	// - so nothing was ever going to replace its list, and the finder went on
+	// offering paths from a repository nobody can configure a file at. Last,
+	// because it reads the catalog the loop has just been walking.
+	dropped, err := s.store.PruneSyncRepositoryPaths(ctx, targetID)
+	if err != nil {
+		logging.From(ctx).Warn("could not prune the path index", "error", err)
+
+		return
+	}
+
+	if dropped > 0 {
+		logging.From(ctx).Info("dropped path lists for repositories no longer synchronized",
+			"repositories", dropped)
+	}
 }
 
 // pathIndexInterval is how often this repository's file list is checked.

@@ -226,12 +226,22 @@
    * revision moved, and a page holding the old one answers every later save
    * with a conflict about the reader's own change.
    */
+  /**
+   * Writes one repository's adjustment, and says whether it landed.
+   *
+   * The answer is what lets an editor stay open over a rejection. It used to
+   * return nothing, so the file detail closed its editor before the write and
+   * a 409 threw away what somebody had typed - the page said why and the words
+   * were already gone.
+   */
   async function onSaveAdjustment(
     repositoryId: string,
     document: Record<string, unknown>,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const row = adjustments.find((candidate) => candidate.repository_id === repositoryId);
-    if (row === undefined || saveOverride === undefined || fetchOverrides === undefined) return;
+    if (row === undefined || saveOverride === undefined || fetchOverrides === undefined) {
+      return false;
+    }
 
     savingDocument = { ...savingDocument, files: true };
     documentError = { ...documentError, files: null };
@@ -246,8 +256,12 @@
       });
       adjustments = (await fetchOverrides(targetId, FILES)).overrides;
       plan = (await fetchPlan(targetId)).plan;
+
+      return true;
     } catch (cause) {
       documentError = { ...documentError, files: messageOf(cause) };
+
+      return false;
     } finally {
       savingDocument = { ...savingDocument, files: false };
     }
@@ -296,13 +310,14 @@
    * a ruleset is written by replacement, so a control that saved on every click
    * would send a dozen half-formed policies and compute a plan for each.
    */
+  /** Writes one kind's document, and says whether it landed. See onSaveAdjustment. */
   async function onSaveDocument(
     kind: DocumentKind,
     wanted: boolean,
     document: Record<string, unknown>,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const current = documents[kind];
-    if (current === null) return;
+    if (current === null) return false;
 
     savingDocument = { ...savingDocument, [kind]: true };
     documentError = { ...documentError, [kind]: null };
@@ -314,8 +329,12 @@
       });
       documents = { ...documents, [kind]: saved };
       plan = (await fetchPlan(targetId)).plan;
+
+      return true;
     } catch (cause) {
       documentError = { ...documentError, [kind]: messageOf(cause) };
+
+      return false;
     } finally {
       savingDocument = { ...savingDocument, [kind]: false };
     }
@@ -907,7 +926,7 @@
         onSave={(document) => onSaveDocument(FILES, documents.files?.enabled === true, document)}
         onSaveAdjustment={saveOverride === undefined
           ? undefined
-          : (repositoryId, document) => void onSaveAdjustment(repositoryId, document)}
+          : (repositoryId, document) => onSaveAdjustment(repositoryId, document)}
       />
     {/if}
   {/if}

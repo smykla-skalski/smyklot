@@ -32,14 +32,16 @@
   import { formatRelative } from '#lib/format.js';
   import {
     composable,
-    derivePatch,
+    composeFile,
+    composesNothing,
+    deriveOverrides,
     formatJson,
     markedLines,
-    mergePatch,
     parseJson,
     patchedKeys,
     sharedArrays,
     type JsonValue,
+    type MergeSpec,
   } from '#lib/merge.js';
   import type { SyncFile, SyncFileMerge, SyncOverrideRow } from '#lib/types.js';
 
@@ -84,9 +86,16 @@
     saving: boolean;
     unreadable: boolean;
     problem?: string | null;
-    onSave: (document: Record<string, unknown>) => void;
-    /** Writes one repository's adjustment of this file. */
-    onSaveAdjustment?: (repositoryId: string, document: Record<string, unknown>) => void;
+    /**
+     * Writes the template. `false` is a write that did not land, which is what
+     * keeps the editor open over it rather than closing on the words.
+     */
+    onSave: (document: Record<string, unknown>) => void | Promise<boolean | void>;
+    /** Writes one repository's adjustment of this file, and answers the same way. */
+    onSaveAdjustment?: (
+      repositoryId: string,
+      document: Record<string, unknown>,
+    ) => void | Promise<boolean | void>;
   } = $props();
 
   const disabled = $derived(saving || readOnly || unreadable);
@@ -128,12 +137,42 @@
       .map((line, index) => ({ text: line, number: index + 1, overridden: set.has(index + 1) }));
   }
 
+  /**
+   * A stored merge entry, as the composer reads it.
+   *
+   * The whole entry rather than its overrides: the strategy, the list rules and
+   * `deduplicate` decide what the repository ends up with as much as the
+   * overrides do, and reading only the overrides is how the panel came to draw
+   * a repository's own list replacing the template's where the service appended
+   * to it.
+   */
+  function specOf(merge: SyncFileMerge): MergeSpec {
+    return {
+      arrays: merge.arrays,
+      deduplicate: merge.deduplicate,
+      overrides: (merge.overrides ?? {}) as JsonValue,
+      sections: merge.sections,
+      strategy: merge.strategy,
+    };
+  }
+
   /** What one repository ends up with, composed the way the service composes it. */
   function resultFor(merge: SyncFileMerge): string | undefined {
     if (templateJson === undefined) return undefined;
-    const overrides = (merge.overrides ?? {}) as JsonValue;
+    // A spec that says nothing is not composed at all - the service hands the
+    // template's own bytes over, keys in the order they were written.
+    if (composesNothing(specOf(merge))) return template;
+    const composed = composeFile(templateJson, specOf(merge));
 
-    return formatJson(mergePatch(templateJson, overrides));
+    return composed.ok ? formatJson(composed.value) : undefined;
+  }
+
+  /** Why there is no composed file for this repository, where there is not one. */
+  function refusalFor(merge: SyncFileMerge): string | undefined {
+    if (templateJson === undefined || composesNothing(specOf(merge))) return undefined;
+    const composed = composeFile(templateJson, specOf(merge));
+
+    return composed.ok ? undefined : composed.reason;
   }
 
   /** Which of the result's lines this repository decides rather than the template. */
@@ -158,23 +197,39 @@
     editingRepository = row.repository_id;
   }
 
-  function saveTemplate(): void {
-    editingTemplate = false;
-    if (at === -1 || draft === template) return;
-    onSave({
+  /**
+   * Write the template, and hold the editor open if the write is refused.
+   *
+   * The editor used to close first. A rejected save - a 409 from somebody
+   * else's edit, most of all - then left the page saying why beside a surface
+   * that no longer held what had been typed, and `openTemplate` reads the
+   * server's copy back, so there was no way to it at all.
+   */
+  async function saveTemplate(): Promise<void> {
+    if (at === -1 || draft === template) {
+      editingTemplate = false;
+
+      return;
+    }
+    const wrote = await onSave({
       ...stored,
       files: files.map((one, index) => (index === at ? { ...one, content: draft } : one)),
     });
+    if (wrote === false) return;
+    editingTemplate = false;
   }
 
   /**
    * What was typed, back as the adjustment that produces it.
    *
-   * Refused rather than stored where RFC 7396 cannot say it - a key set to
-   * `null` means "remove this key" in a patch, so storing one would mean
-   * something other than what somebody typed.
+   * Derived through the same composer that drew the surface, and then checked
+   * by composing the derivation again: a merge only has an inverse where its
+   * rules have one, and a deduplicated append does not. Refused rather than
+   * stored wherever the check fails, and wherever RFC 7396 cannot say it - a
+   * key set to `null` means "remove this key" in a patch, so storing one would
+   * mean something other than what somebody typed.
    */
-  function saveResult(row: SyncOverrideRow): void {
+  async function saveResult(row: SyncOverrideRow, merge: SyncFileMerge): Promise<void> {
     const wanted = parseJson(draft);
     if (wanted === undefined) {
       refused = 'That is not valid JSON, so nothing was stored';
@@ -183,20 +238,22 @@
     }
     if (templateJson === undefined || onSaveAdjustment === undefined) return;
 
-    const patch = derivePatch(templateJson, wanted);
-    if (patch === 'unsayable') {
-      refused =
-        'A merge cannot set a key to null - null is how it removes one - so this cannot be stored';
+    const derived = deriveOverrides(templateJson, specOf(merge), wanted);
+    if (!derived.ok) {
+      refused = derived.reason;
 
       return;
     }
 
     const merges = storedList<SyncFileMerge>(row.document, 'merges').map((one) =>
-      one.path === path ? { ...one, overrides: (patch ?? {}) as Record<string, unknown> } : one,
+      one.path === path
+        ? { ...one, overrides: derived.overrides as Record<string, unknown> }
+        : one,
     );
+    const wrote = await onSaveAdjustment(row.repository_id, { ...row.document, merges });
+    if (wrote === false) return;
     refused = null;
     editingRepository = null;
-    onSaveAdjustment(row.repository_id, { ...row.document, merges });
   }
 
   /** Stop adjusting this file here: the template's own content returns. */
@@ -211,10 +268,16 @@
 
   /** What one repository changes, in the words its own row carries. */
   function changesOf(merge: SyncFileMerge): string {
+    const refusal = refusalFor(merge);
+    // Said on the row, because a merge the service refuses is a repository that
+    // gets no file at all, and the row is the only place this page names it.
+    if (refusal !== undefined) return `cannot be composed — ${refusal.toLowerCase()}`;
     const keys = patchedKeys((merge.overrides ?? {}) as JsonValue);
     if (keys.length === 0) return 'changes nothing yet';
+    const rules = (merge.arrays ?? []).length;
+    const lists = rules === 0 ? '' : `, ${rules} list ${rules === 1 ? 'rule' : 'rules'}`;
 
-    return `changes ${keys.length} ${keys.length === 1 ? 'key' : 'keys'} — ${keys.join(', ')}`;
+    return `changes ${keys.length} ${keys.length === 1 ? 'key' : 'keys'}${lists} — ${keys.join(', ')}`;
   }
 
   /** The one thing a merge cannot infer, asked where it arises. */
@@ -349,7 +412,9 @@
                   >
                   <span class="merge-tools">
                     <Button tone="quiet" onclick={() => (editingRepository = null)}>Cancel</Button>
-                    <Button tone="signal" {disabled} onclick={() => saveResult(row)}>Save</Button>
+                    <Button tone="signal" {disabled} onclick={() => saveResult(row, merge)}>
+                      Save
+                    </Button>
                   </span>
                 </div>
 

@@ -145,9 +145,18 @@
   let pathIndexDraft = $state<DurationParts>({ amount: 1, unit: 'hours' });
   let savingPathIndex = $state(false);
 
+  /* What the field was last filled from, so a re-read is told from a change.
+     `undefined` is "never filled", which is not the same as a repository that
+     inherits. The guard used to be `savingPathIndex` alone, and every other
+     save on this page replaces `detail` - so saving anything else while an
+     interval was half typed put the server's value back under the hand. */
+  let seededPathIndex: number | null | undefined = undefined;
+
   $effect(() => {
     if (detail === undefined || savingPathIndex) return;
     const seconds = detail.path_index_interval_seconds_override;
+    if (seconds === seededPathIndex) return;
+    seededPathIndex = seconds;
     untrack(() => {
       pathIndexCustom = seconds !== null;
       pathIndexDraft = durationParts(seconds ?? 3600, PATH_INDEX_UNITS);

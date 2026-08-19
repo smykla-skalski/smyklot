@@ -74,9 +74,18 @@
       target.pending_ci_permissions.commit_statuses_read,
   );
 
+  /* What the field was last filled from, so a re-read is told from a change.
+     The guard used to be `savingPathIndex` alone, and every other save on this
+     page replaces `target` - so saving the pending-CI patterns while an
+     interval was half typed put the server's value back under the hand. */
+  // svelte-ignore state_referenced_locally
+  let seededPathIndex: number | null = target.path_index_interval_seconds_override;
+
   $effect(() => {
     if (savingPathIndex) return;
     const seconds = target.path_index_interval_seconds_override;
+    if (seconds === seededPathIndex) return;
+    seededPathIndex = seconds;
     untrack(() => {
       pathIndexSource = seconds == null ? 'inherited' : 'custom';
       pathIndexDraft = durationParts(seconds ?? 3600, PATH_INDEX_UNITS);

@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/storage"
@@ -461,6 +460,37 @@ ORDER BY p.repository_id`, targetID)
 	return collectRows(rows, scanSyncRepositoryPaths)
 }
 
+// PruneSyncRepositoryPaths drops the lists of repositories an installation no
+// longer synchronizes.
+//
+// The catalog decides. A repository that left the installation has no row in
+// it at all, and one that is archived or whose access was withdrawn is there
+// with `available` clear - the sweep skips both, so nothing was ever going to
+// replace their lists, and the finder went on offering paths from repositories
+// nobody could configure a file at.
+//
+// Scoped to the installation and not to a moment: a row for a repository under
+// some other target is that target's business, and one written a second ago by
+// a sweep still running is kept because its repository is in the catalog.
+func (s *Store) PruneSyncRepositoryPaths(ctx context.Context, targetID string) (int64, error) {
+	result, err := s.db.ExecContext(ctx, `
+DELETE FROM sync_repository_paths
+WHERE target_id = ?
+  AND repository_id NOT IN (
+      SELECT id FROM repositories WHERE target_id = ? AND available = ?
+  )`, targetID, targetID, true)
+	if err != nil {
+		return 0, fmt.Errorf("prune sync repository paths: %w", err)
+	}
+
+	dropped, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("prune sync repository paths: %w", err)
+	}
+
+	return dropped, nil
+}
+
 // SetSyncRepositoryPaths replaces one repository's list.
 //
 // Replaced whole rather than merged: this is a picture of what a repository
@@ -470,7 +500,15 @@ func (s *Store) SetSyncRepositoryPaths(
 	ctx context.Context,
 	paths orgsync.RepositoryPaths,
 ) error {
-	_, err := s.db.ExecContext(ctx, `
+	// JSON rather than one string with a newline between the paths, which is a
+	// separator that can appear in the data: git permits a newline in a
+	// filename, and one such file came back as two paths that do not exist.
+	encoded, err := marshalPaths(paths.Paths)
+	if err != nil {
+		return err
+	}
+
+	_, err = s.db.ExecContext(ctx, `
 INSERT INTO sync_repository_paths (
     repository_id, target_id, paths, observed_at, head_sha, partial
 )
@@ -483,7 +521,7 @@ ON CONFLICT (repository_id) DO UPDATE SET
     partial = excluded.partial`,
 		paths.RepositoryID,
 		paths.TargetID,
-		strings.Join(paths.Paths, "\n"),
+		encoded,
 		paths.ObservedAt,
 		paths.HeadSHA,
 		paths.Partial,
@@ -498,20 +536,22 @@ ON CONFLICT (repository_id) DO UPDATE SET
 func scanSyncRepositoryPaths(scanner rowScanner) (orgsync.RepositoryPaths, error) {
 	var (
 		paths    orgsync.RepositoryPaths
-		joined   string
+		encoded  string
 		observed StoredTime
 	)
 	if err := scanner.Scan(
-		&paths.RepositoryID, &paths.TargetID, &joined, &observed,
+		&paths.RepositoryID, &paths.TargetID, &encoded, &observed,
 		&paths.HeadSHA, &paths.Partial,
 	); err != nil {
 		return orgsync.RepositoryPaths{}, fmt.Errorf("scan sync repository paths: %w", err)
 	}
-	// An empty list is a repository that was read and held nothing this cares
-	// about, which splits to one empty string rather than to nothing.
-	if joined != "" {
-		paths.Paths = strings.Split(joined, "\n")
+
+	list, err := unmarshalPaths(encoded)
+	if err != nil {
+		return orgsync.RepositoryPaths{}, err
 	}
+
+	paths.Paths = list
 	paths.ObservedAt = observed.Time()
 
 	return paths, nil

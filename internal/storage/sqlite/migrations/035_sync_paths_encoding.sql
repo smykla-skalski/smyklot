@@ -1,0 +1,14 @@
+-- The stored file list becomes JSON, so a path holding a newline survives it.
+--
+-- It was one string with a newline between every path, which is a separator
+-- that can appear in the data: git permits a newline in a filename, and one
+-- such file would have arrived back as two paths that do not exist, each
+-- offered to somebody typing in the finder.
+--
+-- The rows are dropped rather than converted. This table is a cache of what
+-- GitHub answered, keyed by the commit it was read at, so the next sweep reads
+-- the list again and writes it in the new encoding - a conversion here would
+-- be SQL string surgery to rebuild something the service rebuilds for free.
+-- The head SHA has to go with it: left behind, a repository would look settled
+-- at a commit whose file list is no longer stored.
+DELETE FROM sync_repository_paths;

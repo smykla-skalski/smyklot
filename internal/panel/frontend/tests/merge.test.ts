@@ -93,15 +93,31 @@ describe('merge [Unit]', () => {
   it('marks the lines an adjustment decides, value and all', () => {
     const composed = formatJson(mergePatch(template, { schedule: ['a', 'b'], timezone: 'X' }));
 
-    // 1 {                        6     "a",
-    // 2   "extends": [           7     "b"
-    // 3     "config:recommended" 8   ],
-    // 4   ],                     9   "timezone": "X",
-    // 5   "schedule": [         10   "packageRules": [ …
+    //  1 {                          8       "matchManagers": [
+    //  2   "automerge": false,       9         "gomod"
+    //  3   "extends": [             10       ]
+    //  4     "config:recommended"   11     }
+    //  5   ],                       12   ],
+    //  6   "packageRules": [        13   "schedule": [ … 16   ],
+    //  7     {                      17   "timezone": "X"
     //
+    // Keys sorted, because that is how the service writes a document back out.
     // The whole of the list, closing bracket included, because that is what
     // clearing the adjustment would take back.
-    expect(markedLines(composed, { schedule: ['a', 'b'], timezone: 'X' })).toEqual([5, 6, 7, 8, 9]);
+    expect(markedLines(composed, { schedule: ['a', 'b'], timezone: 'X' })).toEqual([
+      13, 14, 15, 16, 17,
+    ]);
+  });
+
+  /**
+   * A key is READ rather than matched as text. It used to be compared raw, so a
+   * key carrying an escape never matched its own name and the line it names
+   * went unmarked with nothing to say it had.
+   */
+  it('marks a key whose name is written with an escape', () => {
+    const composed = '{\n  "a\\"b": 1,\n  "plain": 2\n}\n';
+
+    expect(markedLines(composed, { 'a"b': 1 })).toEqual([2]);
   });
 
   /** A brace inside a string is text, not a level that never closes. */
@@ -126,8 +142,36 @@ describe('merge [Unit]', () => {
   });
 
   it('reads and writes the document the way a person types it', () => {
-    expect(parseJson('{"a": 1}')).toEqual({ a: 1 });
     expect(parseJson('{oops')).toBeUndefined();
     expect(formatJson({ a: 1 })).toBe('{\n  "a": 1\n}\n');
+  });
+
+  /**
+   * The service decodes with `UseNumber` and writes the digits back, so a
+   * template holding `1.50` keeps it and an identifier past 2^53 keeps its
+   * last four. Reading those as JavaScript numbers drew a file one digit from
+   * the one the repository would get.
+   */
+  it('keeps a number as the digits it was written with', () => {
+    const document = parseJson('{"rate": 1.50, "appId": 12345678901234567890}');
+
+    expect(formatJson(document as JsonValue)).toBe(
+      '{\n  "appId": 12345678901234567890,\n  "rate": 1.50\n}\n',
+    );
+  });
+
+  /**
+   * `result[key] = value` runs `__proto__`'s setter rather than storing a key
+   * of that name, so the key vanished from the composed file and its value
+   * became the object's prototype.
+   */
+  it('treats __proto__ as a key, in the template and in the adjustment', () => {
+    const composed = mergePatch(parseJson('{"__proto__": {"kept": true}}') as JsonValue, {
+      added: 1,
+    });
+
+    expect(formatJson(composed)).toBe(
+      '{\n  "__proto__": {\n    "kept": true\n  },\n  "added": 1\n}\n',
+    );
   });
 });

@@ -228,6 +228,137 @@ describe('SyncFileDetail [Component]', () => {
     expect(screen.getByRole('alert').textContent).toContain('cannot set a key to null');
   });
 
+  /**
+   * The surface is what the service composes, list rules and all.
+   *
+   * It used to be RFC 7396 and nothing else, so a repository with an append
+   * rule was shown its own list replacing the template's - under a picker that
+   * moved nothing on screen - and a save then derived from that wrong baseline.
+   */
+  it('composes an append rule the way the service does', async () => {
+    render(SyncFileDetail, {
+      ...base,
+      adjustments: [
+        adjustment({
+          document: {
+            merges: [
+              {
+                path: 'renovate.json',
+                overrides: { extends: ['local:house-style'] },
+                arrays: [{ path: '$.extends', strategy: 'append' }],
+              },
+            ],
+          },
+        }),
+      ],
+    });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+
+    const editor = screen.getByRole('textbox', { name: 'What af ends up with' });
+    expect((editor as HTMLTextAreaElement).value).toContain('"config:recommended"');
+    expect((editor as HTMLTextAreaElement).value).toContain('"local:house-style"');
+  });
+
+  /** And what it stores is the repository's share of that list, not the whole of it. */
+  it('stores what a repository contributes to an appended list', async () => {
+    const onSaveAdjustment = vi.fn();
+    render(SyncFileDetail, {
+      ...base,
+      onSaveAdjustment,
+      adjustments: [
+        adjustment({
+          document: {
+            merges: [
+              {
+                path: 'renovate.json',
+                overrides: { extends: ['local:house-style'] },
+                arrays: [{ path: '$.extends', strategy: 'append' }],
+              },
+            ],
+          },
+        }),
+      ],
+    });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    const editor = screen.getByRole('textbox', { name: 'What af ends up with' });
+    await fireEvent.input(editor, {
+      target: {
+        value:
+          '{\n  "automerge": false,\n  "extends": [\n    "config:recommended",\n' +
+          '    "local:house-style",\n    "local:extra"\n  ],\n  "timezone": "UTC"\n}\n',
+      },
+    });
+    await fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    const document_ = onSaveAdjustment.mock.calls[0]?.[1] as {
+      merges: { overrides: Record<string, unknown> }[];
+    };
+    expect(document_.merges[0]?.overrides).toEqual({
+      extends: ['local:house-style', 'local:extra'],
+    });
+  });
+
+  /** A list that no longer holds the template's own entries cannot be an append. */
+  it('refuses an edit that takes the template out of an appended list', async () => {
+    const onSaveAdjustment = vi.fn();
+    render(SyncFileDetail, {
+      ...base,
+      onSaveAdjustment,
+      adjustments: [
+        adjustment({
+          document: {
+            merges: [
+              {
+                path: 'renovate.json',
+                overrides: { extends: ['local:house-style'] },
+                arrays: [{ path: '$.extends', strategy: 'append' }],
+              },
+            ],
+          },
+        }),
+      ],
+    });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    const editor = screen.getByRole('textbox', { name: 'What af ends up with' });
+    await fireEvent.input(editor, {
+      target: {
+        value:
+          '{\n  "automerge": false,\n  "extends": [\n    "local:house-style"\n  ],\n' +
+          '  "timezone": "UTC"\n}\n',
+      },
+    });
+    await fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(onSaveAdjustment).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert').textContent).toContain('appends to that list');
+  });
+
+  /**
+   * A rejected write leaves the editor open over what was typed.
+   *
+   * It used to close first, so a 409 from somebody else's edit left the page
+   * saying why beside a surface that no longer held the words - and reopening
+   * reads the server's copy, so there was no way back to them at all.
+   */
+  it('holds the typed document when the write is refused', async () => {
+    const onSaveAdjustment = vi.fn().mockResolvedValue(false);
+    render(SyncFileDetail, { ...base, onSaveAdjustment });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    const editor = screen.getByRole('textbox', { name: 'What af ends up with' });
+    const typed =
+      '{\n  "extends": ["config:recommended"],\n  "timezone": "UTC",\n  "automerge": true\n}\n';
+    await fireEvent.input(editor, { target: { value: typed } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(onSaveAdjustment).toHaveBeenCalledTimes(1);
+    const still = screen.getByRole('textbox', { name: 'What af ends up with' });
+    expect((still as HTMLTextAreaElement).value).toBe(typed);
+  });
+
   it('refuses what is not JSON at all', async () => {
     const onSaveAdjustment = vi.fn();
     render(SyncFileDetail, { ...base, onSaveAdjustment });

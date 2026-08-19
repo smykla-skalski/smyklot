@@ -2,12 +2,55 @@ package panel
 
 import (
 	"errors"
+	"math"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/smykla-skalski/smyklot/pkg/config"
 )
+
+// A refresh interval is range-checked as seconds, before it is multiplied.
+//
+// A Duration is int64 nanoseconds, so 18446744074 seconds multiplied first
+// comes to exactly 0 - which the validator then accepts, and 0 is "check every
+// sweep", the most expensive answer there is, reached by typing a number
+// nobody meant.
+func TestPathIndexDurationRefusesWhatOverflows(t *testing.T) {
+	t.Parallel()
+
+	longest := int64(MaxPathIndexInterval / time.Second)
+
+	for _, one := range []struct {
+		name    string
+		seconds int64
+		refused bool
+	}{
+		{name: "an hour", seconds: 3600},
+		{name: "zero, which is every sweep", seconds: 0},
+		{name: "the longest it may be", seconds: longest},
+		{name: "one second past that", seconds: longest + 1, refused: true},
+		{name: "negative", seconds: -1, refused: true},
+		{name: "a count that multiplies to zero", seconds: 18446744074, refused: true},
+		{name: "the largest there is", seconds: math.MaxInt64, refused: true},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			t.Parallel()
+
+			seconds := one.seconds
+			err := validatePathIndexInterval(pathIndexDuration(&seconds))
+
+			if one.refused && err == nil {
+				t.Fatalf("%d seconds was accepted", one.seconds)
+			}
+
+			if !one.refused && err != nil {
+				t.Fatalf("%d seconds was refused: %v", one.seconds, err)
+			}
+		})
+	}
+}
 
 func TestValidatePatchRejectsRunner(t *testing.T) {
 	t.Parallel()

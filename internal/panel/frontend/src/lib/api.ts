@@ -1,4 +1,5 @@
 import { panelUrl } from './base';
+import { parseJson, type JsonValue } from './merge';
 import type { PanelStreamHandle, PanelStreamHandlers, PanelWebSocketFactory } from './events';
 import { openPanelStream, panelStreamUrl } from './events';
 import type { RequestFlood } from './request-rate';
@@ -274,6 +275,31 @@ export function createPanelApi(
   const jsonRequest = async <T>(path: string, init?: RequestInit): Promise<T> => {
     const response = await request(path, init);
     return (await response.json()) as T;
+  };
+
+  /**
+   * A payload whose `document` fields keep their numbers as they were written.
+   *
+   * A sync adjustment is somebody's file, and the service composes it keeping
+   * every number's digits: `1.50` stays `1.50` and an identifier past 2^53
+   * keeps its last four. A JavaScript number holds neither, so a document read
+   * with `response.json()` came back a different document and the panel drew a
+   * file one digit from the one the repository would get.
+   *
+   * Read twice rather than with one clever reviver: the same body parsed
+   * normally, and again keeping every number's source text, with only the
+   * `document` grafted across. Everything else in these payloads is read as a
+   * number by something - `revision` is compared, `expected_revision` is sent
+   * back - and a box in one of those would break a comparison rather than a
+   * rendering.
+   */
+  const documentRequest = async <T>(path: string, init?: RequestInit): Promise<T> => {
+    const body = await (await request(path, init)).text();
+    const payload = JSON.parse(body) as T;
+    const literal = parseJson(body);
+    if (literal === undefined) return payload;
+
+    return graftDocuments(payload, literal) as T;
   };
 
   /**
@@ -743,13 +769,13 @@ export function createPanelApi(
     },
 
     fetchSyncOverrides(targetId: string, kind: string): Promise<{ overrides: SyncOverrideRow[] }> {
-      return jsonRequest(
+      return documentRequest(
         `/api/v1/targets/${pathSegment(targetId)}/sync/overrides/${pathSegment(kind)}`,
       );
     },
 
     fetchSyncOverride(targetId: string, repositoryId: string, kind: string): Promise<SyncOverride> {
-      return jsonRequest(
+      return documentRequest(
         `/api/v1/targets/${pathSegment(targetId)}/repositories/` +
           `${pathSegment(repositoryId)}/sync/${pathSegment(kind)}`,
       );
@@ -952,6 +978,30 @@ export function unreachable(cause: unknown): PanelApiError {
   const failure = new PanelApiError(0, 'unreachable', describeStatus(0));
 
   return Object.assign(failure, { cause });
+}
+
+/**
+ * Put the literal-preserving copy of every `document` back into the payload.
+ *
+ * Only that key, and only where both copies hold an object: this walks two
+ * readings of one body, so the shapes match by construction, and anything it
+ * does not recognise is left as the ordinary reading had it.
+ */
+function graftDocuments(payload: unknown, literal: JsonValue): unknown {
+  if (Array.isArray(payload) && Array.isArray(literal)) {
+    return payload.map((item, index) => graftDocuments(item, literal[index] ?? null));
+  }
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return payload;
+  if (typeof literal !== 'object' || literal === null || Array.isArray(literal)) return payload;
+
+  const grafted: Record<string, unknown> = { ...(payload as Record<string, unknown>) };
+  for (const key of Object.keys(grafted)) {
+    const beside = (literal as Record<string, JsonValue>)[key];
+    if (beside === undefined) continue;
+    grafted[key] = key === 'document' ? beside : graftDocuments(grafted[key], beside);
+  }
+
+  return grafted;
 }
 
 async function readError(response: Response): Promise<PanelApiError> {

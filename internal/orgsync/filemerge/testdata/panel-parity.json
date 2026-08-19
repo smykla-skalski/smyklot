@@ -1,0 +1,211 @@
+{
+  "why": [
+    "One table of merges, run through the Go engine and through the panel's copy of it.",
+    "The panel composes the file a reader is looking at, and it edits that file rather than the",
+    "patch behind it - so the two composers have to agree to the byte or a save writes something",
+    "other than what was shown. They stopped agreeing in exactly the way two implementations of",
+    "one rule do: the panel had RFC 7396 and nothing else, and the service also honoured the",
+    "strategy, the array rules and deduplicate.",
+    "Read by internal/orgsync/filemerge/panel_parity_test.go and by",
+    "internal/panel/frontend/tests/merge-parity.test.ts. A case added here is run by both."
+  ],
+  "cases": [
+    {
+      "name": "a deep merge, which is what a spec without a strategy gets",
+      "path": "renovate.json",
+      "template": "{\"extends\":[\"config:base\"],\"schedule\":\"before 5am\",\"packageRules\":[{\"matchManagers\":[\"npm\"]}]}",
+      "spec": { "overrides": { "schedule": "after 9pm" } },
+      "expected": "{\n  \"extends\": [\n    \"config:base\"\n  ],\n  \"packageRules\": [\n    {\n      \"matchManagers\": [\n        \"npm\"\n      ]\n    }\n  ],\n  \"schedule\": \"after 9pm\"\n}\n"
+    },
+    {
+      "name": "a deep merge reaches into a nested object",
+      "path": "renovate.json",
+      "template": "{\"hostRules\":{\"matchHost\":\"github.com\",\"timeout\":30}}",
+      "spec": { "overrides": { "hostRules": { "timeout": 60 } } },
+      "expected": "{\n  \"hostRules\": {\n    \"matchHost\": \"github.com\",\n    \"timeout\": 60\n  }\n}\n"
+    },
+    {
+      "name": "a null removes the key it names",
+      "path": "renovate.json",
+      "template": "{\"extends\":[\"config:base\"],\"schedule\":\"before 5am\"}",
+      "spec": { "overrides": { "schedule": null } },
+      "expected": "{\n  \"extends\": [\n    \"config:base\"\n  ]\n}\n"
+    },
+    {
+      "name": "a shallow merge replaces a top-level key whole",
+      "path": "renovate.json",
+      "template": "{\"hostRules\":{\"matchHost\":\"github.com\",\"timeout\":30}}",
+      "spec": {
+        "strategy": "shallow-merge",
+        "overrides": { "hostRules": { "timeout": 60 } }
+      },
+      "expected": "{\n  \"hostRules\": {\n    \"timeout\": 60\n  }\n}\n"
+    },
+    {
+      "name": "an append rule keeps the template's entries and adds the repository's",
+      "path": "renovate.json",
+      "template": "{\"extends\":[\"config:base\",\"group:monorepos\"]}",
+      "spec": {
+        "overrides": { "extends": ["local:house-style"] },
+        "arrays": [{ "path": "$.extends", "strategy": "append" }]
+      },
+      "expected": "{\n  \"extends\": [\n    \"config:base\",\n    \"group:monorepos\",\n    \"local:house-style\"\n  ]\n}\n"
+    },
+    {
+      "name": "a prepend rule puts the repository's entries first",
+      "path": "renovate.json",
+      "template": "{\"extends\":[\"config:base\"]}",
+      "spec": {
+        "overrides": { "extends": ["local:house-style"] },
+        "arrays": [{ "path": "$.extends", "strategy": "prepend" }]
+      },
+      "expected": "{\n  \"extends\": [\n    \"local:house-style\",\n    \"config:base\"\n  ]\n}\n"
+    },
+    {
+      "name": "replace is what a list gets with no rule at all",
+      "path": "renovate.json",
+      "template": "{\"extends\":[\"config:base\"]}",
+      "spec": {
+        "overrides": { "extends": ["local:house-style"] },
+        "arrays": [{ "path": "$.extends", "strategy": "replace" }]
+      },
+      "expected": "{\n  \"extends\": [\n    \"local:house-style\"\n  ]\n}\n"
+    },
+    {
+      "name": "deduplicate keeps the first of every entry an append doubles",
+      "path": "renovate.json",
+      "template": "{\"extends\":[\"config:base\",\"group:monorepos\"]}",
+      "spec": {
+        "overrides": { "extends": ["group:monorepos", "local:house-style"] },
+        "arrays": [{ "path": "$.extends", "strategy": "append" }],
+        "deduplicate": true
+      },
+      "expected": "{\n  \"extends\": [\n    \"config:base\",\n    \"group:monorepos\",\n    \"local:house-style\"\n  ]\n}\n"
+    },
+    {
+      "name": "deduplicate compares whole objects, not their addresses",
+      "path": "renovate.json",
+      "template": "{\"packageRules\":[{\"matchManagers\":[\"npm\"],\"enabled\":true}]}",
+      "spec": {
+        "overrides": {
+          "packageRules": [{ "enabled": true, "matchManagers": ["npm"] }, { "matchManagers": ["gomod"] }]
+        },
+        "arrays": [{ "path": "$.packageRules", "strategy": "append" }],
+        "deduplicate": true
+      },
+      "expected": "{\n  \"packageRules\": [\n    {\n      \"enabled\": true,\n      \"matchManagers\": [\n        \"npm\"\n      ]\n    },\n    {\n      \"matchManagers\": [\n        \"gomod\"\n      ]\n    }\n  ]\n}\n"
+    },
+    {
+      "name": "a rule addresses a list one level down",
+      "path": "renovate.json",
+      "template": "{\"customManagers\":{\"fileMatch\":[\"^Dockerfile$\"]}}",
+      "spec": {
+        "overrides": { "customManagers": { "fileMatch": ["^Makefile$"] } },
+        "arrays": [{ "path": "$.customManagers.fileMatch", "strategy": "append" }]
+      },
+      "expected": "{\n  \"customManagers\": {\n    \"fileMatch\": [\n      \"^Dockerfile$\",\n      \"^Makefile$\"\n    ]\n  }\n}\n"
+    },
+    {
+      "name": "a backslash escapes a dot, so a key holding one addresses itself",
+      "path": "renovate.json",
+      "template": "{\"example.com\":[\"one\"]}",
+      "spec": {
+        "overrides": { "example.com": ["two"] },
+        "arrays": [{ "path": "$.example\\.com", "strategy": "append" }]
+      },
+      "expected": "{\n  \"example.com\": [\n    \"one\",\n    \"two\"\n  ]\n}\n"
+    },
+    {
+      "name": "appending to a list the template does not have is the repository's own",
+      "path": "renovate.json",
+      "template": "{\"schedule\":\"before 5am\"}",
+      "spec": {
+        "overrides": { "extends": ["local:house-style"] },
+        "arrays": [{ "path": "$.extends", "strategy": "append" }]
+      },
+      "expected": "{\n  \"extends\": [\n    \"local:house-style\"\n  ],\n  \"schedule\": \"before 5am\"\n}\n"
+    },
+    {
+      "name": "numbers keep the digits they were written with",
+      "path": "renovate.json",
+      "template": "{\"appId\":12345678901234567890,\"rate\":1.50,\"kept\":1e3}",
+      "spec": { "overrides": { "schedule": "after 9pm" } },
+      "expected": "{\n  \"appId\": 12345678901234567890,\n  \"kept\": 1e3,\n  \"rate\": 1.50,\n  \"schedule\": \"after 9pm\"\n}\n"
+    },
+    {
+      "name": "keys come out sorted, because the service writes a map back out",
+      "path": "renovate.json",
+      "template": "{\"zulu\":1,\"alpha\":2,\"Mike\":3}",
+      "spec": { "overrides": { "bravo": 4 } },
+      "expected": "{\n  \"Mike\": 3,\n  \"alpha\": 2,\n  \"bravo\": 4,\n  \"zulu\": 1\n}\n"
+    },
+    {
+      "name": "a key called __proto__ is a key",
+      "path": "renovate.json",
+      "template": "{\"__proto__\":{\"kept\":true},\"schedule\":\"before 5am\"}",
+      "spec": { "overrides": { "schedule": "after 9pm" } },
+      "expected": "{\n  \"__proto__\": {\n    \"kept\": true\n  },\n  \"schedule\": \"after 9pm\"\n}\n"
+    },
+    {
+      "name": "an override may set a key called __proto__ too",
+      "path": "renovate.json",
+      "template": "{\"schedule\":\"before 5am\"}",
+      "spec": { "overrides": { "__proto__": { "added": true } } },
+      "expected": "{\n  \"__proto__\": {\n    \"added\": true\n  },\n  \"schedule\": \"before 5am\"\n}\n"
+    },
+    {
+      "name": "an object replaces a scalar rather than merging into it",
+      "path": "renovate.json",
+      "template": "{\"hostRules\":\"none\"}",
+      "spec": { "overrides": { "hostRules": { "timeout": 60 } } },
+      "expected": "{\n  \"hostRules\": {\n    \"timeout\": 60\n  }\n}\n"
+    },
+    {
+      "name": "a rule whose list no override sets is refused",
+      "path": "renovate.json",
+      "template": "{\"extends\":[\"config:base\"]}",
+      "spec": {
+        "overrides": { "schedule": "after 9pm" },
+        "arrays": [{ "path": "$.extends", "strategy": "append" }]
+      },
+      "refused": true
+    },
+    {
+      "name": "a rule whose override is not a list is refused",
+      "path": "renovate.json",
+      "template": "{\"extends\":[\"config:base\"]}",
+      "spec": {
+        "overrides": { "extends": "config:base" },
+        "arrays": [{ "path": "$.extends", "strategy": "append" }]
+      },
+      "refused": true
+    },
+    {
+      "name": "a path that indexes a list is refused, because positions move when one is merged",
+      "path": "renovate.json",
+      "template": "{\"extends\":[\"config:base\"]}",
+      "spec": {
+        "overrides": { "extends": ["local:house-style"] },
+        "arrays": [{ "path": "$.extends[0]", "strategy": "append" }]
+      },
+      "refused": true
+    },
+    {
+      "name": "a path that does not start at the document is refused",
+      "path": "renovate.json",
+      "template": "{\"extends\":[\"config:base\"]}",
+      "spec": {
+        "overrides": { "extends": ["local:house-style"] },
+        "arrays": [{ "path": "extends", "strategy": "append" }]
+      },
+      "refused": true
+    },
+    {
+      "name": "a spec that says nothing leaves the template exactly as it is",
+      "path": "renovate.json",
+      "template": "{\"zulu\":1,\"alpha\":2}",
+      "spec": {},
+      "verbatim": true
+    }
+  ]
+}

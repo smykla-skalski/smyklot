@@ -257,6 +257,33 @@ var _ = Describe("Repository files [Unit]", func() {
 			Expect(tree.Entries).To(HaveKey("docs/deep/one.md"))
 		})
 
+		// The one truncation the division cannot answer: a single directory
+		// holding more entries than one response carries. There is nothing left
+		// to divide, so what comes back is a partial list - and it used to be
+		// recorded as a complete one, which is the reading a path finder then
+		// tells somebody every missing file does not exist on.
+		It("reports a level GitHub truncates as well", func() {
+			server = divided(
+				map[string]string{
+					"main": `{"tree":[],"truncated":true}`,
+					"d1": `{"tree":[{"path":"guide.md","type":"blob",
+						"mode":"100644","sha":"b2","size":8}],"truncated":false}`,
+				},
+				map[string]string{
+					"main": `{"tree":[{"path":"docs","type":"tree",
+						"mode":"040000","sha":"d1"}],"truncated":true}`,
+				})
+
+			tree, err := client().ListWholeRepositoryTree(
+				context.Background(), "acme", "web", "main")
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(tree.Truncated).To(BeTrue())
+			// And what it did read is kept: a partial list is worth having,
+			// said to be partial.
+			Expect(tree.Entries).To(HaveKey("docs/guide.md"))
+		})
+
 		It("reads a repository with no commits as an empty tree", func() {
 			server = divided(nil, nil)
 

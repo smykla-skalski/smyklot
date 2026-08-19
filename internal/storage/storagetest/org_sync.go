@@ -811,6 +811,62 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 			Expect(read[0].Paths).To(BeEmpty())
 		})
 
+		// git permits a newline in a filename, and the list used to be stored
+		// as one string with a newline between every path - so one such file
+		// came back as two paths that do not exist, both offered to somebody
+		// typing in the finder.
+		It("keeps a path that holds a newline whole", func() {
+			ctx, store, now := runtime()
+			seed(ctx, store, now)
+
+			awkward := []string{"docs/a\nb.md", "plain.md", `quote"and\backslash.md`}
+
+			Expect(store.SetSyncRepositoryPaths(ctx, orgsync.RepositoryPaths{
+				RepositoryID: repoA, TargetID: target, Paths: awkward, ObservedAt: now,
+			})).To(Succeed())
+
+			read, err := store.ListSyncRepositoryPaths(ctx, target)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(read).To(HaveLen(1))
+			Expect(read[0].Paths).To(Equal(awkward))
+		})
+
+		// Nothing else removes these. The sweep writes a list per repository it
+		// reads, and a repository that left the installation, or was archived,
+		// or whose access was withdrawn is one it does not read - so its paths
+		// stayed, and the finder went on offering files nobody can configure a
+		// template at.
+		It("drops the lists of repositories the installation no longer holds", func() {
+			ctx, store, now := runtime()
+			seed(ctx, store, now)
+
+			for _, id := range []string{repoA, repoB} {
+				Expect(store.SetSyncRepositoryPaths(ctx, orgsync.RepositoryPaths{
+					RepositoryID: id, TargetID: target,
+					Paths: []string{"README.md"}, ObservedAt: now,
+				})).To(Succeed())
+			}
+
+			// One of them stops being synchronized, said the way the product
+			// says it: the installation is reconciled without it, which is
+			// what an archived repository and a withdrawn access both are.
+			account := testAccount(now)
+			Expect(store.ReconcileCatalog(ctx, []storage.InstallationSnapshot{
+				testInstallation(account, now, []storage.RepositorySnapshot{
+					testRepository(repoA, "smykla-skalski/one", false),
+				}),
+			})).To(Succeed())
+
+			dropped, err := store.PruneSyncRepositoryPaths(ctx, target)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(dropped).To(BeNumerically("==", 1))
+
+			read, err := store.ListSyncRepositoryPaths(ctx, target)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(read).To(HaveLen(1))
+			Expect(read[0].RepositoryID).To(Equal(repoA))
+		})
+
 		// The scope of an installation is the catalog's, like every other read
 		// of these tables.
 		It("answers nothing for an installation that owns none of it", func() {

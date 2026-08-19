@@ -299,6 +299,20 @@ type Store interface {
 	// SetSyncRepositoryPaths replaces one repository's list.
 	SetSyncRepositoryPaths(context.Context, RepositoryPaths) error
 
+	// PruneSyncRepositoryPaths drops the lists of repositories an installation
+	// no longer synchronizes, answering how many went.
+	//
+	// A repository leaves an installation, or is archived, or its access is
+	// withdrawn - and its list stayed, so the finder went on offering paths
+	// from a repository nobody could configure a file at. Nothing else removes
+	// them: the sweep writes a list per repository it reads, and it reads none
+	// of these.
+	//
+	// The catalog decides, rather than a list of identifiers the caller passes:
+	// what is worth keeping is a query the database can answer about itself,
+	// and a caller assembling one would grow a parameter per repository.
+	PruneSyncRepositoryPaths(context.Context, string) (int64, error)
+
 	ListSyncRepositoryState(context.Context, string) ([]RepositoryState, error)
 
 	// GetSyncRepositoryState reads one repository's row for one kind, answering

@@ -329,6 +329,25 @@ func pathIndexDuration(seconds *int64) *time.Duration {
 	if seconds == nil {
 		return nil
 	}
+
+	// Range-checked as seconds, before the multiplication rather than after it.
+	// A Duration is int64 nanoseconds, so 18446744074 seconds multiplies to
+	// exactly 0 - a value the validator below then accepts, and 0 is "check
+	// every sweep", the most expensive answer there is, saved by typing a
+	// number nobody meant. The out-of-range cases are carried as a duration the
+	// validator refuses, which is how the quiet period does it.
+	switch {
+	case *seconds < 0:
+		invalid := -time.Second
+
+		return &invalid
+
+	case *seconds > int64(MaxPathIndexInterval/time.Second):
+		invalid := MaxPathIndexInterval + time.Second
+
+		return &invalid
+	}
+
 	value := time.Duration(*seconds) * time.Second
 
 	return &value

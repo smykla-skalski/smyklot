@@ -179,6 +179,15 @@ func (c *Client) collectTree(
 		return err
 	}
 
+	// One level of one tree, and GitHub still would not list all of it. Rare -
+	// it takes a directory with more entries than the response holds - but the
+	// division has nowhere left to go, so what comes back is a partial list and
+	// the caller has to be told. Dropped, this was the one truncation that
+	// recorded itself as a complete reading.
+	if level.Truncated {
+		whole.Truncated = true
+	}
+
 	for name, entry := range level.Entries {
 		whole.Entries[prefix+name] = entry
 		if !entry.Directory() {
