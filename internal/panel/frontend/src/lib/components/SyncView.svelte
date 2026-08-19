@@ -1092,11 +1092,21 @@
     gap: var(--space-3);
     grid-template-columns: 9.5rem auto 1fr;
     padding: 0.5rem var(--space-3);
+    position: relative;
     text-decoration: none;
   }
 
-  .attn-row + .attn-row {
-    border-top: 1px solid var(--border-subtle);
+  /* The rule between two rows is drawn inside the row rather than as its top
+     border. A border follows the box it belongs to, and this box is rounded for
+     its hover ground, so the separator curved up at both ends - a straight line
+     between two rows, finished like a pill. Same 1px, same colour, square. */
+  .attn-row + .attn-row::before {
+    background: var(--border-subtle);
+    block-size: 1px;
+    content: '';
+    inset-block-start: 0;
+    inset-inline: 0;
+    position: absolute;
   }
 
   /* The layer rather than `--table-row-hover`, because this row rests on the
