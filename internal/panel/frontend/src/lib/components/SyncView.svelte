@@ -31,6 +31,7 @@
 
   import FormError from './FormError.svelte';
   import Button from './Button.svelte';
+  import Icon from './Icon.svelte';
   import PageHeader from './PageHeader.svelte';
   import ApplyBar from './ApplyBar.svelte';
   import PlanAction, { type PlanOp } from './PlanAction.svelte';
@@ -729,7 +730,7 @@
       {/if}
 
       {#if planRepositories.length > 0}
-        <div class="attn">
+        <div class="attn ruled-rows">
           {#each planRepositories as repository (repository.name)}
             {@const removals = removalsFor(repository.name)}
             <a
@@ -756,6 +757,11 @@
                     ? ''
                     : ` — ${removals} ${removals === 1 ? 'removal' : 'removals'} among them`}
                 {/if}
+              </span>
+              <!-- The same chevron the kind cards carry, saying the same thing:
+                   this row is a way somewhere, not a line of a report. -->
+              <span class="attn-open" aria-hidden="true">
+                <Icon name="chevron-right" size={12} />
               </span>
             </a>
           {/each}
@@ -1083,6 +1089,8 @@
     margin: var(--space-4) 0 var(--space-6);
   }
 
+  /* The rule between two of these, and its manners around a hover, are
+     `.ruled-rows` in app.css - the same idiom the file and ruleset lists use. */
   .attn-row {
     align-items: baseline;
     border-radius: var(--r-ctl);
@@ -1090,28 +1098,28 @@
     cursor: pointer;
     display: grid;
     gap: var(--space-3);
-    grid-template-columns: 9.5rem auto 1fr;
+    grid-template-columns: 9.5rem auto 1fr auto;
     padding: 0.5rem var(--space-3);
-    position: relative;
     text-decoration: none;
   }
 
-  /* The rule between two rows is drawn inside the row rather than as its top
-     border. A border follows the box it belongs to, and this box is rounded for
-     its hover ground, so the separator curved up at both ends - a straight line
-     between two rows, finished like a pill.
+  /* Centred rather than on the row's baseline: the row aligns text to text, and
+     a chevron has no baseline to give. */
+  .attn-open {
+    align-self: center;
+    color: var(--text-muted);
+    display: inline-flex;
+    transition:
+      color var(--duration-fast) var(--ease-standard),
+      translate var(--duration-fast) var(--ease-standard);
+  }
 
-     Inset by the row's own padding, so it runs from the first column to the
-     last and stops there. Full-bleed it reached the corners the hover ground
-     curves away from, and both ends stood outside the pill the moment one
-     appeared - a rule wider than the thing it divides. */
-  .attn-row + .attn-row::before {
-    background: var(--border-subtle);
-    block-size: 1px;
-    content: '';
-    inset-block-start: 0;
-    inset-inline: var(--space-3);
-    position: absolute;
+  /* It leans the way it would take the reader, and darkens as it goes. Two
+     pixels: enough to be seen moving beside a name, not enough to read as the
+     row itself shifting under the hand. */
+  .attn-row:hover .attn-open {
+    color: var(--text-primary);
+    translate: 2px 0;
   }
 
   /* The layer rather than `--table-row-hover`, because this row rests on the
@@ -1211,5 +1219,16 @@
 
   :global(.form-error) {
     margin: var(--space-3) 0 0;
+  }
+
+  /* The colour still changes; only the lean goes. */
+  @media (prefers-reduced-motion: reduce) {
+    .attn-open {
+      transition: none;
+    }
+
+    .attn-row:hover .attn-open {
+      translate: none;
+    }
   }
 </style>

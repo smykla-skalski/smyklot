@@ -178,7 +178,7 @@
       No templates yet. A path named here is written to every repository this installation syncs
     </p>
   {:else}
-    <div class="object-list">
+    <div class="object-list ruled-rows">
       {#each files as file (file.path)}
         {@const fleet = markOf?.(file.path)}
         <ObjectRow name={file.path} href={fileHref(file.path)} summary={summaryOf(file.path)}>
@@ -263,8 +263,11 @@
     display: grid;
   }
 
-  .object-list > :global(.object-row + .object-row) {
-    border-top: 1px solid var(--border-subtle);
+  /* The rule between two rows, and its manners around a hover, are
+     `.ruled-rows` in app.css. An `.object-row` pads by `--space-2`, so that is
+     where its rule stops. */
+  .object-list {
+    --row-rule-inset: var(--space-2);
   }
 
   .file-settings {

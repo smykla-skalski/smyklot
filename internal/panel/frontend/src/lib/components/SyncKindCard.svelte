@@ -105,8 +105,11 @@
     transform: scale(var(--press-scale-surface));
   }
 
+  /* It leans the way it would take the reader, and darkens as it goes - the
+     same two pixels the attention rows lean. */
   .kind-card:hover .kind-open {
     color: var(--text-primary);
+    translate: 2px 0;
   }
 
   .kind-card-head {
@@ -209,6 +212,9 @@
   .kind-open {
     color: var(--text-muted);
     display: inline-flex;
+    transition:
+      color var(--duration-fast) var(--ease-standard),
+      translate var(--duration-fast) var(--ease-standard);
   }
 
   /* Off keeps its place and says so. */
@@ -217,9 +223,15 @@
     color: var(--text-muted);
   }
 
+  /* The colour still changes; only the lean goes. */
   @media (prefers-reduced-motion: reduce) {
-    .kind-card {
+    .kind-card,
+    .kind-open {
       transition: none;
+    }
+
+    .kind-card:hover .kind-open {
+      translate: none;
     }
   }
 </style>

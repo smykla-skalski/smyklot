@@ -1273,6 +1273,49 @@ body {
 }
 
 /*
+ * A list of rounded rows, ruled between one and the next.
+ * ------------------------------------------------------
+ * Not a table: a run of links or cards laid out by the caller, each rounding
+ * itself so a hover can be a pill. Three lists wrote this by hand and each got
+ * a different part of it wrong.
+ *
+ * The rule is drawn INSIDE the row rather than as its top border, because a
+ * border belongs to a rounded box and curves up at both of its ends - a
+ * straight line between two rows, finished like a pill. It is inset by the
+ * row's own padding, so it runs from the first column to the last: full-bleed
+ * it reached the corners the hover ground curves away from, and both ends
+ * stood outside the pill the moment one appeared.
+ *
+ * And a row under the pointer has no rule touching it, above or below. A
+ * separator divides two rows that are alike, and the hovered one is not: with
+ * the lines left on, a pill was drawn with one line resting against its top
+ * and another against its bottom, and the eye read three shapes where the hand
+ * had picked out one.
+ *
+ * `--row-rule-inset` is the row's horizontal padding. It defaults to the
+ * commonest one rather than to nothing, because a rule that reaches the corner
+ * is the defect this exists to prevent.
+ */
+.ruled-rows > * {
+  position: relative;
+}
+
+.ruled-rows > * + *::before {
+  background: var(--border-subtle);
+  block-size: 1px;
+  content: '';
+  inset-block-start: 0;
+  inset-inline: var(--row-rule-inset, var(--space-3));
+  position: absolute;
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+
+.ruled-rows > *:hover::before,
+.ruled-rows > *:hover + *::before {
+  background: transparent;
+}
+
+/*
  * The body every table draws the same way.
  * ---------------------------------------
  * Written here rather than inside `DataTable.svelte` for one reason, and it is
