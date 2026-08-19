@@ -284,6 +284,66 @@ var _ = Describe("Repository files [Unit]", func() {
 			Expect(tree.Entries).To(HaveKey("docs/guide.md"))
 		})
 
+		// A division reads the subtrees of a level it was refused, and the
+		// budget above it can run out part way through. Ranging the level's map
+		// meant which of them were reached first was Go's map iteration order,
+		// so the same repository listed twice came back holding different files
+		// - a difference nobody could reproduce and nothing could explain, in
+		// the one case the caller is already being told is incomplete.
+		//
+		// Asserted through the order the subtrees are asked for, which is what
+		// the descent actually decides, and read twice because one run of a map
+		// range looks perfectly ordered often enough to pass.
+		It("descends a refused level in name order", func() {
+			server = divided(
+				map[string]string{
+					"main": `{"tree":[],"truncated":true}`,
+					"t1":   `{"tree":[{"path":"a.md","type":"blob","mode":"100644","sha":"b1"}]}`,
+					"t2":   `{"tree":[{"path":"b.md","type":"blob","mode":"100644","sha":"b2"}]}`,
+					"t3":   `{"tree":[{"path":"c.md","type":"blob","mode":"100644","sha":"b3"}]}`,
+					"t4":   `{"tree":[{"path":"d.md","type":"blob","mode":"100644","sha":"b4"}]}`,
+					"t5":   `{"tree":[{"path":"e.md","type":"blob","mode":"100644","sha":"b5"}]}`,
+					"t6":   `{"tree":[{"path":"f.md","type":"blob","mode":"100644","sha":"b6"}]}`,
+				},
+				// Listed in an order that is neither the names' nor the SHAs',
+				// and six of them: with three, one run of a randomised map range
+				// comes out sorted often enough to pass by luck.
+				map[string]string{
+					"main": `{"tree":[
+						{"path":"zeta","type":"tree","mode":"040000","sha":"t6"},
+						{"path":"alpha","type":"tree","mode":"040000","sha":"t1"},
+						{"path":"omega","type":"tree","mode":"040000","sha":"t4"},
+						{"path":"delta","type":"tree","mode":"040000","sha":"t2"},
+						{"path":"sigma","type":"tree","mode":"040000","sha":"t5"},
+						{"path":"kappa","type":"tree","mode":"040000","sha":"t3"}],
+						"truncated":false}`,
+				})
+
+			descents := func() []string {
+				requests = nil
+				_, err := client().ListWholeRepositoryTree(
+					context.Background(), "acme", "web", "main")
+				Expect(err).NotTo(HaveOccurred())
+
+				asked := []string{}
+				for _, one := range requests {
+					for _, subtree := range []string{"t1", "t2", "t3", "t4", "t5", "t6"} {
+						if strings.Contains(one, "/git/trees/"+subtree) {
+							asked = append(asked, subtree)
+						}
+					}
+				}
+
+				return asked
+			}
+
+			// Name order of the DIRECTORIES - alpha, delta, kappa, omega,
+			// sigma, zeta - which the SHAs above are numbered to spell out.
+			wanted := []string{"t1", "t2", "t3", "t4", "t5", "t6"}
+			Expect(descents()).To(Equal(wanted))
+			Expect(descents()).To(Equal(wanted))
+		})
+
 		It("reads a repository with no commits as an empty tree", func() {
 			server = divided(nil, nil)
 

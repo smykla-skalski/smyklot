@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"path"
+	"slices"
 	"strings"
 
 	gogithub "github.com/google/go-github/v90/github"
@@ -188,7 +190,14 @@ func (c *Client) collectTree(
 		whole.Truncated = true
 	}
 
-	for name, entry := range level.Entries {
+	// Descended in name order, because the budget above can run out part way
+	// through. Ranging the map directly meant which subtrees were reached before
+	// it did was Go's map iteration order, so the same repository listed twice
+	// came back holding different files - a difference nobody could reproduce
+	// and nothing could explain, in the one case the caller is already being
+	// told is incomplete.
+	for _, name := range slices.Sorted(maps.Keys(level.Entries)) {
+		entry := level.Entries[name]
 		whole.Entries[prefix+name] = entry
 		if !entry.Directory() {
 			continue
