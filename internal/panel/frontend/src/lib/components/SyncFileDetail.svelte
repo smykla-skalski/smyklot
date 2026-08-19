@@ -2,7 +2,7 @@
   import type { Language } from '#lib/syntax.js';
 
   /** What a path is written in, from the only thing a path says about itself. */
-  export function languageOf(path: string): Language {
+  function languageOf(path: string): Language {
     const lower = path.toLowerCase();
     if (lower.endsWith('.json')) return 'json';
     if (lower.endsWith('.yaml') || lower.endsWith('.yml')) return 'yaml';

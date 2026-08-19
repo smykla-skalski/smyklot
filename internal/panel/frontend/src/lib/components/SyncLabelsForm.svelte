@@ -19,10 +19,8 @@
   import type { SyncLabel } from '#lib/types.js';
 
   import Button from './Button.svelte';
-  import PatternList from './PatternList.svelte';
   import Plate from './Plate.svelte';
-  import PolicyRow from './PolicyRow.svelte';
-  import Switch from './Switch.svelte';
+  import RemovalPolicy from './RemovalPolicy.svelte';
   import SyncKindHead from './SyncKindHead.svelte';
 
   const {
@@ -71,15 +69,6 @@
   let drafts = $state<SyncLabel[]>([]);
   let removal = $state(false);
   let excludes = $state<string[]>([]);
-
-  $effect(() => {
-    void untouched;
-    untrack(() => {
-      drafts = arriving;
-      removal = allowRemoval;
-      excludes = [...excluded];
-    });
-  });
 
   const disabled = $derived(saving || readOnly || unreadable);
 
@@ -203,12 +192,23 @@
 
   const rowKey = rowKeys('label');
 
-  /* A row that arrives from a save is no longer the row being edited: the whole
-     list is reseeded, so an open editor would be showing a copy nothing writes
-     to. */
+  /* One effect, because a save landing is one thing happening.
+     ---------------------------------------------------------
+     The drafts are reseeded from what is now SAVED - never on every render, or
+     a draft would be thrown away the moment somebody flipped the switch beside
+     the heading, which writes at once like every other kind's.
+
+     And the open editor closes with them: the whole list is reseeded, so a row
+     left open would be showing a copy nothing writes to.
+
+     It ran as two effects on the same trigger, which is two chances for the
+     halves of one act to come apart. */
   $effect(() => {
     void untouched;
     untrack(() => {
+      drafts = arriving;
+      removal = allowRemoval;
+      excludes = [...excluded];
       editing = null;
       opened = null;
     });
@@ -320,64 +320,16 @@
   {/if}
 </Plate>
 
-<!--
-  The two policy controls, in a plate of their own.
-  ------------------------------------------------
-  They were at the top of the list's plate, above the labels they are about,
-  which put the destructive switch first and the thing it destroys second. They
-  are settings about the list rather than part of it, and the approved design
-  reads them after it.
--->
-<Plate label="How the list is applied">
-  <div class="label-settings">
-    <PolicyRow
-      name="Remove labels this list does not name"
-      why="Off, a repository may keep labels of its own. On, everything unnamed is deleted"
-      value={removal ? 'On' : 'Off'}
-    >
-      {#snippet control()}
-        <!-- The one control here that destroys something. A label this list
-             does not name goes on existing unless this is on. -->
-        <Switch
-          checked={removal}
-          ariaLabel="Remove labels this list does not name"
-          {disabled}
-          onChange={(next) => (removal = next)}
-        />
-      {/snippet}
-    </PolicyRow>
-
-    <PolicyRow
-      name="Labels to leave alone"
-      why="Name or pattern, where * stands for any run of characters. Neither written nor removed, whatever the list above says"
-    >
-      {#snippet control()}
-        <!-- The safety valve beside the switch above, and the reason it is here
-             rather than only in the API: somebody who can turn removal on from
-             this page has to be able to protect something from this page too. -->
-        <PatternList
-          values={excludes}
-          label="Labels to leave alone"
-          addLabel="Add a pattern"
-          placeholder="hand-made-*"
-          {disabled}
-          onChange={(next) => (excludes = next)}
-        />
-      {/snippet}
-    </PolicyRow>
-  </div>
-</Plate>
+<RemovalPolicy
+  noun="labels"
+  {removal}
+  {excludes}
+  {disabled}
+  onRemovalChange={(next) => (removal = next)}
+  onExcludesChange={(next) => (excludes = next)}
+/>
 
 <style>
-  .label-settings {
-    display: grid;
-    margin-bottom: var(--space-3);
-  }
-
-  .label-settings > :global(.policy-row + .policy-row) {
-    border-top: 1px solid var(--border-subtle);
-  }
-
   /* The global rule has no margin. These notes sit directly under the control
      they describe, and the sliver of side inset lines them up with the field's
      own text. */

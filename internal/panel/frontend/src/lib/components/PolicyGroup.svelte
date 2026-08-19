@@ -1,4 +1,4 @@
-<script lang="ts">
+<script lang="ts" generics="Key extends string">
   /**
    * A card of settings this installation decides, and one line about the ones
    * it does not.
@@ -18,6 +18,7 @@
    * one.
    */
   import Button from '#lib/components/Button.svelte';
+  import Icon from '#lib/components/Icon.svelte';
   import Plate from '#lib/components/Plate.svelte';
 
   const {
@@ -29,9 +30,11 @@
     total,
     unmanaged = [],
     onManage,
+    onPick,
+    onCancel,
+    disabled = false,
     picking = false,
     children,
-    picker,
   }: {
     name: string;
     /**
@@ -55,20 +58,33 @@
      * absence of a value means "follows the repository".
      */
     restSay?: string;
-    /** The names of the rest, said in the line under the rows. */
-    unmanaged?: readonly string[];
+    /**
+     * The rest: named in the line under the rows, and offered as chips once the
+     * picker is open. Both, from one list, because they are the same set said
+     * twice and a group that named one set and offered another would be a bug
+     * nothing reports.
+     */
+    unmanaged?: readonly { key: Key; label: string }[];
     /** Opens the picker in place. Omitted once every setting is managed. */
     onManage?: () => void;
     /**
-     * Whether the picker is open. A prop rather than "was a picker snippet
-     * given", because a snippet is passed once and rendered many times: the
-     * caller passes one for every group and only one of them is open.
+     * A save is in flight. The chips alone take it: `onManage` is already
+     * withheld while it is true, so this is for a picker that was open when the
+     * save started - Cancel stays live, because dismissing is not a write.
+     */
+    disabled?: boolean;
+    /** One of `unmanaged` was picked. Closing the picker is the caller's. */
+    onPick?: (key: Key) => void;
+    /** The picker was dismissed without picking. */
+    onCancel?: () => void;
+    /**
+     * Whether the picker is open. The caller's, not this component's: settings
+     * open one picker at a time across every group, which is a fact no single
+     * group can hold.
      */
     picking?: boolean;
     /** The managed rows - `PolicyRow`s. Absent while nothing here is managed. */
     children?: import('svelte').Snippet;
-    /** The add-picker, once it is open, rendered where the Manage press was. */
-    picker?: import('svelte').Snippet;
   } = $props();
 
   const rest = $derived(total === undefined ? 0 : total - (managed ?? 0));
@@ -105,10 +121,18 @@
         <span class="rest-count"
           >{restSay ?? `${rest} follow${rest === 1 ? 's' : ''} each repository`}</span
         >{#if picking}&nbsp;— pick one to manage:{:else if unmanaged.length > 0}&nbsp;—
-          {unmanaged.join(', ')}{/if}
+          {unmanaged.map((one) => one.label).join(', ')}{/if}
       </span>
-      {#if picking && picker !== undefined}
-        {@render picker()}
+      {#if picking}
+        <span class="rest-picks">
+          {#each unmanaged as one (one.key)}
+            <button type="button" class="add-chip" {disabled} onclick={() => onPick?.(one.key)}>
+              <Icon name="plus" size={11} strokeWidth={2} />
+              <span class="cap-trim">{one.label}</span>
+            </button>
+          {/each}
+          <Button tone="quiet" onclick={onCancel}>Cancel</Button>
+        </span>
       {:else if onManage !== undefined}
         <Button tone="quiet" class="manage" onclick={onManage}>Manage</Button>
       {/if}
@@ -159,6 +183,13 @@
   .rest-count {
     color: var(--text-secondary);
     font-weight: 600;
+  }
+
+  .rest-picks {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
   }
 
   /* `Button` draws the control - the ground, the press, the hover overlay, and

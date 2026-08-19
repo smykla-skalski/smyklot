@@ -2,7 +2,7 @@
   import type { SyncRulesetRules } from '#lib/types.js';
 
   /** Every rule this panel can express, in the words a reader recognises. */
-  export const RULES: readonly {
+  const RULES: readonly {
     key: keyof SyncRulesetRules;
     label: string;
     why?: string;
@@ -31,7 +31,7 @@
   ];
 
   /** What a bypass actor is called, since GitHub answers with a type and a number. */
-  export function actorName(type: string, id: number): string {
+  function actorName(type: string, id: number): string {
     switch (type) {
       case 'OrganizationAdmin':
         // The one actor with no id at all: GitHub answers this one without one,
@@ -51,7 +51,7 @@
   }
 
   /** What a bypass mode lets somebody past, said as a sentence. */
-  export function actorWhy(mode: string): string {
+  function actorWhy(mode: string): string {
     switch (mode) {
       case 'always':
         return 'Always — pushes and pull requests both';
@@ -191,6 +191,9 @@
 
   /** Turning one on gives it the smallest shape GitHub will accept. */
   function switchOn(key: keyof SyncRulesetRules): void {
+    // Here rather than at the press: turning a rule on is what closes the
+    // picker, wherever the press came from.
+    adding = false;
     editing = key;
     switch (key) {
       case 'pull_request':
@@ -268,6 +271,18 @@
 
   function patchActor(index: number, change: Partial<SyncRulesetBypassActor>): void {
     patch({ bypass_actors: patchedAt(actors, index, change) });
+  }
+
+  /**
+   * The rule's tool list, written whole. `code_scanning` carries nothing else,
+   * so the whole rule is the list and every write here replaces it.
+   */
+  function setTools(next: SyncRulesetCodeScanningTool[]): void {
+    patchRules({ code_scanning: { code_scanning_tools: next } });
+  }
+
+  function patchTool(index: number, change: Partial<SyncRulesetCodeScanningTool>): void {
+    setTools(patchedAt(tools, index, change));
   }
 
   function addActor(): void {
@@ -388,9 +403,12 @@
       total={RULES.length}
       tallyWord="rules on"
       restSay="{off.length} {off.length === 1 ? 'rule is' : 'rules are'} off"
-      unmanaged={off.map((rule) => rule.label)}
+      unmanaged={off}
       picking={adding}
+      {disabled}
       onManage={disabled ? undefined : () => (adding = true)}
+      onPick={switchOn}
+      onCancel={() => (adding = false)}
     >
       {#each on as rule (rule.key)}
         <PolicyRow
@@ -455,7 +473,9 @@
           {/snippet}
 
           {#snippet open()}
-            {#if editing === rule.key && rule.key === 'pull_request' && rules.pull_request !== undefined}
+            <!-- No `editing === rule.key` here: `PolicyRow` renders this snippet
+                 only while it is open, which is what `isOpen` above says. -->
+            {#if rule.key === 'pull_request' && rules.pull_request !== undefined}
               {@const pull = rules.pull_request}
               <label class="rule-field">
                 <span>Approving reviews</span>
@@ -500,7 +520,7 @@
                   {/each}
                 </span>
               </div>
-            {:else if editing === rule.key && rule.key === 'required_status_checks'}
+            {:else if rule.key === 'required_status_checks'}
               <div class="rule-field">
                 <span>Checks that must pass</span>
                 <PatternList
@@ -532,7 +552,7 @@
                   onChange={(next) => patchChecks({ do_not_enforce_on_create: next })}
                 />
               </div>
-            {:else if editing === rule.key && rule.key === 'code_scanning'}
+            {:else if rule.key === 'code_scanning'}
               {#each tools as tool, index (index)}
                 <div class="rule-tool">
                   <input
@@ -541,14 +561,7 @@
                     value={tool.tool}
                     aria-label="Code scanning tool"
                     {disabled}
-                    onchange={(event) =>
-                      patchRules({
-                        code_scanning: {
-                          code_scanning_tools: patchedAt(tools, index, {
-                            tool: event.currentTarget.value,
-                          }),
-                        },
-                      })}
+                    onchange={(event) => patchTool(index, { tool: event.currentTarget.value })}
                   />
                   <Select
                     aria-label="Alert threshold for {tool.tool}"
@@ -556,13 +569,7 @@
                     value={tool.alerts_threshold}
                     {disabled}
                     onchange={(event) =>
-                      patchRules({
-                        code_scanning: {
-                          code_scanning_tools: patchedAt(tools, index, {
-                            alerts_threshold: event.currentTarget.value,
-                          }),
-                        },
-                      })}
+                      patchTool(index, { alerts_threshold: event.currentTarget.value })}
                   />
                   <Select
                     aria-label="Security alert threshold for {tool.tool}"
@@ -570,22 +577,9 @@
                     value={tool.security_alerts_threshold}
                     {disabled}
                     onchange={(event) =>
-                      patchRules({
-                        code_scanning: {
-                          code_scanning_tools: patchedAt(tools, index, {
-                            security_alerts_threshold: event.currentTarget.value,
-                          }),
-                        },
-                      })}
+                      patchTool(index, { security_alerts_threshold: event.currentTarget.value })}
                   />
-                  <Button
-                    tone="quiet"
-                    {disabled}
-                    onclick={() =>
-                      patchRules({
-                        code_scanning: { code_scanning_tools: withoutAt(tools, index) },
-                      })}
-                  >
+                  <Button tone="quiet" {disabled} onclick={() => setTools(withoutAt(tools, index))}>
                     Remove
                   </Button>
                 </div>
@@ -594,22 +588,18 @@
                 tone="quiet"
                 {disabled}
                 onclick={() =>
-                  patchRules({
-                    code_scanning: {
-                      code_scanning_tools: [
-                        ...tools,
-                        {
-                          tool: 'CodeQL',
-                          alerts_threshold: 'errors',
-                          security_alerts_threshold: 'high_or_higher',
-                        },
-                      ],
+                  setTools([
+                    ...tools,
+                    {
+                      tool: 'CodeQL',
+                      alerts_threshold: 'errors',
+                      security_alerts_threshold: 'high_or_higher',
                     },
-                  })}
+                  ])}
               >
                 Add a tool
               </Button>
-            {:else if editing === rule.key && rule.key === 'update'}
+            {:else if rule.key === 'update'}
               <div class="rule-field">
                 <span>Still allow fetch and merge</span>
                 <Switch
@@ -624,26 +614,6 @@
           {/snippet}
         </PolicyRow>
       {/each}
-
-      {#snippet picker()}
-        <span class="rule-picks">
-          {#each off as rule (rule.key)}
-            <button
-              type="button"
-              class="add-chip"
-              {disabled}
-              onclick={() => {
-                adding = false;
-                switchOn(rule.key);
-              }}
-            >
-              <Icon name="plus" size={11} strokeWidth={2} />
-              <span class="cap-trim">{rule.label}</span>
-            </button>
-          {/each}
-          <Button tone="quiet" onclick={() => (adding = false)}>Cancel</Button>
-        </span>
-      {/snippet}
     </PolicyGroup>
 
     <Plate label="Who may step around it">
@@ -780,13 +750,6 @@
   }
 
   .rule-tool {
-    align-items: center;
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
-  }
-
-  .rule-picks {
     align-items: center;
     display: flex;
     flex-wrap: wrap;

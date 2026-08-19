@@ -23,7 +23,6 @@
     what,
     detail,
     failure,
-    diff,
   }: {
     op: PlanOp;
     /** Which kind of thing - labels, settings, rulesets, files. */
@@ -34,14 +33,12 @@
     detail?: string;
     /** Why it did not happen, said on the row rather than in a drill-down. */
     failure?: string;
-    /** The change itself, for a row a reader opened - a `CodeBlock`, usually. */
-    diff?: import('svelte').Snippet;
   } = $props();
 
   const WORD: Record<PlanOp, string> = { add: '+ add', change: '~ change', remove: '− remove' };
 </script>
 
-<div class="action-row" class:is-expanded={diff !== undefined}>
+<div class="action-row">
   <div class="action-row-line">
     <span class="action-op is-{op}">{WORD[op]}</span>
     <span class="action-kind">{kind}</span>
@@ -51,9 +48,6 @@
   </div>
   {#if failure !== undefined}
     <p class="action-fail">{failure}</p>
-  {/if}
-  {#if diff !== undefined}
-    <div class="action-diff">{@render diff()}</div>
   {/if}
 </div>
 

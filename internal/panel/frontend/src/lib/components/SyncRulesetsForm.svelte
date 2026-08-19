@@ -70,11 +70,9 @@
   import Button from './Button.svelte';
   import Icon from './Icon.svelte';
   import ObjectRow from './ObjectRow.svelte';
-  import PatternList from './PatternList.svelte';
   import Plate from './Plate.svelte';
-  import PolicyRow from './PolicyRow.svelte';
+  import RemovalPolicy from './RemovalPolicy.svelte';
   import StateMark, { type SyncState } from './StateMark.svelte';
-  import Switch from './Switch.svelte';
   import SyncKindHead from './SyncKindHead.svelte';
 
   const {
@@ -242,45 +240,14 @@
   {/if}
 </Plate>
 
-<Plate label="Everything else a repository has">
-  <div class="ruleset-settings">
-    <PolicyRow
-      name="Remove rulesets this list does not name"
-      why="Off, a repository may keep rulesets of its own. On, everything unnamed is deleted"
-      value={removal ? 'On' : 'Off'}
-    >
-      {#snippet control()}
-        <!-- The one control here that destroys something. A ruleset removed from
-             the list above goes on enforcing for ever unless this is on. -->
-        <Switch
-          checked={removal}
-          ariaLabel="Remove rulesets this list does not name"
-          {disabled}
-          onChange={(next) => write({ allow_removal: next })}
-        />
-      {/snippet}
-    </PolicyRow>
-
-    <PolicyRow
-      name="Rulesets to leave alone"
-      why="Name or pattern, where * stands for any run of characters. Neither written nor removed, whatever the switch above says"
-    >
-      {#snippet control()}
-        <!-- The safety valve beside the switch, and the reason it is on this
-             page rather than only in the API: somebody who can turn removal on
-             from here has to be able to protect something from here too. -->
-        <PatternList
-          values={excludes}
-          label="Rulesets to leave alone"
-          addLabel="Add a pattern"
-          placeholder="hand-made-*"
-          {disabled}
-          onChange={(next) => write({ excludes: next })}
-        />
-      {/snippet}
-    </PolicyRow>
-  </div>
-</Plate>
+<RemovalPolicy
+  noun="rulesets"
+  {removal}
+  {excludes}
+  {disabled}
+  onRemovalChange={(next) => write({ allow_removal: next })}
+  onExcludesChange={(next) => write({ excludes: next })}
+/>
 
 <style>
   .object-list {
@@ -292,14 +259,6 @@
      where its rule stops. */
   .object-list {
     --row-rule-inset: var(--space-2);
-  }
-
-  .ruleset-settings {
-    display: grid;
-  }
-
-  .ruleset-settings > :global(.policy-row + .policy-row) {
-    border-top: 1px solid var(--border-subtle);
   }
 
   /* An input with no ground, no edge and no focus ring at all: it carried a

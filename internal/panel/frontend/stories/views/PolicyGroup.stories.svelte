@@ -9,6 +9,15 @@
     title: 'Views/PolicyGroup',
     component: PolicyGroup,
   });
+
+  /** One set, said as a sentence while the picker is shut and as chips once it opens. */
+  const FEATURES = [
+    { key: 'has_issues', label: 'Issues' },
+    { key: 'has_projects', label: 'Projects' },
+    { key: 'has_wiki', label: 'Wiki' },
+    { key: 'has_discussions', label: 'Discussions' },
+    { key: 'has_sponsorships', label: 'Sponsorships' },
+  ];
 </script>
 
 <script lang="ts">
@@ -34,7 +43,10 @@
       name="Merging"
       managed={4}
       total={6}
-      unmanaged={['Rebase merging', 'Offer to update the branch']}
+      unmanaged={[
+        { key: 'allow_rebase_merge', label: 'Rebase merging' },
+        { key: 'allow_update_branch', label: 'Offer to update the branch' },
+      ]}
       onManage={() => {}}
     >
       <PolicyRow
@@ -138,12 +150,25 @@
 -->
 <Story name="Nothing managed yet">
   {#snippet template()}
+    <PolicyGroup name="Features" managed={0} total={5} unmanaged={FEATURES} onManage={() => {}} />
+  {/snippet}
+</Story>
+
+<!--
+  The picker, open where the Manage press was. The sentence stops naming the
+  rest once the chips do - naming the same set twice in one row is the reader
+  reading it twice to check they agree.
+-->
+<Story name="Picking one to manage">
+  {#snippet template()}
     <PolicyGroup
       name="Features"
       managed={0}
       total={5}
-      unmanaged={['Issues', 'Projects', 'Wiki', 'Discussions', 'Sponsorships']}
-      onManage={() => {}}
+      unmanaged={FEATURES}
+      picking
+      onPick={() => {}}
+      onCancel={() => {}}
     />
   {/snippet}
 </Story>

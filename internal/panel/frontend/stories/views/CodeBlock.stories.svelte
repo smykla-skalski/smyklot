@@ -8,13 +8,6 @@
     component: CodeBlock,
   });
 
-  /** The range a word occupies in its line, which is what a real diff sends. */
-  const at = (text: string, word: string): [number, number] => {
-    const from = text.indexOf(word);
-
-    return [from, from + word.length];
-  };
-
   const numbered = (text: string, extra: Partial<CodeLine> = {}): CodeLine[] =>
     text.split('\n').map((line, index) => ({ text: line, number: index + 1, ...extra }));
 
@@ -34,34 +27,6 @@
     ...line,
     overridden: line.number === 5 || line.number === 6,
   }));
-
-  const CHANGE: CodeLine[] = [
-    { text: '  "extends": ["config:recommended"],', number: 3 },
-    {
-      text: '  "labels": ["dependencies"],',
-      op: '-',
-      marks: [at('  "labels": ["dependencies"],', '["dependencies"]')],
-    },
-    {
-      text: '  "labels": ["dependencies", "renovate"],',
-      op: '+',
-      marks: [at('  "labels": ["dependencies", "renovate"],', '["dependencies", "renovate"]')],
-    },
-    { text: '  "schedule": ["before 6am on monday"],', number: 5 },
-    {
-      text: '  "prConcurrentLimit": 3,',
-      op: '-',
-      marks: [at('  "prConcurrentLimit": 3,', '3')],
-    },
-    {
-      text: '  "prConcurrentLimit": 5,',
-      op: '+',
-      marks: [at('  "prConcurrentLimit": 5,', '5')],
-    },
-    { text: '  "rebaseWhen": "behind-base-branch",', number: 7 },
-    { text: '  "automerge": false', op: '-', marks: [at('  "automerge": false', 'false')] },
-    { text: '  "automerge": true', op: '+', marks: [at('  "automerge": true', 'true')] },
-  ];
 
   const WORKFLOW = numbered(`name: Test
 on:
@@ -96,30 +61,15 @@ dismiss_stale = true`);
 </script>
 
 <!--
-  A change, said in four channels at once: the ground says which direction, the
-  glyph in the gutter says it again for a reader who cannot separate the hues,
-  the deeper ground marks the words that actually changed, and the file's own
-  colouring survives all three - a changed value is still a string.
--->
-<Story name="A change to a file">
-  {#snippet template()}
-    <CodeBlock lines={CHANGE} language="json" label="renovate.json - what would change" />
-  {/snippet}
-</Story>
-
-<!--
-  The template as it stands, with the two lines this installation decides.
-  The gutter bar is the editor's own vocabulary for "managed here", and the
-  clear at the row's end removes the override - it never writes a value.
+  The template as it stands, with the two lines this installation decides. The
+  gutter bar is the editor's own vocabulary for "managed here", said in a ground
+  as well as in ink so it survives a reader who cannot separate the hues - and
+  the file's own colouring survives it, because an overridden value is still a
+  string.
 -->
 <Story name="A template with overridden lines">
   {#snippet template()}
-    <CodeBlock
-      lines={OVERRIDDEN}
-      language="json"
-      label="renovate.json"
-      onClearOverride={() => {}}
-    />
+    <CodeBlock lines={OVERRIDDEN} language="json" label="renovate.json" />
   {/snippet}
 </Story>
 

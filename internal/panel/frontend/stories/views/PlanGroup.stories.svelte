@@ -2,7 +2,6 @@
   import { defineMeta } from '@storybook/addon-svelte-csf';
 
   import ApplyBar from '#lib/components/ApplyBar.svelte';
-  import CodeBlock, { type CodeLine } from '#lib/components/CodeBlock.svelte';
   import PlanAction from '#lib/components/PlanAction.svelte';
   import PlanGroup from '#lib/components/PlanGroup.svelte';
 
@@ -10,33 +9,6 @@
     title: 'Views/PlanGroup',
     component: PlanGroup,
   });
-
-  const at = (text: string, word: string): [number, number] => {
-    const from = text.indexOf(word);
-
-    return [from, from + word.length];
-  };
-
-  /** The change one opened row shows: the file's own colouring, marks over it. */
-  const SCHEDULE: CodeLine[] = [
-    { text: '  "extends": ["config:recommended"],', number: 2 },
-    {
-      text: '  "schedule": ["* 4 * * 0"],',
-      op: '-',
-      marks: [at('  "schedule": ["* 4 * * 0"],', '0')],
-    },
-    {
-      text: '  "schedule": ["* 4 * * 1-5"],',
-      op: '+',
-      marks: [at('  "schedule": ["* 4 * * 1-5"],', '1-5')],
-    },
-    {
-      text: '  "timezone": "Europe/Warsaw",',
-      op: '+',
-      marks: [at('  "timezone": "Europe/Warsaw",', '"Europe/Warsaw"')],
-    },
-    { text: '  "packageRules": [', number: 4 },
-  ];
 </script>
 
 <!--
@@ -60,11 +32,7 @@
       <PlanAction op="add" kind="labels" what="good first issue" />
       <PlanAction op="change" kind="settings" what="squash merging" detail="off → on" />
       <PlanAction op="change" kind="settings" what="wiki" detail="on → off" />
-      <PlanAction op="add" kind="files" what="renovate.json" detail="— as a pull request">
-        {#snippet diff()}
-          <CodeBlock lines={SCHEDULE} language="json" label="renovate.json - what would change" />
-        {/snippet}
-      </PlanAction>
+      <PlanAction op="add" kind="files" what="renovate.json" detail="— as a pull request" />
       <PlanAction op="remove" kind="files" what=".github/stale.yml" detail="— retired above" />
     </PlanGroup>
 

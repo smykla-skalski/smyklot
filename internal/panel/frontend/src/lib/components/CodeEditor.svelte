@@ -29,7 +29,6 @@
     overridden = [],
     disabled = false,
     rows = 14,
-    onChange,
   }: {
     value?: string;
     language: Language;
@@ -40,7 +39,6 @@
     disabled?: boolean;
     /** How tall it stands before it starts scrolling. */
     rows?: number;
-    onChange?: (next: string) => void;
   } = $props();
 
   let frame = $state<HTMLDivElement | null>(null);
@@ -75,8 +73,7 @@
     wrap="off"
     {disabled}
     bind:value
-    onscroll={follow}
-    oninput={(event) => onChange?.(event.currentTarget.value)}></textarea>
+    onscroll={follow}></textarea>
 </div>
 
 <style>

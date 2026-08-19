@@ -160,9 +160,9 @@ const COLOURED_MAX = 4000;
 /**
  * One line, coloured. An empty line comes back as an empty list.
  *
- * The answer is shared rather than copied. Nothing here writes to a token -
- * `tokenizeMarked` spreads each into a new object and the components only read
- * - and copying every line on every read would give back what the memo saves.
+ * The answer is shared rather than copied. Nothing here writes to a token - the
+ * components only read it - and copying every line on every read would give
+ * back what the memo saves.
  */
 export function tokenize(line: string, language: Language): Token[] {
   if (line === '') return [];
@@ -176,59 +176,4 @@ export function tokenize(line: string, language: Language): Token[] {
   COLOURED.set(key, tokens);
 
   return tokens;
-}
-
-/**
- * The same line, cut where a changed range begins and ends.
- *
- * The file's own colouring is worked out first and the change marks are laid
- * over it, because the reverse - marking the words and then colouring what is
- * left - loses the colouring of any word that changed, which is the word most
- * worth reading.
- *
- * Ranges are half-open character offsets into the line, in the order the diff
- * produced them; overlapping or unsorted ranges are handled by asking each
- * piece whether its own start is inside any of them.
- */
-export function tokenizeMarked(
-  line: string,
-  language: Language,
-  marks: readonly (readonly [number, number])[],
-): (Token & { marked: boolean })[] {
-  const tokens = tokenize(line, language);
-  if (marks.length === 0) return tokens.map((token) => ({ ...token, marked: false }));
-
-  /* Sorted once, and walked with a pointer. It used to be spread, filtered and
-     sorted again inside the token loop, which is a fresh array and a sort per
-     token per line - on a file being typed into, per keystroke. The cuts are
-     the same set for every token on the line, and they come out in order. */
-  const cuts = [...new Set(marks.flatMap(([from, to]) => [from, to]))].sort(
-    (left, right) => left - right,
-  );
-  let cut = 0;
-
-  const marked = (at: number): boolean => marks.some(([from, to]) => at >= from && at < to);
-
-  const out: (Token & { marked: boolean })[] = [];
-  let at = 0;
-  for (const token of tokens) {
-    const end = at + token.text.length;
-    while (cut < cuts.length && (cuts[cut] as number) <= at) cut += 1;
-    const inside: number[] = [];
-    for (let ahead = cut; ahead < cuts.length && (cuts[ahead] as number) < end; ahead += 1) {
-      inside.push(cuts[ahead] as number);
-    }
-    let from = at;
-    for (const cut of [...inside, end]) {
-      out.push({
-        text: line.slice(from, cut),
-        kind: token.kind,
-        marked: marked(from),
-      });
-      from = cut;
-    }
-    at = end;
-  }
-
-  return out;
 }

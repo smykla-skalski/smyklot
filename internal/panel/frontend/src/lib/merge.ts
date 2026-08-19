@@ -428,33 +428,49 @@ function keysFor(spec: MergeSpec, path: string): string[] | string {
   return keys;
 }
 
-/** What a document holds at a path, or undefined where it holds nothing. */
-function valueAt(document: JsonValue, keys: readonly string[]): JsonValue | undefined {
+/**
+ * The object a path's last key lives in, or undefined where the path does not
+ * lead to one.
+ *
+ * `creating` is the whole difference between the two ways this document is
+ * written. A rule addresses a list the composed document already has, so a
+ * write for one builds nothing on the way - creating the branches to a list it
+ * does not have would put a key nobody asked for into somebody's file. An
+ * override is somebody typing a value that is not there yet, so that one does
+ * build them.
+ */
+function parentAt(
+  document: JsonValue,
+  keys: readonly string[],
+  creating: boolean,
+): { [key: string]: JsonValue } | undefined {
   let current: JsonValue = document;
   for (const key of keys.slice(0, -1)) {
     if (!isObject(current)) return undefined;
+    if (creating && !isObject(own(current, key))) put(current, key, {});
     current = own(current, key) ?? null;
   }
-  if (!isObject(current)) return undefined;
 
-  return own(current, keys[keys.length - 1] as string);
+  return isObject(current) ? current : undefined;
 }
 
-/**
- * Write a value at a path, reporting whether the path was there to write to.
- *
- * It never builds the levels above. A rule addresses a list the composed
- * document already has; creating the branches on the way to one it does not
- * would write a key nobody asked for into somebody's file.
- */
+/** The last key of a path - the one the walk stops before. */
+function lastKey(keys: readonly string[]): string {
+  return keys[keys.length - 1] as string;
+}
+
+/** What a document holds at a path, or undefined where it holds nothing. */
+function valueAt(document: JsonValue, keys: readonly string[]): JsonValue | undefined {
+  const parent = parentAt(document, keys, false);
+
+  return parent === undefined ? undefined : own(parent, lastKey(keys));
+}
+
+/** Write a value at a path, reporting whether the path was there to write to. */
 function setValueAt(document: JsonValue, keys: readonly string[], value: JsonValue): boolean {
-  let current: JsonValue = document;
-  for (const key of keys.slice(0, -1)) {
-    if (!isObject(current)) return false;
-    current = own(current, key) ?? null;
-  }
-  if (!isObject(current)) return false;
-  put(current, keys[keys.length - 1] as string, value);
+  const parent = parentAt(document, keys, false);
+  if (parent === undefined) return false;
+  put(parent, lastKey(keys), value);
 
   return true;
 }
@@ -618,14 +634,9 @@ function contribution(
 
 /** Build the levels a rule's path needs, which only the adjustment may grow. */
 function plant(document: JsonValue, keys: readonly string[], value: JsonValue): boolean {
-  let current: JsonValue = document;
-  for (const key of keys.slice(0, -1)) {
-    if (!isObject(current)) return false;
-    if (!isObject(own(current, key))) put(current, key, {});
-    current = own(current, key) as JsonValue;
-  }
-  if (!isObject(current)) return false;
-  put(current, keys[keys.length - 1] as string, value);
+  const parent = parentAt(document, keys, true);
+  if (parent === undefined) return false;
+  put(parent, lastKey(keys), value);
 
   return true;
 }

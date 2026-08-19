@@ -514,15 +514,12 @@
   --drift: #14498f;
   --verb-add: #176a29;
 
-  /* Diff grounds are drawn for code rather than borrowed from the notice
-     tints: a tint tuned to sit under a sentence has too little separation
-     under a line of syntax. Word marks are one step deeper than the line. */
+  /* One ink per verb, shared by the plan's counts, its rows and its groups, so
+     "add" is the same green wherever a plan says it. The grounds are drawn for
+     code rather than borrowed from the notice tints: a tint tuned to sit under
+     a sentence has too little separation under a line of syntax. */
   --diff-add-ink: var(--verb-add);
-  --diff-add-bg: #e4f3e6;
-  --diff-add-word: #c2e5c8;
   --diff-del-ink: var(--danger);
-  --diff-del-bg: #fbe9e9;
-  --diff-del-word: #f4cbcb;
   --diff-chg-ink: var(--drift);
   --diff-chg-bg: color-mix(in srgb, var(--drift) 9%, var(--surface-base));
 
@@ -698,10 +695,6 @@
   --drift: #92c1ff;
   --verb-add: #8ce0a2;
 
-  --diff-add-bg: #14301f;
-  --diff-add-word: #1f4c32;
-  --diff-del-bg: #3c1f24;
-  --diff-del-word: #5c2e35;
   --diff-chg-bg: color-mix(in srgb, var(--drift) 16%, var(--surface-base));
 
   /* A dark tile is lifted off its well rather than pressed into it, so the

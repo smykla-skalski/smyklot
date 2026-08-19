@@ -119,8 +119,6 @@
     },
   ];
 
-  export const SETTING_GROUPS = GROUPS;
-
   /** Every key a repository setting can be managed under. */
   export const SETTING_KEYS: readonly string[] = GROUPS.flatMap((group) =>
     group.fields.map((field) => field.key),
@@ -149,7 +147,6 @@
    * edits is a page whose switches disagree with the plan beside them.
    */
   import Button from './Button.svelte';
-  import Icon from './Icon.svelte';
   import PolicyGroup from './PolicyGroup.svelte';
   import PolicyRow from './PolicyRow.svelte';
   import SearchField from './SearchField.svelte';
@@ -292,9 +289,15 @@
       note={group.note}
       managed={group.managed}
       total={group.fields.length}
-      unmanaged={group.unmanaged.map((field) => field.label)}
+      unmanaged={group.unmanaged}
       picking={picking === group.id}
+      {disabled}
       onManage={disabled || readOnly ? undefined : () => (picking = group.id)}
+      onPick={(key) => {
+        const field = group.unmanaged.find((one) => one.key === key);
+        if (field !== undefined) manage(field);
+      }}
+      onCancel={() => (picking = null)}
     >
       {#each group.shown as field (field.key)}
         {#if isManaged(field)}
@@ -333,18 +336,6 @@
           </PolicyRow>
         {/if}
       {/each}
-
-      {#snippet picker()}
-        <span class="rest-picks">
-          {#each group.unmanaged as field (field.key)}
-            <button type="button" class="add-chip" {disabled} onclick={() => manage(field)}>
-              <Icon name="plus" size={11} strokeWidth={2} />
-              <span class="cap-trim">{field.label}</span>
-            </button>
-          {/each}
-          <Button tone="quiet" onclick={() => (picking = null)}>Cancel</Button>
-        </span>
-      {/snippet}
     </PolicyGroup>
   {/each}
 
@@ -371,12 +362,5 @@
   .setting-groups {
     display: grid;
     gap: var(--space-4);
-  }
-
-  .rest-picks {
-    align-items: center;
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
   }
 </style>

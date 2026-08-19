@@ -6,7 +6,7 @@
   const { Story } = defineMeta({
     title: 'Primitives/ApplyBar',
     component: ApplyBar,
-    args: { changes: 14, repositories: 3, removals: 1, asPullRequests: true, onDiscard: () => {} },
+    args: { changes: 14, repositories: 3, removals: 1, asPullRequests: true },
   });
 </script>
 
@@ -35,7 +35,7 @@
   {/snippet}
 </Story>
 
-<!-- In flight: the act is named in the present tense and both controls go quiet. -->
+<!-- In flight: the act is named in the present tense and the control goes quiet. -->
 <Story name="Applying">
   {#snippet template()}
     <ApplyBar changes={14} repositories={3} removals={1} asPullRequests applying />

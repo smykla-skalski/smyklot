@@ -104,10 +104,13 @@
 
   // The kinds this view has a form for, named rather than taken as a parameter
   // nothing varies.
-  const LABELS = 'labels';
-  const SETTINGS = 'settings';
-  const RULESETS = 'rulesets';
-  const FILES = 'files';
+  // `as const`, because these name sections as well as kinds: without the
+  // literal type a card's `href` is a string, and every route the section
+  // vocabulary keys stops being checked.
+  const LABELS = 'labels' as const;
+  const SETTINGS = 'settings' as const;
+  const RULESETS = 'rulesets' as const;
+  const FILES = 'files' as const;
 
   /**
    * The kinds whose whole configuration is one document. Labels are not one of
@@ -646,6 +649,38 @@
     return on ? (summaries[kind] ?? '') : 'Off — nothing here is planned';
   }
 
+  /**
+   * The four cards on the overview, as data.
+   *
+   * Labels is not a document kind: it has an endpoint of its own, where the
+   * switch and the rows share one revision. So it keeps its own entry and the
+   * other three are the same entry three times - which is what makes the loop
+   * worth having, since a card that grew a prop used to grow it four times and
+   * get it right three.
+   */
+  const kindCards = $derived([
+    {
+      key: LABELS,
+      name: 'Labels',
+      on: enabled,
+      when: attribution(config),
+      toggle: (next: boolean) => void onSaveLabels(next),
+    },
+    ...(
+      [
+        [SETTINGS, 'Settings'],
+        [RULESETS, 'Rulesets'],
+        [FILES, 'Files'],
+      ] as const
+    ).map(([key, name]) => ({
+      key,
+      name,
+      on: documents[key]?.enabled === true,
+      when: attribution(documents[key]),
+      toggle: (next: boolean) => void onSaveDocument(key, next, documents[key]?.document ?? {}),
+    })),
+  ]);
+
   /** The plan in one line, counting the removals out loud. */
   const planLine = $derived.by(() => {
     const repositories = planRepositories.length;
@@ -839,42 +874,17 @@
          reader they had just switched ruleset sync off across the whole
          installation. -->
     <div class="sync-kinds">
-      <SyncKindCard
-        name="Labels"
-        href={sectionHref({ section: 'labels' })}
-        summary={kindSummary('labels', enabled)}
-        states={boardReadable ? strip('labels') : undefined}
-        when={attribution(config)}
-        {enabled}
-        onToggle={(next) => void onSaveLabels(next)}
-      />
-      <SyncKindCard
-        name="Settings"
-        href={sectionHref({ section: 'settings' })}
-        summary={kindSummary('settings', documents.settings?.enabled === true)}
-        states={boardReadable ? strip('settings') : undefined}
-        when={attribution(documents.settings)}
-        enabled={documents.settings?.enabled === true}
-        onToggle={(next) => void onSaveDocument(SETTINGS, next, documents.settings?.document ?? {})}
-      />
-      <SyncKindCard
-        name="Rulesets"
-        href={sectionHref({ section: 'rulesets' })}
-        summary={kindSummary('rulesets', documents.rulesets?.enabled === true)}
-        states={boardReadable ? strip('rulesets') : undefined}
-        when={attribution(documents.rulesets)}
-        enabled={documents.rulesets?.enabled === true}
-        onToggle={(next) => void onSaveDocument(RULESETS, next, documents.rulesets?.document ?? {})}
-      />
-      <SyncKindCard
-        name="Files"
-        href={sectionHref({ section: 'files' })}
-        summary={kindSummary('files', documents.files?.enabled === true)}
-        states={boardReadable ? strip('files') : undefined}
-        when={attribution(documents.files)}
-        enabled={documents.files?.enabled === true}
-        onToggle={(next) => void onSaveDocument(FILES, next, documents.files?.document ?? {})}
-      />
+      {#each kindCards as card (card.key)}
+        <SyncKindCard
+          name={card.name}
+          href={sectionHref({ section: card.key })}
+          summary={kindSummary(card.key, card.on)}
+          states={boardReadable ? strip(card.key) : undefined}
+          when={card.when}
+          enabled={card.on}
+          onToggle={card.toggle}
+        />
+      {/each}
     </div>
   {/if}
 

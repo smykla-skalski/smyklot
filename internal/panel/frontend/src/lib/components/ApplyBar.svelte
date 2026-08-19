@@ -24,7 +24,6 @@
     asPullRequests = false,
     applying = false,
     onApply,
-    onDiscard,
   }: {
     changes: number;
     repositories: number;
@@ -34,7 +33,6 @@
     asPullRequests?: boolean;
     applying?: boolean;
     onApply?: () => void;
-    onDiscard?: () => void;
   } = $props();
 
   /* Both words, rather than an `s` bolted on: this sentence says "repositories"
@@ -55,11 +53,9 @@
       Nothing reaches GitHub until you apply.
     {/if}
   </p>
-  <!-- Only where there is something to discard to. A control that answers a
-       press with nothing is worse than one that was never offered. -->
-  {#if onDiscard !== undefined}
-    <Button tone="quiet" disabled={applying} onclick={() => onDiscard()}>Discard</Button>
-  {/if}
+  <!-- One press, because a plan has one answer. There is no discarding a plan:
+       leaving it is what not approving it looks like, and the next sweep works
+       out a new one from whatever the documents say by then. -->
   <!-- The last press before anything reaches GitHub, so it takes the filled
        tone rather than the bordered one - the same weight the overview's
        "Review the plan" carries at the other end of the same journey. -->

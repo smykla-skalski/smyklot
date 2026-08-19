@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { tokenize, tokenizeMarked, type Token } from '../src/lib/syntax';
+import { tokenize, type Token } from '../src/lib/syntax';
 
 /** What a reader would say the line is made of, in order. */
 const shape = (tokens: readonly Token[]): string =>
@@ -66,38 +66,5 @@ describe('tokenize [Unit]', () => {
         ).toBe(line);
       }
     }
-  });
-});
-
-describe('tokenizeMarked [Unit]', () => {
-  it('cuts a token where a changed word starts, keeping its colour', () => {
-    const line = '  "method": "squash",';
-    const at = line.indexOf('"squash"');
-    const pieces = tokenizeMarked(line, 'json', [[at, at + '"squash"'.length]]);
-
-    expect(pieces.map((piece) => piece.text).join('')).toBe(line);
-    const marked = pieces.filter((piece) => piece.marked);
-    expect(marked.map((piece) => piece.text).join('')).toBe('"squash"');
-    // The word that changed is the one worth reading, so it keeps its role.
-    expect(marked.every((piece) => piece.kind === 'string')).toBe(true);
-  });
-
-  it('marks nothing when the diff found nothing to mark', () => {
-    const pieces = tokenizeMarked('  "a": 1', 'json', []);
-
-    expect(pieces.some((piece) => piece.marked)).toBe(false);
-  });
-
-  it('handles a range that starts inside one token and ends inside the next', () => {
-    const line = 'name = 12';
-    const pieces = tokenizeMarked(line, 'toml', [[2, 8]]);
-
-    expect(pieces.map((piece) => piece.text).join('')).toBe(line);
-    expect(
-      pieces
-        .filter((piece) => piece.marked)
-        .map((piece) => piece.text)
-        .join(''),
-    ).toBe('me = 1');
   });
 });
