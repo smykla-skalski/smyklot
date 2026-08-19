@@ -717,6 +717,7 @@
         <label class="sync-merge-path">
           <span class="entry-field-label">File</span>
           <input
+            class="text-input"
             type="text"
             value={draft.merge.path}
             {disabled}
@@ -769,6 +770,7 @@
                 <label class="sync-merge-heading">
                   <span class="entry-field-label">Heading</span>
                   <input
+                    class="text-input"
                     type="text"
                     value={section.heading ?? ''}
                     {disabled}
@@ -781,6 +783,7 @@
                 <label class="entry-field sync-merge-occurrence">
                   <span class="entry-field-label">Which one</span>
                   <input
+                    class="text-input"
                     type="number"
                     min="1"
                     value={section.occurrence ?? ''}
@@ -811,6 +814,7 @@
                   <label class="sync-merge-find">
                     <span class="entry-field-label">Find</span>
                     <input
+                      class="text-input"
                       type="text"
                       value={substitution.find}
                       {disabled}
@@ -823,6 +827,7 @@
                   <label class="sync-merge-find">
                     <span class="entry-field-label">Replace with</span>
                     <input
+                      class="text-input"
                       type="text"
                       value={substitution.replace}
                       {disabled}
@@ -872,6 +877,7 @@
             <label class="sync-merge-list">
               <span class="entry-field-label">List</span>
               <input
+                class="text-input"
                 type="text"
                 value={rule.path}
                 {disabled}

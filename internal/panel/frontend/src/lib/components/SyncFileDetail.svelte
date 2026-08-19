@@ -246,9 +246,7 @@
     }
 
     const merges = storedList<SyncFileMerge>(row.document, 'merges').map((one) =>
-      one.path === path
-        ? { ...one, overrides: derived.overrides as Record<string, unknown> }
-        : one,
+      one.path === path ? { ...one, overrides: derived.overrides as Record<string, unknown> } : one,
     );
     const wrote = await onSaveAdjustment(row.repository_id, { ...row.document, merges });
     if (wrote === false) return;

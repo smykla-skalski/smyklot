@@ -44,13 +44,7 @@ export interface JsonNumber {
 }
 
 export type JsonValue =
-  | null
-  | boolean
-  | number
-  | string
-  | JsonNumber
-  | JsonValue[]
-  | { [key: string]: JsonValue };
+  null | boolean | number | string | JsonNumber | JsonValue[] | { [key: string]: JsonValue };
 
 /*
  * The platform's raw-JSON API, which TypeScript's libraries do not describe
@@ -397,7 +391,8 @@ export function deriveOverrides(template: JsonValue, spec: MergeSpec, wanted: Js
   if (patch === 'unsayable') {
     return {
       ok: false,
-      reason: 'A merge cannot set a key to null - null is how it removes one - so this cannot be stored',
+      reason:
+        'A merge cannot set a key to null - null is how it removes one - so this cannot be stored',
     };
   }
 

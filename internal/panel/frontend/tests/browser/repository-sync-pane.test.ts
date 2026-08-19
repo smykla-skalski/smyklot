@@ -155,6 +155,52 @@ describe('the repository sync pane in the development panel', () => {
   });
 
   /**
+   * Every box in the pane is one of the panel's own control heights.
+   *
+   * `control-heights.test.ts` sweeps the routes and cannot reach this: the pane
+   * is behind a radio on a repository's page, so its six boxes kept the user
+   * agent's `2px inset` face and stood at 34px beside the 23.8px chip they
+   * replace - a ten pixel jump on opening a row. The same rule, asked where the
+   * sweep cannot go.
+   *
+   * The seeded repository adjusts two templates, one JSON and one Markdown, so
+   * every box the pane can draw is on the page without a press: a path, a list
+   * rule, a heading and its ordinal, and a find/replace pair.
+   */
+  it('gives every box in the pane a declared height', async () => {
+    const page: Page = await panel.browser.newPage({
+      viewport: { width: 1280, height: 900 },
+    });
+
+    try {
+      const repository = await repositoryPage(page, 'smyklot');
+      await openPane(page, repository, 'Sync');
+      await repository
+        .locator('.sync-merge')
+        .first()
+        .waitFor({ state: 'visible', timeout: 30_000 });
+
+      const boxes = await page.evaluate(() =>
+        [...document.querySelectorAll<HTMLInputElement>('.sync-merge input')]
+          .filter((box) => !['checkbox', 'radio'].includes(box.type))
+          .map((box) => ({
+            where: box.getAttribute('placeholder') ?? box.type,
+            height: box.getBoundingClientRect().height,
+          })),
+      );
+
+      // Every shape the pane draws, so a box added without a class fails here
+      // rather than passing on an empty list.
+      expect(boxes.length).toBeGreaterThanOrEqual(6);
+      expect(
+        boxes.filter((box) => box.height !== 34).map((box) => `${box.where} ${box.height}px`),
+      ).toEqual([]);
+    } finally {
+      await page.close();
+    }
+  });
+
+  /**
    * A repository the planner refuses receives none of the organization's files.
    * Everything about that lives on a second row the pane reads beside the
    * adjustments, so a component spec handed a value proves none of it - this
