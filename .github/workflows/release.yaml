@@ -95,11 +95,15 @@ jobs:
         id: semantic
         uses: cycjimmy/semantic-release-action@b12c8f6015dc215fe37bc154d4ad456dd3833c90 # v6.0.0
         with:
+          # Pinned by major: installed at run time, so unpinned means whatever
+          # npm published last. Preset 10 needs conventional-changelog-writer
+          # 9; the action's semantic-release brings 8, which broke 1.44.0. Cap
+          # lifts when semantic-release ships writer 9.
           extra_plugins: |
-            @semantic-release/changelog
-            @semantic-release/git
-            @semantic-release/exec
-            conventional-changelog-conventionalcommits
+            @semantic-release/changelog@6
+            @semantic-release/git@10
+            @semantic-release/exec@7
+            conventional-changelog-conventionalcommits@9
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           GIT_AUTHOR_NAME: smyklot[bot]
