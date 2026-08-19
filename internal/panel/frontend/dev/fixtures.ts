@@ -1138,6 +1138,25 @@ export function targetSeed(input: {
   };
 }
 
+/**
+ * The repositories the migration spec opens by name, whatever their id is.
+ *
+ * A repository that has been asked about the TOML migration and said no used to
+ * be every seventh id and nothing else. Then one repository was inserted into
+ * the fixture ahead of them, every id after it moved by one, and the pair the
+ * spec opens came back with nothing to press - `search-indexer` went from 4025
+ * to 4026 and stopped being a seventh. The pool keeps the arithmetic, because
+ * what it is for is giving the list variety; the two a test names are said
+ * here, because a spec should not have to know where the counting landed.
+ */
+const DECLINED_MIGRATION = new Set(['migration-demo', 'search-indexer']);
+
+function declinedMigration(input: { id: string; name: string }, status: string): boolean {
+  if (status === 'missing') return false;
+
+  return DECLINED_MIGRATION.has(input.name) || Number(input.id.replace(/\D/g, '')) % 7 === 0;
+}
+
 export function repositorySeed(
   target: PanelTarget,
   input: {
@@ -1201,11 +1220,10 @@ export function repositorySeed(
           ? undefined
           : ['.github/smyklot.yaml'],
       // Every seventh repository has already been asked and said no, so the
-      // detail pane's refusal line and its way back are both reachable
-      config_migration:
-        status === 'missing' || Number(input.id.replace(/\D/g, '')) % 7 !== 0 ? 'none' : 'declined',
-      config_migration_pr:
-        status === 'missing' || Number(input.id.replace(/\D/g, '')) % 7 !== 0 ? undefined : 42,
+      // detail pane's refusal line and its way back are both reachable - plus
+      // the two the migration spec opens by name.
+      config_migration: declinedMigration(input, status) ? 'declined' : 'none',
+      config_migration_pr: declinedMigration(input, status) ? 42 : undefined,
       ignore_repository_file: bypass,
       pending_ci_mode_override: null,
       pending_ci_mode_inherited: target.pending_ci_mode_default,
