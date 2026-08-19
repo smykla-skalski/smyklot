@@ -30,10 +30,13 @@
   .search-field {
     align-items: center;
     display: flex;
-    flex: 1 1 15rem;
+    /* Fills the room it is given, which is what seven of the eight toolbars
+       holding one want. The sync toolbar sets both, because the mock draws its
+       search at a fixed width against a filter on the far side of the row. */
+    flex: var(--search-field-flex, 1 1 15rem);
     min-width: 0;
     position: relative;
-    width: 100%;
+    width: var(--search-field-width, 100%);
   }
 
   input {

@@ -23,13 +23,14 @@
   import type { SyncFile, SyncFileMerge, SyncOverrideRow } from '#lib/types.js';
 
   import Chip from './Chip.svelte';
+  import Button from './Button.svelte';
   import Icon from './Icon.svelte';
   import ObjectRow from './ObjectRow.svelte';
   import PathFinder, { type KnownPath } from './PathFinder.svelte';
   import PatternList from './PatternList.svelte';
   import Plate from './Plate.svelte';
   import PolicyRow from './PolicyRow.svelte';
-  import StateMark, { type MarkState } from './StateMark.svelte';
+  import StateMark, { type SyncState } from './StateMark.svelte';
   import SyncKindHead from './SyncKindHead.svelte';
 
   const {
@@ -68,7 +69,7 @@
     pathsPartial?: boolean;
     /** One clock for every relative time on the page. */
     now?: number;
-    markOf?: (path: string) => { state: MarkState; label?: string } | undefined;
+    markOf?: (path: string) => { state: SyncState; label?: string } | undefined;
     onSave: (enabled: boolean, document: Record<string, unknown>) => void;
   } = $props();
 
@@ -147,10 +148,15 @@
 <Plate label="{files.length} {files.length === 1 ? 'template' : 'templates'}">
   {#snippet status()}
     {#if !readOnly && !adding}
-      <button type="button" class="add-chip" {disabled} onclick={() => (adding = true)}>
-        <Icon name="plus" size={11} strokeWidth={2} />
-        <span class="cap-trim">Add a file</span>
-      </button>
+      <!-- A Button rather than an `.add-chip`: this is the section's own
+           action, and every control in a content pane is 34px. An add-chip is
+           for the "+" that sits IN a row beside the chips it adds to - which is
+           what "Add a path" below still is. Worn here it made the one action on
+           the page the shortest control on it. -->
+      <Button {disabled} onclick={() => (adding = true)}>
+        {#snippet icon()}<Icon name="plus" size={14} strokeWidth={2} />{/snippet}
+        Add a file
+      </Button>
     {/if}
   {/snippet}
 
@@ -167,9 +173,9 @@
         label="Path of the file to manage"
         onChoose={add}
       />
-      <button type="button" class="add-chip" onclick={() => add(draft)}>
-        <span class="cap-trim">Manage this path</span>
-      </button>
+      <!-- The finder's own confirm, so it stands at the finder's height. As an
+           `.add-chip` it was 24px beside a 34px input in one row. -->
+      <Button tone="brand" onclick={() => add(draft)}>Manage this path</Button>
     </div>
   {/if}
 

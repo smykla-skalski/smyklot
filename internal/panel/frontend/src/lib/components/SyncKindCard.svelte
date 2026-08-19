@@ -19,7 +19,7 @@
    */
   import Icon from '#lib/components/Icon.svelte';
   import Switch from '#lib/components/Switch.svelte';
-  import type { BoardState } from '#lib/components/SyncBoard.svelte';
+  import type { SyncState } from '#lib/components/StateMark.svelte';
 
   const {
     name,
@@ -39,7 +39,7 @@
      * state has not been read yet - the card says what it knows and draws no
      * strip, rather than drawing twenty-five settled slots it cannot vouch for.
      */
-    states?: readonly BoardState[];
+    states?: readonly SyncState[];
     /** Who last changed it and when. */
     when?: string;
     enabled?: boolean;

@@ -45,13 +45,13 @@
 >
   <span class="object-main">
     <span class="object-name-row">
-      <span class="object-name">{name}</span>
+      <span class="object-name band-trim">{name}</span>
       {#if pill !== undefined}
         {@render pill()}
       {/if}
     </span>
     {#if summary !== undefined}
-      <span class="object-sum">{summary}</span>
+      <span class="object-sum band-trim">{summary}</span>
     {/if}
   </span>
   <span class="object-side">
@@ -113,12 +113,14 @@
     gap: var(--space-2);
   }
 
+  /* Both lines trimmed, through the shared class. The name was and the summary
+     under it was not, so the stack kept the summary's descender space below its
+     baseline and sat 0.30px off the column beside it. */
   .object-name {
     font-family: var(--mono);
     font-size: var(--font-size-compact);
     font-weight: 500;
     overflow-wrap: anywhere;
-    text-box: trim-both cap alphabetic;
   }
 
   .object-sum {

@@ -1,10 +1,10 @@
 <script module lang="ts">
   /** What one repository is, seen from the installation that configures it. */
-  export type BoardState = 'settled' | 'change' | 'refused' | 'off';
+  import type { SyncState } from './StateMark.svelte';
 
   export interface BoardRepository {
     name: string;
-    state: BoardState;
+    state: SyncState;
     /** Only read for `change`: the numeral the tile carries. */
     changes?: number;
     /** Only read for `refused`: said in the tile's own words, not a code. */
@@ -12,7 +12,7 @@
   }
 
   /** In the order a reader meets them: settled first, then what wants them. */
-  const LEGEND: readonly { state: BoardState; word: string }[] = [
+  const LEGEND: readonly { state: SyncState; word: string }[] = [
     { state: 'settled', word: 'In step' },
     { state: 'change', word: 'Would change' },
     { state: 'refused', word: 'Refused' },
@@ -70,10 +70,10 @@
     children?: import('svelte').Snippet;
   } = $props();
 
-  let filter = $state<BoardState | null>(null);
+  let filter = $state<SyncState | null>(null);
 
   const counts = $derived(
-    repositories.reduce<Record<BoardState, number>>(
+    repositories.reduce<Record<SyncState, number>>(
       (tally, repository) => {
         tally[repository.state] += 1;
 

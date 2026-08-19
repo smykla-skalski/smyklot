@@ -153,10 +153,15 @@ function scoreOf(path: string, query: string, positions: readonly number[]): num
  * and it costs a matrix per path per keystroke. This finds the arrangement a
  * reader would have pointed at, at a cost that survives twenty thousand paths.
  */
-export function matchPath(path: string, query: string): PathMatch | null {
+export function matchPath(path: string, query: string, folded?: string): PathMatch | null {
   if (query === '') return { path, score: 0, positions: [] };
 
-  const haystack = lower(path);
+  /* Folded once by the caller where there is a caller that can: `lower` walks
+     the whole path character by character, and a finder over an organization's
+     fifty thousand paths ran it on every one of them on every keystroke - 18.1ms
+     of the 49.0ms a keystroke cost, plus about two megabytes of string garbage
+     to collect. The paths change about once a day; the query changes per key. */
+  const haystack = folded ?? lower(path);
   const needle = lower(query);
 
   /* The query as whole characters, walked the same way in both directions.
@@ -211,16 +216,22 @@ export function matchPath(path: string, query: string): PathMatch | null {
  * The cap is the virtualisation: nobody reads past the tenth row of a finder,
  * and a list that stops at fifty never has to be windowed.
  */
-export function matchPaths(paths: readonly string[], query: string, limit = 50): PathMatch[] {
-  // Nothing typed is not a ranking question. The caller's order is the answer
-  // - which is where a list of recent paths goes.
+export function matchPaths(
+  paths: readonly string[],
+  query: string,
+  limit = 50,
+  folded?: readonly string[],
+): PathMatch[] {
+  // Nothing typed is not a ranking question. The caller's order is the answer -
+  // and the finder's own order is held by most repositories first, which is the
+  // most useful thing to offer somebody who has typed nothing.
   if (query === '') {
     return paths.slice(0, limit).map((path) => ({ path, score: 0, positions: [] }));
   }
 
   const found: PathMatch[] = [];
-  for (const path of paths) {
-    const match = matchPath(path, query);
+  for (const [index, path] of paths.entries()) {
+    const match = matchPath(path, query, folded?.[index]);
     if (match !== null) found.push(match);
   }
 
@@ -232,6 +243,18 @@ export function matchPaths(paths: readonly string[], query: string, limit = 50):
         (left.path < right.path ? -1 : 1),
     )
     .slice(0, limit);
+}
+
+/**
+ * Every path folded, in the order they came in.
+ *
+ * Held beside the list rather than worked out per keystroke - see `matchPath`.
+ * Positional, because `matchPaths` reads it by index: a map keyed by path would
+ * lose the second of two identical paths, and cost a hash per lookup for a
+ * lookup an index already answers.
+ */
+export function foldPaths(paths: readonly string[]): string[] {
+  return paths.map((path) => lower(path));
 }
 
 function fold(value: string): string {

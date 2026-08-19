@@ -638,29 +638,10 @@
     font-size: var(--font-size-meta);
   }
 
-  .add-chip {
-    align-items: center;
-    background: none;
-    border: 1.5px dashed var(--border-strong);
-    border-radius: var(--r-chip);
-    color: var(--text-secondary);
-    cursor: pointer;
-    display: inline-flex;
-    font: 600 var(--font-size-compact) / 1 var(--sans);
-    gap: 0.375rem;
-    /* The shared height, because this is the shared control: `.add-chip` also
-       lives in `app.css`, and a class that measures 24px on one page and 32 on
-       another is two controls wearing one name. */
-    min-height: var(--control-height-chip);
-    padding: 0 0.875rem;
-  }
-
-  .add-chip:hover:not(:disabled) {
-    background: var(--brand-action-tint);
-    border-color: var(--brand-action);
-    color: var(--brand-action-text);
-  }
-
+  /* `.add-chip` is in `app.css` and this restated it, height included - so
+     raising the shared control left this one page behind at 24px beside the
+     34px chip it adds to. The local copy said in a comment that it was keeping
+     the shared height, which is exactly what a second copy cannot do. */
   .composer {
     align-items: center;
     background: var(--strip-lift);

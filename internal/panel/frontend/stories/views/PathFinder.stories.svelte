@@ -29,8 +29,6 @@
     { path: 'docs/releasing.md', repositories: 4 },
     { path: 'scripts/bootstrap.sh', repositories: 7 },
   ];
-
-  const RECENTS = ['.github/workflows/test.yaml', 'renovate.json', '.github/CODEOWNERS'];
 </script>
 
 <!--
@@ -48,20 +46,6 @@
   {#snippet template()}
     <div class="frame">
       <PathFinder paths={KNOWN} repositories={25} label="Path in each repository" />
-    </div>
-  {/snippet}
-</Story>
-
-<!-- Before anything is typed: what this reader touched last, in its own band. -->
-<Story name="With recents">
-  {#snippet template()}
-    <div class="frame">
-      <PathFinder
-        paths={KNOWN}
-        repositories={25}
-        recents={RECENTS}
-        label="Path in each repository"
-      />
     </div>
   {/snippet}
 </Story>

@@ -62,16 +62,16 @@
 
 <span class="pattern-list">
   {#each values as value (value)}
-    <span class="chip chip-neutral">
+    <span class="word-chip">
       <span class="chip-label">{value}</span>
       {#if !disabled}
         <button
           type="button"
-          class="chip-clear"
+          class="chip-x"
           aria-label="Remove {value} from {label}"
           onclick={() => remove(value)}
         >
-          <Icon name="close" size={10} strokeWidth={2.25} />
+          <Icon name="close" size={13} />
         </button>
       {/if}
     </span>
@@ -124,29 +124,23 @@
     font-size: var(--font-size-compact);
   }
 
-  .pattern-list .chip {
-    font-family: var(--mono);
-    font-weight: 500;
-    padding-inline-end: 0.3rem;
+  /* `.word-chip` rather than `.chip`: this is an entry somebody typed and can
+     take back, not a state they can only read - so it wears the editable-entry
+     control from `app.css`, at the height every other control in a pane has.
+     As a `.chip` it stood 24px beside the same thing at 32px in the settings
+     editor, and beside its own add at 24. */
+  .word-chip .chip-label {
+    text-box: trim-both cap alphabetic;
   }
 
   /* Quiet until the chip is under the hand: every chip carries one and almost
      none of them is wanted. */
-  .chip-clear {
-    align-items: center;
-    appearance: none;
-    background: none;
-    border: 0;
-    border-radius: 3px;
-    color: inherit;
-    cursor: pointer;
-    display: inline-flex;
+  .word-chip .chip-x {
     opacity: 0.5;
-    padding: 0.15rem;
   }
 
-  .chip:hover .chip-clear,
-  .chip-clear:focus-visible {
+  .word-chip:hover .chip-x,
+  .word-chip .chip-x:focus-visible {
     opacity: 1;
   }
 
@@ -154,15 +148,11 @@
    * The chip's own height, said in the chip's own terms.
    *
    * This was a bare `<input>`: no class, so it wore the UA's 2px inset border
-   * on white with square corners, and it stood 34px tall where the chip it
-   * replaces stands 23.8 - so opening it redrew the control as something from
-   * another application AND shifted everything below it by ten pixels. The
-   * height is `0.4rem` of padding either side of one compact line, which is
-   * exactly what `.add-chip` is made of.
+   * on white with square corners. It then carried a `--local-control-height` of
+   * the chip height to match a 24px chip; the chip beside it is the pane's own
+   * control height now, so the field is simply what `.text-input` already is.
    */
   .pattern-field {
-    --local-control-height: var(--control-height-chip);
-
     font-family: var(--mono);
     font-size: var(--font-size-compact);
     inline-size: 12rem;

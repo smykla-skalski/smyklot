@@ -54,7 +54,7 @@
 </script>
 
 <div class="policy-row">
-  <span class="setting-say">
+  <span class="setting-say band-trim-stack">
     <span class="setting-name">{name}</span>
     {#if why !== undefined}
       <span class="setting-why">{why}</span>
@@ -65,7 +65,7 @@
   </span>
   <span class="policy-value">
     {#if value !== undefined}
-      <span class="value-word" class:is-on={value !== 'Off'}>{value}</span>
+      <span class="value-word band-trim" class:is-on={value !== 'Off'}>{value}</span>
     {/if}
     {@render control()}
   </span>
@@ -100,10 +100,13 @@
     gap: 0.15rem;
   }
 
+  /* Trimmed by `.band-trim-stack` on the container rather than here: the name
+     was trimmed and the description under it was not, so the stack kept the
+     why's leading below its baseline and the whole column's band sat 2.5px
+     above the value beside it - on every policy row of all four sync forms. */
   .setting-name {
     font-size: var(--font-size-meta);
     font-weight: 500;
-    text-box: trim-both cap alphabetic;
   }
 
   .setting-why {
@@ -148,7 +151,6 @@
     font-variant-numeric: tabular-nums;
     min-inline-size: 1.9rem;
     text-align: end;
-    text-box: trim-both cap alphabetic;
   }
 
   .value-word.is-on {

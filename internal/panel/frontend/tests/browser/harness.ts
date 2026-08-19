@@ -44,6 +44,16 @@ export const PANEL_ROUTES = [
      every rule the others are held to applies to it too. */
   'i/repositories/api-gateway',
   'i/sync',
+  /* Sync is six sections and two of them name one of their own, so `i/sync`
+     alone reaches the overview and none of the rest. Every browser sweep runs
+     off this list, so what is missing here is not measured anywhere - which is
+     how a row's state mark went uncounted while standing beside a chip it did
+     not match. */
+  'i/sync/labels',
+  'i/sync/settings',
+  'i/sync/plan',
+  'i/sync/rulesets',
+  'i/sync/files',
   'i/users',
   'i/invitations',
   'i/history',

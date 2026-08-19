@@ -2,7 +2,7 @@
   import { defineMeta } from '@storybook/addon-svelte-csf';
 
   import SyncKindCard from '#lib/components/SyncKindCard.svelte';
-  import type { BoardState } from '#lib/components/SyncBoard.svelte';
+  import type { SyncState } from '#lib/components/StateMark.svelte';
 
   const { Story } = defineMeta({
     title: 'Views/SyncKindCard',
@@ -10,7 +10,7 @@
   });
 
   /** Twenty-five slots, in the board's order. `at` says which ones are not settled. */
-  const strip = (marks: Record<number, BoardState>): BoardState[] =>
+  const strip = (marks: Record<number, SyncState>): SyncState[] =>
     Array.from({ length: 25 }, (_, index) => marks[index] ?? 'settled');
 
   const LABELS = strip({ 5: 'off', 10: 'off' });

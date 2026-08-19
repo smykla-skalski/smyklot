@@ -38,8 +38,8 @@
   import PlanGroup from './PlanGroup.svelte';
   import type { KnownPath } from './PathFinder.svelte';
   import SectionTabs from './SectionTabs.svelte';
-  import type { MarkState } from './StateMark.svelte';
-  import SyncBoard, { type BoardRepository, type BoardState } from './SyncBoard.svelte';
+  import StateMark, { type SyncState } from './StateMark.svelte';
+  import SyncBoard, { type BoardRepository } from './SyncBoard.svelte';
   import SyncFileDetail from './SyncFileDetail.svelte';
   import SyncFilesForm from './SyncFilesForm.svelte';
   import SyncKindCard from './SyncKindCard.svelte';
@@ -462,7 +462,7 @@
    * so a repository switched off for one kind alone still reads as settled
    * here. Saying more than that would be the panel inventing an answer.
    */
-  function stateOf(repository: RepositorySummary, kind?: string): BoardState {
+  function stateOf(repository: RepositorySummary, kind?: string): SyncState {
     if (!repository.available) return 'off';
     const mine = actionsFor(repository.name, kind);
     if (mine.some((action) => action.error !== undefined && action.error !== '')) return 'refused';
@@ -495,7 +495,7 @@
   function subjectMark(
     kind: string,
     subject: string,
-  ): { state: MarkState; label?: string } | undefined {
+  ): { state: SyncState; label?: string } | undefined {
     if (plan === null) return undefined;
     const mine = plan.actions.filter(
       (action) => action.kind === kind && action.subject === subject,
@@ -513,7 +513,7 @@
   }
 
   /** The same population, per kind, in the board's own order. */
-  function strip(kind: string): BoardState[] {
+  function strip(kind: string): SyncState[] {
     return (fleet?.items ?? []).map((repository) => stateOf(repository, kind));
   }
 
@@ -758,13 +758,12 @@
             >
               <span class="attn-repo">{repository.name}</span>
               <span class="attn-what">
-                <span class="mark" class:is-refused={repository.reason !== undefined}>
-                  <span class="cap-trim">
-                    {repository.reason !== undefined
-                      ? 'refused'
-                      : `${repository.changes} ${repository.changes === 1 ? 'change' : 'changes'}`}
-                  </span>
-                </span>
+                <StateMark
+                  state={repository.reason !== undefined ? 'refused' : 'change'}
+                  label={repository.reason !== undefined
+                    ? 'refused'
+                    : `${repository.changes} ${repository.changes === 1 ? 'change' : 'changes'}`}
+                />
               </span>
               <!-- A refusal's reason belongs on its row. A state that blocks the
                    whole plan should never wait in a drill-down. -->
@@ -1178,29 +1177,6 @@
   .attn-what {
     display: flex;
     gap: var(--space-2);
-  }
-
-  /* The count as a mark rather than as ink alone: it is the one figure on the
-     row, and it carries a ground so the row is read at a glance. */
-  .mark {
-    align-items: center;
-    background: var(--cell-pending-bg);
-    border: 1px solid color-mix(in srgb, var(--cell-pending) 38%, transparent);
-    border-radius: var(--r-chip);
-    color: var(--cell-pending);
-    display: inline-flex;
-    font-family: var(--mono);
-    font-size: var(--font-size-micro);
-    font-variant-numeric: tabular-nums;
-    font-weight: 500;
-    line-height: 1;
-    padding: 0.3rem 0.45rem;
-  }
-
-  .mark.is-refused {
-    background: var(--cell-refused-bg);
-    border-color: color-mix(in srgb, var(--cell-refused) 38%, transparent);
-    color: var(--cell-refused);
   }
 
   .attn-why {

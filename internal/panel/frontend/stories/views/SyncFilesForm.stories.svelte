@@ -3,7 +3,7 @@
   import { fn } from 'storybook/test';
 
   import SyncFilesForm from '#lib/components/SyncFilesForm.svelte';
-  import type { MarkState } from '#lib/components/StateMark.svelte';
+  import type { SyncState } from '#lib/components/StateMark.svelte';
   import type { SyncOverrideRow } from '#lib/types.js';
 
   const STORED = {
@@ -55,7 +55,7 @@
     { path: 'LICENSE', repositories: 20 },
   ];
 
-  const MARKS: Record<string, { state: MarkState; label?: string }> = {
+  const MARKS: Record<string, { state: SyncState; label?: string }> = {
     'renovate.json': { state: 'change', label: '2 differ' },
     'CONTRIBUTING.md': { state: 'settled' },
   };

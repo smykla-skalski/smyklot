@@ -1,13 +1,13 @@
 <script module lang="ts">
   /**
-   * The four things one thing can be, in the panel's own four words.
+   * The four things one synchronized thing can be, in the panel's own words.
    *
-   * Deliberately the same vocabulary as `BoardState`, spelled the same way: the
-   * board's tiles and this row's mark report the same fact about different
-   * things, and two sets of words for four states is how a page comes to say
-   * "pending" in one place and "would change" in the next.
+   * One declaration, because the board's tiles and a row's mark report the same
+   * fact about different subjects - and two names for one union is how a page
+   * comes to say "pending" in one place and "would change" in the next. It was
+   * written out twice, with a comment on each saying it had to match the other.
    */
-  export type MarkState = 'settled' | 'change' | 'refused' | 'off';
+  export type SyncState = 'settled' | 'change' | 'refused' | 'off';
 </script>
 
 <script lang="ts">
@@ -26,14 +26,14 @@
     state,
     label,
   }: {
-    state: MarkState;
+    state: SyncState;
     /** The words - "2 differ", "refused". Absent for in step, which needs none. */
     label?: string;
   } = $props();
 </script>
 
 <span
-  class="mark is-{state}"
+  class="state-mark is-{state}"
   title={state === 'settled' && label === undefined ? 'In step' : undefined}
 >
   {#if state === 'settled'}
@@ -49,7 +49,13 @@
 </span>
 
 <style>
-  .mark {
+  /* Built the way `.chip-small` is built, because it stands beside one: the
+     same height token and the same keyline mechanism. It had neither - padding
+     alone decided the height, and the keyline was a real border - so a mark and
+     a chip four lines apart in one row measured 19.63px and 20.00px. What
+     differs below the height is only the palette, which is the board's four
+     cell colours rather than a chip's tones. */
+  .state-mark {
     align-items: center;
     border-radius: var(--r-chip);
     display: inline-flex;
@@ -59,11 +65,12 @@
     font-weight: 500;
     gap: 0.3rem;
     line-height: 1;
-    padding: 0.3rem 0.45rem;
+    min-block-size: var(--control-height-chip-small);
+    padding-inline: 0.45rem;
     white-space: nowrap;
   }
 
-  /* In step is the quietest thing on the row: no ground, no border, no words.
+  /* In step is the quietest thing on the row: no ground, no keyline, no words.
      A settled repository is the answer nobody came to read. */
   .is-settled {
     color: var(--cell-instep);
@@ -72,13 +79,13 @@
 
   .is-change {
     background: var(--cell-pending-bg);
-    border: 1px solid color-mix(in srgb, var(--cell-pending) 38%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cell-pending) 38%, transparent);
     color: var(--cell-pending);
   }
 
   .is-refused {
     background: var(--cell-refused-bg);
-    border: 1px solid color-mix(in srgb, var(--cell-refused) 38%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cell-refused) 38%, transparent);
     color: var(--cell-refused);
   }
 

@@ -3,7 +3,7 @@
   import { fn } from 'storybook/test';
 
   import SyncRulesetsForm from '#lib/components/SyncRulesetsForm.svelte';
-  import type { MarkState } from '#lib/components/StateMark.svelte';
+  import type { SyncState } from '#lib/components/StateMark.svelte';
 
   const STORED = {
     rulesets: [
@@ -34,7 +34,7 @@
     excludes: ['hand-made-*'],
   };
 
-  const MARKS: Record<string, { state: MarkState; label?: string }> = {
+  const MARKS: Record<string, { state: SyncState; label?: string }> = {
     'main-branch-protection': { state: 'change', label: '1 repository differs' },
     'release-tags': { state: 'settled' },
   };

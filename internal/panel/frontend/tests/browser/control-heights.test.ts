@@ -70,7 +70,7 @@ async function controlsOn(page: Page): Promise<Omit<Control, 'route'>[]> {
     };
 
     for (const control of document.querySelectorAll<HTMLElement>(
-      'button, input, select, a.btn, .chip, .add-chip',
+      'button, input, select, a.btn, .chip, .add-chip, .state-mark',
     )) {
       if (control.closest(skip) !== null) continue;
       const style = getComputedStyle(control);

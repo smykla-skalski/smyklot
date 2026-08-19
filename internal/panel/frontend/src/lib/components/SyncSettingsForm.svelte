@@ -354,11 +354,17 @@
 </div>
 
 <style>
+  /* The mock's own toolbar: the search at 16rem on one side and the filter on
+     the other, rather than a search stretched across the row. */
   .settings-tools {
+    --search-field-flex: 0 1 16rem;
+    --search-field-width: 16rem;
+
     align-items: center;
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-3);
+    justify-content: space-between;
     margin-bottom: var(--space-4);
   }
 

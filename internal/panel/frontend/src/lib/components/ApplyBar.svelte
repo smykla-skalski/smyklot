@@ -46,7 +46,7 @@
 </script>
 
 <div class="apply-bar">
-  <p class="apply-note">
+  <p class="apply-note band-trim">
     <strong>{plural(changes, 'change', 'changes')} across {scope}</strong>{#if removals > 0},
       including <span class="is-removal">{plural(removals, 'removal', 'removals')}</span>{/if}.
     {#if asPullRequests}

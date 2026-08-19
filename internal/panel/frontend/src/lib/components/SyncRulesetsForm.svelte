@@ -67,12 +67,13 @@
   import { storedList } from '#lib/form-lists.js';
 
   import Chip from './Chip.svelte';
+  import Button from './Button.svelte';
   import Icon from './Icon.svelte';
   import ObjectRow from './ObjectRow.svelte';
   import PatternList from './PatternList.svelte';
   import Plate from './Plate.svelte';
   import PolicyRow from './PolicyRow.svelte';
-  import StateMark, { type MarkState } from './StateMark.svelte';
+  import StateMark, { type SyncState } from './StateMark.svelte';
   import Switch from './Switch.svelte';
   import SyncKindHead from './SyncKindHead.svelte';
 
@@ -98,7 +99,7 @@
     /** Where one ruleset's own page is. */
     rulesetHref: (name: string) => string;
     /** What the plan would do about this ruleset, or nothing while there is no plan. */
-    markOf?: (name: string) => { state: MarkState; label?: string } | undefined;
+    markOf?: (name: string) => { state: SyncState; label?: string } | undefined;
     onSave: (enabled: boolean, document: Record<string, unknown>) => void;
   } = $props();
 
@@ -185,7 +186,7 @@
         <input
           bind:this={field}
           bind:value={draft}
-          class="ruleset-name-field"
+          class="text-input ruleset-name-field"
           type="text"
           spellcheck="false"
           autocomplete="off"
@@ -204,10 +205,12 @@
           }}
         />
       {:else}
-        <button type="button" class="add-chip" {disabled} onclick={open}>
-          <Icon name="plus" size={11} strokeWidth={2} />
-          <span class="cap-trim">Add a ruleset</span>
-        </button>
+        <!-- The section's own action, at the height every control in a content
+             pane has. See SyncFilesForm for why this is not an `.add-chip`. -->
+        <Button {disabled} onclick={open}>
+          {#snippet icon()}<Icon name="plus" size={14} strokeWidth={2} />{/snippet}
+          Add a ruleset
+        </Button>
       {/if}
     {/if}
   {/snippet}
@@ -306,11 +309,11 @@
     max-width: 60ch;
   }
 
+  /* An input with no ground, no edge and no focus ring at all: it carried a
+     size and nothing else, so it was the browser's own control sitting in a
+     panel that styles every other one. */
   .ruleset-name-field {
     font-family: var(--mono);
-    font-size: var(--font-size-compact);
     inline-size: 14rem;
-    min-block-size: var(--control-height-compact);
-    padding-inline: 0.5rem;
   }
 </style>

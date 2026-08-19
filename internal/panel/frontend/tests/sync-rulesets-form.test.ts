@@ -102,7 +102,7 @@ describe('SyncRulesetsForm [Component]', () => {
       stored: { rulesets: [protection()] },
     });
 
-    expect(container.querySelector('.mark')).toBeNull();
+    expect(container.querySelector('.state-mark')).toBeNull();
   });
 
   it('carries what the plan would do about one ruleset', () => {
@@ -112,7 +112,7 @@ describe('SyncRulesetsForm [Component]', () => {
       markOf: () => ({ state: 'change' as const, label: '2 repositories differ' }),
     });
 
-    expect(container.querySelector('.mark')?.textContent).toContain('2 repositories differ');
+    expect(container.querySelector('.state-mark')?.textContent).toContain('2 repositories differ');
   });
 
   /** Every write carries the whole document, keys this version knows nothing of included. */

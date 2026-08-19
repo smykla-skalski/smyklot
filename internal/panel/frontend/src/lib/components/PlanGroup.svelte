@@ -35,8 +35,8 @@
 <details class="repo-group" {open}>
   <summary>
     <Icon name="chevron-right" size={11} />
-    <span class="repo-group-name">{repository}</span>
-    <span class="repo-group-counts">
+    <span class="repo-group-name band-trim">{repository}</span>
+    <span class="repo-group-counts band-trim">
       {#if added > 0}<span class="count-add">+{added}</span>{/if}
       {#if changed > 0}<span class="count-change">~{changed}</span>{/if}
       {#if removed > 0}<span class="count-remove">−{removed}</span>{/if}

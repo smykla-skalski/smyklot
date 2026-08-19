@@ -30,7 +30,7 @@
    * still a path, and the finder offers it rather than refusing the query.
    */
   import Icon from '#lib/components/Icon.svelte';
-  import { matchPaths, type PathMatch } from '#lib/fuzzy.js';
+  import { foldPaths, matchPaths, type PathMatch } from '#lib/fuzzy.js';
 
   let {
     paths,
@@ -38,7 +38,6 @@
     partial = false,
     value = $bindable(''),
     label,
-    recents = [],
     onChoose,
   }: {
     paths: readonly KnownPath[];
@@ -55,8 +54,6 @@
     value?: string;
     /** Names the field - "Path in each repository". */
     label: string;
-    /** Shown before anything is typed: what this reader touched last. */
-    recents?: readonly string[];
     onChoose?: (path: string) => void;
   } = $props();
 
@@ -66,17 +63,15 @@
 
   const counts = $derived(new Map(paths.map((known) => [known.path, known.repositories])));
 
-  const matches = $derived.by((): PathMatch[] => {
-    if (value === '') {
-      return recents.map((path) => ({ path, score: 0, positions: [] }));
-    }
+  /* Held beside the list rather than rebuilt per keystroke: `names` allocated a
+     fifty-thousand-element array inside the matching `$derived`, and `folded`
+     is the lowercased copy `matchPath` would otherwise redo for every path on
+     every key. Both change when the installation's paths do, which is about
+     once a day. */
+  const names = $derived(paths.map((known) => known.path));
+  const folded = $derived(foldPaths(names));
 
-    return matchPaths(
-      paths.map((known) => known.path),
-      value,
-      50,
-    );
-  });
+  const matches = $derived(matchPaths(names, value, 50, folded));
 
   /** True once the query is a path that already exists, spelled exactly. */
   const exact = $derived(counts.has(value));
@@ -153,7 +148,7 @@
   <input
     bind:this={input}
     bind:value
-    class="finder-input"
+    class="text-input finder-input"
     type="text"
     spellcheck="false"
     autocomplete="off"
@@ -191,8 +186,12 @@
         <span>{paths.length.toLocaleString()} known</span>
       </div>
 
-      {#if value === '' && recents.length > 0}
-        <p class="finder-band">Recent</p>
+      {#if value === ''}
+        <!-- What is offered before anything is typed. The list arrives held by
+             most repositories first, so the head of it is the most useful thing
+             to show - it used to be a `recents` prop no caller ever passed, so
+             this said "No path here matches that" over an empty query. -->
+        <p class="finder-band">Most repositories hold</p>
       {/if}
 
       <ul class="finder-list" id="finder-list" role="listbox" aria-label={label}>
@@ -254,27 +253,24 @@
 </div>
 
 <style>
+  /* The popover is `inset-inline: 0` against this, so this element's width IS
+     the menu's width. Without an inline size of its own it shrank to its
+     content as a flex item, and the menu came out narrower than the paths it
+     was listing. */
   .finder {
-    max-width: 34rem;
+    inline-size: 100%;
+    max-inline-size: 34rem;
     position: relative;
   }
 
+  /* `.text-input` and only what a path finder adds to one. It used to restate
+     all ten declarations, and got the focus ring wrong doing it: an `outline`
+     where every other input in the panel draws an inset box-shadow, so this was
+     the one control in the panel whose focus looked different. PatternList sits
+     two components away and already does it this way. */
   .finder-input {
-    background: var(--input-bg);
-    border: 1px solid var(--control-border);
-    border-radius: var(--r-ctl);
-    color: var(--text-primary);
     font-family: var(--mono);
-    font-size: var(--font-size-control);
-    min-block-size: var(--control-height-compact);
-    padding-inline: 0.7rem;
     width: 100%;
-  }
-
-  .finder-input:focus-visible {
-    border-color: var(--focus);
-    outline: 2px solid var(--focus);
-    outline-offset: -1px;
   }
 
   .finder-pop {
