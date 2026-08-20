@@ -399,7 +399,8 @@
   --icon-sm: 0.875rem;
   --icon-md: 1.125rem;
   --icon-lg: 1.375rem;
-  --sidebar-width: 15rem;
+  /* 228px, the approved shell's pages column beside the 60px rail. */
+  --sidebar-width: 228px;
   --sidebar-width-collapsed: 4.5rem;
   /* 1120px, the column the design draws inside its pane. Capped rather than proportional: at
      100rem the pane kept growing with the display and every card in it grew with the pane, so a
@@ -775,15 +776,30 @@ body {
   padding: var(--space-6) var(--space-4) 2.5rem;
 }
 
+/* Three columns, one job each: the rail is the account's consoles, the
+   sidebar is the active console's map, the pane opens with content. The two
+   chrome columns size themselves (the sidebar animates its own inline-size),
+   so the tracks are auto rather than tokens the grid would have to ease. */
 .app-shell {
   display: grid;
-  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  grid-template-columns: auto auto minmax(0, 1fr);
   min-height: 100dvh;
-  transition: grid-template-columns var(--duration-normal) var(--ease-standard);
 }
 
-.app-shell.sidebar-collapsed {
-  grid-template-columns: var(--sidebar-width-collapsed) minmax(0, 1fr);
+/* Below 64rem the sidebar is a drawer over the content, out of flow - its
+   track has to go with it, or the pane falls into an auto column sized to
+   its own max-content and the layout moves with the content. */
+@media (max-width: 64rem) {
+  .app-shell {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .side-scrim {
+    background: var(--scrim);
+    inset: 0;
+    position: fixed;
+    z-index: 30;
+  }
 }
 
 .app-shell.root-mode {
@@ -2941,10 +2957,8 @@ thead th .icon-button:active:not(:disabled) {
 }
 
 @media (max-width: 48rem) {
-  .app-shell {
-    display: block;
-  }
-
+  /* The rail stays at every width - it is the way back. The drawer already
+     owns the pages column here; the shell keeps its two remaining tracks. */
   .workspace {
     min-height: calc(100dvh - 3.75rem);
     padding-top: var(--space-4);

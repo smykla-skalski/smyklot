@@ -360,7 +360,7 @@
     flex-direction: column;
     gap: var(--space-4);
     height: 100dvh;
-    inline-size: 228px;
+    inline-size: var(--sidebar-width);
     overflow: hidden auto;
     /* Structure moves at --duration-normal, like the app shell's own columns. */
     transition: inline-size var(--duration-normal) var(--ease-standard);
@@ -649,7 +649,7 @@
      sidebar is in-flow - below 64rem the drawer owns the narrow behaviour. */
   @media (min-width: 64.0625rem) {
     :global(.app-shell.sidebar-collapsed) .side {
-      inline-size: 4.5rem;
+      inline-size: var(--sidebar-width-collapsed);
       /* The flyout and tooltips hang outside the strip. */
       overflow: visible;
       /* 12+11+1px border = rows an even 48, so a 16px glyph centres on a

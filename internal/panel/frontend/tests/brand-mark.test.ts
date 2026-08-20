@@ -30,16 +30,17 @@ describe('the brand mark', () => {
     expect(holders).toEqual(['BrandMark.svelte']);
   });
 
-  it('is the only component importing the halo', () => {
-    // The rail names the same file in a comment, sizing its collapsed overlay against the halo's
-    // drawn geometry, so this asks who *imports* it rather than who mentions it.
+  it('is imported only where the mark itself is drawn', () => {
+    // This asks who *imports* the halo rather than who mentions it in a comment. Two sites: the
+    // wordmark component, and the shell's rail, which opens with the bare mark the way the
+    // approved shell does - a 34px icon with no wordmark beside it.
     const importers = sources
       .filter(([, source]) =>
         /import\s+\w+\s+from\s+\x27[^\x27]*smyklot-halo\.svg\x27/.test(source),
       )
       .map(([file]) => file);
 
-    expect(importers).toEqual(['BrandMark.svelte']);
+    expect(importers).toEqual(['BrandMark.svelte', 'Rail.svelte']);
   });
 
   it('is what the sidebar and the pages outside the panel both render', () => {

@@ -413,7 +413,10 @@ export class PanelSession {
 
   async selectTarget(targetId: string): Promise<void> {
     const target = this.targets.find((t) => t.id === targetId);
-    if (target === undefined || (this.selectedId === targetId && !this.isInbox)) return;
+    /* The selected workspace is still one press away from elsewhere: from the
+       inbox or the Root console its tile is the way back to its pages. */
+    const alreadyThere = this.selectedId === targetId && !this.isInbox && !this.isRootMode;
+    if (target === undefined || alreadyThere) return;
     await this.openTarget(target);
   }
 
