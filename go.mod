@@ -1,6 +1,6 @@
 module github.com/smykla-skalski/smyklot
 
-go 1.26.6
+go 1.27.0
 
 require (
 	github.com/coder/websocket v1.8.15
