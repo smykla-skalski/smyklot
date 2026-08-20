@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
-import { contrast, deltaE, oklch } from './color';
+import { contrast, deltaE, oklch, over } from './color';
 import { palettes, type Palette } from './theme';
 
 /**
@@ -30,8 +30,18 @@ describe.each(palettes.map((palette) => [palette.name, palette] as const))(
   (_name, palette) => {
     const surface = palette.color('surface-base');
 
+    /* The row veils are ink mixed over TRANSPARENT - a flat surface mix
+       vanished on canvas-toned strips - so what a reader sees is the veil
+       composited on whatever ground the row has. The invariants below are
+       stated on the veil's landing on the base surface, which is where the
+       old flat tokens lived. */
+    const grounded = (token: string): string => {
+      const veil = palette.paint(token);
+      return over(veil.color, surface, veil.alpha);
+    };
+
     it('moves a hovered row by one state change', () => {
-      const hover = palette.color('table-row-hover');
+      const hover = grounded('table-row-hover');
       const moved = deltaE(surface, hover);
       expect(moved).toBeGreaterThan(step(surface) - 0.5);
       expect(moved).toBeLessThan(step(surface) + 0.5);
@@ -39,13 +49,13 @@ describe.each(palettes.map((palette) => [palette.name, palette] as const))(
 
     it('keeps a hovered row distinct from the filler behind it', () => {
       // Both were --surface-raised, so the pointer and "no rows here" painted the same colour.
-      expect(
-        deltaE(palette.color('table-row-hover'), palette.color('table-filler-bg')),
-      ).toBeGreaterThan(1);
+      expect(deltaE(grounded('table-row-hover'), palette.color('table-filler-bg'))).toBeGreaterThan(
+        1,
+      );
     });
 
     it('lifts on a dark ground and drops on a light one', () => {
-      const hover = palette.color('table-row-hover');
+      const hover = grounded('table-row-hover');
       const lighter = oklch(hover).L > oklch(surface).L;
       expect(lighter).toBe(oklch(surface).L <= 0.5);
     });
@@ -98,7 +108,7 @@ describe.each(palettes.map((palette) => [palette.name, palette] as const))(
       ['text-primary', 'input-bg'],
       ['text-muted', 'input-bg'],
     ])('keeps %s readable on %s', (ink, ground) => {
-      expect(contrast(palette.color(ink), palette.color(ground))).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(palette.color(ink), grounded(ground))).toBeGreaterThanOrEqual(4.5);
     });
   },
 );

@@ -44,6 +44,9 @@ function componentStyles(): [string, string][] {
 const NOT_THEME_COLOUR: Record<string, string> = {
   'BrandMark.svelte #09152b':
     'the logo artwork is drawn on its own ground, which the mark carries into any palette',
+  'Rail.svelte #fff':
+    'the selected workspace mark holds its ground at L 50 whatever the hue, so white letters ' +
+    'clear it in every palette - the identity paint is not the theme to decide',
 };
 
 /**
