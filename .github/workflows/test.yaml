@@ -165,7 +165,7 @@ jobs:
           # Pinned, and matching .mise.toml, so a local run sees what CI sees.
           # On "latest" a new upstream rule fails a pull request that never
           # touched the code it fires on
-          version: v2.12.2
+          version: v2.13.0
 
   # The checks that cost seconds each. They are one job because the runner takes
   # longer to acquire than all of them take to run.
