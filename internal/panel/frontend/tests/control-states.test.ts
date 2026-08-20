@@ -118,11 +118,11 @@ const controls: readonly Control[] = [
         ) / 100,
       ),
     selectedText: (palette) => palette.color('sidebar-item-active-text'),
-    thumbStates: () =>
-      shares(
-        'ViewTabs.svelte',
-        /var\(--sidebar-item-active-text\) (?<share>[\d.]+)%, var\(--sidebar-thumb\)/gu,
-      ),
+    /* The shell redesign moved the selected row's pointer answers to elevation
+       alone - the thumb lifts on hover and lands on press, fill untouched - so
+       there are no mixes to read; the thumb's own colour is the only ground
+       the selected ink ever stands on. */
+    thumbStates: () => [],
     restingText: (palette) => palette.color('sidebar-text-muted'),
     hoverText: (palette) => palette.color('sidebar-text'),
   },
@@ -217,10 +217,14 @@ describe.each(palettes.map((palette) => [palette.name, palette] as const))(
 
         it("keeps the selection's own states quieter than the selection itself", () => {
           // Acknowledging a pointer must not outshout the state it is acknowledging, and the press
-          // that changes nothing should be the faintest thing on the control.
-          const [onHover, onPress] = control
-            .thumbStates()
-            .map((share) => mix(control.selectedText(palette), thumb, share));
+          // that changes nothing should be the faintest thing on the control. A control whose
+          // selected thumb answers with elevation alone has no fills to compare - the lift and
+          // the landing are its whole acknowledgment.
+          const states = control.thumbStates();
+          if (states.length === 0) return;
+          const [onHover, onPress] = states.map((share) =>
+            mix(control.selectedText(palette), thumb, share),
+          );
           if (onHover === undefined || onPress === undefined)
             throw new Error('missing thumb state');
           expect(deltaE(thumb, onHover)).toBeLessThan(fill);

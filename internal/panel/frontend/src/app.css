@@ -272,12 +272,6 @@
   --sidebar-seg-hover: color-mix(in srgb, var(--sidebar-menu-text) 5.5%, var(--sidebar-seg-track));
   --sidebar-seg-pressed: color-mix(in srgb, var(--sidebar-menu-text) 11%, var(--sidebar-seg-track));
   --sidebar-seg-shadow: 0 1px 3px rgb(24 33 31 / 14%), 0 0 0 0.5px rgb(24 33 31 / 12%);
-  --switcher-card-bg: #ffffff;
-  --switcher-card-border: #b3c0ba;
-  --switcher-card-hover: #fafbfa;
-  --sidebar-root-accent: #6d54bd;
-  --role-chip-bg: #efeaf9;
-  --role-chip-text: #5b459f;
   /* Unread dot and count pill: one vivid alert red for every sidebar context.
      The muted danger tone reads as wine on light and vanishes on the dark
      purple root sidebar; this red holds 4.9:1 under white ink and stays over
@@ -659,12 +653,6 @@
   --sidebar-seg-pressed: #000000;
   /* Inset for the same reason as --segment-shadow above. */
   --sidebar-seg-shadow: 0 1px 3px rgb(0 0 0 / 40%), inset 0 0 0 0.5px rgb(255 255 255 / 14%);
-  --switcher-card-bg: #171e26;
-  --switcher-card-border: #39434f;
-  --switcher-card-hover: #1c242e;
-  --sidebar-root-accent: #c4b5fd;
-  --role-chip-bg: #2a2440;
-  --role-chip-text: #c4b5fd;
   /* Same alert pair as light: the vivid red carries its own contrast, so it
      does not follow the theme's pale danger tone. */
   --unread-badge-bg: #d03339;
@@ -941,13 +929,6 @@ body {
   --sidebar-seg-hover: color-mix(in srgb, black 36%, var(--sidebar-seg-track));
   --sidebar-seg-pressed: color-mix(in srgb, black 66%, var(--sidebar-seg-track));
   --sidebar-seg-shadow: 0 1px 3px rgb(0 0 0 / 46%), inset 0 0 0 0.5px rgb(255 255 255 / 14%);
-  --switcher-card-bg: #1d1928;
-  --switcher-card-border: #473e5e;
-  --switcher-card-hover: #272133;
-  --sidebar-root-accent: #c4b5fd;
-  --role-chip-bg: #372e50;
-  --role-chip-text: #cfc0ff;
-
   /* A var() inside a custom property resolves where the property is DECLARED,
      so every derived token above rides the panel palette unless restated at
      the element this class swaps the palette on. Restating the expression is

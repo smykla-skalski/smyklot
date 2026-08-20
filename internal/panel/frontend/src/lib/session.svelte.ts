@@ -91,9 +91,6 @@ export class PanelSession {
   /** Set from the stream's handshake; see `StreamLiveness`. */
   private readonly stream: StreamLiveness;
   sessionEnded = $state<SessionEnded | null>(null);
-  identityBar = $state<ReturnType<typeof import('./components/IdentityBar.svelte').default> | null>(
-    null,
-  );
 
   theme = $state<ThemeDisplay>('system');
   sidebarCollapsed = $state(false);
