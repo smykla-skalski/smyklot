@@ -58,6 +58,7 @@ import {
   type RootInstallationView,
   type RootRoute,
   type RootSection,
+  type SyncSection,
   type RouteDialog,
   type SyncPage,
 } from './routes';
@@ -438,6 +439,37 @@ export class PanelSession {
     const target = this.selectedTarget;
     if (target === null || this.currentHistorySection === section) return;
     void this.navigate(this.routeFor(target, 'history', section));
+  }
+
+  // --- Sync sections ---
+
+  /** The sync section the address names; the bare view is the overview. */
+  get currentSyncSection(): SyncSection {
+    const route = this.parsedRoute;
+    if (route !== null && 'view' in route && route.view === 'sync' && route.sync !== undefined) {
+      return route.sync;
+    }
+    return 'overview';
+  }
+
+  selectSyncSection(section: SyncSection): void {
+    const target = this.selectedTarget;
+    if (target === null) return;
+    if (this.currentView === 'sync' && this.currentSyncSection === section) return;
+    void this.navigate(this.syncRoute(target, section));
+  }
+
+  syncSectionHref(section: SyncSection): string {
+    const target = this.selectedTarget;
+    if (target === null) return '#';
+    return panelAddress(this.syncRoute(target, section));
+  }
+
+  private syncRoute(target: PanelTarget, section: SyncSection): PanelRoute {
+    const account = target.account.login;
+    return section === 'overview'
+      ? { account, view: 'sync' }
+      : { account, view: 'sync', sync: section };
   }
 
   // --- One repository ---

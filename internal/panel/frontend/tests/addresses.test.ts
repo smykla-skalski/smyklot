@@ -40,6 +40,16 @@ const CASES: Array<{ route: PanelRoute; id: RouteId; params: Record<string, stri
     params: { account: 'acme', section: 'failures' },
   },
   {
+    route: { account: 'acme', view: 'sync', sync: 'plan' },
+    id: '/i/[account]/sync/[section=syncSection]',
+    params: { account: 'acme', section: 'plan' },
+  },
+  {
+    route: { account: 'acme', view: 'sync', sync: 'rulesets' },
+    id: '/i/[account]/sync/[section=syncSection]',
+    params: { account: 'acme', section: 'rulesets' },
+  },
+  {
     // A bare repository segment means the pane the page opens on, which reading it back
     // says out loud - so the shape that comes out is the normalised one.
     route: {

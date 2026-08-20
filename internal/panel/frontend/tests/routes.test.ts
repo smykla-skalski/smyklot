@@ -53,6 +53,28 @@ describe('panel routes', () => {
     });
   });
 
+  it('parses sync sections and refuses what is not one', () => {
+    // The bare view is the overview - the section is not written into the path.
+    expect(parsePanelRoute('', '/i/smykla-skalski/sync')).toEqual({
+      account: 'smykla-skalski',
+      view: 'sync',
+    });
+    expect(parsePanelRoute('', '/i/smykla-skalski/sync/plan')).toEqual({
+      account: 'smykla-skalski',
+      view: 'sync',
+      sync: 'plan',
+    });
+    expect(parsePanelRoute('', '/i/smykla-skalski/sync/labels')).toEqual({
+      account: 'smykla-skalski',
+      view: 'sync',
+      sync: 'labels',
+    });
+    // `overview` is never written, so an address naming it does not resolve.
+    expect(parsePanelRoute('', '/i/smykla-skalski/sync/overview')).toBeNull();
+    expect(parsePanelRoute('', '/i/smykla-skalski/sync/nonsense')).toBeNull();
+    expect(parsePanelRoute('', '/i/smykla-skalski/sync/plan/extra')).toBeNull();
+  });
+
   it('parses Root routes without treating them as installations', () => {
     expect(parsePanelRoute('', '/root')).toEqual({ rootView: 'overview' });
     expect(parsePanelRoute('/panel', '/panel/root/installations')).toEqual({

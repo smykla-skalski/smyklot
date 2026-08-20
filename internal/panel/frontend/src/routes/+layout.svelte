@@ -16,10 +16,12 @@
   import { prefText } from '#lib/preferences-sync.js';
   import type { PanelTarget } from '#lib/types.js';
   import {
+    SYNC_SECTIONS,
     panelViewSection,
     routeSegmentLabel,
     type PanelView,
     type RootSection,
+    type SyncSection,
   } from '#lib/routes.js';
   import type { ThemeDisplay } from '#lib/preferences.js';
 
@@ -227,6 +229,26 @@
     if (event.key === 'Escape' && drawerOpen) drawerOpen = false;
   }
 
+  /* The waiting plan's scale, spoken quietly on the sidebar's Plan row. Only a
+     computed plan is waiting on anyone - an applied or expired one is history. */
+  const syncPlanQuery = createQuery(
+    () => ({
+      queryKey: ['sync-plan', session.selectedTarget?.id],
+      queryFn: () => api.fetchSyncPlan(session.selectedTarget?.id ?? ''),
+      enabled:
+        session.isInvitation === false &&
+        session.viewer !== null &&
+        !session.isRootMode &&
+        session.selectedTarget !== null,
+    }),
+    () => queryClient,
+  );
+  const planCount = $derived.by((): number | undefined => {
+    const plan = syncPlanQuery.data?.plan;
+    if (plan === null || plan === undefined || plan.state !== 'computed') return undefined;
+    return plan.counts.create + plan.counts.update + plan.counts.delete;
+  });
+
   /* The workspace console's map. Users wears the Access label the section
      grammar already gives it, and stays lit on the invitations view. */
   const WORKSPACE_ORDER = ['settings', 'repositories', 'sync', 'users', 'history'] as const;
@@ -237,6 +259,20 @@
     users: 'users',
     history: 'history',
   } as const;
+
+  const syncKids = $derived(
+    SYNC_SECTIONS.map((section) => ({
+      id: section,
+      label: routeSegmentLabel(section),
+      href: session.syncSectionHref(section),
+      active:
+        !session.isInbox &&
+        session.currentView === 'sync' &&
+        session.currentSyncSection === section,
+      count: section === 'plan' ? planCount : undefined,
+      signal: section === 'plan' && planCount !== undefined,
+    })),
+  );
 
   const workspacePages = $derived.by((): SidebarPage[] =>
     WORKSPACE_ORDER.filter(
@@ -251,6 +287,7 @@
         !session.isInbox &&
         (session.currentView === view ||
           (view === 'users' && session.currentView === 'invitations')),
+      kids: view === 'sync' ? syncKids : undefined,
     })),
   );
 
@@ -364,7 +401,10 @@
             if (session.isRootMode) session.selectRootSection(pageRow.id as RootSection);
             else session.selectView(pageRow.id as PanelView);
           }}
-          onSelectKid={() => (drawerOpen = false)}
+          onSelectKid={(pageRow, kid) => {
+            drawerOpen = false;
+            if (pageRow.id === 'sync') session.selectSyncSection(kid.id as SyncSection);
+          }}
         />
       {/if}
 
