@@ -13,7 +13,7 @@
    * CSSOM, and CSP does not govern that. (Spelled "style element" here
    * because svelte2tsx scans script comments for tags.)
    */
-  import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
+  import { defaultKeymap, history, historyKeymap, undo, undoDepth } from '@codemirror/commands';
   import { json } from '@codemirror/lang-json';
   import { markdown } from '@codemirror/lang-markdown';
   import { yaml } from '@codemirror/lang-yaml';
@@ -42,6 +42,7 @@
     readOnly = false,
     overridden = null,
     onChange,
+    onHistory,
   }: {
     value: string;
     lang?: CodeLang;
@@ -49,7 +50,14 @@
     /** 1-indexed lines to mark as overridden - the blue gutter bar. */
     overridden?: ReadonlySet<number> | null;
     onChange: (text: string) => void;
+    /** How many steps the editor's own history can take back. */
+    onHistory?: (depth: number) => void;
   } = $props();
+
+  /** The visible twin of Ctrl/Cmd+Z - a page button steps the same history. */
+  export function undoEdit(): void {
+    if (view !== null) undo(view);
+  }
 
   /* The same inks CodeBlock's tokenizer classes wear, on lezer's tags. */
   const inks = HighlightStyle.define([
@@ -195,6 +203,7 @@
         marks.of([]),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) onChange(update.state.doc.toString());
+          onHistory?.(undoDepth(update.state));
         }),
         surface,
       ],

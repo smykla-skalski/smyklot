@@ -67,7 +67,7 @@
     editorLogin?: string;
     sectionHref: (section: SyncSection) => string;
     onOpenSection: (section: SyncSection) => void;
-    onSave: (enabled: boolean, document: Record<string, unknown>) => void;
+    onSave: (enabled: boolean, document: Record<string, unknown>) => Promise<boolean>;
     fetchOverride: (repositoryId: string) => Promise<SyncOverride>;
     saveOverride: (repositoryId: string, input: SyncOverrideInput) => Promise<SyncOverride>;
   } = $props();
@@ -98,22 +98,45 @@
     return 'merges · deep';
   });
 
+  /* The whisper is the save receipt, one per card head - the same voice
+     the labels page answers every landed save with. */
+  let templateSavedOn = $state(false);
+  let mergeSavedOn = $state(false);
+  let templateSavedTimer: ReturnType<typeof setTimeout> | undefined;
+  let mergeSavedTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function whisperTemplate(): void {
+    templateSavedOn = true;
+    clearTimeout(templateSavedTimer);
+    templateSavedTimer = setTimeout(() => (templateSavedOn = false), 1400);
+  }
+
+  function whisperMerge(): void {
+    mergeSavedOn = true;
+    clearTimeout(mergeSavedTimer);
+    mergeSavedTimer = setTimeout(() => (mergeSavedOn = false), 1400);
+  }
+
+  /* How long an edit rests before it is written. Long enough to type a
+     word, short enough that the receipt answers the pause. */
+  const SAVE_REST_MS = 900;
+
   /* ---------- The template, editable in place ---------- */
 
   /* Null while untouched, so a save elsewhere refreshing the config never
      fights an edit in progress. */
   let templateDraft = $state<string | null>(null);
+  let templateUndoDepth = $state(0);
+  let templateEditor = $state<CodeEditor | null>(null);
+  let savingTemplate = false;
 
   const templateText = $derived(templateDraft ?? file?.content ?? '');
-  const templateDirty = $derived(
-    file !== null && templateDraft !== null && templateDraft !== file.content,
-  );
 
-  function saveTemplate(): void {
+  async function saveTemplate(): Promise<void> {
     const next = templateDraft;
-    if (file === null || next === null || next === file.content) return;
-    templateDraft = null;
-    onSave(enabled, {
+    if (file === null || next === null || next === file.content || savingTemplate) return;
+    savingTemplate = true;
+    const ok = await onSave(enabled, {
       ...stored,
       files: files.map((held) =>
         held.path === path
@@ -126,7 +149,22 @@
           : held,
       ),
     });
+    savingTemplate = false;
+    if (ok) {
+      whisperTemplate();
+      /* The config now carries the text; further edits start a fresh draft. */
+      if (templateDraft === next) templateDraft = null;
+    }
   }
+
+  /* Edits save themselves once the typing rests - no Save press, the
+     whisper is the receipt and the editor's own history is the way back. */
+  $effect(() => {
+    const next = templateDraft;
+    if (next === null || file === null || next === file.content || frozen) return;
+    const timer = setTimeout(() => void saveTemplate(), SAVE_REST_MS);
+    return () => clearTimeout(timer);
+  });
 
   /* ---------- One adjustment open at a time ---------- */
 
@@ -209,11 +247,6 @@
   const openEntry = $derived(adjusters.find((entry) => entry.repository_id === openRepo) ?? null);
   const openMerge = $derived((openEntry?.merge ?? null) as FileMergeSpec | null);
 
-  /** The stored adjustment's composed copy - what Discard returns to. */
-  const composed = $derived(
-    file === null || openMerge === null ? null : composeMergedText(file.content, openMerge),
-  );
-
   /** The override the edited copy amounts to, live as the text changes. */
   const staged = $derived.by(() => {
     if (file === null || editedText === null || openMerge === null) return null;
@@ -232,15 +265,22 @@
     staged === null ? null : mergeSummary(specOf(staged.overrides, staged.arrays)),
   );
 
-  const dirty = $derived.by(() => {
-    if (editedText === null || composed === null) return false;
-    if (editedText !== composed) return true;
-    const stored = JSON.stringify(
-      (openMerge?.arrays ?? []).map((rule) => [rule.path, rule.strategy]).sort(),
-    );
-    const staged = JSON.stringify(answers.map((rule) => [rule.path, rule.strategy]).sort());
-    return stored !== staged;
-  });
+  /* One canonical spelling for a merge, so "did anything change" never
+     hangs on key order. */
+  function canonical(value: unknown): string {
+    if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+    if (typeof value === 'object' && value !== null) {
+      const record = value as Record<string, unknown>;
+      const keys = Object.keys(record).sort();
+      return `{${keys.map((key) => `${JSON.stringify(key)}:${canonical(record[key])}`).join(',')}}`;
+    }
+    return JSON.stringify(value) ?? 'null';
+  }
+
+  const stagedKey = $derived(staged === null ? null : canonical([staged.overrides, staged.arrays]));
+  const storedKey = $derived(
+    openMerge === null ? null : canonical([openMerge.overrides ?? {}, openMerge.arrays ?? []]),
+  );
 
   /* A trailing comma is the seam an inserted neighbour leaves on a line
      whose content did not change - the gutter should not mark it. A comma
@@ -301,19 +341,50 @@
     }
   }
 
+  /* A save that failed parks its input: the effect below will not retry the
+     same bytes on its own, only a further edit re-arms it. Without this a
+     revision conflict would knock every 900ms for ever. */
+  let stalledKey = $state<string | null>(null);
+
   async function saveEdits(): Promise<void> {
     if (staged === null || savingMerge) return;
+    const wanted = stagedKey;
     const emptied = Object.keys(staged.overrides).length === 0;
     const next = emptied ? null : specOf(staged.overrides, staged.arrays);
     savingMerge = true;
     const saved = await saveMerge(next);
     savingMerge = false;
-    if (saved && next !== null) seedEdits(next);
+    if (!saved) {
+      stalledKey = wanted;
+      return;
+    }
+    stalledKey = null;
+    if (saved) {
+      whisperMerge();
+      /* The stored copy now says what the editor says - the text stays the
+         user's own bytes, and the editor's history is the way back. */
+      if (next !== null) answers = next.arrays ?? [];
+    }
   }
 
-  function discardEdits(): void {
-    if (openMerge !== null) seedEdits(openMerge);
-  }
+  /* Edits write themselves back once they rest, the same contract as every
+     other sync page: no Save press, the whisper answers, Ctrl/Cmd+Z (or the
+     Undo button) walks back. An edit that does not parse simply waits. */
+  $effect(() => {
+    const wanted = stagedKey;
+    const held = storedKey;
+    if (wanted === null || held === null || wanted === held) return;
+    /* No revision to write against until the override arrives. `held` is
+       state, so its arrival re-arms this effect on its own. */
+    if (frozen || savingMerge || wanted === stalledKey || heldOverride === null) return;
+    const timer = setTimeout(() => void saveEdits(), SAVE_REST_MS);
+    return () => clearTimeout(timer);
+  });
+
+  const heldOverride = $derived(held);
+
+  let resultUndoDepth = $state(0);
+  let resultEditor = $state<CodeEditor | null>(null);
 
   /** The x on a patch chip: the edited copy takes those lines back. */
   function dropKey(key: string): void {
@@ -372,27 +443,32 @@
     <div class="card">
       <div class="card-head">
         <h3 class="card-title">Template</h3>
+        <span class="save-whisper" class:is-on={templateSavedOn} role="status"
+          ><Icon name="check" size={12} /><span class="t">Saved</span></span
+        >
         <div class="head-tools">
+          {#if templateUndoDepth > 0}
+            <Button tone="quiet" onclick={() => templateEditor?.undoEdit()}>Undo</Button>
+          {/if}
           <span class="pill pill-neutral"><span class="t">{strategyPill}</span></span>
         </div>
       </div>
       <CodeEditor
+        bind:this={templateEditor}
         value={templateText}
         {lang}
         readOnly={frozen}
         onChange={(text) => (templateDraft = text)}
+        onHistory={(depth) => (templateUndoDepth = depth)}
       />
-      {#if templateDirty}
-        <div class="rule-edit-foot">
-          <Button tone="quiet" onclick={() => (templateDraft = null)}>Discard</Button>
-          <Button tone="signal" disabled={frozen} onclick={saveTemplate}>Save</Button>
-        </div>
-      {/if}
     </div>
 
     <div class="card">
       <div class="card-head">
         <h3 class="card-title">Repository adjustments</h3>
+        <span class="save-whisper" class:is-on={mergeSavedOn} role="status"
+          ><Icon name="check" size={12} /><span class="t">Saved</span></span
+        >
         <span class="object-sum"
           >{adjusters.length} of {context?.repositories ?? 0}
           {adjusters.length === 1 ? 'repository changes' : 'repositories change'} this file</span
@@ -429,6 +505,9 @@
               <div class="merge-pane-title">
                 <span class="t">What {entry.repository} ends up with</span>
                 <span class="pane-tools">
+                  {#if editedText !== null && resultUndoDepth > 0}
+                    <Button tone="quiet" onclick={() => resultEditor?.undoEdit()}>Undo</Button>
+                  {/if}
                   {#if editedText !== null}
                     <Button tone="quiet" onclick={() => (sideBySide = !sideBySide)}>
                       {sideBySide ? 'Hide the template' : 'Show the template beside it'}
@@ -453,19 +532,23 @@
                       <span class="t">{entry.repository}'s copy</span>
                     </div>
                     <CodeEditor
+                      bind:this={resultEditor}
                       value={editedText}
                       readOnly={frozen}
                       overridden={overriddenLines}
                       onChange={(text) => (editedText = text)}
+                      onHistory={(depth) => (resultUndoDepth = depth)}
                     />
                   </div>
                 </div>
               {:else}
                 <CodeEditor
+                  bind:this={resultEditor}
                   value={editedText}
                   readOnly={frozen}
                   overridden={overriddenLines}
                   onChange={(text) => (editedText = text)}
+                  onHistory={(depth) => (resultUndoDepth = depth)}
                 />
               {/if}
               {#if editedText !== null && staged === null}
@@ -537,18 +620,6 @@
                   </div>
                 </div>
               {/each}
-
-              {#if dirty}
-                <div class="rule-edit-foot">
-                  <Button tone="quiet" disabled={savingMerge} onclick={discardEdits}>Discard</Button
-                  >
-                  <Button
-                    tone="signal"
-                    disabled={frozen || savingMerge || staged === null || held === null}
-                    onclick={() => void saveEdits()}>Save</Button
-                  >
-                </div>
-              {/if}
             </div>
           {/if}
         </div>
@@ -644,13 +715,29 @@
     color: var(--text-secondary);
   }
 
-  .rule-edit-foot {
-    border-top: 1px solid var(--border-subtle);
-    display: flex;
-    gap: var(--space-2);
-    justify-content: flex-end;
-    margin-top: var(--space-3);
-    padding-top: var(--space-3);
+  /* The save receipt: one voice in the card head, on for a beat after any
+     landed save, then gone. */
+  .save-whisper {
+    align-items: center;
+    color: var(--text-muted);
+    display: inline-flex;
+    font-size: var(--font-size-micro);
+    gap: 4px;
+    margin-inline-start: auto;
+    opacity: 0;
+    transition: opacity var(--duration-fast) var(--ease-standard);
+  }
+
+  .save-whisper.is-on {
+    opacity: 1;
+  }
+
+  .save-whisper :global(svg) {
+    color: var(--success);
+  }
+
+  .save-whisper .t {
+    text-box: trim-both cap alphabetic;
   }
 
   /* ---------- The adjuster rows ---------- */

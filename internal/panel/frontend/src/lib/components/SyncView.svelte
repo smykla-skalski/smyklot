@@ -227,9 +227,9 @@
     kind: DocumentKind,
     wanted: boolean,
     document: Record<string, unknown>,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const current = documents[kind];
-    if (current === null) return;
+    if (current === null) return false;
 
     savingDocument = { ...savingDocument, [kind]: true };
     documentError = { ...documentError, [kind]: null };
@@ -241,8 +241,10 @@
       });
       documents = { ...documents, [kind]: saved };
       plan = (await fetchPlan(targetId)).plan;
+      return true;
     } catch (cause) {
       documentError = { ...documentError, [kind]: messageOf(cause) };
+      return false;
     } finally {
       savingDocument = { ...savingDocument, [kind]: false };
     }
@@ -375,7 +377,7 @@
       {editorLogin}
       {sectionHref}
       {onOpenSection}
-      onSave={(wanted, document) => void onSaveDocument(FILES, wanted, document)}
+      onSave={(wanted, document) => onSaveDocument(FILES, wanted, document)}
       fetchOverride={(repositoryId) => fetchOverride(targetId, repositoryId, FILES)}
       saveOverride={(repositoryId, input) => saveOverride(targetId, repositoryId, FILES, input)}
     />
