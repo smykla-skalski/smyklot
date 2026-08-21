@@ -50,6 +50,8 @@ import { canonicalStringify, PREF_DEFAULTS } from '../src/lib/preferences-sync.t
    nothing. They are their own module so the Storybook catalogue can read the same data
    this serves, and so importing them never drags `node:fs` into a browser. */
 import {
+  KNOWN_PATHS,
+  PSEUDO_REPO_NAMES,
   capabilitiesFor,
   cycled,
   DEFAULT_CONFIG,
@@ -1117,6 +1119,46 @@ async function handle(
           repositories: [],
         },
       );
+      return;
+    }
+
+    const syncFilesContextMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/files\/context$/.exec(
+      path.slice(route('').length),
+    );
+    if (syncFilesContextMatch && method === 'GET') {
+      const targetId = decodeURIComponent(syncFilesContextMatch[1] ?? '');
+      const status = state.syncStatus.get(targetId);
+      const rows = status?.repositories ?? [];
+      const covered = rows.filter((row) => row.cells.files.state !== 'off').length;
+      const merges: Array<{
+        repository: string;
+        repository_id: string;
+        path: string;
+        merge: Record<string, unknown>;
+      }> = [];
+      for (const [key, override] of state.syncOverrides) {
+        const [repositoryId, kind] = key.split('/');
+        if (kind !== 'files' || repositoryId === undefined) continue;
+        const held = override.document.merges;
+        if (!Array.isArray(held)) continue;
+        const name =
+          PSEUDO_REPO_NAMES[repositoryId] ??
+          state.targets
+            .flatMap((target) => target.repositories)
+            .find((repository) => repository.detail.repository.id === repositoryId)?.detail
+            .repository.name ??
+          repositoryId;
+        for (const merge of held as Array<Record<string, unknown>>) {
+          if (typeof merge.path !== 'string') continue;
+          merges.push({ repository: name, repository_id: repositoryId, path: merge.path, merge });
+        }
+      }
+      respond(res, 200, {
+        repositories: rows.length,
+        covered,
+        known_paths: KNOWN_PATHS,
+        merges,
+      });
       return;
     }
 

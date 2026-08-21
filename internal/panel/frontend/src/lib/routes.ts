@@ -169,6 +169,11 @@ export type InstallationRoute = {
    * present with `sync === 'rulesets'` - the list is the level above it.
    */
   syncRuleset?: string;
+  /**
+   * One template's own page, addressed by the path itself - slashes and
+   * all. Only ever present with `sync === 'files'`.
+   */
+  syncFile?: string;
   /** What is open on top of the view; see `route-dialogs`. */
   dialog?: RouteDialog;
 };
@@ -412,24 +417,29 @@ function parseSection(
 function parseTrailingSync(
   view: string,
   segments: string[],
-): Pick<InstallationRoute, 'sync' | 'syncRuleset'> | undefined | 'invalid' {
+): Pick<InstallationRoute, 'sync' | 'syncRuleset' | 'syncFile'> | undefined | 'invalid' {
   if (view !== 'sync' || segments.length === 0) return undefined;
-  if (segments.length > 2) return 'invalid';
 
-  const [rawSection, encodedName] = segments;
+  const [rawSection, ...encodedRest] = segments;
   const sync = WRITTEN_SYNC_SECTIONS.find((section) => section === rawSection);
   if (sync === undefined) return 'invalid';
-  if (encodedName === undefined) return { sync };
-  if (sync !== 'rulesets') return 'invalid';
+  if (encodedRest.length === 0) return { sync };
+  /* Only the two object sections list named things. A ruleset's name is one
+     segment; a file's path is as many as it carries slashes. */
+  if (sync !== 'rulesets' && sync !== 'files') return 'invalid';
+  if (sync === 'rulesets' && encodedRest.length > 1) return 'invalid';
 
-  let name: string;
+  let parts: string[];
   try {
-    name = decodeURIComponent(encodedName);
+    parts = encodedRest.map((segment) => decodeURIComponent(segment));
   } catch {
     return 'invalid';
   }
+  if (parts.some((part) => part.trim() === '')) return 'invalid';
 
-  return name.trim() === '' ? 'invalid' : { sync, syncRuleset: name };
+  return sync === 'rulesets'
+    ? { sync, syncRuleset: parts[0] ?? '' }
+    : { sync, syncFile: parts.join('/') };
 }
 
 function parseRootRoute(parts: string[]): RootRoute | null {

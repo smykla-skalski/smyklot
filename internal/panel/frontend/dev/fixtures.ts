@@ -510,15 +510,87 @@ export function seed(
           document: {
             merges: [
               {
-                path: 'renovate.json',
-                strategy: 'deep-merge',
-                overrides: { timezone: 'Europe/Warsaw', schedule: ['* 4 * * 6'] },
+                path: 'CONTRIBUTING.md',
+                strategy: 'markdown',
+                sections: [
+                  { action: 'after', heading: '## Commits', content: '- Squash on merge' },
+                ],
               },
             ],
           },
           revision: 1,
           updated_by: 'bart',
           updated_at: iso(-2 * 60 * 60_000),
+          unreadable: false,
+        },
+      ],
+      /* The design's three renovate adjusters, on the board's own fleet -
+         pseudo repository ids the mock resolves names for. */
+      [
+        '9101/files',
+        {
+          kind: 'files',
+          enabled: null,
+          document: {
+            merges: [
+              {
+                path: 'renovate.json',
+                strategy: 'deep-merge',
+                overrides: {
+                  schedule: ['* 4 * * 1-5'],
+                  timezone: 'Europe/Warsaw',
+                  packageRules: [{ matchManagers: ['npm'], groupName: 'frontend packages' }],
+                },
+                arrays: [{ path: 'packageRules', strategy: 'append' }],
+              },
+            ],
+          },
+          revision: 2,
+          updated_by: 'bart',
+          updated_at: iso(-3 * 60 * 60_000),
+          unreadable: false,
+        },
+      ],
+      [
+        '9102/files',
+        {
+          kind: 'files',
+          enabled: null,
+          document: {
+            merges: [
+              {
+                path: 'renovate.json',
+                strategy: 'deep-merge',
+                overrides: {
+                  packageRules: [{ matchManagers: ['dockerfile'], groupName: 'images' }],
+                },
+                arrays: [{ path: 'packageRules', strategy: 'append' }],
+              },
+            ],
+          },
+          revision: 1,
+          updated_by: 'kasia',
+          updated_at: iso(-26 * 60 * 60_000),
+          unreadable: false,
+        },
+      ],
+      [
+        '9103/files',
+        {
+          kind: 'files',
+          enabled: null,
+          document: {
+            merges: [
+              {
+                path: 'renovate.json',
+                strategy: 'deep-merge',
+                overrides: { automerge: null },
+              },
+            ],
+          },
+          revision: 1,
+          updated_by: 'tomasz',
+          updated_at: iso(-4 * 24 * 60 * 60_000),
           unreadable: false,
         },
       ],
@@ -763,34 +835,78 @@ export function syncFilesSeed(iso: (offsetMs: number) => string): SyncConfig {
     updated_by: 'bart',
     updated_at: iso(-20 * 60_000),
     digest: 'sha256:files',
+    /* The design's five templates, content for content - the file pages are
+       compared against the mock screen by screen. Each entry carries its own
+       freshness; the panel writes it on save, and the page falls back to the
+       configuration's when an entry has none. */
     document: {
       files: [
         {
-          path: 'CONTRIBUTING.md',
-          content:
-            '# Contributing\n\nOpen a pull request against `{{DEFAULT_BRANCH}}`.\n' +
-            'Every change needs a review from a code owner.\n',
-        },
-        {
           path: 'renovate.json',
-          content: '{\n  "extends": ["config:recommended"],\n  "timezone": "UTC"\n}\n',
-        },
-        /* Five templates, like the design's overview counts. */
-        {
-          path: '.github/CODEOWNERS',
-          content: '* @smykla-skalski/maintainers\n',
-        },
-        {
-          path: '.editorconfig',
-          content: 'root = true\n\n[*]\nindent_style = space\nindent_size = 2\n',
+          content: [
+            '{',
+            '  "$schema": "https://docs.renovatebot.com/renovate-schema.json",',
+            '  "extends": ["config:recommended"],',
+            '  // Weekend runs keep review noise out of the working week',
+            '  "schedule": ["* 4 * * 6"],',
+            '  "timezone": "UTC",',
+            '  "packageRules": [',
+            '    { "matchManagers": ["gomod"], "groupName": "go modules" }',
+            '  ],',
+            '  "automerge": false',
+            '}',
+          ].join('\n'),
+          updated_at: iso(-2 * 24 * 60 * 60_000),
+          updated_by: 'bartsmykla',
         },
         {
           path: '.github/workflows/ci.yaml',
-          content: 'name: CI\non: [push]\njobs:\n  test:\n    runs-on: ubuntu-latest\n',
+          content: [
+            'name: test',
+            'on:',
+            '  push:',
+            '    branches: [main]',
+            'jobs:',
+            '  test:',
+            '    runs-on: ubuntu-latest',
+            '    steps:',
+            '      # Pinned by digest, never by tag',
+            '      - uses: actions/checkout@8edcb1b',
+            '      - run: mise run ci',
+          ].join('\n'),
+          updated_at: iso(-5 * 24 * 60 * 60_000),
+          updated_by: 'bart',
+        },
+        {
+          path: 'CONTRIBUTING.md',
+          content: [
+            '# Contributing',
+            '',
+            'Open a pull request against `main`.',
+            '',
+            '## Commits',
+            '',
+            '- Conventional commits: `feat:`, `fix:`, `docs:`',
+            '- Sign-off and GPG sign: `-sS`',
+          ].join('\n'),
+          updated_at: iso(-21 * 24 * 60 * 60_000),
+          updated_by: 'bart',
+        },
+        {
+          path: '.github/CODEOWNERS',
+          content: '* @smykla-skalski/maintainers\n',
+          updated_at: iso(-21 * 24 * 60 * 60_000),
+          updated_by: 'bart',
+        },
+        {
+          path: 'LICENSE',
+          content: 'Apache License 2.0\n',
+          updated_at: iso(-4 * 30 * 24 * 60 * 60_000),
+          updated_by: 'bart',
         },
       ],
-      retired: ['.github/workflows/sync-trigger.yml'],
-      excludes: ['LICENSE'],
+      retired: ['.github/stale.yml'],
+      excludes: ['LICENSE-*'],
     },
     unreadable: false,
     unavailable: '',
@@ -1645,3 +1761,49 @@ export function rootPanelUsers(state: MockState): RootPanelUser[] {
     can_manage_system_role: user.account.id !== VIEWER.id && user.system_role !== 'super_root',
   }));
 }
+
+/**
+ * The board's fleet names for the adjusting repositories the mock's
+ * repository table does not hold - the sync fiction and the repository
+ * fiction predate each other, and the file pages speak the board's.
+ */
+export const PSEUDO_REPO_NAMES: Record<string, string> = {
+  '9101': 'af',
+  '9102': 'afi',
+  '9103': 'harness',
+};
+
+/**
+ * The path index the finder matches over: every path any repository in the
+ * installation holds, deduped, with how many hold it.
+ */
+export const KNOWN_PATHS: Array<{ path: string; repositories: number }> = [
+  { path: '.github/workflows/ci.yaml', repositories: 25 },
+  { path: '.github/workflows/release.yaml', repositories: 18 },
+  { path: '.github/workflows/pages.yaml', repositories: 3 },
+  { path: '.github/workflows/pr-commands.yaml', repositories: 6 },
+  { path: '.github/CODEOWNERS', repositories: 25 },
+  { path: '.github/dependabot.yml', repositories: 9 },
+  { path: '.github/stale.yml', repositories: 2 },
+  { path: '.github/renovate.json5', repositories: 4 },
+  { path: 'renovate.json', repositories: 21 },
+  { path: 'CONTRIBUTING.md', repositories: 24 },
+  { path: 'README.md', repositories: 25 },
+  { path: 'LICENSE', repositories: 25 },
+  { path: 'Makefile', repositories: 14 },
+  { path: 'mise.toml', repositories: 11 },
+  { path: '.golangci.yml', repositories: 8 },
+  { path: 'Dockerfile', repositories: 12 },
+  { path: 'docs/getting-started.md', repositories: 7 },
+  { path: 'cmd/main.go', repositories: 9 },
+  { path: 'pkg/config/config.go', repositories: 6 },
+  { path: 'internal/server/server.go', repositories: 4 },
+  { path: 'charts/app/values.yaml', repositories: 5 },
+  { path: 'charts/app/Chart.yaml', repositories: 5 },
+  { path: 'scripts/release.sh', repositories: 8 },
+  { path: 'scripts/test.sh', repositories: 10 },
+  { path: '.editorconfig', repositories: 17 },
+  { path: '.gitignore', repositories: 25 },
+  { path: 'SECURITY.md', repositories: 13 },
+  { path: 'CODE_OF_CONDUCT.md', repositories: 12 },
+];

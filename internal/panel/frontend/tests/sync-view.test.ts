@@ -79,6 +79,12 @@ describe('SyncView [Component]', () => {
       onOpenSection: () => {},
       rulesetHref: (name: string) => `#/sync/rulesets/${name}`,
       onOpenRuleset: () => {},
+      fileHref: (path: string) => `#/sync/files/${path}`,
+      onOpenFile: () => {},
+      fetchFilesContext: () =>
+        Promise.resolve({ repositories: 0, covered: 0, known_paths: [], merges: [] }),
+      fetchOverride: () => Promise.reject(new Error('not in this test')),
+      saveOverride: () => Promise.reject(new Error('not in this test')),
     });
   }
 
@@ -123,6 +129,12 @@ describe('SyncView [Component]', () => {
       onOpenSection: () => {},
       rulesetHref: (name: string) => `#/sync/rulesets/${name}`,
       onOpenRuleset: () => {},
+      fileHref: (path: string) => `#/sync/files/${path}`,
+      onOpenFile: () => {},
+      fetchFilesContext: () =>
+        Promise.resolve({ repositories: 0, covered: 0, known_paths: [], merges: [] }),
+      fetchOverride: () => Promise.reject(new Error('not in this test')),
+      saveOverride: () => Promise.reject(new Error('not in this test')),
     });
 
     await screen.findByRole('heading', { name: 'Rulesets' });
@@ -156,6 +168,12 @@ describe('SyncView [Component]', () => {
       onOpenSection: () => {},
       rulesetHref: (name: string) => `#/sync/rulesets/${name}`,
       onOpenRuleset: () => {},
+      fileHref: (path: string) => `#/sync/files/${path}`,
+      onOpenFile: () => {},
+      fetchFilesContext: () =>
+        Promise.resolve({ repositories: 0, covered: 0, known_paths: [], merges: [] }),
+      fetchOverride: () => Promise.reject(new Error('not in this test')),
+      saveOverride: () => Promise.reject(new Error('not in this test')),
     });
 
     await screen.findByRole('heading', { name: 'Shared files' });

@@ -12,7 +12,7 @@
   /* The files pane reads its own shape out of `document`, where labels and rulesets
      read theirs off named fields - so a fixture that answered every kind with the same
      empty document left the third tab drawing an empty form. This is the smallest
-     document that makes it a picture of something; `Views/SyncFilesForm` is where its
+     document that makes it a picture of something; `Views/SyncFilesPage` is where its
      own states are laid out. */
   const FILES_DOCUMENT = {
     files: [
@@ -98,6 +98,15 @@
     discardPlan: async () => {},
     rulesetHref: (name: string) => `#/sync/rulesets/${name}`,
     onOpenRuleset: () => {},
+    fileHref: (path: string) => `#/sync/files/${path}`,
+    onOpenFile: () => {},
+    fetchFilesContext: async () => ({ repositories: 0, covered: 0, known_paths: [], merges: [] }),
+    fetchOverride: async () => {
+      throw new Error('not in this story');
+    },
+    saveOverride: async () => {
+      throw new Error('not in this story');
+    },
   };
 
   const { Story } = defineMeta({ title: 'Views/SyncView', component: SyncView, args: base });

@@ -493,6 +493,34 @@ export class PanelSession {
     });
   }
 
+  /** The template page the address names, or null on the list and everywhere else. */
+  get currentSyncFile(): string | null {
+    const route = this.parsedRoute;
+    if (route !== null && 'view' in route && route.view === 'sync') {
+      return route.syncFile ?? null;
+    }
+    return null;
+  }
+
+  /** Opening a template is a place to come back from, so it pushes. */
+  selectSyncFile(path: string): void {
+    const target = this.selectedTarget;
+    if (target === null || this.currentSyncFile === path) return;
+    const account = target.account.login;
+    void this.navigate({ account, view: 'sync', sync: 'files', syncFile: path });
+  }
+
+  syncFileHref(path: string): string {
+    const target = this.selectedTarget;
+    if (target === null) return '#';
+    return panelAddress({
+      account: target.account.login,
+      view: 'sync',
+      sync: 'files',
+      syncFile: path,
+    });
+  }
+
   syncSectionHref(section: SyncSection): string {
     const target = this.selectedTarget;
     if (target === null) return '#';

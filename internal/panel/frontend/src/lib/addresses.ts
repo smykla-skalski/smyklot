@@ -2,6 +2,7 @@ import { resolve } from '$app/paths';
 import type { RouteId } from '$app/types';
 
 import {
+  decodeSegments,
   dialogSegments,
   isDialogHost,
   parseDialogSegments,
@@ -62,6 +63,14 @@ export function panelAddress(route: PanelRoute): string {
     return resolve('/i/[account]/sync/rulesets/[ruleset]', {
       account,
       ruleset: encodeURIComponent(route.syncRuleset),
+    });
+  }
+
+  /* One template's own page - the path IS the address, slash for slash. */
+  if (route.view === 'sync' && route.sync === 'files' && route.syncFile !== undefined) {
+    return resolve('/i/[account]/sync/files/[...file=syncFilePath]', {
+      account,
+      file: route.syncFile.split('/').map(encodeURIComponent).join('/'),
     });
   }
 
@@ -220,6 +229,18 @@ export function panelRouteAt(
       return { account, view: 'sync', sync: asSyncSection(section) };
     case '/i/[account]/sync/rulesets/[ruleset]':
       return { account, view: 'sync', sync: 'rulesets', syncRuleset: params.ruleset ?? '' };
+    case '/i/[account]/sync/files/[...file=syncFilePath]': {
+      /* A rest parameter arrives raw, the way the dialog paths do - decoded
+         segment by segment, so a path with an encoded character in a name
+         comes back as the name. */
+      const segments = decodeSegments((params.file ?? '').split('/'));
+      return {
+        account,
+        view: 'sync',
+        sync: 'files',
+        syncFile: segments === null ? '' : segments.join('/'),
+      };
+    }
     case '/i/[account]/repositories/[repository]/[[section=repositorySection]]':
       return { account, view: 'repositories', repository: repositoryAt(params) };
 

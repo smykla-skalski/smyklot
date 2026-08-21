@@ -10,12 +10,22 @@
    */
   import { untrack } from 'svelte';
 
-  import type { SyncConfig, SyncConfigInput, SyncKind, SyncPlan, SyncStatus } from '#lib/types.js';
+  import type {
+    SyncConfig,
+    SyncConfigInput,
+    SyncFilesContext,
+    SyncKind,
+    SyncOverride,
+    SyncOverrideInput,
+    SyncPlan,
+    SyncStatus,
+  } from '#lib/types.js';
   import type { SyncSection } from '#lib/routes.js';
 
   import FormError from './FormError.svelte';
   import PageHeader from './PageHeader.svelte';
-  import SyncFilesForm from './SyncFilesForm.svelte';
+  import SyncFilePage from './SyncFilePage.svelte';
+  import SyncFilesPage from './SyncFilesPage.svelte';
   import SyncLabelsPage from './SyncLabelsPage.svelte';
   import SyncOverview from './SyncOverview.svelte';
   import SyncPlanPage from './SyncPlanPage.svelte';
@@ -27,6 +37,8 @@
     targetId,
     section,
     rulesetName = null,
+    fileName = null,
+    editorLogin = '',
     readOnly,
     fetchConfig,
     saveConfig,
@@ -38,15 +50,34 @@
     onOpenSection,
     rulesetHref,
     onOpenRuleset,
+    fileHref,
+    onOpenFile,
+    fetchFilesContext,
+    fetchOverride,
+    saveOverride,
   }: {
     targetId: string;
     /** Which of the view's sections the address names; see `routes.ts`. */
     section: SyncSection;
     /** One ruleset's own page, when the address names one. */
     rulesetName?: string | null;
+    /** One template's own page, when the address names one. */
+    fileName?: string | null;
+    /** Who is signed in, stamped onto a template's freshness on save. */
+    editorLogin?: string;
     readOnly: boolean;
     rulesetHref: (name: string) => string;
     onOpenRuleset: (name: string) => void;
+    fileHref: (path: string) => string;
+    onOpenFile: (path: string) => void;
+    fetchFilesContext: (targetId: string) => Promise<SyncFilesContext>;
+    fetchOverride: (targetId: string, repositoryId: string, kind: string) => Promise<SyncOverride>;
+    saveOverride: (
+      targetId: string,
+      repositoryId: string,
+      kind: string,
+      input: SyncOverrideInput,
+    ) => Promise<SyncOverride>;
     fetchConfig: (targetId: string, kind: string) => Promise<SyncConfig>;
     saveConfig: (targetId: string, kind: string, input: SyncConfigInput) => Promise<SyncConfig>;
     fetchPlan: (targetId: string) => Promise<{ plan: SyncPlan | null }>;
@@ -74,6 +105,7 @@
   let config = $state<SyncConfig | null>(null);
   let plan = $state<SyncPlan | null>(null);
   let syncStatus = $state<SyncStatus | null>(null);
+  let filesContext = $state<SyncFilesContext | null>(null);
   /* Read once per load rather than live: the overview's relative times move
      with the data they describe, not with a ticking clock. */
   let nowMs = $state(Date.now());
@@ -119,19 +151,28 @@
     error = null;
     documentError = { settings: null, rulesets: null, files: null };
     try {
-      const [loadedConfig, loadedSettings, loadedRulesets, loadedFiles, loadedPlan, loadedStatus] =
-        await Promise.all([
-          fetchConfig(id, LABELS),
-          fetchConfig(id, SETTINGS),
-          fetchConfig(id, RULESETS),
-          fetchConfig(id, FILES),
-          fetchPlan(id),
-          fetchStatus(id),
-        ]);
+      const [
+        loadedConfig,
+        loadedSettings,
+        loadedRulesets,
+        loadedFiles,
+        loadedPlan,
+        loadedStatus,
+        loadedContext,
+      ] = await Promise.all([
+        fetchConfig(id, LABELS),
+        fetchConfig(id, SETTINGS),
+        fetchConfig(id, RULESETS),
+        fetchConfig(id, FILES),
+        fetchPlan(id),
+        fetchStatus(id),
+        fetchFilesContext(id),
+      ]);
       config = loadedConfig;
       documents = { settings: loadedSettings, rulesets: loadedRulesets, files: loadedFiles };
       plan = loadedPlan.plan;
       syncStatus = loadedStatus;
+      filesContext = loadedContext;
       nowMs = Date.now();
     } catch (cause) {
       error = messageOf(cause);
@@ -321,6 +362,40 @@
       onSave={(wanted, document) => void onSaveDocument(RULESETS, wanted, document)}
     />
   {/if}
+{:else if section === 'files'}
+  {#if fileName !== null}
+    <SyncFilePage
+      config={documents.files}
+      context={filesContext}
+      path={fileName}
+      {nowMs}
+      {readOnly}
+      problem={documentError.files}
+      saving={savingDocument.files}
+      {editorLogin}
+      {sectionHref}
+      {onOpenSection}
+      onSave={(wanted, document) => void onSaveDocument(FILES, wanted, document)}
+      fetchOverride={(repositoryId) => fetchOverride(targetId, repositoryId, FILES)}
+      saveOverride={(repositoryId, input) => saveOverride(targetId, repositoryId, FILES, input)}
+    />
+  {:else}
+    <SyncFilesPage
+      config={documents.files}
+      context={filesContext}
+      {plan}
+      status={syncStatus}
+      {nowMs}
+      {readOnly}
+      problem={documentError.files}
+      saving={savingDocument.files}
+      {sectionHref}
+      {onOpenSection}
+      {fileHref}
+      {onOpenFile}
+      onSave={(wanted, document) => void onSaveDocument(FILES, wanted, document)}
+    />
+  {/if}
 {:else if section === 'settings'}
   <SyncSettingsPage
     config={documents.settings}
@@ -338,19 +413,6 @@
       title="Sync"
       description="What every repository in this installation should look like, and what Smyklot would change to make that true"
     />
-
-    {#if section === 'files' && documents.files !== null}
-      <SyncFilesForm
-        stored={documents.files.document}
-        enabled={documents.files.enabled}
-        unreadable={documents.files.unreadable}
-        unavailable={documents.files.unavailable}
-        problem={documentError.files}
-        {readOnly}
-        saving={savingDocument.files}
-        onSave={(wanted, document) => onSaveDocument(FILES, wanted, document)}
-      />
-    {/if}
   </section>
 {/if}
 

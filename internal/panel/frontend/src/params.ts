@@ -127,6 +127,13 @@ const MATCHERS = {
    * view, the way a repository's `file` pane does.
    */
   syncSection: oneOf(WRITTEN_SYNC_SECTIONS),
+
+  /**
+   * A template's path in an address: one or more non-empty segments, slashes
+   * and all - a rest parameter is handed the whole tail as one string. Empty
+   * is refused, so the bare files section stays on the section route.
+   */
+  syncFilePath: matching('^[^/]+(?:/[^/]+)*$'),
 };
 
 /** One half of every matcher, keyed the way `MATCHERS` is. */

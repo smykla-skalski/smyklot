@@ -336,6 +336,12 @@
   --code-comment: color-mix(in srgb, var(--text-muted) 85%, var(--text-primary));
   --code-punct: var(--text-secondary);
 
+  /* The managed-row gutter bar, worn by any line an adjustment rewrote.
+     Brand: management is the product acting. And the finder's matched
+     characters: brand-action-text, the palette's "to be read" brand ink. */
+  --managed-bar: var(--brand-action);
+  --match-ink: var(--brand-action-text);
+
   /* Matrix cell states. In step is quiet; attention states speak. */
   --cell-instep: var(--text-muted);
   --cell-pending: var(--diff-chg-ink);
@@ -656,6 +662,8 @@
   --code-string: #ffb187;
   --code-comment: color-mix(in srgb, var(--text-muted) 85%, var(--text-primary));
   --code-punct: var(--text-secondary);
+  --managed-bar: var(--brand-action);
+  --match-ink: var(--brand-action-text);
   --cell-instep: var(--text-muted);
   --cell-pending: var(--diff-chg-ink);
   --cell-pending-bg: var(--diff-chg-bg);
@@ -896,6 +904,8 @@ body {
   --diff-del-word: #f4cbcb;
   --code-comment: color-mix(in srgb, var(--text-muted) 85%, var(--text-primary));
   --code-punct: var(--text-secondary);
+  --managed-bar: var(--brand-action);
+  --match-ink: var(--brand-action-text);
   --cell-instep: var(--text-muted);
   --cell-pending: var(--diff-chg-ink);
   --cell-pending-bg: var(--diff-chg-bg);
