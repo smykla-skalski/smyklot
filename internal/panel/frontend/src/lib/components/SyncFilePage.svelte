@@ -20,7 +20,8 @@
    * where it arises.
    */
   import { unifiedDiff } from '../code-tokens';
-  import { mergedPreview, mergeSummary, normalizedJson, type FileMergeSpec } from '../filemerge';
+  import { mergeSummary, type ArrayRule, type FileMergeSpec } from '../filemerge';
+  import { composeMergedText, deriveMerge } from '../jsontext';
   import { formatRelative } from '../format';
   import type {
     SyncConfig,
@@ -36,6 +37,7 @@
   import CodeBlock from './CodeBlock.svelte';
   import Icon from './Icon.svelte';
   import FormError from './FormError.svelte';
+  import CodeEditor from './CodeEditor.svelte';
   import PanePath from './PanePath.svelte';
 
   const {
@@ -96,28 +98,28 @@
     return 'merges · deep';
   });
 
-  /* ---------- The template, staged when edited ---------- */
+  /* ---------- The template, editable in place ---------- */
 
-  let editing = $state(false);
-  let draft = $state('');
+  /* Null while untouched, so a save elsewhere refreshing the config never
+     fights an edit in progress. */
+  let templateDraft = $state<string | null>(null);
 
-  function beginEdit(): void {
-    if (frozen || file === null) return;
-    draft = file.content;
-    editing = true;
-  }
+  const templateText = $derived(templateDraft ?? file?.content ?? '');
+  const templateDirty = $derived(
+    file !== null && templateDraft !== null && templateDraft !== file.content,
+  );
 
   function saveTemplate(): void {
-    if (file === null) return;
-    editing = false;
-    if (draft === file.content) return;
+    const next = templateDraft;
+    if (file === null || next === null || next === file.content) return;
+    templateDraft = null;
     onSave(enabled, {
       ...stored,
       files: files.map((held) =>
         held.path === path
           ? {
               ...held,
-              content: draft,
+              content: next,
               updated_at: new Date(nowMs).toISOString(),
               ...(editorLogin === '' ? {} : { updated_by: editorLogin }),
             }
@@ -135,10 +137,38 @@
   let held = $state<SyncOverride | null>(null);
   let holdProblem = $state<string | null>(null);
 
+  /* The composed copy is the editable surface. Edits stage here, the
+     override is derived from them, and Save writes it back. */
+  let editedText = $state<string | null>(null);
+  /** The list answers given so far - stored rules, then the ask cards. */
+  let answers = $state<ArrayRule[]>([]);
+  let savingMerge = $state(false);
+
+  /* What this page saved, keyed by repository, layered over a context the
+     parent has not re-read yet - null is a removed adjustment. */
+  let savedMerges = $state<Record<string, FileMergeSpec | null>>({});
+
+  const adjusters = $derived(
+    merges
+      .filter((entry) => savedMerges[entry.repository_id] !== null)
+      .map((entry) => {
+        const kept = savedMerges[entry.repository_id];
+        return kept === undefined || kept === null
+          ? entry
+          : { ...entry, merge: kept as SyncFileMergeEntry['merge'] };
+      }),
+  );
+
+  function seedEdits(merge: FileMergeSpec): void {
+    editedText = file === null ? null : composeMergedText(file.content, merge);
+    answers = merge.arrays ?? [];
+  }
+
   async function toggleRow(entry: SyncFileMergeEntry): Promise<void> {
     if (openRepo === entry.repository_id) {
       openRepo = null;
       held = null;
+      editedText = null;
       return;
     }
     openRepo = entry.repository_id;
@@ -146,6 +176,7 @@
     showStored = false;
     held = null;
     holdProblem = null;
+    seedEdits(entry.merge as FileMergeSpec);
     try {
       held = await fetchOverride(entry.repository_id);
     } catch (cause) {
@@ -175,26 +206,61 @@
     return parts.length === 0 ? 'no changes' : parts.join(' · ');
   }
 
-  const openEntry = $derived(merges.find((entry) => entry.repository_id === openRepo) ?? null);
+  const openEntry = $derived(adjusters.find((entry) => entry.repository_id === openRepo) ?? null);
   const openMerge = $derived((openEntry?.merge ?? null) as FileMergeSpec | null);
-  const openSummary = $derived(openMerge === null ? null : mergeSummary(openMerge));
 
-  const preview = $derived.by(() => {
-    if (file === null || openMerge === null) return null;
-    return mergedPreview(file.content, openMerge);
+  /** The stored adjustment's composed copy - what Discard returns to. */
+  const composed = $derived(
+    file === null || openMerge === null ? null : composeMergedText(file.content, openMerge),
+  );
+
+  /** The override the edited copy amounts to, live as the text changes. */
+  const staged = $derived.by(() => {
+    if (file === null || editedText === null || openMerge === null) return null;
+    return deriveMerge(file.content, editedText, openMerge.strategy ?? 'deep-merge', answers);
   });
+
+  function specOf(overrides: Record<string, unknown>, arrays: ArrayRule[]): FileMergeSpec {
+    return {
+      ...openMerge,
+      overrides,
+      ...(arrays.length > 0 ? { arrays } : { arrays: undefined }),
+    };
+  }
+
+  const openSummary = $derived(
+    staged === null ? null : mergeSummary(specOf(staged.overrides, staged.arrays)),
+  );
+
+  const dirty = $derived.by(() => {
+    if (editedText === null || composed === null) return false;
+    if (editedText !== composed) return true;
+    const stored = JSON.stringify(
+      (openMerge?.arrays ?? []).map((rule) => [rule.path, rule.strategy]).sort(),
+    );
+    const staged = JSON.stringify(answers.map((rule) => [rule.path, rule.strategy]).sort());
+    return stored !== staged;
+  });
+
+  /* A trailing comma is the seam an inserted neighbour leaves on a line
+     whose content did not change - the gutter should not mark it. A comma
+     alone can never be a real edit: it would not parse. */
+  function unseamed(text: string): string {
+    return text
+      .split('\n')
+      .map((line) => line.replace(/,\s*$/u, ''))
+      .join('\n');
+  }
 
   /** Which lines of the composed copy an adjustment rewrote, 1-indexed. */
   const overriddenLines = $derived.by(() => {
-    if (file === null || preview === null) return null;
-    /* Like against like: the preview is a re-print, so the diff runs over
-       the template re-printed the same way - or every reflowed line would
-       wear a gutter bar it never earned. */
-    const base = normalizedJson(file.content) ?? file.content;
+    if (file === null || editedText === null) return null;
+    /* Both sides are the template's own bytes now - the composed copy is an
+       in-place edit, so the diff marks what changed and nothing reflowed. */
     // eslint-disable-next-line svelte/prefer-svelte-reactivity -- built whole, replaced never mutated
     const marked = new Set<number>();
     let at = 0;
-    for (const line of unifiedDiff(base, preview)) {
+    for (const line of unifiedDiff(unseamed(file.content), unseamed(editedText))) {
       if (line.op === '-') continue;
       at += 1;
       if (line.op === '+') marked.add(at);
@@ -204,10 +270,10 @@
 
   /* ---------- Writing the open override back ---------- */
 
-  async function saveMerge(next: FileMergeSpec | null): Promise<void> {
+  async function saveMerge(next: FileMergeSpec | null): Promise<boolean> {
     const entry = openEntry;
     const current = held;
-    if (entry === null || current === null || frozen) return;
+    if (entry === null || current === null || frozen) return false;
     const all = Array.isArray(current.document.merges)
       ? (current.document.merges as FileMergeSpec[])
       : [];
@@ -223,51 +289,60 @@
         document,
         expected_revision: current.revision,
       });
-      if (next === null) openRepo = null;
+      savedMerges = { ...savedMerges, [entry.repository_id]: next };
+      if (next === null) {
+        openRepo = null;
+        editedText = null;
+      }
+      return true;
     } catch (cause) {
       holdProblem = cause instanceof Error ? cause.message : String(cause);
+      return false;
     }
   }
 
+  async function saveEdits(): Promise<void> {
+    if (staged === null || savingMerge) return;
+    const emptied = Object.keys(staged.overrides).length === 0;
+    const next = emptied ? null : specOf(staged.overrides, staged.arrays);
+    savingMerge = true;
+    const saved = await saveMerge(next);
+    savingMerge = false;
+    if (saved && next !== null) seedEdits(next);
+  }
+
+  function discardEdits(): void {
+    if (openMerge !== null) seedEdits(openMerge);
+  }
+
+  /** The x on a patch chip: the edited copy takes those lines back. */
   function dropKey(key: string): void {
-    if (openMerge === null) return;
-    const overrides = { ...(openMerge.overrides ?? {}) };
+    if (staged === null || file === null) return;
+    const overrides = { ...staged.overrides };
     delete overrides[key];
-    const arrays = (openMerge.arrays ?? []).filter((rule) => rule.path !== key);
-    const emptied = Object.keys(overrides).length === 0;
-    void saveMerge(
-      emptied
-        ? null
-        : { ...openMerge, overrides, ...(arrays.length > 0 ? { arrays } : { arrays: undefined }) },
-    );
+    const keeps = (rule: ArrayRule): boolean =>
+      rule.path !== key && !rule.path.startsWith(`${key}.`);
+    const arrays = staged.arrays.filter(keeps);
+    answers = answers.filter(keeps);
+    editedText = composeMergedText(file.content, specOf(overrides, arrays));
   }
 
   function setListRule(key: string, strategy: string): void {
-    if (openMerge === null) return;
-    const arrays = (openMerge.arrays ?? []).filter((rule) => rule.path !== key);
-    if (strategy !== 'replace') arrays.push({ path: key, strategy });
-    void saveMerge({ ...openMerge, ...(arrays.length > 0 ? { arrays } : { arrays: undefined }) });
+    const kept = answers.filter((rule) => rule.path !== key);
+    answers = strategy === 'replace' ? kept : [...kept, { path: key, strategy }];
   }
-
-  /**
-   * The lists whose combining was decided out loud: each explicit array rule
-   * stands as the answered question, still one press from a different
-   * answer. A list without one is an ordinary changed key - RFC 7396
-   * replaces it, and its chip on the strip says so.
-   */
-  const listQuestions = $derived.by(() => {
-    if (openMerge === null) return [];
-    const overrides = openMerge.overrides ?? {};
-    return (openMerge.arrays ?? [])
-      .filter((rule) => Array.isArray(overrides[rule.path]))
-      .map((rule) => ({ key: rule.path, chosen: rule.strategy }));
-  });
 
   const RULE_CHOICES = [
     { value: 'append', title: 'Append', why: "The repository's entries follow the template's" },
     { value: 'prepend', title: 'Prepend', why: "The repository's entries come first" },
     { value: 'replace', title: 'Replace', why: "The repository's list stands alone" },
   ];
+
+  function askable(question: { canAppend: boolean; canPrepend: boolean }, value: string): boolean {
+    if (value === 'append') return question.canAppend;
+    if (value === 'prepend') return question.canPrepend;
+    return true;
+  }
 </script>
 
 <div class="view-frame">
@@ -299,24 +374,19 @@
         <h3 class="card-title">Template</h3>
         <div class="head-tools">
           <span class="pill pill-neutral"><span class="t">{strategyPill}</span></span>
-          {#if !editing}
-            <Button disabled={frozen} onclick={beginEdit}>Edit</Button>
-          {/if}
         </div>
       </div>
-      {#if editing}
-        <textarea
-          class="template-editor"
-          rows={Math.max(8, draft.split('\n').length + 1)}
-          bind:value={draft}
-          aria-label="Template content"
-          spellcheck="false"></textarea>
+      <CodeEditor
+        value={templateText}
+        {lang}
+        readOnly={frozen}
+        onChange={(text) => (templateDraft = text)}
+      />
+      {#if templateDirty}
         <div class="rule-edit-foot">
-          <Button tone="quiet" onclick={() => (editing = false)}>Cancel</Button>
-          <Button tone="signal" onclick={saveTemplate}>Save</Button>
+          <Button tone="quiet" onclick={() => (templateDraft = null)}>Discard</Button>
+          <Button tone="signal" disabled={frozen} onclick={saveTemplate}>Save</Button>
         </div>
-      {:else}
-        <CodeBlock text={file.content} {lang} />
       {/if}
     </div>
 
@@ -324,129 +394,164 @@
       <div class="card-head">
         <h3 class="card-title">Repository adjustments</h3>
         <span class="object-sum"
-          >{merges.length} of {context?.repositories ?? 0}
-          {merges.length === 1 ? 'repository changes' : 'repositories change'} this file</span
+          >{adjusters.length} of {context?.repositories ?? 0}
+          {adjusters.length === 1 ? 'repository changes' : 'repositories change'} this file</span
         >
       </div>
 
-      {#if merges.length === 0}
+      {#if adjusters.length === 0}
         <p class="sync-empty">Every repository takes this file as the organization writes it</p>
       {/if}
 
-      {#each merges as entry (entry.repository_id)}
-        <div class="object-list" class:block-gap-top={entry !== merges[0]}>
-          <div class="object-row plain-row">
+      {#each adjusters as entry (entry.repository_id)}
+        <div class="adjuster">
+          <button
+            type="button"
+            class="object-row"
+            class:is-open={openRepo === entry.repository_id}
+            aria-expanded={openRepo === entry.repository_id}
+            onclick={() => void toggleRow(entry)}
+          >
             <span class="object-main">
               <span class="object-name-row"><span class="file-path">{entry.repository}</span></span>
               <span class="object-sum">{summaryWord(entry)}</span>
             </span>
             <span class="object-side">
-              <Button tone="quiet" onclick={() => void toggleRow(entry)}>
-                {openRepo === entry.repository_id ? 'Close' : 'Edit'}
-              </Button>
+              <span class="row-chev"><Icon name="chevron-right" size={12} /></span>
             </span>
-          </div>
-        </div>
+          </button>
 
-        {#if openRepo === entry.repository_id}
-          <div class="merge-result">
-            {#if holdProblem !== null}
-              <FormError message={holdProblem} />
-            {/if}
-            <div class="merge-pane-title">
-              <span class="t">What {entry.repository} ends up with</span>
-              <span class="pane-tools">
-                {#if preview !== null}
-                  <Button tone="quiet" onclick={() => (sideBySide = !sideBySide)}>
-                    {sideBySide ? 'Hide the template' : 'Show the template beside it'}
-                  </Button>
-                {/if}
-              </span>
-            </div>
-            {#if preview === null}
-              <p class="sync-empty">
-                This copy cannot compose a {openMerge?.strategy ?? 'deep-merge'} adjustment of a
-                {lang} template - the stored override below is the whole of it
-              </p>
-              <CodeBlock text={JSON.stringify(openMerge, null, 2)} lang="json" />
-            {:else if sideBySide}
-              <div class="merge-two">
-                <div>
-                  <div class="merge-pane-title"><span class="t">The template</span></div>
-                  <CodeBlock text={file.content} {lang} />
-                </div>
-                <div>
-                  <div class="merge-pane-title">
-                    <span class="t">{entry.repository}'s copy</span>
-                  </div>
-                  <CodeBlock text={preview} {lang} overridden={overriddenLines} />
-                </div>
-              </div>
-            {:else}
-              <CodeBlock text={preview} {lang} overridden={overriddenLines} />
-            {/if}
-
-            {#if openSummary !== null && (openSummary.changed.length > 0 || openSummary.removed.length > 0 || openSummary.listed.length > 0)}
-              <div class="patch-strip">
-                <span class="patch-word">This repository changes</span>
-                {#each openSummary.changed as key (key)}
-                  <span class="patch-key"
-                    ><span class="t">{key}</span>
-                    <button
-                      aria-label="Stop changing {key}"
-                      disabled={frozen}
-                      onclick={() => dropKey(key)}><Icon name="close" size={12} /></button
-                    ></span
-                  >
-                {/each}
-                {#each openSummary.removed as key (key)}
-                  <span class="patch-key is-removal"
-                    ><span class="t">{key}</span>
-                    <button
-                      aria-label="Stop removing {key}"
-                      disabled={frozen}
-                      onclick={() => dropKey(key)}><Icon name="close" size={12} /></button
-                    ></span
-                  >
-                {/each}
-                <span class="patch-word push-end">
-                  <Button tone="quiet" onclick={() => (showStored = !showStored)}>
-                    {showStored ? 'Hide the stored override' : 'Open the stored override'}
-                  </Button>
+          {#if openRepo === entry.repository_id}
+            <div class="merge-result">
+              {#if holdProblem !== null}
+                <FormError message={holdProblem} />
+              {/if}
+              <div class="merge-pane-title">
+                <span class="t">What {entry.repository} ends up with</span>
+                <span class="pane-tools">
+                  {#if editedText !== null}
+                    <Button tone="quiet" onclick={() => (sideBySide = !sideBySide)}>
+                      {sideBySide ? 'Hide the template' : 'Show the template beside it'}
+                    </Button>
+                  {/if}
                 </span>
               </div>
-            {/if}
-
-            {#if showStored}
-              <CodeBlock text={JSON.stringify(openMerge, null, 2)} lang="json" />
-            {/if}
-
-            {#each listQuestions as question (question.key)}
-              <div class="list-ask">
-                <span class="list-ask-word"
-                  ><strong>Both set <code>{question.key}</code>.</strong> A merge cannot know how two
-                  lists should combine, so this is the one question it asks:</span
-                >
-                <div class="choice-cards ask-cards">
-                  {#each RULE_CHOICES as option (option.value)}
-                    <label class="choice-card" class:is-chosen={question.chosen === option.value}>
-                      <input
-                        type="radio"
-                        name="listrule-{entry.repository_id}-{question.key}"
-                        checked={question.chosen === option.value}
-                        disabled={frozen}
-                        onchange={() => setListRule(question.key, option.value)}
-                      />
-                      <span class="choice-dot"></span>
-                      <span class="choice-title">{option.title}</span>
-                      <span class="choice-why">{option.why}</span>
-                    </label>
-                  {/each}
+              {#if editedText === null}
+                <p class="sync-empty">
+                  This copy cannot compose a {openMerge?.strategy ?? 'deep-merge'} adjustment of a
+                  {lang} template - the stored override below is the whole of it
+                </p>
+                <CodeBlock text={JSON.stringify(openMerge, null, 2)} lang="json" />
+              {:else if sideBySide}
+                <div class="merge-two">
+                  <div>
+                    <div class="merge-pane-title"><span class="t">The template</span></div>
+                    <CodeBlock text={file.content} {lang} />
+                  </div>
+                  <div>
+                    <div class="merge-pane-title">
+                      <span class="t">{entry.repository}'s copy</span>
+                    </div>
+                    <CodeEditor
+                      value={editedText}
+                      readOnly={frozen}
+                      overridden={overriddenLines}
+                      onChange={(text) => (editedText = text)}
+                    />
+                  </div>
                 </div>
-              </div>
-            {/each}
-          </div>
-        {/if}
+              {:else}
+                <CodeEditor
+                  value={editedText}
+                  readOnly={frozen}
+                  overridden={overriddenLines}
+                  onChange={(text) => (editedText = text)}
+                />
+              {/if}
+              {#if editedText !== null && staged === null}
+                <p class="sync-empty">
+                  Not JSON yet - the override picks the edit up when it parses again
+                </p>
+              {/if}
+
+              {#if openSummary !== null && (openSummary.changed.length > 0 || openSummary.removed.length > 0 || openSummary.listed.length > 0)}
+                <div class="patch-strip">
+                  <span class="patch-word">This repository changes</span>
+                  {#each openSummary.changed as key (key)}
+                    <span class="patch-key"
+                      ><span class="t">{key}</span>
+                      <button
+                        aria-label="Stop changing {key}"
+                        disabled={frozen}
+                        onclick={() => dropKey(key)}><Icon name="close" size={8} /></button
+                      ></span
+                    >
+                  {/each}
+                  {#each openSummary.removed as key (key)}
+                    <span class="patch-key is-removal"
+                      ><span class="t">{key}</span>
+                      <button
+                        aria-label="Stop removing {key}"
+                        disabled={frozen}
+                        onclick={() => dropKey(key)}><Icon name="close" size={8} /></button
+                      ></span
+                    >
+                  {/each}
+                  <span class="patch-word push-end">
+                    <Button tone="quiet" onclick={() => (showStored = !showStored)}>
+                      {showStored ? 'Hide the stored override' : 'Open the stored override'}
+                    </Button>
+                  </span>
+                </div>
+              {/if}
+
+              {#if showStored}
+                <CodeBlock text={JSON.stringify(openMerge, null, 2)} lang="json" />
+              {/if}
+
+              {#each staged?.questions ?? [] as question (question.path)}
+                <div class="list-ask">
+                  <span class="list-ask-word"
+                    ><strong>Both set <code>{question.path}</code>.</strong> A merge cannot know how two
+                    lists should combine, so this is the one question it asks:</span
+                  >
+                  <div class="choice-cards ask-cards">
+                    {#each RULE_CHOICES as option (option.value)}
+                      <label
+                        class="choice-card"
+                        class:is-chosen={question.chosen === option.value}
+                        class:is-unaskable={!askable(question, option.value)}
+                      >
+                        <input
+                          type="radio"
+                          name="listrule-{entry.repository_id}-{question.path}"
+                          checked={question.chosen === option.value}
+                          disabled={frozen || !askable(question, option.value)}
+                          onchange={() => setListRule(question.path, option.value)}
+                        />
+                        <span class="choice-dot"></span>
+                        <span class="choice-title">{option.title}</span>
+                        <span class="choice-why">{option.why}</span>
+                      </label>
+                    {/each}
+                  </div>
+                </div>
+              {/each}
+
+              {#if dirty}
+                <div class="rule-edit-foot">
+                  <Button tone="quiet" disabled={savingMerge} onclick={discardEdits}>Discard</Button
+                  >
+                  <Button
+                    tone="signal"
+                    disabled={frozen || savingMerge || staged === null || held === null}
+                    onclick={() => void saveEdits()}>Save</Button
+                  >
+                </div>
+              {/if}
+            </div>
+          {/if}
+        </div>
       {/each}
     </div>
   {/if}
@@ -539,25 +644,6 @@
     color: var(--text-secondary);
   }
 
-  .template-editor {
-    background: var(--surface-inset);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--r-ctl);
-    color: var(--text-primary);
-    font-family: var(--mono);
-    font-size: var(--font-size-compact);
-    line-height: round(1.65em, 1px);
-    padding: var(--space-3);
-    resize: vertical;
-    width: 100%;
-  }
-
-  .template-editor:focus {
-    border-color: var(--focus);
-    outline: 2px solid var(--focus);
-    outline-offset: -1px;
-  }
-
   .rule-edit-foot {
     border-top: 1px solid var(--border-subtle);
     display: flex;
@@ -569,27 +655,55 @@
 
   /* ---------- The adjuster rows ---------- */
 
-  .block-gap-top {
-    margin-top: var(--space-6);
+  /* One list, a hairline between neighbours - the rows read as one table
+     rather than three floating cards. */
+  .adjuster + .adjuster {
+    border-top: 1px solid var(--border-subtle);
   }
 
-  .object-list {
-    display: grid;
+  /* The hover pill has rounded corners; a hairline crossing its edge reads
+     as a crack in it. The hovered row hides the separator above it and the
+     one its neighbour would draw under it. */
+  .adjuster:has(> .object-row:hover),
+  .adjuster:has(> .object-row:hover) + .adjuster {
+    border-top-color: transparent;
   }
 
+  .adjuster > .merge-result {
+    padding-block: var(--space-2) var(--space-4);
+  }
+
+  /* The same row the Files list stands its templates on, as a button: the
+     whole surface opens the adjustment, the chevron says which way. */
   .object-row {
     align-items: center;
+    background: none;
+    border: 0;
     border-radius: var(--r-ctl);
+    color: inherit;
+    cursor: pointer;
     display: grid;
+    font: inherit;
     gap: var(--space-4);
     grid-template-columns: 1fr auto;
     margin-inline: calc(var(--space-3) * -1);
     padding: 0.75rem var(--space-3);
     position: relative;
+    text-align: start;
+    width: calc(100% + (var(--space-3) * 2));
   }
 
-  .plain-row {
-    cursor: default;
+  .object-row:hover {
+    background: var(--table-row-hover);
+  }
+
+  .row-chev {
+    display: inline-flex;
+    transition: transform var(--duration-fast) var(--ease-out);
+  }
+
+  .object-row.is-open .row-chev {
+    transform: rotate(90deg);
   }
 
   .object-main {
@@ -709,17 +823,20 @@
     color: var(--danger);
   }
 
-  /* 24px hit target folded around a 10px glyph - the key's box never grows. */
+  /* A 20px disc folded around an 8px glyph - exactly the chip's height, so
+     the hover fill never pokes past the pill. The same disc the ruleset
+     page's condition chips wear. */
   .patch-key button {
+    align-items: center;
     background: none;
     border: 0;
-    border-radius: 3px;
+    border-radius: 50%;
     color: inherit;
     cursor: pointer;
     display: inline-flex;
-    margin: -7px;
+    margin: -0.375rem;
     opacity: 0.7;
-    padding: 7px;
+    padding: 0.375rem;
   }
 
   .patch-key button:hover {
@@ -825,6 +942,19 @@
     content: '';
     inset: 3px;
     position: absolute;
+  }
+
+  /* An answer the edited list cannot express any more - the template's
+     entries are no longer intact inside it - stays visible but cannot be
+     chosen. */
+  .choice-card.is-unaskable {
+    cursor: default;
+    opacity: 0.5;
+  }
+
+  .choice-card.is-unaskable:hover {
+    background: var(--surface-base);
+    border-color: var(--control-border);
   }
 
   .choice-title {

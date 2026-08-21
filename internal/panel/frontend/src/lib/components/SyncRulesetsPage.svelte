@@ -385,6 +385,14 @@
     top: 0;
   }
 
+  /* The hover pill has rounded corners; a hairline crossing its edge reads
+     as a crack in it. The hovered row hides its own separator and the one
+     its neighbour would draw over it. */
+  .object-row:hover::before,
+  .object-row:hover + .object-row::before {
+    background: transparent;
+  }
+
   .object-main {
     display: grid;
     gap: var(--space-1);
