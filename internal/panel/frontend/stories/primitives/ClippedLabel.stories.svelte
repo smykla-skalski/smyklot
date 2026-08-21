@@ -15,19 +15,23 @@
   with the whole text. The wrapper owns the clipping styles.
 -->
 <Story name="Clipped">
-  <div style:width="12rem" style:overflow="hidden">
-    <ClippedLabel
-      class="story-clip"
-      text="Commit title, or the pull request's when squashing many"
-    />
-  </div>
+  {#snippet template()}
+    <div style:width="12rem" style:overflow="hidden">
+      <ClippedLabel
+        class="story-clip"
+        text="Commit title, or the pull request's when squashing many"
+      />
+    </div>
+  {/snippet}
 </Story>
 
 <!-- Fits, so hovering says nothing - a tip repeating visible text is noise. -->
 <Story name="Fits">
-  <div style:width="20rem">
-    <ClippedLabel class="story-clip" text="Pull request title" />
-  </div>
+  {#snippet template()}
+    <div style:width="20rem">
+      <ClippedLabel class="story-clip" text="Pull request title" />
+    </div>
+  {/snippet}
 </Story>
 
 <style>

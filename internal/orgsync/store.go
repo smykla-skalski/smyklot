@@ -261,8 +261,8 @@ const (
 	AuditApproved AuditAction = "sync.plan.approved"
 	// AuditDiscarded is a live plan somebody read and declined.
 	AuditDiscarded AuditAction = "sync.plan.discarded"
-	AuditFinished AuditAction = "sync.plan.finished"
-	AuditDeleted  AuditAction = "sync.deleted"
+	AuditFinished  AuditAction = "sync.plan.finished"
+	AuditDeleted   AuditAction = "sync.deleted"
 )
 
 // AuditEntry is one thing worth recording about a plan.

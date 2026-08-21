@@ -11,6 +11,10 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/storage"
 )
 
+// repositoriesKey is the wire name three sync answers share for their
+// repository list or count.
+const repositoriesKey = "repositories"
+
 // syncCellDTO is where one repository stands for one kind: settled, waiting on
 // a plan, refused with a reason a person can act on, or switched off there.
 type syncCellDTO struct {
@@ -30,6 +34,17 @@ type syncRepositoryStatusDTO struct {
 
 	// Reason is refused only: the planner's own words about why.
 	Reason string `json:"reason,omitempty"`
+}
+
+// syncStatusFacts is everything getSyncStatus reads, keyed the way the row
+// builder asks: by repository, then by kind.
+type syncStatusFacts struct {
+	enabled  map[orgsync.Kind]bool
+	answered map[string]map[orgsync.Kind]*bool
+	problems map[string]map[orgsync.Kind]string
+	pending  map[string]map[orgsync.Kind]int
+	removals map[string]int
+	checked  time.Time
 }
 
 // getSyncStatus answers the fleet: every repository sync covers and where each
@@ -54,125 +69,137 @@ func (s *Server) getSyncStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	configs, err := s.store.ListSyncConfigs(ctx, target.ID)
+	facts, err := s.syncStatusFacts(r, target.ID)
 	if err != nil {
 		s.writeStorageError(w, err)
 
 		return
 	}
-	enabledKinds := make(map[orgsync.Kind]bool, len(configs))
-	for _, config := range configs {
-		enabledKinds[config.Kind] = config.Enabled
-	}
 
-	overrides, err := s.store.ListSyncRepositoryOverrides(ctx, target.ID)
-	if err != nil {
-		s.writeStorageError(w, err)
-
-		return
-	}
-	answered := make(map[string]map[orgsync.Kind]*bool, len(overrides))
-	for _, override := range overrides {
-		if answered[override.RepositoryID] == nil {
-			answered[override.RepositoryID] = map[orgsync.Kind]*bool{}
-		}
-		answered[override.RepositoryID][override.Kind] = override.Enabled
-	}
-
-	states, err := s.store.ListSyncRepositoryState(ctx, target.ID)
-	if err != nil {
-		s.writeStorageError(w, err)
-
-		return
-	}
-	problems := make(map[string]map[orgsync.Kind]string, len(states))
-	var checked time.Time
-	for _, state := range states {
-		if state.AppliedAt.After(checked) {
-			checked = state.AppliedAt
-		}
-		if state.Problem == "" {
-			continue
-		}
-		if problems[state.RepositoryID] == nil {
-			problems[state.RepositoryID] = map[orgsync.Kind]string{}
-		}
-		problems[state.RepositoryID][state.Kind] = state.Problem
-	}
-
-	// Pending counts come off the live plan, which is the only account of what
-	// would change. No plan is an answer: nothing is pending anywhere.
-	pending := map[string]map[orgsync.Kind]int{}
-	removals := map[string]int{}
-	plan, actions, err := s.store.GetLiveSyncPlan(ctx, target.ID)
-	switch {
-	case errors.Is(err, storage.ErrNotFound):
-		// Nothing in flight.
-	case err != nil:
-		s.writeStorageError(w, err)
-
-		return
-	default:
-		if plan.ComputedAt.After(checked) {
-			checked = plan.ComputedAt
-		}
-		for _, action := range actions {
-			if pending[action.RepositoryID] == nil {
-				pending[action.RepositoryID] = map[orgsync.Kind]int{}
-			}
-			pending[action.RepositoryID][action.Kind]++
-			if action.Operation == orgsync.OperationDelete {
-				removals[action.RepositoryID]++
-			}
-		}
-	}
-
-	if checked.IsZero() {
+	if facts.checked.IsZero() {
 		// Nothing has been looked at yet - a fresh installation. The board is
 		// still an answer, dated to the moment it was composed.
-		checked = s.now().UTC()
+		facts.checked = s.now().UTC()
 	}
 
 	rows := make([]syncRepositoryStatusDTO, 0, len(repositories))
 	for _, repository := range repositories {
-		row := syncRepositoryStatusDTO{
-			Repository: repository.Name,
-			Cells:      make(map[string]syncCellDTO, len(orgsync.Kinds())),
-		}
-		for _, kind := range orgsync.Kinds() {
-			enabled := enabledKinds[kind]
-			if answer := answered[repository.ID][kind]; answer != nil {
-				enabled = *answer
-			}
-
-			switch {
-			case !enabled:
-				row.Cells[string(kind)] = syncCellDTO{State: "off"}
-			case problems[repository.ID][kind] != "":
-				row.Cells[string(kind)] = syncCellDTO{State: "refused"}
-				if row.Reason == "" {
-					row.Reason = problems[repository.ID][kind]
-				}
-			case pending[repository.ID][kind] > 0:
-				row.Cells[string(kind)] = syncCellDTO{
-					State: "pending", Changes: pending[repository.ID][kind],
-				}
-			default:
-				row.Cells[string(kind)] = syncCellDTO{State: "in_step"}
-			}
-		}
-		row.Removals = removals[repository.ID]
-		rows = append(rows, row)
+		rows = append(rows, syncStatusRow(repository, facts))
 	}
-
 	sort.Slice(rows, func(left, right int) bool {
 		return rows[left].Repository < rows[right].Repository
 	})
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"checked_at":   checked,
-		"repositories": rows,
+		"checked_at":    facts.checked,
+		repositoriesKey: rows,
 	})
+}
+
+// syncStatusFacts gathers what the board says from the three places it lives:
+// the configuration, the per-repository state rows, and the live plan.
+func (s *Server) syncStatusFacts(r *http.Request, targetID string) (syncStatusFacts, error) {
+	ctx := r.Context()
+	facts := syncStatusFacts{
+		answered: map[string]map[orgsync.Kind]*bool{},
+		problems: map[string]map[orgsync.Kind]string{},
+		pending:  map[string]map[orgsync.Kind]int{},
+		removals: map[string]int{},
+	}
+
+	configs, err := s.store.ListSyncConfigs(ctx, targetID)
+	if err != nil {
+		return facts, err
+	}
+	facts.enabled = make(map[orgsync.Kind]bool, len(configs))
+	for _, config := range configs {
+		facts.enabled[config.Kind] = config.Enabled
+	}
+
+	overrides, err := s.store.ListSyncRepositoryOverrides(ctx, targetID)
+	if err != nil {
+		return facts, err
+	}
+	for _, override := range overrides {
+		if facts.answered[override.RepositoryID] == nil {
+			facts.answered[override.RepositoryID] = map[orgsync.Kind]*bool{}
+		}
+		facts.answered[override.RepositoryID][override.Kind] = override.Enabled
+	}
+
+	states, err := s.store.ListSyncRepositoryState(ctx, targetID)
+	if err != nil {
+		return facts, err
+	}
+	for _, state := range states {
+		if state.AppliedAt.After(facts.checked) {
+			facts.checked = state.AppliedAt
+		}
+		if state.Problem == "" {
+			continue
+		}
+		if facts.problems[state.RepositoryID] == nil {
+			facts.problems[state.RepositoryID] = map[orgsync.Kind]string{}
+		}
+		facts.problems[state.RepositoryID][state.Kind] = state.Problem
+	}
+
+	// Pending counts come off the live plan, which is the only account of what
+	// would change. No plan is an answer: nothing is pending anywhere.
+	plan, actions, err := s.store.GetLiveSyncPlan(ctx, targetID)
+	if errors.Is(err, storage.ErrNotFound) {
+		return facts, nil
+	}
+	if err != nil {
+		return facts, err
+	}
+	if plan.ComputedAt.After(facts.checked) {
+		facts.checked = plan.ComputedAt
+	}
+	for _, action := range actions {
+		if facts.pending[action.RepositoryID] == nil {
+			facts.pending[action.RepositoryID] = map[orgsync.Kind]int{}
+		}
+		facts.pending[action.RepositoryID][action.Kind]++
+		if action.Operation == orgsync.OperationDelete {
+			facts.removals[action.RepositoryID]++
+		}
+	}
+
+	return facts, nil
+}
+
+// syncStatusRow reads one repository's standing off the gathered facts.
+func syncStatusRow(repository storage.Repository, facts syncStatusFacts) syncRepositoryStatusDTO {
+	row := syncRepositoryStatusDTO{
+		Repository: repository.Name,
+		Cells:      make(map[string]syncCellDTO, len(orgsync.Kinds())),
+	}
+	for _, kind := range orgsync.Kinds() {
+		enabled := facts.enabled[kind]
+		if answer := facts.answered[repository.ID][kind]; answer != nil {
+			enabled = *answer
+		}
+
+		switch {
+		case !enabled:
+			row.Cells[string(kind)] = syncCellDTO{State: "off"}
+		case facts.problems[repository.ID][kind] != "":
+			row.Cells[string(kind)] = syncCellDTO{State: "refused"}
+			if row.Reason == "" {
+				row.Reason = facts.problems[repository.ID][kind]
+			}
+		case facts.pending[repository.ID][kind] > 0:
+			row.Cells[string(kind)] = syncCellDTO{
+				State: "pending", Changes: facts.pending[repository.ID][kind],
+			}
+		default:
+			row.Cells[string(kind)] = syncCellDTO{State: "in_step"}
+		}
+	}
+	row.Removals = facts.removals[repository.ID]
+
+	return row
 }
 
 // syncFileMergeEntryDTO is one repository's adjustment of one template.
@@ -237,33 +264,7 @@ func (s *Server) getSyncFilesContext(w http.ResponseWriter, r *http.Request) {
 		if override.Enabled != nil && !*override.Enabled && filesEnabled {
 			covered--
 		}
-		if len(override.Document) == 0 {
-			continue
-		}
-
-		// The document's own spelling: a list of merges, each naming its path.
-		// Decoded loosely on purpose - the stored merge travels to the browser
-		// whole, and a shape this version does not know is still worth showing.
-		var document struct {
-			Merges []json.RawMessage `json:"merges"`
-		}
-		if err := json.Unmarshal(override.Document, &document); err != nil {
-			continue
-		}
-		for _, merge := range document.Merges {
-			var named struct {
-				Path string `json:"path"`
-			}
-			if err := json.Unmarshal(merge, &named); err != nil || named.Path == "" {
-				continue
-			}
-			merges = append(merges, syncFileMergeEntryDTO{
-				Repository:   name,
-				RepositoryID: override.RepositoryID,
-				Path:         named.Path,
-				Merge:        merge,
-			})
-		}
+		merges = append(merges, fileMergeEntries(name, override)...)
 	}
 
 	rows, err := s.store.ListSyncRepositoryPaths(ctx, target.ID)
@@ -272,6 +273,54 @@ func (s *Server) getSyncFilesContext(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		repositoriesKey: len(repositories),
+		"covered":       covered,
+		"known_paths":   knownSyncPaths(rows),
+		"merges":        merges,
+	})
+}
+
+// fileMergeEntries reads one repository's adjustments out of its override
+// document.
+//
+// The document's own spelling: a list of merges, each naming its path.
+// Decoded loosely on purpose - the stored merge travels to the browser whole,
+// and a shape this version does not know is still worth showing.
+func fileMergeEntries(name string, override orgsync.RepositoryOverride) []syncFileMergeEntryDTO {
+	if len(override.Document) == 0 {
+		return nil
+	}
+	var document struct {
+		Merges []json.RawMessage `json:"merges"`
+	}
+	if err := json.Unmarshal(override.Document, &document); err != nil {
+		return nil
+	}
+
+	entries := make([]syncFileMergeEntryDTO, 0, len(document.Merges))
+	for _, merge := range document.Merges {
+		var named struct {
+			Path string `json:"path"`
+		}
+		if err := json.Unmarshal(merge, &named); err != nil || named.Path == "" {
+			continue
+		}
+		entries = append(entries, syncFileMergeEntryDTO{
+			Repository:   name,
+			RepositoryID: override.RepositoryID,
+			Path:         named.Path,
+			Merge:        merge,
+		})
+	}
+
+	return entries
+}
+
+// knownSyncPaths folds the per-repository path rows into the finder's index:
+// every path anything holds, and how many repositories hold it.
+func knownSyncPaths(rows []orgsync.RepositoryPaths) []map[string]any {
 	counts := map[string]int{}
 	for _, row := range rows {
 		for _, path := range row.Paths {
@@ -283,19 +332,15 @@ func (s *Server) getSyncFilesContext(w http.ResponseWriter, r *http.Request) {
 		paths = append(paths, path)
 	}
 	sort.Strings(paths)
-	knownPaths := make([]map[string]any, 0, len(paths))
+
+	known := make([]map[string]any, 0, len(paths))
 	for _, path := range paths {
-		knownPaths = append(knownPaths, map[string]any{
-			"path": path, "repositories": counts[path],
+		known = append(known, map[string]any{
+			"path": path, repositoriesKey: counts[path],
 		})
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
-		"repositories": len(repositories),
-		"covered":      covered,
-		"known_paths":  knownPaths,
-		"merges":       merges,
-	})
+	return known
 }
 
 // deleteSyncPlan retires a live plan somebody read and declined.

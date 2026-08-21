@@ -30,5 +30,6 @@
   }}
 />
 
-<!-- No ancestors, no path: the component draws nothing rather than a self-link. -->
-<Story name="Console root" args={{ segments: [] }} />
+<!-- No ancestors, no path: the component draws nothing rather than a self-link.
+     Tagged blank so the catalogue check holds it to exactly that. -->
+<Story name="Console root" args={{ segments: [] }} tags={['blank']} />
