@@ -187,6 +187,7 @@ export interface PanelApi {
   ): Promise<SyncOverride>;
   fetchSyncPlan(targetId: string): Promise<{ plan: SyncPlan | null }>;
   approveSyncPlan(targetId: string, planId: string, digest: string): Promise<{ plan: SyncPlan }>;
+  discardSyncPlan(targetId: string, planId: string): Promise<void>;
   fetchSyncStatus(targetId: string): Promise<SyncStatus>;
   fetchAudit(targetId: string, request: AuditHistoryRequest): Promise<Page<AuditEntry>>;
   fetchFailures(targetId: string, request: FailureHistoryRequest): Promise<Page<DeliveryFailure>>;
@@ -831,6 +832,16 @@ export function createPanelApi(
       return postJson(
         `/api/v1/targets/${pathSegment(targetId)}/sync/plans/${pathSegment(planId)}/approval`,
         { digest },
+      );
+    },
+
+    // Named rather than approved-away: a discarded plan asks nothing on
+    // GitHub, and the next sweep computes a fresh one from whatever the
+    // configuration says by then.
+    async discardSyncPlan(targetId: string, planId: string): Promise<void> {
+      await jsonRequest(
+        `/api/v1/targets/${pathSegment(targetId)}/sync/plans/${pathSegment(planId)}`,
+        { method: 'DELETE' },
       );
     },
 

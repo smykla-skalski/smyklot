@@ -72,6 +72,7 @@ describe('SyncView [Component]', () => {
       saveConfig: () => Promise.resolve(labels),
       fetchPlan: () => Promise.resolve({ plan: null }),
       approvePlan: () => Promise.reject(new Error('not in this test')),
+      discardPlan: () => Promise.reject(new Error('not in this test')),
       fetchStatus: () =>
         Promise.resolve({ checked_at: new Date(0).toISOString(), repositories: [] }),
       sectionHref: (section: string) => `#/sync/${section}`,
@@ -113,6 +114,7 @@ describe('SyncView [Component]', () => {
       saveConfig: () => Promise.resolve(config('labels')),
       fetchPlan: () => Promise.resolve({ plan: null }),
       approvePlan: () => Promise.reject(new Error('not in this test')),
+      discardPlan: () => Promise.reject(new Error('not in this test')),
       fetchStatus: () =>
         Promise.resolve({ checked_at: new Date(0).toISOString(), repositories: [] }),
       sectionHref: (section: string) => `#/sync/${section}`,
@@ -143,6 +145,7 @@ describe('SyncView [Component]', () => {
       saveConfig: () => Promise.resolve(config('labels')),
       fetchPlan: () => Promise.resolve({ plan: null }),
       approvePlan: () => Promise.reject(new Error('not in this test')),
+      discardPlan: () => Promise.reject(new Error('not in this test')),
       fetchStatus: () =>
         Promise.resolve({ checked_at: new Date(0).toISOString(), repositories: [] }),
       sectionHref: (section: string) => `#/sync/${section}`,

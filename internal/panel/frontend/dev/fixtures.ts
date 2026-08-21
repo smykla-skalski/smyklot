@@ -782,64 +782,147 @@ export function syncFilesSeed(iso: (offsetMs: number) => string): SyncConfig {
 }
 
 /**
- * A plan waiting for somebody, carrying one of everything the list can draw: an
- * addition, a change, a removal, a row that failed and a row that was never
- * tried because another failed first.
+ * A plan waiting for somebody, at the design's scale: fourteen changes -
+ * eight additions, five changes, one removal - across the three drifted
+ * repositories, agreeing row for row with what the board's cells count.
  */
 export function syncPlanSeed(iso: (offsetMs: number) => string): SyncPlan {
+  const dependencies = '#0e8a16, "Dependency updates, mostly Renovate\'s"';
+  /* Excerpt-sized on purpose: what a plan carries is the window worth
+     reading, and the diff the page draws from this pair is the design's own
+     five lines. */
+  const renovateBefore = [
+    '"extends": ["config:recommended"],',
+    '"schedule": ["* 4 * * 0"],',
+    '"packageRules": [',
+  ].join('\n');
+  const renovateAfter = [
+    '"extends": ["config:recommended"],',
+    '"schedule": ["* 4 * * 1-5"],',
+    '"timezone": "Europe/Warsaw",',
+    '"packageRules": [',
+  ].join('\n');
   return {
     id: 'plan-1',
     trigger: 'reconcile',
     state: 'computed',
     digest: 'sha256:plan',
-    /* The design's scale: fourteen changes - eight additions, five changes,
-       one removal - across the three drifted repositories. The action list
-       below still shows one of every shape the list can draw; the plan page's
-       own port fills it out to the full fourteen. */
     counts: { create: 8, update: 5, delete: 1 },
     actions: [
       {
-        repository: 'smyklot',
-        kind: 'label',
+        repository: 'af',
+        kind: 'labels',
         operation: 'create',
-        subject: 'security',
-        after: 'b60205',
+        subject: 'dependencies',
+        after: dependencies,
         state: 'pending',
       },
       {
-        repository: 'platform-infra',
-        kind: 'label',
-        operation: 'update',
-        subject: 'bug',
-        before: 'ee0701',
-        after: 'd73a4a',
-        state: 'pending',
-      },
-      {
-        repository: 'platform-infra',
-        kind: 'label',
-        operation: 'delete',
-        subject: 'wontfix',
-        before: 'ffffff',
-        state: 'pending',
-      },
-      {
-        repository: 'design-tokens',
-        kind: 'repository',
-        operation: 'update',
-        subject: 'has_wiki',
-        after: 'false',
-        state: 'failed',
-        error: 'the app is not an administrator of this repository',
-      },
-      {
-        repository: 'design-tokens',
-        kind: 'label',
+        repository: 'af',
+        kind: 'labels',
         operation: 'create',
         subject: 'good first issue',
-        after: '7057ff',
-        state: 'skipped',
-        blocker: 'has_wiki',
+        state: 'pending',
+      },
+      {
+        repository: 'af',
+        kind: 'settings',
+        operation: 'update',
+        subject: 'squash merging',
+        before: 'off',
+        after: 'on',
+        state: 'pending',
+      },
+      {
+        repository: 'af',
+        kind: 'settings',
+        operation: 'update',
+        subject: 'wiki',
+        before: 'on',
+        after: 'off',
+        state: 'pending',
+      },
+      {
+        repository: 'af',
+        kind: 'files',
+        operation: 'create',
+        subject: 'renovate.json',
+        before: renovateBefore,
+        after: renovateAfter,
+        state: 'pending',
+      },
+      {
+        repository: 'af',
+        kind: 'files',
+        operation: 'delete',
+        subject: '.github/stale.yml',
+        state: 'pending',
+      },
+      {
+        repository: 'afi',
+        kind: 'settings',
+        operation: 'create',
+        subject: 'delete branch on merge',
+        after: 'on',
+        state: 'pending',
+      },
+      {
+        repository: 'afi',
+        kind: 'settings',
+        operation: 'create',
+        subject: 'auto-merge',
+        after: 'on',
+        state: 'pending',
+      },
+      {
+        repository: 'afi',
+        kind: 'settings',
+        operation: 'update',
+        subject: 'squash merging',
+        before: 'off',
+        after: 'on',
+        state: 'pending',
+      },
+      {
+        repository: 'afi',
+        kind: 'settings',
+        operation: 'update',
+        subject: 'wiki',
+        before: 'on',
+        after: 'off',
+        state: 'pending',
+      },
+      {
+        repository: 'afi',
+        kind: 'rulesets',
+        operation: 'create',
+        subject: 'main-protection',
+        after: '6 rules, active',
+        state: 'pending',
+      },
+      {
+        repository: 'harness',
+        kind: 'labels',
+        operation: 'create',
+        subject: 'dependencies',
+        after: dependencies,
+        state: 'pending',
+      },
+      {
+        repository: 'harness',
+        kind: 'labels',
+        operation: 'create',
+        subject: 'good first issue',
+        state: 'pending',
+      },
+      {
+        repository: 'harness',
+        kind: 'settings',
+        operation: 'update',
+        subject: 'projects',
+        before: 'on',
+        after: 'off',
+        state: 'pending',
       },
     ],
     computed_at: iso(-12 * 60_000),

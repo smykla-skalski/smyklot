@@ -161,6 +161,7 @@
             fetchPaths={session.api.fetchSyncPaths}
             fetchPlan={session.api.fetchSyncPlan}
             approvePlan={session.api.approveSyncPlan}
+            discardPlan={session.api.discardSyncPlan}
             fetchStatus={session.api.fetchSyncStatus}
             sectionHref={(s) => session.syncSectionHref(s)}
             onOpenSection={(s) => session.selectSyncSection(s)}

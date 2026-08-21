@@ -317,6 +317,24 @@
   --diff-chg-ink: var(--drift);
   --diff-chg-bg: color-mix(in srgb, var(--drift) 9%, var(--surface-base));
   --diff-del-ink: var(--danger);
+  /* True green for ADD - the success tone is teal and reads as brand on a
+     code surface. Grounds are designed FOR code, not reused notice tints. */
+  --verb-add: #176a29;
+  --diff-add-ink: var(--verb-add);
+  --diff-add-bg: #e4f3e6;
+  --diff-del-bg: #fbe9e9;
+  /* Word-level emphasis inside a changed line: one state-step deeper. */
+  --diff-add-word: #c2e5c8;
+  --diff-del-word: #f4cbcb;
+
+  /* Code colour is a property of the language, not of the console, so it is
+     declared per theme. Verified for 4.5:1 on --surface-base and
+     --surface-inset in both themes. */
+  --code-key: #0550ae;
+  --code-const: #6d3fc0;
+  --code-string: #8f3a1c;
+  --code-comment: color-mix(in srgb, var(--text-muted) 85%, var(--text-primary));
+  --code-punct: var(--text-secondary);
 
   /* Matrix cell states. In step is quiet; attention states speak. */
   --cell-instep: var(--text-muted);
@@ -627,6 +645,17 @@
   --diff-chg-ink: var(--drift);
   --diff-chg-bg: color-mix(in srgb, var(--drift) 16%, var(--surface-base));
   --diff-del-ink: var(--danger);
+  --verb-add: #8ce0a2;
+  --diff-add-ink: var(--verb-add);
+  --diff-add-bg: #14301f;
+  --diff-del-bg: #3c1f24;
+  --diff-add-word: #1f4c32;
+  --diff-del-word: #5c2e35;
+  --code-key: #82b3f0;
+  --code-const: #c5a3f2;
+  --code-string: #ffb187;
+  --code-comment: color-mix(in srgb, var(--text-muted) 85%, var(--text-primary));
+  --code-punct: var(--text-secondary);
   --cell-instep: var(--text-muted);
   --cell-pending: var(--diff-chg-ink);
   --cell-pending-bg: var(--diff-chg-bg);
@@ -860,6 +889,13 @@ body {
   --diff-chg-ink: var(--drift);
   --diff-chg-bg: color-mix(in srgb, var(--drift) 9%, var(--surface-base));
   --diff-del-ink: var(--danger);
+  --diff-add-ink: var(--verb-add);
+  --diff-add-bg: #e4f3e6;
+  --diff-del-bg: #fbe9e9;
+  --diff-add-word: #c2e5c8;
+  --diff-del-word: #f4cbcb;
+  --code-comment: color-mix(in srgb, var(--text-muted) 85%, var(--text-primary));
+  --code-punct: var(--text-secondary);
   --cell-instep: var(--text-muted);
   --cell-pending: var(--diff-chg-ink);
   --cell-pending-bg: var(--diff-chg-bg);
@@ -944,6 +980,10 @@ body {
   --tile-border: var(--border-control);
   --tile-well: color-mix(in srgb, black 20%, var(--surface-base));
   --well-shadow: inset 0 1px 3px rgb(0 0 0 / 55%), inset 0 -1px 0 rgb(255 255 255 / 5%);
+  --diff-add-bg: #14301f;
+  --diff-del-bg: #3c1f24;
+  --diff-add-word: #1f4c32;
+  --diff-del-word: #5c2e35;
 }
 
 .workspace {

@@ -1147,6 +1147,21 @@ async function handle(
       return;
     }
 
+    const syncDiscardMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/plans\/([^/]+)$/.exec(
+      path.slice(route('').length),
+    );
+    if (syncDiscardMatch && method === 'DELETE') {
+      const targetId = decodeURIComponent(syncDiscardMatch[1] ?? '');
+      const planId = decodeURIComponent(syncDiscardMatch[2] ?? '');
+      const plan = state.syncPlans.get(targetId);
+      if (!plan || plan.id !== planId) {
+        throw new MockApiError(404, 'not_found', 'there is no such plan to discard');
+      }
+      state.syncPlans.delete(targetId);
+      respond(res, 200, {});
+      return;
+    }
+
     if (path === route('/api/v1/root/installations') && method === 'GET') {
       const ordered = [...state.targets].sort((left, right) =>
         left.value.type === right.value.type ? 0 : left.value.type === 'Organization' ? -1 : 1,

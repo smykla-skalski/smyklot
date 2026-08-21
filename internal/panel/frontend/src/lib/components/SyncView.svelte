@@ -10,23 +10,16 @@
    */
   import { untrack } from 'svelte';
 
-  import type {
-    SyncAction,
-    SyncConfig,
-    SyncConfigInput,
-    SyncKind,
-    SyncPlan,
-    SyncStatus,
-  } from '#lib/types.js';
+  import type { SyncConfig, SyncConfigInput, SyncKind, SyncPlan, SyncStatus } from '#lib/types.js';
   import type { SyncSection } from '#lib/routes.js';
 
   import FormError from './FormError.svelte';
-  import Button from './Button.svelte';
   import PageHeader from './PageHeader.svelte';
   import Plate from './Plate.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
   import SyncFilesForm from './SyncFilesForm.svelte';
   import SyncOverview from './SyncOverview.svelte';
+  import SyncPlanPage from './SyncPlanPage.svelte';
   import SyncRulesetsForm from './SyncRulesetsForm.svelte';
   import SyncSettingsForm from './SyncSettingsForm.svelte';
 
@@ -44,6 +37,7 @@
     saveConfig,
     fetchPlan,
     approvePlan,
+    discardPlan,
     fetchStatus,
     sectionHref,
     onOpenSection,
@@ -56,6 +50,7 @@
     saveConfig: (targetId: string, kind: string, input: SyncConfigInput) => Promise<SyncConfig>;
     fetchPlan: (targetId: string) => Promise<{ plan: SyncPlan | null }>;
     approvePlan: (targetId: string, planId: string, digest: string) => Promise<{ plan: SyncPlan }>;
+    discardPlan: (targetId: string, planId: string) => Promise<void>;
     fetchStatus: (targetId: string) => Promise<SyncStatus>;
     sectionHref: (section: SyncSection) => string;
     onOpenSection: (section: SyncSection) => void;
@@ -83,6 +78,7 @@
   let nowMs = $state(Date.now());
   let saving = $state(false);
   let approving = $state(false);
+  let discarding = $state(false);
 
   /* Kept per kind rather than as a field each, because every kind after labels
      has the same three: what is saved, whether a save is in flight, and what
@@ -210,6 +206,20 @@
     }
   }
 
+  /** Throwing a plan away asks nothing on GitHub - the next sweep recomputes. */
+  async function onDiscard(planId: string): Promise<void> {
+    discarding = true;
+    error = null;
+    try {
+      await discardPlan(targetId, planId);
+      plan = (await fetchPlan(targetId)).plan;
+    } catch (cause) {
+      error = messageOf(cause);
+    } finally {
+      discarding = false;
+    }
+  }
+
   function messageOf(cause: unknown): string {
     return cause instanceof Error ? cause.message : String(cause);
   }
@@ -232,57 +242,6 @@
    * kind and not the other would go quiet on whichever one was missed next.
    */
   const unavailable = $derived(config?.unavailable ?? '');
-
-  /**
-   * A plan is only worth approving while it is waiting for somebody. The other
-   * states are reported rather than acted on, which is why the button is bound
-   * to this and not merely to a plan existing.
-   */
-  const approvable = $derived(plan !== null && plan.state === 'computed');
-
-  const planNote = $derived(planExplanation(plan));
-
-  /**
-   * What a plan's state means, in the words somebody needs to decide what to do
-   * next. "Stale" and "expired" are the pair worth spelling out: one says
-   * somebody changed the configuration and the other says nobody came back in
-   * time, and a reader who cannot tell them apart cannot tell whose turn it is.
-   */
-  function planExplanation(current: SyncPlan | null): string | null {
-    if (current === null) {
-      return null;
-    }
-
-    switch (current.state) {
-      case 'computed':
-        return 'Waiting for you. Nothing has been changed on GitHub yet.';
-      case 'approved':
-        return 'Approved, and waiting for the service to pick it up.';
-      case 'applying':
-        return 'Being applied now.';
-      case 'applied':
-        return 'Applied.';
-      case 'failed':
-        return 'Some of this did not apply. The rows below say which.';
-      case 'stale':
-        return 'The labels changed while this was on screen, so it no longer describes what would happen.';
-      case 'expired':
-        return 'Nobody acted on this in time. The next sweep will work it out again.';
-      default:
-        return null;
-    }
-  }
-
-  function operationLabel(action: SyncAction): string {
-    switch (action.operation) {
-      case 'create':
-        return 'add';
-      case 'update':
-        return 'change';
-      default:
-        return 'remove';
-    }
-  }
 
   /* The overview's kind switches are the same acts the forms perform: labels
      save through the typed fields, every other kind saves its document back
@@ -318,6 +277,21 @@
       {readOnly}
     />
   {/if}
+{:else if section === 'plan'}
+  {#if error !== null}
+    <FormError message={error} />
+  {/if}
+  <SyncPlanPage
+    {plan}
+    {nowMs}
+    {readOnly}
+    {approving}
+    {discarding}
+    {sectionHref}
+    {onOpenSection}
+    onApprove={(planId, digest) => void onApprove(planId, digest)}
+    onDiscard={(planId) => void onDiscard(planId)}
+  />
 {:else}
   <section class="sync-page" aria-labelledby="sync-heading">
     <PageHeader
@@ -428,60 +402,6 @@
         onSave={(wanted, document) => onSaveDocument(FILES, wanted, document)}
       />
     {/if}
-
-    {#if section === 'plan'}
-      <Plate label="What would change">
-        {#if plan === null}
-          <!-- Deliberately not "nothing to do". Nothing is waiting, which is also
-           what it looks like a moment after saving, before any reconcile has
-           read a repository - and telling somebody their new configuration
-           needs no changes would be a claim nothing here has checked. -->
-          <p class="sync-lead">
-            Nothing waiting. A reconcile runs on a timer and proposes whatever differs
-          </p>
-        {:else}
-          <p class="sync-lead">{planNote}</p>
-          <p class="sync-counts">
-            {plan.counts.create} to add, {plan.counts.update} to change, {plan.counts.delete} to remove
-          </p>
-
-          <ul class="sync-rows">
-            {#each plan.actions as action (action.repository + action.kind + action.subject)}
-              <li class="sync-row" class:sync-removal={action.operation === 'delete'}>
-                <span class="sync-operation">{operationLabel(action)}</span>
-                <!-- Which of the sections above this row came from. One list covers
-                 them all, and "change repository" says nothing on its own. -->
-                <span class="sync-kind">{action.kind}</span>
-                <span class="sync-name">{action.subject}</span>
-                {#if action.after}
-                  <span class="sync-description">{action.after}</span>
-                {:else if action.before}
-                  <span class="sync-description">{action.before}</span>
-                {/if}
-                {#if action.error}
-                  <span class="sync-failure">{action.error}</span>
-                {:else if action.blocker}
-                  <span class="sync-failure">not tried: {action.blocker} failed first</span>
-                {/if}
-              </li>
-            {/each}
-          </ul>
-
-          {#if approvable && !readOnly}
-            {@const approved = plan}
-            <div class="sync-actions">
-              <Button
-                tone="signal"
-                disabled={approving}
-                onclick={() => onApprove(approved.id, approved.digest)}
-              >
-                {approving ? 'Approving' : 'Apply these changes'}
-              </Button>
-            </div>
-          {/if}
-        {/if}
-      </Plate>
-    {/if}
   </section>
 {/if}
 
@@ -500,7 +420,6 @@
   }
 
   /* The same line, further down a plate, so it carries the gap itself. */
-  .sync-counts,
   .sync-empty {
     color: var(--dim);
     font-size: var(--font-size-meta);
@@ -562,34 +481,8 @@
     width: 0.75em;
   }
 
-  .sync-description,
-  .sync-kind {
+  .sync-description {
     color: var(--dim);
     font-size: var(--font-size-meta);
-  }
-
-  .sync-operation {
-    color: var(--dim);
-    font-size: var(--font-size-meta);
-    font-variant-numeric: tabular-nums;
-    min-width: 4.5rem;
-  }
-
-  /* A removal is the one row worth finding without reading. It destroys
-     something somebody may have made by hand, and it is off unless an operator
-     switched it on. */
-  .sync-removal .sync-operation {
-    color: var(--text-primary);
-    font-weight: 600;
-  }
-
-  .sync-failure {
-    color: var(--stop);
-    flex-basis: 100%;
-    font-size: var(--font-size-meta);
-  }
-
-  .sync-actions {
-    margin-top: var(--space-4);
   }
 </style>

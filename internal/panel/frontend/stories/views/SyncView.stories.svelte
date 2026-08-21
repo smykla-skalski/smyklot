@@ -95,6 +95,7 @@
     saveConfig: async (_id: string, kind: string) => config(kind),
     fetchPlan: async () => ({ plan: PLAN }),
     approvePlan: async () => ({ plan: { ...PLAN, state: 'approved' as const } }),
+    discardPlan: async () => {},
   };
 
   const { Story } = defineMeta({ title: 'Views/SyncView', component: SyncView, args: base });
