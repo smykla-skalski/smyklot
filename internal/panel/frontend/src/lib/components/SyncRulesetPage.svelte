@@ -1014,13 +1014,23 @@
     position: relative;
   }
 
-  .policy-row + .policy-row::before {
+  /* Every row owns the line under itself; the last one keeps it only when
+     the off-rules remainder follows, where it doubles as that separator. */
+  .policy-row::after {
     background: var(--border-subtle);
     block-size: 1px;
+    bottom: 0;
     content: '';
     inset-inline: var(--space-2);
     position: absolute;
-    top: 0;
+  }
+
+  .policy-row:last-child::after {
+    content: none;
+  }
+
+  .policy-rows:has(+ .group-rest) > .policy-row:last-child::after {
+    content: '';
   }
 
   .setting-say {
@@ -1281,18 +1291,10 @@
     gap: var(--space-3);
     justify-content: space-between;
     margin-inline: calc(var(--space-2) * -1);
-    margin-top: var(--space-2);
-    padding: var(--space-3) var(--space-2) 0;
+    /* Its separator is the last row's own bottom hairline, so the gaps
+       around that line keep the row rhythm. */
+    padding: var(--space-2) var(--space-2) 0;
     position: relative;
-  }
-
-  .group-rest::before {
-    background: var(--border-subtle);
-    block-size: 1px;
-    content: '';
-    inset-inline: var(--space-2);
-    position: absolute;
-    top: 0;
   }
 
   .rest-say {

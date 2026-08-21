@@ -584,14 +584,26 @@
   }
 
   /* A drawn hairline, not a border: a border on a radiused row curves at
-     its tips and makes sibling rows measure one pixel apart. */
-  .policy-row + .policy-row::before {
+     its tips and makes sibling rows measure one pixel apart. Every row owns
+     the line under itself, so the unmanaged remainder needs none of its own
+     and a card with no managed rows shows no line at all. */
+  .policy-row::after {
     background: var(--border-subtle);
     block-size: 1px;
+    bottom: 0;
     content: '';
     inset-inline: var(--space-2);
     position: absolute;
-    top: 0;
+  }
+
+  .policy-row:last-child::after {
+    content: none;
+  }
+
+  /* The last row keeps its line when the unmanaged remainder follows - that
+     line IS the remainder's separator. */
+  .policy-rows:has(+ .group-rest) > .policy-row:last-child::after {
+    content: '';
   }
 
   .setting-say {
@@ -763,21 +775,12 @@
     display: flex;
     gap: var(--space-3);
     justify-content: space-between;
-    /* Bleeds like the rows above it; the drawn line stops at the text
-       edge, the same length as every row divider. */
+    /* Bleeds like the rows above it. Its separator is the last row's own
+       bottom hairline, so the gaps around that line stay the row rhythm -
+       and a card with nothing managed shows no line under its title. */
     margin-inline: calc(var(--space-2) * -1);
-    margin-top: var(--space-2);
-    padding: var(--space-3) var(--space-2) 0;
+    padding: var(--space-2) var(--space-2) 0;
     position: relative;
-  }
-
-  .group-rest::before {
-    background: var(--border-subtle);
-    block-size: 1px;
-    content: '';
-    inset-inline: var(--space-2);
-    position: absolute;
-    top: 0;
   }
 
   .rest-say {

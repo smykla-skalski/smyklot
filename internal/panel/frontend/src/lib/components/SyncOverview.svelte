@@ -631,13 +631,21 @@
       box-shadow var(--duration-press) var(--ease-standard);
   }
 
-  .attn-row + .attn-row::before {
+  .attn-row:not(:last-child)::after {
     background: var(--border-subtle);
     block-size: 1px;
+    bottom: 0;
     content: '';
     inset-inline: var(--space-3);
     position: absolute;
-    top: 0;
+  }
+
+  /* The hover pill has rounded corners; a hairline crossing its edge reads
+     as a crack in it. The hovered row hides its own separator and the one
+     its neighbour would draw over it. */
+  .attn-row:hover::after,
+  .attn-row:has(+ .attn-row:hover)::after {
+    background: transparent;
   }
 
   .attn-row:hover {

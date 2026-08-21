@@ -607,20 +607,20 @@
     background: var(--table-row-hover);
   }
 
-  .object-row + .object-row::before {
+  .object-row:not(:last-child)::after {
     background: var(--border-subtle);
     block-size: 1px;
+    bottom: 0;
     content: '';
     inset-inline: var(--space-3);
     position: absolute;
-    top: 0;
   }
 
   /* The hover pill has rounded corners; a hairline crossing its edge reads
      as a crack in it. The hovered row hides its own separator and the one
      its neighbour would draw over it. */
-  .object-row:hover::before,
-  .object-row:hover + .object-row::before {
+  .object-row:hover::after,
+  .object-row:has(+ .object-row:hover)::after {
     background: transparent;
   }
 
@@ -740,13 +740,13 @@
     position: relative;
   }
 
-  .setting-row + .setting-row::before {
+  .setting-row:not(:last-child)::after {
     background: var(--border-subtle);
     block-size: 1px;
+    bottom: 0;
     content: '';
     inset-inline: var(--space-2);
     position: absolute;
-    top: 0;
   }
 
   .setting-say {

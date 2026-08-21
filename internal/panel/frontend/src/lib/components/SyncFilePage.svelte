@@ -753,16 +753,16 @@
 
   /* One list, a hairline between neighbours - the rows read as one table
      rather than three floating cards. */
-  .adjuster + .adjuster {
-    border-top: 1px solid var(--border-subtle);
+  .adjuster:not(:last-child) {
+    border-bottom: 1px solid var(--border-subtle);
   }
 
   /* The hover pill has rounded corners; a hairline crossing its edge reads
-     as a crack in it. The hovered row hides the separator above it and the
-     one its neighbour would draw under it. */
+     as a crack in it. The hovered row hides the separator under it and the
+     one its neighbour would draw over it. */
   .adjuster:has(> .object-row:hover),
-  .adjuster:has(> .object-row:hover) + .adjuster {
-    border-top-color: transparent;
+  .adjuster:has(+ .adjuster > .object-row:hover) {
+    border-bottom-color: transparent;
   }
 
   .adjuster > .merge-result {

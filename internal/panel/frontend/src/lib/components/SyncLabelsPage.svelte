@@ -610,13 +610,13 @@
     position: relative;
   }
 
-  .label-row + .label-row::before {
+  .label-row:not(:last-child)::after {
     background: var(--border-subtle);
     block-size: 1px;
+    bottom: 0;
     content: '';
     inset-inline: var(--space-2);
     position: absolute;
-    top: 0;
   }
 
   .label-swatch {
@@ -985,13 +985,13 @@
     position: relative;
   }
 
-  .setting-row + .setting-row::before {
+  .setting-row:not(:last-child)::after {
     background: var(--border-subtle);
     block-size: 1px;
+    bottom: 0;
     content: '';
     inset-inline: var(--space-2);
     position: absolute;
-    top: 0;
   }
 
   /* 12, not 4: with name and why both ink-trimmed the gap IS the ink
