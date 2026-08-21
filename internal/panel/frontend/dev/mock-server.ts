@@ -1677,6 +1677,15 @@ async function handle(
           input.path_index_interval_seconds_override ?? null;
       }
       target.value.config_patch = structuredClone(input.config_patch);
+      if (input.pending_ci_mode_default !== undefined)
+        target.value.pending_ci_mode_default = input.pending_ci_mode_default;
+      if (input.pending_ci_branch_patterns_default !== undefined)
+        target.value.pending_ci_branch_patterns_default = structuredClone(
+          input.pending_ci_branch_patterns_default,
+        );
+      if (input.pending_ci_quiet_period_seconds_override !== undefined)
+        target.value.pending_ci_quiet_period_seconds_override =
+          input.pending_ci_quiet_period_seconds_override;
       target.value.revision += 1;
       recomputeTarget(target);
       addAudit(target, 'target.settings.updated', 'updated account defaults');
@@ -1706,6 +1715,16 @@ async function handle(
       }
       stored.detail.config_patch = structuredClone(input.config_patch);
       stored.detail.ignore_repository_file = input.ignore_repository_file;
+      if (input.pending_ci_mode_override !== undefined)
+        stored.detail.pending_ci_mode_override = input.pending_ci_mode_override;
+      if (input.pending_ci_branch_patterns_override !== undefined)
+        stored.detail.pending_ci_branch_patterns_override =
+          input.pending_ci_branch_patterns_override === null
+            ? null
+            : structuredClone(input.pending_ci_branch_patterns_override);
+      if (input.pending_ci_quiet_period_seconds_override !== undefined)
+        stored.detail.pending_ci_quiet_period_seconds_override =
+          input.pending_ci_quiet_period_seconds_override;
       stored.detail.revision += 1;
       stored.detail.repository.updated_at = new Date().toISOString();
       recomputeTarget(target);
@@ -1888,6 +1907,15 @@ async function handle(
           input.path_index_interval_seconds_override ?? null;
       }
       target.value.config_patch = structuredClone(input.config_patch);
+      if (input.pending_ci_mode_default !== undefined)
+        target.value.pending_ci_mode_default = input.pending_ci_mode_default;
+      if (input.pending_ci_branch_patterns_default !== undefined)
+        target.value.pending_ci_branch_patterns_default = structuredClone(
+          input.pending_ci_branch_patterns_default,
+        );
+      if (input.pending_ci_quiet_period_seconds_override !== undefined)
+        target.value.pending_ci_quiet_period_seconds_override =
+          input.pending_ci_quiet_period_seconds_override;
       target.value.revision += 1;
       recomputeTarget(target);
       addAudit(target, 'target.settings.updated', 'updated account defaults');
@@ -1917,6 +1945,16 @@ async function handle(
       }
       stored.detail.config_patch = structuredClone(input.config_patch);
       stored.detail.ignore_repository_file = input.ignore_repository_file;
+      if (input.pending_ci_mode_override !== undefined)
+        stored.detail.pending_ci_mode_override = input.pending_ci_mode_override;
+      if (input.pending_ci_branch_patterns_override !== undefined)
+        stored.detail.pending_ci_branch_patterns_override =
+          input.pending_ci_branch_patterns_override === null
+            ? null
+            : structuredClone(input.pending_ci_branch_patterns_override);
+      if (input.pending_ci_quiet_period_seconds_override !== undefined)
+        stored.detail.pending_ci_quiet_period_seconds_override =
+          input.pending_ci_quiet_period_seconds_override;
       stored.detail.revision += 1;
       stored.detail.repository.updated_at = new Date().toISOString();
       recomputeTarget(target);
