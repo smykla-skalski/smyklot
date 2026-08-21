@@ -58,6 +58,7 @@
    * beside Edit, and the row opens into a small staged form - fields
    * stacked left, Cancel and Done on a hairline foot.
    */
+  import { numericValue } from '../merge';
   import type { SyncConfig, SyncRuleset, SyncRulesetBypassActor, SyncRulesetRules } from '../types';
   import type { SyncSection } from '../routes';
 
@@ -208,7 +209,7 @@
     if (key === 'pull_request' && rules.pull_request !== undefined) {
       const rule = rules.pull_request;
       const chips: Array<{ strong?: string; text: string }> = [];
-      const approvals = rule.required_approving_review_count ?? 0;
+      const approvals = numericValue(rule.required_approving_review_count) ?? 0;
       chips.push({
         strong: String(approvals),
         text: approvals === 1 ? 'approval' : 'approvals',
@@ -259,7 +260,7 @@
     const rules = ruleset?.rules;
     if (key === 'pull_request') {
       const rule = rules?.pull_request;
-      prApprovals = rule?.required_approving_review_count ?? 1;
+      prApprovals = numericValue(rule?.required_approving_review_count) ?? 1;
       prStale = rule?.dismiss_stale_reviews_on_push === true;
       prOwners = rule?.require_code_owner_review === true;
       prLastPush = rule?.require_last_push_approval === true;
@@ -355,16 +356,17 @@
 
   function actorName(actor: SyncRulesetBypassActor): string {
     if (actor.actor_type === 'OrganizationAdmin') return 'Organization admin';
+    const id = numericValue(actor.actor_id) ?? 0;
     if (actor.actor_type === 'RepositoryRole') {
       const roles: Record<number, string> = {
         5: 'Repository admin',
         4: 'Maintainers',
         2: 'Writers',
       };
-      return roles[actor.actor_id] ?? `Repository role ${actor.actor_id}`;
+      return roles[id] ?? `Repository role ${id}`;
     }
-    if (actor.actor_type === 'Integration') return `App ${actor.actor_id}`;
-    if (actor.actor_type === 'Team') return `Team ${actor.actor_id}`;
+    if (actor.actor_type === 'Integration') return `App ${id}`;
+    if (actor.actor_type === 'Team') return `Team ${id}`;
     return `Deploy keys`;
   }
 
@@ -1300,6 +1302,7 @@
   .rest-say {
     color: var(--text-muted);
     font-size: var(--font-size-compact);
+    text-box: trim-both cap alphabetic;
   }
 
   .rest-count {
@@ -1363,5 +1366,6 @@
     flex: 1;
     font-size: var(--font-size-meta);
     line-height: round(1.5em, 1px);
+    text-box: trim-both cap alphabetic;
   }
 </style>

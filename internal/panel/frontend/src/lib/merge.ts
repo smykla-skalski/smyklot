@@ -86,6 +86,22 @@ function isObject(value: unknown): value is { [key: string]: JsonValue } {
 }
 
 /**
+ * The number a document field holds, whichever shape carried it.
+ *
+ * A grafted document keeps every number as a raw-JSON box so its digits
+ * survive a save, and a box is a null-prototype object - handing one to
+ * String() or a template literal is a TypeError, which is how the ruleset
+ * page came to crash on the first bypass actor it named. This is the reader
+ * for a page that asks a document for a quantity rather than a literal.
+ */
+export function numericValue(value: unknown): number | undefined {
+  if (typeof value === 'number') return value;
+  if (isNumber(value)) return Number(value.rawJSON);
+
+  return undefined;
+}
+
+/**
  * Write a key without going through its setter.
  *
  * `result[key] = value` invokes `__proto__`'s setter rather than storing a key

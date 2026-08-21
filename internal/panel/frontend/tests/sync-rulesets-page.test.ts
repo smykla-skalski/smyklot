@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import SyncRulesetPage from '../src/lib/components/SyncRulesetPage.svelte';
 import SyncRulesetsPage from '../src/lib/components/SyncRulesetsPage.svelte';
+import { parseJson } from '../src/lib/merge';
 import type { SyncConfig } from '../src/lib/types';
 
 class TestResizeObserver {
@@ -216,6 +217,40 @@ describe('the ruleset pages [Component]', () => {
 
     const saved = (sent[0]?.rulesets as Array<Record<string, unknown>>)[0];
     expect(saved?.rules).toEqual({ non_fast_forward: true });
+  });
+
+  it('reads a document whose numbers are raw-JSON boxes', () => {
+    // The wire read grafts a digit-preserving parse over `document`, so every
+    // number in a REAL config is a null-prototype box that String() and
+    // template literals throw on. The jsdom fixtures above hand plain numbers,
+    // which is exactly how the page crashed in the browser while every spec
+    // here stayed green - this one reads the shape the API actually delivers.
+    const boxed = parseJson(
+      JSON.stringify({
+        rulesets: [
+          {
+            name: 'main-protection',
+            target: 'branch',
+            enforcement: 'active',
+            conditions: { include: ['~DEFAULT_BRANCH'], exclude: [] },
+            bypass_actors: [{ actor_id: 5, actor_type: 'RepositoryRole', bypass_mode: 'always' }],
+            rules: {
+              pull_request: { required_approving_review_count: 1 },
+            },
+          },
+        ],
+      }),
+    ) as Record<string, unknown>;
+    render(SyncRulesetPage, {
+      ...shared,
+      name: 'main-protection',
+      config: config(boxed),
+      onSave: () => {},
+    });
+
+    const text = (document.body.textContent ?? '').replace(/\s+/g, ' ');
+    expect(text).toContain('1approval');
+    expect(text).toContain('Repository admin');
   });
 
   it('says so on an address naming a ruleset that is gone', () => {
