@@ -126,7 +126,13 @@ async function measure(path: string, width: number): Promise<Measured> {
   });
 
   try {
-    await visit(page, `${panel.origin}${path}`);
+    /* The heading is this sweep's own precondition - the first assertion reads
+       it - so it is the starting gun too. The generic settle can be satisfied
+       BEFORE a dynamically imported view arrives: a cold dev server compiling
+       a route chunk under six lanes makes no API request and shows no
+       skeleton, so the quiet ceiling elapsed and failure history was measured
+       as a page with no heading at all. */
+    await visit(page, `${panel.origin}${path}`, { ready: 'h1, h2' });
 
     return await page.evaluate((device: number) => {
       const describe_ = (element: Element): string => {
