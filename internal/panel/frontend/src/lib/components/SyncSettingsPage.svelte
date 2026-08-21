@@ -300,6 +300,12 @@
     />
   </div>
 
+  {#if visibleGroups.length === 0}
+    <!-- The one honest answer to a search that matches nothing: the groups
+         stand down whole, so without this line the page went silently blank. -->
+    <p class="empty-note">No setting matches "{query.trim()}"</p>
+  {/if}
+
   <div class="setting-groups">
     {#each visibleGroups as group (group.id)}
       {@const rows = groupRows(group)}
@@ -373,7 +379,7 @@
                           aria-label={field.label}
                           disabled={frozen}
                         >
-                          {choiceWord(field)}
+                          <span class="t">{choiceWord(field)}</span>
                         </button>
                       {/snippet}
                       <div class="menu-list">
@@ -521,6 +527,16 @@
   }
 
   /* ---------- Policy groups: the page is the policy ---------- */
+
+  /* Tall enough to read as a state, not a stray line - the empty-state
+     sweep holds every answer to a 40px floor. */
+  .empty-note {
+    align-content: center;
+    color: var(--text-muted);
+    font-size: var(--font-size-meta);
+    margin: 0 0 var(--space-4);
+    min-block-size: 3rem;
+  }
 
   .setting-groups {
     display: grid;
@@ -691,6 +707,7 @@
   /* Value select: a compact control for the 3+-choice settings. The arrow
      is drawn, not a glyph - two gradient strokes meeting at the chevron. */
   .value-select {
+    align-items: center;
     appearance: none;
     background:
       linear-gradient(45deg, transparent 49%, var(--text-secondary) 51%) calc(100% - 14px) 55% / 5px
@@ -702,9 +719,14 @@
     border-radius: var(--r-ctl);
     color: var(--text-primary);
     cursor: pointer;
+    display: inline-flex;
     font-size: var(--font-size-control);
     min-block-size: 28px;
     padding: 0 1.5rem 0 var(--space-2);
+  }
+
+  .value-select .t {
+    text-box: trim-both cap alphabetic;
   }
 
   /* Open, the trigger wears the pressed ground for as long as its menu
@@ -786,6 +808,7 @@
   .rest-say {
     color: var(--text-muted);
     font-size: var(--font-size-compact);
+    text-box: trim-both cap alphabetic;
   }
 
   .rest-count {

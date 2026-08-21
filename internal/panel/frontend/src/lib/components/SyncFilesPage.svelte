@@ -646,6 +646,7 @@
     font-family: var(--mono);
     font-size: var(--font-size-compact);
     font-weight: 500;
+    text-box: trim-both cap alphabetic;
   }
 
   .object-sum {
@@ -674,6 +675,7 @@
 
   .pill .t {
     display: block;
+    text-box: trim-both cap alphabetic;
   }
 
   .pill-neutral {
@@ -697,6 +699,7 @@
 
   .mx-mark .t {
     display: block;
+    text-box: trim-both cap alphabetic;
   }
 
   .mx-instep {

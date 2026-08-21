@@ -448,6 +448,13 @@
 
   --control-height: 40px;
   --control-height-compact: 34px;
+  /* A chip and a small chip each keep one declared height rather than a
+     third recipe: both were built out of padding, so each one ended up as tall
+     as whatever it happened to hold - 27.59px for a chip carrying a clear
+     button against 23.8px for the add-chip beside it, neither of them a whole
+     pixel. A control's height is a decision, not an outcome. */
+  --control-height-chip: 24px;
+  --control-height-chip-small: 20px;
   --touch-target: 44px;
   --control-inset: 2px;
   --icon-sm: 0.875rem;
@@ -2158,13 +2165,17 @@ select:disabled {
   display: inline-flex;
   font: 600 var(--font-size-compact) / 1 var(--sans);
   gap: 0.35rem;
-  padding: 0.4rem 0.55rem;
+  /* A declared height, not an outcome of padding: a chip stood as tall as
+     whatever it happened to hold, and none of those heights was whole. */
+  min-block-size: var(--control-height-chip);
+  padding: 0 0.55rem;
   white-space: nowrap;
 }
 
 .chip-small {
   font-size: var(--font-size-micro);
-  padding: 0.3rem 0.45rem;
+  min-block-size: var(--control-height-chip-small);
+  padding-inline: 0.45rem;
 }
 
 .chip-label {
@@ -2543,6 +2554,14 @@ code {
    `tests/browser/vertical-alignment.test.ts` walks the product and asks every
    row that declares a centre to keep it. */
 .band-trim {
+  text-box: trim-both cap alphabetic;
+}
+
+/* And for a container whose LINES ARE NOT ITS OWN - a cell filled by a caller's
+   snippet, a modal heading, a name assembled from whatever a row was handed.
+   Every child gets the band, because there is no element here to hang a class
+   on: the markup belongs to somebody else. */
+.band-trim-kids > * {
   text-box: trim-both cap alphabetic;
 }
 

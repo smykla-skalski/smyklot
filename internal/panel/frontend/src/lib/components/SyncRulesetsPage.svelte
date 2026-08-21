@@ -413,6 +413,7 @@
     font-size: var(--font-size-meta);
     font-weight: 600;
     text-box: trim-both cap alphabetic;
+    text-box: trim-both cap alphabetic;
   }
 
   .object-sum {
@@ -441,6 +442,7 @@
 
   .pill .t {
     display: block;
+    text-box: trim-both cap alphabetic;
   }
 
   .pill-success {
@@ -474,6 +476,7 @@
 
   .mx-mark .t {
     display: block;
+    text-box: trim-both cap alphabetic;
   }
 
   /* On the board an in-step cell is the quiet norm; on a list row the same

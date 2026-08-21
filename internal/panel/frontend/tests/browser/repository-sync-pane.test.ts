@@ -70,18 +70,22 @@ describe('the repository sync pane in the development panel', () => {
 
       await openPane(page, repository, 'Sync');
 
-      // The adjustment the mock seeds for this repository, which nothing but a
-      // real read produces: the pane renders a card per merge, and an empty
-      // answer renders none.
-      const merge = repository.locator('.entry-card').first();
-      await merge.waitFor({ state: 'visible', timeout: 30_000 });
+      // The adjustments the mock seeds for this repository, which nothing but
+      // a real read produces: the pane renders a card per merge, and an empty
+      // answer renders none. Both templates, so both grammars are on the page.
+      const json = repository.locator('.entry-card').first();
+      await json.waitFor({ state: 'visible', timeout: 30_000 });
 
-      expect(await merge.getByRole('textbox', { name: 'File', exact: true }).inputValue()).toBe(
+      expect(await json.getByRole('textbox', { name: 'File', exact: true }).inputValue()).toBe(
+        'renovate.json',
+      );
+      const markdown = repository.locator('.entry-card').nth(1);
+      expect(await markdown.getByRole('textbox', { name: 'File', exact: true }).inputValue()).toBe(
         'CONTRIBUTING.md',
       );
-      expect(await merge.getByRole('textbox', { name: 'Heading', exact: true }).inputValue()).toBe(
-        '## Commits',
-      );
+      expect(
+        await markdown.getByRole('textbox', { name: 'Heading', exact: true }).first().inputValue(),
+      ).toBe('## Commits');
       expect(reads.length).toBeGreaterThan(0);
 
       expect(crashes).toEqual([]);

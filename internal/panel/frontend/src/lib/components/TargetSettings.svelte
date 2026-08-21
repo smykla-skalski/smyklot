@@ -663,6 +663,48 @@
     font-weight: 600;
   }
 
+  .setting-unmanaged {
+    color: var(--text-muted);
+    font-size: var(--font-size-compact);
+    font-style: normal;
+    /* Ink-true, so the padding around the hairlines measures to the glyphs
+       rather than to the line box's leading. */
+    text-box: trim-both cap alphabetic;
+  }
+
+  .setting-clear {
+    align-items: center;
+    background: transparent;
+    block-size: 26px;
+    border: 0;
+    border-radius: 50%;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: inline-flex;
+    inline-size: 26px;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .setting-clear:hover {
+    background: var(--interactive-hover-layer);
+    color: var(--text-primary);
+  }
+
+  .setting-clear:active {
+    background: var(--interactive-pressed);
+  }
+
+  .policy-row .setting-clear {
+    opacity: 0.45;
+    transition: opacity var(--duration-fast) var(--ease-standard);
+  }
+
+  .policy-row:hover .setting-clear,
+  .policy-row:focus-within .setting-clear {
+    opacity: 1;
+  }
+
   .value-select {
     align-items: center;
     appearance: none;

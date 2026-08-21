@@ -639,6 +639,7 @@
     font-family: var(--mono);
     font-size: var(--font-size-compact);
     font-weight: 500;
+    text-box: trim-both cap alphabetic;
   }
 
   .repo-group-counts {
@@ -648,7 +649,10 @@
     font-size: var(--font-size-micro);
     font-variant-numeric: tabular-nums;
     gap: var(--space-3);
-    line-height: 16px;
+  }
+
+  .repo-group-counts > * {
+    text-box: trim-both cap alphabetic;
   }
 
   .count-add {
@@ -779,11 +783,16 @@
     gap: var(--space-3);
   }
 
+  .apply-counts > * {
+    text-box: trim-both cap alphabetic;
+  }
+
   .apply-note {
     color: var(--text-secondary);
     flex: 1;
     font-size: var(--font-size-meta);
     line-height: round(1.5em, 1px);
+    text-box: trim-both cap alphabetic;
   }
 
   /* ---------- The lifecycle card ---------- */
@@ -1004,7 +1013,6 @@
   }
 
   .exit-cause .t {
-    min-block-size: 8px;
     text-box: trim-both cap alphabetic;
   }
 
@@ -1035,6 +1043,7 @@
 
   .pill .t {
     display: block;
+    text-box: trim-both cap alphabetic;
   }
 
   .pill-danger {

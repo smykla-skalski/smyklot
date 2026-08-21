@@ -512,10 +512,26 @@ export function seed(
           document: {
             merges: [
               {
+                path: 'renovate.json',
+                strategy: 'deep-merge',
+                overrides: {
+                  timezone: 'Europe/Warsaw',
+                  schedule: ['* 4 * * 6'],
+                  ignorePaths: ['crates/harness-codex-acp/**'],
+                },
+                arrays: [{ path: '$.ignorePaths', strategy: 'append' }],
+                deduplicate: true,
+              },
+              {
                 path: 'CONTRIBUTING.md',
                 strategy: 'markdown',
                 sections: [
                   { action: 'after', heading: '## Commits', content: '- Squash on merge' },
+                  {
+                    action: 'patch',
+                    heading: '### Making Changes',
+                    patches: [{ find: 'make check', replace: 'mise run check' }],
+                  },
                 ],
               },
             ],

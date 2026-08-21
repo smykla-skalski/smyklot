@@ -33,8 +33,11 @@ import { addressOf, inLanes, PANEL_ROUTES, startPanel, visit, type Panel } from 
 const HEIGHTS = new Set([
   20, // --control-height-chip-small
   24, // --control-height-chip
-  28, // the sidebar's own collapse trigger
+  26, // the setting-clear disc beside a policy row
+  28, // the sidebar's own collapse trigger, and the value selects
+  30, // the shell grammar's chips: add-chip, cmd-chip, pattern entries
   34, // --control-height-compact
+  38, // a rail tile
   40, // --control-height
   48, // the identity row
   52, // the workspace trigger
