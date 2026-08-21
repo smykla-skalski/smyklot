@@ -611,6 +611,10 @@
 
   .tree-kid .tab-count {
     margin-inline-start: auto;
+    /* The chip sits 4px off the row's top and bottom (28 - 20, halved); the
+       8px pad + 1px border left it 9px off the right edge, which read as
+       the chip drifting. Pull it out until every gap is the same 4px. */
+    margin-inline-end: -5px;
   }
 
   /* In the sidebar the chip wears sidebar material - content tokens follow

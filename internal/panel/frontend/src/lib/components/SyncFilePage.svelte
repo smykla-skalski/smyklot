@@ -448,7 +448,10 @@
         >
         <div class="head-tools">
           {#if templateUndoDepth > 0}
-            <Button tone="quiet" onclick={() => templateEditor?.undoEdit()}>Undo</Button>
+            <Button onclick={() => templateEditor?.undoEdit()}>
+              {#snippet icon()}<Icon name="undo" size={13} />{/snippet}
+              Undo
+            </Button>
           {/if}
           <span class="pill pill-neutral"><span class="t">{strategyPill}</span></span>
         </div>
@@ -506,7 +509,10 @@
                 <span class="t">What {entry.repository} ends up with</span>
                 <span class="pane-tools">
                   {#if editedText !== null && resultUndoDepth > 0}
-                    <Button tone="quiet" onclick={() => resultEditor?.undoEdit()}>Undo</Button>
+                    <Button onclick={() => resultEditor?.undoEdit()}>
+                      {#snippet icon()}<Icon name="undo" size={13} />{/snippet}
+                      Undo
+                    </Button>
                   {/if}
                   {#if editedText !== null}
                     <Button tone="quiet" onclick={() => (sideBySide = !sideBySide)}>
@@ -715,25 +721,28 @@
     color: var(--text-secondary);
   }
 
-  /* The save receipt: one voice in the card head, on for a beat after any
-     landed save, then gone. */
+  /* The save receipt: a healthy-state pill in the card head, on for a beat
+     after any landed save, then gone. A pill rather than muted words - the
+     saves are silent now, so the receipt is the one thing that says the
+     edit landed, and it has to be seen without being watched for. */
   .save-whisper {
     align-items: center;
-    color: var(--text-muted);
+    background: var(--success-tint);
+    block-size: 20px;
+    border-radius: var(--radius-chip);
+    color: var(--success);
     display: inline-flex;
     font-size: var(--font-size-micro);
+    font-weight: 600;
     gap: 4px;
     margin-inline-start: auto;
     opacity: 0;
+    padding: 0 0.5rem;
     transition: opacity var(--duration-fast) var(--ease-standard);
   }
 
   .save-whisper.is-on {
     opacity: 1;
-  }
-
-  .save-whisper :global(svg) {
-    color: var(--success);
   }
 
   .save-whisper .t {
