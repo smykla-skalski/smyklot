@@ -1102,6 +1102,24 @@ async function handle(
       return;
     }
 
+    const syncStatusMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/status$/.exec(
+      path.slice(route('').length),
+    );
+    if (syncStatusMatch && method === 'GET') {
+      const targetId = decodeURIComponent(syncStatusMatch[1] ?? '');
+      /* An installation the seed never drew is a fleet nothing covers yet,
+         not an error - the overview renders the empty answer. */
+      respond(
+        res,
+        200,
+        state.syncStatus.get(targetId) ?? {
+          checked_at: new Date().toISOString(),
+          repositories: [],
+        },
+      );
+      return;
+    }
+
     const syncApprovalMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/plans\/([^/]+)\/approval$/.exec(
       path.slice(route('').length),
     );

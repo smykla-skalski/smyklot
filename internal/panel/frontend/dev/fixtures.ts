@@ -41,9 +41,11 @@ import type {
   RepositoryDetail,
   RepositorySummary,
   RootElevation,
+  SyncCell,
   SyncConfig,
   SyncOverride,
   SyncPlan,
+  SyncStatus,
   SecurityNotification,
   InvitationStatus,
 } from '../src/lib/types.ts';
@@ -97,19 +99,6 @@ export const MOCK_ORGANIZATION_ROSTER: PanelAccount[] = [
   display_name: person.display_name,
   avatar_url: null,
 }));
-
-/**
- * What the development deployment resolves for the durations that cascade.
- *
- * Named here rather than typed at each of the six places that need them: the
- * mock has to agree with itself across the runtime settings, an installation
- * and a repository, or the panel prefills one number and saves against another.
- */
-export const DEV_PATH_INDEX_SECONDS = 3_600;
-export const DEV_PENDING_CI_QUIET_SECONDS = 30;
-
-/** The ceiling the service enforces - `panel.MaxPathIndexInterval`, in seconds. */
-export const DEV_MAX_PATH_INDEX_SECONDS = 604_800;
 
 export const OWNER_CAPABILITIES = {
   read: true,
@@ -175,7 +164,6 @@ export interface MockState {
     logLevelOverride: string | null;
     pollIntervalOverride: number | null;
     pendingCIQuietPeriodOverride: number | null;
-    pathIndexIntervalOverride: number | null;
     sessionTTLOverride: number | null;
     revision: number;
     updatedAt?: string;
@@ -189,6 +177,8 @@ export interface MockState {
   /** What each repository adjusts, keyed by repository and kind together. */
   syncOverrides: Map<string, SyncOverride>;
   syncPlans: Map<string, SyncPlan>;
+  /** The fleet: where every covered repository stands, per installation. */
+  syncStatus: Map<string, SyncStatus>;
 }
 
 /**
@@ -254,17 +244,6 @@ export function seed(
       bypass: true,
       updatedAt: iso(-2 * 86_400_000),
     }),
-    /* The one repository the App can no longer see, so the board has a dashed
-       socket and the legend's fourth row is not permanently zero. */
-    repositorySeed(organization.value, {
-      id: '4005',
-      name: 'archived-tooling',
-      enabledOverride: null,
-      filePatch: {},
-      panelPatch: {},
-      available: false,
-      updatedAt: iso(-40 * 86_400_000),
-    }),
   ];
   const demoNames = [
     'api-gateway',
@@ -295,7 +274,7 @@ export function seed(
   for (const [index, name] of demoNames.entries()) {
     organization.repositories.push(
       repositorySeed(organization.value, {
-        id: `40${String(index + 6).padStart(2, '0')}`,
+        id: `40${String(index + 5).padStart(2, '0')}`,
         name,
         /* auth-service (index 1) INHERITS, which is what the approved table
            demos in its second row: an unbroken chain and a dashed target on the
@@ -504,7 +483,6 @@ export function seed(
       logLevelOverride: null,
       pollIntervalOverride: null,
       pendingCIQuietPeriodOverride: null,
-      pathIndexIntervalOverride: null,
       sessionTTLOverride: null,
       revision: 0,
       startedAt: now,
@@ -534,29 +512,7 @@ export function seed(
               {
                 path: 'renovate.json',
                 strategy: 'deep-merge',
-                overrides: {
-                  timezone: 'Europe/Warsaw',
-                  schedule: ['* 4 * * 6'],
-                  ignorePaths: ['crates/harness-codex-acp/**'],
-                },
-                arrays: [{ path: '$.ignorePaths', strategy: 'append' }],
-                deduplicate: true,
-              },
-              {
-                path: 'CONTRIBUTING.md',
-                strategy: 'markdown',
-                sections: [
-                  {
-                    action: 'after',
-                    heading: '### Prerequisites',
-                    content: '### Project setup\n\nRun `mise install`.',
-                  },
-                  {
-                    action: 'patch',
-                    heading: '### Making Changes',
-                    patches: [{ find: 'make check', replace: 'mise run check' }],
-                  },
-                ],
+                overrides: { timezone: 'Europe/Warsaw', schedule: ['* 4 * * 6'] },
               },
             ],
           },
@@ -585,7 +541,70 @@ export function seed(
       ],
     ]),
     syncPlans: new Map([[organization.value.id, syncPlanSeed(iso)]]),
+    syncStatus: new Map([[organization.value.id, syncStatusSeed(iso)]]),
     // Replaced by install() with the running server's own page.
+  };
+}
+
+/**
+ * The fleet the approved design draws: 25 repositories, three carrying the
+ * plan's changes (af 2/2/0/2, afi 0/4/1/0, harness 2/1/0/0 - kind totals
+ * labels 4 / settings 7 / rulesets 1 / files 2, fourteen in all), one refusal
+ * with its reason on the row, and two repositories with kinds switched off.
+ */
+export function syncStatusSeed(iso: (offsetMs: number) => string): SyncStatus {
+  type Mark = number | 'off' | 'ref';
+  const fleet: [string, Mark, Mark, Mark, Mark][] = [
+    ['.github', 0, 0, 0, 0],
+    ['af', 2, 2, 0, 2],
+    ['afi', 0, 4, 1, 0],
+    ['harness', 2, 1, 0, 0],
+    ['smyklot-legacy', 0, 0, 0, 'ref'],
+    ['dotfiles', 'off', 0, 0, 'off'],
+    ['sai', 0, 0, 0, 0],
+    ['klaudiush', 0, 0, 0, 0],
+    ['smyklot', 0, 0, 0, 0],
+    ['orca', 0, 0, 0, 0],
+    ['archive-old', 'off', 'off', 'off', 'off'],
+    ['docs', 0, 0, 0, 0],
+    ['infra', 0, 0, 0, 0],
+    ['charts', 0, 0, 0, 0],
+    ['actions', 0, 0, 0, 0],
+    ['tooling', 0, 0, 0, 0],
+    ['bench', 0, 0, 0, 0],
+    ['probe', 0, 0, 0, 0],
+    ['relay', 0, 0, 0, 0],
+    ['skald', 0, 0, 0, 0],
+    ['forge', 0, 0, 0, 0],
+    ['mirror', 0, 0, 0, 0],
+    ['quill', 0, 0, 0, 0],
+    ['spore', 0, 0, 0, 0],
+    ['weft', 0, 0, 0, 0],
+  ];
+  const cell = (mark: Mark): SyncCell => {
+    if (mark === 'off') return { state: 'off' };
+    if (mark === 'ref') return { state: 'refused' };
+    return mark > 0 ? { state: 'pending', changes: mark } : { state: 'in_step' };
+  };
+  return {
+    checked_at: iso(-5 * 60_000),
+    repositories: fleet.map(([repository, labels, settings, rulesets, files]) => ({
+      repository,
+      cells: {
+        labels: cell(labels),
+        settings: cell(settings),
+        rulesets: cell(rulesets),
+        files: cell(files),
+      },
+      ...(repository === 'af' ? { removals: 1 } : {}),
+      ...(repository === 'smyklot-legacy'
+        ? {
+            reason:
+              '.github/workflows/ci.yaml needs the workflows permission - grant it on the ' +
+              "installation's page",
+          }
+        : {}),
+    })),
   };
 }
 
@@ -596,17 +615,20 @@ export function syncLabelsSeed(iso: (offsetMs: number) => string): SyncConfig {
     enabled: true,
     labels: [
       { name: 'bug', color: 'd73a4a', description: 'Something is not working' },
-      { name: 'dependencies', color: '0366d6', description: 'Updates a dependency' },
+      { name: 'dependencies', color: '0e8a16', description: 'Dependency updates, mostly Renovate' },
       // No description at all, which is not the same as an empty one: the row
       // has to read without the second column.
       { name: 'good first issue', color: '7057ff' },
       { name: 'security', color: 'b60205', description: 'Needs a maintainer before anything else' },
+      { name: 'docs', color: '0075ca', description: 'Documentation only' },
     ],
-    allow_removal: true,
+    /* Off, like the design's overview says: removal is the sharp end of label
+       sync and the demo keeps it sheathed. */
+    allow_removal: false,
     excludes: ['smykla-skalski/archived-*'],
     revision: 3,
     updated_by: 'bart',
-    updated_at: iso(-3 * 60 * 60_000),
+    updated_at: iso(-2 * 60 * 60_000),
     digest: 'sha256:labels',
     document: {},
     unreadable: false,
@@ -615,10 +637,9 @@ export function syncLabelsSeed(iso: (offsetMs: number) => string): SyncConfig {
 }
 
 /**
- * Nine of the seventeen settings managed, which is the shape the page was
- * designed against: a settings page is only worth reading when some of it is a
- * policy and the rest follows each repository, and an empty one draws four
- * cards that are all sentence and no row.
+ * The settings an organization manages, seeded flat the way the form stores
+ * them - GitHub's own keys at the top level. Nine of the catalogue's
+ * seventeen, which is the overview's "9 of 17 managed".
  */
 export function syncSettingsSeed(iso: (offsetMs: number) => string): SyncConfig {
   return {
@@ -627,20 +648,20 @@ export function syncSettingsSeed(iso: (offsetMs: number) => string): SyncConfig 
     labels: [],
     allow_removal: false,
     excludes: [],
-    revision: 6,
+    revision: 5,
     updated_by: 'bart',
-    updated_at: iso(-13 * 60 * 60_000),
+    updated_at: iso(-26 * 60 * 60_000),
     digest: 'sha256:settings',
     document: {
-      allow_squash_merge: true,
       allow_merge_commit: false,
+      allow_squash_merge: true,
+      allow_rebase_merge: false,
       allow_auto_merge: true,
       delete_branch_on_merge: true,
-      squash_merge_commit_title: 'PR_TITLE',
-      squash_merge_commit_message: 'COMMIT_MESSAGES',
-      has_issues: true,
+      allow_update_branch: true,
       has_wiki: false,
-      secret_scanning: true,
+      has_discussions: false,
+      squash_merge_commit_title: 'PR_TITLE',
     },
     unreadable: false,
     unavailable: '',
@@ -662,7 +683,7 @@ export function syncRulesetsSeed(iso: (offsetMs: number) => string): SyncConfig 
     excludes: [],
     revision: 2,
     updated_by: 'bart',
-    updated_at: iso(-5 * 60 * 60_000),
+    updated_at: iso(-3 * 24 * 60 * 60_000),
     digest: 'sha256:rulesets',
     document: {
       rulesets: [
@@ -689,6 +710,18 @@ export function syncRulesetsSeed(iso: (offsetMs: number) => string): SyncConfig 
             },
           },
         },
+        /* A second ruleset still evaluating, so the overview can say
+           "2 rulesets · 1 evaluating" the way the design does. */
+        {
+          name: 'release-tags',
+          target: 'tag',
+          enforcement: 'evaluate',
+          conditions: { include: ['refs/tags/v*'], exclude: [] },
+          rules: {
+            deletion: true,
+            non_fast_forward: true,
+          },
+        },
       ],
       allow_removal: false,
       excludes: ['hand-made-*'],
@@ -712,7 +745,7 @@ export function syncFilesSeed(iso: (offsetMs: number) => string): SyncConfig {
     excludes: [],
     revision: 4,
     updated_by: 'bart',
-    updated_at: iso(-9 * 60 * 60_000),
+    updated_at: iso(-20 * 60_000),
     digest: 'sha256:files',
     document: {
       files: [
@@ -725,6 +758,19 @@ export function syncFilesSeed(iso: (offsetMs: number) => string): SyncConfig {
         {
           path: 'renovate.json',
           content: '{\n  "extends": ["config:recommended"],\n  "timezone": "UTC"\n}\n',
+        },
+        /* Five templates, like the design's overview counts. */
+        {
+          path: '.github/CODEOWNERS',
+          content: '* @smykla-skalski/maintainers\n',
+        },
+        {
+          path: '.editorconfig',
+          content: 'root = true\n\n[*]\nindent_style = space\nindent_size = 2\n',
+        },
+        {
+          path: '.github/workflows/ci.yaml',
+          content: 'name: CI\non: [push]\njobs:\n  test:\n    runs-on: ubuntu-latest\n',
         },
       ],
       retired: ['.github/workflows/sync-trigger.yml'],
@@ -740,41 +786,29 @@ export function syncFilesSeed(iso: (offsetMs: number) => string): SyncConfig {
  * addition, a change, a removal, a row that failed and a row that was never
  * tried because another failed first.
  */
-/**
- * A plan against the repositories this fixture actually holds.
- *
- * Two things here are load-bearing and were both wrong. The `kind` is the
- * service's own word - `labels`, `settings`, `rulesets`, `files` - and the
- * panel filters by it to draw each kind card's strip; spelled `label` and
- * `repository`, nothing matched and all four strips drew as if every
- * repository were in step. And the `repository` has to be a name the fleet
- * holds, or the board cannot mark it: `design-tokens` is in no seed, so the
- * refusal showed in the out-of-step list and nowhere on the board.
- *
- * The spread is deliberate. Three repositories differ by different amounts so
- * the tiles carry different numerals, one is refused, one is unwatched, and
- * every kind owns at least one action so no strip is empty.
- */
 export function syncPlanSeed(iso: (offsetMs: number) => string): SyncPlan {
   return {
     id: 'plan-1',
     trigger: 'reconcile',
     state: 'computed',
     digest: 'sha256:plan',
-    counts: { create: 7, update: 5, delete: 2 },
+    /* The design's scale: fourteen changes - eight additions, five changes,
+       one removal - across the three drifted repositories. The action list
+       below still shows one of every shape the list can draw; the plan page's
+       own port fills it out to the full fourteen. */
+    counts: { create: 8, update: 5, delete: 1 },
     actions: [
-      // smyklot: six changes across three kinds.
       {
         repository: 'smyklot',
-        kind: 'labels',
+        kind: 'label',
         operation: 'create',
         subject: 'security',
         after: 'b60205',
         state: 'pending',
       },
       {
-        repository: 'smyklot',
-        kind: 'labels',
+        repository: 'platform-infra',
+        kind: 'label',
         operation: 'update',
         subject: 'bug',
         before: 'ee0701',
@@ -782,105 +816,16 @@ export function syncPlanSeed(iso: (offsetMs: number) => string): SyncPlan {
         state: 'pending',
       },
       {
-        repository: 'smyklot',
-        kind: 'labels',
+        repository: 'platform-infra',
+        kind: 'label',
         operation: 'delete',
         subject: 'wontfix',
         before: 'ffffff',
         state: 'pending',
       },
       {
-        repository: 'smyklot',
-        kind: 'settings',
-        operation: 'update',
-        subject: 'allow_squash_merge',
-        before: 'false',
-        after: 'true',
-        state: 'pending',
-      },
-      {
-        repository: 'smyklot',
-        kind: 'rulesets',
-        operation: 'update',
-        subject: 'main-branch-protection',
-        state: 'pending',
-      },
-      {
-        repository: 'smyklot',
-        kind: 'files',
-        operation: 'update',
-        subject: 'renovate.json',
-        state: 'pending',
-      },
-      // platform-infra: five, including the removal the foot line counts.
-      {
-        repository: 'platform-infra',
-        kind: 'labels',
-        operation: 'create',
-        subject: 'good first issue',
-        after: '7057ff',
-        state: 'pending',
-      },
-      {
-        repository: 'platform-infra',
-        kind: 'labels',
-        operation: 'delete',
-        subject: 'invalid',
-        before: 'e4e669',
-        state: 'pending',
-      },
-      {
-        repository: 'platform-infra',
-        kind: 'settings',
-        operation: 'update',
-        subject: 'delete_branch_on_merge',
-        before: 'false',
-        after: 'true',
-        state: 'pending',
-      },
-      {
-        repository: 'platform-infra',
-        kind: 'rulesets',
-        operation: 'create',
-        subject: 'release-tags',
-        state: 'pending',
-      },
-      {
-        repository: 'platform-infra',
-        kind: 'files',
-        operation: 'create',
-        subject: 'CONTRIBUTING.md',
-        state: 'pending',
-      },
-      // api-gateway: three.
-      {
-        repository: 'api-gateway',
-        kind: 'settings',
-        operation: 'update',
-        subject: 'has_wiki',
-        before: 'true',
-        after: 'false',
-        state: 'pending',
-      },
-      {
-        repository: 'api-gateway',
-        kind: 'files',
-        operation: 'update',
-        subject: 'renovate.json',
-        state: 'pending',
-      },
-      {
-        repository: 'api-gateway',
-        kind: 'labels',
-        operation: 'create',
-        subject: 'chore',
-        after: 'cfd3d7',
-        state: 'pending',
-      },
-      // legacy-service: refused, and the reason is the row's own words.
-      {
-        repository: 'legacy-service',
-        kind: 'settings',
+        repository: 'design-tokens',
+        kind: 'repository',
         operation: 'update',
         subject: 'has_wiki',
         after: 'false',
@@ -888,8 +833,8 @@ export function syncPlanSeed(iso: (offsetMs: number) => string): SyncPlan {
         error: 'the app is not an administrator of this repository',
       },
       {
-        repository: 'legacy-service',
-        kind: 'labels',
+        repository: 'design-tokens',
+        kind: 'label',
         operation: 'create',
         subject: 'good first issue',
         after: '7057ff',
@@ -897,8 +842,8 @@ export function syncPlanSeed(iso: (offsetMs: number) => string): SyncPlan {
         blocker: 'has_wiki',
       },
     ],
-    computed_at: iso(-8 * 60_000),
-    expires_at: iso(52 * 60_000),
+    computed_at: iso(-12 * 60_000),
+    expires_at: iso(6 * 60 * 60_000 + 5 * 60_000),
   };
 }
 
@@ -1128,18 +1073,7 @@ export function targetSeed(input: {
       pending_ci_mode_default: 'checks',
       pending_ci_branch_patterns_default: { include: ['~DEFAULT_BRANCH'], exclude: [] },
       pending_ci_quiet_period_seconds_override: null,
-      // What the process resolved, which the service always sends and this mock
-      // has to send too - the panel prefills from it, so a null here is a page
-      // the mock renders differently from production.
-      pending_ci_quiet_period_seconds_inherited: DEV_PENDING_CI_QUIET_SECONDS,
-      path_index_interval_seconds_override: null,
-      path_index_interval_seconds_inherited: DEV_PATH_INDEX_SECONDS,
-      pending_ci_permissions: {
-        checks_write: true,
-        administration_write: true,
-        merge_queues_read: true,
-        commit_statuses_read: true,
-      },
+      pending_ci_permissions: { checks_write: true, administration_write: true },
       config_patch: input.targetPatch,
       inherited_config: structuredClone(DEFAULT_CONFIG),
       effective_config: resolved.values,
@@ -1156,25 +1090,6 @@ export function targetSeed(input: {
   };
 }
 
-/**
- * The repositories the migration spec opens by name, whatever their id is.
- *
- * A repository that has been asked about the TOML migration and said no used to
- * be every seventh id and nothing else. Then one repository was inserted into
- * the fixture ahead of them, every id after it moved by one, and the pair the
- * spec opens came back with nothing to press - `search-indexer` went from 4025
- * to 4026 and stopped being a seventh. The pool keeps the arithmetic, because
- * what it is for is giving the list variety; the two a test names are said
- * here, because a spec should not have to know where the counting landed.
- */
-const DECLINED_MIGRATION = new Set(['migration-demo', 'search-indexer']);
-
-function declinedMigration(input: { id: string; name: string }, status: string): boolean {
-  if (status === 'missing') return false;
-
-  return DECLINED_MIGRATION.has(input.name) || Number(input.id.replace(/\D/g, '')) % 7 === 0;
-}
-
 export function repositorySeed(
   target: PanelTarget,
   input: {
@@ -1186,10 +1101,6 @@ export function repositorySeed(
     fileError?: string;
     bypass?: boolean;
     private?: boolean;
-    /* Whether the App can still see it. False is a repository sync does not
-       watch, which the board draws as a dashed socket - a state the fixture
-       could not produce at all, so that leg of the legend was always zero. */
-    available?: boolean;
     updatedAt: string;
   },
 ): MockRepository {
@@ -1209,7 +1120,7 @@ export function repositorySeed(
     full_name: `${target.account.login}/${input.name}`,
     private: input.private ?? false,
     default_branch: Number(input.id.replace(/\D/g, '')) % 5 === 0 ? 'develop' : 'main',
-    available: input.available ?? true,
+    available: true,
     enabled_override: input.enabledOverride,
     effective_enabled: input.enabledOverride ?? target.repository_default_enabled,
     enabled_source: input.enabledOverride === null ? 'target' : 'repository',
@@ -1238,23 +1149,18 @@ export function repositorySeed(
           ? undefined
           : ['.github/smyklot.yaml'],
       // Every seventh repository has already been asked and said no, so the
-      // detail pane's refusal line and its way back are both reachable - plus
-      // the two the migration spec opens by name.
-      config_migration: declinedMigration(input, status) ? 'declined' : 'none',
-      config_migration_pr: declinedMigration(input, status) ? 42 : undefined,
+      // detail pane's refusal line and its way back are both reachable
+      config_migration:
+        status === 'missing' || Number(input.id.replace(/\D/g, '')) % 7 !== 0 ? 'none' : 'declined',
+      config_migration_pr:
+        status === 'missing' || Number(input.id.replace(/\D/g, '')) % 7 !== 0 ? undefined : 42,
       ignore_repository_file: bypass,
       pending_ci_mode_override: null,
       pending_ci_mode_inherited: target.pending_ci_mode_default,
       pending_ci_branch_patterns_override: null,
       pending_ci_branch_patterns_inherited: target.pending_ci_branch_patterns_default,
       pending_ci_quiet_period_seconds_override: null,
-      // The nearest level above that set one, or what the process resolved -
-      // the same fallback the service applies, never a bare null.
-      pending_ci_quiet_period_seconds_inherited:
-        target.pending_ci_quiet_period_seconds_override ?? DEV_PENDING_CI_QUIET_SECONDS,
-      path_index_interval_seconds_override: null,
-      path_index_interval_seconds_inherited:
-        target.path_index_interval_seconds_override ?? DEV_PATH_INDEX_SECONDS,
+      pending_ci_quiet_period_seconds_inherited: target.pending_ci_quiet_period_seconds_override,
       pending_ci_gate: {
         desired_mode: target.pending_ci_mode_default,
         effective_mode: target.pending_ci_mode_default,
@@ -1639,50 +1545,4 @@ export function rootPanelUsers(state: MockState): RootPanelUser[] {
     manageable: user.account.id !== VIEWER.id && user.system_role === 'none',
     can_manage_system_role: user.account.id !== VIEWER.id && user.system_role !== 'super_root',
   }));
-}
-
-/**
- * What one repository holds, for the path finder to offer.
- *
- * Derived from the name rather than listed per repository, because the finder
- * is worth looking at when the same path is in most of them and a few are not -
- * which is the shape it has to rank, and the shape a hand-written fixture never
- * quite has.
- */
-export function mockRepositoryPaths(name: string): string[] {
-  const everywhere = [
-    'README.md',
-    'LICENSE',
-    '.github/CODEOWNERS',
-    '.github/workflows/test.yaml',
-    '.gitignore',
-  ];
-  const some = [
-    'renovate.json',
-    'CONTRIBUTING.md',
-    '.github/workflows/release.yaml',
-    'docs/guide.md',
-    'internal/storage/sqlstore/store.go',
-    'Makefile',
-  ];
-
-  // A stable spread: the same repository always holds the same paths, so a
-  // reader comparing two visits is comparing the same list.
-  const seed = [...name].reduce((total, letter) => total + letter.charCodeAt(0), 0);
-
-  return [...everywhere, ...some.filter((_, index) => (seed + index) % 3 !== 0)];
-}
-
-/**
- * When this repository's tree was last read, as an offset in days.
- *
- * Not all the same, and one of them old: the panel's answer takes its STALEST
- * row, so a fixture where every reading is fresh makes the notice above the
- * finder unreachable in development - which is where a developer would
- * otherwise see it.
- */
-export function mockRepositoryScanAge(name: string): number {
-  const seed = [...name].reduce((total, letter) => total + letter.charCodeAt(0), 0);
-
-  return seed % 7 === 0 ? 9 : seed % 3;
 }

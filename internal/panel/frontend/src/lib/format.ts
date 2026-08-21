@@ -61,6 +61,7 @@ export type RelativeBucket =
   | { kind: 'just-now' }
   | { kind: 'minutes'; minutes: number }
   | { kind: 'hours'; hours: number }
+  | { kind: 'days'; days: number }
   | { kind: 'date' };
 
 /**
@@ -68,7 +69,9 @@ export type RelativeBucket =
  *
  * Elapsed time only, never calendar days: "yesterday" depends on the zone the
  * page is read in, so the same stored stamp would bucket differently for the
- * owner and for the person it belongs to.
+ * owner and for the person it belongs to. "2 days ago" is elapsed time - 48
+ * whole hours whatever the zone - which is why days get a bucket and
+ * "yesterday" still does not. A week out, the date says more than a count.
  */
 export function relativeBucket(fromMs: number, nowMs: number): RelativeBucket {
   // A stamp ahead of the reader's clock is skew, not the future. Counting up
@@ -85,6 +88,9 @@ export function relativeBucket(fromMs: number, nowMs: number): RelativeBucket {
   }
   if (elapsed < DAY) {
     return { kind: 'hours', hours: Math.floor(elapsed / HOUR) };
+  }
+  if (elapsed < 7 * DAY) {
+    return { kind: 'days', days: Math.floor(elapsed / DAY) };
   }
   return { kind: 'date' };
 }
@@ -103,6 +109,8 @@ export function formatRelative(value: string, nowMs: number): string {
       return `${bucket.minutes} ${plural(bucket.minutes, 'minute')} ago`;
     case 'hours':
       return `${bucket.hours} ${plural(bucket.hours, 'hour')} ago`;
+    case 'days':
+      return `${bucket.days} ${plural(bucket.days, 'day')} ago`;
     case 'date':
       /* Day-first, like every other date in the product - `undefined` here
          handed an en-US reader "Aug 9, 2026" beside a "9 Aug 2026" written by

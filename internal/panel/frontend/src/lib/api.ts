@@ -46,6 +46,7 @@ import type {
   SyncOverrideRow,
   SyncPathIndex,
   SyncPlan,
+  SyncStatus,
   TargetSettingsInput,
   InvitationDays,
   InvitationSignIn,
@@ -186,6 +187,7 @@ export interface PanelApi {
   ): Promise<SyncOverride>;
   fetchSyncPlan(targetId: string): Promise<{ plan: SyncPlan | null }>;
   approveSyncPlan(targetId: string, planId: string, digest: string): Promise<{ plan: SyncPlan }>;
+  fetchSyncStatus(targetId: string): Promise<SyncStatus>;
   fetchAudit(targetId: string, request: AuditHistoryRequest): Promise<Page<AuditEntry>>;
   fetchFailures(targetId: string, request: FailureHistoryRequest): Promise<Page<DeliveryFailure>>;
   signOut(): Promise<void>;
@@ -816,6 +818,10 @@ export function createPanelApi(
 
     fetchSyncPlan(targetId: string): Promise<{ plan: SyncPlan | null }> {
       return jsonRequest(`/api/v1/targets/${pathSegment(targetId)}/sync/plan`);
+    },
+
+    fetchSyncStatus(targetId: string): Promise<SyncStatus> {
+      return jsonRequest(`/api/v1/targets/${pathSegment(targetId)}/sync/status`);
     },
 
     // The digest goes back with the approval. It is what says the plan on the

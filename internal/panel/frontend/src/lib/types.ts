@@ -982,6 +982,40 @@ export interface SyncConfigInput {
   document?: Record<string, unknown>;
 }
 
+/** The kinds sync manages, in the order every surface lists them. */
+export const SYNC_KINDS = ['labels', 'settings', 'rulesets', 'files'] as const;
+export type SyncKind = (typeof SYNC_KINDS)[number];
+
+/**
+ * One repository's answer for one kind: quiet when in step, a count when a
+ * plan would change it, a refusal with its reason on the repository, or
+ * switched off there.
+ */
+export interface SyncCell {
+  state: 'in_step' | 'pending' | 'refused' | 'off';
+  /** Pending only: how many of the plan's changes land here for this kind. */
+  changes?: number;
+}
+
+/** One repository on the board, with its per-kind cells. */
+export interface SyncRepositoryStatus {
+  repository: string;
+  cells: Record<SyncKind, SyncCell>;
+  /** Pending only: how many of the changes are removals. */
+  removals?: number;
+  /** Refused only: the repository's own word about why, in words. */
+  reason?: string;
+}
+
+/**
+ * The fleet: every repository sync covers and where each one stands. What the
+ * overview's board, legend, out-of-step list and kind strips are drawn from.
+ */
+export interface SyncStatus {
+  checked_at: string;
+  repositories: SyncRepositoryStatus[];
+}
+
 /** One change a plan would make. */
 export interface SyncAction {
   repository: string;

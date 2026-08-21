@@ -146,6 +146,7 @@
         {#key session.selectedTarget.id}
           <SyncView
             targetId={session.selectedTarget.id}
+            section={session.currentSyncSection}
             readOnly={!session.selectedTarget.capabilities.write}
             account={session.selectedTarget.account.login}
             section={session.currentSyncPage.section}
@@ -160,6 +161,9 @@
             fetchPaths={session.api.fetchSyncPaths}
             fetchPlan={session.api.fetchSyncPlan}
             approvePlan={session.api.approveSyncPlan}
+            fetchStatus={session.api.fetchSyncStatus}
+            sectionHref={(s) => session.syncSectionHref(s)}
+            onOpenSection={(s) => session.selectSyncSection(s)}
           />
         {/key}
       {:catch error}
