@@ -80,7 +80,7 @@ describe('RepositorySyncPane [Component]', () => {
     const { sent, onSave } = saved();
     render(RepositorySyncPane, { ...base, stored: override(), onSave });
 
-    await fireEvent.click(screen.getByRole('button', { name: 'Adjust a file' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Adjust another file' }));
     await fireEvent.change(screen.getByLabelText('File'), {
       target: { value: 'renovate.json' },
     });
@@ -114,13 +114,20 @@ describe('RepositorySyncPane [Component]', () => {
     expect(screen.getByRole('button', { name: 'Save' }).hasAttribute('disabled')).toBe(true);
   });
 
+  /** Adds one leave-alone pattern through the in-place entry editor. */
+  async function addExclude(value: string): Promise<void> {
+    await fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    const input = screen.getByLabelText('Pattern');
+    await fireEvent.input(input, { target: { value } });
+    await fireEvent.keyDown(input, { key: 'Enter' });
+  }
+
   it('sends the files this repository wants left alone', async () => {
     const { sent, onSave } = saved();
     render(RepositorySyncPane, { ...base, stored: override(), onSave });
 
-    await fireEvent.change(screen.getByLabelText('Files to leave alone here'), {
-      target: { value: 'renovate.json\nCONTRIBUTING.md' },
-    });
+    await addExclude('renovate.json');
+    await addExclude('CONTRIBUTING.md');
     await save();
 
     expect(sent[0].document.excludes).toEqual(['renovate.json', 'CONTRIBUTING.md']);
@@ -135,9 +142,7 @@ describe('RepositorySyncPane [Component]', () => {
     const { sent, onSave } = saved();
     render(RepositorySyncPane, { ...base, stored: override(), onSave });
 
-    await fireEvent.change(screen.getByLabelText('Files to leave alone here'), {
-      target: { value: 'LICENSE' },
-    });
+    await addExclude('LICENSE');
     await save();
 
     expect(sent[0].enabled).toBeNull();
@@ -181,9 +186,7 @@ describe('RepositorySyncPane [Component]', () => {
       onSave,
     });
 
-    await fireEvent.change(screen.getByLabelText('Files to leave alone here'), {
-      target: { value: 'LICENSE' },
-    });
+    await addExclude('LICENSE');
     await save();
 
     expect(sent[0].document.something_later).toEqual({ deep: true });
@@ -208,7 +211,7 @@ describe('RepositorySyncPane [Component]', () => {
     });
 
     expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Adjust a file' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Adjust another file' })).toBeNull();
   });
 
   /**
