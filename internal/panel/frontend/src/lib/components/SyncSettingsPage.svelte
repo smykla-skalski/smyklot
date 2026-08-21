@@ -152,6 +152,7 @@
   import FormError from './FormError.svelte';
   import Icon from './Icon.svelte';
   import PanePath from './PanePath.svelte';
+  import ClippedLabel from './ClippedLabel.svelte';
   import Popover from './Popover.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
   import Switch from './Switch.svelte';
@@ -375,22 +376,24 @@
                           {choiceWord(field)}
                         </button>
                       {/snippet}
-                      {#each field.choices as option (option.value)}
-                        <button
-                          class="menu-item"
-                          role="option"
-                          aria-selected={stored[field.key] === option.value}
-                          onclick={() => setValue(field, option.value)}
-                        >
-                          <span class="menu-check">
-                            {#if stored[field.key] === option.value}<Icon
-                                name="check"
-                                size={16}
-                              />{/if}
-                          </span>
-                          <span class="mi-label">{option.label}</span>
-                        </button>
-                      {/each}
+                      <div class="menu-list">
+                        {#each field.choices as option (option.value)}
+                          <button
+                            class="menu-item"
+                            role="option"
+                            aria-selected={stored[field.key] === option.value}
+                            onclick={() => setValue(field, option.value)}
+                          >
+                            <span class="menu-check">
+                              {#if stored[field.key] === option.value}<Icon
+                                  name="check"
+                                  size={16}
+                                />{/if}
+                            </span>
+                            <ClippedLabel class="mi-label" text={option.label} />
+                          </button>
+                        {/each}
+                      </div>
                     </Popover>
                   </span>
                   <button
@@ -742,10 +745,13 @@
     justify-content: center;
   }
 
-  .mi-label {
+  /* No cap trim here: a menu label is a sentence with descenders, and the
+     trim cut them off. The 32px flex row centres it on its own. Anchored
+     through the row because the span is ClippedLabel's markup, outside this
+     component's scope. */
+  .menu-item :global(.mi-label) {
     min-inline-size: 0;
     overflow: hidden;
-    text-box: trim-both cap alphabetic;
     text-overflow: ellipsis;
     white-space: nowrap;
   }

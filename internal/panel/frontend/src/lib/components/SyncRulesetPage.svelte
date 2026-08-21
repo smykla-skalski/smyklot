@@ -1051,7 +1051,9 @@
     align-items: center;
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-2);
+    /* The settings page's 12px, which is the design's - the 8px here made
+       every value column measure 4px per seam off the mock. */
+    gap: var(--space-3);
     justify-content: end;
     justify-self: end;
   }
@@ -1312,9 +1314,12 @@
 
   /* ---------- The one-field popover every Add-a-... chip gets ---------- */
 
+  /* The menu's 4px mat - `.menu-search` bleeds to the edges with negative
+     margins that assume exactly this pad. */
   .name-menu {
     display: grid;
     inline-size: 16rem;
+    padding: var(--space-1);
   }
 
   .menu-search {

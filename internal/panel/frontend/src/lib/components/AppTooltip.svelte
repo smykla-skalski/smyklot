@@ -8,6 +8,7 @@
     align = 'center',
     side = 'top',
     mono = false,
+    disabled = false,
     children,
   }: {
     id?: string;
@@ -21,12 +22,14 @@
      * reads as a different kind of thing.
      */
     mono?: boolean;
+    /** A tip that has nothing to add right now stays quiet without unmounting its trigger. */
+    disabled?: boolean;
     children: Snippet<[Record<string, unknown>]>;
   } = $props();
 </script>
 
 <Tooltip.Provider delayDuration={250}>
-  <Tooltip.Root>
+  <Tooltip.Root {disabled}>
     <Tooltip.Trigger>
       {#snippet child({ props })}
         {@render children(props)}

@@ -808,7 +808,6 @@
   }
 
   .card-title {
-    flex: 1;
     font-size: var(--font-size-card-title);
     font-weight: 600;
     margin: 0;

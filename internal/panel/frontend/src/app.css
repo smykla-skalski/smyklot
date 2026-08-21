@@ -2086,11 +2086,13 @@ select:disabled {
   border-color: var(--danger);
 }
 
+/* Same inline padding as every other button - the design draws quiet and
+   bordered buttons on one grid, and the narrower 8px made every quiet
+   control's column measure off the mock by the difference. */
 .btn-quiet {
   background: transparent;
   border-color: transparent;
   color: var(--dim);
-  padding: 0 0.5rem;
 }
 
 /* No flat fill: --strip-lift is 0.5 dE00 from the surface this sits on, so the hover was not
@@ -2103,6 +2105,22 @@ select:disabled {
 .btn-row {
   min-height: var(--control-height-compact);
   padding: 0 0.625rem;
+}
+
+/* The menu's own frame, worn by the content of every menu-shaped popover.
+   The popover primitive is bare on purpose; this is the 4px mat the design
+   draws menu rows on, and the width band that makes long option labels
+   ellipsize instead of stretching the layer to the text. `.menu-search`
+   bleeds to the edges with negative margins that assume exactly this pad. */
+.menu-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  max-inline-size: min(24rem, calc(100vw - 24px));
+  min-inline-size: 13rem;
+  padding: var(--space-1);
+  /* Rows breathe 2px apart, so a hovered row and its chosen neighbour never
+     read as one fused pill. */
+  row-gap: 2px;
 }
 
 .chip {

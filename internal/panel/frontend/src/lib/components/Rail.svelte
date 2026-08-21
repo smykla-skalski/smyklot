@@ -28,6 +28,7 @@
 
   import type { PanelTarget, PanelViewer } from '../types';
   import type { ThemeDisplay } from '../preferences';
+  import ClippedLabel from './ClippedLabel.svelte';
   import Icon from './Icon.svelte';
   import Popover from './Popover.svelte';
   import ThemeSwitch from './ThemeSwitch.svelte';
@@ -270,7 +271,7 @@
                 <span class="ws-mini" data-h={workspaceHue(target.account.login)}>
                   <span class="t">{workspaceInitials(nameOf(target))}</span>
                 </span>
-                <span class="mi-label">{nameOf(target)}</span>
+                <ClippedLabel class="mi-label" text={nameOf(target)} />
               </a>
             {/each}
           </div>
@@ -654,6 +655,9 @@
     min-inline-size: 13rem;
     max-inline-size: min(24rem, calc(100vw - 24px));
     padding: var(--space-1);
+    /* Rows breathe 2px apart, so a hovered row and its chosen neighbour never
+       read as one fused pill. */
+    row-gap: 2px;
   }
 
   .console-menu :global(.menu-item),
@@ -703,10 +707,14 @@
     background: var(--sidebar-stop-tint);
   }
 
+  /* No cap trim here: a menu label is a name with descenders, and the trim
+     cut them off. The flex row centres it on its own. Anchored through the
+     item because the span may be ClippedLabel's markup, outside this
+     component's scope. */
+  .menu-item :global(.mi-label),
   .mi-label {
     min-inline-size: 0;
     overflow: hidden;
-    text-box: trim-both cap alphabetic;
     text-overflow: ellipsis;
     white-space: nowrap;
   }

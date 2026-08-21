@@ -568,10 +568,6 @@
     margin-bottom: var(--space-4);
   }
 
-  .card-head .card-title {
-    flex: 1;
-  }
-
   .sync-notice {
     background: var(--surface-inset);
     border-radius: var(--r-ctl);
@@ -687,6 +683,9 @@
     border: 1px solid transparent;
     border-radius: 50%;
     block-size: 24px;
+    /* A button does not inherit ink - the UA's buttontext would ride here
+       and tint anything the disc ever grows. */
+    color: inherit;
     cursor: pointer;
     display: inline-flex;
     inline-size: 24px;
@@ -807,6 +806,9 @@
     display: inline-flex;
     font-size: var(--font-size-micro);
     gap: 4px;
+    /* The receipt rides the right edge on its own - titles hug their text
+       now instead of stretching to push it there. */
+    margin-inline-start: auto;
     opacity: 0;
     transition: opacity var(--duration-fast) var(--ease-standard);
   }

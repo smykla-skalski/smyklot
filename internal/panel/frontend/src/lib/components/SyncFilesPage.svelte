@@ -429,10 +429,6 @@
     margin-bottom: var(--space-4);
   }
 
-  .card-head .card-title {
-    flex: 1;
-  }
-
   .sync-notice {
     background: var(--surface-inset);
     border-radius: var(--r-ctl);

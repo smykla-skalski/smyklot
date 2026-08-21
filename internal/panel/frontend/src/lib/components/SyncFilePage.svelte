@@ -977,6 +977,9 @@
   .list-ask-word code {
     color: var(--code-key);
     font-family: var(--mono);
+    /* The mono face's taller metrics raised the line box 1.5px over the
+       sans text around it; the words set the line, the key rides it. */
+    line-height: 1;
   }
 
   .choice-cards {

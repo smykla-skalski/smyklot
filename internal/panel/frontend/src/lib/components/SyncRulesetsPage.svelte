@@ -334,10 +334,6 @@
     margin-bottom: var(--space-4);
   }
 
-  .card-head .card-title {
-    flex: 1;
-  }
-
   .sync-notice {
     background: var(--surface-inset);
     border-radius: var(--r-ctl);
@@ -490,9 +486,12 @@
 
   /* ---------- The name popover ---------- */
 
+  /* The menu's 4px mat - `.menu-search` bleeds to the edges with negative
+     margins that assume exactly this pad. */
   .name-menu {
     display: grid;
     inline-size: 16rem;
+    padding: var(--space-1);
   }
 
   .menu-search {
