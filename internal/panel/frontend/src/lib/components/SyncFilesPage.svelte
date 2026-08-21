@@ -607,6 +607,12 @@
     background: var(--table-row-hover);
   }
 
+  .object-row:active {
+    background: var(--table-row-pressed);
+    box-shadow: var(--pressed-inset);
+    translate: 0 1px;
+  }
+
   .object-row:not(:last-child)::after {
     background: var(--border-subtle);
     block-size: 1px;

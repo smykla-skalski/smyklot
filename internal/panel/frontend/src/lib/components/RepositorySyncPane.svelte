@@ -15,7 +15,14 @@
   import { canonicalStringify } from '#lib/preferences-sync.js';
   import { patchedAt, rowKeys, storedList, withoutAt } from '#lib/form-lists.js';
   import { formatRelative } from '#lib/format.js';
-  import type { SyncFileMerge, SyncOverride } from '#lib/types.js';
+  import { asArrayStrategy } from '#lib/merge.js';
+  import type {
+    SyncArrayRule,
+    SyncFileMerge,
+    SyncOverride,
+    SyncPatch,
+    SyncSection,
+  } from '#lib/types.js';
 
   import Button from './Button.svelte';
   import Icon from './Icon.svelte';
@@ -29,7 +36,6 @@
     saving,
     now,
     saveProblem = null,
-    filesHref = null,
     onSave,
   }: {
     stored: SyncOverride;
@@ -47,8 +53,6 @@
      * planner is not syncing this repository at all.
      */
     saveProblem?: string | null;
-    /** The workspace's Files page, where the templates themselves live. */
-    filesHref?: string | null;
     onSave: (enabled: boolean | null, document: Record<string, unknown>) => void;
   } = $props();
 
@@ -59,29 +63,72 @@
     { value: 'shallow-merge', label: 'Shallow' },
   ] as const;
 
-  const LIST_STRATEGIES = [
-    { value: 'replace', label: 'Replace' },
+  /*
+   * Offered only for a Markdown path, and the three above only for a structured
+   * one. The engine refuses either crossed over, and the engine this replaces
+   * did not: it let a Markdown strategy be configured for a JSON file,
+   * discovered it at apply time, and wrote the raw template over the
+   * repository's copy. A choice that cannot be made is a refusal nobody has to
+   * read.
+   */
+  const MARKDOWN_STRATEGIES = [
+    { value: '', label: 'By extension' },
+    { value: 'markdown', label: 'Markdown' },
+  ] as const;
+
+  const ARRAY_STRATEGIES = [
     { value: 'append', label: 'Append' },
     { value: 'prepend', label: 'Prepend' },
+    { value: 'replace', label: 'Replace' },
   ] as const;
 
+  /** What one section does. Which fields it needs follows from it. */
   const SECTION_ACTIONS = [
-    { value: 'before', label: 'Before' },
     { value: 'after', label: 'After' },
+    { value: 'before', label: 'Before' },
     { value: 'replace', label: 'Replace' },
     { value: 'delete', label: 'Delete' },
+    { value: 'patch', label: 'Patch' },
+    { value: 'append', label: 'Append to document' },
+    { value: 'prepend', label: 'Prepend to document' },
   ] as const;
 
-  /** One list rule as stored: which list, and how two of them combine. */
-  type ArrayRule = { path: string; strategy: string };
-  /** One markdown operation as stored. */
-  type Section = {
-    action: string;
-    heading?: string;
-    occurrence?: number;
-    content?: string;
-    [key: string]: unknown;
+  /**
+   * What each action needs, which is both what a section shows and what
+   * `setAction` drops when one is chosen. Written once: the fact that
+   * appending addresses the document rather than a heading was otherwise
+   * stated in the label, in the drop, and in two predicates.
+   */
+  const SECTION_SHAPE: Record<string, { heading: boolean; content: boolean; patches: boolean }> = {
+    after: { heading: true, content: true, patches: false },
+    before: { heading: true, content: true, patches: false },
+    replace: { heading: true, content: true, patches: false },
+    delete: { heading: true, content: false, patches: false },
+    patch: { heading: true, content: false, patches: true },
+    append: { heading: false, content: true, patches: false },
+    prepend: { heading: false, content: true, patches: false },
   };
+
+  /* An action a newer service wrote reads as the ordinary one, which is what
+     the predicates this replaces already did with an unknown action. */
+  const shapeOf = (action: string) => SECTION_SHAPE[action] ?? SECTION_SHAPE.after;
+
+  /* What each mode is allowed to write. The engine refuses a spec holding
+     both, so which keys belong to the other one is stated here rather than
+     inferred from which `delete` sits under which return. */
+  const MARKDOWN_KEYS = ['sections'] as const;
+  const STRUCTURED_KEYS = ['overrides', 'arrays', 'deduplicate'] as const;
+
+  /** The extensions the engine edits by heading, spelled the same way. */
+  const MARKDOWN_PATH = /\.(?:md|markdown)$/i;
+
+  /* And the ones it can merge at all. Everything else is ErrUnsupportedFormat,
+     which the pane would otherwise offer a complete editor for. */
+  const MERGEABLE_PATH = /\.(?:json|ya?ml|md|markdown)$/i;
+
+  /* Two lines rather than one, because what goes in the box is a fragment of a
+     document and the heading it opens with is the part people get wrong. */
+  const SECTION_CONTENT_PLACEHOLDER = '### Prerequisites\n\nRun `mise install`';
 
   /**
    * One adjustment as it is being edited.
@@ -93,10 +140,7 @@
    * every add, remove and edit has to keep in step, and the first one to forget
    * puts one repository's overrides on another repository's file.
    */
-  type Draft = {
-    merge: SyncFileMerge & { arrays?: ArrayRule[]; sections?: Section[] };
-    text: string;
-  };
+  type Draft = { merge: SyncFileMerge; text: string };
 
   /* Derived from what is saved and written over as somebody edits, so a save
      landing from anywhere reseeds it. */
@@ -126,10 +170,39 @@
   /* Read once per draft rather than once per question. Both the refusal below
      and the payload need to know what a box says, and parsing it twice for
      that is parsing every adjustment twice on every keystroke. */
-  const values = $derived(drafts.map((draft) => parsed(draft.text)));
+  /* A Markdown row's box is not read by anything - `composed` deletes the key
+     and the refusal check never reaches it - so it is not parsed either. An
+     inert `{}` rather than a parse keeps `malformed` a single question. */
+  const values = $derived(
+    drafts.map((draft) => (editsMarkdown(draft.merge) ? {} : parsed(draft.text))),
+  );
 
   /** The first adjustment whose overrides are not JSON, or nothing. */
   const malformed = $derived(values.findIndex((value) => value === undefined));
+
+  /**
+   * The first adjustment the engine would refuse for a reason this form can
+   * already see, written the way somebody reading the row would say it.
+   *
+   * Every merge is validated on save - `orgsync.FileOverride.ValidateAgainst`
+   * calls `filemerge.Spec.Validate` for each one - so without this the answer
+   * to a half-filled row is a round trip and one flat sentence at the top of a
+   * pane that can hold several files. `Spec.Empty()` does not rescue an empty
+   * row either: the short circuit for it lives in `Apply`, not on the save
+   * path, so a row naming only a file is refused rather than ignored.
+   *
+   * What is left to the server is what the pane cannot know: whether the file
+   * is one the installation actually synchronizes.
+   */
+  const incomplete = $derived.by(() => {
+    for (const [at, draft] of drafts.entries()) {
+      const problem = refusalIn(draft, values[at]);
+
+      if (problem !== null) return problem;
+    }
+
+    return null;
+  });
 
   const payload = $derived(asDocument());
 
@@ -159,7 +232,7 @@
     const document: Record<string, unknown> = { ...stored.document };
 
     if (drafts.length > 0) {
-      document.merges = drafts.map((draft, at) => withOverrides(draft, values[at]));
+      document.merges = drafts.map((draft, at) => composed(draft, values[at]));
     } else {
       delete document.merges;
     }
@@ -186,18 +259,209 @@
     );
   }
 
-  function withOverrides(draft: Draft, value: Record<string, unknown> | undefined): SyncFileMerge {
-    if (value !== undefined && Object.keys(value).length > 0) {
-      return { ...draft.merge, overrides: value };
+  /**
+   * How this row is edited, decided the way the engine decides it: what the
+   * strategy says, and where it says nothing, what the extension says.
+   *
+   * Read from the draft rather than stored, so pointing a row at a `.md` file
+   * turns it into a Markdown row as the path is typed rather than after a save.
+   */
+  function editsMarkdown(merge: SyncFileMerge): boolean {
+    if (merge.strategy === 'markdown') return true;
+    if (merge.strategy === 'deep-merge' || merge.strategy === 'shallow-merge') return false;
+
+    return MARKDOWN_PATH.test(merge.path);
+  }
+
+  /**
+   * One adjustment as it will be stored.
+   *
+   * The keys that belong to the other mode are dropped rather than carried:
+   * the engine refuses a spec holding both, so a row switched from JSON to
+   * Markdown would otherwise save something it will not accept, and the
+   * refusal would arrive from the planner rather than from this form.
+   *
+   * Unknown keys survive, which is the point of spreading the stored merge: a
+   * key a newer version of the service wrote is sent back rather than dropped
+   * by a browser running an older build.
+   */
+  function composed(draft: Draft, value: Record<string, unknown> | undefined): SyncFileMerge {
+    const merge = { ...draft.merge };
+    const markdown = editsMarkdown(merge);
+
+    // The other mode's keys never travel, whichever mode this is.
+    for (const key of markdown ? STRUCTURED_KEYS : MARKDOWN_KEYS) delete merge[key];
+
+    if (markdown) {
+      if (!merge.sections?.length) delete merge.sections;
+
+      return merge;
     }
 
-    // An empty box sets nothing, which is the absence of the key rather than an
-    // empty object: the two mean the same thing to the merge and only one of
-    // them reads that way in the stored document.
-    const rest = { ...draft.merge };
-    delete rest.overrides;
+    if (value !== undefined && Object.keys(value).length > 0) {
+      merge.overrides = value;
+    } else {
+      // An empty box sets nothing, which is the absence of the key rather than
+      // an empty object: the two mean the same thing to the merge and only one
+      // of them reads that way in the stored document.
+      delete merge.overrides;
+    }
 
-    return rest;
+    // Nothing is deduplicated without a list rule, because a list with no rule
+    // is replaced whole - so the flag is never written on its own, which is a
+    // pair the engine refuses rather than ignores.
+    if (!merge.arrays?.length) {
+      delete merge.arrays;
+      delete merge.deduplicate;
+    } else if (merge.deduplicate !== true) {
+      delete merge.deduplicate;
+    }
+
+    return merge;
+  }
+
+  function refusalIn(draft: Draft, value: Record<string, unknown> | undefined): string | null {
+    const { path } = draft.merge;
+    const named = path === '' ? 'an adjustment' : path;
+
+    if (path === '') return 'One adjustment names no file.';
+
+    if (!MERGEABLE_PATH.test(path)) {
+      return `${path} has no extension this can merge; JSON, YAML and Markdown can.`;
+    }
+
+    if (drafts.filter((other) => other.merge.path === path).length > 1) {
+      return `${path} is adjusted twice.`;
+    }
+
+    if (editsMarkdown(draft.merge)) return refusalInSections(named, draft.merge.sections ?? []);
+
+    const rules = draft.merge.arrays ?? [];
+
+    if ((value === undefined || Object.keys(value).length === 0) && rules.length === 0) {
+      return `${named} sets nothing and has no list rule, so nothing would be merged.`;
+    }
+
+    for (const [at, rule] of rules.entries()) {
+      const which = `List rule ${at + 1} of ${named}`;
+      const read = pathKeys(rule.path);
+
+      if ('refusal' in read) return `${which} ${read.refusal}.`;
+
+      if (rules.filter((other) => other.path === rule.path).length > 1) {
+        return `${named} has two rules for ${rule.path}.`;
+      }
+
+      // A shallow merge replaces a top-level key with the override's value
+      // whole, so nothing below one is ever merged.
+      if (draft.merge.strategy === 'shallow-merge' && read.keys.length > 1) {
+        return `${rule.path} is below the top level, and a shallow merge replaces top-level keys whole.`;
+      }
+
+      // A rule says what to do with the repository's list where the template
+      // has one, so a rule whose path the overrides do not set has no list to
+      // work with - for every template, always. The engine refuses it; the
+      // pane holds both documents, so it can say so under the box instead.
+      if (value === undefined) continue;
+
+      const target = valueAt(value, read.keys);
+
+      if (target === undefined) {
+        return `No override sets ${rule.path}, so ${named} has no list to ${rule.strategy}.`;
+      }
+
+      if (!Array.isArray(target)) return `The override at ${rule.path} is not a list.`;
+    }
+
+    return null;
+  }
+
+  /**
+   * The keys a list-rule path names, or why it names none.
+   *
+   * The reading `parsePath` does: `$` for the document, a dot for each level
+   * below it, and a backslash escaping the character after it - so a key
+   * holding a dot is written `$.example\.com`.
+   */
+  function pathKeys(path: string): { keys: string[] } | { refusal: string } {
+    if (path === '') return { refusal: 'names no list' };
+    if (path[0] !== '$') return { refusal: `names ${path}, which does not start with $` };
+    if (path.length === 1) return { refusal: 'names the whole document, which is never a list' };
+    if (path[1] !== '.') return { refusal: `names ${path}, which needs a . after the $` };
+
+    const keys: string[] = [];
+    let key = '';
+    let escaped = false;
+
+    for (const character of path.slice(2)) {
+      if (escaped) {
+        key += character;
+        escaped = false;
+      } else if (character === '\\') {
+        escaped = true;
+      } else if (character === '.') {
+        keys.push(key);
+        key = '';
+      } else {
+        key += character;
+      }
+    }
+
+    keys.push(key);
+
+    if (keys.some((one) => one === '')) return { refusal: `names ${path}, which has an empty key` };
+
+    return { keys };
+  }
+
+  /** What a decoded document holds at those keys, or nothing. */
+  function valueAt(document: Record<string, unknown>, keys: string[]): unknown {
+    let current: unknown = document;
+
+    for (const key of keys) {
+      if (current === null || typeof current !== 'object' || Array.isArray(current)) {
+        return undefined;
+      }
+
+      const level = current as Record<string, unknown>;
+
+      if (!(key in level)) return undefined;
+
+      current = level[key];
+    }
+
+    return current;
+  }
+
+  function refusalInSections(named: string, sections: SyncSection[]): string | null {
+    if (sections.length === 0) {
+      return `${named} is edited by its headings, and no section says how.`;
+    }
+
+    for (const [at, section] of sections.entries()) {
+      const shape = shapeOf(section.action);
+      const which = `Section ${at + 1} of ${named}`;
+
+      if (shape.heading && (section.heading ?? '') === '') {
+        return `${which} needs the heading it addresses, written with its # marks.`;
+      }
+
+      if (shape.content && (section.content ?? '') === '') {
+        return `${which} needs the content it writes.`;
+      }
+
+      if (shape.patches) {
+        const patches = section.patches ?? [];
+
+        if (patches.length === 0) return `${which} substitutes nothing.`;
+
+        const empty = patches.findIndex((pair) => pair.find === '');
+
+        if (empty >= 0) return `${which} has a substitution that finds nothing.`;
+      }
+    }
+
+    return null;
   }
 
   function parsed(text: string): Record<string, unknown> | undefined {
@@ -215,13 +479,13 @@
   }
 
   function storedDrafts(from: Record<string, unknown>): Draft[] {
-    return storedList<Draft['merge']>(from, 'merges').map((merge) => ({
+    return storedList<SyncFileMerge>(from, 'merges').map((merge) => ({
       merge,
       text: merge.overrides === undefined ? '' : JSON.stringify(merge.overrides, null, 2),
     }));
   }
 
-  function patch(index: number, change: Partial<Draft['merge']>): void {
+  function patch(index: number, change: Partial<SyncFileMerge>): void {
     drafts = patchedAt(drafts, index, {
       merge: { ...drafts[index].merge, ...change },
     });
@@ -242,54 +506,147 @@
     queueSave();
   }
 
-  /* ---------- List rules: which list, and how two of them combine ---------- */
-
-  function rulesOf(draft: Draft): ArrayRule[] {
-    return draft.merge.arrays ?? [];
+  /* The rows inside a row. Each list is edited through the merge it belongs to,
+     so every one of these ends at `patch`, and a new list rather than an edit
+     in place is what makes the draft compare unequal to what is stored. */
+  function rulesOf(index: number): SyncArrayRule[] {
+    return drafts[index].merge.arrays ?? [];
   }
 
-  function patchRule(index: number, at: number, change: Partial<ArrayRule>): void {
-    const rules = rulesOf(drafts[index]).map((rule, held) =>
-      held === at ? { ...rule, ...change } : rule,
-    );
-    patch(index, { arrays: rules });
+  function sectionsOf(index: number): SyncSection[] {
+    return drafts[index].merge.sections ?? [];
+  }
+
+  function patchRule(index: number, at: number, change: Partial<SyncArrayRule>): void {
+    patch(index, { arrays: patchedAt(rulesOf(index), at, change) });
+  }
+
+  /* A control hands back a string; a rule holds one of three words. An
+     unrecognised one leaves the rule alone rather than storing something the
+     engine refuses - it cannot arrive from ARRAY_STRATEGIES, and that is the
+     point: nothing here has to stay true for the model to. */
+  function strategyChange(selection: string): Partial<SyncArrayRule> {
+    const strategy = asArrayStrategy(selection);
+
+    return strategy === undefined ? {} : { strategy };
   }
 
   function addRule(index: number): void {
-    patch(index, { arrays: [...rulesOf(drafts[index]), { path: '', strategy: 'append' }] });
+    // Append, because appending is what every list rule in the organization
+    // this was written for does, and a rule added with no strategy is one the
+    // engine refuses.
+    patch(index, { arrays: [...rulesOf(index), { path: '', strategy: 'append' }] });
   }
 
   function removeRule(index: number, at: number): void {
-    const rules = rulesOf(drafts[index]).filter((_, held) => held !== at);
-    patch(index, rules.length > 0 ? { arrays: rules } : { arrays: undefined });
+    patch(index, { arrays: withoutAt(rulesOf(index), at) });
   }
 
-  /* ---------- Markdown sections ---------- */
+  /**
+   * The path, and the strategy where the new path contradicts it.
+   *
+   * A strategy is only meaningful for the sort of document it edits, and the
+   * engine refuses the pair rather than ignoring it: a Markdown strategy on a
+   * `.json` path, or a deep merge on a `.md` one, is `ErrInvalidSpec`. The
+   * strategy control cannot offer the wrong pair, but retyping the path can
+   * arrive at it from the other side - so the strategy the new extension
+   * contradicts is dropped here rather than saved and refused.
+   *
+   * Cleared rather than translated. What a row repointed at another kind of
+   * file should do is a question only the person retyping the path can answer,
+   * and `By extension` is the answer that asks it.
+   */
+  function setPath(index: number, path: string): void {
+    const merge = { ...drafts[index].merge, path };
 
-  function sectionsOf(draft: Draft): Section[] {
-    return draft.merge.sections ?? [];
+    if (
+      merge.strategy !== undefined &&
+      merge.strategy !== '' &&
+      (merge.strategy === 'markdown') !== MARKDOWN_PATH.test(path)
+    ) {
+      delete merge.strategy;
+    }
+
+    drafts = patchedAt(drafts, index, { merge });
+    queueSave();
   }
 
-  function patchSection(index: number, at: number, change: Partial<Section>): void {
-    const sections = sectionsOf(drafts[index]).map((section, held) =>
-      held === at ? { ...section, ...change } : section,
-    );
-    patch(index, { sections });
-  }
-
-  function addSection(index: number): void {
+  function replaceSection(index: number, at: number, section: SyncSection): void {
     patch(index, {
-      sections: [...sectionsOf(drafts[index]), { action: 'replace', heading: '', content: '' }],
+      sections: sectionsOf(index).map((existing, which) => (which === at ? section : existing)),
     });
   }
 
-  function removeSection(index: number, at: number): void {
-    const sections = sectionsOf(drafts[index]).filter((_, held) => held !== at);
-    patch(index, sections.length > 0 ? { sections } : { sections: undefined });
+  function patchSection(index: number, at: number, change: Partial<SyncSection>): void {
+    patch(index, { sections: patchedAt(sectionsOf(index), at, change) });
   }
 
-  const isMarkdown = (draft: Draft): boolean =>
-    draft.merge.strategy === 'markdown' || /\.(md|markdown)$/i.test(draft.merge.path ?? '');
+  function addSection(index: number): void {
+    patch(index, { sections: [...sectionsOf(index), { action: 'after', heading: '' }] });
+  }
+
+  function removeSection(index: number, at: number): void {
+    patch(index, { sections: withoutAt(sectionsOf(index), at) });
+  }
+
+  /**
+   * What a section does, and the fields that stop applying when it changes.
+   *
+   * Appending and prepending address the document rather than a heading, and
+   * the engine refuses one carrying a heading rather than ignoring it - so the
+   * heading is dropped here instead of being left to be refused at apply time.
+   */
+  function setAction(index: number, at: number, action: string): void {
+    const section: SyncSection = { ...sectionsOf(index)[at], action };
+
+    if (!shapeOf(action).heading) {
+      delete section.heading;
+      delete section.occurrence;
+    }
+
+    replaceSection(index, at, section);
+  }
+
+  /**
+   * Which heading of that name, where a document repeats one.
+   *
+   * Absent rather than zero where the box is empty: left out, a heading that
+   * appears twice is refused rather than quietly resolved to the first, and
+   * writing a zero would say something the engine does not read.
+   */
+  function setOccurrence(index: number, at: number, text: string): void {
+    const section = { ...sectionsOf(index)[at] };
+    const which = Number.parseInt(text, 10);
+
+    if (Number.isInteger(which) && which > 0) {
+      section.occurrence = which;
+    } else {
+      delete section.occurrence;
+    }
+
+    replaceSection(index, at, section);
+  }
+
+  function patchesOf(index: number, at: number): SyncPatch[] {
+    return sectionsOf(index)[at].patches ?? [];
+  }
+
+  function patchSubstitution(
+    index: number,
+    at: number,
+    which: number,
+    change: Partial<SyncPatch>,
+  ): void {
+    patchSection(index, at, { patches: patchedAt(patchesOf(index, at), which, change) });
+  }
+
+  function addSubstitution(index: number, at: number): void {
+    patchSection(index, at, { patches: [...patchesOf(index, at), { find: '', replace: '' }] });
+  }
+
+  function removeSubstitution(index: number, at: number, which: number): void {
+    patchSection(index, at, { patches: withoutAt(patchesOf(index, at), which) });
+  }
 
   const rowKey = rowKeys('merge');
 
@@ -298,13 +655,10 @@
   const SAVE_REST_MS = 900;
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
 
-  /** An entry not yet named has nowhere to be written; the save waits for it. */
-  const nameless = $derived(drafts.some((draft) => (draft.merge.path ?? '').trim() === ''));
-
   function queueSave(): void {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
-      if (disabled || !changed || malformed >= 0 || nameless) return;
+      if (disabled || !changed || malformed >= 0 || incomplete !== null) return;
       onSave(wanted, payload);
     }, SAVE_REST_MS);
   }
@@ -342,9 +696,8 @@
     >
   </div>
   <p class="group-note">
-    How this repository takes the organization's files. Everything here narrows what sync writes -
-    the templates themselves live on the workspace's
-    {#if filesHref !== null}<a href={filesHref}>Files</a> page{:else}Files page{/if}
+    Whether the organization's files are kept in step here, and what this repository changes about
+    them. Nothing reaches GitHub until a plan is approved
   </p>
 
   {#if saveProblem !== null}
@@ -410,8 +763,8 @@
       <span class="setting-say">
         <span class="setting-name">Files to leave alone here</span>
         <span class="setting-why"
-          >Patterns, where * stands for any run of characters. A file named here is never written or
-          removed in this repository</span
+          >Paths or patterns, where * stands for any run of characters. These narrow what the
+          installation synchronizes; they never widen it</span
         >
       </span>
       <div class="pattern-line">
@@ -428,47 +781,163 @@
   </div>
 
   {#if drafts.length === 0}
-    <p class="form-note-line">This repository takes every file as the organization writes it.</p>
+    <p class="form-note">This repository takes every file as the organization writes it.</p>
   {/if}
 
   {#each drafts as draft, index (rowKey(index))}
-    <article class="entry-card">
-      <div class="entry-row">
-        <label class="entry-field entry-grow">
-          <span class="entry-label">File</span>
+    <article class="entry-card sync-merge">
+      <div class="sync-pane-row">
+        <label class="sync-merge-path">
+          <span class="entry-field-label">File</span>
           <input
-            class="text-inline is-wide mono-input"
+            class="text-input"
             type="text"
             value={draft.merge.path}
             {disabled}
             placeholder="renovate.json"
-            onchange={(event) => patch(index, { path: event.currentTarget.value })}
+            onchange={(event) => setPath(index, event.currentTarget.value)}
           />
         </label>
 
-        {#if !isMarkdown(draft)}
-          <SegmentedControl
-            name="repository-sync-strategy-{index}"
-            label="How {draft.merge.path || 'this file'} is composed"
-            compact
-            options={STRATEGIES}
-            value={draft.merge.strategy ?? ''}
-            {disabled}
-            onSelect={(selection) => patch(index, { strategy: selection })}
-          />
-        {/if}
+        <SegmentedControl
+          name="repository-sync-strategy-{index}"
+          label="How {draft.merge.path || 'this file'} is composed"
+          compact
+          options={editsMarkdown(draft.merge) ? MARKDOWN_STRATEGIES : STRATEGIES}
+          value={draft.merge.strategy ?? ''}
+          {disabled}
+          onSelect={(selection) => patch(index, { strategy: selection })}
+        />
 
         {#if !readOnly}
-          <Button tone="stop-quiet" {disabled} onclick={() => remove(index)}>Remove</Button>
+          <Button tone="quiet" {disabled} onclick={() => remove(index)}>Remove</Button>
         {/if}
       </div>
 
-      {#if !isMarkdown(draft)}
+      {#if editsMarkdown(draft.merge)}
+        <!-- Markdown is edited by its headings, so the keys-and-lists controls
+             are not shown rather than shown and refused. Which one a row gets
+             follows the engine's own reading of the strategy and the extension. -->
+        {#each draft.merge.sections ?? [] as section, at (`${rowKey(index)}-section-${at}`)}
+          <div class="sync-merge-section">
+            <div class="sync-pane-row">
+              <SegmentedControl
+                name="repository-sync-section-{index}-{at}"
+                label="What section {at + 1} of {draft.merge.path || 'this file'} does"
+                compact
+                options={SECTION_ACTIONS}
+                value={section.action}
+                {disabled}
+                onSelect={(selection) => setAction(index, at, selection)}
+              />
+
+              {#if !readOnly}
+                <Button tone="quiet" {disabled} onclick={() => removeSection(index, at)}
+                  >Remove</Button
+                >
+              {/if}
+            </div>
+
+            {#if shapeOf(section.action).heading}
+              <div class="sync-pane-row">
+                <label class="sync-merge-heading">
+                  <span class="entry-field-label">Heading</span>
+                  <input
+                    class="text-input"
+                    type="text"
+                    value={section.heading ?? ''}
+                    {disabled}
+                    placeholder="### Prerequisites"
+                    onchange={(event) =>
+                      patchSection(index, at, { heading: event.currentTarget.value })}
+                  />
+                </label>
+
+                <label class="entry-field sync-merge-occurrence">
+                  <span class="entry-field-label">Which one</span>
+                  <input
+                    class="text-input"
+                    type="number"
+                    min="1"
+                    value={section.occurrence ?? ''}
+                    {disabled}
+                    onchange={(event) => setOccurrence(index, at, event.currentTarget.value)}
+                  />
+                </label>
+              </div>
+            {/if}
+
+            {#if shapeOf(section.action).content}
+              <label class="entry-field">
+                <span class="entry-field-label">What this repository writes</span>
+                <textarea
+                  class="entry-code"
+                  rows="5"
+                  {disabled}
+                  value={section.content ?? ''}
+                  placeholder={SECTION_CONTENT_PLACEHOLDER}
+                  onchange={(event) =>
+                    patchSection(index, at, { content: event.currentTarget.value })}></textarea>
+              </label>
+            {/if}
+
+            {#if shapeOf(section.action).patches}
+              {#each section.patches ?? [] as substitution, which (`${rowKey(index)}-patch-${at}-${which}`)}
+                <div class="sync-pane-row">
+                  <label class="sync-merge-find">
+                    <span class="entry-field-label">Find</span>
+                    <input
+                      class="text-input"
+                      type="text"
+                      value={substitution.find}
+                      {disabled}
+                      placeholder="make check"
+                      onchange={(event) =>
+                        patchSubstitution(index, at, which, { find: event.currentTarget.value })}
+                    />
+                  </label>
+
+                  <label class="sync-merge-find">
+                    <span class="entry-field-label">Replace with</span>
+                    <input
+                      class="text-input"
+                      type="text"
+                      value={substitution.replace}
+                      {disabled}
+                      placeholder="mise run check"
+                      onchange={(event) =>
+                        patchSubstitution(index, at, which, { replace: event.currentTarget.value })}
+                    />
+                  </label>
+
+                  {#if !readOnly}
+                    <Button
+                      tone="quiet"
+                      {disabled}
+                      onclick={() => removeSubstitution(index, at, which)}>Remove</Button
+                    >
+                  {/if}
+                </div>
+              {/each}
+
+              {#if !readOnly}
+                <Button tone="quiet" {disabled} onclick={() => addSubstitution(index, at)}
+                  >Add a substitution</Button
+                >
+              {/if}
+            {/if}
+          </div>
+        {/each}
+
+        {#if !readOnly}
+          <Button tone="quiet" {disabled} onclick={() => addSection(index)}>Edit a section</Button>
+        {/if}
+      {:else}
         <label class="entry-field">
-          <span class="entry-label">What this repository sets</span>
+          <span class="entry-field-label">What this repository sets</span>
           <textarea
             class="entry-code sync-merge-overrides"
-            rows="5"
+            rows="6"
             {disabled}
             aria-describedby="repository-sync-overrides-note"
             value={draft.text}
@@ -476,49 +945,47 @@
             onchange={(event) => setText(index, event.currentTarget.value)}></textarea>
         </label>
 
-        {#each rulesOf(draft) as rule, at (at)}
-          <div class="entry-row rule-row">
-            <label class="entry-field">
-              <span class="entry-label">List</span>
+        {#each draft.merge.arrays ?? [] as rule, at (`${rowKey(index)}-rule-${at}`)}
+          <div class="sync-pane-row">
+            <label class="sync-merge-list">
+              <span class="entry-field-label">List</span>
               <input
-                class="text-inline mono-input"
+                class="text-input"
                 type="text"
                 value={rule.path}
                 {disabled}
-                placeholder="packageRules"
+                placeholder="$.packageRules"
                 onchange={(event) => patchRule(index, at, { path: event.currentTarget.value })}
               />
             </label>
+
             <SegmentedControl
-              name="repository-sync-list-{index}-{at}"
-              label="How the {rule.path || 'list'} entries combine"
+              name="repository-sync-array-{index}-{at}"
+              label="What happens to {rule.path || 'this list'}"
               compact
-              options={LIST_STRATEGIES}
+              options={ARRAY_STRATEGIES}
               value={rule.strategy}
               {disabled}
-              onSelect={(selection) => patchRule(index, at, { strategy: selection })}
+              onSelect={(selection) => patchRule(index, at, strategyChange(selection))}
             />
+
             {#if !readOnly}
-              <button
-                class="setting-clear"
-                title="Drop this list rule - the list goes back to being replaced"
-                {disabled}
-                onclick={() => removeRule(index, at)}
-              >
-                <Icon name="close" size={10} />
-              </button>
+              <Button tone="quiet" {disabled} onclick={() => removeRule(index, at)}>Remove</Button>
             {/if}
           </div>
         {/each}
 
-        {#if rulesOf(draft).length > 0}
-          <div class="entry-row">
-            <span class="entry-spacer"></span>
-            <span class="entry-label-solo">Drop repeated entries</span>
+        <!-- Offered only beside a list rule, because a list with no rule is
+             replaced whole and there is nothing left to deduplicate: the engine
+             refuses that pair rather than ignoring the flag. -->
+        {#if draft.merge.arrays?.length}
+          <div class="sync-pane-row">
+            <span class="sync-form-label">Drop repeated entries</span>
+            <span class="sync-pane-spacer"></span>
             <Switch
               checked={draft.merge.deduplicate === true}
               bare
-              label="Drop repeated entries"
+              label="Drop repeated entries from {draft.merge.path || 'this file'}"
               {disabled}
               onToggle={(next) => patch(index, { deduplicate: next ? true : undefined })}
             />
@@ -526,74 +993,13 @@
         {/if}
 
         {#if !readOnly}
-          <button class="add-chip" {disabled} onclick={() => addRule(index)}>
-            <Icon name="plus" size={12} />
-            <span class="t">Add a list rule</span>
-          </button>
-        {/if}
-      {:else}
-        {#each sectionsOf(draft) as section, at (at)}
-          <div class="section-card">
-            <div class="entry-row">
-              <SegmentedControl
-                name="repository-sync-section-{index}-{at}"
-                label="What this does to the section"
-                compact
-                options={SECTION_ACTIONS}
-                value={SECTION_ACTIONS.some((held) => held.value === section.action)
-                  ? section.action
-                  : 'replace'}
-                {disabled}
-                onSelect={(selection) => patchSection(index, at, { action: selection })}
-              />
-              <label class="entry-field entry-grow">
-                <span class="entry-label">Heading</span>
-                <input
-                  class="text-inline"
-                  type="text"
-                  value={section.heading ?? ''}
-                  {disabled}
-                  placeholder="## Releasing"
-                  onchange={(event) =>
-                    patchSection(index, at, { heading: event.currentTarget.value })}
-                />
-              </label>
-              {#if !readOnly}
-                <button
-                  class="setting-clear"
-                  title="Drop this section change"
-                  {disabled}
-                  onclick={() => removeSection(index, at)}
-                >
-                  <Icon name="close" size={10} />
-                </button>
-              {/if}
-            </div>
-            {#if section.action !== 'delete'}
-              <label class="entry-field">
-                <span class="entry-label">What this repository writes</span>
-                <textarea
-                  class="entry-code"
-                  rows="4"
-                  {disabled}
-                  value={section.content ?? ''}
-                  onchange={(event) =>
-                    patchSection(index, at, { content: event.currentTarget.value })}></textarea>
-              </label>
-            {/if}
-          </div>
-        {/each}
-        {#if !readOnly}
-          <button class="add-chip" {disabled} onclick={() => addSection(index)}>
-            <Icon name="plus" size={12} />
-            <span class="t">Add a section change</span>
-          </button>
+          <Button tone="quiet" {disabled} onclick={() => addRule(index)}>Add a list rule</Button>
         {/if}
       {/if}
     </article>
   {/each}
 
-  <p class="form-note-line" id="repository-sync-overrides-note">
+  <p class="form-note" id="repository-sync-overrides-note">
     A JSON object, merged onto the organization's template. <code>null</code> removes a key.
   </p>
 
@@ -601,12 +1007,14 @@
     <p class="form-error" role="alert">
       What this repository sets for {drafts[malformed]?.merge.path || 'a file'} is not a JSON object.
     </p>
+  {:else if incomplete !== null}
+    <p class="form-error" role="alert">{incomplete}</p>
   {/if}
 
   {#if !readOnly}
     <button class="add-chip add-entry" type="button" {disabled} onclick={add}>
       <Icon name="plus" size={12} />
-      <span class="t">Adjust another file</span>
+      <span class="t">Adjust a file</span>
     </button>
   {/if}
 </section>
@@ -666,10 +1074,6 @@
     line-height: round(1.5em, 1px);
     margin: 0 0 var(--space-2);
     max-width: 72ch;
-  }
-
-  .group-note a {
-    color: var(--brand-action-text);
   }
 
   .policy-rows {
@@ -757,119 +1161,6 @@
     text-box: trim-both cap alphabetic;
   }
 
-  /* These notes sit directly under the control they describe, and the sliver
-     of side inset lines them up with the field's own text. */
-  .form-note-line {
-    color: var(--text-muted);
-    font-size: var(--font-size-compact);
-    margin: 0.25rem 0.125rem var(--space-3);
-  }
-
-  /* Three lines rather than one run-on paragraph: what is happening, the
-     planner's own words for why, and how long ago it found that. The reason is
-     an error string and can run long, so it gets a line of its own. */
-  .sync-pane-standdown {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-  }
-
-  .sync-pane-standdown-when {
-    color: var(--dim);
-  }
-
-  .entry-field {
-    display: grid;
-    gap: 0.5rem;
-  }
-
-  .entry-grow {
-    flex: 1;
-    min-width: 12rem;
-  }
-
-  .entry-label {
-    color: var(--text-secondary);
-    font-size: var(--font-size-compact);
-    font-weight: 600;
-    min-block-size: 9px;
-    text-box: trim-both cap alphabetic;
-  }
-
-  .entry-label-solo {
-    font-size: var(--font-size-meta);
-    font-weight: 600;
-    min-block-size: 10px;
-    text-box: trim-both cap alphabetic;
-  }
-
-  .entry-spacer {
-    flex: 1;
-  }
-
-  .pattern-line {
-    grid-column: 1 / -1;
-    margin-block: var(--space-1) 0;
-  }
-
-  .entry-row {
-    align-items: flex-end;
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-3);
-  }
-
-  .rule-row {
-    align-items: flex-end;
-  }
-
-  .entry-card {
-    background: var(--surface-raised);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--r-ctl);
-    display: grid;
-    gap: var(--space-3);
-    margin-block-end: var(--space-3);
-    padding: var(--space-4);
-  }
-
-  .section-card {
-    display: grid;
-    gap: var(--space-3);
-  }
-
-  .section-card + .section-card {
-    border-top: 1px solid var(--border-subtle);
-    padding-top: var(--space-3);
-  }
-
-  .text-inline {
-    background: var(--input-bg);
-    border: 1px solid var(--control-border);
-    border-radius: var(--r-ctl);
-    color: var(--text-primary);
-    font-size: var(--font-size-control);
-    min-block-size: 30px;
-    padding-inline: 0.55rem;
-    width: 11rem;
-  }
-
-  .text-inline:focus {
-    border-color: var(--focus);
-    outline: 2px solid var(--focus);
-    outline-offset: -1px;
-  }
-
-  .text-inline.is-wide {
-    flex: 1;
-    min-width: 14rem;
-    width: auto;
-  }
-
-  .mono-input {
-    font-family: var(--mono);
-  }
-
   .setting-clear {
     align-items: center;
     background: transparent;
@@ -881,7 +1172,6 @@
     display: inline-flex;
     inline-size: 26px;
     justify-content: center;
-    margin-block-end: 2px;
     padding: 0;
   }
 
@@ -892,6 +1182,25 @@
 
   .setting-clear:active {
     background: var(--interactive-pressed);
+  }
+
+  .policy-row .setting-clear {
+    opacity: 0.45;
+    transition: opacity var(--duration-fast) var(--ease-standard);
+  }
+
+  .policy-row:hover .setting-clear,
+  .policy-row:focus-within .setting-clear {
+    opacity: 1;
+  }
+
+  /* A block row keeps the grid for its say and lays its entries on a
+     full-width second line. The extra breathing room lives INSIDE the row,
+     above the entries - the block padding stays the shared 8px so the air
+     around every hairline is the same on both sides. */
+  .pattern-line {
+    grid-column: 1 / -1;
+    margin-block: var(--space-1) 0;
   }
 
   .add-chip {
@@ -925,20 +1234,87 @@
     text-box: trim-both cap alphabetic;
   }
 
-  /* On a phone the head's three parts cannot share one line - the tally or
-     pill drops under the title instead of holding the card wide. */
+  .add-entry {
+    margin-top: var(--space-3);
+  }
+
+  /* The global rule has no margin. These notes sit directly under the control
+     they describe rather than in a gapped column, and the sliver of side inset
+     lines them up with the field's own text. */
+  .form-note {
+    margin: 0.25rem 0.125rem 0;
+  }
+
+  /* Three lines rather than one run-on paragraph: what is happening, the
+     planner's own words for why, and how long ago it found that. The reason is
+     an error string and can run long, so it gets a line of its own. */
+  .sync-pane-standdown {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .sync-pane-standdown-when {
+    color: var(--dim);
+  }
+
+  .sync-pane-row {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    padding-block: 0.7rem;
+  }
+
+  /* The control sits at the end of its row rather than at the end of the pane:
+     the spacer collapses when the row wraps, which puts the control under its
+     own name at a narrow width. */
+  .sync-pane-spacer {
+    flex: 1;
+  }
+
+  /* Narrower than the shared-files form's, because an adjustment names a path
+     the installation already lists rather than one somebody is typing out.
+     The boxes beside it share the shape and not the name: `.sync-merge-path`
+     is the file this row adjusts, and a selector reaching for that must not
+     also find a list rule's path or a substitution. */
+  .sync-merge-path,
+  .sync-merge-heading,
+  .sync-merge-find,
+  .sync-merge-list {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 12rem;
+  }
+
+  /* Wide enough for a count and no wider: it holds a small ordinal, and a box
+     sized like the heading beside it would read as somewhere to type words.
+     The column and its gap come from `.entry-field`, whose margin the card
+     already zeroes. */
+  .sync-merge-occurrence {
+    width: 6rem;
+  }
+
+  /* A hairline between sections rather than a card around each: they are steps
+     in one document's edit, and boxing every one of them turned a file with six
+     into six files. Drawn between rather than around, so the first sits flush
+     against the strategy row above it. */
+  .sync-merge-section + .sync-merge-section {
+    border-top: 1px solid var(--rule);
+    margin-top: var(--space-3);
+    padding-top: var(--space-3);
+  }
+
+  /* On a phone the head's parts cannot share one line, the say keeps the
+     line and the control moves under it, and the text fields lose their
+     12rem floor rather than holding the page wide. */
   @media (max-width: 30rem) {
     .group-head {
       flex-wrap: wrap;
     }
 
-    .text-inline.is-wide {
-      min-width: 0;
-    }
-
-    /* The say keeps the line and the control moves under it - beside it,
-       the copy was down to a word a line while the control still ran off
-       the screen and took the layout viewport with it. */
     .policy-row {
       grid-template-columns: minmax(0, 1fr) auto;
     }
@@ -958,6 +1334,13 @@
       flex-wrap: wrap;
       grid-column: 1 / -1;
       justify-self: start;
+    }
+
+    .sync-merge-path,
+    .sync-merge-heading,
+    .sync-merge-find,
+    .sync-merge-list {
+      min-width: 0;
     }
   }
 </style>

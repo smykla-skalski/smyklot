@@ -164,6 +164,7 @@ export interface MockState {
     logLevelOverride: string | null;
     pollIntervalOverride: number | null;
     pendingCIQuietPeriodOverride: number | null;
+    pathIndexIntervalOverride: number | null;
     sessionTTLOverride: number | null;
     revision: number;
     updatedAt?: string;
@@ -483,6 +484,7 @@ export function seed(
       logLevelOverride: null,
       pollIntervalOverride: null,
       pendingCIQuietPeriodOverride: null,
+      pathIndexIntervalOverride: null,
       sessionTTLOverride: null,
       revision: 0,
       startedAt: now,
@@ -1288,7 +1290,15 @@ export function targetSeed(input: {
       pending_ci_mode_default: 'checks',
       pending_ci_branch_patterns_default: { include: ['~DEFAULT_BRANCH'], exclude: [] },
       pending_ci_quiet_period_seconds_override: null,
-      pending_ci_permissions: { checks_write: true, administration_write: true },
+      pending_ci_quiet_period_seconds_inherited: DEV_PENDING_CI_QUIET_SECONDS,
+      path_index_interval_seconds_override: null,
+      path_index_interval_seconds_inherited: DEV_PATH_INDEX_SECONDS,
+      pending_ci_permissions: {
+        checks_write: true,
+        administration_write: true,
+        merge_queues_read: true,
+        commit_statuses_read: true,
+      },
       config_patch: input.targetPatch,
       inherited_config: structuredClone(DEFAULT_CONFIG),
       effective_config: resolved.values,
@@ -1375,7 +1385,11 @@ export function repositorySeed(
       pending_ci_branch_patterns_override: null,
       pending_ci_branch_patterns_inherited: target.pending_ci_branch_patterns_default,
       pending_ci_quiet_period_seconds_override: null,
-      pending_ci_quiet_period_seconds_inherited: target.pending_ci_quiet_period_seconds_override,
+      pending_ci_quiet_period_seconds_inherited:
+        target.pending_ci_quiet_period_seconds_override ?? DEV_PENDING_CI_QUIET_SECONDS,
+      path_index_interval_seconds_override: null,
+      path_index_interval_seconds_inherited:
+        target.path_index_interval_seconds_override ?? DEV_PATH_INDEX_SECONDS,
       pending_ci_gate: {
         desired_mode: target.pending_ci_mode_default,
         effective_mode: target.pending_ci_mode_default,
@@ -1807,3 +1821,62 @@ export const KNOWN_PATHS: Array<{ path: string; repositories: number }> = [
   { path: 'SECURITY.md', repositories: 13 },
   { path: 'CODE_OF_CONDUCT.md', repositories: 12 },
 ];
+
+/**
+ * What the development deployment resolves for the durations that cascade.
+ *
+ * Named here rather than typed at each of the six places that need them: the
+ * mock has to agree with itself across the runtime settings, an installation
+ * and a repository, or the panel prefills one number and saves against another.
+ */
+export const DEV_PATH_INDEX_SECONDS = 3_600;
+export const DEV_PENDING_CI_QUIET_SECONDS = 30;
+
+/** The ceiling the service enforces - `panel.MaxPathIndexInterval`, in seconds. */
+export const DEV_MAX_PATH_INDEX_SECONDS = 604_800;
+
+/**
+ * What one repository holds, for the path finder to offer.
+ *
+ * Derived from the name rather than listed per repository, because the finder
+ * is worth looking at when the same path is in most of them and a few are not -
+ * which is the shape it has to rank, and the shape a hand-written fixture never
+ * quite has.
+ */
+export function mockRepositoryPaths(name: string): string[] {
+  const everywhere = [
+    'README.md',
+    'LICENSE',
+    '.github/CODEOWNERS',
+    '.github/workflows/test.yaml',
+    '.gitignore',
+  ];
+  const some = [
+    'renovate.json',
+    'CONTRIBUTING.md',
+    '.github/workflows/release.yaml',
+    'docs/guide.md',
+    'internal/storage/sqlstore/store.go',
+    'Makefile',
+  ];
+
+  // A stable spread: the same repository always holds the same paths, so a
+  // reader comparing two visits is comparing the same list.
+  const seed = [...name].reduce((total, letter) => total + letter.charCodeAt(0), 0);
+
+  return [...everywhere, ...some.filter((_, index) => (seed + index) % 3 !== 0)];
+}
+
+/**
+ * When this repository's tree was last read, as an offset in days.
+ *
+ * Not all the same, and one of them old: the panel's answer takes its STALEST
+ * row, so a fixture where every reading is fresh makes the notice above the
+ * finder unreachable in development - which is where a developer would
+ * otherwise see it.
+ */
+export function mockRepositoryScanAge(name: string): number {
+  const seed = [...name].reduce((total, letter) => total + letter.charCodeAt(0), 0);
+
+  return seed % 7 === 0 ? 9 : seed % 3;
+}

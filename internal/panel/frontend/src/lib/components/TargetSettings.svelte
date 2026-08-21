@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { durationParts, formatDuration, type DurationUnit } from '../duration';
   import type { ConfigPatch, PanelTarget, PendingCIMode, TargetSettingsInput } from '../types';
   import ClippedLabel from './ClippedLabel.svelte';
   import ConfigEditor from './ConfigEditor.svelte';
@@ -63,6 +64,7 @@
       pending_ci_mode_default: target.pending_ci_mode_default,
       pending_ci_branch_patterns_default: target.pending_ci_branch_patterns_default,
       pending_ci_quiet_period_seconds_override: target.pending_ci_quiet_period_seconds_override,
+      path_index_interval_seconds_override: target.path_index_interval_seconds_override,
       config_patch: target.config_patch,
       expected_revision: target.revision,
       ...overrides,
@@ -140,6 +142,52 @@
     quietTimer = setTimeout(saveQuiet, SAVE_REST_MS);
   }
 
+  /* ---------- The path-index interval, an amount beside a unit ---------- */
+
+  const PATH_INDEX_UNITS: readonly DurationUnit[] = ['minutes', 'hours', 'days'];
+  const UNIT_SECONDS: Record<DurationUnit, number> = {
+    seconds: 1,
+    minutes: 60,
+    hours: 3_600,
+    days: 86_400,
+  };
+  let indexAmountDraft = $state<string | null>(null);
+  let indexUnitDraft = $state<DurationUnit | null>(null);
+  let indexTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function indexParts(): { amount: number; unit: DurationUnit } {
+    const seconds =
+      target.path_index_interval_seconds_override ?? target.path_index_interval_seconds_inherited;
+    return durationParts(seconds, PATH_INDEX_UNITS);
+  }
+
+  const indexAmountShown = $derived(indexAmountDraft ?? indexParts().amount.toString());
+  const indexUnitShown = $derived(indexUnitDraft ?? indexParts().unit);
+
+  function typeIndexAmount(value: string): void {
+    indexAmountDraft = value;
+    indexUnitDraft = indexUnitShown;
+    clearTimeout(indexTimer);
+    indexTimer = setTimeout(saveIndexDraft, SAVE_REST_MS);
+  }
+
+  function pickIndexUnit(unit: DurationUnit): void {
+    indexAmountDraft = indexAmountShown;
+    indexUnitDraft = unit;
+    saveIndexDraft();
+  }
+
+  function saveIndexDraft(): void {
+    clearTimeout(indexTimer);
+    indexTimer = undefined;
+    if (indexAmountDraft === null || indexUnitDraft === null) return;
+    const seconds = Math.round(Number(indexAmountDraft) * UNIT_SECONDS[indexUnitDraft]);
+    if (!Number.isFinite(seconds) || seconds < 60) return;
+    indexAmountDraft = null;
+    indexUnitDraft = null;
+    void push('repo', { path_index_interval_seconds_override: seconds });
+  }
+
   function saveQuiet(): void {
     clearTimeout(quietTimer);
     quietTimer = undefined;
@@ -201,6 +249,88 @@
               onToggle={(next) => void push('repo', { repository_default_enabled: next })}
             />
           </span>
+        </div>
+        <div class="policy-row">
+          <span class="setting-say">
+            <span class="setting-name">Path index</span>
+            <span class="setting-why"
+              >How often each repository's file list is read again for the finder and the plans</span
+            >
+          </span>
+          {#if target.path_index_interval_seconds_override === null}
+            <span class="policy-value">
+              <span class="setting-unmanaged"
+                >Follows the deployment - every {formatDuration(
+                  durationParts(target.path_index_interval_seconds_inherited, PATH_INDEX_UNITS),
+                )}</span
+              >
+            </span>
+            <button
+              class="setting-clear"
+              title="Answer for this workspace"
+              disabled={frozen}
+              onclick={() =>
+                void push('repo', {
+                  path_index_interval_seconds_override:
+                    target.path_index_interval_seconds_inherited,
+                })}
+            >
+              <Icon name="plus" size={10} />
+            </button>
+          {:else}
+            <span class="policy-value">
+              <input
+                class="num-inline num-short"
+                inputmode="numeric"
+                aria-label="Path index interval amount"
+                value={indexAmountShown}
+                disabled={readOnly}
+                oninput={(event) => typeIndexAmount(event.currentTarget.value)}
+                onblur={saveIndexDraft}
+              />
+              <Popover
+                role="listbox"
+                label="Path index interval unit"
+                align="end"
+                itemSelector=".menu-item"
+              >
+                {#snippet trigger(attributes)}
+                  <button
+                    {...attributes}
+                    class="value-select"
+                    type="button"
+                    aria-label="Path index interval unit"
+                    disabled={frozen}
+                  >
+                    <span class="t">{indexUnitShown}</span>
+                  </button>
+                {/snippet}
+                <div class="menu-list">
+                  {#each PATH_INDEX_UNITS as unit (unit)}
+                    <button
+                      class="menu-item"
+                      role="option"
+                      aria-selected={indexUnitShown === unit}
+                      onclick={() => pickIndexUnit(unit)}
+                    >
+                      <span class="menu-check">
+                        {#if indexUnitShown === unit}<Icon name="check" size={16} />{/if}
+                      </span>
+                      <ClippedLabel class="mi-label" text={unit} />
+                    </button>
+                  {/each}
+                </div>
+              </Popover>
+            </span>
+            <button
+              class="setting-clear"
+              title="Stop answering - follow the deployment"
+              disabled={frozen}
+              onclick={() => void push('repo', { path_index_interval_seconds_override: null })}
+            >
+              <Icon name="close" size={10} />
+            </button>
+          {/if}
         </div>
       </div>
     </section>
@@ -305,7 +435,7 @@
               id="settings-quiet-period"
               class="num-inline"
               inputmode="numeric"
-              placeholder="Global default"
+              placeholder={target.pending_ci_quiet_period_seconds_inherited.toString()}
               value={quietShown}
               disabled={readOnly}
               oninput={(event) => typeQuiet(event.currentTarget.value)}
@@ -630,6 +760,10 @@
     padding: 0 var(--space-2);
     text-align: end;
     width: 8.5rem;
+  }
+
+  .num-inline.num-short {
+    width: 5rem;
   }
 
   .num-inline::placeholder {

@@ -352,6 +352,16 @@
 
   /* Switch (instant boolean). On = brand, like every other "the product is
      acting" control. */
+  /* Section tabs: navigation, so the indicator is ink, deliberately NOT the
+     brand colour - "you are here" is not "you can act". Hover previews the
+     same affordance in the border's voice; counts are quiet neutral pills. */
+  --tab-ink: var(--text-primary);
+  --tab-muted: var(--text-secondary);
+  --tab-indicator: var(--text-primary);
+  --tab-indicator-hover: var(--border-control);
+  --tab-count-bg: var(--surface-inset);
+  --tab-count-ink: var(--text-secondary);
+
   --switch-track-off: var(--surface-inset);
   --switch-track-off-border: var(--border-strong);
   --switch-track-on: var(--brand-action);
@@ -668,6 +678,16 @@
   --cell-refused: var(--danger);
   --cell-refused-bg: var(--danger-tint);
   --cell-off: var(--border-control);
+  /* Section tabs: navigation, so the indicator is ink, deliberately NOT the
+     brand colour - "you are here" is not "you can act". Hover previews the
+     same affordance in the border's voice; counts are quiet neutral pills. */
+  --tab-ink: var(--text-primary);
+  --tab-muted: var(--text-secondary);
+  --tab-indicator: var(--text-primary);
+  --tab-indicator-hover: var(--border-control);
+  --tab-count-bg: var(--surface-inset);
+  --tab-count-ink: var(--text-secondary);
+
   --switch-track-off: var(--surface-inset);
   --switch-track-off-border: var(--border-strong);
   --switch-track-on: var(--brand-action);
@@ -908,6 +928,16 @@ body {
   --cell-refused: var(--danger);
   --cell-refused-bg: var(--danger-tint);
   --cell-off: var(--border-control);
+  /* Section tabs: navigation, so the indicator is ink, deliberately NOT the
+     brand colour - "you are here" is not "you can act". Hover previews the
+     same affordance in the border's voice; counts are quiet neutral pills. */
+  --tab-ink: var(--text-primary);
+  --tab-muted: var(--text-secondary);
+  --tab-indicator: var(--text-primary);
+  --tab-indicator-hover: var(--border-control);
+  --tab-count-bg: var(--surface-inset);
+  --tab-count-ink: var(--text-secondary);
+
   --switch-track-off: var(--surface-inset);
   --switch-track-off-border: var(--border-strong);
   --switch-track-on: var(--brand-action);

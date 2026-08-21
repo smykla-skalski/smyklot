@@ -60,7 +60,6 @@ import {
   type RootSection,
   type SyncSection,
   type RouteDialog,
-  type SyncPage,
 } from './routes';
 import type { NotificationPage, PanelTarget, PanelViewer } from './types';
 
@@ -249,22 +248,6 @@ export class PanelSession {
     return route.repository ?? null;
   }
 
-  /**
-   * Which section of sync the address names, and what it is opened on.
-   *
-   * The overview when the address names no section, which is what the bare
-   * `/sync` means - so a caller never has to tell "not on sync" apart from "on
-   * sync, no section chosen". Sync has no Root address, so this answers for a
-   * workspace only.
-   */
-  get currentSyncPage(): SyncPage {
-    const route = this.parsedRoute;
-    if (route === null || 'personal' in route || 'rootView' in route)
-      return { section: 'overview' };
-
-    return route.sync ?? { section: 'overview' };
-  }
-
   syncRouteContext(): void {
     // Nothing is recorded from a page that failed to load. The address still names a view
     // and the chrome still shows it, but a reader who pasted a broken link was never on
@@ -322,7 +305,11 @@ export class PanelSession {
     const view = this.currentView;
     const route: InstallationRoute = { account: '', view };
     if (view === 'history') route.section = this.currentHistorySection;
-    if (view === 'sync') route.sync = this.currentSyncPage;
+    if (view === 'sync') {
+      route.sync = this.currentSyncSection;
+      route.syncRuleset = this.currentSyncRuleset ?? undefined;
+      route.syncFile = this.currentSyncFile ?? undefined;
+    }
 
     return panelDocumentTitle(route);
   }
@@ -564,24 +551,6 @@ export class PanelSession {
   closeRepository(): void {
     void this.navigate(this.repositoryRoute(null));
     this.resetPageScroll();
-  }
-
-  /**
-   * Where one of sync's sections lives.
-   *
-   * No Root branch, unlike the repository's: configuring what an organization's
-   * repositories carry is the installation's own business, so sync has no
-   * address in the console at all.
-   */
-  syncHref(page: SyncPage): string {
-    const target = this.selectedTarget;
-    /* Inert rather than broken, the way `historyHref` and `accessHref` beside
-       it answer the same question. An empty login is not a value `resolve`
-       refuses - it only refuses a leading or trailing slash - so it built
-       `/i//sync`, a link that looks live and 404s. */
-    if (target === null) return '#';
-
-    return panelAddress({ account: target.account.login, view: 'sync', sync: page });
   }
 
   repositoryHref(name: string, section: RepositorySection = 'file'): string {

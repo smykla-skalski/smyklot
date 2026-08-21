@@ -76,6 +76,7 @@
           settings.log_level.override !== null,
           settings.reaction_poll_interval.override_seconds !== null,
           settings.merge_after_ci_quiet_period.override_seconds !== null,
+          settings.path_index_interval.override_seconds !== null,
           settings.session_lifetime.override_seconds !== null,
         ].filter(Boolean).length,
   );
@@ -105,6 +106,7 @@
         | 'reaction_poll_interval_seconds'
         | 'session_ttl_seconds'
         | 'merge_after_ci_quiet_period_seconds'
+        | 'path_index_interval_seconds'
       >
     >,
   ): Promise<void> {
@@ -116,6 +118,7 @@
         log_level: settings.log_level.override,
         reaction_poll_interval_seconds: settings.reaction_poll_interval.override_seconds,
         merge_after_ci_quiet_period_seconds: settings.merge_after_ci_quiet_period.override_seconds,
+        path_index_interval_seconds: settings.path_index_interval.override_seconds,
         session_ttl_seconds: settings.session_lifetime.override_seconds,
         expected_revision: settings.revision,
         ...change,
@@ -142,6 +145,7 @@
         log_level: settings.log_level.override,
         reaction_poll_interval_seconds: settings.reaction_poll_interval.override_seconds,
         merge_after_ci_quiet_period_seconds: settings.merge_after_ci_quiet_period.override_seconds,
+        path_index_interval_seconds: settings.path_index_interval.override_seconds,
         session_ttl_seconds: settings.session_lifetime.override_seconds,
         expected_revision: settings.revision,
       });
@@ -163,6 +167,7 @@
     key:
       | 'reaction_poll_interval_seconds'
       | 'merge_after_ci_quiet_period_seconds'
+      | 'path_index_interval_seconds'
       | 'session_ttl_seconds';
     units: readonly DurationUnit[];
     min: number;
@@ -183,6 +188,14 @@
     min: 1,
     max: 24 * UNIT_SECONDS.hours,
     refused: 'Merge-after-CI quiet period must be between 1 second and 24 hours',
+  };
+  const PATH_INDEX_SPEC: DurationSpec = {
+    key: 'path_index_interval_seconds',
+    units: ['minutes', 'hours', 'days'],
+    min: 60,
+    /* Replaced at save time by the bound the service sends - see boundOf. */
+    max: 7 * UNIT_SECONDS.days,
+    refused: 'Path index interval must be between 1 minute and the service ceiling',
   };
   const SESSION_SPEC: DurationSpec = {
     key: 'session_ttl_seconds',
@@ -234,6 +247,14 @@
     saveDuration(spec);
   }
 
+  /** The service's own ceiling where it sends one; the spec's otherwise. */
+  function boundOf(spec: DurationSpec): number {
+    if (spec.key === 'path_index_interval_seconds') {
+      return settings?.path_index_interval.max_seconds ?? spec.max;
+    }
+    return spec.max;
+  }
+
   function saveDuration(spec: DurationSpec): void {
     clearTimeout(timers[spec.key]);
     delete timers[spec.key];
@@ -241,7 +262,7 @@
     const unit = draftUnits[spec.key];
     if (raw === undefined || unit === undefined) return;
     const seconds = Math.round(Number(raw) * UNIT_SECONDS[unit]);
-    if (!Number.isFinite(seconds) || seconds < spec.min || seconds > spec.max) {
+    if (!Number.isFinite(seconds) || seconds < spec.min || seconds > boundOf(spec)) {
       actionFailure = spec.refused;
       return;
     }
@@ -370,7 +391,7 @@
         <span class="save-whisper" class:is-on={runtimeSavedOn} role="status"
           ><Icon name="check" size={12} /><span class="t">Saved</span></span
         >
-        <span class="group-tally">{runtimeOverridden} of 4 overridden</span>
+        <span class="group-tally">{runtimeOverridden} of 5 overridden</span>
       </div>
       <p class="group-note">Applied to the running process without a restart</p>
       <div class="policy-rows">
@@ -582,6 +603,57 @@
               onclick={() => {
                 clearDrafts(QUIET_SPEC);
                 quietly(update({ merge_after_ci_quiet_period_seconds: null }));
+              }}
+            >
+              <Icon name="close" size={10} />
+            </button>
+          {/if}
+        </div>
+
+        <div class="policy-row">
+          <span class="setting-say">
+            <span class="setting-name">Path index</span>
+            <span class="setting-why"
+              >How often each repository's file list is read again for the finder and the plans</span
+            >
+          </span>
+          {#if current.path_index_interval.override_seconds === null}
+            <span class="policy-value">
+              <span class="setting-unmanaged"
+                >Follows the deployment - every {formatDuration(
+                  current.path_index_interval.deployment_seconds,
+                  PATH_INDEX_SPEC.units,
+                )}</span
+              >
+            </span>
+            <button
+              class="setting-clear"
+              title="Override the deployment index interval"
+              disabled={saving}
+              onclick={() =>
+                quietly(
+                  update({
+                    path_index_interval_seconds: current.path_index_interval.deployment_seconds,
+                  }),
+                )}
+            >
+              <Icon name="plus" size={10} />
+            </button>
+          {:else}
+            <span class="policy-value">
+              {@render durationValue(
+                PATH_INDEX_SPEC,
+                current.path_index_interval.override_seconds,
+                'Path index interval',
+              )}
+            </span>
+            <button
+              class="setting-clear"
+              title="Stop overriding - follow the deployment configuration"
+              disabled={saving}
+              onclick={() => {
+                clearDrafts(PATH_INDEX_SPEC);
+                quietly(update({ path_index_interval_seconds: null }));
               }}
             >
               <Icon name="close" size={10} />

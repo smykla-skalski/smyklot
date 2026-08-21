@@ -97,7 +97,7 @@ describe('merge vocabulary [Unit]', () => {
 
   it.each([
     ['ARRAY_STRATEGIES', PANE_SOURCE],
-    ['LIST_RULES', new URL('../src/lib/components/SyncFileDetail.svelte', import.meta.url)],
+    ['RULE_CHOICES', new URL('../src/lib/components/SyncFilePage.svelte', import.meta.url)],
   ])('offers every list strategy in %s', (list, source) => {
     expect(valuesOf(source, list, 3).toSorted()).toEqual([...ARRAY_STRATEGIES].toSorted());
   });

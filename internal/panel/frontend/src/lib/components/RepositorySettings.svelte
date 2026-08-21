@@ -1,5 +1,6 @@
 <script lang="ts">
   import { BOOLEAN_FIELDS } from '../config';
+  import { durationParts, formatDuration, type DurationUnit } from '../duration';
   import { REPOSITORY_SECTIONS, type RepositorySection } from '../routes';
   import type {
     ConfigKey,
@@ -60,6 +61,7 @@
     onBypass,
     onSaveConfig,
     onSavePendingCI,
+    onSavePathIndex,
     onResetMigration,
     sections = REPOSITORY_SECTIONS,
     syncOverride = undefined,
@@ -88,6 +90,8 @@
       patterns: PendingCIBranchPatterns | null,
       quiet: number | null,
     ) => Promise<void>;
+    /** How often this repository's file list is read again; null inherits. */
+    onSavePathIndex: (seconds: number | null) => Promise<void>;
     onResetMigration: () => void;
     /**
      * The panes this surface offers, in the order the switch shows them.
@@ -220,6 +224,68 @@
     }
     quietDraft = null;
     void pushPendingCI({ quiet });
+  }
+
+  /* ---------- The path-index interval, an amount beside a unit ---------- */
+
+  const PATH_INDEX_UNITS: readonly DurationUnit[] = ['minutes', 'hours', 'days'];
+  const UNIT_SECONDS: Record<DurationUnit, number> = {
+    seconds: 1,
+    minutes: 60,
+    hours: 3_600,
+    days: 86_400,
+  };
+  let savingPathIndex = $state(false);
+  let indexAmountDraft = $state<string | null>(null);
+  let indexUnitDraft = $state<DurationUnit | null>(null);
+  let indexTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function indexParts(): { amount: number; unit: DurationUnit } {
+    const seconds =
+      detail?.path_index_interval_seconds_override ??
+      detail?.path_index_interval_seconds_inherited ??
+      3_600;
+    return durationParts(seconds, PATH_INDEX_UNITS);
+  }
+
+  const indexAmountShown = $derived(indexAmountDraft ?? indexParts().amount.toString());
+  const indexUnitShown = $derived(indexUnitDraft ?? indexParts().unit);
+
+  function typeIndexAmount(value: string): void {
+    indexAmountDraft = value;
+    indexUnitDraft = indexUnitShown;
+    clearTimeout(indexTimer);
+    indexTimer = setTimeout(saveIndexDraft, SAVE_REST_MS);
+  }
+
+  function pickIndexUnit(unit: DurationUnit): void {
+    indexAmountDraft = indexAmountShown;
+    indexUnitDraft = unit;
+    saveIndexDraft();
+  }
+
+  function saveIndexDraft(): void {
+    clearTimeout(indexTimer);
+    indexTimer = undefined;
+    if (indexAmountDraft === null || indexUnitDraft === null) return;
+    const seconds = Math.round(Number(indexAmountDraft) * UNIT_SECONDS[indexUnitDraft]);
+    if (!Number.isFinite(seconds) || seconds < 60) return;
+    indexAmountDraft = null;
+    indexUnitDraft = null;
+    void pushPathIndex(seconds);
+  }
+
+  async function pushPathIndex(seconds: number | null): Promise<void> {
+    if (detail === undefined || savingPathIndex) return;
+    savingPathIndex = true;
+    try {
+      await onSavePathIndex(seconds);
+      whisper('merge');
+    } catch {
+      /* The page's failure line reports it. */
+    } finally {
+      savingPathIndex = false;
+    }
   }
 
   async function setBypass(bypass: boolean): Promise<void> {
@@ -486,6 +552,84 @@
                 onblur={saveQuiet}
               />
             </span>
+          </div>
+          <div class="policy-row">
+            <span class="setting-say">
+              <span class="setting-name">Path index</span>
+              <span class="setting-why"
+                >How often this repository's file list is read again for the finder and the plans</span
+              >
+            </span>
+            {#if detail.path_index_interval_seconds_override === null}
+              <span class="policy-value">
+                <span class="setting-unmanaged"
+                  >Follows the installation - every {formatDuration(
+                    durationParts(detail.path_index_interval_seconds_inherited, PATH_INDEX_UNITS),
+                  )}</span
+                >
+              </span>
+              <button
+                class="setting-clear"
+                title="Answer for this repository"
+                disabled={disabled || savingPathIndex}
+                onclick={() => void pushPathIndex(detail.path_index_interval_seconds_inherited)}
+              >
+                <Icon name="plus" size={10} />
+              </button>
+            {:else}
+              <span class="policy-value">
+                <input
+                  class="num-inline num-short"
+                  inputmode="numeric"
+                  aria-label="Path index interval amount"
+                  value={indexAmountShown}
+                  disabled={readOnly}
+                  oninput={(event) => typeIndexAmount(event.currentTarget.value)}
+                  onblur={saveIndexDraft}
+                />
+                <Popover
+                  role="listbox"
+                  label="Path index interval unit"
+                  align="end"
+                  itemSelector=".menu-item"
+                >
+                  {#snippet trigger(attributes)}
+                    <button
+                      {...attributes}
+                      class="value-select"
+                      type="button"
+                      aria-label="Path index interval unit"
+                      disabled={disabled || savingPathIndex}
+                    >
+                      <span class="t">{indexUnitShown}</span>
+                    </button>
+                  {/snippet}
+                  <div class="menu-list">
+                    {#each PATH_INDEX_UNITS as unit (unit)}
+                      <button
+                        class="menu-item"
+                        role="option"
+                        aria-selected={indexUnitShown === unit}
+                        onclick={() => pickIndexUnit(unit)}
+                      >
+                        <span class="menu-check">
+                          {#if indexUnitShown === unit}<Icon name="check" size={16} />{/if}
+                        </span>
+                        <ClippedLabel class="mi-label" text={unit} />
+                      </button>
+                    {/each}
+                  </div>
+                </Popover>
+              </span>
+              <button
+                class="setting-clear"
+                title="Stop answering - follow the installation"
+                disabled={disabled || savingPathIndex}
+                onclick={() => void pushPathIndex(null)}
+              >
+                <Icon name="close" size={10} />
+              </button>
+            {/if}
           </div>
         </div>
         {#if detail.pending_ci_gate !== undefined}
@@ -978,6 +1122,10 @@
     padding: 0 var(--space-2);
     text-align: end;
     width: 8.5rem;
+  }
+
+  .num-inline.num-short {
+    width: 5rem;
   }
 
   .num-inline::placeholder {
