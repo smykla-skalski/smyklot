@@ -69,6 +69,27 @@ export default defineConfig({
     port: 5175,
     strictPort: true,
   },
+  optimizeDeps: {
+    // The dependencies only the dynamically imported views reach. Vite's
+    // startup crawl misses them on a cold cache, and the sidebar's viewport
+    // code-preload then discovers them mid-session - which Vite answers with
+    // a full page reload, tearing down whatever a browser sweep was measuring
+    // ("Execution context was destroyed"). Pinned here so a cold server
+    // prebundles the lot and never reloads a page it is serving.
+    include: [
+      '@codemirror/commands',
+      '@codemirror/lang-json',
+      '@codemirror/lang-markdown',
+      '@codemirror/lang-yaml',
+      '@codemirror/language',
+      '@codemirror/state',
+      '@codemirror/view',
+      '@lezer/highlight',
+      '@tanstack/svelte-table',
+      '@tanstack/svelte-virtual',
+      'jsonc-parser',
+    ],
+  },
   test: {
     environment: 'node',
     include: ['tests/**/*.test.ts'],

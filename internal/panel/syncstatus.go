@@ -1,6 +1,7 @@
 package panel
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -144,14 +145,21 @@ func (s *Server) syncStatusFacts(r *http.Request, targetID string) (syncStatusFa
 		facts.problems[state.RepositoryID][state.Kind] = state.Problem
 	}
 
-	// Pending counts come off the live plan, which is the only account of what
-	// would change. No plan is an answer: nothing is pending anywhere.
+	return facts, s.pendingSyncFacts(ctx, targetID, &facts)
+}
+
+// pendingSyncFacts folds the live plan into the facts. Pending counts come off
+// the plan, which is the only account of what would change - and no plan is an
+// answer: nothing is pending anywhere.
+func (s *Server) pendingSyncFacts(
+	ctx context.Context, targetID string, facts *syncStatusFacts,
+) error {
 	plan, actions, err := s.store.GetLiveSyncPlan(ctx, targetID)
 	if errors.Is(err, storage.ErrNotFound) {
-		return facts, nil
+		return nil
 	}
 	if err != nil {
-		return facts, err
+		return err
 	}
 	if plan.ComputedAt.After(facts.checked) {
 		facts.checked = plan.ComputedAt
@@ -166,7 +174,7 @@ func (s *Server) syncStatusFacts(r *http.Request, targetID string) (syncStatusFa
 		}
 	}
 
-	return facts, nil
+	return nil
 }
 
 // syncStatusRow reads one repository's standing off the gathered facts.
