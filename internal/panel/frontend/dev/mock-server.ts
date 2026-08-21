@@ -1200,7 +1200,7 @@ async function handle(
         throw new MockApiError(404, 'not_found', 'there is no such plan to discard');
       }
       state.syncPlans.delete(targetId);
-      respond(res, 200, {});
+      respond(res, 200, { plan: { ...plan, state: 'discarded' } });
       return;
     }
 

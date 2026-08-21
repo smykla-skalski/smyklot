@@ -325,6 +325,54 @@ UPDATE sync_plans SET state = 'approved', approved_at = ? WHERE id = ?`,
 	return plan, nil
 }
 
+// DiscardSyncPlan takes a live plan off the slot because somebody declined it.
+func (s *Store) DiscardSyncPlan(
+	ctx context.Context,
+	discard orgsync.PlanDiscard,
+) (orgsync.Plan, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return orgsync.Plan{}, fmt.Errorf("begin sync plan discard: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Scoped to the installation the reader was authorized against, for the
+	// same reason approval is: the identifier alone would let somebody with
+	// rights over one installation retire another's work.
+	plan, err := scanSyncPlan(tx.QueryRowContext(ctx, `
+SELECT`+syncPlanColumns+`
+FROM sync_plans
+WHERE id = ? AND target_id = ?`+s.dialect.RowLock(), discard.PlanID, discard.TargetID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return orgsync.Plan{}, storage.ErrNotFound
+	}
+	if err != nil {
+		return orgsync.Plan{}, err
+	}
+
+	// A plan an executor already holds is not declined from a browser: the
+	// work may be half done, and "discarded" would say it never ran.
+	if plan.State != orgsync.PlanComputed && plan.State != orgsync.PlanApproved {
+		return orgsync.Plan{}, storage.ErrConflict
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+UPDATE sync_plans SET state = 'discarded', finished_at = ? WHERE id = ?`,
+		discard.Now, discard.PlanID,
+	); err != nil {
+		return orgsync.Plan{}, fmt.Errorf("discard sync plan: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return orgsync.Plan{}, fmt.Errorf("commit sync plan discard: %w", err)
+	}
+
+	plan.State = orgsync.PlanDiscarded
+	plan.FinishedAt = &discard.Now
+
+	return plan, nil
+}
+
 // LeaseSyncPlan claims an approved plan for a bounded time.
 //
 // A lease rather than a flag, exactly as LeaseDelivery works: an executor that

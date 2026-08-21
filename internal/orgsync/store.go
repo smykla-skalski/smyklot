@@ -183,6 +183,19 @@ type PlanCreate struct {
 	ExpiresAt time.Time
 }
 
+// PlanDiscard is somebody declining a plan they have read.
+//
+// No digest, unlike an approval: an approval runs whatever it names, so it has
+// to say exactly which rendering it agreed to - a discard runs nothing, and
+// declining a plan that changed underneath the reader declines the newer one
+// just as well.
+type PlanDiscard struct {
+	TargetID string
+	PlanID   string
+	ActorID  string
+	Now      time.Time
+}
+
 // PlanApproval is somebody accepting a plan they have read.
 //
 // Digest is what their browser rendered. It is checked against what is stored,
@@ -246,6 +259,8 @@ type AuditAction string
 const (
 	AuditPlanned  AuditAction = "sync.plan.computed"
 	AuditApproved AuditAction = "sync.plan.approved"
+	// AuditDiscarded is a live plan somebody read and declined.
+	AuditDiscarded AuditAction = "sync.plan.discarded"
 	AuditFinished AuditAction = "sync.plan.finished"
 	AuditDeleted  AuditAction = "sync.deleted"
 )
@@ -398,6 +413,11 @@ type Store interface {
 	GetLiveSyncPlan(context.Context, string) (Plan, []Action, error)
 
 	ApproveSyncPlan(context.Context, PlanApproval) (Plan, error)
+
+	// DiscardSyncPlan takes a live plan off the slot because somebody declined
+	// it. Refused with a conflict where the plan has already finished - what
+	// is on the screen is not what is in the database.
+	DiscardSyncPlan(context.Context, PlanDiscard) (Plan, error)
 
 	// LeaseSyncPlan claims an approved plan for a bounded time, exactly as
 	// LeaseDelivery claims a delivery, so an executor that dies leaves work

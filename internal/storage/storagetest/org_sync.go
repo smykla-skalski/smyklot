@@ -370,6 +370,64 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 			Expect(errors.Is(err, storage.ErrConflict)).To(BeTrue())
 		})
 
+		It("discards a plan somebody declined", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			planFor(ctx, store, "plan-1", account.ID, "digest-1", now, nil)
+
+			discarded, err := store.DiscardSyncPlan(ctx, orgsync.PlanDiscard{
+				TargetID: target, PlanID: "plan-1", ActorID: account.ID, Now: now,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(discarded.State).To(Equal(orgsync.PlanDiscarded))
+			Expect(discarded.FinishedAt).To(HaveValue(BeTemporally("==", now)))
+
+			// The slot is free again: a discarded plan is not live, so the next
+			// sweep may compute a fresh one.
+			_, _, err = store.GetLiveSyncPlan(ctx, target)
+			Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
+		})
+
+		// The same scoping approval carries, for the same reason: the plan
+		// identifier alone would let somebody with rights over one installation
+		// retire another's work
+		It("refuses a discard that names another installation's plan", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			planFor(ctx, store, "plan-1", account.ID, "digest-1", now, nil)
+
+			_, err := store.DiscardSyncPlan(ctx, orgsync.PlanDiscard{
+				TargetID: "github:installation:999", PlanID: "plan-1",
+				ActorID: account.ID, Now: now,
+			})
+			Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
+
+			read, _, err := store.GetSyncPlan(ctx, target, "plan-1")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(read.State).To(Equal(orgsync.PlanComputed))
+		})
+
+		// A plan an executor holds may be half applied; "discarded" would say
+		// it never ran
+		It("refuses to discard a plan that has left the reader's hands", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			planFor(ctx, store, "plan-1", account.ID, "digest-1", now, nil)
+
+			_, err := store.ApproveSyncPlan(ctx, orgsync.PlanApproval{
+				TargetID: target, PlanID: "plan-1", Digest: "digest-1",
+				ActorID: account.ID, Now: now,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			_, err = store.LeaseSyncPlan(ctx, now, now.Add(time.Minute))
+			Expect(err).NotTo(HaveOccurred())
+
+			_, err = store.DiscardSyncPlan(ctx, orgsync.PlanDiscard{
+				TargetID: target, PlanID: "plan-1", ActorID: account.ID, Now: now,
+			})
+			Expect(errors.Is(err, storage.ErrConflict)).To(BeTrue())
+		})
+
 		It("approves a plan whose fingerprint still matches", func() {
 			ctx, store, now := runtime()
 			account := seed(ctx, store, now)

@@ -302,6 +302,11 @@ const (
 	// the button again; a person reading "stale" knows somebody changed
 	// something. Collapsing them would lose which of those happened.
 	PlanExpired PlanState = "expired"
+
+	// PlanDiscarded is one somebody read and declined. An act, not a timer:
+	// history should say who turned it down, and the next sweep computes a
+	// fresh plan from whatever the configuration says by then.
+	PlanDiscarded PlanState = "discarded"
 )
 
 // Live reports a plan that could still be applied, which is what makes it worth
