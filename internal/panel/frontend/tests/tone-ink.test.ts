@@ -47,7 +47,7 @@ const NOT_THEME_COLOUR: Record<string, string> = {
   'Rail.svelte #fff':
     'the selected workspace mark holds its ground at L 50 whatever the hue, so white letters ' +
     'clear it in every palette - the identity paint is not the theme to decide',
-  'SyncPlanPage.svelte #000':
+  'ApplyBar.svelte #000':
     "the apply bar's end-melt is a mask-image ramp: #000 there is the alpha channel's " +
     '"fully kept", not a colour any palette owns',
   /* The colour picker draws COLOUR SPACE, not theme: the saturation/value

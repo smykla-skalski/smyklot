@@ -77,6 +77,8 @@ describe('SyncView [Component]', () => {
         Promise.resolve({ checked_at: new Date(0).toISOString(), repositories: [] }),
       sectionHref: (section: string) => `#/sync/${section}`,
       onOpenSection: () => {},
+      rulesetHref: (name: string) => `#/sync/rulesets/${name}`,
+      onOpenRuleset: () => {},
     });
   }
 
@@ -119,6 +121,8 @@ describe('SyncView [Component]', () => {
         Promise.resolve({ checked_at: new Date(0).toISOString(), repositories: [] }),
       sectionHref: (section: string) => `#/sync/${section}`,
       onOpenSection: () => {},
+      rulesetHref: (name: string) => `#/sync/rulesets/${name}`,
+      onOpenRuleset: () => {},
     });
 
     await screen.findByRole('heading', { name: 'Rulesets' });
@@ -150,6 +154,8 @@ describe('SyncView [Component]', () => {
         Promise.resolve({ checked_at: new Date(0).toISOString(), repositories: [] }),
       sectionHref: (section: string) => `#/sync/${section}`,
       onOpenSection: () => {},
+      rulesetHref: (name: string) => `#/sync/rulesets/${name}`,
+      onOpenRuleset: () => {},
     });
 
     await screen.findByRole('heading', { name: 'Shared files' });

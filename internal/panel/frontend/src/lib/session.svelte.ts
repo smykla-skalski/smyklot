@@ -455,8 +455,42 @@ export class PanelSession {
   selectSyncSection(section: SyncSection): void {
     const target = this.selectedTarget;
     if (target === null) return;
-    if (this.currentView === 'sync' && this.currentSyncSection === section) return;
+    if (
+      this.currentView === 'sync' &&
+      this.currentSyncSection === section &&
+      this.currentSyncRuleset === null
+    ) {
+      return;
+    }
     void this.navigate(this.syncRoute(target, section));
+  }
+
+  /** The ruleset page the address names, or null on the list and everywhere else. */
+  get currentSyncRuleset(): string | null {
+    const route = this.parsedRoute;
+    if (route !== null && 'view' in route && route.view === 'sync') {
+      return route.syncRuleset ?? null;
+    }
+    return null;
+  }
+
+  /** Opening a ruleset is a place to come back from, so it pushes. */
+  selectSyncRuleset(name: string): void {
+    const target = this.selectedTarget;
+    if (target === null || this.currentSyncRuleset === name) return;
+    const account = target.account.login;
+    void this.navigate({ account, view: 'sync', sync: 'rulesets', syncRuleset: name });
+  }
+
+  syncRulesetHref(name: string): string {
+    const target = this.selectedTarget;
+    if (target === null) return '#';
+    return panelAddress({
+      account: target.account.login,
+      view: 'sync',
+      sync: 'rulesets',
+      syncRuleset: name,
+    });
   }
 
   syncSectionHref(section: SyncSection): string {

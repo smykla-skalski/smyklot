@@ -57,6 +57,14 @@ export function panelAddress(route: PanelRoute): string {
     });
   }
 
+  /* One ruleset's own page, a level below its list. */
+  if (route.view === 'sync' && route.sync === 'rulesets' && route.syncRuleset !== undefined) {
+    return resolve('/i/[account]/sync/rulesets/[ruleset]', {
+      account,
+      ruleset: encodeURIComponent(route.syncRuleset),
+    });
+  }
+
   /* The overview is the bare view - an address that names it as well is one a
      reader would have to be told to ignore. */
   if (route.view === 'sync' && route.sync !== undefined && route.sync !== 'overview') {
@@ -210,6 +218,8 @@ export function panelRouteAt(
       return withView(account, 'history', asSection(section));
     case '/i/[account]/sync/[section=syncSection]':
       return { account, view: 'sync', sync: asSyncSection(section) };
+    case '/i/[account]/sync/rulesets/[ruleset]':
+      return { account, view: 'sync', sync: 'rulesets', syncRuleset: params.ruleset ?? '' };
     case '/i/[account]/repositories/[repository]/[[section=repositorySection]]':
       return { account, view: 'repositories', repository: repositoryAt(params) };
 

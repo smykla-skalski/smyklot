@@ -699,12 +699,17 @@ export function syncRulesetsSeed(iso: (offsetMs: number) => string): SyncConfig 
     digest: 'sha256:rulesets',
     document: {
       rulesets: [
+        /* The design's list row: "main-protection · Active · default branch ·
+           6 rules · 2 bypass actors". */
         {
-          name: 'main-branch-protection',
+          name: 'main-protection',
           target: 'branch',
           enforcement: 'active',
           conditions: { include: ['~DEFAULT_BRANCH'], exclude: [] },
-          bypass_actors: [{ actor_id: 5, actor_type: 'OrganizationAdmin', bypass_mode: 'always' }],
+          bypass_actors: [
+            { actor_id: 5, actor_type: 'RepositoryRole', bypass_mode: 'always' },
+            { actor_id: 1216238, actor_type: 'Integration', bypass_mode: 'pull_request' },
+          ],
           rules: {
             deletion: true,
             non_fast_forward: true,
@@ -712,7 +717,6 @@ export function syncRulesetsSeed(iso: (offsetMs: number) => string): SyncConfig 
             required_signatures: true,
             pull_request: {
               required_approving_review_count: 1,
-              require_code_owner_review: true,
               dismiss_stale_reviews_on_push: true,
               allowed_merge_methods: ['squash'],
             },

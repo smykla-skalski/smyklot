@@ -164,6 +164,11 @@ export type InstallationRoute = {
   repository?: RepositoryPage;
   /** The sync view's open section; absent means the overview. */
   sync?: SyncSection;
+  /**
+   * One ruleset's own page, named the way a person names it. Only ever
+   * present with `sync === 'rulesets'` - the list is the level above it.
+   */
+  syncRuleset?: string;
   /** What is open on top of the view; see `route-dialogs`. */
   dialog?: RouteDialog;
 };
@@ -214,11 +219,13 @@ export function parsePanelRoute(basePath: string, pathname: string): PanelRoute 
   if (dialog === 'invalid') return null;
 
   const consumed = repository !== undefined || dialog !== undefined;
-  const section = parseSection(rawView, consumed ? undefined : trailing[0]);
-  if (section === 'invalid' || (!consumed && trailing.length > 1)) return null;
-
-  const sync = parseSyncSection(rawView, consumed ? undefined : trailing[0]);
+  const sync = parseTrailingSync(rawView, consumed ? [] : trailing);
   if (sync === 'invalid') return null;
+
+  const section = parseSection(rawView, consumed ? undefined : trailing[0]);
+  if (section === 'invalid' || (!consumed && rawView !== 'sync' && trailing.length > 1)) {
+    return null;
+  }
 
   let account: string;
   try {
@@ -231,7 +238,7 @@ export function parsePanelRoute(basePath: string, pathname: string): PanelRoute 
   const route: InstallationRoute = { account, view: rawView };
   if (repository !== undefined) return { ...route, repository };
   if (dialog !== undefined) return { ...route, dialog };
-  if (sync !== undefined) return { ...route, sync };
+  if (sync !== undefined) return { ...route, ...sync };
   return section === undefined ? route : { ...route, section };
 }
 
@@ -394,13 +401,35 @@ function parseSection(
   return HISTORY_SECTIONS.find((section) => section === raw) ?? 'invalid';
 }
 
-/** `undefined` for "no segment" (the overview), `'invalid'` for a segment that is not a section. */
-function parseSyncSection(
+/**
+ * Reads the segments past the sync view: a section, or a section and the one
+ * object page it lists - a ruleset's name after `rulesets`.
+ *
+ * `undefined` for "no segment" (the overview); `'invalid'` for anything that
+ * was meant to be sync's grammar and is not, which is an address that does
+ * not resolve.
+ */
+function parseTrailingSync(
   view: string,
-  raw: string | undefined,
-): SyncSection | undefined | 'invalid' {
-  if (raw === undefined || view !== 'sync') return undefined;
-  return WRITTEN_SYNC_SECTIONS.find((section) => section === raw) ?? 'invalid';
+  segments: string[],
+): Pick<InstallationRoute, 'sync' | 'syncRuleset'> | undefined | 'invalid' {
+  if (view !== 'sync' || segments.length === 0) return undefined;
+  if (segments.length > 2) return 'invalid';
+
+  const [rawSection, encodedName] = segments;
+  const sync = WRITTEN_SYNC_SECTIONS.find((section) => section === rawSection);
+  if (sync === undefined) return 'invalid';
+  if (encodedName === undefined) return { sync };
+  if (sync !== 'rulesets') return 'invalid';
+
+  let name: string;
+  try {
+    name = decodeURIComponent(encodedName);
+  } catch {
+    return 'invalid';
+  }
+
+  return name.trim() === '' ? 'invalid' : { sync, syncRuleset: name };
 }
 
 function parseRootRoute(parts: string[]): RootRoute | null {

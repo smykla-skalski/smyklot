@@ -96,6 +96,8 @@
     fetchPlan: async () => ({ plan: PLAN }),
     approvePlan: async () => ({ plan: { ...PLAN, state: 'approved' as const } }),
     discardPlan: async () => {},
+    rulesetHref: (name: string) => `#/sync/rulesets/${name}`,
+    onOpenRuleset: () => {},
   };
 
   const { Story } = defineMeta({ title: 'Views/SyncView', component: SyncView, args: base });

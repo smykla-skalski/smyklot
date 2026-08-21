@@ -147,6 +147,7 @@
           <SyncView
             targetId={session.selectedTarget.id}
             section={session.currentSyncSection}
+            rulesetName={session.currentSyncRuleset}
             readOnly={!session.selectedTarget.capabilities.write}
             account={session.selectedTarget.account.login}
             section={session.currentSyncPage.section}
@@ -165,6 +166,8 @@
             fetchStatus={session.api.fetchSyncStatus}
             sectionHref={(s) => session.syncSectionHref(s)}
             onOpenSection={(s) => session.selectSyncSection(s)}
+            rulesetHref={(name) => session.syncRulesetHref(name)}
+            onOpenRuleset={(name) => session.selectSyncRuleset(name)}
           />
         {/key}
       {:catch error}

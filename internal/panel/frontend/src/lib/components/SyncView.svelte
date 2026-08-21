@@ -19,12 +19,14 @@
   import SyncLabelsPage from './SyncLabelsPage.svelte';
   import SyncOverview from './SyncOverview.svelte';
   import SyncPlanPage from './SyncPlanPage.svelte';
-  import SyncRulesetsForm from './SyncRulesetsForm.svelte';
+  import SyncRulesetPage from './SyncRulesetPage.svelte';
+  import SyncRulesetsPage from './SyncRulesetsPage.svelte';
   import SyncSettingsPage from './SyncSettingsPage.svelte';
 
   const {
     targetId,
     section,
+    rulesetName = null,
     readOnly,
     fetchConfig,
     saveConfig,
@@ -34,11 +36,17 @@
     fetchStatus,
     sectionHref,
     onOpenSection,
+    rulesetHref,
+    onOpenRuleset,
   }: {
     targetId: string;
     /** Which of the view's sections the address names; see `routes.ts`. */
     section: SyncSection;
+    /** One ruleset's own page, when the address names one. */
+    rulesetName?: string | null;
     readOnly: boolean;
+    rulesetHref: (name: string) => string;
+    onOpenRuleset: (name: string) => void;
     fetchConfig: (targetId: string, kind: string) => Promise<SyncConfig>;
     saveConfig: (targetId: string, kind: string, input: SyncConfigInput) => Promise<SyncConfig>;
     fetchPlan: (targetId: string) => Promise<{ plan: SyncPlan | null }>;
@@ -287,6 +295,32 @@
     {onOpenSection}
     onSave={saveLabels}
   />
+{:else if section === 'rulesets'}
+  {#if rulesetName !== null}
+    <SyncRulesetPage
+      config={documents.rulesets}
+      name={rulesetName}
+      {readOnly}
+      problem={documentError.rulesets}
+      saving={savingDocument.rulesets}
+      {sectionHref}
+      {onOpenSection}
+      onSave={(wanted, document) => void onSaveDocument(RULESETS, wanted, document)}
+    />
+  {:else}
+    <SyncRulesetsPage
+      config={documents.rulesets}
+      {plan}
+      {readOnly}
+      problem={documentError.rulesets}
+      saving={savingDocument.rulesets}
+      {sectionHref}
+      {onOpenSection}
+      {rulesetHref}
+      {onOpenRuleset}
+      onSave={(wanted, document) => void onSaveDocument(RULESETS, wanted, document)}
+    />
+  {/if}
 {:else if section === 'settings'}
   <SyncSettingsPage
     config={documents.settings}
@@ -304,19 +338,6 @@
       title="Sync"
       description="What every repository in this installation should look like, and what Smyklot would change to make that true"
     />
-
-    {#if section === 'rulesets' && documents.rulesets !== null}
-      <SyncRulesetsForm
-        stored={documents.rulesets.document}
-        enabled={documents.rulesets.enabled}
-        unreadable={documents.rulesets.unreadable}
-        unavailable={documents.rulesets.unavailable}
-        problem={documentError.rulesets}
-        {readOnly}
-        saving={savingDocument.rulesets}
-        onSave={(wanted, document) => onSaveDocument(RULESETS, wanted, document)}
-      />
-    {/if}
 
     {#if section === 'files' && documents.files !== null}
       <SyncFilesForm

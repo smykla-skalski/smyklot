@@ -1,106 +1,129 @@
 <script lang="ts">
   /**
-   * The bar that says what applying would do, and offers to do it.
+   * The sticky decision bar and its melt. At rest, in its own flow slot,
+   * this is a plain card - the elevation story belongs ONLY to the moment
+   * it is glued to the viewport riding over rows. Pure CSS: a sticky
+   * element's view() timeline FREEZES while it is pinned, and advances the
+   * moment it seats and rides the flow - so "stuck" is progress held below
+   * the range, and the 16px of scroll past the dock is the melt. No JS, no
+   * sentinel.
    *
-   * The sentence is the blast radius, said in the order a person needs it: how
-   * many changes, across how many repositories, how many of them take something
-   * away, and which of them reach GitHub directly rather than as a pull request.
-   * The button names the radius too - "Apply to 3 repositories", never "Apply" -
-   * because the button is what gets pressed, and a label that names its scope is
-   * the last chance to notice the scope is wrong.
-   *
-   * The wording lives here rather than at each caller so it stays one sentence
-   * that has been thought about once.
-   *
-   * Sticky rather than fixed: it belongs to the plan it sits under, and it stops
-   * where the plan stops instead of floating over whatever comes next.
+   * The page hosting one must carry `timeline-scope: --bar-slot` on the
+   * scrolling frame above the bar - the slot marker after the bar declares
+   * the named timeline, and the scope is what hands it back up.
    */
-  import Button from '#lib/components/Button.svelte';
+  import type { Snippet } from 'svelte';
 
-  const {
-    changes,
-    repositories,
-    removals = 0,
-    asPullRequests = false,
-    applying = false,
-    onApply,
-  }: {
-    changes: number;
-    repositories: number;
-    /** Counted out loud, in the danger ink: this is what approval is asked for. */
-    removals?: number;
-    /** Some of this lands as pull requests, which is a different promise. */
-    asPullRequests?: boolean;
-    applying?: boolean;
-    onApply?: () => void;
-  } = $props();
-
-  /* Both words, rather than an `s` bolted on: this sentence says "repositories"
-     and no rule that stems one word stems that one. */
-  const plural = (count: number, one: string, many: string) =>
-    `${count} ${count === 1 ? one : many}`;
-
-  const scope = $derived(plural(repositories, 'repository', 'repositories'));
+  const { children }: { children: Snippet } = $props();
 </script>
 
-<div class="plate apply-bar">
-  <p class="apply-note band-trim">
-    <strong>{plural(changes, 'change', 'changes')} across {scope}</strong>{#if removals > 0},
-      including <span class="is-removal">{plural(removals, 'removal', 'removals')}</span>{/if}.
-    {#if asPullRequests}
-      File changes open pull requests; the rest applies directly.
-    {:else}
-      Nothing reaches GitHub until you apply.
-    {/if}
-  </p>
-  <!-- One press, because a plan has one answer. There is no discarding a plan:
-       leaving it is what not approving it looks like, and the next sweep works
-       out a new one from whatever the documents say by then. -->
-  <!-- The last press before anything reaches GitHub, so it takes the filled
-       tone rather than the bordered one - the same weight the overview's
-       "Review the plan" carries at the other end of the same journey. -->
-  <Button tone="signal" disabled={applying} onclick={() => onApply?.()}>
-    {applying ? 'Applying…' : `Apply to ${scope}`}
-  </Button>
+<div class="apply-bar">
+  {@render children()}
 </div>
+<span class="apply-bar-slot" aria-hidden="true"></span>
 
 <style>
-  /* `.plate` is the card - the ground, the keyline, the radius and the shadow -
-     and this had spelled all four out again through the aliases (`--strip` IS
-     `--surface-base`, `--rule` IS `--border-subtle`). What is left is what
-     makes this plate a BAR: a row, and one that stays with the reader. */
   .apply-bar {
     align-items: center;
-    bottom: var(--space-4);
+    animation: apply-bar-seat linear both;
+    /* NOT view() on the bar itself: Chromium folds a sticky subject's whole
+       displacement into its view-timeline, so px offsets against `entry`
+       land nowhere. The slot marker after the bar is plain flow - its
+       geometry is the seat's truth. */
+    animation-timeline: --bar-slot;
+    /* The 1px slot reaches the 3.2rem dock line 51px into its entry; the bar
+       unglues exactly there, and the next 16px of travel are the melt. */
+    animation-range: entry calc(0% + 51px) entry calc(0% + 67px);
+    background: var(--surface-base);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--r-strip);
+    bottom: 3.2rem;
+    box-shadow: var(--shadow-plate);
     display: flex;
     gap: var(--space-4);
-    margin-block: var(--space-5) 0;
+    margin-top: var(--space-4);
     padding: var(--space-3) var(--space-4);
     position: sticky;
-    z-index: var(--layer-sticky);
+    z-index: 5;
   }
 
-  .apply-note {
-    color: var(--text-secondary);
-    flex: 1;
-    font-size: var(--font-size-meta);
-    margin: 0;
+  /* The bar's seat, written in flow where sticky cannot smear it. */
+  .apply-bar-slot {
+    block-size: 1px;
+    display: block;
+    margin-block-start: -1px;
+    view-timeline: --bar-slot block;
   }
 
-  .apply-note strong {
-    color: var(--text-primary);
-  }
-
-  .is-removal {
-    color: var(--danger);
-    font-weight: 600;
-  }
-
-  @media (max-width: 40rem) {
-    .apply-bar {
-      align-items: stretch;
-      flex-direction: column;
-      gap: var(--space-3);
+  /* Glued (the from-state the frozen timeline holds): glass over the rows
+     sliding under. Hairline only - the halo lives in ::after, which paints
+     OVER ::before and would erase a bar shadow under itself. */
+  @keyframes apply-bar-seat {
+    from {
+      --melt: 1;
+      backdrop-filter: blur(10px);
+      background: color-mix(in srgb, var(--surface-base) 86%, transparent);
+      box-shadow: 0 -1px 0 var(--shadow-color);
     }
+
+    to {
+      --melt: 0;
+      backdrop-filter: blur(0);
+      background: var(--surface-base);
+      box-shadow: var(--shadow-plate);
+    }
+  }
+
+  /* Registered so the veil rides the same melt as the shadow, interpolated
+     rather than flipped. Inherits: the keyframes run on the BAR and the
+     pseudos read the value the way any descendant would. NOT named --scrim:
+     that token is a colour at :root, and registering it as <number> voids
+     the drawer overlay and dialog backdrop. */
+  @property --melt {
+    syntax: '<number>';
+    inherits: true;
+    initial-value: 0;
+  }
+
+  /* The OUTSIDE of the effect, in two layers with one job each.
+     ::before is the DISSOLVE and nothing else: rows melt into their own
+     surface before they pass under the glued edge, on a ramp tall enough
+     (72px, solid for the last 16) to grade a row across two or three
+     positions instead of biting one in half beside a crisp one. */
+  .apply-bar::before {
+    background: linear-gradient(to top, var(--surface-base) 16px, transparent);
+    block-size: 72px;
+    content: '';
+    inset-block-end: calc(100% + 1px);
+    /* Overhang the bar and melt the ends: a band cut exactly bar-wide dies
+       in a vertical seam on each side, which no real shadow does. */
+    inset-inline: -24px;
+    mask-image: linear-gradient(
+      to right,
+      transparent,
+      #000 24px,
+      #000 calc(100% - 24px),
+      transparent
+    );
+    opacity: var(--melt, 0);
+    pointer-events: none;
+    position: absolute;
+  }
+
+  /* ::after is the LIGHT: one halo drawn around the whole rounded box, so
+     it wraps the corners and flanks instead of stopping at the top band.
+     Upward-biased (the overlap is above), with one even layer so the sides
+     and bottom carry their share. */
+  .apply-bar::after {
+    border-radius: inherit;
+    box-shadow:
+      0 -8px 24px -6px var(--shadow-color),
+      0 -16px 32px -12px var(--shadow-color),
+      0 2px 12px -3px var(--shadow-color);
+    content: '';
+    inset: 0;
+    opacity: var(--melt, 0);
+    pointer-events: none;
+    position: absolute;
   }
 </style>

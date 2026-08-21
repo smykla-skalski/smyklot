@@ -41,6 +41,7 @@
   import Icon from './Icon.svelte';
   import LabelColorPicker from './LabelColorPicker.svelte';
   import PanePath from './PanePath.svelte';
+  import PatternEntries from './PatternEntries.svelte';
   import Switch from './Switch.svelte';
 
   export interface LabelsSaveInput {
@@ -290,84 +291,6 @@
     void push();
   }
 
-  /* ---------- Leave-alone patterns: the same segment editing, one entry ---------- */
-
-  let patternEdit = $state<number | null>(null);
-  let patternValue = $state('');
-  let patternInput: HTMLInputElement | null = $state(null);
-  let patternTimer: ReturnType<typeof setTimeout> | undefined;
-
-  function commitPattern(): void {
-    clearTimeout(patternTimer);
-    patternTimer = undefined;
-    const open = patternEdit;
-    if (open === null) return;
-    const value = patternValue.trim();
-    if (patterns[open] === value) return;
-    patterns = patterns.map((held, at) => (at === open ? value : held));
-    if (value !== '') void push();
-  }
-
-  function closePatternEdit(): void {
-    commitPattern();
-    const open = patternEdit;
-    if (open === null) return;
-    patternEdit = null;
-    if ((patterns[open] ?? '') === '') patterns = patterns.filter((_, at) => at !== open);
-  }
-
-  async function addPattern(): Promise<void> {
-    if (frozen) return;
-    /* An empty entry already open IS the new entry - Add returns the
-       keyboard to it rather than minting a second blank. */
-    if (patternEdit !== null && patternValue.trim() === '') {
-      patternInput?.focus();
-      return;
-    }
-    commitPattern();
-    patterns = [...patterns, ''];
-    patternEdit = patterns.length - 1;
-    patternValue = '';
-    await tick();
-    patternInput?.focus();
-  }
-
-  async function openPattern(index: number, event?: MouseEvent): Promise<void> {
-    if (frozen || patternEdit === index) return;
-    const offset = event === undefined ? null : pressedOffset(event);
-    commitPattern();
-    if (patternEdit !== null && (patterns[patternEdit] ?? '') === '') {
-      patterns = patterns.filter((_, at) => at !== patternEdit);
-    }
-    patternEdit = index;
-    patternValue = patterns[index] ?? '';
-    await tick();
-    if (patternInput !== null) {
-      patternInput.focus();
-      const pos = Math.min(offset ?? patternInput.value.length, patternInput.value.length);
-      patternInput.setSelectionRange(pos, pos);
-    }
-  }
-
-  function removePattern(index: number): void {
-    if (frozen) return;
-    patterns = patterns.filter((_, at) => at !== index);
-    if (patternEdit === index) patternEdit = null;
-    else if (patternEdit !== null && patternEdit > index) patternEdit -= 1;
-    void push();
-  }
-
-  function patternTyped(event: Event): void {
-    clearTimeout(patternTimer);
-    const type = (event as InputEvent).inputType;
-    if (type === 'insertFromPaste' || type === 'insertFromDrop') commitPattern();
-    else patternTimer = setTimeout(commitPattern, 700);
-  }
-
-  function patternKeys(event: KeyboardEvent): void {
-    if (event.key === 'Enter' || event.key === 'Escape') closePatternEdit();
-  }
-
   /* ---------- Outside is the exit ---------- */
 
   function outside(event: MouseEvent): void {
@@ -378,9 +301,6 @@
        has no ancestors to read; it was somebody's press, never "outside". */
     if (!target.isConnected) return;
     if (editing !== null && !target.closest('.label-row')) closeSegment();
-    if (patternEdit !== null && !target.closest('.pattern-entry, [data-pattern-add]')) {
-      closePatternEdit();
-    }
   }
 
   function keys(event: KeyboardEvent): void {
@@ -575,51 +495,14 @@
           >
         </span>
         <span class="setting-value">
-          <span class="pattern-entries">
-            {#each patterns as pattern, index (index)}
-              {#if patternEdit === index}
-                <span class="pattern-entry is-editing">
-                  <input
-                    class="pattern-input"
-                    style:inline-size="calc({Math.max(patternValue.length, 6)}ch + 2px)"
-                    bind:this={patternInput}
-                    bind:value={patternValue}
-                    aria-label="Pattern"
-                    spellcheck="false"
-                    oninput={patternTyped}
-                    onkeydown={patternKeys}
-                    onfocusout={commitPattern}
-                  />
-                  <button
-                    class="pattern-del"
-                    aria-label="Remove {pattern === '' ? 'pattern' : pattern}"
-                    onclick={() => removePattern(index)}
-                  >
-                    <Icon name="close" size={12} />
-                  </button>
-                </span>
-              {:else}
-                <span class="pattern-entry">
-                  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-                  <span class="t" onclick={(event) => void openPattern(index, event)}
-                    >{pattern}</span
-                  >
-                  <button
-                    class="pattern-del"
-                    aria-label="Remove {pattern}"
-                    disabled={frozen}
-                    onclick={() => removePattern(index)}
-                  >
-                    <Icon name="close" size={12} />
-                  </button>
-                </span>
-              {/if}
-            {/each}
-          </span>
-          <Button tone="quiet" data-pattern-add disabled={frozen} onclick={() => void addPattern()}>
-            {#snippet icon()}<Icon name="plus" size={13} />{/snippet}
-            Add
-          </Button>
+          <PatternEntries
+            {patterns}
+            readOnly={frozen}
+            onChange={(next) => {
+              patterns = next;
+              void push({ excludes: next });
+            }}
+          />
         </span>
       </div>
     </div>
@@ -1145,93 +1028,5 @@
     justify-content: end;
     justify-self: end;
     min-inline-size: 0;
-  }
-
-  /* A pattern entry is an INPUT, not a chip: field material at the Add
-     button's 34px, press the text to edit in place. */
-  .pattern-entries {
-    align-items: center;
-    display: inline-flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
-  }
-
-  .pattern-entry {
-    align-items: center;
-    background: var(--input-bg);
-    block-size: var(--control-height-compact);
-    border: 1px solid var(--control-border);
-    border-radius: var(--r-ctl);
-    box-sizing: border-box;
-    display: inline-flex;
-    font-family: var(--mono);
-    font-size: var(--font-size-compact);
-    gap: 4px;
-    padding: 0 4px 0 var(--space-3);
-  }
-
-  .pattern-entry .t {
-    cursor: text;
-  }
-
-  .pattern-entry:focus-within {
-    border-color: var(--focus);
-    outline: 2px solid var(--focus);
-    outline-offset: -1px;
-  }
-
-  .pattern-entry .pattern-input {
-    background: transparent;
-    border: 0;
-    color: var(--text-primary);
-    font: inherit;
-    min-inline-size: 6ch;
-    outline: none;
-    padding: 0;
-  }
-
-  /* An x, not a trash, and neutral, not danger: this button DETACHES a
-     value from a list - light, instantly re-typeable, nothing cascades.
-     The trash stays reserved for deleting things with an identity. Its
-     square keeps the space; the glyph waits for the pointer to arrive.
-     24px inside the 32px content box, so the ring around it is exactly 4
-     on every side, and its 3px corner is the field's 8 minus the 5 between
-     their edges. */
-  .pattern-del {
-    align-items: center;
-    background: transparent;
-    block-size: 24px;
-    border: 0;
-    border-radius: 3px;
-    color: var(--text-muted);
-    cursor: pointer;
-    display: inline-flex;
-    flex: none;
-    inline-size: 24px;
-    justify-content: center;
-    opacity: 0;
-    padding: 0;
-    transition:
-      background-color var(--duration-fast) var(--ease-standard),
-      color var(--duration-fast) var(--ease-standard),
-      opacity var(--duration-fast) var(--ease-standard),
-      translate var(--duration-press) var(--ease-standard),
-      box-shadow var(--duration-press) var(--ease-standard);
-  }
-
-  .pattern-entry:hover .pattern-del,
-  .pattern-entry:focus-within .pattern-del {
-    opacity: 1;
-  }
-
-  .pattern-del:hover {
-    background: var(--interactive-hover-layer);
-    color: var(--text-primary);
-  }
-
-  .pattern-del:active {
-    background: var(--interactive-pressed);
-    box-shadow: var(--pressed-inset);
-    translate: 0 1px;
   }
 </style>
