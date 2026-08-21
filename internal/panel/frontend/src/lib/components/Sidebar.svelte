@@ -618,7 +618,9 @@
   .tab-count {
     align-items: center;
     background: var(--sidebar-item-hover);
-    border-radius: 999px;
+    /* 6px, not the pill: a count in the tree is a tag on a row, and the pill
+       radius belongs to the status chips in content. */
+    border-radius: 6px;
     /* A chip's height is a decision: 20px, the app's chip-small. */
     block-size: 20px;
     color: var(--sidebar-text-secondary);

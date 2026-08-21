@@ -182,6 +182,12 @@ describe('SyncView [Component]', () => {
       'labels',
     );
 
-    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('issues'));
+    /* By name, not the only status: the labels page also carries the save
+       whisper, which is a status of its own. */
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole('status').some((node) => (node.textContent ?? '').includes('issues')),
+      ).toBe(true),
+    );
   });
 });

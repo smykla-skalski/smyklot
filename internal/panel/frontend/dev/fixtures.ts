@@ -613,19 +613,29 @@ export function syncLabelsSeed(iso: (offsetMs: number) => string): SyncConfig {
   return {
     kind: 'labels',
     enabled: true,
+    /* The design's own five, word for word - the labels page is compared
+       against the mock screen by screen. */
     labels: [
-      { name: 'bug', color: 'd73a4a', description: 'Something is not working' },
-      { name: 'dependencies', color: '0e8a16', description: 'Dependency updates, mostly Renovate' },
+      { name: 'bug', color: 'd73a4a', description: 'Something is broken' },
+      { name: 'enhancement', color: 'a2eeef', description: 'New behaviour somebody asked for' },
+      {
+        name: 'dependencies',
+        color: '0e8a16',
+        description: "Dependency updates, mostly Renovate's",
+      },
+      {
+        name: 'good first issue',
+        color: '7057ff',
+        description: 'Small, self-contained, documented',
+      },
       // No description at all, which is not the same as an empty one: the row
       // has to read without the second column.
-      { name: 'good first issue', color: '7057ff' },
-      { name: 'security', color: 'b60205', description: 'Needs a maintainer before anything else' },
-      { name: 'docs', color: '0075ca', description: 'Documentation only' },
+      { name: 'chore', color: '6b7280' },
     ],
     /* Off, like the design's overview says: removal is the sharp end of label
        sync and the demo keeps it sheathed. */
     allow_removal: false,
-    excludes: ['smykla-skalski/archived-*'],
+    excludes: ['hand-made-*'],
     revision: 3,
     updated_by: 'bart',
     updated_at: iso(-2 * 60 * 60_000),

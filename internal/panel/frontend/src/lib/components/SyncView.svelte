@@ -15,19 +15,12 @@
 
   import FormError from './FormError.svelte';
   import PageHeader from './PageHeader.svelte';
-  import Plate from './Plate.svelte';
-  import SegmentedControl from './SegmentedControl.svelte';
   import SyncFilesForm from './SyncFilesForm.svelte';
+  import SyncLabelsPage from './SyncLabelsPage.svelte';
   import SyncOverview from './SyncOverview.svelte';
   import SyncPlanPage from './SyncPlanPage.svelte';
   import SyncRulesetsForm from './SyncRulesetsForm.svelte';
   import SyncSettingsForm from './SyncSettingsForm.svelte';
-
-  /** The same two words the settings page puts on the same decision. */
-  const SYNC_OPTIONS = [
-    { value: 'enabled', label: 'Enabled' },
-    { value: 'disabled', label: 'Disabled' },
-  ] as const;
 
   const {
     targetId,
@@ -76,7 +69,6 @@
   /* Read once per load rather than live: the overview's relative times move
      with the data they describe, not with a ticking clock. */
   let nowMs = $state(Date.now());
-  let saving = $state(false);
   let approving = $state(false);
   let discarding = $state(false);
 
@@ -138,29 +130,42 @@
     }
   }
 
-  async function onSave(enabled: boolean): Promise<void> {
+  /** Saves the whole labels configuration; the page whispers on true. */
+  async function saveLabels(input: {
+    enabled: boolean;
+    labels: SyncConfig['labels'];
+    allow_removal: boolean;
+    excludes: string[];
+  }): Promise<boolean> {
     const current = config;
-    if (current === null) return;
+    if (current === null) return false;
 
-    saving = true;
     error = null;
     try {
       config = await saveConfig(targetId, LABELS, {
-        enabled,
-        labels: current.labels,
-        allow_removal: current.allow_removal,
-        excludes: current.excludes,
+        ...input,
         expected_revision: current.revision,
       });
       // Saving invalidates any plan computed from the old configuration, so the
       // one on screen is re-read rather than left describing something that is
       // no longer true.
       plan = (await fetchPlan(targetId)).plan;
+      return true;
     } catch (cause) {
       error = messageOf(cause);
-    } finally {
-      saving = false;
+      return false;
     }
+  }
+
+  async function onSave(enabled: boolean): Promise<void> {
+    const current = config;
+    if (current === null) return;
+    await saveLabels({
+      enabled,
+      labels: current.labels,
+      allow_removal: current.allow_removal,
+      excludes: current.excludes,
+    });
   }
 
   /**
@@ -224,25 +229,6 @@
     return cause instanceof Error ? cause.message : String(cause);
   }
 
-  const labels = $derived(config?.labels ?? []);
-  const enabled = $derived(config?.enabled ?? false);
-
-  /**
-   * A configuration this version cannot read shows an empty list because
-   * nothing came out of the stored document, not because nothing is
-   * configured. Saving from that form would send the emptiness back and wipe a
-   * label set nobody was ever shown, so nothing here is editable.
-   */
-  const unreadable = $derived(config?.unreadable === true);
-
-  /**
-   * What labels sync needs and this installation has not granted. Empty for
-   * nearly every installation - labelling is what the bot was let in to do -
-   * but the answer carries it for every kind, and a page that read it for one
-   * kind and not the other would go quiet on whichever one was missed next.
-   */
-  const unavailable = $derived(config?.unavailable ?? '');
-
   /* The overview's kind switches are the same acts the forms perform: labels
      save through the typed fields, every other kind saves its document back
      with only the switch changed. */
@@ -292,6 +278,15 @@
     onApprove={(planId, digest) => void onApprove(planId, digest)}
     onDiscard={(planId) => void onDiscard(planId)}
   />
+{:else if section === 'labels'}
+  <SyncLabelsPage
+    {config}
+    {readOnly}
+    problem={error}
+    {sectionHref}
+    {onOpenSection}
+    onSave={saveLabels}
+  />
 {:else}
   <section class="sync-page" aria-labelledby="sync-heading">
     <PageHeader
@@ -299,70 +294,6 @@
       title="Sync"
       description="What every repository in this installation should look like, and what Smyklot would change to make that true"
     />
-
-    {#if section === 'labels'}
-      <Plate label="Labels">
-        {#snippet status()}
-          <SegmentedControl
-            name="sync-labels-{targetId}"
-            label="Label sync"
-            descriptionId="sync-labels-help"
-            options={SYNC_OPTIONS}
-            value={enabled ? 'enabled' : 'disabled'}
-            compact
-            disabled={saving || readOnly || unreadable || config === null}
-            onSelect={(selection) => void onSave(selection === 'enabled')}
-          />
-        {/snippet}
-
-        <p class="sync-lead" id="sync-labels-help">
-          The labels every repository in this installation should carry. Smyklot works out what
-          would change and asks before changing anything
-        </p>
-
-        {#if error !== null}
-          <FormError message={error} />
-        {/if}
-
-        {#if unreadable}
-          <p class="sync-notice" role="alert">
-            This installation's labels are stored in a form this version of Smyklot cannot read, so
-            they are not shown and nothing here can be changed. Nothing has been lost.
-          </p>
-        {/if}
-
-        <!-- Only while the switch is on: a kind nobody asked for is not waiting on
-         anything, and the permission is somebody else's to grant. -->
-        {#if unavailable !== '' && enabled}
-          <p class="sync-notice" role="status">
-            {unavailable}. Nothing here will be planned or changed until an owner grants it on the
-            installation's page on GitHub.
-          </p>
-        {/if}
-
-        {#if unreadable}
-          <!-- Deliberately not "no labels yet". An empty list here would be the panel
-           inventing an answer it does not have. -->
-        {:else if labels.length === 0}
-          <p class="sync-empty">No labels yet</p>
-        {:else}
-          <ul class="sync-rows">
-            {#each labels as label (label.name)}
-              <li class="sync-row">
-                <!-- The colour is the label's own, so it is set as a custom property
-                 rather than an inline style: the panel serves style-src 'self',
-                 under which a style attribute is parsed and then discarded. -->
-                <span class="sync-swatch" style:--swatch="#{label.color}" aria-hidden="true"></span>
-                <span class="sync-name">{label.name}</span>
-                {#if label.description}
-                  <span class="sync-description">{label.description}</span>
-                {/if}
-              </li>
-            {/each}
-          </ul>
-        {/if}
-      </Plate>
-    {/if}
 
     {#if section === 'settings' && documents.settings !== null}
       <SyncSettingsForm
@@ -411,78 +342,7 @@
     background: var(--surface-base);
   }
 
-  /* A plate's opening line, which the body's own padding already places. */
-  .sync-lead {
-    color: var(--dim);
-    font-size: var(--font-size-meta);
-    margin: 0;
-    max-width: 60ch;
-  }
-
-  /* The same line, further down a plate, so it carries the gap itself. */
-  .sync-empty {
-    color: var(--dim);
-    font-size: var(--font-size-meta);
-    margin: var(--space-3) 0 0;
-    max-width: 60ch;
-  }
-
-  .sync-notice {
-    background: var(--surface-inset);
-    border-radius: var(--r-ctl);
-    font-size: var(--font-size-meta);
-    margin: var(--space-3) 0 0;
-    padding: var(--space-2) var(--space-3);
-  }
-
   :global(.form-error) {
     margin: var(--space-3) 0 0;
-  }
-
-  /* The rows the configuration editor draws: hairlines between, no box around,
-     because the plate is already the box. A bordered list inside a bordered card
-     reads as two cards, which is what this page used to look like. */
-  .sync-rows {
-    list-style: none;
-    margin: var(--space-3) 0 0;
-    padding: 0;
-  }
-
-  .sync-row {
-    align-items: baseline;
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-3);
-    padding-block: 0.7rem;
-  }
-
-  .sync-row + .sync-row {
-    border-top: 1px solid var(--rule);
-  }
-
-  /* The plate's own padding closes the list; the row's would double it. */
-  .sync-rows > .sync-row:last-child {
-    padding-bottom: 0.15rem;
-  }
-
-  .sync-name {
-    font-size: 0.875rem;
-    font-weight: 600;
-  }
-
-  /* The swatch sits on the text baseline rather than centred on the line box, so
-     a row whose description wraps does not leave it floating beside the gap. */
-  .sync-swatch {
-    background: var(--swatch);
-    border-radius: 50%;
-    display: inline-block;
-    height: 0.75em;
-    transform: translateY(0.05em);
-    width: 0.75em;
-  }
-
-  .sync-description {
-    color: var(--dim);
-    font-size: var(--font-size-meta);
   }
 </style>
