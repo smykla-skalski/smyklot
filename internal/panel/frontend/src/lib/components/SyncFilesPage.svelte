@@ -18,18 +18,18 @@
    * field with fuzzy suggestions from what the organization's repositories
    * already hold - the index ships once, matching costs no requests.
    */
-  import { tick } from 'svelte';
+  import { Command } from 'bits-ui';
 
   import { formatRelative } from '../format';
   import { rankPaths, type PathMatch } from '../pathfinder';
   import type { SyncConfig, SyncFile, SyncFilesContext, SyncPlan, SyncStatus } from '../types';
   import type { SyncSection } from '../routes';
 
-  import Button from './Button.svelte';
   import FormError from './FormError.svelte';
   import Icon from './Icon.svelte';
   import PanePath from './PanePath.svelte';
   import PatternEntries from './PatternEntries.svelte';
+  import Popover from './Popover.svelte';
   import Switch from './Switch.svelte';
 
   const {
@@ -109,22 +109,25 @@
     ).length;
   }
 
-  /* ---------- The finder ---------- */
+  /* ---------- The finder ----------
+     The palette shape every fuzzy picker converged on - an ARIA combobox in
+     a popover, input on top, ranked list, key legend below - built on
+     bits-ui's Command (the cmdk pattern) so focus, aria-activedescendant
+     and the arrow/Enter contract come from the library rather than being
+     hand-rolled here. Ranking stays ours: `rankPaths` is path-aware in a
+     way a generic command score is not, so filtering is turned off and the
+     list is rendered from it directly. */
 
   let addOpen = $state(false);
   let query = $state('');
-  let selected = $state(0);
-  let finderInput: HTMLInputElement | null = $state(null);
 
   const ranked: PathMatch[] = $derived(rankPaths(context?.known_paths ?? [], query.trim()));
-
-  async function openFinder(): Promise<void> {
-    addOpen = true;
-    query = '';
-    selected = 0;
-    await tick();
-    finderInput?.focus();
-  }
+  const cleanQuery = $derived(query.trim());
+  /** A path no repository holds is still a legal ask - the explicit create
+      row is how a combobox says so out loud. */
+  const startable = $derived(
+    cleanQuery !== '' && !ranked.some((match) => match.path === cleanQuery),
+  );
 
   /** Choosing a path manages it: an existing template opens, a new one is born empty. */
   function choose(path: string): void {
@@ -135,25 +138,6 @@
       save({ files: [...files, { path: clean, content: '' }] });
     }
     onOpenFile(clean);
-  }
-
-  function finderKeys(event: KeyboardEvent): void {
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-      event.preventDefault();
-      const last = Math.max(ranked.length - 1, 0);
-      selected =
-        event.key === 'ArrowDown' ? Math.min(selected + 1, last) : Math.max(selected - 1, 0);
-    } else if (event.key === 'Enter') {
-      choose(ranked[selected]?.path ?? query);
-    } else if (event.key === 'Escape') {
-      addOpen = false;
-    }
-  }
-
-  function finderOutside(event: MouseEvent): void {
-    const target = event.target as HTMLElement;
-    if (!target.isConnected) return;
-    if (addOpen && !target.closest('.finder, .add-file')) addOpen = false;
   }
 
   /** A path split for the marks: directory dimmed, basename full ink. */
@@ -174,8 +158,6 @@
     onOpenFile(path);
   }
 </script>
-
-<svelte:document onclick={finderOutside} />
 
 <div class="view-frame">
   <PanePath
@@ -222,29 +204,38 @@
   <div class="card">
     <div class="card-head">
       <h3 class="card-title">{files.length} {files.length === 1 ? 'template' : 'templates'}</h3>
-      <Button class="add-file" disabled={frozen} onclick={() => void openFinder()}>
-        {#snippet icon()}<Icon name="plus" size={13} />{/snippet}
-        Add a file
-      </Button>
-    </div>
-
-    {#if addOpen}
-      <div class="finder">
-        <input
-          class="finder-input"
-          type="text"
-          spellcheck="false"
-          role="combobox"
-          aria-expanded="true"
-          aria-controls="finder-list"
-          aria-autocomplete="list"
-          aria-label="Path of the file to manage"
-          bind:this={finderInput}
-          bind:value={query}
-          oninput={() => (selected = 0)}
-          onkeydown={finderKeys}
-        />
-        <div class="finder-pop">
+      <Popover
+        bind:open={addOpen}
+        role="dialog"
+        label="Add a file"
+        align="start"
+        focusSelector=".finder-search input"
+        onopen={() => (query = '')}
+      >
+        {#snippet trigger(attributes)}
+          <!-- A raw .btn: Button's own props collide with the trigger's
+               spread attributes, the way every other Popover trigger here
+               already found. -->
+          <button {...attributes} type="button" class="btn add-file" disabled={frozen}>
+            <Icon name="plus" size={13} />
+            <span class="button-label">Add a file</span>
+          </button>
+        {/snippet}
+        <Command.Root
+          class="finder-palette"
+          label="Path of the file to manage"
+          shouldFilter={false}
+          loop
+        >
+          <div class="menu-search finder-search">
+            <Icon name="search" size={12} />
+            <Command.Input
+              bind:value={query}
+              placeholder="renovate.json, or a path no repository has yet"
+              spellcheck="false"
+              autocomplete="off"
+            />
+          </div>
           <div class="finder-scope">
             <span>Paths across this installation</span>
             <span
@@ -252,52 +243,55 @@
                 0} repositories</span
             >
           </div>
-          <ul class="finder-list" id="finder-list" role="listbox">
-            {#each ranked as match, at (match.path)}
-              <!-- svelte-ignore a11y_click_events_have_key_events -->
-              <li
-                class="finder-opt"
-                role="option"
-                aria-selected={at === selected}
-                onclick={() => choose(match.path)}
-              >
-                <span class="finder-path">
-                  {#each markedParts(match) as part, index (index)}<span
-                      class:dir={!part.base}
-                      class:base={part.base}
-                      class:is-mark={part.mark}>{part.text}</span
-                    >{/each}
-                </span>
-                <span class="finder-count"
-                  >in {match.repositories}
-                  {match.repositories === 1 ? 'repo' : 'repos'}</span
+          <Command.List class="finder-list">
+            <Command.Viewport>
+              {#each ranked as match (match.path)}
+                <Command.Item
+                  class="finder-opt"
+                  value={match.path}
+                  onSelect={() => choose(match.path)}
                 >
-              </li>
-            {:else}
-              <li class="finder-opt is-empty">No repository has a matching path</li>
-            {/each}
-          </ul>
-          {#if query.trim() !== ''}
-            <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-            <div class="finder-new" onclick={() => choose(query)}>
-              <Icon name="plus" size={12} />
-              <span
-                >None of these? <span class="file-path">{query.trim()}</span> starts a new path no repository
-                has yet</span
-              >
-            </div>
-          {/if}
+                  <span class="finder-path">
+                    {#each markedParts(match) as part, index (index)}<span
+                        class:dir={!part.base}
+                        class:base={part.base}
+                        class:is-mark={part.mark}>{part.text}</span
+                      >{/each}
+                  </span>
+                  <span class="finder-count"
+                    >in {match.repositories}
+                    {match.repositories === 1 ? 'repo' : 'repos'}</span
+                  >
+                </Command.Item>
+              {/each}
+              {#if startable}
+                <Command.Item
+                  class="finder-opt finder-new"
+                  value={'start: ' + cleanQuery}
+                  onSelect={() => choose(cleanQuery)}
+                >
+                  <Icon name="plus" size={12} />
+                  <span
+                    >Start <span class="file-path">{cleanQuery}</span> - no repository has it yet</span
+                  >
+                </Command.Item>
+              {/if}
+              {#if ranked.length === 0 && !startable}
+                <div class="finder-empty">Type a path - matches appear as you go</div>
+              {/if}
+            </Command.Viewport>
+          </Command.List>
           <div class="finder-keys">
             <span><kbd>↑</kbd><kbd>↓</kbd> move</span><span><kbd>↵</kbd> choose</span><span
               ><kbd>esc</kbd> close</span
             >
           </div>
-        </div>
-      </div>
-    {/if}
+        </Command.Root>
+      </Popover>
+    </div>
 
     {#if files.length > 0}
-      <div class="object-list" class:block-gap-top={addOpen}>
+      <div class="object-list">
         {#each files as file (file.path)}
           {@const merges = mergesOf(file.path)}
           {@const pending = differs(file.path)}
@@ -445,39 +439,39 @@
 
   /* ---------- The finder ---------- */
 
-  .finder {
-    max-width: 34rem;
-    position: relative;
+  /* The palette: input on top, ranked list, key legend - the shape every
+     fuzzy picker converged on. The popover owns the layer; this owns the
+     grid inside it. */
+  :global(.finder-palette) {
+    display: grid;
+    inline-size: min(30rem, calc(100vw - 24px));
   }
 
-  .finder-input {
-    background: var(--input-bg);
-    border: 1px solid var(--control-border);
-    border-radius: var(--r-ctl);
+  .finder-search {
+    align-items: center;
+    block-size: 36px;
+    box-shadow: 0 1px 0 var(--border-subtle);
+    color: var(--text-muted);
+    display: flex;
+    gap: var(--space-2);
+    padding: 0 var(--space-3);
+  }
+
+  .finder-search :global(input) {
+    background: none;
+    block-size: 100%;
+    border: 0;
     color: var(--text-primary);
+    flex: 1;
     font-family: var(--mono);
     font-size: var(--font-size-control);
-    min-block-size: var(--control-height-compact);
-    padding-inline: 0.7rem;
-    width: 100%;
+    outline: none;
+    padding: 0;
   }
 
-  .finder-input:focus-visible {
-    border-color: var(--focus);
-    outline: 2px solid var(--focus);
-    outline-offset: -1px;
-  }
-
-  .finder-pop {
-    background: var(--popover-bg);
-    border: 1px solid var(--popover-border);
-    border-radius: var(--radius-popover);
-    box-shadow: var(--shadow-popover);
-    inset-inline: 0;
-    margin-top: 6px;
-    overflow: hidden;
-    position: absolute;
-    z-index: var(--layer-popover);
+  .finder-search :global(input)::placeholder {
+    color: var(--text-muted);
+    font-family: var(--sans);
   }
 
   .finder-scope {
@@ -489,15 +483,13 @@
     padding: 0.5rem 0.75rem;
   }
 
-  .finder-list {
-    list-style: none;
-    margin: 0;
+  :global(.finder-list) {
     max-height: 19rem;
     overflow-y: auto;
-    padding: 0.3rem;
+    padding: var(--space-1);
   }
 
-  .finder-opt {
+  :global(.finder-opt) {
     align-items: center;
     border-radius: var(--r-ctl);
     cursor: pointer;
@@ -506,17 +498,16 @@
     padding: 0.45rem 0.55rem;
   }
 
-  .finder-opt:hover {
-    background: var(--interactive-hover-layer);
-  }
-
-  .finder-opt[aria-selected='true'] {
+  /* Pointer and keyboard share one voice: Command moves data-selected with
+     the arrows and under the pointer both. */
+  :global(.finder-opt[data-selected='true']) {
     background: var(--brand-action-tint);
   }
 
-  .finder-opt.is-empty {
+  .finder-empty {
     color: var(--text-muted);
-    cursor: default;
+    font-size: var(--font-size-compact);
+    padding: 0.45rem 0.55rem;
   }
 
   .finder-path {
@@ -551,18 +542,13 @@
     white-space: nowrap;
   }
 
-  .finder-new {
-    align-items: center;
-    border-top: 1px solid var(--border-subtle);
+  :global(.finder-opt.finder-new) {
     color: var(--text-secondary);
-    cursor: pointer;
-    display: flex;
     font-size: var(--font-size-compact);
     gap: var(--space-2);
-    padding: 0.55rem 0.75rem;
   }
 
-  .finder-new .file-path {
+  :global(.finder-opt.finder-new) .file-path {
     color: var(--text-primary);
   }
 
@@ -585,10 +571,6 @@
   }
 
   /* ---------- The list ---------- */
-
-  .block-gap-top {
-    margin-top: var(--space-6);
-  }
 
   .object-list {
     display: grid;
