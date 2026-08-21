@@ -662,16 +662,18 @@ export function syncSettingsSeed(iso: (offsetMs: number) => string): SyncConfig 
     updated_by: 'bart',
     updated_at: iso(-26 * 60 * 60_000),
     digest: 'sha256:settings',
+    /* The design page's nine, group for group: Merging 4 of 6, wording 2 of
+       4, features 2 of 4, security 1 of 3. */
     document: {
-      allow_merge_commit: false,
       allow_squash_merge: true,
-      allow_rebase_merge: false,
+      allow_merge_commit: false,
       allow_auto_merge: true,
       delete_branch_on_merge: true,
-      allow_update_branch: true,
-      has_wiki: false,
-      has_discussions: false,
       squash_merge_commit_title: 'PR_TITLE',
+      squash_merge_commit_message: 'COMMIT_MESSAGES',
+      has_issues: true,
+      has_wiki: false,
+      secret_scanning: true,
     },
     unreadable: false,
     unavailable: '',

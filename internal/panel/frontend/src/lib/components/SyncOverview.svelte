@@ -22,7 +22,7 @@
   import Button from './Button.svelte';
   import Icon from './Icon.svelte';
   import Switch from './Switch.svelte';
-  import { SETTINGS_FIELD_KEYS, SETTINGS_FIELD_TOTAL } from './SyncSettingsForm.svelte';
+  import { SETTINGS_FIELD_KEYS, SETTINGS_FIELD_TOTAL } from './SyncSettingsPage.svelte';
 
   const {
     status,
@@ -263,6 +263,7 @@
           <Switch
             checked={config?.enabled === true}
             label={`${KIND_LABEL[kind]} sync`}
+            bare
             disabled={readOnly || config === undefined}
             onToggle={(next) => onToggleKind(kind, next)}
           />

@@ -20,7 +20,7 @@
   import SyncOverview from './SyncOverview.svelte';
   import SyncPlanPage from './SyncPlanPage.svelte';
   import SyncRulesetsForm from './SyncRulesetsForm.svelte';
-  import SyncSettingsForm from './SyncSettingsForm.svelte';
+  import SyncSettingsPage from './SyncSettingsPage.svelte';
 
   const {
     targetId,
@@ -287,6 +287,16 @@
     {onOpenSection}
     onSave={saveLabels}
   />
+{:else if section === 'settings'}
+  <SyncSettingsPage
+    config={documents.settings}
+    {readOnly}
+    problem={documentError.settings}
+    saving={savingDocument.settings}
+    {sectionHref}
+    {onOpenSection}
+    onSave={(wanted, document) => void onSaveDocument(SETTINGS, wanted, document)}
+  />
 {:else}
   <section class="sync-page" aria-labelledby="sync-heading">
     <PageHeader
@@ -294,19 +304,6 @@
       title="Sync"
       description="What every repository in this installation should look like, and what Smyklot would change to make that true"
     />
-
-    {#if section === 'settings' && documents.settings !== null}
-      <SyncSettingsForm
-        stored={documents.settings.document}
-        enabled={documents.settings.enabled}
-        unreadable={documents.settings.unreadable}
-        unavailable={documents.settings.unavailable}
-        problem={documentError.settings}
-        {readOnly}
-        saving={savingDocument.settings}
-        onSave={(wanted, document) => onSaveDocument(SETTINGS, wanted, document)}
-      />
-    {/if}
 
     {#if section === 'rulesets' && documents.rulesets !== null}
       <SyncRulesetsForm

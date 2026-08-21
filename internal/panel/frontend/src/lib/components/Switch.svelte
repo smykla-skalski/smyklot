@@ -3,6 +3,7 @@
     checked,
     label,
     word,
+    bare = false,
     disabled = false,
     onToggle,
   }: {
@@ -11,6 +12,12 @@
     label: string;
     /** An optional visible word beside the track ("Syncing"). */
     word?: string;
+    /**
+     * Drops the 44px tap box so the switch cannot inflate the line it sits
+     * on - for a head or a card row that sets its own rhythm. The hit area
+     * survives on the input itself.
+     */
+    bare?: boolean;
     disabled?: boolean;
     onToggle: (next: boolean) => void;
   } = $props();
@@ -18,7 +25,7 @@
 
 <!-- A setting that has already taken effect: flipping it IS the change, so
      the control is an input rather than a button that opens a form. -->
-<label class="switch" class:bare={word === undefined}>
+<label class="switch" class:bare>
   {#if word !== undefined}<span class="switch-word">{word}</span>{/if}
   <input
     type="checkbox"
