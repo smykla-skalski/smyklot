@@ -568,8 +568,10 @@
     padding-block-end: var(--space-2);
   }
 
+  /* The remainder is a summary line, not a row - its boundary keeps the
+     compact rhythm so the card does not end on a slab of air. */
   .policy-rows:has(+ .group-rest) > .policy-row:last-child {
-    padding-block-end: var(--space-5);
+    padding-block-end: var(--space-2);
   }
 
   /* A drawn hairline, not a border: a border on a radiused row curves at
@@ -936,7 +938,7 @@
        bottom hairline, so the gaps around that line stay the row rhythm -
        and a card with nothing overridden shows no line under its title. */
     margin-inline: calc(var(--space-2) * -1);
-    padding: var(--space-5) var(--space-2) 0;
+    padding: var(--space-2) var(--space-2) 0;
     position: relative;
   }
 

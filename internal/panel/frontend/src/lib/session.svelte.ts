@@ -412,8 +412,14 @@ export class PanelSession {
   async selectTarget(targetId: string): Promise<void> {
     const target = this.targets.find((t) => t.id === targetId);
     /* The selected workspace is still one press away from elsewhere: from the
-       inbox or the Root console its tile is the way back to its pages. */
-    const alreadyThere = this.selectedId === targetId && !this.isInbox && !this.isRootMode;
+       inbox or the Root console its tile is the way back to its pages - and
+       from a record inside it, the same press is the way back to the view,
+       for the reason selectView gives. */
+    const alreadyThere =
+      this.selectedId === targetId &&
+      !this.isInbox &&
+      !this.isRootMode &&
+      this.currentRepository === null;
     if (target === undefined || alreadyThere) return;
     await this.openTarget(target);
   }

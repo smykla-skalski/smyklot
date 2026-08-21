@@ -15,14 +15,22 @@ class TestResizeObserver {
  * What this pane saves is the only thing that makes a repository's own
  * customization survive a sync. Drop it and the plain template is written over
  * exactly the file it described - the failure this whole port exists to stop.
+ *
+ * Saves ride a typing rest rather than a button, so every test that expects
+ * one advances the clock past it - and every test that expects none advances
+ * the clock too, or it would prove only that the save had not happened YET.
  */
 describe('RepositorySyncPane [Component]', () => {
   beforeEach(() => {
+    vi.useFakeTimers();
     vi.stubGlobal('ResizeObserver', TestResizeObserver);
     document.body.innerHTML = '<main class="app-shell"></main>';
   });
 
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
 
   function override(over: Partial<SyncOverride> = {}): SyncOverride {
     return {
@@ -50,8 +58,9 @@ describe('RepositorySyncPane [Component]', () => {
 
   const base = { readOnly: false, saving: false, now, onSave: () => {} };
 
-  async function save(): Promise<void> {
-    await fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  /** Rests past the save debounce, so anything queued lands. */
+  async function rest(): Promise<void> {
+    await vi.advanceTimersByTimeAsync(1_000);
   }
 
   it('says so where a repository takes every file as it is written', () => {
@@ -76,7 +85,7 @@ describe('RepositorySyncPane [Component]', () => {
     expect(overrides.value).toContain('Europe/Warsaw');
   });
 
-  it('sends an adjustment somebody wrote', async () => {
+  it('sends an adjustment somebody wrote once the typing rests', async () => {
     const { sent, onSave } = saved();
     render(RepositorySyncPane, { ...base, stored: override(), onSave });
 
@@ -87,12 +96,26 @@ describe('RepositorySyncPane [Component]', () => {
     await fireEvent.change(screen.getByLabelText('What this repository sets'), {
       target: { value: '{"timezone": "Europe/Warsaw"}' },
     });
-    await save();
+    await rest();
 
     expect(sent).toHaveLength(1);
     expect(sent[0].document.merges).toEqual([
       { path: 'renovate.json', overrides: { timezone: 'Europe/Warsaw' } },
     ]);
+  });
+
+  /** An entry not yet named has nowhere to be written; the save waits for it. */
+  it('saves nothing while a new entry has no file name', async () => {
+    const { sent, onSave } = saved();
+    render(RepositorySyncPane, { ...base, stored: override(), onSave });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Adjust another file' }));
+    await fireEvent.change(screen.getByLabelText('What this repository sets'), {
+      target: { value: '{"timezone": "Europe/Warsaw"}' },
+    });
+    await rest();
+
+    expect(sent).toHaveLength(0);
   });
 
   /**
@@ -101,17 +124,20 @@ describe('RepositorySyncPane [Component]', () => {
    * JSON, so the refusal happens here where the box is.
    */
   it('refuses to save what is not a JSON object', async () => {
+    const { sent, onSave } = saved();
     render(RepositorySyncPane, {
       ...base,
       stored: override({ document: { merges: [{ path: 'renovate.json' }] } }),
+      onSave,
     });
 
     await fireEvent.change(screen.getByLabelText('What this repository sets'), {
       target: { value: '{"timezone": ' },
     });
+    await rest();
 
     expect(screen.getByRole('alert').textContent).toContain('not a JSON object');
-    expect(screen.getByRole('button', { name: 'Save' }).hasAttribute('disabled')).toBe(true);
+    expect(sent).toHaveLength(0);
   });
 
   /** Adds one leave-alone pattern through the in-place entry editor. */
@@ -128,9 +154,9 @@ describe('RepositorySyncPane [Component]', () => {
 
     await addExclude('renovate.json');
     await addExclude('CONTRIBUTING.md');
-    await save();
+    await rest();
 
-    expect(sent[0].document.excludes).toEqual(['renovate.json', 'CONTRIBUTING.md']);
+    expect(sent.at(-1)?.document.excludes).toEqual(['renovate.json', 'CONTRIBUTING.md']);
   });
 
   /**
@@ -143,23 +169,28 @@ describe('RepositorySyncPane [Component]', () => {
     render(RepositorySyncPane, { ...base, stored: override(), onSave });
 
     await addExclude('LICENSE');
-    await save();
+    await rest();
 
     expect(sent[0].enabled).toBeNull();
   });
 
-  it('offers no save until something changes', () => {
-    render(RepositorySyncPane, { ...base, stored: override() });
+  it('saves nothing until something changes', async () => {
+    const { sent, onSave } = saved();
+    render(RepositorySyncPane, { ...base, stored: override(), onSave });
 
-    expect(screen.getByRole('button', { name: 'Save' }).hasAttribute('disabled')).toBe(true);
+    await rest();
+
+    expect(sent).toHaveLength(0);
   });
 
   /**
    * Two documents that would be saved the same way have to compare the same
-   * way, whatever order their keys arrived in. Comparing the raw text put Save
-   * live the moment the page loaded, for a document nobody had touched.
+   * way, whatever order their keys arrived in. Comparing the raw text once put
+   * the save live the moment the page loaded, for a document nobody had
+   * touched.
    */
-  it('offers no save for a document whose keys arrived in another order', () => {
+  it('saves nothing for a document whose keys arrived in another order', async () => {
+    const { sent, onSave } = saved();
     render(RepositorySyncPane, {
       ...base,
       stored: override({
@@ -168,9 +199,12 @@ describe('RepositorySyncPane [Component]', () => {
           merges: [{ path: 'renovate.json', overrides: { timezone: 'UTC' } }],
         },
       }),
+      onSave,
     });
 
-    expect(screen.getByRole('button', { name: 'Save' }).hasAttribute('disabled')).toBe(true);
+    await rest();
+
+    expect(sent).toHaveLength(0);
   });
 
   /**
@@ -187,7 +221,7 @@ describe('RepositorySyncPane [Component]', () => {
     });
 
     await addExclude('LICENSE');
-    await save();
+    await rest();
 
     expect(sent[0].document.something_later).toEqual({ deep: true });
   });
@@ -200,7 +234,9 @@ describe('RepositorySyncPane [Component]', () => {
     render(RepositorySyncPane, { ...base, stored: override({ unreadable: true }) });
 
     expect(screen.getByRole('alert').textContent).toContain('cannot read');
-    expect(screen.getByRole('button', { name: 'Save' }).hasAttribute('disabled')).toBe(true);
+    expect(
+      screen.getByRole('button', { name: 'Adjust another file' }).hasAttribute('disabled'),
+    ).toBe(true);
   });
 
   it('offers nothing to change to somebody who may only read', () => {
@@ -210,8 +246,8 @@ describe('RepositorySyncPane [Component]', () => {
       stored: override({ document: { merges: [{ path: 'renovate.json' }] } }),
     });
 
-    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Adjust another file' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull();
   });
 
   /**
@@ -228,19 +264,20 @@ describe('RepositorySyncPane [Component]', () => {
       }),
     });
 
-    const notice = screen.getByRole('status');
-    expect(notice.textContent).toContain('are not being synced here');
-    expect(notice.textContent).toContain('docs is not a directory in this repository');
+    /* Scoped by class: the saved receipt is a quiet status of its own now. */
+    const notice = document.querySelector('.sync-pane-standdown');
+    expect(notice?.textContent).toContain('are not being synced here');
+    expect(notice?.textContent).toContain('docs is not a directory in this repository');
 
     // And when it was found, so a fix saved a minute ago can be told from one
     // this notice already knows about.
-    expect(notice.textContent).toContain('3 minutes ago');
+    expect(notice?.textContent).toContain('3 minutes ago');
   });
 
   it('says nothing where the planner found nothing wrong', () => {
     render(RepositorySyncPane, { ...base, stored: override() });
 
-    expect(screen.queryByRole('status')).toBeNull();
+    expect(document.querySelector('.sync-pane-standdown')).toBeNull();
   });
 
   /**

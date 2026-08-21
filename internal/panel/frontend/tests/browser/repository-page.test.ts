@@ -116,12 +116,14 @@ describe('one repository as a page [Integration]', () => {
       await page
         .getByRole('heading', { name: 'data-pipeline', exact: true })
         .waitFor({ state: 'visible', timeout: 30_000 });
-      await page.getByText('Command overrides').waitFor({ state: 'visible' });
+      await page.getByRole('heading', { name: 'Commands', exact: true }).waitFor({
+        state: 'visible',
+      });
 
       /* The pane switch is a radio per option with its label drawn over it, so
          the radio itself is never what a pointer reaches - press the label, the
          way a reader does. */
-      await page.locator('header').getByText('File', { exact: true }).click();
+      await page.locator('.pane-tools').getByText('File', { exact: true }).click();
       await page.waitForFunction(() => !window.location.pathname.endsWith('/commands'), undefined, {
         timeout: 5_000,
       });
@@ -143,7 +145,7 @@ describe('one repository as a page [Integration]', () => {
    * a reader most expects it to do something.
    */
   it.each([
-    ['the way back above the title', 'a.back-link'],
+    ['the way back above the title', '.pane-path a.crumb'],
     ['the navigation item for the view it is in', 'nav a[href$="/repositories"]'],
   ])('leaves for the list through %s', async (_name, selector) => {
     const page = await openList();
