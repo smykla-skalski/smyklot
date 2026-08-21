@@ -311,26 +311,28 @@
             <Icon name={page.icon} size={16} />
             <span class="t">{page.label}</span>
           </a>
-          {#if page.active || collapsed}
-            <div class="tree-kids" data-label={page.label}>
-              {#each page.kids as kid (kid.id)}
-                <a
-                  class="tree-kid"
-                  class:is-active={kid.active}
-                  href={kid.href}
-                  aria-current={kid.active ? 'page' : undefined}
-                  onclick={(event) => kidFromClick(event, page, kid)}
-                >
-                  <span class="t">{kid.label}</span>
-                  {#if kid.count !== undefined}
-                    <span class="tab-count" class:is-signal={kid.signal === true}>
-                      <span class="t">{kid.count}</span>
-                    </span>
-                  {/if}
-                </a>
-              {/each}
-            </div>
-          {/if}
+          <!-- Always in the DOM, shown by CSS: an anchor destroyed between a
+               pointerdown and its click swallows the press, and these unmount
+               exactly when a navigation lands - the moment a second quick
+               press is most likely to be in flight. -->
+          <div class="tree-kids" data-label={page.label}>
+            {#each page.kids as kid (kid.id)}
+              <a
+                class="tree-kid"
+                class:is-active={kid.active}
+                href={kid.href}
+                aria-current={kid.active ? 'page' : undefined}
+                onclick={(event) => kidFromClick(event, page, kid)}
+              >
+                <span class="t">{kid.label}</span>
+                {#if kid.count !== undefined}
+                  <span class="tab-count" class:is-signal={kid.signal === true}>
+                    <span class="t">{kid.count}</span>
+                  </span>
+                {/if}
+              </a>
+            {/each}
+          </div>
         </div>
       {:else}
         <a
@@ -545,13 +547,18 @@
      thumb; its page row only carries weight. */
   .tree-kids {
     border-inline-start: 1px solid var(--sidebar-border);
-    display: grid;
+    /* Hidden, never unmounted - see the template note. */
+    display: none;
     /* 2px, not 1: the thumb's half-pixel ring eats a 1px seam. */
     gap: 2px;
     /* 16, not 18: the guide starts on the page rows' icon centre, so the
        thread visibly hangs from the glyph column. */
     margin: 2px 0 4px 16px;
     padding-inline-start: 12px;
+  }
+
+  .tree-page.is-active > .tree-kids {
+    display: grid;
   }
 
   .tree-kid {
@@ -737,7 +744,9 @@
       position: relative;
     }
 
-    :global(.app-shell.sidebar-collapsed) .tree-kids {
+    /* Through .tree-page, to outrank the expanded active-page rule above -
+       collapsed, kids appear only as the flyout below. */
+    :global(.app-shell.sidebar-collapsed) .tree-page .tree-kids {
       display: none;
     }
 

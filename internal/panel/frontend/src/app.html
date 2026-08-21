@@ -51,7 +51,10 @@
 
     %sveltekit.head%
   </head>
-  <body>
+  <!-- Route chunks are fetched before the click needs them: hovering a link
+       warms its data, and any link that scrolls into view warms its code. The
+       first press on a route otherwise pays the chunk fetch at click time. -->
+  <body data-sveltekit-preload-data="hover" data-sveltekit-preload-code="viewport">
     <!-- The server answers with an error document only when scripting failed, so
          the message sits here - the one case where the reader has been told nothing
          else. -->
