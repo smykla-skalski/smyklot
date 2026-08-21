@@ -459,8 +459,19 @@
     grid-template-columns: 1fr auto auto;
     margin-inline: calc(var(--space-2) * -1);
     min-block-size: 48px;
-    padding: 0.5rem var(--space-2);
+    /* The air around a drawn hairline is the card's own padding, on both
+       sides; the edge rows shed it where no line follows, since the card
+       edge already carries that inset. */
+    padding: var(--space-5) var(--space-2);
     position: relative;
+  }
+
+  .policy-row:first-child {
+    padding-block-start: var(--space-2);
+  }
+
+  .policy-row:last-child {
+    padding-block-end: var(--space-2);
   }
 
   /* Every row owns the drawn hairline under itself; the last one stands

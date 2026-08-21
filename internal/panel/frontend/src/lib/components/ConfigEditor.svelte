@@ -553,8 +553,23 @@
        head's left edge. Whole numbers: 48 floor, 8px block padding. */
     margin-inline: calc(var(--space-2) * -1);
     min-block-size: 48px;
-    padding: 0.5rem var(--space-2);
+    /* The air around a drawn hairline is the card's own padding, on both
+       sides; the edge rows shed it where no line follows, since the card
+       edge already carries that inset. */
+    padding: var(--space-5) var(--space-2);
     position: relative;
+  }
+
+  .policy-row:first-child {
+    padding-block-start: var(--space-2);
+  }
+
+  .policy-row:last-child {
+    padding-block-end: var(--space-2);
+  }
+
+  .policy-rows:has(+ .group-rest) > .policy-row:last-child {
+    padding-block-end: var(--space-5);
   }
 
   /* A drawn hairline, not a border: a border on a radiused row curves at
@@ -921,13 +936,16 @@
        bottom hairline, so the gaps around that line stay the row rhythm -
        and a card with nothing overridden shows no line under its title. */
     margin-inline: calc(var(--space-2) * -1);
-    padding: var(--space-2) var(--space-2) 0;
+    padding: var(--space-5) var(--space-2) 0;
     position: relative;
   }
 
   .rest-say {
     color: var(--text-muted);
     font-size: var(--font-size-compact);
+    /* Ink-true, like the rows above it, so the air across the hairline
+       between the last row and this line reads equal. */
+    text-box: trim-both cap alphabetic;
   }
 
   .rest-count {

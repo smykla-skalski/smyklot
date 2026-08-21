@@ -777,8 +777,19 @@
     grid-template-columns: 1fr auto auto;
     margin-inline: calc(var(--space-2) * -1);
     min-block-size: 48px;
-    padding: 0.5rem var(--space-2);
+    /* The air around a drawn hairline is the card's own padding, on both
+       sides; the edge rows shed it where no line follows, since the card
+       edge already carries that inset. */
+    padding: var(--space-5) var(--space-2);
     position: relative;
+  }
+
+  .policy-row:first-child {
+    padding-block-start: var(--space-2);
+  }
+
+  .policy-row:last-child {
+    padding-block-end: var(--space-2);
   }
 
   /* Every row owns the drawn hairline under itself; the last one stands
@@ -827,6 +838,9 @@
     color: var(--text-muted);
     font-size: var(--font-size-compact);
     font-style: normal;
+    /* Ink-true, so the padding around the hairlines measures to the glyphs
+       rather than to the line box's leading. */
+    text-box: trim-both cap alphabetic;
   }
 
   .setting-clear {
@@ -1086,9 +1100,18 @@
   }
 
   /* The overridden behavior rows continue the card's own row list under the
-     bypass row, separated by the same drawn hairline the rows use. */
+     bypass row, separated by the same drawn hairline the rows use - so the
+     rows on either side of that line keep the full separator rhythm. */
   .file-overrides {
     border-top: 1px solid var(--border-subtle);
+  }
+
+  .policy-rows:has(+ .file-overrides) > .policy-row:last-child {
+    padding-block-end: var(--space-5);
+  }
+
+  .file-overrides :global(.policy-rows > .policy-row:first-child) {
+    padding-block-start: var(--space-5);
   }
 
   .file-problem strong,
