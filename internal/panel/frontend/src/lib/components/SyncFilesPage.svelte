@@ -326,7 +326,7 @@
               {:else}
                 <span class="mx-mark mx-instep"><Icon name="check" size={14} /></span>
               {/if}
-              <Icon name="chevron-right" size={10} />
+              <Icon name="chevron-right" size={12} />
             </span>
           </a>
         {/each}

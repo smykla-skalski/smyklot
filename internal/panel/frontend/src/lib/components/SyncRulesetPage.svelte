@@ -476,7 +476,7 @@
           <span class="setting-say"><span class="setting-name">Branches it covers</span></span>
           <span class="policy-value">
             {#each include as pattern (pattern)}
-              <span class="chip"
+              <span class="cond-chip"
                 ><span class="t">{pattern}</span>
                 <button
                   aria-label="Remove {pattern}"
@@ -524,7 +524,7 @@
               <span class="setting-unmanaged">None</span>
             {:else}
               {#each exclude as pattern (pattern)}
-                <span class="chip"
+                <span class="cond-chip"
                   ><span class="t">{pattern}</span>
                   <button
                     aria-label="Remove {pattern}"
@@ -678,7 +678,7 @@
                     <span class="entry-label">Checks that must pass</span>
                     <span class="chip-line">
                       {#each checksList as context (context)}
-                        <span class="chip"
+                        <span class="cond-chip"
                           ><span class="t">{context}</span>
                           <button
                             aria-label="Remove {context}"
@@ -752,7 +752,7 @@
                     <span class="entry-label">Tools that must have reported</span>
                     <span class="chip-line">
                       {#each scanTools as tool (tool)}
-                        <span class="chip"
+                        <span class="cond-chip"
                           ><span class="t">{tool}</span>
                           <button
                             aria-label="Remove {tool}"
@@ -1091,7 +1091,9 @@
 
   /* ---------- Chips: a value, and a parameter said in a word ---------- */
 
-  .chip {
+  /* Not `.chip`: the app's own status chip owns that name globally, and a
+     scoped twin still inherits its weight. */
+  .cond-chip {
     align-items: center;
     background: var(--surface-inset);
     block-size: 20px;
@@ -1105,13 +1107,13 @@
     padding: 0 var(--space-2);
   }
 
-  .chip .t {
+  .cond-chip .t {
     display: block;
   }
 
   /* A 20px disc folded around an 8px glyph - exactly the chip's height, so
      the hover fill never pokes past the pill. */
-  .chip button {
+  .cond-chip button {
     align-items: center;
     background: none;
     border: 0;
@@ -1124,12 +1126,12 @@
     padding: 0.375rem;
   }
 
-  .chip button:hover {
+  .cond-chip button:hover {
     background: var(--interactive-hover-layer);
     opacity: 1;
   }
 
-  .chip button:active {
+  .cond-chip button:active {
     background: var(--interactive-pressed);
   }
 
@@ -1167,6 +1169,7 @@
     font-weight: 500;
     gap: 0.35rem;
     min-block-size: 30px;
+    padding-block: 0;
     padding-inline: 0.7rem;
   }
 

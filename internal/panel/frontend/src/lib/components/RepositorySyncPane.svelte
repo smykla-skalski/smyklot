@@ -748,6 +748,7 @@
     gap: 0.35rem;
     justify-self: start;
     min-block-size: 30px;
+    padding-block: 0;
     padding-inline: 0.7rem;
   }
 

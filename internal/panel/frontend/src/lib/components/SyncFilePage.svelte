@@ -395,7 +395,7 @@
                     <button
                       aria-label="Stop changing {key}"
                       disabled={frozen}
-                      onclick={() => dropKey(key)}><Icon name="close" size={10} /></button
+                      onclick={() => dropKey(key)}><Icon name="close" size={12} /></button
                     ></span
                   >
                 {/each}
@@ -405,7 +405,7 @@
                     <button
                       aria-label="Stop removing {key}"
                       disabled={frozen}
-                      onclick={() => dropKey(key)}><Icon name="close" size={10} /></button
+                      onclick={() => dropKey(key)}><Icon name="close" size={12} /></button
                     ></span
                   >
                 {/each}
@@ -758,6 +758,7 @@
   .list-ask-word {
     color: var(--text-primary);
     font-size: var(--font-size-compact);
+    line-height: round(1.5em, 1px);
   }
 
   .list-ask-word code {

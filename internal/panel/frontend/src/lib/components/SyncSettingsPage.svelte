@@ -803,6 +803,7 @@
     font-weight: 500;
     gap: 0.35rem;
     min-block-size: 30px;
+    padding-block: 0;
     padding-inline: 0.7rem;
   }
 
