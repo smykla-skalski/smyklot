@@ -489,19 +489,32 @@
     padding: var(--space-1);
   }
 
+  /* Rows breathe 2px apart, like every other menu's. */
+  :global(.finder-list [data-command-viewport]) {
+    display: grid;
+    row-gap: 2px;
+  }
+
   :global(.finder-opt) {
     align-items: center;
-    border-radius: var(--r-ctl);
+    border-radius: 6px;
     cursor: pointer;
     display: flex;
     gap: var(--space-3);
     padding: 0.45rem 0.55rem;
   }
 
-  /* Pointer and keyboard share one voice: Command moves data-selected with
-     the arrows and under the pointer both. */
-  :global(.finder-opt[data-selected='true']) {
-    background: var(--brand-action-tint);
+  /* The menu-row voice, in the order the app's menus speak it: pointer and
+     keyboard share one highlight - Command moves data-selected with the
+     arrows and under the pointer both - and a press answers one step
+     darker. The brand tint stays out of it: transient focus is not a
+     chosen value. */
+  :global(.finder-opt[data-selected]) {
+    background: var(--interactive-hover-layer);
+  }
+
+  :global(.finder-opt:active) {
+    background: var(--interactive-pressed);
   }
 
   .finder-empty {
