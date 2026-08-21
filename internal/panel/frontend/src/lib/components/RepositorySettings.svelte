@@ -369,7 +369,9 @@
                       aria-label="Repository protection"
                       disabled={disabled || savingPendingCI}
                     >
-                      {detail.pending_ci_mode_override === 'checks' ? 'Checks' : 'Labels'}
+                      <span class="t"
+                        >{detail.pending_ci_mode_override === 'checks' ? 'Checks' : 'Labels'}</span
+                      >
                     </button>
                   {/snippet}
                   <div class="menu-list">
@@ -656,6 +658,9 @@
   .pane-tools {
     display: flex;
     justify-content: flex-start;
+    /* On a phone the four panes cannot share the width; the strip scrolls
+       inside itself rather than handing the page a wider viewport. */
+    overflow-x: auto;
   }
 
   .repository-page-error {
@@ -877,6 +882,7 @@
   }
 
   .value-select {
+    align-items: center;
     appearance: none;
     background:
       linear-gradient(45deg, transparent 49%, var(--text-secondary) 51%) calc(100% - 14px) 55% / 5px
@@ -888,9 +894,16 @@
     border-radius: var(--r-ctl);
     color: var(--text-primary);
     cursor: pointer;
+    display: inline-flex;
     font-size: var(--font-size-control);
     min-block-size: 28px;
     padding: 0 1.5rem 0 var(--space-2);
+  }
+
+  /* Ink-true, so the chosen word shares the row's centre with the say
+     beside it rather than riding its line box's leading. */
+  .value-select .t {
+    text-box: trim-both cap alphabetic;
   }
 
   .value-select[data-state='open'] {
@@ -981,8 +994,11 @@
     border-radius: var(--r-ctl);
     color: var(--text-secondary);
     font-size: var(--font-size-meta);
+    /* Ink-true with even padding, so the words sit on the note's centre. */
+    line-height: round(1.5em, 1px);
     margin: var(--space-3) 0 0;
-    padding: var(--space-2) var(--space-3);
+    padding: var(--space-3);
+    text-box: trim-both cap alphabetic;
   }
 
   .gate-note.gate-problem {
@@ -1055,6 +1071,7 @@
     font-size: var(--font-size-compact);
     line-height: 1;
     margin-top: 0.8rem;
+    overflow-wrap: anywhere;
     text-box: trim-both cap alphabetic;
   }
 
@@ -1117,5 +1134,37 @@
   .file-problem strong,
   .form-error {
     color: var(--stop);
+  }
+
+  /* On a phone the head's three parts cannot share one line - the tally or
+     pill drops under the title instead of holding the card wide. */
+  @media (max-width: 30rem) {
+    .group-head {
+      flex-wrap: wrap;
+    }
+
+    /* The say keeps the line and the control moves under it - beside it,
+       the copy was down to a word a line while the control still ran off
+       the screen and took the layout viewport with it. */
+    .policy-row {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .policy-row .setting-say {
+      grid-column: 1;
+      grid-row: 1;
+    }
+
+    .policy-row .setting-clear {
+      grid-column: 2;
+      grid-row: 1;
+      opacity: 1;
+    }
+
+    .policy-row .policy-value {
+      flex-wrap: wrap;
+      grid-column: 1 / -1;
+      justify-self: start;
+    }
   }
 </style>

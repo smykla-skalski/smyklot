@@ -345,6 +345,19 @@
     white-space: nowrap;
   }
 
+  /* On a phone the search cannot hold its 15rem basis - it takes the row
+     and gives with it. */
+  @media (max-width: 30rem) {
+    .installation-tools {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .installation-tools :global(.search-field) {
+      flex: 1 1 auto;
+      min-inline-size: 0;
+    }
+  }
+
   .slot-note.problem {
     color: var(--stop);
   }

@@ -1754,6 +1754,8 @@
       align-items: center;
       border: 0;
       display: flex;
+      flex-wrap: wrap;
+      min-inline-size: 0;
       justify-content: space-between;
       padding: var(--space-2) 0;
     }

@@ -304,7 +304,7 @@
         aria-label="{label} unit"
         disabled={saving}
       >
-        {UNIT_WORDS[shownUnit(spec, overrideSeconds)]}
+        <span class="t">{UNIT_WORDS[shownUnit(spec, overrideSeconds)]}</span>
       </button>
     {/snippet}
     <div class="menu-list">
@@ -409,7 +409,11 @@
                     aria-label="Runtime log level"
                     disabled={saving}
                   >
-                    {capitalize(current.log_level.override ?? current.log_level.deployment)}
+                    <span class="t"
+                      >{capitalize(
+                        current.log_level.override ?? current.log_level.deployment,
+                      )}</span
+                    >
                   </button>
                 {/snippet}
                 <div class="menu-list">
@@ -959,6 +963,7 @@
   }
 
   .value-select {
+    align-items: center;
     appearance: none;
     background:
       linear-gradient(45deg, transparent 49%, var(--text-secondary) 51%) calc(100% - 14px) 55% / 5px
@@ -970,9 +975,16 @@
     border-radius: var(--r-ctl);
     color: var(--text-primary);
     cursor: pointer;
+    display: inline-flex;
     font-size: var(--font-size-control);
     min-block-size: 28px;
     padding: 0 1.5rem 0 var(--space-2);
+  }
+
+  /* Ink-true, so the chosen word shares the row's centre with the say
+     beside it rather than riding its line box's leading. */
+  .value-select .t {
+    text-box: trim-both cap alphabetic;
   }
 
   .value-select[data-state='open'] {
@@ -1166,6 +1178,38 @@
 
     .service-grid .wide {
       grid-column: auto;
+    }
+  }
+
+  /* On a phone the head's three parts cannot share one line - the tally or
+     pill drops under the title instead of holding the card wide. */
+  @media (max-width: 30rem) {
+    .group-head {
+      flex-wrap: wrap;
+    }
+
+    /* The say keeps the line and the control moves under it - beside it,
+       the copy was down to a word a line while the control still ran off
+       the screen and took the layout viewport with it. */
+    .policy-row {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .policy-row .setting-say {
+      grid-column: 1;
+      grid-row: 1;
+    }
+
+    .policy-row .setting-clear {
+      grid-column: 2;
+      grid-row: 1;
+      opacity: 1;
+    }
+
+    .policy-row .policy-value {
+      flex-wrap: wrap;
+      grid-column: 1 / -1;
+      justify-self: start;
     }
   }
 </style>

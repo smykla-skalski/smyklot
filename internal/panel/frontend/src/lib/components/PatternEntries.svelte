@@ -200,6 +200,8 @@
 
   .pattern-entry .t {
     cursor: text;
+    /* Ink-true, so the words share the row's centre with the x beside them. */
+    text-box: trim-both cap alphabetic;
   }
 
   .pattern-entry:focus-within {

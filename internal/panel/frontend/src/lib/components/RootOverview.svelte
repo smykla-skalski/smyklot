@@ -993,6 +993,20 @@
     .overview-loading {
       grid-template-columns: 1fr;
     }
+
+    .service-card {
+      min-inline-size: 0;
+    }
+
+    .service-status {
+      flex-wrap: wrap;
+      min-inline-size: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .service-card dd {
+      overflow-wrap: anywhere;
+    }
     .failure-item {
       align-items: start;
     }

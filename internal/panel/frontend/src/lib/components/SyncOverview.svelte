@@ -179,7 +179,8 @@
             data-name={row.repository}
             onclick={() => onOpenSection(state === 'refused' ? 'files' : 'plan')}
           >
-            {#if state === 'change'}{changesOf(row)}{:else if state === 'refused'}<Icon
+            {#if state === 'change'}<span class="t">{changesOf(row)}</span
+              >{:else if state === 'refused'}<Icon
                 name="failure"
                 size={14}
               />{:else if state === 'settled'}<Icon name="check" size={12} />{/if}
@@ -400,6 +401,10 @@
 
   /* The veil is the ::before layer, so every cap answers - coloured, off and
      settled alike - and the answer FADES. */
+  .tile .t {
+    text-box: trim-both cap alphabetic;
+  }
+
   .tile::before {
     background: var(--table-row-pressed);
     border-radius: inherit;
@@ -593,7 +598,8 @@
   .board-foot-say {
     display: grid;
     flex: 1;
-    gap: var(--space-1);
+    /* 8, not 4: with both lines ink-trimmed the gap IS the ink distance. */
+    gap: var(--space-2);
   }
 
   .board-foot-line {
@@ -606,7 +612,10 @@
   .board-foot-when {
     color: var(--text-muted);
     font-size: var(--font-size-micro);
-    line-height: round(1.5em, 1px);
+    /* Ink-true, so the two-line say centres against the Apply button by
+       what the eye reads rather than by the second line's leading. */
+    min-block-size: 8px;
+    text-box: trim-both cap alphabetic;
   }
 
   .attn {
@@ -695,6 +704,8 @@
 
   .mx-mark .t {
     display: block;
+    /* Ink-true, so the chip's words sit on the chip's own centre. */
+    text-box: trim-both cap alphabetic;
   }
 
   .mx-pending {
@@ -849,7 +860,9 @@
   .kind-when {
     color: var(--text-muted);
     font-size: var(--font-size-micro);
-    line-height: round(1.5em, 1px);
+    /* Ink-true, so the stamp shares the foot's centre with the chevron. */
+    min-block-size: 8px;
+    text-box: trim-both cap alphabetic;
   }
 
   .kind-card :global(.switch) {

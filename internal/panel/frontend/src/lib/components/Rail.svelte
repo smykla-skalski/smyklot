@@ -327,7 +327,13 @@
       itemSelector=".menu-item"
     >
       {#snippet trigger(attributes)}
-        <button {...attributes} class="rail-tile rail-user" type="button" data-tip={viewerTip}>
+        <button
+          {...attributes}
+          class="rail-tile rail-user"
+          type="button"
+          data-tip={viewerTip}
+          aria-label="Account menu for {viewerName}"
+        >
           <span class="t">{workspaceInitials(viewerName)}</span>
         </button>
       {/snippet}
@@ -645,6 +651,25 @@
 
     .rail-pages {
       display: inline-flex;
+    }
+  }
+
+  /* On a touch screen the name-on-hover never fires, so the tile's ::after
+     serves the thumb instead: an invisible overlay that grows the 38px tile
+     to the 44px target the platforms ask for. */
+  @media (hover: none), (max-width: 64rem) {
+    .rail-tile::after {
+      background: none;
+      border: 0;
+      border-radius: 0;
+      box-shadow: none;
+      content: '';
+      /* Exactly the 44px square, centred on the tile whatever its size. */
+      inset: calc((100% - 44px) / 2);
+      opacity: 1;
+      padding: 0;
+      pointer-events: auto;
+      translate: none;
     }
   }
 

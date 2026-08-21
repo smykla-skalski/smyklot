@@ -924,4 +924,40 @@
   .add-chip .t {
     text-box: trim-both cap alphabetic;
   }
+
+  /* On a phone the head's three parts cannot share one line - the tally or
+     pill drops under the title instead of holding the card wide. */
+  @media (max-width: 30rem) {
+    .group-head {
+      flex-wrap: wrap;
+    }
+
+    .text-inline.is-wide {
+      min-width: 0;
+    }
+
+    /* The say keeps the line and the control moves under it - beside it,
+       the copy was down to a word a line while the control still ran off
+       the screen and took the layout viewport with it. */
+    .policy-row {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .policy-row .setting-say {
+      grid-column: 1;
+      grid-row: 1;
+    }
+
+    .policy-row .setting-clear {
+      grid-column: 2;
+      grid-row: 1;
+      opacity: 1;
+    }
+
+    .policy-row .policy-value {
+      flex-wrap: wrap;
+      grid-column: 1 / -1;
+      justify-self: start;
+    }
+  }
 </style>

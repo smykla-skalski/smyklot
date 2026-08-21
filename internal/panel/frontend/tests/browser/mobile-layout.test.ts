@@ -251,8 +251,8 @@ async function measure(path: string, width: number): Promise<Measured> {
 
 /** What the top bar offers a thumb on a phone. */
 const BAR_CONTROLS = [
-  ['the menu button', '.mobile-navigation-trigger'],
-  ['the account menu', '.who'],
+  ['the menu button', '.rail-pages'],
+  ['the account menu', '.rail-user'],
 ] as const;
 
 /** The size the platforms ask for, and what the overlay is built to give. */
@@ -292,7 +292,9 @@ async function measureTarget(selector: string, pressCorner: boolean): Promise<Ta
         if (other === control || control.contains(other) || other.contains(control)) continue;
         if (!other.checkVisibility()) continue;
         if (other.closest('[popover]:not(:popover-open)') !== null) continue;
-        if (other.closest('.navigation-shell, .visually-hidden') !== null) continue;
+        /* The drawer keeps its markup while hidden off-canvas - visibility:
+           hidden, which default checkVisibility() does not consult. */
+        if (other.closest('.side, .visually-hidden') !== null) continue;
         const box = other.getBoundingClientRect();
         if (box.width === 0 || box.height === 0) continue;
         if (area.left >= box.right || box.left >= area.right) continue;
@@ -302,11 +304,24 @@ async function measureTarget(selector: string, pressCorner: boolean): Promise<Ta
         );
       }
 
-      const bar = document.querySelector('.brand-row')?.getBoundingClientRect() ?? null;
+      /* The rail's CONTENT edges: its end border is the seam with the page,
+         not surface a control could be centred in. */
+      const rail = document.querySelector('.rail');
+      let bar: { left: number; right: number } | null = null;
+      if (rail !== null) {
+        const rect = rail.getBoundingClientRect();
+        const railStyle = getComputedStyle(rail);
+        bar = {
+          left: rect.left + Number.parseFloat(railStyle.borderLeftWidth),
+          right: rect.right - Number.parseFloat(railStyle.borderRightWidth),
+        };
+      }
 
       return {
         control: { width: own.width, height: own.height },
-        seat: bar === null ? null : { above: own.top - bar.top, below: bar.bottom - own.bottom },
+        /* The rail is a column, so a seated control has equal room at its
+           SIDES - the vertical room is the column's own flow. */
+        seat: bar === null ? null : { above: own.left - bar.left, below: bar.right - own.right },
         area: {
           width: area.right - area.left,
           height: area.bottom - area.top,
@@ -325,9 +340,10 @@ async function measureTarget(selector: string, pressCorner: boolean): Promise<Ta
          actually have received it. */
       await page.mouse.click(measurement.corner.x, measurement.corner.y);
       await page.waitForTimeout(700);
-      cornerOpensDrawer = await page.evaluate(
-        () => document.querySelector('.navigation-shell')?.checkVisibility() ?? false,
-      );
+      cornerOpensDrawer = await page.evaluate(() => {
+        const side = document.querySelector('.side');
+        return side !== null && getComputedStyle(side).visibility === 'visible';
+      });
     }
 
     return {
@@ -448,8 +464,8 @@ describe('the top bar on a phone', () => {
        dropped into the row. Every size and overlap check here still passed. */
     expect(
       Math.round(target.seat.above),
-      `${name} sits ${target.seat.above.toFixed(1)}px below the top of the bar and ` +
-        `${target.seat.below.toFixed(1)}px above the bottom`,
+      `${name} sits ${target.seat.above.toFixed(1)}px from the rail's near edge and ` +
+        `${target.seat.below.toFixed(1)}px from its far one`,
     ).toBe(Math.round(target.seat.below));
   });
 
