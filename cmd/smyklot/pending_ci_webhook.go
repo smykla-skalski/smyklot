@@ -22,7 +22,7 @@ func (s *server) handlePendingCIWebhook(
 	notification *webhook.PendingCINotification,
 	deliveryID string,
 ) error {
-	repositoryID := repositoryStorageID(notification.Metadata.RepositoryID)
+	repositoryID := storage.RepositoryID(notification.Metadata.RepositoryID)
 	return s.pendingCICoordinator.Exclusive(ctx, repositoryID, func() error {
 		return s.applyPendingCINotification(ctx, notification, deliveryID)
 	})
@@ -69,7 +69,7 @@ func (s *server) applyPendingCISignal(
 	deliveryID string,
 	signal webhook.PendingCISignal,
 ) (int64, error) {
-	repositoryID := repositoryStorageID(metadata.RepositoryID)
+	repositoryID := storage.RepositoryID(metadata.RepositoryID)
 	switch signal.Kind {
 	case webhook.SignalWakePullRequest:
 		changed, err := s.wakePendingCIPullRequest(
@@ -210,8 +210,8 @@ func (s *server) webhookPendingCIBaselineControls(
 	metadata webhook.Metadata,
 	pullRequest int,
 ) (storage.Target, storage.Repository, bool, error) {
-	targetID := installationStorageID(metadata.InstallationID)
-	repositoryID := repositoryStorageID(metadata.RepositoryID)
+	targetID := storage.InstallationID(metadata.InstallationID)
+	repositoryID := storage.RepositoryID(metadata.RepositoryID)
 	target, repository, err := s.readRepositoryControls(ctx, targetID, repositoryID)
 	if errors.Is(err, storage.ErrNotFound) {
 		return storage.Target{}, storage.Repository{}, false, nil

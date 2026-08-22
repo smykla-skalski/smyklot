@@ -263,7 +263,7 @@ var _ = Describe("Choosing an entry point [Unit]", func() {
 				var err error
 				armed, err = srv.store.GetArmed(
 					context.Background(),
-					repositoryStorageID(githubtest.DefaultRepoID),
+					storage.RepositoryID(githubtest.DefaultRepoID),
 					githubtest.DefaultPRNumber,
 				)
 
@@ -280,7 +280,7 @@ var _ = Describe("Choosing an entry point [Unit]", func() {
 			Eventually(func() bool {
 				_, err := srv.store.GetArmed(
 					context.Background(),
-					repositoryStorageID(githubtest.DefaultRepoID),
+					storage.RepositoryID(githubtest.DefaultRepoID),
 					githubtest.DefaultPRNumber,
 				)
 

@@ -85,7 +85,7 @@ func (guard githubPendingCIActivationGuard) repositoryAllowsActivation(
 	if err != nil {
 		return false, fmt.Errorf("read repository controls: %w", err)
 	}
-	if !effectiveRepositoryEnabled(target, repository) {
+	if !storage.RepositoryEnabled(target, repository) {
 		return false, nil
 	}
 	_, patterns, _ := storage.EffectivePendingCISettings(target, repository, 0)

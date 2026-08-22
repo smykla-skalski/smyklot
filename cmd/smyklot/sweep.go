@@ -265,7 +265,7 @@ func (s *server) sweepInstallation(
 		// The repository is named here rather than added to the context,
 		// because pollAllPRs adds it for the lines below that
 		if err := s.sweepRepo(
-			ctx, client, installationStorageID(installation.ID), installation.ID, repo,
+			ctx, client, storage.InstallationID(installation.ID), installation.ID, repo,
 			pollReactions,
 		); err != nil {
 			logging.From(ctx).Error("repository sweep failed",
@@ -308,7 +308,7 @@ func (s *server) reconcileInstallationSync(
 		return nil
 	}
 
-	targetID := installationStorageID(installation.ID)
+	targetID := storage.InstallationID(installation.ID)
 
 	if err := s.planInstallationSync(
 		ctx, client, targetID, orgsync.TriggerReconcile,
@@ -379,7 +379,7 @@ func (s *server) sweepRepo(
 		ctx,
 		client,
 		targetID,
-		repositoryStorageID(repo.ID),
+		storage.RepositoryID(repo.ID),
 		repo.Owner,
 		repo.Name,
 	)
@@ -404,7 +404,7 @@ func (s *server) sweepRepo(
 	var repository storage.Repository
 	if s.panel != nil {
 		target, repository, err = s.repositoryControls(
-			ctx, targetID, repositoryStorageID(repo.ID),
+			ctx, targetID, storage.RepositoryID(repo.ID),
 		)
 		if err != nil {
 			return err
@@ -465,7 +465,7 @@ func (s *server) sweepRepo(
 
 	return processAllPRs(
 		ctx, client, checker, bc, repo.Owner, repo.Name, s.cfg.botUsername, prs,
-		s.reactionCommandEnvironment(repositoryStorageID(repo.ID)), false,
+		s.reactionCommandEnvironment(storage.RepositoryID(repo.ID)), false,
 	)
 }
 
@@ -516,7 +516,7 @@ func (s *server) reconcileActivePendingCIGate(
 		if readErr != nil {
 			return readErr
 		}
-		enabled = effectiveRepositoryEnabled(freshTarget, freshRepository)
+		enabled = storage.RepositoryEnabled(freshTarget, freshRepository)
 
 		return s.pendingCIGates.Reconcile(
 			ctx, client, freshTarget, freshRepository, prs, enabled,
@@ -541,7 +541,7 @@ func (s *server) migrateRepositoryConfig(
 	// repository, so it costs a map lookup whether or not there is a panel to
 	// remember an answer in. proposeConfigMigration is where that is decided.
 	file, err := s.configs.GetByKey(
-		ctx, client, repositoryStorageID(repo.ID), repo.Owner, repo.Name,
+		ctx, client, storage.RepositoryID(repo.ID), repo.Owner, repo.Name,
 	)
 	if err != nil {
 		return err
@@ -557,7 +557,7 @@ func (s *server) handoffPendingCIToAction(
 ) ([]map[string]interface{}, error) {
 	const reason = "repository switched to the GitHub Action runner"
 	_, err := s.pendingCIHandoff.CancelRepository(
-		ctx, repositoryStorageID(repo.ID), reason, time.Now().UTC(),
+		ctx, storage.RepositoryID(repo.ID), reason, time.Now().UTC(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("cancel pending CI during runner handoff: %w", err)

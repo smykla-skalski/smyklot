@@ -57,11 +57,11 @@ func (s *server) drainLegacyPendingCILabels(
 
 		var result pendingci.LegacyDrainResult
 		err = s.pendingCICoordinator.Exclusive(
-			ctx, repositoryStorageID(repository.ID), func() error {
+			ctx, storage.RepositoryID(repository.ID), func() error {
 				var drainErr error
 				result, drainErr = s.store.DrainLegacy(ctx, pendingci.LegacyDrainRequest{
 					TargetID: targetID, InstallationID: installationID,
-					RepositoryID:       repositoryStorageID(repository.ID),
+					RepositoryID:       storage.RepositoryID(repository.ID),
 					RepositoryFullName: repoFullName(repository.Owner, repository.Name),
 					PullRequest:        pullRequest, HeadSHA: headSHA,
 					BaseBranch: baseBranch, Labels: labels, DrainedAt: time.Now().UTC(),
@@ -101,7 +101,7 @@ func (s *server) reconcilePendingCIServiceArtifacts(
 	prs []map[string]interface{},
 	inspectAll bool,
 ) (map[int]struct{}, error) {
-	repositoryID := repositoryStorageID(repository.ID)
+	repositoryID := storage.RepositoryID(repository.ID)
 	cleaned := make(map[int]struct{})
 	var cleanupErr error
 	for _, pr := range prs {

@@ -501,7 +501,7 @@ func installationSnapshot(
 	accountID := provider + ":" + accountKind + ":" + subject
 	avatarURL := stringPointerUnlessBlank(installation.AvatarURL)
 	snapshot := storage.InstallationSnapshot{
-		TargetID:       installationStorageID(installation.ID),
+		TargetID:       storage.InstallationID(installation.ID),
 		InstallationID: strconv.FormatInt(installation.ID, 10),
 		Kind:           kind,
 		Account: storage.Account{
@@ -526,7 +526,7 @@ func installationSnapshot(
 			fullName = repoFullName(repository.Owner, repository.Name)
 		}
 		snapshot.Repositories = append(snapshot.Repositories, storage.RepositorySnapshot{
-			ID:            repositoryStorageID(repository.ID),
+			ID:            storage.RepositoryID(repository.ID),
 			Name:          repository.Name,
 			FullName:      fullName,
 			Private:       repository.Private,
@@ -555,12 +555,4 @@ func stringPointerUnlessBlank(value string) *string {
 	}
 
 	return &value
-}
-
-func installationStorageID(id int64) string {
-	return "github:installation:" + strconv.FormatInt(id, 10)
-}
-
-func repositoryStorageID(id int64) string {
-	return "github:repository:" + strconv.FormatInt(id, 10)
 }

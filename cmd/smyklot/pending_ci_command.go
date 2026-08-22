@@ -160,8 +160,8 @@ func (s *server) commandEnvironment(
 ) commandEnvironment {
 	guard := githubPendingCIActivationGuard{
 		server: s, client: client,
-		targetID:     installationStorageID(event.Installation.ID),
-		repositoryID: repositoryStorageID(event.Repository.ID),
+		targetID:     storage.InstallationID(event.Installation.ID),
+		repositoryID: storage.RepositoryID(event.Repository.ID),
 		owner:        event.Repository.Owner.Login,
 		repository:   event.Repository.Name,
 	}
@@ -171,9 +171,9 @@ func (s *server) commandEnvironment(
 		pendingCI: &pendingCICommand{
 			store: s.store, wake: s.pendingCI.Wake,
 			coordinator:        s.pendingCICoordinator,
-			targetID:           installationStorageID(event.Installation.ID),
+			targetID:           storage.InstallationID(event.Installation.ID),
 			installationID:     event.Installation.ID,
-			repositoryID:       repositoryStorageID(event.Repository.ID),
+			repositoryID:       storage.RepositoryID(event.Repository.ID),
 			repositoryFullName: event.Repository.FullName,
 			sourceCommentID:    event.Comment.ID,
 			sourceRevision:     event.Comment.UpdatedAt,

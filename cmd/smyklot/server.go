@@ -736,7 +736,7 @@ func (s *server) handleIssueComment(
 	}
 
 	source := pendingci.SourceRevisionRequest{
-		RepositoryID: repositoryStorageID(event.Repository.ID),
+		RepositoryID: storage.RepositoryID(event.Repository.ID),
 		PullRequest:  event.Issue.Number, CommentID: event.Comment.ID,
 		Revision: event.Comment.UpdatedAt, Sequence: event.SourceSequence(),
 		SourceOrder: sourceOrder, EventKey: eventKey, ObservedAt: time.Now().UTC(),
@@ -763,8 +763,8 @@ func (s *server) handleIssueComment(
 	bc, err := s.serviceConfig(
 		ctx,
 		client,
-		installationStorageID(event.Installation.ID),
-		repositoryStorageID(event.Repository.ID),
+		storage.InstallationID(event.Installation.ID),
+		storage.RepositoryID(event.Repository.ID),
 		event.Repository.Owner.Login,
 		event.Repository.Name,
 	)

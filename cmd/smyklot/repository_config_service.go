@@ -123,8 +123,8 @@ func (s *server) repositoryEnabled(
 ) (bool, error) {
 	target, repository, err := s.repositoryControls(
 		ctx,
-		installationStorageID(event.Installation.ID),
-		repositoryStorageID(event.Repository.ID),
+		storage.InstallationID(event.Installation.ID),
+		storage.RepositoryID(event.Repository.ID),
 	)
 	if err != nil {
 		return false, err
@@ -133,15 +133,7 @@ func (s *server) repositoryEnabled(
 		return false, nil
 	}
 
-	return effectiveRepositoryEnabled(target, repository), nil
-}
-
-func effectiveRepositoryEnabled(target storage.Target, repository storage.Repository) bool {
-	if repository.EnabledOverride != nil {
-		return *repository.EnabledOverride
-	}
-
-	return target.RepositoryDefaultEnabled
+	return storage.RepositoryEnabled(target, repository), nil
 }
 
 func (s *server) repositoryControls(

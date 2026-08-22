@@ -155,7 +155,7 @@ func (backend *githubPendingCIBackend) unavailableObservation(
 		)
 	}
 	if err == nil && target.Available && repository.Available &&
-		effectiveRepositoryEnabled(target, repository) {
+		storage.RepositoryEnabled(target, repository) {
 		return pendingci.Observation{}, false, nil
 	}
 
@@ -717,7 +717,7 @@ func (backend *githubPendingCIBackend) cancelReason(
 			return "", err
 		}
 		if !target.Available || !repo.Available ||
-			!effectiveRepositoryEnabled(target, repo) {
+			!storage.RepositoryEnabled(target, repo) {
 			return pendingCIRepositoryDisabledReason, nil
 		}
 	}

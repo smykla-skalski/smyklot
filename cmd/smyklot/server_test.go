@@ -131,9 +131,9 @@ func armWebhookTestRequestWithLabel(srv *server, label string) pendingci.Request
 	GinkgoHelper()
 	requestedAt := time.Now().UTC().Add(-time.Minute)
 	result, err := srv.store.Arm(GinkgoT().Context(), pendingci.ArmRequest{
-		TargetID:           installationStorageID(987),
+		TargetID:           storage.InstallationID(987),
 		InstallationID:     987,
-		RepositoryID:       repositoryStorageID(githubtest.DefaultRepoID),
+		RepositoryID:       storage.RepositoryID(githubtest.DefaultRepoID),
 		RepositoryFullName: "smykla-skalski/smyklot",
 		PullRequest:        42,
 		HeadSHA:            "pending-head",
@@ -400,7 +400,7 @@ var _ = Describe("Webhook service [Unit]", func() {
 
 			Eventually(func() string {
 				request, err := srv.store.GetArmed(
-					GinkgoT().Context(), repositoryStorageID(githubtest.DefaultRepoID),
+					GinkgoT().Context(), storage.RepositoryID(githubtest.DefaultRepoID),
 					githubtest.DefaultPRNumber,
 				)
 				if err != nil {
@@ -418,7 +418,7 @@ var _ = Describe("Webhook service [Unit]", func() {
 				return stub.countCalls(http.MethodGet, "/issues/comments/555")
 			}, eventuallyWindow).Should(BeNumerically(">=", 2))
 			request, err := srv.store.GetArmed(
-				GinkgoT().Context(), repositoryStorageID(githubtest.DefaultRepoID),
+				GinkgoT().Context(), storage.RepositoryID(githubtest.DefaultRepoID),
 				githubtest.DefaultPRNumber,
 			)
 			Expect(err).NotTo(HaveOccurred())
@@ -478,7 +478,7 @@ var _ = Describe("Webhook service [Unit]", func() {
 				return stub.countCalls(http.MethodPost, approveReviews)
 			}, 300*time.Millisecond).Should(Equal(1))
 			_, err := srv.store.GetArmed(
-				GinkgoT().Context(), repositoryStorageID(githubtest.DefaultRepoID),
+				GinkgoT().Context(), storage.RepositoryID(githubtest.DefaultRepoID),
 				githubtest.DefaultPRNumber,
 			)
 			Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())

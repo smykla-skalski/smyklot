@@ -69,7 +69,7 @@ func (s *server) proposeConfigMigration(
 		return nil
 	}
 
-	target, repository, err := s.repositoryControls(ctx, targetID, repositoryStorageID(repo.ID))
+	target, repository, err := s.repositoryControls(ctx, targetID, storage.RepositoryID(repo.ID))
 	if err != nil {
 		return err
 	}
@@ -488,14 +488,14 @@ func (s *server) recordConfigMigration(
 ) error {
 	if err := s.store.SetRepositoryConfigMigration(ctx, storage.RepositoryConfigMigration{
 		TargetID:     targetID,
-		RepositoryID: repositoryStorageID(repo.ID),
+		RepositoryID: storage.RepositoryID(repo.ID),
 		State:        state,
 		PullRequest:  pull,
 	}); err != nil {
 		return fmt.Errorf("record configuration migration: %w", err)
 	}
 
-	s.panel.Announce(targetID, repositoryStorageID(repo.ID))
+	s.panel.Announce(targetID, storage.RepositoryID(repo.ID))
 
 	return nil
 }
