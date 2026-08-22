@@ -281,7 +281,7 @@ func (g *Gate) reauthorizePendingCI(
 	// Reauthorization made the durable request due. Wake the scheduler before
 	// repairing the external check so a transient GitHub failure cannot leave
 	// the request asleep until an unrelated event arrives.
-	g.Scheduler.Wake()
+	g.Wake()
 	target, repositorySettings, err := readControls(
 		ctx, g.store, updated.TargetID, updated.RepositoryID,
 	)

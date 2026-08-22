@@ -150,7 +150,7 @@ func (g *Gate) ActivationGuardFor(
 }
 
 func (g *Gate) NewControl(store ControlStore) *Control {
-	return newControl(store, g.coordinator, g.Scheduler.Wake)
+	return newControl(store, g.coordinator, g.Wake)
 }
 
 func (g *Gate) Wake() {

@@ -78,7 +78,7 @@ func (g *Gate) DrainLegacyLabels(
 			continue
 		}
 
-		g.Scheduler.Wake()
+		g.Wake()
 		if err := client.PostComment(
 			ctx, repository.Owner, repository.Name, pullRequest, legacyPendingCIDrainComment,
 		); err != nil {
