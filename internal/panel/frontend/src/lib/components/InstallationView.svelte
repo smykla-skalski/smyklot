@@ -14,7 +14,14 @@
    * history is routed with its section. That is what makes an address like
    * `/i/acme/settings/anything` resolve to nothing and answer 404 from the wire.
    */
-  const { view }: { view: string } = $props();
+  const {
+    view,
+    clock = Date.now,
+  }: {
+    view: string;
+    /** Passed through so catalogue wrappers can share the fixture timeline. */
+    clock?: () => number;
+  } = $props();
 
   const session = getPanelSession();
   const queryClient = useQueryClient();
@@ -147,6 +154,7 @@
             fetchFilesContext={session.api.fetchSyncFilesContext}
             fetchOverride={session.api.fetchSyncOverride}
             saveOverride={session.api.saveSyncOverride}
+            {clock}
           />
         {/key}
       {:catch error}

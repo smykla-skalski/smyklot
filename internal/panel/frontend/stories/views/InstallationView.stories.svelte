@@ -2,6 +2,7 @@
   import { defineMeta } from '@storybook/addon-svelte-csf';
 
   import InstallationView from '#lib/components/InstallationView.svelte';
+  import { NOW } from '../support/fixtures.js';
 
   /*
    * One prop, and everything else through the session.
@@ -17,7 +18,7 @@
   const { Story } = defineMeta({
     title: 'Views/InstallationView',
     component: InstallationView,
-    args: { view: 'repositories' },
+    args: { view: 'repositories', clock: () => NOW },
   });
 </script>
 

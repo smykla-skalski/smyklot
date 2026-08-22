@@ -16,6 +16,14 @@ const syncViewStory = readFileSync(
   new URL('../stories/views/SyncView.stories.svelte', import.meta.url),
   'utf8',
 );
+const installationView = readFileSync(
+  new URL('../src/lib/components/InstallationView.svelte', import.meta.url),
+  'utf8',
+);
+const installationViewStory = readFileSync(
+  new URL('../stories/views/InstallationView.stories.svelte', import.meta.url),
+  'utf8',
+);
 
 function storyBody(name: string): string {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
@@ -77,6 +85,11 @@ describe('catalogue fixtures [Unit]', () => {
       .map((action) => action.subject);
     expect(plannedLabels.length).toBeGreaterThan(0);
     expect(plannedLabels.every((label) => desiredLabels.has(label))).toBe(true);
+  });
+
+  it('keeps the installation wrapper on the fixture clock', () => {
+    expect(installationViewStory).toContain('clock: () => NOW');
+    expect(installationView).toMatch(/<SyncView[\s\S]*?\n\s+\{clock\}\n\s+\/>/u);
   });
 
   it('opens the unreadable story on a surface that displays the warning', () => {
