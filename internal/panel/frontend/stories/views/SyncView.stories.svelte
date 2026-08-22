@@ -3,7 +3,7 @@
 
   import SyncView from '#lib/components/SyncView.svelte';
   import Seeded from '../support/Seeded.svelte';
-  import { NOW, SYNC_STATUS } from '../support/fixtures.js';
+  import { NOW, SYNC_STATUS, SYNC_STATUS_IN_STEP } from '../support/fixtures.js';
   import type { SyncConfig, SyncPlan } from '#lib/types.js';
 
   const at = (offsetMs: number) => new Date(NOW + offsetMs).toISOString();
@@ -114,7 +114,11 @@
 <Story name="Already in step">
   {#snippet template(args)}
     <Seeded>
-      <SyncView {...args} fetchPlan={async () => ({ plan: null })} />
+      <SyncView
+        {...args}
+        fetchPlan={async () => ({ plan: null })}
+        fetchStatus={async () => SYNC_STATUS_IN_STEP}
+      />
     </Seeded>
   {/snippet}
 </Story>
@@ -132,6 +136,7 @@
     <Seeded>
       <SyncView
         {...args}
+        section="labels"
         fetchConfig={async (_id, kind) => config(kind, { unreadable: true })}
         fetchPlan={async () => ({ plan: null })}
       />

@@ -193,6 +193,20 @@ export const SYNC_STATUS: SyncStatus = MOCK.syncStatus.get(TARGET.id) ?? {
   repositories: [],
 };
 
+/** The same fleet after a sweep found no drift, for settled-state stories. */
+export const SYNC_STATUS_IN_STEP: SyncStatus = {
+  checked_at: SYNC_STATUS.checked_at,
+  repositories: SYNC_STATUS.repositories.map((row) => ({
+    repository: row.repository,
+    cells: {
+      labels: { state: 'in_step' },
+      settings: { state: 'in_step' },
+      rulesets: { state: 'in_step' },
+      files: { state: 'in_step' },
+    },
+  })),
+};
+
 /** One repository's own answer about the files the organisation keeps in step. */
 export const SYNC_OVERRIDES: ReadonlyMap<string, SyncOverride> = MOCK.syncOverrides;
 
