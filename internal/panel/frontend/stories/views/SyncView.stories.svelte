@@ -5,6 +5,7 @@
   import Seeded from '../support/Seeded.svelte';
   import {
     emptySyncConfig,
+    NOW,
     SYNC_CONFIGS,
     SYNC_FILES_CONTEXT,
     SYNC_PLAN,
@@ -28,6 +29,7 @@
     targetId: TARGET.id,
     section: 'overview' as const,
     readOnly: false,
+    clock: () => NOW,
     fetchConfig: async (_id: string, kind: string) => config(kind),
     saveConfig: async (_id: string, kind: string) => config(kind),
     fetchPlan: async () => ({ plan: PLAN }),

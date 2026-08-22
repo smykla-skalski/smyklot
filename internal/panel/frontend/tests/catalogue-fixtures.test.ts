@@ -67,6 +67,7 @@ describe('catalogue fixtures [Unit]', () => {
     expect(syncViewStory).toContain('fetchPlan: async () => ({ plan: PLAN })');
     expect(syncViewStory).toContain('SYNC_CONFIGS.get(`${TARGET.id}/${kind}`)');
     expect(syncViewStory).toContain('fetchFilesContext: async () => SYNC_FILES_CONTEXT');
+    expect(syncViewStory).toContain('clock: () => NOW');
 
     const desiredLabels = new Set(
       (SYNC_CONFIGS.get(`${TARGET.id}/labels`)?.labels ?? []).map((label) => label.name),

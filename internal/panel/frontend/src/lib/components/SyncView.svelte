@@ -54,6 +54,7 @@
     fetchFilesContext,
     fetchOverride,
     saveOverride,
+    clock = Date.now,
   }: {
     targetId: string;
     /** Which of the view's sections the address names; see `routes.ts`. */
@@ -83,6 +84,8 @@
     fetchStatus: (targetId: string) => Promise<SyncStatus>;
     sectionHref: (section: SyncSection) => string;
     onOpenSection: (section: SyncSection) => void;
+    /** Injectable only so deterministic catalogue states do not age against the wall clock. */
+    clock?: () => number;
   } = $props();
 
   // The kinds this view has a form for, named rather than taken as a parameter
@@ -105,7 +108,7 @@
   let filesContext = $state<SyncFilesContext | null>(null);
   /* Read once per load rather than live: the overview's relative times move
      with the data they describe, not with a ticking clock. */
-  let nowMs = $state(Date.now());
+  let nowMs = $state(0);
   let approving = $state(false);
   let discarding = $state(false);
 
@@ -170,7 +173,7 @@
       plan = loadedPlan.plan;
       syncStatus = loadedStatus;
       filesContext = loadedContext;
-      nowMs = Date.now();
+      nowMs = clock();
     } catch (cause) {
       error = messageOf(cause);
     }

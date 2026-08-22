@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import SyncView from '../src/lib/components/SyncView.svelte';
-import type { SyncConfig } from '../src/lib/types';
+import type { SyncConfig, SyncPlan, SyncStatus } from '../src/lib/types';
 
 /** The settings form's segmented controls measure themselves; jsdom does not. */
 class TestResizeObserver {
@@ -61,6 +61,11 @@ describe('SyncView [Component]', () => {
     rulesets = config('rulesets'),
     files = config('files'),
     section: 'overview' | 'labels' | 'settings' | 'rulesets' | 'files' | 'plan' = 'settings',
+    state: {
+      clock?: () => number;
+      plan?: SyncPlan | null;
+      status?: SyncStatus;
+    } = {},
   ) {
     const answers: Record<string, SyncConfig> = { labels, settings, rulesets, files };
 
@@ -70,11 +75,13 @@ describe('SyncView [Component]', () => {
       readOnly: false,
       fetchConfig: (_id: string, kind: string) => Promise.resolve(answers[kind]),
       saveConfig: () => Promise.resolve(labels),
-      fetchPlan: () => Promise.resolve({ plan: null }),
+      fetchPlan: () => Promise.resolve({ plan: state.plan ?? null }),
       approvePlan: () => Promise.reject(new Error('not in this test')),
       discardPlan: () => Promise.reject(new Error('not in this test')),
       fetchStatus: () =>
-        Promise.resolve({ checked_at: new Date(0).toISOString(), repositories: [] }),
+        Promise.resolve(
+          state.status ?? { checked_at: new Date(0).toISOString(), repositories: [] },
+        ),
       sectionHref: (section: string) => `#/sync/${section}`,
       onOpenSection: () => {},
       rulesetHref: (name: string) => `#/sync/rulesets/${name}`,
@@ -85,6 +92,7 @@ describe('SyncView [Component]', () => {
         Promise.resolve({ repositories: 0, covered: 0, known_paths: [], merges: [] }),
       fetchOverride: () => Promise.reject(new Error('not in this test')),
       saveOverride: () => Promise.reject(new Error('not in this test')),
+      clock: state.clock,
     });
   }
 
@@ -213,5 +221,51 @@ describe('SyncView [Component]', () => {
         screen.getAllByRole('status').some((node) => (node.textContent ?? '').includes('issues')),
       ).toBe(true),
     );
+  });
+
+  it('renders relative plan times against an injected catalogue clock', async () => {
+    const now = Date.UTC(2026, 7, 18, 12, 0, 0);
+    const plan: SyncPlan = {
+      id: 'plan-1',
+      trigger: 'reconcile',
+      state: 'computed',
+      digest: 'digest',
+      counts: { create: 1, update: 0, delete: 0 },
+      actions: [
+        {
+          repository: 'smyklot',
+          kind: 'labels',
+          operation: 'create',
+          subject: 'bug',
+          state: 'pending',
+        },
+      ],
+      computed_at: new Date(now - 12 * 60_000).toISOString(),
+      expires_at: new Date(now + 6 * 60 * 60_000 + 5 * 60_000).toISOString(),
+    };
+    const status: SyncStatus = {
+      checked_at: new Date(now - 5 * 60_000).toISOString(),
+      repositories: [
+        {
+          repository: 'smyklot',
+          cells: {
+            labels: { state: 'pending', changes: 1 },
+            settings: { state: 'in_step' },
+            rulesets: { state: 'in_step' },
+            files: { state: 'in_step' },
+          },
+        },
+      ],
+    };
+
+    mount(config('labels'), config('settings'), config('rulesets'), config('files'), 'overview', {
+      clock: () => now,
+      plan,
+      status,
+    });
+
+    await screen.findByRole('heading', { name: '1 of 1 are out of step' });
+    expect(screen.getByText('5 minutes ago')).toBeTruthy();
+    expect(screen.getByText(/Expires in 6 hours/u)).toBeTruthy();
   });
 });
