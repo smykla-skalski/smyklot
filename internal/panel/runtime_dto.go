@@ -158,6 +158,9 @@ func runtimeServiceDTO(
 	response.Listeners.Public = cfg.ListenAddress
 	response.Listeners.Admin = cfg.AdminAddress
 	response.PublicPaths.Panel = cfg.BasePath
+	if response.PublicPaths.Panel == "" {
+		response.PublicPaths.Panel = "/"
+	}
 	response.PublicPaths.Webhook = cfg.WebhookPath
 	response.ProviderEndpoints.API = cfg.APIURL
 	response.ProviderEndpoints.Authorize = cfg.AuthorizeURL

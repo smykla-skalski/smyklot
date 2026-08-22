@@ -61,6 +61,27 @@ func TestConfigurationDTOsExposeInheritedValues(t *testing.T) {
 	}
 }
 
+func TestRuntimeServiceDTOExposesAVisiblePanelPath(t *testing.T) {
+	t.Parallel()
+	now := time.Unix(1_700_000_000, 0)
+	for _, test := range []struct {
+		name, basePath, want string
+	}{
+		{name: "root", want: "/"},
+		{name: "nested", basePath: "/panel", want: "/panel"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			response := runtimeServiceDTO(
+				storage.DatabaseStatus{}, Config{BasePath: test.basePath}, now, now,
+			)
+			if response.PublicPaths.Panel != test.want {
+				t.Fatalf("panel path = %q, want %q", response.PublicPaths.Panel, test.want)
+			}
+		})
+	}
+}
+
 // TestDurationDTOsResolveWhatALevelInherits covers the two settings that
 // cascade as numbers rather than through `config.Resolve`.
 //
