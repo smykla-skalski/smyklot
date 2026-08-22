@@ -337,9 +337,28 @@ export const INSTALLATIONS: RootInstallation[] = [
   }),
 ];
 
-/** The seeded organisation as an unowned Root reads it before temporary elevation. */
+/** The mock's seeded organisation in the Root installation list. */
+const SEEDED_ROOT_INSTALLATION: RootInstallation = {
+  id: ROOT_TARGET.id,
+  installation_id: ROOT_TARGET.installation_id,
+  type: ROOT_TARGET.type,
+  account: ROOT_TARGET.account,
+  available: true,
+  owned_by_viewer: true,
+  repository_counts: ROOT_TARGET.repository_counts,
+  delivery_health: { failed: 1, last_failure_at: at(-18 * 60_000) },
+  ownership: {
+    source: 'organization_admin',
+    status: 'fresh',
+    synced_at: at(-3 * 60_000),
+    owner_count: 2,
+    stale: false,
+  },
+};
+
+/** The same seeded organisation as a Root reads it before temporary elevation. */
 export const ROOT_INSTALLATION: RootInstallation = {
-  ...INSTALLATIONS[0]!,
+  ...SEEDED_ROOT_INSTALLATION,
   owned_by_viewer: false,
 };
 

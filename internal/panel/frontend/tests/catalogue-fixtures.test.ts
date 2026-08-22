@@ -94,8 +94,14 @@ describe('catalogue fixtures [Unit]', () => {
     ]);
 
     expect(target).toEqual(ROOT_TARGET);
-    expect(ROOT_INSTALLATION.id).toBe(target.id);
-    expect(ROOT_INSTALLATION.owned_by_viewer).toBe(false);
+    expect(ROOT_INSTALLATION).toMatchObject({
+      id: target.id,
+      installation_id: target.installation_id,
+      type: target.type,
+      account: target.account,
+      repository_counts: target.repository_counts,
+      owned_by_viewer: false,
+    });
     expect(target.access_source).toBe('root');
     expect(target.capabilities).toEqual({ read: true, write: false, manage_target_users: false });
     expect(repositories.items).toHaveLength(REPOSITORIES.length);
