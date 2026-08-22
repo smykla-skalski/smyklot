@@ -53,7 +53,7 @@ func (g *Gate) applyPendingCINotification(
 		changed += count
 	}
 	if changed > 0 {
-		g.Scheduler.Wake()
+		g.Wake()
 		logging.From(ctx).Info("pending CI requests notified", "requests", changed)
 	} else {
 		logging.From(ctx).Debug("pending CI webhook matched no armed request")
