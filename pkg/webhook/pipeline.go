@@ -39,8 +39,6 @@ type Pipeline struct {
 	leaseDone   chan struct{}
 	workers     sync.WaitGroup
 	started     bool
-
-	queueMu     sync.Mutex
 	queueClosed bool
 
 	finalizeCtx    context.Context
@@ -87,13 +85,9 @@ func (p *Pipeline) Receiver() http.Handler {
 }
 
 func (p *Pipeline) Start(ctx context.Context) {
-	p.queueMu.Lock()
-	closed := p.queueClosed
-	p.queueMu.Unlock()
-
 	p.lifecycleMu.Lock()
 	defer p.lifecycleMu.Unlock()
-	if p.started || closed {
+	if p.started || p.queueClosed {
 		return
 	}
 	p.started = true
@@ -147,18 +141,16 @@ func (p *Pipeline) QueueDepth() int {
 }
 
 func (p *Pipeline) closeQueue() {
-	p.queueMu.Lock()
+	p.lifecycleMu.Lock()
 	if p.queueClosed {
-		p.queueMu.Unlock()
+		p.lifecycleMu.Unlock()
 
 		return
 	}
 	p.queueClosed = true
-	p.queueMu.Unlock()
-
-	p.lifecycleMu.Lock()
 	cancel, done := p.cancelLease, p.leaseDone
 	p.lifecycleMu.Unlock()
+
 	if cancel != nil {
 		cancel()
 		<-done

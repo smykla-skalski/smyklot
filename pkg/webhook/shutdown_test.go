@@ -106,6 +106,23 @@ var _ = Describe("Shutdown [Unit]", func() {
 		Expect(pipeline.Shutdown(context.Background())).To(Succeed())
 	})
 
+	It("should survive Start racing Shutdown", func() {
+		for range 200 {
+			pipeline := build(
+				func(context.Context, webhook.Delivery) error { return nil }, time.Second,
+			)
+
+			started := make(chan struct{})
+			go func() {
+				close(started)
+				pipeline.Start(context.Background())
+			}()
+
+			<-started
+			Expect(pipeline.Shutdown(context.Background())).To(Succeed())
+		}
+	})
+
 	It("should refuse to start once it has shut down", func() {
 		handled := make(chan struct{}, 1)
 		pipeline := build(func(context.Context, webhook.Delivery) error {
