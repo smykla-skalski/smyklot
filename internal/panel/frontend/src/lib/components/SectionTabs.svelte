@@ -200,7 +200,6 @@
   async function place(motion: Motion, spread: boolean): Promise<void> {
     const link = nav?.querySelector<HTMLElement>("[aria-current='page']");
     if (link === null || link === undefined || nav === null) return;
-    revealInline(nav, link);
     /* The word reserves its bold width, so the ink is the same rect whether or
        not the label is currently the bold one - which is what keeps a spread
        from measuring one width on the way out and another on the way back. */
@@ -221,6 +220,27 @@
     travel(before, resting, motion);
   }
 
+  /** Keep selection visible when selection or available tabs change, never on hover. */
+  function revealCurrent(): void {
+    const link = nav?.querySelector<HTMLElement>("[aria-current='page']");
+    if (link === null || link === undefined || nav === null) return;
+    revealInline(nav, link);
+  }
+
+  $effect(() => {
+    const current = active;
+    const currentNav = nav;
+    void items;
+    if (currentNav === null) return;
+    void current;
+    revealCurrent();
+    // Fonts can move the selected tab after its first measurement.
+    void document.fonts?.ready.then(() => {
+      revealCurrent();
+      void place('none', hovered === active);
+    });
+  });
+
   $effect(() => {
     const current = active;
     /* The open tab is the only one whose hover the bar answers: the others draw
@@ -233,17 +253,20 @@
     parked = current;
     opened = spread;
     void place(motion, spread);
-    // Fonts settle after first paint and the label widths move with them.
-    void document.fonts?.ready.then(() => place('none', spread));
     /* Nothing is cancelled here on the way out. The cleanup runs before every
        re-run as well as on unmount, and cancelling there would put the bar back
        to its parked rect a frame before `shown` reads where it actually is -
        which is the one thing that reading it was for. `travel` cancels its own
        predecessor, and an animation on a removed element stops mattering. */
   });
+
+  function resize(): void {
+    revealCurrent();
+    void place('none', hovered === active);
+  }
 </script>
 
-<svelte:window onresize={() => place('none', hovered === active)} />
+<svelte:window onresize={resize} />
 
 <nav class="section-tabs" aria-label={label} bind:this={nav}>
   <ul>
