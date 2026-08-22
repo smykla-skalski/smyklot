@@ -155,7 +155,7 @@ linters:
           - revive  # Allow dot imports and unused parameters in tests
 
       # Allow long functions in main.go (GitHub Actions handlers)
-      - path: cmd/github-action/main\.go
+      - path: cmd/smyklot/main\.go
         linters:
           - funlen
           - gocyclo

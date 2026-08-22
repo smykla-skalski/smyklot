@@ -12,7 +12,7 @@ const PATHS = [
   'docs/releasing.md',
   'internal/panel/frontend/src/app.css',
   'internal/storage/sqlstore/store.go',
-  'cmd/github-action/main.go',
+  'cmd/smyklot/main.go',
 ];
 
 const best = (query: string): string => matchPaths(PATHS, query)[0].path;
@@ -55,7 +55,7 @@ describe('matchPath [Unit]', () => {
 describe('matchPaths [Unit]', () => {
   it('prefers a file name match when the query carries no separator', () => {
     expect(best('sync')).toBe('.github/workflows/sync.yaml');
-    expect(best('main.go')).toBe('cmd/github-action/main.go');
+    expect(best('main.go')).toBe('cmd/smyklot/main.go');
     expect(best('app.css')).toBe('internal/panel/frontend/src/app.css');
   });
 

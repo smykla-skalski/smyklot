@@ -631,7 +631,7 @@ mise run test
 ```text
 smyklot/
 ├── cmd/
-│   └── github-action/       # Entrypoints: Action (default), poll, serve
+│   └── smyklot/             # Entrypoints: Action (default), poll, serve
 ├── pkg/
 │   ├── commands/            # Command parser (slash, mention, bare)
 │   ├── config/              # Configuration management (Viper)

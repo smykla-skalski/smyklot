@@ -7,7 +7,7 @@ before:
 
 builds:
   - id: smyklot
-    main: ./cmd/github-action
+    main: ./cmd/smyklot
     binary: smyklot
     env:
       - CGO_ENABLED=0

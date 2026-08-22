@@ -38,7 +38,7 @@ jobs:
   # inside each is the only parallelism available within one.
   #
   # The areas are split by what they cost rather than by what they mean:
-  # cmd/github-action and internal/panel are each about as expensive as
+  # cmd/smyklot and internal/panel are each about as expensive as
   # everything under pkg put together.
   #
   # `ginkgo -r` recurses from every directory it is given, so an area naming a
@@ -54,7 +54,7 @@ jobs:
       matrix:
         include:
           - area: service
-            dirs: ./cmd/github-action
+            dirs: ./cmd/smyklot
           - area: panel
             dirs: ./internal/panel ./internal/panelassets
           - area: storage
@@ -95,7 +95,7 @@ jobs:
             dirs: ''
           - area: service
             task: test:postgres
-            dirs: ./cmd/github-action
+            dirs: ./cmd/smyklot
           - area: panel
             task: test:postgres
             dirs: ./internal/panel

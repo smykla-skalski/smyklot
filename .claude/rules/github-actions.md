@@ -19,7 +19,7 @@
 
 ## Running Locally
 
-The binary reads environment variables — set `GITHUB_TOKEN`, `COMMENT_BODY`, `COMMENT_ID`, `PR_NUMBER`, `REPO_OWNER`, `REPO_NAME`, `COMMENT_AUTHOR` then run `./bin/smyklot-github-action`.
+The binary reads environment variables — set `GITHUB_TOKEN`, `COMMENT_BODY`, `COMMENT_ID`, `PR_NUMBER`, `REPO_OWNER`, `REPO_NAME`, `COMMENT_AUTHOR` then run `./bin/smyklot`.
 
 ## Input Validation Limits
 

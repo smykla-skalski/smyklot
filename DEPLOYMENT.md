@@ -532,7 +532,7 @@ Then copy it in, through a proxy to the database:
 ```bash
 fly proxy 15432:5432 --app smyklot-db &
 
-./bin/smyklot-github-action store migrate \
+./bin/smyklot store migrate \
   --from ./panel.sqlite3 \
   --to "postgres://smyklot:$POSTGRES_PASSWORD@localhost:15432/smyklot?sslmode=disable"
 ```

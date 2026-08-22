@@ -248,9 +248,9 @@ run = "./scripts/check-release-rules.sh"
 
 [tasks.build]
 description = "Build all Smyklot binaries"
-depends = ["build:github-action"]
+depends = ["build:smyklot"]
 
-[tasks."build:github-action"]
+[tasks."build:smyklot"]
 description = "Build the Smyklot service binary"
 depends = ["panel:assets:generate"]
 sources = [
@@ -261,8 +261,8 @@ sources = [
   "pkg/**/*.go",
   "internal/panelassets/generated/bundle.zip",
 ]
-outputs = ["bin/smyklot-github-action"]
-run = "go build -o bin/smyklot-github-action ./cmd/github-action"
+outputs = ["bin/smyklot"]
+run = "go build -o bin/smyklot ./cmd/smyklot"
 
 [tasks.deps]
 description = "Download and verify Go dependencies"
