@@ -606,6 +606,54 @@ SELECT plan_id, payload, state FROM sync_plan_actions WHERE subject = 'README.md
 	requireNoForeignKeyViolations(t, ctx, db)
 }
 
+// TestSyncPlanActionRepairMigrationInvalidatesAReleasedBrokenPlan starts after
+// version 36, as a v1.45.0 database does, and proves the next migration frees a
+// live slot whose action payloads the released rebuild already deleted.
+func TestSyncPlanActionRepairMigrationInvalidatesAReleasedBrokenPlan(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "sync-plan-action-repair.db")
+	db := openLegacyDatabase(t, ctx, path, 37)
+	now := time.Date(2026, time.August, 22, 12, 0, 0, 0, time.UTC).
+		Format(time.RFC3339Nano)
+
+	statements := []string{
+		`INSERT INTO accounts (id, provider, subject_id, login, display_name, updated_at)
+VALUES ('github:1', 'github', '1', 'smykla', 'Smykla', '` + now + `')`,
+		`INSERT INTO targets (
+id, installation_id, kind, account_id, settings_updated_at, synced_at
+) VALUES ('installation:1', '1', 'Organization', 'github:1', '` + now + `', '` + now + `')`,
+		`INSERT INTO sync_plans (
+id, target_id, trigger_kind, actor_account_id, digest, state,
+create_count, computed_at, expires_at
+) VALUES (
+'plan:broken', 'installation:1', 'manual', 'github:1', 'digest', 'computed',
+1, '` + now + `', '` + now + `'
+)`,
+	}
+	for _, statement := range statements {
+		if _, err := db.ExecContext(ctx, statement); err != nil {
+			t.Fatalf("seed released broken plan: %v\n%s", err, statement)
+		}
+	}
+
+	if err := sqlstore.Migrate(ctx, db, Dialect{}, migrations); err != nil {
+		t.Fatalf("apply the sync plan action repair migration: %v", err)
+	}
+
+	var count int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sync_plans WHERE id = 'plan:broken'`).
+		Scan(&count); err != nil {
+		t.Fatalf("count released broken plan: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("released broken live plans left = %d, want 0", count)
+	}
+
+	requireNoForeignKeyViolations(t, ctx, db)
+}
+
 // seedAuditRelationship writes an audit event with a notification pointing at
 // it, which is the pair the rebuild has to keep together.
 func seedAuditRelationship(t *testing.T, ctx context.Context, db *sql.DB, now string) {
