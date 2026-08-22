@@ -57,10 +57,10 @@ func (g *Gate) DrainLegacyLabels(
 		}
 
 		var result pendingci.LegacyDrainResult
-		err = g.Coordinator.Exclusive(
+		err = g.coordinator.Exclusive(
 			ctx, storage.RepositoryID(repository.ID), func() error {
 				var drainErr error
-				result, drainErr = g.Store.DrainLegacy(ctx, pendingci.LegacyDrainRequest{
+				result, drainErr = g.store.DrainLegacy(ctx, pendingci.LegacyDrainRequest{
 					TargetID: targetID, InstallationID: installationID,
 					RepositoryID:       storage.RepositoryID(repository.ID),
 					RepositoryFullName: bot.RepoFullName(repository.Owner, repository.Name),
@@ -120,7 +120,7 @@ func (g *Gate) ReconcileServiceArtifacts(
 			continue
 		}
 		knownReaction, err := knownServiceReaction(
-			ctx, client, repository, pullRequest, g.BotUsername,
+			ctx, client, repository, pullRequest, g.botUsername,
 			inspectAll && !legacy && len(labels) == 0,
 		)
 		if err != nil {
@@ -194,7 +194,7 @@ func (g *Gate) reconcilePendingCIServiceArtifact(
 	knownReaction bool,
 ) (bool, error) {
 	cleaned := false
-	err := g.Coordinator.Exclusive(ctx, repositoryID, func() error {
+	err := g.coordinator.Exclusive(ctx, repositoryID, func() error {
 		var err error
 		cleaned, err = g.reconcilePendingCIServiceArtifactLocked(
 			ctx, client, repository, repositoryID, pullRequest,
@@ -217,7 +217,7 @@ func (g *Gate) reconcilePendingCIServiceArtifactLocked(
 	legacy bool,
 	knownReaction bool,
 ) (bool, error) {
-	request, err := g.Store.GetArmed(ctx, repositoryID, pullRequest)
+	request, err := g.store.GetArmed(ctx, repositoryID, pullRequest)
 	if err == nil {
 		return false, migrateArmedPendingCIServiceArtifact(
 			ctx, client, repository, request, legacy,
@@ -226,7 +226,7 @@ func (g *Gate) reconcilePendingCIServiceArtifactLocked(
 	if !errors.Is(err, storage.ErrNotFound) {
 		return false, fmt.Errorf("read pending CI service request: %w", err)
 	}
-	pending, err := g.Store.HasPendingCleanup(ctx, pendingci.CleanupFilter{
+	pending, err := g.store.HasPendingCleanup(ctx, pendingci.CleanupFilter{
 		RepositoryID: repositoryID, PullRequest: pullRequest,
 		ArtifactsPendingOnly: true,
 	})
@@ -240,7 +240,7 @@ func (g *Gate) reconcilePendingCIServiceArtifactLocked(
 	if !serviceOwned {
 		serviceOwned, err = client.HasPullRequestReaction(
 			ctx, repository.Owner, repository.Name, pullRequest,
-			g.BotUsername, github.ReactionPendingCIService,
+			g.botUsername, github.ReactionPendingCIService,
 		)
 		if err != nil {
 			return false, fmt.Errorf("read pending CI service reaction: %w", err)
@@ -250,7 +250,7 @@ func (g *Gate) reconcilePendingCIServiceArtifactLocked(
 		return false, nil
 	}
 	if err := cleanupOrphanPendingCIServiceArtifacts(
-		ctx, client, repository, pullRequest, labels, legacy, g.BotUsername,
+		ctx, client, repository, pullRequest, labels, legacy, g.botUsername,
 	); err != nil {
 		return false, err
 	}

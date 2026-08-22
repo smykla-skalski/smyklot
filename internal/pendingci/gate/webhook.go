@@ -24,7 +24,7 @@ func (g *Gate) HandleWebhook(
 	deliveryID string,
 ) error {
 	repositoryID := storage.RepositoryID(notification.Source.Repository.ID)
-	return g.Coordinator.Exclusive(ctx, repositoryID, func() error {
+	return g.coordinator.Exclusive(ctx, repositoryID, func() error {
 		return g.applyPendingCINotification(ctx, notification, deliveryID)
 	})
 }
@@ -38,7 +38,7 @@ func (g *Gate) applyPendingCINotification(
 		// A repository can be added while reaction polling is disabled. Its first
 		// pull request is enough reason to refresh the catalog and provision the
 		// required context even when the webhook arrived before the catalog knew it.
-		g.wakeGates()
+		g.notifyGates()
 	}
 	occurredAt := time.Now().UTC()
 	var changed int64
@@ -97,7 +97,7 @@ func (g *Gate) applyPendingCISignal(
 
 		return 0, err
 	case pendingci.SignalWakeHead:
-		return g.Store.WakeByHead(ctx, pendingci.WakeHeadRequest{
+		return g.store.WakeByHead(ctx, pendingci.WakeHeadRequest{
 			RepositoryID: repositoryID, HeadSHA: signal.HeadSHA,
 			EventName: eventName, EventKey: signal.EventKey,
 			DeliveryID: deliveryID, OccurredAt: occurredAt,
@@ -126,7 +126,7 @@ func (g *Gate) applyPendingCISignal(
 			}
 		}
 
-		return g.Store.WakeByHead(ctx, pendingci.WakeHeadRequest{
+		return g.store.WakeByHead(ctx, pendingci.WakeHeadRequest{
 			RepositoryID: repositoryID, HeadSHA: signal.HeadSHA,
 			EventName: eventName, EventKey: signal.EventKey,
 			DeliveryID: deliveryID, OccurredAt: occurredAt,
@@ -147,7 +147,7 @@ func (g *Gate) wakePendingCIPullRequest(
 	if signal.MatchHead {
 		expectedHead = signal.HeadSHA
 	}
-	return g.Store.Wake(ctx, pendingci.WakeRequest{
+	return g.store.Wake(ctx, pendingci.WakeRequest{
 		RepositoryID: repositoryID, PullRequest: signal.PullRequest,
 		EventName: eventName, EventKey: signal.EventKey, DeliveryID: deliveryID,
 		ExpectedHeadSHA: expectedHead, OccurredAt: occurredAt,
@@ -159,7 +159,7 @@ func (g *Gate) ensureWebhookPendingCIBaseline(
 	source webhook.Source,
 	pullRequest int,
 ) error {
-	if !g.Panelled || g.Checks == nil || pullRequest <= 0 {
+	if !g.panelled || g.Checks == nil || pullRequest <= 0 {
 		return nil
 	}
 	target, repository, eligible, err := g.webhookPendingCIBaselineControls(
@@ -213,7 +213,7 @@ func (g *Gate) webhookPendingCIBaselineControls(
 ) (storage.Target, storage.Repository, bool, error) {
 	targetID := storage.InstallationID(source.InstallationID)
 	repositoryID := storage.RepositoryID(source.Repository.ID)
-	target, repository, err := readControls(ctx, g.Store, targetID, repositoryID)
+	target, repository, err := readControls(ctx, g.store, targetID, repositoryID)
 	if errors.Is(err, storage.ErrNotFound) {
 		return storage.Target{}, storage.Repository{}, false, nil
 	}
@@ -221,7 +221,7 @@ func (g *Gate) webhookPendingCIBaselineControls(
 		return storage.Target{}, storage.Repository{}, false,
 			fmt.Errorf("read pull request baseline controls: %w", err)
 	}
-	gate, err := g.Store.GetPendingCIRepositoryGate(ctx, repositoryID)
+	gate, err := g.store.GetPendingCIRepositoryGate(ctx, repositoryID)
 	if err != nil {
 		return storage.Target{}, storage.Repository{}, false,
 			fmt.Errorf("read pull request baseline gate: %w", err)
@@ -234,7 +234,7 @@ func (g *Gate) webhookPendingCIBaselineControls(
 	if !enabled || !target.Available || !repository.Available || !target.Grants("checks") {
 		return target, repository, false, nil
 	}
-	armed, err := g.Store.GetArmed(ctx, repositoryID, pullRequest)
+	armed, err := g.store.GetArmed(ctx, repositoryID, pullRequest)
 	if err == nil && armed.ArtifactKind == pendingci.ArtifactCheck {
 		return target, repository, false, nil
 	}
@@ -269,7 +269,7 @@ func (g *Gate) reauthorizePendingCI(
 	if err != nil || !allowed {
 		return false, err
 	}
-	updated, err := g.Store.Reauthorize(ctx, pendingci.ReauthorizeRequest{
+	updated, err := g.store.Reauthorize(ctx, pendingci.ReauthorizeRequest{
 		RepositoryID: repositoryID, PullRequest: candidate.slot.PullRequest,
 		HeadSHA: signal.HeadSHA, BaseBranch: candidate.request.CandidateBaseBranch,
 		CheckSlotID: candidate.slot.ID, Actor: signal.Actor, EventKey: signal.EventKey,
@@ -283,7 +283,7 @@ func (g *Gate) reauthorizePendingCI(
 	// the request asleep until an unrelated event arrives.
 	g.Scheduler.Wake()
 	target, repositorySettings, err := readControls(
-		ctx, g.Store, updated.TargetID, updated.RepositoryID,
+		ctx, g.store, updated.TargetID, updated.RepositoryID,
 	)
 	if err != nil {
 		return false, err
@@ -308,7 +308,7 @@ func (g *Gate) reauthorizationCandidate(
 	repositoryID string,
 	signal pendingci.Signal,
 ) (reauthorizationCandidate, bool, error) {
-	slot, err := g.Store.GetCheckSlotByHead(ctx, repositoryID, signal.HeadSHA)
+	slot, err := g.store.GetCheckSlotByHead(ctx, repositoryID, signal.HeadSHA)
 	if errors.Is(err, storage.ErrNotFound) {
 		return reauthorizationCandidate{}, false, nil
 	}
@@ -324,7 +324,7 @@ func (g *Gate) reauthorizationCandidate(
 		slot.ExternalID != signal.ExternalID {
 		return reauthorizationCandidate{}, false, nil
 	}
-	request, err := g.Store.GetArmed(ctx, repositoryID, slot.PullRequest)
+	request, err := g.store.GetArmed(ctx, repositoryID, slot.PullRequest)
 	if errors.Is(err, storage.ErrNotFound) {
 		return reauthorizationCandidate{}, false, nil
 	}
@@ -394,7 +394,7 @@ func (g *Gate) preparePendingCIReauthorization(
 	if !requiredContextOwned(required, candidate.slot.Name, candidate.slot.AppID) {
 		return false, nil
 	}
-	botConfig, err := g.Config(
+	botConfig, err := g.config(
 		ctx,
 		client,
 		candidate.request.TargetID,
@@ -409,7 +409,7 @@ func (g *Gate) preparePendingCIReauthorization(
 	if err != nil {
 		return false, fmt.Errorf("read requested-action pull request approvals: %w", err)
 	}
-	runtime := &bot.RuntimeConfig{CommentAuthor: signal.Actor, BotUsername: g.BotUsername}
+	runtime := &bot.RuntimeConfig{CommentAuthor: signal.Actor, BotUsername: g.botUsername}
 	if bot.PendingCIApprovalAllowed(runtime, botConfig, info) != nil {
 		return false, nil
 	}
@@ -432,11 +432,11 @@ func (g *Gate) pendingCIClient(
 	installationID int64,
 	fullName string,
 ) (*github.Client, string, string, error) {
-	token, err := g.Tokens.InstallationToken(installationID)
+	token, err := g.tokens.InstallationToken(installationID)
 	if err != nil {
 		return nil, "", "", bot.NewGitHubError(bot.ErrGitHubAppAuth, err)
 	}
-	client, err := github.NewClient(token, g.APIBaseURL)
+	client, err := github.NewClient(token, g.apiBaseURL)
 	if err != nil {
 		return nil, "", "", bot.NewGitHubError(bot.ErrGitHubClient, err)
 	}

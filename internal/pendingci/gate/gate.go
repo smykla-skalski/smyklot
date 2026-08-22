@@ -38,28 +38,29 @@ func readControls(
 }
 
 type Gate struct {
-	Store       Store
-	Checks      *Checks
-	Coordinator bot.Exclusive
-	Scheduler   *Scheduler
-	Reconciler  *Reconciler
-	Handoff     *Handoff
-	Gates       *GateReconciler
+	Checks    *Checks
+	Scheduler *Scheduler
+	Handoff   *Handoff
+	Gates     *GateReconciler
+
+	store       Store
+	coordinator bot.Exclusive
+	reconciler  *Reconciler
 	backend     *Backend
-	Config      RepositoryConfig
-	Tokens      *githubapp.TokenStore
-	APIBaseURL  string
-	BotUsername string
-	Panelled    bool
-	WakeGates   func()
+	config      RepositoryConfig
+	tokens      *githubapp.TokenStore
+	apiBaseURL  string
+	botUsername string
+	panelled    bool
+	wakeGates   func()
 }
 
 func (g *Gate) PassingQuiet() time.Duration {
-	if g.Reconciler == nil {
+	if g.reconciler == nil {
 		return 0
 	}
 
-	return g.Reconciler.currentTiming().PassingQuiet
+	return g.reconciler.currentTiming().PassingQuiet
 }
 
 type Dependencies struct {
@@ -85,14 +86,14 @@ func New(deps Dependencies) *Gate {
 	now := func() time.Time { return time.Now().UTC() }
 
 	gate := &Gate{
-		Store:       deps.Store,
-		Coordinator: deps.Coordinator,
-		Config:      deps.Config,
-		Tokens:      deps.Tokens,
-		APIBaseURL:  deps.APIBaseURL,
-		BotUsername: deps.BotUsername,
-		Panelled:    deps.Panelled,
-		WakeGates:   deps.WakeGates,
+		store:       deps.Store,
+		coordinator: deps.Coordinator,
+		config:      deps.Config,
+		tokens:      deps.Tokens,
+		apiBaseURL:  deps.APIBaseURL,
+		botUsername: deps.BotUsername,
+		panelled:    deps.Panelled,
+		wakeGates:   deps.WakeGates,
 	}
 
 	gate.Checks = &Checks{
@@ -111,17 +112,17 @@ func New(deps Dependencies) *Gate {
 		apiBaseURL:  deps.APIBaseURL,
 		botUsername: deps.BotUsername,
 		panelled:    deps.Panelled,
-		wakeGates:   gate.wakeGates,
+		wakeGates:   gate.notifyGates,
 		quietPeriod: gate.PassingQuiet,
 	}
 
 	timing := defaultTiming()
 	timing.PassingQuiet = deps.QuietPeriod
 	gate.backend = backend
-	gate.Reconciler = newReconciler(
+	gate.reconciler = newReconciler(
 		deps.Transitions, backend, backend, deps.Coordinator, timing,
 	)
-	gate.Scheduler = newScheduler(deps.Leases, gate.Reconciler, deps.Logger)
+	gate.Scheduler = newScheduler(deps.Leases, gate.reconciler, deps.Logger)
 	gate.Scheduler.RetunePassingQuiet(deps.QuietPeriod)
 	gate.Gates.wake = gate.Scheduler.Wake
 	gate.Handoff = &Handoff{
@@ -131,9 +132,9 @@ func New(deps Dependencies) *Gate {
 	return gate
 }
 
-func (g *Gate) wakeGates() {
-	if g.WakeGates != nil {
-		g.WakeGates()
+func (g *Gate) notifyGates() {
+	if g.wakeGates != nil {
+		g.wakeGates()
 	}
 }
 
@@ -142,14 +143,14 @@ func (g *Gate) ActivationGuardFor(
 	targetID, repositoryID, owner, repository string,
 ) ActivationGuard {
 	return ActivationGuard{
-		config: g.Config, store: g.Store, panelled: g.Panelled,
+		config: g.config, store: g.store, panelled: g.panelled,
 		client: client, targetID: targetID, repositoryID: repositoryID,
 		owner: owner, repository: repository,
 	}
 }
 
 func (g *Gate) NewControl(store ControlStore) *Control {
-	return newControl(store, g.Coordinator, g.Scheduler.Wake)
+	return newControl(store, g.coordinator, g.Scheduler.Wake)
 }
 
 func (g *Gate) Wake() {
@@ -159,10 +160,10 @@ func (g *Gate) Wake() {
 }
 
 func (g *Gate) RetuneQuietPeriod(value time.Duration) bool {
-	if g == nil || g.Reconciler == nil {
+	if g == nil || g.reconciler == nil {
 		return false
 	}
-	if !g.Reconciler.SetPassingQuiet(value) {
+	if !g.reconciler.SetPassingQuiet(value) {
 		return false
 	}
 	if g.Scheduler == nil {

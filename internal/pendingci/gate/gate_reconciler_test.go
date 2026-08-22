@@ -418,7 +418,7 @@ func TestLabelModeDetectsInheritedSmyklotRequirementOutsideDefaultBranch(t *test
 func TestPullRequestOpenedWakesGateReconciliation(t *testing.T) {
 	t.Parallel()
 	woken := make(chan struct{}, 1)
-	srv := &Gate{WakeGates: func() {
+	srv := &Gate{wakeGates: func() {
 		select {
 		case woken <- struct{}{}:
 		default:

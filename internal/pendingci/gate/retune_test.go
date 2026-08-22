@@ -21,7 +21,7 @@ func TestRetuneQuietPeriodReachesReconcilerAndScheduler(t *testing.T) {
 		&schedulerTestStore{}, reconciler,
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
 	)
-	gate := &Gate{Reconciler: reconciler, Scheduler: scheduler}
+	gate := &Gate{reconciler: reconciler, Scheduler: scheduler}
 
 	// When an operator retunes it
 	changed := gate.RetuneQuietPeriod(45 * time.Second)
