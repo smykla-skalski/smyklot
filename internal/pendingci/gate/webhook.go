@@ -38,7 +38,7 @@ func (g *Gate) applyPendingCINotification(
 		// A repository can be added while reaction polling is disabled. Its first
 		// pull request is enough reason to refresh the catalog and provision the
 		// required context even when the webhook arrived before the catalog knew it.
-		g.WakeGates()
+		g.wakeGates()
 	}
 	occurredAt := time.Now().UTC()
 	var changed int64

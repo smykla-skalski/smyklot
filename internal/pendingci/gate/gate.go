@@ -173,7 +173,12 @@ func (g *Gate) RetuneQuietPeriod(value time.Duration) bool {
 	if !g.Reconciler.SetPassingQuiet(value) {
 		return false
 	}
-	g.Wake()
+	if g.Scheduler == nil {
+		g.Wake()
+
+		return true
+	}
+	g.Scheduler.RetunePassingQuiet(value)
 
 	return true
 }

@@ -39,6 +39,15 @@ func TestRetuneQuietPeriodReachesReconcilerAndScheduler(t *testing.T) {
 		t.Fatal("scheduler was not woken after a quiet-period change")
 	}
 
+	// And the rows already armed under the old period are restaged, so a period
+	// that was lowered does not leave them waiting out the old one
+	scheduler.retuneMu.Lock()
+	retune := scheduler.retune
+	scheduler.retuneMu.Unlock()
+	if retune == nil || retune.PassingQuiet != 45*time.Second {
+		t.Fatalf("scheduler retune = %#v, want 45s", retune)
+	}
+
 	// And the same value again is not a change
 	if gate.RetuneQuietPeriod(45 * time.Second) {
 		t.Fatal("retune reported a change for the value already in force")
