@@ -494,6 +494,8 @@
   --layer-menu: 35;
   --layer-sticky: 30;
   --layer-popover: 35;
+  /* Above the mobile sidebar drawer, below every modal surface. */
+  --layer-rail: 42;
   --layer-dialog: 45;
   --layer-dialog-popover: 47;
   /* Above the dialog: a tooltip explains whatever is in front of it. */

@@ -310,6 +310,15 @@
     min-width: 0;
   }
 
+  /* SegmentedControl deliberately fills a phone-width row. Give it that row
+     instead of asking the title to shrink beneath it. */
+  @media (max-width: 36rem) {
+    .night-head {
+      align-items: stretch;
+      flex-direction: column;
+    }
+  }
+
   /* A floor under the card, so its states are not several different page layouts.
      It stops the stack resettling when a load finishes, and it keeps the gap above
      the card - which is what the sky measures itself against - within a narrow

@@ -385,7 +385,7 @@
     padding-block: 14px;
     position: sticky;
     top: 0;
-    z-index: 50;
+    z-index: var(--layer-rail);
   }
 
   .rail > :global(:not(.rail-gap)) {
@@ -675,7 +675,7 @@
   @media (max-width: 64rem) {
     .rail {
       position: relative;
-      z-index: 50;
+      z-index: var(--layer-rail);
     }
 
     .rail-pages {

@@ -1077,6 +1077,14 @@
     height: calc(var(--control-height) + 2 * var(--cell-pad-block) + 1px);
   }
 
+  /* The shared phone layout turns every cell into a labelled block. Its row has
+     to grow with that stack instead of keeping the single-line desktop height. */
+  @media (max-width: 64rem) {
+    :global(.table-scroll tbody tr) {
+      height: auto;
+    }
+  }
+
   /* The first column's wider inset, on both halves of the table so the band and
      the rows below it start on the same edge. */
   :global(.table-scroll td:first-child) {
