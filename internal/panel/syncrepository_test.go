@@ -95,7 +95,7 @@ func TestSyncFilesContextCountsRepositoryOptIn(t *testing.T) {
 	if _, err := harness.store.SetSyncConfig(t.Context(), orgsync.ConfigChange{
 		TargetID: "github:installation:10", Kind: orgsync.KindFiles, Enabled: false,
 		Document: []byte(`{"files":[{"path":"README.md","content":"hello"}]}`),
-		ActorID: "github:test:user:1", Now: harness.now,
+		ActorID:  "github:test:user:1", Now: harness.now,
 	}); err != nil {
 		t.Fatal(err)
 	}
