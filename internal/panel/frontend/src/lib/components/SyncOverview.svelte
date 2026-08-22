@@ -156,8 +156,12 @@
        freshness fact, sharing the verdict's baseline. -->
   <div class="hero">
     <h2>
-      {#if outOfStep > 0}<span class="is-drift">{outOfStep} of {rows.length}</span>
-        are out of step{:else}All {rows.length} are in step{/if}
+      {#if rows.length === 0}No repositories to check{:else if outOfStep > 0}<span class="is-drift"
+          >{outOfStep} of {rows.length}</span
+        >
+        are out of step{:else if legendCounts.off === rows.length}All {rows.length} are switched off here{:else if legendCounts.off > 0}{rows.length -
+          legendCounts.off} active in step ·
+        {legendCounts.off} switched off{:else}All {rows.length} are in step{/if}
     </h2>
     <span class="hero-meta"
       >Checked <strong>{formatRelative(status.checked_at, nowMs)}</strong></span

@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import SyncView from '../src/lib/components/SyncView.svelte';
-import type { SyncConfig, SyncPlan, SyncStatus } from '../src/lib/types';
+import type { SyncCell, SyncConfig, SyncPlan, SyncStatus } from '../src/lib/types';
 
 /** The settings form's segmented controls measure themselves; jsdom does not. */
 class TestResizeObserver {
@@ -97,6 +97,21 @@ describe('SyncView [Component]', () => {
   }
 
   const MISSING = 'Smyklot has not been granted administration access, which settings sync needs';
+
+  function fleet(...repositories: Array<[string, SyncCell['state']]>): SyncStatus {
+    return {
+      checked_at: new Date(0).toISOString(),
+      repositories: repositories.map(([repository, state]) => ({
+        repository,
+        cells: {
+          labels: { state },
+          settings: { state },
+          rulesets: { state },
+          files: { state },
+        },
+      })),
+    };
+  }
 
   /**
    * The whole point of the answer carrying the permission: it has to arrive at
@@ -221,6 +236,28 @@ describe('SyncView [Component]', () => {
         screen.getAllByRole('status').some((node) => (node.textContent ?? '').includes('issues')),
       ).toBe(true),
     );
+  });
+
+  it('calls a fully disabled fleet switched off instead of in step', async () => {
+    mount(config('labels'), config('settings'), config('rulesets'), config('files'), 'overview', {
+      status: fleet(['one', 'off'], ['two', 'off']),
+    });
+
+    await screen.findByRole('heading', { name: 'All 2 are switched off here' });
+  });
+
+  it('separates active and switched-off repositories in a settled fleet', async () => {
+    mount(config('labels'), config('settings'), config('rulesets'), config('files'), 'overview', {
+      status: fleet(['active', 'in_step'], ['disabled', 'off']),
+    });
+
+    await screen.findByRole('heading', { name: '1 active in step · 1 switched off' });
+  });
+
+  it('gives an empty fleet an honest verdict', async () => {
+    mount(config('labels'), config('settings'), config('rulesets'), config('files'), 'overview');
+
+    await screen.findByRole('heading', { name: 'No repositories to check' });
   });
 
   it('renders relative plan times against an injected catalogue clock', async () => {
