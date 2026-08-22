@@ -289,7 +289,7 @@ var _ = Describe("Repository configuration discovery [Unit]", func() {
 		Expect(asked).To(HaveLen(1))
 	})
 
-	Describe("RepoConfigFingerprint", func() {
+	Describe("repoConfigFingerprint", func() {
 		// One request, and it must be sensitive to what a configuration file
 		// could live in and to nothing else. Fingerprinting the head commit
 		// instead would report a change on every commit, and re-probe every
