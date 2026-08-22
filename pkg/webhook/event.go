@@ -1,8 +1,3 @@
-// Package webhook parses and de-duplicates GitHub webhook deliveries.
-//
-// Signature verification is not reimplemented here - github.com/jferrl/
-// go-githubauth/webhook already does it in constant time and ships the header
-// constants this package re-exports.
 package webhook
 
 import (

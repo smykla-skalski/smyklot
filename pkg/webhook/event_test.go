@@ -1,17 +1,17 @@
 package webhook_test
 
 import (
+	"fmt"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
-	"github.com/smykla-skalski/smyklot/internal/githubtest"
 	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
 
-// issueCommentPayload renders a delivery body shaped like GitHub's, trimmed to
-// the fields the parser reads
-func issueCommentPayload(action, body, authorType string, isPR bool, updatedAt string) []byte {
-	return githubtest.IssueCommentPayload(githubtest.IssueComment{
+// delivery renders a body shaped like GitHub's, trimmed to the fields the
+// parser reads.
+func delivery(action, body, authorType string, isPR bool, updatedAt string) []byte {
+	return issueCommentPayload(issueComment{
 		Action:        action,
 		Body:          body,
 		AuthorType:    authorType,
@@ -23,19 +23,19 @@ func issueCommentPayload(action, body, authorType string, isPR bool, updatedAt s
 var _ = Describe("ParseIssueComment [Unit]", func() {
 	It("should read every field the executor needs", func() {
 		event, err := webhook.ParseIssueComment(
-			issueCommentPayload("created", "/approve", "User", true, "2026-08-08T10:00:00Z"),
+			delivery("created", "/approve", "User", true, "2026-08-08T10:00:00Z"),
 		)
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(event.Action).To(Equal("created"))
-		Expect(event.Comment.ID).To(Equal(int64(555)))
+		Expect(event.Comment.ID).To(Equal(int64(testCommentID)))
 		Expect(event.Comment.Body).To(Equal("/approve"))
-		Expect(event.Comment.User.Login).To(Equal("someone"))
-		Expect(event.Issue.Number).To(Equal(42))
-		Expect(event.Repository.Owner.Login).To(Equal("smykla-skalski"))
-		Expect(event.Repository.ID).To(Equal(int64(githubtest.DefaultRepoID)))
-		Expect(event.Repository.Name).To(Equal("smyklot"))
-		Expect(event.Installation.ID).To(Equal(int64(987)))
+		Expect(event.Comment.User.Login).To(Equal(testAuthor))
+		Expect(event.Issue.Number).To(Equal(testPRNumber))
+		Expect(event.Repository.Owner.Login).To(Equal(testOwner))
+		Expect(event.Repository.ID).To(Equal(int64(testRepoID)))
+		Expect(event.Repository.Name).To(Equal(testRepo))
+		Expect(event.Installation.ID).To(Equal(int64(testInstallation)))
 	})
 
 	It("should reject a malformed body", func() {
@@ -66,7 +66,7 @@ var _ = Describe("IssueCommentEvent.Actionable [Unit]", func() {
 	DescribeTable("should decide whether a delivery can produce any action",
 		func(action, authorType string, isPR, expected bool) {
 			event, err := webhook.ParseIssueComment(
-				issueCommentPayload(action, "/approve", authorType, isPR, "2026-08-08T10:00:00Z"),
+				delivery(action, "/approve", authorType, isPR, "2026-08-08T10:00:00Z"),
 			)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(event.Actionable()).To(Equal(expected))
@@ -87,7 +87,7 @@ var _ = Describe("IssueCommentEvent.ContentKey [Unit]", func() {
 		GinkgoHelper()
 
 		event, err := webhook.ParseIssueComment(
-			issueCommentPayload(action, body, "User", true, updatedAt),
+			delivery(action, body, "User", true, updatedAt),
 		)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -120,8 +120,9 @@ var _ = Describe("IssueCommentEvent.ContentKey [Unit]", func() {
 
 	It("should name the repository and the comment", func() {
 		Expect(key("created", "/approve", "2026-08-08T10:00:00Z")).
-			To(HavePrefix(
-				"issue_comment:created:smykla-skalski/smyklot:555:2026-08-08T10:00:00Z:",
-			))
+			To(HavePrefix(fmt.Sprintf(
+				"issue_comment:created:%s/%s:%d:2026-08-08T10:00:00Z:",
+				testOwner, testRepo, testCommentID,
+			)))
 	})
 })
