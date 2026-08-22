@@ -288,17 +288,14 @@ func parsePullRequest(
 	if source.Action == "" || payload.Number <= 0 {
 		return nil, fmt.Errorf("pull request payload is missing action or number")
 	}
-	signal := Signal{
-		Kind: SignalWakePullRequest, PullRequest: payload.Number,
-		HeadSHA: payload.PullRequest.Head.SHA,
-	}
+	kind := SignalWakePullRequest
+	merged := false
+	label := ""
 	switch source.Action {
 	case "closed":
-		signal.Kind = SignalPullRequestDone
-		signal.Merged = payload.PullRequest.Merged
+		kind, merged = SignalPullRequestDone, payload.PullRequest.Merged
 	case "unlabeled":
-		signal.Kind = SignalLabelRemoved
-		signal.Label = payload.Label.Name
+		kind, label = SignalLabelRemoved, payload.Label.Name
 	case "opened", "synchronize", "reopened", "ready_for_review", "converted_to_draft", "edited", "labeled",
 		"unlocked", "enqueued", "dequeued":
 	default:
@@ -307,20 +304,22 @@ func parsePullRequest(
 		}, nil
 	}
 
-	signal.EventKey = fmt.Sprintf(
-		"%s:%d:%d:%s:%s:%s:%s",
-		webhook.EventPullRequest,
-		source.Repository.ID,
-		payload.Number,
-		source.Action,
-		payload.PullRequest.Head.SHA,
-		payload.PullRequest.UpdatedAt,
-		payload.Label.Name,
-	)
-
 	return &Notification{
 		Event: webhook.EventPullRequest, Action: source.Action, Source: source,
-		Signals: []Signal{signal},
+		Signals: []Signal{{
+			Kind: kind, PullRequest: payload.Number,
+			HeadSHA: payload.PullRequest.Head.SHA, Merged: merged, Label: label,
+			EventKey: fmt.Sprintf(
+				"%s:%d:%d:%s:%s:%s:%s",
+				webhook.EventPullRequest,
+				source.Repository.ID,
+				payload.Number,
+				source.Action,
+				payload.PullRequest.Head.SHA,
+				payload.PullRequest.UpdatedAt,
+				payload.Label.Name,
+			),
+		}},
 	}, nil
 }
 
