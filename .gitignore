@@ -4,6 +4,10 @@ tmp
 bin/
 *.test
 
+# A bare `go build ./cmd/smyklot` drops the binary here, named after the directory.
+# Anchored, so it cannot match charts/smyklot or cmd/smyklot.
+/smyklot
+
 # Built from the panel frontend and embedded into the Go binary. Keeping this
 # generated archive out of Git prevents every frontend change from conflicting
 # on the same binary file.
