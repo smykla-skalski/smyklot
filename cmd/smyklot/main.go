@@ -70,7 +70,6 @@ const (
 	errInvalidInstallID    = "invalid installation ID"
 	errCommentTooLong      = "comment body exceeds maximum length"
 	errInvalidRepoName     = "invalid repository owner or name"
-	selfApprovalNotAllowed = "(self-approval not allowed)"
 	maxCommentBodyLength   = 10000 // 10KB - cap on untrusted comment bodies
 	stepSummaryTemplate    = `## Smyklot Configuration
 
@@ -112,24 +111,6 @@ const (
 {{range $alias, $cmd := .CommandAliases}}| ` + "`{{$alias}}`" + ` | ` + "`{{$cmd}}`" + ` |
 {{end}}{{end}}`
 )
-
-// RuntimeConfig holds the runtime configuration for the action
-type RuntimeConfig struct {
-	Token               string
-	CommentBody         string
-	CommentID           string
-	CommentAction       string
-	PRNumber            string
-	RepoOwner           string
-	RepoName            string
-	CommentAuthor       string
-	GitHubAppPrivateKey string
-	GitHubAppClientID   string
-	GitHubAppID         string
-	InstallationID      string
-	BotUsername         string // Bot username for identifying bot's own comments/reviews
-	APIBaseURL          string // GitHub API base URL; empty uses the public API
-}
 
 // stepSummaryData holds data for the step summary template.
 type stepSummaryData struct {
@@ -280,18 +261,18 @@ func run(cmd *cobra.Command, _ []string) error {
 func executeComment(
 	ctx context.Context,
 	client *github.Client,
-	rc *RuntimeConfig,
+	rc *bot.RuntimeConfig,
 	bc *config.Config,
 ) error {
-	return executeCommentWithEnvironment(ctx, client, rc, bc, commandEnvironment{})
+	return executeCommentWithEnvironment(ctx, client, rc, bc, bot.CommandEnvironment{})
 }
 
 func executeCommentWithEnvironment(
 	ctx context.Context,
 	client *github.Client,
-	rc *RuntimeConfig,
+	rc *bot.RuntimeConfig,
 	bc *config.Config,
-	environment commandEnvironment,
+	environment bot.CommandEnvironment,
 ) error {
 	// Parse the command from the comment
 	//
@@ -481,8 +462,8 @@ func executeCommentWithEnvironment(
 }
 
 // loadRuntimeConfig loads runtime configuration from flags and environment
-func loadRuntimeConfig(cmd *cobra.Command) *RuntimeConfig {
-	rc := &RuntimeConfig{}
+func loadRuntimeConfig(cmd *cobra.Command) *bot.RuntimeConfig {
+	rc := &bot.RuntimeConfig{}
 
 	// Get values from flags
 	rc.Token, _ = cmd.Flags().GetString(flagToken)
@@ -551,7 +532,7 @@ func loadEnvIfEmpty(target *string, envVar string) {
 }
 
 // validateConfig validates that all required configuration is present
-func validateConfig(rc *RuntimeConfig) error {
+func validateConfig(rc *bot.RuntimeConfig) error {
 	if rc.Token == "" {
 		return bot.NewEnvVarError(bot.ErrMissingEnvVar, envGitHubToken)
 	}
@@ -564,7 +545,7 @@ func validateConfig(rc *RuntimeConfig) error {
 //
 // The service knows all of this from the delivery payload before it mints a
 // token, so it can reject a bad delivery without doing any work first.
-func validateCommentInput(rc *RuntimeConfig) error {
+func validateCommentInput(rc *bot.RuntimeConfig) error {
 	requiredFields := []struct {
 		value  string
 		envVar string
@@ -616,7 +597,7 @@ func validateCommentInput(rc *RuntimeConfig) error {
 func postFeedback(
 	ctx context.Context,
 	client *github.Client,
-	rc *RuntimeConfig,
+	rc *bot.RuntimeConfig,
 	prNum, commentID int,
 	message string,
 	reaction github.ReactionType,
@@ -659,7 +640,7 @@ func postFeedback(
 }
 
 // addEyesReaction adds an eyes reaction to a comment to acknowledge the command.
-func addEyesReaction(ctx context.Context, client *github.Client, rc *RuntimeConfig, commentID int) error {
+func addEyesReaction(ctx context.Context, client *github.Client, rc *bot.RuntimeConfig, commentID int) error {
 	if err := client.AddReaction(
 		ctx,
 		rc.RepoOwner,
@@ -677,7 +658,7 @@ func addEyesReaction(ctx context.Context, client *github.Client, rc *RuntimeConf
 func postOperationFailure(
 	ctx context.Context,
 	client *github.Client,
-	rc *RuntimeConfig,
+	rc *bot.RuntimeConfig,
 	prNum, commentID int,
 	operationErr error,
 	feedbackFunc func(string) *feedback.Feedback,
@@ -739,7 +720,7 @@ func checkUserPermission(
 func handleUnauthorized(
 	ctx context.Context,
 	client *github.Client,
-	rc *RuntimeConfig,
+	rc *bot.RuntimeConfig,
 	checker *permissions.Checker,
 	prNum, commentID int,
 ) error {
@@ -748,26 +729,11 @@ func handleUnauthorized(
 	return postFeedback(ctx, client, rc, prNum, commentID, fb.Message, github.ReactionError)
 }
 
-// isBotAlreadyApproved checks if the bot has already approved the PR.
-// Returns true if bot already approved, false otherwise.
-//
-// The botUsername parameter should be provided from RuntimeConfig.BotUsername
-// to avoid calling GetAuthenticatedUser which fails with GitHub App tokens.
-func isBotAlreadyApproved(info *github.PRInfo, botUsername string) bool {
-	for _, approver := range info.ApprovedBy {
-		if approver == botUsername {
-			return true
-		}
-	}
-
-	return false
-}
-
 // handleApprove handles the /approve command.
 // executeApprove executes the approve command and returns feedback
 //
 //nolint:unparam // error return kept for consistent function signature
-func executeApprove(ctx context.Context, client *github.Client, rc *RuntimeConfig, bc *config.Config, prNum int) (*feedback.Feedback, error) {
+func executeApprove(ctx context.Context, client *github.Client, rc *bot.RuntimeConfig, bc *config.Config, prNum int) (*feedback.Feedback, error) {
 	// Get PR info to check existing approvals and prevent self-approval
 	info, err := client.GetPRInfo(ctx, rc.RepoOwner, rc.RepoName, prNum)
 	if err != nil {
@@ -778,12 +744,12 @@ func executeApprove(ctx context.Context, client *github.Client, rc *RuntimeConfi
 	if !bc.AllowSelfApproval && info.Author == rc.CommentAuthor {
 		return feedback.NewUnauthorized(
 			rc.CommentAuthor,
-			[]string{selfApprovalNotAllowed},
+			[]string{bot.SelfApprovalNotAllowed},
 		), nil
 	}
 
 	// Check if bot already approved the PR (prevents duplicate approvals from edits/reactions)
-	if isBotAlreadyApproved(info, rc.BotUsername) {
+	if bot.IsBotAlreadyApproved(info, rc.BotUsername) {
 		// Bot already approved - return feedback (filtered for new comments)
 		return feedback.NewAlreadyApproved(rc.BotUsername), nil
 	}
@@ -811,13 +777,13 @@ func executeApprove(ctx context.Context, client *github.Client, rc *RuntimeConfi
 func executeMerge(
 	ctx context.Context,
 	client *github.Client,
-	rc *RuntimeConfig,
+	rc *bot.RuntimeConfig,
 	bc *config.Config,
 	prNum, commentID int,
 	method github.MergeMethod,
 	waitForCI bool,
 	requiredChecksOnly bool,
-	environment commandEnvironment,
+	environment bot.CommandEnvironment,
 ) (*feedback.Feedback, error) {
 	// Get PR info to check if it's mergeable and get base branch
 	info, err := client.GetPRInfo(ctx, rc.RepoOwner, rc.RepoName, prNum)
@@ -832,9 +798,9 @@ func executeMerge(
 			requiredChecksOnly, environment,
 		)
 	}
-	if environment.pendingCI != nil {
+	if environment.PendingCI != nil {
 		var result *feedback.Feedback
-		accepted, err := environment.pendingCI.cancelAndRun(
+		accepted, err := environment.PendingCI.CancelAndRun(
 			ctx,
 			prNum,
 			"superseded by an immediate merge command",
@@ -842,7 +808,7 @@ func executeMerge(
 				var operationErr error
 				result, operationErr = executeMerge(
 					ctx, client, rc, bc, prNum, commentID, method,
-					false, requiredChecksOnly, commandEnvironment{},
+					false, requiredChecksOnly, bot.CommandEnvironment{},
 				)
 
 				return operationErr
@@ -881,7 +847,7 @@ func executeMerge(
 	}
 
 	// Check if bot already approved the PR (prevents duplicate approvals from edits/reactions)
-	botAlreadyApproved := isBotAlreadyApproved(info, rc.BotUsername)
+	botAlreadyApproved := bot.IsBotAlreadyApproved(info, rc.BotUsername)
 
 	// Check if user already approved the PR (avoid redundant bot approval)
 	userAlreadyApproved := false
@@ -955,7 +921,7 @@ func shouldEnableAutoMerge(err error) bool {
 func enableAutoMerge(
 	ctx context.Context,
 	client *github.Client,
-	rc *RuntimeConfig,
+	rc *bot.RuntimeConfig,
 	bc *config.Config,
 	prNum int,
 	method github.MergeMethod,
@@ -985,21 +951,21 @@ func enableAutoMerge(
 func executePendingCIMerge(
 	ctx context.Context,
 	client *github.Client,
-	rc *RuntimeConfig,
+	rc *bot.RuntimeConfig,
 	bc *config.Config,
 	prNum, commentID int,
 	method github.MergeMethod,
 	info *github.PRInfo,
 	requiredChecksOnly bool,
-	environment commandEnvironment,
+	environment bot.CommandEnvironment,
 ) (*feedback.Feedback, error) {
 	// Get PR head SHA for CI status check
 	headRef, err := client.GetPRHeadRef(ctx, rc.RepoOwner, rc.RepoName, prNum)
 	if err != nil {
 		return feedback.NewMergeFailed("failed to get PR head ref: " + err.Error()), nil
 	}
-	if environment.pendingCI == nil {
-		serviceOwned, ownershipErr := pendingCIServiceOwned(
+	if environment.PendingCI == nil {
+		serviceOwned, ownershipErr := bot.PendingCIServiceOwned(
 			ctx, client, rc.RepoOwner, rc.RepoName, prNum, rc.BotUsername,
 		)
 		if ownershipErr != nil {
@@ -1012,18 +978,18 @@ func executePendingCIMerge(
 		}
 	}
 	mode := storage.PendingCIModeLabels
-	if environment.pendingCI != nil && environment.pendingCIMode != nil {
-		resolvedMode, modeErr := environment.pendingCIMode.PendingCIMode(ctx, info.BaseBranch)
+	if environment.PendingCI != nil && environment.PendingCIMode != nil {
+		resolvedMode, modeErr := environment.PendingCIMode.PendingCIMode(ctx, info.BaseBranch)
 		if modeErr != nil {
 			return feedback.NewMergeFailed(modeErr.Error()), nil
 		}
 		mode = resolvedMode
 	}
-	if environment.pendingCI == nil {
+	if environment.PendingCI == nil {
 		// The Action has no durable reconciler, so it delegates the wait to
 		// GitHub labels. The service resolves App-bound requirements in its
 		// activation guard, where it can exclude only Smyklot's own check.
-		requiredChecks, err := pendingCIRequiredChecks(
+		requiredChecks, err := bot.PendingCIRequiredChecks(
 			ctx, client, rc.RepoOwner, rc.RepoName, info.BaseBranch, requiredChecksOnly,
 		)
 		if err != nil {
@@ -1036,7 +1002,7 @@ func executePendingCIMerge(
 			return feedback.NewMergeFailed("failed to get CI status: " + err.Error()), nil
 		}
 		if checkStatus.AllPassing {
-			serviceOwned, ownershipErr := pendingCIServiceOwned(
+			serviceOwned, ownershipErr := bot.PendingCIServiceOwned(
 				ctx, client, rc.RepoOwner, rc.RepoName, prNum, rc.BotUsername,
 			)
 			if ownershipErr != nil {
@@ -1049,18 +1015,18 @@ func executePendingCIMerge(
 		}
 	}
 
-	if failure := pendingCIApprovalAllowed(rc, bc, info); failure != nil {
+	if failure := bot.PendingCIApprovalAllowed(rc, bc, info); failure != nil {
 		return failure, nil
 	}
 
 	label := getPendingCILabel(method, requiredChecksOnly)
-	if environment.pendingCI == nil {
-		if failure := approvePendingCI(
-			ctx, client, rc, prNum, pendingCIApprovalRequired(rc, info),
+	if environment.PendingCI == nil {
+		if failure := bot.ApprovePendingCI(
+			ctx, client, rc, prNum, bot.PendingCIApprovalRequired(rc, info),
 		); failure != nil {
 			return failure, nil
 		}
-		serviceOwned, ownershipErr := pendingCIServiceOwned(
+		serviceOwned, ownershipErr := bot.PendingCIServiceOwned(
 			ctx, client, rc.RepoOwner, rc.RepoName, prNum, rc.BotUsername,
 		)
 		if ownershipErr != nil {
@@ -1080,47 +1046,47 @@ func executePendingCIMerge(
 		if mode == storage.PendingCIModeChecks {
 			artifactKind = pendingci.ArtifactCheck
 		}
-		failures, coordinationErr := activatePendingCI(
-			ctx, client, environment.pendingCI, environment.pendingCIActivation,
-			pendingCIActivationRequest{
-				runtime: rc, owner: rc.RepoOwner, repository: rc.RepoName,
-				pullRequest: prNum, commentID: commentID, headSHA: headRef,
-				baseBranch: info.BaseBranch, method: method,
-				requiredChecksOnly: requiredChecksOnly, label: label,
-				artifactKind: artifactKind,
+		failures, coordinationErr := bot.ActivatePendingCI(
+			ctx, client, environment.PendingCI, environment.PendingCIActivation,
+			bot.PendingCIActivationRequest{
+				Runtime: rc, Owner: rc.RepoOwner, Repository: rc.RepoName,
+				PullRequest: prNum, CommentID: commentID, HeadSHA: headRef,
+				BaseBranch: info.BaseBranch, Method: method,
+				RequiredChecksOnly: requiredChecksOnly, Label: label,
+				ArtifactKind: artifactKind,
 			},
 		)
 		if coordinationErr != nil {
 			return nil, coordinationErr
 		}
-		if failures.approval != nil {
-			return feedback.NewApprovalFailed(failures.approval.Error()), nil
+		if failures.Approval != nil {
+			return feedback.NewApprovalFailed(failures.Approval.Error()), nil
 		}
-		if failures.label != nil {
+		if failures.Label != nil {
 			return feedback.NewMergeFailed(
-				"failed to record the pending CI request: " + failures.label.Error(),
+				"failed to record the pending CI request: " + failures.Label.Error(),
 			), nil
 		}
-		if failures.check != nil {
+		if failures.Check != nil {
 			return feedback.NewMergeFailed(
-				"failed to record the pending CI check: " + failures.check.Error(),
+				"failed to record the pending CI check: " + failures.Check.Error(),
 			), nil
 		}
-		if failures.reaction != nil {
+		if failures.Reaction != nil {
 			return feedback.NewMergeFailed(
-				"failed to record the pending CI request: " + failures.reaction.Error(),
+				"failed to record the pending CI request: " + failures.Reaction.Error(),
 			), nil
 		}
-		if failures.command != nil {
-			return nil, failures.command
+		if failures.Command != nil {
+			return nil, failures.Command
 		}
-		if failures.stale {
+		if failures.Stale {
 			return nil, nil
 		}
-		if failures.stoodDown {
+		if failures.StoodDown {
 			return nil, nil
 		}
-		if failures.ambiguous {
+		if failures.Ambiguous {
 			return feedback.NewMergeFailed(
 				"GitHub reported multiple after-CI commands with the same timestamp; reissue the command to choose the intended merge method",
 			), nil
@@ -1139,7 +1105,7 @@ func executePendingCIMerge(
 func executeImmediateMerge(
 	ctx context.Context,
 	client *github.Client,
-	rc *RuntimeConfig,
+	rc *bot.RuntimeConfig,
 	bc *config.Config,
 	prNum int,
 	method github.MergeMethod,
@@ -1150,12 +1116,12 @@ func executeImmediateMerge(
 	if !bc.AllowSelfApproval && info.Author == rc.CommentAuthor {
 		return feedback.NewUnauthorized(
 			rc.CommentAuthor,
-			[]string{selfApprovalNotAllowed},
+			[]string{bot.SelfApprovalNotAllowed},
 		), nil
 	}
 
 	// Check if bot already approved the PR
-	botAlreadyApproved := isBotAlreadyApproved(info, rc.BotUsername)
+	botAlreadyApproved := bot.IsBotAlreadyApproved(info, rc.BotUsername)
 
 	// Check if user already approved the PR
 	userAlreadyApproved := false
@@ -1235,7 +1201,7 @@ func getMergeMethodName(method github.MergeMethod) string {
 // executeUnapprove executes the unapprove command and returns feedback
 //
 //nolint:unparam // error return kept for consistent function signature
-func executeUnapprove(ctx context.Context, client *github.Client, rc *RuntimeConfig, bc *config.Config, prNum int) (*feedback.Feedback, error) {
+func executeUnapprove(ctx context.Context, client *github.Client, rc *bot.RuntimeConfig, bc *config.Config, prNum int) (*feedback.Feedback, error) {
 	// Dismiss the review using configured bot username
 	if err := client.DismissReviewByUsername(ctx, rc.RepoOwner, rc.RepoName, prNum, rc.BotUsername); err != nil {
 		return feedback.NewUnapproveFailed(err.Error()), nil
@@ -1250,7 +1216,7 @@ func executeUnapprove(ctx context.Context, client *github.Client, rc *RuntimeCon
 // then deletes the triggering comment.
 //
 //nolint:unparam // error return kept for consistent function signature
-func executeCleanup(ctx context.Context, client *github.Client, rc *RuntimeConfig, bc *config.Config, prNum, commentID int) (*feedback.Feedback, error) {
+func executeCleanup(ctx context.Context, client *github.Client, rc *bot.RuntimeConfig, bc *config.Config, prNum, commentID int) (*feedback.Feedback, error) {
 	// Use configured bot username to identify bot's comments
 	botUsername := rc.BotUsername
 
@@ -1328,7 +1294,7 @@ func executeCleanup(ctx context.Context, client *github.Client, rc *RuntimeConfi
 }
 
 // postCombinedFeedback posts combined feedback with appropriate reaction
-func postCombinedFeedback(ctx context.Context, client *github.Client, rc *RuntimeConfig, prNum, commentID int, fb *feedback.Feedback) error {
+func postCombinedFeedback(ctx context.Context, client *github.Client, rc *bot.RuntimeConfig, prNum, commentID int, fb *feedback.Feedback) error {
 	// Map feedback type to reaction
 	var reaction github.ReactionType
 	switch fb.Type {
@@ -1402,7 +1368,7 @@ func deletedCommandsToReport(bc *config.Config, parsedCmd commands.Command) []co
 func handleDeletedComment(
 	ctx context.Context,
 	client *github.Client,
-	rc *RuntimeConfig,
+	rc *bot.RuntimeConfig,
 	deletedCommands []commands.CommandType,
 ) error {
 	// Convert PR number and comment ID
@@ -1439,7 +1405,7 @@ func commandNames(cmdTypes []commands.CommandType) []string {
 }
 
 // handleHelp handles the /help command.
-func handleHelp(ctx context.Context, client *github.Client, rc *RuntimeConfig, prNum, commentID int) error {
+func handleHelp(ctx context.Context, client *github.Client, rc *bot.RuntimeConfig, prNum, commentID int) error {
 	// Add eyes reaction to acknowledge
 	if err := addEyesReaction(ctx, client, rc, commentID); err != nil {
 		return err
@@ -1455,11 +1421,11 @@ func handleHelp(ctx context.Context, client *github.Client, rc *RuntimeConfig, p
 func handleReactions(
 	ctx context.Context,
 	client *github.Client,
-	rc *RuntimeConfig,
+	rc *bot.RuntimeConfig,
 	bc *config.Config,
 	checker *permissions.Checker,
 	prNum, commentID int,
-	environment commandEnvironment,
+	environment bot.CommandEnvironment,
 ) error {
 	// Fetch reactions - use PR reactions if commentID equals prNum (PR description),
 	// otherwise get comment reactions
@@ -1585,7 +1551,7 @@ func handleReactions(
 func handleRemovedReactions(
 	ctx context.Context,
 	client *github.Client,
-	rc *RuntimeConfig,
+	rc *bot.RuntimeConfig,
 	bc *config.Config,
 	prNum int,
 	reactionMap map[github.ReactionType]bool,
@@ -1675,7 +1641,7 @@ func handleRemovedReactions(
 func handleReactionApprove(
 	ctx context.Context,
 	client *github.Client,
-	rc *RuntimeConfig,
+	rc *bot.RuntimeConfig,
 	bc *config.Config,
 	prNum, commentID int,
 	approver string,
@@ -1697,12 +1663,12 @@ func handleReactionApprove(
 
 	// Prevent self-approval unless explicitly allowed
 	if !bc.AllowSelfApproval && info.Author == approver {
-		fb := feedback.NewUnauthorized(approver, []string{selfApprovalNotAllowed})
+		fb := feedback.NewUnauthorized(approver, []string{bot.SelfApprovalNotAllowed})
 		return postFeedback(ctx, client, rc, prNum, commentID, fb.Message, github.ReactionError)
 	}
 
 	// Check if bot already approved the PR (prevents duplicate approvals)
-	if isBotAlreadyApproved(info, rc.BotUsername) {
+	if bot.IsBotAlreadyApproved(info, rc.BotUsername) {
 		// Bot already approved - skip approval but still add label
 		_ = client.AddLabel(
 			ctx,
@@ -1747,7 +1713,7 @@ func handleReactionApprove(
 func handleReactionMerge(
 	ctx context.Context,
 	client *github.Client,
-	rc *RuntimeConfig,
+	rc *bot.RuntimeConfig,
 	bc *config.Config,
 	prNum, commentID int,
 	author string,
@@ -1769,7 +1735,7 @@ func handleReactionMerge(
 
 	// Prevent self-approval unless explicitly allowed (merge also approves)
 	if !bc.AllowSelfApproval && info.Author == author {
-		fb := feedback.NewUnauthorized(author, []string{selfApprovalNotAllowed})
+		fb := feedback.NewUnauthorized(author, []string{bot.SelfApprovalNotAllowed})
 		return postFeedback(ctx, client, rc, prNum, commentID, fb.Message, github.ReactionError)
 	}
 
@@ -1779,7 +1745,7 @@ func handleReactionMerge(
 	}
 
 	// Check if bot already approved the PR (prevents duplicate approvals from edits/reactions)
-	botAlreadyApproved := isBotAlreadyApproved(info, rc.BotUsername)
+	botAlreadyApproved := bot.IsBotAlreadyApproved(info, rc.BotUsername)
 
 	// Check if user already approved the PR (avoid redundant bot approval)
 	userAlreadyApproved := false
@@ -1874,10 +1840,10 @@ func handleReactionMerge(
 func handleReactionCleanup(
 	ctx context.Context,
 	client *github.Client,
-	rc *RuntimeConfig,
+	rc *bot.RuntimeConfig,
 	bc *config.Config,
 	prNum, commentID int,
-	environment commandEnvironment,
+	environment bot.CommandEnvironment,
 ) error {
 	fb, accepted, err := executeCoordinatedCleanup(
 		ctx, client, rc, bc, prNum, commentID,
@@ -1911,11 +1877,11 @@ func handleReactionCleanup(
 func executeCoordinatedCleanup(
 	ctx context.Context,
 	client *github.Client,
-	rc *RuntimeConfig,
+	rc *bot.RuntimeConfig,
 	bc *config.Config,
 	prNum, commentID int,
 	reason string,
-	environment commandEnvironment,
+	environment bot.CommandEnvironment,
 ) (*feedback.Feedback, bool, error) {
 	var result *feedback.Feedback
 	operation := func() error {
@@ -1924,12 +1890,12 @@ func executeCoordinatedCleanup(
 
 		return err
 	}
-	if environment.pendingCI == nil {
+	if environment.PendingCI == nil {
 		err := operation()
 
 		return result, true, err
 	}
-	accepted, err := environment.pendingCI.cancelAndRun(
+	accepted, err := environment.PendingCI.CancelAndRun(
 		ctx, prNum, reason, operation,
 	)
 
@@ -1937,7 +1903,7 @@ func executeCoordinatedCleanup(
 }
 
 // postNotMergeable posts feedback when PR is not mergeable.
-func postNotMergeable(ctx context.Context, client *github.Client, rc *RuntimeConfig, prNum, commentID int) error {
+func postNotMergeable(ctx context.Context, client *github.Client, rc *bot.RuntimeConfig, prNum, commentID int) error {
 	fb := feedback.NewNotMergeable()
 
 	return postFeedback(ctx, client, rc, prNum, commentID, fb.Message, github.ReactionWarning)
@@ -1961,7 +1927,7 @@ func sanitizeCommentBody(body string, maxLen int) string {
 //
 // Returns an empty string if GitHub App credentials are not configured.
 // Returns the token on success.
-func getInstallationToken(rc *RuntimeConfig) (string, error) {
+func getInstallationToken(rc *bot.RuntimeConfig) (string, error) {
 	// Check if GitHub App credentials are provided
 	if rc.GitHubAppPrivateKey == "" || rc.InstallationID == "" {
 		return "", nil
@@ -2002,7 +1968,7 @@ func getInstallationToken(rc *RuntimeConfig) (string, error) {
 }
 
 // writeStepSummary writes the effective configuration to GitHub Actions step summary.
-func writeStepSummary(rc *RuntimeConfig, bc *config.Config) error {
+func writeStepSummary(rc *bot.RuntimeConfig, bc *config.Config) error {
 	// Rendered before anything is opened, so bot.AppendStepSummary stays the one
 	// place that knows how to write to the summary
 	var rendered strings.Builder

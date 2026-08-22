@@ -5,13 +5,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
 
 func TestPendingCISourceClaimWaitsForRepositoryOwnership(t *testing.T) {
 	t.Parallel()
-	coordinator := newPendingCICoordinator()
+	coordinator := bot.NewCoordinator()
 	ownerStarted := make(chan struct{})
 	releaseOwner := make(chan struct{})
 	ownerDone := make(chan error, 1)
@@ -70,7 +71,7 @@ func TestPendingCISourceClaimCancelsWithClaimedOrder(t *testing.T) {
 		},
 	}
 	result, err := claimPendingCISource(
-		t.Context(), store, newPendingCICoordinator(),
+		t.Context(), store, bot.NewCoordinator(),
 		pendingci.SourceRevisionRequest{RepositoryID: "repository:7"},
 		&pendingci.CancelRequest{RepositoryID: "repository:7", PullRequest: 198},
 	)

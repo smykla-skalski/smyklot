@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
@@ -80,7 +81,7 @@ func relevantPendingCISignals(signals []webhook.PendingCISignal) []webhook.Pendi
 			continue
 		}
 		if signal.Kind == webhook.SignalLabelRemoved {
-			_, _, label := parsePendingCILabel(signal.Label)
+			_, _, label := bot.ParsePendingCILabel(signal.Label)
 			if label == "" {
 				continue
 			}

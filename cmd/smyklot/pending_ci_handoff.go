@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 )
 
@@ -20,7 +21,7 @@ type pendingCIHandoffStore interface {
 // caller that owns the installation client.
 type pendingCIHandoff struct {
 	store       pendingCIHandoffStore
-	coordinator pendingCIExclusive
+	coordinator bot.Exclusive
 	wake        func()
 }
 

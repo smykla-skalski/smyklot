@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	adminpanel "github.com/smykla-skalski/smyklot/internal/panel"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 )
@@ -15,7 +16,7 @@ func TestApplyRuntimeSettingsUpdatesAndWakesPendingCI(t *testing.T) {
 	timing := defaultPendingCITiming()
 	reconciler := newPendingCIReconciler(
 		&reconcilerTestStore{}, reconcilerTestObserver{}, &reconcilerTestEffects{},
-		newPendingCICoordinator(), timing,
+		bot.NewCoordinator(), timing,
 	)
 	scheduler := newPendingCIScheduler(
 		&schedulerTestStore{}, reconciler,

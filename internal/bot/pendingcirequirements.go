@@ -1,4 +1,4 @@
-package main
+package bot
 
 import (
 	"context"
@@ -28,7 +28,7 @@ type pendingCIOwnershipReader interface {
 	) (bool, error)
 }
 
-func pendingCIServiceOwned(
+func PendingCIServiceOwned(
 	ctx context.Context,
 	reader pendingCIOwnershipReader,
 	owner, repository string,
@@ -53,7 +53,7 @@ func pendingCIServiceOwnedForState(
 	botUsername string,
 	state github.PullRequestState,
 ) (bool, error) {
-	if hasLabel(state.Labels, github.LegacyLabelPendingCIServiceOwner) {
+	if HasLabel(state.Labels, github.LegacyLabelPendingCIServiceOwner) {
 		return true, nil
 	}
 	owned, err := reader.HasPullRequestReaction(
@@ -67,7 +67,7 @@ func pendingCIServiceOwnedForState(
 	return owned, nil
 }
 
-func pendingCIActionOwns(
+func PendingCIActionOwns(
 	ctx context.Context,
 	reader pendingCIOwnershipReader,
 	owner, repository string,
@@ -81,7 +81,7 @@ func pendingCIActionOwns(
 		return false, fmt.Errorf("revalidate pending CI ownership: %w", err)
 	}
 
-	if !state.Open || state.HeadSHA != headSHA || !hasLabel(state.Labels, label) {
+	if !state.Open || state.HeadSHA != headSHA || !HasLabel(state.Labels, label) {
 		return false, nil
 	}
 	serviceOwned, err := pendingCIServiceOwnedForState(
@@ -94,7 +94,7 @@ func pendingCIActionOwns(
 	return !serviceOwned, nil
 }
 
-func pendingCIRequiredChecks(
+func PendingCIRequiredChecks(
 	ctx context.Context,
 	reader pendingCIRequirementReader,
 	owner, repository, baseBranch string,
@@ -130,7 +130,7 @@ func requiredCIStatusChecks(
 			return nil, err
 		}
 		if requirements.RequiredWorkflow {
-			return nil, errRequiredWorkflowsUnsupported
+			return nil, ErrRequiredWorkflowsUnsupported
 		}
 
 		return requirements.StatusChecks, nil

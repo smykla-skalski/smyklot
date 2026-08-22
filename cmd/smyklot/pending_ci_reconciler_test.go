@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 )
 
@@ -19,7 +20,7 @@ func TestPendingCIReconcilerMergesOnlyAtObservedHead(t *testing.T) {
 		store,
 		reconcilerTestObserver{observation: reconcilerObservation(now, pendingci.ObservedPassing)},
 		effects,
-		newPendingCICoordinator(),
+		bot.NewCoordinator(),
 		defaultPendingCITiming(),
 	)
 
@@ -46,7 +47,7 @@ func TestPendingCIReconcilerKeepsMergeRaceArmed(t *testing.T) {
 		store,
 		reconcilerTestObserver{observation: reconcilerObservation(now, pendingci.ObservedPassing)},
 		effects,
-		newPendingCICoordinator(),
+		bot.NewCoordinator(),
 		defaultPendingCITiming(),
 	)
 
@@ -71,7 +72,7 @@ func TestPendingCIReconcilerDoesNotMergeAfterLeaseInvalidation(t *testing.T) {
 		store,
 		reconcilerTestObserver{observation: reconcilerObservation(now, pendingci.ObservedPassing)},
 		effects,
-		newPendingCICoordinator(),
+		bot.NewCoordinator(),
 		defaultPendingCITiming(),
 	)
 
@@ -98,7 +99,7 @@ func TestPendingCIReconcilerDefersUnchangedFailure(t *testing.T) {
 	observation.Fingerprint = "failing"
 	reconciler := newPendingCIReconciler(
 		store, reconcilerTestObserver{observation: observation},
-		&reconcilerTestEffects{}, newPendingCICoordinator(), defaultPendingCITiming(),
+		&reconcilerTestEffects{}, bot.NewCoordinator(), defaultPendingCITiming(),
 	)
 
 	if err := reconciler.Process(context.Background(), request); err != nil {
@@ -123,7 +124,7 @@ func TestPendingCIReconcilerAppliesQuietPeriodChangesLive(t *testing.T) {
 		store,
 		reconcilerTestObserver{observation: reconcilerObservation(now, pendingci.ObservedPassing)},
 		effects,
-		newPendingCICoordinator(),
+		bot.NewCoordinator(),
 		timing,
 	)
 	reconciler.SetPassingQuiet(10 * time.Second)
@@ -147,7 +148,7 @@ func TestPendingCIReconcilerCompletesDurableCleanup(t *testing.T) {
 	request.UpdatedAt = now
 	reconciler := newPendingCIReconciler(
 		store, reconcilerTestObserver{}, effects,
-		newPendingCICoordinator(), defaultPendingCITiming(),
+		bot.NewCoordinator(), defaultPendingCITiming(),
 	)
 
 	if err := reconciler.Process(context.Background(), request); err != nil {
@@ -179,7 +180,7 @@ func TestPendingCIReconcilerPersistsCleanupRetry(t *testing.T) {
 	request.UpdatedAt = now
 	reconciler := newPendingCIReconciler(
 		store, reconcilerTestObserver{}, effects,
-		newPendingCICoordinator(), defaultPendingCITiming(),
+		bot.NewCoordinator(), defaultPendingCITiming(),
 	)
 
 	if err := reconciler.Process(context.Background(), request); err == nil {
@@ -205,7 +206,7 @@ func TestPendingCIReconcilerNeverRepeatsCleanedArtifacts(t *testing.T) {
 	request.UpdatedAt = now
 	reconciler := newPendingCIReconciler(
 		store, reconcilerTestObserver{}, effects,
-		newPendingCICoordinator(), defaultPendingCITiming(),
+		bot.NewCoordinator(), defaultPendingCITiming(),
 	)
 
 	if err := reconciler.Process(context.Background(), request); err == nil {
@@ -250,7 +251,7 @@ func TestPendingCIReconcilerRestoresRetiredCheckBeforeAdvancing(t *testing.T) {
 		store,
 		reconcilerTestObserver{observation: reconcilerObservation(now, pendingci.ObservedPending)},
 		effects,
-		newPendingCICoordinator(),
+		bot.NewCoordinator(),
 		defaultPendingCITiming(),
 	)
 
@@ -279,7 +280,7 @@ func TestPendingCIReconcilerKeepsReturningHeadForAtomicSwap(t *testing.T) {
 	request.RetiredCheckSlotID = &retiredID
 	reconciler := newPendingCIReconciler(
 		store, reconcilerTestObserver{}, effects,
-		newPendingCICoordinator(), defaultPendingCITiming(),
+		bot.NewCoordinator(), defaultPendingCITiming(),
 	)
 
 	handled, err := reconciler.reconcileRetiredCheck(
@@ -315,7 +316,7 @@ func TestPendingCIReconcilerDoesNotBaselineReplacementCurrentCheck(t *testing.T)
 	request.RetiredCheckSlotID = &retiredID
 	reconciler := newPendingCIReconciler(
 		store, reconcilerTestObserver{}, effects,
-		newPendingCICoordinator(), defaultPendingCITiming(),
+		bot.NewCoordinator(), defaultPendingCITiming(),
 	)
 
 	if err := reconciler.Process(t.Context(), request); err != nil {
@@ -341,7 +342,7 @@ func TestPendingCIReconcilerRevalidatesMergeExclusively(t *testing.T) {
 	request := reconcilerRequest(now.Add(-time.Minute))
 	request.RepositoryID = "repository"
 	reconciler := newPendingCIReconciler(
-		store, observer, effects, newPendingCICoordinator(), defaultPendingCITiming(),
+		store, observer, effects, bot.NewCoordinator(), defaultPendingCITiming(),
 	)
 
 	if err := reconciler.Process(context.Background(), request); err != nil {

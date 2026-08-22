@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 )
 
@@ -85,7 +86,7 @@ type pendingCIReconciler struct {
 	store     pendingCITransitionStore
 	observer  pendingCIObserver
 	effects   pendingCIEffects
-	exclusive pendingCIExclusive
+	exclusive bot.Exclusive
 	timingMu  sync.RWMutex
 	timing    pendingci.Timing
 }
@@ -94,7 +95,7 @@ func newPendingCIReconciler(
 	store pendingCITransitionStore,
 	observer pendingCIObserver,
 	effects pendingCIEffects,
-	exclusive pendingCIExclusive,
+	exclusive bot.Exclusive,
 	timing pendingci.Timing,
 ) *pendingCIReconciler {
 	return &pendingCIReconciler{

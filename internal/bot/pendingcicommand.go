@@ -1,4 +1,4 @@
-package main
+package bot
 
 import (
 	"context"
@@ -9,10 +9,9 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/github"
-	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
 
-type pendingCICommandStore interface {
+type PendingCICommandStore interface {
 	CheckArm(context.Context, pendingci.ArmRequest) error
 	Arm(context.Context, pendingci.ArmRequest) (pendingci.ArmResult, error)
 	GetArmed(context.Context, string, int) (pendingci.Request, error)
@@ -26,12 +25,12 @@ type pendingCIArtifactOwnership struct {
 	serviceFence bool
 }
 
-func (command *pendingCICommand) armedArtifactOwnership(
+func (command *PendingCICommand) armedArtifactOwnership(
 	ctx context.Context,
 	pullRequest int,
 	label string,
 ) (pendingCIArtifactOwnership, error) {
-	request, err := command.store.GetArmed(ctx, command.repositoryID, pullRequest)
+	request, err := command.Store.GetArmed(ctx, command.RepositoryID, pullRequest)
 	if errors.Is(err, storage.ErrNotFound) {
 		return pendingCIArtifactOwnership{}, nil
 	}
@@ -46,31 +45,31 @@ func (command *pendingCICommand) armedArtifactOwnership(
 	}, nil
 }
 
-type commandEnvironment struct {
-	pendingCI           *pendingCICommand
-	pendingCIActivation pendingCIActivationGuard
-	pendingCIMode       pendingCIModeResolver
+type CommandEnvironment struct {
+	PendingCI           *PendingCICommand
+	PendingCIActivation PendingCIActivationGuard
+	PendingCIMode       PendingCIModeResolver
 }
 
-// pendingCICommand translates an already-authorized command into durable
+// PendingCICommand translates an already-authorized command into durable
 // domain state. It knows neither parsing nor reconciliation policy.
-type pendingCICommand struct {
-	store              pendingCICommandStore
-	wake               func()
-	coordinator        pendingCIExclusive
-	targetID           string
-	installationID     int64
-	repositoryID       string
-	repositoryFullName string
-	sourceCommentID    int64
-	sourceRevision     string
-	sourceSequence     int
-	sourceOrder        int64
-	now                func() time.Time
-	checks             *githubPendingCIChecks
+type PendingCICommand struct {
+	Store              PendingCICommandStore
+	Wake               func()
+	Coordinator        Exclusive
+	TargetID           string
+	InstallationID     int64
+	RepositoryID       string
+	RepositoryFullName string
+	SourceCommentID    int64
+	SourceRevision     string
+	SourceSequence     int
+	SourceOrder        int64
+	Now                func() time.Time
+	Checks             PendingCIChecks
 }
 
-func (command *pendingCICommand) arm(
+func (command *PendingCICommand) arm(
 	ctx context.Context,
 	runtime *RuntimeConfig,
 	pullRequest, commentID int,
@@ -79,19 +78,19 @@ func (command *pendingCICommand) arm(
 	requiredChecksOnly bool,
 	label string,
 ) (*pendingci.Request, error) {
-	result, err := command.store.Arm(ctx, command.armRequest(
+	result, err := command.Store.Arm(ctx, command.armRequest(
 		runtime, pullRequest, commentID, headSHA, baseBranch,
 		method, requiredChecksOnly, label,
 	))
 	if err != nil {
 		return nil, fmt.Errorf("persist pending CI command: %w", err)
 	}
-	command.wake()
+	command.Wake()
 
 	return result.Superseded, nil
 }
 
-func (command *pendingCICommand) armCheck(
+func (command *PendingCICommand) armCheck(
 	ctx context.Context,
 	runtime *RuntimeConfig,
 	pullRequest, commentID int,
@@ -106,16 +105,16 @@ func (command *pendingCICommand) armCheck(
 	)
 	request.ArtifactKind = pendingci.ArtifactCheck
 	request.CheckSlotID = &checkSlotID
-	result, err := command.store.Arm(ctx, request)
+	result, err := command.Store.Arm(ctx, request)
 	if err != nil {
 		return nil, fmt.Errorf("persist pending CI command: %w", err)
 	}
-	command.wake()
+	command.Wake()
 
 	return result.Superseded, nil
 }
 
-func (command *pendingCICommand) checkArm(
+func (command *PendingCICommand) checkArm(
 	ctx context.Context,
 	runtime *RuntimeConfig,
 	pullRequest, commentID int,
@@ -124,13 +123,13 @@ func (command *pendingCICommand) checkArm(
 	requiredChecksOnly bool,
 	label string,
 ) error {
-	return command.store.CheckArm(ctx, command.armRequest(
+	return command.Store.CheckArm(ctx, command.armRequest(
 		runtime, pullRequest, commentID, headSHA, baseBranch,
 		method, requiredChecksOnly, label,
 	))
 }
 
-func (command *pendingCICommand) armRequest(
+func (command *PendingCICommand) armRequest(
 	runtime *RuntimeConfig,
 	pullRequest, commentID int,
 	headSHA, baseBranch string,
@@ -138,56 +137,24 @@ func (command *pendingCICommand) armRequest(
 	requiredChecksOnly bool,
 	label string,
 ) pendingci.ArmRequest {
-	requestedAt := command.now()
+	requestedAt := command.Now()
 
 	return pendingci.ArmRequest{
-		TargetID: command.targetID, InstallationID: command.installationID,
-		RepositoryID: command.repositoryID, RepositoryFullName: command.repositoryFullName,
+		TargetID: command.TargetID, InstallationID: command.InstallationID,
+		RepositoryID: command.RepositoryID, RepositoryFullName: command.RepositoryFullName,
 		PullRequest: pullRequest, HeadSHA: headSHA, BaseBranch: baseBranch,
 		MergeMethod: pendingci.MergeMethod(method), RequiredChecksOnly: requiredChecksOnly,
 		Requester: runtime.CommentAuthor, SourceCommentID: int64(commentID),
-		SourceRevision: command.sourceRevision, SourceSequence: command.sourceSequence,
-		SourceOrder:  command.sourceOrder,
+		SourceRevision: command.SourceRevision, SourceSequence: command.SourceSequence,
+		SourceOrder:  command.SourceOrder,
 		ArtifactKind: pendingci.ArtifactLabel,
 		Label:        label, RequestedAt: requestedAt,
 	}
 }
 
-func (s *server) commandEnvironment(
-	client *github.Client,
-	event *webhook.IssueCommentEvent,
-	sourceOrder int64,
-) commandEnvironment {
-	guard := githubPendingCIActivationGuard{
-		server: s, client: client,
-		targetID:     storage.InstallationID(event.Installation.ID),
-		repositoryID: storage.RepositoryID(event.Repository.ID),
-		owner:        event.Repository.Owner.Login,
-		repository:   event.Repository.Name,
-	}
-	return commandEnvironment{
-		pendingCIActivation: guard,
-		pendingCIMode:       guard,
-		pendingCI: &pendingCICommand{
-			store: s.store, wake: s.pendingCI.Wake,
-			coordinator:        s.pendingCICoordinator,
-			targetID:           storage.InstallationID(event.Installation.ID),
-			installationID:     event.Installation.ID,
-			repositoryID:       storage.RepositoryID(event.Repository.ID),
-			repositoryFullName: event.Repository.FullName,
-			sourceCommentID:    event.Comment.ID,
-			sourceRevision:     event.Comment.UpdatedAt,
-			sourceSequence:     event.SourceSequence(),
-			sourceOrder:        sourceOrder,
-			now:                func() time.Time { return time.Now().UTC() },
-			checks:             s.pendingCIChecks,
-		},
-	}
-}
-
-// cancelAndRun keeps durable cancellation and its external cleanup in one
+// CancelAndRun keeps durable cancellation and its external cleanup in one
 // repository-owned operation. A newer command cannot arm between the two.
-func (command *pendingCICommand) cancelAndRun(
+func (command *PendingCICommand) CancelAndRun(
 	ctx context.Context,
 	pullRequest int,
 	reason string,
@@ -197,7 +164,7 @@ func (command *pendingCICommand) cancelAndRun(
 		return false, errors.New("pending CI cleanup operation is required")
 	}
 	var result pendingci.CancelIntentResult
-	err := command.coordinator.Exclusive(ctx, command.repositoryID, func() error {
+	err := command.Coordinator.Exclusive(ctx, command.RepositoryID, func() error {
 		var transitionErr error
 		result, transitionErr = command.cancelPullRequestLocked(ctx, pullRequest, reason)
 		if transitionErr != nil || !result.Accepted {
@@ -212,7 +179,7 @@ func (command *pendingCICommand) cancelAndRun(
 		return operation()
 	})
 	if result.Request != nil {
-		command.wake()
+		command.Wake()
 	}
 	if err != nil {
 		return false, fmt.Errorf("cancel pending CI command: %w", err)
@@ -221,14 +188,14 @@ func (command *pendingCICommand) cancelAndRun(
 	return result.Accepted, nil
 }
 
-func (command *pendingCICommand) releaseBlockingCheck(
+func (command *PendingCICommand) releaseBlockingCheck(
 	ctx context.Context,
 	request pendingci.Request,
 ) error {
-	if command.checks == nil || request.CheckSlotID == nil {
+	if command.Checks == nil || request.CheckSlotID == nil {
 		return errors.New("pending CI check cleanup is unavailable")
 	}
-	slot, err := command.checks.store.GetCheckSlot(ctx, *request.CheckSlotID)
+	slot, err := command.Checks.CheckSlot(ctx, *request.CheckSlotID)
 	if err != nil {
 		return fmt.Errorf("read pending CI check cleanup slot: %w", err)
 	}
@@ -236,7 +203,7 @@ func (command *pendingCICommand) releaseBlockingCheck(
 		ID: slot.TargetID, InstallationID: fmt.Sprint(slot.InstallationID),
 	}
 	repository := storage.Repository{ID: slot.RepositoryID, FullName: slot.RepositoryFullName}
-	if _, err := command.checks.EnsureBaseline(
+	if _, err := command.Checks.EnsureBaseline(
 		ctx,
 		target,
 		repository,
@@ -249,40 +216,32 @@ func (command *pendingCICommand) releaseBlockingCheck(
 	return nil
 }
 
-func (command *pendingCICommand) cancelPullRequestLocked(
+func (command *PendingCICommand) cancelPullRequestLocked(
 	ctx context.Context,
 	pullRequest int,
 	reason string,
 ) (pendingci.CancelIntentResult, error) {
-	if command.sourceCommentID == 0 {
-		request, err := command.store.FinishPR(ctx, pendingci.FinishPRRequest{
-			RepositoryID: command.repositoryID, PullRequest: pullRequest,
+	if command.SourceCommentID == 0 {
+		request, err := command.Store.FinishPR(ctx, pendingci.FinishPRRequest{
+			RepositoryID: command.RepositoryID, PullRequest: pullRequest,
 			Lifecycle: pendingci.LifecycleCancelled, Trigger: pendingci.TriggerFallback,
-			Reason: reason, FinishedAt: command.now(),
+			Reason: reason, FinishedAt: command.Now(),
 		})
 
 		return pendingci.CancelIntentResult{Accepted: true, Request: request}, err
 	}
 
-	return command.store.CancelByIntent(ctx, pendingci.CancelIntentRequest{
-		RepositoryID: command.repositoryID, PullRequest: pullRequest,
-		CommentID: command.sourceCommentID, SourceRevision: command.sourceRevision,
-		SourceSequence: command.sourceSequence, SourceOrder: command.sourceOrder,
-		Reason: reason, CancelledAt: command.now(),
+	return command.Store.CancelByIntent(ctx, pendingci.CancelIntentRequest{
+		RepositoryID: command.RepositoryID, PullRequest: pullRequest,
+		CommentID: command.SourceCommentID, SourceRevision: command.SourceRevision,
+		SourceSequence: command.SourceSequence, SourceOrder: command.SourceOrder,
+		Reason: reason, CancelledAt: command.Now(),
 	})
 }
 
-func (s *server) reactionCommandEnvironment(repositoryID string) commandEnvironment {
-	return commandEnvironment{pendingCI: &pendingCICommand{
-		store: s.store, wake: s.pendingCI.Wake,
-		coordinator: s.pendingCICoordinator, repositoryID: repositoryID,
-		now: func() time.Time { return time.Now().UTC() },
-	}}
-}
-
-func (command *pendingCICommand) exclusive(
+func (command *PendingCICommand) exclusive(
 	ctx context.Context,
 	operation func() error,
 ) error {
-	return command.coordinator.Exclusive(ctx, command.repositoryID, operation)
+	return command.Coordinator.Exclusive(ctx, command.RepositoryID, operation)
 }

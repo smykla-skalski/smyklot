@@ -5,12 +5,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 )
 
 func TestPendingCIControlSerializesCancellationWithRepositoryWork(t *testing.T) {
 	t.Parallel()
-	coordinator := newPendingCICoordinator()
+	coordinator := bot.NewCoordinator()
 	store := &pendingCIControlStoreStub{
 		request:  pendingci.Request{ID: 41, RepositoryID: "repository:7", Revision: 3},
 		read:     make(chan struct{}),
@@ -62,7 +63,7 @@ func TestPendingCIControlSerializesCancellationWithRepositoryWork(t *testing.T) 
 
 func TestPendingCIControlSerializesTargetSettingsWithEveryRepository(t *testing.T) {
 	t.Parallel()
-	coordinator := newPendingCICoordinator()
+	coordinator := bot.NewCoordinator()
 	control := newPendingCIControl(&pendingCIControlStoreStub{}, coordinator, func() {})
 	held := make(chan struct{})
 	release := make(chan struct{})

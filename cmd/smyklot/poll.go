@@ -55,7 +55,7 @@ func runPoll(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
 
 	// Create runtime config for GitHub App auth
-	rc := &RuntimeConfig{}
+	rc := &bot.RuntimeConfig{}
 	loadEnvIfEmpty(&rc.Token, envGitHubToken)
 	loadEnvIfEmpty(&rc.GitHubAppPrivateKey, envGitHubAppPrivateKey)
 	loadEnvIfEmpty(&rc.GitHubAppClientID, envGitHubAppClientID)
@@ -115,12 +115,12 @@ func runPoll(cmd *cobra.Command, _ []string) error {
 	// Poll and process all open PRs
 	return pollAllPRs(
 		ctx, client, checker, bc, repoOwner, repoName, rc.BotUsername,
-		commandEnvironment{}, true,
+		bot.CommandEnvironment{}, true,
 	)
 }
 
 // getPollConfig retrieves repo and token from flags or environment
-func getPollConfig(cmd *cobra.Command, rc *RuntimeConfig) (string, string, error) {
+func getPollConfig(cmd *cobra.Command, rc *bot.RuntimeConfig) (string, string, error) {
 	repo, err := cmd.Flags().GetString(flagPollRepo)
 	if err != nil {
 		return "", "", err
@@ -241,7 +241,7 @@ func pollAllPRs(
 	bc *config.Config,
 	repoOwner, repoName string,
 	botUsername string,
-	environment commandEnvironment,
+	environment bot.CommandEnvironment,
 	includePendingCI bool,
 ) error {
 	// Named once, here, so every line below carries the repository without
@@ -269,7 +269,7 @@ func processAllPRs(
 	bc *config.Config,
 	repoOwner, repoName, botUsername string,
 	prs []map[string]interface{},
-	environment commandEnvironment,
+	environment bot.CommandEnvironment,
 	includePendingCI bool,
 ) error {
 	if len(prs) == 0 {
@@ -311,7 +311,7 @@ func processPR(
 	bc *config.Config,
 	repoOwner, repoName string,
 	pr map[string]interface{},
-	environment commandEnvironment,
+	environment bot.CommandEnvironment,
 ) error {
 	prNumberFloat, ok := pr["number"].(float64)
 	if !ok {
@@ -323,7 +323,7 @@ func processPR(
 
 	logging.From(ctx).Debug("processing PR")
 
-	// Get PR author and title for RuntimeConfig
+	// Get PR author and title for bot.RuntimeConfig
 	var author, title string
 	if user, ok := pr["user"].(map[string]interface{}); ok {
 		if login, ok := user["login"].(string); ok {
@@ -335,7 +335,7 @@ func processPR(
 	}
 
 	// Create request-scoped runtime config for this PR
-	rc := &RuntimeConfig{
+	rc := &bot.RuntimeConfig{
 		CommentBody:   title, // Use PR title as body
 		CommentID:     strconv.Itoa(prNumber),
 		CommentAction: commentActionCreated,
@@ -451,7 +451,7 @@ func pendingCILabels(pr map[string]interface{}) []pendingCIPR {
 		if !ok {
 			continue
 		}
-		method, requiredOnly, label := parsePendingCILabel(labelName)
+		method, requiredOnly, label := bot.ParsePendingCILabel(labelName)
 		if label == "" {
 			continue
 		}
@@ -461,30 +461,6 @@ func pendingCILabels(pr map[string]interface{}) []pendingCIPR {
 	}
 
 	return result
-}
-
-// parsePendingCILabel parses a pending-ci label and returns the merge method and required flag
-//
-// Returns:
-// - MergeMethod, requiredOnly bool, and label name if valid pending-ci label
-// - Empty string if not a pending-ci label
-func parsePendingCILabel(label string) (github.MergeMethod, bool, string) {
-	switch label {
-	case github.LabelPendingCIMerge, github.LegacyLabelPendingCIMerge:
-		return github.MergeMethodMerge, false, label
-	case github.LabelPendingCISquash, github.LegacyLabelPendingCISquash:
-		return github.MergeMethodSquash, false, label
-	case github.LabelPendingCIRebase, github.LegacyLabelPendingCIRebase:
-		return github.MergeMethodRebase, false, label
-	case github.LabelPendingCIMergeRequired, github.LegacyLabelPendingCIMergeRequired:
-		return github.MergeMethodMerge, true, label
-	case github.LabelPendingCISquashRequired, github.LegacyLabelPendingCISquashRequired:
-		return github.MergeMethodSquash, true, label
-	case github.LabelPendingCIRebaseRequired, github.LegacyLabelPendingCIRebaseRequired:
-		return github.MergeMethodRebase, true, label
-	default:
-		return "", false, ""
-	}
 }
 
 // extractPRNumber extracts PR number from PR data
@@ -519,7 +495,7 @@ func processPendingCIPR(
 	if err != nil {
 		return fmt.Errorf("failed to get PR head ref: %w", err)
 	}
-	actionOwned, err := pendingCIActionOwns(
+	actionOwned, err := bot.PendingCIActionOwns(
 		ctx, client, repoOwner, repoName, prNumber, pr.label, headRef, botUsername,
 	)
 	if err != nil {
@@ -551,7 +527,7 @@ func processPendingCIPR(
 			return fmt.Errorf("failed to get required checks: %w", err)
 		}
 		if requirements.RequiredWorkflow {
-			return errRequiredWorkflowsUnsupported
+			return bot.ErrRequiredWorkflowsUnsupported
 		}
 		requiredChecks = requirements.StatusChecks
 		if len(requiredChecks) == 0 {
@@ -599,7 +575,7 @@ func handlePendingCIPassed(
 	headRef string,
 ) error {
 	logging.From(ctx).Info("CI passed, merging")
-	actionOwned, err := pendingCIActionOwns(
+	actionOwned, err := bot.PendingCIActionOwns(
 		ctx, client, repoOwner, repoName, prNumber, pr.label, headRef, botUsername,
 	)
 	if err != nil {

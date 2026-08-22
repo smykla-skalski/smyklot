@@ -37,7 +37,7 @@ type githubPendingCIChecks struct {
 	tokens     pendingCITokens
 	apiBaseURL string
 	now        func() time.Time
-	syncer     pendingCIExclusive
+	syncer     bot.Exclusive
 
 	appMu sync.Mutex
 	appID int64
@@ -71,6 +71,18 @@ func (checks *githubPendingCIChecks) AppID(ctx context.Context) (int64, error) {
 	}
 
 	return checks.appID, nil
+}
+
+// CheckSlot reads one check slot back.
+//
+// The command layer needs a slot it already holds the id of, and used to reach
+// through this type's store field to get it. A method keeps that field this
+// type's own.
+func (checks *githubPendingCIChecks) CheckSlot(
+	ctx context.Context,
+	id int64,
+) (pendingci.CheckSlot, error) {
+	return checks.store.GetCheckSlot(ctx, id)
 }
 
 func (checks *githubPendingCIChecks) EnsureBaseline(

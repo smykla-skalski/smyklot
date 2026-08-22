@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/github"
@@ -274,7 +275,7 @@ func migrateArmedPendingCIServiceArtifact(
 		return fmt.Errorf("migrate pending CI service fence: %w", err)
 	}
 
-	return cleanupGitHubError(
+	return bot.CleanupGitHubError(
 		"remove legacy pending CI service label",
 		client.RemoveLabel(
 			ctx, repository.Owner, repository.Name, request.PullRequest,
@@ -293,7 +294,7 @@ func cleanupOrphanPendingCIServiceArtifacts(
 	botUsername string,
 ) error {
 	for _, label := range labels {
-		if err := cleanupGitHubError(
+		if err := bot.CleanupGitHubError(
 			"remove orphan pending CI method label",
 			client.RemoveLabel(ctx, repository.Owner, repository.Name, pullRequest, label),
 		); err != nil {
@@ -316,7 +317,7 @@ func cleanupOrphanPendingCIServiceArtifacts(
 		return nil
 	}
 
-	return cleanupGitHubError(
+	return bot.CleanupGitHubError(
 		"remove legacy pending CI service label",
 		client.RemoveLabel(
 			ctx, repository.Owner, repository.Name, pullRequest,

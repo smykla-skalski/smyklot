@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"strings"
 	"time"
 
@@ -36,12 +35,7 @@ func (backend *githubPendingCIBackend) WakePendingCIGates() {
 	backend.server.WakePendingCIGates()
 }
 
-var (
-	errNoRequiredStatusChecks       = errors.New("base branch has no required status checks")
-	errRequiredWorkflowsUnsupported = errors.New(
-		"required-only merge-after-CI does not support required workflow rules",
-	)
-)
+var errNoRequiredStatusChecks = errors.New("base branch has no required status checks")
 
 const (
 	pendingCIRepositoryDisabledReason = "repository disabled in Smyklot"
@@ -93,7 +87,7 @@ func (backend *githubPendingCIBackend) Observe(
 			"restore pending CI service handoff fence: %w", err,
 		)
 	}
-	if err := removeConflictingPendingCILabelsFrom(
+	if err := bot.RemoveConflictingPendingCILabelsFrom(
 		state.Labels,
 		request.Label,
 		func(label string) error {
@@ -116,7 +110,7 @@ func (backend *githubPendingCIBackend) Observe(
 	}
 	checks, err := backend.checks(ctx, client, request, state, owner, repository)
 	if errors.Is(err, errNoRequiredStatusChecks) ||
-		errors.Is(err, errRequiredWorkflowsUnsupported) {
+		errors.Is(err, bot.ErrRequiredWorkflowsUnsupported) {
 		observation := pullRequestObservation(state, labelFound, observedAt)
 		observation.CancelReason = err.Error()
 
@@ -177,7 +171,7 @@ func (backend *githubPendingCIBackend) prepareObservation(
 	if artifact == "" {
 		artifact = pendingci.ArtifactLabel
 	}
-	labelFound := artifact == pendingci.ArtifactCheck || hasLabel(state.Labels, request.Label)
+	labelFound := artifact == pendingci.ArtifactCheck || bot.HasLabel(state.Labels, request.Label)
 	if !state.Open || !labelFound {
 		observation := pullRequestObservation(state, labelFound, observedAt)
 
@@ -571,7 +565,7 @@ func (backend *githubPendingCIBackend) cleanupArtifactsExclusive(
 	}
 	var cleanupErr error
 	if scope.label && request.ArtifactKind != pendingci.ArtifactCheck {
-		labelErr := cleanupGitHubError(
+		labelErr := bot.CleanupGitHubError(
 			"remove pending CI label",
 			client.RemoveLabel(ctx, owner, repository, request.PullRequest, request.Label),
 		)
@@ -597,7 +591,7 @@ func (backend *githubPendingCIBackend) cleanupArtifactsExclusive(
 		}
 	}
 	if scope.serviceFence {
-		cleanupErr = errors.Join(cleanupErr, cleanupGitHubError(
+		cleanupErr = errors.Join(cleanupErr, bot.CleanupGitHubError(
 			"remove pending CI service fence",
 			client.RemovePullRequestReactionByUser(
 				ctx, owner, repository, request.PullRequest,
@@ -607,7 +601,7 @@ func (backend *githubPendingCIBackend) cleanupArtifactsExclusive(
 	}
 	commentID := int(request.SourceCommentID)
 	if scope.sourceReaction {
-		cleanupErr = errors.Join(cleanupErr, cleanupGitHubError(
+		cleanupErr = errors.Join(cleanupErr, bot.CleanupGitHubError(
 			"remove pending CI reaction",
 			client.RemoveReactionByUser(
 				ctx, owner, repository, commentID,
@@ -616,7 +610,7 @@ func (backend *githubPendingCIBackend) cleanupArtifactsExclusive(
 		))
 	}
 	if lifecycle == pendingci.LifecycleMerged && request.SourceCommentID > 0 {
-		cleanupErr = errors.Join(cleanupErr, cleanupGitHubError(
+		cleanupErr = errors.Join(cleanupErr, bot.CleanupGitHubError(
 			"add pending CI success reaction",
 			client.AddReaction(ctx, owner, repository, commentID, github.ReactionSuccess),
 		))
@@ -670,18 +664,6 @@ func (backend *githubPendingCIBackend) checkGateReady(
 	}
 
 	return true, "", nil
-}
-
-func cleanupGitHubError(operation string, err error) error {
-	if err == nil {
-		return nil
-	}
-	var apiErr *github.APIError
-	if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
-		return nil
-	}
-
-	return fmt.Errorf("%s: %w", operation, err)
 }
 
 func (backend *githubPendingCIBackend) client(
@@ -751,7 +733,7 @@ func (backend *githubPendingCIBackend) checks(
 			return nil, err
 		}
 		if requirements.RequiredWorkflow {
-			return nil, errRequiredWorkflowsUnsupported
+			return nil, bot.ErrRequiredWorkflowsUnsupported
 		}
 		required = requirements.StatusChecks
 		if required == nil {
@@ -809,16 +791,6 @@ func checkFingerprint(status *github.CheckStatus) string {
 		status.State, status.Total, status.Passed, status.Failed,
 		status.InProgress, status.Unknown, status.Missing,
 	)
-}
-
-func hasLabel(labels []string, wanted string) bool {
-	for _, label := range labels {
-		if label == wanted {
-			return true
-		}
-	}
-
-	return false
 }
 
 func sameOptionalInt64(left, right *int64) bool {

@@ -72,7 +72,7 @@ func loadRepoConfig(base *config.Config, found github.RepoConfig) (*config.Confi
 func reportInvalidRepoConfig(
 	ctx context.Context,
 	client *github.Client,
-	rc *RuntimeConfig,
+	rc *bot.RuntimeConfig,
 	base *config.Config,
 	cause error,
 ) error {

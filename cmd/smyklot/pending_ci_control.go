@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 )
 
@@ -17,13 +18,13 @@ type pendingCIControlStore interface {
 // shared with merge and cleanup effects.
 type pendingCIControl struct {
 	store       pendingCIControlStore
-	coordinator pendingCIExclusive
+	coordinator bot.Exclusive
 	wake        func()
 }
 
 func newPendingCIControl(
 	store pendingCIControlStore,
-	coordinator pendingCIExclusive,
+	coordinator bot.Exclusive,
 	wake func(),
 ) *pendingCIControl {
 	return &pendingCIControl{store: store, coordinator: coordinator, wake: wake}
@@ -56,14 +57,14 @@ func (control *pendingCIControl) Exclusive(
 	repositoryIDs []string,
 	operation func() error,
 ) error {
-	return exclusivePendingCIRepositories(ctx, control.coordinator, repositoryIDs, operation)
+	return bot.ExclusiveRepositories(ctx, control.coordinator, repositoryIDs, operation)
 }
 
 func (control *pendingCIControl) ExclusiveCatalog(
 	ctx context.Context,
 	operation func() error,
 ) error {
-	return control.coordinator.Exclusive(ctx, pendingCICatalogCoordinatorKey, operation)
+	return control.coordinator.Exclusive(ctx, bot.CatalogCoordinatorKey, operation)
 }
 
 func (control *pendingCIControl) change(

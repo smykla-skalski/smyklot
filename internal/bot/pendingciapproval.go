@@ -1,4 +1,4 @@
-package main
+package bot
 
 import (
 	"context"
@@ -8,11 +8,16 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/github"
 )
 
+// SelfApprovalNotAllowed is what a pull request is told when its own author
+// asked for the approval. The reason is spelled out rather than left as a
+// silent no-op, because a command that appears to do nothing reads as a bug.
+const SelfApprovalNotAllowed = "(self-approval not allowed)"
+
 type pendingCIApprover interface {
 	ApprovePR(context.Context, string, string, int) error
 }
 
-func pendingCIApprovalAllowed(
+func PendingCIApprovalAllowed(
 	runtime *RuntimeConfig,
 	botConfig *config.Config,
 	info *github.PRInfo,
@@ -20,18 +25,18 @@ func pendingCIApprovalAllowed(
 	if !botConfig.AllowSelfApproval && info.Author == runtime.CommentAuthor {
 		return feedback.NewUnauthorized(
 			runtime.CommentAuthor,
-			[]string{selfApprovalNotAllowed},
+			[]string{SelfApprovalNotAllowed},
 		)
 	}
 
 	return nil
 }
 
-func pendingCIApprovalRequired(
+func PendingCIApprovalRequired(
 	runtime *RuntimeConfig,
 	info *github.PRInfo,
 ) bool {
-	botApproved := isBotAlreadyApproved(info, runtime.BotUsername)
+	botApproved := IsBotAlreadyApproved(info, runtime.BotUsername)
 	for _, login := range info.ApprovedBy {
 		if login == runtime.CommentAuthor {
 			return false
@@ -41,7 +46,7 @@ func pendingCIApprovalRequired(
 	return !botApproved
 }
 
-func approvePendingCI(
+func ApprovePendingCI(
 	ctx context.Context,
 	approver pendingCIApprover,
 	runtime *RuntimeConfig,

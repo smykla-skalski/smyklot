@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	adminpanel "github.com/smykla-skalski/smyklot/internal/panel"
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
@@ -29,7 +30,7 @@ func TestPendingCIRequestCancelsAfterInstallationDisappearsWithoutRefreshing(t *
 	if err := store.ReconcileCatalog(t.Context(), []storage.InstallationSnapshot{initial}); err != nil {
 		t.Fatal(err)
 	}
-	coordinator := newPendingCICoordinator()
+	coordinator := bot.NewCoordinator()
 	srv := &server{
 		store: store, panel: &adminpanel.Server{}, pendingCICoordinator: coordinator,
 	}
@@ -83,7 +84,7 @@ func TestCatalogTransferWaitsForRepositoryGateEffects(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	coordinator := newPendingCICoordinator()
+	coordinator := bot.NewCoordinator()
 	srv := &server{store: store, pendingCICoordinator: coordinator}
 	held := make(chan struct{})
 	release := make(chan struct{})

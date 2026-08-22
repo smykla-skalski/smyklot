@@ -11,14 +11,6 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/github"
 )
 
-type pendingCIActivationGuard interface {
-	AllowsActivation(context.Context, pendingci.ArtifactKind, string, bool) (bool, error)
-}
-
-type pendingCIModeResolver interface {
-	PendingCIMode(context.Context, string) (storage.PendingCIMode, error)
-}
-
 // githubPendingCIActivationGuard revalidates the repository's runner only
 // after activation owns its repository coordinator. This fences deliveries
 // that read service ownership before a completed handoff to the Action.
@@ -109,7 +101,7 @@ func (guard githubPendingCIActivationGuard) requiredCIAllowsActivation(
 		return false, fmt.Errorf("read required-CI policy: %w", err)
 	}
 	if requirements.RequiredWorkflow {
-		return false, errRequiredWorkflowsUnsupported
+		return false, bot.ErrRequiredWorkflowsUnsupported
 	}
 	required := requirements.StatusChecks
 	if artifact == pendingci.ArtifactCheck {

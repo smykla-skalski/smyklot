@@ -1,4 +1,4 @@
-package main
+package bot
 
 import (
 	"context"
@@ -58,27 +58,27 @@ func TestPendingCIActivationRollsBackOnlyUnownedArtifacts(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			artifacts := &pendingCIArtifactsStub{}
-			command := &pendingCICommand{
-				store: pendingCICommandStoreStub{
+			command := &PendingCICommand{
+				Store: pendingCICommandStoreStub{
 					request: test.current, getErr: test.getErr, armErr: armErr,
 				},
-				coordinator: newPendingCICoordinator(), repositoryID: "repository:7",
-				now: func() time.Time { return time.Now().UTC() },
+				Coordinator: NewCoordinator(), RepositoryID: "repository:7",
+				Now: func() time.Time { return time.Now().UTC() },
 			}
-			failures, err := activatePendingCI(
+			failures, err := ActivatePendingCI(
 				t.Context(), artifacts, command, allowPendingCIActivation,
-				pendingCIActivationRequest{
-					runtime: &RuntimeConfig{CommentAuthor: "operator"},
-					owner:   "owner", repository: "repository", pullRequest: 198,
-					commentID: 101, headSHA: "head", baseBranch: "main",
-					method: github.MergeMethodSquash, label: "smyklot:pending:ci:squash",
+				PendingCIActivationRequest{
+					Runtime: &RuntimeConfig{CommentAuthor: "operator"},
+					Owner:   "owner", Repository: "repository", PullRequest: 198,
+					CommentID: 101, HeadSHA: "head", BaseBranch: "main",
+					Method: github.MergeMethodSquash, Label: "smyklot:pending:ci:squash",
 				},
 			)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !errors.Is(failures.command, armErr) {
-				t.Fatalf("command failure = %v, want arm error", failures.command)
+			if !errors.Is(failures.Command, armErr) {
+				t.Fatalf("command failure = %v, want arm error", failures.Command)
 			}
 			if !equalStrings(artifacts.addedLabels, []string{"smyklot:pending:ci:squash"}) {
 				t.Fatalf("added labels = %v", artifacts.addedLabels)
@@ -102,21 +102,21 @@ func TestPendingCIActivationKeepsOwnershipWhenMethodRollbackFails(t *testing.T) 
 	artifacts := &pendingCIArtifactsStub{
 		removeLabelErrors: map[string]error{methodLabel: errors.New("GitHub unavailable")},
 	}
-	command := &pendingCICommand{
-		store: pendingCICommandStoreStub{
+	command := &PendingCICommand{
+		Store: pendingCICommandStoreStub{
 			getErr: storage.ErrNotFound, armErr: errors.New("database full"),
 		},
-		coordinator: newPendingCICoordinator(), repositoryID: "repository:7",
-		now: func() time.Time { return time.Now().UTC() },
+		Coordinator: NewCoordinator(), RepositoryID: "repository:7",
+		Now: func() time.Time { return time.Now().UTC() },
 	}
 
-	_, err := activatePendingCI(
+	_, err := ActivatePendingCI(
 		t.Context(), artifacts, command, allowPendingCIActivation,
-		pendingCIActivationRequest{
-			runtime: &RuntimeConfig{CommentAuthor: "operator"},
-			owner:   "owner", repository: "repository", pullRequest: 198,
-			commentID: 101, headSHA: "head", baseBranch: "main",
-			method: github.MergeMethodSquash, label: methodLabel,
+		PendingCIActivationRequest{
+			Runtime: &RuntimeConfig{CommentAuthor: "operator"},
+			Owner:   "owner", Repository: "repository", PullRequest: 198,
+			CommentID: 101, HeadSHA: "head", BaseBranch: "main",
+			Method: github.MergeMethodSquash, Label: methodLabel,
 		},
 	)
 	if err == nil || !errors.Is(err, artifacts.removeLabelErrors[methodLabel]) {
@@ -134,26 +134,26 @@ func TestPendingCIActivationCleansAmbiguousMethodPublishFailure(t *testing.T) {
 	artifacts := &pendingCIArtifactsStub{
 		addLabelErrors: map[string]error{methodLabel: publishErr},
 	}
-	command := &pendingCICommand{
-		store:       pendingCICommandStoreStub{getErr: storage.ErrNotFound},
-		coordinator: newPendingCICoordinator(), repositoryID: "repository:7",
-		now: func() time.Time { return time.Now().UTC() }, wake: func() {},
+	command := &PendingCICommand{
+		Store:       pendingCICommandStoreStub{getErr: storage.ErrNotFound},
+		Coordinator: NewCoordinator(), RepositoryID: "repository:7",
+		Now: func() time.Time { return time.Now().UTC() }, Wake: func() {},
 	}
 
-	failures, err := activatePendingCI(
+	failures, err := ActivatePendingCI(
 		t.Context(), artifacts, command, allowPendingCIActivation,
-		pendingCIActivationRequest{
-			runtime: &RuntimeConfig{CommentAuthor: "operator"},
-			owner:   "owner", repository: "repository", pullRequest: 198,
-			commentID: 101, headSHA: "head", baseBranch: "main",
-			method: github.MergeMethodSquash, label: methodLabel,
+		PendingCIActivationRequest{
+			Runtime: &RuntimeConfig{CommentAuthor: "operator"},
+			Owner:   "owner", Repository: "repository", PullRequest: 198,
+			CommentID: 101, HeadSHA: "head", BaseBranch: "main",
+			Method: github.MergeMethodSquash, Label: methodLabel,
 		},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !errors.Is(failures.label, publishErr) {
-		t.Fatalf("label failure = %v, want publish error", failures.label)
+	if !errors.Is(failures.Label, publishErr) {
+		t.Fatalf("label failure = %v, want publish error", failures.Label)
 	}
 	if !equalStrings(artifacts.removedLabels, []string{methodLabel}) {
 		t.Fatalf("removed labels = %v", artifacts.removedLabels)
@@ -164,26 +164,26 @@ func TestPendingCIActivationStopsWhenWaitingReactionCannotBePublished(t *testing
 	t.Parallel()
 	publishErr := errors.New("response lost")
 	artifacts := &pendingCIArtifactsStub{addReactionErr: publishErr}
-	command := &pendingCICommand{
-		store:       pendingCICommandStoreStub{getErr: storage.ErrNotFound},
-		coordinator: newPendingCICoordinator(), repositoryID: "repository:7",
-		now: func() time.Time { return time.Now().UTC() }, wake: func() {},
+	command := &PendingCICommand{
+		Store:       pendingCICommandStoreStub{getErr: storage.ErrNotFound},
+		Coordinator: NewCoordinator(), RepositoryID: "repository:7",
+		Now: func() time.Time { return time.Now().UTC() }, Wake: func() {},
 	}
 
-	failures, err := activatePendingCI(
+	failures, err := ActivatePendingCI(
 		t.Context(), artifacts, command, allowPendingCIActivation,
-		pendingCIActivationRequest{
-			runtime: &RuntimeConfig{CommentAuthor: "operator"},
-			owner:   "owner", repository: "repository", pullRequest: 198,
-			commentID: 101, headSHA: "head", baseBranch: "main",
-			method: github.MergeMethodSquash, label: "smyklot:pending:ci:squash",
+		PendingCIActivationRequest{
+			Runtime: &RuntimeConfig{CommentAuthor: "operator"},
+			Owner:   "owner", Repository: "repository", PullRequest: 198,
+			CommentID: 101, HeadSHA: "head", BaseBranch: "main",
+			Method: github.MergeMethodSquash, Label: "smyklot:pending:ci:squash",
 		},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !errors.Is(failures.reaction, publishErr) {
-		t.Fatalf("reaction failure = %v, want publish error", failures.reaction)
+	if !errors.Is(failures.Reaction, publishErr) {
+		t.Fatalf("reaction failure = %v, want publish error", failures.Reaction)
 	}
 	if len(artifacts.addedLabels) != 0 || len(artifacts.removedLabels) != 0 {
 		t.Fatalf(
@@ -207,25 +207,25 @@ func TestPendingCIActivationRemovesActionOwnedConflictingLabels(t *testing.T) {
 		github.LegacyLabelPendingCIRebase,
 		"unrelated",
 	}}
-	command := &pendingCICommand{
-		store:       pendingCICommandStoreStub{getErr: storage.ErrNotFound},
-		coordinator: newPendingCICoordinator(), repositoryID: "repository:7",
-		now: func() time.Time { return time.Now().UTC() }, wake: func() {},
+	command := &PendingCICommand{
+		Store:       pendingCICommandStoreStub{getErr: storage.ErrNotFound},
+		Coordinator: NewCoordinator(), RepositoryID: "repository:7",
+		Now: func() time.Time { return time.Now().UTC() }, Wake: func() {},
 	}
 
-	failures, err := activatePendingCI(
+	failures, err := ActivatePendingCI(
 		t.Context(), artifacts, command, allowPendingCIActivation,
-		pendingCIActivationRequest{
-			runtime: &RuntimeConfig{CommentAuthor: "operator"},
-			owner:   "owner", repository: "repository", pullRequest: 198,
-			commentID: 101, headSHA: "head", baseBranch: "main",
-			method: github.MergeMethodSquash, label: github.LabelPendingCISquash,
+		PendingCIActivationRequest{
+			Runtime: &RuntimeConfig{CommentAuthor: "operator"},
+			Owner:   "owner", Repository: "repository", PullRequest: 198,
+			CommentID: 101, HeadSHA: "head", BaseBranch: "main",
+			Method: github.MergeMethodSquash, Label: github.LabelPendingCISquash,
 		},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if failures != (pendingCIActivationErrors{}) {
+	if failures != (PendingCIActivationErrors{}) {
 		t.Fatalf("activation failures = %+v", failures)
 	}
 	if !equalStrings(artifacts.removedLabels, []string{
@@ -241,30 +241,30 @@ func TestPendingCIActivationKeepsCurrentLabelWhenIncomingCommandIsStale(t *testi
 	currentLabel := github.LabelPendingCIMerge
 	incomingLabel := github.LabelPendingCISquash
 	artifacts := &pendingCIArtifactsStub{labels: []string{currentLabel}}
-	command := &pendingCICommand{
-		store: pendingCICommandStoreStub{
+	command := &PendingCICommand{
+		Store: pendingCICommandStoreStub{
 			request: pendingci.Request{
 				Label: currentLabel, SourceCommentID: 202,
 			},
 			armErr: pendingci.ErrStaleSourceRevision,
 		},
-		coordinator: newPendingCICoordinator(), repositoryID: "repository:7",
-		now: func() time.Time { return time.Now().UTC() }, wake: func() {},
+		Coordinator: NewCoordinator(), RepositoryID: "repository:7",
+		Now: func() time.Time { return time.Now().UTC() }, Wake: func() {},
 	}
 
-	failures, err := activatePendingCI(
+	failures, err := ActivatePendingCI(
 		t.Context(), artifacts, command, allowPendingCIActivation,
-		pendingCIActivationRequest{
-			runtime: &RuntimeConfig{CommentAuthor: "operator"},
-			owner:   "owner", repository: "repository", pullRequest: 198,
-			commentID: 101, headSHA: "head", baseBranch: "main",
-			method: github.MergeMethodSquash, label: incomingLabel,
+		PendingCIActivationRequest{
+			Runtime: &RuntimeConfig{CommentAuthor: "operator"},
+			Owner:   "owner", Repository: "repository", PullRequest: 198,
+			CommentID: 101, HeadSHA: "head", BaseBranch: "main",
+			Method: github.MergeMethodSquash, Label: incomingLabel,
 		},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !failures.stale || failures.command != nil {
+	if !failures.Stale || failures.Command != nil {
 		t.Fatalf("activation failures = %+v", failures)
 	}
 	if !equalStrings(artifacts.removedLabels, []string{incomingLabel}) {
@@ -283,27 +283,27 @@ func TestPendingCIActivationRejectsStaleSourceBeforeApproval(t *testing.T) {
 			return nil
 		},
 	}
-	command := &pendingCICommand{
-		store: pendingCICommandStoreStub{
+	command := &PendingCICommand{
+		Store: pendingCICommandStoreStub{
 			getErr: storage.ErrNotFound, checkArmErr: pendingci.ErrStaleSourceRevision,
 		},
-		coordinator: newPendingCICoordinator(), repositoryID: "repository:7",
-		now: func() time.Time { return time.Now().UTC() }, wake: func() {},
+		Coordinator: NewCoordinator(), RepositoryID: "repository:7",
+		Now: func() time.Time { return time.Now().UTC() }, Wake: func() {},
 	}
 
-	failures, err := activatePendingCI(
+	failures, err := ActivatePendingCI(
 		t.Context(), artifacts, command, allowPendingCIActivation,
-		pendingCIActivationRequest{
-			runtime: &RuntimeConfig{CommentAuthor: "operator"},
-			owner:   "owner", repository: "repository", pullRequest: 198,
-			commentID: 101, headSHA: "head", baseBranch: "main",
-			method: github.MergeMethodSquash, label: github.LabelPendingCISquash,
+		PendingCIActivationRequest{
+			Runtime: &RuntimeConfig{CommentAuthor: "operator"},
+			Owner:   "owner", Repository: "repository", PullRequest: 198,
+			CommentID: 101, HeadSHA: "head", BaseBranch: "main",
+			Method: github.MergeMethodSquash, Label: github.LabelPendingCISquash,
 		},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !failures.stale || failures.command != nil {
+	if !failures.Stale || failures.Command != nil {
 		t.Fatalf("activation failures = %+v", failures)
 	}
 	if approved {
@@ -321,21 +321,21 @@ func TestPendingCIActivationRollbackTreatsMissingLabelsAsClean(t *testing.T) {
 	artifacts := &pendingCIArtifactsStub{
 		removeLabelErrors: map[string]error{methodLabel: missing},
 	}
-	command := &pendingCICommand{
-		store: pendingCICommandStoreStub{
+	command := &PendingCICommand{
+		Store: pendingCICommandStoreStub{
 			getErr: storage.ErrNotFound, armErr: errors.New("database full"),
 		},
-		coordinator: newPendingCICoordinator(), repositoryID: "repository:7",
-		now: func() time.Time { return time.Now().UTC() },
+		Coordinator: NewCoordinator(), RepositoryID: "repository:7",
+		Now: func() time.Time { return time.Now().UTC() },
 	}
 
-	_, err := activatePendingCI(
+	_, err := ActivatePendingCI(
 		t.Context(), artifacts, command, allowPendingCIActivation,
-		pendingCIActivationRequest{
-			runtime: &RuntimeConfig{CommentAuthor: "operator"},
-			owner:   "owner", repository: "repository", pullRequest: 198,
-			commentID: 101, headSHA: "head", baseBranch: "main",
-			method: github.MergeMethodSquash, label: methodLabel,
+		PendingCIActivationRequest{
+			Runtime: &RuntimeConfig{CommentAuthor: "operator"},
+			Owner:   "owner", Repository: "repository", PullRequest: 198,
+			CommentID: 101, HeadSHA: "head", BaseBranch: "main",
+			Method: github.MergeMethodSquash, Label: methodLabel,
 		},
 	)
 	if err != nil {
@@ -352,28 +352,28 @@ func TestPendingCIActivationCancelsAmbiguousCommands(t *testing.T) {
 		ID: 7, Label: github.LabelPendingCIMerge, SourceCommentID: 202,
 	}
 	artifacts := &pendingCIArtifactsStub{}
-	command := &pendingCICommand{
-		store: pendingCICommandStoreStub{
+	command := &PendingCICommand{
+		Store: pendingCICommandStoreStub{
 			request: current, armErr: pendingci.ErrAmbiguousSourceRevision,
 			finishResult: &current,
 		},
-		coordinator: newPendingCICoordinator(), repositoryID: "repository:7",
-		now: func() time.Time { return time.Now().UTC() }, wake: func() {},
+		Coordinator: NewCoordinator(), RepositoryID: "repository:7",
+		Now: func() time.Time { return time.Now().UTC() }, Wake: func() {},
 	}
 
-	failures, err := activatePendingCI(
+	failures, err := ActivatePendingCI(
 		t.Context(), artifacts, command, allowPendingCIActivation,
-		pendingCIActivationRequest{
-			runtime: &RuntimeConfig{CommentAuthor: "operator"},
-			owner:   "owner", repository: "repository", pullRequest: 198,
-			commentID: 101, headSHA: "head", baseBranch: "main",
-			method: github.MergeMethodSquash, label: github.LabelPendingCISquash,
+		PendingCIActivationRequest{
+			Runtime: &RuntimeConfig{CommentAuthor: "operator"},
+			Owner:   "owner", Repository: "repository", PullRequest: 198,
+			CommentID: 101, HeadSHA: "head", BaseBranch: "main",
+			Method: github.MergeMethodSquash, Label: github.LabelPendingCISquash,
 		},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !failures.ambiguous || failures.command != nil {
+	if !failures.Ambiguous || failures.Command != nil {
 		t.Fatalf("activation failures = %+v", failures)
 	}
 	if !equalStrings(artifacts.removedLabels, []string{github.LabelPendingCISquash}) {
@@ -383,7 +383,7 @@ func TestPendingCIActivationCancelsAmbiguousCommands(t *testing.T) {
 
 func TestPendingCIActivationSerializesApprovalWithCleanup(t *testing.T) {
 	t.Parallel()
-	coordinator := newPendingCICoordinator()
+	coordinator := NewCoordinator()
 	cleanupStarted := make(chan struct{})
 	releaseCleanup := make(chan struct{})
 	cleanupDone := make(chan error, 1)
@@ -405,22 +405,22 @@ func TestPendingCIActivationSerializesApprovalWithCleanup(t *testing.T) {
 
 		return nil
 	}}
-	command := &pendingCICommand{
-		store:       pendingCICommandStoreStub{getErr: storage.ErrNotFound},
-		coordinator: coordinator, repositoryID: "repository:7",
-		now: func() time.Time { return time.Now().UTC() }, wake: func() {},
+	command := &PendingCICommand{
+		Store:       pendingCICommandStoreStub{getErr: storage.ErrNotFound},
+		Coordinator: coordinator, RepositoryID: "repository:7",
+		Now: func() time.Time { return time.Now().UTC() }, Wake: func() {},
 	}
 	activationAttempted := make(chan struct{})
 	activationDone := make(chan error, 1)
 	go func() {
 		close(activationAttempted)
-		_, err := activatePendingCI(
+		_, err := ActivatePendingCI(
 			t.Context(), artifacts, command, allowPendingCIActivation,
-			pendingCIActivationRequest{
-				runtime: &RuntimeConfig{CommentAuthor: "operator"},
-				owner:   "owner", repository: "repository", pullRequest: 198,
-				commentID: 101, headSHA: "head", baseBranch: "main",
-				method: github.MergeMethodSquash, label: github.LabelPendingCISquash,
+			PendingCIActivationRequest{
+				Runtime: &RuntimeConfig{CommentAuthor: "operator"},
+				Owner:   "owner", Repository: "repository", PullRequest: 198,
+				CommentID: 101, HeadSHA: "head", BaseBranch: "main",
+				Method: github.MergeMethodSquash, Label: github.LabelPendingCISquash,
 			},
 		)
 		activationDone <- err
@@ -446,7 +446,7 @@ func TestPendingCIActivationSerializesApprovalWithCleanup(t *testing.T) {
 
 func TestPendingCIActivationRechecksOwnershipAfterHandoff(t *testing.T) {
 	t.Parallel()
-	coordinator := newPendingCICoordinator()
+	coordinator := NewCoordinator()
 	handoffStarted := make(chan struct{})
 	releaseHandoff := make(chan struct{})
 	handoffDone := make(chan error, 1)
@@ -474,23 +474,23 @@ func TestPendingCIActivationRechecksOwnershipAfterHandoff(t *testing.T) {
 
 		return nil
 	}}
-	command := &pendingCICommand{
-		store:       pendingCICommandStoreStub{getErr: storage.ErrNotFound},
-		coordinator: coordinator, repositoryID: "repository:7",
-		now: func() time.Time { return time.Now().UTC() }, wake: func() {},
+	command := &PendingCICommand{
+		Store:       pendingCICommandStoreStub{getErr: storage.ErrNotFound},
+		Coordinator: coordinator, RepositoryID: "repository:7",
+		Now: func() time.Time { return time.Now().UTC() }, Wake: func() {},
 	}
 	type activationResult struct {
-		failures pendingCIActivationErrors
+		failures PendingCIActivationErrors
 		err      error
 	}
 	activationDone := make(chan activationResult, 1)
 	go func() {
-		failures, err := activatePendingCI(
-			t.Context(), artifacts, command, guard, pendingCIActivationRequest{
-				runtime: &RuntimeConfig{CommentAuthor: "operator"},
-				owner:   "owner", repository: "repository", pullRequest: 198,
-				commentID: 101, headSHA: "head", baseBranch: "main",
-				method: github.MergeMethodSquash, label: github.LabelPendingCISquash,
+		failures, err := ActivatePendingCI(
+			t.Context(), artifacts, command, guard, PendingCIActivationRequest{
+				Runtime: &RuntimeConfig{CommentAuthor: "operator"},
+				Owner:   "owner", Repository: "repository", PullRequest: 198,
+				CommentID: 101, HeadSHA: "head", BaseBranch: "main",
+				Method: github.MergeMethodSquash, Label: github.LabelPendingCISquash,
 			},
 		)
 		activationDone <- activationResult{failures: failures, err: err}
@@ -512,7 +512,7 @@ func TestPendingCIActivationRechecksOwnershipAfterHandoff(t *testing.T) {
 	if checkedDuringHandoff {
 		t.Fatal("runner ownership was checked while handoff still owned the repository")
 	}
-	if !result.failures.stoodDown {
+	if !result.failures.StoodDown {
 		t.Fatalf("activation failures = %+v, want stood down", result.failures)
 	}
 	if approved || len(artifacts.addedLabels) != 0 {
@@ -529,25 +529,25 @@ func TestPendingCIActivationStopsWhenApprovalFails(t *testing.T) {
 	artifacts := &pendingCIArtifactsStub{
 		info: &github.PRInfo{}, approve: func() error { return approvalErr },
 	}
-	command := &pendingCICommand{
-		store:       pendingCICommandStoreStub{getErr: storage.ErrNotFound},
-		coordinator: newPendingCICoordinator(), repositoryID: "repository:7",
-		now: func() time.Time { return time.Now().UTC() }, wake: func() {},
+	command := &PendingCICommand{
+		Store:       pendingCICommandStoreStub{getErr: storage.ErrNotFound},
+		Coordinator: NewCoordinator(), RepositoryID: "repository:7",
+		Now: func() time.Time { return time.Now().UTC() }, Wake: func() {},
 	}
-	failures, err := activatePendingCI(
+	failures, err := ActivatePendingCI(
 		t.Context(), artifacts, command, allowPendingCIActivation,
-		pendingCIActivationRequest{
-			runtime: &RuntimeConfig{CommentAuthor: "operator"},
-			owner:   "owner", repository: "repository", pullRequest: 198,
-			commentID: 101, headSHA: "head", baseBranch: "main",
-			method: github.MergeMethodSquash, label: github.LabelPendingCISquash,
+		PendingCIActivationRequest{
+			Runtime: &RuntimeConfig{CommentAuthor: "operator"},
+			Owner:   "owner", Repository: "repository", PullRequest: 198,
+			CommentID: 101, HeadSHA: "head", BaseBranch: "main",
+			Method: github.MergeMethodSquash, Label: github.LabelPendingCISquash,
 		},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !errors.Is(failures.approval, approvalErr) {
-		t.Fatalf("approval failure = %v, want %v", failures.approval, approvalErr)
+	if !errors.Is(failures.Approval, approvalErr) {
+		t.Fatalf("approval failure = %v, want %v", failures.Approval, approvalErr)
 	}
 	if len(artifacts.addedLabels) != 0 {
 		t.Fatalf("labels added after approval failure: %v", artifacts.addedLabels)

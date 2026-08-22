@@ -414,11 +414,11 @@ func (s *server) preparePendingCIReauthorization(
 	if err != nil {
 		return false, fmt.Errorf("read requested-action pull request approvals: %w", err)
 	}
-	runtime := &RuntimeConfig{CommentAuthor: signal.Actor, BotUsername: s.cfg.botUsername}
-	if pendingCIApprovalAllowed(runtime, botConfig, info) != nil {
+	runtime := &bot.RuntimeConfig{CommentAuthor: signal.Actor, BotUsername: s.cfg.botUsername}
+	if bot.PendingCIApprovalAllowed(runtime, botConfig, info) != nil {
 		return false, nil
 	}
-	if pendingCIApprovalRequired(runtime, info) {
+	if bot.PendingCIApprovalRequired(runtime, info) {
 		if err := client.ApprovePR(ctx, owner, repository, candidate.slot.PullRequest); err != nil {
 			return false, fmt.Errorf("restore requested-action approval: %w", err)
 		}

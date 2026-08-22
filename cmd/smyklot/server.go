@@ -146,7 +146,7 @@ type server struct {
 	jobs                 chan job
 	pendingCI            *pendingCIScheduler
 	pendingCIReconciler  *pendingCIReconciler
-	pendingCICoordinator pendingCIExclusive
+	pendingCICoordinator bot.Exclusive
 	pendingCIHandoff     *pendingCIHandoff
 	pendingCIChecks      *githubPendingCIChecks
 	pendingCIGates       *pendingCIGateReconciler
@@ -263,10 +263,10 @@ func newServer(cfg *serveConfig) (*server, error) {
 	}
 	srv.deliveryStore = srv.store
 	srv.deliveries = newDeliveryDispatcher(srv.deliveryStore, srv.jobs, srv.deliveryJob, srv.logger)
-	pendingCICoordinator := newPendingCICoordinator()
+	pendingCICoordinator := bot.NewCoordinator()
 	srv.pendingCIChecks = &githubPendingCIChecks{
 		store: srv.store, tokens: srv.tokens, apiBaseURL: cfg.apiBaseURL,
-		now: func() time.Time { return time.Now().UTC() }, syncer: newPendingCICoordinator(),
+		now: func() time.Time { return time.Now().UTC() }, syncer: bot.NewCoordinator(),
 	}
 	srv.pendingCIGates = &pendingCIGateReconciler{
 		store: srv.store, checks: srv.pendingCIChecks,
@@ -839,8 +839,8 @@ func (s *server) count(event, outcome string) {
 // runtimeConfigFor translates a delivery into what the executor expects.
 //
 // The Action fills the same struct from environment variables a workflow set.
-func runtimeConfigFor(event *webhook.IssueCommentEvent, cfg *serveConfig) *RuntimeConfig {
-	return &RuntimeConfig{
+func runtimeConfigFor(event *webhook.IssueCommentEvent, cfg *serveConfig) *bot.RuntimeConfig {
+	return &bot.RuntimeConfig{
 		CommentBody:   event.Comment.Body,
 		CommentID:     strconv.FormatInt(event.Comment.ID, 10),
 		CommentAction: event.Action,

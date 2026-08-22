@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	adminpanel "github.com/smykla-skalski/smyklot/internal/panel"
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
@@ -302,7 +303,7 @@ func TestActionRecognizesServicePendingCIOwnership(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	owned, err := pendingCIServiceOwned(
+	owned, err := bot.PendingCIServiceOwned(
 		context.Background(), client, "owner", "repository", 42, "smyklot[bot]",
 	)
 	if err != nil {
@@ -330,7 +331,7 @@ func TestActionRecognizesLegacyPendingCIServiceLabel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	owned, err := pendingCIServiceOwned(
+	owned, err := bot.PendingCIServiceOwned(
 		t.Context(), client, "owner", "repository", 42, "smyklot[bot]",
 	)
 	if err != nil {
@@ -422,11 +423,11 @@ func TestPendingCIObserveRequiresCurrentSnapshotBeforeMutation(t *testing.T) {
 func TestPendingCICleanupIgnoresMissingGitHubArtifacts(t *testing.T) {
 	t.Parallel()
 	missing := &github.APIError{StatusCode: http.StatusNotFound}
-	if err := cleanupGitHubError("remove label", missing); err != nil {
+	if err := bot.CleanupGitHubError("remove label", missing); err != nil {
 		t.Fatalf("missing artifact cleanup failed: %v", err)
 	}
 	unavailable := &github.APIError{StatusCode: http.StatusServiceUnavailable}
-	if err := cleanupGitHubError("remove label", unavailable); err == nil {
+	if err := bot.CleanupGitHubError("remove label", unavailable); err == nil {
 		t.Fatal("transient GitHub failure was ignored")
 	}
 }

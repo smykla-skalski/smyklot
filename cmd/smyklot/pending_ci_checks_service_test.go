@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/internal/storage/open"
@@ -135,7 +136,7 @@ func TestPendingCICheckCreationIsSerializedPerHead(t *testing.T) {
 
 	checks := &githubPendingCIChecks{
 		store: store, tokens: pendingCICheckTokensStub{}, apiBaseURL: api.URL,
-		now: func() time.Time { return now }, syncer: newPendingCICoordinator(),
+		now: func() time.Time { return now }, syncer: bot.NewCoordinator(),
 	}
 	target := storage.Target{ID: "installation:77", InstallationID: "77"}
 	repository := storage.Repository{
@@ -277,17 +278,17 @@ func verifyArmFailurePreservesPriorAuthorization(
 		t.Fatal(err)
 	}
 	slotID := slot.ID
-	command := &pendingCICommand{
-		store: pendingCICommandStoreStub{request: pendingci.Request{
+	command := &bot.PendingCICommand{
+		Store: pendingCICommandStoreStub{request: pendingci.Request{
 			RepositoryID: repository.ID, PullRequest: 42, HeadSHA: "head",
 			MergeMethod: pendingci.MergeMethodSquash, Requester: "prior",
 			ArtifactKind: pendingci.ArtifactCheck, CheckSlotID: &slotID,
 		}},
-		checks: checks, repositoryID: repository.ID,
+		Checks: checks, RepositoryID: repository.ID,
 	}
-	err = restorePendingCICheckAfterArmFailure(
+	err = bot.RestorePendingCICheckAfterArmFailure(
 		t.Context(), command, target, repository,
-		pendingCIActivationRequest{pullRequest: 42, headSHA: "head"}, slot,
+		bot.PendingCIActivationRequest{PullRequest: 42, HeadSHA: "head"}, slot,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -297,4 +298,57 @@ func verifyArmFailurePreservesPriorAuthorization(
 	if len(calls.patchStates) != 1 || calls.patchStates[0] != "in_progress:" {
 		t.Fatalf("check rollback states = %v, want prior authorization", calls.patchStates)
 	}
+}
+
+// pendingCICommandStoreStub answers the one read the check rollback makes.
+//
+// The command layer lives in internal/bot now, and its own stub with it. This
+// is the narrowest thing that satisfies bot.PendingCICommandStore: everything
+// but GetArmed is unreachable from the path under test, and a method that
+// returned a plausible value would hide a call this test does not expect.
+type pendingCICommandStoreStub struct {
+	request pendingci.Request
+}
+
+func (store pendingCICommandStoreStub) GetArmed(
+	context.Context,
+	string,
+	int,
+) (pendingci.Request, error) {
+	return store.request, nil
+}
+
+func (store pendingCICommandStoreStub) CheckArm(
+	context.Context,
+	pendingci.ArmRequest,
+) error {
+	panic("check rollback does not check an arm")
+}
+
+func (store pendingCICommandStoreStub) Arm(
+	context.Context,
+	pendingci.ArmRequest,
+) (pendingci.ArmResult, error) {
+	panic("check rollback does not arm")
+}
+
+func (store pendingCICommandStoreStub) CancelBySource(
+	context.Context,
+	pendingci.CancelRequest,
+) (*pendingci.Request, error) {
+	panic("check rollback does not cancel by source")
+}
+
+func (store pendingCICommandStoreStub) CancelByIntent(
+	context.Context,
+	pendingci.CancelIntentRequest,
+) (pendingci.CancelIntentResult, error) {
+	panic("check rollback does not cancel by intent")
+}
+
+func (store pendingCICommandStoreStub) FinishPR(
+	context.Context,
+	pendingci.FinishPRRequest,
+) (*pendingci.Request, error) {
+	panic("check rollback does not finish")
 }

@@ -1,4 +1,4 @@
-package main
+package bot
 
 import (
 	"context"
@@ -53,9 +53,9 @@ func TestPendingCICommandRecognizesExistingArtifactOwnership(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			command := pendingCICommand{
-				store:        pendingCICommandStoreStub{request: test.request, getErr: test.err},
-				repositoryID: "repository:7",
+			command := PendingCICommand{
+				Store:        pendingCICommandStoreStub{request: test.request, getErr: test.err},
+				RepositoryID: "repository:7",
 			}
 			owned, err := command.armedArtifactOwnership(
 				t.Context(), 198, test.label,
@@ -73,9 +73,9 @@ func TestPendingCICommandRecognizesExistingArtifactOwnership(t *testing.T) {
 func TestPendingCICommandReportsLabelOwnershipReadFailure(t *testing.T) {
 	t.Parallel()
 	readErr := errors.New("database unavailable")
-	command := pendingCICommand{
-		store:        pendingCICommandStoreStub{getErr: readErr},
-		repositoryID: "repository:7",
+	command := PendingCICommand{
+		Store:        pendingCICommandStoreStub{getErr: readErr},
+		RepositoryID: "repository:7",
 	}
 	_, err := command.armedArtifactOwnership(
 		t.Context(), 198, "smyklot:pending:ci:squash",
@@ -88,14 +88,14 @@ func TestPendingCICommandReportsLabelOwnershipReadFailure(t *testing.T) {
 func TestPendingCICommandSuppressesStaleCleanupSideEffects(t *testing.T) {
 	t.Parallel()
 	called := false
-	command := pendingCICommand{
-		store: pendingCICommandStoreStub{}, coordinator: newPendingCICoordinator(),
-		repositoryID: "repository:7", sourceCommentID: 101,
-		sourceRevision: "2026-08-15T12:00:00Z", sourceSequence: 1, sourceOrder: 1,
-		now:  func() time.Time { return time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC) },
-		wake: func() {},
+	command := PendingCICommand{
+		Store: pendingCICommandStoreStub{}, Coordinator: NewCoordinator(),
+		RepositoryID: "repository:7", SourceCommentID: 101,
+		SourceRevision: "2026-08-15T12:00:00Z", SourceSequence: 1, SourceOrder: 1,
+		Now:  func() time.Time { return time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC) },
+		Wake: func() {},
 	}
-	accepted, err := command.cancelAndRun(t.Context(), 198, "cleanup command", func() error {
+	accepted, err := command.CancelAndRun(t.Context(), 198, "cleanup command", func() error {
 		called = true
 
 		return nil
@@ -113,20 +113,20 @@ func TestPendingCICommandSuppressesStaleCleanupSideEffects(t *testing.T) {
 
 func TestPendingCICommandKeepsCleanupUnderRepositoryOwnership(t *testing.T) {
 	t.Parallel()
-	coordinator := newPendingCICoordinator()
-	command := pendingCICommand{
-		store:       pendingCICommandStoreStub{finishResult: &pendingci.Request{ID: 1}},
-		coordinator: coordinator, repositoryID: "repository:7",
-		sourceCommentID: 101, sourceRevision: "2026-08-15T12:00:00Z",
-		sourceSequence: 1, sourceOrder: 1,
-		now:  func() time.Time { return time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC) },
-		wake: func() {},
+	coordinator := NewCoordinator()
+	command := PendingCICommand{
+		Store:       pendingCICommandStoreStub{finishResult: &pendingci.Request{ID: 1}},
+		Coordinator: coordinator, RepositoryID: "repository:7",
+		SourceCommentID: 101, SourceRevision: "2026-08-15T12:00:00Z",
+		SourceSequence: 1, SourceOrder: 1,
+		Now:  func() time.Time { return time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC) },
+		Wake: func() {},
 	}
 	cleanupStarted := make(chan struct{})
 	releaseCleanup := make(chan struct{})
 	cleanupDone := make(chan error, 1)
 	go func() {
-		_, err := command.cancelAndRun(t.Context(), 198, "cleanup command", func() error {
+		_, err := command.CancelAndRun(t.Context(), 198, "cleanup command", func() error {
 			close(cleanupStarted)
 			<-releaseCleanup
 
@@ -171,20 +171,20 @@ func TestPendingCICommandKeepsCleanupUnderRepositoryOwnership(t *testing.T) {
 func TestPendingCIReactionCleanupFinishesCurrentRequest(t *testing.T) {
 	t.Parallel()
 	var change pendingci.FinishPRRequest
-	command := pendingCICommand{
-		store: pendingCICommandStoreStub{finish: func(
+	command := PendingCICommand{
+		Store: pendingCICommandStoreStub{finish: func(
 			request pendingci.FinishPRRequest,
 		) (*pendingci.Request, error) {
 			change = request
 
 			return &pendingci.Request{ID: 1}, nil
 		}},
-		coordinator: newPendingCICoordinator(), repositoryID: "repository:7",
-		now:  func() time.Time { return time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC) },
-		wake: func() {},
+		Coordinator: NewCoordinator(), RepositoryID: "repository:7",
+		Now:  func() time.Time { return time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC) },
+		Wake: func() {},
 	}
 	called := false
-	accepted, err := command.cancelAndRun(t.Context(), 198, "cleanup reaction", func() error {
+	accepted, err := command.CancelAndRun(t.Context(), 198, "cleanup reaction", func() error {
 		called = true
 
 		return nil
@@ -206,15 +206,15 @@ func TestPendingCICleanupWakesDurableCleanupAfterExternalFailure(t *testing.T) {
 	t.Parallel()
 	woke := false
 	externalErr := errors.New("GitHub unavailable")
-	command := pendingCICommand{
-		store:       pendingCICommandStoreStub{finishResult: &pendingci.Request{ID: 1}},
-		coordinator: newPendingCICoordinator(), repositoryID: "repository:7",
-		sourceCommentID: 101, sourceRevision: "2026-08-15T12:00:00Z",
-		sourceSequence: 1, sourceOrder: 1,
-		now:  func() time.Time { return time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC) },
-		wake: func() { woke = true },
+	command := PendingCICommand{
+		Store:       pendingCICommandStoreStub{finishResult: &pendingci.Request{ID: 1}},
+		Coordinator: NewCoordinator(), RepositoryID: "repository:7",
+		SourceCommentID: 101, SourceRevision: "2026-08-15T12:00:00Z",
+		SourceSequence: 1, SourceOrder: 1,
+		Now:  func() time.Time { return time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC) },
+		Wake: func() { woke = true },
 	}
-	_, err := command.cancelAndRun(t.Context(), 198, "cleanup command", func() error {
+	_, err := command.CancelAndRun(t.Context(), 198, "cleanup command", func() error {
 		return externalErr
 	})
 	if !errors.Is(err, externalErr) {

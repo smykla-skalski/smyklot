@@ -1,4 +1,4 @@
-package main
+package bot
 
 import (
 	"context"
@@ -36,10 +36,10 @@ func TestPendingCIRequiredOnlyRejectsRequiredWorkflows(t *testing.T) {
 		StatusChecks: []github.RequiredCheck{{Context: "build"}}, RequiredWorkflow: true,
 	}}
 
-	_, err := pendingCIRequiredChecks(
+	_, err := PendingCIRequiredChecks(
 		t.Context(), reader, "owner", "repo", "main", true,
 	)
-	if !errors.Is(err, errRequiredWorkflowsUnsupported) {
+	if !errors.Is(err, ErrRequiredWorkflowsUnsupported) {
 		t.Fatalf("required-only policy error = %v", err)
 	}
 }
@@ -50,7 +50,7 @@ func TestPendingCIAllChecksAllowsRequiredWorkflows(t *testing.T) {
 		RequiredWorkflow: true,
 	}}
 
-	required, err := pendingCIRequiredChecks(
+	required, err := PendingCIRequiredChecks(
 		t.Context(), reader, "owner", "repo", "main", false,
 	)
 	if err != nil {

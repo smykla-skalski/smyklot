@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
@@ -28,7 +29,7 @@ type pendingCISourceClaimResult struct {
 func claimPendingCISource(
 	ctx context.Context,
 	store pendingCISourceClaimStore,
-	exclusive pendingCIExclusive,
+	exclusive bot.Exclusive,
 	source pendingci.SourceRevisionRequest,
 	cancellation *pendingci.CancelRequest,
 ) (pendingCISourceClaimResult, error) {

@@ -1,4 +1,4 @@
-package main
+package bot
 
 import (
 	"context"
@@ -7,28 +7,24 @@ import (
 	"sync"
 )
 
-type pendingCIExclusive interface {
-	Exclusive(context.Context, string, func() error) error
-}
+const CatalogCoordinatorKey = "pending-ci:catalog"
 
-const pendingCICatalogCoordinatorKey = "pending-ci:catalog"
-
-// pendingCICoordinator serializes the few repository operations that cross
+// Coordinator serializes the few repository operations that cross
 // durable state and GitHub side effects. Policy, persistence, transport, and
 // API adapters remain independent and meet only at this boundary.
-type pendingCICoordinator struct {
+type Coordinator struct {
 	mu    sync.Mutex
-	gates map[string]*pendingCIRepositoryGate
+	gates map[string]*repositoryGate
 }
 
-type pendingCIRepositoryGate struct {
+type repositoryGate struct {
 	ready chan struct{}
 	users int
 }
 
-func exclusivePendingCIRepositories(
+func ExclusiveRepositories(
 	ctx context.Context,
-	coordinator pendingCIExclusive,
+	coordinator Exclusive,
 	repositoryIDs []string,
 	operation func() error,
 ) error {
@@ -53,11 +49,11 @@ func exclusivePendingCIRepositories(
 	return acquire(0)
 }
 
-func newPendingCICoordinator() *pendingCICoordinator {
-	return &pendingCICoordinator{gates: make(map[string]*pendingCIRepositoryGate)}
+func NewCoordinator() *Coordinator {
+	return &Coordinator{gates: make(map[string]*repositoryGate)}
 }
 
-func (coordinator *pendingCICoordinator) Exclusive(
+func (coordinator *Coordinator) Exclusive(
 	ctx context.Context,
 	repositoryID string,
 	operation func() error,
@@ -91,15 +87,15 @@ func (coordinator *pendingCICoordinator) Exclusive(
 	return operation()
 }
 
-func (coordinator *pendingCICoordinator) join(
+func (coordinator *Coordinator) join(
 	repositoryID string,
-) *pendingCIRepositoryGate {
+) *repositoryGate {
 	coordinator.mu.Lock()
 	defer coordinator.mu.Unlock()
 
 	gate := coordinator.gates[repositoryID]
 	if gate == nil {
-		gate = &pendingCIRepositoryGate{ready: make(chan struct{}, 1)}
+		gate = &repositoryGate{ready: make(chan struct{}, 1)}
 		gate.ready <- struct{}{}
 		coordinator.gates[repositoryID] = gate
 	}
@@ -108,9 +104,9 @@ func (coordinator *pendingCICoordinator) join(
 	return gate
 }
 
-func (coordinator *pendingCICoordinator) leave(
+func (coordinator *Coordinator) leave(
 	repositoryID string,
-	gate *pendingCIRepositoryGate,
+	gate *repositoryGate,
 ) {
 	coordinator.mu.Lock()
 	defer coordinator.mu.Unlock()

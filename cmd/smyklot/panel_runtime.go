@@ -313,13 +313,13 @@ func (s *server) reconcileCatalogSnapshots(
 	snapshots []storage.InstallationSnapshot,
 ) error {
 	err := s.pendingCICoordinator.Exclusive(
-		ctx, pendingCICatalogCoordinatorKey, func() error {
+		ctx, bot.CatalogCoordinatorKey, func() error {
 			repositoryIDs, idsErr := s.catalogRepositoryIDs(ctx, snapshots)
 			if idsErr != nil {
 				return idsErr
 			}
 
-			return exclusivePendingCIRepositories(
+			return bot.ExclusiveRepositories(
 				ctx, s.pendingCICoordinator, repositoryIDs,
 				func() error { return s.store.ReconcileCatalog(ctx, snapshots) },
 			)
@@ -337,7 +337,7 @@ func (s *server) reconcileInstallationSnapshot(
 	snapshot storage.InstallationSnapshot,
 ) error {
 	return s.pendingCICoordinator.Exclusive(
-		ctx, pendingCICatalogCoordinatorKey, func() error {
+		ctx, bot.CatalogCoordinatorKey, func() error {
 			repositoryIDs := snapshotRepositoryIDs([]storage.InstallationSnapshot{snapshot})
 			current, err := s.store.ListRepositories(ctx, snapshot.TargetID)
 			if err != nil {
@@ -350,7 +350,7 @@ func (s *server) reconcileInstallationSnapshot(
 				repositoryIDs = append(repositoryIDs, repository.ID)
 			}
 
-			return exclusivePendingCIRepositories(
+			return bot.ExclusiveRepositories(
 				ctx, s.pendingCICoordinator, repositoryIDs,
 				func() error { return s.store.ReconcileInstallation(ctx, snapshot) },
 			)
