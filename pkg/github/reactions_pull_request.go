@@ -9,7 +9,7 @@ import (
 	gogithub "github.com/google/go-github/v90/github"
 )
 
-const pendingCIReactionScanAttempts = 3
+const reactionScanAttempts = 3
 
 // HasPullRequestReaction reports whether one user left a specific reaction on
 // the pull request itself. Unlike a comment reaction, this survives deletion
@@ -21,8 +21,8 @@ func (c *Client) HasPullRequestReaction(
 	username string,
 	reactionType ReactionType,
 ) (bool, error) {
-	return findPendingCIReaction(
-		c.pendingCIPullRequestReactionPager(ctx, owner, repo, pullRequest),
+	return findReaction(
+		c.pullRequestReactionPager(ctx, owner, repo, pullRequest),
 		username,
 		reactionType,
 		"pull request reaction",
@@ -54,8 +54,8 @@ func (c *Client) RemovePullRequestReactionByUser(
 	reactionType ReactionType,
 ) error {
 	path := fmt.Sprintf("/repos/%s/%s/issues/%d/reactions", owner, repo, pullRequest)
-	reaction, found, err := locatePendingCIReaction(
-		c.pendingCIPullRequestReactionPager(ctx, owner, repo, pullRequest),
+	reaction, found, err := locateReaction(
+		c.pullRequestReactionPager(ctx, owner, repo, pullRequest),
 		username,
 		reactionType,
 		"pull request reaction",
@@ -70,34 +70,34 @@ func (c *Client) RemovePullRequestReactionByUser(
 	return wrapError(ErrAPIRequest, http.MethodDelete, path, err)
 }
 
-type pendingCIReactionPage struct {
+type reactionPage struct {
 	items []*gogithub.Reaction
 	next  int
 	path  string
 }
 
 type (
-	pendingCIReactionPager   func(int) (pendingCIReactionPage, error)
-	pendingCIReactionFetcher func(
+	reactionPager   func(int) (reactionPage, error)
+	reactionFetcher func(
 		*gogithub.ListReactionOptions,
 	) ([]*gogithub.Reaction, *gogithub.Response, error)
 )
 
-type pendingCIReactionScan struct {
+type reactionScan struct {
 	match       *gogithub.Reaction
 	fingerprint [sha256.Size]byte
 	pages       int
 	path        string
 }
 
-func (c *Client) pendingCIPullRequestReactionPager(
+func (c *Client) pullRequestReactionPager(
 	ctx context.Context,
 	owner, repo string,
 	pullRequest int,
-) pendingCIReactionPager {
+) reactionPager {
 	path := fmt.Sprintf("/repos/%s/%s/issues/%d/reactions", owner, repo, pullRequest)
 
-	return newPendingCIReactionPager(
+	return newReactionPager(
 		path,
 		func(opts *gogithub.ListReactionOptions) (
 			[]*gogithub.Reaction,
@@ -111,38 +111,38 @@ func (c *Client) pendingCIPullRequestReactionPager(
 	)
 }
 
-func newPendingCIReactionPager(
+func newReactionPager(
 	path string,
-	fetch pendingCIReactionFetcher,
-) pendingCIReactionPager {
-	return func(page int) (pendingCIReactionPage, error) {
+	fetch reactionFetcher,
+) reactionPager {
+	return func(page int) (reactionPage, error) {
 		items, response, err := fetch(&gogithub.ListReactionOptions{
 			ListOptions: gogithub.ListOptions{Page: page, PerPage: pageSize},
 		})
 		if err != nil {
-			return pendingCIReactionPage{},
+			return reactionPage{},
 				wrapError(decodeOp(response, err), http.MethodGet, path, err)
 		}
 
-		return pendingCIReactionPage{
+		return reactionPage{
 			items: items, next: nextPage(response), path: path,
 		}, nil
 	}
 }
 
-func findPendingCIReaction(
-	page pendingCIReactionPager,
+func findReaction(
+	page reactionPager,
 	username string,
 	reactionType ReactionType,
 	subject string,
 ) (bool, error) {
-	_, found, err := locatePendingCIReaction(page, username, reactionType, subject)
+	_, found, err := locateReaction(page, username, reactionType, subject)
 
 	return found, err
 }
 
-func locatePendingCIReaction(
-	page pendingCIReactionPager,
+func locateReaction(
+	page reactionPager,
 	username string,
 	reactionType ReactionType,
 	subject string,
@@ -150,8 +150,8 @@ func locatePendingCIReaction(
 	var previous [sha256.Size]byte
 	hasPrevious := false
 	lastPath := ""
-	for range pendingCIReactionScanAttempts {
-		scan, err := scanPendingCIReactions(page, username, reactionType, subject)
+	for range reactionScanAttempts {
+		scan, err := scanReactions(page, username, reactionType, subject)
 		if err != nil {
 			return nil, false, err
 		}
@@ -166,25 +166,25 @@ func locatePendingCIReaction(
 		lastPath = scan.path
 	}
 
-	return nil, false, pendingCIReactionMutationError(subject, lastPath)
+	return nil, false, reactionMutationError(subject, lastPath)
 }
 
-func scanPendingCIReactions(
-	page pendingCIReactionPager,
+func scanReactions(
+	page reactionPager,
 	username string,
 	reactionType ReactionType,
 	subject string,
-) (pendingCIReactionScan, error) {
+) (reactionScan, error) {
 	digest := sha256.New()
 	number := 1
 	for pageCount := 1; pageCount <= maxPages; pageCount++ {
 		current, err := page(number)
 		if err != nil {
-			return pendingCIReactionScan{}, err
+			return reactionScan{}, err
 		}
 		for _, reaction := range current.items {
-			if pendingCIReactionMatches(reaction, username, reactionType) {
-				return pendingCIReactionScan{match: reaction}, nil
+			if reactionMatches(reaction, username, reactionType) {
+				return reactionScan{match: reaction}, nil
 			}
 			_, _ = fmt.Fprintf(
 				digest,
@@ -203,21 +203,21 @@ func scanPendingCIReactions(
 			var fingerprint [sha256.Size]byte
 			copy(fingerprint[:], digest.Sum(nil))
 
-			return pendingCIReactionScan{
+			return reactionScan{
 				fingerprint: fingerprint, pages: pageCount, path: current.path,
 			}, nil
 		}
 		if pageCount == maxPages {
-			return pendingCIReactionScan{},
-				pendingCIReactionPaginationError(subject, current.path, pageCount)
+			return reactionScan{},
+				reactionPaginationError(subject, current.path, pageCount)
 		}
 		number++
 	}
 
-	return pendingCIReactionScan{}, nil
+	return reactionScan{}, nil
 }
 
-func pendingCIReactionMatches(
+func reactionMatches(
 	reaction *gogithub.Reaction,
 	username string,
 	reactionType ReactionType,
@@ -226,7 +226,7 @@ func pendingCIReactionMatches(
 		reaction.GetContent() == string(reactionType)
 }
 
-func pendingCIReactionPaginationError(subject, path string, page int) error {
+func reactionPaginationError(subject, path string, page int) error {
 	return NewAPIError(
 		ErrIncompletePagination,
 		0,
@@ -236,7 +236,7 @@ func pendingCIReactionPaginationError(subject, path string, page int) error {
 	)
 }
 
-func pendingCIReactionMutationError(subject, path string) error {
+func reactionMutationError(subject, path string) error {
 	return NewAPIError(
 		ErrIncompletePagination,
 		0,
@@ -263,13 +263,13 @@ func (c *Client) HasPullRequestCommentReaction(
 	username string,
 	reactionType ReactionType,
 ) (bool, error) {
-	comments, err := c.pendingCIPullRequestComments(ctx, owner, repo, pullRequest)
+	comments, err := c.pullRequestComments(ctx, owner, repo, pullRequest)
 	if err != nil {
 		return false, err
 	}
 	for _, comment := range comments {
-		found, err := findPendingCIReaction(
-			c.pendingCICommentReactionPager(ctx, owner, repo, comment.GetID()),
+		found, err := findReaction(
+			c.commentReactionPager(ctx, owner, repo, comment.GetID()),
 			username,
 			reactionType,
 			"reaction",
@@ -291,12 +291,12 @@ func (c *Client) RemovePullRequestCommentReactionsByUser(
 	username string,
 	reactionType ReactionType,
 ) error {
-	comments, err := c.pendingCIPullRequestComments(ctx, owner, repo, pullRequest)
+	comments, err := c.pullRequestComments(ctx, owner, repo, pullRequest)
 	if err != nil {
 		return err
 	}
 	for _, comment := range comments {
-		if err := c.removePendingCICommentReaction(
+		if err := c.removeCommentReaction(
 			ctx, owner, repo, comment.GetID(), username, reactionType,
 		); err != nil {
 			return err
@@ -306,7 +306,7 @@ func (c *Client) RemovePullRequestCommentReactionsByUser(
 	return nil
 }
 
-func (c *Client) pendingCIPullRequestComments(
+func (c *Client) pullRequestComments(
 	ctx context.Context,
 	owner, repo string,
 	pullRequest int,
@@ -331,14 +331,14 @@ func (c *Client) pendingCIPullRequestComments(
 	)
 }
 
-func (c *Client) pendingCICommentReactionPager(
+func (c *Client) commentReactionPager(
 	ctx context.Context,
 	owner, repo string,
 	commentID int64,
-) pendingCIReactionPager {
+) reactionPager {
 	path := fmt.Sprintf("/repos/%s/%s/issues/comments/%d/reactions", owner, repo, commentID)
 
-	return newPendingCIReactionPager(
+	return newReactionPager(
 		path,
 		func(opts *gogithub.ListReactionOptions) (
 			[]*gogithub.Reaction,
@@ -352,7 +352,7 @@ func (c *Client) pendingCICommentReactionPager(
 	)
 }
 
-func (c *Client) removePendingCICommentReaction(
+func (c *Client) removeCommentReaction(
 	ctx context.Context,
 	owner, repo string,
 	commentID int64,
@@ -360,8 +360,8 @@ func (c *Client) removePendingCICommentReaction(
 	reactionType ReactionType,
 ) error {
 	path := fmt.Sprintf("/repos/%s/%s/issues/comments/%d/reactions", owner, repo, commentID)
-	reaction, found, err := locatePendingCIReaction(
-		c.pendingCICommentReactionPager(ctx, owner, repo, commentID),
+	reaction, found, err := locateReaction(
+		c.commentReactionPager(ctx, owner, repo, commentID),
 		username,
 		reactionType,
 		"reaction",
