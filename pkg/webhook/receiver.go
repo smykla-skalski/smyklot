@@ -64,13 +64,13 @@ func (rec receiver) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		),
 	}
 
-	delivery = p.opts.decorate(delivery)
-
 	if p.opts.Screen != nil {
 		wanted, screenErr := p.opts.Screen(delivery)
 		if screenErr != nil {
 			p.opts.received(event, OutcomeInvalid)
-			delivery.Logger.Error("delivery refused by screen", "error", screenErr)
+			p.opts.decorate(delivery).Logger.Error(
+				"delivery refused by screen", "error", screenErr,
+			)
 			http.Error(w, "malformed payload", http.StatusBadRequest)
 
 			return
@@ -83,7 +83,7 @@ func (rec receiver) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	rec.claim(w, r, delivery)
+	rec.claim(w, r, p.opts.decorate(delivery))
 }
 
 func (rec receiver) claim(w http.ResponseWriter, r *http.Request, delivery Delivery) {

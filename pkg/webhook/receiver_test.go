@@ -3,6 +3,7 @@ package webhook_test
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 
@@ -32,6 +33,7 @@ var _ = Describe("Receiver [Unit]", func() {
 		inbox    *webhook.MemoryInbox
 		handled  chan webhook.Delivery
 		screen   webhook.Screen
+		attrs    int
 	)
 
 	BeforeEach(func() {
@@ -39,6 +41,7 @@ var _ = Describe("Receiver [Unit]", func() {
 		inbox = webhook.NewMemoryInbox(webhook.MemoryInboxOptions{})
 		handled = make(chan webhook.Delivery, 4)
 		screen = nil
+		attrs = 0
 	})
 
 	build := func(store webhook.Inbox) *webhook.Pipeline {
@@ -51,8 +54,13 @@ var _ = Describe("Receiver [Unit]", func() {
 				return nil
 			},
 			webhook.Options{
-				Events:   []string{webhook.EventIssueComment},
-				Screen:   screen,
+				Events: []string{webhook.EventIssueComment},
+				Screen: screen,
+				Attrs: func(webhook.Delivery) []slog.Attr {
+					attrs++
+
+					return nil
+				},
 				Observer: webhook.Observer{Received: observed.Received},
 			},
 		)
@@ -121,6 +129,11 @@ var _ = Describe("Receiver [Unit]", func() {
 
 		Expect(response.Code).To(Equal(http.StatusNoContent))
 		Expect(observed.received).To(Equal([]string{webhook.OutcomeIgnored}))
+
+		// Most of what GitHub sends is answered here, and Attrs is where the
+		// consumer decodes the body a second time to name the pull request. A
+		// delivery nobody wants should not pay for a log line nobody writes.
+		Expect(attrs).To(BeZero())
 	})
 
 	It("should reject a delivery the screen could not read", func() {
