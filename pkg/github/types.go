@@ -161,30 +161,33 @@ type PullRequestState struct {
 // ReactionType represents the type of emoji reaction
 type ReactionType string
 
+// The eight contents GitHub accepts, spelled the way GitHub spells them. What
+// a reaction means to the application putting it there is the application's
+// word, not this package's.
 const (
-	// ReactionSuccess represents success (✅)
-	ReactionSuccess ReactionType = "+1"
+	// ReactionPlusOne is 👍
+	ReactionPlusOne ReactionType = "+1"
 
-	// ReactionError represents error (❌)
-	ReactionError ReactionType = "-1"
+	// ReactionMinusOne is 👎
+	ReactionMinusOne ReactionType = "-1"
 
-	// ReactionWarning represents warning (⚠️)
-	ReactionWarning ReactionType = "confused"
+	// ReactionLaugh is 😄
+	ReactionLaugh ReactionType = "laugh"
 
-	// ReactionEyes represents acknowledgment (👀)
-	ReactionEyes ReactionType = "eyes"
+	// ReactionConfused is 😕
+	ReactionConfused ReactionType = "confused"
 
-	// ReactionApprove represents approve command (👍)
-	ReactionApprove ReactionType = "+1"
+	// ReactionHeart is ❤️
+	ReactionHeart ReactionType = "heart"
 
-	// ReactionMerge represents merge command (🚀)
-	ReactionMerge ReactionType = "rocket"
-
-	// ReactionCleanup represents cleanup command (❤️)
-	ReactionCleanup ReactionType = "heart"
-
-	// ReactionHooray represents celebration (🎉)
+	// ReactionHooray is 🎉
 	ReactionHooray ReactionType = "hooray"
+
+	// ReactionRocket is 🚀
+	ReactionRocket ReactionType = "rocket"
+
+	// ReactionEyes is 👀
+	ReactionEyes ReactionType = "eyes"
 )
 
 // Reaction represents a reaction on a comment

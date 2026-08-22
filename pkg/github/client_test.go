@@ -93,7 +93,7 @@ var _ = Describe("GitHub Client [Unit]", func() {
 				client, err := github.NewClient("test-token", server.URL)
 				Expect(err).NotTo(HaveOccurred())
 
-				err = client.AddReaction(context.Background(), "owner", "repo", 123, github.ReactionSuccess)
+				err = client.AddReaction(context.Background(), "owner", "repo", 123, github.ReactionPlusOne)
 				Expect(err).NotTo(HaveOccurred())
 			})
 
@@ -113,7 +113,7 @@ var _ = Describe("GitHub Client [Unit]", func() {
 				client, err := github.NewClient("test-token", server.URL)
 				Expect(err).NotTo(HaveOccurred())
 
-				err = client.AddReaction(context.Background(), "owner", "repo", 456, github.ReactionError)
+				err = client.AddReaction(context.Background(), "owner", "repo", 456, github.ReactionMinusOne)
 				Expect(err).NotTo(HaveOccurred())
 			})
 
@@ -128,7 +128,7 @@ var _ = Describe("GitHub Client [Unit]", func() {
 				client, err := github.NewClient("test-token", server.URL)
 				Expect(err).NotTo(HaveOccurred())
 
-				err = client.AddReaction(context.Background(), "owner", "repo", 123, github.ReactionSuccess)
+				err = client.AddReaction(context.Background(), "owner", "repo", 123, github.ReactionPlusOne)
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("401"))
 			})
@@ -695,7 +695,7 @@ var _ = Describe("GitHub Client [Unit]", func() {
 				client, err := github.NewClient("test-token", address)
 				Expect(err).NotTo(HaveOccurred())
 
-				err = client.AddReaction(context.Background(), "owner", "repo", 1, github.ReactionSuccess)
+				err = client.AddReaction(context.Background(), "owner", "repo", 1, github.ReactionPlusOne)
 				Expect(err).To(HaveOccurred())
 			})
 

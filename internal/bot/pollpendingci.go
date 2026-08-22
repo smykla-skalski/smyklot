@@ -342,7 +342,7 @@ func settlePendingCIReaction(
 			)
 
 			// Add "+1" (thumbs up) reaction
-			_ = client.AddReaction(ctx, owner, repo, commentID, github.ReactionSuccess)
+			_ = client.AddReaction(ctx, owner, repo, commentID, ReactionSuccess)
 		}
 	}
 

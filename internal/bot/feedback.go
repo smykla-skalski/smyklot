@@ -88,7 +88,7 @@ func postOperationFailure(
 		prNum,
 		commentID,
 		fb.Message,
-		github.ReactionError,
+		ReactionError,
 	); err != nil {
 		return err
 	}
@@ -106,17 +106,17 @@ func handleUnauthorized(
 ) error {
 	fb := feedback.NewUnauthorized(rc.CommentAuthor, checker.GetApprovers())
 
-	return PostFeedback(ctx, client, rc, prNum, commentID, fb.Message, github.ReactionError)
+	return PostFeedback(ctx, client, rc, prNum, commentID, fb.Message, ReactionError)
 }
 
 // postCombinedFeedback posts combined feedback with appropriate reaction
 func postCombinedFeedback(ctx context.Context, client *github.Client, rc *RuntimeConfig, prNum, commentID int, fb *feedback.Feedback) error {
-	reaction := github.ReactionSuccess
+	reaction := ReactionSuccess
 	switch fb.Type {
 	case feedback.Error:
-		reaction = github.ReactionError
+		reaction = ReactionError
 	case feedback.Warning:
-		reaction = github.ReactionWarning
+		reaction = ReactionWarning
 	case feedback.Pending:
 		reaction = ReactionPendingCI
 	case feedback.Success:
@@ -129,5 +129,5 @@ func postCombinedFeedback(ctx context.Context, client *github.Client, rc *Runtim
 func postNotMergeable(ctx context.Context, client *github.Client, rc *RuntimeConfig, prNum, commentID int) error {
 	fb := feedback.NewNotMergeable()
 
-	return PostFeedback(ctx, client, rc, prNum, commentID, fb.Message, github.ReactionWarning)
+	return PostFeedback(ctx, client, rc, prNum, commentID, fb.Message, ReactionWarning)
 }

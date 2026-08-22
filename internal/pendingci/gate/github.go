@@ -613,7 +613,7 @@ func (backend *Backend) cleanupArtifactsExclusive(
 	if lifecycle == pendingci.LifecycleMerged && request.SourceCommentID > 0 {
 		cleanupErr = errors.Join(cleanupErr, bot.CleanupGitHubError(
 			"add pending CI success reaction",
-			client.AddReaction(ctx, owner, repository, commentID, github.ReactionSuccess),
+			client.AddReaction(ctx, owner, repository, commentID, bot.ReactionSuccess),
 		))
 	}
 

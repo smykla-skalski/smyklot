@@ -10,8 +10,8 @@ import (
 
 // AddReaction adds an emoji reaction to a comment
 //
-// The reaction parameter should be one of the ReactionType constants
-// (ReactionSuccess, ReactionError, ReactionWarning, ReactionEyes).
+// The reaction parameter is one of the eight ReactionType constants; GitHub
+// rejects anything else.
 func (c *Client) AddReaction(
 	ctx context.Context,
 	owner, repo string,

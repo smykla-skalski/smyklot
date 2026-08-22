@@ -34,15 +34,6 @@ const (
 	LegacyLabelPendingCIRebaseRequired = "smyklot:pending-ci:rebase:required"
 )
 
-const (
-	// ReactionPendingCI represents waiting for CI (👀)
-	ReactionPendingCI = github.ReactionEyes
-
-	// ReactionPendingCIService fences a service-owned wait from the Action
-	// runner without adding a second label to the pull request.
-	ReactionPendingCIService = github.ReactionHooray
-)
-
 // ParsePendingCILabel parses a pending-ci label and returns the merge method and required flag
 //
 // Returns:

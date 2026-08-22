@@ -162,7 +162,7 @@ func ExecuteCommentWithEnvironment(
 		rc.RepoOwner,
 		rc.RepoName,
 		commentIDNum,
-		github.ReactionError,
+		ReactionError,
 		rc.BotUsername,
 	)
 
@@ -971,7 +971,7 @@ func handleHelp(ctx context.Context, client *github.Client, rc *RuntimeConfig, p
 	// Post help feedback
 	fb := feedback.NewHelp()
 
-	return PostFeedback(ctx, client, rc, prNum, commentID, fb.Message, github.ReactionSuccess)
+	return PostFeedback(ctx, client, rc, prNum, commentID, fb.Message, ReactionSuccess)
 }
 
 func executeCoordinatedCleanup(
