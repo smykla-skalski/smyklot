@@ -407,8 +407,8 @@ var _ = Describe("GitHub App Client [Unit]", func() {
 		})
 	})
 
-	// GetCodeowners shares its body with GetRepoConfig, so its contract is
-	// re-checked here rather than assumed
+	// GetCodeowners is GetFileContent with one path and one size, so what is
+	// checked here is the decoding it inherits rather than a body of its own
 	Describe("GetCodeowners", func() {
 		It("should decode the file", func() {
 			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
