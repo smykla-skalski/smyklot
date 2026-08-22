@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/bot"
+	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/github"
 	"github.com/smykla-skalski/smyklot/pkg/webhook"
@@ -33,7 +34,7 @@ func (s *server) commandEnvironment(
 			RepositoryFullName: event.Repository.FullName,
 			SourceCommentID:    event.Comment.ID,
 			SourceRevision:     event.Comment.UpdatedAt,
-			SourceSequence:     event.SourceSequence(),
+			SourceSequence:     pendingci.CommentSequence(event.Action),
 			SourceOrder:        sourceOrder,
 			Now:                func() time.Time { return time.Now().UTC() },
 			Checks:             s.gate.Checks,

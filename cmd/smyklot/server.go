@@ -447,7 +447,7 @@ func (s *server) handleIssueComment(
 	source := pendingci.SourceRevisionRequest{
 		RepositoryID: storage.RepositoryID(event.Repository.ID),
 		PullRequest:  event.Issue.Number, CommentID: event.Comment.ID,
-		Revision: event.Comment.UpdatedAt, Sequence: event.SourceSequence(),
+		Revision: event.Comment.UpdatedAt, Sequence: pendingci.CommentSequence(event.Action),
 		SourceOrder: sourceOrder, EventKey: eventKey, ObservedAt: time.Now().UTC(),
 	}
 	claim, err := gate.ClaimSource(

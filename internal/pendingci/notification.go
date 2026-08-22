@@ -321,3 +321,18 @@ func parsePullRequest(
 		Signals: []Signal{signal},
 	}, nil
 }
+
+// CommentSequence orders actions GitHub reports against the same comment
+// timestamp. An edit supersedes creation; deletion supersedes both.
+func CommentSequence(action string) int {
+	switch action {
+	case webhook.ActionCreated:
+		return 1
+	case webhook.ActionEdited:
+		return 2
+	case webhook.ActionDeleted:
+		return 3
+	default:
+		return 0
+	}
+}
