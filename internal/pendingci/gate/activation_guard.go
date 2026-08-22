@@ -35,7 +35,7 @@ func (guard ActivationGuard) AllowsActivation(
 	if err != nil || !eligible {
 		return false, err
 	}
-	botConfig, err := guard.config.Config(
+	botConfig, err := guard.config(
 		ctx, guard.client, guard.targetID, guard.repositoryID, guard.owner, guard.repository,
 	)
 	if err != nil {

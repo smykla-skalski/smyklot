@@ -17,7 +17,7 @@ import (
 
 type Backend struct {
 	current currentStore
-	source  sourceValidator
+	source  SourceValidator
 
 	config      RepositoryConfig
 	checkRuns   *Checks
@@ -703,7 +703,7 @@ func (backend *Backend) cancelReason(
 			return RepositoryDisabledReason, nil
 		}
 	}
-	botConfig, err := backend.config.Config(
+	botConfig, err := backend.config(
 		ctx, client, request.TargetID, request.RepositoryID, owner, repository,
 	)
 	if err != nil {

@@ -394,7 +394,7 @@ func (g *Gate) preparePendingCIReauthorization(
 	if !requiredContextOwned(required, candidate.slot.Name, candidate.slot.AppID) {
 		return false, nil
 	}
-	botConfig, err := g.Config.Config(
+	botConfig, err := g.Config(
 		ctx,
 		client,
 		candidate.request.TargetID,

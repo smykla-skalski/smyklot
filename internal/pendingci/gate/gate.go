@@ -14,13 +14,11 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/githubapp"
 )
 
-type RepositoryConfig interface {
-	Config(
-		ctx context.Context,
-		client *github.Client,
-		targetID, repositoryID, owner, repository string,
-	) (*config.Config, error)
-}
+type RepositoryConfig func(
+	ctx context.Context,
+	client *github.Client,
+	targetID, repositoryID, owner, repository string,
+) (*config.Config, error)
 
 func readControls(
 	ctx context.Context,
@@ -81,14 +79,10 @@ type Dependencies struct {
 	Panelled    bool
 	WakeGates   func()
 	Logger      *slog.Logger
-	Now         func() time.Time
 }
 
 func New(deps Dependencies) *Gate {
-	now := deps.Now
-	if now == nil {
-		now = func() time.Time { return time.Now().UTC() }
-	}
+	now := func() time.Time { return time.Now().UTC() }
 
 	gate := &Gate{
 		Store:       deps.Store,

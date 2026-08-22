@@ -217,7 +217,7 @@ func newServer(cfg *serveConfig) (*server, error) {
 		Leases:      srv.store,
 		Handoffs:    srv.store,
 		Current:     srv.store,
-		Config:      repositoryConfigAdapter{server: srv},
+		Config:      srv.serviceConfigWithoutCatalogRefresh,
 		Coordinator: pendingCICoordinator,
 		Tokens:      srv.tokens,
 		APIBaseURL:  cfg.apiBaseURL,

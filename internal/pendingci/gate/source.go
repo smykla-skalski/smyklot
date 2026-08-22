@@ -13,16 +13,6 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/github"
 )
 
-type sourceValidator interface {
-	CancellationReason(
-		context.Context,
-		*github.Client,
-		pendingci.Request,
-		string,
-		string,
-	) (string, error)
-}
-
 type SourceValidator struct {
 	config RepositoryConfig
 }
@@ -46,7 +36,7 @@ func (validator SourceValidator) CancellationReason(
 
 		return "", fmt.Errorf("read pending CI source comment: %w", err)
 	}
-	botConfig, err := validator.config.Config(
+	botConfig, err := validator.config(
 		ctx, client, request.TargetID, request.RepositoryID, owner, repository,
 	)
 	if err != nil {

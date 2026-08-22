@@ -32,7 +32,6 @@ type memoryRow struct {
 	id        int64
 	key       string
 	work      Work
-	claimedAt time.Time
 	settledAt time.Time
 	forgotten bool
 
@@ -83,7 +82,6 @@ func (m *MemoryInbox) Claim(_ context.Context, claim Claim) (ClaimResult, error)
 			ClaimID: m.nextID, Key: claim.Key, DeliveryID: claim.DeliveryID,
 			Event: claim.Event, Payload: claim.Payload,
 		},
-		claimedAt:     now,
 		nextAttemptAt: now,
 	}
 	m.rows[row.id] = row
