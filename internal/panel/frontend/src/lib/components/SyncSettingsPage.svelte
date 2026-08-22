@@ -852,4 +852,60 @@
   .add-chip .t {
     text-box: trim-both cap alphabetic;
   }
+
+  @media (max-width: 36rem) {
+    .matrix-tools {
+      align-items: stretch;
+      display: grid;
+    }
+
+    .matrix-search {
+      width: 100%;
+    }
+
+    .card {
+      padding: var(--space-4);
+    }
+
+    .policy-row {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .policy-row .setting-say {
+      grid-column: 1;
+      min-inline-size: 0;
+    }
+
+    .policy-row .policy-value {
+      grid-column: 1;
+      grid-row: 2;
+      justify-self: start;
+      min-inline-size: 0;
+    }
+
+    .policy-row .setting-clear {
+      grid-column: 2;
+      grid-row: 1 / 3;
+      opacity: 1;
+    }
+
+    .value-select {
+      max-inline-size: 100%;
+    }
+
+    .value-select .t {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .group-rest {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .group-rest :global(.btn) {
+      align-self: start;
+    }
+  }
 </style>

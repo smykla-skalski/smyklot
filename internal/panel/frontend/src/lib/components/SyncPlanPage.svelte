@@ -514,8 +514,11 @@
 
 <style>
   .view-frame {
+    box-sizing: border-box;
+    inline-size: 100%;
     margin-inline: auto;
     max-width: var(--content-max);
+    min-inline-size: 0;
     /* The apply bar's seat is measured by the slot after it: the marker's
        named view timeline is declared there and handed back up here. */
     timeline-scope: --bar-slot;
@@ -1074,5 +1077,76 @@
   .confirm-danger {
     color: var(--danger);
     font-weight: 600;
+  }
+
+  @media (max-width: 36rem) {
+    .view-frame {
+      overflow-x: hidden;
+    }
+
+    .hero {
+      align-items: start;
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .hero h2 {
+      font-size: 2rem;
+      overflow-wrap: anywhere;
+    }
+
+    .hero-meta-lines {
+      justify-items: start;
+    }
+
+    .plan-tools {
+      max-inline-size: 100%;
+      min-inline-size: 0;
+      overflow-x: auto;
+    }
+
+    .action-row,
+    .action-row-line {
+      gap: var(--space-2);
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .action-op {
+      grid-column: 1;
+    }
+
+    .action-kind {
+      grid-column: 2;
+      text-align: end;
+    }
+
+    .action-what,
+    .action-fail {
+      grid-column: 1 / -1;
+      margin-block-start: 0;
+      min-inline-size: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .card {
+      padding: var(--space-4);
+    }
+
+    .state-map {
+      gap: var(--space-4);
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .state-edge {
+      margin-block-start: 0;
+      min-inline-size: 0;
+      padding-inline: 0;
+    }
+
+    .state-node,
+    .state-say,
+    .exit-cause {
+      min-inline-size: 0;
+      overflow-wrap: anywhere;
+    }
   }
 </style>

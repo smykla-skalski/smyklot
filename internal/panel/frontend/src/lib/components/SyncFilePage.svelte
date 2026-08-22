@@ -1087,4 +1087,47 @@
     font-size: var(--font-size-compact);
     grid-column: 2;
   }
+
+  @media (max-width: 36rem) {
+    .card {
+      padding: var(--space-4);
+    }
+
+    .card-head {
+      align-items: start;
+      flex-wrap: wrap;
+    }
+
+    .card-head > .object-sum {
+      flex-basis: 100%;
+      overflow-wrap: anywhere;
+    }
+
+    .object-main,
+    .object-sum {
+      min-inline-size: 0;
+    }
+
+    .object-sum,
+    .file-path {
+      overflow-wrap: anywhere;
+    }
+
+    .merge-pane-title {
+      align-items: start;
+      flex-direction: column;
+    }
+
+    .pane-tools {
+      flex-wrap: wrap;
+    }
+
+    .patch-strip {
+      align-items: start;
+    }
+
+    .push-end {
+      margin-inline-start: 0;
+    }
+  }
 </style>

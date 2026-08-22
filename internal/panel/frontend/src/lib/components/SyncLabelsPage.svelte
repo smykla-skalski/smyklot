@@ -1068,4 +1068,24 @@
     justify-self: end;
     min-inline-size: 0;
   }
+
+  @media (max-width: 36rem) {
+    .card {
+      padding: var(--space-4);
+    }
+
+    .card-head {
+      flex-wrap: wrap;
+    }
+
+    .setting-row {
+      grid-auto-flow: row;
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .setting-value {
+      justify-content: start;
+      justify-self: stretch;
+    }
+  }
 </style>

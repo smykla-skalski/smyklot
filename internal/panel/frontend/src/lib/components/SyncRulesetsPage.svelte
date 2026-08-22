@@ -227,7 +227,9 @@
                 <span class="mx-mark mx-pending"
                   ><span class="t"
                     >{pending}
-                    {pending === 1 ? 'repository differs' : 'repositories differ'}</span
+                    <span class="scope-word"
+                      >{pending === 1 ? 'repository' : 'repositories'}
+                    </span>{pending === 1 ? 'differs' : 'differ'}</span
                   ></span
                 >
               {:else}
@@ -607,5 +609,51 @@
     justify-content: end;
     justify-self: end;
     min-inline-size: 0;
+  }
+
+  @media (max-width: 36rem) {
+    .card {
+      padding: var(--space-4);
+    }
+
+    .object-row {
+      gap: var(--space-2);
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .object-main,
+    .object-name-row,
+    .object-name,
+    .object-sum {
+      min-inline-size: 0;
+    }
+
+    .object-name-row {
+      align-items: start;
+      flex-direction: column;
+    }
+
+    .object-name,
+    .object-sum {
+      overflow-wrap: anywhere;
+    }
+
+    .object-side {
+      gap: var(--space-1);
+    }
+
+    .mx-pending .scope-word {
+      display: none;
+    }
+
+    .setting-row {
+      grid-auto-flow: row;
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .setting-value {
+      justify-content: start;
+      justify-self: stretch;
+    }
   }
 </style>

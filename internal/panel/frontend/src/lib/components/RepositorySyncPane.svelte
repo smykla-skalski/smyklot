@@ -1311,6 +1311,21 @@
      line and the control moves under it, and the text fields lose their
      12rem floor rather than holding the page wide. */
   @media (max-width: 30rem) {
+    .sync-pane.card {
+      box-sizing: border-box;
+      inline-size: 100%;
+      max-inline-size: 100%;
+      min-inline-size: 0;
+      padding: var(--space-4);
+    }
+
+    .entry-card,
+    .sync-pane-row {
+      inline-size: 100%;
+      max-inline-size: 100%;
+      min-inline-size: 0;
+    }
+
     .group-head {
       flex-wrap: wrap;
     }
@@ -1340,7 +1355,37 @@
     .sync-merge-heading,
     .sync-merge-find,
     .sync-merge-list {
+      flex-basis: 100%;
       min-width: 0;
+    }
+
+    .sync-merge-occurrence {
+      width: 100%;
+    }
+
+    .sync-pane-row {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .sync-pane-row .text-input,
+    .sync-pane-row :global(fieldset) {
+      box-sizing: border-box;
+      inline-size: 100%;
+      max-inline-size: 100%;
+      min-inline-size: 0;
+    }
+
+    .sync-pane-row > :global(.btn) {
+      align-self: start;
+    }
+
+    .sync-pane-spacer {
+      display: none;
+    }
+
+    .form-note {
+      overflow-wrap: anywhere;
     }
   }
 </style>

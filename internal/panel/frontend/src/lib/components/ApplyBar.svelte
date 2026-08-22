@@ -126,4 +126,28 @@
     pointer-events: none;
     position: absolute;
   }
+
+  @media (max-width: 36rem) {
+    .apply-bar {
+      align-items: stretch;
+      bottom: var(--space-2);
+      display: grid;
+      gap: var(--space-3);
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      padding: var(--space-3);
+    }
+
+    .apply-bar :global(.apply-counts),
+    .apply-bar :global(.apply-note) {
+      grid-column: 1 / -1;
+      min-inline-size: 0;
+    }
+
+    .apply-bar :global(.btn) {
+      inline-size: 100%;
+      justify-content: center;
+      min-inline-size: 0;
+      white-space: normal;
+    }
+  }
 </style>

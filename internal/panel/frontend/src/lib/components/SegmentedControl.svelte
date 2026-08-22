@@ -699,6 +699,19 @@
   }
 
   @media (max-width: 36rem) {
+    fieldset {
+      box-sizing: border-box;
+      inline-size: 100%;
+      max-inline-size: 100%;
+      overflow-x: auto;
+      overflow-y: hidden;
+      scrollbar-width: none;
+    }
+
+    fieldset::-webkit-scrollbar {
+      display: none;
+    }
+
     fieldset.navigation .segment-label {
       padding-inline: var(--space-2);
     }

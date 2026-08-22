@@ -786,4 +786,46 @@
     justify-self: end;
     min-inline-size: 0;
   }
+
+  @media (max-width: 36rem) {
+    .card {
+      padding: var(--space-4);
+    }
+
+    .object-row {
+      gap: var(--space-2);
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .object-main,
+    .object-name-row,
+    .file-path,
+    .object-sum {
+      min-inline-size: 0;
+    }
+
+    .object-name-row {
+      align-items: start;
+      flex-direction: column;
+    }
+
+    .file-path,
+    .object-sum {
+      overflow-wrap: anywhere;
+    }
+
+    .object-side {
+      gap: var(--space-1);
+    }
+
+    .setting-row {
+      grid-auto-flow: row;
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .setting-value {
+      justify-content: start;
+      justify-self: stretch;
+    }
+  }
 </style>

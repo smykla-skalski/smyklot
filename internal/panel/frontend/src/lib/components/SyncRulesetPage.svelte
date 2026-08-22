@@ -939,8 +939,11 @@
 
 <style>
   .view-frame {
+    box-sizing: border-box;
+    inline-size: 100%;
     margin-inline: auto;
     max-width: var(--content-max);
+    min-inline-size: 0;
     timeline-scope: --bar-slot;
   }
 
@@ -1367,5 +1370,54 @@
     font-size: var(--font-size-meta);
     line-height: round(1.5em, 1px);
     text-box: trim-both cap alphabetic;
+  }
+
+  @media (max-width: 36rem) {
+    .view-frame {
+      overflow-x: hidden;
+    }
+
+    .card {
+      padding: var(--space-4);
+    }
+
+    .policy-row {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .policy-row .setting-say {
+      grid-column: 1;
+      min-inline-size: 0;
+    }
+
+    .policy-row .policy-value {
+      grid-column: 1 / -1;
+      grid-row: 2;
+      justify-content: start;
+      justify-self: stretch;
+      min-inline-size: 0;
+    }
+
+    .policy-row .setting-clear {
+      grid-column: 2;
+      grid-row: 1;
+      opacity: 1;
+    }
+
+    .group-rest {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .rule-edit,
+    .entry-field,
+    .text-inline {
+      max-inline-size: 100%;
+      min-inline-size: 0;
+    }
+
+    .rule-edit-foot {
+      flex-wrap: wrap;
+    }
   }
 </style>

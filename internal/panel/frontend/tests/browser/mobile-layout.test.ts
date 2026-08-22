@@ -67,6 +67,18 @@ function routes(account: string): ReadonlyArray<readonly [string, string]> {
     ['invitations', `/i/${account}/invitations`],
     ['audit history', `/i/${account}/history/audit`],
     ['failure history', `/i/${account}/history/failures`],
+    ['sync overview', `/i/${account}/sync`],
+    ['sync labels', `/i/${account}/sync/labels`],
+    ['sync settings', `/i/${account}/sync/settings`],
+    ['sync rulesets', `/i/${account}/sync/rulesets`],
+    ['a sync ruleset', `/i/${account}/sync/rulesets/main-protection`],
+    ['sync files', `/i/${account}/sync/files`],
+    ['a sync file', `/i/${account}/sync/files/renovate.json`],
+    ['the sync plan', `/i/${account}/sync/plan`],
+    ['a repository', `/i/${account}/repositories/smyklot`],
+    ['a repository’s behavior', `/i/${account}/repositories/smyklot/behavior`],
+    ['a repository’s commands', `/i/${account}/repositories/smyklot/commands`],
+    ['a repository’s sync pane', `/i/${account}/repositories/smyklot/sync`],
     ['the inbox', `/inbox`],
     ['the Root overview', `/root`],
     ['the queue', `/root/queue`],
@@ -88,7 +100,7 @@ function routes(account: string): ReadonlyArray<readonly [string, string]> {
 beforeAll(async () => {
   panel = await startPanel();
 
-  /* Thirty-eight pages, and each one is a navigation followed by a wait. Swept in lanes because
+  /* Every page at both widths, and each one is a navigation followed by a wait. Swept in lanes because
      the wait is nearly all of it and nothing measured below has a clock in it: a layout viewport
      is the width the content asked for, and a page under load asks for the same width it would
      have asked for alone. */
