@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"path"
 	"reflect"
 	"slices"
@@ -365,7 +366,7 @@ func (reconciler *GateReconciler) block(
 	_, err := reconciler.store.UpdatePendingCIRepositoryGate(ctx, storage.PendingCIGateChange{
 		RepositoryID: gate.RepositoryID, ExpectedRevision: gate.Revision,
 		EffectiveMode: gate.EffectiveMode, Readiness: storage.PendingCIBlocked,
-		Reason: cause.Error(), AppID: gate.AppID, RulesetID: gate.RulesetID,
+		Reason: gateBlockReason(cause), AppID: gate.AppID, RulesetID: gate.RulesetID,
 		RulesetFingerprint: gate.RulesetFingerprint, ObservedAt: reconciler.now(),
 	})
 	if err != nil && !errors.Is(err, storage.ErrConflict) {
@@ -377,6 +378,42 @@ func (reconciler *GateReconciler) block(
 	}
 
 	return cause
+}
+
+// gateBlockReason turns provider failures into recovery guidance before the
+// reason is persisted for the panel. The original error still returns from
+// block, so logs and retry decisions keep GitHub's status, path, and detail.
+func gateBlockReason(cause error) string {
+	var apiErr *github.APIError
+	if !errors.As(cause, &apiErr) {
+		return cause.Error()
+	}
+
+	path := apiErr.Path
+	detail := strings.ToLower(apiErr.Detail)
+	switch {
+	case apiErr.StatusCode == http.StatusForbidden &&
+		strings.Contains(path, "/rulesets") &&
+		strings.Contains(detail, "upgrade to github pro"):
+		return "GitHub rulesets require GitHub Pro for private repositories. " +
+			"Upgrade the account or make this repository public."
+	case apiErr.StatusCode == http.StatusForbidden && strings.Contains(path, "/rulesets"):
+		return "Smyklot cannot read this repository's rulesets. " +
+			"Check the GitHub App's administration access and the repository owner's GitHub plan."
+	case apiErr.StatusCode == http.StatusForbidden &&
+		strings.Contains(path, "/protection/required_status_checks"):
+		return "Smyklot cannot read this repository's required status checks. " +
+			"Check the GitHub App's administration access and the repository owner's GitHub plan."
+	case apiErr.StatusCode == http.StatusForbidden:
+		return "GitHub refused Smyklot access while checking repository protection. " +
+			"Check the GitHub App's repository access and permissions."
+	case apiErr.Retryable():
+		return "GitHub is temporarily unavailable while Smyklot checks repository protection. " +
+			"Smyklot will retry."
+	default:
+		return "Smyklot could not check this repository's protection settings. " +
+			"Check the GitHub App's access and try again."
+	}
 }
 
 func ruleset(

@@ -3,6 +3,8 @@ package gate
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -33,6 +35,63 @@ func TestPendingCICheckMaintenancePermissionEndsAfterDrain(t *testing.T) {
 		if got := mustMaintainChecks(test.desired, test.draining); got != test.want {
 			t.Errorf("%s: maintain checks = %t, want %t", test.name, got, test.want)
 		}
+	}
+}
+
+func TestPendingCIGateBlockReasonHidesGitHubRequestDetails(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		cause error
+		want  string
+	}{
+		{
+			name: "private repository ruleset plan",
+			cause: github.NewAPIError(
+				github.ErrAPIRequest, http.StatusForbidden, http.MethodGet,
+				"/repos/owner/private/rulesets",
+				errors.New("Upgrade to GitHub Pro or make this repository public to enable this feature"),
+			),
+			want: "GitHub rulesets require GitHub Pro for private repositories. " +
+				"Upgrade the account or make this repository public.",
+		},
+		{
+			name: "required status check permission",
+			cause: fmt.Errorf("read policy: %w", github.NewAPIError(
+				github.ErrAPIRequest, http.StatusForbidden, http.MethodGet,
+				"/repos/owner/private/branches/main/protection/required_status_checks",
+				errors.New("Resource not accessible by integration"),
+			)),
+			want: "Smyklot cannot read this repository's required status checks. " +
+				"Check the GitHub App's administration access and the repository owner's GitHub plan.",
+		},
+		{
+			name: "temporary provider failure",
+			cause: github.NewAPIError(
+				github.ErrAPIRequest, http.StatusServiceUnavailable, http.MethodGet,
+				"/repos/owner/private/rulesets", errors.New("upstream unavailable"),
+			),
+			want: "GitHub is temporarily unavailable while Smyklot checks repository protection. " +
+				"Smyklot will retry.",
+		},
+		{
+			name:  "domain policy",
+			cause: errors.New("checks write approval is missing"),
+			want:  "checks write approval is missing",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			got := gateBlockReason(test.cause)
+			if got != test.want {
+				t.Fatalf("reason = %q, want %q", got, test.want)
+			}
+			if strings.Contains(got, "/repos/") || strings.Contains(got, "status: 403") {
+				t.Fatalf("reason exposes provider request details: %q", got)
+			}
+		})
 	}
 }
 
