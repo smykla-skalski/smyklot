@@ -572,7 +572,7 @@ export function seed(
                   timezone: 'Europe/Warsaw',
                   packageRules: [{ matchManagers: ['npm'], groupName: 'frontend packages' }],
                 },
-                arrays: [{ path: 'packageRules', strategy: 'append' }],
+                arrays: [{ path: '$.packageRules', strategy: 'append' }],
               },
             ],
           },
@@ -595,7 +595,7 @@ export function seed(
                 overrides: {
                   packageRules: [{ matchManagers: ['dockerfile'], groupName: 'images' }],
                 },
-                arrays: [{ path: 'packageRules', strategy: 'append' }],
+                arrays: [{ path: '$.packageRules', strategy: 'append' }],
               },
             ],
           },
@@ -867,9 +867,8 @@ export function syncFilesSeed(iso: (offsetMs: number) => string): SyncConfig {
     updated_at: iso(-20 * 60_000),
     digest: 'sha256:files',
     /* The design's five templates, content for content - the file pages are
-       compared against the mock screen by screen. Each entry carries its own
-       freshness; the panel writes it on save, and the page falls back to the
-       configuration's when an entry has none. */
+       compared against the mock screen by screen. Freshness belongs to the
+       strict configuration envelope, not inside the file document. */
     document: {
       files: [
         {
@@ -887,8 +886,6 @@ export function syncFilesSeed(iso: (offsetMs: number) => string): SyncConfig {
             '  "automerge": false',
             '}',
           ].join('\n'),
-          updated_at: iso(-2 * 24 * 60 * 60_000),
-          updated_by: 'bartsmykla',
         },
         {
           path: '.github/workflows/ci.yaml',
@@ -905,8 +902,6 @@ export function syncFilesSeed(iso: (offsetMs: number) => string): SyncConfig {
             '      - uses: actions/checkout@8edcb1b',
             '      - run: mise run ci',
           ].join('\n'),
-          updated_at: iso(-5 * 24 * 60 * 60_000),
-          updated_by: 'bart',
         },
         {
           path: 'CONTRIBUTING.md',
@@ -920,20 +915,14 @@ export function syncFilesSeed(iso: (offsetMs: number) => string): SyncConfig {
             '- Conventional commits: `feat:`, `fix:`, `docs:`',
             '- Sign-off and GPG sign: `-sS`',
           ].join('\n'),
-          updated_at: iso(-21 * 24 * 60 * 60_000),
-          updated_by: 'bart',
         },
         {
           path: '.github/CODEOWNERS',
           content: '* @smykla-skalski/maintainers\n',
-          updated_at: iso(-21 * 24 * 60 * 60_000),
-          updated_by: 'bart',
         },
         {
           path: 'LICENSE',
           content: 'Apache License 2.0\n',
-          updated_at: iso(-4 * 30 * 24 * 60 * 60_000),
-          updated_by: 'bart',
         },
       ],
       retired: ['.github/stale.yml'],

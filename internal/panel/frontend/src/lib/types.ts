@@ -803,9 +803,6 @@ export interface SyncRulesetCodeScanningTool {
 export interface SyncFile {
   path: string;
   content: string;
-  /** When this template last changed, written by the panel on save. */
-  updated_at?: string;
-  updated_by?: string;
 }
 
 /**

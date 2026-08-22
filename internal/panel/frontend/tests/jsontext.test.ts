@@ -32,7 +32,7 @@ describe('composeMergedText', () => {
     const composed = composeMergedText(TEMPLATE, {
       strategy: 'deep-merge',
       overrides: { labels: ['renovate'] },
-      arrays: [{ path: 'labels', strategy: 'append' }],
+      arrays: [{ path: '$.labels', strategy: 'append' }],
     });
     expect(composed).not.toBeNull();
     const parsed = parse(composed ?? '') as { labels: string[] };
@@ -45,7 +45,7 @@ describe('composeMergedText', () => {
     const composed = composeMergedText(TEMPLATE, {
       strategy: 'deep-merge',
       overrides: { packageRules: [{ matchManagers: ['npm'] }] },
-      arrays: [{ path: 'packageRules', strategy: 'append' }],
+      arrays: [{ path: '$.packageRules', strategy: 'append' }],
     });
     // The template's own entry is untouched, so the gutter can mark only
     // what the adjustment added.
@@ -61,7 +61,7 @@ describe('composeMergedText', () => {
     const composed = composeMergedText(template, {
       strategy: 'deep-merge',
       overrides: { list: [{ z: 9 }] },
-      arrays: [{ path: 'list', strategy: 'prepend' }],
+      arrays: [{ path: '$.list', strategy: 'prepend' }],
     });
     expect(composed).toContain('    { "a": 1 },');
     expect(composed).toContain('    { "b": 2 }');
@@ -78,7 +78,7 @@ describe('composeMergedText', () => {
           labels: ['renovate'],
           added: { nested: 1 },
         },
-        arrays: [{ path: 'labels', strategy: 'prepend' }],
+        arrays: [{ path: '$.labels', strategy: 'prepend' }],
       };
       const text = composeMergedText(TEMPLATE, merge);
       const printed = mergedPreview(TEMPLATE, merge);
@@ -120,14 +120,14 @@ describe('deriveMerge', () => {
     // Without an answer the merge does what it always does: replace.
     expect(asked?.overrides).toEqual({ labels: ['dependencies', 'renovate'] });
     expect(asked?.questions).toEqual([
-      { path: 'labels', canAppend: true, canPrepend: false, chosen: 'replace' },
+      { path: '$.labels', canAppend: true, canPrepend: false, chosen: 'replace' },
     ]);
 
     const answered = deriveMerge(TEMPLATE, edited ?? '', 'deep-merge', [
-      { path: 'labels', strategy: 'append' },
+      { path: '$.labels', strategy: 'append' },
     ]);
     expect(answered?.overrides).toEqual({ labels: ['renovate'] });
-    expect(answered?.arrays).toEqual([{ path: 'labels', strategy: 'append' }]);
+    expect(answered?.arrays).toEqual([{ path: '$.labels', strategy: 'append' }]);
     expect(answered?.questions[0]?.chosen).toBe('append');
   });
 
@@ -137,7 +137,7 @@ describe('deriveMerge', () => {
       overrides: { labels: ['renovate', 'dependencies-x'] },
     });
     const derived = deriveMerge(TEMPLATE, edited ?? '', 'deep-merge', [
-      { path: 'labels', strategy: 'append' },
+      { path: '$.labels', strategy: 'append' },
     ]);
     expect(derived?.overrides).toEqual({ labels: ['renovate', 'dependencies-x'] });
     expect(derived?.arrays).toEqual([]);
@@ -149,6 +149,21 @@ describe('deriveMerge', () => {
     const derived = deriveMerge(TEMPLATE, edited, 'deep-merge', []);
     // packageRules is a list of records - a changed entry replaces the list.
     expect(derived?.overrides).toHaveProperty('packageRules');
+  });
+
+  it('round-trips service paths whose keys contain dots', () => {
+    const template = '{ "host.rules": ["base"] }';
+    const merge = {
+      strategy: 'deep-merge',
+      overrides: { 'host.rules': ['repo'] },
+      arrays: [{ path: '$.host\\.rules', strategy: 'append' }],
+    };
+    const composed = composeMergedText(template, merge) ?? '';
+
+    expect(parse(composed)).toEqual({ 'host.rules': ['base', 'repo'] });
+    expect(deriveMerge(template, composed, 'deep-merge', merge.arrays)?.arrays).toEqual(
+      merge.arrays,
+    );
   });
 
   it('refuses what is not JSON rather than guessing', () => {

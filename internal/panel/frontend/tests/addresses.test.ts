@@ -215,6 +215,27 @@ describe('panel addresses [Unit]', () => {
     expect(parsePanelRoute(basePath, address)).toEqual(route);
   });
 
+  it('carries a template path without decoding its percent signs twice', () => {
+    const route: PanelRoute = {
+      account: 'acme',
+      view: 'sync',
+      sync: 'files',
+      syncFile: 'docs/100%bad.json',
+    };
+    const address = panelAddress(route);
+
+    expect(address).toBe(`${basePath}/i/acme/sync/files/docs/100%25bad.json`);
+    expect(
+      defined(
+        panelRouteAt('/i/[account]/sync/files/[...file=syncFilePath]', {
+          account: 'acme',
+          file: 'docs/100%bad.json',
+        }),
+      ),
+    ).toEqual(route);
+    expect(parsePanelRoute(basePath, address)).toEqual(route);
+  });
+
   it('names the view even when the segments after it name no dialog', () => {
     // The tail names nothing, but the address still names the view underneath, and that is
     // what the chrome around the page shows. Whether the page resolved is SvelteKit's

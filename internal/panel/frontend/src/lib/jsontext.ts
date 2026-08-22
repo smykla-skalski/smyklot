@@ -20,16 +20,18 @@ import {
   type ParseError,
 } from 'jsonc-parser';
 
-import type { ArrayRule, FileMergeSpec } from './filemerge';
+import { arrayRulePath, type ArrayRule, type FileMergeSpec } from './filemerge';
 
 type Segments = Array<string | number>;
+type ObjectPath = string[];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function ruleFor(rules: readonly ArrayRule[], at: string): ArrayRule | undefined {
-  return rules.find((rule) => rule.path === at);
+function ruleFor(rules: readonly ArrayRule[], at: readonly string[]): ArrayRule | undefined {
+  const path = arrayRulePath(at);
+  return rules.find((rule) => rule.path === path);
 }
 
 function formatting(text: string): { formattingOptions: object } {
@@ -71,20 +73,19 @@ function listOps(path: Segments, held: unknown[], value: unknown[], rule?: Array
 function opsDeep(
   base: unknown,
   patch: Record<string, unknown>,
-  at: Segments,
+  at: ObjectPath,
   rules: readonly ArrayRule[],
 ): Op[] {
   const out: Op[] = [];
   for (const [key, value] of Object.entries(patch)) {
     const path = [...at, key];
-    const dot = path.join('.');
     const held = isRecord(base) ? base[key] : undefined;
     if (value === null) {
       out.push({ path, value: undefined });
     } else if (isRecord(value) && isRecord(held)) {
       out.push(...opsDeep(held, value, path, rules));
     } else if (Array.isArray(value) && Array.isArray(held)) {
-      out.push(...listOps(path, held, value, ruleFor(rules, dot)));
+      out.push(...listOps(path, held, value, ruleFor(rules, path)));
     } else {
       out.push({ path, value });
     }
@@ -103,7 +104,7 @@ function opsShallow(
     if (value === null) {
       out.push({ path: [key], value: undefined });
     } else if (Array.isArray(value) && Array.isArray(held)) {
-      out.push(...listOps([key], held, value, ruleFor(rules, key)));
+      out.push(...listOps([key], held, value, ruleFor(rules, [key])));
     } else {
       out.push({ path: [key], value });
     }
@@ -267,13 +268,14 @@ function isSuffix(suffix: unknown[], whole: unknown[]): boolean {
 function diffList(
   base: unknown[],
   next: unknown[],
-  dot: string,
+  at: string[],
   prior: readonly ArrayRule[],
   out: DerivedMerge,
 ): void {
   const canAppend = isPrefix(base, next);
   const canPrepend = isSuffix(base, next);
-  const asked = ruleFor(prior, dot)?.strategy;
+  const path = arrayRulePath(at);
+  const asked = ruleFor(prior, at)?.strategy;
   const chosen =
     asked === 'append' && canAppend
       ? 'append'
@@ -286,14 +288,13 @@ function diffList(
       : chosen === 'prepend'
         ? next.slice(0, next.length - base.length)
         : next;
-  setAt(out.overrides, dot, value);
-  if (chosen !== 'replace') out.arrays.push({ path: dot, strategy: chosen });
-  if (canAppend || canPrepend) out.questions.push({ path: dot, canAppend, canPrepend, chosen });
+  setAt(out.overrides, at, value);
+  if (chosen !== 'replace') out.arrays.push({ path, strategy: chosen });
+  if (canAppend || canPrepend) out.questions.push({ path, canAppend, canPrepend, chosen });
 }
 
-/** Writes a value into the nested override document at a dot path. */
-function setAt(overrides: Record<string, unknown>, dot: string, value: unknown): void {
-  const parts = dot.split('.');
+/** Writes a value into the nested override document at its object-key path. */
+function setAt(overrides: Record<string, unknown>, parts: string[], value: unknown): void {
   let held = overrides;
   for (const part of parts.slice(0, -1)) {
     const next = held[part];
@@ -304,26 +305,27 @@ function setAt(overrides: Record<string, unknown>, dot: string, value: unknown):
       held = fresh;
     }
   }
-  held[parts[parts.length - 1] ?? dot] = value;
+  const key = parts[parts.length - 1];
+  if (key !== undefined) held[key] = value;
 }
 
 function diffDeep(
   base: Record<string, unknown>,
   next: Record<string, unknown>,
-  at: string,
+  at: string[],
   prior: readonly ArrayRule[],
   out: DerivedMerge,
 ): void {
   for (const key of Object.keys(base)) {
-    if (!(key in next)) setAt(out.overrides, at === '' ? key : `${at}.${key}`, null);
+    if (!(key in next)) setAt(out.overrides, [...at, key], null);
   }
   for (const [key, value] of Object.entries(next)) {
-    const dot = at === '' ? key : `${at}.${key}`;
+    const path = [...at, key];
     const held = base[key];
     if (deepEqual(held, value)) continue;
-    if (isRecord(held) && isRecord(value)) diffDeep(held, value, dot, prior, out);
-    else if (Array.isArray(held) && Array.isArray(value)) diffList(held, value, dot, prior, out);
-    else setAt(out.overrides, dot, value);
+    if (isRecord(held) && isRecord(value)) diffDeep(held, value, path, prior, out);
+    else if (Array.isArray(held) && Array.isArray(value)) diffList(held, value, path, prior, out);
+    else setAt(out.overrides, path, value);
   }
 }
 
@@ -339,7 +341,7 @@ function diffShallow(
   for (const [key, value] of Object.entries(next)) {
     const held = base[key];
     if (deepEqual(held, value)) continue;
-    if (Array.isArray(held) && Array.isArray(value)) diffList(held, value, key, prior, out);
+    if (Array.isArray(held) && Array.isArray(value)) diffList(held, value, [key], prior, out);
     else out.overrides[key] = value;
   }
 }
@@ -362,7 +364,7 @@ export function deriveMerge(
   const next = parseLoose(editedText);
   if (!isRecord(base) || !isRecord(next)) return null;
   const out: DerivedMerge = { overrides: {}, arrays: [], questions: [] };
-  if (strategy === 'deep-merge') diffDeep(base, next, '', prior, out);
+  if (strategy === 'deep-merge') diffDeep(base, next, [], prior, out);
   else diffShallow(base, next, prior, out);
   return out;
 }

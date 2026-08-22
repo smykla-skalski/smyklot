@@ -33,8 +33,15 @@ function clone<T>(value: T): T {
   return value === undefined ? value : (JSON.parse(JSON.stringify(value)) as T);
 }
 
-function ruleFor(rules: readonly ArrayRule[], at: string): ArrayRule | undefined {
-  return rules.find((rule) => rule.path === at);
+/** The JSONPath spelling the service stores for an array rule. */
+export function arrayRulePath(keys: readonly string[]): string {
+  const escaped = keys.map((key) => key.replaceAll('\\', '\\\\').replaceAll('.', '\\.'));
+  return `$.${escaped.join('.')}`;
+}
+
+function ruleFor(rules: readonly ArrayRule[], at: readonly string[]): ArrayRule | undefined {
+  const path = arrayRulePath(at);
+  return rules.find((rule) => rule.path === path);
 }
 
 function mergeArrays(base: unknown[], patch: unknown[], rule: ArrayRule | undefined): unknown[] {
@@ -47,7 +54,7 @@ function mergeDeep(
   base: JsonValue,
   patch: JsonValue,
   rules: readonly ArrayRule[],
-  at: string,
+  at: readonly string[],
 ): JsonValue {
   if (Array.isArray(base) && Array.isArray(patch)) {
     return mergeArrays(base, patch, ruleFor(rules, at));
@@ -55,9 +62,8 @@ function mergeDeep(
   if (!isRecord(base) || !isRecord(patch)) return clone(patch);
   const merged: Record<string, unknown> = { ...clone(base) };
   for (const [key, value] of Object.entries(patch)) {
-    const deeper = at === '' ? key : `${at}.${key}`;
     if (value === null) delete merged[key];
-    else merged[key] = mergeDeep(merged[key], value, rules, deeper);
+    else merged[key] = mergeDeep(merged[key], value, rules, [...at, key]);
   }
   return merged;
 }
@@ -68,7 +74,7 @@ function mergeShallow(base: JsonValue, patch: JsonValue, rules: readonly ArrayRu
   for (const [key, value] of Object.entries(patch)) {
     if (value === null) delete merged[key];
     else if (Array.isArray(merged[key]) && Array.isArray(value)) {
-      merged[key] = mergeArrays(merged[key], value, ruleFor(rules, key));
+      merged[key] = mergeArrays(merged[key], value, ruleFor(rules, [key]));
     } else merged[key] = clone(value);
   }
   return merged;
@@ -91,7 +97,7 @@ export function mergedPreview(templateText: string, merge: FileMergeSpec): strin
   const overrides = merge.overrides ?? {};
   const merged =
     strategy === 'deep-merge'
-      ? mergeDeep(template, overrides, rules, '')
+      ? mergeDeep(template, overrides, rules, [])
       : mergeShallow(template, overrides, rules);
   return JSON.stringify(merged, null, 2);
 }
@@ -128,7 +134,7 @@ export function mergeSummary(merge: FileMergeSpec): {
   const removed: string[] = [];
   const listed: Array<{ key: string; strategy: string; entries: number }> = [];
   for (const [key, value] of Object.entries(overrides)) {
-    const rule = ruleFor(rules, key);
+    const rule = ruleFor(rules, [key]);
     if (value === null) removed.push(key);
     else if (Array.isArray(value) && rule !== undefined && rule.strategy !== 'replace') {
       listed.push({ key, strategy: rule.strategy, entries: value.length });

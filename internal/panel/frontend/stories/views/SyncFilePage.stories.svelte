@@ -37,8 +37,6 @@
         {
           path: 'renovate.json',
           content: TEMPLATE,
-          updated_at: days(2),
-          updated_by: 'bartsmykla',
         },
       ],
       retired: [],
@@ -56,7 +54,7 @@
       timezone: 'Europe/Warsaw',
       packageRules: [{ matchManagers: ['npm'], groupName: 'frontend packages' }],
     },
-    arrays: [{ path: 'packageRules', strategy: 'append' }],
+    arrays: [{ path: '$.packageRules', strategy: 'append' }],
   };
 
   const CONTEXT: SyncFilesContext = {
@@ -73,7 +71,7 @@
           path: 'renovate.json',
           strategy: 'deep-merge',
           overrides: { packageRules: [{ matchManagers: ['dockerfile'], groupName: 'images' }] },
-          arrays: [{ path: 'packageRules', strategy: 'append' }],
+          arrays: [{ path: '$.packageRules', strategy: 'append' }],
         },
       },
       {
@@ -106,7 +104,6 @@
       readOnly: false,
       problem: null,
       saving: false,
-      editorLogin: 'bart',
       sectionHref: (section: string) => `#/sync/${section}`,
       onOpenSection: fn(),
       onSave: fn(),

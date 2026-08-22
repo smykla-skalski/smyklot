@@ -269,8 +269,13 @@ func (s *Server) getSyncFilesContext(w http.ResponseWriter, r *http.Request) {
 		if !known {
 			continue
 		}
-		if override.Enabled != nil && !*override.Enabled && filesEnabled {
-			covered--
+		if override.Enabled != nil {
+			if filesEnabled && !*override.Enabled {
+				covered--
+			}
+			if !filesEnabled && *override.Enabled {
+				covered++
+			}
 		}
 		merges = append(merges, fileMergeEntries(name, override)...)
 	}

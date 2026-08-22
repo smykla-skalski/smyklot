@@ -1,4 +1,6 @@
 <script module lang="ts">
+  import type { SyncLabel as SavedLabel } from '../types';
+
   /**
    * GitHub's own label limits: a required name of at most 50 characters, a
    * description of at most 100, nothing unprintable, no stray edge spaces.
@@ -19,6 +21,45 @@
   }
 
   export const LABEL_LIMITS = { name: 50, desc: 100 } as const;
+
+  export interface LabelsSaveInput {
+    enabled: boolean;
+    labels: SavedLabel[];
+    allow_removal: boolean;
+    excludes: string[];
+  }
+
+  /** Serializes whole-document saves and keeps only the newest waiting state. */
+  export function createLatestLabelsSave(
+    save: (input: LabelsSaveInput) => Promise<boolean>,
+    onSaved: () => void,
+  ): (input: LabelsSaveInput) => void {
+    let queued: LabelsSaveInput | null = null;
+    let running = false;
+
+    async function drain(): Promise<void> {
+      if (running) return;
+      running = true;
+      try {
+        while (queued !== null) {
+          const input = queued;
+          queued = null;
+          if (!(await save(input))) {
+            queued = null;
+            return;
+          }
+          onSaved();
+        }
+      } finally {
+        running = false;
+      }
+    }
+
+    return (input) => {
+      queued = input;
+      void drain();
+    };
+  }
 </script>
 
 <script lang="ts">
@@ -43,13 +84,6 @@
   import PanePath from './PanePath.svelte';
   import PatternEntries from './PatternEntries.svelte';
   import Switch from './Switch.svelte';
-
-  export interface LabelsSaveInput {
-    enabled: boolean;
-    labels: SyncLabel[];
-    allow_removal: boolean;
-    excludes: string[];
-  }
 
   const {
     config,
@@ -108,16 +142,15 @@
       }));
   }
 
-  async function push(overrides: Partial<LabelsSaveInput> = {}): Promise<void> {
+  function push(overrides: Partial<LabelsSaveInput> = {}): void {
     if (config === null) return;
-    const ok = await onSave({
+    queueSave({
       enabled,
       labels: toLabels(rows),
       allow_removal: allowRemoval,
       excludes: patterns.filter((pattern) => pattern.trim() !== ''),
       ...overrides,
     });
-    if (ok) whisper();
   }
 
   /* The whisper is the save receipt: one voice in the card head, on for a
@@ -131,6 +164,8 @@
     clearTimeout(savedTimer);
     savedTimer = setTimeout(() => (savedOn = false), 1400);
   }
+
+  const queueSave = createLatestLabelsSave((input) => onSave(input), whisper);
 
   /* ---------- One segment edits at a time, page-wide ---------- */
 

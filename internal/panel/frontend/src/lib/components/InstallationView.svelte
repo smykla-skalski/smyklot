@@ -142,7 +142,6 @@
             rulesetHref={(name) => session.syncRulesetHref(name)}
             onOpenRuleset={(name) => session.selectSyncRuleset(name)}
             fileName={session.currentSyncFile}
-            editorLogin={session.viewer?.account.login ?? ''}
             fileHref={(path) => session.syncFileHref(path)}
             onOpenFile={(path) => session.selectSyncFile(path)}
             fetchFilesContext={session.api.fetchSyncFilesContext}

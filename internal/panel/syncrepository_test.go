@@ -85,6 +85,48 @@ const overridePath = "/panel/api/v1/targets/github:installation:10" +
 // a repository's adjustments have to fit.
 const configPath = "/panel/api/v1/targets/github:installation:10/sync/config/"
 
+// TestSyncFilesContextCountsRepositoryOptIn covers the inverse of the global
+// baseline: a repository can turn file sync on while the installation leaves
+// it off, and the page's coverage count must use that effective answer.
+func TestSyncFilesContextCountsRepositoryOptIn(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+	session := harness.signIn(t)
+
+	if _, err := harness.store.SetSyncConfig(t.Context(), orgsync.ConfigChange{
+		TargetID: "github:installation:10", Kind: orgsync.KindFiles, Enabled: false,
+		Document: []byte(`{"files":[{"path":"README.md","content":"hello"}]}`),
+		ActorID: "github:test:user:1", Now: harness.now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	enabled := true
+	if _, err := harness.store.SetSyncRepositoryOverride(
+		t.Context(), orgsync.RepositoryOverrideChange{
+			RepositoryID: "repository-20", Kind: orgsync.KindFiles, Enabled: &enabled,
+			Document: []byte(`{}`), ActorID: "github:test:user:1", Now: harness.now,
+		},
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	response := harness.request(t, http.MethodGet,
+		"/panel/api/v1/targets/github:installation:10/sync/files/context",
+		nil, session)
+	if response.Code != http.StatusOK {
+		t.Fatalf("reading files context = %d %s", response.Code, response.Body.String())
+	}
+	var answer struct {
+		Repositories int `json:"repositories"`
+		Covered      int `json:"covered"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &answer); err != nil {
+		t.Fatal(err)
+	}
+	if answer.Repositories != 1 || answer.Covered != 1 {
+		t.Errorf("files context = %+v, wanted the opted-in repository covered", answer)
+	}
+}
+
 // TestSyncOverrideRoundTripsThroughTheEndpoint drives the addresses rather than
 // the helpers behind them.
 //

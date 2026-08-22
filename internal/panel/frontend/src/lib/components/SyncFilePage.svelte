@@ -1,11 +1,28 @@
 <script module lang="ts">
   import type { CodeLang } from '../code-tokens';
+  import type { SyncFile as TemplateFile } from '../types';
 
   /** The language a path's extension says it is written in. */
   export function langOf(path: string): CodeLang {
     if (/\.(json|json5)$/i.test(path)) return 'json';
     if (/\.(md|markdown)$/i.test(path)) return 'markdown';
     return 'yaml';
+  }
+
+  /** Replaces one template while keeping the strict service-owned file shape. */
+  export function templateDocumentWithContent(
+    document: Record<string, unknown>,
+    path: string,
+    content: string,
+  ): Record<string, unknown> {
+    const files = Array.isArray(document.files) ? (document.files as TemplateFile[]) : [];
+    return {
+      ...document,
+      files: files.map((file) => ({
+        path: file.path,
+        content: file.path === path ? content : file.content,
+      })),
+    };
   }
 </script>
 
@@ -20,7 +37,7 @@
    * where it arises.
    */
   import { unifiedDiff } from '../code-tokens';
-  import { mergeSummary, type ArrayRule, type FileMergeSpec } from '../filemerge';
+  import { arrayRulePath, mergeSummary, type ArrayRule, type FileMergeSpec } from '../filemerge';
   import { composeMergedText, deriveMerge } from '../jsontext';
   import { formatRelative } from '../format';
   import type {
@@ -48,7 +65,6 @@
     readOnly,
     problem = null,
     saving,
-    editorLogin = '',
     sectionHref,
     onOpenSection,
     onSave,
@@ -63,8 +79,6 @@
     readOnly: boolean;
     problem?: string | null;
     saving: boolean;
-    /** Who is editing, stamped onto the template's freshness on save. */
-    editorLogin?: string;
     sectionHref: (section: SyncSection) => string;
     onOpenSection: (section: SyncSection) => void;
     onSave: (enabled: boolean, document: Record<string, unknown>) => Promise<boolean>;
@@ -83,9 +97,9 @@
   const merges = $derived((context?.merges ?? []).filter((entry) => entry.path === path));
 
   const freshness = $derived.by(() => {
-    const at = file?.updated_at ?? config?.updated_at;
+    const at = config?.updated_at;
     if (at === undefined) return '';
-    const by = file?.updated_by ?? config?.updated_by ?? '';
+    const by = config?.updated_by ?? '';
     const when = formatRelative(at, nowMs);
     return by === '' ? ` · updated ${when}` : ` · updated ${when} by ${by}`;
   });
@@ -136,19 +150,7 @@
     const next = templateDraft;
     if (file === null || next === null || next === file.content || savingTemplate) return;
     savingTemplate = true;
-    const ok = await onSave(enabled, {
-      ...stored,
-      files: files.map((held) =>
-        held.path === path
-          ? {
-              ...held,
-              content: next,
-              updated_at: new Date(nowMs).toISOString(),
-              ...(editorLogin === '' ? {} : { updated_by: editorLogin }),
-            }
-          : held,
-      ),
-    });
+    const ok = await onSave(enabled, templateDocumentWithContent(stored, path, next));
     savingTemplate = false;
     if (ok) {
       whisperTemplate();
@@ -185,6 +187,7 @@
   /* What this page saved, keyed by repository, layered over a context the
      parent has not re-read yet - null is a removed adjustment. */
   let savedMerges = $state<Record<string, FileMergeSpec | null>>({});
+  let overrideFetchGeneration = 0;
 
   const adjusters = $derived(
     merges
@@ -204,20 +207,26 @@
 
   async function toggleRow(entry: SyncFileMergeEntry): Promise<void> {
     if (openRepo === entry.repository_id) {
+      overrideFetchGeneration += 1;
       openRepo = null;
       held = null;
       editedText = null;
       return;
     }
-    openRepo = entry.repository_id;
+    const generation = (overrideFetchGeneration += 1);
+    const repositoryId = entry.repository_id;
+    openRepo = repositoryId;
     sideBySide = false;
     showStored = false;
     held = null;
     holdProblem = null;
     seedEdits(entry.merge as FileMergeSpec);
     try {
-      held = await fetchOverride(entry.repository_id);
+      const loaded = await fetchOverride(repositoryId);
+      if (generation !== overrideFetchGeneration || openRepo !== repositoryId) return;
+      held = loaded;
     } catch (cause) {
+      if (generation !== overrideFetchGeneration || openRepo !== repositoryId) return;
       holdProblem = cause instanceof Error ? cause.message : String(cause);
     }
   }
@@ -324,19 +333,22 @@
     };
     holdProblem = null;
     try {
-      held = await saveOverride(entry.repository_id, {
+      const saved = await saveOverride(entry.repository_id, {
         enabled: current.enabled,
         document,
         expected_revision: current.revision,
       });
       savedMerges = { ...savedMerges, [entry.repository_id]: next };
-      if (next === null) {
+      if (openRepo === entry.repository_id) held = saved;
+      if (next === null && openRepo === entry.repository_id) {
         openRepo = null;
         editedText = null;
       }
       return true;
     } catch (cause) {
-      holdProblem = cause instanceof Error ? cause.message : String(cause);
+      if (openRepo === entry.repository_id) {
+        holdProblem = cause instanceof Error ? cause.message : String(cause);
+      }
       return false;
     }
   }
@@ -391,8 +403,9 @@
     if (staged === null || file === null) return;
     const overrides = { ...staged.overrides };
     delete overrides[key];
+    const path = arrayRulePath([key]);
     const keeps = (rule: ArrayRule): boolean =>
-      rule.path !== key && !rule.path.startsWith(`${key}.`);
+      rule.path !== path && !rule.path.startsWith(`${path}.`);
     const arrays = staged.arrays.filter(keeps);
     answers = answers.filter(keeps);
     editedText = composeMergedText(file.content, specOf(overrides, arrays));

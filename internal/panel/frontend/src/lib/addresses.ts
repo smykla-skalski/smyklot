@@ -2,7 +2,6 @@ import { resolve } from '$app/paths';
 import type { RouteId } from '$app/types';
 
 import {
-  decodeSegments,
   dialogSegments,
   isDialogHost,
   parseDialogSegments,
@@ -230,15 +229,15 @@ export function panelRouteAt(
     case '/i/[account]/sync/rulesets/[ruleset]':
       return { account, view: 'sync', sync: 'rulesets', syncRuleset: params.ruleset ?? '' };
     case '/i/[account]/sync/files/[...file=syncFilePath]': {
-      /* A rest parameter arrives raw, the way the dialog paths do - decoded
-         segment by segment, so a path with an encoded character in a name
-         comes back as the name. */
-      const segments = decodeSegments((params.file ?? '').split('/'));
+      /* SvelteKit has already decoded every segment in the rest parameter.
+         Decoding again turns a literal percent sequence into another name -
+         or throws for a perfectly valid name such as `100%bad.json`. */
+      const segments = (params.file ?? '').split('/');
       return {
         account,
         view: 'sync',
         sync: 'files',
-        syncFile: segments === null ? '' : segments.join('/'),
+        syncFile: segments.join('/'),
       };
     }
     case '/i/[account]/repositories/[repository]/[[section=repositorySection]]':

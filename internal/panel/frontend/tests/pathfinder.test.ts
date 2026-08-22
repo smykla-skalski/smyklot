@@ -52,7 +52,7 @@ describe('the merge preview [Unit]', () => {
         timezone: 'Europe/Warsaw',
         packageRules: [{ groupName: 'frontend' }],
       },
-      arrays: [{ path: 'packageRules', strategy: 'append' }],
+      arrays: [{ path: '$.packageRules', strategy: 'append' }],
     });
     const parsed = JSON.parse(preview ?? '{}') as Record<string, unknown>;
 
@@ -78,7 +78,7 @@ describe('the merge preview [Unit]', () => {
         packageRules: [{ groupName: 'frontend' }],
         automerge: null,
       },
-      arrays: [{ path: 'packageRules', strategy: 'append' }],
+      arrays: [{ path: '$.packageRules', strategy: 'append' }],
     });
 
     /* A replaced list is a changed key; only a ruled one is "listed". */

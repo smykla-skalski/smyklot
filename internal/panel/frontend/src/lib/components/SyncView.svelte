@@ -38,7 +38,6 @@
     section,
     rulesetName = null,
     fileName = null,
-    editorLogin = '',
     readOnly,
     fetchConfig,
     saveConfig,
@@ -63,8 +62,6 @@
     rulesetName?: string | null;
     /** One template's own page, when the address names one. */
     fileName?: string | null;
-    /** Who is signed in, stamped onto a template's freshness on save. */
-    editorLogin?: string;
     readOnly: boolean;
     rulesetHref: (name: string) => string;
     onOpenRuleset: (name: string) => void;
@@ -374,7 +371,6 @@
       {readOnly}
       problem={documentError.files}
       saving={savingDocument.files}
-      {editorLogin}
       {sectionHref}
       {onOpenSection}
       onSave={(wanted, document) => onSaveDocument(FILES, wanted, document)}
