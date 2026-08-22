@@ -254,34 +254,6 @@ func nextPage(response *gogithub.Response) int {
 	return response.NextPage
 }
 
-// HasPullRequestCommentReaction reports whether one user left a specific
-// reaction on any pull-request comment.
-func (c *Client) HasPullRequestCommentReaction(
-	ctx context.Context,
-	owner, repo string,
-	pullRequest int,
-	username string,
-	reactionType ReactionType,
-) (bool, error) {
-	comments, err := c.pullRequestComments(ctx, owner, repo, pullRequest)
-	if err != nil {
-		return false, err
-	}
-	for _, comment := range comments {
-		found, err := findReaction(
-			c.commentReactionPager(ctx, owner, repo, comment.GetID()),
-			username,
-			reactionType,
-			"reaction",
-		)
-		if err != nil || found {
-			return found, err
-		}
-	}
-
-	return false, nil
-}
-
 // RemovePullRequestCommentReactionsByUser removes one user's matching
 // reactions from every comment on a pull request.
 func (c *Client) RemovePullRequestCommentReactionsByUser(

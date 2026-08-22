@@ -186,7 +186,7 @@ func repoConfigFingerprint(
 ) (string, error) {
 	roots := configRoots(preferred)
 
-	entries, err := client.ListDirectory(ctx, owner, repo, "")
+	entries, err := client.ListRepositoryRoot(ctx, owner, repo)
 	if err != nil {
 		// An empty repository answers 404 here and has no configuration file.
 		var apiErr *github.APIError

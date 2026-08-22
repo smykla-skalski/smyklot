@@ -279,17 +279,17 @@ type DirectoryEntry struct {
 	SHA  string `json:"sha"`
 }
 
-// ListDirectory lists one directory through the contents API, dirPath empty
-// for the repository root. An absent directory is returned as its 404, unlike
-// GetFileContent.
-func (c *Client) ListDirectory(
+// ListRepositoryRoot lists the top level of a repository through the contents
+// API.
+//
+// The 404 is returned rather than read as emptiness, unlike GetFileContent: a
+// repository whose root is absent is one with no commits, which is a different
+// thing from a repository that does not hold a particular file.
+func (c *Client) ListRepositoryRoot(
 	ctx context.Context,
-	owner, repo, dirPath string,
+	owner, repo string,
 ) ([]DirectoryEntry, error) {
 	path := fmt.Sprintf("/repos/%s/%s/contents", owner, repo)
-	if dirPath != "" {
-		path += "/" + dirPath
-	}
 
 	return doJSON[[]DirectoryEntry](ctx, c, http.MethodGet, path, nil)
 }
