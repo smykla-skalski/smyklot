@@ -79,7 +79,7 @@ linters:
           files:
             - "**/pkg/github/**"
           allow:
-            - github.com/smykla-skalski/smyklot/pkg/github
+            - github.com/smykla-skalski/smyklot/pkg/github$
           deny:
             - pkg: github.com/smykla-skalski/smyklot/
               desc: pkg/github is a GitHub client, not a Smyklot one; take what it needs as a parameter rather than importing the rest of the service
@@ -95,7 +95,7 @@ linters:
           files:
             - "**/pkg/webhook/**"
           allow:
-            - github.com/smykla-skalski/smyklot/pkg/webhook
+            - github.com/smykla-skalski/smyklot/pkg/webhook$
           deny:
             - pkg: github.com/smykla-skalski/smyklot/
               desc: pkg/webhook is a standalone library; take what it needs as a parameter, a callback or an option rather than importing the service
