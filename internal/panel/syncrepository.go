@@ -268,6 +268,7 @@ func (s *Server) listSyncOverrides(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows := make([]syncOverrideRowDTO, 0, len(overrides))
+	editors := make(map[string]string)
 	for _, override := range overrides {
 		if override.Kind != kind {
 			continue
@@ -276,10 +277,20 @@ func (s *Server) listSyncOverrides(w http.ResponseWriter, r *http.Request) {
 		if !known {
 			continue
 		}
+		updatedBy, known := editors[override.UpdatedBy]
+		if !known {
+			updatedBy, err = s.syncEditorLogin(r.Context(), override.UpdatedBy)
+			if err != nil {
+				s.writeStorageError(w, err)
+
+				return
+			}
+			editors[override.UpdatedBy] = updatedBy
+		}
 		rows = append(rows, syncOverrideRowDTO{
 			RepositoryID:    override.RepositoryID,
 			RepositoryName:  name,
-			syncOverrideDTO: syncOverrideToDTO(kind, &override),
+			syncOverrideDTO: syncOverrideToDTO(kind, &override, updatedBy),
 		})
 	}
 
@@ -341,7 +352,17 @@ func (s *Server) answerSyncOverride(
 	override *orgsync.RepositoryOverride,
 	reportUnreadableState bool,
 ) {
-	dto := syncOverrideToDTO(kind, override)
+	updatedBy := ""
+	if override != nil {
+		var err error
+		updatedBy, err = s.syncEditorLogin(r.Context(), override.UpdatedBy)
+		if err != nil {
+			s.writeStorageError(w, err)
+
+			return
+		}
+	}
+	dto := syncOverrideToDTO(kind, override, updatedBy)
 
 	if override.Disabled() {
 		// Switched off here, so the planner is not looking - and a row is only
@@ -568,7 +589,11 @@ func (s *Server) syncFileConfig(r *http.Request, targetID string) (orgsync.FileC
 
 // syncOverrideToDTO renders a repository's answer, including the one it has
 // never given.
-func syncOverrideToDTO(kind orgsync.Kind, override *orgsync.RepositoryOverride) syncOverrideDTO {
+func syncOverrideToDTO(
+	kind orgsync.Kind,
+	override *orgsync.RepositoryOverride,
+	updatedBy string,
+) syncOverrideDTO {
 	if override == nil {
 		// Never answered, which is not the same as answered and switched off.
 		// One shape either way, so a browser has one thing to read.
@@ -580,7 +605,7 @@ func syncOverrideToDTO(kind orgsync.Kind, override *orgsync.RepositoryOverride) 
 		Enabled:   override.Enabled,
 		Document:  documentOrEmpty(override.Document),
 		Revision:  override.Revision,
-		UpdatedBy: override.UpdatedBy,
+		UpdatedBy: updatedBy,
 		UpdatedAt: &override.UpdatedAt,
 	}
 

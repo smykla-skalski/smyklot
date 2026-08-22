@@ -2,6 +2,7 @@ package panel
 
 import (
 	"encoding/json"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -9,6 +10,35 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 )
+
+// TestSyncConfigShowsTheEditorLogin drives the production API boundary that
+// feeds the overview cards. Storage deliberately keeps the stable account key;
+// the panel must turn it back into the current GitHub login rather than expose
+// an implementation identifier such as github:https://api.github.com:user:1.
+func TestSyncConfigShowsTheEditorLogin(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+	session := harness.signIn(t)
+	path := "/panel/api/v1/targets/github:installation:10/sync/config/labels"
+
+	saved := harness.request(t, http.MethodPut, path, strings.NewReader(
+		`{"enabled":true,"expected_revision":0,"labels":[]}`), session)
+	if saved.Code != http.StatusOK {
+		t.Fatalf("saving labels = %d %s", saved.Code, saved.Body.String())
+	}
+
+	read := harness.request(t, http.MethodGet, path, nil, session)
+	if read.Code != http.StatusOK {
+		t.Fatalf("reading labels = %d %s", read.Code, read.Body.String())
+	}
+
+	var answer syncConfigDTO
+	if err := json.Unmarshal(read.Body.Bytes(), &answer); err != nil {
+		t.Fatal(err)
+	}
+	if answer.UpdatedBy != "owner" {
+		t.Errorf("updated_by = %q, wanted the editor's GitHub login", answer.UpdatedBy)
+	}
+}
 
 // TestSyncConfigReportsADocumentItCannotRead is the guard on the difference
 // between "nothing is configured" and "nothing could be read".
@@ -27,7 +57,7 @@ func TestSyncConfigReportsADocumentItCannotRead(t *testing.T) {
 		UpdatedAt: time.Now().UTC(),
 	}
 
-	dto := syncConfigToDTO(stored)
+	dto := syncConfigToDTO(stored, "")
 
 	if !dto.Unreadable {
 		t.Error("a document that does not decode was reported as readable")
@@ -59,7 +89,7 @@ func TestSyncConfigStillAnswersOnAnUnreadableDocument(t *testing.T) {
 	dto := syncConfigToDTO(orgsync.Config{
 		Kind:     orgsync.KindLabels,
 		Document: []byte(`{"labels": [ this is not json`),
-	})
+	}, "")
 
 	answer, err := json.Marshal(dto)
 	if err != nil {
@@ -82,7 +112,7 @@ func TestSyncConfigReadsADocumentItCan(t *testing.T) {
 	dto := syncConfigToDTO(orgsync.Config{
 		Kind:     orgsync.KindLabels,
 		Document: []byte(`{"labels":[{"name":"bug","color":"d73a4a"}],"excludes":["ci/*"]}`),
-	})
+	}, "")
 
 	if dto.Unreadable {
 		t.Fatal("a document that decodes was reported as unreadable")
@@ -228,7 +258,7 @@ func TestSyncDocumentStoresTheRulesetsType(t *testing.T) {
 // A JSON null where the browser expects a list is a crash in the view, and an
 // installation that has configured nothing is the ordinary case.
 func TestSyncConfigNeverAnswersNullLists(t *testing.T) {
-	dto := syncConfigToDTO(orgsync.Config{Kind: orgsync.KindLabels, Document: []byte(`{}`)})
+	dto := syncConfigToDTO(orgsync.Config{Kind: orgsync.KindLabels, Document: []byte(`{}`)}, "")
 
 	if dto.Labels == nil {
 		t.Error("labels came back null rather than empty")
@@ -246,7 +276,7 @@ func TestSyncConfigNeverAnswersNullLists(t *testing.T) {
 // shape this version does not understand. Saying that about a configuration
 // that was never written is a page nobody can use to write one.
 func TestSyncConfigReadsAKindNobodyConfigured(t *testing.T) {
-	dto := syncConfigToDTO(orgsync.Config{Kind: orgsync.KindLabels})
+	dto := syncConfigToDTO(orgsync.Config{Kind: orgsync.KindLabels}, "")
 
 	if dto.Unreadable {
 		t.Error("a kind nobody configured was reported as one this version cannot read")
@@ -269,7 +299,7 @@ func TestSyncConfigSaysWhatThePermissionIsMissing(t *testing.T) {
 	ungranted := storage.Target{Permissions: map[string]string{"issues": "write"}}
 
 	dto := syncConfigAnswer(
-		orgsync.Config{Kind: orgsync.KindSettings, Enabled: true}, ungranted)
+		orgsync.Config{Kind: orgsync.KindSettings, Enabled: true}, ungranted, "")
 
 	if dto.Unavailable == "" {
 		t.Fatal("a kind the installation cannot act on was answered as though it could")
@@ -286,7 +316,7 @@ func TestSyncConfigSaysNothingOfAPermissionItHas(t *testing.T) {
 	granted := storage.Target{Permissions: map[string]string{"administration": "write"}}
 
 	dto := syncConfigAnswer(
-		orgsync.Config{Kind: orgsync.KindSettings, Enabled: true}, granted)
+		orgsync.Config{Kind: orgsync.KindSettings, Enabled: true}, granted, "")
 
 	if dto.Unavailable != "" {
 		t.Errorf("unavailable = %q, wanted nothing: the permission is granted", dto.Unavailable)
@@ -305,7 +335,7 @@ func TestSyncConfigSaysWhenAWorkflowNeedsMore(t *testing.T) {
 		Document: []byte(`{"files":[{"path":".github/workflows/ci.yaml","content":"x"}]}`),
 	}
 
-	dto := syncConfigAnswer(workflow, contents)
+	dto := syncConfigAnswer(workflow, contents, "")
 	if !strings.Contains(dto.Unavailable, "workflows") {
 		t.Errorf("unavailable = %q, wanted the workflows permission named", dto.Unavailable)
 	}
@@ -314,7 +344,7 @@ func TestSyncConfigSaysWhenAWorkflowNeedsMore(t *testing.T) {
 		Kind: orgsync.KindFiles, Enabled: true,
 		Document: []byte(`{"files":[{"path":"CONTRIBUTING.md","content":"x"}]}`),
 	}
-	if answer := syncConfigAnswer(ordinary, contents); answer.Unavailable != "" {
+	if answer := syncConfigAnswer(ordinary, contents, ""); answer.Unavailable != "" {
 		t.Errorf("unavailable = %q, wanted nothing: no workflow is configured",
 			answer.Unavailable)
 	}
@@ -322,7 +352,7 @@ func TestSyncConfigSaysWhenAWorkflowNeedsMore(t *testing.T) {
 	granted := storage.Target{
 		Permissions: map[string]string{"contents": "write", "workflows": "write"},
 	}
-	if answer := syncConfigAnswer(workflow, granted); answer.Unavailable != "" {
+	if answer := syncConfigAnswer(workflow, granted, ""); answer.Unavailable != "" {
 		t.Errorf("unavailable = %q, wanted nothing: the permission is granted",
 			answer.Unavailable)
 	}

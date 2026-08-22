@@ -2,6 +2,7 @@ package panel
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -150,7 +151,14 @@ func (s *Server) getSyncConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, syncConfigAnswer(config, target))
+	updatedBy, err := s.syncEditorLogin(r.Context(), config.UpdatedBy)
+	if err != nil {
+		s.writeStorageError(w, err)
+
+		return
+	}
+
+	writeJSON(w, http.StatusOK, syncConfigAnswer(config, target, updatedBy))
 }
 
 // putSyncConfig saves it.
@@ -205,7 +213,7 @@ func (s *Server) putSyncConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.Announce(target.ID, "")
-	writeJSON(w, http.StatusOK, syncConfigAnswer(saved, target))
+	writeJSON(w, http.StatusOK, syncConfigAnswer(saved, target, account.Login))
 }
 
 // syncPlanKey is the JSON key a plan arrives under, and the wildcard the route
@@ -324,8 +332,12 @@ func readableDocument(document json.RawMessage) (json.RawMessage, bool) {
 // means nothing without the permission behind it, and the panel asks for the
 // configuration at exactly the moment somebody wants to know why nothing is
 // happening.
-func syncConfigAnswer(config orgsync.Config, target storage.Target) syncConfigDTO {
-	dto := syncConfigToDTO(config)
+func syncConfigAnswer(
+	config orgsync.Config,
+	target storage.Target,
+	updatedBy string,
+) syncConfigDTO {
+	dto := syncConfigToDTO(config, updatedBy)
 	if unavailable, missing := orgsync.UnpermittedConfig(target, config); missing {
 		dto.Unavailable = unavailable.Reason()
 	}
@@ -333,14 +345,14 @@ func syncConfigAnswer(config orgsync.Config, target storage.Target) syncConfigDT
 	return dto
 }
 
-func syncConfigToDTO(config orgsync.Config) syncConfigDTO {
+func syncConfigToDTO(config orgsync.Config, updatedBy string) syncConfigDTO {
 	dto := syncConfigDTO{
 		Kind:      string(config.Kind),
 		Enabled:   config.Enabled,
 		Labels:    []orgsync.Label{},
 		Excludes:  []string{},
 		Revision:  config.Revision,
-		UpdatedBy: config.UpdatedBy,
+		UpdatedBy: updatedBy,
 		UpdatedAt: config.UpdatedAt,
 		Digest:    config.Digest,
 		Document:  documentOrEmpty(config.Document),
@@ -388,6 +400,23 @@ func syncConfigToDTO(config orgsync.Config) syncConfigDTO {
 	dto.AllowRemoval = document.AllowRemoval
 
 	return dto
+}
+
+// syncEditorLogin turns the stable account key stored with a change into the
+// current GitHub login a person can recognize. The storage key remains the
+// provenance and plan actor; only the panel boundary replaces it with display
+// data.
+func (s *Server) syncEditorLogin(ctx context.Context, accountID string) (string, error) {
+	if accountID == "" {
+		return "", nil
+	}
+
+	account, err := s.store.GetAccount(ctx, accountID)
+	if err != nil {
+		return "", fmt.Errorf("read sync editor: %w", err)
+	}
+
+	return account.Login, nil
 }
 
 // getSyncPlan reads whatever plan an installation has in flight.

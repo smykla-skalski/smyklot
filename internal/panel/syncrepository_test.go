@@ -170,6 +170,24 @@ func TestSyncOverrideRoundTripsThroughTheEndpoint(t *testing.T) {
 	if answer.Revision != 1 {
 		t.Errorf("revision = %d, wanted 1", answer.Revision)
 	}
+	if answer.UpdatedBy != "owner" {
+		t.Errorf("updated_by = %q, wanted the editor's GitHub login", answer.UpdatedBy)
+	}
+
+	listed := harness.request(t, http.MethodGet,
+		"/panel/api/v1/targets/github:installation:10/sync/overrides/files", nil, session)
+	if listed.Code != http.StatusOK {
+		t.Fatalf("listing adjustments = %d %s", listed.Code, listed.Body.String())
+	}
+	var page struct {
+		Overrides []syncOverrideRowDTO `json:"overrides"`
+	}
+	if err := json.Unmarshal(listed.Body.Bytes(), &page); err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Overrides) != 1 || page.Overrides[0].UpdatedBy != "owner" {
+		t.Errorf("listed adjustments = %+v, wanted one attributed to owner", page.Overrides)
+	}
 }
 
 // TestSyncOverrideRefusesWhatCouldNeverApply covers the endpoint's own
@@ -386,7 +404,7 @@ func TestSyncOverrideRefusesAKindNothingSynchronizes(t *testing.T) {
 // and one that said no are different, and the browser gets one shape either
 // way.
 func TestSyncOverrideReadsARepositoryThatHasNeverAnswered(t *testing.T) {
-	dto := syncOverrideToDTO(orgsync.KindFiles, nil)
+	dto := syncOverrideToDTO(orgsync.KindFiles, nil, "")
 
 	if dto.Enabled != nil {
 		t.Errorf("enabled = %v, wanted nothing: this repository has never answered", *dto.Enabled)
@@ -408,7 +426,7 @@ func TestSyncOverrideReportsADocumentItCannotRead(t *testing.T) {
 		Document:  []byte(`{"merges": [ this is not json`),
 		Revision:  4,
 		UpdatedAt: time.Now().UTC(),
-	})
+	}, "")
 
 	if !dto.Unreadable {
 		t.Error("a document that does not decode was reported as readable")
@@ -426,7 +444,7 @@ func TestSyncOverrideKeepsWhatARepositoryAdjusts(t *testing.T) {
 
 	dto := syncOverrideToDTO(orgsync.KindFiles, &orgsync.RepositoryOverride{
 		Kind: orgsync.KindFiles, Document: document, Revision: 2,
-	})
+	}, "")
 
 	if dto.Unreadable {
 		t.Error("a document that decodes was reported as unreadable")
