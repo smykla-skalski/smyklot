@@ -17,6 +17,8 @@ var (
 
 	ErrNoHandler = errors.New("webhook handler is nil")
 
+	ErrNoEvents = errors.New("webhook options name no events")
+
 	ErrDrainTimeout = errors.New("gave up waiting for in-flight deliveries")
 )
 
@@ -58,6 +60,9 @@ func New(secret []byte, inbox Inbox, handle Handler, opts Options) (*Pipeline, e
 	if handle == nil {
 		return nil, ErrNoHandler
 	}
+	if len(opts.Events) == 0 {
+		return nil, ErrNoEvents
+	}
 
 	resolvedOpts := opts.resolve()
 	finalizeCtx, cancelFinalize := context.WithCancel(context.Background())
@@ -82,9 +87,13 @@ func (p *Pipeline) Receiver() http.Handler {
 }
 
 func (p *Pipeline) Start(ctx context.Context) {
+	p.queueMu.Lock()
+	closed := p.queueClosed
+	p.queueMu.Unlock()
+
 	p.lifecycleMu.Lock()
 	defer p.lifecycleMu.Unlock()
-	if p.started {
+	if p.started || closed {
 		return
 	}
 	p.started = true

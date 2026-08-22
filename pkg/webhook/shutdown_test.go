@@ -106,6 +106,27 @@ var _ = Describe("Shutdown [Unit]", func() {
 		Expect(pipeline.Shutdown(context.Background())).To(Succeed())
 	})
 
+	It("should refuse to start once it has shut down", func() {
+		handled := make(chan struct{}, 1)
+		pipeline := build(func(context.Context, webhook.Delivery) error {
+			handled <- struct{}{}
+
+			return nil
+		}, time.Second)
+
+		// Given a pipeline shut down before it ever started
+		Expect(pipeline.Shutdown(context.Background())).To(Succeed())
+
+		// When it is started and given work
+		pipeline.Start(GinkgoT().Context())
+		Expect(post(pipeline, "d1")).To(Equal(202))
+
+		// Then the lease loop does not run, so nothing sends on the closed
+		// queue and nothing is handled
+		Consistently(handled, 300*time.Millisecond).ShouldNot(Receive())
+		Expect(pipeline.QueueDepth()).To(BeZero())
+	})
+
 	It("should still claim a delivery arriving after shutdown, and queue nothing", func() {
 		pipeline := build(func(context.Context, webhook.Delivery) error { return nil }, time.Second)
 		pipeline.Start(GinkgoT().Context())

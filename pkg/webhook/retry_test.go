@@ -79,4 +79,9 @@ func TestNewRefusesAPipelineItCannotRun(t *testing.T) {
 	) {
 		t.Fatalf("nil handler = %v, want ErrNoHandler", err)
 	}
+	if _, err := webhook.New([]byte("s"), inbox, handle, webhook.Options{}); !errors.Is(
+		err, webhook.ErrNoEvents,
+	) {
+		t.Fatalf("no events = %v, want ErrNoEvents", err)
+	}
 }

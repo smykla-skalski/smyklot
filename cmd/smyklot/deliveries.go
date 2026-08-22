@@ -231,7 +231,9 @@ func (s *server) deliveryObserver() webhook.Observer {
 			result := metrics.ResultSuccess
 			if err != nil {
 				result = metrics.ResultFailure
-				s.recordFailure(delivery, err)
+				if _, again := retryDelivery(err, delivery.Attempt); !again {
+					s.recordFailure(delivery, err)
+				}
 			}
 			s.metrics.Deliveries.WithLabelValues(action, result).Inc()
 		},

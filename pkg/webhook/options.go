@@ -92,9 +92,6 @@ func (o Options) resolve() resolved {
 }
 
 func (r resolved) accepts(event string) bool {
-	if len(r.known) == 0 {
-		return true
-	}
 	_, ok := r.known[event]
 
 	return ok
