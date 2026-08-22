@@ -153,7 +153,10 @@ func (p *Pipeline) run(delivery Delivery) {
 		return
 	}
 
-	_, retryable := p.opts.Retry(err, 1)
+	retryable := false
+	if delivery.Attempt > 1 {
+		_, retryable = p.opts.Retry(err, 1)
+	}
 	p.finalize(ctx, delivery, OutcomeFailed, func(finalizeCtx context.Context) error {
 		return p.inbox.Fail(finalizeCtx, Failure{
 			ClaimID: delivery.ClaimID, Stage: StageExecute,

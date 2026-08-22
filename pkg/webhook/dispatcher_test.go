@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http/httptest"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -150,7 +151,13 @@ var _ = Describe("Dispatcher [Unit]", func() {
 	})
 
 	It("should not retry a handler failure the policy calls terminal", func() {
+		var asked atomic.Int32
 		fail = terminal{errors.New("repository configuration is invalid")}
+		retry = func(cause error, attempt int) (time.Duration, bool) {
+			asked.Add(1)
+
+			return webhook.DefaultRetry(cause, attempt)
+		}
 		start()
 		post("d1", "/approve")
 
@@ -164,6 +171,7 @@ var _ = Describe("Dispatcher [Unit]", func() {
 		_, failed, retried := inbox.outcomes()
 		Expect(retried).To(BeEmpty())
 		Expect(failed[0].Retryable).To(BeFalse())
+		Expect(asked.Load()).To(Equal(int32(1)))
 	})
 
 	It("should record a spent transient failure as retryable", func() {
